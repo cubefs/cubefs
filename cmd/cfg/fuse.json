@@ -1,0 +1,13 @@
+{
+  "mountpoint": "/mnt/fuse",
+  "volname": "intest",
+  "master": "10.196.31.173:80,10.196.31.141:80,10.196.30.200:80",
+  "logpath": "/export/Logs/baudstorage",
+  "loglvl": "info",
+  "profport": "10094"
+}
+
+
+
+
+
