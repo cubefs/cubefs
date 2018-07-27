@@ -1,8 +1,8 @@
-# ChubaoFS
+# ChuBaoFS
 
 ## Overview
 
-ChubaoFS is a unified distributed filesystem for small files and large files. 
+The ChuBao Filesystem (CBFS) is a unified distributed filesystem for small files and large files. 
 
 * key-file data model, i.e., namespaceless, or hierachical namespace
 
@@ -13,7 +13,7 @@ ChubaoFS is a unified distributed filesystem for small files and large files.
 * append-only or random writes
 
 
-ChubaoFS has been built and deployed in production since 2013. 
+CBFS has been built and deployed in production since 2013. 
 
 ## Architecture
 
