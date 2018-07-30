@@ -1,40 +1,32 @@
-# ChubaoFS
+# ChuBao FS
 
 ## Overview
 
-ChubaoFS is a unified distributed filesystem for small files and large files.
+ChuBao FS is a distributed filesystem as a unified platform for unstructured data storage. 
 
-* key-file data model, i.e., namespaceless, or hierachical namespace
+* both large-scale small files and large files.
 
-* unlimited scalability of both metadata and data
+* key-file data model, i.e., namespaceless, or multiple hierachical namespaces
+
+* scale-out metadata management
 
 * strong consistency
 
 * append-only or random writes
 
-
-ChubaoFS has been built and deployed in production since 2013.
+ChuBao FS has been built and deployed in production since 2013.
 
 ## Architecture
 
-metadata partition: inode range
-
-data partition: two storage engines: tiny file chunks, extents; one replication protocol
-
-It consists of several components:
+CBFS consists of several components:
 
 * the cluster master. single raft replication
 
 * metanode. multi-raft replication, a meta partition (inode range) per raft
 
-* datanode. de-clustering of data partitions, replicated via a simple but efficient consistent replication protocol
+* datanode. de-clustering of data partitions, two storage engines for BLOBs and extents, replicated via an efficient consistent replication protocol
 
-
-## Interfaces
-
-- Go SDK
-- Java SDK
-- FUSE
+* client interfaces. FUSE, Java SDK, Go SDK.
 
 ## Usage
 
@@ -48,10 +40,14 @@ integration with minio
 
 * Datacenter filesystem
 
-run complex data workloads like databases on top of it
+run complex data workloads like databases on top of it, e.g., HBase, MyRocks, ElasticSearch, and ChuBao DB. 
 
 * Container Persistent Volumes
 
 integration with Kubernetes via CSI
 
+
+## Contact
+
+chubao.io
 
