@@ -29,7 +29,7 @@ const (
 const (
 	FileNameDateFormat   = "2006-01-02"
 	FileOpt              = os.O_RDWR | os.O_CREATE | os.O_APPEND
-	WriterBufferInitSize = 1024 * 1024*10
+	WriterBufferInitSize = 4 * 1024 * 1024
 	WriterBufferLenLimit = 4 * 1024 * 1024
 )
 
@@ -48,11 +48,12 @@ type flusher interface {
 }
 
 type asyncWriter struct {
-	file   *os.File
-	buffer *bytes.Buffer
-	flushC chan bool
-	closed bool
-	mu     sync.Mutex
+	file     *os.File
+	buffer   *bytes.Buffer
+	flushTmp []byte
+	flushC   chan bool
+	closed   bool
+	mu       sync.Mutex
 }
 
 func (writer *asyncWriter) flushScheduler() {
@@ -105,10 +106,14 @@ func (writer *asyncWriter) Flush() {
 
 func (writer *asyncWriter) flushToFile() {
 	writer.mu.Lock()
-	data := writer.buffer.Bytes()[:writer.buffer.Len()]
+	flushLength := writer.buffer.Len()
+	if writer.flushTmp == nil || cap(writer.flushTmp) < flushLength {
+		writer.flushTmp = make([]byte, flushLength)
+	}
+	copy(writer.flushTmp, writer.buffer.Bytes())
 	writer.buffer.Reset()
 	writer.mu.Unlock()
-	writer.file.Write(data)
+	writer.file.Write(writer.flushTmp[:flushLength])
 }
 
 func newAsyncWriter(out *os.File) *asyncWriter {
