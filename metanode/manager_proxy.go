@@ -50,7 +50,9 @@ func (m *metaManager) serveProxy(conn net.Conn, mp MetaPartition,
 end:
 	m.respondToClient(conn, p)
 	if err != nil {
-		log.LogErrorf("[servePorxy]: %s", err.Error())
+		log.LogErrorf("[serveProxy]: %s", err.Error())
 	}
+	log.LogDebugf("[serveProxy] request:%v, response: %v", p.GetOpMsg(),
+		p.GetResultMesg())
 	return
 }
