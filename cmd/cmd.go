@@ -137,6 +137,7 @@ func main() {
 	err := server.Start(cfg)
 	if err != nil {
 		log.LogFatal("Fatal: failed to start the baud storage daemon - ", err)
+		log.LogFlush()
 		os.Exit(1)
 		return
 	}
