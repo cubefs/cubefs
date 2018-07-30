@@ -18,8 +18,8 @@ type ExtentKey struct {
 	Crc         uint32
 }
 
-func (ek *ExtentKey) String() string {
-	return fmt.Sprintf("Partition(%v) ExtentID(%v) Size(%v) CRC(%v)", ek.PartitionId, ek.ExtentId, ek.Size, ek.Crc)
+func (ek ExtentKey) String() string {
+	return fmt.Sprintf("ExtentKey{Partition(%v),ExtentID(%v),Size(%v),CRC(%v)}", ek.PartitionId, ek.ExtentId, ek.Size, ek.Crc)
 }
 
 func (ek *ExtentKey) Equal(k ExtentKey) bool {
