@@ -29,7 +29,7 @@ const (
 const (
 	FileNameDateFormat   = "2006-01-02"
 	FileOpt              = os.O_RDWR | os.O_CREATE | os.O_APPEND
-	WriterBufferInitSize = 1024 * 1024
+	WriterBufferInitSize = 1024 * 1024*10
 	WriterBufferLenLimit = 4 * 1024 * 1024
 )
 
@@ -76,8 +76,8 @@ func (writer *asyncWriter) flushScheduler() {
 
 func (writer *asyncWriter) Write(p []byte) (n int, err error) {
 	writer.mu.Lock()
-	defer writer.mu.Unlock()
-	n, err = writer.buffer.Write(p)
+	writer.buffer.Write(p)
+	writer.mu.Unlock()
 	if writer.buffer.Len() > WriterBufferLenLimit {
 		select {
 		case writer.flushC <- true:
@@ -105,19 +105,17 @@ func (writer *asyncWriter) Flush() {
 
 func (writer *asyncWriter) flushToFile() {
 	writer.mu.Lock()
-	data := make([]byte, writer.buffer.Len())
-	copy(data, writer.buffer.Bytes())
+	data := writer.buffer.Bytes()[:writer.buffer.Len()]
 	writer.buffer.Reset()
 	writer.mu.Unlock()
 	writer.file.Write(data)
-	writer.file.Sync()
 }
 
 func newAsyncWriter(out *os.File) *asyncWriter {
 	w := &asyncWriter{
 		file:   out,
 		buffer: bytes.NewBuffer(make([]byte, 0, WriterBufferInitSize)),
-		flushC: make(chan bool, 1),
+		flushC: make(chan bool, 1000),
 	}
 	go w.flushScheduler()
 	return w
