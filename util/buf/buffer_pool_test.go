@@ -3,8 +3,8 @@ package buf
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/tiglabs/baudstorage/storage"
-	"github.com/tiglabs/baudstorage/util/pool"
+	"github.com/chubaoio/cbfs/storage"
+	"github.com/chubaoio/cbfs/util/pool"
 	"hash/crc32"
 	"math/rand"
 	"testing"

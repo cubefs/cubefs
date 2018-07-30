@@ -2,7 +2,7 @@ package master
 
 import (
 	"fmt"
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/util/log"
 	"github.com/tiglabs/raft/proto"
 	"strings"
 )

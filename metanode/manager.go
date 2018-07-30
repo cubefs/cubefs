@@ -13,11 +13,11 @@ import (
 	"sync/atomic"
 
 	"github.com/juju/errors"
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/raftstore"
-	"github.com/tiglabs/baudstorage/util/log"
-	"github.com/tiglabs/baudstorage/util/pool"
-	"github.com/tiglabs/baudstorage/util/ump"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/raftstore"
+	"github.com/chubaoio/cbfs/util/log"
+	"github.com/chubaoio/cbfs/util/pool"
+	"github.com/chubaoio/cbfs/util/ump"
 )
 
 const partitionPrefix = "partition_"
@@ -56,6 +56,8 @@ func (m *metaManager) HandleMetaOperation(conn net.Conn, p *Packet) (err error) 
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:
 		err = m.opCreateInode(conn, p)
+	case proto.OpMetaLinkInode:
+		err = m.opMetaLinkInode(conn, p)
 	case proto.OpMetaDeleteInode:
 		err = m.opDeleteInode(conn, p)
 	case proto.OpMetaInodeGet:

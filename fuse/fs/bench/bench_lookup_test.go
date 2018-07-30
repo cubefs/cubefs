@@ -6,9 +6,9 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/tiglabs/baudstorage/fuse"
-	"github.com/tiglabs/baudstorage/fuse/fs"
-	"github.com/tiglabs/baudstorage/fuse/fs/fstestutil"
+	"github.com/chubaoio/cbfs/fuse"
+	"github.com/chubaoio/cbfs/fuse/fs"
+	"github.com/chubaoio/cbfs/fuse/fs/fstestutil"
 )
 
 type benchLookupDir struct {

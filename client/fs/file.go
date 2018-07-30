@@ -4,12 +4,12 @@ import (
 	"io"
 	"time"
 
-	"github.com/tiglabs/baudstorage/fuse"
-	"github.com/tiglabs/baudstorage/fuse/fs"
+	"github.com/chubaoio/cbfs/fuse"
+	"github.com/chubaoio/cbfs/fuse/fs"
 	"golang.org/x/net/context"
 
-	"github.com/tiglabs/baudstorage/sdk/data/stream"
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/sdk/data/stream"
+	"github.com/chubaoio/cbfs/util/log"
 	"sync"
 )
 
@@ -32,22 +32,20 @@ var (
 	_ fs.HandleFlusher  = (*File)(nil)
 	_ fs.NodeFsyncer    = (*File)(nil)
 	_ fs.NodeSetattrer  = (*File)(nil)
-
-	//TODO:HandleReadAller
+	_ fs.NodeReadlinker = (*File)(nil)
 )
 
-func (f *File)getReadStream()(r *stream.StreamReader) {
+func (f *File) getReadStream() (r *stream.StreamReader) {
 	f.RLock()
 	defer f.RUnlock()
 	return f.stream
 }
 
-func (f *File)setReadStream(stream *stream.StreamReader){
+func (f *File) setReadStream(stream *stream.StreamReader) {
 	f.Lock()
 	defer f.Unlock()
-	f.stream=stream
+	f.stream = stream
 }
-
 
 func NewFile(s *Super, i *Inode) *File {
 	return &File{super: s, inode: i}
@@ -58,7 +56,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	log.LogDebugf("Attr: ino(%v)", ino)
 	inode, err := f.super.InodeGet(ino)
 	if err != nil {
-		log.LogErrorf("Attr: ino(%v) err(%v)", ino, err.Error())
+		log.LogErrorf("Attr: ino(%v) err(%v)", ino, err)
 		return ParseError(err)
 	}
 	inode.fillAttr(a)
@@ -66,20 +64,20 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 func (f *File) Forget() {
+	inode := f.inode
+	log.LogDebugf("Forget: ino(%v)", inode.ino)
+
+	//	start := time.Now()
+	//
+	//	f.super.ic.Delete(inode.ino) //FIXME
+	//
+	//	elapsed := time.Since(start)
+	//	log.LogDebugf("PERF: Forget ino(%v) (%v)ns", inode.ino, elapsed.Nanoseconds())
 }
 
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
 	ino := f.inode.ino
 	log.LogDebugf("Open: ino(%v)", ino)
-
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogWarn("Recovered from Open: ", r)
-			err = fuse.EIO
-			return
-		}
-	}()
-
 	start := time.Now()
 	err = f.super.mw.Open_ll(ino)
 	if err != nil {
@@ -94,15 +92,6 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
 	ino := f.inode.ino
 	log.LogDebugf("Close: ino(%v)", ino)
-
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogWarn("Recovered from Release: ", r)
-			err = fuse.EIO
-			return
-		}
-	}()
-
 	start := time.Now()
 	err = f.super.ec.Close(ino)
 	if err != nil {
@@ -125,10 +114,10 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 			return
 		}
 	}()
-	if f.getReadStream() ==nil {
+	if f.getReadStream() == nil {
 		stream, err := f.super.ec.OpenForRead(f.inode.ino)
 		if err != nil {
-			log.LogErrorf("Open: ino(%v) err(%v)", f.inode.ino, err)
+			log.LogErrorf("Open for Read: ino(%v) err(%v)", f.inode.ino, err)
 			return fuse.EPERM
 		}
 		f.setReadStream(stream)
@@ -162,12 +151,6 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	}
 
 	defer func() {
-		if r := recover(); r != nil {
-			log.LogWarnf("Recovered from Write: ino(%v) offset(%v) len(%v) r(%v)", f.inode.ino, req.Offset, reqlen, r)
-			err = fuse.EIO
-			return
-		}
-		// Invalidate inode cache
 		f.super.ic.Delete(f.inode.ino)
 	}()
 
@@ -180,26 +163,17 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		return fuse.EIO
 	}
 	resp.Size = size
-	if size > reqlen {
+	if size != reqlen {
 		log.LogErrorf("Write: ino(%v) offset(%v) len(%v) size(%v)", f.inode.ino, req.Offset, reqlen, size)
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Write ino(%v) size(%v) (%v)ns ", f.inode.ino, size, elapsed.Nanoseconds())
+	log.LogDebugf("PERF: Write ino(%v)  offset(%v)  size(%v) (%v)ns ", f.inode.ino,req.Offset, size, elapsed.Nanoseconds())
 	return nil
 }
 
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	log.LogDebugf("Flush: ino(%v) HandleID(%v)", f.inode.ino, req.Handle)
-
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogWarn("Recovered from Flush: ", r)
-			err = fuse.EIO
-			return
-		}
-	}()
-
 	start := time.Now()
 	err = f.super.ec.Flush(f.inode.ino)
 	if err != nil {
@@ -214,17 +188,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 
 func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	log.LogDebugf("Fsync: ino(%v) HandleID(%v)", f.inode.ino, req.Handle)
-
 	start := time.Now()
-
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogWarn("Recovered from Fsync: ", r)
-			err = fuse.EIO
-			return
-		}
-	}()
-
 	err = f.super.ec.Flush(f.inode.ino)
 	if err != nil {
 		log.LogErrorf("Fsync error (%v)", err)
@@ -237,11 +201,11 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 
 func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
 	ino := f.inode.ino
-	log.LogDebugf("Setattr: ino(%v) size(%v)", ino, req.Size)
+	log.LogDebugf("Setattr: ino(%v) req(%v)", ino, req)
 
 	start := time.Now()
 
-	if req.Size == 0 {
+	if req.Valid.Size() && req.Size == 0 {
 		extents, err := f.super.mw.Truncate(ino)
 		if err != nil {
 			log.LogErrorf("Setattr: truncate ino(%v) err(%v)", ino, err)
@@ -261,13 +225,31 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 		return ParseError(err)
 	}
 
-	if req.Size != inode.size {
-		log.LogWarnf("Setattr: ino(%v) reqSize(%v) inodeSize(%v)", ino, req.Size, inode.size)
+	if req.Valid.Size() {
+		log.LogDebugf("Setattr: truncate ino(%v) reqSize(%v) inodeSize(%v)", ino, req.Size, inode.size)
+		if req.Size != inode.size {
+			log.LogWarnf("Setattr: truncate ino(%v) reqSize(%v) inodeSize(%v)", ino, req.Size, inode.size)
+		}
+	}
+
+	if req.Valid.Mode() {
+		inode.osMode = req.Mode
 	}
 
 	inode.fillAttr(&resp.Attr)
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Setattr ino(%v) reqSize(%v) inodeSize(%v) (%v)ns", ino, req.Size, inode.size, elapsed.Nanoseconds())
+	log.LogDebugf("PERF: Setattr ino(%v) req(%v) (%v)ns", ino, req, elapsed.Nanoseconds())
 	return nil
+}
+
+func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string, error) {
+	ino := f.inode.ino
+	log.LogDebugf("Readlink: ino(%v)", ino)
+	inode, err := f.super.InodeGet(ino)
+	if err != nil {
+		log.LogErrorf("Readlink: ino(%v) err(%v)", ino, err)
+		return "", ParseError(err)
+	}
+	return string(inode.target), nil
 }

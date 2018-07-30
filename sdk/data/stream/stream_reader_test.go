@@ -3,9 +3,9 @@ package stream
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/util"
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util"
+	"github.com/chubaoio/cbfs/util/log"
 	"math/rand"
 	"net/http"
 	_ "net/http/pprof"

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util/log"
 )
 
 func (mp *metaPartition) initInode(ino *Inode) {

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/tiglabs/baudstorage/util"
-	"github.com/tiglabs/baudstorage/util/buf"
+	"github.com/chubaoio/cbfs/util"
+	"github.com/chubaoio/cbfs/util/buf"
 	"io"
 	"net"
 	"strconv"
@@ -62,6 +62,8 @@ const (
 	OpMetaExtentsList   uint8 = 0x2B
 	OpMetaUpdateDentry  uint8 = 0x2C
 	OpMetaTruncate      uint8 = 0x2D
+	OpMetaLinkInode     uint8 = 0x2E
+	OpMetaClose         uint8 = 0x2F
 
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition  uint8 = 0x40
@@ -201,6 +203,10 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaUpdateDentry"
 	case OpMetaTruncate:
 		m = "OpMetaTruncate"
+	case OpMetaLinkInode:
+		m = "OpMetaLinkInode"
+	case OpMetaClose:
+		m = "OpMetaClose"
 	case OpCreateMetaPartition:
 		m = "OpCreateMetaPartition"
 	case OpMetaNodeHeartbeat:

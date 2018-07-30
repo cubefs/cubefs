@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/util/btree"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util/btree"
+	"io"
 )
 
 // Inode wraps necessary properties of `Inode` information in file system.
@@ -37,6 +38,8 @@ type Inode struct {
 	CreateTime int64
 	AccessTime int64
 	ModifyTime int64
+	LinkTarget []byte // SymLink target name
+	NLink      uint32 // NodeLink counts
 	Extents    *proto.StreamKey
 }
 
@@ -50,6 +53,8 @@ func (i *Inode) String() string {
 	buff.WriteString(fmt.Sprintf("CT[%d]", i.CreateTime))
 	buff.WriteString(fmt.Sprintf("AT[%d]", i.AccessTime))
 	buff.WriteString(fmt.Sprintf("MT[%d]", i.ModifyTime))
+	buff.WriteString(fmt.Sprintf("LinkT[%s]", i.LinkTarget))
+	buff.WriteString(fmt.Sprintf("NLink[%d]", i.NLink))
 	buff.WriteString(fmt.Sprintf("Extents[%s]", i.Extents))
 	buff.WriteString("}")
 	return buff.String()
@@ -59,15 +64,20 @@ func (i *Inode) String() string {
 // The AccessTime and ModifyTime of new instance will be set to current time.
 func NewInode(ino uint64, t uint32) *Inode {
 	ts := time.Now().Unix()
-	return &Inode{
+	i := &Inode{
 		Inode:      ino,
 		Type:       t,
 		Generation: 1,
 		CreateTime: ts,
 		AccessTime: ts,
 		ModifyTime: ts,
+		NLink:      1,
 		Extents:    proto.NewStreamKey(ino),
 	}
+	if t == proto.ModeDir {
+		i.NLink = 2
+	}
+	return i
 }
 
 // Less tests whether the current Inode item is less than the given one.
@@ -82,7 +92,7 @@ func (i *Inode) Marshal() (result []byte, err error) {
 	valBytes := i.MarshalValue()
 	keyLen := uint32(len(keyBytes))
 	valLen := uint32(len(valBytes))
-	buff := bytes.NewBuffer(make([]byte, 0))
+	buff := bytes.NewBuffer(make([]byte, 0, 128))
 	buff.Grow(128)
 	if err = binary.Write(buff, binary.BigEndian, keyLen); err != nil {
 		return
@@ -143,7 +153,7 @@ func (i *Inode) UnmarshalKey(k []byte) (err error) {
 // MarshalValue marshal value to bytes.
 func (i *Inode) MarshalValue() (val []byte) {
 	var err error
-	buff := bytes.NewBuffer(make([]byte, 0))
+	buff := bytes.NewBuffer(make([]byte, 0, 128))
 	buff.Grow(64)
 	if err = binary.Write(buff, binary.BigEndian, &i.Type); err != nil {
 		panic(err)
@@ -161,6 +171,18 @@ func (i *Inode) MarshalValue() (val []byte) {
 		panic(err)
 	}
 	if err = binary.Write(buff, binary.BigEndian, &i.ModifyTime); err != nil {
+		panic(err)
+	}
+	// Write SymLink
+	symSize := uint32(len(i.LinkTarget))
+	if err = binary.Write(buff, binary.BigEndian, &symSize); err != nil {
+		panic(err)
+	}
+	if _, err = buff.Write(i.LinkTarget); err != nil {
+		panic(err)
+	}
+
+	if err = binary.Write(buff, binary.BigEndian, &i.NLink); err != nil {
 		panic(err)
 	}
 	if i.Extents.Size() != 0 {
@@ -199,6 +221,22 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &i.ModifyTime); err != nil {
 		return
 	}
+	// Read symLink
+	symSize := uint32(0)
+	if err = binary.Read(buff, binary.BigEndian, &symSize); err != nil {
+		return
+	}
+	if symSize > 0 {
+		i.LinkTarget = make([]byte, symSize)
+		if _, err = io.ReadFull(buff, i.LinkTarget); err != nil {
+			return
+		}
+	}
+
+	if err = binary.Read(buff, binary.BigEndian, &i.NLink); err != nil {
+		return
+	}
+
 	if i.Extents == nil {
 		i.Extents = proto.NewStreamKey(i.Inode)
 	} else {

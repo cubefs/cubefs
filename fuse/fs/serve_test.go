@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tiglabs/baudstorage/fuse"
-	"github.com/tiglabs/baudstorage/fuse/fs"
-	"github.com/tiglabs/baudstorage/fuse/fs/fstestutil"
-	"github.com/tiglabs/baudstorage/fuse/fs/fstestutil/record"
-	"github.com/tiglabs/baudstorage/fuse/fuseutil"
-	"github.com/tiglabs/baudstorage/fuse/syscallx"
+	"github.com/chubaoio/cbfs/fuse"
+	"github.com/chubaoio/cbfs/fuse/fs"
+	"github.com/chubaoio/cbfs/fuse/fs/fstestutil"
+	"github.com/chubaoio/cbfs/fuse/fs/fstestutil/record"
+	"github.com/chubaoio/cbfs/fuse/fuseutil"
+	"github.com/chubaoio/cbfs/fuse/syscallx"
 	"golang.org/x/net/context"
 )
 

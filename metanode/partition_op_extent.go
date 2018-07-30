@@ -3,7 +3,7 @@ package metanode
 import (
 	"encoding/json"
 
-	"github.com/tiglabs/baudstorage/proto"
+	"github.com/chubaoio/cbfs/proto"
 )
 
 func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error) {

@@ -4,9 +4,9 @@ import (
 	"time"
 
 	"github.com/juju/errors"
-	"github.com/tiglabs/baudstorage/util/btree"
-	"github.com/tiglabs/baudstorage/util/log"
-	"github.com/tiglabs/baudstorage/util/ump"
+	"github.com/chubaoio/cbfs/util/btree"
+	"github.com/chubaoio/cbfs/util/log"
+	"github.com/chubaoio/cbfs/util/ump"
 )
 
 type storeMsg struct {

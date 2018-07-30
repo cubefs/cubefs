@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/util/log"
 	"hash/crc32"
 	"io/ioutil"
 	"net/http"

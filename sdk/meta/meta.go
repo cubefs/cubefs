@@ -7,11 +7,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tiglabs/baudstorage/util/btree"
+	"github.com/chubaoio/cbfs/util/btree"
 
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/util"
-	"github.com/tiglabs/baudstorage/util/pool"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util"
+	"github.com/chubaoio/cbfs/util/pool"
 )
 
 const (

@@ -3,10 +3,10 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/util"
-	"github.com/tiglabs/baudstorage/util/log"
-	"github.com/tiglabs/baudstorage/util/ump"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util"
+	"github.com/chubaoio/cbfs/util/log"
+	"github.com/chubaoio/cbfs/util/ump"
 )
 
 func newCreateDataPartitionRequest(partitionType, volName string, ID uint64) (req *proto.CreateDataPartitionRequest) {

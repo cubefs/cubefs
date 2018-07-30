@@ -1,6 +1,6 @@
 seqdiag {
   app;
-  fuse [label="github.com/tiglabs/baudstorage/fuse"];
+  fuse [label="github.com/chubaoio/cbfs/fuse"];
   wait [label="callMount\nhelper goroutine"];
   mount_osxfusefs;
   kernel;

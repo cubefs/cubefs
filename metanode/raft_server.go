@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/juju/errors"
-	"github.com/tiglabs/baudstorage/raftstore"
+	"github.com/chubaoio/cbfs/raftstore"
 )
 
 // StartRaftServer init address resolver and raftStore server instance.

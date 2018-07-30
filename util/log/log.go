@@ -105,7 +105,8 @@ func (writer *asyncWriter) Flush() {
 
 func (writer *asyncWriter) flushToFile() {
 	writer.mu.Lock()
-	data := writer.buffer.Bytes()
+	data := make([]byte, writer.buffer.Len())
+	copy(data, writer.buffer.Bytes())
 	writer.buffer.Reset()
 	writer.mu.Unlock()
 	writer.file.Write(data)

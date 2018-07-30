@@ -3,10 +3,10 @@ package master
 import (
 	"fmt"
 	"github.com/juju/errors"
-	"github.com/tiglabs/baudstorage/raftstore"
-	"github.com/tiglabs/baudstorage/util/config"
-	"github.com/tiglabs/baudstorage/util/log"
-	"github.com/tiglabs/baudstorage/util/ump"
+	"github.com/chubaoio/cbfs/raftstore"
+	"github.com/chubaoio/cbfs/util/config"
+	"github.com/chubaoio/cbfs/util/log"
+	"github.com/chubaoio/cbfs/util/ump"
 	"strconv"
 	"sync"
 )

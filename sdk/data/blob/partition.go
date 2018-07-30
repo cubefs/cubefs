@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util/log"
 )
 
 type DataPartition struct {

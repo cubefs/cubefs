@@ -5,10 +5,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/tiglabs/baudstorage/fuse"
+	"github.com/chubaoio/cbfs/fuse"
 
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util/log"
 )
 
 const (
@@ -16,12 +16,15 @@ const (
 )
 
 type Inode struct {
-	ino   uint64
-	size  uint64
-	mode  uint32
-	ctime time.Time
-	mtime time.Time
-	atime time.Time
+	ino    uint64
+	size   uint64
+	mode   uint32
+	nlink  uint32
+	ctime  time.Time
+	mtime  time.Time
+	atime  time.Time
+	osMode os.FileMode
+	target []byte
 
 	// protected under the inode cache lock
 	expiration int64
@@ -73,22 +76,26 @@ func (inode *Inode) fill(info *proto.InodeInfo) {
 	inode.ino = info.Inode
 	inode.mode = info.Mode
 	inode.size = info.Size
+	inode.nlink = info.Nlink
 	inode.ctime = info.CreateTime
 	inode.atime = info.AccessTime
 	inode.mtime = info.ModifyTime
+	inode.target = info.Target
+
+	if inode.mode == ModeDir {
+		inode.osMode = os.ModeDir | os.ModePerm
+	} else if inode.mode == ModeSymlink {
+		inode.osMode = os.ModeSymlink | os.ModePerm
+	} else {
+		inode.osMode = os.ModePerm
+	}
 }
 
 func (inode *Inode) fillAttr(attr *fuse.Attr) {
 	attr.Valid = AttrValidDuration
-	if inode.mode == ModeDir {
-		attr.Nlink = DIR_NLINK_DEFAULT
-		attr.Mode = os.ModeDir | os.ModePerm
-	} else {
-		attr.Nlink = REGULAR_NLINK_DEFAULT
-		attr.Mode = os.ModePerm
-	}
-
+	attr.Nlink = inode.nlink
 	attr.Inode = inode.ino
+	attr.Mode = inode.osMode
 	attr.Size = inode.size
 	attr.Blocks = attr.Size >> 9 // In 512 bytes
 	attr.Atime = inode.atime

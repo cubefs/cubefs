@@ -3,8 +3,8 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/storage"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/storage"
 	"net/http"
 	"strconv"
 )

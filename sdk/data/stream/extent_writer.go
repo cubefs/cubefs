@@ -8,10 +8,10 @@ import (
 	"sync/atomic"
 
 	"github.com/juju/errors"
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/sdk/data"
-	"github.com/tiglabs/baudstorage/util"
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/sdk/data"
+	"github.com/chubaoio/cbfs/util"
+	"github.com/chubaoio/cbfs/util/log"
 	"time"
 )
 
@@ -111,7 +111,8 @@ func (writer *ExtentWriter) write(data []byte, kernelOffset, size int) (total in
 		}
 	}()
 	if writer.offset+util.BlockSize*10 >= util.ExtentSize {
-		return 0, FullExtentErr
+		err = FullExtentErr
+		return 0, err
 	}
 	for total < size {
 		if writer.currentPacket == nil {
@@ -121,7 +122,7 @@ func (writer *ExtentWriter) write(data []byte, kernelOffset, size int) (total in
 		if writer.IsFullCurrentPacket() || canWrite == 0 {
 			err = writer.sendCurrPacket()
 			if err != nil { //if failed,recover it
-				return 0, err
+				return total, err
 			}
 		}
 		total += canWrite

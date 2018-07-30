@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"io"
 
-	"github.com/tiglabs/baudstorage/util/btree"
+	"github.com/chubaoio/cbfs/util/btree"
 )
 
 type MetaItem struct {

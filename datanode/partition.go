@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/juju/errors"
-	"github.com/tiglabs/baudstorage/master"
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/storage"
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/master"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/storage"
+	"github.com/chubaoio/cbfs/util/log"
 	"io/ioutil"
 	"math"
 	"os"
@@ -373,7 +373,6 @@ func (dp *dataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 	response.PartitionId = uint64(dp.partitionId)
 	response.PartitionStatus = dp.partitionStatus
 	response.Used = uint64(dp.Used())
-	response.PartitionSnapshot = make([]*proto.File, 0)
 	var err error
 	response.PartitionSnapshot, err = dp.extentStore.SnapShot()
 	if err != nil {

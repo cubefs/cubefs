@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/tiglabs/baudstorage/proto"
+	"github.com/chubaoio/cbfs/proto"
 )
 
 func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
@@ -14,6 +14,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 		return
 	}
 	ino := NewInode(inoID, req.Mode)
+	ino.LinkTarget = req.Target
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -39,6 +40,8 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 		resp.Info.CreateTime = time.Unix(ino.CreateTime, 0)
 		resp.Info.ModifyTime = time.Unix(ino.ModifyTime, 0)
 		resp.Info.AccessTime = time.Unix(ino.AccessTime, 0)
+		resp.Info.Target = ino.LinkTarget
+		resp.Info.Nlink = ino.NLink
 		reply, err = json.Marshal(resp)
 		if err != nil {
 			status = proto.OpErr
@@ -64,7 +67,7 @@ func (mp *metaPartition) DeleteInode(req *DeleteInoReq, p *Packet) (err error) {
 	msg := r.(*ResponseInode)
 	status := msg.Status
 	var reply []byte
-	if status == proto.OpOk {
+	if status == proto.OpOk && msg.Msg != nil {
 		resp := &proto.DeleteInodeResponse{}
 		resp.Extents = msg.Msg.Extents.Extents
 		reply, err = json.Marshal(resp)
@@ -115,6 +118,8 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 		resp.Info.CreateTime = time.Unix(ino.CreateTime, 0)
 		resp.Info.AccessTime = time.Unix(ino.AccessTime, 0)
 		resp.Info.ModifyTime = time.Unix(ino.ModifyTime, 0)
+		resp.Info.Target = ino.LinkTarget
+		resp.Info.Nlink = ino.NLink
 		reply, err = json.Marshal(resp)
 		if err != nil {
 			status = proto.OpErr
@@ -139,6 +144,8 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 			inoInfo.AccessTime = time.Unix(retMsg.Msg.AccessTime, 0)
 			inoInfo.ModifyTime = time.Unix(retMsg.Msg.ModifyTime, 0)
 			inoInfo.CreateTime = time.Unix(retMsg.Msg.CreateTime, 0)
+			inoInfo.Target = retMsg.Msg.LinkTarget
+			inoInfo.Nlink = retMsg.Msg.NLink
 			resp.Infos = append(resp.Infos, inoInfo)
 		}
 	}
@@ -148,5 +155,42 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 		return
 	}
 	p.PackOkWithBody(data)
+	return
+}
+
+func (mp *metaPartition) CreateLinkInode(req *LinkInodeReq, p *Packet) (err error) {
+	ino := NewInode(req.Inode, 0)
+	val, err := ino.Marshal()
+	if err != nil {
+		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	resp, err := mp.Put(opFSMCreateLinkInode, val)
+	if err != nil {
+		p.PackErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	retMsg := resp.(*ResponseInode)
+	status := retMsg.Status
+	var reply []byte
+	if status == proto.OpOk {
+		resp := &LinkInodeResp{
+			Info: &proto.InodeInfo{},
+		}
+		resp.Info.Inode = retMsg.Msg.Inode
+		resp.Info.Mode = retMsg.Msg.Type
+		resp.Info.Generation = retMsg.Msg.Generation
+		resp.Info.Size = retMsg.Msg.Size
+		resp.Info.AccessTime = time.Unix(retMsg.Msg.AccessTime, 0)
+		resp.Info.ModifyTime = time.Unix(retMsg.Msg.ModifyTime, 0)
+		resp.Info.CreateTime = time.Unix(retMsg.Msg.CreateTime, 0)
+		resp.Info.Nlink = retMsg.Msg.NLink
+		resp.Info.Target = retMsg.Msg.LinkTarget
+		reply, err = json.Marshal(resp)
+		if err != nil {
+			status = proto.OpErr
+		}
+	}
+	p.PackErrorWithBody(status, reply)
 	return
 }

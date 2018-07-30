@@ -9,7 +9,7 @@ import (
 
 	"github.com/juju/errors"
 
-	"github.com/tiglabs/baudstorage/proto"
+	"github.com/chubaoio/cbfs/proto"
 )
 
 const (

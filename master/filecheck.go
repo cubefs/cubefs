@@ -1,7 +1,7 @@
 package master
 
 import (
-	"github.com/tiglabs/baudstorage/proto"
+	"github.com/chubaoio/cbfs/proto"
 )
 
 /*check File: recover File,if File lack or timeOut report or crc bad*/

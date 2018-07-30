@@ -3,7 +3,7 @@ package master
 import (
 	"encoding/json"
 	"github.com/juju/errors"
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/util/log"
 	"net/http"
 	"regexp"
 	"strconv"

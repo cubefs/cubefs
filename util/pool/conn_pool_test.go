@@ -2,7 +2,7 @@ package pool_test
 
 import (
 	"fmt"
-	"github.com/tiglabs/baudstorage/util/pool"
+	"github.com/chubaoio/cbfs/util/pool"
 	"net"
 	"sync/atomic"
 	"testing"

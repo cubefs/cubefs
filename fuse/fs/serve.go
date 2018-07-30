@@ -1,13 +1,13 @@
 // FUSE service loop, for servers that wish to use it.
 
-package fs // import "github.com/tiglabs/baudstorage/fuse/fs"
+package fs // import "github.com/chubaoio/cbfs/fuse/fs"
 
 import (
 	"encoding/binary"
 	"fmt"
 	"hash/fnv"
 	"io"
-	"log"
+	//"log"
 	"reflect"
 	"runtime"
 	"strings"
@@ -15,13 +15,15 @@ import (
 	"time"
 
 	"golang.org/x/net/context"
+
+	"github.com/chubaoio/cbfs/util/log"
 )
 
 import (
 	"bytes"
 
-	"github.com/tiglabs/baudstorage/fuse"
-	"github.com/tiglabs/baudstorage/fuse/fuseutil"
+	"github.com/chubaoio/cbfs/fuse"
+	"github.com/chubaoio/cbfs/fuse/fuseutil"
 )
 
 const (
@@ -774,6 +776,8 @@ func (c *Server) serve(r fuse.Request) {
 		ctx = c.context(ctx, r)
 	}
 
+	log.LogDebugf("FUSE serve: op(%v) request(%v)", opName(r), r)
+
 	req := &serveRequest{Request: r, cancel: cancel}
 
 	c.debug(request{
@@ -843,6 +847,7 @@ func (c *Server) serve(r fuse.Request) {
 			msg.Out = resp
 		}
 		c.debug(msg)
+		log.LogDebugf("FUSE serve: msg(%v)", msg)
 
 		c.meta.Lock()
 		delete(c.req, hdr.ID)
@@ -856,7 +861,8 @@ func (c *Server) serve(r fuse.Request) {
 			buf := make([]byte, size)
 			n := runtime.Stack(buf, false)
 			buf = buf[:n]
-			log.Printf("fuse: panic in handler for %v: %v\n%s", r, rec, buf)
+			//log.Printf("fuse: panic in handler for %v: %v\n%s", r, rec, buf)
+			log.LogErrorf("fuse: panic in handler for %v: %v\n%s", r, rec, buf)
 			err := handlerPanickedError{
 				Request: r,
 				Err:     rec,
@@ -905,6 +911,7 @@ func (c *Server) serve(r fuse.Request) {
 
 // handleRequest will either a) call done(s) and r.Respond(s) OR b) return an error.
 func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode, r fuse.Request, done func(resp interface{})) error {
+	//log.LogDebugf("FUSE: request type (%T)", r)
 	switch r := r.(type) {
 	default:
 		// Note: To FUSE, ENOSYS means "this server never implements this request."

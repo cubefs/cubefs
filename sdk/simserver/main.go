@@ -20,8 +20,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tiglabs/baudstorage/proto"
-	. "github.com/tiglabs/baudstorage/sdk/meta"
+	"github.com/chubaoio/cbfs/proto"
+	. "github.com/chubaoio/cbfs/sdk/meta"
 )
 
 const (

@@ -3,7 +3,7 @@ package storage
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/tiglabs/baudstorage/util"
+	"github.com/chubaoio/cbfs/util"
 	"hash/crc32"
 	"io"
 	"math/rand"

@@ -1,8 +1,8 @@
 package metanode
 
 import (
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/util/btree"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util/btree"
 )
 
 type ResponseInode struct {
@@ -26,6 +26,26 @@ func (mp *metaPartition) createInode(ino *Inode) (status uint8) {
 		return
 	}
 	mp.inodeTree.ReplaceOrInsert(ino)
+	return
+}
+
+func (mp *metaPartition) createLinkInode(ino *Inode) (resp *ResponseInode) {
+	resp = NewResponseInode()
+	resp.Status = proto.OpOk
+	mp.inodeMu.Lock()
+	defer mp.inodeMu.Unlock()
+	item := mp.inodeTree.Get(ino)
+	if item == nil {
+		resp.Status = proto.OpNotExistErr
+		return
+	}
+	i := item.(*Inode)
+	if i.Type == proto.ModeDir {
+		resp.Status = proto.OpArgMismatchErr
+		return
+	}
+	i.NLink++
+	resp.Msg = i
 	return
 }
 
@@ -60,13 +80,23 @@ func (mp *metaPartition) deleteInode(ino *Inode) (resp *ResponseInode) {
 	resp = NewResponseInode()
 	resp.Status = proto.OpOk
 	mp.inodeMu.Lock()
-	item := mp.inodeTree.Delete(ino)
-	mp.inodeMu.Unlock()
+	defer mp.inodeMu.Unlock()
+	item := mp.inodeTree.Get(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
-	resp.Msg = item.(*Inode)
+	i := item.(*Inode)
+	if i.Type == proto.ModeDir {
+		mp.inodeTree.Delete(ino)
+		resp.Msg = i
+		return
+	}
+	i.NLink--
+	if i.NLink < 1 {
+		mp.inodeTree.Delete(ino)
+		resp.Msg = i
+	}
 	return
 }
 

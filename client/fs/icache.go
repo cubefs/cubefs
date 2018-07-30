@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/util/log"
 )
 
 const (

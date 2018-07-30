@@ -2,7 +2,7 @@ package master
 
 import (
 	"fmt"
-	"github.com/tiglabs/baudstorage/util/gorocksdb"
+	"github.com/chubaoio/cbfs/util/gorocksdb"
 	"io"
 )
 

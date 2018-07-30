@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	. "github.com/tiglabs/baudstorage/raftstore"
-	"github.com/tiglabs/baudstorage/util/config"
+	. "github.com/chubaoio/cbfs/raftstore"
+	"github.com/chubaoio/cbfs/util/config"
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"
 )

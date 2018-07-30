@@ -12,16 +12,19 @@ const (
 const (
 	ModeRegular uint32 = iota
 	ModeDir
+	ModeSymlink
 )
 
 type InodeInfo struct {
 	Inode      uint64    `json:"ino"`
 	Mode       uint32    `json:"mode"`
+	Nlink      uint32    `json:"nlink"`
 	Size       uint64    `json:"sz"`
 	Generation uint64    `json:"gen"`
 	ModifyTime time.Time `json:"mt"`
 	CreateTime time.Time `json:"ct"`
 	AccessTime time.Time `json:"at"`
+	Target     []byte    `json:"tgt"`
 }
 
 func (info *InodeInfo) String() string {
@@ -38,9 +41,20 @@ type CreateInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Mode        uint32 `json:"mode"`
+	Target      []byte `json:"tgt"`
 }
 
 type CreateInodeResponse struct {
+	Info *InodeInfo `json:"info"`
+}
+
+type LinkInodeRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+}
+
+type LinkInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
@@ -50,6 +64,7 @@ type DeleteInodeRequest struct {
 	Inode       uint64 `json:"ino"`
 }
 
+//FIXME: delete inode will not return extents, instead close response will.
 type DeleteInodeResponse struct {
 	Extents []ExtentKey `json:"ek"`
 }
@@ -90,6 +105,16 @@ type OpenRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+}
+
+type CloseRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+}
+
+type CloseResponse struct {
+	Extents []ExtentKey `json:"ek"`
 }
 
 type LookupRequest struct {

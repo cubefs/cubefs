@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/tiglabs/baudstorage/proto"
+	"github.com/chubaoio/cbfs/proto"
 )
 
 const (

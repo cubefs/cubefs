@@ -17,14 +17,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tiglabs/baudstorage/fuse"
-	"github.com/tiglabs/baudstorage/fuse/fs"
+	"github.com/chubaoio/cbfs/fuse"
+	"github.com/chubaoio/cbfs/fuse/fs"
 
-	bdfs "github.com/tiglabs/baudstorage/client/fs"
-	"github.com/tiglabs/baudstorage/util"
-	"github.com/tiglabs/baudstorage/util/config"
-	"github.com/tiglabs/baudstorage/util/log"
-	"github.com/tiglabs/baudstorage/util/ump"
+	bdfs "github.com/chubaoio/cbfs/client/fs"
+	"github.com/chubaoio/cbfs/util"
+	"github.com/chubaoio/cbfs/util/config"
+	"github.com/chubaoio/cbfs/util/log"
+	"github.com/chubaoio/cbfs/util/ump"
 	"strconv"
 )
 
@@ -64,6 +64,7 @@ func Mount(cfg *config.Config) error {
 	logpath := cfg.GetString("logpath")
 	loglvl := cfg.GetString("loglvl")
 	profport := cfg.GetString("profport")
+
 	bufferSizeStr := cfg.GetString("bufferSize")
 	var bufferSize int
 	if bufferSizeStr == "" {
@@ -76,14 +77,18 @@ func Mount(cfg *config.Config) error {
 		}
 	}
 	fmt.Println(fmt.Sprintf("bufferSize [%v]", bufferSize))
+
+	icacheTimeout := cfg.GetInt("icacheTimeout")
+	fmt.Println(fmt.Sprintf("icacheTimeout [%v]", icacheTimeout))
+
 	c, err := fuse.Mount(
 		mnt,
 		fuse.AllowOther(),
 		fuse.MaxReadahead(MaxReadAhead),
 		fuse.AsyncRead(),
-		fuse.FSName("bdfs-"+volname),
+		fuse.FSName("cbfs-"+volname),
 		fuse.LocalVolume(),
-		fuse.VolumeName("bdfs-"+volname))
+		fuse.VolumeName("cbfs-"+volname))
 
 	if err != nil {
 		return err
@@ -96,7 +101,7 @@ func Mount(cfg *config.Config) error {
 		return err
 	}
 
-	super, err := bdfs.NewSuper(volname, master, uint64(bufferSize))
+	super, err := bdfs.NewSuper(volname, master, uint64(bufferSize), icacheTimeout)
 	if err != nil {
 		return err
 	}

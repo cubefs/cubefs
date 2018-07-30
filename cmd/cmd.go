@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/tiglabs/baudstorage/datanode"
-	"github.com/tiglabs/baudstorage/master"
-	"github.com/tiglabs/baudstorage/metanode"
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/datanode"
+	"github.com/chubaoio/cbfs/master"
+	"github.com/chubaoio/cbfs/metanode"
+	"github.com/chubaoio/cbfs/util/log"
 	"strings"
 
 	"flag"
@@ -15,7 +15,7 @@ import (
 	"syscall"
 
 	"fmt"
-	"github.com/tiglabs/baudstorage/util/config"
+	"github.com/chubaoio/cbfs/util/config"
 	"net/http"
 )
 

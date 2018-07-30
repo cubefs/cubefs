@@ -8,7 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/tiglabs/baudstorage/util"
+	"github.com/chubaoio/cbfs/util"
 )
 
 type Chunk struct {

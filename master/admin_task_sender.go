@@ -7,9 +7,9 @@ import (
 
 	"fmt"
 	"github.com/juju/errors"
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/util/log"
-	"github.com/tiglabs/baudstorage/util/pool"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util/log"
+	"github.com/chubaoio/cbfs/util/pool"
 	"net"
 )
 

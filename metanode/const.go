@@ -2,7 +2,7 @@ package metanode
 
 import (
 	"github.com/juju/errors"
-	"github.com/tiglabs/baudstorage/proto"
+	"github.com/chubaoio/cbfs/proto"
 	"time"
 )
 
@@ -24,6 +24,10 @@ type (
 	CreateInoReq = proto.CreateInodeRequest
 	// MetaNode -> Client create Inode response struct
 	CreateInoResp = proto.CreateInodeResponse
+	// Client -> MetaNode create Link Request
+	LinkInodeReq = proto.LinkInodeRequest
+	// MetaNode -> Client create Link Response
+	LinkInodeResp = proto.LinkInodeResponse
 	// Client -> MetaNode delete Inode request struct
 	DeleteInoReq = proto.DeleteInodeRequest
 	// Client -> MetaNode create Dentry request struct
@@ -76,6 +80,7 @@ const (
 	stopStoreTick
 	opUpdateDentry
 	opFSMExtentTruncate
+	opFSMCreateLinkInode
 )
 
 var (

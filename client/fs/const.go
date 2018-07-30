@@ -4,9 +4,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tiglabs/baudstorage/fuse"
+	"github.com/chubaoio/cbfs/fuse"
 
-	"github.com/tiglabs/baudstorage/proto"
+	"github.com/chubaoio/cbfs/proto"
 )
 
 const (
@@ -26,6 +26,7 @@ const (
 const (
 	ModeRegular = proto.ModeRegular
 	ModeDir     = proto.ModeDir
+	ModeSymlink = proto.ModeSymlink
 )
 
 const (
@@ -57,6 +58,8 @@ func ParseMode(mode uint32) fuse.DirentType {
 	switch mode {
 	case ModeDir:
 		return fuse.DT_Dir
+	case ModeSymlink:
+		return fuse.DT_Link
 	default:
 		return fuse.DT_File
 	}

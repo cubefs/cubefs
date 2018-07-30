@@ -3,7 +3,7 @@ package datanode
 import (
 	"container/list"
 	"fmt"
-	"github.com/tiglabs/baudstorage/proto"
+	"github.com/chubaoio/cbfs/proto"
 	"net"
 	"sync"
 )

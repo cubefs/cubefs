@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/juju/errors"
-	"github.com/tiglabs/baudstorage/util"
+	"github.com/chubaoio/cbfs/util"
 	"hash/crc32"
 	"io"
 	"math"

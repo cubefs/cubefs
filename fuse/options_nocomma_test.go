@@ -9,8 +9,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/tiglabs/baudstorage/fuse"
-	"github.com/tiglabs/baudstorage/fuse/fs/fstestutil"
+	"github.com/chubaoio/cbfs/fuse"
+	"github.com/chubaoio/cbfs/fuse/fs/fstestutil"
 )
 
 func TestMountOptionCommaError(t *testing.T) {

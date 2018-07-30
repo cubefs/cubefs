@@ -5,9 +5,9 @@ import (
 	"sync"
 
 	"github.com/juju/errors"
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/sdk/data"
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/sdk/data"
+	"github.com/chubaoio/cbfs/util/log"
 	"runtime"
 )
 
@@ -18,8 +18,6 @@ type ExtentClient struct {
 	w               *data.Wrapper
 	writers         map[uint64]*StreamWriter
 	writerLock      sync.RWMutex
-	referCnt        map[uint64]uint64
-	referLock       sync.Mutex
 	appendExtentKey AppendExtentKeyFunc
 	getExtents      GetExtentsFunc
 	bufferSize      uint64
@@ -33,7 +31,6 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 		return nil, fmt.Errorf("init dp Wrapper failed [%v]", err.Error())
 	}
 	client.writers = make(map[uint64]*StreamWriter)
-	client.referCnt = make(map[uint64]uint64)
 	client.appendExtentKey = appendExtentKey
 	client.getExtents = getExtents
 	client.bufferSize = bufferSize
@@ -72,17 +69,18 @@ func (client *ExtentClient) getStreamWriterForClose(inode uint64) (stream *Strea
 }
 
 func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write int, err error) {
-	prefix := fmt.Sprintf("inodewrite %v_%v_%v", inode, offset, len(data))
 	stream := client.getStreamWriter(inode)
 	if stream == nil {
+		prefix := fmt.Sprintf("inodewrite %v_%v_%v", inode, offset, len(data))
 		return 0, fmt.Errorf("Prefix[%v] cannot init write stream", prefix)
 	}
-	request := &WriteRequest{data: data, kernelOffset: offset, size: len(data), requestMode: RequestWriteMode}
-	stream.requestCh <- request
-	request = <-stream.replyCh
+	request := &WriteRequest{data: data, kernelOffset: offset, size: len(data)}
+	stream.writeRequestCh <- request
+	request = <-stream.writeReplyCh
 	err = request.err
 	write = request.canWrite
 	if err != nil {
+		prefix := fmt.Sprintf("inodewrite %v_%v_%v", inode, offset, len(data))
 		err = errors.Annotatef(err, prefix)
 		log.LogError(errors.ErrorStack(err))
 	}
@@ -94,49 +92,30 @@ func (client *ExtentClient) OpenForRead(inode uint64) (stream *StreamReader, err
 }
 
 func (client *ExtentClient) Flush(inode uint64) (err error) {
-	stream := client.getStreamWriter(inode)
+	stream := client.getStreamWriterForClose(inode)
 	if stream == nil {
-		return fmt.Errorf("cannot init write stream")
+		return nil
 	}
-	request := &WriteRequest{requestMode: RequestFlushMode}
-	stream.requestCh <- request
-	request = <-stream.replyCh
+	request := &FlushRequest{}
+	stream.flushRequestCh <- request
+	request = <-stream.flushReplyCh
 	return request.err
 }
 
 func (client *ExtentClient) Close(inode uint64) (err error) {
-	client.referLock.Lock()
-	inodeReferCnt := client.referCnt[inode]
-	if inodeReferCnt > 0 {
-		client.referCnt[inode] = inodeReferCnt - 1
-
-	}
-	inodeReferCnt = client.referCnt[inode]
-	client.referLock.Unlock()
 	streamWriter := client.getStreamWriterForClose(inode)
-	if streamWriter != nil {
-		request := &WriteRequest{requestMode: RequestFlushMode}
-		streamWriter.requestCh <- request
-		request = <-streamWriter.replyCh
-		if err = request.err; err != nil {
-			return
-		}
-	}
-	if inodeReferCnt != 0 {
+	if streamWriter == nil {
 		return
 	}
-
-	if streamWriter != nil {
-		request := &WriteRequest{requestMode: RequestCloseMode}
-		streamWriter.requestCh <- request
-		request = <-streamWriter.replyCh
-		if err = request.err; err != nil {
-			return
-		}
-		client.writerLock.Lock()
-		delete(client.writers, inode)
-		client.writerLock.Unlock()
+	request := &CloseRequest{}
+	streamWriter.closeRequestCh <- request
+	request = <-streamWriter.closeReplyCh
+	if err = request.err; err != nil {
+		return
 	}
+	client.writerLock.Lock()
+	delete(client.writers, inode)
+	client.writerLock.Unlock()
 
 	return
 }
@@ -145,13 +124,11 @@ func (client *ExtentClient) Read(stream *StreamReader, inode uint64, data []byte
 	if size == 0 {
 		return
 	}
-	client.writerLock.RLock()
-	wstream := client.writers[inode]
-	client.writerLock.RUnlock()
+	wstream := client.getStreamWriterForClose(inode)
 	if wstream != nil {
-		request := &WriteRequest{requestMode: RequestFlushMode}
-		wstream.requestCh <- request
-		request = <-wstream.replyCh
+		request := &FlushRequest{}
+		wstream.flushRequestCh <- request
+		request = <-wstream.flushReplyCh
 		if err = request.err; err != nil {
 			return 0, err
 		}

@@ -1,7 +1,7 @@
 package master
 
 import (
-	"github.com/tiglabs/baudstorage/proto"
+	"github.com/chubaoio/cbfs/proto"
 	"time"
 )
 

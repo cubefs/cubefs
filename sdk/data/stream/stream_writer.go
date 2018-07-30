@@ -6,21 +6,17 @@ import (
 	"time"
 
 	"github.com/juju/errors"
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/sdk/data"
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/sdk/data"
+	"github.com/chubaoio/cbfs/util/log"
 	"net"
+	"strings"
 	"sync/atomic"
 )
 
 const (
 	MaxSelectDataPartionForWrite = 32
-	IsFlushIng                   = 1
 	MaxStreamInitRetry           = 3
-
-	RequestFlushMode = 1
-	RequestWriteMode = 2
-	RequestCloseMode = 3
 )
 
 type WriteRequest struct {
@@ -29,7 +25,14 @@ type WriteRequest struct {
 	canWrite     int
 	err          error
 	kernelOffset int
-	requestMode  int
+}
+
+type FlushRequest struct {
+	err error
+}
+
+type CloseRequest struct {
+	err error
 }
 
 type StreamWriter struct {
@@ -41,8 +44,12 @@ type StreamWriter struct {
 	Inode              uint64        //inode
 	excludePartition   []uint32
 	appendExtentKey    AppendExtentKeyFunc
-	requestCh          chan *WriteRequest
-	replyCh            chan *WriteRequest
+	writeRequestCh     chan *WriteRequest
+	writeReplyCh       chan *WriteRequest
+	flushRequestCh     chan *FlushRequest
+	flushReplyCh       chan *FlushRequest
+	closeRequestCh     chan *CloseRequest
+	closeReplyCh       chan *CloseRequest
 	exitCh             chan bool
 	hasUpdateKey       map[string]int
 	HasWriteSize       uint64
@@ -54,8 +61,12 @@ func NewStreamWriter(w *data.Wrapper, inode uint64, appendExtentKey AppendExtent
 	stream.w = w
 	stream.appendExtentKey = appendExtentKey
 	stream.Inode = inode
-	stream.requestCh = make(chan *WriteRequest, 1000)
-	stream.replyCh = make(chan *WriteRequest, 1000)
+	stream.writeRequestCh = make(chan *WriteRequest, 1000)
+	stream.writeReplyCh = make(chan *WriteRequest, 1000)
+	stream.closeReplyCh = make(chan *CloseRequest, 10)
+	stream.closeRequestCh = make(chan *CloseRequest, 10)
+	stream.flushReplyCh = make(chan *FlushRequest, 100)
+	stream.flushRequestCh = make(chan *FlushRequest, 100)
 	stream.exitCh = make(chan bool, 10)
 	stream.excludePartition = make([]uint32, 0)
 	stream.hasUpdateKey = make(map[string]int)
@@ -103,15 +114,6 @@ func (stream *StreamWriter) init() (err error) {
 	return
 }
 
-func (stream *StreamWriter) doRequest(request *WriteRequest) {
-	if request.requestMode == RequestFlushMode {
-		request.err = stream.flushCurrExtentWriter()
-	} else if request.requestMode == RequestWriteMode {
-		request.canWrite, request.err = stream.write(request.data, request.kernelOffset, request.size)
-	} else if request.requestMode == RequestCloseMode {
-		request.err = stream.close()
-	}
-}
 func (stream *StreamWriter) server() {
 	t := time.NewTicker(time.Second * 2)
 	defer t.Stop()
@@ -120,13 +122,19 @@ func (stream *StreamWriter) server() {
 			stream.flushCurrExtentWriter()
 		}
 		select {
-		case request := <-stream.requestCh:
-			stream.doRequest(request)
-			stream.replyCh <- request
-			if request.requestMode == RequestCloseMode && request.err == nil {
-				close(stream.requestCh)
-				return
+		case request := <-stream.writeRequestCh:
+			request.canWrite, request.err = stream.write(request.data, request.kernelOffset, request.size)
+			stream.writeReplyCh <- request
+		case request := <-stream.flushRequestCh:
+			request.err = stream.flushCurrExtentWriter()
+			stream.flushReplyCh <- request
+		case request := <-stream.closeRequestCh:
+			request.err = stream.flushCurrExtentWriter()
+			if request.err == nil {
+				request.err = stream.close()
 			}
+			stream.closeReplyCh <- request
+			return
 		case <-stream.exitCh:
 			return
 		case <-t.C:
@@ -145,11 +153,12 @@ func (stream *StreamWriter) write(data []byte, offset, size int) (total int, err
 	defer func() {
 		atomic.AddUint64(&stream.HasWriteSize, uint64(total))
 		if err == nil {
+			total = size
 			return
 		}
 		err = errors.Annotatef(err, "UserRequest{inode(%v) write "+
-			"KernelOffset(%v) KernelSize(%v)} stream{ (%v) occous error}",
-			stream.Inode, offset, size, stream.toString())
+			"KernelOffset(%v) KernelSize(%v) hasWrite(%v)}  stream{ (%v) occous error}",
+			stream.Inode, offset, size, total, stream.toString())
 		log.LogError(err.Error())
 		log.LogError(errors.ErrorStack(err))
 	}()
@@ -158,26 +167,28 @@ func (stream *StreamWriter) write(data []byte, offset, size int) (total int, err
 	for total < size {
 		if err = stream.init(); err != nil {
 			if initRetry++; initRetry > MaxStreamInitRetry {
-				return
+				return total, err
 			}
 			continue
 		}
 		write, err = stream.currentWriter.write(data[total:size], offset, size-total)
-		if err == FullExtentErr {
+		if err == nil {
+			write = size - total
+			total += write
 			continue
 		}
-		if err == nil {
-			total += write
+		if strings.Contains(err.Error(), FullExtentErr.Error()) {
 			continue
 		}
 		if err = stream.recoverExtent(); err != nil {
 			return
+		} else {
+			write = size - total //recover success ,then write is allLength
 		}
-		write = size - total
 		total += write
 	}
 
-	return
+	return total, err
 }
 
 func (stream *StreamWriter) close() (err error) {
@@ -302,14 +313,14 @@ func (stream *StreamWriter) recoverExtent() (err error) {
 			stream.excludePartition = make([]uint32, 0)
 			stream.currentWriter = writer
 			stream.updateToMetaNode()
-			return
+			return err
 		} else {
 			writer.forbirdUpdateToMetanode()
 			writer.notifyExit()
 		}
 	}
 
-	return
+	return err
 
 }
 

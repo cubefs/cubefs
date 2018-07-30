@@ -2,7 +2,7 @@ package master
 
 import (
 	"encoding/json"
-	"github.com/tiglabs/baudstorage/proto"
+	"github.com/chubaoio/cbfs/proto"
 	"math/rand"
 	"sync"
 	"time"

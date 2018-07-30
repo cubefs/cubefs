@@ -8,7 +8,7 @@ import (
 	"strconv"
 
 	"bytes"
-	"github.com/tiglabs/baudstorage/proto"
+	"github.com/chubaoio/cbfs/proto"
 	"io/ioutil"
 	"strings"
 )

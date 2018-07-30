@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/tiglabs/baudstorage/util/config"
+	"github.com/chubaoio/cbfs/util/config"
 	"io/ioutil"
 	"os"
 )

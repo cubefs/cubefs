@@ -3,8 +3,8 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/tiglabs/baudstorage/raftstore"
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/raftstore"
+	"github.com/chubaoio/cbfs/util/log"
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"
 	"io"

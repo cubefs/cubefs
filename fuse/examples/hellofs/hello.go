@@ -7,9 +7,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/tiglabs/baudstorage/fuse"
-	"github.com/tiglabs/baudstorage/fuse/fs"
-	_ "github.com/tiglabs/baudstorage/fuse/fs/fstestutil"
+	"github.com/chubaoio/cbfs/fuse"
+	"github.com/chubaoio/cbfs/fuse/fs"
+	_ "github.com/chubaoio/cbfs/fuse/fs/fstestutil"
 	"golang.org/x/net/context"
 )
 

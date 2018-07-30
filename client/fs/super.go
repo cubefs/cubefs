@@ -2,14 +2,15 @@ package fs
 
 import (
 	"fmt"
+	"time"
 
-	"github.com/tiglabs/baudstorage/fuse"
-	"github.com/tiglabs/baudstorage/fuse/fs"
+	"github.com/chubaoio/cbfs/fuse"
+	"github.com/chubaoio/cbfs/fuse/fs"
 	"golang.org/x/net/context"
 
-	"github.com/tiglabs/baudstorage/sdk/data/stream"
-	"github.com/tiglabs/baudstorage/sdk/meta"
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/sdk/data/stream"
+	"github.com/chubaoio/cbfs/sdk/meta"
+	"github.com/chubaoio/cbfs/util/log"
 )
 
 type Super struct {
@@ -26,7 +27,7 @@ var (
 	_ fs.FSStatfser = (*Super)(nil)
 )
 
-func NewSuper(volname, master string, bufferSize uint64) (s *Super, err error) {
+func NewSuper(volname, master string, bufferSize uint64, icacheTimeout int64) (s *Super, err error) {
 	s = new(Super)
 	s.mw, err = meta.NewMetaWrapper(volname, master)
 	if err != nil {
@@ -42,7 +43,11 @@ func NewSuper(volname, master string, bufferSize uint64) (s *Super, err error) {
 
 	s.volname = volname
 	s.cluster = s.mw.Cluster()
-	s.ic = NewInodeCache(DefaultInodeExpiration, MaxInodeCache)
+	inodeExpiration := DefaultInodeExpiration
+	if icacheTimeout > 0 {
+		inodeExpiration = time.Duration(icacheTimeout) * time.Second
+	}
+	s.ic = NewInodeCache(inodeExpiration, MaxInodeCache)
 	log.LogInfof("NewSuper: cluster(%v) volname(%v)", s.cluster, s.volname)
 	return s, nil
 }

@@ -2,7 +2,7 @@ package buf
 
 import (
 	"fmt"
-	"github.com/tiglabs/baudstorage/util"
+	"github.com/chubaoio/cbfs/util"
 	"sync"
 )
 

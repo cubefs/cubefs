@@ -2,7 +2,7 @@ package master
 
 import (
 	"fmt"
-	"github.com/tiglabs/baudstorage/proto"
+	"github.com/chubaoio/cbfs/proto"
 	"sort"
 	"time"
 )

@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"encoding/json"
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/util"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util"
 )
 
 const (

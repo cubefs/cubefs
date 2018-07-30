@@ -5,8 +5,8 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util/log"
 )
 
 // TODO: High-level API, i.e. work with absolute path
@@ -44,7 +44,7 @@ func (mw *MetaWrapper) Open_ll(inode uint64) error {
 	return nil
 }
 
-func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode uint32) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode uint32, target []byte) (*proto.InodeInfo, error) {
 	var (
 		status       int
 		err          error
@@ -63,7 +63,7 @@ func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode uint32) (*pr
 
 	mp = mw.getLatestPartition()
 	if mp != nil {
-		status, info, err = mw.icreate(mp, mode)
+		status, info, err = mw.icreate(mp, mode, target)
 		if err == nil {
 			if status == statusOK {
 				goto create_dentry
@@ -75,7 +75,7 @@ func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode uint32) (*pr
 
 	rwPartitions = mw.getRWPartitions()
 	for _, mp = range rwPartitions {
-		status, info, err = mw.icreate(mp, mode)
+		status, info, err = mw.icreate(mp, mode, target)
 		if err == nil && status == statusOK {
 			goto create_dentry
 		}
@@ -307,4 +307,39 @@ func (mw *MetaWrapper) Truncate(inode uint64) ([]proto.ExtentKey, error) {
 	}
 	return extents, nil
 
+}
+
+func (mw *MetaWrapper) Link(parentID uint64, name string, ino uint64) (*proto.InodeInfo, error) {
+	parentMP := mw.getPartitionByInode(parentID)
+	if parentMP == nil {
+		log.LogErrorf("Link: No parent partition, parentID(%v)", parentID)
+		return nil, syscall.ENOENT
+	}
+
+	mp := mw.getPartitionByInode(ino)
+	if mp == nil {
+		log.LogErrorf("Link: No target inode partition, ino(%v)", ino)
+		return nil, syscall.ENOENT
+	}
+
+	// increase inode nlink
+	status, info, err := mw.ilink(mp, ino)
+	if err != nil {
+		return nil, syscall.EAGAIN
+	}
+	if status != statusOK {
+		return nil, statusToErrno(status)
+	}
+
+	// create new dentry and refer to the inode
+	status, err = mw.dcreate(parentMP, parentID, name, ino, proto.ModeRegular)
+	if err != nil || status != statusOK {
+		if status == statusExist {
+			return nil, syscall.EEXIST
+		} else {
+			mw.idelete(mp, ino)
+			return nil, syscall.EAGAIN
+		}
+	}
+	return info, nil
 }

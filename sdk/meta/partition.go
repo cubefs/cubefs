@@ -3,9 +3,9 @@ package meta
 import (
 	"fmt"
 
-	"github.com/tiglabs/baudstorage/util/btree"
+	"github.com/chubaoio/cbfs/util/btree"
 
-	"github.com/tiglabs/baudstorage/proto"
+	"github.com/chubaoio/cbfs/proto"
 )
 
 type MetaPartition struct {

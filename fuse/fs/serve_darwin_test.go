@@ -3,7 +3,7 @@ package fs_test
 import (
 	"testing"
 
-	"github.com/tiglabs/baudstorage/fuse/fs/fstestutil"
+	"github.com/chubaoio/cbfs/fuse/fs/fstestutil"
 	"golang.org/x/sys/unix"
 )
 

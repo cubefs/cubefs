@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tiglabs/baudstorage/util/config"
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/util/config"
+	"github.com/chubaoio/cbfs/util/log"
 )
 
 func TestValidNodeID(t *testing.T) {

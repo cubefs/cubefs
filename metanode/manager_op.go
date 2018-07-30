@@ -7,9 +7,9 @@ import (
 
 	"bytes"
 	"github.com/juju/errors"
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/util"
-	"github.com/tiglabs/baudstorage/util/log"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util"
+	"github.com/chubaoio/cbfs/util/log"
 	raftProto "github.com/tiglabs/raft/proto"
 	"runtime"
 )
@@ -162,6 +162,27 @@ func (m *metaManager) opCreateInode(conn net.Conn, p *Packet) (err error) {
 	// Reply operation result to client though TCP connection.
 	m.respondToClient(conn, p)
 	log.LogDebugf("[opCreateInode] req:%v; resp: %v", req, p.GetResultMesg())
+	return
+}
+
+func (m *metaManager) opMetaLinkInode(conn net.Conn, p *Packet) (err error) {
+	req := &LinkInodeReq{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PackErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.CreateLinkInode(req, p)
+	m.respondToClient(conn, p)
 	return
 }
 

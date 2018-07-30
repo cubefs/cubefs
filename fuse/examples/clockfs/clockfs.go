@@ -11,10 +11,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tiglabs/baudstorage/fuse"
-	"github.com/tiglabs/baudstorage/fuse/fs"
-	_ "github.com/tiglabs/baudstorage/fuse/fs/fstestutil"
-	"github.com/tiglabs/baudstorage/fuse/fuseutil"
+	"github.com/chubaoio/cbfs/fuse"
+	"github.com/chubaoio/cbfs/fuse/fs"
+	_ "github.com/chubaoio/cbfs/fuse/fs/fstestutil"
+	"github.com/chubaoio/cbfs/fuse/fuseutil"
 	"golang.org/x/net/context"
 )
 

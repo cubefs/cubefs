@@ -6,9 +6,9 @@ import (
 
 	"github.com/juju/errors"
 
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/util/log"
-	"github.com/tiglabs/baudstorage/util/ump"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util/log"
+	"github.com/chubaoio/cbfs/util/ump"
 )
 
 // API implementations
@@ -46,11 +46,12 @@ func (mw *MetaWrapper) open(mp *MetaPartition, inode uint64) (status int, err er
 	return
 }
 
-func (mw *MetaWrapper) icreate(mp *MetaPartition, mode uint32) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) icreate(mp *MetaPartition, mode uint32, target []byte) (status int, info *proto.InodeInfo, err error) {
 	req := &proto.CreateInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Mode:        mode,
+		Target:      target,
 	}
 
 	packet := proto.NewPacket()
@@ -130,10 +131,10 @@ func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, ext
 	resp := new(proto.DeleteInodeResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil {
-		log.LogErrorf("idelete: mp(%v) err(%v) PacketData(%v)", mp, err, string(packet.Data))
+		log.LogErrorf("idelete: mp(%v) err(%v) RespData(%v)", mp, err, string(packet.Data))
 		return
 	}
-	log.LogDebugf("idelete exit: mp(%v) req(%v) info(%v)", mp, *req, resp.Extents)
+	log.LogDebugf("idelete exit: mp(%v) req(%v) RespData(%v)", mp, *req, string(packet.Data))
 	return statusOK, resp.Extents, nil
 }
 
@@ -555,9 +556,57 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode uint64) (status int, ex
 	resp := new(proto.TruncateResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil {
-		log.LogErrorf("truncate: mp(%v) err(%v) PacketData(%v)", mp, err, string(packet.Data))
+		log.LogErrorf("truncate: mp(%v) err(%v) RespData(%v)", mp, err, string(packet.Data))
 		return
 	}
-	log.LogDebugf("truncate exit: mp(%v) req(%v) info(%v)", mp, *req, resp.Extents)
+	log.LogDebugf("truncate exit: mp(%v) req(%v) RespData(%v)", mp, *req, string(packet.Data))
 	return statusOK, resp.Extents, nil
+}
+
+func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
+	req := &proto.LinkInodeRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		Inode:       inode,
+	}
+
+	packet := proto.NewPacket()
+	packet.Opcode = proto.OpMetaLinkInode
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("ilink: err(%v)", err)
+		return
+	}
+
+	log.LogDebugf("ilink enter: mp(%v) req(%v)", mp, string(packet.Data))
+
+	umpKey := mw.umpKey(packet.GetOpMsg())
+	tpObject := ump.BeforeTP(umpKey)
+	defer ump.AfterTP(tpObject, err)
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("ilink: mp(%v) req(%v) err(%v)", mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("ilink: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		return
+	}
+
+	resp := new(proto.LinkInodeResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("ilink: mp(%v) err(%v) PacketData(%v)", mp, err, string(packet.Data))
+		return
+	}
+	if resp.Info == nil {
+		err = errors.New(fmt.Sprintf("ilink: info is nil, mp(%v) req(%v) PacketData(%v)", mp, *req, string(packet.Data)))
+		log.LogWarn(err)
+		return
+	}
+	log.LogDebugf("ilink exit: mp(%v) req(%v) info(%v)", mp, *req, resp.Info)
+	return statusOK, resp.Info, nil
 }

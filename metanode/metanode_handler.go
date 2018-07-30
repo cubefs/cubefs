@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/util/btree"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util/btree"
 )
 
 func (m *MetaNode) registerHandler() (err error) {

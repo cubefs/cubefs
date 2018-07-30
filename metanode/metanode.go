@@ -14,12 +14,12 @@ import (
 	"time"
 
 	"github.com/juju/errors"
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/raftstore"
-	"github.com/tiglabs/baudstorage/util"
-	"github.com/tiglabs/baudstorage/util/config"
-	"github.com/tiglabs/baudstorage/util/log"
-	"github.com/tiglabs/baudstorage/util/ump"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/raftstore"
+	"github.com/chubaoio/cbfs/util"
+	"github.com/chubaoio/cbfs/util/config"
+	"github.com/chubaoio/cbfs/util/log"
+	"github.com/chubaoio/cbfs/util/ump"
 )
 
 // The MetaNode manage Dentry and Inode information in multiple metaPartition, and

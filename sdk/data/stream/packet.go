@@ -2,9 +2,9 @@ package stream
 
 import (
 	"encoding/binary"
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/sdk/data"
-	"github.com/tiglabs/baudstorage/util"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/sdk/data"
+	"github.com/chubaoio/cbfs/util"
 	"hash/crc32"
 	"io"
 	"net"

@@ -7,10 +7,10 @@ import (
 	"io"
 	"sync/atomic"
 
-	"github.com/tiglabs/baudstorage/proto"
-	"github.com/tiglabs/baudstorage/util/btree"
-	"github.com/tiglabs/baudstorage/util/log"
-	"github.com/tiglabs/baudstorage/util/ump"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util/btree"
+	"github.com/chubaoio/cbfs/util/log"
+	"github.com/chubaoio/cbfs/util/ump"
 	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
 )
@@ -45,6 +45,12 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp = mp.extentsTruncate(ino)
+	case opFSMCreateLinkInode:
+		ino := NewInode(0, 0)
+		if err = ino.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.createLinkInode(ino)
 	case opCreateDentry:
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
