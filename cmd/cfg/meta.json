@@ -1,0 +1,16 @@
+{
+    "role": "metanode",
+    "listen": "9021",
+    "prof": "9092",
+    "logLevel": "debug",
+    "metaDir": "/export/Data/bdfs/metanode_meta",
+    "logDir": "/export/Logs/bdfs",
+    "raftDir": "/export/Data/bdfs/metanode_raft",
+    "raftHeartbeatPort": "9093",
+    "raftReplicatePort": "9094",
+    "masterAddrs": [
+	    "10.196.31.141:80",
+	    "10.196.30.200:80",
+	    "10.196.31.173:80"
+    ]
+}

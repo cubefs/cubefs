@@ -1,0 +1,9 @@
+{
+  "mountpoint": "/mnt/ltptest",
+  "volname": "intest",
+  "master": "10.196.31.173:80,10.196.31.141:80,10.196.30.200:80",
+  "logpath": "/export/Logs/bdfs",
+  "profport": "10094",
+  "loglvl": "debug"
+}
+
