@@ -40,7 +40,7 @@ func NewInode(info *proto.InodeInfo) *Inode {
 }
 
 func (s *Super) InodeGet(ino uint64) (*Inode, error) {
-	log.LogDebugf("InodeGet: ino(%v)", ino)
+	//log.LogDebugf("InodeGet: ino(%v)", ino)
 
 	start := time.Now()
 	defer func() {

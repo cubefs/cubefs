@@ -52,10 +52,7 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
-	log.LogDebugf("Create: parent(%v) name(%v)", d.inode.ino, req.Name)
-
 	start := time.Now()
-
 	info, err := d.super.mw.Create_ll(d.inode.ino, req.Name, ModeRegular, nil)
 	if err != nil {
 		log.LogErrorf("Create: ino(%v) name(%v) err(%v)", d.inode.ino, req.Name, err)
@@ -73,8 +70,8 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 }
 
 func (d *Dir) Forget() {
-	inode := d.inode
-	log.LogDebugf("Forget: ino(%v)", inode.ino)
+	//inode := d.inode
+	//log.LogDebugf("Forget: ino(%v)", inode.ino)
 
 	//	start := time.Now()
 	//
@@ -85,7 +82,7 @@ func (d *Dir) Forget() {
 }
 
 func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
-	log.LogDebugf("Mkdir: ino(%v) name(%v)", d.inode.ino, req.Name)
+	//log.LogDebugf("Mkdir: ino(%v) name(%v)", d.inode.ino, req.Name)
 
 	start := time.Now()
 
@@ -100,15 +97,12 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	child := NewDir(d.super, inode)
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Mkdir parent(%v) ino(%v) (%v)ns", d.inode.ino, inode.ino, elapsed.Nanoseconds())
+	log.LogDebugf("PERF: Mkdir parent(%v) ino(%v) name(%v) (%v)ns", d.inode.ino, inode.ino, req.Name, elapsed.Nanoseconds())
 	return child, nil
 }
 
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
-	log.LogDebugf("Remove: parent(%v) name(%v)", d.inode.ino, req.Name)
-
 	start := time.Now()
-
 	d.inode.dcache.Delete(req.Name)
 	//FIXME: will not delete extents.
 	extents, err := d.super.mw.Delete_ll(d.inode.ino, req.Name)
@@ -144,7 +138,6 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 
 	ino, ok := d.inode.dcache.Get(req.Name)
 	if !ok {
-		// if not found in the dentry cache, issue a lookup request
 		ino, mode, err = d.super.mw.Lookup_ll(d.inode.ino, req.Name)
 		if err != nil {
 			if err != syscall.ENOENT {
@@ -174,10 +167,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 }
 
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
-	log.LogDebugf("ReadDir: ino(%v)", d.inode.ino)
-
 	start := time.Now()
-
 	children, err := d.super.mw.ReadDir_ll(d.inode.ino)
 	if err != nil {
 		log.LogErrorf("Readdir: ino(%v) err(%v)", d.inode.ino, err)
@@ -206,7 +196,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	d.inode.dcache = dcache
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: ReadDir (%v)ns", elapsed.Nanoseconds())
+	log.LogDebugf("PERF: ReadDir ino(%v) (%v)ns", d.inode.ino, elapsed.Nanoseconds())
 	return dirents, nil
 }
 
@@ -215,11 +205,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	if !ok {
 		return fuse.ENOTSUP
 	}
-
-	log.LogDebugf("Rename: srcIno(%v) oldName(%v) dstIno(%v) newName(%v)", d.inode.ino, req.OldName, dstDir.inode.ino, req.NewName)
-
 	start := time.Now()
-
 	d.inode.dcache.Delete(req.OldName)
 	extents, err := d.super.mw.Rename_ll(d.inode.ino, req.OldName, dstDir.inode.ino, req.NewName)
 	if err != nil {
@@ -239,10 +225,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 
 func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
 	ino := d.inode.ino
-	log.LogDebugf("Setattr: ino(%v) req(%v)", ino, req)
-
 	start := time.Now()
-
 	inode, err := d.super.InodeGet(ino)
 	if err != nil {
 		log.LogErrorf("Setattr: ino(%v) err(%v)", ino, err)
@@ -256,16 +239,13 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 	inode.fillAttr(&resp.Attr)
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Setattr ino(%v) reqSize(%v) inodeSize(%v) (%v)ns", ino, req.Size, inode.size, elapsed.Nanoseconds())
+	log.LogDebugf("PERF: Setattr ino(%v) req(%v) reqSize(%v) inodeSize(%v) (%v)ns", ino, req, req.Size, inode.size, elapsed.Nanoseconds())
 	return nil
 }
 
 func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, error) {
 	parentIno := d.inode.ino
-	log.LogDebugf("Symlink: parent(%v) NewName(%v) Target(%v)", parentIno, req.NewName, req.Target)
-
 	start := time.Now()
-
 	info, err := d.super.mw.Create_ll(parentIno, req.NewName, ModeSymlink, []byte(req.Target))
 	if err != nil {
 		log.LogErrorf("Symlink: parent(%v) NewName(%v) err(%v)", parentIno, req.NewName, err)
@@ -277,7 +257,7 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 	child := NewFile(d.super, inode)
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Symlink parent(%v) ino(%v) (%v)ns", parentIno, inode.ino, elapsed.Nanoseconds())
+	log.LogDebugf("PERF: Symlink parent(%v) NewName(%v) Target(%v) ino(%v) (%v)ns", parentIno, req.NewName, req.Target, inode.ino, elapsed.Nanoseconds())
 	return child, nil
 }
 
@@ -289,8 +269,6 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 	default:
 		return nil, fuse.EPERM
 	}
-
-	log.LogDebugf("Link: parent(%v) name(%v) ino(%v)", d.inode.ino, req.NewName, oldInode.ino)
 
 	if oldInode.mode != ModeRegular {
 		log.LogErrorf("Link: not regular, parent(%v) name(%v) ino(%v) mode(%v)", d.inode.ino, req.NewName, oldInode.ino, oldInode.mode)

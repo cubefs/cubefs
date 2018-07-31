@@ -776,8 +776,6 @@ func (c *Server) serve(r fuse.Request) {
 		ctx = c.context(ctx, r)
 	}
 
-	log.LogDebugf("FUSE serve: op(%v) request(%v)", opName(r), r)
-
 	req := &serveRequest{Request: r, cancel: cancel}
 
 	c.debug(request{
