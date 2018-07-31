@@ -38,7 +38,6 @@ func (mw *MetaWrapper) getConn(partitionID uint64, addr string) (*MetaConn, erro
 		return nil, err
 	}
 	mc := &MetaConn{conn: conn, id: partitionID, addr: addr}
-	log.LogDebugf("Get connection: mc(%v)", mc)
 	return mc, nil
 }
 

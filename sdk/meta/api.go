@@ -258,8 +258,6 @@ func (mw *MetaWrapper) ReadDir_ll(parentID uint64) ([]proto.Dentry, error) {
 
 // Used as a callback by stream sdk
 func (mw *MetaWrapper) AppendExtentKey(inode uint64, ek proto.ExtentKey) error {
-	log.LogDebugf("AppendExtentKey: inode(%v) ek(%v)", inode, ek)
-
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		return syscall.ENOENT
