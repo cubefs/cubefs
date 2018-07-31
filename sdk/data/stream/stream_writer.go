@@ -12,7 +12,6 @@ import (
 	"net"
 	"strings"
 	"sync/atomic"
-	"github.com/chubaoio/cbfs/util/ump"
 )
 
 const (
