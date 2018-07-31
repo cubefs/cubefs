@@ -84,8 +84,6 @@ func (writer *ExtentWriter) flushWait() {
 	atomic.StoreInt32(&writer.isflushIng, ExtentFlushIng)
 	defer func() {
 		atomic.StoreInt32(&writer.isflushIng, ExtentHasFlushed)
-		ticker.Stop()
-		close(writer.flushSignleCh)
 	}()
 	if !(writer.getQueueListLen() > 0 || writer.currentPacket != nil) || atomic.LoadInt32(&writer.isflushIng) == ExtentHasFlushed {
 		return
