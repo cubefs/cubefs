@@ -88,7 +88,6 @@ func (ic *InodeCache) Delete(ino uint64) {
 // The caller should grab the inode cache WRITE lock.
 func (ic *InodeCache) evict(foreground bool) {
 	var count int
-	log.LogInfof("InodeCache: evict FG(%v)", foreground)
 	defer func() {
 		log.LogInfof("InodeCache: evict count(%v)", count)
 	}()

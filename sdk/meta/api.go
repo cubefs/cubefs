@@ -31,15 +31,8 @@ func (mw *MetaWrapper) Open_ll(inode uint64) error {
 	}
 
 	status, err := mw.open(mp, inode)
-	if err != nil {
-		return syscall.EAGAIN
-	}
-	if status != statusOK {
-		if status == statusNoent {
-			return syscall.ENOENT
-		} else {
-			return syscall.EPERM
-		}
+	if err != nil || status != statusOK {
+		return statusToErrno(status)
 	}
 	return nil
 }
@@ -89,7 +82,7 @@ create_dentry:
 			return nil, syscall.EEXIST
 		} else {
 			mw.idelete(mp, info.Inode)
-			return nil, syscall.EAGAIN
+			return nil, statusToErrno(status)
 		}
 	}
 	return info, nil
@@ -103,11 +96,8 @@ func (mw *MetaWrapper) Lookup_ll(parentID uint64, name string) (inode uint64, mo
 	}
 
 	status, inode, mode, err := mw.lookup(parentMP, parentID, name)
-	if err != nil {
-		return 0, 0, syscall.EAGAIN
-	}
-	if status != statusOK {
-		return 0, 0, syscall.ENOENT
+	if err != nil || status != statusOK {
+		return 0, 0, statusToErrno(status)
 	}
 	return inode, mode, nil
 }
@@ -120,11 +110,8 @@ func (mw *MetaWrapper) InodeGet_ll(inode uint64) (*proto.InodeInfo, error) {
 	}
 
 	status, info, err := mw.iget(mp, inode)
-	if err != nil {
-		return nil, syscall.EAGAIN
-	}
-	if status != statusOK {
-		return nil, syscall.ENOENT
+	if err != nil || status != statusOK {
+		return nil, statusToErrno(status)
 	}
 	return info, nil
 }
@@ -161,11 +148,8 @@ func (mw *MetaWrapper) Delete_ll(parentID uint64, name string) ([]proto.ExtentKe
 	}
 
 	status, inode, err := mw.ddelete(parentMP, parentID, name)
-	if err != nil {
-		return nil, syscall.EAGAIN
-	}
-	if status != statusOK {
-		return nil, syscall.ENOENT
+	if err != nil || status != statusOK {
+		return nil, statusToErrno(status)
 	}
 
 	// dentry is deleted successfully but inode is not, still returns success.
@@ -196,11 +180,8 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 
 	// look up for the ino
 	status, inode, mode, err := mw.lookup(srcParentMP, srcParentID, srcName)
-	if err != nil {
-		return nil, syscall.EAGAIN
-	}
-	if status != statusOK {
-		return nil, syscall.ENOENT
+	if err != nil || status != statusOK {
+		return nil, statusToErrno(status)
 	}
 	// create dentry in dst parent
 	status, err = mw.dcreate(dstParentMP, dstParentID, dstName, inode, mode)
@@ -227,7 +208,7 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 		} else {
 			mw.dupdate(dstParentMP, dstParentID, dstName, oldInode)
 		}
-		return nil, syscall.EAGAIN
+		return nil, statusToErrno(status)
 	}
 
 	if oldInode != 0 {
@@ -247,19 +228,14 @@ func (mw *MetaWrapper) ReadDir_ll(parentID uint64) ([]proto.Dentry, error) {
 	}
 
 	status, children, err := mw.readdir(parentMP, parentID)
-	if err != nil {
-		return nil, syscall.EAGAIN
-	}
-	if status != statusOK {
-		return nil, syscall.EPERM
+	if err != nil || status != statusOK {
+		return nil, statusToErrno(status)
 	}
 	return children, nil
 }
 
 // Used as a callback by stream sdk
 func (mw *MetaWrapper) AppendExtentKey(inode uint64, ek proto.ExtentKey) error {
-	log.LogDebugf("AppendExtentKey: inode(%v) ek(%v)", inode, ek)
-
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		return syscall.ENOENT
@@ -268,11 +244,7 @@ func (mw *MetaWrapper) AppendExtentKey(inode uint64, ek proto.ExtentKey) error {
 	status, err := mw.appendExtentKey(mp, inode, ek)
 	if err != nil || status != statusOK {
 		log.LogErrorf("AppendExtentKey: inode(%v) ek(%v) err(%v) status(%v)", inode, ek, err, status)
-		if status == statusNoent {
-			return syscall.ENOENT
-		} else {
-			return syscall.EPERM
-		}
+		return statusToErrno(status)
 	}
 	return nil
 }
@@ -286,7 +258,7 @@ func (mw *MetaWrapper) GetExtents(inode uint64) ([]proto.ExtentKey, error) {
 	status, extents, err := mw.getExtents(mp, inode)
 	if err != nil || status != statusOK {
 		log.LogErrorf("GetExtents: err(%v) status(%v)", err, status)
-		return nil, syscall.EPERM
+		return nil, statusToErrno(status)
 	}
 	return extents, nil
 }
@@ -299,10 +271,7 @@ func (mw *MetaWrapper) Truncate(inode uint64) ([]proto.ExtentKey, error) {
 	}
 
 	status, extents, err := mw.truncate(mp, inode)
-	if err != nil {
-		return nil, syscall.EAGAIN
-	}
-	if status != statusOK {
+	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
 	return extents, nil
@@ -324,10 +293,7 @@ func (mw *MetaWrapper) Link(parentID uint64, name string, ino uint64) (*proto.In
 
 	// increase inode nlink
 	status, info, err := mw.ilink(mp, ino)
-	if err != nil {
-		return nil, syscall.EAGAIN
-	}
-	if status != statusOK {
+	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
 

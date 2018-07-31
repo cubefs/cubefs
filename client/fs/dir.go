@@ -39,8 +39,6 @@ func NewDir(s *Super, i *Inode) *Dir {
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
-	log.LogDebugf("Attr: ino(%v)", d.inode.ino)
-
 	inode, err := d.super.InodeGet(d.inode.ino)
 	if err != nil {
 		log.LogErrorf("Attr: ino(%v) err(%v)", d.inode.ino, err)
