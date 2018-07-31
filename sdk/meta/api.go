@@ -140,64 +140,64 @@ func (mw *MetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
 	return batchInfos
 }
 
-func (mw *MetaWrapper) Delete_ll(parentID uint64, name string) ([]proto.ExtentKey, error) {
+func (mw *MetaWrapper) Delete_ll(parentID uint64, name string) error {
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
 		log.LogErrorf("Delete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
-		return nil, syscall.ENOENT
+		return syscall.ENOENT
 	}
 
 	status, inode, err := mw.ddelete(parentMP, parentID, name)
 	if err != nil || status != statusOK {
-		return nil, statusToErrno(status)
+		return statusToErrno(status)
 	}
 
 	// dentry is deleted successfully but inode is not, still returns success.
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		log.LogErrorf("Delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
-		return nil, nil
+		return nil
 	}
 
-	status, extents, err := mw.idelete(mp, inode)
+	status, err = mw.idelete(mp, inode)
 	if err != nil || status != statusOK {
-		return nil, nil
+		return nil
 	}
-	return extents, nil
+	return nil
 }
 
-func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID uint64, dstName string) (extents []proto.ExtentKey, err error) {
+func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID uint64, dstName string) (err error) {
 	var oldInode uint64
 
 	srcParentMP := mw.getPartitionByInode(srcParentID)
 	if srcParentMP == nil {
-		return nil, syscall.ENOENT
+		return syscall.ENOENT
 	}
 	dstParentMP := mw.getPartitionByInode(dstParentID)
 	if dstParentMP == nil {
-		return nil, syscall.ENOENT
+		return syscall.ENOENT
 	}
 
 	// look up for the ino
 	status, inode, mode, err := mw.lookup(srcParentMP, srcParentID, srcName)
 	if err != nil || status != statusOK {
-		return nil, statusToErrno(status)
+		return statusToErrno(status)
 	}
 	// create dentry in dst parent
 	status, err = mw.dcreate(dstParentMP, dstParentID, dstName, inode, mode)
 	if err != nil {
-		return nil, syscall.EAGAIN
+		return syscall.EAGAIN
 	}
 
 	if status == statusExist {
 		status, oldInode, err = mw.dupdate(dstParentMP, dstParentID, dstName, inode)
 		if err != nil {
-			return nil, syscall.EAGAIN
+			return syscall.EAGAIN
 		}
 	}
 
 	if status != statusOK {
-		return nil, statusToErrno(status)
+		return statusToErrno(status)
 	}
 
 	// delete dentry from src parent
@@ -208,17 +208,17 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 		} else {
 			mw.dupdate(dstParentMP, dstParentID, dstName, oldInode)
 		}
-		return nil, statusToErrno(status)
+		return statusToErrno(status)
 	}
 
 	if oldInode != 0 {
 		inodeMP := mw.getPartitionByInode(oldInode)
 		if inodeMP != nil {
-			status, extents, err = mw.idelete(inodeMP, oldInode)
+			status, err = mw.idelete(inodeMP, oldInode)
 		}
 	}
 
-	return extents, nil
+	return nil
 }
 
 func (mw *MetaWrapper) ReadDir_ll(parentID uint64) ([]proto.Dentry, error) {
@@ -308,4 +308,19 @@ func (mw *MetaWrapper) Link(parentID uint64, name string, ino uint64) (*proto.In
 		}
 	}
 	return info, nil
+}
+
+func (mw *MetaWrapper) Evict(inode uint64) []proto.ExtentKey {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogWarnf("Evict: No such partition, ino(%v)", inode)
+		return nil
+	}
+
+	status, extents, err := mw.ievict(mp, inode)
+	if err != nil || status != statusOK {
+		log.LogWarnf("Evict: ino(%v) err(%v) status(%v)", inode, err, status)
+		return nil
+	}
+	return extents
 }
