@@ -12,12 +12,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/raftstore"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/chubaoio/cbfs/util/pool"
 	"github.com/chubaoio/cbfs/util/ump"
+	"github.com/juju/errors"
 )
 
 const partitionPrefix = "partition_"
@@ -62,6 +62,8 @@ func (m *metaManager) HandleMetaOperation(conn net.Conn, p *Packet) (err error) 
 		err = m.opDeleteInode(conn, p)
 	case proto.OpMetaInodeGet:
 		err = m.opMetaInodeGet(conn, p)
+	case proto.OpMetaEvictInode:
+		err = m.opMetaEvictInode(conn, p)
 	case proto.OpMetaCreateDentry:
 		err = m.opCreateDentry(conn, p)
 	case proto.OpMetaDeleteDentry:

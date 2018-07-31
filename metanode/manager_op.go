@@ -6,10 +6,10 @@ import (
 	"os"
 
 	"bytes"
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/log"
+	"github.com/juju/errors"
 	raftProto "github.com/tiglabs/raft/proto"
 	"runtime"
 )
@@ -352,6 +352,33 @@ func (m *metaManager) opMetaInodeGet(conn net.Conn, p *Packet) (err error) {
 	m.respondToClient(conn, p)
 	log.LogDebugf("[opMetaInodeGet] req:%v; resp: %v, body: %s", req,
 		p.GetResultMesg(), p.Data)
+	return
+}
+
+func (m *metaManager) opMetaEvictInode(conn net.Conn, p *Packet) (err error) {
+	req := &proto.EvictInodeRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.Errorf("[opMetaEvictInode] request unmarshal: %v", err.Error())
+		return
+	}
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PackErrorWithBody(proto.OpNotExistErr, nil)
+		m.respondToClient(conn, p)
+		err = errors.Errorf("[opMetaEvictInode] req: %s, resp: %v", req, err.Error())
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+
+	if err = mp.EvictInode(req, p); err != nil {
+		err = errors.Errorf("[opMetaEvictInode] req: %s, resp: %v", req, err.Error())
+	}
+	m.respondToClient(conn, p)
+	log.LogDebugf("[opMetaEvictInode] req: %v, resp: %v", req, p.GetResultMesg())
 	return
 }
 

@@ -1,8 +1,8 @@
 package metanode
 
 import (
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/proto"
+	"github.com/juju/errors"
 	"time"
 )
 
@@ -62,6 +62,11 @@ type (
 	ExtentsTruncateReq = proto.TruncateRequest
 	// MetaNode -> Client
 	ExtentsTruncateResp = proto.TruncateResponse
+
+	// Client -> MetaNode
+	EvictInodeReq = proto.EvictInodeRequest
+	// MetaNode -> Client
+	EvictInodeResp = proto.EvictInodeResponse
 )
 
 // For use when raftStore store and application apply
@@ -81,6 +86,7 @@ const (
 	opUpdateDentry
 	opFSMExtentTruncate
 	opFSMCreateLinkInode
+	opFSMEvictInode
 )
 
 var (
