@@ -51,6 +51,12 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp = mp.createLinkInode(ino)
+	case opFSMEvictInode:
+		ino := NewInode(0, 0)
+		if err = ino.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.evictInode(ino)
 	case opCreateDentry:
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {

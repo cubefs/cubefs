@@ -65,17 +65,7 @@ func (mp *metaPartition) DeleteInode(req *DeleteInoReq, p *Packet) (err error) {
 		return
 	}
 	msg := r.(*ResponseInode)
-	status := msg.Status
-	var reply []byte
-	if status == proto.OpOk && msg.Msg != nil {
-		resp := &proto.DeleteInodeResponse{}
-		resp.Extents = msg.Msg.Extents.Extents
-		reply, err = json.Marshal(resp)
-		if err != nil {
-			status = proto.OpErr
-		}
-	}
-	p.PackErrorWithBody(status, reply)
+	p.PackErrorWithBody(msg.Status, nil)
 	return
 }
 
@@ -189,6 +179,36 @@ func (mp *metaPartition) CreateLinkInode(req *LinkInodeReq, p *Packet) (err erro
 		reply, err = json.Marshal(resp)
 		if err != nil {
 			status = proto.OpErr
+		}
+	}
+	p.PackErrorWithBody(status, reply)
+	return
+}
+
+func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
+	ino := NewInode(req.Inode, 0)
+	val, err := ino.Marshal()
+	if err != nil {
+		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	resp, err := mp.Put(opFSMEvictInode, val)
+	if err != nil {
+		p.PackErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	msg := resp.(*ResponseInode)
+	status := msg.Status
+	var reply []byte
+	if status == proto.OpOk {
+		if msg.Msg != nil {
+			r := &EvictInodeResp{
+				Extents: msg.Msg.Extents.Extents,
+			}
+			reply, err = json.Marshal(r)
+			if err != nil {
+				status = proto.OpErr
+			}
 		}
 	}
 	p.PackErrorWithBody(status, reply)

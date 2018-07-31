@@ -87,16 +87,11 @@ func (mp *metaPartition) deleteInode(ino *Inode) (resp *ResponseInode) {
 		return
 	}
 	i := item.(*Inode)
-	if i.Type == proto.ModeDir {
-		mp.inodeTree.Delete(ino)
-		resp.Msg = i
+	if i.Type == proto.ModeRegular {
+		i.NLink--
 		return
 	}
-	i.NLink--
-	if i.NLink < 1 {
-		mp.inodeTree.Delete(ino)
-		resp.Msg = i
-	}
+	mp.inodeTree.Delete(ino)
 	return
 }
 
@@ -139,5 +134,30 @@ func (mp *metaPartition) extentsTruncate(ino *Inode) (resp *ResponseInode) {
 	i.ModifyTime = ino.ModifyTime
 	i.Generation++
 	i.Extents = proto.NewStreamKey(i.Inode)
+	return
+}
+
+func (mp *metaPartition) evictInode(ino *Inode) (resp *ResponseInode) {
+	resp = NewResponseInode()
+	resp.Status = proto.OpOk
+	mp.inodeMu.Lock()
+	defer mp.inodeMu.Unlock()
+	item := mp.inodeTree.Get(ino)
+	if item == nil {
+		resp.Status = proto.OpNotExistErr
+		return
+	}
+	i := item.(*Inode)
+	if i.Type == proto.ModeDir {
+		if i.NLink < 2 {
+			mp.inodeTree.Delete(ino)
+			resp.Msg = i
+		}
+		return
+	}
+	if i.NLink < 1 {
+		mp.inodeTree.Delete(ino)
+		resp.Msg = i
+	}
 	return
 }

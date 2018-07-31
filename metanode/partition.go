@@ -8,11 +8,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/raftstore"
 	"github.com/chubaoio/cbfs/util/btree"
 	"github.com/chubaoio/cbfs/util/log"
+	"github.com/juju/errors"
 	raftproto "github.com/tiglabs/raft/proto"
 )
 
@@ -108,6 +108,7 @@ type OpInode interface {
 	InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error)
 	Open(req *OpenReq, p *Packet) (err error)
 	CreateLinkInode(req *LinkInodeReq, p *Packet) (err error)
+	EvictInode(req *EvictInodeReq, p *Packet) (err error)
 }
 
 type OpDentry interface {
