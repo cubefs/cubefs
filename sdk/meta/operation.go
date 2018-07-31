@@ -134,7 +134,7 @@ func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, ext
 		log.LogErrorf("idelete: mp(%v) err(%v) RespData(%v)", mp, err, string(packet.Data))
 		return
 	}
-	log.LogDebugf("idelete exit: mp(%v) req(%v) RespData(%v)", mp, *req, string(packet.Data))
+	log.LogDebugf("idelete exit: mp(%v) req(%v) extents(%v)", mp, *req, resp.Extents)
 	return statusOK, resp.Extents, nil
 }
 
@@ -441,6 +441,7 @@ func (mw *MetaWrapper) readdir(mp *MetaPartition, parentID uint64) (status int, 
 		log.LogErrorf("readdir: mp(%v) err(%v) PacketData(%v)", mp, err, string(packet.Data))
 		return
 	}
+	log.LogDebugf("readdir: mp(%v) req(%v) dentries(%v)", mp, *req, resp.Children)
 	return statusOK, resp.Children, nil
 }
 

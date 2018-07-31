@@ -37,6 +37,10 @@ type Dentry struct {
 	Type  uint32 `json:"type"`
 }
 
+func (d Dentry) String() string {
+	return fmt.Sprintf("Dentry{Name(%v),Inode(%v),Type(%v)}", d.Name, d.Inode, d.Type)
+}
+
 type CreateInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`

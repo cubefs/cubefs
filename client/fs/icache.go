@@ -65,7 +65,7 @@ func (ic *InodeCache) Get(ino uint64) *Inode {
 	inode := element.Value.(*Inode)
 	if inode.expired() {
 		ic.RUnlock()
-		log.LogDebugf("InodeCache Get expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), inode)
+		//log.LogDebugf("InodeCache Get expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), inode)
 		return nil
 	}
 	ic.RUnlock()

@@ -7,11 +7,16 @@ package log
 // These tests are too simple.
 
 import (
+	"net/http"
+	_ "net/http/pprof"
 	"testing"
 	"time"
 )
 
 func TestLog(t *testing.T) {
+	go func() {
+		http.ListenAndServe(":10000", nil)
+	}()
 	NewLog("/tmp/bdfs", "bdfs", DebugLevel)
 	for {
 		LogDebugf("action[TestLog] current time %v.", time.Now())

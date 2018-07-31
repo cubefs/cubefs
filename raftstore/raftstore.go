@@ -145,6 +145,6 @@ func (s *raftStore) CreatePartition(cfg *PartitionConfig) (p Partition, err erro
 	if err = s.raftServer.CreateRaft(rc); err != nil {
 		return
 	}
-	p = newPartition(cfg, s.raftServer, walPath, s.resolver)
+	p = newPartition(cfg, s.raftServer, walPath)
 	return
 }

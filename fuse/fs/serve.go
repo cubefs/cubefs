@@ -844,7 +844,7 @@ func (c *Server) serve(r fuse.Request) {
 		} else {
 			msg.Out = resp
 		}
-		//c.debug(msg)
+		c.debug(msg)
 		//log.LogDebugf("FUSE serve: msg(%v)", msg)
 
 		c.meta.Lock()

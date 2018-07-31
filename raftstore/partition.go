@@ -54,34 +54,14 @@ type Partition interface {
 
 	// Truncate raft log
 	Truncate(index uint64)
-
-	// NodeManager define necessary methods for node address management.
-	NodeManager
 }
 
 // This is the default implementation of Partition interface.
 type partition struct {
-	id       uint64
-	raft     *raft.RaftServer
-	walPath  string
-	config   *PartitionConfig
-	resolver NodeResolver
-}
-
-func (p *partition) AddNode(nodeId uint64, addr string) {
-	if p.resolver != nil {
-		p.resolver.AddNode(nodeId, addr)
-	}
-}
-
-func (p *partition) AddNodeWithPort(nodeId uint64, addr string, heartbeat int, replicate int) {
-	if p.resolver != nil {
-		p.resolver.AddNodeWithPort(nodeId, addr, heartbeat, replicate)
-	}
-}
-
-func (p *partition) DeleteNode(nodeId uint64) {
-	DeleteNode(p.resolver, nodeId)
+	id      uint64
+	raft    *raft.RaftServer
+	walPath string
+	config  *PartitionConfig
 }
 
 func (p *partition) ChangeMember(changeType proto.ConfChangeType, peer proto.Peer, context []byte) (
@@ -144,12 +124,11 @@ func (p *partition) Truncate(index uint64) {
 	}
 }
 
-func newPartition(cfg *PartitionConfig, raft *raft.RaftServer, walPath string, resolver NodeResolver) Partition {
+func newPartition(cfg *PartitionConfig, raft *raft.RaftServer, walPath string) Partition {
 	return &partition{
-		id:       cfg.ID,
-		raft:     raft,
-		walPath:  walPath,
-		config:   cfg,
-		resolver: resolver,
+		id:      cfg.ID,
+		raft:    raft,
+		walPath: walPath,
+		config:  cfg,
 	}
 }

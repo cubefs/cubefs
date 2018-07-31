@@ -2,14 +2,28 @@
 
 
 [[projects]]
+  name = "github.com/davecgh/go-spew"
+  packages = ["spew"]
+  revision = "346938d642f2ec3594ed81d874461961cd0faa76"
+  version = "v1.1.0"
+
+[[projects]]
   branch = "master"
-  name = "github.com/tiglabs/baudstorage/fuse"
-  packages = [
-    ".",
-    "fs",
-    "fuseutil"
-  ]
-  revision = "65cc252bf6691cb3c7014bcb2c8dc29de91e3a7e"
+  name = "github.com/facebookgo/ensure"
+  packages = ["."]
+  revision = "b4ab57deab51ee655ae4bd85281f0715a068016d"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/facebookgo/stack"
+  packages = ["."]
+  revision = "751773369052141c013c6e827a71e8f35c07879c"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/facebookgo/subset"
+  packages = ["."]
+  revision = "8dac2c3c48703541e481feddf22975953d4ff842"
 
 [[projects]]
   branch = "master"
@@ -37,12 +51,6 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/tecbot/gorocksdb"
-  packages = ["."]
-  revision = "3e476152774442234f9a9f747386a48a1d82a515"
-
-[[projects]]
-  branch = "master"
   name = "github.com/tiglabs/raft"
   packages = [
     ".",
@@ -63,28 +71,14 @@
   revision = "8e0cdda24ed423affc8f35c241e5e9b16180338e"
 
 [[projects]]
-  name = "golang.org/x/text"
-  packages = [
-    "cmd/gotext/examples/extract_http/pkg",
-    "feature/plural",
-    "internal",
-    "internal/catmsg",
-    "internal/format",
-    "internal/gen",
-    "internal/number",
-    "internal/stringset",
-    "internal/tag",
-    "language",
-    "message",
-    "message/catalog",
-    "unicode/cldr"
-  ]
-  revision = "f21a4dfb5e38f5895301dc265a8def02365cc3d0"
-  version = "v0.3.0"
+  branch = "master"
+  name = "golang.org/x/sys"
+  packages = ["unix"]
+  revision = "bd9dbc187b6e1dacfdd2722a87e83093c2d7bd6e"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "24fbba4cd3956433b96a97d8a2dea6e0a2d4399e5b12b1749b4a0d17414bb357"
+  inputs-digest = "2e515ae4ea27440d31cdc17a64cbaed1e6a00553f0b92021061e84ce5411d3f0"
   solver-name = "gps-cdcl"
   solver-version = 1
