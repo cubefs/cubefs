@@ -53,7 +53,6 @@ func NewFile(s *Super, i *Inode) *File {
 
 func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	ino := f.inode.ino
-	log.LogDebugf("Attr: ino(%v)", ino)
 	inode, err := f.super.InodeGet(ino)
 	if err != nil {
 		log.LogErrorf("Attr: ino(%v) err(%v)", ino, err)
