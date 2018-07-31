@@ -42,9 +42,8 @@ type ExtentWriter struct {
 	connect       *net.TCPConn
 	handleCh      chan bool //a Chan for signal recive goroutine recive packet from connect
 	recoverCnt    int       //if failed,then recover contine,this is recover count
-	flushLock     sync.Mutex
 	forbidUpdate  int64
-	requestLock   sync.RWMutex
+	requestLock   sync.Mutex
 	isflushIng    int32
 	flushSignleCh chan bool
 }
