@@ -265,7 +265,8 @@ func (stream *StreamWriter) updateToMetaNode() (err error) {
 			if err == nil {
 				elspetime := time.Now().UnixNano() - start
 				stream.hasUpdateKey[key] = int(ek.Size)
-				log.LogInfof("inode[%v] update ek[%v] has update filesize[%v] coseTime [%v]ns ", stream.Inode, ek.String(), stream.updateToMetaNodeSize(), elspetime)
+				log.LogDebugf("inode[%v] update ek[%v] has update filesize[%v] coseTime [%v]ns ", stream.Inode, ek.String(),
+					stream.updateToMetaNodeSize(), elspetime)
 				return
 			} else {
 				err = errors.Annotatef(err, "update extent[%v] to MetaNode Failed", ek.Size)
