@@ -107,7 +107,8 @@ func parseStatus(result uint8) (status int) {
 func statusToErrno(status int) error {
 	switch status {
 	case statusOK:
-		return nil
+		// return error anyway
+		return syscall.EAGAIN
 	case statusExist:
 		return syscall.EEXIST
 	case statusNoent:
@@ -118,6 +119,8 @@ func statusToErrno(status int) error {
 		return syscall.EAGAIN
 	case statusInval:
 		return syscall.EINVAL
+	case statusError:
+		return syscall.EPERM
 	default:
 	}
 	return syscall.EIO
