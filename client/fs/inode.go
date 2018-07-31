@@ -40,14 +40,6 @@ func NewInode(info *proto.InodeInfo) *Inode {
 }
 
 func (s *Super) InodeGet(ino uint64) (*Inode, error) {
-	//log.LogDebugf("InodeGet: ino(%v)", ino)
-
-	start := time.Now()
-	defer func() {
-		elapsed := time.Since(start)
-		log.LogDebugf("PERF: InodeGet (%v)ns", elapsed.Nanoseconds())
-	}()
-
 	inode := s.ic.Get(ino)
 	if inode != nil {
 		//log.LogDebugf("InodeCache hit: inode(%v)", inode)
