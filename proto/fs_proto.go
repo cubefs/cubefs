@@ -68,11 +68,6 @@ type DeleteInodeRequest struct {
 	Inode       uint64 `json:"ino"`
 }
 
-//FIXME: delete inode will not return extents, instead close response will.
-type DeleteInodeResponse struct {
-	Extents []ExtentKey `json:"ek"`
-}
-
 type EvictInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`

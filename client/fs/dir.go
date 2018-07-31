@@ -102,19 +102,12 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	start := time.Now()
 	d.inode.dcache.Delete(req.Name)
-	//FIXME: will not delete extents.
-	extents, err := d.super.mw.Delete_ll(d.inode.ino, req.Name)
+	err := d.super.mw.Delete_ll(d.inode.ino, req.Name)
 	if err != nil {
 		log.LogErrorf("Remove: ino(%v) name(%v) err(%v)", d.inode.ino, req.Name, err)
 		return ParseError(err)
 	}
 	//d.inode.dcache = nil
-
-	//FIXME: will not delete extents.
-	if extents != nil {
-		//log.LogDebugf("Remove extents: %v", extents)
-		d.super.ec.Delete(extents)
-	}
 
 	elapsed := time.Since(start)
 	log.LogDebugf("PERF: Remove parent(%v) name(%v) (%v)ns", d.inode.ino, req.Name, elapsed.Nanoseconds())
@@ -205,16 +198,12 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	}
 	start := time.Now()
 	d.inode.dcache.Delete(req.OldName)
-	extents, err := d.super.mw.Rename_ll(d.inode.ino, req.OldName, dstDir.inode.ino, req.NewName)
+	err := d.super.mw.Rename_ll(d.inode.ino, req.OldName, dstDir.inode.ino, req.NewName)
 	if err != nil {
 		log.LogErrorf("Rename: srcIno(%v) oldName(%v) dstIno(%v) newName(%v) err(%v)", d.inode.ino, req.OldName, dstDir.inode.ino, req.NewName, err)
 		return ParseError(err)
 	}
 	//d.inode.dcache = nil
-
-	if extents != nil {
-		d.super.ec.Delete(extents)
-	}
 
 	elapsed := time.Since(start)
 	log.LogDebugf("PERF: Rename srcIno(%v) oldName(%v) dstIno(%v) newName(%v) (%v)ns", d.inode.ino, req.OldName, dstDir.inode.ino, req.NewName, elapsed.Nanoseconds())

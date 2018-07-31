@@ -63,15 +63,16 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 func (f *File) Forget() {
-	//inode := f.inode
-	//log.LogDebugf("Forget: ino(%v)", inode.ino)
-
-	//	start := time.Now()
-	//
-	//	f.super.ic.Delete(inode.ino) //FIXME
-	//
-	//	elapsed := time.Since(start)
-	//	log.LogDebugf("PERF: Forget ino(%v) (%v)ns", inode.ino, elapsed.Nanoseconds())
+	if f.inode.mode != ModeRegular {
+		return
+	}
+	ino := f.inode.ino
+	f.super.ic.Delete(ino)
+	extents := f.super.mw.Evict(ino)
+	if extents != nil {
+		f.super.ec.Delete(extents) //FIXME: metanode would take over in the future
+	}
+	log.LogDebugf("PERF: Forget ino(%v) extents(%v)", ino, extents)
 }
 
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {

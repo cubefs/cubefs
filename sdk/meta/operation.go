@@ -95,7 +95,7 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode uint32, target []byte) (s
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, extents []proto.ExtentKey, err error) {
+func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, err error) {
 	req := &proto.DeleteInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -128,13 +128,50 @@ func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, ext
 		return
 	}
 
-	resp := new(proto.DeleteInodeResponse)
-	err = packet.UnmarshalData(resp)
+	log.LogDebugf("idelete exit: mp(%v) req(%v)", mp, *req)
+	return statusOK, nil
+}
+
+func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, extents []proto.ExtentKey, err error) {
+	req := &proto.EvictInodeRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		Inode:       inode,
+	}
+
+	packet := proto.NewPacket()
+	packet.Opcode = proto.OpMetaEvictInode
+	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("idelete: mp(%v) err(%v) RespData(%v)", mp, err, string(packet.Data))
+		log.LogWarnf("ievict: err(%v)", err)
 		return
 	}
-	log.LogDebugf("idelete exit: mp(%v) req(%v) extents(%v)", mp, *req, resp.Extents)
+
+	log.LogDebugf("ievict enter: mp(%v) req(%v)", mp, string(packet.Data))
+
+	umpKey := mw.umpKey(packet.GetOpMsg())
+	tpObject := ump.BeforeTP(umpKey)
+	defer ump.AfterTP(tpObject, err)
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogWarnf("ievict: mp(%v) req(%v) err(%v)", mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogWarnf("ievict: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		return
+	}
+
+	resp := new(proto.EvictInodeResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogWarnf("ievict: mp(%v) err(%v) RespData(%v)", mp, err, string(packet.Data))
+		return
+	}
+	log.LogDebugf("ievict exit: mp(%v) req(%v) extents(%v)", mp, *req, resp.Extents)
 	return statusOK, resp.Extents, nil
 }
 
