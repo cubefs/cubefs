@@ -73,6 +73,16 @@ type DeleteInodeResponse struct {
 	Extents []ExtentKey `json:"ek"`
 }
 
+type EvictInodeRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+}
+
+type EvictInodeResponse struct {
+	Extents []ExtentKey `json:"ek"`
+}
+
 type CreateDentryRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
@@ -109,16 +119,6 @@ type OpenRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
-}
-
-type CloseRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	Inode       uint64 `json:"ino"`
-}
-
-type CloseResponse struct {
-	Extents []ExtentKey `json:"ek"`
 }
 
 type LookupRequest struct {
