@@ -205,15 +205,15 @@ func (writer *ExtentWriter) checkIsStopReciveGoRoutine() {
 }
 
 func (writer *ExtentWriter) flush() (err error) {
+	start:=time.Now().UnixNano()
 	err = errors.Annotatef(FlushErr, "cannot backEndlush writer")
 	defer func() {
-		writer.flushLock.Unlock()
 		writer.checkIsStopReciveGoRoutine()
+		log.LogDebugf(writer.toString()+" Flush DataNode cost[%v]ns",time.Now().UnixNano()-start)
 		if err == nil {
 			return
 		}
 	}()
-	writer.flushLock.Lock()
 	if writer.isAllFlushed() {
 		err = nil
 		return nil
