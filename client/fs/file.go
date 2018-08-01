@@ -114,7 +114,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		}
 		f.setReadStream(stream)
 	}
-	//start := time.Now()
+	start := time.Now()
 	size, err := f.super.ec.Read(f.getReadStream(), f.inode.ino, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	if err != nil && err != io.EOF {
 		log.LogErrorf("Read error: ino(%v) err(%v) size(%v)", f.inode.ino, err, size)
@@ -128,8 +128,8 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		resp.Data = resp.Data[:size+fuse.OutHeaderSize]
 	}
 
-	//elapsed := time.Since(start)
-	//log.LogDebugf("PERF: Read HandleID(%v) ino(%v) sizeof Data(%v) offset(%v) size(%v) (%v)ns", req.Handle, f.inode.ino, len(resp.Data), req.Offset, req.Size, elapsed.Nanoseconds())
+	elapsed := time.Since(start)
+	log.LogDebugf("PERF: Read HandleID(%v) ino(%v) sizeof Data(%v) offset(%v) size(%v) (%v)ns", req.Handle, f.inode.ino, len(resp.Data), req.Offset, req.Size, elapsed.Nanoseconds())
 	return nil
 }
 
@@ -146,7 +146,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		f.super.ic.Delete(f.inode.ino)
 	}()
 
-	//start := time.Now()
+	start := time.Now()
 	size, err := f.super.ec.Write(f.inode.ino, int(req.Offset), req.Data)
 	if err != nil {
 		log.LogErrorf("Write: ino(%v) offset(%v) len(%v) err(%v)", f.inode.ino, req.Offset, reqlen, err)
@@ -157,9 +157,9 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		log.LogErrorf("Write: ino(%v) offset(%v) len(%v) size(%v)", f.inode.ino, req.Offset, reqlen, size)
 	}
 
-	//elapsed := time.Since(start)
-	//log.LogDebugf("PERF: ino(%v) HandleID(%v) offset(%v) len(%v) flags(%v) fileflags(%v) (%v)ns ",
-	//	f.inode.ino, req.Offset, reqlen, req.Flags, req.FileFlags, elapsed.Nanoseconds())
+	elapsed := time.Since(start)
+	log.LogDebugf("PERF: ino(%v) HandleID(%v) offset(%v) len(%v) flags(%v) fileflags(%v) (%v)ns ",
+		f.inode.ino, req.Offset, reqlen, req.Flags, req.FileFlags, elapsed.Nanoseconds())
 	return nil
 }
 
