@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/sdk/data"
 	"github.com/chubaoio/cbfs/util/log"
+	"github.com/juju/errors"
 	"runtime"
 	"sync/atomic"
 )
@@ -73,13 +73,12 @@ func (client *ExtentClient) getStreamWriterForRead(inode uint64) (stream *Stream
 	client.writerLock.RLock()
 	defer client.writerLock.RUnlock()
 	stream = client.writers[inode]
-	if stream!=nil && atomic.LoadInt32(&stream.hasClosed)==HasClosed{
+	if stream != nil && atomic.LoadInt32(&stream.hasClosed) == HasClosed {
 		return nil
 	}
 
 	return
 }
-
 
 func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write int, err error) {
 	stream := client.getStreamWriter(inode)
@@ -120,7 +119,7 @@ func (client *ExtentClient) Close(inode uint64) (err error) {
 	if streamWriter == nil {
 		return
 	}
-	atomic.StoreInt32(&streamWriter.hasClosed,HasClosed)
+	atomic.StoreInt32(&streamWriter.hasClosed, HasClosed)
 	request := &CloseRequest{}
 	streamWriter.closeRequestCh <- request
 	request = <-streamWriter.closeReplyCh
@@ -129,8 +128,8 @@ func (client *ExtentClient) Close(inode uint64) (err error) {
 	}
 	client.writerLock.Lock()
 	delete(client.writers, inode)
-	atomic.StoreInt32(&streamWriter.hasClosed,HasClosed)
-	streamWriter.exitCh<-true
+	atomic.StoreInt32(&streamWriter.hasClosed, HasClosed)
+	streamWriter.exitCh <- true
 	client.writerLock.Unlock()
 
 	return
@@ -141,7 +140,7 @@ func (client *ExtentClient) Read(stream *StreamReader, inode uint64, data []byte
 		return
 	}
 	wstream := client.getStreamWriterForClose(inode)
-	if wstream != nil && atomic.LoadInt32(&wstream.hasClosed)!=HasClosed {
+	if wstream != nil && atomic.LoadInt32(&wstream.hasClosed) != HasClosed {
 		request := &FlushRequest{}
 		wstream.flushRequestCh <- request
 		request = <-wstream.flushReplyCh

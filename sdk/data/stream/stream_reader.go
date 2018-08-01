@@ -2,11 +2,11 @@ package stream
 
 import (
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/sdk/data"
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/log"
+	"github.com/juju/errors"
 	"io"
 	"sync"
 	"sync/atomic"

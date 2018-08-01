@@ -5,10 +5,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/sdk/data"
 	"github.com/chubaoio/cbfs/util/log"
+	"github.com/juju/errors"
 	"net"
 	"strings"
 	"sync/atomic"
@@ -17,7 +17,7 @@ import (
 const (
 	MaxSelectDataPartionForWrite = 32
 	MaxStreamInitRetry           = 3
-	HasClosed  = -1
+	HasClosed                    = -1
 )
 
 type WriteRequest struct {

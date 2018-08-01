@@ -7,11 +7,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/sdk/data"
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/log"
+	"github.com/juju/errors"
 	"time"
 )
 
@@ -202,11 +202,11 @@ func (writer *ExtentWriter) checkIsStopReciveGoRoutine() {
 }
 
 func (writer *ExtentWriter) flush() (err error) {
-	start:=time.Now().UnixNano()
+	start := time.Now().UnixNano()
 	err = errors.Annotatef(FlushErr, "cannot backEndlush writer")
 	defer func() {
 		writer.checkIsStopReciveGoRoutine()
-		log.LogDebugf(writer.toString()+" Flush DataNode cost[%v]ns",time.Now().UnixNano()-start)
+		log.LogDebugf(writer.toString()+" Flush DataNode cost[%v]ns", time.Now().UnixNano()-start)
 		if err == nil {
 			return
 		}
