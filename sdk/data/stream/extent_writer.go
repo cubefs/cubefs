@@ -357,8 +357,8 @@ func (writer *ExtentWriter) setConnect(connect *net.TCPConn) {
 }
 
 func (writer *ExtentWriter) getFrontRequest() (e *list.Element) {
-	writer.requestLock.RLock()
-	defer writer.requestLock.RUnlock()
+	writer.requestLock.Lock()
+	defer writer.requestLock.Unlock()
 	return writer.requestQueue.Front()
 }
 
@@ -375,8 +375,8 @@ func (writer *ExtentWriter) removeRquest(e *list.Element) {
 }
 
 func (writer *ExtentWriter) getQueueListLen() (length int) {
-	writer.requestLock.RLock()
-	defer writer.requestLock.RUnlock()
+	writer.requestLock.Lock()
+	defer writer.requestLock.Unlock()
 	return writer.requestQueue.Len()
 }
 
@@ -385,8 +385,8 @@ func (writer *ExtentWriter) getNeedRetrySendPackets() (requests []*Packet) {
 		backPkg *Packet
 	)
 	atomic.StoreInt64(&writer.forbidUpdate, ForBidUpdateExtentKey)
-	writer.requestLock.RLock()
-	defer writer.requestLock.RUnlock()
+	writer.requestLock.Lock()
+	defer writer.requestLock.Unlock()
 	requests = make([]*Packet, 0)
 	for e := writer.requestQueue.Front(); e != nil; e = e.Next() {
 		requests = append(requests, e.Value.(*Packet))
