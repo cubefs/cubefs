@@ -139,11 +139,11 @@ func (ic *InodeCache) backgroundEviction() {
 		select {
 		case <-t.C:
 			//log.LogInfof("InodeCache: start BG evict")
-			start := time.Now()
+			//start := time.Now()
 			ic.Lock()
 			ic.evict(false)
 			ic.Unlock()
-			elapsed := time.Since(start)
+			//elapsed := time.Since(start)
 			//log.LogInfof("InodeCache: done BG evict, cost (%v)ns", elapsed.Nanoseconds())
 		}
 	}
