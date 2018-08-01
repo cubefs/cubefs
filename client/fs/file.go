@@ -158,8 +158,8 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: ino(%v) HandleID(%v) offset(%v) len(%v) flags(%v) fileflags(%v) (%v)ns ",
-		f.inode.ino, req.Offset, reqlen, req.Flags, req.FileFlags, elapsed.Nanoseconds())
+	log.LogDebugf("PERF: Write ino(%v) HandleID(%v) offset(%v) len(%v) flags(%v) fileflags(%v) (%v)ns ",
+		f.inode.ino, req.Handle, req.Offset, reqlen, req.Flags, req.FileFlags, elapsed.Nanoseconds())
 	return nil
 }
 
