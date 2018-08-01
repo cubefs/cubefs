@@ -97,7 +97,6 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 		log.LogErrorf("Close: ino(%v) error (%v)", ino, err)
 		return fuse.EIO
 	}
-	f.stream = nil
 
 	elapsed := time.Since(start)
 	log.LogDebugf("PERF: Close ino(%v) (%v)ns", ino, elapsed.Nanoseconds())
