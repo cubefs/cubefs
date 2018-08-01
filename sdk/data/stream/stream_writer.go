@@ -17,6 +17,7 @@ import (
 const (
 	MaxSelectDataPartionForWrite = 32
 	MaxStreamInitRetry           = 3
+	HasClosed  = -1
 )
 
 type WriteRequest struct {
@@ -54,6 +55,7 @@ type StreamWriter struct {
 	hasUpdateKey       map[string]int
 	HasWriteSize       uint64
 	bufferSize         uint64
+	hasClosed          int32
 }
 
 func NewStreamWriter(w *data.Wrapper, inode uint64, appendExtentKey AppendExtentKeyFunc, bufferSize uint64) (stream *StreamWriter) {
@@ -134,7 +136,6 @@ func (stream *StreamWriter) server() {
 				request.err = stream.close()
 			}
 			stream.closeReplyCh <- request
-			return
 		case <-stream.exitCh:
 			return
 		case <-t.C:
