@@ -104,7 +104,7 @@ func (client *ExtentClient) OpenForRead(inode uint64) (stream *StreamReader, err
 }
 
 func (client *ExtentClient) Flush(inode uint64) (err error) {
-	stream := client.getStreamWriterForClose(inode)
+	stream := client.getStreamWriterForRead(inode)
 	if stream == nil {
 		return nil
 	}
@@ -139,8 +139,8 @@ func (client *ExtentClient) Read(stream *StreamReader, inode uint64, data []byte
 	if size == 0 {
 		return
 	}
-	wstream := client.getStreamWriterForClose(inode)
-	if wstream != nil && atomic.LoadInt32(&wstream.hasClosed) != HasClosed {
+	wstream := client.getStreamWriterForRead(inode)
+	if wstream != nil {
 		request := &FlushRequest{}
 		wstream.flushRequestCh <- request
 		request = <-wstream.flushReplyCh
