@@ -137,6 +137,7 @@ func (stream *StreamWriter) server() {
 			}
 			stream.closeReplyCh <- request
 		case <-stream.exitCh:
+			stream.flushCurrExtentWriter()
 			return
 		case <-t.C:
 			if stream.currentWriter == nil {
