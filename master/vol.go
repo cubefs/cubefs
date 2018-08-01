@@ -130,6 +130,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	mps := vol.cloneMetaPartitionMap()
 	for _, mp := range mps {
 		mp.checkStatus(true, int(vol.mpReplicaNum))
+		mp.checkReplicaLeader()
 		mp.checkReplicaNum(c, vol.Name, vol.mpReplicaNum)
 		mp.checkEnd(c, maxPartitionID)
 		mp.checkReplicaMiss(c.Name, DefaultMetaPartitionTimeOutSec, DefaultMetaPartitionWarnInterval)

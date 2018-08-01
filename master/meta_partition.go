@@ -193,6 +193,17 @@ func (mp *MetaPartition) checkAndRemoveMissMetaReplica(addr string) {
 	}
 }
 
+func (mp *MetaPartition) checkReplicaLeader() {
+	mp.Lock()
+	defer mp.Unlock()
+	for _, mr := range mp.Replicas {
+		if !mr.isActive() {
+			mr.IsLeader = false
+		}
+	}
+	return
+}
+
 func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int) {
 	mp.Lock()
 	defer mp.Unlock()
