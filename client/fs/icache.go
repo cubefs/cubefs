@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaoio/cbfs/util/log"
 )
 
 const (
