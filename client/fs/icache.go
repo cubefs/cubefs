@@ -88,9 +88,9 @@ func (ic *InodeCache) Delete(ino uint64) {
 // The caller should grab the inode cache WRITE lock.
 func (ic *InodeCache) evict(foreground bool) {
 	var count int
-	defer func() {
-		log.LogInfof("InodeCache: evict count(%v)", count)
-	}()
+	//defer func() {
+	//	log.LogInfof("InodeCache: evict count(%v)", count)
+	//}()
 	for i := 0; i < MinInodeCacheEvictNum; i++ {
 		element := ic.lruList.Back()
 		if element == nil {
@@ -139,13 +139,13 @@ func (ic *InodeCache) backgroundEviction() {
 	for {
 		select {
 		case <-t.C:
-			log.LogInfof("InodeCache: start BG evict")
+			//log.LogInfof("InodeCache: start BG evict")
 			start := time.Now()
 			ic.Lock()
 			ic.evict(false)
 			ic.Unlock()
 			elapsed := time.Since(start)
-			log.LogInfof("InodeCache: done BG evict, cost (%v)ns", elapsed.Nanoseconds())
+			//log.LogInfof("InodeCache: done BG evict, cost (%v)ns", elapsed.Nanoseconds())
 		}
 	}
 }
