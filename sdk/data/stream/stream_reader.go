@@ -45,8 +45,8 @@ func NewStreamReader(inode uint64, w *data.Wrapper, getExtents GetExtentsFunc) (
 	var reader *ExtentReader
 	for _, key := range stream.extents.Extents {
 		if reader, err = NewExtentReader(inode, offset, key, stream.w); err != nil {
-			return nil, errors.Annotatef(err, "NewStreamReader inode[%v] "+
-				"key[%v] dp not found error", inode, key)
+			return nil, errors.Annotatef(err, "NewStreamReader inode(%v) "+
+				"key(%v) dp not found error", inode, key)
 		}
 		stream.readers = append(stream.readers, reader)
 		offset += int(key.Size)
@@ -56,7 +56,7 @@ func NewStreamReader(inode uint64, w *data.Wrapper, getExtents GetExtentsFunc) (
 }
 
 func (stream *StreamReader) toString() (m string) {
-	return fmt.Sprintf("inode[%v] fileSize[%v] extents[%v] ",
+	return fmt.Sprintf("inode(%v) fileSize(%v) extents(%v) ",
 		stream.inode, stream.fileSize, stream.extents)
 }
 
@@ -105,7 +105,7 @@ func (stream *StreamReader) updateLocalReader(newStreamKey *proto.StreamKey) (er
 			continue
 		} else if index > oldReaderCnt-1 {
 			if r, err = NewExtentReader(stream.inode, newOffSet, key, stream.w); err != nil {
-				return errors.Annotatef(err, "NewStreamReader inode[%v] key[%v] "+
+				return errors.Annotatef(err, "NewStreamReader inode(%v) key(%v) "+
 					"dp not found error", stream.inode, key)
 			}
 			readers = append(readers, r)
@@ -131,8 +131,8 @@ func (stream *StreamReader) read(data []byte, offset int, size int) (canRead int
 		r := readers[index]
 		err = r.read(data[canRead:canRead+readerSize[index]], readerOffset[index], readerSize[index], offset, size)
 		if err != nil {
-			err = errors.Annotatef(err, "UserRequest{inode[%v] FileSize[%v] "+
-				"Offset[%v] Size[%v]} readers{ [%v] Offset[%v] Size[%v] occous error}",
+			err = errors.Annotatef(err, "UserRequest{inode(%v) FileSize(%v) "+
+				"Offset(%v) Size(%v)} readers{ (%v) Offset(%v) Size(%v) occous error}",
 				stream.inode, stream.fileSize, offset, size, r.toString(), readerOffset[index],
 				readerSize[index])
 			log.LogErrorf(err.Error())

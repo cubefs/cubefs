@@ -83,15 +83,15 @@ func (stream *StreamWriter) toString() (m string) {
 	if stream.currentWriter != nil {
 		currentWriterMsg = stream.currentWriter.toString()
 	}
-	return fmt.Sprintf("inode[%v] currentDataPartion[%v] currentExtentId[%v]"+
-		" errCount[%v]", stream.Inode, stream.currentPartitionId, currentWriterMsg,
+	return fmt.Sprintf("inode(%v) currentDataPartion(%v) currentExtentId(%v)"+
+		" errCount(%v)", stream.Inode, stream.currentPartitionId, currentWriterMsg,
 		stream.errCount)
 }
 
 func (stream *StreamWriter) toStringWithWriter(writer *ExtentWriter) (m string) {
 	currentWriterMsg := writer.toString()
-	return fmt.Sprintf("inode[%v] currentDataPartion[%v] currentExtentId[%v]"+
-		" errCount[%v]", stream.Inode, stream.currentPartitionId, currentWriterMsg,
+	return fmt.Sprintf("inode(%v) currentDataPartion(%v) currentExtentId(%v)"+
+		" errCount(%v)", stream.Inode, stream.currentPartitionId, currentWriterMsg,
 		stream.errCount)
 }
 
@@ -222,18 +222,18 @@ func (stream *StreamWriter) flushCurrExtentWriter() (err error) {
 		return nil
 	}
 	if err = writer.flush(); err != nil {
-		err = errors.Annotatef(err, "writer[%v] Flush Failed", writer.toString())
+		err = errors.Annotatef(err, "writer(%v) Flush Failed", writer.toString())
 		return err
 	}
 	if err = stream.updateToMetaNode(); err != nil {
-		err = errors.Annotatef(err, "update to MetaNode failed[%v]", err.Error())
+		err = errors.Annotatef(err, "update to MetaNode failed(%v)", err.Error())
 		return err
 	}
 	if writer.isFullExtent() {
 		writer.close()
 		stream.w.PutConnect(writer.getConnect(), NoCloseConnect)
 		if err = stream.updateToMetaNode(); err != nil {
-			err = errors.Annotatef(err, "update to MetaNode failed[%v]", err.Error())
+			err = errors.Annotatef(err, "update to MetaNode failed(%v)", err.Error())
 			return err
 		}
 		stream.currentWriter = nil
@@ -266,12 +266,12 @@ func (stream *StreamWriter) updateToMetaNode() (err error) {
 			if err == nil {
 				elspetime := time.Now().UnixNano() - start
 				stream.hasUpdateKey[key] = int(ek.Size)
-				log.LogDebugf("inode[%v] update ek[%v] has update filesize[%v] coseTime [%v]ns ", stream.Inode, ek.String(),
+				log.LogDebugf("inode(%v) update ek(%v) has update filesize(%v) coseTime (%v)ns ", stream.Inode, ek.String(),
 					stream.updateToMetaNodeSize(), elspetime)
 				return
 			} else {
-				err = errors.Annotatef(err, "update extent[%v] to MetaNode Failed", ek.Size)
-				log.LogErrorf("stream[%v] err[%v]", stream.toString(), err.Error())
+				err = errors.Annotatef(err, "update extent(%v) to MetaNode Failed", ek.Size)
+				log.LogErrorf("stream(%v) err(%v)", stream.toString(), err.Error())
 				continue
 			}
 		}
@@ -282,12 +282,12 @@ func (stream *StreamWriter) updateToMetaNode() (err error) {
 
 func (stream *StreamWriter) writeRecoverPackets(writer *ExtentWriter, retryPackets []*Packet) (err error) {
 	for _, p := range retryPackets {
-		log.LogInfof("recover packet [%v] kernelOffset[%v] to extent[%v]",
+		log.LogInfof("recover packet (%v) kernelOffset(%v) to extent(%v)",
 			p.GetUniqueLogId(), p.kernelOffset, writer.toString())
 		_, err = writer.write(p.Data, p.kernelOffset, int(p.Size))
 		if err != nil {
-			err = errors.Annotatef(err, "pkg[%v] RecoverExtent write failed", p.GetUniqueLogId())
-			log.LogErrorf("stream[%v] err[%v]", stream.toStringWithWriter(writer), err.Error())
+			err = errors.Annotatef(err, "pkg(%v) RecoverExtent write failed", p.GetUniqueLogId())
+			log.LogErrorf("stream(%v) err(%v)", stream.toStringWithWriter(writer), err.Error())
 			stream.excludePartition = append(stream.excludePartition, writer.dp.PartitionID)
 			return err
 		}
@@ -309,7 +309,7 @@ func (stream *StreamWriter) recoverExtent() (err error) {
 		err = nil
 		if writer, err = stream.allocateNewExtentWriter(); err != nil { //allocate new extent
 			err = errors.Annotatef(err, "RecoverExtent Failed")
-			log.LogErrorf("stream[%v] err[%v]", stream.toString(), err.Error())
+			log.LogErrorf("stream(%v) err(%v)", stream.toString(), err.Error())
 			continue
 		}
 		if err = stream.writeRecoverPackets(writer, retryPackets); err == nil {
@@ -335,18 +335,18 @@ func (stream *StreamWriter) allocateNewExtentWriter() (writer *ExtentWriter, err
 	err = fmt.Errorf("cannot alloct new extent after maxrery")
 	for i := 0; i < MaxSelectDataPartionForWrite; i++ {
 		if dp, err = stream.w.GetWriteDataPartition(stream.excludePartition); err != nil {
-			log.LogWarn(fmt.Sprintf("stream [%v] ActionAllocNewExtentWriter "+
-				"failed on getWriteDataPartion,error[%v] execludeDataPartion[%v]", stream.toString(), err.Error(), stream.excludePartition))
+			log.LogWarn(fmt.Sprintf("stream (%v) ActionAllocNewExtentWriter "+
+				"failed on getWriteDataPartion,error(%v) execludeDataPartion(%v)", stream.toString(), err.Error(), stream.excludePartition))
 			continue
 		}
 		if extentId, err = stream.createExtent(dp); err != nil {
-			log.LogWarn(fmt.Sprintf("stream [%v]ActionAllocNewExtentWriter "+
-				"create Extent,error[%v] execludeDataPartion[%v]", stream.toString(), err.Error(), stream.excludePartition))
+			log.LogWarn(fmt.Sprintf("stream (%v)ActionAllocNewExtentWriter "+
+				"create Extent,error(%v) execludeDataPartion(%v)", stream.toString(), err.Error(), stream.excludePartition))
 			continue
 		}
 		if writer, err = NewExtentWriter(stream.Inode, dp, stream.w, extentId); err != nil {
-			log.LogWarn(fmt.Sprintf("stream [%v] ActionAllocNewExtentWriter "+
-				"NewExtentWriter[%v],error[%v] execludeDataPartion[%v]", stream.toString(), extentId, err.Error(), stream.excludePartition))
+			log.LogWarn(fmt.Sprintf("stream (%v) ActionAllocNewExtentWriter "+
+				"NewExtentWriter(%v),error(%v) execludeDataPartion(%v)", stream.toString(), extentId, err.Error(), stream.excludePartition))
 			continue
 		}
 		break
@@ -368,7 +368,7 @@ func (stream *StreamWriter) createExtent(dp *data.DataPartition) (extentId uint6
 	)
 	conn, err := net.DialTimeout("tcp", dp.Hosts[0], time.Second)
 	if err != nil {
-		err = errors.Annotatef(err, " get connect from datapartionHosts[%v]", dp.Hosts[0])
+		err = errors.Annotatef(err, " get connect from datapartionHosts(%v)", dp.Hosts[0])
 		return 0, err
 	}
 	connect, _ = conn.(*net.TCPConn)
@@ -377,20 +377,20 @@ func (stream *StreamWriter) createExtent(dp *data.DataPartition) (extentId uint6
 	defer connect.Close()
 	p := NewCreateExtentPacket(dp, stream.Inode)
 	if err = p.WriteToConn(connect); err != nil {
-		err = errors.Annotatef(err, "send CreateExtent[%v] to datapartionHosts[%v]", p.GetUniqueLogId(), dp.Hosts[0])
+		err = errors.Annotatef(err, "send CreateExtent(%v) to datapartionHosts(%v)", p.GetUniqueLogId(), dp.Hosts[0])
 		return
 	}
 	if err = p.ReadFromConn(connect, proto.ReadDeadlineTime*2); err != nil {
-		err = errors.Annotatef(err, "receive CreateExtent[%v] failed datapartionHosts[%v]", p.GetUniqueLogId(), dp.Hosts[0])
+		err = errors.Annotatef(err, "receive CreateExtent(%v) failed datapartionHosts(%v)", p.GetUniqueLogId(), dp.Hosts[0])
 		return
 	}
 	if p.ResultCode != proto.OpOk {
-		err = errors.Annotatef(err, "receive CreateExtent[%v] failed datapartionHosts[%v] ", p.GetUniqueLogId(), dp.Hosts[0])
+		err = errors.Annotatef(err, "receive CreateExtent(%v) failed datapartionHosts(%v) ", p.GetUniqueLogId(), dp.Hosts[0])
 		return
 	}
 	extentId = p.FileID
 	if p.FileID <= 0 {
-		err = errors.Annotatef(err, "illegal extentId[%v] from [%v] response",
+		err = errors.Annotatef(err, "illegal extentId(%v) from (%v) response",
 			extentId, dp.Hosts[0])
 		return
 

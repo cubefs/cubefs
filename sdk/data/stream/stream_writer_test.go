@@ -90,10 +90,10 @@ func initClient(t *testing.T) (client *ExtentClient) {
 	var err error
 	client, err = NewExtentClient("intest", "10.196.31.173:80", saveExtentKey, updateKey)
 	if err != nil {
-		OccoursErr(fmt.Errorf("init client err[%v]", err.Error()), t)
+		OccoursErr(fmt.Errorf("init client err(%v)", err.Error()), t)
 	}
 	if client == nil {
-		OccoursErr(fmt.Errorf("init client err[%v]", err.Error()), t)
+		OccoursErr(fmt.Errorf("init client err(%v)", err.Error()), t)
 	}
 	return
 }
@@ -109,11 +109,11 @@ func prepare(inode uint64, t *testing.T) (localWriteFp *os.File, localReadFp *os
 	var err error
 	localWriteFp, err = openFileForWrite(inode, "write")
 	if err != nil {
-		OccoursErr(fmt.Errorf("write localFile inode[%v] err[%v]\n", inode, err), t)
+		OccoursErr(fmt.Errorf("write localFile inode(%v) err(%v)\n", inode, err), t)
 	}
 	localReadFp, err = openFileForWrite(inode, "read")
 	if err != nil {
-		OccoursErr(fmt.Errorf("read localFile inode[%v] err[%v]\n", inode, err), t)
+		OccoursErr(fmt.Errorf("read localFile inode(%v) err(%v)\n", inode, err), t)
 	}
 	return
 }
@@ -153,7 +153,7 @@ func TestExtentClient_RandWrite(t *testing.T) {
 				data = append(data, crcdata...)
 				write, err := client.Write(inode, data)
 				if err != nil {
-					OccoursErr(fmt.Errorf("write error can write [%v] err[%v]", write, err), t)
+					OccoursErr(fmt.Errorf("write error can write (%v) err(%v)", write, err), t)
 				}
 			}
 			fmt.Printf("FININSH")
@@ -166,10 +166,10 @@ func TestExtentClient_RandWrite(t *testing.T) {
 		data := make([]byte, datasize+4)
 		can, err := client.Read(inode, data, offset, len(data))
 		if err != nil {
-			OccoursErr(fmt.Errorf("read error can read [%v] err[%v]", can, err), t)
+			OccoursErr(fmt.Errorf("read error can read (%v) err(%v)", can, err), t)
 		}
 		if can != len(data) {
-			OccoursErr(fmt.Errorf("read error can read [%v] err[%v]", can, err), t)
+			OccoursErr(fmt.Errorf("read error can read (%v) err(%v)", can, err), t)
 		}
 
 		data1 := data[:datasize]
@@ -210,24 +210,24 @@ func TestExtentClient_Write(t *testing.T) {
 		//write
 		write, err := client.Write(inode, ndata)
 		if err != nil || write != len(ndata) {
-			OccoursErr(fmt.Errorf("write inode [%v] seqNO[%v] bytes[%v] err[%v]\n", inode, seqNo, write, err), t)
+			OccoursErr(fmt.Errorf("write inode (%v) seqNO(%v) bytes(%v) err(%v)\n", inode, seqNo, write, err), t)
 		}
-		fmt.Printf("hahah ,write ok [%v]\n", seqNo)
+		fmt.Printf("hahah ,write ok (%v)\n", seqNo)
 
 		//flush
 		err = client.Flush(inode)
 		if err != nil {
-			OccoursErr(fmt.Errorf("flush inode [%v] seqNO[%v] bytes[%v] err[%v]\n", inode, seqNo, write, err), t)
+			OccoursErr(fmt.Errorf("flush inode (%v) seqNO(%v) bytes(%v) err(%v)\n", inode, seqNo, write, err), t)
 		}
-		fmt.Printf("hahah ,flush ok [%v]\n", seqNo)
+		fmt.Printf("hahah ,flush ok (%v)\n", seqNo)
 
 		//read
 		rdata := make([]byte, len(ndata))
 		read, err = client.Read(inode, rdata, writebytes, len(ndata))
 		if err != nil || read != len(ndata) {
-			fmt.Printf("stream filesize[%v] offset[%v] size[%v] skstream[%v]\n",
+			fmt.Printf("stream filesize(%v) offset(%v) size(%v) skstream(%v)\n",
 				sk.Size(), writebytes, len(ndata), sk.ToString())
-			OccoursErr(fmt.Errorf("read inode [%v] seqNO[%v] bytes[%v] err[%v]\n", inode, seqNo, read, err), t)
+			OccoursErr(fmt.Errorf("read inode (%v) seqNO(%v) bytes(%v) err(%v)\n", inode, seqNo, read, err), t)
 		}
 		if !bytes.Equal(rdata, ndata) {
 			fp, _ := os.OpenFile("org.data", os.O_CREATE|os.O_RDWR, 0666)
@@ -236,7 +236,7 @@ func TestExtentClient_Write(t *testing.T) {
 			fp, _ = os.OpenFile("rdata.data", os.O_CREATE|os.O_RDWR, 0666)
 			fp.WriteString(string(rdata))
 			fp.Close()
-			fmt.Printf("stream filesize[%v] offset[%v] size[%v] skstream[%v]\n",
+			fmt.Printf("stream filesize(%v) offset(%v) size(%v) skstream(%v)\n",
 				sk.Size(), writebytes, len(ndata), sk.ToString())
 			OccoursErr(fmt.Errorf("acatual read is differ to writestr"), t)
 		}
@@ -248,7 +248,7 @@ func TestExtentClient_Write(t *testing.T) {
 	readOffset := (writebytes - CLIENTWRITESIZE + 1024)
 	read, err := client.Read(inode, readData, readOffset, CLIENTREADSIZE)
 	if err != nil || read != (CLIENTREADSIZE-1024) {
-		OccoursErr(fmt.Errorf("read inode [%v] bytes[%v] err[%v]\n", inode, read, err), t)
+		OccoursErr(fmt.Errorf("read inode (%v) bytes(%v) err(%v)\n", inode, read, err), t)
 	}
 
 	//finish
@@ -273,19 +273,19 @@ func writeFlushReadTest(t *testing.T, inode uint64, seqNo int, client *ExtentCli
 	//write
 	write, err = client.Write(inode, writeData)
 	if err != nil || write != len(writeData) {
-		OccoursErr(fmt.Errorf("write seqNO[%v] bytes[%v] len[%v] err[%v]\n", seqNo, write, len(writeData), err), t)
+		OccoursErr(fmt.Errorf("write seqNO(%v) bytes(%v) len(%v) err(%v)\n", seqNo, write, len(writeData), err), t)
 	}
-	//fmt.Printf("write ok seqNo[%v], Size[%v], Crc[%v]\n", seqNo, write, writeData[CLIENTWRITESIZE])
+	//fmt.Printf("write ok seqNo(%v), Size(%v), Crc(%v)\n", seqNo, write, writeData[CLIENTWRITESIZE])
 
 	//flush
 	err = client.Flush(inode)
 	if err != nil {
-		OccoursErr(fmt.Errorf("flush inode [%v] seqNO[%v] bytes[%v] err[%v]\n", inode, seqNo, write, err), t)
+		OccoursErr(fmt.Errorf("flush inode (%v) seqNO(%v) bytes(%v) err(%v)\n", inode, seqNo, write, err), t)
 	}
 
 	_, err = localWriteFp.Write(writeData)
 	if err != nil {
-		OccoursErr(fmt.Errorf("write localFile write inode [%v] seqNO[%v] bytes[%v] err[%v]\n", inode, seqNo, write, err), t)
+		OccoursErr(fmt.Errorf("write localFile write inode (%v) seqNO(%v) bytes(%v) err(%v)\n", inode, seqNo, write, err), t)
 	}
 
 	return write, nil
@@ -314,7 +314,7 @@ func TestExtentClient_MultiRoutineWrite(t *testing.T) {
 		//add checksum
 		tempData := writeData[:CLIENTWRITESIZE]
 		crc := uint32ToBytes(crc32.ChecksumIEEE(tempData))
-		fmt.Printf("write crc seqNo[%v], Crc[%v]\n", seqNo, crc)
+		fmt.Printf("write crc seqNo(%v), Crc(%v)\n", seqNo, crc)
 		for i := 0; i < CRCBYTELEN; i++ {
 			writeData[CLIENTWRITESIZE+i] = crc[i]
 		}
@@ -322,7 +322,7 @@ func TestExtentClient_MultiRoutineWrite(t *testing.T) {
 		go func(seqNo int) {
 			write, err := writeFlushReadTest(t, inode, seqNo, client, writeData, localWriteFp)
 			if err != nil {
-				OccoursErr(fmt.Errorf("write inode[%v] seqNO[%v]  err[%v]\n", inode, seqNo, err), t)
+				OccoursErr(fmt.Errorf("write inode(%v) seqNO(%v)  err(%v)\n", inode, seqNo, err), t)
 			}
 			writeBytes += write
 		}(seqNo)
@@ -334,7 +334,7 @@ func TestExtentClient_MultiRoutineWrite(t *testing.T) {
 			break
 		}
 	}
-	fmt.Printf("write size [%v]\n", writeBytes)
+	fmt.Printf("write size (%v)\n", writeBytes)
 
 	//read check
 	for seqNo := 0; seqNo < CLIENTWRITENUM; seqNo++ {
@@ -343,12 +343,12 @@ func TestExtentClient_MultiRoutineWrite(t *testing.T) {
 		rdata := make([]byte, CLIENTWRITESIZE+CRCBYTELEN)
 		read, err := client.Read(inode, rdata, readBytes, CLIENTWRITESIZE+CRCBYTELEN)
 		if err != nil || read != CLIENTWRITESIZE+CRCBYTELEN {
-			OccoursErr(fmt.Errorf("read bytes[%v] err[%v]\n", read, err), t)
+			OccoursErr(fmt.Errorf("read bytes(%v) err(%v)\n", read, err), t)
 		}
 
 		_, err = localReadFp.Write(rdata)
 		if err != nil {
-			OccoursErr(fmt.Errorf("write localFile read inode[%v] err[%v]\n", inode, err), t)
+			OccoursErr(fmt.Errorf("write localFile read inode(%v) err(%v)\n", inode, err), t)
 		}
 
 		//check crc
@@ -356,10 +356,10 @@ func TestExtentClient_MultiRoutineWrite(t *testing.T) {
 		crc := uint32ToBytes(crc32.ChecksumIEEE(tempData))
 		crcData := rdata[CLIENTWRITESIZE:]
 
-		//		fmt.Printf("readCrc[%v] writeCrc[%v]\n", crc, crcData)
+		//		fmt.Printf("readCrc(%v) writeCrc(%v)\n", crc, crcData)
 		for i := 0; i < CRCBYTELEN; i++ {
 			if crc[i] != crcData[i] {
-				OccoursErr(fmt.Errorf("wrong[%v] readcrc[%v] writecrc[%v]\n", i, crc[i], crcData[i]), t)
+				OccoursErr(fmt.Errorf("wrong(%v) readcrc(%v) writecrc(%v)\n", i, crc[i], crcData[i]), t)
 			}
 		}
 
@@ -367,7 +367,7 @@ func TestExtentClient_MultiRoutineWrite(t *testing.T) {
 	}
 
 	if readBytes != TOTALSIZE {
-		OccoursErr(fmt.Errorf("read err size [%v]", readBytes), t)
+		OccoursErr(fmt.Errorf("read err size (%v)", readBytes), t)
 	}
 
 	time.Sleep(time.Second)

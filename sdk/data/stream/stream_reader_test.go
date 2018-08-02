@@ -60,7 +60,7 @@ func TestStreamReader_GetReader(t *testing.T) {
 		}
 		canRead, err := reader.initCheck(haveReadSize, currReadSize)
 		if err != nil {
-			log := fmt.Sprintf("Offset[%v] Size[%v] fileSize[%v] canRead[%v] err[%v]",
+			log := fmt.Sprintf("Offset(%v) Size(%v) fileSize(%v) canRead(%v) err(%v)",
 				haveReadSize, currReadSize, sk.Size(), canRead, err)
 			t.Log(log)
 			t.FailNow()
@@ -74,35 +74,35 @@ func TestStreamReader_GetReader(t *testing.T) {
 		body, _ := json.Marshal(readerInfos)
 		cond := int(extents[0].startInodeOffset)+extentsOffset[0] == haveReadSize
 		if !cond {
-			t.Logf("cond0 failed,readerInfos[%v],offset[%v] size[%v]", string(body), haveReadSize, currReadSize)
+			t.Logf("cond0 failed,readerInfos(%v),offset(%v) size(%v)", string(body), haveReadSize, currReadSize)
 			t.FailNow()
 		}
 		if len(extents) == 1 {
 			cond1 := int(extents[0].startInodeOffset)+extentsOffset[0]+extentsSizes[0] == haveReadSize+currReadSize
 			if !cond1 {
-				t.Logf("cond1 failed,readerInfos[%v],offset[%v] size[%v]", string(body), haveReadSize, currReadSize)
+				t.Logf("cond1 failed,readerInfos(%v),offset(%v) size(%v)", string(body), haveReadSize, currReadSize)
 				t.FailNow()
 			}
 		}
 		if len(extents) == 2 {
 			cond2 := int(extents[0].startInodeOffset)+extentsOffset[0]+extentsSizes[0] == int(extents[1].startInodeOffset)
 			if !cond2 {
-				t.Logf("cond2 failed,readerInfos[%v],offset[%v] size[%v]", string(body), haveReadSize, currReadSize)
+				t.Logf("cond2 failed,readerInfos(%v),offset(%v) size(%v)", string(body), haveReadSize, currReadSize)
 				t.FailNow()
 			}
 			cond3 := int(extents[0].startInodeOffset)+extentsOffset[0]+extentsSizes[0]+extentsOffset[1]+extentsSizes[1] == haveReadSize+currReadSize
 			if !cond3 {
-				t.Logf("cond3 failed,readerInfos[%v],offset[%v] size[%v]", string(body), haveReadSize, currReadSize)
+				t.Logf("cond3 failed,readerInfos(%v),offset(%v) size(%v)", string(body), haveReadSize, currReadSize)
 				t.FailNow()
 			}
 		}
 		if haveReadSize > util.PB {
-			fmt.Printf("filesize[%v] haveReadOffset[%v]", sk.Size(), haveReadSize)
+			fmt.Printf("filesize(%v) haveReadOffset(%v)", sk.Size(), haveReadSize)
 			break
 		}
 		addSize += currReadSize
 		if addSize > util.TB {
-			fmt.Printf("filesize[%v] haveReadOffset[%v]\n", sk.Size(), haveReadSize)
+			fmt.Printf("filesize(%v) haveReadOffset(%v)\n", sk.Size(), haveReadSize)
 			addSize = 0
 		}
 		haveReadSize += currReadSize

@@ -50,7 +50,7 @@ type ExtentWriter struct {
 
 func NewExtentWriter(inode uint64, dp *data.DataPartition, w *data.Wrapper, extentId uint64) (writer *ExtentWriter, err error) {
 	if extentId <= 0 {
-		return nil, fmt.Errorf("inode[%v],dp[%v],unavalid extentId[%v]", inode, dp.PartitionID, extentId)
+		return nil, fmt.Errorf("inode(%v),dp(%v),unavalid extentId(%v)", inode, dp.PartitionID, extentId)
 	}
 	writer = new(ExtentWriter)
 	writer.requestQueue = list.New()
@@ -104,7 +104,7 @@ func (writer *ExtentWriter) write(data []byte, kernelOffset, size int) (total in
 		if err != nil {
 			writer.getConnect().Close()
 			writer.cleanHandleCh()
-			err = errors.Annotatef(err, "writer[%v] write failed", writer.toString())
+			err = errors.Annotatef(err, "writer(%v) write failed", writer.toString())
 		}
 	}()
 	if writer.offset+util.BlockSize*10 >= util.ExtentSize {
@@ -146,8 +146,8 @@ func (writer *ExtentWriter) sendCurrPacket() (err error) {
 	writer.offset += packet.getPacketLength()
 	err = packet.writeTo(writer.connect) //if send packet,then signal recive goroutine for recive from connect
 	prefix := fmt.Sprintf("send inode %v_%v", writer.inode, packet.kernelOffset)
-	//log.LogDebugf(prefix+" to extent[%v] pkg[%v] orgextentOffset[%v]"+
-	//	" packetGetPacketLength[%v] after jia[%v] crc[%v]",
+	//log.LogDebugf(prefix+" to extent(%v) pkg(%v) orgextentOffset(%v)"+
+	//	" packetGetPacketLength(%v) after jia(%v) crc(%v)",
 	//	writer.toString(), packet.GetUniqueLogId(), orgOffset, packet.getPacketLength(),
 	//	writer.offset, packet.Crc)
 	if err == nil {
@@ -189,7 +189,7 @@ func (writer *ExtentWriter) isAllFlushed() bool {
 }
 
 func (writer *ExtentWriter) toString() string {
-	return fmt.Sprintf("extent{inode=%v dp=%v extentId=%v handleCh[%v] requestQueueLen[%v] }",
+	return fmt.Sprintf("extent{inode=%v dp=%v extentId=%v handleCh(%v) requestQueueLen(%v) }",
 		writer.inode, writer.dp.PartitionID, writer.extentId,
 		len(writer.handleCh), writer.getQueueListLen())
 }
@@ -206,7 +206,7 @@ func (writer *ExtentWriter) flush() (err error) {
 	err = errors.Annotatef(FlushErr, "cannot backEndlush writer")
 	defer func() {
 		writer.checkIsStopReciveGoRoutine()
-		log.LogDebugf(writer.toString()+" Flush DataNode cost[%v]ns", time.Now().UnixNano()-start)
+		log.LogDebugf(writer.toString()+" Flush DataNode cost(%v)ns", time.Now().UnixNano()-start)
 		if err == nil {
 			return
 		}
@@ -255,26 +255,26 @@ func (writer *ExtentWriter) close() (err error) {
 
 func (writer *ExtentWriter) processReply(e *list.Element, request, reply *Packet) (err error) {
 	if reply.ResultCode != proto.OpOk {
-		return errors.Annotatef(fmt.Errorf("reply status code[%v] is not ok,request [%v] "+
-			"but reply [%v] ", reply.ResultCode, request.GetUniqueLogId(), reply.GetUniqueLogId()),
-			fmt.Sprintf("writer[%v]", writer.toString()))
+		return errors.Annotatef(fmt.Errorf("reply status code(%v) is not ok,request (%v) "+
+			"but reply (%v) ", reply.ResultCode, request.GetUniqueLogId(), reply.GetUniqueLogId()),
+			fmt.Sprintf("writer(%v)", writer.toString()))
 	}
 	if !request.IsEqualWriteReply(reply) {
-		return errors.Annotatef(fmt.Errorf("request not equare reply , request [%v] "+
-			"and reply [%v] ", request.GetUniqueLogId(), reply.GetUniqueLogId()),
-			fmt.Sprintf("writer[%v]", writer.toString()))
+		return errors.Annotatef(fmt.Errorf("request not equare reply , request (%v) "+
+			"and reply (%v) ", request.GetUniqueLogId(), reply.GetUniqueLogId()),
+			fmt.Sprintf("writer(%v)", writer.toString()))
 	}
 	if reply.Crc != request.Crc {
-		return errors.Annotatef(fmt.Errorf("crc not match on  request [%v] "+
-			"and reply [%v] expectCrc[%v] but reciveCrc[%v] ", request.GetUniqueLogId(), reply.GetUniqueLogId(), request.Crc, reply.Crc),
-			fmt.Sprintf("writer[%v]", writer.toString()))
+		return errors.Annotatef(fmt.Errorf("crc not match on  request (%v) "+
+			"and reply (%v) expectCrc(%v) but reciveCrc(%v) ", request.GetUniqueLogId(), reply.GetUniqueLogId(), request.Crc, reply.Crc),
+			fmt.Sprintf("writer(%v)", writer.toString()))
 	}
 
 	if atomic.LoadInt64(&writer.forbidUpdate) == ForBidUpdateExtentKey {
-		return fmt.Errorf("forbid update extent key [%v]", writer.toString())
+		return fmt.Errorf("forbid update extent key (%v)", writer.toString())
 	}
 	if atomic.LoadInt64(&writer.forbidUpdate) == ForBidUpdateMetaNode {
-		return fmt.Errorf("forbid update extent key [%v] to metanode", writer.toString())
+		return fmt.Errorf("forbid update extent key (%v) to metanode", writer.toString())
 	}
 	writer.removeRquest(e)
 	writer.addByteAck(uint64(request.Size))
@@ -287,7 +287,7 @@ func (writer *ExtentWriter) processReply(e *list.Element, request, reply *Packet
 			break
 		}
 	}
-	//log.LogDebugf("recive inode[%v] kerneloffset[%v] to extent[%v] pkg[%v] recive[%v]",
+	//log.LogDebugf("recive inode(%v) kerneloffset(%v) to extent(%v) pkg(%v) recive(%v)",
 	//	writer.inode, request.kernelOffset, writer.toString(), request.GetUniqueLogId(), reply.GetUniqueLogId())
 
 	return nil

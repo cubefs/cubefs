@@ -77,7 +77,7 @@ forLoop:
 			return
 		} else {
 			log.LogWarn(err.Error())
-			mesg += fmt.Sprintf(" (index[%v] err[%v])", i, err.Error())
+			mesg += fmt.Sprintf(" (index(%v) err(%v))", i, err.Error())
 		}
 	}
 	log.LogWarn(mesg)
@@ -99,7 +99,7 @@ func (reader *ExtentReader) streamReadDataFromHost(offset, expectReadSize int, d
 	if err != nil {
 		atomic.AddUint32(&reader.readerIndex, 1)
 		return 0, errors.Annotatef(err, reader.toString()+
-			"streamReadDataFromHost dp[%v] cannot get  connect from host[%v] request[%v] ",
+			"streamReadDataFromHost dp(%v) cannot get  connect from host(%v) request(%v) ",
 			reader.key.PartitionId, host, request.GetUniqueLogId())
 
 	}
@@ -113,7 +113,7 @@ func (reader *ExtentReader) streamReadDataFromHost(offset, expectReadSize int, d
 	}()
 
 	if err = request.WriteToConn(connect); err != nil {
-		err = errors.Annotatef(err, reader.toString()+"streamReadDataFromHost host[%v] error request[%v]",
+		err = errors.Annotatef(err, reader.toString()+"streamReadDataFromHost host(%v) error request(%v)",
 			host, request.GetUniqueLogId())
 		return 0, err
 	}
@@ -127,7 +127,7 @@ func (reader *ExtentReader) streamReadDataFromHost(offset, expectReadSize int, d
 		reply.Data = data[actualReadSize : canRead+actualReadSize]
 		err = reply.ReadFromConnStream(connect, proto.ReadDeadlineTime)
 		if err != nil {
-			err = errors.Annotatef(err, reader.toString()+"streamReadDataFromHost host[%v]  error reqeust[%v]",
+			err = errors.Annotatef(err, reader.toString()+"streamReadDataFromHost host(%v)  error reqeust(%v)",
 				host, request.GetUniqueLogId())
 			return 0, err
 		}
@@ -146,20 +146,20 @@ func (reader *ExtentReader) streamReadDataFromHost(offset, expectReadSize int, d
 
 func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet, kerneloffset, kernelsize int) (err error) {
 	if reply.ResultCode != proto.OpOk {
-		return errors.Annotatef(fmt.Errorf("reply status code[%v] is not ok,request [%v] "+
-			"but reply [%v] ", reply.ResultCode, request.GetUniqueLogId(), reply.GetUniqueLogId()),
-			fmt.Sprintf("reader[%v]", reader.toString()))
+		return errors.Annotatef(fmt.Errorf("reply status code(%v) is not ok,request (%v) "+
+			"but reply (%v) ", reply.ResultCode, request.GetUniqueLogId(), reply.GetUniqueLogId()),
+			fmt.Sprintf("reader(%v)", reader.toString()))
 	}
 	if !request.IsEqualStreamReadReply(reply) {
-		return errors.Annotatef(fmt.Errorf("request not equare reply , request [%v] "+
-			"and reply [%v] ", request.GetUniqueLogId(), reply.GetUniqueLogId()),
-			fmt.Sprintf("reader[%v]", reader.toString()))
+		return errors.Annotatef(fmt.Errorf("request not equare reply , request (%v) "+
+			"and reply (%v) ", request.GetUniqueLogId(), reply.GetUniqueLogId()),
+			fmt.Sprintf("reader(%v)", reader.toString()))
 	}
 	expectCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
 	if reply.Crc != expectCrc {
-		return errors.Annotatef(fmt.Errorf("crc not match on  request [%v] "+
-			"and reply [%v] expectCrc[%v] but reciveCrc[%v] ", request.GetUniqueLogId(), reply.GetUniqueLogId(), expectCrc, reply.Crc),
-			fmt.Sprintf("reader[%v]", reader.toString()))
+		return errors.Annotatef(fmt.Errorf("crc not match on  request (%v) "+
+			"and reply (%v) expectCrc(%v) but reciveCrc(%v) ", request.GetUniqueLogId(), reply.GetUniqueLogId(), expectCrc, reply.Crc),
+			fmt.Sprintf("reader(%v)", reader.toString()))
 	}
 	return nil
 }
@@ -177,7 +177,7 @@ func (reader *ExtentReader) readDataFromHost(offset, expectReadSize int, data []
 	if err != nil {
 		atomic.AddUint32(&reader.readerIndex, 1)
 		return 0, errors.Annotatef(err, reader.toString()+
-			"readDataFromHost dp[%v] cannot get  connect from host[%v] request[%v] ",
+			"readDataFromHost dp(%v) cannot get  connect from host(%v) request(%v) ",
 			reader.key.PartitionId, host, request.GetUniqueLogId())
 
 	}
@@ -191,7 +191,7 @@ func (reader *ExtentReader) readDataFromHost(offset, expectReadSize int, data []
 	}()
 
 	if err = request.WriteToConn(connect); err != nil {
-		err = errors.Annotatef(err, reader.toString()+"readDataFromHost host[%v] error request[%v]",
+		err = errors.Annotatef(err, reader.toString()+"readDataFromHost host(%v) error request(%v)",
 			host, request.GetUniqueLogId())
 		return 0, err
 	}
@@ -199,7 +199,7 @@ func (reader *ExtentReader) readDataFromHost(offset, expectReadSize int, data []
 	reply.Data = data[:expectReadSize]
 	err = reply.ReadFromConnStream(connect, proto.StreamReadDeadLineTime)
 	if err != nil {
-		err = errors.Annotatef(err, reader.toString()+"readDataFromHost host[%v]  error reqeust[%v]",
+		err = errors.Annotatef(err, reader.toString()+"readDataFromHost host(%v)  error reqeust(%v)",
 			host, request.GetUniqueLogId())
 		return 0, err
 	}
@@ -213,20 +213,20 @@ func (reader *ExtentReader) readDataFromHost(offset, expectReadSize int, data []
 
 func (reader *ExtentReader) checkReply(request *Packet, reply *Packet, kerneloffset, kernelsize int) (err error) {
 	if reply.ResultCode != proto.OpOk {
-		return errors.Annotatef(fmt.Errorf("reply status code[%v] is not ok,request [%v] "+
-			"but reply [%v] ", reply.ResultCode, request.GetUniqueLogId(), reply.GetUniqueLogId()),
-			fmt.Sprintf("reader[%v]", reader.toString()))
+		return errors.Annotatef(fmt.Errorf("reply status code(%v) is not ok,request (%v) "+
+			"but reply (%v) ", reply.ResultCode, request.GetUniqueLogId(), reply.GetUniqueLogId()),
+			fmt.Sprintf("reader(%v)", reader.toString()))
 	}
 	if !request.IsEqualReadReply(reply) {
-		return errors.Annotatef(fmt.Errorf("request not equare reply , request [%v] "+
-			"and reply [%v] ", request.GetUniqueLogId(), reply.GetUniqueLogId()),
-			fmt.Sprintf("reader[%v]", reader.toString()))
+		return errors.Annotatef(fmt.Errorf("request not equare reply , request (%v) "+
+			"and reply (%v) ", request.GetUniqueLogId(), reply.GetUniqueLogId()),
+			fmt.Sprintf("reader(%v)", reader.toString()))
 	}
 	expectCrc := crc32.ChecksumIEEE(reply.Data[:request.Size])
 	if reply.Crc != expectCrc {
-		return errors.Annotatef(fmt.Errorf("crc not match on  request [%v] "+
-			"and reply [%v] expectCrc[%v] but reciveCrc[%v] ", request.GetUniqueLogId(), reply.GetUniqueLogId(), expectCrc, reply.Crc),
-			fmt.Sprintf("reader[%v]", reader.toString()))
+		return errors.Annotatef(fmt.Errorf("crc not match on  request (%v) "+
+			"and reply (%v) expectCrc(%v) but reciveCrc(%v) ", request.GetUniqueLogId(), reply.GetUniqueLogId(), expectCrc, reply.Crc),
+			fmt.Sprintf("reader(%v)", reader.toString()))
 	}
 	return nil
 }
@@ -246,6 +246,6 @@ func (reader *ExtentReader) updateKey(key proto.ExtentKey) (update bool) {
 }
 
 func (reader *ExtentReader) toString() (m string) {
-	return fmt.Sprintf("inode [%v] extentKey[%v] start[%v] end[%v]", reader.inode,
+	return fmt.Sprintf("inode (%v) extentKey(%v) start(%v) end(%v)", reader.inode,
 		reader.key.Marshal(), reader.startInodeOffset, reader.endInodeOffset)
 }

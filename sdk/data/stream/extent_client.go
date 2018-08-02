@@ -31,7 +31,7 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 	client = new(ExtentClient)
 	client.w, err = data.NewDataPartitionWrapper(volname, master)
 	if err != nil {
-		return nil, fmt.Errorf("init dp Wrapper failed [%v]", err.Error())
+		return nil, fmt.Errorf("init dp Wrapper failed (%v)", err.Error())
 	}
 	client.writers = make(map[uint64]*StreamWriter)
 	client.appendExtentKey = appendExtentKey
@@ -93,7 +93,7 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write 
 	stream := client.getStreamWriter(inode)
 	if stream == nil {
 		prefix := fmt.Sprintf("inodewrite %v_%v_%v", inode, offset, len(data))
-		return 0, fmt.Errorf("Prefix[%v] cannot init write stream", prefix)
+		return 0, fmt.Errorf("Prefix(%v) cannot init write stream", prefix)
 	}
 	request := &WriteRequest{data: data, kernelOffset: offset, size: len(data)}
 	stream.writeRequestCh <- request
