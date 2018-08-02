@@ -140,7 +140,7 @@ func (client *ExtentClient) CloseForWrite(inode uint64) (err error) {
 	refercnt, ok := client.referCnt[inode]
 	if !ok {
 		client.referLock.Unlock()
-		return fmt.Errorf("please open(%v)", inode)
+		return nil
 	}
 	refercnt = refercnt - 1
 	client.referCnt[inode] = refercnt
