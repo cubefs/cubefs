@@ -73,7 +73,7 @@ func (f *File) Forget() {
 	if extents != nil {
 		f.super.ec.Delete(extents) //FIXME: metanode would take over in the future
 	}
-	log.LogDebugf("TRACE Forget: ino(%v) extents(%v)", ino, extents)
+	log.LogDebugf("TRACE Forget: ino(%v)", ino)
 }
 
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {

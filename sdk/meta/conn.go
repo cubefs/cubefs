@@ -2,7 +2,6 @@ package meta
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"time"
 
@@ -113,7 +112,7 @@ func (mc *MetaConn) send(req *proto.Packet) (resp *proto.Packet, err error) {
 	}
 	resp = proto.NewPacket()
 	err = resp.ReadFromConn(mc.conn, proto.ReadDeadlineTime)
-	if err != nil && err != io.EOF {
+	if err != nil {
 		return nil, errors.Annotatef(err, "Failed to read from conn")
 	}
 	return resp, nil
