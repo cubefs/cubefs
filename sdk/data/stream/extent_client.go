@@ -47,24 +47,7 @@ func (client *ExtentClient) InitWriteStream(inode uint64) *StreamWriter {
 	return writer
 }
 
-func (client *ExtentClient) getStreamWriter(inode uint64) *StreamWriter {
-	client.writerLock.RLock()
-	writer, ok := client.writers[inode]
-	client.writerLock.RUnlock()
-	if ok {
-		return writer
-	}
-
-	client.writerLock.Lock()
-	writer, ok = client.writers[inode]
-	if !ok {
-		writer = client.InitWriteStream(inode)
-	}
-	client.writerLock.Unlock()
-	return writer
-}
-
-func (client *ExtentClient) getStreamWriterForClose(inode uint64) (stream *StreamWriter) {
+func (client *ExtentClient) getStreamWriter(inode uint64) (stream *StreamWriter) {
 	client.writerLock.RLock()
 	stream = client.writers[inode]
 	client.writerLock.RUnlock()
@@ -116,6 +99,22 @@ func (client *ExtentClient) OpenForWrite(inode uint64) {
 		refercnt++
 		client.referCnt[inode] = refercnt
 	}
+
+	client.writerLock.RLock()
+	_, ok = client.writers[inode]
+	client.writerLock.RUnlock()
+	if ok {
+		return
+	}
+
+	client.writerLock.Lock()
+	_, ok = client.writers[inode]
+	if !ok {
+		writer := NewStreamWriter(client.w, inode, client.appendExtentKey, client.bufferSize)
+		client.writers[inode] = writer
+	}
+	client.writerLock.Unlock()
+
 }
 
 func (client *ExtentClient) deleteRefercnt(inode uint64) {
@@ -150,7 +149,7 @@ func (client *ExtentClient) CloseForWrite(inode uint64) (err error) {
 	}
 	client.referLock.Unlock()
 
-	streamWriter := client.getStreamWriterForClose(inode)
+	streamWriter := client.getStreamWriter(inode)
 	if streamWriter == nil {
 		client.deleteRefercnt(inode)
 		return
