@@ -45,7 +45,7 @@ func (client *ExtentClient) InitWriteStream(inode uint64) *StreamWriter {
 	writer := NewStreamWriter(client.w, inode, client.appendExtentKey, client.bufferSize)
 	client.writers[inode] = writer
 	client.referLock.Lock()
-	_,ok := client.referCnt[inode]
+	_, ok := client.referCnt[inode]
 	if !ok {
 		client.referCnt[inode] = 1
 	}
@@ -112,23 +112,22 @@ func (client *ExtentClient) OpenForRead(inode uint64) (stream *StreamReader, err
 	return NewStreamReader(inode, client.w, client.getExtents)
 }
 
-
-func (client *ExtentClient)OpenForWrite(inode uint64){
+func (client *ExtentClient) OpenForWrite(inode uint64) {
 	client.referLock.Lock()
 	defer client.referLock.Unlock()
-	refercnt,ok:=client.referCnt[inode]
+	refercnt, ok := client.referCnt[inode]
 	if !ok {
-		client.referCnt[inode]=1
-	}else {
+		client.referCnt[inode] = 1
+	} else {
 		refercnt++
-		client.referCnt[inode]=refercnt
+		client.referCnt[inode] = refercnt
 	}
 }
 
-func (client *ExtentClient)deleteRefercnt(inode uint64){
+func (client *ExtentClient) deleteRefercnt(inode uint64) {
 	client.referLock.Lock()
 	defer client.referLock.Unlock()
-	delete(client.referCnt,inode)
+	delete(client.referCnt, inode)
 }
 
 func (client *ExtentClient) Flush(inode uint64) (err error) {
@@ -142,29 +141,26 @@ func (client *ExtentClient) Flush(inode uint64) (err error) {
 	return request.err
 }
 
-
 func (client *ExtentClient) CloseForWrite(inode uint64) (err error) {
 	client.referLock.Lock()
-	refercnt,ok:=client.referCnt[inode]
+	refercnt, ok := client.referCnt[inode]
 	if !ok {
 		client.referLock.Unlock()
-		return fmt.Errorf("please open(%v)",inode)
+		return fmt.Errorf("please open(%v)", inode)
 	}
-	refercnt= refercnt-1
-	client.referCnt[inode]=refercnt
-	if refercnt>0{
+	refercnt = refercnt - 1
+	client.referCnt[inode] = refercnt
+	if refercnt > 0 {
 		client.referLock.Unlock()
 		return
 	}
 	client.referLock.Unlock()
-
 
 	streamWriter := client.getStreamWriterForClose(inode)
 	if streamWriter == nil {
 		client.deleteRefercnt(inode)
 		return
 	}
-
 
 	request := &CloseRequest{}
 	streamWriter.closeRequestCh <- request

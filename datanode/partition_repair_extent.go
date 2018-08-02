@@ -2,10 +2,10 @@ package datanode
 
 import (
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/storage"
 	"github.com/chubaoio/cbfs/util/log"
+	"github.com/juju/errors"
 	"hash/crc32"
 	"net"
 	"sync"

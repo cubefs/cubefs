@@ -3,7 +3,6 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/master"
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/storage"
@@ -12,6 +11,7 @@ import (
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/chubaoio/cbfs/util/pool"
 	"github.com/chubaoio/cbfs/util/ump"
+	"github.com/juju/errors"
 	"io"
 	"net"
 	"net/http"
