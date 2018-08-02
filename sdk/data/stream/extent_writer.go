@@ -142,14 +142,14 @@ func (writer *ExtentWriter) sendCurrPacket() (err error) {
 	writer.pushRequestToQueue(writer.currentPacket)
 	packet := writer.currentPacket
 	writer.currentPacket = nil
-	//orgOffset := writer.offset
+	orgOffset := writer.offset
 	writer.offset += packet.getPacketLength()
 	err = packet.writeTo(writer.connect) //if send packet,then signal recive goroutine for recive from connect
 	prefix := fmt.Sprintf("send inode %v_%v", writer.inode, packet.kernelOffset)
-	//log.LogDebugf(prefix+" to extent(%v) pkg(%v) orgextentOffset(%v)"+
-	//	" packetGetPacketLength(%v) after jia(%v) crc(%v)",
-	//	writer.toString(), packet.GetUniqueLogId(), orgOffset, packet.getPacketLength(),
-	//	writer.offset, packet.Crc)
+	log.LogDebugf(prefix+" to extent(%v) pkg(%v) orgextentOffset(%v)"+
+		" packetGetPacketLength(%v) after jia(%v) crc(%v)",
+		writer.toString(), packet.GetUniqueLogId(), orgOffset, packet.getPacketLength(),
+		writer.offset, packet.Crc)
 	if err == nil {
 		writer.handleCh <- ContinueReceive
 		return
@@ -287,8 +287,8 @@ func (writer *ExtentWriter) processReply(e *list.Element, request, reply *Packet
 			break
 		}
 	}
-	//log.LogDebugf("recive inode(%v) kerneloffset(%v) to extent(%v) pkg(%v) recive(%v)",
-	//	writer.inode, request.kernelOffset, writer.toString(), request.GetUniqueLogId(), reply.GetUniqueLogId())
+	log.LogDebugf("recive inode(%v) kerneloffset(%v) to extent(%v) pkg(%v) recive(%v)",
+		writer.inode, request.kernelOffset, writer.toString(), request.GetUniqueLogId(), reply.GetUniqueLogId())
 
 	return nil
 }
