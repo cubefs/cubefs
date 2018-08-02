@@ -77,11 +77,11 @@ func (f *File) Forget() {
 
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
 	ino := f.inode.ino
-	//log.LogDebugf("Open: ino(%v)", ino)
 	start := time.Now()
 	err = f.super.mw.Open_ll(ino)
 	if err != nil {
 		f.super.ic.Delete(ino)
+		log.LogErrorf("PERF: Open ino(%v) ERR(%v)ns", ino, ParseError(err))
 		return nil, ParseError(err)
 	}
 	elapsed := time.Since(start)
@@ -91,7 +91,6 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
 	ino := f.inode.ino
-	//log.LogDebugf("Close: ino(%v)", ino)
 	start := time.Now()
 	err = f.super.ec.Close(ino)
 	if err != nil {
@@ -136,8 +135,6 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) (err error) {
 	reqlen := len(req.Data)
 	if uint64(req.Offset) > f.inode.size && reqlen == 1 {
-		// Workaround: the fuse package is probably doing truncate size up
-		// if we reach here, which is not supported yet. So Just return.
 		log.LogDebugf("Write: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v)", f.inode.ino, req.Offset, reqlen, req.Flags, req.FileFlags)
 		return nil
 	}
