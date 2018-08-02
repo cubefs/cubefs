@@ -91,7 +91,6 @@ func (client *ExtentClient) OpenForRead(inode uint64) (stream *StreamReader, err
 
 func (client *ExtentClient) OpenForWrite(inode uint64) {
 	client.referLock.Lock()
-	defer client.referLock.Unlock()
 	refercnt, ok := client.referCnt[inode]
 	if !ok {
 		client.referCnt[inode] = 1
@@ -99,6 +98,8 @@ func (client *ExtentClient) OpenForWrite(inode uint64) {
 		refercnt++
 		client.referCnt[inode] = refercnt
 	}
+
+	client.referLock.Unlock()
 
 	client.writerLock.RLock()
 	_, ok = client.writers[inode]
