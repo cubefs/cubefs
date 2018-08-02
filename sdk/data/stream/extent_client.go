@@ -18,6 +18,8 @@ type GetExtentsFunc func(inode uint64) ([]proto.ExtentKey, error)
 type ExtentClient struct {
 	w               *data.Wrapper
 	writers         map[uint64]*StreamWriter
+	referCnt        map[uint64]uint64
+	referLock       sync.Mutex
 	writerLock      sync.RWMutex
 	appendExtentKey AppendExtentKeyFunc
 	getExtents      GetExtentsFunc
@@ -33,6 +35,7 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 	}
 	client.writers = make(map[uint64]*StreamWriter)
 	client.appendExtentKey = appendExtentKey
+	client.referCnt = make(map[uint64]uint64)
 	client.getExtents = getExtents
 	client.bufferSize = bufferSize
 	return
@@ -41,6 +44,12 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 func (client *ExtentClient) InitWriteStream(inode uint64) *StreamWriter {
 	writer := NewStreamWriter(client.w, inode, client.appendExtentKey, client.bufferSize)
 	client.writers[inode] = writer
+	client.referLock.Lock()
+	_,ok := client.referCnt[inode]
+	if !ok {
+		client.referCnt[inode] = 1
+	}
+	client.referLock.Unlock()
 	return writer
 }
 
@@ -103,6 +112,8 @@ func (client *ExtentClient) OpenForRead(inode uint64) (stream *StreamReader, err
 	return NewStreamReader(inode, client.w, client.getExtents)
 }
 
+
+
 func (client *ExtentClient) Flush(inode uint64) (err error) {
 	stream := client.getStreamWriterForRead(inode)
 	if stream == nil {
@@ -114,9 +125,21 @@ func (client *ExtentClient) Flush(inode uint64) (err error) {
 	return request.err
 }
 
+
 func (client *ExtentClient) Close(inode uint64) (err error) {
 	streamWriter := client.getStreamWriterForClose(inode)
 	if streamWriter == nil {
+		return
+	}
+	client.referLock.Lock()
+	inodeReferCnt := client.referCnt[inode]
+	if inodeReferCnt > 0 {
+		client.referCnt[inode] = inodeReferCnt - 1
+	}
+	inodeReferCnt = client.referCnt[inode]
+	client.referLock.Unlock()
+
+	if inodeReferCnt > 0 {
 		return
 	}
 	atomic.StoreInt32(&streamWriter.hasClosed, HasClosed)
@@ -126,6 +149,11 @@ func (client *ExtentClient) Close(inode uint64) (err error) {
 	if err = request.err; err != nil {
 		return
 	}
+	client.referLock.Lock()
+	delete(client.referCnt,inode)
+	client.referLock.Unlock()
+
+
 	client.writerLock.Lock()
 	delete(client.writers, inode)
 	atomic.StoreInt32(&streamWriter.hasClosed, HasClosed)
