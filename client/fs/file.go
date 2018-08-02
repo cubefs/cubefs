@@ -84,6 +84,11 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		log.LogErrorf("PERF: Open ino(%v) ERR(%v)ns", ino, ParseError(err))
 		return nil, ParseError(err)
 	}
+
+	if req.Flags.IsWriteOnly() || req.Flags.IsReadWrite() {
+		f.super.ec.OpenForWrite(ino)
+	}
+
 	elapsed := time.Since(start)
 	log.LogDebugf("PERF: Open ino(%v) (%v)ns", ino, elapsed.Nanoseconds())
 	return f, nil
@@ -92,12 +97,13 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
 	ino := f.inode.ino
 	start := time.Now()
-	err = f.super.ec.Close(ino)
-	if err != nil {
-		log.LogErrorf("Close: ino(%v) error (%v)", ino, err)
-		return fuse.EIO
+	if req.Flags.IsWriteOnly() || req.Flags.IsReadWrite() {
+		err = f.super.ec.CloseForWrite(ino)
+		if err != nil {
+			log.LogErrorf("Close: ino(%v) error (%v)", ino, err)
+			return fuse.EIO
+		}
 	}
-
 	elapsed := time.Since(start)
 	log.LogDebugf("PERF: Close ino(%v) (%v)ns", ino, elapsed.Nanoseconds())
 	return nil
