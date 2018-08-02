@@ -113,6 +113,23 @@ func (client *ExtentClient) OpenForRead(inode uint64) (stream *StreamReader, err
 }
 
 
+func (client *ExtentClient)OpenForWrite(inode uint64){
+	client.referLock.Lock()
+	defer client.referLock.Unlock()
+	refercnt,ok:=client.referCnt[inode]
+	if !ok {
+		client.referCnt[inode]=1
+	}else {
+		refercnt++
+		client.referCnt[inode]=refercnt
+	}
+}
+
+func (client *ExtentClient)deleteRefercnt(inode uint64){
+	client.referLock.Lock()
+	defer client.referLock.Unlock()
+	delete(client.referCnt,inode)
+}
 
 func (client *ExtentClient) Flush(inode uint64) (err error) {
 	stream := client.getStreamWriterForRead(inode)
@@ -126,23 +143,28 @@ func (client *ExtentClient) Flush(inode uint64) (err error) {
 }
 
 
-func (client *ExtentClient) Close(inode uint64) (err error) {
+func (client *ExtentClient) CloseForWrite(inode uint64) (err error) {
+	client.referLock.Lock()
+	refercnt,ok:=client.referCnt[inode]
+	if !ok {
+		client.referLock.Unlock()
+		return fmt.Errorf("please open(%v)",inode)
+	}
+	refercnt= refercnt-1
+	client.referCnt[inode]=refercnt
+	if refercnt>0{
+		client.referLock.Unlock()
+		return
+	}
+	client.referLock.Unlock()
+
+
 	streamWriter := client.getStreamWriterForClose(inode)
 	if streamWriter == nil {
+		client.deleteRefercnt(inode)
 		return
 	}
-	client.referLock.Lock()
-	inodeReferCnt := client.referCnt[inode]
-	if inodeReferCnt > 0 {
-		client.referCnt[inode] = inodeReferCnt - 1
-	}
-	inodeReferCnt = client.referCnt[inode]
-	client.referLock.Unlock()
-	atomic.StoreInt32(&streamWriter.hasClosed, HasClosed)
 
-	if inodeReferCnt > 0 {
-		return
-	}
 
 	request := &CloseRequest{}
 	streamWriter.closeRequestCh <- request
@@ -150,11 +172,8 @@ func (client *ExtentClient) Close(inode uint64) (err error) {
 	if err = request.err; err != nil {
 		return
 	}
-	client.referLock.Lock()
-	delete(client.referCnt,inode)
-	client.referLock.Unlock()
 
-
+	client.deleteRefercnt(inode)
 	client.writerLock.Lock()
 	delete(client.writers, inode)
 	atomic.StoreInt32(&streamWriter.hasClosed, HasClosed)
