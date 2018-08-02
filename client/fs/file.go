@@ -59,6 +59,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 		return ParseError(err)
 	}
 	inode.fillAttr(a)
+	log.LogDebugf("PERF Attr: ino(%v) size(%v)", ino, inode.size)
 	return nil
 }
 
