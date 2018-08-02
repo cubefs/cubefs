@@ -44,12 +44,6 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 func (client *ExtentClient) InitWriteStream(inode uint64) *StreamWriter {
 	writer := NewStreamWriter(client.w, inode, client.appendExtentKey, client.bufferSize)
 	client.writers[inode] = writer
-	client.referLock.Lock()
-	_, ok := client.referCnt[inode]
-	if !ok {
-		client.referCnt[inode] = 1
-	}
-	client.referLock.Unlock()
 	return writer
 }
 
