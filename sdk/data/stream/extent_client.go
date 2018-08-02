@@ -139,12 +139,14 @@ func (client *ExtentClient) CloseForWrite(inode uint64) (err error) {
 	client.referLock.Lock()
 	refercnt, ok := client.referCnt[inode]
 	if !ok {
+		client.Flush(inode)
 		client.referLock.Unlock()
 		return nil
 	}
 	refercnt = refercnt - 1
 	client.referCnt[inode] = refercnt
 	if refercnt > 0 {
+		client.Flush(inode)
 		client.referLock.Unlock()
 		return
 	}
