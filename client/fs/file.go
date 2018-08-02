@@ -59,7 +59,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 		return ParseError(err)
 	}
 	inode.fillAttr(a)
-	log.LogDebugf("PERF Attr: ino(%v) size(%v)", ino, inode.size)
+	log.LogDebugf("TRACE Attr: inode(%v)", inode)
 	return nil
 }
 
@@ -73,7 +73,7 @@ func (f *File) Forget() {
 	if extents != nil {
 		f.super.ec.Delete(extents) //FIXME: metanode would take over in the future
 	}
-	log.LogDebugf("PERF: Forget ino(%v) extents(%v)", ino, extents)
+	log.LogDebugf("TRACE Forget: ino(%v) extents(%v)", ino, extents)
 }
 
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
@@ -82,7 +82,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	err = f.super.mw.Open_ll(ino)
 	if err != nil {
 		f.super.ic.Delete(ino)
-		log.LogErrorf("PERF: Open ino(%v) ERR(%v)ns", ino, ParseError(err))
+		log.LogErrorf("Open: ino(%v) req(%v) err(%v)", ino, req, ParseError(err))
 		return nil, ParseError(err)
 	}
 
@@ -91,7 +91,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Open ino(%v) (%v)ns", ino, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Open: ino(%v) flags(%v) (%v)ns", ino, req.Flags, elapsed.Nanoseconds())
 	return f, nil
 }
 
@@ -101,12 +101,12 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 	if req.Flags.IsWriteOnly() || req.Flags.IsReadWrite() {
 		err = f.super.ec.CloseForWrite(ino)
 		if err != nil {
-			log.LogErrorf("Close: ino(%v) error (%v)", ino, err)
+			log.LogErrorf("Release: ino(%v) req(%v) err(%v)", ino, req, err)
 			return fuse.EIO
 		}
 	}
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Close ino(%v) (%v)ns", ino, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Release: ino(%v) req(%v) (%v)ns", ino, req, elapsed.Nanoseconds())
 	return nil
 }
 
@@ -122,11 +122,11 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	start := time.Now()
 	size, err := f.super.ec.Read(f.getReadStream(), f.inode.ino, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	if err != nil && err != io.EOF {
-		log.LogErrorf("Read error: ino(%v) err(%v) size(%v)", f.inode.ino, err, size)
+		log.LogErrorf("Read: ino(%v) req(%v) err(%v) size(%v)", f.inode.ino, req, err, size)
 		return fuse.EIO
 	}
 	if size > req.Size {
-		log.LogErrorf("Read error: ino(%v) request size(%v) read size(%v)", f.inode.ino, req.Size, size)
+		log.LogErrorf("Read: ino(%v) req(%v) size(%v)", f.inode.ino, req, size)
 		return fuse.ERANGE
 	}
 	if size > 0 {
@@ -134,7 +134,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Read HandleID(%v) ino(%v) sizeof Data(%v) offset(%v) size(%v) (%v)ns", req.Handle, f.inode.ino, len(resp.Data), req.Offset, req.Size, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Read: ino(%v) req(%v) size(%v) (%v)ns", f.inode.ino, req, size, elapsed.Nanoseconds())
 	return nil
 }
 
@@ -142,7 +142,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	reqlen := len(req.Data)
 	if uint64(req.Offset) > f.inode.size && reqlen == 1 {
 		// The fuse package is probably doing truncate size up, which is not supported yet. So Just return.
-		log.LogDebugf("Write: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v)", f.inode.ino, req.Offset, reqlen, req.Flags, req.FileFlags)
+		log.LogDebugf("Write: not support, ino(%v) req(%v)", f.inode.ino, req)
 		return nil
 	}
 
@@ -162,8 +162,8 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Write ino(%v) HandleID(%v) offset(%v) len(%v) flags(%v) fileflags(%v) (%v)ns ",
-		f.inode.ino, req.Handle, req.Offset, reqlen, req.Flags, req.FileFlags, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Write: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v) (%v)ns ",
+		f.inode.ino, req.Offset, reqlen, req.Flags, req.FileFlags, elapsed.Nanoseconds())
 	return nil
 }
 
@@ -171,12 +171,12 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	start := time.Now()
 	err = f.super.ec.Flush(f.inode.ino)
 	if err != nil {
-		log.LogErrorf("Flush error (%v)", err)
+		log.LogErrorf("Flush: ino(%v) err(%v)", f.inode.ino, err)
 		return fuse.EIO
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Flush ino(%v) HandleID(%v) (%v)ns", f.inode.ino, req.Handle, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Flush: ino(%v) (%v)ns", f.inode.ino, elapsed.Nanoseconds())
 	return nil
 }
 
@@ -184,11 +184,11 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	start := time.Now()
 	err = f.super.ec.Flush(f.inode.ino)
 	if err != nil {
-		log.LogErrorf("Fsync error (%v)", err)
+		log.LogErrorf("Fsync: ino(%v) err(%v)", f.inode.ino, err)
 		return fuse.EIO
 	}
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Fsync ino(%v) HandleID(%v) (%v)ns", f.inode.ino, req.Handle, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Fsync: ino(%v) (%v)ns", f.inode.ino, elapsed.Nanoseconds())
 	return nil
 }
 
@@ -216,7 +216,6 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	}
 
 	if req.Valid.Size() {
-		log.LogDebugf("Setattr: truncate ino(%v) reqSize(%v) inodeSize(%v)", ino, req.Size, inode.size)
 		if req.Size != inode.size {
 			log.LogWarnf("Setattr: truncate ino(%v) reqSize(%v) inodeSize(%v)", ino, req.Size, inode.size)
 		}
@@ -229,17 +228,17 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	inode.fillAttr(&resp.Attr)
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Setattr ino(%v) req(%v) (%v)ns", ino, req, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Setattr: ino(%v) req(%v) (%v)ns", ino, req, elapsed.Nanoseconds())
 	return nil
 }
 
 func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string, error) {
 	ino := f.inode.ino
-	log.LogDebugf("Readlink: ino(%v)", ino)
 	inode, err := f.super.InodeGet(ino)
 	if err != nil {
 		log.LogErrorf("Readlink: ino(%v) err(%v)", ino, err)
 		return "", ParseError(err)
 	}
+	log.LogDebugf("TRACE Readlink: ino(%v) target(%v)", ino, string(inode.target))
 	return string(inode.target), nil
 }

@@ -39,13 +39,14 @@ func NewDir(s *Super, i *Inode) *Dir {
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
-	inode, err := d.super.InodeGet(d.inode.ino)
+	ino := d.inode.ino
+	inode, err := d.super.InodeGet(ino)
 	if err != nil {
-		log.LogErrorf("Attr: ino(%v) err(%v)", d.inode.ino, err)
+		log.LogErrorf("Attr: ino(%v) err(%v)", ino, err)
 		return ParseError(err)
 	}
 	inode.fillAttr(a)
-	d.inode = inode
+	log.LogDebugf("TRACE Attr: inode(%v)", inode)
 	return nil
 }
 
@@ -53,42 +54,29 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	start := time.Now()
 	info, err := d.super.mw.Create_ll(d.inode.ino, req.Name, ModeRegular, nil)
 	if err != nil {
-		log.LogErrorf("Create: ino(%v) name(%v) err(%v)", d.inode.ino, req.Name, err)
+		log.LogErrorf("Create: parent(%v) req(%v) err(%v)", d.inode.ino, req, err)
 		return nil, nil, ParseError(err)
 	}
 
 	inode := NewInode(info)
 	d.super.ic.Put(inode)
-	inode.fillAttr(&resp.Attr)
 	child := NewFile(d.super, inode)
 	if req.Flags.IsWriteOnly() || req.Flags.IsReadWrite() {
 		d.super.ec.OpenForWrite(inode.ino)
 	}
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Create parent(%v) ino(%v) flags(%v) (%v)ns", d.inode.ino, inode.ino, req.Flags, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Create: parent(%v) req(%v) ino(%v) (%v)ns", d.inode.ino, req, inode.ino, elapsed.Nanoseconds())
 	return child, child, nil
 }
 
 func (d *Dir) Forget() {
-	//inode := d.inode
-	//log.LogDebugf("Forget: ino(%v)", inode.ino)
-
-	//	start := time.Now()
-	//
-	//	d.super.ic.Delete(inode.ino) //FIXME
-	//
-	//	elapsed := time.Since(start)
-	//	log.LogDebugf("PERF: Forget ino(%v) (%v)ns", inode.ino, elapsed.Nanoseconds())
 }
 
 func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
-	//log.LogDebugf("Mkdir: ino(%v) name(%v)", d.inode.ino, req.Name)
-
 	start := time.Now()
-
 	info, err := d.super.mw.Create_ll(d.inode.ino, req.Name, ModeDir, nil)
 	if err != nil {
-		log.LogErrorf("Mkdir: ino(%v) name(%v) err(%v)", d.inode.ino, req.Name, err)
+		log.LogErrorf("Mkdir: parent(%v) req(%v) err(%v)", d.inode.ino, req, err)
 		return nil, ParseError(err)
 	}
 
@@ -97,7 +85,7 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	child := NewDir(d.super, inode)
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Mkdir parent(%v) ino(%v) name(%v) (%v)ns", d.inode.ino, inode.ino, req.Name, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Mkdir: parent(%v) req(%v) ino(%v) (%v)ns", d.inode.ino, req, inode.ino, elapsed.Nanoseconds())
 	return child, nil
 }
 
@@ -112,7 +100,7 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	//d.inode.dcache = nil
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Remove parent(%v) name(%v) (%v)ns", d.inode.ino, req.Name, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Remove: parent(%v) req(%v) (%v)ns", d.inode.ino, req, elapsed.Nanoseconds())
 	return nil
 }
 
@@ -127,7 +115,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		err  error
 	)
 
-	log.LogDebugf("Lookup: parent(%v) name(%v)", d.inode.ino, req.Name)
+	log.LogDebugf("TRACE Lookup: parent(%v) req(%v)", d.inode.ino, req)
 
 	ino, ok := d.inode.dcache.Get(req.Name)
 	if !ok {
@@ -145,7 +133,6 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		log.LogErrorf("Lookup: parent(%v) name(%v) ino(%v) err(%v)", d.inode.ino, req.Name, ino, err)
 		return nil, ParseError(err)
 	}
-	inode.fillAttr(&resp.Attr)
 	mode = inode.mode
 
 	var child fs.Node
@@ -189,26 +176,27 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	d.inode.dcache = dcache
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: ReadDir ino(%v) (%v)ns", d.inode.ino, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE ReadDir: ino(%v) (%v)ns", d.inode.ino, elapsed.Nanoseconds())
 	return dirents, nil
 }
 
 func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Node) error {
 	dstDir, ok := newDir.(*Dir)
 	if !ok {
+		log.LogErrorf("Rename: NOT DIR, parent(%v) req(%v)", d.inode.ino, req)
 		return fuse.ENOTSUP
 	}
 	start := time.Now()
 	d.inode.dcache.Delete(req.OldName)
 	err := d.super.mw.Rename_ll(d.inode.ino, req.OldName, dstDir.inode.ino, req.NewName)
 	if err != nil {
-		log.LogErrorf("Rename: srcIno(%v) oldName(%v) dstIno(%v) newName(%v) err(%v)", d.inode.ino, req.OldName, dstDir.inode.ino, req.NewName, err)
+		log.LogErrorf("Rename: parent(%v) req(%v) err(%v)", d.inode.ino, req, err)
 		return ParseError(err)
 	}
 	//d.inode.dcache = nil
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Rename srcIno(%v) oldName(%v) dstIno(%v) newName(%v) (%v)ns", d.inode.ino, req.OldName, dstDir.inode.ino, req.NewName, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Rename: parent(%v) req(%v) (%v)ns", d.inode.ino, req, elapsed.Nanoseconds())
 	return nil
 }
 
@@ -228,7 +216,7 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 	inode.fillAttr(&resp.Attr)
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Setattr ino(%v) req(%v) reqSize(%v) inodeSize(%v) (%v)ns", ino, req, req.Size, inode.size, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Setattr: ino(%v) req(%v) inodeSize(%v) (%v)ns", ino, req, inode.size, elapsed.Nanoseconds())
 	return nil
 }
 
@@ -246,7 +234,7 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 	child := NewFile(d.super, inode)
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Symlink parent(%v) NewName(%v) Target(%v) ino(%v) (%v)ns", parentIno, req.NewName, req.Target, inode.ino, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Symlink: parent(%v) req(%v) ino(%v) (%v)ns", parentIno, req, inode.ino, elapsed.Nanoseconds())
 	return child, nil
 }
 
@@ -277,6 +265,6 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 	newFile := NewFile(d.super, newInode)
 
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Link parent(%v) name(%v) ino(%v) (%v)ns", d.inode.ino, req.NewName, newInode.ino, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Link: parent(%v) name(%v) ino(%v) (%v)ns", d.inode.ino, req.NewName, newInode.ino, elapsed.Nanoseconds())
 	return newFile, nil
 }
