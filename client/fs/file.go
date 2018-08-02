@@ -134,6 +134,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) (err error) {
 	reqlen := len(req.Data)
 	if uint64(req.Offset) > f.inode.size && reqlen == 1 {
+		// The fuse package is probably doing truncate size up, which is not supported yet. So Just return.
 		log.LogDebugf("Write: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v)", f.inode.ino, req.Offset, reqlen, req.Flags, req.FileFlags)
 		return nil
 	}
