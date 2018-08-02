@@ -61,9 +61,11 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	d.super.ic.Put(inode)
 	inode.fillAttr(&resp.Attr)
 	child := NewFile(d.super, inode)
-	d.super.ec.OpenForWrite(inode.ino)
+	if req.Flags.IsWriteOnly() || req.Flags.IsReadWrite() {
+		d.super.ec.OpenForWrite(inode.ino)
+	}
 	elapsed := time.Since(start)
-	log.LogDebugf("PERF: Create parent(%v) ino(%v) (%v)ns", d.inode.ino, inode.ino, elapsed.Nanoseconds())
+	log.LogDebugf("PERF: Create parent(%v) ino(%v) flags(%v) (%v)ns", d.inode.ino, inode.ino, req.Flags, elapsed.Nanoseconds())
 	return child, child, nil
 }
 
