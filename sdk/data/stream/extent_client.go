@@ -155,7 +155,7 @@ func (client *ExtentClient) CloseForWrite(inode uint64) (err error) {
 		client.deleteRefercnt(inode)
 		return
 	}
-
+	atomic.StoreInt32(&streamWriter.hasClosed, HasClosed)
 	request := &CloseRequest{}
 	streamWriter.closeRequestCh <- request
 	request = <-streamWriter.closeReplyCh
