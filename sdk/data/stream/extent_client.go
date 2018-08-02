@@ -138,11 +138,12 @@ func (client *ExtentClient) Close(inode uint64) (err error) {
 	}
 	inodeReferCnt = client.referCnt[inode]
 	client.referLock.Unlock()
+	atomic.StoreInt32(&streamWriter.hasClosed, HasClosed)
 
 	if inodeReferCnt > 0 {
 		return
 	}
-	atomic.StoreInt32(&streamWriter.hasClosed, HasClosed)
+
 	request := &CloseRequest{}
 	streamWriter.closeRequestCh <- request
 	request = <-streamWriter.closeReplyCh
