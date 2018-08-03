@@ -7,6 +7,18 @@ import (
 	"github.com/chubaoio/cbfs/proto"
 )
 
+func replyInfo(info *proto.InodeInfo, ino *Inode) {
+	info.Inode = ino.Inode
+	info.Mode = ino.Type
+	info.Size = ino.Size
+	info.Nlink = ino.NLink
+	info.Generation = ino.Generation
+	info.Target = ino.LinkTarget
+	info.CreateTime = time.Unix(ino.CreateTime, 0)
+	info.AccessTime = time.Unix(ino.AccessTime, 0)
+	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
+}
+
 func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 	inoID, err := mp.nextInodeID()
 	if err != nil {
@@ -65,7 +77,18 @@ func (mp *metaPartition) DeleteInode(req *DeleteInoReq, p *Packet) (err error) {
 		return
 	}
 	msg := r.(*ResponseInode)
-	p.PackErrorWithBody(msg.Status, nil)
+	status := msg.Status
+	var reply []byte
+	if status == proto.OpOk {
+		resp := &DeleteInoResp{
+			Info: &proto.InodeInfo{},
+		}
+		replyInfo(resp.Info, msg.Msg)
+		if reply, err = json.Marshal(resp); err != nil {
+			status = proto.OpErr
+		}
+	}
+	p.PackErrorWithBody(status, reply)
 	return
 }
 
