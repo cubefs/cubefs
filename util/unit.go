@@ -23,7 +23,7 @@ const (
 	MarkDelete             = 'D'
 	UnMarkDelete           = 'U'
 	MarkDeleteIndex        = BlockHeaderSize - 1
-	BlockSize              = 65536 * 4
+	BlockSize              = 65536 * 2
 	ReadBlockSize          = 65536
 	PerBlockCrcSize        = 4
 	DeleteIndexFileName    = "delete.index"
