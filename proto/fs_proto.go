@@ -62,10 +62,15 @@ type LinkInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
+//FIXME: unlink inode
 type DeleteInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+}
+
+type DeleteInodeResponse struct {
+	Info *InodeInfo `json:"info"`
 }
 
 type EvictInodeRequest struct {
