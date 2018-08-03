@@ -148,7 +148,7 @@ func (stream *StreamReader) read(data []byte, offset int, size int) (canRead int
 }
 
 func (stream *StreamReader) predictExtent(offset, size int) (startIndex int) {
-	startIndex = offset >> 28
+	startIndex = offset >> 27
 	r := stream.readers[startIndex]
 	if int(atomic.LoadUint64(&r.startInodeOffset)) <= offset && int(atomic.LoadUint64(&r.endInodeOffset)) >= offset+size {
 		return startIndex
