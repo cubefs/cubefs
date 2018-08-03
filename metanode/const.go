@@ -30,6 +30,8 @@ type (
 	LinkInodeResp = proto.LinkInodeResponse
 	// Client -> MetaNode delete Inode request struct
 	DeleteInoReq = proto.DeleteInodeRequest
+	// MetaNode -> Client delete Inode response
+	DeleteInoResp = proto.DeleteInodeResponse
 	// Client -> MetaNode create Dentry request struct
 	CreateDentryReq = proto.CreateDentryRequest
 	// Client -> MetaNode delete Dentry request struct
