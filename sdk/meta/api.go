@@ -82,6 +82,7 @@ create_dentry:
 			return nil, syscall.EEXIST
 		} else {
 			mw.idelete(mp, info.Inode)
+			mw.ievict(mp, info.Inode)
 			return nil, statusToErrno(status)
 		}
 	}
@@ -140,30 +141,30 @@ func (mw *MetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
 	return batchInfos
 }
 
-func (mw *MetaWrapper) Delete_ll(parentID uint64, name string) error {
+func (mw *MetaWrapper) Delete_ll(parentID uint64, name string) (*proto.InodeInfo, error) {
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
 		log.LogErrorf("Delete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
-		return syscall.ENOENT
+		return nil, syscall.ENOENT
 	}
 
 	status, inode, err := mw.ddelete(parentMP, parentID, name)
 	if err != nil || status != statusOK {
-		return statusToErrno(status)
+		return nil, statusToErrno(status)
 	}
 
 	// dentry is deleted successfully but inode is not, still returns success.
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		log.LogErrorf("Delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
-		return nil
+		return nil, nil
 	}
 
-	status, err = mw.idelete(mp, inode)
+	status, info, err := mw.idelete(mp, inode)
 	if err != nil || status != statusOK {
-		return nil
+		return nil, nil
 	}
-	return nil
+	return info, nil
 }
 
 func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID uint64, dstName string) (err error) {
@@ -214,7 +215,7 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 	if oldInode != 0 {
 		inodeMP := mw.getPartitionByInode(oldInode)
 		if inodeMP != nil {
-			status, err = mw.idelete(inodeMP, oldInode)
+			mw.idelete(inodeMP, oldInode)
 		}
 	}
 

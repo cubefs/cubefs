@@ -92,12 +92,17 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	start := time.Now()
 	d.inode.dcache.Delete(req.Name)
-	err := d.super.mw.Delete_ll(d.inode.ino, req.Name)
+	info, err := d.super.mw.Delete_ll(d.inode.ino, req.Name)
 	if err != nil {
-		log.LogErrorf("Remove: ino(%v) name(%v) err(%v)", d.inode.ino, req.Name, err)
+		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.inode.ino, req.Name, err)
 		return ParseError(err)
 	}
 	//d.inode.dcache = nil
+
+	if info != nil && info.Nlink == 0 {
+		d.super.orphan.Put(info.Inode)
+		log.LogDebugf("Remove: add to orphan inode list, ino(%v)", info.Inode)
+	}
 
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Remove: parent(%v) req(%v) (%v)ns", d.inode.ino, req, elapsed.Nanoseconds())

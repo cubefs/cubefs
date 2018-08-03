@@ -68,7 +68,9 @@ func (f *File) Forget() {
 		return
 	}
 	ino := f.inode.ino
-	f.super.ic.Delete(ino)
+	if !f.super.orphan.Evict(ino) {
+		return
+	}
 	extents := f.super.mw.Evict(ino)
 	if extents != nil {
 		f.super.ec.Delete(extents) //FIXME: metanode would take over in the future
