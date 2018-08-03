@@ -100,7 +100,7 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	//d.inode.dcache = nil
 
 	if info != nil && info.Nlink == 0 {
-		//TODO: add to orphan inode list
+		d.super.orphan.Put(info.Inode)
 		log.LogDebugf("Remove: add to orphan inode list, ino(%v)", info.Inode)
 	}
 
