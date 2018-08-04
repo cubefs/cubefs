@@ -49,7 +49,7 @@ func NewSuper(volname, master string, bufferSize uint64, icacheTimeout int64) (s
 		inodeExpiration = time.Duration(icacheTimeout) * time.Second
 	}
 	s.ic = NewInodeCache(inodeExpiration, MaxInodeCache)
-	s.orphan = NewOrphanInodeList()
+	//s.orphan = NewOrphanInodeList()
 	log.LogInfof("NewSuper: cluster(%v) volname(%v)", s.cluster, s.volname)
 	return s, nil
 }
