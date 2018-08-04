@@ -194,20 +194,20 @@ func (client *ExtentClient) Read(stream *StreamReader, inode uint64, data []byte
 }
 
 func (client *ExtentClient) Delete(keys []proto.ExtentKey) (err error) {
-	wg := &sync.WaitGroup{}
+	//wg := &sync.WaitGroup{}
 	for _, k := range keys {
 		dp, err := client.w.GetDataPartition(k.PartitionId)
 		if err != nil {
 			continue
 		}
-		wg.Add(1)
+		//wg.Add(1)
 		go func(p *data.DataPartition, id uint64) {
-			defer wg.Done()
+			//defer wg.Done()
 			client.delete(p, id)
 		}(dp, k.ExtentId)
 	}
 
-	wg.Wait()
+	//wg.Wait()
 	return nil
 }
 
