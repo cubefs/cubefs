@@ -16,8 +16,9 @@ const (
 )
 
 func (mp *metaPartition) startFreeList() {
-	// start vol update
+	// start vol update ticket
 	go mp.updateVolWorker()
+
 	go mp.deleteWorker()
 	go mp.checkFreelistWorker()
 }
@@ -43,7 +44,7 @@ func (mp *metaPartition) updateVolWorker() {
 			log.LogErrorf("[updateVol] %s", err.Error())
 			continue
 		}
-		mp.vol.UpdatePartitions(*dataView)
+		mp.vol.UpdatePartitions(dataView)
 		log.LogDebugf("[updateVol] %v", dataView)
 	}
 }
@@ -145,25 +146,26 @@ func (mp *metaPartition) deleteDataPartitionMark(inoSlice []*Inode) {
 		}
 		return
 	}
-	needCommit := make([]*Inode, 0, BatchCounts)
+	shouldCommit := make([]*Inode, 0, BatchCounts)
 	for _, ino := range inoSlice {
 		ino.Extents.Range(func(i int, v proto.ExtentKey) bool {
 			if err := stepFunc(v); err != nil {
 				mp.freeList.Push(ino)
+				log.LogWarnf("[deleteDataPartitionMark]: %s", err.Error())
 			}
-			needCommit = append(needCommit, ino)
+			shouldCommit = append(shouldCommit, ino)
 			return true
 		})
 	}
-	if len(needCommit) > 0 {
-		bufSlice := make([]byte, 0, 8*len(needCommit))
-		for _, ino := range needCommit {
+	if len(shouldCommit) > 0 {
+		bufSlice := make([]byte, 0, 8*len(shouldCommit))
+		for _, ino := range shouldCommit {
 			bufSlice = append(bufSlice, ino.MarshalKey()...)
 		}
 		// raft Commit
 		_, err := mp.Put(opFSMInternalDeleteInode, bufSlice)
 		if err != nil {
-			for _, ino := range needCommit {
+			for _, ino := range shouldCommit {
 				mp.freeList.Push(ino)
 			}
 		}

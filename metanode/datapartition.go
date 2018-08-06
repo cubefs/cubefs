@@ -43,7 +43,7 @@ func (v *Vol) GetPartition(partitionID uint32) *DataPartition {
 	return v.dataPartitionView[partitionID]
 }
 
-func (v *Vol) UpdatePartitions(partitions DataPartitionsView) {
+func (v *Vol) UpdatePartitions(partitions *DataPartitionsView) {
 	for _, dp := range partitions.DataPartitions {
 		v.replaceOrInsert(dp)
 	}

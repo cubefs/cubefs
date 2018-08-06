@@ -1,8 +1,11 @@
 package metanode
 
 import (
+	"bytes"
+	"encoding/binary"
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/util/btree"
+	"io"
 )
 
 type ResponseInode struct {
@@ -113,6 +116,25 @@ func (mp *metaPartition) deleteInode(ino *Inode) (resp *ResponseInode) {
 	mp.inodeTree.Delete(ino)
 	resp.Msg = i
 	return
+}
+
+func (mp *metaPartition) internalDelete(val []byte) (err error) {
+	if len(val) == 0 {
+		return
+	}
+	buf := bytes.NewBuffer(val)
+	ino := NewInode(0, 0)
+	for {
+		err = binary.Read(buf, binary.BigEndian, &ino.Inode)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+				return
+			}
+			return
+		}
+		mp.internalDeleteInode(ino)
+	}
 }
 
 func (mp *metaPartition) internalDeleteInode(ino *Inode) {
