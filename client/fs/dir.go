@@ -1,3 +1,17 @@
+// Copyright 2018 The ChuBao Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package fs
 
 import (
@@ -92,12 +106,17 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	start := time.Now()
 	d.inode.dcache.Delete(req.Name)
-	err := d.super.mw.Delete_ll(d.inode.ino, req.Name)
+	info, err := d.super.mw.Delete_ll(d.inode.ino, req.Name)
 	if err != nil {
-		log.LogErrorf("Remove: ino(%v) name(%v) err(%v)", d.inode.ino, req.Name, err)
+		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.inode.ino, req.Name, err)
 		return ParseError(err)
 	}
 	//d.inode.dcache = nil
+
+	if info != nil && info.Nlink == 0 {
+		//d.super.orphan.Put(info.Inode)
+		log.LogDebugf("Remove: add to orphan inode list, ino(%v)", info.Inode)
+	}
 
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Remove: parent(%v) req(%v) (%v)ns", d.inode.ino, req, elapsed.Nanoseconds())

@@ -1,3 +1,17 @@
+// Copyright 2018 The ChuBao Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package stream
 
 import (
@@ -15,8 +29,11 @@ import (
 type AppendExtentKeyFunc func(inode uint64, key proto.ExtentKey) error
 type GetExtentsFunc func(inode uint64) ([]proto.ExtentKey, error)
 
+var (
+	gDataWrapper *data.Wrapper
+)
+
 type ExtentClient struct {
-	w               *data.Wrapper
 	writers         map[uint64]*StreamWriter
 	referCnt        map[uint64]uint64
 	referLock       sync.Mutex
@@ -29,7 +46,7 @@ type ExtentClient struct {
 func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc, bufferSize uint64) (client *ExtentClient, err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	client = new(ExtentClient)
-	client.w, err = data.NewDataPartitionWrapper(volname, master)
+	gDataWrapper, err = data.NewDataPartitionWrapper(volname, master)
 	if err != nil {
 		return nil, fmt.Errorf("init dp Wrapper failed (%v)", err.Error())
 	}
@@ -42,7 +59,7 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 }
 
 func (client *ExtentClient) InitWriteStream(inode uint64) *StreamWriter {
-	writer := NewStreamWriter(client.w, inode, client.appendExtentKey, client.bufferSize)
+	writer := NewStreamWriter(inode, client.appendExtentKey, client.bufferSize)
 	client.writers[inode] = writer
 	return writer
 }
@@ -86,7 +103,7 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write 
 }
 
 func (client *ExtentClient) OpenForRead(inode uint64) (stream *StreamReader, err error) {
-	return NewStreamReader(inode, client.w, client.getExtents)
+	return NewStreamReader(inode, client.getExtents)
 }
 
 func (client *ExtentClient) OpenForWrite(inode uint64) {
@@ -111,7 +128,7 @@ func (client *ExtentClient) OpenForWrite(inode uint64) {
 	client.writerLock.Lock()
 	_, ok = client.writers[inode]
 	if !ok {
-		writer := NewStreamWriter(client.w, inode, client.appendExtentKey, client.bufferSize)
+		writer := NewStreamWriter(inode, client.appendExtentKey, client.bufferSize)
 		client.writers[inode] = writer
 	}
 	client.writerLock.Unlock()
@@ -194,33 +211,33 @@ func (client *ExtentClient) Read(stream *StreamReader, inode uint64, data []byte
 }
 
 func (client *ExtentClient) Delete(keys []proto.ExtentKey) (err error) {
-	wg := &sync.WaitGroup{}
+	//wg := &sync.WaitGroup{}
 	for _, k := range keys {
-		dp, err := client.w.GetDataPartition(k.PartitionId)
+		dp, err := gDataWrapper.GetDataPartition(k.PartitionId)
 		if err != nil {
 			continue
 		}
-		wg.Add(1)
+		//wg.Add(1)
 		go func(p *data.DataPartition, id uint64) {
-			defer wg.Done()
+			//defer wg.Done()
 			client.delete(p, id)
 		}(dp, k.ExtentId)
 	}
 
-	wg.Wait()
+	//wg.Wait()
 	return nil
 }
 
 func (client *ExtentClient) delete(dp *data.DataPartition, extentId uint64) (err error) {
-	connect, err := client.w.GetConnect(dp.Hosts[0])
+	connect, err := gDataWrapper.GetConnect(dp.Hosts[0])
 	if err != nil {
 		return
 	}
 	defer func() {
 		if err == nil {
-			client.w.PutConnect(connect, false)
+			gDataWrapper.PutConnect(connect, false)
 		} else {
-			client.w.PutConnect(connect, true)
+			gDataWrapper.PutConnect(connect, true)
 		}
 	}()
 	p := NewDeleteExtentPacket(dp, extentId)

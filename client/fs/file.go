@@ -1,3 +1,17 @@
+// Copyright 2018 The ChuBao Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package fs
 
 import (
@@ -64,16 +78,18 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 func (f *File) Forget() {
-	if f.inode.mode != ModeRegular {
-		return
-	}
-	ino := f.inode.ino
-	f.super.ic.Delete(ino)
-	extents := f.super.mw.Evict(ino)
-	if extents != nil {
-		f.super.ec.Delete(extents) //FIXME: metanode would take over in the future
-	}
-	log.LogDebugf("TRACE Forget: ino(%v)", ino)
+	//if f.inode.mode != ModeRegular {
+	//	return
+	//}
+	//ino := f.inode.ino
+	//if !f.super.orphan.Evict(ino) {
+	//	return
+	//}
+	//extents := f.super.mw.Evict(ino)
+	//if extents != nil {
+	//	f.super.ec.Delete(extents) //FIXME: metanode would take over in the future
+	//}
+	//log.LogDebugf("TRACE Forget: ino(%v)", ino)
 }
 
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {

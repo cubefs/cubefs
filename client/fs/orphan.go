@@ -15,49 +15,41 @@
 package fs
 
 import (
+	"container/list"
 	"sync"
 )
 
-type DentryCache struct {
+type OrphanInodeList struct {
 	sync.RWMutex
-	cache map[string]uint64
+	cache map[uint64]*list.Element
+	list  *list.List
 }
 
-func NewDentryCache() *DentryCache {
-	return &DentryCache{
-		cache: make(map[string]uint64),
+func NewOrphanInodeList() *OrphanInodeList {
+	return &OrphanInodeList{
+		cache: make(map[uint64]*list.Element),
+		list:  list.New(),
 	}
 }
 
-func (dc *DentryCache) Put(name string, ino uint64) {
-	return //FIXME
-
-	if dc == nil {
-		return
+func (l *OrphanInodeList) Put(ino uint64) {
+	l.Lock()
+	defer l.Unlock()
+	_, ok := l.cache[ino]
+	if !ok {
+		element := l.list.PushFront(ino)
+		l.cache[ino] = element
 	}
-	dc.Lock()
-	defer dc.Unlock()
-	dc.cache[name] = ino
 }
 
-func (dc *DentryCache) Get(name string) (uint64, bool) {
-	return 0, false //FIXME
-
-	if dc == nil {
-		return 0, false
+func (l *OrphanInodeList) Evict(ino uint64) bool {
+	l.Lock()
+	defer l.Unlock()
+	element, ok := l.cache[ino]
+	if !ok {
+		return false
 	}
-
-	dc.RLock()
-	defer dc.RUnlock()
-	ino, ok := dc.cache[name]
-	return ino, ok
-}
-
-func (dc *DentryCache) Delete(name string) {
-	if dc == nil {
-		return
-	}
-	dc.Lock()
-	defer dc.Unlock()
-	delete(dc.cache, name)
+	l.list.Remove(element)
+	delete(l.cache, ino)
+	return true
 }

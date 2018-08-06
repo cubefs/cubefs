@@ -1,3 +1,17 @@
+// Copyright 2018 The ChuBao Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package stream
 
 import (
@@ -34,7 +48,6 @@ type ExtentWriter struct {
 	inode         uint64     //Current write Inode
 	requestQueue  *list.List //sendPacketList
 	dp            *data.DataPartition
-	w             *data.Wrapper
 	extentId      uint64 //current FileId
 	currentPacket *Packet
 	byteAck       uint64 //DataNode Has Ack Bytes
@@ -48,7 +61,7 @@ type ExtentWriter struct {
 	flushSignleCh chan bool
 }
 
-func NewExtentWriter(inode uint64, dp *data.DataPartition, w *data.Wrapper, extentId uint64) (writer *ExtentWriter, err error) {
+func NewExtentWriter(inode uint64, dp *data.DataPartition, extentId uint64) (writer *ExtentWriter, err error) {
 	if extentId <= 0 {
 		return nil, fmt.Errorf("inode(%v),dp(%v),unavalid extentId(%v)", inode, dp.PartitionID, extentId)
 	}
@@ -58,7 +71,6 @@ func NewExtentWriter(inode uint64, dp *data.DataPartition, w *data.Wrapper, exte
 	writer.extentId = extentId
 	writer.dp = dp
 	writer.inode = inode
-	writer.w = w
 	writer.flushSignleCh = make(chan bool, 1)
 	var connect *net.TCPConn
 	conn, err := net.DialTimeout("tcp", dp.Hosts[0], time.Second)

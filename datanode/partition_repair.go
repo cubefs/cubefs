@@ -1,3 +1,17 @@
+// Copyright 2018 The ChuBao Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package datanode
 
 import (
@@ -201,7 +215,7 @@ func (dp *dataPartition) generatorFilesRepairTasks(allMembers []*MembersFileMeta
 func (dp *dataPartition) mapMaxSizeExtentToIndex(allMembers []*MembersFileMetas) (maxSizeExtentMap map[int]int) {
 	leader := allMembers[0]
 	maxSizeExtentMap = make(map[int]int)
-	for fileId, _ := range leader.files { //range leader all extentFiles
+	for fileId := range leader.files { //range leader all extentFiles
 		maxSizeExtentMap[fileId] = 0
 		var maxFileSize uint64
 		for index := 0; index < len(allMembers); index++ {

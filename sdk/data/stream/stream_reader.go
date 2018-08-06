@@ -1,9 +1,22 @@
+// Copyright 2018 The ChuBao Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package stream
 
 import (
 	"fmt"
 	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/sdk/data"
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/juju/errors"
@@ -24,17 +37,15 @@ type ReadRequest struct {
 
 type StreamReader struct {
 	inode      uint64
-	w          *data.Wrapper
 	readers    []*ExtentReader
 	getExtents GetExtentsFunc
 	extents    *proto.StreamKey
 	fileSize   uint64
 }
 
-func NewStreamReader(inode uint64, w *data.Wrapper, getExtents GetExtentsFunc) (stream *StreamReader, err error) {
+func NewStreamReader(inode uint64, getExtents GetExtentsFunc) (stream *StreamReader, err error) {
 	stream = new(StreamReader)
 	stream.inode = inode
-	stream.w = w
 	stream.getExtents = getExtents
 	stream.extents = proto.NewStreamKey(inode)
 	stream.extents.Extents, err = stream.getExtents(inode)
@@ -44,7 +55,7 @@ func NewStreamReader(inode uint64, w *data.Wrapper, getExtents GetExtentsFunc) (
 	var offset int
 	var reader *ExtentReader
 	for _, key := range stream.extents.Extents {
-		if reader, err = NewExtentReader(inode, offset, key, stream.w); err != nil {
+		if reader, err = NewExtentReader(inode, offset, key); err != nil {
 			return nil, errors.Annotatef(err, "NewStreamReader inode(%v) "+
 				"key(%v) dp not found error", inode, key)
 		}
@@ -104,7 +115,7 @@ func (stream *StreamReader) updateLocalReader(newStreamKey *proto.StreamKey) (er
 			newOffSet += int(key.Size)
 			continue
 		} else if index > oldReaderCnt-1 {
-			if r, err = NewExtentReader(stream.inode, newOffSet, key, stream.w); err != nil {
+			if r, err = NewExtentReader(stream.inode, newOffSet, key); err != nil {
 				return errors.Annotatef(err, "NewStreamReader inode(%v) key(%v) "+
 					"dp not found error", stream.inode, key)
 			}
@@ -148,7 +159,7 @@ func (stream *StreamReader) read(data []byte, offset int, size int) (canRead int
 }
 
 func (stream *StreamReader) predictExtent(offset, size int) (startIndex int) {
-	startIndex = offset >> 28
+	startIndex = offset >> 27
 	r := stream.readers[startIndex]
 	if int(atomic.LoadUint64(&r.startInodeOffset)) <= offset && int(atomic.LoadUint64(&r.endInodeOffset)) >= offset+size {
 		return startIndex

@@ -1,3 +1,17 @@
+// Copyright 2018 The ChuBao Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package meta
 
 import (
@@ -95,7 +109,7 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode uint32, target []byte) (s
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, err error) {
+func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
 	req := &proto.DeleteInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -128,8 +142,15 @@ func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, err
 		return
 	}
 
+	resp := new(proto.DeleteInodeResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("idelete: mp(%v) req(%v) err(%v) PacketData(%v)", mp, *req, err, string(packet.Data))
+		return
+	}
+
 	log.LogDebugf("idelete exit: mp(%v) req(%v)", mp, *req)
-	return statusOK, nil
+	return statusOK, resp.Info, nil
 }
 
 func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, extents []proto.ExtentKey, err error) {
