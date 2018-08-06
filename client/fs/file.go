@@ -78,18 +78,18 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 func (f *File) Forget() {
-	//if f.inode.mode != ModeRegular {
-	//	return
-	//}
-	//ino := f.inode.ino
-	//if !f.super.orphan.Evict(ino) {
-	//	return
-	//}
-	//extents := f.super.mw.Evict(ino)
-	//if extents != nil {
-	//	f.super.ec.Delete(extents) //FIXME: metanode would take over in the future
-	//}
-	//log.LogDebugf("TRACE Forget: ino(%v)", ino)
+	if f.inode.mode != ModeRegular {
+		return
+	}
+	ino := f.inode.ino
+	if !f.super.orphan.Evict(ino) {
+		return
+	}
+	extents := f.super.mw.Evict(ino)
+	if extents != nil {
+		f.super.ec.Delete(extents) //FIXME: metanode would take over in the future
+	}
+	log.LogDebugf("TRACE Forget: ino(%v)", ino)
 }
 
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
