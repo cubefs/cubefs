@@ -34,7 +34,6 @@ type ExtentWriter struct {
 	inode         uint64     //Current write Inode
 	requestQueue  *list.List //sendPacketList
 	dp            *data.DataPartition
-	w             *data.Wrapper
 	extentId      uint64 //current FileId
 	currentPacket *Packet
 	byteAck       uint64 //DataNode Has Ack Bytes
@@ -48,7 +47,7 @@ type ExtentWriter struct {
 	flushSignleCh chan bool
 }
 
-func NewExtentWriter(inode uint64, dp *data.DataPartition, w *data.Wrapper, extentId uint64) (writer *ExtentWriter, err error) {
+func NewExtentWriter(inode uint64, dp *data.DataPartition, extentId uint64) (writer *ExtentWriter, err error) {
 	if extentId <= 0 {
 		return nil, fmt.Errorf("inode(%v),dp(%v),unavalid extentId(%v)", inode, dp.PartitionID, extentId)
 	}
@@ -58,7 +57,6 @@ func NewExtentWriter(inode uint64, dp *data.DataPartition, w *data.Wrapper, exte
 	writer.extentId = extentId
 	writer.dp = dp
 	writer.inode = inode
-	writer.w = w
 	writer.flushSignleCh = make(chan bool, 1)
 	var connect *net.TCPConn
 	conn, err := net.DialTimeout("tcp", dp.Hosts[0], time.Second)

@@ -37,7 +37,6 @@ type CloseRequest struct {
 }
 
 type StreamWriter struct {
-	w                  *data.Wrapper
 	currentWriter      *ExtentWriter //current ExtentWriter
 	errCount           int           //error count
 	currentPartitionId uint32        //current PartitionId
@@ -58,9 +57,8 @@ type StreamWriter struct {
 	hasClosed          int32
 }
 
-func NewStreamWriter(w *data.Wrapper, inode uint64, appendExtentKey AppendExtentKeyFunc, bufferSize uint64) (stream *StreamWriter) {
+func NewStreamWriter(inode uint64, appendExtentKey AppendExtentKeyFunc, bufferSize uint64) (stream *StreamWriter) {
 	stream = new(StreamWriter)
-	stream.w = w
 	stream.appendExtentKey = appendExtentKey
 	stream.Inode = inode
 	stream.writeRequestCh = make(chan *WriteRequest, 1000)
@@ -231,7 +229,7 @@ func (stream *StreamWriter) flushCurrExtentWriter() (err error) {
 	}
 	if writer.isFullExtent() {
 		writer.close()
-		stream.w.PutConnect(writer.getConnect(), NoCloseConnect)
+		gDataWrapper.PutConnect(writer.getConnect(), NoCloseConnect)
 		if err = stream.updateToMetaNode(); err != nil {
 			err = errors.Annotatef(err, "update to MetaNode failed(%v)", err.Error())
 			return err
@@ -334,7 +332,7 @@ func (stream *StreamWriter) allocateNewExtentWriter() (writer *ExtentWriter, err
 	)
 	err = fmt.Errorf("cannot alloct new extent after maxrery")
 	for i := 0; i < MaxSelectDataPartionForWrite; i++ {
-		if dp, err = stream.w.GetWriteDataPartition(stream.excludePartition); err != nil {
+		if dp, err = gDataWrapper.GetWriteDataPartition(stream.excludePartition); err != nil {
 			log.LogWarn(fmt.Sprintf("stream (%v) ActionAllocNewExtentWriter "+
 				"failed on getWriteDataPartion,error(%v) execludeDataPartion(%v)", stream.toString(), err.Error(), stream.excludePartition))
 			continue
@@ -344,7 +342,7 @@ func (stream *StreamWriter) allocateNewExtentWriter() (writer *ExtentWriter, err
 				"create Extent,error(%v) execludeDataPartion(%v)", stream.toString(), err.Error(), stream.excludePartition))
 			continue
 		}
-		if writer, err = NewExtentWriter(stream.Inode, dp, stream.w, extentId); err != nil {
+		if writer, err = NewExtentWriter(stream.Inode, dp, extentId); err != nil {
 			log.LogWarn(fmt.Sprintf("stream (%v) ActionAllocNewExtentWriter "+
 				"NewExtentWriter(%v),error(%v) execludeDataPartion(%v)", stream.toString(), extentId, err.Error(), stream.excludePartition))
 			continue

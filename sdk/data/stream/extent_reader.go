@@ -30,15 +30,13 @@ type ExtentReader struct {
 	endInodeOffset   uint64
 	dp               *data.DataPartition
 	key              proto.ExtentKey
-	w                *data.Wrapper
 	readerIndex      uint32
 	readcnt          uint64
 }
 
-func NewExtentReader(inode uint64, inInodeOffset int, key proto.ExtentKey,
-	w *data.Wrapper) (reader *ExtentReader, err error) {
+func NewExtentReader(inode uint64, inInodeOffset int, key proto.ExtentKey) (reader *ExtentReader, err error) {
 	reader = new(ExtentReader)
-	reader.dp, err = w.GetDataPartition(key.PartitionId)
+	reader.dp, err = gDataWrapper.GetDataPartition(key.PartitionId)
 	if err != nil {
 		return
 	}
@@ -47,7 +45,6 @@ func NewExtentReader(inode uint64, inInodeOffset int, key proto.ExtentKey,
 	reader.readcnt = 1
 	reader.startInodeOffset = uint64(inInodeOffset)
 	reader.endInodeOffset = reader.startInodeOffset + uint64(key.Size)
-	reader.w = w
 	rand.Seed(time.Now().UnixNano())
 	reader.readerIndex = uint32(rand.Intn(int(reader.dp.ReplicaNum)))
 	return reader, nil
@@ -173,7 +170,7 @@ func (reader *ExtentReader) readDataFromHost(offset, expectReadSize int, data []
 		atomic.StoreUint32(&reader.readerIndex, 0)
 	}
 	host := reader.dp.Hosts[index]
-	connect, err = reader.w.GetConnect(host)
+	connect, err = gDataWrapper.GetConnect(host)
 	if err != nil {
 		atomic.AddUint32(&reader.readerIndex, 1)
 		return 0, errors.Annotatef(err, reader.toString()+
@@ -184,9 +181,9 @@ func (reader *ExtentReader) readDataFromHost(offset, expectReadSize int, data []
 	defer func() {
 		if err != nil {
 			atomic.AddUint32(&reader.readerIndex, 1)
-			reader.w.PutConnect(connect, ForceCloseConnect)
+			gDataWrapper.PutConnect(connect, ForceCloseConnect)
 		} else {
-			reader.w.PutConnect(connect, NoCloseConnect)
+			gDataWrapper.PutConnect(connect, NoCloseConnect)
 		}
 	}()
 
