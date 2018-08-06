@@ -109,7 +109,6 @@ func (mp *metaPartition) checkFreelistWorker() {
 				break
 			}
 			buffSlice = append(buffSlice, ino)
-
 		}
 		if len(buffSlice) == 0 {
 			continue
@@ -135,15 +134,21 @@ func (mp *metaPartition) deleteDataPartitionMark(inoSlice []*Inode) {
 		// delete dataNode
 		conn, err := mp.config.ConnPool.Get(dp.Hosts[0])
 		if err != nil {
+			mp.config.ConnPool.Put(conn, ForceCloseConnect)
 			return
 		}
 		p := NewExtentDeletePacket(dp, ext.ExtentId)
 		if err = p.WriteToConn(conn); err != nil {
+			mp.config.ConnPool.Put(conn, ForceCloseConnect)
 			return
 		}
 		if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+			mp.config.ConnPool.Put(conn, ForceCloseConnect)
 			return
 		}
+		log.LogDebugf("[deleteDataPartitionMark] req: partitionID=%d, "+
+			"extentID=%d; resp: %v", ext.PartitionId, ext.ExtentId, p.GetResultMesg())
+		mp.config.ConnPool.Put(conn, NoCloseConnect)
 		return
 	}
 	shouldCommit := make([]*Inode, 0, BatchCounts)
