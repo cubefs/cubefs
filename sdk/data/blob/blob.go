@@ -5,11 +5,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/chubaoio/cbfs/util/pool"
+	"github.com/juju/errors"
 )
 
 const (

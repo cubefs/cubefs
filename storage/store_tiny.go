@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/util"
+	"github.com/juju/errors"
 	"io/ioutil"
 	"strconv"
 )

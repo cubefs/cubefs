@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net"
 
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/util/log"
+	"github.com/juju/errors"
 )
 
 const (

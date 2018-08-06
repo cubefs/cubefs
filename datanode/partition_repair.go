@@ -201,7 +201,7 @@ func (dp *dataPartition) generatorFilesRepairTasks(allMembers []*MembersFileMeta
 func (dp *dataPartition) mapMaxSizeExtentToIndex(allMembers []*MembersFileMetas) (maxSizeExtentMap map[int]int) {
 	leader := allMembers[0]
 	maxSizeExtentMap = make(map[int]int)
-	for fileId, _ := range leader.files { //range leader all extentFiles
+	for fileId := range leader.files { //range leader all extentFiles
 		maxSizeExtentMap[fileId] = 0
 		var maxFileSize uint64
 		for index := 0; index < len(allMembers); index++ {

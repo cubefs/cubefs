@@ -93,7 +93,7 @@ func main() {
 		return
 	}
 	ec, err := stream.NewExtentClient("intest", "10.196.31.173:80,10.196.31.141:80,10.196.30.200:80",
-		mw.AppendExtentKey, mw.GetExtents, 3 * util.MB)
+		mw.AppendExtentKey, mw.GetExtents, 3*util.MB)
 	if err != nil {
 		fmt.Println(err)
 		return

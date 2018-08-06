@@ -3,8 +3,8 @@ package storage
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/util"
+	"github.com/juju/errors"
 	"hash/crc32"
 	"io"
 	"math"
@@ -164,7 +164,7 @@ func (e *fsExtent) InitToFS(ino uint64, overwrite bool) (err error) {
 			os.Remove(e.filePath)
 		}
 	}()
-	 e.tryKeepSize(int(e.file.Fd()), 0, util.ExtentFileSizeLimit)
+	e.tryKeepSize(int(e.file.Fd()), 0, util.ExtentFileSizeLimit)
 	if err = e.file.Truncate(util.BlockHeaderSize); err != nil {
 		return
 	}

@@ -13,13 +13,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/raftstore"
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/config"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/chubaoio/cbfs/util/ump"
+	"github.com/juju/errors"
 )
 
 // The MetaNode manage Dentry and Inode information in multiple metaPartition, and

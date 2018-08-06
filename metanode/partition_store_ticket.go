@@ -3,10 +3,10 @@ package metanode
 import (
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/util/btree"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/chubaoio/cbfs/util/ump"
+	"github.com/juju/errors"
 )
 
 type storeMsg struct {

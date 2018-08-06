@@ -29,7 +29,7 @@ func TestFsExtent_Write(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		length := r.Intn(util.BlockSize)
 		data := make([]byte, length)
-		for i, _ := range data {
+		for i := range data {
 			data[i] = byte(r.Intn(256))
 		}
 		if err = extent.Write(data, int64(offset), int64(length), crc32.ChecksumIEEE(data)); err != nil {

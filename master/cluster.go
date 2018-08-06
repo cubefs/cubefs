@@ -2,11 +2,11 @@ package master
 
 import (
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/raftstore"
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/log"
+	"github.com/juju/errors"
 	"sync"
 	"time"
 )

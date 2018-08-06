@@ -4,8 +4,8 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/raftstore"
+	"github.com/juju/errors"
 )
 
 // StartRaftServer init address resolver and raftStore server instance.
