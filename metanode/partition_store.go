@@ -9,9 +9,9 @@ import (
 	"os"
 	"path"
 
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/util/btree"
+	"github.com/juju/errors"
 )
 
 const (
@@ -97,6 +97,7 @@ func (mp *metaPartition) loadInode() (err error) {
 			return
 		}
 		mp.createInode(ino)
+		mp.checkAndInsertFreeList(ino)
 		if mp.config.Cursor < ino.Inode {
 			mp.config.Cursor = ino.Inode
 		}

@@ -13,13 +13,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/raftstore"
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/config"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/chubaoio/cbfs/util/ump"
+	"github.com/juju/errors"
 )
 
 // The MetaNode manage Dentry and Inode information in multiple metaPartition, and
@@ -199,7 +199,7 @@ func (m *MetaNode) register() (err error) {
 
 func (m *MetaNode) postNodeID() (err error) {
 	reqPath := fmt.Sprintf("%s?addr=%s:%s", metaNodeURL, m.localAddr, m.listen)
-	msg, err := postToMaster(reqPath, nil)
+	msg, err := postToMaster("POST", reqPath, nil)
 	if err != nil {
 		err = errors.Errorf("[postNodeID] %s", err.Error())
 		return
@@ -213,7 +213,8 @@ func (m *MetaNode) postNodeID() (err error) {
 	return
 }
 
-func postToMaster(reqPath string, body []byte) (msg []byte, err error) {
+func postToMaster(method string, reqPath string, body []byte) (msg []byte,
+	err error) {
 	var (
 		req  *http.Request
 		resp *http.Response
@@ -225,7 +226,7 @@ func postToMaster(reqPath string, body []byte) (msg []byte, err error) {
 		}
 		reqURL := fmt.Sprintf("http://%s%s", curMasterAddr, reqPath)
 		reqBody := bytes.NewBuffer(body)
-		req, err = http.NewRequest("POST", reqURL, reqBody)
+		req, err = http.NewRequest(method, reqURL, reqBody)
 		if err != nil {
 			log.LogErrorf("[postToMaster] construction NewRequest url=%s: %s",
 				reqURL, err.Error())

@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net"
 
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/util/log"
+	"github.com/juju/errors"
 )
 
 const (
@@ -31,7 +31,7 @@ func (m *metaManager) respondToMaster(data interface{}) (err error) {
 	if err != nil {
 		return
 	}
-	postToMaster(masterResponsePath, jsonBytes)
+	postToMaster("POST", masterResponsePath, jsonBytes)
 	return
 }
 

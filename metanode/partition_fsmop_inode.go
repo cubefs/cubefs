@@ -58,13 +58,31 @@ func (mp *metaPartition) getInode(ino *Inode) (resp *ResponseInode) {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
-	resp.Msg = item.(*Inode)
+	i := item.(*Inode)
+	if i.MarkDelete == 1 {
+		resp.Status = proto.OpNotExistErr
+	}
+	resp.Msg = i
 	return
 }
 
 func (mp *metaPartition) hasInode(ino *Inode) (ok bool) {
-	ok = mp.inodeTree.Has(ino)
+	item := mp.inodeTree.Get(ino)
+	if item == nil {
+		ok = false
+		return
+	}
+	i := item.(*Inode)
+	if i.MarkDelete == 1 {
+		ok = false
+		return
+	}
+	ok = true
 	return
+}
+
+func (mp *metaPartition) internalHasInode(ino *Inode) bool {
+	return mp.inodeTree.Has(ino)
 }
 
 func (mp *metaPartition) getInodeTree() *btree.BTree {
@@ -97,6 +115,13 @@ func (mp *metaPartition) deleteInode(ino *Inode) (resp *ResponseInode) {
 	return
 }
 
+func (mp *metaPartition) internalDeleteInode(ino *Inode) {
+	mp.inodeMu.Lock()
+	mp.inodeTree.Delete(ino)
+	mp.inodeMu.Unlock()
+	return
+}
+
 func (mp *metaPartition) appendExtents(ino *Inode) (status uint8) {
 	exts := ino.Extents
 	status = proto.OpOk
@@ -105,8 +130,12 @@ func (mp *metaPartition) appendExtents(ino *Inode) (status uint8) {
 		status = proto.OpNotExistErr
 		return
 	}
-	modifyTime := ino.ModifyTime
 	ino = item.(*Inode)
+	if ino.MarkDelete == 1 {
+		status = proto.OpNotExistErr
+		return
+	}
+	modifyTime := ino.ModifyTime
 	exts.Range(func(i int, ext proto.ExtentKey) bool {
 		ino.AppendExtents(ext)
 		return true
@@ -131,6 +160,10 @@ func (mp *metaPartition) extentsTruncate(ino *Inode) (resp *ResponseInode) {
 		resp.Status = proto.OpArgMismatchErr
 		return
 	}
+	if i.MarkDelete == 1 {
+		resp.Status = proto.OpNotExistErr
+		return
+	}
 	ino.Extents = i.Extents
 	i.Size = 0
 	i.ModifyTime = ino.ModifyTime
@@ -153,13 +186,22 @@ func (mp *metaPartition) evictInode(ino *Inode) (resp *ResponseInode) {
 	if i.Type == proto.ModeDir {
 		if i.NLink < 2 {
 			mp.inodeTree.Delete(ino)
-			resp.Msg = i
 		}
 		return
 	}
 	if i.NLink < 1 {
-		mp.inodeTree.Delete(ino)
-		resp.Msg = i
+		i.MarkDelete = 1
+		// push to free list
+		mp.freeList.Push(i)
 	}
 	return
+}
+
+func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
+	if ino.Type == proto.ModeDir {
+		return
+	}
+	if ino.MarkDelete == 1 {
+		mp.freeList.Push(ino)
+	}
 }

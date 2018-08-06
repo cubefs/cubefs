@@ -103,6 +103,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			dentryTree: mp.getDentryTree(),
 		}
 		mp.storeChan <- msg
+	case opFSMInternalDeleteInode:
+
 	}
 	return
 }

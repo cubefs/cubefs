@@ -200,6 +200,7 @@ func (m *metaManager) loadPartitions() (err error) {
 					NodeId:    m.nodeId,
 					RaftStore: m.raftStore,
 					RootDir:   path.Join(m.rootDir, fileName),
+					ConnPool:  m.connPool,
 				}
 				partitionConfig.AfterStop = func() {
 					m.detachPartition(id)
@@ -260,6 +261,7 @@ func (m *metaManager) createPartition(id uint64, volName string, start,
 		RaftStore:   m.raftStore,
 		NodeId:      m.nodeId,
 		RootDir:     path.Join(m.rootDir, partitionPrefix+partId),
+		ConnPool:    m.connPool,
 	}
 	mpc.AfterStop = func() {
 		m.detachPartition(id)

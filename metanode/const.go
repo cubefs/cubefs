@@ -89,6 +89,7 @@ const (
 	opFSMExtentTruncate
 	opFSMCreateLinkInode
 	opFSMEvictInode
+	opFSMInternalDeleteInode
 )
 
 var (

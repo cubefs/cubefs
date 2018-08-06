@@ -12,6 +12,7 @@ import (
 	"github.com/chubaoio/cbfs/raftstore"
 	"github.com/chubaoio/cbfs/util/btree"
 	"github.com/chubaoio/cbfs/util/log"
+	"github.com/chubaoio/cbfs/util/pool"
 	"github.com/juju/errors"
 	raftproto "github.com/tiglabs/raft/proto"
 )
@@ -64,6 +65,7 @@ type MetaPartitionConfig struct {
 	BeforeStop  func()              `json:"-"`
 	AfterStop   func()              `json:"-"`
 	RaftStore   raftstore.RaftStore `json:"-"`
+	ConnPool    *pool.ConnPool      `json:"-"`
 }
 
 func (c *MetaPartitionConfig) Dump() ([]byte, error) {
@@ -167,6 +169,8 @@ type metaPartition struct {
 	stopC         chan bool
 	storeChan     chan *storeMsg
 	state         uint32
+	freeList      *freeList // Free inode list
+	vol           *Vol
 }
 
 func (mp *metaPartition) Start() (err error) {
@@ -221,6 +225,7 @@ func (mp *metaPartition) onStart() (err error) {
 		return
 	}
 	mp.startSchedule(mp.applyID)
+	mp.startFreeList()
 	return
 }
 
@@ -300,6 +305,8 @@ func NewMetaPartition(conf *MetaPartitionConfig) MetaPartition {
 		inodeTree:  btree.New(defaultBTreeDegree),
 		stopC:      make(chan bool),
 		storeChan:  make(chan *storeMsg, 5),
+		freeList:   newFreeList(),
+		vol:        NewVol(),
 	}
 	return mp
 }

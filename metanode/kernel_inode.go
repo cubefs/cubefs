@@ -40,6 +40,7 @@ type Inode struct {
 	ModifyTime int64
 	LinkTarget []byte // SymLink target name
 	NLink      uint32 // NodeLink counts
+	MarkDelete uint8  // 0: false; 1: true
 	Extents    *proto.StreamKey
 }
 
@@ -55,6 +56,7 @@ func (i *Inode) String() string {
 	buff.WriteString(fmt.Sprintf("MT[%d]", i.ModifyTime))
 	buff.WriteString(fmt.Sprintf("LinkT[%s]", i.LinkTarget))
 	buff.WriteString(fmt.Sprintf("NLink[%d]", i.NLink))
+	buff.WriteString(fmt.Sprintf("MD[%d]", i.MarkDelete))
 	buff.WriteString(fmt.Sprintf("Extents[%s]", i.Extents))
 	buff.WriteString("}")
 	return buff.String()
@@ -185,6 +187,9 @@ func (i *Inode) MarshalValue() (val []byte) {
 	if err = binary.Write(buff, binary.BigEndian, &i.NLink); err != nil {
 		panic(err)
 	}
+	if err = binary.Write(buff, binary.BigEndian, &i.MarkDelete); err != nil {
+		panic(err)
+	}
 	if i.Extents.Size() != 0 {
 		// Marshal ExtentsKey
 		extData, err := i.Extents.MarshalBinary()
@@ -236,7 +241,9 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &i.NLink); err != nil {
 		return
 	}
-
+	if err = binary.Read(buff, binary.BigEndian, &i.MarkDelete); err != nil {
+		return
+	}
 	if i.Extents == nil {
 		i.Extents = proto.NewStreamKey(i.Inode)
 	} else {
