@@ -331,6 +331,7 @@ func (s *ExtentStore) MarkDelete(extentId uint64) (err error) {
 	s.extentInfoMux.RUnlock()
 	if !has {
 		err = fmt.Errorf("extent %v not exist", extentId)
+		s.extentInfoMux.RUnlock()
 		return
 	}
 
