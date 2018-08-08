@@ -100,7 +100,6 @@ func Mount(cfg *config.Config) error {
 		fuse.AllowOther(),
 		fuse.MaxReadahead(MaxReadAhead),
 		fuse.AsyncRead(),
-		fuse.WritebackCache(),
 		fuse.FSName("cbfs-"+volname),
 		fuse.LocalVolume(),
 		fuse.VolumeName("cbfs-"+volname))

@@ -36,17 +36,21 @@ type File struct {
 
 //functions that File needs to implement
 var (
-	_ fs.Node           = (*File)(nil)
-	_ fs.Handle         = (*File)(nil)
-	_ fs.NodeForgetter  = (*File)(nil)
-	_ fs.NodeOpener     = (*File)(nil)
-	_ fs.HandleReleaser = (*File)(nil)
-	_ fs.HandleReader   = (*File)(nil)
-	_ fs.HandleWriter   = (*File)(nil)
-	_ fs.HandleFlusher  = (*File)(nil)
-	_ fs.NodeFsyncer    = (*File)(nil)
-	_ fs.NodeSetattrer  = (*File)(nil)
-	_ fs.NodeReadlinker = (*File)(nil)
+	_ fs.Node              = (*File)(nil)
+	_ fs.Handle            = (*File)(nil)
+	_ fs.NodeForgetter     = (*File)(nil)
+	_ fs.NodeOpener        = (*File)(nil)
+	_ fs.HandleReleaser    = (*File)(nil)
+	_ fs.HandleReader      = (*File)(nil)
+	_ fs.HandleWriter      = (*File)(nil)
+	_ fs.HandleFlusher     = (*File)(nil)
+	_ fs.NodeFsyncer       = (*File)(nil)
+	_ fs.NodeSetattrer     = (*File)(nil)
+	_ fs.NodeReadlinker    = (*File)(nil)
+	_ fs.NodeGetxattrer    = (*File)(nil)
+	_ fs.NodeListxattrer   = (*File)(nil)
+	_ fs.NodeSetxattrer    = (*File)(nil)
+	_ fs.NodeRemovexattrer = (*File)(nil)
 )
 
 func (f *File) getReadStream() (r *stream.StreamReader) {
@@ -73,7 +77,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 		return ParseError(err)
 	}
 	inode.fillAttr(a)
-	log.LogDebugf("TRACE Attr: inode(%v)", inode)
+	log.LogDebugf("TRACE Attr: inode(%v) attr(%v)", inode, a)
 	return nil
 }
 
@@ -254,4 +258,20 @@ func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string,
 	}
 	log.LogDebugf("TRACE Readlink: ino(%v) target(%v)", ino, string(inode.target))
 	return string(inode.target), nil
+}
+
+func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
+	return fuse.ENOSYS
+}
+
+func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
+	return fuse.ENOSYS
+}
+
+func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
+	return fuse.ENOSYS
+}
+
+func (f *File) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
+	return fuse.ENOSYS
 }
