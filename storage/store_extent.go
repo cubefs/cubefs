@@ -327,11 +327,12 @@ func (s *ExtentStore) MarkDelete(extentId uint64) (err error) {
 	)
 
 	s.extentInfoMux.RLock()
-	if extentInfo, has = s.extentInfoMap[extentId]; !has {
+	extentInfo, has = s.extentInfoMap[extentId]
+	s.extentInfoMux.RUnlock()
+	if !has {
 		err = fmt.Errorf("extent %v not exist", extentId)
 		return
 	}
-	s.extentInfoMux.RUnlock()
 
 	if extent, err = s.getExtent(extentId); err != nil {
 		return nil
@@ -471,13 +472,14 @@ func (s *ExtentStore) Close() {
 }
 
 func (s *ExtentStore) GetWatermark(extentId uint64, reload bool) (extentInfo *FileInfo, err error) {
-	s.extentInfoMux.RLock()
-	defer s.extentInfoMux.RUnlock()
 	var (
 		has    bool
 		extent Extent
 	)
-	if extentInfo, has = s.extentInfoMap[extentId]; !has {
+	s.extentInfoMux.RLock()
+	extentInfo, has = s.extentInfoMap[extentId]
+	s.extentInfoMux.RUnlock()
+	if  !has {
 		err = fmt.Errorf("extent %v not exist", extentId)
 		return
 	}
