@@ -93,10 +93,6 @@ type EvictInodeRequest struct {
 	Inode       uint64 `json:"ino"`
 }
 
-type EvictInodeResponse struct {
-	Extents []ExtentKey `json:"ek"`
-}
-
 type CreateDentryRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
