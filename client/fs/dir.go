@@ -43,6 +43,10 @@ var (
 	_ fs.NodeRenamer         = (*Dir)(nil)
 	_ fs.NodeSetattrer       = (*Dir)(nil)
 	_ fs.NodeSymlinker       = (*Dir)(nil)
+	_ fs.NodeGetxattrer      = (*Dir)(nil)
+	_ fs.NodeListxattrer     = (*Dir)(nil)
+	_ fs.NodeSetxattrer      = (*Dir)(nil)
+	_ fs.NodeRemovexattrer   = (*Dir)(nil)
 )
 
 func NewDir(s *Super, i *Inode) *Dir {
@@ -78,8 +82,9 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	if req.Flags.IsWriteOnly() || req.Flags.IsReadWrite() {
 		d.super.ec.OpenForWrite(inode.ino)
 	}
+
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Create: parent(%v) req(%v) ino(%v) (%v)ns", d.inode.ino, req, inode.ino, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Create: parent(%v) req(%v) resp(%v) ino(%v) (%v)ns", d.inode.ino, req, resp, inode.ino, elapsed.Nanoseconds())
 	return child, child, nil
 }
 
@@ -286,4 +291,20 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Link: parent(%v) name(%v) ino(%v) (%v)ns", d.inode.ino, req.NewName, newInode.ino, elapsed.Nanoseconds())
 	return newFile, nil
+}
+
+func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
+	return fuse.ENOSYS
+}
+
+func (d *Dir) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
+	return fuse.ENOSYS
+}
+
+func (d *Dir) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
+	return fuse.ENOSYS
+}
+
+func (d *Dir) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
+	return fuse.ENOSYS
 }
