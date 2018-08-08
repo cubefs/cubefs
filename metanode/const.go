@@ -81,8 +81,6 @@ type (
 
 	// Client -> MetaNode
 	EvictInodeReq = proto.EvictInodeRequest
-	// MetaNode -> Client
-	EvictInodeResp = proto.EvictInodeResponse
 )
 
 // For use when raftStore store and application apply
