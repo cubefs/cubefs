@@ -153,7 +153,7 @@ func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, inf
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, extents []proto.ExtentKey, err error) {
+func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, err error) {
 	req := &proto.EvictInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -186,14 +186,8 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, exte
 		return
 	}
 
-	resp := new(proto.EvictInodeResponse)
-	err = packet.UnmarshalData(resp)
-	if err != nil {
-		log.LogWarnf("ievict: mp(%v) err(%v) RespData(%v)", mp, err, string(packet.Data))
-		return
-	}
-	log.LogDebugf("ievict exit: mp(%v) req(%v) extents(%v)", mp, *req, resp.Extents)
-	return statusOK, resp.Extents, nil
+	log.LogDebugf("ievict exit: mp(%v) req(%v)", mp, *req)
+	return statusOK, nil
 }
 
 func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32) (status int, err error) {

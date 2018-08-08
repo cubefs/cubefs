@@ -78,16 +78,13 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 func (f *File) Forget() {
-	if f.inode.mode != ModeRegular {
-		return
-	}
 	ino := f.inode.ino
 	if !f.super.orphan.Evict(ino) {
 		return
 	}
-	extents := f.super.mw.Evict(ino)
-	if extents != nil {
-		f.super.ec.Delete(extents) //FIXME: metanode would take over in the future
+	if err := f.super.mw.Evict(ino); err != nil {
+		log.LogErrorf("Forget: ino(%v) err(%v)", ino, err)
+		//TODO: push back to evicted list, and deal with it later
 	}
 	log.LogDebugf("TRACE Forget: ino(%v)", ino)
 }
