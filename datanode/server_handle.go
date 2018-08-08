@@ -3,10 +3,11 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/storage"
 	"net/http"
 	"strconv"
+
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/storage"
 )
 
 func (s *DataNode) apiGetDisk(w http.ResponseWriter, r *http.Request) {
@@ -153,10 +154,8 @@ func (s *DataNode) apiGetExtent(w http.ResponseWriter, r *http.Request) {
 		s.buildApiFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if reload, err = strconv.Atoi(r.FormValue("reload")); err != nil {
-		s.buildApiFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
+	reload, _ = strconv.Atoi(r.FormValue("reload"))
+
 	partition := s.space.GetPartition(uint32(partitionId))
 	if partition == nil {
 		s.buildApiFailureResp(w, http.StatusNotFound, "partition not exist")

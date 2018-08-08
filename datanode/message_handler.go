@@ -17,9 +17,10 @@ package datanode
 import (
 	"container/list"
 	"fmt"
-	"github.com/chubaoio/cbfs/proto"
 	"net"
 	"sync"
+
+	"github.com/chubaoio/cbfs/proto"
 )
 
 var single = struct{}{}

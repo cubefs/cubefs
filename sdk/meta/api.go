@@ -325,17 +325,17 @@ func (mw *MetaWrapper) Link(parentID uint64, name string, ino uint64) (*proto.In
 	return info, nil
 }
 
-func (mw *MetaWrapper) Evict(inode uint64) []proto.ExtentKey {
+func (mw *MetaWrapper) Evict(inode uint64) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		log.LogWarnf("Evict: No such partition, ino(%v)", inode)
-		return nil
+		return syscall.EINVAL
 	}
 
-	status, extents, err := mw.ievict(mp, inode)
+	status, err := mw.ievict(mp, inode)
 	if err != nil || status != statusOK {
 		log.LogWarnf("Evict: ino(%v) err(%v) status(%v)", inode, err, status)
-		return nil
+		return statusToErrno(status)
 	}
-	return extents
+	return nil
 }

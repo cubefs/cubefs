@@ -18,6 +18,10 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"net"
+	"strconv"
+	"time"
+
 	"github.com/chubaoio/cbfs/master"
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/storage"
@@ -25,9 +29,6 @@ import (
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/chubaoio/cbfs/util/ump"
 	"github.com/juju/errors"
-	"net"
-	"strconv"
-	"time"
 )
 
 var (

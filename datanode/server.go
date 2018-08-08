@@ -17,15 +17,6 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaoio/cbfs/master"
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/storage"
-	"github.com/chubaoio/cbfs/util"
-	"github.com/chubaoio/cbfs/util/config"
-	"github.com/chubaoio/cbfs/util/log"
-	"github.com/chubaoio/cbfs/util/pool"
-	"github.com/chubaoio/cbfs/util/ump"
-	"github.com/juju/errors"
 	"io"
 	"net"
 	"net/http"
@@ -37,6 +28,16 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/chubaoio/cbfs/master"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/storage"
+	"github.com/chubaoio/cbfs/util"
+	"github.com/chubaoio/cbfs/util/config"
+	"github.com/chubaoio/cbfs/util/log"
+	"github.com/chubaoio/cbfs/util/pool"
+	"github.com/chubaoio/cbfs/util/ump"
+	"github.com/juju/errors"
 )
 
 var (

@@ -16,11 +16,12 @@ package datanode
 
 import (
 	"fmt"
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/util/log"
 	"math"
 	"sync"
 	"time"
+
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util/log"
 )
 
 type SpaceManager interface {
