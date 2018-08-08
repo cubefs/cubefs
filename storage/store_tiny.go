@@ -19,11 +19,12 @@ import (
 	"time"
 
 	"fmt"
+	"io/ioutil"
+	"strconv"
+
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/util"
 	"github.com/juju/errors"
-	"io/ioutil"
-	"strconv"
 )
 
 const (

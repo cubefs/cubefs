@@ -17,14 +17,15 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
+	"net"
+	"sync"
+
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/storage"
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/juju/errors"
-	"hash/crc32"
-	"net"
-	"sync"
 )
 
 type RepairChunkTask struct {

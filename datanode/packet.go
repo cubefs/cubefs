@@ -17,15 +17,16 @@ package datanode
 import (
 	"errors"
 	"fmt"
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/storage"
-	"github.com/chubaoio/cbfs/util"
-	"github.com/chubaoio/cbfs/util/ump"
 	"hash/crc32"
 	"io"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/storage"
+	"github.com/chubaoio/cbfs/util"
+	"github.com/chubaoio/cbfs/util/ump"
 )
 
 var (

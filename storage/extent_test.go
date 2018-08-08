@@ -17,13 +17,14 @@ package storage
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/chubaoio/cbfs/util"
 	"hash/crc32"
 	"io"
 	"math/rand"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/chubaoio/cbfs/util"
 )
 
 func TestFsExtent_Write(t *testing.T) {

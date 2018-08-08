@@ -16,10 +16,6 @@ package datanode
 
 import (
 	"fmt"
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/util"
-	"github.com/chubaoio/cbfs/util/log"
-	"github.com/juju/errors"
 	"io/ioutil"
 	"path"
 	"regexp"
@@ -29,6 +25,11 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util"
+	"github.com/chubaoio/cbfs/util/log"
+	"github.com/juju/errors"
 )
 
 type CompactTask struct {

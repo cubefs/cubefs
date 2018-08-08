@@ -17,13 +17,14 @@ package datanode
 import (
 	"encoding/binary"
 	"encoding/json"
+	"net"
+	"sync"
+	"time"
+
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/storage"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/juju/errors"
-	"net"
-	"sync"
-	"time"
 )
 
 //every  datapartion  file metas used for auto repairt

@@ -17,8 +17,6 @@ package storage
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/chubaoio/cbfs/util"
-	"github.com/juju/errors"
 	"hash/crc32"
 	"io"
 	"math"
@@ -27,6 +25,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/chubaoio/cbfs/util"
+	"github.com/juju/errors"
 )
 
 const (

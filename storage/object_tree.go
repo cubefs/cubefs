@@ -21,8 +21,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/chubaoio/cbfs/util/btree"
 	"os"
+
+	"github.com/chubaoio/cbfs/util/btree"
 )
 
 const (

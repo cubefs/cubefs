@@ -26,11 +26,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/util"
 	"path"
 	"regexp"
 	"time"
+
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util"
 )
 
 const (

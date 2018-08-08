@@ -3,10 +3,11 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/storage"
 	"net/http"
 	"strconv"
+
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/storage"
 )
 
 func (s *DataNode) apiGetDisk(w http.ResponseWriter, r *http.Request) {

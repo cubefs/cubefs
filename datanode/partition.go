@@ -18,11 +18,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaoio/cbfs/master"
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/storage"
-	"github.com/chubaoio/cbfs/util/log"
-	"github.com/juju/errors"
 	"io/ioutil"
 	"math"
 	"os"
@@ -31,6 +26,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/chubaoio/cbfs/master"
+	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/storage"
+	"github.com/chubaoio/cbfs/util/log"
+	"github.com/juju/errors"
 )
 
 const (
