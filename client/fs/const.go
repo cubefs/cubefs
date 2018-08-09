@@ -44,7 +44,7 @@ const (
 )
 
 const (
-	LookupValidDuration = 0 * time.Second
+	LookupValidDuration = 30 * time.Second
 	AttrValidDuration   = 30 * time.Second
 )
 
