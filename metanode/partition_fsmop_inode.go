@@ -78,6 +78,7 @@ func (mp *metaPartition) getInode(ino *Inode) (resp *ResponseInode) {
 	i := item.(*Inode)
 	if i.MarkDelete == 1 {
 		resp.Status = proto.OpNotExistErr
+		return
 	}
 	resp.Msg = i
 	return
