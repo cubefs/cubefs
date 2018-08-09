@@ -149,7 +149,7 @@ func (mp *metaPartition) deleteDataPartitionMark(inoSlice []*Inode) {
 		conn, err := mp.config.ConnPool.Get(dp.Hosts[0])
 		if err != nil {
 			mp.config.ConnPool.Put(conn, ForceCloseConnect)
-			err = errors.Errorf("%s, %s", p.GetUniqueLogId(), err.Error())
+			err = errors.Errorf("%s", err.Error())
 			return
 		}
 		p := NewExtentDeletePacket(dp, ext.ExtentId)
