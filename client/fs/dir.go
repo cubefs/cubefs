@@ -219,7 +219,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Rename: parent(%v) req(%v) (%v)ns", d.inode.ino, req, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Rename: SrcParent(%v) OldName(%v) DstParent(%v) NewName(%v) (%v)ns", d.inode.ino, req.OldName, dstDir.inode.ino, req.NewName, elapsed.Nanoseconds())
 	return nil
 }
 
