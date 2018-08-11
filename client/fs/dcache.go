@@ -30,8 +30,6 @@ func NewDentryCache() *DentryCache {
 }
 
 func (dc *DentryCache) Put(name string, ino uint64) {
-	return //FIXME
-
 	if dc == nil {
 		return
 	}
@@ -41,8 +39,6 @@ func (dc *DentryCache) Put(name string, ino uint64) {
 }
 
 func (dc *DentryCache) Get(name string) (uint64, bool) {
-	return 0, false //FIXME
-
 	if dc == nil {
 		return 0, false
 	}

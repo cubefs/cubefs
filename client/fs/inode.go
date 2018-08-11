@@ -42,9 +42,6 @@ type Inode struct {
 
 	// protected under the inode cache lock
 	expiration int64
-
-	// for directory only
-	dcache *DentryCache
 }
 
 func NewInode(info *proto.InodeInfo) *Inode {

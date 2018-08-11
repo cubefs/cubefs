@@ -26,8 +26,9 @@ import (
 )
 
 type Dir struct {
-	super *Super
-	inode *Inode
+	super  *Super
+	inode  *Inode
+	dcache *DentryCache
 }
 
 //functions that Dir needs to implement
@@ -110,13 +111,12 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	start := time.Now()
-	d.inode.dcache.Delete(req.Name)
+	d.dcache.Delete(req.Name)
 	info, err := d.super.mw.Delete_ll(d.inode.ino, req.Name)
 	if err != nil {
 		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.inode.ino, req.Name, err)
 		return ParseError(err)
 	}
-	//d.inode.dcache = nil
 
 	if info != nil && info.Nlink == 0 {
 		d.super.orphan.Put(info.Inode)
@@ -141,7 +141,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 
 	log.LogDebugf("TRACE Lookup: parent(%v) req(%v)", d.inode.ino, req)
 
-	ino, ok := d.inode.dcache.Get(req.Name)
+	ino, ok := d.dcache.Get(req.Name)
 	if !ok {
 		ino, mode, err = d.super.mw.Lookup_ll(d.inode.ino, req.Name)
 		if err != nil {
@@ -197,7 +197,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	for _, info := range infos {
 		d.super.ic.Put(NewInode(info))
 	}
-	d.inode.dcache = dcache
+	d.dcache = dcache
 
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE ReadDir: ino(%v) (%v)ns", d.inode.ino, elapsed.Nanoseconds())
@@ -211,16 +211,15 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 		return fuse.ENOTSUP
 	}
 	start := time.Now()
-	d.inode.dcache.Delete(req.OldName)
+	d.dcache.Delete(req.OldName)
 	err := d.super.mw.Rename_ll(d.inode.ino, req.OldName, dstDir.inode.ino, req.NewName)
 	if err != nil {
 		log.LogErrorf("Rename: parent(%v) req(%v) err(%v)", d.inode.ino, req, err)
 		return ParseError(err)
 	}
-	//d.inode.dcache = nil
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Rename: parent(%v) req(%v) (%v)ns", d.inode.ino, req, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Rename: SrcParent(%v) OldName(%v) DstParent(%v) NewName(%v) (%v)ns", d.inode.ino, req.OldName, dstDir.inode.ino, req.NewName, elapsed.Nanoseconds())
 	return nil
 }
 
