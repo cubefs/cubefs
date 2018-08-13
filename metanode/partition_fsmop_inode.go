@@ -206,6 +206,11 @@ func (mp *metaPartition) extentsTruncate(ino *Inode) (resp *ResponseInode) {
 	i.ModifyTime = ino.ModifyTime
 	i.Generation++
 	i.Extents = proto.NewStreamKey(i.Inode)
+	// mark Delete and push to freeList
+	markIno := NewInode(0, i.Type)
+	markIno.MarkDelete = 1
+	markIno.Extents = ino.Extents
+	mp.freeList.Push(markIno)
 	return
 }
 

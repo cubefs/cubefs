@@ -75,21 +75,6 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq,
 		return
 	}
 	msg := resp.(*ResponseInode)
-	p.ResultCode = msg.Status
-	if msg.Status == proto.OpOk {
-		var reply []byte
-		m := &ExtentsTruncateResp{
-			Extents: make([]proto.ExtentKey, 0, msg.Msg.Extents.GetExtentLen()),
-		}
-		msg.Msg.Extents.Range(func(i int, v proto.ExtentKey) bool {
-			m.Extents = append(m.Extents, v)
-			return true
-		})
-		if reply, err = json.Marshal(m); err != nil {
-			p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
-			return
-		}
-		p.PackOkWithBody(reply)
-	}
+	p.PackErrorWithBody(msg.Status, nil)
 	return
 }
