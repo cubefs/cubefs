@@ -188,6 +188,12 @@ func (s items) find(item Item) (index int, found bool) {
 	i := sort.Search(len(s), func(i int) bool {
 		return item.Less(s[i])
 	})
+	defer func() {
+		if r := recover(); r != nil {
+			panic(fmt.Sprintf("%v\nindex=%d, vals=%v, items=%v", r, i,
+				s[i-1], s))
+		}
+	}()
 	if i > 0 && !s[i-1].Less(item) {
 		return i - 1, true
 	}
