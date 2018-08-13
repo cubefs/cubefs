@@ -213,17 +213,12 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	ino := f.inode.ino
 	start := time.Now()
 	if req.Valid.Size() && req.Size == 0 {
-		extents, err := f.super.mw.Truncate(ino)
+		err := f.super.mw.Truncate(ino)
 		if err != nil {
 			log.LogErrorf("Setattr: truncate ino(%v) err(%v)", ino, err)
 			return ParseError(err)
 		}
-
 		f.super.ic.Delete(ino)
-
-		if extents != nil {
-			f.super.ec.Delete(extents)
-		}
 	}
 
 	inode, err := f.super.InodeGet(ino)
