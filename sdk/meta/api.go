@@ -278,18 +278,18 @@ func (mw *MetaWrapper) GetExtents(inode uint64) ([]proto.ExtentKey, error) {
 	return extents, nil
 }
 
-func (mw *MetaWrapper) Truncate(inode uint64) ([]proto.ExtentKey, error) {
+func (mw *MetaWrapper) Truncate(inode uint64) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		log.LogErrorf("Truncate: No inode partition, ino(%v)", inode)
-		return nil, syscall.ENOENT
+		return syscall.ENOENT
 	}
 
-	status, extents, err := mw.truncate(mp, inode)
+	status, err := mw.truncate(mp, inode)
 	if err != nil || status != statusOK {
-		return nil, statusToErrno(status)
+		return statusToErrno(status)
 	}
-	return extents, nil
+	return nil
 
 }
 
