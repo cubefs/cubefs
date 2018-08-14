@@ -139,10 +139,12 @@ func (stream *StreamWriter) server() {
 		case request := <-stream.writeRequestCh:
 			if request.kernelOffset < int(stream.HasWriteSize) {
 				cutSize := int(stream.HasWriteSize) - request.kernelOffset
-				request.kernelOffset += cutSize
-				request.data = request.data[cutSize:]
-				request.size -= cutSize
-				request.cutSize = cutSize
+				if cutSize < len(request.data) {
+					request.kernelOffset += cutSize
+					request.data = request.data[cutSize:]
+					request.size -= cutSize
+					request.cutSize = cutSize
+				}
 			}
 			request.canWrite, request.err = stream.write(request.data, request.kernelOffset, request.size)
 			stream.HasWriteSize += uint64(request.canWrite)
