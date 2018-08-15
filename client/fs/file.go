@@ -228,6 +228,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 			return ParseError(err)
 		}
 		f.super.ic.Delete(ino)
+		f.super.ec.SetWriteSize(ino, 0)
 	}
 
 	inode, err := f.super.InodeGet(ino)

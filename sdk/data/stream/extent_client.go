@@ -140,6 +140,15 @@ func (client *ExtentClient) GetWriteSize(inode uint64) uint64 {
 	return writer.HasWriteSize
 }
 
+func (client *ExtentClient) SetWriteSize(inode, size uint64) {
+	client.writerLock.Lock()
+	defer client.writerLock.Unlock()
+	writer, ok := client.writers[inode]
+	if ok {
+		writer.HasWriteSize = size
+	}
+}
+
 func (client *ExtentClient) deleteRefercnt(inode uint64) {
 	client.referLock.Lock()
 	defer client.referLock.Unlock()
