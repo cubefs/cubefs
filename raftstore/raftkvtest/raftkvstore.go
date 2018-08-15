@@ -82,7 +82,29 @@ func (m *Master) handleLeaderChange(leader uint64) {
 }
 
 func (m *Master) handlePeerChange(confChange *proto.ConfChange) (err error) {
-	fmt.Println("peer change confChange ", confChange)
+	addr := string(confChange.Context)
+	switch confChange.Type {
+	case proto.ConfAddNode:
+		var arr []string
+		if arr = strings.Split(addr, ":"); len(arr) < 2 {
+			fmt.Println(fmt.Sprintf("action[handlePeerChange] nodeAddr[%v] is invalid", addr))
+			break
+		}
+		m.raftStore.AddNodeWithPort(confChange.Peer.ID, arr[0], 8801, 8802)
+		fmt.Println(fmt.Sprintf("peerID:%v,nodeAddr[%v] has been add", confChange.Peer.ID, addr))
+	case proto.ConfRemoveNode:
+		m.raftStore.DeleteNode(confChange.Peer.ID)
+		fmt.Println(fmt.Sprintf("peerID:%v,nodeAddr[%v] has been removed", confChange.Peer.ID, addr))
+	case proto.ConfAddLearner:
+		var arr []string
+		if arr = strings.Split(addr, ":"); len(arr) < 2 {
+			fmt.Println(fmt.Sprintf("action[handlePeerChange] add learner nodeAddr[%v] is invalid", addr))
+			break
+		}
+		m.raftStore.AddNodeWithPort(confChange.Peer.ID, arr[0], 8801, 8802)
+		fmt.Println(fmt.Sprintf("peerID:%v has add learner nodeAddr[%v] addr[%v]", confChange.Peer.ID, addr, arr[0]))
+	}
+
 	return nil
 }
 
@@ -102,8 +124,11 @@ type testSM struct {
 
 func (m *Master) handleFunctions() {
 	http.Handle("/raftKvTest/add", m.handlerWithInterceptor())
+	http.Handle("/raftKvTest/addlearner", m.handlerWithInterceptor())
 	http.Handle("/raftKvTest/remove", m.handlerWithInterceptor())
 	http.Handle("/raftKvTest/submit", m.handlerWithInterceptor())
+
+	http.Handle("/raftKvTest/getStatus", m.handlerWithInterceptor())
 	return
 }
 
@@ -122,10 +147,14 @@ func (m *Master) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/raftKvTest/add":
 		m.handleAddRaftNode(w, r)
+	case "/raftKvTest/addlearner":
+		m.handleAddRaftLearner(w, r)
 	case "/raftKvTest/remove":
 		m.handleRemoveRaftNode(w, r)
 	case "/raftKvTest/submit":
 		m.handleRaftKvSubmit(w, r)
+	case "/raftKvTest/getStatus":
+		m.handleGetStatus(w, r)
 	default:
 	}
 }
@@ -163,6 +192,24 @@ func (m *Master) handleAddRaftNode(w http.ResponseWriter, r *http.Request) {
 
 	peer := proto.Peer{ID: id}
 	if _, err = m.raftPartition[1].ChangeMember(proto.ConfAddNode, peer, []byte(addr)); err != nil {
+		fmt.Println(fmt.Sprintf("add raft error: %v", err))
+		return
+	}
+	msg = fmt.Sprintf("add  raft node id :%v, addr:%v successed \n", id, addr)
+	io.WriteString(w, msg)
+	return
+}
+
+func (m *Master) handleAddRaftLearner(w http.ResponseWriter, r *http.Request) {
+	var msg string
+	id, addr, err := parseRaftNodePara(r)
+	if err != nil {
+		fmt.Println(fmt.Sprintf("parse parameter error: %v", err))
+		return
+	}
+
+	peer := proto.Peer{ID: id}
+	if _, err = m.raftPartition[1].ChangeMember(proto.ConfAddLearner, peer, []byte(addr)); err != nil {
 		fmt.Println(fmt.Sprintf("add raft error: %v", err))
 		return
 	}
@@ -209,6 +256,28 @@ func (m *Master) handleRaftKvSubmit(w http.ResponseWriter, r *http.Request) {
 	return
 errDeal:
 	log.LogError("action[submit] err:%v", err.Error())
+	return
+}
+
+func (m *Master) handleGetStatus(w http.ResponseWriter, r *http.Request) {
+	var idStr, msg string
+	r.ParseForm()
+
+	if idStr = r.FormValue("groupid"); idStr == "" {
+		fmt.Println(errors.Errorf("parameter id not found %v", r))
+		return
+	}
+
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		fmt.Println(errors.Errorf("id parse err %v", r))
+		return
+	}
+
+	status := m.raftPartition[id].Status()
+
+	msg = fmt.Sprintf("get raftid[%v] status :%v \n", id, status)
+	io.WriteString(w, msg)
 	return
 }
 
