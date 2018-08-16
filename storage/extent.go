@@ -179,7 +179,7 @@ func (e *fsExtent) InitToFS(ino uint64, overwrite bool) (err error) {
 			os.Remove(e.filePath)
 		}
 	}()
-	e.tryKeepSize(int(e.file.Fd()), 0, util.ExtentFileSizeLimit)
+	//e.tryKeepSize(int(e.file.Fd()), 0, util.ExtentFileSizeLimit)
 	if err = e.file.Truncate(util.BlockHeaderSize); err != nil {
 		return
 	}
