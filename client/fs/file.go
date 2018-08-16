@@ -200,7 +200,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 		log.LogErrorf("Flush: ino(%v) err(%v)", f.inode.ino, err)
 		return fuse.EIO
 	}
-
+	f.super.ic.Delete(f.inode.ino)
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Flush: ino(%v) (%v)ns", f.inode.ino, elapsed.Nanoseconds())
 	return nil
@@ -213,6 +213,7 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 		log.LogErrorf("Fsync: ino(%v) err(%v)", f.inode.ino, err)
 		return fuse.EIO
 	}
+	f.super.ic.Delete(f.inode.ino)
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Fsync: ino(%v) (%v)ns", f.inode.ino, elapsed.Nanoseconds())
 	return nil
