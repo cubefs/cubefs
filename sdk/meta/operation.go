@@ -571,7 +571,7 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (status int, 
 	return statusOK, resp.Extents, nil
 }
 
-func (mw *MetaWrapper) truncate(mp *MetaPartition, inode uint64) (status int, extents []proto.ExtentKey, err error) {
+func (mw *MetaWrapper) truncate(mp *MetaPartition, inode uint64) (status int, err error) {
 	req := &proto.TruncateRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -606,14 +606,8 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode uint64) (status int, ex
 		return
 	}
 
-	resp := new(proto.TruncateResponse)
-	err = packet.UnmarshalData(resp)
-	if err != nil {
-		log.LogErrorf("truncate: mp(%v) err(%v) RespData(%v)", mp, err, string(packet.Data))
-		return
-	}
-	log.LogDebugf("truncate exit: mp(%v) req(%v) RespData(%v)", mp, *req, string(packet.Data))
-	return statusOK, resp.Extents, nil
+	log.LogDebugf("truncate exit: mp(%v) req(%v)", mp, *req)
+	return statusOK, nil
 }
 
 func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {

@@ -66,22 +66,36 @@ func main() {
 
 		dataSize = 0
 		dataTemp := data[fileOffset:]
+		//first byte is record type
 		recordType := dataTemp[0]
+		//sencond 8 bytes is datasize
 		dataSize = binary.BigEndian.Uint64(dataTemp[1:9])
+		//third byte is op type
 		opType := dataTemp[9]
+		//and 8+8 types is term and index
 		term := binary.BigEndian.Uint64(dataTemp[10:18])
 		index := binary.BigEndian.Uint64(dataTemp[18:26])
+
 		if dataSize > 17 {
-			cmd := new(OpKvData)
-			if err = json.Unmarshal(dataTemp[26:26+dataSize-17], cmd); err != nil {
-				fmt.Println("unmarshal fail", cmd, err)
-				return
+			if opType == 0 {
+				cmd := new(OpKvData)
+				if err = json.Unmarshal(dataTemp[26:26+dataSize-17], cmd); err != nil {
+					fmt.Println("unmarshal fail", cmd, err)
+					return
+				}
+				dataString = fmt.Sprintf("opt:%v, k:%v, v:%v", cmd.Op, cmd.K, cmd.V)
+			} else if opType == 1 {
+				cType := dataTemp[26]
+				pType := dataTemp[27]
+				prt := binary.BigEndian.Uint16(dataTemp[28:30])
+				pid := binary.BigEndian.Uint64(dataTemp[30:38])
+				dataString = fmt.Sprintf("cngType:%v, peerType:%v, priority:%v, id:%v", cType, pType, prt, pid)
 			}
-			dataString = fmt.Sprintf("opt:%v, k:%v, v:%v", cmd.Op, cmd.K, cmd.V)
+
 		}
 		crcOffset := 9 + dataSize
 		crc := binary.BigEndian.Uint32(dataTemp[crcOffset : crcOffset+4])
-		fmt.Println(fmt.Sprintf("recType[%v] dataSize[%v] opType[%v] term[%v] index[%v] data[%v] crc[%v]", recordType, dataSize, opType, term, index, dataString, crc))
+		fmt.Println(fmt.Sprintf("recType[%v] dataSize[%v] opType[%v] term[%v] index[%v] data[%v] crc[%x]", recordType, dataSize, opType, term, index, dataString, crc))
 		recordSize := 1 + 8 + dataSize + 4
 		fileOffset = fileOffset + recordSize
 	}
