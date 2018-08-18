@@ -126,11 +126,20 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
 	ino := f.inode.ino
 	start := time.Now()
-	err = f.super.ec.CloseForWrite(ino)
+
+	err = f.super.ec.Flush(f.inode.ino)
 	if err != nil {
-		log.LogErrorf("Release: ino(%v) req(%v) err(%v)", ino, req, err)
+		log.LogErrorf("Release: flush failed, ino(%v) err(%v)", f.inode.ino, err)
 		return fuse.EIO
 	}
+
+	err = f.super.ec.CloseForWrite(ino)
+	if err != nil {
+		log.LogErrorf("Release: close writer failed, ino(%v) req(%v) err(%v)", ino, req, err)
+		return fuse.EIO
+	}
+
+	f.super.ic.Delete(ino)
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Release: ino(%v) req(%v) (%v)ns", ino, req, elapsed.Nanoseconds())
 	return nil
@@ -194,16 +203,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 }
 
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
-	start := time.Now()
-	err = f.super.ec.Flush(f.inode.ino)
-	if err != nil {
-		log.LogErrorf("Flush: ino(%v) err(%v)", f.inode.ino, err)
-		return fuse.EIO
-	}
-	f.super.ic.Delete(f.inode.ino)
-	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Flush: ino(%v) (%v)ns", f.inode.ino, elapsed.Nanoseconds())
-	return nil
+	return fuse.ENOSYS
 }
 
 func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
