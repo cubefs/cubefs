@@ -16,6 +16,8 @@ checksum
 
 ## Todo
 
+lseek and file holes
+
 random write via the raft statemachine
 
 Java SDK
