@@ -16,7 +16,6 @@ package metanode
 
 import (
 	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/util/btree"
 )
 
 type ResponseDentry struct {
@@ -33,18 +32,9 @@ func NewResponseDentry() *ResponseDentry {
 // CreateDentry insert dentry into dentry tree.
 func (mp *metaPartition) createDentry(dentry *Dentry) (status uint8) {
 	status = proto.OpOk
-	mp.dentryMu.Lock()
-	defer mp.dentryMu.Unlock()
-	item := mp.dentryTree.Get(dentry)
-	if item != nil {
-		de := item.(*Dentry)
-		status = proto.OpArgMismatchErr
-		if de.Type == dentry.Type {
-			status = proto.OpExistErr
-		}
-		return
+	if _, ok := mp.dentryTree.ReplaceOrInsert(dentry, false); !ok {
+		status = proto.OpExistErr
 	}
-	mp.dentryTree.ReplaceOrInsert(dentry)
 	return
 }
 
@@ -64,9 +54,7 @@ func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8) {
 func (mp *metaPartition) deleteDentry(dentry *Dentry) (resp *ResponseDentry) {
 	resp = NewResponseDentry()
 	resp.Status = proto.OpOk
-	mp.dentryMu.Lock()
 	item := mp.dentryTree.Delete(dentry)
-	mp.dentryMu.Unlock()
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
 		return
@@ -89,8 +77,8 @@ func (mp *metaPartition) updateDentry(dentry *Dentry) (resp *ResponseDentry) {
 	return
 }
 
-func (mp *metaPartition) getDentryTree() *btree.BTree {
-	return mp.dentryTree
+func (mp *metaPartition) getDentryTree() *BTree {
+	return mp.dentryTree.GetTree()
 }
 
 func (mp *metaPartition) readDir(req *ReadDirReq) (resp *ReadDirResp) {
@@ -101,7 +89,7 @@ func (mp *metaPartition) readDir(req *ReadDirReq) (resp *ReadDirResp) {
 	endDentry := &Dentry{
 		ParentId: req.ParentID + 1,
 	}
-	mp.dentryTree.AscendRange(begDentry, endDentry, func(i btree.Item) bool {
+	mp.dentryTree.AscendRange(begDentry, endDentry, func(i BtreeItem) bool {
 		d := i.(*Dentry)
 		resp.Children = append(resp.Children, proto.Dentry{
 			Inode: d.Inode,

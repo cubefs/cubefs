@@ -112,15 +112,15 @@ func NewMetaItem(op uint32, key, value []byte) *MetaItem {
 type ItemIterator struct {
 	applyID    uint64
 	cur        int
-	curItem    btree.Item
+	curItem    BtreeItem
 	inoLen     int
-	inodeTree  *btree.BTree
+	inodeTree  *BTree
 	dentryLen  int
-	dentryTree *btree.BTree
+	dentryTree *BTree
 	total      int
 }
 
-func NewMetaItemIterator(applyID uint64, ino, den *btree.BTree) *ItemIterator {
+func NewMetaItemIterator(applyID uint64, ino, den *BTree) *ItemIterator {
 	si := new(ItemIterator)
 	si.applyID = applyID
 	si.inodeTree = ino
