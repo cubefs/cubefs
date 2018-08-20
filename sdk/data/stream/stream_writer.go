@@ -25,7 +25,6 @@ import (
 	"github.com/juju/errors"
 	"net"
 	"strings"
-	"sync/atomic"
 )
 
 const (
@@ -40,6 +39,7 @@ type WriteRequest struct {
 	canWrite     int
 	err          error
 	kernelOffset int
+	cutSize      int
 }
 
 type FlushRequest struct {
@@ -67,14 +67,15 @@ type StreamWriter struct {
 	exitCh             chan bool
 	hasUpdateKey       map[string]int
 	HasWriteSize       uint64
-	bufferSize         uint64
+	HasBufferSize      uint64
 	hasClosed          int32
 }
 
-func NewStreamWriter(inode uint64, appendExtentKey AppendExtentKeyFunc, bufferSize uint64) (stream *StreamWriter) {
+func NewStreamWriter(inode, start uint64, appendExtentKey AppendExtentKeyFunc) (stream *StreamWriter) {
 	stream = new(StreamWriter)
 	stream.appendExtentKey = appendExtentKey
 	stream.Inode = inode
+	stream.HasWriteSize = start
 	stream.writeRequestCh = make(chan *WriteRequest, 1000)
 	stream.writeReplyCh = make(chan *WriteRequest, 1000)
 	stream.closeReplyCh = make(chan *CloseRequest, 10)
@@ -84,7 +85,6 @@ func NewStreamWriter(inode uint64, appendExtentKey AppendExtentKeyFunc, bufferSi
 	stream.exitCh = make(chan bool, 10)
 	stream.excludePartition = make([]uint32, 0)
 	stream.hasUpdateKey = make(map[string]int)
-	stream.bufferSize = bufferSize
 	go stream.server()
 
 	return
@@ -132,12 +132,20 @@ func (stream *StreamWriter) server() {
 	t := time.NewTicker(time.Second * 2)
 	defer t.Stop()
 	for {
-		if atomic.LoadUint64(&stream.HasWriteSize) >= stream.bufferSize {
+		if stream.HasBufferSize >= gFlushBufferSize {
 			stream.flushCurrExtentWriter()
 		}
 		select {
 		case request := <-stream.writeRequestCh:
+			if request.kernelOffset < int(stream.HasWriteSize) {
+				cutSize := int(stream.HasWriteSize) - request.kernelOffset
+				request.kernelOffset += cutSize
+				request.data = request.data[cutSize:]
+				request.size -= cutSize
+				request.cutSize = cutSize
+			}
 			request.canWrite, request.err = stream.write(request.data, request.kernelOffset, request.size)
+			stream.HasWriteSize += uint64(request.canWrite)
 			stream.writeReplyCh <- request
 		case request := <-stream.flushRequestCh:
 			request.err = stream.flushCurrExtentWriter()
@@ -165,9 +173,9 @@ func (stream *StreamWriter) write(data []byte, offset, size int) (total int, err
 		write int
 	)
 	defer func() {
-		atomic.AddUint64(&stream.HasWriteSize, uint64(total))
 		if err == nil {
 			total = size
+			stream.HasBufferSize += uint64(total)
 			return
 		}
 		err = errors.Annotatef(err, "UserRequest{inode(%v) write "+
@@ -217,7 +225,7 @@ func (stream *StreamWriter) flushCurrExtentWriter() (err error) {
 	defer func() {
 		if err == nil || status == syscall.ENOENT {
 			stream.errCount = 0
-			atomic.StoreUint64(&stream.HasWriteSize, 0)
+			stream.HasBufferSize = 0
 			err = nil
 			return
 		}

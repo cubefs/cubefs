@@ -103,9 +103,15 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		return nil, ParseError(err)
 	}
 
-	if req.Flags.IsWriteOnly() || req.Flags.IsReadWrite() {
-		f.super.ec.OpenForWrite(ino)
+	//FIXME: let open return inode info
+	inode, err := f.super.InodeGet(ino)
+	if err != nil {
+		f.super.ic.Delete(ino)
+		log.LogErrorf("Open: ino(%v) req(%v) err(%v)", ino, req, ParseError(err))
+		return nil, ParseError(err)
 	}
+
+	f.super.ec.OpenForWrite(ino, inode.size)
 
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Open: ino(%v) flags(%v) (%v)ns", ino, req.Flags, elapsed.Nanoseconds())
@@ -115,12 +121,10 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
 	ino := f.inode.ino
 	start := time.Now()
-	if req.Flags.IsWriteOnly() || req.Flags.IsReadWrite() {
-		err = f.super.ec.CloseForWrite(ino)
-		if err != nil {
-			log.LogErrorf("Release: ino(%v) req(%v) err(%v)", ino, req, err)
-			return fuse.EIO
-		}
+	err = f.super.ec.CloseForWrite(ino)
+	if err != nil {
+		log.LogErrorf("Release: ino(%v) req(%v) err(%v)", ino, req, err)
+		return fuse.EIO
 	}
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Release: ino(%v) req(%v) (%v)ns", ino, req, elapsed.Nanoseconds())
