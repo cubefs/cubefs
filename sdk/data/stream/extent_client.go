@@ -30,7 +30,8 @@ type AppendExtentKeyFunc func(inode uint64, key proto.ExtentKey) error
 type GetExtentsFunc func(inode uint64) ([]proto.ExtentKey, error)
 
 var (
-	gDataWrapper *data.Wrapper
+	gDataWrapper     *data.Wrapper
+	gFlushBufferSize uint64
 )
 
 type ExtentClient struct {
@@ -40,10 +41,9 @@ type ExtentClient struct {
 	writerLock      sync.RWMutex
 	appendExtentKey AppendExtentKeyFunc
 	getExtents      GetExtentsFunc
-	bufferSize      uint64
 }
 
-func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc, bufferSize uint64) (client *ExtentClient, err error) {
+func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc, flushBufferSize uint64) (client *ExtentClient, err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	client = new(ExtentClient)
 	gDataWrapper, err = data.NewDataPartitionWrapper(volname, master)
@@ -54,14 +54,8 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 	client.appendExtentKey = appendExtentKey
 	client.referCnt = make(map[uint64]uint64)
 	client.getExtents = getExtents
-	client.bufferSize = bufferSize
+	gFlushBufferSize = flushBufferSize
 	return
-}
-
-func (client *ExtentClient) InitWriteStream(inode uint64) *StreamWriter {
-	writer := NewStreamWriter(inode, client.appendExtentKey, client.bufferSize)
-	client.writers[inode] = writer
-	return writer
 }
 
 func (client *ExtentClient) getStreamWriter(inode uint64) (stream *StreamWriter) {
@@ -94,6 +88,7 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write 
 	request = <-stream.writeReplyCh
 	err = request.err
 	write = request.canWrite
+	write += request.cutSize
 	if err != nil {
 		prefix := fmt.Sprintf("inodewrite %v_%v_%v", inode, offset, len(data))
 		err = errors.Annotatef(err, prefix)
@@ -106,7 +101,7 @@ func (client *ExtentClient) OpenForRead(inode uint64) (stream *StreamReader, err
 	return NewStreamReader(inode, client.getExtents)
 }
 
-func (client *ExtentClient) OpenForWrite(inode uint64) {
+func (client *ExtentClient) OpenForWrite(inode, start uint64) {
 	client.referLock.Lock()
 	refercnt, ok := client.referCnt[inode]
 	if !ok {
@@ -128,11 +123,30 @@ func (client *ExtentClient) OpenForWrite(inode uint64) {
 	client.writerLock.Lock()
 	_, ok = client.writers[inode]
 	if !ok {
-		writer := NewStreamWriter(inode, client.appendExtentKey, client.bufferSize)
+		writer := NewStreamWriter(inode, start, client.appendExtentKey)
 		client.writers[inode] = writer
 	}
 	client.writerLock.Unlock()
 
+}
+
+func (client *ExtentClient) GetWriteSize(inode uint64) uint64 {
+	client.writerLock.RLock()
+	defer client.writerLock.RUnlock()
+	writer, ok := client.writers[inode]
+	if !ok {
+		return 0
+	}
+	return writer.HasWriteSize
+}
+
+func (client *ExtentClient) SetWriteSize(inode, size uint64) {
+	client.writerLock.Lock()
+	defer client.writerLock.Unlock()
+	writer, ok := client.writers[inode]
+	if ok {
+		writer.HasWriteSize = size
+	}
 }
 
 func (client *ExtentClient) deleteRefercnt(inode uint64) {
