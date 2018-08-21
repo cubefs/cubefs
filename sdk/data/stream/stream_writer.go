@@ -40,14 +40,17 @@ type WriteRequest struct {
 	err          error
 	kernelOffset int
 	cutSize      int
+	done         chan struct{}
 }
 
 type FlushRequest struct {
-	err error
+	err  error
+	done chan struct{}
 }
 
 type CloseRequest struct {
-	err error
+	err  error
+	done chan struct{}
 }
 
 type StreamWriter struct {
@@ -59,11 +62,8 @@ type StreamWriter struct {
 	excludePartition   []uint32
 	appendExtentKey    AppendExtentKeyFunc
 	writeRequestCh     chan *WriteRequest
-	writeReplyCh       chan *WriteRequest
 	flushRequestCh     chan *FlushRequest
-	flushReplyCh       chan *FlushRequest
 	closeRequestCh     chan *CloseRequest
-	closeReplyCh       chan *CloseRequest
 	exitCh             chan bool
 	hasUpdateKey       map[string]int
 	HasWriteSize       uint64
@@ -77,10 +77,7 @@ func NewStreamWriter(inode, start uint64, appendExtentKey AppendExtentKeyFunc) (
 	stream.Inode = inode
 	stream.HasWriteSize = start
 	stream.writeRequestCh = make(chan *WriteRequest, 1000)
-	stream.writeReplyCh = make(chan *WriteRequest, 1000)
-	stream.closeReplyCh = make(chan *CloseRequest, 10)
 	stream.closeRequestCh = make(chan *CloseRequest, 10)
-	stream.flushReplyCh = make(chan *FlushRequest, 100)
 	stream.flushRequestCh = make(chan *FlushRequest, 100)
 	stream.exitCh = make(chan bool, 10)
 	stream.excludePartition = make([]uint32, 0)
@@ -148,16 +145,16 @@ func (stream *StreamWriter) server() {
 			}
 			request.canWrite, request.err = stream.write(request.data, request.kernelOffset, request.size)
 			stream.HasWriteSize += uint64(request.canWrite)
-			stream.writeReplyCh <- request
+			request.done <- struct{}{}
 		case request := <-stream.flushRequestCh:
 			request.err = stream.flushCurrExtentWriter()
-			stream.flushReplyCh <- request
+			request.done <- struct{}{}
 		case request := <-stream.closeRequestCh:
 			request.err = stream.flushCurrExtentWriter()
 			if request.err == nil {
 				request.err = stream.close()
 			}
-			stream.closeReplyCh <- request
+			request.done <- struct{}{}
 		case <-stream.exitCh:
 			stream.flushCurrExtentWriter()
 			return
