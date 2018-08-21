@@ -40,6 +40,7 @@ type WriteRequest struct {
 	err          error
 	kernelOffset int
 	cutSize      int
+	done         chan struct{}
 }
 
 type FlushRequest struct {
@@ -59,7 +60,6 @@ type StreamWriter struct {
 	excludePartition   []uint32
 	appendExtentKey    AppendExtentKeyFunc
 	writeRequestCh     chan *WriteRequest
-	writeReplyCh       chan *WriteRequest
 	flushRequestCh     chan *FlushRequest
 	flushReplyCh       chan *FlushRequest
 	closeRequestCh     chan *CloseRequest
@@ -77,7 +77,6 @@ func NewStreamWriter(inode, start uint64, appendExtentKey AppendExtentKeyFunc) (
 	stream.Inode = inode
 	stream.HasWriteSize = start
 	stream.writeRequestCh = make(chan *WriteRequest, 1000)
-	stream.writeReplyCh = make(chan *WriteRequest, 1000)
 	stream.closeReplyCh = make(chan *CloseRequest, 10)
 	stream.closeRequestCh = make(chan *CloseRequest, 10)
 	stream.flushReplyCh = make(chan *FlushRequest, 100)
@@ -148,7 +147,7 @@ func (stream *StreamWriter) server() {
 			}
 			request.canWrite, request.err = stream.write(request.data, request.kernelOffset, request.size)
 			stream.HasWriteSize += uint64(request.canWrite)
-			stream.writeReplyCh <- request
+			request.done <- struct{}{}
 		case request := <-stream.flushRequestCh:
 			request.err = stream.flushCurrExtentWriter()
 			stream.flushReplyCh <- request

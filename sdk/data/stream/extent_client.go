@@ -83,9 +83,9 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write 
 		prefix := fmt.Sprintf("inodewrite %v_%v_%v", inode, offset, len(data))
 		return 0, fmt.Errorf("Prefix(%v) cannot init write stream", prefix)
 	}
-	request := &WriteRequest{data: data, kernelOffset: offset, size: len(data)}
+	request := &WriteRequest{data: data, kernelOffset: offset, size: len(data), done: make(chan struct{}, 1)}
 	stream.writeRequestCh <- request
-	request = <-stream.writeReplyCh
+	<-request.done
 	err = request.err
 	write = request.canWrite
 	write += request.cutSize
