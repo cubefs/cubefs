@@ -160,9 +160,9 @@ func (client *ExtentClient) Flush(inode uint64) (err error) {
 	if stream == nil {
 		return nil
 	}
-	request := &FlushRequest{}
+	request := &FlushRequest{done: make(chan struct{}, 1)}
 	stream.flushRequestCh <- request
-	request = <-stream.flushReplyCh
+	<-request.done
 	return request.err
 }
 
@@ -189,9 +189,9 @@ func (client *ExtentClient) CloseForWrite(inode uint64) (err error) {
 		return
 	}
 	atomic.StoreInt32(&streamWriter.hasClosed, HasClosed)
-	request := &CloseRequest{}
+	request := &CloseRequest{done: make(chan struct{}, 1)}
 	streamWriter.closeRequestCh <- request
-	request = <-streamWriter.closeReplyCh
+	<-request.done
 	if err = request.err; err != nil {
 		return
 	}
@@ -212,9 +212,9 @@ func (client *ExtentClient) Read(stream *StreamReader, inode uint64, data []byte
 	}
 	wstream := client.getStreamWriterForRead(inode)
 	if wstream != nil {
-		request := &FlushRequest{}
+		request := &FlushRequest{done: make(chan struct{}, 1)}
 		wstream.flushRequestCh <- request
-		request = <-wstream.flushReplyCh
+		<-request.done
 		if err = request.err; err != nil {
 			return 0, err
 		}
