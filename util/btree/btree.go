@@ -188,12 +188,6 @@ func (s items) find(item Item) (index int, found bool) {
 	i := sort.Search(len(s), func(i int) bool {
 		return item.Less(s[i])
 	})
-	defer func() {
-		if r := recover(); r != nil {
-			panic(fmt.Sprintf("%v\nindex=%d, vals=%v, items=%v", r, i,
-				s[i-1], s))
-		}
-	}()
 	if i > 0 && !s[i-1].Less(item) {
 		return i - 1, true
 	}
@@ -254,6 +248,9 @@ type node struct {
 }
 
 func (n *node) mutableFor(cow *copyOnWriteContext) *node {
+	if n.cow == cow {
+		return n
+	}
 	out := cow.newNode()
 	if cap(out.items) >= len(n.items) {
 		out.items = out.items[:len(n.items)]
@@ -503,13 +500,14 @@ const (
 // thus creating a "greaterOrEqual" or "lessThanEqual" rather than just a
 // "greaterThan" or "lessThan" queries.
 func (n *node) iterate(dir direction, start, stop Item, includeStart bool, hit bool, iter ItemIterator) (bool, bool) {
-	var ok bool
+	var ok, found bool
+	var index int
 	switch dir {
 	case ascend:
-		for i := 0; i < len(n.items); i++ {
-			if start != nil && n.items[i].Less(start) {
-				continue
-			}
+		if start != nil {
+			index, _ = n.items.find(start)
+		}
+		for i := index; i < len(n.items); i++ {
 			if len(n.children) > 0 {
 				if hit, ok = n.children[i].iterate(dir, start, stop, includeStart, hit, iter); !ok {
 					return hit, false
@@ -533,7 +531,15 @@ func (n *node) iterate(dir direction, start, stop Item, includeStart bool, hit b
 			}
 		}
 	case descend:
-		for i := len(n.items) - 1; i >= 0; i-- {
+		if start != nil {
+			index, found = n.items.find(start)
+			if !found {
+				index = index - 1
+			}
+		} else {
+			index = len(n.items) - 1
+		}
+		for i := index; i >= 0; i-- {
 			if start != nil && !n.items[i].Less(start) {
 				if !includeStart || hit || start.Less(n.items[i]) {
 					continue
@@ -683,18 +689,17 @@ func (t *BTree) ReplaceOrInsert(item Item) Item {
 		t.root.items = append(t.root.items, item)
 		t.length++
 		return nil
+	} else {
+		t.root = t.root.mutableFor(t.cow)
+		if len(t.root.items) >= t.maxItems() {
+			item2, second := t.root.split(t.maxItems() / 2)
+			oldroot := t.root
+			t.root = t.cow.newNode()
+			t.root.items = append(t.root.items, item2)
+			t.root.children = append(t.root.children, oldroot, second)
+		}
 	}
-	// New variable for manipulation
-	root := t.root.mutableFor(t.cow)
-	if len(root.items) >= t.maxItems() {
-		item2, second := root.split(t.maxItems() / 2)
-		oldroot := root
-		root = t.cow.newNode()
-		root.items = append(root.items, item2)
-		root.children = append(root.children, oldroot, second)
-	}
-	out := root.insert(item, t.maxItems())
-	t.root = root // New root is ready
+	out := t.root.insert(item, t.maxItems())
 	if out == nil {
 		t.length++
 	}
@@ -723,16 +728,13 @@ func (t *BTree) deleteItem(item Item, typ toRemove) Item {
 	if t.root == nil || len(t.root.items) == 0 {
 		return nil
 	}
-
-	root := t.root.mutableFor(t.cow)
-	out := root.remove(item, t.minItems(), typ)
-	if len(root.items) == 0 && len(root.children) > 0 {
-		t.root = root.children[0]
-		t.cow.freeNode(root)
-	} else {
-		t.root = root
+	t.root = t.root.mutableFor(t.cow)
+	out := t.root.remove(item, t.minItems(), typ)
+	if len(t.root.items) == 0 && len(t.root.children) > 0 {
+		oldroot := t.root
+		t.root = t.root.children[0]
+		t.cow.freeNode(oldroot)
 	}
-
 	if out != nil {
 		t.length--
 	}

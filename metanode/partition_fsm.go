@@ -22,7 +22,6 @@ import (
 	"sync/atomic"
 
 	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/util/btree"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/chubaoio/cbfs/util/ump"
 	"github.com/tiglabs/raft"
@@ -173,8 +172,8 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer,
 		index      int
 		appIndexID uint64
 		cursor     uint64
-		inodeTree  = btree.New(defaultBTreeDegree)
-		dentryTree = btree.New(defaultBTreeDegree)
+		inodeTree  = NewBtree()
+		dentryTree = NewBtree()
 	)
 	defer func() {
 		if err == io.EOF {
@@ -217,13 +216,13 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer,
 			if cursor < ino.Inode {
 				cursor = ino.Inode
 			}
-			inodeTree.ReplaceOrInsert(ino)
+			inodeTree.ReplaceOrInsert(ino, true)
 			log.LogDebugf("action[ApplySnapshot] create inode[%v].", ino)
 		case opCreateDentry:
 			dentry := &Dentry{}
 			dentry.UnmarshalKey(snap.K)
 			dentry.UnmarshalValue(snap.V)
-			dentryTree.ReplaceOrInsert(dentry)
+			dentryTree.ReplaceOrInsert(dentry, true)
 			log.LogDebugf("action[ApplySnapshot] create dentry[%v].", dentry)
 		default:
 			err = fmt.Errorf("unknown op=%d", snap.Op)

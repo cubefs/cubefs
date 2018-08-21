@@ -19,20 +19,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/raftstore"
-	"github.com/chubaoio/cbfs/util/btree"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/chubaoio/cbfs/util/pool"
 	"github.com/juju/errors"
 	raftproto "github.com/tiglabs/raft/proto"
-)
-
-const (
-	defaultBTreeDegree = 32
 )
 
 var (
@@ -173,12 +167,10 @@ type MetaPartition interface {
 //  +-----+             +-------+
 type metaPartition struct {
 	config        *MetaPartitionConfig
-	size          uint64              // For partition all file size
-	applyID       uint64              // For store Inode/Dentry max applyID, this index will be update after restore from dump data.
-	dentryMu      sync.RWMutex        // Mutex for Dentry operation.
-	dentryTree    *btree.BTree        // B-Tree for Dentry.
-	inodeMu       sync.RWMutex        // Mutex for Inode operation.
-	inodeTree     *btree.BTree        // B-Tree for Inode.
+	size          uint64 // For partition all file size
+	applyID       uint64 // For store Inode/Dentry max applyID, this index will be update after restore from dump data.
+	dentryTree    *BTree
+	inodeTree     *BTree              // B-Tree for Inode.
 	raftPartition raftstore.Partition // RaftStore partition instance of this meta partition.
 	stopC         chan bool
 	storeChan     chan *storeMsg
@@ -315,8 +307,8 @@ func (mp *metaPartition) getRaftPort() (heartbeat, replicate int, err error) {
 func NewMetaPartition(conf *MetaPartitionConfig) MetaPartition {
 	mp := &metaPartition{
 		config:     conf,
-		dentryTree: btree.New(defaultBTreeDegree),
-		inodeTree:  btree.New(defaultBTreeDegree),
+		dentryTree: NewBtree(),
+		inodeTree:  NewBtree(),
 		stopC:      make(chan bool),
 		storeChan:  make(chan *storeMsg, 5),
 		freeList:   newFreeList(),
@@ -449,8 +441,8 @@ func (mp *metaPartition) OfflinePartition(req []byte) (err error) {
 }
 
 func (mp *metaPartition) Reset() (err error) {
-	mp.resetInodeTree()
-	mp.resetDentryTree()
+	mp.inodeTree.Reset()
+	mp.dentryTree.Reset()
 	mp.config.Cursor = 0
 	mp.applyID = 0
 	// delete ino/dentry applyID file
@@ -458,16 +450,4 @@ func (mp *metaPartition) Reset() (err error) {
 	mp.deleteDentryFile()
 	mp.deleteInodeFile()
 	return
-}
-
-func (mp *metaPartition) resetInodeTree() {
-	mp.inodeMu.Lock()
-	mp.inodeTree = btree.New(defaultBTreeDegree)
-	mp.inodeMu.Unlock()
-}
-
-func (mp *metaPartition) resetDentryTree() {
-	mp.dentryMu.Lock()
-	mp.dentryTree = btree.New(defaultBTreeDegree)
-	mp.dentryMu.Unlock()
 }

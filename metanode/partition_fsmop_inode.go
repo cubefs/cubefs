@@ -36,21 +36,15 @@ func NewResponseInode() *ResponseInode {
 // CreateInode create inode to inode tree.
 func (mp *metaPartition) createInode(ino *Inode) (status uint8) {
 	status = proto.OpOk
-	mp.inodeMu.Lock()
-	defer mp.inodeMu.Unlock()
-	if mp.inodeTree.Has(ino) {
+	if _, ok := mp.inodeTree.ReplaceOrInsert(ino, false); !ok {
 		status = proto.OpExistErr
-		return
 	}
-	mp.inodeTree.ReplaceOrInsert(ino)
 	return
 }
 
 func (mp *metaPartition) createLinkInode(ino *Inode) (resp *ResponseInode) {
 	resp = NewResponseInode()
 	resp.Status = proto.OpOk
-	mp.inodeMu.Lock()
-	defer mp.inodeMu.Unlock()
 	item := mp.inodeTree.Get(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
@@ -59,6 +53,10 @@ func (mp *metaPartition) createLinkInode(ino *Inode) (resp *ResponseInode) {
 	i := item.(*Inode)
 	if i.Type == proto.ModeDir {
 		resp.Status = proto.OpArgMismatchErr
+		return
+	}
+	if i.MarkDelete == 1 {
+		resp.Status = proto.OpNotExistErr
 		return
 	}
 	i.NLink++
@@ -103,8 +101,8 @@ func (mp *metaPartition) internalHasInode(ino *Inode) bool {
 	return mp.inodeTree.Has(ino)
 }
 
-func (mp *metaPartition) getInodeTree() *btree.BTree {
-	return mp.inodeTree
+func (mp *metaPartition) getInodeTree() *BTree {
+	return mp.inodeTree.GetTree()
 }
 
 func (mp *metaPartition) RangeInode(f func(i btree.Item) bool) {
@@ -115,21 +113,26 @@ func (mp *metaPartition) RangeInode(f func(i btree.Item) bool) {
 func (mp *metaPartition) deleteInode(ino *Inode) (resp *ResponseInode) {
 	resp = NewResponseInode()
 	resp.Status = proto.OpOk
-	mp.inodeMu.Lock()
-	defer mp.inodeMu.Unlock()
-	item := mp.inodeTree.Get(ino)
-	if item == nil {
+	isFind := false
+	isDelete := false
+	mp.inodeTree.Find(ino, func(i BtreeItem) {
+		isFind = true
+		inode := i.(*Inode)
+		resp.Msg = inode
+		if inode.Type == proto.ModeRegular {
+			inode.NLink--
+			return
+		}
+		// should delete inode
+		isDelete = true
+	})
+	if !isFind {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
-	i := item.(*Inode)
-	if i.Type == proto.ModeRegular {
-		i.NLink--
-		resp.Msg = i
-		return
+	if isDelete {
+		mp.inodeTree.Delete(ino)
 	}
-	mp.inodeTree.Delete(ino)
-	resp.Msg = i
 	return
 }
 
@@ -153,9 +156,7 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 }
 
 func (mp *metaPartition) internalDeleteInode(ino *Inode) {
-	mp.inodeMu.Lock()
 	mp.inodeTree.Delete(ino)
-	mp.inodeMu.Unlock()
 	return
 }
 
@@ -185,56 +186,59 @@ func (mp *metaPartition) appendExtents(ino *Inode) (status uint8) {
 func (mp *metaPartition) extentsTruncate(ino *Inode) (resp *ResponseInode) {
 	resp = NewResponseInode()
 	resp.Status = proto.OpOk
-	mp.inodeMu.Lock()
-	defer mp.inodeMu.Unlock()
-	item := mp.inodeTree.Get(ino)
-	if item == nil {
+	isFind := false
+	mp.inodeTree.Find(ino, func(item BtreeItem) {
+		isFind = true
+		i := item.(*Inode)
+		if i.Type == proto.ModeDir {
+			resp.Status = proto.OpArgMismatchErr
+			return
+		}
+		if i.MarkDelete == 1 {
+			resp.Status = proto.OpNotExistErr
+			return
+		}
+		ino.Extents = i.Extents
+		i.Size = 0
+		i.ModifyTime = ino.ModifyTime
+		i.Generation++
+		i.Extents = proto.NewStreamKey(i.Inode)
+		// mark Delete and push to freeList
+		markIno := NewInode(0, i.Type)
+		markIno.MarkDelete = 1
+		markIno.Extents = ino.Extents
+		mp.freeList.Push(markIno)
+	})
+	if !isFind {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
-	i := item.(*Inode)
-	if i.Type == proto.ModeDir {
-		resp.Status = proto.OpArgMismatchErr
-		return
-	}
-	if i.MarkDelete == 1 {
-		resp.Status = proto.OpNotExistErr
-		return
-	}
-	ino.Extents = i.Extents
-	i.Size = 0
-	i.ModifyTime = ino.ModifyTime
-	i.Generation++
-	i.Extents = proto.NewStreamKey(i.Inode)
-	// mark Delete and push to freeList
-	markIno := NewInode(0, i.Type)
-	markIno.MarkDelete = 1
-	markIno.Extents = ino.Extents
-	mp.freeList.Push(markIno)
+
 	return
 }
 
 func (mp *metaPartition) evictInode(ino *Inode) (resp *ResponseInode) {
 	resp = NewResponseInode()
 	resp.Status = proto.OpOk
-	mp.inodeMu.Lock()
-	defer mp.inodeMu.Unlock()
-	item := mp.inodeTree.Get(ino)
-	if item == nil {
+	isFind := false
+	mp.inodeTree.Find(ino, func(item BtreeItem) {
+		isFind = true
+		i := item.(*Inode)
+		if i.Type == proto.ModeDir {
+			if i.NLink < 2 {
+				mp.inodeTree.Delete(ino)
+			}
+			return
+		}
+		if i.NLink < 1 {
+			i.MarkDelete = 1
+			// push to free list
+			mp.freeList.Push(i)
+		}
+	})
+	if !isFind {
 		resp.Status = proto.OpNotExistErr
 		return
-	}
-	i := item.(*Inode)
-	if i.Type == proto.ModeDir {
-		if i.NLink < 2 {
-			mp.inodeTree.Delete(ino)
-		}
-		return
-	}
-	if i.NLink < 1 {
-		i.MarkDelete = 1
-		// push to free list
-		mp.freeList.Push(i)
 	}
 	return
 }

@@ -17,7 +17,6 @@ package metanode
 import (
 	"time"
 
-	"github.com/chubaoio/cbfs/util/btree"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/chubaoio/cbfs/util/ump"
 	"github.com/juju/errors"
@@ -26,8 +25,8 @@ import (
 type storeMsg struct {
 	command    uint32
 	applyIndex uint64
-	inodeTree  *btree.BTree
-	dentryTree *btree.BTree
+	inodeTree  *BTree
+	dentryTree *BTree
 }
 
 func (mp *metaPartition) startSchedule(curIndex uint64) {
