@@ -28,6 +28,7 @@ import (
 
 	"github.com/chubaoio/cbfs/util"
 	"github.com/juju/errors"
+	"github.com/chubaoio/cbfs/util/buf"
 )
 
 const (
@@ -294,7 +295,17 @@ func (e *fsExtent) Write(data []byte, offset, size int64, crc uint32) (err error
 	if offsetInBlock == 0 {
 		return e.updateBlockCrc(int(blockNo), crc)
 	}
-	blockBuffer := make([]byte, util.BlockSize)
+
+	// Prepare read buffer for block data
+	var (
+		blockBuffer []byte
+		poolErr error
+	)
+	if blockBuffer, poolErr = buf.Buffers.Get(util.BlockSize); poolErr != nil {
+		blockBuffer = make([]byte, util.BlockSize)
+	}
+	defer buf.Buffers.Put(blockBuffer)
+
 	remainCheckByteCnt := offsetInBlock + int64(writeSize)
 	for {
 		if remainCheckByteCnt <= 0 {
