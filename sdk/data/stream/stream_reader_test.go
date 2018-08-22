@@ -50,7 +50,7 @@ func TestStreamReader_GetReader(t *testing.T) {
 	go func() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
-	log.NewLog("log", "test", log.DebugLevel)
+	log.InitLog("log", "test", log.DebugLevel)
 	sk = proto.NewStreamKey(2)
 	for i := 0; i < 10000; i++ {
 		rand.Seed(time.Now().UnixNano())

@@ -137,11 +137,11 @@ func main() {
 
 	if profPort != "" {
 		go func() {
-			log.LogInfo(http.ListenAndServe(fmt.Sprintf(":%v", profPort), nil))
+			http.ListenAndServe(fmt.Sprintf(":%v", profPort), nil)
 		}()
 	}
 
-	if _, err := log.NewLog(logDir, module, level); err != nil {
+	if _, err := log.InitLog(logDir, module, level); err != nil {
 		fmt.Println("Fatal: failed to start the baud storage daemon - ", err)
 		os.Exit(1)
 		return

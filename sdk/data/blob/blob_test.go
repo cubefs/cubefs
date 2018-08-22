@@ -30,7 +30,7 @@ const (
 var gBlobClient *BlobClient
 
 func init() {
-	_, err := log.NewLog(TestLogPath, "Blob_UT", log.DebugLevel)
+	_, err := log.InitLog(TestLogPath, "Blob_UT", log.DebugLevel)
 	if err != nil {
 		panic(err)
 	}

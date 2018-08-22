@@ -94,7 +94,7 @@ func readFromFile(filename string, wg *sync.WaitGroup, mw *meta.MetaWrapper, ec 
 func main() {
 	flag.Parse()
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	_, err := log.NewLog("log", "writer_test", log.ErrorLevel)
+	_, err := log.InitLog("log", "writer_test", log.ErrorLevel)
 	if err != nil {
 		panic("Log module init failed")
 	}

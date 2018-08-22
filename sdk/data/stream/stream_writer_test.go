@@ -42,7 +42,7 @@ const (
 )
 
 func init() {
-	_, err := log.NewLog("log", "writer_test", log.DebugLevel)
+	_, err := log.InitLog("log", "writer_test", log.DebugLevel)
 	if err != nil {
 		panic("Log module init failed")
 	}

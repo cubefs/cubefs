@@ -192,10 +192,10 @@ var (
 
 var gLog *Log = nil
 
-func NewLog(dir, module string, level Level) (*Log, error) {
-	gLog = new(Log)
-	gLog.dir = dir
-	gLog.module = module
+func InitLog(dir, module string, level Level) (*Log, error) {
+	l := new(Log)
+	l.dir = dir
+	l.module = module
 	fi, err := os.Stat(dir)
 	if err != nil {
 		os.MkdirAll(dir, 0755)
@@ -205,14 +205,15 @@ func NewLog(dir, module string, level Level) (*Log, error) {
 		}
 	}
 
-	err = gLog.initLog(dir, module, level)
+	err = l.initLog(dir, module, level)
 	if err != nil {
 		return nil, err
 	}
-	gLog.startTime = time.Now()
-	go gLog.checkLogRotation(dir, module)
+	l.startTime = time.Now()
+	go l.checkLogRotation(dir, module)
 
-	return gLog, nil
+	gLog = l
+	return l, nil
 }
 
 func (l *Log) initLog(logDir, module string, level Level) error {

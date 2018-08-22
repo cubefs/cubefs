@@ -28,7 +28,7 @@ import (
 func TestValidNodeID(t *testing.T) {
 	logDir := "testlog"
 	defer os.RemoveAll(logDir)
-	_, err := log.NewLog(logDir, "MetaNode", log.DebugLevel)
+	_, err := log.InitLog(logDir, "MetaNode", log.DebugLevel)
 	if err != nil {
 		t.Fatalf("util/log module test failed: %s", err.Error())
 	}
