@@ -84,7 +84,7 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write 
 		return 0, fmt.Errorf("Prefix(%v) cannot init write stream", prefix)
 	}
 	request := &WriteRequest{data: data, kernelOffset: offset, size: len(data), done: make(chan struct{}, 1)}
-	stream.writeRequestCh <- request
+	stream.requestCh <- request
 	<-request.done
 	err = request.err
 	write = request.canWrite
@@ -161,7 +161,7 @@ func (client *ExtentClient) Flush(inode uint64) (err error) {
 		return nil
 	}
 	request := &FlushRequest{done: make(chan struct{}, 1)}
-	stream.flushRequestCh <- request
+	stream.requestCh <- request
 	<-request.done
 	return request.err
 }
@@ -190,7 +190,7 @@ func (client *ExtentClient) CloseForWrite(inode uint64) (err error) {
 	}
 	atomic.StoreInt32(&streamWriter.hasClosed, HasClosed)
 	request := &CloseRequest{done: make(chan struct{}, 1)}
-	streamWriter.closeRequestCh <- request
+	streamWriter.requestCh <- request
 	<-request.done
 	if err = request.err; err != nil {
 		return
@@ -213,7 +213,7 @@ func (client *ExtentClient) Read(stream *StreamReader, inode uint64, data []byte
 	wstream := client.getStreamWriterForRead(inode)
 	if wstream != nil {
 		request := &FlushRequest{done: make(chan struct{}, 1)}
-		wstream.flushRequestCh <- request
+		wstream.requestCh <- request
 		<-request.done
 		if err = request.err; err != nil {
 			return 0, err

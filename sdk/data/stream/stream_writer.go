@@ -61,9 +61,7 @@ type StreamWriter struct {
 	Inode              uint64        //inode
 	excludePartition   []uint32
 	appendExtentKey    AppendExtentKeyFunc
-	writeRequestCh     chan *WriteRequest
-	flushRequestCh     chan *FlushRequest
-	closeRequestCh     chan *CloseRequest
+	requestCh          chan interface{}
 	exitCh             chan bool
 	hasUpdateKey       map[string]int
 	HasWriteSize       uint64
@@ -76,9 +74,7 @@ func NewStreamWriter(inode, start uint64, appendExtentKey AppendExtentKeyFunc) (
 	stream.appendExtentKey = appendExtentKey
 	stream.Inode = inode
 	stream.HasWriteSize = start
-	stream.writeRequestCh = make(chan *WriteRequest, 1000)
-	stream.closeRequestCh = make(chan *CloseRequest, 10)
-	stream.flushRequestCh = make(chan *FlushRequest, 100)
+	stream.requestCh = make(chan interface{}, 1000)
 	stream.exitCh = make(chan bool, 10)
 	stream.excludePartition = make([]uint32, 0)
 	stream.hasUpdateKey = make(map[string]int)
@@ -133,28 +129,8 @@ func (stream *StreamWriter) server() {
 			stream.flushCurrExtentWriter()
 		}
 		select {
-		case request := <-stream.writeRequestCh:
-			if request.kernelOffset < int(stream.HasWriteSize) {
-				cutSize := int(stream.HasWriteSize) - request.kernelOffset
-				if cutSize < len(request.data) {
-					request.kernelOffset += cutSize
-					request.data = request.data[cutSize:]
-					request.size -= cutSize
-					request.cutSize = cutSize
-				}
-			}
-			request.canWrite, request.err = stream.write(request.data, request.kernelOffset, request.size)
-			stream.HasWriteSize += uint64(request.canWrite)
-			request.done <- struct{}{}
-		case request := <-stream.flushRequestCh:
-			request.err = stream.flushCurrExtentWriter()
-			request.done <- struct{}{}
-		case request := <-stream.closeRequestCh:
-			request.err = stream.flushCurrExtentWriter()
-			if request.err == nil {
-				request.err = stream.close()
-			}
-			request.done <- struct{}{}
+		case request := <-stream.requestCh:
+			stream.handleRequest(request)
 		case <-stream.exitCh:
 			stream.flushCurrExtentWriter()
 			return
@@ -164,6 +140,34 @@ func (stream *StreamWriter) server() {
 			}
 			stream.flushCurrExtentWriter()
 		}
+	}
+}
+
+func (stream *StreamWriter) handleRequest(request interface{}) {
+	switch request := request.(type) {
+	case *WriteRequest:
+		if request.kernelOffset < int(stream.HasWriteSize) {
+			cutSize := int(stream.HasWriteSize) - request.kernelOffset
+			if cutSize < len(request.data) {
+				request.kernelOffset += cutSize
+				request.data = request.data[cutSize:]
+				request.size -= cutSize
+				request.cutSize = cutSize
+			}
+		}
+		request.canWrite, request.err = stream.write(request.data, request.kernelOffset, request.size)
+		stream.HasWriteSize += uint64(request.canWrite)
+		request.done <- struct{}{}
+	case *FlushRequest:
+		request.err = stream.flushCurrExtentWriter()
+		request.done <- struct{}{}
+	case *CloseRequest:
+		request.err = stream.flushCurrExtentWriter()
+		if request.err == nil {
+			request.err = stream.close()
+		}
+		request.done <- struct{}{}
+	default:
 	}
 }
 
