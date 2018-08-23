@@ -62,3 +62,4 @@ base on [multiRaft](http://github.com/tiglabs/raft), so each metaNode manager
 |/getInodeInfo| id=100 | http://127.0.0.1:9092/getInodeInfo?id=100 | get the meta-info of the 100th partition|
 |/getInodeRange| id=100 | http://127.0.0.1:9092/getInodeRange?id=100 | get all inode info of the 100th partition(maybe very big).|
 |/getExtents| pid=100&ino=203 | http://127.0.0.1:9092/getExtents?pid=100&ino=203 | get the extents(data meta) of the specified partition and inode id |
+|/getDentry| pid=100| http://127.0.0.1:9092/getDentry?pid=100|get all dentry of the 100th partition|

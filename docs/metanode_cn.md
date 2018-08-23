@@ -61,3 +61,4 @@ extents（data元信息[dataMode]）等); 2. dentry树用于存储目录和文�
 |/getInodeInfo| id=100 | http://127.0.0.1:9092/getInodeInfo?id=100 |获取指定metaPartition为100的meta信息（包含inode分配的起始结束范围及Raft Leader信息等|
 |/getInodeRange| id=100 | http://127.0.0.1:9092/getInodeRange?id=100 |获取metaPartition id为100的Inode btree里全部存储的信息，显示的是json格式 |
 |/getExtents| pid=100&ino=203 | http://127.0.0.1:9092/getExtents?pid=100&ino=203 |获取partititon=100，且inode id为203的所有数据存储的元信息 |
+|/getDentry| pid=100| http://127.0.0.1:9092/getDentry?pid=100| 获取指定partition id=100的所有dentry信息|
