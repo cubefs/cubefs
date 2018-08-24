@@ -192,7 +192,10 @@ func (mp *metaPartition) deleteDataPartitionMark(inoSlice []*Inode) {
 			for _, ino := range shouldCommit {
 				mp.freeList.Push(ino)
 			}
+			log.LogWarnf("[deleteInode] raft commit inode list: %v, "+
+				"response %s", shouldCommit, err.Error())
 		}
+		log.LogDebugf("[deleteInodeTree] inode list: %v", shouldCommit)
 	}
 
 }
