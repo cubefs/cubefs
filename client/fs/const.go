@@ -54,6 +54,10 @@ const (
 )
 
 const (
+	DentryValidDuration = 5 * time.Second
+)
+
+const (
 	DeleteExtentsTimeout = 600 * time.Second
 )
 
