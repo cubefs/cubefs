@@ -16,16 +16,19 @@ package fs
 
 import (
 	"sync"
+	"time"
 )
 
 type DentryCache struct {
-	sync.RWMutex
-	cache map[string]uint64
+	sync.Mutex
+	cache      map[string]uint64
+	expiration time.Time
 }
 
 func NewDentryCache() *DentryCache {
 	return &DentryCache{
-		cache: make(map[string]uint64),
+		cache:      make(map[string]uint64),
+		expiration: time.Now().Add(DentryValidDuration),
 	}
 }
 
@@ -36,6 +39,7 @@ func (dc *DentryCache) Put(name string, ino uint64) {
 	dc.Lock()
 	defer dc.Unlock()
 	dc.cache[name] = ino
+	dc.expiration = time.Now().Add(DentryValidDuration)
 }
 
 func (dc *DentryCache) Get(name string) (uint64, bool) {
@@ -43,8 +47,12 @@ func (dc *DentryCache) Get(name string) (uint64, bool) {
 		return 0, false
 	}
 
-	dc.RLock()
-	defer dc.RUnlock()
+	dc.Lock()
+	defer dc.Unlock()
+	if dc.expiration.Before(time.Now()) {
+		dc.cache = make(map[string]uint64)
+		return 0, false
+	}
 	ino, ok := dc.cache[name]
 	return ino, ok
 }
