@@ -22,9 +22,9 @@ CBFS consists of several components:
 
 * the cluster master. single raft replication
 
-* metanode. multi-raft replication, a meta partition (inode range) per raft
+* metanode. multi-raft replication, a meta partition (inode range) per replication state machine
 
-* datanode. de-clustering of data partitions, two storage engines for BLOBs and extents, replicated via an efficient consistent replication protocol
+* datanode. de-clustering of data partitions, two storage engines for BLOBs and extents, replicated via efficient consistent replication - chained replication for sequential write and raft for random write
 
 * client interfaces. FUSE, Java SDK, Go SDK.
 

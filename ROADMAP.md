@@ -20,7 +20,9 @@ lseek and file holes
 
 random write via the raft statemachine
 
-Java SDK
+extended attributes
+
+full-fledged Java SDK
 
 Kubernetes container storage interface
 
