@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -310,6 +311,12 @@ func (m *metaManager) Range(f func(i uint64, p MetaPartition) bool) {
 func (m *metaManager) GetPartition(id uint64) (mp MetaPartition, err error) {
 	mp, err = m.getPartition(id)
 	return
+}
+
+func (m *metaManager) PartitionsMarshalJSON() (data []byte, err error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return json.Marshal(m.partitions)
 }
 
 func NewMetaManager(conf MetaManagerConfig) MetaManager {

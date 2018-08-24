@@ -20,7 +20,7 @@ import (
 	"strconv"
 
 	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/util/btree"
+	"strings"
 )
 
 func (m *MetaNode) registerHandler() (err error) {
@@ -29,13 +29,14 @@ func (m *MetaNode) registerHandler() (err error) {
 	http.HandleFunc("/getInodeInfo", m.inodeInfoHandle)
 	http.HandleFunc("/getInodeRange", m.rangeHandle)
 	http.HandleFunc("/getExtents", m.getExtents)
+	http.HandleFunc("/getDentry", m.getDentryHandle)
 	return
 }
 func (m *MetaNode) allPartitionsHandle(w http.ResponseWriter, r *http.Request) {
 	mm := m.metaManager.(*metaManager)
-	data, err := json.Marshal(mm.partitions)
+	data, err := mm.PartitionsMarshalJSON()
 	if err != nil {
-		w.WriteHeader(400)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	w.Write(data)
@@ -45,13 +46,13 @@ func (m *MetaNode) inodeInfoHandle(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	id, err := strconv.ParseUint(r.FormValue("id"), 10, 64)
 	if err != nil {
-		w.WriteHeader(400)
+		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(err.Error()))
 		return
 	}
 	mp, err := m.metaManager.GetPartition(id)
 	if err != nil {
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(err.Error()))
 		return
 	}
@@ -64,7 +65,7 @@ func (m *MetaNode) inodeInfoHandle(w http.ResponseWriter, r *http.Request) {
 	msg["cursor"] = conf.Cursor
 	data, err := json.Marshal(msg)
 	if err != nil {
-		w.WriteHeader(400)
+		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(err.Error()))
 		return
 	}
@@ -75,19 +76,18 @@ func (m *MetaNode) rangeHandle(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	id, err := strconv.ParseUint(r.FormValue("id"), 10, 64)
 	if err != nil {
-		w.WriteHeader(400)
+		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(err.Error()))
 		return
 	}
-	t := r.FormValue("type")
 	mp, err := m.metaManager.GetPartition(id)
 	if err != nil {
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(err.Error()))
 		return
 	}
 	mpp := mp.(*metaPartition)
-	f := func(i btree.Item) bool {
+	f := func(i BtreeItem) bool {
 		var data []byte
 		if data, err = json.Marshal(i); err != nil {
 			return false
@@ -102,10 +102,6 @@ func (m *MetaNode) rangeHandle(w http.ResponseWriter, r *http.Request) {
 		return true
 	}
 	mpp.RangeInode(f)
-	if t == "clone" {
-		inoTree := mpp.getInodeTree()
-		inoTree.Ascend(f)
-	}
 }
 
 func (m *MetaNode) getExtents(w http.ResponseWriter, r *http.Request) {
@@ -113,40 +109,82 @@ func (m *MetaNode) getExtents(w http.ResponseWriter, r *http.Request) {
 	pidVal := r.FormValue("pid")
 	idVal := r.FormValue("ino")
 	if pidVal == "" || idVal == "" {
-		w.WriteHeader(400)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	pid, err := strconv.ParseUint(pidVal, 10, 64)
 	if err != nil {
-		w.WriteHeader(400)
+		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(err.Error()))
 		return
 	}
 	id, err := strconv.ParseUint(idVal, 10, 64)
 	if err != nil {
-		w.WriteHeader(400)
+		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(err.Error()))
 		return
 	}
 	mp, err := m.metaManager.GetPartition(pid)
 	if err != nil {
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(err.Error()))
 		return
 	}
 	mm := mp.(*metaPartition)
 	resp := mm.getInode(NewInode(id, 0))
 	if resp.Status != proto.OpOk {
-		w.WriteHeader(404)
-		w.Write([]byte("inode id not exsited"))
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("inode id not exist"))
 		return
 	}
 	data, err := resp.Msg.Extents.Marshal()
 	if err != nil {
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
 		return
 	}
 	w.Write(data)
+	return
+}
+
+func (m *MetaNode) getDentryHandle(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	// get partition ID
+	pidVal := r.FormValue("pid")
+	if pidVal = strings.TrimSpace(pidVal); pidVal == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("request param not pid"))
+		return
+	}
+	pid, err := strconv.ParseUint(pidVal, 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("not valid number"))
+		return
+	}
+	p, err := m.metaManager.GetPartition(pid)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	mp := p.(*metaPartition)
+
+	var val []byte
+	mp.dentryTree.Ascend(func(i BtreeItem) bool {
+		val, err = json.Marshal(i)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return false
+		}
+		if _, err = w.Write(val); err != nil {
+			return false
+		}
+		val[0] = '\n'
+		if _, err = w.Write(val[:1]); err != nil {
+			return false
+		}
+		return true
+	})
 	return
 }
