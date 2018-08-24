@@ -116,6 +116,6 @@ func (b *BTree) Reset() {
 
 func (b *BTree) Len() int {
 	b.RLock()
-	b.RUnlock()
+	defer b.RUnlock()
 	return b.tree.Len()
 }
