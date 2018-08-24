@@ -105,6 +105,39 @@ func (c *ChannelPool) Get() (interface{}, error) {
 	}
 }
 
+func (c *ChannelPool) AutoRelease() {
+	conns := c.getConns()
+	if conns == nil {
+		return
+	}
+	connLen := len(conns)
+	for i := 0; i < connLen; i++ {
+		select {
+		case wrapConn := <-conns:
+			if wrapConn == nil {
+				return
+			}
+			if timeout := c.idleTimeout; timeout > 0 {
+				if wrapConn.t.Add(timeout).Before(time.Now()) {
+					c.Close(wrapConn.conn)
+					continue
+				}
+			}
+			c.putNotModifyTime(wrapConn)
+		default:
+			return
+		}
+	}
+}
+
+func (c *ChannelPool) putNotModifyTime(conn *IdleConn) {
+	select {
+	case c.getConns() <- conn:
+	default:
+		return
+	}
+}
+
 // Put a resource to resource pool.
 func (c *ChannelPool) Put(conn interface{}) error {
 	if conn == nil {

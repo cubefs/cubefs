@@ -36,4 +36,6 @@ type Pool interface {
 
 	// Len returns number of resource stored in pool.
 	Len() int
+
+	AutoRelease()
 }

@@ -35,7 +35,7 @@ const (
 )
 
 var (
-	ReadConnectPool = pool.NewConnPoolWithPara(60, 100, time.Second*20, nil)
+	ReadConnectPool = pool.NewConnPool()
 )
 
 type ExtentReader struct {

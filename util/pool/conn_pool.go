@@ -29,20 +29,14 @@ type ConnPool struct {
 	maxCap   int
 	idleTime time.Duration
 	testFunc ConnTestFunc
+
 }
 
 func NewConnPool() (connP *ConnPool) {
-	return &ConnPool{pools: make(map[string]Pool), initCap: 3, maxCap: 20, idleTime: time.Second * 10}
-}
+	connP = &ConnPool{pools: make(map[string]Pool), initCap: 5, maxCap: 20, idleTime: time.Second * 10}
+	go connP.autoRelease()
 
-func NewConnPoolWithPara(initCap, maxCap int, idleTime time.Duration, testFunc ConnTestFunc) (connP *ConnPool) {
-	return &ConnPool{
-		pools:    make(map[string]Pool),
-		initCap:  initCap,
-		maxCap:   maxCap,
-		idleTime: idleTime,
-		testFunc: testFunc,
-	}
+	return connP
 }
 
 func (connP *ConnPool) Get(targetAddr string) (c *net.TCPConn, err error) {
@@ -115,10 +109,22 @@ func (connP *ConnPool) Put(c *net.TCPConn, forceClose bool) {
 		return
 	}
 	pool.Put(c)
+
 	return
 }
 
-func (connP *ConnPool) checkConn(conn *net.TCPConn) error {
-	//return proto.NewPingPacket().WriteToConn(conn)
-	return nil
+func (connP *ConnPool) autoRelease() {
+	for {
+		pools := make([]Pool, 0)
+		connP.Lock()
+		for _, pool := range connP.pools {
+			pools = append(pools, pool)
+		}
+		connP.Unlock()
+		for _, pool := range pools {
+			pool.AutoRelease()
+		}
+		time.Sleep(time.Minute)
+	}
+
 }
