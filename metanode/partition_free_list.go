@@ -20,6 +20,7 @@ import (
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/juju/errors"
+	"runtime"
 	"time"
 )
 
@@ -96,6 +97,7 @@ Begin:
 		if len(buffSlice) < BatchCounts {
 			goto Begin
 		}
+		runtime.Gosched()
 	}
 }
 
@@ -168,16 +170,18 @@ func (mp *metaPartition) deleteDataPartitionMark(inoSlice []*Inode) {
 		return
 	}
 	shouldCommit := make([]*Inode, 0, BatchCounts)
+	var err error
 	for _, ino := range inoSlice {
-		var err error
+		err = nil
 		ino.Extents.Range(func(i int, v proto.ExtentKey) bool {
 			if err = stepFunc(v); err != nil {
 				mp.freeList.Push(ino)
 				log.LogWarnf("[deleteDataPartitionMark]: %s", err.Error())
+				return false
 			}
 			return true
 		})
-		if err != nil {
+		if err == nil {
 			shouldCommit = append(shouldCommit, ino)
 		}
 	}
@@ -192,7 +196,7 @@ func (mp *metaPartition) deleteDataPartitionMark(inoSlice []*Inode) {
 			for _, ino := range shouldCommit {
 				mp.freeList.Push(ino)
 			}
-			log.LogWarnf("[deleteInode] raft commit inode list: %v, "+
+			log.LogWarnf("[deleteInodeTree] raft commit inode list: %v, "+
 				"response %s", shouldCommit, err.Error())
 		}
 		log.LogDebugf("[deleteInodeTree] inode list: %v", shouldCommit)
