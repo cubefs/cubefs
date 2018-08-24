@@ -39,16 +39,6 @@ func NewConnPool() (connP *ConnPool) {
 	return connP
 }
 
-func NewConnPoolWithPara(initCap, maxCap int, idleTime time.Duration, testFunc ConnTestFunc) (connP *ConnPool) {
-	return &ConnPool{
-		pools:    make(map[string]Pool),
-		initCap:  initCap,
-		maxCap:   maxCap,
-		idleTime: idleTime,
-		testFunc: testFunc,
-	}
-}
-
 func (connP *ConnPool) Get(targetAddr string) (c *net.TCPConn, err error) {
 	var obj interface{}
 
