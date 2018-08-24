@@ -175,7 +175,7 @@ func (m *metaManager) opCreateInode(conn net.Conn, p *Packet) (err error) {
 	err = mp.CreateInode(req, p)
 	// Reply operation result to client though TCP connection.
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opCreateInode] req:%v; resp: %v", req, p.GetResultMesg())
+	log.LogDebugf("[opCreateInode] req:%v; resp: %v, body: %s", req, p.GetResultMesg(), p.Data)
 	return
 }
 
@@ -197,6 +197,7 @@ func (m *metaManager) opMetaLinkInode(conn net.Conn, p *Packet) (err error) {
 	}
 	err = mp.CreateLinkInode(req, p)
 	m.respondToClient(conn, p)
+	log.LogDebugf("[opMetaLinkInode] req: %v, resp: %v, body: %s", req, p.GetResultMesg(), p.Data)
 	return
 }
 
@@ -220,7 +221,7 @@ func (m *metaManager) opCreateDentry(conn net.Conn, p *Packet) (err error) {
 	err = mp.CreateDentry(req, p)
 	// Reply operation result to client though TCP connection.
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opCreateDentry] req:%v; resp: %v", req, p.GetResultMesg())
+	log.LogDebugf("[opCreateDentry] req:%v; resp: %v, body: %s", req, p.GetResultMesg(), p.Data)
 	return
 }
 
@@ -244,7 +245,8 @@ func (m *metaManager) opDeleteDentry(conn net.Conn, p *Packet) (err error) {
 	err = mp.DeleteDentry(req, p)
 	// Reply operation result to client though TCP connection.
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opDeleteDentry] req:%v; resp: %v", req, p.GetResultMesg())
+	log.LogDebugf("[opDeleteDentry] req:%v; resp: %v, body: %s", req,
+		p.GetResultMesg(), p.Data)
 	return
 }
 
@@ -266,7 +268,8 @@ func (m *metaManager) opUpdateDentry(conn net.Conn, p *Packet) (err error) {
 	}
 	err = mp.UpdateDentry(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opUpdateDentry] req: %v; resp: %v", req, p.GetResultMesg())
+	log.LogDebugf("[opUpdateDentry] req: %v; resp: %v, body: %s",
+		req, p.GetResultMesg(), p.Data)
 	return
 }
 
@@ -288,7 +291,8 @@ func (m *metaManager) opDeleteInode(conn net.Conn, p *Packet) (err error) {
 	}
 	err = mp.DeleteInode(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opDeleteInode] req:%v; resp: %v", req, p.GetResultMesg())
+	log.LogDebugf("[opDeleteInode] req:%v; resp: %v, body: %s", req,
+		p.GetResultMesg(), p.Data)
 	return
 }
 
@@ -312,7 +316,8 @@ func (m *metaManager) opReadDir(conn net.Conn, p *Packet) (err error) {
 	err = mp.ReadDir(req, p)
 	// Reply operation result to client though TCP connection.
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opReadDir] req:%v; resp: %v", req, p.GetResultMesg())
+	log.LogDebugf("[opReadDir] req:%v; resp: %v, body: %s", req,
+		p.GetResultMesg(), p.Data)
 	return
 }
 
@@ -336,7 +341,8 @@ func (m *metaManager) opOpen(conn net.Conn, p *Packet) (err error) {
 	err = mp.Open(req, p)
 	// Reply operation result to client though TCP connection.
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opOpen] req:%v; resp: %v", req, p.GetResultMesg())
+	log.LogDebugf("[opOpen] req:%v; resp: %v, body: %s", req,
+		p.GetResultMesg(), p.Data)
 	return
 }
 
@@ -392,7 +398,8 @@ func (m *metaManager) opMetaEvictInode(conn net.Conn, p *Packet) (err error) {
 		err = errors.Errorf("[opMetaEvictInode] req: %s, resp: %v", req, err.Error())
 	}
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opMetaEvictInode] req: %v, resp: %v", req, p.GetResultMesg())
+	log.LogDebugf("[opMetaEvictInode] req: %v, resp: %v, body: %s", req,
+		p.GetResultMesg(), p.Data)
 	return
 }
 
@@ -414,7 +421,8 @@ func (m *metaManager) opMetaLookup(conn net.Conn, p *Packet) (err error) {
 	}
 	err = mp.Lookup(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opMetaLookup] req:%v; resp: %v", req, p.GetResultMesg())
+	log.LogDebugf("[opMetaLookup] req:%v; resp: %v, body: %s", req,
+		p.GetResultMesg(), p.Data)
 	return
 }
 
@@ -442,8 +450,8 @@ func (m *metaManager) opMetaExtentsAdd(conn net.Conn, p *Packet) (err error) {
 		log.LogErrorf("[opMetaExtentsAdd] ExtentAppend: %s, "+
 			"response to client: %s", err.Error(), p.GetResultMesg())
 	}
-	log.LogDebugf("[opMetaExtentsAdd] req: %v, response status=%v", req,
-		p.GetResultMesg())
+	log.LogDebugf("[opMetaExtentsAdd] req: %v, resp: %v, body: %s", req,
+		p.GetResultMesg(), p.Data)
 	return
 }
 
@@ -466,7 +474,8 @@ func (m *metaManager) opMetaExtentsList(conn net.Conn, p *Packet) (err error) {
 
 	err = mp.ExtentsList(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opMetaExtentsList] req:%v; resp: %v", req, p.GetResultMesg())
+	log.LogDebugf("[opMetaExtentsList] req:%v; resp: %v, body: %s", req,
+		p.GetResultMesg(), p.Data)
 	return
 }
 
@@ -718,6 +727,7 @@ func (m *metaManager) opMetaBatchInodeGet(conn net.Conn, p *Packet) (err error) 
 	}
 	err = mp.InodeGetBatch(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opMetaBatchInodeGet] req[%v], response[%v].", req, p.GetResultMesg())
+	log.LogDebugf("[opMetaBatchInodeGet] req[%v], resp[%v], body: %s", req,
+		p.GetResultMesg(), p.Data)
 	return
 }
