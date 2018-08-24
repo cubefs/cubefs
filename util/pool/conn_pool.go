@@ -29,6 +29,7 @@ type ConnPool struct {
 	maxCap   int
 	idleTime time.Duration
 	testFunc ConnTestFunc
+
 }
 
 func NewConnPool() (connP *ConnPool) {
