@@ -169,14 +169,17 @@ func (mp *metaPartition) deleteDataPartitionMark(inoSlice []*Inode) {
 	}
 	shouldCommit := make([]*Inode, 0, BatchCounts)
 	for _, ino := range inoSlice {
+		var err error
 		ino.Extents.Range(func(i int, v proto.ExtentKey) bool {
-			if err := stepFunc(v); err != nil {
+			if err = stepFunc(v); err != nil {
 				mp.freeList.Push(ino)
 				log.LogWarnf("[deleteDataPartitionMark]: %s", err.Error())
 			}
-			shouldCommit = append(shouldCommit, ino)
 			return true
 		})
+		if err != nil {
+			shouldCommit = append(shouldCommit, ino)
+		}
 	}
 	if len(shouldCommit) > 0 {
 		bufSlice := make([]byte, 0, 8*len(shouldCommit))
