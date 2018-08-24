@@ -213,7 +213,8 @@ func (mp *metaPartition) Stop() {
 		mp.onStop()
 		if mp.config.AfterStop != nil {
 			mp.config.AfterStop()
-			log.LogDebugf("[AfterStop]: execute ok.")
+			log.LogDebugf("[AfterStop]: partition id=%d execute ok.",
+				mp.config.PartitionId)
 		}
 	}
 }
@@ -237,7 +238,7 @@ func (mp *metaPartition) onStart() (err error) {
 
 func (mp *metaPartition) onStop() {
 	mp.stopRaft()
-	mp.stopSchedule()
+	mp.stop()
 }
 
 func (mp *metaPartition) startRaft() (err error) {

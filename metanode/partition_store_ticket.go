@@ -108,7 +108,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	}(mp.stopC)
 }
 
-func (mp *metaPartition) stopSchedule() {
+func (mp *metaPartition) stop() {
 	if mp.stopC != nil {
 		close(mp.stopC)
 	}
