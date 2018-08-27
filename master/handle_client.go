@@ -284,7 +284,7 @@ func checkVolPara(r *http.Request) (name string, err error) {
 		return
 	}
 
-	pattern := "^[a-zA-Z0-9]{3,256}$"
+	pattern := "^[a-zA-Z0-9_-]{3,256}$"
 	reg, err := regexp.Compile(pattern)
 	if err != nil {
 		return "", err
