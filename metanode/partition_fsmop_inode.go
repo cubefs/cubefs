@@ -187,6 +187,7 @@ func (mp *metaPartition) extentsTruncate(ino *Inode) (resp *ResponseInode) {
 	resp = NewResponseInode()
 	resp.Status = proto.OpOk
 	isFind := false
+	var markIno *Inode
 	mp.inodeTree.Find(ino, func(item BtreeItem) {
 		isFind = true
 		i := item.(*Inode)
@@ -203,17 +204,20 @@ func (mp *metaPartition) extentsTruncate(ino *Inode) (resp *ResponseInode) {
 		i.ModifyTime = ino.ModifyTime
 		i.Generation++
 		i.Extents = proto.NewStreamKey(i.Inode)
-		// mark Delete and push to freeList
-		markIno := NewInode(0, i.Type)
+		markIno = NewInode(binary.BigEndian.Uint64(ino.LinkTarget), i.Type)
 		markIno.MarkDelete = 1
 		markIno.Extents = ino.Extents
-		mp.freeList.Push(markIno)
 	})
 	if !isFind {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
 
+	// mark Delete and push to freeList
+	if markIno != nil {
+		mp.inodeTree.ReplaceOrInsert(markIno, false)
+		mp.freeList.Push(markIno)
+	}
 	return
 }
 
