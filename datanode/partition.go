@@ -185,7 +185,7 @@ func newDataPartition(volumeId string, partitionId uint32, disk *Disk, size int)
 	if err != nil {
 		return
 	}
-	disk.AddDataPartition(partition)
+	disk.AttachDataPartition(partition)
 	dp = partition
 	go partition.statusUpdateScheduler()
 	return
