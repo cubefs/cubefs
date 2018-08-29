@@ -90,8 +90,11 @@ func (rs *RocksDBStore) DeleteKeyAndPutIndex(key string, cmdMap map[string][]byt
 	wb := gorocksdb.NewWriteBatch()
 	defer wb.Clear()
 	wb.Delete([]byte(key))
-	for key, value := range cmdMap {
-		wb.Put([]byte(key), value)
+	for otherKey, value := range cmdMap {
+		if otherKey == key {
+			continue
+		}
+		wb.Put([]byte(otherKey), value)
 	}
 
 	if err := rs.db.Write(wo, wb); err != nil {
