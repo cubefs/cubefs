@@ -390,6 +390,9 @@ func (writer *ExtentWriter) removeRquest(e *list.Element) {
 func (writer *ExtentWriter) getQueueListLen() (length int) {
 	writer.requestLock.Lock()
 	defer writer.requestLock.Unlock()
+	if writer.requestQueue==nil {
+		return 0
+	}
 	return writer.requestQueue.Len()
 }
 
