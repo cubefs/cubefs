@@ -76,8 +76,6 @@ type DataPartition interface {
 	FlushDelete() error
 
 	Stop()
-
-	Destroy()
 }
 
 type dataPartitionMeta struct {
@@ -215,11 +213,6 @@ func (dp *dataPartition) Stop() {
 	dp.extentStore.Close()
 	dp.tinyStore.CloseAll()
 
-}
-
-func (dp *dataPartition) Destroy() {
-	dp.Stop()
-	os.Remove(dp.path)
 }
 
 func (dp *dataPartition) FlushDelete() (err error) {

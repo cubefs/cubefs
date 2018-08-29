@@ -20,6 +20,8 @@ import (
 	"sync"
 	"time"
 
+	"os"
+
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/util/log"
 )
@@ -298,8 +300,9 @@ func (space *spaceManager) DeletePartition(dpId uint32) {
 	space.partitionMu.Lock()
 	delete(space.partitions, dpId)
 	space.partitionMu.Unlock()
-	dp.Destroy()
+	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
+	os.RemoveAll(dp.Path())
 }
 
 func (s *DataNode) fillHeartBeatResponse(response *proto.DataNodeHeartBeatResponse) {
