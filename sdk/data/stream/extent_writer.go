@@ -338,12 +338,12 @@ func (writer *ExtentWriter) receive() {
 			err := reply.ReadFromConn(writer.getConnect(), proto.ReadDeadlineTime)
 			if err != nil {
 				writer.getConnect().Close()
-				continue
+				return
 			}
 			if err = writer.processReply(e, request, reply); err != nil {
 				writer.getConnect().Close()
 				log.LogWarn(err.Error())
-				continue
+				return
 			}
 		}
 	}
