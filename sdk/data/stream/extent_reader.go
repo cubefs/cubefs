@@ -23,10 +23,10 @@ import (
 	"github.com/chubaoio/cbfs/util/pool"
 	"github.com/juju/errors"
 	"hash/crc32"
+	"math/rand"
 	"net"
 	"strings"
 	"sync/atomic"
-	"math/rand"
 	"time"
 )
 
@@ -92,7 +92,7 @@ func (reader *ExtentReader) readDataFromDataPartition(offset, size int, data []b
 forLoop:
 	mesg := ""
 	for i := 0; i < int(reader.dp.ReplicaNum); i++ {
-		if reader.dp.Hosts[i]==host{
+		if reader.dp.Hosts[i] == host {
 			continue
 		}
 		_, err = reader.streamReadDataFromHost(reader.dp.Hosts[i], offset, size, data, kerneloffset, kernelsize)

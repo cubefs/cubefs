@@ -46,20 +46,20 @@ var (
 )
 
 type ExtentWriter struct {
-	inode         uint64     //Current write Inode
-	requestQueue  *list.List //sendPacketList
-	dp            *data.DataPartition
-	extentId      uint64 //current FileId
-	currentPacket *Packet
-	byteAck       uint64 //DataNode Has Ack Bytes
-	offset        int
-	connect       *net.TCPConn
-	handleCh      chan bool //a Chan for signal recive goroutine recive packet from connect
-	recoverCnt    int       //if failed,then recover contine,this is recover count
-	forbidUpdate  int64
-	requestLock   sync.Mutex
-	isflushIng    int32
-	flushSignleCh chan bool
+	inode            uint64     //Current write Inode
+	requestQueue     *list.List //sendPacketList
+	dp               *data.DataPartition
+	extentId         uint64 //current FileId
+	currentPacket    *Packet
+	byteAck          uint64 //DataNode Has Ack Bytes
+	offset           int
+	connect          *net.TCPConn
+	handleCh         chan bool //a Chan for signal recive goroutine recive packet from connect
+	recoverCnt       int       //if failed,then recover contine,this is recover count
+	forbidUpdate     int64
+	requestLock      sync.Mutex
+	isflushIng       int32
+	flushSignleCh    chan bool
 	hasExitRecvThead int32
 }
 
@@ -178,7 +178,7 @@ func (writer *ExtentWriter) sendCurrPacket() (err error) {
 
 func (writer *ExtentWriter) notifyExit() {
 	writer.cleanHandleCh()
-	if atomic.LoadInt32(&writer.hasExitRecvThead)==HasExitRecvThread{
+	if atomic.LoadInt32(&writer.hasExitRecvThead) == HasExitRecvThread {
 		return
 	}
 	writer.handleCh <- NotReceive
@@ -213,7 +213,7 @@ func (writer *ExtentWriter) toString() string {
 
 func (writer *ExtentWriter) checkIsStopReciveGoRoutine() {
 	if writer.isAllFlushed() && writer.isFullExtent() {
-		if atomic.LoadInt32(&writer.hasExitRecvThead)==HasExitRecvThread{
+		if atomic.LoadInt32(&writer.hasExitRecvThead) == HasExitRecvThread {
 			return
 		}
 		writer.handleCh <- NotReceive
@@ -255,7 +255,7 @@ func (writer *ExtentWriter) flush() (err error) {
 
 func (writer *ExtentWriter) close() (err error) {
 	if writer.isAllFlushed() {
-		if atomic.LoadInt32(&writer.hasExitRecvThead)==HasExitRecvThread{
+		if atomic.LoadInt32(&writer.hasExitRecvThead) == HasExitRecvThread {
 			return
 		}
 		select {
@@ -266,7 +266,7 @@ func (writer *ExtentWriter) close() (err error) {
 	} else {
 		err = writer.flush()
 		if err == nil && writer.isAllFlushed() {
-			if atomic.LoadInt32(&writer.hasExitRecvThead)==HasExitRecvThread{
+			if atomic.LoadInt32(&writer.hasExitRecvThead) == HasExitRecvThread {
 				return
 			}
 			select {
@@ -334,7 +334,7 @@ func (writer *ExtentWriter) toKey() (k proto.ExtentKey) {
 
 func (writer *ExtentWriter) receive() {
 	defer func() {
-		atomic.StoreInt32(&writer.hasExitRecvThead,HasExitRecvThread)
+		atomic.StoreInt32(&writer.hasExitRecvThead, HasExitRecvThread)
 	}()
 	for {
 		select {
@@ -407,7 +407,7 @@ func (writer *ExtentWriter) removeRquest(e *list.Element) {
 func (writer *ExtentWriter) getQueueListLen() (length int) {
 	writer.requestLock.Lock()
 	defer writer.requestLock.Unlock()
-	if writer.requestQueue==nil {
+	if writer.requestQueue == nil {
 		return 0
 	}
 	return writer.requestQueue.Len()
@@ -424,7 +424,7 @@ func (writer *ExtentWriter) getNeedRetrySendPackets() (requests []*Packet) {
 	for e := writer.requestQueue.Front(); e != nil; e = e.Next() {
 		requests = append(requests, e.Value.(*Packet))
 	}
-	writer.requestQueue=nil
+	writer.requestQueue = nil
 	if writer.currentPacket == nil {
 		return
 	}
