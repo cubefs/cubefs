@@ -47,7 +47,7 @@ func NewWritePacket(dp *data.DataPartition, extentId uint64, offset int, kernelO
 	p.ReqID = proto.GetReqID()
 	p.Opcode = proto.OpWrite
 	p.kernelOffset = kernelOffset
-	p.Data=make([]byte,0,util.BlockSize)
+	p.Data = make([]byte, 0, util.BlockSize)
 
 	return
 }

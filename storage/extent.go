@@ -27,8 +27,8 @@ import (
 	"time"
 
 	"github.com/chubaoio/cbfs/util"
-	"github.com/juju/errors"
 	"github.com/chubaoio/cbfs/util/buf"
+	"github.com/juju/errors"
 )
 
 const (
@@ -299,7 +299,7 @@ func (e *fsExtent) Write(data []byte, offset, size int64, crc uint32) (err error
 	// Prepare read buffer for block data
 	var (
 		blockBuffer []byte
-		poolErr error
+		poolErr     error
 	)
 	if blockBuffer, poolErr = buf.Buffers.Get(util.BlockSize); poolErr != nil {
 		blockBuffer = make([]byte, util.BlockSize)

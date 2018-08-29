@@ -38,7 +38,7 @@ const (
 
 var (
 	MasterHelper = util.NewMasterHelper()
-	LocalIP,_    =util.GetLocalIP()
+	LocalIP, _   = util.GetLocalIP()
 )
 
 type DataPartition struct {
@@ -64,11 +64,11 @@ func (dp *DataPartition) GetAllAddrs() (m string) {
 
 type Wrapper struct {
 	sync.RWMutex
-	volName     string
-	masters     []string
-	conns       *pool.ConnPool
-	partitions  map[uint32]*DataPartition
-	rwPartition []*DataPartition
+	volName               string
+	masters               []string
+	conns                 *pool.ConnPool
+	partitions            map[uint32]*DataPartition
+	rwPartition           []*DataPartition
 	localLeaderPartitions []*DataPartition
 }
 
@@ -114,12 +114,12 @@ func (w *Wrapper) updateDataPartition() error {
 	}
 
 	rwPartitionGroups := make([]*DataPartition, 0)
-	localLeaderPartitionGroups:=make([]*DataPartition,0)
+	localLeaderPartitionGroups := make([]*DataPartition, 0)
 	for _, dp := range view.DataPartitions {
 		if dp.Status == proto.ReadWrite {
 			rwPartitionGroups = append(rwPartitionGroups, dp)
-			if strings.Split(dp.Hosts[0],":")[0]== LocalIP {
-				localLeaderPartitionGroups=append(localLeaderPartitionGroups,dp)
+			if strings.Split(dp.Hosts[0], ":")[0] == LocalIP {
+				localLeaderPartitionGroups = append(localLeaderPartitionGroups, dp)
 			}
 		}
 	}
@@ -130,7 +130,7 @@ func (w *Wrapper) updateDataPartition() error {
 	}
 
 	w.rwPartition = rwPartitionGroups
-	w.localLeaderPartitions=localLeaderPartitionGroups
+	w.localLeaderPartitions = localLeaderPartitionGroups
 
 	for _, dp := range view.DataPartitions {
 		w.replaceOrInsertPartition(dp)
@@ -161,7 +161,7 @@ func isExcluded(partitionId uint32, excludes []uint32) bool {
 	return false
 }
 
-func (w *Wrapper)getLocalLeaderDataPartition(exclude []uint32)(*DataPartition,error){
+func (w *Wrapper) getLocalLeaderDataPartition(exclude []uint32) (*DataPartition, error) {
 	rwPartitionGroups := w.localLeaderPartitions
 	if len(rwPartitionGroups) == 0 {
 		return nil, fmt.Errorf("no writable data partition")
@@ -183,9 +183,9 @@ func (w *Wrapper)getLocalLeaderDataPartition(exclude []uint32)(*DataPartition,er
 }
 
 func (w *Wrapper) GetWriteDataPartition(exclude []uint32) (*DataPartition, error) {
-	dp,err:=w.getLocalLeaderDataPartition(exclude)
-	if err==nil {
-		return dp,nil
+	dp, err := w.getLocalLeaderDataPartition(exclude)
+	if err == nil {
+		return dp, nil
 	}
 	rwPartitionGroups := w.rwPartition
 	if len(rwPartitionGroups) == 0 {

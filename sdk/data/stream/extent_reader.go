@@ -19,13 +19,13 @@ import (
 	"github.com/chubaoio/cbfs/proto"
 	wrapper "github.com/chubaoio/cbfs/sdk/data"
 	"github.com/chubaoio/cbfs/util"
+	"github.com/chubaoio/cbfs/util/log"
 	"github.com/chubaoio/cbfs/util/pool"
 	"github.com/juju/errors"
 	"hash/crc32"
 	"net"
-	"sync/atomic"
 	"strings"
-	"github.com/chubaoio/cbfs/util/log"
+	"sync/atomic"
 )
 
 const (
@@ -71,16 +71,16 @@ func (reader *ExtentReader) read(data []byte, offset, size, kerneloffset, kernel
 
 func (reader *ExtentReader) readDataFromDataPartition(offset, size int, data []byte, kerneloffset, kernelsize int) (err error) {
 	var host string
-	for i:=0;i<len(reader.dp.Hosts);i++{
-		if strings.Split(reader.dp.Hosts[i],":")[0]==wrapper.LocalIP{
-			host=reader.dp.Hosts[i]
+	for i := 0; i < len(reader.dp.Hosts); i++ {
+		if strings.Split(reader.dp.Hosts[i], ":")[0] == wrapper.LocalIP {
+			host = reader.dp.Hosts[i]
 			break
 		}
 	}
-	if host==""{
-		host=reader.dp.Hosts[0]
+	if host == "" {
+		host = reader.dp.Hosts[0]
 	}
-	if _, err = reader.streamReadDataFromHost(host,offset, size, data, kerneloffset, kernelsize); err != nil {
+	if _, err = reader.streamReadDataFromHost(host, offset, size, data, kerneloffset, kernelsize); err != nil {
 		log.LogWarnf(err.Error())
 		goto forLoop
 	}
@@ -89,7 +89,7 @@ func (reader *ExtentReader) readDataFromDataPartition(offset, size int, data []b
 forLoop:
 	mesg := ""
 	for i := 0; i < int(reader.dp.ReplicaNum); i++ {
-		_, err = reader.streamReadDataFromHost(reader.dp.Hosts[i],offset, size, data, kerneloffset, kernelsize)
+		_, err = reader.streamReadDataFromHost(reader.dp.Hosts[i], offset, size, data, kerneloffset, kernelsize)
 		if err == nil {
 			return
 		} else {
@@ -103,7 +103,7 @@ forLoop:
 	return
 }
 
-func (reader *ExtentReader) streamReadDataFromHost(host string,offset, expectReadSize int, data []byte, kerneloffset, kernelsize int) (actualReadSize int, err error) {
+func (reader *ExtentReader) streamReadDataFromHost(host string, offset, expectReadSize int, data []byte, kerneloffset, kernelsize int) (actualReadSize int, err error) {
 	request := NewStreamReadPacket(&reader.key, offset, expectReadSize)
 	var connect *net.TCPConn
 	connect, err = ReadConnectPool.Get(host)
@@ -172,7 +172,6 @@ func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet, ker
 	}
 	return nil
 }
-
 
 func (reader *ExtentReader) updateKey(key proto.ExtentKey) (update bool) {
 	if !(key.PartitionId == reader.key.PartitionId && key.ExtentId == reader.key.ExtentId) {

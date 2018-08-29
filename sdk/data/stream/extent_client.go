@@ -58,12 +58,13 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 	client.referCnt = make(map[uint64]uint64)
 	client.getExtents = getExtents
 	gFlushBufferSize = flushBufferSize
-	writeRequestPool=&sync.Pool{New: func() interface{} {
-		return &WriteRequest{}}}
-	flushRequestPool=&sync.Pool{New: func() interface{} {
+	writeRequestPool = &sync.Pool{New: func() interface{} {
+		return &WriteRequest{}
+	}}
+	flushRequestPool = &sync.Pool{New: func() interface{} {
 		return &FlushRequest{}
 	}}
-	clostRequestPool=&sync.Pool{New: func() interface{} {
+	clostRequestPool = &sync.Pool{New: func() interface{} {
 		return &CloseRequest{}
 	}}
 	return
@@ -94,11 +95,11 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write 
 		prefix := fmt.Sprintf("inodewrite %v_%v_%v", inode, offset, len(data))
 		return 0, fmt.Errorf("Prefix(%v) cannot init write stream", prefix)
 	}
-	request:=writeRequestPool.Get().(*WriteRequest)
-	request.data=data
-	request.kernelOffset=offset
-	request.size=len(data)
-	request.done=make(chan struct{},1)
+	request := writeRequestPool.Get().(*WriteRequest)
+	request.data = data
+	request.kernelOffset = offset
+	request.size = len(data)
+	request.done = make(chan struct{}, 1)
 	stream.requestCh <- request
 	<-request.done
 	err = request.err
@@ -176,11 +177,11 @@ func (client *ExtentClient) Flush(inode uint64) (err error) {
 	if stream == nil {
 		return nil
 	}
-	request:=flushRequestPool.Get().(*FlushRequest)
-	request.done=make(chan struct{},1)
+	request := flushRequestPool.Get().(*FlushRequest)
+	request.done = make(chan struct{}, 1)
 	stream.requestCh <- request
 	<-request.done
-	err=request.err
+	err = request.err
 	flushRequestPool.Put(request)
 	return err
 }
@@ -208,8 +209,8 @@ func (client *ExtentClient) CloseForWrite(inode uint64) (err error) {
 		return
 	}
 	atomic.StoreInt32(&streamWriter.hasClosed, HasClosed)
-	request:=clostRequestPool.Get().(*CloseRequest)
-	request.done= make(chan struct{}, 1)
+	request := clostRequestPool.Get().(*CloseRequest)
+	request.done = make(chan struct{}, 1)
 	streamWriter.requestCh <- request
 	<-request.done
 	defer func() {
@@ -235,13 +236,13 @@ func (client *ExtentClient) Read(stream *StreamReader, inode uint64, data []byte
 	}
 	wstream := client.getStreamWriterForRead(inode)
 	if wstream != nil {
-		request:=flushRequestPool.Get().(*FlushRequest)
-		request.done=make(chan struct{},1)
+		request := flushRequestPool.Get().(*FlushRequest)
+		request.done = make(chan struct{}, 1)
 		wstream.requestCh <- request
 		<-request.done
-		err=request.err
+		err = request.err
 		flushRequestPool.Put(request)
-		if  err != nil {
+		if err != nil {
 			return 0, err
 		}
 	}
