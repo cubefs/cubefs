@@ -142,9 +142,6 @@ func (stream *StreamWriter) server() {
 				continue
 			}
 			stream.flushCurrExtentWriter()
-			if stream.HasBufferSize >= gFlushBufferSize {
-				stream.flushCurrExtentWriter()
-			}
 		}
 	}
 }
