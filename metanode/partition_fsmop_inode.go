@@ -221,13 +221,18 @@ func (mp *metaPartition) evictInode(ino *Inode) (resp *ResponseInode) {
 	resp = NewResponseInode()
 	resp.Status = proto.OpOk
 	isFind := false
+	isDelete := false
 	mp.inodeTree.Find(ino, func(item BtreeItem) {
 		isFind = true
 		i := item.(*Inode)
 		if i.Type == proto.ModeDir {
 			if i.NLink < 2 {
-				mp.inodeTree.Delete(ino)
+				isDelete = true
 			}
+			return
+		}
+
+		if i.MarkDelete == 1 {
 			return
 		}
 		if i.NLink < 1 {
@@ -239,6 +244,9 @@ func (mp *metaPartition) evictInode(ino *Inode) (resp *ResponseInode) {
 	if !isFind {
 		resp.Status = proto.OpNotExistErr
 		return
+	}
+	if isDelete {
+		mp.inodeTree.Delete(ino)
 	}
 	return
 }
