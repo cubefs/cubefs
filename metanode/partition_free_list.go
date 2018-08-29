@@ -151,18 +151,22 @@ func (mp *metaPartition) deleteDataPartitionMark(inoSlice []*Inode) {
 		conn, err := mp.config.ConnPool.Get(dp.Hosts[0])
 		if err != nil {
 			mp.config.ConnPool.Put(conn, ForceCloseConnect)
-			err = errors.Errorf("%s", err.Error())
+			err = errors.Errorf("get conn from pool %s, "+
+				"extents partitionId=%d, extentId=%d",
+				err.Error(), ext.PartitionId, ext.ExtentId)
 			return
 		}
 		p := NewExtentDeletePacket(dp, ext.ExtentId)
 		if err = p.WriteToConn(conn); err != nil {
 			mp.config.ConnPool.Put(conn, ForceCloseConnect)
-			err = errors.Errorf("%s, %s", p.GetUniqueLogId(), err.Error())
+			err = errors.Errorf("write to dataNode %s, %s", p.GetUniqueLogId(),
+				err.Error())
 			return
 		}
 		if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
 			mp.config.ConnPool.Put(conn, ForceCloseConnect)
-			err = errors.Errorf("%s, %s", p.GetUniqueLogId(), err.Error())
+			err = errors.Errorf("read response from dataNode %s, %s",
+				p.GetUniqueLogId(), err.Error())
 			return
 		}
 		log.LogDebugf("[deleteDataPartitionMark] %v", p.GetUniqueLogId())
