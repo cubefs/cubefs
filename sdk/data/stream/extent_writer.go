@@ -37,6 +37,7 @@ const (
 	ForBidUpdateMetaNode   = -2
 	ExtentFlushIng         = 1
 	ExtentHasFlushed       = 2
+	HasExitRecvThread      = -1
 )
 
 var (
@@ -59,6 +60,7 @@ type ExtentWriter struct {
 	requestLock   sync.Mutex
 	isflushIng    int32
 	flushSignleCh chan bool
+	hasExitRecvThead int32
 }
 
 func NewExtentWriter(inode uint64, dp *data.DataPartition, extentId uint64) (writer *ExtentWriter, err error) {
@@ -176,6 +178,9 @@ func (writer *ExtentWriter) sendCurrPacket() (err error) {
 
 func (writer *ExtentWriter) notifyExit() {
 	writer.cleanHandleCh()
+	if atomic.LoadInt32(&writer.hasExitRecvThead)==HasExitRecvThread{
+		return
+	}
 	writer.handleCh <- NotReceive
 }
 
@@ -208,6 +213,9 @@ func (writer *ExtentWriter) toString() string {
 
 func (writer *ExtentWriter) checkIsStopReciveGoRoutine() {
 	if writer.isAllFlushed() && writer.isFullExtent() {
+		if atomic.LoadInt32(&writer.hasExitRecvThead)==HasExitRecvThread{
+			return
+		}
 		writer.handleCh <- NotReceive
 	}
 	return
@@ -247,6 +255,9 @@ func (writer *ExtentWriter) flush() (err error) {
 
 func (writer *ExtentWriter) close() (err error) {
 	if writer.isAllFlushed() {
+		if atomic.LoadInt32(&writer.hasExitRecvThead)==HasExitRecvThread{
+			return
+		}
 		select {
 		case writer.handleCh <- NotReceive:
 		default:
@@ -255,6 +266,9 @@ func (writer *ExtentWriter) close() (err error) {
 	} else {
 		err = writer.flush()
 		if err == nil && writer.isAllFlushed() {
+			if atomic.LoadInt32(&writer.hasExitRecvThead)==HasExitRecvThread{
+				return
+			}
 			select {
 			case writer.handleCh <- NotReceive:
 			default:
@@ -319,6 +333,9 @@ func (writer *ExtentWriter) toKey() (k proto.ExtentKey) {
 }
 
 func (writer *ExtentWriter) receive() {
+	defer func() {
+		atomic.StoreInt32(&writer.hasExitRecvThead,HasExitRecvThread)
+	}()
 	for {
 		select {
 		case code := <-writer.handleCh:
@@ -338,12 +355,12 @@ func (writer *ExtentWriter) receive() {
 			err := reply.ReadFromConn(writer.getConnect(), proto.ReadDeadlineTime)
 			if err != nil {
 				writer.getConnect().Close()
-				continue
+				return
 			}
 			if err = writer.processReply(e, request, reply); err != nil {
 				writer.getConnect().Close()
 				log.LogWarn(err.Error())
-				continue
+				return
 			}
 		}
 	}
