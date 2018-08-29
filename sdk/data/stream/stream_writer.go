@@ -125,14 +125,17 @@ func (stream *StreamWriter) server() {
 	t := time.NewTicker(time.Second * 2)
 	defer t.Stop()
 	for {
-		if stream.HasBufferSize >= gFlushBufferSize {
-			stream.flushCurrExtentWriter()
-		}
 		select {
 		case request := <-stream.requestCh:
 			stream.handleRequest(request)
+			if stream.HasBufferSize >= gFlushBufferSize {
+				stream.flushCurrExtentWriter()
+			}
 		case <-stream.exitCh:
 			stream.flushCurrExtentWriter()
+			if stream.HasBufferSize >= gFlushBufferSize {
+				stream.flushCurrExtentWriter()
+			}
 			return
 		case <-t.C:
 			if stream.currentWriter == nil {
