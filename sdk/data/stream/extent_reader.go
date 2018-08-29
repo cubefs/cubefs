@@ -26,6 +26,8 @@ import (
 	"net"
 	"strings"
 	"sync/atomic"
+	"math/rand"
+	"time"
 )
 
 const (
@@ -78,7 +80,8 @@ func (reader *ExtentReader) readDataFromDataPartition(offset, size int, data []b
 		}
 	}
 	if host == "" {
-		host = reader.dp.Hosts[0]
+		rand.Seed(time.Now().UnixNano())
+		host = reader.dp.Hosts[rand.Intn(len(reader.dp.Hosts))]
 	}
 	if _, err = reader.streamReadDataFromHost(host, offset, size, data, kerneloffset, kernelsize); err != nil {
 		log.LogWarnf(err.Error())
