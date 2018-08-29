@@ -479,7 +479,7 @@ func (s *ExtentStore) GetWatermark(extentId uint64, reload bool) (extentInfo *Fi
 	s.extentInfoMux.RLock()
 	extentInfo, has = s.extentInfoMap[extentId]
 	s.extentInfoMux.RUnlock()
-	if  !has {
+	if !has {
 		err = fmt.Errorf("extent %v not exist", extentId)
 		return
 	}

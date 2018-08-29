@@ -47,6 +47,7 @@ func NewWritePacket(dp *data.DataPartition, extentId uint64, offset int, kernelO
 	p.ReqID = proto.GetReqID()
 	p.Opcode = proto.OpWrite
 	p.kernelOffset = kernelOffset
+	p.Data,_ = proto.Buffers.Get(util.BlockSize)
 
 	return
 }
@@ -156,7 +157,7 @@ func (p *Packet) fill(data []byte, size int) (canWrite int) {
 	if canWrite <= 0 {
 		return
 	}
-	p.Data = append(p.Data, data[:canWrite]...)
+	copy(p.Data[p.Size:p.Size+uint32(canWrite)],data[:canWrite])
 	p.Size += uint32(canWrite)
 
 	return

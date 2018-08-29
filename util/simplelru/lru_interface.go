@@ -1,6 +1,5 @@
 package simplelru
 
-
 // LRUCache is the interface for simple LRU cache.
 type LRUCache interface {
 	// Adds a value to the cache, returns true if an eviction occurred and
