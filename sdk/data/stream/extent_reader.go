@@ -92,6 +92,9 @@ func (reader *ExtentReader) readDataFromDataPartition(offset, size int, data []b
 forLoop:
 	mesg := ""
 	for i := 0; i < int(reader.dp.ReplicaNum); i++ {
+		if reader.dp.Hosts[i]==host{
+			continue
+		}
 		_, err = reader.streamReadDataFromHost(reader.dp.Hosts[i], offset, size, data, kerneloffset, kernelsize)
 		if err == nil {
 			return
