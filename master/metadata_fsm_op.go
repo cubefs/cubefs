@@ -202,7 +202,7 @@ func (c *Cluster) submit(metadata *Metadata) (err error) {
 	return
 }
 
-//key=#ns#volName,value=json.Marshal(vv)
+//key=#vol#volName,value=json.Marshal(vv)
 func (c *Cluster) syncAddVol(vol *Vol) (err error) {
 	metadata := new(Metadata)
 	metadata.Op = OpSyncAddVol
@@ -674,8 +674,9 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		_, volName := c.decodeMetaPartitionKey(string(encodedKey.Data()))
 		vol, err1 := c.getVol(volName)
 		if err1 != nil {
+			// if vol not found,record log and continue
 			err = fmt.Errorf("action[loadMetaPartitions] err:%v", err1.Error())
-			return err
+			continue
 		}
 		mpv := &MetaPartitionValue{}
 		if err = json.Unmarshal(encodedValue.Data(), mpv); err != nil {
@@ -709,12 +710,13 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		_, volName := c.decodeDataPartitionKey(string(encodedKey.Data()))
 		vol, err1 := c.getVol(volName)
 		if err1 != nil {
+			// if vol not found,record log and continue
 			err = fmt.Errorf("action[loadDataPartitions] err:%v", err1.Error())
-			return err
+			continue
 		}
 		dpv := &DataPartitionValue{}
 		if err = json.Unmarshal(encodedValue.Data(), dpv); err != nil {
-			err = fmt.Errorf("action[decodeVolValue],value:%v,err:%v", encodedValue.Data(), err)
+			err = fmt.Errorf("action[decodeDataPartitionValue],value:%v,err:%v", encodedValue.Data(), err)
 			return err
 		}
 		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.PartitionType, volName)
