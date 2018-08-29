@@ -301,6 +301,7 @@ func (writer *ExtentWriter) processReply(e *list.Element, request, reply *Packet
 	}
 	log.LogDebugf("recive inode(%v) kerneloffset(%v) to extent(%v) pkg(%v) recive(%v)",
 		writer.inode, request.kernelOffset, writer.toString(), request.GetUniqueLogId(), reply.GetUniqueLogId())
+	proto.Buffers.Put(request.Data)
 
 	return nil
 }
@@ -403,6 +404,7 @@ func (writer *ExtentWriter) getNeedRetrySendPackets() (requests []*Packet) {
 	for e := writer.requestQueue.Front(); e != nil; e = e.Next() {
 		requests = append(requests, e.Value.(*Packet))
 	}
+	writer.requestQueue=nil
 	if writer.currentPacket == nil {
 		return
 	}
