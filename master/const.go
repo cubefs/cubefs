@@ -56,3 +56,8 @@ const (
 	OK = iota
 	Failed
 )
+
+const (
+	VolNormal     uint8 = 0
+	VolMarkDelete uint8 = 1
+)

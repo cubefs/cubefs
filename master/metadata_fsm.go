@@ -107,6 +107,10 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		if err = mf.DelKeyAndPutIndex(cmd.K, cmdMap); err != nil {
 			return
 		}
+	case OpSyncDeleteVol:
+		if err = mf.DelKeyAndPutIndex(cmd.K, cmdMap); err != nil {
+			return
+		}
 	default:
 		if err = mf.BatchPut(cmdMap); err != nil {
 			return

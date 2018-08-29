@@ -30,6 +30,7 @@ type Vol struct {
 	MetaPartitions map[uint64]*MetaPartition
 	mpsLock        sync.RWMutex
 	dataPartitions *DataPartitionMap
+	Status         uint8
 	sync.RWMutex
 }
 
@@ -169,6 +170,55 @@ func (vol *Vol) statSpace() (used, total uint64) {
 	for _, dp := range vol.dataPartitions.dataPartitions {
 		total = total + dp.total
 		used = used + dp.getMaxUsedSize()
+	}
+	return
+}
+
+func (vol *Vol) setStatus(status uint8) {
+	vol.Lock()
+	defer vol.Unlock()
+	vol.Status = status
+}
+
+func (vol *Vol) checkStatus(c *Cluster) {
+	vol.Lock()
+	defer vol.Unlock()
+	if vol.Status == VolNormal {
+		return
+	}
+	metaTasks := vol.deleteMetaPartitions()
+	dataTasks := vol.deleteDataPartitions()
+	if len(metaTasks) == 0 && len(dataTasks) == 0 {
+		if err := c.syncDeleteVol(vol); err == nil {
+			c.deleteVol(vol.Name)
+			return
+		}
+	}
+	c.putMetaNodeTasks(metaTasks)
+	c.putDataNodeTasks(dataTasks)
+	return
+}
+
+func (vol *Vol) deleteMetaPartitions() (tasks []*proto.AdminTask) {
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
+	tasks = make([]*proto.AdminTask, 0)
+	//if replica has removed,the length of tasks will be zero
+	for _, mp := range vol.MetaPartitions {
+		for _, replica := range mp.Replicas {
+			tasks = append(tasks, replica.generateDeleteReplicaTask(mp.PartitionID))
+		}
+	}
+	return
+}
+
+func (vol *Vol) deleteDataPartitions() (tasks []*proto.AdminTask) {
+	tasks = make([]*proto.AdminTask, 0)
+	//if replica has removed,the length of tasks will be zero
+	for _, dp := range vol.dataPartitions.dataPartitions {
+		for _, replica := range dp.Replicas {
+			tasks = append(tasks, dp.GenerateDeleteTask(replica.Addr))
+		}
 	}
 	return
 }

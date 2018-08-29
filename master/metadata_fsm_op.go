@@ -38,7 +38,9 @@ const (
 	OpSyncAllocDataPartitionID uint32 = 0x0A
 	OpSyncAllocMetaPartitionID uint32 = 0x0B
 	OpSyncAllocMetaNodeID      uint32 = 0x0C
-	OPSyncPutCluster           uint32 = 0x0D
+	OpSyncPutCluster           uint32 = 0x0D
+	OpSyncUpdateVol            uint32 = 0x0E
+	OpSyncDeleteVol            uint32 = 0x0F
 )
 
 const (
@@ -98,12 +100,14 @@ func newDataPartitionValue(dp *DataPartition) (dpv *DataPartitionValue) {
 type VolValue struct {
 	VolType    string
 	ReplicaNum uint8
+	Status     uint8
 }
 
 func newVolValue(vol *Vol) (vv *VolValue) {
 	vv = &VolValue{
 		VolType:    vol.VolType,
 		ReplicaNum: vol.dpReplicaNum,
+		Status:     vol.Status,
 	}
 	return
 }
@@ -152,7 +156,7 @@ func (m *Metadata) setOpType() {
 	case VolAcronym:
 		m.Op = OpSyncAddVol
 	case ClusterAcronym:
-		m.Op = OPSyncPutCluster
+		m.Op = OpSyncPutCluster
 	default:
 		log.LogWarnf("action[setOpType] unknown opCode[%v]", keyArr[1])
 	}
@@ -160,7 +164,7 @@ func (m *Metadata) setOpType() {
 
 func (c *Cluster) syncPutCluster() (err error) {
 	metadata := new(Metadata)
-	metadata.Op = OPSyncPutCluster
+	metadata.Op = OpSyncPutCluster
 	metadata.K = ClusterPrefix + c.Name + KeySeparator + strconv.FormatBool(c.compactStatus)
 	return c.submit(metadata)
 }
@@ -202,6 +206,28 @@ func (c *Cluster) submit(metadata *Metadata) (err error) {
 func (c *Cluster) syncAddVol(vol *Vol) (err error) {
 	metadata := new(Metadata)
 	metadata.Op = OpSyncAddVol
+	metadata.K = VolPrefix + vol.Name
+	vv := newVolValue(vol)
+	if metadata.V, err = json.Marshal(vv); err != nil {
+		return errors.New(err.Error())
+	}
+	return c.submit(metadata)
+}
+
+func (c *Cluster) syncUpdateVol(vol *Vol) (err error) {
+	metadata := new(Metadata)
+	metadata.Op = OpSyncUpdateVol
+	metadata.K = VolPrefix + vol.Name
+	vv := newVolValue(vol)
+	if metadata.V, err = json.Marshal(vv); err != nil {
+		return errors.New(err.Error())
+	}
+	return c.submit(metadata)
+}
+
+func (c *Cluster) syncDeleteVol(vol *Vol) (err error) {
+	metadata := new(Metadata)
+	metadata.Op = OpSyncDeleteVol
 	metadata.K = VolPrefix + vol.Name
 	vv := newVolValue(vol)
 	if metadata.V, err = json.Marshal(vv); err != nil {
@@ -298,6 +324,10 @@ func (c *Cluster) handleApply(cmd *Metadata) (err error) {
 		err = c.applyAddMetaNode(cmd)
 	case OpSyncAddVol:
 		c.applyAddVol(cmd)
+	case OpSyncUpdateVol:
+		c.applyUpdateVol(cmd)
+	case OpSyncDeleteVol:
+		c.applyDeleteVol(cmd)
 	case OpSyncAddMetaPartition:
 		c.applyAddMetaPartition(cmd)
 	case OpSyncUpdateMetaPartition:
@@ -310,7 +340,7 @@ func (c *Cluster) handleApply(cmd *Metadata) (err error) {
 		c.applyDeleteMetaNode(cmd)
 	case OpSyncDeleteDataNode:
 		c.applyDeleteDataNode(cmd)
-	case OPSyncPutCluster:
+	case OpSyncPutCluster:
 		c.applyPutCluster(cmd)
 	case OpSyncAllocMetaNodeID:
 		c.idAlloc.increaseMetaNodeID()
@@ -401,6 +431,36 @@ func (c *Cluster) applyAddVol(cmd *Metadata) {
 		}
 		vol := NewVol(keys[2], vv.VolType, vv.ReplicaNum)
 		c.putVol(vol)
+	}
+}
+
+func (c *Cluster) applyUpdateVol(cmd *Metadata) {
+	log.LogInfof("action[applyUpdateVol] cmd:%v", cmd.K)
+	var (
+		vol *Vol
+		err error
+	)
+	keys := strings.Split(cmd.K, KeySeparator)
+	if keys[1] == VolAcronym {
+
+		vv := &VolValue{}
+		if err = json.Unmarshal(cmd.V, vv); err != nil {
+			log.LogError(fmt.Sprintf("action[applyUpdateVol] failed,err:%v", err))
+			return
+		}
+		if vol, err = c.getVol(keys[2]); err != nil {
+			log.LogError(fmt.Sprintf("action[applyUpdateVol] failed,err:%v", err))
+			return
+		}
+		vol.setStatus(vv.Status)
+	}
+}
+
+func (c *Cluster) applyDeleteVol(cmd *Metadata) {
+	log.LogInfof("action[applyDeleteVol] cmd:%v", cmd.K)
+	keys := strings.Split(cmd.K, KeySeparator)
+	if keys[1] == VolAcronym {
+		c.deleteVol(keys[2])
 	}
 }
 
@@ -592,6 +652,7 @@ func (c *Cluster) loadVols() (err error) {
 			return err
 		}
 		vol := NewVol(volName, vv.VolType, vv.ReplicaNum)
+		vol.Status = vv.Status
 		c.putVol(vol)
 		encodedKey.Free()
 	}
