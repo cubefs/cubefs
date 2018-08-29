@@ -76,6 +76,11 @@ func (dp *dataPartition) streamRepairExtent(remoteExtentInfo *storage.FileInfo) 
 		return
 	}
 	for {
+		select {
+		case <- dp.stopC:
+			return
+		default:
+		}
 		// Get local extentFile size
 		var (
 			localExtentInfo *storage.FileInfo

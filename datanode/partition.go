@@ -304,6 +304,11 @@ func (dp *dataPartition) LaunchRepair() {
 	if dp.partitionStatus == proto.Unavaliable {
 		return
 	}
+	select {
+	case <- dp.stopC:
+		return
+	default:
+	}
 	if err := dp.updateReplicaHosts(); err != nil {
 		log.LogErrorf("action[LaunchRepair] err[%v].", err)
 		return
