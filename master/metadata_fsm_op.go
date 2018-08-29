@@ -652,6 +652,7 @@ func (c *Cluster) loadVols() (err error) {
 			return err
 		}
 		vol := NewVol(volName, vv.VolType, vv.ReplicaNum)
+		vol.Status = vv.Status
 		c.putVol(vol)
 		encodedKey.Free()
 	}
