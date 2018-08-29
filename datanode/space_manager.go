@@ -101,7 +101,7 @@ func (space *spaceManager) Stats() *Stats {
 
 func (space *spaceManager) LoadDisk(path string, restSize uint64, maxErrs int) (err error) {
 	var (
-		disk *Disk
+		disk    *Disk
 		visitor PartitionVisitor
 	)
 	log.LogDebugf("action[LoadDisk] load disk from path[%v].", path)
