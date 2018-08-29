@@ -291,6 +291,29 @@ errDeal:
 	return
 }
 
+func (m *Master) markDeleteVol(w http.ResponseWriter, r *http.Request) {
+	var (
+		name string
+		err  error
+		msg  string
+	)
+
+	if name, err = parseDeleteVolPara(r); err != nil {
+		goto errDeal
+	}
+	if err = m.cluster.markDeleteVol(name); err != nil {
+		goto errDeal
+	}
+	msg = fmt.Sprintf("delete vol[%v] successed\n", name)
+	io.WriteString(w, msg)
+	return
+
+errDeal:
+	logMsg := getReturnMessage("markDeleteVol", r.RemoteAddr, err.Error(), http.StatusBadRequest)
+	HandleError(logMsg, err, http.StatusBadRequest, w)
+	return
+}
+
 func (m *Master) createVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		name       string
@@ -669,6 +692,11 @@ func parseTaskResponse(r *http.Request) (tr *proto.AdminTask, err error) {
 	decoder.UseNumber()
 	err = decoder.Decode(tr)
 	return
+}
+
+func parseDeleteVolPara(r *http.Request) (name string, err error) {
+	r.ParseForm()
+	return checkVolPara(r)
 }
 
 func parseCreateVolPara(r *http.Request) (name, volType string, replicaNum int, err error) {

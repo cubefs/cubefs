@@ -58,6 +58,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.startCheckHeartbeat()
 	c.startCheckMetaPartitions()
 	c.startCheckAvailSpace()
+	c.startCheckVols()
 	return
 }
 
@@ -118,6 +119,17 @@ func (c *Cluster) checkDataNodeAvailSpace() {
 	}
 }
 
+func (c *Cluster) startCheckVols() {
+	go func() {
+		for {
+			if c.partition.IsLeader() {
+				c.checkVols()
+			}
+			time.Sleep(time.Second * time.Duration(c.cfg.CheckDataPartitionIntervalSeconds))
+		}
+	}()
+}
+
 func (c *Cluster) startCheckDataPartitions() {
 	go func() {
 		for {
@@ -129,8 +141,15 @@ func (c *Cluster) startCheckDataPartitions() {
 	}()
 }
 
-func (c *Cluster) checkDataPartitions() {
+func (c *Cluster) checkVols() {
 	vols := c.copyVols()
+	for _, vol := range vols {
+		vol.checkStatus(c)
+	}
+}
+
+func (c *Cluster) checkDataPartitions() {
+	vols := c.getAllNormalVols()
 	for _, vol := range vols {
 		readWrites := vol.checkDataPartitions(c)
 		vol.dataPartitions.setReadWriteDataPartitions(readWrites, c.Name)
@@ -152,7 +171,7 @@ func (c *Cluster) startCheckBackendLoadDataPartitions() {
 }
 
 func (c *Cluster) backendLoadDataPartitions() {
-	vols := c.copyVols()
+	vols := c.getAllNormalVols()
 	for _, vol := range vols {
 		vol.LoadDataPartition(c)
 	}
@@ -238,7 +257,7 @@ func (c *Cluster) startCheckMetaPartitions() {
 }
 
 func (c *Cluster) checkMetaPartitions() {
-	vols := c.copyVols()
+	vols := c.getAllNormalVols()
 	for _, vol := range vols {
 		vol.checkMetaPartitions(c)
 	}
@@ -334,6 +353,18 @@ func (c *Cluster) deleteVol(name string) {
 	c.volsLock.Lock()
 	defer c.volsLock.Unlock()
 	delete(c.vols, name)
+	return
+}
+
+func (c *Cluster) markDeleteVol(name string) (err error) {
+	var vol *Vol
+	if vol, err = c.getVol(name); err != nil {
+		return
+	}
+	vol.Status = VolMarkDelete
+	if err = c.syncUpdateVol(vol); err != nil {
+		return
+	}
 	return
 }
 
@@ -448,7 +479,7 @@ func (c *Cluster) dataNodeOffLine(dataNode *DataNode) {
 	msg := fmt.Sprintf("action[dataNodeOffLine], Node[%v] OffLine", dataNode.Addr)
 	log.LogWarn(msg)
 
-	safeVols := c.copyVols()
+	safeVols := c.getAllNormalVols()
 	for _, vol := range safeVols {
 		for _, dp := range vol.dataPartitions.dataPartitions {
 			c.dataPartitionOffline(dataNode.Addr, vol.Name, dp, DataNodeOfflineInfo)
@@ -541,7 +572,7 @@ func (c *Cluster) metaNodeOffLine(metaNode *MetaNode) {
 	msg := fmt.Sprintf("action[metaNodeOffLine],clusterID[%v] Node[%v] OffLine", c.Name, metaNode.Addr)
 	log.LogWarn(msg)
 
-	safeVols := c.copyVols()
+	safeVols := c.getAllNormalVols()
 	for _, vol := range safeVols {
 		for _, mp := range vol.MetaPartitions {
 			c.metaPartitionOffline(vol.Name, metaNode.Addr, mp.PartitionID)
@@ -774,6 +805,18 @@ func (c *Cluster) copyVols() (vols map[string]*Vol) {
 	defer c.volsLock.RUnlock()
 	for name, vol := range c.vols {
 		vols[name] = vol
+	}
+	return
+}
+
+func (c *Cluster) getAllNormalVols() (vols map[string]*Vol) {
+	vols = make(map[string]*Vol, 0)
+	c.volsLock.RLock()
+	defer c.volsLock.RUnlock()
+	for name, vol := range c.vols {
+		if vol.Status == VolNormal {
+			vols[name] = vol
+		}
 	}
 	return
 }
