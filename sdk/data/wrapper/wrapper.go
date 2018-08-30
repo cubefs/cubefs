@@ -39,44 +39,17 @@ const (
 var (
 	MasterHelper = util.NewMasterHelper()
 	LocalIP, _   = util.GetLocalIP()
+	GconnPool    = pool.NewConnPool()
 )
-
-type DataPartition struct {
-	PartitionID   uint32
-	Status        uint8
-	ReplicaNum    uint8
-	PartitionType string
-	Hosts         []string
-	metrics       *DataPartitionMetrics
-}
-
-type DataPartitionMetrics struct {
-	WriteCnt        uint64
-	ReadCnt         uint64
-	SumWriteLatency uint64
-	SumReadLatency  uint64
-	WriteLatency    float64
-	ReadLatency     float64
-}
 
 type DataPartitionView struct {
 	DataPartitions []*DataPartition
-}
-
-func (dp *DataPartition) String() string {
-	return fmt.Sprintf("PartitionID(%v) Status(%v) ReplicaNum(%v) PartitionType(%v) Hosts(%v)",
-		dp.PartitionID, dp.Status, dp.ReplicaNum, dp.PartitionType, dp.Hosts)
-}
-
-func (dp *DataPartition) GetAllAddrs() (m string) {
-	return strings.Join(dp.Hosts[1:], proto.AddrSplit) + proto.AddrSplit
 }
 
 type Wrapper struct {
 	sync.RWMutex
 	volName               string
 	masters               []string
-	conns                 *pool.ConnPool
 	partitions            map[uint32]*DataPartition
 	rwPartition           []*DataPartition
 	localLeaderPartitions []*DataPartition
@@ -90,7 +63,6 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 		MasterHelper.AddNode(m)
 	}
 	w.volName = volName
-	w.conns = pool.NewConnPool()
 	w.rwPartition = make([]*DataPartition, 0)
 	w.partitions = make(map[uint32]*DataPartition)
 	if err = w.updateDataPartition(); err != nil {
@@ -149,26 +121,26 @@ func (w *Wrapper) updateDataPartition() error {
 }
 
 func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
+	var (
+		oldstatus uint8
+	)
 	w.Lock()
 	old, ok := w.partitions[dp.PartitionID]
 	if ok {
-		delete(w.partitions, dp.PartitionID)
+		oldstatus = old.Status
+		old.Status = dp.Status
+		old.ReplicaNum = dp.ReplicaNum
+		old.Hosts = dp.Hosts
+	} else {
+		dp.metrics = NewDataPartitionMetrics()
+		w.partitions[dp.PartitionID] = dp
 	}
-	w.partitions[dp.PartitionID] = dp
+
 	w.Unlock()
 
-	if ok && old.Status != dp.Status {
+	if ok && oldstatus != dp.Status {
 		log.LogInfof("DataPartition: status change (%v) -> (%v)", old, dp)
 	}
-}
-
-func isExcluded(partitionId uint32, excludes []uint32) bool {
-	for _, id := range excludes {
-		if id == partitionId {
-			return true
-		}
-	}
-	return false
 }
 
 func (w *Wrapper) getLocalLeaderDataPartition(exclude []uint32) (*DataPartition, error) {
@@ -228,9 +200,27 @@ func (w *Wrapper) GetDataPartition(partitionID uint32) (*DataPartition, error) {
 }
 
 func (w *Wrapper) GetConnect(addr string) (*net.TCPConn, error) {
-	return w.conns.Get(addr)
+	return GconnPool.Get(addr)
 }
 
 func (w *Wrapper) PutConnect(conn *net.TCPConn, forceClose bool) {
-	w.conns.Put(conn, forceClose)
+	GconnPool.Put(conn, forceClose)
+}
+
+func (w *Wrapper) GetDataPartitionMetrics() {
+	paritions := make([]*DataPartition, 0)
+	w.RLock()
+	for _, p := range w.partitions {
+		paritions = append(paritions, p)
+	}
+	w.RUnlock()
+	var wg sync.WaitGroup
+	for _, p := range paritions {
+		wg.Add(1)
+		go func(dp *DataPartition) {
+			dp.updateMetrics()
+			wg.Done()
+		}(p)
+	}
+	wg.Wait()
 }
