@@ -260,7 +260,6 @@ func (dp *dataPartition) statusUpdateScheduler() {
 		select {
 		case <-ticker.C:
 			dp.statusUpdate()
-			dp.runtimeMetrics.recomputLatency()
 		case <-dp.stopC:
 			ticker.Stop()
 		case <-latencyTicker.C:
