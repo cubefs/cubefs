@@ -25,7 +25,6 @@ import (
 	"github.com/chubaoio/cbfs/sdk/data/wrapper"
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/log"
-	"github.com/gogo/protobuf/test/data"
 	"github.com/juju/errors"
 	"time"
 )

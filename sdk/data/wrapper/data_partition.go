@@ -5,10 +5,10 @@ import (
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/juju/errors"
-	"github.com/tiglabs/baudengine/util/json"
 	"math"
 	"net"
 	"strings"
+	"encoding/json"
 )
 
 type DataPartition struct {
@@ -121,7 +121,7 @@ func (dp *DataPartition) sendGetDataPartitionMetricsPacket(host string) (metrics
 
 	}
 	metrics = NewDataPartitionMetrics()
-	if json.Unmarshal(p.Data, metrics); err != nil {
+	if err=json.Unmarshal(p.Data, metrics); err != nil {
 		return nil, errors.Annotatef(err, "datapartition(%v) updateMetrics unmarshal body from Host(%v) failed",
 			dp.PartitionID, host)
 	}
