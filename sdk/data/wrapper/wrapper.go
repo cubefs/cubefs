@@ -104,9 +104,6 @@ func (w *Wrapper) updateDataPartition() error {
 	for _, dp := range view.DataPartitions {
 		if dp.Status == proto.ReadWrite {
 			rwPartitionGroups = append(rwPartitionGroups, dp)
-			if strings.Split(dp.Hosts[0], ":")[0] == LocalIP {
-				localLeaderPartitionGroups = append(localLeaderPartitionGroups, dp)
-			}
 		}
 	}
 	if len(rwPartitionGroups) < MinWritableDataPartitionNum {
@@ -115,12 +112,29 @@ func (w *Wrapper) updateDataPartition() error {
 		return err
 	}
 
-	w.rwPartition = rwPartitionGroups
-	w.localLeaderPartitions = localLeaderPartitionGroups
-
 	for _, dp := range view.DataPartitions {
 		w.replaceOrInsertPartition(dp)
 	}
+	partitions := make([]*DataPartition, 0)
+	w.RLock()
+	for _, p := range w.rwPartition {
+		partitions = append(partitions, p)
+	}
+	w.RUnlock()
+
+	rwPartitionGroups = make([]*DataPartition, 0)
+	localLeaderPartitionGroups = make([]*DataPartition, 0)
+	for _, dp := range partitions {
+		if dp.Status == proto.ReadWrite {
+			rwPartitionGroups = append(rwPartitionGroups, dp)
+			if strings.Split(dp.Hosts[0], ":")[0] == LocalIP {
+				localLeaderPartitionGroups = append(localLeaderPartitionGroups, dp)
+			}
+		}
+	}
+	w.rwPartition = rwPartitionGroups
+	w.localLeaderPartitions = localLeaderPartitionGroups
+
 	return nil
 }
 
