@@ -17,7 +17,7 @@ type DataPartition struct {
 	ReplicaNum    uint8
 	PartitionType string
 	Hosts         []string
-	metrics       *DataPartitionMetrics
+	Metrics       *DataPartitionMetrics
 }
 
 type DataPartitionMetrics struct {
@@ -38,7 +38,7 @@ func (ds DataPartitionSlice) Swap(i, j int) {
 	ds[i], ds[j] = ds[j], ds[i]
 }
 func (ds DataPartitionSlice) Less(i, j int) bool {
-	return ds[i].metrics.WriteLatency < ds[j].metrics.WriteLatency
+	return ds[i].Metrics.WriteLatency < ds[j].Metrics.WriteLatency
 }
 
 func NewDataPartitionMetrics() *DataPartitionMetrics {
@@ -73,11 +73,11 @@ func (dp *DataPartition) updateMetrics() (err error) {
 		return
 	}
 	if dp.Status == proto.ReadOnly || dp.Status == proto.Unavaliable {
-		dp.metrics.WriteLatency = math.MaxUint64
-		dp.metrics.ReadLatency = leaderMetrics.ReadLatency
+		dp.Metrics.WriteLatency = math.MaxUint64
+		dp.Metrics.ReadLatency = leaderMetrics.ReadLatency
 	} else {
-		dp.metrics.WriteLatency = leaderMetrics.WriteLatency
-		dp.metrics.ReadLatency = leaderMetrics.ReadLatency
+		dp.Metrics.WriteLatency = leaderMetrics.WriteLatency
+		dp.Metrics.ReadLatency = leaderMetrics.ReadLatency
 	}
 
 	for _, h := range dp.Hosts[1:] {
@@ -87,9 +87,9 @@ func (dp *DataPartition) updateMetrics() (err error) {
 			continue
 		}
 		if dp.Status == proto.Unavaliable {
-			dp.metrics.ReadLatency = math.MaxUint64
+			dp.Metrics.ReadLatency = math.MaxUint64
 		} else {
-			dp.metrics.ReadLatency += metrics.ReadLatency
+			dp.Metrics.ReadLatency += metrics.ReadLatency
 		}
 	}
 

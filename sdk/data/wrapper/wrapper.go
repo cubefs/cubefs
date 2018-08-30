@@ -150,7 +150,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 		old.ReplicaNum = dp.ReplicaNum
 		old.Hosts = dp.Hosts
 	} else {
-		dp.metrics = NewDataPartitionMetrics()
+		dp.Metrics = NewDataPartitionMetrics()
 		w.partitions[dp.PartitionID] = dp
 	}
 
