@@ -269,7 +269,6 @@ func (dp *dataPartition) statusUpdateScheduler() {
 }
 
 func (dp *dataPartition) statusUpdate() {
-
 	status := proto.ReadWrite
 	dp.computeUsage()
 	if dp.used >= dp.partitionSize {
