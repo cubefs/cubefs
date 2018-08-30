@@ -76,8 +76,12 @@ func (dp *DataPartition) updateMetrics() (err error) {
 		dp.Metrics.WriteLatency = math.MaxUint64
 		dp.Metrics.ReadLatency = leaderMetrics.ReadLatency
 	} else {
-		dp.Metrics.WriteLatency = leaderMetrics.WriteLatency
-		dp.Metrics.ReadLatency = leaderMetrics.ReadLatency
+		if leaderMetrics.WriteLatency!=0 {
+			dp.Metrics.WriteLatency = leaderMetrics.WriteLatency
+		}
+		if leaderMetrics.ReadLatency!=0 {
+			dp.Metrics.ReadLatency = leaderMetrics.ReadLatency
+		}
 	}
 	dp.Metrics.ReadCnt=leaderMetrics.ReadCnt
 	dp.Metrics.WriteCnt=leaderMetrics.WriteCnt
@@ -93,7 +97,9 @@ func (dp *DataPartition) updateMetrics() (err error) {
 		if dp.Status == proto.Unavaliable {
 			dp.Metrics.ReadLatency = math.MaxUint64
 		} else {
-			dp.Metrics.ReadLatency += metrics.ReadLatency
+			if metrics.ReadLatency!=0 {
+				dp.Metrics.ReadLatency += metrics.ReadLatency
+			}
 			dp.Metrics.ReadCnt+=metrics.ReadCnt
 			dp.Metrics.SumReadLatency+=leaderMetrics.SumReadLatency
 		}
