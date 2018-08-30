@@ -75,6 +75,9 @@ type DataPartition interface {
 
 	FlushDelete() error
 
+	AddWriteMetrics(latency uint64)
+	AddReadMetrics(latency uint64)
+
 	Stop()
 }
 
@@ -110,6 +113,8 @@ type dataPartition struct {
 	extentStore     *storage.ExtentStore
 	tinyStore       *storage.TinyStore
 	stopC           chan bool
+
+	runtimeMetrics *DataPartitionMetrics
 }
 
 func CreateDataPartition(volId string, partitionId uint32, disk *Disk, size int, partitionType string) (dp DataPartition, err error) {
@@ -174,6 +179,7 @@ func newDataPartition(volumeId string, partitionId uint32, disk *Disk, size int)
 		replicaHosts:    make([]string, 0),
 		stopC:           make(chan bool, 0),
 		partitionStatus: proto.ReadWrite,
+		runtimeMetrics:  NewDataPartitionMetrics(),
 	}
 	partition.extentStore, err = storage.NewExtentStore(partition.path, size)
 	if err != nil {
@@ -253,6 +259,7 @@ func (dp *dataPartition) statusUpdateScheduler() {
 		select {
 		case <-ticker.C:
 			dp.statusUpdate()
+			dp.runtimeMetrics.recomputLatency()
 		case <-dp.stopC:
 			ticker.Stop()
 			return
@@ -305,7 +312,7 @@ func (dp *dataPartition) LaunchRepair() {
 		return
 	}
 	select {
-	case <- dp.stopC:
+	case <-dp.stopC:
 		return
 	default:
 	}
@@ -505,4 +512,12 @@ func (dp *dataPartition) MergeRepair(metas *MembersFileMetas) {
 		go dp.doStreamTinyFixRepair(&wg, fixTiny)
 	}
 	wg.Wait()
+}
+
+func (dp *dataPartition) AddWriteMetrics(latency uint64) {
+	dp.runtimeMetrics.AddWriteMetrics(latency)
+}
+
+func (dp *dataPartition) AddReadMetrics(latency uint64) {
+	dp.runtimeMetrics.AddReadMetrics(latency)
 }

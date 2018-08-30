@@ -91,7 +91,8 @@ func (s *DataNode) operatePacket(pkg *Packet, c *net.TCPConn) {
 		s.handleDeleteDataPartition(pkg)
 	case proto.OpDataNodeHeartbeat:
 		s.handleHeartbeats(pkg)
-	case proto.OpPing:
+	case proto.OpGetDataPartitionMetrics:
+		s.handleGetDataPartitionMetrics(pkg)
 	default:
 		pkg.PackErrorBody(ErrorUnknownOp.Error(), ErrorUnknownOp.Error()+strconv.Itoa(int(pkg.Opcode)))
 	}
@@ -493,4 +494,16 @@ func (s *DataNode) handleChunkRepairRead(pkg *Packet, conn *net.TCPConn) {
 	}
 
 	return
+}
+
+func (s *DataNode) handleGetDataPartitionMetrics(pkg *Packet) {
+	dp := pkg.DataPartition.(*dataPartition)
+	data, err := json.Marshal(dp.runtimeMetrics)
+	if err != nil {
+		err = errors.Annotatef(err, "dataPartionMetrics[%v] json mashal failed", dp.ID())
+		pkg.PackErrorBody(ActionGetDataPartitionMetrics, err.Error())
+		return
+	} else {
+		pkg.PackOkWithBody(data)
+	}
 }

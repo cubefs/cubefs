@@ -77,7 +77,7 @@ func (dp *dataPartition) streamRepairExtent(remoteExtentInfo *storage.FileInfo) 
 	}
 	for {
 		select {
-		case <- dp.stopC:
+		case <-dp.stopC:
 			return
 		default:
 		}

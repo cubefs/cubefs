@@ -32,6 +32,7 @@ const (
 	ActionReceiveFromNext                            = "ActionReceiveFromNext"
 	ActionStreamRead                                 = "ActionStreamRead"
 	ActionWriteToCli                                 = "ActionWriteToCli"
+	ActionGetDataPartitionMetrics                    = "ActionGetDataPartitionMetrics"
 	ActionCheckAndAddInfos                           = "ActionCheckAndAddInfos"
 	ActionCheckChunkInfo                             = "ActionCheckChunkInfo"
 	ActionPostToMaster                               = "ActionPostToMaster"

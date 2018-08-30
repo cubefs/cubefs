@@ -22,14 +22,14 @@ import (
 )
 
 type TpObject struct {
-	startTime time.Time
-	endTime   time.Time
-	umpType   interface{}
+	StartTime time.Time
+	EndTime   time.Time
+	UmpType   interface{}
 }
 
 func NewTpObject() (o *TpObject) {
 	o = new(TpObject)
-	o.startTime = time.Now()
+	o.StartTime = time.Now()
 	return
 }
 
@@ -67,20 +67,20 @@ func InitUmp(module string) {
 
 func BeforeTP(key string) (o *TpObject) {
 	o = TpObjectPool.Get().(*TpObject)
-	o.startTime = time.Now()
+	o.StartTime = time.Now()
 	tp := FunctionTpPool.Get().(*FunctionTp)
 	tp.HostName = HostName
 	tp.Time = time.Now().Format(LogTimeForMat)
 	tp.Key = key
 	tp.ProcessState = "0"
-	o.umpType = tp
+	o.UmpType = tp
 
 	return
 }
 
 func AfterTP(o *TpObject, err error) {
-	tp := o.umpType.(*FunctionTp)
-	tp.ElapsedTime = strconv.FormatInt((int64)(time.Since(o.startTime)/1e6), 10)
+	tp := o.UmpType.(*FunctionTp)
+	tp.ElapsedTime = strconv.FormatInt((int64)(time.Since(o.StartTime)/1e6), 10)
 	TpObjectPool.Put(o)
 	tp.ProcessState = "0"
 	if err != nil {
