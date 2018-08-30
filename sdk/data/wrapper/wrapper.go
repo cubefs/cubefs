@@ -117,7 +117,7 @@ func (w *Wrapper) updateDataPartition() error {
 	}
 	partitions := make([]*DataPartition, 0)
 	w.RLock()
-	for _, p := range w.rwPartition {
+	for _, p := range w.partitions {
 		partitions = append(partitions, p)
 	}
 	w.RUnlock()
@@ -173,7 +173,8 @@ func (w *Wrapper) getLocalLeaderDataPartition(exclude []uint32) (*DataPartition,
 	rand.Seed(time.Now().UnixNano())
 	choose := rand.Float64()
 	if choose < 0.8 {
-		partition = rwPartitionGroups[0]
+		index:=rand.Intn(util.Min(10,len(rwPartitionGroups)))
+		partition = rwPartitionGroups[index]
 		if isExcluded(partition.PartitionID, exclude) {
 			index := rand.Intn(len(rwPartitionGroups))
 			partition = rwPartitionGroups[index]
@@ -210,7 +211,8 @@ func (w *Wrapper) GetWriteDataPartition(exclude []uint32) (*DataPartition, error
 	rand.Seed(time.Now().UnixNano())
 	choose := rand.Float64()
 	if choose < 0.8 {
-		partition = rwPartitionGroups[0]
+		index:=rand.Intn(util.Min(10,len(rwPartitionGroups)))
+		partition = rwPartitionGroups[index]
 		if isExcluded(partition.PartitionID, exclude) {
 			index := rand.Intn(len(rwPartitionGroups))
 			partition = rwPartitionGroups[index]
