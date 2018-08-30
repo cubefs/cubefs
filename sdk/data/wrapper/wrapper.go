@@ -272,4 +272,6 @@ func (w *Wrapper) SortDataPartition() {
 	sort.Sort((DataPartitionSlice)(w.localLeaderPartitions))
 	sort.Sort((DataPartitionSlice)(w.rwPartition))
 	w.Unlock()
+	data,_:=json.Marshal(w.localLeaderPartitions)
+	log.LogWarnf(string(data))
 }

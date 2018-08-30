@@ -79,6 +79,10 @@ func (dp *DataPartition) updateMetrics() (err error) {
 		dp.Metrics.WriteLatency = leaderMetrics.WriteLatency
 		dp.Metrics.ReadLatency = leaderMetrics.ReadLatency
 	}
+	dp.Metrics.ReadCnt=leaderMetrics.ReadCnt
+	dp.Metrics.WriteCnt=leaderMetrics.WriteCnt
+	dp.Metrics.SumReadLatency=leaderMetrics.SumReadLatency
+	dp.Metrics.SumWriteLatency=leaderMetrics.SumWriteLatency
 
 	for _, h := range dp.Hosts[1:] {
 		metrics, err := dp.sendGetDataPartitionMetricsPacket(h)
@@ -90,6 +94,8 @@ func (dp *DataPartition) updateMetrics() (err error) {
 			dp.Metrics.ReadLatency = math.MaxUint64
 		} else {
 			dp.Metrics.ReadLatency += metrics.ReadLatency
+			dp.Metrics.ReadCnt+=metrics.ReadCnt
+			dp.Metrics.SumReadLatency+=leaderMetrics.SumReadLatency
 		}
 	}
 
