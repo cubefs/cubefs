@@ -9,6 +9,8 @@ type DataPartitionMetrics struct {
 	SumReadLatency  uint64
 	WriteLatency    float64
 	ReadLatency     float64
+	lastWriteLatency float64
+	lastReadLatency  float64
 }
 
 func NewDataPartitionMetrics() *DataPartitionMetrics {
@@ -29,6 +31,8 @@ func (metrics *DataPartitionMetrics) AddWriteMetrics(latency uint64) {
 }
 
 func (metrics *DataPartitionMetrics) recomputLatency() {
+	metrics.lastWriteLatency=float64((atomic.LoadUint64(&metrics.SumWriteLatency)) / (atomic.LoadUint64(&metrics.WriteCnt)))
+	metrics.lastReadLatency=float64((atomic.LoadUint64(&metrics.SumReadLatency)) / (atomic.LoadUint64(&metrics.ReadCnt)))
 	metrics.ReadLatency = float64((atomic.LoadUint64(&metrics.SumReadLatency)) / (atomic.LoadUint64(&metrics.ReadCnt)))
 	metrics.WriteLatency = float64((atomic.LoadUint64(&metrics.SumWriteLatency)) / (atomic.LoadUint64(&metrics.WriteCnt)))
 	atomic.StoreUint64(&metrics.SumReadLatency, 0)
@@ -38,9 +42,15 @@ func (metrics *DataPartitionMetrics) recomputLatency() {
 }
 
 func (metrics *DataPartitionMetrics) GetWriteLatency() float64 {
+	if metrics.WriteLatency==0{
+		return metrics.lastWriteLatency
+	}
 	return metrics.WriteLatency
 }
 
 func (metrics *DataPartitionMetrics) GetReadLatency() float64 {
+	if metrics.ReadLatency==0{
+		return metrics.ReadLatency
+	}
 	return metrics.ReadLatency
 }
