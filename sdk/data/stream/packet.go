@@ -17,8 +17,9 @@ package stream
 import (
 	"encoding/binary"
 	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/sdk/data"
+	"github.com/chubaoio/cbfs/sdk/data/wrapper"
 	"github.com/chubaoio/cbfs/util"
+	"github.com/gogo/protobuf/test/data"
 	"hash/crc32"
 	"io"
 	"net"
@@ -33,7 +34,7 @@ type Packet struct {
 	orgData      []byte
 }
 
-func NewWritePacket(dp *data.DataPartition, extentId uint64, offset int, kernelOffset int) (p *Packet) {
+func NewWritePacket(dp *wrapper.DataPartition, extentId uint64, offset int, kernelOffset int) (p *Packet) {
 	p = new(Packet)
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
@@ -82,7 +83,7 @@ func NewStreamReadPacket(key *proto.ExtentKey, offset, size int) (p *Packet) {
 	return
 }
 
-func NewCreateExtentPacket(dp *data.DataPartition, inodeId uint64) (p *Packet) {
+func NewCreateExtentPacket(dp *wrapper.DataPartition, inodeId uint64) (p *Packet) {
 	p = new(Packet)
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
@@ -101,7 +102,7 @@ func NewCreateExtentPacket(dp *data.DataPartition, inodeId uint64) (p *Packet) {
 	return p
 }
 
-func NewDeleteExtentPacket(dp *data.DataPartition, extentId uint64) (p *Packet) {
+func NewDeleteExtentPacket(dp *wrapper.DataPartition, extentId uint64) (p *Packet) {
 	p = new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpMarkDelete

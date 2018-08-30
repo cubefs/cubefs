@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package data
+package wrapper
 
 import (
 	"encoding/json"
@@ -47,6 +47,16 @@ type DataPartition struct {
 	ReplicaNum    uint8
 	PartitionType string
 	Hosts         []string
+	metrics       *DataPartitionMetrics
+}
+
+type DataPartitionMetrics struct {
+	WriteCnt        uint64
+	ReadCnt         uint64
+	SumWriteLatency uint64
+	SumReadLatency  uint64
+	WriteLatency    float64
+	ReadLatency     float64
 }
 
 type DataPartitionView struct {

@@ -17,7 +17,7 @@ package stream
 import (
 	"fmt"
 	"github.com/chubaoio/cbfs/proto"
-	wrapper "github.com/chubaoio/cbfs/sdk/data"
+	"github.com/chubaoio/cbfs/sdk/data/wrapper"
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/chubaoio/cbfs/util/pool"

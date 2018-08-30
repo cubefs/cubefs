@@ -20,8 +20,9 @@ import (
 	"time"
 
 	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/sdk/data"
+	"github.com/chubaoio/cbfs/sdk/data/wrapper"
 	"github.com/chubaoio/cbfs/util/log"
+	"github.com/gogo/protobuf/test/data"
 	"github.com/juju/errors"
 	"net"
 	"strings"
@@ -355,7 +356,7 @@ func (stream *StreamWriter) recoverExtent() (err error) {
 
 func (stream *StreamWriter) allocateNewExtentWriter() (writer *ExtentWriter, err error) {
 	var (
-		dp       *data.DataPartition
+		dp       *wrapper.DataPartition
 		extentId uint64
 	)
 	err = fmt.Errorf("cannot alloct new extent after maxrery")
@@ -388,7 +389,7 @@ func (stream *StreamWriter) allocateNewExtentWriter() (writer *ExtentWriter, err
 	return writer, nil
 }
 
-func (stream *StreamWriter) createExtent(dp *data.DataPartition) (extentId uint64, err error) {
+func (stream *StreamWriter) createExtent(dp *wrapper.DataPartition) (extentId uint64, err error) {
 	var (
 		connect *net.TCPConn
 	)

@@ -19,7 +19,7 @@ import (
 	"sync"
 
 	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/sdk/data"
+	"github.com/chubaoio/cbfs/sdk/data/wrapper"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/juju/errors"
 	"runtime"
@@ -30,7 +30,7 @@ type AppendExtentKeyFunc func(inode uint64, key proto.ExtentKey) error
 type GetExtentsFunc func(inode uint64) ([]proto.ExtentKey, error)
 
 var (
-	gDataWrapper     *data.Wrapper
+	gDataWrapper     *wrapper.Wrapper
 	gFlushBufferSize uint64
 	writeRequestPool *sync.Pool
 	flushRequestPool *sync.Pool
@@ -49,7 +49,7 @@ type ExtentClient struct {
 func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc, flushBufferSize uint64) (client *ExtentClient, err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	client = new(ExtentClient)
-	gDataWrapper, err = data.NewDataPartitionWrapper(volname, master)
+	gDataWrapper, err = wrapper.NewDataPartitionWrapper(volname, master)
 	if err != nil {
 		return nil, fmt.Errorf("init dp Wrapper failed (%v)", err.Error())
 	}
@@ -259,7 +259,7 @@ func (client *ExtentClient) Delete(keys []proto.ExtentKey) (err error) {
 			continue
 		}
 		//wg.Add(1)
-		go func(p *data.DataPartition, id uint64) {
+		go func(p *wrapper.DataPartition, id uint64) {
 			//defer wg.Done()
 			client.delete(p, id)
 		}(dp, k.ExtentId)
@@ -269,7 +269,7 @@ func (client *ExtentClient) Delete(keys []proto.ExtentKey) (err error) {
 	return nil
 }
 
-func (client *ExtentClient) delete(dp *data.DataPartition, extentId uint64) (err error) {
+func (client *ExtentClient) delete(dp *wrapper.DataPartition, extentId uint64) (err error) {
 	connect, err := gDataWrapper.GetConnect(dp.Hosts[0])
 	if err != nil {
 		return
