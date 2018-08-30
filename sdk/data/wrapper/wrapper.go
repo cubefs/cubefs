@@ -75,7 +75,7 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 
 func (w *Wrapper) update() {
 	ticker := time.NewTicker(time.Minute)
-	sortTicker := time.NewTicker(time.Second * 10)
+	sortTicker := time.NewTicker(time.Second * 5)
 	for {
 		select {
 		case <-ticker.C:
@@ -211,7 +211,7 @@ func (w *Wrapper) GetWriteDataPartition(exclude []uint32) (*DataPartition, error
 	rand.Seed(time.Now().UnixNano())
 	choose := rand.Float64()
 	if choose < 0.8 {
-		index:=rand.Intn(util.Min(10,len(rwPartitionGroups)))
+		index:=rand.Intn(util.Min(4,len(rwPartitionGroups)))
 		partition = rwPartitionGroups[index]
 		if isExcluded(partition.PartitionID, exclude) {
 			index := rand.Intn(len(rwPartitionGroups))
@@ -272,6 +272,4 @@ func (w *Wrapper) SortDataPartition() {
 	sort.Sort((DataPartitionSlice)(w.localLeaderPartitions))
 	sort.Sort((DataPartitionSlice)(w.rwPartition))
 	w.Unlock()
-	data,_:=json.Marshal(w.localLeaderPartitions)
-	log.LogWarnf(string(data))
 }
