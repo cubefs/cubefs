@@ -255,7 +255,7 @@ func (dp *dataPartition) ChangeStatus(status int) {
 
 func (dp *dataPartition) statusUpdateScheduler() {
 	ticker := time.NewTicker(10 * time.Second)
-	metricTicker := time.NewTicker(5 * time.Second)
+	metricTicker := time.NewTicker(3 * time.Second)
 	for {
 		select {
 		case <-ticker.C:
