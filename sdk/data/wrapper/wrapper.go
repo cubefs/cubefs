@@ -28,6 +28,7 @@ import (
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/chubaoio/cbfs/util/pool"
+	"sort"
 )
 
 const (
@@ -74,10 +75,13 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 
 func (w *Wrapper) update() {
 	ticker := time.NewTicker(time.Minute)
+	sortTicker := time.NewTicker(time.Second * 10)
 	for {
 		select {
 		case <-ticker.C:
 			w.updateDataPartition()
+		case <-sortTicker.C:
+			w.SortDataPartition()
 		}
 	}
 }
@@ -207,7 +211,7 @@ func (w *Wrapper) PutConnect(conn *net.TCPConn, forceClose bool) {
 	GconnPool.Put(conn, forceClose)
 }
 
-func (w *Wrapper) GetDataPartitionMetrics() {
+func (w *Wrapper) SortDataPartition() {
 	paritions := make([]*DataPartition, 0)
 	w.RLock()
 	for _, p := range w.partitions {
@@ -223,4 +227,8 @@ func (w *Wrapper) GetDataPartitionMetrics() {
 		}(p)
 	}
 	wg.Wait()
+	w.Lock()
+	sort.Sort((DataPartitionSlice)(w.localLeaderPartitions))
+	sort.Sort((DataPartitionSlice)(w.rwPartition))
+	w.Unlock()
 }

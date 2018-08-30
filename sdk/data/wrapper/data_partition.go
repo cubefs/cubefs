@@ -29,6 +29,18 @@ type DataPartitionMetrics struct {
 	ReadLatency     float64
 }
 
+type DataPartitionSlice []*DataPartition
+
+func (ds DataPartitionSlice) Len() int {
+	return len(ds)
+}
+func (ds DataPartitionSlice) Swap(i, j int) {
+	ds[i], ds[j] = ds[j], ds[i]
+}
+func (ds DataPartitionSlice) Less(i, j int) bool {
+	return ds[i].metrics.WriteLatency < ds[j].metrics.WriteLatency
+}
+
 func NewDataPartitionMetrics() *DataPartitionMetrics {
 	metrics := new(DataPartitionMetrics)
 	metrics.WriteCnt = 1
