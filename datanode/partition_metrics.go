@@ -42,15 +42,9 @@ func (metrics *DataPartitionMetrics) recomputLatency() {
 }
 
 func (metrics *DataPartitionMetrics) GetWriteLatency() float64 {
-	if metrics.WriteLatency==0{
-		return metrics.lastWriteLatency
-	}
 	return metrics.WriteLatency
 }
 
 func (metrics *DataPartitionMetrics) GetReadLatency() float64 {
-	if metrics.ReadLatency==0{
-		return metrics.ReadLatency
-	}
 	return metrics.ReadLatency
 }
