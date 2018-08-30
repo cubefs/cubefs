@@ -13,7 +13,7 @@ import (
 
 type DataPartition struct {
 	PartitionID   uint32
-	Status        uint8
+	Status        int8
 	ReplicaNum    uint8
 	PartitionType string
 	Hosts         []string

@@ -126,7 +126,7 @@ func (w *Wrapper) updateDataPartition() error {
 
 func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	var (
-		oldstatus uint8
+		oldstatus int8
 	)
 	w.Lock()
 	old, ok := w.partitions[dp.PartitionID]
