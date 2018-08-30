@@ -108,7 +108,14 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 			return
 		}
 	case OpSyncDeleteVol:
-		log.LogErrorf("delete vol[%v]", cmd.K)
+		if err = mf.DelKeyAndPutIndex(cmd.K, cmdMap); err != nil {
+			return
+		}
+	case OpSyncDeleteDataPartition:
+		if err = mf.DelKeyAndPutIndex(cmd.K, cmdMap); err != nil {
+			return
+		}
+	case OpSyncDeleteMetaPartition:
 		if err = mf.DelKeyAndPutIndex(cmd.K, cmdMap); err != nil {
 			return
 		}
