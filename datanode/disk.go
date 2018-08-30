@@ -81,6 +81,8 @@ type Disk struct {
 	space        SpaceManager
 }
 
+type PartitionVisitor func(dp DataPartition)
+
 func NewDisk(path string, restSize uint64, maxErrs int) (d *Disk) {
 	d = new(Disk)
 	d.Path = path
@@ -215,14 +217,14 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	return
 }
 
-func (d *Disk) AddDataPartition(dp DataPartition) {
+func (d *Disk) AttachDataPartition(dp DataPartition) {
 	d.Lock()
 	defer d.Unlock()
 	d.partitionMap[dp.ID()] = dp
 	d.computeUsage()
 }
 
-func (d *Disk) DelDataPartition(dp DataPartition) {
+func (d *Disk) DetachDataPartition(dp DataPartition) {
 	d.Lock()
 	defer d.Unlock()
 	delete(d.partitionMap, dp.ID())
@@ -263,7 +265,7 @@ func (d *Disk) isPartitionDir(filename string) (is bool) {
 	return
 }
 
-func (d *Disk) RestorePartition(space SpaceManager) {
+func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 	var (
 		partitionId   uint32
 		partitionSize int
@@ -299,10 +301,10 @@ func (d *Disk) RestorePartition(space SpaceManager) {
 					partitionId, err.Error()))
 				return
 			}
-			if space.GetPartition(partitionId) == nil {
-				space.PutPartition(dp)
-				log.LogDebugf("action[RestorePartition] put partition[%v] to space manager.", dp.ID())
+			if visitor != nil {
+				visitor(dp)
 			}
+
 		}(partitionId, filename)
 	}
 	wg.Wait()

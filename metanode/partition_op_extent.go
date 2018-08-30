@@ -17,6 +17,7 @@ package metanode
 import (
 	"encoding/json"
 
+	"encoding/binary"
 	"github.com/chubaoio/cbfs/proto"
 )
 
@@ -64,6 +65,13 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest,
 func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq,
 	p *Packet) (err error) {
 	ino := NewInode(req.Inode, proto.ModeRegular)
+	nextIno, err := mp.nextInodeID()
+	if err != nil {
+		p.PackErrorWithBody(proto.OpErr, nil)
+		return
+	}
+	ino.LinkTarget = make([]byte, 8)
+	binary.BigEndian.PutUint64(ino.LinkTarget, nextIno)
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PackErrorWithBody(proto.OpErr, nil)

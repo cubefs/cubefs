@@ -20,6 +20,8 @@ import (
 	"sync"
 	"time"
 
+	"os"
+
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/util/log"
 )
@@ -27,7 +29,6 @@ import (
 type SpaceManager interface {
 	LoadDisk(path string, restSize uint64, maxErrs int) (err error)
 	GetDisk(path string) (d *Disk, err error)
-	PutPartition(dp DataPartition)
 	GetPartition(partitionId uint32) (dp DataPartition)
 	Stats() *Stats
 	GetDisks() []*Disk
@@ -102,12 +103,22 @@ func (space *spaceManager) Stats() *Stats {
 
 func (space *spaceManager) LoadDisk(path string, restSize uint64, maxErrs int) (err error) {
 	var (
-		disk *Disk
+		disk    *Disk
+		visitor PartitionVisitor
 	)
 	log.LogDebugf("action[LoadDisk] load disk from path[%v].", path)
+	visitor = func(dp DataPartition) {
+		space.partitionMu.Lock()
+		defer space.partitionMu.Unlock()
+		if _, has := space.partitions[dp.ID()]; !has {
+			space.partitions[dp.ID()] = dp
+			log.LogDebugf("action[LoadDisk] put partition[%v] to space manager.", dp.ID())
+		}
+	}
 	if _, err = space.GetDisk(path); err != nil {
+
 		disk = NewDisk(path, restSize, maxErrs)
-		disk.RestorePartition(space)
+		disk.RestorePartition(visitor)
 		space.putDisk(disk)
 		err = nil
 	}
@@ -255,7 +266,7 @@ func (space *spaceManager) GetPartition(partitionId uint32) (dp DataPartition) {
 	return
 }
 
-func (space *spaceManager) PutPartition(dp DataPartition) {
+func (space *spaceManager) putPartition(dp DataPartition) {
 	space.partitionMu.Lock()
 	defer space.partitionMu.Unlock()
 	space.partitions[dp.ID()] = dp
@@ -273,7 +284,11 @@ func (space *spaceManager) CreatePartition(volId string, partitionId uint32, sto
 	if dp, err = CreateDataPartition(volId, partitionId, disk, storeSize, storeType); err != nil {
 		return
 	}
-	space.PutPartition(dp)
+
+	space.partitionMu.Lock()
+	defer space.partitionMu.Unlock()
+	space.partitions[dp.ID()] = dp
+
 	return
 }
 
@@ -285,8 +300,9 @@ func (space *spaceManager) DeletePartition(dpId uint32) {
 	space.partitionMu.Lock()
 	delete(space.partitions, dpId)
 	space.partitionMu.Unlock()
-	dp.Destroy()
-	dp.Disk().DelDataPartition(dp)
+	dp.Stop()
+	dp.Disk().DetachDataPartition(dp)
+	os.RemoveAll(dp.Path())
 }
 
 func (s *DataNode) fillHeartBeatResponse(response *proto.DataNodeHeartBeatResponse) {

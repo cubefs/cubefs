@@ -76,8 +76,6 @@ type DataPartition interface {
 	FlushDelete() error
 
 	Stop()
-
-	Destroy()
 }
 
 type dataPartitionMeta struct {
@@ -185,7 +183,7 @@ func newDataPartition(volumeId string, partitionId uint32, disk *Disk, size int)
 	if err != nil {
 		return
 	}
-	disk.AddDataPartition(partition)
+	disk.AttachDataPartition(partition)
 	dp = partition
 	go partition.statusUpdateScheduler()
 	return
@@ -215,11 +213,6 @@ func (dp *dataPartition) Stop() {
 	dp.extentStore.Close()
 	dp.tinyStore.CloseAll()
 
-}
-
-func (dp *dataPartition) Destroy() {
-	dp.Stop()
-	os.Remove(dp.path)
 }
 
 func (dp *dataPartition) FlushDelete() (err error) {
@@ -310,6 +303,11 @@ func (dp *dataPartition) String() (m string) {
 func (dp *dataPartition) LaunchRepair() {
 	if dp.partitionStatus == proto.Unavaliable {
 		return
+	}
+	select {
+	case <- dp.stopC:
+		return
+	default:
 	}
 	if err := dp.updateReplicaHosts(); err != nil {
 		log.LogErrorf("action[LaunchRepair] err[%v].", err)
