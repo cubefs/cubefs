@@ -212,7 +212,7 @@ func (w *Wrapper) GetWriteDataPartition(exclude []uint32) (*DataPartition, error
 	rand.Seed(time.Now().UnixNano())
 	choose := rand.Float64()
 	if choose < 0.8 {
-		index:=rand.Intn(util.Min(4,len(rwPartitionGroups)))
+		index:=rand.Intn(util.Min(10,len(rwPartitionGroups)))
 		partition = rwPartitionGroups[index]
 		if isExcluded(partition.PartitionID, exclude) {
 			index := rand.Intn(len(rwPartitionGroups))
