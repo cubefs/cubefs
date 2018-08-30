@@ -152,10 +152,22 @@ func (w *Wrapper) getLocalLeaderDataPartition(exclude []uint32) (*DataPartition,
 	if len(rwPartitionGroups) == 0 {
 		return nil, fmt.Errorf("no writable data partition")
 	}
+	var (
+		partition *DataPartition
+	)
 
 	rand.Seed(time.Now().UnixNano())
-	choose := rand.Intn(len(rwPartitionGroups))
-	partition := rwPartitionGroups[choose]
+	choose := rand.Float64()
+	if choose < 0.8 {
+		partition = rwPartitionGroups[0]
+		if isExcluded(partition.PartitionID, exclude) {
+			index := rand.Intn(len(rwPartitionGroups))
+			partition = rwPartitionGroups[index]
+		}
+	} else {
+		index := rand.Intn(len(rwPartitionGroups))
+		partition = rwPartitionGroups[index]
+	}
 	if !isExcluded(partition.PartitionID, exclude) {
 		return partition, nil
 	}
@@ -177,10 +189,23 @@ func (w *Wrapper) GetWriteDataPartition(exclude []uint32) (*DataPartition, error
 	if len(rwPartitionGroups) == 0 {
 		return nil, fmt.Errorf("no writable data partition")
 	}
+	var (
+		partition *DataPartition
+	)
 
 	rand.Seed(time.Now().UnixNano())
-	choose := rand.Intn(len(rwPartitionGroups))
-	partition := rwPartitionGroups[choose]
+	choose := rand.Float64()
+	if choose < 0.8 {
+		partition = rwPartitionGroups[0]
+		if isExcluded(partition.PartitionID, exclude) {
+			index := rand.Intn(len(rwPartitionGroups))
+			partition = rwPartitionGroups[index]
+		}
+	} else {
+		index := rand.Intn(len(rwPartitionGroups))
+		partition = rwPartitionGroups[index]
+	}
+
 	if !isExcluded(partition.PartitionID, exclude) {
 		return partition, nil
 	}
