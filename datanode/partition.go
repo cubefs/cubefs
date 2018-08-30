@@ -255,13 +255,15 @@ func (dp *dataPartition) ChangeStatus(status int) {
 
 func (dp *dataPartition) statusUpdateScheduler() {
 	ticker := time.NewTicker(10 * time.Second)
+	metricTicker := time.NewTicker(5 * time.Second)
 	for {
 		select {
 		case <-ticker.C:
 			dp.statusUpdate()
-			dp.runtimeMetrics.recomputLatency()
 		case <-dp.stopC:
 			ticker.Stop()
+		case <-metricTicker.C:
+			dp.runtimeMetrics.recomputLatency()
 		}
 	}
 }
