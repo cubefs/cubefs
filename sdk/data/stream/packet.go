@@ -19,7 +19,6 @@ import (
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/sdk/data/wrapper"
 	"github.com/chubaoio/cbfs/util"
-	"github.com/gogo/protobuf/test/data"
 	"hash/crc32"
 	"io"
 	"net"
