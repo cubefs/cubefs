@@ -3,12 +3,12 @@ package datanode
 import "sync/atomic"
 
 type DataPartitionMetrics struct {
-	WriteCnt        uint64
-	ReadCnt         uint64
-	SumWriteLatency uint64
-	SumReadLatency  uint64
-	WriteLatency    float64
-	ReadLatency     float64
+	WriteCnt         uint64
+	ReadCnt          uint64
+	SumWriteLatency  uint64
+	SumReadLatency   uint64
+	WriteLatency     float64
+	ReadLatency      float64
 	lastWriteLatency float64
 	lastReadLatency  float64
 }

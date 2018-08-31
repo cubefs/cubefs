@@ -224,7 +224,6 @@ func (client *ExtentClient) CloseForWrite(inode uint64) (err error) {
 	client.writerLock.Lock()
 	delete(client.writers, inode)
 	atomic.StoreInt32(&streamWriter.hasClosed, HasClosed)
-	streamWriter.exitCh <- true
 	client.writerLock.Unlock()
 
 	return
