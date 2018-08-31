@@ -353,7 +353,7 @@ func (stream *StreamWriter) autoUpdateToMetanode() {
 			if err == syscall.ENOENT {
 				return
 			}
-			time.Sleep(time.Millisecond)
+			time.Sleep(time.Millisecond*10)
 		}
 	}
 }
