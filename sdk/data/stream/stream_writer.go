@@ -148,12 +148,9 @@ func (stream *StreamWriter) server() {
 			}
 			return
 		case <-t.C:
-			stream.RLock()
-			if stream.currentWriter == nil {
-				stream.RUnlock()
+			if stream.getCurrentWriter()==nil {
 				continue
 			}
-			stream.RUnlock()
 			stream.flushCurrExtentWriter()
 		}
 	}
