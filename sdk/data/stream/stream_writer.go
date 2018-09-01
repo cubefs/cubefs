@@ -357,14 +357,11 @@ func (stream *StreamWriter) autoUpdateToMetanode() {
 		case <-stream.exitCh:
 			return
 		default:
-			if stream.getHasWriteSize()-stream.getHasUpdateToMetaNodeSize() < 20 {
-				time.Sleep(time.Millisecond * 100)
-				continue
-			}
 			err := stream.updateToMetaNode()
 			if err == syscall.ENOENT {
 				return
 			}
+			time.Sleep(time.Millisecond * 100)
 		}
 	}
 }
