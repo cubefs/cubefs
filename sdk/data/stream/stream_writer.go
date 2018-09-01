@@ -153,8 +153,9 @@ func (stream *StreamWriter) server() {
 			}
 			return
 		case <-t.C:
+			stream.hasUpdateToMetaNodeSize = uint64(stream.updateToMetaNodeSize())
 			log.LogDebugf("inode(%v) update to metanode filesize To(%v) user has Write to (%v)",
-				stream.Inode, stream.updateToMetaNodeSize(), stream.getHasWriteSize())
+				stream.Inode, stream.hasUpdateToMetaNodeSize, stream.getHasWriteSize())
 			if stream.getCurrentWriter() == nil {
 				continue
 			}
@@ -318,7 +319,6 @@ func (stream *StreamWriter) getCurrentWriter() *ExtentWriter {
 }
 
 func (stream *StreamWriter) updateToMetaNode() (err error) {
-	start := time.Now().UnixNano()
 	for i := 0; i < MaxSelectDataPartionForWrite; i++ {
 		stream.RLock()
 		if stream.currentWriter == nil {
@@ -350,11 +350,7 @@ func (stream *StreamWriter) updateToMetaNode() (err error) {
 			continue
 		}
 		stream.addHasUpdateToMetaNodeSize(int(ek.Size) - lastUpdateSize)
-		elspetime := time.Now().UnixNano() - start
 		stream.hasUpdateKey.Store(updateKey, int(ek.Size))
-		log.LogDebugf("inode(%v) update ek(%v) has update filesize To(%v) user has Write to (%v)"+
-			" coseTime (%v)ns ", stream.Inode, ek.String(),
-			stream.getHasUpdateToMetaNodeSize(), stream.getHasWriteSize(), elspetime)
 		return
 	}
 
