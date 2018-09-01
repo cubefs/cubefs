@@ -69,7 +69,7 @@ func NewExtentWriter(inode uint64, dp *wrapper.DataPartition, extentId uint64) (
 	}
 	writer = new(ExtentWriter)
 	writer.requestQueue = list.New()
-	writer.handleCh = make(chan bool, 8)
+	writer.handleCh = make(chan bool, 80)
 	writer.extentId = extentId
 	writer.dp = dp
 	writer.inode = inode
