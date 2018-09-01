@@ -23,6 +23,7 @@ import (
 
 	"bytes"
 	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/util/log"
 	"io/ioutil"
 	"strings"
 )
@@ -127,11 +128,11 @@ errDeal:
 
 func (m *Master) getIpAndClusterName(w http.ResponseWriter, r *http.Request) {
 	cInfo := &proto.ClusterInfo{Cluster: m.cluster.Name, Ip: strings.Split(r.RemoteAddr, ":")[0]}
-	bytes, err := json.Marshal(cInfo)
+	cInfoBytes, err := json.Marshal(cInfo)
 	if err != nil {
 		goto errDeal
 	}
-	w.Write(bytes)
+	w.Write(cInfoBytes)
 	return
 errDeal:
 	rstMsg := getReturnMessage("getIpAndClusterName", r.RemoteAddr, err.Error(), http.StatusBadRequest)
@@ -305,6 +306,7 @@ func (m *Master) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		goto errDeal
 	}
 	msg = fmt.Sprintf("delete vol[%v] successed\n", name)
+	log.LogWarn(msg)
 	io.WriteString(w, msg)
 	return
 

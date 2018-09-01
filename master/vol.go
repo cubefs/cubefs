@@ -189,14 +189,40 @@ func (vol *Vol) checkStatus(c *Cluster) {
 	metaTasks := vol.getDeleteMetaTasks()
 	dataTasks := vol.getDeleteDataTasks()
 	if len(metaTasks) == 0 && len(dataTasks) == 0 {
-		if err := c.syncDeleteVol(vol); err == nil {
-			c.deleteVol(vol.Name)
-			return
-		}
+		vol.deleteVolFromStore(c)
 	}
 	c.putMetaNodeTasks(metaTasks)
 	c.putDataNodeTasks(dataTasks)
 	return
+}
+
+func (vol *Vol) deleteVolFromStore(c *Cluster) {
+
+	if err := c.syncDeleteVol(vol); err != nil {
+		return
+	}
+	//delete mp and dp metadata first, then delete vol in case new vol with same name create
+	vol.deleteDataPartitionsFromStore(c)
+	vol.deleteMetaPartitionsFromStore(c)
+	c.deleteVol(vol.Name)
+}
+
+func (vol *Vol) deleteMetaPartitionsFromStore(c *Cluster) {
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
+	for _, mp := range vol.MetaPartitions {
+		c.syncDeleteMetaPartition(vol.Name, mp)
+	}
+	return
+}
+
+func (vol *Vol) deleteDataPartitionsFromStore(c *Cluster) {
+	vol.dataPartitions.RLock()
+	defer vol.dataPartitions.RUnlock()
+	for _, dp := range vol.dataPartitions.dataPartitions {
+		c.syncDeleteDataPartition(vol.Name, dp)
+	}
+
 }
 
 func (vol *Vol) getDeleteMetaTasks() (tasks []*proto.AdminTask) {
