@@ -326,7 +326,10 @@ func (stream *StreamWriter) updateToMetaNode() (err error) {
 		if ok && lastUpdateExtentKeySize.(int) == int(ek.Size) {
 			return nil
 		}
-
+		lastUpdateSize:=0
+		if ok{
+			lastUpdateSize=lastUpdateExtentKeySize.(int)
+		}
 		err = stream.appendExtentKey(stream.Inode, ek) //put it to metanode
 		if err == syscall.ENOENT {
 			return
@@ -336,7 +339,7 @@ func (stream *StreamWriter) updateToMetaNode() (err error) {
 			log.LogErrorf("stream(%v) err(%v)", stream.toString(), err.Error())
 			continue
 		}
-		stream.addHasUpdateToMetaNodeSize(int(ek.Size) - lastUpdateExtentKeySize.(int))
+		stream.addHasUpdateToMetaNodeSize(int(ek.Size) - lastUpdateSize)
 		elspetime := time.Now().UnixNano() - start
 		stream.hasUpdateKey.Store(updateKey, int(ek.Size))
 		log.LogDebugf("inode(%v) update ek(%v) has update filesize To(%v) user has Write to (%v)"+
