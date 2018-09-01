@@ -150,6 +150,8 @@ func (stream *StreamWriter) server() {
 			}
 			return
 		case <-t.C:
+			log.LogDebugf("inode(%v) update to metanode filesize To(%v) user has Write to (%v)",
+				stream.Inode, stream.updateToMetaNodeSize(), stream.getHasWriteSize())
 			if stream.getCurrentWriter() == nil {
 				continue
 			}
@@ -172,9 +174,7 @@ func (stream *StreamWriter) handleRequest(request interface{}) {
 		}
 		request.canWrite, request.err = stream.write(request.data, request.kernelOffset, request.size)
 		stream.addHasWriteSize(request.canWrite)
-		if stream.getHasWriteSize()-stream.getHasUpdateToMetaNodeSize() > 100 {
-			go stream.updateToMetaNode()
-		}
+		go stream.updateToMetaNode()
 		request.done <- struct{}{}
 	case *FlushRequest:
 		request.err = stream.flushCurrExtentWriter()
