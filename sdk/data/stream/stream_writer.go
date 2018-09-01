@@ -153,9 +153,9 @@ func (stream *StreamWriter) server() {
 			}
 			return
 		case <-t.C:
-			stream.hasUpdateToMetaNodeSize = uint64(stream.updateToMetaNodeSize())
+			atomic.StoreUint64(&stream.hasUpdateToMetaNodeSize ,uint64(stream.updateToMetaNodeSize()))
 			log.LogDebugf("inode(%v) update to metanode filesize To(%v) user has Write to (%v)",
-				stream.Inode, stream.hasUpdateToMetaNodeSize, stream.getHasWriteSize())
+				stream.Inode, stream.getHasUpdateToMetaNodeSize(), stream.getHasWriteSize())
 			if stream.getCurrentWriter() == nil {
 				continue
 			}
