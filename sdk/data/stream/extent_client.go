@@ -154,7 +154,7 @@ func (client *ExtentClient) GetWriteSize(inode uint64) uint64 {
 	if !ok {
 		return 0
 	}
-	return writer.HasWriteSize
+	return writer.getHasWriteSize()
 }
 
 func (client *ExtentClient) SetWriteSize(inode, size uint64) {
@@ -162,7 +162,7 @@ func (client *ExtentClient) SetWriteSize(inode, size uint64) {
 	defer client.writerLock.Unlock()
 	writer, ok := client.writers[inode]
 	if ok {
-		writer.HasWriteSize = size
+		writer.setHasWriteSize(size)
 	}
 }
 
