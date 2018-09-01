@@ -71,6 +71,7 @@ type StreamWriter struct {
 	hasClosed          int32
 
 	hasUpdateToMetaNodeSize uint64
+	updateToMetaNodeChan    chan struct{}
 	sync.RWMutex
 }
 
@@ -82,6 +83,7 @@ func NewStreamWriter(inode, start uint64, appendExtentKey AppendExtentKeyFunc) (
 	stream.requestCh = make(chan interface{}, 1000)
 	stream.exitCh = make(chan bool, 10)
 	stream.excludePartition = make([]uint32, 0)
+	stream.updateToMetaNodeChan = make(chan struct{}, 100)
 	go stream.server()
 	go stream.autoUpdateToMetanode()
 
@@ -176,6 +178,12 @@ func (stream *StreamWriter) handleRequest(request interface{}) {
 		request.canWrite, request.err = stream.write(request.data, request.kernelOffset, request.size)
 		stream.addHasWriteSize(request.canWrite)
 		request.done <- struct{}{}
+		select {
+		case stream.updateToMetaNodeChan <- struct{}{}:
+			break
+		default:
+			break
+		}
 	case *FlushRequest:
 		request.err = stream.flushCurrExtentWriter()
 		request.done <- struct{}{}
@@ -356,6 +364,11 @@ func (stream *StreamWriter) updateToMetaNode() (err error) {
 func (stream *StreamWriter) autoUpdateToMetanode() {
 	for {
 		select {
+		case <-stream.updateToMetaNodeChan:
+			err := stream.updateToMetaNode()
+			if err == syscall.ENOENT {
+				return
+			}
 		case <-stream.exitCh:
 			return
 		default:
