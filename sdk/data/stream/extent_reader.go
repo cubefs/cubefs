@@ -61,7 +61,7 @@ func NewExtentReader(inode uint64, inInodeOffset int, key proto.ExtentKey) (read
 	rand.Seed(time.Now().UnixNano())
 	for i:=0;i<len(reader.dp.Hosts);i++{
 		h:=reader.dp.Hosts[i]
-		if h==wrapper.LocalIP{
+		if strings.Split(h,":")[0]==wrapper.LocalIP{
 			reader.readerIndex=uint32(i)
 			break
 		}
