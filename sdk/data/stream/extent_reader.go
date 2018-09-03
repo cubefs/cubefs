@@ -45,7 +45,6 @@ type ExtentReader struct {
 	dp               *data.DataPartition
 	key              proto.ExtentKey
 	readerIndex      uint32
-	readcnt          uint64
 }
 
 func NewExtentReader(inode uint64, inInodeOffset int, key proto.ExtentKey) (reader *ExtentReader, err error) {
@@ -56,7 +55,6 @@ func NewExtentReader(inode uint64, inInodeOffset int, key proto.ExtentKey) (read
 	}
 	reader.inode = inode
 	reader.key = key
-	reader.readcnt = 1
 	reader.startInodeOffset = uint64(inInodeOffset)
 	reader.endInodeOffset = reader.startInodeOffset + uint64(key.Size)
 	rand.Seed(time.Now().UnixNano())
