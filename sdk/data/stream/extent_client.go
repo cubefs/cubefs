@@ -31,7 +31,6 @@ type GetExtentsFunc func(inode uint64) ([]proto.ExtentKey, error)
 
 var (
 	gDataWrapper     *wrapper.Wrapper
-	gFlushBufferSize uint64
 	writeRequestPool *sync.Pool
 	flushRequestPool *sync.Pool
 	closeRequestPool *sync.Pool
@@ -46,7 +45,7 @@ type ExtentClient struct {
 	getExtents      GetExtentsFunc
 }
 
-func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc, flushBufferSize uint64) (client *ExtentClient, err error) {
+func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc) (client *ExtentClient, err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	client = new(ExtentClient)
 	gDataWrapper, err = wrapper.NewDataPartitionWrapper(volname, master)
@@ -57,7 +56,6 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 	client.appendExtentKey = appendExtentKey
 	client.referCnt = make(map[uint64]uint64)
 	client.getExtents = getExtents
-	gFlushBufferSize = flushBufferSize
 	writeRequestPool = &sync.Pool{New: func() interface{} {
 		return &WriteRequest{}
 	}}

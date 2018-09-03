@@ -67,7 +67,6 @@ type StreamWriter struct {
 	exitCh             chan bool
 	hasUpdateKey       sync.Map
 	hasWriteSize       uint64
-	flushBufferSize    uint64
 	hasClosed          int32
 
 	hasUpdateToMetaNodeSize uint64
@@ -137,23 +136,17 @@ func (stream *StreamWriter) init() (err error) {
 }
 
 func (stream *StreamWriter) server() {
-	t := time.NewTicker(time.Second * 2)
+	t := time.NewTicker(time.Second * 10)
 	defer t.Stop()
 	for {
 		select {
 		case request := <-stream.requestCh:
 			stream.handleRequest(request)
-			if stream.flushBufferSize >= gFlushBufferSize {
-				stream.flushCurrExtentWriter()
-			}
 		case <-stream.exitCh:
 			stream.flushCurrExtentWriter()
-			if stream.flushBufferSize >= gFlushBufferSize {
-				stream.flushCurrExtentWriter()
-			}
 			return
 		case <-t.C:
-			atomic.StoreUint64(&stream.hasUpdateToMetaNodeSize ,uint64(stream.updateToMetaNodeSize()))
+			atomic.StoreUint64(&stream.hasUpdateToMetaNodeSize, uint64(stream.updateToMetaNodeSize()))
 			log.LogDebugf("inode(%v) update to metanode filesize To(%v) user has Write to (%v)",
 				stream.Inode, stream.getHasUpdateToMetaNodeSize(), stream.getHasWriteSize())
 			if stream.getCurrentWriter() == nil {
@@ -206,7 +199,6 @@ func (stream *StreamWriter) write(data []byte, offset, size int) (total int, err
 	defer func() {
 		if err == nil {
 			total = size
-			stream.flushBufferSize += uint64(total)
 			return
 		}
 		err = errors.Annotatef(err, "UserRequest{inode(%v) write "+
@@ -260,7 +252,6 @@ func (stream *StreamWriter) flushCurrExtentWriter() (err error) {
 	defer func() {
 		if err == nil || status == syscall.ENOENT {
 			stream.errCount = 0
-			stream.flushBufferSize = 0
 			err = nil
 			return
 		}

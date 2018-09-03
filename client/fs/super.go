@@ -42,7 +42,7 @@ var (
 	_ fs.FSStatfser = (*Super)(nil)
 )
 
-func NewSuper(volname, master string, bufferSize uint64, icacheTimeout int64) (s *Super, err error) {
+func NewSuper(volname, master string, icacheTimeout int64) (s *Super, err error) {
 	s = new(Super)
 	s.mw, err = meta.NewMetaWrapper(volname, master)
 	if err != nil {
@@ -50,7 +50,7 @@ func NewSuper(volname, master string, bufferSize uint64, icacheTimeout int64) (s
 		return nil, err
 	}
 
-	s.ec, err = stream.NewExtentClient(volname, master, s.mw.AppendExtentKey, s.mw.GetExtents, bufferSize)
+	s.ec, err = stream.NewExtentClient(volname, master, s.mw.AppendExtentKey, s.mw.GetExtents)
 	if err != nil {
 		log.LogErrorf("NewExtentClient failed! %v", err.Error())
 		return nil, err
