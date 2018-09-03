@@ -143,7 +143,7 @@ func (reader *ExtentReader) streamReadDataFromHost(host string, offset, expectRe
 			break
 		}
 		reply := NewReply(request.ReqID, reader.dp.PartitionID, request.FileID)
-		canRead := util.Min(util.BlockSize, expectReadSize-actualReadSize)
+		canRead := util.Min(util.ReadBlockSize, expectReadSize-actualReadSize)
 		reply.Data = data[actualReadSize : canRead+actualReadSize]
 		err = reply.ReadFromConnStream(connect, proto.ReadDeadlineTime)
 		if err != nil {
