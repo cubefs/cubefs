@@ -32,7 +32,7 @@ type ConnPool struct {
 }
 
 func NewConnPool() (connP *ConnPool) {
-	connP = &ConnPool{pools: make(map[string]Pool), initCap: 5, maxCap: 20, idleTime: time.Second * 20}
+	connP = &ConnPool{pools: make(map[string]Pool), initCap: 5, maxCap: 50, idleTime: time.Second * 20}
 	go connP.autoRelease()
 
 	return connP
