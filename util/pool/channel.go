@@ -118,7 +118,7 @@ func (c *ChannelPool) AutoRelease() {
 				return
 			}
 			if timeout := c.idleTimeout; timeout > 0 {
-				if wrapConn.t.Add(timeout).Before(time.Now()) {
+				if wrapConn.t.Add(timeout*2).Before(time.Now()) {
 					c.Close(wrapConn.conn)
 					continue
 				}
