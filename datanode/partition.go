@@ -305,7 +305,7 @@ func (dp *dataPartition) LaunchRepair() {
 		return
 	}
 	select {
-	case <- dp.stopC:
+	case <-dp.stopC:
 		return
 	default:
 	}
