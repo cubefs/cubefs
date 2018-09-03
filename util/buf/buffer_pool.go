@@ -59,7 +59,7 @@ func (bufferP *BufferPool) Put(data []byte) {
 		return
 	}
 	size := len(data)
-	if size != util.BlockSize && size != util.PacketHeaderSize {
+	if size != util.BlockSize && size != util.PacketHeaderSize && size != util.ReadBlockSize {
 		return
 	}
 	if size == util.PacketHeaderSize {

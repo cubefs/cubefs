@@ -26,6 +26,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 const (
@@ -65,9 +66,11 @@ type StreamWriter struct {
 	requestCh          chan interface{}
 	exitCh             chan bool
 	hasUpdateKey       sync.Map
-	HasWriteSize       uint64
-	HasBufferSize      uint64
+	hasWriteSize       uint64
 	hasClosed          int32
+
+	hasUpdateToMetaNodeSize uint64
+	updateToMetaNodeChan    chan struct{}
 	sync.RWMutex
 }
 
@@ -75,10 +78,11 @@ func NewStreamWriter(inode, start uint64, appendExtentKey AppendExtentKeyFunc) (
 	stream = new(StreamWriter)
 	stream.appendExtentKey = appendExtentKey
 	stream.Inode = inode
-	stream.HasWriteSize = start
+	stream.setHasWriteSize(start)
 	stream.requestCh = make(chan interface{}, 1000)
 	stream.exitCh = make(chan bool, 10)
 	stream.excludePartition = make([]uint32, 0)
+	stream.updateToMetaNodeChan = make(chan struct{}, 100)
 	go stream.server()
 	go stream.autoUpdateToMetanode()
 
@@ -132,23 +136,20 @@ func (stream *StreamWriter) init() (err error) {
 }
 
 func (stream *StreamWriter) server() {
-	t := time.NewTicker(time.Second * 2)
+	t := time.NewTicker(time.Second * 10)
 	defer t.Stop()
 	for {
 		select {
 		case request := <-stream.requestCh:
 			stream.handleRequest(request)
-			if stream.HasBufferSize >= gFlushBufferSize {
-				stream.flushCurrExtentWriter()
-			}
 		case <-stream.exitCh:
 			stream.flushCurrExtentWriter()
-			if stream.HasBufferSize >= gFlushBufferSize {
-				stream.flushCurrExtentWriter()
-			}
 			return
 		case <-t.C:
-			if stream.getCurrentWriter()==nil {
+			atomic.StoreUint64(&stream.hasUpdateToMetaNodeSize, uint64(stream.updateToMetaNodeSize()))
+			log.LogDebugf("inode(%v) update to metanode filesize To(%v) user has Write to (%v)",
+				stream.Inode, stream.getHasUpdateToMetaNodeSize(), stream.getHasWriteSize())
+			if stream.getCurrentWriter() == nil {
 				continue
 			}
 			stream.flushCurrExtentWriter()
@@ -159,8 +160,8 @@ func (stream *StreamWriter) server() {
 func (stream *StreamWriter) handleRequest(request interface{}) {
 	switch request := request.(type) {
 	case *WriteRequest:
-		if request.kernelOffset < int(stream.HasWriteSize) {
-			cutSize := int(stream.HasWriteSize) - request.kernelOffset
+		if request.kernelOffset < int(stream.getHasWriteSize()) {
+			cutSize := int(stream.getHasWriteSize()) - request.kernelOffset
 			if cutSize < len(request.data) {
 				request.kernelOffset += cutSize
 				request.data = request.data[cutSize:]
@@ -169,8 +170,14 @@ func (stream *StreamWriter) handleRequest(request interface{}) {
 			}
 		}
 		request.canWrite, request.err = stream.write(request.data, request.kernelOffset, request.size)
-		stream.HasWriteSize += uint64(request.canWrite)
+		stream.addHasWriteSize(request.canWrite)
 		request.done <- struct{}{}
+		select {
+		case stream.updateToMetaNodeChan <- struct{}{}:
+			break
+		default:
+			break
+		}
 	case *FlushRequest:
 		request.err = stream.flushCurrExtentWriter()
 		request.done <- struct{}{}
@@ -180,7 +187,7 @@ func (stream *StreamWriter) handleRequest(request interface{}) {
 			request.err = stream.close()
 		}
 		request.done <- struct{}{}
-		close(stream.exitCh)
+		stream.exit()
 	default:
 	}
 }
@@ -192,7 +199,6 @@ func (stream *StreamWriter) write(data []byte, offset, size int) (total int, err
 	defer func() {
 		if err == nil {
 			total = size
-			stream.HasBufferSize += uint64(total)
 			return
 		}
 		err = errors.Annotatef(err, "UserRequest{inode(%v) write "+
@@ -246,7 +252,6 @@ func (stream *StreamWriter) flushCurrExtentWriter() (err error) {
 	defer func() {
 		if err == nil || status == syscall.ENOENT {
 			stream.errCount = 0
-			stream.HasBufferSize = 0
 			err = nil
 			return
 		}
@@ -305,7 +310,6 @@ func (stream *StreamWriter) getCurrentWriter() *ExtentWriter {
 }
 
 func (stream *StreamWriter) updateToMetaNode() (err error) {
-	start := time.Now().UnixNano()
 	for i := 0; i < MaxSelectDataPartionForWrite; i++ {
 		stream.RLock()
 		if stream.currentWriter == nil {
@@ -314,14 +318,18 @@ func (stream *StreamWriter) updateToMetaNode() (err error) {
 		}
 		ek := stream.currentWriter.toKey() //first get currentExtent Key
 		stream.RUnlock()
-		key := ek.GetExtentKey()
+		if ek.Size == 0 {
+			return
+		}
 
-		lastUpdateExtentKeySize, ok := stream.hasUpdateKey.Load(key)
+		updateKey := ek.GetExtentKey()
+		lastUpdateExtentKeySize, ok := stream.hasUpdateKey.Load(updateKey)
 		if ok && lastUpdateExtentKeySize.(int) == int(ek.Size) {
 			return nil
 		}
-		if ek.Size == 0 {
-			return
+		lastUpdateSize := 0
+		if ok {
+			lastUpdateSize = lastUpdateExtentKeySize.(int)
 		}
 		err = stream.appendExtentKey(stream.Inode, ek) //put it to metanode
 		if err == syscall.ENOENT {
@@ -332,11 +340,8 @@ func (stream *StreamWriter) updateToMetaNode() (err error) {
 			log.LogErrorf("stream(%v) err(%v)", stream.toString(), err.Error())
 			continue
 		}
-		elspetime := time.Now().UnixNano() - start
-		stream.hasUpdateKey.Store(key, int(ek.Size))
-		log.LogDebugf("inode(%v) update ek(%v) has update filesize To(%v) user has Write to (%v)"+
-			" coseTime (%v)ns ", stream.Inode, ek.String(),
-			stream.updateToMetaNodeSize(), stream.HasWriteSize, elspetime)
+		stream.addHasUpdateToMetaNodeSize(int(ek.Size) - lastUpdateSize)
+		stream.hasUpdateKey.Store(updateKey, int(ek.Size))
 		return
 	}
 
@@ -346,6 +351,11 @@ func (stream *StreamWriter) updateToMetaNode() (err error) {
 func (stream *StreamWriter) autoUpdateToMetanode() {
 	for {
 		select {
+		case <-stream.updateToMetaNodeChan:
+			err := stream.updateToMetaNode()
+			if err == syscall.ENOENT {
+				return
+			}
 		case <-stream.exitCh:
 			return
 		default:
@@ -353,7 +363,7 @@ func (stream *StreamWriter) autoUpdateToMetanode() {
 			if err == syscall.ENOENT {
 				return
 			}
-			time.Sleep(time.Millisecond*100)
+			time.Sleep(time.Millisecond * 100)
 		}
 	}
 }
@@ -477,4 +487,30 @@ func (stream *StreamWriter) createExtent(dp *wrapper.DataPartition) (extentId ui
 	}
 
 	return extentId, nil
+}
+
+func (stream *StreamWriter) exit() {
+	stream.exitCh <- true
+	stream.exitCh <- true
+}
+
+func (stream *StreamWriter) getHasWriteSize() uint64 {
+	return atomic.LoadUint64(&stream.hasWriteSize)
+}
+
+func (stream *StreamWriter) addHasWriteSize(writed int) {
+	atomic.AddUint64(&stream.hasWriteSize, uint64(writed))
+}
+
+func (stream *StreamWriter) setHasWriteSize(writeSize uint64) {
+	atomic.StoreUint64(&stream.hasWriteSize, writeSize)
+
+}
+
+func (stream *StreamWriter) addHasUpdateToMetaNodeSize(writed int) {
+	atomic.AddUint64(&stream.hasUpdateToMetaNodeSize, uint64(writed))
+}
+
+func (stream *StreamWriter) getHasUpdateToMetaNodeSize() uint64 {
+	return atomic.LoadUint64(&stream.hasUpdateToMetaNodeSize)
 }

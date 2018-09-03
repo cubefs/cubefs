@@ -41,6 +41,8 @@ const (
 	OpSyncPutCluster           uint32 = 0x0D
 	OpSyncUpdateVol            uint32 = 0x0E
 	OpSyncDeleteVol            uint32 = 0x0F
+	OpSyncDeleteDataPartition  uint32 = 0x10
+	OpSyncDeleteMetaPartition  uint32 = 0x11
 )
 
 const (
@@ -178,6 +180,10 @@ func (c *Cluster) syncUpdateDataPartition(volName string, dp *DataPartition) (er
 	return c.putDataPartitionInfo(OpSyncUpdateDataPartition, volName, dp)
 }
 
+func (c *Cluster) syncDeleteDataPartition(volName string, dp *DataPartition) (err error) {
+	return c.putDataPartitionInfo(OpSyncDeleteDataPartition, volName, dp)
+}
+
 func (c *Cluster) putDataPartitionInfo(opType uint32, volName string, dp *DataPartition) (err error) {
 	metadata := new(Metadata)
 	metadata.Op = opType
@@ -243,6 +249,10 @@ func (c *Cluster) syncAddMetaPartition(volName string, mp *MetaPartition) (err e
 
 func (c *Cluster) syncUpdateMetaPartition(volName string, mp *MetaPartition) (err error) {
 	return c.putMetaPartitionInfo(OpSyncUpdateMetaPartition, volName, mp)
+}
+
+func (c *Cluster) syncDeleteMetaPartition(volName string, mp *MetaPartition) (err error) {
+	return c.putMetaPartitionInfo(OpSyncDeleteMetaPartition, volName, mp)
 }
 
 func (c *Cluster) putMetaPartitionInfo(opType uint32, volName string, mp *MetaPartition) (err error) {

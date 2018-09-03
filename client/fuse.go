@@ -115,7 +115,7 @@ func Mount(cfg *config.Config) error {
 		return err
 	}
 
-	super, err := bdfs.NewSuper(volname, master, uint64(bufferSize), icacheTimeout)
+	super, err := bdfs.NewSuper(volname, master, icacheTimeout)
 	if err != nil {
 		return err
 	}

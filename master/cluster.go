@@ -363,6 +363,7 @@ func (c *Cluster) markDeleteVol(name string) (err error) {
 	}
 	vol.Status = VolMarkDelete
 	if err = c.syncUpdateVol(vol); err != nil {
+		vol.Status = VolNormal
 		return
 	}
 	return

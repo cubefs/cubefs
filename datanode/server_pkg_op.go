@@ -355,19 +355,21 @@ func (s *DataNode) handleStreamRead(request *Packet, connect net.Conn) {
 	needReplySize := request.Size
 	offset := request.Offset
 	store := request.DataPartition.GetExtentStore()
+	umpKey := fmt.Sprintf("%s_datanode_%s", s.clusterId, "Read")
 	for {
 		if needReplySize <= 0 {
 			break
 		}
 		err = nil
-		currReadSize := uint32(util.Min(int(needReplySize), util.BlockSize))
-		if currReadSize == util.BlockSize {
-			request.Data, _ = proto.Buffers.Get(util.BlockSize)
+		currReadSize := uint32(util.Min(int(needReplySize), util.ReadBlockSize))
+		if currReadSize == util.ReadBlockSize {
+			request.Data, _ = proto.Buffers.Get(util.ReadBlockSize)
 		} else {
 			request.Data = make([]byte, currReadSize)
 		}
-
+		tpObject := ump.BeforeTP(umpKey)
 		request.Crc, err = store.Read(request.FileID, offset, int64(currReadSize), request.Data)
+		ump.AfterTP(tpObject, err)
 		if err != nil {
 			request.PackErrorBody(ActionStreamRead, err.Error())
 			if err = request.WriteToConn(connect); err != nil {
@@ -388,7 +390,7 @@ func (s *DataNode) handleStreamRead(request *Packet, connect net.Conn) {
 		}
 		needReplySize -= currReadSize
 		offset += int64(currReadSize)
-		if currReadSize == util.BlockSize {
+		if currReadSize == util.ReadBlockSize {
 			proto.Buffers.Put(request.Data)
 		}
 	}

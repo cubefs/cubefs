@@ -69,7 +69,7 @@ func NewExtentWriter(inode uint64, dp *wrapper.DataPartition, extentId uint64) (
 	}
 	writer = new(ExtentWriter)
 	writer.requestQueue = list.New()
-	writer.handleCh = make(chan bool, 8)
+	writer.handleCh = make(chan bool,  DefaultWriteBufferSize/(64*util.KB))
 	writer.extentId = extentId
 	writer.dp = dp
 	writer.inode = inode
@@ -355,12 +355,12 @@ func (writer *ExtentWriter) receive() {
 			err := reply.ReadFromConn(writer.getConnect(), proto.ReadDeadlineTime)
 			if err != nil {
 				writer.getConnect().Close()
-				return
+				continue
 			}
 			if err = writer.processReply(e, request, reply); err != nil {
 				writer.getConnect().Close()
 				log.LogWarn(err.Error())
-				return
+				continue
 			}
 		}
 	}
