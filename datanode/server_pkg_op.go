@@ -360,9 +360,9 @@ func (s *DataNode) handleStreamRead(request *Packet, connect net.Conn) {
 			break
 		}
 		err = nil
-		currReadSize := uint32(util.Min(int(needReplySize), util.BlockSize))
-		if currReadSize == util.BlockSize {
-			request.Data, _ = proto.Buffers.Get(util.BlockSize)
+		currReadSize := uint32(util.Min(int(needReplySize), util.ReadBlockSize))
+		if currReadSize == util.ReadBlockSize {
+			request.Data, _ = proto.Buffers.Get(util.ReadBlockSize)
 		} else {
 			request.Data = make([]byte, currReadSize)
 		}
@@ -389,7 +389,7 @@ func (s *DataNode) handleStreamRead(request *Packet, connect net.Conn) {
 		}
 		needReplySize -= currReadSize
 		offset += int64(currReadSize)
-		if currReadSize == util.BlockSize {
+		if currReadSize == util.ReadBlockSize {
 			proto.Buffers.Put(request.Data)
 		}
 	}
