@@ -354,6 +354,7 @@ func (s *DataNode) handleStreamRead(request *Packet, connect net.Conn) {
 	needReplySize := request.Size
 	offset := request.Offset
 	store := request.DataPartition.GetExtentStore()
+	umpKey := fmt.Sprintf("%s_datanode_%s", s.clusterId, "Read")
 	for {
 		if needReplySize <= 0 {
 			break
@@ -365,8 +366,9 @@ func (s *DataNode) handleStreamRead(request *Packet, connect net.Conn) {
 		} else {
 			request.Data = make([]byte, currReadSize)
 		}
-
+		tpObject := ump.BeforeTP(umpKey)
 		request.Crc, err = store.Read(request.FileID, offset, int64(currReadSize), request.Data)
+		ump.AfterTP(tpObject, err)
 		if err != nil {
 			request.PackErrorBody(ActionStreamRead, err.Error())
 			if err = request.WriteToConn(connect); err != nil {
