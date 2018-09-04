@@ -17,7 +17,6 @@ package stream
 import (
 	"fmt"
 	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/sdk/data/wrapper"
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/chubaoio/cbfs/util/pool"
@@ -25,9 +24,10 @@ import (
 	"hash/crc32"
 	"math/rand"
 	"net"
-	"strings"
 	"sync/atomic"
 	"time"
+	"github.com/chubaoio/cbfs/sdk/data/wrapper"
+	"strings"
 )
 
 const (
@@ -59,12 +59,16 @@ func NewExtentReader(inode uint64, inInodeOffset int, key proto.ExtentKey) (read
 	reader.startInodeOffset = uint64(inInodeOffset)
 	reader.endInodeOffset = reader.startInodeOffset + uint64(key.Size)
 	rand.Seed(time.Now().UnixNano())
-	for i := 0; i < len(reader.dp.Hosts); i++ {
-		h := reader.dp.Hosts[i]
-		if strings.Split(h, ":")[0] == wrapper.LocalIP {
-			reader.readerIndex = uint32(i)
+	hasFindLocalReplica:=false
+	for index,host:=range reader.dp.Hosts{
+		if strings.Split(host,":")[0]==wrapper.LocalIP{
+			reader.readerIndex=uint32(index)
+			hasFindLocalReplica=true
 			break
 		}
+	}
+	if !hasFindLocalReplica{
+		reader.readerIndex = uint32(rand.Intn(int(reader.dp.ReplicaNum)))
 	}
 	return reader, nil
 }
@@ -79,14 +83,7 @@ func (reader *ExtentReader) read(data []byte, offset, size, kerneloffset, kernel
 }
 
 func (reader *ExtentReader) readDataFromDataPartition(offset, size int, data []byte, kerneloffset, kernelsize int) (err error) {
-	var host string
-	index := atomic.LoadUint32(&reader.readerIndex)
-	if int(index) >= len(reader.dp.Hosts) {
-		index = 0
-		atomic.StoreUint32(&reader.readerIndex, 0)
-	}
-	host = reader.dp.Hosts[atomic.LoadUint32(&reader.readerIndex)]
-	if _, err = reader.streamReadDataFromHost(host, offset, size, data, kerneloffset, kernelsize); err != nil {
+	if _, err = reader.streamReadDataFromHost(offset, size, data, kerneloffset, kernelsize); err != nil {
 		log.LogWarnf(err.Error())
 		goto forLoop
 	}
@@ -94,11 +91,8 @@ func (reader *ExtentReader) readDataFromDataPartition(offset, size int, data []b
 
 forLoop:
 	mesg := ""
-	for i := 0; i < int(reader.dp.ReplicaNum); i++ {
-		if reader.dp.Hosts[i] == host {
-			continue
-		}
-		_, err = reader.streamReadDataFromHost(reader.dp.Hosts[i], offset, size, data, kerneloffset, kernelsize)
+	for i := 0; i < len(reader.dp.Hosts); i++ {
+		_, err = reader.streamReadDataFromHost(offset, size, data, kerneloffset, kernelsize)
 		if err == nil {
 			return
 		} else {
@@ -112,9 +106,15 @@ forLoop:
 	return
 }
 
-func (reader *ExtentReader) streamReadDataFromHost(host string, offset, expectReadSize int, data []byte, kerneloffset, kernelsize int) (actualReadSize int, err error) {
+func (reader *ExtentReader) streamReadDataFromHost(offset, expectReadSize int, data []byte, kerneloffset, kernelsize int) (actualReadSize int, err error) {
 	request := NewStreamReadPacket(&reader.key, offset, expectReadSize)
 	var connect *net.TCPConn
+	index := atomic.LoadUint32(&reader.readerIndex)
+	if index >= uint32(reader.dp.ReplicaNum) {
+		index = 0
+		atomic.StoreUint32(&reader.readerIndex, 0)
+	}
+	host := reader.dp.Hosts[index]
 	connect, err = ReadConnectPool.Get(host)
 	if err != nil {
 		atomic.AddUint32(&reader.readerIndex, 1)
@@ -183,6 +183,7 @@ func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet, ker
 	}
 	return nil
 }
+
 
 func (reader *ExtentReader) updateKey(key proto.ExtentKey) (update bool) {
 	if !(key.PartitionId == reader.key.PartitionId && key.ExtentId == reader.key.ExtentId) {
