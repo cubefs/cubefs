@@ -45,7 +45,7 @@ type ExtentReader struct {
 	endInodeOffset   uint64
 	dp               *wrapper.DataPartition
 	key              proto.ExtentKey
-	readerIndex          uint32
+	readerIndex      uint32
 }
 
 func NewExtentReader(inode uint64, inInodeOffset int, key proto.ExtentKey) (reader *ExtentReader, err error) {
@@ -59,10 +59,10 @@ func NewExtentReader(inode uint64, inInodeOffset int, key proto.ExtentKey) (read
 	reader.startInodeOffset = uint64(inInodeOffset)
 	reader.endInodeOffset = reader.startInodeOffset + uint64(key.Size)
 	rand.Seed(time.Now().UnixNano())
-	for i:=0;i<len(reader.dp.Hosts);i++{
-		h:=reader.dp.Hosts[i]
-		if strings.Split(h,":")[0]==wrapper.LocalIP{
-			reader.readerIndex=uint32(i)
+	for i := 0; i < len(reader.dp.Hosts); i++ {
+		h := reader.dp.Hosts[i]
+		if strings.Split(h, ":")[0] == wrapper.LocalIP {
+			reader.readerIndex = uint32(i)
 			break
 		}
 	}
@@ -80,12 +80,12 @@ func (reader *ExtentReader) read(data []byte, offset, size, kerneloffset, kernel
 
 func (reader *ExtentReader) readDataFromDataPartition(offset, size int, data []byte, kerneloffset, kernelsize int) (err error) {
 	var host string
-	index:=atomic.LoadUint32(&reader.readerIndex)
-	if int(index)>=len(reader.dp.Hosts){
-		index=0
-		atomic.StoreUint32(&reader.readerIndex,0)
+	index := atomic.LoadUint32(&reader.readerIndex)
+	if int(index) >= len(reader.dp.Hosts) {
+		index = 0
+		atomic.StoreUint32(&reader.readerIndex, 0)
 	}
-	host=reader.dp.Hosts[atomic.LoadUint32(&reader.readerIndex)]
+	host = reader.dp.Hosts[atomic.LoadUint32(&reader.readerIndex)]
 	if _, err = reader.streamReadDataFromHost(host, offset, size, data, kerneloffset, kernelsize); err != nil {
 		log.LogWarnf(err.Error())
 		goto forLoop
@@ -117,7 +117,7 @@ func (reader *ExtentReader) streamReadDataFromHost(host string, offset, expectRe
 	var connect *net.TCPConn
 	connect, err = ReadConnectPool.Get(host)
 	if err != nil {
-		atomic.AddUint32(&reader.readerIndex,1)
+		atomic.AddUint32(&reader.readerIndex, 1)
 		return 0, errors.Annotatef(err, reader.toString()+
 			"streamReadDataFromHost dp(%v) cannot get  connect from host(%v) request(%v) ",
 			reader.key.PartitionId, host, request.GetUniqueLogId())
@@ -125,7 +125,7 @@ func (reader *ExtentReader) streamReadDataFromHost(host string, offset, expectRe
 	}
 	defer func() {
 		if err != nil {
-			atomic.AddUint32(&reader.readerIndex,1)
+			atomic.AddUint32(&reader.readerIndex, 1)
 			ReadConnectPool.Put(connect, ForceCloseConnect)
 		} else {
 			ReadConnectPool.Put(connect, NoCloseConnect)

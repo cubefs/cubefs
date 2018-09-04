@@ -70,12 +70,13 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 		return
 	}
 	go w.update()
+	go w.asyncSortDataPartition()
 	return
 }
 
 func (w *Wrapper) update() {
 	ticker := time.NewTicker(time.Minute)
-	sortTicker := time.NewTicker(time.Minute)
+	sortTicker := time.NewTicker(time.Second * 30)
 	for {
 		select {
 		case <-ticker.C:
@@ -174,7 +175,7 @@ func (w *Wrapper) getLocalLeaderDataPartition(exclude []uint32) (*DataPartition,
 	rand.Seed(time.Now().UnixNano())
 	choose := rand.Float64()
 	if choose < 0.8 {
-		index := rand.Intn(util.Min(40, len(rwPartitionGroups)))
+		index := rand.Intn(util.Min(20, len(rwPartitionGroups)))
 		partition = rwPartitionGroups[index]
 		if isExcluded(partition.PartitionID, exclude) {
 			index := rand.Intn(len(rwPartitionGroups))
@@ -253,22 +254,37 @@ func (w *Wrapper) PutConnect(conn *net.TCPConn, forceClose bool) {
 	GconnPool.Put(conn, forceClose)
 }
 
+func (w *Wrapper) asyncSortDataPartition() {
+	for {
+		paritions := make([]*DataPartition, 0)
+		w.RLock()
+		for _, p := range w.partitions {
+			paritions = append(paritions, p)
+		}
+		w.RUnlock()
+		var wg sync.WaitGroup
+		for index, p := range paritions {
+			wg.Add(1)
+			go func(dp *DataPartition) {
+				dp.updateMetrics()
+				wg.Done()
+			}(p)
+			if index%10 == 0 {
+				wg.Wait()
+			}
+			if index == len(paritions)-1 {
+				if index%10 != 0 {
+					wg.Wait()
+				}
+				time.Sleep(time.Second)
+				break
+			}
+		}
+	}
+
+}
+
 func (w *Wrapper) SortDataPartition() {
-	paritions := make([]*DataPartition, 0)
-	w.RLock()
-	for _, p := range w.partitions {
-		paritions = append(paritions, p)
-	}
-	w.RUnlock()
-	var wg sync.WaitGroup
-	for _, p := range paritions {
-		wg.Add(1)
-		go func(dp *DataPartition) {
-			dp.updateMetrics()
-			wg.Done()
-		}(p)
-	}
-	wg.Wait()
 	w.Lock()
 	sort.Sort((DataPartitionSlice)(w.localLeaderPartitions))
 	sort.Sort((DataPartitionSlice)(w.rwPartition))
