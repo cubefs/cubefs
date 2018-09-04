@@ -136,7 +136,7 @@ func (stream *StreamWriter) init() (err error) {
 }
 
 func (stream *StreamWriter) server() {
-	t := time.NewTicker(time.Second * 10)
+	t := time.NewTicker(time.Second * 3)
 	defer t.Stop()
 	for {
 		select {
