@@ -75,7 +75,7 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 
 func (w *Wrapper) update() {
 	ticker := time.NewTicker(time.Minute)
-	sortTicker := time.NewTicker(time.Second * 2)
+	sortTicker := time.NewTicker(time.Minute)
 	for {
 		select {
 		case <-ticker.C:
