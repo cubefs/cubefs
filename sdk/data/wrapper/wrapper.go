@@ -175,7 +175,7 @@ func (w *Wrapper) getLocalLeaderDataPartition(exclude []uint32) (*DataPartition,
 	rand.Seed(time.Now().UnixNano())
 	choose := rand.Float64()
 	if choose < 0.8 {
-		index := rand.Intn(util.Min(20, len(rwPartitionGroups)))
+		index := rand.Intn(util.Min(40, len(rwPartitionGroups)))
 		partition = rwPartitionGroups[index]
 		if isExcluded(partition.PartitionID, exclude) {
 			index := rand.Intn(len(rwPartitionGroups))
