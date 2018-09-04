@@ -28,7 +28,6 @@ import (
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/chubaoio/cbfs/util/pool"
-	"sort"
 )
 
 const (
