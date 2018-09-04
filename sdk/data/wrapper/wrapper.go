@@ -262,23 +262,8 @@ func (w *Wrapper) asyncSortDataPartition() {
 			paritions = append(paritions, p)
 		}
 		w.RUnlock()
-		var wg sync.WaitGroup
-		for index, p := range paritions {
-			wg.Add(1)
-			go func(dp *DataPartition) {
-				dp.updateMetrics()
-				wg.Done()
-			}(p)
-			if index%10 == 0 {
-				wg.Wait()
-			}
-			if index == len(paritions)-1 {
-				if index%10 != 0 {
-					wg.Wait()
-				}
-				time.Sleep(time.Second)
-				break
-			}
+		for _, p := range paritions {
+			p.updateMetrics()
 		}
 	}
 
