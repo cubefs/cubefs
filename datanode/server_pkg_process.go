@@ -103,7 +103,6 @@ func (s *DataNode) doRequestCh(req *Packet, msgH *MessageHandler) {
 
 		return
 	}
-
 	if err = s.sendToNext(req, msgH); err == nil {
 		s.operatePacket(req, msgH.inConn)
 	} else {
@@ -133,10 +132,20 @@ func (s *DataNode) doReplyCh(reply *Packet, msgH *MessageHandler) {
 		msgH.Stop()
 	}
 	if !reply.IsMasterCommand() {
-		reply.afterTp()
+		s.addMetrics(reply)
 		log.LogDebugf("action[doReplyCh] %v", reply.ActionMsg(ActionWriteToCli,
 			msgH.inConn.RemoteAddr().String(), reply.StartT, err))
 		s.statsFlow(reply, OutFlow)
+	}
+}
+
+func (s *DataNode) addMetrics(reply *Packet) {
+	reply.afterTp()
+	latency := time.Since(reply.tpObject.StartTime)
+	if reply.IsWriteOperation() {
+		reply.DataPartition.AddWriteMetrics(uint64(latency))
+	} else if reply.IsReadOperation() {
+		reply.DataPartition.AddReadMetrics(uint64(latency))
 	}
 }
 

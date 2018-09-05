@@ -19,7 +19,7 @@ import (
 	"sync"
 
 	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/sdk/data"
+	"github.com/chubaoio/cbfs/sdk/data/wrapper"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/juju/errors"
 	"runtime"
@@ -30,11 +30,10 @@ type AppendExtentKeyFunc func(inode uint64, key proto.ExtentKey) error
 type GetExtentsFunc func(inode uint64) ([]proto.ExtentKey, error)
 
 var (
-	gDataWrapper     *data.Wrapper
-	gFlushBufferSize uint64
+	gDataWrapper     *wrapper.Wrapper
 	writeRequestPool *sync.Pool
 	flushRequestPool *sync.Pool
-	clostRequestPool *sync.Pool
+	closeRequestPool *sync.Pool
 )
 
 type ExtentClient struct {
@@ -46,10 +45,10 @@ type ExtentClient struct {
 	getExtents      GetExtentsFunc
 }
 
-func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc, flushBufferSize uint64) (client *ExtentClient, err error) {
+func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc) (client *ExtentClient, err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	client = new(ExtentClient)
-	gDataWrapper, err = data.NewDataPartitionWrapper(volname, master)
+	gDataWrapper, err = wrapper.NewDataPartitionWrapper(volname, master)
 	if err != nil {
 		return nil, fmt.Errorf("init dp Wrapper failed (%v)", err.Error())
 	}
@@ -57,14 +56,13 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 	client.appendExtentKey = appendExtentKey
 	client.referCnt = make(map[uint64]uint64)
 	client.getExtents = getExtents
-	gFlushBufferSize = flushBufferSize
 	writeRequestPool = &sync.Pool{New: func() interface{} {
 		return &WriteRequest{}
 	}}
 	flushRequestPool = &sync.Pool{New: func() interface{} {
 		return &FlushRequest{}
 	}}
-	clostRequestPool = &sync.Pool{New: func() interface{} {
+	closeRequestPool = &sync.Pool{New: func() interface{} {
 		return &CloseRequest{}
 	}}
 	return
@@ -154,7 +152,7 @@ func (client *ExtentClient) GetWriteSize(inode uint64) uint64 {
 	if !ok {
 		return 0
 	}
-	return writer.HasWriteSize
+	return writer.getHasWriteSize()
 }
 
 func (client *ExtentClient) SetWriteSize(inode, size uint64) {
@@ -162,7 +160,7 @@ func (client *ExtentClient) SetWriteSize(inode, size uint64) {
 	defer client.writerLock.Unlock()
 	writer, ok := client.writers[inode]
 	if ok {
-		writer.HasWriteSize = size
+		writer.setHasWriteSize(size)
 	}
 }
 
@@ -190,15 +188,15 @@ func (client *ExtentClient) CloseForWrite(inode uint64) (err error) {
 	client.referLock.Lock()
 	refercnt, ok := client.referCnt[inode]
 	if !ok {
-		client.Flush(inode)
 		client.referLock.Unlock()
+		client.Flush(inode)
 		return nil
 	}
 	refercnt = refercnt - 1
 	client.referCnt[inode] = refercnt
 	if refercnt > 0 {
-		client.Flush(inode)
 		client.referLock.Unlock()
+		client.Flush(inode)
 		return
 	}
 	client.referLock.Unlock()
@@ -209,12 +207,12 @@ func (client *ExtentClient) CloseForWrite(inode uint64) (err error) {
 		return
 	}
 	atomic.StoreInt32(&streamWriter.hasClosed, HasClosed)
-	request := clostRequestPool.Get().(*CloseRequest)
+	request := closeRequestPool.Get().(*CloseRequest)
 	request.done = make(chan struct{}, 1)
 	streamWriter.requestCh <- request
 	<-request.done
 	defer func() {
-		clostRequestPool.Put(request)
+		closeRequestPool.Put(request)
 	}()
 	if err = request.err; err != nil {
 		return
@@ -223,9 +221,8 @@ func (client *ExtentClient) CloseForWrite(inode uint64) (err error) {
 	client.deleteRefercnt(inode)
 	client.writerLock.Lock()
 	delete(client.writers, inode)
-	atomic.StoreInt32(&streamWriter.hasClosed, HasClosed)
-	streamWriter.exitCh <- true
 	client.writerLock.Unlock()
+	atomic.StoreInt32(&streamWriter.hasClosed, HasClosed)
 
 	return
 }
@@ -259,7 +256,7 @@ func (client *ExtentClient) Delete(keys []proto.ExtentKey) (err error) {
 			continue
 		}
 		//wg.Add(1)
-		go func(p *data.DataPartition, id uint64) {
+		go func(p *wrapper.DataPartition, id uint64) {
 			//defer wg.Done()
 			client.delete(p, id)
 		}(dp, k.ExtentId)
@@ -269,7 +266,7 @@ func (client *ExtentClient) Delete(keys []proto.ExtentKey) (err error) {
 	return nil
 }
 
-func (client *ExtentClient) delete(dp *data.DataPartition, extentId uint64) (err error) {
+func (client *ExtentClient) delete(dp *wrapper.DataPartition, extentId uint64) (err error) {
 	connect, err := gDataWrapper.GetConnect(dp.Hosts[0])
 	if err != nil {
 		return

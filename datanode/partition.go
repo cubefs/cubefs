@@ -75,6 +75,9 @@ type DataPartition interface {
 
 	FlushDelete() error
 
+	AddWriteMetrics(latency uint64)
+	AddReadMetrics(latency uint64)
+
 	Stop()
 }
 
@@ -110,6 +113,8 @@ type dataPartition struct {
 	extentStore     *storage.ExtentStore
 	tinyStore       *storage.TinyStore
 	stopC           chan bool
+
+	runtimeMetrics *DataPartitionMetrics
 }
 
 func CreateDataPartition(volId string, partitionId uint32, disk *Disk, size int, partitionType string) (dp DataPartition, err error) {
@@ -174,6 +179,7 @@ func newDataPartition(volumeId string, partitionId uint32, disk *Disk, size int)
 		replicaHosts:    make([]string, 0),
 		stopC:           make(chan bool, 0),
 		partitionStatus: proto.ReadWrite,
+		runtimeMetrics:  NewDataPartitionMetrics(),
 	}
 	partition.extentStore, err = storage.NewExtentStore(partition.path, size)
 	if err != nil {
@@ -249,19 +255,20 @@ func (dp *dataPartition) ChangeStatus(status int) {
 
 func (dp *dataPartition) statusUpdateScheduler() {
 	ticker := time.NewTicker(10 * time.Second)
+	metricTicker := time.NewTicker(2 * time.Second)
 	for {
 		select {
 		case <-ticker.C:
 			dp.statusUpdate()
 		case <-dp.stopC:
 			ticker.Stop()
-			return
+		case <-metricTicker.C:
+			dp.runtimeMetrics.recomputLatency()
 		}
 	}
 }
 
 func (dp *dataPartition) statusUpdate() {
-
 	status := proto.ReadWrite
 	dp.computeUsage()
 	if dp.used >= dp.partitionSize {
@@ -505,4 +512,12 @@ func (dp *dataPartition) MergeRepair(metas *MembersFileMetas) {
 		go dp.doStreamTinyFixRepair(&wg, fixTiny)
 	}
 	wg.Wait()
+}
+
+func (dp *dataPartition) AddWriteMetrics(latency uint64) {
+	dp.runtimeMetrics.AddWriteMetrics(latency)
+}
+
+func (dp *dataPartition) AddReadMetrics(latency uint64) {
+	dp.runtimeMetrics.AddReadMetrics(latency)
 }

@@ -17,7 +17,6 @@ package stream
 import (
 	"fmt"
 	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/sdk/data"
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/chubaoio/cbfs/util/pool"
@@ -27,6 +26,8 @@ import (
 	"net"
 	"sync/atomic"
 	"time"
+	"github.com/chubaoio/cbfs/sdk/data/wrapper"
+	"strings"
 )
 
 const (
@@ -42,7 +43,7 @@ type ExtentReader struct {
 	inode            uint64
 	startInodeOffset uint64
 	endInodeOffset   uint64
-	dp               *data.DataPartition
+	dp               *wrapper.DataPartition
 	key              proto.ExtentKey
 	readerIndex      uint32
 }
@@ -58,7 +59,17 @@ func NewExtentReader(inode uint64, inInodeOffset int, key proto.ExtentKey) (read
 	reader.startInodeOffset = uint64(inInodeOffset)
 	reader.endInodeOffset = reader.startInodeOffset + uint64(key.Size)
 	rand.Seed(time.Now().UnixNano())
-	reader.readerIndex = uint32(rand.Intn(int(reader.dp.ReplicaNum)))
+	hasFindLocalReplica:=false
+	for index,host:=range reader.dp.Hosts{
+		if strings.Split(host,":")[0]==wrapper.LocalIP{
+			reader.readerIndex=uint32(index)
+			hasFindLocalReplica=true
+			break
+		}
+	}
+	if !hasFindLocalReplica{
+		reader.readerIndex = uint32(rand.Intn(int(reader.dp.ReplicaNum)))
+	}
 	return reader, nil
 }
 

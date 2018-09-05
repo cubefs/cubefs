@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package data
+package wrapper
 
 import (
 	"encoding/json"
@@ -39,34 +39,17 @@ const (
 var (
 	MasterHelper = util.NewMasterHelper()
 	LocalIP, _   = util.GetLocalIP()
+	GconnPool    = pool.NewConnPool()
 )
-
-type DataPartition struct {
-	PartitionID   uint32
-	Status        uint8
-	ReplicaNum    uint8
-	PartitionType string
-	Hosts         []string
-}
 
 type DataPartitionView struct {
 	DataPartitions []*DataPartition
-}
-
-func (dp *DataPartition) String() string {
-	return fmt.Sprintf("PartitionID(%v) Status(%v) ReplicaNum(%v) PartitionType(%v) Hosts(%v)",
-		dp.PartitionID, dp.Status, dp.ReplicaNum, dp.PartitionType, dp.Hosts)
-}
-
-func (dp *DataPartition) GetAllAddrs() (m string) {
-	return strings.Join(dp.Hosts[1:], proto.AddrSplit) + proto.AddrSplit
 }
 
 type Wrapper struct {
 	sync.RWMutex
 	volName               string
 	masters               []string
-	conns                 *pool.ConnPool
 	partitions            map[uint32]*DataPartition
 	rwPartition           []*DataPartition
 	localLeaderPartitions []*DataPartition
@@ -80,7 +63,6 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 		MasterHelper.AddNode(m)
 	}
 	w.volName = volName
-	w.conns = pool.NewConnPool()
 	w.rwPartition = make([]*DataPartition, 0)
 	w.partitions = make(map[uint32]*DataPartition)
 	if err = w.updateDataPartition(); err != nil {
@@ -118,47 +100,62 @@ func (w *Wrapper) updateDataPartition() error {
 	for _, dp := range view.DataPartitions {
 		if dp.Status == proto.ReadWrite {
 			rwPartitionGroups = append(rwPartitionGroups, dp)
+		}
+	}
+	if len(rwPartitionGroups) < MinWritableDataPartitionNum {
+		err = fmt.Errorf("action[Wrapper.updateDataPartition] RW partitions[%v] Minimum[%v]",
+			len(rwPartitionGroups), MinWritableDataPartitionNum)
+		log.LogErrorf(err.Error())
+		return err
+	}
+
+	for _, dp := range view.DataPartitions {
+		w.replaceOrInsertPartition(dp)
+	}
+	partitions := make([]*DataPartition, 0)
+	w.RLock()
+	for _, p := range w.partitions {
+		partitions = append(partitions, p)
+	}
+	w.RUnlock()
+
+	rwPartitionGroups = make([]*DataPartition, 0)
+	localLeaderPartitionGroups = make([]*DataPartition, 0)
+	for _, dp := range partitions {
+		if dp.Status == proto.ReadWrite {
+			rwPartitionGroups = append(rwPartitionGroups, dp)
 			if strings.Split(dp.Hosts[0], ":")[0] == LocalIP {
 				localLeaderPartitionGroups = append(localLeaderPartitionGroups, dp)
 			}
 		}
 	}
-	if len(rwPartitionGroups) < MinWritableDataPartitionNum {
-		err = fmt.Errorf("action[Wrapper.updateDataPartition] RW partitions[%v] Minimum[%v]", len(rwPartitionGroups), MinWritableDataPartitionNum)
-		log.LogErrorf(err.Error())
-		return err
-	}
-
 	w.rwPartition = rwPartitionGroups
 	w.localLeaderPartitions = localLeaderPartitionGroups
 
-	for _, dp := range view.DataPartitions {
-		w.replaceOrInsertPartition(dp)
-	}
 	return nil
 }
 
 func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
+	var (
+		oldstatus int8
+	)
 	w.Lock()
 	old, ok := w.partitions[dp.PartitionID]
 	if ok {
-		delete(w.partitions, dp.PartitionID)
+		oldstatus = old.Status
+		old.Status = dp.Status
+		old.ReplicaNum = dp.ReplicaNum
+		old.Hosts = dp.Hosts
+	} else {
+		dp.Metrics = NewDataPartitionMetrics()
+		w.partitions[dp.PartitionID] = dp
 	}
-	w.partitions[dp.PartitionID] = dp
+
 	w.Unlock()
 
-	if ok && old.Status != dp.Status {
+	if ok && oldstatus != dp.Status {
 		log.LogInfof("DataPartition: status change (%v) -> (%v)", old, dp)
 	}
-}
-
-func isExcluded(partitionId uint32, excludes []uint32) bool {
-	for _, id := range excludes {
-		if id == partitionId {
-			return true
-		}
-	}
-	return false
 }
 
 func (w *Wrapper) getLocalLeaderDataPartition(exclude []uint32) (*DataPartition, error) {
@@ -166,10 +163,13 @@ func (w *Wrapper) getLocalLeaderDataPartition(exclude []uint32) (*DataPartition,
 	if len(rwPartitionGroups) == 0 {
 		return nil, fmt.Errorf("no writable data partition")
 	}
+	var (
+		partition *DataPartition
+	)
 
 	rand.Seed(time.Now().UnixNano())
-	choose := rand.Intn(len(rwPartitionGroups))
-	partition := rwPartitionGroups[choose]
+	index := rand.Intn(len(rwPartitionGroups))
+	partition = rwPartitionGroups[index]
 	if !isExcluded(partition.PartitionID, exclude) {
 		return partition, nil
 	}
@@ -191,10 +191,14 @@ func (w *Wrapper) GetWriteDataPartition(exclude []uint32) (*DataPartition, error
 	if len(rwPartitionGroups) == 0 {
 		return nil, fmt.Errorf("no writable data partition")
 	}
+	var (
+		partition *DataPartition
+	)
 
 	rand.Seed(time.Now().UnixNano())
-	choose := rand.Intn(len(rwPartitionGroups))
-	partition := rwPartitionGroups[choose]
+	index := rand.Intn(len(rwPartitionGroups))
+	partition = rwPartitionGroups[index]
+
 	if !isExcluded(partition.PartitionID, exclude) {
 		return partition, nil
 	}
@@ -218,9 +222,9 @@ func (w *Wrapper) GetDataPartition(partitionID uint32) (*DataPartition, error) {
 }
 
 func (w *Wrapper) GetConnect(addr string) (*net.TCPConn, error) {
-	return w.conns.Get(addr)
+	return GconnPool.Get(addr)
 }
 
 func (w *Wrapper) PutConnect(conn *net.TCPConn, forceClose bool) {
-	w.conns.Put(conn, forceClose)
+	GconnPool.Put(conn, forceClose)
 }

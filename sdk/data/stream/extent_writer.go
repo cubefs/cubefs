@@ -22,7 +22,7 @@ import (
 	"sync/atomic"
 
 	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/sdk/data"
+	"github.com/chubaoio/cbfs/sdk/data/wrapper"
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/log"
 	"github.com/juju/errors"
@@ -48,7 +48,7 @@ var (
 type ExtentWriter struct {
 	inode            uint64     //Current write Inode
 	requestQueue     *list.List //sendPacketList
-	dp               *data.DataPartition
+	dp               *wrapper.DataPartition
 	extentId         uint64 //current FileId
 	currentPacket    *Packet
 	byteAck          uint64 //DataNode Has Ack Bytes
@@ -63,13 +63,13 @@ type ExtentWriter struct {
 	hasExitRecvThead int32
 }
 
-func NewExtentWriter(inode uint64, dp *data.DataPartition, extentId uint64) (writer *ExtentWriter, err error) {
+func NewExtentWriter(inode uint64, dp *wrapper.DataPartition, extentId uint64) (writer *ExtentWriter, err error) {
 	if extentId <= 0 {
 		return nil, fmt.Errorf("inode(%v),dp(%v),unavalid extentId(%v)", inode, dp.PartitionID, extentId)
 	}
 	writer = new(ExtentWriter)
 	writer.requestQueue = list.New()
-	writer.handleCh = make(chan bool,  DefaultWriteBufferSize/(64*util.KB))
+	writer.handleCh = make(chan bool, 8)
 	writer.extentId = extentId
 	writer.dp = dp
 	writer.inode = inode
