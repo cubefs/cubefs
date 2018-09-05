@@ -30,6 +30,7 @@ import (
 
 const (
 	DataPartitionViewUrl        = "/client/dataPartitions"
+	GetClusterInfoURL           = "/admin/getIp"
 	ActionGetDataPartitionView  = "ActionGetDataPartitionView"
 	MinWritableDataPartitionNum = 10
 )
@@ -43,8 +44,13 @@ type DataPartitionView struct {
 	DataPartitions []*DataPartition
 }
 
+type ClusterInfo struct {
+	Cluster string
+}
+
 type Wrapper struct {
 	sync.RWMutex
+	clusterName           string
 	volName               string
 	masters               []string
 	partitions            map[uint32]*DataPartition
@@ -65,8 +71,32 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 	if err = w.updateDataPartition(); err != nil {
 		return
 	}
+	if err = w.updateClusterInfo(); err != nil {
+		return
+	}
 	go w.update()
 	return
+}
+
+func (w *Wrapper) updateClusterInfo() error {
+	masterHelper := util.NewMasterHelper()
+	for _, ip := range w.masters {
+		masterHelper.AddNode(ip)
+	}
+	body, err := masterHelper.Request(http.MethodPost, GetClusterInfoURL, nil, nil)
+	if err != nil {
+		log.LogWarnf("UpdateClusterInfo request: err(%v)", err)
+		return err
+	}
+
+	info := new(ClusterInfo)
+	if err = json.Unmarshal(body, info); err != nil {
+		log.LogWarnf("UpdateClusterInfo unmarshal: err(%v)", err)
+		return err
+	}
+	log.LogInfof("ClusterInfo: %v", *info)
+	w.clusterName = info.Cluster
+	return nil
 }
 
 func (w *Wrapper) update() {
@@ -216,4 +246,8 @@ func (w *Wrapper) GetDataPartition(partitionID uint32) (*DataPartition, error) {
 		return nil, fmt.Errorf("DataPartition[%v] not exsit", partitionID)
 	}
 	return dp, nil
+}
+
+func (w *Wrapper) UmpWarningKey() string {
+	return fmt.Sprintf("%s_client_warning", w.clusterName)
 }
