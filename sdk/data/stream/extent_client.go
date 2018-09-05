@@ -21,6 +21,7 @@ import (
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/sdk/data/wrapper"
 	"github.com/chubaoio/cbfs/util/log"
+	"github.com/chubaoio/cbfs/util/ump"
 	"github.com/juju/errors"
 	"runtime"
 	"sync/atomic"
@@ -93,6 +94,7 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write 
 		prefix := fmt.Sprintf("inodewrite %v_%v_%v", inode, offset, len(data))
 		return 0, fmt.Errorf("Prefix(%v) cannot init write stream", prefix)
 	}
+
 	request := writeRequestPool.Get().(*WriteRequest)
 	request.data = data
 	request.kernelOffset = offset
@@ -107,6 +109,7 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write 
 		prefix := fmt.Sprintf("inodewrite %v_%v_%v", inode, offset, len(data))
 		err = errors.Annotatef(err, prefix)
 		log.LogError(errors.ErrorStack(err))
+		ump.Alarm(gDataWrapper.UmpWarningKey(), err.Error())
 	}
 	writeRequestPool.Put(request)
 	return
@@ -231,6 +234,13 @@ func (client *ExtentClient) Read(stream *StreamReader, inode uint64, data []byte
 	if size == 0 {
 		return
 	}
+
+	defer func() {
+		if err != nil {
+			ump.Alarm(gDataWrapper.UmpWarningKey(), err.Error())
+		}
+	}()
+
 	wstream := client.getStreamWriterForRead(inode)
 	if wstream != nil {
 		request := flushRequestPool.Get().(*FlushRequest)
