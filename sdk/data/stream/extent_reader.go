@@ -17,26 +17,21 @@ package stream
 import (
 	"fmt"
 	"github.com/chubaoio/cbfs/proto"
+	"github.com/chubaoio/cbfs/sdk/data/wrapper"
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/log"
-	"github.com/chubaoio/cbfs/util/pool"
 	"github.com/juju/errors"
 	"hash/crc32"
 	"math/rand"
 	"net"
+	"strings"
 	"sync/atomic"
 	"time"
-	"github.com/chubaoio/cbfs/sdk/data/wrapper"
-	"strings"
 )
 
 const (
 	ForceCloseConnect = true
 	NoCloseConnect    = false
-)
-
-var (
-	ReadConnectPool = pool.NewConnPool()
 )
 
 type ExtentReader struct {
@@ -59,15 +54,15 @@ func NewExtentReader(inode uint64, inInodeOffset int, key proto.ExtentKey) (read
 	reader.startInodeOffset = uint64(inInodeOffset)
 	reader.endInodeOffset = reader.startInodeOffset + uint64(key.Size)
 	rand.Seed(time.Now().UnixNano())
-	hasFindLocalReplica:=false
-	for index,host:=range reader.dp.Hosts{
-		if strings.Split(host,":")[0]==wrapper.LocalIP{
-			reader.readerIndex=uint32(index)
-			hasFindLocalReplica=true
+	hasFindLocalReplica := false
+	for index, host := range reader.dp.Hosts {
+		if strings.Split(host, ":")[0] == wrapper.LocalIP {
+			reader.readerIndex = uint32(index)
+			hasFindLocalReplica = true
 			break
 		}
 	}
-	if !hasFindLocalReplica{
+	if !hasFindLocalReplica {
 		reader.readerIndex = uint32(rand.Intn(int(reader.dp.ReplicaNum)))
 	}
 	return reader, nil
@@ -115,7 +110,7 @@ func (reader *ExtentReader) streamReadDataFromHost(offset, expectReadSize int, d
 		atomic.StoreUint32(&reader.readerIndex, 0)
 	}
 	host := reader.dp.Hosts[index]
-	connect, err = ReadConnectPool.Get(host)
+	connect, err = wrapper.GconnPool.Get(host)
 	if err != nil {
 		atomic.AddUint32(&reader.readerIndex, 1)
 		return 0, errors.Annotatef(err, reader.toString()+
@@ -126,9 +121,9 @@ func (reader *ExtentReader) streamReadDataFromHost(offset, expectReadSize int, d
 	defer func() {
 		if err != nil {
 			atomic.AddUint32(&reader.readerIndex, 1)
-			ReadConnectPool.Put(connect, ForceCloseConnect)
+			wrapper.GconnPool.Put(connect, ForceCloseConnect)
 		} else {
-			ReadConnectPool.Put(connect, NoCloseConnect)
+			wrapper.GconnPool.Put(connect, NoCloseConnect)
 		}
 	}()
 
@@ -183,7 +178,6 @@ func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet, ker
 	}
 	return nil
 }
-
 
 func (reader *ExtentReader) updateKey(key proto.ExtentKey) (update bool) {
 	if !(key.PartitionId == reader.key.PartitionId && key.ExtentId == reader.key.ExtentId) {
