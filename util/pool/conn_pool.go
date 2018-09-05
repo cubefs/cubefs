@@ -112,6 +112,13 @@ func (connP *ConnPool) Put(c *net.TCPConn, forceClose bool) {
 	return
 }
 
+func (connP *ConnPool) ReleaseAllConnect(target string) {
+	connP.Lock()
+	pool := connP.pools[target]
+	connP.Unlock()
+	pool.AutoRelease()
+}
+
 func (connP *ConnPool) autoRelease() {
 	for {
 		pools := make([]Pool, 0)

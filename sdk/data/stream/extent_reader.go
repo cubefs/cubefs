@@ -20,6 +20,7 @@ import (
 	"github.com/chubaoio/cbfs/sdk/data/wrapper"
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/log"
+	"github.com/chubaoio/cbfs/util/pool"
 	"github.com/juju/errors"
 	"hash/crc32"
 	"math/rand"
@@ -32,6 +33,10 @@ import (
 const (
 	ForceCloseConnect = true
 	NoCloseConnect    = false
+)
+
+var (
+	ReadConnectPool = pool.NewConnPool()
 )
 
 type ExtentReader struct {
@@ -78,22 +83,27 @@ func (reader *ExtentReader) read(data []byte, offset, size, kerneloffset, kernel
 }
 
 func (reader *ExtentReader) readDataFromDataPartition(offset, size int, data []byte, kerneloffset, kernelsize int) (err error) {
-	if _, err = reader.streamReadDataFromHost(offset, size, data, kerneloffset, kernelsize); err != nil {
+	var host string
+	if _, host, err = reader.streamReadDataFromHost(offset, size, data, kerneloffset, kernelsize); err != nil {
+		if reader.isUseCloseConnectErr(err) {
+			reader.forceDestoryAllConnect(host)
+		}
 		log.LogWarnf(err.Error())
 		goto forLoop
 	}
 	return
-
 forLoop:
 	mesg := ""
 	for i := 0; i < len(reader.dp.Hosts); i++ {
-		_, err = reader.streamReadDataFromHost(offset, size, data, kerneloffset, kernelsize)
+		_, host, err = reader.streamReadDataFromHost(offset, size, data, kerneloffset, kernelsize)
 		if err == nil {
 			return
-		} else {
-			log.LogWarn(err.Error())
-			mesg += fmt.Sprintf(" (index(%v) err(%v))", i, err.Error())
+		} else if reader.isUseCloseConnectErr(err) {
+			reader.forceDestoryAllConnect(host)
+			i--
 		}
+		log.LogWarn(err.Error())
+		mesg += fmt.Sprintf(" (index(%v) err(%v))", i, err.Error())
 	}
 	log.LogWarn(mesg)
 	err = fmt.Errorf(mesg)
@@ -101,7 +111,16 @@ forLoop:
 	return
 }
 
-func (reader *ExtentReader) streamReadDataFromHost(offset, expectReadSize int, data []byte, kerneloffset, kernelsize int) (actualReadSize int, err error) {
+func (reader *ExtentReader) isUseCloseConnectErr(err error) bool {
+	return strings.Contains(err.Error(), "use of closed network connection")
+}
+
+func (reader *ExtentReader) forceDestoryAllConnect(host string) {
+	ReadConnectPool.ReleaseAllConnect(host)
+}
+
+func (reader *ExtentReader) streamReadDataFromHost(offset, expectReadSize int, data []byte, kerneloffset,
+	kernelsize int) (actualReadSize int, host string, err error) {
 	request := NewStreamReadPacket(&reader.key, offset, expectReadSize)
 	var connect *net.TCPConn
 	index := atomic.LoadUint32(&reader.readerIndex)
@@ -109,28 +128,31 @@ func (reader *ExtentReader) streamReadDataFromHost(offset, expectReadSize int, d
 		index = 0
 		atomic.StoreUint32(&reader.readerIndex, 0)
 	}
-	host := reader.dp.Hosts[index]
-	connect, err = wrapper.GconnPool.Get(host)
+	host = reader.dp.Hosts[index]
+	connect, err = ReadConnectPool.Get(host)
 	if err != nil {
 		atomic.AddUint32(&reader.readerIndex, 1)
-		return 0, errors.Annotatef(err, reader.toString()+
+		return 0, host, errors.Annotatef(err, reader.toString()+
 			"streamReadDataFromHost dp(%v) cannot get  connect from host(%v) request(%v) ",
 			reader.key.PartitionId, host, request.GetUniqueLogId())
 
 	}
 	defer func() {
 		if err != nil {
+			ReadConnectPool.Put(connect, ForceCloseConnect)
+			if reader.isUseCloseConnectErr(err) {
+				return
+			}
 			atomic.AddUint32(&reader.readerIndex, 1)
-			wrapper.GconnPool.Put(connect, ForceCloseConnect)
 		} else {
-			wrapper.GconnPool.Put(connect, NoCloseConnect)
+			ReadConnectPool.Put(connect, NoCloseConnect)
 		}
 	}()
 
 	if err = request.WriteToConn(connect); err != nil {
 		err = errors.Annotatef(err, reader.toString()+"streamReadDataFromHost host(%v) error request(%v)",
 			host, request.GetUniqueLogId())
-		return 0, err
+		return 0, host, err
 	}
 
 	for {
@@ -144,11 +166,11 @@ func (reader *ExtentReader) streamReadDataFromHost(offset, expectReadSize int, d
 		if err != nil {
 			err = errors.Annotatef(err, reader.toString()+"streamReadDataFromHost host(%v)  error reqeust(%v)",
 				host, request.GetUniqueLogId())
-			return 0, err
+			return 0, host, err
 		}
 		err = reader.checkStreamReply(request, reply, kerneloffset, kernelsize)
 		if err != nil {
-			return 0, err
+			return 0, host, err
 		}
 		actualReadSize += int(reply.Size)
 		if actualReadSize >= expectReadSize {
@@ -156,7 +178,7 @@ func (reader *ExtentReader) streamReadDataFromHost(offset, expectReadSize int, d
 		}
 	}
 
-	return actualReadSize, nil
+	return actualReadSize, host, nil
 }
 
 func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet, kerneloffset, kernelsize int) (err error) {
