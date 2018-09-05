@@ -39,7 +39,6 @@ const (
 var (
 	MasterHelper = util.NewMasterHelper()
 	LocalIP, _   = util.GetLocalIP()
-	GconnPool    = pool.NewConnPool()
 )
 
 type DataPartitionView struct {
@@ -219,12 +218,4 @@ func (w *Wrapper) GetDataPartition(partitionID uint32) (*DataPartition, error) {
 		return nil, fmt.Errorf("DataPartition[%v] not exsit", partitionID)
 	}
 	return dp, nil
-}
-
-func (w *Wrapper) GetConnect(addr string) (*net.TCPConn, error) {
-	return GconnPool.Get(addr)
-}
-
-func (w *Wrapper) PutConnect(conn *net.TCPConn, forceClose bool) {
-	GconnPool.Put(conn, forceClose)
 }

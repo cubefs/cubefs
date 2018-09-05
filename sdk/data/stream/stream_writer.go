@@ -277,7 +277,7 @@ func (stream *StreamWriter) flushCurrExtentWriter() (err error) {
 	}
 	if writer.isFullExtent() {
 		writer.close()
-		gDataWrapper.PutConnect(writer.getConnect(), NoCloseConnect)
+		writer.getConnect().Close()
 		if err = stream.updateToMetaNode(); err != nil {
 			err = errors.Annotatef(err, "update to MetaNode failed(%v)", err.Error())
 			return err
@@ -456,19 +456,15 @@ func (stream *StreamWriter) createExtent(dp *wrapper.DataPartition) (extentId ui
 	var (
 		connect *net.TCPConn
 	)
-
-	connect, err = wrapper.GconnPool.Get(dp.Hosts[0])
+	conn, err := net.DialTimeout("tcp", dp.Hosts[0], time.Second)
 	if err != nil {
 		err = errors.Annotatef(err, " get connect from datapartionHosts(%v)", dp.Hosts[0])
 		return 0, err
 	}
-	defer func() {
-		if err != nil {
-			wrapper.GconnPool.Put(connect, ForceCloseConnect)
-		} else {
-			wrapper.GconnPool.Put(connect, NoCloseConnect)
-		}
-	}()
+	connect, _ = conn.(*net.TCPConn)
+	connect.SetKeepAlive(true)
+	connect.SetNoDelay(true)
+	defer connect.Close()
 	p := NewCreateExtentPacket(dp, stream.Inode)
 	if err = p.WriteToConn(connect); err != nil {
 		err = errors.Annotatef(err, "send CreateExtent(%v) to datapartionHosts(%v)", p.GetUniqueLogId(), dp.Hosts[0])
