@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -27,7 +26,6 @@ import (
 	"github.com/chubaoio/cbfs/proto"
 	"github.com/chubaoio/cbfs/util"
 	"github.com/chubaoio/cbfs/util/log"
-	"github.com/chubaoio/cbfs/util/pool"
 )
 
 const (
