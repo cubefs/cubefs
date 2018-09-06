@@ -262,6 +262,7 @@ func (dp *dataPartition) statusUpdateScheduler() {
 			dp.statusUpdate()
 		case <-dp.stopC:
 			ticker.Stop()
+			return
 		case <-metricTicker.C:
 			dp.runtimeMetrics.recomputLatency()
 		}
