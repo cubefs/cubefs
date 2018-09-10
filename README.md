@@ -1,8 +1,8 @@
-# Containerfs 
+# ContainerFS
 
 ## Overview
 
-Containerfs is a distributed filesystem as a unified platform for unstructured data storage. 
+ContainerFS is a container-native distributed filesystem as a unified platform for unstructured data storage. 
 
 * both large-scale small files and large files.
 
