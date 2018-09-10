@@ -186,7 +186,7 @@ func (m *Master) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	capacity = m.cluster.getDataPartitionCapacity(vol)
 	lastTotalDataPartitions = len(vol.dataPartitions.dataPartitions)
 	for i := 0; i < reqCreateCount; i++ {
-		if (reqCreateCount+lastTotalDataPartitions) < len(vol.dataPartitions.dataPartitions) || int(m.cluster.idAlloc.dataPartitionID) >= capacity {
+		if (reqCreateCount + lastTotalDataPartitions) < len(vol.dataPartitions.dataPartitions) {
 			break
 		}
 		if _, err = m.cluster.createDataPartition(volName, partitionType); err != nil {
