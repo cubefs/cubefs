@@ -18,11 +18,11 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/sdk/data/wrapper"
-	"github.com/chubaoio/cbfs/util/log"
-	"github.com/chubaoio/cbfs/util/ump"
 	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/sdk/data/wrapper"
+	"github.com/tiglabs/containerfs/util/log"
+	"github.com/tiglabs/containerfs/util/ump"
 	"runtime"
 	"sync/atomic"
 )

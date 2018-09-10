@@ -15,7 +15,7 @@
 package master
 
 import (
-	"github.com/chubaoio/cbfs/proto"
+	"github.com/tiglabs/containerfs/proto"
 )
 
 /*check File: recover File,if File lack or timeOut report or crc bad*/

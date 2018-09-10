@@ -17,7 +17,7 @@ package metanode
 import (
 	"encoding/json"
 
-	"github.com/chubaoio/cbfs/proto"
+	"github.com/tiglabs/containerfs/proto"
 )
 
 func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err error) {

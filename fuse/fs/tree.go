@@ -11,7 +11,7 @@ import (
 )
 
 import (
-	"github.com/chubaoio/cbfs/fuse"
+	"github.com/tiglabs/containerfs/fuse"
 )
 
 // A Tree implements a basic read-only directory tree for FUSE.

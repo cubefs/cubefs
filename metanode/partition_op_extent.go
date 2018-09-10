@@ -18,7 +18,7 @@ import (
 	"encoding/json"
 
 	"encoding/binary"
-	"github.com/chubaoio/cbfs/proto"
+	"github.com/tiglabs/containerfs/proto"
 )
 
 func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error) {

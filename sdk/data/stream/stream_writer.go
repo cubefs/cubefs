@@ -19,10 +19,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/sdk/data/wrapper"
-	"github.com/chubaoio/cbfs/util/log"
 	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/sdk/data/wrapper"
+	"github.com/tiglabs/containerfs/util/log"
 	"net"
 	"strings"
 	"sync"
@@ -331,7 +331,7 @@ func (stream *StreamWriter) updateToMetaNode() (err error) {
 		if ok {
 			lastUpdateSize = lastUpdateExtentKeySize.(int)
 		}
-		if lastUpdateSize==int(ek.Size){
+		if lastUpdateSize == int(ek.Size) {
 			return nil
 		}
 		err = stream.appendExtentKey(stream.Inode, ek) //put it to metanode

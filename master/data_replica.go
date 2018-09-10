@@ -15,7 +15,7 @@
 package master
 
 import (
-	"github.com/chubaoio/cbfs/proto"
+	"github.com/tiglabs/containerfs/proto"
 	"time"
 )
 

@@ -15,8 +15,8 @@
 package metanode
 
 import (
-	"github.com/chubaoio/cbfs/proto"
 	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/proto"
 	"time"
 )
 

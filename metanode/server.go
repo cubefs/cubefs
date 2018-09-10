@@ -18,8 +18,8 @@ import (
 	"io"
 	"net"
 
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/util/log"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 // StartTcpService bind and listen specified port and accept tcp connections.

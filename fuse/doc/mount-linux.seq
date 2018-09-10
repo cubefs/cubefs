@@ -1,7 +1,7 @@
 seqdiag {
   // seqdiag -T svg -o doc/mount-osx.svg doc/mount-osx.seq
   app;
-  fuse [label="github.com/chubaoio/cbfs/fuse"];
+  fuse [label="github.com/tiglabs/containerfs/fuse"];
   fusermount;
   kernel;
   mounts;

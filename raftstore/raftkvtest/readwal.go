@@ -19,7 +19,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/chubaoio/cbfs/util/config"
+	"github.com/tiglabs/containerfs/util/config"
 	"io/ioutil"
 	"os"
 )

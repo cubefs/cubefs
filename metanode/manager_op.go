@@ -20,10 +20,10 @@ import (
 	"os"
 
 	"bytes"
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/util"
-	"github.com/chubaoio/cbfs/util/log"
 	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/util"
+	"github.com/tiglabs/containerfs/util/log"
 	raftProto "github.com/tiglabs/raft/proto"
 	"runtime"
 )

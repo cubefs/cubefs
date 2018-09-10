@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chubaoio/cbfs/util"
+	"github.com/tiglabs/containerfs/util"
 )
 
 func TestFsExtent_Write(t *testing.T) {

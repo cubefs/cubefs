@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chubaoio/cbfs/fuse"
-	"github.com/chubaoio/cbfs/fuse/fs"
+	"github.com/tiglabs/containerfs/fuse"
+	"github.com/tiglabs/containerfs/fuse/fs"
 )
 
 // Mount contains information about the mount for the test to use.

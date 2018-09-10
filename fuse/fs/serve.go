@@ -1,6 +1,6 @@
 // FUSE service loop, for servers that wish to use it.
 
-package fs // import "github.com/chubaoio/cbfs/fuse/fs"
+package fs // import "github.com/tiglabs/containerfs/fuse/fs"
 
 import (
 	"encoding/binary"
@@ -16,14 +16,14 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/chubaoio/cbfs/util/log"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 import (
 	"bytes"
 
-	"github.com/chubaoio/cbfs/fuse"
-	"github.com/chubaoio/cbfs/fuse/fuseutil"
+	"github.com/tiglabs/containerfs/fuse"
+	"github.com/tiglabs/containerfs/fuse/fuseutil"
 )
 
 const (

@@ -26,9 +26,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chubaoio/cbfs/util"
-	"github.com/chubaoio/cbfs/util/buf"
 	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/util"
+	"github.com/tiglabs/containerfs/util/buf"
 )
 
 const (

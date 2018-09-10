@@ -22,7 +22,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/chubaoio/cbfs/util"
+	"github.com/tiglabs/containerfs/util"
 )
 
 type Chunk struct {

@@ -2,7 +2,7 @@ package wrapper
 
 import (
 	"fmt"
-	"github.com/chubaoio/cbfs/proto"
+	"github.com/tiglabs/containerfs/proto"
 	"strings"
 )
 

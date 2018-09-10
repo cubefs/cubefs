@@ -34,8 +34,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaoio/cbfs/proto"
-	. "github.com/chubaoio/cbfs/sdk/meta"
+	"github.com/tiglabs/containerfs/proto"
+	. "github.com/tiglabs/containerfs/sdk/meta"
 )
 
 const (

@@ -17,9 +17,9 @@ package meta
 import (
 	"fmt"
 
-	"github.com/chubaoio/cbfs/util/btree"
+	"github.com/tiglabs/containerfs/util/btree"
 
-	"github.com/chubaoio/cbfs/proto"
+	"github.com/tiglabs/containerfs/proto"
 )
 
 type MetaPartition struct {

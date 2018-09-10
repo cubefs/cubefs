@@ -3,8 +3,8 @@ package fstestutil
 import (
 	"os"
 
-	"github.com/chubaoio/cbfs/fuse"
-	"github.com/chubaoio/cbfs/fuse/fs"
+	"github.com/tiglabs/containerfs/fuse"
+	"github.com/tiglabs/containerfs/fuse/fs"
 	"golang.org/x/net/context"
 )
 

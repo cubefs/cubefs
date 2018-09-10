@@ -14,7 +14,7 @@
 
 package metanode
 
-import "github.com/chubaoio/cbfs/proto"
+import "github.com/tiglabs/containerfs/proto"
 
 type Packet struct {
 	proto.Packet

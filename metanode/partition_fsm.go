@@ -21,9 +21,9 @@ import (
 	"io"
 	"sync/atomic"
 
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/util/log"
-	"github.com/chubaoio/cbfs/util/ump"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/util/log"
+	"github.com/tiglabs/containerfs/util/ump"
 	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
 )

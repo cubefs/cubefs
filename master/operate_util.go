@@ -17,10 +17,10 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/util"
-	"github.com/chubaoio/cbfs/util/log"
-	"github.com/chubaoio/cbfs/util/ump"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/util"
+	"github.com/tiglabs/containerfs/util/log"
+	"github.com/tiglabs/containerfs/util/ump"
 )
 
 func newCreateDataPartitionRequest(partitionType, volName string, ID uint64) (req *proto.CreateDataPartitionRequest) {

@@ -16,7 +16,7 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaoio/cbfs/proto"
+	"github.com/tiglabs/containerfs/proto"
 	"sort"
 	"time"
 )

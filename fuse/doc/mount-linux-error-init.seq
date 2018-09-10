@@ -1,12 +1,12 @@
 seqdiag {
   app;
-  fuse [label="github.com/chubaoio/cbfs/fuse"];
+  fuse [label="github.com/tiglabs/containerfs/fuse"];
   fusermount;
   kernel;
   mounts;
 
   app;
-  fuse [label="github.com/chubaoio/cbfs/fuse"];
+  fuse [label="github.com/tiglabs/containerfs/fuse"];
   fusermount;
   kernel;
   mounts;

@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chubaoio/cbfs/fuse"
-	"github.com/chubaoio/cbfs/fuse/fs"
-	"github.com/chubaoio/cbfs/fuse/fs/fstestutil"
+	"github.com/tiglabs/containerfs/fuse"
+	"github.com/tiglabs/containerfs/fuse/fs"
+	"github.com/tiglabs/containerfs/fuse/fs/fstestutil"
 	"golang.org/x/net/context"
 )
 

@@ -22,9 +22,9 @@ import (
 	"io/ioutil"
 	"strconv"
 
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/util"
 	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/util"
 )
 
 const (

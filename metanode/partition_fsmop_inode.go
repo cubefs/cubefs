@@ -17,8 +17,8 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/util/btree"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/util/btree"
 	"io"
 )
 

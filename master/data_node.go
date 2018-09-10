@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"encoding/json"
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/util"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/util"
 )
 
 const (

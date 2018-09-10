@@ -19,8 +19,8 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/util/log"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 // TODO: High-level API, i.e. work with absolute path

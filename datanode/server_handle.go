@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/storage"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/storage"
 )
 
 func (s *DataNode) apiGetDisk(w http.ResponseWriter, r *http.Request) {

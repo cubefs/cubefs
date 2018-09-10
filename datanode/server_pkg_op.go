@@ -22,13 +22,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/chubaoio/cbfs/master"
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/storage"
-	"github.com/chubaoio/cbfs/util"
-	"github.com/chubaoio/cbfs/util/log"
-	"github.com/chubaoio/cbfs/util/ump"
 	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/master"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/storage"
+	"github.com/tiglabs/containerfs/util"
+	"github.com/tiglabs/containerfs/util/log"
+	"github.com/tiglabs/containerfs/util/ump"
 )
 
 var (

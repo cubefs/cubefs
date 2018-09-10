@@ -98,7 +98,7 @@
 // Behavior and metadata of the mounted file system can be changed by
 // passing MountOption values to Mount.
 //
-package fuse // import "github.com/chubaoio/cbfs/fuse"
+package fuse // import "github.com/tiglabs/containerfs/fuse"
 
 import (
 	"bytes"

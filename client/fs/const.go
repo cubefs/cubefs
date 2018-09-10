@@ -18,9 +18,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chubaoio/cbfs/fuse"
+	"github.com/tiglabs/containerfs/fuse"
 
-	"github.com/chubaoio/cbfs/proto"
+	"github.com/tiglabs/containerfs/proto"
 )
 
 const (
@@ -45,7 +45,7 @@ const (
 
 const (
 	LookupValidDuration = 0
-	AttrValidDuration   =30*time.Second
+	AttrValidDuration   = 30 * time.Second
 )
 
 const (

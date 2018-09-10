@@ -15,8 +15,8 @@
 package metanode
 
 import (
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/util/btree"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/util/btree"
 	"reflect"
 	"testing"
 )

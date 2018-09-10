@@ -15,7 +15,7 @@
 package metanode
 
 import (
-	"github.com/chubaoio/cbfs/proto"
+	"github.com/tiglabs/containerfs/proto"
 	"strings"
 	"sync"
 )

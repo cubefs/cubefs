@@ -22,7 +22,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/chubaoio/cbfs/util/log"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 const (

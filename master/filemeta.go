@@ -15,7 +15,7 @@
 package master
 
 import (
-	"github.com/chubaoio/cbfs/proto"
+	"github.com/tiglabs/containerfs/proto"
 )
 
 /*this struct define chunk file metadata on  dataNode */

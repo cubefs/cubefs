@@ -15,10 +15,10 @@
 package main
 
 import (
-	"github.com/chubaoio/cbfs/datanode"
-	"github.com/chubaoio/cbfs/master"
-	"github.com/chubaoio/cbfs/metanode"
-	"github.com/chubaoio/cbfs/util/log"
+	"github.com/tiglabs/containerfs/datanode"
+	"github.com/tiglabs/containerfs/master"
+	"github.com/tiglabs/containerfs/metanode"
+	"github.com/tiglabs/containerfs/util/log"
 	"strings"
 
 	"flag"
@@ -29,7 +29,7 @@ import (
 	"syscall"
 
 	"fmt"
-	"github.com/chubaoio/cbfs/util/config"
+	"github.com/tiglabs/containerfs/util/config"
 	"net/http"
 )
 

@@ -23,7 +23,7 @@ import (
 
 	"github.com/juju/errors"
 
-	"github.com/chubaoio/cbfs/proto"
+	"github.com/tiglabs/containerfs/proto"
 )
 
 const (

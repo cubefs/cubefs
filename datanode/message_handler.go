@@ -20,7 +20,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/chubaoio/cbfs/proto"
+	"github.com/tiglabs/containerfs/proto"
 )
 
 var single = struct{}{}

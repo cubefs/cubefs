@@ -21,11 +21,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/sdk/data/wrapper"
-	"github.com/chubaoio/cbfs/util"
-	"github.com/chubaoio/cbfs/util/log"
 	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/sdk/data/wrapper"
+	"github.com/tiglabs/containerfs/util"
+	"github.com/tiglabs/containerfs/util/log"
 	"time"
 )
 
@@ -61,7 +61,7 @@ type ExtentWriter struct {
 	isflushIng       int32
 	flushSignleCh    chan bool
 	hasExitRecvThead int32
-	updateSizeLock sync.Mutex
+	updateSizeLock   sync.Mutex
 }
 
 func NewExtentWriter(inode uint64, dp *wrapper.DataPartition, extentId uint64) (writer *ExtentWriter, err error) {

@@ -31,14 +31,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chubaoio/cbfs/fuse"
-	"github.com/chubaoio/cbfs/fuse/fs"
+	"github.com/tiglabs/containerfs/fuse"
+	"github.com/tiglabs/containerfs/fuse/fs"
 
-	bdfs "github.com/chubaoio/cbfs/client/fs"
-	"github.com/chubaoio/cbfs/util"
-	"github.com/chubaoio/cbfs/util/config"
-	"github.com/chubaoio/cbfs/util/log"
-	"github.com/chubaoio/cbfs/util/ump"
+	bdfs "github.com/tiglabs/containerfs/client/fs"
+	"github.com/tiglabs/containerfs/util"
+	"github.com/tiglabs/containerfs/util/config"
+	"github.com/tiglabs/containerfs/util/log"
+	"github.com/tiglabs/containerfs/util/ump"
 	"strconv"
 )
 

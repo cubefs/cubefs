@@ -20,10 +20,10 @@ import (
 	"net"
 	"sync"
 
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/storage"
-	"github.com/chubaoio/cbfs/util/log"
 	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/storage"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 // DoStreamExtentFixRepair executed on follower node of data partition.

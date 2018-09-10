@@ -27,13 +27,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/raftstore"
-	"github.com/chubaoio/cbfs/util"
-	"github.com/chubaoio/cbfs/util/config"
-	"github.com/chubaoio/cbfs/util/log"
-	"github.com/chubaoio/cbfs/util/ump"
 	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/raftstore"
+	"github.com/tiglabs/containerfs/util"
+	"github.com/tiglabs/containerfs/util/config"
+	"github.com/tiglabs/containerfs/util/log"
+	"github.com/tiglabs/containerfs/util/ump"
 )
 
 // The MetaNode manage Dentry and Inode information in multiple metaPartition, and

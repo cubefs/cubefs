@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/util/log"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 func (mp *metaPartition) initInode(ino *Inode) {

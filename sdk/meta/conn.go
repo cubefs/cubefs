@@ -21,8 +21,8 @@ import (
 
 	"github.com/juju/errors"
 
-	"github.com/chubaoio/cbfs/proto"
-	"github.com/chubaoio/cbfs/util/log"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 const (

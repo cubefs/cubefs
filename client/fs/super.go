@@ -18,13 +18,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/chubaoio/cbfs/fuse"
-	"github.com/chubaoio/cbfs/fuse/fs"
+	"github.com/tiglabs/containerfs/fuse"
+	"github.com/tiglabs/containerfs/fuse/fs"
 	"golang.org/x/net/context"
 
-	"github.com/chubaoio/cbfs/sdk/data/stream"
-	"github.com/chubaoio/cbfs/sdk/meta"
-	"github.com/chubaoio/cbfs/util/log"
+	"github.com/tiglabs/containerfs/sdk/data/stream"
+	"github.com/tiglabs/containerfs/sdk/meta"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 type Super struct {

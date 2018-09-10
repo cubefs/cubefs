@@ -17,8 +17,8 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaoio/cbfs/util/log"
 	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/util/log"
 	"runtime"
 	"sync"
 	"time"

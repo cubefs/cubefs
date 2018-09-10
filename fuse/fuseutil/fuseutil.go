@@ -1,7 +1,7 @@
-package fuseutil // import "github.com/chubaoio/cbfs/fuse/fuseutil"
+package fuseutil // import "github.com/tiglabs/containerfs/fuse/fuseutil"
 
 import (
-	"github.com/chubaoio/cbfs/fuse"
+	"github.com/tiglabs/containerfs/fuse"
 )
 
 // HandleRead handles a read request assuming that data is the entire file content.

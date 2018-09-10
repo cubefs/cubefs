@@ -23,7 +23,7 @@ import (
 
 	"os"
 
-	"github.com/chubaoio/cbfs/util/btree"
+	"github.com/tiglabs/containerfs/util/btree"
 )
 
 const (
