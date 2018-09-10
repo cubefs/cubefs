@@ -61,6 +61,7 @@ type ExtentWriter struct {
 	isflushIng       int32
 	flushSignleCh    chan bool
 	hasExitRecvThead int32
+	updateSizeLock sync.Mutex
 }
 
 func NewExtentWriter(inode uint64, dp *wrapper.DataPartition, extentId uint64) (writer *ExtentWriter, err error) {
@@ -296,14 +297,18 @@ func (writer *ExtentWriter) processReply(e *list.Element, request, reply *Packet
 			fmt.Sprintf("writer(%v)", writer.toString()))
 	}
 
+	writer.updateSizeLock.Lock()
 	if atomic.LoadInt64(&writer.forbidUpdate) == ForBidUpdateExtentKey {
+		writer.updateSizeLock.Unlock()
 		return fmt.Errorf("forbid update extent key (%v)", writer.toString())
 	}
 	if atomic.LoadInt64(&writer.forbidUpdate) == ForBidUpdateMetaNode {
+		writer.updateSizeLock.Unlock()
 		return fmt.Errorf("forbid update extent key (%v) to metanode", writer.toString())
 	}
 	writer.removeRquest(e)
 	writer.addByteAck(uint64(request.Size))
+	writer.updateSizeLock.Unlock()
 	if atomic.LoadInt32(&writer.isflushIng) == ExtentFlushIng && !(writer.getQueueListLen() > 0 || writer.currentPacket != nil) {
 		atomic.StoreInt32(&writer.isflushIng, ExtentHasFlushed)
 		select {
@@ -321,6 +326,8 @@ func (writer *ExtentWriter) processReply(e *list.Element, request, reply *Packet
 }
 
 func (writer *ExtentWriter) toKey() (k proto.ExtentKey) {
+	writer.updateSizeLock.Lock()
+	defer writer.updateSizeLock.Unlock()
 	k = proto.ExtentKey{}
 	k.PartitionId = writer.dp.PartitionID
 	k.Size = uint32(writer.getByteAck())
@@ -417,6 +424,8 @@ func (writer *ExtentWriter) getNeedRetrySendPackets() (requests []*Packet) {
 	var (
 		backPkg *Packet
 	)
+	writer.updateSizeLock.Lock()
+	defer writer.updateSizeLock.Unlock()
 	atomic.StoreInt64(&writer.forbidUpdate, ForBidUpdateExtentKey)
 	writer.requestLock.Lock()
 	defer writer.requestLock.Unlock()
