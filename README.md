@@ -1,8 +1,8 @@
-# ChuBao FS
+# Containerfs 
 
 ## Overview
 
-ChuBao FS is a distributed filesystem as a unified platform for unstructured data storage. 
+Containerfs is a distributed filesystem as a unified platform for unstructured data storage. 
 
 * both large-scale small files and large files.
 
@@ -16,11 +16,11 @@ ChuBao FS is a distributed filesystem as a unified platform for unstructured dat
 
 * multi-tenancy: millions of filesystem volumes
 
-ChuBao FS has been built and deployed in production since 2013.
+Containerfs has been built and deployed in production since 2013.
 
 ## Architecture
 
-CBFS consists of several components:
+CFS consists of several components:
 
 * the cluster master. single raft replication, managing volumes, metanodes, datanodes, meta-partitions and data-partitions
 
