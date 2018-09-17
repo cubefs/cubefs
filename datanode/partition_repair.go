@@ -85,7 +85,7 @@ func (dp *dataPartition) getLocalFileMetas() (fileMetas *MembersFileMetas, err e
 	if extentFiles, err = dp.extentStore.GetAllWatermark(storage.GetStableExtentFilter()); err != nil {
 		return
 	}
-	if tinyFiles, err = dp.tinyStore.GetAllWatermark(); err != nil {
+	if tinyFiles, err = dp.blobStore.GetAllWatermark(); err != nil {
 		return
 	}
 	files := make([]*storage.FileInfo, 0)
@@ -144,7 +144,7 @@ func (dp *dataPartition) getAllMemberFileMetas() (allMemberFileMetas []*MembersF
 		return
 	}
 	// get local tiny file metas
-	tinyFiles, err = dp.tinyStore.GetAllWatermark()
+	tinyFiles, err = dp.blobStore.GetAllWatermark()
 	if err != nil {
 		err = errors.Annotatef(err, "getAllMemberFileMetas tiny dataPartition[%v] GetAllWaterMark", dp.partitionId)
 		return
@@ -207,7 +207,7 @@ func (dp *dataPartition) generatorFilesRepairTasks(allMembers []*MembersFileMeta
 	dp.generatorAddExtentsTasks(allMembers) //add extentTask
 	dp.generatorFixFileSizeTasks(allMembers)
 	dp.generatorDeleteExtentsTasks(allMembers)
-	dp.generatorTinyDeleteTasks(allMembers)
+	dp.generatorBlobDeleteTasks(allMembers)
 
 }
 
@@ -297,8 +297,8 @@ func (dp *dataPartition) generatorDeleteExtentsTasks(allMembers []*MembersFileMe
 }
 
 //generator tinyObject delete task,send leader has delete object,notify follower delete it
-func (dp *dataPartition) generatorTinyDeleteTasks(allMembers []*MembersFileMetas) {
-	store := dp.tinyStore
+func (dp *dataPartition) generatorBlobDeleteTasks(allMembers []*MembersFileMetas) {
+	store := dp.blobStore
 	for _, chunkInfo := range allMembers[0].files {
 		chunkId := chunkInfo.FileId
 		if chunkId > storage.TinyChunkCount {

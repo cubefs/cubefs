@@ -111,7 +111,7 @@ type dataPartition struct {
 	path            string
 	used            int
 	extentStore     *storage.ExtentStore
-	tinyStore       *storage.BlobStore
+	blobStore       *storage.BlobStore
 	stopC           chan bool
 
 	runtimeMetrics *DataPartitionMetrics
@@ -185,7 +185,7 @@ func newDataPartition(volumeId string, partitionId uint32, disk *Disk, size int)
 	if err != nil {
 		return
 	}
-	partition.tinyStore, err = storage.NewBlobStore(partition.path, size)
+	partition.blobStore, err = storage.NewBlobStore(partition.path, size)
 	if err != nil {
 		return
 	}
@@ -217,7 +217,7 @@ func (dp *dataPartition) Stop() {
 	}
 	// Close all store and backup partition data file.
 	dp.extentStore.Close()
-	dp.tinyStore.CloseAll()
+	dp.blobStore.CloseAll()
 
 }
 
@@ -276,7 +276,7 @@ func (dp *dataPartition) statusUpdate() {
 		status = proto.ReadOnly
 	}
 	if dp.isLeader {
-		dp.tinyStore.MoveChunkToUnavailChan()
+		dp.blobStore.MoveChunkToUnavailChan()
 	}
 	dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
 }
@@ -301,7 +301,7 @@ func (dp *dataPartition) GetExtentStore() *storage.ExtentStore {
 }
 
 func (dp *dataPartition) GetTinyStore() *storage.BlobStore {
-	return dp.tinyStore
+	return dp.blobStore
 }
 
 func (dp *dataPartition) String() (m string) {
@@ -401,7 +401,7 @@ func (dp *dataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 		response.Result = err.Error()
 		return
 	}
-	tinySnapshot, err := dp.tinyStore.Snapshot()
+	tinySnapshot, err := dp.blobStore.Snapshot()
 	if err != nil {
 		response.Status = proto.TaskFail
 		response.Result = err.Error()
@@ -412,7 +412,7 @@ func (dp *dataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 }
 
 func (dp *dataPartition) GetAllWaterMarker() (files []*storage.FileInfo, err error) {
-	tinyFiles, err := dp.tinyStore.GetAllWatermark()
+	tinyFiles, err := dp.blobStore.GetAllWatermark()
 	if err != nil {
 		return nil, err
 	}
@@ -443,7 +443,7 @@ func (dp *dataPartition) PackObject(dataBuf []byte, o *storage.Object, chunkID u
 	if o.Size == storage.MarkDeleteObject && o.Oid != 0 {
 		return
 	}
-	_, err = dp.tinyStore.Read(chunkID, int64(o.Oid), int64(o.Size), dataBuf[storage.ObjectHeaderSize:])
+	_, err = dp.blobStore.Read(chunkID, int64(o.Oid), int64(o.Size), dataBuf[storage.ObjectHeaderSize:])
 	return
 }
 
@@ -459,7 +459,7 @@ func (dp *dataPartition) DelObjects(chunkId uint32, deleteBuf []byte) (err error
 		needle := binary.BigEndian.Uint64(deleteBuf[i*storage.ObjectIdLen : (i+1)*storage.ObjectIdLen])
 		needles = append(needles, needle)
 	}
-	if err = dp.tinyStore.ApplyDelObjects(chunkId, needles); err != nil {
+	if err = dp.blobStore.ApplyDelObjects(chunkId, needles); err != nil {
 		err = errors.Annotatef(err, "ApplyDelObjects Error")
 		return err
 	}
