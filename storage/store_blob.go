@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	TinyChunkCount    = 1
+	TinyChunkCount    = 10
 	ChunkOpenOpt      = os.O_CREATE | os.O_RDWR | os.O_APPEND
 	CompactThreshold  = 40
 	CompactMaxWait    = time.Second * 10
@@ -38,27 +38,26 @@ const (
 	ObjectIdLen       = 8
 )
 
-// TinyStore is a store implement for tiny file storage which container 40 chunk files.
+// BlobStore is a store implement for tiny file storage which container 40 chunk files.
 // This store will choose a available chunk file and append data to it.
-type TinyStore struct {
+type BlobStore struct {
 	dataDir        string
 	chunks         map[int]*Chunk
 	availChunkCh   chan int
 	unavailChunkCh chan int
 	storeSize      int
 	chunkSize      int
-	fullChunks     *util.Set
 }
 
-func NewTinyStore(dataDir string, storeSize int) (s *TinyStore, err error) {
-	s = new(TinyStore)
+func NewBlobStore(dataDir string, storeSize int) (s *BlobStore, err error) {
+	s = new(BlobStore)
 	s.dataDir = dataDir
 	if err = CheckAndCreateSubdir(dataDir); err != nil {
-		return nil, fmt.Errorf("NewTinyStore [%v] err[%v]", dataDir, err)
+		return nil, fmt.Errorf("NewBlobStore [%v] err[%v]", dataDir, err)
 	}
 	s.chunks = make(map[int]*Chunk)
 	if err = s.initChunkFile(); err != nil {
-		return nil, fmt.Errorf("NewTinyStore [%v] err[%v]", dataDir, err)
+		return nil, fmt.Errorf("NewBlobStore [%v] err[%v]", dataDir, err)
 	}
 
 	s.availChunkCh = make(chan int, TinyChunkCount+1)
@@ -68,25 +67,25 @@ func NewTinyStore(dataDir string, storeSize int) (s *TinyStore, err error) {
 	}
 	s.storeSize = storeSize
 	s.chunkSize = storeSize / TinyChunkCount
-	s.fullChunks = util.NewSet()
 
 	return
 }
 
-func (s *TinyStore) DeleteStore() {
+func (s *BlobStore) DeleteStore() {
 	for index, c := range s.chunks {
 		c.file.Close()
 		c.tree.idxFile.Close()
 		delete(s.chunks, index)
 	}
+	os.RemoveAll(s.dataDir)
 }
 
-func (s *TinyStore) UseSize() (size int64) {
+func (s *BlobStore) UseSize() (size int64) {
 	// TODO: implement this
 	return 0
 }
 
-func (s *TinyStore) initChunkFile() (err error) {
+func (s *BlobStore) initChunkFile() (err error) {
 	for i := 1; i <= TinyChunkCount; i++ {
 		var c *Chunk
 		if c, err = NewChunk(s.dataDir, i); err != nil {
@@ -98,7 +97,7 @@ func (s *TinyStore) initChunkFile() (err error) {
 	return
 }
 
-func (s *TinyStore) chunkExist(chunkId uint32) (exist bool) {
+func (s *BlobStore) chunkExist(chunkId uint32) (exist bool) {
 	name := s.dataDir + "/" + strconv.Itoa(int(chunkId))
 	if _, err := os.Stat(name); err == nil {
 		exist = true
@@ -107,7 +106,7 @@ func (s *TinyStore) chunkExist(chunkId uint32) (exist bool) {
 	return
 }
 
-func (s *TinyStore) WriteDeleteDentry(objectId uint64, chunkId int, crc uint32) (err error) {
+func (s *BlobStore) WriteDeleteDentry(objectId uint64, chunkId int, crc uint32) (err error) {
 	var (
 		fi os.FileInfo
 	)
@@ -132,7 +131,7 @@ func (s *TinyStore) WriteDeleteDentry(objectId uint64, chunkId int, crc uint32) 
 	return
 }
 
-func (s *TinyStore) Write(fileId uint32, objectId uint64, size int64, data []byte, crc uint32) (err error) {
+func (s *BlobStore) Write(fileId uint32, objectId uint64, size int64, data []byte, crc uint32) (err error) {
 	var (
 		fi os.FileInfo
 	)
@@ -171,7 +170,7 @@ func (s *TinyStore) Write(fileId uint32, objectId uint64, size int64, data []byt
 	return
 }
 
-func (s *TinyStore) Read(fileId uint32, offset, size int64, nbuf []byte) (crc uint32, err error) {
+func (s *BlobStore) Read(fileId uint32, offset, size int64, nbuf []byte) (crc uint32, err error) {
 	chunkId := int(fileId)
 	objectId := uint64(offset)
 	c, ok := s.chunks[chunkId]
@@ -209,7 +208,7 @@ func (s *TinyStore) Read(fileId uint32, offset, size int64, nbuf []byte) (crc ui
 	return
 }
 
-func (s *TinyStore) Sync(fileId uint32) (err error) {
+func (s *BlobStore) Sync(fileId uint32) (err error) {
 	chunkId := (int)(fileId)
 	c, ok := s.chunks[chunkId]
 	if !ok {
@@ -224,7 +223,7 @@ func (s *TinyStore) Sync(fileId uint32) (err error) {
 	return c.file.Sync()
 }
 
-func (s *TinyStore) GetAllWatermark() (chunks []*FileInfo, err error) {
+func (s *BlobStore) GetAllWatermark() (chunks []*FileInfo, err error) {
 	chunks = make([]*FileInfo, 0)
 	for chunkId, c := range s.chunks {
 		ci := &FileInfo{FileId: chunkId, Size: c.loadLastOid()}
@@ -234,7 +233,7 @@ func (s *TinyStore) GetAllWatermark() (chunks []*FileInfo, err error) {
 	return
 }
 
-func (s *TinyStore) GetWatermark(fileId uint64) (chunkInfo *FileInfo, err error) {
+func (s *BlobStore) GetWatermark(fileId uint64) (chunkInfo *FileInfo, err error) {
 	chunkId := (int)(fileId)
 	c, ok := s.chunks[chunkId]
 	if !ok {
@@ -245,7 +244,7 @@ func (s *TinyStore) GetWatermark(fileId uint64) (chunkInfo *FileInfo, err error)
 	return
 }
 
-func (s *TinyStore) GetAvailChunk() (chunkId int, err error) {
+func (s *BlobStore) GetAvailChunk() (chunkId int, err error) {
 	select {
 	case chunkId = <-s.availChunkCh:
 	default:
@@ -255,7 +254,7 @@ func (s *TinyStore) GetAvailChunk() (chunkId int, err error) {
 	return
 }
 
-func (s *TinyStore) GetChunkForWrite() (chunkId int, err error) {
+func (s *BlobStore) GetChunkForWrite() (chunkId int, err error) {
 	chLen := len(s.availChunkCh)
 	for i := 0; i < chLen; i++ {
 		select {
@@ -269,24 +268,24 @@ func (s *TinyStore) GetChunkForWrite() (chunkId int, err error) {
 	return
 }
 
-func (s *TinyStore) SyncAll() {
+func (s *BlobStore) SyncAll() {
 	for _, chunkFp := range s.chunks {
 		chunkFp.tree.idxFile.Sync()
 		chunkFp.file.Sync()
 	}
 }
-func (s *TinyStore) CloseAll() {
+func (s *BlobStore) CloseAll() {
 	for _, chunkFp := range s.chunks {
 		chunkFp.tree.idxFile.Close()
 		chunkFp.file.Close()
 	}
 }
 
-func (s *TinyStore) PutAvailChunk(chunkId int) {
+func (s *BlobStore) PutAvailChunk(chunkId int) {
 	s.availChunkCh <- chunkId
 }
 
-func (s *TinyStore) GetUnAvailChunk() (chunkId int, err error) {
+func (s *BlobStore) GetUnAvailChunk() (chunkId int, err error) {
 	select {
 	case chunkId = <-s.unavailChunkCh:
 	default:
@@ -296,15 +295,15 @@ func (s *TinyStore) GetUnAvailChunk() (chunkId int, err error) {
 	return
 }
 
-func (s *TinyStore) PutUnAvailChunk(chunkId int) {
+func (s *BlobStore) PutUnAvailChunk(chunkId int) {
 	s.unavailChunkCh <- chunkId
 }
 
-func (s *TinyStore) GetStoreChunkCount() (files int, err error) {
+func (s *BlobStore) GetStoreChunkCount() (files int, err error) {
 	return TinyChunkCount, nil
 }
 
-func (s *TinyStore) MarkDelete(fileId uint32, offset, size int64) error {
+func (s *BlobStore) MarkDelete(fileId uint32, offset, size int64) error {
 	chunkId := int(fileId)
 	objectId := uint64(offset)
 	c, ok := s.chunks[chunkId]
@@ -315,15 +314,15 @@ func (s *TinyStore) MarkDelete(fileId uint32, offset, size int64) error {
 	return c.tree.delete(objectId)
 }
 
-func (s *TinyStore) GetUnAvailChanLen() (chanLen int) {
+func (s *BlobStore) GetUnAvailChanLen() (chanLen int) {
 	return len(s.unavailChunkCh)
 }
 
-func (s *TinyStore) GetAvailChanLen() (chanLen int) {
+func (s *BlobStore) GetAvailChanLen() (chanLen int) {
 	return len(s.availChunkCh)
 }
 
-func (s *TinyStore) AllocObjectId(fileId uint32) (uint64, error) {
+func (s *BlobStore) AllocObjectId(fileId uint32) (uint64, error) {
 	chunkId := int(fileId)
 	c, ok := s.chunks[chunkId]
 	if !ok {
@@ -332,7 +331,7 @@ func (s *TinyStore) AllocObjectId(fileId uint32) (uint64, error) {
 	return c.loadLastOid() + 1, nil
 }
 
-func (s *TinyStore) GetLastOid(fileId uint32) (objectId uint64, err error) {
+func (s *BlobStore) GetLastOid(fileId uint32) (objectId uint64, err error) {
 	c, ok := s.chunks[int(fileId)]
 	if !ok {
 		return 0, ErrorFileNotFound
@@ -341,7 +340,7 @@ func (s *TinyStore) GetLastOid(fileId uint32) (objectId uint64, err error) {
 	return c.loadLastOid(), nil
 }
 
-func (s *TinyStore) GetObject(fileId uint32, objectId uint64) (o *Object, err error) {
+func (s *BlobStore) GetObject(fileId uint32, objectId uint64) (o *Object, err error) {
 	c, ok := s.chunks[int(fileId)]
 	if !ok {
 		return nil, ErrorFileNotFound
@@ -355,7 +354,7 @@ func (s *TinyStore) GetObject(fileId uint32, objectId uint64) (o *Object, err er
 	return
 }
 
-func (s *TinyStore) GetDelObjects(fileId uint32) (objects []uint64) {
+func (s *BlobStore) GetDelObjects(fileId uint32) (objects []uint64) {
 	objects = make([]uint64, 0)
 	c, ok := s.chunks[int(fileId)]
 	if !ok {
@@ -380,7 +379,7 @@ func (s *TinyStore) GetDelObjects(fileId uint32) (objects []uint64) {
 	return
 }
 
-func (s *TinyStore) ApplyDelObjects(chunkId uint32, objects []uint64) (err error) {
+func (s *BlobStore) ApplyDelObjects(chunkId uint32, objects []uint64) (err error) {
 	c, ok := s.chunks[int(chunkId)]
 	if !ok {
 		return ErrorFileNotFound
@@ -389,7 +388,7 @@ func (s *TinyStore) ApplyDelObjects(chunkId uint32, objects []uint64) (err error
 	return
 }
 
-func (s *TinyStore) UpdateStoreInfo() {
+func (s *BlobStore) UpdateStoreInfo() {
 	for chunkId, c := range s.chunks {
 		finfo, err := c.file.Stat()
 		if err != nil {
@@ -406,7 +405,7 @@ func (s *TinyStore) UpdateStoreInfo() {
 }
 
 // make sure chunkId is valid
-func (s *TinyStore) IsReadyToCompact(chunkId int) bool {
+func (s *BlobStore) IsReadyToCompact(chunkId int) bool {
 	c := s.chunks[chunkId]
 	tree := c.tree
 
@@ -425,7 +424,7 @@ func (s *TinyStore) IsReadyToCompact(chunkId int) bool {
 	return false
 }
 
-func (s *TinyStore) DoCompactWork(chunkID int) (err error, released uint64) {
+func (s *BlobStore) DoCompactWork(chunkID int) (err error, released uint64) {
 	_, ok := s.chunks[chunkID]
 	if !ok {
 		return ErrorFileNotFound, 0
@@ -443,7 +442,7 @@ func (s *TinyStore) DoCompactWork(chunkID int) (err error, released uint64) {
 	return nil, released
 }
 
-func (s *TinyStore) MoveChunkToUnavailChan() {
+func (s *BlobStore) MoveChunkToUnavailChan() {
 	if len(s.unavailChunkCh) >= 3 {
 		return
 	}
@@ -457,7 +456,7 @@ func (s *TinyStore) MoveChunkToUnavailChan() {
 	}
 }
 
-func (s *TinyStore) doCompactAndCommit(chunkID int) (err error, released uint64) {
+func (s *BlobStore) doCompactAndCommit(chunkID int) (err error, released uint64) {
 	cc := s.chunks[chunkID]
 	// prevent write and delete operations
 	if !cc.compactLock.TryLockTimed(CompactMaxWait) {
@@ -487,7 +486,7 @@ func CheckAndCreateSubdir(name string) (err error) {
 	return os.MkdirAll(name, 0755)
 }
 
-func (s *TinyStore) GetChunkInCore(fileID uint32) (*Chunk, error) {
+func (s *BlobStore) GetChunkInCore(fileID uint32) (*Chunk, error) {
 	chunkID := (int)(fileID)
 	cc, ok := s.chunks[chunkID]
 	if !ok {
@@ -496,7 +495,7 @@ func (s *TinyStore) GetChunkInCore(fileID uint32) (*Chunk, error) {
 	return cc, nil
 }
 
-func (s *TinyStore) Snapshot() ([]*proto.File, error) {
+func (s *BlobStore) Snapshot() ([]*proto.File, error) {
 	fList, err := ioutil.ReadDir(s.dataDir)
 	if err != nil {
 		return nil, err

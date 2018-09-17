@@ -63,7 +63,7 @@ type DataPartition interface {
 	ChangeStatus(status int)
 
 	GetExtentStore() *storage.ExtentStore
-	GetTinyStore() *storage.TinyStore
+	GetTinyStore() *storage.BlobStore
 	GetAllWaterMarker() (files []*storage.FileInfo, err error)
 
 	GetObjects(chunkID uint32, startOid, lastOid uint64) (objects []*storage.Object)
@@ -111,7 +111,7 @@ type dataPartition struct {
 	path            string
 	used            int
 	extentStore     *storage.ExtentStore
-	tinyStore       *storage.TinyStore
+	tinyStore       *storage.BlobStore
 	stopC           chan bool
 
 	runtimeMetrics *DataPartitionMetrics
@@ -185,7 +185,7 @@ func newDataPartition(volumeId string, partitionId uint32, disk *Disk, size int)
 	if err != nil {
 		return
 	}
-	partition.tinyStore, err = storage.NewTinyStore(partition.path, size)
+	partition.tinyStore, err = storage.NewBlobStore(partition.path, size)
 	if err != nil {
 		return
 	}
@@ -300,7 +300,7 @@ func (dp *dataPartition) GetExtentStore() *storage.ExtentStore {
 	return dp.extentStore
 }
 
-func (dp *dataPartition) GetTinyStore() *storage.TinyStore {
+func (dp *dataPartition) GetTinyStore() *storage.BlobStore {
 	return dp.tinyStore
 }
 
