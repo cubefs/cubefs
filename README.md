@@ -4,7 +4,7 @@
 
 ContainerFS is a container-native distributed filesystem as a unified platform for unstructured data storage. 
 
-* both large-scale small files and large files.
+* unlimited small files and large files.
 
 * key-file data model, i.e., namespaceless, or hierachical namespaces
 
@@ -16,7 +16,21 @@ ContainerFS is a container-native distributed filesystem as a unified platform f
 
 * multi-tenancy: millions of filesystem volumes
 
+* POSIX-compatible
+
 Containerfs has been built and deployed in production since 2013.
+
+## Concepts
+
+volume
+
+inode
+
+directory
+
+block
+
+extent
 
 ## Architecture
 
@@ -26,7 +40,13 @@ CFS consists of several components:
 
 * metanode. multi-raft replication, a meta partition (inode range) per replication state machine
 
-* datanode. de-clustering of data partitions, two storage engines for BLOBs and extents, replicated via efficient consistent replication - chained replication for sequential write and raft for random write
+* datanode. de-clustering of data partitions, two storage engines - Block Store (BS) and Extent Store (ES).
+
+BS is used to store variable-length data blocks, and is optimized for small files.
+
+ES is used to store appendable continous blocks - extents, and it is optimized for large files.
+
+Both BS and ES are replicated with strong consistency: atomic block appending; raft for extent update. 
 
 * client interfaces: FUSE, Java SDK, Go SDK.
 
@@ -44,6 +64,10 @@ based on the namespace-less key-file interface, nginx integration
 
 integration with minio
 
-## Contact
+## Deployment
+
+zone
+
+set
 
 
