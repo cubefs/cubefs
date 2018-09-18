@@ -59,7 +59,7 @@ type DataPartition interface {
 	ChangeStatus(status int)
 
 	GetExtentStore() *storage.ExtentStore
-	GetTinyStore() *storage.BlobStore
+	GetBlobStore() *storage.BlobStore
 	GetAllWaterMarker() (files []*storage.FileInfo, err error)
 
 	GetObjects(chunkID uint32, startOid, lastOid uint64) (objects []*storage.Object)
@@ -296,7 +296,7 @@ func (dp *dataPartition) GetExtentStore() *storage.ExtentStore {
 	return dp.extentStore
 }
 
-func (dp *dataPartition) GetTinyStore() *storage.BlobStore {
+func (dp *dataPartition) GetBlobStore() *storage.BlobStore {
 	return dp.blobStore
 }
 
@@ -397,18 +397,18 @@ func (dp *dataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 		response.Result = err.Error()
 		return
 	}
-	tinySnapshot, err := dp.blobStore.Snapshot()
+	blobSnapshot, err := dp.blobStore.Snapshot()
 	if err != nil {
 		response.Status = proto.TaskFail
 		response.Result = err.Error()
 		return
 	}
-	response.PartitionSnapshot = append(response.PartitionSnapshot, tinySnapshot...)
+	response.PartitionSnapshot = append(response.PartitionSnapshot, blobSnapshot...)
 	return
 }
 
 func (dp *dataPartition) GetAllWaterMarker() (files []*storage.FileInfo, err error) {
-	tinyFiles, err := dp.blobStore.GetAllWatermark()
+	blobFiles, err := dp.blobStore.GetAllWatermark()
 	if err != nil {
 		return nil, err
 	}
@@ -416,7 +416,7 @@ func (dp *dataPartition) GetAllWaterMarker() (files []*storage.FileInfo, err err
 	if err != nil {
 		return nil, err
 	}
-	files = append(files, tinyFiles...)
+	files = append(files, blobFiles...)
 
 	return
 }
@@ -424,7 +424,7 @@ func (dp *dataPartition) GetAllWaterMarker() (files []*storage.FileInfo, err err
 func (dp *dataPartition) GetObjects(chunkID uint32, startOid, lastOid uint64) (objects []*storage.Object) {
 	objects = make([]*storage.Object, 0)
 	for startOid <= lastOid {
-		needle, err := dp.GetTinyStore().GetObject(chunkID, uint64(startOid))
+		needle, err := dp.GetBlobStore().GetObject(chunkID, uint64(startOid))
 		if err != nil {
 			needle = &storage.Object{Oid: uint64(startOid), Size: storage.MarkDeleteObject}
 		}
@@ -465,13 +465,13 @@ func (dp *dataPartition) DelObjects(chunkId uint32, deleteBuf []byte) (err error
 func (dp *dataPartition) MergeRepair(metas *MembersFileMetas) {
 	store := dp.extentStore
 	for _, deleteExtentId := range metas.NeedDeleteExtentsTasks {
-		if deleteExtentId.FileId <= storage.TinyChunkCount {
+		if deleteExtentId.FileId <= storage.BlobChunkCount {
 			continue
 		}
 		store.MarkDelete(uint64(deleteExtentId.FileId))
 	}
 	for _, addExtent := range metas.NeedAddExtentsTasks {
-		if addExtent.FileId <= storage.TinyChunkCount {
+		if addExtent.FileId <= storage.BlobChunkCount {
 			continue
 		}
 		if store.IsExistExtent(uint64(addExtent.FileId)) {
@@ -485,11 +485,11 @@ func (dp *dataPartition) MergeRepair(metas *MembersFileMetas) {
 		metas.NeedFixFileSizeTasks = append(metas.NeedFixFileSizeTasks, fixFileSizeTask)
 	}
 
-	tinyFiles := make([]*storage.FileInfo, 0)
+	blobFiles := make([]*storage.FileInfo, 0)
 	var wg sync.WaitGroup
 	for _, fixExtent := range metas.NeedFixFileSizeTasks {
-		if fixExtent.FileId <= storage.TinyChunkCount {
-			tinyFiles = append(tinyFiles, fixExtent)
+		if fixExtent.FileId <= storage.BlobChunkCount {
+			blobFiles = append(blobFiles, fixExtent)
 			continue
 		}
 		if !store.IsExistExtent(uint64(fixExtent.FileId)) {
@@ -498,15 +498,15 @@ func (dp *dataPartition) MergeRepair(metas *MembersFileMetas) {
 		wg.Add(1)
 		go dp.doStreamExtentFixRepair(&wg, fixExtent)
 	}
-	for chunkId, deleteTinyObject := range metas.NeedDeleteObjectsTasks {
-		if err := dp.DelObjects(uint32(chunkId), deleteTinyObject); err != nil {
+	for chunkId, deleteBlobObject := range metas.NeedDeleteObjectsTasks {
+		if err := dp.DelObjects(uint32(chunkId), deleteBlobObject); err != nil {
 			log.LogErrorf("action[Repair] dataPartition[%v] chunkId[%v] deleteObject "+
 				"failed err[%v]", dp.partitionId, chunkId, err.Error())
 		}
 	}
-	for _, fixTiny := range tinyFiles {
+	for _, fixBlob := range blobFiles {
 		wg.Add(1)
-		go dp.doStreamTinyFixRepair(&wg, fixTiny)
+		go dp.doStreamBlobFixRepair(&wg, fixBlob)
 	}
 	wg.Wait()
 }

@@ -171,7 +171,7 @@ func (d *Disk) compact() {
 			if dp == nil {
 				continue
 			}
-			err, release := dp.GetTinyStore().DoCompactWork(t.chunkId)
+			err, release := dp.GetBlobStore().DoCompactWork(t.chunkId)
 			if err != nil {
 				log.LogErrorf("action[compact] task[%v] compact error[%v]", t.toString(), err.Error())
 			} else {

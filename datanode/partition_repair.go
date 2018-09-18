@@ -34,7 +34,7 @@ type MembersFileMetas struct {
 	NeedDeleteExtentsTasks []*storage.FileInfo       //generator delete extent file task
 	NeedAddExtentsTasks    []*storage.FileInfo       //generator add extent file task
 	NeedFixFileSizeTasks   []*storage.FileInfo       //generator fixSize file task
-	NeedDeleteObjectsTasks map[int][]byte            //generator deleteObject on tiny file task
+	NeedDeleteObjectsTasks map[int][]byte            //generator deleteObject on blob file task
 }
 
 func NewMemberFileMetas() (mf *MembersFileMetas) {
@@ -80,17 +80,17 @@ func (dp *dataPartition) fileRepair() {
 func (dp *dataPartition) getLocalFileMetas() (fileMetas *MembersFileMetas, err error) {
 	var (
 		extentFiles []*storage.FileInfo
-		tinyFiles   []*storage.FileInfo
+		blobFiles   []*storage.FileInfo
 	)
 	if extentFiles, err = dp.extentStore.GetAllWatermark(storage.GetStableExtentFilter()); err != nil {
 		return
 	}
-	if tinyFiles, err = dp.blobStore.GetAllWatermark(); err != nil {
+	if blobFiles, err = dp.blobStore.GetAllWatermark(); err != nil {
 		return
 	}
 	files := make([]*storage.FileInfo, 0)
 	files = append(files, extentFiles...)
-	files = append(files, tinyFiles...)
+	files = append(files, blobFiles...)
 
 	fileMetas = NewMemberFileMetas()
 	for _, file := range files {
@@ -134,7 +134,7 @@ func (dp *dataPartition) getRemoteFileMetas(remote string) (fileMetas *MembersFi
 func (dp *dataPartition) getAllMemberFileMetas() (allMemberFileMetas []*MembersFileMetas, err error) {
 	allMemberFileMetas = make([]*MembersFileMetas, len(dp.replicaHosts))
 	var (
-		extentFiles, tinyFiles []*storage.FileInfo
+		extentFiles, blobFiles []*storage.FileInfo
 	)
 	files := make([]*storage.FileInfo, 0)
 	// get local extent file metas
@@ -143,15 +143,15 @@ func (dp *dataPartition) getAllMemberFileMetas() (allMemberFileMetas []*MembersF
 		err = errors.Annotatef(err, "getAllMemberFileMetas extent dataPartition[%v] GetAllWaterMark", dp.partitionId)
 		return
 	}
-	// get local tiny file metas
-	tinyFiles, err = dp.blobStore.GetAllWatermark()
+	// get local blob file metas
+	blobFiles, err = dp.blobStore.GetAllWatermark()
 	if err != nil {
-		err = errors.Annotatef(err, "getAllMemberFileMetas tiny dataPartition[%v] GetAllWaterMark", dp.partitionId)
+		err = errors.Annotatef(err, "getAllMemberFileMetas blob dataPartition[%v] GetAllWaterMark", dp.partitionId)
 		return
 	}
-	// write tiny files meta to extent files meta
+	// write blob files meta to extent files meta
 	files = append(files, extentFiles...)
-	files = append(files, tinyFiles...)
+	files = append(files, blobFiles...)
 	leaderFileMetas := NewMemberFileMetas()
 	if err != nil {
 		err = errors.Annotatef(err, "getAllMemberFileMetas dataPartition[%v] GetAllWaterMark", dp.partitionId)
@@ -239,7 +239,7 @@ func (dp *dataPartition) generatorAddExtentsTasks(allMembers []*MembersFileMetas
 	leader := allMembers[0]
 	leaderAddr := dp.replicaHosts[0]
 	for fileId, leaderFile := range leader.files {
-		if fileId <= storage.TinyChunkCount {
+		if fileId <= storage.BlobChunkCount {
 			continue
 		}
 		for index := 1; index < len(allMembers); index++ {
@@ -296,12 +296,12 @@ func (dp *dataPartition) generatorDeleteExtentsTasks(allMembers []*MembersFileMe
 	}
 }
 
-//generator tinyObject delete task,send leader has delete object,notify follower delete it
+//generator blobObject delete task,send leader has delete object,notify follower delete it
 func (dp *dataPartition) generatorBlobDeleteTasks(allMembers []*MembersFileMetas) {
 	store := dp.blobStore
 	for _, chunkInfo := range allMembers[0].files {
 		chunkId := chunkInfo.FileId
-		if chunkId > storage.TinyChunkCount {
+		if chunkId > storage.BlobChunkCount {
 			continue
 		}
 		deletes := store.GetDelObjects(uint32(chunkId))

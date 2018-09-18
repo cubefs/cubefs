@@ -33,7 +33,7 @@ const (
 func NewWritePacket(dp *DataPartition, data []byte) *proto.Packet {
 	pkt := proto.NewPacket()
 
-	pkt.StoreMode = proto.TinyStoreMode
+	pkt.StoreMode = proto.BlobStoreMode
 	pkt.Opcode = proto.OpWrite
 	pkt.ReqID = proto.GetReqID()
 
@@ -58,7 +58,7 @@ func NewReadPacket(partitionID uint32, fileID uint64, objID int64, size uint32) 
 	pkt.Offset = objID
 	pkt.Size = size
 
-	pkt.StoreMode = proto.TinyStoreMode
+	pkt.StoreMode = proto.BlobStoreMode
 	pkt.ReqID = proto.GetReqID()
 	pkt.Opcode = proto.OpRead
 	pkt.Nodes = 0
@@ -69,7 +69,7 @@ func NewReadPacket(partitionID uint32, fileID uint64, objID int64, size uint32) 
 func NewDeletePacket(dp *DataPartition, fileID uint64, objID int64) *proto.Packet {
 	pkt := proto.NewPacket()
 
-	pkt.StoreMode = proto.TinyStoreMode
+	pkt.StoreMode = proto.BlobStoreMode
 	pkt.ReqID = proto.GetReqID()
 	pkt.Opcode = proto.OpMarkDelete
 
@@ -91,7 +91,7 @@ func ParsePacket(pkt *proto.Packet) (partitionID uint32, fileID uint64, objID in
 func GenKey(clusterName, volName string, partitionID uint32, fileID uint64, objID int64, size uint32) string {
 	interKey := fmt.Sprintf("%v/%v/%v/%v/%v", partitionID, fileID, objID, size, time.Now().UnixNano())
 	checkSum := crc32.ChecksumIEEE([]byte(interKey))
-	key := fmt.Sprintf("%v/%v/%v/%v/%v", clusterName, volName, proto.TinyStoreMode, interKey, checkSum)
+	key := fmt.Sprintf("%v/%v/%v/%v/%v", clusterName, volName, proto.BlobStoreMode, interKey, checkSum)
 	return key
 }
 
@@ -115,7 +115,7 @@ func ParseKey(key string) (clusterName, volName string, partitionID uint32, file
 	}
 
 	val, err := strconv.ParseUint(segs[2], 10, 8)
-	if int(val) != proto.TinyStoreMode {
+	if int(val) != proto.BlobStoreMode {
 		err = errors.New(fmt.Sprintf("ParseKey: store mode key(%v)", key))
 		return
 	}

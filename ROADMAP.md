@@ -6,7 +6,7 @@ elastic metadata sharding
 
 multi-raft based metadata partition update
 
-tiny files
+blob files
 
 sequential write via chain replication
 

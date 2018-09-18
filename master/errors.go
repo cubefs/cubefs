@@ -45,7 +45,7 @@ var (
 	NoHaveMajorityReplica               = errors.New("no have majority replica error")
 	NoLeader                            = errors.New("no leader")
 	ErrBadConfFile                      = errors.New("BadConfFile")
-	InvalidDataPartitionType            = errors.New("invalid data partition type. extent or tiny")
+	InvalidDataPartitionType            = errors.New("invalid data partition type. extent or blob")
 	ParaEnableNotFound                  = errors.New("para enable not found")
 )
 

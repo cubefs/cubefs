@@ -120,7 +120,7 @@ func (s *DataNode) handleCreateFile(pkg *Packet) {
 		return
 	}
 	switch pkg.StoreMode {
-	case proto.TinyStoreMode:
+	case proto.BlobStoreMode:
 		err = errors.Annotatef(ErrStoreTypeMismatch, " CreateFile only support ExtentMode DataPartition")
 	case proto.ExtentStoreMode:
 		var ino uint64
@@ -278,8 +278,8 @@ func (s *DataNode) handleLoadDataPartition(pkg *Packet) {
 func (s *DataNode) handleMarkDelete(pkg *Packet) {
 	var err error
 	switch pkg.StoreMode {
-	case proto.TinyStoreMode:
-		err = pkg.DataPartition.GetTinyStore().MarkDelete(uint32(pkg.FileID), pkg.Offset, int64(pkg.Size))
+	case proto.BlobStoreMode:
+		err = pkg.DataPartition.GetBlobStore().MarkDelete(uint32(pkg.FileID), pkg.Offset, int64(pkg.Size))
 	case proto.ExtentStoreMode:
 		err = pkg.DataPartition.GetExtentStore().MarkDelete(pkg.FileID)
 	}
@@ -313,8 +313,8 @@ func (s *DataNode) handleWrite(pkg *Packet) {
 		return
 	}
 	switch pkg.StoreMode {
-	case proto.TinyStoreMode:
-		err = pkg.DataPartition.GetTinyStore().Write(uint32(pkg.FileID), uint64(pkg.Offset), int64(pkg.Size), pkg.Data, pkg.Crc)
+	case proto.BlobStoreMode:
+		err = pkg.DataPartition.GetBlobStore().Write(uint32(pkg.FileID), uint64(pkg.Offset), int64(pkg.Size), pkg.Data, pkg.Crc)
 		s.addDiskErrs(pkg.PartitionID, err, WriteFlag)
 	case proto.ExtentStoreMode:
 		err = pkg.DataPartition.GetExtentStore().Write(pkg.FileID, pkg.Offset, int64(pkg.Size), pkg.Data, pkg.Crc)
@@ -331,8 +331,8 @@ func (s *DataNode) handleRead(pkg *Packet) {
 	pkg.Data = make([]byte, pkg.Size)
 	var err error
 	switch pkg.StoreMode {
-	case proto.TinyStoreMode:
-		pkg.Crc, err = pkg.DataPartition.GetTinyStore().Read(uint32(pkg.FileID), pkg.Offset, int64(pkg.Size), pkg.Data)
+	case proto.BlobStoreMode:
+		pkg.Crc, err = pkg.DataPartition.GetBlobStore().Read(uint32(pkg.FileID), pkg.Offset, int64(pkg.Size), pkg.Data)
 		s.addDiskErrs(pkg.PartitionID, err, ReadFlag)
 	case proto.ExtentStoreMode:
 		pkg.Crc, err = pkg.DataPartition.GetExtentStore().Read(pkg.FileID, pkg.Offset, int64(pkg.Size), pkg.Data)
@@ -405,8 +405,8 @@ func (s *DataNode) handleGetWatermark(pkg *Packet) {
 		err   error
 	)
 	switch pkg.StoreMode {
-	case proto.TinyStoreMode:
-		fInfo, err = pkg.DataPartition.GetTinyStore().GetWatermark(pkg.FileID)
+	case proto.BlobStoreMode:
+		fInfo, err = pkg.DataPartition.GetBlobStore().GetWatermark(pkg.FileID)
 	case proto.ExtentStoreMode:
 		fInfo, err = pkg.DataPartition.GetExtentStore().GetWatermark(pkg.FileID, false)
 	}
@@ -480,7 +480,7 @@ func (s *DataNode) handleChunkRepairRead(pkg *Packet, conn *net.TCPConn) {
 	)
 	chunkID = uint32(pkg.FileID)
 	requireOid = uint64(pkg.Offset + 1)
-	localOid, err = pkg.DataPartition.GetTinyStore().GetLastOid(chunkID)
+	localOid, err = pkg.DataPartition.GetBlobStore().GetLastOid(chunkID)
 	log.LogWrite(pkg.ActionMsg(ActionLeaderToFollowerOpCRepairReadPackResponse,
 		fmt.Sprintf("follower require Oid[%v] localOid[%v]", requireOid, localOid), pkg.StartT, err))
 	if localOid < requireOid {

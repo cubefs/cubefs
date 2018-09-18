@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	TinyChunkCount    = 10
+	BlobChunkCount    = 10
 	ChunkOpenOpt      = os.O_CREATE | os.O_RDWR | os.O_APPEND
 	CompactThreshold  = 40
 	CompactMaxWait    = time.Second * 10
@@ -37,7 +37,7 @@ const (
 	ObjectIdLen       = 8
 )
 
-// BlobStore is a store implement for tiny file storage which container 40 chunk files.
+// BlobStore is a store implement for blob file storage which container 40 chunk files.
 // This store will choose a available chunk file and append data to it.
 type BlobStore struct {
 	dataDir        string
@@ -59,13 +59,13 @@ func NewBlobStore(dataDir string, storeSize int) (s *BlobStore, err error) {
 		return nil, fmt.Errorf("NewBlobStore [%v] err[%v]", dataDir, err)
 	}
 
-	s.availChunkCh = make(chan int, TinyChunkCount+1)
-	s.unavailChunkCh = make(chan int, TinyChunkCount+1)
-	for i := 1; i <= TinyChunkCount; i++ {
+	s.availChunkCh = make(chan int, BlobChunkCount+1)
+	s.unavailChunkCh = make(chan int, BlobChunkCount+1)
+	for i := 1; i <= BlobChunkCount; i++ {
 		s.unavailChunkCh <- i
 	}
 	s.storeSize = storeSize
-	s.chunkSize = storeSize / TinyChunkCount
+	s.chunkSize = storeSize / BlobChunkCount
 
 	return
 }
@@ -85,7 +85,7 @@ func (s *BlobStore) UseSize() (size int64) {
 }
 
 func (s *BlobStore) initChunkFile() (err error) {
-	for i := 1; i <= TinyChunkCount; i++ {
+	for i := 1; i <= BlobChunkCount; i++ {
 		var c *Chunk
 		if c, err = NewChunk(s.dataDir, i); err != nil {
 			return fmt.Errorf("initChunkFile Error %s", err.Error())
@@ -299,7 +299,7 @@ func (s *BlobStore) PutUnAvailChunk(chunkId int) {
 }
 
 func (s *BlobStore) GetStoreChunkCount() (files int, err error) {
-	return TinyChunkCount, nil
+	return BlobChunkCount, nil
 }
 
 func (s *BlobStore) MarkDelete(fileId uint32, offset, size int64) error {
@@ -397,7 +397,7 @@ func (s *BlobStore) IsReadyToCompact(chunkID, thresh int) (isready bool, deleteP
 	c := s.chunks[chunkID]
 	objects := c.tree
 	deletePercent = float64(objects.deleteBytes) / float64(objects.fileBytes)
-	maxChunkSize := s.storeSize / TinyChunkCount
+	maxChunkSize := s.storeSize / BlobChunkCount
 	if objects.fileBytes < uint64(maxChunkSize)*CompactThreshold/100 {
 		return false, deletePercent
 	}
@@ -494,7 +494,7 @@ func (s *BlobStore) Snapshot() ([]*proto.File, error) {
 		if ccID, err = strconv.Atoi(info.Name()); err != nil {
 			continue
 		}
-		if ccID > TinyChunkCount {
+		if ccID > BlobChunkCount {
 			continue
 		}
 		if cc, err = s.GetChunkInCore(uint32(ccID)); err != nil {

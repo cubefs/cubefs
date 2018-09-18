@@ -5,7 +5,7 @@ DataNode is used to store and ensure the consistency of stored file data for eac
 ## Features
 
 - Streaming replication for high performance data write and read operation and keep your data safety.
-- Unified storage engine with both tiny and large data support.
+- Unified storage engine with both blob and large data support.
 
 ## Requirement
 
@@ -76,12 +76,12 @@ BaudFS using **JSON** as for configuration file format.
 
 ## Storage engine
 
-A fusion storage engine designed for both tiny file and large file storage and management.
+A fusion storage engine designed for both blob file and large file storage and management.
 There are two store in each data partition, **chunk store** and **extent store**.
 
 **Chunk store**
 
-Chunk store for tiny or one-off-write file data storage. File bytes append into chunk block file and record the offset index and data length into an index file which pair with the chunk block. A chunk block file can be append until no space left in partition. Each partition has a fixed number of chunk block files for parallel write support.
+Chunk store for blob or one-off-write file data storage. File bytes append into chunk block file and record the offset index and data length into an index file which pair with the chunk block. A chunk block file can be append until no space left in partition. Each partition has a fixed number of chunk block files for parallel write support.
 
 **Extent store**
 

@@ -162,7 +162,7 @@ func NewStreamChunkRepairReadPacket(partitionId uint32, chunkId int) (p *Packet)
 	p.PartitionID = partitionId
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpChunkRepairRead
-	p.StoreMode = proto.TinyStoreMode
+	p.StoreMode = proto.BlobStoreMode
 	p.ReqID = proto.GetReqID()
 
 	return
@@ -180,7 +180,7 @@ func NewNotifyRepair(partitionId uint32) (p *Packet) {
 
 func (p *Packet) IsTailNode() (ok bool) {
 	if p.Nodes == 0 && (p.IsWriteOperation() || p.Opcode == proto.OpCreateFile ||
-		(p.Opcode == proto.OpMarkDelete && p.StoreMode == proto.TinyStoreMode)) {
+		(p.Opcode == proto.OpMarkDelete && p.StoreMode == proto.BlobStoreMode)) {
 		return true
 	}
 

@@ -356,7 +356,7 @@ func (s *DataNode) checkChunkInfo(pkg *Packet) (err error) {
 	var (
 		chunkInfo *storage.FileInfo
 	)
-	chunkInfo, err = pkg.DataPartition.GetTinyStore().GetWatermark(pkg.FileID)
+	chunkInfo, err = pkg.DataPartition.GetBlobStore().GetWatermark(pkg.FileID)
 	if err != nil {
 		return
 	}
@@ -393,7 +393,7 @@ func (s *DataNode) headNodeSetChunkInfo(pkg *Packet) (err error) {
 	var (
 		chunkId int
 	)
-	store := pkg.DataPartition.GetTinyStore()
+	store := pkg.DataPartition.GetBlobStore()
 	chunkId, err = store.GetChunkForWrite()
 	if err != nil {
 		pkg.DataPartition.ChangeStatus(proto.ReadOnly)
@@ -410,10 +410,10 @@ func (s *DataNode) headNodePutChunk(pkg *Packet) {
 	if pkg == nil || pkg.FileID <= 0 || pkg.IsReturn {
 		return
 	}
-	if pkg.StoreMode != proto.TinyStoreMode || !pkg.isHeadNode() || !pkg.IsWriteOperation() || !pkg.IsTransitPkg() {
+	if pkg.StoreMode != proto.BlobStoreMode || !pkg.isHeadNode() || !pkg.IsWriteOperation() || !pkg.IsTransitPkg() {
 		return
 	}
-	store := pkg.DataPartition.GetTinyStore()
+	store := pkg.DataPartition.GetBlobStore()
 	if pkg.IsErrPack() {
 		store.PutUnAvailChunk(int(pkg.FileID))
 	} else {

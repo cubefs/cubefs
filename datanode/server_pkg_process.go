@@ -66,7 +66,7 @@ func (s *DataNode) readFromCliAndDeal(msgH *MessageHandler) (err error) {
 
 func (s *DataNode) checkAndAddInfo(pkg *Packet) error {
 	switch pkg.StoreMode {
-	case proto.TinyStoreMode:
+	case proto.BlobStoreMode:
 		return s.handleChunkInfo(pkg)
 	case proto.ExtentStoreMode:
 		if pkg.isHeadNode() && pkg.Opcode == proto.OpCreateFile {
@@ -253,7 +253,7 @@ func (s *DataNode) sendToNext(pkg *Packet, msgH *MessageHandler) error {
 }
 
 func (s *DataNode) checkStoreMode(p *Packet) (err error) {
-	if p.StoreMode == proto.TinyStoreMode || p.StoreMode == proto.ExtentStoreMode {
+	if p.StoreMode == proto.BlobStoreMode || p.StoreMode == proto.ExtentStoreMode {
 		return nil
 	}
 	return ErrStoreTypeMismatch

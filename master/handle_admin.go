@@ -742,7 +742,7 @@ func parseDataPartitionType(r *http.Request) (partitionType string, err error) {
 		return
 	}
 
-	if !(strings.TrimSpace(partitionType) == proto.ExtentPartition || strings.TrimSpace(partitionType) == proto.TinyPartition) {
+	if !(strings.TrimSpace(partitionType) == proto.ExtentPartition || strings.TrimSpace(partitionType) == proto.BlobPartition) {
 		err = InvalidDataPartitionType
 		return
 	}

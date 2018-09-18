@@ -40,7 +40,7 @@ func GetReqID() int64 {
 const (
 	AddrSplit       = "/"
 	ExtentPartition = "extent"
-	TinyPartition   = "tiny"
+	BlobPartition   = "blob"
 )
 
 //operations
@@ -121,7 +121,7 @@ const (
 )
 
 const (
-	TinyStoreMode   = 0
+	BlobStoreMode   = 0
 	ExtentStoreMode = 1
 )
 
@@ -153,8 +153,8 @@ func NewPacket() *Packet {
 
 func (p *Packet) GetStoreModeMsg() (m string) {
 	switch p.StoreMode {
-	case TinyStoreMode:
-		m = "Tiny"
+	case BlobStoreMode:
+		m = "Blob"
 	case ExtentStoreMode:
 		m = "Extent"
 	default:

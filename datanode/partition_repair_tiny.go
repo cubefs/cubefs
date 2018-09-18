@@ -35,27 +35,27 @@ type RepairChunkTask struct {
 }
 
 //do stream repair chunkfile,it do on follower host
-func (dp *dataPartition) doStreamTinyFixRepair(wg *sync.WaitGroup, remoteTinyFileInfo *storage.FileInfo) {
+func (dp *dataPartition) doStreamBlobFixRepair(wg *sync.WaitGroup, remoteBlobFileInfo *storage.FileInfo) {
 	defer wg.Done()
-	err := dp.streamRepairTinyObjects(remoteTinyFileInfo)
+	err := dp.streamRepairBlobObjects(remoteBlobFileInfo)
 	if err != nil {
-		localTinyInfo, opErr := dp.GetTinyStore().GetWatermark(uint64(remoteTinyFileInfo.FileId))
+		localBlobInfo, opErr := dp.GetBlobStore().GetWatermark(uint64(remoteBlobFileInfo.FileId))
 		if opErr != nil {
 			err = errors.Annotatef(err, opErr.Error())
 		}
 		err = errors.Annotatef(err, "dataPartition[%v] remote[%v] local[%v]",
-			dp.partitionId, remoteTinyFileInfo, localTinyInfo)
+			dp.partitionId, remoteBlobFileInfo, localBlobInfo)
 		log.LogError(errors.ErrorStack(err))
 	}
 }
 
 //do stream repair chunkfile,it do on follower host
-func (dp *dataPartition) streamRepairTinyObjects(remoteChunkInfo *storage.FileInfo) (err error) {
-	store := dp.GetTinyStore()
+func (dp *dataPartition) streamRepairBlobObjects(remoteChunkInfo *storage.FileInfo) (err error) {
+	store := dp.GetBlobStore()
 	//1.get local chunkFile size
 	localChunkInfo, err := store.GetWatermark(uint64(remoteChunkInfo.FileId))
 	if err != nil {
-		return errors.Annotatef(err, "streamRepairTinyObjects GetWatermark error")
+		return errors.Annotatef(err, "streamRepairBlobObjects GetWatermark error")
 	}
 	//2.generator chunkRepair read packet,it contains startObj,endObj
 	task := &RepairChunkTask{ChunkId: remoteChunkInfo.FileId, StartObj: localChunkInfo.Size + 1, EndObj: remoteChunkInfo.Size}
@@ -66,20 +66,20 @@ func (dp *dataPartition) streamRepairTinyObjects(remoteChunkInfo *storage.FileIn
 	//4.get a connection to leader host
 	conn, err = gConnPool.Get(remoteChunkInfo.Source)
 	if err != nil {
-		return errors.Annotatef(err, "streamRepairTinyObjects get conn from host[%v] error", remoteChunkInfo.Source)
+		return errors.Annotatef(err, "streamRepairBlobObjects get conn from host[%v] error", remoteChunkInfo.Source)
 	}
 	//5.write streamChunkRepair command to leader
 	err = request.WriteToConn(conn)
 	if err != nil {
 		gConnPool.Put(conn, true)
-		return errors.Annotatef(err, "streamRepairTinyObjects send streamRead to host[%v] error", remoteChunkInfo.Source)
+		return errors.Annotatef(err, "streamRepairBlobObjects send streamRead to host[%v] error", remoteChunkInfo.Source)
 	}
 	for {
 		//for 1.get local chunkFileSize
 		localChunkInfo, err := store.GetWatermark(uint64(remoteChunkInfo.FileId))
 		if err != nil {
 			conn.Close()
-			return errors.Annotatef(err, "streamRepairTinyObjects GetWatermark error")
+			return errors.Annotatef(err, "streamRepairBlobObjects GetWatermark error")
 		}
 		// if local chunkfile size has great remote ,then break
 		if localChunkInfo.Size >= remoteChunkInfo.Size {
@@ -90,7 +90,7 @@ func (dp *dataPartition) streamRepairTinyObjects(remoteChunkInfo *storage.FileIn
 		err = request.ReadFromConn(conn, proto.ReadDeadlineTime)
 		if err != nil {
 			gConnPool.Put(conn, true)
-			return errors.Annotatef(err, "streamRepairTinyObjects recive data error")
+			return errors.Annotatef(err, "streamRepairBlobObjects recive data error")
 		}
 		// get this repairPacket end oid,if oid has large,then break
 		newLastOid := uint64(request.Offset)
@@ -100,11 +100,11 @@ func (dp *dataPartition) streamRepairTinyObjects(remoteChunkInfo *storage.FileIn
 				" %v, expect max objid is %v", newLastOid, remoteChunkInfo.FileId)
 			return err
 		}
-		// write this tinyObject to local
-		err = dp.applyRepairTinyObjects(remoteChunkInfo.FileId, request.Data, newLastOid)
+		// write this blobObject to local
+		err = dp.applyRepairBlobObjects(remoteChunkInfo.FileId, request.Data, newLastOid)
 		if err != nil {
 			gConnPool.Put(conn, true)
-			err = errors.Annotatef(err, "streamRepairTinyObjects apply data failed")
+			err = errors.Annotatef(err, "streamRepairBlobObjects apply data failed")
 			return err
 		}
 	}
@@ -112,9 +112,9 @@ func (dp *dataPartition) streamRepairTinyObjects(remoteChunkInfo *storage.FileIn
 }
 
 //follower recive chunkRepairReadResponse ,then write local chunkFile
-func (dp *dataPartition) applyRepairTinyObjects(chunkId int, data []byte, endObjectId uint64) (err error) {
+func (dp *dataPartition) applyRepairBlobObjects(chunkId int, data []byte, endObjectId uint64) (err error) {
 	offset := 0
-	store := dp.GetTinyStore()
+	store := dp.GetBlobStore()
 	var applyObjectId uint64
 	dataLen := len(data)
 	for {

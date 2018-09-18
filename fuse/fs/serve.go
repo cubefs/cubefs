@@ -1568,7 +1568,7 @@ func GenerateDynamicInode(parent uint64, name string) uint64 {
 		if inode != 0 {
 			break
 		}
-		// there's a tiny probability that result is zero; change the
+		// there's a blob probability that result is zero; change the
 		// input a little and try again
 		_, _ = h.Write([]byte{'x'})
 	}
