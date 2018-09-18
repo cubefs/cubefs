@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	BlobChunkCount    = 10
+	ChunkFileCount    = 10
 	ChunkOpenOpt      = os.O_CREATE | os.O_RDWR | os.O_APPEND
 	CompactThreshold  = 40
 	CompactMaxWait    = time.Second * 10
@@ -59,13 +59,13 @@ func NewBlobStore(dataDir string, storeSize int) (s *BlobStore, err error) {
 		return nil, fmt.Errorf("NewBlobStore [%v] err[%v]", dataDir, err)
 	}
 
-	s.availChunkCh = make(chan int, BlobChunkCount+1)
-	s.unavailChunkCh = make(chan int, BlobChunkCount+1)
-	for i := 1; i <= BlobChunkCount; i++ {
+	s.availChunkCh = make(chan int, ChunkFileCount+1)
+	s.unavailChunkCh = make(chan int, ChunkFileCount+1)
+	for i := 1; i <= ChunkFileCount; i++ {
 		s.unavailChunkCh <- i
 	}
 	s.storeSize = storeSize
-	s.chunkSize = storeSize / BlobChunkCount
+	s.chunkSize = storeSize / ChunkFileCount
 
 	return
 }
@@ -85,7 +85,7 @@ func (s *BlobStore) UseSize() (size int64) {
 }
 
 func (s *BlobStore) initChunkFile() (err error) {
-	for i := 1; i <= BlobChunkCount; i++ {
+	for i := 1; i <= ChunkFileCount; i++ {
 		var c *Chunk
 		if c, err = NewChunk(s.dataDir, i); err != nil {
 			return fmt.Errorf("initChunkFile Error %s", err.Error())
@@ -299,7 +299,7 @@ func (s *BlobStore) PutUnAvailChunk(chunkId int) {
 }
 
 func (s *BlobStore) GetStoreChunkCount() (files int, err error) {
-	return BlobChunkCount, nil
+	return ChunkFileCount, nil
 }
 
 func (s *BlobStore) MarkDelete(fileId uint32, offset, size int64) error {
@@ -397,7 +397,7 @@ func (s *BlobStore) IsReadyToCompact(chunkID, thresh int) (isready bool, deleteP
 	c := s.chunks[chunkID]
 	objects := c.tree
 	deletePercent = float64(objects.deleteBytes) / float64(objects.fileBytes)
-	maxChunkSize := s.storeSize / BlobChunkCount
+	maxChunkSize := s.storeSize / ChunkFileCount
 	if objects.fileBytes < uint64(maxChunkSize)*CompactThreshold/100 {
 		return false, deletePercent
 	}
@@ -494,7 +494,7 @@ func (s *BlobStore) Snapshot() ([]*proto.File, error) {
 		if ccID, err = strconv.Atoi(info.Name()); err != nil {
 			continue
 		}
-		if ccID > BlobChunkCount {
+		if ccID > ChunkFileCount {
 			continue
 		}
 		if cc, err = s.GetChunkInCore(uint32(ccID)); err != nil {

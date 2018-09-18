@@ -465,13 +465,13 @@ func (dp *dataPartition) DelObjects(chunkId uint32, deleteBuf []byte) (err error
 func (dp *dataPartition) MergeRepair(metas *MembersFileMetas) {
 	store := dp.extentStore
 	for _, deleteExtentId := range metas.NeedDeleteExtentsTasks {
-		if deleteExtentId.FileId <= storage.BlobChunkCount {
+		if deleteExtentId.FileId <= storage.ChunkFileCount {
 			continue
 		}
 		store.MarkDelete(uint64(deleteExtentId.FileId))
 	}
 	for _, addExtent := range metas.NeedAddExtentsTasks {
-		if addExtent.FileId <= storage.BlobChunkCount {
+		if addExtent.FileId <= storage.ChunkFileCount {
 			continue
 		}
 		if store.IsExistExtent(uint64(addExtent.FileId)) {
@@ -488,7 +488,7 @@ func (dp *dataPartition) MergeRepair(metas *MembersFileMetas) {
 	blobFiles := make([]*storage.FileInfo, 0)
 	var wg sync.WaitGroup
 	for _, fixExtent := range metas.NeedFixFileSizeTasks {
-		if fixExtent.FileId <= storage.BlobChunkCount {
+		if fixExtent.FileId <= storage.ChunkFileCount {
 			blobFiles = append(blobFiles, fixExtent)
 			continue
 		}

@@ -239,7 +239,7 @@ func (dp *dataPartition) generatorAddExtentsTasks(allMembers []*MembersFileMetas
 	leader := allMembers[0]
 	leaderAddr := dp.replicaHosts[0]
 	for fileId, leaderFile := range leader.files {
-		if fileId <= storage.BlobChunkCount {
+		if fileId <= storage.ChunkFileCount {
 			continue
 		}
 		for index := 1; index < len(allMembers); index++ {
@@ -301,7 +301,7 @@ func (dp *dataPartition) generatorBlobDeleteTasks(allMembers []*MembersFileMetas
 	store := dp.blobStore
 	for _, chunkInfo := range allMembers[0].files {
 		chunkId := chunkInfo.FileId
-		if chunkId > storage.BlobChunkCount {
+		if chunkId > storage.ChunkFileCount {
 			continue
 		}
 		deletes := store.GetDelObjects(uint32(chunkId))
