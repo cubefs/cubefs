@@ -26,5 +26,7 @@ extended attributes
 
 full-fledged Java SDK
 
+NFS support
+
 Linux kernel client
 
