@@ -23,6 +23,7 @@ import (
 	"sync/atomic"
 
 	"github.com/tiglabs/containerfs/util"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 type Chunk struct {
@@ -48,7 +49,9 @@ func NewChunk(dataDir string, chunkId int) (c *Chunk, err error) {
 
 func (c *Chunk) applyDelObjects(objects []uint64) (err error) {
 	for _, needle := range objects {
+		c.commitLock.RLock()
 		c.tree.delete(needle)
+		c.commitLock.RUnlock()
 	}
 
 	c.storeSyncLastOid(c.loadLastOid())
@@ -79,11 +82,7 @@ func (c *Chunk) loadTree(name string) (maxOid uint64, err error) {
 
 // returns count of valid objects calculated for CRC
 func (c *Chunk) getCheckSum() (fullCRC uint32, syncLastOid uint64, count int) {
-	syncLastOid = c.loadSyncLastOid()
-	if syncLastOid == 0 {
-		syncLastOid = c.loadLastOid()
-	}
-
+	syncLastOid = c.loadLastOid()
 	c.tree.idxFile.Sync()
 	crcBuffer := make([]byte, 0)
 	buf := make([]byte, 4)
@@ -162,10 +161,11 @@ func (c *Chunk) doCompact() (err error) {
 }
 
 func (c *Chunk) copyValidData(dstNm *ObjectTree, dstDatFile *os.File) (err error) {
-	srcNm := c.tree
+	srcTree := c.tree
 	srcDatFile := c.file
-	srcIdxFile := srcNm.idxFile
+	srcIdxFile := srcTree.idxFile
 	deletedSet := make(map[uint64]struct{})
+	log.LogInfo("copyValidData start: ", c.tree.idxFile.Name())
 	_, err = LoopIndexFile(srcIdxFile, func(oid uint64, offset, size, crc uint32) error {
 		var (
 			o *Object
@@ -184,7 +184,7 @@ func (c *Chunk) copyValidData(dstNm *ObjectTree, dstDatFile *os.File) (err error
 			return nil
 		}
 
-		o, ok = srcNm.get(oid)
+		o, ok = srcTree.get(oid)
 		if !ok {
 			return nil
 		}
@@ -214,6 +214,7 @@ func (c *Chunk) copyValidData(dstNm *ObjectTree, dstDatFile *os.File) (err error
 
 		return nil
 	})
+	log.LogInfo("copyValidData end: ", c.tree.idxFile.Name(), "err = ", err)
 
 	return err
 }
@@ -239,7 +240,7 @@ func (c *Chunk) doCommit() (err error) {
 
 	maxOid, err := c.loadTree(name)
 	if err == nil && maxOid > c.loadLastOid() {
-		// shold not happen, just in case
+		log.LogWarn("doCommit: maxOid = ", maxOid, "lastOid = ", c.loadLastOid())
 		c.storeLastOid(maxOid)
 	}
 	return err
@@ -286,9 +287,9 @@ func catchupDeleteIndex(oldIdxName, newIdxName string) error {
 			return err
 		}
 
-		ni := &Object{}
-		ni.Unmarshal(data)
-		if ni.Size != MarkDeleteObject || ni.IsIdentical(lastIndexEntry) {
+		o := &Object{}
+		o.Unmarshal(data)
+		if o.Size != MarkDeleteObject || o.IsIdentical(lastIndexEntry) {
 			break
 		}
 		result := make([]byte, len(catchup)+ObjectHeaderSize)

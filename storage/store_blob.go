@@ -24,7 +24,6 @@ import (
 
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util"
 )
 
 const (
@@ -149,7 +148,7 @@ func (s *BlobStore) Write(fileId uint32, objectId uint64, size int64, data []byt
 	if objectId < c.loadLastOid() {
 		msg := fmt.Sprintf("Object id smaller than last oid. DataDir[%v] FileId[%v]"+
 			" ObjectId[%v] Size[%v]", s.dataDir, chunkId, objectId, c.loadLastOid())
-		err = errors.New(msg)
+		err = fmt.Errorf(msg)
 		return ErrObjectSmaller
 	}
 
@@ -310,7 +309,8 @@ func (s *BlobStore) MarkDelete(fileId uint32, offset, size int64) error {
 	if !ok {
 		return ErrorFileNotFound
 	}
-
+	c.commitLock.RLock()
+	defer c.commitLock.RUnlock()
 	return c.tree.delete(objectId)
 }
 
@@ -388,40 +388,25 @@ func (s *BlobStore) ApplyDelObjects(chunkId uint32, objects []uint64) (err error
 	return
 }
 
-func (s *BlobStore) UpdateStoreInfo() {
-	for chunkId, c := range s.chunks {
-		finfo, err := c.file.Stat()
-		if err != nil {
-			continue
-		}
-		if finfo.Size() >= int64(s.chunkSize) {
-			s.fullChunks.Add(chunkId)
-		} else {
-			s.fullChunks.Remove(chunkId)
-		}
+// make sure chunkID is valid
+func (s *BlobStore) IsReadyToCompact(chunkID, thresh int) (isready bool, deletePercent float64) {
+	if thresh < 0 {
+		thresh = CompactThreshold
 	}
 
-	return
-}
-
-// make sure chunkId is valid
-func (s *BlobStore) IsReadyToCompact(chunkId int) bool {
-	c := s.chunks[chunkId]
-	tree := c.tree
-
-	if s.fullChunks.Has(chunkId) {
-		if tree.fileBytes < uint64(s.chunkSize) {
-			return true
-		} else {
-			return false
-		}
+	c := s.chunks[chunkID]
+	objects := c.tree
+	deletePercent = float64(objects.deleteBytes) / float64(objects.fileBytes)
+	maxChunkSize := s.storeSize / TinyChunkCount
+	if objects.fileBytes < uint64(maxChunkSize)*CompactThreshold/100 {
+		return false, deletePercent
 	}
 
-	if tree.deleteBytes*100/(tree.fileBytes+1) >= uint64(CompactThreshold) {
-		return true
+	if objects.deleteBytes < objects.fileBytes*uint64(thresh)/100 {
+		return false, deletePercent
 	}
 
-	return false
+	return true, deletePercent
 }
 
 func (s *BlobStore) DoCompactWork(chunkID int) (err error, released uint64) {

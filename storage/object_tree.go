@@ -39,8 +39,8 @@ type Object struct {
 	Crc    uint32
 }
 
-func (o *Object) Less(than btree.Item) bool {
-	that := than.(*Object)
+func (o Object) Less(than btree.Item) bool {
+	that := than.(Object)
 	return o.Oid < that.Oid
 }
 
@@ -96,7 +96,7 @@ func (tree *ObjectTree) Load() (maxOid uint64, err error) {
 			found := tree.tree.ReplaceOrInsert(o)
 			tree.idxLock.Unlock()
 			if found != nil {
-				oldNi := found.(*Object)
+				oldNi := found.(Object)
 				tree.decreaseSize(oldNi.Size)
 			}
 			tree.increaseSize(size)
@@ -105,7 +105,7 @@ func (tree *ObjectTree) Load() (maxOid uint64, err error) {
 			found := tree.tree.Delete(o)
 			tree.idxLock.Unlock()
 			if found != nil {
-				oldNi := found.(*Object)
+				oldNi := found.(Object)
 				tree.decreaseSize(oldNi.Size)
 			}
 		}
@@ -164,8 +164,8 @@ func (tree *ObjectTree) set(oid uint64, offset, size, crc uint32) (oldOff, oldSi
 	}
 
 	tree.idxLock.Lock()
-	if found := tree.tree.ReplaceOrInsert(o); found != nil {
-		object := found.(*Object)
+	if found := tree.tree.ReplaceOrInsert(*o); found != nil {
+		object := found.(Object)
 		oldOff = object.Offset
 		oldSize = object.Size
 		tree.decreaseSize(oldSize)
@@ -183,10 +183,10 @@ func (tree *ObjectTree) get(oid uint64) (n *Object, exist bool) {
 			exist = false
 		}
 	}()
-	found := tree.tree.Get(&Object{Oid: oid})
+	found := tree.tree.Get(Object{Oid: oid})
 	if found != nil {
-		o := found.(*Object)
-		return o, true
+		o := found.(Object)
+		return &o, true
 	}
 
 	return nil, false
@@ -194,17 +194,17 @@ func (tree *ObjectTree) get(oid uint64) (n *Object, exist bool) {
 
 func (tree *ObjectTree) delete(oid uint64) error {
 	tree.idxLock.Lock()
-	found := tree.tree.Delete(&Object{Oid: oid})
+	found := tree.tree.Delete(Object{Oid: oid})
 	if found == nil {
 		tree.idxLock.Unlock()
 		return nil
 	}
-	o := found.(*Object)
+	o := found.(Object)
 	tree.decreaseSize(o.Size)
 	o.Size = MarkDeleteObject
 	tree.idxLock.Unlock()
 
-	return tree.appendToIdxFile(o)
+	return tree.appendToIdxFile(&o)
 }
 
 func (tree *ObjectTree) checkConsistency(oid uint64, offset, size uint32) bool {
