@@ -16,14 +16,17 @@ checksum
 
 Kubernetes container storage interface
 
-## Todo
-
 lseek and file holes
 
 random write via the raft statemachine
+
+## Todo
 
 extended attributes
 
 full-fledged Java SDK
 
+NFS support
+
+Linux kernel client
 

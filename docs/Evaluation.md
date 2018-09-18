@@ -6,11 +6,17 @@ SSD, TCP/IP
 
 ## Performance evaluation
 
-FIO
 
 * Throughput
 
 * Latency
+
+Microbenchmarks
+
+FIO
+
+Filebench
+
 
 ## Workload evalution
 

@@ -26,10 +26,10 @@ import (
 	"fmt"
 	"net/http"
 	_ "net/http/pprof"
+	"os"
 	"path"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/tiglabs/containerfs/fuse"
 	"github.com/tiglabs/containerfs/fuse/fs"
@@ -65,9 +65,9 @@ func main() {
 	cfg := config.LoadConfigFile(*configFile)
 	if err := Mount(cfg); err != nil {
 		fmt.Println("Mount failed: ", err)
+		os.Exit(1)
 	}
 	// Wait for the log to be flushed
-	time.Sleep(2 * time.Second)
 	fmt.Println("Done!")
 }
 
@@ -114,6 +114,7 @@ func Mount(cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
+	defer log.LogFlush()
 
 	super, err := bdfs.NewSuper(volname, master, icacheTimeout)
 	if err != nil {
