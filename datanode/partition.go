@@ -41,7 +41,7 @@ const (
 )
 
 var (
-	AdminGetDataPartition     = master.AdminGetDataPartition
+	AdminGetDataPartition = master.AdminGetDataPartition
 )
 
 type DataPartition interface {

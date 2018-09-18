@@ -371,7 +371,6 @@ func (s *ExtentStore) cleanupScheduler() {
 }
 
 func (s *ExtentStore) cleanup() {
-
 	extentInfoSlice, err := s.GetAllWatermark(GetEmptyExtentFilter())
 	if err != nil {
 		return
