@@ -42,10 +42,6 @@ const (
 
 var (
 	AdminGetDataPartition     = master.AdminGetDataPartition
-	ErrNotLeader              = errors.New("not leader")
-	LeastGoalNum              = 2
-	ErrLackOfGoal             = errors.New("dataPartitionGoal is not equal dataPartitionHosts")
-	ErrDataPartitionOnBadDisk = errors.New("error bad disk")
 )
 
 type DataPartition interface {
