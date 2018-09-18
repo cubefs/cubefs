@@ -428,10 +428,10 @@ func (s *BlobStore) DoCompactWork(chunkID int) (err error, released uint64) {
 }
 
 func (s *BlobStore) MoveChunkToUnavailChan() {
-	if len(s.unavailChunkCh) >= 3 {
+	if len(s.unavailChunkCh) >= 2 {
 		return
 	}
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 2; i++ {
 		select {
 		case chunkId := <-s.availChunkCh:
 			s.unavailChunkCh <- chunkId
