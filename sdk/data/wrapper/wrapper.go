@@ -129,13 +129,6 @@ func (w *Wrapper) updateDataPartition() error {
 			rwPartitionGroups = append(rwPartitionGroups, dp)
 		}
 	}
-	if len(rwPartitionGroups) < MinWritableDataPartitionNum {
-		err = fmt.Errorf("action[Wrapper.updateDataPartition] RW partitions[%v] Minimum[%v]",
-			len(rwPartitionGroups), MinWritableDataPartitionNum)
-		log.LogErrorf(err.Error())
-		return err
-	}
-
 	for _, dp := range view.DataPartitions {
 		w.replaceOrInsertPartition(dp)
 	}
