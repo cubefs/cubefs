@@ -36,7 +36,7 @@ const (
 	ActionCheckAndAddInfos                           = "ActionCheckAndAddInfos"
 	ActionCheckChunkInfo                             = "ActionCheckChunkInfo"
 	ActionPostToMaster                               = "ActionPostToMaster"
-	ActionLeaderToFollowerOpCRepairReadPackResponse  = "ActionLeaderToFollowerOpCRepairReadPackResponse"
+	ActionFollowerRequireChunkRepairCmd              = "ActionFollowerRequireChunkRepairCmd"
 	ActionLeaderToFollowerOpRepairReadPackBuffer     = "ActionLeaderToFollowerOpRepairReadPackBuffer"
 	ActionLeaderToFollowerOpRepairReadSendPackBuffer = "ActionLeaderToFollowerOpRepairReadSendPackBuffer"
 

@@ -481,18 +481,18 @@ func (s *DataNode) handleChunkRepairRead(pkg *Packet, conn *net.TCPConn) {
 	chunkID = uint32(pkg.FileID)
 	requireOid = uint64(pkg.Offset + 1)
 	localOid, err = pkg.DataPartition.GetBlobStore().GetLastOid(chunkID)
-	log.LogWrite(pkg.ActionMsg(ActionLeaderToFollowerOpCRepairReadPackResponse,
+	log.LogWrite(pkg.ActionMsg(ActionFollowerRequireChunkRepairCmd,
 		fmt.Sprintf("follower require Oid[%v] localOid[%v]", requireOid, localOid), pkg.StartT, err))
 	if localOid < requireOid {
 		err = fmt.Errorf(" requireOid[%v] but localOid[%v]", requireOid, localOid)
 		err = errors.Annotatef(err, "Request[%v] repairObjectRead Error", pkg.GetUniqueLogId())
-		pkg.PackErrorBody(ActionLeaderToFollowerOpCRepairReadPackResponse, err.Error())
+		pkg.PackErrorBody(ActionFollowerRequireChunkRepairCmd, err.Error())
 		return
 	}
 	err = syncData(chunkID, requireOid, localOid, pkg, conn)
 	if err != nil {
 		err = errors.Annotatef(err, "Request[%v] SYNCDATA Error", pkg.GetUniqueLogId())
-		pkg.PackErrorBody(ActionLeaderToFollowerOpCRepairReadPackResponse, err.Error())
+		pkg.PackErrorBody(ActionFollowerRequireChunkRepairCmd, err.Error())
 	}
 
 	return

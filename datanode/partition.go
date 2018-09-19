@@ -320,7 +320,7 @@ func (dp *dataPartition) LaunchRepair() {
 	if !dp.isLeader {
 		return
 	}
-	dp.fileRepair()
+	dp.extentFileRepair()
 }
 
 func (dp *dataPartition) updateReplicaHosts() (err error) {
@@ -407,16 +407,11 @@ func (dp *dataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 	return
 }
 
-func (dp *dataPartition) GetAllWaterMarker() (files []*storage.FileInfo, err error) {
-	blobFiles, err := dp.blobStore.GetAllWatermark()
-	if err != nil {
-		return nil, err
-	}
+func (dp *dataPartition) GetAllExtentsMeta() (files []*storage.FileInfo, err error) {
 	files, err = dp.extentStore.GetAllWatermark(storage.GetStableExtentFilter())
 	if err != nil {
 		return nil, err
 	}
-	files = append(files, blobFiles...)
 
 	return
 }
@@ -482,12 +477,12 @@ func (dp *dataPartition) MergeRepair(metas *MembersFileMetas) {
 			continue
 		}
 		fixFileSizeTask := &storage.FileInfo{Source: addExtent.Source, FileId: addExtent.FileId, Size: addExtent.Size}
-		metas.NeedFixFileSizeTasks = append(metas.NeedFixFileSizeTasks, fixFileSizeTask)
+		metas.NeedFixExtentSizeTasks = append(metas.NeedFixExtentSizeTasks, fixFileSizeTask)
 	}
 
 	blobFiles := make([]*storage.FileInfo, 0)
 	var wg sync.WaitGroup
-	for _, fixExtent := range metas.NeedFixFileSizeTasks {
+	for _, fixExtent := range metas.NeedFixExtentSizeTasks {
 		if fixExtent.FileId <= storage.ChunkFileCount {
 			blobFiles = append(blobFiles, fixExtent)
 			continue

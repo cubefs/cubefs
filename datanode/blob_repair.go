@@ -28,11 +28,74 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 )
 
+func (dp *dataPartition) blobRepair(){
+
+}
+
+
 type RepairChunkTask struct {
 	ChunkId  int
 	StartObj uint64
 	EndObj   uint64
 }
+
+
+
+func (dp *dataPartition) getLocalChunkMetas(filterChunkids []int) (fileMetas *MembersFileMetas, err error) {
+	var (
+		chunkFiles []*storage.FileInfo
+	)
+	if chunkFiles, err = dp.blobStore.GetAllWaterMarker(); err != nil {
+		return
+	}
+	files := make([]*storage.FileInfo, 0)
+	for _,cid :=range chunkFiles{
+		for _,ccid:=range filterChunkids {
+			if cid.FileId==ccid{
+				files=append(files,cid)
+			}
+		}
+	}
+	fileMetas = NewMemberFileMetas()
+	for _, file := range files {
+		fileMetas.files[file.FileId] = file
+	}
+	return
+}
+
+func (dp *dataPartition) getRemoteChunkMetas(remote string,filterChunkids []int) (fileMetas *MembersFileMetas, err error) {
+	var (
+		conn *net.TCPConn
+	)
+	if conn, err = gConnPool.Get(remote); err != nil {
+		err = errors.Annotatef(err, "getRemoteExtentMetas partition[%v] get connection", dp.partitionId)
+		return
+	}
+	defer gConnPool.Put(conn, true)
+
+	packet := NewGetAllWaterMarker(dp.partitionId)
+	if err = packet.WriteToConn(conn); err != nil {
+		err = errors.Annotatef(err, "getRemoteExtentMetas partition[%v] write to remote[%v]", dp.partitionId, remote)
+		return
+	}
+	if err = packet.ReadFromConn(conn, 10); err != nil {
+		err = errors.Annotatef(err, "getRemoteExtentMetas partition[%v] read from connection[%v]", dp.partitionId, remote)
+		return
+	}
+	files := make([]*storage.FileInfo, 0)
+	if err = json.Unmarshal(packet.Data[:packet.Size], &files); err != nil {
+		err = errors.Annotatef(err, "getRemoteExtentMetas partition[%v] unmarshal packet", dp.partitionId)
+		return
+	}
+	fileMetas = NewMemberFileMetas()
+	for _, file := range files {
+		fileMetas.files[file.FileId] = file
+	}
+	return
+}
+
+
+
 
 //do stream repair chunkfile,it do on follower host
 func (dp *dataPartition) doStreamBlobFixRepair(wg *sync.WaitGroup, remoteBlobFileInfo *storage.FileInfo) {
