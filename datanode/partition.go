@@ -480,11 +480,9 @@ func (dp *dataPartition) MergeRepair(metas *MembersFileMetas) {
 		metas.NeedFixExtentSizeTasks = append(metas.NeedFixExtentSizeTasks, fixFileSizeTask)
 	}
 
-	blobFiles := make([]*storage.FileInfo, 0)
 	var wg sync.WaitGroup
 	for _, fixExtent := range metas.NeedFixExtentSizeTasks {
 		if fixExtent.FileId <= storage.ChunkFileCount {
-			blobFiles = append(blobFiles, fixExtent)
 			continue
 		}
 		if !store.IsExistExtent(uint64(fixExtent.FileId)) {
@@ -498,10 +496,6 @@ func (dp *dataPartition) MergeRepair(metas *MembersFileMetas) {
 			log.LogErrorf("action[Repair] dataPartition[%v] chunkId[%v] deleteObject "+
 				"failed err[%v]", dp.partitionId, chunkId, err.Error())
 		}
-	}
-	for _, fixBlob := range blobFiles {
-		wg.Add(1)
-		go dp.doStreamBlobFixRepair(&wg, fixBlob)
 	}
 	wg.Wait()
 }
