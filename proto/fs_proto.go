@@ -16,24 +16,51 @@ package proto
 
 import (
 	"fmt"
+	"os"
 	"time"
+
+	"github.com/tiglabs/containerfs/fuse"
 )
 
 const (
 	RootIno = uint64(1)
 )
 
-const (
-	ModeRegular uint32 = iota
-	ModeDir
-	ModeSymlink
-)
+func Mode(osMode os.FileMode) uint32 {
+	return uint32(osMode)
+}
+
+func OsMode(mode uint32) os.FileMode {
+	return os.FileMode(mode)
+}
+
+func Valid(fuseValid fuse.SetattrValid) uint32 {
+	return uint32(fuseValid)
+}
+
+func FuseValid(valid uint32) fuse.SetattrValid {
+	return fuse.SetattrValid(valid)
+}
+
+func IsRegular(mode uint32) bool {
+	return OsMode(mode).IsRegular()
+}
+
+func IsDir(mode uint32) bool {
+	return OsMode(mode).IsDir()
+}
+
+func IsSymlink(mode uint32) bool {
+	return OsMode(mode)&os.ModeSymlink != 0
+}
 
 type InodeInfo struct {
 	Inode      uint64    `json:"ino"`
 	Mode       uint32    `json:"mode"`
 	Nlink      uint32    `json:"nlink"`
 	Size       uint64    `json:"sz"`
+	Uid        uint32    `json:"uid"`
+	Gid        uint32    `json:"gid"`
 	Generation uint64    `json:"gen"`
 	ModifyTime time.Time `json:"mt"`
 	CreateTime time.Time `json:"ct"`
@@ -201,3 +228,19 @@ type TruncateRequest struct {
 type TruncateResponse struct {
 	Extents []ExtentKey `json:"ek"`
 }
+
+type SetattrRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+	Mode        uint32 `json:"mode"`
+	Uid         uint32 `json:"uid"`
+	Gid         uint32 `json:"gid"`
+	Valid       uint32 `json:"valid"`
+}
+
+const (
+	AttrMode uint32 = 1 << iota
+	AttrUid
+	AttrGid
+)

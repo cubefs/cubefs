@@ -22,6 +22,7 @@ import (
 	"github.com/tiglabs/containerfs/fuse/fs"
 	"golang.org/x/net/context"
 
+	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/sdk/data/stream"
 	"github.com/tiglabs/containerfs/util/log"
 	"sync"
@@ -244,8 +245,11 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 		}
 	}
 
-	if req.Valid.Mode() {
-		inode.osMode = req.Mode
+	inode.setattr(req)
+	err = f.super.mw.Setattr(ino, proto.Valid(req.Valid), proto.Mode(inode.mode), inode.uid, inode.gid)
+	if err != nil {
+		f.super.ic.Delete(ino)
+		return ParseError(err)
 	}
 
 	inode.fillAttr(&resp.Attr)

@@ -79,6 +79,7 @@ const (
 	OpMetaTruncate      uint8 = 0x2D
 	OpMetaLinkInode     uint8 = 0x2E
 	OpMetaEvictInode    uint8 = 0x2F
+	OpMetaSetattr       uint8 = 0x30
 
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition  uint8 = 0x40
@@ -222,6 +223,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaLinkInode"
 	case OpMetaEvictInode:
 		m = "OpMetaEvictInode"
+	case OpMetaSetattr:
+		m = "OpMetaSetattr"
 	case OpCreateMetaPartition:
 		m = "OpCreateMetaPartition"
 	case OpMetaNodeHeartbeat:
