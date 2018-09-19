@@ -140,13 +140,6 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 	}
 
 	f.super.ic.Delete(ino)
-
-	if f.super.orphan.Evict(ino) {
-		if err = f.super.mw.Evict(ino); err != nil {
-			log.LogErrorf("Release: evict inode failed, ino(%v) err(%v)", ino, err)
-		}
-	}
-
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Release: ino(%v) req(%v) (%v)ns", ino, req, elapsed.Nanoseconds())
 	return nil
