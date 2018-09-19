@@ -78,7 +78,7 @@ func NewStreamWriter(inode, start uint64, appendExtentKey AppendExtentKeyFunc) (
 	stream.requestCh = make(chan interface{}, 1000)
 	stream.exitCh = make(chan bool, 10)
 	stream.excludePartition = make([]uint32, 0)
-	stream.hasUpdateKey=make(map[string]int,0)
+	stream.hasUpdateKey = make(map[string]int, 0)
 	go stream.server()
 
 	return
