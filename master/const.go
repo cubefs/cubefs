@@ -42,14 +42,13 @@ const (
 )
 
 const (
-	DefaultMaxMetaPartitionInodeID      uint64  = 1<<63 - 1
-	DefaultMetaPartitionInodeIDStep     uint64  = 1 << 24
-	DefaultMetaNodeReservedMem          uint64  = 1 << 32
-	RuntimeStackBufSize                         = 4096
-	NodesAliveRate                      float32 = 0.5
-	MinReadWriteDataPartitions                  = 200
-	MinReadWriteDataPartitionsForClient         = 10
-	SpaceAvailRate                              = 0.95
+	DefaultMaxMetaPartitionInodeID  uint64  = 1<<63 - 1
+	DefaultMetaPartitionInodeIDStep uint64  = 1 << 24
+	DefaultMetaNodeReservedMem      uint64  = 1 << 32
+	RuntimeStackBufSize                     = 4096
+	NodesAliveRate                  float32 = 0.5
+	MinReadWriteDataPartitions              = 200
+	SpaceAvailRate                          = 0.95
 )
 
 const (
