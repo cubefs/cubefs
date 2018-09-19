@@ -45,7 +45,7 @@ func (dp *dataPartition) getLocalChunkMetas(filterChunkids []int) (fileMetas *Me
 	var (
 		chunkFiles []*storage.FileInfo
 	)
-	if chunkFiles, err = dp.blobStore.GetAllWaterMarker(); err != nil {
+	if chunkFiles, err = dp.blobStore.GetAllWatermark(); err != nil {
 		return
 	}
 	files := make([]*storage.FileInfo, 0)
