@@ -484,7 +484,7 @@ func (s *DataNode) handleNotifyExtentRepair(pkg *Packet) {
 		pkg.PackErrorBody(LogRepair, err.Error())
 		return
 	}
-	pkg.DataPartition.MergeRepair(mf)
+	pkg.DataPartition.MergeExtentStoreRepair(mf)
 	pkg.PackOkReply()
 	return
 }
@@ -500,7 +500,7 @@ func (s *DataNode) handleNotifyBlobRepair(pkg *Packet) {
 		pkg.PackErrorBody(LogRepair, err.Error())
 		return
 	}
-	pkg.DataPartition.MergeRepair(mf)
+	pkg.DataPartition.MergeBlobStoreRepair(mf)
 	pkg.PackOkReply()
 	return
 }
