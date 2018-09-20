@@ -77,8 +77,8 @@ func (s *DataNode) operatePacket(pkg *Packet, c *net.TCPConn) {
 		s.handleMarkDelete(pkg)
 	case proto.OpNotifyCompact:
 		s.handleNotifyCompact(pkg)
-	case proto.OpNotifyRepair:
-		s.handleNotifyRepair(pkg)
+	case proto.OpNotifyExtentRepair:
+		s.handleNotifyExtentRepair(pkg)
 	case proto.OpGetWatermark:
 		s.handleGetWatermark(pkg)
 	case proto.OpExtentStoreGetAllWaterMark:
@@ -473,8 +473,8 @@ func (s *DataNode) handleNotifyCompact(pkg *Packet) {
 	return
 }
 
-// Handle OpNotifyRepair packet.
-func (s *DataNode) handleNotifyRepair(pkg *Packet) {
+// Handle OpNotifyExtentRepair packet.
+func (s *DataNode) handleNotifyExtentRepair(pkg *Packet) {
 	var (
 		err error
 	)

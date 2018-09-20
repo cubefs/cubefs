@@ -55,7 +55,7 @@ const (
 	OpGetWatermark               uint8 = 0x06
 	OpExtentStoreGetAllWaterMark uint8 = 0x07
 
-	OpNotifyRepair             uint8 = 0x08
+	OpNotifyExtentRepair       uint8 = 0x08
 	OpERepairRead              uint8 = 0x09
 	OpBlobFileRepairRead       uint8 = 0x0A
 	OpFlowInfo                 uint8 = 0x0B
@@ -181,7 +181,7 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "GetWatermark"
 	case OpExtentStoreGetAllWaterMark:
 		m = "GetAllWatermark"
-	case OpNotifyRepair:
+	case OpNotifyExtentRepair:
 		m = "NotifyRepair"
 	case OpBlobFileRepairRead:
 		m = "BlobFileRepairRead"

@@ -242,8 +242,6 @@ func (dp *dataPartition) generatorDeleteExtentsTasks(allMembers []*MembersFileMe
 	}
 }
 
-
-
 /*notify follower to repair dataPartition extentStore*/
 func (dp *dataPartition) NotifyRepair(members []*MembersFileMetas) (err error) {
 	var (

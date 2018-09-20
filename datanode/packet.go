@@ -181,7 +181,7 @@ func NewStreamBlobFileRepairReadPacket(partitionId uint32, blobfileId int) (p *P
 
 func NewNotifyRepair(partitionId uint32) (p *Packet) {
 	p = new(Packet)
-	p.Opcode = proto.OpNotifyRepair
+	p.Opcode = proto.OpNotifyExtentRepair
 	p.PartitionID = partitionId
 	p.Magic = proto.ProtoMagic
 	p.ReqID = proto.GetReqID()

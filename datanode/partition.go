@@ -456,22 +456,22 @@ func (dp *dataPartition) DelObjects(blobfileId uint32, deleteBuf []byte) (err er
 	return
 }
 
-func (dp *dataPartition) MergeRepair(metas *MembersFileMetas) {
-	store := dp.extentStore
+func (dp *dataPartition) MergeExtentStoreRepair(metas *MembersFileMetas) {
+	extentStore := dp.extentStore
 	for _, deleteExtentId := range metas.NeedDeleteExtentsTasks {
 		if deleteExtentId.FileId <= storage.BlobFileFileCount {
 			continue
 		}
-		store.MarkDelete(uint64(deleteExtentId.FileId))
+		extentStore.MarkDelete(uint64(deleteExtentId.FileId))
 	}
 	for _, addExtent := range metas.NeedAddExtentsTasks {
 		if addExtent.FileId <= storage.BlobFileFileCount {
 			continue
 		}
-		if store.IsExistExtent(uint64(addExtent.FileId)) {
+		if extentStore.IsExistExtent(uint64(addExtent.FileId)) {
 			continue
 		}
-		err := store.Create(uint64(addExtent.FileId), addExtent.Inode, false)
+		err := extentStore.Create(uint64(addExtent.FileId), addExtent.Inode, false)
 		if err != nil {
 			continue
 		}
@@ -484,12 +484,43 @@ func (dp *dataPartition) MergeRepair(metas *MembersFileMetas) {
 		if fixExtent.FileId <= storage.BlobFileFileCount {
 			continue
 		}
-		if !store.IsExistExtent(uint64(fixExtent.FileId)) {
+		if !extentStore.IsExistExtent(uint64(fixExtent.FileId)) {
 			continue
 		}
 		wg.Add(1)
 		go dp.doStreamExtentFixRepair(&wg, fixExtent)
 	}
+
+	for _, fixExtent := range metas.NeedFixBlobFileSizeTasks {
+		if fixExtent.FileId > storage.BlobFileFileCount {
+			continue
+		}
+		if !extentStore.IsExistExtent(uint64(fixExtent.FileId)) {
+			continue
+		}
+		wg.Add(1)
+		go dp.doStreamExtentFixRepair(&wg, fixExtent)
+	}
+
+	for blobfileId, deleteBlobObject := range metas.NeedDeleteObjectsTasks {
+		if err := dp.DelObjects(uint32(blobfileId), deleteBlobObject); err != nil {
+			log.LogErrorf("action[Repair] dataPartition[%v] blobfileId[%v] deleteObject "+
+				"failed err[%v]", dp.partitionId, blobfileId, err.Error())
+		}
+	}
+	wg.Wait()
+}
+
+func (dp *dataPartition) MergeBlobStoreRepair(metas *MembersFileMetas) {
+	var wg sync.WaitGroup
+	for _, fixBlobFiles := range metas.NeedFixBlobFileSizeTasks {
+		if fixBlobFiles.FileId > storage.BlobFileFileCount {
+			continue
+		}
+		wg.Add(1)
+		go dp.doStreamBlobFixRepair(&wg, fixBlobFiles)
+	}
+
 	for blobfileId, deleteBlobObject := range metas.NeedDeleteObjectsTasks {
 		if err := dp.DelObjects(uint32(blobfileId), deleteBlobObject); err != nil {
 			log.LogErrorf("action[Repair] dataPartition[%v] blobfileId[%v] deleteObject "+

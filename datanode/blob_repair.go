@@ -21,12 +21,12 @@ import (
 	"net"
 	"sync"
 
+	"encoding/binary"
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
-	"encoding/binary"
 )
 
 func (dp *dataPartition) blobRepair() {
@@ -203,11 +203,12 @@ func (dp *dataPartition) streamRepairBlobObjects(remoteBlobFileInfo *storage.Fil
 		gConnPool.Put(conn, true)
 		return errors.Annotatef(err, "streamRepairBlobObjects send streamRead to host[%v] error", remoteBlobFileInfo.Source)
 	}
+
 	for {
 		//for 1.get local blobfileFileSize
 		localBlobFileInfo, err := store.GetWatermark(uint64(remoteBlobFileInfo.FileId))
 		if err != nil {
-			conn.Close()
+			gConnPool.Put(conn, true)
 			return errors.Annotatef(err, "streamRepairBlobObjects GetWatermark error")
 		}
 		// if local blobfilefile size has great remote ,then break
