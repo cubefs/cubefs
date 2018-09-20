@@ -68,7 +68,13 @@ func (dp *dataPartition) getRemoteChunkMetas(remote string, filterChunkids []int
 		err = errors.Annotatef(err, "getRemoteExtentMetas partition[%v] get connection", dp.partitionId)
 		return
 	}
-	defer gConnPool.Put(conn, true)
+	defer func() {
+		if err != nil {
+			gConnPool.Put(conn, true)
+		} else {
+			gConnPool.Put(conn, false)
+		}
+	}()
 
 	packet := NewBlobStoreGetAllWaterMarker(dp.partitionId)
 	if err = packet.WriteToConn(conn); err != nil {
