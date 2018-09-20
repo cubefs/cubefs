@@ -227,8 +227,8 @@ func (s *ExtentStore) initBaseFileId() (err error) {
 	if _, err = s.metaFp.ReadAt(baseFileIdBytes, ExtMetaBaseIdOffset); err == nil {
 		baseFileId = binary.BigEndian.Uint64(baseFileIdBytes)
 	}
-	if ChunkFileCount > baseFileId {
-		baseFileId = uint64(ChunkFileCount)
+	if BlobFileFileCount > baseFileId {
+		baseFileId = uint64(BlobFileFileCount)
 	}
 	files, err := ioutil.ReadDir(s.dataDir)
 	if err != nil {
@@ -520,7 +520,7 @@ func (s *ExtentStore) parseExtentId(filename string) (extentId uint64, isExtent 
 		isExtent = false
 		return
 	}
-	isExtent = extentId > ChunkFileCount
+	isExtent = extentId > BlobFileFileCount
 	return
 }
 

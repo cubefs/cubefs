@@ -34,12 +34,12 @@ import (
 
 type CompactTask struct {
 	partitionId uint32
-	chunkId     int
+	blobfileId  int
 	isLeader    bool
 }
 
 func (t *CompactTask) toString() (m string) {
-	return fmt.Sprintf("dataPartition[%v]_chunk[%v]_isLeader[%v]", t.partitionId, t.chunkId, t.isLeader)
+	return fmt.Sprintf("dataPartition[%v]_blobfile[%v]_isLeader[%v]", t.partitionId, t.blobfileId, t.isLeader)
 }
 
 const (
@@ -171,7 +171,7 @@ func (d *Disk) compact() {
 			if dp == nil {
 				continue
 			}
-			err, release := dp.GetBlobStore().DoCompactWork(t.chunkId)
+			err, release := dp.GetBlobStore().DoCompactWork(t.blobfileId)
 			if err != nil {
 				log.LogErrorf("action[compact] task[%v] compact error[%v]", t.toString(), err.Error())
 			} else {

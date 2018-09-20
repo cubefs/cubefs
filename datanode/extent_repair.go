@@ -31,21 +31,23 @@ import (
 
 //every  datapartion  file metas used for auto repairt
 type MembersFileMetas struct {
-	Index                  int                       //index on data partionGroup
-	files                  map[int]*storage.FileInfo //storage file on datapartiondisk meta
-	NeedDeleteExtentsTasks []*storage.FileInfo       //generator delete extent file task
-	NeedAddExtentsTasks    []*storage.FileInfo       //generator add extent file task
-	NeedFixExtentSizeTasks []*storage.FileInfo       //generator fixSize file task
-	NeedDeleteObjectsTasks map[int][]byte            //generator deleteObject on blob file task
+	Index                    int                       //index on data partionGroup
+	files                    map[int]*storage.FileInfo //storage file on datapartiondisk meta
+	NeedDeleteExtentsTasks   []*storage.FileInfo       //generator delete extent file task
+	NeedAddExtentsTasks      []*storage.FileInfo       //generator add extent file task
+	NeedFixExtentSizeTasks   []*storage.FileInfo       //generator fixSize file task
+	NeedDeleteObjectsTasks   map[int][]byte            //generator deleteObject on blob file task
+	NeedFixBlobFileSizeTasks []*storage.FileInfo
 }
 
 func NewMemberFileMetas() (mf *MembersFileMetas) {
 	mf = &MembersFileMetas{
 		files: make(map[int]*storage.FileInfo),
-		NeedDeleteExtentsTasks: make([]*storage.FileInfo, 0),
-		NeedAddExtentsTasks:    make([]*storage.FileInfo, 0),
-		NeedFixExtentSizeTasks: make([]*storage.FileInfo, 0),
-		NeedDeleteObjectsTasks: make(map[int][]byte),
+		NeedDeleteExtentsTasks:   make([]*storage.FileInfo, 0),
+		NeedAddExtentsTasks:      make([]*storage.FileInfo, 0),
+		NeedFixExtentSizeTasks:   make([]*storage.FileInfo, 0),
+		NeedFixBlobFileSizeTasks: make([]*storage.FileInfo, 0),
+		NeedDeleteObjectsTasks:   make(map[int][]byte),
 	}
 	return
 }
@@ -77,54 +79,6 @@ func (dp *dataPartition) extentFileRepair() {
 	finishTime := time.Now().UnixNano()
 	log.LogInfof("action[extentFileRepair] partition[%v] finish cost[%vms].",
 		dp.partitionId, (finishTime-startTime)/int64(time.Millisecond))
-}
-
-func (dp *dataPartition) getLocalExtentMetas() (fileMetas *MembersFileMetas, err error) {
-	var (
-		extentFiles []*storage.FileInfo
-	)
-	if extentFiles, err = dp.extentStore.GetAllWatermark(storage.GetStableExtentFilter()); err != nil {
-		return
-	}
-	files := make([]*storage.FileInfo, 0)
-	files = append(files, extentFiles...)
-
-	fileMetas = NewMemberFileMetas()
-	for _, file := range files {
-		fileMetas.files[file.FileId] = file
-	}
-	return
-}
-
-func (dp *dataPartition) getRemoteExtentMetas(remote string) (fileMetas *MembersFileMetas, err error) {
-	var (
-		conn *net.TCPConn
-	)
-	if conn, err = gConnPool.Get(remote); err != nil {
-		err = errors.Annotatef(err, "getRemoteExtentMetas partition[%v] get connection", dp.partitionId)
-		return
-	}
-	defer gConnPool.Put(conn, true)
-
-	packet := NewExtentStoreGetAllWaterMarker(dp.partitionId)
-	if err = packet.WriteToConn(conn); err != nil {
-		err = errors.Annotatef(err, "getRemoteExtentMetas partition[%v] write to remote[%v]", dp.partitionId, remote)
-		return
-	}
-	if err = packet.ReadFromConn(conn, 10); err != nil {
-		err = errors.Annotatef(err, "getRemoteExtentMetas partition[%v] read from connection[%v]", dp.partitionId, remote)
-		return
-	}
-	files := make([]*storage.FileInfo, 0)
-	if err = json.Unmarshal(packet.Data[:packet.Size], &files); err != nil {
-		err = errors.Annotatef(err, "getRemoteExtentMetas partition[%v] unmarshal packet", dp.partitionId)
-		return
-	}
-	fileMetas = NewMemberFileMetas()
-	for _, file := range files {
-		fileMetas.files[file.FileId] = file
-	}
-	return
 }
 
 // Get all data partition group ,about all files meta
@@ -228,7 +182,7 @@ func (dp *dataPartition) generatorAddExtentsTasks(allMembers []*MembersFileMetas
 	leader := allMembers[0]
 	leaderAddr := dp.replicaHosts[0]
 	for fileId, leaderFile := range leader.files {
-		if fileId <= storage.ChunkFileCount {
+		if fileId <= storage.BlobFileFileCount {
 			continue
 		}
 		for index := 1; index < len(allMembers); index++ {
@@ -247,7 +201,7 @@ func (dp *dataPartition) generatorFixExtentSizeTasks(allMembers []*MembersFileMe
 	leader := allMembers[0]
 	maxSizeExtentMap := dp.mapMaxSizeExtentToIndex(allMembers) //map maxSize extentId to allMembers index
 	for fileId, leaderFile := range leader.files {
-		if fileId <= storage.ChunkFileCount {
+		if fileId <= storage.BlobFileFileCount {
 			continue
 		}
 		maxSizeExtentIdIndex := maxSizeExtentMap[fileId]
@@ -291,19 +245,19 @@ func (dp *dataPartition) generatorDeleteExtentsTasks(allMembers []*MembersFileMe
 //generator blobObject delete task,send leader has delete object,notify follower delete it
 func (dp *dataPartition) generatorBlobDeleteTasks(allMembers []*MembersFileMetas) {
 	store := dp.blobStore
-	for _, chunkInfo := range allMembers[0].files {
-		chunkId := chunkInfo.FileId
-		if chunkId > storage.ChunkFileCount {
+	for _, blobfileInfo := range allMembers[0].files {
+		blobfileId := blobfileInfo.FileId
+		if blobfileId > storage.BlobFileFileCount {
 			continue
 		}
-		deletes := store.GetDelObjects(uint32(chunkId))
+		deletes := store.GetDelObjects(uint32(blobfileId))
 		deleteBuf := make([]byte, len(deletes)*ObjectIDSize)
 		for index, deleteObject := range deletes {
 			binary.BigEndian.PutUint64(deleteBuf[index*ObjectIDSize:(index+1)*ObjectIDSize], deleteObject)
 		}
 		for index := 0; index < len(allMembers); index++ {
-			allMembers[index].NeedDeleteObjectsTasks[chunkId] = make([]byte, len(deleteBuf))
-			copy(allMembers[index].NeedDeleteObjectsTasks[chunkId], deleteBuf)
+			allMembers[index].NeedDeleteObjectsTasks[blobfileId] = make([]byte, len(deleteBuf))
+			copy(allMembers[index].NeedDeleteObjectsTasks[blobfileId], deleteBuf)
 		}
 	}
 

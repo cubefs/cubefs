@@ -67,7 +67,7 @@ func (s *DataNode) readFromCliAndDeal(msgH *MessageHandler) (err error) {
 func (s *DataNode) checkAndAddInfo(pkg *Packet) error {
 	switch pkg.StoreMode {
 	case proto.BlobStoreMode:
-		return s.handleChunkInfo(pkg)
+		return s.handleBlobFileInfo(pkg)
 	case proto.ExtentStoreMode:
 		if pkg.isHeadNode() && pkg.Opcode == proto.OpCreateFile {
 			pkg.FileID = pkg.DataPartition.GetExtentStore().NextExtentId()
@@ -82,7 +82,7 @@ func (s *DataNode) handleRequest(msgH *MessageHandler) {
 		select {
 		case <-msgH.handleCh:
 			pkg, exit := s.receiveFromNext(msgH)
-			s.headNodePutChunk(pkg)
+			s.headNodePutBlobFile(pkg)
 			if exit {
 				msgH.Stop()
 				return

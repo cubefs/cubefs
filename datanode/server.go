@@ -43,7 +43,7 @@ import (
 var (
 	ErrStoreTypeMismatch        = errors.New("store type error")
 	ErrPartitionNotExist        = errors.New("dataPartition not exists")
-	ErrChunkOffsetMismatch      = errors.New("chunk offset not mismatch")
+	ErrBlobFileOffsetMismatch   = errors.New("blobfile offset not mismatch")
 	ErrNoDiskForCreatePartition = errors.New("no disk for create dataPartition")
 	ErrBadConfFile              = errors.New("bad config file")
 
@@ -352,61 +352,61 @@ func (s *DataNode) AddCompactTask(t *CompactTask) (err error) {
 	return
 }
 
-func (s *DataNode) checkChunkInfo(pkg *Packet) (err error) {
+func (s *DataNode) checkBlobFileInfo(pkg *Packet) (err error) {
 	var (
-		chunkInfo *storage.FileInfo
+		blobfileInfo *storage.FileInfo
 	)
-	chunkInfo, err = pkg.DataPartition.GetBlobStore().GetWatermark(pkg.FileID)
+	blobfileInfo, err = pkg.DataPartition.GetBlobStore().GetWatermark(pkg.FileID)
 	if err != nil {
 		return
 	}
 	leaderObjId := uint64(pkg.Offset)
-	localObjId := chunkInfo.Size
-	if (leaderObjId - 1) != chunkInfo.Size {
-		err = ErrChunkOffsetMismatch
+	localObjId := blobfileInfo.Size
+	if (leaderObjId - 1) != blobfileInfo.Size {
+		err = ErrBlobFileOffsetMismatch
 		msg := fmt.Sprintf("Err[%v] leaderObjId[%v] localObjId[%v]", err, leaderObjId, localObjId)
-		log.LogWarn(pkg.ActionMsg(ActionCheckChunkInfo, LocalProcessAddr, pkg.StartT, fmt.Errorf(msg)))
+		log.LogWarn(pkg.ActionMsg(ActionCheckBlobFileInfo, LocalProcessAddr, pkg.StartT, fmt.Errorf(msg)))
 	}
 
 	return
 }
 
-func (s *DataNode) handleChunkInfo(pkg *Packet) (err error) {
+func (s *DataNode) handleBlobFileInfo(pkg *Packet) (err error) {
 	if !pkg.IsWriteOperation() {
 		return
 	}
 
 	if !pkg.isHeadNode() {
-		err = s.checkChunkInfo(pkg)
+		err = s.checkBlobFileInfo(pkg)
 	} else {
-		err = s.headNodeSetChunkInfo(pkg)
+		err = s.headNodeSetBlobFileInfo(pkg)
 	}
 	if err != nil {
-		err = errors.Annotatef(err, "Request[%v] handleChunkInfo Error", pkg.GetUniqueLogId())
-		pkg.PackErrorBody(ActionCheckChunkInfo, err.Error())
+		err = errors.Annotatef(err, "Request[%v] handleBlobFileInfo Error", pkg.GetUniqueLogId())
+		pkg.PackErrorBody(ActionCheckBlobFileInfo, err.Error())
 	}
 
 	return
 }
 
-func (s *DataNode) headNodeSetChunkInfo(pkg *Packet) (err error) {
+func (s *DataNode) headNodeSetBlobFileInfo(pkg *Packet) (err error) {
 	var (
-		chunkId int
+		blobfileId int
 	)
 	store := pkg.DataPartition.GetBlobStore()
-	chunkId, err = store.GetChunkForWrite()
+	blobfileId, err = store.GetBlobFileForWrite()
 	if err != nil {
 		pkg.DataPartition.ChangeStatus(proto.ReadOnly)
 		return
 	}
-	pkg.FileID = uint64(chunkId)
+	pkg.FileID = uint64(blobfileId)
 	objectId, _ := store.AllocObjectId(uint32(pkg.FileID))
 	pkg.Offset = int64(objectId)
 
 	return
 }
 
-func (s *DataNode) headNodePutChunk(pkg *Packet) {
+func (s *DataNode) headNodePutBlobFile(pkg *Packet) {
 	if pkg == nil || pkg.FileID <= 0 || pkg.IsReturn {
 		return
 	}
@@ -415,9 +415,9 @@ func (s *DataNode) headNodePutChunk(pkg *Packet) {
 	}
 	store := pkg.DataPartition.GetBlobStore()
 	if pkg.IsErrPack() {
-		store.PutUnAvailChunk(int(pkg.FileID))
+		store.PutUnAvailBlobFile(int(pkg.FileID))
 	} else {
-		store.PutAvailChunk(int(pkg.FileID))
+		store.PutAvailBlobFile(int(pkg.FileID))
 	}
 	pkg.IsReturn = true
 }
@@ -453,7 +453,7 @@ func (s *DataNode) isDiskErr(errMsg string) bool {
 		strings.Contains(errMsg, storage.ErrPkgCrcMismatch.Error()) || strings.Contains(errMsg, ErrStoreTypeMismatch.Error()) ||
 		strings.Contains(errMsg, storage.ErrorNoUnAvaliFile.Error()) ||
 		strings.Contains(errMsg, storage.ErrExtentNameFormat.Error()) || strings.Contains(errMsg, storage.ErrorAgain.Error()) ||
-		strings.Contains(errMsg, ErrChunkOffsetMismatch.Error()) ||
+		strings.Contains(errMsg, ErrBlobFileOffsetMismatch.Error()) ||
 		strings.Contains(errMsg, storage.ErrorCompaction.Error()) || strings.Contains(errMsg, storage.ErrorPartitionReadOnly.Error()) {
 		return false
 	}

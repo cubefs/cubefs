@@ -32,22 +32,22 @@ func (dp *dataPartition) blobRepair() {
 
 }
 
-type RepairChunkTask struct {
-	ChunkId  int
-	StartObj uint64
-	EndObj   uint64
+type RepairBlobFileTask struct {
+	BlobFileId int
+	StartObj   uint64
+	EndObj     uint64
 }
 
-func (dp *dataPartition) getLocalChunkMetas(filterChunkids []int) (fileMetas *MembersFileMetas, err error) {
+func (dp *dataPartition) getLocalBlobFileMetas(filterBlobFileids []int) (fileMetas *MembersFileMetas, err error) {
 	var (
-		chunkFiles []*storage.FileInfo
+		blobFiles []*storage.FileInfo
 	)
-	if chunkFiles, err = dp.blobStore.GetAllWatermark(); err != nil {
+	if blobFiles, err = dp.blobStore.GetAllWatermark(); err != nil {
 		return
 	}
 	files := make([]*storage.FileInfo, 0)
-	for _, cid := range chunkFiles {
-		for _, ccid := range filterChunkids {
+	for _, cid := range blobFiles {
+		for _, ccid := range filterBlobFileids {
 			if cid.FileId == ccid {
 				files = append(files, cid)
 			}
@@ -60,7 +60,7 @@ func (dp *dataPartition) getLocalChunkMetas(filterChunkids []int) (fileMetas *Me
 	return
 }
 
-func (dp *dataPartition) getRemoteChunkMetas(remote string, filterChunkids []int) (fileMetas *MembersFileMetas, err error) {
+func (dp *dataPartition) getRemoteBlobFileMetas(remote string, filterBlobFileids []int) (fileMetas *MembersFileMetas, err error) {
 	var (
 		conn *net.TCPConn
 	)
@@ -92,7 +92,7 @@ func (dp *dataPartition) getRemoteChunkMetas(remote string, filterChunkids []int
 		return
 	}
 	for _, cid := range allFiles {
-		for _, ccid := range filterChunkids {
+		for _, ccid := range filterBlobFileids {
 			if cid.FileId == ccid {
 				files = append(files, cid)
 			}
@@ -105,7 +105,60 @@ func (dp *dataPartition) getRemoteChunkMetas(remote string, filterChunkids []int
 	return
 }
 
-//do stream repair chunkfile,it do on follower host
+//generator file task
+func (dp *dataPartition) generatorBlobRepairTasks(allMembers []*MembersFileMetas) {
+	dp.generatorFixBlobFileSizeTasks(allMembers)
+	dp.generatorDeleteObjectTasks(allMembers)
+
+}
+
+/*generator fix extent Size ,if all members  Not the same length*/
+func (dp *dataPartition) generatorFixBlobFileSizeTasks(allMembers []*MembersFileMetas) {
+	leader := allMembers[0]
+	maxSizeExtentMap := dp.mapMaxSizeExtentToIndex(allMembers) //map maxSize extentId to allMembers index
+	for fileId, leaderFile := range leader.files {
+		if fileId > storage.BlobFileFileCount {
+			continue
+		}
+		maxSizeExtentIdIndex := maxSizeExtentMap[fileId]
+		maxSize := allMembers[maxSizeExtentIdIndex].files[fileId].Size
+		sourceAddr := dp.replicaHosts[maxSizeExtentIdIndex]
+		inode := leaderFile.Inode
+		for index := 0; index < len(allMembers); index++ {
+			if index == maxSizeExtentIdIndex {
+				continue
+			}
+			extentInfo, ok := allMembers[index].files[fileId]
+			if !ok {
+				continue
+			}
+			if extentInfo.Size < maxSize {
+				fixExtent := &storage.FileInfo{Source: sourceAddr, FileId: fileId, Size: maxSize, Inode: inode}
+				allMembers[index].NeedFixExtentSizeTasks = append(allMembers[index].NeedFixExtentSizeTasks, fixExtent)
+				log.LogInfof("action[generatorFixExtentSizeTasks] partition[%v] fixExtent[%v].", dp.partitionId, fixExtent)
+			}
+		}
+	}
+}
+
+/*generator fix extent Size ,if all members  Not the same length*/
+func (dp *dataPartition) generatorDeleteObjectTasks(allMembers []*MembersFileMetas) {
+	store := dp.extentStore
+	deletes := store.GetDelObjects()
+	leaderAddr := dp.replicaHosts[0]
+	for _, deleteFileId := range deletes {
+		for index := 1; index < len(allMembers); index++ {
+			follower := allMembers[index]
+			if _, ok := follower.files[int(deleteFileId)]; ok {
+				deleteFile := &storage.FileInfo{Source: leaderAddr, FileId: int(deleteFileId), Size: 0}
+				follower.NeedDeleteExtentsTasks = append(follower.NeedDeleteExtentsTasks, deleteFile)
+				log.LogInfof("action[generatorDeleteExtentsTasks] partition[%v] deleteFile[%v].", dp.partitionId, deleteFile)
+			}
+		}
+	}
+}
+
+//do stream repair blobfilefile,it do on follower host
 func (dp *dataPartition) doStreamBlobFixRepair(wg *sync.WaitGroup, remoteBlobFileInfo *storage.FileInfo) {
 	defer wg.Done()
 	err := dp.streamRepairBlobObjects(remoteBlobFileInfo)
@@ -120,44 +173,44 @@ func (dp *dataPartition) doStreamBlobFixRepair(wg *sync.WaitGroup, remoteBlobFil
 	}
 }
 
-//do stream repair chunkfile,it do on follower host
-func (dp *dataPartition) streamRepairBlobObjects(remoteChunkInfo *storage.FileInfo) (err error) {
+//do stream repair blobfilefile,it do on follower host
+func (dp *dataPartition) streamRepairBlobObjects(remoteBlobFileInfo *storage.FileInfo) (err error) {
 	store := dp.GetBlobStore()
-	//1.get local chunkFile size
-	localChunkInfo, err := store.GetWatermark(uint64(remoteChunkInfo.FileId))
+	//1.get local blobfileFile size
+	localBlobFileInfo, err := store.GetWatermark(uint64(remoteBlobFileInfo.FileId))
 	if err != nil {
 		return errors.Annotatef(err, "streamRepairBlobObjects GetWatermark error")
 	}
-	//2.generator chunkRepair read packet,it contains startObj,endObj
-	task := &RepairChunkTask{ChunkId: remoteChunkInfo.FileId, StartObj: localChunkInfo.Size + 1, EndObj: remoteChunkInfo.Size}
-	//3.new a streamChunkRepair readPacket
-	request := NewStreamChunkRepairReadPacket(dp.ID(), remoteChunkInfo.FileId)
+	//2.generator blobfileRepair read packet,it contains startObj,endObj
+	task := &RepairBlobFileTask{BlobFileId: remoteBlobFileInfo.FileId, StartObj: localBlobFileInfo.Size + 1, EndObj: remoteBlobFileInfo.Size}
+	//3.new a streamBlobFileRepair readPacket
+	request := NewStreamBlobFileRepairReadPacket(dp.ID(), remoteBlobFileInfo.FileId)
 	request.Data, _ = json.Marshal(task)
 	var conn *net.TCPConn
 	//4.get a connection to leader host
-	conn, err = gConnPool.Get(remoteChunkInfo.Source)
+	conn, err = gConnPool.Get(remoteBlobFileInfo.Source)
 	if err != nil {
-		return errors.Annotatef(err, "streamRepairBlobObjects get conn from host[%v] error", remoteChunkInfo.Source)
+		return errors.Annotatef(err, "streamRepairBlobObjects get conn from host[%v] error", remoteBlobFileInfo.Source)
 	}
-	//5.write streamChunkRepair command to leader
+	//5.write streamBlobFileRepair command to leader
 	err = request.WriteToConn(conn)
 	if err != nil {
 		gConnPool.Put(conn, true)
-		return errors.Annotatef(err, "streamRepairBlobObjects send streamRead to host[%v] error", remoteChunkInfo.Source)
+		return errors.Annotatef(err, "streamRepairBlobObjects send streamRead to host[%v] error", remoteBlobFileInfo.Source)
 	}
 	for {
-		//for 1.get local chunkFileSize
-		localChunkInfo, err := store.GetWatermark(uint64(remoteChunkInfo.FileId))
+		//for 1.get local blobfileFileSize
+		localBlobFileInfo, err := store.GetWatermark(uint64(remoteBlobFileInfo.FileId))
 		if err != nil {
 			conn.Close()
 			return errors.Annotatef(err, "streamRepairBlobObjects GetWatermark error")
 		}
-		// if local chunkfile size has great remote ,then break
-		if localChunkInfo.Size >= remoteChunkInfo.Size {
+		// if local blobfilefile size has great remote ,then break
+		if localBlobFileInfo.Size >= remoteBlobFileInfo.Size {
 			gConnPool.Put(conn, true)
 			break
 		}
-		// read chunkStreamRepairRead response
+		// read blobfileStreamRepairRead response
 		err = request.ReadFromConn(conn, proto.ReadDeadlineTime)
 		if err != nil {
 			gConnPool.Put(conn, true)
@@ -165,14 +218,14 @@ func (dp *dataPartition) streamRepairBlobObjects(remoteChunkInfo *storage.FileIn
 		}
 		// get this repairPacket end oid,if oid has large,then break
 		newLastOid := uint64(request.Offset)
-		if newLastOid > uint64(remoteChunkInfo.FileId) {
+		if newLastOid > uint64(remoteBlobFileInfo.FileId) {
 			gConnPool.Put(conn, true)
 			err = fmt.Errorf("invalid offset of OpCRepairReadResp:"+
-				" %v, expect max objid is %v", newLastOid, remoteChunkInfo.FileId)
+				" %v, expect max objid is %v", newLastOid, remoteBlobFileInfo.FileId)
 			return err
 		}
 		// write this blobObject to local
-		err = dp.applyRepairBlobObjects(remoteChunkInfo.FileId, request.Data, newLastOid)
+		err = dp.applyRepairBlobObjects(remoteBlobFileInfo.FileId, request.Data, newLastOid)
 		if err != nil {
 			gConnPool.Put(conn, true)
 			err = errors.Annotatef(err, "streamRepairBlobObjects apply data failed")
@@ -182,8 +235,8 @@ func (dp *dataPartition) streamRepairBlobObjects(remoteChunkInfo *storage.FileIn
 	return
 }
 
-//follower recive chunkRepairReadResponse ,then write local chunkFile
-func (dp *dataPartition) applyRepairBlobObjects(chunkId int, data []byte, endObjectId uint64) (err error) {
+//follower recive blobfileRepairReadResponse ,then write local blobfileFile
+func (dp *dataPartition) applyRepairBlobObjects(blobfileId int, data []byte, endObjectId uint64) (err error) {
 	offset := 0
 	store := dp.GetBlobStore()
 	var applyObjectId uint64
@@ -202,15 +255,15 @@ func (dp *dataPartition) applyRepairBlobObjects(chunkId int, data []byte, endObj
 		//unmarshal objectHeader,if this object has delete on leader,then ,write a deleteEntry to indexfile
 		offset += storage.ObjectHeaderSize
 		if o.Size == storage.MarkDeleteObject {
-			err = store.WriteDeleteDentry(o.Oid, chunkId, o.Crc)
+			err = store.WriteDeleteDentry(o.Oid, blobfileId, o.Crc)
 		}
 		if err != nil {
-			return errors.Annotatef(err, "dataPartition[%v] chunkId[%v] oid[%v] writeDeleteDentry failed", dp.ID(), chunkId, o.Oid)
+			return errors.Annotatef(err, "dataPartition[%v] blobfileId[%v] oid[%v] writeDeleteDentry failed", dp.ID(), blobfileId, o.Oid)
 		}
 		//if offset +this objectSize has great 15MB,then break,donnot fix it
 		if offset+int(o.Size) > dataLen {
-			return errors.Annotatef(err, "dataPartition[%v] chunkId[%v] oid[%v] no body"+
-				" expect[%v] actual[%v] failed", dp.ID(), chunkId, o.Oid, o.Size, dataLen-(offset))
+			return errors.Annotatef(err, "dataPartition[%v] blobfileId[%v] oid[%v] no body"+
+				" expect[%v] actual[%v] failed", dp.ID(), blobfileId, o.Oid, o.Size, dataLen-(offset))
 		}
 		//get this object body
 		ndata := data[offset : offset+int(o.Size)]
@@ -219,13 +272,13 @@ func (dp *dataPartition) applyRepairBlobObjects(chunkId int, data []byte, endObj
 		ncrc := crc32.ChecksumIEEE(ndata)
 		//check crc
 		if ncrc != o.Crc {
-			return errors.Annotatef(err, "dataPartition[%v] chunkId[%v] oid[%v] "+
-				"repair data crc  failed,expectCrc[%v] actualCrc[%v]", dp.ID(), chunkId, o.Oid, o.Crc, ncrc)
+			return errors.Annotatef(err, "dataPartition[%v] blobfileId[%v] oid[%v] "+
+				"repair data crc  failed,expectCrc[%v] actualCrc[%v]", dp.ID(), blobfileId, o.Oid, o.Crc, ncrc)
 		}
 		//write local storage engine
-		err = store.Write(uint32(chunkId), uint64(o.Oid), int64(o.Size), ndata, o.Crc)
+		err = store.Write(uint32(blobfileId), uint64(o.Oid), int64(o.Size), ndata, o.Crc)
 		if err != nil {
-			return errors.Annotatef(err, "dataPartition[%v] chunkId[%v] oid[%v] write failed", dp.ID(), chunkId, o.Oid)
+			return errors.Annotatef(err, "dataPartition[%v] blobfileId[%v] oid[%v] write failed", dp.ID(), blobfileId, o.Oid)
 		}
 		//update applyObjectId
 		applyObjectId = o.Oid
@@ -250,13 +303,13 @@ const (
 	PkgRepairCReadRespLimitSize = 15 * util.MB
 )
 
-func syncData(chunkID uint32, startOid, endOid uint64, pkg *Packet, conn *net.TCPConn) error {
+func syncData(blobfileID uint32, startOid, endOid uint64, pkg *Packet, conn *net.TCPConn) error {
 	var (
 		err     error
 		objects []*storage.Object
 	)
 	dataPartition := pkg.DataPartition
-	objects = dataPartition.GetObjects(chunkID, startOid, endOid)
+	objects = dataPartition.GetObjects(blobfileID, startOid, endOid)
 	log.LogWrite(pkg.ActionMsg(ActionLeaderToFollowerOpRepairReadPackBuffer, string(len(objects)), pkg.StartT, err))
 	databuf := make([]byte, PkgRepairCReadRespMaxSize)
 	pos := 0
@@ -273,7 +326,7 @@ func syncData(chunkID uint32, startOid, endOid uint64, pkg *Packet, conn *net.TC
 			databuf = make([]byte, PkgRepairCReadRespMaxSize)
 			pos = 0
 		}
-		if dataPartition.PackObject(databuf[pos:], objects[i], chunkID); err != nil {
+		if dataPartition.PackObject(databuf[pos:], objects[i], blobfileID); err != nil {
 			return err
 		}
 		pos += storage.ObjectHeaderSize

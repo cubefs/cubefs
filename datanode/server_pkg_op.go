@@ -69,8 +69,8 @@ func (s *DataNode) operatePacket(pkg *Packet, c *net.TCPConn) {
 		s.handleWrite(pkg)
 	case proto.OpRead:
 		s.handleRead(pkg)
-	case proto.OpChunkRepairRead:
-		s.handleChunkRepairRead(pkg, c)
+	case proto.OpBlobFileRepairRead:
+		s.handleBlobFileRepairRead(pkg, c)
 	case proto.OpStreamRead:
 		s.handleStreamRead(pkg, c)
 	case proto.OpMarkDelete:
@@ -459,13 +459,13 @@ func (s *DataNode) handleNotifyCompact(pkg *Packet) {
 	vId := pkg.PartitionID
 	task := &CompactTask{
 		partitionId: vId,
-		chunkId:     int(cId),
+		blobfileId:  int(cId),
 		isLeader:    false,
 	}
 	err := s.AddCompactTask(task)
 	if err != nil {
 		err = errors.Annotatef(err, "Request[%v] handleNotifyCompact Error", pkg.GetUniqueLogId())
-		pkg.PackErrorBody(LogCompactChunk, err.Error())
+		pkg.PackErrorBody(LogCompactBlobFile, err.Error())
 		return
 	}
 	pkg.PackOkReply()
@@ -489,28 +489,28 @@ func (s *DataNode) handleNotifyRepair(pkg *Packet) {
 	return
 }
 
-func (s *DataNode) handleChunkRepairRead(pkg *Packet, conn *net.TCPConn) {
+func (s *DataNode) handleBlobFileRepairRead(pkg *Packet, conn *net.TCPConn) {
 	var (
 		err        error
 		localOid   uint64
 		requireOid uint64
-		chunkID    uint32
+		blobfileID uint32
 	)
-	chunkID = uint32(pkg.FileID)
+	blobfileID = uint32(pkg.FileID)
 	requireOid = uint64(pkg.Offset + 1)
-	localOid, err = pkg.DataPartition.GetBlobStore().GetLastOid(chunkID)
-	log.LogWrite(pkg.ActionMsg(ActionFollowerRequireChunkRepairCmd,
+	localOid, err = pkg.DataPartition.GetBlobStore().GetLastOid(blobfileID)
+	log.LogWrite(pkg.ActionMsg(ActionFollowerRequireBlobFileRepairCmd,
 		fmt.Sprintf("follower require Oid[%v] localOid[%v]", requireOid, localOid), pkg.StartT, err))
 	if localOid < requireOid {
 		err = fmt.Errorf(" requireOid[%v] but localOid[%v]", requireOid, localOid)
 		err = errors.Annotatef(err, "Request[%v] repairObjectRead Error", pkg.GetUniqueLogId())
-		pkg.PackErrorBody(ActionFollowerRequireChunkRepairCmd, err.Error())
+		pkg.PackErrorBody(ActionFollowerRequireBlobFileRepairCmd, err.Error())
 		return
 	}
-	err = syncData(chunkID, requireOid, localOid, pkg, conn)
+	err = syncData(blobfileID, requireOid, localOid, pkg, conn)
 	if err != nil {
 		err = errors.Annotatef(err, "Request[%v] SYNCDATA Error", pkg.GetUniqueLogId())
-		pkg.PackErrorBody(ActionFollowerRequireChunkRepairCmd, err.Error())
+		pkg.PackErrorBody(ActionFollowerRequireBlobFileRepairCmd, err.Error())
 	}
 
 	return

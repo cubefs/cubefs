@@ -26,7 +26,7 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 )
 
-type Chunk struct {
+type BlobFile struct {
 	file        *os.File
 	tree        *ObjectTree
 	lastOid     uint64
@@ -35,9 +35,9 @@ type Chunk struct {
 	compactLock util.TryMutexLock
 }
 
-func NewChunk(dataDir string, chunkId int) (c *Chunk, err error) {
-	c = new(Chunk)
-	name := dataDir + "/" + strconv.Itoa(chunkId)
+func NewBlobFile(dataDir string, blobfileId int) (c *BlobFile, err error) {
+	c = new(BlobFile)
+	name := dataDir + "/" + strconv.Itoa(blobfileId)
 	maxOid, err := c.loadTree(name)
 	if err != nil {
 		return nil, err
@@ -47,7 +47,7 @@ func NewChunk(dataDir string, chunkId int) (c *Chunk, err error) {
 	return c, nil
 }
 
-func (c *Chunk) applyDelObjects(objects []uint64) (err error) {
+func (c *BlobFile) applyDelObjects(objects []uint64) (err error) {
 	for _, needle := range objects {
 		c.commitLock.RLock()
 		c.tree.delete(needle)
@@ -58,13 +58,13 @@ func (c *Chunk) applyDelObjects(objects []uint64) (err error) {
 	return
 }
 
-func (c *Chunk) loadTree(name string) (maxOid uint64, err error) {
-	if c.file, err = os.OpenFile(name, ChunkOpenOpt, 0666); err != nil {
+func (c *BlobFile) loadTree(name string) (maxOid uint64, err error) {
+	if c.file, err = os.OpenFile(name, BlobFileOpenOpt, 0666); err != nil {
 		return
 	}
 	var idxFile *os.File
 	idxName := name + ".idx"
-	if idxFile, err = os.OpenFile(idxName, ChunkOpenOpt, 0666); err != nil {
+	if idxFile, err = os.OpenFile(idxName, BlobFileOpenOpt, 0666); err != nil {
 		c.file.Close()
 		return
 	}
@@ -81,7 +81,7 @@ func (c *Chunk) loadTree(name string) (maxOid uint64, err error) {
 }
 
 // returns count of valid objects calculated for CRC
-func (c *Chunk) getCheckSum() (fullCRC uint32, syncLastOid uint64, count int) {
+func (c *BlobFile) getCheckSum() (fullCRC uint32, syncLastOid uint64, count int) {
 	syncLastOid = c.loadLastOid()
 	c.tree.idxFile.Sync()
 	crcBuffer := make([]byte, 0)
@@ -109,29 +109,29 @@ func (c *Chunk) getCheckSum() (fullCRC uint32, syncLastOid uint64, count int) {
 	return
 }
 
-func (c *Chunk) loadLastOid() uint64 {
+func (c *BlobFile) loadLastOid() uint64 {
 	return atomic.LoadUint64(&c.lastOid)
 }
 
-func (c *Chunk) storeLastOid(val uint64) {
+func (c *BlobFile) storeLastOid(val uint64) {
 	atomic.StoreUint64(&c.lastOid, val)
 	return
 }
 
-func (c *Chunk) incLastOid() uint64 {
+func (c *BlobFile) incLastOid() uint64 {
 	return atomic.AddUint64(&c.lastOid, uint64(1))
 }
 
-func (c *Chunk) loadSyncLastOid() uint64 {
+func (c *BlobFile) loadSyncLastOid() uint64 {
 	return atomic.LoadUint64(&c.syncLastOid)
 }
 
-func (c *Chunk) storeSyncLastOid(val uint64) {
+func (c *BlobFile) storeSyncLastOid(val uint64) {
 	atomic.StoreUint64(&c.syncLastOid, val)
 	return
 }
 
-func (c *Chunk) doCompact() (err error) {
+func (c *BlobFile) doCompact() (err error) {
 	var (
 		newIdxFile *os.File
 		newDatFile *os.File
@@ -141,12 +141,12 @@ func (c *Chunk) doCompact() (err error) {
 	name := c.file.Name()
 	newIdxName := name + ".tmpIndex"
 	newDatName := name + ".tmpData"
-	if newIdxFile, err = os.OpenFile(newIdxName, ChunkOpenOpt|os.O_TRUNC, 0644); err != nil {
+	if newIdxFile, err = os.OpenFile(newIdxName, BlobFileOpenOpt|os.O_TRUNC, 0644); err != nil {
 		return err
 	}
 	defer newIdxFile.Close()
 
-	if newDatFile, err = os.OpenFile(newDatName, ChunkOpenOpt|os.O_TRUNC, 0644); err != nil {
+	if newDatFile, err = os.OpenFile(newDatName, BlobFileOpenOpt|os.O_TRUNC, 0644); err != nil {
 		return err
 	}
 	defer newDatFile.Close()
@@ -160,7 +160,7 @@ func (c *Chunk) doCompact() (err error) {
 	return nil
 }
 
-func (c *Chunk) copyValidData(dstNm *ObjectTree, dstDatFile *os.File) (err error) {
+func (c *BlobFile) copyValidData(dstNm *ObjectTree, dstDatFile *os.File) (err error) {
 	srcTree := c.tree
 	srcDatFile := c.file
 	srcIdxFile := srcTree.idxFile
@@ -219,7 +219,7 @@ func (c *Chunk) copyValidData(dstNm *ObjectTree, dstDatFile *os.File) (err error
 	return err
 }
 
-func (c *Chunk) doCommit() (err error) {
+func (c *BlobFile) doCommit() (err error) {
 	name := c.file.Name()
 	c.tree.idxFile.Close()
 	c.file.Close()

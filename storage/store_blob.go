@@ -27,25 +27,25 @@ import (
 )
 
 const (
-	ChunkFileCount    = 10
-	ChunkOpenOpt      = os.O_CREATE | os.O_RDWR | os.O_APPEND
-	CompactThreshold  = 40
-	CompactMaxWait    = time.Second * 10
-	ReBootStoreMode   = false
-	NewStoreMode      = true
-	MinWriteAbleChunk = 1
-	ObjectIdLen       = 8
+	BlobFileFileCount    = 10
+	BlobFileOpenOpt      = os.O_CREATE | os.O_RDWR | os.O_APPEND
+	CompactThreshold     = 40
+	CompactMaxWait       = time.Second * 10
+	ReBootStoreMode      = false
+	NewStoreMode         = true
+	MinWriteAbleBlobFile = 1
+	ObjectIdLen          = 8
 )
 
-// BlobStore is a store implement for blob file storage which container 40 chunk files.
-// This store will choose a available chunk file and append data to it.
+// BlobStore is a store implement for blob file storage which container 40 blobfile files.
+// This store will choose a available blobfile file and append data to it.
 type BlobStore struct {
-	dataDir        string
-	chunks         map[int]*Chunk
-	availChunkCh   chan int
-	unavailChunkCh chan int
-	storeSize      int
-	chunkSize      int
+	dataDir           string
+	blobfiles         map[int]*BlobFile
+	availBlobFileCh   chan int
+	unavailBlobFileCh chan int
+	storeSize         int
+	blobfileSize      int
 }
 
 func NewBlobStore(dataDir string, storeSize int) (s *BlobStore, err error) {
@@ -54,27 +54,27 @@ func NewBlobStore(dataDir string, storeSize int) (s *BlobStore, err error) {
 	if err = CheckAndCreateSubdir(dataDir); err != nil {
 		return nil, fmt.Errorf("NewBlobStore [%v] err[%v]", dataDir, err)
 	}
-	s.chunks = make(map[int]*Chunk)
-	if err = s.initChunkFile(); err != nil {
+	s.blobfiles = make(map[int]*BlobFile)
+	if err = s.initBlobFileFile(); err != nil {
 		return nil, fmt.Errorf("NewBlobStore [%v] err[%v]", dataDir, err)
 	}
 
-	s.availChunkCh = make(chan int, ChunkFileCount+1)
-	s.unavailChunkCh = make(chan int, ChunkFileCount+1)
-	for i := 1; i <= ChunkFileCount; i++ {
-		s.unavailChunkCh <- i
+	s.availBlobFileCh = make(chan int, BlobFileFileCount+1)
+	s.unavailBlobFileCh = make(chan int, BlobFileFileCount+1)
+	for i := 1; i <= BlobFileFileCount; i++ {
+		s.unavailBlobFileCh <- i
 	}
 	s.storeSize = storeSize
-	s.chunkSize = storeSize / ChunkFileCount
+	s.blobfileSize = storeSize / BlobFileFileCount
 
 	return
 }
 
 func (s *BlobStore) DeleteStore() {
-	for index, c := range s.chunks {
+	for index, c := range s.blobfiles {
 		c.file.Close()
 		c.tree.idxFile.Close()
-		delete(s.chunks, index)
+		delete(s.blobfiles, index)
 	}
 	os.RemoveAll(s.dataDir)
 }
@@ -84,20 +84,20 @@ func (s *BlobStore) UseSize() (size int64) {
 	return 0
 }
 
-func (s *BlobStore) initChunkFile() (err error) {
-	for i := 1; i <= ChunkFileCount; i++ {
-		var c *Chunk
-		if c, err = NewChunk(s.dataDir, i); err != nil {
-			return fmt.Errorf("initChunkFile Error %s", err.Error())
+func (s *BlobStore) initBlobFileFile() (err error) {
+	for i := 1; i <= BlobFileFileCount; i++ {
+		var c *BlobFile
+		if c, err = NewBlobFile(s.dataDir, i); err != nil {
+			return fmt.Errorf("initBlobFileFile Error %s", err.Error())
 		}
-		s.chunks[i] = c
+		s.blobfiles[i] = c
 	}
 
 	return
 }
 
-func (s *BlobStore) chunkExist(chunkId uint32) (exist bool) {
-	name := s.dataDir + "/" + strconv.Itoa(int(chunkId))
+func (s *BlobStore) blobfileExist(blobfileId uint32) (exist bool) {
+	name := s.dataDir + "/" + strconv.Itoa(int(blobfileId))
 	if _, err := os.Stat(name); err == nil {
 		exist = true
 	}
@@ -105,11 +105,11 @@ func (s *BlobStore) chunkExist(chunkId uint32) (exist bool) {
 	return
 }
 
-func (s *BlobStore) WriteDeleteDentry(objectId uint64, chunkId int, crc uint32) (err error) {
+func (s *BlobStore) WriteDeleteDentry(objectId uint64, blobfileId int, crc uint32) (err error) {
 	var (
 		fi os.FileInfo
 	)
-	c, ok := s.chunks[chunkId]
+	c, ok := s.blobfiles[blobfileId]
 	if !ok {
 		return ErrorFileNotFound
 	}
@@ -134,8 +134,8 @@ func (s *BlobStore) Write(fileId uint32, objectId uint64, size int64, data []byt
 	var (
 		fi os.FileInfo
 	)
-	chunkId := int(fileId)
-	c, ok := s.chunks[chunkId]
+	blobfileId := int(fileId)
+	c, ok := s.blobfiles[blobfileId]
 	if !ok {
 		return ErrorFileNotFound
 	}
@@ -147,7 +147,7 @@ func (s *BlobStore) Write(fileId uint32, objectId uint64, size int64, data []byt
 
 	if objectId < c.loadLastOid() {
 		msg := fmt.Sprintf("Object id smaller than last oid. DataDir[%v] FileId[%v]"+
-			" ObjectId[%v] Size[%v]", s.dataDir, chunkId, objectId, c.loadLastOid())
+			" ObjectId[%v] Size[%v]", s.dataDir, blobfileId, objectId, c.loadLastOid())
 		err = fmt.Errorf(msg)
 		return ErrObjectSmaller
 	}
@@ -170,9 +170,9 @@ func (s *BlobStore) Write(fileId uint32, objectId uint64, size int64, data []byt
 }
 
 func (s *BlobStore) Read(fileId uint32, offset, size int64, nbuf []byte) (crc uint32, err error) {
-	chunkId := int(fileId)
+	blobfileId := int(fileId)
 	objectId := uint64(offset)
-	c, ok := s.chunks[chunkId]
+	c, ok := s.blobfiles[blobfileId]
 	if !ok {
 		return 0, ErrorFileNotFound
 	}
@@ -208,8 +208,8 @@ func (s *BlobStore) Read(fileId uint32, offset, size int64, nbuf []byte) (crc ui
 }
 
 func (s *BlobStore) Sync(fileId uint32) (err error) {
-	chunkId := (int)(fileId)
-	c, ok := s.chunks[chunkId]
+	blobfileId := (int)(fileId)
+	c, ok := s.blobfiles[blobfileId]
 	if !ok {
 		return ErrorFileNotFound
 	}
@@ -222,30 +222,30 @@ func (s *BlobStore) Sync(fileId uint32) (err error) {
 	return c.file.Sync()
 }
 
-func (s *BlobStore) GetAllWatermark() (chunks []*FileInfo, err error) {
-	chunks = make([]*FileInfo, 0)
-	for chunkId, c := range s.chunks {
-		ci := &FileInfo{FileId: chunkId, Size: c.loadLastOid()}
-		chunks = append(chunks, ci)
+func (s *BlobStore) GetAllWatermark() (blobfiles []*FileInfo, err error) {
+	blobfiles = make([]*FileInfo, 0)
+	for blobfileId, c := range s.blobfiles {
+		ci := &FileInfo{FileId: blobfileId, Size: c.loadLastOid()}
+		blobfiles = append(blobfiles, ci)
 	}
 
 	return
 }
 
-func (s *BlobStore) GetWatermark(fileId uint64) (chunkInfo *FileInfo, err error) {
-	chunkId := (int)(fileId)
-	c, ok := s.chunks[chunkId]
+func (s *BlobStore) GetWatermark(fileId uint64) (blobfileInfo *FileInfo, err error) {
+	blobfileId := (int)(fileId)
+	c, ok := s.blobfiles[blobfileId]
 	if !ok {
 		return nil, ErrorFileNotFound
 	}
-	chunkInfo = &FileInfo{FileId: chunkId, Size: c.loadLastOid()}
+	blobfileInfo = &FileInfo{FileId: blobfileId, Size: c.loadLastOid()}
 
 	return
 }
 
-func (s *BlobStore) GetAvailChunk() (chunkId int, err error) {
+func (s *BlobStore) GetAvailBlobFile() (blobfileId int, err error) {
 	select {
-	case chunkId = <-s.availChunkCh:
+	case blobfileId = <-s.availBlobFileCh:
 	default:
 		err = ErrorNoAvaliFile
 	}
@@ -253,12 +253,12 @@ func (s *BlobStore) GetAvailChunk() (chunkId int, err error) {
 	return
 }
 
-func (s *BlobStore) GetChunkForWrite() (chunkId int, err error) {
-	chLen := len(s.availChunkCh)
+func (s *BlobStore) GetBlobFileForWrite() (blobfileId int, err error) {
+	chLen := len(s.availBlobFileCh)
 	for i := 0; i < chLen; i++ {
 		select {
-		case chunkId = <-s.availChunkCh:
-			return chunkId, nil
+		case blobfileId = <-s.availBlobFileCh:
+			return blobfileId, nil
 		default:
 			return -1, ErrorNoAvaliFile
 		}
@@ -268,25 +268,25 @@ func (s *BlobStore) GetChunkForWrite() (chunkId int, err error) {
 }
 
 func (s *BlobStore) SyncAll() {
-	for _, chunkFp := range s.chunks {
-		chunkFp.tree.idxFile.Sync()
-		chunkFp.file.Sync()
+	for _, blobfileFp := range s.blobfiles {
+		blobfileFp.tree.idxFile.Sync()
+		blobfileFp.file.Sync()
 	}
 }
 func (s *BlobStore) CloseAll() {
-	for _, chunkFp := range s.chunks {
-		chunkFp.tree.idxFile.Close()
-		chunkFp.file.Close()
+	for _, blobfileFp := range s.blobfiles {
+		blobfileFp.tree.idxFile.Close()
+		blobfileFp.file.Close()
 	}
 }
 
-func (s *BlobStore) PutAvailChunk(chunkId int) {
-	s.availChunkCh <- chunkId
+func (s *BlobStore) PutAvailBlobFile(blobfileId int) {
+	s.availBlobFileCh <- blobfileId
 }
 
-func (s *BlobStore) GetUnAvailChunk() (chunkId int, err error) {
+func (s *BlobStore) GetUnAvailBlobFile() (blobfileId int, err error) {
 	select {
-	case chunkId = <-s.unavailChunkCh:
+	case blobfileId = <-s.unavailBlobFileCh:
 	default:
 		err = ErrorNoUnAvaliFile
 	}
@@ -294,18 +294,18 @@ func (s *BlobStore) GetUnAvailChunk() (chunkId int, err error) {
 	return
 }
 
-func (s *BlobStore) PutUnAvailChunk(chunkId int) {
-	s.unavailChunkCh <- chunkId
+func (s *BlobStore) PutUnAvailBlobFile(blobfileId int) {
+	s.unavailBlobFileCh <- blobfileId
 }
 
-func (s *BlobStore) GetStoreChunkCount() (files int, err error) {
-	return ChunkFileCount, nil
+func (s *BlobStore) GetStoreBlobFileCount() (files int, err error) {
+	return BlobFileFileCount, nil
 }
 
 func (s *BlobStore) MarkDelete(fileId uint32, offset, size int64) error {
-	chunkId := int(fileId)
+	blobfileId := int(fileId)
 	objectId := uint64(offset)
-	c, ok := s.chunks[chunkId]
+	c, ok := s.blobfiles[blobfileId]
 	if !ok {
 		return ErrorFileNotFound
 	}
@@ -315,16 +315,16 @@ func (s *BlobStore) MarkDelete(fileId uint32, offset, size int64) error {
 }
 
 func (s *BlobStore) GetUnAvailChanLen() (chanLen int) {
-	return len(s.unavailChunkCh)
+	return len(s.unavailBlobFileCh)
 }
 
 func (s *BlobStore) GetAvailChanLen() (chanLen int) {
-	return len(s.availChunkCh)
+	return len(s.availBlobFileCh)
 }
 
 func (s *BlobStore) AllocObjectId(fileId uint32) (uint64, error) {
-	chunkId := int(fileId)
-	c, ok := s.chunks[chunkId]
+	blobfileId := int(fileId)
+	c, ok := s.blobfiles[blobfileId]
 	if !ok {
 		return 0, ErrorFileNotFound //0 is an invalid object id
 	}
@@ -332,7 +332,7 @@ func (s *BlobStore) AllocObjectId(fileId uint32) (uint64, error) {
 }
 
 func (s *BlobStore) GetLastOid(fileId uint32) (objectId uint64, err error) {
-	c, ok := s.chunks[int(fileId)]
+	c, ok := s.blobfiles[int(fileId)]
 	if !ok {
 		return 0, ErrorFileNotFound
 	}
@@ -341,7 +341,7 @@ func (s *BlobStore) GetLastOid(fileId uint32) (objectId uint64, err error) {
 }
 
 func (s *BlobStore) GetObject(fileId uint32, objectId uint64) (o *Object, err error) {
-	c, ok := s.chunks[int(fileId)]
+	c, ok := s.blobfiles[int(fileId)]
 	if !ok {
 		return nil, ErrorFileNotFound
 	}
@@ -356,7 +356,7 @@ func (s *BlobStore) GetObject(fileId uint32, objectId uint64) (o *Object, err er
 
 func (s *BlobStore) GetDelObjects(fileId uint32) (objects []uint64) {
 	objects = make([]uint64, 0)
-	c, ok := s.chunks[int(fileId)]
+	c, ok := s.blobfiles[int(fileId)]
 	if !ok {
 		return
 	}
@@ -379,8 +379,8 @@ func (s *BlobStore) GetDelObjects(fileId uint32) (objects []uint64) {
 	return
 }
 
-func (s *BlobStore) ApplyDelObjects(chunkId uint32, objects []uint64) (err error) {
-	c, ok := s.chunks[int(chunkId)]
+func (s *BlobStore) ApplyDelObjects(blobfileId uint32, objects []uint64) (err error) {
+	c, ok := s.blobfiles[int(blobfileId)]
 	if !ok {
 		return ErrorFileNotFound
 	}
@@ -388,17 +388,17 @@ func (s *BlobStore) ApplyDelObjects(chunkId uint32, objects []uint64) (err error
 	return
 }
 
-// make sure chunkID is valid
-func (s *BlobStore) IsReadyToCompact(chunkID, thresh int) (isready bool, deletePercent float64) {
+// make sure blobfileID is valid
+func (s *BlobStore) IsReadyToCompact(blobfileID, thresh int) (isready bool, deletePercent float64) {
 	if thresh < 0 {
 		thresh = CompactThreshold
 	}
 
-	c := s.chunks[chunkID]
+	c := s.blobfiles[blobfileID]
 	objects := c.tree
 	deletePercent = float64(objects.deleteBytes) / float64(objects.fileBytes)
-	maxChunkSize := s.storeSize / ChunkFileCount
-	if objects.fileBytes < uint64(maxChunkSize)*CompactThreshold/100 {
+	maxBlobFileSize := s.storeSize / BlobFileFileCount
+	if objects.fileBytes < uint64(maxBlobFileSize)*CompactThreshold/100 {
 		return false, deletePercent
 	}
 
@@ -409,17 +409,17 @@ func (s *BlobStore) IsReadyToCompact(chunkID, thresh int) (isready bool, deleteP
 	return true, deletePercent
 }
 
-func (s *BlobStore) DoCompactWork(chunkID int) (err error, released uint64) {
-	_, ok := s.chunks[chunkID]
+func (s *BlobStore) DoCompactWork(blobfileID int) (err error, released uint64) {
+	_, ok := s.blobfiles[blobfileID]
 	if !ok {
 		return ErrorFileNotFound, 0
 	}
 
-	err, released = s.doCompactAndCommit(chunkID)
+	err, released = s.doCompactAndCommit(blobfileID)
 	if err != nil {
 		return err, 0
 	}
-	err = s.Sync(uint32(chunkID))
+	err = s.Sync(uint32(blobfileID))
 	if err != nil {
 		return err, 0
 	}
@@ -427,22 +427,22 @@ func (s *BlobStore) DoCompactWork(chunkID int) (err error, released uint64) {
 	return nil, released
 }
 
-func (s *BlobStore) MoveChunkToUnavailChan() {
-	if len(s.unavailChunkCh) >= 2 {
+func (s *BlobStore) MoveBlobFileToUnavailChan() {
+	if len(s.unavailBlobFileCh) >= 2 {
 		return
 	}
 	for i := 0; i < 2; i++ {
 		select {
-		case chunkId := <-s.availChunkCh:
-			s.unavailChunkCh <- chunkId
+		case blobfileId := <-s.availBlobFileCh:
+			s.unavailBlobFileCh <- blobfileId
 		default:
 			return
 		}
 	}
 }
 
-func (s *BlobStore) doCompactAndCommit(chunkID int) (err error, released uint64) {
-	cc := s.chunks[chunkID]
+func (s *BlobStore) doCompactAndCommit(blobfileID int) (err error, released uint64) {
+	cc := s.blobfiles[blobfileID]
 	// prevent write and delete operations
 	if !cc.compactLock.TryLockTimed(CompactMaxWait) {
 		return nil, 0
@@ -471,9 +471,9 @@ func CheckAndCreateSubdir(name string) (err error) {
 	return os.MkdirAll(name, 0755)
 }
 
-func (s *BlobStore) GetChunkInCore(fileID uint32) (*Chunk, error) {
-	chunkID := (int)(fileID)
-	cc, ok := s.chunks[chunkID]
+func (s *BlobStore) GetBlobFileInCore(fileID uint32) (*BlobFile, error) {
+	blobfileID := (int)(fileID)
+	cc, ok := s.blobfiles[blobfileID]
 	if !ok {
 		return nil, ErrorFileNotFound
 	}
@@ -490,14 +490,14 @@ func (s *BlobStore) Snapshot() ([]*proto.File, error) {
 	)
 	files := make([]*proto.File, 0)
 	for _, info := range fList {
-		var cc *Chunk
+		var cc *BlobFile
 		if ccID, err = strconv.Atoi(info.Name()); err != nil {
 			continue
 		}
-		if ccID > ChunkFileCount {
+		if ccID > BlobFileFileCount {
 			continue
 		}
-		if cc, err = s.GetChunkInCore(uint32(ccID)); err != nil {
+		if cc, err = s.GetBlobFileInCore(uint32(ccID)); err != nil {
 			continue
 		}
 

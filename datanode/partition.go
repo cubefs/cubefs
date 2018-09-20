@@ -61,9 +61,9 @@ type DataPartition interface {
 	GetExtentStore() *storage.ExtentStore
 	GetBlobStore() *storage.BlobStore
 
-	GetObjects(chunkID uint32, startOid, lastOid uint64) (objects []*storage.Object)
-	PackObject(dataBuf []byte, o *storage.Object, chunkID uint32) (err error)
-	DelObjects(chunkId uint32, deleteBuf []byte) (err error)
+	GetObjects(blobfileID uint32, startOid, lastOid uint64) (objects []*storage.Object)
+	PackObject(dataBuf []byte, o *storage.Object, blobfileID uint32) (err error)
+	DelObjects(blobfileId uint32, deleteBuf []byte) (err error)
 
 	LaunchRepair()
 	MergeRepair(metas *MembersFileMetas)
@@ -271,7 +271,7 @@ func (dp *dataPartition) statusUpdate() {
 		status = proto.ReadOnly
 	}
 	if dp.isLeader {
-		dp.blobStore.MoveChunkToUnavailChan()
+		dp.blobStore.MoveBlobFileToUnavailChan()
 	}
 	dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
 }
@@ -415,10 +415,10 @@ func (dp *dataPartition) GetAllExtentsMeta() (files []*storage.FileInfo, err err
 	return
 }
 
-func (dp *dataPartition) GetObjects(chunkID uint32, startOid, lastOid uint64) (objects []*storage.Object) {
+func (dp *dataPartition) GetObjects(blobfileID uint32, startOid, lastOid uint64) (objects []*storage.Object) {
 	objects = make([]*storage.Object, 0)
 	for startOid <= lastOid {
-		needle, err := dp.GetBlobStore().GetObject(chunkID, uint64(startOid))
+		needle, err := dp.GetBlobStore().GetObject(blobfileID, uint64(startOid))
 		if err != nil {
 			needle = &storage.Object{Oid: uint64(startOid), Size: storage.MarkDeleteObject}
 		}
@@ -428,16 +428,16 @@ func (dp *dataPartition) GetObjects(chunkID uint32, startOid, lastOid uint64) (o
 	return
 }
 
-func (dp *dataPartition) PackObject(dataBuf []byte, o *storage.Object, chunkID uint32) (err error) {
+func (dp *dataPartition) PackObject(dataBuf []byte, o *storage.Object, blobfileID uint32) (err error) {
 	o.Marshal(dataBuf)
 	if o.Size == storage.MarkDeleteObject && o.Oid != 0 {
 		return
 	}
-	_, err = dp.blobStore.Read(chunkID, int64(o.Oid), int64(o.Size), dataBuf[storage.ObjectHeaderSize:])
+	_, err = dp.blobStore.Read(blobfileID, int64(o.Oid), int64(o.Size), dataBuf[storage.ObjectHeaderSize:])
 	return
 }
 
-func (dp *dataPartition) DelObjects(chunkId uint32, deleteBuf []byte) (err error) {
+func (dp *dataPartition) DelObjects(blobfileId uint32, deleteBuf []byte) (err error) {
 	if len(deleteBuf)%storage.ObjectIdLen != 0 {
 		err = errors.Annotatef(fmt.Errorf("unvalid objectLen for opsync delete object"),
 			"ApplyDelObjects Error")
@@ -449,7 +449,7 @@ func (dp *dataPartition) DelObjects(chunkId uint32, deleteBuf []byte) (err error
 		needle := binary.BigEndian.Uint64(deleteBuf[i*storage.ObjectIdLen : (i+1)*storage.ObjectIdLen])
 		needles = append(needles, needle)
 	}
-	if err = dp.blobStore.ApplyDelObjects(chunkId, needles); err != nil {
+	if err = dp.blobStore.ApplyDelObjects(blobfileId, needles); err != nil {
 		err = errors.Annotatef(err, "ApplyDelObjects Error")
 		return err
 	}
@@ -459,13 +459,13 @@ func (dp *dataPartition) DelObjects(chunkId uint32, deleteBuf []byte) (err error
 func (dp *dataPartition) MergeRepair(metas *MembersFileMetas) {
 	store := dp.extentStore
 	for _, deleteExtentId := range metas.NeedDeleteExtentsTasks {
-		if deleteExtentId.FileId <= storage.ChunkFileCount {
+		if deleteExtentId.FileId <= storage.BlobFileFileCount {
 			continue
 		}
 		store.MarkDelete(uint64(deleteExtentId.FileId))
 	}
 	for _, addExtent := range metas.NeedAddExtentsTasks {
-		if addExtent.FileId <= storage.ChunkFileCount {
+		if addExtent.FileId <= storage.BlobFileFileCount {
 			continue
 		}
 		if store.IsExistExtent(uint64(addExtent.FileId)) {
@@ -481,7 +481,7 @@ func (dp *dataPartition) MergeRepair(metas *MembersFileMetas) {
 
 	var wg sync.WaitGroup
 	for _, fixExtent := range metas.NeedFixExtentSizeTasks {
-		if fixExtent.FileId <= storage.ChunkFileCount {
+		if fixExtent.FileId <= storage.BlobFileFileCount {
 			continue
 		}
 		if !store.IsExistExtent(uint64(fixExtent.FileId)) {
@@ -490,10 +490,10 @@ func (dp *dataPartition) MergeRepair(metas *MembersFileMetas) {
 		wg.Add(1)
 		go dp.doStreamExtentFixRepair(&wg, fixExtent)
 	}
-	for chunkId, deleteBlobObject := range metas.NeedDeleteObjectsTasks {
-		if err := dp.DelObjects(uint32(chunkId), deleteBlobObject); err != nil {
-			log.LogErrorf("action[Repair] dataPartition[%v] chunkId[%v] deleteObject "+
-				"failed err[%v]", dp.partitionId, chunkId, err.Error())
+	for blobfileId, deleteBlobObject := range metas.NeedDeleteObjectsTasks {
+		if err := dp.DelObjects(uint32(blobfileId), deleteBlobObject); err != nil {
+			log.LogErrorf("action[Repair] dataPartition[%v] blobfileId[%v] deleteObject "+
+				"failed err[%v]", dp.partitionId, blobfileId, err.Error())
 		}
 	}
 	wg.Wait()

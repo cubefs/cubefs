@@ -167,12 +167,12 @@ func NewStreamReadPacket(partitionId uint32, extentId, offset, size int) (p *Pac
 	return
 }
 
-func NewStreamChunkRepairReadPacket(partitionId uint32, chunkId int) (p *Packet) {
+func NewStreamBlobFileRepairReadPacket(partitionId uint32, blobfileId int) (p *Packet) {
 	p = new(Packet)
-	p.FileID = uint64(chunkId)
+	p.FileID = uint64(blobfileId)
 	p.PartitionID = partitionId
 	p.Magic = proto.ProtoMagic
-	p.Opcode = proto.OpChunkRepairRead
+	p.Opcode = proto.OpBlobFileRepairRead
 	p.StoreMode = proto.BlobStoreMode
 	p.ReqID = proto.GetReqID()
 

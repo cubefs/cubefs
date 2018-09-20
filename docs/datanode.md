@@ -77,11 +77,11 @@ BaudFS using **JSON** as for configuration file format.
 ## Storage engine
 
 A fusion storage engine designed for both blob file and large file storage and management.
-There are two store in each data partition, **chunk store** and **extent store**.
+There are two store in each data partition, **blobfile store** and **extent store**.
 
-**Chunk store**
+**BlobFile store**
 
-Chunk store for blob or one-off-write file data storage. File bytes append into chunk block file and record the offset index and data length into an index file which pair with the chunk block. A chunk block file can be append until no space left in partition. Each partition has a fixed number of chunk block files for parallel write support.
+BlobFile store for blob or one-off-write file data storage. File bytes append into blobfile block file and record the offset index and data length into an index file which pair with the blobfile block. A blobfile block file can be append until no space left in partition. Each partition has a fixed number of blobfile block files for parallel write support.
 
 **Extent store**
 
