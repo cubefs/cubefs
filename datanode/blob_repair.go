@@ -70,7 +70,7 @@ func (dp *dataPartition) getRemoteChunkMetas(remote string, filterChunkids []int
 	}
 	defer gConnPool.Put(conn, true)
 
-	packet := NewExtentStoreGetAllWaterMarker(dp.partitionId)
+	packet := NewBlobStoreGetAllWaterMarker(dp.partitionId)
 	if err = packet.WriteToConn(conn); err != nil {
 		err = errors.Annotatef(err, "getRemoteExtentMetas partition[%v] write to remote[%v]", dp.partitionId, remote)
 		return
