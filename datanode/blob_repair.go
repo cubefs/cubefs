@@ -66,7 +66,7 @@ func (dp *dataPartition) getRemoteBlobFileMetas(remote string, filterBlobFileids
 		conn *net.TCPConn
 	)
 	if conn, err = gConnPool.Get(remote); err != nil {
-		err = errors.Annotatef(err, "getRemoteExtentMetas partition[%v] get connection", dp.partitionId)
+		err = errors.Annotatef(err, "getRemoteExtentMetas partition(%v) get connection", dp.partitionId)
 		return
 	}
 	defer func() {
@@ -79,17 +79,17 @@ func (dp *dataPartition) getRemoteBlobFileMetas(remote string, filterBlobFileids
 
 	packet := NewBlobStoreGetAllWaterMarker(dp.partitionId)
 	if err = packet.WriteToConn(conn); err != nil {
-		err = errors.Annotatef(err, "getRemoteExtentMetas partition[%v] write to remote[%v]", dp.partitionId, remote)
+		err = errors.Annotatef(err, "getRemoteExtentMetas partition(%v) write to remote(%v)", dp.partitionId, remote)
 		return
 	}
 	if err = packet.ReadFromConn(conn, 10); err != nil {
-		err = errors.Annotatef(err, "getRemoteExtentMetas partition[%v] read from connection[%v]", dp.partitionId, remote)
+		err = errors.Annotatef(err, "getRemoteExtentMetas partition(%v) read from connection(%v)", dp.partitionId, remote)
 		return
 	}
 	allFiles := make([]*storage.FileInfo, 0)
 	files := make([]*storage.FileInfo, 0)
 	if err = json.Unmarshal(packet.Data[:packet.Size], &allFiles); err != nil {
-		err = errors.Annotatef(err, "getRemoteExtentMetas partition[%v] unmarshal packet", dp.partitionId)
+		err = errors.Annotatef(err, "getRemoteExtentMetas partition(%v) unmarshal packet", dp.partitionId)
 		return
 	}
 	for _, cid := range allFiles {
@@ -136,7 +136,7 @@ func (dp *dataPartition) generatorFixBlobFileSizeTasks(allMembers []*MembersFile
 			if extentInfo.Size < maxSize {
 				fixExtent := &storage.FileInfo{Source: sourceAddr, FileId: fileId, Size: maxSize, Inode: inode}
 				allMembers[index].NeedFixExtentSizeTasks = append(allMembers[index].NeedFixExtentSizeTasks, fixExtent)
-				log.LogInfof("action[generatorFixExtentSizeTasks] partition[%v] fixExtent[%v].", dp.partitionId, fixExtent)
+				log.LogInfof("action[generatorFixExtentSizeTasks] partition(%v) fixExtent(%v).", dp.partitionId, fixExtent)
 			}
 		}
 	}
@@ -172,10 +172,14 @@ func (dp *dataPartition) doStreamBlobFixRepair(wg *sync.WaitGroup, remoteBlobFil
 		if opErr != nil {
 			err = errors.Annotatef(err, opErr.Error())
 		}
-		err = errors.Annotatef(err, "dataPartition[%v] remote[%v] local[%v]",
+		err = errors.Annotatef(err, "dataPartition(%v) remote(%v) local(%v)",
 			dp.partitionId, remoteBlobFileInfo, localBlobInfo)
 		log.LogError(errors.ErrorStack(err))
 	}
+}
+
+func (dp *dataPartition) getBlobRepairLogKey(blobFileId int) (s string) {
+	return fmt.Sprintf("ActionBlobRepairKey(%v_%v_%v)", dp.ID(), blobFileId, dp.IsLeader())
 }
 
 //do stream repair blobfilefile,it do on follower host
@@ -184,8 +188,11 @@ func (dp *dataPartition) streamRepairBlobObjects(remoteBlobFileInfo *storage.Fil
 	//1.get local blobfileFile size
 	localBlobFileInfo, err := store.GetWatermark(uint64(remoteBlobFileInfo.FileId))
 	if err != nil {
-		return errors.Annotatef(err, "streamRepairBlobObjects GetWatermark error")
+		return errors.Annotatef(err, "%v streamRepairBlobObjects GetWatermark error",
+			dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId))
 	}
+	log.LogWarnf("%v recive fixrepair task ,remote[%],local(%v)",
+		dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId), remoteBlobFileInfo.String(), localBlobFileInfo.String())
 	//2.generator blobfileRepair read packet,it contains startObj,endObj
 	task := &RepairBlobFileTask{BlobFileId: remoteBlobFileInfo.FileId, StartObj: localBlobFileInfo.Size + 1, EndObj: remoteBlobFileInfo.Size}
 	//3.new a streamBlobFileRepair readPacket
@@ -195,13 +202,15 @@ func (dp *dataPartition) streamRepairBlobObjects(remoteBlobFileInfo *storage.Fil
 	//4.get a connection to leader host
 	conn, err = gConnPool.Get(remoteBlobFileInfo.Source)
 	if err != nil {
-		return errors.Annotatef(err, "streamRepairBlobObjects get conn from host[%v] error", remoteBlobFileInfo.Source)
+		return errors.Annotatef(err, "%v streamRepairBlobObjects get conn from host(%v) error",
+			dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId), remoteBlobFileInfo.Source)
 	}
 	//5.write streamBlobFileRepair command to leader
 	err = request.WriteToConn(conn)
 	if err != nil {
 		gConnPool.Put(conn, true)
-		return errors.Annotatef(err, "streamRepairBlobObjects send streamRead to host[%v] error", remoteBlobFileInfo.Source)
+		return errors.Annotatef(err, "%v streamRepairBlobObjects send streamRead to host(%v) error",
+			dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId), remoteBlobFileInfo.Source)
 	}
 
 	for {
@@ -209,7 +218,8 @@ func (dp *dataPartition) streamRepairBlobObjects(remoteBlobFileInfo *storage.Fil
 		localBlobFileInfo, err := store.GetWatermark(uint64(remoteBlobFileInfo.FileId))
 		if err != nil {
 			gConnPool.Put(conn, true)
-			return errors.Annotatef(err, "streamRepairBlobObjects GetWatermark error")
+			return errors.Annotatef(err, "%v streamRepairBlobObjects GetWatermark error",
+				dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId))
 		}
 		// if local blobfilefile size has great remote ,then break
 		if localBlobFileInfo.Size >= remoteBlobFileInfo.Size {
@@ -220,21 +230,25 @@ func (dp *dataPartition) streamRepairBlobObjects(remoteBlobFileInfo *storage.Fil
 		err = request.ReadFromConn(conn, proto.ReadDeadlineTime)
 		if err != nil {
 			gConnPool.Put(conn, true)
-			return errors.Annotatef(err, "streamRepairBlobObjects recive data error")
+			return errors.Annotatef(err, "%v streamRepairBlobObjects recive data error",
+				dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId))
 		}
 		// get this repairPacket end oid,if oid has large,then break
 		newLastOid := uint64(request.Offset)
 		if newLastOid > uint64(remoteBlobFileInfo.FileId) {
 			gConnPool.Put(conn, true)
-			err = fmt.Errorf("invalid offset of OpCRepairReadResp:"+
-				" %v, expect max objid is %v", newLastOid, remoteBlobFileInfo.FileId)
+			err = fmt.Errorf("%v invalid offset of OpCRepairReadResp:"+
+				" %v, expect max objid is %v", dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId), newLastOid, remoteBlobFileInfo.FileId)
 			return err
 		}
+		log.LogWarnf("%v recive repair,localOid(%v) remoteOid(%v)",
+			dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId), localBlobFileInfo.Size, newLastOid)
 		// write this blobObject to local
 		err = dp.applyRepairBlobObjects(remoteBlobFileInfo.FileId, request.Data, newLastOid)
 		if err != nil {
 			gConnPool.Put(conn, true)
-			err = errors.Annotatef(err, "streamRepairBlobObjects apply data failed")
+			err = errors.Annotatef(err, "%v streamRepairBlobObjects apply data failed",
+				dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId))
 			return err
 		}
 	}
@@ -247,6 +261,7 @@ func (dp *dataPartition) applyRepairBlobObjects(blobfileId int, data []byte, end
 	store := dp.GetBlobStore()
 	var applyObjectId uint64
 	dataLen := len(data)
+	startObjectId, _ := store.GetLastOid(uint32(blobfileId))
 	for {
 		//if has read end,then break
 		if offset+storage.ObjectHeaderSize > len(data) {
@@ -264,12 +279,13 @@ func (dp *dataPartition) applyRepairBlobObjects(blobfileId int, data []byte, end
 			err = store.WriteDeleteDentry(o.Oid, blobfileId, o.Crc)
 		}
 		if err != nil {
-			return errors.Annotatef(err, "dataPartition[%v] blobfileId[%v] oid[%v] writeDeleteDentry failed", dp.ID(), blobfileId, o.Oid)
+			return errors.Annotatef(err, "%v applyRepairBlobObjects oid(%v) writeDeleteDentry failed",
+				dp.getBlobRepairLogKey(blobfileId), o.Oid)
 		}
 		//if offset +this objectSize has great 15MB,then break,donnot fix it
 		if offset+int(o.Size) > dataLen {
-			return errors.Annotatef(err, "dataPartition[%v] blobfileId[%v] oid[%v] no body"+
-				" expect[%v] actual[%v] failed", dp.ID(), blobfileId, o.Oid, o.Size, dataLen-(offset))
+			return errors.Annotatef(err, "%v applyRepairBlobObjects  oid(%v) no body"+
+				" expect(%v) actual(%v) failed", dp.getBlobRepairLogKey(blobfileId), o.Oid, o.Size, dataLen-(offset))
 		}
 		//get this object body
 		ndata := data[offset : offset+int(o.Size)]
@@ -278,17 +294,18 @@ func (dp *dataPartition) applyRepairBlobObjects(blobfileId int, data []byte, end
 		ncrc := crc32.ChecksumIEEE(ndata)
 		//check crc
 		if ncrc != o.Crc {
-			return errors.Annotatef(err, "dataPartition[%v] blobfileId[%v] oid[%v] "+
-				"repair data crc  failed,expectCrc[%v] actualCrc[%v]", dp.ID(), blobfileId, o.Oid, o.Crc, ncrc)
+			return errors.Annotatef(err, "%v applyRepairBlobObjects  oid(%v) "+
+				"repair data crc  failed,expectCrc(%v) actualCrc(%v)", dp.getBlobRepairLogKey(blobfileId), o.Oid, o.Crc, ncrc)
 		}
 		//write local storage engine
 		err = store.Write(uint32(blobfileId), uint64(o.Oid), int64(o.Size), ndata, o.Crc)
 		if err != nil {
-			return errors.Annotatef(err, "dataPartition[%v] blobfileId[%v] oid[%v] write failed", dp.ID(), blobfileId, o.Oid)
+			return errors.Annotatef(err, "%v applyRepairBlobObjects oid(%v) write failed", dp.getBlobRepairLogKey(blobfileId), o.Oid)
 		}
 		//update applyObjectId
 		applyObjectId = o.Oid
 	}
+	log.LogWarnf("%v applyRepairBlobObjects has fix start(%v) end(%v)", dp.getBlobRepairLogKey(blobfileId), startObjectId, endObjectId)
 	return nil
 }
 

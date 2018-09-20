@@ -169,10 +169,10 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	if s.rackName == "" {
 		s.rackName = DefaultRackName
 	}
-	log.LogDebugf("action[parseConfig] load masterAddrs[%v].", MasterHelper.Nodes())
-	log.LogDebugf("action[parseConfig] load port[%v].", s.port)
-	log.LogDebugf("action[parseConfig] load clusterId[%v].", s.clusterId)
-	log.LogDebugf("action[parseConfig] load rackName[%v].", s.rackName)
+	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterHelper.Nodes())
+	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
+	log.LogDebugf("action[parseConfig] load clusterId(%v).", s.clusterId)
+	log.LogDebugf("action[parseConfig] load rackName(%v).", s.rackName)
 	return
 }
 
@@ -184,7 +184,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	}
 	var wg sync.WaitGroup
 	for _, d := range cfg.GetArray(ConfigKeyDisks) {
-		log.LogDebugf("action[startSpaceManager] load disk raw config[%v].", d)
+		log.LogDebugf("action[startSpaceManager] load disk raw config(%v).", d)
 		// Format "PATH:RESET_SIZE:MAX_ERR
 		arr := strings.Split(d.(string), ":")
 		if len(arr) != 3 {
@@ -222,7 +222,7 @@ func (s *DataNode) registerToMaster() {
 			data, err = MasterHelper.Request(http.MethodGet, GetIpFromMaster, nil, nil)
 			masterAddr := MasterHelper.Leader()
 			if err != nil {
-				log.LogErrorf("action[registerToMaster] cannot get ip from master[%v] err[%v].",
+				log.LogErrorf("action[registerToMaster] cannot get ip from master(%v) err(%v).",
 					masterAddr, err)
 				timer = time.NewTimer(5 * time.Second)
 				continue
@@ -233,7 +233,7 @@ func (s *DataNode) registerToMaster() {
 			s.clusterId = cInfo.Cluster
 			s.localServeAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			if !util.IP(LocalIP) {
-				log.LogErrorf("action[registerToMaster] got an invalid local ip[%v] from master[%v].",
+				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
 					LocalIP, masterAddr)
 				timer = time.NewTimer(5 * time.Second)
 				continue
@@ -243,7 +243,7 @@ func (s *DataNode) registerToMaster() {
 			params["addr"] = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			data, err = MasterHelper.Request(http.MethodPost, master.AddDataNode, params, nil)
 			if err != nil {
-				log.LogErrorf("action[registerToMaster] cannot register this node to master[%] err[%v].",
+				log.LogErrorf("action[registerToMaster] cannot register this node to master[%] err(%v).",
 					masterAddr, err)
 				continue
 			}
@@ -269,7 +269,7 @@ func (s *DataNode) startTcpService() (err error) {
 	log.LogInfo("Start: startTcpService")
 	addr := fmt.Sprintf(":%v", s.port)
 	l, err := net.Listen(NetType, addr)
-	log.LogDebugf("action[startTcpService] listen %v address[%v].", NetType, addr)
+	log.LogDebugf("action[startTcpService] listen %v address(%v).", NetType, addr)
 	if err != nil {
 		log.LogError("failed to listen, err:", err)
 		return
@@ -316,7 +316,7 @@ func (s *DataNode) serveConn(conn net.Conn) {
 		if err != nil && err != io.EOF &&
 			!strings.Contains(err.Error(), "closed connection") &&
 			!strings.Contains(err.Error(), "reset by peer") {
-			log.LogErrorf("action[serveConn] err[%v].", err)
+			log.LogErrorf("action[serveConn] err(%v).", err)
 		}
 		space.Stats().RemoveConnection()
 		conn.Close()
@@ -347,7 +347,7 @@ func (s *DataNode) AddCompactTask(t *CompactTask) (err error) {
 	}
 	err = d.addTask(t)
 	if err != nil {
-		err = errors.Annotatef(err, "Task[%v] ", t.toString())
+		err = errors.Annotatef(err, "Task(%v) ", t.toString())
 	}
 	return
 }
@@ -364,7 +364,7 @@ func (s *DataNode) checkBlobFileInfo(pkg *Packet) (err error) {
 	localObjId := blobfileInfo.Size
 	if (leaderObjId - 1) != blobfileInfo.Size {
 		err = ErrBlobFileOffsetMismatch
-		msg := fmt.Sprintf("Err[%v] leaderObjId[%v] localObjId[%v]", err, leaderObjId, localObjId)
+		msg := fmt.Sprintf("Err(%v) leaderObjId(%v) localObjId(%v)", err, leaderObjId, localObjId)
 		log.LogWarn(pkg.ActionMsg(ActionCheckBlobFileInfo, LocalProcessAddr, pkg.StartT, fmt.Errorf(msg)))
 	}
 
@@ -382,7 +382,7 @@ func (s *DataNode) handleBlobFileInfo(pkg *Packet) (err error) {
 		err = s.headNodeSetBlobFileInfo(pkg)
 	}
 	if err != nil {
-		err = errors.Annotatef(err, "Request[%v] handleBlobFileInfo Error", pkg.GetUniqueLogId())
+		err = errors.Annotatef(err, "Request(%v) handleBlobFileInfo Error", pkg.GetUniqueLogId())
 		pkg.PackErrorBody(ActionCheckBlobFileInfo, err.Error())
 	}
 

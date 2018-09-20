@@ -39,7 +39,7 @@ type CompactTask struct {
 }
 
 func (t *CompactTask) toString() (m string) {
-	return fmt.Sprintf("dataPartition[%v]_blobfile[%v]_isLeader[%v]", t.partitionId, t.blobfileId, t.isLeader)
+	return fmt.Sprintf("dataPartition(%v)_blobfile(%v)_isLeader(%v)", t.partitionId, t.blobfileId, t.isLeader)
 }
 
 const (
@@ -145,7 +145,7 @@ func (d *Disk) computeUsage() (err error) {
 	}
 	d.Unallocated = uint64(unallocated)
 
-	log.LogDebugf("action[computeUsage] disk[%v] all[%v] available[%v] used[%v]", d.Path, d.Total, d.Available, d.Used)
+	log.LogDebugf("action[computeUsage] disk(%v) all(%v) available(%v) used(%v)", d.Path, d.Total, d.Available, d.Used)
 
 	return
 }
@@ -155,7 +155,7 @@ func (d *Disk) addTask(t *CompactTask) (err error) {
 	case d.compactCh <- t:
 		return
 	default:
-		return errors.Annotatef(ErrDiskCompactChanFull, "diskPath:[%v] partitionId[%v]", d.Path, t.partitionId)
+		return errors.Annotatef(ErrDiskCompactChanFull, "diskPath:(%v) partitionId(%v)", d.Path, t.partitionId)
 	}
 }
 
@@ -173,9 +173,9 @@ func (d *Disk) compact() {
 			}
 			err, release := dp.GetBlobStore().DoCompactWork(t.blobfileId)
 			if err != nil {
-				log.LogErrorf("action[compact] task[%v] compact error[%v]", t.toString(), err.Error())
+				log.LogErrorf("action[compact] task(%v) compact error(%v)", t.toString(), err.Error())
 			} else {
-				log.LogInfof("action[compact] task[%v] compact success Release [%v]", t.toString(), release)
+				log.LogInfof("action[compact] task(%v) compact success Release (%v)", t.toString(), release)
 			}
 		}
 	}
@@ -211,8 +211,8 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	} else {
 		d.Status = proto.ReadWrite
 	}
-	log.LogDebugf("action[updateSpaceInfo] disk[%v] total[%v] available[%v] remain[%v] "+
-		"restSize[%v] maxErrs[%v] readErrs[%v] writeErrs[%v] status[%v]", d.Path,
+	log.LogDebugf("action[updateSpaceInfo] disk(%v) total(%v) available(%v) remain(%v) "+
+		"restSize(%v) maxErrs(%v) readErrs(%v) writeErrs(%v) status(%v)", d.Path,
 		d.Total, d.Available, d.Unallocated, d.RestSize, d.MaxErrs, d.ReadErrs, d.WriteErrs, d.Status)
 	return
 }
@@ -244,7 +244,7 @@ func (d *Disk) DataPartitionList() (partitionIds []uint32) {
 func unmarshalPartitionName(name string) (partitionId uint32, partitionSize int, err error) {
 	arr := strings.Split(name, "_")
 	if len(arr) != 3 {
-		err = fmt.Errorf("error dataPartition name[%v]", name)
+		err = fmt.Errorf("error dataPartition name(%v)", name)
 		return
 	}
 	var (
@@ -272,7 +272,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 	)
 	fileInfoList, err := ioutil.ReadDir(d.Path)
 	if err != nil {
-		log.LogErrorf("action[RestorePartition] read dir[%v] err[%v].", d.Path, err)
+		log.LogErrorf("action[RestorePartition] read dir(%v) err(%v).", d.Path, err)
 		return
 	}
 	var wg sync.WaitGroup
@@ -283,11 +283,11 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 		}
 
 		if partitionId, partitionSize, err = unmarshalPartitionName(filename); err != nil {
-			log.LogErrorf("action[RestorePartition] unmarshal partitionName[%v] from disk[%v] err[%v] ",
+			log.LogErrorf("action[RestorePartition] unmarshal partitionName(%v) from disk(%v) err(%v) ",
 				filename, d.Path, err.Error())
 			continue
 		}
-		log.LogDebugf("acton[RestorePartition] disk[%v] path[%v] partitionId[%v] partitionSize[%v].",
+		log.LogDebugf("acton[RestorePartition] disk(%v) path(%v) partitionId(%v) partitionSize(%v).",
 			d.Path, fileInfo.Name(), partitionId, partitionSize)
 		wg.Add(1)
 		go func(partitionId uint32, filename string) {
@@ -297,7 +297,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 			)
 			defer wg.Done()
 			if dp, err = LoadDataPartition(path.Join(d.Path, filename), d); err != nil {
-				log.LogError(fmt.Sprintf("action[RestorePartition] new partition[%v] err[%v] ",
+				log.LogError(fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ",
 					partitionId, err.Error()))
 				return
 			}

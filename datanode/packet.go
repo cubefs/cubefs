@@ -50,7 +50,7 @@ type Packet struct {
 func (p *Packet) afterTp() (ok bool) {
 	var err error
 	if p.IsErrPack() {
-		err = fmt.Errorf(p.GetOpMsg()+" failed because[%v]", string(p.Data[:p.Size]))
+		err = fmt.Errorf(p.GetOpMsg()+" failed because(%v)", string(p.Data[:p.Size]))
 	}
 	ump.AfterTP(p.tpObject, err)
 
@@ -242,7 +242,7 @@ func (p *Packet) IsErrPack() bool {
 }
 
 func (p *Packet) getErr() (m string) {
-	return fmt.Sprintf("req[%v] err[%v]", p.GetUniqueLogId(), string(p.Data[:p.Size]))
+	return fmt.Sprintf("req(%v) err(%v)", p.GetUniqueLogId(), string(p.Data[:p.Size]))
 }
 
 func (p *Packet) ClassifyErrorOp(errLog string, errMsg string) {

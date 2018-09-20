@@ -55,13 +55,13 @@ func NewMemberFileMetas() (mf *MembersFileMetas) {
 //files repair check
 func (dp *dataPartition) extentFileRepair() {
 	startTime := time.Now().UnixNano()
-	log.LogInfof("action[extentFileRepair] partition[%v] start.",
+	log.LogInfof("action[extentFileRepair] partition(%v) start.",
 		dp.partitionId)
 
 	// Get all data partition group member about file metas
 	allMembers, err := dp.getAllMemberExtentMetas()
 	if err != nil {
-		log.LogErrorf("action[extentFileRepair] partition[%v] err[%v].",
+		log.LogErrorf("action[extentFileRepair] partition(%v) err(%v).",
 			dp.partitionId, err)
 		log.LogErrorf(errors.ErrorStack(err))
 		return
@@ -69,7 +69,7 @@ func (dp *dataPartition) extentFileRepair() {
 	dp.generatorExtentRepairTasks(allMembers) //generator file repair task
 	err = dp.NotifyRepair(allMembers)         //notify host to fix it
 	if err != nil {
-		log.LogErrorf("action[extentFileRepair] partition[%v] err[%v].",
+		log.LogErrorf("action[extentFileRepair] partition(%v) err(%v).",
 			dp.partitionId, err)
 		log.LogError(errors.ErrorStack(err))
 	}
@@ -77,7 +77,7 @@ func (dp *dataPartition) extentFileRepair() {
 		dp.streamRepairExtent(fixExtentFile) //fix leader filesize
 	}
 	finishTime := time.Now().UnixNano()
-	log.LogInfof("action[extentFileRepair] partition[%v] finish cost[%vms].",
+	log.LogInfof("action[extentFileRepair] partition(%v) finish cost[%vms].",
 		dp.partitionId, (finishTime-startTime)/int64(time.Millisecond))
 }
 
@@ -91,14 +91,14 @@ func (dp *dataPartition) getAllMemberExtentMetas() (allMemberFileMetas []*Member
 	// get local extent file metas
 	extentFiles, err = dp.extentStore.GetAllWatermark(storage.GetStableExtentFilter())
 	if err != nil {
-		err = errors.Annotatef(err, "getAllMemberExtentMetas extent dataPartition[%v] GetAllWaterMark", dp.partitionId)
+		err = errors.Annotatef(err, "getAllMemberExtentMetas extent dataPartition(%v) GetAllWaterMark", dp.partitionId)
 		return
 	}
 	// write blob files meta to extent files meta
 	files = append(files, extentFiles...)
 	leaderFileMetas := NewMemberFileMetas()
 	if err != nil {
-		err = errors.Annotatef(err, "getAllMemberExtentMetas dataPartition[%v] GetAllWaterMark", dp.partitionId)
+		err = errors.Annotatef(err, "getAllMemberExtentMetas dataPartition(%v) GetAllWaterMark", dp.partitionId)
 		return
 	}
 	for _, fi := range files {
@@ -114,26 +114,26 @@ func (dp *dataPartition) getAllMemberExtentMetas() (allMemberFileMetas []*Member
 		target := dp.replicaHosts[i]
 		conn, err = gConnPool.Get(target) //get remote connect
 		if err != nil {
-			err = errors.Annotatef(err, "getAllMemberExtentMetas  dataPartition[%v] get host[%v] connect", dp.partitionId, target)
+			err = errors.Annotatef(err, "getAllMemberExtentMetas  dataPartition(%v) get host(%v) connect", dp.partitionId, target)
 			return
 		}
 		err = p.WriteToConn(conn) //write command to remote host
 		if err != nil {
 			gConnPool.Put(conn, true)
-			err = errors.Annotatef(err, "getAllMemberExtentMetas dataPartition[%v] write to host[%v]", dp.partitionId, target)
+			err = errors.Annotatef(err, "getAllMemberExtentMetas dataPartition(%v) write to host(%v)", dp.partitionId, target)
 			return
 		}
 		err = p.ReadFromConn(conn, 60) //read it response
 		if err != nil {
 			gConnPool.Put(conn, true)
-			err = errors.Annotatef(err, "getAllMemberExtentMetas dataPartition[%v] read from host[%v]", dp.partitionId, target)
+			err = errors.Annotatef(err, "getAllMemberExtentMetas dataPartition(%v) read from host(%v)", dp.partitionId, target)
 			return
 		}
 		fileInfos := make([]*storage.FileInfo, 0)
 		err = json.Unmarshal(p.Data[:p.Size], &fileInfos)
 		if err != nil {
 			gConnPool.Put(conn, true)
-			err = errors.Annotatef(err, "getAllMemberExtentMetas dataPartition[%v] unmarshal json[%v]", dp.partitionId, string(p.Data[:p.Size]))
+			err = errors.Annotatef(err, "getAllMemberExtentMetas dataPartition(%v) unmarshal json(%v)", dp.partitionId, string(p.Data[:p.Size]))
 			return
 		}
 		slaverFileMetas := NewMemberFileMetas()
@@ -190,7 +190,7 @@ func (dp *dataPartition) generatorAddExtentsTasks(allMembers []*MembersFileMetas
 			if _, ok := follower.files[fileId]; !ok {
 				addFile := &storage.FileInfo{Source: leaderAddr, FileId: fileId, Size: leaderFile.Size, Inode: leaderFile.Inode}
 				follower.NeedAddExtentsTasks = append(follower.NeedAddExtentsTasks, addFile)
-				log.LogInfof("action[generatorAddExtentsTasks] partition[%v] addFile[%v].", dp.partitionId, addFile)
+				log.LogInfof("action[generatorAddExtentsTasks] partition(%v) addFile(%v).", dp.partitionId, addFile)
 			}
 		}
 	}
@@ -219,7 +219,7 @@ func (dp *dataPartition) generatorFixExtentSizeTasks(allMembers []*MembersFileMe
 			if extentInfo.Size < maxSize {
 				fixExtent := &storage.FileInfo{Source: sourceAddr, FileId: fileId, Size: maxSize, Inode: inode}
 				allMembers[index].NeedFixExtentSizeTasks = append(allMembers[index].NeedFixExtentSizeTasks, fixExtent)
-				log.LogInfof("action[generatorFixExtentSizeTasks] partition[%v] fixExtent[%v].", dp.partitionId, fixExtent)
+				log.LogInfof("action[generatorFixExtentSizeTasks] partition(%v) fixExtent(%v).", dp.partitionId, fixExtent)
 			}
 		}
 	}
@@ -236,7 +236,7 @@ func (dp *dataPartition) generatorDeleteExtentsTasks(allMembers []*MembersFileMe
 			if _, ok := follower.files[int(deleteFileId)]; ok {
 				deleteFile := &storage.FileInfo{Source: leaderAddr, FileId: int(deleteFileId), Size: 0}
 				follower.NeedDeleteExtentsTasks = append(follower.NeedDeleteExtentsTasks, deleteFile)
-				log.LogInfof("action[generatorDeleteExtentsTasks] partition[%v] deleteFile[%v].", dp.partitionId, deleteFile)
+				log.LogInfof("action[generatorDeleteExtentsTasks] partition(%v) deleteFile(%v).", dp.partitionId, deleteFile)
 			}
 		}
 	}
@@ -292,9 +292,9 @@ func (dp *dataPartition) doStreamExtentFixRepair(wg *sync.WaitGroup, remoteExten
 		if opErr != nil {
 			err = errors.Annotatef(err, opErr.Error())
 		}
-		err = errors.Annotatef(err, "partition[%v] remote[%v] local[%v]",
+		err = errors.Annotatef(err, "partition(%v) remote(%v) local(%v)",
 			dp.partitionId, remoteExtentInfo, localExtentInfo)
-		log.LogErrorf("action[doStreamExtentFixRepair] err[%v].", err)
+		log.LogErrorf("action[doStreamExtentFixRepair] err(%v).", err)
 	}
 }
 
@@ -321,14 +321,14 @@ func (dp *dataPartition) streamRepairExtent(remoteExtentInfo *storage.FileInfo) 
 	// Get a connection to leader host
 	conn, err = gConnPool.Get(remoteExtentInfo.Source)
 	if err != nil {
-		return errors.Annotatef(err, "streamRepairExtent get conn from host[%v] error", remoteExtentInfo.Source)
+		return errors.Annotatef(err, "streamRepairExtent get conn from host(%v) error", remoteExtentInfo.Source)
 	}
 	defer gConnPool.Put(conn, true)
 
 	// Write OpStreamRead command to leader
 	if err = request.WriteToConn(conn); err != nil {
-		err = errors.Annotatef(err, "streamRepairExtent send streamRead to host[%v] error", remoteExtentInfo.Source)
-		log.LogErrorf("action[streamRepairExtent] err[%v].", err)
+		err = errors.Annotatef(err, "streamRepairExtent send streamRead to host(%v) error", remoteExtentInfo.Source)
+		log.LogErrorf("action[streamRepairExtent] err(%v).", err)
 		return
 	}
 	for {
@@ -342,8 +342,8 @@ func (dp *dataPartition) streamRepairExtent(remoteExtentInfo *storage.FileInfo) 
 			localExtentInfo *storage.FileInfo
 		)
 		if localExtentInfo, err = store.GetWatermark(uint64(remoteExtentInfo.FileId), false); err != nil {
-			err = errors.Annotatef(err, "streamRepairExtent partition[%v] GetWatermark error", dp.partitionId)
-			log.LogErrorf("action[streamRepairExtent] err[%v].", err)
+			err = errors.Annotatef(err, "streamRepairExtent partition(%v) GetWatermark error", dp.partitionId)
+			log.LogErrorf("action[streamRepairExtent] err(%v).", err)
 			return
 		}
 		// If local extent size has great remoteExtent file size ,then break
@@ -354,24 +354,24 @@ func (dp *dataPartition) streamRepairExtent(remoteExtentInfo *storage.FileInfo) 
 		// Read 64k stream repair packet
 		if err = request.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
 			err = errors.Annotatef(err, "streamRepairExtent receive data error")
-			log.LogError("action[streamRepairExtent] err[%v].", err)
+			log.LogError("action[streamRepairExtent] err(%v).", err)
 			return
 		}
-		log.LogInfof("action[streamRepairExtent] partition[%v] extent[%v] start fix from [%v]"+
-			" remoteSize[%v] localSize[%v].", dp.ID(), remoteExtentInfo.FileId,
+		log.LogInfof("action[streamRepairExtent] partition(%v) extent(%v) start fix from (%v)"+
+			" remoteSize(%v) localSize(%v).", dp.ID(), remoteExtentInfo.FileId,
 			remoteExtentInfo.Source, remoteExtentInfo.Size, localExtentInfo.Size)
 
 		if request.Crc != crc32.ChecksumIEEE(request.Data[:request.Size]) {
-			err = fmt.Errorf("streamRepairExtent crc mismatch partition[%v] extent[%v] start fix from [%v]"+
-				" remoteSize[%v] localSize[%v] request[%v]", dp.ID(), remoteExtentInfo.FileId,
+			err = fmt.Errorf("streamRepairExtent crc mismatch partition(%v) extent(%v) start fix from (%v)"+
+				" remoteSize(%v) localSize(%v) request(%v)", dp.ID(), remoteExtentInfo.FileId,
 				remoteExtentInfo.Source, remoteExtentInfo.Size, localExtentInfo.Size, request.GetUniqueLogId())
-			log.LogErrorf("action[streamRepairExtent] err[%v].", err)
+			log.LogErrorf("action[streamRepairExtent] err(%v).", err)
 			return errors.Annotatef(err, "streamRepairExtent receive data error")
 		}
 		// Write it to local extent file
 		if err = store.Write(uint64(localExtentInfo.FileId), int64(localExtentInfo.Size), int64(request.Size), request.Data, request.Crc); err != nil {
 			err = errors.Annotatef(err, "streamRepairExtent repair data error")
-			log.LogErrorf("action[streamRepairExtent] err[%v].", err)
+			log.LogErrorf("action[streamRepairExtent] err(%v).", err)
 			return
 		}
 	}

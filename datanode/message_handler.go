@@ -119,8 +119,8 @@ func (msgH *MessageHandler) checkReplyAvail(reply *Packet) (err error) {
 		if reply.ReqID == request.ReqID {
 			return
 		}
-		return fmt.Errorf(ActionCheckReplyAvail+" request [%v] reply[%v] from %v localaddr %v"+
-			" remoteaddr %v requestCrc[%v] replyCrc[%v]", request.GetUniqueLogId(), reply.GetUniqueLogId(), request.NextAddr,
+		return fmt.Errorf(ActionCheckReplyAvail+" request (%v) reply(%v) from %v localaddr %v"+
+			" remoteaddr %v requestCrc(%v) replyCrc(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId(), request.NextAddr,
 			request.NextConn.LocalAddr().String(), request.NextConn.RemoteAddr().String(), request.Crc, reply.Crc)
 	}
 

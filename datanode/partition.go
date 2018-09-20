@@ -313,7 +313,7 @@ func (dp *dataPartition) LaunchRepair() {
 	default:
 	}
 	if err := dp.updateReplicaHosts(); err != nil {
-		log.LogErrorf("action[LaunchRepair] err[%v].", err)
+		log.LogErrorf("action[LaunchRepair] err(%v).", err)
 		return
 	}
 	if !dp.isLeader {
@@ -329,7 +329,7 @@ func (dp *dataPartition) updateReplicaHosts() (err error) {
 		return
 	}
 	if !dp.compareReplicaHosts(dp.replicaHosts, replicas) {
-		log.LogInfof("action[updateReplicaHosts] partition[%v] replicaHosts changed from [%v] to [%v].",
+		log.LogInfof("action[updateReplicaHosts] partition(%v) replicaHosts changed from (%v) to (%v).",
 			dp.partitionId, dp.replicaHosts, replicas)
 	}
 	dp.isLeader = isLeader
@@ -505,8 +505,8 @@ func (dp *dataPartition) MergeBlobStoreRepair(metas *MembersFileMetas) {
 
 	for blobfileId, deleteBlobObject := range metas.NeedDeleteObjectsTasks {
 		if err := dp.DelObjects(uint32(blobfileId), deleteBlobObject); err != nil {
-			log.LogErrorf("action[Repair] dataPartition[%v] blobfileId[%v] deleteObject "+
-				"failed err[%v]", dp.partitionId, blobfileId, err.Error())
+			log.LogErrorf("action[Repair] dataPartition(%v) blobfileId(%v) deleteObject "+
+				"failed err(%v)", dp.partitionId, blobfileId, err.Error())
 		}
 	}
 	wg.Wait()
