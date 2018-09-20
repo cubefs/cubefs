@@ -81,8 +81,10 @@ func (s *DataNode) operatePacket(pkg *Packet, c *net.TCPConn) {
 		s.handleNotifyRepair(pkg)
 	case proto.OpGetWatermark:
 		s.handleGetWatermark(pkg)
-	case proto.OpGetAllWatermark:
-		s.handleGetAllWatermark(pkg)
+	case proto.OpExtentStoreGetAllWaterMark:
+		s.handleExtentStoreGetAllWatermark(pkg)
+	case proto.OpBlobStoreGetAllWaterMark:
+		s.handleExtentStoreGetAllWatermark(pkg)
 	case proto.OpCreateDataPartition:
 		s.handleCreateDataPartition(pkg)
 	case proto.OpLoadDataPartition:
@@ -421,12 +423,28 @@ func (s *DataNode) handleGetWatermark(pkg *Packet) {
 	return
 }
 
-// Handle OpGetAllWatermark packet.
-func (s *DataNode) handleGetAllWatermark(pkg *Packet) {
+// Handle OpExtentStoreGetAllWaterMark packet.
+func (s *DataNode) handleExtentStoreGetAllWatermark(pkg *Packet) {
 	var buf []byte
-	fInfoList, err := pkg.DataPartition.GetAllWaterMarker()
+	store := pkg.DataPartition.GetExtentStore()
+	fInfoList, err := store.GetAllWatermark(storage.GetStableExtentFilter())
 	if err != nil {
-		err = errors.Annotatef(err, "Request[%v] handleGetAllWatermark Error", pkg.GetUniqueLogId())
+		err = errors.Annotatef(err, "Request[%v] handleExtentStoreGetAllWatermark Error", pkg.GetUniqueLogId())
+		pkg.PackErrorBody(LogGetAllWm, err.Error())
+	} else {
+		buf, err = json.Marshal(fInfoList)
+		pkg.PackOkWithBody(buf)
+	}
+	return
+}
+
+// Handle OpBlobStoreGetAllWatermark packet.
+func (s *DataNode) handleBlobStoreGetAllWatermark(pkg *Packet) {
+	var buf []byte
+	store := pkg.DataPartition.GetBlobStore()
+	fInfoList, err := store.GetAllWatermark()
+	if err != nil {
+		err = errors.Annotatef(err, "Request[%v] OpBlobStoreGetAllWatermark Error", pkg.GetUniqueLogId())
 		pkg.PackErrorBody(LogGetAllWm, err.Error())
 	} else {
 		buf, err = json.Marshal(fInfoList)

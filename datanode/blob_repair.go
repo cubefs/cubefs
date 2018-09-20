@@ -28,18 +28,15 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 )
 
-func (dp *dataPartition) blobRepair(){
+func (dp *dataPartition) blobRepair() {
 
 }
-
 
 type RepairChunkTask struct {
 	ChunkId  int
 	StartObj uint64
 	EndObj   uint64
 }
-
-
 
 func (dp *dataPartition) getLocalChunkMetas(filterChunkids []int) (fileMetas *MembersFileMetas, err error) {
 	var (
@@ -49,10 +46,10 @@ func (dp *dataPartition) getLocalChunkMetas(filterChunkids []int) (fileMetas *Me
 		return
 	}
 	files := make([]*storage.FileInfo, 0)
-	for _,cid :=range chunkFiles{
-		for _,ccid:=range filterChunkids {
-			if cid.FileId==ccid{
-				files=append(files,cid)
+	for _, cid := range chunkFiles {
+		for _, ccid := range filterChunkids {
+			if cid.FileId == ccid {
+				files = append(files, cid)
 			}
 		}
 	}
@@ -63,7 +60,7 @@ func (dp *dataPartition) getLocalChunkMetas(filterChunkids []int) (fileMetas *Me
 	return
 }
 
-func (dp *dataPartition) getRemoteChunkMetas(remote string,filterChunkids []int) (fileMetas *MembersFileMetas, err error) {
+func (dp *dataPartition) getRemoteChunkMetas(remote string, filterChunkids []int) (fileMetas *MembersFileMetas, err error) {
 	var (
 		conn *net.TCPConn
 	)
@@ -73,7 +70,7 @@ func (dp *dataPartition) getRemoteChunkMetas(remote string,filterChunkids []int)
 	}
 	defer gConnPool.Put(conn, true)
 
-	packet := NewGetAllWaterMarker(dp.partitionId)
+	packet := NewExtentStoreGetAllWaterMarker(dp.partitionId)
 	if err = packet.WriteToConn(conn); err != nil {
 		err = errors.Annotatef(err, "getRemoteExtentMetas partition[%v] write to remote[%v]", dp.partitionId, remote)
 		return
@@ -93,9 +90,6 @@ func (dp *dataPartition) getRemoteChunkMetas(remote string,filterChunkids []int)
 	}
 	return
 }
-
-
-
 
 //do stream repair chunkfile,it do on follower host
 func (dp *dataPartition) doStreamBlobFixRepair(wg *sync.WaitGroup, remoteBlobFileInfo *storage.FileInfo) {

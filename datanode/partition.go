@@ -60,7 +60,6 @@ type DataPartition interface {
 
 	GetExtentStore() *storage.ExtentStore
 	GetBlobStore() *storage.BlobStore
-	GetAllWaterMarker() (files []*storage.FileInfo, err error)
 
 	GetObjects(chunkID uint32, startOid, lastOid uint64) (objects []*storage.Object)
 	PackObject(dataBuf []byte, o *storage.Object, chunkID uint32) (err error)

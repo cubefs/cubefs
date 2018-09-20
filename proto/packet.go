@@ -45,22 +45,24 @@ const (
 
 //operations
 const (
-	ProtoMagic                uint8 = 0xFF
-	OpInitResultCode          uint8 = 0x00
-	OpCreateFile              uint8 = 0x01
-	OpMarkDelete              uint8 = 0x02
-	OpWrite                   uint8 = 0x03
-	OpRead                    uint8 = 0x04
-	OpStreamRead              uint8 = 0x05
-	OpGetWatermark            uint8 = 0x06
-	OpGetAllWatermark         uint8 = 0x07
-	OpNotifyRepair            uint8 = 0x08
-	OpERepairRead             uint8 = 0x09
-	OpChunkRepairRead         uint8 = 0x0A
-	OpFlowInfo                uint8 = 0x0B
-	OpSyncDelNeedle           uint8 = 0x0C
-	OpNotifyCompact           uint8 = 0x0D
-	OpGetDataPartitionMetrics uint8 = 0x0E
+	ProtoMagic                   uint8 = 0xFF
+	OpInitResultCode             uint8 = 0x00
+	OpCreateFile                 uint8 = 0x01
+	OpMarkDelete                 uint8 = 0x02
+	OpWrite                      uint8 = 0x03
+	OpRead                       uint8 = 0x04
+	OpStreamRead                 uint8 = 0x05
+	OpGetWatermark               uint8 = 0x06
+	OpExtentStoreGetAllWaterMark uint8 = 0x07
+
+	OpNotifyRepair             uint8 = 0x08
+	OpERepairRead              uint8 = 0x09
+	OpChunkRepairRead          uint8 = 0x0A
+	OpFlowInfo                 uint8 = 0x0B
+	OpSyncDelNeedle            uint8 = 0x0C
+	OpNotifyCompact            uint8 = 0x0D
+	OpGetDataPartitionMetrics  uint8 = 0x0E
+	OpBlobStoreGetAllWaterMark uint8 = 0x0F
 
 	// Operations: Client -> MetaNode.
 	OpMetaCreateInode   uint8 = 0x20
@@ -177,7 +179,7 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "StreamRead"
 	case OpGetWatermark:
 		m = "GetWatermark"
-	case OpGetAllWatermark:
+	case OpExtentStoreGetAllWaterMark:
 		m = "GetAllWatermark"
 	case OpNotifyRepair:
 		m = "NotifyRepair"

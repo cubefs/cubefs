@@ -41,7 +41,7 @@ type MembersFileMetas struct {
 
 func NewMemberFileMetas() (mf *MembersFileMetas) {
 	mf = &MembersFileMetas{
-		files:                  make(map[int]*storage.FileInfo),
+		files: make(map[int]*storage.FileInfo),
 		NeedDeleteExtentsTasks: make([]*storage.FileInfo, 0),
 		NeedAddExtentsTasks:    make([]*storage.FileInfo, 0),
 		NeedFixExtentSizeTasks: make([]*storage.FileInfo, 0),
@@ -106,7 +106,7 @@ func (dp *dataPartition) getRemoteExtentMetas(remote string) (fileMetas *Members
 	}
 	defer gConnPool.Put(conn, true)
 
-	packet := NewGetAllWaterMarker(dp.partitionId)
+	packet := NewExtentStoreGetAllWaterMarker(dp.partitionId)
 	if err = packet.WriteToConn(conn); err != nil {
 		err = errors.Annotatef(err, "getRemoteExtentMetas partition[%v] write to remote[%v]", dp.partitionId, remote)
 		return
@@ -154,7 +154,7 @@ func (dp *dataPartition) getAllMemberExtentMetas() (allMemberFileMetas []*Member
 	// leader files meta has ready
 
 	// get remote files meta by opGetAllWaterMarker cmd
-	p := NewGetAllWaterMarker(dp.partitionId)
+	p := NewExtentStoreGetAllWaterMarker(dp.partitionId)
 	for i := 1; i < len(dp.replicaHosts); i++ {
 		var conn *net.TCPConn
 		target := dp.replicaHosts[i]
