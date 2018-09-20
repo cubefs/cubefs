@@ -147,6 +147,8 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 		resp.Info.ModifyTime = time.Unix(ino.ModifyTime, 0)
 		resp.Info.Target = ino.LinkTarget
 		resp.Info.Nlink = ino.NLink
+		resp.Info.Uid = ino.Uid
+		resp.Info.Gid = ino.Gid
 		reply, err = json.Marshal(resp)
 		if err != nil {
 			status = proto.OpErr
@@ -173,6 +175,8 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 			inoInfo.CreateTime = time.Unix(retMsg.Msg.CreateTime, 0)
 			inoInfo.Target = retMsg.Msg.LinkTarget
 			inoInfo.Nlink = retMsg.Msg.NLink
+			inoInfo.Uid = retMsg.Msg.Uid
+			inoInfo.Gid = retMsg.Msg.Gid
 			resp.Infos = append(resp.Infos, inoInfo)
 		}
 	}
@@ -213,6 +217,8 @@ func (mp *metaPartition) CreateLinkInode(req *LinkInodeReq, p *Packet) (err erro
 		resp.Info.CreateTime = time.Unix(retMsg.Msg.CreateTime, 0)
 		resp.Info.Nlink = retMsg.Msg.NLink
 		resp.Info.Target = retMsg.Msg.LinkTarget
+		resp.Info.Uid = retMsg.Msg.Uid
+		resp.Info.Gid = retMsg.Msg.Gid
 		reply, err = json.Marshal(resp)
 		if err != nil {
 			status = proto.OpErr
@@ -236,5 +242,15 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 	}
 	msg := resp.(*ResponseInode)
 	p.PackErrorWithBody(msg.Status, nil)
+	return
+}
+
+func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
+	_, err = mp.Put(opFSMSetAttr, reqData)
+	if err != nil {
+		p.PackErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	p.PackOkReply()
 	return
 }

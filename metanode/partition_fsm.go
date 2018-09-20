@@ -71,6 +71,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp = mp.evictInode(ino)
+	case opFSMSetAttr:
+		req := &SetattrRequest{}
+		err = json.Unmarshal(msg.V, req)
+		if err != nil {
+			return
+		}
+		err = mp.setAttr(req)
 	case opCreateDentry:
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {

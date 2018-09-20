@@ -119,6 +119,7 @@ type OpInode interface {
 	Open(req *OpenReq, p *Packet) (err error)
 	CreateLinkInode(req *LinkInodeReq, p *Packet) (err error)
 	EvictInode(req *EvictInodeReq, p *Packet) (err error)
+	SetAttr(reqData []byte, p *Packet) (err error)
 }
 
 type OpDentry interface {

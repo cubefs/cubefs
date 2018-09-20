@@ -263,3 +263,23 @@ func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 		mp.freeList.Push(ino)
 	}
 }
+
+func (mp *metaPartition) setAttr(req *SetattrRequest) (err error) {
+	// get Inode
+	ino := NewInode(req.Inode, req.Mode)
+	item := mp.inodeTree.Get(ino)
+	if item == nil {
+		return
+	}
+	ino = item.(*Inode)
+	if req.Valid&proto.AttrMode != 0 {
+		ino.Type = req.Mode
+	}
+	if req.Valid&proto.AttrUid != 0 {
+		ino.Uid = req.Uid
+	}
+	if req.Valid&proto.AttrGid != 0 {
+		ino.Gid = req.Gid
+	}
+	return
+}

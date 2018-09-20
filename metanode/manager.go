@@ -79,6 +79,8 @@ func (m *metaManager) HandleMetaOperation(conn net.Conn, p *Packet) (err error) 
 		err = m.opMetaInodeGet(conn, p)
 	case proto.OpMetaEvictInode:
 		err = m.opMetaEvictInode(conn, p)
+	case proto.OpMetaSetattr:
+		err = m.opSetattr(conn, p)
 	case proto.OpMetaCreateDentry:
 		err = m.opCreateDentry(conn, p)
 	case proto.OpMetaDeleteDentry:
