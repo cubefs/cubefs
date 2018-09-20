@@ -90,7 +90,7 @@ func NewInode(ino uint64, t uint32) *Inode {
 		NLink:      1,
 		Extents:    proto.NewStreamKey(ino),
 	}
-	if t == proto.ModeDir {
+	if proto.IsDir(t) {
 		i.NLink = 2
 	}
 	return i

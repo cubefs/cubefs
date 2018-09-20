@@ -26,6 +26,7 @@ import (
 	"github.com/tiglabs/containerfs/util/ump"
 	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
+	"os"
 )
 
 func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
@@ -253,7 +254,7 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 		if err != nil {
 			log.LogFatalf("[HandleLeaderChange] init root inode id: %s.", err.Error())
 		}
-		ino := NewInode(id, proto.ModeDir)
+		ino := NewInode(id, proto.Mode(os.ModePerm))
 		go mp.initInode(ino)
 	}
 }
