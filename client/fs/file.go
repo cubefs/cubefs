@@ -245,11 +245,12 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 		}
 	}
 
-	valid := inode.setattr(req)
-	err = f.super.mw.Setattr(ino, valid, proto.Mode(inode.mode), inode.uid, inode.gid)
-	if err != nil {
-		f.super.ic.Delete(ino)
-		return ParseError(err)
+	if valid := inode.setattr(req); valid != 0 {
+		err = f.super.mw.Setattr(ino, valid, proto.Mode(inode.mode), inode.uid, inode.gid)
+		if err != nil {
+			f.super.ic.Delete(ino)
+			return ParseError(err)
+		}
 	}
 
 	inode.fillAttr(&resp.Attr)
