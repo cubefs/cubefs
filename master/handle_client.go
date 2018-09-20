@@ -173,7 +173,7 @@ func (m *Master) getVolView(vol *Vol) (view *VolView) {
 	return
 }
 func setDataPartitions(vol *Vol, view *VolView, liveRate float32) {
-	if liveRate < NodesAliveRate || vol.dataPartitions.readWriteDataPartitions < MinReadWriteDataPartitionsForClient {
+	if liveRate < NodesAliveRate {
 		return
 	}
 	vol.dataPartitions.RLock()

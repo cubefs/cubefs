@@ -83,7 +83,7 @@ func (vol *Vol) getMaxPartitionID() (maxPartitionID uint64) {
 }
 
 func (vol *Vol) getDataPartitionsView(liveRate float32) (body []byte, err error) {
-	if liveRate < NodesAliveRate || vol.dataPartitions.readWriteDataPartitions < MinReadWriteDataPartitionsForClient {
+	if liveRate < NodesAliveRate {
 		body = make([]byte, 0)
 		return
 	}
