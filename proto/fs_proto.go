@@ -18,8 +18,6 @@ import (
 	"fmt"
 	"os"
 	"time"
-
-	"github.com/tiglabs/containerfs/fuse"
 )
 
 const (
@@ -32,14 +30,6 @@ func Mode(osMode os.FileMode) uint32 {
 
 func OsMode(mode uint32) os.FileMode {
 	return os.FileMode(mode)
-}
-
-func Valid(fuseValid fuse.SetattrValid) uint32 {
-	return uint32(fuseValid)
-}
-
-func FuseValid(valid uint32) fuse.SetattrValid {
-	return fuse.SetattrValid(valid)
 }
 
 func IsRegular(mode uint32) bool {
@@ -69,7 +59,7 @@ type InodeInfo struct {
 }
 
 func (info *InodeInfo) String() string {
-	return fmt.Sprintf("Inode(%v) Mode(%v) Size(%v) Gen(%v)", info.Inode, info.Mode, info.Size, info.Generation)
+	return fmt.Sprintf("Inode(%v) Mode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v)", info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation)
 }
 
 type Dentry struct {

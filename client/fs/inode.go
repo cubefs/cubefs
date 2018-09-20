@@ -76,18 +76,22 @@ func (inode *Inode) String() string {
 	return fmt.Sprintf("ino(%v) mode(%v) size(%v) nlink(%v) exp(%v) mtime(%v)", inode.ino, inode.mode, inode.size, inode.nlink, time.Unix(0, inode.expiration).Format(LogTimeFormat), inode.mtime)
 }
 
-func (inode *Inode) setattr(req *fuse.SetattrRequest) {
+func (inode *Inode) setattr(req *fuse.SetattrRequest) (valid uint32) {
 	if req.Valid.Mode() {
 		inode.mode = req.Mode
+		valid |= proto.AttrMode
 	}
 
 	if req.Valid.Uid() {
 		inode.uid = req.Uid
+		valid |= proto.AttrUid
 	}
 
 	if req.Valid.Gid() {
 		inode.gid = req.Gid
+		valid |= proto.AttrGid
 	}
+	return
 }
 
 func (inode *Inode) fill(info *proto.InodeInfo) {
