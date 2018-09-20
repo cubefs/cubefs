@@ -38,15 +38,17 @@ CFS consists of several components:
 
 * metanode. multi-raft replication, a meta partition (inode range) per replication state machine
 
-* datanode. de-clustering of data partitions, two storage engines - Blob Store (BS) and Extent Store (ES).
+* datanode. de-clustering of data partitions, two storage engines - Blob Store (BS) and Extent Store (ES), optimized for small and large files respectively. 
 
-BS is optimized for storing small files.
+* client interfaces: FUSE, Java SDK, Go SDK, Linux kernel
 
-ES is used for appendable continous blocks - extents, which is optimized for large files.
+### replication
 
-Both BS and ES are replicated with strong consistency: atomic block appending; raft for extent update. 
+master: single-raft
 
-* client interfaces: FUSE, Java SDK, Go SDK, NFS, Linux kernel
+metadata partition: multi-raft
+
+data partition: chained append-only replication for append operations; multi-raft for extent updates
 
 ## Usage
 
