@@ -63,6 +63,7 @@ const (
 	OpNotifyCompact            uint8 = 0x0D
 	OpGetDataPartitionMetrics  uint8 = 0x0E
 	OpBlobStoreGetAllWaterMark uint8 = 0x0F
+	OpNotifyBlobRepair       uint8 = 0x10
 
 	// Operations: Client -> MetaNode.
 	OpMetaCreateInode   uint8 = 0x20

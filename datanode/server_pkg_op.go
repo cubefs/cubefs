@@ -79,6 +79,8 @@ func (s *DataNode) operatePacket(pkg *Packet, c *net.TCPConn) {
 		s.handleNotifyCompact(pkg)
 	case proto.OpNotifyExtentRepair:
 		s.handleNotifyExtentRepair(pkg)
+	case proto.OpNotifyBlobRepair:
+		s.handleNotifyBlobRepair(pkg)
 	case proto.OpGetWatermark:
 		s.handleGetWatermark(pkg)
 	case proto.OpExtentStoreGetAllWaterMark:
