@@ -79,13 +79,21 @@ func (dp *dataPartition) getRemoteChunkMetas(remote string, filterChunkids []int
 		err = errors.Annotatef(err, "getRemoteExtentMetas partition[%v] read from connection[%v]", dp.partitionId, remote)
 		return
 	}
+	allFiles := make([]*storage.FileInfo, 0)
 	files := make([]*storage.FileInfo, 0)
-	if err = json.Unmarshal(packet.Data[:packet.Size], &files); err != nil {
+	if err = json.Unmarshal(packet.Data[:packet.Size], &allFiles); err != nil {
 		err = errors.Annotatef(err, "getRemoteExtentMetas partition[%v] unmarshal packet", dp.partitionId)
 		return
 	}
+	for _, cid := range allFiles {
+		for _, ccid := range filterChunkids {
+			if cid.FileId == ccid {
+				files = append(files, cid)
+			}
+		}
+	}
 	fileMetas = NewMemberFileMetas()
-	for _, file := range files {
+	for _, file := range allFiles {
 		fileMetas.files[file.FileId] = file
 	}
 	return
