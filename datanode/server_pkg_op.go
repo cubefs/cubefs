@@ -489,6 +489,22 @@ func (s *DataNode) handleNotifyExtentRepair(pkg *Packet) {
 	return
 }
 
+// Handle OpNotifyExtentRepair packet.
+func (s *DataNode) handleNotifyBlobRepair(pkg *Packet) {
+	var (
+		err error
+	)
+	mf := NewMemberFileMetas()
+	err = json.Unmarshal(pkg.Data, mf)
+	if err != nil {
+		pkg.PackErrorBody(LogRepair, err.Error())
+		return
+	}
+	pkg.DataPartition.MergeRepair(mf)
+	pkg.PackOkReply()
+	return
+}
+
 func (s *DataNode) handleBlobFileRepairRead(pkg *Packet, conn *net.TCPConn) {
 	var (
 		err        error

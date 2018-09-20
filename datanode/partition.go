@@ -66,8 +66,8 @@ type DataPartition interface {
 	DelObjects(blobfileId uint32, deleteBuf []byte) (err error)
 
 	LaunchRepair()
-	MergeRepair(metas *MembersFileMetas)
-
+	MergeExtentStoreRepair(metas *MembersFileMetas)
+	MergeBlobStoreRepair(metas *MembersFileMetas)
 	FlushDelete() error
 
 	AddWriteMetrics(latency uint64)
@@ -489,24 +489,6 @@ func (dp *dataPartition) MergeExtentStoreRepair(metas *MembersFileMetas) {
 		}
 		wg.Add(1)
 		go dp.doStreamExtentFixRepair(&wg, fixExtent)
-	}
-
-	for _, fixExtent := range metas.NeedFixBlobFileSizeTasks {
-		if fixExtent.FileId > storage.BlobFileFileCount {
-			continue
-		}
-		if !extentStore.IsExistExtent(uint64(fixExtent.FileId)) {
-			continue
-		}
-		wg.Add(1)
-		go dp.doStreamExtentFixRepair(&wg, fixExtent)
-	}
-
-	for blobfileId, deleteBlobObject := range metas.NeedDeleteObjectsTasks {
-		if err := dp.DelObjects(uint32(blobfileId), deleteBlobObject); err != nil {
-			log.LogErrorf("action[Repair] dataPartition[%v] blobfileId[%v] deleteObject "+
-				"failed err[%v]", dp.partitionId, blobfileId, err.Error())
-		}
 	}
 	wg.Wait()
 }
