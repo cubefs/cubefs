@@ -26,6 +26,7 @@ import (
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
+	"encoding/binary"
 )
 
 func (dp *dataPartition) blobRepair() {
@@ -46,10 +47,10 @@ func (dp *dataPartition) getLocalBlobFileMetas(filterBlobFileids []int) (fileMet
 		return
 	}
 	files := make([]*storage.FileInfo, 0)
-	for _, cid := range blobFiles {
-		for _, ccid := range filterBlobFileids {
-			if cid.FileId == ccid {
-				files = append(files, cid)
+	for _, blobFile := range blobFiles {
+		for _, filterBlobFileId := range filterBlobFileids {
+			if blobFile.FileId == filterBlobFileId {
+				files = append(files, blobFile)
 			}
 		}
 	}
@@ -108,7 +109,7 @@ func (dp *dataPartition) getRemoteBlobFileMetas(remote string, filterBlobFileids
 //generator file task
 func (dp *dataPartition) generatorBlobRepairTasks(allMembers []*MembersFileMetas) {
 	dp.generatorFixBlobFileSizeTasks(allMembers)
-	dp.generatorDeleteObjectTasks(allMembers)
+	dp.generatorBlobDeleteTasks(allMembers)
 
 }
 
@@ -141,21 +142,25 @@ func (dp *dataPartition) generatorFixBlobFileSizeTasks(allMembers []*MembersFile
 	}
 }
 
-/*generator fix extent Size ,if all members  Not the same length*/
-func (dp *dataPartition) generatorDeleteObjectTasks(allMembers []*MembersFileMetas) {
-	store := dp.extentStore
-	deletes := store.GetDelObjects()
-	leaderAddr := dp.replicaHosts[0]
-	for _, deleteFileId := range deletes {
-		for index := 1; index < len(allMembers); index++ {
-			follower := allMembers[index]
-			if _, ok := follower.files[int(deleteFileId)]; ok {
-				deleteFile := &storage.FileInfo{Source: leaderAddr, FileId: int(deleteFileId), Size: 0}
-				follower.NeedDeleteExtentsTasks = append(follower.NeedDeleteExtentsTasks, deleteFile)
-				log.LogInfof("action[generatorDeleteExtentsTasks] partition[%v] deleteFile[%v].", dp.partitionId, deleteFile)
-			}
+//generator blobObject delete task,send leader has delete object,notify follower delete it
+func (dp *dataPartition) generatorBlobDeleteTasks(allMembers []*MembersFileMetas) {
+	store := dp.blobStore
+	for _, blobfileInfo := range allMembers[0].files {
+		blobfileId := blobfileInfo.FileId
+		if blobfileId > storage.BlobFileFileCount {
+			continue
+		}
+		deletes := store.GetDelObjects(uint32(blobfileId))
+		deleteBuf := make([]byte, len(deletes)*ObjectIDSize)
+		for index, deleteObject := range deletes {
+			binary.BigEndian.PutUint64(deleteBuf[index*ObjectIDSize:(index+1)*ObjectIDSize], deleteObject)
+		}
+		for index := 0; index < len(allMembers); index++ {
+			allMembers[index].NeedDeleteObjectsTasks[blobfileId] = make([]byte, len(deleteBuf))
+			copy(allMembers[index].NeedDeleteObjectsTasks[blobfileId], deleteBuf)
 		}
 	}
+
 }
 
 //do stream repair blobfilefile,it do on follower host

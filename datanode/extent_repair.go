@@ -242,26 +242,7 @@ func (dp *dataPartition) generatorDeleteExtentsTasks(allMembers []*MembersFileMe
 	}
 }
 
-//generator blobObject delete task,send leader has delete object,notify follower delete it
-func (dp *dataPartition) generatorBlobDeleteTasks(allMembers []*MembersFileMetas) {
-	store := dp.blobStore
-	for _, blobfileInfo := range allMembers[0].files {
-		blobfileId := blobfileInfo.FileId
-		if blobfileId > storage.BlobFileFileCount {
-			continue
-		}
-		deletes := store.GetDelObjects(uint32(blobfileId))
-		deleteBuf := make([]byte, len(deletes)*ObjectIDSize)
-		for index, deleteObject := range deletes {
-			binary.BigEndian.PutUint64(deleteBuf[index*ObjectIDSize:(index+1)*ObjectIDSize], deleteObject)
-		}
-		for index := 0; index < len(allMembers); index++ {
-			allMembers[index].NeedDeleteObjectsTasks[blobfileId] = make([]byte, len(deleteBuf))
-			copy(allMembers[index].NeedDeleteObjectsTasks[blobfileId], deleteBuf)
-		}
-	}
 
-}
 
 /*notify follower to repair dataPartition extentStore*/
 func (dp *dataPartition) NotifyRepair(members []*MembersFileMetas) (err error) {
