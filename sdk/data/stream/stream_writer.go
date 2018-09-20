@@ -438,7 +438,10 @@ func (stream *StreamWriter) createExtent(dp *wrapper.DataPartition) (extentId ui
 }
 
 func (stream *StreamWriter) exit() {
-	stream.exitCh <- true
+	select {
+	case stream.exitCh <- true:
+	default:
+	}
 }
 
 func (stream *StreamWriter) getHasWriteSize() uint64 {
