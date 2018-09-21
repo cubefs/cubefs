@@ -183,7 +183,7 @@ func (p *Packet) GetOpMsg() (m string) {
 	case OpExtentStoreGetAllWaterMark:
 		m = "GetAllWatermark"
 	case OpNotifyExtentRepair:
-		m = "NotifyRepair"
+		m = "NotifyExtentRepair"
 	case OpBlobFileRepairRead:
 		m = "BlobFileRepairRead"
 	case OpNotifyCompact:

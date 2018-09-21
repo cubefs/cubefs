@@ -42,6 +42,7 @@ const (
 
 	ActionGetFollowers    = "ActionGetFollowers"
 	ActionCheckReplyAvail = "ActionCheckReplyAvail"
+
 )
 
 //stats
@@ -53,6 +54,9 @@ const (
 const (
 	InFlow = iota
 	OutFlow
+)
+const (
+	MaxRepairBlobFileCount=4
 )
 
 const (

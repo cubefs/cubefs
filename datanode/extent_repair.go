@@ -67,7 +67,7 @@ func (dp *dataPartition) extentFileRepair() {
 		return
 	}
 	dp.generatorExtentRepairTasks(allMembers) //generator file repair task
-	err = dp.NotifyRepair(allMembers)         //notify host to fix it
+	err = dp.NotifyExtentRepair(allMembers)   //notify host to fix it
 	if err != nil {
 		log.LogErrorf("action[extentFileRepair] partition(%v) err(%v).",
 			dp.partitionId, err)
@@ -243,7 +243,7 @@ func (dp *dataPartition) generatorDeleteExtentsTasks(allMembers []*MembersFileMe
 }
 
 /*notify follower to repair dataPartition extentStore*/
-func (dp *dataPartition) NotifyRepair(members []*MembersFileMetas) (err error) {
+func (dp *dataPartition) NotifyExtentRepair(members []*MembersFileMetas) (err error) {
 	var (
 		errList []error
 	)
@@ -253,7 +253,7 @@ func (dp *dataPartition) NotifyRepair(members []*MembersFileMetas) (err error) {
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()
-			p := NewNotifyRepair(dp.partitionId) //notify all follower to repairt task,send opnotifyRepair command
+			p := NewNotifyExtentRepair(dp.partitionId) //notify all follower to repairt task,send opnotifyRepair command
 			var conn *net.TCPConn
 			target := dp.replicaHosts[index]
 			conn, err = gConnPool.Get(target)
@@ -281,6 +281,10 @@ func (dp *dataPartition) NotifyRepair(members []*MembersFileMetas) (err error) {
 	}
 	return
 }
+
+
+
+
 
 // DoStreamExtentFixRepair executed on follower node of data partition.
 // It receive from leader notifyRepair command extent file repair.

@@ -30,6 +30,37 @@ import (
 )
 
 func (dp *dataPartition) blobRepair() {
+	var (
+		err error
+	)
+	if dp.updateReplicaHosts()!=nil {
+		return
+	}
+	if !dp.isLeader{
+		return
+	}
+	unavaliBlobFiles:=dp.getUnavaliBlobFile()
+	if len(unavaliBlobFiles)==0{
+		return
+	}
+	allMembersFileMetas:=make([]*MembersFileMetas,len(dp.ReplicaHosts()))
+	allMembersFileMetas[0],err=dp.getLocalBlobFileMetas(unavaliBlobFiles)
+	if err!=nil {
+		log.LogWarnf("%v blob repair GetLocalBlobFiles failed (%v)",dp.getDataPartitionLogKey(),err)
+		return
+	}
+	for i:=1;i<len(dp.replicaHosts);i++{
+		allMembersFileMetas[i],err=dp.getRemoteBlobFileMetas(dp.replicaHosts[i],unavaliBlobFiles)
+		if err!=nil {
+			log.LogWarnf("%v blob repair GetRemoteBlobFiles failed (%v)",dp.getDataPartitionLogKey(),err)
+			return
+		}
+	}
+	dp.generatorBlobRepairTasks(allMembersFileMetas)
+	err=dp.NotifyBlobRepair(allMembersFileMetas)
+	if err!=nil {
+		log.LogWarnf("%v blob repair Notify failed (%v)",dp.getDataPartitionLogKey(),err)
+	}
 
 }
 
@@ -37,6 +68,19 @@ type RepairBlobFileTask struct {
 	BlobFileId int
 	StartObj   uint64
 	EndObj     uint64
+}
+
+func (dp *dataPartition)getUnavaliBlobFile()(unavaliBlobFile []int){
+	unavaliBlobFile =make([]int,0)
+	for i:=0;i<MaxRepairBlobFileCount;i++{
+		unavali,err:=dp.blobStore.GetUnAvailBlobFile()
+		if err!=nil {
+			break
+		}
+		unavaliBlobFile=append(unavaliBlobFile,unavali)
+	}
+
+	return
 }
 
 func (dp *dataPartition) getLocalBlobFileMetas(filterBlobFileids []int) (fileMetas *MembersFileMetas, err error) {
@@ -163,6 +207,47 @@ func (dp *dataPartition) generatorBlobDeleteTasks(allMembers []*MembersFileMetas
 
 }
 
+
+/*notify follower to repair dataPartition extentStore*/
+func (dp *dataPartition) NotifyBlobRepair(members []*MembersFileMetas) (err error) {
+	var (
+		errList []error
+	)
+	errList = make([]error, 0)
+	var wg sync.WaitGroup
+	for i := 1; i < len(members); i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			p := NewNotifyBlobRepair(dp.partitionId) //notify all follower to repairt task,send opnotifyRepair command
+			var conn *net.TCPConn
+			target := dp.replicaHosts[index]
+			conn, err = gConnPool.Get(target)
+			if err != nil {
+				errList = append(errList, err)
+				return
+			}
+			p.Data, err = json.Marshal(members[index])
+			p.Size = uint32(len(p.Data))
+			err = p.WriteToConn(conn)
+			if err != nil {
+				gConnPool.Put(conn, true)
+				errList = append(errList, err)
+				return
+			}
+			p.ReadFromConn(conn, proto.NoReadDeadlineTime)
+			gConnPool.Put(conn, true)
+		}(i)
+	}
+	wg.Wait()
+	if len(errList) > 0 {
+		for _, errItem := range errList {
+			err = errors.Annotate(err, errItem.Error())
+		}
+	}
+	return
+}
+
 //do stream repair blobfilefile,it do on follower host
 func (dp *dataPartition) doStreamBlobFixRepair(wg *sync.WaitGroup, remoteBlobFileInfo *storage.FileInfo) {
 	defer wg.Done()
@@ -180,6 +265,10 @@ func (dp *dataPartition) doStreamBlobFixRepair(wg *sync.WaitGroup, remoteBlobFil
 
 func (dp *dataPartition) getBlobRepairLogKey(blobFileId int) (s string) {
 	return fmt.Sprintf("ActionBlobRepairKey(%v_%v_%v)", dp.ID(), blobFileId, dp.IsLeader())
+}
+
+func (dp *dataPartition) getDataPartitionLogKey() (s string) {
+	return fmt.Sprintf("RepairKey(%v_%v)", dp.ID(), dp.IsLeader())
 }
 
 //do stream repair blobfilefile,it do on follower host

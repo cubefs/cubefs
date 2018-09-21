@@ -179,9 +179,20 @@ func NewStreamBlobFileRepairReadPacket(partitionId uint32, blobfileId int) (p *P
 	return
 }
 
-func NewNotifyRepair(partitionId uint32) (p *Packet) {
+func NewNotifyExtentRepair(partitionId uint32) (p *Packet) {
 	p = new(Packet)
 	p.Opcode = proto.OpNotifyExtentRepair
+	p.PartitionID = partitionId
+	p.Magic = proto.ProtoMagic
+	p.ReqID = proto.GetReqID()
+
+	return
+}
+
+
+func NewNotifyBlobRepair(partitionId uint32) (p *Packet) {
+	p = new(Packet)
+	p.Opcode = proto.OpNotifyBlobRepair
 	p.PartitionID = partitionId
 	p.Magic = proto.ProtoMagic
 	p.ReqID = proto.GetReqID()
