@@ -261,7 +261,7 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 		if err != nil {
 			log.LogFatalf("[HandleLeaderChange] init root inode id: %s.", err.Error())
 		}
-		ino := NewInode(id, proto.Mode(os.ModePerm))
+		ino := NewInode(id, proto.Mode(os.ModePerm|os.ModeDir))
 		go mp.initInode(ino)
 	}
 }
