@@ -128,6 +128,7 @@ func (mw *MetaWrapper) InodeGet_ll(inode uint64) (*proto.InodeInfo, error) {
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
+	log.LogDebugf("InodeGet_ll: info(%v)", info)
 	return info, nil
 }
 

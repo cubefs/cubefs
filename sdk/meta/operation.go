@@ -670,7 +670,7 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 	}
 
 	packet := proto.NewPacket()
-	packet.Opcode = proto.OpMetaTruncate
+	packet.Opcode = proto.OpMetaSetattr
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("setattr: err(%v)", err)

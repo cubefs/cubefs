@@ -73,7 +73,7 @@ func (s *Super) InodeGet(ino uint64) (*Inode, error) {
 }
 
 func (inode *Inode) String() string {
-	return fmt.Sprintf("ino(%v) mode(%v) size(%v) nlink(%v) exp(%v) mtime(%v)", inode.ino, inode.mode, inode.size, inode.nlink, time.Unix(0, inode.expiration).Format(LogTimeFormat), inode.mtime)
+	return fmt.Sprintf("ino(%v) mode(%v) size(%v) nlink(%v) uid(%v) gid(%v) exp(%v) mtime(%v) target(%v)", inode.ino, inode.mode, inode.size, inode.nlink, inode.uid, inode.gid, time.Unix(0, inode.expiration).Format(LogTimeFormat), inode.mtime, inode.target)
 }
 
 func (inode *Inode) setattr(req *fuse.SetattrRequest) (valid uint32) {
