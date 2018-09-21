@@ -41,13 +41,14 @@ var (
 )
 
 type FileInfo struct {
-	FileId  int       `json:"fileId"`
-	Inode   uint64    `json:"ino"`
-	Size    uint64    `json:"size"`
-	Crc     uint32    `json:"crc"`
-	Deleted bool      `json:"deleted"`
-	ModTime time.Time `json:"modTime"`
-	Source  string    `json:"src"`
+	FileId      int       `json:"fileId"`
+	Inode       uint64    `json:"ino"`
+	Size        uint64    `json:"size"`
+	Crc         uint32    `json:"crc"`
+	Deleted     bool      `json:"deleted"`
+	ModTime     time.Time `json:"modTime"`
+	Source      string    `json:"src"`
+	MemberIndex int
 }
 
 func (ei *FileInfo) FromExtent(extent Extent) {

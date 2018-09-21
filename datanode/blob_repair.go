@@ -31,35 +31,37 @@ import (
 
 func (dp *dataPartition) blobRepair() {
 	var (
-		err error
+		err             error
+		success, failed []int
 	)
-	if dp.updateReplicaHosts()!=nil {
+	if dp.updateReplicaHosts() != nil {
 		return
 	}
-	if !dp.isLeader{
+	if !dp.isLeader {
 		return
 	}
-	unavaliBlobFiles:=dp.getUnavaliBlobFile()
-	if len(unavaliBlobFiles)==0{
+	unavaliBlobFiles := dp.getUnavaliBlobFile()
+	if len(unavaliBlobFiles) == 0 {
 		return
 	}
-	allMembersFileMetas:=make([]*MembersFileMetas,len(dp.ReplicaHosts()))
-	allMembersFileMetas[0],err=dp.getLocalBlobFileMetas(unavaliBlobFiles)
-	if err!=nil {
-		log.LogWarnf("%v blob repair GetLocalBlobFiles failed (%v)",dp.getDataPartitionLogKey(),err)
+	allMembersFileMetas := make([]*MembersFileMetas, len(dp.ReplicaHosts()))
+	allMembersFileMetas[0], err = dp.getLocalBlobFileMetas(unavaliBlobFiles)
+	if err != nil {
+		log.LogWarnf("%v blob repair GetLocalBlobFiles failed (%v)", dp.getDataPartitionLogKey(), err)
 		return
 	}
-	for i:=1;i<len(dp.replicaHosts);i++{
-		allMembersFileMetas[i],err=dp.getRemoteBlobFileMetas(dp.replicaHosts[i],unavaliBlobFiles)
-		if err!=nil {
-			log.LogWarnf("%v blob repair GetRemoteBlobFiles failed (%v)",dp.getDataPartitionLogKey(),err)
+	for i := 1; i < len(dp.replicaHosts); i++ {
+		allMembersFileMetas[i], err = dp.getRemoteBlobFileMetas(dp.replicaHosts[i], unavaliBlobFiles, i)
+		if err != nil {
+			log.LogWarnf("%v blob repair GetRemoteBlobFiles failed (%v)", dp.getDataPartitionLogKey(), err)
 			return
 		}
 	}
+
 	dp.generatorBlobRepairTasks(allMembersFileMetas)
-	err=dp.NotifyBlobRepair(allMembersFileMetas)
-	if err!=nil {
-		log.LogWarnf("%v blob repair Notify failed (%v)",dp.getDataPartitionLogKey(),err)
+	err = dp.NotifyBlobRepair(allMembersFileMetas)
+	if err != nil {
+		log.LogWarnf("%v blob repair Notify failed (%v)", dp.getDataPartitionLogKey(), err)
 	}
 
 }
@@ -70,14 +72,14 @@ type RepairBlobFileTask struct {
 	EndObj     uint64
 }
 
-func (dp *dataPartition)getUnavaliBlobFile()(unavaliBlobFile []int){
-	unavaliBlobFile =make([]int,0)
-	for i:=0;i<MaxRepairBlobFileCount;i++{
-		unavali,err:=dp.blobStore.GetUnAvailBlobFile()
-		if err!=nil {
+func (dp *dataPartition) getUnavaliBlobFile() (unavaliBlobFile []int) {
+	unavaliBlobFile = make([]int, 0)
+	for i := 0; i < MaxRepairBlobFileCount; i++ {
+		unavali, err := dp.blobStore.GetUnAvailBlobFile()
+		if err != nil {
 			break
 		}
-		unavaliBlobFile=append(unavaliBlobFile,unavali)
+		unavaliBlobFile = append(unavaliBlobFile, unavali)
 	}
 
 	return
@@ -85,15 +87,16 @@ func (dp *dataPartition)getUnavaliBlobFile()(unavaliBlobFile []int){
 
 func (dp *dataPartition) getLocalBlobFileMetas(filterBlobFileids []int) (fileMetas *MembersFileMetas, err error) {
 	var (
-		blobFiles []*storage.FileInfo
+		AllblobFiles []*storage.FileInfo
 	)
-	if blobFiles, err = dp.blobStore.GetAllWatermark(); err != nil {
+	if AllblobFiles, err = dp.blobStore.GetAllWatermark(); err != nil {
 		return
 	}
 	files := make([]*storage.FileInfo, 0)
-	for _, blobFile := range blobFiles {
+	for _, blobFile := range AllblobFiles {
 		for _, filterBlobFileId := range filterBlobFileids {
 			if blobFile.FileId == filterBlobFileId {
+				blobFile.MemberIndex = 0
 				files = append(files, blobFile)
 			}
 		}
@@ -105,7 +108,7 @@ func (dp *dataPartition) getLocalBlobFileMetas(filterBlobFileids []int) (fileMet
 	return
 }
 
-func (dp *dataPartition) getRemoteBlobFileMetas(remote string, filterBlobFileids []int) (fileMetas *MembersFileMetas, err error) {
+func (dp *dataPartition) getRemoteBlobFileMetas(remote string, filterBlobFileids []int, index int) (fileMetas *MembersFileMetas, err error) {
 	var (
 		conn *net.TCPConn
 	)
@@ -130,13 +133,13 @@ func (dp *dataPartition) getRemoteBlobFileMetas(remote string, filterBlobFileids
 		err = errors.Annotatef(err, "getRemoteExtentMetas partition(%v) read from connection(%v)", dp.partitionId, remote)
 		return
 	}
-	allFiles := make([]*storage.FileInfo, 0)
+	allBlobFiles := make([]*storage.FileInfo, 0)
 	files := make([]*storage.FileInfo, 0)
-	if err = json.Unmarshal(packet.Data[:packet.Size], &allFiles); err != nil {
+	if err = json.Unmarshal(packet.Data[:packet.Size], &allBlobFiles); err != nil {
 		err = errors.Annotatef(err, "getRemoteExtentMetas partition(%v) unmarshal packet", dp.partitionId)
 		return
 	}
-	for _, cid := range allFiles {
+	for _, cid := range allBlobFiles {
 		for _, ccid := range filterBlobFileids {
 			if cid.FileId == ccid {
 				files = append(files, cid)
@@ -144,7 +147,8 @@ func (dp *dataPartition) getRemoteBlobFileMetas(remote string, filterBlobFileids
 		}
 	}
 	fileMetas = NewMemberFileMetas()
-	for _, file := range allFiles {
+	for _, file := range files {
+		file.MemberIndex = index
 		fileMetas.files[file.FileId] = file
 	}
 	return
@@ -160,12 +164,12 @@ func (dp *dataPartition) generatorBlobRepairTasks(allMembers []*MembersFileMetas
 /*generator fix extent Size ,if all members  Not the same length*/
 func (dp *dataPartition) generatorFixBlobFileSizeTasks(allMembers []*MembersFileMetas) {
 	leader := allMembers[0]
-	maxSizeExtentMap := dp.mapMaxSizeExtentToIndex(allMembers) //map maxSize extentId to allMembers index
+	maxSizeExtentMap := dp.mapMaxSizeBlobFileToIndex(allMembers) //map maxSize extentId to allMembers index
 	for fileId, leaderFile := range leader.files {
 		if fileId > storage.BlobFileFileCount {
 			continue
 		}
-		maxSizeExtentIdIndex := maxSizeExtentMap[fileId]
+		maxSizeExtentIdIndex := maxSizeExtentMap[fileId].MemberIndex
 		maxSize := allMembers[maxSizeExtentIdIndex].files[fileId].Size
 		sourceAddr := dp.replicaHosts[maxSizeExtentIdIndex]
 		inode := leaderFile.Inode
@@ -179,11 +183,34 @@ func (dp *dataPartition) generatorFixBlobFileSizeTasks(allMembers []*MembersFile
 			}
 			if extentInfo.Size < maxSize {
 				fixExtent := &storage.FileInfo{Source: sourceAddr, FileId: fileId, Size: maxSize, Inode: inode}
-				allMembers[index].NeedFixExtentSizeTasks = append(allMembers[index].NeedFixExtentSizeTasks, fixExtent)
-				log.LogInfof("action[generatorFixExtentSizeTasks] partition(%v) fixExtent(%v).", dp.partitionId, fixExtent)
+				allMembers[index].NeedFixBlobFileSizeTasks = append(allMembers[index].NeedFixBlobFileSizeTasks, fixExtent)
+				log.LogInfof("action[generatorFixExtentSizeTasks] partition(%v) fixExtent(%v).",
+					dp.partitionId, fixExtent.String())
 			}
 		}
 	}
+}
+
+func (dp *dataPartition) mapMaxSizeBlobFileToIndex(allMembers []*MembersFileMetas) (maxSizeBlobMap map[int]*storage.FileInfo) {
+	leader := allMembers[0]
+	maxSizeBlobMap = make(map[int]*storage.FileInfo)
+	for blobFileId, blobFileInfo := range leader.files { //range leader all extentFiles
+		maxSizeBlobMap[blobFileId] = blobFileInfo
+		var maxFileSize uint64
+		for index := 0; index < len(allMembers); index++ {
+			member := allMembers[index]
+			_, ok := member.files[blobFileId]
+			if !ok {
+				continue
+			}
+			if maxFileSize < member.files[blobFileId].Size {
+				maxFileSize = member.files[blobFileId].Size
+				maxSizeBlobMap[blobFileId] = member.files[blobFileId]
+				maxSizeBlobMap[blobFileId].MemberIndex = index
+			}
+		}
+	}
+	return
 }
 
 //generator blobObject delete task,send leader has delete object,notify follower delete it
@@ -206,7 +233,6 @@ func (dp *dataPartition) generatorBlobDeleteTasks(allMembers []*MembersFileMetas
 	}
 
 }
-
 
 /*notify follower to repair dataPartition extentStore*/
 func (dp *dataPartition) NotifyBlobRepair(members []*MembersFileMetas) (err error) {

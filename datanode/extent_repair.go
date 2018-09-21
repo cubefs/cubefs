@@ -282,10 +282,6 @@ func (dp *dataPartition) NotifyExtentRepair(members []*MembersFileMetas) (err er
 	return
 }
 
-
-
-
-
 // DoStreamExtentFixRepair executed on follower node of data partition.
 // It receive from leader notifyRepair command extent file repair.
 func (dp *dataPartition) doStreamExtentFixRepair(wg *sync.WaitGroup, remoteExtentInfo *storage.FileInfo) {

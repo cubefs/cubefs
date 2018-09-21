@@ -189,7 +189,6 @@ func NewNotifyExtentRepair(partitionId uint32) (p *Packet) {
 	return
 }
 
-
 func NewNotifyBlobRepair(partitionId uint32) (p *Packet) {
 	p = new(Packet)
 	p.Opcode = proto.OpNotifyBlobRepair

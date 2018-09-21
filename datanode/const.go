@@ -42,7 +42,6 @@ const (
 
 	ActionGetFollowers    = "ActionGetFollowers"
 	ActionCheckReplyAvail = "ActionCheckReplyAvail"
-
 )
 
 //stats
@@ -56,7 +55,7 @@ const (
 	OutFlow
 )
 const (
-	MaxRepairBlobFileCount=4
+	MaxRepairBlobFileCount = 4
 )
 
 const (
