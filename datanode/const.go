@@ -55,7 +55,7 @@ const (
 	OutFlow
 )
 const (
-	MaxRepairBlobFileCount = 4
+	MaxRepairBlobFileCount = 3
 )
 
 const (
