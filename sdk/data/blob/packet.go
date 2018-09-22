@@ -24,25 +24,23 @@ import (
 	"github.com/juju/errors"
 
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/sdk/data/wrapper"
 )
 
 const (
 	NumKeySegments = 9
 )
 
-func NewWritePacket(dp *DataPartition, data []byte) *proto.Packet {
+func NewWritePacket(dp *wrapper.DataPartition, data []byte) *proto.Packet {
 	pkt := proto.NewPacket()
 
 	pkt.StoreMode = proto.BlobStoreMode
 	pkt.Opcode = proto.OpWrite
 	pkt.ReqID = proto.GetReqID()
-
 	pkt.PartitionID = uint32(dp.PartitionID)
-
-	pkt.Nodes = uint8(len(dp.Hosts) - 1)
-	pkt.Arg = ([]byte)(dp.GetFollowAddrs())
+	pkt.Arg = ([]byte)(dp.GetAllAddrs())
 	pkt.Arglen = uint32(len(pkt.Arg))
-
+	pkt.Nodes = uint8(len(dp.Hosts) - 1)
 	pkt.Size = uint32(len(data))
 	pkt.Data = data
 	pkt.Crc = crc32.ChecksumIEEE(data)
@@ -52,12 +50,10 @@ func NewWritePacket(dp *DataPartition, data []byte) *proto.Packet {
 
 func NewReadPacket(partitionID uint32, fileID uint64, objID int64, size uint32) *proto.Packet {
 	pkt := proto.NewPacket()
-
 	pkt.PartitionID = partitionID
 	pkt.FileID = fileID
 	pkt.Offset = objID
 	pkt.Size = size
-
 	pkt.StoreMode = proto.BlobStoreMode
 	pkt.ReqID = proto.GetReqID()
 	pkt.Opcode = proto.OpRead
@@ -66,20 +62,17 @@ func NewReadPacket(partitionID uint32, fileID uint64, objID int64, size uint32) 
 	return pkt
 }
 
-func NewDeletePacket(dp *DataPartition, fileID uint64, objID int64) *proto.Packet {
+func NewDeletePacket(dp *wrapper.DataPartition, fileID uint64, objID int64) *proto.Packet {
 	pkt := proto.NewPacket()
-
 	pkt.StoreMode = proto.BlobStoreMode
 	pkt.ReqID = proto.GetReqID()
 	pkt.Opcode = proto.OpMarkDelete
-
 	pkt.PartitionID = uint32(dp.PartitionID)
 	pkt.FileID = fileID
 	pkt.Offset = objID
-
-	pkt.Nodes = uint8(len(dp.Hosts) - 1)
-	pkt.Arg = ([]byte)(dp.GetFollowAddrs())
+	pkt.Arg = ([]byte)(dp.GetAllAddrs())
 	pkt.Arglen = uint32(len(pkt.Arg))
+	pkt.Nodes = uint8(len(dp.Hosts) - 1)
 
 	return pkt
 }

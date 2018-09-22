@@ -22,12 +22,13 @@ import (
 	"time"
 
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/sdk/data/wrapper"
 	"github.com/tiglabs/containerfs/util/log"
 )
 
 type DataConn struct {
 	conn *net.TCPConn
-	id   uint64 //Data Partition ID
+	id   uint32 //Data Partition ID
 	addr string //Data Node Addr
 }
 
@@ -35,7 +36,7 @@ func (dc *DataConn) String() string {
 	return fmt.Sprintf("DataPID(%v) Addr(%v)", dc.id, dc.addr)
 }
 
-func (client *BlobClient) sendToDataPartition(dp *DataPartition, req *proto.Packet) (resp *proto.Packet, err error) {
+func (client *BlobClient) sendToDataPartition(dp *wrapper.DataPartition, req *proto.Packet) (resp *proto.Packet, err error) {
 	var (
 		addrs []string
 		dc    *DataConn
@@ -92,7 +93,7 @@ func isReadPacket(pkt *proto.Packet) bool {
 	return pkt.Opcode == proto.OpRead
 }
 
-func (client *BlobClient) getConn(pid uint64, addr string) (*DataConn, error) {
+func (client *BlobClient) getConn(pid uint32, addr string) (*DataConn, error) {
 	conn, err := client.conns.Get(addr)
 	if err != nil {
 		log.LogErrorf("Get conn: addr(%v) err(%v)", addr, err)

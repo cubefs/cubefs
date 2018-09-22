@@ -42,14 +42,6 @@ func init() {
 	gBlobClient = bc
 }
 
-func TestGetVol(t *testing.T) {
-	dplist := gBlobClient.partitions.List()
-	for _, dp := range dplist {
-		t.Logf("%v", dp)
-	}
-	time.Sleep(2 * time.Second)
-}
-
 func TestWrite(t *testing.T) {
 	data := []byte("1234")
 	key, err := gBlobClient.Write(data)

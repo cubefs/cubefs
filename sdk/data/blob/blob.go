@@ -21,6 +21,7 @@ import (
 
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/sdk/data/wrapper"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/pool"
@@ -31,52 +32,36 @@ const (
 	ReadRetryLimit    = 10
 	SendRetryLimit    = 10
 	SendRetryInterval = 100 * time.Millisecond
+	MaxRetryCnt       = 100
 )
 
 type BlobClient struct {
-	cluster    string
-	volname    string
-	master     util.MasterHelper
-	conns      *pool.ConnPool
-	partitions *PartitionCache
+	cluster string
+	volname string
+	conns   *pool.ConnPool
+	wraper  *wrapper.Wrapper
 }
 
 func NewBlobClient(volname, masters string) (*BlobClient, error) {
 	client := new(BlobClient)
 	client.volname = volname
-	master := strings.Split(masters, ":")
-	client.master = util.NewMasterHelper()
-	for _, ip := range master {
-		client.master.AddNode(ip)
-	}
-	client.conns = pool.NewConnPool()
-
-	err := client.GetClusterInfo()
+	var err error
+	client.wraper, err = wrapper.NewDataPartitionWrapper(volname, masters)
 	if err != nil {
-		errors.Annotatef(err, "NewBlobClient: get cluster info failed")
 		return nil, err
 	}
-
-	client.partitions = NewPartitionCache()
-	err = client.UpdateDataPartitions()
-	if err != nil {
-		errors.Annotatef(err, "NewBlobClient: update data partitions failed")
-		return nil, err
-	}
-	go client.refresh()
 	return client, nil
 }
 
 func (client *BlobClient) Write(data []byte) (key string, err error) {
 	var (
 		req, resp *proto.Packet
-		dp        *DataPartition
+		dp        *wrapper.DataPartition
 	)
-
-	retry := client.partitions.GetWritePartitionLen()
-	for i := 0; i < retry; i++ {
-		dp = client.partitions.GetWritePartition()
-		if dp == nil {
+	exclude := make([]uint32, 0)
+	for i := 0; i < MaxRetryCnt; i++ {
+		dp, err = client.wraper.GetWriteDataPartition(exclude)
+		if err != nil {
 			log.LogErrorf("Write: No write data partition")
 			return "", syscall.ENOMEM
 		}
@@ -89,7 +74,7 @@ func (client *BlobClient) Write(data []byte) (key string, err error) {
 		}
 
 		partitionID, fileID, objID, size := ParsePacket(resp)
-		if uint64(partitionID) != dp.PartitionID {
+		if partitionID != dp.PartitionID {
 			log.LogWarnf("Write: req partition id(%v) resp partition id(%v)", dp.PartitionID, partitionID)
 			continue
 		}
@@ -107,9 +92,9 @@ func (client *BlobClient) Read(key string) (data []byte, err error) {
 		return nil, syscall.EINVAL
 	}
 
-	dp := client.partitions.Get(uint64(partitionID))
+	dp, err := client.wraper.GetDataPartition(partitionID)
 	if dp == nil {
-		log.LogErrorf("Read: No partition, key(%v)", key)
+		log.LogErrorf("Read: No partition, key(%v) err(%v)", key, err)
 	}
 
 	req := NewReadPacket(partitionID, fileID, objID, size)
