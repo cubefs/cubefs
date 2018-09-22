@@ -5,7 +5,6 @@ import (
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
-	"github.com/tiglabs/volstore/src/datanode"
 	"math/rand"
 	"time"
 )
