@@ -187,6 +187,7 @@ func newDataPartition(volumeId string, partitionId uint32, disk *Disk, size int)
 	disk.AttachDataPartition(partition)
 	dp = partition
 	go partition.statusUpdateScheduler()
+	go partition.lauchBlobRepair()
 	return
 }
 
