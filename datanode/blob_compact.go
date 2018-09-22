@@ -4,13 +4,26 @@ import (
 	"fmt"
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util/log"
 	"math/rand"
 	"time"
 )
 
+var (
+	GcanCompact int
+)
+
 func (dp *dataPartition) lauchCompact() {
+	if GcanCompact!=CanCompact{
+		return
+	}
 	blobFile, err := dp.getCompactBlobFiles()
+	defer func() {
+		if err != nil && blobFile > -1 && blobFile <= storage.BlobFileFileCount {
+			dp.blobStore.PutAvailBlobFile(blobFile)
+		}
+	}()
 	if err != nil {
 		log.LogWarnf(err.Error())
 		return
@@ -19,6 +32,7 @@ func (dp *dataPartition) lauchCompact() {
 		log.LogWarnf(err.Error())
 		return
 	}
+
 
 }
 

@@ -65,20 +65,22 @@ type DiskUsage struct {
 
 type Disk struct {
 	sync.RWMutex
-	Path         string
-	ReadErrs     uint64
-	WriteErrs    uint64
-	Total        uint64
-	Used         uint64
-	Available    uint64
-	Unallocated  uint64
-	Allocated    uint64
-	MaxErrs      int
-	Status       int
-	RestSize     uint64
-	partitionMap map[uint32]DataPartition
-	compactCh    chan *CompactTask
-	space        SpaceManager
+	Path            string
+	ReadErrs        uint64
+	WriteErrs       uint64
+	Total           uint64
+	Used            uint64
+	Available       uint64
+	Unallocated     uint64
+	Allocated       uint64
+	MaxErrs         int
+	Status          int
+	RestSize        uint64
+	partitionMap    map[uint32]DataPartition
+	compactCh       chan *CompactTask
+	space           SpaceManager
+	compactTasks    map[string]*CompactTask
+	compactTaskLock sync.RWMutex
 }
 
 type PartitionVisitor func(dp DataPartition)
@@ -167,7 +169,7 @@ func (d *Disk) compact() {
 	for {
 		select {
 		case t := <-d.compactCh:
-			dp := d.space.GetPartition(t.partitionId)
+			dp := d.GetPartition(t.partitionId)
 			if dp == nil {
 				continue
 			}
@@ -222,6 +224,25 @@ func (d *Disk) AttachDataPartition(dp DataPartition) {
 	defer d.Unlock()
 	d.partitionMap[dp.ID()] = dp
 	d.computeUsage()
+}
+
+func (d *Disk) hasExsitCompactTask(id string) (ok bool) {
+	d.compactTaskLock.RLock()
+	_, ok = d.compactTasks[id]
+	d.compactTaskLock.RUnlock()
+	return
+}
+
+func (d *Disk) putCompactTask(id string) {
+	d.compactTaskLock.Lock()
+	d.compactTasks[id] = 2
+	d.compactTaskLock.Unlock()
+}
+
+func (d *Disk) deleteCompactTask(id string) {
+	d.compactTaskLock.Lock()
+	delete(d.compactTasks, id)
+	d.compactTaskLock.Unlock()
 }
 
 func (d *Disk) DetachDataPartition(dp DataPartition) {

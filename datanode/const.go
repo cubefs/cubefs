@@ -65,6 +65,10 @@ const (
 const (
 	ObjectIDSize = 8
 )
+const (
+	CanCompact    = 1
+	NotCanCompact = -1
+)
 
 //pack cmd response
 const (
