@@ -65,9 +65,6 @@ func (client *BlobClient) checkWriteResponse(request, reply *proto.Packet) (err 
 	return
 }
 
-func (client *BlobClient) isUseCloseConnectErr(err error) bool {
-	return strings.Contains(err.Error(), "use of closed network connection")
-}
 
 func (client *BlobClient) checkReadResponse(request, reply *proto.Packet) (err error) {
 	if request.ReqID != reply.ReqID {
