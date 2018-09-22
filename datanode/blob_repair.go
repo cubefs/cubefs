@@ -37,6 +37,7 @@ func (dp *dataPartition) lauchBlobRepair() {
 		select {
 		case <-ticker:
 			dp.blobRepair()
+			dp.lauchCompact()
 		}
 	}
 }
