@@ -96,7 +96,7 @@ func main() {
 			panic(r)
 		}
 	}()
-	log.LogInfo("Hello, Baud Storage")
+	log.LogInfo("Hello, Cfs Storage")
 	flag.Parse()
 	exec_shell("ulimit -n 1024000")
 	cfg := config.LoadConfigFile(*configFile)
