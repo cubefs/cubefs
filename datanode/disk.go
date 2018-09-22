@@ -180,6 +180,9 @@ func (d *Disk) compact() {
 			} else {
 				log.LogInfof("action[compact] task(%v) compact success Release (%v)", t.toString(), release)
 			}
+			if t.isLeader {
+				dp.GetBlobStore().PutAvailBlobFile(t.blobfileId)
+			}
 		}
 	}
 }
