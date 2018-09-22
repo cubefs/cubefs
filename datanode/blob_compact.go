@@ -15,28 +15,38 @@ var (
 )
 
 func (dp *dataPartition) lauchCompact() {
-	if GcanCompact!=CanCompact{
+	if GcanCompact != CanCompact {
 		return
 	}
-	if !dp.isLeader{
+	if !dp.isLeader {
 		return
 	}
 	blobFile, err := dp.getCompactBlobFiles()
-	defer func() {
-		if err != nil && blobFile > -1 && blobFile <= storage.BlobFileFileCount {
-			dp.blobStore.PutAvailBlobFile(blobFile)
-		}
-	}()
 	if err != nil {
 		log.LogWarnf(err.Error())
+		dp.leaderPutBlobToAvaliCh(blobFile, err)
 		return
 	}
 	if err = dp.notifyCompactBlobFile(blobFile); err != nil {
 		log.LogWarnf(err.Error())
+		dp.leaderPutBlobToAvaliCh(blobFile, err)
 		return
 	}
+	task := &CompactTask{partitionId: dp.partitionId, blobfileId: blobFile, isLeader: dp.isLeader}
+	if dp.disk.hasExsitCompactTask(task.toString()) {
+		return
+	}
+	if err = dp.disk.putCompactTask(task); err != nil {
+		log.LogWarnf(err.Error())
+		dp.leaderPutBlobToAvaliCh(blobFile, err)
+		return
+	}
+}
 
-
+func (dp *dataPartition) leaderPutBlobToAvaliCh(blobFile int, err error) {
+	if err != nil && blobFile > -1 && blobFile <= storage.BlobFileFileCount {
+		dp.blobStore.PutAvailBlobFile(blobFile)
+	}
 }
 
 func (dp *dataPartition) getCompactKey(blobFile int) string {

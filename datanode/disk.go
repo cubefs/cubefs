@@ -93,6 +93,7 @@ func NewDisk(path string, restSize uint64, maxErrs int) (d *Disk) {
 	d.partitionMap = make(map[uint32]DataPartition)
 	d.RestSize = util.GB * 1
 	d.MaxErrs = 2000
+	d.compactTasks = make(map[string]int)
 	d.compactCh = make(chan *CompactTask, CompactThreadNum)
 	for i := 0; i < CompactThreadNum; i++ {
 		go d.compact()
@@ -169,7 +170,7 @@ func (d *Disk) compact() {
 	for {
 		select {
 		case t := <-d.compactCh:
-			dp := d.GetPartition(t.partitionId)
+			dp := d.space.GetPartition(t.partitionId)
 			if dp == nil {
 				continue
 			}
@@ -233,10 +234,17 @@ func (d *Disk) hasExsitCompactTask(id string) (ok bool) {
 	return
 }
 
-func (d *Disk) putCompactTask(id string) {
-	d.compactTaskLock.Lock()
-	d.compactTasks[id] = 2
-	d.compactTaskLock.Unlock()
+func (d *Disk) putCompactTask(task *CompactTask) (err error) {
+	select {
+	case d.compactCh <- task:
+		d.compactTaskLock.Lock()
+		d.compactTasks[task.toString()] = task
+		d.compactTaskLock.Unlock()
+	default:
+		return fmt.Errorf("cannot add compactTask(%v) to disk(%v)", task.toString(), d.Path)
+
+	}
+
 }
 
 func (d *Disk) deleteCompactTask(id string) {
