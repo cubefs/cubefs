@@ -15,24 +15,20 @@
 package blob
 
 import (
-	"strings"
-	"syscall"
-	"time"
-
+	"fmt"
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/sdk/data/wrapper"
-	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/pool"
+	"hash/crc32"
+	"net"
+	"strings"
+	"syscall"
 )
 
 const (
-	WriteRetryLimit   = 3
-	ReadRetryLimit    = 10
-	SendRetryLimit    = 10
-	SendRetryInterval = 100 * time.Millisecond
-	MaxRetryCnt       = 100
+	MaxRetryCnt = 100
 )
 
 type BlobClient struct {
@@ -53,11 +49,47 @@ func NewBlobClient(volname, masters string) (*BlobClient, error) {
 	return client, nil
 }
 
+func (client *BlobClient) checkWriteResponse(request, reply *proto.Packet) (err error) {
+	if request.ReqID != reply.ReqID {
+		return fmt.Errorf("request(%v) reply(%v) REQID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
+	}
+	if request.PartitionID != reply.PartitionID {
+		return fmt.Errorf("request(%v) reply(%v) PartitionID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
+	}
+	requestCrc := crc32.ChecksumIEEE(request.Data[:request.Size])
+	if requestCrc != reply.Crc {
+		return fmt.Errorf("request(%v) reply(%v) CRC not equare,request(%v) reply(%v)", request.GetUniqueLogId(),
+			reply.GetUniqueLogId(), requestCrc, reply.Crc)
+	}
+
+	return
+}
+
+func (client *BlobClient) isUseCloseConnectErr(err error) bool {
+	return strings.Contains(err.Error(), "use of closed network connection")
+}
+
+func (client *BlobClient) checkReadResponse(request, reply *proto.Packet) (err error) {
+	if request.ReqID != reply.ReqID {
+		return fmt.Errorf("request(%v) reply(%v) REQID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
+	}
+	if request.PartitionID != reply.PartitionID {
+		return fmt.Errorf("request(%v) reply(%v) PartitionID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
+	}
+	replyCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
+	if replyCrc != reply.Crc {
+		return fmt.Errorf("request(%v) reply(%v) CRC not equare,request(%v) reply(%v)", request.GetUniqueLogId(),
+			reply.GetUniqueLogId(), request.Crc, replyCrc)
+	}
+
+	return
+}
+
 func (client *BlobClient) Write(data []byte) (key string, err error) {
 	var (
-		req, resp *proto.Packet
-		dp        *wrapper.DataPartition
+		dp *wrapper.DataPartition
 	)
+	request := NewBlobWritePacket(dp, data)
 	exclude := make([]uint32, 0)
 	for i := 0; i < MaxRetryCnt; i++ {
 		dp, err = client.wraper.GetWriteDataPartition(exclude)
@@ -65,19 +97,35 @@ func (client *BlobClient) Write(data []byte) (key string, err error) {
 			log.LogErrorf("Write: No write data partition")
 			return "", syscall.ENOMEM
 		}
-
-		req = NewWritePacket(dp, data)
-		resp, err = client.sendToDataPartition(dp, req)
-		if err != nil || resp.ResultCode != proto.OpOk {
-			log.LogErrorf("Write: dp(%v) err(%v) result(%v)", dp, err, resp.GetResultMesg())
+		var (
+			conn *net.TCPConn
+		)
+		if conn, err = client.conns.Get(dp.Hosts[0]); err != nil {
+			log.LogWarnf("WriteRequest(%v) Get connect from host(%) err(%v)", request.GetUniqueLogId(), dp.Hosts[0], err.Error())
+			exclude = append(exclude, dp.PartitionID)
 			continue
 		}
-
-		partitionID, fileID, objID, size := ParsePacket(resp)
-		if partitionID != dp.PartitionID {
-			log.LogWarnf("Write: req partition id(%v) resp partition id(%v)", dp.PartitionID, partitionID)
+		if err = request.WriteToConn(conn); err != nil {
+			client.conns.CheckErrorForPutConnect(conn, dp.Hosts[0], err)
+			log.LogWarnf("WriteRequest(%v) Write to (%v) host(%) err(%v)", request.GetUniqueLogId(), dp.Hosts[0], err.Error())
+			exclude = append(exclude, dp.PartitionID)
 			continue
 		}
+		reply := new(proto.Packet)
+		if err = reply.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+			client.conns.Put(conn, true)
+			log.LogWarnf("WriteRequest(%v) Write (%v) host(%) err(%v)", request.GetUniqueLogId(), dp.Hosts[0], err.Error())
+			exclude = append(exclude, dp.PartitionID)
+			continue
+		}
+		if err = client.checkWriteResponse(request, reply); err != nil {
+			client.conns.Put(conn, true)
+			log.LogWarnf("WriteRequest CheckWriteResponse error(%v)", err.Error())
+			exclude = append(exclude, dp.PartitionID)
+			continue
+		}
+		partitionID, fileID, objID, size := ParsePacket(reply)
+		client.conns.Put(conn, false)
 		key = GenKey(client.cluster, client.volname, partitionID, fileID, objID, size)
 		return key, nil
 	}
@@ -95,16 +143,39 @@ func (client *BlobClient) Read(key string) (data []byte, err error) {
 	dp, err := client.wraper.GetDataPartition(partitionID)
 	if dp == nil {
 		log.LogErrorf("Read: No partition, key(%v) err(%v)", key, err)
+		return
 	}
 
-	req := NewReadPacket(partitionID, fileID, objID, size)
-	resp, err := client.sendToDataPartition(dp, req)
-	if err != nil || resp.ResultCode != proto.OpOk {
-		log.LogErrorf("Read: key(%v) err(%v) result(%v)", key, err, resp.GetResultMesg())
-		return nil, syscall.EIO
+	request := NewBlobReadPacket(partitionID, fileID, objID, size)
+	for _, target := range dp.Hosts {
+		var (
+			conn *net.TCPConn
+		)
+		if conn, err = client.conns.Get(target); err != nil {
+			err = errors.Annotatef(err, "ReadRequest(%v) Get connect from host(%)-", request.GetUniqueLogId(), target)
+			client.conns.Put(conn, true)
+			continue
+		}
+		if err = request.WriteToConn(conn); err != nil {
+			client.conns.CheckErrorForPutConnect(conn, target, err)
+			err = errors.Annotatef(err, "ReadRequest(%v) Write To host(%)-", request.GetUniqueLogId(), target)
+			continue
+		}
+		reply := new(proto.Packet)
+		if err = reply.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+			client.conns.Put(conn, true)
+			log.LogWarnf("ReadRequest(%v) ReadFrom host(%) err(%v)", request.GetUniqueLogId(), target)
+			continue
+		}
+		if err = client.checkReadResponse(request, reply); err != nil {
+			client.conns.Put(conn, true)
+			log.LogWarnf("ReadRequest CheckReadResponse error(%v)", err.Error())
+			continue
+		}
+		return reply.Data, nil
 	}
 
-	return resp.Data, nil
+	return nil, syscall.EIO
 }
 
 func (client *BlobClient) Delete(key string) (err error) {

@@ -31,54 +31,54 @@ const (
 	NumKeySegments = 9
 )
 
-func NewWritePacket(dp *wrapper.DataPartition, data []byte) *proto.Packet {
-	pkt := proto.NewPacket()
+func NewBlobWritePacket(dp *wrapper.DataPartition, data []byte) *proto.Packet {
+	p := proto.NewPacket()
 
-	pkt.StoreMode = proto.BlobStoreMode
-	pkt.Opcode = proto.OpWrite
-	pkt.ReqID = proto.GetReqID()
-	pkt.PartitionID = uint32(dp.PartitionID)
-	pkt.Arg = ([]byte)(dp.GetAllAddrs())
-	pkt.Arglen = uint32(len(pkt.Arg))
-	pkt.Nodes = uint8(len(dp.Hosts) - 1)
-	pkt.Size = uint32(len(data))
-	pkt.Data = data
-	pkt.Crc = crc32.ChecksumIEEE(data)
+	p.StoreMode = proto.BlobStoreMode
+	p.Opcode = proto.OpWrite
+	p.ReqID = proto.GetReqID()
+	p.PartitionID = uint32(dp.PartitionID)
+	p.Arg = ([]byte)(dp.GetAllAddrs())
+	p.Arglen = uint32(len(p.Arg))
+	p.Nodes = uint8(len(dp.Hosts) - 1)
+	p.Size = uint32(len(data))
+	p.Data = data
+	p.Crc = crc32.ChecksumIEEE(data)
 
-	return pkt
+	return p
 }
 
-func NewReadPacket(partitionID uint32, fileID uint64, objID int64, size uint32) *proto.Packet {
-	pkt := proto.NewPacket()
-	pkt.PartitionID = partitionID
-	pkt.FileID = fileID
-	pkt.Offset = objID
-	pkt.Size = size
-	pkt.StoreMode = proto.BlobStoreMode
-	pkt.ReqID = proto.GetReqID()
-	pkt.Opcode = proto.OpRead
-	pkt.Nodes = 0
+func NewBlobReadPacket(partitionID uint32, fileID uint64, objID int64, size uint32) *proto.Packet {
+	p := proto.NewPacket()
+	p.PartitionID = partitionID
+	p.FileID = fileID
+	p.Offset = objID
+	p.Size = size
+	p.StoreMode = proto.BlobStoreMode
+	p.ReqID = proto.GetReqID()
+	p.Opcode = proto.OpRead
+	p.Nodes = 0
 
-	return pkt
+	return p
 }
 
-func NewDeletePacket(dp *wrapper.DataPartition, fileID uint64, objID int64) *proto.Packet {
-	pkt := proto.NewPacket()
-	pkt.StoreMode = proto.BlobStoreMode
-	pkt.ReqID = proto.GetReqID()
-	pkt.Opcode = proto.OpMarkDelete
-	pkt.PartitionID = uint32(dp.PartitionID)
-	pkt.FileID = fileID
-	pkt.Offset = objID
-	pkt.Arg = ([]byte)(dp.GetAllAddrs())
-	pkt.Arglen = uint32(len(pkt.Arg))
-	pkt.Nodes = uint8(len(dp.Hosts) - 1)
+func NewBlobDeletePacket(dp *wrapper.DataPartition, fileID uint64, objID int64) *proto.Packet {
+	p := proto.NewPacket()
+	p.StoreMode = proto.BlobStoreMode
+	p.ReqID = proto.GetReqID()
+	p.Opcode = proto.OpMarkDelete
+	p.PartitionID = uint32(dp.PartitionID)
+	p.FileID = fileID
+	p.Offset = objID
+	p.Arg = ([]byte)(dp.GetAllAddrs())
+	p.Arglen = uint32(len(p.Arg))
+	p.Nodes = uint8(len(dp.Hosts) - 1)
 
-	return pkt
+	return p
 }
 
-func ParsePacket(pkt *proto.Packet) (partitionID uint32, fileID uint64, objID int64, size uint32) {
-	return pkt.PartitionID, pkt.FileID, pkt.Offset, pkt.Size
+func ParsePacket(p *proto.Packet) (partitionID uint32, fileID uint64, objID int64, size uint32) {
+	return p.PartitionID, p.FileID, p.Offset, p.Size
 }
 
 func GenKey(clusterName, volName string, partitionID uint32, fileID uint64, objID int64, size uint32) string {
