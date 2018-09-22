@@ -15,7 +15,6 @@
 package datanode
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"net"
 	"sync"

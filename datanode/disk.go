@@ -243,11 +243,11 @@ func (d *Disk) putCompactTask(task *CompactTask) (err error) {
 		d.compactTaskLock.Lock()
 		d.compactTasks[task.toString()] = task
 		d.compactTaskLock.Unlock()
+		return
 	default:
 		return fmt.Errorf("cannot add compactTask(%v) to disk(%v)", task.toString(), d.Path)
 
 	}
-
 }
 
 func (d *Disk) deleteCompactTask(id string) {
