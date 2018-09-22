@@ -42,7 +42,7 @@ func NewBlobClient(volname, masters string) (*BlobClient, error) {
 	client := new(BlobClient)
 	client.volname = volname
 	var err error
-	client.conns=pool.NewConnPool()
+	client.conns = pool.NewConnPool()
 	client.wraper, err = wrapper.NewDataPartitionWrapper(volname, masters)
 	if err != nil {
 		return nil, err
@@ -51,32 +51,39 @@ func NewBlobClient(volname, masters string) (*BlobClient, error) {
 }
 
 func (client *BlobClient) checkWriteResponse(request, reply *proto.Packet) (err error) {
+	if reply.Opcode != proto.OpOk {
+		return fmt.Errorf("WriteRequest(%v) reply(%v) replyOp Err msg(%v)",
+			request.GetUniqueLogId(), reply.GetUniqueLogId(), string(reply.Data[:reply.Size]))
+	}
 	if request.ReqID != reply.ReqID {
-		return fmt.Errorf("request(%v) reply(%v) REQID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
+		return fmt.Errorf("WriteRequest(%v) reply(%v) REQID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
 	}
 	if request.PartitionID != reply.PartitionID {
-		return fmt.Errorf("request(%v) reply(%v) PartitionID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
+		return fmt.Errorf("WriteRequest(%v) reply(%v) PartitionID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
 	}
 	requestCrc := crc32.ChecksumIEEE(request.Data[:request.Size])
 	if requestCrc != reply.Crc {
-		return fmt.Errorf("request(%v) reply(%v) CRC not equare,request(%v) reply(%v)", request.GetUniqueLogId(),
+		return fmt.Errorf("WriteRequest(%v) reply(%v) CRC not equare,request(%v) reply(%v)", request.GetUniqueLogId(),
 			reply.GetUniqueLogId(), requestCrc, reply.Crc)
 	}
 
 	return
 }
 
-
 func (client *BlobClient) checkReadResponse(request, reply *proto.Packet) (err error) {
+	if reply.Opcode != proto.OpOk {
+		return fmt.Errorf("ReadRequest(%v) reply(%v) replyOp Err msg(%v)",
+			request.GetUniqueLogId(), reply.GetUniqueLogId(), string(reply.Data[:reply.Size]))
+	}
 	if request.ReqID != reply.ReqID {
-		return fmt.Errorf("request(%v) reply(%v) REQID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
+		return fmt.Errorf("ReadRequest(%v) reply(%v) REQID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
 	}
 	if request.PartitionID != reply.PartitionID {
-		return fmt.Errorf("request(%v) reply(%v) PartitionID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
+		return fmt.Errorf("ReadRequest(%v) reply(%v) PartitionID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
 	}
 	replyCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
 	if replyCrc != reply.Crc {
-		return fmt.Errorf("request(%v) reply(%v) CRC not equare,request(%v) reply(%v)", request.GetUniqueLogId(),
+		return fmt.Errorf("ReadRequest(%v) reply(%v) CRC not equare,request(%v) reply(%v)", request.GetUniqueLogId(),
 			reply.GetUniqueLogId(), request.Crc, replyCrc)
 	}
 
@@ -162,15 +169,15 @@ func (client *BlobClient) Read(key string) (data []byte, err error) {
 		reply := new(proto.Packet)
 		if err = reply.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
 			client.conns.Put(conn, true)
-			log.LogWarnf("ReadRequest(%v) ReadFrom host(%) err(%v)", request.GetUniqueLogId(), target)
+			err = errors.Annotatef(err, "ReadRequest(%v) ReadFrom host(%) err(%v)", request.GetUniqueLogId(), target)
 			continue
 		}
 		if err = client.checkReadResponse(request, reply); err != nil {
 			client.conns.Put(conn, true)
-			log.LogWarnf("ReadRequest CheckReadResponse error(%v)", err.Error())
+			err = errors.Annotatef(err, "ReadRequest CheckReadResponse", request.GetUniqueLogId(), target)
 			continue
 		}
-		client.conns.Put(conn,false)
+		client.conns.Put(conn, false)
 		return reply.Data, nil
 	}
 
@@ -178,9 +185,42 @@ func (client *BlobClient) Read(key string) (data []byte, err error) {
 }
 
 func (client *BlobClient) Delete(key string) (err error) {
-	//TODO: Parse key
-	//TODO: Create delete packet
-	//TODO: Send request to data node
-	//TODO: Read response
+	cluster, volname, partitionID, fileID, objID, _, err := ParseKey(key)
+	if err != nil || strings.Compare(cluster, client.cluster) != 0 || strings.Compare(volname, client.volname) != 0 {
+		log.LogErrorf("Delete: err(%v)", err)
+		return syscall.EINVAL
+	}
+
+	dp, err := client.wraper.GetDataPartition(partitionID)
+	if dp == nil {
+		log.LogErrorf("Delete: No partition, key(%v) err(%v)", key, err)
+		return
+	}
+	request := NewBlobDeletePacket(dp, fileID, objID)
+	var (
+		conn *net.TCPConn
+	)
+	if conn, err = client.conns.Get(dp.Hosts[0]); err != nil {
+		err = errors.Annotatef(err, "DeleteRequest(%v) Get connect from host(%)-", key, dp.Hosts[0])
+		client.conns.Put(conn, true)
+		return
+	}
+	if err = request.WriteToConn(conn); err != nil {
+		client.conns.CheckErrorForPutConnect(conn, dp.Hosts[0], err)
+		err = errors.Annotatef(err, "DeleteRequest(%v) Write To host(%)-", key, dp.Hosts[0])
+		return
+	}
+	reply := new(proto.Packet)
+	if err = reply.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+		client.conns.Put(conn, true)
+		err = errors.Annotatef(err, "DeleteRequest(%v) readResponse from host(%)-", key, dp.Hosts[0])
+		return
+	}
+	if reply.Opcode != proto.OpOk {
+		return fmt.Errorf("DeleteRequest(%v) reply(%v) replyOp Err msg(%v)",
+			request.GetUniqueLogId(), reply.GetUniqueLogId(), string(reply.Data[:reply.Size]))
+	}
+	client.conns.Put(conn, false)
+
 	return nil
 }
