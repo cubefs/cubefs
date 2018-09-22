@@ -42,6 +42,7 @@ func NewBlobClient(volname, masters string) (*BlobClient, error) {
 	client := new(BlobClient)
 	client.volname = volname
 	var err error
+	client.conns=pool.NewConnPool()
 	client.wraper, err = wrapper.NewDataPartitionWrapper(volname, masters)
 	if err != nil {
 		return nil, err
@@ -169,6 +170,7 @@ func (client *BlobClient) Read(key string) (data []byte, err error) {
 			log.LogWarnf("ReadRequest CheckReadResponse error(%v)", err.Error())
 			continue
 		}
+		client.conns.Put(conn,false)
 		return reply.Data, nil
 	}
 
