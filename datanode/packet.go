@@ -199,6 +199,18 @@ func NewNotifyBlobRepair(partitionId uint32) (p *Packet) {
 	return
 }
 
+func NewNotifyCompactPkg(fileID, datapartitionId uint32) (p *Packet) {
+	p = new(Packet)
+	p.FileID = uint64(fileID)
+	p.PartitionID = datapartitionId
+	p.Magic = proto.ProtoMagic
+	p.Opcode = proto.OpNotifyCompactBlobFile
+	p.StoreMode = proto.BlobStoreMode
+	p.ReqID = proto.GetReqID()
+
+	return
+}
+
 func (p *Packet) IsTailNode() (ok bool) {
 	if p.Nodes == 0 && (p.IsWriteOperation() || p.Opcode == proto.OpCreateFile ||
 		(p.Opcode == proto.OpMarkDelete && p.StoreMode == proto.BlobStoreMode)) {

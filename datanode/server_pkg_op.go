@@ -75,7 +75,7 @@ func (s *DataNode) operatePacket(pkg *Packet, c *net.TCPConn) {
 		s.handleStreamRead(pkg, c)
 	case proto.OpMarkDelete:
 		s.handleMarkDelete(pkg)
-	case proto.OpNotifyCompact:
+	case proto.OpNotifyCompactBlobFile:
 		s.handleNotifyCompact(pkg)
 	case proto.OpNotifyExtentRepair:
 		s.handleNotifyExtentRepair(pkg)
@@ -455,7 +455,7 @@ func (s *DataNode) handleBlobStoreGetAllWatermark(pkg *Packet) {
 	return
 }
 
-// Handle OpNotifyCompact packet.
+// Handle OpNotifyCompactBlobFile packet.
 func (s *DataNode) handleNotifyCompact(pkg *Packet) {
 	cId := uint32(pkg.FileID)
 	vId := pkg.PartitionID

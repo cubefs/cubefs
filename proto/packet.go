@@ -60,7 +60,7 @@ const (
 	OpBlobFileRepairRead       uint8 = 0x0A
 	OpFlowInfo                 uint8 = 0x0B
 	OpSyncDelNeedle            uint8 = 0x0C
-	OpNotifyCompact            uint8 = 0x0D
+	OpNotifyCompactBlobFile    uint8 = 0x0D
 	OpGetDataPartitionMetrics  uint8 = 0x0E
 	OpBlobStoreGetAllWaterMark uint8 = 0x0F
 	OpNotifyBlobRepair         uint8 = 0x10
@@ -186,7 +186,7 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "NotifyExtentRepair"
 	case OpBlobFileRepairRead:
 		m = "BlobFileRepairRead"
-	case OpNotifyCompact:
+	case OpNotifyCompactBlobFile:
 		m = "NotifyCompact"
 	case OpERepairRead:
 		m = "ExtentRepairRead"

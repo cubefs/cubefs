@@ -27,14 +27,15 @@ import (
 )
 
 const (
-	BlobFileFileCount    = 10
-	BlobFileOpenOpt      = os.O_CREATE | os.O_RDWR | os.O_APPEND
-	CompactThreshold     = 40
-	CompactMaxWait       = time.Second * 10
-	ReBootStoreMode      = false
-	NewStoreMode         = true
-	MinWriteAbleBlobFile = 1
-	ObjectIdLen          = 8
+	BlobFileFileCount = 10
+	BlobFileOpenOpt   = os.O_CREATE | os.O_RDWR | os.O_APPEND
+	CompactThreshold  = 40
+	CompactMaxWait    = time.Second * 10
+	ObjectIdLen       = 8
+)
+
+var (
+	gMaxBlobFileSize uint64
 )
 
 // BlobStore is a store implement for blob file storage which container 40 blobfile files.
@@ -389,7 +390,7 @@ func (s *BlobStore) ApplyDelObjects(blobfileId uint32, objects []uint64) (err er
 }
 
 // make sure blobfileID is valid
-func (s *BlobStore) IsReadyToCompact(blobfileID, thresh int) (isready bool, deletePercent float64) {
+func (s *BlobStore) IsReadyToCompact(blobfileID, thresh int) (isready bool, fileBytes, deleteBytes uint64, deletePercent float64) {
 	if thresh < 0 {
 		thresh = CompactThreshold
 	}
@@ -397,16 +398,17 @@ func (s *BlobStore) IsReadyToCompact(blobfileID, thresh int) (isready bool, dele
 	c := s.blobfiles[blobfileID]
 	objects := c.tree
 	deletePercent = float64(objects.deleteBytes) / float64(objects.fileBytes)
-	maxBlobFileSize := s.storeSize / BlobFileFileCount
-	if objects.fileBytes < uint64(maxBlobFileSize)*CompactThreshold/100 {
-		return false, deletePercent
+	fileBytes = objects.fileBytes
+	deleteBytes = objects.deleteBytes
+	if objects.fileBytes < uint64(gMaxBlobFileSize)*CompactThreshold/100 {
+		return false, fileBytes, deleteBytes, deletePercent
 	}
 
 	if objects.deleteBytes < objects.fileBytes*uint64(thresh)/100 {
-		return false, deletePercent
+		return false, fileBytes, deleteBytes, deletePercent
 	}
 
-	return true, deletePercent
+	return true, fileBytes, deleteBytes, deletePercent
 }
 
 func (s *BlobStore) DoCompactWork(blobfileID int) (err error, released uint64) {

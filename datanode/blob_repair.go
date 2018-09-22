@@ -27,7 +27,19 @@ import (
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
+	"time"
 )
+
+func (dp *dataPartition) lauchBlobRepair() {
+	ticker := time.Tick(time.Second * 20)
+	dp.blobRepair()
+	for {
+		select {
+		case <-ticker:
+			dp.blobRepair()
+		}
+	}
+}
 
 func (dp *dataPartition) blobRepair() {
 	var (
