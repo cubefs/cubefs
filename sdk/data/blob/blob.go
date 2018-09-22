@@ -217,6 +217,7 @@ func (client *BlobClient) Delete(key string) (err error) {
 		return
 	}
 	if reply.Opcode != proto.OpOk {
+		client.conns.Put(conn, true)
 		return fmt.Errorf("DeleteRequest(%v) reply(%v) replyOp Err msg(%v)",
 			request.GetUniqueLogId(), reply.GetUniqueLogId(), string(reply.Data[:reply.Size]))
 	}
