@@ -28,9 +28,11 @@ import (
 	"runtime"
 	"syscall"
 
+	"bytes"
 	"fmt"
 	"github.com/tiglabs/containerfs/util/config"
 	"net/http"
+	"os/exec"
 )
 
 const (
@@ -78,6 +80,14 @@ func interceptSignal(s Server) {
 	}()
 }
 
+func exec_shell(s string) (string, error) {
+	cmd := exec.Command("/bin/bash", "-c", s)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	return out.String(), err
+}
+
 func main() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -88,6 +98,7 @@ func main() {
 	}()
 	log.LogInfo("Hello, Baud Storage")
 	flag.Parse()
+	exec_shell("ulimit -n 1024000")
 	cfg := config.LoadConfigFile(*configFile)
 	role := cfg.GetString(ConfigKeyRole)
 	logDir := cfg.GetString(ConfigKeyLogDir)
