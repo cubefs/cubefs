@@ -38,6 +38,8 @@ func (dp *dataPartition) lauchBlobRepair() {
 		case <-ticker:
 			dp.blobRepair()
 			dp.lauchCompact()
+		case <-dp.stopC:
+			return
 		}
 	}
 }
