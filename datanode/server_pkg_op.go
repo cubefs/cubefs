@@ -457,16 +457,35 @@ func (s *DataNode) handleBlobStoreGetAllWatermark(pkg *Packet) {
 
 // Handle OpNotifyCompactBlobFile packet.
 func (s *DataNode) handleNotifyCompact(pkg *Packet) {
-	cId := uint32(pkg.FileID)
-	vId := pkg.PartitionID
+	blobFile := int(pkg.FileID)
+	partitionId := pkg.PartitionID
 	task := &CompactTask{
-		partitionId: vId,
-		blobfileId:  int(cId),
+		partitionId: partitionId,
+		blobfileId:  blobFile,
 		isLeader:    false,
 	}
-	err := s.AddCompactTask(task)
+	var err error
+	dp := s.space.GetPartition(task.partitionId)
+	if dp == nil {
+		err = errors.Annotatef(fmt.Errorf("partition not found", task.toString()),
+			"Request(%v) handleNotifyCompact Error", pkg.GetUniqueLogId())
+		pkg.PackErrorBody(LogCompactBlobFile, err.Error())
+		return
+	}
+	d, err := s.space.GetDisk(dp.Path())
 	if err != nil {
-		err = errors.Annotatef(err, "Request(%v) handleNotifyCompact Error", pkg.GetUniqueLogId())
+		err = errors.Annotatef(fmt.Errorf("disk not found", dp.Path()),
+			"Request(%v) handleNotifyCompact Error", pkg.GetUniqueLogId())
+		pkg.PackErrorBody(LogCompactBlobFile, err.Error())
+		return
+	}
+	if d.hasExsitCompactTask(task.toString()) {
+		pkg.PackOkReply()
+		return
+	}
+	if err = d.putCompactTask(task); err != nil {
+		err = errors.Annotatef(err,
+			"Request(%v) handleNotifyCompact Error", pkg.GetUniqueLogId())
 		pkg.PackErrorBody(LogCompactBlobFile, err.Error())
 		return
 	}

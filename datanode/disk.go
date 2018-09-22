@@ -93,7 +93,7 @@ func NewDisk(path string, restSize uint64, maxErrs int) (d *Disk) {
 	d.partitionMap = make(map[uint32]DataPartition)
 	d.RestSize = util.GB * 1
 	d.MaxErrs = 2000
-	d.compactTasks = make(map[string]int)
+	d.compactTasks = make(map[string]*CompactTask)
 	d.compactCh = make(chan *CompactTask, CompactThreadNum)
 	for i := 0; i < CompactThreadNum; i++ {
 		go d.compact()

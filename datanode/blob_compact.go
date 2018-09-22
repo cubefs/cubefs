@@ -92,4 +92,5 @@ func (dp *dataPartition) notifyCompactBlobFile(blobFile int) (err error) {
 				dp.getCompactKey(blobFile), target, err.Error())
 		}
 	}
+	return
 }
