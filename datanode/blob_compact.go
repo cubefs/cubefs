@@ -18,6 +18,9 @@ func (dp *dataPartition) lauchCompact() {
 	if GcanCompact!=CanCompact{
 		return
 	}
+	if !dp.isLeader{
+		return
+	}
 	blobFile, err := dp.getCompactBlobFiles()
 	defer func() {
 		if err != nil && blobFile > -1 && blobFile <= storage.BlobFileFileCount {
