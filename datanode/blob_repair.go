@@ -111,7 +111,12 @@ type RepairBlobFileTask struct {
 
 func (dp *dataPartition) getUnavaliBlobFile() (unavaliBlobFile []int) {
 	unavaliBlobFile = make([]int, 0)
-	for i := 0; i < MaxRepairBlobFileCount; i++ {
+	maxBlobRepairCount:=MaxRepairBlobFileCount
+	if dp.isFirstRestart{
+		maxBlobRepairCount=storage.BlobFileFileCount
+		dp.isFirstRestart=false
+	}
+	for i := 0; i < maxBlobRepairCount; i++ {
 		unavali, err := dp.blobStore.GetUnAvailBlobFile()
 		if err != nil {
 			break

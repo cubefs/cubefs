@@ -472,7 +472,7 @@ func (s *DataNode) handleNotifyCompact(pkg *Packet) {
 		pkg.PackErrorBody(LogCompactBlobFile, err.Error())
 		return
 	}
-	d, err := s.space.GetDisk(dp.Path())
+	d, err := s.space.GetDisk(dp.Disk().Path)
 	if err != nil {
 		err = errors.Annotatef(fmt.Errorf("disk not found", dp.Path()),
 			"Request(%v) handleNotifyCompact Error", pkg.GetUniqueLogId())
