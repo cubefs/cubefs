@@ -461,7 +461,7 @@ func (s *BlobStore) doCompactAndCommit(blobfileID int) (err error, released uint
 
 	err = cc.doCommit()
 	if err != nil {
-		return ErrorCommit, 0
+		return err, 0
 	}
 
 	sizeAfterCompact := cc.tree.FileBytes()

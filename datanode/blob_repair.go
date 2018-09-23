@@ -92,11 +92,9 @@ func (dp *dataPartition) blobRepair() {
 	}
 	for _, success := range successBlobFiles {
 		dp.blobStore.PutAvailBlobFile(success)
-		log.LogInfof("%v success repair blobfile", dp.getBlobRepairLogKey(success))
 	}
 	for _,needRepair:=range needRepairBlobFiles{
 		dp.blobStore.PutUnAvailBlobFile(needRepair)
-		log.LogInfof("%v need repair blobfile", dp.getBlobRepairLogKey(needRepair))
 	}
 
 }

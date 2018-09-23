@@ -24,12 +24,12 @@ func (dp *dataPartition) lauchCompact() {
 	blobFile, err := dp.getCompactBlobFiles()
 	if err != nil {
 		log.LogWarnf(err.Error())
-		dp.leaderPutBlobToAvaliCh(blobFile, err)
+		dp.leaderPutBlobToAvaliCh(blobFile)
 		return
 	}
 	if err = dp.notifyCompactBlobFile(blobFile); err != nil {
 		log.LogWarnf(err.Error())
-		dp.leaderPutBlobToAvaliCh(blobFile, err)
+		dp.leaderPutBlobToAvaliCh(blobFile)
 		return
 	}
 	task := &CompactTask{partitionId: dp.partitionId, blobfileId: blobFile, isLeader: dp.isLeader}
@@ -38,13 +38,13 @@ func (dp *dataPartition) lauchCompact() {
 	}
 	if err = dp.disk.putCompactTask(task); err != nil {
 		log.LogWarnf(err.Error())
-		dp.leaderPutBlobToAvaliCh(blobFile, err)
+		dp.leaderPutBlobToAvaliCh(blobFile)
 		return
 	}
 }
 
-func (dp *dataPartition) leaderPutBlobToAvaliCh(blobFile int, err error) {
-	if err != nil && blobFile > -1 && blobFile <= storage.BlobFileFileCount {
+func (dp *dataPartition) leaderPutBlobToAvaliCh(blobFile int) {
+	if  blobFile > -1 && blobFile <= storage.BlobFileFileCount {
 		dp.blobStore.PutAvailBlobFile(blobFile)
 	}
 }

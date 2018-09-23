@@ -173,6 +173,7 @@ func (d *Disk) compact() {
 		case t := <-d.compactCh:
 			dp := d.space.GetPartition(t.partitionId)
 			if dp == nil {
+				d.deleteCompactTask(t.toString())
 				continue
 			}
 			err, release := dp.GetBlobStore().DoCompactWork(t.blobfileId)
@@ -184,6 +185,7 @@ func (d *Disk) compact() {
 			if t.isLeader {
 				dp.GetBlobStore().PutAvailBlobFile(t.blobfileId)
 			}
+			d.deleteCompactTask(t.toString())
 		}
 	}
 }
