@@ -88,6 +88,7 @@ func NewServer() *DataNode {
 
 func (s *DataNode) Start(cfg *config.Config) (err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
+	GcanCompact=CanCompact
 	if atomic.CompareAndSwapUint32(&s.state, Standby, Start) {
 		defer func() {
 			if err != nil {

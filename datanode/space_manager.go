@@ -117,7 +117,7 @@ func (space *spaceManager) LoadDisk(path string, restSize uint64, maxErrs int) (
 	}
 	if _, err = space.GetDisk(path); err != nil {
 
-		disk = NewDisk(path, restSize, maxErrs)
+		disk = NewDisk(path, restSize, maxErrs,space)
 		disk.RestorePartition(visitor)
 		space.putDisk(disk)
 		err = nil

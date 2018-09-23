@@ -44,6 +44,11 @@ func (dp *dataPartition) lauchBlobRepair() {
 	}
 }
 
+func (dp *dataPartition)repairFailedBlobFileToUnavali(unavalis []int){
+	for _,blobFile:=range unavalis{
+		dp.blobStore.PutUnAvailBlobFile(blobFile)
+	}
+}
 func (dp *dataPartition) blobRepair() {
 	var (
 		err error
@@ -54,6 +59,10 @@ func (dp *dataPartition) blobRepair() {
 	if !dp.isLeader {
 		return
 	}
+	defer func() {
+		log.LogInfof("%v status(%v) used(%v) avaliBlobFile(%v) unavaliBlobFile(%v)",dp.getDataPartitionLogKey(),dp.Status(),
+			dp.Used(),dp.blobStore.GetAvailChanLen(),dp.blobStore.GetUnAvailChanLen())
+	}()
 	unavaliBlobFiles := dp.getUnavaliBlobFile()
 	if len(unavaliBlobFiles) == 0 {
 		return
@@ -61,24 +70,38 @@ func (dp *dataPartition) blobRepair() {
 	allMembersFileMetas := make([]*MembersFileMetas, len(dp.ReplicaHosts()))
 	allMembersFileMetas[0], err = dp.getLocalBlobFileMetas(unavaliBlobFiles)
 	if err != nil {
+		dp.repairFailedBlobFileToUnavali(unavaliBlobFiles)
 		log.LogWarnf("%v blob repair GetLocalBlobFiles failed (%v)", dp.getDataPartitionLogKey(), err)
 		return
 	}
 	for i := 1; i < len(dp.replicaHosts); i++ {
 		allMembersFileMetas[i], err = dp.getRemoteBlobFileMetas(dp.replicaHosts[i], unavaliBlobFiles, i)
 		if err != nil {
+			dp.repairFailedBlobFileToUnavali(unavaliBlobFiles)
 			log.LogWarnf("%v blob repair GetRemoteBlobFiles failed (%v)", dp.getDataPartitionLogKey(), err)
 			return
 		}
 	}
 
-	dp.generatorBlobRepairTasks(allMembersFileMetas)
+	successBlobFiles,needRepairBlobFiles:=dp.generatorBlobRepairTasks(allMembersFileMetas)
 	err = dp.NotifyBlobRepair(allMembersFileMetas)
 	if err != nil {
+		dp.repairFailedBlobFileToUnavali(unavaliBlobFiles)
 		log.LogWarnf("%v blob repair Notify failed (%v)", dp.getDataPartitionLogKey(), err)
+		return
+	}
+	for _, success := range successBlobFiles {
+		dp.blobStore.PutAvailBlobFile(success)
+		log.LogInfof("%v success repair blobfile", dp.getBlobRepairLogKey(success))
+	}
+	for _,needRepair:=range needRepairBlobFiles{
+		dp.blobStore.PutUnAvailBlobFile(needRepair)
+		log.LogInfof("%v need repair blobfile", dp.getBlobRepairLogKey(needRepair))
 	}
 
 }
+
+
 
 type RepairBlobFileTask struct {
 	BlobFileId int
@@ -169,12 +192,12 @@ func (dp *dataPartition) getRemoteBlobFileMetas(remote string, filterBlobFileids
 }
 
 //generator file task
-func (dp *dataPartition) generatorBlobRepairTasks(allMembers []*MembersFileMetas) {
+func (dp *dataPartition) generatorBlobRepairTasks(allMembers []*MembersFileMetas)(successBlobFiles,needRepairBlobFiles []int) {
 	maxSizeBlobMap := dp.mapMaxSizeBlobFileToIndex(allMembers)
-	dp.restoreSuccessBlobFiles(allMembers, maxSizeBlobMap)
+	successBlobFiles,needRepairBlobFiles=dp.checkNeedRepairBlobFiles(allMembers, maxSizeBlobMap)
 	dp.generatorFixBlobFileSizeTasks(allMembers, maxSizeBlobMap)
 	dp.generatorBlobDeleteTasks(allMembers)
-
+	return
 }
 
 /*generator fix blob Size ,if all members  Not the same length*/
@@ -206,8 +229,10 @@ func (dp *dataPartition) generatorFixBlobFileSizeTasks(allMembers []*MembersFile
 	}
 }
 
-func (dp *dataPartition) restoreSuccessBlobFiles(allMembers []*MembersFileMetas, maxSizeBlobFileMap map[int]*storage.FileInfo) {
-	successBlobFiles := make([]int, 0)
+func (dp *dataPartition) checkNeedRepairBlobFiles(allMembers []*MembersFileMetas,
+	maxSizeBlobFileMap map[int]*storage.FileInfo)(successBlobFiles,needRepairBlobFiles []int) {
+	successBlobFiles = make([]int, 0)
+	needRepairBlobFiles=make([]int,0)
 	for fileId := range allMembers[0].files {
 		maxSizeBlobFile := maxSizeBlobFileMap[fileId]
 		if maxSizeBlobFile == nil {
@@ -222,6 +247,8 @@ func (dp *dataPartition) restoreSuccessBlobFiles(allMembers []*MembersFileMetas,
 		}
 		if isSizeEqure {
 			successBlobFiles = append(successBlobFiles, fileId)
+		}else {
+			needRepairBlobFiles=append(needRepairBlobFiles,fileId)
 		}
 	}
 
@@ -230,10 +257,7 @@ func (dp *dataPartition) restoreSuccessBlobFiles(allMembers []*MembersFileMetas,
 			delete(allMembers[i].files, success)
 		}
 	}
-	for _, success := range successBlobFiles {
-		dp.blobStore.PutAvailBlobFile(success)
-		log.LogInfof("%v success repair blobfile", dp.getBlobRepairLogKey(success))
-	}
+	return
 }
 
 func (dp *dataPartition) mapMaxSizeBlobFileToIndex(allMembers []*MembersFileMetas) (maxSizeBlobMap map[int]*storage.FileInfo) {
@@ -248,7 +272,7 @@ func (dp *dataPartition) mapMaxSizeBlobFileToIndex(allMembers []*MembersFileMeta
 			if !ok {
 				continue
 			}
-			if maxFileSize < member.files[blobFileId].Size {
+			if maxFileSize <= member.files[blobFileId].Size {
 				maxFileSize = member.files[blobFileId].Size
 				maxSizeBlobMap[blobFileId] = member.files[blobFileId]
 				maxSizeBlobMap[blobFileId].MemberIndex = index
@@ -339,7 +363,7 @@ func (dp *dataPartition) getBlobRepairLogKey(blobFileId int) (s string) {
 }
 
 func (dp *dataPartition) getDataPartitionLogKey() (s string) {
-	return fmt.Sprintf("RepairKey(%v_%v)", dp.ID(), dp.IsLeader())
+	return fmt.Sprintf("RepairDataPartitionKey(%v_%v)", dp.ID(), dp.IsLeader())
 }
 
 //do stream repair blobfilefile,it do on follower host

@@ -86,7 +86,7 @@ func (s *DataNode) operatePacket(pkg *Packet, c *net.TCPConn) {
 	case proto.OpExtentStoreGetAllWaterMark:
 		s.handleExtentStoreGetAllWatermark(pkg)
 	case proto.OpBlobStoreGetAllWaterMark:
-		s.handleExtentStoreGetAllWatermark(pkg)
+		s.handleBlobStoreGetAllWatermark(pkg)
 	case proto.OpCreateDataPartition:
 		s.handleCreateDataPartition(pkg)
 	case proto.OpLoadDataPartition:

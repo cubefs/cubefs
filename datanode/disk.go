@@ -78,18 +78,19 @@ type Disk struct {
 	RestSize        uint64
 	partitionMap    map[uint32]DataPartition
 	compactCh       chan *CompactTask
-	space           SpaceManager
+	space           *spaceManager
 	compactTasks    map[string]*CompactTask
 	compactTaskLock sync.RWMutex
 }
 
 type PartitionVisitor func(dp DataPartition)
 
-func NewDisk(path string, restSize uint64, maxErrs int) (d *Disk) {
+func NewDisk(path string, restSize uint64, maxErrs int,space *spaceManager) (d *Disk) {
 	d = new(Disk)
 	d.Path = path
 	d.RestSize = restSize
 	d.MaxErrs = maxErrs
+	d.space=space
 	d.partitionMap = make(map[uint32]DataPartition)
 	d.RestSize = util.GB * 1
 	d.MaxErrs = 2000

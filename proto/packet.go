@@ -187,7 +187,7 @@ func (p *Packet) GetOpMsg() (m string) {
 	case OpBlobFileRepairRead:
 		m = "BlobFileRepairRead"
 	case OpNotifyCompactBlobFile:
-		m = "NotifyCompact"
+		m = "NotifyCompactBlobFile"
 	case OpERepairRead:
 		m = "ExtentRepairRead"
 	case OpFlowInfo:
@@ -256,6 +256,11 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpPing"
 	case OpGetDataPartitionMetrics:
 		m = "OpGetDataPartitionMetrics"
+	case OpBlobStoreGetAllWaterMark:
+		m="OpBlobStoreGetAllWaterMark"
+	case OpNotifyBlobRepair:
+		m="OpNotifyBlobRepair"
+
 	}
 	return
 }
