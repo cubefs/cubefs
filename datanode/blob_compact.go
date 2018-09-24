@@ -67,8 +67,8 @@ func (dp *dataPartition) getCompactBlobFiles() (blobFile int, err error) {
 	}
 	isready, fileBytes, deleteBytes, deletePercent := store.IsReadyToCompact(blobFile, thresh)
 	if !isready {
-		err = fmt.Errorf("%v cannot compact  compactThreshold[%v] fileBytes[%v] deleteBytes[%v]"+
-			" hasDeletePercnt[%v]", dp.getCompactKey(blobFile), fileBytes, deleteBytes, deletePercent)
+		err = fmt.Errorf("%v cannot compact  compactThreshold(%v)  fileBytes(%v)  deleteBytes(%v) "+
+			" hasDeletePercnt(%v) ", dp.getCompactKey(blobFile),thresh, fileBytes, deleteBytes, deletePercent)
 		return
 	}
 	return

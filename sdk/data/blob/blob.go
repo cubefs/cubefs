@@ -51,9 +51,9 @@ func NewBlobClient(volname, masters string) (*BlobClient, error) {
 }
 
 func (client *BlobClient) checkWriteResponse(request, reply *proto.Packet) (err error) {
-	if reply.Opcode != proto.OpOk {
-		return fmt.Errorf("WriteRequest(%v) reply(%v) replyOp Err msg(%v)",
-			request.GetUniqueLogId(), reply.GetUniqueLogId(), string(reply.Data[:reply.Size]))
+	if reply.ResultCode != proto.OpOk {
+		return fmt.Errorf("WriteRequest(%v) reply(%v) replyOpCode(%v) Err msg(%v)",
+			request.GetUniqueLogId(), reply.GetUniqueLogId(), reply.Opcode,string(reply.Data[:reply.Size]))
 	}
 	if request.ReqID != reply.ReqID {
 		return fmt.Errorf("WriteRequest(%v) reply(%v) REQID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
@@ -71,7 +71,7 @@ func (client *BlobClient) checkWriteResponse(request, reply *proto.Packet) (err 
 }
 
 func (client *BlobClient) checkReadResponse(request, reply *proto.Packet,expectCrc uint32) (err error) {
-	if reply.Opcode != proto.OpOk {
+	if reply.ResultCode != proto.OpOk {
 		return fmt.Errorf("ReadRequest(%v) reply(%v) replyOp Err msg(%v)",
 			request.GetUniqueLogId(), reply.GetUniqueLogId(), string(reply.Data[:reply.Size]))
 	}
