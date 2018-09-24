@@ -52,8 +52,8 @@ func RandStringBytesMask(n int) string {
 	}
 	return string(b)
 }
-func RandStringBytesMaskImpr(n int) string {
-	b := make([]byte, n)
+func RandStringBytesMaskImpr(n int) (b []byte) {
+	b = make([]byte, n)
 	// A rand.Int63() generates 63 random bits, enough for letterIdxMax letters!
 	for i, cache, remain := n-1, rand.Int63(), letterIdxMax; i >= 0; {
 		if remain == 0 {
@@ -66,7 +66,7 @@ func RandStringBytesMaskImpr(n int) string {
 		cache >>= letterIdxBits
 		remain--
 	}
-	return string(b)
+	return
 }
 
 var src = rand.NewSource(time.Now().UnixNano())

@@ -105,10 +105,13 @@ func readThead() {
 
 func writeThread() {
 	maxLen := util.MB * 5
+	rand.Seed(time.Now().UnixNano())
+	size := rand.Intn(maxLen)
+	data := util.RandStringBytesMaskImpr(size)
 	for {
-		rand.Seed(time.Now().UnixNano())
-		size := rand.Intn(maxLen)
-		data := util.RandStringBytesMaskImprSrc(size)
+		//rand.Seed(time.Now().UnixNano())
+		//size := rand.Intn(maxLen)
+		//data := util.RandStringBytesMaskImpr(size)
 		key, err := gBlobClient.Write(data)
 		if err == nil {
 			keyChan <- key
@@ -124,12 +127,13 @@ func dealWriteThread() {
 		select {
 		case key := <-keyChan:
 			index++
-			writeSuccessFp.Write([]byte((key + "\n")))
-			if index%3 == 0 {
-				deleteChan <- key
-			} else if index%2 == 0 {
-				readChan <- key
-			}
+			fmt.Println(key)
+			//writeSuccessFp.Write([]byte((key + "\n")))
+			//if index%3 == 0 {
+			//	deleteChan <- key
+			//} else if index%2 == 0 {
+			//	readChan <- key
+			//}
 		}
 	}
 }

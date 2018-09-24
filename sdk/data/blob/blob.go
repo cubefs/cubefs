@@ -62,10 +62,9 @@ func (client *BlobClient) checkWriteResponse(request, reply *proto.Packet) (err 
 	if request.PartitionID != reply.PartitionID {
 		return fmt.Errorf("WriteRequest(%v) reply(%v) PartitionID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
 	}
-	requestCrc := crc32.ChecksumIEEE(request.Data[:request.Size])
-	if requestCrc != reply.Crc {
+	if request.Crc != reply.Crc {
 		return fmt.Errorf("WriteRequest(%v) reply(%v) CRC not equare,request(%v) reply(%v)", request.GetUniqueLogId(),
-			reply.GetUniqueLogId(), requestCrc, reply.Crc)
+			reply.GetUniqueLogId(), request.Crc, reply.Crc)
 	}
 
 	return
