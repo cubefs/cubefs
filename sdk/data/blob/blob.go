@@ -47,6 +47,7 @@ func NewBlobClient(volname, masters string) (*BlobClient, error) {
 	if err != nil {
 		return nil, err
 	}
+	client.cluster = client.wraper.GetClusterName()
 	return client, nil
 }
 
@@ -132,9 +133,9 @@ func (client *BlobClient) Write(data []byte) (key string, err error) {
 			exclude = append(exclude, dp.PartitionID)
 			continue
 		}
-		partitionID, fileID, objID, size,crc := ParsePacket(reply)
+		partitionID, fileID, objID, crc := ParsePacket(reply)
 		client.conns.Put(conn, false)
-		key = GenKey(client.cluster, client.volname, partitionID, fileID, objID, size,crc)
+		key = GenKey(client.cluster, client.volname, partitionID, fileID, objID, uint32(len(data)), crc)
 		return key, nil
 	}
 
@@ -184,7 +185,7 @@ func (client *BlobClient) Read(key string) (data []byte, err error) {
 		return reply.Data, nil
 	}
 
-	return nil, syscall.EIO
+	return nil, err
 }
 
 func (client *BlobClient) Delete(key string) (err error) {
@@ -219,7 +220,7 @@ func (client *BlobClient) Delete(key string) (err error) {
 		err = errors.Annotatef(err, "DeleteRequest(%v) readResponse from host(%v)-", key, dp.Hosts[0])
 		return
 	}
-	if reply.Opcode != proto.OpOk {
+	if reply.ResultCode != proto.OpOk {
 		client.conns.Put(conn, true)
 		return fmt.Errorf("DeleteRequest(%v) reply(%v) replyOp Err msg(%v)",
 			request.GetUniqueLogId(), reply.GetUniqueLogId(), string(reply.Data[:reply.Size]))

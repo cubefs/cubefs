@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/tiglabs/containerfs/util/log"
+	"fmt"
 )
 
 const (
@@ -46,9 +47,19 @@ func TestWrite(t *testing.T) {
 	data := []byte("1234")
 	key, err := gBlobClient.Write(data)
 	if err != nil {
-		t.Errorf("Write: data(%v) err(%v)", string(data), err)
+		t.Fatalf("Write: data(%v) err(%v)", string(data), err)
 	}
-	t.Logf("Write: key(%v)", key)
+	fmt.Println(fmt.Sprintf("Write key(%v) success", key))
+	rdata, rerr := gBlobClient.Read(key)
+	if rerr != nil {
+		t.Fatalf("Read: key (%v) data(%v) err(%v)", key, string(rdata), rerr)
+	}
+	fmt.Println(fmt.Sprintf("Read key(%v) success", key))
+	derr := gBlobClient.Delete(key)
+	if derr != nil {
+		t.Fatalf("deleteKey: key(%v) err(%v)", key, derr)
+	}
+	fmt.Println(fmt.Sprintf("Delete key(%v) success", key))
 
 	time.Sleep(2 * time.Second)
 }

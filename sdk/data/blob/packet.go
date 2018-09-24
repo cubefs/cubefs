@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	NumKeySegments = 9
+	NumKeySegments = 10
 )
 
 func NewBlobWritePacket(dp *wrapper.DataPartition, data []byte) *proto.Packet {
@@ -77,14 +77,14 @@ func NewBlobDeletePacket(dp *wrapper.DataPartition, fileID uint64, objID int64) 
 	return p
 }
 
-func ParsePacket(p *proto.Packet) (partitionID uint32, fileID uint64, objID int64, size,crc uint32) {
-	return p.PartitionID, p.FileID, p.Offset, p.Size,p.Crc
+func ParsePacket(p *proto.Packet) (partitionID uint32, fileID uint64, objID int64, crc uint32) {
+	return p.PartitionID, p.FileID, p.Offset, p.Crc
 }
 
 func GenKey(clusterName, volName string, partitionID uint32, fileID uint64, objID int64, size,crc uint32) string {
-	interKey := fmt.Sprintf("%v/%v/%v/%v/%v", partitionID, fileID, objID, size, time.Now().UnixNano())
+	interKey := fmt.Sprintf("%v/%v/%v/%v/%v/%v", partitionID, fileID, objID, size, time.Now().UnixNano(), crc)
 	checkSum := crc32.ChecksumIEEE([]byte(interKey))
-	key := fmt.Sprintf("%v/%v/%v/%v/%v/%v", clusterName, volName, proto.BlobStoreMode, interKey, checkSum,crc)
+	key := fmt.Sprintf("%v/%v/%v/%v/%v", clusterName, volName, proto.BlobStoreMode, interKey, checkSum)
 	return key
 }
 
@@ -96,13 +96,13 @@ func ParseKey(key string) (clusterName, volName string, partitionID uint32, file
 	}
 
 	clusterName = segs[0]
-	if strings.Compare(clusterName, "") != 0 {
+	if strings.Compare(clusterName, "") == 0 {
 		err = errors.New(fmt.Sprintf("ParseKey: cluster key(%v)", key))
 		return
 	}
 
 	volName = segs[1]
-	if strings.Compare(volName, "") != 0 {
+	if strings.Compare(volName, "") == 0 {
 		err = errors.New(fmt.Sprintf("ParseKey: volname key(%v)", key))
 		return
 	}
@@ -141,7 +141,7 @@ func ParseKey(key string) (clusterName, volName string, partitionID uint32, file
 	}
 	size = uint32(val)
 
-	val, err = strconv.ParseUint(segs[7], 10, 32)
+	val, err = strconv.ParseUint(segs[8], 10, 32)
 	if err != nil {
 		err = errors.New(fmt.Sprintf("ParseKey: crc key(%v)", key))
 		return
