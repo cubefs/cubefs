@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	TestVolName    = "intest"
-	TestMasterAddr = "10.196.31.173:80,10.196.31.141:80,10.196.30.200:80"
+	TestVolName    = "blob"
+	TestMasterAddr = "10.196.31.173:8001,10.196.31.141:8001,10.196.30.200:8001"
 	TestLogPath    = "testlog"
 )
 

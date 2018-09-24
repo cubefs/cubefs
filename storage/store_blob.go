@@ -453,7 +453,7 @@ func (s *BlobStore) doCompactAndCommit(blobfileID int) (err error, released uint
 
 	sizeBeforeCompact := cc.tree.FileBytes()
 	if err = cc.doCompact(); err != nil {
-		return ErrorCompaction, 0
+		return err, 0
 	}
 
 	cc.commitLock.Lock()

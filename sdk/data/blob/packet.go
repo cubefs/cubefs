@@ -77,18 +77,18 @@ func NewBlobDeletePacket(dp *wrapper.DataPartition, fileID uint64, objID int64) 
 	return p
 }
 
-func ParsePacket(p *proto.Packet) (partitionID uint32, fileID uint64, objID int64, size uint32) {
-	return p.PartitionID, p.FileID, p.Offset, p.Size
+func ParsePacket(p *proto.Packet) (partitionID uint32, fileID uint64, objID int64, size,crc uint32) {
+	return p.PartitionID, p.FileID, p.Offset, p.Size,p.Crc
 }
 
-func GenKey(clusterName, volName string, partitionID uint32, fileID uint64, objID int64, size uint32) string {
+func GenKey(clusterName, volName string, partitionID uint32, fileID uint64, objID int64, size,crc uint32) string {
 	interKey := fmt.Sprintf("%v/%v/%v/%v/%v", partitionID, fileID, objID, size, time.Now().UnixNano())
 	checkSum := crc32.ChecksumIEEE([]byte(interKey))
-	key := fmt.Sprintf("%v/%v/%v/%v/%v", clusterName, volName, proto.BlobStoreMode, interKey, checkSum)
+	key := fmt.Sprintf("%v/%v/%v/%v/%v/%v", clusterName, volName, proto.BlobStoreMode, interKey, checkSum,crc)
 	return key
 }
 
-func ParseKey(key string) (clusterName, volName string, partitionID uint32, fileID uint64, objID int64, size uint32, err error) {
+func ParseKey(key string) (clusterName, volName string, partitionID uint32, fileID uint64, objID int64, size,crc uint32, err error) {
 	segs := strings.Split(key, "/")
 	if len(segs) != NumKeySegments {
 		err = errors.New(fmt.Sprintf("ParseKey: num key(%v)", key))
@@ -140,6 +140,14 @@ func ParseKey(key string) (clusterName, volName string, partitionID uint32, file
 		return
 	}
 	size = uint32(val)
+
+	val, err = strconv.ParseUint(segs[7], 10, 32)
+	if err != nil {
+		err = errors.New(fmt.Sprintf("ParseKey: crc key(%v)", key))
+		return
+	}
+	crc = uint32(val)
+
 
 	//TODO: checksum
 	return
