@@ -44,7 +44,7 @@ func (dp *dataPartition) lauchCompact() {
 }
 
 func (dp *dataPartition) leaderPutBlobToAvaliCh(blobFile int) {
-	if  blobFile > -1 && blobFile <= storage.BlobFileFileCount {
+	if blobFile > -1 && blobFile <= storage.BlobFileFileCount {
 		dp.blobStore.PutAvailBlobFile(blobFile)
 	}
 }
@@ -68,7 +68,7 @@ func (dp *dataPartition) getCompactBlobFiles() (blobFile int, err error) {
 	isready, fileBytes, deleteBytes, deletePercent := store.IsReadyToCompact(blobFile, thresh)
 	if !isready {
 		err = fmt.Errorf("%v cannot compact  compactThreshold(%v)  fileBytes(%v)  deleteBytes(%v) "+
-			" hasDeletePercnt(%v) ", dp.getCompactKey(blobFile),thresh, fileBytes, deleteBytes, deletePercent)
+			" hasDeletePercnt(%v) ", dp.getCompactKey(blobFile), thresh, fileBytes, deleteBytes, deletePercent)
 		return
 	}
 	return
@@ -80,21 +80,21 @@ func (dp *dataPartition) notifyCompactBlobFile(blobFile int) (err error) {
 		pkg := NewNotifyCompactPkg(uint32(blobFile), dp.partitionId)
 		conn, err := gConnPool.Get(target)
 		if err != nil {
-			gConnPool.Put(conn,true)
+			gConnPool.Put(conn, true)
 			return fmt.Errorf("%v notify compact package get connect for (%v) failed (%v)",
 				dp.getCompactKey(blobFile), target, err.Error())
 		}
 		if err = pkg.WriteToConn(conn); err != nil {
-			gConnPool.Put(conn,true)
+			gConnPool.Put(conn, true)
 			return fmt.Errorf("%v send notify compact package to (%v) failed (%v)",
 				dp.getCompactKey(blobFile), target, err.Error())
 		}
 		if err = pkg.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
-			gConnPool.Put(conn,true)
+			gConnPool.Put(conn, true)
 			return fmt.Errorf("%v read notify compact response from (%v) failed (%v)",
 				dp.getCompactKey(blobFile), target, err.Error())
 		}
-		gConnPool.Put(conn,false)
+		gConnPool.Put(conn, false)
 	}
 	return
 }

@@ -256,14 +256,11 @@ func (s *BlobStore) GetAvailBlobFile() (blobfileId int, err error) {
 }
 
 func (s *BlobStore) GetBlobFileForWrite() (blobfileId int, err error) {
-	chLen := len(s.availBlobFileCh)
-	for i := 0; i < chLen; i++ {
-		select {
-		case blobfileId = <-s.availBlobFileCh:
-			return blobfileId, nil
-		default:
-			return -1, ErrorNoAvaliFile
-		}
+	select {
+	case blobfileId = <-s.availBlobFileCh:
+		return blobfileId, nil
+	default:
+		return -1, ErrorNoAvaliFile
 	}
 
 	return

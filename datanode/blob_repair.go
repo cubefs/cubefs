@@ -44,8 +44,8 @@ func (dp *dataPartition) lauchBlobRepair() {
 	}
 }
 
-func (dp *dataPartition)repairFailedBlobFileToUnavali(unavalis []int){
-	for _,blobFile:=range unavalis{
+func (dp *dataPartition) repairFailedBlobFileToUnavali(unavalis []int) {
+	for _, blobFile := range unavalis {
 		dp.blobStore.PutUnAvailBlobFile(blobFile)
 	}
 }
@@ -60,8 +60,8 @@ func (dp *dataPartition) blobRepair() {
 		return
 	}
 	defer func() {
-		log.LogInfof("%v status(%v) used(%v) avaliBlobFile(%v) unavaliBlobFile(%v)",dp.getDataPartitionLogKey(),dp.Status(),
-			dp.Used(),dp.blobStore.GetAvailChanLen(),dp.blobStore.GetUnAvailChanLen())
+		log.LogInfof("%v status(%v) used(%v) avaliBlobFile(%v) unavaliBlobFile(%v)", dp.getDataPartitionLogKey(), dp.Status(),
+			dp.Used(), dp.blobStore.GetAvailChanLen(), dp.blobStore.GetUnAvailChanLen())
 	}()
 	unavaliBlobFiles := dp.getUnavaliBlobFile()
 	if len(unavaliBlobFiles) == 0 {
@@ -83,7 +83,7 @@ func (dp *dataPartition) blobRepair() {
 		}
 	}
 
-	successBlobFiles,needRepairBlobFiles:=dp.generatorBlobRepairTasks(allMembersFileMetas)
+	successBlobFiles, needRepairBlobFiles := dp.generatorBlobRepairTasks(allMembersFileMetas)
 	err = dp.NotifyBlobRepair(allMembersFileMetas)
 	if err != nil {
 		dp.repairFailedBlobFileToUnavali(unavaliBlobFiles)
@@ -93,13 +93,11 @@ func (dp *dataPartition) blobRepair() {
 	for _, success := range successBlobFiles {
 		dp.blobStore.PutAvailBlobFile(success)
 	}
-	for _,needRepair:=range needRepairBlobFiles{
+	for _, needRepair := range needRepairBlobFiles {
 		dp.blobStore.PutUnAvailBlobFile(needRepair)
 	}
 
 }
-
-
 
 type RepairBlobFileTask struct {
 	BlobFileId int
@@ -109,10 +107,10 @@ type RepairBlobFileTask struct {
 
 func (dp *dataPartition) getUnavaliBlobFile() (unavaliBlobFile []int) {
 	unavaliBlobFile = make([]int, 0)
-	maxBlobRepairCount:=MaxRepairBlobFileCount
-	if dp.isFirstRestart{
-		maxBlobRepairCount=storage.BlobFileFileCount
-		dp.isFirstRestart=false
+	maxBlobRepairCount := MaxRepairBlobFileCount
+	if dp.isFirstRestart {
+		maxBlobRepairCount = storage.BlobFileFileCount
+		dp.isFirstRestart = false
 	}
 	for i := 0; i < maxBlobRepairCount; i++ {
 		unavali, err := dp.blobStore.GetUnAvailBlobFile()
@@ -195,9 +193,9 @@ func (dp *dataPartition) getRemoteBlobFileMetas(remote string, filterBlobFileids
 }
 
 //generator file task
-func (dp *dataPartition) generatorBlobRepairTasks(allMembers []*MembersFileMetas)(successBlobFiles,needRepairBlobFiles []int) {
+func (dp *dataPartition) generatorBlobRepairTasks(allMembers []*MembersFileMetas) (successBlobFiles, needRepairBlobFiles []int) {
 	maxSizeBlobMap := dp.mapMaxSizeBlobFileToIndex(allMembers)
-	successBlobFiles,needRepairBlobFiles=dp.checkNeedRepairBlobFiles(allMembers, maxSizeBlobMap)
+	successBlobFiles, needRepairBlobFiles = dp.checkNeedRepairBlobFiles(allMembers, maxSizeBlobMap)
 	dp.generatorFixBlobFileSizeTasks(allMembers, maxSizeBlobMap)
 	dp.generatorBlobDeleteTasks(allMembers)
 	return
@@ -233,9 +231,9 @@ func (dp *dataPartition) generatorFixBlobFileSizeTasks(allMembers []*MembersFile
 }
 
 func (dp *dataPartition) checkNeedRepairBlobFiles(allMembers []*MembersFileMetas,
-	maxSizeBlobFileMap map[int]*storage.FileInfo)(successBlobFiles,needRepairBlobFiles []int) {
+	maxSizeBlobFileMap map[int]*storage.FileInfo) (successBlobFiles, needRepairBlobFiles []int) {
 	successBlobFiles = make([]int, 0)
-	needRepairBlobFiles=make([]int,0)
+	needRepairBlobFiles = make([]int, 0)
 	for fileId := range allMembers[0].files {
 		maxSizeBlobFile := maxSizeBlobFileMap[fileId]
 		if maxSizeBlobFile == nil {
@@ -250,8 +248,8 @@ func (dp *dataPartition) checkNeedRepairBlobFiles(allMembers []*MembersFileMetas
 		}
 		if isSizeEqure {
 			successBlobFiles = append(successBlobFiles, fileId)
-		}else {
-			needRepairBlobFiles=append(needRepairBlobFiles,fileId)
+		} else {
+			needRepairBlobFiles = append(needRepairBlobFiles, fileId)
 		}
 	}
 
