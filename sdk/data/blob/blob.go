@@ -81,14 +81,15 @@ func (client *BlobClient) checkReadResponse(request, reply *proto.Packet, expect
 	if request.PartitionID != reply.PartitionID {
 		return fmt.Errorf("ReadRequest(%v) reply(%v) PartitionID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
 	}
-	replyCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
-	if replyCrc != reply.Crc {
-		return fmt.Errorf("ReadRequest(%v) reply(%v) CRC not equare,request(%v) reply(%v)", request.GetUniqueLogId(),
-			reply.GetUniqueLogId(), request.Crc, replyCrc)
+	replyBodyCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
+	if replyBodyCrc != reply.Crc {
+		return fmt.Errorf("ReadRequest(%v) reply(%v) CRC not equare,replyBodyCrc(%v)" +
+			" replyHeaderCrc(%v) userExpectCrc(%v)", request.GetUniqueLogId(),
+			reply.GetUniqueLogId(), replyBodyCrc, reply.Crc,expectCrc)
 	}
-	if expectCrc != replyCrc {
-		return fmt.Errorf("ReadRequest(%v) reply(%v) CRC not equare,request(%v) expectCrc(%v) reply(%v)", request.GetUniqueLogId(),
-			reply.GetUniqueLogId(), request.Crc, expectCrc, replyCrc)
+	if expectCrc != replyBodyCrc {
+		return fmt.Errorf("ReadRequest(%v) reply(%v) CRC not equare,request(%v) userExpectCrc(%v) reply(%v)", request.GetUniqueLogId(),
+			reply.GetUniqueLogId(), request.Crc, expectCrc, replyBodyCrc)
 	}
 	return
 }
