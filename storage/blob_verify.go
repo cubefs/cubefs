@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"path"
 	"os"
+	"path"
 )
 
 type ObjectInfo struct {
@@ -34,14 +34,14 @@ func (s *BlobStore) VerfiyObjects(chunkid int, needVerify bool) (blobFileInfo *B
 	blobFileInfo.NeedVerify = needVerify
 	blobFileInfo.AvailChunkCnt = s.GetAvailChanLen()
 	blobFileInfo.Used = s.UseSize()
-	indexfp,err := os.Open(blobFileInfo.IndexFile)
+	indexfp, err := os.Open(blobFileInfo.IndexFile)
 	if err != nil {
 		blobFileInfo.ErrMesg = fmt.Sprintf("cannot open indexfile (%v) err(%v)", blobFileInfo.IndexFile)
 		return
 	}
 	defer indexfp.Close()
-	datafp,err:=os.Open(blobFileInfo.DataFile)
-	if err!=nil {
+	datafp, err := os.Open(blobFileInfo.DataFile)
+	if err != nil {
 		blobFileInfo.ErrMesg = fmt.Sprintf("cannot open datafile (%v) err(%v)", blobFileInfo.DataFile)
 		return
 	}
