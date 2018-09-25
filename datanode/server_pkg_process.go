@@ -142,6 +142,9 @@ func (s *DataNode) doReplyCh(reply *Packet, msgH *MessageHandler) {
 func (s *DataNode) addMetrics(reply *Packet) {
 	reply.afterTp()
 	latency := time.Since(reply.tpObject.StartTime)
+	if reply.DataPartition==nil {
+		return
+	}
 	if reply.IsWriteOperation() {
 		reply.DataPartition.AddWriteMetrics(uint64(latency))
 	} else if reply.IsReadOperation() {
