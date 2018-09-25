@@ -1,20 +1,26 @@
 package main
 
 import (
-	"math/rand"
-	"time"
-	"github.com/tiglabs/containerfs/util"
-	"github.com/tiglabs/containerfs/sdk/data/blob"
 	"fmt"
-	"runtime"
+	"github.com/tiglabs/containerfs/sdk/data/blob"
+	"github.com/tiglabs/containerfs/util"
+	"math/rand"
 	"os"
+	"runtime"
+	"time"
 )
 
 var (
-	gBlobClient     *blob.BlobClient
-	keyChan         = make(chan string, 10000000)
-	deleteChan      = make(chan string, 1000000)
-	readChan        = make(chan string, 1000000)
+	gBlobClient       *blob.BlobClient
+	keyChan           = make(chan string, 10000000)
+	deleteChan        = make(chan string, 1000000)
+	readChan          = make(chan string, 1000000)
+	writeChan         = make(chan string, 10000000)
+	readFailChan      = make(chan string, 10000000)
+	deleteFailChan    = make(chan string, 10000000)
+	deleteSuccessChan = make(chan string, 10000000)
+	writeSuccessChan  = make(chan string, 10000000)
+
 	deleteSuccessFp *os.File
 	deleteFailFp    *os.File
 	readFailFp      *os.File
@@ -32,34 +38,34 @@ func main() {
 		return
 	}
 	prefix := "logs/blob_"
-	deleteSuccessFp, err = os.OpenFile(prefix+"delsuccess.log", os.O_CREATE|os.O_APPEND|os.O_TRUNC, 0755)
+	deleteSuccessFp, err = os.OpenFile(prefix+"delsuccess.log", os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	deleteFailFp, err = os.OpenFile(prefix+"delfail.log", os.O_CREATE|os.O_APPEND|os.O_TRUNC, 0755)
+	deleteFailFp, err = os.OpenFile(prefix+"delfail.log", os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	readFailFp, err = os.OpenFile(prefix+"readfail.log", os.O_CREATE|os.O_APPEND|os.O_TRUNC, 0755)
+	readFailFp, err = os.OpenFile(prefix+"readfail.log", os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	writeFailFp, err = os.OpenFile(prefix+"writefail.log", os.O_CREATE|os.O_APPEND|os.O_TRUNC, 0755)
+	writeFailFp, err = os.OpenFile(prefix+"writefail.log", os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	writeSuccessFp, err = os.OpenFile(prefix+"writesuccess.log", os.O_CREATE|os.O_APPEND|os.O_TRUNC, 0755)
+	writeSuccessFp, err = os.OpenFile(prefix+"writesuccess.log", os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	go dealWriteThread()
+	go dispatchThread()
 	for i := 0; i < 50; i++ {
 		go writeThread()
 	}
@@ -70,6 +76,7 @@ func main() {
 	for i := 0; i < 10; i++ {
 		go readThead()
 	}
+	go writeFileThread()
 	for {
 		time.Sleep(time.Second)
 	}
@@ -81,9 +88,10 @@ func deleteThread() {
 		case key := <-deleteChan:
 			err := gBlobClient.Delete(key)
 			if err != nil {
-				deleteSuccessFp.Write([]byte((key + err.Error() + "\n")))
+				m := fmt.Sprintf("%v delete error(%v)", key, err.Error())
+				deleteFailChan <- m
 			} else {
-				deleteFailFp.Write([]byte((key + "\n")))
+				deleteSuccessChan <- key
 			}
 		}
 	}
@@ -96,7 +104,7 @@ func readThead() {
 			_, err := gBlobClient.Read(key)
 			if err != nil {
 				m := fmt.Sprintf("read key:(%v) failed (%v)", key, err.Error())
-				readFailFp.Write([]byte(m))
+				readFailChan <- m
 			}
 		}
 	}
@@ -106,13 +114,11 @@ func readThead() {
 func writeThread() {
 	maxLen := util.MB * 5
 	rand.Seed(time.Now().UnixNano())
-	size := rand.Intn(maxLen)
-	data := util.RandStringBytesMaskImpr(size)
+	data := util.RandStringBytesMaskImpr(maxLen)
 	for {
-		//rand.Seed(time.Now().UnixNano())
-		//size := rand.Intn(maxLen)
-		//data := util.RandStringBytesMaskImpr(size)
-		key, err := gBlobClient.Write(data)
+		rand.Seed(time.Now().UnixNano())
+		size := rand.Intn(maxLen)
+		key, err := gBlobClient.Write(data[:size])
 		if err == nil {
 			keyChan <- key
 		} else {
@@ -121,19 +127,53 @@ func writeThread() {
 	}
 }
 
-func dealWriteThread() {
-	//var index uint64
+func dispatchThread() {
+	var index uint64
 	for {
 		select {
 		case key := <-keyChan:
-			//index++
-			//fmt.Println(key)
-			writeSuccessFp.Write([]byte((key + "\n")))
-			//if index%3 == 0 {
-			//	deleteChan <- key
-			//} else if index%2 == 0 {
-			//	readChan <- key
-			//}
+			index++
+			writeSuccessChan <- key
+			if index%3 == 0 {
+				deleteChan <- key
+			} else if index%2 == 0 {
+				readChan <- key
+			}
+		}
+	}
+}
+
+func writeFileThread() {
+	for {
+		select {
+		case key := <-writeSuccessChan:
+			m := fmt.Sprintf("%v\n", key)
+			if _, err := writeSuccessFp.WriteString(m); err != nil {
+				fmt.Println(err)
+				panic(err)
+				return
+			}
+		case key := <-deleteSuccessChan:
+			m := fmt.Sprintf("%v\n", key)
+			if _, err := deleteSuccessFp.WriteString(m); err != nil {
+				fmt.Println(err)
+				panic(err)
+				return
+			}
+		case key := <-deleteFailChan:
+			m := fmt.Sprintf("%v\n", key)
+			if _, err := deleteFailFp.WriteString(m); err != nil {
+				fmt.Println(err)
+				panic(err)
+				return
+			}
+		case key := <-readFailChan:
+			m := fmt.Sprintf("%v\n", key)
+			if _, err := readFailFp.WriteString(m); err != nil {
+				fmt.Println(err)
+				panic(err)
+				return
+			}
 		}
 	}
 }
