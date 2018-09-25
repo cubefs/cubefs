@@ -24,6 +24,7 @@ import (
 
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/raft/util"
 )
 
 const (
@@ -67,7 +68,7 @@ func NewBlobStore(dataDir string, storeSize int) (s *BlobStore, err error) {
 	}
 	s.storeSize = storeSize
 	s.blobfileSize = storeSize / BlobFileFileCount
-	gMaxBlobFileSize = uint64(storeSize / 100 / 2 / BlobFileFileCount)
+	gMaxBlobFileSize = 2*util.MB
 
 	return
 }
