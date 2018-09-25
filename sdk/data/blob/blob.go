@@ -99,6 +99,9 @@ func (client *BlobClient) Write(data []byte) (key string, err error) {
 		dp *wrapper.DataPartition
 	)
 	exclude := make([]uint32, 0)
+	writeData := make([]byte, len(data))
+	writeSize := len(data)
+	copy(writeData, data)
 	for i := 0; i < MaxRetryCnt; i++ {
 		dp, err = client.wraper.GetWriteDataPartition(exclude)
 		if err != nil {
@@ -108,7 +111,7 @@ func (client *BlobClient) Write(data []byte) (key string, err error) {
 		var (
 			conn *net.TCPConn
 		)
-		request := NewBlobWritePacket(dp, data)
+		request := NewBlobWritePacket(dp, writeData)
 		if conn, err = client.conns.Get(dp.Hosts[0]); err != nil {
 			log.LogWarnf("WriteRequest(%v) Get connect from host(%v) err(%v)", request.GetUniqueLogId(), dp.Hosts[0], err.Error())
 			exclude = append(exclude, dp.PartitionID)
@@ -135,7 +138,7 @@ func (client *BlobClient) Write(data []byte) (key string, err error) {
 		}
 		partitionID, fileID, objID, crc := ParsePacket(reply)
 		client.conns.Put(conn, false)
-		key = GenKey(client.cluster, client.volname, partitionID, fileID, objID, uint32(len(data)), crc)
+		key = GenKey(client.cluster, client.volname, partitionID, fileID, objID, uint32(writeSize), crc)
 		return key, nil
 	}
 
