@@ -83,9 +83,9 @@ func (client *BlobClient) checkReadResponse(request, reply *proto.Packet, expect
 	}
 	replyBodyCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
 	if replyBodyCrc != reply.Crc {
-		return fmt.Errorf("ReadRequest(%v) reply(%v) CRC not equare,replyBodyCrc(%v)" +
+		return fmt.Errorf("ReadRequest(%v) reply(%v) CRC not equare,replyBodyCrc(%v)"+
 			" replyHeaderCrc(%v) userExpectCrc(%v)", request.GetUniqueLogId(),
-			reply.GetUniqueLogId(), replyBodyCrc, reply.Crc,expectCrc)
+			reply.GetUniqueLogId(), replyBodyCrc, reply.Crc, expectCrc)
 	}
 	if expectCrc != replyBodyCrc {
 		return fmt.Errorf("ReadRequest(%v) reply(%v) CRC not equare,request(%v) userExpectCrc(%v) reply(%v)", request.GetUniqueLogId(),
