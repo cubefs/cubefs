@@ -85,12 +85,12 @@ type Disk struct {
 
 type PartitionVisitor func(dp DataPartition)
 
-func NewDisk(path string, restSize uint64, maxErrs int,space *spaceManager) (d *Disk) {
+func NewDisk(path string, restSize uint64, maxErrs int, space *spaceManager) (d *Disk) {
 	d = new(Disk)
 	d.Path = path
 	d.RestSize = restSize
 	d.MaxErrs = maxErrs
-	d.space=space
+	d.space = space
 	d.partitionMap = make(map[uint32]DataPartition)
 	d.RestSize = util.GB * 1
 	d.MaxErrs = 2000

@@ -507,8 +507,8 @@ func postRepairData(pkg *Packet, lastOid uint64, data []byte, size int, conn *ne
 }
 
 const (
-	PkgRepairCReadRespMaxSize   = 10 * util.MB
-	PkgRepairCReadRespLimitSize = 15 * util.MB
+	PkgRepairCReadRespMaxSize   = 15 * util.MB
+	PkgRepairCReadRespLimitSize = 10 * util.MB
 )
 
 func syncData(blobfileID uint32, startOid, endOid uint64, pkg *Packet, conn *net.TCPConn) error {

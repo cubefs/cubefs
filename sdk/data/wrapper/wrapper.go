@@ -78,7 +78,7 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 	return
 }
 
-func (w *Wrapper) GetClusterName() (string) {
+func (w *Wrapper) GetClusterName() string {
 	return w.clusterName
 }
 func (w *Wrapper) updateClusterInfo() error {

@@ -81,14 +81,14 @@ func ParsePacket(p *proto.Packet) (partitionID uint32, fileID uint64, objID int6
 	return p.PartitionID, p.FileID, p.Offset, p.Crc
 }
 
-func GenKey(clusterName, volName string, partitionID uint32, fileID uint64, objID int64, size,crc uint32) string {
+func GenKey(clusterName, volName string, partitionID uint32, fileID uint64, objID int64, size, crc uint32) string {
 	interKey := fmt.Sprintf("%v/%v/%v/%v/%v/%v", partitionID, fileID, objID, size, time.Now().UnixNano(), crc)
 	checkSum := crc32.ChecksumIEEE([]byte(interKey))
 	key := fmt.Sprintf("%v/%v/%v/%v/%v", clusterName, volName, proto.BlobStoreMode, interKey, checkSum)
 	return key
 }
 
-func ParseKey(key string) (clusterName, volName string, partitionID uint32, fileID uint64, objID int64, size,crc uint32, err error) {
+func ParseKey(key string) (clusterName, volName string, partitionID uint32, fileID uint64, objID int64, size, crc uint32, err error) {
 	segs := strings.Split(key, "/")
 	if len(segs) != NumKeySegments {
 		err = errors.New(fmt.Sprintf("ParseKey: num key(%v)", key))
@@ -147,7 +147,6 @@ func ParseKey(key string) (clusterName, volName string, partitionID uint32, file
 		return
 	}
 	crc = uint32(val)
-
 
 	//TODO: checksum
 	return

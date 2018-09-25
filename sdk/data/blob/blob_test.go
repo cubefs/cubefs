@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tiglabs/containerfs/util/log"
 	"fmt"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 const (

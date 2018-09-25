@@ -257,9 +257,9 @@ func (p *Packet) GetOpMsg() (m string) {
 	case OpGetDataPartitionMetrics:
 		m = "OpGetDataPartitionMetrics"
 	case OpBlobStoreGetAllWaterMark:
-		m="OpBlobStoreGetAllWaterMark"
+		m = "OpBlobStoreGetAllWaterMark"
 	case OpNotifyBlobRepair:
-		m="OpNotifyBlobRepair"
+		m = "OpNotifyBlobRepair"
 
 	}
 	return

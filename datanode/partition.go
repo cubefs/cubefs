@@ -108,7 +108,7 @@ type dataPartition struct {
 	extentStore     *storage.ExtentStore
 	blobStore       *storage.BlobStore
 	stopC           chan bool
-	isFirstRestart   bool
+	isFirstRestart  bool
 
 	runtimeMetrics *DataPartitionMetrics
 }
