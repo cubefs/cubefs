@@ -177,9 +177,8 @@ func (connectPool *ConnPool) ReleaseAllConnect(target string) {
 	connectPool.Lock()
 	pool := connectPool.pools[target]
 	connectPool.Unlock()
-	pool.Put(c)
+	pool.AutoRelease()
 }
-
 
 func (connectPool *ConnPool) autoRelease() {
 	for {

@@ -60,10 +60,10 @@ func main() {
 	}
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	go dealWriteThread()
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 50; i++ {
 		go writeThread()
 	}
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 50; i++ {
 		go deleteThread()
 	}
 
@@ -122,13 +122,13 @@ func writeThread() {
 }
 
 func dealWriteThread() {
-	var index uint64
+	//var index uint64
 	for {
 		select {
 		case key := <-keyChan:
-			index++
-			fmt.Println(key)
-			//writeSuccessFp.Write([]byte((key + "\n")))
+			//index++
+			//fmt.Println(key)
+			writeSuccessFp.Write([]byte((key + "\n")))
 			//if index%3 == 0 {
 			//	deleteChan <- key
 			//} else if index%2 == 0 {

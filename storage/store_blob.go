@@ -67,6 +67,7 @@ func NewBlobStore(dataDir string, storeSize int) (s *BlobStore, err error) {
 	}
 	s.storeSize = storeSize
 	s.blobfileSize = storeSize / BlobFileFileCount
+	gMaxBlobFileSize=uint64(storeSize*CompactThreshold/100/2/BlobFileFileCount)
 
 	return
 }
