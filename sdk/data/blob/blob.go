@@ -54,7 +54,7 @@ func NewBlobClient(volname, masters string) (*BlobClient, error) {
 func (client *BlobClient) checkWriteResponse(request, reply *proto.Packet) (err error) {
 	if reply.ResultCode != proto.OpOk {
 		return fmt.Errorf("WriteRequest(%v) reply(%v) replyOpCode(%v) Err msg(%v)",
-			request.GetUniqueLogId(), reply.GetUniqueLogId(), reply.Opcode,string(reply.Data[:reply.Size]))
+			request.GetUniqueLogId(), reply.GetUniqueLogId(), reply.Opcode, string(reply.Data[:reply.Size]))
 	}
 	if request.ReqID != reply.ReqID {
 		return fmt.Errorf("WriteRequest(%v) reply(%v) REQID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
@@ -70,7 +70,7 @@ func (client *BlobClient) checkWriteResponse(request, reply *proto.Packet) (err 
 	return
 }
 
-func (client *BlobClient) checkReadResponse(request, reply *proto.Packet,expectCrc uint32) (err error) {
+func (client *BlobClient) checkReadResponse(request, reply *proto.Packet, expectCrc uint32) (err error) {
 	if reply.ResultCode != proto.OpOk {
 		return fmt.Errorf("ReadRequest(%v) reply(%v) replyOp Err msg(%v)",
 			request.GetUniqueLogId(), reply.GetUniqueLogId(), string(reply.Data[:reply.Size]))
@@ -86,9 +86,9 @@ func (client *BlobClient) checkReadResponse(request, reply *proto.Packet,expectC
 		return fmt.Errorf("ReadRequest(%v) reply(%v) CRC not equare,request(%v) reply(%v)", request.GetUniqueLogId(),
 			reply.GetUniqueLogId(), request.Crc, replyCrc)
 	}
-	if expectCrc!=replyCrc{
+	if expectCrc != replyCrc {
 		return fmt.Errorf("ReadRequest(%v) reply(%v) CRC not equare,request(%v) expectCrc(%v) reply(%v)", request.GetUniqueLogId(),
-			reply.GetUniqueLogId(), request.Crc,expectCrc, replyCrc)
+			reply.GetUniqueLogId(), request.Crc, expectCrc, replyCrc)
 	}
 	return
 }
@@ -142,7 +142,7 @@ func (client *BlobClient) Write(data []byte) (key string, err error) {
 }
 
 func (client *BlobClient) Read(key string) (data []byte, err error) {
-	cluster, volname, partitionID, fileID, objID, size,crc, err := ParseKey(key)
+	cluster, volname, partitionID, fileID, objID, size, crc, err := ParseKey(key)
 	if err != nil || strings.Compare(cluster, client.cluster) != 0 || strings.Compare(volname, client.volname) != 0 {
 		log.LogErrorf("Read: err(%v)", err)
 		return nil, syscall.EINVAL
@@ -175,7 +175,7 @@ func (client *BlobClient) Read(key string) (data []byte, err error) {
 			err = errors.Annotatef(err, "ReadRequest(%v) ReadFrom host(%v)-", request.GetUniqueLogId(), target)
 			continue
 		}
-		if err = client.checkReadResponse(request,reply,crc); err != nil {
+		if err = client.checkReadResponse(request, reply, crc); err != nil {
 			client.conns.Put(conn, true)
 			err = errors.Annotatef(err, "ReadRequest CheckReadResponse from (%v)", target)
 			continue
@@ -188,7 +188,7 @@ func (client *BlobClient) Read(key string) (data []byte, err error) {
 }
 
 func (client *BlobClient) Delete(key string) (err error) {
-	cluster, volname, partitionID, fileID, objID, _,_, err := ParseKey(key)
+	cluster, volname, partitionID, fileID, objID, _, _, err := ParseKey(key)
 	if err != nil || strings.Compare(cluster, client.cluster) != 0 || strings.Compare(volname, client.volname) != 0 {
 		log.LogErrorf("Delete: err(%v)", err)
 		return syscall.EINVAL

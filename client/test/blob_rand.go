@@ -38,28 +38,28 @@ func main() {
 		return
 	}
 	prefix := "logs/blob_"
-	deleteSuccessFp, err = os.OpenFile(prefix+"delsuccess.log", os.O_WRONLY|os.O_APPEND, 0666)
+	deleteSuccessFp, err = os.OpenFile(prefix+"delsuccess.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	deleteFailFp, err = os.OpenFile(prefix+"delfail.log", os.O_WRONLY|os.O_APPEND, 0666)
+	deleteFailFp, err = os.OpenFile(prefix+"delfail.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	readFailFp, err = os.OpenFile(prefix+"readfail.log", os.O_WRONLY|os.O_APPEND, 0666)
+	readFailFp, err = os.OpenFile(prefix+"readfail.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	writeFailFp, err = os.OpenFile(prefix+"writefail.log", os.O_WRONLY|os.O_APPEND, 0666)
+	writeFailFp, err = os.OpenFile(prefix+"writefail.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	writeSuccessFp, err = os.OpenFile(prefix+"writesuccess.log", os.O_WRONLY|os.O_APPEND, 0666)
+	writeSuccessFp, err = os.OpenFile(prefix+"writesuccess.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Println(err)
 		return
