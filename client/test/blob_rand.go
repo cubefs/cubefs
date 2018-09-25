@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime"
 	"time"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 var (
@@ -38,6 +39,7 @@ func main() {
 		return
 	}
 	prefix := "logs/blob_"
+	log.InitLog("clogs","client",log.DebugLevel)
 	deleteSuccessFp, err = os.OpenFile(prefix+"delsuccess.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Println(err)
