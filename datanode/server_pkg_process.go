@@ -142,7 +142,7 @@ func (s *DataNode) doReplyCh(reply *Packet, msgH *MessageHandler) {
 func (s *DataNode) addMetrics(reply *Packet) {
 	reply.afterTp()
 	latency := time.Since(reply.tpObject.StartTime)
-	if reply.DataPartition==nil {
+	if reply.DataPartition == nil {
 		return
 	}
 	if reply.IsWriteOperation() {
@@ -184,6 +184,7 @@ func (s *DataNode) receiveFromNext(msgH *MessageHandler) (request *Packet, exit 
 		if err != nil {
 			request.PackErrorBody(ActionReceiveFromNext, err.Error())
 			msgH.DelListElement(request, e, true)
+			msgH.isUsedCloseFiles(request.NextConn, request.NextAddr, err)
 		} else {
 			request.PackOkReply()
 			msgH.DelListElement(request, e, false)

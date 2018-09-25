@@ -172,6 +172,10 @@ func (msgH *MessageHandler) ClearReplys() {
 	}
 }
 
+func (msgH *MessageHandler) isUsedCloseFiles(conn *net.TCPConn, target string, err error) {
+	gConnPool.CheckErrorForPutConnect(conn, target, err)
+}
+
 func (msgH *MessageHandler) DelListElement(reply *Packet, e *list.Element, isForClose bool) {
 	msgH.listMux.Lock()
 	defer msgH.listMux.Unlock()
