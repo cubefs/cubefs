@@ -170,6 +170,44 @@ func (s *DataNode) apiGetExtent(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+const (
+	VerifyBlobFile = 1
+)
+
+func (s *DataNode) apiGetBlobFile(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionId  int
+		blobFileId   int
+		verify       int
+		err          error
+		blobFileInfo *storage.BlobFileInfo
+	)
+	if err = r.ParseForm(); err != nil {
+		s.buildApiFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if partitionId, err = strconv.Atoi(r.FormValue("partitionId")); err != nil {
+		s.buildApiFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if blobFileId, err = strconv.Atoi(r.FormValue("blobFileId")); err != nil {
+		s.buildApiFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	verify, _ = strconv.Atoi(r.FormValue("verify"))
+
+	partition := s.space.GetPartition(uint32(partitionId))
+	if partition == nil {
+		s.buildApiFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
+	}
+
+	blobFileInfo = partition.GetBlobStore().VerfiyObjects(blobFileId, VerifyBlobFile == verify)
+
+	s.buildApiSuccessResp(w, blobFileInfo)
+	return
+}
+
 func (s *DataNode) buildApiSuccessResp(w http.ResponseWriter, data interface{}) {
 	s.buildApiJsonResp(w, http.StatusOK, data, "")
 }

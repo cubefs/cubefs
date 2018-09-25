@@ -263,6 +263,7 @@ func (s *DataNode) registerProfHandler() {
 	http.HandleFunc("/partitions", s.apiGetPartitions)
 	http.HandleFunc("/partition", s.apiGetPartition)
 	http.HandleFunc("/extent", s.apiGetExtent)
+	http.HandleFunc("/blobfile", s.apiGetBlobFile)
 	http.HandleFunc("/stats", s.apiGetStat)
 }
 
