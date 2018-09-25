@@ -142,6 +142,36 @@ func (client *BlobClient) Write(data []byte) (key string, err error) {
 	return "", syscall.EIO
 }
 
+func (client *BlobClient) readDataFromHost(request *proto.Packet, target string, expectCrc uint32) (data []byte, err error) {
+
+	var (
+		conn *net.TCPConn
+	)
+	if conn, err = client.conns.Get(target); err != nil {
+		err = errors.Annotatef(err, "ReadRequest(%v) Get connect from host(%v)-", request.GetUniqueLogId(), target)
+		return
+	}
+	if err = request.WriteToConn(conn); err != nil {
+		client.conns.CheckErrorForPutConnect(conn, target, err)
+		err = errors.Annotatef(err, "ReadRequest(%v) Write To host(%v)-", request.GetUniqueLogId(), target)
+		return
+	}
+	reply := new(proto.Packet)
+	if err = reply.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+		client.conns.Put(conn, true)
+		err = errors.Annotatef(err, "ReadRequest(%v) ReadFrom host(%v)-", request.GetUniqueLogId(), target)
+		return
+	}
+	if err = client.checkReadResponse(request, reply, expectCrc); err != nil {
+		client.conns.Put(conn, true)
+		err = errors.Annotatef(err, "ReadRequest CheckReadResponse from (%v)", target)
+		return
+	}
+	client.conns.Put(conn, false)
+	return reply.Data, nil
+
+}
+
 func (client *BlobClient) Read(key string) (data []byte, err error) {
 	cluster, volname, partitionID, fileID, objID, size, crc, err := ParseKey(key)
 	if err != nil || strings.Compare(cluster, client.cluster) != 0 || strings.Compare(volname, client.volname) != 0 {
@@ -156,34 +186,17 @@ func (client *BlobClient) Read(key string) (data []byte, err error) {
 	}
 
 	request := NewBlobReadPacket(partitionID, fileID, objID, size)
-	for _, target := range dp.Hosts {
-		var (
-			conn *net.TCPConn
-		)
-		if conn, err = client.conns.Get(target); err != nil {
-			err = errors.Annotatef(err, "ReadRequest(%v) Get connect from host(%v)-", request.GetUniqueLogId(), target)
-			client.conns.Put(conn, true)
-			continue
+	mesg := ""
+	for i := 0; i < len(dp.Hosts); i++ {
+		data, err = client.readDataFromHost(request, dp.Hosts[i], crc)
+		if err == nil {
+			return
 		}
-		if err = request.WriteToConn(conn); err != nil {
-			client.conns.CheckErrorForPutConnect(conn, target, err)
-			err = errors.Annotatef(err, "ReadRequest(%v) Write To host(%v)-", request.GetUniqueLogId(), target)
-			continue
-		}
-		reply := new(proto.Packet)
-		if err = reply.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
-			client.conns.Put(conn, true)
-			err = errors.Annotatef(err, "ReadRequest(%v) ReadFrom host(%v)-", request.GetUniqueLogId(), target)
-			continue
-		}
-		if err = client.checkReadResponse(request, reply, crc); err != nil {
-			client.conns.Put(conn, true)
-			err = errors.Annotatef(err, "ReadRequest CheckReadResponse from (%v)", target)
-			continue
-		}
-		client.conns.Put(conn, false)
-		return reply.Data, nil
+		log.LogWarn(err.Error())
+		mesg += fmt.Sprintf(" (index(%v) err(%v))", i, err.Error())
 	}
+	log.LogWarn(mesg)
+	err = fmt.Errorf(mesg)
 
 	return nil, err
 }
