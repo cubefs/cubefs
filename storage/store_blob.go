@@ -152,7 +152,7 @@ func (s *BlobStore) Write(fileId uint32, objectId uint64, size int64, data []byt
 		msg := fmt.Sprintf("Object id smaller than last oid. DataDir[%v] FileId[%v]"+
 			" ObjectId[%v] Size[%v]", s.dataDir, blobfileId, objectId, c.loadLastOid())
 		err = fmt.Errorf(msg)
-		return ErrObjectSmaller
+		return err
 	}
 
 	if fi, err = c.file.Stat(); err != nil {

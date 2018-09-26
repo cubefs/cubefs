@@ -18,6 +18,7 @@ func (dp *dataPartition) lauchCompact() {
 	if GcanCompact != CanCompact {
 		return
 	}
+	GcanCompact = 2
 	if !dp.isLeader {
 		return
 	}

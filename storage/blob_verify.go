@@ -93,7 +93,7 @@ func WalkIndexFileAndVerify(indexfp *os.File, datafp *os.File, blobFileInfo *Blo
 			crc := crc32.ChecksumIEEE(data)
 			if crc != ni.Crc {
 				oi.ErrorMesg = fmt.Sprintf("expectCrc[%v] actualCrc[%v]", ni.Crc, crc)
-			}else {
+			} else {
 				oi.SuccessVerify = true
 			}
 		}

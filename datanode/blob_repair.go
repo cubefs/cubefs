@@ -442,39 +442,46 @@ func (dp *dataPartition) streamRepairBlobObjects(remoteBlobFileInfo *storage.Fil
 
 //follower recive blobfileRepairReadResponse ,then write local blobfileFile
 func (dp *dataPartition) applyRepairBlobObjects(blobfileId int, data []byte, endObjectId uint64) (err error) {
-	offset := 0
+	dataPos := 0
 	store := dp.GetBlobStore()
-	var applyObjectId uint64
 	dataLen := len(data)
 	startObjectId, _ := store.GetLastOid(uint32(blobfileId))
-	for {
+	for startObjectId < endObjectId {
 		//if has read end,then break
-		if offset+storage.ObjectHeaderSize > len(data) {
+		if dataPos+storage.ObjectHeaderSize > len(data) {
 			break
 		}
 		//if has applyObjectId has great endObjectId,then break
-		if applyObjectId >= endObjectId {
+		if startObjectId >= endObjectId {
 			break
 		}
 		o := &storage.Object{}
-		o.Unmarshal(data[offset : offset+storage.ObjectHeaderSize])
+		o.Unmarshal(data[dataPos : dataPos+storage.ObjectHeaderSize])
 		//unmarshal objectHeader,if this object has delete on leader,then ,write a deleteEntry to indexfile
-		offset += storage.ObjectHeaderSize
+		dataPos += storage.ObjectHeaderSize
 		if o.Size == storage.MarkDeleteObject {
+			startObjectId = o.Oid
+			m := fmt.Sprintf(" %v applyRepairData write deleteEntry  "+
+				"current fix Oid(%v) maxOID(%v) ", dp.getBlobRepairLogKey(blobfileId), o.Oid, endObjectId)
 			err = store.WriteDeleteDentry(o.Oid, blobfileId, o.Crc)
+			if err != nil {
+				err = errors.Annotatef(err, "%v applyRepairBlobObjects oid(%v) writeDeleteDentry failed",
+					dp.getBlobRepairLogKey(blobfileId), o.Oid)
+				log.LogWarnf(err.Error())
+				return err
+			}
+			log.LogWrite(m)
+			continue
 		}
-		if err != nil {
-			return errors.Annotatef(err, "%v applyRepairBlobObjects oid(%v) writeDeleteDentry failed",
-				dp.getBlobRepairLogKey(blobfileId), o.Oid)
-		}
-		//if offset +this objectSize has great 15MB,then break,donnot fix it
-		if offset+int(o.Size) > dataLen {
+
+		//if dataPos +this objectSize has great 15MB,then break,donnot fix it
+		if dataPos+int(o.Size) > dataLen {
 			return errors.Annotatef(err, "%v applyRepairBlobObjects  oid(%v) no body"+
-				" expect(%v) actual(%v) failed", dp.getBlobRepairLogKey(blobfileId), o.Oid, o.Size, dataLen-(offset))
+				" expect(%v) actual(%v) failed", dp.getBlobRepairLogKey(blobfileId), o.Oid, o.Size, dataLen-(dataPos))
 		}
 		//get this object body
-		ndata := data[offset : offset+int(o.Size)]
-		offset += int(o.Size)
+		ndata := data[dataPos : dataPos+int(o.Size)]
+		dataPos += int(o.Size)
 		//generator crc
 		ncrc := crc32.ChecksumIEEE(ndata)
 		//check crc
@@ -483,14 +490,18 @@ func (dp *dataPartition) applyRepairBlobObjects(blobfileId int, data []byte, end
 				"repair data crc  failed,expectCrc(%v) actualCrc(%v)", dp.getBlobRepairLogKey(blobfileId), o.Oid, o.Crc, ncrc)
 		}
 		//write local storage engine
+		log.LogWritef("%v applyRepairBlobObjects oid(%v) size(%v) crc(%v)", dp.getBlobRepairLogKey(blobfileId), o.Size, ncrc)
 		err = store.Write(uint32(blobfileId), uint64(o.Oid), int64(o.Size), ndata, o.Crc)
 		if err != nil {
-			return errors.Annotatef(err, "%v applyRepairBlobObjects oid(%v) write failed", dp.getBlobRepairLogKey(blobfileId), o.Oid)
+			return errors.Annotatef(err, "%v applyRepairBlobObjects oid(%v) write failed(%v)", dp.getBlobRepairLogKey(blobfileId), o.Oid, err)
 		}
 		//update applyObjectId
-		applyObjectId = o.Oid
+		startObjectId = o.Oid
+		if startObjectId >= endObjectId {
+			break
+		}
 	}
-	log.LogWarnf("%v applyRepairBlobObjects has fix start(%v) end(%v)", dp.getBlobRepairLogKey(blobfileId), startObjectId, endObjectId)
+	log.LogWritef("%v applyRepairBlobObjects has fix start(%v) end(%v)", dp.getBlobRepairLogKey(blobfileId), startObjectId, endObjectId)
 	return nil
 }
 
