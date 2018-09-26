@@ -128,6 +128,7 @@ func (mw *MetaWrapper) InodeGet_ll(inode uint64) (*proto.InodeInfo, error) {
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
+	log.LogDebugf("InodeGet_ll: info(%v)", info)
 	return info, nil
 }
 
@@ -313,7 +314,7 @@ func (mw *MetaWrapper) Link(parentID uint64, name string, ino uint64) (*proto.In
 	}
 
 	// create new dentry and refer to the inode
-	status, err = mw.dcreate(parentMP, parentID, name, ino, proto.ModeRegular)
+	status, err = mw.dcreate(parentMP, parentID, name, ino, info.Mode)
 	if err != nil || status != statusOK {
 		if status == statusExist {
 			return nil, syscall.EEXIST
@@ -337,5 +338,21 @@ func (mw *MetaWrapper) Evict(inode uint64) error {
 		log.LogWarnf("Evict: ino(%v) err(%v) status(%v)", inode, err, status)
 		return statusToErrno(status)
 	}
+	return nil
+}
+
+func (mw *MetaWrapper) Setattr(inode uint64, valid, mode, uid, gid uint32) error {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("Setattr: No such partition, ino(%v)", inode)
+		return syscall.EINVAL
+	}
+
+	status, err := mw.setattr(mp, inode, valid, mode, uid, gid)
+	if err != nil || status != statusOK {
+		log.LogErrorf("Setattr: ino(%v) err(%v) status(%v)", inode, err, status)
+		return statusToErrno(status)
+	}
+
 	return nil
 }

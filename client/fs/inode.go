@@ -32,12 +32,13 @@ const (
 type Inode struct {
 	ino    uint64
 	size   uint64
-	mode   uint32
 	nlink  uint32
+	uid    uint32
+	gid    uint32
 	ctime  time.Time
 	mtime  time.Time
 	atime  time.Time
-	osMode os.FileMode
+	mode   os.FileMode
 	target []byte
 
 	// protected under the inode cache lock
@@ -72,39 +73,53 @@ func (s *Super) InodeGet(ino uint64) (*Inode, error) {
 }
 
 func (inode *Inode) String() string {
-	return fmt.Sprintf("ino(%v) mode(%v) size(%v) nlink(%v) exp(%v) mtime(%v)", inode.ino, inode.mode, inode.size, inode.nlink, time.Unix(0, inode.expiration).Format(LogTimeFormat), inode.mtime)
+	return fmt.Sprintf("ino(%v) mode(%v) size(%v) nlink(%v) uid(%v) gid(%v) exp(%v) mtime(%v) target(%v)", inode.ino, inode.mode, inode.size, inode.nlink, inode.uid, inode.gid, time.Unix(0, inode.expiration).Format(LogTimeFormat), inode.mtime, inode.target)
+}
+
+func (inode *Inode) setattr(req *fuse.SetattrRequest) (valid uint32) {
+	if req.Valid.Mode() {
+		inode.mode = req.Mode
+		valid |= proto.AttrMode
+	}
+
+	if req.Valid.Uid() {
+		inode.uid = req.Uid
+		valid |= proto.AttrUid
+	}
+
+	if req.Valid.Gid() {
+		inode.gid = req.Gid
+		valid |= proto.AttrGid
+	}
+	return
 }
 
 func (inode *Inode) fill(info *proto.InodeInfo) {
 	inode.ino = info.Inode
-	inode.mode = info.Mode
 	inode.size = info.Size
 	inode.nlink = info.Nlink
+	inode.uid = info.Uid
+	inode.gid = info.Gid
 	inode.ctime = info.CreateTime
 	inode.atime = info.AccessTime
 	inode.mtime = info.ModifyTime
 	inode.target = info.Target
-
-	if inode.mode == ModeDir {
-		inode.osMode = os.ModeDir | os.ModePerm
-	} else if inode.mode == ModeSymlink {
-		inode.osMode = os.ModeSymlink | os.ModePerm
-	} else {
-		inode.osMode = os.ModePerm
-	}
+	inode.mode = proto.OsMode(info.Mode)
 }
 
 func (inode *Inode) fillAttr(attr *fuse.Attr) {
 	attr.Valid = AttrValidDuration
 	attr.Nlink = inode.nlink
 	attr.Inode = inode.ino
-	attr.Mode = inode.osMode
+	attr.Mode = inode.mode
 	attr.Size = inode.size
 	attr.Blocks = attr.Size >> 9 // In 512 bytes
 	attr.Atime = inode.atime
 	attr.Ctime = inode.ctime
 	attr.Mtime = inode.mtime
 	attr.BlockSize = DefaultBlksize
+	attr.Uid = inode.uid
+	attr.Gid = inode.gid
 }
 
 func (inode *Inode) expired() bool {

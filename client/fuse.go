@@ -67,7 +67,7 @@ func main() {
 		fmt.Println("Mount failed: ", err)
 		os.Exit(1)
 	}
-	// Wait for the log to be flushed
+
 	fmt.Println("Done!")
 }
 

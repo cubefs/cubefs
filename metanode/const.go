@@ -81,6 +81,8 @@ type (
 
 	// Client -> MetaNode
 	EvictInodeReq = proto.EvictInodeRequest
+	// Client -> MetaNOde
+	SetattrRequest = proto.SetattrRequest
 )
 
 // For use when raftStore store and application apply
@@ -102,6 +104,7 @@ const (
 	opFSMCreateLinkInode
 	opFSMEvictInode
 	opFSMInternalDeleteInode
+	opFSMSetAttr
 )
 
 var (
