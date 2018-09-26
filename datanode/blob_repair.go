@@ -420,13 +420,7 @@ func (dp *dataPartition) streamRepairBlobObjects(remoteBlobFileInfo *storage.Fil
 		}
 		// get this repairPacket end oid,if oid has large,then break
 		newLastOid := uint64(request.Offset)
-		if newLastOid > uint64(remoteBlobFileInfo.FileId) {
-			gConnPool.Put(conn, true)
-			err = fmt.Errorf("%v invalid offset of OpCRepairReadResp:"+
-				" %v, expect max objid is %v", dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId), newLastOid, remoteBlobFileInfo.FileId)
-			return err
-		}
-		log.LogWarnf("%v recive repair,localOid(%v) remoteOid(%v)",
+		log.LogWritef("%v recive repair,localOid(%v) remoteOid(%v)",
 			dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId), localBlobFileInfo.Size, newLastOid)
 		// write this blobObject to local
 		err = dp.applyRepairBlobObjects(remoteBlobFileInfo.FileId, request.Data, newLastOid)
