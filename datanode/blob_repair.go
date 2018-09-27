@@ -106,6 +106,11 @@ type RepairBlobFileTask struct {
 	EndObj     uint64
 }
 
+func (repairTask *RepairBlobFileTask) ToString() string {
+	data, _ := json.Marshal(repairTask)
+	return string(data)
+}
+
 func (dp *dataPartition) getUnavaliBlobFile() (unavaliBlobFile []int) {
 	unavaliBlobFile = make([]int, 0)
 	maxBlobRepairCount := MaxRepairBlobFileCount
@@ -390,6 +395,7 @@ func (dp *dataPartition) streamRepairBlobObjects(remoteBlobFileInfo *storage.Fil
 	//3.new a streamBlobFileRepair readPacket
 	request := NewStreamBlobFileRepairReadPacket(dp.ID(), remoteBlobFileInfo.FileId)
 	request.Data, _ = json.Marshal(task)
+	request.Size = uint32(len(request.Data))
 	var conn *net.TCPConn
 	//4.get a connection to leader host
 	conn, err = gConnPool.Get(remoteBlobFileInfo.Source)
@@ -447,7 +453,7 @@ func (dp *dataPartition) applyRepairBlobObjects(blobfileId int, data []byte, end
 	store := dp.GetBlobStore()
 	dataLen := len(data)
 	startObjectId, _ := store.GetLastOid(uint32(blobfileId))
-	for startObjectId < endObjectId {
+	for startObjectId <= endObjectId {
 		//if has read end,then break
 		if dataPos+storage.ObjectHeaderSize > len(data) {
 			break
@@ -506,14 +512,15 @@ func (dp *dataPartition) applyRepairBlobObjects(blobfileId int, data []byte, end
 	return nil
 }
 
-func postRepairData(pkg *Packet, lastOid uint64, data []byte, size int, conn *net.TCPConn) (err error) {
+func (dp *dataPartition) postRepairData(pkg *Packet, startOid, lastOid uint64, data []byte, blobFileId, size int, conn *net.TCPConn) (err error) {
 	pkg.Offset = int64(lastOid)
 	pkg.ResultCode = proto.OpOk
 	pkg.Size = uint32(size)
 	pkg.Data = data
 	pkg.Crc = crc32.ChecksumIEEE(pkg.Data)
 	err = pkg.WriteToNoDeadLineConn(conn)
-	log.LogWrite(pkg.ActionMsg(ActionLeaderToFollowerOpRepairReadSendPackBuffer, conn.RemoteAddr().String(), pkg.StartT, err))
+	log.LogWarnf("%v syncData postRepairData startOid(%v) endOid(%v) size(%v) err(%v)",
+		dp.getBlobRepairLogKey(int(blobFileId)), startOid, lastOid, pkg.Size,err)
 
 	return
 }
@@ -523,14 +530,14 @@ const (
 	PkgRepairCReadRespLimitSize = 10 * util.MB
 )
 
-func syncData(blobfileID uint32, startOid, endOid uint64, pkg *Packet, conn *net.TCPConn) error {
+func (dp *dataPartition) syncData(blobfileID uint32, startOid, endOid uint64, pkg *Packet, conn *net.TCPConn) error {
 	var (
 		err     error
 		objects []*storage.Object
 	)
 	dataPartition := pkg.DataPartition
 	objects = dataPartition.GetObjects(blobfileID, startOid, endOid)
-	log.LogWrite(pkg.ActionMsg(ActionLeaderToFollowerOpRepairReadPackBuffer, string(len(objects)), pkg.StartT, err))
+	log.LogWarnf("%v syncData startOid(%v) endOid(%v)", dp.getBlobRepairLogKey(int(blobfileID)), startOid, endOid)
 	databuf := make([]byte, PkgRepairCReadRespMaxSize)
 	pos := 0
 	for i := 0; i < len(objects); i++ {
@@ -540,17 +547,17 @@ func syncData(blobfileID uint32, startOid, endOid uint64, pkg *Packet, conn *net
 			realSize = objects[i].Size
 		}
 		if pos+int(realSize)+storage.ObjectHeaderSize >= PkgRepairCReadRespLimitSize {
-			if err = postRepairData(pkg, objects[i-1].Oid, databuf, pos, conn); err != nil {
+			if err = dp.postRepairData(pkg, startOid, objects[i-1].Oid, databuf, int(blobfileID), pos, conn); err != nil {
 				return err
 			}
 			databuf = make([]byte, PkgRepairCReadRespMaxSize)
 			pos = 0
 		}
-		if dataPartition.PackObject(databuf[pos:], objects[i], blobfileID); err != nil {
+		if err = dataPartition.PackObject(databuf[pos:], objects[i], blobfileID); err != nil {
 			return err
 		}
 		pos += storage.ObjectHeaderSize
 		pos += int(realSize)
 	}
-	return postRepairData(pkg, objects[len(objects)-1].Oid, databuf, pos, conn)
+	return dp.postRepairData(pkg, startOid, objects[len(objects)-1].Oid, databuf, int(blobfileID), pos, conn)
 }

@@ -502,6 +502,8 @@ func (dp *dataPartition) MergeBlobStoreRepair(metas *MembersFileMetas) {
 			continue
 		}
 		wg.Add(1)
+		log.LogWarnf("%v recive repair task(%v)",
+			dp.getBlobRepairLogKey(fixBlobFiles.FileId), fixBlobFiles.String())
 		go dp.doStreamBlobFixRepair(&wg, fixBlobFiles)
 	}
 

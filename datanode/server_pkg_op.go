@@ -530,23 +530,27 @@ func (s *DataNode) handleBlobFileRepairRead(pkg *Packet, conn *net.TCPConn) {
 	var (
 		err        error
 		localOid   uint64
-		requireOid uint64
 		blobfileID uint32
 	)
-	blobfileID = uint32(pkg.FileID)
-	requireOid = uint64(pkg.Offset + 1)
-	localOid, err = pkg.DataPartition.GetBlobStore().GetLastOid(blobfileID)
-	log.LogWrite(pkg.ActionMsg(ActionFollowerRequireBlobFileRepairCmd,
-		fmt.Sprintf("follower require Oid(%v) localOid(%v)", requireOid, localOid), pkg.StartT, err))
-	if localOid < requireOid {
-		err = fmt.Errorf(" requireOid(%v) but localOid(%v)", requireOid, localOid)
-		err = errors.Annotatef(err, "Request(%v) repairObjectRead Error", pkg.GetUniqueLogId())
+	task := new(RepairBlobFileTask)
+	if err = json.Unmarshal(pkg.Data, task); err != nil {
+		err = errors.Annotatef(err, "Request(%v) handleBlobFileRepairRead unmash task error ", pkg.GetUniqueLogId())
 		pkg.PackErrorBody(ActionFollowerRequireBlobFileRepairCmd, err.Error())
 		return
 	}
-	err = syncData(blobfileID, requireOid, localOid, pkg, conn)
+	blobfileID = uint32(task.BlobFileId)
+	localOid, err = pkg.DataPartition.GetBlobStore().GetLastOid(blobfileID)
+	log.LogWarnf("handleBlobFileRepairRead Recive RepairTask(%v) localOid(%v)", task.ToString(), localOid)
+	if localOid < task.EndObj {
+		err = fmt.Errorf(" handleBlobFileRepairRead Recive RepairTask(%v) but localOid(%v)", task.ToString(), localOid)
+		err = errors.Annotatef(err, "Request(%v) handleBlobFileRepairRead Error", pkg.GetUniqueLogId())
+		pkg.PackErrorBody(ActionFollowerRequireBlobFileRepairCmd, err.Error())
+		return
+	}
+	err = syncData(blobfileID, task.StartObj, localOid, pkg, conn)
 	if err != nil {
-		err = errors.Annotatef(err, "Request(%v) SYNCDATA Error", pkg.GetUniqueLogId())
+		err = errors.Annotatef(err, "Request(%v) handleBlobFileRepairRead Recive RepairTask(%v) "+
+			"SyncData  Error", task.ToString(), pkg.GetUniqueLogId())
 		pkg.PackErrorBody(ActionFollowerRequireBlobFileRepairCmd, err.Error())
 	}
 
