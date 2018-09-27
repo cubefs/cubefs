@@ -51,15 +51,18 @@ func (mp *metaPartition) updateVolWorker() {
 		// Get dataPartitionView
 		respBody, err := postToMaster("GET", reqURL, nil)
 		if err != nil {
+			t.Reset(UpdateVolTicket)
 			log.LogErrorf("[updateVol] %s", err.Error())
 			continue
 		}
 		dataView := new(DataPartitionsView)
 		if err = json.Unmarshal(respBody, dataView); err != nil {
+			t.Reset(UpdateVolTicket)
 			log.LogErrorf("[updateVol] %s", err.Error())
 			continue
 		}
 		mp.vol.UpdatePartitions(dataView)
+		t.Reset(UpdateVolTicket)
 		log.LogDebugf("[updateVol] %v", dataView)
 	}
 }
