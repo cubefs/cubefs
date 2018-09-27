@@ -419,7 +419,7 @@ func (dp *dataPartition) streamRepairBlobObjects(remoteBlobFileInfo *storage.Fil
 			break
 		}
 		// read blobfileStreamRepairRead response
-		err = request.ReadFromConn(conn, proto.ReadDeadlineTime)
+		err = request.ReadFromConn(conn, proto.ReadDeadlineTime*5)
 		if err != nil {
 			gConnPool.Put(conn, true)
 			return errors.Annotatef(err, "%v streamRepairBlobObjects recive data error",
