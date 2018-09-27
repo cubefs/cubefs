@@ -361,6 +361,7 @@ func (dp *dataPartition) doStreamBlobFixRepair(wg *sync.WaitGroup, remoteBlobFil
 	defer wg.Done()
 	err := dp.streamRepairBlobObjects(remoteBlobFileInfo)
 	if err != nil {
+		log.LogErrorf(err.Error())
 		localBlobInfo, opErr := dp.GetBlobStore().GetWatermark(uint64(remoteBlobFileInfo.FileId))
 		if opErr != nil {
 			err = errors.Annotatef(err, opErr.Error())
@@ -382,11 +383,17 @@ func (dp *dataPartition) getDataPartitionLogKey() (s string) {
 //do stream repair blobfilefile,it do on follower host
 func (dp *dataPartition) streamRepairBlobObjects(remoteBlobFileInfo *storage.FileInfo) (err error) {
 	store := dp.GetBlobStore()
+	defer func() {
+		if err != nil {
+			log.LogErrorf(err.Error())
+		}
+	}()
 	//1.get local blobfileFile size
 	localBlobFileInfo, err := store.GetWatermark(uint64(remoteBlobFileInfo.FileId))
 	if err != nil {
-		return errors.Annotatef(err, "%v streamRepairBlobObjects GetWatermark error",
+		err = errors.Annotatef(err, "%v streamRepairBlobObjects GetWatermark error",
 			dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId))
+		return
 	}
 	log.LogWarnf("%v recive fixrepair task ,remote(%v),local(%v)",
 		dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId), remoteBlobFileInfo.String(), localBlobFileInfo.String())
@@ -400,15 +407,17 @@ func (dp *dataPartition) streamRepairBlobObjects(remoteBlobFileInfo *storage.Fil
 	//4.get a connection to leader host
 	conn, err = gConnPool.Get(remoteBlobFileInfo.Source)
 	if err != nil {
-		return errors.Annotatef(err, "%v streamRepairBlobObjects get conn from host(%v) error",
+		err = errors.Annotatef(err, "%v streamRepairBlobObjects get conn from host(%v) error",
 			dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId), remoteBlobFileInfo.Source)
+		return
 	}
 	//5.write streamBlobFileRepair command to leader
 	err = request.WriteToConn(conn)
 	if err != nil {
 		gConnPool.Put(conn, true)
-		return errors.Annotatef(err, "%v streamRepairBlobObjects send streamRead to host(%v) error",
+		err = errors.Annotatef(err, "%v streamRepairBlobObjects send streamRead to host(%v) error",
 			dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId), remoteBlobFileInfo.Source)
+		return
 	}
 
 	for {
@@ -416,8 +425,9 @@ func (dp *dataPartition) streamRepairBlobObjects(remoteBlobFileInfo *storage.Fil
 		localBlobFileInfo, err := store.GetWatermark(uint64(remoteBlobFileInfo.FileId))
 		if err != nil {
 			gConnPool.Put(conn, true)
-			return errors.Annotatef(err, "%v streamRepairBlobObjects GetWatermark error",
+			err = errors.Annotatef(err, "%v streamRepairBlobObjects GetWatermark error",
 				dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId))
+			return
 		}
 		// if local blobfilefile size has great remote ,then break
 		if localBlobFileInfo.Size >= remoteBlobFileInfo.Size {
@@ -428,8 +438,9 @@ func (dp *dataPartition) streamRepairBlobObjects(remoteBlobFileInfo *storage.Fil
 		err = request.ReadFromConn(conn, proto.ReadDeadlineTime*5)
 		if err != nil {
 			gConnPool.Put(conn, true)
-			return errors.Annotatef(err, "%v streamRepairBlobObjects recive data error",
+			err = errors.Annotatef(err, "%v streamRepairBlobObjects recive data error",
 				dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId))
+			return
 		}
 		// get this repairPacket end oid,if oid has large,then break
 		newLastOid := uint64(request.Offset)
@@ -455,6 +466,7 @@ func (dp *dataPartition) applyRepairBlobObjects(blobfileId int, data []byte, end
 	startObjectId, _ := store.GetLastOid(uint32(blobfileId))
 	for startObjectId <= endObjectId {
 		//if has read end,then break
+		log.LogWritef("%v applyRepairBlobObjects start Fix oid(%v) end(%v) ", dp.getBlobRepairLogKey(blobfileId), startObjectId, endObjectId)
 		if dataPos+storage.ObjectHeaderSize > len(data) {
 			break
 		}
@@ -468,7 +480,7 @@ func (dp *dataPartition) applyRepairBlobObjects(blobfileId int, data []byte, end
 		dataPos += storage.ObjectHeaderSize
 		if o.Size == storage.MarkDeleteObject {
 			startObjectId = o.Oid
-			m := fmt.Sprintf(" %v applyRepairData write deleteEntry  "+
+			m := fmt.Sprintf(" %v applyRepairBlobObjects write deleteEntry  "+
 				"current fix Oid(%v) maxOID(%v) ", dp.getBlobRepairLogKey(blobfileId), o.Oid, endObjectId)
 			err = store.WriteDeleteDentry(o.Oid, blobfileId, o.Crc)
 			if err != nil {
@@ -480,6 +492,7 @@ func (dp *dataPartition) applyRepairBlobObjects(blobfileId int, data []byte, end
 			log.LogWrite(m)
 			continue
 		}
+		log.LogWritef("%v applyRepairBlobObjects start Fix oid(%v) end(%v)", dp.getBlobRepairLogKey(blobfileId), startObjectId, endObjectId)
 
 		//if dataPos +this objectSize has great 15MB,then break,donnot fix it
 		if dataPos+int(o.Size) > dataLen {
@@ -492,12 +505,13 @@ func (dp *dataPartition) applyRepairBlobObjects(blobfileId int, data []byte, end
 		//generator crc
 		ncrc := crc32.ChecksumIEEE(ndata)
 		//check crc
+		log.LogWritef("%v applyRepairBlobObjects start Fix oid(%v) end(%v)", dp.getBlobRepairLogKey(blobfileId), startObjectId, endObjectId)
 		if ncrc != o.Crc {
 			return errors.Annotatef(err, "%v applyRepairBlobObjects  oid(%v) "+
 				"repair data crc  failed,expectCrc(%v) actualCrc(%v)", dp.getBlobRepairLogKey(blobfileId), o.Oid, o.Crc, ncrc)
 		}
 		//write local storage engine
-		log.LogWritef("%v applyRepairBlobObjects oid(%v) size(%v) crc(%v)", dp.getBlobRepairLogKey(blobfileId), o.Size, ncrc)
+		log.LogWritef("%v applyRepairBlobObjects oid(%v) size(%v) crc(%v)", dp.getBlobRepairLogKey(blobfileId), o.Oid, ncrc)
 		err = store.Write(uint32(blobfileId), uint64(o.Oid), int64(o.Size), ndata, o.Crc)
 		if err != nil {
 			return errors.Annotatef(err, "%v applyRepairBlobObjects oid(%v) write failed(%v)", dp.getBlobRepairLogKey(blobfileId), o.Oid, err)
@@ -520,7 +534,7 @@ func (dp *dataPartition) postRepairData(pkg *Packet, startOid, lastOid uint64, d
 	pkg.Crc = crc32.ChecksumIEEE(pkg.Data)
 	err = pkg.WriteToNoDeadLineConn(conn)
 	log.LogWarnf("%v syncData postRepairData startOid(%v) endOid(%v) size(%v) err(%v)",
-		dp.getBlobRepairLogKey(int(blobFileId)), startOid, lastOid, pkg.Size,err)
+		dp.getBlobRepairLogKey(int(blobFileId)), startOid, lastOid, pkg.Size, err)
 
 	return
 }
