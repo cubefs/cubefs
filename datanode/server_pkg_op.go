@@ -539,7 +539,8 @@ func (s *DataNode) handleBlobFileRepairRead(pkg *Packet, conn *net.TCPConn) {
 		return
 	}
 	blobfileID = uint32(task.BlobFileId)
-	localOid, err = pkg.DataPartition.GetBlobStore().GetLastOid(blobfileID)
+	dp:=pkg.DataPartition.(*dataPartition)
+	localOid, err =dp.GetBlobStore().GetLastOid(blobfileID)
 	log.LogWarnf("handleBlobFileRepairRead Recive RepairTask(%v) localOid(%v)", task.ToString(), localOid)
 	if localOid < task.EndObj {
 		err = fmt.Errorf(" handleBlobFileRepairRead Recive RepairTask(%v) but localOid(%v)", task.ToString(), localOid)
@@ -547,7 +548,7 @@ func (s *DataNode) handleBlobFileRepairRead(pkg *Packet, conn *net.TCPConn) {
 		pkg.PackErrorBody(ActionFollowerRequireBlobFileRepairCmd, err.Error())
 		return
 	}
-	err = syncData(blobfileID, task.StartObj, localOid, pkg, conn)
+	err = dp.syncData(blobfileID, task.StartObj, localOid, pkg, conn)
 	if err != nil {
 		err = errors.Annotatef(err, "Request(%v) handleBlobFileRepairRead Recive RepairTask(%v) "+
 			"SyncData  Error", task.ToString(), pkg.GetUniqueLogId())
