@@ -96,6 +96,7 @@ func (dp *dataPartition) blobRepair() {
 	for _, needRepair := range needRepairBlobFiles {
 		dp.blobStore.PutUnAvailBlobFile(needRepair)
 	}
+	dp.MergeBlobStoreRepair(allMembersFileMetas[0])
 
 }
 
@@ -135,6 +136,7 @@ func (dp *dataPartition) getLocalBlobFileMetas(filterBlobFileids []int) (fileMet
 		for _, filterBlobFileId := range filterBlobFileids {
 			if blobFile.FileId == filterBlobFileId {
 				blobFile.MemberIndex = 0
+				blobFile.Source = LocalIP
 				files = append(files, blobFile)
 			}
 		}
@@ -187,6 +189,7 @@ func (dp *dataPartition) getRemoteBlobFileMetas(remote string, filterBlobFileids
 	fileMetas = NewMemberFileMetas()
 	for _, file := range files {
 		file.MemberIndex = index
+		file.Source = remote
 		fileMetas.files[file.FileId] = file
 	}
 	return
@@ -209,7 +212,7 @@ func (dp *dataPartition) generatorFixBlobFileSizeTasks(allMembers []*MembersFile
 			continue
 		}
 		maxSizeBlobIndex := maxSizeBlobFileMap[fileId].MemberIndex
-		maxSize := allMembers[maxSizeBlobIndex].files[fileId].Size
+		maxObjectId := maxSizeBlobFileMap[fileId].Size
 		sourceAddr := dp.replicaHosts[maxSizeBlobIndex]
 		inode := leaderFile.Inode
 		for index := 0; index < len(allMembers); index++ {
@@ -220,11 +223,12 @@ func (dp *dataPartition) generatorFixBlobFileSizeTasks(allMembers []*MembersFile
 			if !ok {
 				continue
 			}
-			if blobFileInfo.Size < maxSize {
-				fixBlobTask := &storage.FileInfo{Source: sourceAddr, FileId: fileId, Size: maxSize, Inode: inode}
+			if blobFileInfo.Size < maxObjectId {
+				fixBlobTask := &storage.FileInfo{Source: sourceAddr, FileId: fileId, Size: maxObjectId, Inode: inode}
 				allMembers[index].NeedFixBlobFileSizeTasks = append(allMembers[index].NeedFixBlobFileSizeTasks, fixBlobTask)
-				log.LogWarnf("%v action[generatorFixBlobSizeTasks] fixBlobTask(%v).",
-					dp.getBlobRepairLogKey(fileId), fixBlobTask.String())
+				log.LogWarnf("%v action[generatorFixBlobSizeTasks] fromIndex(%v) fromAddr(%v) maxObjectId(%v)"+
+					"toIndex(%v) toAddr(%v) toMaxObjectId(%v) fixBlobTask(%v).", dp.getBlobRepairLogKey(fileId), maxSizeBlobIndex,
+					sourceAddr, maxObjectId, index, dp.replicaHosts[index], blobFileInfo.Size, fixBlobTask.String())
 			}
 		}
 	}
@@ -276,7 +280,10 @@ func (dp *dataPartition) mapMaxSizeBlobFileToIndex(allMembers []*MembersFileMeta
 			if maxFileSize <= member.files[blobFileId].Size {
 				maxFileSize = member.files[blobFileId].Size
 				maxSizeBlobMap[blobFileId] = member.files[blobFileId]
-				maxSizeBlobMap[blobFileId].MemberIndex = index
+				maxSizeBlobMap[blobFileId].MemberIndex = member.files[blobFileId].MemberIndex
+				log.LogWarnf("%v mapMaxSizeBlobFileToIndex maxFileSize (%v) index(%v)"+
+					" replocationHost(%v)", dp.getBlobRepairLogKey(blobFileId), maxFileSize,
+					member.files[blobFileId].MemberIndex, dp.replicaHosts)
 			}
 		}
 	}
@@ -376,7 +383,7 @@ func (dp *dataPartition) streamRepairBlobObjects(remoteBlobFileInfo *storage.Fil
 		return errors.Annotatef(err, "%v streamRepairBlobObjects GetWatermark error",
 			dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId))
 	}
-	log.LogWarnf("%v recive fixrepair task ,remote[%],local(%v)",
+	log.LogWarnf("%v recive fixrepair task ,remote(%v),local(%v)",
 		dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId), remoteBlobFileInfo.String(), localBlobFileInfo.String())
 	//2.generator blobfileRepair read packet,it contains startObj,endObj
 	task := &RepairBlobFileTask{BlobFileId: remoteBlobFileInfo.FileId, StartObj: localBlobFileInfo.Size + 1, EndObj: remoteBlobFileInfo.Size}

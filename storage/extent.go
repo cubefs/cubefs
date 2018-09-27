@@ -67,7 +67,7 @@ func (ei *FileInfo) String() (m string) {
 	if source == "" {
 		source = "none"
 	}
-	return fmt.Sprintf("%v_%v_%v_%v_%v_%v", ei.FileId, ei.Inode, ei.Size, ei.Crc, ei.Deleted, source)
+	return fmt.Sprintf("%v_%v_%v_%v_%v_%v_%v", ei.FileId, ei.Inode, ei.Size, ei.Crc, ei.Deleted, ei.MemberIndex, source)
 }
 
 // Extent is used to manage extent block file for extent store engine.

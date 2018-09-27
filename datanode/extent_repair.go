@@ -30,7 +30,6 @@ import (
 
 //every  datapartion  file metas used for auto repairt
 type MembersFileMetas struct {
-	Index                    int                       //index on data partionGroup
 	files                    map[int]*storage.FileInfo //storage file on datapartiondisk meta
 	NeedDeleteExtentsTasks   []*storage.FileInfo       //generator delete extent file task
 	NeedAddExtentsTasks      []*storage.FileInfo       //generator add extent file task
