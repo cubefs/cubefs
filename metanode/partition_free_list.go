@@ -39,7 +39,7 @@ func (mp *metaPartition) startFreeList() {
 }
 
 func (mp *metaPartition) updateVolWorker() {
-	t := time.NewTimer(UpdateVolTicket)
+	t := time.NewTicker(UpdateVolTicket)
 	reqURL := fmt.Sprintf("%s?name=%s", DataPartitionViewUrl, mp.config.VolName)
 	for {
 		select {
@@ -47,20 +47,20 @@ func (mp *metaPartition) updateVolWorker() {
 			t.Stop()
 			return
 		case <-t.C:
+			// Get dataPartitionView
+			respBody, err := postToMaster("GET", reqURL, nil)
+			if err != nil {
+				log.LogErrorf("[updateVol] %s", err.Error())
+				break
+			}
+			dataView := new(DataPartitionsView)
+			if err = json.Unmarshal(respBody, dataView); err != nil {
+				log.LogErrorf("[updateVol] %s", err.Error())
+				break
+			}
+			mp.vol.UpdatePartitions(dataView)
+			log.LogDebugf("[updateVol] %v", dataView)
 		}
-		// Get dataPartitionView
-		respBody, err := postToMaster("GET", reqURL, nil)
-		if err != nil {
-			log.LogErrorf("[updateVol] %s", err.Error())
-			continue
-		}
-		dataView := new(DataPartitionsView)
-		if err = json.Unmarshal(respBody, dataView); err != nil {
-			log.LogErrorf("[updateVol] %s", err.Error())
-			continue
-		}
-		mp.vol.UpdatePartitions(dataView)
-		log.LogDebugf("[updateVol] %v", dataView)
 	}
 }
 
