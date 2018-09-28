@@ -27,14 +27,14 @@ import (
 )
 
 const (
-	ObjectHeaderSize = 20
-	IndexBatchRead   = 1024
+	ObjectHeaderSize  = 24
+	IndexBatchRead    = 1024
 	MarkDeleteObject = math.MaxUint32
 )
 
 type Object struct {
 	Oid    uint64
-	Offset uint32
+	Offset uint64
 	Size   uint32
 	Crc    uint32
 }
@@ -46,16 +46,16 @@ func (o Object) Less(than btree.Item) bool {
 
 func (o *Object) Marshal(out []byte) {
 	binary.BigEndian.PutUint64(out[0:8], o.Oid)
-	binary.BigEndian.PutUint32(out[8:12], o.Offset)
-	binary.BigEndian.PutUint32(out[12:16], o.Size)
-	binary.BigEndian.PutUint32(out[16:ObjectHeaderSize], o.Crc)
+	binary.BigEndian.PutUint64(out[8:16], o.Offset)
+	binary.BigEndian.PutUint32(out[16:20], o.Size)
+	binary.BigEndian.PutUint32(out[20:ObjectHeaderSize], o.Crc)
 }
 
 func (o *Object) Unmarshal(in []byte) {
 	o.Oid = binary.BigEndian.Uint64(in[0:8])
-	o.Offset = binary.BigEndian.Uint32(in[8:12])
-	o.Size = binary.BigEndian.Uint32(in[12:16])
-	o.Crc = binary.BigEndian.Uint32(in[16:ObjectHeaderSize])
+	o.Offset = binary.BigEndian.Uint64(in[8:16])
+	o.Size = binary.BigEndian.Uint32(in[16:20])
+	o.Crc = binary.BigEndian.Uint32(in[20:ObjectHeaderSize])
 	return
 }
 
@@ -115,7 +115,7 @@ func (tree *ObjectTree) Load() (maxOid uint64, err error) {
 	return
 }
 
-func (o *Object) Check(offset, size, crc uint32) bool {
+func (o *Object) Check(offset uint64, size, crc uint32) bool {
 	return o.Oid != 0 && o.Offset == offset && o.Crc == crc &&
 		(o.Size == size || size == MarkDeleteObject)
 }
@@ -155,7 +155,7 @@ func LoopIndexFile(f *os.File, fn func(oid uint64, offset, size, crc uint32) err
 	return maxOid, err
 }
 
-func (tree *ObjectTree) set(oid uint64, offset, size, crc uint32) (oldOff, oldSize uint32, err error) {
+func (tree *ObjectTree) set(oid, offset uint64, size, crc uint32) (oldOff uint64, oldSize uint32, err error) {
 	o := &Object{
 		Oid:    oid,
 		Offset: offset,
@@ -207,7 +207,7 @@ func (tree *ObjectTree) delete(oid uint64) error {
 	return tree.appendToIdxFile(&o)
 }
 
-func (tree *ObjectTree) checkConsistency(oid uint64, offset, size uint32) bool {
+func (tree *ObjectTree) checkConsistency(oid, offset uint64, size uint32) bool {
 	o, ok := tree.get(oid)
 	if !ok || o.Offset != offset || o.Size != size {
 		return false

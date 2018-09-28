@@ -164,7 +164,7 @@ func (s *BlobStore) Write(fileId uint32, objectId uint64, size int64, data []byt
 		return
 	}
 
-	if _, _, err = c.tree.set(objectId, uint32(newOffset), uint32(size), crc); err == nil {
+	if _, _, err = c.tree.set(objectId, uint64(newOffset), uint32(size), crc); err == nil {
 		if c.loadLastOid() < objectId {
 			c.storeLastOid(objectId)
 		}

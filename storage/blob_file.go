@@ -207,7 +207,7 @@ func (c *BlobFile) copyValidData(dstNm *ObjectTree, dstDatFile *os.File) (err er
 			return e
 		}
 
-		o.Offset = uint32(newOffset)
+		o.Offset = uint64(newOffset)
 		if e = dstNm.appendToIdxFile(o); e != nil {
 			return e
 		}
