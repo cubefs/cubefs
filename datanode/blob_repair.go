@@ -383,14 +383,16 @@ func (dp *dataPartition) getDataPartitionLogKey() (s string) {
 //do stream repair blobfilefile,it do on follower host
 func (dp *dataPartition) streamRepairBlobObjects(remoteBlobFileInfo *storage.FileInfo) (err error) {
 	store := dp.GetBlobStore()
+	var (
+		localBlobFileInfo *storage.FileInfo
+	)
 	defer func() {
 		if err != nil {
 			log.LogErrorf(err.Error())
+			return
 		}
 	}()
-	//1.get local blobfileFile size
-	localBlobFileInfo, err := store.GetWatermark(uint64(remoteBlobFileInfo.FileId))
-	if err != nil {
+	if localBlobFileInfo, err = store.GetWatermark(uint64(remoteBlobFileInfo.FileId));err != nil {
 		err = errors.Annotatef(err, "%v streamRepairBlobObjects GetWatermark error",
 			dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId))
 		return
@@ -407,26 +409,25 @@ func (dp *dataPartition) streamRepairBlobObjects(remoteBlobFileInfo *storage.Fil
 	//4.get a connection to leader host
 	conn, err = gConnPool.Get(remoteBlobFileInfo.Source)
 	if err != nil {
-		err = errors.Annotatef(err, "%v streamRepairBlobObjects get conn from host(%v) error",
-			dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId), remoteBlobFileInfo.Source)
+		err = errors.Annotatef(err, "Request(%v) %v streamRepairBlobObjects get conn from host(%v) error",
+			request.GetUniqueLogId(),dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId), remoteBlobFileInfo.Source)
 		return
 	}
 	//5.write streamBlobFileRepair command to leader
 	err = request.WriteToConn(conn)
 	if err != nil {
 		gConnPool.Put(conn, true)
-		err = errors.Annotatef(err, "%v streamRepairBlobObjects send streamRead to host(%v) error",
-			dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId), remoteBlobFileInfo.Source)
+		err = errors.Annotatef(err, "Request(%v) %v streamRepairBlobObjects send streamRead to host(%v) error",
+			request.GetUniqueLogId(),dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId), remoteBlobFileInfo.Source)
 		return
 	}
 
 	for {
 		//for 1.get local blobfileFileSize
-		localBlobFileInfo, err := store.GetWatermark(uint64(remoteBlobFileInfo.FileId))
-		if err != nil {
+		if localBlobFileInfo, err = store.GetWatermark(uint64(remoteBlobFileInfo.FileId));err != nil {
 			gConnPool.Put(conn, true)
-			err = errors.Annotatef(err, "%v streamRepairBlobObjects GetWatermark error",
-				dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId))
+			err = errors.Annotatef(err, "Request(%v) %v streamRepairBlobObjects GetWatermark error",
+				request.GetUniqueLogId(),dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId))
 			return
 		}
 		// if local blobfilefile size has great remote ,then break
@@ -438,23 +439,26 @@ func (dp *dataPartition) streamRepairBlobObjects(remoteBlobFileInfo *storage.Fil
 		err = request.ReadFromConn(conn, proto.ReadDeadlineTime*5)
 		if err != nil {
 			gConnPool.Put(conn, true)
-			err = errors.Annotatef(err, "%v streamRepairBlobObjects recive data error",
-				dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId))
+			err = errors.Annotatef(err, "Request(%v)  %v streamRepairBlobObjects recive data error",
+				request.GetUniqueLogId(),dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId))
 			return
 		}
 		// get this repairPacket end oid,if oid has large,then break
 		newLastOid := uint64(request.Offset)
-		log.LogWritef("%v recive repair,localOid(%v) remoteOid(%v)",
-			dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId), localBlobFileInfo.Size, newLastOid)
+		log.LogWritef("Request(%v) %v recive repair,localOid(%v) remoteOid(%v)",
+			request.GetUniqueLogId(),dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId), localBlobFileInfo.Size, newLastOid)
 		// write this blobObject to local
 		err = dp.applyRepairBlobObjects(remoteBlobFileInfo.FileId, request.Data, newLastOid)
 		if err != nil {
 			gConnPool.Put(conn, true)
-			err = errors.Annotatef(err, "%v streamRepairBlobObjects apply data failed",
-				dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId))
+			err = errors.Annotatef(err, "Request(%v) %v streamRepairBlobObjects apply data failed",
+				request.GetUniqueLogId(),dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId))
 			return err
 		}
 	}
+	log.LogWarnf("%v has fixrepair task ,remote(%v),local(%v)",
+		dp.getBlobRepairLogKey(remoteBlobFileInfo.FileId), remoteBlobFileInfo.String(), localBlobFileInfo.String())
+
 	return
 }
 

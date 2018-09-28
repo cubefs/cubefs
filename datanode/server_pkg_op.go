@@ -539,9 +539,10 @@ func (s *DataNode) handleBlobFileRepairRead(pkg *Packet, conn *net.TCPConn) {
 		return
 	}
 	blobfileID = uint32(task.BlobFileId)
-	dp:=pkg.DataPartition.(*dataPartition)
-	localOid, err =dp.GetBlobStore().GetLastOid(blobfileID)
-	log.LogWarnf("handleBlobFileRepairRead Recive RepairTask(%v) localOid(%v)", task.ToString(), localOid)
+	dp := pkg.DataPartition.(*dataPartition)
+	localOid, err = dp.GetBlobStore().GetLastOid(blobfileID)
+	log.LogWarnf("Request(%v) handleBlobFileRepairRead Recive RepairTask(%v) localOid(%v)",
+		pkg.GetUniqueLogId(),task.ToString(), localOid)
 	if localOid < task.EndObj {
 		err = fmt.Errorf(" handleBlobFileRepairRead Recive RepairTask(%v) but localOid(%v)", task.ToString(), localOid)
 		err = errors.Annotatef(err, "Request(%v) handleBlobFileRepairRead Error", pkg.GetUniqueLogId())
