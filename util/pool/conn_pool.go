@@ -37,7 +37,7 @@ func NewPool(min, max int, target string) (p *Pool) {
 	p.mincap = min
 	p.maxcap = max
 	p.target = target
-	p.pool = make(chan *ConnectObject, min)
+	p.pool = make(chan *ConnectObject, max)
 	return p
 }
 
