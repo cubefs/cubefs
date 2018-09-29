@@ -77,7 +77,6 @@ func (p *Pool)AutoRelease(){
 		select {
 		case c:=<-p.pool:
 			c.conn.Close()
-			return
 		default:
 			return
 		}
