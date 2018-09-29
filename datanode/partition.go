@@ -430,7 +430,7 @@ func (dp *dataPartition) GetObjects(chunkID uint32, startOid, lastOid uint64) (o
 	for startOid <= lastOid {
 		needle, err := dp.GetTinyStore().GetObject(chunkID, uint64(startOid))
 		if err != nil {
-			needle = &storage.Object{Oid: uint64(startOid), Size: storage.TombstoneFileSize}
+			needle = &storage.Object{Oid: uint64(startOid), Size: storage.MarkDeleteObject}
 		}
 		objects = append(objects, needle)
 		startOid++
@@ -440,7 +440,7 @@ func (dp *dataPartition) GetObjects(chunkID uint32, startOid, lastOid uint64) (o
 
 func (dp *dataPartition) PackObject(dataBuf []byte, o *storage.Object, chunkID uint32) (err error) {
 	o.Marshal(dataBuf)
-	if o.Size == storage.TombstoneFileSize && o.Oid != 0 {
+	if o.Size == storage.MarkDeleteObject && o.Oid != 0 {
 		return
 	}
 	_, err = dp.tinyStore.Read(chunkID, int64(o.Oid), int64(o.Size), dataBuf[storage.ObjectHeaderSize:])

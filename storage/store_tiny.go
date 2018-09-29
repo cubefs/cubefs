@@ -122,7 +122,7 @@ func (s *TinyStore) WriteDeleteDentry(objectId uint64, chunkId int, crc uint32) 
 	if fi, err = c.file.Stat(); err != nil {
 		return
 	}
-	o := &Object{Oid: objectId, Size: TombstoneFileSize, Offset: uint32(fi.Size()), Crc: crc}
+	o := &Object{Oid: objectId, Size: MarkDeleteObject, Offset: uint32(fi.Size()), Crc: crc}
 	if err = c.tree.appendToIdxFile(o); err == nil {
 		if c.loadLastOid() < objectId {
 			c.storeLastOid(objectId)
@@ -366,11 +366,11 @@ func (s *TinyStore) GetDelObjects(fileId uint32) (objects []uint64) {
 	c.storeSyncLastOid(syncLastOid)
 
 	c.commitLock.RLock()
-	WalkIndexFile(c.tree.idxFile, func(oid uint64, offset, size, crc uint32) error {
+	LoopIndexFile(c.tree.idxFile, func(oid uint64, offset, size, crc uint32) error {
 		if oid > syncLastOid {
 			return errors.New("Exceed syncLastOid")
 		}
-		if size == TombstoneFileSize {
+		if size == MarkDeleteObject {
 			objects = append(objects, oid)
 		}
 		return nil

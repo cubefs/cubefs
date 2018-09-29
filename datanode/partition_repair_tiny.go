@@ -130,7 +130,7 @@ func (dp *dataPartition) applyRepairTinyObjects(chunkId int, data []byte, endObj
 		o.Unmarshal(data[offset : offset+storage.ObjectHeaderSize])
 		//unmarshal objectHeader,if this object has delete on leader,then ,write a deleteEntry to indexfile
 		offset += storage.ObjectHeaderSize
-		if o.Size == storage.TombstoneFileSize {
+		if o.Size == storage.MarkDeleteObject {
 			err = store.WriteDeleteDentry(o.Oid, chunkId, o.Crc)
 		}
 		if err != nil {
@@ -192,7 +192,7 @@ func syncData(chunkID uint32, startOid, endOid uint64, pkg *Packet, conn *net.TC
 	for i := 0; i < len(objects); i++ {
 		var realSize uint32
 		realSize = 0
-		if objects[i].Size != storage.TombstoneFileSize {
+		if objects[i].Size != storage.MarkDeleteObject {
 			realSize = objects[i].Size
 		}
 		if pos+int(realSize)+storage.ObjectHeaderSize >= PkgRepairCReadRespLimitSize {

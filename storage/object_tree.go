@@ -27,9 +27,9 @@ import (
 )
 
 const (
-	ObjectHeaderSize  = 20
-	IndexBatchRead    = 1024
-	TombstoneFileSize = math.MaxUint32
+	ObjectHeaderSize = 20
+	IndexBatchRead   = 1024
+	MarkDeleteObject = math.MaxUint32
 )
 
 type Object struct {
@@ -89,9 +89,9 @@ func NewObjectTree(f *os.File) *ObjectTree {
 // guarantee there is no write and delete operations on this needle map
 func (tree *ObjectTree) Load() (maxOid uint64, err error) {
 	f := tree.idxFile
-	maxOid, err = WalkIndexFile(f, func(oid uint64, offset, size, crc uint32) error {
+	maxOid, err = LoopIndexFile(f, func(oid uint64, offset, size, crc uint32) error {
 		o := &Object{Oid: oid, Offset: offset, Size: size, Crc: crc}
-		if oid > 0 && size != TombstoneFileSize {
+		if oid > 0 && size != MarkDeleteObject {
 			tree.idxLock.Lock()
 			found := tree.tree.ReplaceOrInsert(o)
 			tree.idxLock.Unlock()
@@ -117,10 +117,10 @@ func (tree *ObjectTree) Load() (maxOid uint64, err error) {
 
 func (o *Object) Check(offset, size, crc uint32) bool {
 	return o.Oid != 0 && o.Offset == offset && o.Crc == crc &&
-		(o.Size == size || size == TombstoneFileSize)
+		(o.Size == size || size == MarkDeleteObject)
 }
 
-func WalkIndexFile(f *os.File, fn func(oid uint64, offset, size, crc uint32) error) (maxOid uint64, err error) {
+func LoopIndexFile(f *os.File, fn func(oid uint64, offset, size, crc uint32) error) (maxOid uint64, err error) {
 	var (
 		readOff int64
 		count   int
@@ -201,7 +201,7 @@ func (tree *ObjectTree) delete(oid uint64) error {
 	}
 	o := found.(*Object)
 	tree.decreaseSize(o.Size)
-	o.Size = TombstoneFileSize
+	o.Size = MarkDeleteObject
 	tree.idxLock.Unlock()
 
 	return tree.appendToIdxFile(o)

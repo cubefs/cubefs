@@ -88,7 +88,7 @@ func (c *Chunk) getCheckSum() (fullCRC uint32, syncLastOid uint64, count int) {
 	crcBuffer := make([]byte, 0)
 	buf := make([]byte, 4)
 	c.commitLock.RLock()
-	WalkIndexFile(c.tree.idxFile, func(oid uint64, offset, size, crc uint32) error {
+	LoopIndexFile(c.tree.idxFile, func(oid uint64, offset, size, crc uint32) error {
 		if oid > syncLastOid {
 			return nil
 		}
@@ -140,8 +140,8 @@ func (c *Chunk) doCompact() (err error) {
 	)
 
 	name := c.file.Name()
-	newIdxName := name + ".cpx"
-	newDatName := name + ".cpd"
+	newIdxName := name + ".tmpIndex"
+	newDatName := name + ".tmpData"
 	if newIdxFile, err = os.OpenFile(newIdxName, ChunkOpenOpt|os.O_TRUNC, 0644); err != nil {
 		return err
 	}
@@ -166,7 +166,7 @@ func (c *Chunk) copyValidData(dstNm *ObjectTree, dstDatFile *os.File) (err error
 	srcDatFile := c.file
 	srcIdxFile := srcNm.idxFile
 	deletedSet := make(map[uint64]struct{})
-	_, err = WalkIndexFile(srcIdxFile, func(oid uint64, offset, size, crc uint32) error {
+	_, err = LoopIndexFile(srcIdxFile, func(oid uint64, offset, size, crc uint32) error {
 		var (
 			o *Object
 			e error
@@ -175,7 +175,7 @@ func (c *Chunk) copyValidData(dstNm *ObjectTree, dstDatFile *os.File) (err error
 		)
 
 		_, ok := deletedSet[oid]
-		if size == TombstoneFileSize && !ok {
+		if size == MarkDeleteObject && !ok {
 			o = &Object{Oid: oid, Offset: offset, Size: size, Crc: crc}
 			if e = dstNm.appendToIdxFile(o); e != nil {
 				return e
@@ -288,7 +288,7 @@ func catchupDeleteIndex(oldIdxName, newIdxName string) error {
 
 		ni := &Object{}
 		ni.Unmarshal(data)
-		if ni.Size != TombstoneFileSize || ni.IsIdentical(lastIndexEntry) {
+		if ni.Size != MarkDeleteObject || ni.IsIdentical(lastIndexEntry) {
 			break
 		}
 		result := make([]byte, len(catchup)+ObjectHeaderSize)
