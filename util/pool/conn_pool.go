@@ -32,50 +32,50 @@ type Pool struct {
 	target string
 }
 
-func NewPool(min,max int,target string)(p *Pool){
-	p=new(Pool)
-	p.mincap =min
-	p.maxcap =max
-	p.target=target
-	p.pool=make(chan *ConnectObject,min)
+func NewPool(min, max int, target string) (p *Pool) {
+	p = new(Pool)
+	p.mincap = min
+	p.maxcap = max
+	p.target = target
+	p.pool = make(chan *ConnectObject, min)
 	return p
 }
 
-func (p *Pool)initAllConnect(){
-	for i:=0;i<p.mincap;i++{
-		c,err:=net.Dial("tcp",p.target)
-		if err==nil {
-			conn:=c.(*net.TCPConn)
+func (p *Pool) initAllConnect() {
+	for i := 0; i < p.mincap; i++ {
+		c, err := net.Dial("tcp", p.target)
+		if err == nil {
+			conn := c.(*net.TCPConn)
 			conn.SetKeepAlive(true)
 			conn.SetNoDelay(true)
-			obj:=&ConnectObject{conn:conn}
+			obj := &ConnectObject{conn: conn}
 			p.putconnect(obj)
 		}
 	}
 }
 
-func (p *Pool)putconnect(c *ConnectObject){
+func (p *Pool) putconnect(c *ConnectObject) {
 	select {
-		case p.pool<-c:
-			return
-		default:
-			return
-	}
-}
-
-func (p *Pool)getconnect()(c *ConnectObject){
-	select {
-	case c=<-p.pool:
+	case p.pool <- c:
 		return
 	default:
 		return
 	}
 }
 
-func (p *Pool)AutoRelease(){
-	for{
+func (p *Pool) getconnect() (c *ConnectObject) {
+	select {
+	case c = <-p.pool:
+		return
+	default:
+		return
+	}
+}
+
+func (p *Pool) AutoRelease() {
+	for {
 		select {
-		case c:=<-p.pool:
+		case c := <-p.pool:
 			c.conn.Close()
 		default:
 			return
@@ -83,27 +83,27 @@ func (p *Pool)AutoRelease(){
 	}
 }
 
-func (p *Pool)Get()(c *net.TCPConn,err error){
-	obj:=p.getconnect()
-	if obj!=nil {
-		return obj.conn,nil
+func (p *Pool) Get() (c *net.TCPConn, err error) {
+	obj := p.getconnect()
+	if obj != nil {
+		return obj.conn, nil
 	}
 	var connect net.Conn
-	connect,err=net.Dial("tcp",p.target)
-	if err==nil {
-		conn:=connect.(*net.TCPConn)
+	connect, err = net.Dial("tcp", p.target)
+	if err == nil {
+		conn := connect.(*net.TCPConn)
 		conn.SetKeepAlive(true)
 		conn.SetNoDelay(true)
-		c=conn
+		c = conn
 	}
 	return
 }
 
 type ConnPool struct {
 	sync.Mutex
-	pools    map[string]*Pool
-	mincap   int
-	maxcap   int
+	pools   map[string]*Pool
+	mincap  int
+	maxcap  int
 	timeout int64
 }
 
@@ -118,8 +118,8 @@ func (connectPool *ConnPool) Get(targetAddr string) (c *net.TCPConn, err error) 
 	connectPool.Lock()
 	pool, ok := connectPool.pools[targetAddr]
 	if !ok {
-		pool=NewPool(connectPool.mincap,connectPool.maxcap,targetAddr)
-		connectPool.pools[targetAddr]=pool
+		pool = NewPool(connectPool.mincap, connectPool.maxcap, targetAddr)
+		connectPool.pools[targetAddr] = pool
 	}
 	connectPool.Unlock()
 
@@ -142,7 +142,7 @@ func (connectPool *ConnPool) Put(c *net.TCPConn, forceClose bool) {
 		c.Close()
 		return
 	}
-	object:=&ConnectObject{conn:c}
+	object := &ConnectObject{conn: c}
 	pool.putconnect(object)
 
 	return
@@ -169,7 +169,7 @@ func (connectPool *ConnPool) CheckErrorForPutConnect(c *net.TCPConn, target stri
 		c.Close()
 		return
 	}
-	object:=&ConnectObject{conn:c}
+	object := &ConnectObject{conn: c}
 	pool.putconnect(object)
 }
 
