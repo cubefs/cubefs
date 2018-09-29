@@ -39,7 +39,7 @@ func (mp *metaPartition) startFreeList() {
 }
 
 func (mp *metaPartition) updateVolWorker() {
-	t := time.NewTimer(UpdateVolTicket)
+	t := time.NewTicker(UpdateVolTicket)
 	reqURL := fmt.Sprintf("%s?name=%s", DataPartitionViewUrl, mp.config.VolName)
 	for {
 		select {
@@ -47,20 +47,20 @@ func (mp *metaPartition) updateVolWorker() {
 			t.Stop()
 			return
 		case <-t.C:
+			// Get dataPartitionView
+			respBody, err := postToMaster("GET", reqURL, nil)
+			if err != nil {
+				log.LogErrorf("[updateVol] %s", err.Error())
+				break
+			}
+			dataView := new(DataPartitionsView)
+			if err = json.Unmarshal(respBody, dataView); err != nil {
+				log.LogErrorf("[updateVol] %s", err.Error())
+				break
+			}
+			mp.vol.UpdatePartitions(dataView)
+			log.LogDebugf("[updateVol] %v", dataView)
 		}
-		// Get dataPartitionView
-		respBody, err := postToMaster("GET", reqURL, nil)
-		if err != nil {
-			log.LogErrorf("[updateVol] %s", err.Error())
-			continue
-		}
-		dataView := new(DataPartitionsView)
-		if err = json.Unmarshal(respBody, dataView); err != nil {
-			log.LogErrorf("[updateVol] %s", err.Error())
-			continue
-		}
-		mp.vol.UpdatePartitions(dataView)
-		log.LogDebugf("[updateVol] %v", dataView)
 	}
 }
 
@@ -176,17 +176,23 @@ func (mp *metaPartition) deleteDataPartitionMark(inoSlice []*Inode) {
 	shouldCommit := make([]*Inode, 0, BatchCounts)
 	var err error
 	for _, ino := range inoSlice {
-		err = nil
+		var reExt []proto.ExtentKey
 		ino.Extents.Range(func(i int, v proto.ExtentKey) bool {
 			if err = stepFunc(v); err != nil {
-				mp.freeList.Push(ino)
-				log.LogWarnf("[deleteDataPartitionMark]: %s", err.Error())
-				return false
+				reExt = append(reExt, v)
+				log.LogWarnf("[deleteDataPartitionMark] extentKey: %s, "+
+					"err: %s", v.String(), err.Error())
 			}
 			return true
 		})
-		if err == nil {
+		if len(reExt) == 0 {
 			shouldCommit = append(shouldCommit, ino)
+		} else {
+			newIno := NewInode(ino.Inode, ino.Type)
+			for _, ext := range reExt {
+				newIno.Extents.Put(ext)
+			}
+			mp.freeList.Push(newIno)
 		}
 	}
 	if len(shouldCommit) > 0 {

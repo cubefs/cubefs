@@ -657,3 +657,44 @@ func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info 
 	log.LogDebugf("ilink exit: mp(%v) req(%v) info(%v)", mp, *req, resp.Info)
 	return statusOK, resp.Info, nil
 }
+
+func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid, gid uint32) (status int, err error) {
+	req := &proto.SetattrRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		Inode:       inode,
+		Valid:       valid,
+		Mode:        mode,
+		Uid:         uid,
+		Gid:         gid,
+	}
+
+	packet := proto.NewPacket()
+	packet.Opcode = proto.OpMetaSetattr
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("setattr: err(%v)", err)
+		return
+	}
+
+	log.LogDebugf("setattr enter: mp(%v) req(%v)", mp, string(packet.Data))
+
+	umpKey := mw.umpKey(packet.GetOpMsg())
+	tpObject := ump.BeforeTP(umpKey)
+	defer ump.AfterTP(tpObject, err)
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("setattr: mp(%v) req(%v) err(%v)", mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("setattr: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		return
+	}
+
+	log.LogDebugf("setattr exit: mp(%v) req(%v)", mp, *req)
+	return statusOK, nil
+}

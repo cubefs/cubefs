@@ -15,10 +15,10 @@
 package metanode
 
 import (
-	"encoding/json"
-
 	"encoding/binary"
+	"encoding/json"
 	"github.com/tiglabs/containerfs/proto"
+	"os"
 )
 
 func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error) {
@@ -64,7 +64,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest,
 
 func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq,
 	p *Packet) (err error) {
-	ino := NewInode(req.Inode, proto.ModeRegular)
+	ino := NewInode(req.Inode, proto.Mode(os.ModePerm))
 	nextIno, err := mp.nextInodeID()
 	if err != nil {
 		p.PackErrorWithBody(proto.OpErr, nil)

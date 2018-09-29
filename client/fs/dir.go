@@ -15,6 +15,7 @@
 package fs
 
 import (
+	"os"
 	"syscall"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/tiglabs/containerfs/fuse/fs"
 	"golang.org/x/net/context"
 
+	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
 )
 
@@ -71,7 +73,7 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 	start := time.Now()
-	info, err := d.super.mw.Create_ll(d.inode.ino, req.Name, ModeRegular, nil)
+	info, err := d.super.mw.Create_ll(d.inode.ino, req.Name, proto.Mode(req.Mode.Perm()), nil)
 	if err != nil {
 		log.LogErrorf("Create: parent(%v) req(%v) err(%v)", d.inode.ino, req, err)
 		return nil, nil, ParseError(err)
@@ -92,7 +94,7 @@ func (d *Dir) Forget() {
 
 func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
 	start := time.Now()
-	info, err := d.super.mw.Create_ll(d.inode.ino, req.Name, ModeDir, nil)
+	info, err := d.super.mw.Create_ll(d.inode.ino, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), nil)
 	if err != nil {
 		log.LogErrorf("Mkdir: parent(%v) req(%v) err(%v)", d.inode.ino, req, err)
 		return nil, ParseError(err)
@@ -132,16 +134,15 @@ func (d *Dir) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
 
 func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
 	var (
-		ino  uint64
-		mode uint32
-		err  error
+		ino uint64
+		err error
 	)
 
 	log.LogDebugf("TRACE Lookup: parent(%v) req(%v)", d.inode.ino, req)
 
 	ino, ok := d.dcache.Get(req.Name)
 	if !ok {
-		ino, mode, err = d.super.mw.Lookup_ll(d.inode.ino, req.Name)
+		ino, _, err = d.super.mw.Lookup_ll(d.inode.ino, req.Name)
 		if err != nil {
 			if err != syscall.ENOENT {
 				log.LogErrorf("Lookup: parent(%v) name(%v) err(%v)", d.inode.ino, req.Name, err)
@@ -155,10 +156,10 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		log.LogErrorf("Lookup: parent(%v) name(%v) ino(%v) err(%v)", d.inode.ino, req.Name, ino, err)
 		return nil, ParseError(err)
 	}
-	mode = inode.mode
+	mode := inode.mode
 
 	var child fs.Node
-	if mode == ModeDir {
+	if mode.IsDir() {
 		child = NewDir(d.super, inode)
 	} else {
 		child = NewFile(d.super, inode)
@@ -230,8 +231,12 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 		return ParseError(err)
 	}
 
-	if req.Valid.Mode() {
-		inode.osMode = req.Mode
+	if valid := inode.setattr(req); valid != 0 {
+		err = d.super.mw.Setattr(ino, valid, proto.Mode(inode.mode), inode.uid, inode.gid)
+		if err != nil {
+			d.super.ic.Delete(ino)
+			return ParseError(err)
+		}
 	}
 
 	inode.fillAttr(&resp.Attr)
@@ -244,7 +249,7 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, error) {
 	parentIno := d.inode.ino
 	start := time.Now()
-	info, err := d.super.mw.Create_ll(parentIno, req.NewName, ModeSymlink, []byte(req.Target))
+	info, err := d.super.mw.Create_ll(parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), []byte(req.Target))
 	if err != nil {
 		log.LogErrorf("Symlink: parent(%v) NewName(%v) err(%v)", parentIno, req.NewName, err)
 		return nil, ParseError(err)
@@ -268,7 +273,7 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 		return nil, fuse.EPERM
 	}
 
-	if oldInode.mode != ModeRegular {
+	if !oldInode.mode.IsRegular() {
 		log.LogErrorf("Link: not regular, parent(%v) name(%v) ino(%v) mode(%v)", d.inode.ino, req.NewName, oldInode.ino, oldInode.mode)
 		return nil, fuse.EPERM
 	}

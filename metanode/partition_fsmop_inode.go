@@ -51,7 +51,7 @@ func (mp *metaPartition) createLinkInode(ino *Inode) (resp *ResponseInode) {
 		return
 	}
 	i := item.(*Inode)
-	if i.Type == proto.ModeDir {
+	if proto.IsDir(i.Type) {
 		resp.Status = proto.OpArgMismatchErr
 		return
 	}
@@ -119,7 +119,7 @@ func (mp *metaPartition) deleteInode(ino *Inode) (resp *ResponseInode) {
 		isFind = true
 		inode := i.(*Inode)
 		resp.Msg = inode
-		if inode.Type == proto.ModeRegular {
+		if proto.IsRegular(inode.Type) {
 			inode.NLink--
 			return
 		}
@@ -191,7 +191,7 @@ func (mp *metaPartition) extentsTruncate(ino *Inode) (resp *ResponseInode) {
 	mp.inodeTree.Find(ino, func(item BtreeItem) {
 		isFind = true
 		i := item.(*Inode)
-		if i.Type == proto.ModeDir {
+		if proto.IsDir(i.Type) {
 			resp.Status = proto.OpArgMismatchErr
 			return
 		}
@@ -229,7 +229,7 @@ func (mp *metaPartition) evictInode(ino *Inode) (resp *ResponseInode) {
 	mp.inodeTree.Find(ino, func(item BtreeItem) {
 		isFind = true
 		i := item.(*Inode)
-		if i.Type == proto.ModeDir {
+		if proto.IsDir(i.Type) {
 			if i.NLink < 2 {
 				isDelete = true
 			}
@@ -256,10 +256,30 @@ func (mp *metaPartition) evictInode(ino *Inode) (resp *ResponseInode) {
 }
 
 func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
-	if ino.Type == proto.ModeDir {
+	if proto.IsDir(ino.Type) {
 		return
 	}
 	if ino.MarkDelete == 1 {
 		mp.freeList.Push(ino)
 	}
+}
+
+func (mp *metaPartition) setAttr(req *SetattrRequest) (err error) {
+	// get Inode
+	ino := NewInode(req.Inode, req.Mode)
+	item := mp.inodeTree.Get(ino)
+	if item == nil {
+		return
+	}
+	ino = item.(*Inode)
+	if req.Valid&proto.AttrMode != 0 {
+		ino.Type = req.Mode
+	}
+	if req.Valid&proto.AttrUid != 0 {
+		ino.Uid = req.Uid
+	}
+	if req.Valid&proto.AttrGid != 0 {
+		ino.Gid = req.Gid
+	}
+	return
 }

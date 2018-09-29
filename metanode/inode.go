@@ -47,6 +47,8 @@ import (
 type Inode struct {
 	Inode      uint64 // Inode ID
 	Type       uint32
+	Uid        uint32
+	Gid        uint32
 	Size       uint64
 	Generation uint64
 	CreateTime int64
@@ -63,6 +65,8 @@ func (i *Inode) String() string {
 	buff.WriteString("Inode{")
 	buff.WriteString(fmt.Sprintf("Inode[%d]", i.Inode))
 	buff.WriteString(fmt.Sprintf("Type[%d]", i.Type))
+	buff.WriteString(fmt.Sprintf("Uid[%d]", i.Uid))
+	buff.WriteString(fmt.Sprintf("Gid[%d]", i.Gid))
 	buff.WriteString(fmt.Sprintf("Size[%d]", i.Size))
 	buff.WriteString(fmt.Sprintf("Gen[%d]", i.Generation))
 	buff.WriteString(fmt.Sprintf("CT[%d]", i.CreateTime))
@@ -90,7 +94,7 @@ func NewInode(ino uint64, t uint32) *Inode {
 		NLink:      1,
 		Extents:    proto.NewStreamKey(ino),
 	}
-	if t == proto.ModeDir {
+	if proto.IsDir(t) {
 		i.NLink = 2
 	}
 	return i
@@ -174,6 +178,12 @@ func (i *Inode) MarshalValue() (val []byte) {
 	if err = binary.Write(buff, binary.BigEndian, &i.Type); err != nil {
 		panic(err)
 	}
+	if err = binary.Write(buff, binary.BigEndian, &i.Uid); err != nil {
+		panic(err)
+	}
+	if err = binary.Write(buff, binary.BigEndian, &i.Gid); err != nil {
+		panic(err)
+	}
 	if err = binary.Write(buff, binary.BigEndian, &i.Size); err != nil {
 		panic(err)
 	}
@@ -223,6 +233,12 @@ func (i *Inode) MarshalValue() (val []byte) {
 func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	buff := bytes.NewBuffer(val)
 	if err = binary.Read(buff, binary.BigEndian, &i.Type); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &i.Uid); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &i.Gid); err != nil {
 		return
 	}
 	if err = binary.Read(buff, binary.BigEndian, &i.Size); err != nil {

@@ -38,12 +38,6 @@ const (
 )
 
 const (
-	ModeRegular = proto.ModeRegular
-	ModeDir     = proto.ModeDir
-	ModeSymlink = proto.ModeSymlink
-)
-
-const (
 	LookupValidDuration = 0
 	AttrValidDuration   = 30 * time.Second
 )
@@ -73,12 +67,10 @@ func ParseError(err error) fuse.Errno {
 }
 
 func ParseMode(mode uint32) fuse.DirentType {
-	switch mode {
-	case ModeDir:
+	if proto.IsDir(mode) {
 		return fuse.DT_Dir
-	case ModeSymlink:
+	} else if proto.IsSymlink(mode) {
 		return fuse.DT_Link
-	default:
-		return fuse.DT_File
 	}
+	return fuse.DT_File
 }

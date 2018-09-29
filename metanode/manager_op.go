@@ -403,6 +403,35 @@ func (m *metaManager) opMetaEvictInode(conn net.Conn, p *Packet) (err error) {
 	return
 }
 
+func (m *metaManager) opSetattr(conn net.Conn, p *Packet) (err error) {
+	req := &SetattrRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.Errorf("[opSetattr] req: %v, error: %v", req, err.Error())
+		return
+	}
+
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.Errorf("[opSetattr] req: %v, error: %v", req, err.Error())
+		return
+	}
+
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	if err = mp.SetAttr(p.Data, p); err != nil {
+		err = errors.Errorf("[opSetattr] req: %v, error: %s", req, err.Error())
+	}
+	m.respondToClient(conn, p)
+	log.LogDebugf("[opSetattr] req: %v, resp: %v, body: %s", req,
+		p.GetResultMesg(), p.Data)
+	return
+}
+
 func (m *metaManager) opMetaLookup(conn net.Conn, p *Packet) (err error) {
 	req := &proto.LookupRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
