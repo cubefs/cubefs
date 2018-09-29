@@ -223,16 +223,16 @@ func (c *Chunk) doCommit() (err error) {
 	c.tree.idxFile.Close()
 	c.file.Close()
 
-	err = catchupDeleteIndex(name+".idx", name+".cpx")
+	err = catchupDeleteIndex(name+".idx", name+".tmpIndex")
 	if err != nil {
 		return
 	}
 
-	err = os.Rename(name+".cpd", name)
+	err = os.Rename(name+".tmpData", name)
 	if err != nil {
 		return
 	}
-	err = os.Rename(name+".cpx", name+".idx")
+	err = os.Rename(name+".tmpIndex", name+".idx")
 	if err != nil {
 		return
 	}
