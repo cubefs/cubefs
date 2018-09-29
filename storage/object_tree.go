@@ -143,7 +143,7 @@ func LoopIndexFile(f *os.File, fn func(oid uint64, offset, size, crc uint32) err
 			}
 		}
 
-		// walk index file to an end
+		// loop index file to an end
 		if err == io.EOF {
 			return maxOid, nil
 		}
