@@ -19,50 +19,50 @@ import (
 	"time"
 )
 
-type TryMutex struct {
-	once sync.Once
-	lock chan struct{}
+type TryMutexLock struct {
+	sync.Once
+	lockChan chan struct{}
 }
 
-func (tm *TryMutex) init() {
-	tm.lock = make(chan struct{}, 1)
-	tm.lock <- struct{}{}
+func (lock *TryMutexLock) initlock() {
+	lock.lockChan = make(chan struct{}, 1)
+	lock.lockChan <- struct{}{}
 }
 
-func (tm *TryMutex) Lock() {
-	tm.once.Do(tm.init)
+func (lock *TryMutexLock) Lock() {
+	lock.Do(lock.initlock)
 
-	<-tm.lock
+	<-lock.lockChan
 }
 
-func (tm *TryMutex) TryLock() bool {
-	tm.once.Do(tm.init)
+func (lock *TryMutexLock) TryLock() bool {
+	lock.Do(lock.initlock)
 	select {
-	case <-tm.lock:
+	case <-lock.lockChan:
 		return true
 	default:
 		return false
 	}
 }
 
-func (tm *TryMutex) TryLockTimed(t time.Duration) bool {
-	tm.once.Do(tm.init)
+func (lock *TryMutexLock) TryLockTimed(t time.Duration) bool {
+	lock.Do(lock.initlock)
 
 	select {
-	case <-tm.lock:
+	case <-lock.lockChan:
 		return true
 	case <-time.After(t):
 		return false
 	}
 }
 
-func (tm *TryMutex) Unlock() {
-	tm.once.Do(tm.init)
+func (lock *TryMutexLock) Unlock() {
+	lock.Do(lock.initlock)
 
 	select {
-	case tm.lock <- struct{}{}:
+	case lock.lockChan <- struct{}{}:
 		// Success - do nothing.
 	default:
-		panic("unlock called when TryMutex is not locked")
+		panic("TryMutexLock is not locked")
 	}
 }

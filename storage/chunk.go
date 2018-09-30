@@ -31,7 +31,7 @@ type Chunk struct {
 	lastOid     uint64
 	syncLastOid uint64
 	commitLock  sync.RWMutex
-	compactLock util.TryMutex
+	compactLock util.TryMutexLock
 }
 
 func NewChunk(dataDir string, chunkId int) (c *Chunk, err error) {
