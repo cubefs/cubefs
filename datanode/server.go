@@ -43,7 +43,7 @@ import (
 var (
 	ErrStoreTypeMismatch        = errors.New("store type error")
 	ErrPartitionNotExist        = errors.New("dataPartition not exists")
-	ErrChunkOffsetMismatch      = errors.New("chunk offset not mismatch")
+	ErrBlobFileOffsetMismatch   = errors.New("blobfile offset not mismatch")
 	ErrNoDiskForCreatePartition = errors.New("no disk for create dataPartition")
 	ErrBadConfFile              = errors.New("bad config file")
 
@@ -88,6 +88,7 @@ func NewServer() *DataNode {
 
 func (s *DataNode) Start(cfg *config.Config) (err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
+	GcanCompact = CanCompact
 	if atomic.CompareAndSwapUint32(&s.state, Standby, Start) {
 		defer func() {
 			if err != nil {
@@ -169,10 +170,10 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	if s.rackName == "" {
 		s.rackName = DefaultRackName
 	}
-	log.LogDebugf("action[parseConfig] load masterAddrs[%v].", MasterHelper.Nodes())
-	log.LogDebugf("action[parseConfig] load port[%v].", s.port)
-	log.LogDebugf("action[parseConfig] load clusterId[%v].", s.clusterId)
-	log.LogDebugf("action[parseConfig] load rackName[%v].", s.rackName)
+	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterHelper.Nodes())
+	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
+	log.LogDebugf("action[parseConfig] load clusterId(%v).", s.clusterId)
+	log.LogDebugf("action[parseConfig] load rackName(%v).", s.rackName)
 	return
 }
 
@@ -184,7 +185,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	}
 	var wg sync.WaitGroup
 	for _, d := range cfg.GetArray(ConfigKeyDisks) {
-		log.LogDebugf("action[startSpaceManager] load disk raw config[%v].", d)
+		log.LogDebugf("action[startSpaceManager] load disk raw config(%v).", d)
 		// Format "PATH:RESET_SIZE:MAX_ERR
 		arr := strings.Split(d.(string), ":")
 		if len(arr) != 3 {
@@ -222,7 +223,7 @@ func (s *DataNode) registerToMaster() {
 			data, err = MasterHelper.Request(http.MethodGet, GetIpFromMaster, nil, nil)
 			masterAddr := MasterHelper.Leader()
 			if err != nil {
-				log.LogErrorf("action[registerToMaster] cannot get ip from master[%v] err[%v].",
+				log.LogErrorf("action[registerToMaster] cannot get ip from master(%v) err(%v).",
 					masterAddr, err)
 				timer = time.NewTimer(5 * time.Second)
 				continue
@@ -233,7 +234,7 @@ func (s *DataNode) registerToMaster() {
 			s.clusterId = cInfo.Cluster
 			s.localServeAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			if !util.IP(LocalIP) {
-				log.LogErrorf("action[registerToMaster] got an invalid local ip[%v] from master[%v].",
+				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
 					LocalIP, masterAddr)
 				timer = time.NewTimer(5 * time.Second)
 				continue
@@ -243,7 +244,7 @@ func (s *DataNode) registerToMaster() {
 			params["addr"] = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			data, err = MasterHelper.Request(http.MethodPost, master.AddDataNode, params, nil)
 			if err != nil {
-				log.LogErrorf("action[registerToMaster] cannot register this node to master[%] err[%v].",
+				log.LogErrorf("action[registerToMaster] cannot register this node to master[%] err(%v).",
 					masterAddr, err)
 				continue
 			}
@@ -262,6 +263,7 @@ func (s *DataNode) registerProfHandler() {
 	http.HandleFunc("/partitions", s.apiGetPartitions)
 	http.HandleFunc("/partition", s.apiGetPartition)
 	http.HandleFunc("/extent", s.apiGetExtent)
+	http.HandleFunc("/blobfile", s.apiGetBlobFile)
 	http.HandleFunc("/stats", s.apiGetStat)
 }
 
@@ -269,7 +271,7 @@ func (s *DataNode) startTcpService() (err error) {
 	log.LogInfo("Start: startTcpService")
 	addr := fmt.Sprintf(":%v", s.port)
 	l, err := net.Listen(NetType, addr)
-	log.LogDebugf("action[startTcpService] listen %v address[%v].", NetType, addr)
+	log.LogDebugf("action[startTcpService] listen %v address(%v).", NetType, addr)
 	if err != nil {
 		log.LogError("failed to listen, err:", err)
 		return
@@ -316,7 +318,7 @@ func (s *DataNode) serveConn(conn net.Conn) {
 		if err != nil && err != io.EOF &&
 			!strings.Contains(err.Error(), "closed connection") &&
 			!strings.Contains(err.Error(), "reset by peer") {
-			log.LogErrorf("action[serveConn] err[%v].", err)
+			log.LogErrorf("action[serveConn] err(%v).", err)
 		}
 		space.Stats().RemoveConnection()
 		conn.Close()
@@ -347,77 +349,77 @@ func (s *DataNode) AddCompactTask(t *CompactTask) (err error) {
 	}
 	err = d.addTask(t)
 	if err != nil {
-		err = errors.Annotatef(err, "Task[%v] ", t.toString())
+		err = errors.Annotatef(err, "Task(%v) ", t.toString())
 	}
 	return
 }
 
-func (s *DataNode) checkChunkInfo(pkg *Packet) (err error) {
+func (s *DataNode) checkBlobFileInfo(pkg *Packet) (err error) {
 	var (
-		chunkInfo *storage.FileInfo
+		blobfileInfo *storage.FileInfo
 	)
-	chunkInfo, err = pkg.DataPartition.GetTinyStore().GetWatermark(pkg.FileID)
+	blobfileInfo, err = pkg.DataPartition.GetBlobStore().GetWatermark(pkg.FileID)
 	if err != nil {
 		return
 	}
 	leaderObjId := uint64(pkg.Offset)
-	localObjId := chunkInfo.Size
-	if (leaderObjId - 1) != chunkInfo.Size {
-		err = ErrChunkOffsetMismatch
-		msg := fmt.Sprintf("Err[%v] leaderObjId[%v] localObjId[%v]", err, leaderObjId, localObjId)
-		log.LogWarn(pkg.ActionMsg(ActionCheckChunkInfo, LocalProcessAddr, pkg.StartT, fmt.Errorf(msg)))
+	localObjId := blobfileInfo.Size
+	if (leaderObjId - 1) != blobfileInfo.Size {
+		err = ErrBlobFileOffsetMismatch
+		msg := fmt.Sprintf("Err(%v) leaderObjId(%v) localObjId(%v)", err, leaderObjId, localObjId)
+		log.LogWarn(pkg.ActionMsg(ActionCheckBlobFileInfo, LocalProcessAddr, pkg.StartT, fmt.Errorf(msg)))
 	}
 
 	return
 }
 
-func (s *DataNode) handleChunkInfo(pkg *Packet) (err error) {
+func (s *DataNode) handleBlobFileInfo(pkg *Packet) (err error) {
 	if !pkg.IsWriteOperation() {
 		return
 	}
 
 	if !pkg.isHeadNode() {
-		err = s.checkChunkInfo(pkg)
+		err = s.checkBlobFileInfo(pkg)
 	} else {
-		err = s.headNodeSetChunkInfo(pkg)
+		err = s.headNodeSetBlobFileInfo(pkg)
 	}
 	if err != nil {
-		err = errors.Annotatef(err, "Request[%v] handleChunkInfo Error", pkg.GetUniqueLogId())
-		pkg.PackErrorBody(ActionCheckChunkInfo, err.Error())
+		err = errors.Annotatef(err, "Request(%v) handleBlobFileInfo Error", pkg.GetUniqueLogId())
+		pkg.PackErrorBody(ActionCheckBlobFileInfo, err.Error())
 	}
 
 	return
 }
 
-func (s *DataNode) headNodeSetChunkInfo(pkg *Packet) (err error) {
+func (s *DataNode) headNodeSetBlobFileInfo(pkg *Packet) (err error) {
 	var (
-		chunkId int
+		blobfileId int
 	)
-	store := pkg.DataPartition.GetTinyStore()
-	chunkId, err = store.GetChunkForWrite()
+	store := pkg.DataPartition.GetBlobStore()
+	blobfileId, err = store.GetBlobFileForWrite()
 	if err != nil {
 		pkg.DataPartition.ChangeStatus(proto.ReadOnly)
 		return
 	}
-	pkg.FileID = uint64(chunkId)
+	pkg.FileID = uint64(blobfileId)
 	objectId, _ := store.AllocObjectId(uint32(pkg.FileID))
 	pkg.Offset = int64(objectId)
 
 	return
 }
 
-func (s *DataNode) headNodePutChunk(pkg *Packet) {
+func (s *DataNode) headNodePutBlobFile(pkg *Packet) {
 	if pkg == nil || pkg.FileID <= 0 || pkg.IsReturn {
 		return
 	}
-	if pkg.StoreMode != proto.TinyStoreMode || !pkg.isHeadNode() || !pkg.IsWriteOperation() || !pkg.IsTransitPkg() {
+	if pkg.StoreMode != proto.BlobStoreMode || !pkg.isHeadNode() || !pkg.IsWriteOperation() || !pkg.IsTransitPkg() {
 		return
 	}
-	store := pkg.DataPartition.GetTinyStore()
+	store := pkg.DataPartition.GetBlobStore()
 	if pkg.IsErrPack() {
-		store.PutUnAvailChunk(int(pkg.FileID))
+		store.PutUnAvailBlobFile(int(pkg.FileID))
 	} else {
-		store.PutAvailChunk(int(pkg.FileID))
+		store.PutAvailBlobFile(int(pkg.FileID))
 	}
 	pkg.IsReturn = true
 }
@@ -453,7 +455,7 @@ func (s *DataNode) isDiskErr(errMsg string) bool {
 		strings.Contains(errMsg, storage.ErrPkgCrcMismatch.Error()) || strings.Contains(errMsg, ErrStoreTypeMismatch.Error()) ||
 		strings.Contains(errMsg, storage.ErrorNoUnAvaliFile.Error()) ||
 		strings.Contains(errMsg, storage.ErrExtentNameFormat.Error()) || strings.Contains(errMsg, storage.ErrorAgain.Error()) ||
-		strings.Contains(errMsg, ErrChunkOffsetMismatch.Error()) ||
+		strings.Contains(errMsg, ErrBlobFileOffsetMismatch.Error()) ||
 		strings.Contains(errMsg, storage.ErrorCompaction.Error()) || strings.Contains(errMsg, storage.ErrorPartitionReadOnly.Error()) {
 		return false
 	}

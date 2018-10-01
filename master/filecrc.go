@@ -126,7 +126,7 @@ func (fc *FileInCore) needCrcRepair(liveVols []*DataReplica, volType string) (fm
 		return
 	}
 
-	if volType == proto.TinyPartition {
+	if volType == proto.BlobPartition {
 		if !isSameLastObjectID(fms) || !isSameNeedleCnt(fms) {
 			return
 		}

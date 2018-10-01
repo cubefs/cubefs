@@ -24,78 +24,71 @@ import (
 	"github.com/juju/errors"
 
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/sdk/data/wrapper"
 )
 
 const (
-	NumKeySegments = 9
+	NumKeySegments = 10
 )
 
-func NewWritePacket(dp *DataPartition, data []byte) *proto.Packet {
-	pkt := proto.NewPacket()
+func NewBlobWritePacket(dp *wrapper.DataPartition, data []byte) *proto.Packet {
+	p := proto.NewPacket()
 
-	pkt.StoreMode = proto.TinyStoreMode
-	pkt.Opcode = proto.OpWrite
-	pkt.ReqID = proto.GetReqID()
+	p.StoreMode = proto.BlobStoreMode
+	p.Opcode = proto.OpWrite
+	p.ReqID = proto.GetReqID()
+	p.PartitionID = uint32(dp.PartitionID)
+	p.Arg = ([]byte)(dp.GetAllAddrs())
+	p.Arglen = uint32(len(p.Arg))
+	p.Nodes = uint8(len(dp.Hosts) - 1)
+	p.Size = uint32(len(data))
+	p.Data = data
+	p.Crc = crc32.ChecksumIEEE(data)
 
-	pkt.PartitionID = uint32(dp.PartitionID)
-
-	pkt.Nodes = uint8(len(dp.Hosts) - 1)
-	pkt.Arg = ([]byte)(dp.GetFollowAddrs())
-	pkt.Arglen = uint32(len(pkt.Arg))
-
-	pkt.Size = uint32(len(data))
-	pkt.Data = data
-	pkt.Crc = crc32.ChecksumIEEE(data)
-
-	return pkt
+	return p
 }
 
-func NewReadPacket(partitionID uint32, fileID uint64, objID int64, size uint32) *proto.Packet {
-	pkt := proto.NewPacket()
+func NewBlobReadPacket(partitionID uint32, fileID uint64, objID int64, size uint32) *proto.Packet {
+	p := proto.NewPacket()
+	p.PartitionID = partitionID
+	p.FileID = fileID
+	p.Offset = objID
+	p.Size = size
+	p.StoreMode = proto.BlobStoreMode
+	p.ReqID = proto.GetReqID()
+	p.Opcode = proto.OpRead
+	p.Nodes = 0
 
-	pkt.PartitionID = partitionID
-	pkt.FileID = fileID
-	pkt.Offset = objID
-	pkt.Size = size
-
-	pkt.StoreMode = proto.TinyStoreMode
-	pkt.ReqID = proto.GetReqID()
-	pkt.Opcode = proto.OpRead
-	pkt.Nodes = 0
-
-	return pkt
+	return p
 }
 
-func NewDeletePacket(dp *DataPartition, fileID uint64, objID int64) *proto.Packet {
-	pkt := proto.NewPacket()
+func NewBlobDeletePacket(dp *wrapper.DataPartition, fileID uint64, objID int64) *proto.Packet {
+	p := proto.NewPacket()
+	p.StoreMode = proto.BlobStoreMode
+	p.ReqID = proto.GetReqID()
+	p.Opcode = proto.OpMarkDelete
+	p.PartitionID = uint32(dp.PartitionID)
+	p.FileID = fileID
+	p.Offset = objID
+	p.Arg = ([]byte)(dp.GetAllAddrs())
+	p.Arglen = uint32(len(p.Arg))
+	p.Nodes = uint8(len(dp.Hosts) - 1)
 
-	pkt.StoreMode = proto.TinyStoreMode
-	pkt.ReqID = proto.GetReqID()
-	pkt.Opcode = proto.OpMarkDelete
-
-	pkt.PartitionID = uint32(dp.PartitionID)
-	pkt.FileID = fileID
-	pkt.Offset = objID
-
-	pkt.Nodes = uint8(len(dp.Hosts) - 1)
-	pkt.Arg = ([]byte)(dp.GetFollowAddrs())
-	pkt.Arglen = uint32(len(pkt.Arg))
-
-	return pkt
+	return p
 }
 
-func ParsePacket(pkt *proto.Packet) (partitionID uint32, fileID uint64, objID int64, size uint32) {
-	return pkt.PartitionID, pkt.FileID, pkt.Offset, pkt.Size
+func ParsePacket(p *proto.Packet) (partitionID uint32, fileID uint64, objID int64, crc uint32) {
+	return p.PartitionID, p.FileID, p.Offset, p.Crc
 }
 
-func GenKey(clusterName, volName string, partitionID uint32, fileID uint64, objID int64, size uint32) string {
-	interKey := fmt.Sprintf("%v/%v/%v/%v/%v", partitionID, fileID, objID, size, time.Now().UnixNano())
+func GenKey(clusterName, volName string, partitionID uint32, fileID uint64, objID int64, size, crc uint32) string {
+	interKey := fmt.Sprintf("%v/%v/%v/%v/%v/%v", partitionID, fileID, objID, size, time.Now().UnixNano(), crc)
 	checkSum := crc32.ChecksumIEEE([]byte(interKey))
-	key := fmt.Sprintf("%v/%v/%v/%v/%v", clusterName, volName, proto.TinyStoreMode, interKey, checkSum)
+	key := fmt.Sprintf("%v/%v/%v/%v/%v", clusterName, volName, proto.BlobStoreMode, interKey, checkSum)
 	return key
 }
 
-func ParseKey(key string) (clusterName, volName string, partitionID uint32, fileID uint64, objID int64, size uint32, err error) {
+func ParseKey(key string) (clusterName, volName string, partitionID uint32, fileID uint64, objID int64, size, crc uint32, err error) {
 	segs := strings.Split(key, "/")
 	if len(segs) != NumKeySegments {
 		err = errors.New(fmt.Sprintf("ParseKey: num key(%v)", key))
@@ -103,19 +96,19 @@ func ParseKey(key string) (clusterName, volName string, partitionID uint32, file
 	}
 
 	clusterName = segs[0]
-	if strings.Compare(clusterName, "") != 0 {
+	if strings.Compare(clusterName, "") == 0 {
 		err = errors.New(fmt.Sprintf("ParseKey: cluster key(%v)", key))
 		return
 	}
 
 	volName = segs[1]
-	if strings.Compare(volName, "") != 0 {
+	if strings.Compare(volName, "") == 0 {
 		err = errors.New(fmt.Sprintf("ParseKey: volname key(%v)", key))
 		return
 	}
 
 	val, err := strconv.ParseUint(segs[2], 10, 8)
-	if int(val) != proto.TinyStoreMode {
+	if int(val) != proto.BlobStoreMode {
 		err = errors.New(fmt.Sprintf("ParseKey: store mode key(%v)", key))
 		return
 	}
@@ -147,6 +140,13 @@ func ParseKey(key string) (clusterName, volName string, partitionID uint32, file
 		return
 	}
 	size = uint32(val)
+
+	val, err = strconv.ParseUint(segs[8], 10, 32)
+	if err != nil {
+		err = errors.New(fmt.Sprintf("ParseKey: crc key(%v)", key))
+		return
+	}
+	crc = uint32(val)
 
 	//TODO: checksum
 	return

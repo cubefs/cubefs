@@ -27,35 +27,35 @@ import (
 )
 
 const (
-	ObjectHeaderSize = 20
+	ObjectHeaderSize = 24
 	IndexBatchRead   = 1024
 	MarkDeleteObject = math.MaxUint32
 )
 
 type Object struct {
 	Oid    uint64
-	Offset uint32
+	Offset uint64
 	Size   uint32
 	Crc    uint32
 }
 
-func (o *Object) Less(than btree.Item) bool {
-	that := than.(*Object)
+func (o Object) Less(than btree.Item) bool {
+	that := than.(Object)
 	return o.Oid < that.Oid
 }
 
 func (o *Object) Marshal(out []byte) {
 	binary.BigEndian.PutUint64(out[0:8], o.Oid)
-	binary.BigEndian.PutUint32(out[8:12], o.Offset)
-	binary.BigEndian.PutUint32(out[12:16], o.Size)
-	binary.BigEndian.PutUint32(out[16:ObjectHeaderSize], o.Crc)
+	binary.BigEndian.PutUint64(out[8:16], o.Offset)
+	binary.BigEndian.PutUint32(out[16:20], o.Size)
+	binary.BigEndian.PutUint32(out[20:ObjectHeaderSize], o.Crc)
 }
 
 func (o *Object) Unmarshal(in []byte) {
 	o.Oid = binary.BigEndian.Uint64(in[0:8])
-	o.Offset = binary.BigEndian.Uint32(in[8:12])
-	o.Size = binary.BigEndian.Uint32(in[12:16])
-	o.Crc = binary.BigEndian.Uint32(in[16:ObjectHeaderSize])
+	o.Offset = binary.BigEndian.Uint64(in[8:16])
+	o.Size = binary.BigEndian.Uint32(in[16:20])
+	o.Crc = binary.BigEndian.Uint32(in[20:ObjectHeaderSize])
 	return
 }
 
@@ -89,14 +89,14 @@ func NewObjectTree(f *os.File) *ObjectTree {
 // guarantee there is no write and delete operations on this needle map
 func (tree *ObjectTree) Load() (maxOid uint64, err error) {
 	f := tree.idxFile
-	maxOid, err = LoopIndexFile(f, func(oid uint64, offset, size, crc uint32) error {
+	maxOid, err = LoopIndexFile(f, func(oid, offset uint64, size, crc uint32) error {
 		o := &Object{Oid: oid, Offset: offset, Size: size, Crc: crc}
 		if oid > 0 && size != MarkDeleteObject {
 			tree.idxLock.Lock()
 			found := tree.tree.ReplaceOrInsert(o)
 			tree.idxLock.Unlock()
 			if found != nil {
-				oldNi := found.(*Object)
+				oldNi := found.(Object)
 				tree.decreaseSize(oldNi.Size)
 			}
 			tree.increaseSize(size)
@@ -105,7 +105,7 @@ func (tree *ObjectTree) Load() (maxOid uint64, err error) {
 			found := tree.tree.Delete(o)
 			tree.idxLock.Unlock()
 			if found != nil {
-				oldNi := found.(*Object)
+				oldNi := found.(Object)
 				tree.decreaseSize(oldNi.Size)
 			}
 		}
@@ -115,12 +115,12 @@ func (tree *ObjectTree) Load() (maxOid uint64, err error) {
 	return
 }
 
-func (o *Object) Check(offset, size, crc uint32) bool {
+func (o *Object) Check(offset uint64, size, crc uint32) bool {
 	return o.Oid != 0 && o.Offset == offset && o.Crc == crc &&
 		(o.Size == size || size == MarkDeleteObject)
 }
 
-func LoopIndexFile(f *os.File, fn func(oid uint64, offset, size, crc uint32) error) (maxOid uint64, err error) {
+func LoopIndexFile(f *os.File, fn func(oid, offset uint64, size, crc uint32) error) (maxOid uint64, err error) {
 	var (
 		readOff int64
 		count   int
@@ -155,7 +155,7 @@ func LoopIndexFile(f *os.File, fn func(oid uint64, offset, size, crc uint32) err
 	return maxOid, err
 }
 
-func (tree *ObjectTree) set(oid uint64, offset, size, crc uint32) (oldOff, oldSize uint32, err error) {
+func (tree *ObjectTree) set(oid, offset uint64, size, crc uint32) (oldOff uint64, oldSize uint32, err error) {
 	o := &Object{
 		Oid:    oid,
 		Offset: offset,
@@ -164,8 +164,8 @@ func (tree *ObjectTree) set(oid uint64, offset, size, crc uint32) (oldOff, oldSi
 	}
 
 	tree.idxLock.Lock()
-	if found := tree.tree.ReplaceOrInsert(o); found != nil {
-		object := found.(*Object)
+	if found := tree.tree.ReplaceOrInsert(*o); found != nil {
+		object := found.(Object)
 		oldOff = object.Offset
 		oldSize = object.Size
 		tree.decreaseSize(oldSize)
@@ -183,10 +183,10 @@ func (tree *ObjectTree) get(oid uint64) (n *Object, exist bool) {
 			exist = false
 		}
 	}()
-	found := tree.tree.Get(&Object{Oid: oid})
+	found := tree.tree.Get(Object{Oid: oid})
 	if found != nil {
-		o := found.(*Object)
-		return o, true
+		o := found.(Object)
+		return &o, true
 	}
 
 	return nil, false
@@ -194,20 +194,20 @@ func (tree *ObjectTree) get(oid uint64) (n *Object, exist bool) {
 
 func (tree *ObjectTree) delete(oid uint64) error {
 	tree.idxLock.Lock()
-	found := tree.tree.Delete(&Object{Oid: oid})
+	found := tree.tree.Delete(Object{Oid: oid})
 	if found == nil {
 		tree.idxLock.Unlock()
 		return nil
 	}
-	o := found.(*Object)
+	o := found.(Object)
 	tree.decreaseSize(o.Size)
 	o.Size = MarkDeleteObject
 	tree.idxLock.Unlock()
 
-	return tree.appendToIdxFile(o)
+	return tree.appendToIdxFile(&o)
 }
 
-func (tree *ObjectTree) checkConsistency(oid uint64, offset, size uint32) bool {
+func (tree *ObjectTree) checkConsistency(oid, offset uint64, size uint32) bool {
 	o, ok := tree.get(oid)
 	if !ok || o.Offset != offset || o.Size != size {
 		return false

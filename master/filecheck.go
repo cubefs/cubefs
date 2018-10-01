@@ -30,7 +30,7 @@ func (partition *DataPartition) checkFile(clusterID string) {
 	switch partition.PartitionType {
 	case proto.ExtentPartition:
 		partition.checkExtentFile(liveReplicas, clusterID)
-	case proto.TinyPartition:
+	case proto.BlobPartition:
 		partition.checkChunkFile(liveReplicas, clusterID)
 	}
 
@@ -39,7 +39,7 @@ func (partition *DataPartition) checkFile(clusterID string) {
 
 func (partition *DataPartition) checkChunkFile(liveReplicas []*DataReplica, clusterID string) {
 	for _, fc := range partition.FileInCoreMap {
-		fc.generateFileCrcTask(partition.PartitionID, liveReplicas, proto.TinyPartition, clusterID)
+		fc.generateFileCrcTask(partition.PartitionID, liveReplicas, proto.BlobPartition, clusterID)
 	}
 	return
 }

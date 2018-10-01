@@ -41,11 +41,7 @@ const (
 )
 
 var (
-	AdminGetDataPartition     = master.AdminGetDataPartition
-	ErrNotLeader              = errors.New("not leader")
-	LeastGoalNum              = 2
-	ErrLackOfGoal             = errors.New("dataPartitionGoal is not equal dataPartitionHosts")
-	ErrDataPartitionOnBadDisk = errors.New("error bad disk")
+	AdminGetDataPartition = master.AdminGetDataPartition
 )
 
 type DataPartition interface {
@@ -63,16 +59,15 @@ type DataPartition interface {
 	ChangeStatus(status int)
 
 	GetExtentStore() *storage.ExtentStore
-	GetTinyStore() *storage.TinyStore
-	GetAllWaterMarker() (files []*storage.FileInfo, err error)
+	GetBlobStore() *storage.BlobStore
 
-	GetObjects(chunkID uint32, startOid, lastOid uint64) (objects []*storage.Object)
-	PackObject(dataBuf []byte, o *storage.Object, chunkID uint32) (err error)
-	DelObjects(chunkId uint32, deleteBuf []byte) (err error)
+	GetObjects(blobfileID uint32, startOid, lastOid uint64) (objects []*storage.Object)
+	PackObject(dataBuf []byte, o *storage.Object, blobfileID uint32) (err error)
+	DelObjects(blobfileId uint32, deleteBuf []byte) (err error)
 
 	LaunchRepair()
-	MergeRepair(metas *MembersFileMetas)
-
+	MergeExtentStoreRepair(metas *MembersFileMetas)
+	MergeBlobStoreRepair(metas *MembersFileMetas)
 	FlushDelete() error
 
 	AddWriteMetrics(latency uint64)
@@ -111,8 +106,9 @@ type dataPartition struct {
 	path            string
 	used            int
 	extentStore     *storage.ExtentStore
-	tinyStore       *storage.TinyStore
+	blobStore       *storage.BlobStore
 	stopC           chan bool
+	isFirstRestart  bool
 
 	runtimeMetrics *DataPartitionMetrics
 }
@@ -185,13 +181,14 @@ func newDataPartition(volumeId string, partitionId uint32, disk *Disk, size int)
 	if err != nil {
 		return
 	}
-	partition.tinyStore, err = storage.NewTinyStore(partition.path, size)
+	partition.blobStore, err = storage.NewBlobStore(partition.path, size)
 	if err != nil {
 		return
 	}
 	disk.AttachDataPartition(partition)
 	dp = partition
 	go partition.statusUpdateScheduler()
+	go partition.lauchBlobRepair()
 	return
 }
 
@@ -217,7 +214,7 @@ func (dp *dataPartition) Stop() {
 	}
 	// Close all store and backup partition data file.
 	dp.extentStore.Close()
-	dp.tinyStore.CloseAll()
+	dp.blobStore.CloseAll()
 
 }
 
@@ -276,7 +273,7 @@ func (dp *dataPartition) statusUpdate() {
 		status = proto.ReadOnly
 	}
 	if dp.isLeader {
-		dp.tinyStore.MoveChunkToUnavailChan()
+		dp.blobStore.MoveBlobFileToUnavailChan()
 	}
 	dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
 }
@@ -300,8 +297,8 @@ func (dp *dataPartition) GetExtentStore() *storage.ExtentStore {
 	return dp.extentStore
 }
 
-func (dp *dataPartition) GetTinyStore() *storage.TinyStore {
-	return dp.tinyStore
+func (dp *dataPartition) GetBlobStore() *storage.BlobStore {
+	return dp.blobStore
 }
 
 func (dp *dataPartition) String() (m string) {
@@ -318,13 +315,13 @@ func (dp *dataPartition) LaunchRepair() {
 	default:
 	}
 	if err := dp.updateReplicaHosts(); err != nil {
-		log.LogErrorf("action[LaunchRepair] err[%v].", err)
+		log.LogErrorf("action[LaunchRepair] err(%v).", err)
 		return
 	}
 	if !dp.isLeader {
 		return
 	}
-	dp.fileRepair()
+	dp.extentFileRepair()
 }
 
 func (dp *dataPartition) updateReplicaHosts() (err error) {
@@ -334,7 +331,7 @@ func (dp *dataPartition) updateReplicaHosts() (err error) {
 		return
 	}
 	if !dp.compareReplicaHosts(dp.replicaHosts, replicas) {
-		log.LogInfof("action[updateReplicaHosts] partition[%v] replicaHosts changed from [%v] to [%v].",
+		log.LogInfof("action[updateReplicaHosts] partition(%v) replicaHosts changed from (%v) to (%v).",
 			dp.partitionId, dp.replicaHosts, replicas)
 	}
 	dp.isLeader = isLeader
@@ -401,34 +398,29 @@ func (dp *dataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 		response.Result = err.Error()
 		return
 	}
-	tinySnapshot, err := dp.tinyStore.Snapshot()
+	blobSnapshot, err := dp.blobStore.Snapshot()
 	if err != nil {
 		response.Status = proto.TaskFail
 		response.Result = err.Error()
 		return
 	}
-	response.PartitionSnapshot = append(response.PartitionSnapshot, tinySnapshot...)
+	response.PartitionSnapshot = append(response.PartitionSnapshot, blobSnapshot...)
 	return
 }
 
-func (dp *dataPartition) GetAllWaterMarker() (files []*storage.FileInfo, err error) {
-	tinyFiles, err := dp.tinyStore.GetAllWatermark()
-	if err != nil {
-		return nil, err
-	}
+func (dp *dataPartition) GetAllExtentsMeta() (files []*storage.FileInfo, err error) {
 	files, err = dp.extentStore.GetAllWatermark(storage.GetStableExtentFilter())
 	if err != nil {
 		return nil, err
 	}
-	files = append(files, tinyFiles...)
 
 	return
 }
 
-func (dp *dataPartition) GetObjects(chunkID uint32, startOid, lastOid uint64) (objects []*storage.Object) {
+func (dp *dataPartition) GetObjects(blobfileID uint32, startOid, lastOid uint64) (objects []*storage.Object) {
 	objects = make([]*storage.Object, 0)
 	for startOid <= lastOid {
-		needle, err := dp.GetTinyStore().GetObject(chunkID, uint64(startOid))
+		needle, err := dp.GetBlobStore().GetObject(blobfileID, uint64(startOid))
 		if err != nil {
 			needle = &storage.Object{Oid: uint64(startOid), Size: storage.MarkDeleteObject}
 		}
@@ -438,16 +430,16 @@ func (dp *dataPartition) GetObjects(chunkID uint32, startOid, lastOid uint64) (o
 	return
 }
 
-func (dp *dataPartition) PackObject(dataBuf []byte, o *storage.Object, chunkID uint32) (err error) {
+func (dp *dataPartition) PackObject(dataBuf []byte, o *storage.Object, blobfileID uint32) (err error) {
 	o.Marshal(dataBuf)
 	if o.Size == storage.MarkDeleteObject && o.Oid != 0 {
 		return
 	}
-	_, err = dp.tinyStore.Read(chunkID, int64(o.Oid), int64(o.Size), dataBuf[storage.ObjectHeaderSize:])
+	_, err = dp.blobStore.Read(blobfileID, int64(o.Oid), int64(o.Size), dataBuf[storage.ObjectHeaderSize:])
 	return
 }
 
-func (dp *dataPartition) DelObjects(chunkId uint32, deleteBuf []byte) (err error) {
+func (dp *dataPartition) DelObjects(blobfileId uint32, deleteBuf []byte) (err error) {
 	if len(deleteBuf)%storage.ObjectIdLen != 0 {
 		err = errors.Annotatef(fmt.Errorf("unvalid objectLen for opsync delete object"),
 			"ApplyDelObjects Error")
@@ -459,58 +451,67 @@ func (dp *dataPartition) DelObjects(chunkId uint32, deleteBuf []byte) (err error
 		needle := binary.BigEndian.Uint64(deleteBuf[i*storage.ObjectIdLen : (i+1)*storage.ObjectIdLen])
 		needles = append(needles, needle)
 	}
-	if err = dp.tinyStore.ApplyDelObjects(chunkId, needles); err != nil {
+	if err = dp.blobStore.ApplyDelObjects(blobfileId, needles); err != nil {
 		err = errors.Annotatef(err, "ApplyDelObjects Error")
 		return err
 	}
 	return
 }
 
-func (dp *dataPartition) MergeRepair(metas *MembersFileMetas) {
-	store := dp.extentStore
+func (dp *dataPartition) MergeExtentStoreRepair(metas *MembersFileMetas) {
+	extentStore := dp.extentStore
 	for _, deleteExtentId := range metas.NeedDeleteExtentsTasks {
-		if deleteExtentId.FileId <= storage.TinyChunkCount {
+		if deleteExtentId.FileId <= storage.BlobFileFileCount {
 			continue
 		}
-		store.MarkDelete(uint64(deleteExtentId.FileId))
+		extentStore.MarkDelete(uint64(deleteExtentId.FileId))
 	}
 	for _, addExtent := range metas.NeedAddExtentsTasks {
-		if addExtent.FileId <= storage.TinyChunkCount {
+		if addExtent.FileId <= storage.BlobFileFileCount {
 			continue
 		}
-		if store.IsExistExtent(uint64(addExtent.FileId)) {
+		if extentStore.IsExistExtent(uint64(addExtent.FileId)) {
 			continue
 		}
-		err := store.Create(uint64(addExtent.FileId), addExtent.Inode, false)
+		err := extentStore.Create(uint64(addExtent.FileId), addExtent.Inode, false)
 		if err != nil {
 			continue
 		}
 		fixFileSizeTask := &storage.FileInfo{Source: addExtent.Source, FileId: addExtent.FileId, Size: addExtent.Size}
-		metas.NeedFixFileSizeTasks = append(metas.NeedFixFileSizeTasks, fixFileSizeTask)
+		metas.NeedFixExtentSizeTasks = append(metas.NeedFixExtentSizeTasks, fixFileSizeTask)
 	}
 
-	tinyFiles := make([]*storage.FileInfo, 0)
 	var wg sync.WaitGroup
-	for _, fixExtent := range metas.NeedFixFileSizeTasks {
-		if fixExtent.FileId <= storage.TinyChunkCount {
-			tinyFiles = append(tinyFiles, fixExtent)
+	for _, fixExtent := range metas.NeedFixExtentSizeTasks {
+		if fixExtent.FileId <= storage.BlobFileFileCount {
 			continue
 		}
-		if !store.IsExistExtent(uint64(fixExtent.FileId)) {
+		if !extentStore.IsExistExtent(uint64(fixExtent.FileId)) {
 			continue
 		}
 		wg.Add(1)
 		go dp.doStreamExtentFixRepair(&wg, fixExtent)
 	}
-	for chunkId, deleteTinyObject := range metas.NeedDeleteObjectsTasks {
-		if err := dp.DelObjects(uint32(chunkId), deleteTinyObject); err != nil {
-			log.LogErrorf("action[Repair] dataPartition[%v] chunkId[%v] deleteObject "+
-				"failed err[%v]", dp.partitionId, chunkId, err.Error())
+	wg.Wait()
+}
+
+func (dp *dataPartition) MergeBlobStoreRepair(metas *MembersFileMetas) {
+	var wg sync.WaitGroup
+	for _, fixBlobFiles := range metas.NeedFixBlobFileSizeTasks {
+		if fixBlobFiles.FileId > storage.BlobFileFileCount {
+			continue
 		}
-	}
-	for _, fixTiny := range tinyFiles {
 		wg.Add(1)
-		go dp.doStreamTinyFixRepair(&wg, fixTiny)
+		log.LogWarnf("%v recive repair task(%v)",
+			dp.getBlobRepairLogKey(fixBlobFiles.FileId), fixBlobFiles.String())
+		go dp.doStreamBlobFixRepair(&wg, fixBlobFiles)
+	}
+
+	for blobfileId, deleteBlobObject := range metas.NeedDeleteObjectsTasks {
+		if err := dp.DelObjects(uint32(blobfileId), deleteBlobObject); err != nil {
+			log.LogErrorf("action[Repair] dataPartition(%v) blobfileId(%v) deleteObject "+
+				"failed err(%v)", dp.partitionId, blobfileId, err.Error())
+		}
 	}
 	wg.Wait()
 }

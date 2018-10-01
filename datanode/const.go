@@ -34,9 +34,9 @@ const (
 	ActionWriteToCli                                 = "ActionWriteToCli"
 	ActionGetDataPartitionMetrics                    = "ActionGetDataPartitionMetrics"
 	ActionCheckAndAddInfos                           = "ActionCheckAndAddInfos"
-	ActionCheckChunkInfo                             = "ActionCheckChunkInfo"
+	ActionCheckBlobFileInfo                          = "ActionCheckBlobFileInfo"
 	ActionPostToMaster                               = "ActionPostToMaster"
-	ActionLeaderToFollowerOpCRepairReadPackResponse  = "ActionLeaderToFollowerOpCRepairReadPackResponse"
+	ActionFollowerRequireBlobFileRepairCmd           = "ActionFollowerRequireBlobFileRepairCmd"
 	ActionLeaderToFollowerOpRepairReadPackBuffer     = "ActionLeaderToFollowerOpRepairReadPackBuffer"
 	ActionLeaderToFollowerOpRepairReadSendPackBuffer = "ActionLeaderToFollowerOpRepairReadSendPackBuffer"
 
@@ -54,6 +54,9 @@ const (
 	InFlow = iota
 	OutFlow
 )
+const (
+	MaxRepairBlobFileCount = 3
+)
 
 const (
 	NetType = "tcp"
@@ -61,6 +64,10 @@ const (
 
 const (
 	ObjectIDSize = 8
+)
+const (
+	CanCompact    = 1
+	NotCanCompact = -1
 )
 
 //pack cmd response
@@ -89,7 +96,7 @@ const (
 	LogPartitionSnapshot = "Snapshot:"
 	LogGetWm             = "WM:"
 	LogGetAllWm          = "AllWM:"
-	LogCompactChunk      = "CompactChunk:"
+	LogCompactBlobFile   = "CompactBlobFile:"
 	LogWrite             = "WR:"
 	LogRead              = "RD:"
 	LogRepairRead        = "RRD:"

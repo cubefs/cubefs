@@ -41,13 +41,14 @@ var (
 )
 
 type FileInfo struct {
-	FileId  int       `json:"fileId"`
-	Inode   uint64    `json:"ino"`
-	Size    uint64    `json:"size"`
-	Crc     uint32    `json:"crc"`
-	Deleted bool      `json:"deleted"`
-	ModTime time.Time `json:"modTime"`
-	Source  string    `json:"src"`
+	FileId      int       `json:"fileId"`
+	Inode       uint64    `json:"ino"`
+	Size        uint64    `json:"size"`
+	Crc         uint32    `json:"crc"`
+	Deleted     bool      `json:"deleted"`
+	ModTime     time.Time `json:"modTime"`
+	Source      string    `json:"src"`
+	MemberIndex int
 }
 
 func (ei *FileInfo) FromExtent(extent Extent) {
@@ -66,7 +67,7 @@ func (ei *FileInfo) String() (m string) {
 	if source == "" {
 		source = "none"
 	}
-	return fmt.Sprintf("%v_%v_%v_%v_%v_%v", ei.FileId, ei.Inode, ei.Size, ei.Crc, ei.Deleted, source)
+	return fmt.Sprintf("%v_%v_%v_%v_%v_%v_%v", ei.FileId, ei.Inode, ei.Size, ei.Crc, ei.Deleted, ei.MemberIndex, source)
 }
 
 // Extent is used to manage extent block file for extent store engine.

@@ -18,12 +18,13 @@ import (
 	"testing"
 	"time"
 
+	"fmt"
 	"github.com/tiglabs/containerfs/util/log"
 )
 
 const (
-	TestVolName    = "intest"
-	TestMasterAddr = "10.196.31.173:80,10.196.31.141:80,10.196.30.200:80"
+	TestVolName    = "blob"
+	TestMasterAddr = "10.196.31.173:8001,10.196.31.141:8001,10.196.30.200:8001"
 	TestLogPath    = "testlog"
 )
 
@@ -42,21 +43,23 @@ func init() {
 	gBlobClient = bc
 }
 
-func TestGetVol(t *testing.T) {
-	dplist := gBlobClient.partitions.List()
-	for _, dp := range dplist {
-		t.Logf("%v", dp)
-	}
-	time.Sleep(2 * time.Second)
-}
-
 func TestWrite(t *testing.T) {
 	data := []byte("1234")
 	key, err := gBlobClient.Write(data)
 	if err != nil {
-		t.Errorf("Write: data(%v) err(%v)", string(data), err)
+		t.Fatalf("Write: data(%v) err(%v)", string(data), err)
 	}
-	t.Logf("Write: key(%v)", key)
+	fmt.Println(fmt.Sprintf("Write key(%v) success", key))
+	rdata, rerr := gBlobClient.Read(key)
+	if rerr != nil {
+		t.Fatalf("Read: key (%v) data(%v) err(%v)", key, string(rdata), rerr)
+	}
+	fmt.Println(fmt.Sprintf("Read key(%v) success", key))
+	derr := gBlobClient.Delete(key)
+	if derr != nil {
+		t.Fatalf("deleteKey: key(%v) err(%v)", key, derr)
+	}
+	fmt.Println(fmt.Sprintf("Delete key(%v) success", key))
 
 	time.Sleep(2 * time.Second)
 }

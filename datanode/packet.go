@@ -50,7 +50,7 @@ type Packet struct {
 func (p *Packet) afterTp() (ok bool) {
 	var err error
 	if p.IsErrPack() {
-		err = fmt.Errorf(p.GetOpMsg()+" failed because[%v]", string(p.Data[:p.Size]))
+		err = fmt.Errorf(p.GetOpMsg()+" failed because(%v)", string(p.Data[:p.Size]))
 	}
 	ump.AfterTP(p.tpObject, err)
 
@@ -132,11 +132,22 @@ func (p *Packet) CheckCrc() (err error) {
 	return storage.ErrPkgCrcMismatch
 }
 
-func NewGetAllWaterMarker(partitionId uint32) (p *Packet) {
+func NewExtentStoreGetAllWaterMarker(partitionId uint32) (p *Packet) {
 	p = new(Packet)
-	p.Opcode = proto.OpGetAllWatermark
+	p.Opcode = proto.OpExtentStoreGetAllWaterMark
 	p.PartitionID = partitionId
 	p.Magic = proto.ProtoMagic
+	p.ReqID = proto.GetReqID()
+
+	return
+}
+
+func NewBlobStoreGetAllWaterMarker(partitionId uint32) (p *Packet) {
+	p = new(Packet)
+	p.Opcode = proto.OpBlobStoreGetAllWaterMark
+	p.PartitionID = partitionId
+	p.Magic = proto.ProtoMagic
+	p.StoreMode = proto.BlobStoreMode
 	p.ReqID = proto.GetReqID()
 
 	return
@@ -156,23 +167,45 @@ func NewStreamReadPacket(partitionId uint32, extentId, offset, size int) (p *Pac
 	return
 }
 
-func NewStreamChunkRepairReadPacket(partitionId uint32, chunkId int) (p *Packet) {
+func NewStreamBlobFileRepairReadPacket(partitionId uint32, blobfileId int) (p *Packet) {
 	p = new(Packet)
-	p.FileID = uint64(chunkId)
+	p.FileID = uint64(blobfileId)
 	p.PartitionID = partitionId
 	p.Magic = proto.ProtoMagic
-	p.Opcode = proto.OpChunkRepairRead
-	p.StoreMode = proto.TinyStoreMode
+	p.Opcode = proto.OpBlobFileRepairRead
+	p.StoreMode = proto.BlobStoreMode
 	p.ReqID = proto.GetReqID()
 
 	return
 }
 
-func NewNotifyRepair(partitionId uint32) (p *Packet) {
+func NewNotifyExtentRepair(partitionId uint32) (p *Packet) {
 	p = new(Packet)
-	p.Opcode = proto.OpNotifyRepair
+	p.Opcode = proto.OpNotifyExtentRepair
 	p.PartitionID = partitionId
 	p.Magic = proto.ProtoMagic
+	p.ReqID = proto.GetReqID()
+
+	return
+}
+
+func NewNotifyBlobRepair(partitionId uint32) (p *Packet) {
+	p = new(Packet)
+	p.Opcode = proto.OpNotifyBlobRepair
+	p.PartitionID = partitionId
+	p.Magic = proto.ProtoMagic
+	p.ReqID = proto.GetReqID()
+
+	return
+}
+
+func NewNotifyCompactPkg(fileID, datapartitionId uint32) (p *Packet) {
+	p = new(Packet)
+	p.FileID = uint64(fileID)
+	p.PartitionID = datapartitionId
+	p.Magic = proto.ProtoMagic
+	p.Opcode = proto.OpNotifyCompactBlobFile
+	p.StoreMode = proto.BlobStoreMode
 	p.ReqID = proto.GetReqID()
 
 	return
@@ -180,7 +213,7 @@ func NewNotifyRepair(partitionId uint32) (p *Packet) {
 
 func (p *Packet) IsTailNode() (ok bool) {
 	if p.Nodes == 0 && (p.IsWriteOperation() || p.Opcode == proto.OpCreateFile ||
-		(p.Opcode == proto.OpMarkDelete && p.StoreMode == proto.TinyStoreMode)) {
+		(p.Opcode == proto.OpMarkDelete && p.StoreMode == proto.BlobStoreMode)) {
 		return true
 	}
 
@@ -231,7 +264,7 @@ func (p *Packet) IsErrPack() bool {
 }
 
 func (p *Packet) getErr() (m string) {
-	return fmt.Sprintf("req[%v] err[%v]", p.GetUniqueLogId(), string(p.Data[:p.Size]))
+	return fmt.Sprintf("req(%v) err(%v)", p.GetUniqueLogId(), string(p.Data[:p.Size]))
 }
 
 func (p *Packet) ClassifyErrorOp(errLog string, errMsg string) {

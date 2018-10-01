@@ -119,8 +119,8 @@ func (msgH *MessageHandler) checkReplyAvail(reply *Packet) (err error) {
 		if reply.ReqID == request.ReqID {
 			return
 		}
-		return fmt.Errorf(ActionCheckReplyAvail+" request [%v] reply[%v] from %v localaddr %v"+
-			" remoteaddr %v requestCrc[%v] replyCrc[%v]", request.GetUniqueLogId(), reply.GetUniqueLogId(), request.NextAddr,
+		return fmt.Errorf(ActionCheckReplyAvail+" request (%v) reply(%v) from %v localaddr %v"+
+			" remoteaddr %v requestCrc(%v) replyCrc(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId(), request.NextAddr,
 			request.NextConn.LocalAddr().String(), request.NextConn.RemoteAddr().String(), request.Crc, reply.Crc)
 	}
 
@@ -151,7 +151,7 @@ func (msgH *MessageHandler) ClearReqs(s *DataNode) {
 			} else {
 				gConnPool.Put(request.NextConn, true)
 			}
-			s.headNodePutChunk(request)
+			s.headNodePutBlobFile(request)
 		}
 	}
 	replys := len(msgH.replyCh)
@@ -170,6 +170,10 @@ func (msgH *MessageHandler) ClearReplys() {
 	for i := 0; i < replys; i++ {
 		<-msgH.replyCh
 	}
+}
+
+func (msgH *MessageHandler) isUsedCloseFiles(conn *net.TCPConn, target string, err error) {
+	gConnPool.CheckErrorForPutConnect(conn, target, err)
 }
 
 func (msgH *MessageHandler) DelListElement(reply *Packet, e *list.Element, isForClose bool) {

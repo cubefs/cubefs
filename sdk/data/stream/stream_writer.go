@@ -455,6 +455,7 @@ func (stream *StreamWriter) addHasWriteSize(writed int) {
 func (stream *StreamWriter) setHasWriteSize(writeSize uint64) {
 	atomic.StoreUint64(&stream.hasUpdateToMetaNodeSize, writeSize)
 	atomic.StoreUint64(&stream.hasWriteSize, writeSize)
+	atomic.StoreUint64(&stream.hasUpdateToMetaNodeSize, writeSize)
 
 }
 

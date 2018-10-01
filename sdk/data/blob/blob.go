@@ -15,117 +15,233 @@
 package blob
 
 import (
-	"strings"
-	"syscall"
-	"time"
-
+	"fmt"
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util"
+	"github.com/tiglabs/containerfs/sdk/data/wrapper"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/pool"
+	"hash/crc32"
+	"net"
+	"strings"
+	"syscall"
 )
 
 const (
-	WriteRetryLimit   = 3
-	ReadRetryLimit    = 10
-	SendRetryLimit    = 10
-	SendRetryInterval = 100 * time.Millisecond
+	MaxRetryCnt = 100
 )
 
 type BlobClient struct {
-	cluster    string
-	volname    string
-	master     util.MasterHelper
-	conns      *pool.ConnPool
-	partitions *PartitionCache
+	cluster string
+	volname string
+	conns   *pool.ConnPool
+	wraper  *wrapper.Wrapper
 }
 
 func NewBlobClient(volname, masters string) (*BlobClient, error) {
 	client := new(BlobClient)
 	client.volname = volname
-	master := strings.Split(masters, ":")
-	client.master = util.NewMasterHelper()
-	for _, ip := range master {
-		client.master.AddNode(ip)
-	}
+	var err error
 	client.conns = pool.NewConnPool()
-
-	err := client.GetClusterInfo()
+	client.wraper, err = wrapper.NewDataPartitionWrapper(volname, masters)
 	if err != nil {
-		errors.Annotatef(err, "NewBlobClient: get cluster info failed")
 		return nil, err
 	}
-
-	client.partitions = NewPartitionCache()
-	err = client.UpdateDataPartitions()
-	if err != nil {
-		errors.Annotatef(err, "NewBlobClient: update data partitions failed")
-		return nil, err
-	}
-	go client.refresh()
+	client.cluster = client.wraper.GetClusterName()
 	return client, nil
+}
+
+func (client *BlobClient) checkWriteResponse(request, reply *proto.Packet) (err error) {
+	if reply.ResultCode != proto.OpOk {
+		return fmt.Errorf("WriteRequest(%v) reply(%v) replyOpCode(%v) Err msg(%v)",
+			request.GetUniqueLogId(), reply.GetUniqueLogId(), reply.Opcode, string(reply.Data[:reply.Size]))
+	}
+	if request.ReqID != reply.ReqID {
+		return fmt.Errorf("WriteRequest(%v) reply(%v) REQID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
+	}
+	if request.PartitionID != reply.PartitionID {
+		return fmt.Errorf("WriteRequest(%v) reply(%v) PartitionID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
+	}
+	if request.Crc != reply.Crc {
+		return fmt.Errorf("WriteRequest(%v) reply(%v) CRC not equare,request(%v) reply(%v)", request.GetUniqueLogId(),
+			reply.GetUniqueLogId(), request.Crc, reply.Crc)
+	}
+
+	return
+}
+
+func (client *BlobClient) checkReadResponse(request, reply *proto.Packet, expectCrc uint32) (err error) {
+	if reply.ResultCode != proto.OpOk {
+		return fmt.Errorf("ReadRequest(%v) reply(%v) replyOp Err msg(%v)",
+			request.GetUniqueLogId(), reply.GetUniqueLogId(), string(reply.Data[:reply.Size]))
+	}
+	if request.ReqID != reply.ReqID {
+		return fmt.Errorf("ReadRequest(%v) reply(%v) REQID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
+	}
+	if request.PartitionID != reply.PartitionID {
+		return fmt.Errorf("ReadRequest(%v) reply(%v) PartitionID not equare", request.GetUniqueLogId(), reply.GetUniqueLogId())
+	}
+	replyBodyCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
+	if replyBodyCrc != reply.Crc {
+		return fmt.Errorf("ReadRequest(%v) reply(%v) CRC not equare,replyBodyCrc(%v)"+
+			" replyHeaderCrc(%v) userExpectCrc(%v)", request.GetUniqueLogId(),
+			reply.GetUniqueLogId(), replyBodyCrc, reply.Crc, expectCrc)
+	}
+	if expectCrc != replyBodyCrc {
+		return fmt.Errorf("ReadRequest(%v) reply(%v) CRC not equare,request(%v) userExpectCrc(%v) reply(%v)", request.GetUniqueLogId(),
+			reply.GetUniqueLogId(), request.Crc, expectCrc, replyBodyCrc)
+	}
+	return
 }
 
 func (client *BlobClient) Write(data []byte) (key string, err error) {
 	var (
-		req, resp *proto.Packet
-		dp        *DataPartition
+		dp *wrapper.DataPartition
 	)
-
-	retry := client.partitions.GetWritePartitionLen()
-	for i := 0; i < retry; i++ {
-		dp = client.partitions.GetWritePartition()
-		if dp == nil {
+	exclude := make([]uint32, 0)
+	writeData := make([]byte, len(data))
+	writeSize := len(data)
+	copy(writeData, data)
+	for i := 0; i < MaxRetryCnt; i++ {
+		dp, err = client.wraper.GetWriteDataPartition(exclude)
+		if err != nil {
 			log.LogErrorf("Write: No write data partition")
 			return "", syscall.ENOMEM
 		}
-
-		req = NewWritePacket(dp, data)
-		resp, err = client.sendToDataPartition(dp, req)
-		if err != nil || resp.ResultCode != proto.OpOk {
-			log.LogErrorf("Write: dp(%v) err(%v) result(%v)", dp, err, resp.GetResultMesg())
+		var (
+			conn *net.TCPConn
+		)
+		request := NewBlobWritePacket(dp, writeData)
+		if conn, err = client.conns.Get(dp.Hosts[0]); err != nil {
+			log.LogWarnf("WriteRequest(%v) Get connect from host(%v) err(%v)", request.GetUniqueLogId(), dp.Hosts[0], err.Error())
+			exclude = append(exclude, dp.PartitionID)
 			continue
 		}
-
-		partitionID, fileID, objID, size := ParsePacket(resp)
-		if uint64(partitionID) != dp.PartitionID {
-			log.LogWarnf("Write: req partition id(%v) resp partition id(%v)", dp.PartitionID, partitionID)
+		if err = request.WriteToConn(conn); err != nil {
+			client.conns.CheckErrorForPutConnect(conn, dp.Hosts[0], err)
+			log.LogWarnf("WriteRequest(%v) Write to  host(%v) err(%v)", request.GetUniqueLogId(), dp.Hosts[0], err.Error())
+			exclude = append(exclude, dp.PartitionID)
 			continue
 		}
-		key = GenKey(client.cluster, client.volname, partitionID, fileID, objID, size)
+		reply := new(proto.Packet)
+		if err = reply.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+			client.conns.Put(conn, true)
+			log.LogWarnf("WriteRequest(%v) Write host(%v) err(%v)", request.GetUniqueLogId(), dp.Hosts[0], err.Error())
+			exclude = append(exclude, dp.PartitionID)
+			continue
+		}
+		if err = client.checkWriteResponse(request, reply); err != nil {
+			client.conns.Put(conn, true)
+			log.LogWarnf("WriteRequest CheckWriteResponse error(%v)", err.Error())
+			exclude = append(exclude, dp.PartitionID)
+			continue
+		}
+		partitionID, fileID, objID, crc := ParsePacket(reply)
+		client.conns.Put(conn, false)
+		key = GenKey(client.cluster, client.volname, partitionID, fileID, objID, uint32(writeSize), crc)
 		return key, nil
 	}
 
 	return "", syscall.EIO
 }
 
+func (client *BlobClient) readDataFromHost(request *proto.Packet, target string, expectCrc uint32) (data []byte, err error) {
+
+	var (
+		conn *net.TCPConn
+	)
+	if conn, err = client.conns.Get(target); err != nil {
+		err = errors.Annotatef(err, "ReadRequest(%v) Get connect from host(%v)-", request.GetUniqueLogId(), target)
+		return
+	}
+	if err = request.WriteToConn(conn); err != nil {
+		client.conns.CheckErrorForPutConnect(conn, target, err)
+		err = errors.Annotatef(err, "ReadRequest(%v) Write To host(%v)-", request.GetUniqueLogId(), target)
+		return
+	}
+	reply := new(proto.Packet)
+	if err = reply.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+		client.conns.Put(conn, true)
+		err = errors.Annotatef(err, "ReadRequest(%v) ReadFrom host(%v)-", request.GetUniqueLogId(), target)
+		return
+	}
+	if err = client.checkReadResponse(request, reply, expectCrc); err != nil {
+		client.conns.Put(conn, true)
+		err = errors.Annotatef(err, "ReadRequest CheckReadResponse from (%v)", target)
+		return
+	}
+	client.conns.Put(conn, false)
+	return reply.Data, nil
+
+}
+
 func (client *BlobClient) Read(key string) (data []byte, err error) {
-	cluster, volname, partitionID, fileID, objID, size, err := ParseKey(key)
+	cluster, volname, partitionID, fileID, objID, size, crc, err := ParseKey(key)
 	if err != nil || strings.Compare(cluster, client.cluster) != 0 || strings.Compare(volname, client.volname) != 0 {
 		log.LogErrorf("Read: err(%v)", err)
 		return nil, syscall.EINVAL
 	}
 
-	dp := client.partitions.Get(uint64(partitionID))
+	dp, err := client.wraper.GetDataPartition(partitionID)
 	if dp == nil {
-		log.LogErrorf("Read: No partition, key(%v)", key)
+		log.LogErrorf("Read: No partition, key(%v) err(%v)", key, err)
+		return
 	}
 
-	req := NewReadPacket(partitionID, fileID, objID, size)
-	resp, err := client.sendToDataPartition(dp, req)
-	if err != nil || resp.ResultCode != proto.OpOk {
-		log.LogErrorf("Read: key(%v) err(%v) result(%v)", key, err, resp.GetResultMesg())
-		return nil, syscall.EIO
+	request := NewBlobReadPacket(partitionID, fileID, objID, size)
+	mesg := ""
+	for i := 0; i < len(dp.Hosts); i++ {
+		data, err = client.readDataFromHost(request, dp.Hosts[i], crc)
+		if err == nil {
+			return
+		}
+		log.LogWarn(err.Error())
+		mesg += fmt.Sprintf(" (index(%v) err(%v))", i, err.Error())
 	}
+	log.LogWarn(mesg)
+	err = fmt.Errorf(mesg)
 
-	return resp.Data, nil
+	return nil, err
 }
 
 func (client *BlobClient) Delete(key string) (err error) {
-	//TODO: Parse key
-	//TODO: Create delete packet
-	//TODO: Send request to data node
-	//TODO: Read response
+	cluster, volname, partitionID, fileID, objID, _, _, err := ParseKey(key)
+	if err != nil || strings.Compare(cluster, client.cluster) != 0 || strings.Compare(volname, client.volname) != 0 {
+		log.LogErrorf("Delete: err(%v)", err)
+		return syscall.EINVAL
+	}
+
+	dp, err := client.wraper.GetDataPartition(partitionID)
+	if dp == nil {
+		log.LogErrorf("Delete: No partition, key(%v) err(%v)", key, err)
+		return
+	}
+	request := NewBlobDeletePacket(dp, fileID, objID)
+	var (
+		conn *net.TCPConn
+	)
+	if conn, err = client.conns.Get(dp.Hosts[0]); err != nil {
+		err = errors.Annotatef(err, "DeleteRequest(%v) Get connect from host(%v)-", key, dp.Hosts[0])
+		client.conns.Put(conn, true)
+		return
+	}
+	if err = request.WriteToConn(conn); err != nil {
+		client.conns.CheckErrorForPutConnect(conn, dp.Hosts[0], err)
+		err = errors.Annotatef(err, "DeleteRequest(%v) Write To host(%v)-", key, dp.Hosts[0])
+		return
+	}
+	reply := new(proto.Packet)
+	if err = reply.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+		client.conns.Put(conn, true)
+		err = errors.Annotatef(err, "DeleteRequest(%v) readResponse from host(%v)-", key, dp.Hosts[0])
+		return
+	}
+	if reply.ResultCode != proto.OpOk {
+		client.conns.Put(conn, true)
+		return fmt.Errorf("DeleteRequest(%v) reply(%v) replyOp Err msg(%v)",
+			request.GetUniqueLogId(), reply.GetUniqueLogId(), string(reply.Data[:reply.Size]))
+	}
+	client.conns.Put(conn, false)
+
 	return nil
 }

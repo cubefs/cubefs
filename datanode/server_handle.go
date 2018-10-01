@@ -107,7 +107,7 @@ func (s *DataNode) apiGetPartition(w http.ResponseWriter, r *http.Request) {
 		s.buildApiFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	if files, err = partition.GetAllWaterMarker(); err != nil {
+	if files, err = partition.GetExtentStore().GetAllWatermark(nil); err != nil {
 		err = fmt.Errorf("get watermark fail: %v", err)
 		s.buildApiFailureResp(w, http.StatusInternalServerError, err.Error())
 		return
@@ -167,6 +167,44 @@ func (s *DataNode) apiGetExtent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.buildApiSuccessResp(w, extentInfo)
+	return
+}
+
+const (
+	VerifyBlobFile = 1
+)
+
+func (s *DataNode) apiGetBlobFile(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionId  int
+		blobFileId   int
+		verify       int
+		err          error
+		blobFileInfo *storage.BlobFileInfo
+	)
+	if err = r.ParseForm(); err != nil {
+		s.buildApiFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if partitionId, err = strconv.Atoi(r.FormValue("partitionId")); err != nil {
+		s.buildApiFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if blobFileId, err = strconv.Atoi(r.FormValue("blobFileId")); err != nil {
+		s.buildApiFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	verify, _ = strconv.Atoi(r.FormValue("verify"))
+
+	partition := s.space.GetPartition(uint32(partitionId))
+	if partition == nil {
+		s.buildApiFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
+	}
+
+	blobFileInfo = partition.GetBlobStore().VerfiyObjects(blobFileId, VerifyBlobFile == verify)
+
+	s.buildApiSuccessResp(w, blobFileInfo)
 	return
 }
 

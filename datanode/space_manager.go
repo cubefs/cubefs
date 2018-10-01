@@ -106,18 +106,18 @@ func (space *spaceManager) LoadDisk(path string, restSize uint64, maxErrs int) (
 		disk    *Disk
 		visitor PartitionVisitor
 	)
-	log.LogDebugf("action[LoadDisk] load disk from path[%v].", path)
+	log.LogDebugf("action[LoadDisk] load disk from path(%v).", path)
 	visitor = func(dp DataPartition) {
 		space.partitionMu.Lock()
 		defer space.partitionMu.Unlock()
 		if _, has := space.partitions[dp.ID()]; !has {
 			space.partitions[dp.ID()] = dp
-			log.LogDebugf("action[LoadDisk] put partition[%v] to space manager.", dp.ID())
+			log.LogDebugf("action[LoadDisk] put partition(%v) to space manager.", dp.ID())
 		}
 	}
 	if _, err = space.GetDisk(path); err != nil {
 
-		disk = NewDisk(path, restSize, maxErrs)
+		disk = NewDisk(path, restSize, maxErrs, space)
 		disk.RestorePartition(visitor)
 		space.putDisk(disk)
 		err = nil
@@ -133,7 +133,7 @@ func (space *spaceManager) GetDisk(path string) (d *Disk, err error) {
 		d = disk
 		return
 	}
-	err = fmt.Errorf("disk[%v] not exsit", path)
+	err = fmt.Errorf("disk(%v) not exsit", path)
 	return
 }
 
@@ -164,8 +164,8 @@ func (space *spaceManager) updateMetrics() {
 		}
 	}
 	space.diskMu.RUnlock()
-	log.LogDebugf("action[updateMetrics] total[%v] used[%v] available[%v] createdPartitionWeights[%v]  remainWeightsForCreatePartition[%v] "+
-		"partitionCnt[%v] maxWeightsForCreatePartition[%v] ", total, used, available, createdPartitionWeights, remainWeightsForCreatePartition, partitionCnt, maxWeightsForCreatePartition)
+	log.LogDebugf("action[updateMetrics] total(%v) used(%v) available(%v) createdPartitionWeights(%v)  remainWeightsForCreatePartition(%v) "+
+		"partitionCnt(%v) maxWeightsForCreatePartition(%v) ", total, used, available, createdPartitionWeights, remainWeightsForCreatePartition, partitionCnt, maxWeightsForCreatePartition)
 	space.stats.updateMetrics(total, used, available, createdPartitionWeights,
 		remainWeightsForCreatePartition, maxWeightsForCreatePartition, partitionCnt)
 }

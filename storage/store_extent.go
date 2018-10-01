@@ -227,8 +227,8 @@ func (s *ExtentStore) initBaseFileId() (err error) {
 	if _, err = s.metaFp.ReadAt(baseFileIdBytes, ExtMetaBaseIdOffset); err == nil {
 		baseFileId = binary.BigEndian.Uint64(baseFileIdBytes)
 	}
-	if TinyChunkCount > baseFileId {
-		baseFileId = uint64(TinyChunkCount)
+	if BlobFileFileCount > baseFileId {
+		baseFileId = uint64(BlobFileFileCount)
 	}
 	files, err := ioutil.ReadDir(s.dataDir)
 	if err != nil {
@@ -371,7 +371,6 @@ func (s *ExtentStore) cleanupScheduler() {
 }
 
 func (s *ExtentStore) cleanup() {
-
 	extentInfoSlice, err := s.GetAllWatermark(GetEmptyExtentFilter())
 	if err != nil {
 		return
@@ -521,7 +520,7 @@ func (s *ExtentStore) parseExtentId(filename string) (extentId uint64, isExtent 
 		isExtent = false
 		return
 	}
-	isExtent = extentId > TinyChunkCount
+	isExtent = extentId > BlobFileFileCount
 	return
 }
 

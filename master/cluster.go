@@ -601,7 +601,7 @@ func (c *Cluster) createVol(name, volType string, replicaNum uint8) (err error) 
 		goto errDeal
 	}
 
-	if vol.VolType == proto.TinyPartition {
+	if vol.VolType == proto.BlobPartition {
 		return
 	}
 
