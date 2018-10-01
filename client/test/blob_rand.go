@@ -113,12 +113,11 @@ func readThead() {
 
 }
 
-
-func geratorRandbytes(size int)(data []byte){
+func geratorRandbytes(size int) (data []byte) {
 	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-	data=make([]byte,size)
-	for i:=range data{
-		data[i]=byte(letters[rand.Intn(len(letters))])
+	data = make([]byte, size)
+	for i := range data {
+		data[i] = byte(letters[rand.Intn(len(letters))])
 	}
 	return
 }
