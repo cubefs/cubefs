@@ -90,7 +90,7 @@ func NewObjectTree(f *os.File) *ObjectTree {
 func (tree *ObjectTree) Load() (maxOid uint64, err error) {
 	f := tree.idxFile
 	maxOid, err = LoopIndexFile(f, func(oid, offset uint64, size, crc uint32) error {
-		o := &Object{Oid: oid, Offset: offset, Size: size, Crc: crc}
+		o := Object{Oid: oid, Offset: offset, Size: size, Crc: crc}
 		if oid > 0 && size != MarkDeleteObject {
 			tree.idxLock.Lock()
 			found := tree.tree.ReplaceOrInsert(o)
