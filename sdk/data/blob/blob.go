@@ -34,7 +34,7 @@ const (
 type BlobClient struct {
 	cluster string
 	volname string
-	conns   *pool.ConnPool
+	conns   *pool.ConnectPool
 	wraper  *wrapper.Wrapper
 }
 

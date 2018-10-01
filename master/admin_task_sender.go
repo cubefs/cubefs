@@ -48,7 +48,7 @@ type AdminTaskSender struct {
 	TaskMap    map[string]*proto.AdminTask
 	sync.Mutex
 	exitCh   chan struct{}
-	connPool *pool.ConnPool
+	connPool *pool.ConnectPool
 }
 
 func NewAdminTaskSender(targetAddr, clusterID string) (sender *AdminTaskSender) {

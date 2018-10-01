@@ -73,7 +73,7 @@ type MetaPartitionConfig struct {
 	BeforeStop  func()              `json:"-"`
 	AfterStop   func()              `json:"-"`
 	RaftStore   raftstore.RaftStore `json:"-"`
-	ConnPool    *pool.ConnPool      `json:"-"`
+	ConnPool    *pool.ConnectPool   `json:"-"`
 }
 
 func (c *MetaPartitionConfig) Dump() ([]byte, error) {

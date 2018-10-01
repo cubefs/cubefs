@@ -39,6 +39,7 @@ func NewPool(min, max int, target string) (p *Pool) {
 	p.maxcap = max
 	p.target = target
 	p.pool = make(chan *ConnectObject, max)
+	p.initAllConnect()
 	return p
 }
 
@@ -100,7 +101,7 @@ func (p *Pool) Get() (c *net.TCPConn, err error) {
 	return
 }
 
-type ConnPool struct {
+type ConnectPool struct {
 	sync.Mutex
 	pools   map[string]*Pool
 	mincap  int
@@ -108,14 +109,14 @@ type ConnPool struct {
 	timeout int64
 }
 
-func NewConnPool() (connectPool *ConnPool) {
-	connectPool = &ConnPool{pools: make(map[string]*Pool), mincap: 5, maxcap: 50, timeout: int64(time.Second * 20)}
+func NewConnPool() (connectPool *ConnectPool) {
+	connectPool = &ConnectPool{pools: make(map[string]*Pool), mincap: 5, maxcap: 50, timeout: int64(time.Second * 20)}
 	go connectPool.autoRelease()
 
 	return connectPool
 }
 
-func (connectPool *ConnPool) Get(targetAddr string) (c *net.TCPConn, err error) {
+func (connectPool *ConnectPool) Get(targetAddr string) (c *net.TCPConn, err error) {
 	connectPool.Lock()
 	pool, ok := connectPool.pools[targetAddr]
 	if !ok {
@@ -127,7 +128,7 @@ func (connectPool *ConnPool) Get(targetAddr string) (c *net.TCPConn, err error) 
 	return pool.Get()
 }
 
-func (connectPool *ConnPool) Put(c *net.TCPConn, forceClose bool) {
+func (connectPool *ConnectPool) Put(c *net.TCPConn, forceClose bool) {
 	if c == nil {
 		return
 	}
@@ -149,7 +150,7 @@ func (connectPool *ConnPool) Put(c *net.TCPConn, forceClose bool) {
 	return
 }
 
-func (connectPool *ConnPool) CheckErrorForPutConnect(c *net.TCPConn, target string, err error) {
+func (connectPool *ConnectPool) CheckErrorForPutConnect(c *net.TCPConn, target string, err error) {
 	if c == nil {
 		return
 	}
@@ -174,14 +175,14 @@ func (connectPool *ConnPool) CheckErrorForPutConnect(c *net.TCPConn, target stri
 	pool.putconnect(object)
 }
 
-func (connectPool *ConnPool) ReleaseAllConnect(target string) {
+func (connectPool *ConnectPool) ReleaseAllConnect(target string) {
 	connectPool.Lock()
 	pool := connectPool.pools[target]
 	connectPool.Unlock()
 	pool.AutoRelease()
 }
 
-func (connectPool *ConnPool) autoRelease() {
+func (connectPool *ConnectPool) autoRelease() {
 	for {
 		pools := make([]*Pool, 0)
 		connectPool.Lock()

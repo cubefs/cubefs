@@ -53,7 +53,7 @@ type MetaWrapper struct {
 	cluster string
 	volname string
 	master  util.MasterHelper
-	conns   *pool.ConnPool
+	conns   *pool.ConnectPool
 
 	// Partitions and ranges should be modified together. So do not
 	// use partitions and ranges directly. Use the helper functions instead.

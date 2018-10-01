@@ -57,7 +57,7 @@ type metaManager struct {
 	nodeId     uint64
 	rootDir    string
 	raftStore  raftstore.RaftStore
-	connPool   *pool.ConnPool
+	connPool   *pool.ConnectPool
 	state      uint32
 	mu         sync.RWMutex
 	partitions map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
