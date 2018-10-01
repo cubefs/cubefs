@@ -27,8 +27,8 @@ import (
 )
 
 const (
-	ObjectHeaderSize  = 24
-	IndexBatchRead    = 1024
+	ObjectHeaderSize = 24
+	IndexBatchRead   = 1024
 	MarkDeleteObject = math.MaxUint32
 )
 
@@ -89,7 +89,7 @@ func NewObjectTree(f *os.File) *ObjectTree {
 // guarantee there is no write and delete operations on this needle map
 func (tree *ObjectTree) Load() (maxOid uint64, err error) {
 	f := tree.idxFile
-	maxOid, err = LoopIndexFile(f, func(oid uint64, offset, size, crc uint32) error {
+	maxOid, err = LoopIndexFile(f, func(oid, offset uint64, size, crc uint32) error {
 		o := &Object{Oid: oid, Offset: offset, Size: size, Crc: crc}
 		if oid > 0 && size != MarkDeleteObject {
 			tree.idxLock.Lock()
@@ -120,7 +120,7 @@ func (o *Object) Check(offset uint64, size, crc uint32) bool {
 		(o.Size == size || size == MarkDeleteObject)
 }
 
-func LoopIndexFile(f *os.File, fn func(oid uint64, offset, size, crc uint32) error) (maxOid uint64, err error) {
+func LoopIndexFile(f *os.File, fn func(oid, offset uint64, size, crc uint32) error) (maxOid uint64, err error) {
 	var (
 		readOff int64
 		count   int

@@ -123,7 +123,7 @@ func (s *BlobStore) WriteDeleteDentry(objectId uint64, blobfileId int, crc uint3
 	if fi, err = c.file.Stat(); err != nil {
 		return
 	}
-	o := &Object{Oid: objectId, Size: MarkDeleteObject, Offset: uint32(fi.Size()), Crc: crc}
+	o := &Object{Oid: objectId, Size: MarkDeleteObject, Offset: uint64(fi.Size()), Crc: crc}
 	if err = c.tree.appendToIdxFile(o); err == nil {
 		if c.loadLastOid() < objectId {
 			c.storeLastOid(objectId)
@@ -365,7 +365,7 @@ func (s *BlobStore) GetDelObjects(fileId uint32) (objects []uint64) {
 	c.storeSyncLastOid(syncLastOid)
 
 	c.commitLock.RLock()
-	LoopIndexFile(c.tree.idxFile, func(oid uint64, offset, size, crc uint32) error {
+	LoopIndexFile(c.tree.idxFile, func(oid, offset uint64, size, crc uint32) error {
 		if oid > syncLastOid {
 			return errors.New("Exceed syncLastOid")
 		}

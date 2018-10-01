@@ -77,7 +77,7 @@ func WalkIndexFileAndVerify(indexfp *os.File, datafp *os.File, blobFileInfo *Blo
 			oi.Object = ni
 			oi.SuccessVerify = false
 			blobFileInfo.Objects = append(blobFileInfo.Objects, oi)
-			if ni.Size == TombstoneFileSize {
+			if ni.Size == MarkDeleteObject {
 				oi.SuccessVerify = true
 				continue
 			}

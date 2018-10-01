@@ -87,7 +87,7 @@ func (c *BlobFile) getCheckSum() (fullCRC uint32, syncLastOid uint64, count int)
 	crcBuffer := make([]byte, 0)
 	buf := make([]byte, 4)
 	c.commitLock.RLock()
-	LoopIndexFile(c.tree.idxFile, func(oid uint64, offset, size, crc uint32) error {
+	LoopIndexFile(c.tree.idxFile, func(oid, offset uint64, size, crc uint32) error {
 		if oid > syncLastOid {
 			return nil
 		}
@@ -166,7 +166,7 @@ func (c *BlobFile) copyValidData(dstNm *ObjectTree, dstDatFile *os.File) (err er
 	srcIdxFile := srcTree.idxFile
 	deletedSet := make(map[uint64]struct{})
 	log.LogInfo("copyValidData start: ", c.tree.idxFile.Name())
-	_, err = LoopIndexFile(srcIdxFile, func(oid uint64, offset, size, crc uint32) error {
+	_, err = LoopIndexFile(srcIdxFile, func(oid, offset uint64, size, crc uint32) error {
 		var (
 			o *Object
 			e error
