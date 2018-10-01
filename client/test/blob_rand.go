@@ -113,10 +113,20 @@ func readThead() {
 
 }
 
+
+func geratorRandbytes(size int)(data []byte){
+	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	data=make([]byte,size)
+	for i:=range data{
+		data[i]=byte(letters[rand.Intn(len(letters))])
+	}
+	return
+}
+
 func writeThread() {
 	maxLen := util.MB * 5
 	rand.Seed(time.Now().UnixNano())
-	data := util.RandStringBytesMaskImpr(maxLen)
+	data := geratorRandbytes(maxLen)
 	for {
 		rand.Seed(time.Now().UnixNano())
 		size := rand.Intn(maxLen)
