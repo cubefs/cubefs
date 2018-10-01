@@ -1,4 +1,5 @@
-// Copyright 2018 sia author
+// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Sia Authors
 //from https://github.com/NebulousLabs/Sia.git,thanks
 //
 // Licensed under the Apache License, Version 2.0 (the "License");

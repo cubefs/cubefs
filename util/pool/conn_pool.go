@@ -1,4 +1,5 @@
-// Copyright 2018 silenceper
+// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Silenceper Authors
 // from https://github.com/silenceper/pool.git,thanks
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
