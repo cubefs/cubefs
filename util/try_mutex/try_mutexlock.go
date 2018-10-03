@@ -1,8 +1,6 @@
-// Copyright 2018 The Containerfs Authors.
-// Copyright 2018 The Sia Authors
-//from https://github.com/NebulousLabs/Sia.git,thanks
+//Copyright (c) 2016 Nebulous Inc.
 //
-//// The MIT License (MIT)
+// The MIT License (MIT)
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
 // in the Software without restriction, including without limitation the rights
@@ -20,8 +18,22 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+// A Limiter restricts access to a resource.
+//
+// Units of the resource are reserved via Request and returned via Release.
+// Conventionally, a caller who reserves n units is responsible for ensuring
+// that all n are eventually returned. Once the number of reserved units
+// exceeds the Limiters limit, further calls to Request will block until
+// sufficient units are returned via Release.
+//
+// This Limiter differs from others in that it allows requesting more than the
+// limit. This request is only fulfilled once all other units have been
+// returned. Once the request is fulfilled, calls to Request will block until
+// enough units have been returned to bring the total outlay below the limit.
+// This design choice prevents any call to Request from blocking forever,
+// striking a balance between precise resource management and flexibility.
 
-package util
+package trymutex
 
 import (
 	"sync"

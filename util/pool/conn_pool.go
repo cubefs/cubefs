@@ -1,6 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
 // Copyright 2018 The Silenceper Authors
-// from https://github.com/silenceper/pool.git,thanks
 //
 // The MIT License (MIT)
 // Permission is hereby granted, free of charge, to any person obtaining a copy
