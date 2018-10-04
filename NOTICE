@@ -2,8 +2,16 @@ Copyright 2018 Containerfs Authors
 This project is licensed under the Apache version 2 license
 with exception of util/trymytex/try_mutex.go and util/pool/conn_pool.go  which are licensed under MIT license.
 
-Original work Copyright (c) 2016 nestgo . Licensed under https://github.com/silenceper/pool/blob/master/LICENSE. See LICENSE file link for full license information.
-Modified work Copyright 2018 Containerfs Authors. Licensed under MIT LICENSE, license file https://github.com/tiglabs/containerfs/blob/master/util/pool/LICENSE.
+util/trymytex/try_mutex.go
+Pool (https://github.com/silenceper/pool)
+Copyright (c) 2016 nestgo
+License: MIT License (https://github.com/silenceper/pool/blob/master/LICENSE)
 
-Original work Copyright (c) 2016 Nebulous Inc.. Licensed under https://github.com/NebulousLabs/Sia/blob/master/LICENSE. See LICENSE file link for full license information.
-Modified work Copyright 2018 Containerfs Authors. Licensed under MIT LICENSE, license file https://github.com/tiglabs/containerfs/blob/master/util/try_mutex/LICENSE
+util/pool/conn_pool.go
+Sia (https://github.com/NebulousLabs/Sia/)
+Copyright (c) 2016 Nebulous Inc.
+License: MIT License (https://github.com/NebulousLabs/Sia/blob/master/LICENSE)
+
+This software includes a number of subcomponents with separate copyright notices and license terms, including util/trymytex/try_mutex.go and util/pool/conn_pool.go, which are licensed under MIT license.
+Your use of the source code for the these subcomponents subject to the terms and conditions of the MIT license.
+
