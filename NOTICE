@@ -5,11 +5,13 @@ with the exception of util/trymytex/try_mutex.go and util/pool/conn_pool.go,  wh
 util/pool/conn_pool.go
 Pool (https://github.com/silenceper/pool)
 Copyright (c) 2016 nestgo
+Modified work copyright 2018 Containerfs Author
 License: MIT License (https://github.com/silenceper/pool/blob/master/LICENSE)
 
 util/trymytex/try_mutex.go
 Sia (https://github.com/NebulousLabs/Sia/)
 Copyright (c) 2016 Nebulous Inc.
+Modified work copyright 2018 Containerfs Author
 License: MIT License (https://github.com/NebulousLabs/Sia/blob/master/LICENSE)
 
 Your use of the source code for the these subcomponents subjects to the terms and conditions of the MIT license.
