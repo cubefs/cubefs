@@ -1,4 +1,5 @@
-//Copyright (c) 2016 Nebulous Inc.
+// Copyright (c) 2016 Nebulous Inc.
+// Modified work copyright (C) 2018 The Containerfs Authors.
 //
 // The MIT License (MIT)
 // Permission is hereby granted, free of charge, to any person obtaining a copy

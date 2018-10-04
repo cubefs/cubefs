@@ -1,9 +1,24 @@
 Copyright 2018 Containerfs Authors
-This project is licensed under the Apache version 2 license
-with exception of util/trymytex/try_mutex.go and util/pool/conn_pool.go  which are licensed under MIT license.
+This project is licensed under the Apache version 2 license.
 
-Original work Copyright (c) 2016 nestgo . Licensed under https://github.com/silenceper/pool/blob/master/LICENSE. See LICENSE file link for full license information.
-Modified work Copyright 2018 Containerfs Authors. Licensed under MIT LICENSE, license file https://github.com/tiglabs/containerfs/blob/master/util/pool/LICENSE.
+This product includes code developed by Google Inc.
+util/btree
+btree(https://github.com/google/btree)
+Copyright 2014 Google Inc.
+Modified work Copyright (C) 2018 The Containerfs Authors.
+License: Apache version 2 license (https://github.com/google/btree/blob/master/LICENSE)
 
-Original work Copyright (c) 2016 Nebulous Inc.. Licensed under https://github.com/NebulousLabs/Sia/blob/master/LICENSE. See LICENSE file link for full license information.
-Modified work Copyright 2018 Containerfs Authors. Licensed under MIT LICENSE, license file https://github.com/tiglabs/containerfs/blob/master/util/try_mutex/LICENSE
+
+This software includes several third party components. Your use of the source code for the these components subject to the terms and conditions of their licenses.
+
+util/pool/conn_pool.go
+pool (https://github.com/silenceper/pool)
+Copyright (c) 2016 nestgo
+Modified work Copyright 2018 Containerfs Authors.
+License: MIT License (https://github.com/silenceper/pool/blob/master/LICENSE)
+
+util/trymytex/try_mutex.go
+Sia (https://github.com/NebulousLabs/Sia)
+Copyright (c) 2016 Nebulous Inc.
+Modified work Copyright 2018 Containerfs Authors.
+License: MIT License (https://github.com/NebulousLabs/Sia/blob/master/LICENSE)
