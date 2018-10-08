@@ -39,14 +39,16 @@ type Pool struct {
 	mincap int
 	maxcap int
 	target string
+	timeout int64
 }
 
-func NewPool(min, max int, target string) (p *Pool) {
+func NewPool(min, max int,timeout int64, target string) (p *Pool) {
 	p = new(Pool)
 	p.mincap = min
 	p.maxcap = max
 	p.target = target
 	p.pool = make(chan *ConnectObject, max)
+	p.timeout=timeout
 	p.initAllConnect()
 	return p
 }
@@ -86,7 +88,7 @@ func (p *Pool) AutoRelease() {
 	for {
 		select {
 		case c := <-p.pool:
-			if time.Now().UnixNano()-int64(c.idle)>int64(time.Minute*10){
+			if time.Now().UnixNano()-int64(c.idle)>p.timeout{
 				c.conn.Close()
 			}else {
 				p.putconnect(c)
@@ -133,7 +135,7 @@ type ConnectPool struct {
 }
 
 func NewConnPool() (connectPool *ConnectPool) {
-	connectPool = &ConnectPool{pools: make(map[string]*Pool), mincap: 5, maxcap: 50, timeout: int64(time.Second * 20)}
+	connectPool = &ConnectPool{pools: make(map[string]*Pool), mincap: 5, maxcap: 100, timeout: int64(time.Minute)}
 	go connectPool.autoRelease()
 
 	return connectPool
@@ -145,7 +147,7 @@ func (connectPool *ConnectPool) Get(targetAddr string) (c *net.TCPConn, err erro
 	connectPool.RUnlock()
 	if !ok {
 		connectPool.Lock()
-		pool = NewPool(connectPool.mincap, connectPool.maxcap, targetAddr)
+		pool = NewPool(connectPool.mincap, connectPool.maxcap, connectPool.timeout,targetAddr)
 		connectPool.pools[targetAddr] = pool
 		connectPool.Unlock()
 	}
