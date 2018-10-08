@@ -26,28 +26,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
-)
-
-type CompactTask struct {
-	partitionId uint32
-	blobfileId  int
-	isLeader    bool
-}
-
-func (t *CompactTask) toString() (m string) {
-	return fmt.Sprintf("dataPartition(%v)_blobfile(%v)_isLeader(%v)", t.partitionId, t.blobfileId, t.isLeader)
-}
-
-const (
-	CompactThreadNum = 4
-)
-
-var (
-	ErrDiskCompactChanFull = errors.New("disk compact chan is full")
 )
 
 var (
@@ -65,22 +46,19 @@ type DiskUsage struct {
 
 type Disk struct {
 	sync.RWMutex
-	Path            string
-	ReadErrs        uint64
-	WriteErrs       uint64
-	Total           uint64
-	Used            uint64
-	Available       uint64
-	Unallocated     uint64
-	Allocated       uint64
-	MaxErrs         int
-	Status          int
-	RestSize        uint64
-	partitionMap    map[uint32]DataPartition
-	compactCh       chan *CompactTask
-	space           *spaceManager
-	compactTasks    map[string]*CompactTask
-	compactTaskLock sync.RWMutex
+	Path         string
+	ReadErrs     uint64
+	WriteErrs    uint64
+	Total        uint64
+	Used         uint64
+	Available    uint64
+	Unallocated  uint64
+	Allocated    uint64
+	MaxErrs      int
+	Status       int
+	RestSize     uint64
+	partitionMap map[uint32]DataPartition
+	space        *spaceManager
 }
 
 type PartitionVisitor func(dp DataPartition)
@@ -94,11 +72,6 @@ func NewDisk(path string, restSize uint64, maxErrs int, space *spaceManager) (d 
 	d.partitionMap = make(map[uint32]DataPartition)
 	d.RestSize = util.GB * 1
 	d.MaxErrs = 2000
-	d.compactTasks = make(map[string]*CompactTask)
-	d.compactCh = make(chan *CompactTask, CompactThreadNum)
-	for i := 0; i < CompactThreadNum; i++ {
-		go d.compact()
-	}
 	d.computeUsage()
 
 	d.startScheduleTasks()
@@ -154,40 +127,8 @@ func (d *Disk) computeUsage() (err error) {
 	return
 }
 
-func (d *Disk) addTask(t *CompactTask) (err error) {
-	select {
-	case d.compactCh <- t:
-		return
-	default:
-		return errors.Annotatef(ErrDiskCompactChanFull, "diskPath:(%v) partitionId(%v)", d.Path, t.partitionId)
-	}
-}
-
 func (d *Disk) addReadErr() {
 	atomic.AddUint64(&d.ReadErrs, 1)
-}
-
-func (d *Disk) compact() {
-	for {
-		select {
-		case t := <-d.compactCh:
-			dp := d.space.GetPartition(t.partitionId)
-			if dp == nil {
-				d.deleteCompactTask(t.toString())
-				continue
-			}
-			err, release := dp.GetBlobStore().DoCompactWork(t.blobfileId)
-			if err != nil {
-				log.LogErrorf("action[compact] task(%v) compact error(%v)", t.toString(), err.Error())
-			} else {
-				log.LogInfof("action[compact] task(%v) compact success Release (%v)", t.toString(), release)
-			}
-			if t.isLeader {
-				dp.GetBlobStore().PutAvailBlobFile(t.blobfileId)
-			}
-			d.deleteCompactTask(t.toString())
-		}
-	}
 }
 
 func (d *Disk) addWriteErr() {
@@ -231,32 +172,6 @@ func (d *Disk) AttachDataPartition(dp DataPartition) {
 	defer d.Unlock()
 	d.partitionMap[dp.ID()] = dp
 	d.computeUsage()
-}
-
-func (d *Disk) hasExsitCompactTask(id string) (ok bool) {
-	d.compactTaskLock.RLock()
-	_, ok = d.compactTasks[id]
-	d.compactTaskLock.RUnlock()
-	return
-}
-
-func (d *Disk) putCompactTask(task *CompactTask) (err error) {
-	select {
-	case d.compactCh <- task:
-		d.compactTaskLock.Lock()
-		d.compactTasks[task.toString()] = task
-		d.compactTaskLock.Unlock()
-		return
-	default:
-		return fmt.Errorf("cannot add compactTask(%v) to disk(%v)", task.toString(), d.Path)
-
-	}
-}
-
-func (d *Disk) deleteCompactTask(id string) {
-	d.compactTaskLock.Lock()
-	delete(d.compactTasks, id)
-	d.compactTaskLock.Unlock()
 }
 
 func (d *Disk) DetachDataPartition(dp DataPartition) {

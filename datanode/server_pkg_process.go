@@ -65,13 +65,8 @@ func (s *DataNode) readFromCliAndDeal(msgH *MessageHandler) (err error) {
 }
 
 func (s *DataNode) checkAndAddInfo(pkg *Packet) error {
-	switch pkg.StoreMode {
-	case proto.BlobStoreMode:
-		return s.handleBlobFileInfo(pkg)
-	case proto.ExtentStoreMode:
-		if pkg.isHeadNode() && pkg.Opcode == proto.OpCreateFile {
-			pkg.FileID = pkg.DataPartition.GetExtentStore().NextExtentId()
-		}
+	if pkg.isHeadNode() && pkg.Opcode == proto.OpCreateFile {
+		pkg.FileID = pkg.DataPartition.GetExtentStore().NextExtentId()
 	}
 
 	return nil
@@ -82,7 +77,6 @@ func (s *DataNode) handleRequest(msgH *MessageHandler) {
 		select {
 		case <-msgH.handleCh:
 			pkg, exit := s.receiveFromNext(msgH)
-			s.headNodePutBlobFile(pkg)
 			if exit {
 				msgH.Stop()
 				return

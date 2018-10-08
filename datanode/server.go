@@ -88,7 +88,6 @@ func NewServer() *DataNode {
 
 func (s *DataNode) Start(cfg *config.Config) (err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	GcanCompact = CanCompact
 	if atomic.CompareAndSwapUint32(&s.state, Standby, Start) {
 		defer func() {
 			if err != nil {
@@ -263,7 +262,6 @@ func (s *DataNode) registerProfHandler() {
 	http.HandleFunc("/partitions", s.apiGetPartitions)
 	http.HandleFunc("/partition", s.apiGetPartition)
 	http.HandleFunc("/extent", s.apiGetExtent)
-	http.HandleFunc("/blobfile", s.apiGetBlobFile)
 	http.HandleFunc("/stats", s.apiGetStat)
 }
 
@@ -336,92 +334,6 @@ func (s *DataNode) serveConn(conn net.Conn) {
 			}
 		}
 	}
-}
-
-func (s *DataNode) AddCompactTask(t *CompactTask) (err error) {
-	dp := s.space.GetPartition(t.partitionId)
-	if dp == nil {
-		return
-	}
-	d := dp.Disk()
-	if d == nil {
-		return
-	}
-	err = d.addTask(t)
-	if err != nil {
-		err = errors.Annotatef(err, "Task(%v) ", t.toString())
-	}
-	return
-}
-
-func (s *DataNode) checkBlobFileInfo(pkg *Packet) (err error) {
-	var (
-		blobfileInfo *storage.FileInfo
-	)
-	blobfileInfo, err = pkg.DataPartition.GetBlobStore().GetWatermark(pkg.FileID)
-	if err != nil {
-		return
-	}
-	leaderObjId := uint64(pkg.Offset)
-	localObjId := blobfileInfo.Size
-	if (leaderObjId - 1) != blobfileInfo.Size {
-		err = ErrBlobFileOffsetMismatch
-		msg := fmt.Sprintf("Err(%v) leaderObjId(%v) localObjId(%v)", err, leaderObjId, localObjId)
-		log.LogWarn(pkg.ActionMsg(ActionCheckBlobFileInfo, LocalProcessAddr, pkg.StartT, fmt.Errorf(msg)))
-	}
-
-	return
-}
-
-func (s *DataNode) handleBlobFileInfo(pkg *Packet) (err error) {
-	if !pkg.IsWriteOperation() {
-		return
-	}
-
-	if !pkg.isHeadNode() {
-		err = s.checkBlobFileInfo(pkg)
-	} else {
-		err = s.headNodeSetBlobFileInfo(pkg)
-	}
-	if err != nil {
-		err = errors.Annotatef(err, "Request(%v) handleBlobFileInfo Error", pkg.GetUniqueLogId())
-		pkg.PackErrorBody(ActionCheckBlobFileInfo, err.Error())
-	}
-
-	return
-}
-
-func (s *DataNode) headNodeSetBlobFileInfo(pkg *Packet) (err error) {
-	var (
-		blobfileId int
-	)
-	store := pkg.DataPartition.GetBlobStore()
-	blobfileId, err = store.GetBlobFileForWrite()
-	if err != nil {
-		pkg.DataPartition.ChangeStatus(proto.ReadOnly)
-		return
-	}
-	pkg.FileID = uint64(blobfileId)
-	objectId, _ := store.AllocObjectId(uint32(pkg.FileID))
-	pkg.Offset = int64(objectId)
-
-	return
-}
-
-func (s *DataNode) headNodePutBlobFile(pkg *Packet) {
-	if pkg == nil || pkg.FileID <= 0 || pkg.IsReturn {
-		return
-	}
-	if pkg.StoreMode != proto.BlobStoreMode || !pkg.isHeadNode() || !pkg.IsWriteOperation() || !pkg.IsTransitPkg() {
-		return
-	}
-	store := pkg.DataPartition.GetBlobStore()
-	if pkg.IsErrPack() {
-		store.PutUnAvailBlobFile(int(pkg.FileID))
-	} else {
-		store.PutAvailBlobFile(int(pkg.FileID))
-	}
-	pkg.IsReturn = true
 }
 
 func (s *DataNode) addDiskErrs(partitionId uint32, err error, flag uint8) {

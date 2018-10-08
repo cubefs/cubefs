@@ -44,6 +44,7 @@ const (
 	ExtMetaDeleteIdxOffset = 8
 	ExtMetaDeleteIdxSize   = 8
 	ExtMetaFileSize        = ExtMetaBaseIdSize + ExtMetaDeleteIdxSize
+	BlobFileFileCount	   = 10
 )
 
 var (
@@ -81,6 +82,11 @@ type ExtentStore struct {
 	closeC        chan bool
 	closed        bool
 }
+
+func CheckAndCreateSubdir(name string) (err error) {
+	return os.MkdirAll(name, 0755)
+}
+
 
 func NewExtentStore(dataDir string, storeSize int) (s *ExtentStore, err error) {
 	s = new(ExtentStore)

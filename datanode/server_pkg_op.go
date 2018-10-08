@@ -69,24 +69,16 @@ func (s *DataNode) operatePacket(pkg *Packet, c *net.TCPConn) {
 		s.handleWrite(pkg)
 	case proto.OpRead:
 		s.handleRead(pkg)
-	case proto.OpBlobFileRepairRead:
-		s.handleBlobFileRepairRead(pkg, c)
 	case proto.OpStreamRead:
 		s.handleStreamRead(pkg, c)
 	case proto.OpMarkDelete:
 		s.handleMarkDelete(pkg)
-	case proto.OpNotifyCompactBlobFile:
-		s.handleNotifyCompact(pkg)
 	case proto.OpNotifyExtentRepair:
 		s.handleNotifyExtentRepair(pkg)
-	case proto.OpNotifyBlobRepair:
-		s.handleNotifyBlobRepair(pkg)
 	case proto.OpGetWatermark:
 		s.handleGetWatermark(pkg)
 	case proto.OpExtentStoreGetAllWaterMark:
 		s.handleExtentStoreGetAllWatermark(pkg)
-	case proto.OpBlobStoreGetAllWaterMark:
-		s.handleBlobStoreGetAllWatermark(pkg)
 	case proto.OpCreateDataPartition:
 		s.handleCreateDataPartition(pkg)
 	case proto.OpLoadDataPartition:
@@ -281,12 +273,7 @@ func (s *DataNode) handleLoadDataPartition(pkg *Packet) {
 // Handle OpMarkDelete packet.
 func (s *DataNode) handleMarkDelete(pkg *Packet) {
 	var err error
-	switch pkg.StoreMode {
-	case proto.BlobStoreMode:
-		err = pkg.DataPartition.GetBlobStore().MarkDelete(uint32(pkg.FileID), pkg.Offset, int64(pkg.Size))
-	case proto.ExtentStoreMode:
-		err = pkg.DataPartition.GetExtentStore().MarkDelete(pkg.FileID)
-	}
+	err = pkg.DataPartition.GetExtentStore().MarkDelete(pkg.FileID)
 	if err != nil {
 		err = errors.Annotatef(err, "Request(%v) MarkDelete Error", pkg.GetUniqueLogId())
 		pkg.PackErrorBody(LogMarkDel, err.Error())
@@ -316,16 +303,10 @@ func (s *DataNode) handleWrite(pkg *Packet) {
 		err = storage.ErrSyscallNoSpace
 		return
 	}
-	switch pkg.StoreMode {
-	case proto.BlobStoreMode:
-		err = pkg.DataPartition.GetBlobStore().Write(uint32(pkg.FileID), uint64(pkg.Offset), int64(pkg.Size), pkg.Data, pkg.Crc)
-		s.addDiskErrs(pkg.PartitionID, err, WriteFlag)
-	case proto.ExtentStoreMode:
-		err = pkg.DataPartition.GetExtentStore().Write(pkg.FileID, pkg.Offset, int64(pkg.Size), pkg.Data, pkg.Crc)
-		s.addDiskErrs(pkg.PartitionID, err, WriteFlag)
-		if err == nil && pkg.Opcode == proto.OpWrite && pkg.Size == util.BlockSize {
-			proto.Buffers.Put(pkg.Data)
-		}
+	err = pkg.DataPartition.GetExtentStore().Write(pkg.FileID, pkg.Offset, int64(pkg.Size), pkg.Data, pkg.Crc)
+	s.addDiskErrs(pkg.PartitionID, err, WriteFlag)
+	if err == nil && pkg.Opcode == proto.OpWrite && pkg.Size == util.BlockSize {
+		proto.Buffers.Put(pkg.Data)
 	}
 	return
 }
@@ -334,14 +315,8 @@ func (s *DataNode) handleWrite(pkg *Packet) {
 func (s *DataNode) handleRead(pkg *Packet) {
 	pkg.Data = make([]byte, pkg.Size)
 	var err error
-	switch pkg.StoreMode {
-	case proto.BlobStoreMode:
-		pkg.Crc, err = pkg.DataPartition.GetBlobStore().Read(uint32(pkg.FileID), pkg.Offset, int64(pkg.Size), pkg.Data)
-		s.addDiskErrs(pkg.PartitionID, err, ReadFlag)
-	case proto.ExtentStoreMode:
-		pkg.Crc, err = pkg.DataPartition.GetExtentStore().Read(pkg.FileID, pkg.Offset, int64(pkg.Size), pkg.Data)
-		s.addDiskErrs(pkg.PartitionID, err, ReadFlag)
-	}
+	pkg.Crc, err = pkg.DataPartition.GetExtentStore().Read(pkg.FileID, pkg.Offset, int64(pkg.Size), pkg.Data)
+	s.addDiskErrs(pkg.PartitionID, err, ReadFlag)
 	if err == nil {
 		pkg.PackOkReadReply()
 	} else {
@@ -408,12 +383,7 @@ func (s *DataNode) handleGetWatermark(pkg *Packet) {
 		fInfo *storage.FileInfo
 		err   error
 	)
-	switch pkg.StoreMode {
-	case proto.BlobStoreMode:
-		fInfo, err = pkg.DataPartition.GetBlobStore().GetWatermark(pkg.FileID)
-	case proto.ExtentStoreMode:
-		fInfo, err = pkg.DataPartition.GetExtentStore().GetWatermark(pkg.FileID, false)
-	}
+	fInfo, err = pkg.DataPartition.GetExtentStore().GetWatermark(pkg.FileID, false)
 	if err != nil {
 		err = errors.Annotatef(err, "Request(%v) handleGetWatermark Error", pkg.GetUniqueLogId())
 		pkg.PackErrorBody(LogGetWm, err.Error())
@@ -440,60 +410,6 @@ func (s *DataNode) handleExtentStoreGetAllWatermark(pkg *Packet) {
 	return
 }
 
-// Handle OpBlobStoreGetAllWatermark packet.
-func (s *DataNode) handleBlobStoreGetAllWatermark(pkg *Packet) {
-	var buf []byte
-	store := pkg.DataPartition.GetBlobStore()
-	fInfoList, err := store.GetAllWatermark()
-	if err != nil {
-		err = errors.Annotatef(err, "Request(%v) OpBlobStoreGetAllWatermark Error", pkg.GetUniqueLogId())
-		pkg.PackErrorBody(LogGetAllWm, err.Error())
-	} else {
-		buf, err = json.Marshal(fInfoList)
-		pkg.PackOkWithBody(buf)
-	}
-	return
-}
-
-// Handle OpNotifyCompactBlobFile packet.
-func (s *DataNode) handleNotifyCompact(pkg *Packet) {
-	blobFile := int(pkg.FileID)
-	partitionId := pkg.PartitionID
-	task := &CompactTask{
-		partitionId: partitionId,
-		blobfileId:  blobFile,
-		isLeader:    false,
-	}
-	var err error
-	dp := s.space.GetPartition(task.partitionId)
-	if dp == nil {
-		err = errors.Annotatef(fmt.Errorf("partition not found", task.toString()),
-			"Request(%v) handleNotifyCompact Error", pkg.GetUniqueLogId())
-		pkg.PackErrorBody(LogCompactBlobFile, err.Error())
-		return
-	}
-	d, err := s.space.GetDisk(dp.Disk().Path)
-	if err != nil {
-		err = errors.Annotatef(fmt.Errorf("disk not found", dp.Path()),
-			"Request(%v) handleNotifyCompact Error", pkg.GetUniqueLogId())
-		pkg.PackErrorBody(LogCompactBlobFile, err.Error())
-		return
-	}
-	if d.hasExsitCompactTask(task.toString()) {
-		pkg.PackOkReply()
-		return
-	}
-	if err = d.putCompactTask(task); err != nil {
-		err = errors.Annotatef(err,
-			"Request(%v) handleNotifyCompact Error", pkg.GetUniqueLogId())
-		pkg.PackErrorBody(LogCompactBlobFile, err.Error())
-		return
-	}
-	pkg.PackOkReply()
-
-	return
-}
-
 // Handle OpNotifyExtentRepair packet.
 func (s *DataNode) handleNotifyExtentRepair(pkg *Packet) {
 	var (
@@ -507,55 +423,6 @@ func (s *DataNode) handleNotifyExtentRepair(pkg *Packet) {
 	}
 	pkg.DataPartition.MergeExtentStoreRepair(mf)
 	pkg.PackOkReply()
-	return
-}
-
-// Handle OpNotifyExtentRepair packet.
-func (s *DataNode) handleNotifyBlobRepair(pkg *Packet) {
-	var (
-		err error
-	)
-	mf := NewMemberFileMetas()
-	err = json.Unmarshal(pkg.Data, mf)
-	if err != nil {
-		pkg.PackErrorBody(LogRepair, err.Error())
-		return
-	}
-	pkg.DataPartition.MergeBlobStoreRepair(mf)
-	pkg.PackOkReply()
-	return
-}
-
-func (s *DataNode) handleBlobFileRepairRead(pkg *Packet, conn *net.TCPConn) {
-	var (
-		err        error
-		localOid   uint64
-		blobfileID uint32
-	)
-	task := new(RepairBlobFileTask)
-	if err = json.Unmarshal(pkg.Data, task); err != nil {
-		err = errors.Annotatef(err, "Request(%v) handleBlobFileRepairRead unmash task error ", pkg.GetUniqueLogId())
-		pkg.PackErrorBody(ActionFollowerRequireBlobFileRepairCmd, err.Error())
-		return
-	}
-	blobfileID = uint32(task.BlobFileId)
-	dp := pkg.DataPartition.(*dataPartition)
-	localOid, err = dp.GetBlobStore().GetLastOid(blobfileID)
-	log.LogWarnf("Request(%v) handleBlobFileRepairRead Recive RepairTask(%v) localOid(%v)",
-		pkg.GetUniqueLogId(),task.ToString(), localOid)
-	if localOid < task.EndObj {
-		err = fmt.Errorf(" handleBlobFileRepairRead Recive RepairTask(%v) but localOid(%v)", task.ToString(), localOid)
-		err = errors.Annotatef(err, "Request(%v) handleBlobFileRepairRead Error", pkg.GetUniqueLogId())
-		pkg.PackErrorBody(ActionFollowerRequireBlobFileRepairCmd, err.Error())
-		return
-	}
-	err = dp.syncData(blobfileID, task.StartObj, localOid, pkg, conn)
-	if err != nil {
-		err = errors.Annotatef(err, "Request(%v) handleBlobFileRepairRead Recive RepairTask(%v) "+
-			"SyncData  Error", task.ToString(), pkg.GetUniqueLogId())
-		pkg.PackErrorBody(ActionFollowerRequireBlobFileRepairCmd, err.Error())
-	}
-
 	return
 }
 
