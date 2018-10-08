@@ -31,6 +31,7 @@ import (
 
 type ConnectObject struct {
 	conn *net.TCPConn
+	idle  int64
 }
 
 type Pool struct {
@@ -57,7 +58,7 @@ func (p *Pool) initAllConnect() {
 			conn := c.(*net.TCPConn)
 			conn.SetKeepAlive(true)
 			conn.SetNoDelay(true)
-			obj := &ConnectObject{conn: conn}
+			obj := &ConnectObject{conn: conn,idle:time.Now().UnixNano()}
 			p.putconnect(obj)
 		}
 	}
@@ -85,6 +86,21 @@ func (p *Pool) AutoRelease() {
 	for {
 		select {
 		case c := <-p.pool:
+			if time.Now().UnixNano()-int64(c.idle)>int64(time.Minute*10){
+				c.conn.Close()
+			}else {
+				p.putconnect(c)
+			}
+		default:
+			return
+		}
+	}
+}
+
+func (p *Pool) ForceReleaseAllConnect() {
+	for {
+		select {
+		case c := <-p.pool:
 			c.conn.Close()
 		default:
 			return
@@ -109,7 +125,7 @@ func (p *Pool) Get() (c *net.TCPConn, err error) {
 }
 
 type ConnectPool struct {
-	sync.Mutex
+	sync.RWMutex
 	pools   map[string]*Pool
 	mincap  int
 	maxcap  int
@@ -124,13 +140,15 @@ func NewConnPool() (connectPool *ConnectPool) {
 }
 
 func (connectPool *ConnectPool) Get(targetAddr string) (c *net.TCPConn, err error) {
-	connectPool.Lock()
+	connectPool.RLock()
 	pool, ok := connectPool.pools[targetAddr]
+	connectPool.RUnlock()
 	if !ok {
+		connectPool.Lock()
 		pool = NewPool(connectPool.mincap, connectPool.maxcap, targetAddr)
 		connectPool.pools[targetAddr] = pool
+		connectPool.Unlock()
 	}
-	connectPool.Unlock()
 
 	return pool.Get()
 }
@@ -144,14 +162,14 @@ func (connectPool *ConnectPool) Put(c *net.TCPConn, forceClose bool) {
 		return
 	}
 	addr := c.RemoteAddr().String()
-	connectPool.Lock()
+	connectPool.RLock()
 	pool, ok := connectPool.pools[addr]
-	connectPool.Unlock()
+	connectPool.RUnlock()
 	if !ok {
 		c.Close()
 		return
 	}
-	object := &ConnectObject{conn: c}
+	object := &ConnectObject{conn: c,idle:time.Now().UnixNano()}
 	pool.putconnect(object)
 
 	return
@@ -161,42 +179,46 @@ func (connectPool *ConnectPool) CheckErrorForPutConnect(c *net.TCPConn, target s
 	if c == nil {
 		return
 	}
-	if strings.Contains(err.Error(), "use of closed network connection") {
-		c.Close()
-		connectPool.ReleaseAllConnect(target)
-		return
-	}
+
 	if err != nil {
-		c.Close()
-		return
+		if strings.Contains(err.Error(), "use of closed network connection") {
+			c.Close()
+			connectPool.ReleaseAllConnect(target)
+			return
+		}else {
+			c.Close()
+			return
+		}
 	}
 	addr := c.RemoteAddr().String()
-	connectPool.Lock()
+	connectPool.RLock()
 	pool, ok := connectPool.pools[addr]
-	connectPool.Unlock()
+	connectPool.RUnlock()
 	if !ok {
 		c.Close()
 		return
 	}
-	object := &ConnectObject{conn: c}
+	object := &ConnectObject{conn: c,idle:time.Now().UnixNano()}
 	pool.putconnect(object)
 }
 
 func (connectPool *ConnectPool) ReleaseAllConnect(target string) {
-	connectPool.Lock()
+	connectPool.RLock()
 	pool := connectPool.pools[target]
-	connectPool.Unlock()
-	pool.AutoRelease()
+	connectPool.RUnlock()
+	if pool!=nil {
+		pool.ForceReleaseAllConnect()
+	}
 }
 
 func (connectPool *ConnectPool) autoRelease() {
 	for {
 		pools := make([]*Pool, 0)
-		connectPool.Lock()
+		connectPool.RLock()
 		for _, pool := range connectPool.pools {
 			pools = append(pools, pool)
 		}
-		connectPool.Unlock()
+		connectPool.RUnlock()
 		for _, pool := range pools {
 			pool.AutoRelease()
 		}
