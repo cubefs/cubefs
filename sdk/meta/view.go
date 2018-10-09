@@ -22,6 +22,7 @@ import (
 
 	"github.com/juju/errors"
 
+	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
 )
 
@@ -36,10 +37,6 @@ var (
 type VolumeView struct {
 	VolName        string
 	MetaPartitions []*MetaPartition
-}
-
-type ClusterInfo struct {
-	Cluster string
 }
 
 type VolStatInfo struct {
@@ -74,7 +71,7 @@ func (mw *MetaWrapper) UpdateClusterInfo() error {
 		return err
 	}
 
-	info := new(ClusterInfo)
+	info := new(proto.ClusterInfo)
 	if err = json.Unmarshal(body, info); err != nil {
 		log.LogWarnf("UpdateClusterInfo unmarshal: err(%v)", err)
 		return err
