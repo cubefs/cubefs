@@ -17,7 +17,7 @@ package meta
 import (
 	"fmt"
 
-	"github.com/tiglabs/containerfs/util/btree"
+	"github.com/tiglabs/containerfs/third_party/btree"
 
 	"github.com/tiglabs/containerfs/proto"
 )

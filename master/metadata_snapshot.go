@@ -16,7 +16,7 @@ package master
 
 import (
 	"fmt"
-	"github.com/tiglabs/containerfs/util/gorocksdb"
+	"github.com/tiglabs/containerfs/third_party/gorocksdb"
 	"io"
 )
 

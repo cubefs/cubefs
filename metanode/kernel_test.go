@@ -16,7 +16,7 @@ package metanode
 
 import (
 	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util/btree"
+	"github.com/tiglabs/containerfs/third_party/btree"
 	"reflect"
 	"testing"
 )

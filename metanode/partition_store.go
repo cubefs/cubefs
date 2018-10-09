@@ -25,7 +25,7 @@ import (
 
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util/btree"
+	"github.com/tiglabs/containerfs/third_party/btree"
 )
 
 const (

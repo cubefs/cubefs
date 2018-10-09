@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tiglabs/containerfs/fuse"
-	"github.com/tiglabs/containerfs/fuse/fs"
+	"github.com/tiglabs/containerfs/third_party/fuse"
+	"github.com/tiglabs/containerfs/third_party/fuse/fs"
 	"golang.org/x/net/context"
 
 	"github.com/tiglabs/containerfs/sdk/data/stream"

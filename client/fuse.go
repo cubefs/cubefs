@@ -31,8 +31,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/tiglabs/containerfs/fuse"
-	"github.com/tiglabs/containerfs/fuse/fs"
+	"github.com/tiglabs/containerfs/third_party/fuse"
+	"github.com/tiglabs/containerfs/third_party/fuse/fs"
 
 	bdfs "github.com/tiglabs/containerfs/client/fs"
 	"github.com/tiglabs/containerfs/util"
