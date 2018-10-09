@@ -37,15 +37,14 @@ const (
 
 var (
 	MasterHelper = util.NewMasterHelper()
-	LocalIP, _   = util.GetLocalIP()
+)
+
+var (
+	LocalIP string
 )
 
 type DataPartitionView struct {
 	DataPartitions []*DataPartition
-}
-
-type ClusterInfo struct {
-	Cluster string
 }
 
 type Wrapper struct {
@@ -68,10 +67,10 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 	w.volName = volName
 	w.rwPartition = make([]*DataPartition, 0)
 	w.partitions = make(map[uint32]*DataPartition)
-	if err = w.updateDataPartition(); err != nil {
+	if err = w.updateClusterInfo(); err != nil {
 		return
 	}
-	if err = w.updateClusterInfo(); err != nil {
+	if err = w.updateDataPartition(); err != nil {
 		return
 	}
 	go w.update()
@@ -92,13 +91,14 @@ func (w *Wrapper) updateClusterInfo() error {
 		return err
 	}
 
-	info := new(ClusterInfo)
+	info := new(proto.ClusterInfo)
 	if err = json.Unmarshal(body, info); err != nil {
 		log.LogWarnf("UpdateClusterInfo unmarshal: err(%v)", err)
 		return err
 	}
 	log.LogInfof("ClusterInfo: %v", *info)
 	w.clusterName = info.Cluster
+	LocalIP = info.Ip
 	return nil
 }
 
