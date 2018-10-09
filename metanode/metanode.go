@@ -30,7 +30,6 @@ import (
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
-	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/ump"
@@ -196,7 +195,7 @@ func (m *MetaNode) stopMetaManager() {
 
 func (m *MetaNode) register() (err error) {
 	for {
-		m.localAddr, err = util.GetLocalIP()
+		m.localAddr, err = getLocalIP()
 		if err != nil {
 			log.LogErrorf("[register] %s", err.Error())
 			continue
@@ -310,4 +309,16 @@ func (m *MetaNode) startUMP() (err error) {
 // NewServer create an new MetaNode instance.
 func NewServer() *MetaNode {
 	return &MetaNode{}
+}
+
+func getLocalIP() (string, error) {
+	respBody, err := postToMaster("GET", "/admin/getIp", nil)
+	if err != nil {
+		return "", err
+	}
+	cInfo := proto.ClusterInfo{}
+	if err = json.Unmarshal(respBody, &cInfo); err != nil {
+		return "", err
+	}
+	return cInfo.Ip, nil
 }
