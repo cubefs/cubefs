@@ -76,7 +76,7 @@ func (s *DataNode) handleRequest(msgH *MessageHandler) {
 	for {
 		select {
 		case <-msgH.handleCh:
-			pkg, exit := s.receiveFromNext(msgH)
+			_, exit := s.receiveFromNext(msgH)
 			if exit {
 				msgH.Stop()
 				return
