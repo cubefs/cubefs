@@ -15,7 +15,6 @@
 package datanode
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
