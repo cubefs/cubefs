@@ -90,6 +90,10 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 }
 
 func (d *Dir) Forget() {
+	ino := d.inode.ino
+	defer func() {
+		log.LogDebugf("TRACE Forget: ino(%v)", ino)
+	}()
 }
 
 func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {

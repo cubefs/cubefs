@@ -493,7 +493,7 @@ func (mw *MetaWrapper) readdir(mp *MetaPartition, parentID uint64) (status int, 
 		log.LogErrorf("readdir: mp(%v) err(%v) PacketData(%v)", mp, err, string(packet.Data))
 		return
 	}
-	log.LogDebugf("readdir: mp(%v) req(%v) dentries(%v)", mp, *req, resp.Children)
+	log.LogDebugf("readdir: mp(%v) req(%v)", mp, *req)
 	return statusOK, resp.Children, nil
 }
 

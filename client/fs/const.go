@@ -38,11 +38,6 @@ const (
 )
 
 const (
-	LookupValidDuration = 0
-	AttrValidDuration   = 30 * time.Second
-)
-
-const (
 	DefaultInodeExpiration = 120 * time.Second
 	MaxInodeCache          = 10000000
 )
@@ -53,6 +48,11 @@ const (
 
 const (
 	DeleteExtentsTimeout = 600 * time.Second
+)
+
+var (
+	LookupValidDuration = 0
+	AttrValidDuration   = 30 * time.Second
 )
 
 func ParseError(err error) fuse.Errno {

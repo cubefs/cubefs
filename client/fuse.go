@@ -35,7 +35,6 @@ import (
 	"github.com/tiglabs/containerfs/third_party/fuse/fs"
 
 	bdfs "github.com/tiglabs/containerfs/client/fs"
-	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/ump"
@@ -78,22 +77,9 @@ func Mount(cfg *config.Config) error {
 	logpath := cfg.GetString("logpath")
 	loglvl := cfg.GetString("loglvl")
 	profport := cfg.GetString("profport")
-
-	bufferSizeStr := cfg.GetString("bufferSize")
-	var bufferSize int
-	if bufferSizeStr == "" {
-		bufferSize = 3 * util.MB
-	} else {
-		var err error
-		bufferSize, err = strconv.Atoi(bufferSizeStr)
-		if err != nil {
-			bufferSize = 3 * util.MB
-		}
-	}
-	fmt.Println(fmt.Sprintf("bufferSize [%v]", bufferSize))
-
-	icacheTimeout := cfg.GetInt("icacheTimeout")
-	fmt.Println(fmt.Sprintf("icacheTimeout [%v]", icacheTimeout))
+	icacheTimeout := ParseConfigString(cfg, "icacheTimeout")
+	lookupValid := ParseConfigString(cfg, "lookupValid")
+	attrValid := ParseConfigString(cfg, "attrValid")
 
 	c, err := fuse.Mount(
 		mnt,
@@ -116,7 +102,7 @@ func Mount(cfg *config.Config) error {
 	}
 	defer log.LogFlush()
 
-	super, err := bdfs.NewSuper(volname, master, icacheTimeout)
+	super, err := bdfs.NewSuper(volname, master, icacheTimeout, lookupValid, attrValid)
 	if err != nil {
 		return err
 	}
@@ -131,6 +117,19 @@ func Mount(cfg *config.Config) error {
 
 	<-c.Ready
 	return c.MountError
+}
+
+func ParseConfigString(cfg *config.Config, keyword string) int64 {
+	var ret int64 = -1
+	rawstr := cfg.GetString(keyword)
+	if rawstr != "" {
+		val, err := strconv.Atoi(rawstr)
+		if err == nil {
+			ret = int64(val)
+			fmt.Println(fmt.Sprintf("keyword[%v] value[%v]", keyword, ret))
+		}
+	}
+	return ret
 }
 
 func ParseLogLevel(loglvl string) log.Level {

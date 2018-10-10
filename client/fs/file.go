@@ -89,6 +89,10 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 
 func (f *File) Forget() {
 	ino := f.inode.ino
+	defer func() {
+		log.LogDebugf("TRACE Forget: ino(%v)", ino)
+	}()
+
 	if !f.super.orphan.Evict(ino) {
 		return
 	}
@@ -96,7 +100,6 @@ func (f *File) Forget() {
 		log.LogErrorf("Forget: ino(%v) err(%v)", ino, err)
 		//TODO: push back to evicted list, and deal with it later
 	}
-	log.LogDebugf("TRACE Forget: ino(%v)", ino)
 }
 
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
