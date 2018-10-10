@@ -42,7 +42,7 @@ var (
 	_ fs.FSStatfser = (*Super)(nil)
 )
 
-func NewSuper(volname, master string, icacheTimeout int64) (s *Super, err error) {
+func NewSuper(volname, master string, icacheTimeout, lookupValid, attrValid int64) (s *Super, err error) {
 	s = new(Super)
 	s.mw, err = meta.NewMetaWrapper(volname, master)
 	if err != nil {
@@ -59,12 +59,18 @@ func NewSuper(volname, master string, icacheTimeout int64) (s *Super, err error)
 	s.volname = volname
 	s.cluster = s.mw.Cluster()
 	inodeExpiration := DefaultInodeExpiration
-	if icacheTimeout > 0 {
+	if icacheTimeout >= 0 {
 		inodeExpiration = time.Duration(icacheTimeout) * time.Second
+	}
+	if lookupValid >= 0 {
+		LookupValidDuration = time.Duration(lookupValid) * time.Second
+	}
+	if attrValid >= 0 {
+		AttrValidDuration = time.Duration(attrValid) * time.Second
 	}
 	s.ic = NewInodeCache(inodeExpiration, MaxInodeCache)
 	s.orphan = NewOrphanInodeList()
-	log.LogInfof("NewSuper: cluster(%v) volname(%v)", s.cluster, s.volname)
+	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v)", s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration)
 	return s, nil
 }
 
