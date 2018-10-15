@@ -20,6 +20,7 @@ import (
 
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/util/log"
+	"net/http/httputil"
 )
 
 const (
@@ -106,12 +107,27 @@ func (m *Master) handleFunctions() {
 func (m *Master) handlerWithInterceptor() http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
+			leaderId, _ := m.partition.LeaderTerm()
+			if leaderId == 0 {
+				log.LogErrorf("action[handlerWithInterceptor] no leader,request[%v]", r.URL)
+				http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
+				return
+			}
 			if m.partition.IsLeader() {
 				m.ServeHTTP(w, r)
 			} else {
-				http.Error(w, m.leaderInfo.addr, http.StatusForbidden)
+				m.proxy(w, r)
 			}
 		})
+}
+
+func (m *Master) proxy(w http.ResponseWriter, r *http.Request) {
+	director := func(request *http.Request) {
+		request.URL.Scheme = "http"
+		request.URL.Host = m.leaderInfo.addr
+	}
+	reverseProxy := &httputil.ReverseProxy{Director: director}
+	reverseProxy.ServeHTTP(w, r)
 }
 
 func (m *Master) ServeHTTP(w http.ResponseWriter, r *http.Request) {
