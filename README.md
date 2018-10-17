@@ -2,23 +2,20 @@
 
 ## Overview
 
-ContainerFS is a container-native distributed filesystem as a unified platform for unstructured data storage. 
-
-* unlimited small files and large files.
-
-* append-only or random writes
+ContainerFS is a container-native distributed filesystem.
 
 * scale-out metadata management
 
 * strong consistency
 
-* multi-tenancy: millions of filesystem volumes
+* multi-tenancy: lots of filesystem volumes
 
 * POSIX-compatible
 
-Containerfs has been built and deployed in production since 2013.
 
-## Concepts
+## Architecture
+
+### Concepts
 
 volume
 
@@ -26,11 +23,13 @@ inode
 
 directory
 
-blob
-
 extent
 
-## Architecture
+meta partition
+
+data partition
+
+### Components
 
 CFS consists of several components:
 
@@ -38,37 +37,33 @@ CFS consists of several components:
 
 * metanode. multi-raft replication, a meta partition (inode range) per replication state machine
 
-* datanode. de-clustering of data partitions, two storage engines - Blob Store (BS) and Extent Store (ES), optimized for small and large files respectively. 
+* datanode. de-clustering of data partitions, sequential append-only replication + multi-raft
 
-* client interfaces: FUSE, Java SDK, Go SDK, Linux kernel
+* FUSE client
 
-### replication
+### Replication Consistency
 
 master: single-raft
 
 metadata partition: multi-raft
 
-data partition: chained append-only replication for append operations; multi-raft for extent updates
+data partition: sequential replication for extent appending; multi-raft for extent update and truncation
+
+failure recovery for data partitions: firstly, execute the recovery process of the sequential replication; and then the raft recovery process.
+
 
 ## Usage
 
-* mounted by containers for decoupling storage from compute
+ContainerFS is mounted by containers for decoupling storage from compute.
 
-integrated with Kubernetes to run various workloads from application microservices to complex databases e.g., HBase, MyRocks, ElasticSearch, and ChuBao DB
+And it is integrated with Kubernetes to run various workloads from statelsss microserverices for logging, database servers for data persistence (e.g., MySQL), and machine learning systems for data training (e.g. TensorFlow).
 
-* Image Store
-
-based on the namespace-less key-file interface, nginx integration
-
-* Object Store
-
-integration with minio
 
 ## Deployment
 
-rack
+a single datacenter of multiple racks, each rack as an availability zone; or a region of multiple datacenters, each datacenter as an AZ.
 
-set
+a number of datanodes/metanodes (say M) are deployed as a 'set' for optimizing hearbeats into O(M^2)
 
 ## License
 
