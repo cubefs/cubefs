@@ -55,7 +55,8 @@ const (
 	OutFlow
 )
 const (
-	MaxRepairBlobFileCount = 3
+	MaxRepairBlobFileCount     = 3
+	UpdateReplicationHostsTime = 300
 )
 
 const (
