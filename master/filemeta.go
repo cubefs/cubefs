@@ -104,3 +104,14 @@ func (fc *FileInCore) getFileMetaByAddr(replica *DataReplica) (fm *FileMetaOnNod
 
 	return
 }
+
+func (fc *FileInCore) getFileMetaAddrs() (addrs []string) {
+	addrs = make([]string, 0)
+	if len(fc.Metas) == 0 {
+		return
+	}
+	for _, fm := range fc.Metas {
+		addrs = append(addrs, fm.LocAddr)
+	}
+	return
+}

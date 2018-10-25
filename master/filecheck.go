@@ -15,6 +15,7 @@
 package master
 
 import (
+	"fmt"
 	"github.com/tiglabs/containerfs/proto"
 )
 
@@ -25,6 +26,20 @@ func (partition *DataPartition) checkFile(clusterID string) {
 	liveReplicas := partition.getLiveReplicas(DefaultDataPartitionTimeOutSec)
 	if len(liveReplicas) == 0 {
 		return
+	}
+
+	if len(liveReplicas) < int(partition.ReplicaNum) {
+		liveAddrs := make([]string, 0)
+		for _, replica := range liveReplicas {
+			liveAddrs = append(liveAddrs, replica.Addr)
+		}
+		unliveAddrs := make([]string, 0)
+		for _, host := range partition.PersistenceHosts {
+			if !contains(liveAddrs, host) {
+				unliveAddrs = append(unliveAddrs, host)
+			}
+		}
+		Warn(clusterID, fmt.Sprintf("vol[%v],pid[%v],liveAddrs[%v],unliveAddrs[%v]", partition.VolName, partition.PartitionID, liveAddrs, unliveAddrs))
 	}
 
 	switch partition.PartitionType {

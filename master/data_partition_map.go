@@ -78,10 +78,6 @@ func (dpMap *DataPartitionMap) setReadWriteDataPartitions(readWrites int, cluste
 	dpMap.Lock()
 	defer dpMap.Unlock()
 	dpMap.readWriteDataPartitions = readWrites
-	if dpMap.readWriteDataPartitions < MinReadWriteDataPartitions {
-		msg := fmt.Sprintf("volName[%v] readWriteDataPartitions[%v] less than %v", dpMap.volName, dpMap.readWriteDataPartitions, MinReadWriteDataPartitions)
-		Warn(clusterName, msg)
-	}
 }
 
 func (dpMap *DataPartitionMap) updateDataPartitionResponseCache(needUpdate bool, minPartitionID uint64) (body []byte, err error) {

@@ -68,6 +68,19 @@ func (dataNode *DataNode) checkHeartBeat() {
 	return
 }
 
+func (dataNode *DataNode) getBadDiskPartitions(disk string) (partitionIds []uint64) {
+	partitionIds = make([]uint64, 0)
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+	for _, partitionReports := range dataNode.dataPartitionInfos {
+		if partitionReports.DiskPath == disk {
+			partitionIds = append(partitionIds, partitionReports.PartitionID)
+		}
+	}
+
+	return
+}
+
 /*set node is online*/
 func (dataNode *DataNode) setNodeAlive() {
 	dataNode.Lock()

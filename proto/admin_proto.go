@@ -103,6 +103,7 @@ type PartitionReport struct {
 	PartitionStatus int
 	Total           uint64
 	Used            uint64
+	DiskPath        string
 }
 
 type DataNodeHeartBeatResponse struct {

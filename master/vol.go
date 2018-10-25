@@ -111,7 +111,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (readWriteDataPartitions int) {
 				c.dataPartitionOffline(addr, vol.Name, dp, CheckDataPartitionDiskErrorErr)
 			}
 		}
-		tasks := dp.checkReplicationTask()
+		tasks := dp.checkReplicationTask(c.Name)
 		c.putDataNodeTasks(tasks)
 	}
 	return

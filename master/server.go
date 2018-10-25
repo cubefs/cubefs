@@ -21,6 +21,7 @@ import (
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/ump"
+	"net/http/httputil"
 	"strconv"
 	"sync"
 )
@@ -41,20 +42,21 @@ const (
 )
 
 type Master struct {
-	id          uint64
-	clusterName string
-	ip          string
-	port        string
-	walDir      string
-	storeDir    string
-	retainLogs  uint64
-	leaderInfo  *LeaderInfo
-	config      *ClusterConfig
-	cluster     *Cluster
-	raftStore   raftstore.RaftStore
-	fsm         *MetadataFsm
-	partition   raftstore.Partition
-	wg          sync.WaitGroup
+	id           uint64
+	clusterName  string
+	ip           string
+	port         string
+	walDir       string
+	storeDir     string
+	retainLogs   uint64
+	leaderInfo   *LeaderInfo
+	config       *ClusterConfig
+	cluster      *Cluster
+	raftStore    raftstore.RaftStore
+	fsm          *MetadataFsm
+	partition    raftstore.Partition
+	wg           sync.WaitGroup
+	reverseProxy *httputil.ReverseProxy
 }
 
 func NewServer() *Master {
@@ -64,7 +66,7 @@ func NewServer() *Master {
 func (m *Master) Start(cfg *config.Config) (err error) {
 	m.config = NewClusterConfig()
 	m.leaderInfo = &LeaderInfo{}
-
+	m.reverseProxy = m.newReverseProxy()
 	if err = m.checkConfig(cfg); err != nil {
 		log.LogError(errors.ErrorStack(err))
 		return

@@ -36,9 +36,18 @@ type ClusterView struct {
 	MaxDataPartitionID uint64
 	MaxMetaNodeID      uint64
 	MaxMetaPartitionID uint64
-	Vols               []string
+	DataNodeStat       *DataNodeSpaceStat
+	MetaNodeStat       *MetaNodeSpaceStat
+	VolStat            []*VolSpaceStat
 	MetaNodes          []MetaNodeView
 	DataNodes          []DataNodeView
+}
+
+type VolStatView struct {
+	Name      string
+	Total     uint64 `json:"TotalGB"`
+	Used      uint64 `json:"UsedGB"`
+	Increased uint64 `json:"IncreasedGB"`
 }
 
 type DataNodeView struct {
@@ -106,14 +115,24 @@ func (m *Master) getCluster(w http.ResponseWriter, r *http.Request) {
 		MaxDataPartitionID: m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:      m.cluster.idAlloc.metaNodeID,
 		MaxMetaPartitionID: m.cluster.idAlloc.metaPartitionID,
-		Vols:               make([]string, 0),
 		MetaNodes:          make([]MetaNodeView, 0),
 		DataNodes:          make([]DataNodeView, 0),
+		VolStat:            make([]*VolSpaceStat, 0),
 	}
 
-	cv.Vols = m.cluster.getAllVols()
+	vols := m.cluster.getAllVols()
 	cv.MetaNodes = m.cluster.getAllMetaNodes()
 	cv.DataNodes = m.cluster.getAllDataNodes()
+	cv.DataNodeStat = m.cluster.dataNodeSpace
+	cv.MetaNodeStat = m.cluster.metaNodeSpace
+	for _, name := range vols {
+		stat, ok := m.cluster.volSpaceStat.Load(name)
+		if !ok {
+			cv.VolStat = append(cv.VolStat, newVolSpaceStat(name, 0, 0, "0.0001"))
+			continue
+		}
+		cv.VolStat = append(cv.VolStat, stat.(*VolSpaceStat))
+	}
 	if body, err = json.Marshal(cv); err != nil {
 		goto errDeal
 	}
@@ -412,6 +431,40 @@ errDeal:
 	return
 }
 
+func (m *Master) diskOffline(w http.ResponseWriter, r *http.Request) {
+	var (
+		node                  *DataNode
+		rstMsg                string
+		offLineAddr, diskPath string
+		err                   error
+		badPartitionIds       []uint64
+	)
+
+	if offLineAddr, diskPath, err = parseDiskOfflinePara(r); err != nil {
+		goto errDeal
+	}
+
+	if node, err = m.cluster.getDataNode(offLineAddr); err != nil {
+		goto errDeal
+	}
+	badPartitionIds = node.getBadDiskPartitions(diskPath)
+	if len(badPartitionIds) == 0 {
+		err = fmt.Errorf("node[%v] disk[%v] no any datapartition", node.Addr, diskPath)
+		goto errDeal
+	}
+	rstMsg = fmt.Sprintf("recive diskOffline node[%v] disk[%v],badPartitionIds[%v]  has offline  success",
+		node.Addr, diskPath, badPartitionIds)
+	m.cluster.diskOffLine(node, diskPath, badPartitionIds)
+	io.WriteString(w, rstMsg)
+	log.LogWarnf(rstMsg)
+	Warn(m.clusterName, rstMsg)
+	return
+errDeal:
+	logMsg := getReturnMessage("diskOffLine", r.RemoteAddr, err.Error(), http.StatusBadRequest)
+	HandleError(logMsg, err, http.StatusBadRequest, w)
+	return
+}
+
 func (m *Master) dataNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
 	var (
 		dataNode *DataNode
@@ -682,6 +735,16 @@ func parseDataNodeOfflinePara(r *http.Request) (nodeAddr string, err error) {
 	return checkNodeAddr(r)
 }
 
+func parseDiskOfflinePara(r *http.Request) (nodeAddr, diskPath string, err error) {
+	r.ParseForm()
+	nodeAddr, err = checkNodeAddr(r)
+	if err != nil {
+		return
+	}
+	diskPath, err = checkDiskPath(r)
+	return
+}
+
 func parseTaskResponse(r *http.Request) (tr *proto.AdminTask, err error) {
 	var body []byte
 	r.ParseForm()
@@ -792,6 +855,14 @@ func parseDataPartitionOfflinePara(r *http.Request) (nodeAddr string, ID uint64,
 func checkNodeAddr(r *http.Request) (nodeAddr string, err error) {
 	if nodeAddr = r.FormValue(ParaNodeAddr); nodeAddr == "" {
 		err = paraNotFound(ParaNodeAddr)
+		return
+	}
+	return
+}
+
+func checkDiskPath(r *http.Request) (nodeAddr string, err error) {
+	if nodeAddr = r.FormValue(ParaDiskPath); nodeAddr == "" {
+		err = paraNotFound(ParaDiskPath)
 		return
 	}
 	return

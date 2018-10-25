@@ -72,6 +72,13 @@ func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataRe
 	}
 
 	fms, needRepair := fc.needCrcRepair(liveVols, volType)
+	if len(fms) < len(liveVols) {
+		liveAddrs := make([]string, 0)
+		for _, replica := range liveVols {
+			liveAddrs = append(liveAddrs, replica.Addr)
+		}
+		Warn(clusterID, fmt.Sprintf("pid[%v],file[%v],fms[%v],liveAddr[%v]", partitionID, fc.Name, fc.getFileMetaAddrs(), liveAddrs))
+	}
 	if !needRepair {
 		return
 	}
@@ -122,9 +129,9 @@ func (fc *FileInCore) needCrcRepair(liveVols []*DataReplica, volType string) (fm
 		return
 	}
 
-	if !isSameSize(fms) {
-		return
-	}
+	//if !isSameSize(fms) {
+	//	return
+	//}
 
 	if volType == proto.BlobPartition {
 		if !isSameLastObjectID(fms) || !isSameNeedleCnt(fms) {

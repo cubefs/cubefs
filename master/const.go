@@ -16,6 +16,7 @@ package master
 
 const (
 	ParaNodeAddr          = "addr"
+	ParaDiskPath          = "disk"
 	ParaName              = "name"
 	ParaId                = "id"
 	ParaCount             = "count"
@@ -34,6 +35,7 @@ const (
 	GetAvailMetaNodeHostsErr       = "GetAvailMetaNodeHostsErr "
 	GetDataReplicaFileCountInfo    = "GetDataReplicaFileCountInfo "
 	DataNodeOfflineInfo            = "dataNodeOfflineInfo"
+	DiskOfflineInfo                = "DiskOfflineInfo"
 	HandleDataPartitionOfflineErr  = "HandleDataPartitionOffLineErr "
 )
 
@@ -47,8 +49,7 @@ const (
 	DefaultMetaNodeReservedMem      uint64  = 1 << 32
 	RuntimeStackBufSize                     = 4096
 	NodesAliveRate                  float32 = 0.5
-	MinReadWriteDataPartitions              = 200
-	SpaceAvailRate                          = 0.95
+	SpaceAvailRate                          = 0.90
 )
 
 const (
