@@ -267,7 +267,12 @@ func (dp *dataPartition) NotifyExtentRepair(members []*MembersFileMetas) (err er
 				errList = append(errList, err)
 				return
 			}
-			p.ReadFromConn(conn, proto.NoReadDeadlineTime)
+			err = p.ReadFromConn(conn, proto.NoReadDeadlineTime)
+			if err != nil {
+				gConnPool.Put(conn, true)
+				errList = append(errList, err)
+				return
+			}
 			gConnPool.Put(conn, true)
 		}(i)
 	}

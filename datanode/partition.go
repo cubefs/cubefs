@@ -100,7 +100,8 @@ type dataPartition struct {
 	stopC           chan bool
 	isFirstRestart  bool
 
-	runtimeMetrics *DataPartitionMetrics
+	runtimeMetrics        *DataPartitionMetrics
+	updateReplicationTime int64
 }
 
 func CreateDataPartition(volId string, partitionId uint32, disk *Disk, size int, partitionType string) (dp DataPartition, err error) {
@@ -240,6 +241,7 @@ func (dp *dataPartition) statusUpdateScheduler() {
 		select {
 		case <-ticker.C:
 			dp.statusUpdate()
+			dp.LaunchRepair()
 		case <-dp.stopC:
 			ticker.Stop()
 			return
@@ -301,6 +303,9 @@ func (dp *dataPartition) LaunchRepair() {
 }
 
 func (dp *dataPartition) updateReplicaHosts() (err error) {
+	if time.Now().Unix()-dp.updateReplicationTime <= UpdateReplicationHostsTime {
+		return
+	}
 	dp.isLeader = false
 	isLeader, replicas, err := dp.fetchReplicaHosts()
 	if err != nil {
@@ -312,6 +317,9 @@ func (dp *dataPartition) updateReplicaHosts() (err error) {
 	}
 	dp.isLeader = isLeader
 	dp.replicaHosts = replicas
+	dp.updateReplicationTime = time.Now().Unix()
+	log.LogInfof(fmt.Sprintf("ActionUpdateReplicationHosts partiton[%v]", dp.partitionId))
+
 	return
 }
 
@@ -399,6 +407,8 @@ func (dp *dataPartition) MergeExtentStoreRepair(metas *MembersFileMetas) {
 			continue
 		}
 		if extentStore.IsExistExtent(uint64(addExtent.FileId)) {
+			fixFileSizeTask := &storage.FileInfo{Source: addExtent.Source, FileId: addExtent.FileId, Size: addExtent.Size}
+			metas.NeedFixExtentSizeTasks = append(metas.NeedFixExtentSizeTasks, fixFileSizeTask)
 			continue
 		}
 		err := extentStore.Create(uint64(addExtent.FileId), addExtent.Inode, false)
@@ -418,7 +428,7 @@ func (dp *dataPartition) MergeExtentStoreRepair(metas *MembersFileMetas) {
 			continue
 		}
 		wg.Add(1)
-		go dp.doStreamExtentFixRepair(&wg, fixExtent)
+		dp.doStreamExtentFixRepair(&wg, fixExtent)
 	}
 	wg.Wait()
 }
