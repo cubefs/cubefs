@@ -96,7 +96,7 @@ func Mount(cfg *config.Config) error {
 	defer c.Close()
 
 	level := ParseLogLevel(loglvl)
-	_, err = log.InitLog(path.Join(logpath, LoggerDir), LoggerPrefix, level)
+	_, err = log.InitLog(path.Join(logpath, LoggerDir), LoggerPrefix, level, nil)
 	if err != nil {
 		return err
 	}
