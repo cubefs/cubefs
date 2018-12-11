@@ -47,7 +47,7 @@ const (
 	FileOpt                = os.O_RDWR | os.O_CREATE | os.O_APPEND
 	WriterBufferInitSize   = 4 * 1024 * 1024
 	WriterBufferLenLimit   = 4 * 1024 * 1024
-	DefaultRollingInterval = 10 * time.Minute
+	DefaultRollingInterval = 5 * time.Minute
 	RolledExtension        = ".old"
 )
 
