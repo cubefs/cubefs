@@ -27,27 +27,14 @@ const (
 )
 
 const (
-	ActionSendToNext                                 = "ActionSendToNext"
-	LocalProcessAddr                                 = "LocalProcess"
-	ActionReceiveFromNext                            = "ActionReceiveFromNext"
-	ActionStreamRead                                 = "ActionStreamRead"
-	ActionWriteToCli                                 = "ActionWriteToCli"
-	ActionGetDataPartitionMetrics                    = "ActionGetDataPartitionMetrics"
-	ActionCheckAndAddInfos                           = "ActionCheckAndAddInfos"
-	ActionCheckBlobFileInfo                          = "ActionCheckBlobFileInfo"
-	ActionPostToMaster                               = "ActionPostToMaster"
-	ActionFollowerRequireBlobFileRepairCmd           = "ActionFollowerRequireBlobFileRepairCmd"
-	ActionLeaderToFollowerOpRepairReadPackBuffer     = "ActionLeaderToFollowerOpRepairReadPackBuffer"
-	ActionLeaderToFollowerOpRepairReadSendPackBuffer = "ActionLeaderToFollowerOpRepairReadSendPackBuffer"
-
-	ActionGetFollowers    = "ActionGetFollowers"
-	ActionCheckReplyAvail = "ActionCheckReplyAvail"
-)
-
-//stats
-const (
-	ReportToMonitorRole = 1
-	ReportToSelfRole    = 3
+	ActionSendToNext              = "ActionSendToNext"
+	LocalProcessAddr              = "LocalProcess"
+	ActionReceiveFromNext         = "ActionReceiveFromNext"
+	ActionStreamRead              = "ActionStreamRead"
+	ActionWriteToCli              = "ActionWriteToCli"
+	ActionGetDataPartitionMetrics = "ActionGetDataPartitionMetrics"
+	ActionCheckAndAddInfos        = "ActionCheckAndAddInfos"
+	ActionCheckReplyAvail         = "ActionCheckReplyAvail"
 )
 
 const (
@@ -55,56 +42,53 @@ const (
 	OutFlow
 )
 const (
-	MaxRepairBlobFileCount     = 3
-	UpdateReplicationHostsTime = 300
+	UpdateReplicationHostsTime = 60
+	SimultaneouslyRecoverFiles = 7
 )
 
 const (
 	NetType = "tcp"
 )
 
-const (
-	ObjectIDSize = 8
-)
-const (
-	CanCompact    = 1
-	NotCanCompact = -1
-)
-
 //pack cmd response
 const (
-	NoFlag           = 0
 	ReadFlag         = 1
 	WriteFlag        = 2
-	MaxActiveExtents = 50000
+	MaxActiveExtents = 20000
 )
 
 const (
-	ConnIsNullErr = "ConnIsNullErr"
+	ConnIsNullErr  = "ConnIsNullErr"
+	RaftIsNotStart = "RaftIsNotStart"
 )
 
 const (
-	LogHeartbeat         = "HB:"
-	LogStats             = "Stats:"
-	LogLoad              = "Load:"
-	LogExit              = "Exit:"
-	LogShutdown          = "Shutdown:"
-	LogCreatePartition   = "CRV:"
-	LogCreateFile        = "CRF:"
-	LogDelPartition      = "DELV:"
-	LogDelFile           = "DELF:"
-	LogMarkDel           = "MDEL:"
-	LogPartitionSnapshot = "Snapshot:"
-	LogGetWm             = "WM:"
-	LogGetAllWm          = "AllWM:"
-	LogCompactBlobFile   = "CompactBlobFile:"
-	LogWrite             = "WR:"
-	LogRead              = "RD:"
-	LogRepairRead        = "RRD:"
-	LogStreamRead        = "SRD:"
-	LogRepairNeedles     = "RN:"
-	LogRepair            = "Repair:"
-	LogChecker           = "Checker:"
-	LogTask              = "Master Task:"
-	LogGetFlow           = "GetFlowInfo:"
+	LogStats            = "Stats:"
+	LogCreateFile       = "CRF:"
+	LogMarkDel          = "MDEL:"
+	LogGetWm            = "WM:"
+	LogGetAllWm         = "AllWM:"
+	LogWrite            = "WR:"
+	LogRead             = "RD:"
+	LogRepair           = "Repair:"
+	LogOfflinePartition = "OfflineDP"
+)
+
+const (
+	opRandomWrite uint32 = iota
+	opStartRaft
+)
+
+const (
+	maxApplyErrRetry  = 10
+	storeApplyIdNum   = 64
+	MinFixTinyExtents = 3
+)
+
+const (
+	FixRaftFollower = 1
+)
+
+const (
+	DiskSectorSize = 512
 )

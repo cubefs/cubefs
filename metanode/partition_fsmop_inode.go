@@ -161,25 +161,27 @@ func (mp *metaPartition) internalDeleteInode(ino *Inode) {
 }
 
 func (mp *metaPartition) appendExtents(ino *Inode) (status uint8) {
-	exts := ino.Extents
 	status = proto.OpOk
 	item := mp.inodeTree.Get(ino)
 	if item == nil {
 		status = proto.OpNotExistErr
 		return
 	}
-	ino = item.(*Inode)
-	if ino.MarkDelete == 1 {
+	ino2 := item.(*Inode)
+	if ino2.MarkDelete == 1 {
 		status = proto.OpNotExistErr
 		return
 	}
-	modifyTime := ino.ModifyTime
-	exts.Range(func(i int, ext proto.ExtentKey) bool {
-		ino.AppendExtents(ext)
+	var delItems []BtreeItem
+	ino.Extents.Range(func(item BtreeItem) bool {
+		delItems = append(delItems, ino2.AppendExtents(item)...)
 		return true
 	})
-	ino.ModifyTime = modifyTime
-	ino.Generation++
+	ino2.ModifyTime = ino.ModifyTime
+	ino2.Generation++
+	for _, item := range delItems {
+		mp.extDelCh <- item
+	}
 	return
 }
 
@@ -187,8 +189,8 @@ func (mp *metaPartition) extentsTruncate(ino *Inode) (resp *ResponseInode) {
 	resp = NewResponseInode()
 	resp.Status = proto.OpOk
 	isFind := false
-	var markIno *Inode
 	mp.inodeTree.Find(ino, func(item BtreeItem) {
+		var delExtents []BtreeItem
 		isFind = true
 		i := item.(*Inode)
 		if proto.IsDir(i.Type) {
@@ -199,25 +201,34 @@ func (mp *metaPartition) extentsTruncate(ino *Inode) (resp *ResponseInode) {
 			resp.Status = proto.OpNotExistErr
 			return
 		}
-		ino.Extents = i.Extents
-		i.Size = 0
+		i.Extents.Extents.AscendGreaterOrEqual(&proto.
+			ExtentKey{FileOffset: ino.Size},
+			func(item BtreeItem) bool {
+				delExtents = append(delExtents, item)
+				return true
+			})
+		// delete
+		for _, ext := range delExtents {
+			i.Extents.Delete(ext)
+			mp.extDelCh <- ext
+		}
+		// check max
+		extItem := i.Extents.Max()
+		if extItem != nil {
+			ext := extItem.(*proto.ExtentKey)
+			if (ext.FileOffset + uint64(ext.Size)) > ino.Size {
+				ext.Size = uint32(ino.Size - ext.FileOffset)
+			}
+		}
+		i.Size = ino.Size
 		i.ModifyTime = ino.ModifyTime
 		i.Generation++
-		i.Extents = proto.NewStreamKey(i.Inode)
-		markIno = NewInode(binary.BigEndian.Uint64(ino.LinkTarget), i.Type)
-		markIno.MarkDelete = 1
-		markIno.Extents = ino.Extents
 	})
 	if !isFind {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
 
-	// mark Delete and push to freeList
-	if markIno != nil {
-		mp.inodeTree.ReplaceOrInsert(markIno, false)
-		mp.freeList.Push(markIno)
-	}
 	return
 }
 

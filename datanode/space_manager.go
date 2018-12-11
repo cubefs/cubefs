@@ -22,6 +22,7 @@ import (
 	"os"
 
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/raftstore"
 	"github.com/tiglabs/containerfs/util/log"
 )
 
@@ -31,21 +32,31 @@ type SpaceManager interface {
 	GetPartition(partitionId uint32) (dp DataPartition)
 	Stats() *Stats
 	GetDisks() []*Disk
-	CreatePartition(volId string, partitionId uint32, storeSize int, storeType string) (DataPartition, error)
+	CreatePartition(request *proto.CreateDataPartitionRequest) (DataPartition, error)
 	DeletePartition(partitionId uint32)
 	RangePartitions(f func(partition DataPartition) bool)
+	SetRaftStore(raftStore raftstore.RaftStore)
+	GetRaftStore() (raftStore raftstore.RaftStore)
+	SetNodeId(nodeId uint64)
+	GetNodeId() (nodeId uint64)
+	SetClusterId(clusterId string)
+	GetClusterId() (clusterId string)
 	Stop()
 }
 
 type spaceManager struct {
-	disks       map[string]*Disk
-	partitions  map[uint32]DataPartition
-	diskMu      sync.RWMutex
-	partitionMu sync.RWMutex
-	stats       *Stats
-	stopC       chan bool
-	chooseIndex int
-	diskList    []string
+	clusterId         string
+	disks             map[string]*Disk
+	partitions        map[uint32]DataPartition
+	raftStore         raftstore.RaftStore
+	nodeId            uint64
+	diskMu            sync.RWMutex
+	partitionMu       sync.RWMutex
+	stats             *Stats
+	stopC             chan bool
+	chooseIndex       int
+	diskList          []string
+	createPartitionMu sync.RWMutex
 }
 
 func NewSpaceManager(rack string) SpaceManager {
@@ -68,6 +79,29 @@ func (space *spaceManager) Stop() {
 		recover()
 	}()
 	close(space.stopC)
+}
+
+func (space *spaceManager) SetNodeId(nodeId uint64) {
+	space.nodeId = nodeId
+}
+
+func (space *spaceManager) GetNodeId() (nodeId uint64) {
+	return space.nodeId
+}
+
+func (space *spaceManager) SetClusterId(clusterId string) {
+	space.clusterId = clusterId
+}
+
+func (space *spaceManager) GetClusterId() (clusterId string) {
+	return space.clusterId
+}
+
+func (space *spaceManager) SetRaftStore(raftStore raftstore.RaftStore) {
+	space.raftStore = raftStore
+}
+func (space *spaceManager) GetRaftStore() (raftStore raftstore.RaftStore) {
+	return space.raftStore
 }
 
 func (space *spaceManager) RangePartitions(f func(partition DataPartition) bool) {
@@ -243,8 +277,22 @@ func (space *spaceManager) putPartition(dp DataPartition) {
 	return
 }
 
-func (space *spaceManager) CreatePartition(volId string, partitionId uint32, storeSize int, storeType string) (dp DataPartition, err error) {
-	if space.GetPartition(partitionId) != nil {
+func (space *spaceManager) CreatePartition(request *proto.CreateDataPartitionRequest) (dp DataPartition, err error) {
+	space.createPartitionMu.Lock()
+	defer space.createPartitionMu.Unlock()
+	dpCfg := &dataPartitionCfg{
+		PartitionId:   uint32(request.PartitionId),
+		VolName:       request.VolumeId,
+		Peers:         request.Members,
+		RaftStore:     space.raftStore,
+		NodeId:        space.nodeId,
+		ClusterId:     space.clusterId,
+		PartitionSize: request.PartitionSize,
+		PartitionType: request.PartitionType,
+		RandomWrite:   request.RandomWrite,
+	}
+
+	if space.GetPartition(dpCfg.PartitionId) != nil {
 		return
 	}
 	var (
@@ -252,7 +300,7 @@ func (space *spaceManager) CreatePartition(volId string, partitionId uint32, sto
 	)
 	for i := 0; i < len(space.disks); i++ {
 		disk = space.getMinPartitionCntDisk()
-		if disk.Available < uint64(storeSize) {
+		if disk.Available < uint64(dpCfg.PartitionSize) {
 			disk = nil
 			continue
 		}
@@ -261,7 +309,7 @@ func (space *spaceManager) CreatePartition(volId string, partitionId uint32, sto
 	if disk == nil {
 		return nil, ErrNoDiskForCreatePartition
 	}
-	if dp, err = CreateDataPartition(volId, partitionId, disk, storeSize, storeType); err != nil {
+	if dp, err = CreateDataPartition(dpCfg, disk); err != nil {
 		return
 	}
 
@@ -302,13 +350,17 @@ func (s *DataNode) fillHeartBeatResponse(response *proto.DataNodeHeartBeatRespon
 	response.PartitionInfo = make([]*proto.PartitionReport, 0)
 	space := s.space
 	space.RangePartitions(func(partition DataPartition) bool {
+		leaderAddr, isLeader := partition.IsLeader()
 		vr := &proto.PartitionReport{
 			PartitionID:     uint64(partition.ID()),
 			PartitionStatus: partition.Status(),
 			Total:           uint64(partition.Size()),
 			Used:            uint64(partition.Used()),
 			DiskPath:        partition.Disk().Path,
+			IsLeader:        isLeader,
+			ExtentCount:     partition.GetStore().GetExtentCount(),
 		}
+		log.LogDebugf("action[Heartbeats] dpid[%v], status[%v] total[%v] used[%v] leader[%v] b[%v].", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)
 		response.PartitionInfo = append(response.PartitionInfo, vr)
 		return true
 	})

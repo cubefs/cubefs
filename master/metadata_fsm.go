@@ -46,9 +46,9 @@ type MetadataFsm struct {
 	snapshotHandler     RaftApplySnapshotHandler
 }
 
-func newMetadataFsm(dir string) (fsm *MetadataFsm) {
+func newMetadataFsm(store *raftstore.RocksDBStore) (fsm *MetadataFsm) {
 	fsm = new(MetadataFsm)
-	fsm.store = raftstore.NewRocksDBStore(dir)
+	fsm.store = store
 	return
 }
 
@@ -93,39 +93,41 @@ func (mf *MetadataFsm) restoreApplied() {
 func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, err error) {
 	cmd := new(Metadata)
 	if err = cmd.Unmarshal(command); err != nil {
-		return nil, fmt.Errorf("action[fsmApply],unmarshal data:%v, err:%v", command, err.Error())
+		log.LogErrorf("action[fsmApply],unmarshal data:%v, err:%v", command, err.Error())
+		panic(err)
 	}
+	log.LogInfof("action[fsmApply],cmd.K[%v],cmd.V[%v]", cmd.K, string(cmd.V))
 	cmdMap := make(map[string][]byte)
 	cmdMap[cmd.K] = cmd.V
 	cmdMap[Applied] = []byte(strconv.FormatUint(uint64(index), 10))
 	switch cmd.Op {
 	case OpSyncDeleteDataNode:
 		if err = mf.DelKeyAndPutIndex(cmd.K, cmdMap); err != nil {
-			return
+			panic(err)
 		}
 	case OpSyncDeleteMetaNode:
 		if err = mf.DelKeyAndPutIndex(cmd.K, cmdMap); err != nil {
-			return
+			panic(err)
 		}
 	case OpSyncDeleteVol:
 		if err = mf.DelKeyAndPutIndex(cmd.K, cmdMap); err != nil {
-			return
+			panic(err)
 		}
 	case OpSyncDeleteDataPartition:
 		if err = mf.DelKeyAndPutIndex(cmd.K, cmdMap); err != nil {
-			return
+			panic(err)
 		}
 	case OpSyncDeleteMetaPartition:
 		if err = mf.DelKeyAndPutIndex(cmd.K, cmdMap); err != nil {
-			return
+			panic(err)
 		}
 	default:
 		if err = mf.BatchPut(cmdMap); err != nil {
-			return
+			panic(err)
 		}
 	}
 	if err = mf.applyHandler(cmd); err != nil {
-		return
+		panic(err)
 	}
 	mf.applied = index
 	return
@@ -141,7 +143,6 @@ func (mf *MetadataFsm) ApplyMemberChange(confChange *proto.ConfChange, index uin
 
 func (mf *MetadataFsm) Snapshot() (proto.Snapshot, error) {
 	snapshot := mf.store.RocksDBSnapshot()
-
 	iterator := mf.store.Iterator(snapshot)
 	iterator.SeekToFirst()
 	return &MetadataSnapshot{

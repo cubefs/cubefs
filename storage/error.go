@@ -36,6 +36,11 @@ var (
 	ErrorCommit            = errors.New("commit error")
 	ErrObjectSmaller       = errors.New("object smaller error")
 	ErrPkgCrcMismatch      = errors.New("pkg crc is not equal pkg data")
+	ErrNotLeader           = errors.New("not raft leader")
+	ErrNoLeader            = errors.New("raft no leader")
+	ErrorExtentNotFound    = errors.New("extent not exist")
+	ErrorExtentHasExsit    = errors.New("extent has exist")
+	ErrorExtentHasFull     = errors.New("extent has full")
 )
 
 func NewParamMismatchErr(msg string) (err error) {

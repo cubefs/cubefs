@@ -16,6 +16,7 @@ package stream
 
 import (
 	"encoding/binary"
+	"fmt"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/sdk/data/wrapper"
 	"github.com/tiglabs/containerfs/util"
@@ -28,24 +29,34 @@ import (
 type Packet struct {
 	proto.Packet
 	fillBytes    uint32
+	inode        uint64
 	kernelOffset int
 	orgSize      uint32
 	orgData      []byte
 }
 
-func NewWritePacket(dp *wrapper.DataPartition, extentId uint64, offset int, kernelOffset int) (p *Packet) {
+func (p *Packet) String() string {
+	return fmt.Sprintf("ReqID(%v) Op(%v) Inode(%v) FileOffset(%v) Size(%v) PartitionID(%v) FileID(%v) Offset(%v) CRC(%v) ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.inode, p.kernelOffset, p.Size, p.PartitionID, p.FileID, p.Offset, p.Crc, p.GetResultMesg())
+}
+
+func NewWritePacket(dp *wrapper.DataPartition, extentId uint64, offset int, inode uint64, kernelOffset int, isRandom bool) (p *Packet) {
 	p = new(Packet)
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
 	p.Data = make([]byte, 0)
-	p.StoreMode = proto.ExtentStoreMode
+	p.StoreMode = proto.NormalExtentMode
 	p.FileID = extentId
 	p.Offset = int64(offset)
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.Arglen = uint32(len(p.Arg))
 	p.Nodes = uint8(len(dp.Hosts) - 1)
 	p.ReqID = proto.GetReqID()
-	p.Opcode = proto.OpWrite
+	if isRandom {
+		p.Opcode = proto.OpRandomWrite
+	} else {
+		p.Opcode = proto.OpWrite
+	}
+	p.inode = inode
 	p.kernelOffset = kernelOffset
 	p.Data, _ = proto.Buffers.Get(util.BlockSize)
 
@@ -60,14 +71,14 @@ func NewReadPacket(key *proto.ExtentKey, offset, size int) (p *Packet) {
 	p.Offset = int64(offset)
 	p.Size = uint32(size)
 	p.Opcode = proto.OpRead
-	p.StoreMode = proto.ExtentStoreMode
+	p.StoreMode = proto.NormalExtentMode
 	p.ReqID = proto.GetReqID()
 	p.Nodes = 0
 
 	return
 }
 
-func NewStreamReadPacket(key *proto.ExtentKey, offset, size int) (p *Packet) {
+func NewStreamReadPacket(key *proto.ExtentKey, offset, size int, inode uint64, fileOffset int) (p *Packet) {
 	p = new(Packet)
 	p.FileID = key.ExtentId
 	p.PartitionID = key.PartitionId
@@ -75,9 +86,11 @@ func NewStreamReadPacket(key *proto.ExtentKey, offset, size int) (p *Packet) {
 	p.Offset = int64(offset)
 	p.Size = uint32(size)
 	p.Opcode = proto.OpStreamRead
-	p.StoreMode = proto.ExtentStoreMode
+	p.StoreMode = proto.NormalExtentMode
 	p.ReqID = proto.GetReqID()
 	p.Nodes = 0
+	p.inode = inode
+	p.kernelOffset = fileOffset
 
 	return
 }
@@ -87,7 +100,7 @@ func NewCreateExtentPacket(dp *wrapper.DataPartition, inodeId uint64) (p *Packet
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
 	p.Data = make([]byte, 0)
-	p.StoreMode = proto.ExtentStoreMode
+	p.StoreMode = proto.NormalExtentMode
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.Arglen = uint32(len(p.Arg))
 	p.Nodes = uint8(len(dp.Hosts) - 1)
@@ -105,7 +118,7 @@ func NewDeleteExtentPacket(dp *wrapper.DataPartition, extentId uint64) (p *Packe
 	p = new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpMarkDelete
-	p.StoreMode = proto.ExtentStoreMode
+	p.StoreMode = proto.NormalExtentMode
 	p.PartitionID = dp.PartitionID
 	p.FileID = extentId
 	p.ReqID = proto.GetReqID()
@@ -121,13 +134,13 @@ func NewReply(reqId int64, partition uint32, extentId uint64) (p *Packet) {
 	p.PartitionID = partition
 	p.FileID = extentId
 	p.Magic = proto.ProtoMagic
-	p.StoreMode = proto.ExtentStoreMode
+	p.StoreMode = proto.NormalExtentMode
 
 	return
 }
 
 func (p *Packet) IsEqualWriteReply(q *Packet) bool {
-	if p.ReqID == q.ReqID && p.PartitionID == q.PartitionID && p.FileID == q.FileID && p.Offset == q.Offset {
+	if p.ReqID == q.ReqID && p.PartitionID == q.PartitionID {
 		return true
 	}
 
@@ -151,6 +164,9 @@ func (p *Packet) IsEqualStreamReadReply(q *Packet) bool {
 }
 
 func (p *Packet) fill(data []byte, size int) (canWrite int) {
+	if p.Size+uint32(size) > util.BlockSize {
+		return
+	}
 	blockSpace := util.BlockSize
 	remain := int(blockSpace) - int(p.Size)
 	canWrite = util.Min(remain, size)

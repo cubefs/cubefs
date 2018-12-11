@@ -49,8 +49,6 @@ func (ms *MetadataSnapshot) Next() (data []byte, err error) {
 			err = fmt.Errorf("action[Next],marshal kv:%v,err:%v", md, err.Error())
 			return nil, err
 		}
-		key.Free()
-		value.Free()
 		ms.iterator.Next()
 		return data, nil
 	}

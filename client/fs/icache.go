@@ -148,6 +148,7 @@ func (ic *InodeCache) evict(foreground bool) {
 
 func (ic *InodeCache) backgroundEviction() {
 	t := time.NewTicker(BgEvictionInterval)
+	defer t.Stop()
 	for {
 		select {
 		case <-t.C:

@@ -15,11 +15,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/tiglabs/containerfs/util/config"
 	"io/ioutil"
 	"os"
 )
@@ -30,20 +30,58 @@ type OpKvData struct {
 	V  []byte `json:"v"`
 }
 
+type rndWrtItem struct {
+	extentId uint64
+	offset   int64
+	size     int64
+	data     []byte
+	crc      uint32
+}
+
+const (
+	opRandomWrite uint32 = iota
+)
+
+var path string
+
+func randomWriteUnmarshal(raw []byte) (result *rndWrtItem, err error) {
+	var opItem rndWrtItem
+
+	buff := bytes.NewBuffer(raw)
+	if err = binary.Read(buff, binary.BigEndian, &opItem.extentId); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &opItem.offset); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &opItem.size); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &opItem.crc); err != nil {
+		return
+	}
+	opItem.data = make([]byte, opItem.size)
+	if _, err = buff.Read(opItem.data); err != nil {
+		return
+	}
+
+	result = &opItem
+	return
+}
+
 func main() {
 	fmt.Println("Read raft wal record")
 	var (
-		confFile   = flag.String("c", "", "config file path")
 		fileOffset uint64
 		dataSize   uint64
 		dataString string
+		randWrite  *rndWrtItem
 	)
 
+	flag.StringVar(&path, "p", "0000000000000001-0000000000000001.log", "path")
 	flag.Parse()
-	cfg := config.LoadConfigFile(*confFile)
-	fileName := cfg.GetString("filename")
 
-	f, err := os.Open(fileName)
+	f, err := os.Open(path)
 	if err != nil {
 		fmt.Println("open wal failed ", err)
 		return
@@ -80,10 +118,23 @@ func main() {
 			if opType == 0 {
 				cmd := new(OpKvData)
 				if err = json.Unmarshal(dataTemp[26:26+dataSize-17], cmd); err != nil {
-					fmt.Println("unmarshal fail", cmd, err)
+					fmt.Println("unmarshal fail", fileOffset, len(data), dataSize, err)
 					return
 				}
-				dataString = fmt.Sprintf("opt:%v, k:%v, v:%v", cmd.Op, cmd.K, cmd.V)
+
+				if cmd.Op == opRandomWrite {
+					randWrite, err = randomWriteUnmarshal(cmd.V)
+					if err == nil {
+						dataString = fmt.Sprintf("opt:%v, k:%v, extent:%v, off:%v, size:%v",
+							cmd.Op, cmd.K, randWrite.extentId, randWrite.offset, randWrite.size)
+					} else {
+						dataString = fmt.Sprintf("rand write umarshal err: %v", err)
+					}
+
+				} else {
+					dataString = fmt.Sprintf("opt:%v, k:%v, v:%v", cmd.Op, cmd.K, cmd.V)
+				}
+
 			} else if opType == 1 {
 				cType := dataTemp[26]
 				pType := dataTemp[27]
@@ -92,10 +143,13 @@ func main() {
 				dataString = fmt.Sprintf("cngType:%v, peerType:%v, priority:%v, id:%v", cType, pType, prt, pid)
 			}
 
+		} else {
+			dataString = fmt.Sprintf("dataSize:%v <= 17", dataSize)
 		}
 		crcOffset := 9 + dataSize
 		crc := binary.BigEndian.Uint32(dataTemp[crcOffset : crcOffset+4])
-		fmt.Println(fmt.Sprintf("recType[%v] dataSize[%v] opType[%v] term[%v] index[%v] data[%v] crc[%x]", recordType, dataSize, opType, term, index, dataString, crc))
+		fmt.Println(fmt.Sprintf("recType[%v] dataSize[%v] opType[%v] term[%v] index[%v] data[%v] crc[%x]",
+			recordType, dataSize, opType, term, index, dataString, crc))
 		recordSize := 1 + 8 + dataSize + 4
 		fileOffset = fileOffset + recordSize
 	}

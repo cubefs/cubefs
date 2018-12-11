@@ -29,6 +29,7 @@ type DataReplica struct {
 	LoadPartitionIsResponse bool
 	Total                   uint64 `json:"TotalSize"`
 	Used                    uint64 `json:"UsedSize"`
+	IsLeader                bool
 }
 
 func NewDataReplica(dataNode *DataNode) (replica *DataReplica) {

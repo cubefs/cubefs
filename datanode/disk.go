@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 )
 
@@ -58,7 +57,7 @@ type Disk struct {
 	Status       int
 	RestSize     uint64
 	partitionMap map[uint32]DataPartition
-	space        *spaceManager
+	space        SpaceManager
 }
 
 type PartitionVisitor func(dp DataPartition)
@@ -70,7 +69,7 @@ func NewDisk(path string, restSize uint64, maxErrs int, space *spaceManager) (d 
 	d.MaxErrs = maxErrs
 	d.space = space
 	d.partitionMap = make(map[uint32]DataPartition)
-	d.RestSize = util.GB * 100
+	d.RestSize = restSize
 	d.MaxErrs = 2000
 	d.computeUsage()
 
@@ -142,6 +141,9 @@ func (d *Disk) addWriteErr() {
 func (d *Disk) startScheduleTasks() {
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
+		defer func() {
+			ticker.Stop()
+		}()
 		for {
 			select {
 			case <-ticker.C:
@@ -165,8 +167,8 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	} else {
 		d.Status = proto.ReadWrite
 	}
-	log.LogDebugf("action[updateSpaceInfo] disk(%v) total(%v) available(%v) remain(%v) "+
-		"restSize(%v) maxErrs(%v) readErrs(%v) writeErrs(%v) status(%v)", d.Path,
+	log.LogDebugf("action[updateSpaceInfo] disk[%v] total[%v] available[%v] remain[%v] "+
+		"restSize[%v] maxErrs[%v] readErrs[%v] writeErrs[%v] status[%v]", d.Path,
 		d.Total, d.Available, d.Unallocated, d.RestSize, d.MaxErrs, d.ReadErrs, d.WriteErrs, d.Status)
 	return
 }
@@ -183,6 +185,20 @@ func (d *Disk) DetachDataPartition(dp DataPartition) {
 	delete(d.partitionMap, dp.ID())
 	d.Unlock()
 	d.computeUsage()
+}
+
+func (d *Disk) GetDataPartition(partitionId uint32) (partition DataPartition) {
+	d.RLock()
+	defer d.RUnlock()
+	return d.partitionMap[partitionId]
+}
+
+func (d *Disk) ForceLoadPartitionHeader() {
+	partitionList := d.DataPartitionList()
+	for _, partitionId := range partitionList {
+		partition := d.GetDataPartition(partitionId)
+		partition.ForceLoadHeader()
+	}
 }
 
 func (d *Disk) DataPartitionList() (partitionIds []uint32) {
@@ -253,6 +269,8 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 			if dp, err = LoadDataPartition(path.Join(d.Path, filename), d); err != nil {
 				log.LogError(fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ",
 					partitionId, err.Error()))
+				log.LogFlush()
+				panic(err.Error())
 				return
 			}
 			if visitor != nil {
@@ -262,4 +280,5 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 		}(partitionId, filename)
 	}
 	wg.Wait()
+	go d.ForceLoadPartitionHeader()
 }

@@ -107,7 +107,7 @@ func (s *DataNode) apiGetPartition(w http.ResponseWriter, r *http.Request) {
 		s.buildApiFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	if files, err = partition.GetExtentStore().GetAllWatermark(nil); err != nil {
+	if files, err = partition.GetStore().GetAllWatermark(nil); err != nil {
 		err = fmt.Errorf("get watermark fail: %v", err)
 		s.buildApiFailureResp(w, http.StatusInternalServerError, err.Error())
 		return
@@ -118,7 +118,7 @@ func (s *DataNode) apiGetPartition(w http.ResponseWriter, r *http.Request) {
 		Used      int                 `json:"used"`
 		Status    int                 `json:"status"`
 		Path      string              `json:"path"`
-		Files     []*storage.FileInfo `json:"files"`
+		Files     []*storage.FileInfo `json:"extents"`
 		FileCount int                 `json:"fileCount"`
 		Replicas  []string            `json:"replicas"`
 	}{
@@ -161,7 +161,7 @@ func (s *DataNode) apiGetExtent(w http.ResponseWriter, r *http.Request) {
 		s.buildApiFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	if extentInfo, err = partition.GetExtentStore().GetWatermark(uint64(extentId), reload == 1); err != nil {
+	if extentInfo, err = partition.GetStore().GetWatermark(uint64(extentId), reload == 1); err != nil {
 		s.buildApiFailureResp(w, 500, err.Error())
 		return
 	}
@@ -169,10 +169,6 @@ func (s *DataNode) apiGetExtent(w http.ResponseWriter, r *http.Request) {
 	s.buildApiSuccessResp(w, extentInfo)
 	return
 }
-
-const (
-	VerifyBlobFile = 1
-)
 
 func (s *DataNode) buildApiSuccessResp(w http.ResponseWriter, data interface{}) {
 	s.buildApiJsonResp(w, http.StatusOK, data, "")

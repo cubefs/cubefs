@@ -17,9 +17,8 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"github.com/tiglabs/containerfs/util/log"
 	"strings"
 	"sync"
@@ -35,27 +34,33 @@ type DataPartition struct {
 	Replicas         []*DataReplica
 	PartitionType    string
 	PersistenceHosts []string
+	Peers            []proto.Peer
 	sync.RWMutex
 	total         uint64
 	used          uint64
-	FileInCoreMap map[string]*FileInCore
 	MissNodes     map[string]int64
 	VolName       string
 	modifyTime    int64
+	createTime    int64
+	RandomWrite   bool
+	FileInCoreMap map[string]*FileInCore
 }
 
-func newDataPartition(ID uint64, replicaNum uint8, partitionType, volName string) (partition *DataPartition) {
+func newDataPartition(ID uint64, replicaNum uint8, partitionType, volName string, randomWrite bool) (partition *DataPartition) {
 	partition = new(DataPartition)
 	partition.ReplicaNum = replicaNum
 	partition.PartitionID = ID
 	partition.PartitionType = partitionType
 	partition.PersistenceHosts = make([]string, 0)
+	partition.Peers = make([]proto.Peer, 0)
 	partition.Replicas = make([]*DataReplica, 0)
 	partition.FileInCoreMap = make(map[string]*FileInCore, 0)
 	partition.MissNodes = make(map[string]int64)
 	partition.Status = proto.ReadOnly
 	partition.VolName = volName
 	partition.modifyTime = time.Now().Unix()
+	partition.createTime = time.Now().Unix()
+	partition.RandomWrite = randomWrite
 	return
 }
 
@@ -68,22 +73,38 @@ func (partition *DataPartition) AddMember(replica *DataReplica) {
 	partition.Replicas = append(partition.Replicas, replica)
 }
 
-func (partition *DataPartition) GenerateCreateTasks() (tasks []*proto.AdminTask) {
+func (partition *DataPartition) GenerateCreateTasks(dataPartitionSize uint64) (tasks []*proto.AdminTask) {
 	tasks = make([]*proto.AdminTask, 0)
 	for _, addr := range partition.PersistenceHosts {
-		tasks = append(tasks, partition.generateCreateTask(addr))
+		tasks = append(tasks, partition.generateCreateTask(addr, dataPartitionSize))
 	}
 	return
 }
 
-func (partition *DataPartition) generateCreateTask(addr string) (task *proto.AdminTask) {
-	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(partition.PartitionType, partition.VolName, partition.PartitionID))
+func (partition *DataPartition) generateCreateTask(addr string, dataPartitionSize uint64) (task *proto.AdminTask) {
+
+	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(partition.PartitionType,
+		partition.VolName, partition.PartitionID, partition.RandomWrite, partition.Peers, int(dataPartitionSize)))
 	partition.resetTaskID(task)
 	return
 }
 
 func (partition *DataPartition) GenerateDeleteTask(addr string) (task *proto.AdminTask) {
 	task = proto.NewAdminTask(proto.OpDeleteDataPartition, addr, newDeleteDataPartitionRequest(partition.PartitionID))
+	partition.resetTaskID(task)
+	return
+}
+
+func (partition *DataPartition) GenerateOfflineTask(removePeer proto.Peer, addPeer proto.Peer) (task *proto.AdminTask, err error) {
+	if !partition.RandomWrite {
+		return partition.GenerateDeleteTask(removePeer.Addr), nil
+	}
+	leaderAddr := partition.getLeaderAddr()
+	if leaderAddr == "" {
+		err = NoLeader
+		return
+	}
+	task = proto.NewAdminTask(proto.OpOfflineDataPartition, leaderAddr, newOfflineDataPartitionRequest(partition.PartitionID, removePeer, addPeer))
 	partition.resetTaskID(task)
 	return
 }
@@ -232,6 +253,17 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *DataParti
 	dpr.PartitionType = partition.PartitionType
 	dpr.Hosts = make([]string, len(partition.PersistenceHosts))
 	copy(dpr.Hosts, partition.PersistenceHosts)
+	dpr.RandomWrite = partition.RandomWrite
+	dpr.LeaderAddr = partition.getLeaderAddr()
+	return
+}
+
+func (partition *DataPartition) getLeaderAddr() (leaderAddr string) {
+	for _, replica := range partition.Replicas {
+		if replica.IsLeader {
+			return replica.Addr
+		}
+	}
 	return
 }
 
@@ -272,14 +304,11 @@ func (partition *DataPartition) getFileCount() {
 		replica.FileCount = 0
 	}
 	for _, fc := range partition.FileInCoreMap {
-		if fc.MarkDel == true {
-			continue
-		}
 		if len(fc.Metas) == 0 {
 			needDelFiles = append(needDelFiles, fc.Name)
 		}
 		for _, vfNode := range fc.Metas {
-			replica := partition.getReplicaByIndex(vfNode.LocIndex)
+			replica := partition.getReplicaByIndex(vfNode.locIndex)
 			replica.FileCount++
 		}
 
@@ -327,7 +356,7 @@ func (partition *DataPartition) checkReplicaNum(c *Cluster, volName string) {
 	partition.RLock()
 	defer partition.RUnlock()
 	if int(partition.ReplicaNum) != len(partition.PersistenceHosts) {
-		msg := fmt.Sprintf("FIX DataPartition replicaNum,clusterID[%v] volName[%v] partitionID:%v orgReplicaNum:%v",
+		msg := fmt.Sprintf("FIX partition replicaNum,clusterID[%v] volName[%v] partitionID:%v orgReplicaNum:%v",
 			c.Name, volName, partition.PartitionID, partition.ReplicaNum)
 		Warn(c.Name, msg)
 	}
@@ -341,6 +370,12 @@ func (partition *DataPartition) setToNormal() {
 	partition.Lock()
 	defer partition.Unlock()
 	partition.isRecover = false
+}
+
+func (partition *DataPartition) setStatus(status int8) {
+	partition.Lock()
+	defer partition.Unlock()
+	partition.Status = status
 }
 
 func (partition *DataPartition) isInPersistenceHosts(addr string) (ok bool) {
@@ -424,9 +459,11 @@ func (partition *DataPartition) getReplicaIndex(addr string) (index int, err err
 	return -1, errors.Annotatef(DataReplicaNotFound, "%v not found ", addr)
 }
 
-func (partition *DataPartition) updateForOffline(offlineAddr, newAddr, volName string, c *Cluster) (err error) {
+func (partition *DataPartition) updateForOffline(offlineAddr, newAddr, volName string, newPeers []proto.Peer, c *Cluster) (err error) {
 	orgHosts := make([]string, len(partition.PersistenceHosts))
 	copy(orgHosts, partition.PersistenceHosts)
+	oldPeers := make([]proto.Peer, len(partition.Peers))
+	copy(oldPeers, partition.Peers)
 	newHosts := make([]string, 0)
 	for index, addr := range partition.PersistenceHosts {
 		if addr == offlineAddr {
@@ -438,13 +475,15 @@ func (partition *DataPartition) updateForOffline(offlineAddr, newAddr, volName s
 	}
 	newHosts = append(newHosts, newAddr)
 	partition.PersistenceHosts = newHosts
+	partition.Peers = newPeers
 	if err = c.syncUpdateDataPartition(volName, partition); err != nil {
 		partition.PersistenceHosts = orgHosts
+		partition.Peers = oldPeers
 		return errors.Annotatef(err, "update partition[%v] failed", partition.PartitionID)
 	}
 	msg := fmt.Sprintf("action[updateForOffline]  partitionID:%v offlineAddr:%v newAddr:%v"+
-		"oldHosts:%v newHosts:%v",
-		partition.PartitionID, offlineAddr, newAddr, orgHosts, partition.PersistenceHosts)
+		"oldHosts:%v newHosts:%v,oldPees[%v],newPeers[%v]",
+		partition.PartitionID, offlineAddr, newAddr, orgHosts, partition.PersistenceHosts, oldPeers, newPeers)
 	log.LogInfo(msg)
 	return
 }
@@ -466,7 +505,9 @@ func (partition *DataPartition) UpdateMetric(vr *proto.PartitionReport, dataNode
 	replica.Status = int8(vr.PartitionStatus)
 	replica.Total = vr.Total
 	replica.Used = vr.Used
+	replica.FileCount = uint32(vr.ExtentCount)
 	replica.SetAlive()
+	replica.IsLeader = vr.IsLeader
 	partition.checkAndRemoveMissReplica(dataNode.Addr)
 }
 
@@ -480,9 +521,6 @@ func (partition *DataPartition) getMaxUsedSize() uint64 {
 	partition.Lock()
 	defer partition.Unlock()
 	for _, replica := range partition.Replicas {
-		if replica.Status == proto.ReadOnly {
-			return util.DefaultDataPartitionSize
-		}
 		if replica.Used > partition.used {
 			partition.used = replica.Used
 		}

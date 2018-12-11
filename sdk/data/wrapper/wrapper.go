@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
+
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
@@ -32,7 +34,7 @@ const (
 	DataPartitionViewUrl        = "/client/dataPartitions"
 	GetClusterInfoURL           = "/admin/getIp"
 	ActionGetDataPartitionView  = "ActionGetDataPartitionView"
-	MinWritableDataPartitionNum = 10
+	MinWritableDataPartitionNum = 1
 )
 
 var (
@@ -68,9 +70,11 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 	w.rwPartition = make([]*DataPartition, 0)
 	w.partitions = make(map[uint32]*DataPartition)
 	if err = w.updateClusterInfo(); err != nil {
+		err = errors.Annotate(err, "NewDataPartitionWrapper:")
 		return
 	}
 	if err = w.updateDataPartition(); err != nil {
+		err = errors.Annotate(err, "NewDataPartitionWrapper:")
 		return
 	}
 	go w.update()
@@ -117,12 +121,14 @@ func (w *Wrapper) updateDataPartition() error {
 	paras["name"] = w.volName
 	msg, err := MasterHelper.Request(http.MethodGet, DataPartitionViewUrl, paras, nil)
 	if err != nil {
-		return err
+		return errors.Annotate(err, "updateDataPartition: request to master failed!")
 	}
+
+	log.LogInfof("updateDataPartition: msg(%v)", string(msg))
 
 	view := &DataPartitionView{}
 	if err = json.Unmarshal(msg, view); err != nil {
-		return err
+		return errors.Annotatef(err, "updateDataPartition: unmarshal failed, msg(%v)", msg)
 	}
 
 	rwPartitionGroups := make([]*DataPartition, 0)
@@ -132,6 +138,7 @@ func (w *Wrapper) updateDataPartition() error {
 			rwPartitionGroups = append(rwPartitionGroups, dp)
 		}
 	}
+
 	for _, dp := range view.DataPartitions {
 		w.replaceOrInsertPartition(dp)
 	}
@@ -177,7 +184,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	w.Unlock()
 
 	if ok && oldstatus != dp.Status {
-		log.LogInfof("DataPartition: status change (%v) -> (%v)", old, dp)
+		log.LogInfof("partition: status change (%v) -> (%v)", old, dp)
 	}
 }
 
@@ -239,7 +246,7 @@ func (w *Wrapper) GetDataPartition(partitionID uint32) (*DataPartition, error) {
 	defer w.RUnlock()
 	dp, ok := w.partitions[partitionID]
 	if !ok {
-		return nil, fmt.Errorf("DataPartition[%v] not exsit", partitionID)
+		return nil, fmt.Errorf("partition[%v] not exsit", partitionID)
 	}
 	return dp, nil
 }

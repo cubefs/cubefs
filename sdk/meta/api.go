@@ -68,20 +68,32 @@ func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode uint32, targ
 
 	// Create Inode
 
-	mp = mw.getLatestPartition()
-	if mp != nil {
-		status, info, err = mw.icreate(mp, mode, target)
-		if err == nil {
-			if status == statusOK {
-				goto create_dentry
-			} else if status == statusFull {
-				mw.UpdateMetaPartitions()
-			}
-		}
-	}
+	//	mp = mw.getLatestPartition()
+	//	if mp != nil {
+	//		status, info, err = mw.icreate(mp, mode, target)
+	//		if err == nil {
+	//			if status == statusOK {
+	//				goto create_dentry
+	//			} else if status == statusFull {
+	//				mw.UpdateMetaPartitions()
+	//			}
+	//		}
+	//	}
+	//
+	//	rwPartitions = mw.getRWPartitions()
+	//	for _, mp = range rwPartitions {
+	//		status, info, err = mw.icreate(mp, mode, target)
+	//		if err == nil && status == statusOK {
+	//			goto create_dentry
+	//		}
+	//	}
 
 	rwPartitions = mw.getRWPartitions()
-	for _, mp = range rwPartitions {
+	length := len(rwPartitions)
+	epoch := atomic.AddUint64(&mw.epoch, 1)
+	for i := 0; i < length; i++ {
+		index := (int(epoch) + i) % length
+		mp = rwPartitions[index]
 		status, info, err = mw.icreate(mp, mode, target)
 		if err == nil && status == statusOK {
 			goto create_dentry
@@ -262,31 +274,33 @@ func (mw *MetaWrapper) AppendExtentKey(inode uint64, ek proto.ExtentKey) error {
 		log.LogErrorf("AppendExtentKey: inode(%v) ek(%v) err(%v) status(%v)", inode, ek, err, status)
 		return statusToErrno(status)
 	}
+	log.LogDebugf("AppendExtentKey: ino(%v) ek(%v)", inode, ek)
 	return nil
 }
 
-func (mw *MetaWrapper) GetExtents(inode uint64) ([]proto.ExtentKey, error) {
+func (mw *MetaWrapper) GetExtents(inode uint64) (gen uint64, size uint64, extents []proto.ExtentKey, err error) {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
-		return nil, syscall.ENOENT
+		return 0, 0, nil, syscall.ENOENT
 	}
 
-	status, extents, err := mw.getExtents(mp, inode)
+	status, gen, size, extents, err := mw.getExtents(mp, inode)
 	if err != nil || status != statusOK {
-		log.LogErrorf("GetExtents: err(%v) status(%v)", err, status)
-		return nil, statusToErrno(status)
+		log.LogErrorf("GetExtents: ino(%v) err(%v) status(%v)", inode, err, status)
+		return 0, 0, nil, statusToErrno(status)
 	}
-	return extents, nil
+	log.LogDebugf("GetExtents: ino(%v) gen(%v) size(%v)", inode, gen, size)
+	return gen, size, extents, nil
 }
 
-func (mw *MetaWrapper) Truncate(inode uint64) error {
+func (mw *MetaWrapper) Truncate(inode, size uint64) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		log.LogErrorf("Truncate: No inode partition, ino(%v)", inode)
 		return syscall.ENOENT
 	}
 
-	status, err := mw.truncate(mp, inode)
+	status, err := mw.truncate(mp, inode, size)
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
 	}

@@ -16,19 +16,18 @@ package stream
 
 import (
 	"fmt"
+	"runtime"
 	"sync"
 
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/sdk/data/wrapper"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/ump"
-	"runtime"
-	"sync/atomic"
 )
 
 type AppendExtentKeyFunc func(inode uint64, key proto.ExtentKey) error
-type GetExtentsFunc func(inode uint64) ([]proto.ExtentKey, error)
+type GetExtentsFunc func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
 
 var (
 	gDataWrapper     *wrapper.Wrapper
@@ -38,10 +37,8 @@ var (
 )
 
 type ExtentClient struct {
-	writers         map[uint64]*StreamWriter
-	referCnt        map[uint64]uint64
-	referLock       sync.Mutex
-	writerLock      sync.RWMutex
+	streamers       map[uint64]*Streamer
+	streamerLock    sync.Mutex
 	appendExtentKey AppendExtentKeyFunc
 	getExtents      GetExtentsFunc
 }
@@ -51,11 +48,10 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 	client = new(ExtentClient)
 	gDataWrapper, err = wrapper.NewDataPartitionWrapper(volname, master)
 	if err != nil {
-		return nil, fmt.Errorf("init dp Wrapper failed (%v)", err.Error())
+		return nil, errors.Annotatef(err, "Init dp wrapper failed!")
 	}
-	client.writers = make(map[uint64]*StreamWriter)
+	client.streamers = make(map[uint64]*Streamer)
 	client.appendExtentKey = appendExtentKey
-	client.referCnt = make(map[uint64]uint64)
 	client.getExtents = getExtents
 	writeRequestPool = &sync.Pool{New: func() interface{} {
 		return &WriteRequest{}
@@ -69,42 +65,104 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 	return
 }
 
-func (client *ExtentClient) getStreamWriter(inode uint64) (stream *StreamWriter) {
-	client.writerLock.RLock()
-	stream = client.writers[inode]
-	client.writerLock.RUnlock()
+func (client *ExtentClient) OpenStream(inode uint64) error {
+	client.streamerLock.Lock()
+	stream, ok := client.streamers[inode]
+	if !ok {
+		stream = NewStreamer(client, inode)
+		client.streamers[inode] = stream
+	}
+	stream.refcnt++
+	log.LogDebugf("OpenStream: ino(%v) refcnt(%v)", inode, stream.refcnt)
+	client.streamerLock.Unlock()
 
-	return
+	//	err := stream.GetExtents()
+	//	if err != nil {
+	//		client.CloseStream(inode)
+	//	}
+	//return err
+	return nil
 }
 
-func (client *ExtentClient) getStreamWriterForRead(inode uint64) (stream *StreamWriter) {
-	client.writerLock.RLock()
-	defer client.writerLock.RUnlock()
-	stream = client.writers[inode]
-	if stream != nil && atomic.LoadInt32(&stream.hasClosed) == HasClosed {
+func (client *ExtentClient) CloseStream(inode uint64) error {
+	client.streamerLock.Lock()
+	stream, ok := client.streamers[inode]
+	if !ok {
+		client.streamerLock.Unlock()
 		return nil
 	}
+	stream.refcnt--
+	log.LogDebugf("CloseStream: ino(%v) refcnt(%v)", inode, stream.refcnt)
+	if stream.refcnt > 0 {
+		client.streamerLock.Unlock()
+		return nil
+	}
+	delete(client.streamers, inode)
 
-	return
+	writer := stream.writer
+	client.streamerLock.Unlock()
+
+	log.LogDebugf("CloseStream: ino(%v) doing cleanup", inode)
+
+	select {
+	case stream.done <- struct{}{}:
+	default:
+	}
+
+	if writer != nil {
+		err := writer.Close()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (client *ExtentClient) RefreshExtentsCache(inode uint64) error {
+	stream := client.GetStreamer(inode)
+	if stream == nil {
+		return nil
+	}
+	return stream.GetExtents()
+}
+
+func (client *ExtentClient) GetFileSize(inode uint64) (size int, gen uint64) {
+	stream := client.GetStreamer(inode)
+	if stream == nil {
+		return
+	}
+	return stream.extents.Size()
+}
+
+func (client *ExtentClient) SetFileSize(inode uint64, size int) {
+	stream := client.GetStreamer(inode)
+	if stream != nil {
+		log.LogDebugf("SetFileSize: ino(%v) size(%v)", inode, size)
+		stream.extents.SetSize(uint64(size))
+	}
 }
 
 func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write int, err error) {
-	stream := client.getStreamWriter(inode)
-	if stream == nil {
+	stream, sw := client.getStreamWriter(inode, true)
+	if sw == nil {
 		prefix := fmt.Sprintf("inodewrite %v_%v_%v", inode, offset, len(data))
-		return 0, fmt.Errorf("Prefix(%v) cannot init write stream", prefix)
+		return 0, fmt.Errorf("Prefix(%v) cannot init StreamWriter", prefix)
 	}
+
+	stream.once.Do(func() {
+		stream.GetExtents()
+	})
 
 	request := writeRequestPool.Get().(*WriteRequest)
 	request.data = data
 	request.kernelOffset = offset
 	request.size = len(data)
 	request.done = make(chan struct{}, 1)
-	stream.requestCh <- request
+	sw.requestCh <- request
 	<-request.done
 	err = request.err
 	write = request.canWrite
-	write += request.cutSize
 	if err != nil {
 		prefix := fmt.Sprintf("inodewrite %v_%v_%v", inode, offset, len(data))
 		err = errors.Annotatef(err, prefix)
@@ -115,145 +173,59 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write 
 	return
 }
 
-func (client *ExtentClient) OpenForRead(inode uint64) (stream *StreamReader, err error) {
-	return NewStreamReader(inode, client.getExtents)
-}
-
-func (client *ExtentClient) OpenForWrite(inode, start uint64) {
-	client.referLock.Lock()
-	refercnt, ok := client.referCnt[inode]
-	if !ok {
-		client.referCnt[inode] = 1
-	} else {
-		refercnt++
-		client.referCnt[inode] = refercnt
-	}
-
-	client.referLock.Unlock()
-
-	client.writerLock.RLock()
-	_, ok = client.writers[inode]
-	client.writerLock.RUnlock()
-	if ok {
-		return
-	}
-
-	client.writerLock.Lock()
-	_, ok = client.writers[inode]
-	if !ok {
-		writer := NewStreamWriter(inode, start, client.appendExtentKey)
-		client.writers[inode] = writer
-	}
-	client.writerLock.Unlock()
-
-}
-
-func (client *ExtentClient) GetWriteSize(inode uint64) uint64 {
-	client.writerLock.RLock()
-	defer client.writerLock.RUnlock()
-	writer, ok := client.writers[inode]
-	if !ok {
-		return 0
-	}
-	return writer.getHasWriteSize()
-}
-
-func (client *ExtentClient) SetWriteSize(inode, size uint64) {
-	client.writerLock.Lock()
-	defer client.writerLock.Unlock()
-	writer, ok := client.writers[inode]
-	if ok {
-		writer.setHasWriteSize(size)
-	}
-}
-
-func (client *ExtentClient) deleteRefercnt(inode uint64) {
-	client.referLock.Lock()
-	defer client.referLock.Unlock()
-	delete(client.referCnt, inode)
-}
-
-func (client *ExtentClient) Flush(inode uint64) (err error) {
-	stream := client.getStreamWriterForRead(inode)
-	if stream == nil {
+func (client *ExtentClient) Flush(inode uint64) error {
+	_, sw := client.getStreamWriter(inode, false)
+	if sw == nil {
 		return nil
 	}
-	request := flushRequestPool.Get().(*FlushRequest)
-	request.done = make(chan struct{}, 1)
-	stream.requestCh <- request
-	<-request.done
-	err = request.err
-	flushRequestPool.Put(request)
-	return err
+	return sw.Flush()
 }
 
-func (client *ExtentClient) CloseForWrite(inode uint64) (err error) {
-	client.referLock.Lock()
-	refercnt, ok := client.referCnt[inode]
-	if !ok {
-		client.referLock.Unlock()
-		client.Flush(inode)
-		return nil
-	}
-	refercnt = refercnt - 1
-	client.referCnt[inode] = refercnt
-	if refercnt > 0 {
-		client.referLock.Unlock()
-		client.Flush(inode)
-		return
-	}
-	client.referLock.Unlock()
-
-	streamWriter := client.getStreamWriter(inode)
-	if streamWriter == nil {
-		client.deleteRefercnt(inode)
-		return
-	}
-	atomic.StoreInt32(&streamWriter.hasClosed, HasClosed)
-	request := closeRequestPool.Get().(*CloseRequest)
-	request.done = make(chan struct{}, 1)
-	streamWriter.requestCh <- request
-	<-request.done
-	defer func() {
-		closeRequestPool.Put(request)
-	}()
-	if err = request.err; err != nil {
-		return
-	}
-
-	client.deleteRefercnt(inode)
-	client.writerLock.Lock()
-	delete(client.writers, inode)
-	client.writerLock.Unlock()
-	atomic.StoreInt32(&streamWriter.hasClosed, HasClosed)
-
-	return
-}
-
-func (client *ExtentClient) Read(stream *StreamReader, inode uint64, data []byte, offset int, size int) (read int, err error) {
+func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int) (read int, err error) {
 	if size == 0 {
 		return
 	}
 
-	defer func() {
-		if err != nil {
-			ump.Alarm(gDataWrapper.UmpWarningKey(), err.Error())
-		}
-	}()
-
-	wstream := client.getStreamWriterForRead(inode)
-	if wstream != nil {
-		request := flushRequestPool.Get().(*FlushRequest)
-		request.done = make(chan struct{}, 1)
-		wstream.requestCh <- request
-		<-request.done
-		err = request.err
-		flushRequestPool.Put(request)
-		if err != nil {
-			return 0, err
-		}
+	stream := client.GetStreamer(inode)
+	if stream == nil {
+		return
 	}
-	read, err = stream.read(data, offset, size)
 
+	stream.once.Do(func() {
+		stream.GetExtents()
+	})
+
+	err = client.Flush(inode)
+	if err != nil {
+		return
+	}
+
+	read, err = stream.read(data, offset, size)
 	return
+}
+
+func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
+	client.streamerLock.Lock()
+	defer client.streamerLock.Unlock()
+
+	stream, ok := client.streamers[inode]
+	if !ok {
+		return nil
+	}
+
+	return stream
+}
+
+func (client *ExtentClient) getStreamWriter(inode uint64, init bool) (stream *Streamer, sw *StreamWriter) {
+	client.streamerLock.Lock()
+	defer client.streamerLock.Unlock()
+	stream, ok := client.streamers[inode]
+	if !ok {
+		return nil, nil
+	}
+
+	if init == true && stream.writer == nil {
+		stream.writer = NewStreamWriter(stream, inode)
+	}
+	return stream, stream.writer
 }

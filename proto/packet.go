@@ -55,15 +55,15 @@ const (
 	OpGetWatermark               uint8 = 0x06
 	OpExtentStoreGetAllWaterMark uint8 = 0x07
 
-	OpNotifyExtentRepair       uint8 = 0x08
-	OpERepairRead              uint8 = 0x09
-	OpBlobFileRepairRead       uint8 = 0x0A
-	OpFlowInfo                 uint8 = 0x0B
-	OpSyncDelNeedle            uint8 = 0x0C
-	OpNotifyCompactBlobFile    uint8 = 0x0D
-	OpGetDataPartitionMetrics  uint8 = 0x0E
-	OpBlobStoreGetAllWaterMark uint8 = 0x0F
-	OpNotifyBlobRepair         uint8 = 0x10
+	OpNotifyExtentRepair      uint8 = 0x08
+	OpExtentRepairRead        uint8 = 0x09
+	OpBlobFileRepairRead      uint8 = 0x0A
+	OpFlowInfo                uint8 = 0x0B
+	OpSyncDelNeedle           uint8 = 0x0C
+	OpNotifyCompactBlobFile   uint8 = 0x0D
+	OpGetDataPartitionMetrics uint8 = 0x0E
+	OpRandomWrite             uint8 = 0x0F
+	OpGetAppliedId            uint8 = 0x10
 
 	// Operations: Client -> MetaNode.
 	OpMetaCreateInode   uint8 = 0x20
@@ -93,12 +93,13 @@ const (
 	OpOfflineMetaPartition uint8 = 0x45
 
 	// Operations: Master -> DataNode
-	OpCreateDataPartition uint8 = 0x60
-	OpDeleteDataPartition uint8 = 0x61
-	OpLoadDataPartition   uint8 = 0x62
-	OpDataNodeHeartbeat   uint8 = 0x63
-	OpReplicateFile       uint8 = 0x64
-	OpDeleteFile          uint8 = 0x65
+	OpCreateDataPartition  uint8 = 0x60
+	OpDeleteDataPartition  uint8 = 0x61
+	OpLoadDataPartition    uint8 = 0x62
+	OpDataNodeHeartbeat    uint8 = 0x63
+	OpReplicateFile        uint8 = 0x64
+	OpDeleteFile           uint8 = 0x65
+	OpOfflineDataPartition uint8 = 0x66
 
 	// Commons
 	OpIntraGroupNetErr uint8 = 0xF3
@@ -110,6 +111,7 @@ const (
 	OpAgain            uint8 = 0xF9
 	OpExistErr         uint8 = 0xFA
 	OpInodeFullErr     uint8 = 0xFB
+	OpNotLeaderErr     uint8 = 0xFC
 	OpOk               uint8 = 0xF0
 
 	// For connection diagnosis
@@ -124,8 +126,8 @@ const (
 )
 
 const (
-	BlobStoreMode   = 0
-	ExtentStoreMode = 1
+	TinyExtentMode   = 0
+	NormalExtentMode = 1
 )
 
 type Packet struct {
@@ -156,10 +158,10 @@ func NewPacket() *Packet {
 
 func (p *Packet) GetStoreModeMsg() (m string) {
 	switch p.StoreMode {
-	case BlobStoreMode:
-		m = "Blob"
-	case ExtentStoreMode:
-		m = "Extent"
+	case TinyExtentMode:
+		m = "TinyExtent"
+	case NormalExtentMode:
+		m = "NormalExtent"
 	default:
 		m = "Unknown"
 	}
@@ -174,6 +176,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "MarkDelete"
 	case OpWrite:
 		m = "Write"
+	case OpRandomWrite:
+		m = "RandomWrite"
 	case OpRead:
 		m = "Read"
 	case OpStreamRead:
@@ -188,7 +192,7 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "BlobFileRepairRead"
 	case OpNotifyCompactBlobFile:
 		m = "NotifyCompactBlobFile"
-	case OpERepairRead:
+	case OpExtentRepairRead:
 		m = "ExtentRepairRead"
 	case OpFlowInfo:
 		m = "FlowInfo"
@@ -241,11 +245,13 @@ func (p *Packet) GetOpMsg() (m string) {
 	case OpOfflineMetaPartition:
 		m = "OpOfflineMetaPartition"
 	case OpCreateDataPartition:
-		m = "OpCreateDataPartion"
+		m = "OpCreateDataPartition"
 	case OpDeleteDataPartition:
-		m = "OpDeleteDataPartion"
+		m = "OpDeleteDataPartition"
 	case OpLoadDataPartition:
-		m = "OpLoadDataPartion"
+		m = "OpLoadDataPartition"
+	case OpOfflineDataPartition:
+		m = "OpOfflineDataPartition"
 	case OpDataNodeHeartbeat:
 		m = "OpDataNodeHeartbeat"
 	case OpReplicateFile:
@@ -256,11 +262,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpPing"
 	case OpGetDataPartitionMetrics:
 		m = "OpGetDataPartitionMetrics"
-	case OpBlobStoreGetAllWaterMark:
-		m = "OpBlobStoreGetAllWaterMark"
-	case OpNotifyBlobRepair:
-		m = "OpNotifyBlobRepair"
-
+	case OpGetAppliedId:
+		m = "OpGetAppliedId"
 	}
 	return
 }
@@ -293,6 +296,8 @@ func (p *Packet) GetResultMesg() (m string) {
 		m = "ArgUnmatchErr"
 	case OpNotExistErr:
 		m = "NotExistErr"
+	case OpNotLeaderErr:
+		m = "NotLeaderErr"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}
@@ -439,7 +444,7 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 		return
 	}
 	size := p.Size
-	if (p.Opcode == OpRead || p.Opcode == OpStreamRead) && p.ResultCode == OpInitResultCode {
+	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead) && p.ResultCode == OpInitResultCode {
 		size = 0
 	}
 	return ReadFull(c, &p.Data, int(size))

@@ -16,11 +16,17 @@ package metanode
 
 import (
 	"encoding/json"
-
+	"fmt"
 	"github.com/tiglabs/containerfs/proto"
 )
 
 func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err error) {
+	if req.ParentID == req.Inode {
+		err = fmt.Errorf("parentId is equal inodeId")
+		p.PackErrorWithBody(proto.OpExistErr, []byte(err.Error()))
+		return
+	}
+
 	dentry := &Dentry{
 		ParentId: req.ParentID,
 		Name:     req.Name,
@@ -70,6 +76,12 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 }
 
 func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err error) {
+	if req.ParentID == req.Inode {
+		err = fmt.Errorf("parentId is equal inodeId")
+		p.PackErrorWithBody(proto.OpExistErr, []byte(err.Error()))
+		return
+	}
+
 	dentry := &Dentry{
 		ParentId: req.ParentID,
 		Name:     req.Name,

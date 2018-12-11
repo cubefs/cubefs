@@ -27,13 +27,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/ump"
 )
+
+var clusterInfo *proto.ClusterInfo
 
 // The MetaNode manage Dentry and Inode information in multiple metaPartition, and
 // through the RaftStore algorithm and other MetaNodes in the RageGroup for reliable
@@ -195,11 +197,12 @@ func (m *MetaNode) stopMetaManager() {
 
 func (m *MetaNode) register() (err error) {
 	for {
-		m.localAddr, err = getLocalIP()
+		clusterInfo, err = getClusterInfo()
 		if err != nil {
 			log.LogErrorf("[register] %s", err.Error())
 			continue
 		}
+		m.localAddr = clusterInfo.Ip
 		err = m.postNodeID()
 		if err != nil {
 			log.LogErrorf("[register] %s", err.Error())
@@ -279,29 +282,7 @@ func postToMaster(method string, reqPath string, body []byte) (msg []byte,
 }
 
 func (m *MetaNode) startUMP() (err error) {
-	defaultTimeout := http.DefaultClient.Timeout
-	defer func() {
-		http.DefaultClient.Timeout = defaultTimeout
-	}()
-	// Get cluster name from master
-	http.DefaultClient.Timeout = 2 * time.Second
-	resp, err := http.Get(fmt.Sprintf("http://%s%s", curMasterAddr, metaNodeGetName))
-	if err != nil {
-		err = errors.Errorf("[startUMP]: %s", err.Error())
-		return
-	}
-	defer resp.Body.Close()
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		err = errors.Errorf("[startUMP]: %s", err.Error())
-		return
-	}
-	req := &proto.ClusterInfo{}
-	if err = json.Unmarshal(data, req); err != nil {
-		err = errors.Errorf("[startUMP]: %s", err.Error())
-		return
-	}
-	UMPKey = req.Cluster + "_metaNode"
+	UMPKey = clusterInfo.Cluster + "_metaNode"
 	ump.InitUmp(UMPKey)
 	return
 }
@@ -311,14 +292,14 @@ func NewServer() *MetaNode {
 	return &MetaNode{}
 }
 
-func getLocalIP() (string, error) {
+func getClusterInfo() (*proto.ClusterInfo, error) {
 	respBody, err := postToMaster("GET", "/admin/getIp", nil)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	cInfo := proto.ClusterInfo{}
-	if err = json.Unmarshal(respBody, &cInfo); err != nil {
-		return "", err
+	cInfo := &proto.ClusterInfo{}
+	if err = json.Unmarshal(respBody, cInfo); err != nil {
+		return nil, err
 	}
-	return cInfo.Ip, nil
+	return cInfo, nil
 }

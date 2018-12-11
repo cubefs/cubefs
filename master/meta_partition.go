@@ -19,8 +19,8 @@ import (
 
 	"encoding/json"
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"github.com/tiglabs/containerfs/util/log"
 	"strings"
 	"time"
@@ -521,8 +521,6 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 }
 
 func (mp *MetaPartition) updateMetricByRaft(mpv *MetaPartitionValue) {
-	mp.Lock()
-	defer mp.Unlock()
 	mp.Start = mpv.Start
 	mp.End = mpv.End
 	mp.Peers = mpv.Peers

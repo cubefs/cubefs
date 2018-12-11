@@ -16,8 +16,8 @@ package master
 
 import (
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"github.com/tiglabs/containerfs/util/log"
 	"runtime"
 	"sync"
@@ -89,12 +89,20 @@ func (c *Cluster) metaPartitionOffline(volName, nodeAddr string, partitionID uin
 		onlineAddrs []string
 		newPeers    []proto.Peer
 		removePeer  proto.Peer
+		metaNode    *MetaNode
+		ns          *NodeSet
 	)
 	log.LogWarnf("action[metaPartitionOffline],volName[%v],nodeAddr[%v],partitionID[%v]", volName, nodeAddr, partitionID)
 	if vol, err = c.getVol(volName); err != nil {
 		goto errDeal
 	}
 	if mp, err = vol.getMetaPartition(partitionID); err != nil {
+		goto errDeal
+	}
+	if metaNode, err = c.getMetaNode(nodeAddr); err != nil {
+		goto errDeal
+	}
+	if ns, err = c.t.getNodeSet(metaNode.NodeSetId); err != nil {
 		goto errDeal
 	}
 	mp.Lock()
@@ -106,9 +114,11 @@ func (c *Cluster) metaPartitionOffline(volName, nodeAddr string, partitionID uin
 	if err = mp.canOffline(nodeAddr, int(vol.mpReplicaNum)); err != nil {
 		goto errDeal
 	}
-
-	if newHosts, newPeers, err = c.getAvailMetaNodeHosts(mp.PersistenceHosts, 1); err != nil {
-		goto errDeal
+	if newHosts, newPeers, err = ns.getAvailMetaNodeHosts(mp.PersistenceHosts, 1); err != nil {
+		//select metaNode of other nodeSet
+		if newHosts, newPeers, err = c.ChooseTargetMetaHosts(1); err != nil {
+			goto errDeal
+		}
 	}
 
 	onlineAddrs = make([]string, len(newHosts))
@@ -133,8 +143,8 @@ func (c *Cluster) metaPartitionOffline(volName, nodeAddr string, partitionID uin
 	mp.removeReplicaByAddr(nodeAddr)
 	mp.checkAndRemoveMissMetaReplica(nodeAddr)
 	c.putMetaNodeTasks(tasks)
-	Warn(c.Name, fmt.Sprintf("clusterID[%v] meta partition[%v] offline addr[%v] success",
-		c.Name, partitionID, nodeAddr))
+	Warn(c.Name, fmt.Sprintf("clusterID[%v] meta partition[%v] offline addr[%v] success,new addr[%v]",
+		c.Name, partitionID, nodeAddr, newPeers[0].Addr))
 	return
 errDeal:
 	log.LogError(fmt.Sprintf("action[metaPartitionOffline],volName: %v,partitionID: %v,err: %v",
@@ -210,8 +220,12 @@ func (c *Cluster) dealMetaNodeTaskResponse(nodeAddr string, task *proto.AdminTas
 	case proto.OpOfflineMetaPartition:
 		response := task.Response.(*proto.MetaPartitionOfflineResponse)
 		err = c.dealOfflineMetaPartitionResp(task.OperatorAddr, response)
+	case proto.OpOfflineDataPartition:
+		response := task.Response.(*proto.DataPartitionOfflineResponse)
+		err = c.dealOfflineDataPartitionResp(task.OperatorAddr, response)
 	default:
-		log.LogError(fmt.Sprintf("unknown operate code %v", task.OpCode))
+		err := fmt.Errorf("unknown operate code %v", task.OpCode)
+		log.LogError(err)
 	}
 
 	if err != nil {
@@ -223,6 +237,18 @@ func (c *Cluster) dealMetaNodeTaskResponse(nodeAddr string, task *proto.AdminTas
 errDeal:
 	log.LogError(fmt.Sprintf("action[dealMetaNodeTaskResponse],nodeAddr %v,taskId %v,err %v",
 		nodeAddr, task.ID, err.Error()))
+	return
+}
+
+func (c *Cluster) dealOfflineDataPartitionResp(nodeAddr string, resp *proto.DataPartitionOfflineResponse) (err error) {
+	if resp.Status == proto.TaskFail {
+		msg := fmt.Sprintf("action[dealOfflineDataPartitionResp],clusterID[%v] nodeAddr %v "+
+			"offline meta partition[%v] failed,err %v",
+			c.Name, nodeAddr, resp.PartitionId, resp.Result)
+		log.LogError(msg)
+		Warn(c.Name, msg)
+		return
+	}
 	return
 }
 
@@ -337,6 +363,7 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 
 	metaNode.updateMetric(resp, c.cfg.MetaNodeThreshold)
 	metaNode.setNodeAlive()
+	c.t.putMetaNode(metaNode)
 	c.UpdateMetaNode(metaNode, resp.MetaPartitionInfo, metaNode.isArriveThreshold())
 	metaNode.metaPartitionInfos = nil
 	logMsg = fmt.Sprintf("action[dealMetaNodeHeartbeatResp],metaNode:%v ReportTime:%v  success", metaNode.Addr, time.Now().Unix())
@@ -479,7 +506,6 @@ func (c *Cluster) dealDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataNod
 	var (
 		dataNode *DataNode
 		logMsg   string
-		oldRack  *Rack
 	)
 	log.LogInfof("action[dealDataNodeHeartbeatResp] clusterID[%v] receive dataNode[%v] heartbeat, ", c.Name, nodeAddr)
 	if resp.Status != proto.TaskSuccess {
@@ -495,16 +521,13 @@ func (c *Cluster) dealDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataNod
 	if dataNode.RackName != "" && dataNode.RackName != resp.RackName {
 		Warn(c.Name, fmt.Sprintf("ClusterID[%s] DataNode[%v] rack from [%v] to [%v]!",
 			c.Name, nodeAddr, dataNode.RackName, resp.RackName))
-		if oldRack, err = c.t.getRack(dataNode.RackName); err == nil {
-			oldRack.RemoveDataNode(dataNode.Addr)
-		}
 		dataNode.RackName = resp.RackName
-		c.t.putDataNode(dataNode)
+		c.t.replaceDataNode(dataNode)
 	}
 
 	dataNode.UpdateNodeMetric(resp)
 	dataNode.setNodeAlive()
-	c.t.putDataNode(dataNode)
+	c.t.PutDataNode(dataNode)
 	c.UpdateDataNode(dataNode, resp.PartitionInfo)
 	dataNode.dataPartitionInfos = nil
 	logMsg = fmt.Sprintf("action[dealDataNodeHeartbeatResp],dataNode:%v ReportTime:%v  success", dataNode.Addr, time.Now().Unix())
@@ -573,7 +596,7 @@ func (c *Cluster) updateEnd(mp *MetaPartition, mr *proto.MetaPartitionReport, th
 		Warn(c.Name, fmt.Sprintf("mpid[%v],start[%v],mrStart[%v],addr[%v]", mp.PartitionID, mp.Start, mr.Start, metaNode.Addr))
 	}
 
-	hasEnough := c.hasEnoughWritableMetaHosts(int(vol.mpReplicaNum))
+	hasEnough := c.hasEnoughWritableMetaHosts(int(vol.mpReplicaNum), metaNode.NodeSetId)
 	if mp.End == DefaultMaxMetaPartitionInodeID && hasEnough {
 		var end uint64
 		if mr.MaxInodeID <= 0 {
@@ -581,7 +604,7 @@ func (c *Cluster) updateEnd(mp *MetaPartition, mr *proto.MetaPartitionReport, th
 		} else {
 			end = mr.MaxInodeID + DefaultMetaPartitionInodeIDStep
 		}
-		log.LogWarnf("mpid[%v],start[%v],end[%v],addr[%v],used[%v]", mp.PartitionID, mp.Start, mp.End, metaNode.Addr, metaNode.Used)
+		log.LogWarnf("mpId[%v],start[%v],end[%v],addr[%v],used[%v]", mp.PartitionID, mp.Start, mp.End, metaNode.Addr, metaNode.Used)
 		mp.UpdateEnd(c, end)
 	}
 }

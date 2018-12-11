@@ -19,8 +19,12 @@ import (
 	"strings"
 	"time"
 
+	"encoding/binary"
+	"fmt"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
+	"io/ioutil"
+	"path"
 )
 
 func (mp *metaPartition) initInode(ino *Inode) {
@@ -157,5 +161,52 @@ func (mp *metaPartition) confRemoveNode(req *proto.MetaPartitionOfflineRequest,
 
 func (mp *metaPartition) confUpdateNode(req *proto.MetaPartitionOfflineRequest,
 	index uint64) (updated bool, err error) {
+	return
+}
+
+func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
+	fileName := string(buf)
+	infos, err := ioutil.ReadDir(mp.config.RootDir)
+	if err != nil {
+		return
+	}
+	for _, f := range infos {
+		if f.IsDir() {
+			continue
+		}
+		if !strings.HasPrefix(f.Name(), prefixDelExtent) {
+			continue
+		}
+		if f.Name() <= fileName {
+			os.Remove(path.Join(mp.config.RootDir, f.Name()))
+			continue
+		}
+		break
+	}
+	return
+}
+
+func (mp *metaPartition) setExtentDeleteFileCursor(buf []byte) (err error) {
+	str := string(buf)
+	var (
+		fileName string
+		cursor   int64
+	)
+	_, err = fmt.Sscanf(str, "%s %d", &fileName, &cursor)
+	if err != nil {
+		return
+	}
+	fp, err := os.OpenFile(path.Join(mp.config.RootDir, fileName), os.O_RDWR,
+		0644)
+	if err != nil {
+		log.LogErrorf("[setExtentDeleteFileCursor] openFile %s failed: %s",
+			fileName, err.Error())
+		return
+	}
+	if err = binary.Write(fp, binary.BigEndian, cursor); err != nil {
+		log.LogErrorf("[setExtentDeleteFileCursor] write file %s cursor"+
+			" failed: %s", fileName, err.Error())
+	}
+	fp.Close()
 	return
 }

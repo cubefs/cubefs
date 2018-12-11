@@ -37,72 +37,78 @@ func NewBtree() *BTree {
 	}
 }
 
-func (b *BTree) Get(key BtreeItem) BtreeItem {
+func (b *BTree) Get(key BtreeItem) (item BtreeItem) {
 	b.RLock()
-	defer b.RUnlock()
-	return b.tree.Get(key)
+	item = b.tree.Get(key)
+	b.RUnlock()
+	return
 }
 
 func (b *BTree) Find(key BtreeItem, fn func(i BtreeItem)) {
-	b.Lock()
-	defer b.Unlock()
+	b.RLock()
 	item := b.tree.Get(key)
+	b.RUnlock()
 	if item == nil {
 		return
 	}
 	fn(item)
 }
 
-func (b *BTree) Has(key BtreeItem) bool {
+func (b *BTree) Has(key BtreeItem) (ok bool) {
 	b.RLock()
-	defer b.RUnlock()
-	return b.tree.Has(key)
+	ok = b.tree.Has(key)
+	b.RUnlock()
+	return
 }
 
-func (b *BTree) Delete(key BtreeItem) BtreeItem {
+func (b *BTree) Delete(key BtreeItem) (item BtreeItem) {
 	b.Lock()
-	defer b.Unlock()
-	return b.tree.Delete(key)
+	item = b.tree.Delete(key)
+	b.Unlock()
+	return
 }
 
-func (b *BTree) ReplaceOrInsert(key BtreeItem, replace bool) (BtreeItem, bool) {
+func (b *BTree) ReplaceOrInsert(key BtreeItem, replace bool) (item BtreeItem,
+	ok bool) {
 	b.Lock()
-	defer b.Unlock()
-	item := b.tree.Get(key)
+	item = b.tree.Get(key)
 	if item == nil {
-		return b.tree.ReplaceOrInsert(key), true
+		item, ok = b.tree.ReplaceOrInsert(key), true
+		b.Unlock()
+		return
 	}
 	if !replace {
-		return item, false
+		b.Unlock()
+		ok = false
+		return
 	}
-	return b.tree.ReplaceOrInsert(key), true
+	item, ok = b.tree.ReplaceOrInsert(key), true
+	b.Unlock()
+	return
 }
 
 func (b *BTree) Ascend(fn func(i BtreeItem) bool) {
-	b.Lock()
-	t := b.tree.Clone()
-	b.Unlock()
-	t.Ascend(fn)
+	b.RLock()
+	b.tree.Ascend(fn)
+	b.RUnlock()
 }
 
 func (b *BTree) AscendRange(greaterOrEqual, lessThan BtreeItem, iterator func(i BtreeItem) bool) {
-	b.Lock()
-	t := b.tree.Clone()
-	b.Unlock()
-	t.AscendRange(greaterOrEqual, lessThan, iterator)
+	b.RLock()
+	b.tree.AscendRange(greaterOrEqual, lessThan, iterator)
+	b.RUnlock()
 }
 
 func (b *BTree) AscendGreaterOrEqual(pivot BtreeItem, iterator func(i BtreeItem) bool) {
-	b.Lock()
-	t := b.tree.Clone()
-	b.Unlock()
-	t.AscendGreaterOrEqual(pivot, iterator)
+	b.RLock()
+	b.tree.AscendGreaterOrEqual(pivot, iterator)
+	b.RUnlock()
 }
 
 func (b *BTree) GetTree() *BTree {
-	b.Lock()
+	b.RLock()
 	t := b.tree.Clone()
-	b.Unlock()
+	b.RUnlock()
 	nb := NewBtree()
 	nb.tree = t
 	return nb
@@ -114,8 +120,16 @@ func (b *BTree) Reset() {
 	b.Unlock()
 }
 
-func (b *BTree) Len() int {
+func (b *BTree) Len() (size int) {
 	b.RLock()
-	defer b.RUnlock()
-	return b.tree.Len()
+	size = b.tree.Len()
+	b.RUnlock()
+	return
+}
+
+func (b *BTree) MaxItem() BtreeItem {
+	b.RLock()
+	item := b.tree.Max()
+	b.RUnlock()
+	return item
 }

@@ -16,7 +16,8 @@ package master
 
 import (
 	"encoding/json"
-	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
+	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 	"net/http"
 	"regexp"
@@ -35,6 +36,8 @@ type DataPartitionResponse struct {
 	ReplicaNum    uint8
 	PartitionType string
 	Hosts         []string
+	RandomWrite   bool
+	LeaderAddr    string
 }
 
 type DataPartitionsView struct {
@@ -85,7 +88,7 @@ func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *
 func (m *Master) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
-		code int
+		code = http.StatusBadRequest
 		name string
 		vol  *Vol
 		ok   bool
@@ -96,25 +99,25 @@ func (m *Master) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 	}
 	if vol, ok = m.cluster.vols[name]; !ok {
 		err = errors.Annotatef(VolNotFound, "%v not found", name)
+		code = http.StatusNotFound
 		goto errDeal
 	}
 
 	if body, err = vol.getDataPartitionsView(m.cluster.getLiveDataNodesRate()); err != nil {
-		code = http.StatusMethodNotAllowed
 		goto errDeal
 	}
-	w.Write(body)
+	m.sendOkReplyForClient(w, r, body)
 	return
 errDeal:
 	logMsg := getReturnMessage("getDataPartitions", r.RemoteAddr, err.Error(), code)
-	HandleError(logMsg, err, code, w)
+	m.sendErrReply(w, r, code, logMsg, err)
 	return
 }
 
 func (m *Master) getVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
-		code int
+		code = http.StatusBadRequest
 		err  error
 		name string
 		vol  *Vol
@@ -124,24 +127,24 @@ func (m *Master) getVol(w http.ResponseWriter, r *http.Request) {
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
 		err = errors.Annotatef(VolNotFound, "%v not found", name)
+		code = http.StatusNotFound
 		goto errDeal
 	}
 	if body, err = json.Marshal(m.getVolView(vol)); err != nil {
-		code = http.StatusMethodNotAllowed
 		goto errDeal
 	}
-	w.Write(body)
+	m.sendOkReplyForClient(w, r, body)
 	return
 errDeal:
 	logMsg := getReturnMessage("getVol", r.RemoteAddr, err.Error(), code)
-	HandleError(logMsg, err, code, w)
+	m.sendErrReply(w, r, code, logMsg, err)
 	return
 }
 
 func (m *Master) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
-		code int
+		code = http.StatusBadRequest
 		err  error
 		name string
 		vol  *Vol
@@ -152,17 +155,17 @@ func (m *Master) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	if vol, ok = m.cluster.vols[name]; !ok {
 		err = errors.Annotatef(VolNotFound, "%v not found", name)
+		code = http.StatusNotFound
 		goto errDeal
 	}
 	if body, err = json.Marshal(volStat(vol)); err != nil {
-		code = http.StatusMethodNotAllowed
 		goto errDeal
 	}
-	w.Write(body)
+	m.sendOkReplyForClient(w, r, body)
 	return
 errDeal:
 	logMsg := getReturnMessage("getVolStatInfo", r.RemoteAddr, err.Error(), code)
-	HandleError(logMsg, err, code, w)
+	m.sendErrReply(w, r, code, logMsg, err)
 	return
 }
 
@@ -194,11 +197,8 @@ func setMetaPartitions(vol *Vol, view *VolView, liveRate float32) {
 func volStat(vol *Vol) (stat *VolStatInfo) {
 	stat = new(VolStatInfo)
 	stat.Name = vol.Name
-	for _, dp := range vol.dataPartitions.dataPartitions {
-		stat.TotalSize = stat.TotalSize + dp.total
-		usedSize := dp.getMaxUsedSize()
-		stat.UsedSize = stat.UsedSize + usedSize
-	}
+	stat.TotalSize = vol.Capacity * util.GB
+	stat.UsedSize = vol.getTotalUsedSpace()
 	if stat.UsedSize > stat.TotalSize {
 		stat.UsedSize = stat.TotalSize
 	}
@@ -222,7 +222,7 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *MetaPartitionView) {
 func (m *Master) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		body        []byte
-		code        int
+		code        = http.StatusBadRequest
 		err         error
 		name        string
 		partitionID uint64
@@ -235,21 +235,22 @@ func (m *Master) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 	}
 	if vol, ok = m.cluster.vols[name]; !ok {
 		err = errors.Annotatef(VolNotFound, "%v not found", name)
+		code = http.StatusNotFound
 		goto errDeal
 	}
 	if mp, ok = vol.MetaPartitions[partitionID]; !ok {
 		err = errors.Annotatef(MetaPartitionNotFound, "%v not found", partitionID)
+		code = http.StatusNotFound
 		goto errDeal
 	}
 	if body, err = mp.toJson(); err != nil {
-		code = http.StatusMethodNotAllowed
 		goto errDeal
 	}
-	w.Write(body)
+	m.sendOkReplyForClient(w, r, body)
 	return
 errDeal:
 	logMsg := getReturnMessage("getMetaPartition", r.RemoteAddr, err.Error(), code)
-	HandleError(logMsg, err, code, w)
+	m.sendErrReply(w, r, code, logMsg, err)
 	return
 }
 
@@ -295,4 +296,9 @@ func checkVolPara(r *http.Request) (name string, err error) {
 	}
 
 	return
+}
+
+func (m *Master) sendOkReplyForClient(w http.ResponseWriter, r *http.Request, msg []byte) {
+	log.LogInfof("URL[%v],remoteAddr[%v],response ok")
+	w.Write(msg)
 }

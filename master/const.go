@@ -25,6 +25,9 @@ const (
 	ParaStart             = "start"
 	ParaEnable            = "enable"
 	ParaThreshold         = "threshold"
+	ParaRandomWrite       = "randomWrite"
+	ParaDataPartitionSize = "size"
+	ParaVolCapacity       = "capacity"
 )
 
 const (
@@ -50,6 +53,9 @@ const (
 	RuntimeStackBufSize                     = 4096
 	NodesAliveRate                  float32 = 0.5
 	SpaceAvailRate                          = 0.90
+	DefaultNodeSetCapacity                  = 6
+	MinReadWriteDataPartitions              = 10
+	CheckMissFileReplicaTime                = 600
 )
 
 const (

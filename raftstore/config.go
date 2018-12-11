@@ -50,4 +50,5 @@ type PartitionConfig struct {
 	Term    uint64
 	Peers   []PeerAddress
 	SM      PartitionFsm
+	WalPath string
 }

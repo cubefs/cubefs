@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
 
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
@@ -191,6 +191,10 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, err 
 }
 
 func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32) (status int, err error) {
+	if parentID == inode {
+		return statusExist, nil
+	}
+
 	req := &proto.CreateDentryRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -229,6 +233,10 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 }
 
 func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, newInode uint64) (status int, oldInode uint64, err error) {
+	if parentID == newInode {
+		return statusExist, 0, nil
+	}
+
 	req := &proto.UpdateDentryRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -530,7 +538,7 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 	return status, nil
 }
 
-func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (status int, extents []proto.ExtentKey, err error) {
+func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (status int, gen, size uint64, extents []proto.ExtentKey, err error) {
 	req := &proto.GetExtentsRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -568,23 +576,22 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (status int, 
 		log.LogErrorf("getExtents: mp(%v) err(%v) PacketData(%v)", mp, err, string(packet.Data))
 		return
 	}
-	return statusOK, resp.Extents, nil
+	return statusOK, resp.Generation, resp.Size, resp.Extents, nil
 }
 
-func (mw *MetaWrapper) truncate(mp *MetaPartition, inode uint64) (status int, err error) {
+func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64) (status int, err error) {
 	req := &proto.TruncateRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
-		FileOffset:  0,
-		Size:        0,
+		Size:        size,
 	}
 
 	packet := proto.NewPacket()
 	packet.Opcode = proto.OpMetaTruncate
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("truncate: err(%v)", err)
+		log.LogErrorf("truncate: ino(%v) size(%v) err(%v)", inode, size, err)
 		return
 	}
 

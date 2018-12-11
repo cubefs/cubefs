@@ -17,8 +17,8 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"github.com/tiglabs/containerfs/util/log"
 	"runtime"
 	"time"
@@ -36,6 +36,7 @@ func (mp *metaPartition) startFreeList() {
 
 	go mp.deleteWorker()
 	go mp.checkFreelistWorker()
+	mp.startDeleteExtents()
 }
 
 func (mp *metaPartition) updateVolWorker() {
@@ -139,49 +140,16 @@ func (mp *metaPartition) checkFreelistWorker() {
 }
 
 func (mp *metaPartition) deleteDataPartitionMark(inoSlice []*Inode) {
-	stepFunc := func(ext proto.ExtentKey) (err error) {
-		// get dataNode View
-		dp := mp.vol.GetPartition(ext.PartitionId)
-		if dp == nil {
-			err = errors.Errorf("unknown dataPartitionID=%d in vol",
-				ext.PartitionId)
-			return
-		}
-		// delete dataNode
-		conn, err := mp.config.ConnPool.Get(dp.Hosts[0])
-		if err != nil {
-			mp.config.ConnPool.Put(conn, ForceCloseConnect)
-			err = errors.Errorf("get conn from pool %s, "+
-				"extents partitionId=%d, extentId=%d",
-				err.Error(), ext.PartitionId, ext.ExtentId)
-			return
-		}
-		p := NewExtentDeletePacket(dp, ext.ExtentId)
-		if err = p.WriteToConn(conn); err != nil {
-			mp.config.ConnPool.Put(conn, ForceCloseConnect)
-			err = errors.Errorf("write to dataNode %s, %s", p.GetUniqueLogId(),
-				err.Error())
-			return
-		}
-		if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
-			mp.config.ConnPool.Put(conn, ForceCloseConnect)
-			err = errors.Errorf("read response from dataNode %s, %s",
-				p.GetUniqueLogId(), err.Error())
-			return
-		}
-		log.LogDebugf("[deleteDataPartitionMark] %v", p.GetUniqueLogId())
-		mp.config.ConnPool.Put(conn, NoCloseConnect)
-		return
-	}
 	shouldCommit := make([]*Inode, 0, BatchCounts)
 	var err error
 	for _, ino := range inoSlice {
-		var reExt []proto.ExtentKey
-		ino.Extents.Range(func(i int, v proto.ExtentKey) bool {
-			if err = stepFunc(v); err != nil {
-				reExt = append(reExt, v)
-				log.LogWarnf("[deleteDataPartitionMark] extentKey: %s, "+
-					"err: %s", v.String(), err.Error())
+		var reExt []*proto.ExtentKey
+
+		ino.Extents.Range(func(item BtreeItem) bool {
+			ext := item.(*proto.ExtentKey)
+			if err = mp.executeDeleteDataPartition(ext); err != nil {
+				reExt = append(reExt, ext)
+				log.LogWarnf("[deleteDataPartitionMark] delete failed extents: %s, err: %s", ext.String(), err.Error())
 			}
 			return true
 		})
@@ -212,4 +180,39 @@ func (mp *metaPartition) deleteDataPartitionMark(inoSlice []*Inode) {
 		log.LogDebugf("[deleteInodeTree] inode list: %v", shouldCommit)
 	}
 
+}
+
+func (mp *metaPartition) executeDeleteDataPartition(ext *proto.ExtentKey) (err error) {
+	// get dataNode View
+	dp := mp.vol.GetPartition(ext.PartitionId)
+	if dp == nil {
+		err = errors.Errorf("unknown dataPartitionID=%d in vol",
+			ext.PartitionId)
+		return
+	}
+	// delete dataNode
+	conn, err := mp.config.ConnPool.Get(dp.Hosts[0])
+	if err != nil {
+		mp.config.ConnPool.Put(conn, ForceCloseConnect)
+		err = errors.Errorf("get conn from pool %s, "+
+			"extents partitionId=%d, extentId=%d",
+			err.Error(), ext.PartitionId, ext.ExtentId)
+		return
+	}
+	p := NewExtentDeletePacket(dp, ext)
+	if err = p.WriteToConn(conn); err != nil {
+		mp.config.ConnPool.Put(conn, ForceCloseConnect)
+		err = errors.Errorf("write to dataNode %s, %s", p.GetUniqueLogId(),
+			err.Error())
+		return
+	}
+	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+		mp.config.ConnPool.Put(conn, ForceCloseConnect)
+		err = errors.Errorf("read response from dataNode %s, %s",
+			p.GetUniqueLogId(), err.Error())
+		return
+	}
+	log.LogDebugf("[deleteDataPartitionMark] %v", p.GetUniqueLogId())
+	mp.config.ConnPool.Put(conn, NoCloseConnect)
+	return
 }

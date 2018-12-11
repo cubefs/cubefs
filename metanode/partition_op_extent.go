@@ -15,15 +15,16 @@
 package metanode
 
 import (
-	"encoding/binary"
 	"encoding/json"
+
 	"github.com/tiglabs/containerfs/proto"
 	"os"
 )
 
 func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
-	ino.Extents.Put(req.Extent)
+	ext := req.Extent
+	ino.Extents.Put(&ext)
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PackErrorWithBody(proto.OpErr, nil)
@@ -49,8 +50,11 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest,
 	)
 	if status == proto.OpOk {
 		resp := &proto.GetExtentsResponse{}
-		ino.Extents.Range(func(i int, ext proto.ExtentKey) bool {
-			resp.Extents = append(resp.Extents, ext)
+		resp.Generation = ino.Generation
+		resp.Size = ino.Size
+		ino.Extents.Range(func(item BtreeItem) bool {
+			ext := item.(*proto.ExtentKey)
+			resp.Extents = append(resp.Extents, *ext)
 			return true
 		})
 		reply, err = json.Marshal(resp)
@@ -65,13 +69,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest,
 func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq,
 	p *Packet) (err error) {
 	ino := NewInode(req.Inode, proto.Mode(os.ModePerm))
-	nextIno, err := mp.nextInodeID()
-	if err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
-		return
-	}
-	ino.LinkTarget = make([]byte, 8)
-	binary.BigEndian.PutUint64(ino.LinkTarget, nextIno)
+	ino.Size = req.Size
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PackErrorWithBody(proto.OpErr, nil)

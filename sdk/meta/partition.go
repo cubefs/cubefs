@@ -18,8 +18,6 @@ import (
 	"fmt"
 
 	"github.com/tiglabs/containerfs/third_party/btree"
-
-	"github.com/tiglabs/containerfs/proto"
 )
 
 type MetaPartition struct {
@@ -94,16 +92,22 @@ func (mw *MetaWrapper) getPartitionByInode(ino uint64) *MetaPartition {
 	return mp
 }
 
+//func (mw *MetaWrapper) getRWPartitions() []*MetaPartition {
+//	rwPartitions := make([]*MetaPartition, 0)
+//	mw.RLock()
+//	defer mw.RUnlock()
+//	for _, mp := range mw.partitions {
+//		if mp.Status == proto.ReadWrite {
+//			rwPartitions = append(rwPartitions, mp)
+//		}
+//	}
+//	return rwPartitions
+//}
+
 func (mw *MetaWrapper) getRWPartitions() []*MetaPartition {
-	rwPartitions := make([]*MetaPartition, 0)
 	mw.RLock()
 	defer mw.RUnlock()
-	for _, mp := range mw.partitions {
-		if mp.Status == proto.ReadWrite {
-			rwPartitions = append(rwPartitions, mp)
-		}
-	}
-	return rwPartitions
+	return mw.rwPartitions
 }
 
 // Get the partition whose Start is Larger than ino.

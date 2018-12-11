@@ -82,7 +82,10 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	inode := NewInode(info)
 	d.super.ic.Put(inode)
 	child := NewFile(d.super, inode)
-	d.super.ec.OpenForWrite(inode.ino, 0)
+	err = d.super.ec.OpenStream(inode.ino)
+	if err != nil {
+		return nil, nil, fuse.EIO
+	}
 
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Create: parent(%v) req(%v) resp(%v) ino(%v) (%v)ns", d.inode.ino, req, resp, inode.ino, elapsed.Nanoseconds())
@@ -128,7 +131,7 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Remove: parent(%v) req(%v) (%v)ns", d.inode.ino, req, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Remove: parent(%v) req(%v) inode(%v) (%v)ns", d.inode.ino, req, info, elapsed.Nanoseconds())
 	return nil
 }
 

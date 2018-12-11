@@ -18,17 +18,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/ump"
 )
 
-func newCreateDataPartitionRequest(partitionType, volName string, ID uint64) (req *proto.CreateDataPartitionRequest) {
+func newCreateDataPartitionRequest(partitionType, volName string, ID uint64, randomWrite bool, members []proto.Peer, dataPartitionSize int) (req *proto.CreateDataPartitionRequest) {
 	req = &proto.CreateDataPartitionRequest{
 		PartitionType: partitionType,
 		PartitionId:   ID,
-		PartitionSize: util.DefaultDataPartitionSize,
+		PartitionSize: dataPartitionSize,
 		VolumeId:      volName,
+		RandomWrite:   randomWrite,
+		Members:       members,
 	}
 	return
 }
@@ -36,6 +37,15 @@ func newCreateDataPartitionRequest(partitionType, volName string, ID uint64) (re
 func newDeleteDataPartitionRequest(ID uint64) (req *proto.DeleteDataPartitionRequest) {
 	req = &proto.DeleteDataPartitionRequest{
 		PartitionId: ID,
+	}
+	return
+}
+
+func newOfflineDataPartitionRequest(ID uint64, removePeer, addPeer proto.Peer) (req *proto.DataPartitionOfflineRequest) {
+	req = &proto.DataPartitionOfflineRequest{
+		PartitionId: ID,
+		RemovePeer:  removePeer,
+		AddPeer:     addPeer,
 	}
 	return
 }
@@ -77,6 +87,8 @@ func UnmarshalTaskResponse(task *proto.AdminTask) (err error) {
 		response = task.Response.(*proto.LoadMetaPartitionMetricResponse)
 	case proto.OpOfflineMetaPartition:
 		response = task.Response.(*proto.MetaPartitionOfflineResponse)
+	case proto.OpOfflineDataPartition:
+		response = task.Response.(*proto.DataPartitionOfflineResponse)
 
 	default:
 		log.LogError(fmt.Sprintf("unknown operate code(%v)", task.OpCode))

@@ -17,25 +17,30 @@ package master
 import (
 	"fmt"
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 	"sync"
 )
 
 type Vol struct {
-	Name           string
-	VolType        string
-	dpReplicaNum   uint8
-	mpReplicaNum   uint8
-	threshold      float32
-	MetaPartitions map[uint64]*MetaPartition
-	mpsLock        sync.RWMutex
-	dataPartitions *DataPartitionMap
-	Status         uint8
+	Name              string
+	VolType           string
+	RandomWrite       bool
+	dpReplicaNum      uint8
+	mpReplicaNum      uint8
+	Status            uint8
+	threshold         float32
+	dataPartitionSize uint64
+	Capacity          uint64 //GB
+	MetaPartitions    map[uint64]*MetaPartition
+	mpsLock           sync.RWMutex
+	dataPartitions    *DataPartitionMap
 	sync.RWMutex
 }
 
-func NewVol(name, volType string, replicaNum uint8) (vol *Vol) {
+func NewVol(name, volType string, replicaNum uint8, randomWrite bool, dpSize, capacity uint64) (vol *Vol) {
 	vol = &Vol{Name: name, VolType: volType, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
+	vol.RandomWrite = randomWrite
 	vol.dataPartitions = NewDataPartitionMap(name)
 	vol.dpReplicaNum = replicaNum
 	vol.threshold = DefaultMetaPartitionThreshold
@@ -44,6 +49,14 @@ func NewVol(name, volType string, replicaNum uint8) (vol *Vol) {
 	} else {
 		vol.mpReplicaNum = replicaNum
 	}
+	if dpSize == 0 {
+		dpSize = util.DefaultDataPartitionSize
+	}
+	if dpSize < util.GB {
+		dpSize = util.DefaultDataPartitionSize
+	}
+	vol.dataPartitionSize = dpSize
+	vol.Capacity = capacity
 	return
 }
 
@@ -111,8 +124,10 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (readWriteDataPartitions int) {
 				c.dataPartitionOffline(addr, vol.Name, dp, CheckDataPartitionDiskErrorErr)
 			}
 		}
-		tasks := dp.checkReplicationTask(c.Name)
-		c.putDataNodeTasks(tasks)
+		tasks := dp.checkReplicationTask(c.Name, vol.RandomWrite, vol.dataPartitionSize)
+		if len(tasks) != 0 {
+			c.putDataNodeTasks(tasks)
+		}
 	}
 	return
 }
@@ -164,26 +179,70 @@ func (vol *Vol) cloneMetaPartitionMap() (mps map[uint64]*MetaPartition) {
 	return
 }
 
-func (vol *Vol) statSpace() (used, total uint64) {
-	vol.dataPartitions.RLock()
-	defer vol.dataPartitions.RUnlock()
-	for _, dp := range vol.dataPartitions.dataPartitions {
-		total = total + dp.total
-		used = used + dp.getMaxUsedSize()
-	}
-	return
-}
-
 func (vol *Vol) setStatus(status uint8) {
 	vol.Lock()
 	defer vol.Unlock()
 	vol.Status = status
 }
 
+func (vol *Vol) getStatus() uint8 {
+	vol.RLock()
+	defer vol.RUnlock()
+	return vol.Status
+}
+
+func (vol *Vol) setCapacity(capacity uint64) {
+	vol.Lock()
+	defer vol.Unlock()
+	vol.Capacity = capacity
+}
+
+func (vol *Vol) getCapacity() uint64 {
+	vol.RLock()
+	defer vol.RUnlock()
+	return vol.Capacity
+}
+
+func (vol *Vol) checkAvailSpace(c *Cluster) {
+	if vol.getStatus() == VolMarkDelete {
+		return
+	}
+	if vol.getCapacity() == 0 {
+		return
+	}
+	usedSpace := vol.getTotalUsedSpace()
+	usedSpace = usedSpace / util.GB
+	if usedSpace >= vol.getCapacity() {
+		vol.setAllDataPartitionsToReadOnly()
+		return
+	} else {
+		vol.setStatus(VolNormal)
+	}
+	if vol.getStatus() == VolNormal && !c.DisableAutoAlloc {
+		vol.autoCreateDataPartitions(c)
+	}
+}
+
+func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
+	if vol.dataPartitions.readWriteDataPartitions < MinReadWriteDataPartitions {
+		for i := 0; i < MinReadWriteDataPartitions; i++ {
+			c.createDataPartition(vol.Name, vol.VolType)
+		}
+	}
+}
+
+func (vol *Vol) setAllDataPartitionsToReadOnly() {
+	vol.dataPartitions.setAllDataPartitionsToReadOnly()
+}
+
+func (vol *Vol) getTotalUsedSpace() uint64 {
+	return vol.dataPartitions.getTotalUsedSpace()
+}
+
 func (vol *Vol) checkStatus(c *Cluster) {
 	vol.Lock()
 	defer vol.Unlock()
-	if vol.Status == VolNormal {
+	if vol.Status != VolMarkDelete {
 		return
 	}
 	metaTasks := vol.getDeleteMetaTasks()

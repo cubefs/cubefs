@@ -20,7 +20,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
 
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
@@ -107,15 +107,24 @@ func (mw *MetaWrapper) UpdateMetaPartitions() error {
 		return err
 	}
 
+	rwPartitions := make([]*MetaPartition, 0)
 	for _, mp := range nv.MetaPartitions {
 		mw.replaceOrInsertPartition(mp)
 		log.LogInfof("UpdateMetaPartition: mp(%v)", mp)
+		if mp.Status == proto.ReadWrite {
+			rwPartitions = append(rwPartitions, mp)
+		}
 	}
+
+	mw.Lock()
+	mw.rwPartitions = rwPartitions
+	mw.Unlock()
 	return nil
 }
 
 func (mw *MetaWrapper) refresh() {
 	t := time.NewTicker(RefreshMetaPartitionsInterval)
+	defer t.Stop()
 	for {
 		select {
 		case <-t.C:

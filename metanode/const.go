@@ -15,8 +15,8 @@
 package metanode
 
 import (
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"time"
 )
 
@@ -76,8 +76,6 @@ type (
 	UpdatePartitionResp = proto.UpdateMetaPartitionResponse
 	// Client -> MetaNode
 	ExtentsTruncateReq = proto.TruncateRequest
-	// MetaNode -> Client
-	ExtentsTruncateResp = proto.TruncateResponse
 
 	// Client -> MetaNode
 	EvictInodeReq = proto.EvictInodeRequest
@@ -105,6 +103,9 @@ const (
 	opFSMEvictInode
 	opFSMInternalDeleteInode
 	opFSMSetAttr
+	opFSMInternalDelExtentFile
+	opFSMInternalDelExtentCursor
+	opSnapExtentFile
 )
 
 var (
@@ -141,4 +142,11 @@ const (
 
 const (
 	storeTimeTicker = time.Minute * 5
+)
+
+const (
+	_  = iota
+	KB = 1 << (10 * iota)
+	MB
+	GB
 )

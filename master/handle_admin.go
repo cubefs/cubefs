@@ -32,6 +32,7 @@ type ClusterView struct {
 	Name               string
 	LeaderAddr         string
 	CompactStatus      bool
+	DisableAutoAlloc   bool
 	Applied            uint64
 	MaxDataPartitionID uint64
 	MaxMetaNodeID      uint64
@@ -53,12 +54,19 @@ type VolStatView struct {
 type DataNodeView struct {
 	Addr   string
 	Status bool
+	ID     uint64
 }
 
 type MetaNodeView struct {
 	ID     uint64
 	Addr   string
 	Status bool
+}
+
+type TopologyView struct {
+	DataNodes []DataNodeView
+	MetaNodes []MetaNodeView
+	NodeSet   []uint64
 }
 
 func (m *Master) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
@@ -70,11 +78,11 @@ func (m *Master) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
 		goto errDeal
 	}
 	m.cluster.cfg.MetaNodeThreshold = float32(threshold)
-	io.WriteString(w, fmt.Sprintf("set threshold to %v success", threshold))
+	m.sendOkReply(w, r, fmt.Sprintf("set threshold to %v success", threshold))
 	return
 errDeal:
 	logMsg := getReturnMessage("setMetaNodeThreshold", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
@@ -93,12 +101,64 @@ func (m *Master) setCompactStatus(w http.ResponseWriter, r *http.Request) {
 	return
 errDeal:
 	logMsg := getReturnMessage("setCompactStatus", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
+	return
+}
+
+func (m *Master) setDisableAutoAlloc(w http.ResponseWriter, r *http.Request) {
+	var (
+		status bool
+		err    error
+	)
+	if status, err = parseDisableAutoAlloc(r); err != nil {
+		goto errDeal
+	}
+	m.cluster.DisableAutoAlloc = status
+	io.WriteString(w, fmt.Sprintf("set disableAutoAlloc  to %v success", status))
+	return
+errDeal:
+	logMsg := getReturnMessage("setDisableAutoAlloc", r.RemoteAddr, err.Error(), http.StatusBadRequest)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
 func (m *Master) getCompactStatus(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, fmt.Sprintf("%v", m.cluster.compactStatus))
+	return
+}
+
+func (m *Master) getTopology(w http.ResponseWriter, r *http.Request) {
+	var (
+		body []byte
+		err  error
+	)
+	tv := &TopologyView{
+		DataNodes: make([]DataNodeView, 0),
+		MetaNodes: make([]MetaNodeView, 0),
+		NodeSet:   make([]uint64, 0),
+	}
+	m.cluster.t.metaNodes.Range(func(key, value interface{}) bool {
+		metaNode := value.(*TopoMetaNode)
+		tv.MetaNodes = append(tv.MetaNodes, MetaNodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive})
+		return true
+	})
+	m.cluster.t.dataNodes.Range(func(key, value interface{}) bool {
+		dataNode := value.(*TopoDataNode)
+		tv.DataNodes = append(tv.DataNodes, DataNodeView{ID: dataNode.Id, Addr: dataNode.Addr, Status: dataNode.isActive})
+		return true
+	})
+	for _, ns := range m.cluster.t.nodeSetMap {
+		tv.NodeSet = append(tv.NodeSet, ns.Id)
+	}
+	if body, err = json.Marshal(tv); err != nil {
+		goto errDeal
+	}
+	m.sendOkReply(w, r, string(body))
+	return
+
+errDeal:
+	logMsg := getReturnMessage("getCluster", r.RemoteAddr, err.Error(), http.StatusBadRequest)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
@@ -111,6 +171,7 @@ func (m *Master) getCluster(w http.ResponseWriter, r *http.Request) {
 		Name:               m.cluster.Name,
 		LeaderAddr:         m.leaderInfo.addr,
 		CompactStatus:      m.cluster.compactStatus,
+		DisableAutoAlloc:   m.cluster.DisableAutoAlloc,
 		Applied:            m.fsm.applied,
 		MaxDataPartitionID: m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:      m.cluster.idAlloc.metaNodeID,
@@ -136,12 +197,12 @@ func (m *Master) getCluster(w http.ResponseWriter, r *http.Request) {
 	if body, err = json.Marshal(cv); err != nil {
 		goto errDeal
 	}
-	io.WriteString(w, string(body))
+	m.sendOkReply(w, r, string(body))
 	return
 
 errDeal:
 	logMsg := getReturnMessage("getCluster", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
@@ -155,7 +216,7 @@ func (m *Master) getIpAndClusterName(w http.ResponseWriter, r *http.Request) {
 	return
 errDeal:
 	rstMsg := getReturnMessage("getIpAndClusterName", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(rstMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, rstMsg, err)
 	return
 }
 
@@ -174,25 +235,24 @@ func (m *Master) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 	if err = m.cluster.CreateMetaPartitionForManual(volName, start); err != nil {
 		goto errDeal
 	}
-
-	io.WriteString(w, fmt.Sprint("createMetaPartition request seccess"))
+	m.sendOkReply(w, r, fmt.Sprint("createMetaPartition request seccess"))
 	return
 errDeal:
 	rstMsg = getReturnMessage("createMetaPartition", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(rstMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, rstMsg, err)
 	return
 }
 
 func (m *Master) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
-		rstMsg                  string
-		volName                 string
-		partitionType           string
-		vol                     *Vol
-		reqCreateCount          int
-		capacity                int
-		lastTotalDataPartitions int
-		err                     error
+		rstMsg                     string
+		volName                    string
+		partitionType              string
+		vol                        *Vol
+		reqCreateCount             int
+		lastTotalDataPartitions    int
+		clusterTotalDataPartitions int
+		err                        error
 	)
 
 	if reqCreateCount, volName, partitionType, err = parseCreateDataPartitionPara(r); err != nil {
@@ -202,24 +262,20 @@ func (m *Master) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	if vol, err = m.cluster.getVol(volName); err != nil {
 		goto errDeal
 	}
-	capacity = m.cluster.getDataPartitionCapacity(vol)
 	lastTotalDataPartitions = len(vol.dataPartitions.dataPartitions)
+	clusterTotalDataPartitions = m.cluster.getDataPartitionCount()
 	for i := 0; i < reqCreateCount; i++ {
-		if (reqCreateCount + lastTotalDataPartitions) < len(vol.dataPartitions.dataPartitions) {
+		if _, err = m.cluster.createDataPartition(volName, partitionType); err != nil {
 			break
 		}
-		if _, err = m.cluster.createDataPartition(volName, partitionType); err != nil {
-			goto errDeal
-		}
 	}
-	rstMsg = fmt.Sprintf(" createDataPartition success. cluster capacity[%v],vol[%v] has %v data partitions last,%v data partitions now",
-		capacity, volName, lastTotalDataPartitions, len(vol.dataPartitions.dataPartitions))
-	io.WriteString(w, rstMsg)
-
+	rstMsg = fmt.Sprintf(" createDataPartition success. clusterLastTotalDataPartitions[%v],vol[%v] has %v data partitions last,%v data partitions now",
+		clusterTotalDataPartitions, volName, lastTotalDataPartitions, len(vol.dataPartitions.dataPartitions))
+	m.sendOkReply(w, r, rstMsg)
 	return
 errDeal:
 	rstMsg = getReturnMessage("createDataPartition", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(rstMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, rstMsg, err)
 	return
 }
 
@@ -240,12 +296,11 @@ func (m *Master) getDataPartition(w http.ResponseWriter, r *http.Request) {
 	if body, err = dp.toJson(); err != nil {
 		goto errDeal
 	}
-	io.WriteString(w, string(body))
-
+	m.sendOkReply(w, r, string(body))
 	return
 errDeal:
 	logMsg := getReturnMessage("getDataPartition", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
@@ -272,12 +327,11 @@ func (m *Master) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 
 	m.cluster.loadDataPartitionAndCheckResponse(dp)
 	msg = fmt.Sprintf(AdminLoadDataPartition+"partitionID :%v  load data partition success", partitionID)
-	io.WriteString(w, msg)
-
+	m.sendOkReply(w, r, msg)
 	return
 errDeal:
 	logMsg := getReturnMessage(AdminLoadDataPartition, r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
@@ -301,13 +355,15 @@ func (m *Master) dataPartitionOffline(w http.ResponseWriter, r *http.Request) {
 	if dp, err = vol.getDataPartitionByID(partitionID); err != nil {
 		goto errDeal
 	}
-	m.cluster.dataPartitionOffline(addr, volName, dp, HandleDataPartitionOfflineErr)
+	if err = m.cluster.dataPartitionOffline(addr, volName, dp, HandleDataPartitionOfflineErr); err != nil {
+		goto errDeal
+	}
 	rstMsg = fmt.Sprintf(AdminDataPartitionOffline+" dataPartitionID :%v  on node:%v  has offline success", partitionID, addr)
-	io.WriteString(w, rstMsg)
+	m.sendOkReply(w, r, rstMsg)
 	return
 errDeal:
 	logMsg := getReturnMessage(AdminDataPartitionOffline, r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
@@ -324,59 +380,94 @@ func (m *Master) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	if err = m.cluster.markDeleteVol(name); err != nil {
 		goto errDeal
 	}
-	msg = fmt.Sprintf("delete vol[%v] successed\n", name)
+	msg = fmt.Sprintf("delete vol[%v] successed,from[%v]", name, r.RemoteAddr)
 	log.LogWarn(msg)
-	io.WriteString(w, msg)
+	m.sendOkReply(w, r, msg)
 	return
 
 errDeal:
 	logMsg := getReturnMessage("markDeleteVol", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
+	return
+}
+
+func (m *Master) updateVol(w http.ResponseWriter, r *http.Request) {
+	var (
+		name     string
+		err      error
+		msg      string
+		capacity int
+	)
+	if name, capacity, err = parseUpdateVolPara(r); err != nil {
+		goto errDeal
+	}
+	if err = m.cluster.updateVol(name, capacity); err != nil {
+		goto errDeal
+	}
+	msg = fmt.Sprintf("update vol[%v] successed\n", name)
+	m.sendOkReply(w, r, msg)
+	return
+errDeal:
+	logMsg := getReturnMessage("updateVol", r.RemoteAddr, err.Error(), http.StatusBadRequest)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
 func (m *Master) createVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		name       string
-		err        error
-		msg        string
-		volType    string
-		replicaNum int
+		name        string
+		err         error
+		msg         string
+		volType     string
+		randomWrite bool
+		replicaNum  int
+		size        int
+		capacity    int
+		vol         *Vol
 	)
 
-	if name, volType, replicaNum, err = parseCreateVolPara(r); err != nil {
+	if name, volType, replicaNum, randomWrite, size, capacity, err = parseCreateVolPara(r); err != nil {
 		goto errDeal
 	}
-	if err = m.cluster.createVol(name, volType, uint8(replicaNum)); err != nil {
+	if err = m.cluster.createVol(name, volType, uint8(replicaNum), randomWrite, size, capacity); err != nil {
 		goto errDeal
 	}
-	msg = fmt.Sprintf("create vol[%v] successed\n", name)
-	io.WriteString(w, msg)
+	if vol, err = m.cluster.getVol(name); err != nil {
+		goto errDeal
+	}
+	for i := 0; i < MinReadWriteDataPartitions; i++ {
+		if _, err = m.cluster.createDataPartition(name, volType); err != nil {
+			break
+		}
+	}
+	msg = fmt.Sprintf("create vol[%v] success,has allocate [%v] data partitions", name, len(vol.dataPartitions.dataPartitions))
+	m.sendOkReply(w, r, msg)
 	return
 
 errDeal:
 	logMsg := getReturnMessage("createVol", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
 func (m *Master) addDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
+		id       uint64
 		err      error
 	)
 	if nodeAddr, err = parseAddDataNodePara(r); err != nil {
 		goto errDeal
 	}
 
-	if err = m.cluster.addDataNode(nodeAddr); err != nil {
+	if id, err = m.cluster.addDataNode(nodeAddr); err != nil {
 		goto errDeal
 	}
-	io.WriteString(w, fmt.Sprintf("addDataNode %v successed\n", nodeAddr))
+	m.sendOkReply(w, r, fmt.Sprintf("%v", id))
 	return
 errDeal:
 	logMsg := getReturnMessage("addDataNode", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
@@ -397,12 +488,11 @@ func (m *Master) getDataNode(w http.ResponseWriter, r *http.Request) {
 	if body, err = dataNode.toJson(); err != nil {
 		goto errDeal
 	}
-	io.WriteString(w, string(body))
-
+	m.sendOkReply(w, r, string(body))
 	return
 errDeal:
 	logMsg := getReturnMessage("getDataNode", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
@@ -421,13 +511,15 @@ func (m *Master) dataNodeOffline(w http.ResponseWriter, r *http.Request) {
 	if node, err = m.cluster.getDataNode(offLineAddr); err != nil {
 		goto errDeal
 	}
-	m.cluster.dataNodeOffLine(node)
+	if err = m.cluster.dataNodeOffLine(node); err != nil {
+		goto errDeal
+	}
 	rstMsg = fmt.Sprintf("dataNodeOffline node [%v] has offline SUCCESS", offLineAddr)
-	io.WriteString(w, rstMsg)
+	m.sendOkReply(w, r, rstMsg)
 	return
 errDeal:
 	logMsg := getReturnMessage("dataNodeOffline", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
@@ -454,14 +546,16 @@ func (m *Master) diskOffline(w http.ResponseWriter, r *http.Request) {
 	}
 	rstMsg = fmt.Sprintf("recive diskOffline node[%v] disk[%v],badPartitionIds[%v]  has offline  success",
 		node.Addr, diskPath, badPartitionIds)
-	m.cluster.diskOffLine(node, diskPath, badPartitionIds)
-	io.WriteString(w, rstMsg)
-	log.LogWarnf(rstMsg)
+	m.cluster.BadDataPartitionIds.Store(fmt.Sprintf("%s:%s", offLineAddr, diskPath), badPartitionIds)
+	if err = m.cluster.diskOffLine(node, diskPath, badPartitionIds); err != nil {
+		goto errDeal
+	}
+	m.sendOkReply(w, r, rstMsg)
 	Warn(m.clusterName, rstMsg)
 	return
 errDeal:
 	logMsg := getReturnMessage("diskOffLine", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
@@ -490,7 +584,7 @@ func (m *Master) dataNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
 errDeal:
 	logMsg := getReturnMessage("dataNodeTaskResponse", r.RemoteAddr, err.Error(),
 		http.StatusBadRequest)
-	HandleError(logMsg, err, code, w)
+	m.sendErrReply(w, r, code, logMsg, err)
 	return
 }
 
@@ -507,11 +601,11 @@ func (m *Master) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	if id, err = m.cluster.addMetaNode(nodeAddr); err != nil {
 		goto errDeal
 	}
-	io.WriteString(w, fmt.Sprintf("%v", id))
+	m.sendOkReply(w, r, fmt.Sprintf("%v", id))
 	return
 errDeal:
 	logMsg := getReturnMessage("addMetaNode", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
@@ -542,11 +636,11 @@ func (m *Master) getMetaNode(w http.ResponseWriter, r *http.Request) {
 	if body, err = metaNode.toJson(); err != nil {
 		goto errDeal
 	}
-	io.WriteString(w, string(body))
+	m.sendOkReply(w, r, string(body))
 	return
 errDeal:
 	logMsg := getReturnMessage("getDataNode", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
@@ -565,11 +659,11 @@ func (m *Master) metaPartitionOffline(w http.ResponseWriter, r *http.Request) {
 		goto errDeal
 	}
 	msg = fmt.Sprintf(AdminLoadMetaPartition+" partitionID :%v  metaPartitionOffline success", partitionID)
-	io.WriteString(w, msg)
+	m.sendOkReply(w, r, msg)
 	return
 errDeal:
 	logMsg := getReturnMessage(AdminMetaPartitionOffline, r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
@@ -596,12 +690,11 @@ func (m *Master) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
 
 	m.cluster.loadMetaPartitionAndCheckResponse(mp)
 	msg = fmt.Sprintf(AdminLoadMetaPartition+" partitionID :%v  Load success", partitionID)
-	io.WriteString(w, msg)
-
+	m.sendOkReply(w, r, msg)
 	return
 errDeal:
 	logMsg := getReturnMessage(AdminLoadMetaPartition, r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
@@ -622,11 +715,11 @@ func (m *Master) metaNodeOffline(w http.ResponseWriter, r *http.Request) {
 	}
 	m.cluster.metaNodeOffLine(metaNode)
 	rstMsg = fmt.Sprintf("metaNodeOffline metaNode [%v] has offline SUCCESS", offLineAddr)
-	io.WriteString(w, rstMsg)
+	m.sendOkReply(w, r, rstMsg)
 	return
 errDeal:
 	logMsg := getReturnMessage("metaNodeOffline", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
@@ -670,11 +763,11 @@ func (m *Master) handleAddRaftNode(w http.ResponseWriter, r *http.Request) {
 		goto errDeal
 	}
 	msg = fmt.Sprintf("add  raft node id :%v, addr:%v successed \n", id, addr)
-	io.WriteString(w, msg)
+	m.sendOkReply(w, r, msg)
 	return
 errDeal:
 	logMsg := getReturnMessage("add raft node", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
@@ -689,11 +782,11 @@ func (m *Master) handleRemoveRaftNode(w http.ResponseWriter, r *http.Request) {
 		goto errDeal
 	}
 	msg = fmt.Sprintf("remove  raft node id :%v,adr:%v successed\n", id, addr)
-	io.WriteString(w, msg)
+	m.sendOkReply(w, r, msg)
 	return
 errDeal:
 	logMsg := getReturnMessage("remove raft node", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	HandleError(logMsg, err, http.StatusBadRequest, w)
+	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
@@ -764,8 +857,24 @@ func parseDeleteVolPara(r *http.Request) (name string, err error) {
 	return checkVolPara(r)
 }
 
-func parseCreateVolPara(r *http.Request) (name, volType string, replicaNum int, err error) {
+func parseUpdateVolPara(r *http.Request) (name string, capacity int, err error) {
 	r.ParseForm()
+	if name, err = checkVolPara(r); err != nil {
+		return
+	}
+	if capacityStr := r.FormValue(ParaVolCapacity); capacityStr != "" {
+		if capacity, err = strconv.Atoi(capacityStr); err != nil {
+			err = UnMatchPara
+		}
+	} else {
+		err = paraNotFound(ParaVolCapacity)
+	}
+	return
+}
+
+func parseCreateVolPara(r *http.Request) (name, volType string, replicaNum int, randomWrite bool, size, capacity int, err error) {
+	r.ParseForm()
+	var randomWriteValue string
 	if name, err = checkVolPara(r); err != nil {
 		return
 	}
@@ -777,6 +886,29 @@ func parseCreateVolPara(r *http.Request) (name, volType string, replicaNum int, 
 	}
 	if volType, err = parseDataPartitionType(r); err != nil {
 		return
+	}
+
+	if randomWriteValue = r.FormValue(ParaRandomWrite); randomWriteValue == "" {
+		err = paraNotFound(ParaRandomWrite)
+		return
+	}
+
+	if randomWrite, err = strconv.ParseBool(randomWriteValue); err != nil {
+		return
+	}
+
+	if sizeStr := r.FormValue(ParaDataPartitionSize); sizeStr != "" {
+		if size, err = strconv.Atoi(sizeStr); err != nil {
+			err = UnMatchPara
+		}
+	}
+
+	if capacityStr := r.FormValue(ParaVolCapacity); capacityStr != "" {
+		if capacity, err = strconv.Atoi(capacityStr); err != nil {
+			err = UnMatchPara
+		}
+	} else {
+		err = paraNotFound(ParaVolCapacity)
 	}
 	return
 }
@@ -895,6 +1027,15 @@ func parseMetaPartitionOffline(r *http.Request) (volName, nodeAddr string, parti
 
 func parseCompactPara(r *http.Request) (status bool, err error) {
 	r.ParseForm()
+	return checkEnable(r)
+}
+
+func parseDisableAutoAlloc(r *http.Request) (status bool, err error) {
+	r.ParseForm()
+	return checkEnable(r)
+}
+
+func checkEnable(r *http.Request) (status bool, err error) {
 	var value string
 	if value = r.FormValue(ParaEnable); value == "" {
 		err = ParaEnableNotFound
@@ -931,4 +1072,14 @@ func parseCreateMetaPartitionPara(r *http.Request) (volName string, start uint64
 	}
 	start, err = strconv.ParseUint(value, 10, 64)
 	return
+}
+
+func (m *Master) sendOkReply(w http.ResponseWriter, r *http.Request, msg string) {
+	log.LogInfof("URL[%v],remoteAddr[%v],response ok")
+	io.WriteString(w, msg)
+}
+
+func (m *Master) sendErrReply(w http.ResponseWriter, r *http.Request, httpCode int, msg string, err error) {
+	log.LogInfof("URL[%v],remoteAddr[%v],response err")
+	HandleError(msg, err, httpCode, w)
 }

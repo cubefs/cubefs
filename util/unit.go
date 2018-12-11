@@ -23,7 +23,7 @@ const (
 	GB
 	TB
 	PB
-	DefaultDataPartitionSize = 120 * GB
+	DefaultDataPartitionSize = 5 * GB
 	TaskWorkerInterval       = 1
 )
 

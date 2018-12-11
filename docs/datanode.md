@@ -1,107 +1,48 @@
-# DataNode
+# Data Subsystem
 
-DataNode is used to store and ensure the consistency of stored file data for each replica in BaudFS.
+The data subsystem is design to meet the multi-tenancy requirement of supporting the large and small files with the sequential and random accesses, and adopts two different replication protocols to ensure the strong consistency among the replicas with some tradeoffs on the performance and code usability.
 
 ## Features
 
-- Streaming replication for high performance data write and read operation and keep your data safety.
-- Unified storage engine with both blob and large data support.
+**Large File Storage**
 
-## Requirement
+For large files, the contents are stored as a sequence of one or multiple extents, which can be distributed
+across different data partitions on different data nodes. Writing a new file to the extent store always causes the data to be written at the zero-offset of a new extent, which eliminates the need for the offset within the extent. The last extent of a file does not need to fill up its size limit by padding (i.e., the extent does not have holes), and never stores the data from other files.
 
-BaudFS use [dep](https://github.com/golang/dep) for dependency management. 
+**Small File Storage**
 
-All necessary third part dependencies have been defined in `Gopkg.toml` under the project root.
+The contents of multiple small files are aggregated and stored in a single extent, and the physical offset
+of each file content in the extent is recorded in the corresponding meta node. Deleting a file content (free the disk space occupied by this file) is achieved by the punch hole interface (fallocate()) provided by the underlying file system. The advantage of this design is to eliminate the need of implementing a garbage collection mechanism and therefore avoid to employ a mapping from logical offset to physical offset in an extent.
 
-To install dependencies make sure [dep](https://github.com/golang/dep) have been installed and execute `dep` with `ensure` command at the `$GOPATH/github.com/tiglibs/baudfs`.
+![data-subsystem.png](assert/data-subsystem.png)
 
-```shell
-$ dep ensure
-```
+**Strong Consistency**
 
-**Notes:**
->Cause of RocksDB is required and the BaudFS is using cgo api to operate RocksDB, so that the cross platform compiling is not support. Make sure the c library files of RocksDB have been installed in your building machine and can be found by compiler before you build BaudFS binrary.
+The replication is performed in terms of partitions during file writes. Depending on the file write pattern,
+CFS adopts different replication strategies. <br>
 
-## How to start
+- When a file is sequentially written into CFS, a primary-backup replication protocol is used to ensure the strong consistency with optimized IO throughput.<br>
 
-Start a DataNode process by execute the server binary of BaudFS you built with `-c` argument and specify configuration file.
+    ![workflow-sequentail.png](assert/workflow-sequential-write.png)
 
-```shell
-$ PATH_OF_SERVER_BINARY -c PATH_OF_CONFIGURATION
-```  
+- When overwriting an existing file portion during random writes, we employ a MultiRaft-based replication protocol, which is similar to the one used in the metadata subsystem, to ensure the strong consistency.<br>
 
-## Configuration
+    ![workflow-overwriting.png](assert/workflow-overwriting.png)
 
-BaudFS using **JSON** as for configuration file format. 
+**Failure Recovery**
 
-**Properties:**
-
-| Key        | Type     | Description                                      | Required |
-| :--------- | :------- | :----------------------------------------------- | :------: |
-| role       | string   | Role of process and must be set to "datanode".   | Yes      |
-| port       | string   | Port of TCP network to be listen.                | Yes      |
-| prof       | string   | Port of HTTP based prof and api service.         | No       |
-| clusterID  | string   | Identity of cluster which this node belong to.   | Yes      |
-| logDir     | string   | Path for log file storage.                       | Yes      |
-| logLevel   | string   | Level operation for logging. Default is "error". | No       |
-| masterAddr | []string | Addresses of master server.                      | Yes      |
-| rack       | string   | Identity of rack.                                | No       |
-| disks      | []string | Format: "PATH:MAX_ERRS:REST_SIZE".               | Yes      |
-
-**Example:**
-
-```json
-{
-    "role": "datanode",
-    "port": "6000",
-    "prof": "6001",
-    "clusterID": "data",
-    "logDir": "/var/logs",
-    "logLevel": "debug",
-    "masterAddr": [
-        "10.196.30.200:80",
-        "10.196.31.141:80",
-        "10.196.31.173:80"
-    ],
-    "rack": "main",
-    "disks": [
-        "/data0:1:20000",
-        "/data1:1:20000",
-        "/data2:1:20000",
-        "/data3:1:20000",
-        "/data4:1:20000"
-    ]
-}
-```
-
-## Storage engine
-
-A fusion storage engine designed for both blob file and large file storage and management.
-There are two store in each data partition, **blobfile store** and **extent store**.
-
-**BlobFile store**
-
-BlobFile store for blob or one-off-write file data storage. File bytes append into blobfile block file and record the offset index and data length into an index file which pair with the blobfile block. A blobfile block file can be append until no space left in partition. Each partition has a fixed number of blobfile block files for parallel write support.
-
-**Extent store**
-
-Extent store for large file storage and append write operation support. Client requests to create an extent block for it's session and append data to this extent block with stream. The extent block file have a size limit and default is 256MB. After an extent block file reachs it's size limit, client will requests an new extent block for data appending.
-
-![extent-distribution](assert/extent-distribution.png)
-
-## Streaming replication
-BaudFS using streaming replication based replication protocol to replica data with all replication members. It makes the write operation high performance.
-
-
-![streaming-replication](assert/streaming-replication.png)
+Because of the existence of two different replication protocols, when a failure on a replica is discovered,
+we first start the recovery process in the primary-backup-based replication by checking the length of each extent and making all extents aligned. Once this processed is finished, we then start the recovery process in our MultiRaft-based replication.
 
 ## HTTP APIs
 
-| API         | Method | Params           | Desc                                |
-| :---------- | :----- | :--------------- | :---------------------------------- |
-| /disks      | GET    | None             | Get disk list and informations.     |
-| /partitions | GET    | None             | Get parttion list and infomartions. |
-| /partition  | GET    | partitionId[int] | Get detail of specified partition.  |
+| API         | Method | Params                            | Desc                                |
+| :---------- | :----- | :-------------------------------- | :---------------------------------- |
+| /disks      | GET    | None                              | Get disk list and informations.     |
+| /partitions | GET    | None                              | Get parttion list and infomartions. |
+| /partition  | GET    | partitionId[int]                  | Get detail of specified partition.  |
+| /extent     | GET    | partitionId[int]<br>extentId[int] | Get extent informations.            |
+| /stats      | GET    | None                              | Get status of the datanode.         |
 
 **Notes:**
->Cause of major components of BaudFS developed by Golang, the pprof APIs will be  enabled automatically when the prof port have been config (specified by `prof` properties in configuratio file). So that you can use pprof tool or send pprof http request to check status of server runtime.
+>Cause of major components of CFS developed by Golang, the pprof APIs will be enabled automatically when the prof port have been config (specified by `prof` properties in configuratio file). So that you can use pprof tool or send pprof http request to check status of server runtime.

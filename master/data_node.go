@@ -24,21 +24,15 @@ import (
 	"github.com/tiglabs/containerfs/util"
 )
 
-const (
-	ReservedVolCount = 1
-)
-
 type DataNode struct {
-	MaxDiskAvailWeight        uint64 `json:"MaxDiskAvailWeight"`
-	CreatedVolWeights         uint64
-	RemainWeightsForCreateVol uint64
-	Total                     uint64 `json:"TotalWeight"`
-	Used                      uint64 `json:"UsedWeight"`
-	Available                 uint64
-	RackName                  string `json:"Rack"`
-	Addr                      string
-	ReportTime                time.Time
-	isActive                  bool
+	Total      uint64 `json:"TotalWeight"`
+	Used       uint64 `json:"UsedWeight"`
+	Available  uint64
+	Id         uint64
+	RackName   string `json:"Rack"`
+	Addr       string
+	ReportTime time.Time
+	isActive   bool
 	sync.RWMutex
 	Ratio              float64
 	SelectCount        uint64
@@ -46,6 +40,7 @@ type DataNode struct {
 	Sender             *AdminTaskSender
 	dataPartitionInfos []*proto.PartitionReport
 	DataPartitionCount uint32
+	NodeSetId          uint64
 }
 
 func NewDataNode(addr, clusterID string) (dataNode *DataNode) {
@@ -92,16 +87,17 @@ func (dataNode *DataNode) setNodeAlive() {
 func (dataNode *DataNode) UpdateNodeMetric(resp *proto.DataNodeHeartBeatResponse) {
 	dataNode.Lock()
 	defer dataNode.Unlock()
-	dataNode.MaxDiskAvailWeight = resp.MaxWeightsForCreatePartition
-	dataNode.CreatedVolWeights = resp.CreatedPartitionWeights
-	dataNode.RemainWeightsForCreateVol = resp.RemainWeightsForCreatePartition
 	dataNode.Total = resp.Total
 	dataNode.Used = resp.Used
 	dataNode.Available = resp.Available
 	dataNode.RackName = resp.RackName
 	dataNode.DataPartitionCount = resp.CreatedPartitionCnt
 	dataNode.dataPartitionInfos = resp.PartitionInfo
-	dataNode.Ratio = (float64)(dataNode.Used) / (float64)(dataNode.Total)
+	if dataNode.Total == 0 {
+		dataNode.Ratio = 0.0
+	} else {
+		dataNode.Ratio = (float64)(dataNode.Used) / (float64)(dataNode.Total)
+	}
 	dataNode.ReportTime = time.Now()
 }
 
@@ -109,8 +105,7 @@ func (dataNode *DataNode) IsWriteAble() (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
 
-	if dataNode.isActive == true && dataNode.MaxDiskAvailWeight > (uint64)(util.DefaultDataPartitionSize) &&
-		dataNode.Total-dataNode.Used > (uint64)(util.DefaultDataPartitionSize)*ReservedVolCount {
+	if dataNode.isActive == true && dataNode.Available > util.DefaultDataPartitionSize {
 		ok = true
 	}
 
@@ -135,7 +130,6 @@ func (dataNode *DataNode) SelectNodeForWrite() {
 	defer dataNode.Unlock()
 	dataNode.Ratio = float64(dataNode.Used) / float64(dataNode.Total)
 	dataNode.SelectCount++
-	dataNode.Used += (uint64)(util.DefaultDataPartitionSize)
 	dataNode.Carry = dataNode.Carry - 1.0
 }
 

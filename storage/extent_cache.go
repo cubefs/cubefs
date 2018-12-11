@@ -53,23 +53,32 @@ type extentMapItem struct {
 // Details for LRU, this cache move the hot spot entity to back of link
 // table and release entity from front of link table.
 type lruExtentCache struct {
-	extentMap  map[uint64]*extentMapItem
-	extentList *list.List
-	lock       sync.RWMutex
-	capacity   int
+	extentMap   map[uint64]*extentMapItem
+	extentList  *list.List
+	tinyExtents map[uint64]Extent
+	tinyLock    sync.RWMutex
+	lock        sync.RWMutex
+	capacity    int
 }
 
 // NewExtentCache create and returns a new ExtentCache instance.
 func NewExtentCache(capacity int) ExtentCache {
 	return &lruExtentCache{
-		extentMap:  make(map[uint64]*extentMapItem),
-		extentList: list.New(),
-		capacity:   capacity,
+		extentMap:   make(map[uint64]*extentMapItem),
+		extentList:  list.New(),
+		capacity:    capacity,
+		tinyExtents: make(map[uint64]Extent),
 	}
 }
 
 // Put extent object into cache.
 func (cache *lruExtentCache) Put(extent Extent) {
+	if IsTinyExtent(extent.ID()) {
+		cache.tinyLock.Lock()
+		cache.tinyExtents[extent.ID()] = extent
+		cache.tinyLock.Unlock()
+		return
+	}
 	cache.lock.Lock()
 	defer cache.lock.Unlock()
 	item := &extentMapItem{
@@ -82,13 +91,21 @@ func (cache *lruExtentCache) Put(extent Extent) {
 
 // Get extent from cache with specified extent identity (extentId).
 func (cache *lruExtentCache) Get(extentId uint64) (extent Extent, ok bool) {
+	if IsTinyExtent(extentId) {
+		cache.tinyLock.RLock()
+		extent, ok = cache.tinyExtents[extentId]
+		cache.tinyLock.RUnlock()
+		return
+	}
 	cache.lock.Lock()
 	defer cache.lock.Unlock()
 	var (
 		item *extentMapItem
 	)
 	if item, ok = cache.extentMap[extentId]; ok {
-		cache.extentList.MoveToBack(item.ele)
+		if !IsTinyExtent(extentId) {
+			cache.extentList.MoveToBack(item.ele)
+		}
 		extent = item.ext
 	}
 	return
@@ -96,6 +113,9 @@ func (cache *lruExtentCache) Get(extentId uint64) (extent Extent, ok bool) {
 
 // Del extent stored in cache this specified extent identity (extentId).
 func (cache *lruExtentCache) Del(extentId uint64) {
+	if IsTinyExtent(extentId) {
+		return
+	}
 	cache.lock.Lock()
 	defer cache.lock.Unlock()
 	var (
@@ -111,6 +131,9 @@ func (cache *lruExtentCache) Del(extentId uint64) {
 
 // Clear close and synchronize all extent stored in this cache and remove them from cache.
 func (cache *lruExtentCache) Clear() {
+	for _, extent := range cache.tinyExtents {
+		extent.Close()
+	}
 	cache.lock.Lock()
 	defer cache.lock.Unlock()
 	for e := cache.extentList.Front(); e != nil; {
@@ -140,6 +163,9 @@ func (cache *lruExtentCache) fireLRU() {
 	for i := 0; i < needRemove; i++ {
 		if e := cache.extentList.Front(); e != nil {
 			front := e.Value.(Extent)
+			if IsTinyExtent(front.ID()) {
+				continue
+			}
 			delete(cache.extentMap, front.ID())
 			cache.extentList.Remove(e)
 			front.Close()
@@ -149,6 +175,9 @@ func (cache *lruExtentCache) fireLRU() {
 
 // Flush synchronize extent stored in this cache to disk immediately.
 func (cache *lruExtentCache) Flush() {
+	for _, extent := range cache.tinyExtents {
+		extent.Flush()
+	}
 	cache.lock.RLock()
 	defer cache.lock.RUnlock()
 	for _, item := range cache.extentMap {

@@ -21,9 +21,9 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"github.com/tiglabs/containerfs/third_party/pool"
 	"github.com/tiglabs/containerfs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
@@ -177,6 +177,8 @@ type metaPartition struct {
 	storeChan     chan *storeMsg
 	state         uint32
 	freeList      *freeList // Free inode list
+	extDelCh      chan BtreeItem
+	extReset      chan struct{}
 	vol           *Vol
 }
 
@@ -314,6 +316,8 @@ func NewMetaPartition(conf *MetaPartitionConfig) MetaPartition {
 		stopC:      make(chan bool),
 		storeChan:  make(chan *storeMsg, 5),
 		freeList:   newFreeList(),
+		extDelCh:   make(chan BtreeItem, 10000),
+		extReset:   make(chan struct{}),
 		vol:        NewVol(),
 	}
 	return mp
@@ -324,7 +328,7 @@ func (mp *metaPartition) IsLeader() (leaderAddr string, ok bool) {
 	if leaderID == 0 {
 		return
 	}
-	ok = (leaderID == mp.config.NodeId)
+	ok = leaderID == mp.config.NodeId
 	for _, peer := range mp.config.Peers {
 		if leaderID == peer.ID {
 			leaderAddr = peer.Addr

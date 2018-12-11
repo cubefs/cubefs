@@ -65,6 +65,9 @@ type MetaWrapper struct {
 	// a specific inode locate.
 	ranges *btree.BTree
 
+	rwPartitions []*MetaPartition
+	epoch        uint64
+
 	totalSize uint64
 	usedSize  uint64
 }
@@ -80,6 +83,7 @@ func NewMetaWrapper(volname, masterHosts string) (*MetaWrapper, error) {
 	mw.conns = pool.NewConnPool()
 	mw.partitions = make(map[uint64]*MetaPartition)
 	mw.ranges = btree.New(32)
+	mw.rwPartitions = make([]*MetaPartition, 0)
 	mw.UpdateClusterInfo()
 	mw.UpdateVolStatInfo()
 	if err := mw.UpdateMetaPartitions(); err != nil {

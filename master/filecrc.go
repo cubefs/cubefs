@@ -55,10 +55,8 @@ func (fileCrcArr FileCrcSorterByCount) log() (msg string) {
 	for _, fileCrc := range fileCrcArr {
 		addr := fileCrc.meta.getLocationAddr()
 		count := fileCrc.count
-		lastObjId := fileCrc.meta.LastObjID
-		needleCnt := fileCrc.meta.NeedleCnt
 		crc := fileCrc.crc
-		msg = fmt.Sprintf(msg+" addr:%v  count:%v  crc:%v lastObjId:%v needleCnt:%v ", addr, count, crc, lastObjId, needleCnt)
+		msg = fmt.Sprintf(msg+" addr:%v  count:%v  crc:%v ", addr, count, crc)
 
 	}
 
@@ -72,12 +70,13 @@ func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataRe
 	}
 
 	fms, needRepair := fc.needCrcRepair(liveVols, volType)
-	if len(fms) < len(liveVols) {
+
+	if len(fms) < len(liveVols) && (time.Now().Unix()-fc.LastModify) > CheckMissFileReplicaTime {
 		liveAddrs := make([]string, 0)
 		for _, replica := range liveVols {
 			liveAddrs = append(liveAddrs, replica.Addr)
 		}
-		Warn(clusterID, fmt.Sprintf("pid[%v],file[%v],fms[%v],liveAddr[%v]", partitionID, fc.Name, fc.getFileMetaAddrs(), liveAddrs))
+		Warn(clusterID, fmt.Sprintf("partitionid[%v],file[%v],fms[%v],liveAddr[%v]", partitionID, fc.Name, fc.getFileMetaAddrs(), liveAddrs))
 	}
 	if !needRepair {
 		return
@@ -129,14 +128,8 @@ func (fc *FileInCore) needCrcRepair(liveVols []*DataReplica, volType string) (fm
 		return
 	}
 
-	//if !isSameSize(fms) {
-	//	return
-	//}
-
 	if volType == proto.BlobPartition {
-		if !isSameLastObjectID(fms) || !isSameNeedleCnt(fms) {
-			return
-		}
+		return
 	}
 	baseCrc = fms[0].Crc
 	for _, fm := range fms {
@@ -148,30 +141,11 @@ func (fc *FileInCore) needCrcRepair(liveVols []*DataReplica, volType string) (fm
 
 	return
 }
-func isSameLastObjectID(fms []*FileMetaOnNode) (same bool) {
-	sentry := fms[0].LastObjID
-	for _, fm := range fms {
-		if fm.LastObjID != sentry {
-			return
-		}
-	}
-	return true
-}
 
 func isSameSize(fms []*FileMetaOnNode) (same bool) {
 	sentry := fms[0].Size
 	for _, fm := range fms {
 		if fm.Size != sentry {
-			return
-		}
-	}
-	return true
-}
-
-func isSameNeedleCnt(fms []*FileMetaOnNode) (same bool) {
-	sentry := fms[0].NeedleCnt
-	for _, fm := range fms {
-		if fm.NeedleCnt != sentry {
 			return
 		}
 	}

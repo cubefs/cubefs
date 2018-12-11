@@ -35,6 +35,7 @@ type Inode struct {
 	nlink  uint32
 	uid    uint32
 	gid    uint32
+	gen    uint64
 	ctime  time.Time
 	mtime  time.Time
 	atime  time.Time
@@ -69,11 +70,12 @@ func (s *Super) InodeGet(ino uint64) (*Inode, error) {
 	}
 	inode = NewInode(info)
 	s.ic.Put(inode)
+	s.ec.RefreshExtentsCache(ino)
 	return inode, nil
 }
 
 func (inode *Inode) String() string {
-	return fmt.Sprintf("ino(%v) mode(%v) size(%v) nlink(%v) uid(%v) gid(%v) exp(%v) mtime(%v) target(%v)", inode.ino, inode.mode, inode.size, inode.nlink, inode.uid, inode.gid, time.Unix(0, inode.expiration).Format(LogTimeFormat), inode.mtime, inode.target)
+	return fmt.Sprintf("ino(%v) mode(%v) size(%v) nlink(%v) gen(%v) uid(%v) gid(%v) exp(%v) mtime(%v) target(%v)", inode.ino, inode.mode, inode.size, inode.nlink, inode.gen, inode.uid, inode.gid, time.Unix(0, inode.expiration).Format(LogTimeFormat), inode.mtime, inode.target)
 }
 
 func (inode *Inode) setattr(req *fuse.SetattrRequest) (valid uint32) {
@@ -100,6 +102,7 @@ func (inode *Inode) fill(info *proto.InodeInfo) {
 	inode.nlink = info.Nlink
 	inode.uid = info.Uid
 	inode.gid = info.Gid
+	inode.gen = info.Generation
 	inode.ctime = info.CreateTime
 	inode.atime = info.AccessTime
 	inode.mtime = info.ModifyTime

@@ -19,6 +19,7 @@ import (
 	"github.com/tiglabs/containerfs/raftstore"
 	"github.com/tiglabs/containerfs/util/log"
 	"strconv"
+	"sync"
 	"sync/atomic"
 )
 
@@ -34,6 +35,9 @@ type IDAllocator struct {
 	metaNodeID      uint64
 	store           *raftstore.RocksDBStore
 	partition       raftstore.Partition
+	dpIDLock        sync.RWMutex
+	mpIDLock        sync.RWMutex
+	mnIDLock        sync.RWMutex
 }
 
 func newIDAllocator(store *raftstore.RocksDBStore, partition raftstore.Partition) (alloc *IDAllocator) {
@@ -64,6 +68,7 @@ func (alloc *IDAllocator) restoreMaxDataPartitionID() {
 		panic(fmt.Sprintf("Failed to restore maxDataPartitionId,err:%v ", err.Error()))
 	}
 	alloc.dataPartitionID = maxDataPartitionId
+	log.LogInfof("action[restoreMaxDataPartitionID] maxDpID[%v]", alloc.dataPartitionID)
 }
 
 func (alloc *IDAllocator) restoreMaxMetaPartitionID() {
@@ -81,7 +86,7 @@ func (alloc *IDAllocator) restoreMaxMetaPartitionID() {
 		panic(fmt.Sprintf("Failed to restore maxPartitionID,err:%v ", err.Error()))
 	}
 	alloc.metaPartitionID = maxPartitionID
-
+	log.LogInfof("action[restoreMaxMetaPartitionID] maxMpID[%v]", alloc.metaPartitionID)
 }
 
 func (alloc *IDAllocator) restoreMaxMetaNodeID() {
@@ -99,25 +104,27 @@ func (alloc *IDAllocator) restoreMaxMetaNodeID() {
 		panic(fmt.Sprintf("Failed to restore maxMetaNodeID,err:%v ", err.Error()))
 	}
 	alloc.metaNodeID = maxMetaNodeID
-
+	log.LogInfof("action[restoreMaxMetaNodeID] maxMnID[%v]", alloc.metaNodeID)
 }
 
-func (alloc *IDAllocator) increaseDataPartitionID() {
-	atomic.AddUint64(&alloc.dataPartitionID, 1)
+func (alloc *IDAllocator) setDataPartitionID(id uint64) {
+	atomic.StoreUint64(&alloc.dataPartitionID, id)
 }
 
-func (alloc *IDAllocator) increaseMetaPartitionID() {
-	atomic.AddUint64(&alloc.metaPartitionID, 1)
+func (alloc *IDAllocator) setMetaPartitionID(id uint64) {
+	atomic.StoreUint64(&alloc.metaPartitionID, id)
 }
 
-func (alloc *IDAllocator) increaseMetaNodeID() {
-	atomic.AddUint64(&alloc.metaNodeID, 1)
+func (alloc *IDAllocator) setMetaNodeID(id uint64) {
+	atomic.StoreUint64(&alloc.metaNodeID, id)
 }
 
 func (alloc *IDAllocator) allocateDataPartitionID() (ID uint64, err error) {
+	alloc.dpIDLock.Lock()
+	defer alloc.dpIDLock.Unlock()
 	var cmd []byte
 	metadata := new(Metadata)
-	ID = atomic.AddUint64(&alloc.dataPartitionID, 1)
+	ID = atomic.LoadUint64(&alloc.dataPartitionID) + 1
 	metadata.Op = OpSyncAllocDataPartitionID
 	metadata.K = MaxDataPartitionIDKey
 	value := strconv.FormatUint(uint64(ID), 10)
@@ -136,11 +143,13 @@ errDeal:
 }
 
 func (alloc *IDAllocator) allocateMetaPartitionID() (partitionID uint64, err error) {
+	alloc.mpIDLock.Lock()
+	defer alloc.mpIDLock.Unlock()
 	var cmd []byte
 	metadata := new(Metadata)
 	metadata.Op = OpSyncAllocMetaPartitionID
 	metadata.K = MaxMetaPartitionIDKey
-	partitionID = atomic.AddUint64(&alloc.metaPartitionID, 1)
+	partitionID = atomic.LoadUint64(&alloc.metaPartitionID) + 1
 	value := strconv.FormatUint(uint64(partitionID), 10)
 	metadata.V = []byte(value)
 	cmd, err = metadata.Marshal()
@@ -157,11 +166,13 @@ errDeal:
 }
 
 func (alloc *IDAllocator) allocateMetaNodeID() (metaNodeID uint64, err error) {
+	alloc.mnIDLock.Lock()
+	defer alloc.mnIDLock.Unlock()
 	var cmd []byte
 	metadata := new(Metadata)
 	metadata.Op = OpSyncAllocMetaNodeID
 	metadata.K = MaxMetaNodeIDKey
-	metaNodeID = atomic.AddUint64(&alloc.metaNodeID, 1)
+	metaNodeID = atomic.LoadUint64(&alloc.metaNodeID) + 1
 	value := strconv.FormatUint(uint64(metaNodeID), 10)
 	metadata.V = []byte(value)
 	cmd, err = metadata.Marshal()

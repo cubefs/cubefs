@@ -15,7 +15,7 @@
 package raftstore
 
 import (
-	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"
 	"os"
@@ -23,7 +23,7 @@ import (
 
 // Error definitions for raft store partition.
 var (
-	ErrNotLeader = errors.New("not leader")
+	ErrNotLeader = errors.New("not raft leader")
 )
 
 // PartitionStatus is a type alias of raft.Status
@@ -65,6 +65,9 @@ type Partition interface {
 
 	// AppliedIndex returns current index value of applied raft log in this raft store partition.
 	AppliedIndex() uint64
+
+	// CommittedIndex returns current index value of applied raft log in this raft store partition.
+	CommittedIndex() uint64
 
 	// Truncate raft log
 	Truncate(index uint64)
@@ -119,6 +122,11 @@ func (p *partition) IsLeader() (isLeader bool) {
 
 func (p *partition) AppliedIndex() (applied uint64) {
 	applied = p.raft.AppliedIndex(p.id)
+	return
+}
+
+func (p *partition) CommittedIndex() (applied uint64) {
+	applied = p.raft.CommittedIndex(p.id)
 	return
 }
 

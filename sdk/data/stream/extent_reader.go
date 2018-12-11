@@ -16,206 +16,97 @@ package stream
 
 import (
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/sdk/data/wrapper"
-	"github.com/tiglabs/containerfs/third_party/pool"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 	"hash/crc32"
-	"math/rand"
 	"net"
-	"strings"
-	"sync/atomic"
-	"time"
-)
-
-const (
-	ForceCloseConnect = true
-	NoCloseConnect    = false
-)
-
-var (
-	ReadConnectPool = pool.NewConnPool()
 )
 
 type ExtentReader struct {
-	inode            uint64
-	startInodeOffset uint64
-	endInodeOffset   uint64
-	dp               *wrapper.DataPartition
-	key              proto.ExtentKey
-	readerIndex      uint32
+	inode uint64
+	key   *proto.ExtentKey
+	dp    *wrapper.DataPartition
 }
 
-func NewExtentReader(inode uint64, inInodeOffset int, key proto.ExtentKey) (reader *ExtentReader, err error) {
-	reader = new(ExtentReader)
-	reader.dp, err = gDataWrapper.GetDataPartition(key.PartitionId)
-	if err != nil {
-		return
+func NewExtentReader(inode uint64, key *proto.ExtentKey, dp *wrapper.DataPartition) *ExtentReader {
+	return &ExtentReader{
+		inode: inode,
+		key:   key,
+		dp:    dp,
 	}
-	reader.inode = inode
-	reader.key = key
-	reader.startInodeOffset = uint64(inInodeOffset)
-	reader.endInodeOffset = reader.startInodeOffset + uint64(key.Size)
-	rand.Seed(time.Now().UnixNano())
-	hasFindLocalReplica := false
-	for index, host := range reader.dp.Hosts {
-		if strings.Split(host, ":")[0] == wrapper.LocalIP {
-			reader.readerIndex = uint32(index)
-			hasFindLocalReplica = true
-			break
-		}
-	}
-	if !hasFindLocalReplica {
-		reader.readerIndex = uint32(rand.Intn(int(reader.dp.ReplicaNum)))
-	}
-	return reader, nil
 }
 
-func (reader *ExtentReader) read(data []byte, offset, size, kerneloffset, kernelsize int) (err error) {
-	if size <= 0 {
-		return
-	}
-	err = reader.readDataFromDataPartition(offset, size, data, kerneloffset, kernelsize)
-
-	return
+func (reader *ExtentReader) String() (m string) {
+	return fmt.Sprintf("inode (%v) extentKey(%v)", reader.inode,
+		reader.key.Marshal())
 }
 
-func (reader *ExtentReader) readDataFromDataPartition(offset, size int, data []byte, kerneloffset, kernelsize int) (err error) {
-	var host string
-	if _, host, err = reader.streamReadDataFromHost(offset, size, data, kerneloffset, kernelsize); err != nil {
-		if reader.isUseCloseConnectErr(err) {
-			reader.forceDestoryAllConnect(host)
-		}
-		log.LogWarnf(err.Error())
-		goto forLoop
-	}
-	return
-forLoop:
-	mesg := ""
-	for i := 0; i < len(reader.dp.Hosts); i++ {
-		_, host, err = reader.streamReadDataFromHost(offset, size, data, kerneloffset, kernelsize)
-		if err == nil {
-			return
-		} else if reader.isUseCloseConnectErr(err) {
-			reader.forceDestoryAllConnect(host)
-			i--
-		}
-		log.LogWarn(err.Error())
-		mesg += fmt.Sprintf(" (index(%v) err(%v))", i, err.Error())
-	}
-	log.LogWarn(mesg)
-	err = fmt.Errorf(mesg)
+func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) {
+	offset := req.FileOffset - int(reader.key.FileOffset) + int(reader.key.ExtentOffset)
+	size := req.Size
 
-	return
-}
+	reqPacket := NewStreamReadPacket(reader.key, offset, size, reader.inode, req.FileOffset)
+	sc := NewStreamConn(reader.dp)
 
-func (reader *ExtentReader) isUseCloseConnectErr(err error) bool {
-	return strings.Contains(err.Error(), "use of closed network connection")
-}
+	log.LogDebugf("ExtentReader Read enter: size(%v) req(%v) reqPacket(%v)", size, req, reqPacket)
 
-func (reader *ExtentReader) forceDestoryAllConnect(host string) {
-	ReadConnectPool.ReleaseAllConnect(host)
-}
-
-func (reader *ExtentReader) streamReadDataFromHost(offset, expectReadSize int, data []byte, kerneloffset,
-	kernelsize int) (actualReadSize int, host string, err error) {
-	request := NewStreamReadPacket(&reader.key, offset, expectReadSize)
-	var connect *net.TCPConn
-	index := atomic.LoadUint32(&reader.readerIndex)
-	if index >= uint32(reader.dp.ReplicaNum) {
-		index = 0
-		atomic.StoreUint32(&reader.readerIndex, 0)
-	}
-	host = reader.dp.Hosts[index]
-	connect, err = ReadConnectPool.Get(host)
-	if err != nil {
-		atomic.AddUint32(&reader.readerIndex, 1)
-		return 0, host, errors.Annotatef(err, reader.toString()+
-			"streamReadDataFromHost dp(%v) cannot get  connect from host(%v) request(%v) ",
-			reader.key.PartitionId, host, request.GetUniqueLogId())
-
-	}
-	defer func() {
-		if err != nil {
-			ReadConnectPool.Put(connect, ForceCloseConnect)
-			if reader.isUseCloseConnectErr(err) {
-				return
+	err = sc.Send(reqPacket, func(conn *net.TCPConn) (error, bool) {
+		readBytes = 0
+		for readBytes < size {
+			replyPacket := NewReply(reqPacket.ReqID, reader.dp.PartitionID, reqPacket.FileID)
+			bufSize := util.Min(util.ReadBlockSize, size-readBytes)
+			replyPacket.Data = req.Data[readBytes : readBytes+bufSize]
+			e := replyPacket.ReadFromConnStream(conn, proto.ReadDeadlineTime)
+			if e != nil {
+				return errors.Annotatef(e, "Extent Reader Read: failed to read from connect, readBytes(%v)", readBytes), false
 			}
-			atomic.AddUint32(&reader.readerIndex, 1)
-		} else {
-			ReadConnectPool.Put(connect, NoCloseConnect)
-		}
-	}()
 
-	if err = request.WriteToConn(connect); err != nil {
-		err = errors.Annotatef(err, reader.toString()+"streamReadDataFromHost host(%v) error request(%v)",
-			host, request.GetUniqueLogId())
-		return 0, host, err
+			log.LogDebugf("ExtentReader Read: ResultCode(%v) req(%v) reply(%v) readBytes(%v)", replyPacket.GetResultMesg(), reqPacket, replyPacket, readBytes)
+
+			if replyPacket.ResultCode == proto.OpAgain {
+				return nil, true
+			}
+
+			e = reader.checkStreamReply(reqPacket, replyPacket)
+			if e != nil {
+				// Dont change the error message, since the caller will
+				// check if it is NotLeaderErr.
+				return e, false
+			}
+
+			readBytes += int(replyPacket.Size)
+		}
+		return nil, false
+	})
+
+	if err != nil {
+		log.LogErrorf("Extent Reader Read: err(%v) req(%v) reqPacket(%v)", err, req, reqPacket)
 	}
 
-	for {
-		if actualReadSize >= expectReadSize {
-			break
-		}
-		reply := NewReply(request.ReqID, reader.dp.PartitionID, request.FileID)
-		canRead := util.Min(util.ReadBlockSize, expectReadSize-actualReadSize)
-		reply.Data = data[actualReadSize : canRead+actualReadSize]
-		err = reply.ReadFromConnStream(connect, proto.ReadDeadlineTime)
-		if err != nil {
-			err = errors.Annotatef(err, reader.toString()+"streamReadDataFromHost host(%v)  error reqeust(%v)",
-				host, request.GetUniqueLogId())
-			return 0, host, err
-		}
-		err = reader.checkStreamReply(request, reply, kerneloffset, kernelsize)
-		if err != nil {
-			return 0, host, err
-		}
-		actualReadSize += int(reply.Size)
-		if actualReadSize >= expectReadSize {
-			break
-		}
-	}
-
-	return actualReadSize, host, nil
+	log.LogDebugf("ExtentReader Read exit: req(%v) reqPacket(%v) readBytes(%v) err(%v)", req, reqPacket, readBytes, err)
+	return
 }
 
-func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet, kerneloffset, kernelsize int) (err error) {
+func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet) (err error) {
+	if reply.ResultCode == proto.OpNotLeaderErr {
+		return NotLeaderError
+	}
+
 	if reply.ResultCode != proto.OpOk {
-		return errors.Annotatef(fmt.Errorf("reply status code(%v) is not ok,request (%v) "+
-			"but reply (%v) ", reply.ResultCode, request.GetUniqueLogId(), reply.GetUniqueLogId()),
-			fmt.Sprintf("reader(%v)", reader.toString()))
+		err = errors.New(fmt.Sprintf("checkStreamReply: ResultCode(%v) NOK", reply.GetResultMesg()))
+		return
 	}
 	if !request.IsEqualStreamReadReply(reply) {
-		return errors.Annotatef(fmt.Errorf("request not equare reply , request (%v) "+
-			"and reply (%v) ", request.GetUniqueLogId(), reply.GetUniqueLogId()),
-			fmt.Sprintf("reader(%v)", reader.toString()))
+		err = errors.New(fmt.Sprintf("checkStreamReply: inconsistent req and reply, req(%v) reply(%v)", request, reply))
+		return
 	}
 	expectCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
 	if reply.Crc != expectCrc {
-		return errors.Annotatef(fmt.Errorf("crc not match on  request (%v) "+
-			"and reply (%v) expectCrc(%v) but reciveCrc(%v) ", request.GetUniqueLogId(), reply.GetUniqueLogId(), expectCrc, reply.Crc),
-			fmt.Sprintf("reader(%v)", reader.toString()))
+		err = errors.New(fmt.Sprintf("checkStreamReply: inconsistent CRC, expectCRC(%v) replyCRC(%v)", expectCrc, reply.Crc))
+		return
 	}
 	return nil
-}
-
-func (reader *ExtentReader) updateKey(key proto.ExtentKey) (update bool) {
-	if !(key.PartitionId == reader.key.PartitionId && key.ExtentId == reader.key.ExtentId) {
-		return
-	}
-	if key.Size <= reader.key.Size {
-		return
-	}
-	reader.key = key
-	end := atomic.LoadUint64(&reader.startInodeOffset) + uint64(key.Size)
-	atomic.StoreUint64(&reader.endInodeOffset, end)
-
-	return true
-}
-
-func (reader *ExtentReader) toString() (m string) {
-	return fmt.Sprintf("inode (%v) extentKey(%v) start(%v) end(%v)", reader.inode,
-		reader.key.Marshal(), reader.startInodeOffset, reader.endInodeOffset)
 }

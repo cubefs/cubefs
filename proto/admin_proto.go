@@ -33,6 +33,8 @@ type CreateDataPartitionRequest struct {
 	PartitionId   uint64
 	PartitionSize int
 	VolumeId      string
+	RandomWrite   bool
+	Members       []Peer
 }
 
 type CreateDataPartitionResponse struct {
@@ -48,6 +50,18 @@ type DeleteDataPartitionRequest struct {
 }
 
 type DeleteDataPartitionResponse struct {
+	Status      uint8
+	Result      string
+	PartitionId uint64
+}
+
+type DataPartitionOfflineRequest struct {
+	PartitionId uint64
+	RemovePeer  Peer
+	AddPeer     Peer
+}
+
+type DataPartitionOfflineResponse struct {
 	Status      uint8
 	Result      string
 	PartitionId uint64
@@ -69,14 +83,10 @@ type LoadDataPartitionResponse struct {
 }
 
 type File struct {
-	Name      string
-	Crc       uint32
-	CheckSum  uint32
-	Size      uint32
-	Modified  int64
-	MarkDel   bool
-	LastObjID uint64
-	NeedleCnt int
+	Name     string
+	Crc      uint32
+	Size     uint32
+	Modified int64
 }
 
 type LoadMetaPartitionMetricRequest struct {
@@ -104,6 +114,8 @@ type PartitionReport struct {
 	Total           uint64
 	Used            uint64
 	DiskPath        string
+	IsLeader        bool
+	ExtentCount     int
 }
 
 type DataNodeHeartBeatResponse struct {

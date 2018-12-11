@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"github.com/tiglabs/containerfs/util/log"
 	"net/http/httputil"
 )
@@ -31,7 +31,9 @@ const (
 	AdminCreateDataPartition  = "/dataPartition/create"
 	AdminDataPartitionOffline = "/dataPartition/offline"
 	AdminDeleteVol            = "/vol/delete"
+	AdminUpdateVol            = "/vol/update"
 	AdminCreateVol            = "/admin/createVol"
+	AdminClusterFreeze        = "/cluster/freeze"
 	AdminGetIp                = "/admin/getIp"
 	AdminCreateMP             = "/metaPartition/create"
 	AdminSetCompactStatus     = "/compactStatus/set"
@@ -62,6 +64,8 @@ const (
 	// Operation response
 	MetaNodeResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
 	DataNodeResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
+
+	GetTopologyView = "/topo/get"
 )
 
 func (m *Master) startHttpService() (err error) {
@@ -81,6 +85,8 @@ func (m *Master) handleFunctions() {
 	http.Handle(AdminDataPartitionOffline, m.handlerWithInterceptor())
 	http.Handle(AdminCreateVol, m.handlerWithInterceptor())
 	http.Handle(AdminDeleteVol, m.handlerWithInterceptor())
+	http.Handle(AdminUpdateVol, m.handlerWithInterceptor())
+	http.Handle(AdminClusterFreeze, m.handlerWithInterceptor())
 	http.Handle(AddDataNode, m.handlerWithInterceptor())
 	http.Handle(AddMetaNode, m.handlerWithInterceptor())
 	http.Handle(DataNodeOffline, m.handlerWithInterceptor())
@@ -102,6 +108,7 @@ func (m *Master) handleFunctions() {
 	http.Handle(AdminSetCompactStatus, m.handlerWithInterceptor())
 	http.Handle(AdminGetCompactStatus, m.handlerWithInterceptor())
 	http.Handle(AdminSetMetaNodeThreshold, m.handlerWithInterceptor())
+	http.Handle(GetTopologyView, m.handlerWithInterceptor())
 
 	return
 }
@@ -136,6 +143,7 @@ func (m *Master) proxy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Master) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.LogInfof("URL[%v],remoteAddr[%v]", r.URL, r.RemoteAddr)
 	switch r.URL.Path {
 	case AdminGetCluster:
 		m.getCluster(w, r)
@@ -151,6 +159,10 @@ func (m *Master) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.createVol(w, r)
 	case AdminDeleteVol:
 		m.markDeleteVol(w, r)
+	case AdminUpdateVol:
+		m.updateVol(w, r)
+	case AdminClusterFreeze:
+		m.setDisableAutoAlloc(w, r)
 	case AddDataNode:
 		m.addDataNode(w, r)
 	case GetDataNode:
@@ -193,13 +205,15 @@ func (m *Master) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.getCompactStatus(w, r)
 	case AdminSetMetaNodeThreshold:
 		m.setMetaNodeThreshold(w, r)
+	case GetTopologyView:
+		m.getTopology(w, r)
 	default:
 
 	}
 }
 
 func getReturnMessage(requestType, remoteAddr, message string, code int) (logMsg string) {
-	logMsg = fmt.Sprintf("type[%s] From [%s] Deal [%d] Because [%s] ", requestType, remoteAddr, code, message)
+	logMsg = fmt.Sprintf("type[%s] From [%s] httpCode[%d] Because [%s] ", requestType, remoteAddr, code, message)
 	return
 }
 

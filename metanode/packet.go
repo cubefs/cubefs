@@ -14,20 +14,29 @@
 
 package metanode
 
-import "github.com/tiglabs/containerfs/proto"
+import (
+	"encoding/json"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/storage"
+)
 
 type Packet struct {
 	proto.Packet
 }
 
 // For send delete request to dataNode
-func NewExtentDeletePacket(dp *DataPartition, extentId uint64) *Packet {
+func NewExtentDeletePacket(dp *DataPartition, ext *proto.ExtentKey) *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpMarkDelete
-	p.StoreMode = proto.ExtentStoreMode
+	p.StoreMode = proto.NormalExtentMode
 	p.PartitionID = dp.PartitionID
-	p.FileID = extentId
+	if storage.IsTinyExtent(ext.ExtentId) {
+		p.StoreMode = proto.TinyExtentMode
+		p.Data, _ = json.Marshal(ext)
+		p.Size = uint32(len(p.Data))
+	}
+	p.FileID = ext.ExtentId
 	p.ReqID = proto.GetReqID()
 	p.Nodes = uint8(len(dp.Hosts) - 1)
 	p.Arg = ([]byte)(dp.GetAllAddrs())

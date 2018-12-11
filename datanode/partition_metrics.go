@@ -30,7 +30,7 @@ func (metrics *DataPartitionMetrics) AddWriteMetrics(latency uint64) {
 	atomic.AddUint64(&metrics.SumWriteLatency, latency)
 }
 
-func (metrics *DataPartitionMetrics) recomputLatency() {
+func (metrics *DataPartitionMetrics) recomputeLatency() {
 	metrics.ReadLatency = float64((atomic.LoadUint64(&metrics.SumReadLatency)) / (atomic.LoadUint64(&metrics.ReadCnt)))
 	metrics.WriteLatency = float64((atomic.LoadUint64(&metrics.SumWriteLatency)) / (atomic.LoadUint64(&metrics.WriteCnt)))
 	atomic.StoreUint64(&metrics.SumReadLatency, 0)

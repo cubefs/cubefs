@@ -35,8 +35,8 @@ import (
 	"os/exec"
 )
 
-const (
-	Version = "1.0"
+var (
+	Version = "unknown"
 )
 
 const (
@@ -59,7 +59,8 @@ const (
 )
 
 var (
-	configFile = flag.String("c", "", "config file path")
+	configFile    = flag.String("c", "", "config file path")
+	configVersion = flag.Bool("v", false, "show version")
 )
 
 type Server interface {
@@ -96,8 +97,13 @@ func main() {
 			panic(r)
 		}
 	}()
-	log.LogInfo("Hello, Cfs Storage")
 	flag.Parse()
+	if *configVersion {
+		fmt.Printf("Current Verson: %s\n", Version)
+		os.Exit(0)
+		return
+	}
+	log.LogInfof("Hello, Cfs Storage, Current Version: %s", Version)
 	exec_shell("ulimit -n 1024000")
 	cfg := config.LoadConfigFile(*configFile)
 	role := cfg.GetString(ConfigKeyRole)
@@ -124,7 +130,7 @@ func main() {
 		server = datanode.NewServer()
 		module = ModuleData
 	default:
-		log.LogInfo("Fatal: role mismatch: ", role)
+		fmt.Println("Fatal: role mismatch: ", role)
 		os.Exit(1)
 		return
 	}
@@ -153,7 +159,7 @@ func main() {
 	}
 
 	if _, err := log.InitLog(logDir, module, level); err != nil {
-		fmt.Println("Fatal: failed to start the baud storage daemon - ", err)
+		fmt.Println("Fatal: failed to init log - ", err)
 		os.Exit(1)
 		return
 	}
@@ -161,6 +167,7 @@ func main() {
 	interceptSignal(server)
 	err := server.Start(cfg)
 	if err != nil {
+		fmt.Println("Fatal: failed to start the baud storage daemon - ", err)
 		log.LogFatal("Fatal: failed to start the baud storage daemon - ", err)
 		log.LogFlush()
 		os.Exit(1)

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
+	"net"
 	"os"
 	"path"
 	"strconv"
@@ -26,16 +27,23 @@ import (
 	"sync"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/master"
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/raftstore"
 	"github.com/tiglabs/containerfs/storage"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"github.com/tiglabs/containerfs/util/log"
+	raftProto "github.com/tiglabs/raft/proto"
+	"sort"
+	"syscall"
 )
 
 const (
 	DataPartitionPrefix       = "datapartition"
 	DataPartitionMetaFileName = "META"
+	TempMetaFileName          = ".meta"
+	ApplyIndexFile            = "APPLY"
+	TempApplyIndexFile        = ".apply"
 	TimeLayout                = "2006-01-02 15:04:05"
 )
 
@@ -46,7 +54,7 @@ var (
 type DataPartition interface {
 	ID() uint32
 	Path() string
-	IsLeader() bool
+	IsLeader() (leaderAddr string, ok bool)
 	ReplicaHosts() []string
 	Disk() *Disk
 
@@ -56,13 +64,26 @@ type DataPartition interface {
 
 	Status() int
 	ChangeStatus(status int)
+	ChangeRaftMember(changeType raftProto.ConfChangeType, peer raftProto.Peer, context []byte) (resp interface{}, err error)
+	StoreMeta() (err error)
 
-	GetExtentStore() *storage.ExtentStore
-	LaunchRepair()
-	MergeExtentStoreRepair(metas *MembersFileMetas)
+	GetStore() *storage.ExtentStore
+	MergeExtentStoreRepair(metas *DataPartitionRepairTask)
 	FlushDelete() error
+	StartRaft() (err error)
+	StartSchedule()
+	RandomWriteSubmit(pkg *Packet) (err error)
+	RandomPartitionReadCheck(request *Packet, connect net.Conn) (err error)
+	LoadApplyIndex() (err error)
+	SetMinAppliedId(id uint64)
+	GetAppliedId() (id uint64)
 	AddWriteMetrics(latency uint64)
 	AddReadMetrics(latency uint64)
+	GetExtentCount() int
+
+	GetSnapShot() []*proto.File
+	ReloadSnapshot()
+	ForceLoadHeader()
 
 	Stop()
 }
@@ -73,6 +94,21 @@ type dataPartitionMeta struct {
 	PartitionId   uint32
 	PartitionSize int
 	CreateTime    string
+	RandomWrite   bool
+	Peers         []proto.Peer
+}
+
+type sortPeers []proto.Peer
+
+func (sp sortPeers) Len() int {
+	return len(sp)
+}
+func (sp sortPeers) Less(i, j int) bool {
+	return sp[i].ID < sp[j].ID
+}
+
+func (sp sortPeers) Swap(i, j int) {
+	sp[i], sp[j] = sp[j], sp[i]
 }
 
 func (meta *dataPartitionMeta) Validate() (err error) {
@@ -87,6 +123,7 @@ func (meta *dataPartitionMeta) Validate() (err error) {
 }
 
 type dataPartition struct {
+	clusterId       string
 	volumeId        string
 	partitionId     uint32
 	partitionStatus int
@@ -94,44 +131,45 @@ type dataPartition struct {
 	replicaHosts    []string
 	disk            *Disk
 	isLeader        bool
+	isRaftLeader    bool
 	path            string
 	used            int
 	extentStore     *storage.ExtentStore
+	raftPartition   raftstore.Partition
+	config          *dataPartitionCfg
+	applyId         uint64
+	lastTruncateId  uint64
+	minAppliedId    uint64
+	raftC           chan uint32
+	repairC         chan uint64
+	storeC          chan uint64
 	stopC           chan bool
-	isFirstRestart  bool
+	hadRandomWrite  bool
 
 	runtimeMetrics        *DataPartitionMetrics
 	updateReplicationTime int64
+	isFirstFixTinyExtents bool
+	snapshot              []*proto.File
+	snapshotLock          sync.RWMutex
 }
 
-func CreateDataPartition(volId string, partitionId uint32, disk *Disk, size int, partitionType string) (dp DataPartition, err error) {
+func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp DataPartition, err error) {
 
-	if dp, err = newDataPartition(volId, partitionId, disk, size); err != nil {
+	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
 	}
+
+	// Start raft for random write
+	if dpCfg.RandomWrite {
+		if err = dp.StartRaft(); err != nil {
+			return
+		}
+
+		go dp.StartSchedule()
+	}
+
 	// Store meta information into meta file.
-	var (
-		metaFile *os.File
-		metaData []byte
-	)
-	metaFilePath := path.Join(dp.Path(), DataPartitionMetaFileName)
-	if metaFile, err = os.OpenFile(metaFilePath, os.O_CREATE|os.O_RDWR, 0666); err != nil {
-		return
-	}
-	defer metaFile.Close()
-	meta := &dataPartitionMeta{
-		VolumeId:      volId,
-		PartitionId:   partitionId,
-		PartitionType: partitionType,
-		PartitionSize: size,
-		CreateTime:    time.Now().Format(TimeLayout),
-	}
-	if metaData, err = json.Marshal(meta); err != nil {
-		return
-	}
-	if _, err = metaFile.Write(metaData); err != nil {
-		return
-	}
+	err = dp.StoreMeta()
 	return
 }
 
@@ -152,26 +190,57 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp DataPartition, err e
 	if err = meta.Validate(); err != nil {
 		return
 	}
-	dp, err = newDataPartition(meta.VolumeId, meta.PartitionId, disk, meta.PartitionSize)
+
+	dpCfg := &dataPartitionCfg{
+		VolName:       meta.VolumeId,
+		PartitionSize: meta.PartitionSize,
+		PartitionId:   meta.PartitionId,
+		RandomWrite:   meta.RandomWrite,
+		Peers:         meta.Peers,
+		RaftStore:     disk.space.GetRaftStore(),
+		NodeId:        disk.space.GetNodeId(),
+		ClusterId:     disk.space.GetClusterId(),
+	}
+	if dp, err = newDataPartition(dpCfg, disk); err != nil {
+		return
+	}
+
+	if dpCfg.RandomWrite {
+		if err = dp.LoadApplyIndex(); err != nil {
+			log.LogErrorf("action[loadApplyIndex] %v", err)
+		}
+
+		if err = dp.StartRaft(); err != nil {
+			return
+		}
+
+		go dp.StartSchedule()
+	}
 	return
 }
 
-func newDataPartition(volumeId string, partitionId uint32, disk *Disk, size int) (dp DataPartition, err error) {
+func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp DataPartition, err error) {
+	partitionId := dpCfg.PartitionId
+	dataPath := path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionId, dpCfg.PartitionSize))
 	partition := &dataPartition{
-		volumeId:        volumeId,
+		volumeId:        dpCfg.VolName,
+		clusterId:       dpCfg.ClusterId,
 		partitionId:     partitionId,
 		disk:            disk,
-		path:            path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionId, size)),
-		partitionSize:   size,
+		path:            dataPath,
+		partitionSize:   dpCfg.PartitionSize,
 		replicaHosts:    make([]string, 0),
 		stopC:           make(chan bool, 0),
+		storeC:          make(chan uint64, 128),
 		partitionStatus: proto.ReadWrite,
 		runtimeMetrics:  NewDataPartitionMetrics(),
+		config:          dpCfg,
 	}
-	partition.extentStore, err = storage.NewExtentStore(partition.path, size)
+	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionId, dpCfg.PartitionSize)
 	if err != nil {
 		return
 	}
+	partition.isFirstFixTinyExtents = true
 	disk.AttachDataPartition(partition)
 	dp = partition
 	go partition.statusUpdateScheduler()
@@ -182,16 +251,51 @@ func (dp *dataPartition) ID() uint32 {
 	return dp.partitionId
 }
 
+func (dp *dataPartition) GetExtentCount() int {
+	return dp.extentStore.GetExtentCount()
+}
+
 func (dp *dataPartition) Path() string {
 	return dp.path
 }
 
-func (dp *dataPartition) IsLeader() bool {
-	return dp.isLeader
+func (dp *dataPartition) IsLeader() (leaderAddr string, ok bool) {
+	if dp.raftPartition == nil {
+		return
+	}
+	leaderID, _ := dp.raftPartition.LeaderTerm()
+	if leaderID == 0 {
+		return
+	}
+	ok = leaderID == dp.config.NodeId
+	for _, peer := range dp.config.Peers {
+		if leaderID == peer.ID {
+			leaderAddr = peer.Addr
+			return
+		}
+	}
+	return
 }
 
 func (dp *dataPartition) ReplicaHosts() []string {
 	return dp.replicaHosts
+}
+
+func (dp *dataPartition) ReloadSnapshot() {
+	files, err := dp.extentStore.SnapShot()
+	if err != nil {
+		return
+	}
+	dp.snapshotLock.Lock()
+	dp.snapshot = files
+	dp.snapshotLock.Unlock()
+}
+
+func (dp *dataPartition) GetSnapShot() (files []*proto.File) {
+	dp.snapshotLock.RLock()
+	defer dp.snapshotLock.RUnlock()
+
+	return dp.snapshot
 }
 
 func (dp *dataPartition) Stop() {
@@ -200,6 +304,7 @@ func (dp *dataPartition) Stop() {
 	}
 	// Close all store and backup partition data file.
 	dp.extentStore.Close()
+	dp.stopRaft()
 }
 
 func (dp *dataPartition) FlushDelete() (err error) {
@@ -234,19 +339,74 @@ func (dp *dataPartition) ChangeStatus(status int) {
 	}
 }
 
+func (dp *dataPartition) ForceLoadHeader() {
+	dp.extentStore.BackEndLoadExtent()
+}
+
+func (dp *dataPartition) StoreMeta() (err error) {
+	// Store meta information into meta file.
+	var (
+		metaFile *os.File
+		metaData []byte
+	)
+	tempFileName := path.Join(dp.Path(), TempMetaFileName)
+	if metaFile, err = os.OpenFile(tempFileName, os.O_CREATE|os.O_RDWR, 0666); err != nil {
+		return
+	}
+	defer func() {
+		metaFile.Sync()
+		metaFile.Close()
+		os.Remove(tempFileName)
+	}()
+
+	sp := sortPeers(dp.config.Peers)
+	sort.Sort(sp)
+
+	meta := &dataPartitionMeta{
+		VolumeId:      dp.config.VolName,
+		PartitionId:   dp.config.PartitionId,
+		PartitionType: dp.config.PartitionType,
+		PartitionSize: dp.config.PartitionSize,
+		Peers:         dp.config.Peers,
+		RandomWrite:   dp.config.RandomWrite,
+		CreateTime:    time.Now().Format(TimeLayout),
+	}
+	if metaData, err = json.Marshal(meta); err != nil {
+		return
+	}
+	if _, err = metaFile.Write(metaData); err != nil {
+		return
+	}
+
+	err = os.Rename(tempFileName, path.Join(dp.Path(), DataPartitionMetaFileName))
+	return
+}
+
 func (dp *dataPartition) statusUpdateScheduler() {
 	ticker := time.NewTicker(10 * time.Second)
-	metricTicker := time.NewTicker(2 * time.Second)
+	metricTicker := time.NewTicker(5 * time.Second)
+	var index int
 	for {
 		select {
 		case <-ticker.C:
+			index++
 			dp.statusUpdate()
-			dp.LaunchRepair()
+			if index >= math.MaxUint32 {
+				index = 0
+			}
+			if index%2 == 0 {
+				dp.LaunchRepair(proto.TinyExtentMode)
+			} else {
+				dp.LaunchRepair(proto.NormalExtentMode)
+			}
+			dp.extentStore.Cleanup()
+			dp.ReloadSnapshot()
 		case <-dp.stopC:
 			ticker.Stop()
+			metricTicker.Stop()
 			return
 		case <-metricTicker.C:
-			dp.runtimeMetrics.recomputLatency()
+			dp.runtimeMetrics.recomputeLatency()
 		}
 	}
 }
@@ -257,7 +417,45 @@ func (dp *dataPartition) statusUpdate() {
 	if dp.used >= dp.partitionSize {
 		status = proto.ReadOnly
 	}
+	if dp.extentStore.GetExtentCount() >= MaxActiveExtents {
+		status = proto.ReadOnly
+	}
 	dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
+}
+
+func ParseExtentId(filename string) (extentId uint64, isExtent bool) {
+	if isExtent = storage.RegexpExtentFile.MatchString(filename); !isExtent {
+		return
+	}
+	var (
+		err error
+	)
+	if extentId, err = strconv.ParseUint(filename, 10, 64); err != nil {
+		isExtent = false
+		return
+	}
+	isExtent = true
+	return
+}
+
+func (dp *dataPartition) getRealSize(path string, finfo os.FileInfo) (size int64) {
+	name := finfo.Name()
+	extentid, isExtent := ParseExtentId(name)
+	if !isExtent {
+		return finfo.Size()
+	}
+	if storage.IsTinyExtent(extentid) {
+		stat := new(syscall.Stat_t)
+		err := syscall.Stat(fmt.Sprintf("%v/%v", path, finfo.Name()), stat)
+		if err != nil {
+			return finfo.Size()
+		}
+		return stat.Blocks * DiskSectorSize
+
+	} else {
+		return finfo.Size()
+	}
+
 }
 
 func (dp *dataPartition) computeUsage() {
@@ -270,12 +468,12 @@ func (dp *dataPartition) computeUsage() {
 		return
 	}
 	for _, file := range files {
-		used += file.Size()
+		used += dp.getRealSize(dp.path, file)
 	}
 	dp.used = int(used)
 }
 
-func (dp *dataPartition) GetExtentStore() *storage.ExtentStore {
+func (dp *dataPartition) GetStore() *storage.ExtentStore {
 	return dp.extentStore
 }
 
@@ -283,7 +481,7 @@ func (dp *dataPartition) String() (m string) {
 	return fmt.Sprintf(DataPartitionPrefix+"_%v_%v", dp.partitionId, dp.partitionSize)
 }
 
-func (dp *dataPartition) LaunchRepair() {
+func (dp *dataPartition) LaunchRepair(fixExtentType uint8) {
 	if dp.partitionStatus == proto.Unavaliable {
 		return
 	}
@@ -299,7 +497,10 @@ func (dp *dataPartition) LaunchRepair() {
 	if !dp.isLeader {
 		return
 	}
-	dp.extentFileRepair()
+	if dp.extentStore.GetUnAvaliExtentLen() == 0 {
+		dp.extentStore.MoveAvaliExtentToUnavali(MinFixTinyExtents)
+	}
+	dp.extentFileRepair(fixExtentType)
 }
 
 func (dp *dataPartition) updateReplicaHosts() (err error) {
@@ -376,7 +577,7 @@ func (dp *dataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 	response.PartitionStatus = dp.partitionStatus
 	response.Used = uint64(dp.Used())
 	var err error
-	response.PartitionSnapshot, err = dp.extentStore.SnapShot()
+	response.PartitionSnapshot = dp.GetSnapShot()
 	if err != nil {
 		response.Status = proto.TaskFail
 		response.Result = err.Error()
@@ -394,43 +595,42 @@ func (dp *dataPartition) GetAllExtentsMeta() (files []*storage.FileInfo, err err
 	return
 }
 
-func (dp *dataPartition) MergeExtentStoreRepair(metas *MembersFileMetas) {
-	extentStore := dp.extentStore
-	for _, deleteExtentId := range metas.NeedDeleteExtentsTasks {
-		if deleteExtentId.FileId <= storage.BlobFileFileCount {
+func (dp *dataPartition) MergeExtentStoreRepair(metas *DataPartitionRepairTask) {
+	store := dp.extentStore
+	for _, addExtent := range metas.AddExtentsTasks {
+		if storage.IsTinyExtent(addExtent.FileId) {
 			continue
 		}
-		extentStore.MarkDelete(uint64(deleteExtentId.FileId))
-	}
-	for _, addExtent := range metas.NeedAddExtentsTasks {
-		if addExtent.FileId <= storage.BlobFileFileCount {
-			continue
-		}
-		if extentStore.IsExistExtent(uint64(addExtent.FileId)) {
+		if store.IsExistExtent(uint64(addExtent.FileId)) {
 			fixFileSizeTask := &storage.FileInfo{Source: addExtent.Source, FileId: addExtent.FileId, Size: addExtent.Size}
-			metas.NeedFixExtentSizeTasks = append(metas.NeedFixExtentSizeTasks, fixFileSizeTask)
+			metas.FixExtentSizeTasks = append(metas.FixExtentSizeTasks, fixFileSizeTask)
 			continue
 		}
-		err := extentStore.Create(uint64(addExtent.FileId), addExtent.Inode, false)
+		err := store.Create(uint64(addExtent.FileId), addExtent.Inode)
 		if err != nil {
 			continue
 		}
 		fixFileSizeTask := &storage.FileInfo{Source: addExtent.Source, FileId: addExtent.FileId, Size: addExtent.Size}
-		metas.NeedFixExtentSizeTasks = append(metas.NeedFixExtentSizeTasks, fixFileSizeTask)
+		metas.FixExtentSizeTasks = append(metas.FixExtentSizeTasks, fixFileSizeTask)
 	}
-
-	var wg sync.WaitGroup
-	for _, fixExtent := range metas.NeedFixExtentSizeTasks {
-		if fixExtent.FileId <= storage.BlobFileFileCount {
-			continue
-		}
-		if !extentStore.IsExistExtent(uint64(fixExtent.FileId)) {
+	var (
+		wg           *sync.WaitGroup
+		recoverIndex int
+	)
+	wg = new(sync.WaitGroup)
+	for _, fixExtent := range metas.FixExtentSizeTasks {
+		if !store.IsExistExtent(uint64(fixExtent.FileId)) {
 			continue
 		}
 		wg.Add(1)
-		dp.doStreamExtentFixRepair(&wg, fixExtent)
+		go dp.doStreamExtentFixRepair(wg, fixExtent)
+		recoverIndex++
+		if recoverIndex%SimultaneouslyRecoverFiles == 0 {
+			wg.Wait()
+		}
 	}
 	wg.Wait()
+
 }
 
 func (dp *dataPartition) AddWriteMetrics(latency uint64) {
@@ -439,4 +639,9 @@ func (dp *dataPartition) AddWriteMetrics(latency uint64) {
 
 func (dp *dataPartition) AddReadMetrics(latency uint64) {
 	dp.runtimeMetrics.AddReadMetrics(latency)
+}
+
+func (dp *dataPartition) ChangeRaftMember(changeType raftProto.ConfChangeType, peer raftProto.Peer, context []byte) (resp interface{}, err error) {
+	resp, err = dp.raftPartition.ChangeMember(changeType, peer, context)
+	return
 }

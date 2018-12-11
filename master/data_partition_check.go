@@ -142,7 +142,7 @@ func (partition *DataPartition) checkDiskError(clusterID string) (diskErrorAddrs
 	return
 }
 
-func (partition *DataPartition) checkReplicationTask(clusterID string) (tasks []*proto.AdminTask) {
+func (partition *DataPartition) checkReplicationTask(clusterID string, randomWrite bool, dataPartitionSize uint64) (tasks []*proto.AdminTask) {
 	var msg string
 	tasks = make([]*proto.AdminTask, 0)
 	if excessAddr, task, excessErr := partition.deleteExcessReplication(); excessErr != nil {
@@ -156,8 +156,7 @@ func (partition *DataPartition) checkReplicationTask(clusterID string) (tasks []
 	if partition.Status == proto.ReadWrite {
 		return
 	}
-	if lackTask, lackAddr, lackErr := partition.addLackReplication(); lackErr != nil {
-		tasks = append(tasks, lackTask)
+	if lackAddr, lackErr := partition.addLackReplication(dataPartitionSize); lackErr != nil {
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Lack Replication"+
 			" On :%v  Err:%v  PersistenceHosts:%v  new task to create DataReplica",
 			AddLackReplicationErr, partition.PartitionID, lackAddr, lackErr.Error(), partition.PersistenceHosts)
@@ -191,10 +190,10 @@ func (partition *DataPartition) deleteExcessReplication() (excessAddr string, ta
 
 /*add data partition lack replication,range all RocksDBHost if Hosts not in Replicas,
 then generator a task to OpRecoverCreateDataPartition to a new Node*/
-func (partition *DataPartition) addLackReplication() (t *proto.AdminTask, lackAddr string, err error) {
+func (partition *DataPartition) addLackReplication(dataPartitionSize uint64) (lackAddr string, err error) {
 	partition.Lock()
 	defer partition.Unlock()
-	if time.Now().Unix()-partition.modifyTime < 300 {
+	if time.Now().Unix()-partition.createTime < 120 {
 		return
 	}
 	for _, addr := range partition.PersistenceHosts {
@@ -203,7 +202,6 @@ func (partition *DataPartition) addLackReplication() (t *proto.AdminTask, lackAd
 				partition.PartitionID, addr))
 			err = DataReplicaLackError
 			lackAddr = addr
-			t = partition.generateCreateTask(addr)
 			partition.isRecover = true
 			break
 		}

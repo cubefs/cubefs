@@ -19,6 +19,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"io"
+	"io/ioutil"
+	"path"
 
 	"github.com/tiglabs/containerfs/third_party/btree"
 )
@@ -110,17 +112,20 @@ func NewMetaItem(op uint32, key, value []byte) *MetaItem {
 }
 
 type ItemIterator struct {
-	applyID    uint64
-	cur        int
-	curItem    BtreeItem
-	inoLen     int
-	inodeTree  *BTree
-	dentryLen  int
-	dentryTree *BTree
-	total      int
+	applyID     uint64
+	cur         int
+	curItem     BtreeItem
+	inoLen      int
+	inodeTree   *BTree
+	dentryLen   int
+	dentryTree  *BTree
+	fileRootDir string
+	fileList    []string
+	total       int
 }
 
-func NewMetaItemIterator(applyID uint64, ino, den *BTree) *ItemIterator {
+func NewMetaItemIterator(applyID uint64, ino, den *BTree,
+	rootDir string, filelist []string) *ItemIterator {
 	si := new(ItemIterator)
 	si.applyID = applyID
 	si.inodeTree = ino
@@ -128,6 +133,8 @@ func NewMetaItemIterator(applyID uint64, ino, den *BTree) *ItemIterator {
 	si.cur = 0
 	si.inoLen = ino.Len()
 	si.dentryLen = den.Len()
+	si.fileRootDir = rootDir
+	si.fileList = filelist
 	si.total = si.inoLen + si.dentryLen
 	return si
 }
@@ -143,11 +150,6 @@ func (si *ItemIterator) Close() {
 
 func (si *ItemIterator) Next() (data []byte, err error) {
 	// TODO: Redesign iterator to improve performance. [Mervin]
-	if si.cur > si.total {
-		err = io.EOF
-		data = nil
-		return
-	}
 	// First Send ApplyIndex
 	if si.cur == 0 {
 		appIdBuf := make([]byte, 8)
@@ -177,17 +179,36 @@ func (si *ItemIterator) Next() (data []byte, err error) {
 	if si.cur == (si.inoLen + 1) {
 		si.curItem = nil
 	}
-	si.dentryTree.AscendGreaterOrEqual(si.curItem, func(i btree.Item) bool {
-		dentry := i.(*Dentry)
-		if si.curItem == dentry {
-			return true
-		}
-		si.curItem = dentry
-		snap := NewMetaItem(opCreateDentry, dentry.MarshalKey(),
-			dentry.MarshalValue())
-		data, err = snap.MarshalBinary()
-		si.cur++
-		return false
-	})
+	if si.cur <= si.total {
+		si.dentryTree.AscendGreaterOrEqual(si.curItem, func(i btree.Item) bool {
+			dentry := i.(*Dentry)
+			if si.curItem == dentry {
+				return true
+			}
+			si.curItem = dentry
+			snap := NewMetaItem(opCreateDentry, dentry.MarshalKey(),
+				dentry.MarshalValue())
+			data, err = snap.MarshalBinary()
+			si.cur++
+			return false
+		})
+	}
+	if len(si.fileList) == 0 {
+		err = io.EOF
+		data = nil
+		return
+	}
+	// Send delete Extents file
+	fileName := si.fileList[0]
+	fileBody, err := ioutil.ReadFile(path.Join(si.fileRootDir, fileName))
+	if err != nil {
+		data = nil
+		return
+	}
+	snap := NewMetaItem(opSnapExtentFile, []byte(fileName), fileBody)
+	data, err = snap.MarshalBinary()
+	if err != nil {
+		si.fileList = si.fileList[1:]
+	}
 	return
 }

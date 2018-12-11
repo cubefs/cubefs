@@ -17,7 +17,8 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"github.com/tiglabs/containerfs/util/log"
 	"runtime"
 	"sync"
@@ -57,21 +58,25 @@ func (dpMap *DataPartitionMap) getDataPartition(ID uint64) (*DataPartition, erro
 func (dpMap *DataPartitionMap) putDataPartition(dp *DataPartition) {
 	dpMap.Lock()
 	defer dpMap.Unlock()
-	dpMap.dataPartitionMap[dp.PartitionID] = dp
-	dpMap.dataPartitions = append(dpMap.dataPartitions, dp)
-}
-
-func (dpMap *DataPartitionMap) putDataPartitionByRaft(dp *DataPartition) {
-	dpMap.Lock()
-	defer dpMap.Unlock()
-	old, ok := dpMap.dataPartitionMap[dp.PartitionID]
+	_, ok := dpMap.dataPartitionMap[dp.PartitionID]
 	if !ok {
 		dpMap.dataPartitions = append(dpMap.dataPartitions, dp)
 		dpMap.dataPartitionMap[dp.PartitionID] = dp
 		return
 	}
-	old = dp
-	dpMap.dataPartitionMap[dp.PartitionID] = old
+	//use dp replace old partition in the map and array
+	dpMap.dataPartitionMap[dp.PartitionID] = dp
+	dpMap.dataPartitions = append(dpMap.dataPartitions, dp)
+	dataPartitions := make([]*DataPartition, 0)
+	for index, partition := range dpMap.dataPartitions {
+		if partition.PartitionID == dp.PartitionID {
+			dataPartitions = append(dataPartitions, dpMap.dataPartitions[:index]...)
+			dataPartitions = append(dataPartitions, dp)
+			dataPartitions = append(dataPartitions, dpMap.dataPartitions[index+1:]...)
+			dpMap.dataPartitions = dataPartitions
+			break
+		}
+	}
 }
 
 func (dpMap *DataPartitionMap) setReadWriteDataPartitions(readWrites int, clusterName string) {
@@ -179,4 +184,21 @@ func (dpMap *DataPartitionMap) getNeedCheckDataPartitions(everyLoadCount int, lo
 	}
 
 	return
+}
+
+func (dpMap *DataPartitionMap) getTotalUsedSpace() (totalUsed uint64) {
+	dpMap.RLock()
+	defer dpMap.RUnlock()
+	for _, dp := range dpMap.dataPartitions {
+		totalUsed = totalUsed + dp.getMaxUsedSize()
+	}
+	return
+}
+
+func (dpMap *DataPartitionMap) setAllDataPartitionsToReadOnly() {
+	dpMap.Lock()
+	defer dpMap.Unlock()
+	for _, dp := range dpMap.dataPartitions {
+		dp.Status = proto.ReadOnly
+	}
 }

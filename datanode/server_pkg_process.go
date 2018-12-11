@@ -17,241 +17,343 @@ package datanode
 import (
 	"container/list"
 	"fmt"
+	"strings"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/storage"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
+	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
+	"github.com/tiglabs/raft"
+	"sync/atomic"
 )
 
-func (s *DataNode) readFromCliAndDeal(msgH *MessageHandler) (err error) {
+/*read the packet from a packetProcessor*/
+func (s *DataNode) readPacketFromClient(packetProcessor *PacketProcessor) (err error) {
 	defer func() {
 		if err != nil {
-			msgH.Stop()
+			packetProcessor.Stop()
 		}
 	}()
 	pkg := NewPacket()
 	s.statsFlow(pkg, InFlow)
-	if err = pkg.ReadFromConnFromCli(msgH.inConn, proto.NoReadDeadlineTime); err != nil {
+	if err = pkg.ReadFromConnFromCli(packetProcessor.sourceConn, proto.NoReadDeadlineTime); err != nil {
 		return
 	}
-	log.LogDebugf("action[readFromCliAndDeal] read packet(%v) from remote(%v).",
-		pkg.GetUniqueLogId(), msgH.inConn.RemoteAddr().String())
+	log.LogDebugf("action[readPacketFromClient] read packet(%v) from remote(%v).",
+		pkg.GetUniqueLogId(), packetProcessor.sourceConn.RemoteAddr().String())
 	if pkg.IsMasterCommand() {
-		msgH.requestCh <- pkg
+		packetProcessor.requestCh <- pkg
 		return
 	}
 	pkg.beforeTp(s.clusterId)
 
+	//check packet is avali
 	if err = s.checkPacket(pkg); err != nil {
-		pkg.PackErrorBody("checkPacket", err.Error())
-		msgH.replyCh <- pkg
+		pkg.PackErrorBody("addPacketInfo", err.Error())
+		packetProcessor.replyCh <- pkg
 		return
 	}
+	//check packet op dataparition
 	if err = s.checkAction(pkg); err != nil {
 		pkg.PackErrorBody("checkAction", err.Error())
-		msgH.replyCh <- pkg
+		packetProcessor.replyCh <- pkg
 		return
 	}
-	if err = s.checkAndAddInfo(pkg); err != nil {
-		pkg.PackErrorBody("checkAndAddInfo", err.Error())
-		msgH.replyCh <- pkg
+
+	//add packet another info
+	if err = s.addPacketInfo(pkg); err != nil {
+		pkg.PackErrorBody("addPacketInfo", err.Error())
+		packetProcessor.replyCh <- pkg
 		return
 	}
-	msgH.requestCh <- pkg
+	packetProcessor.requestCh <- pkg
 
 	return
 }
 
-func (s *DataNode) checkAndAddInfo(pkg *Packet) error {
-	if pkg.isHeadNode() && pkg.Opcode == proto.OpCreateFile {
-		pkg.FileID = pkg.DataPartition.GetExtentStore().NextExtentId()
-	}
-
-	return nil
-}
-
-func (s *DataNode) handleRequest(msgH *MessageHandler) {
+/*this goroutine ,used read from pkg from requestCh,and sendto all replicates
+  and write pkg response to client
+*/
+func (s *DataNode) InteractWithClient(packetProcessor *PacketProcessor) {
 	for {
 		select {
-		case <-msgH.handleCh:
-			_, exit := s.receiveFromNext(msgH)
-			if exit {
-				msgH.Stop()
-				return
-			}
-		case <-msgH.exitC:
+		case req := <-packetProcessor.requestCh:
+			s.doPakcet(req, packetProcessor)
+		case reply := <-packetProcessor.replyCh:
+			s.WriteResponseToClient(reply, packetProcessor)
+		case <-packetProcessor.exitC:
+			packetProcessor.CleanResource(s)
 			return
 		}
 	}
 }
 
-func (s *DataNode) doRequestCh(req *Packet, msgH *MessageHandler) {
-	var err error
-	if !req.IsTransitPkg() {
-		s.operatePacket(req, msgH.inConn)
-		if !(req.Opcode == proto.OpStreamRead) {
-			msgH.replyCh <- req
+/*this goroutine is recive response from all followers*/
+func (s *DataNode) reciveReplicatesResponse(packetProcessor *PacketProcessor) {
+	for {
+		select {
+		case <-packetProcessor.handleCh:
+			s.reciveFromAllReplicates(packetProcessor)
+		case <-packetProcessor.exitC:
+			return
 		}
+	}
+}
 
+/*local node do packet,if pkg is randomWrite pkg,then submit to raft
+  if the pkg is sequenceOp,then send pkg to all replicates,and do local
+*/
+func (s *DataNode) doPakcet(req *Packet, packetProcessor *PacketProcessor) {
+	if req.Opcode == proto.OpRandomWrite {
+		s.randomOpReq(req, packetProcessor)
 		return
 	}
-	if err = s.sendToNext(req, msgH); err == nil {
-		s.operatePacket(req, msgH.inConn)
-	} else {
-		log.LogErrorf("action[doRequestCh] %dp.", req.ActionMsg(ActionSendToNext, req.NextAddr,
-			req.StartT, fmt.Errorf("failed to send to : %v", req.NextAddr)))
-		if req.IsMarkDeleteReq() {
-			s.operatePacket(req, msgH.inConn)
+
+	s.sequenceOpReq(req, packetProcessor)
+	return
+}
+
+/*note ,if pkg is tinyExtent Write,then add extentId and extentOffset*/
+func (s *DataNode) addPacketInfo(pkg *Packet) error {
+	if pkg.isHeadNode() && pkg.StoreMode == proto.TinyExtentMode && pkg.IsWriteOperation() {
+		store := pkg.partition.GetStore()
+		extentId, err := store.GetAvaliTinyExtent() //get a avali tinyExtentId
+		if err != nil {
+			return err
 		}
+		pkg.FileID = extentId
+		pkg.Offset, err = store.GetWatermarkForWrite(extentId) //get this extentId offset
+		if err != nil {
+			return err
+		}
+	} else if pkg.isHeadNode() && pkg.Opcode == proto.OpCreateFile {
+		pkg.FileID = pkg.partition.GetStore().NextExtentId()
 	}
-	msgH.handleCh <- single
+
+	return nil
+}
+
+/*if pkg is randdom write,then submit it to raft group*/
+func (s *DataNode) randomOpReq(pkg *Packet, packetProcessor *PacketProcessor) {
+	var err error
+	start := time.Now().UnixNano()
+	defer func() {
+		if err != nil {
+			err = errors.Annotatef(err, "Request[%v] Write Error", pkg.GetUniqueLogId())
+			pkg.PackErrorBody(LogWrite, err.Error())
+			logContent := fmt.Errorf("op[%v] error[%v]", pkg.GetOpMsg(), string(pkg.Data))
+			log.LogErrorf("action[randomOp] %v", logContent)
+		} else {
+			logContent := fmt.Sprintf("action[randomOp] op[%v].",
+				pkg.ActionMsg(pkg.GetOpMsg(), packetProcessor.sourceConn.RemoteAddr().String(), start, nil))
+			log.LogWrite(logContent)
+			pkg.PackOkReply()
+		}
+
+		packetProcessor.replyCh <- pkg
+	}()
+
+	_, isLeader := pkg.partition.IsLeader()
+	if !isLeader {
+		err = storage.ErrNotLeader
+		return
+	}
+	if pkg.partition.Status() == proto.ReadOnly {
+		err = storage.ErrorPartitionReadOnly
+		return
+	}
+	if pkg.partition.Available() <= 0 {
+		err = storage.ErrSyscallNoSpace
+		return
+	}
+
+	err = pkg.partition.RandomWriteSubmit(pkg)
+	if err != nil && strings.Contains(err.Error(), raft.ErrNotLeader.Error()) {
+		err = storage.ErrNotLeader
+		return
+	}
+
+	if err == nil && pkg.Opcode == proto.OpRandomWrite && pkg.Size == util.BlockSize {
+		proto.Buffers.Put(pkg.Data)
+	}
 
 	return
 }
 
-func (s *DataNode) doReplyCh(reply *Packet, msgH *MessageHandler) {
+/*if pkg is sequence Op,then send pkg to all replicates,and do local*/
+func (s *DataNode) sequenceOpReq(req *Packet, packetProcessor *PacketProcessor) {
+	var err error
+	if !req.IsTransitPkg() {
+		s.operatePacket(req, packetProcessor.sourceConn)
+		if !(req.Opcode == proto.OpStreamRead || req.Opcode == proto.OpExtentRepairRead) {
+			packetProcessor.replyCh <- req
+		}
+
+		return
+	}
+	if _, err = s.sendToAllReplicates(req, packetProcessor); err == nil {
+		s.operatePacket(req, packetProcessor.sourceConn)
+	}
+	packetProcessor.handleCh <- struct{}{}
+
+	return
+}
+
+/*write pkg response to client,if pkg is err,then write error to client*/
+func (s *DataNode) WriteResponseToClient(reply *Packet, packetProcessor *PacketProcessor) {
 	var err error
 	if reply.IsErrPack() {
-		err = fmt.Errorf(reply.ActionMsg(ActionWriteToCli, msgH.inConn.RemoteAddr().String(),
+		err = fmt.Errorf(reply.ActionMsg(ActionWriteToCli, packetProcessor.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
-		log.LogErrorf("action[doReplyCh] %v", err)
+		reply.forceDestoryAllConnect()
+		log.LogErrorf("action[WriteResponseToClient] %v", err)
 	}
+	s.cleanupPkg(reply)
 
-	if err = reply.WriteToConn(msgH.inConn); err != nil {
-		err = fmt.Errorf(reply.ActionMsg(ActionWriteToCli, msgH.inConn.RemoteAddr().String(),
+	if err = reply.WriteToConn(packetProcessor.sourceConn); err != nil {
+		err = fmt.Errorf(reply.ActionMsg(ActionWriteToCli, packetProcessor.sourceConn.RemoteAddr().String(),
 			reply.StartT, err))
-		log.LogErrorf("action[doReplyCh] %v", err)
-		msgH.Stop()
+		log.LogErrorf("action[WriteResponseToClient] %v", err)
+		reply.forceDestoryAllConnect()
+		packetProcessor.Stop()
 	}
 	if !reply.IsMasterCommand() {
 		s.addMetrics(reply)
-		log.LogDebugf("action[doReplyCh] %v", reply.ActionMsg(ActionWriteToCli,
-			msgH.inConn.RemoteAddr().String(), reply.StartT, err))
+		log.LogDebugf("action[WriteResponseToClient] %v", reply.ActionMsg(ActionWriteToCli,
+			packetProcessor.sourceConn.RemoteAddr().String(), reply.StartT, err))
 		s.statsFlow(reply, OutFlow)
+	}
+
+}
+
+/*
+   when pkg is finish,then ,the head node must release tinyExtent to store
+*/
+func (s *DataNode) cleanupPkg(pkg *Packet) {
+	if !pkg.isHeadNode() {
+		return
+	}
+	s.leaderPutTinyExtentToStore(pkg)
+	if !pkg.useConnectMap {
+		pkg.PutConnectsToPool()
 	}
 }
 
 func (s *DataNode) addMetrics(reply *Packet) {
 	reply.afterTp()
 	latency := time.Since(reply.tpObject.StartTime)
-	if reply.DataPartition == nil {
+	if reply.partition == nil {
 		return
 	}
 	if reply.IsWriteOperation() {
-		reply.DataPartition.AddWriteMetrics(uint64(latency))
+		reply.partition.AddWriteMetrics(uint64(latency))
 	} else if reply.IsReadOperation() {
-		reply.DataPartition.AddReadMetrics(uint64(latency))
+		reply.partition.AddReadMetrics(uint64(latency))
 	}
 }
 
-func (s *DataNode) writeToCli(msgH *MessageHandler) {
-	for {
-		select {
-		case req := <-msgH.requestCh:
-			s.doRequestCh(req, msgH)
-		case reply := <-msgH.replyCh:
-			s.doReplyCh(reply, msgH)
-		case <-msgH.exitC:
-			msgH.ClearReqs(s)
+/*recive response from all replicates*/
+func (s *DataNode) reciveFromAllReplicates(packetProcessor *PacketProcessor) (request *Packet) {
+	var (
+		e *list.Element
+	)
+
+	if e = packetProcessor.GetFrontPacket(); e == nil {
+		return
+	}
+	request = e.Value.(*Packet)
+	defer func() {
+		packetProcessor.DelPacketFromList(request)
+	}()
+	for index := 0; index < len(request.replicateAddrs); index++ {
+		_, err := s.receiveFromReplicate(request, index)
+		if err != nil {
+			request.PackErrorBody(ActionReceiveFromNext, err.Error())
+			packetProcessor.isUsedCloseFiles(request.replicateConns[index], request.replicateAddrs[index], err)
+			request.forceDestoryAllConnect()
 			return
 		}
 	}
+	request.PackOkReply()
+	return
 }
 
-func (s *DataNode) receiveFromNext(msgH *MessageHandler) (request *Packet, exit bool) {
-	var (
-		err   error
-		e     *list.Element
-		reply *Packet
-	)
-	if e = msgH.GetListElement(); e == nil {
-		return
-	}
-
-	request = e.Value.(*Packet)
-
-	defer func() {
-		s.statsFlow(request, OutFlow)
-		s.statsFlow(reply, InFlow)
-		if err != nil {
-			request.PackErrorBody(ActionReceiveFromNext, err.Error())
-			msgH.DelListElement(request, e, true)
-			msgH.isUsedCloseFiles(request.NextConn, request.NextAddr, err)
-		} else {
-			request.PackOkReply()
-			msgH.DelListElement(request, e, false)
-		}
-	}()
-
-	if request.NextConn == nil {
-		err = errors.Annotatef(fmt.Errorf(ConnIsNullErr), "Request(%v) receiveFromNext Error", request.GetUniqueLogId())
+/*recive pkg response from one replicates*/
+func (s *DataNode) receiveFromReplicate(request *Packet, index int) (reply *Packet, err error) {
+	if request.replicateConns[index] == nil {
+		err = errors.Annotatef(fmt.Errorf(ConnIsNullErr), "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
 		return
 	}
 
 	// Check local execution result.
 	if request.IsErrPack() {
-		err = errors.Annotatef(fmt.Errorf(request.getErr()), "Request(%v) receiveFromNext Error", request.GetUniqueLogId())
-		log.LogErrorf("action[receiveFromNext] %v.",
+		err = errors.Annotatef(fmt.Errorf(request.getErr()), "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
+		log.LogErrorf("action[receiveFromReplicate] %v.",
 			request.ActionMsg(ActionReceiveFromNext, LocalProcessAddr, request.StartT, fmt.Errorf(request.getErr())))
 		return
 	}
 
 	reply = NewPacket()
 
-	if err = reply.ReadFromConn(request.NextConn, proto.ReadDeadlineTime); err != nil {
-		err = errors.Annotatef(err, "Request(%v) receiveFromNext Error", request.GetUniqueLogId())
-		log.LogErrorf("action[receiveFromNext] %v.", request.ActionMsg(ActionReceiveFromNext, request.NextAddr, request.StartT, err))
+	if err = reply.ReadFromConn(request.replicateConns[index], proto.ReadDeadlineTime); err != nil {
+		err = errors.Annotatef(err, "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
+		log.LogErrorf("action[receiveFromReplicate] %v.", request.ActionMsg(ActionReceiveFromNext, request.replicateAddrs[index], request.StartT, err))
 		return
 	}
 
 	if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
 		reply.Offset != request.Offset || reply.Crc != request.Crc || reply.FileID != request.FileID {
 		err = fmt.Errorf(ActionCheckReplyAvail+" request (%v) reply(%v) %v from localAddr(%v)"+
-			" remoteAddr(%v) requestCrc(%v) replyCrc(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId(), request.NextAddr,
-			request.NextConn.LocalAddr().String(), request.NextConn.RemoteAddr().String(), request.Crc, reply.Crc)
-		log.LogErrorf("action[receiveFromNext] %v.", err.Error())
+			" remoteAddr(%v) requestCrc(%v) replyCrc(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId(), request.replicateAddrs[index],
+			request.replicateConns[index].LocalAddr().String(), request.replicateConns[index].RemoteAddr().String(), request.Crc, reply.Crc)
+		log.LogErrorf("action[receiveFromReplicate] %v.", err.Error())
 		return
 	}
 
 	if reply.IsErrPack() {
 		err = fmt.Errorf(ActionReceiveFromNext+"remote (%v) do failed(%v)",
-			request.NextAddr, string(reply.Data[:reply.Size]))
-		err = errors.Annotatef(err, "Request(%v) receiveFromNext Error", request.GetUniqueLogId())
-		request.CopyFrom(reply)
+			request.replicateAddrs[index], string(reply.Data[:reply.Size]))
+		err = errors.Annotatef(err, "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
 		return
 	}
 
-	log.LogDebugf("action[receiveFromNext] %v.", reply.ActionMsg(ActionReceiveFromNext, request.NextAddr, request.StartT, err))
+	log.LogDebugf("action[receiveFromReplicate] %v.", reply.ActionMsg(ActionReceiveFromNext, request.replicateAddrs[index], request.StartT, err))
 	return
 }
 
-func (s *DataNode) sendToNext(pkg *Packet, msgH *MessageHandler) error {
-	var (
-		err error
-	)
-	msgH.PushListElement(pkg)
-	err = msgH.AllocateNextConn(pkg)
-	if err != nil {
-		return err
-	}
-	pkg.Nodes--
-	if err == nil {
-		err = pkg.WriteToConn(pkg.NextConn)
-	}
-	pkg.Nodes++
-	if err != nil {
-		msg := fmt.Sprintf("pkg inconnect(%v) to(%v) err(%v)", msgH.inConn.RemoteAddr().String(), pkg.NextAddr, err.Error())
-		err = errors.Annotatef(fmt.Errorf(msg), "Request(%v) sendToNext Error", pkg.GetUniqueLogId())
-		pkg.PackErrorBody(ActionSendToNext, err.Error())
+func (s *DataNode) sendToAllReplicates(pkg *Packet, packetProcessor *PacketProcessor) (index int, err error) {
+	packetProcessor.PushPacketToList(pkg)
+	for index = 0; index < len(pkg.replicateConns); index++ {
+		err = packetProcessor.AllocateReplicatConnects(pkg, index)
+		if err != nil {
+			msg := fmt.Sprintf("pkg inconnect(%v) to(%v) err(%v)", packetProcessor.sourceConn.RemoteAddr().String(),
+				pkg.replicateAddrs[index], err.Error())
+			err = errors.Annotatef(fmt.Errorf(msg), "Request(%v) sendToAllReplicates Error", pkg.GetUniqueLogId())
+			pkg.PackErrorBody(ActionSendToNext, err.Error())
+			return
+		}
+		nodes := pkg.Nodes
+		pkg.Nodes = 0
+		if err == nil {
+			err = pkg.WriteToConn(pkg.replicateConns[index])
+		}
+		pkg.Nodes = nodes
+		if err != nil {
+			msg := fmt.Sprintf("pkg inconnect(%v) to(%v) err(%v)", packetProcessor.sourceConn.RemoteAddr().String(),
+				pkg.replicateAddrs[index], err.Error())
+			err = errors.Annotatef(fmt.Errorf(msg), "Request(%v) sendToAllReplicates Error", pkg.GetUniqueLogId())
+			pkg.PackErrorBody(ActionSendToNext, err.Error())
+			return
+		}
 	}
 
-	return err
+	return
 }
 
 func (s *DataNode) checkStoreMode(p *Packet) (err error) {
-	if p.StoreMode == proto.BlobStoreMode || p.StoreMode == proto.ExtentStoreMode {
+	if p.StoreMode == proto.TinyExtentMode || p.StoreMode == proto.NormalExtentMode {
 		return nil
 	}
 	return ErrStoreTypeMismatch
@@ -283,13 +385,13 @@ func (s *DataNode) checkAction(pkg *Packet) (err error) {
 		err = errors.Errorf("partition %v is not exist", pkg.PartitionID)
 		return
 	}
-	pkg.DataPartition = dp
+	pkg.partition = dp
 	if pkg.Opcode == proto.OpWrite || pkg.Opcode == proto.OpCreateFile {
-		if pkg.DataPartition.Status() == proto.ReadOnly {
+		if pkg.partition.Status() == proto.ReadOnly {
 			err = storage.ErrorPartitionReadOnly
 			return
 		}
-		if pkg.DataPartition.Available() <= 0 {
+		if pkg.partition.Available() <= 0 {
 			err = storage.ErrSyscallNoSpace
 			return
 		}
@@ -313,4 +415,20 @@ func (s *DataNode) statsFlow(pkg *Packet, flag int) {
 		stat.AddInDataSize(uint64(pkg.Size + pkg.Arglen))
 	}
 
+}
+
+func (s *DataNode) leaderPutTinyExtentToStore(pkg *Packet) {
+	if pkg == nil || !storage.IsTinyExtent(pkg.FileID) || pkg.FileID <= 0 || atomic.LoadInt32(&pkg.isRelaseTinyExtent) == HasReturnToStore {
+		return
+	}
+	if pkg.StoreMode != proto.TinyExtentMode || !pkg.isHeadNode() || !pkg.IsWriteOperation() || !pkg.IsTransitPkg() {
+		return
+	}
+	store := pkg.partition.GetStore()
+	if pkg.IsErrPack() {
+		store.PutTinyExtentToUnavaliCh(pkg.FileID)
+	} else {
+		store.PutTinyExtentToAvaliCh(pkg.FileID)
+	}
+	atomic.StoreInt32(&pkg.isRelaseTinyExtent, HasReturnToStore)
 }

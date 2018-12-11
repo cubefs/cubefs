@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"github.com/tiglabs/containerfs/third_party/pool"
 	"github.com/tiglabs/containerfs/util/log"
 	"net"
@@ -30,8 +30,6 @@ import (
 const (
 	MinTaskLen         = 30
 	TaskWorkerInterval = time.Microsecond * time.Duration(200)
-	ForceCloseConnect  = true
-	NoCloseConnect     = false
 )
 
 /*
@@ -57,7 +55,7 @@ func NewAdminTaskSender(targetAddr, clusterID string) (sender *AdminTaskSender) 
 		targetAddr: targetAddr,
 		clusterID:  clusterID,
 		TaskMap:    make(map[string]*proto.AdminTask),
-		exitCh:     make(chan struct{}),
+		exitCh:     make(chan struct{}, 1),
 		connPool:   pool.NewConnPool(),
 	}
 	go sender.process()
@@ -124,17 +122,17 @@ func (sender *AdminTaskSender) sendTasks(tasks []*proto.AdminTask) {
 		if err != nil {
 			msg := fmt.Sprintf("clusterID[%v] get connection to %v,err,%v", sender.clusterID, sender.targetAddr, errors.ErrorStack(err))
 			WarnBySpecialUmpKey(fmt.Sprintf("%v_%v_sendTask", sender.clusterID, UmpModuleName), msg)
-			sender.connPool.Put(conn, ForceCloseConnect)
+			sender.connPool.Put(conn, true)
 			sender.updateTaskInfo(task, false)
 			break
 		}
 		if err = sender.sendAdminTask(task, conn); err != nil {
 			log.LogError(fmt.Sprintf("send task %v to %v,err,%v", task.ToString(), sender.targetAddr, errors.ErrorStack(err)))
-			sender.connPool.Put(conn, ForceCloseConnect)
+			sender.connPool.Put(conn, true)
 			sender.updateTaskInfo(task, true)
 			continue
 		}
-		sender.connPool.Put(conn, NoCloseConnect)
+		sender.connPool.Put(conn, false)
 	}
 }
 

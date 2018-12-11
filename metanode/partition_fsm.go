@@ -26,7 +26,10 @@ import (
 	"github.com/tiglabs/containerfs/util/ump"
 	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
+	"io/ioutil"
 	"os"
+	"path"
+	"strings"
 )
 
 func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
@@ -126,6 +129,10 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		mp.storeChan <- msg
 	case opFSMInternalDeleteInode:
 		err = mp.internalDelete(msg.V)
+	case opFSMInternalDelExtentFile:
+		err = mp.delOldExtentFile(msg.V)
+	case opFSMInternalDelExtentCursor:
+		err = mp.setExtentDeleteFileCursor(msg.V)
 	}
 	return
 }
@@ -169,7 +176,21 @@ func (mp *metaPartition) Snapshot() (raftproto.Snapshot, error) {
 	applyID := mp.applyID
 	ino := mp.getInodeTree()
 	dentry := mp.getDentryTree()
-	snapIter := NewMetaItemIterator(applyID, ino, dentry)
+	finfos, err := ioutil.ReadDir(mp.config.RootDir)
+	if err != nil {
+		return nil, err
+	}
+	var fileList []string
+	for _, in := range finfos {
+		if in.IsDir() {
+			continue
+		}
+		if strings.HasPrefix(in.Name(), prefixDelExtent) {
+			fileList = append(fileList, in.Name())
+		}
+	}
+	snapIter := NewMetaItemIterator(applyID, ino, dentry, mp.config.RootDir,
+		fileList)
 	return snapIter, nil
 }
 
@@ -197,6 +218,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer,
 				inodeTree:  mp.inodeTree,
 				dentryTree: mp.dentryTree,
 			}
+			mp.extReset <- struct{}{}
 			log.LogDebugf("[ApplySnapshot] successful.")
 			return
 		}
@@ -232,6 +254,14 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer,
 			dentry.UnmarshalValue(snap.V)
 			dentryTree.ReplaceOrInsert(dentry, true)
 			log.LogDebugf("action[ApplySnapshot] create dentry[%v].", dentry)
+		case opSnapExtentFile:
+			fileName := string(snap.K)
+			fileName = path.Join(mp.config.RootDir, fileName)
+			if err = ioutil.WriteFile(fileName, snap.V, 0644); err != nil {
+				log.LogErrorf("action[ApplySnapshot] SnapDeleteExtent[%v].",
+					err.Error())
+			}
+			log.LogDebugf("action[ApplySnapshot] SnapDeleteExtent[%v].", fileName)
 		default:
 			err = fmt.Errorf("unknown op=%d", snap.Op)
 			return

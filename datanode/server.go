@@ -29,10 +29,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/master"
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/raftstore"
 	"github.com/tiglabs/containerfs/storage"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"github.com/tiglabs/containerfs/third_party/pool"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/config"
@@ -43,7 +44,6 @@ import (
 var (
 	ErrStoreTypeMismatch        = errors.New("store type error")
 	ErrPartitionNotExist        = errors.New("dataPartition not exists")
-	ErrBlobFileOffsetMismatch   = errors.New("blobfile offset not mismatch")
 	ErrNoDiskForCreatePartition = errors.New("no disk for create dataPartition")
 	ErrBadConfFile              = errors.New("bad config file")
 
@@ -55,6 +55,7 @@ var (
 const (
 	GetIpFromMaster = master.AdminGetIp
 	DefaultRackName = "huitian_rack1"
+	DefaultRaftDir  = "raft"
 )
 
 const (
@@ -62,11 +63,13 @@ const (
 )
 
 const (
-	ConfigKeyPort       = "port"       // int
-	ConfigKeyClusterID  = "clusterID"  // string
-	ConfigKeyMasterAddr = "masterAddr" // array
-	ConfigKeyRack       = "rack"       // string
-	ConfigKeyDisks      = "disks"      // array
+	ConfigKeyPort          = "port"          // int
+	ConfigKeyMasterAddr    = "masterAddr"    // array
+	ConfigKeyRack          = "rack"          // string
+	ConfigKeyDisks         = "disks"         // array
+	ConfigKeyRaftDir       = "raftDir"       // string
+	ConfigKeyRaftHeartbeat = "raftHeartbeat" // string
+	ConfigKeyRaftReplicate = "raftReplicate" // string
 )
 
 type DataNode struct {
@@ -76,6 +79,11 @@ type DataNode struct {
 	clusterId      string
 	localIp        string
 	localServeAddr string
+	nodeId         uint64
+	raftDir        string
+	raftHeartbeat  string
+	raftReplicate  string
+	raftStore      raftstore.RaftStore
 	tcpListener    net.Listener
 	stopC          chan bool
 	state          uint32
@@ -126,6 +134,11 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 
 	go s.registerProfHandler()
 
+	s.registerToMaster()
+
+	if err = s.startRaftServer(cfg); err != nil {
+		return
+	}
 	if err = s.startSpaceManager(cfg); err != nil {
 		return
 	}
@@ -133,7 +146,6 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 		return
 	}
 
-	go s.registerToMaster()
 	ump.InitUmp(UmpModuleName)
 	return
 }
@@ -141,6 +153,7 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 func (s *DataNode) onShutdown() {
 	close(s.stopC)
 	s.stopTcpService()
+	s.stopRaftServer()
 	return
 }
 
@@ -158,7 +171,6 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		return
 	}
 	s.port = port
-	s.clusterId = cfg.GetString(ConfigKeyClusterID)
 	if len(cfg.GetArray(ConfigKeyMasterAddr)) == 0 {
 		return ErrBadConfFile
 	}
@@ -169,10 +181,9 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	if s.rackName == "" {
 		s.rackName = DefaultRackName
 	}
-	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterHelper.Nodes())
-	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
-	log.LogDebugf("action[parseConfig] load clusterId(%v).", s.clusterId)
-	log.LogDebugf("action[parseConfig] load rackName(%v).", s.rackName)
+	log.LogDebugf("action[parseConfig] load masterAddrs[%v].", MasterHelper.Nodes())
+	log.LogDebugf("action[parseConfig] load port[%v].", s.port)
+	log.LogDebugf("action[parseConfig] load rackName[%v].", s.rackName)
 	return
 }
 
@@ -182,6 +193,11 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		err = ErrBadConfFile
 		return
 	}
+
+	s.space.SetRaftStore(s.raftStore)
+	s.space.SetNodeId(s.nodeId)
+	s.space.SetClusterId(s.clusterId)
+
 	var wg sync.WaitGroup
 	for _, d := range cfg.GetArray(ConfigKeyDisks) {
 		log.LogDebugf("action[startSpaceManager] load disk raw config(%v).", d)
@@ -214,7 +230,7 @@ func (s *DataNode) registerToMaster() {
 		err  error
 		data []byte
 	)
-	// Get IP address and cluster ID from master.
+	// Get IP address and cluster ID and node ID from master.
 	for {
 		timer := time.NewTimer(0)
 		select {
@@ -247,6 +263,10 @@ func (s *DataNode) registerToMaster() {
 					masterAddr, err)
 				continue
 			}
+
+			nodeId := strings.TrimSpace(string(data))
+			s.nodeId, err = strconv.ParseUint(nodeId, 10, 64)
+			log.LogDebug("[tempDebug] nodeId=%v", s.nodeId)
 			return
 		case <-s.stopC:
 			timer.Stop()
@@ -304,9 +324,9 @@ func (s *DataNode) serveConn(conn net.Conn) {
 	c.SetKeepAlive(true)
 	c.SetNoDelay(true)
 
-	msgH := NewMsgHandler(c)
-	go s.handleRequest(msgH)
-	go s.writeToCli(msgH)
+	packetProcessor := NewPacketProcessor(c)
+	go s.reciveReplicatesResponse(packetProcessor)
+	go s.InteractWithClient(packetProcessor)
 
 	var (
 		err error
@@ -324,12 +344,12 @@ func (s *DataNode) serveConn(conn net.Conn) {
 
 	for {
 		select {
-		case <-msgH.exitC:
+		case <-packetProcessor.exitC:
 			log.LogDebugf("action[DataNode.serveConn] event loop for %v exit.", conn.RemoteAddr())
 			return
 		default:
-			if err = s.readFromCliAndDeal(msgH); err != nil {
-				msgH.Stop()
+			if err = s.readPacketFromClient(packetProcessor); err != nil {
+				packetProcessor.Stop()
 				return
 			}
 		}
@@ -348,7 +368,7 @@ func (s *DataNode) addDiskErrs(partitionId uint32, err error, flag uint8) {
 	if d == nil {
 		return
 	}
-	if !s.isDiskErr(err.Error()) {
+	if !IsDiskErr(err.Error()) {
 		return
 	}
 	if flag == WriteFlag {
@@ -358,16 +378,16 @@ func (s *DataNode) addDiskErrs(partitionId uint32, err error, flag uint8) {
 	}
 }
 
-func (s *DataNode) isDiskErr(errMsg string) bool {
+func IsDiskErr(errMsg string) bool {
 	if strings.Contains(errMsg, storage.ErrorParamMismatch.Error()) || strings.Contains(errMsg, storage.ErrorFileNotFound.Error()) ||
 		strings.Contains(errMsg, storage.ErrorNoAvaliFile.Error()) || strings.Contains(errMsg, storage.ErrorObjNotFound.Error()) ||
 		strings.Contains(errMsg, io.EOF.Error()) || strings.Contains(errMsg, storage.ErrSyscallNoSpace.Error()) ||
 		strings.Contains(errMsg, storage.ErrorHasDelete.Error()) || strings.Contains(errMsg, ErrPartitionNotExist.Error()) ||
-		strings.Contains(errMsg, storage.ErrObjectSmaller.Error()) ||
+		strings.Contains(errMsg, storage.ErrObjectSmaller.Error()) || strings.Contains(errMsg, storage.ErrorExtentHasExsit.Error()) ||
 		strings.Contains(errMsg, storage.ErrPkgCrcMismatch.Error()) || strings.Contains(errMsg, ErrStoreTypeMismatch.Error()) ||
-		strings.Contains(errMsg, storage.ErrorNoUnAvaliFile.Error()) ||
+		strings.Contains(errMsg, storage.ErrorNoUnAvaliFile.Error()) || strings.Contains(errMsg, storage.ErrorParamMismatch.Error()) ||
 		strings.Contains(errMsg, storage.ErrExtentNameFormat.Error()) || strings.Contains(errMsg, storage.ErrorAgain.Error()) ||
-		strings.Contains(errMsg, ErrBlobFileOffsetMismatch.Error()) ||
+		strings.Contains(errMsg, storage.ErrorExtentNotFound.Error()) || strings.Contains(errMsg, storage.ErrorExtentHasFull.Error()) ||
 		strings.Contains(errMsg, storage.ErrorCompaction.Error()) || strings.Contains(errMsg, storage.ErrorPartitionReadOnly.Error()) {
 		return false
 	}

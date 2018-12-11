@@ -16,8 +16,8 @@ package master
 
 import (
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/raftstore"
+	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/ump"
@@ -52,6 +52,7 @@ type Master struct {
 	leaderInfo   *LeaderInfo
 	config       *ClusterConfig
 	cluster      *Cluster
+	rocksDBStore *raftstore.RocksDBStore
 	raftStore    raftstore.RaftStore
 	fsm          *MetadataFsm
 	partition    raftstore.Partition
@@ -72,13 +73,15 @@ func (m *Master) Start(cfg *config.Config) (err error) {
 		return
 	}
 	ump.InitUmp(fmt.Sprintf("%v_%v", m.clusterName, UmpModuleName))
+	m.rocksDBStore = raftstore.NewRocksDBStore(m.storeDir)
+	m.initFsm()
+	m.initCluster()
 	if err = m.createRaftServer(); err != nil {
 		log.LogError(errors.ErrorStack(err))
 		return
 	}
-	m.cluster = newCluster(m.clusterName, m.leaderInfo, m.fsm, m.partition)
-	m.cluster.retainLogs = m.retainLogs
-	m.loadMetadata()
+	m.cluster.partition = m.partition
+	m.cluster.idAlloc.partition = m.partition
 	m.startHttpService()
 	m.wg.Add(1)
 	return nil
@@ -166,22 +169,29 @@ func (m *Master) createRaftServer() (err error) {
 	if m.raftStore, err = raftstore.NewRaftStore(raftCfg); err != nil {
 		return errors.Annotatef(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
 	}
-	fsm := newMetadataFsm(m.storeDir)
-	fsm.RegisterLeaderChangeHandler(m.handleLeaderChange)
-	fsm.RegisterPeerChangeHandler(m.handlePeerChange)
-	fsm.RegisterApplyHandler(m.handleApply)
-	fsm.RegisterApplySnapshotHandler(m.handleApplySnapshot)
-	fsm.restore()
-	m.fsm = fsm
 	fmt.Println(m.config.peers)
 	partitionCfg := &raftstore.PartitionConfig{
 		ID:      GroupId,
 		Peers:   m.config.peers,
-		Applied: fsm.applied,
-		SM:      fsm,
+		Applied: m.fsm.applied,
+		SM:      m.fsm,
 	}
 	if m.partition, err = m.raftStore.CreatePartition(partitionCfg); err != nil {
 		return errors.Annotate(err, "CreatePartition failed")
 	}
 	return
+}
+func (m *Master) initFsm() {
+	m.fsm = newMetadataFsm(m.rocksDBStore)
+	m.fsm.RegisterLeaderChangeHandler(m.handleLeaderChange)
+	m.fsm.RegisterPeerChangeHandler(m.handlePeerChange)
+	m.fsm.RegisterApplyHandler(m.handleApply)
+	m.fsm.RegisterApplySnapshotHandler(m.handleApplySnapshot)
+	m.fsm.restore()
+}
+
+func (m *Master) initCluster() {
+	m.cluster = newCluster(m.clusterName, m.leaderInfo, m.fsm, m.partition)
+	m.cluster.retainLogs = m.retainLogs
+	m.loadMetadata()
 }
