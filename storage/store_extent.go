@@ -86,23 +86,29 @@ var (
 		}
 	}
 )
-
+/*
+Extent store introduction:
+For packets smaller than 128K, the client considers it to be a small file and should be stored in tinyExtent
+and the other should be stored as an extent file. The difference between the two is that the small tinyExtent's extentId
+starts at 5000000 and ends at 5000128. Each small file is constantly append to tinyExtent. When deleting,
+the deletion of small files is removed by purgehole, while the large file extent deletes the extent directly.
+*/
 type ExtentStore struct {
-	dataDir             string
-	baseExtentId        uint64
-	extentInfoMap       map[uint64]*FileInfo
-	extentInfoMux       sync.RWMutex
-	cache               ExtentCache
+	dataDir             string  //dataPartition store dataPath
+	baseExtentId        uint64  //based extentId
+	extentInfoMap       map[uint64]*FileInfo //all extentInfo
+	extentInfoMux       sync.RWMutex //lock
+	cache               ExtentCache //extent cache
 	lock                sync.Mutex
-	storeSize           int
-	metaFp              *os.File
-	deleteFp            *os.File
+	storeSize           int   //dataPartion store size
+	metaFp              *os.File  //store dataPartion meta
+	deleteFp            *os.File  //store delete extent history
 	closeC              chan bool
 	closed              bool
-	avaliTinyExtentCh   chan uint64
-	unavaliTinyExtentCh chan uint64
+	avaliTinyExtentCh   chan uint64  //avali tinyExtent chan
+	unavaliTinyExtentCh chan uint64  //unavali tinyExtent chan
 	blockSize           int
-	partitionId         uint32
+	partitionId         uint32   //partitionId
 }
 
 func CheckAndCreateSubdir(name string) (err error) {
@@ -144,12 +150,11 @@ func NewExtentStore(dataDir string, partitionId uint32, storeSize int) (s *Exten
 	return
 }
 
-func (s *ExtentStore) DeleteStore() (err error) {
-	s.cache.Clear()
-	err = os.RemoveAll(s.dataDir)
-	return
-}
-
+/*
+ This function is used to obtain the fileInfo information of all extents of the current datapartition.
+When the master sends the loadDataPartition, it is used to compare
+the replica members of the three dataPartitions.
+*/
 func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 	var (
 		extentInfoSlice []*FileInfo
@@ -173,6 +178,9 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 	return
 }
 
+/*This function is used to get the next extentId. When the client sends the creation of the extent,
+this function is used to generate a unique extentId inside the current partition. T
+his function is only called on the leader.*/
 func (s *ExtentStore) NextExtentId() (extentId uint64) {
 	return atomic.AddUint64(&s.baseExtentId, 1)
 }
@@ -181,6 +189,9 @@ func (s *ExtentStore) getExtentKey(extent uint64) string {
 	return fmt.Sprintf("extent %v_%v", s.partitionId, extent)
 }
 
+/*
+  This function is used to create an extent id
+*/
 func (s *ExtentStore) Create(extentId uint64, inode uint64) (err error) {
 	var extent Extent
 	name := path.Join(s.dataDir, strconv.Itoa(int(extentId)))
