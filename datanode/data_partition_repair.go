@@ -90,7 +90,7 @@ func (dp *dataPartition) extentFileRepair(fixExtentsType uint8) {
 	}
 
 	//init allReplicasDataPartitionRepairTask
-	allReplicas := make([]*DataPartitionRepairTask, 0, len(dp.replicaHosts))
+	allReplicas := make([]*DataPartitionRepairTask,len(dp.replicaHosts))
 	err := dp.fillDataPartitionRepairTask(allReplicas, fixExtentsType, unavaliTinyExtents)
 	if err != nil {
 		log.LogErrorf("action[extentFileRepair] partition(%v) err(%v).",
