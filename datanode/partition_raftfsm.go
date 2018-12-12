@@ -31,11 +31,13 @@ import (
 	"strings"
 )
 
+/*
+ The raft interface need implement by application.
+ Apply the raft wal to disk.
+*/
 func (dp *dataPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
 	opItem := &rndWrtOpItem{}
 	defer func(index uint64) {
-		log.LogDebugf("[randomWrite] partition=%v oldApplied=%v new=%v", dp.partitionId, dp.applyId, index)
-		dp.uploadApplyID(index)
 		if err != nil {
 			umpKey := fmt.Sprintf("%s_datapartition_apply_err", dp.clusterId)
 			prefix := fmt.Sprintf("datapartition_%v_extent_%v", dp.partitionId, opItem.extentId)
@@ -44,6 +46,7 @@ func (dp *dataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			resp = proto.OpExistErr
 			dp.repairC <- opItem.extentId
 		} else {
+			dp.uploadApplyID(index)
 			resp = proto.OpOk
 		}
 	}(index)
@@ -55,15 +58,16 @@ func (dp *dataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	switch msg.Op {
 	case opRandomWrite:
 		if opItem, err = rndWrtDataUnmarshal(msg.V); err != nil {
-			log.LogErrorf("[randomWrite] write_%v err[%v] umarshal failed", dp.ID(), err)
+			log.LogErrorf("randomWrite_%v err[%v] unmarshal failed", dp.ID(), err)
 			return
 		}
-		log.LogDebugf("[randomWrite] apply %v_%v_%v_%v ", dp.ID(), opItem.extentId, opItem.offset, opItem.size)
+		log.LogDebugf("randomWrite_%v_%v_%v_%v apply", dp.ID(), opItem.extentId, opItem.offset, opItem.size)
 		for i := 0; i < maxApplyErrRetry; i++ {
 			err = dp.GetStore().Write(opItem.extentId, opItem.offset, opItem.size, opItem.data, opItem.crc)
 			if err != nil {
 				if ignore := dp.checkWriteErrs(err.Error()); ignore {
-					log.LogErrorf("[randomWrite] write_%v_%v_%v_%v not exist err[%v]", dp.ID(), opItem.extentId, opItem.offset, opItem.size, err)
+					log.LogErrorf("randomWrite_%v_%v_%v_%v extent file had deleted. err[%v]", dp.ID(),
+						opItem.extentId, opItem.offset, opItem.size, err)
 					err = nil
 				}
 			}
@@ -71,7 +75,8 @@ func (dp *dataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			if err == nil {
 				break
 			}
-			log.LogErrorf("[randomWrite] write_%v_%v_%v_%v apply err[%v] retry[%v]", dp.ID(), opItem.extentId, opItem.offset, opItem.size, err, i)
+			log.LogErrorf("randomWrite_%v_%v_%v_%v apply err[%v] retry[%v]", dp.ID(), opItem.extentId,
+				opItem.offset, opItem.size, err, i)
 		}
 	default:
 		err = fmt.Errorf(fmt.Sprintf("Wrong random operate %v", msg.Op))
@@ -80,6 +85,10 @@ func (dp *dataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	return
 }
 
+/*
+ The raft interface need implement by application.
+ Update the member information when member changed.
+*/
 func (dp *dataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
 	defer func(index uint64) {
 		dp.uploadApplyID(index)
@@ -114,13 +123,17 @@ func (dp *dataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	return
 }
 
-//iterator be reserved for future
+// Data is already on the disk. Do not need snapshot.
 func (dp *dataPartition) Snapshot() (raftproto.Snapshot, error) {
 	applyID := dp.applyId
 	snapIterator := NewItemIterator(applyID)
 	return snapIterator, nil
 }
 
+/*
+ The raft interface need implement by application.
+ Restore data from the member who have newest data.
+*/
 func (dp *dataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftproto.SnapIterator) (err error) {
 	var (
 		data        []byte
@@ -158,9 +171,9 @@ func (dp *dataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 		return
 	}
 
-	extentFiles, err = dp.getFileMetas(targetAddr)
+	extentFiles, err = dp.getExtentInfo(targetAddr)
 	if err != nil {
-		err = errors.Annotatef(err, "[ApplySnapshot] getFileMetas dataPartition[%v]", dp.partitionId)
+		err = errors.Annotatef(err, "[ApplySnapshot] getExtentInfo dataPartition[%v]", dp.partitionId)
 		return
 	}
 	dp.ExtentRepair(extentFiles)

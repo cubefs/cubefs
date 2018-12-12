@@ -230,9 +230,11 @@ func (s *DataNode) registerToMaster() {
 		err  error
 		data []byte
 	)
+
+	timer := time.NewTimer(0)
+
 	// Get IP address and cluster ID and node ID from master.
 	for {
-		timer := time.NewTimer(0)
 		select {
 		case <-timer.C:
 			data, err = MasterHelper.Request(http.MethodGet, GetIpFromMaster, nil, nil)
@@ -240,7 +242,7 @@ func (s *DataNode) registerToMaster() {
 			if err != nil {
 				log.LogErrorf("action[registerToMaster] cannot get ip from master(%v) err(%v).",
 					masterAddr, err)
-				timer = time.NewTimer(5 * time.Second)
+				timer.Reset(5 * time.Second)
 				continue
 			}
 			cInfo := new(proto.ClusterInfo)
@@ -251,7 +253,7 @@ func (s *DataNode) registerToMaster() {
 			if !util.IP(LocalIP) {
 				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
 					LocalIP, masterAddr)
-				timer = time.NewTimer(5 * time.Second)
+				timer.Reset(5 * time.Second)
 				continue
 			}
 			// Register this data node to master.
@@ -272,9 +274,7 @@ func (s *DataNode) registerToMaster() {
 			timer.Stop()
 			return
 		}
-
 	}
-
 }
 
 func (s *DataNode) registerProfHandler() {

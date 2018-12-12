@@ -158,9 +158,9 @@ func (p *Packet) CheckCrc() (err error) {
 	return storage.ErrPkgCrcMismatch
 }
 
-func NewExtentStoreGetAllWaterMarker(partitionId uint32, extentType uint8) (p *Packet) {
+func NewGetAllWaterMarker(partitionId uint32, extentType uint8) (p *Packet) {
 	p = new(Packet)
-	p.Opcode = proto.OpExtentStoreGetAllWaterMark
+	p.Opcode = proto.OpGetAllWaterMark
 	p.PartitionID = partitionId
 	p.Magic = proto.ProtoMagic
 	p.ReqID = proto.GetReqID()

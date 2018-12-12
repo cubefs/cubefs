@@ -81,8 +81,8 @@ func (s *DataNode) operatePacket(pkg *Packet, c *net.TCPConn) {
 		s.handleNotifyExtentRepair(pkg)
 	case proto.OpGetWatermark:
 		s.handleGetWatermark(pkg)
-	case proto.OpExtentStoreGetAllWaterMark:
-		s.handleExtentStoreGetAllWatermark(pkg)
+	case proto.OpGetAllWaterMark:
+		s.handleGetAllWatermark(pkg)
 	case proto.OpCreateDataPartition:
 		s.handleCreateDataPartition(pkg)
 	case proto.OpLoadDataPartition:
@@ -97,6 +97,8 @@ func (s *DataNode) operatePacket(pkg *Packet, c *net.TCPConn) {
 		s.handleGetAppliedId(pkg)
 	case proto.OpOfflineDataPartition:
 		s.handleOfflineDataPartition(pkg)
+	case proto.OpGetPartitionSize:
+		s.handleGetPartitionSize(pkg)
 
 	default:
 		pkg.PackErrorBody(ErrorUnknownOp.Error(), ErrorUnknownOp.Error()+strconv.Itoa(int(pkg.Opcode)))
@@ -447,7 +449,7 @@ func (s *DataNode) handleGetWatermark(pkg *Packet) {
 }
 
 // Handle OpExtentStoreGetAllWaterMark packet.
-func (s *DataNode) handleExtentStoreGetAllWatermark(pkg *Packet) {
+func (s *DataNode) handleGetAllWatermark(pkg *Packet) {
 	var (
 		buf       []byte
 		fInfoList []*storage.FileInfo
@@ -519,6 +521,18 @@ func (s *DataNode) handleGetAppliedId(pkg *Packet) {
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, appliedId)
 	pkg.PackOkWithBody(buf)
+	return
+}
+
+func (s *DataNode) handleGetPartitionSize (pkg *Packet) {
+	partitionSize := pkg.partition.GetPartitionSize()
+
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, uint64(partitionSize))
+	pkg.PackOkWithBody(buf)
+
+	log.LogDebugf("handleGetPartitionSize partition=%v partitionSize=%v",
+		pkg.partition.ID(), partitionSize)
 	return
 }
 

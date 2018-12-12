@@ -53,7 +53,7 @@ const (
 	OpRead                       uint8 = 0x04
 	OpStreamRead                 uint8 = 0x05
 	OpGetWatermark               uint8 = 0x06
-	OpExtentStoreGetAllWaterMark uint8 = 0x07
+	OpGetAllWaterMark            uint8 = 0x07
 
 	OpNotifyExtentRepair      uint8 = 0x08
 	OpExtentRepairRead        uint8 = 0x09
@@ -64,6 +64,7 @@ const (
 	OpGetDataPartitionMetrics uint8 = 0x0E
 	OpRandomWrite             uint8 = 0x0F
 	OpGetAppliedId            uint8 = 0x10
+	OpGetPartitionSize        uint8 = 0x11
 
 	// Operations: Client -> MetaNode.
 	OpMetaCreateInode   uint8 = 0x20
@@ -184,7 +185,7 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "StreamRead"
 	case OpGetWatermark:
 		m = "GetWatermark"
-	case OpExtentStoreGetAllWaterMark:
+	case OpGetAllWaterMark:
 		m = "GetAllWatermark"
 	case OpNotifyExtentRepair:
 		m = "NotifyExtentRepair"
@@ -264,6 +265,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpGetDataPartitionMetrics"
 	case OpGetAppliedId:
 		m = "OpGetAppliedId"
+	case OpGetPartitionSize:
+		m = "OpGetPartitionSize"
 	}
 	return
 }
