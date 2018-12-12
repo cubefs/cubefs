@@ -16,7 +16,7 @@ package master
 
 import (
 	"encoding/json"
-	"github.com/tiglabs/containerfs/third_party/juju/errors"
+	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 	"net/http"

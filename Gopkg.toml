@@ -31,7 +31,7 @@
 
 [[constraint]]
   branch = "master"
-  name = "github.com/tiglabs/containerfs/third_party/juju/errors"
+  name = "github.com/juju/errors"
 
 [[constraint]]
   branch = "master"

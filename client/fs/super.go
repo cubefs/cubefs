@@ -16,7 +16,7 @@ package fs
 
 import (
 	"fmt"
-	"github.com/tiglabs/containerfs/third_party/juju/errors"
+	"github.com/juju/errors"
 	"golang.org/x/net/context"
 	"time"
 

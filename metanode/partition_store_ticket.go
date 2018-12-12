@@ -17,7 +17,7 @@ package metanode
 import (
 	"time"
 
-	"github.com/tiglabs/containerfs/third_party/juju/errors"
+	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/ump"
 )

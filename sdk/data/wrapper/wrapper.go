@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tiglabs/containerfs/third_party/juju/errors"
+	"github.com/juju/errors"
 
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util"

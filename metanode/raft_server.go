@@ -18,8 +18,8 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/raftstore"
-	"github.com/tiglabs/containerfs/third_party/juju/errors"
 )
 
 // StartRaftServer init address resolver and raftStore server instance.

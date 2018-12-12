@@ -5,8 +5,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/sdk/data/wrapper"
-	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"github.com/tiglabs/containerfs/third_party/pool"
 	"github.com/tiglabs/containerfs/util/log"
 )

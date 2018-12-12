@@ -16,7 +16,7 @@ package raftstore
 
 import (
 	"fmt"
-	"github.com/tiglabs/containerfs/third_party/juju/errors"
+	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/raft"
 	"strings"

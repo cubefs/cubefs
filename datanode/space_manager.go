@@ -291,7 +291,7 @@ func (space *spaceManager) CreatePartition(request *proto.CreateDataPartitionReq
 		PartitionType: request.PartitionType,
 		RandomWrite:   request.RandomWrite,
 	}
-	dp=space.partitions[dpCfg.PartitionId]
+	dp = space.partitions[dpCfg.PartitionId]
 	if dp != nil {
 		return
 	}

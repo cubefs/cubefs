@@ -22,9 +22,9 @@ import (
 	"time"
 
 	"fmt"
+	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/storage"
-	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"github.com/tiglabs/containerfs/util/log"
 	"hash/crc32"
 )
@@ -90,7 +90,7 @@ func (dp *dataPartition) extentFileRepair(fixExtentsType uint8) {
 	}
 
 	//init allReplicasDataPartitionRepairTask
-	allReplicas := make([]*DataPartitionRepairTask,len(dp.replicaHosts))
+	allReplicas := make([]*DataPartitionRepairTask, len(dp.replicaHosts))
 	err := dp.fillDataPartitionRepairTask(allReplicas, fixExtentsType, unavaliTinyExtents)
 	if err != nil {
 		log.LogErrorf("action[extentFileRepair] partition(%v) err(%v).",

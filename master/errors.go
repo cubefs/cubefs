@@ -17,7 +17,7 @@ package master
 import (
 	"fmt"
 
-	"github.com/tiglabs/containerfs/third_party/juju/errors"
+	"github.com/juju/errors"
 )
 
 var (

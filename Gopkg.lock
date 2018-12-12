@@ -39,7 +39,7 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/tiglabs/containerfs/third_party/juju/errors"
+  name = "github.com/juju/errors"
   packages = ["."]
   revision = "c7d06af17c68cd34c835053720b21f6549d9b0ee"
 

@@ -24,7 +24,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/tiglabs/containerfs/third_party/juju/errors"
+	"github.com/juju/errors"
 	"net/http"
 	_ "net/http/pprof"
 	"os"

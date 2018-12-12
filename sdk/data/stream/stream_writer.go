@@ -22,9 +22,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/sdk/data/wrapper"
-	"github.com/tiglabs/containerfs/third_party/juju/errors"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 )
@@ -504,6 +504,7 @@ func (sw *StreamWriter) allocateNewExtentWriter(fileOffset uint64, forceExtent b
 		break
 	}
 	if extentId <= 0 && fileOffset != 0 {
+		err = fmt.Errorf("unavli extentId ")
 		log.LogErrorf(errors.Annotatef(err, "allocateNewExtentWriter").Error())
 		return nil, errors.Annotatef(err, "allocateNewExtentWriter")
 	}
@@ -536,11 +537,13 @@ func (sw *StreamWriter) createExtent(dp *wrapper.DataPartition) (extentId uint64
 		return
 	}
 	if p.ResultCode != proto.OpOk {
+		err = fmt.Errorf("unavli resultCode %v", p.ResultCode)
 		err = errors.Annotatef(err, "receive CreateExtent(%v) failed datapartionHosts(%v) ", p.GetUniqueLogId(), dp.Hosts[0])
 		return
 	}
 	extentId = p.FileID
 	if p.FileID <= 0 {
+		err = fmt.Errorf("unavali extent id %v", p.FileID)
 		err = errors.Annotatef(err, "illegal extentId(%v) from (%v) response",
 			extentId, dp.Hosts[0])
 		return
