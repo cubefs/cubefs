@@ -326,7 +326,7 @@ func (e *fsExtent) WriteTiny(data []byte, offset, size int64, crc uint32) (err e
 
 func (e *fsExtent) WriteTinyRecover(data []byte, offset, size int64, crc uint32) (err error) {
 	if !IsTinyExtent(e.extentId) {
-		return fmt.Errorf("extent %v not tinyExtent", e.extentId)
+		return ErrorUnavaliExtent
 	}
 	if offset+size >= math.MaxUint32 {
 		return ErrorExtentHasFull
@@ -380,7 +380,7 @@ func (e *fsExtent) Write(data []byte, offset, size int64, crc uint32) (err error
 			break
 		}
 		readN, readErr := e.file.ReadAt(blockBuffer, int64(blockNo*util.BlockSize+util.BlockHeaderSize))
-		if readErr != nil && readErr != io.EOF {
+		if readErr != nil && readErr != io.EOF && readErr != io.ErrUnexpectedEOF {
 			err = readErr
 			return
 		}
@@ -391,7 +391,7 @@ func (e *fsExtent) Write(data []byte, offset, size int64, crc uint32) (err error
 		if err = e.updateBlockCrc(int(blockNo), crc); err != nil {
 			return
 		}
-		if readErr == io.EOF || readN < util.BlockSize {
+		if readErr == io.EOF || readErr == io.ErrUnexpectedEOF || readN < util.BlockSize {
 			break
 		}
 		remainCheckByteCnt -= int64(readN)
@@ -410,15 +410,7 @@ func (e *fsExtent) Read(data []byte, offset, size int64) (crc uint32, err error)
 	}
 	e.lock.RLock()
 	defer e.lock.RUnlock()
-	var (
-		readN int
-	)
-	if readN, err = e.file.ReadAt(data[:size], offset+util.BlockHeaderSize); err != nil {
-		return
-	}
-	if offset%util.BlockSize == 0 && readN == util.BlockSize {
-		blockNo := offset / util.BlockSize
-		crc = e.getBlockCrc(int(blockNo))
+	if _, err = e.file.ReadAt(data[:size], offset+util.BlockHeaderSize); err != nil {
 		return
 	}
 	crc = crc32.ChecksumIEEE(data)
@@ -437,11 +429,11 @@ func (e *fsExtent) ReadTiny(data []byte, offset, size int64) (crc uint32, err er
 func (e *fsExtent) updateBlockCrc(blockNo int, crc uint32) (err error) {
 	startIdx := util.BlockHeaderCrcIndex + blockNo*util.PerBlockCrcSize
 	endIdx := startIdx + util.PerBlockCrcSize
+	binary.BigEndian.PutUint32(e.header[startIdx:endIdx], crc)
 	if _, err = e.file.WriteAt(e.header[startIdx:endIdx], int64(startIdx)); err != nil {
 		return
 	}
 	e.modifyTime = time.Now()
-	binary.BigEndian.PutUint32(e.header[startIdx:endIdx], crc)
 
 	return
 }
@@ -476,9 +468,13 @@ func (e *fsExtent) Flush() (err error) {
 // HeaderChecksum returns crc checksum value of extent header data
 // include inode data and block crc.
 func (e *fsExtent) HeaderChecksum() (crc uint32) {
-	e.lock.Lock()
-	defer e.lock.Unlock()
-	crc = crc32.ChecksumIEEE(e.header)
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+	blockNum := e.dataSize / util.BlockSize
+	if e.dataSize%util.BlockSize != 0 {
+		blockNum = blockNum + 1
+	}
+	crc = crc32.ChecksumIEEE(e.header[util.BlockHeaderCrcIndex : util.BlockHeaderCrcIndex+blockNum*util.PerBlockCrcSize])
 	return
 }
 

@@ -43,11 +43,17 @@ const (
 )
 const (
 	UpdateReplicationHostsTime = 60
+	UpdatePartitionSizeTime    = 60
 	SimultaneouslyRecoverFiles = 7
 )
 
 const (
 	NetType = "tcp"
+)
+
+const (
+	FinishLoadDataPartitionExtentHeader = 1
+	StartLoadDataPartitionExtentHeader  = -1
 )
 
 //pack cmd response
@@ -81,7 +87,6 @@ const (
 
 const (
 	maxApplyErrRetry  = 10
-	storeApplyIdNum   = 64
 	MinFixTinyExtents = 3
 )
 

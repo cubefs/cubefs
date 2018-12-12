@@ -271,7 +271,6 @@ func (s *DataNode) reciveFromAllReplicates(packetProcessor *PacketProcessor) (re
 		_, err := s.receiveFromReplicate(request, index)
 		if err != nil {
 			request.PackErrorBody(ActionReceiveFromNext, err.Error())
-			packetProcessor.isUsedCloseFiles(request.replicateConns[index], request.replicateAddrs[index], err)
 			request.forceDestoryAllConnect()
 			return
 		}

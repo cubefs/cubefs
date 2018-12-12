@@ -84,6 +84,7 @@ type DataPartition interface {
 	GetSnapShot() []*proto.File
 	ReloadSnapshot()
 	ForceLoadHeader()
+	LoadExtentHeaderStatus() int
 
 	Stop()
 }
@@ -146,11 +147,13 @@ type dataPartition struct {
 	stopC           chan bool
 	hadRandomWrite  bool
 
-	runtimeMetrics        *DataPartitionMetrics
-	updateReplicationTime int64
-	isFirstFixTinyExtents bool
-	snapshot              []*proto.File
-	snapshotLock          sync.RWMutex
+	runtimeMetrics          *DataPartitionMetrics
+	updateReplicationTime   int64
+	isFirstFixTinyExtents   bool
+	snapshot                []*proto.File
+	snapshotLock            sync.RWMutex
+	loadExtentHeaderStatus  int
+	updatePartitionSizeTime int64
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp DataPartition, err error) {
@@ -223,18 +226,19 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp DataPartition, er
 	partitionId := dpCfg.PartitionId
 	dataPath := path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionId, dpCfg.PartitionSize))
 	partition := &dataPartition{
-		volumeId:        dpCfg.VolName,
-		clusterId:       dpCfg.ClusterId,
-		partitionId:     partitionId,
-		disk:            disk,
-		path:            dataPath,
-		partitionSize:   dpCfg.PartitionSize,
-		replicaHosts:    make([]string, 0),
-		stopC:           make(chan bool, 0),
-		storeC:          make(chan uint64, 128),
-		partitionStatus: proto.ReadWrite,
-		runtimeMetrics:  NewDataPartitionMetrics(),
-		config:          dpCfg,
+		volumeId:               dpCfg.VolName,
+		clusterId:              dpCfg.ClusterId,
+		partitionId:            partitionId,
+		disk:                   disk,
+		path:                   dataPath,
+		partitionSize:          dpCfg.PartitionSize,
+		replicaHosts:           make([]string, 0),
+		stopC:                  make(chan bool, 0),
+		storeC:                 make(chan uint64, 128),
+		partitionStatus:        proto.ReadWrite,
+		runtimeMetrics:         NewDataPartitionMetrics(),
+		config:                 dpCfg,
+		loadExtentHeaderStatus: StartLoadDataPartitionExtentHeader,
 	}
 	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionId, dpCfg.PartitionSize)
 	if err != nil {
@@ -281,7 +285,14 @@ func (dp *dataPartition) ReplicaHosts() []string {
 	return dp.replicaHosts
 }
 
+func (dp *dataPartition) LoadExtentHeaderStatus() int {
+	return dp.loadExtentHeaderStatus
+}
+
 func (dp *dataPartition) ReloadSnapshot() {
+	if dp.loadExtentHeaderStatus != FinishLoadDataPartitionExtentHeader {
+		return
+	}
 	files, err := dp.extentStore.SnapShot()
 	if err != nil {
 		return
@@ -399,7 +410,6 @@ func (dp *dataPartition) statusUpdateScheduler() {
 			} else {
 				dp.LaunchRepair(proto.NormalExtentMode)
 			}
-			dp.extentStore.Cleanup()
 			dp.ReloadSnapshot()
 		case <-dp.stopC:
 			ticker.Stop()
@@ -464,6 +474,9 @@ func (dp *dataPartition) computeUsage() {
 		files []os.FileInfo
 		err   error
 	)
+	if time.Now().Unix()-dp.updatePartitionSizeTime < UpdatePartitionSizeTime {
+		return
+	}
 	if files, err = ioutil.ReadDir(dp.path); err != nil {
 		return
 	}
@@ -471,6 +484,7 @@ func (dp *dataPartition) computeUsage() {
 		used += dp.getRealSize(dp.path, file)
 	}
 	dp.used = int(used)
+	dp.updatePartitionSizeTime = time.Now().Unix()
 }
 
 func (dp *dataPartition) GetStore() *storage.ExtentStore {
@@ -577,7 +591,11 @@ func (dp *dataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 	response.PartitionStatus = dp.partitionStatus
 	response.Used = uint64(dp.Used())
 	var err error
-	response.PartitionSnapshot = dp.GetSnapShot()
+	if dp.loadExtentHeaderStatus != FinishLoadDataPartitionExtentHeader {
+		response.PartitionSnapshot = make([]*proto.File, 0)
+	} else {
+		response.PartitionSnapshot = dp.GetSnapShot()
+	}
 	if err != nil {
 		response.Status = proto.TaskFail
 		response.Result = err.Error()

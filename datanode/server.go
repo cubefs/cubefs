@@ -381,6 +381,7 @@ func (s *DataNode) addDiskErrs(partitionId uint32, err error, flag uint8) {
 func IsDiskErr(errMsg string) bool {
 	if strings.Contains(errMsg, storage.ErrorParamMismatch.Error()) || strings.Contains(errMsg, storage.ErrorFileNotFound.Error()) ||
 		strings.Contains(errMsg, storage.ErrorNoAvaliFile.Error()) || strings.Contains(errMsg, storage.ErrorObjNotFound.Error()) ||
+		strings.Contains(errMsg, storage.ErrorUnavaliExtent.Error()) ||
 		strings.Contains(errMsg, io.EOF.Error()) || strings.Contains(errMsg, storage.ErrSyscallNoSpace.Error()) ||
 		strings.Contains(errMsg, storage.ErrorHasDelete.Error()) || strings.Contains(errMsg, ErrPartitionNotExist.Error()) ||
 		strings.Contains(errMsg, storage.ErrObjectSmaller.Error()) || strings.Contains(errMsg, storage.ErrorExtentHasExsit.Error()) ||
