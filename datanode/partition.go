@@ -143,7 +143,6 @@ type dataPartition struct {
 	applyId         uint64
 	lastTruncateId  uint64
 	minAppliedId    uint64
-	raftC           chan uint32
 	repairC         chan uint64
 	storeC          chan uint64
 	stopC           chan bool

@@ -70,6 +70,9 @@ func (dp *dataPartition) getRaftPort() (heartbeat, replicate int, err error) {
 	return
 }
 
+/*
+ Start raft instance when data partition start or restore.
+*/
 func (dp *dataPartition) StartRaft() (err error) {
 	var (
 		heartbeatPort int
@@ -116,6 +119,12 @@ func (dp *dataPartition) stopRaft() {
 	return
 }
 
+/*
+ Start schedule task when data partition start or restore
+ 1. Store the raft applied id to "APPLY" file per 5 minutes.
+ 2. Get the min applied id from all members and truncate raft log file per 10 minutes.
+ 3. Update partition status when apply failed and stop raft. Need manual intervention.
+*/
 func (dp *dataPartition) StartSchedule() {
 	var isRunning bool
 	truncRaftlogTimer := time.NewTimer(time.Minute * 10)
@@ -163,14 +172,6 @@ func (dp *dataPartition) StartSchedule() {
 				log.LogDebugf("[startSchedule] store apply id partitionId=%d: applyID=%d",
 					dp.config.PartitionId, applyId)
 
-			case opRaftCode := <-dp.raftC:
-				if dp.raftPartition == nil && opRaftCode == opStartRaft {
-					log.LogWarn("action[startRaft] restart raft partition=%v", dp.partitionId)
-					if err := dp.StartRaft(); err != nil {
-						panic("start raft error")
-					}
-				}
-
 			case extentId := <-dp.repairC:
 				dp.disk.Status = proto.Unavaliable
 				dp.stopRaft()
@@ -209,32 +210,32 @@ func (dp *dataPartition) WaitingRepairedAndStartRaft() {
 				// Leader needn't waiting extent repair.
 				if err := dp.StartRaft(); err != nil {
 					log.LogErrorf("partitionId[%v] leader start raft err[%v].", dp.partitionId, err)
-					timer.Reset(10 * time.Second)
+					timer.Reset(5 * time.Second)
 					continue
 				}
 				log.LogErrorf("partitionId[%v] leader started.", dp.partitionId)
 				return
 			}
 			if len(dp.replicaHosts) == 0 {
-				timer.Reset(10 * time.Second)
+				timer.Reset(5 * time.Second)
 				continue
 			}
 			// Follower get the dp.partitionSize from leader and compare with local
 			partitionSize, err := dp.getPartitionSize()
 			if err != nil {
 				log.LogErrorf("partitionId[%v] get leader size err[%v]", dp.partitionId, err)
-				timer.Reset(10 * time.Second)
+				timer.Reset(5 * time.Second)
 				continue
 			}
 			if int(partitionSize) != dp.partitionSize {
 				log.LogErrorf("partitionId[%v] leader size[%v] local size[%v]", dp.partitionId, partitionSize, dp.partitionSize)
-				timer.Reset(10 * time.Second)
+				timer.Reset(5 * time.Second)
 				continue
 			}
 			// Start raft
 			if err := dp.StartRaft(); err != nil {
 				log.LogErrorf("partitionId[%v] start raft err[%v]. Retry after 20s.", dp.partitionId, err)
-				timer.Reset(10 * time.Second)
+				timer.Reset(5 * time.Second)
 				continue
 			}
 			return
@@ -368,7 +369,6 @@ func (dp *dataPartition) GetAppliedId() (id uint64) {
 	return dp.applyId
 }
 
-//random write need start raft server
 func (s *DataNode) parseRaftConfig(cfg *config.Config) (err error) {
 	s.raftDir = cfg.GetString(ConfigKeyRaftDir)
 	if s.raftDir == "" {
@@ -383,6 +383,7 @@ func (s *DataNode) parseRaftConfig(cfg *config.Config) (err error) {
 	return
 }
 
+// Start raft server when DataNode server be started.
 func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 	log.LogInfo("Start: startRaftServer")
 
@@ -421,6 +422,7 @@ func (s *DataNode) stopRaftServer() {
 	}
 }
 
+// Create task to repair extent files
 func (dp *dataPartition) ExtentRepair(extentFiles []*storage.FileInfo) {
 	startTime := time.Now().UnixNano()
 	log.LogInfof("action[ExtentRepair] partition=%v start.", dp.partitionId)
@@ -486,34 +488,34 @@ func (dp *dataPartition) applyErrRepair(extentId uint64) {
 	}
 }
 
-// Get all extents meta
-func (dp *dataPartition) getFileMetas(targetAddr string) (extentFiles []*storage.FileInfo, err error) {
+// Get all extents information
+func (dp *dataPartition) getExtentInfo(targetAddr string) (extentFiles []*storage.FileInfo, err error) {
 	// get remote extents meta by opGetAllWaterMarker cmd
 	p := NewGetAllWaterMarker(dp.partitionId, proto.NormalExtentMode)
 	var conn *net.TCPConn
 	target := targetAddr
 	conn, err = gConnPool.Get(target) //get remote connect
 	if err != nil {
-		err = errors.Annotatef(err, "getFileMetas  partition=%v get host[%v] connect", dp.partitionId, target)
+		err = errors.Annotatef(err, "getExtentInfo  partition=%v get host[%v] connect", dp.partitionId, target)
 		return
 	}
 	err = p.WriteToConn(conn) //write command to remote host
 	if err != nil {
 		gConnPool.Put(conn, true)
-		err = errors.Annotatef(err, "getFileMetas partition=%v write to host[%v]", dp.partitionId, target)
+		err = errors.Annotatef(err, "getExtentInfo partition=%v write to host[%v]", dp.partitionId, target)
 		return
 	}
 	err = p.ReadFromConn(conn, 60) //read it response
 	if err != nil {
 		gConnPool.Put(conn, true)
-		err = errors.Annotatef(err, "getFileMetas partition=%v read from host[%v]", dp.partitionId, target)
+		err = errors.Annotatef(err, "getExtentInfo partition=%v read from host[%v]", dp.partitionId, target)
 		return
 	}
 	fileInfos := make([]*storage.FileInfo, 0)
 	err = json.Unmarshal(p.Data[:p.Size], &fileInfos)
 	if err != nil {
 		gConnPool.Put(conn, true)
-		err = errors.Annotatef(err, "getFileMetas partition=%v unmarshal json[%v]", dp.partitionId, string(p.Data[:p.Size]))
+		err = errors.Annotatef(err, "getExtentInfo partition=%v unmarshal json[%v]", dp.partitionId, string(p.Data[:p.Size]))
 		return
 	}
 

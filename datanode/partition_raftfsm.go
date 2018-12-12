@@ -31,6 +31,10 @@ import (
 	"strings"
 )
 
+/*
+ The raft interface need implement by application.
+ Apply the raft wal to disk.
+*/
 func (dp *dataPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
 	opItem := &rndWrtOpItem{}
 	defer func(index uint64) {
@@ -81,6 +85,10 @@ func (dp *dataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	return
 }
 
+/*
+ The raft interface need implement by application.
+ Update the member information when member changed.
+*/
 func (dp *dataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
 	defer func(index uint64) {
 		dp.uploadApplyID(index)
@@ -115,13 +123,17 @@ func (dp *dataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	return
 }
 
-//iterator be reserved for future
+// Data is already on the disk. Do not need snapshot.
 func (dp *dataPartition) Snapshot() (raftproto.Snapshot, error) {
 	applyID := dp.applyId
 	snapIterator := NewItemIterator(applyID)
 	return snapIterator, nil
 }
 
+/*
+ The raft interface need implement by application.
+ Restore data from the member who have newest data.
+*/
 func (dp *dataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftproto.SnapIterator) (err error) {
 	var (
 		data        []byte
@@ -159,9 +171,9 @@ func (dp *dataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 		return
 	}
 
-	extentFiles, err = dp.getFileMetas(targetAddr)
+	extentFiles, err = dp.getExtentInfo(targetAddr)
 	if err != nil {
-		err = errors.Annotatef(err, "[ApplySnapshot] getFileMetas dataPartition[%v]", dp.partitionId)
+		err = errors.Annotatef(err, "[ApplySnapshot] getExtentInfo dataPartition[%v]", dp.partitionId)
 		return
 	}
 	dp.ExtentRepair(extentFiles)
