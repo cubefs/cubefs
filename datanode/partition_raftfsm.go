@@ -34,8 +34,6 @@ import (
 func (dp *dataPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
 	opItem := &rndWrtOpItem{}
 	defer func(index uint64) {
-		log.LogDebugf("[randomWrite] partition=%v oldApplied=%v new=%v", dp.partitionId, dp.applyId, index)
-		dp.uploadApplyID(index)
 		if err != nil {
 			umpKey := fmt.Sprintf("%s_datapartition_apply_err", dp.clusterId)
 			prefix := fmt.Sprintf("datapartition_%v_extent_%v", dp.partitionId, opItem.extentId)
@@ -44,6 +42,7 @@ func (dp *dataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			resp = proto.OpExistErr
 			dp.repairC <- opItem.extentId
 		} else {
+			dp.uploadApplyID(index)
 			resp = proto.OpOk
 		}
 	}(index)
@@ -55,15 +54,16 @@ func (dp *dataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	switch msg.Op {
 	case opRandomWrite:
 		if opItem, err = rndWrtDataUnmarshal(msg.V); err != nil {
-			log.LogErrorf("[randomWrite] write_%v err[%v] umarshal failed", dp.ID(), err)
+			log.LogErrorf("randomWrite_%v err[%v] unmarshal failed", dp.ID(), err)
 			return
 		}
-		log.LogDebugf("[randomWrite] apply %v_%v_%v_%v ", dp.ID(), opItem.extentId, opItem.offset, opItem.size)
+		log.LogDebugf("randomWrite_%v_%v_%v_%v apply", dp.ID(), opItem.extentId, opItem.offset, opItem.size)
 		for i := 0; i < maxApplyErrRetry; i++ {
 			err = dp.GetStore().Write(opItem.extentId, opItem.offset, opItem.size, opItem.data, opItem.crc)
 			if err != nil {
 				if ignore := dp.checkWriteErrs(err.Error()); ignore {
-					log.LogErrorf("[randomWrite] write_%v_%v_%v_%v not exist err[%v]", dp.ID(), opItem.extentId, opItem.offset, opItem.size, err)
+					log.LogErrorf("randomWrite_%v_%v_%v_%v extent file had deleted. err[%v]", dp.ID(),
+						opItem.extentId, opItem.offset, opItem.size, err)
 					err = nil
 				}
 			}
@@ -71,7 +71,8 @@ func (dp *dataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			if err == nil {
 				break
 			}
-			log.LogErrorf("[randomWrite] write_%v_%v_%v_%v apply err[%v] retry[%v]", dp.ID(), opItem.extentId, opItem.offset, opItem.size, err, i)
+			log.LogErrorf("randomWrite_%v_%v_%v_%v apply err[%v] retry[%v]", dp.ID(), opItem.extentId,
+				opItem.offset, opItem.size, err, i)
 		}
 	default:
 		err = fmt.Errorf(fmt.Sprintf("Wrong random operate %v", msg.Op))

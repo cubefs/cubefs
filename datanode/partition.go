@@ -72,6 +72,7 @@ type DataPartition interface {
 	FlushDelete() error
 	StartRaft() (err error)
 	StartSchedule()
+	WaitingRepairedAndStartRaft()
 	RandomWriteSubmit(pkg *Packet) (err error)
 	RandomPartitionReadCheck(request *Packet, connect net.Conn) (err error)
 	LoadApplyIndex() (err error)
@@ -80,6 +81,7 @@ type DataPartition interface {
 	AddWriteMetrics(latency uint64)
 	AddReadMetrics(latency uint64)
 	GetExtentCount() int
+	GetPartitionSize() int
 
 	GetSnapShot() []*proto.File
 	ReloadSnapshot()
@@ -164,11 +166,8 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp DataPartition,
 
 	// Start raft for random write
 	if dpCfg.RandomWrite {
-		if err = dp.StartRaft(); err != nil {
-			return
-		}
-
 		go dp.StartSchedule()
+		go dp.WaitingRepairedAndStartRaft()
 	}
 
 	// Store meta information into meta file.
@@ -234,6 +233,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp DataPartition, er
 		partitionSize:          dpCfg.PartitionSize,
 		replicaHosts:           make([]string, 0),
 		stopC:                  make(chan bool, 0),
+		repairC:                make(chan uint64, 0),
 		storeC:                 make(chan uint64, 128),
 		partitionStatus:        proto.ReadWrite,
 		runtimeMetrics:         NewDataPartitionMetrics(),
@@ -257,6 +257,10 @@ func (dp *dataPartition) ID() uint32 {
 
 func (dp *dataPartition) GetExtentCount() int {
 	return dp.extentStore.GetExtentCount()
+}
+
+func (dp *dataPartition) GetPartitionSize() int {
+	return dp.partitionSize
 }
 
 func (dp *dataPartition) Path() string {

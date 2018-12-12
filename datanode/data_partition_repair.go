@@ -175,7 +175,7 @@ func (dp *dataPartition) getLocalExtentInfo(fixExtentMode uint8, needFixExtents 
 // call followers get extent all watner marker ,about all extents meta
 func (dp *dataPartition) getRemoteExtentInfo(fixExtentMode uint8, needFixExtents []uint64, target string) (extentFiles []*storage.FileInfo, err error) {
 	extentFiles = make([]*storage.FileInfo, 0)
-	p := NewExtentStoreGetAllWaterMarker(dp.partitionId, fixExtentMode)
+	p := NewGetAllWaterMarker(dp.partitionId, fixExtentMode)
 	if fixExtentMode == proto.TinyExtentMode {
 		p.Data, err = json.Marshal(needFixExtents)
 		if err != nil {
