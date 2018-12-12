@@ -278,8 +278,8 @@ func (space *spaceManager) putPartition(dp DataPartition) {
 }
 
 func (space *spaceManager) CreatePartition(request *proto.CreateDataPartitionRequest) (dp DataPartition, err error) {
-	space.createPartitionMu.Lock()
-	defer space.createPartitionMu.Unlock()
+	space.partitionMu.Lock()
+	defer space.partitionMu.Unlock()
 	dpCfg := &dataPartitionCfg{
 		PartitionId:   uint32(request.PartitionId),
 		VolName:       request.VolumeId,
@@ -313,9 +313,8 @@ func (space *spaceManager) CreatePartition(request *proto.CreateDataPartitionReq
 		return
 	}
 
-	space.partitionMu.Lock()
-	defer space.partitionMu.Unlock()
 	space.partitions[dp.ID()] = dp
+	go dp.ForceLoadHeader()
 
 	return
 }
@@ -359,6 +358,7 @@ func (s *DataNode) fillHeartBeatResponse(response *proto.DataNodeHeartBeatRespon
 			DiskPath:        partition.Disk().Path,
 			IsLeader:        isLeader,
 			ExtentCount:     partition.GetStore().GetExtentCount(),
+			NeedCompare:     partition.LoadExtentHeaderStatus() == FinishLoadDataPartitionExtentHeader,
 		}
 		log.LogDebugf("action[Heartbeats] dpid[%v], status[%v] total[%v] used[%v] leader[%v] b[%v].", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)
 		response.PartitionInfo = append(response.PartitionInfo, vr)

@@ -116,6 +116,7 @@ type PartitionReport struct {
 	DiskPath        string
 	IsLeader        bool
 	ExtentCount     int
+	NeedCompare     bool
 }
 
 type DataNodeHeartBeatResponse struct {
