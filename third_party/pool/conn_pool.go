@@ -34,6 +34,128 @@ type ConnectObject struct {
 	idle int64
 }
 
+type ConnectPool struct {
+	sync.RWMutex
+	pools   map[string]*Pool
+	mincap  int
+	maxcap  int
+	timeout int64
+}
+
+func NewConnPool() (cp *ConnectPool) {
+	cp = &ConnectPool{pools: make(map[string]*Pool), mincap: 5, maxcap: 100, timeout: int64(time.Minute)}
+	go cp.autoRelease()
+
+	return cp
+}
+
+func (cp *ConnectPool) Get(targetAddr string) (c *net.TCPConn, err error) {
+	cp.RLock()
+	pool, ok := cp.pools[targetAddr]
+	cp.RUnlock()
+	if !ok {
+		cp.Lock()
+		pool = NewPool(cp.mincap, cp.maxcap, cp.timeout, targetAddr)
+		cp.pools[targetAddr] = pool
+		cp.Unlock()
+	}
+
+	return pool.Get()
+}
+
+func (cp *ConnectPool) Put(c *net.TCPConn, forceClose bool) {
+	if c == nil {
+		return
+	}
+	if forceClose {
+		c.Close()
+		return
+	}
+	addr := c.RemoteAddr().String()
+	cp.RLock()
+	pool, ok := cp.pools[addr]
+	cp.RUnlock()
+	if !ok {
+		c.CloseWrite()
+		c.CloseRead()
+		c.Close()
+		return
+	}
+	object := &ConnectObject{conn: c, idle: time.Now().UnixNano()}
+	pool.putconnect(object)
+
+	return
+}
+
+func (cp *ConnectPool) CheckErrorForceClose(c *net.TCPConn, target string, err error) {
+	if c == nil {
+		return
+	}
+
+	if err != nil {
+		if strings.Contains(err.Error(), "use of closed network connection") {
+			c.Close()
+			cp.ReleaseAllConnect(target)
+			return
+		} else {
+			c.Close()
+			return
+		}
+	}
+}
+
+func (cp *ConnectPool) CheckErrorForPutConnect(c *net.TCPConn, target string, err error) {
+	if c == nil {
+		return
+	}
+
+	if err != nil {
+		if strings.Contains(err.Error(), "use of closed network connection") {
+			c.Close()
+			cp.ReleaseAllConnect(target)
+			return
+		} else {
+			c.Close()
+			return
+		}
+	}
+	addr := c.RemoteAddr().String()
+	cp.RLock()
+	pool, ok := cp.pools[addr]
+	cp.RUnlock()
+	if !ok {
+		c.Close()
+		return
+	}
+	object := &ConnectObject{conn: c, idle: time.Now().UnixNano()}
+	pool.putconnect(object)
+}
+
+func (cp *ConnectPool) ReleaseAllConnect(target string) {
+	cp.RLock()
+	pool := cp.pools[target]
+	cp.RUnlock()
+	if pool != nil {
+		pool.ForceReleaseAllConnect()
+	}
+}
+
+func (cp *ConnectPool) autoRelease() {
+	for {
+		pools := make([]*Pool, 0)
+		cp.RLock()
+		for _, pool := range cp.pools {
+			pools = append(pools, pool)
+		}
+		cp.RUnlock()
+		for _, pool := range pools {
+			pool.AutoRelease()
+		}
+		time.Sleep(time.Minute)
+	}
+
+}
+
 type Pool struct {
 	pool    chan *ConnectObject
 	mincap  int
@@ -94,9 +216,6 @@ func (p *Pool) AutoRelease() {
 		case c := <-p.pool:
 			if time.Now().UnixNano()-int64(c.idle) > p.timeout {
 				c.conn.Close()
-				c.conn.CloseWrite()
-				c.conn.CloseRead()
-				c.conn.Close()
 			} else {
 				p.putconnect(c)
 			}
@@ -110,8 +229,6 @@ func (p *Pool) ForceReleaseAllConnect() {
 	for {
 		select {
 		case c := <-p.pool:
-			c.conn.CloseWrite()
-			c.conn.CloseRead()
 			c.conn.Close()
 		default:
 			return
@@ -133,138 +250,4 @@ func (p *Pool) Get() (c *net.TCPConn, err error) {
 		c = conn
 	}
 	return
-}
-
-type ConnectPool struct {
-	sync.RWMutex
-	pools   map[string]*Pool
-	mincap  int
-	maxcap  int
-	timeout int64
-}
-
-func NewConnPool() (connectPool *ConnectPool) {
-	connectPool = &ConnectPool{pools: make(map[string]*Pool), mincap: 5, maxcap: 100, timeout: int64(time.Minute)}
-	go connectPool.autoRelease()
-
-	return connectPool
-}
-
-func (connectPool *ConnectPool) Get(targetAddr string) (c *net.TCPConn, err error) {
-	connectPool.RLock()
-	pool, ok := connectPool.pools[targetAddr]
-	connectPool.RUnlock()
-	if !ok {
-		connectPool.Lock()
-		pool = NewPool(connectPool.mincap, connectPool.maxcap, connectPool.timeout, targetAddr)
-		connectPool.pools[targetAddr] = pool
-		connectPool.Unlock()
-	}
-
-	return pool.Get()
-}
-
-func (connectPool *ConnectPool) Put(c *net.TCPConn, forceClose bool) {
-	if c == nil {
-		return
-	}
-	if forceClose {
-		c.CloseWrite()
-		c.CloseRead()
-		c.Close()
-		return
-	}
-	addr := c.RemoteAddr().String()
-	connectPool.RLock()
-	pool, ok := connectPool.pools[addr]
-	connectPool.RUnlock()
-	if !ok {
-		c.CloseWrite()
-		c.CloseRead()
-		c.Close()
-		return
-	}
-	object := &ConnectObject{conn: c, idle: time.Now().UnixNano()}
-	pool.putconnect(object)
-
-	return
-}
-
-func (connectPool *ConnectPool) CheckErrorForceClose(c *net.TCPConn, target string, err error) {
-	if c == nil {
-		return
-	}
-
-	if err != nil {
-		if strings.Contains(err.Error(), "use of closed network connection") {
-			c.CloseWrite()
-			c.CloseRead()
-			c.Close()
-			connectPool.ReleaseAllConnect(target)
-			return
-		} else {
-			c.CloseWrite()
-			c.CloseRead()
-			c.Close()
-			return
-		}
-	}
-}
-
-func (connectPool *ConnectPool) CheckErrorForPutConnect(c *net.TCPConn, target string, err error) {
-	if c == nil {
-		return
-	}
-
-	if err != nil {
-		if strings.Contains(err.Error(), "use of closed network connection") {
-			c.CloseWrite()
-			c.CloseRead()
-			c.Close()
-			connectPool.ReleaseAllConnect(target)
-			return
-		} else {
-			c.CloseWrite()
-			c.CloseRead()
-			c.Close()
-			return
-		}
-	}
-	addr := c.RemoteAddr().String()
-	connectPool.RLock()
-	pool, ok := connectPool.pools[addr]
-	connectPool.RUnlock()
-	if !ok {
-		c.CloseWrite()
-		c.CloseRead()
-		c.Close()
-		return
-	}
-	object := &ConnectObject{conn: c, idle: time.Now().UnixNano()}
-	pool.putconnect(object)
-}
-
-func (connectPool *ConnectPool) ReleaseAllConnect(target string) {
-	connectPool.RLock()
-	pool := connectPool.pools[target]
-	connectPool.RUnlock()
-	if pool != nil {
-		pool.ForceReleaseAllConnect()
-	}
-}
-
-func (connectPool *ConnectPool) autoRelease() {
-	for {
-		pools := make([]*Pool, 0)
-		connectPool.RLock()
-		for _, pool := range connectPool.pools {
-			pools = append(pools, pool)
-		}
-		connectPool.RUnlock()
-		for _, pool := range pools {
-			pool.AutoRelease()
-		}
-		time.Sleep(time.Minute)
-	}
-
 }
