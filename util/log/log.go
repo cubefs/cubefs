@@ -18,13 +18,15 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path"
 	"runtime"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -41,50 +43,63 @@ const (
 )
 
 const (
-	FileNameDateFormat   = "2006-01-02"
-	FileOpt              = os.O_RDWR | os.O_CREATE | os.O_APPEND
-	WriterBufferInitSize = 4 * 1024 * 1024
-	WriterBufferLenLimit = 4 * 1024 * 1024
+	FileNameDateFormat     = "20060102150405"
+	FileOpt                = os.O_RDWR | os.O_CREATE | os.O_APPEND
+	WriterBufferInitSize   = 4 * 1024 * 1024
+	WriterBufferLenLimit   = 4 * 1024 * 1024
+	DefaultRollingInterval = 5 * time.Minute
+	RolledExtension        = ".old"
 )
 
 var levelPrefixes = []string{
 	"[DEBUG]",
-	"[INFO.]",
-	"[WARN.]",
+	"[INFO ]",
+	"[WARN ]",
 	"[ERROR]",
 	"[FATAL]",
-	"[READ.]",
+	"[READ ]",
 	"[WRITE]",
 }
 
-type flusher interface {
-	Flush()
+type RolledFile []os.FileInfo
+
+func (f RolledFile) Less(i, j int) bool {
+	return f[i].ModTime().Before(f[j].ModTime())
+}
+
+func (f RolledFile) Len() int {
+	return len(f)
+}
+
+func (f RolledFile) Swap(i, j int) {
+	f[i], f[j] = f[j], f[i]
 }
 
 type asyncWriter struct {
-	file     *os.File
-	buffer   *bytes.Buffer
-	flushTmp []byte
-	flushC   chan bool
-	closed   bool
-	mu       sync.Mutex
+	file        *os.File
+	fileName    string
+	logSize     int64
+	rollingSize int64
+	buffer      *bytes.Buffer
+	flushTmp    []byte
+	flushC      chan bool
+	rotateDay   chan struct{}
+	mu          sync.Mutex
 }
 
 func (writer *asyncWriter) flushScheduler() {
-	var (
-		ticker *time.Ticker
-	)
-	ticker = time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
 	for {
 		select {
 		case <-ticker.C:
 			writer.flushToFile()
 		case _, open := <-writer.flushC:
+			writer.flushToFile()
 			if !open {
 				ticker.Stop()
+				writer.file.Close()
 				return
 			}
-			writer.flushToFile()
 		}
 	}
 }
@@ -105,12 +120,7 @@ func (writer *asyncWriter) Write(p []byte) (n int, err error) {
 func (writer *asyncWriter) Close() (err error) {
 	writer.mu.Lock()
 	defer writer.mu.Unlock()
-	if writer.closed {
-		return
-	}
 	close(writer.flushC)
-	writer.file.Close()
-	writer.closed = true
 	return
 }
 
@@ -127,58 +137,94 @@ func (writer *asyncWriter) flushToFile() {
 	copy(writer.flushTmp, writer.buffer.Bytes())
 	writer.buffer.Reset()
 	writer.mu.Unlock()
+	isRotateDay := false
+	select {
+	case <-writer.rotateDay:
+		isRotateDay = true
+	default:
+	}
+	if (writer.logSize+int64(flushLength))/(1024*1024) >= writer.
+		rollingSize || isRotateDay {
+		oldFile := writer.fileName + "." + time.Now().Format(
+			FileNameDateFormat) + RolledExtension
+		if _, err := os.Lstat(oldFile); err != nil {
+			if err := writer.rename(oldFile); err == nil {
+				if fp, err := os.OpenFile(writer.fileName, FileOpt, 0666); err == nil {
+					writer.file.Close()
+					writer.file = fp
+					writer.logSize = 0
+				}
+			}
+		}
+	}
+	writer.logSize += int64(flushLength)
 	writer.file.Write(writer.flushTmp[:flushLength])
 }
 
-func newAsyncWriter(out *os.File) *asyncWriter {
+func (writer *asyncWriter) rename(newName string) error {
+	if err := os.Rename(writer.fileName, newName); err != nil {
+		return err
+	}
+	return nil
+}
+
+func newAsyncWriter(fileName string, rollingSize int64) (*asyncWriter, error) {
+	fp, err := os.OpenFile(fileName, FileOpt, 0666)
+	if err != nil {
+		return nil, err
+	}
+	fInfo, err := fp.Stat()
+	if err != nil {
+		return nil, err
+	}
 	w := &asyncWriter{
-		file:   out,
-		buffer: bytes.NewBuffer(make([]byte, 0, WriterBufferInitSize)),
-		flushC: make(chan bool, 1000),
+		file:        fp,
+		fileName:    fileName,
+		rollingSize: rollingSize,
+		logSize:     fInfo.Size(),
+		buffer:      bytes.NewBuffer(make([]byte, 0, WriterBufferInitSize)),
+		flushC:      make(chan bool, 1000),
+		rotateDay:   make(chan struct{}, 1),
 	}
 	go w.flushScheduler()
-	return w
+	return w, nil
 }
 
-type closableLogger struct {
+type LogObject struct {
 	*log.Logger
-	closer io.Closer
+	object *asyncWriter
 }
 
-func (c *closableLogger) SetOutput(w io.WriteCloser) {
-	oldCloser := c.closer
-	defer oldCloser.Close()
-	c.closer = w
-	c.Logger.SetOutput(w)
-}
-
-func (c *closableLogger) Flush() {
-	if c.closer != nil {
-		if flusher, is := c.closer.(flusher); is {
-			flusher.Flush()
-		}
+func (ob *LogObject) Flush() {
+	if ob.object != nil {
+		ob.object.Flush()
 	}
 }
 
-func newCloseableLogger(writer io.WriteCloser, prefix string, flag int) *closableLogger {
-	return &closableLogger{
+func (ob *LogObject) SetRotateByDay() {
+	ob.object.rotateDay <- struct{}{}
+}
+
+func newLogObject(writer *asyncWriter, prefix string, flag int) *LogObject {
+	return &LogObject{
 		Logger: log.New(writer, prefix, flag),
-		closer: writer,
+		object: writer,
 	}
 }
 
 type Log struct {
-	dir          string
-	module       string
-	errorLogger  *closableLogger
-	warnLogger   *closableLogger
-	debugLogger  *closableLogger
-	infoLogger   *closableLogger
-	readLogger   *closableLogger
-	updateLogger *closableLogger
-	level        Level
-	msgC         chan string
-	startTime    time.Time
+	dir            string
+	module         string
+	errorLogger    *LogObject
+	warnLogger     *LogObject
+	debugLogger    *LogObject
+	infoLogger     *LogObject
+	readLogger     *LogObject
+	updateLogger   *LogObject
+	level          Level
+	msgC           chan string
+	rotate         *LogRotate
+	lastRolledTime time.Time
 }
 
 var (
@@ -192,7 +238,7 @@ var (
 
 var gLog *Log = nil
 
-func InitLog(dir, module string, level Level) (*Log, error) {
+func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 	l := new(Log)
 	l.dir = dir
 	l.module = module
@@ -204,12 +250,15 @@ func InitLog(dir, module string, level Level) (*Log, error) {
 			return nil, errors.New(dir + " is not a directory")
 		}
 	}
-
+	if rotate == nil {
+		rotate = NewLogRotate()
+	}
+	l.rotate = rotate
 	err = l.initLog(dir, module, level)
 	if err != nil {
 		return nil, err
 	}
-	l.startTime = time.Now()
+	l.lastRolledTime = time.Now()
 	go l.checkLogRotation(dir, module)
 
 	gLog = l
@@ -219,21 +268,20 @@ func InitLog(dir, module string, level Level) (*Log, error) {
 func (l *Log) initLog(logDir, module string, level Level) error {
 	logOpt := log.LstdFlags | log.Lmicroseconds
 
-	getNewLog := func(logFileName string) (newLogger *closableLogger, err error) {
-		var (
-			fp *os.File
-		)
-		if fp, err = os.OpenFile(path.Join(logDir, module+logFileName), FileOpt, 0666); err != nil {
+	newLog := func(logFileName string) (newLogger *LogObject, err error) {
+		logName := path.Join(logDir, module+logFileName)
+		w, err := newAsyncWriter(logName, l.rotate.rollingSize)
+		if err != nil {
 			return
 		}
-		newLogger = newCloseableLogger(newAsyncWriter(fp), "", logOpt)
+		newLogger = newLogObject(w, "", logOpt)
 		return
 	}
 	var err error
-	logHandles := [...]**closableLogger{&l.debugLogger, &l.infoLogger, &l.warnLogger, &l.errorLogger, &l.readLogger, &l.updateLogger}
+	logHandles := [...]**LogObject{&l.debugLogger, &l.infoLogger, &l.warnLogger, &l.errorLogger, &l.readLogger, &l.updateLogger}
 	logNames := [...]string{DebugLogFileName, InfoLogFileName, WarnLogFileName, ErrLogFileName, ReadLogFileName, UpdateLogFileName}
 	for i := range logHandles {
-		if *logHandles[i], err = getNewLog(logNames[i]); err != nil {
+		if *logHandles[i], err = newLog(logNames[i]); err != nil {
 			return err
 		}
 	}
@@ -258,7 +306,7 @@ func (l *Log) SetPrefix(s, level string) string {
 }
 
 func (l *Log) Flush() {
-	loggers := []*closableLogger{
+	loggers := []*LogObject{
 		l.debugLogger,
 		l.infoLogger,
 		l.warnLogger,
@@ -450,36 +498,64 @@ func LogFlush() {
 }
 
 func (l *Log) checkLogRotation(logDir, module string) {
+	var needDelFiles RolledFile
 	for {
-		yesterday := time.Now().AddDate(0, 0, -1)
-		_, err := os.Stat(logDir + "/" + module + ErrLogFileName + "." + yesterday.Format(FileNameDateFormat))
-		if err == nil || time.Now().Day() == l.startTime.Day() {
-			time.Sleep(time.Second * 600)
+		needDelFiles = needDelFiles[:0]
+		// check disk space
+		fs := syscall.Statfs_t{}
+		if err := syscall.Statfs(logDir, &fs); err != nil {
+			LogErrorf("check disk space: %s", err.Error())
+			continue
+		}
+		diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
+		diskSpaceLeft -= l.rotate.headRoom * 1024 * 1024
+		if diskSpaceLeft <= 0 {
+			// collector free file list
+			fp, err := os.Open(logDir)
+			if err != nil {
+				LogErrorf("error opening log directory: %s", err.Error())
+				continue
+			}
+
+			fInfos, err := fp.Readdir(0)
+			if err != nil {
+				LogErrorf("error read log directory files: %s", err.Error())
+				continue
+			}
+			for _, info := range fInfos {
+				if info.Mode().IsRegular() && strings.HasSuffix(info.Name(),
+					RolledExtension) {
+					needDelFiles = append(needDelFiles, info)
+				}
+			}
+			sort.Sort(needDelFiles)
+			// delete old file
+			for _, info := range needDelFiles {
+				if err = os.Remove(path.Join(logDir, info.Name())); err == nil {
+					diskSpaceLeft += info.Size()
+					if diskSpaceLeft > 0 {
+						break
+					}
+				} else {
+					LogErrorf("failed delete log file %s", info.Name())
+				}
+			}
+		}
+		// check is day rotate
+		now := time.Now()
+		if now.Day() == l.lastRolledTime.Day() {
+			time.Sleep(DefaultRollingInterval)
 			continue
 		}
 
-		setLogRotation := func(logFileName string, setLog *closableLogger) (err error) {
-			var (
-				logFilePath string
-				fp          *os.File
-			)
-			logFilePath = path.Join(logDir, module+logFileName)
-			if err = os.Rename(logFilePath, logFilePath+"."+yesterday.Format(FileNameDateFormat)); err != nil {
-				return
-			}
-			if fp, err = os.OpenFile(logFilePath, FileOpt, 0666); err != nil {
-				return
-			}
-			setLog.SetOutput(newAsyncWriter(fp))
-			return
-		}
-
 		// Rotate log files
-		setLogRotation(DebugLogFileName, l.debugLogger)
-		setLogRotation(InfoLogFileName, l.infoLogger)
-		setLogRotation(WarnLogFileName, l.warnLogger)
-		setLogRotation(ErrLogFileName, l.errorLogger)
-		setLogRotation(ReadLogFileName, l.readLogger)
-		setLogRotation(UpdateLogFileName, l.updateLogger)
+		l.debugLogger.SetRotateByDay()
+		l.infoLogger.SetRotateByDay()
+		l.warnLogger.SetRotateByDay()
+		l.errorLogger.SetRotateByDay()
+		l.readLogger.SetRotateByDay()
+		l.updateLogger.SetRotateByDay()
+
+		l.lastRolledTime = now
 	}
 }

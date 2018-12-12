@@ -27,7 +27,7 @@ func TestLog(t *testing.T) {
 	go func() {
 		http.ListenAndServe(":10000", nil)
 	}()
-	InitLog("/tmp/bdfs", "bdfs", DebugLevel)
+	InitLog("/tmp/bdfs", "bdfs", DebugLevel, nil)
 	for {
 		LogDebugf("action[TestLog] current time %v.", time.Now())
 		time.Sleep(200 * time.Millisecond)
