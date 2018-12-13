@@ -20,6 +20,7 @@ import (
 	"sync"
 
 	"github.com/juju/errors"
+
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/sdk/data/wrapper"
 	"github.com/tiglabs/containerfs/util/log"
@@ -104,13 +105,9 @@ func (client *ExtentClient) CloseStream(inode uint64) error {
 
 	log.LogDebugf("CloseStream: ino(%v) doing cleanup", inode)
 
-	select {
-	case stream.done <- struct{}{}:
-	default:
-	}
-
 	if writer != nil {
-		err := writer.Close()
+		err := writer.IssueCloseRequest()
+		writer.done <- struct{}{}
 		if err != nil {
 			return err
 		}
@@ -144,9 +141,10 @@ func (client *ExtentClient) SetFileSize(inode uint64, size int) {
 }
 
 func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write int, err error) {
+	prefix := fmt.Sprintf("inodewrite %v_%v_%v", inode, offset, len(data))
+
 	stream, sw := client.getStreamWriter(inode, true)
 	if sw == nil {
-		prefix := fmt.Sprintf("inodewrite %v_%v_%v", inode, offset, len(data))
 		return 0, fmt.Errorf("Prefix(%v) cannot init StreamWriter", prefix)
 	}
 
@@ -154,22 +152,12 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write 
 		stream.GetExtents()
 	})
 
-	request := writeRequestPool.Get().(*WriteRequest)
-	request.data = data
-	request.kernelOffset = offset
-	request.size = len(data)
-	request.done = make(chan struct{}, 1)
-	sw.requestCh <- request
-	<-request.done
-	err = request.err
-	write = request.canWrite
+	write, err = sw.IssueWriteRequest(offset, data)
 	if err != nil {
-		prefix := fmt.Sprintf("inodewrite %v_%v_%v", inode, offset, len(data))
 		err = errors.Annotatef(err, prefix)
 		log.LogError(errors.ErrorStack(err))
 		ump.Alarm(gDataWrapper.UmpWarningKey(), err.Error())
 	}
-	writeRequestPool.Put(request)
 	return
 }
 
@@ -178,7 +166,7 @@ func (client *ExtentClient) Flush(inode uint64) error {
 	if sw == nil {
 		return nil
 	}
-	return sw.Flush()
+	return sw.IssueFlushRequest()
 }
 
 func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int) (read int, err error) {

@@ -81,8 +81,8 @@ func (s *DataNode) operatePacket(pkg *Packet, c *net.TCPConn) {
 		s.handleNotifyExtentRepair(pkg)
 	case proto.OpGetWatermark:
 		s.handleGetWatermark(pkg)
-	case proto.OpExtentStoreGetAllWaterMark:
-		s.handleExtentStoreGetAllWatermark(pkg)
+	case proto.OpGetAllWaterMark:
+		s.handleGetAllWatermark(pkg)
 	case proto.OpCreateDataPartition:
 		s.handleCreateDataPartition(pkg)
 	case proto.OpLoadDataPartition:
@@ -97,6 +97,8 @@ func (s *DataNode) operatePacket(pkg *Packet, c *net.TCPConn) {
 		s.handleGetAppliedId(pkg)
 	case proto.OpOfflineDataPartition:
 		s.handleOfflineDataPartition(pkg)
+	case proto.OpGetPartitionSize:
+		s.handleGetPartitionSize(pkg)
 
 	default:
 		pkg.PackErrorBody(ErrorUnknownOp.Error(), ErrorUnknownOp.Error()+strconv.Itoa(int(pkg.Opcode)))
@@ -431,7 +433,7 @@ func (s *DataNode) handleGetWatermark(pkg *Packet) {
 }
 
 // Handle OpExtentStoreGetAllWaterMark packet.
-func (s *DataNode) handleExtentStoreGetAllWatermark(pkg *Packet) {
+func (s *DataNode) handleGetAllWatermark(pkg *Packet) {
 	var (
 		buf       []byte
 		fInfoList []*storage.FileInfo
@@ -506,12 +508,24 @@ func (s *DataNode) handleGetAppliedId(pkg *Packet) {
 	return
 }
 
+func (s *DataNode) handleGetPartitionSize (pkg *Packet) {
+	partitionSize := pkg.partition.GetPartitionSize()
+
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, uint64(partitionSize))
+	pkg.PackOkWithBody(buf)
+
+	log.LogDebugf("handleGetPartitionSize partition=%v partitionSize=%v",
+		pkg.partition.ID(), partitionSize)
+	return
+}
+
 func (s *DataNode) handleOfflineDataPartition(pkg *Packet) {
 	var (
-		err      error
-		reqData  []byte
-		isLeader bool
-		req      = &proto.DataPartitionOfflineRequest{}
+		err          error
+		reqData      []byte
+		isRaftLeader bool
+		req                = &proto.DataPartitionOfflineRequest{}
 	)
 
 	defer func() {
@@ -541,8 +555,8 @@ func (s *DataNode) handleOfflineDataPartition(pkg *Packet) {
 		return
 	}
 
-	isLeader, err = s.serveProxy(dp, pkg)
-	if !isLeader {
+	isRaftLeader, err = s.transferToRaftLeader(dp, pkg)
+	if !isRaftLeader {
 		return
 	}
 
@@ -585,21 +599,24 @@ end:
 	return
 }
 
-func (d *DataNode) serveProxy(dp DataPartition, p *Packet) (ok bool, err error) {
+func (d *DataNode) transferToRaftLeader(dp DataPartition, p *Packet) (ok bool, err error) {
 	var (
 		conn       *net.TCPConn
 		leaderAddr string
 	)
 
-	// if local is not leader, send the pkg to leader
-	if leaderAddr, ok = dp.IsLeader(); ok {
+	// If local is leader return to continue.
+	if leaderAddr, ok = dp.IsRaftLeader(); ok {
 		return
 	}
+
+	// If leaderAddr is nil return ErrNoLeader
 	if leaderAddr == "" {
 		err = storage.ErrNoLeader
 		return
 	}
 
+	// If local is not leader transfer the packet to leader
 	conn, err = gConnPool.Get(leaderAddr)
 	if err != nil {
 		gConnPool.Put(conn, true)

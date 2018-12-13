@@ -72,7 +72,7 @@ func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey) {
 	//	}
 
 	if cache.gen != 0 && cache.gen >= gen {
-		log.LogDebugf("ExtentCache update: no need to update")
+		log.LogDebugf("ExtentCache update: no need to update, ino(%v) gen(%v) size(%v)", cache.inode, gen, size)
 		return
 	}
 
@@ -149,12 +149,13 @@ func (cache *ExtentCache) List() []*proto.ExtentKey {
 }
 
 func (cache *ExtentCache) Get(offset uint64) (ret *proto.ExtentKey) {
-	pivot := &proto.ExtentKey{FileOffset: offset + 1}
+	pivot := &proto.ExtentKey{FileOffset: offset}
 	cache.RLock()
 	defer cache.RUnlock()
 
-	cache.root.AscendLessThan(pivot, func(i btree.Item) bool {
+	cache.root.DescendLessOrEqual(pivot, func(i btree.Item) bool {
 		ek := i.(*proto.ExtentKey)
+		//log.LogDebugf("ExtentCache Get: ino(%v) ek(%v) offset(%v)", cache.inode, ek, offset)
 		if offset >= ek.FileOffset && offset < ek.FileOffset+uint64(ek.Size) {
 			ret = ek
 		}

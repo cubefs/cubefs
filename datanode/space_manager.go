@@ -349,7 +349,7 @@ func (s *DataNode) fillHeartBeatResponse(response *proto.DataNodeHeartBeatRespon
 	response.PartitionInfo = make([]*proto.PartitionReport, 0)
 	space := s.space
 	space.RangePartitions(func(partition DataPartition) bool {
-		leaderAddr, isLeader := partition.IsLeader()
+		leaderAddr, isLeader := partition.IsRaftLeader()
 		vr := &proto.PartitionReport{
 			PartitionID:     uint64(partition.ID()),
 			PartitionStatus: partition.Status(),

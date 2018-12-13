@@ -104,6 +104,7 @@ func (rndWrtItem *RndWrtCmdItem) rndWrtCmdUnmarshal(cmd []byte) (err error) {
 	return json.Unmarshal(cmd, rndWrtItem)
 }
 
+// Submit the propose to raft.
 func (dp *dataPartition) RandomWriteSubmit(pkg *Packet) (err error) {
 	val, err := rndWrtDataMarshal(pkg.FileID, pkg.Offset, int64(pkg.Size), pkg.Data, pkg.Crc)
 	if err != nil {
@@ -152,19 +153,11 @@ func (dp *dataPartition) RandomPartitionReadCheck(request *Packet, connect net.C
 	if !dp.config.RandomWrite || request.Opcode == proto.OpExtentRepairRead || !dp.hadRandomWrite {
 		return
 	}
-	_, ok := dp.IsLeader()
+	_, ok := dp.IsRaftLeader()
 	if !ok {
 		err = storage.ErrNotLeader
 		log.LogErrorf("[readCheck] read ErrorNotLeader partition=%v", dp.partitionId)
 		return
-	}
-
-	if dp.applyId+2 < dp.raftPartition.CommittedIndex() {
-		//err = storage.ErrorAgain
-		log.LogErrorf("[readCheck] ErrorAgain req_%v_%v_%v_%v_%v, applyId=%v committedId=%v raftApplied=%v",
-			dp.partitionId, request.FileID, request.Offset, request.Size, request.Crc,
-			dp.applyId, dp.raftPartition.CommittedIndex(), dp.raftPartition.AppliedIndex())
-		//return
 	}
 
 	return

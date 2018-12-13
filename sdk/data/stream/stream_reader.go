@@ -37,7 +37,6 @@ func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
 		client:  client,
 		extents: NewExtentCache(inode),
 		inode:   inode,
-		done:    make(chan struct{}, 1),
 	}
 	return stream
 }
