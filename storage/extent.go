@@ -324,7 +324,7 @@ func (e *fsExtent) WriteTiny(data []byte, offset, size int64, crc uint32) (err e
 	return
 }
 
-func (e *fsExtent) WriteTinyRecover(data []byte, offset, size int64, crc uint32) (err error) {
+func (e *fsExtent) TinyRecover(data []byte, offset, size int64, crc uint32) (err error) {
 	if !IsTinyExtent(e.extentId) {
 		return ErrorUnavaliExtent
 	}
@@ -438,12 +438,6 @@ func (e *fsExtent) updateBlockCrc(blockNo int, crc uint32) (err error) {
 	return
 }
 
-func (e *fsExtent) getBlockCrc(blockNo int) (crc uint32) {
-	startIdx := util.BlockHeaderCrcIndex + blockNo*util.PerBlockCrcSize
-	endIdx := startIdx + util.PerBlockCrcSize
-	crc = binary.BigEndian.Uint32(e.header[startIdx:endIdx])
-	return
-}
 
 func (e *fsExtent) checkOffsetAndSize(offset, size int64) error {
 	if offset+size > util.BlockSize*util.BlockCount {

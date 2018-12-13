@@ -403,17 +403,6 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	return
 }
 
-func (p *Packet) WriteHeaderToConn(c net.Conn) (err error) {
-	header, err := Buffers.Get(util.PacketHeaderSize)
-	if err != nil {
-		header = make([]byte, util.PacketHeaderSize)
-	}
-	defer Buffers.Put(header)
-	p.MarshalHeader(header)
-	_, err = c.Write(header)
-
-	return
-}
 
 func ReadFull(c net.Conn, buf *[]byte, readSize int) (err error) {
 	*buf = make([]byte, readSize)
@@ -502,7 +491,7 @@ func (p *Packet) IsTransitPkg() bool {
 	return p.Nodes > 0
 }
 
-func (p *Packet) ActionMsg(action, remote string, start int64, err error) (m string) {
+func (p *Packet) LogMessage(action, remote string, start int64, err error) (m string) {
 	if err == nil {
 		m = fmt.Sprintf("id[%v] op[%v] remote[%v] "+
 			" cost[%v] transite[%v] nodes[%v]",

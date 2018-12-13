@@ -146,7 +146,7 @@ func (s *DataNode) randomOpReq(pkg *Packet, packetProcessor *PacketProcessor) {
 			log.LogErrorf("action[randomOp] %v", logContent)
 		} else {
 			logContent := fmt.Sprintf("action[randomOp] op[%v].",
-				pkg.ActionMsg(pkg.GetOpMsg(), packetProcessor.sourceConn.RemoteAddr().String(), start, nil))
+				pkg.LogMessage(pkg.GetOpMsg(), packetProcessor.sourceConn.RemoteAddr().String(), start, nil))
 			log.LogWrite(logContent)
 			pkg.PackOkReply()
 		}
@@ -204,7 +204,7 @@ func (s *DataNode) sequenceOpReq(req *Packet, packetProcessor *PacketProcessor) 
 func (s *DataNode) WriteResponseToClient(reply *Packet, packetProcessor *PacketProcessor) {
 	var err error
 	if reply.IsErrPack() {
-		err = fmt.Errorf(reply.ActionMsg(ActionWriteToCli, packetProcessor.sourceConn.RemoteAddr().String(),
+		err = fmt.Errorf(reply.LogMessage(ActionWriteToCli, packetProcessor.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
 		reply.forceDestoryAllConnect()
 		log.LogErrorf("action[WriteResponseToClient] %v", err)
@@ -212,7 +212,7 @@ func (s *DataNode) WriteResponseToClient(reply *Packet, packetProcessor *PacketP
 	s.cleanupPkg(reply)
 
 	if err = reply.WriteToConn(packetProcessor.sourceConn); err != nil {
-		err = fmt.Errorf(reply.ActionMsg(ActionWriteToCli, packetProcessor.sourceConn.RemoteAddr().String(),
+		err = fmt.Errorf(reply.LogMessage(ActionWriteToCli, packetProcessor.sourceConn.RemoteAddr().String(),
 			reply.StartT, err))
 		log.LogErrorf("action[WriteResponseToClient] %v", err)
 		reply.forceDestoryAllConnect()
@@ -220,7 +220,7 @@ func (s *DataNode) WriteResponseToClient(reply *Packet, packetProcessor *PacketP
 	}
 	if !reply.IsMasterCommand() {
 		s.addMetrics(reply)
-		log.LogDebugf("action[WriteResponseToClient] %v", reply.ActionMsg(ActionWriteToCli,
+		log.LogDebugf("action[WriteResponseToClient] %v", reply.LogMessage(ActionWriteToCli,
 			packetProcessor.sourceConn.RemoteAddr().String(), reply.StartT, err))
 		s.statsFlow(reply, OutFlow)
 	}
@@ -287,7 +287,7 @@ func (s *DataNode) receiveFromReplicate(request *Packet, index int) (reply *Pack
 	if request.IsErrPack() {
 		err = errors.Annotatef(fmt.Errorf(request.getErr()), "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
 		log.LogErrorf("action[receiveFromReplicate] %v.",
-			request.ActionMsg(ActionReceiveFromNext, LocalProcessAddr, request.StartT, fmt.Errorf(request.getErr())))
+			request.LogMessage(ActionReceiveFromNext, LocalProcessAddr, request.StartT, fmt.Errorf(request.getErr())))
 		return
 	}
 
@@ -295,7 +295,7 @@ func (s *DataNode) receiveFromReplicate(request *Packet, index int) (reply *Pack
 
 	if err = reply.ReadFromConn(request.replicateConns[index], proto.ReadDeadlineTime); err != nil {
 		err = errors.Annotatef(err, "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
-		log.LogErrorf("action[receiveFromReplicate] %v.", request.ActionMsg(ActionReceiveFromNext, request.replicateAddrs[index], request.StartT, err))
+		log.LogErrorf("action[receiveFromReplicate] %v.", request.LogMessage(ActionReceiveFromNext, request.replicateAddrs[index], request.StartT, err))
 		return
 	}
 
@@ -315,7 +315,7 @@ func (s *DataNode) receiveFromReplicate(request *Packet, index int) (reply *Pack
 		return
 	}
 
-	log.LogDebugf("action[receiveFromReplicate] %v.", reply.ActionMsg(ActionReceiveFromNext, request.replicateAddrs[index], request.StartT, err))
+	log.LogDebugf("action[receiveFromReplicate] %v.", reply.LogMessage(ActionReceiveFromNext, request.replicateAddrs[index], request.StartT, err))
 	return
 }
 

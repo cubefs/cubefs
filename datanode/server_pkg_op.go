@@ -49,11 +49,11 @@ func (s *DataNode) operatePacket(pkg *Packet, c *net.TCPConn) {
 		if pkg.IsErrPack() {
 			err = fmt.Errorf("op[%v] error[%v]", pkg.GetOpMsg(), string(pkg.Data[:resultSize]))
 			logContent := fmt.Sprintf("action[operatePacket] %v.",
-				pkg.ActionMsg(pkg.GetOpMsg(), c.RemoteAddr().String(), start, err))
+				pkg.LogMessage(pkg.GetOpMsg(), c.RemoteAddr().String(), start, err))
 			log.LogErrorf(logContent)
 		} else {
 			logContent := fmt.Sprintf("action[operatePacket] %v.",
-				pkg.ActionMsg(pkg.GetOpMsg(), c.RemoteAddr().String(), start, nil))
+				pkg.LogMessage(pkg.GetOpMsg(), c.RemoteAddr().String(), start, nil))
 			switch pkg.Opcode {
 			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead:
 				log.LogRead(logContent)
@@ -358,7 +358,7 @@ func (s *DataNode) handleStreamRead(request *Packet, connect net.Conn) {
 	if err = request.partition.RandomPartitionReadCheck(request, connect); err != nil {
 		request.PackErrorBody(ActionStreamRead, err.Error())
 		if err = request.WriteToConn(connect); err != nil {
-			err = fmt.Errorf(request.ActionMsg(ActionWriteToCli, connect.RemoteAddr().String(), request.StartT, err))
+			err = fmt.Errorf(request.LogMessage(ActionWriteToCli, connect.RemoteAddr().String(), request.StartT, err))
 			log.LogErrorf(err.Error())
 		}
 		return
@@ -388,7 +388,7 @@ func (s *DataNode) handleStreamRead(request *Packet, connect net.Conn) {
 		if err != nil {
 			reply.PackErrorBody(ActionStreamRead, err.Error())
 			if err = reply.WriteToConn(connect); err != nil {
-				err = fmt.Errorf(reply.ActionMsg(ActionWriteToCli, connect.RemoteAddr().String(),
+				err = fmt.Errorf(reply.LogMessage(ActionWriteToCli, connect.RemoteAddr().String(),
 					reply.StartT, err))
 				log.LogErrorf(err.Error())
 			}
@@ -397,7 +397,7 @@ func (s *DataNode) handleStreamRead(request *Packet, connect net.Conn) {
 		reply.Size = uint32(currReadSize)
 		reply.ResultCode = proto.OpOk
 		if err = reply.WriteToConn(connect); err != nil {
-			err = fmt.Errorf(reply.ActionMsg(ActionWriteToCli, connect.RemoteAddr().String(),
+			err = fmt.Errorf(reply.LogMessage(ActionWriteToCli, connect.RemoteAddr().String(),
 				reply.StartT, err))
 			log.LogErrorf(err.Error())
 			connect.Close()
