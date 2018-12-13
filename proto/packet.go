@@ -45,15 +45,15 @@ const (
 
 //operations
 const (
-	ProtoMagic                   uint8 = 0xFF
-	OpInitResultCode             uint8 = 0x00
-	OpCreateFile                 uint8 = 0x01
-	OpMarkDelete                 uint8 = 0x02
-	OpWrite                      uint8 = 0x03
-	OpRead                       uint8 = 0x04
-	OpStreamRead                 uint8 = 0x05
-	OpGetWatermark               uint8 = 0x06
-	OpGetAllWaterMark            uint8 = 0x07
+	ProtoMagic        uint8 = 0xFF
+	OpInitResultCode  uint8 = 0x00
+	OpCreateFile      uint8 = 0x01
+	OpMarkDelete      uint8 = 0x02
+	OpWrite           uint8 = 0x03
+	OpRead            uint8 = 0x04
+	OpStreamRead      uint8 = 0x05
+	OpGetWatermark    uint8 = 0x06
+	OpGetAllWaterMark uint8 = 0x07
 
 	OpNotifyExtentRepair      uint8 = 0x08
 	OpExtentRepairRead        uint8 = 0x09

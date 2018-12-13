@@ -357,7 +357,7 @@ func (s *ExtentStore) Write(extentId uint64, offset, size int64, data []byte, cr
 	return nil
 }
 
-func (s *ExtentStore) WriteTinyRecover(extentId uint64, offset, size int64, data []byte, crc uint32) (err error) {
+func (s *ExtentStore) TinyExtentRecover(extentId uint64, offset, size int64, data []byte, crc uint32) (err error) {
 	var (
 		extentInfo *FileInfo
 		has        bool

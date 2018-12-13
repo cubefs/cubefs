@@ -118,7 +118,7 @@ func (s *DataNode) processPacket(req *Packet, packetProcessor *PacketProcessor) 
 func (s *DataNode) addExtentInfo(pkg *Packet) error {
 	if pkg.isHeadNode() && pkg.StoreMode == proto.TinyExtentMode && pkg.IsWriteOperation() {
 		store := pkg.partition.GetStore()
-		extentId, err := store.GetAvaliTinyExtent()  // Get a valid tinyExtentId
+		extentId, err := store.GetAvaliTinyExtent() // Get a valid tinyExtentId
 		if err != nil {
 			return err
 		}
@@ -226,7 +226,6 @@ func (s *DataNode) WriteResponseToClient(reply *Packet, packetProcessor *PacketP
 	}
 
 }
-
 
 // The head node release tinyExtent to store
 func (s *DataNode) cleanupPkg(pkg *Packet) {

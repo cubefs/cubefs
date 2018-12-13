@@ -508,7 +508,7 @@ func (s *DataNode) handleGetAppliedId(pkg *Packet) {
 	return
 }
 
-func (s *DataNode) handleGetPartitionSize (pkg *Packet) {
+func (s *DataNode) handleGetPartitionSize(pkg *Packet) {
 	partitionSize := pkg.partition.GetPartitionSize()
 
 	buf := make([]byte, 8)
@@ -525,7 +525,7 @@ func (s *DataNode) handleOfflineDataPartition(pkg *Packet) {
 		err          error
 		reqData      []byte
 		isRaftLeader bool
-		req                = &proto.DataPartitionOfflineRequest{}
+		req          = &proto.DataPartitionOfflineRequest{}
 	)
 
 	defer func() {
