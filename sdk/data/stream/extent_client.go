@@ -107,7 +107,6 @@ func (client *ExtentClient) CloseStream(inode uint64) error {
 
 	if writer != nil {
 		err := writer.IssueCloseRequest()
-		writer.done <- struct{}{}
 		if err != nil {
 			return err
 		}

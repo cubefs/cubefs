@@ -115,6 +115,7 @@ func (sw *StreamWriter) IssueCloseRequest() error {
 	<-request.done
 	err := request.err
 	closeRequestPool.Put(request)
+	sw.done <- struct{}{}
 	return err
 }
 
@@ -270,8 +271,7 @@ func (sw *StreamWriter) doWrite(data []byte, offset, size int) (total int, err e
 			break
 		}
 
-		// handler is already set to closed in Write
-		sw.handler = nil
+		sw.closeOpenHandler()
 	}
 
 	if err != nil || ek == nil {
@@ -287,14 +287,6 @@ func (sw *StreamWriter) doWrite(data []byte, offset, size int) (total int, err e
 }
 
 func (sw *StreamWriter) flush() (err error) {
-	//	if sw.handler != nil {
-	//		_, err = sw.handler.flush()
-	//		if err != nil {
-	//			return
-	//		}
-	//		sw.dirty = false // current handler will be removed from dirty list inspite of its status
-	//	}
-
 	for {
 		element := sw.dirtylist.Get()
 		if element == nil {
@@ -349,7 +341,7 @@ func (sw *StreamWriter) traverse() (err error) {
 	return
 }
 
-func (sw *StreamWriter) close() (err error) {
+func (sw *StreamWriter) closeOpenHandler() {
 	if sw.handler != nil {
 		sw.handler.setClosed()
 		if !sw.dirty {
@@ -359,6 +351,10 @@ func (sw *StreamWriter) close() (err error) {
 		}
 		sw.handler = nil
 	}
+}
+
+func (sw *StreamWriter) close() (err error) {
+	sw.closeOpenHandler()
 	err = sw.flush()
 	if err != nil {
 		sw.abort()
