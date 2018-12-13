@@ -403,7 +403,6 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	return
 }
 
-
 func ReadFull(c net.Conn, buf *[]byte, readSize int) (err error) {
 	*buf = make([]byte, readSize)
 	_, err = io.ReadFull(c, (*buf)[:readSize])

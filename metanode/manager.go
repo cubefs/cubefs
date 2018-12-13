@@ -30,7 +30,7 @@ import (
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
-	"github.com/tiglabs/containerfs/third_party/pool"
+	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/ump"
 )
@@ -57,7 +57,7 @@ type metaManager struct {
 	nodeId     uint64
 	rootDir    string
 	raftStore  raftstore.RaftStore
-	connPool   *pool.ConnectPool
+	connPool   *util.ConnectPool
 	state      uint32
 	mu         sync.RWMutex
 	partitions map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
@@ -149,7 +149,7 @@ func (m *metaManager) Stop() {
 }
 
 func (m *metaManager) onStart() (err error) {
-	m.connPool = pool.NewConnPool()
+	m.connPool = util.NewConnectPool()
 	err = m.loadPartitions()
 	return
 }

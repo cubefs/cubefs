@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/third_party/pool"
+	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 	"net"
 )
@@ -46,7 +46,7 @@ type AdminTaskSender struct {
 	TaskMap    map[string]*proto.AdminTask
 	sync.Mutex
 	exitCh   chan struct{}
-	connPool *pool.ConnectPool
+	connPool *util.ConnectPool
 }
 
 func NewAdminTaskSender(targetAddr, clusterID string) (sender *AdminTaskSender) {
@@ -56,7 +56,7 @@ func NewAdminTaskSender(targetAddr, clusterID string) (sender *AdminTaskSender) 
 		clusterID:  clusterID,
 		TaskMap:    make(map[string]*proto.AdminTask),
 		exitCh:     make(chan struct{}, 1),
-		connPool:   pool.NewConnPool(),
+		connPool:   util.NewConnectPool(),
 	}
 	go sender.process()
 

@@ -438,7 +438,6 @@ func (e *fsExtent) updateBlockCrc(blockNo int, crc uint32) (err error) {
 	return
 }
 
-
 func (e *fsExtent) checkOffsetAndSize(offset, size int64) error {
 	if offset+size > util.BlockSize*util.BlockCount {
 		return NewParamMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))

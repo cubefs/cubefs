@@ -1,26 +1,18 @@
-// Copyright 2018 The Silenceper Authors
-// Modified work copyright (C) 2018 The Containerfs Authors.
+// Copyright 2018 The Containerfs Authors.
 //
-// The MIT License (MIT)
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
 
-package pool
+package util
 
 import (
 	"net"
@@ -42,7 +34,7 @@ type ConnectPool struct {
 	timeout int64
 }
 
-func NewConnPool() (cp *ConnectPool) {
+func NewConnectPool() (cp *ConnectPool) {
 	cp = &ConnectPool{pools: make(map[string]*Pool), mincap: 5, maxcap: 100, timeout: int64(time.Minute)}
 	go cp.autoRelease()
 
@@ -82,7 +74,7 @@ func (cp *ConnectPool) Put(c *net.TCPConn, forceClose bool) {
 		return
 	}
 	object := &ConnectObject{conn: c, idle: time.Now().UnixNano()}
-	pool.putconnect(object)
+	pool.put(object)
 
 	return
 }
@@ -128,7 +120,7 @@ func (cp *ConnectPool) CheckErrorForPutConnect(c *net.TCPConn, target string, er
 		return
 	}
 	object := &ConnectObject{conn: c, idle: time.Now().UnixNano()}
-	pool.putconnect(object)
+	pool.put(object)
 }
 
 func (cp *ConnectPool) ReleaseAllConnect(target string) {
@@ -183,12 +175,12 @@ func (p *Pool) initAllConnect() {
 			conn.SetKeepAlive(true)
 			conn.SetNoDelay(true)
 			obj := &ConnectObject{conn: conn, idle: time.Now().UnixNano()}
-			p.putconnect(obj)
+			p.put(obj)
 		}
 	}
 }
 
-func (p *Pool) putconnect(c *ConnectObject) {
+func (p *Pool) put(c *ConnectObject) {
 	select {
 	case p.pool <- c:
 		return
@@ -200,7 +192,7 @@ func (p *Pool) putconnect(c *ConnectObject) {
 	}
 }
 
-func (p *Pool) getconnect() (c *ConnectObject) {
+func (p *Pool) get() (c *ConnectObject) {
 	select {
 	case c = <-p.pool:
 		return
@@ -217,7 +209,7 @@ func (p *Pool) AutoRelease() {
 			if time.Now().UnixNano()-int64(c.idle) > p.timeout {
 				c.conn.Close()
 			} else {
-				p.putconnect(c)
+				p.put(c)
 			}
 		default:
 			return
@@ -237,7 +229,7 @@ func (p *Pool) ForceReleaseAllConnect() {
 }
 
 func (p *Pool) Get() (c *net.TCPConn, err error) {
-	obj := p.getconnect()
+	obj := p.get()
 	if obj != nil {
 		return obj.conn, nil
 	}

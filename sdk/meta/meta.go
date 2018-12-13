@@ -24,7 +24,6 @@ import (
 	"github.com/tiglabs/containerfs/third_party/btree"
 
 	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/third_party/pool"
 	"github.com/tiglabs/containerfs/util"
 )
 
@@ -53,7 +52,7 @@ type MetaWrapper struct {
 	cluster string
 	volname string
 	master  util.MasterHelper
-	conns   *pool.ConnectPool
+	conns   *util.ConnectPool
 
 	// Partitions and ranges should be modified together. So do not
 	// use partitions and ranges directly. Use the helper functions instead.
@@ -80,7 +79,7 @@ func NewMetaWrapper(volname, masterHosts string) (*MetaWrapper, error) {
 	for _, ip := range master {
 		mw.master.AddNode(ip)
 	}
-	mw.conns = pool.NewConnPool()
+	mw.conns = util.NewConnectPool()
 	mw.partitions = make(map[uint64]*MetaPartition)
 	mw.ranges = btree.New(32)
 	mw.rwPartitions = make([]*MetaPartition, 0)
