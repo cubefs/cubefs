@@ -56,7 +56,7 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 	err = sc.Send(reqPacket, func(conn *net.TCPConn) (error, bool) {
 		readBytes = 0
 		for readBytes < size {
-			replyPacket := NewReply(reqPacket.ReqID, reader.dp.PartitionID, reqPacket.FileID)
+			replyPacket := NewReply(reqPacket.ReqID, reader.dp.PartitionID, reqPacket.ExtentID)
 			bufSize := util.Min(util.ReadBlockSize, size-readBytes)
 			replyPacket.Data = req.Data[readBytes : readBytes+bufSize]
 			e := replyPacket.ReadFromConnStream(conn, proto.ReadDeadlineTime)
@@ -104,8 +104,8 @@ func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet) (er
 		return
 	}
 	expectCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
-	if reply.Crc != expectCrc {
-		err = errors.New(fmt.Sprintf("checkStreamReply: inconsistent CRC, expectCRC(%v) replyCRC(%v)", expectCrc, reply.Crc))
+	if reply.CRC != expectCrc {
+		err = errors.New(fmt.Sprintf("checkStreamReply: inconsistent CRC, expectCRC(%v) replyCRC(%v)", expectCrc, reply.CRC))
 		return
 	}
 	return nil

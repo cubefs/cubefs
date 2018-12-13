@@ -178,7 +178,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 			resp.Size = reqlen
 		}
 
-		//f.super.ec.SetFileSize(ino, int(req.Offset)+reqlen)
+		//f.super.ec.SetFileSize(ino, int(req.ExtentOffset)+reqlen)
 		//resp.Size = reqlen
 		log.LogDebugf("fallocate: ino(%v) origFilesize(%v) req(%v) err(%v)", f.inode.ino, filesize, req, err)
 		return

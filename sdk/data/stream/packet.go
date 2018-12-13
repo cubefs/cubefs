@@ -35,7 +35,7 @@ type Packet struct {
 }
 
 func (p *Packet) String() string {
-	return fmt.Sprintf("ReqID(%v) Op(%v) Inode(%v) FileOffset(%v) Size(%v) PartitionID(%v) FileID(%v) Offset(%v) CRC(%v) ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.inode, p.kernelOffset, p.Size, p.PartitionID, p.FileID, p.Offset, p.Crc, p.GetResultMesg())
+	return fmt.Sprintf("ReqID(%v) Op(%v) Inode(%v) FileOffset(%v) Size(%v) PartitionID(%v) ExtentID(%v) ExtentOffset(%v) CRC(%v) ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.inode, p.kernelOffset, p.Size, p.PartitionID, p.ExtentID, p.ExtentOffset, p.CRC, p.GetResultMesg())
 }
 
 func NewPacket(inode uint64, offset int) *Packet {
@@ -56,8 +56,8 @@ func NewWritePacket(dp *wrapper.DataPartition, extentId uint64, offset int, inod
 	p.Magic = proto.ProtoMagic
 	p.Data = make([]byte, 0)
 	p.StoreMode = proto.NormalExtentMode
-	p.FileID = extentId
-	p.Offset = int64(offset)
+	p.ExtentID = extentId
+	p.ExtentOffset = int64(offset)
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.Arglen = uint32(len(p.Arg))
 	p.Nodes = uint8(len(dp.Hosts) - 1)
@@ -76,10 +76,10 @@ func NewWritePacket(dp *wrapper.DataPartition, extentId uint64, offset int, inod
 
 func NewReadPacket(key *proto.ExtentKey, offset, size int) (p *Packet) {
 	p = new(Packet)
-	p.FileID = key.ExtentId
+	p.ExtentID = key.ExtentId
 	p.PartitionID = key.PartitionId
 	p.Magic = proto.ProtoMagic
-	p.Offset = int64(offset)
+	p.ExtentOffset = int64(offset)
 	p.Size = uint32(size)
 	p.Opcode = proto.OpRead
 	p.StoreMode = proto.NormalExtentMode
@@ -91,10 +91,10 @@ func NewReadPacket(key *proto.ExtentKey, offset, size int) (p *Packet) {
 
 func NewStreamReadPacket(key *proto.ExtentKey, offset, size int, inode uint64, fileOffset int) (p *Packet) {
 	p = new(Packet)
-	p.FileID = key.ExtentId
+	p.ExtentID = key.ExtentId
 	p.PartitionID = key.PartitionId
 	p.Magic = proto.ProtoMagic
-	p.Offset = int64(offset)
+	p.ExtentOffset = int64(offset)
 	p.Size = uint32(size)
 	p.Opcode = proto.OpStreamRead
 	p.StoreMode = proto.NormalExtentMode
@@ -131,7 +131,7 @@ func NewDeleteExtentPacket(dp *wrapper.DataPartition, extentId uint64) (p *Packe
 	p.Opcode = proto.OpMarkDelete
 	p.StoreMode = proto.NormalExtentMode
 	p.PartitionID = dp.PartitionID
-	p.FileID = extentId
+	p.ExtentID = extentId
 	p.ReqID = proto.GetReqID()
 	p.Nodes = uint8(len(dp.Hosts) - 1)
 	p.Arg = ([]byte)(dp.GetAllAddrs())
@@ -143,7 +143,7 @@ func NewReply(reqId int64, partition uint32, extentId uint64) (p *Packet) {
 	p = new(Packet)
 	p.ReqID = reqId
 	p.PartitionID = partition
-	p.FileID = extentId
+	p.ExtentID = extentId
 	p.Magic = proto.ProtoMagic
 	p.StoreMode = proto.NormalExtentMode
 
@@ -158,14 +158,14 @@ func (p *Packet) IsEqualWriteReply(q *Packet) bool {
 }
 
 func (p *Packet) IsEqualReadReply(q *Packet) bool {
-	if p.ReqID == q.ReqID && p.PartitionID == q.PartitionID && p.FileID == q.FileID && p.Offset == q.Offset && p.Size == q.Size {
+	if p.ReqID == q.ReqID && p.PartitionID == q.PartitionID && p.ExtentID == q.ExtentID && p.ExtentOffset == q.ExtentOffset && p.Size == q.Size {
 		return true
 	}
 	return false
 }
 
 func (p *Packet) IsEqualStreamReadReply(q *Packet) bool {
-	if p.ReqID == q.ReqID && p.PartitionID == q.PartitionID && p.FileID == q.FileID {
+	if p.ReqID == q.ReqID && p.PartitionID == q.PartitionID && p.ExtentID == q.ExtentID {
 		return true
 	}
 
@@ -197,7 +197,7 @@ func (p *Packet) getPacketLength() int {
 }
 
 func (p *Packet) writeTo(conn net.Conn) (err error) {
-	p.Crc = crc32.ChecksumIEEE(p.Data[:p.Size])
+	p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
 	err = p.WriteToConn(conn)
 
 	return

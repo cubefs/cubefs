@@ -1432,7 +1432,7 @@ type GetxattrRequest struct {
 	// Name of the attribute requested.
 	Name string
 
-	// Offset within extended attributes.
+	// ExtentOffset within extended attributes.
 	//
 	// Only valid for OS X, and then only with the resource fork
 	// attribute.
@@ -1545,7 +1545,7 @@ type SetxattrRequest struct {
 	// TODO XATTR_REPLACE and not exist -> ENODATA
 	Flags uint32
 
-	// Offset within extended attributes.
+	// ExtentOffset within extended attributes.
 	//
 	// Only valid for OS X, and then only with the resource fork
 	// attribute.

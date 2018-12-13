@@ -132,21 +132,21 @@ const (
 )
 
 type Packet struct {
-	Magic       uint8
-	StoreMode   uint8
-	Opcode      uint8
-	ResultCode  uint8
-	Nodes       uint8
-	Crc         uint32
-	Size        uint32
-	Arglen      uint32
-	PartitionID uint32
-	FileID      uint64
-	Offset      int64
-	ReqID       int64
-	Arg         []byte //if create or append ops, data contains addrs
-	Data        []byte
-	StartT      int64
+	Magic        uint8
+	StoreMode    uint8
+	Opcode       uint8
+	ResultCode   uint8
+	Nodes        uint8
+	CRC          uint32
+	Size         uint32
+	Arglen       uint32
+	PartitionID  uint32
+	ExtentID     uint64
+	ExtentOffset int64
+	ReqID        int64
+	Arg          []byte //if create or append ops, data contains addrs
+	Data         []byte
+	StartT       int64
 }
 
 func NewPacket() *Packet {
@@ -320,12 +320,12 @@ func (p *Packet) MarshalHeader(out []byte) {
 	out[2] = p.Opcode
 	out[3] = p.ResultCode
 	out[4] = p.Nodes
-	binary.BigEndian.PutUint32(out[5:9], p.Crc)
+	binary.BigEndian.PutUint32(out[5:9], p.CRC)
 	binary.BigEndian.PutUint32(out[9:13], p.Size)
 	binary.BigEndian.PutUint32(out[13:17], p.Arglen)
 	binary.BigEndian.PutUint32(out[17:21], p.PartitionID)
-	binary.BigEndian.PutUint64(out[21:29], p.FileID)
-	binary.BigEndian.PutUint64(out[29:37], uint64(p.Offset))
+	binary.BigEndian.PutUint64(out[21:29], p.ExtentID)
+	binary.BigEndian.PutUint64(out[29:37], uint64(p.ExtentOffset))
 	binary.BigEndian.PutUint64(out[37:util.PacketHeaderSize], uint64(p.ReqID))
 	return
 }
@@ -340,12 +340,12 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 	p.Opcode = in[2]
 	p.ResultCode = in[3]
 	p.Nodes = in[4]
-	p.Crc = binary.BigEndian.Uint32(in[5:9])
+	p.CRC = binary.BigEndian.Uint32(in[5:9])
 	p.Size = binary.BigEndian.Uint32(in[9:13])
 	p.Arglen = binary.BigEndian.Uint32(in[13:17])
 	p.PartitionID = binary.BigEndian.Uint32(in[17:21])
-	p.FileID = binary.BigEndian.Uint64(in[21:29])
-	p.Offset = int64(binary.BigEndian.Uint64(in[29:37]))
+	p.ExtentID = binary.BigEndian.Uint64(in[21:29])
+	p.ExtentOffset = int64(binary.BigEndian.Uint64(in[29:37]))
 	p.ReqID = int64(binary.BigEndian.Uint64(in[37:util.PacketHeaderSize]))
 
 	return nil
@@ -465,7 +465,7 @@ func (p *Packet) PackOkReadReply() {
 }
 
 func (p *Packet) PackOkGetWatermarkReply(size int64) {
-	p.Offset = size
+	p.ExtentOffset = size
 	p.Size = 0
 	p.ResultCode = OpOk
 	p.Arglen = 0
@@ -492,8 +492,8 @@ func (p *Packet) PackErrorWithBody(errCode uint8, reply []byte) {
 }
 
 func (p *Packet) GetUniqueLogId() (m string) {
-	m = fmt.Sprintf("%v_%v_%v_%v_%v_%v_%v_%v", p.ReqID, p.PartitionID, p.FileID,
-		p.Offset, p.Size, p.GetStoreModeMsg(), p.GetOpMsg(), p.GetResultMesg())
+	m = fmt.Sprintf("%v_%v_%v_%v_%v_%v_%v_%v", p.ReqID, p.PartitionID, p.ExtentID,
+		p.ExtentOffset, p.Size, p.GetStoreModeMsg(), p.GetOpMsg(), p.GetResultMesg())
 
 	return
 }
@@ -520,12 +520,4 @@ func (p *Packet) ActionMsg(action, remote string, start int64, err error) (m str
 
 func (p *Packet) ShallRetry() bool {
 	return p.ResultCode == OpAgain || p.ResultCode == OpErr
-}
-
-func NewPingPacket() *Packet {
-	return &Packet{
-		Magic:  ProtoMagic,
-		Opcode: OpPing,
-		ReqID:  GetReqID(),
-	}
 }

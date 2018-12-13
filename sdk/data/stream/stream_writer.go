@@ -211,7 +211,7 @@ func (sw *StreamWriter) doOverwrite(req *ExtentRequest) (total int, err error) {
 		packSize := util.Min(size-total, util.BlockSize)
 		copy(reqPacket.Data[:packSize], req.Data[total:total+packSize])
 		reqPacket.Size = uint32(packSize)
-		reqPacket.Crc = crc32.ChecksumIEEE(reqPacket.Data[:packSize])
+		reqPacket.CRC = crc32.ChecksumIEEE(reqPacket.Data[:packSize])
 
 		replyPacket := new(Packet)
 		err = sc.Send(reqPacket, func(conn *net.TCPConn) (error, bool) {
@@ -237,7 +237,7 @@ func (sw *StreamWriter) doOverwrite(req *ExtentRequest) (total int, err error) {
 			break
 		}
 
-		if !reqPacket.IsEqualWriteReply(replyPacket) || reqPacket.Crc != replyPacket.Crc {
+		if !reqPacket.IsEqualWriteReply(replyPacket) || reqPacket.CRC != replyPacket.CRC {
 			err = errors.New(fmt.Sprintf("doOverwrite: is not the corresponding reply, ino(%v) req(%v) replyPacket(%v)", sw.inode, req, replyPacket))
 			break
 		}

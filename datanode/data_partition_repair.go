@@ -502,7 +502,7 @@ func (dp *dataPartition) streamRepairExtent(remoteExtentInfo *storage.FileInfo) 
 		}
 
 		if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
-			reply.FileID != request.FileID || reply.Size == 0 || reply.Offset != int64(currFixOffset) {
+			reply.ExtentID != request.ExtentID || reply.Size == 0 || reply.ExtentOffset != int64(currFixOffset) {
 			err = errors.Annotatef(err, "streamRepairExtent receive unavalid "+
 				"request(%v) reply(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId())
 			log.LogErrorf("action[streamRepairExtent] err(%v).", err)
@@ -513,7 +513,7 @@ func (dp *dataPartition) streamRepairExtent(remoteExtentInfo *storage.FileInfo) 
 			" remoteSize(%v) localSize(%v) reply(%v).", dp.ID(), remoteExtentInfo.FileId,
 			remoteExtentInfo.Source, remoteExtentInfo.Size, currFixOffset, reply.GetUniqueLogId())
 
-		if reply.Crc != crc32.ChecksumIEEE(reply.Data[:reply.Size]) {
+		if reply.CRC != crc32.ChecksumIEEE(reply.Data[:reply.Size]) {
 			err = fmt.Errorf("streamRepairExtent crc mismatch partition(%v) extent(%v) start fix from (%v)"+
 				" remoteSize(%v) localSize(%v) request(%v) reply(%v)", dp.ID(), remoteExtentInfo.FileId,
 				remoteExtentInfo.Source, remoteExtentInfo.Size, currFixOffset, request.GetUniqueLogId(), reply.GetUniqueLogId())
@@ -522,9 +522,9 @@ func (dp *dataPartition) streamRepairExtent(remoteExtentInfo *storage.FileInfo) 
 		}
 		// Write it to local extent file
 		if storage.IsTinyExtent(uint64(localExtentInfo.FileId)) {
-			err = store.TinyExtentRecover(uint64(localExtentInfo.FileId), int64(currFixOffset), int64(reply.Size), reply.Data, reply.Crc)
+			err = store.TinyExtentRecover(uint64(localExtentInfo.FileId), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC)
 		} else {
-			err = store.Write(uint64(localExtentInfo.FileId), int64(currFixOffset), int64(reply.Size), reply.Data, reply.Crc)
+			err = store.Write(uint64(localExtentInfo.FileId), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC)
 		}
 		if err != nil {
 			err = errors.Annotatef(err, "streamRepairExtent repair data error")

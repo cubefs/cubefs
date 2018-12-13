@@ -36,7 +36,7 @@ func NewExtentDeletePacket(dp *DataPartition, ext *proto.ExtentKey) *Packet {
 		p.Data, _ = json.Marshal(ext)
 		p.Size = uint32(len(p.Data))
 	}
-	p.FileID = ext.ExtentId
+	p.ExtentID = ext.ExtentId
 	p.ReqID = proto.GetReqID()
 	p.Nodes = uint8(len(dp.Hosts) - 1)
 	p.Arg = ([]byte)(dp.GetAllAddrs())
