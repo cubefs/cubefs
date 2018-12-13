@@ -446,7 +446,7 @@ func (dp *dataPartition) ExtentRepair(extentFiles []*storage.FileInfo) {
 
 func (dp *dataPartition) applyErrRepair(extentId uint64) {
 	extentFiles := make([]*storage.FileInfo, 0)
-	leaderAddr, isLeader := dp.IsLeader()
+	leaderAddr, isLeader := dp.IsRaftLeader()
 	extentInfo, err := dp.extentStore.GetWatermark(extentId, true)
 	if err != nil {
 		err = errors.Annotatef(err, "getAllMemberFileMetas extent dataPartition[%v] GetAllWaterMark", dp.partitionId)
@@ -671,7 +671,7 @@ func (dp *dataPartition) getMinAppliedId() {
 	)
 
 	//get applied id only by leader
-	leaderAddr, isLeader := dp.IsLeader()
+	leaderAddr, isLeader := dp.IsRaftLeader()
 	if !isLeader || leaderAddr == "" {
 		log.LogDebugf("[getMinAppliedId] partition=%v notRaftLeader leaderAddr[%v] localIp[%v]",
 			dp.partitionId, leaderAddr, LocalIP)

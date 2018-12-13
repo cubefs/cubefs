@@ -153,7 +153,7 @@ func (dp *dataPartition) RandomPartitionReadCheck(request *Packet, connect net.C
 	if !dp.config.RandomWrite || request.Opcode == proto.OpExtentRepairRead || !dp.hadRandomWrite {
 		return
 	}
-	_, ok := dp.IsLeader()
+	_, ok := dp.IsRaftLeader()
 	if !ok {
 		err = storage.ErrNotLeader
 		log.LogErrorf("[readCheck] read ErrorNotLeader partition=%v", dp.partitionId)

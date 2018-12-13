@@ -29,7 +29,7 @@ import (
 	"sync/atomic"
 )
 
-/*read the packet from a packetProcessor*/
+// Read the packet from a packetProcessor
 func (s *DataNode) readPacketFromClient(packetProcessor *PacketProcessor) (err error) {
 	defer func() {
 		if err != nil {
@@ -49,22 +49,22 @@ func (s *DataNode) readPacketFromClient(packetProcessor *PacketProcessor) (err e
 	}
 	pkg.beforeTp(s.clusterId)
 
-	//check packet is avali
+	// Check packet if valid
 	if err = s.checkPacket(pkg); err != nil {
-		pkg.PackErrorBody("addPacketInfo", err.Error())
+		pkg.PackErrorBody("addExtentInfo", err.Error())
 		packetProcessor.replyCh <- pkg
 		return
 	}
-	//check packet op dataparition
+	// Check data partition status
 	if err = s.checkAction(pkg); err != nil {
 		pkg.PackErrorBody("checkAction", err.Error())
 		packetProcessor.replyCh <- pkg
 		return
 	}
 
-	//add packet another info
-	if err = s.addPacketInfo(pkg); err != nil {
-		pkg.PackErrorBody("addPacketInfo", err.Error())
+	// Add extra info in packet
+	if err = s.addExtentInfo(pkg); err != nil {
+		pkg.PackErrorBody("addExtentInfo", err.Error())
 		packetProcessor.replyCh <- pkg
 		return
 	}
@@ -73,14 +73,13 @@ func (s *DataNode) readPacketFromClient(packetProcessor *PacketProcessor) (err e
 	return
 }
 
-/*this goroutine ,used read from pkg from requestCh,and sendto all replicates
-  and write pkg response to client
-*/
+// This goroutine be used read pkg from requestCh, then send to all replicates.
+// And write pkg response to client.
 func (s *DataNode) InteractWithClient(packetProcessor *PacketProcessor) {
 	for {
 		select {
 		case req := <-packetProcessor.requestCh:
-			s.doPakcet(req, packetProcessor)
+			s.processPacket(req, packetProcessor)
 		case reply := <-packetProcessor.replyCh:
 			s.WriteResponseToClient(reply, packetProcessor)
 		case <-packetProcessor.exitC:
@@ -90,8 +89,8 @@ func (s *DataNode) InteractWithClient(packetProcessor *PacketProcessor) {
 	}
 }
 
-/*this goroutine is recive response from all followers*/
-func (s *DataNode) reciveReplicatesResponse(packetProcessor *PacketProcessor) {
+// Receive response from all followers.
+func (s *DataNode) receiveReplicatesResponse(packetProcessor *PacketProcessor) {
 	for {
 		select {
 		case <-packetProcessor.handleCh:
@@ -102,10 +101,9 @@ func (s *DataNode) reciveReplicatesResponse(packetProcessor *PacketProcessor) {
 	}
 }
 
-/*local node do packet,if pkg is randomWrite pkg,then submit to raft
-  if the pkg is sequenceOp,then send pkg to all replicates,and do local
-*/
-func (s *DataNode) doPakcet(req *Packet, packetProcessor *PacketProcessor) {
+// Process packet.
+// If Op is randomWrite submit to raft, or go to primary-backup replication.
+func (s *DataNode) processPacket(req *Packet, packetProcessor *PacketProcessor) {
 	if req.Opcode == proto.OpRandomWrite {
 		s.randomOpReq(req, packetProcessor)
 		return
@@ -115,16 +113,17 @@ func (s *DataNode) doPakcet(req *Packet, packetProcessor *PacketProcessor) {
 	return
 }
 
-/*note ,if pkg is tinyExtent Write,then add extentId and extentOffset*/
-func (s *DataNode) addPacketInfo(pkg *Packet) error {
+// If tinyExtent Write get the extentId and extentOffset
+// If OpCreateFile get new extentId
+func (s *DataNode) addExtentInfo(pkg *Packet) error {
 	if pkg.isHeadNode() && pkg.StoreMode == proto.TinyExtentMode && pkg.IsWriteOperation() {
 		store := pkg.partition.GetStore()
-		extentId, err := store.GetAvaliTinyExtent() //get a avali tinyExtentId
+		extentId, err := store.GetAvaliTinyExtent()  // Get a valid tinyExtentId
 		if err != nil {
 			return err
 		}
 		pkg.FileID = extentId
-		pkg.Offset, err = store.GetWatermarkForWrite(extentId) //get this extentId offset
+		pkg.Offset, err = store.GetWatermarkForWrite(extentId) // Get offset of this extent file
 		if err != nil {
 			return err
 		}
@@ -135,7 +134,7 @@ func (s *DataNode) addPacketInfo(pkg *Packet) error {
 	return nil
 }
 
-/*if pkg is randdom write,then submit it to raft group*/
+// Submit random write op to raft instance
 func (s *DataNode) randomOpReq(pkg *Packet, packetProcessor *PacketProcessor) {
 	var err error
 	start := time.Now().UnixNano()
@@ -155,7 +154,7 @@ func (s *DataNode) randomOpReq(pkg *Packet, packetProcessor *PacketProcessor) {
 		packetProcessor.replyCh <- pkg
 	}()
 
-	_, isLeader := pkg.partition.IsLeader()
+	_, isLeader := pkg.partition.IsRaftLeader()
 	if !isLeader {
 		err = storage.ErrNotLeader
 		return
@@ -182,7 +181,7 @@ func (s *DataNode) randomOpReq(pkg *Packet, packetProcessor *PacketProcessor) {
 	return
 }
 
-/*if pkg is sequence Op,then send pkg to all replicates,and do local*/
+// If pkg is sequence Op,then send pkg to all replicates,and do local
 func (s *DataNode) sequenceOpReq(req *Packet, packetProcessor *PacketProcessor) {
 	var err error
 	if !req.IsTransitPkg() {
@@ -201,7 +200,7 @@ func (s *DataNode) sequenceOpReq(req *Packet, packetProcessor *PacketProcessor) 
 	return
 }
 
-/*write pkg response to client,if pkg is err,then write error to client*/
+// Write response to client and recycle the connect.
 func (s *DataNode) WriteResponseToClient(reply *Packet, packetProcessor *PacketProcessor) {
 	var err error
 	if reply.IsErrPack() {
@@ -228,9 +227,8 @@ func (s *DataNode) WriteResponseToClient(reply *Packet, packetProcessor *PacketP
 
 }
 
-/*
-   when pkg is finish,then ,the head node must release tinyExtent to store
-*/
+
+// The head node release tinyExtent to store
 func (s *DataNode) cleanupPkg(pkg *Packet) {
 	if !pkg.isHeadNode() {
 		return
@@ -254,7 +252,7 @@ func (s *DataNode) addMetrics(reply *Packet) {
 	}
 }
 
-/*recive response from all replicates*/
+// Receive response from all members
 func (s *DataNode) reciveFromAllReplicates(packetProcessor *PacketProcessor) (request *Packet) {
 	var (
 		e *list.Element
@@ -279,7 +277,7 @@ func (s *DataNode) reciveFromAllReplicates(packetProcessor *PacketProcessor) (re
 	return
 }
 
-/*recive pkg response from one replicates*/
+// Receive pkg response from one member*/
 func (s *DataNode) receiveFromReplicate(request *Packet, index int) (reply *Packet, err error) {
 	if request.replicateConns[index] == nil {
 		err = errors.Annotatef(fmt.Errorf(ConnIsNullErr), "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())

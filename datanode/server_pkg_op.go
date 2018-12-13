@@ -538,10 +538,10 @@ func (s *DataNode) handleGetPartitionSize (pkg *Packet) {
 
 func (s *DataNode) handleOfflineDataPartition(pkg *Packet) {
 	var (
-		err      error
-		reqData  []byte
-		isLeader bool
-		req      = &proto.DataPartitionOfflineRequest{}
+		err          error
+		reqData      []byte
+		isRaftLeader bool
+		req                = &proto.DataPartitionOfflineRequest{}
 	)
 
 	defer func() {
@@ -571,8 +571,8 @@ func (s *DataNode) handleOfflineDataPartition(pkg *Packet) {
 		return
 	}
 
-	isLeader, err = s.serveProxy(dp, pkg)
-	if !isLeader {
+	isRaftLeader, err = s.transferToRaftLeader(dp, pkg)
+	if !isRaftLeader {
 		return
 	}
 
@@ -615,21 +615,24 @@ end:
 	return
 }
 
-func (d *DataNode) serveProxy(dp DataPartition, p *Packet) (ok bool, err error) {
+func (d *DataNode) transferToRaftLeader(dp DataPartition, p *Packet) (ok bool, err error) {
 	var (
 		conn       *net.TCPConn
 		leaderAddr string
 	)
 
-	// if local is not leader, send the pkg to leader
-	if leaderAddr, ok = dp.IsLeader(); ok {
+	// If local is leader return to continue.
+	if leaderAddr, ok = dp.IsRaftLeader(); ok {
 		return
 	}
+
+	// If leaderAddr is nil return ErrNoLeader
 	if leaderAddr == "" {
 		err = storage.ErrNoLeader
 		return
 	}
 
+	// If local is not leader transfer the packet to leader
 	conn, err = gConnPool.Get(leaderAddr)
 	if err != nil {
 		gConnPool.Put(conn, true)

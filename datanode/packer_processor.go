@@ -31,7 +31,7 @@ import (
     b. InteractWithClient goroutine read from requestCh,send it to all replicates,and do local,then send a sigle to handleCh
        and read pkg from replyCh,and write its response to client
 
-    c. reciveReplicatesResponse goroutine read from handleCh,recive all replicates  pkg response,and send this pkg to replyCh
+    c. receiveReplicatesResponse goroutine read from handleCh,recive all replicates  pkg response,and send this pkg to replyCh
 
 	if any step error,then change request to error Packet,and send it to replyCh, the InteractWithClient can send it to client
 
@@ -40,7 +40,7 @@ type PacketProcessor struct {
 	listMux    sync.RWMutex
 	packetList *list.List    //store all recived pkg from client
 	handleCh   chan struct{} //if sendto all replicates success,then send a sigle to this chan
-	//the reciveReplicatesResponse goroutine can recive response from allreplicates
+	//the receiveReplicatesResponse goroutine can recive response from allreplicates
 	requestCh           chan *Packet // the recive pkg goroutine recive a avali pkg,then send to this chan
 	replyCh             chan *Packet //this chan used to write client
 	sourceConn          *net.TCPConn //in connect
