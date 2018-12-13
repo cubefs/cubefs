@@ -28,15 +28,26 @@ import (
 
 type Packet struct {
 	proto.Packet
-	fillBytes    uint32
 	inode        uint64
 	kernelOffset int
-	orgSize      uint32
-	orgData      []byte
+	status       int
+	errCount     int
 }
 
 func (p *Packet) String() string {
 	return fmt.Sprintf("ReqID(%v) Op(%v) Inode(%v) FileOffset(%v) Size(%v) PartitionID(%v) FileID(%v) Offset(%v) CRC(%v) ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.inode, p.kernelOffset, p.Size, p.PartitionID, p.FileID, p.Offset, p.Crc, p.GetResultMesg())
+}
+
+func NewPacket(inode uint64, offset int) *Packet {
+	p := new(Packet)
+	p.ReqID = proto.GetReqID()
+	p.Magic = proto.ProtoMagic
+	p.StoreMode = proto.NormalExtentMode
+	p.Opcode = proto.OpWrite
+	p.inode = inode
+	p.kernelOffset = offset
+	p.Data, _ = proto.Buffers.Get(util.BlockSize)
+	return p
 }
 
 func NewWritePacket(dp *wrapper.DataPartition, extentId uint64, offset int, inode uint64, kernelOffset int, isRandom bool) (p *Packet) {
@@ -143,7 +154,6 @@ func (p *Packet) IsEqualWriteReply(q *Packet) bool {
 	if p.ReqID == q.ReqID && p.PartitionID == q.PartitionID {
 		return true
 	}
-
 	return false
 }
 
@@ -151,7 +161,6 @@ func (p *Packet) IsEqualReadReply(q *Packet) bool {
 	if p.ReqID == q.ReqID && p.PartitionID == q.PartitionID && p.FileID == q.FileID && p.Offset == q.Offset && p.Size == q.Size {
 		return true
 	}
-
 	return false
 }
 
