@@ -137,41 +137,25 @@ func (s *DataNode) handleCreateFile(pkg *Packet) {
 
 // Handle OpCreateDataPartition packet.
 func (s *DataNode) handleCreateDataPartition(pkg *Packet) {
-	task := &proto.AdminTask{}
-	json.Unmarshal(pkg.Data, task)
-	pkg.PackOkReply()
-	response := &proto.CreateDataPartitionResponse{}
-	request := &proto.CreateDataPartitionRequest{}
-	if task.OpCode == proto.OpCreateDataPartition {
-		bytes, _ := json.Marshal(task.Request)
-		json.Unmarshal(bytes, request)
-		var (
-			dp  DataPartition
-			err error
-		)
-		if dp, err = s.space.CreatePartition(request); err != nil {
-			response.PartitionId = uint64(request.PartitionId)
-			response.Status = proto.TaskFail
-			response.Result = err.Error()
-			log.LogErrorf("from master Task(%v) failed,error(%v)", task.ToString(), err.Error())
+	var err error
+	defer func() {
+		if err != nil {
+			err = errors.Annotatef(err, "Request(%v) CreateDataPartition Error", pkg.GetUniqueLogId())
+			pkg.PackErrorBody(LogCreateFile, err.Error())
 		} else {
-			response.Status = proto.TaskSuccess
-			response.PartitionId = request.PartitionId
-			response.Result = dp.Disk().Path
+			pkg.PackOkReply()
 		}
-	} else {
-		response.PartitionId = uint64(request.PartitionId)
-		response.Status = proto.TaskFail
-		response.Result = "illegal opcode "
-		log.LogErrorf("from master Task(%v) failed,error(%v)", task.ToString(), response.Result)
-	}
-	task.Response = response
-	data, _ := json.Marshal(task)
-	_, err := MasterHelper.Request("POST", master.DataNodeResponse, nil, data)
+	}()
+	createPartitionRequest := &proto.CreateDataPartitionRequest{}
+	err = json.Unmarshal(pkg.Data[:pkg.Size], createPartitionRequest)
 	if err != nil {
-		err = errors.Annotatef(err, "create dataPartition failed,partitionId(%v)", request.PartitionId)
-		log.LogError(errors.ErrorStack(err))
+		return
 	}
+	if _, err = s.space.CreatePartition(createPartitionRequest); err != nil {
+		return
+	}
+
+	return
 }
 
 // Handle OpHeartbeat packet.
