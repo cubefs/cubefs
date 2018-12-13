@@ -115,7 +115,7 @@ func NewExtentHandler(sw *StreamWriter, offset int, storeMode int) *ExtentHandle
 }
 
 func (eh *ExtentHandler) String() string {
-	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)ExtentOffset(%v)}", eh.id, eh.inode, eh.fileOffset)
+	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)}", eh.id, eh.inode, eh.fileOffset)
 }
 
 func (eh *ExtentHandler) Write(data []byte, offset, size int) (ek *proto.ExtentKey, err error) {
