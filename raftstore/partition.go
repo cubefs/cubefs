@@ -60,7 +60,7 @@ type Partition interface {
 	// LeaderTerm returns current term of leader in raft group.
 	LeaderTerm() (leaderId, term uint64)
 
-	// IsLeader returns true if this node current is the leader in the raft group it belong to.
+	// IsRaftLeader returns true if this node current is the leader in the raft group it belong to.
 	IsLeader() bool
 
 	// AppliedIndex returns current index value of applied raft log in this raft store partition.

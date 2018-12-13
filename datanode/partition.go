@@ -54,7 +54,7 @@ var (
 type DataPartition interface {
 	ID() uint32
 	Path() string
-	IsLeader() (leaderAddr string, ok bool)
+	IsRaftLeader() (leaderAddr string, ok bool)
 	ReplicaHosts() []string
 	Disk() *Disk
 
@@ -266,7 +266,7 @@ func (dp *dataPartition) Path() string {
 	return dp.path
 }
 
-func (dp *dataPartition) IsLeader() (leaderAddr string, ok bool) {
+func (dp *dataPartition) IsRaftLeader() (leaderAddr string, ok bool) {
 	if dp.raftPartition == nil {
 		return
 	}

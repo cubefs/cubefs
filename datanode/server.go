@@ -325,7 +325,7 @@ func (s *DataNode) serveConn(conn net.Conn) {
 	c.SetNoDelay(true)
 
 	packetProcessor := NewPacketProcessor(c)
-	go s.reciveReplicatesResponse(packetProcessor)
+	go s.receiveReplicatesResponse(packetProcessor)
 	go s.InteractWithClient(packetProcessor)
 
 	var (
