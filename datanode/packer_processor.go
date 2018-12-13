@@ -83,7 +83,7 @@ func (processor *PacketProcessor) Stop() {
 func (processor *PacketProcessor) AllocateReplicatConnects(pkg *Packet, index int) (err error) {
 	var conn *net.TCPConn
 	if pkg.StoreMode == proto.NormalExtentMode && pkg.IsWriteOperation() {
-		key := fmt.Sprintf("%v_%v_%v", pkg.PartitionID, pkg.FileID, pkg.replicateAddrs[index])
+		key := fmt.Sprintf("%v_%v_%v", pkg.PartitionID, pkg.ExtentID, pkg.replicateAddrs[index])
 		processor.replicatConnectLock.RLock()
 		conn := processor.replicatConnects[key]
 		processor.replicatConnectLock.RUnlock()
@@ -160,7 +160,7 @@ func (processor *PacketProcessor) DelPacketFromList(reply *Packet) (success bool
 	for e := processor.packetList.Front(); e != nil; e = e.Next() {
 		request := e.Value.(*Packet)
 		if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
-			reply.Offset != request.Offset || reply.Crc != request.Crc || reply.FileID != request.FileID {
+			reply.ExtentOffset != request.ExtentOffset || reply.CRC != request.CRC || reply.ExtentID != request.ExtentID {
 			request.forceDestoryAllConnect()
 			request.PackErrorBody(ActionReceiveFromNext, fmt.Sprintf("unknow expect reply"))
 			break

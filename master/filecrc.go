@@ -86,7 +86,7 @@ func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataRe
 	sort.Sort((FileCrcSorterByCount)(fileCrcArr))
 	maxCountFileCrcIndex := len(fileCrcArr) - 1
 	if fileCrcArr[maxCountFileCrcIndex].count == 1 {
-		msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  Crc diffrent between all Node  "+
+		msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  CRC diffrent between all Node  "+
 			" it can not repair it ", clusterID, partitionID, fc.Name)
 		msg += (FileCrcSorterByCount)(fileCrcArr).log()
 		Warn(clusterID, msg)

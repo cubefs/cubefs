@@ -115,7 +115,7 @@ func NewExtentHandler(sw *StreamWriter, offset int, storeMode int) *ExtentHandle
 }
 
 func (eh *ExtentHandler) String() string {
-	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)Offset(%v)}", eh.id, eh.inode, eh.fileOffset)
+	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)ExtentOffset(%v)}", eh.id, eh.inode, eh.fileOffset)
 }
 
 func (eh *ExtentHandler) Write(data []byte, offset, size int) (ek *proto.ExtentKey, err error) {
@@ -197,8 +197,8 @@ func (eh *ExtentHandler) sender() {
 			// fill packet according to extent
 			packet.PartitionID = eh.dp.PartitionID
 			packet.StoreMode = uint8(eh.storeMode)
-			packet.FileID = uint64(eh.extID)
-			packet.Offset = int64(eh.extOffset)
+			packet.ExtentID = uint64(eh.extID)
+			packet.ExtentOffset = int64(eh.extOffset)
 			packet.Arg = ([]byte)(eh.dp.GetAllAddrs())
 			packet.Arglen = uint32(len(packet.Arg))
 			packet.Nodes = uint8(len(eh.dp.Hosts) - 1)
@@ -256,7 +256,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		return
 	}
 
-	reply := NewReply(packet.ReqID, packet.PartitionID, packet.FileID)
+	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 	err := reply.ReadFromConn(eh.conn, proto.ReadDeadlineTime)
 	if err != nil {
 		eh.setClosed()
@@ -281,7 +281,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		eh.key = &proto.ExtentKey{
 			FileOffset:   uint64(eh.fileOffset),
 			PartitionId:  packet.PartitionID,
-			ExtentId:     packet.FileID,
+			ExtentId:     packet.ExtentID,
 			ExtentOffset: uint64(packet.kernelOffset) - uint64(eh.fileOffset),
 			Size:         packet.Size,
 		}
@@ -443,7 +443,7 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 		return
 	}
 
-	extID = int(p.FileID)
+	extID = int(p.ExtentID)
 	if extID <= 0 {
 		err = errors.New(fmt.Sprintf("createExtent: illegal extID(%v) from (%v)", extID, dp.Hosts[0]))
 		return

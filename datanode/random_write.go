@@ -106,7 +106,7 @@ func (rndWrtItem *RndWrtCmdItem) rndWrtCmdUnmarshal(cmd []byte) (err error) {
 
 // Submit the propose to raft.
 func (dp *dataPartition) RandomWriteSubmit(pkg *Packet) (err error) {
-	val, err := rndWrtDataMarshal(pkg.FileID, pkg.Offset, int64(pkg.Size), pkg.Data, pkg.Crc)
+	val, err := rndWrtDataMarshal(pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data, pkg.CRC)
 	if err != nil {
 		return
 	}
@@ -120,7 +120,7 @@ func (dp *dataPartition) RandomWriteSubmit(pkg *Packet) (err error) {
 		dp.hadRandomWrite = true
 	}
 	log.LogDebugf("[randomWrite] SubmitRaft: req_%v_%v_%v_%v_%v response = %v.",
-		dp.partitionId, pkg.FileID, pkg.Offset, pkg.Size, pkg.Crc, pkg.GetResultMesg())
+		dp.partitionId, pkg.ExtentID, pkg.ExtentOffset, pkg.Size, pkg.CRC, pkg.GetResultMesg())
 	return
 }
 

@@ -118,17 +118,17 @@ func (s *DataNode) processPacket(req *Packet, packetProcessor *PacketProcessor) 
 func (s *DataNode) addExtentInfo(pkg *Packet) error {
 	if pkg.isHeadNode() && pkg.StoreMode == proto.TinyExtentMode && pkg.IsWriteOperation() {
 		store := pkg.partition.GetStore()
-		extentId, err := store.GetAvaliTinyExtent()  // Get a valid tinyExtentId
+		extentId, err := store.GetAvaliTinyExtent() // Get a valid tinyExtentId
 		if err != nil {
 			return err
 		}
-		pkg.FileID = extentId
-		pkg.Offset, err = store.GetWatermarkForWrite(extentId) // Get offset of this extent file
+		pkg.ExtentID = extentId
+		pkg.ExtentOffset, err = store.GetWatermarkForWrite(extentId) // Get offset of this extent file
 		if err != nil {
 			return err
 		}
 	} else if pkg.isHeadNode() && pkg.Opcode == proto.OpCreateFile {
-		pkg.FileID = pkg.partition.GetStore().NextExtentId()
+		pkg.ExtentID = pkg.partition.GetStore().NextExtentId()
 	}
 
 	return nil
@@ -227,7 +227,6 @@ func (s *DataNode) WriteResponseToClient(reply *Packet, packetProcessor *PacketP
 
 }
 
-
 // The head node release tinyExtent to store
 func (s *DataNode) cleanupPkg(pkg *Packet) {
 	if !pkg.isHeadNode() {
@@ -301,10 +300,10 @@ func (s *DataNode) receiveFromReplicate(request *Packet, index int) (reply *Pack
 	}
 
 	if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
-		reply.Offset != request.Offset || reply.Crc != request.Crc || reply.FileID != request.FileID {
+		reply.ExtentOffset != request.ExtentOffset || reply.CRC != request.CRC || reply.ExtentID != request.ExtentID {
 		err = fmt.Errorf(ActionCheckReplyAvail+" request (%v) reply(%v) %v from localAddr(%v)"+
 			" remoteAddr(%v) requestCrc(%v) replyCrc(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId(), request.replicateAddrs[index],
-			request.replicateConns[index].LocalAddr().String(), request.replicateConns[index].RemoteAddr().String(), request.Crc, reply.Crc)
+			request.replicateConns[index].LocalAddr().String(), request.replicateConns[index].RemoteAddr().String(), request.CRC, reply.CRC)
 		log.LogErrorf("action[receiveFromReplicate] %v.", err.Error())
 		return
 	}
@@ -415,7 +414,7 @@ func (s *DataNode) statsFlow(pkg *Packet, flag int) {
 }
 
 func (s *DataNode) leaderPutTinyExtentToStore(pkg *Packet) {
-	if pkg == nil || !storage.IsTinyExtent(pkg.FileID) || pkg.FileID <= 0 || atomic.LoadInt32(&pkg.isRelaseTinyExtent) == HasReturnToStore {
+	if pkg == nil || !storage.IsTinyExtent(pkg.ExtentID) || pkg.ExtentID <= 0 || atomic.LoadInt32(&pkg.isRelaseTinyExtent) == HasReturnToStore {
 		return
 	}
 	if pkg.StoreMode != proto.TinyExtentMode || !pkg.isHeadNode() || !pkg.IsWriteOperation() || !pkg.IsTransitPkg() {
@@ -423,9 +422,9 @@ func (s *DataNode) leaderPutTinyExtentToStore(pkg *Packet) {
 	}
 	store := pkg.partition.GetStore()
 	if pkg.IsErrPack() {
-		store.PutTinyExtentToUnavaliCh(pkg.FileID)
+		store.PutTinyExtentToUnavaliCh(pkg.ExtentID)
 	} else {
-		store.PutTinyExtentToAvaliCh(pkg.FileID)
+		store.PutTinyExtentToAvaliCh(pkg.ExtentID)
 	}
 	atomic.StoreInt32(&pkg.isRelaseTinyExtent, HasReturnToStore)
 }

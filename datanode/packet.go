@@ -152,7 +152,7 @@ func (p *Packet) CheckCrc() (err error) {
 	}
 
 	crc := crc32.ChecksumIEEE(p.Data[:p.Size])
-	if crc == p.Crc {
+	if crc == p.CRC {
 		return
 	}
 	return storage.ErrPkgCrcMismatch
@@ -171,10 +171,10 @@ func NewGetAllWaterMarker(partitionId uint32, extentType uint8) (p *Packet) {
 
 func NewExtentRepairReadPacket(partitionId uint32, extentId uint64, offset, size int) (p *Packet) {
 	p = new(Packet)
-	p.FileID = extentId
+	p.ExtentID = extentId
 	p.PartitionID = partitionId
 	p.Magic = proto.ProtoMagic
-	p.Offset = int64(offset)
+	p.ExtentOffset = int64(offset)
 	p.Size = uint32(size)
 	p.Opcode = proto.OpExtentRepairRead
 	p.StoreMode = proto.NormalExtentMode
@@ -185,7 +185,7 @@ func NewExtentRepairReadPacket(partitionId uint32, extentId uint64, offset, size
 
 func NewStreamReadResponsePacket(requestId int64, partitionId uint32, extentId uint64) (p *Packet) {
 	p = new(Packet)
-	p.FileID = extentId
+	p.ExtentID = extentId
 	p.PartitionID = partitionId
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpOk
