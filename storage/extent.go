@@ -92,7 +92,7 @@ type Extent interface {
 	// Write data to extent.
 	Write(data []byte, offset, size int64, crc uint32) (err error)
 
-	WriteTinyRecover(data []byte, offset, size int64, crc uint32) (err error)
+	TinyRecover(data []byte, offset, size int64, crc uint32) (err error)
 
 	// Read data from extent.
 	Read(data []byte, offset, size int64) (crc uint32, err error)

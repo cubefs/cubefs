@@ -383,7 +383,7 @@ func (s *ExtentStore) TinyExtentRecover(extentId uint64, offset, size int64, dat
 	if extent.IsMarkDelete() {
 		return ErrorHasDelete
 	}
-	if err = extent.WriteTinyRecover(data, offset, size, crc); err != nil {
+	if err = extent.TinyRecover(data, offset, size, crc); err != nil {
 		return err
 	}
 	extentInfo.FromExtent(extent)
