@@ -154,7 +154,7 @@ func (dp *dataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 		}
 	}()
 
-	leaderAddr, _ := dp.IsLeader()
+	leaderAddr, _ := dp.IsRaftLeader()
 
 	if len(dp.replicaHosts) > 0 {
 		replicaAddrParts := strings.Split(dp.replicaHosts[0], ":")
