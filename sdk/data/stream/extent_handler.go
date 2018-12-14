@@ -257,33 +257,40 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 
 	status := eh.getStatus()
 	if status >= ExtentStatusError {
-		log.LogErrorf("processReply discard packet: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
+		log.LogErrorf("processReply discard packet: handler is in error status, eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 		return
 	} else if status >= ExtentStatusRecovery {
 		eh.recoverPacket(packet)
-		log.LogDebugf("processReply recover packet: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
+		log.LogDebugf("processReply recover packet: handler is in recovery status, eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 		return
 	}
 
 	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 	err := reply.ReadFromConn(eh.conn, proto.ReadDeadlineTime)
 	if err != nil {
-		eh.setClosed()
-		eh.setRecovery()
-		if packet.errCount >= MaxPacketErrorCount {
-			// discard packet
-			eh.setError()
-			log.LogErrorf("processReply discard packet: failed to read from connect and err count reaches max limit, eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
-		} else {
-			eh.recoverPacket(packet)
-			log.LogWarnf("processReply recover packet: failed to read from connect, eh(%v) packet(%v) err(%v)", eh, packet.GetUniqueLogId(), err)
-		}
+		eh.processReplyError(packet, err.Error())
 		return
 	}
 
 	log.LogDebugf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet.GetUniqueLogId(), reply.GetUniqueLogId())
 
-	//TODO: check if reply is correct
+	if reply.ResultCode != proto.OpOk {
+		errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply.ResultCode, reply.GetUniqueLogId())
+		eh.processReplyError(packet, errmsg)
+		return
+	}
+
+	if !packet.IsEqualWriteReply(reply) {
+		errmsg := fmt.Sprintf("request and reply not match: reply(%v)", reply.GetUniqueLogId())
+		eh.processReplyError(packet, errmsg)
+		return
+	}
+
+	if reply.CRC != packet.CRC {
+		errmsg := fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) reply(%v) ", packet.CRC, reply.CRC, reply.GetUniqueLogId())
+		eh.processReplyError(packet, errmsg)
+		return
+	}
 
 	// Update extent key cache
 	if eh.key == nil {
@@ -297,9 +304,23 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	} else {
 		eh.key.Size += packet.Size
 	}
-	eh.dirty = true
 
+	eh.dirty = true
 	return
+}
+
+func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
+	eh.setClosed()
+	eh.setRecovery()
+	if packet.errCount >= MaxPacketErrorCount {
+		// discard packet
+		eh.setError()
+		log.LogErrorf("processReplyError discard packet: packet err count reaches max limit, eh(%v) packet(%v) err(%v)", eh, packet.GetUniqueLogId(), errmsg)
+	} else {
+		eh.recoverPacket(packet)
+		log.LogWarnf("processReplyError recover packet: eh(%v) packet(%v) err(%v)", eh, packet.GetUniqueLogId(), errmsg)
+	}
+
 }
 
 func (eh *ExtentHandler) flush() (closed bool, err error) {
