@@ -17,8 +17,6 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
-
-	"github.com/google/btree"
 )
 
 // Dentry wraps necessary properties of `Dentry` information in file system.
@@ -101,7 +99,7 @@ func (d *Dentry) Unmarshal(raw []byte) (err error) {
 
 // Less tests whether the current Dentry item is less than the given one.
 // This method is necessary fot B-Tree item implementation.
-func (d *Dentry) Less(than btree.Item) (less bool) {
+func (d *Dentry) Less(than BtreeItem) (less bool) {
 	dentry, ok := than.(*Dentry)
 	less = ok && ((d.ParentId < dentry.ParentId) || ((d.ParentId == dentry.ParentId) && (d.Name < dentry.Name)))
 	return

@@ -24,7 +24,7 @@ import (
 func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	ext := req.Extent
-	ino.Extents.Put(&ext)
+	ino.Extents.Append(&ext)
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PackErrorWithBody(proto.OpErr, nil)

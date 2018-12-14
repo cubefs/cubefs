@@ -23,16 +23,20 @@ import (
 	"strings"
 )
 
-func (m *MetaNode) registerHandler() (err error) {
-	// Register http handler
-	http.HandleFunc("/getAllPartitions", m.allPartitionsHandle)
+// registerAPIHandler provides some interfaces for querying metadata, inode,
+// dentry and more.
+func (m *MetaNode) registerAPIHandler() (err error) {
+	// get all partitions base information
+	http.HandleFunc("/partitions", m.partitionsHandler)
 	http.HandleFunc("/getInodeInfo", m.inodeInfoHandle)
 	http.HandleFunc("/getInodeRange", m.rangeHandle)
 	http.HandleFunc("/getExtents", m.getExtents)
 	http.HandleFunc("/getDentry", m.getDentryHandle)
 	return
 }
-func (m *MetaNode) allPartitionsHandle(w http.ResponseWriter, r *http.Request) {
+
+// partitionsHandler get the base information of all partitions
+func (m *MetaNode) partitionsHandler(w http.ResponseWriter, r *http.Request) {
 	mm := m.metaManager.(*metaManager)
 	data, err := mm.PartitionsMarshalJSON()
 	if err != nil {
@@ -101,7 +105,7 @@ func (m *MetaNode) rangeHandle(w http.ResponseWriter, r *http.Request) {
 		}
 		return true
 	}
-	mpp.RangeInode(f)
+	mpp.getInodeTree().Ascend(f)
 }
 
 func (m *MetaNode) getExtents(w http.ResponseWriter, r *http.Request) {
@@ -137,7 +141,7 @@ func (m *MetaNode) getExtents(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("inode id not exist"))
 		return
 	}
-	data, err := resp.Msg.Extents.Marshal()
+	data, err := json.Marshal(resp.Msg)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
@@ -170,7 +174,8 @@ func (m *MetaNode) getDentryHandle(w http.ResponseWriter, r *http.Request) {
 	mp := p.(*metaPartition)
 
 	var val []byte
-	mp.dentryTree.Ascend(func(i BtreeItem) bool {
+	tree := mp.dentryTree.GetTree()
+	tree.Ascend(func(i BtreeItem) bool {
 		val, err = json.Marshal(i)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)

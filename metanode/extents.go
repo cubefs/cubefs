@@ -17,7 +17,6 @@ package metanode
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"github.com/tiglabs/containerfs/proto"
 	"sync"
 )
@@ -41,51 +40,47 @@ func PutExtentSlice(eks []BtreeItem) {
 	extentsPool.Put(eks)
 }
 
-type StreamKey struct {
-	Extents *BTree
+type ExtentsTree struct {
+	*BTree
 }
 
-func (sk *StreamKey) String() string {
-	buff := bytes.NewBuffer(make([]byte, 0))
-	buff.WriteString("{")
-	exts, _ := sk.Marshal()
-	buff.WriteString(fmt.Sprintf("Extents[%v]", exts))
-	buff.WriteString("}")
+func (e *ExtentsTree) String() string {
+	buff := bytes.NewBuffer(nil)
+	buff.Grow(128)
+	exts, _ := e.Marshal()
+	buff.Write(exts)
 	return buff.String()
 }
 
-func NewStreamKey() *StreamKey {
-	return &StreamKey{
-		Extents: NewBtree(),
+func NewExtentsTree() *ExtentsTree {
+	return &ExtentsTree{
+		BTree: NewBtree(),
 	}
 }
 
-func (sk *StreamKey) Marshal() (data []byte, err error) {
+func (e *ExtentsTree) Marshal() ([]byte, error) {
 	eks := GetExtentSlice()
 	defer PutExtentSlice(eks)
-	if cap(eks) <= sk.Extents.Len() {
-		eks = make([]BtreeItem, 0, sk.Extents.Len())
+	if cap(eks) <= e.Len() {
+		eks = make([]BtreeItem, 0, e.Len())
 	}
 	stepFunc := func(item BtreeItem) bool {
 		eks = append(eks, item)
 		return true
 	}
-	sk.Extents.Ascend(stepFunc)
-	m := make(map[string]interface{})
-	m["extents"] = eks
-	return json.Marshal(m)
+	e.Ascend(stepFunc)
+	return json.Marshal(eks)
 }
 
-func (sk *StreamKey) MarshalJSON() (data []byte, err error) {
-	return sk.Marshal()
+func (e *ExtentsTree) MarshalJSON() ([]byte, error) {
+	return e.Marshal()
 }
 
-func (sk *StreamKey) Put(key BtreeItem) (items []BtreeItem) {
+func (e *ExtentsTree) Append(key BtreeItem) (items []BtreeItem) {
 	var delItems []BtreeItem
 	ext := key.(*proto.ExtentKey)
 	lessFileOffset := ext.FileOffset + uint64(ext.Size)
-	tx := sk.Extents.BeginTx()
-	tx.TxAscendRange(key, &proto.ExtentKey{FileOffset: lessFileOffset},
+	e.AscendRange(key, &proto.ExtentKey{FileOffset: lessFileOffset},
 		func(item BtreeItem) bool {
 			delItems = append(delItems, item)
 			return true
@@ -98,37 +93,32 @@ func (sk *StreamKey) Put(key BtreeItem) (items []BtreeItem) {
 			ExtentId {
 			continue
 		}
-		tx.TxDelete(item)
+		e.Delete(item)
 		items = append(items, item)
 	}
-	// add Item
-	tx.TxReplaceOrInsert(key)
-	tx.TxClose()
+	// add Item to btree
+	e.ReplaceOrInsert(key, true)
 	return
 }
 
-func (sk *StreamKey) Size() (bytes uint64) {
-	item := sk.Extents.MaxItem()
+func (e *ExtentsTree) Size() (size uint64) {
+	item := e.MaxItem()
 	if item == nil {
-		bytes = 0
+		size = 0
 		return
 	}
 	ext := item.(*proto.ExtentKey)
-	bytes = ext.FileOffset + uint64(ext.Size)
+	size = ext.FileOffset + uint64(ext.Size)
 	return
-}
-
-func (sk *StreamKey) GetExtentLen() int {
-	return sk.Extents.Len()
 }
 
 // Range calls f sequentially for each key and value present in the extent key collection.
 // If f returns false, range stops the iteration.
-func (sk *StreamKey) Range(f func(item BtreeItem) bool) {
-	sk.Extents.Ascend(f)
+func (e *ExtentsTree) Range(f func(item BtreeItem) bool) {
+	e.Ascend(f)
 }
 
-func (sk *StreamKey) MarshalBinary() (data []byte, err error) {
+func (e *ExtentsTree) MarshalBinary() (data []byte, err error) {
 	var binData []byte
 	buf := bytes.NewBuffer(make([]byte, 0, 512))
 	stepFunc := func(item BtreeItem) bool {
@@ -143,7 +133,7 @@ func (sk *StreamKey) MarshalBinary() (data []byte, err error) {
 		buf.Write(binData)
 		return true
 	}
-	sk.Extents.Ascend(stepFunc)
+	e.Ascend(stepFunc)
 	if err != nil {
 		return
 	}
@@ -151,7 +141,7 @@ func (sk *StreamKey) MarshalBinary() (data []byte, err error) {
 	return
 }
 
-func (sk *StreamKey) UnmarshalBinary(data []byte) (err error) {
+func (e *ExtentsTree) UnmarshalBinary(data []byte) (err error) {
 	buf := bytes.NewBuffer(data)
 	for {
 		if buf.Len() == 0 {
@@ -161,15 +151,7 @@ func (sk *StreamKey) UnmarshalBinary(data []byte) (err error) {
 		if err = ext.UnmarshalBinary(buf); err != nil {
 			break
 		}
-		sk.Extents.ReplaceOrInsert(&ext, true)
+		e.ReplaceOrInsert(&ext, true)
 	}
 	return
-}
-
-func (sk *StreamKey) Delete(item BtreeItem) {
-	sk.Extents.Delete(item)
-}
-
-func (sk *StreamKey) Max() (item BtreeItem) {
-	return sk.Extents.MaxItem()
 }

@@ -21,8 +21,6 @@ import (
 	"io"
 	"io/ioutil"
 	"path"
-
-	"github.com/google/btree"
 )
 
 type MetaItem struct {
@@ -160,7 +158,7 @@ func (si *ItemIterator) Next() (data []byte, err error) {
 	}
 	// ascend Inode tree
 	if si.cur <= si.inoLen {
-		si.inodeTree.AscendGreaterOrEqual(si.curItem, func(i btree.Item) bool {
+		si.inodeTree.AscendGreaterOrEqual(si.curItem, func(i BtreeItem) bool {
 			ino := i.(*Inode)
 			if si.curItem == ino {
 				return true
@@ -180,7 +178,7 @@ func (si *ItemIterator) Next() (data []byte, err error) {
 		si.curItem = nil
 	}
 	if si.cur <= si.total {
-		si.dentryTree.AscendGreaterOrEqual(si.curItem, func(i btree.Item) bool {
+		si.dentryTree.AscendGreaterOrEqual(si.curItem, func(i BtreeItem) bool {
 			dentry := i.(*Dentry)
 			if si.curItem == dentry {
 				return true
