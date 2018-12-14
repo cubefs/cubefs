@@ -167,13 +167,13 @@ func (eh *ExtentHandler) Write(data []byte, offset, size int) (ek *proto.ExtentK
 func (eh *ExtentHandler) sender() {
 	var err error
 
-	t := time.NewTicker(5 * time.Second)
-	defer t.Stop()
+	//	t := time.NewTicker(5 * time.Second)
+	//	defer t.Stop()
 
 	for {
 		select {
-		case <-t.C:
-			log.LogDebugf("sender alive: eh(%v)", eh)
+		//		case <-t.C:
+		//			log.LogDebugf("sender alive: eh(%v)", eh)
 		case packet := <-eh.request:
 			//log.LogDebugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 			// If handler is in recovery or error status,
@@ -228,13 +228,13 @@ func (eh *ExtentHandler) sender() {
 }
 
 func (eh *ExtentHandler) receiver() {
-	t := time.NewTicker(5 * time.Second)
-	defer t.Stop()
+	//	t := time.NewTicker(5 * time.Second)
+	//	defer t.Stop()
 
 	for {
 		select {
-		case <-t.C:
-			log.LogDebugf("receiver alive: eh(%v)", eh)
+		//		case <-t.C:
+		//			log.LogDebugf("receiver alive: eh(%v)", eh)
 		case packet := <-eh.reply:
 			//log.LogDebugf("receiver begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 			eh.processReply(packet)
