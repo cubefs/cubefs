@@ -116,7 +116,7 @@ func (s *DataNode) processPacket(req *Packet, packetProcessor *PacketProcessor) 
 // If tinyExtent Write get the extentId and extentOffset
 // If OpCreateFile get new extentId
 func (s *DataNode) addExtentInfo(pkg *Packet) error {
-	if pkg.isHeadNode() && pkg.StoreMode == proto.TinyExtentMode && pkg.IsWriteOperation() {
+	if pkg.isHeadNode() && pkg.StoreMode == proto.TinyExtentMode && pkg.isWriteOperation() {
 		store := pkg.partition.GetStore()
 		extentId, err := store.GetAvaliTinyExtent() // Get a valid tinyExtentId
 		if err != nil {
@@ -184,7 +184,7 @@ func (s *DataNode) randomOpReq(pkg *Packet, packetProcessor *PacketProcessor) {
 // If pkg is sequence Op,then send pkg to all replicates,and do local
 func (s *DataNode) sequenceOpReq(req *Packet, packetProcessor *PacketProcessor) {
 	var err error
-	if !req.IsTransitPkg() {
+	if !req.isForwardPacket() {
 		s.operatePacket(req, packetProcessor.sourceConn)
 		if !(req.Opcode == proto.OpStreamRead || req.Opcode == proto.OpExtentRepairRead) {
 			packetProcessor.replyCh <- req
@@ -203,7 +203,7 @@ func (s *DataNode) sequenceOpReq(req *Packet, packetProcessor *PacketProcessor) 
 // Write response to client and recycle the connect.
 func (s *DataNode) WriteResponseToClient(reply *Packet, packetProcessor *PacketProcessor) {
 	var err error
-	if reply.IsErrPack() {
+	if reply.isErrPack() {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToCli, packetProcessor.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
 		reply.forceDestoryAllConnect()
@@ -244,9 +244,9 @@ func (s *DataNode) addMetrics(reply *Packet) {
 	if reply.partition == nil {
 		return
 	}
-	if reply.IsWriteOperation() {
+	if reply.isWriteOperation() {
 		reply.partition.AddWriteMetrics(uint64(latency))
-	} else if reply.IsReadOperation() {
+	} else if reply.isReadOperation() {
 		reply.partition.AddReadMetrics(uint64(latency))
 	}
 }
@@ -284,10 +284,10 @@ func (s *DataNode) receiveFromReplicate(request *Packet, index int) (reply *Pack
 	}
 
 	// Check local execution result.
-	if request.IsErrPack() {
-		err = errors.Annotatef(fmt.Errorf(request.getErr()), "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
+	if request.isErrPack() {
+		err = errors.Annotatef(fmt.Errorf(request.getErrMessage()), "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
 		log.LogErrorf("action[receiveFromReplicate] %v.",
-			request.LogMessage(ActionReceiveFromNext, LocalProcessAddr, request.StartT, fmt.Errorf(request.getErr())))
+			request.LogMessage(ActionReceiveFromNext, LocalProcessAddr, request.StartT, fmt.Errorf(request.getErrMessage())))
 		return
 	}
 
@@ -308,7 +308,7 @@ func (s *DataNode) receiveFromReplicate(request *Packet, index int) (reply *Pack
 		return
 	}
 
-	if reply.IsErrPack() {
+	if reply.isErrPack() {
 		err = fmt.Errorf(ActionReceiveFromNext+"remote (%v) do failed(%v)",
 			request.replicateAddrs[index], string(reply.Data[:reply.Size]))
 		err = errors.Annotatef(err, "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
@@ -362,12 +362,12 @@ func (s *DataNode) checkPacket(pkg *Packet) error {
 		return err
 	}
 
-	if err = pkg.CheckCrc(); err != nil {
+	if err = pkg.checkCrc(); err != nil {
 		return err
 	}
 	var addrs []string
-	if addrs, err = pkg.UnmarshalAddrs(); err == nil {
-		err = pkg.GetNextAddr(addrs)
+	if addrs, err = pkg.unmarshalAddrs(); err == nil {
+		err = pkg.checkPacketAddr(addrs)
 	}
 	if err != nil {
 		return err
@@ -405,7 +405,7 @@ func (s *DataNode) statsFlow(pkg *Packet, flag int) {
 		return
 	}
 
-	if pkg.IsReadOperation() {
+	if pkg.isReadOperation() {
 		stat.AddInDataSize(uint64(pkg.Arglen))
 	} else {
 		stat.AddInDataSize(uint64(pkg.Size + pkg.Arglen))
@@ -417,11 +417,11 @@ func (s *DataNode) leaderPutTinyExtentToStore(pkg *Packet) {
 	if pkg == nil || !storage.IsTinyExtent(pkg.ExtentID) || pkg.ExtentID <= 0 || atomic.LoadInt32(&pkg.isRelaseTinyExtent) == HasReturnToStore {
 		return
 	}
-	if pkg.StoreMode != proto.TinyExtentMode || !pkg.isHeadNode() || !pkg.IsWriteOperation() || !pkg.IsTransitPkg() {
+	if pkg.StoreMode != proto.TinyExtentMode || !pkg.isHeadNode() || !pkg.isWriteOperation() || !pkg.isForwardPacket() {
 		return
 	}
 	store := pkg.partition.GetStore()
-	if pkg.IsErrPack() {
+	if pkg.isErrPack() {
 		store.PutTinyExtentToUnavaliCh(pkg.ExtentID)
 	} else {
 		store.PutTinyExtentToAvaliCh(pkg.ExtentID)

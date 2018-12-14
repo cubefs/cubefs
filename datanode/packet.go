@@ -37,7 +37,6 @@ var (
 
 const (
 	HasReturnToStore = 1
-	NoReturnToStore  = -1
 )
 
 type Packet struct {
@@ -53,7 +52,7 @@ type Packet struct {
 
 func (p *Packet) afterTp() (ok bool) {
 	var err error
-	if p.IsErrPack() {
+	if p.isErrPack() {
 		err = fmt.Errorf(p.GetOpMsg()+" failed because(%v)", string(p.Data[:p.Size]))
 	}
 	ump.AfterTP(p.tpObject, err)
@@ -72,7 +71,7 @@ const (
 	NoCloseConnect    = false
 )
 
-func (p *Packet) UnmarshalAddrs() (addrs []string, err error) {
+func (p *Packet) unmarshalAddrs() (addrs []string, err error) {
 	if len(p.Arg) < int(p.Arglen) {
 		return nil, ErrArgLenMismatch
 	}
@@ -130,7 +129,7 @@ func (p *Packet) IsMasterCommand() bool {
 	return false
 }
 
-func (p *Packet) GetNextAddr(addrs []string) error {
+func (p *Packet) checkPacketAddr(addrs []string) error {
 	sub := p.goals - p.Nodes
 	if sub < 0 || sub > p.goals || (sub == p.goals && p.Nodes != 0) {
 		return ErrAddrsNodesMismatch
@@ -141,13 +140,13 @@ func (p *Packet) GetNextAddr(addrs []string) error {
 	return nil
 }
 
-func (p *Packet) IsTransitPkg() bool {
+func (p *Packet) isForwardPacket() bool {
 	r := p.Nodes > 0
 	return r
 }
 
-func (p *Packet) CheckCrc() (err error) {
-	if !p.IsWriteOperation() {
+func (p *Packet) checkCrc() (err error) {
+	if !p.isWriteOperation() {
 		return
 	}
 
@@ -206,63 +205,39 @@ func NewNotifyExtentRepair(partitionId uint32) (p *Packet) {
 	return
 }
 
-func (p *Packet) IsTailNode() (ok bool) {
-	if p.Nodes == 0 && (p.IsWriteOperation() || p.Opcode == proto.OpCreateFile ||
-		(p.Opcode == proto.OpMarkDelete && p.StoreMode == proto.TinyExtentMode)) {
-		return true
-	}
-
-	return
-}
-
-func (p *Packet) IsWriteOperation() bool {
+func (p *Packet) isWriteOperation() bool {
 	return p.Opcode == proto.OpWrite
 }
 
-func (p *Packet) IsCreateFileOperation() bool {
+func (p *Packet) isCreateFileOperation() bool {
 	return p.Opcode == proto.OpCreateFile
 }
 
-func (p *Packet) IsMarkDeleteOperation() bool {
+func (p *Packet) isMarkDeleteOperation() bool {
 	return p.Opcode == proto.OpMarkDelete
 }
 
-func (p *Packet) IsExtentWritePacket() bool {
-	return p.StoreMode == proto.NormalExtentMode && p.IsWriteOperation()
-}
-
-func (p *Packet) IsReadOperation() bool {
+func (p *Packet) isReadOperation() bool {
 	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpRead || p.Opcode == proto.OpExtentRepairRead
 }
 
-func (p *Packet) IsMarkDeleteReq() bool {
-	return p.Opcode == proto.OpMarkDelete
-}
-
 func (p *Packet) isHeadNode() (ok bool) {
-	if p.goals == p.Nodes && (p.IsWriteOperation() || p.IsCreateFileOperation() || p.IsMarkDeleteOperation()) {
+	if p.goals == p.Nodes && (p.isWriteOperation() || p.isCreateFileOperation() || p.isMarkDeleteOperation()) {
 		ok = true
 	}
 
 	return
 }
 
-func (p *Packet) CopyFrom(src *Packet) {
-	p.ResultCode = src.ResultCode
-	p.Opcode = src.Opcode
-	p.Size = src.Size
-	p.Data = src.Data
-}
-
-func (p *Packet) IsErrPack() bool {
+func (p *Packet) isErrPack() bool {
 	return p.ResultCode != proto.OpOk
 }
 
-func (p *Packet) getErr() (m string) {
+func (p *Packet) getErrMessage() (m string) {
 	return fmt.Sprintf("req(%v) err(%v)", p.GetUniqueLogId(), string(p.Data[:p.Size]))
 }
 
-func (p *Packet) distinguishErrorOp(errLog string, errMsg string) {
+func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 	if strings.Contains(errLog, ActionReceiveFromNext) || strings.Contains(errLog, ActionSendToNext) ||
 		strings.Contains(errLog, ConnIsNullErr) || strings.Contains(errLog, ActionCheckAndAddInfos) {
 		p.ResultCode = proto.OpIntraGroupNetErr
@@ -293,7 +268,7 @@ func (p *Packet) distinguishErrorOp(errLog string, errMsg string) {
 }
 
 func (p *Packet) PackErrorBody(action, msg string) {
-	p.distinguishErrorOp(action, msg)
+	p.identificationErrorResultCode(action, msg)
 	if p.ResultCode == proto.OpDiskNoSpaceErr || p.ResultCode == proto.OpDiskErr {
 		p.ResultCode = proto.OpIntraGroupNetErr
 	}
@@ -338,7 +313,7 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (er
 		return
 	}
 	size := p.Size
-	if p.IsReadOperation() && p.ResultCode == proto.OpInitResultCode {
+	if p.isReadOperation() && p.ResultCode == proto.OpInitResultCode {
 		size = 0
 	}
 	return p.ReadFull(c, int(size))

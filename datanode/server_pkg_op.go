@@ -46,7 +46,7 @@ func (s *DataNode) operatePacket(pkg *Packet, c *net.TCPConn) {
 	defer func() {
 		resultSize := pkg.Size
 		pkg.Size = orgSize
-		if pkg.IsErrPack() {
+		if pkg.isErrPack() {
 			err = fmt.Errorf("op[%v] error[%v]", pkg.GetOpMsg(), string(pkg.Data[:resultSize]))
 			logContent := fmt.Sprintf("action[operatePacket] %v.",
 				pkg.LogMessage(pkg.GetOpMsg(), c.RemoteAddr().String(), start, err))
