@@ -471,48 +471,6 @@ func (e *fsExtent) HeaderChecksum() (crc uint32) {
 	return
 }
 
-func (e *fsExtent) pendingCollapseFile() {
-	timer := time.NewTimer(5 * time.Second)
-	for {
-		select {
-		case <-timer.C:
-			stat, err := e.file.Stat()
-			if err != nil {
-				return
-			}
-			if time.Now().Unix()-stat.ModTime().Unix() > 5*60 {
-				e.collapseFile()
-				return
-			}
-			continue
-		case <-e.closeC:
-			e.collapseFile()
-			return
-		}
-	}
-}
-
-func (e *fsExtent) collapseFile() (err error) {
-	e.lock.Lock()
-	defer e.lock.Unlock()
-	var (
-		info os.FileInfo
-	)
-	if info, err = e.file.Stat(); err != nil {
-		return
-	}
-	statFs := &syscall.Statfs_t{}
-	if err = syscall.Statfs(e.filePath, statFs); err != nil {
-		return
-	}
-	blockNum := info.Size() / int64(statFs.Bsize)
-	if info.Size()%int64(statFs.Bsize) != 0 {
-		blockNum += 1
-	}
-	err = e.tryPunchHole(int(e.file.Fd()), blockNum*int64(statFs.Bsize), util.ExtentFileSizeLimit)
-	return
-}
-
 const (
 	PageSize = 4 * util.KB
 )
