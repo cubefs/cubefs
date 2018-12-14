@@ -1,6 +1,3 @@
 Copyright 2018 ContainerFS Authors
 
-This project includes a number of subcomponents with separate copyright notices and license terms,
-including util/trymytex/try_mutex.go and util/pool/conn_pool.go, which are licensed under MIT license.
 
-Your use of the source code for the these subcomponents subjects to the terms and conditions of the MIT license.
