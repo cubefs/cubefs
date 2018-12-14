@@ -57,6 +57,12 @@ type CloseRequest struct {
 	done chan struct{}
 }
 
+type TruncRequest struct {
+	size int
+	err  error
+	done chan struct{}
+}
+
 type StreamWriter struct {
 	stream *Streamer
 	inode  uint64
@@ -115,6 +121,18 @@ func (sw *StreamWriter) IssueCloseRequest() error {
 	<-request.done
 	err := request.err
 	closeRequestPool.Put(request)
+	sw.done <- struct{}{}
+	return err
+}
+
+func (sw *StreamWriter) IssueTruncRequest(size int) error {
+	request := truncRequestPool.Get().(*TruncRequest)
+	request.size = size
+	request.done = make(chan struct{}, 1)
+	sw.request <- request
+	<-request.done
+	err := request.err
+	truncRequestPool.Put(request)
 	return err
 }
 
@@ -138,6 +156,10 @@ func (sw *StreamWriter) handleRequest(request interface{}) (err error) {
 	switch request := request.(type) {
 	case *WriteRequest:
 		request.writeBytes, request.err = sw.write(request.data, request.fileOffset, request.size)
+		request.done <- struct{}{}
+		err = request.err
+	case *TruncRequest:
+		request.err = sw.truncate(request.size)
 		request.done <- struct{}{}
 		err = request.err
 	case *FlushRequest:
@@ -270,8 +292,7 @@ func (sw *StreamWriter) doWrite(data []byte, offset, size int) (total int, err e
 			break
 		}
 
-		// handler is already set to closed in Write
-		sw.handler = nil
+		sw.closeOpenHandler()
 	}
 
 	if err != nil || ek == nil {
@@ -287,14 +308,6 @@ func (sw *StreamWriter) doWrite(data []byte, offset, size int) (total int, err e
 }
 
 func (sw *StreamWriter) flush() (err error) {
-	//	if sw.handler != nil {
-	//		_, err = sw.handler.flush()
-	//		if err != nil {
-	//			return
-	//		}
-	//		sw.dirty = false // current handler will be removed from dirty list inspite of its status
-	//	}
-
 	for {
 		element := sw.dirtylist.Get()
 		if element == nil {
@@ -349,7 +362,7 @@ func (sw *StreamWriter) traverse() (err error) {
 	return
 }
 
-func (sw *StreamWriter) close() (err error) {
+func (sw *StreamWriter) closeOpenHandler() {
 	if sw.handler != nil {
 		sw.handler.setClosed()
 		if !sw.dirty {
@@ -359,6 +372,10 @@ func (sw *StreamWriter) close() (err error) {
 		}
 		sw.handler = nil
 	}
+}
+
+func (sw *StreamWriter) close() (err error) {
+	sw.closeOpenHandler()
 	err = sw.flush()
 	if err != nil {
 		sw.abort()
@@ -376,4 +393,12 @@ func (sw *StreamWriter) abort() {
 		sw.dirtylist.Remove(element)
 		eh.cleanup()
 	}
+}
+
+func (sw *StreamWriter) truncate(size int) error {
+	sw.closeOpenHandler()
+	if err := sw.flush(); err != nil {
+		return err
+	}
+	return sw.stream.client.truncate(sw.inode, uint64(size))
 }

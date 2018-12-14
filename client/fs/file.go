@@ -142,7 +142,7 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 }
 
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
-	log.LogDebugf("TRACE Read enter: ino(%v) req(%v)", f.inode.ino, req)
+	log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) reqsize(%v) req(%v)", f.inode.ino, req.Offset, req.Size, req)
 	start := time.Now()
 	size, err := f.super.ec.Read(f.inode.ino, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	if err != nil && err != io.EOF {
@@ -158,7 +158,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Read: ino(%v) req(%v) size(%v) (%v)ns", f.inode.ino, req, size, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v) (%v)ns", f.inode.ino, req.Offset, req.Size, req, size, elapsed.Nanoseconds())
 	return nil
 }
 
@@ -167,11 +167,11 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	reqlen := len(req.Data)
 	filesize, _ := f.super.ec.GetFileSize(ino)
 
-	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v)", ino, req.Offset, reqlen, req.Flags, req.FileFlags)
+	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v) req(%v)", ino, req.Offset, reqlen, req.Flags, req.FileFlags, req)
 
 	if req.FileFlags.IsWriteOnly() && req.Offset > int64(filesize) && reqlen == 1 {
 		// posix_fallocate would write 1 byte if fallocate is not supported.
-		err = f.super.mw.Truncate(ino, uint64(req.Offset)+uint64(reqlen))
+		err = f.super.ec.Truncate(ino, int(req.Offset)+reqlen)
 		if err == nil {
 			f.super.ic.Delete(ino)
 			f.super.ec.RefreshExtentsCache(ino)
@@ -207,8 +207,8 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Write: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v) (%v)ns ",
-		ino, req.Offset, reqlen, req.Flags, req.FileFlags, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Write: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v) req(%v) (%v)ns ",
+		ino, req.Offset, reqlen, req.Flags, req.FileFlags, req, elapsed.Nanoseconds())
 	return nil
 }
 
@@ -238,7 +238,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 			log.LogErrorf("Setattr: truncate wait for flush ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
-		if err := f.super.mw.Truncate(ino, req.Size); err != nil {
+		if err := f.super.ec.Truncate(ino, int(req.Size)); err != nil {
 			log.LogErrorf("Setattr: truncate ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
