@@ -29,12 +29,14 @@ import (
 
 type AppendExtentKeyFunc func(inode uint64, key proto.ExtentKey) error
 type GetExtentsFunc func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
+type TruncateFunc func(inode, size uint64) error
 
 var (
 	gDataWrapper     *wrapper.Wrapper
 	writeRequestPool *sync.Pool
 	flushRequestPool *sync.Pool
 	closeRequestPool *sync.Pool
+	truncRequestPool *sync.Pool
 )
 
 type ExtentClient struct {
@@ -42,9 +44,10 @@ type ExtentClient struct {
 	streamerLock    sync.Mutex
 	appendExtentKey AppendExtentKeyFunc
 	getExtents      GetExtentsFunc
+	truncate        TruncateFunc
 }
 
-func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc) (client *ExtentClient, err error) {
+func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc, truncate TruncateFunc) (client *ExtentClient, err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	client = new(ExtentClient)
 	gDataWrapper, err = wrapper.NewDataPartitionWrapper(volname, master)
@@ -54,6 +57,7 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 	client.streamers = make(map[uint64]*Streamer)
 	client.appendExtentKey = appendExtentKey
 	client.getExtents = getExtents
+	client.truncate = truncate
 	writeRequestPool = &sync.Pool{New: func() interface{} {
 		return &WriteRequest{}
 	}}
@@ -62,6 +66,9 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 	}}
 	closeRequestPool = &sync.Pool{New: func() interface{} {
 		return &CloseRequest{}
+	}}
+	truncRequestPool = &sync.Pool{New: func() interface{} {
+		return &TruncRequest{}
 	}}
 	return
 }
@@ -76,12 +83,6 @@ func (client *ExtentClient) OpenStream(inode uint64) error {
 	stream.refcnt++
 	log.LogDebugf("OpenStream: ino(%v) refcnt(%v)", inode, stream.refcnt)
 	client.streamerLock.Unlock()
-
-	//	err := stream.GetExtents()
-	//	if err != nil {
-	//		client.CloseStream(inode)
-	//	}
-	//return err
 	return nil
 }
 
@@ -140,7 +141,7 @@ func (client *ExtentClient) SetFileSize(inode uint64, size int) {
 }
 
 func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write int, err error) {
-	prefix := fmt.Sprintf("inodewrite %v_%v_%v", inode, offset, len(data))
+	prefix := fmt.Sprintf("write %v_%v_%v", inode, offset, len(data))
 
 	stream, sw := client.getStreamWriter(inode, true)
 	if sw == nil {
@@ -158,6 +159,22 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write 
 		ump.Alarm(gDataWrapper.UmpWarningKey(), err.Error())
 	}
 	return
+}
+
+func (client *ExtentClient) Truncate(inode uint64, size int) error {
+	prefix := fmt.Sprintf("truncate: ino(%v)size(%v)", inode, size)
+
+	_, sw := client.getStreamWriter(inode, true)
+	if sw == nil {
+		return fmt.Errorf("Prefix(%v) cannot init StreamWriter", prefix)
+	}
+
+	err := sw.IssueTruncRequest(size)
+	if err != nil {
+		err = errors.Annotatef(err, prefix)
+		log.LogError(errors.ErrorStack(err))
+	}
+	return err
 }
 
 func (client *ExtentClient) Flush(inode uint64) error {

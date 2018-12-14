@@ -57,6 +57,12 @@ type CloseRequest struct {
 	done chan struct{}
 }
 
+type TruncRequest struct {
+	size int
+	err  error
+	done chan struct{}
+}
+
 type StreamWriter struct {
 	stream *Streamer
 	inode  uint64
@@ -119,6 +125,17 @@ func (sw *StreamWriter) IssueCloseRequest() error {
 	return err
 }
 
+func (sw *StreamWriter) IssueTruncRequest(size int) error {
+	request := truncRequestPool.Get().(*TruncRequest)
+	request.size = size
+	request.done = make(chan struct{}, 1)
+	sw.request <- request
+	<-request.done
+	err := request.err
+	truncRequestPool.Put(request)
+	return err
+}
+
 func (sw *StreamWriter) server() {
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
@@ -139,6 +156,10 @@ func (sw *StreamWriter) handleRequest(request interface{}) (err error) {
 	switch request := request.(type) {
 	case *WriteRequest:
 		request.writeBytes, request.err = sw.write(request.data, request.fileOffset, request.size)
+		request.done <- struct{}{}
+		err = request.err
+	case *TruncRequest:
+		request.err = sw.truncate(request.size)
 		request.done <- struct{}{}
 		err = request.err
 	case *FlushRequest:
@@ -372,4 +393,12 @@ func (sw *StreamWriter) abort() {
 		sw.dirtylist.Remove(element)
 		eh.cleanup()
 	}
+}
+
+func (sw *StreamWriter) truncate(size int) error {
+	sw.closeOpenHandler()
+	if err := sw.flush(); err != nil {
+		return err
+	}
+	return sw.stream.client.truncate(sw.inode, uint64(size))
 }
