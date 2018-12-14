@@ -17,8 +17,8 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/google/btree"
 	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/third_party/btree"
 	"io"
 )
 

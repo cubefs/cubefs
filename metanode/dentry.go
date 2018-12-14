@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"encoding/binary"
 
-	"github.com/tiglabs/containerfs/third_party/btree"
+	"github.com/google/btree"
 )
 
 // Dentry wraps necessary properties of `Dentry` information in file system.

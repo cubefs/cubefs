@@ -17,7 +17,7 @@ package meta
 import (
 	"fmt"
 
-	"github.com/tiglabs/containerfs/third_party/btree"
+	"github.com/google/btree"
 )
 
 type MetaPartition struct {

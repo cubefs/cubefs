@@ -21,7 +21,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tiglabs/containerfs/third_party/btree"
+	"github.com/google/btree"
 
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util"

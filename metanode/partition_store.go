@@ -23,9 +23,9 @@ import (
 	"os"
 	"path"
 
+	"github.com/google/btree"
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/third_party/btree"
 )
 
 const (

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/google/btree"
 	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/third_party/btree"
 	"github.com/tiglabs/containerfs/util/log"
 )
 
