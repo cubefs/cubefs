@@ -76,14 +76,6 @@ type MetaPartitionConfig struct {
 	ConnPool    *util.ConnectPool   `json:"-"`
 }
 
-func (c *MetaPartitionConfig) Dump() ([]byte, error) {
-	return json.Marshal(c)
-}
-
-func (c *MetaPartitionConfig) Load(bytes []byte) error {
-	return json.Unmarshal(bytes, c)
-}
-
 func (c *MetaPartitionConfig) checkMeta() (err error) {
 	if c.PartitionId <= 0 {
 		err = errors.Errorf("[checkMeta]: partition id at least 1, "+
@@ -444,6 +436,11 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 func (mp *metaPartition) OfflinePartition(req []byte) (err error) {
 	_, err = mp.Put(opOfflinePartition, req)
 	return
+}
+
+// Marshal json marshal interface
+func (mp *metaPartition) MarshalJSON() ([]byte, error) {
+	return json.Marshal(mp.config)
 }
 
 func (mp *metaPartition) Reset() (err error) {

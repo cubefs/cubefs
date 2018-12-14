@@ -21,16 +21,27 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 )
 
-func replyInfo(info *proto.InodeInfo, ino *Inode) {
+func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
+	ino.RLock()
+	if ino.Flag&DeleteMarkFlag > 0 {
+		return false
+	}
 	info.Inode = ino.Inode
 	info.Mode = ino.Type
 	info.Size = ino.Size
 	info.Nlink = ino.NLink
+	info.Uid = ino.Uid
+	info.Gid = ino.Gid
 	info.Generation = ino.Generation
-	info.Target = ino.LinkTarget
+	if length := len(ino.LinkTarget); length > 0 {
+		info.Target = make([]byte, length)
+		copy(info.Target, ino.LinkTarget)
+	}
 	info.CreateTime = time.Unix(ino.CreateTime, 0)
 	info.AccessTime = time.Unix(ino.AccessTime, 0)
 	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
+	ino.RUnlock()
+	return true
 }
 
 func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
@@ -52,26 +63,20 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 		return
 	}
 	var (
-		status = resp.(uint8)
+		status = proto.OpNotExistErr
 		reply  []byte
 	)
-	if status == proto.OpOk {
+	if resp.(uint8) == proto.OpOk {
 		resp := &CreateInoResp{
 			Info: &proto.InodeInfo{},
 		}
-		resp.Info.Inode = ino.Inode
-		resp.Info.Mode = ino.Type
-		resp.Info.Generation = ino.Generation
-		resp.Info.Size = ino.Size
-		resp.Info.CreateTime = time.Unix(ino.CreateTime, 0)
-		resp.Info.ModifyTime = time.Unix(ino.ModifyTime, 0)
-		resp.Info.AccessTime = time.Unix(ino.AccessTime, 0)
-		resp.Info.Target = ino.LinkTarget
-		resp.Info.Nlink = ino.NLink
-		reply, err = json.Marshal(resp)
-		if err != nil {
-			status = proto.OpErr
-			reply = []byte(err.Error())
+		if replyInfo(resp.Info, ino) {
+			status = proto.OpOk
+			reply, err = json.Marshal(resp)
+			if err != nil {
+				status = proto.OpErr
+				reply = []byte(err.Error())
+			}
 		}
 	}
 	p.PackErrorWithBody(status, reply)
@@ -132,26 +137,18 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 	ino = retMsg.Msg
 	var (
 		reply  []byte
-		status = retMsg.Status
+		status = proto.OpNotExistErr
 	)
-	if status == proto.OpOk {
+	if retMsg.Status == proto.OpOk {
 		resp := &proto.InodeGetResponse{
 			Info: &proto.InodeInfo{},
 		}
-		resp.Info.Inode = ino.Inode
-		resp.Info.Mode = ino.Type
-		resp.Info.Size = ino.Size
-		resp.Info.Generation = ino.Generation
-		resp.Info.CreateTime = time.Unix(ino.CreateTime, 0)
-		resp.Info.AccessTime = time.Unix(ino.AccessTime, 0)
-		resp.Info.ModifyTime = time.Unix(ino.ModifyTime, 0)
-		resp.Info.Target = ino.LinkTarget
-		resp.Info.Nlink = ino.NLink
-		resp.Info.Uid = ino.Uid
-		resp.Info.Gid = ino.Gid
-		reply, err = json.Marshal(resp)
-		if err != nil {
-			status = proto.OpErr
+		if replyInfo(resp.Info, retMsg.Msg) {
+			status = proto.OpOk
+			reply, err = json.Marshal(resp)
+			if err != nil {
+				status = proto.OpErr
+			}
 		}
 	}
 	p.PackErrorWithBody(status, reply)
@@ -166,18 +163,9 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 		retMsg := mp.getInode(ino)
 		if retMsg.Status == proto.OpOk {
 			inoInfo := &proto.InodeInfo{}
-			inoInfo.Inode = retMsg.Msg.Inode
-			inoInfo.Size = retMsg.Msg.Size
-			inoInfo.Mode = retMsg.Msg.Type
-			inoInfo.Generation = retMsg.Msg.Generation
-			inoInfo.AccessTime = time.Unix(retMsg.Msg.AccessTime, 0)
-			inoInfo.ModifyTime = time.Unix(retMsg.Msg.ModifyTime, 0)
-			inoInfo.CreateTime = time.Unix(retMsg.Msg.CreateTime, 0)
-			inoInfo.Target = retMsg.Msg.LinkTarget
-			inoInfo.Nlink = retMsg.Msg.NLink
-			inoInfo.Uid = retMsg.Msg.Uid
-			inoInfo.Gid = retMsg.Msg.Gid
-			resp.Infos = append(resp.Infos, inoInfo)
+			if replyInfo(inoInfo, retMsg.Msg) {
+				resp.Infos = append(resp.Infos, inoInfo)
+			}
 		}
 	}
 	data, err := json.Marshal(resp)
@@ -202,27 +190,20 @@ func (mp *metaPartition) CreateLinkInode(req *LinkInodeReq, p *Packet) (err erro
 		return
 	}
 	retMsg := resp.(*ResponseInode)
-	status := retMsg.Status
+	status := proto.OpNotExistErr
 	var reply []byte
-	if status == proto.OpOk {
+	if retMsg.Status == proto.OpOk {
 		resp := &LinkInodeResp{
 			Info: &proto.InodeInfo{},
 		}
-		resp.Info.Inode = retMsg.Msg.Inode
-		resp.Info.Mode = retMsg.Msg.Type
-		resp.Info.Generation = retMsg.Msg.Generation
-		resp.Info.Size = retMsg.Msg.Size
-		resp.Info.AccessTime = time.Unix(retMsg.Msg.AccessTime, 0)
-		resp.Info.ModifyTime = time.Unix(retMsg.Msg.ModifyTime, 0)
-		resp.Info.CreateTime = time.Unix(retMsg.Msg.CreateTime, 0)
-		resp.Info.Nlink = retMsg.Msg.NLink
-		resp.Info.Target = retMsg.Msg.LinkTarget
-		resp.Info.Uid = retMsg.Msg.Uid
-		resp.Info.Gid = retMsg.Msg.Gid
-		reply, err = json.Marshal(resp)
-		if err != nil {
-			status = proto.OpErr
+		if replyInfo(resp.Info, retMsg.Msg) {
+			status = proto.OpOk
+			reply, err = json.Marshal(resp)
+			if err != nil {
+				status = proto.OpErr
+			}
 		}
+
 	}
 	p.PackErrorWithBody(status, reply)
 	return

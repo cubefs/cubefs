@@ -17,12 +17,16 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
-	"time"
-
-	"github.com/google/btree"
 	"github.com/tiglabs/containerfs/proto"
 	"io"
+	"sync"
+	"time"
+)
+
+const (
+	DeleteMarkFlag = 1 << 0
 )
 
 // Inode wraps necessary properties of `Inode` information in file system.
@@ -45,6 +49,7 @@ import (
 //  | bytes |     4     |   KeyLength  |     4     |   ValLength  |
 //  +-------+-----------+--------------+-----------+--------------+
 type Inode struct {
+	sync.RWMutex
 	Inode      uint64 // Inode ID
 	Type       uint32
 	Uid        uint32
@@ -56,13 +61,14 @@ type Inode struct {
 	ModifyTime int64
 	LinkTarget []byte // SymLink target name
 	NLink      uint32 // NodeLink counts
-	MarkDelete uint8  // 0: false; 1: true
-	Flag       uint32
+	Flag       int32
 	Reserved   uint64
-	Extents    *StreamKey
+	Extents    *ExtentsTree
 }
 
 func (i *Inode) String() string {
+	i.RLock()
+	defer i.RUnlock()
 	buff := bytes.NewBuffer(nil)
 	buff.Grow(128)
 	buff.WriteString("Inode{")
@@ -77,7 +83,6 @@ func (i *Inode) String() string {
 	buff.WriteString(fmt.Sprintf("MT[%d]", i.ModifyTime))
 	buff.WriteString(fmt.Sprintf("LinkT[%s]", i.LinkTarget))
 	buff.WriteString(fmt.Sprintf("NLink[%d]", i.NLink))
-	buff.WriteString(fmt.Sprintf("MD[%d]", i.MarkDelete))
 	buff.WriteString(fmt.Sprintf("Flag[%d]", i.Flag))
 	buff.WriteString(fmt.Sprintf("Reserved[%d]", i.Reserved))
 	buff.WriteString(fmt.Sprintf("Extents[%s]", i.Extents))
@@ -97,7 +102,7 @@ func NewInode(ino uint64, t uint32) *Inode {
 		AccessTime: ts,
 		ModifyTime: ts,
 		NLink:      1,
-		Extents:    NewStreamKey(),
+		Extents:    NewExtentsTree(),
 	}
 	if proto.IsDir(t) {
 		i.NLink = 2
@@ -107,9 +112,15 @@ func NewInode(ino uint64, t uint32) *Inode {
 
 // Less tests whether the current Inode item is less than the given one.
 // This method is necessary fot B-Tree item implementation.
-func (i *Inode) Less(than btree.Item) bool {
+func (i *Inode) Less(than BtreeItem) bool {
 	ino, ok := than.(*Inode)
 	return ok && i.Inode < ino.Inode
+}
+
+func (i *Inode) MarshalJSON() ([]byte, error) {
+	i.RLock()
+	defer i.RUnlock()
+	return json.Marshal(i)
 }
 
 func (i *Inode) Marshal() (result []byte, err error) {
@@ -180,6 +191,7 @@ func (i *Inode) MarshalValue() (val []byte) {
 	var err error
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
 	buff.Grow(64)
+	i.RLock()
 	if err = binary.Write(buff, binary.BigEndian, &i.Type); err != nil {
 		panic(err)
 	}
@@ -216,9 +228,6 @@ func (i *Inode) MarshalValue() (val []byte) {
 	if err = binary.Write(buff, binary.BigEndian, &i.NLink); err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, &i.MarkDelete); err != nil {
-		panic(err)
-	}
 	if err = binary.Write(buff, binary.BigEndian, &i.Flag); err != nil {
 		panic(err)
 	}
@@ -235,6 +244,7 @@ func (i *Inode) MarshalValue() (val []byte) {
 	}
 
 	val = buff.Bytes()
+	i.RUnlock()
 	return
 }
 
@@ -280,9 +290,6 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &i.NLink); err != nil {
 		return
 	}
-	if err = binary.Read(buff, binary.BigEndian, &i.MarkDelete); err != nil {
-		return
-	}
 	if err = binary.Read(buff, binary.BigEndian, &i.Flag); err != nil {
 		return
 	}
@@ -294,7 +301,7 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	}
 	// Unmarshal ExtentsKey
 	if i.Extents == nil {
-		i.Extents = NewStreamKey()
+		i.Extents = NewExtentsTree()
 	}
 	if err = i.Extents.UnmarshalBinary(buff.Bytes()); err != nil {
 		return
@@ -302,12 +309,82 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	return
 }
 
-func (i *Inode) AppendExtents(ext BtreeItem) (items []BtreeItem) {
-	items = i.Extents.Put(ext)
-	size := i.Extents.Size()
-	if i.Size < size {
-		i.Size = size
+func (i *Inode) AppendExtents(exts []BtreeItem, ct int64) (items []BtreeItem) {
+	i.Lock()
+	for _, ext := range exts {
+		delItems := i.Extents.Append(ext)
+		size := i.Extents.Size()
+		if i.Size < size {
+			i.Size = size
+		}
+		items = append(items, delItems...)
 	}
-	i.ModifyTime = time.Now().Unix()
+	i.Generation++
+	i.ModifyTime = ct
+	i.Unlock()
 	return
+}
+
+func (i *Inode) ExtentsTruncate(exts []BtreeItem, length uint64, ct int64) {
+	if len(exts) == 0 {
+		return
+	}
+	i.Lock()
+	for _, ext := range exts {
+		i.Extents.Delete(ext)
+	}
+	// check the max item size if or not gt the truncate size
+	item := i.Extents.MaxItem()
+	if item != nil {
+		ext := item.(*proto.ExtentKey)
+		if (ext.FileOffset + uint64(ext.Size)) > length {
+			ext.Size = uint32(length - ext.FileOffset)
+		}
+	}
+	i.Size = length
+	i.ModifyTime = ct
+	i.Generation++
+	i.Unlock()
+}
+
+func (i *Inode) IncrNLink() {
+	i.Lock()
+	i.NLink++
+	i.Unlock()
+}
+
+func (i *Inode) DecrNLink() {
+	i.Lock()
+	i.NLink--
+	i.Unlock()
+}
+
+func (i *Inode) GetNLink() uint32 {
+	i.RLock()
+	defer i.RUnlock()
+	return i.NLink
+}
+func (i *Inode) SetDeleteMark() {
+	i.Lock()
+	i.Flag |= DeleteMarkFlag
+	i.Unlock()
+}
+func (i *Inode) IsDelete() bool {
+	i.RLock()
+	defer i.RUnlock()
+	return i.Flag&DeleteMarkFlag == DeleteMarkFlag
+}
+
+func (i *Inode) SetAttr(valid, mode, uid, gid uint32) {
+	i.Lock()
+	if mode&proto.AttrMode != 0 {
+		i.Type = mode
+	}
+	if valid&proto.AttrUid != 0 {
+		i.Uid = uid
+	}
+	if valid&proto.AttrGid != 0 {
+		i.Gid = gid
+	}
+	i.Unlock()
 }

@@ -158,7 +158,7 @@ func (mp *metaPartition) deleteDataPartitionMark(inoSlice []*Inode) {
 		} else {
 			newIno := NewInode(ino.Inode, ino.Type)
 			for _, ext := range reExt {
-				newIno.Extents.Put(ext)
+				newIno.Extents.Append(ext)
 			}
 			mp.freeList.Push(newIno)
 		}

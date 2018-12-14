@@ -322,6 +322,7 @@ func (m *metaManager) GetPartition(id uint64) (mp MetaPartition, err error) {
 	return
 }
 
+// PartitionsMarshalJSON only marshal base information of every partition
 func (m *metaManager) PartitionsMarshalJSON() (data []byte, err error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

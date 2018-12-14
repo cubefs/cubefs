@@ -23,7 +23,6 @@ import (
 	"os"
 	"path"
 
-	"github.com/google/btree"
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 )
@@ -255,7 +254,7 @@ func (mp *metaPartition) storeInode(sm *storeMsg) (err error) {
 			os.RemoveAll(filename)
 		}
 	}()
-	sm.inodeTree.Ascend(func(i btree.Item) bool {
+	sm.inodeTree.Ascend(func(i BtreeItem) bool {
 		var data []byte
 		lenBuf := make([]byte, 4)
 		ino := i.(*Inode)
@@ -292,7 +291,7 @@ func (mp *metaPartition) storeDentry(sm *storeMsg) (err error) {
 		fp.Close()
 		os.Remove(filename)
 	}()
-	sm.dentryTree.Ascend(func(i btree.Item) bool {
+	sm.dentryTree.Ascend(func(i BtreeItem) bool {
 		var data []byte
 		lenBuf := make([]byte, 4)
 		dentry := i.(*Dentry)

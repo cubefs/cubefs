@@ -17,7 +17,6 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/google/btree"
 	"github.com/tiglabs/containerfs/proto"
 	"io"
 )
@@ -55,11 +54,11 @@ func (mp *metaPartition) createLinkInode(ino *Inode) (resp *ResponseInode) {
 		resp.Status = proto.OpArgMismatchErr
 		return
 	}
-	if i.MarkDelete == 1 {
+	if i.IsDelete() {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
-	i.NLink++
+	i.IncrNLink()
 	resp.Msg = i
 	return
 }
@@ -74,7 +73,7 @@ func (mp *metaPartition) getInode(ino *Inode) (resp *ResponseInode) {
 		return
 	}
 	i := item.(*Inode)
-	if i.MarkDelete == 1 {
+	if i.IsDelete() {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
@@ -89,7 +88,7 @@ func (mp *metaPartition) hasInode(ino *Inode) (ok bool) {
 		return
 	}
 	i := item.(*Inode)
-	if i.MarkDelete == 1 {
+	if i.IsDelete() {
 		ok = false
 		return
 	}
@@ -105,7 +104,7 @@ func (mp *metaPartition) getInodeTree() *BTree {
 	return mp.inodeTree.GetTree()
 }
 
-func (mp *metaPartition) RangeInode(f func(i btree.Item) bool) {
+func (mp *metaPartition) RangeInode(f func(i BtreeItem) bool) {
 	mp.inodeTree.Ascend(f)
 }
 
@@ -120,7 +119,7 @@ func (mp *metaPartition) deleteInode(ino *Inode) (resp *ResponseInode) {
 		inode := i.(*Inode)
 		resp.Msg = inode
 		if proto.IsRegular(inode.Type) {
-			inode.NLink--
+			inode.DecrNLink()
 			return
 		}
 		// should delete inode
@@ -168,18 +167,17 @@ func (mp *metaPartition) appendExtents(ino *Inode) (status uint8) {
 		return
 	}
 	ino2 := item.(*Inode)
-	if ino2.MarkDelete == 1 {
+	if ino2.IsDelete() {
 		status = proto.OpNotExistErr
 		return
 	}
-	var delItems []BtreeItem
+	var items []BtreeItem
 	ino.Extents.Range(func(item BtreeItem) bool {
-		delItems = append(delItems, ino2.AppendExtents(item)...)
+		items = append(items, item)
 		return true
 	})
-	ino2.ModifyTime = ino.ModifyTime
-	ino2.Generation++
-	for _, item := range delItems {
+	items = ino2.AppendExtents(items, ino.ModifyTime)
+	for _, item := range items {
 		mp.extDelCh <- item
 	}
 	return
@@ -197,32 +195,20 @@ func (mp *metaPartition) extentsTruncate(ino *Inode) (resp *ResponseInode) {
 			resp.Status = proto.OpArgMismatchErr
 			return
 		}
-		if i.MarkDelete == 1 {
+		if i.IsDelete() {
 			resp.Status = proto.OpNotExistErr
 			return
 		}
-		i.Extents.Extents.AscendGreaterOrEqual(&proto.
-			ExtentKey{FileOffset: ino.Size},
+		i.Extents.AscendGreaterOrEqual(&proto.ExtentKey{FileOffset: ino.Size},
 			func(item BtreeItem) bool {
 				delExtents = append(delExtents, item)
 				return true
 			})
-		// delete
+		i.ExtentsTruncate(delExtents, ino.Size, ino.ModifyTime)
+		// now we should delete the extent
 		for _, ext := range delExtents {
-			i.Extents.Delete(ext)
 			mp.extDelCh <- ext
 		}
-		// check max
-		extItem := i.Extents.Max()
-		if extItem != nil {
-			ext := extItem.(*proto.ExtentKey)
-			if (ext.FileOffset + uint64(ext.Size)) > ino.Size {
-				ext.Size = uint32(ino.Size - ext.FileOffset)
-			}
-		}
-		i.Size = ino.Size
-		i.ModifyTime = ino.ModifyTime
-		i.Generation++
 	})
 	if !isFind {
 		resp.Status = proto.OpNotExistErr
@@ -241,17 +227,17 @@ func (mp *metaPartition) evictInode(ino *Inode) (resp *ResponseInode) {
 		isFind = true
 		i := item.(*Inode)
 		if proto.IsDir(i.Type) {
-			if i.NLink < 2 {
+			if i.GetNLink() < 2 {
 				isDelete = true
 			}
 			return
 		}
 
-		if i.MarkDelete == 1 {
+		if i.IsDelete() {
 			return
 		}
-		if i.NLink < 1 {
-			i.MarkDelete = 1
+		if i.GetNLink() < 1 {
+			i.SetDeleteMark()
 			// push to free list
 			mp.freeList.Push(i)
 		}
@@ -270,7 +256,7 @@ func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 	if proto.IsDir(ino.Type) {
 		return
 	}
-	if ino.MarkDelete == 1 {
+	if ino.IsDelete() {
 		mp.freeList.Push(ino)
 	}
 }
@@ -283,14 +269,6 @@ func (mp *metaPartition) setAttr(req *SetattrRequest) (err error) {
 		return
 	}
 	ino = item.(*Inode)
-	if req.Valid&proto.AttrMode != 0 {
-		ino.Type = req.Mode
-	}
-	if req.Valid&proto.AttrUid != 0 {
-		ino.Uid = req.Uid
-	}
-	if req.Valid&proto.AttrGid != 0 {
-		ino.Gid = req.Gid
-	}
+	ino.SetAttr(req.Valid, req.Mode, req.Uid, req.Gid)
 	return
 }

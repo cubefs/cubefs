@@ -47,7 +47,6 @@ type MetaNode struct {
 	raftDir           string //raftStore log store base dir
 	metaManager       MetaManager
 	localAddr         string
-	retryCount        int
 	raftStore         raftstore.RaftStore
 	raftHeartbeatPort string
 	raftReplicatePort string
@@ -105,7 +104,7 @@ func (m *MetaNode) onStart(cfg *config.Config) (err error) {
 	if err = m.startUMP(); err != nil {
 		return
 	}
-	if err = m.registerHandler(); err != nil {
+	if err = m.registerAPIHandler(); err != nil {
 		return
 	}
 	if err = m.startServer(); err != nil {
