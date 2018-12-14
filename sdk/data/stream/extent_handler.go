@@ -179,7 +179,7 @@ func (eh *ExtentHandler) sender() {
 			// If handler is in recovery or error status,
 			// just forward the packet to the reply channel directly.
 			if eh.getStatus() >= ExtentStatusRecovery {
-				log.LogWarnf("sender in recovery: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
+				log.LogWarnf("sender in recovery: eh(%v) packet(%v)", eh, packet)
 				eh.reply <- packet
 				continue
 			}
@@ -211,13 +211,13 @@ func (eh *ExtentHandler) sender() {
 
 			// send to reply channel
 			if err = packet.writeTo(eh.conn); err != nil {
-				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet.GetUniqueLogId())
+				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
 				eh.setClosed()
 				eh.setRecovery()
 			}
 
 			eh.reply <- packet
-			log.LogDebugf("ExtentHandler sender end: sent to the reply channel, eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
+			log.LogDebugf("ExtentHandler sender end: sent to the reply channel, eh(%v) packet(%v)", eh, packet)
 
 		case <-eh.doneSender:
 			eh.setClosed()
@@ -257,11 +257,11 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 
 	status := eh.getStatus()
 	if status >= ExtentStatusError {
-		log.LogErrorf("processReply discard packet: handler is in error status, eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
+		log.LogErrorf("processReply discard packet: handler is in error status, eh(%v) packet(%v)", eh, packet)
 		return
 	} else if status >= ExtentStatusRecovery {
 		eh.recoverPacket(packet)
-		log.LogDebugf("processReply recover packet: handler is in recovery status, eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
+		log.LogDebugf("processReply recover packet: handler is in recovery status, eh(%v) packet(%v)", eh, packet)
 		return
 	}
 
@@ -272,22 +272,22 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		return
 	}
 
-	log.LogDebugf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet.GetUniqueLogId(), reply.GetUniqueLogId())
+	log.LogDebugf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
 
 	if reply.ResultCode != proto.OpOk {
-		errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply.ResultCode, reply.GetUniqueLogId())
+		errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
 		eh.processReplyError(packet, errmsg)
 		return
 	}
 
 	if !packet.IsEqualWriteReply(reply) {
-		errmsg := fmt.Sprintf("request and reply not match: reply(%v)", reply.GetUniqueLogId())
+		errmsg := fmt.Sprintf("request and reply not match: reply(%v)", reply)
 		eh.processReplyError(packet, errmsg)
 		return
 	}
 
 	if reply.CRC != packet.CRC {
-		errmsg := fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) reply(%v) ", packet.CRC, reply.CRC, reply.GetUniqueLogId())
+		errmsg := fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) reply(%v) ", packet.CRC, reply.CRC, reply)
 		eh.processReplyError(packet, errmsg)
 		return
 	}
@@ -315,10 +315,10 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 	if packet.errCount >= MaxPacketErrorCount {
 		// discard packet
 		eh.setError()
-		log.LogErrorf("processReplyError discard packet: packet err count reaches max limit, eh(%v) packet(%v) err(%v)", eh, packet.GetUniqueLogId(), errmsg)
+		log.LogErrorf("processReplyError discard packet: packet err count reaches max limit, eh(%v) packet(%v) err(%v)", eh, packet, errmsg)
 	} else {
 		eh.recoverPacket(packet)
-		log.LogWarnf("processReplyError recover packet: eh(%v) packet(%v) err(%v)", eh, packet.GetUniqueLogId(), errmsg)
+		log.LogWarnf("processReplyError recover packet: eh(%v) packet(%v) err(%v)", eh, packet, errmsg)
 	}
 
 }
@@ -459,17 +459,17 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 
 	p := NewCreateExtentPacket(dp, eh.inode)
 	if err = p.WriteToConn(conn); err != nil {
-		errors.Annotatef(err, "createExtent: failed to WriteToConn, packet(%v) datapartionHosts(%v)", p.GetUniqueLogId(), dp.Hosts[0])
+		errors.Annotatef(err, "createExtent: failed to WriteToConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
 		return
 	}
 
 	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime*2); err != nil {
-		err = errors.Annotatef(err, "createExtent: failed to ReadFromConn, packet(%v) datapartionHosts(%v)", p.GetUniqueLogId(), dp.Hosts[0])
+		err = errors.Annotatef(err, "createExtent: failed to ReadFromConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
 		return
 	}
 
 	if p.ResultCode != proto.OpOk {
-		err = errors.New(fmt.Sprintf("createExtent: ResultCode NOK, packet(%v) datapartionHosts(%v) ResultCode(%v)", p.GetUniqueLogId(), dp.Hosts[0], p.GetResultMesg()))
+		err = errors.New(fmt.Sprintf("createExtent: ResultCode NOK, packet(%v) datapartionHosts(%v) ResultCode(%v)", p, dp.Hosts[0], p.GetResultMesg()))
 		return
 	}
 
