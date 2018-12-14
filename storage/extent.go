@@ -472,7 +472,9 @@ func (e *fsExtent) HeaderChecksum() (crc uint32) {
 }
 
 const (
-	PageSize = 4 * util.KB
+	PageSize             = 4 * util.KB
+	FALLOC_FL_KEEP_SIZE  = 1
+	FALLOC_FL_PUNCH_HOLE = 2
 )
 
 func (e *fsExtent) DeleteTiny(offset, size int64) (err error) {

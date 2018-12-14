@@ -22,7 +22,7 @@ import (
 	"io/ioutil"
 	"path"
 
-	"github.com/tiglabs/containerfs/third_party/btree"
+	"github.com/google/btree"
 )
 
 type MetaItem struct {
