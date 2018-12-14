@@ -367,7 +367,7 @@ func (s *DataNode) checkPacket(pkg *Packet) error {
 	}
 	var addrs []string
 	if addrs, err = pkg.UnmarshalAddrs(); err == nil {
-		err = pkg.GetNextAddr(addrs)
+		err = pkg.checkPacketAddr(addrs)
 	}
 	if err != nil {
 		return err

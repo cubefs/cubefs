@@ -130,7 +130,7 @@ func (p *Packet) IsMasterCommand() bool {
 	return false
 }
 
-func (p *Packet) GetNextAddr(addrs []string) error {
+func (p *Packet) checkPacketAddr(addrs []string) error {
 	sub := p.goals - p.Nodes
 	if sub < 0 || sub > p.goals || (sub == p.goals && p.Nodes != 0) {
 		return ErrAddrsNodesMismatch
