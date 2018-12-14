@@ -307,13 +307,6 @@ func (p *Packet) GetResultMesg() (m string) {
 	return
 }
 
-func (p *Packet) GetData() string {
-	if p == nil || p.Data == nil {
-		return ""
-	}
-	return string(p.Data)
-}
-
 func (p *Packet) MarshalHeader(out []byte) {
 	out[0] = p.Magic
 	out[1] = p.StoreMode
@@ -448,13 +441,6 @@ func (p *Packet) PackOkReply() {
 }
 
 func (p *Packet) PackOkReadReply() {
-	p.ResultCode = OpOk
-	p.Arglen = 0
-}
-
-func (p *Packet) PackOkGetWatermarkReply(size int64) {
-	p.ExtentOffset = size
-	p.Size = 0
 	p.ResultCode = OpOk
 	p.Arglen = 0
 }
