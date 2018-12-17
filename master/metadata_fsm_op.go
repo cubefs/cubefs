@@ -449,7 +449,7 @@ func (c *Cluster) handleApply(cmd *RaftCmdData) (err error) {
 func (c *Cluster) applyPutCluster(cmd *RaftCmdData) (err error) {
 	log.LogInfof("action[applyPutCluster] cmd:%v", cmd.K)
 	cv := &ClusterValue{}
-	if err := json.Unmarshal(cmd.V, cv); err != nil {
+	if err = json.Unmarshal(cmd.V, cv); err != nil {
 		log.LogErrorf("action[applyPutCluster],err:%v", err.Error())
 		return
 	}
@@ -460,7 +460,7 @@ func (c *Cluster) applyPutCluster(cmd *RaftCmdData) (err error) {
 func (c *Cluster) applyAddNodeSet(cmd *RaftCmdData) (err error) {
 	log.LogInfof("action[applyAddNodeSet] cmd:%v", cmd.K)
 	nsv := &NodeSetValue{}
-	if err := json.Unmarshal(cmd.V, nsv); err != nil {
+	if err = json.Unmarshal(cmd.V, nsv); err != nil {
 		log.LogErrorf("action[applyAddNodeSet],err:%v", err.Error())
 		return
 	}
@@ -472,7 +472,7 @@ func (c *Cluster) applyAddNodeSet(cmd *RaftCmdData) (err error) {
 func (c *Cluster) applyUpdateNodeSet(cmd *RaftCmdData) (err error) {
 	log.LogInfof("action[applyUpdateNodeSet] cmd:%v", cmd.K)
 	nsv := &NodeSetValue{}
-	if err := json.Unmarshal(cmd.V, nsv); err != nil {
+	if err = json.Unmarshal(cmd.V, nsv); err != nil {
 		log.LogErrorf("action[applyUpdateNodeSet],err:%v", err.Error())
 		return
 	}
@@ -491,7 +491,7 @@ func (c *Cluster) applyUpdateNodeSet(cmd *RaftCmdData) (err error) {
 func (c *Cluster) applyAddDataNode(cmd *RaftCmdData) (err error) {
 	log.LogInfof("action[applyAddDataNode] cmd:%v", cmd.K)
 	dnv := &DataNodeValue{}
-	if err := json.Unmarshal(cmd.V, dnv); err != nil {
+	if err = json.Unmarshal(cmd.V, dnv); err != nil {
 		log.LogErrorf("action[applyAddDataNode],err:%v", err.Error())
 		return
 	}
@@ -505,7 +505,7 @@ func (c *Cluster) applyAddDataNode(cmd *RaftCmdData) (err error) {
 func (c *Cluster) applyDeleteDataNode(cmd *RaftCmdData) (err error) {
 	log.LogInfof("action[applyDeleteDataNode] cmd:%v", cmd.K)
 	dnv := &DataNodeValue{}
-	if err := json.Unmarshal(cmd.V, dnv); err != nil {
+	if err = json.Unmarshal(cmd.V, dnv); err != nil {
 		log.LogErrorf("action[applyDeleteDataNode],err:%v", err.Error())
 		return
 	}
@@ -519,7 +519,7 @@ func (c *Cluster) applyDeleteDataNode(cmd *RaftCmdData) (err error) {
 func (c *Cluster) applyAddMetaNode(cmd *RaftCmdData) (err error) {
 	log.LogInfof("action[applyAddMetaNode] cmd:%v", cmd.K)
 	mnv := &MetaNodeValue{}
-	if err := json.Unmarshal(cmd.V, mnv); err != nil {
+	if err = json.Unmarshal(cmd.V, mnv); err != nil {
 		log.LogErrorf("action[applyAddMetaNode],err:%v", err.Error())
 		return
 	}
@@ -535,7 +535,7 @@ func (c *Cluster) applyAddMetaNode(cmd *RaftCmdData) (err error) {
 func (c *Cluster) applyDeleteMetaNode(cmd *RaftCmdData) (err error) {
 	log.LogInfof("action[applyDeleteMetaNode] cmd:%v", cmd.K)
 	mnv := &MetaNodeValue{}
-	if err := json.Unmarshal(cmd.V, mnv); err != nil {
+	if err = json.Unmarshal(cmd.V, mnv); err != nil {
 		log.LogErrorf("action[applyDeleteMetaNode],err:%v", err.Error())
 		return
 	}
@@ -549,7 +549,7 @@ func (c *Cluster) applyDeleteMetaNode(cmd *RaftCmdData) (err error) {
 func (c *Cluster) applyAddVol(cmd *RaftCmdData) (err error) {
 	log.LogInfof("action[applyAddVol] cmd:%v", cmd.K)
 	vv := &VolValue{}
-	if err := json.Unmarshal(cmd.V, vv); err != nil {
+	if err = json.Unmarshal(cmd.V, vv); err != nil {
 		log.LogError(fmt.Sprintf("action[applyAddVol] failed,err:%v", err))
 		return
 	}
@@ -586,10 +586,10 @@ func (c *Cluster) applyDeleteVol(cmd *RaftCmdData) (err error) {
 	return
 }
 
-func (c *Cluster) applyAddMetaPartition(cmd *RaftCmdData) {
+func (c *Cluster) applyAddMetaPartition(cmd *RaftCmdData) (err error) {
 	log.LogInfof("action[applyAddMetaPartition] cmd:%v", cmd.K)
 	mpv := &MetaPartitionValue{}
-	if err := json.Unmarshal(cmd.V, mpv); err != nil {
+	if err = json.Unmarshal(cmd.V, mpv); err != nil {
 		log.LogError(fmt.Sprintf("action[applyAddMetaPartition] failed,err:%v", err))
 		return
 	}
@@ -608,7 +608,7 @@ func (c *Cluster) applyAddMetaPartition(cmd *RaftCmdData) {
 func (c *Cluster) applyUpdateMetaPartition(cmd *RaftCmdData) (err error) {
 	log.LogInfof("action[applyUpdateMetaPartition] cmd:%v", cmd.K)
 	mpv := &MetaPartitionValue{}
-	if err := json.Unmarshal(cmd.V, mpv); err != nil {
+	if err = json.Unmarshal(cmd.V, mpv); err != nil {
 		log.LogError(fmt.Sprintf("action[applyUpdateMetaPartition] failed,err:%v", err))
 		return
 	}
@@ -657,7 +657,7 @@ func (c *Cluster) applyUpdateDataPartition(cmd *RaftCmdData) (err error) {
 		log.LogErrorf("action[applyUpdateDataPartition] failed,err:%v", err)
 		return
 	}
-	if _, err := vol.getDataPartitionByID(dpv.PartitionID); err != nil {
+	if _, err = vol.getDataPartitionByID(dpv.PartitionID); err != nil {
 		log.LogError(fmt.Sprintf("action[applyUpdateDataPartition] failed,err:%v", err))
 		return
 	}
