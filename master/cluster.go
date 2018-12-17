@@ -491,7 +491,7 @@ func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp
 func (c *Cluster) syncCreateMetaPartitionToMataNode(host string, mp *MetaPartition) (err error) {
 	hosts := make([]string, 0)
 	hosts = append(hosts, host)
-	task := mp.generateCreateMetaPartitionTasks(hosts, mp.Peers, mp.volName)
+	tasks := mp.generateCreateMetaPartitionTasks(hosts, mp.Peers, mp.volName)
 	metaNode, err := c.getMetaNode(host)
 	if err != nil {
 		return
@@ -500,7 +500,7 @@ func (c *Cluster) syncCreateMetaPartitionToMataNode(host string, mp *MetaPartiti
 	if err != nil {
 		return
 	}
-	if metaNode.Sender.syncCreatePartition(task[0], conn); err != nil {
+	if metaNode.Sender.syncCreatePartition(tasks[0], conn); err != nil {
 		return
 	}
 	metaNode.Sender.connPool.PutConnect(conn, false)
@@ -858,7 +858,7 @@ func (c *Cluster) CreateMetaPartition(volName string, start, end uint64) (err er
 		log.LogWarnf("action[CreateMetaPartition] get vol [%v] err", volName)
 		return
 	}
-	errChannel := make(chan error, vol.dpReplicaNum)
+	errChannel := make(chan error, vol.mpReplicaNum)
 
 	if hosts, peers, err = c.ChooseTargetMetaHosts(int(vol.mpReplicaNum)); err != nil {
 		return errors.Trace(err)

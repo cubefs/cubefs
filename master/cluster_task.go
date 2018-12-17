@@ -54,20 +54,20 @@ func (c *Cluster) putMetaNodeTasks(tasks []*proto.AdminTask) {
 
 func (c *Cluster) waitLoadDataPartitionResponse(partitions []*DataPartition) {
 
-	defer func() {
-		if err := recover(); err != nil {
-			const size = RuntimeStackBufSize
-			buf := make([]byte, size)
-			buf = buf[:runtime.Stack(buf, false)]
-			log.LogError(fmt.Sprintf("waitLoadDataPartitionResponse panic %v: %s\n", err, buf))
-		}
-	}()
 	var wg sync.WaitGroup
 	for _, dp := range partitions {
 		wg.Add(1)
 		go func(dp *DataPartition) {
+			defer func() {
+				wg.Done()
+				if err := recover(); err != nil {
+					const size = RuntimeStackBufSize
+					buf := make([]byte, size)
+					buf = buf[:runtime.Stack(buf, false)]
+					log.LogError(fmt.Sprintf("processLoadDataPartition panic %v: %s\n", err, buf))
+				}
+			}()
 			c.processLoadDataPartition(dp)
-			wg.Done()
 		}(dp)
 	}
 	wg.Wait()
