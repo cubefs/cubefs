@@ -387,7 +387,7 @@ type Server struct {
 }
 
 // Serve serves the FUSE connection by making calls to the methods
-// of fs and the Nodes and Handles it makes available.  It returns only
+// of fs and the RemainReplicates and Handles it makes available.  It returns only
 // when the connection has been closed or an unexpected error occurs.
 func (s *Server) Serve(fs FS) error {
 	defer s.wg.Wait() // Wait for worker goroutines to complete before return

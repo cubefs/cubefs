@@ -233,7 +233,7 @@ func (s *DataNode) cleanupPkg(pkg *Packet) {
 		return
 	}
 	s.leaderPutTinyExtentToStore(pkg)
-	if !pkg.useConnectMap {
+	if pkg.StoreMode == proto.TinyExtentMode && pkg.isWriteOperation() {
 		pkg.PutConnectsToPool()
 	}
 }
@@ -330,12 +330,12 @@ func (s *DataNode) sendToAllReplicates(pkg *Packet, packetProcessor *PacketProce
 			pkg.PackErrorBody(ActionSendToNext, err.Error())
 			return
 		}
-		nodes := pkg.Nodes
-		pkg.Nodes = 0
+		nodes := pkg.RemainReplicates
+		pkg.RemainReplicates = 0
 		if err == nil {
 			err = pkg.WriteToConn(pkg.replicateConns[index])
 		}
-		pkg.Nodes = nodes
+		pkg.RemainReplicates = nodes
 		if err != nil {
 			msg := fmt.Sprintf("pkg inconnect(%v) to(%v) err(%v)", packetProcessor.sourceConn.RemoteAddr().String(),
 				pkg.replicateAddrs[index], err.Error())
@@ -414,7 +414,7 @@ func (s *DataNode) statsFlow(pkg *Packet, flag int) {
 }
 
 func (s *DataNode) leaderPutTinyExtentToStore(pkg *Packet) {
-	if pkg == nil || !storage.IsTinyExtent(pkg.ExtentID) || pkg.ExtentID <= 0 || atomic.LoadInt32(&pkg.isRelaseTinyExtent) == HasReturnToStore {
+	if pkg == nil || !storage.IsTinyExtent(pkg.ExtentID) || pkg.ExtentID <= 0 || atomic.LoadInt32(&pkg.isRelaseTinyExtentToStore) == HasReturnToStore {
 		return
 	}
 	if pkg.StoreMode != proto.TinyExtentMode || !pkg.isHeadNode() || !pkg.isWriteOperation() || !pkg.isForwardPacket() {
@@ -426,5 +426,5 @@ func (s *DataNode) leaderPutTinyExtentToStore(pkg *Packet) {
 	} else {
 		store.PutTinyExtentToAvaliCh(pkg.ExtentID)
 	}
-	atomic.StoreInt32(&pkg.isRelaseTinyExtent, HasReturnToStore)
+	atomic.StoreInt32(&pkg.isRelaseTinyExtentToStore, HasReturnToStore)
 }
