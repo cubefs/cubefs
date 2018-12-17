@@ -27,6 +27,7 @@ import (
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
+	"os"
 )
 
 var (
@@ -168,6 +169,7 @@ type metaPartition struct {
 	stopC         chan bool
 	storeChan     chan *storeMsg
 	state         uint32
+	delInodeFp    *os.File
 	freeList      *freeList // Free inode list
 	extDelCh      chan BtreeItem
 	extReset      chan struct{}
@@ -215,25 +217,39 @@ func (mp *metaPartition) Stop() {
 }
 
 func (mp *metaPartition) onStart() (err error) {
+	defer func() {
+		if err == nil {
+			return
+		}
+		mp.onStop()
+	}()
 	if err = mp.load(); err != nil {
 		err = errors.Errorf("[onStart]:load partition id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
 	}
-	if err = mp.startRaft(); err != nil {
-		err = errors.Errorf("[onStart]start raft id=%d: %s",
-			mp.config.PartitionId,
-			err.Error())
+	mp.startSchedule(mp.applyID)
+	if err = mp.startFreeList(); err != nil {
+		err = errors.Errorf("[onStart] start free list id=%d: %s",
+			mp.config.PartitionId, err.Error())
 		return
 	}
-	mp.startSchedule(mp.applyID)
-	mp.startFreeList()
+	if err = mp.startRaft(); err != nil {
+		err = errors.Errorf("[onStart]start raft id=%d: %s",
+			mp.config.PartitionId, err.Error())
+		return
+	}
+
 	return
 }
 
 func (mp *metaPartition) onStop() {
 	mp.stopRaft()
 	mp.stop()
+	if mp.delInodeFp != nil {
+		mp.delInodeFp.Sync()
+		mp.delInodeFp.Close()
+	}
 }
 
 func (mp *metaPartition) startRaft() (err error) {
@@ -316,6 +332,9 @@ func NewMetaPartition(conf *MetaPartitionConfig) MetaPartition {
 }
 
 func (mp *metaPartition) IsLeader() (leaderAddr string, ok bool) {
+	if mp.raftPartition == nil {
+		return
+	}
 	leaderID, _ := mp.raftPartition.LeaderTerm()
 	if leaderID == 0 {
 		return
