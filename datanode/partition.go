@@ -93,7 +93,6 @@ type DataPartition interface {
 
 type dataPartitionMeta struct {
 	VolumeId      string
-	PartitionType string
 	PartitionId   uint32
 	PartitionSize int
 	CreateTime    string
@@ -116,9 +115,7 @@ func (sp sortPeers) Swap(i, j int) {
 
 func (meta *dataPartitionMeta) Validate() (err error) {
 	meta.VolumeId = strings.TrimSpace(meta.VolumeId)
-	meta.PartitionType = strings.TrimSpace(meta.PartitionType)
-	if len(meta.VolumeId) == 0 || len(meta.PartitionType) == 0 ||
-		meta.PartitionId == 0 || meta.PartitionSize == 0 {
+	if len(meta.VolumeId) == 0 || meta.PartitionId == 0 || meta.PartitionSize == 0 {
 		err = errors.New("illegal data partition meta")
 		return
 	}
@@ -379,7 +376,6 @@ func (dp *dataPartition) StoreMeta() (err error) {
 	meta := &dataPartitionMeta{
 		VolumeId:      dp.config.VolName,
 		PartitionId:   dp.config.PartitionId,
-		PartitionType: dp.config.PartitionType,
 		PartitionSize: dp.config.PartitionSize,
 		Peers:         dp.config.Peers,
 		RandomWrite:   dp.config.RandomWrite,
