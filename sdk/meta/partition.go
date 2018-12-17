@@ -110,7 +110,7 @@ func (mw *MetaWrapper) getRWPartitions() []*MetaPartition {
 	return mw.rwPartitions
 }
 
-// Get the partition whose Start is Larger than ino.
+// GetConnect the partition whose Start is Larger than ino.
 // Return nil if no successive partition.
 func (mw *MetaWrapper) getNextPartition(ino uint64) *MetaPartition {
 	var mp *MetaPartition

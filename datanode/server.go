@@ -232,7 +232,7 @@ func (s *DataNode) registerToMaster() {
 
 	timer := time.NewTimer(0)
 
-	// Get IP address and cluster ID and node ID from master.
+	// GetConnect IP address and cluster ID and node ID from master.
 	for {
 		select {
 		case <-timer.C:

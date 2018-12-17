@@ -45,9 +45,9 @@ func (mc *MetaConn) String() string {
 }
 
 func (mw *MetaWrapper) getConn(partitionID uint64, addr string) (*MetaConn, error) {
-	conn, err := mw.conns.Get(addr)
+	conn, err := mw.conns.GetConnect(addr)
 	if err != nil {
-		log.LogWarnf("Get conn: addr(%v) err(%v)", addr, err)
+		log.LogWarnf("GetConnect conn: addr(%v) err(%v)", addr, err)
 		return nil, err
 	}
 	mc := &MetaConn{conn: conn, id: partitionID, addr: addr}
@@ -56,9 +56,9 @@ func (mw *MetaWrapper) getConn(partitionID uint64, addr string) (*MetaConn, erro
 
 func (mw *MetaWrapper) putConn(mc *MetaConn, err error) {
 	if err != nil {
-		mw.conns.Put(mc.conn, true)
+		mw.conns.PutConnect(mc.conn, true)
 	} else {
-		mw.conns.Put(mc.conn, false)
+		mw.conns.PutConnect(mc.conn, false)
 	}
 }
 

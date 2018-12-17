@@ -103,7 +103,7 @@ end:
 
 // Handle OpCreateMetaRange
 func (m *metaManager) opCreateMetaPartition(conn net.Conn, p *Packet) (err error) {
-	// Get task from packet.
+	// GetConnect task from packet.
 	adminTask := &proto.AdminTask{}
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()

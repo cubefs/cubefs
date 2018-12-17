@@ -155,7 +155,7 @@ func (cache *ExtentCache) Get(offset uint64) (ret *proto.ExtentKey) {
 
 	cache.root.DescendLessOrEqual(pivot, func(i btree.Item) bool {
 		ek := i.(*proto.ExtentKey)
-		//log.LogDebugf("ExtentCache Get: ino(%v) ek(%v) offset(%v)", cache.inode, ek, offset)
+		//log.LogDebugf("ExtentCache GetConnect: ino(%v) ek(%v) offset(%v)", cache.inode, ek, offset)
 		if offset >= ek.FileOffset && offset < ek.FileOffset+uint64(ek.Size) {
 			ret = ek
 		}

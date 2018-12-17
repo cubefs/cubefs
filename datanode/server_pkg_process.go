@@ -118,12 +118,12 @@ func (s *DataNode) processPacket(req *Packet, packetProcessor *PacketProcessor) 
 func (s *DataNode) addExtentInfo(pkg *Packet) error {
 	if pkg.isHeadNode() && pkg.StoreMode == proto.TinyExtentMode && pkg.isWriteOperation() {
 		store := pkg.partition.GetStore()
-		extentId, err := store.GetAvaliTinyExtent() // Get a valid tinyExtentId
+		extentId, err := store.GetAvaliTinyExtent() // GetConnect a valid tinyExtentId
 		if err != nil {
 			return err
 		}
 		pkg.ExtentID = extentId
-		pkg.ExtentOffset, err = store.GetWatermarkForWrite(extentId) // Get offset of this extent file
+		pkg.ExtentOffset, err = store.GetWatermarkForWrite(extentId) // GetConnect offset of this extent file
 		if err != nil {
 			return err
 		}

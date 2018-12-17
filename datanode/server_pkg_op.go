@@ -597,20 +597,20 @@ func (d *DataNode) transferToRaftLeader(dp DataPartition, p *Packet) (ok bool, e
 	}
 
 	// If local is not leader transfer the packet to leader
-	conn, err = gConnPool.Get(leaderAddr)
+	conn, err = gConnPool.GetConnect(leaderAddr)
 	if err != nil {
-		gConnPool.Put(conn, true)
+		gConnPool.PutConnect(conn, true)
 		return
 	}
 
 	err = p.WriteToConn(conn)
 	if err != nil {
-		gConnPool.Put(conn, true)
+		gConnPool.PutConnect(conn, true)
 		return
 	}
 
 	if err = p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
-		gConnPool.Put(conn, true)
+		gConnPool.PutConnect(conn, true)
 		return
 	}
 

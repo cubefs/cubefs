@@ -41,26 +41,26 @@ func (m *metaManager) serveProxy(conn net.Conn, mp MetaPartition,
 		p.PackErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		goto end
 	}
-	// Get Master Conn
-	mConn, err = m.connPool.Get(leaderAddr)
+	// GetConnect Master Conn
+	mConn, err = m.connPool.GetConnect(leaderAddr)
 	if err != nil {
 		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
-		m.connPool.Put(mConn, ForceCloseConnect)
+		m.connPool.PutConnect(mConn, ForceCloseConnect)
 		goto end
 	}
 	// Send Master Conn
 	if err = p.WriteToConn(mConn); err != nil {
 		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
-		m.connPool.Put(mConn, ForceCloseConnect)
+		m.connPool.PutConnect(mConn, ForceCloseConnect)
 		goto end
 	}
 	// Read conn from master
 	if err = p.ReadFromConn(mConn, proto.NoReadDeadlineTime); err != nil {
 		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
-		m.connPool.Put(mConn, ForceCloseConnect)
+		m.connPool.PutConnect(mConn, ForceCloseConnect)
 		goto end
 	}
-	m.connPool.Put(mConn, NoCloseConnect)
+	m.connPool.PutConnect(mConn, NoCloseConnect)
 end:
 	m.respondToClient(conn, p)
 	if err != nil {

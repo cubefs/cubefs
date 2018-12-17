@@ -118,21 +118,21 @@ func (sender *AdminTaskSender) doSendTasks() {
 
 func (sender *AdminTaskSender) sendTasks(tasks []*proto.AdminTask) {
 	for _, task := range tasks {
-		conn, err := sender.connPool.Get(sender.targetAddr)
+		conn, err := sender.connPool.GetConnect(sender.targetAddr)
 		if err != nil {
 			msg := fmt.Sprintf("clusterID[%v] get connection to %v,err,%v", sender.clusterID, sender.targetAddr, errors.ErrorStack(err))
 			WarnBySpecialUmpKey(fmt.Sprintf("%v_%v_sendTask", sender.clusterID, UmpModuleName), msg)
-			sender.connPool.Put(conn, true)
+			sender.connPool.PutConnect(conn, true)
 			sender.updateTaskInfo(task, false)
 			break
 		}
 		if err = sender.sendAdminTask(task, conn); err != nil {
 			log.LogError(fmt.Sprintf("send task %v to %v,err,%v", task.ToString(), sender.targetAddr, errors.ErrorStack(err)))
-			sender.connPool.Put(conn, true)
+			sender.connPool.PutConnect(conn, true)
 			sender.updateTaskInfo(task, true)
 			continue
 		}
-		sender.connPool.Put(conn, false)
+		sender.connPool.PutConnect(conn, false)
 	}
 }
 

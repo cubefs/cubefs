@@ -63,7 +63,7 @@ func (ic *InodeCache) Put(inode *Inode) {
 	ic.cache[inode.ino] = element
 	ic.Unlock()
 
-	//log.LogDebugf("InodeCache Put: inode(%v)", inode)
+	//log.LogDebugf("InodeCache PutConnect: inode(%v)", inode)
 }
 
 func (ic *InodeCache) Get(ino uint64) *Inode {
@@ -77,7 +77,7 @@ func (ic *InodeCache) Get(ino uint64) *Inode {
 	inode := element.Value.(*Inode)
 	if inode.expired() {
 		ic.RUnlock()
-		//log.LogDebugf("InodeCache Get expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), inode)
+		//log.LogDebugf("InodeCache GetConnect expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), inode)
 		return nil
 	}
 	ic.RUnlock()

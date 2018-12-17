@@ -48,7 +48,7 @@ func (mp *metaPartition) updateVolWorker() {
 			t.Stop()
 			return
 		case <-t.C:
-			// Get dataPartitionView
+			// GetConnect dataPartitionView
 			respBody, err := postToMaster("GET", reqURL, nil)
 			if err != nil {
 				log.LogErrorf("[updateVol] %s", err.Error())
@@ -191,9 +191,9 @@ func (mp *metaPartition) executeDeleteDataPartition(ext *proto.ExtentKey) (err e
 		return
 	}
 	// delete dataNode
-	conn, err := mp.config.ConnPool.Get(dp.Hosts[0])
+	conn, err := mp.config.ConnPool.GetConnect(dp.Hosts[0])
 	if err != nil {
-		mp.config.ConnPool.Put(conn, ForceCloseConnect)
+		mp.config.ConnPool.PutConnect(conn, ForceCloseConnect)
 		err = errors.Errorf("get conn from pool %s, "+
 			"extents partitionId=%d, extentId=%d",
 			err.Error(), ext.PartitionId, ext.ExtentId)
@@ -201,18 +201,18 @@ func (mp *metaPartition) executeDeleteDataPartition(ext *proto.ExtentKey) (err e
 	}
 	p := NewExtentDeletePacket(dp, ext)
 	if err = p.WriteToConn(conn); err != nil {
-		mp.config.ConnPool.Put(conn, ForceCloseConnect)
+		mp.config.ConnPool.PutConnect(conn, ForceCloseConnect)
 		err = errors.Errorf("write to dataNode %s, %s", p.GetUniqueLogId(),
 			err.Error())
 		return
 	}
 	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
-		mp.config.ConnPool.Put(conn, ForceCloseConnect)
+		mp.config.ConnPool.PutConnect(conn, ForceCloseConnect)
 		err = errors.Errorf("read response from dataNode %s, %s",
 			p.GetUniqueLogId(), err.Error())
 		return
 	}
 	log.LogDebugf("[deleteDataPartitionMark] %v", p.GetUniqueLogId())
-	mp.config.ConnPool.Put(conn, NoCloseConnect)
+	mp.config.ConnPool.PutConnect(conn, NoCloseConnect)
 	return
 }
