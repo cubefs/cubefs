@@ -15,6 +15,13 @@
 package datanode
 
 import (
+	"fmt"
+	"path"
+	"os"
+	"io/ioutil"
+	"net"
+	"encoding/binary"
+	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
@@ -24,12 +31,8 @@ import (
 	"github.com/tiglabs/containerfs/raftstore"
 	"github.com/tiglabs/containerfs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
-	"fmt"
-	"path"
-	"os"
-	"io/ioutil"
-	"net"
-	"encoding/binary"
+	"github.com/tiglabs/containerfs/util/config"
+	"github.com/tiglabs/containerfs/storage"
 )
 
 type dataPartitionCfg struct {
@@ -440,50 +443,6 @@ func (dp *dataPartition) ExtentRepair(extentFiles []*storage.FileInfo) {
 	finishTime := time.Now().UnixNano()
 	log.LogInfof("action[ExtentRepair] partition=%v finish cost[%vms].",
 		dp.partitionId, (finishTime-startTime)/int64(time.Millisecond))
-}
-
-func (dp *dataPartition) applyErrRepair(extentId uint64) {
-	extentFiles := make([]*storage.FileInfo, 0)
-	leaderAddr, isLeader := dp.IsRaftLeader()
-	extentInfo, err := dp.extentStore.GetWatermark(extentId, true)
-	if err != nil {
-		err = errors.Annotatef(err, "getAllMemberFileMetas extent dataPartition[%v] GetAllWaterMark", dp.partitionId)
-		return
-	}
-
-	if isLeader {
-		// If leader apply error, notify all follower to start repair
-		memberMetas := NewDataPartitionRepairTask(extentFiles)
-		memberMetas.extents[extentInfo.FileId] = extentInfo
-		addFile := &storage.FileInfo{Source: leaderAddr, FileId: extentInfo.FileId, Size: extentInfo.Size, Inode: extentInfo.Inode}
-		memberMetas.AddExtentsTasks = append(memberMetas.AddExtentsTasks, addFile)
-		memberMetas.TaskType = FixRaftFollower
-		err = dp.NotifyRaftFollowerRepair(memberMetas)
-		if err != nil {
-			log.LogErrorf("action[ExtentRepair] err: %v", err)
-		}
-		log.LogErrorf("action[ExtentRepair] leader repair follower partition=%v_%v addFile[%v].",
-			dp.partitionId, extentId, addFile)
-
-	} else {
-		// If follower apply error, delete local extent and repair from leader
-		dp.stopRaft()
-		log.LogErrorf("action[ExtentRepair] stop raft partition=%v_%v", dp.partitionId, extentId)
-		dp.extentStore.DeleteDirtyExtent(extentId)
-		log.LogErrorf("action[ExtentRepair] Delete follower dirty partition=%v extent [%v_%v]",
-			dp.partitionId, dp.partitionId, extentId)
-
-		// Repair local extent
-		index, err := dp.getMaxAppliedId()
-		if err != nil {
-			extentInfo.Source = leaderAddr
-		} else {
-			extentInfo.Source = dp.replicaHosts[index]
-		}
-
-		extentFiles = append(extentFiles, extentInfo)
-		dp.ExtentRepair(extentFiles)
-	}
 }
 
 // GetConnect all extents information
