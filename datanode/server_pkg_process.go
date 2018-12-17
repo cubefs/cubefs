@@ -116,7 +116,7 @@ func (s *DataNode) processPacket(req *Packet, packetProcessor *PacketProcessor) 
 // If tinyExtent Write get the extentId and extentOffset
 // If OpCreateExtent get new extentId
 func (s *DataNode) addExtentInfo(pkg *Packet) error {
-	if pkg.isHeadNode() && pkg.StoreMode == proto.TinyExtentMode && pkg.isWriteOperation() {
+	if pkg.isLeaderPacket() && pkg.StoreMode == proto.TinyExtentMode && pkg.isWriteOperation() {
 		store := pkg.partition.GetStore()
 		extentId, err := store.GetAvaliTinyExtent() // GetConnect a valid tinyExtentId
 		if err != nil {
@@ -127,7 +127,7 @@ func (s *DataNode) addExtentInfo(pkg *Packet) error {
 		if err != nil {
 			return err
 		}
-	} else if pkg.isHeadNode() && pkg.Opcode == proto.OpCreateExtent {
+	} else if pkg.isLeaderPacket() && pkg.Opcode == proto.OpCreateExtent {
 		pkg.ExtentID = pkg.partition.GetStore().NextExtentId()
 	}
 
@@ -229,7 +229,7 @@ func (s *DataNode) WriteResponseToClient(reply *Packet, packetProcessor *PacketP
 
 // The head node release tinyExtent to store
 func (s *DataNode) cleanupPkg(pkg *Packet) {
-	if !pkg.isHeadNode() {
+	if !pkg.isLeaderPacket() {
 		return
 	}
 	s.leaderPutTinyExtentToStore(pkg)
@@ -414,7 +414,7 @@ func (s *DataNode) leaderPutTinyExtentToStore(pkg *Packet) {
 	if pkg == nil || !storage.IsTinyExtent(pkg.ExtentID) || pkg.ExtentID <= 0 || atomic.LoadInt32(&pkg.isRelaseTinyExtentToStore) == HasReturnToStore {
 		return
 	}
-	if pkg.StoreMode != proto.TinyExtentMode || !pkg.isHeadNode() || !pkg.isWriteOperation() || !pkg.isForwardPacket() {
+	if pkg.StoreMode != proto.TinyExtentMode || !pkg.isLeaderPacket() || !pkg.isWriteOperation() || !pkg.isForwardPacket() {
 		return
 	}
 	store := pkg.partition.GetStore()
