@@ -62,7 +62,7 @@ func (m *Master) handlePeerChange(confChange *proto.ConfChange) (err error) {
 	return
 }
 
-func (m *Master) handleApply(cmd *Metadata) (err error) {
+func (m *Master) handleApply(cmd *RaftCmdData) (err error) {
 	return m.cluster.handleApply(cmd)
 }
 

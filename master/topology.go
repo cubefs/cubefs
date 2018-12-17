@@ -16,13 +16,13 @@ package master
 
 import (
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
 	"math/rand"
 	"sort"
 	"sync"
 	"time"
+	"github.com/juju/errors"
 )
 
 type Topology struct {
@@ -168,7 +168,7 @@ func (t *Topology) getAvailNodeSetForMetaNode() (nset *NodeSet) {
 }
 
 func (t *Topology) createNodeSet(c *Cluster) (ns *NodeSet, err error) {
-	id, err := c.idAlloc.allocateMetaNodeID()
+	id, err := c.idAlloc.allocateCommonID()
 	if err != nil {
 		return
 	}

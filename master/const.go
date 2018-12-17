@@ -21,7 +21,6 @@ const (
 	ParaId                = "id"
 	ParaCount             = "count"
 	ParaReplicas          = "replicas"
-	ParaDataPartitionType = "type"
 	ParaStart             = "start"
 	ParaEnable            = "enable"
 	ParaThreshold         = "threshold"
@@ -56,14 +55,62 @@ const (
 	DefaultNodeSetCapacity                  = 6
 	MinReadWriteDataPartitions              = 10
 	CheckMissFileReplicaTime                = 600
+	DefaultVolCapacity                      = 200
+	LoadDataPartitionPeriod                 = 12 * 60 * 60
+	DefaultInitDataPartitions               = 10
+	VolExpandDataPartitionStepRatio         = 0.1
+	VolMaxExpandDataPartitionCount          = 100
 )
 
 const (
-	OK = iota
+	OK     = iota
 	Failed
 )
 
 const (
 	VolNormal     uint8 = 0
 	VolMarkDelete uint8 = 1
+)
+
+const (
+	OpSyncAddMetaNode          uint32 = 0x01
+	OpSyncAddDataNode          uint32 = 0x02
+	OpSyncAddDataPartition     uint32 = 0x03
+	OpSyncAddVol               uint32 = 0x04
+	OpSyncAddMetaPartition     uint32 = 0x05
+	OpSyncUpdateDataPartition  uint32 = 0x06
+	OpSyncUpdateMetaPartition  uint32 = 0x07
+	OpSyncDeleteDataNode       uint32 = 0x08
+	OpSyncDeleteMetaNode       uint32 = 0x09
+	OpSyncAllocDataPartitionID uint32 = 0x0A
+	OpSyncAllocMetaPartitionID uint32 = 0x0B
+	OpSyncAllocCommonID        uint32 = 0x0C
+	OpSyncPutCluster           uint32 = 0x0D
+	OpSyncUpdateVol            uint32 = 0x0E
+	OpSyncDeleteVol            uint32 = 0x0F
+	OpSyncDeleteDataPartition  uint32 = 0x10
+	OpSyncDeleteMetaPartition  uint32 = 0x11
+	OpSyncAddNodeSet           uint32 = 0x12
+	OpSyncUpdateNodeSet        uint32 = 0x13
+)
+
+const (
+	KeySeparator          = "#"
+	MetaNodeAcronym       = "mn"
+	DataNodeAcronym       = "dn"
+	DataPartitionAcronym  = "dp"
+	MetaPartitionAcronym  = "mp"
+	VolAcronym            = "vol"
+	ClusterAcronym        = "c"
+	NodeSetAcronym        = "s"
+	MaxDataPartitionIDKey = KeySeparator + "max_dp_id"
+	MaxMetaPartitionIDKey = KeySeparator + "max_mp_id"
+	MaxCommonIDKey        = KeySeparator + "max_common_id"
+	MetaNodePrefix        = KeySeparator + MetaNodeAcronym + KeySeparator
+	DataNodePrefix        = KeySeparator + DataNodeAcronym + KeySeparator
+	DataPartitionPrefix   = KeySeparator + DataPartitionAcronym + KeySeparator
+	VolPrefix             = KeySeparator + VolAcronym + KeySeparator
+	MetaPartitionPrefix   = KeySeparator + MetaPartitionAcronym + KeySeparator
+	ClusterPrefix         = KeySeparator + ClusterAcronym + KeySeparator
+	NodeSetPrefix         = KeySeparator + NodeSetAcronym + KeySeparator
 )

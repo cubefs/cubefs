@@ -9,14 +9,14 @@ import (
 type DataNodeSpaceStat struct {
 	TotalGB    uint64
 	UsedGB     uint64
-	IncreaseGB uint64
+	IncreaseGB int64
 	UsedRatio  string
 }
 
 type MetaNodeSpaceStat struct {
 	TotalGB    uint64
 	UsedGB     uint64
-	IncreaseGB uint64
+	IncreaseGB int64
 	UsedRatio  string
 }
 
@@ -63,7 +63,7 @@ func (c *Cluster) checkDataNodeAvailSpace() {
 	}
 	c.dataNodeSpace.TotalGB = total / util.GB
 	newUsed := used / util.GB
-	c.dataNodeSpace.IncreaseGB = newUsed - c.dataNodeSpace.UsedGB
+	c.dataNodeSpace.IncreaseGB = int64(newUsed) - int64(c.dataNodeSpace.UsedGB)
 	c.dataNodeSpace.UsedGB = newUsed
 	c.dataNodeSpace.UsedRatio = strconv.FormatFloat(useRate, 'f', 3, 32)
 }
@@ -89,7 +89,7 @@ func (c *Cluster) checkMetaNodeAvailSpace() {
 	}
 	c.metaNodeSpace.TotalGB = total / util.GB
 	newUsed := used / util.GB
-	c.metaNodeSpace.IncreaseGB = newUsed - c.metaNodeSpace.UsedGB
+	c.metaNodeSpace.IncreaseGB = int64(newUsed) - int64(c.metaNodeSpace.UsedGB)
 	c.metaNodeSpace.UsedGB = newUsed
 	c.metaNodeSpace.UsedRatio = strconv.FormatFloat(useRate, 'f', 3, 32)
 }

@@ -36,7 +36,7 @@ func (ms *MetadataSnapshot) Close() {
 }
 
 func (ms *MetadataSnapshot) Next() (data []byte, err error) {
-	md := new(Metadata)
+	md := new(RaftCmdData)
 	if ms.iterator.Valid() {
 		key := ms.iterator.Key()
 		md.K = string(key.Data())

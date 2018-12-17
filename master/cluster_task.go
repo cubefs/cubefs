@@ -16,12 +16,12 @@ package master
 
 import (
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
 	"runtime"
 	"sync"
 	"time"
+	"github.com/juju/errors"
 )
 
 func (c *Cluster) putDataNodeTasks(tasks []*proto.AdminTask) {
@@ -170,7 +170,7 @@ func (c *Cluster) processLoadDataPartition(dp *DataPartition) {
 	c.putDataNodeTasks(loadTasks)
 	for i := 0; i < LoadDataPartitionWaitTime; i++ {
 		if dp.checkLoadResponse(c.cfg.DataPartitionTimeOutSec) {
-			log.LogInfo(fmt.Sprintf("action[%v] triger all replication,partitionID:%v ", "loadDataPartitionAndCheckResponse", dp.PartitionID))
+			log.LogWarnf("action[%v] trigger all replication,partitionID:%v ", "loadDataPartitionAndCheckResponse", dp.PartitionID)
 			break
 		}
 		time.Sleep(time.Second)
@@ -395,9 +395,6 @@ func (c *Cluster) dealDataNodeTaskResponse(nodeAddr string, task *proto.AdminTas
 	}
 
 	switch task.OpCode {
-	case proto.OpCreateDataPartition:
-		response := task.Response.(*proto.CreateDataPartitionResponse)
-		err = c.dealCreateDataPartitionResponse(task, response)
 	case proto.OpDeleteDataPartition:
 		response := task.Response.(*proto.DeleteDataPartitionResponse)
 		err = c.dealDeleteDataPartitionResponse(task.OperatorAddr, response)
@@ -419,52 +416,6 @@ func (c *Cluster) dealDataNodeTaskResponse(nodeAddr string, task *proto.AdminTas
 
 errDeal:
 	log.LogErrorf("process task[%v] failed,err:%v", task.ToString(), err)
-	return
-}
-
-func (c *Cluster) dealCreateDataPartitionResponse(t *proto.AdminTask, resp *proto.CreateDataPartitionResponse) (err error) {
-	log.LogInfof("action[dealCreateDataPartitionResponse] receive resp from nodeAddr[%v],pid[%v]", t.OperatorAddr, resp.PartitionId)
-	if resp.Status == proto.TaskSuccess {
-		c.createDataPartitionSuccessTriggerOperator(t.OperatorAddr, resp)
-	} else if resp.Status == proto.TaskFail {
-		c.createDataPartitionFailTriggerOperator(t, resp)
-	}
-
-	log.LogInfof("action[dealCreateDataPartitionResponse] process resp from nodeAddr[%v],pid[%v] success", t.OperatorAddr, resp.PartitionId)
-
-	return
-}
-
-func (c *Cluster) createDataPartitionSuccessTriggerOperator(nodeAddr string, resp *proto.CreateDataPartitionResponse) (err error) {
-	var (
-		dataNode *DataNode
-		dp       *DataPartition
-		replica  *DataReplica
-	)
-
-	if dp, err = c.getDataPartitionByID(resp.PartitionId); err != nil {
-		goto errDeal
-	}
-
-	if dataNode, err = c.getDataNode(nodeAddr); err != nil {
-		goto errDeal
-	}
-	replica = NewDataReplica(dataNode)
-	replica.Status = proto.ReadWrite
-	dp.Lock()
-	defer dp.Unlock()
-	dp.AddMember(replica)
-	dp.checkAndRemoveMissReplica(replica.Addr)
-	return
-errDeal:
-	log.LogError(fmt.Sprintf("createDataPartitionSuccessTriggerOperatorErr %v", err))
-	return
-}
-
-func (c *Cluster) createDataPartitionFailTriggerOperator(t *proto.AdminTask, resp *proto.CreateDataPartitionResponse) (err error) {
-	msg := fmt.Sprintf("action[createDataPartitionFailTriggerOperator],taskID:%v, partitionID:%v on :%v  "+
-		"Fail And TrigerChangeOpAddr Fail:%v ", t.ID, resp.PartitionId, t.OperatorAddr, err)
-	log.LogWarn(msg)
 	return
 }
 

@@ -20,11 +20,11 @@ import (
 	"time"
 
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 	"net"
+	"github.com/tiglabs/containerfs/util"
+	"github.com/juju/errors"
 )
 
 const (
@@ -171,6 +171,27 @@ func (sender *AdminTaskSender) sendAdminTask(task *proto.AdminTask, conn net.Con
 	}
 	log.LogDebugf(fmt.Sprintf("action[sendAdminTask] sender task:%v success", task.ToString()))
 	sender.updateTaskInfo(task, true)
+
+	return nil
+}
+
+func (sender *AdminTaskSender) createDataPartition(task *proto.AdminTask, conn net.Conn) (err error) {
+	log.LogInfof(fmt.Sprintf("action[createDataPartition] sender task:%v begin", task.ToString()))
+	packet, err := sender.buildPacket(task)
+	if err != nil {
+		return errors.Annotatef(err, "action[createDataPartition build packet failed,task:%v]", task.ID)
+	}
+	if err = packet.WriteToConn(conn); err != nil {
+		return errors.Annotatef(err, "action[createDataPartition],WriteToConn failed,task:%v", task.ID)
+	}
+	if err = packet.ReadFromConn(conn, proto.CreateDataPartitionDeadlineTime); err != nil {
+		return errors.Annotatef(err, "action[createDataPartition],ReadFromConn failed task:%v", task.ID)
+	}
+	if packet.ResultCode != proto.OpOk {
+		err = fmt.Errorf(string(packet.Data))
+		return
+	}
+	log.LogInfof(fmt.Sprintf("action[createDataPartition] sender task:%v success", task.ToString()))
 
 	return nil
 }

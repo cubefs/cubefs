@@ -17,59 +17,34 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/juju/errors"
 	bsProto "github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/raft/proto"
 	"strconv"
 	"strings"
+	"github.com/juju/errors"
 )
 
-const (
-	OpSyncAddMetaNode          uint32 = 0x01
-	OpSyncAddDataNode          uint32 = 0x02
-	OpSyncAddDataPartition     uint32 = 0x03
-	OpSyncAddVol               uint32 = 0x04
-	OpSyncAddMetaPartition     uint32 = 0x05
-	OpSyncUpdateDataPartition  uint32 = 0x06
-	OpSyncUpdateMetaPartition  uint32 = 0x07
-	OpSyncDeleteDataNode       uint32 = 0x08
-	OpSyncDeleteMetaNode       uint32 = 0x09
-	OpSyncAllocDataPartitionID uint32 = 0x0A
-	OpSyncAllocMetaPartitionID uint32 = 0x0B
-	OpSyncAllocMetaNodeID      uint32 = 0x0C
-	OpSyncPutCluster           uint32 = 0x0D
-	OpSyncUpdateVol            uint32 = 0x0E
-	OpSyncDeleteVol            uint32 = 0x0F
-	OpSyncDeleteDataPartition  uint32 = 0x10
-	OpSyncDeleteMetaPartition  uint32 = 0x11
-	OpSyncAddNodeSet           uint32 = 0x12
-	OpSyncUpdateNodeSet        uint32 = 0x13
-)
+type ClusterValue struct {
+	Name          string
+	CompactStatus bool
+}
 
-const (
-	KeySeparator         = "#"
-	MetaNodeAcronym      = "mn"
-	DataNodeAcronym      = "dn"
-	DataPartitionAcronym = "dp"
-	MetaPartitionAcronym = "mp"
-	VolAcronym           = "vol"
-	ClusterAcronym       = "c"
-	NodeSetAcronym       = "s"
-	MetaNodePrefix       = KeySeparator + MetaNodeAcronym + KeySeparator
-	DataNodePrefix       = KeySeparator + DataNodeAcronym + KeySeparator
-	DataPartitionPrefix  = KeySeparator + DataPartitionAcronym + KeySeparator
-	VolPrefix            = KeySeparator + VolAcronym + KeySeparator
-	MetaPartitionPrefix  = KeySeparator + MetaPartitionAcronym + KeySeparator
-	ClusterPrefix        = KeySeparator + ClusterAcronym + KeySeparator
-	NodeSetPrefix        = KeySeparator + NodeSetAcronym + KeySeparator
-)
+func newClusterValue(c *Cluster) (cv *ClusterValue) {
+	cv = &ClusterValue{
+		Name:          c.Name,
+		CompactStatus: c.compactStatus,
+	}
+	return cv
+}
 
 type MetaPartitionValue struct {
 	PartitionID uint64
 	ReplicaNum  uint8
 	Start       uint64
 	End         uint64
+	VolID       uint64
+	VolName     string
 	Hosts       string
 	Peers       []bsProto.Peer
 }
@@ -80,6 +55,8 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *MetaPartitionValue) {
 		ReplicaNum:  mp.ReplicaNum,
 		Start:       mp.Start,
 		End:         mp.End,
+		VolID:       mp.volID,
+		VolName:     mp.volName,
 		Hosts:       mp.hostsToString(),
 		Peers:       mp.Peers,
 	}
@@ -93,6 +70,8 @@ type DataPartitionValue struct {
 	Peers         []bsProto.Peer
 	PartitionType string
 	RandomWrite   bool
+	VolID         uint64
+	VolName       string
 }
 
 func newDataPartitionValue(dp *DataPartition) (dpv *DataPartitionValue) {
@@ -103,12 +82,15 @@ func newDataPartitionValue(dp *DataPartition) (dpv *DataPartitionValue) {
 		Peers:         dp.Peers,
 		PartitionType: dp.PartitionType,
 		RandomWrite:   dp.RandomWrite,
+		VolID:         dp.VolID,
+		VolName:       dp.VolName,
 	}
 	return
 }
 
 type VolValue struct {
-	VolType           string
+	Id                uint64
+	Name              string
 	ReplicaNum        uint8
 	Status            uint8
 	RandomWrite       bool
@@ -118,8 +100,9 @@ type VolValue struct {
 
 func newVolValue(vol *Vol) (vv *VolValue) {
 	vv = &VolValue{
-		VolType:           vol.VolType,
-		ReplicaNum:        vol.dpReplicaNum,
+		Id:                vol.Id,
+		Name:              vol.Name,
+		ReplicaNum:        vol.mpReplicaNum,
 		Status:            vol.Status,
 		RandomWrite:       vol.RandomWrite,
 		DataPartitionSize: vol.dataPartitionSize,
@@ -131,22 +114,28 @@ func newVolValue(vol *Vol) (vv *VolValue) {
 type DataNodeValue struct {
 	Id        uint64
 	NodeSetId uint64
+	Addr      string
 }
 
 func newDataNodeValue(dataNode *DataNode) *DataNodeValue {
 	return &DataNodeValue{
 		Id:        dataNode.Id,
 		NodeSetId: dataNode.NodeSetId,
+		Addr:      dataNode.Addr,
 	}
 }
 
 type MetaNodeValue struct {
+	Id        uint64
 	NodeSetId uint64
+	Addr      string
 }
 
 func newMetaNodeValue(metaNode *MetaNode) *MetaNodeValue {
 	return &MetaNodeValue{
+		Id:        metaNode.ID,
 		NodeSetId: metaNode.NodeSetId,
+		Addr:      metaNode.Addr,
 	}
 }
 
@@ -167,34 +156,23 @@ func newNodeSetValue(nset *NodeSet) (nsv *NodeSetValue) {
 	return
 }
 
-type Metadata struct {
+type RaftCmdData struct {
 	Op uint32 `json:"op"`
 	K  string `json:"k"`
 	V  []byte `json:"v"`
 }
 
-func (m *Metadata) Marshal() ([]byte, error) {
+func (m *RaftCmdData) Marshal() ([]byte, error) {
 	return json.Marshal(m)
 }
 
-func (m *Metadata) Unmarshal(data []byte) (err error) {
+func (m *RaftCmdData) Unmarshal(data []byte) (err error) {
 	return json.Unmarshal(data, m)
 }
 
-func (m *Metadata) setOpType() {
+//send data to follower by snapshot,must set operate type to each add type
+func (m *RaftCmdData) setOpType() {
 	keyArr := strings.Split(m.K, KeySeparator)
-
-	switch keyArr[0] {
-	case MaxDataPartitionIDKey:
-		m.Op = OpSyncAllocDataPartitionID
-		return
-	case MaxMetaPartitionIDKey:
-		m.Op = OpSyncAllocMetaPartitionID
-		return
-	case MaxMetaNodeIDKey:
-		m.Op = OpSyncAllocMetaNodeID
-		return
-	}
 	if len(keyArr) < 2 {
 		log.LogWarnf("action[setOpType] invalid length[%v]", keyArr)
 		return
@@ -212,15 +190,29 @@ func (m *Metadata) setOpType() {
 		m.Op = OpSyncAddVol
 	case ClusterAcronym:
 		m.Op = OpSyncPutCluster
+	case NodeSetAcronym:
+		m.Op = OpSyncAddNodeSet
+	case MaxDataPartitionIDKey:
+		m.Op = OpSyncAllocDataPartitionID
+	case MaxMetaPartitionIDKey:
+		m.Op = OpSyncAllocMetaPartitionID
+	case MaxCommonIDKey:
+		m.Op = OpSyncAllocCommonID
 	default:
 		log.LogWarnf("action[setOpType] unknown opCode[%v]", keyArr[1])
 	}
 }
 
+//key=#c#name
 func (c *Cluster) syncPutCluster() (err error) {
-	metadata := new(Metadata)
+	metadata := new(RaftCmdData)
 	metadata.Op = OpSyncPutCluster
-	metadata.K = ClusterPrefix + c.Name + KeySeparator + strconv.FormatBool(c.compactStatus)
+	metadata.K = ClusterPrefix + c.Name
+	cv := newClusterValue(c)
+	metadata.V, err = json.Marshal(cv)
+	if err != nil {
+		return
+	}
 	return c.submit(metadata)
 }
 
@@ -234,7 +226,7 @@ func (c *Cluster) syncUpdateNodeSet(nset *NodeSet) (err error) {
 }
 
 func (c *Cluster) putNodeSetInfo(opType uint32, nset *NodeSet) (err error) {
-	metadata := new(Metadata)
+	metadata := new(RaftCmdData)
 	metadata.Op = opType
 	metadata.K = NodeSetPrefix + strconv.FormatUint(nset.Id, 10)
 	nsv := newNodeSetValue(nset)
@@ -245,23 +237,23 @@ func (c *Cluster) putNodeSetInfo(opType uint32, nset *NodeSet) (err error) {
 	return c.submit(metadata)
 }
 
-//key=#vg#volName#partitionID,value=json.Marshal(DataPartitionValue)
-func (c *Cluster) syncAddDataPartition(volName string, dp *DataPartition) (err error) {
-	return c.putDataPartitionInfo(OpSyncAddDataPartition, volName, dp)
+//key=#dp#volID#partitionID,value=json.Marshal(DataPartitionValue)
+func (c *Cluster) syncAddDataPartition(dp *DataPartition) (err error) {
+	return c.putDataPartitionInfo(OpSyncAddDataPartition, dp)
 }
 
-func (c *Cluster) syncUpdateDataPartition(volName string, dp *DataPartition) (err error) {
-	return c.putDataPartitionInfo(OpSyncUpdateDataPartition, volName, dp)
+func (c *Cluster) syncUpdateDataPartition(dp *DataPartition) (err error) {
+	return c.putDataPartitionInfo(OpSyncUpdateDataPartition, dp)
 }
 
-func (c *Cluster) syncDeleteDataPartition(volName string, dp *DataPartition) (err error) {
-	return c.putDataPartitionInfo(OpSyncDeleteDataPartition, volName, dp)
+func (c *Cluster) syncDeleteDataPartition(dp *DataPartition) (err error) {
+	return c.putDataPartitionInfo(OpSyncDeleteDataPartition, dp)
 }
 
-func (c *Cluster) putDataPartitionInfo(opType uint32, volName string, dp *DataPartition) (err error) {
-	metadata := new(Metadata)
+func (c *Cluster) putDataPartitionInfo(opType uint32, dp *DataPartition) (err error) {
+	metadata := new(RaftCmdData)
 	metadata.Op = opType
-	metadata.K = DataPartitionPrefix + volName + KeySeparator + strconv.FormatUint(dp.PartitionID, 10)
+	metadata.K = DataPartitionPrefix + strconv.FormatUint(dp.VolID, 10) + KeySeparator + strconv.FormatUint(dp.PartitionID, 10)
 	dpv := newDataPartitionValue(dp)
 	metadata.V, err = json.Marshal(dpv)
 	if err != nil {
@@ -270,7 +262,7 @@ func (c *Cluster) putDataPartitionInfo(opType uint32, volName string, dp *DataPa
 	return c.submit(metadata)
 }
 
-func (c *Cluster) submit(metadata *Metadata) (err error) {
+func (c *Cluster) submit(metadata *RaftCmdData) (err error) {
 	cmd, err := metadata.Marshal()
 	if err != nil {
 		return errors.New(err.Error())
@@ -282,33 +274,23 @@ func (c *Cluster) submit(metadata *Metadata) (err error) {
 	return
 }
 
-//key=#vol#volName,value=json.Marshal(vv)
+//key=#vol#volID,value=json.Marshal(vv)
 func (c *Cluster) syncAddVol(vol *Vol) (err error) {
-	metadata := new(Metadata)
-	metadata.Op = OpSyncAddVol
-	metadata.K = VolPrefix + vol.Name
-	vv := newVolValue(vol)
-	if metadata.V, err = json.Marshal(vv); err != nil {
-		return errors.New(err.Error())
-	}
-	return c.submit(metadata)
+	return c.syncPutVolInfo(OpSyncAddVol, vol)
 }
 
 func (c *Cluster) syncUpdateVol(vol *Vol) (err error) {
-	metadata := new(Metadata)
-	metadata.Op = OpSyncUpdateVol
-	metadata.K = VolPrefix + vol.Name
-	vv := newVolValue(vol)
-	if metadata.V, err = json.Marshal(vv); err != nil {
-		return errors.New(err.Error())
-	}
-	return c.submit(metadata)
+	return c.syncPutVolInfo(OpSyncUpdateVol, vol)
 }
 
 func (c *Cluster) syncDeleteVol(vol *Vol) (err error) {
-	metadata := new(Metadata)
-	metadata.Op = OpSyncDeleteVol
-	metadata.K = VolPrefix + vol.Name
+	return c.syncPutVolInfo(OpSyncDeleteVol, vol)
+}
+
+func (c *Cluster) syncPutVolInfo(opType uint32, vol *Vol) (err error) {
+	metadata := new(RaftCmdData)
+	metadata.Op = opType
+	metadata.K = VolPrefix + strconv.FormatUint(vol.Id, 10)
 	vv := newVolValue(vol)
 	if metadata.V, err = json.Marshal(vv); err != nil {
 		return errors.New(err.Error())
@@ -316,24 +298,24 @@ func (c *Cluster) syncDeleteVol(vol *Vol) (err error) {
 	return c.submit(metadata)
 }
 
-////key=#mp#volName#metaPartitionID,value=json.Marshal(MetaPartitionValue)
-func (c *Cluster) syncAddMetaPartition(volName string, mp *MetaPartition) (err error) {
-	return c.putMetaPartitionInfo(OpSyncAddMetaPartition, volName, mp)
+////key=#mp#volID#metaPartitionID,value=json.Marshal(MetaPartitionValue)
+func (c *Cluster) syncAddMetaPartition(mp *MetaPartition) (err error) {
+	return c.putMetaPartitionInfo(OpSyncAddMetaPartition, mp)
 }
 
-func (c *Cluster) syncUpdateMetaPartition(volName string, mp *MetaPartition) (err error) {
-	return c.putMetaPartitionInfo(OpSyncUpdateMetaPartition, volName, mp)
+func (c *Cluster) syncUpdateMetaPartition(mp *MetaPartition) (err error) {
+	return c.putMetaPartitionInfo(OpSyncUpdateMetaPartition, mp)
 }
 
-func (c *Cluster) syncDeleteMetaPartition(volName string, mp *MetaPartition) (err error) {
-	return c.putMetaPartitionInfo(OpSyncDeleteMetaPartition, volName, mp)
+func (c *Cluster) syncDeleteMetaPartition(mp *MetaPartition) (err error) {
+	return c.putMetaPartitionInfo(OpSyncDeleteMetaPartition, mp)
 }
 
-func (c *Cluster) putMetaPartitionInfo(opType uint32, volName string, mp *MetaPartition) (err error) {
-	metadata := new(Metadata)
+func (c *Cluster) putMetaPartitionInfo(opType uint32, mp *MetaPartition) (err error) {
+	metadata := new(RaftCmdData)
 	metadata.Op = opType
 	partitionID := strconv.FormatUint(mp.PartitionID, 10)
-	metadata.K = MetaPartitionPrefix + volName + KeySeparator + partitionID
+	metadata.K = MetaPartitionPrefix + strconv.FormatUint(mp.volID, 10) + KeySeparator + partitionID
 	mpv := newMetaPartitionValue(mp)
 	if metadata.V, err = json.Marshal(mpv); err != nil {
 		return errors.New(err.Error())
@@ -343,35 +325,43 @@ func (c *Cluster) putMetaPartitionInfo(opType uint32, volName string, mp *MetaPa
 
 //key=#mn#id#addr,value = nil
 func (c *Cluster) syncAddMetaNode(metaNode *MetaNode) (err error) {
-	metadata := new(Metadata)
-	metadata.Op = OpSyncAddMetaNode
-	metadata.K = MetaNodePrefix + strconv.FormatUint(metaNode.ID, 10) + KeySeparator + metaNode.Addr
-	mnv := newMetaNodeValue(metaNode)
-	metadata.V, err = json.Marshal(mnv)
-	return c.submit(metadata)
+	return c.syncPutMetaNode(OpSyncAddMetaNode, metaNode)
 }
 
 func (c *Cluster) syncDeleteMetaNode(metaNode *MetaNode) (err error) {
-	metadata := new(Metadata)
-	metadata.Op = OpSyncDeleteMetaNode
+	return c.syncPutMetaNode(OpSyncDeleteMetaNode, metaNode)
+}
+
+func (c *Cluster) syncPutMetaNode(opType uint32, metaNode *MetaNode) (err error) {
+	metadata := new(RaftCmdData)
+	metadata.Op = opType
 	metadata.K = MetaNodePrefix + strconv.FormatUint(metaNode.ID, 10) + KeySeparator + metaNode.Addr
+	mnv := newMetaNodeValue(metaNode)
+	metadata.V, err = json.Marshal(mnv)
+	if err != nil {
+		return errors.New(err.Error())
+	}
 	return c.submit(metadata)
 }
 
-//key=#dn#Addr,value = json.Marshal(dnv)
+//key=#dn#id#Addr,value = json.Marshal(dnv)
 func (c *Cluster) syncAddDataNode(dataNode *DataNode) (err error) {
-	metadata := new(Metadata)
-	metadata.Op = OpSyncAddDataNode
-	metadata.K = DataNodePrefix + dataNode.Addr
-	dnv := newDataNodeValue(dataNode)
-	metadata.V, err = json.Marshal(dnv)
-	return c.submit(metadata)
+	return c.syncPutDataNodeInfo(OpSyncAddDataNode, dataNode)
 }
 
 func (c *Cluster) syncDeleteDataNode(dataNode *DataNode) (err error) {
-	metadata := new(Metadata)
-	metadata.Op = OpSyncDeleteDataNode
-	metadata.K = DataNodePrefix + dataNode.Addr
+	return c.syncPutDataNodeInfo(OpSyncDeleteDataNode, dataNode)
+}
+
+func (c *Cluster) syncPutDataNodeInfo(opType uint32, dataNode *DataNode) (err error) {
+	metadata := new(RaftCmdData)
+	metadata.Op = opType
+	metadata.K = DataNodePrefix + strconv.FormatUint(dataNode.Id, 10) + KeySeparator + dataNode.Addr
+	dnv := newDataNodeValue(dataNode)
+	metadata.V, err = json.Marshal(dnv)
+	if err != nil {
+		return errors.New(err.Error())
+	}
 	return c.submit(metadata)
 }
 
@@ -393,26 +383,28 @@ func (c *Cluster) removeRaftNode(nodeID uint64, addr string) (err error) {
 	return nil
 }
 
-func (c *Cluster) handleApply(cmd *Metadata) (err error) {
+func (c *Cluster) handleApply(cmd *RaftCmdData) (err error) {
 	if cmd == nil {
 		return fmt.Errorf("metadata can't be null")
 	}
 	if c == nil || c.fsm == nil {
 		return fmt.Errorf("cluster has not init")
 	}
-	curIndex := c.fsm.applied
-	if curIndex > 0 && curIndex%c.retainLogs == 0 {
-		c.partition.Truncate(curIndex)
-	}
 	switch cmd.Op {
+	case OpSyncPutCluster:
+		c.applyPutCluster(cmd)
 	case OpSyncAddNodeSet:
 		c.applyAddNodeSet(cmd)
 	case OpSyncUpdateNodeSet:
 		c.applyUpdateNodeSet(cmd)
 	case OpSyncAddDataNode:
 		c.applyAddDataNode(cmd)
+	case OpSyncDeleteDataNode:
+		c.applyDeleteDataNode(cmd)
 	case OpSyncAddMetaNode:
 		err = c.applyAddMetaNode(cmd)
+	case OpSyncDeleteMetaNode:
+		c.applyDeleteMetaNode(cmd)
 	case OpSyncAddVol:
 		c.applyAddVol(cmd)
 	case OpSyncUpdateVol:
@@ -427,18 +419,12 @@ func (c *Cluster) handleApply(cmd *Metadata) (err error) {
 		c.applyAddDataPartition(cmd)
 	case OpSyncUpdateDataPartition:
 		c.applyUpdateDataPartition(cmd)
-	case OpSyncDeleteMetaNode:
-		c.applyDeleteMetaNode(cmd)
-	case OpSyncDeleteDataNode:
-		c.applyDeleteDataNode(cmd)
-	case OpSyncPutCluster:
-		c.applyPutCluster(cmd)
-	case OpSyncAllocMetaNodeID:
+	case OpSyncAllocCommonID:
 		id, err1 := strconv.ParseUint(string(cmd.V), 10, 64)
 		if err1 != nil {
 			return err1
 		}
-		c.idAlloc.setMetaNodeID(id)
+		c.idAlloc.setCommonID(id)
 	case OpSyncAllocDataPartitionID:
 		id, err1 := strconv.ParseUint(string(cmd.V), 10, 64)
 		if err1 != nil {
@@ -453,40 +439,45 @@ func (c *Cluster) handleApply(cmd *Metadata) (err error) {
 		c.idAlloc.setMetaPartitionID(id)
 	}
 	log.LogInfof("action[handleApply] success,cmd.K[%v],cmd.V[%v]", cmd.K, string(cmd.V))
+	curIndex := c.fsm.applied
+	if curIndex > 0 && curIndex%c.retainLogs == 0 {
+		c.partition.Truncate(curIndex)
+	}
 	return
 }
 
-func (c *Cluster) applyAddNodeSet(cmd *Metadata) {
-	log.LogInfof("action[applyAddNodeSet] cmd:%v", cmd.K)
-	keys := strings.Split(cmd.K, KeySeparator)
-	if keys[1] != NodeSetAcronym {
+func (c *Cluster) applyPutCluster(cmd *RaftCmdData) (err error) {
+	log.LogInfof("action[applyPutCluster] cmd:%v", cmd.K)
+	cv := &ClusterValue{}
+	if err := json.Unmarshal(cmd.V, cv); err != nil {
+		log.LogErrorf("action[applyPutCluster],err:%v", err.Error())
 		return
 	}
-	setId, err := strconv.ParseUint(keys[2], 10, 64)
-	if err != nil {
-		return
-	}
-	ns := newNodeSet(setId, DefaultNodeSetCapacity)
-	c.t.putNodeSet(ns)
+	c.compactStatus = cv.CompactStatus
+	return
 }
 
-func (c *Cluster) applyUpdateNodeSet(cmd *Metadata) {
+func (c *Cluster) applyAddNodeSet(cmd *RaftCmdData) (err error) {
+	log.LogInfof("action[applyAddNodeSet] cmd:%v", cmd.K)
+	nsv := &NodeSetValue{}
+	if err := json.Unmarshal(cmd.V, nsv); err != nil {
+		log.LogErrorf("action[applyAddNodeSet],err:%v", err.Error())
+		return
+	}
+	ns := newNodeSet(nsv.Id, DefaultNodeSetCapacity)
+	c.t.putNodeSet(ns)
+	return
+}
+
+func (c *Cluster) applyUpdateNodeSet(cmd *RaftCmdData) (err error) {
 	log.LogInfof("action[applyUpdateNodeSet] cmd:%v", cmd.K)
-	keys := strings.Split(cmd.K, KeySeparator)
-	if keys[1] != NodeSetAcronym {
-		return
-	}
-	setId, err := strconv.ParseUint(keys[2], 10, 64)
-	if err != nil {
-		return
-	}
-	ns, err := c.t.getNodeSet(setId)
-	if err != nil {
+	nsv := &NodeSetValue{}
+	if err := json.Unmarshal(cmd.V, nsv); err != nil {
 		log.LogErrorf("action[applyUpdateNodeSet],err:%v", err.Error())
 		return
 	}
-	nsv := &NodeSetValue{}
-	if err := json.Unmarshal(cmd.V, nsv); err != nil {
+	ns, err := c.t.getNodeSet(nsv.Id)
+	if err != nil {
 		log.LogErrorf("action[applyUpdateNodeSet],err:%v", err.Error())
 		return
 	}
@@ -494,259 +485,201 @@ func (c *Cluster) applyUpdateNodeSet(cmd *Metadata) {
 	ns.dataNodeLen = nsv.DataNodeLen
 	ns.metaNodeLen = nsv.MetaNodeLen
 	ns.Unlock()
+	return
 }
 
-func (c *Cluster) applyPutCluster(cmd *Metadata) {
-	log.LogInfof("action[applyPutCluster] cmd:%v", cmd.K)
-	keys := strings.Split(cmd.K, KeySeparator)
-	if keys[1] != ClusterAcronym {
+func (c *Cluster) applyAddDataNode(cmd *RaftCmdData) (err error) {
+	log.LogInfof("action[applyAddDataNode] cmd:%v", cmd.K)
+	dnv := &DataNodeValue{}
+	if err := json.Unmarshal(cmd.V, dnv); err != nil {
+		log.LogErrorf("action[applyAddDataNode],err:%v", err.Error())
 		return
 	}
-	status, err := strconv.ParseBool(keys[3])
-	if err != nil {
-		return
-	}
-	c.compactStatus = status
+	dataNode := NewDataNode(dnv.Addr, c.Name)
+	dataNode.Id = dnv.Id
+	dataNode.NodeSetId = dnv.NodeSetId
+	c.dataNodes.Store(dataNode.Addr, dataNode)
+	return
 }
 
-func (c *Cluster) applyDeleteDataNode(cmd *Metadata) {
+func (c *Cluster) applyDeleteDataNode(cmd *RaftCmdData) (err error) {
 	log.LogInfof("action[applyDeleteDataNode] cmd:%v", cmd.K)
-	keys := strings.Split(cmd.K, KeySeparator)
-	if keys[1] != DataNodeAcronym {
+	dnv := &DataNodeValue{}
+	if err := json.Unmarshal(cmd.V, dnv); err != nil {
+		log.LogErrorf("action[applyDeleteDataNode],err:%v", err.Error())
 		return
 	}
-	if value, ok := c.dataNodes.Load(keys[2]); ok {
+	if value, ok := c.dataNodes.Load(dnv.Id); ok {
 		dataNode := value.(*DataNode)
 		c.delDataNodeFromCache(dataNode)
 	}
+	return
 }
 
-func (c *Cluster) applyDeleteMetaNode(cmd *Metadata) {
-	log.LogInfof("action[applyDeleteMetaNode] cmd:%v", cmd.K)
-	keys := strings.Split(cmd.K, KeySeparator)
-	if keys[1] != MetaNodeAcronym {
+func (c *Cluster) applyAddMetaNode(cmd *RaftCmdData) (err error) {
+	log.LogInfof("action[applyAddMetaNode] cmd:%v", cmd.K)
+	mnv := &MetaNodeValue{}
+	if err := json.Unmarshal(cmd.V, mnv); err != nil {
+		log.LogErrorf("action[applyAddMetaNode],err:%v", err.Error())
 		return
 	}
-	if value, ok := c.metaNodes.Load(keys[3]); ok {
-		metaNode := value.(*MetaNode)
-		c.delMetaNodeFromCache(metaNode)
-	}
-}
-
-func (c *Cluster) applyAddDataNode(cmd *Metadata) {
-	log.LogInfof("action[applyAddDataNode] cmd:%v", cmd.K)
-	keys := strings.Split(cmd.K, KeySeparator)
-	var (
-		err error
-	)
-	if keys[1] == DataNodeAcronym {
-		dataNode := NewDataNode(keys[2], c.Name)
-		dnv := &DataNodeValue{}
-		if err = json.Unmarshal(cmd.V, dnv); err != nil {
-			return
-		}
-		dataNode.Lock()
-		dataNode.Id = dnv.Id
-		dataNode.NodeSetId = dnv.NodeSetId
-		dataNode.Unlock()
-		c.dataNodes.Store(dataNode.Addr, dataNode)
-	}
-}
-
-func (c *Cluster) applyAddMetaNode(cmd *Metadata) (err error) {
-	log.LogInfof("action[applyAddMetaNode] cmd:%v", cmd.K)
-	keys := strings.Split(cmd.K, KeySeparator)
-	var (
-		id uint64
-	)
-	if keys[1] == MetaNodeAcronym {
-		addr := keys[3]
-		if _, err = c.getMetaNode(addr); err != nil {
-			metaNode := NewMetaNode(addr, c.Name)
-			if id, err = strconv.ParseUint(keys[2], 10, 64); err != nil {
-				log.LogErrorf("action[applyAddMetaNode] cmd.K:%v,err[%v]", cmd.K, err.Error())
-				return
-			}
-			metaNode.ID = id
-			mnv := &MetaNodeValue{}
-			if err = json.Unmarshal(cmd.V, mnv); err != nil {
-				log.LogErrorf("action[applyAddMetaNode] cmd.V:%v,err[%v]", cmd.V, err.Error())
-				return
-			}
-			metaNode.NodeSetId = mnv.NodeSetId
-			c.metaNodes.Store(metaNode.Addr, metaNode)
-		}
+	if _, err = c.getMetaNode(mnv.Addr); err != nil {
+		metaNode := NewMetaNode(mnv.Addr, c.Name)
+		metaNode.ID = mnv.Id
+		metaNode.NodeSetId = mnv.NodeSetId
+		c.metaNodes.Store(metaNode.Addr, metaNode)
 	}
 	return nil
 }
 
-func (c *Cluster) applyAddVol(cmd *Metadata) {
-	log.LogInfof("action[applyAddVol] cmd:%v", cmd.K)
-	keys := strings.Split(cmd.K, KeySeparator)
-	if keys[1] == VolAcronym {
-
-		vv := &VolValue{}
-		if err := json.Unmarshal(cmd.V, vv); err != nil {
-			log.LogError(fmt.Sprintf("action[applyAddVol] failed,err:%v", err))
-			return
-		}
-		vol := NewVol(keys[2], vv.VolType, vv.ReplicaNum, vv.RandomWrite, vv.DataPartitionSize, vv.Capacity)
-		c.putVol(vol)
+func (c *Cluster) applyDeleteMetaNode(cmd *RaftCmdData) (err error) {
+	log.LogInfof("action[applyDeleteMetaNode] cmd:%v", cmd.K)
+	mnv := &MetaNodeValue{}
+	if err := json.Unmarshal(cmd.V, mnv); err != nil {
+		log.LogErrorf("action[applyDeleteMetaNode],err:%v", err.Error())
+		return
 	}
-}
-
-func (c *Cluster) applyUpdateVol(cmd *Metadata) {
-	log.LogInfof("action[applyUpdateVol] cmd:%v", cmd.K)
-	var (
-		vol *Vol
-		err error
-	)
-	keys := strings.Split(cmd.K, KeySeparator)
-	if keys[1] == VolAcronym {
-
-		vv := &VolValue{}
-		if err = json.Unmarshal(cmd.V, vv); err != nil {
-			log.LogError(fmt.Sprintf("action[applyUpdateVol] failed,err:%v", err))
-			return
-		}
-		if vol, err = c.getVol(keys[2]); err != nil {
-			log.LogError(fmt.Sprintf("action[applyUpdateVol] failed,err:%v", err))
-			return
-		}
-		vol.setStatus(vv.Status)
-		vol.setCapacity(vv.Capacity)
+	if value, ok := c.metaNodes.Load(mnv.Id); ok {
+		metaNode := value.(*MetaNode)
+		c.delMetaNodeFromCache(metaNode)
 	}
-}
-
-func (c *Cluster) applyDeleteVol(cmd *Metadata) {
-	log.LogInfof("action[applyDeleteVol] cmd:%v", cmd.K)
-	keys := strings.Split(cmd.K, KeySeparator)
-	if keys[1] == VolAcronym {
-		c.deleteVol(keys[2])
-	}
-}
-
-func (c *Cluster) applyAddMetaPartition(cmd *Metadata) {
-	log.LogInfof("action[applyAddMetaPartition] cmd:%v", cmd.K)
-	keys := strings.Split(cmd.K, KeySeparator)
-	if keys[1] == MetaPartitionAcronym {
-		mpv := &MetaPartitionValue{}
-		if err := json.Unmarshal(cmd.V, mpv); err != nil {
-			log.LogError(fmt.Sprintf("action[applyAddMetaPartition] failed,err:%v", err))
-			return
-		}
-		mp := NewMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, mpv.ReplicaNum, keys[2])
-		mp.Lock()
-		mp.Peers = mpv.Peers
-		mp.PersistenceHosts = strings.Split(mpv.Hosts, UnderlineSeparator)
-		mp.Unlock()
-		vol, err := c.getVol(keys[2])
-		if err != nil {
-			log.LogErrorf("action[applyUpdateDataPartition] failed,err:%v", err)
-			return
-		}
-		vol.AddMetaPartitionByRaft(mp)
-	}
-}
-
-func (c *Cluster) applyUpdateMetaPartition(cmd *Metadata) {
-	log.LogInfof("action[applyUpdateMetaPartition] cmd:%v", cmd.K)
-	keys := strings.Split(cmd.K, KeySeparator)
-	if keys[1] == MetaPartitionAcronym {
-		mpv := &MetaPartitionValue{}
-		if err := json.Unmarshal(cmd.V, mpv); err != nil {
-			log.LogError(fmt.Sprintf("action[applyUpdateMetaPartition] failed,err:%v", err))
-			return
-		}
-		vol, err := c.getVol(keys[2])
-		if err != nil {
-			log.LogErrorf("action[applyUpdateDataPartition] failed,err:%v", err)
-			return
-		}
-		mp, err := vol.getMetaPartition(mpv.PartitionID)
-		if err != nil {
-			log.LogError(fmt.Sprintf("action[applyUpdateMetaPartition] failed,err:%v", err))
-			return
-		}
-		mp.updateMetricByRaft(mpv)
-	}
-}
-
-func (c *Cluster) applyAddDataPartition(cmd *Metadata) {
-	log.LogInfof("action[applyAddDataPartition] cmd:%v", cmd.K)
-	keys := strings.Split(cmd.K, KeySeparator)
-	if keys[1] == DataPartitionAcronym {
-		dpv := &DataPartitionValue{}
-		json.Unmarshal(cmd.V, dpv)
-		vol, err := c.getVol(keys[2])
-		if err != nil {
-			log.LogErrorf("action[applyUpdateDataPartition] failed,err:%v", err)
-			return
-		}
-		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.PartitionType, vol.Name, vol.RandomWrite)
-		dp.PersistenceHosts = strings.Split(dpv.Hosts, UnderlineSeparator)
-		dp.Peers = dpv.Peers
-		vol.dataPartitions.putDataPartition(dp)
-	}
-}
-
-func (c *Cluster) applyUpdateDataPartition(cmd *Metadata) {
-	log.LogInfof("action[applyUpdateDataPartition] cmd:%v", cmd.K)
-	keys := strings.Split(cmd.K, KeySeparator)
-	if keys[1] == DataPartitionAcronym {
-		dpv := &DataPartitionValue{}
-		json.Unmarshal(cmd.V, dpv)
-		vol, err := c.getVol(keys[2])
-		if err != nil {
-			log.LogErrorf("action[applyUpdateDataPartition] failed,err:%v", err)
-			return
-		}
-		if _, err := vol.getDataPartitionByID(dpv.PartitionID); err != nil {
-			log.LogError(fmt.Sprintf("action[applyUpdateDataPartition] failed,err:%v", err))
-			return
-		}
-		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.PartitionType, vol.Name, dpv.RandomWrite)
-		dp.PersistenceHosts = strings.Split(dpv.Hosts, UnderlineSeparator)
-		dp.Peers = dpv.Peers
-		vol.dataPartitions.putDataPartition(dp)
-	}
-}
-
-func (c *Cluster) decodeDataPartitionKey(key string) (acronym, volName string) {
-	return c.decodeAcronymAndNsName(key)
-}
-
-func (c *Cluster) decodeMetaPartitionKey(key string) (acronym, volName string) {
-	return c.decodeAcronymAndNsName(key)
-}
-
-func (c *Cluster) decodeVolKey(key string) (acronym, volName string, err error) {
-	arr := strings.Split(key, KeySeparator)
-	acronym = arr[1]
-	volName = arr[2]
 	return
 }
 
-func (c *Cluster) decodeAcronymAndNsName(key string) (acronym, volName string) {
-	arr := strings.Split(key, KeySeparator)
-	acronym = arr[1]
-	volName = arr[2]
+func (c *Cluster) applyAddVol(cmd *RaftCmdData) (err error) {
+	log.LogInfof("action[applyAddVol] cmd:%v", cmd.K)
+	vv := &VolValue{}
+	if err := json.Unmarshal(cmd.V, vv); err != nil {
+		log.LogError(fmt.Sprintf("action[applyAddVol] failed,err:%v", err))
+		return
+	}
+	vol := NewVol(vv.Id, vv.Name, vv.ReplicaNum, vv.RandomWrite, vv.DataPartitionSize, vv.Capacity)
+	c.putVol(vol)
+	return
+}
+
+func (c *Cluster) applyUpdateVol(cmd *RaftCmdData) (err error) {
+	log.LogInfof("action[applyUpdateVol] cmd:%v", cmd.K)
+	vv := &VolValue{}
+	if err = json.Unmarshal(cmd.V, vv); err != nil {
+		log.LogError(fmt.Sprintf("action[applyUpdateVol] failed,err:%v", err))
+		return
+	}
+	vol, err := c.getVol(vv.Name)
+	if err != nil {
+		log.LogError(fmt.Sprintf("action[applyUpdateVol] failed,err:%v", err))
+		return
+	}
+	vol.setStatus(vv.Status)
+	vol.setCapacity(vv.Capacity)
+	return
+}
+
+func (c *Cluster) applyDeleteVol(cmd *RaftCmdData) (err error) {
+	log.LogInfof("action[applyDeleteVol] cmd:%v", cmd.K)
+	vv := &VolValue{}
+	if err = json.Unmarshal(cmd.V, vv); err != nil {
+		log.LogError(fmt.Sprintf("action[applyDeleteVol] failed,err:%v", err))
+		return
+	}
+	c.deleteVol(vv.Name)
+	return
+}
+
+func (c *Cluster) applyAddMetaPartition(cmd *RaftCmdData) {
+	log.LogInfof("action[applyAddMetaPartition] cmd:%v", cmd.K)
+	mpv := &MetaPartitionValue{}
+	if err := json.Unmarshal(cmd.V, mpv); err != nil {
+		log.LogError(fmt.Sprintf("action[applyAddMetaPartition] failed,err:%v", err))
+		return
+	}
+	mp := NewMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, mpv.ReplicaNum, mpv.VolName, mpv.VolID)
+	mp.Peers = mpv.Peers
+	mp.PersistenceHosts = strings.Split(mpv.Hosts, UnderlineSeparator)
+	vol, err := c.getVol(mpv.VolName)
+	if err != nil {
+		log.LogErrorf("action[applyAddMetaPartition] failed,err:%v", err)
+		return
+	}
+	vol.AddMetaPartitionByRaft(mp)
+	return
+}
+
+func (c *Cluster) applyUpdateMetaPartition(cmd *RaftCmdData) (err error) {
+	log.LogInfof("action[applyUpdateMetaPartition] cmd:%v", cmd.K)
+	mpv := &MetaPartitionValue{}
+	if err := json.Unmarshal(cmd.V, mpv); err != nil {
+		log.LogError(fmt.Sprintf("action[applyUpdateMetaPartition] failed,err:%v", err))
+		return
+	}
+	vol, err := c.getVol(mpv.VolName)
+	if err != nil {
+		log.LogErrorf("action[applyUpdateDataPartition] failed,err:%v", err)
+		return
+	}
+	mp, err := vol.getMetaPartition(mpv.PartitionID)
+	if err != nil {
+		log.LogError(fmt.Sprintf("action[applyUpdateMetaPartition] failed,err:%v", err))
+		return
+	}
+	mp.updateMetricByRaft(mpv)
+	return
+}
+
+func (c *Cluster) applyAddDataPartition(cmd *RaftCmdData) (err error) {
+	log.LogInfof("action[applyAddDataPartition] cmd:%v", cmd.K)
+	dpv := &DataPartitionValue{}
+	if err = json.Unmarshal(cmd.V, dpv); err != nil {
+		log.LogError(fmt.Sprintf("action[applyAddDataPartition] failed,err:%v", err))
+		return
+	}
+	vol, err := c.getVol(dpv.VolName)
+	if err != nil {
+		log.LogErrorf("action[applyAddDataPartition] failed,err:%v", err)
+		return
+	}
+	dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, vol.Name, vol.Id, vol.RandomWrite)
+	dp.PersistenceHosts = strings.Split(dpv.Hosts, UnderlineSeparator)
+	dp.Peers = dpv.Peers
+	vol.dataPartitions.putDataPartition(dp)
+	return
+}
+
+func (c *Cluster) applyUpdateDataPartition(cmd *RaftCmdData) (err error) {
+	log.LogInfof("action[applyUpdateDataPartition] cmd:%v", cmd.K)
+	dpv := &DataPartitionValue{}
+	if err = json.Unmarshal(cmd.V, dpv); err != nil {
+		log.LogError(fmt.Sprintf("action[applyUpdateDataPartition] failed,err:%v", err))
+		return
+	}
+	vol, err := c.getVol(dpv.VolName)
+	if err != nil {
+		log.LogErrorf("action[applyUpdateDataPartition] failed,err:%v", err)
+		return
+	}
+	if _, err := vol.getDataPartitionByID(dpv.PartitionID); err != nil {
+		log.LogError(fmt.Sprintf("action[applyUpdateDataPartition] failed,err:%v", err))
+		return
+	}
+	dp, err := vol.getDataPartitionByID(dpv.PartitionID)
+	if err != nil {
+		log.LogError(fmt.Sprintf("action[applyUpdateDataPartition] failed,err:%v", err))
+		return
+	}
+	dp.PersistenceHosts = strings.Split(dpv.Hosts, UnderlineSeparator)
+	dp.Peers = dpv.Peers
+	vol.dataPartitions.putDataPartition(dp)
 	return
 }
 
 func (c *Cluster) loadCompactStatus() (err error) {
-	snapshot := c.fsm.store.RocksDBSnapshot()
-	it := c.fsm.store.Iterator(snapshot)
-	defer func() {
-		it.Close()
-		c.fsm.store.ReleaseSnapshot(snapshot)
-	}()
-	prefixKey := []byte(ClusterPrefix)
-	it.Seek(prefixKey)
-	for ; it.ValidForPrefix(prefixKey); it.Next() {
-		encodedKey := it.Key()
-		log.LogInfof("action[loadCompactStatus] cluster[%v] key[%v]", c.Name, string(encodedKey.Data()))
-		keys := strings.Split(string(encodedKey.Data()), KeySeparator)
+	result, err := c.fsm.store.SeekForPrefix([]byte(ClusterPrefix))
+	if err != nil {
+		return errors.Annotatef(err, "action[loadCompactStatus] failed,err:%v", err)
+	}
+	for key := range result {
+		log.LogInfof("action[loadCompactStatus] cluster[%v] key[%v]", c.Name, key)
+		keys := strings.Split(key, KeySeparator)
 		var status bool
 		status, err = strconv.ParseBool(keys[3])
 		if err != nil {
@@ -759,34 +692,20 @@ func (c *Cluster) loadCompactStatus() (err error) {
 }
 
 func (c *Cluster) loadNodeSets() (err error) {
-	snapshot := c.fsm.store.RocksDBSnapshot()
-	it := c.fsm.store.Iterator(snapshot)
-	defer func() {
-		it.Close()
-		c.fsm.store.ReleaseSnapshot(snapshot)
-	}()
-	prefixKey := []byte(NodeSetPrefix)
-	it.Seek(prefixKey)
-
-	for ; it.ValidForPrefix(prefixKey); it.Next() {
-		encodedKey := it.Key()
-		encodeValue := it.Value()
-		setId, err1 := c.decodeNodeSetKey(string(encodedKey.Data()))
-		if err1 != nil {
-			err = fmt.Errorf("action[loadNodeSets], value[%v],err:%v", string(encodedKey.Data()), err1.Error())
-			return err
-		}
-		ns := newNodeSet(setId, DefaultNodeSetCapacity)
-
+	result, err := c.fsm.store.SeekForPrefix([]byte(NodeSetPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadNodeSets],err:%v", err.Error())
+		return err
+	}
+	for _, value := range result {
 		nsv := &NodeSetValue{}
-		if err = json.Unmarshal(encodeValue.Data(), nsv); err != nil {
-			log.LogErrorf("action[loadNodeSets], err:%v", err.Error())
+		if err = json.Unmarshal(value, nsv); err != nil {
+			log.LogErrorf("action[loadNodeSets], unmarshal err:%v", err.Error())
 			return err
 		}
-		ns.Lock()
+		ns := newNodeSet(nsv.Id, DefaultNodeSetCapacity)
 		ns.metaNodeLen = nsv.MetaNodeLen
 		ns.dataNodeLen = nsv.DataNodeLen
-		ns.Unlock()
 		c.t.putNodeSet(ns)
 		log.LogInfof("action[loadNodeSets], nsId[%v]", ns.Id)
 	}
@@ -794,26 +713,19 @@ func (c *Cluster) loadNodeSets() (err error) {
 }
 
 func (c *Cluster) loadDataNodes() (err error) {
-	snapshot := c.fsm.store.RocksDBSnapshot()
-	it := c.fsm.store.Iterator(snapshot)
-	defer func() {
-		it.Close()
-		c.fsm.store.ReleaseSnapshot(snapshot)
-	}()
-	prefixKey := []byte(DataNodePrefix)
-	it.Seek(prefixKey)
+	result, err := c.fsm.store.SeekForPrefix([]byte(DataNodePrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadDataNodes],err:%v", err.Error())
+		return err
+	}
 
-	for ; it.ValidForPrefix(prefixKey); it.Next() {
-		encodedKey := it.Key()
-		encodeValue := it.Value()
-		keys := strings.Split(string(encodedKey.Data()), KeySeparator)
-		dataNode := NewDataNode(keys[2], c.Name)
+	for _, value := range result {
 		dnv := &DataNodeValue{}
-
-		if err = json.Unmarshal(encodeValue.Data(), dnv); err != nil {
-			err = fmt.Errorf("action[loadDataNodes],value:%v,err:%v", string(encodeValue.Data()), err)
+		if err = json.Unmarshal(value, dnv); err != nil {
+			err = fmt.Errorf("action[loadDataNodes],value:%v,unmarshal err:%v", string(value), err)
 			return
 		}
+		dataNode := NewDataNode(dnv.Addr, c.Name)
 		dataNode.Id = dnv.Id
 		dataNode.NodeSetId = dnv.NodeSetId
 		c.dataNodes.Store(dataNode.Addr, dataNode)
@@ -836,96 +748,68 @@ func (c *Cluster) decodeMetaNodeKey(key string) (nodeID uint64, addr string, err
 }
 
 func (c *Cluster) loadMetaNodes() (err error) {
-	snapshot := c.fsm.store.RocksDBSnapshot()
-	it := c.fsm.store.Iterator(snapshot)
-	defer func() {
-		it.Close()
-		c.fsm.store.ReleaseSnapshot(snapshot)
-	}()
-	prefixKey := []byte(MetaNodePrefix)
-	it.Seek(prefixKey)
-
-	for ; it.ValidForPrefix(prefixKey); it.Next() {
-		encodedKey := it.Key()
-		encodeValue := it.Value()
-		nodeID, addr, err1 := c.decodeMetaNodeKey(string(encodedKey.Data()))
-		if err1 != nil {
-			err = fmt.Errorf("action[loadMetaNodes],err:%v", err1.Error())
-			return err
-		}
+	result, err := c.fsm.store.SeekForPrefix([]byte(MetaNodePrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadMetaNodes],err:%v", err.Error())
+		return err
+	}
+	for _, value := range result {
 		mnv := &MetaNodeValue{}
-		if err = json.Unmarshal(encodeValue.Data(), mnv); err != nil {
-			err = fmt.Errorf("action[loadMetaNodes],err:%v", err.Error())
+		if err = json.Unmarshal(value, mnv); err != nil {
+			err = fmt.Errorf("action[loadMetaNodes],unmarshal err:%v", err.Error())
 			return err
 		}
-		metaNode := NewMetaNode(addr, c.Name)
-		metaNode.ID = nodeID
+		metaNode := NewMetaNode(mnv.Addr, c.Name)
+		metaNode.ID = mnv.Id
 		metaNode.NodeSetId = mnv.NodeSetId
-		c.metaNodes.Store(addr, metaNode)
-		log.LogInfof("action[loadMetaNodes],metaNode[%v]", addr)
+		c.metaNodes.Store(metaNode.Addr, metaNode)
+		log.LogInfof("action[loadMetaNodes],metaNode[%v]", metaNode.Addr)
 	}
 	return
 }
 
 func (c *Cluster) loadVols() (err error) {
-	snapshot := c.fsm.store.RocksDBSnapshot()
-	it := c.fsm.store.Iterator(snapshot)
-	defer func() {
-		it.Close()
-		c.fsm.store.ReleaseSnapshot(snapshot)
-	}()
-	prefixKey := []byte(VolPrefix)
-	it.Seek(prefixKey)
-	for ; it.ValidForPrefix(prefixKey); it.Next() {
-		encodedKey := it.Key()
-		encodedValue := it.Value()
-		_, volName, err1 := c.decodeVolKey(string(encodedKey.Data()))
-		if err1 != nil {
-			err = fmt.Errorf("action[loadVols], err:%v", err1.Error())
-			return err
-		}
+	result, err := c.fsm.store.SeekForPrefix([]byte(VolPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadVols],err:%v", err.Error())
+		return err
+	}
+	for _, value := range result {
 		vv := &VolValue{}
-		if err = json.Unmarshal(encodedValue.Data(), vv); err != nil {
-			err = fmt.Errorf("action[loadVols],value:%v,err:%v", encodedValue, err)
+		if err = json.Unmarshal(value, vv); err != nil {
+			err = fmt.Errorf("action[loadVols],value:%v,unmarshal err:%v", string(value), err)
 			return err
 		}
-		vol := NewVol(volName, vv.VolType, vv.ReplicaNum, vv.RandomWrite, vv.DataPartitionSize, vv.Capacity)
+		vol := NewVol(vv.Id, vv.Name, vv.ReplicaNum, vv.RandomWrite, vv.DataPartitionSize, vv.Capacity)
 		vol.Status = vv.Status
 		c.putVol(vol)
-		log.LogInfof("action[loadVols],vol[%v]", vol.Name)
+		log.LogInfof("action[loadVols],vol[%v]", vol)
 	}
 	return
 }
 
 func (c *Cluster) loadMetaPartitions() (err error) {
-	snapshot := c.fsm.store.RocksDBSnapshot()
-	it := c.fsm.store.Iterator(snapshot)
-	defer func() {
-		it.Close()
-		c.fsm.store.ReleaseSnapshot(snapshot)
-	}()
-	prefixKey := []byte(MetaPartitionPrefix)
-	it.Seek(prefixKey)
-	for ; it.ValidForPrefix(prefixKey); it.Next() {
-		encodedKey := it.Key()
-		encodedValue := it.Value()
-		_, volName := c.decodeMetaPartitionKey(string(encodedKey.Data()))
-		vol, err1 := c.getVol(volName)
+	result, err := c.fsm.store.SeekForPrefix([]byte(MetaPartitionPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadMetaPartitions],err:%v", err.Error())
+		return err
+	}
+
+	for _, value := range result {
+		mpv := &MetaPartitionValue{}
+		if err = json.Unmarshal(value, mpv); err != nil {
+			err = fmt.Errorf("action[loadMetaPartitions],value:%v,unmarshal err:%v", string(value), err)
+			return err
+		}
+		vol, err1 := c.getVol(mpv.VolName)
 		if err1 != nil {
 			// if vol not found,record log and continue
 			log.LogErrorf("action[loadMetaPartitions] err:%v", err1.Error())
 			continue
 		}
-		mpv := &MetaPartitionValue{}
-		if err = json.Unmarshal(encodedValue.Data(), mpv); err != nil {
-			err = fmt.Errorf("action[decodeMetaPartitionValue],value:%v,err:%v", encodedValue, err)
-			return err
-		}
-		mp := NewMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, volName)
-		mp.Lock()
+		mp := NewMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, vol.Name, mpv.VolID)
 		mp.setPersistenceHosts(strings.Split(mpv.Hosts, UnderlineSeparator))
 		mp.setPeers(mpv.Peers)
-		mp.Unlock()
 		vol.AddMetaPartition(mp)
 		log.LogInfof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
 	}
@@ -933,34 +817,27 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 }
 
 func (c *Cluster) loadDataPartitions() (err error) {
-	snapshot := c.fsm.store.RocksDBSnapshot()
-	it := c.fsm.store.Iterator(snapshot)
-	defer func() {
-		it.Close()
-		c.fsm.store.ReleaseSnapshot(snapshot)
-	}()
-	prefixKey := []byte(DataPartitionPrefix)
-	it.Seek(prefixKey)
-	for ; it.ValidForPrefix(prefixKey); it.Next() {
-		encodedKey := it.Key()
-		encodedValue := it.Value()
-		_, volName := c.decodeDataPartitionKey(string(encodedKey.Data()))
-		vol, err1 := c.getVol(volName)
+	result, err := c.fsm.store.SeekForPrefix([]byte(DataPartitionPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadDataPartitions],err:%v", err.Error())
+		return err
+	}
+	for _, value := range result {
+
+		dpv := &DataPartitionValue{}
+		if err = json.Unmarshal(value, dpv); err != nil {
+			err = fmt.Errorf("action[loadDataPartitions],value:%v,unmarshal err:%v", string(value), err)
+			return err
+		}
+		vol, err1 := c.getVol(dpv.VolName)
 		if err1 != nil {
 			// if vol not found,record log and continue
 			log.LogErrorf("action[loadDataPartitions] err:%v", err1.Error())
 			continue
 		}
-		dpv := &DataPartitionValue{}
-		if err = json.Unmarshal(encodedValue.Data(), dpv); err != nil {
-			err = fmt.Errorf("action[decodeDataPartitionValue],value:%v,err:%v", encodedValue, err)
-			return err
-		}
-		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.PartitionType, volName, dpv.RandomWrite)
-		dp.Lock()
+		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID, dpv.RandomWrite)
 		dp.PersistenceHosts = strings.Split(dpv.Hosts, UnderlineSeparator)
 		dp.Peers = dpv.Peers
-		dp.Unlock()
 		vol.dataPartitions.putDataPartition(dp)
 		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v]", vol.Name, dp.PartitionID)
 	}

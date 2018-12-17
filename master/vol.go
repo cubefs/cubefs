@@ -23,8 +23,8 @@ import (
 )
 
 type Vol struct {
+	Id                uint64
 	Name              string
-	VolType           string
 	RandomWrite       bool
 	dpReplicaNum      uint8
 	mpReplicaNum      uint8
@@ -38,8 +38,8 @@ type Vol struct {
 	sync.RWMutex
 }
 
-func NewVol(name, volType string, replicaNum uint8, randomWrite bool, dpSize, capacity uint64) (vol *Vol) {
-	vol = &Vol{Name: name, VolType: volType, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
+func NewVol(id uint64, name string, replicaNum uint8, randomWrite bool, dpSize, capacity uint64) (vol *Vol) {
+	vol = &Vol{Id: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.RandomWrite = randomWrite
 	vol.dataPartitions = NewDataPartitionMap(name)
 	vol.dpReplicaNum = replicaNum
@@ -107,12 +107,31 @@ func (vol *Vol) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err
 	return vol.dataPartitions.getDataPartition(partitionID)
 }
 
+func (vol *Vol) initDataPartitions(c *Cluster) {
+	//init ten data partitions
+	for i := 0; i < DefaultInitDataPartitions; i++ {
+		c.createDataPartition(vol.Name)
+	}
+	return
+}
+func (vol *Vol) checkDataPartitionStatus(c *Cluster) (readWriteDataPartitions int) {
+	vol.dataPartitions.RLock()
+	defer vol.dataPartitions.RUnlock()
+	for _, dp := range vol.dataPartitions.dataPartitionMap {
+		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec)
+		if dp.Status == proto.ReadWrite {
+			readWriteDataPartitions++
+		}
+	}
+	return
+}
+
 func (vol *Vol) checkDataPartitions(c *Cluster) (readWriteDataPartitions int) {
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
 	for _, dp := range vol.dataPartitions.dataPartitionMap {
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
-		dp.checkStatus(true, c.cfg.DataPartitionTimeOutSec)
+		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec)
 		dp.checkMiss(c.Name, c.cfg.DataPartitionMissSec, c.cfg.DataPartitionWarnInterval)
 		dp.checkReplicaNum(c, vol.Name)
 		if dp.Status == proto.ReadWrite {
@@ -133,24 +152,24 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (readWriteDataPartitions int) {
 }
 
 func (vol *Vol) LoadDataPartition(c *Cluster) {
-	needCheckDataPartitions := vol.dataPartitions.getNeedCheckDataPartitions(c.cfg.everyLoadDataPartitionCount, c.cfg.LoadDataPartitionFrequencyTime)
+	needCheckDataPartitions, startIndex := vol.dataPartitions.getNeedCheckDataPartitions(c.cfg.LoadDataPartitionFrequencyTime)
 	if len(needCheckDataPartitions) == 0 {
 		return
 	}
 	c.waitLoadDataPartitionResponse(needCheckDataPartitions)
-	msg := fmt.Sprintf("action[LoadDataPartition] checkstart:%v everyCheckCount:%v",
-		needCheckDataPartitions[0].PartitionID, c.cfg.everyLoadDataPartitionCount)
+	msg := fmt.Sprintf("action[LoadDataPartition] vol[%v],checkStartIndex:%v checkCount:%v",
+		vol.Name, startIndex, len(needCheckDataPartitions))
 	log.LogInfo(msg)
 }
 
-func (vol *Vol) ReleaseDataPartitionsAfterLoad(releaseCount int, afterLoadSeconds int64) {
-	needReleaseDataPartitions := vol.dataPartitions.getNeedReleaseDataPartitions(releaseCount, afterLoadSeconds)
+func (vol *Vol) ReleaseDataPartitions(releaseCount int, afterLoadSeconds int64) {
+	needReleaseDataPartitions, startIndex := vol.dataPartitions.getNeedReleaseDataPartitions(releaseCount, afterLoadSeconds)
 	if len(needReleaseDataPartitions) == 0 {
 		return
 	}
 	vol.dataPartitions.releaseDataPartitions(needReleaseDataPartitions)
-	msg := fmt.Sprintf("action[ReleaseDataPartitionsAfterLoad]  release data partition start:%v everyReleaseDataPartitionCount:%v",
-		needReleaseDataPartitions[0].PartitionID, releaseCount)
+	msg := fmt.Sprintf("action[ReleaseDataPartitions] vol[%v] release data partition start:%v releaseCount:%v",
+		vol.Name, startIndex, len(needReleaseDataPartitions))
 	log.LogInfo(msg)
 }
 
@@ -203,7 +222,7 @@ func (vol *Vol) getCapacity() uint64 {
 	return vol.Capacity
 }
 
-func (vol *Vol) checkAvailSpace(c *Cluster) {
+func (vol *Vol) checkNeedAutoCreateDataPartitions(c *Cluster) {
 	if vol.getStatus() == VolMarkDelete {
 		return
 	}
@@ -225,10 +244,25 @@ func (vol *Vol) checkAvailSpace(c *Cluster) {
 
 func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 	if vol.dataPartitions.readWriteDataPartitions < MinReadWriteDataPartitions {
-		for i := 0; i < MinReadWriteDataPartitions; i++ {
-			c.createDataPartition(vol.Name, vol.VolType)
+		count := vol.calculateExpandNum()
+		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
+		for i := 0; i < count; i++ {
+			c.createDataPartition(vol.Name)
 		}
 	}
+}
+
+func (vol *Vol) calculateExpandNum() (count int) {
+	calCount := float64(vol.Capacity) * float64(VolExpandDataPartitionStepRatio) * float64(util.GB) / float64(util.DefaultDataPartitionSize)
+	switch {
+	case calCount < MinReadWriteDataPartitions:
+		count = MinReadWriteDataPartitions
+	case calCount > VolMaxExpandDataPartitionCount:
+		count = VolMaxExpandDataPartitionCount
+	default:
+		count = int(calCount)
+	}
+	return
 }
 
 func (vol *Vol) setAllDataPartitionsToReadOnly() {
@@ -270,7 +304,7 @@ func (vol *Vol) deleteMetaPartitionsFromStore(c *Cluster) {
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
 	for _, mp := range vol.MetaPartitions {
-		c.syncDeleteMetaPartition(vol.Name, mp)
+		c.syncDeleteMetaPartition(mp)
 	}
 	return
 }
@@ -279,7 +313,7 @@ func (vol *Vol) deleteDataPartitionsFromStore(c *Cluster) {
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
 	for _, dp := range vol.dataPartitions.dataPartitions {
-		c.syncDeleteDataPartition(vol.Name, dp)
+		c.syncDeleteDataPartition(dp)
 	}
 
 }
@@ -308,4 +342,9 @@ func (vol *Vol) getDeleteDataTasks() (tasks []*proto.AdminTask) {
 		}
 	}
 	return
+}
+
+func (vol *Vol) String() string {
+	return fmt.Sprintf("name[%v],dpNum[%v],mpNum[%v],cap[%v],status[%v]",
+		vol.Name, vol.dpReplicaNum, vol.mpReplicaNum, vol.Capacity, vol.Status)
 }

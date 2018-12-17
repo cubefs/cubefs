@@ -18,9 +18,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/util/log"
 	"net/http/httputil"
+	"github.com/juju/errors"
 )
 
 const (

@@ -174,7 +174,7 @@ func (m *Master) getCluster(w http.ResponseWriter, r *http.Request) {
 		DisableAutoAlloc:   m.cluster.DisableAutoAlloc,
 		Applied:            m.fsm.applied,
 		MaxDataPartitionID: m.cluster.idAlloc.dataPartitionID,
-		MaxMetaNodeID:      m.cluster.idAlloc.metaNodeID,
+		MaxMetaNodeID:      m.cluster.idAlloc.commonID,
 		MaxMetaPartitionID: m.cluster.idAlloc.metaPartitionID,
 		MetaNodes:          make([]MetaNodeView, 0),
 		DataNodes:          make([]DataNodeView, 0),
@@ -247,7 +247,6 @@ func (m *Master) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		rstMsg                     string
 		volName                    string
-		partitionType              string
 		vol                        *Vol
 		reqCreateCount             int
 		lastTotalDataPartitions    int
@@ -255,7 +254,7 @@ func (m *Master) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		err                        error
 	)
 
-	if reqCreateCount, volName, partitionType, err = parseCreateDataPartitionPara(r); err != nil {
+	if reqCreateCount, volName, err = parseCreateDataPartitionPara(r); err != nil {
 		goto errDeal
 	}
 
@@ -265,7 +264,7 @@ func (m *Master) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	lastTotalDataPartitions = len(vol.dataPartitions.dataPartitions)
 	clusterTotalDataPartitions = m.cluster.getDataPartitionCount()
 	for i := 0; i < reqCreateCount; i++ {
-		if _, err = m.cluster.createDataPartition(volName, partitionType); err != nil {
+		if _, err = m.cluster.createDataPartition(volName); err != nil {
 			break
 		}
 	}
@@ -418,7 +417,6 @@ func (m *Master) createVol(w http.ResponseWriter, r *http.Request) {
 		name        string
 		err         error
 		msg         string
-		volType     string
 		randomWrite bool
 		replicaNum  int
 		size        int
@@ -426,17 +424,17 @@ func (m *Master) createVol(w http.ResponseWriter, r *http.Request) {
 		vol         *Vol
 	)
 
-	if name, volType, replicaNum, randomWrite, size, capacity, err = parseCreateVolPara(r); err != nil {
+	if name, replicaNum, randomWrite, size, capacity, err = parseCreateVolPara(r); err != nil {
 		goto errDeal
 	}
-	if err = m.cluster.createVol(name, volType, uint8(replicaNum), randomWrite, size, capacity); err != nil {
+	if err = m.cluster.createVol(name, uint8(replicaNum), randomWrite, size, capacity); err != nil {
 		goto errDeal
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
 		goto errDeal
 	}
 	for i := 0; i < MinReadWriteDataPartitions; i++ {
-		if _, err = m.cluster.createDataPartition(name, volType); err != nil {
+		if _, err = m.cluster.createDataPartition(name); err != nil {
 			break
 		}
 	}
@@ -872,7 +870,7 @@ func parseUpdateVolPara(r *http.Request) (name string, capacity int, err error) 
 	return
 }
 
-func parseCreateVolPara(r *http.Request) (name, volType string, replicaNum int, randomWrite bool, size, capacity int, err error) {
+func parseCreateVolPara(r *http.Request) (name string, replicaNum int, randomWrite bool, size, capacity int, err error) {
 	r.ParseForm()
 	var randomWriteValue string
 	if name, err = checkVolPara(r); err != nil {
@@ -883,9 +881,6 @@ func parseCreateVolPara(r *http.Request) (name, volType string, replicaNum int, 
 		return
 	} else if replicaNum, err = strconv.Atoi(replicaStr); err != nil || replicaNum < 2 {
 		err = UnMatchPara
-	}
-	if volType, err = parseDataPartitionType(r); err != nil {
-		return
 	}
 
 	if randomWriteValue = r.FormValue(ParaRandomWrite); randomWriteValue == "" {
@@ -908,12 +903,12 @@ func parseCreateVolPara(r *http.Request) (name, volType string, replicaNum int, 
 			err = UnMatchPara
 		}
 	} else {
-		err = paraNotFound(ParaVolCapacity)
+		capacity = DefaultVolCapacity
 	}
 	return
 }
 
-func parseCreateDataPartitionPara(r *http.Request) (count int, name, partitionType string, err error) {
+func parseCreateDataPartitionPara(r *http.Request) (count int, name string, err error) {
 	r.ParseForm()
 	if countStr := r.FormValue(ParaCount); countStr == "" {
 		err = paraNotFound(ParaCount)
@@ -923,22 +918,6 @@ func parseCreateDataPartitionPara(r *http.Request) (count int, name, partitionTy
 		return
 	}
 	if name, err = checkVolPara(r); err != nil {
-		return
-	}
-	if partitionType, err = parseDataPartitionType(r); err != nil {
-		return
-	}
-	return
-}
-
-func parseDataPartitionType(r *http.Request) (partitionType string, err error) {
-	if partitionType = r.FormValue(ParaDataPartitionType); partitionType == "" {
-		err = paraNotFound(ParaDataPartitionType)
-		return
-	}
-
-	if !(strings.TrimSpace(partitionType) == proto.ExtentPartition || strings.TrimSpace(partitionType) == proto.BlobPartition) {
-		err = InvalidDataPartitionType
 		return
 	}
 	return
@@ -1075,11 +1054,11 @@ func parseCreateMetaPartitionPara(r *http.Request) (volName string, start uint64
 }
 
 func (m *Master) sendOkReply(w http.ResponseWriter, r *http.Request, msg string) {
-	log.LogInfof("URL[%v],remoteAddr[%v],response ok")
+	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
 	io.WriteString(w, msg)
 }
 
 func (m *Master) sendErrReply(w http.ResponseWriter, r *http.Request, httpCode int, msg string, err error) {
-	log.LogInfof("URL[%v],remoteAddr[%v],response err")
+	log.LogInfof("URL[%v],remoteAddr[%v],response err", r.URL, r.RemoteAddr)
 	HandleError(msg, err, httpCode, w)
 }

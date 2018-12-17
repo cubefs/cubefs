@@ -16,12 +16,12 @@ package master
 
 import (
 	"encoding/json"
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 	"net/http"
 	"regexp"
 	"strconv"
+	"github.com/juju/errors"
 )
 
 type VolStatInfo struct {
@@ -61,15 +61,15 @@ type MetaPartitionView struct {
 
 type VolView struct {
 	Name           string
-	VolType        string
+	Status         uint8
 	MetaPartitions []*MetaPartitionView
 	DataPartitions []*DataPartitionResponse
 }
 
-func NewVolView(name, volType string) (view *VolView) {
+func NewVolView(name string, status uint8) (view *VolView) {
 	view = new(VolView)
 	view.Name = name
-	view.VolType = volType
+	view.Status = status
 	view.MetaPartitions = make([]*MetaPartitionView, 0)
 	view.DataPartitions = make([]*DataPartitionResponse, 0)
 	return
@@ -170,7 +170,7 @@ errDeal:
 }
 
 func (m *Master) getVolView(vol *Vol) (view *VolView) {
-	view = NewVolView(vol.Name, vol.VolType)
+	view = NewVolView(vol.Name, vol.Status)
 	setMetaPartitions(vol, view, m.cluster.getLiveMetaNodesRate())
 	setDataPartitions(vol, view, m.cluster.getLiveDataNodesRate())
 	return

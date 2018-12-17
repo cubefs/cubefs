@@ -33,7 +33,7 @@ type RaftLeaderChangeHandler func(leader uint64)
 
 type RaftPeerChangeHandler func(confChange *proto.ConfChange) (err error)
 
-type RaftCmdApplyHandler func(cmd *Metadata) (err error)
+type RaftCmdApplyHandler func(cmd *RaftCmdData) (err error)
 
 type RaftApplySnapshotHandler func()
 
@@ -91,33 +91,17 @@ func (mf *MetadataFsm) restoreApplied() {
 }
 
 func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, err error) {
-	cmd := new(Metadata)
+	cmd := new(RaftCmdData)
 	if err = cmd.Unmarshal(command); err != nil {
 		log.LogErrorf("action[fsmApply],unmarshal data:%v, err:%v", command, err.Error())
 		panic(err)
 	}
-	log.LogInfof("action[fsmApply],cmd.K[%v],cmd.V[%v]", cmd.K, string(cmd.V))
+	log.LogInfof("action[fsmApply],cmd.op[%v],cmd.K[%v],cmd.V[%v]", cmd.Op, cmd.K, string(cmd.V))
 	cmdMap := make(map[string][]byte)
 	cmdMap[cmd.K] = cmd.V
 	cmdMap[Applied] = []byte(strconv.FormatUint(uint64(index), 10))
 	switch cmd.Op {
-	case OpSyncDeleteDataNode:
-		if err = mf.DelKeyAndPutIndex(cmd.K, cmdMap); err != nil {
-			panic(err)
-		}
-	case OpSyncDeleteMetaNode:
-		if err = mf.DelKeyAndPutIndex(cmd.K, cmdMap); err != nil {
-			panic(err)
-		}
-	case OpSyncDeleteVol:
-		if err = mf.DelKeyAndPutIndex(cmd.K, cmdMap); err != nil {
-			panic(err)
-		}
-	case OpSyncDeleteDataPartition:
-		if err = mf.DelKeyAndPutIndex(cmd.K, cmdMap); err != nil {
-			panic(err)
-		}
-	case OpSyncDeleteMetaPartition:
+	case OpSyncDeleteDataNode, OpSyncDeleteMetaNode, OpSyncDeleteVol, OpSyncDeleteDataPartition, OpSyncDeleteMetaPartition:
 		if err = mf.DelKeyAndPutIndex(cmd.K, cmdMap); err != nil {
 			panic(err)
 		}
@@ -160,7 +144,7 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 		if data, err = iterator.Next(); err != nil {
 			break
 		}
-		cmd := &Metadata{}
+		cmd := &RaftCmdData{}
 		if err = json.Unmarshal(data, cmd); err != nil {
 			goto errDeal
 		}

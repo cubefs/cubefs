@@ -23,16 +23,10 @@ import (
 	"sync/atomic"
 )
 
-const (
-	MaxDataPartitionIDKey = "max_dp_id"
-	MaxMetaPartitionIDKey = "max_mp_id"
-	MaxMetaNodeIDKey      = "max_metaNode_id"
-)
-
 type IDAllocator struct {
 	dataPartitionID uint64
 	metaPartitionID uint64
-	metaNodeID      uint64
+	commonID        uint64
 	store           *raftstore.RocksDBStore
 	partition       raftstore.Partition
 	dpIDLock        sync.RWMutex
@@ -50,7 +44,7 @@ func newIDAllocator(store *raftstore.RocksDBStore, partition raftstore.Partition
 func (alloc *IDAllocator) restore() {
 	alloc.restoreMaxDataPartitionID()
 	alloc.restoreMaxMetaPartitionID()
-	alloc.restoreMaxMetaNodeID()
+	alloc.restoreMaxCommonID()
 }
 
 func (alloc *IDAllocator) restoreMaxDataPartitionID() {
@@ -89,22 +83,22 @@ func (alloc *IDAllocator) restoreMaxMetaPartitionID() {
 	log.LogInfof("action[restoreMaxMetaPartitionID] maxMpID[%v]", alloc.metaPartitionID)
 }
 
-func (alloc *IDAllocator) restoreMaxMetaNodeID() {
-	value, err := alloc.store.Get(MaxMetaNodeIDKey)
+func (alloc *IDAllocator) restoreMaxCommonID() {
+	value, err := alloc.store.Get(MaxCommonIDKey)
 	if err != nil {
-		panic(fmt.Sprintf("Failed to restore maxMetaNodeID,err:%v ", err.Error()))
+		panic(fmt.Sprintf("Failed to restore maxCommonID,err:%v ", err.Error()))
 	}
 	bytes := value.([]byte)
 	if len(bytes) == 0 {
-		alloc.metaNodeID = 0
+		alloc.commonID = 0
 		return
 	}
 	maxMetaNodeID, err := strconv.ParseUint(string(bytes), 10, 64)
 	if err != nil {
-		panic(fmt.Sprintf("Failed to restore maxMetaNodeID,err:%v ", err.Error()))
+		panic(fmt.Sprintf("Failed to restore maxCommonID,err:%v ", err.Error()))
 	}
-	alloc.metaNodeID = maxMetaNodeID
-	log.LogInfof("action[restoreMaxMetaNodeID] maxMnID[%v]", alloc.metaNodeID)
+	alloc.commonID = maxMetaNodeID
+	log.LogInfof("action[restoreMaxCommonID] maxMnID[%v]", alloc.commonID)
 }
 
 func (alloc *IDAllocator) setDataPartitionID(id uint64) {
@@ -115,19 +109,19 @@ func (alloc *IDAllocator) setMetaPartitionID(id uint64) {
 	atomic.StoreUint64(&alloc.metaPartitionID, id)
 }
 
-func (alloc *IDAllocator) setMetaNodeID(id uint64) {
-	atomic.StoreUint64(&alloc.metaNodeID, id)
+func (alloc *IDAllocator) setCommonID(id uint64) {
+	atomic.StoreUint64(&alloc.commonID, id)
 }
 
-func (alloc *IDAllocator) allocateDataPartitionID() (ID uint64, err error) {
+func (alloc *IDAllocator) allocateDataPartitionID() (partitionID uint64, err error) {
 	alloc.dpIDLock.Lock()
 	defer alloc.dpIDLock.Unlock()
 	var cmd []byte
-	metadata := new(Metadata)
-	ID = atomic.LoadUint64(&alloc.dataPartitionID) + 1
+	metadata := new(RaftCmdData)
+	partitionID = atomic.LoadUint64(&alloc.dataPartitionID) + 1
 	metadata.Op = OpSyncAllocDataPartitionID
 	metadata.K = MaxDataPartitionIDKey
-	value := strconv.FormatUint(uint64(ID), 10)
+	value := strconv.FormatUint(uint64(partitionID), 10)
 	metadata.V = []byte(value)
 	cmd, err = metadata.Marshal()
 	if err != nil {
@@ -136,6 +130,7 @@ func (alloc *IDAllocator) allocateDataPartitionID() (ID uint64, err error) {
 	if _, err = alloc.partition.Submit(cmd); err != nil {
 		goto errDeal
 	}
+	alloc.setDataPartitionID(partitionID)
 	return
 errDeal:
 	log.LogError("action[allocateDataPartitionID] err:%v", err.Error())
@@ -146,7 +141,7 @@ func (alloc *IDAllocator) allocateMetaPartitionID() (partitionID uint64, err err
 	alloc.mpIDLock.Lock()
 	defer alloc.mpIDLock.Unlock()
 	var cmd []byte
-	metadata := new(Metadata)
+	metadata := new(RaftCmdData)
 	metadata.Op = OpSyncAllocMetaPartitionID
 	metadata.K = MaxMetaPartitionIDKey
 	partitionID = atomic.LoadUint64(&alloc.metaPartitionID) + 1
@@ -159,21 +154,22 @@ func (alloc *IDAllocator) allocateMetaPartitionID() (partitionID uint64, err err
 	if _, err = alloc.partition.Submit(cmd); err != nil {
 		goto errDeal
 	}
+	alloc.setMetaPartitionID(partitionID)
 	return
 errDeal:
 	log.LogError("action[allocateMetaPartitionID] err:%v", err.Error())
 	return
 }
 
-func (alloc *IDAllocator) allocateMetaNodeID() (metaNodeID uint64, err error) {
+func (alloc *IDAllocator) allocateCommonID() (id uint64, err error) {
 	alloc.mnIDLock.Lock()
 	defer alloc.mnIDLock.Unlock()
 	var cmd []byte
-	metadata := new(Metadata)
-	metadata.Op = OpSyncAllocMetaNodeID
-	metadata.K = MaxMetaNodeIDKey
-	metaNodeID = atomic.LoadUint64(&alloc.metaNodeID) + 1
-	value := strconv.FormatUint(uint64(metaNodeID), 10)
+	metadata := new(RaftCmdData)
+	metadata.Op = OpSyncAllocCommonID
+	metadata.K = MaxCommonIDKey
+	id = atomic.LoadUint64(&alloc.commonID) + 1
+	value := strconv.FormatUint(uint64(id), 10)
 	metadata.V = []byte(value)
 	cmd, err = metadata.Marshal()
 	if err != nil {
@@ -182,8 +178,9 @@ func (alloc *IDAllocator) allocateMetaNodeID() (metaNodeID uint64, err error) {
 	if _, err = alloc.partition.Submit(cmd); err != nil {
 		goto errDeal
 	}
+	alloc.setCommonID(id)
 	return
 errDeal:
-	log.LogError("action[allocateMetaNodeID] err:%v", err.Error())
+	log.LogError("action[allocateCommonID] err:%v", err.Error())
 	return
 }
