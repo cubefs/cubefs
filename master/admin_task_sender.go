@@ -175,23 +175,23 @@ func (sender *AdminTaskSender) sendAdminTask(task *proto.AdminTask, conn net.Con
 	return nil
 }
 
-func (sender *AdminTaskSender) createDataPartition(task *proto.AdminTask, conn net.Conn) (err error) {
-	log.LogInfof(fmt.Sprintf("action[createDataPartition] sender task:%v begin", task.ToString()))
+func (sender *AdminTaskSender) syncCreatePartition(task *proto.AdminTask, conn net.Conn) (err error) {
+	log.LogInfof(fmt.Sprintf("action[syncCreatePartition] sender task:%v begin", task.ToString()))
 	packet, err := sender.buildPacket(task)
 	if err != nil {
-		return errors.Annotatef(err, "action[createDataPartition build packet failed,task:%v]", task.ID)
+		return errors.Annotatef(err, "action[syncCreatePartition build packet failed,task:%v]", task.ID)
 	}
 	if err = packet.WriteToConn(conn); err != nil {
-		return errors.Annotatef(err, "action[createDataPartition],WriteToConn failed,task:%v", task.ID)
+		return errors.Annotatef(err, "action[syncCreatePartition],WriteToConn failed,task:%v", task.ID)
 	}
 	if err = packet.ReadFromConn(conn, proto.CreateDataPartitionDeadlineTime); err != nil {
-		return errors.Annotatef(err, "action[createDataPartition],ReadFromConn failed task:%v", task.ID)
+		return errors.Annotatef(err, "action[syncCreatePartition],ReadFromConn failed task:%v", task.ID)
 	}
 	if packet.ResultCode != proto.OpOk {
 		err = fmt.Errorf(string(packet.Data))
 		return
 	}
-	log.LogInfof(fmt.Sprintf("action[createDataPartition] sender task:%v success", task.ToString()))
+	log.LogInfof(fmt.Sprintf("action[syncCreatePartition] sender task:%v success", task.ToString()))
 
 	return nil
 }

@@ -185,7 +185,7 @@ func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
 	if mp.End != DefaultMaxMetaPartitionInodeID {
 		oldEnd := mp.End
 		mp.End = DefaultMaxMetaPartitionInodeID
-		if err := c.syncUpdateMetaPartition( mp); err != nil {
+		if err := c.syncUpdateMetaPartition(mp); err != nil {
 			mp.End = oldEnd
 			log.LogErrorf("action[checkEnd] partitionID[%v] err[%v]", mp.PartitionID, err)
 		}
@@ -527,4 +527,17 @@ func (mp *MetaPartition) updateMetricByRaft(mpv *MetaPartitionValue) {
 	mp.Peers = mpv.Peers
 	mp.PersistenceHosts = strings.Split(mpv.Hosts, UnderlineSeparator)
 
+}
+
+// the caller must add lock
+func (mp *MetaPartition) createPartitionSuccessTriggerOperator(nodeAddr string, c *Cluster) (err error) {
+	metaNode, err := c.getMetaNode(nodeAddr)
+	if err != nil {
+		return err
+	}
+	mr := NewMetaReplica(mp.Start, mp.End, metaNode)
+	mr.Status = proto.ReadWrite
+	mp.addReplica(mr)
+	mp.checkAndRemoveMissMetaReplica(mr.Addr)
+	return
 }
