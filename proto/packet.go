@@ -120,10 +120,9 @@ const (
 )
 
 const (
-	WriteDeadlineTime      = 5
-	ReadDeadlineTime       = 5
-	NoReadDeadlineTime     = -1
-	StreamReadDeadLineTime = 2
+	WriteDeadlineTime  = 5
+	ReadDeadlineTime   = 5
+	NoReadDeadlineTime = -1
 )
 
 const (
@@ -440,15 +439,6 @@ func (p *Packet) PackOkReply() {
 	p.Arglen = 0
 }
 
-func (p *Packet) PackOkReadReply() {
-	p.ResultCode = OpOk
-	p.Arglen = 0
-}
-
-func (p *Packet) IsOkReply() bool {
-	return p.ResultCode == OpOk
-}
-
 func (p *Packet) PackOkWithBody(reply []byte) {
 	p.Size = uint32(len(reply))
 	p.Data = make([]byte, p.Size)
@@ -472,7 +462,7 @@ func (p *Packet) GetUniqueLogId() (m string) {
 	return
 }
 
-func (p *Packet) IsTransitPkg() bool {
+func (p *Packet) IsForwardPkg() bool {
 	return p.Nodes > 0
 }
 
@@ -481,12 +471,12 @@ func (p *Packet) LogMessage(action, remote string, start int64, err error) (m st
 		m = fmt.Sprintf("id[%v] op[%v] remote[%v] "+
 			" cost[%v] transite[%v] nodes[%v]",
 			p.GetUniqueLogId(), action, remote,
-			(time.Now().UnixNano()-start)/1e6, p.IsTransitPkg(), p.Nodes)
+			(time.Now().UnixNano()-start)/1e6, p.IsForwardPkg(), p.Nodes)
 
 	} else {
 		m = fmt.Sprintf("id[%v] op[%v] remote[%v]"+
 			", err[%v] transite[%v] nodes[%v]", p.GetUniqueLogId(), action,
-			remote, err.Error(), p.IsTransitPkg(), p.Nodes)
+			remote, err.Error(), p.IsForwardPkg(), p.Nodes)
 	}
 
 	return

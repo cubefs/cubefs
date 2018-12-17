@@ -334,7 +334,8 @@ func (s *DataNode) handleRead(pkg *Packet) {
 	pkg.CRC, err = pkg.partition.GetStore().Read(pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data)
 	s.addDiskErrs(pkg.PartitionID, err, ReadFlag)
 	if err == nil {
-		pkg.PackOkReadReply()
+		pkg.ResultCode = proto.OpOk
+		pkg.Arglen = 0
 	} else {
 		pkg.PackErrorBody(LogRead, err.Error())
 	}
