@@ -68,7 +68,7 @@ func NewGetDataPartitionMetricsPacket(partitionid uint32) (p *proto.Packet) {
 	p.PartitionID = partitionid
 	p.Magic = proto.ProtoMagic
 	p.StoreMode = proto.NormalExtentMode
-	p.ReqID = proto.generatorRequestID()
+	p.ReqID = proto.GeneratorRequestID()
 	p.Opcode = proto.OpGetDataPartitionMetrics
 
 	return
