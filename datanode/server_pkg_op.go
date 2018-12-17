@@ -79,8 +79,6 @@ func (s *DataNode) operatePacket(pkg *Packet, c *net.TCPConn) {
 		s.handleMarkDelete(pkg)
 	case proto.OpNotifyExtentRepair:
 		s.handleNotifyExtentRepair(pkg)
-	case proto.OpGetWatermark:
-		s.handleGetWatermark(pkg)
 	case proto.OpGetAllWaterMark:
 		s.handleGetAllWatermark(pkg)
 	case proto.OpCreateDataPartition:
@@ -113,7 +111,7 @@ func (s *DataNode) handleCreateFile(pkg *Packet) {
 	defer func() {
 		if err != nil {
 			err = errors.Annotatef(err, "Request(%v) CreateFile Error", pkg.GetUniqueLogId())
-			pkg.PackErrorBody(LogCreateFile, err.Error())
+			pkg.PackErrorBody(ActionCreateFile, err.Error())
 		} else {
 			pkg.PackOkReply()
 		}
@@ -143,7 +141,7 @@ func (s *DataNode) handleCreateDataPartition(pkg *Packet) {
 	defer func() {
 		if err != nil {
 			err = errors.Annotatef(err, "Request(%v) CreateDataPartition Error", pkg.GetUniqueLogId())
-			pkg.PackErrorBody(LogCreateFile, err.Error())
+			pkg.PackErrorBody(ActionCreateFile, err.Error())
 		} else {
 			pkg.PackOkReply()
 		}
@@ -292,7 +290,7 @@ func (s *DataNode) handleMarkDelete(pkg *Packet) {
 	}
 	if err != nil {
 		err = errors.Annotatef(err, "Request(%v) MarkDelete Error", pkg.GetUniqueLogId())
-		pkg.PackErrorBody(LogMarkDel, err.Error())
+		pkg.PackErrorBody(ActionMarkDel, err.Error())
 	} else {
 		pkg.PackOkReply()
 	}
@@ -306,7 +304,7 @@ func (s *DataNode) handleWrite(pkg *Packet) {
 	defer func() {
 		if err != nil {
 			err = errors.Annotatef(err, "Request(%v) Write Error", pkg.GetUniqueLogId())
-			pkg.PackErrorBody(LogWrite, err.Error())
+			pkg.PackErrorBody(ActionWrite, err.Error())
 		} else {
 			pkg.PackOkReply()
 		}
@@ -337,7 +335,7 @@ func (s *DataNode) handleRead(pkg *Packet) {
 		pkg.ResultCode = proto.OpOk
 		pkg.Arglen = 0
 	} else {
-		pkg.PackErrorBody(LogRead, err.Error())
+		pkg.PackErrorBody(ActionRead, err.Error())
 	}
 
 	return
@@ -452,7 +450,7 @@ func (s *DataNode) handleGetAllWatermark(pkg *Packet) {
 	}
 	if err != nil {
 		err = errors.Annotatef(err, "Request(%v) handleExtentStoreGetAllWatermark Error", pkg.GetUniqueLogId())
-		pkg.PackErrorBody(LogGetAllWm, err.Error())
+		pkg.PackErrorBody(ActionGetAllExtentWaterMarker, err.Error())
 	} else {
 		buf, err = json.Marshal(fInfoList)
 		pkg.PackOkWithBody(buf)
@@ -469,7 +467,7 @@ func (s *DataNode) handleNotifyExtentRepair(pkg *Packet) {
 	mf := NewDataPartitionRepairTask(extents)
 	err = json.Unmarshal(pkg.Data, mf)
 	if err != nil {
-		pkg.PackErrorBody(LogRepair, err.Error())
+		pkg.PackErrorBody(ActionRepair, err.Error())
 		return
 	}
 	pkg.partition.MergeExtentStoreRepair(mf)
@@ -532,7 +530,7 @@ func (s *DataNode) handleOfflineDataPartition(pkg *Packet) {
 	defer func() {
 		if err != nil {
 			err = errors.Annotatef(err, "Request(%v) OfflineDP Error", pkg.GetUniqueLogId())
-			pkg.PackErrorBody(LogOfflinePartition, err.Error())
+			pkg.PackErrorBody(ActionOfflinePartition, err.Error())
 		}
 	}()
 

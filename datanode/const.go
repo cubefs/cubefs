@@ -69,15 +69,15 @@ const (
 )
 
 const (
-	LogStats            = "Stats:"
-	LogCreateFile       = "CRF:"
-	LogMarkDel          = "MDEL:"
-	LogGetWm            = "WM:"
-	LogGetAllWm         = "AllWM:"
-	LogWrite            = "WR:"
-	LogRead             = "RD:"
-	LogRepair           = "Repair:"
-	LogOfflinePartition = "OfflineDP"
+	LogStats                      = "Stats:"
+	ActionCreateFile              = "CRF:"
+	ActionMarkDel                 = "MDEL:"
+	LogGetWm                      = "WM:"
+	ActionGetAllExtentWaterMarker = "ActionGetAllExtentWaterMarker:"
+	ActionWrite                   = "ActionWrite:"
+	ActionRead                    = "ActionRead:"
+	ActionRepair                  = "ActionRepair:"
+	ActionOfflinePartition        = "ActionOfflinePartition"
 )
 
 const (

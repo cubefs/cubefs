@@ -141,7 +141,7 @@ func (s *DataNode) randomOpReq(pkg *Packet, packetProcessor *PacketProcessor) {
 	defer func() {
 		if err != nil {
 			err = errors.Annotatef(err, "Request[%v] Write Error", pkg.GetUniqueLogId())
-			pkg.PackErrorBody(LogWrite, err.Error())
+			pkg.PackErrorBody(ActionWrite, err.Error())
 			logContent := fmt.Errorf("op[%v] error[%v]", pkg.GetOpMsg(), string(pkg.Data))
 			log.LogErrorf("action[randomOp] %v", logContent)
 		} else {
