@@ -86,9 +86,6 @@ func (p *Packet) resolveReplicateAddrs() (err error) {
 		err = ErrBadNodes
 		return
 	}
-	if int(p.RemainReplicates) != len(p.replicateAddrs) {
-		err = ErrAddrsNodesMismatch
-	}
 
 	return
 }
