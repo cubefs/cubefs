@@ -61,9 +61,9 @@ func newCluster(name string, leaderInfo *LeaderInfo,fsm *MetadataFsm, partition 
 	c.BadDataPartitionIds = new(sync.Map)
 	c.dataNodeSpace = new(DataNodeSpaceStat)
 	c.metaNodeSpace = new(MetaNodeSpaceStat)
-	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
 	c.fsm = fsm
 	c.partition = partition
+	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
 
 	return
 }
