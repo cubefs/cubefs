@@ -44,7 +44,7 @@ type AdminTaskSender struct {
 	clusterID  string
 	targetAddr string
 	TaskMap    map[string]*proto.AdminTask
-	sync.Mutex
+	sync.RWMutex
 	exitCh   chan struct{}
 	connPool *util.ConnectPool
 }
@@ -90,8 +90,8 @@ func (sender *AdminTaskSender) doDeleteTasks() {
 
 // the task which is time out will be delete
 func (sender *AdminTaskSender) getNeedDeleteTasks() (delTasks []*proto.AdminTask) {
-	sender.Lock()
-	defer sender.Unlock()
+	sender.RLock()
+	defer sender.RUnlock()
 	delTasks = make([]*proto.AdminTask, 0)
 	for _, task := range sender.TaskMap {
 		if task.CheckTaskTimeOut() {
@@ -219,15 +219,15 @@ func (sender *AdminTaskSender) PutTask(t *proto.AdminTask) {
 }
 
 func (sender *AdminTaskSender) IsExist(t *proto.AdminTask) bool {
-	sender.Lock()
-	defer sender.Unlock()
+	sender.RLock()
+	defer sender.RUnlock()
 	_, ok := sender.TaskMap[t.ID]
 	return ok
 }
 
 func (sender *AdminTaskSender) getNeedDealTask() (tasks []*proto.AdminTask) {
-	sender.Lock()
-	defer sender.Unlock()
+	sender.RLock()
+	defer sender.RUnlock()
 	tasks = make([]*proto.AdminTask, 0)
 
 	//send heartbeat task first

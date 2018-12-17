@@ -477,7 +477,6 @@ func (c *Cluster) dealDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataNod
 	}
 
 	dataNode.UpdateNodeMetric(resp)
-	dataNode.setNodeAlive()
 	c.t.PutDataNode(dataNode)
 	c.UpdateDataNode(dataNode, resp.PartitionInfo)
 	dataNode.dataPartitionInfos = nil

@@ -61,14 +61,9 @@ func (t *AdminTask) CheckTaskNeedSend() (needRetry bool) {
 //the task which sendCount >=  MaxSendCount, the last send has no response after ResponseTimeOut passed,
 // to be consider time out
 func (t *AdminTask) CheckTaskTimeOut() (notResponse bool) {
-	var (
-		timeOut int64
-	)
-	timeOut = ResponseTimeOut
-	if (int)(t.SendCount) >= MaxSendCount || (t.SendTime > 0 && (time.Now().Unix()-t.SendTime > timeOut)) {
+	if (int)(t.SendCount) >= MaxSendCount || (t.SendTime > 0 && (time.Now().Unix()-t.SendTime > int64(ResponseTimeOut))) {
 		notResponse = true
 	}
-
 	return
 }
 

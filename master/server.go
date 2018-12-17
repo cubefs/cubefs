@@ -82,6 +82,7 @@ func (m *Master) Start(cfg *config.Config) (err error) {
 	}
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
+	m.cluster.scheduleTask()
 	m.startHttpService()
 	m.wg.Add(1)
 	return nil

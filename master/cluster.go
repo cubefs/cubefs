@@ -36,8 +36,6 @@ type Cluster struct {
 	dnLock              sync.RWMutex
 	leaderInfo          *LeaderInfo
 	cfg                 *ClusterConfig
-	fsm                 *MetadataFsm
-	partition           raftstore.Partition
 	retainLogs          uint64
 	idAlloc             *IDAllocator
 	t                   *Topology
@@ -47,21 +45,30 @@ type Cluster struct {
 	volSpaceStat        sync.Map
 	BadDataPartitionIds *sync.Map
 	DisableAutoAlloc    bool
+
+	raftStore    raftstore.RaftStore
+	fsm          *MetadataFsm
+	partition    raftstore.Partition
 }
 
-func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition raftstore.Partition) (c *Cluster) {
+func newCluster(name string, leaderInfo *LeaderInfo,fsm *MetadataFsm, partition raftstore.Partition) (c *Cluster) {
 	c = new(Cluster)
 	c.Name = name
 	c.leaderInfo = leaderInfo
 	c.vols = make(map[string]*Vol, 0)
 	c.cfg = NewClusterConfig()
-	c.fsm = fsm
-	c.partition = partition
-	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
 	c.t = NewTopology()
 	c.BadDataPartitionIds = new(sync.Map)
 	c.dataNodeSpace = new(DataNodeSpaceStat)
 	c.metaNodeSpace = new(MetaNodeSpaceStat)
+	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
+	c.fsm = fsm
+	c.partition = partition
+
+	return
+}
+
+func (c *Cluster) scheduleTask() {
 	c.startCheckDataPartitions()
 	c.startCheckBackendLoadDataPartitions()
 	c.startCheckReleaseDataPartitions()
@@ -71,7 +78,6 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.startCheckCreateDataPartitions()
 	c.startCheckVolStatus()
 	c.startCheckBadDiskRecovery()
-	return
 }
 
 func (c *Cluster) getMasterAddr() (addr string) {

@@ -440,7 +440,7 @@ func (c *Cluster) handleApply(cmd *RaftCmdData) (err error) {
 	}
 	log.LogInfof("action[handleApply] success,cmd.K[%v],cmd.V[%v]", cmd.K, string(cmd.V))
 	curIndex := c.fsm.applied
-	if curIndex > 0 && curIndex%c.retainLogs == 0 {
+	if curIndex > 0 && curIndex%c.retainLogs == 0 && c.partition != nil {
 		c.partition.Truncate(curIndex)
 	}
 	return
