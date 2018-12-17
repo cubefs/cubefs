@@ -412,25 +412,6 @@ func (s *DataNode) handleStreamRead(request *Packet, connect net.Conn) {
 	return
 }
 
-// Handle OpGetWatermark packet.
-func (s *DataNode) handleGetWatermark(pkg *Packet) {
-	var buf []byte
-	var (
-		fInfo *storage.FileInfo
-		err   error
-	)
-	fInfo, err = pkg.partition.GetStore().GetWatermark(pkg.ExtentID, false)
-	if err != nil {
-		err = errors.Annotatef(err, "Request(%v) handleGetWatermark Error", pkg.GetUniqueLogId())
-		pkg.PackErrorBody(LogGetWm, err.Error())
-	} else {
-		buf, err = json.Marshal(fInfo)
-		pkg.PackOkWithBody(buf)
-	}
-
-	return
-}
-
 // Handle OpExtentStoreGetAllWaterMark packet.
 func (s *DataNode) handleGetAllWatermark(pkg *Packet) {
 	var (
