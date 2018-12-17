@@ -211,7 +211,7 @@ func (dp *dataPartition) WaitingRepairedAndStartRaft() {
 					timer.Reset(5 * time.Second)
 					continue
 				}
-				log.LogErrorf("partitionId[%v] leader started.", dp.partitionId)
+				log.LogDebugf("partitionId[%v] leader started.", dp.partitionId)
 				return
 			}
 			// Wait the dp.replicaHosts updated.
@@ -237,6 +237,7 @@ func (dp *dataPartition) WaitingRepairedAndStartRaft() {
 				timer.Reset(5 * time.Second)
 				continue
 			}
+			log.LogDebugf("partitionId[%v] raft started.", dp.partitionId)
 			return
 		case <-dp.stopC:
 			timer.Stop()
