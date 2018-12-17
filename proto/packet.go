@@ -130,21 +130,21 @@ const (
 )
 
 type Packet struct {
-	Magic        uint8
-	StoreMode    uint8
-	Opcode       uint8
-	ResultCode   uint8
-	Nodes        uint8
-	CRC          uint32
-	Size         uint32
-	Arglen       uint32
-	PartitionID  uint32
-	ExtentID     uint64
-	ExtentOffset int64
-	ReqID        int64
-	Arg          []byte //if create or append ops, data contains addrs
-	Data         []byte
-	StartT       int64
+	Magic            uint8
+	StoreMode        uint8
+	Opcode           uint8
+	ResultCode       uint8
+	RemainReplicates uint8
+	CRC              uint32
+	Size             uint32
+	Arglen           uint32
+	PartitionID      uint32
+	ExtentID         uint64
+	ExtentOffset     int64
+	ReqID            int64
+	Arg              []byte //if create or append ops, data contains addrs
+	Data             []byte
+	StartT           int64
 }
 
 func NewPacket() *Packet {
@@ -308,7 +308,7 @@ func (p *Packet) MarshalHeader(out []byte) {
 	out[1] = p.StoreMode
 	out[2] = p.Opcode
 	out[3] = p.ResultCode
-	out[4] = p.Nodes
+	out[4] = p.RemainReplicates
 	binary.BigEndian.PutUint32(out[5:9], p.CRC)
 	binary.BigEndian.PutUint32(out[9:13], p.Size)
 	binary.BigEndian.PutUint32(out[13:17], p.Arglen)
@@ -328,7 +328,7 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 	p.StoreMode = in[1]
 	p.Opcode = in[2]
 	p.ResultCode = in[3]
-	p.Nodes = in[4]
+	p.RemainReplicates = in[4]
 	p.CRC = binary.BigEndian.Uint32(in[5:9])
 	p.Size = binary.BigEndian.Uint32(in[9:13])
 	p.Arglen = binary.BigEndian.Uint32(in[13:17])
@@ -460,7 +460,7 @@ func (p *Packet) GetUniqueLogId() (m string) {
 }
 
 func (p *Packet) IsForwardPkg() bool {
-	return p.Nodes > 0
+	return p.RemainReplicates > 0
 }
 
 func (p *Packet) LogMessage(action, remote string, start int64, err error) (m string) {
@@ -468,12 +468,12 @@ func (p *Packet) LogMessage(action, remote string, start int64, err error) (m st
 		m = fmt.Sprintf("id[%v] op[%v] remote[%v] "+
 			" cost[%v] transite[%v] nodes[%v]",
 			p.GetUniqueLogId(), action, remote,
-			(time.Now().UnixNano()-start)/1e6, p.IsForwardPkg(), p.Nodes)
+			(time.Now().UnixNano()-start)/1e6, p.IsForwardPkg(), p.RemainReplicates)
 
 	} else {
 		m = fmt.Sprintf("id[%v] op[%v] remote[%v]"+
 			", err[%v] transite[%v] nodes[%v]", p.GetUniqueLogId(), action,
-			remote, err.Error(), p.IsForwardPkg(), p.Nodes)
+			remote, err.Error(), p.IsForwardPkg(), p.RemainReplicates)
 	}
 
 	return

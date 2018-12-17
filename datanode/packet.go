@@ -45,7 +45,7 @@ type Packet struct {
 	replicateAddrs            []string
 	isRelaseTinyExtentToStore int32
 	partition                 DataPartition
-	goals                     uint8
+	replicateNum              uint8
 	tpObject                  *ump.TpObject
 }
 
@@ -75,14 +75,14 @@ func (p *Packet) unmarshalAddrs() (addrs []string, err error) {
 		return nil, ErrArgLenMismatch
 	}
 	str := string(p.Arg[:int(p.Arglen)])
-	goalAddrs := strings.SplitN(str, proto.AddrSplit, -1)
-	p.goals = uint8(len(goalAddrs) - 1)
-	p.replicateAddrs = make([]string, p.goals)
-	p.replicateConns = make([]*net.TCPConn, p.goals)
-	if p.goals > 0 {
-		p.replicateAddrs = goalAddrs[:int(p.goals)]
+	replicateAddrs := strings.SplitN(str, proto.AddrSplit, -1)
+	p.replicateNum = uint8(len(replicateAddrs) - 1)
+	p.replicateAddrs = make([]string, p.replicateNum)
+	p.replicateConns = make([]*net.TCPConn, p.replicateNum)
+	if p.replicateNum > 0 {
+		p.replicateAddrs = replicateAddrs[:int(p.replicateNum)]
 	}
-	if p.Nodes < 0 {
+	if p.RemainReplicates < 0 {
 		err = ErrBadNodes
 		return
 	}
@@ -129,18 +129,18 @@ func (p *Packet) IsMasterCommand() bool {
 }
 
 func (p *Packet) checkPacketAddr(addrs []string) error {
-	sub := p.goals - p.Nodes
-	if sub < 0 || sub > p.goals || (sub == p.goals && p.Nodes != 0) {
+	sub := p.replicateNum - p.RemainReplicates
+	if sub < 0 || sub > p.replicateNum || (sub == p.replicateNum && p.RemainReplicates != 0) {
 		return ErrAddrsNodesMismatch
 	}
-	if sub == p.goals && p.Nodes == 0 {
+	if sub == p.replicateNum && p.RemainReplicates == 0 {
 		return nil
 	}
 	return nil
 }
 
 func (p *Packet) isForwardPacket() bool {
-	r := p.Nodes > 0
+	r := p.RemainReplicates > 0
 	return r
 }
 
@@ -221,7 +221,7 @@ func (p *Packet) isReadOperation() bool {
 }
 
 func (p *Packet) isHeadNode() (ok bool) {
-	if p.goals == p.Nodes && (p.isWriteOperation() || p.isCreateFileOperation() || p.isMarkDeleteOperation()) {
+	if p.replicateNum == p.RemainReplicates && (p.isWriteOperation() || p.isCreateFileOperation() || p.isMarkDeleteOperation()) {
 		ok = true
 	}
 

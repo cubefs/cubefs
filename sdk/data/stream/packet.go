@@ -60,7 +60,7 @@ func NewWritePacket(dp *wrapper.DataPartition, extentId uint64, offset int, inod
 	p.ExtentOffset = int64(offset)
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.Arglen = uint32(len(p.Arg))
-	p.Nodes = uint8(len(dp.Hosts) - 1)
+	p.RemainReplicates = uint8(len(dp.Hosts) - 1)
 	p.ReqID = proto.GetReqID()
 	if isRandom {
 		p.Opcode = proto.OpRandomWrite
@@ -84,7 +84,7 @@ func NewReadPacket(key *proto.ExtentKey, offset, size int) (p *Packet) {
 	p.Opcode = proto.OpRead
 	p.StoreMode = proto.NormalExtentMode
 	p.ReqID = proto.GetReqID()
-	p.Nodes = 0
+	p.RemainReplicates = 0
 
 	return
 }
@@ -99,7 +99,7 @@ func NewStreamReadPacket(key *proto.ExtentKey, offset, size int, inode uint64, f
 	p.Opcode = proto.OpStreamRead
 	p.StoreMode = proto.NormalExtentMode
 	p.ReqID = proto.GetReqID()
-	p.Nodes = 0
+	p.RemainReplicates = 0
 	p.inode = inode
 	p.kernelOffset = fileOffset
 
@@ -114,7 +114,7 @@ func NewCreateExtentPacket(dp *wrapper.DataPartition, inodeId uint64) (p *Packet
 	p.StoreMode = proto.NormalExtentMode
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.Arglen = uint32(len(p.Arg))
-	p.Nodes = uint8(len(dp.Hosts) - 1)
+	p.RemainReplicates = uint8(len(dp.Hosts) - 1)
 	p.ReqID = proto.GetReqID()
 	p.Opcode = proto.OpCreateFile
 
@@ -133,7 +133,7 @@ func NewDeleteExtentPacket(dp *wrapper.DataPartition, extentId uint64) (p *Packe
 	p.PartitionID = dp.PartitionID
 	p.ExtentID = extentId
 	p.ReqID = proto.GetReqID()
-	p.Nodes = uint8(len(dp.Hosts) - 1)
+	p.RemainReplicates = uint8(len(dp.Hosts) - 1)
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.Arglen = uint32(len(p.Arg))
 	return p

@@ -330,12 +330,12 @@ func (s *DataNode) sendToAllReplicates(pkg *Packet, packetProcessor *PacketProce
 			pkg.PackErrorBody(ActionSendToNext, err.Error())
 			return
 		}
-		nodes := pkg.Nodes
-		pkg.Nodes = 0
+		nodes := pkg.RemainReplicates
+		pkg.RemainReplicates = 0
 		if err == nil {
 			err = pkg.WriteToConn(pkg.replicateConns[index])
 		}
-		pkg.Nodes = nodes
+		pkg.RemainReplicates = nodes
 		if err != nil {
 			msg := fmt.Sprintf("pkg inconnect(%v) to(%v) err(%v)", packetProcessor.sourceConn.RemoteAddr().String(),
 				pkg.replicateAddrs[index], err.Error())
