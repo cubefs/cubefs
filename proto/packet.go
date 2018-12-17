@@ -415,8 +415,9 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 	}
 
 	if p.Arglen > 0 {
-		if err = ReadFull(c, &p.Arg, int(p.Arglen)); err != nil {
-			return
+		p.Arg = make([]byte, int(p.Arglen))
+		if _, err = io.ReadFull(c, p.Arg[:int(p.Arglen)]); err != nil {
+			return err
 		}
 	}
 
@@ -427,7 +428,9 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead) && p.ResultCode == OpInitResultCode {
 		size = 0
 	}
-	return ReadFull(c, &p.Data, int(size))
+	p.Data = make([]byte, size)
+	_, err = io.ReadFull(c, p.Data[:size])
+	return err
 }
 
 func (p *Packet) PackOkReply() {
