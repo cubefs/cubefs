@@ -247,8 +247,8 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 	if strings.Contains(errMsg, storage.ErrorParamMismatch.Error()) ||
 		strings.Contains(errMsg, ErrorUnknownOp.Error()) {
 		p.ResultCode = proto.OpArgMismatchErr
-	} else if strings.Contains(errMsg, storage.ErrorObjNotFound.Error()) ||
-		strings.Contains(errMsg, storage.ErrorHasDelete.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrorExtentNotFound.Error()) ||
+		strings.Contains(errMsg, storage.ErrorExtentHasDelete.Error()) {
 		p.ResultCode = proto.OpNotExistErr
 	} else if strings.Contains(errMsg, storage.ErrSyscallNoSpace.Error()) {
 		p.ResultCode = proto.OpDiskNoSpaceErr
@@ -256,7 +256,7 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, storage.ErrNotLeader.Error()) {
 		p.ResultCode = proto.OpNotLeaderErr
-	} else if strings.Contains(errMsg, storage.ErrorFileNotFound.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrorExtentNotFound.Error()) {
 		if p.Opcode != proto.OpWrite {
 			p.ResultCode = proto.OpNotExistErr
 		} else {

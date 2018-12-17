@@ -346,7 +346,7 @@ func (s *ExtentStore) Write(extentId uint64, offset, size int64, data []byte, cr
 		return err
 	}
 	if extent.IsMarkDelete() {
-		return ErrorHasDelete
+		return ErrorExtentHasDelete
 	}
 	if err = extent.Write(data, offset, size, crc); err != nil {
 		return err
@@ -381,7 +381,7 @@ func (s *ExtentStore) TinyExtentRecover(extentId uint64, offset, size int64, dat
 		return err
 	}
 	if extent.IsMarkDelete() {
-		return ErrorHasDelete
+		return ErrorExtentHasDelete
 	}
 	if err = extent.TinyRecover(data, offset, size, crc); err != nil {
 		return err
@@ -420,7 +420,7 @@ func (s *ExtentStore) Read(extentId uint64, offset, size int64, nbuf []byte) (cr
 		return
 	}
 	if extent.IsMarkDelete() {
-		err = ErrorHasDelete
+		err = ErrorExtentHasDelete
 		return
 	}
 	crc, err = extent.Read(nbuf, offset, size)
@@ -741,7 +741,7 @@ func (s *ExtentStore) GetAvaliTinyExtent() (extentId uint64, err error) {
 	case extentId = <-s.avaliTinyExtentCh:
 		return
 	default:
-		return 0, ErrorNoAvaliFile
+		return 0, ErrorNoAvaliExtent
 
 	}
 }
@@ -783,7 +783,7 @@ func (s *ExtentStore) GetUnavaliTinyExtent() (extentId uint64, err error) {
 	case extentId = <-s.unavaliTinyExtentCh:
 		return
 	default:
-		return 0, ErrorNoUnAvaliFile
+		return 0, ErrorNoUnAvaliExtent
 
 	}
 }

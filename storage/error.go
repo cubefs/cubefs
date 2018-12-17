@@ -21,19 +21,15 @@ import (
 
 // Error definitions
 var (
-	ErrorObjNotFound       = errors.New("object not exist")
-	ErrorFileNotFound      = errors.New("file not exist")
 	ErrorPartitionReadOnly = errors.New("partition readonly")
-	ErrorHasDelete         = errors.New("has delete")
+	ErrorExtentHasDelete   = errors.New("has delete")
 	ErrorParamMismatch     = errors.New("parameter mismatch error")
-	ErrorNoAvaliFile       = errors.New("no avail file")
-	ErrorNoUnAvaliFile     = errors.New("no Unavail file")
-	ErrorUnavaliExtent     = errors.New("unavali extent id ")
+	ErrorNoAvaliExtent     = errors.New("no avail extent")
+	ErrorNoUnAvaliExtent   = errors.New("no Unavail extent")
+	ErrorUnavaliExtent     = errors.New("unavali extent ")
 	ErrExtentNameFormat    = errors.New("extent filePath format error")
 	ErrSyscallNoSpace      = errors.New("no space left on device")
 	ErrorAgain             = errors.New("try again")
-	ErrorCompaction        = errors.New("compaction error")
-	ErrObjectSmaller       = errors.New("object smaller error")
 	ErrPkgCrcMismatch      = errors.New("pkg crc is not equal pkg data")
 	ErrNotLeader           = errors.New("not raft leader")
 	ErrNoLeader            = errors.New("raft no leader")

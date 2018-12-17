@@ -239,7 +239,7 @@ func (e *fsExtent) RestoreFromFS(loadHeader bool) (err error) {
 	defer e.lock.Unlock()
 	if e.file, err = os.OpenFile(e.filePath, os.O_RDWR, 0666); err != nil {
 		if strings.Contains(err.Error(), syscall.ENOENT.Error()) {
-			err = ErrorFileNotFound
+			err = ErrorExtentNotFound
 		}
 		return err
 	}
