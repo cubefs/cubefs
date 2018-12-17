@@ -67,7 +67,7 @@ func (s *DataNode) operatePacket(pkg *Packet, c *net.TCPConn) {
 		ump.AfterTP(tpObject, err)
 	}()
 	switch pkg.Opcode {
-	case proto.OpCreateFile:
+	case proto.OpCreateExtent:
 		s.handleCreateFile(pkg)
 	case proto.OpWrite:
 		s.handleWrite(pkg)
@@ -105,7 +105,7 @@ func (s *DataNode) operatePacket(pkg *Packet, c *net.TCPConn) {
 	return
 }
 
-// Handle OpCreateFile packet.
+// Handle OpCreateExtent packet.
 func (s *DataNode) handleCreateFile(pkg *Packet) {
 	var err error
 	defer func() {

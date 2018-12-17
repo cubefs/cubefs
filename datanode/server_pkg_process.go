@@ -56,8 +56,8 @@ func (s *DataNode) readPacketFromClient(packetProcessor *PacketProcessor) (err e
 		return
 	}
 	// Check data partition status
-	if err = s.checkAction(pkg); err != nil {
-		pkg.PackErrorBody("checkAction", err.Error())
+	if err = s.checkPartition(pkg); err != nil {
+		pkg.PackErrorBody("checkPartition", err.Error())
 		packetProcessor.replyCh <- pkg
 		return
 	}
@@ -114,7 +114,7 @@ func (s *DataNode) processPacket(req *Packet, packetProcessor *PacketProcessor) 
 }
 
 // If tinyExtent Write get the extentId and extentOffset
-// If OpCreateFile get new extentId
+// If OpCreateExtent get new extentId
 func (s *DataNode) addExtentInfo(pkg *Packet) error {
 	if pkg.isHeadNode() && pkg.StoreMode == proto.TinyExtentMode && pkg.isWriteOperation() {
 		store := pkg.partition.GetStore()
@@ -127,7 +127,7 @@ func (s *DataNode) addExtentInfo(pkg *Packet) error {
 		if err != nil {
 			return err
 		}
-	} else if pkg.isHeadNode() && pkg.Opcode == proto.OpCreateFile {
+	} else if pkg.isHeadNode() && pkg.Opcode == proto.OpCreateExtent {
 		pkg.ExtentID = pkg.partition.GetStore().NextExtentId()
 	}
 
@@ -365,24 +365,21 @@ func (s *DataNode) checkPacket(pkg *Packet) error {
 	if err = pkg.checkCrc(); err != nil {
 		return err
 	}
-	var addrs []string
-	if addrs, err = pkg.unmarshalAddrs(); err == nil {
-		err = pkg.checkPacketAddr(addrs)
-	}
-	if err != nil {
+	if err = pkg.resolveReplicateAddrs(); err != nil {
 		return err
 	}
+
 	return nil
 }
 
-func (s *DataNode) checkAction(pkg *Packet) (err error) {
+func (s *DataNode) checkPartition(pkg *Packet) (err error) {
 	dp := s.space.GetPartition(pkg.PartitionID)
 	if dp == nil {
 		err = errors.Errorf("partition %v is not exist", pkg.PartitionID)
 		return
 	}
 	pkg.partition = dp
-	if pkg.Opcode == proto.OpWrite || pkg.Opcode == proto.OpCreateFile {
+	if pkg.Opcode == proto.OpWrite || pkg.Opcode == proto.OpCreateExtent {
 		if pkg.partition.Status() == proto.ReadOnly {
 			err = storage.ErrorPartitionReadOnly
 			return

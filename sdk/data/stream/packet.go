@@ -116,7 +116,7 @@ func NewCreateExtentPacket(dp *wrapper.DataPartition, inodeId uint64) (p *Packet
 	p.Arglen = uint32(len(p.Arg))
 	p.RemainReplicates = uint8(len(dp.Hosts) - 1)
 	p.ReqID = proto.GetReqID()
-	p.Opcode = proto.OpCreateFile
+	p.Opcode = proto.OpCreateExtent
 
 	p.Data = make([]byte, 8)
 	binary.BigEndian.PutUint64(p.Data, inodeId)

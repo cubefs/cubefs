@@ -70,9 +70,9 @@ const (
 	NoCloseConnect    = false
 )
 
-func (p *Packet) unmarshalAddrs() (addrs []string, err error) {
+func (p *Packet) resolveReplicateAddrs() (err error) {
 	if len(p.Arg) < int(p.Arglen) {
-		return nil, ErrArgLenMismatch
+		return ErrArgLenMismatch
 	}
 	str := string(p.Arg[:int(p.Arglen)])
 	replicateAddrs := strings.SplitN(str, proto.AddrSplit, -1)
@@ -85,6 +85,9 @@ func (p *Packet) unmarshalAddrs() (addrs []string, err error) {
 	if p.RemainReplicates < 0 {
 		err = ErrBadNodes
 		return
+	}
+	if int(p.RemainReplicates) != len(p.replicateAddrs) {
+		err = ErrAddrsNodesMismatch
 	}
 
 	return
@@ -126,17 +129,6 @@ func (p *Packet) IsMasterCommand() bool {
 		return true
 	}
 	return false
-}
-
-func (p *Packet) checkPacketAddr(addrs []string) error {
-	sub := p.replicateNum - p.RemainReplicates
-	if sub < 0 || sub > p.replicateNum || (sub == p.replicateNum && p.RemainReplicates != 0) {
-		return ErrAddrsNodesMismatch
-	}
-	if sub == p.replicateNum && p.RemainReplicates == 0 {
-		return nil
-	}
-	return nil
 }
 
 func (p *Packet) isForwardPacket() bool {
@@ -208,11 +200,11 @@ func (p *Packet) isWriteOperation() bool {
 	return p.Opcode == proto.OpWrite
 }
 
-func (p *Packet) isCreateFileOperation() bool {
-	return p.Opcode == proto.OpCreateFile
+func (p *Packet) isCreateExtentOperation() bool {
+	return p.Opcode == proto.OpCreateExtent
 }
 
-func (p *Packet) isMarkDeleteOperation() bool {
+func (p *Packet) isMarkDeleteExtentOperation() bool {
 	return p.Opcode == proto.OpMarkDelete
 }
 
@@ -221,7 +213,7 @@ func (p *Packet) isReadOperation() bool {
 }
 
 func (p *Packet) isHeadNode() (ok bool) {
-	if p.replicateNum == p.RemainReplicates && (p.isWriteOperation() || p.isCreateFileOperation() || p.isMarkDeleteOperation()) {
+	if p.replicateNum == p.RemainReplicates && (p.isWriteOperation() || p.isCreateExtentOperation() || p.isMarkDeleteExtentOperation()) {
 		ok = true
 	}
 

@@ -47,7 +47,7 @@ const (
 const (
 	ProtoMagic        uint8 = 0xFF
 	OpInitResultCode  uint8 = 0x00
-	OpCreateFile      uint8 = 0x01
+	OpCreateExtent    uint8 = 0x01
 	OpMarkDelete      uint8 = 0x02
 	OpWrite           uint8 = 0x03
 	OpRead            uint8 = 0x04
@@ -169,7 +169,7 @@ func (p *Packet) GetStoreModeMsg() (m string) {
 
 func (p *Packet) GetOpMsg() (m string) {
 	switch p.Opcode {
-	case OpCreateFile:
+	case OpCreateExtent:
 		m = "CreateFile"
 	case OpMarkDelete:
 		m = "MarkDelete"
