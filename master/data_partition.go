@@ -17,12 +17,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
 	"strings"
 	"sync"
 	"time"
+	"github.com/juju/errors"
 )
 
 type DataPartition struct {
@@ -36,21 +36,21 @@ type DataPartition struct {
 	PersistenceHosts []string
 	Peers            []proto.Peer
 	sync.RWMutex
-	total         uint64
-	used          uint64
-	MissNodes     map[string]int64
-	VolName       string
-	modifyTime    int64
-	createTime    int64
-	RandomWrite   bool
-	FileInCoreMap map[string]*FileInCore
+	total            uint64
+	used             uint64
+	MissNodes        map[string]int64
+	VolName          string
+	VolID            uint64
+	modifyTime       int64
+	createTime       int64
+	RandomWrite      bool
+	FileInCoreMap    map[string]*FileInCore
 }
 
-func newDataPartition(ID uint64, replicaNum uint8, partitionType, volName string, randomWrite bool) (partition *DataPartition) {
+func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64, randomWrite bool) (partition *DataPartition) {
 	partition = new(DataPartition)
 	partition.ReplicaNum = replicaNum
 	partition.PartitionID = ID
-	partition.PartitionType = partitionType
 	partition.PersistenceHosts = make([]string, 0)
 	partition.Peers = make([]proto.Peer, 0)
 	partition.Replicas = make([]*DataReplica, 0)
@@ -58,6 +58,7 @@ func newDataPartition(ID uint64, replicaNum uint8, partitionType, volName string
 	partition.MissNodes = make(map[string]int64)
 	partition.Status = proto.ReadOnly
 	partition.VolName = volName
+	partition.VolID = volID
 	partition.modifyTime = time.Now().Unix()
 	partition.createTime = time.Now().Unix()
 	partition.RandomWrite = randomWrite
@@ -319,7 +320,7 @@ func (partition *DataPartition) getFileCount() {
 	}
 
 	for _, replica := range partition.Replicas {
-		msg = fmt.Sprintf(GetDataReplicaFileCountInfo+"partitionID:%v  replicaAddr:%v  FileCount:%v  "+
+		msg = fmt.Sprintf(GetDataReplicaFileCountInfo + "partitionID:%v  replicaAddr:%v  FileCount:%v  "+
 			"NodeIsActive:%v  replicaIsActive:%v  .replicaStatusOnNode:%v ", partition.PartitionID, replica.Addr, replica.FileCount,
 			replica.GetReplicaNode().isActive, replica.IsActive(DefaultDataPartitionTimeOutSec), replica.Status)
 		log.LogInfo(msg)
@@ -356,7 +357,7 @@ func (partition *DataPartition) checkReplicaNum(c *Cluster, volName string) {
 	partition.RLock()
 	defer partition.RUnlock()
 	if int(partition.ReplicaNum) != len(partition.PersistenceHosts) {
-		msg := fmt.Sprintf("FIX partition replicaNum,clusterID[%v] volName[%v] partitionID:%v orgReplicaNum:%v",
+		msg := fmt.Sprintf("FIX DataPartition replicaNum,clusterID[%v] volName[%v] partitionID:%v orgReplicaNum:%v",
 			c.Name, volName, partition.PartitionID, partition.ReplicaNum)
 		Warn(c.Name, msg)
 	}
@@ -433,7 +434,6 @@ func (partition *DataPartition) LoadFile(dataNode *DataNode, resp *proto.LoadDat
 		return
 	}
 	replica := partition.Replicas[index]
-	replica.LoadPartitionIsResponse = true
 	for _, dpf := range resp.PartitionSnapshot {
 		if dpf == nil {
 			continue
@@ -445,6 +445,7 @@ func (partition *DataPartition) LoadFile(dataNode *DataNode, resp *proto.LoadDat
 		}
 		fc.updateFileInCore(partition.PartitionID, dpf, replica, index)
 	}
+	replica.LoadPartitionIsResponse = true
 }
 
 func (partition *DataPartition) getReplicaIndex(addr string) (index int, err error) {
@@ -476,7 +477,7 @@ func (partition *DataPartition) updateForOffline(offlineAddr, newAddr, volName s
 	newHosts = append(newHosts, newAddr)
 	partition.PersistenceHosts = newHosts
 	partition.Peers = newPeers
-	if err = c.syncUpdateDataPartition(volName, partition); err != nil {
+	if err = c.syncUpdateDataPartition(partition); err != nil {
 		partition.PersistenceHosts = orgHosts
 		partition.Peers = oldPeers
 		return errors.Annotatef(err, "update partition[%v] failed", partition.PartitionID)
@@ -526,4 +527,17 @@ func (partition *DataPartition) getMaxUsedSize() uint64 {
 		}
 	}
 	return partition.used
+}
+
+// the caller must add lock
+func (partition *DataPartition) createDataPartitionSuccessTriggerOperator(nodeAddr string, c *Cluster) (err error) {
+	dataNode, err := c.getDataNode(nodeAddr)
+	if err != nil {
+		return err
+	}
+	replica := NewDataReplica(dataNode)
+	replica.Status = proto.ReadWrite
+	partition.AddMember(replica)
+	partition.checkAndRemoveMissReplica(replica.Addr)
+	return
 }

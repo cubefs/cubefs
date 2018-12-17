@@ -25,14 +25,14 @@ import (
 )
 
 type DataNode struct {
-	Total      uint64 `json:"TotalWeight"`
-	Used       uint64 `json:"UsedWeight"`
-	Available  uint64
-	Id         uint64
-	RackName   string `json:"Rack"`
-	Addr       string
-	ReportTime time.Time
-	isActive   bool
+	Total              uint64 `json:"TotalWeight"`
+	Used               uint64 `json:"UsedWeight"`
+	Available          uint64
+	Id                 uint64
+	RackName           string `json:"Rack"`
+	Addr               string
+	ReportTime         time.Time
+	isActive           bool
 	sync.RWMutex
 	Ratio              float64
 	SelectCount        uint64
@@ -76,14 +76,6 @@ func (dataNode *DataNode) getBadDiskPartitions(disk string) (partitionIds []uint
 	return
 }
 
-/*set node is online*/
-func (dataNode *DataNode) setNodeAlive() {
-	dataNode.Lock()
-	defer dataNode.Unlock()
-	dataNode.ReportTime = time.Now()
-	dataNode.isActive = true
-}
-
 func (dataNode *DataNode) UpdateNodeMetric(resp *proto.DataNodeHeartBeatResponse) {
 	dataNode.Lock()
 	defer dataNode.Unlock()
@@ -99,6 +91,7 @@ func (dataNode *DataNode) UpdateNodeMetric(resp *proto.DataNodeHeartBeatResponse
 		dataNode.Ratio = (float64)(dataNode.Used) / (float64)(dataNode.Total)
 	}
 	dataNode.ReportTime = time.Now()
+	dataNode.isActive = true
 }
 
 func (dataNode *DataNode) IsWriteAble() (ok bool) {
@@ -134,9 +127,6 @@ func (dataNode *DataNode) SelectNodeForWrite() {
 }
 
 func (dataNode *DataNode) clean() {
-	time.Sleep(DefaultCheckHeartbeatIntervalSeconds * time.Second)
-	dataNode.Lock()
-	defer dataNode.Unlock()
 	dataNode.Sender.exitCh <- struct{}{}
 }
 

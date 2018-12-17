@@ -16,7 +16,6 @@ package master
 
 import (
 	"fmt"
-	"github.com/tiglabs/containerfs/proto"
 	"sort"
 	"strconv"
 	"time"
@@ -74,14 +73,14 @@ func (partition *DataPartition) checkChunkFile(fc *FileInCore, liveReplicas []*D
 	if fc.isCheckCrc() == false {
 		return
 	}
-	fms, _ := fc.needCrcRepair(liveReplicas, proto.BlobPartition)
+	fms, _ := fc.needCrcRepair(liveReplicas)
 
 	if isSameSize(fms) {
 		return
 	}
 	msg := fmt.Sprintf("CheckFileError size not match,cluster[%v],", clusterID)
 	for _, fm := range fms {
-		msg = fmt.Sprintf(msg+"fm[%v]:%v\n", fm.locIndex, fm.ToString())
+		msg = fmt.Sprintf(msg+"fm[%v]:%v\n", fm.locIndex, fm)
 	}
 	Warn(clusterID, msg)
 	return
@@ -92,7 +91,7 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 		return
 	}
 
-	fms, needRepair := fc.needCrcRepair(liveReplicas, proto.ExtentPartition)
+	fms, needRepair := fc.needCrcRepair(liveReplicas)
 
 	if len(fms) < len(liveReplicas) && (time.Now().Unix()-fc.LastModify) > CheckMissFileReplicaTime {
 		liveAddrs := make([]string, 0)

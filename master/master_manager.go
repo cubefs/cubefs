@@ -62,7 +62,7 @@ func (m *Master) handlePeerChange(confChange *proto.ConfChange) (err error) {
 	return
 }
 
-func (m *Master) handleApply(cmd *Metadata) (err error) {
+func (m *Master) handleApply(cmd *RaftCmdData) (err error) {
 	return m.cluster.handleApply(cmd)
 }
 
@@ -78,7 +78,7 @@ func (m *Master) restoreIDAlloc() {
 
 // load stored meta data to memory
 func (m *Master) loadMetadata() {
-
+	log.LogInfo("action[loadMetadata] begin")
 	m.restoreIDAlloc()
 	var err error
 	if err = m.cluster.loadCompactStatus(); err != nil {
@@ -107,5 +107,6 @@ func (m *Master) loadMetadata() {
 	if err = m.cluster.loadDataPartitions(); err != nil {
 		panic(err)
 	}
+	log.LogInfo("action[loadMetadata] end")
 
 }

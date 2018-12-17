@@ -34,7 +34,7 @@ const (
 )
 
 const (
-	DefaultEveryReleaseDataPartitionCount       = 50
+	DefaultEveryReleaseDataPartitionCount       = 1000
 	DefaultReleaseDataPartitionAfterLoadSeconds = 5 * 60
 	DefaultReleaseDataPartitionInternalSeconds  = 10
 	DefaultCheckHeartbeatIntervalSeconds        = 60
@@ -46,8 +46,8 @@ const (
 	DefaultDataPartitionTimeOutSec              = 10 * DefaultCheckHeartbeatIntervalSeconds
 	DefaultDataPartitionMissSec                 = 24 * 3600
 	DefaultDataPartitionWarnInterval            = 60 * 60
-	LoadDataPartitionWaitTime                   = 100
-	DefaultLoadDataPartitionFrequencyTime       = 60 * 60
+	LoadDataPartitionWaitTime                   = 120
+	DefaultLoadDataPartitionFrequencyTime       = 60 * 60 * 4
 	DefaultEveryLoadDataPartitionCount          = 50
 	DefaultMetaPartitionTimeOutSec              = 10 * DefaultCheckHeartbeatIntervalSeconds
 	//DefaultMetaPartitionMissSec                         = 3600

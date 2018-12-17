@@ -63,13 +63,13 @@ func (fileCrcArr FileCrcSorterByCount) log() (msg string) {
 	return
 }
 
-func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataReplica, volType, clusterID string) (tasks []*proto.AdminTask) {
+func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataReplica, clusterID string) (tasks []*proto.AdminTask) {
 	tasks = make([]*proto.AdminTask, 0)
 	if fc.isCheckCrc() == false {
 		return
 	}
 
-	fms, needRepair := fc.needCrcRepair(liveVols, volType)
+	fms, needRepair := fc.needCrcRepair(liveVols)
 
 	if len(fms) < len(liveVols) && (time.Now().Unix()-fc.LastModify) > CheckMissFileReplicaTime {
 		liveAddrs := make([]string, 0)
@@ -114,7 +114,7 @@ func (fc *FileInCore) isDelayCheck() bool {
 	return time.Now().Unix()-fc.LastModify > DefaultFileDelayCheckLackSec
 }
 
-func (fc *FileInCore) needCrcRepair(liveVols []*DataReplica, volType string) (fms []*FileMetaOnNode, needRepair bool) {
+func (fc *FileInCore) needCrcRepair(liveVols []*DataReplica) (fms []*FileMetaOnNode, needRepair bool) {
 	var baseCrc uint32
 	fms = make([]*FileMetaOnNode, 0)
 
@@ -128,9 +128,6 @@ func (fc *FileInCore) needCrcRepair(liveVols []*DataReplica, volType string) (fm
 		return
 	}
 
-	if volType == proto.BlobPartition {
-		return
-	}
 	baseCrc = fms[0].Crc
 	for _, fm := range fms {
 		if fm.getFileCrc() != baseCrc {

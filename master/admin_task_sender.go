@@ -20,11 +20,11 @@ import (
 	"time"
 
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 	"net"
+	"github.com/tiglabs/containerfs/util"
+	"github.com/juju/errors"
 )
 
 const (
@@ -44,7 +44,7 @@ type AdminTaskSender struct {
 	clusterID  string
 	targetAddr string
 	TaskMap    map[string]*proto.AdminTask
-	sync.Mutex
+	sync.RWMutex
 	exitCh   chan struct{}
 	connPool *util.ConnectPool
 }
@@ -90,8 +90,8 @@ func (sender *AdminTaskSender) doDeleteTasks() {
 
 // the task which is time out will be delete
 func (sender *AdminTaskSender) getNeedDeleteTasks() (delTasks []*proto.AdminTask) {
-	sender.Lock()
-	defer sender.Unlock()
+	sender.RLock()
+	defer sender.RUnlock()
 	delTasks = make([]*proto.AdminTask, 0)
 	for _, task := range sender.TaskMap {
 		if task.CheckTaskTimeOut() {
@@ -175,6 +175,27 @@ func (sender *AdminTaskSender) sendAdminTask(task *proto.AdminTask, conn net.Con
 	return nil
 }
 
+func (sender *AdminTaskSender) createDataPartition(task *proto.AdminTask, conn net.Conn) (err error) {
+	log.LogInfof(fmt.Sprintf("action[createDataPartition] sender task:%v begin", task.ToString()))
+	packet, err := sender.buildPacket(task)
+	if err != nil {
+		return errors.Annotatef(err, "action[createDataPartition build packet failed,task:%v]", task.ID)
+	}
+	if err = packet.WriteToConn(conn); err != nil {
+		return errors.Annotatef(err, "action[createDataPartition],WriteToConn failed,task:%v", task.ID)
+	}
+	if err = packet.ReadFromConn(conn, proto.CreateDataPartitionDeadlineTime); err != nil {
+		return errors.Annotatef(err, "action[createDataPartition],ReadFromConn failed task:%v", task.ID)
+	}
+	if packet.ResultCode != proto.OpOk {
+		err = fmt.Errorf(string(packet.Data))
+		return
+	}
+	log.LogInfof(fmt.Sprintf("action[createDataPartition] sender task:%v success", task.ToString()))
+
+	return nil
+}
+
 func (sender *AdminTaskSender) DelTask(t *proto.AdminTask) {
 	sender.Lock()
 	defer sender.Unlock()
@@ -198,15 +219,15 @@ func (sender *AdminTaskSender) PutTask(t *proto.AdminTask) {
 }
 
 func (sender *AdminTaskSender) IsExist(t *proto.AdminTask) bool {
-	sender.Lock()
-	defer sender.Unlock()
+	sender.RLock()
+	defer sender.RUnlock()
 	_, ok := sender.TaskMap[t.ID]
 	return ok
 }
 
 func (sender *AdminTaskSender) getNeedDealTask() (tasks []*proto.AdminTask) {
-	sender.Lock()
-	defer sender.Unlock()
+	sender.RLock()
+	defer sender.RUnlock()
 	tasks = make([]*proto.AdminTask, 0)
 
 	//send heartbeat task first

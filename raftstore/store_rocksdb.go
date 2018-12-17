@@ -43,6 +43,7 @@ func (rs *RocksDBStore) Open() error {
 	opts := gorocksdb.NewDefaultOptions()
 	opts.SetBlockBasedTableFactory(basedTableOptions)
 	opts.SetCreateIfMissing(true)
+	opts.SetCompression(gorocksdb.NoCompression)
 	db, err := gorocksdb.OpenDb(opts, rs.dir)
 	if err != nil {
 		err = fmt.Errorf("action[openRocksDB],err:%v", err)
@@ -58,6 +59,7 @@ func (rs *RocksDBStore) Del(key interface{}) (result interface{}, err error) {
 	ro := gorocksdb.NewDefaultReadOptions()
 	wo := gorocksdb.NewDefaultWriteOptions()
 	wb := gorocksdb.NewWriteBatch()
+	wo.SetSync(true)
 	defer wb.Clear()
 	slice, err := rs.db.Get(ro, []byte(key.(string)))
 	if err != nil {
@@ -71,6 +73,7 @@ func (rs *RocksDBStore) Del(key interface{}) (result interface{}, err error) {
 func (rs *RocksDBStore) Put(key, value interface{}) (result interface{}, err error) {
 	wo := gorocksdb.NewDefaultWriteOptions()
 	wb := gorocksdb.NewWriteBatch()
+	wo.SetSync(true)
 	wb.Put([]byte(key.(string)), value.([]byte))
 	if err := rs.db.Write(wo, wb); err != nil {
 		return nil, err
@@ -87,6 +90,7 @@ func (rs *RocksDBStore) Get(key interface{}) (result interface{}, err error) {
 
 func (rs *RocksDBStore) DeleteKeyAndPutIndex(key string, cmdMap map[string][]byte) error {
 	wo := gorocksdb.NewDefaultWriteOptions()
+	wo.SetSync(true)
 	wb := gorocksdb.NewWriteBatch()
 	defer wb.Clear()
 	wb.Delete([]byte(key))
@@ -106,6 +110,7 @@ func (rs *RocksDBStore) DeleteKeyAndPutIndex(key string, cmdMap map[string][]byt
 
 func (rs *RocksDBStore) BatchPut(cmdMap map[string][]byte) error {
 	wo := gorocksdb.NewDefaultWriteOptions()
+	wo.SetSync(true)
 	wb := gorocksdb.NewWriteBatch()
 	for key, value := range cmdMap {
 		wb.Put([]byte(key), value)
@@ -115,6 +120,30 @@ func (rs *RocksDBStore) BatchPut(cmdMap map[string][]byte) error {
 		return err
 	}
 	return nil
+}
+
+func (rs *RocksDBStore) SeekForPrefix(prefix []byte) (result map[string][]byte, err error) {
+	result = make(map[string][]byte)
+	snapshot := rs.RocksDBSnapshot()
+	it := rs.Iterator(snapshot)
+	defer func() {
+		it.Close()
+		rs.ReleaseSnapshot(snapshot)
+	}()
+	it.Seek(prefix)
+	for ; it.ValidForPrefix(prefix); it.Next() {
+		key := it.Key().Data()
+		value := it.Value().Data()
+		valueByte := make([]byte, len(value))
+		copy(valueByte, value)
+		result[string(key)] = valueByte
+		it.Key().Free()
+		it.Value().Free()
+	}
+	if err := it.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (rs *RocksDBStore) RocksDBSnapshot() *gorocksdb.Snapshot {

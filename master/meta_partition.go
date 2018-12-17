@@ -19,11 +19,11 @@ import (
 
 	"encoding/json"
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
 	"strings"
 	"time"
+	"github.com/juju/errors"
 )
 
 type MetaReplica struct {
@@ -45,6 +45,7 @@ type MetaPartition struct {
 	Replicas         []*MetaReplica
 	ReplicaNum       uint8
 	Status           int8
+	volID            uint64
 	volName          string
 	PersistenceHosts []string
 	Peers            []proto.Peer
@@ -59,8 +60,8 @@ func NewMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {
 	return
 }
 
-func NewMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName string) (mp *MetaPartition) {
-	mp = &MetaPartition{PartitionID: partitionID, Start: start, End: end, volName: volName}
+func NewMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName string, volID uint64) (mp *MetaPartition) {
+	mp = &MetaPartition{PartitionID: partitionID, Start: start, End: end, volName: volName, volID: volID}
 	mp.ReplicaNum = replicaNum
 	mp.Replicas = make([]*MetaReplica, 0)
 	mp.Status = proto.Unavaliable
@@ -145,7 +146,7 @@ func (mp *MetaPartition) UpdateEnd(c *Cluster, end uint64) {
 		mp.End = oldEnd
 		return
 	}
-	if err = c.syncUpdateMetaPartition(mp.volName, mp); err != nil {
+	if err = c.syncUpdateMetaPartition(mp); err != nil {
 		mp.End = oldEnd
 		goto errDeal
 	}
@@ -184,7 +185,7 @@ func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
 	if mp.End != DefaultMaxMetaPartitionInodeID {
 		oldEnd := mp.End
 		mp.End = DefaultMaxMetaPartitionInodeID
-		if err := c.syncUpdateMetaPartition(mp.volName, mp); err != nil {
+		if err := c.syncUpdateMetaPartition( mp); err != nil {
 			mp.End = oldEnd
 			log.LogErrorf("action[checkEnd] partitionID[%v] err[%v]", mp.PartitionID, err)
 		}
@@ -346,7 +347,7 @@ func (mp *MetaPartition) updateInfoToStore(newHosts []string, newPeers []proto.P
 	copy(oldPeers, mp.Peers)
 	mp.PersistenceHosts = newHosts
 	mp.Peers = newPeers
-	if err = c.syncUpdateMetaPartition(volName, mp); err != nil {
+	if err = c.syncUpdateMetaPartition(mp); err != nil {
 		mp.PersistenceHosts = oldHosts
 		mp.Peers = oldPeers
 		log.LogWarnf("action[updateInfoToStore] failed,partitionID:%v  old hosts:%v new hosts:%v oldPeers:%v  newPeers:%v",

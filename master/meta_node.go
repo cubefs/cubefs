@@ -51,9 +51,6 @@ func NewMetaNode(addr, clusterID string) (node *MetaNode) {
 }
 
 func (metaNode *MetaNode) clean() {
-	time.Sleep(DefaultCheckHeartbeatIntervalSeconds * time.Second)
-	metaNode.Lock()
-	defer metaNode.Unlock()
 	metaNode.Sender.exitCh <- struct{}{}
 }
 

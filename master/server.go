@@ -16,7 +16,6 @@ package master
 
 import (
 	"fmt"
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/raftstore"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
@@ -24,6 +23,7 @@ import (
 	"net/http/httputil"
 	"strconv"
 	"sync"
+	"github.com/juju/errors"
 )
 
 //config keys
@@ -82,6 +82,7 @@ func (m *Master) Start(cfg *config.Config) (err error) {
 	}
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
+	m.cluster.scheduleTask()
 	m.startHttpService()
 	m.wg.Add(1)
 	return nil
