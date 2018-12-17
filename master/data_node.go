@@ -127,7 +127,6 @@ func (dataNode *DataNode) SelectNodeForWrite() {
 }
 
 func (dataNode *DataNode) clean() {
-	time.Sleep(DefaultCheckHeartbeatIntervalSeconds * time.Second)
 	dataNode.Sender.exitCh <- struct{}{}
 }
 

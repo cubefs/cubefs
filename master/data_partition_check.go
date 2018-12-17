@@ -60,8 +60,8 @@ func (partition *DataPartition) checkReplicaStatusOnLiveNode(liveReplicas []*Dat
 }
 
 func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
-	partition.Lock()
-	defer partition.Unlock()
+	partition.RLock()
+	defer partition.RUnlock()
 	for _, replica := range partition.Replicas {
 		replica.IsLive(timeOutSec)
 	}
