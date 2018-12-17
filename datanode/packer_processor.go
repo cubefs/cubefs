@@ -82,7 +82,7 @@ func (processor *PacketProcessor) Stop() {
 */
 func (processor *PacketProcessor) AllocateReplicatConnects(pkg *Packet, index int) (err error) {
 	var conn *net.TCPConn
-	if pkg.StoreMode == proto.NormalExtentMode && pkg.isWriteOperation() {
+	if pkg.StoreMode == proto.NormalExtentMode {
 		key := fmt.Sprintf("%v_%v_%v", pkg.PartitionID, pkg.ExtentID, pkg.replicateAddrs[index])
 		processor.replicatConnectLock.RLock()
 		conn := processor.replicatConnects[key]
@@ -96,7 +96,6 @@ func (processor *PacketProcessor) AllocateReplicatConnects(pkg *Packet, index in
 			processor.replicatConnects[key] = conn
 			processor.replicatConnectLock.Unlock()
 		}
-		pkg.useConnectMap = true
 		pkg.replicateConns[index] = conn
 	} else {
 		conn, err = gConnPool.GetConnect(pkg.replicateAddrs[index])

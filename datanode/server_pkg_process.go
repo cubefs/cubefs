@@ -233,7 +233,7 @@ func (s *DataNode) cleanupPkg(pkg *Packet) {
 		return
 	}
 	s.leaderPutTinyExtentToStore(pkg)
-	if !pkg.useConnectMap {
+	if pkg.StoreMode == proto.TinyExtentMode && pkg.isWriteOperation() {
 		pkg.PutConnectsToPool()
 	}
 }
@@ -414,7 +414,7 @@ func (s *DataNode) statsFlow(pkg *Packet, flag int) {
 }
 
 func (s *DataNode) leaderPutTinyExtentToStore(pkg *Packet) {
-	if pkg == nil || !storage.IsTinyExtent(pkg.ExtentID) || pkg.ExtentID <= 0 || atomic.LoadInt32(&pkg.isRelaseTinyExtent) == HasReturnToStore {
+	if pkg == nil || !storage.IsTinyExtent(pkg.ExtentID) || pkg.ExtentID <= 0 || atomic.LoadInt32(&pkg.isRelaseTinyExtentToStore) == HasReturnToStore {
 		return
 	}
 	if pkg.StoreMode != proto.TinyExtentMode || !pkg.isHeadNode() || !pkg.isWriteOperation() || !pkg.isForwardPacket() {
@@ -426,5 +426,5 @@ func (s *DataNode) leaderPutTinyExtentToStore(pkg *Packet) {
 	} else {
 		store.PutTinyExtentToAvaliCh(pkg.ExtentID)
 	}
-	atomic.StoreInt32(&pkg.isRelaseTinyExtent, HasReturnToStore)
+	atomic.StoreInt32(&pkg.isRelaseTinyExtentToStore, HasReturnToStore)
 }

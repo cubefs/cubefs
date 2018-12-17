@@ -41,13 +41,12 @@ const (
 
 type Packet struct {
 	proto.Packet
-	replicateConns     []*net.TCPConn
-	replicateAddrs     []string
-	isRelaseTinyExtent int32
-	partition          DataPartition
-	goals              uint8
-	tpObject           *ump.TpObject
-	useConnectMap      bool
+	replicateConns            []*net.TCPConn
+	replicateAddrs            []string
+	isRelaseTinyExtentToStore int32
+	partition                 DataPartition
+	goals                     uint8
+	tpObject                  *ump.TpObject
 }
 
 func (p *Packet) afterTp() (ok bool) {
