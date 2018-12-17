@@ -296,6 +296,7 @@ func (m *metaManager) createPartition(id uint64, volName string, start,
 		return
 	}
 	if err = m.attachPartition(id, partition); err != nil {
+		os.RemoveAll(mpc.RootDir)
 		err = errors.Errorf("[createPartition]->%s", err.Error())
 		return
 	}
