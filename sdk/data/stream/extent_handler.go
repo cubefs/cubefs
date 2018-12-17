@@ -173,7 +173,7 @@ func (eh *ExtentHandler) sender() {
 	for {
 		select {
 		//		case <-t.C:
-		//			log.LogDebugf("sender alive: eh(%v)", eh)
+		//			log.LogDebugf("sender alive: eh(%v) inflight(%v)", eh, atomic.LoadInt32(&eh.inflight))
 		case packet := <-eh.request:
 			//log.LogDebugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 			// If handler is in recovery or error status,
@@ -217,7 +217,7 @@ func (eh *ExtentHandler) sender() {
 			}
 
 			eh.reply <- packet
-			log.LogDebugf("ExtentHandler sender end: sent to the reply channel, eh(%v) packet(%v)", eh, packet)
+			log.LogDebugf("ExtentHandler sender: sent to the reply channel, eh(%v) packet(%v)", eh, packet)
 
 		case <-eh.doneSender:
 			eh.setClosed()
@@ -234,13 +234,13 @@ func (eh *ExtentHandler) receiver() {
 	for {
 		select {
 		//		case <-t.C:
-		//			log.LogDebugf("receiver alive: eh(%v)", eh)
+		//			log.LogDebugf("receiver alive: eh(%v) inflight(%v)", eh, atomic.LoadInt32(&eh.inflight))
 		case packet := <-eh.reply:
 			//log.LogDebugf("receiver begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 			eh.processReply(packet)
 			//log.LogDebugf("receiver end: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 		case <-eh.doneReceiver:
-			log.LogDebugf("receiver: done, eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
+			log.LogDebugf("receiver done: eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
 			return
 		}
 	}
@@ -257,11 +257,14 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 
 	status := eh.getStatus()
 	if status >= ExtentStatusError {
-		log.LogErrorf("processReply discard packet: handler is in error status, eh(%v) packet(%v)", eh, packet)
+		log.LogErrorf("processReply discard packet: handler is in error status, inflight(%v) eh(%v) packet(%v)", atomic.LoadInt32(&eh.inflight), eh, packet)
 		return
 	} else if status >= ExtentStatusRecovery {
-		eh.recoverPacket(packet)
-		log.LogDebugf("processReply recover packet: handler is in recovery status, eh(%v) packet(%v)", eh, packet)
+		if err := eh.recoverPacket(packet); err != nil {
+			eh.setError()
+			log.LogErrorf("processReply discard packet: handler is in recovery status, inflight(%v) eh(%v) packet(%v) err(%v)", atomic.LoadInt32(&eh.inflight), eh, packet, err)
+		}
+		log.LogDebugf("processReply recover packet: handler is in recovery status, inflight(%v) from eh(%v) to recoverHandler(%v) packet(%v)", atomic.LoadInt32(&eh.inflight), eh, eh.recoverHandler, packet)
 		return
 	}
 
@@ -318,12 +321,12 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 		log.LogErrorf("processReplyError discard packet: packet err count reaches max limit, eh(%v) packet(%v) err(%v)", eh, packet, errmsg)
 	} else {
 		eh.recoverPacket(packet)
-		log.LogWarnf("processReplyError recover packet: eh(%v) packet(%v) err(%v)", eh, packet, errmsg)
+		log.LogWarnf("processReplyError recover packet: from eh(%v) to recoverHandler(%v) packet(%v) err(%v)", eh, eh.recoverHandler, packet, errmsg)
 	}
 
 }
 
-func (eh *ExtentHandler) flush() (closed bool, err error) {
+func (eh *ExtentHandler) flush() (err error) {
 	eh.flushPacket()
 	eh.waitForFlush()
 
@@ -333,11 +336,6 @@ func (eh *ExtentHandler) flush() (closed bool, err error) {
 	}
 
 	status := eh.getStatus()
-	if status >= ExtentStatusClosed {
-		eh.cleanup()
-		closed = true
-	}
-
 	if status >= ExtentStatusError {
 		err = errors.New(fmt.Sprintf("StreamWriter flush: extent handler in error status, eh(%v) size(%v)", eh, eh.size))
 	}
@@ -348,7 +346,9 @@ func (eh *ExtentHandler) cleanup() (err error) {
 	eh.doneSender <- struct{}{}
 	eh.doneReceiver <- struct{}{}
 	if eh.conn != nil {
-		eh.conn.Close()
+		conn := eh.conn
+		eh.conn = nil
+		conn.Close()
 	}
 	return
 }
@@ -371,9 +371,10 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 // This function is meaningful to be called from stream writer flush method,
 // because there is no new write request.
 func (eh *ExtentHandler) waitForFlush() {
-	//FIXME: add timeout
-	//	t := time.NewTicker(10 * time.Microsecond)
-	//	defer t.Stop()
+	if atomic.LoadInt32(&eh.inflight) <= 0 {
+		return
+	}
+
 	for {
 		select {
 		case <-eh.empty:
@@ -384,13 +385,17 @@ func (eh *ExtentHandler) waitForFlush() {
 	}
 }
 
-func (eh *ExtentHandler) recoverPacket(packet *Packet) {
+func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
+	packet.errCount++
+	if packet.errCount >= MaxPacketErrorCount {
+		return errors.New(fmt.Sprintf("recoverPacket failed: reach max error limit, eh(%v) packet(%v)", eh, packet))
+	}
+
 	handler := eh.recoverHandler
 	if handler == nil {
 		handler = NewExtentHandler(eh.sw, packet.kernelOffset, int(packet.StoreMode))
 		handler.setClosed()
 	}
-	packet.errCount++
 	handler.pushToRequest(packet)
 	if eh.recoverHandler == nil {
 		eh.recoverHandler = handler
@@ -398,6 +403,7 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) {
 		// handler is not skipped in flush.
 		eh.sw.dirtylist.Put(handler)
 	}
+	return nil
 }
 
 func (eh *ExtentHandler) allocateExtent() (err error) {
@@ -512,5 +518,6 @@ func (eh *ExtentHandler) setRecovery() bool {
 }
 
 func (eh *ExtentHandler) setError() bool {
+	atomic.StoreInt32(&eh.sw.status, StreamWriterError)
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusRecovery, ExtentStatusError)
 }
