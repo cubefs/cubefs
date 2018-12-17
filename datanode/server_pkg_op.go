@@ -614,5 +614,7 @@ func (d *DataNode) transferToRaftLeader(dp DataPartition, p *Packet) (ok bool, e
 		return
 	}
 
+	gConnPool.PutConnect(conn, true)
+
 	return
 }
