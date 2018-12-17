@@ -52,7 +52,7 @@ func (cp *ConnectPool) Get(targetAddr string) (c *net.TCPConn, err error) {
 		cp.Unlock()
 	}
 
-	return pool.Get()
+	return pool.GetConnectFromPool()
 }
 
 func (cp *ConnectPool) Put(c *net.TCPConn, forceClose bool) {
@@ -74,7 +74,7 @@ func (cp *ConnectPool) Put(c *net.TCPConn, forceClose bool) {
 		return
 	}
 	object := &ConnectObject{conn: c, idle: time.Now().UnixNano()}
-	pool.put(object)
+	pool.PutConnectObjectToPool(object)
 
 	return
 }
@@ -120,7 +120,7 @@ func (cp *ConnectPool) CheckErrorForPutConnect(c *net.TCPConn, target string, er
 		return
 	}
 	object := &ConnectObject{conn: c, idle: time.Now().UnixNano()}
-	pool.put(object)
+	pool.PutConnectObjectToPool(object)
 }
 
 func (cp *ConnectPool) ReleaseAllConnect(target string) {
@@ -175,12 +175,12 @@ func (p *Pool) initAllConnect() {
 			conn.SetKeepAlive(true)
 			conn.SetNoDelay(true)
 			obj := &ConnectObject{conn: conn, idle: time.Now().UnixNano()}
-			p.put(obj)
+			p.PutConnectObjectToPool(obj)
 		}
 	}
 }
 
-func (p *Pool) put(c *ConnectObject) {
+func (p *Pool) PutConnectObjectToPool(c *ConnectObject) {
 	select {
 	case p.pool <- c:
 		return
@@ -188,15 +188,6 @@ func (p *Pool) put(c *ConnectObject) {
 		if c.conn != nil {
 			c.conn.Close()
 		}
-		return
-	}
-}
-
-func (p *Pool) get() (c *ConnectObject) {
-	select {
-	case c = <-p.pool:
-		return
-	default:
 		return
 	}
 }
@@ -209,7 +200,7 @@ func (p *Pool) AutoRelease() {
 			if time.Now().UnixNano()-int64(c.idle) > p.timeout {
 				c.conn.Close()
 			} else {
-				p.put(c)
+				p.PutConnectObjectToPool(c)
 			}
 		default:
 			return
@@ -228,8 +219,16 @@ func (p *Pool) ForceReleaseAllConnect() {
 	}
 }
 
-func (p *Pool) Get() (c *net.TCPConn, err error) {
-	obj := p.get()
+func (p *Pool) GetConnectFromPool() (c *net.TCPConn, err error) {
+	var (
+		obj *ConnectObject
+	)
+	select {
+	case obj = <-p.pool:
+		break
+	default:
+		break
+	}
 	if obj != nil {
 		return obj.conn, nil
 	}
