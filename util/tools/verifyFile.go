@@ -21,6 +21,7 @@ var (
 	rootPath   = flag.String("root", "/mnt/intest", "rootPath")
 	fileType   = flag.Bool("isdir", false, "create is dir")
 	prefix     = flag.String("prefix", "1", "default prefix")
+	random     = flag.Bool("random", false, "random write")
 	currentCnt uint64
 )
 
@@ -91,6 +92,9 @@ func write(name string) (verifyInfo []*VerifyInfo, err error) {
 		v := new(VerifyInfo)
 		v.Name = name
 		v.Offset = offset
+		if *random {
+			v.Offset = rand.Int63n(10000 * 1024)
+		}
 		v.Size = int64(n)
 		data := []byte(RandStringBytesMaskImpr(n))
 		v.WriteContents = string(data)
