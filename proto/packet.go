@@ -52,7 +52,6 @@ const (
 	OpWrite           uint8 = 0x03
 	OpRead            uint8 = 0x04
 	OpStreamRead      uint8 = 0x05
-	OpGetWatermark    uint8 = 0x06
 	OpGetAllWaterMark uint8 = 0x07
 
 	OpNotifyExtentRepair      uint8 = 0x08
