@@ -288,7 +288,6 @@ func (space *spaceManager) CreatePartition(request *proto.CreateDataPartitionReq
 		NodeId:        space.nodeId,
 		ClusterId:     space.clusterId,
 		PartitionSize: request.PartitionSize,
-		PartitionType: request.PartitionType,
 		RandomWrite:   request.RandomWrite,
 	}
 	dp = space.partitions[dpCfg.PartitionId]

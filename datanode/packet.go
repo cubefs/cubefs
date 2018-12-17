@@ -86,9 +86,6 @@ func (p *Packet) resolveReplicateAddrs() (err error) {
 		err = ErrBadNodes
 		return
 	}
-	if int(p.RemainReplicates) != len(p.replicateAddrs) {
-		err = ErrAddrsNodesMismatch
-	}
 
 	return
 }
@@ -212,7 +209,7 @@ func (p *Packet) isReadOperation() bool {
 	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpRead || p.Opcode == proto.OpExtentRepairRead
 }
 
-func (p *Packet) isHeadNode() (ok bool) {
+func (p *Packet) isLeaderPacket() (ok bool) {
 	if p.replicateNum == p.RemainReplicates && (p.isWriteOperation() || p.isCreateExtentOperation() || p.isMarkDeleteExtentOperation()) {
 		ok = true
 	}

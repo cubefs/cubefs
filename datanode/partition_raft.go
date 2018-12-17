@@ -38,7 +38,6 @@ import (
 type dataPartitionCfg struct {
 	VolName       string              `json:"vol_name"`
 	ClusterId     string              `json:"cluster_id"`
-	PartitionType string              `json:"partition_type"`
 	PartitionId   uint32              `json:"partition_id"`
 	PartitionSize int                 `json:"partition_size"`
 	Peers         []proto.Peer        `json:"peers"`
