@@ -88,6 +88,7 @@ const (
 const (
 	maxApplyErrRetry  = 10
 	MinFixTinyExtents = 3
+	dpRetainRaftLogs  = 100000
 )
 
 const (

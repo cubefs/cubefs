@@ -94,7 +94,7 @@ func (s *DataNode) receiveReplicatesResponse(packetProcessor *PacketProcessor) {
 	for {
 		select {
 		case <-packetProcessor.handleCh:
-			s.reciveFromAllReplicates(packetProcessor)
+			s.receiveFromAllReplicates(packetProcessor)
 		case <-packetProcessor.exitC:
 			return
 		}
@@ -252,7 +252,7 @@ func (s *DataNode) addMetrics(reply *Packet) {
 }
 
 // Receive response from all members
-func (s *DataNode) reciveFromAllReplicates(packetProcessor *PacketProcessor) (request *Packet) {
+func (s *DataNode) receiveFromAllReplicates(packetProcessor *PacketProcessor) (request *Packet) {
 	var (
 		e *list.Element
 	)
