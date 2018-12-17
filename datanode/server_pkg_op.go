@@ -137,21 +137,40 @@ func (s *DataNode) handleCreateFile(pkg *Packet) {
 
 // Handle OpCreateDataPartition packet.
 func (s *DataNode) handleCreateDataPartition(pkg *Packet) {
-	var err error
+	var (
+		err error
+	)
 	defer func() {
 		if err != nil {
-			err = errors.Annotatef(err, "Request(%v) CreateDataPartition Error", pkg.GetUniqueLogId())
-			pkg.PackErrorBody(ActionCreateExtent, err.Error())
+			err = errors.Annotatef(err, "Request[%v] CreateDataPartition Error", pkg.GetUniqueLogId())
+			pkg.PackErrorBody(ActionCreateDataPartition, err.Error())
 		} else {
 			pkg.PackOkReply()
 		}
 	}()
-	createPartitionRequest := &proto.CreateDataPartitionRequest{}
-	err = json.Unmarshal(pkg.Data[:pkg.Size], createPartitionRequest)
-	if err != nil {
+	task := &proto.AdminTask{}
+	if err = json.Unmarshal(pkg.Data, task); err != nil {
+		err = fmt.Errorf("cannnot unmashal adminTask")
 		return
 	}
-	if _, err = s.space.CreatePartition(createPartitionRequest); err != nil {
+	request := &proto.CreateDataPartitionRequest{}
+	if task.OpCode != proto.OpCreateDataPartition {
+		err = fmt.Errorf("from master Task[%v] failed,error unavali opcode(%v)", task.ToString(), task.OpCode)
+		return
+	}
+
+	bytes, err := json.Marshal(task.Request)
+	if err != nil {
+		err = fmt.Errorf("from master Task[%v] cannot unmashal CreateDataPartition", task.ToString())
+		return
+	}
+	if err = json.Unmarshal(bytes, request); err != nil {
+		err = fmt.Errorf("from master Task[%v] cannot unmash CreateDataPartitionRequest struct", task.ToString())
+		return
+	}
+	if _, err = s.space.CreatePartition(request.VolumeId, uint32(request.PartitionId),
+		request.PartitionSize, request.PartitionType); err != nil {
+		err = fmt.Errorf("from master Task[%v] cannot unmash CreateDataPartitionRequest struct", task.ToString())
 		return
 	}
 
