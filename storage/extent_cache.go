@@ -21,10 +21,10 @@ import (
 
 // ExtentCache defined a cache for Extent entity for access improvement.
 type ExtentCache interface {
-	// Put extent object into cache.
+	// PutConnect extent object into cache.
 	Put(extent Extent)
 
-	// Get extent from cache with specified extent identity (extentId).
+	// GetConnect extent from cache with specified extent identity (extentId).
 	Get(extentId uint64) (extent Extent, ok bool)
 
 	// Del extent stored in cache this specified extent identity (extentId).
@@ -71,7 +71,7 @@ func NewExtentCache(capacity int) ExtentCache {
 	}
 }
 
-// Put extent object into cache.
+// PutConnect extent object into cache.
 func (cache *lruExtentCache) Put(extent Extent) {
 	if IsTinyExtent(extent.ID()) {
 		cache.tinyLock.Lock()
@@ -89,7 +89,7 @@ func (cache *lruExtentCache) Put(extent Extent) {
 	cache.fireLRU()
 }
 
-// Get extent from cache with specified extent identity (extentId).
+// GetConnect extent from cache with specified extent identity (extentId).
 func (cache *lruExtentCache) Get(extentId uint64) (extent Extent, ok bool) {
 	if IsTinyExtent(extentId) {
 		cache.tinyLock.RLock()

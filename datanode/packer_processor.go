@@ -88,7 +88,7 @@ func (processor *PacketProcessor) AllocateReplicatConnects(pkg *Packet, index in
 		conn := processor.replicatConnects[key]
 		processor.replicatConnectLock.RUnlock()
 		if conn == nil {
-			conn, err = gConnPool.Get(pkg.replicateAddrs[index])
+			conn, err = gConnPool.GetConnect(pkg.replicateAddrs[index])
 			if err != nil {
 				return
 			}
@@ -99,7 +99,7 @@ func (processor *PacketProcessor) AllocateReplicatConnects(pkg *Packet, index in
 		pkg.useConnectMap = true
 		pkg.replicateConns[index] = conn
 	} else {
-		conn, err = gConnPool.Get(pkg.replicateAddrs[index])
+		conn, err = gConnPool.GetConnect(pkg.replicateAddrs[index])
 		if err != nil {
 			return
 		}

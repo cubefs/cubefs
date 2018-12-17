@@ -41,7 +41,7 @@ func NewConnectPool() (cp *ConnectPool) {
 	return cp
 }
 
-func (cp *ConnectPool) Get(targetAddr string) (c *net.TCPConn, err error) {
+func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error) {
 	cp.RLock()
 	pool, ok := cp.pools[targetAddr]
 	cp.RUnlock()
@@ -55,7 +55,7 @@ func (cp *ConnectPool) Get(targetAddr string) (c *net.TCPConn, err error) {
 	return pool.GetConnectFromPool()
 }
 
-func (cp *ConnectPool) Put(c *net.TCPConn, forceClose bool) {
+func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
 	if c == nil {
 		return
 	}
@@ -83,16 +83,16 @@ func (cp *ConnectPool) CheckErrorForceClose(c *net.TCPConn, target string, err e
 	if c == nil {
 		return
 	}
-
-	if err != nil {
-		if strings.Contains(err.Error(), "use of closed network connection") {
-			c.Close()
-			cp.ReleaseAllConnect(target)
-			return
-		} else {
-			c.Close()
-			return
-		}
+	if err == nil {
+		return
+	}
+	if strings.Contains(err.Error(), "use of closed network connection") {
+		c.Close()
+		cp.ReleaseAllConnect(target)
+		return
+	} else {
+		c.Close()
+		return
 	}
 }
 

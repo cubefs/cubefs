@@ -122,7 +122,7 @@ func (dp *dataPartition) stopRaft() {
 /*
  Start schedule task when data partition start or restore
  1. Store the raft applied id to "APPLY" file per 5 minutes.
- 2. Get the min applied id from all members and truncate raft log file per 10 minutes.
+ 2. GetConnect the min applied id from all members and truncate raft log file per 10 minutes.
  3. Update partition status when apply failed and stop raft. Need manual intervention.
 */
 func (dp *dataPartition) StartSchedule() {
@@ -488,33 +488,33 @@ func (dp *dataPartition) applyErrRepair(extentId uint64) {
 	}
 }
 
-// Get all extents information
+// GetConnect all extents information
 func (dp *dataPartition) getExtentInfo(targetAddr string) (extentFiles []*storage.FileInfo, err error) {
 	// get remote extents meta by opGetAllWaterMarker cmd
 	p := NewGetAllWaterMarker(dp.partitionId, proto.NormalExtentMode)
 	var conn *net.TCPConn
 	target := targetAddr
-	conn, err = gConnPool.Get(target) //get remote connect
+	conn, err = gConnPool.GetConnect(target) //get remote connect
 	if err != nil {
 		err = errors.Annotatef(err, "getExtentInfo  partition=%v get host[%v] connect", dp.partitionId, target)
 		return
 	}
 	err = p.WriteToConn(conn) //write command to remote host
 	if err != nil {
-		gConnPool.Put(conn, true)
+		gConnPool.PutConnect(conn, true)
 		err = errors.Annotatef(err, "getExtentInfo partition=%v write to host[%v]", dp.partitionId, target)
 		return
 	}
 	err = p.ReadFromConn(conn, 60) //read it response
 	if err != nil {
-		gConnPool.Put(conn, true)
+		gConnPool.PutConnect(conn, true)
 		err = errors.Annotatef(err, "getExtentInfo partition=%v read from host[%v]", dp.partitionId, target)
 		return
 	}
 	fileInfos := make([]*storage.FileInfo, 0)
 	err = json.Unmarshal(p.Data[:p.Size], &fileInfos)
 	if err != nil {
-		gConnPool.Put(conn, true)
+		gConnPool.PutConnect(conn, true)
 		err = errors.Annotatef(err, "getExtentInfo partition=%v unmarshal json[%v]", dp.partitionId, string(p.Data[:p.Size]))
 		return
 	}
@@ -524,7 +524,7 @@ func (dp *dataPartition) getExtentInfo(targetAddr string) (extentFiles []*storag
 		extentFiles = append(extentFiles, fileInfo)
 	}
 
-	gConnPool.Put(conn, true)
+	gConnPool.PutConnect(conn, true)
 
 	return
 }
@@ -572,7 +572,7 @@ func (dp *dataPartition) findMaxAppliedId(allAppliedIds []uint64) (maxAppliedId 
 	return maxAppliedId, index
 }
 
-// Get partition size from leader
+// GetConnect partition size from leader
 func (dp *dataPartition) getPartitionSize() (partitionSize uint64, err error) {
 	var (
 		conn *net.TCPConn
@@ -581,7 +581,7 @@ func (dp *dataPartition) getPartitionSize() (partitionSize uint64, err error) {
 	p := NewGetPartitionSize(dp.partitionId)
 
 	target := dp.replicaHosts[0]
-	conn, err = gConnPool.Get(target) //get remote connect
+	conn, err = gConnPool.GetConnect(target) //get remote connect
 	if err != nil {
 		err = errors.Annotatef(err, " partition=%v get host[%v] connect", dp.partitionId, target)
 		return
@@ -589,13 +589,13 @@ func (dp *dataPartition) getPartitionSize() (partitionSize uint64, err error) {
 
 	err = p.WriteToConn(conn) //write command to remote host
 	if err != nil {
-		gConnPool.Put(conn, true)
+		gConnPool.PutConnect(conn, true)
 		err = errors.Annotatef(err, "partition=%v write to host[%v]", dp.partitionId, target)
 		return
 	}
 	err = p.ReadFromConn(conn, 60) //read it response
 	if err != nil {
-		gConnPool.Put(conn, true)
+		gConnPool.PutConnect(conn, true)
 		err = errors.Annotatef(err, "partition=%v read from host[%v]", dp.partitionId, target)
 		return
 	}
@@ -604,12 +604,12 @@ func (dp *dataPartition) getPartitionSize() (partitionSize uint64, err error) {
 
 	log.LogDebugf("partition=%v partitionSize=%v", dp.partitionId, partitionSize)
 
-	gConnPool.Put(conn, true)
+	gConnPool.PutConnect(conn, true)
 
 	return
 }
 
-// Get all member's applied id
+// GetConnect all member's applied id
 func (dp *dataPartition) getAllAppliedId(setMinAppliedId bool) (allAppliedId []uint64, err error) {
 	var minAppliedId uint64
 	allAppliedId = make([]uint64, len(dp.replicaHosts))
@@ -632,7 +632,7 @@ func (dp *dataPartition) getAllAppliedId(setMinAppliedId bool) (allAppliedId []u
 		}
 
 		target := dp.replicaHosts[i]
-		conn, err = gConnPool.Get(target) //get remote connect
+		conn, err = gConnPool.GetConnect(target) //get remote connect
 		if err != nil {
 			err = errors.Annotatef(err, " partition=%v get host[%v] connect", dp.partitionId, target)
 			return
@@ -640,13 +640,13 @@ func (dp *dataPartition) getAllAppliedId(setMinAppliedId bool) (allAppliedId []u
 
 		err = p.WriteToConn(conn) //write command to remote host
 		if err != nil {
-			gConnPool.Put(conn, true)
+			gConnPool.PutConnect(conn, true)
 			err = errors.Annotatef(err, "partition=%v write to host[%v]", dp.partitionId, target)
 			return
 		}
 		err = p.ReadFromConn(conn, 60) //read it response
 		if err != nil {
-			gConnPool.Put(conn, true)
+			gConnPool.PutConnect(conn, true)
 			err = errors.Annotatef(err, "partition=%v read from host[%v]", dp.partitionId, target)
 			return
 		}
@@ -657,13 +657,13 @@ func (dp *dataPartition) getAllAppliedId(setMinAppliedId bool) (allAppliedId []u
 
 		allAppliedId[i] = remoteAppliedId
 
-		gConnPool.Put(conn, true)
+		gConnPool.PutConnect(conn, true)
 	}
 
 	return
 }
 
-// Get all member's applied id and find the mini one
+// GetConnect all member's applied id and find the mini one
 func (dp *dataPartition) getMinAppliedId() {
 	var (
 		minAppliedId uint64
@@ -708,7 +708,7 @@ func (dp *dataPartition) getMinAppliedId() {
 	return
 }
 
-// Get all member's applied id and find the max one
+// GetConnect all member's applied id and find the max one
 func (dp *dataPartition) getMaxAppliedId() (index int, err error) {
 	var allAppliedId []uint64
 	allAppliedId, err = dp.getAllAppliedId(false)

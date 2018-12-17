@@ -93,7 +93,7 @@ func (p *Packet) unmarshalAddrs() (addrs []string, err error) {
 
 func (p *Packet) forceDestoryAllConnect() {
 	for i := 0; i < len(p.replicateConns); i++ {
-		gConnPool.Put(p.replicateConns[i], ForceCloseConnect)
+		gConnPool.PutConnect(p.replicateConns[i], ForceCloseConnect)
 	}
 }
 
@@ -105,7 +105,7 @@ func (p *Packet) forceDestoryCheckUsedClosedConnect(err error) {
 
 func (p *Packet) PutConnectsToPool() {
 	for i := 0; i < len(p.replicateConns); i++ {
-		gConnPool.Put(p.replicateConns[i], NoCloseConnect)
+		gConnPool.PutConnect(p.replicateConns[i], NoCloseConnect)
 	}
 }
 

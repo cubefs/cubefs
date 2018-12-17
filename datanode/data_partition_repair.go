@@ -185,31 +185,31 @@ func (dp *dataPartition) getRemoteExtentInfo(fixExtentMode uint8, needFixExtents
 		p.Size = uint32(len(p.Data))
 	}
 	var conn *net.TCPConn
-	conn, err = gConnPool.Get(target) //get remote connect
+	conn, err = gConnPool.GetConnect(target) //get remote connect
 	if err != nil {
 		err = errors.Annotatef(err, "getRemoteExtentInfo  dataPartition(%v) get host(%v) connect", dp.partitionId, target)
 		return
 	}
 	err = p.WriteToConn(conn) //write command to remote host
 	if err != nil {
-		gConnPool.Put(conn, true)
+		gConnPool.PutConnect(conn, true)
 		err = errors.Annotatef(err, "getRemoteExtentInfo dataPartition(%v) write to host(%v)", dp.partitionId, target)
 		return
 	}
 	reply := new(Packet)
 	err = reply.ReadFromConn(conn, 60) //read it response
 	if err != nil {
-		gConnPool.Put(conn, true)
+		gConnPool.PutConnect(conn, true)
 		err = errors.Annotatef(err, "getRemoteExtentInfo dataPartition(%v) read from host(%v)", dp.partitionId, target)
 		return
 	}
 	err = json.Unmarshal(reply.Data[:reply.Size], &extentFiles)
 	if err != nil {
-		gConnPool.Put(conn, true)
+		gConnPool.PutConnect(conn, true)
 		err = errors.Annotatef(err, "getRemoteExtentInfo dataPartition(%v) unmarshal json(%v)", dp.partitionId, string(p.Data[:p.Size]))
 		return
 	}
-	gConnPool.Put(conn, true)
+	gConnPool.PutConnect(conn, true)
 	return
 }
 
@@ -360,21 +360,21 @@ func (dp *dataPartition) NotifyExtentRepair(members []*DataPartitionRepairTask) 
 			p := NewNotifyExtentRepair(dp.partitionId) //notify all follower to repairt task,send opnotifyRepair command
 			var conn *net.TCPConn
 			target := dp.replicaHosts[index]
-			conn, err = gConnPool.Get(target)
+			conn, err = gConnPool.GetConnect(target)
 			if err != nil {
 				return
 			}
 			p.Data, err = json.Marshal(members[index])
 			p.Size = uint32(len(p.Data))
 			if err = p.WriteToConn(conn); err != nil {
-				gConnPool.Put(conn, true)
+				gConnPool.PutConnect(conn, true)
 				return
 			}
 			if err = p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
-				gConnPool.Put(conn, true)
+				gConnPool.PutConnect(conn, true)
 				return
 			}
-			gConnPool.Put(conn, true)
+			gConnPool.PutConnect(conn, true)
 		}(i)
 	}
 	wg.Wait()
@@ -398,7 +398,7 @@ func (dp *dataPartition) NotifyRaftFollowerRepair(members *DataPartitionRepairTa
 			p := NewNotifyExtentRepair(dp.partitionId)
 			var conn *net.TCPConn
 			target := dp.replicaHosts[index]
-			conn, err = gConnPool.Get(target)
+			conn, err = gConnPool.GetConnect(target)
 			if err != nil {
 				return
 			}
@@ -406,15 +406,15 @@ func (dp *dataPartition) NotifyRaftFollowerRepair(members *DataPartitionRepairTa
 			p.Size = uint32(len(p.Data))
 			err = p.WriteToConn(conn)
 			if err != nil {
-				gConnPool.Put(conn, true)
+				gConnPool.PutConnect(conn, true)
 				return
 			}
 
 			if err = p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
-				gConnPool.Put(conn, true)
+				gConnPool.PutConnect(conn, true)
 				return
 			}
-			gConnPool.Put(conn, true)
+			gConnPool.PutConnect(conn, true)
 		}(i)
 	}
 	wg.Wait()
@@ -456,25 +456,25 @@ func (dp *dataPartition) streamRepairExtent(remoteExtentInfo *storage.FileInfo) 
 		store.GetWatermark(remoteExtentInfo.FileId, true)
 	}()
 
-	// Get local extent file info
+	// GetConnect local extent file info
 	localExtentInfo, err := store.GetWatermark(remoteExtentInfo.FileId, true)
 	if err != nil {
 		return errors.Annotatef(err, "streamRepairExtent GetWatermark error")
 	}
 
-	// Get need fix size for this extent file
+	// GetConnect need fix size for this extent file
 	needFixSize := remoteExtentInfo.Size - localExtentInfo.Size
 
 	// Create streamRead packet, it offset is local extentInfoSize, size is needFixSize
 	request := NewExtentRepairReadPacket(dp.ID(), remoteExtentInfo.FileId, int(localExtentInfo.Size), int(needFixSize))
 	var conn *net.TCPConn
 
-	// Get a connection to leader host
-	conn, err = gConnPool.Get(remoteExtentInfo.Source)
+	// GetConnect a connection to leader host
+	conn, err = gConnPool.GetConnect(remoteExtentInfo.Source)
 	if err != nil {
 		return errors.Annotatef(err, "streamRepairExtent get conn from host[%v] error", remoteExtentInfo.Source)
 	}
-	defer gConnPool.Put(conn, true)
+	defer gConnPool.PutConnect(conn, true)
 
 	// Write OpStreamRead command to leader
 	if err = request.WriteToConn(conn); err != nil {
