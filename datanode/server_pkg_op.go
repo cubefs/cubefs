@@ -168,8 +168,7 @@ func (s *DataNode) handleCreateDataPartition(pkg *Packet) {
 		err = fmt.Errorf("from master Task[%v] cannot unmash CreateDataPartitionRequest struct", task.ToString())
 		return
 	}
-	if _, err = s.space.CreatePartition(request.VolumeId, uint32(request.PartitionId),
-		request.PartitionSize, request.PartitionType); err != nil {
+	if _, err = s.space.CreatePartition(request); err != nil {
 		err = fmt.Errorf("from master Task[%v] cannot unmash CreateDataPartitionRequest struct", task.ToString())
 		return
 	}
