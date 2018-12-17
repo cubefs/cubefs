@@ -491,7 +491,7 @@ func NewGetAppliedId(partitionId uint32, minAppliedId uint64) (p *Packet) {
 	p.Opcode = proto.OpGetAppliedId
 	p.PartitionID = partitionId
 	p.Magic = proto.ProtoMagic
-	p.ReqID = proto.GetReqID()
+	p.ReqID = proto.generatorRequestID()
 	p.Data = make([]byte, 8)
 	binary.BigEndian.PutUint64(p.Data, minAppliedId)
 	p.Size = uint32(len(p.Data))
@@ -503,7 +503,7 @@ func NewGetPartitionSize(partitionId uint32) (p *Packet) {
 	p.Opcode = proto.OpGetPartitionSize
 	p.PartitionID = partitionId
 	p.Magic = proto.ProtoMagic
-	p.ReqID = proto.GetReqID()
+	p.ReqID = proto.generatorRequestID()
 	return
 }
 

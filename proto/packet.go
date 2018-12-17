@@ -29,12 +29,12 @@ import (
 )
 
 var (
-	ReqIDGlobal = int64(1)
-	Buffers     = buf.NewBufferPool()
+	GRequestID = int64(1)
+	Buffers    = buf.NewBufferPool()
 )
 
-func GetReqID() int64 {
-	return atomic.AddInt64(&ReqIDGlobal, 1)
+func GeneratorRequestID() int64 {
+	return atomic.AddInt64(&GRequestID, 1)
 }
 
 const (
