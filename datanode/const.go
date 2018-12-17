@@ -69,10 +69,8 @@ const (
 )
 
 const (
-	LogStats                      = "Stats:"
-	ActionCreateFile              = "CRF:"
-	ActionMarkDel                 = "MDEL:"
-	LogGetWm                      = "WM:"
+	ActionCreateExtent            = "ActionCreateExtent:"
+	ActionMarkDel                 = "ActionMarkDel:"
 	ActionGetAllExtentWaterMarker = "ActionGetAllExtentWaterMarker:"
 	ActionWrite                   = "ActionWrite:"
 	ActionRead                    = "ActionRead:"

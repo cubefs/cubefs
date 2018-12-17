@@ -147,8 +147,6 @@ func (processor *PacketProcessor) CleanResource(s *DataNode) {
 	processor.listMux.Unlock()
 }
 
-
-
 /*delete source packet*/
 func (processor *PacketProcessor) DelPacketFromList(reply *Packet) (success bool) {
 	processor.listMux.Lock()

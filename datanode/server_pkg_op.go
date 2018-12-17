@@ -111,7 +111,7 @@ func (s *DataNode) handleCreateFile(pkg *Packet) {
 	defer func() {
 		if err != nil {
 			err = errors.Annotatef(err, "Request(%v) CreateFile Error", pkg.GetUniqueLogId())
-			pkg.PackErrorBody(ActionCreateFile, err.Error())
+			pkg.PackErrorBody(ActionCreateExtent, err.Error())
 		} else {
 			pkg.PackOkReply()
 		}
@@ -141,7 +141,7 @@ func (s *DataNode) handleCreateDataPartition(pkg *Packet) {
 	defer func() {
 		if err != nil {
 			err = errors.Annotatef(err, "Request(%v) CreateDataPartition Error", pkg.GetUniqueLogId())
-			pkg.PackErrorBody(ActionCreateFile, err.Error())
+			pkg.PackErrorBody(ActionCreateExtent, err.Error())
 		} else {
 			pkg.PackOkReply()
 		}

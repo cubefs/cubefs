@@ -15,13 +15,13 @@
 package datanode
 
 import (
-	"fmt"
-	"path"
-	"os"
-	"io/ioutil"
-	"net"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"net"
+	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -29,10 +29,10 @@ import (
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
+	"github.com/tiglabs/containerfs/storage"
+	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
-	"github.com/tiglabs/containerfs/util/config"
-	"github.com/tiglabs/containerfs/storage"
 )
 
 type dataPartitionCfg struct {
