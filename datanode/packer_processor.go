@@ -147,10 +147,7 @@ func (processor *PacketProcessor) CleanResource(s *DataNode) {
 	processor.listMux.Unlock()
 }
 
-/*check the connect is used for closeFile*/
-func (processor *PacketProcessor) isUsedCloseFiles(conn *net.TCPConn, target string, err error) {
-	gConnPool.CheckErrorForPutConnect(conn, target, err)
-}
+
 
 /*delete source packet*/
 func (processor *PacketProcessor) DelPacketFromList(reply *Packet) (success bool) {
