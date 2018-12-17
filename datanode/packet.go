@@ -153,7 +153,7 @@ func NewGetAllWaterMarker(partitionId uint32, extentType uint8) (p *Packet) {
 	p.Opcode = proto.OpGetAllWaterMark
 	p.PartitionID = partitionId
 	p.Magic = proto.ProtoMagic
-	p.ReqID = proto.GetReqID()
+	p.ReqID = proto.GeneratorRequestID()
 	p.StoreMode = extentType
 
 	return
@@ -168,7 +168,7 @@ func NewExtentRepairReadPacket(partitionId uint32, extentId uint64, offset, size
 	p.Size = uint32(size)
 	p.Opcode = proto.OpExtentRepairRead
 	p.StoreMode = proto.NormalExtentMode
-	p.ReqID = proto.GetReqID()
+	p.ReqID = proto.GeneratorRequestID()
 
 	return
 }
@@ -191,7 +191,7 @@ func NewNotifyExtentRepair(partitionId uint32) (p *Packet) {
 	p.PartitionID = partitionId
 	p.Magic = proto.ProtoMagic
 	p.StoreMode = proto.NormalExtentMode
-	p.ReqID = proto.GetReqID()
+	p.ReqID = proto.GeneratorRequestID()
 
 	return
 }
