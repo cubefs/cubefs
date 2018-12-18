@@ -104,13 +104,12 @@ func main() {
 		return
 	}
 	log.LogInfof("Hello, Cfs Storage, Current Version: %s", Version)
-	exec_shell("ulimit -n 1024000")
+	exec_shell("ulimit -n 10240000")
 	cfg := config.LoadConfigFile(*configFile)
 	role := cfg.GetString(ConfigKeyRole)
 	logDir := cfg.GetString(ConfigKeyLogDir)
 	logLevel := cfg.GetString(ConfigKeyLogLevel)
 	profPort := cfg.GetString(ConfigKeyProfPort)
-	exec.Command("ulimit -n 10240000")
 
 	//for multi-cpu scheduling
 	runtime.GOMAXPROCS(runtime.NumCPU())
