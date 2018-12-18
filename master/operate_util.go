@@ -22,9 +22,8 @@ import (
 	"github.com/tiglabs/containerfs/util/ump"
 )
 
-func newCreateDataPartitionRequest(partitionType, volName string, ID uint64, randomWrite bool, members []proto.Peer, dataPartitionSize int) (req *proto.CreateDataPartitionRequest) {
+func newCreateDataPartitionRequest(volName string, ID uint64, randomWrite bool, members []proto.Peer, dataPartitionSize int) (req *proto.CreateDataPartitionRequest) {
 	req = &proto.CreateDataPartitionRequest{
-		PartitionType: partitionType,
 		PartitionId:   ID,
 		PartitionSize: dataPartitionSize,
 		VolumeId:      volName,
@@ -50,10 +49,9 @@ func newOfflineDataPartitionRequest(ID uint64, removePeer, addPeer proto.Peer) (
 	return
 }
 
-func newLoadDataPartitionMetricRequest(partitionType string, ID uint64) (req *proto.LoadDataPartitionRequest) {
+func newLoadDataPartitionMetricRequest(ID uint64) (req *proto.LoadDataPartitionRequest) {
 	req = &proto.LoadDataPartitionRequest{
-		PartitionType: partitionType,
-		PartitionId:   ID,
+		PartitionId: ID,
 	}
 	return
 }

@@ -31,13 +31,12 @@ type VolStatInfo struct {
 }
 
 type DataPartitionResponse struct {
-	PartitionID   uint64
-	Status        int8
-	ReplicaNum    uint8
-	PartitionType string
-	Hosts         []string
-	RandomWrite   bool
-	LeaderAddr    string
+	PartitionID uint64
+	Status      int8
+	ReplicaNum  uint8
+	Hosts       []string
+	RandomWrite bool
+	LeaderAddr  string
 }
 
 type DataPartitionsView struct {

@@ -32,7 +32,6 @@ type DataPartition struct {
 	Status           int8
 	isRecover        bool
 	Replicas         []*DataReplica
-	PartitionType    string
 	PersistenceHosts []string
 	Peers            []proto.Peer
 	sync.RWMutex
@@ -84,7 +83,7 @@ func (partition *DataPartition) GenerateCreateTasks(dataPartitionSize uint64) (t
 
 func (partition *DataPartition) generateCreateTask(addr string, dataPartitionSize uint64) (task *proto.AdminTask) {
 
-	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(partition.PartitionType,
+	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
 		partition.VolName, partition.PartitionID, partition.RandomWrite, partition.Peers, int(dataPartitionSize)))
 	partition.resetTaskID(task)
 	return
@@ -227,7 +226,7 @@ func (partition *DataPartition) generateLoadTasks() (tasks []*proto.AdminTask) {
 }
 
 func (partition *DataPartition) generateLoadTask(addr string) (task *proto.AdminTask) {
-	task = proto.NewAdminTask(proto.OpLoadDataPartition, addr, newLoadDataPartitionMetricRequest(partition.PartitionType, partition.PartitionID))
+	task = proto.NewAdminTask(proto.OpLoadDataPartition, addr, newLoadDataPartitionMetricRequest(partition.PartitionID))
 	partition.resetTaskID(task)
 	return
 }
@@ -251,7 +250,6 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *DataParti
 	dpr.PartitionID = partition.PartitionID
 	dpr.Status = partition.Status
 	dpr.ReplicaNum = partition.ReplicaNum
-	dpr.PartitionType = partition.PartitionType
 	dpr.Hosts = make([]string, len(partition.PersistenceHosts))
 	copy(dpr.Hosts, partition.PersistenceHosts)
 	dpr.RandomWrite = partition.RandomWrite

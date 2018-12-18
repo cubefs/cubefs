@@ -66,28 +66,26 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *MetaPartitionValue) {
 }
 
 type DataPartitionValue struct {
-	PartitionID   uint64
-	ReplicaNum    uint8
-	Hosts         string
-	Peers         []bsProto.Peer
-	PartitionType string
-	RandomWrite   bool
-	Status        int8
-	VolID         uint64
-	VolName       string
+	PartitionID uint64
+	ReplicaNum  uint8
+	Hosts       string
+	Peers       []bsProto.Peer
+	RandomWrite bool
+	Status      int8
+	VolID       uint64
+	VolName     string
 }
 
 func newDataPartitionValue(dp *DataPartition) (dpv *DataPartitionValue) {
 	dpv = &DataPartitionValue{
-		PartitionID:   dp.PartitionID,
-		ReplicaNum:    dp.ReplicaNum,
-		Hosts:         dp.HostsToString(),
-		Peers:         dp.Peers,
-		PartitionType: dp.PartitionType,
-		RandomWrite:   dp.RandomWrite,
-		Status:        dp.Status,
-		VolID:         dp.VolID,
-		VolName:       dp.VolName,
+		PartitionID: dp.PartitionID,
+		ReplicaNum:  dp.ReplicaNum,
+		Hosts:       dp.HostsToString(),
+		Peers:       dp.Peers,
+		RandomWrite: dp.RandomWrite,
+		Status:      dp.Status,
+		VolID:       dp.VolID,
+		VolName:     dp.VolName,
 	}
 	return
 }
