@@ -550,13 +550,11 @@ func (partition *DataPartition) isReplicaSizeAlign() bool {
 	used := partition.Replicas[0].Used
 	var minus float64
 	for _, replica := range partition.Replicas {
-		log.LogInfof("action[isReplicaSizeAlign] pid[%v] host[%v] used[%v]", partition.PartitionID, replica.dataNode.Addr, replica.Used)
 		if math.Abs(float64(replica.Used)-float64(used)) > minus {
 			minus = math.Abs(float64(replica.Used) - float64(used))
 		}
 	}
-	log.LogInfof("action[isReplicaSizeAlign] pid[%v] minus[%v]", partition.PartitionID, minus)
-	if minus < util.GB {
+	if minus < float64(util.GB) {
 		return true
 	}
 	return false
