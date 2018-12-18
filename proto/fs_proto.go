@@ -44,6 +44,10 @@ func IsSymlink(mode uint32) bool {
 	return OsMode(mode)&os.ModeSymlink != 0
 }
 
+func IsWriteFlag(flag uint32) bool {
+	return flag&FlagWrite != 0
+}
+
 type InodeInfo struct {
 	Inode      uint64    `json:"ino"`
 	Mode       uint32    `json:"mode"`
@@ -146,6 +150,18 @@ type OpenRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+	Flag        uint64 `json:"flag"`
+}
+
+type OpenResponse struct {
+	AuthID uint64 `json:"authid"`
+}
+
+type ReleaseRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+	AuthID      uint64 `json:"authid"`
 }
 
 type LookupRequest struct {
@@ -194,6 +210,7 @@ type AppendExtentKeyRequest struct {
 	VolName     string    `json:"vol"`
 	PartitionID uint64    `json:"pid"`
 	Inode       uint64    `json:"ino"`
+	AuthID      uint64    `json:"authid"`
 	Extent      ExtentKey `json:"ek"`
 }
 
@@ -230,4 +247,8 @@ const (
 	AttrMode uint32 = 1 << iota
 	AttrUid
 	AttrGid
+)
+
+const (
+	FlagWrite uint32 = 1 << iota
 )
