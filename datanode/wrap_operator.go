@@ -137,7 +137,8 @@ func (s *DataNode) handleCreateExtent(pkg *repl.Packet) {
 // Handle OpCreateDataPartition packet.
 func (s *DataNode) handleCreateDataPartition(pkg *repl.Packet) {
 	var (
-		err error
+		err   error
+		bytes []byte
 	)
 	defer func() {
 		if err != nil {
@@ -157,7 +158,7 @@ func (s *DataNode) handleCreateDataPartition(pkg *repl.Packet) {
 		return
 	}
 
-	bytes, err := json.Marshal(task.Request)
+	bytes, err = json.Marshal(task.Request)
 	if err != nil {
 		err = fmt.Errorf("from master Task[%v] cannot unmashal CreateDataPartition", task.ToString())
 		return
@@ -176,11 +177,22 @@ func (s *DataNode) handleCreateDataPartition(pkg *repl.Packet) {
 
 // Handle OpHeartbeat packet.
 func (s *DataNode) handleHeartbeats(pkg *repl.Packet) {
-	var err error
+	var (
+		data []byte
+		err  error
+	)
 	task := &proto.AdminTask{}
-	json.Unmarshal(pkg.Data, task)
-	pkg.PackOkReply()
-
+	err = json.Unmarshal(pkg.Data, task)
+	defer func() {
+		if err != nil {
+			pkg.PackErrorBody(ActionCreateDataPartition, err.Error())
+		} else {
+			pkg.PackOkReply()
+		}
+	}()
+	if err != nil {
+		return
+	}
 	request := &proto.HeartBeatRequest{}
 	response := &proto.DataNodeHeartBeatResponse{}
 
@@ -193,38 +205,43 @@ func (s *DataNode) handleHeartbeats(pkg *repl.Packet) {
 		MasterHelper.AddNode(request.MasterAddr)
 	} else {
 		response.Status = proto.TaskFail
-		response.Result = "illegal opcode"
+		err = fmt.Errorf("illegal opcode")
+		response.Result = err.Error()
 	}
 	task.Response = response
-	data, err := json.Marshal(task)
-	if err != nil {
-		log.LogErrorf("action[heartbeat] err(%v).", err)
+	if data, err = json.Marshal(task); err != nil {
 		return
 	}
 	_, err = MasterHelper.Request("POST", master.DataNodeResponse, nil, data)
 	if err != nil {
 		err = errors.Annotatef(err, "heartbeat to master(%v) failed.", request.MasterAddr)
-		log.LogErrorf("action[handleHeartbeats] err(%v).", err)
-		log.LogErrorf(errors.ErrorStack(err))
 		return
 	}
-	log.LogDebugf("action[handleHeartbeats] report data len(%v) to master success.", len(data))
 }
 
 // Handle OpDeleteDataPartition packet.
 func (s *DataNode) handleDeleteDataPartition(pkg *repl.Packet) {
 	task := &proto.AdminTask{}
-	json.Unmarshal(pkg.Data, task)
+	err := json.Unmarshal(pkg.Data, task)
+	defer func() {
+		if err != nil {
+			pkg.PackErrorBody(ActionCreateDataPartition, err.Error())
+		} else {
+			pkg.PackOkReply()
+		}
+	}()
+	if err != nil {
+		return
+	}
 	request := &proto.DeleteDataPartitionRequest{}
 	response := &proto.DeleteDataPartitionResponse{}
 	if task.OpCode == proto.OpDeleteDataPartition {
 		bytes, _ := json.Marshal(task.Request)
-		err := json.Unmarshal(bytes, request)
+		err = json.Unmarshal(bytes, request)
 		if err != nil {
 			response.PartitionId = uint64(request.PartitionId)
 			response.Status = proto.TaskFail
 			response.Result = err.Error()
-			log.LogErrorf("action[handleDeleteDataPartition] from master Task(%v) failed, err(%v)", task.ToString(), err)
 		} else {
 			s.space.DeletePartition(request.PartitionId)
 			response.PartitionId = uint64(request.PartitionId)
@@ -234,11 +251,11 @@ func (s *DataNode) handleDeleteDataPartition(pkg *repl.Packet) {
 		response.PartitionId = uint64(request.PartitionId)
 		response.Status = proto.TaskFail
 		response.Result = "illegal opcode "
-		log.LogErrorf("action[handleDeleteDataPartition] from master Task(%v) failed, err(%v).", task.ToString(), response.Result)
+		err = fmt.Errorf("illegal opcode ")
 	}
 	task.Response = response
 	data, _ := json.Marshal(task)
-	_, err := MasterHelper.Request("POST", master.DataNodeResponse, nil, data)
+	_, err = MasterHelper.Request("POST", master.DataNodeResponse, nil, data)
 	if err != nil {
 		err = errors.Annotatef(err, "delete dataPartition failed,partitionId(%v)", request.PartitionId)
 		log.LogErrorf("action[handleDeleteDataPartition] err(%v).", err)
@@ -250,7 +267,17 @@ func (s *DataNode) handleDeleteDataPartition(pkg *repl.Packet) {
 // Handle OpLoadDataPartition packet.
 func (s *DataNode) handleLoadDataPartition(pkg *repl.Packet) {
 	task := &proto.AdminTask{}
-	json.Unmarshal(pkg.Data, task)
+	err := json.Unmarshal(pkg.Data, task)
+	defer func() {
+		if err != nil {
+			pkg.PackErrorBody(ActionWrite, err.Error())
+		} else {
+			pkg.PackOkReply()
+		}
+	}()
+	if err != nil {
+		return
+	}
 	request := &proto.LoadDataPartitionRequest{}
 	response := &proto.LoadDataPartitionResponse{}
 	if task.OpCode == proto.OpLoadDataPartition {
@@ -260,8 +287,8 @@ func (s *DataNode) handleLoadDataPartition(pkg *repl.Packet) {
 		if dp == nil {
 			response.Status = proto.TaskFail
 			response.PartitionId = uint64(request.PartitionId)
-			response.Result = fmt.Sprintf("dataPartition(%v) not found", request.PartitionId)
-			log.LogErrorf("from master Task(%v) failed,error(%v)", task.ToString(), response.Result)
+			err = fmt.Errorf(fmt.Sprintf("dataPartition(%v) not found", request.PartitionId))
+			response.Result = err.Error()
 		} else {
 			response = dp.(*dataPartition).Load()
 			response.PartitionId = uint64(request.PartitionId)
@@ -270,8 +297,8 @@ func (s *DataNode) handleLoadDataPartition(pkg *repl.Packet) {
 	} else {
 		response.PartitionId = uint64(request.PartitionId)
 		response.Status = proto.TaskFail
-		response.Result = "illegal opcode "
-		log.LogErrorf("from master Task(%v) failed,error(%v)", task.ToString(), response.Result)
+		err = fmt.Errorf("illegal opcode")
+		response.Result = err.Error()
 	}
 	task.Response = response
 	data, err := json.Marshal(task)
@@ -279,7 +306,7 @@ func (s *DataNode) handleLoadDataPartition(pkg *repl.Packet) {
 		response.PartitionId = uint64(request.PartitionId)
 		response.Status = proto.TaskFail
 		response.Result = err.Error()
-		log.LogErrorf("from master Task[%v] failed,error[%v]", task.ToString(), response.Result)
+		err = fmt.Errorf("from master Task(%v) failed,error(%v)", task.ToString(), response.Result)
 	}
 	_, err = MasterHelper.Request("POST", master.DataNodeResponse, nil, data)
 	if err != nil {

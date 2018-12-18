@@ -14,7 +14,7 @@ func (s *DataNode) Prepare(pkg *repl.Packet) (err error) {
 			pkg.PackErrorBody(repl.ActionPreparePkg, err.Error())
 		}
 	}()
-	if pkg.IsMasterCommand(){
+	if pkg.IsMasterCommand() {
 		return
 	}
 	err = s.checkStoreMode(pkg)

@@ -25,7 +25,7 @@ func (s *DataNode) Post(pkg *repl.Packet) error {
 
 // The head node release tinyExtent to store
 func (s *DataNode) cleanupPkg(pkg *repl.Packet) {
-	if pkg.IsMasterCommand(){
+	if pkg.IsMasterCommand() {
 		return
 	}
 	if !isLeaderPacket(pkg) {
@@ -44,7 +44,7 @@ func (s *DataNode) releaseExtent(pkg *repl.Packet) {
 	if pkg.StoreMode != proto.TinyExtentMode || !isLeaderPacket(pkg) || !isWriteOperation(pkg) || !pkg.IsForwardPkg() {
 		return
 	}
-	if pkg.Object==nil {
+	if pkg.Object == nil {
 		return
 	}
 	partition := pkg.Object.(DataPartition)
@@ -58,12 +58,12 @@ func (s *DataNode) releaseExtent(pkg *repl.Packet) {
 }
 
 func (s *DataNode) addMetrics(reply *repl.Packet) {
-	if reply.IsMasterCommand(){
+	if reply.IsMasterCommand() {
 		return
 	}
 	reply.AfterTp()
 	latency := time.Since(reply.TpObject.StartTime)
-	if reply.Object==nil {
+	if reply.Object == nil {
 		return
 	}
 	partition := reply.Object.(DataPartition)

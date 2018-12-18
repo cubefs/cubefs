@@ -17,8 +17,8 @@ package util
 import "regexp"
 
 const (
-	_                        = iota
-	KB                       = 1 << (10 * iota)
+	_  = iota
+	KB = 1 << (10 * iota)
 	MB
 	GB
 	TB
