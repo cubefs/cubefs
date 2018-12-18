@@ -39,7 +39,7 @@ import (
 type dataPartitionCfg struct {
 	VolName       string              `json:"vol_name"`
 	ClusterId     string              `json:"cluster_id"`
-	PartitionId   uint32              `json:"partition_id"`
+	PartitionId   uint64              `json:"partition_id"`
 	PartitionSize int                 `json:"partition_size"`
 	Peers         []proto.Peer        `json:"peers"`
 	RandomWrite   bool                `json:"random_write"`

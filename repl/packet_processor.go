@@ -51,6 +51,7 @@ type PacketProcessor struct {
 	packetList *list.List    //store all recived pkg from client
 	handleCh   chan struct{} //if sendto all replicates success,then send a sigle to this chan
 	//the receiveFollowerResponse goroutine can recive response from allreplicates
+
 	toBeProcessCh chan *Packet // the recive pkg goroutine recive a avali pkg,then send to this chan
 	responseCh    chan *Packet //this chan used to write client
 
@@ -65,7 +66,6 @@ type PacketProcessor struct {
 	prepareFunc  func(pkg *Packet) error
 	operatorFunc func(pkg *Packet, c *net.TCPConn) error
 	postFunc     func(pkg *Packet) error
-
 }
 
 func NewPacketProcessor(inConn *net.TCPConn, prepareFunc func(pkg *Packet) error,

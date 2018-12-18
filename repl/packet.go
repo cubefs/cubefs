@@ -46,8 +46,14 @@ func (p *Packet) BeforeTp(clusterId string) (ok bool) {
 }
 
 func (p *Packet) resolveReplicateAddrs() (err error) {
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionPreparePkg, err.Error())
+		}
+	}()
 	if len(p.Arg) < int(p.Arglen) {
-		return ErrArgLenMismatch
+		err = ErrArgLenMismatch
+		return
 	}
 	str := string(p.Arg[:int(p.Arglen)])
 	replicateAddrs := strings.SplitN(str, proto.AddrSplit, -1)
