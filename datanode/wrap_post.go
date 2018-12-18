@@ -25,6 +25,9 @@ func (s *DataNode) Post(pkg *repl.Packet) error {
 
 // The head node release tinyExtent to store
 func (s *DataNode) cleanupPkg(pkg *repl.Packet) {
+	if pkg.IsMasterCommand(){
+		return
+	}
 	if !isLeaderPacket(pkg) {
 		return
 	}
@@ -55,6 +58,9 @@ func (s *DataNode) releaseExtent(pkg *repl.Packet) {
 }
 
 func (s *DataNode) addMetrics(reply *repl.Packet) {
+	if reply.IsMasterCommand(){
+		return
+	}
 	reply.AfterTp()
 	latency := time.Since(reply.TpObject.StartTime)
 	if reply.Object==nil {
