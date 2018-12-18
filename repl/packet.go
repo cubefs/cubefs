@@ -1,32 +1,18 @@
-// Copyright 2018 The Containerfs Authors.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-// implied. See the License for the specific language governing
-// permissions and limitations under the License.
-
-package datanode
+package repl
 
 import (
-	"errors"
 	"fmt"
+	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/datanode"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/storage"
+	"github.com/tiglabs/containerfs/util"
+	"github.com/tiglabs/containerfs/util/ump"
 	"hash/crc32"
 	"io"
 	"net"
 	"strings"
 	"time"
-
-	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/storage"
-	"github.com/tiglabs/containerfs/util"
-	"github.com/tiglabs/containerfs/util/ump"
 )
 
 var (
@@ -35,18 +21,14 @@ var (
 	ErrAddrsNodesMismatch = errors.New("AddrsNodesMismatchErr")
 )
 
-const (
-	HasReturnToStore = 1
-)
-
 type Packet struct {
 	proto.Packet
-	replicateConns            []*net.TCPConn
-	replicateAddrs            []string
-	isRelaseTinyExtentToStore int32
-	partition                 DataPartition
-	replicateNum              uint8
-	tpObject                  *ump.TpObject
+	followersConns []*net.TCPConn
+	followersAddrs []string
+	isRelase       int32
+	partition      datanode.DataPartition
+	followerNum    uint8
+	tpObject       *ump.TpObject
 }
 
 func (p *Packet) afterTp() (ok bool) {
@@ -65,28 +47,41 @@ func (p *Packet) beforeTp(clusterId string) (ok bool) {
 	return
 }
 
-const (
-	ForceCloseConnect = true
-	NoCloseConnect    = false
-)
+func (p *Packet) resolveReplicateAddrs() (err error) {
+	if len(p.Arg) < int(p.Arglen) {
+		return ErrArgLenMismatch
+	}
+	str := string(p.Arg[:int(p.Arglen)])
+	replicateAddrs := strings.SplitN(str, proto.AddrSplit, -1)
+	p.followerNum = uint8(len(replicateAddrs) - 1)
+	p.followersAddrs = make([]string, p.followerNum)
+	p.followersConns = make([]*net.TCPConn, p.followerNum)
+	if p.followerNum > 0 {
+		p.followersAddrs = replicateAddrs[:int(p.followerNum)]
+	}
+	if p.RemainReplicates < 0 {
+		err = ErrBadNodes
+		return
+	}
 
-
+	return
+}
 
 func (p *Packet) forceDestoryAllConnect() {
-	for i := 0; i < len(p.replicateConns); i++ {
-		gConnPool.PutConnect(p.replicateConns[i], ForceCloseConnect)
+	for i := 0; i < len(p.followersConns); i++ {
+		gConnPool.PutConnect(p.followersConns[i], ForceCloseConnect)
 	}
 }
 
 func (p *Packet) forceDestoryCheckUsedClosedConnect(err error) {
-	for i := 0; i < len(p.replicateConns); i++ {
-		gConnPool.CheckErrorForceClose(p.replicateConns[i], p.replicateAddrs[i], err)
+	for i := 0; i < len(p.followersConns); i++ {
+		gConnPool.CheckErrorForceClose(p.followersConns[i], p.followersAddrs[i], err)
 	}
 }
 
 func (p *Packet) PutConnectsToPool() {
-	for i := 0; i < len(p.replicateConns); i++ {
-		gConnPool.PutConnect(p.replicateConns[i], NoCloseConnect)
+	for i := 0; i < len(p.followersConns); i++ {
+		gConnPool.PutConnect(p.followersConns[i], NoCloseConnect)
 	}
 }
 
@@ -116,10 +111,6 @@ func (p *Packet) isForwardPacket() bool {
 }
 
 func (p *Packet) checkCrc() (err error) {
-	if !p.isWriteOperation() {
-		return
-	}
-
 	crc := crc32.ChecksumIEEE(p.Data[:p.Size])
 	if crc == p.CRC {
 		return
@@ -192,7 +183,7 @@ func (p *Packet) isReadOperation() bool {
 }
 
 func (p *Packet) isLeaderPacket() (ok bool) {
-	if p.replicateNum == p.RemainReplicates && (p.isWriteOperation() || p.isCreateExtentOperation() || p.isMarkDeleteExtentOperation()) {
+	if p.followerNum == p.RemainReplicates && (p.isWriteOperation() || p.isCreateExtentOperation() || p.isMarkDeleteExtentOperation()) {
 		ok = true
 	}
 
@@ -207,44 +198,12 @@ func (p *Packet) getErrMessage() (m string) {
 	return fmt.Sprintf("req(%v) err(%v)", p.GetUniqueLogId(), string(p.Data[:p.Size]))
 }
 
-func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
-	if strings.Contains(errLog, ActionReceiveFromNext) || strings.Contains(errLog, ActionSendToNext) ||
+func (p *Packet) decideNetworkResultCode(errLog string, errMsg string) {
+	if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
 		strings.Contains(errLog, ConnIsNullErr) || strings.Contains(errLog, ActionCheckAndAddInfos) {
 		p.ResultCode = proto.OpIntraGroupNetErr
 		return
 	}
-
-	if strings.Contains(errMsg, storage.ErrorParamMismatch.Error()) ||
-		strings.Contains(errMsg, ErrorUnknownOp.Error()) {
-		p.ResultCode = proto.OpArgMismatchErr
-	} else if strings.Contains(errMsg, storage.ErrorExtentNotFound.Error()) ||
-		strings.Contains(errMsg, storage.ErrorExtentHasDelete.Error()) {
-		p.ResultCode = proto.OpNotExistErr
-	} else if strings.Contains(errMsg, storage.ErrSyscallNoSpace.Error()) {
-		p.ResultCode = proto.OpDiskNoSpaceErr
-	} else if strings.Contains(errMsg, storage.ErrorAgain.Error()) {
-		p.ResultCode = proto.OpAgain
-	} else if strings.Contains(errMsg, storage.ErrNotLeader.Error()) {
-		p.ResultCode = proto.OpNotLeaderErr
-	} else if strings.Contains(errMsg, storage.ErrorExtentNotFound.Error()) {
-		if p.Opcode != proto.OpWrite {
-			p.ResultCode = proto.OpNotExistErr
-		} else {
-			p.ResultCode = proto.OpIntraGroupNetErr
-		}
-	} else {
-		p.ResultCode = proto.OpIntraGroupNetErr
-	}
-}
-
-func (p *Packet) PackErrorBody(action, msg string) {
-	p.identificationErrorResultCode(action, msg)
-	if p.ResultCode == proto.OpDiskNoSpaceErr || p.ResultCode == proto.OpDiskErr {
-		p.ResultCode = proto.OpIntraGroupNetErr
-	}
-	p.Size = uint32(len([]byte(action + "_" + msg)))
-	p.Data = make([]byte, p.Size)
-	copy(p.Data[:int(p.Size)], []byte(action+"_"+msg))
 }
 
 func (p *Packet) ReadFull(c net.Conn, readSize int) (err error) {
@@ -288,3 +247,5 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (er
 	}
 	return p.ReadFull(c, int(size))
 }
+
+

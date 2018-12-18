@@ -348,12 +348,6 @@ func (s *DataNode) sendToAllReplicates(pkg *Packet, packetProcessor *PacketProce
 	return
 }
 
-func (s *DataNode) checkStoreMode(p *Packet) (err error) {
-	if p.StoreMode == proto.TinyExtentMode || p.StoreMode == proto.NormalExtentMode {
-		return nil
-	}
-	return ErrStoreTypeMismatch
-}
 
 func (s *DataNode) checkPacket(pkg *Packet) error {
 	var err error
