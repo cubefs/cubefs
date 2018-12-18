@@ -1018,7 +1018,9 @@ func parseCreateMetaPartitionPara(r *http.Request) (volName string, start uint64
 
 func (m *Master) sendOkReply(w http.ResponseWriter, r *http.Request, msg string) {
 	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
-	io.WriteString(w, msg)
+	w.Header().Set("content-type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(msg)))
+	w.Write([]byte(msg))
 }
 
 func (m *Master) sendErrReply(w http.ResponseWriter, r *http.Request, httpCode int, msg string, err error) {
