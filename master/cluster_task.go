@@ -170,7 +170,7 @@ func (c *Cluster) processLoadDataPartition(dp *DataPartition) {
 	c.putDataNodeTasks(loadTasks)
 	for i := 0; i < LoadDataPartitionWaitTime; i++ {
 		if dp.checkLoadResponse(c.cfg.DataPartitionTimeOutSec) {
-			log.LogWarnf("action[%v] trigger all replication,partitionID:%v ", "loadDataPartitionAndCheckResponse", dp.PartitionID)
+			log.LogWarnf("action[checkLoadResponse]  all replica has responded,partitionID:%v ", dp.PartitionID)
 			break
 		}
 		time.Sleep(time.Second)
