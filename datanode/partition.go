@@ -354,6 +354,7 @@ func (dp *dataPartition) ChangeStatus(status int) {
 
 func (dp *dataPartition) ForceLoadHeader() {
 	dp.extentStore.BackEndLoadExtent()
+	dp.loadExtentHeaderStatus=FinishLoadDataPartitionExtentHeader
 }
 
 func (dp *dataPartition) StoreMeta() (err error) {
