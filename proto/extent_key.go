@@ -24,7 +24,7 @@ import (
 )
 
 var (
-	ExtentLength = 36
+	ExtentLength = 40
 	InvalidKey   = errors.New("invalid key error")
 )
 
