@@ -150,7 +150,8 @@ type OpenRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
-	Flag        uint64 `json:"flag"`
+	Flag        uint32 `json:"flag"`
+	ATime       int64  `json:"atime"`
 }
 
 type OpenResponse struct {
@@ -230,6 +231,7 @@ type TruncateRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+	AuthID      uint64 `json:"authid"`
 	Size        uint64 `json:"sz"`
 }
 

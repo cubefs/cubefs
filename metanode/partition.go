@@ -110,6 +110,7 @@ type OpInode interface {
 	InodeGet(req *InodeGetReq, p *Packet) (err error)
 	InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error)
 	Open(req *OpenReq, p *Packet) (err error)
+	ReleaseOpen(req *ReleaseReq, p *Packet) (err error)
 	CreateLinkInode(req *LinkInodeReq, p *Packet) (err error)
 	EvictInode(req *EvictInodeReq, p *Packet) (err error)
 	SetAttr(reqData []byte, p *Packet) (err error)

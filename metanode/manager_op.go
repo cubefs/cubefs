@@ -337,6 +337,28 @@ func (m *metaManager) opOpen(conn net.Conn, p *Packet) (err error) {
 	return
 }
 
+func (m *metaManager) opReleaseOpen(conn net.Conn, p *Packet) (err error) {
+	req := &ReleaseReq{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PackErrorWithBody(proto.OpErr, nil)
+		m.respondToClient(conn, p)
+		return
+	}
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PackErrorWithBody(proto.OpNotExistErr, nil)
+		m.respondToClient(conn, p)
+		return
+	}
+	if ok := m.serveProxy(conn, mp, p); !ok {
+		return
+	}
+	err = mp.ReleaseOpen(req, p)
+	m.respondToClient(conn, p)
+	log.LogDebugf("[opClose] ")
+	return
+}
+
 func (m *metaManager) opMetaInodeGet(conn net.Conn, p *Packet) (err error) {
 	req := &InodeGetReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {

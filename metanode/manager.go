@@ -90,6 +90,8 @@ func (m *metaManager) HandleMetaOperation(conn net.Conn, p *Packet) (err error) 
 		err = m.opReadDir(conn, p)
 	case proto.OpMetaOpen:
 		err = m.opOpen(conn, p)
+	case proto.OpMetaReleaseOpen:
+		err = m.opReleaseOpen(conn, p)
 	case proto.OpCreateMetaPartition:
 		err = m.opCreateMetaPartition(conn, p)
 	case proto.OpMetaNodeHeartbeat:

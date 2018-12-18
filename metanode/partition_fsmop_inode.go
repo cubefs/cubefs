@@ -24,12 +24,11 @@ import (
 type ResponseInode struct {
 	Status uint8
 	Msg    *Inode
+	AuthID uint64
 }
 
 func NewResponseInode() *ResponseInode {
-	return &ResponseInode{
-		Msg: NewInode(0, 0),
-	}
+	return &ResponseInode{}
 }
 
 // CreateInode create inode to inode tree.
@@ -171,6 +170,10 @@ func (mp *metaPartition) appendExtents(ino *Inode) (status uint8) {
 		status = proto.OpNotExistErr
 		return
 	}
+	if !ino2.CanWrite(ino.AuthID, ino.AccessTime) {
+		status = proto.OpNotPerm
+		return
+	}
 	var items []BtreeItem
 	ino.Extents.Range(func(item BtreeItem) bool {
 		items = append(items, item)
@@ -197,6 +200,10 @@ func (mp *metaPartition) extentsTruncate(ino *Inode) (resp *ResponseInode) {
 		}
 		if i.IsDelete() {
 			resp.Status = proto.OpNotExistErr
+			return
+		}
+		if !i.CanWrite(ino.AuthID, ino.AccessTime) {
+			resp.Status = proto.OpNotPerm
 			return
 		}
 		i.Extents.AscendGreaterOrEqual(&proto.ExtentKey{FileOffset: ino.Size},

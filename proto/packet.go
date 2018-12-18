@@ -81,6 +81,7 @@ const (
 	OpMetaLinkInode     uint8 = 0x2E
 	OpMetaEvictInode    uint8 = 0x2F
 	OpMetaSetattr       uint8 = 0x30
+	OpMetaReleaseOpen   uint8 = 0x31
 
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition  uint8 = 0x40
@@ -110,6 +111,7 @@ const (
 	OpExistErr         uint8 = 0xFA
 	OpInodeFullErr     uint8 = 0xFB
 	OpNotLeaderErr     uint8 = 0xFC
+	OpNotPerm          uint8 = 0xFD
 	OpOk               uint8 = 0xF0
 
 	// For connection diagnosis
@@ -205,6 +207,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaDeleteDentry"
 	case OpMetaOpen:
 		m = "OpMetaOpen"
+	case OpMetaReleaseOpen:
+		m = "OpMetaReleaseOpen"
 	case OpMetaLookup:
 		m = "OpMetaLookup"
 	case OpMetaReadDir:
@@ -297,6 +301,8 @@ func (p *Packet) GetResultMesg() (m string) {
 		m = "NotExistErr"
 	case OpNotLeaderErr:
 		m = "NotLeaderErr"
+	case OpNotPerm:
+		m = "NotPerm"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}
@@ -449,11 +455,11 @@ func (p *Packet) PackOkWithBody(reply []byte) {
 	p.Arglen = 0
 }
 
-func (p *Packet) PackErrorWithBody(errCode uint8, reply []byte) {
+func (p *Packet) PackErrorWithBody(code uint8, reply []byte) {
 	p.Size = uint32(len(reply))
 	p.Data = make([]byte, p.Size)
 	copy(p.Data[:p.Size], reply)
-	p.ResultCode = errCode
+	p.ResultCode = code
 	p.Arglen = 0
 }
 

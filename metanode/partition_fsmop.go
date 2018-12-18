@@ -59,14 +59,42 @@ func (mp *metaPartition) initInode(ino *Inode) {
 	}
 }
 
-func (mp *metaPartition) openFile(ino *Inode) (status uint8) {
+func (mp *metaPartition) openFile(req *OpenReq) (resp *ResponseInode) {
+	ino := NewInode(req.Inode, 0)
+	item := mp.inodeTree.Get(ino)
+	resp = NewResponseInode()
+	if item == nil {
+		resp.Status = proto.OpNotExistErr
+		return
+	}
+	ino2 := item.(*Inode)
+	if ino2.IsDelete() {
+		resp.Status = proto.OpNotExistErr
+		return
+	}
+	resp.Status = proto.OpNotPerm
+	if proto.IsWriteFlag(req.Flag) {
+		if authID, ok := item.(*Inode).CanOpen(req.ATime); ok {
+			resp.Status = proto.OpOk
+			resp.AuthID = authID
+		}
+	}
+	return
+}
+
+func (mp *metaPartition) releaseOpen(ino *Inode) (status uint8) {
+	status = proto.OpOk
 	item := mp.inodeTree.Get(ino)
 	if item == nil {
 		status = proto.OpNotExistErr
 		return
 	}
-	item.(*Inode).AccessTime = ino.AccessTime
-	status = proto.OpOk
+	ino2 := item.(*Inode)
+	if ino2.IsDelete() {
+		status = proto.OpNotExistErr
+		return
+	}
+	ino2.OpenRelease(ino2.AuthID)
 	return
 }
 

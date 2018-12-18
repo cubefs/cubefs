@@ -49,20 +49,22 @@ const (
 //  +-------+-----------+--------------+-----------+--------------+
 type Inode struct {
 	sync.RWMutex
-	Inode      uint64 // Inode ID
-	Type       uint32
-	Uid        uint32
-	Gid        uint32
-	Size       uint64
-	Generation uint64
-	CreateTime int64
-	AccessTime int64
-	ModifyTime int64
-	LinkTarget []byte // SymLink target name
-	NLink      uint32 // NodeLink counts
-	Flag       int32
-	Reserved   uint64
-	Extents    *ExtentsTree
+	Inode       uint64 // Inode ID
+	Type        uint32
+	Uid         uint32
+	Gid         uint32
+	Size        uint64
+	Generation  uint64
+	CreateTime  int64
+	AccessTime  int64
+	ModifyTime  int64
+	LinkTarget  []byte // SymLink target name
+	NLink       uint32 // NodeLink counts
+	Flag        int32
+	AuthID      uint64
+	AuthTimeout int64
+	Reserved    uint64
+	Extents     *ExtentsTree
 }
 
 func (i *Inode) String() string {
@@ -83,6 +85,8 @@ func (i *Inode) String() string {
 	buff.WriteString(fmt.Sprintf("LinkT[%s]", i.LinkTarget))
 	buff.WriteString(fmt.Sprintf("NLink[%d]", i.NLink))
 	buff.WriteString(fmt.Sprintf("Flag[%d]", i.Flag))
+	buff.WriteString(fmt.Sprintf("authId[%d]", i.AuthID))
+	buff.WriteString(fmt.Sprintf("authT[%d]", i.AuthTimeout))
 	buff.WriteString(fmt.Sprintf("Reserved[%d]", i.Reserved))
 	buff.WriteString(fmt.Sprintf("Extents[%s]", i.Extents))
 	buff.WriteString("}")
@@ -230,6 +234,12 @@ func (i *Inode) MarshalValue() (val []byte) {
 	if err = binary.Write(buff, binary.BigEndian, &i.Flag); err != nil {
 		panic(err)
 	}
+	if err = binary.Write(buff, binary.BigEndian, &i.AuthID); err != nil {
+		panic(err)
+	}
+	if err = binary.Write(buff, binary.BigEndian, &i.AuthTimeout); err != nil {
+		panic(err)
+	}
 	if err = binary.Write(buff, binary.BigEndian, &i.Reserved); err != nil {
 		panic(err)
 	}
@@ -290,6 +300,12 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 		return
 	}
 	if err = binary.Read(buff, binary.BigEndian, &i.Flag); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &i.AuthID); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &i.AuthTimeout); err != nil {
 		return
 	}
 	if err = binary.Read(buff, binary.BigEndian, &i.Reserved); err != nil {
@@ -386,4 +402,47 @@ func (i *Inode) SetAttr(valid, mode, uid, gid uint32) {
 		i.Gid = gid
 	}
 	i.Unlock()
+}
+
+func (i *Inode) CanOpen(mt int64) (authId uint64, ok bool) {
+	i.Lock()
+	defer i.Unlock()
+	if i.AuthID == 0 {
+		ok = true
+		i.AuthID = uint64(mt) + i.Inode
+		i.AuthTimeout = mt + defaultAuthTimeout
+		i.AccessTime = mt
+		return
+	}
+	switch {
+	case i.AuthTimeout < mt:
+		i.AuthID = uint64(mt) + i.Inode
+		fallthrough
+	case i.AuthTimeout == mt:
+		i.AuthTimeout = mt + defaultAuthTimeout
+		i.AccessTime = mt
+		ok = true
+	case i.AuthTimeout > mt:
+		fallthrough
+	default:
+		return
+	}
+	return
+}
+
+func (i *Inode) OpenRelease(authId uint64) {
+	i.Lock()
+	if i.AuthID == authId {
+		i.AuthID = 0
+	}
+	i.Unlock()
+}
+func (i *Inode) CanWrite(authId uint64, mt int64) bool {
+	i.Lock()
+	defer i.Unlock()
+	if i.AuthID != authId || i.AuthID == 0 {
+		return false
+	}
+	i.AuthTimeout = mt + defaultAuthTimeout
+	return true
 }
