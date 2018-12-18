@@ -36,7 +36,7 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 	switch len(liveReplicas) {
 	case (int)(partition.ReplicaNum):
 		partition.Status = proto.ReadOnly
-		if partition.checkReplicaStatusOnLiveNode(liveReplicas) == true {
+		if partition.checkReplicaStatusOnLiveNode(liveReplicas) == true && partition.isReplicaSizeAlign() {
 			partition.Status = proto.ReadWrite
 		}
 	default:

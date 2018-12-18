@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 	"github.com/juju/errors"
+	"math"
+	"github.com/tiglabs/containerfs/util"
 )
 
 type DataPartition struct {
@@ -538,4 +540,23 @@ func (partition *DataPartition) createDataPartitionSuccessTriggerOperator(nodeAd
 	partition.AddMember(replica)
 	partition.checkAndRemoveMissReplica(replica.Addr)
 	return
+}
+
+func (partition *DataPartition) isReplicaSizeAlign() bool {
+	partition.RLock()
+	defer partition.RUnlock()
+	if len(partition.Replicas) == 0 {
+		return true
+	}
+	used := partition.Replicas[0].Used
+	var minus float64
+	for _, replica := range partition.Replicas {
+		if math.Abs(float64(replica.Used)-float64(used)) > minus {
+			minus = math.Abs(float64(replica.Used) - float64(used))
+		}
+	}
+	if minus < util.GB {
+		return true
+	}
+	return false
 }

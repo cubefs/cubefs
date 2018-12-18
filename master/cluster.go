@@ -694,6 +694,7 @@ func (c *Cluster) dataPartitionOffline(offlineAddr, volName string, dp *DataPart
 	if err = dp.createDataPartitionSuccessTriggerOperator(newAddr, c); err != nil {
 		goto errDeal
 	}
+	dp.Status = proto.ReadOnly
 	log.LogWarnf("clusterID[%v] partitionID:%v  on Node:%v offline success,newHost[%v],PersistenceHosts:[%v]",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.PersistenceHosts)
 	return
