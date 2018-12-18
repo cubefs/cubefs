@@ -17,12 +17,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
 	"strings"
 	"sync"
 	"time"
-	"github.com/juju/errors"
 	"math"
 	"github.com/tiglabs/containerfs/util"
 )
@@ -37,15 +37,15 @@ type DataPartition struct {
 	PersistenceHosts []string
 	Peers            []proto.Peer
 	sync.RWMutex
-	total            uint64
-	used             uint64
-	MissNodes        map[string]int64
-	VolName          string
-	VolID            uint64
-	modifyTime       int64
-	createTime       int64
-	RandomWrite      bool
-	FileInCoreMap    map[string]*FileInCore
+	total         uint64
+	used          uint64
+	MissNodes     map[string]int64
+	VolName       string
+	VolID         uint64
+	modifyTime    int64
+	createTime    int64
+	RandomWrite   bool
+	FileInCoreMap map[string]*FileInCore
 }
 
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64, randomWrite bool) (partition *DataPartition) {
@@ -320,7 +320,7 @@ func (partition *DataPartition) getFileCount() {
 	}
 
 	for _, replica := range partition.Replicas {
-		msg = fmt.Sprintf(GetDataReplicaFileCountInfo + "partitionID:%v  replicaAddr:%v  FileCount:%v  "+
+		msg = fmt.Sprintf(GetDataReplicaFileCountInfo+"partitionID:%v  replicaAddr:%v  FileCount:%v  "+
 			"NodeIsActive:%v  replicaIsActive:%v  .replicaStatusOnNode:%v ", partition.PartitionID, replica.Addr, replica.FileCount,
 			replica.GetReplicaNode().isActive, replica.IsActive(DefaultDataPartitionTimeOutSec), replica.Status)
 		log.LogInfo(msg)

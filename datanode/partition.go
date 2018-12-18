@@ -31,6 +31,7 @@ import (
 	"github.com/tiglabs/containerfs/master"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
+	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util/log"
 	raftProto "github.com/tiglabs/raft/proto"
@@ -52,7 +53,7 @@ var (
 )
 
 type DataPartition interface {
-	ID() uint32
+	ID() uint64
 	Path() string
 	IsRaftLeader() (leaderAddr string, ok bool)
 	ReplicaHosts() []string
@@ -73,8 +74,8 @@ type DataPartition interface {
 	StartRaft() (err error)
 	StartSchedule()
 	WaitingRepairedAndStartRaft()
-	RandomWriteSubmit(pkg *Packet) (err error)
-	RandomPartitionReadCheck(request *Packet, connect net.Conn) (err error)
+	RandomWriteSubmit(pkg *repl.Packet) (err error)
+	RandomPartitionReadCheck(request *repl.Packet, connect net.Conn) (err error)
 	LoadApplyIndex() (err error)
 	SetMinAppliedId(id uint64)
 	GetAppliedId() (id uint64)
@@ -93,7 +94,7 @@ type DataPartition interface {
 
 type dataPartitionMeta struct {
 	VolumeId      string
-	PartitionId   uint32
+	PartitionId   uint64
 	PartitionSize int
 	CreateTime    string
 	RandomWrite   bool
@@ -125,7 +126,7 @@ func (meta *dataPartitionMeta) Validate() (err error) {
 type dataPartition struct {
 	clusterId       string
 	volumeId        string
-	partitionId     uint32
+	partitionId     uint64
 	partitionStatus int
 	partitionSize   int
 	replicaHosts    []string
@@ -159,6 +160,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp DataPartition,
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
 	}
+	go dp.ForceLoadHeader()
 
 	// Start raft for random write
 	if dpCfg.RandomWrite {
@@ -202,7 +204,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp DataPartition, err e
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
 	}
-
+	go dp.ForceLoadHeader()
 	if dpCfg.RandomWrite {
 		if err = dp.LoadApplyIndex(); err != nil {
 			log.LogErrorf("action[loadApplyIndex] %v", err)
@@ -247,7 +249,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp DataPartition, er
 	return
 }
 
-func (dp *dataPartition) ID() uint32 {
+func (dp *dataPartition) ID() uint64 {
 	return dp.partitionId
 }
 
@@ -352,6 +354,7 @@ func (dp *dataPartition) ChangeStatus(status int) {
 
 func (dp *dataPartition) ForceLoadHeader() {
 	dp.extentStore.BackEndLoadExtent()
+	dp.loadExtentHeaderStatus=FinishLoadDataPartitionExtentHeader
 }
 
 func (dp *dataPartition) StoreMeta() (err error) {
@@ -497,11 +500,6 @@ func (dp *dataPartition) String() (m string) {
 func (dp *dataPartition) LaunchRepair(fixExtentType uint8) {
 	if dp.partitionStatus == proto.Unavaliable {
 		return
-	}
-	select {
-	case <-dp.stopC:
-		return
-	default:
 	}
 	if err := dp.updateReplicaHosts(); err != nil {
 		log.LogErrorf("action[LaunchRepair] err(%v).", err)

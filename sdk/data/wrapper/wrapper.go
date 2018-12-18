@@ -54,7 +54,7 @@ type Wrapper struct {
 	clusterName           string
 	volName               string
 	masters               []string
-	partitions            map[uint32]*DataPartition
+	partitions            map[uint64]*DataPartition
 	rwPartition           []*DataPartition
 	localLeaderPartitions []*DataPartition
 }
@@ -68,7 +68,7 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 	}
 	w.volName = volName
 	w.rwPartition = make([]*DataPartition, 0)
-	w.partitions = make(map[uint32]*DataPartition)
+	w.partitions = make(map[uint64]*DataPartition)
 	if err = w.updateClusterInfo(); err != nil {
 		err = errors.Annotate(err, "NewDataPartitionWrapper:")
 		return
@@ -188,7 +188,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	}
 }
 
-func (w *Wrapper) getLocalLeaderDataPartition(exclude []uint32) (*DataPartition, error) {
+func (w *Wrapper) getLocalLeaderDataPartition(exclude []uint64) (*DataPartition, error) {
 	rwPartitionGroups := w.localLeaderPartitions
 	if len(rwPartitionGroups) == 0 {
 		return nil, fmt.Errorf("no writable data partition")
@@ -212,7 +212,7 @@ func (w *Wrapper) getLocalLeaderDataPartition(exclude []uint32) (*DataPartition,
 	return nil, fmt.Errorf("no writable data partition")
 }
 
-func (w *Wrapper) GetWriteDataPartition(exclude []uint32) (*DataPartition, error) {
+func (w *Wrapper) GetWriteDataPartition(exclude []uint64) (*DataPartition, error) {
 	dp, err := w.getLocalLeaderDataPartition(exclude)
 	if err == nil {
 		return dp, nil
@@ -241,7 +241,7 @@ func (w *Wrapper) GetWriteDataPartition(exclude []uint32) (*DataPartition, error
 	return nil, fmt.Errorf("no writable data partition")
 }
 
-func (w *Wrapper) GetDataPartition(partitionID uint32) (*DataPartition, error) {
+func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	w.RLock()
 	defer w.RUnlock()
 	dp, ok := w.partitions[partitionID]

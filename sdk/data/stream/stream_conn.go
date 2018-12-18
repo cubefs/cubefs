@@ -23,7 +23,7 @@ const (
 type GetReplyFunc func(conn *net.TCPConn) (err error, again bool)
 
 type StreamConn struct {
-	partition uint32
+	partition uint64
 	currAddr  string
 	hosts     []string
 }

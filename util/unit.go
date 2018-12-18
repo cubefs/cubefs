@@ -17,8 +17,8 @@ package util
 import "regexp"
 
 const (
-	_                        = iota
-	KB                       = 1 << (10 * iota)
+	_  = iota
+	KB = 1 << (10 * iota)
 	MB
 	GB
 	TB
@@ -43,7 +43,7 @@ const (
 	DeleteIndexFileName    = "delete.index"
 	ExtentSize             = BlockCount * BlockSize
 	ExtentFileSizeLimit    = BlockHeaderSize + ExtentSize
-	PacketHeaderSize       = 45
+	PacketHeaderSize       = 49
 )
 
 func Min(a, b int) int {

@@ -77,6 +77,8 @@ const (
 	ActionRepair                  = "ActionRepair:"
 	ActionOfflinePartition        = "ActionOfflinePartition"
 	ActionCreateDataPartition     = "ActionCreateDataPartition"
+	ActionLoadDataPartition       = "ActionLoadDataPartition"
+	ActionDeleteDataPartition     = "ActionDeleteDataPartition"
 )
 
 const (
@@ -91,7 +93,7 @@ const (
 )
 
 const (
-	FixRaftFollower = 1
+	HasReturnToStore = 1
 )
 
 const (

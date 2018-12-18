@@ -23,6 +23,7 @@ import (
 	"net"
 
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util/log"
 	"strings"
@@ -105,7 +106,7 @@ func (rndWrtItem *RndWrtCmdItem) rndWrtCmdUnmarshal(cmd []byte) (err error) {
 }
 
 // Submit the propose to raft.
-func (dp *dataPartition) RandomWriteSubmit(pkg *Packet) (err error) {
+func (dp *dataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 	val, err := rndWrtDataMarshal(pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data, pkg.CRC)
 	if err != nil {
 		return
@@ -149,7 +150,7 @@ func (dp *dataPartition) addDiskErrs(err error, flag uint8) {
 	}
 }
 
-func (dp *dataPartition) RandomPartitionReadCheck(request *Packet, connect net.Conn) (err error) {
+func (dp *dataPartition) RandomPartitionReadCheck(request *repl.Packet, connect net.Conn) (err error) {
 	if !dp.config.RandomWrite || request.Opcode == proto.OpExtentRepairRead || !dp.hadRandomWrite {
 		return
 	}

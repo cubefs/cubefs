@@ -56,7 +56,7 @@ type Disk struct {
 	MaxErrs      int
 	Status       int
 	RestSize     uint64
-	partitionMap map[uint32]DataPartition
+	partitionMap map[uint64]DataPartition
 	space        SpaceManager
 }
 
@@ -68,7 +68,7 @@ func NewDisk(path string, restSize uint64, maxErrs int, space *spaceManager) (d 
 	d.RestSize = restSize
 	d.MaxErrs = maxErrs
 	d.space = space
-	d.partitionMap = make(map[uint32]DataPartition)
+	d.partitionMap = make(map[uint64]DataPartition)
 	d.RestSize = restSize
 	d.MaxErrs = 2000
 	d.computeUsage()
@@ -187,7 +187,7 @@ func (d *Disk) DetachDataPartition(dp DataPartition) {
 	d.computeUsage()
 }
 
-func (d *Disk) GetDataPartition(partitionId uint32) (partition DataPartition) {
+func (d *Disk) GetDataPartition(partitionId uint64) (partition DataPartition) {
 	d.RLock()
 	defer d.RUnlock()
 	return d.partitionMap[partitionId]
@@ -201,10 +201,10 @@ func (d *Disk) ForceLoadPartitionHeader() {
 	}
 }
 
-func (d *Disk) DataPartitionList() (partitionIds []uint32) {
+func (d *Disk) DataPartitionList() (partitionIds []uint64) {
 	d.Lock()
 	defer d.Unlock()
-	partitionIds = make([]uint32, 0, len(d.partitionMap))
+	partitionIds = make([]uint64, 0, len(d.partitionMap))
 	for _, dp := range d.partitionMap {
 		partitionIds = append(partitionIds, dp.ID())
 	}

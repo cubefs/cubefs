@@ -19,11 +19,11 @@ import (
 
 	"encoding/json"
 	"fmt"
+	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
 	"strings"
 	"time"
-	"github.com/juju/errors"
 )
 
 type MetaReplica struct {

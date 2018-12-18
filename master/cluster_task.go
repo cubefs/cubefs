@@ -16,12 +16,12 @@ package master
 
 import (
 	"fmt"
+	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
 	"runtime"
 	"sync"
 	"time"
-	"github.com/juju/errors"
 )
 
 func (c *Cluster) putDataNodeTasks(tasks []*proto.AdminTask) {

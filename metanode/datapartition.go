@@ -25,7 +25,7 @@ const (
 )
 
 type DataPartition struct {
-	PartitionID   uint32
+	PartitionID   uint64
 	Status        int8
 	ReplicaNum    uint8
 	PartitionType string
@@ -42,16 +42,16 @@ type DataPartitionsView struct {
 
 type Vol struct {
 	sync.RWMutex
-	dataPartitionView map[uint32]*DataPartition
+	dataPartitionView map[uint64]*DataPartition
 }
 
 func NewVol() *Vol {
 	return &Vol{
-		dataPartitionView: make(map[uint32]*DataPartition),
+		dataPartitionView: make(map[uint64]*DataPartition),
 	}
 }
 
-func (v *Vol) GetPartition(partitionID uint32) *DataPartition {
+func (v *Vol) GetPartition(partitionID uint64) *DataPartition {
 	v.RLock()
 	defer v.RUnlock()
 	return v.dataPartitionView[partitionID]

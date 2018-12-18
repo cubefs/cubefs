@@ -24,13 +24,13 @@ import (
 )
 
 var (
-	ExtentLength = 36
+	ExtentLength = 40
 	InvalidKey   = errors.New("invalid key error")
 )
 
 type ExtentKey struct {
 	FileOffset   uint64
-	PartitionId  uint32
+	PartitionId  uint64
 	ExtentId     uint64
 	ExtentOffset uint64
 	Size         uint32

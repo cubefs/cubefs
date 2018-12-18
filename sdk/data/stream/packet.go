@@ -138,7 +138,7 @@ func NewDeleteExtentPacket(dp *wrapper.DataPartition, extentId uint64) (p *Packe
 	return p
 }
 
-func NewReply(reqId int64, partition uint32, extentId uint64) (p *Packet) {
+func NewReply(reqId int64, partition uint64, extentId uint64) (p *Packet) {
 	p = new(Packet)
 	p.ReqID = reqId
 	p.PartitionID = partition

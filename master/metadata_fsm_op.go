@@ -17,12 +17,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/juju/errors"
 	bsProto "github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/raft/proto"
 	"strconv"
 	"strings"
-	"github.com/juju/errors"
 )
 
 type ClusterValue struct {

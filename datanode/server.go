@@ -33,6 +33,7 @@ import (
 	"github.com/tiglabs/containerfs/master"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
+	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/config"
@@ -323,39 +324,11 @@ func (s *DataNode) serveConn(conn net.Conn) {
 	c.SetKeepAlive(true)
 	c.SetNoDelay(true)
 
-	packetProcessor := NewPacketProcessor(c)
-	go s.receiveReplicatesResponse(packetProcessor)
-	go s.InteractWithClient(packetProcessor)
-
-	var (
-		err error
-	)
-
-	defer func() {
-		if err != nil && err != io.EOF &&
-			!strings.Contains(err.Error(), "closed connection") &&
-			!strings.Contains(err.Error(), "reset by peer") {
-			log.LogErrorf("action[serveConn] err(%v).", err)
-		}
-		space.Stats().RemoveConnection()
-		conn.Close()
-	}()
-
-	for {
-		select {
-		case <-packetProcessor.exitC:
-			log.LogDebugf("action[DataNode.serveConn] event loop for %v exit.", conn.RemoteAddr())
-			return
-		default:
-			if err = s.readPacketFromClient(packetProcessor); err != nil {
-				packetProcessor.Stop()
-				return
-			}
-		}
-	}
+	packetProcessor := repl.NewPacketProcessor(c, s.Prepare, s.OperatePacket, s.Post)
+	packetProcessor.ServerConn()
 }
 
-func (s *DataNode) addDiskErrs(partitionId uint32, err error, flag uint8) {
+func (s *DataNode) addDiskErrs(partitionId uint64, err error, flag uint8) {
 	if err == nil {
 		return
 	}
