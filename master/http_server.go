@@ -36,8 +36,6 @@ const (
 	AdminClusterFreeze        = "/cluster/freeze"
 	AdminGetIp                = "/admin/getIp"
 	AdminCreateMP             = "/metaPartition/create"
-	AdminSetCompactStatus     = "/compactStatus/set"
-	AdminGetCompactStatus     = "/compactStatus/get"
 	AdminSetMetaNodeThreshold = "/threshold/set"
 
 	// Client APIs
@@ -105,8 +103,6 @@ func (m *Master) handleFunctions() {
 	http.Handle(ClientVolStat, m.handlerWithInterceptor())
 	http.Handle(RaftNodeAdd, m.handlerWithInterceptor())
 	http.Handle(RaftNodeRemove, m.handlerWithInterceptor())
-	http.Handle(AdminSetCompactStatus, m.handlerWithInterceptor())
-	http.Handle(AdminGetCompactStatus, m.handlerWithInterceptor())
 	http.Handle(AdminSetMetaNodeThreshold, m.handlerWithInterceptor())
 	http.Handle(GetTopologyView, m.handlerWithInterceptor())
 
@@ -199,10 +195,6 @@ func (m *Master) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.handleAddRaftNode(w, r)
 	case RaftNodeRemove:
 		m.handleRemoveRaftNode(w, r)
-	case AdminSetCompactStatus:
-		m.setCompactStatus(w, r)
-	case AdminGetCompactStatus:
-		m.getCompactStatus(w, r)
 	case AdminSetMetaNodeThreshold:
 		m.setMetaNodeThreshold(w, r)
 	case GetTopologyView:

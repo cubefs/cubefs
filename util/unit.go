@@ -17,13 +17,13 @@ package util
 import "regexp"
 
 const (
-	_  = iota
-	KB = 1 << (10 * iota)
+	_                        = iota
+	KB                       = 1 << (10 * iota)
 	MB
 	GB
 	TB
 	PB
-	DefaultDataPartitionSize = 5 * GB
+	DefaultDataPartitionSize = 120 * GB
 	TaskWorkerInterval       = 1
 )
 

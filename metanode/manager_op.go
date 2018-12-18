@@ -104,11 +104,13 @@ end:
 // Handle OpCreateMetaRange
 func (m *metaManager) opCreateMetaPartition(conn net.Conn, p *Packet) (err error) {
 	defer func() {
+		var buf []byte
 		status := proto.OpOk
 		if err != nil {
 			status = proto.OpErr
+			buf = []byte(err.Error())
 		}
-		p.PackErrorWithBody(status, []byte(err.Error()))
+		p.PackErrorWithBody(status, buf)
 		m.respondToClient(conn, p)
 	}()
 	// GetConnect task from packet.

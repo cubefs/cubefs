@@ -68,12 +68,10 @@ type DataPartitionOfflineResponse struct {
 }
 
 type LoadDataPartitionRequest struct {
-	PartitionType string
-	PartitionId   uint64
+	PartitionId uint64
 }
 
 type LoadDataPartitionResponse struct {
-	PartitionType     string
 	PartitionId       uint64
 	Used              uint64
 	PartitionSnapshot []*File

@@ -91,10 +91,10 @@ func write(name string) (verifyInfo []*VerifyInfo, err error) {
 		}
 		v := new(VerifyInfo)
 		v.Name = name
-		v.Offset = offset
 		if *random {
-			v.Offset = rand.Int63n(10000 * 1024)
+			offset = rand.Int63n(9999 * 1024)
 		}
+		v.Offset = offset
 		v.Size = int64(n)
 		data := []byte(RandStringBytesMaskImpr(n))
 		v.WriteContents = string(data)

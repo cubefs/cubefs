@@ -31,13 +31,12 @@ type VolStatInfo struct {
 }
 
 type DataPartitionResponse struct {
-	PartitionID   uint64
-	Status        int8
-	ReplicaNum    uint8
-	PartitionType string
-	Hosts         []string
-	RandomWrite   bool
-	LeaderAddr    string
+	PartitionID uint64
+	Status      int8
+	ReplicaNum  uint8
+	Hosts       []string
+	RandomWrite bool
+	LeaderAddr  string
 }
 
 type DataPartitionsView struct {
@@ -299,6 +298,6 @@ func checkVolPara(r *http.Request) (name string, err error) {
 }
 
 func (m *Master) sendOkReplyForClient(w http.ResponseWriter, r *http.Request, msg []byte) {
-	log.LogInfof("URL[%v],remoteAddr[%v],response ok")
+	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
 	w.Write(msg)
 }
