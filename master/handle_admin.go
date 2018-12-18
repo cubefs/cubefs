@@ -406,6 +406,9 @@ func (m *Master) createVol(w http.ResponseWriter, r *http.Request) {
 	if err = m.cluster.createVol(name, uint8(replicaNum), randomWrite, size, capacity); err != nil {
 		goto errDeal
 	}
+	if vol, err = m.cluster.getVol(name); err != nil {
+		goto errDeal
+	}
 	msg = fmt.Sprintf("create vol[%v] success,has allocate [%v] data partitions", name, len(vol.dataPartitions.dataPartitions))
 	m.sendOkReply(w, r, msg)
 	return
