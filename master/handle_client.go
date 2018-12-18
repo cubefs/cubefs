@@ -16,12 +16,12 @@ package master
 
 import (
 	"encoding/json"
+	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 	"net/http"
 	"regexp"
 	"strconv"
-	"github.com/juju/errors"
 )
 
 type VolStatInfo struct {

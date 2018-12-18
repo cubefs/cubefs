@@ -26,7 +26,7 @@ type Packet struct {
 	followersConns []*net.TCPConn
 	followersAddrs []string
 	isRelase       int32
-	partition      datanode.DataPartition
+	Object         interface{}
 	followerNum    uint8
 	tpObject       *ump.TpObject
 }
@@ -41,7 +41,7 @@ func (p *Packet) afterTp() (ok bool) {
 	return
 }
 
-func (p *Packet) beforeTp(clusterId string) (ok bool) {
+func (p *Packet) BeforeTp(clusterId string) (ok bool) {
 	umpKey := fmt.Sprintf("%s_datanode_stream%v", clusterId, p.GetOpMsg())
 	p.tpObject = ump.BeforeTP(umpKey)
 	return
@@ -110,14 +110,6 @@ func (p *Packet) isForwardPacket() bool {
 	return r
 }
 
-func (p *Packet) checkCrc() (err error) {
-	crc := crc32.ChecksumIEEE(p.Data[:p.Size])
-	if crc == p.CRC {
-		return
-	}
-	return storage.ErrPkgCrcMismatch
-}
-
 func NewGetAllWaterMarker(partitionId uint32, extentType uint8) (p *Packet) {
 	p = new(Packet)
 	p.Opcode = proto.OpGetAllWaterMark
@@ -162,30 +154,6 @@ func NewNotifyExtentRepair(partitionId uint32) (p *Packet) {
 	p.Magic = proto.ProtoMagic
 	p.StoreMode = proto.NormalExtentMode
 	p.ReqID = proto.GeneratorRequestID()
-
-	return
-}
-
-func (p *Packet) isWriteOperation() bool {
-	return p.Opcode == proto.OpWrite
-}
-
-func (p *Packet) isCreateExtentOperation() bool {
-	return p.Opcode == proto.OpCreateExtent
-}
-
-func (p *Packet) isMarkDeleteExtentOperation() bool {
-	return p.Opcode == proto.OpMarkDelete
-}
-
-func (p *Packet) isReadOperation() bool {
-	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpRead || p.Opcode == proto.OpExtentRepairRead
-}
-
-func (p *Packet) isLeaderPacket() (ok bool) {
-	if p.followerNum == p.RemainReplicates && (p.isWriteOperation() || p.isCreateExtentOperation() || p.isMarkDeleteExtentOperation()) {
-		ok = true
-	}
 
 	return
 }
@@ -247,5 +215,3 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (er
 	}
 	return p.ReadFull(c, int(size))
 }
-
-

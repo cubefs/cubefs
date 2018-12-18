@@ -16,13 +16,13 @@ package master
 
 import (
 	"fmt"
+	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
 	"math/rand"
 	"sort"
 	"sync"
 	"time"
-	"github.com/juju/errors"
 )
 
 type Topology struct {

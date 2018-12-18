@@ -70,8 +70,6 @@ const (
 	NoCloseConnect    = false
 )
 
-
-
 func (p *Packet) forceDestoryAllConnect() {
 	for i := 0; i < len(p.replicateConns); i++ {
 		gConnPool.PutConnect(p.replicateConns[i], ForceCloseConnect)
@@ -189,14 +187,6 @@ func (p *Packet) isMarkDeleteExtentOperation() bool {
 
 func (p *Packet) isReadOperation() bool {
 	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpRead || p.Opcode == proto.OpExtentRepairRead
-}
-
-func (p *Packet) isLeaderPacket() (ok bool) {
-	if p.replicateNum == p.RemainReplicates && (p.isWriteOperation() || p.isCreateExtentOperation() || p.isMarkDeleteExtentOperation()) {
-		ok = true
-	}
-
-	return
 }
 
 func (p *Packet) isErrPack() bool {

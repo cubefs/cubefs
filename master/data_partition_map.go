@@ -17,12 +17,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
 	"runtime"
 	"sync"
 	"time"
-	"github.com/juju/errors"
 )
 
 type DataPartitionMap struct {

@@ -127,7 +127,7 @@ func (processor *PacketProcessor) readPkgFromSocket() (err error) {
 	log.LogDebugf("action[readPkgFromSocket] read packet(%v) from remote(%v).",
 		pkg.GetUniqueLogId(), processor.sourceConn.RemoteAddr().String())
 	pkg.StartT = time.Now().UnixNano()
-	if err=pkg.resolveReplicateAddrs();err!=nil {
+	if err = pkg.resolveReplicateAddrs(); err != nil {
 		processor.PackErrorBody(pkg, ActionPreparePkg, err.Error())
 		processor.responseCh <- pkg
 		return
@@ -148,7 +148,6 @@ func (processor *PacketProcessor) operatorAndForwardPkg() {
 		case request := <-processor.toBeProcessCh:
 			if !request.isForwardPacket() {
 				processor.operatorFunc(request)
-
 				processor.responseCh <- request
 			} else {
 				if _, err := processor.sendToAllfollowers(request); err == nil {

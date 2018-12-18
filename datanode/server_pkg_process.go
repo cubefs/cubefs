@@ -113,27 +113,6 @@ func (s *DataNode) processPacket(req *Packet, packetProcessor *PacketProcessor) 
 	return
 }
 
-// If tinyExtent Write get the extentId and extentOffset
-// If OpCreateExtent get new extentId
-func (s *DataNode) addExtentInfo(pkg *Packet) error {
-	if pkg.isLeaderPacket() && pkg.StoreMode == proto.TinyExtentMode && pkg.isWriteOperation() {
-		store := pkg.partition.GetStore()
-		extentId, err := store.GetAvaliTinyExtent() // GetConnect a valid tinyExtentId
-		if err != nil {
-			return err
-		}
-		pkg.ExtentID = extentId
-		pkg.ExtentOffset, err = store.GetWatermarkForWrite(extentId) // GetConnect offset of this extent file
-		if err != nil {
-			return err
-		}
-	} else if pkg.isLeaderPacket() && pkg.Opcode == proto.OpCreateExtent {
-		pkg.ExtentID = pkg.partition.GetStore().NextExtentId()
-	}
-
-	return nil
-}
-
 // Submit random write op to raft instance
 func (s *DataNode) randomOpReq(pkg *Packet, packetProcessor *PacketProcessor) {
 	var err error
@@ -345,44 +324,6 @@ func (s *DataNode) sendToAllReplicates(pkg *Packet, packetProcessor *PacketProce
 		}
 	}
 
-	return
-}
-
-
-func (s *DataNode) checkPacket(pkg *Packet) error {
-	var err error
-	pkg.StartT = time.Now().UnixNano()
-	if err = s.checkStoreMode(pkg); err != nil {
-		return err
-	}
-
-	if err = pkg.checkCrc(); err != nil {
-		return err
-	}
-	if err = pkg.resolveReplicateAddrs(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (s *DataNode) checkPartition(pkg *Packet) (err error) {
-	dp := s.space.GetPartition(pkg.PartitionID)
-	if dp == nil {
-		err = errors.Errorf("partition %v is not exist", pkg.PartitionID)
-		return
-	}
-	pkg.partition = dp
-	if pkg.Opcode == proto.OpWrite || pkg.Opcode == proto.OpCreateExtent {
-		if pkg.partition.Status() == proto.ReadOnly {
-			err = storage.ErrorPartitionReadOnly
-			return
-		}
-		if pkg.partition.Available() <= 0 {
-			err = storage.ErrSyscallNoSpace
-			return
-		}
-	}
 	return
 }
 
