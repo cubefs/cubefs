@@ -299,6 +299,6 @@ func checkVolPara(r *http.Request) (name string, err error) {
 }
 
 func (m *Master) sendOkReplyForClient(w http.ResponseWriter, r *http.Request, msg []byte) {
-	log.LogInfof("URL[%v],remoteAddr[%v],response ok")
+	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
 	w.Write(msg)
 }
