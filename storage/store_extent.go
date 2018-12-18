@@ -109,14 +109,14 @@ type ExtentStore struct {
 	avaliTinyExtentCh   chan uint64 //avali tinyExtent chan
 	unavaliTinyExtentCh chan uint64 //unavali tinyExtent chan
 	blockSize           int
-	partitionId         uint32 //partitionId
+	partitionId         uint64 //partitionId
 }
 
 func CheckAndCreateSubdir(name string) (err error) {
 	return os.MkdirAll(name, 0755)
 }
 
-func NewExtentStore(dataDir string, partitionId uint32, storeSize int) (s *ExtentStore, err error) {
+func NewExtentStore(dataDir string, partitionId uint64, storeSize int) (s *ExtentStore, err error) {
 	s = new(ExtentStore)
 	s.dataDir = dataDir
 	s.partitionId = partitionId

@@ -30,7 +30,7 @@ func NewExtentDeletePacket(dp *DataPartition, ext *proto.ExtentKey) *Packet {
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpMarkDelete
 	p.StoreMode = proto.NormalExtentMode
-	p.PartitionID = dp.PartitionID
+	p.PartitionID = uint64(dp.PartitionID)
 	if storage.IsTinyExtent(ext.ExtentId) {
 		p.StoreMode = proto.TinyExtentMode
 		p.Data, _ = json.Marshal(ext)

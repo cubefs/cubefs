@@ -486,7 +486,7 @@ func (dp *dataPartition) getExtentInfo(targetAddr string) (extentFiles []*storag
 	return
 }
 
-func NewGetAppliedId(partitionId uint32, minAppliedId uint64) (p *repl.Packet) {
+func NewGetAppliedId(partitionId uint64, minAppliedId uint64) (p *repl.Packet) {
 	p = new(repl.Packet)
 	p.Opcode = proto.OpGetAppliedId
 	p.PartitionID = partitionId
@@ -498,7 +498,7 @@ func NewGetAppliedId(partitionId uint32, minAppliedId uint64) (p *repl.Packet) {
 	return
 }
 
-func NewGetPartitionSize(partitionId uint32) (p *repl.Packet) {
+func NewGetPartitionSize(partitionId uint64) (p *repl.Packet) {
 	p = new(repl.Packet)
 	p.Opcode = proto.OpGetPartitionSize
 	p.PartitionID = partitionId

@@ -29,11 +29,11 @@ import (
 type SpaceManager interface {
 	LoadDisk(path string, restSize uint64, maxErrs int) (err error)
 	GetDisk(path string) (d *Disk, err error)
-	GetPartition(partitionId uint32) (dp DataPartition)
+	GetPartition(partitionId uint64) (dp DataPartition)
 	Stats() *Stats
 	GetDisks() []*Disk
 	CreatePartition(request *proto.CreateDataPartitionRequest) (DataPartition, error)
-	DeletePartition(partitionId uint32)
+	DeletePartition(partitionId uint64)
 	RangePartitions(f func(partition DataPartition) bool)
 	SetRaftStore(raftStore raftstore.RaftStore)
 	GetRaftStore() (raftStore raftstore.RaftStore)
@@ -47,7 +47,7 @@ type SpaceManager interface {
 type spaceManager struct {
 	clusterId         string
 	disks             map[string]*Disk
-	partitions        map[uint32]DataPartition
+	partitions        map[uint64]DataPartition
 	raftStore         raftstore.RaftStore
 	nodeId            uint64
 	diskMu            sync.RWMutex
@@ -64,7 +64,7 @@ func NewSpaceManager(rack string) SpaceManager {
 	space = &spaceManager{}
 	space.disks = make(map[string]*Disk)
 	space.diskList = make([]string, 0)
-	space.partitions = make(map[uint32]DataPartition)
+	space.partitions = make(map[uint64]DataPartition)
 	space.stats = NewStats(rack)
 	space.stopC = make(chan bool, 0)
 
@@ -262,7 +262,7 @@ func (space *spaceManager) flushDelete() {
 	}
 }
 
-func (space *spaceManager) GetPartition(partitionId uint32) (dp DataPartition) {
+func (space *spaceManager) GetPartition(partitionId uint64) (dp DataPartition) {
 	space.partitionMu.RLock()
 	defer space.partitionMu.RUnlock()
 	dp = space.partitions[partitionId]
@@ -281,7 +281,7 @@ func (space *spaceManager) CreatePartition(request *proto.CreateDataPartitionReq
 	space.partitionMu.Lock()
 	defer space.partitionMu.Unlock()
 	dpCfg := &dataPartitionCfg{
-		PartitionId:   uint32(request.PartitionId),
+		PartitionId:   request.PartitionId,
 		VolName:       request.VolumeId,
 		Peers:         request.Members,
 		RaftStore:     space.raftStore,
@@ -318,7 +318,7 @@ func (space *spaceManager) CreatePartition(request *proto.CreateDataPartitionReq
 	return
 }
 
-func (space *spaceManager) DeletePartition(dpId uint32) {
+func (space *spaceManager) DeletePartition(dpId uint64) {
 	dp := space.GetPartition(dpId)
 	if dp == nil {
 		return

@@ -53,7 +53,7 @@ var (
 )
 
 type DataPartition interface {
-	ID() uint32
+	ID() uint64
 	Path() string
 	IsRaftLeader() (leaderAddr string, ok bool)
 	ReplicaHosts() []string
@@ -94,7 +94,7 @@ type DataPartition interface {
 
 type dataPartitionMeta struct {
 	VolumeId      string
-	PartitionId   uint32
+	PartitionId   uint64
 	PartitionSize int
 	CreateTime    string
 	RandomWrite   bool
@@ -126,7 +126,7 @@ func (meta *dataPartitionMeta) Validate() (err error) {
 type dataPartition struct {
 	clusterId       string
 	volumeId        string
-	partitionId     uint32
+	partitionId     uint64
 	partitionStatus int
 	partitionSize   int
 	replicaHosts    []string
@@ -248,7 +248,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp DataPartition, er
 	return
 }
 
-func (dp *dataPartition) ID() uint32 {
+func (dp *dataPartition) ID() uint64 {
 	return dp.partitionId
 }
 

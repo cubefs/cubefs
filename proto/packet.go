@@ -139,7 +139,7 @@ type Packet struct {
 	CRC              uint32
 	Size             uint32
 	Arglen           uint32
-	PartitionID      uint32
+	PartitionID      uint64
 	ExtentID         uint64
 	ExtentOffset     int64
 	ReqID            int64
@@ -313,10 +313,10 @@ func (p *Packet) MarshalHeader(out []byte) {
 	binary.BigEndian.PutUint32(out[5:9], p.CRC)
 	binary.BigEndian.PutUint32(out[9:13], p.Size)
 	binary.BigEndian.PutUint32(out[13:17], p.Arglen)
-	binary.BigEndian.PutUint32(out[17:21], p.PartitionID)
-	binary.BigEndian.PutUint64(out[21:29], p.ExtentID)
-	binary.BigEndian.PutUint64(out[29:37], uint64(p.ExtentOffset))
-	binary.BigEndian.PutUint64(out[37:util.PacketHeaderSize], uint64(p.ReqID))
+	binary.BigEndian.PutUint64(out[17:25], p.PartitionID)
+	binary.BigEndian.PutUint64(out[25:33], p.ExtentID)
+	binary.BigEndian.PutUint64(out[33:41], uint64(p.ExtentOffset))
+	binary.BigEndian.PutUint64(out[41:util.PacketHeaderSize], uint64(p.ReqID))
 	return
 }
 
@@ -333,10 +333,10 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 	p.CRC = binary.BigEndian.Uint32(in[5:9])
 	p.Size = binary.BigEndian.Uint32(in[9:13])
 	p.Arglen = binary.BigEndian.Uint32(in[13:17])
-	p.PartitionID = binary.BigEndian.Uint32(in[17:21])
-	p.ExtentID = binary.BigEndian.Uint64(in[21:29])
-	p.ExtentOffset = int64(binary.BigEndian.Uint64(in[29:37]))
-	p.ReqID = int64(binary.BigEndian.Uint64(in[37:util.PacketHeaderSize]))
+	p.PartitionID = binary.BigEndian.Uint64(in[17:25])
+	p.ExtentID = binary.BigEndian.Uint64(in[25:33])
+	p.ExtentOffset = int64(binary.BigEndian.Uint64(in[33:41]))
+	p.ReqID = int64(binary.BigEndian.Uint64(in[41:util.PacketHeaderSize]))
 
 	return nil
 }

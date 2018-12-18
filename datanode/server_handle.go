@@ -56,7 +56,7 @@ func (s *DataNode) apiGetPartitions(w http.ResponseWriter, r *http.Request) {
 	partitions := make([]interface{}, 0)
 	s.space.RangePartitions(func(dp DataPartition) bool {
 		partition := &struct {
-			ID       uint32   `json:"id"`
+			ID       uint64   `json:"id"`
 			Size     int      `json:"size"`
 			Used     int      `json:"used"`
 			Status   int      `json:"status"`
@@ -102,7 +102,7 @@ func (s *DataNode) apiGetPartition(w http.ResponseWriter, r *http.Request) {
 		s.buildApiFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	partition := s.space.GetPartition(uint32(partitionId))
+	partition := s.space.GetPartition(partitionId)
 	if partition == nil {
 		s.buildApiFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
@@ -113,7 +113,7 @@ func (s *DataNode) apiGetPartition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result := &struct {
-		ID        uint32              `json:"id"`
+		ID        uint64              `json:"id"`
 		Size      int                 `json:"size"`
 		Used      int                 `json:"used"`
 		Status    int                 `json:"status"`
@@ -136,7 +136,7 @@ func (s *DataNode) apiGetPartition(w http.ResponseWriter, r *http.Request) {
 
 func (s *DataNode) apiGetExtent(w http.ResponseWriter, r *http.Request) {
 	var (
-		partitionId int
+		partitionId uint64
 		extentId    int
 		reload      int
 		err         error
@@ -146,7 +146,7 @@ func (s *DataNode) apiGetExtent(w http.ResponseWriter, r *http.Request) {
 		s.buildApiFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if partitionId, err = strconv.Atoi(r.FormValue("partitionId")); err != nil {
+	if partitionId, err = strconv.ParseUint(r.FormValue("partitionId"), 10, 64); err != nil {
 		s.buildApiFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -156,7 +156,7 @@ func (s *DataNode) apiGetExtent(w http.ResponseWriter, r *http.Request) {
 	}
 	reload, _ = strconv.Atoi(r.FormValue("reload"))
 
-	partition := s.space.GetPartition(uint32(partitionId))
+	partition := s.space.GetPartition(partitionId)
 	if partition == nil {
 		s.buildApiFailureResp(w, http.StatusNotFound, "partition not exist")
 		return

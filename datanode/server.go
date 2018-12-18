@@ -328,7 +328,7 @@ func (s *DataNode) serveConn(conn net.Conn) {
 	packetProcessor.ServerConn()
 }
 
-func (s *DataNode) addDiskErrs(partitionId uint32, err error, flag uint8) {
+func (s *DataNode) addDiskErrs(partitionId uint64, err error, flag uint8) {
 	if err == nil {
 		return
 	}

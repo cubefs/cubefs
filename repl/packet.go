@@ -115,7 +115,7 @@ func (p *Packet) isForwardPacket() bool {
 	return r
 }
 
-func NewGetAllWaterMarker(partitionId uint32, extentType uint8) (p *Packet) {
+func NewGetAllWaterMarker(partitionId uint64, extentType uint8) (p *Packet) {
 	p = new(Packet)
 	p.Opcode = proto.OpGetAllWaterMark
 	p.PartitionID = partitionId
@@ -126,7 +126,7 @@ func NewGetAllWaterMarker(partitionId uint32, extentType uint8) (p *Packet) {
 	return
 }
 
-func NewExtentRepairReadPacket(partitionId uint32, extentId uint64, offset, size int) (p *Packet) {
+func NewExtentRepairReadPacket(partitionId uint64, extentId uint64, offset, size int) (p *Packet) {
 	p = new(Packet)
 	p.ExtentID = extentId
 	p.PartitionID = partitionId
@@ -140,7 +140,7 @@ func NewExtentRepairReadPacket(partitionId uint32, extentId uint64, offset, size
 	return
 }
 
-func NewStreamReadResponsePacket(requestId int64, partitionId uint32, extentId uint64) (p *Packet) {
+func NewStreamReadResponsePacket(requestId int64, partitionId uint64, extentId uint64) (p *Packet) {
 	p = new(Packet)
 	p.ExtentID = extentId
 	p.PartitionID = partitionId
@@ -152,7 +152,7 @@ func NewStreamReadResponsePacket(requestId int64, partitionId uint32, extentId u
 	return
 }
 
-func NewNotifyExtentRepair(partitionId uint32) (p *Packet) {
+func NewNotifyExtentRepair(partitionId uint64) (p *Packet) {
 	p = new(Packet)
 	p.Opcode = proto.OpNotifyExtentRepair
 	p.PartitionID = partitionId

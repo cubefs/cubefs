@@ -226,7 +226,7 @@ func (s *DataNode) handleDeleteDataPartition(pkg *repl.Packet) {
 			response.Result = err.Error()
 			log.LogErrorf("action[handleDeleteDataPartition] from master Task(%v) failed, err(%v)", task.ToString(), err)
 		} else {
-			s.space.DeletePartition(uint32(request.PartitionId))
+			s.space.DeletePartition(request.PartitionId)
 			response.PartitionId = uint64(request.PartitionId)
 			response.Status = proto.TaskSuccess
 		}
@@ -256,7 +256,7 @@ func (s *DataNode) handleLoadDataPartition(pkg *repl.Packet) {
 	if task.OpCode == proto.OpLoadDataPartition {
 		bytes, _ := json.Marshal(task.Request)
 		json.Unmarshal(bytes, request)
-		dp := s.space.GetPartition(uint32(request.PartitionId))
+		dp := s.space.GetPartition(request.PartitionId)
 		if dp == nil {
 			response.Status = proto.TaskFail
 			response.PartitionId = uint64(request.PartitionId)
@@ -578,7 +578,7 @@ func (s *DataNode) handleOfflineDataPartition(pkg *repl.Packet) {
 	if err = json.Unmarshal(reqData, req); err != nil {
 		return
 	}
-	dp := s.space.GetPartition(uint32(req.PartitionId))
+	dp := s.space.GetPartition(req.PartitionId)
 	if err != nil {
 		return
 	}
