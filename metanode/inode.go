@@ -22,7 +22,6 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 	"io"
 	"sync"
-	"time"
 )
 
 const (
@@ -93,7 +92,7 @@ func (i *Inode) String() string {
 // NewInode returns a new Inode instance pointer with specified Inode ID, name and Inode type code.
 // The AccessTime and ModifyTime of new instance will be set to current time.
 func NewInode(ino uint64, t uint32) *Inode {
-	ts := time.Now().Unix()
+	ts := Now.GetCurrentTime().Unix()
 	i := &Inode{
 		Inode:      ino,
 		Type:       t,
