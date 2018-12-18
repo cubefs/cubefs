@@ -144,7 +144,6 @@ type dataPartition struct {
 	repairC         chan uint64
 	storeC          chan uint64
 	stopC           chan bool
-	hadRandomWrite  bool
 
 	runtimeMetrics          *DataPartitionMetrics
 	updateReplicationTime   int64
