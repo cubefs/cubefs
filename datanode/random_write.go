@@ -117,9 +117,7 @@ func (dp *dataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 	}
 
 	pkg.ResultCode = resp.(uint8)
-	if pkg.ResultCode == proto.OpOk && !dp.hadRandomWrite {
-		dp.hadRandomWrite = true
-	}
+
 	log.LogDebugf("[randomWrite] SubmitRaft: req_%v_%v_%v_%v_%v response = %v.",
 		dp.partitionId, pkg.ExtentID, pkg.ExtentOffset, pkg.Size, pkg.CRC, pkg.GetResultMesg())
 	return
@@ -151,7 +149,7 @@ func (dp *dataPartition) addDiskErrs(err error, flag uint8) {
 }
 
 func (dp *dataPartition) RandomPartitionReadCheck(request *repl.Packet, connect net.Conn) (err error) {
-	if !dp.config.RandomWrite || request.Opcode == proto.OpExtentRepairRead || !dp.hadRandomWrite {
+	if !dp.config.RandomWrite || request.Opcode == proto.OpExtentRepairRead {
 		return
 	}
 	_, ok := dp.IsRaftLeader()
