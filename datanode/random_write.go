@@ -106,7 +106,7 @@ func (rndWrtItem *RndWrtCmdItem) rndWrtCmdUnmarshal(cmd []byte) (err error) {
 }
 
 // Submit the propose to raft.
-func (dp *dataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
+func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 	val, err := rndWrtDataMarshal(pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data, pkg.CRC)
 	if err != nil {
 		return
@@ -123,7 +123,7 @@ func (dp *dataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 	return
 }
 
-func (dp *dataPartition) checkWriteErrs(errMsg string) (ignore bool) {
+func (dp *DataPartition) checkWriteErrs(errMsg string) (ignore bool) {
 	// file has deleted when raft log apply
 	if strings.Contains(errMsg, storage.ErrorExtentHasDelete.Error()) {
 		return true
@@ -131,7 +131,7 @@ func (dp *dataPartition) checkWriteErrs(errMsg string) (ignore bool) {
 	return false
 }
 
-func (dp *dataPartition) addDiskErrs(err error, flag uint8) {
+func (dp *DataPartition) addDiskErrs(err error, flag uint8) {
 	if err == nil {
 		return
 	}
@@ -148,7 +148,7 @@ func (dp *dataPartition) addDiskErrs(err error, flag uint8) {
 	}
 }
 
-func (dp *dataPartition) RandomPartitionReadCheck(request *repl.Packet, connect net.Conn) (err error) {
+func (dp *DataPartition) RandomPartitionReadCheck(request *repl.Packet, connect net.Conn) (err error) {
 	if !dp.config.RandomWrite || request.Opcode == proto.OpExtentRepairRead {
 		return
 	}

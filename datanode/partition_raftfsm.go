@@ -35,7 +35,7 @@ import (
  The raft interface need implement by application.
  Apply the raft wal to disk.
 */
-func (dp *dataPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
+func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
 	opItem := &rndWrtOpItem{}
 	defer func(index uint64) {
 		if err != nil {
@@ -89,7 +89,7 @@ func (dp *dataPartition) Apply(command []byte, index uint64) (resp interface{}, 
  The raft interface need implement by application.
  Update the member information when member changed.
 */
-func (dp *dataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
+func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
 	defer func(index uint64) {
 		dp.uploadApplyID(index)
 	}(index)
@@ -124,7 +124,7 @@ func (dp *dataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 }
 
 // Data is already on the disk. Do not need snapshot.
-func (dp *dataPartition) Snapshot() (raftproto.Snapshot, error) {
+func (dp *DataPartition) Snapshot() (raftproto.Snapshot, error) {
 	applyID := dp.applyId
 	snapIterator := NewItemIterator(applyID)
 	return snapIterator, nil
@@ -134,7 +134,7 @@ func (dp *dataPartition) Snapshot() (raftproto.Snapshot, error) {
  The raft interface need implement by application.
  Restore data from the member who have newest data.
 */
-func (dp *dataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftproto.SnapIterator) (err error) {
+func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftproto.SnapIterator) (err error) {
 	var (
 		data        []byte
 		appIndexID  uint64
@@ -173,7 +173,7 @@ func (dp *dataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 
 	extentFiles, err = dp.getExtentInfo(targetAddr)
 	if err != nil {
-		err = errors.Annotatef(err, "[ApplySnapshot] getExtentInfo dataPartition[%v]", dp.partitionId)
+		err = errors.Annotatef(err, "[ApplySnapshot] getExtentInfo DataPartition[%v]", dp.partitionId)
 		return
 	}
 	dp.ExtentRepair(extentFiles)
@@ -184,12 +184,12 @@ func (dp *dataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 	return
 }
 
-func (dp *dataPartition) HandleFatalEvent(err *raft.FatalError) {
+func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
 	// Panic while fatal event happen.
 	log.LogFatalf("action[HandleFatalEvent] err[%v].", err)
 }
 
-func (dp *dataPartition) HandleLeaderChange(leader uint64) {
+func (dp *DataPartition) HandleLeaderChange(leader uint64) {
 	ump.Alarm(UmpModuleName, fmt.Sprintf("LeaderChange: partition=%d, "+
 		"newLeader=%d", dp.config.PartitionId, leader))
 
@@ -198,7 +198,7 @@ func (dp *dataPartition) HandleLeaderChange(leader uint64) {
 	}
 }
 
-func (dp *dataPartition) Put(key, val interface{}) (resp interface{}, err error) {
+func (dp *DataPartition) Put(key, val interface{}) (resp interface{}, err error) {
 	if dp.raftPartition == nil {
 		err = fmt.Errorf("%s key=%v", RaftIsNotStart, key)
 		return
@@ -221,14 +221,14 @@ func (dp *dataPartition) Put(key, val interface{}) (resp interface{}, err error)
 	return
 }
 
-func (dp *dataPartition) Get(key interface{}) (interface{}, error) {
+func (dp *DataPartition) Get(key interface{}) (interface{}, error) {
 	return nil, nil
 }
 
-func (dp *dataPartition) Del(key interface{}) (interface{}, error) {
+func (dp *DataPartition) Del(key interface{}) (interface{}, error) {
 	return nil, nil
 }
 
-func (dp *dataPartition) uploadApplyID(applyId uint64) {
+func (dp *DataPartition) uploadApplyID(applyId uint64) {
 	atomic.StoreUint64(&dp.applyId, applyId)
 }

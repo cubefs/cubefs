@@ -56,19 +56,19 @@ type Disk struct {
 	MaxErrs      int
 	Status       int
 	RestSize     uint64
-	partitionMap map[uint64]DataPartition
+	partitionMap map[uint64]*DataPartition
 	space        SpaceManager
 }
 
-type PartitionVisitor func(dp DataPartition)
+type PartitionVisitor func(dp *DataPartition)
 
-func NewDisk(path string, restSize uint64, maxErrs int, space *spaceManager) (d *Disk) {
+func NewDisk(path string, restSize uint64, maxErrs int, space *SpaceManager) (d *Disk) {
 	d = new(Disk)
 	d.Path = path
 	d.RestSize = restSize
 	d.MaxErrs = maxErrs
 	d.space = space
-	d.partitionMap = make(map[uint64]DataPartition)
+	d.partitionMap = make(map[uint64]*DataPartition)
 	d.RestSize = restSize
 	d.MaxErrs = 2000
 	d.computeUsage()
@@ -173,21 +173,21 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	return
 }
 
-func (d *Disk) AttachDataPartition(dp DataPartition) {
+func (d *Disk) AttachDataPartition(dp *DataPartition) {
 	d.Lock()
 	d.partitionMap[dp.ID()] = dp
 	d.Unlock()
 	d.computeUsage()
 }
 
-func (d *Disk) DetachDataPartition(dp DataPartition) {
+func (d *Disk) DetachDataPartition(dp *DataPartition) {
 	d.Lock()
 	delete(d.partitionMap, dp.ID())
 	d.Unlock()
 	d.computeUsage()
 }
 
-func (d *Disk) GetDataPartition(partitionId uint64) (partition DataPartition) {
+func (d *Disk) GetDataPartition(partitionId uint64) (partition *DataPartition) {
 	d.RLock()
 	defer d.RUnlock()
 	return d.partitionMap[partitionId]
@@ -214,7 +214,7 @@ func (d *Disk) DataPartitionList() (partitionIds []uint64) {
 func unmarshalPartitionName(name string) (partitionId uint32, partitionSize int, err error) {
 	arr := strings.Split(name, "_")
 	if len(arr) != 3 {
-		err = fmt.Errorf("error dataPartition name(%v)", name)
+		err = fmt.Errorf("error DataPartition name(%v)", name)
 		return
 	}
 	var (

@@ -29,7 +29,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/master"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
@@ -39,12 +38,13 @@ import (
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/ump"
+	"errors"
 )
 
 var (
 	ErrStoreTypeMismatch        = errors.New("store type error")
-	ErrPartitionNotExist        = errors.New("dataPartition not exists")
-	ErrNoDiskForCreatePartition = errors.New("no disk for create dataPartition")
+	ErrPartitionNotExist        = errors.New("DataPartition not exists")
+	ErrNoDiskForCreatePartition = errors.New("no disk for create DataPartition")
 	ErrBadConfFile              = errors.New("bad config file")
 
 	LocalIP      string
@@ -73,7 +73,7 @@ const (
 )
 
 type DataNode struct {
-	space          SpaceManager
+	space          *SpaceManager
 	port           string
 	rackName       string
 	clusterId      string

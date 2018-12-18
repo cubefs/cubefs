@@ -54,7 +54,7 @@ func (s *DataNode) apiGetStat(w http.ResponseWriter, r *http.Request) {
 
 func (s *DataNode) apiGetPartitions(w http.ResponseWriter, r *http.Request) {
 	partitions := make([]interface{}, 0)
-	s.space.RangePartitions(func(dp DataPartition) bool {
+	s.space.RangePartitions(func(dp *DataPartition) bool {
 		partition := &struct {
 			ID       uint64   `json:"id"`
 			Size     int      `json:"size"`
