@@ -57,6 +57,9 @@ func (s *DataNode) releaseExtent(pkg *repl.Packet) {
 func (s *DataNode) addMetrics(reply *repl.Packet) {
 	reply.AfterTp()
 	latency := time.Since(reply.TpObject.StartTime)
+	if reply.Object==nil {
+		return
+	}
 	partition := reply.Object.(DataPartition)
 	if partition == nil {
 		return
