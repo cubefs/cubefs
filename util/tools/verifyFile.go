@@ -75,7 +75,7 @@ func RandStringBytesMaskImpr(n int) string {
 }
 
 func write(name string) (verifyInfo []*VerifyInfo, err error) {
-	fp, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0664)
+	fp, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0664)
 	if err != nil {
 		return nil, err
 	}
