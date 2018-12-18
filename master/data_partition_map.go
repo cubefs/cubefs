@@ -66,7 +66,6 @@ func (dpMap *DataPartitionMap) putDataPartition(dp *DataPartition) {
 	}
 	//use dp replace old partition in the map and array
 	dpMap.dataPartitionMap[dp.PartitionID] = dp
-	dpMap.dataPartitions = append(dpMap.dataPartitions, dp)
 	dataPartitions := make([]*DataPartition, 0)
 	for index, partition := range dpMap.dataPartitions {
 		if partition.PartitionID == dp.PartitionID {

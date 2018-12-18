@@ -315,7 +315,7 @@ func (ns *NodeSet) deleteMetaNode(metaNode *MetaNode) {
 }
 
 func (ns *NodeSet) canWriteForDataNode(replicaNum int) bool {
-	log.LogErrorf("canWriteForDataNode metaLen[%v] replicaNum[%v]", ns.dataNodeLen, replicaNum)
+	log.LogInfof("canWriteForDataNode metaLen[%v] replicaNum[%v]", ns.dataNodeLen, replicaNum)
 	if ns.dataNodeLen < int(replicaNum) {
 		return false
 	}
@@ -330,12 +330,12 @@ func (ns *NodeSet) canWriteForDataNode(replicaNum int) bool {
 		}
 		return true
 	})
-	log.LogErrorf("canWriteForDataNode count[%v] replicaNum[%v]", count, replicaNum)
+	log.LogInfof("canWriteForDataNode count[%v] replicaNum[%v]", count, replicaNum)
 	return count >= replicaNum
 }
 
 func (ns *NodeSet) canWriteForMetaNode(replicaNum int) bool {
-	log.LogErrorf("canWriteForMetaNode metaLen[%v] replicaNum[%v]", ns.metaNodeLen, replicaNum)
+	log.LogInfof("canWriteForMetaNode metaLen[%v] replicaNum[%v]", ns.metaNodeLen, replicaNum)
 	if ns.metaNodeLen < replicaNum {
 		return false
 	}
@@ -350,7 +350,7 @@ func (ns *NodeSet) canWriteForMetaNode(replicaNum int) bool {
 		}
 		return true
 	})
-	log.LogErrorf("canWriteForMetaNode count[%v] replicaNum[%v]", count, replicaNum)
+	log.LogInfof("canWriteForMetaNode count[%v] replicaNum[%v]", count, replicaNum)
 	return count >= replicaNum
 }
 

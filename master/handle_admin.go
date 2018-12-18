@@ -86,25 +86,6 @@ errDeal:
 	return
 }
 
-func (m *Master) setCompactStatus(w http.ResponseWriter, r *http.Request) {
-	var (
-		status bool
-		err    error
-	)
-	if status, err = parseCompactPara(r); err != nil {
-		goto errDeal
-	}
-	if err = m.cluster.syncPutCluster(); err != nil {
-		goto errDeal
-	}
-	io.WriteString(w, fmt.Sprintf("set compact status to %v success", status))
-	return
-errDeal:
-	logMsg := getReturnMessage("setCompactStatus", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
-}
-
 func (m *Master) setDisableAutoAlloc(w http.ResponseWriter, r *http.Request) {
 	var (
 		status bool
@@ -119,11 +100,6 @@ func (m *Master) setDisableAutoAlloc(w http.ResponseWriter, r *http.Request) {
 errDeal:
 	logMsg := getReturnMessage("setDisableAutoAlloc", r.RemoteAddr, err.Error(), http.StatusBadRequest)
 	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
-}
-
-func (m *Master) getCompactStatus(w http.ResponseWriter, r *http.Request) {
-	io.WriteString(w, fmt.Sprintf("%v", m.cluster.compactStatus))
 	return
 }
 
@@ -432,11 +408,6 @@ func (m *Master) createVol(w http.ResponseWriter, r *http.Request) {
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
 		goto errDeal
-	}
-	for i := 0; i < MinReadWriteDataPartitions; i++ {
-		if _, err = m.cluster.createDataPartition(name); err != nil {
-			break
-		}
 	}
 	msg = fmt.Sprintf("create vol[%v] success,has allocate [%v] data partitions", name, len(vol.dataPartitions.dataPartitions))
 	m.sendOkReply(w, r, msg)
@@ -1004,11 +975,6 @@ func parseMetaPartitionOffline(r *http.Request) (volName, nodeAddr string, parti
 	return
 }
 
-func parseCompactPara(r *http.Request) (status bool, err error) {
-	r.ParseForm()
-	return checkEnable(r)
-}
-
 func parseDisableAutoAlloc(r *http.Request) (status bool, err error) {
 	r.ParseForm()
 	return checkEnable(r)
@@ -1055,7 +1021,9 @@ func parseCreateMetaPartitionPara(r *http.Request) (volName string, start uint64
 
 func (m *Master) sendOkReply(w http.ResponseWriter, r *http.Request, msg string) {
 	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
-	io.WriteString(w, msg)
+	w.Header().Set("content-type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(msg)))
+	w.Write([]byte(msg))
 }
 
 func (m *Master) sendErrReply(w http.ResponseWriter, r *http.Request, httpCode int, msg string, err error) {

@@ -462,7 +462,7 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 		goto errDeal
 	}
 	vol.dataPartitions.putDataPartition(dp)
-	log.LogInfof("action[createDataPartition] success,volName[%v],partition[%v]", volName, partitionID)
+	log.LogInfof("action[createDataPartition] success,volName[%v],partitionId[%v]", volName, partitionID)
 	return
 errDeal:
 	err = fmt.Errorf("action[createDataPartition],clusterID[%v] vol[%v] Err:%v ", c.Name, volName, err.Error())
@@ -766,7 +766,11 @@ func (c *Cluster) createVol(name string, replicaNum uint8, randomWrite bool, siz
 	} else {
 		dataPartitionSize = uint64(size) * util.GB
 	}
-	if vol, err = c.createVolInternal(name, replicaNum, randomWrite, dataPartitionSize, uint64(capacity)); err != nil {
+	if err = c.createVolInternal(name, replicaNum, randomWrite, dataPartitionSize, uint64(capacity)); err != nil {
+		goto errDeal
+	}
+
+	if vol, err = c.getVol(name); err != nil {
 		goto errDeal
 	}
 
@@ -776,8 +780,6 @@ func (c *Cluster) createVol(name string, replicaNum uint8, randomWrite bool, siz
 		c.deleteVol(name)
 		goto errDeal
 	}
-	vol.initDataPartitions(c)
-	readWriteDataPartitions = vol.checkDataPartitionStatus(c)
 	for retryCount := 0; readWriteDataPartitions < DefaultInitDataPartitions && retryCount < 3; retryCount++ {
 		vol.initDataPartitions(c)
 		readWriteDataPartitions = vol.checkDataPartitionStatus(c)
@@ -794,8 +796,11 @@ errDeal:
 	return
 }
 
-func (c *Cluster) createVolInternal(name string, replicaNum uint8, randomWrite bool, dpSize, capacity uint64) (vol *Vol, err error) {
-	var id uint64
+func (c *Cluster) createVolInternal(name string, replicaNum uint8, randomWrite bool, dpSize, capacity uint64) (err error) {
+	var (
+		id  uint64
+		vol *Vol
+	)
 	if _, err = c.getVol(name); err == nil {
 		err = hasExist(name)
 		goto errDeal
@@ -808,7 +813,6 @@ func (c *Cluster) createVolInternal(name string, replicaNum uint8, randomWrite b
 	if err = c.syncAddVol(vol); err != nil {
 		goto errDeal
 	}
-	c.putVol(vol)
 	return
 errDeal:
 	err = fmt.Errorf("action[createVolInternal], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
