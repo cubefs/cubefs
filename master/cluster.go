@@ -461,8 +461,7 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 	if err = c.syncAddDataPartition(dp); err != nil {
 		goto errDeal
 	}
-	vol.dataPartitions.putDataPartition(dp)
-	log.LogInfof("action[createDataPartition] success,volName[%v],partition[%v]", volName, partitionID)
+	log.LogInfof("action[createDataPartition] success,volName[%v],partitionId[%v]", volName, partitionID)
 	return
 errDeal:
 	err = fmt.Errorf("action[createDataPartition],clusterID[%v] vol[%v] Err:%v ", c.Name, volName, err.Error())
@@ -766,7 +765,11 @@ func (c *Cluster) createVol(name string, replicaNum uint8, randomWrite bool, siz
 	} else {
 		dataPartitionSize = uint64(size) * util.GB
 	}
-	if vol, err = c.createVolInternal(name, replicaNum, randomWrite, dataPartitionSize, uint64(capacity)); err != nil {
+	if err = c.createVolInternal(name, replicaNum, randomWrite, dataPartitionSize, uint64(capacity)); err != nil {
+		goto errDeal
+	}
+
+	if vol, err = c.getVol(name); err != nil {
 		goto errDeal
 	}
 
@@ -792,8 +795,11 @@ errDeal:
 	return
 }
 
-func (c *Cluster) createVolInternal(name string, replicaNum uint8, randomWrite bool, dpSize, capacity uint64) (vol *Vol, err error) {
-	var id uint64
+func (c *Cluster) createVolInternal(name string, replicaNum uint8, randomWrite bool, dpSize, capacity uint64) (err error) {
+	var (
+		id  uint64
+		vol *Vol
+	)
 	if _, err = c.getVol(name); err == nil {
 		err = hasExist(name)
 		goto errDeal
@@ -806,7 +812,6 @@ func (c *Cluster) createVolInternal(name string, replicaNum uint8, randomWrite b
 	if err = c.syncAddVol(vol); err != nil {
 		goto errDeal
 	}
-	c.putVol(vol)
 	return
 errDeal:
 	err = fmt.Errorf("action[createVolInternal], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
@@ -895,7 +900,6 @@ func (c *Cluster) CreateMetaPartition(volName string, start, end uint64) (err er
 	if err = c.syncAddMetaPartition(mp); err != nil {
 		return errors.Trace(err)
 	}
-	vol.AddMetaPartition(mp)
 	log.LogInfof("action[CreateMetaPartition] success,volName[%v],partition[%v]", volName, partitionID)
 	return
 }

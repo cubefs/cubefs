@@ -668,7 +668,6 @@ func (c *Cluster) applyUpdateDataPartition(cmd *RaftCmdData) (err error) {
 	}
 	dp.PersistenceHosts = strings.Split(dpv.Hosts, UnderlineSeparator)
 	dp.Peers = dpv.Peers
-	vol.dataPartitions.putDataPartition(dp)
 	return
 }
 
