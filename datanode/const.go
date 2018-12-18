@@ -77,6 +77,8 @@ const (
 	ActionRepair                  = "ActionRepair:"
 	ActionOfflinePartition        = "ActionOfflinePartition"
 	ActionCreateDataPartition     = "ActionCreateDataPartition"
+	ActionLoadDataPartition       = "ActionLoadDataPartition"
+	ActionDeleteDataPartition     = "ActionDeleteDataPartition"
 )
 
 const (

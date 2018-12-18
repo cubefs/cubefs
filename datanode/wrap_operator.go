@@ -225,7 +225,7 @@ func (s *DataNode) handleDeleteDataPartition(pkg *repl.Packet) {
 	err := json.Unmarshal(pkg.Data, task)
 	defer func() {
 		if err != nil {
-			pkg.PackErrorBody(ActionCreateDataPartition, err.Error())
+			pkg.PackErrorBody(ActionDeleteDataPartition, err.Error())
 		} else {
 			pkg.PackOkReply()
 		}
@@ -270,7 +270,7 @@ func (s *DataNode) handleLoadDataPartition(pkg *repl.Packet) {
 	err := json.Unmarshal(pkg.Data, task)
 	defer func() {
 		if err != nil {
-			pkg.PackErrorBody(ActionWrite, err.Error())
+			pkg.PackErrorBody(ActionLoadDataPartition, err.Error())
 		} else {
 			pkg.PackOkReply()
 		}
