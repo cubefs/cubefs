@@ -573,11 +573,13 @@ func (s *DataNode) handleOfflineDataPartition(pkg *Packet) {
 	_, err = dp.ChangeRaftMember(raftProto.ConfAddNode, raftProto.Peer{ID: req.AddPeer.ID}, reqData)
 	if err != nil {
 		resp.Result = err.Error()
+		log.LogErrorf(fmt.Sprintf("[opOfflineDataPartition]: AddNode[%v] err[%v]", req.AddPeer, err))
 		goto end
 	}
 	_, err = dp.ChangeRaftMember(raftProto.ConfRemoveNode, raftProto.Peer{ID: req.RemovePeer.ID}, reqData)
 	if err != nil {
 		resp.Result = err.Error()
+		log.LogErrorf(fmt.Sprintf("[opOfflineDataPartition]: RemoveNode[%v] err[%v]", req.RemovePeer, err))
 		goto end
 	}
 	resp.Status = proto.TaskSuccess
@@ -588,7 +590,7 @@ end:
 	data, _ := json.Marshal(adminTask)
 	_, err = MasterHelper.Request("POST", master.DataNodeResponse, nil, data)
 	if err != nil {
-		err = errors.Annotatef(err, "offline dataPartition failed, partitionId(%v)", resp.PartitionId)
+		err = errors.Annotatef(err, "opOfflineDataPartition failed, partitionId(%v)", resp.PartitionId)
 		log.LogError(errors.ErrorStack(err))
 		return
 	}
