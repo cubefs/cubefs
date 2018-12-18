@@ -279,6 +279,7 @@ func (vol *Vol) checkStatus(c *Cluster) {
 	if vol.Status != VolMarkDelete {
 		return
 	}
+	log.LogInfof("action[volCheckStatus] vol[%v],status[%v]",vol.Name,vol.Status )
 	metaTasks := vol.getDeleteMetaTasks()
 	dataTasks := vol.getDeleteDataTasks()
 	if len(metaTasks) == 0 && len(dataTasks) == 0 {

@@ -121,6 +121,7 @@ func (m *Master) handlerWithInterceptor() http.Handler {
 		func(w http.ResponseWriter, r *http.Request) {
 
 			if m.partition.IsLeader() {
+				log.LogErrorf("action[LeaderServeHTTP]  leader,URL[%v]", r.URL)
 				m.ServeHTTP(w, r)
 				return
 			}
@@ -129,6 +130,7 @@ func (m *Master) handlerWithInterceptor() http.Handler {
 				http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
 				return
 			} else {
+				log.LogErrorf("action[LeaderProxy]  leader,URL[%v]", r.URL)
 				m.proxy(w, r)
 			}
 		})
