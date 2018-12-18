@@ -86,25 +86,6 @@ errDeal:
 	return
 }
 
-func (m *Master) setCompactStatus(w http.ResponseWriter, r *http.Request) {
-	var (
-		status bool
-		err    error
-	)
-	if status, err = parseCompactPara(r); err != nil {
-		goto errDeal
-	}
-	if err = m.cluster.syncPutCluster(); err != nil {
-		goto errDeal
-	}
-	io.WriteString(w, fmt.Sprintf("set compact status to %v success", status))
-	return
-errDeal:
-	logMsg := getReturnMessage("setCompactStatus", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
-}
-
 func (m *Master) setDisableAutoAlloc(w http.ResponseWriter, r *http.Request) {
 	var (
 		status bool
@@ -119,11 +100,6 @@ func (m *Master) setDisableAutoAlloc(w http.ResponseWriter, r *http.Request) {
 errDeal:
 	logMsg := getReturnMessage("setDisableAutoAlloc", r.RemoteAddr, err.Error(), http.StatusBadRequest)
 	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
-}
-
-func (m *Master) getCompactStatus(w http.ResponseWriter, r *http.Request) {
-	io.WriteString(w, fmt.Sprintf("%v", m.cluster.compactStatus))
 	return
 }
 
@@ -1002,11 +978,6 @@ func parseMetaPartitionOffline(r *http.Request) (volName, nodeAddr string, parti
 		return
 	}
 	return
-}
-
-func parseCompactPara(r *http.Request) (status bool, err error) {
-	r.ParseForm()
-	return checkEnable(r)
 }
 
 func parseDisableAutoAlloc(r *http.Request) (status bool, err error) {
