@@ -66,7 +66,6 @@ type PacketProcessor struct {
 	operatorFunc func(pkg *Packet, c *net.TCPConn) error
 	postFunc     func(pkg *Packet) error
 
-	decideResultCodeFunc func(pkg *Packet)
 }
 
 func NewPacketProcessor(inConn *net.TCPConn, prepareFunc func(pkg *Packet) error,
