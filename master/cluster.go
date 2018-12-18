@@ -776,8 +776,6 @@ func (c *Cluster) createVol(name string, replicaNum uint8, randomWrite bool, siz
 		c.deleteVol(name)
 		goto errDeal
 	}
-	vol.initDataPartitions(c)
-	readWriteDataPartitions = vol.checkDataPartitionStatus(c)
 	for retryCount := 0; readWriteDataPartitions < DefaultInitDataPartitions && retryCount < 3; retryCount++ {
 		vol.initDataPartitions(c)
 		readWriteDataPartitions = vol.checkDataPartitionStatus(c)
