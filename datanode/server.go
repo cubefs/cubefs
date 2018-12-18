@@ -324,7 +324,7 @@ func (s *DataNode) serveConn(conn net.Conn) {
 	c.SetKeepAlive(true)
 	c.SetNoDelay(true)
 
-	packetProcessor := repl.NewPacketProcessor(c, s.Prepare, s.OperatePacket, s.Post)
+	packetProcessor := repl.NewReplProtocol(c, s.Prepare, s.OperatePacket, s.Post)
 	packetProcessor.ServerConn()
 }
 

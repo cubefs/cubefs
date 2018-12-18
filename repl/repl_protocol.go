@@ -33,7 +33,7 @@ var (
 )
 
 /*
- this struct is used for packet Processor framwroek
+ this struct is used for packet rp framwroek
  has three goroutine:
     a. ServerConn goroutine recive pkg from client,and check it avali,then send it to toBeProcessCh
 
@@ -45,7 +45,7 @@ var (
 	if any step error,then change request to error Packet,and send it to responseCh, the InteractWithClient can send it to client
 
 */
-type PacketProcessor struct {
+type ReplProtocol struct {
 	listMux sync.RWMutex
 
 	packetList *list.List    //store all recived pkg from client
@@ -68,26 +68,26 @@ type PacketProcessor struct {
 	postFunc     func(pkg *Packet) error
 }
 
-func NewPacketProcessor(inConn *net.TCPConn, prepareFunc func(pkg *Packet) error,
-	operatorFunc func(pkg *Packet, c *net.TCPConn) error, postFunc func(pkg *Packet) error) *PacketProcessor {
-	processor := new(PacketProcessor)
-	processor.packetList = list.New()
-	processor.handleCh = make(chan struct{}, RequestChanSize)
-	processor.toBeProcessCh = make(chan *Packet, RequestChanSize)
-	processor.responseCh = make(chan *Packet, RequestChanSize)
-	processor.exitC = make(chan bool, 1)
-	processor.sourceConn = inConn
-	processor.followerConnects = make(map[string]*net.TCPConn, 0)
-	processor.prepareFunc = prepareFunc
-	processor.operatorFunc = operatorFunc
-	processor.postFunc = postFunc
-	go processor.operatorAndForwardPkg()
-	go processor.receiveFollowerResponse()
+func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(pkg *Packet) error,
+	operatorFunc func(pkg *Packet, c *net.TCPConn) error, postFunc func(pkg *Packet) error) *ReplProtocol {
+	rp := new(ReplProtocol)
+	rp.packetList = list.New()
+	rp.handleCh = make(chan struct{}, RequestChanSize)
+	rp.toBeProcessCh = make(chan *Packet, RequestChanSize)
+	rp.responseCh = make(chan *Packet, RequestChanSize)
+	rp.exitC = make(chan bool, 1)
+	rp.sourceConn = inConn
+	rp.followerConnects = make(map[string]*net.TCPConn, 0)
+	rp.prepareFunc = prepareFunc
+	rp.operatorFunc = operatorFunc
+	rp.postFunc = postFunc
+	go rp.operatorAndForwardPkg()
+	go rp.receiveFollowerResponse()
 
-	return processor
+	return rp
 }
 
-func (processor *PacketProcessor) ServerConn() {
+func (rp *ReplProtocol) ServerConn() {
 	var (
 		err error
 	)
@@ -97,16 +97,16 @@ func (processor *PacketProcessor) ServerConn() {
 			!strings.Contains(err.Error(), "reset by peer") {
 			log.LogErrorf("action[serveConn] err(%v).", err)
 		}
-		processor.sourceConn.Close()
+		rp.sourceConn.Close()
 	}()
 	for {
 		select {
-		case <-processor.exitC:
-			log.LogDebugf("action[DataNode.serveConn] event loop for %v exit.", processor.sourceConn.RemoteAddr())
+		case <-rp.exitC:
+			log.LogDebugf("action[DataNode.serveConn] event loop for %v exit.", rp.sourceConn.RemoteAddr())
 			return
 		default:
-			if err = processor.readPkgFromSocket(); err != nil {
-				processor.Stop()
+			if err = rp.readPkgFromSocket(); err != nil {
+				rp.Stop()
 				return
 			}
 		}
@@ -114,43 +114,43 @@ func (processor *PacketProcessor) ServerConn() {
 
 }
 
-func (processor *PacketProcessor) readPkgFromSocket() (err error) {
+func (rp *ReplProtocol) readPkgFromSocket() (err error) {
 	pkg := NewPacket()
-	if err = pkg.ReadFromConnFromCli(processor.sourceConn, proto.NoReadDeadlineTime); err != nil {
+	if err = pkg.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
 		return
 	}
 	log.LogDebugf("action[readPkgFromSocket] read packet(%v) from remote(%v).",
-		pkg.GetUniqueLogId(), processor.sourceConn.RemoteAddr().String())
+		pkg.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
 	if err = pkg.resolveReplicateAddrs(); err != nil {
-		processor.responseCh <- pkg
+		rp.responseCh <- pkg
 		return
 	}
-	if err = processor.prepareFunc(pkg); err != nil {
-		processor.responseCh <- pkg
+	if err = rp.prepareFunc(pkg); err != nil {
+		rp.responseCh <- pkg
 		return
 	}
-	processor.toBeProcessCh <- pkg
+	rp.toBeProcessCh <- pkg
 
 	return
 }
 
-func (processor *PacketProcessor) operatorAndForwardPkg() {
+func (rp *ReplProtocol) operatorAndForwardPkg() {
 	for {
 		select {
-		case request := <-processor.toBeProcessCh:
+		case request := <-rp.toBeProcessCh:
 			if !request.isForwardPacket() {
-				processor.operatorFunc(request, processor.sourceConn)
-				processor.responseCh <- request
+				rp.operatorFunc(request, rp.sourceConn)
+				rp.responseCh <- request
 			} else {
-				if _, err := processor.sendToAllfollowers(request); err == nil {
-					processor.operatorFunc(request, processor.sourceConn)
+				if _, err := rp.sendToAllfollowers(request); err == nil {
+					rp.operatorFunc(request, rp.sourceConn)
 				}
-				processor.handleCh <- struct{}{}
+				rp.handleCh <- struct{}{}
 			}
-		case request := <-processor.responseCh:
-			processor.writeResponseToClient(request)
-		case <-processor.exitC:
-			processor.CleanResource()
+		case request := <-rp.responseCh:
+			rp.writeResponseToClient(request)
+		case <-rp.exitC:
+			rp.CleanResource()
 			return
 		}
 	}
@@ -158,23 +158,23 @@ func (processor *PacketProcessor) operatorAndForwardPkg() {
 }
 
 // Receive response from all followers.
-func (processor *PacketProcessor) receiveFollowerResponse() {
+func (rp *ReplProtocol) receiveFollowerResponse() {
 	for {
 		select {
-		case <-processor.handleCh:
-			processor.reciveAllFollowerResponse()
-		case <-processor.exitC:
+		case <-rp.handleCh:
+			rp.reciveAllFollowerResponse()
+		case <-rp.exitC:
 			return
 		}
 	}
 }
 
-func (processor *PacketProcessor) sendToAllfollowers(request *Packet) (index int, err error) {
-	processor.PushPacketToList(request)
+func (rp *ReplProtocol) sendToAllfollowers(request *Packet) (index int, err error) {
+	rp.PushPacketToList(request)
 	for index = 0; index < len(request.followersConns); index++ {
-		err = processor.AllocateFollowersConnects(request, index)
+		err = rp.AllocateFollowersConnects(request, index)
 		if err != nil {
-			msg := fmt.Sprintf("request inconnect(%v) to(%v) err(%v)", processor.sourceConn.RemoteAddr().String(),
+			msg := fmt.Sprintf("request inconnect(%v) to(%v) err(%v)", rp.sourceConn.RemoteAddr().String(),
 				request.followersAddrs[index], err.Error())
 			err = errors.Annotatef(fmt.Errorf(msg), "Request(%v) sendToAllfollowers Error", request.GetUniqueLogId())
 			request.PackErrorBody(ActionSendToFollowers, err.Error())
@@ -187,7 +187,7 @@ func (processor *PacketProcessor) sendToAllfollowers(request *Packet) (index int
 		}
 		request.RemainReplicates = nodes
 		if err != nil {
-			msg := fmt.Sprintf("request inconnect(%v) to(%v) err(%v)", processor.sourceConn.RemoteAddr().String(),
+			msg := fmt.Sprintf("request inconnect(%v) to(%v) err(%v)", rp.sourceConn.RemoteAddr().String(),
 				request.followersAddrs[index], err.Error())
 			err = errors.Annotatef(fmt.Errorf(msg), "Request(%v) sendToAllfollowers Error", request.GetUniqueLogId())
 			request.PackErrorBody(ActionSendToFollowers, err.Error())
@@ -198,20 +198,20 @@ func (processor *PacketProcessor) sendToAllfollowers(request *Packet) (index int
 	return
 }
 
-func (processor *PacketProcessor) reciveAllFollowerResponse() {
+func (rp *ReplProtocol) reciveAllFollowerResponse() {
 	var (
 		e *list.Element
 	)
 
-	if e = processor.GetFrontPacket(); e == nil {
+	if e = rp.GetFrontPacket(); e == nil {
 		return
 	}
 	request := e.Value.(*Packet)
 	defer func() {
-		processor.DelPacketFromList(request)
+		rp.DelPacketFromList(request)
 	}()
 	for index := 0; index < len(request.followersAddrs); index++ {
-		err := processor.receiveFromFollower(request, index)
+		err := rp.receiveFromFollower(request, index)
 		if err != nil {
 			request.PackErrorBody(ActionReceiveFromFollower, err.Error())
 			request.forceDestoryAllConnect()
@@ -222,7 +222,7 @@ func (processor *PacketProcessor) reciveAllFollowerResponse() {
 	return
 }
 
-func (processor *PacketProcessor) receiveFromFollower(request *Packet, index int) (err error) {
+func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err error) {
 	// Receive pkg response from one member*/
 	if request.followersConns[index] == nil {
 		err = errors.Annotatef(fmt.Errorf(ConnIsNullErr), "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
@@ -266,42 +266,42 @@ func (processor *PacketProcessor) receiveFromFollower(request *Packet, index int
 }
 
 // Write response to client and recycle the connect.
-func (processor *PacketProcessor) writeResponseToClient(reply *Packet) {
+func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 	var err error
 	if reply.IsErrPacket() {
-		err = fmt.Errorf(reply.LogMessage(ActionWriteToCli, processor.sourceConn.RemoteAddr().String(),
+		err = fmt.Errorf(reply.LogMessage(ActionWriteToCli, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
 		reply.forceDestoryAllConnect()
 		log.LogErrorf(ActionWriteToCli+" %v", err)
 	}
-	processor.postFunc(reply)
+	rp.postFunc(reply)
 	if !reply.NeedReply {
 		log.LogDebugf(ActionWriteToCli+" %v", reply.LogMessage(ActionWriteToCli,
-			processor.sourceConn.RemoteAddr().String(), reply.StartT, err))
+			rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
 		return
 	}
 
-	if err = reply.WriteToConn(processor.sourceConn); err != nil {
-		err = fmt.Errorf(reply.LogMessage(ActionWriteToCli, processor.sourceConn.RemoteAddr().String(),
+	if err = reply.WriteToConn(rp.sourceConn); err != nil {
+		err = fmt.Errorf(reply.LogMessage(ActionWriteToCli, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, err))
 		log.LogErrorf(ActionWriteToCli+" %v", err)
 		reply.forceDestoryAllConnect()
-		processor.Stop()
+		rp.Stop()
 	}
 	log.LogDebugf(ActionWriteToCli+" %v", reply.LogMessage(ActionWriteToCli,
-		processor.sourceConn.RemoteAddr().String(), reply.StartT, err))
+		rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
 
 }
 
-/*the processor stop*/
-func (processor *PacketProcessor) Stop() {
-	processor.exitedMu.Lock()
-	defer processor.exitedMu.Unlock()
-	if !processor.exited {
-		if processor.exitC != nil {
-			close(processor.exitC)
+/*the rp stop*/
+func (rp *ReplProtocol) Stop() {
+	rp.exitedMu.Lock()
+	defer rp.exitedMu.Unlock()
+	if !rp.exited {
+		if rp.exitC != nil {
+			close(rp.exitC)
 		}
-		processor.exited = true
+		rp.exited = true
 	}
 
 }
@@ -309,21 +309,21 @@ func (processor *PacketProcessor) Stop() {
 /*
  allocate followers connects,if it is extentStore and it is Write op,then use last connects
 */
-func (processor *PacketProcessor) AllocateFollowersConnects(pkg *Packet, index int) (err error) {
+func (rp *ReplProtocol) AllocateFollowersConnects(pkg *Packet, index int) (err error) {
 	var conn *net.TCPConn
 	if pkg.StoreMode == proto.NormalExtentMode {
 		key := fmt.Sprintf("%v_%v_%v", pkg.PartitionID, pkg.ExtentID, pkg.followersAddrs[index])
-		processor.followerConnectLock.RLock()
-		conn := processor.followerConnects[key]
-		processor.followerConnectLock.RUnlock()
+		rp.followerConnectLock.RLock()
+		conn := rp.followerConnects[key]
+		rp.followerConnectLock.RUnlock()
 		if conn == nil {
 			conn, err = gConnPool.GetConnect(pkg.followersAddrs[index])
 			if err != nil {
 				return
 			}
-			processor.followerConnectLock.Lock()
-			processor.followerConnects[key] = conn
-			processor.followerConnectLock.Unlock()
+			rp.followerConnectLock.Lock()
+			rp.followerConnects[key] = conn
+			rp.followerConnectLock.Unlock()
 		}
 		pkg.followersConns[index] = conn
 	} else {
@@ -337,50 +337,50 @@ func (processor *PacketProcessor) AllocateFollowersConnects(pkg *Packet, index i
 }
 
 /*get front packet*/
-func (processor *PacketProcessor) GetFrontPacket() (e *list.Element) {
-	processor.listMux.RLock()
-	e = processor.packetList.Front()
-	processor.listMux.RUnlock()
+func (rp *ReplProtocol) GetFrontPacket() (e *list.Element) {
+	rp.listMux.RLock()
+	e = rp.packetList.Front()
+	rp.listMux.RUnlock()
 
 	return
 }
 
-func (processor *PacketProcessor) PushPacketToList(e *Packet) {
-	processor.listMux.Lock()
-	processor.packetList.PushBack(e)
-	processor.listMux.Unlock()
+func (rp *ReplProtocol) PushPacketToList(e *Packet) {
+	rp.listMux.Lock()
+	rp.packetList.PushBack(e)
+	rp.listMux.Unlock()
 }
 
-/*if the processor exit,then clean all packet resource*/
-func (processor *PacketProcessor) CleanResource() {
-	processor.listMux.Lock()
-	for e := processor.packetList.Front(); e != nil; e = e.Next() {
+/*if the rp exit,then clean all packet resource*/
+func (rp *ReplProtocol) CleanResource() {
+	rp.listMux.Lock()
+	for e := rp.packetList.Front(); e != nil; e = e.Next() {
 		request := e.Value.(*Packet)
 		request.forceDestoryAllConnect()
-		processor.postFunc(request)
+		rp.postFunc(request)
 
 	}
-	replys := len(processor.responseCh)
+	replys := len(rp.responseCh)
 	for i := 0; i < replys; i++ {
-		<-processor.responseCh
+		<-rp.responseCh
 	}
-	processor.packetList = list.New()
-	processor.followerConnectLock.RLock()
-	for _, conn := range processor.followerConnects {
+	rp.packetList = list.New()
+	rp.followerConnectLock.RLock()
+	for _, conn := range rp.followerConnects {
 		conn.Close()
 	}
-	processor.followerConnectLock.RUnlock()
-	processor.followerConnectLock.Lock()
-	processor.followerConnects = make(map[string]*net.TCPConn, 0)
-	processor.followerConnectLock.Unlock()
-	processor.listMux.Unlock()
+	rp.followerConnectLock.RUnlock()
+	rp.followerConnectLock.Lock()
+	rp.followerConnects = make(map[string]*net.TCPConn, 0)
+	rp.followerConnectLock.Unlock()
+	rp.listMux.Unlock()
 }
 
 /*delete source packet*/
-func (processor *PacketProcessor) DelPacketFromList(reply *Packet) (success bool) {
-	processor.listMux.Lock()
-	defer processor.listMux.Unlock()
-	for e := processor.packetList.Front(); e != nil; e = e.Next() {
+func (rp *ReplProtocol) DelPacketFromList(reply *Packet) (success bool) {
+	rp.listMux.Lock()
+	defer rp.listMux.Unlock()
+	for e := rp.packetList.Front(); e != nil; e = e.Next() {
 		request := e.Value.(*Packet)
 		if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
 			reply.ExtentOffset != request.ExtentOffset || reply.CRC != request.CRC || reply.ExtentID != request.ExtentID {
@@ -388,9 +388,9 @@ func (processor *PacketProcessor) DelPacketFromList(reply *Packet) (success bool
 			request.PackErrorBody(ActionReceiveFromFollower, fmt.Sprintf("unknow expect reply"))
 			break
 		}
-		processor.packetList.Remove(e)
+		rp.packetList.Remove(e)
 		success = true
-		processor.responseCh <- reply
+		rp.responseCh <- reply
 	}
 
 	return
