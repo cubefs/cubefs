@@ -41,6 +41,9 @@ func (s *DataNode) releaseExtent(pkg *repl.Packet) {
 	if pkg.StoreMode != proto.TinyExtentMode || !isLeaderPacket(pkg) || !isWriteOperation(pkg) || !pkg.IsForwardPkg() {
 		return
 	}
+	if pkg.Object==nil {
+		return
+	}
 	partition := pkg.Object.(DataPartition)
 	store := partition.GetStore()
 	if pkg.IsErrPacket() {
