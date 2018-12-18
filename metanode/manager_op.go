@@ -103,13 +103,19 @@ end:
 
 // Handle OpCreateMetaRange
 func (m *metaManager) opCreateMetaPartition(conn net.Conn, p *Packet) (err error) {
+	defer func() {
+		status := proto.OpOk
+		if err != nil {
+			status = proto.OpErr
+		}
+		p.PackErrorWithBody(status, []byte(err.Error()))
+		m.respondToClient(conn, p)
+	}()
 	// GetConnect task from packet.
 	adminTask := &proto.AdminTask{}
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
-		m.respondToClient(conn, p)
 		err = errors.Errorf("[opCreateMetaPartition]: Unmarshal AdminTask"+
 			" struct: %s", err.Error())
 		return
@@ -119,8 +125,6 @@ func (m *metaManager) opCreateMetaPartition(conn net.Conn, p *Packet) (err error
 	// Marshal request body.
 	requestJson, err := json.Marshal(adminTask.Request)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
-		m.respondToClient(conn, p)
 		err = errors.Errorf("[opCreateMetaPartition]: Marshal AdminTask."+
 			"Request: %s", err.Error())
 		return
@@ -128,29 +132,17 @@ func (m *metaManager) opCreateMetaPartition(conn net.Conn, p *Packet) (err error
 	// Unmarshal request to entity
 	req := &proto.CreateMetaPartitionRequest{}
 	if err = json.Unmarshal(requestJson, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
-		m.respondToClient(conn, p)
 		err = errors.Errorf("[opCreateMetaPartition]: Unmarshal AdminTask."+
 			"Request to CreateMetaPartitionRequest: %s", err.Error())
 		return
 	}
-	m.responseAckOKToMaster(conn, p)
-	adminTask.Request = nil
-	resp := proto.CreateMetaPartitionResponse{
-		VolName:     req.VolName,
-		PartitionID: req.PartitionID,
-		Status:      proto.TaskSuccess,
-	}
 	// Create new  metaPartition.
 	if err = m.createPartition(req.PartitionID, req.VolName, req.Start, req.End,
 		req.Members); err != nil {
-		resp.Status = proto.TaskFail
-		resp.Result = err.Error()
 		err = errors.Errorf("[opCreateMetaPartition]->%s; request message: %v",
 			err.Error(), adminTask.Request)
+		return
 	}
-	adminTask.Response = resp
-	m.respondToMaster(adminTask)
 	log.LogDebugf("[opCreateMetaPartition] req:%v; resp: %v", req, adminTask)
 	return
 }

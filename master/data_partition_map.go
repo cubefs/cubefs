@@ -155,20 +155,20 @@ func (dpMap *DataPartitionMap) getNeedReleaseDataPartitions(everyReleaseDataPart
 }
 
 func (dpMap *DataPartitionMap) releaseDataPartitions(partitions []*DataPartition) {
-	defer func() {
-		if err := recover(); err != nil {
-			const size = RuntimeStackBufSize
-			buf := make([]byte, size)
-			buf = buf[:runtime.Stack(buf, false)]
-			log.LogError(fmt.Sprintf("[%v] releaseDataPartitions panic %v: %s\n", dpMap.volName, err, buf))
-		}
-	}()
 	var wg sync.WaitGroup
 	for _, dp := range partitions {
 		wg.Add(1)
 		go func(dp *DataPartition) {
+			defer func() {
+				wg.Done()
+				if err := recover(); err != nil {
+					const size = RuntimeStackBufSize
+					buf := make([]byte, size)
+					buf = buf[:runtime.Stack(buf, false)]
+					log.LogError(fmt.Sprintf("[%v] releaseDataPartitions panic %v: %s\n", dpMap.volName, err, buf))
+				}
+			}()
 			dp.ReleaseDataPartition()
-			wg.Done()
 		}(dp)
 	}
 	wg.Wait()
