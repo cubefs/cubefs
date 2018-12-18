@@ -91,7 +91,7 @@ const (
 )
 
 const (
-	FixRaftFollower = 1
+	HasReturnToStore = 1
 )
 
 const (

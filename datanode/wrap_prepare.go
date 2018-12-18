@@ -9,6 +9,11 @@ import (
 )
 
 func (s *DataNode) Prepare(pkg *repl.Packet) (err error) {
+	defer func() {
+		if err != nil {
+			pkg.PackErrorBody(repl.ActionPreparePkg, err.Error())
+		}
+	}()
 	err = s.checkStoreMode(pkg)
 	if err != nil {
 		return
@@ -105,4 +110,8 @@ func isCreateExtentOperation(p *repl.Packet) bool {
 
 func isMarkDeleteExtentOperation(p *repl.Packet) bool {
 	return p.Opcode == proto.OpMarkDelete
+}
+
+func isReadExtentOperation(p *repl.Packet) bool {
+	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpExtentRepairRead || p.Opcode == proto.OpRead
 }

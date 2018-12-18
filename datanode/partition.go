@@ -36,6 +36,7 @@ import (
 	raftProto "github.com/tiglabs/raft/proto"
 	"sort"
 	"syscall"
+	"github.com/tiglabs/containerfs/repl"
 )
 
 const (
@@ -73,8 +74,8 @@ type DataPartition interface {
 	StartRaft() (err error)
 	StartSchedule()
 	WaitingRepairedAndStartRaft()
-	RandomWriteSubmit(pkg *Packet) (err error)
-	RandomPartitionReadCheck(request *Packet, connect net.Conn) (err error)
+	RandomWriteSubmit(pkg *repl.Packet) (err error)
+	RandomPartitionReadCheck(request *repl.Packet, connect net.Conn) (err error)
 	LoadApplyIndex() (err error)
 	SetMinAppliedId(id uint64)
 	GetAppliedId() (id uint64)

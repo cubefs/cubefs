@@ -26,7 +26,6 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 	"io"
 	"strings"
-	"time"
 )
 
 var (
@@ -36,7 +35,7 @@ var (
 /*
  this struct is used for packet Processor framwroek
  has three goroutine:
-    a. serverConn goroutine recive pkg from client,and check it avali,then send it to toBeProcessCh
+    a. ServerConn goroutine recive pkg from client,and check it avali,then send it to toBeProcessCh
 
     b. operatorAndForwardPkg goroutine read from toBeProcessCh,send it to all replicates,and do local,then send a sigle to handleCh
        and read pkg from responseCh,and write its response to client
@@ -64,14 +63,14 @@ type PacketProcessor struct {
 	followerConnectLock sync.RWMutex
 
 	prepareFunc  func(pkg *Packet) error
-	operatorFunc func(pkg *Packet) error
+	operatorFunc func(pkg *Packet,c *net.TCPConn) error
 	postFunc     func(pkg *Packet) error
 
 	decideResultCodeFunc func(pkg *Packet)
 }
 
 func NewPacketProcessor(inConn *net.TCPConn, prepareFunc func(pkg *Packet) error,
-	operatorFunc func(pkg *Packet) error, afterFunc func(pkg *Packet) error) *PacketProcessor {
+	operatorFunc func(pkg *Packet,c *net.TCPConn) error, postFunc func(pkg *Packet) error) *PacketProcessor {
 	processor := new(PacketProcessor)
 	processor.packetList = list.New()
 	processor.handleCh = make(chan struct{}, RequestChanSize)
@@ -82,15 +81,14 @@ func NewPacketProcessor(inConn *net.TCPConn, prepareFunc func(pkg *Packet) error
 	processor.followerConnects = make(map[string]*net.TCPConn, 0)
 	processor.prepareFunc = prepareFunc
 	processor.operatorFunc = operatorFunc
-	processor.postFunc = afterFunc
-	go processor.serverConn()
+	processor.postFunc = postFunc
 	go processor.operatorAndForwardPkg()
 	go processor.receiveFollowerResponse()
 
 	return processor
 }
 
-func (processor *PacketProcessor) serverConn() {
+func (processor *PacketProcessor) ServerConn() {
 	var (
 		err error
 	)
@@ -100,9 +98,7 @@ func (processor *PacketProcessor) serverConn() {
 			!strings.Contains(err.Error(), "reset by peer") {
 			log.LogErrorf("action[serveConn] err(%v).", err)
 		}
-		if err != nil {
-			processor.sourceConn.Close()
-		}
+		processor.sourceConn.Close()
 	}()
 	for {
 		select {
@@ -126,14 +122,11 @@ func (processor *PacketProcessor) readPkgFromSocket() (err error) {
 	}
 	log.LogDebugf("action[readPkgFromSocket] read packet(%v) from remote(%v).",
 		pkg.GetUniqueLogId(), processor.sourceConn.RemoteAddr().String())
-	pkg.StartT = time.Now().UnixNano()
 	if err = pkg.resolveReplicateAddrs(); err != nil {
-		processor.PackErrorBody(pkg, ActionPreparePkg, err.Error())
 		processor.responseCh <- pkg
 		return
 	}
 	if err = processor.prepareFunc(pkg); err != nil {
-		processor.PackErrorBody(pkg, ActionPreparePkg, err.Error())
 		processor.responseCh <- pkg
 		return
 	}
@@ -147,11 +140,11 @@ func (processor *PacketProcessor) operatorAndForwardPkg() {
 		select {
 		case request := <-processor.toBeProcessCh:
 			if !request.isForwardPacket() {
-				processor.operatorFunc(request)
+				processor.operatorFunc(request,processor.sourceConn)
 				processor.responseCh <- request
 			} else {
 				if _, err := processor.sendToAllfollowers(request); err == nil {
-					processor.operatorFunc(request)
+					processor.operatorFunc(request,processor.sourceConn)
 				}
 				processor.handleCh <- struct{}{}
 			}
@@ -177,14 +170,6 @@ func (processor *PacketProcessor) receiveFollowerResponse() {
 	}
 }
 
-func (processor *PacketProcessor) PackErrorBody(p *Packet, action, msg string) {
-	p.decideNetworkResultCode(action, msg)
-	processor.decideResultCodeFunc(p)
-	p.Size = uint32(len([]byte(action + "_" + msg)))
-	p.Data = make([]byte, p.Size)
-	copy(p.Data[:int(p.Size)], []byte(action+"_"+msg))
-}
-
 func (processor *PacketProcessor) sendToAllfollowers(request *Packet) (index int, err error) {
 	processor.PushPacketToList(request)
 	for index = 0; index < len(request.followersConns); index++ {
@@ -193,7 +178,7 @@ func (processor *PacketProcessor) sendToAllfollowers(request *Packet) (index int
 			msg := fmt.Sprintf("request inconnect(%v) to(%v) err(%v)", processor.sourceConn.RemoteAddr().String(),
 				request.followersAddrs[index], err.Error())
 			err = errors.Annotatef(fmt.Errorf(msg), "Request(%v) sendToAllfollowers Error", request.GetUniqueLogId())
-			processor.PackErrorBody(request, ActionSendToFollowers, err.Error())
+			request.PackErrorBody(ActionSendToFollowers, err.Error())
 			return
 		}
 		nodes := request.RemainReplicates
@@ -206,7 +191,7 @@ func (processor *PacketProcessor) sendToAllfollowers(request *Packet) (index int
 			msg := fmt.Sprintf("request inconnect(%v) to(%v) err(%v)", processor.sourceConn.RemoteAddr().String(),
 				request.followersAddrs[index], err.Error())
 			err = errors.Annotatef(fmt.Errorf(msg), "Request(%v) sendToAllfollowers Error", request.GetUniqueLogId())
-			processor.PackErrorBody(request, ActionSendToFollowers, err.Error())
+			request.PackErrorBody(ActionSendToFollowers, err.Error())
 			return
 		}
 	}
@@ -229,7 +214,7 @@ func (processor *PacketProcessor) reciveAllFollowerResponse() {
 	for index := 0; index < len(request.followersAddrs); index++ {
 		err := processor.receiveFromFollower(request, index)
 		if err != nil {
-			processor.PackErrorBody(request, ActionReceiveFromFollower, err.Error())
+			request.PackErrorBody(ActionReceiveFromFollower, err.Error())
 			request.forceDestoryAllConnect()
 			return
 		}
@@ -246,7 +231,7 @@ func (processor *PacketProcessor) receiveFromFollower(request *Packet, index int
 	}
 
 	// Check local execution result.
-	if request.isErrPack() {
+	if request.IsErrPacket() {
 		err = errors.Annotatef(fmt.Errorf(request.getErrMessage()), "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
 		log.LogErrorf("action[ActionReceiveFromFollower] %v.",
 			request.LogMessage(ActionReceiveFromFollower, LocalProcessAddr, request.StartT, fmt.Errorf(request.getErrMessage())))
@@ -270,7 +255,7 @@ func (processor *PacketProcessor) receiveFromFollower(request *Packet, index int
 		return
 	}
 
-	if reply.isErrPack() {
+	if reply.IsErrPacket() {
 		err = fmt.Errorf(ActionReceiveFromFollower+"remote (%v) do failed(%v)",
 			request.followersAddrs[index], string(reply.Data[:reply.Size]))
 		err = errors.Annotatef(err, "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
@@ -284,13 +269,18 @@ func (processor *PacketProcessor) receiveFromFollower(request *Packet, index int
 // Write response to client and recycle the connect.
 func (processor *PacketProcessor) writeResponseToClient(reply *Packet) {
 	var err error
-	if reply.isErrPack() {
+	if reply.IsErrPacket() {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToCli, processor.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
 		reply.forceDestoryAllConnect()
 		log.LogErrorf(ActionWriteToCli+" %v", err)
 	}
 	processor.postFunc(reply)
+	if !reply.NeedReply {
+		log.LogDebugf(ActionWriteToCli+" %v", reply.LogMessage(ActionWriteToCli,
+			processor.sourceConn.RemoteAddr().String(), reply.StartT, err))
+		return
+	}
 
 	if err = reply.WriteToConn(processor.sourceConn); err != nil {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToCli, processor.sourceConn.RemoteAddr().String(),
@@ -396,7 +386,7 @@ func (processor *PacketProcessor) DelPacketFromList(reply *Packet) (success bool
 		if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
 			reply.ExtentOffset != request.ExtentOffset || reply.CRC != request.CRC || reply.ExtentID != request.ExtentID {
 			request.forceDestoryAllConnect()
-			processor.PackErrorBody(request, ActionReceiveFromFollower, fmt.Sprintf("unknow expect reply"))
+			request.PackErrorBody(ActionReceiveFromFollower, fmt.Sprintf("unknow expect reply"))
 			break
 		}
 		processor.packetList.Remove(e)

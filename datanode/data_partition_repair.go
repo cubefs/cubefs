@@ -27,6 +27,7 @@ import (
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util/log"
 	"hash/crc32"
+	"github.com/tiglabs/containerfs/repl"
 )
 
 /* dataPartitionRepair f
@@ -175,7 +176,7 @@ func (dp *dataPartition) getLocalExtentInfo(fixExtentMode uint8, needFixExtents 
 // call followers get extent all watner marker ,about all extents meta
 func (dp *dataPartition) getRemoteExtentInfo(fixExtentMode uint8, needFixExtents []uint64, target string) (extentFiles []*storage.FileInfo, err error) {
 	extentFiles = make([]*storage.FileInfo, 0)
-	p := NewGetAllWaterMarker(dp.partitionId, fixExtentMode)
+	p := repl.NewGetAllWaterMarker(dp.partitionId, fixExtentMode)
 	if fixExtentMode == proto.TinyExtentMode {
 		p.Data, err = json.Marshal(needFixExtents)
 		if err != nil {
@@ -196,7 +197,7 @@ func (dp *dataPartition) getRemoteExtentInfo(fixExtentMode uint8, needFixExtents
 		err = errors.Annotatef(err, "getRemoteExtentInfo dataPartition(%v) write to host(%v)", dp.partitionId, target)
 		return
 	}
-	reply := new(Packet)
+	reply := new(repl.Packet)
 	err = reply.ReadFromConn(conn, 60) //read it response
 	if err != nil {
 		gConnPool.PutConnect(conn, true)
@@ -357,7 +358,7 @@ func (dp *dataPartition) NotifyExtentRepair(members []*DataPartitionRepairTask) 
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()
-			p := NewNotifyExtentRepair(dp.partitionId) //notify all follower to repairt task,send opnotifyRepair command
+			p := repl.NewNotifyExtentRepair(dp.partitionId) //notify all follower to repairt task,send opnotifyRepair command
 			var conn *net.TCPConn
 			target := dp.replicaHosts[index]
 			conn, err = gConnPool.GetConnect(target)
@@ -395,7 +396,7 @@ func (dp *dataPartition) NotifyRaftFollowerRepair(members *DataPartitionRepairTa
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()
-			p := NewNotifyExtentRepair(dp.partitionId)
+			p := repl.NewNotifyExtentRepair(dp.partitionId)
 			var conn *net.TCPConn
 			target := dp.replicaHosts[index]
 			conn, err = gConnPool.GetConnect(target)
@@ -466,7 +467,7 @@ func (dp *dataPartition) streamRepairExtent(remoteExtentInfo *storage.FileInfo) 
 	needFixSize := remoteExtentInfo.Size - localExtentInfo.Size
 
 	// Create streamRead packet, it offset is local extentInfoSize, size is needFixSize
-	request := NewExtentRepairReadPacket(dp.ID(), remoteExtentInfo.FileId, int(localExtentInfo.Size), int(needFixSize))
+	request := repl.NewExtentRepairReadPacket(dp.ID(), remoteExtentInfo.FileId, int(localExtentInfo.Size), int(needFixSize))
 	var conn *net.TCPConn
 
 	// GetConnect a connection to leader host
@@ -487,7 +488,7 @@ func (dp *dataPartition) streamRepairExtent(remoteExtentInfo *storage.FileInfo) 
 		if currFixOffset >= remoteExtentInfo.Size {
 			break
 		}
-		reply := NewPacket()
+		reply := repl.NewPacket()
 		// Read 64k stream repair packet
 		if err = reply.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
 			err = errors.Annotatef(err, "streamRepairExtent receive data error")

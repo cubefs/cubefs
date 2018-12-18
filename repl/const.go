@@ -13,9 +13,7 @@ const (
 	ActionSendToFollowers         = "ActionSendToFollowers"
 	LocalProcessAddr              = "LocalProcess"
 	ActionReceiveFromFollower     = "ActionReceiveFromFollower"
-	ActionStreamRead              = "ActionStreamRead"
 	ActionWriteToCli              = "ActionWriteToCli"
-	ActionGetDataPartitionMetrics = "ActionGetDataPartitionMetrics"
 	ActionCheckAndAddInfos        = "ActionCheckAndAddInfos"
 	ActionCheckReplyAvail         = "ActionCheckReplyAvail"
 
@@ -24,5 +22,4 @@ const (
 
 const (
 	ConnIsNullErr  = "ConnIsNullErr"
-	RaftIsNotStart = "RaftIsNotStart"
 )

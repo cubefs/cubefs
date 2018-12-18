@@ -3,12 +3,10 @@ package repl
 import (
 	"fmt"
 	"github.com/juju/errors"
-	"github.com/tiglabs/containerfs/datanode"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/ump"
-	"hash/crc32"
 	"io"
 	"net"
 	"strings"
@@ -18,32 +16,32 @@ import (
 var (
 	ErrBadNodes           = errors.New("BadNodesErr")
 	ErrArgLenMismatch     = errors.New("ArgLenMismatchErr")
-	ErrAddrsNodesMismatch = errors.New("AddrsNodesMismatchErr")
 )
 
 type Packet struct {
 	proto.Packet
 	followersConns []*net.TCPConn
 	followersAddrs []string
-	isRelase       int32
+	IsRelase       int32
 	Object         interface{}
 	followerNum    uint8
-	tpObject       *ump.TpObject
+	TpObject       *ump.TpObject
+	NeedReply      bool
 }
 
-func (p *Packet) afterTp() (ok bool) {
+func (p *Packet) AfterTp() (ok bool) {
 	var err error
-	if p.isErrPack() {
+	if p.IsErrPacket() {
 		err = fmt.Errorf(p.GetOpMsg()+" failed because(%v)", string(p.Data[:p.Size]))
 	}
-	ump.AfterTP(p.tpObject, err)
+	ump.AfterTP(p.TpObject, err)
 
 	return
 }
 
 func (p *Packet) BeforeTp(clusterId string) (ok bool) {
 	umpKey := fmt.Sprintf("%s_datanode_stream%v", clusterId, p.GetOpMsg())
-	p.tpObject = ump.BeforeTP(umpKey)
+	p.TpObject = ump.BeforeTP(umpKey)
 	return
 }
 
@@ -89,6 +87,7 @@ func NewPacket() (p *Packet) {
 	p = new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.StartT = time.Now().UnixNano()
+	p.NeedReply = true
 	return
 }
 
@@ -158,7 +157,7 @@ func NewNotifyExtentRepair(partitionId uint32) (p *Packet) {
 	return
 }
 
-func (p *Packet) isErrPack() bool {
+func (p *Packet) IsErrPacket() bool {
 	return p.ResultCode != proto.OpOk
 }
 
@@ -166,14 +165,49 @@ func (p *Packet) getErrMessage() (m string) {
 	return fmt.Sprintf("req(%v) err(%v)", p.GetUniqueLogId(), string(p.Data[:p.Size]))
 }
 
-func (p *Packet) decideNetworkResultCode(errLog string, errMsg string) {
+var (
+	ErrorUnknownOp = errors.New("unknown opcode")
+)
+
+func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 	if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
 		strings.Contains(errLog, ConnIsNullErr) || strings.Contains(errLog, ActionCheckAndAddInfos) {
 		p.ResultCode = proto.OpIntraGroupNetErr
 		return
 	}
+
+	if strings.Contains(errMsg, storage.ErrorParamMismatch.Error()) ||
+		strings.Contains(errMsg, ErrorUnknownOp.Error()) {
+		p.ResultCode = proto.OpArgMismatchErr
+	} else if strings.Contains(errMsg, storage.ErrorExtentNotFound.Error()) ||
+		strings.Contains(errMsg, storage.ErrorExtentHasDelete.Error()) {
+		p.ResultCode = proto.OpNotExistErr
+	} else if strings.Contains(errMsg, storage.ErrSyscallNoSpace.Error()) {
+		p.ResultCode = proto.OpDiskNoSpaceErr
+	} else if strings.Contains(errMsg, storage.ErrorAgain.Error()) {
+		p.ResultCode = proto.OpAgain
+	} else if strings.Contains(errMsg, storage.ErrNotLeader.Error()) {
+		p.ResultCode = proto.OpNotLeaderErr
+	} else if strings.Contains(errMsg, storage.ErrorExtentNotFound.Error()) {
+		if p.Opcode != proto.OpWrite {
+			p.ResultCode = proto.OpNotExistErr
+		} else {
+			p.ResultCode = proto.OpIntraGroupNetErr
+		}
+	} else {
+		p.ResultCode = proto.OpIntraGroupNetErr
+	}
 }
 
+func (p *Packet) PackErrorBody(action, msg string) {
+	p.identificationErrorResultCode(action, msg)
+	if p.ResultCode == proto.OpDiskNoSpaceErr || p.ResultCode == proto.OpDiskErr {
+		p.ResultCode = proto.OpIntraGroupNetErr
+	}
+	p.Size = uint32(len([]byte(action + "_" + msg)))
+	p.Data = make([]byte, p.Size)
+	copy(p.Data[:int(p.Size)], []byte(action+"_"+msg))
+}
 func (p *Packet) ReadFull(c net.Conn, readSize int) (err error) {
 	if p.Opcode == proto.OpWrite && readSize == util.BlockSize {
 		p.Data, _ = proto.Buffers.Get(util.BlockSize)
@@ -182,6 +216,10 @@ func (p *Packet) ReadFull(c net.Conn, readSize int) (err error) {
 	}
 	_, err = io.ReadFull(c, p.Data[:readSize])
 	return
+}
+
+func (p *Packet) isReadOperation() bool {
+	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpRead || p.Opcode == proto.OpExtentRepairRead
 }
 
 func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (err error) {
