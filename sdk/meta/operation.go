@@ -28,11 +28,12 @@ import (
 // API implementations
 //
 
-func (mw *MetaWrapper) open(mp *MetaPartition, inode uint64) (status int, err error) {
+func (mw *MetaWrapper) open(mp *MetaPartition, inode uint64, flag uint32) (status int, authid uint64, err error) {
 	req := &proto.OpenRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
+		Flag:        flag,
 	}
 
 	packet := proto.NewPacket()
@@ -56,7 +57,48 @@ func (mw *MetaWrapper) open(mp *MetaPartition, inode uint64) (status int, err er
 	if status != statusOK {
 		log.LogErrorf("open: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
 	}
-	return
+
+	resp := new(proto.OpenResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("open: mp(%v) req(%v) err(%v) PacketData(%v)", mp, *req, err, string(packet.Data))
+		return
+	}
+	return statusOK, resp.AuthID, nil
+}
+
+func (mw *MetaWrapper) release(mp *MetaPartition, inode, authid uint64) (status int, err error) {
+	req := &proto.ReleaseRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		Inode:       inode,
+		AuthID:      authid,
+	}
+
+	packet := proto.NewPacket()
+	packet.Opcode = proto.OpMetaReleaseOpen
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("release: err(%v)", err)
+		return
+	}
+
+	umpKey := mw.umpKey(packet.GetOpMsg())
+	tpObject := ump.BeforeTP(umpKey)
+	defer ump.AfterTP(tpObject, err)
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("release: mp(%v) req(%v) err(%v)", mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("release: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+	}
+
+	return statusOK, nil
 }
 
 func (mw *MetaWrapper) icreate(mp *MetaPartition, mode uint32, target []byte) (status int, info *proto.InodeInfo, err error) {
@@ -494,11 +536,12 @@ func (mw *MetaWrapper) readdir(mp *MetaPartition, parentID uint64) (status int, 
 	return statusOK, resp.Children, nil
 }
 
-func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent proto.ExtentKey) (status int, err error) {
+func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode, authid uint64, extent proto.ExtentKey) (status int, err error) {
 	req := &proto.AppendExtentKeyRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
+		AuthID:      authid,
 		Extent:      extent,
 	}
 
@@ -566,11 +609,12 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (status int, 
 	return statusOK, resp.Generation, resp.Size, resp.Extents, nil
 }
 
-func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64) (status int, err error) {
+func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, authid, size uint64) (status int, err error) {
 	req := &proto.TruncateRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
+		AuthID:      authid,
 		Size:        size,
 	}
 

@@ -23,8 +23,6 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 )
 
-// TODO: High-level API, i.e. work with absolute path
-
 // Low-level API, i.e. work with inode
 
 const (
@@ -37,14 +35,28 @@ func (mw *MetaWrapper) Statfs() (total, used uint64) {
 	return
 }
 
-func (mw *MetaWrapper) Open_ll(inode uint64) error {
+func (mw *MetaWrapper) Open(inode uint64, flag uint32) (authid uint64, err error) {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
-		log.LogErrorf("Open_ll: No such partition, ino(%v)", inode)
+		log.LogErrorf("Open: No such partition, ino(%v)", inode)
+		return 0, syscall.ENOENT
+	}
+
+	status, authid, err := mw.open(mp, inode, flag)
+	if err != nil || status != statusOK {
+		return 0, statusToErrno(status)
+	}
+	return authid, nil
+}
+
+func (mw *MetaWrapper) Release(inode, authid uint64) (err error) {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("Release: No such partition, ino(%v)", inode)
 		return syscall.ENOENT
 	}
 
-	status, err := mw.open(mp, inode)
+	status, err := mw.release(mp, inode, authid)
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
@@ -263,13 +275,13 @@ func (mw *MetaWrapper) ReadDir_ll(parentID uint64) ([]proto.Dentry, error) {
 }
 
 // Used as a callback by stream sdk
-func (mw *MetaWrapper) AppendExtentKey(inode uint64, ek proto.ExtentKey) error {
+func (mw *MetaWrapper) AppendExtentKey(inode, authid uint64, ek proto.ExtentKey) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		return syscall.ENOENT
 	}
 
-	status, err := mw.appendExtentKey(mp, inode, ek)
+	status, err := mw.appendExtentKey(mp, inode, authid, ek)
 	if err != nil || status != statusOK {
 		log.LogErrorf("AppendExtentKey: inode(%v) ek(%v) err(%v) status(%v)", inode, ek, err, status)
 		return statusToErrno(status)
@@ -293,14 +305,14 @@ func (mw *MetaWrapper) GetExtents(inode uint64) (gen uint64, size uint64, extent
 	return gen, size, extents, nil
 }
 
-func (mw *MetaWrapper) Truncate(inode, size uint64) error {
+func (mw *MetaWrapper) Truncate(inode, authid, size uint64) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		log.LogErrorf("Truncate: No inode partition, ino(%v)", inode)
 		return syscall.ENOENT
 	}
 
-	status, err := mw.truncate(mp, inode, size)
+	status, err := mw.truncate(mp, inode, authid, size)
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
 	}

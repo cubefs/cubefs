@@ -27,9 +27,9 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 )
 
-type AppendExtentKeyFunc func(inode uint64, key proto.ExtentKey) error
+type AppendExtentKeyFunc func(inode, authid uint64, key proto.ExtentKey) error
 type GetExtentsFunc func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
-type TruncateFunc func(inode, size uint64) error
+type TruncateFunc func(inode, authid, size uint64) error
 
 var (
 	gDataWrapper     *wrapper.Wrapper
@@ -73,7 +73,7 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 	return
 }
 
-func (client *ExtentClient) OpenStream(inode uint64) error {
+func (client *ExtentClient) OpenStream(inode uint64) (authid uint64) {
 	client.streamerLock.Lock()
 	stream, ok := client.streamers[inode]
 	if !ok {
@@ -81,39 +81,37 @@ func (client *ExtentClient) OpenStream(inode uint64) error {
 		client.streamers[inode] = stream
 	}
 	stream.refcnt++
-	log.LogDebugf("OpenStream: ino(%v) refcnt(%v)", inode, stream.refcnt)
+	authid = stream.authid
+	log.LogDebugf("OpenStream: ino(%v) refcnt(%v) authid(%v)", inode, stream.refcnt, authid)
 	client.streamerLock.Unlock()
-	return nil
+	return
 }
 
-func (client *ExtentClient) CloseStream(inode uint64) error {
+func (client *ExtentClient) CloseStream(inode uint64) (authid uint64, err error) {
 	client.streamerLock.Lock()
 	stream, ok := client.streamers[inode]
 	if !ok {
 		client.streamerLock.Unlock()
-		return nil
+		return
 	}
 	stream.refcnt--
 	log.LogDebugf("CloseStream: ino(%v) refcnt(%v)", inode, stream.refcnt)
 	if stream.refcnt > 0 {
 		client.streamerLock.Unlock()
-		return nil
+		return
 	}
 	delete(client.streamers, inode)
 
 	writer := stream.writer
+	authid = stream.authid
 	client.streamerLock.Unlock()
 
-	log.LogDebugf("CloseStream: ino(%v) doing cleanup", inode)
+	log.LogDebugf("CloseStream: ino(%v) authid(%v) doing cleanup", inode, authid)
 
 	if writer != nil {
-		err := writer.IssueCloseRequest()
-		if err != nil {
-			return err
-		}
+		err = writer.IssueCloseRequest()
 	}
-
-	return nil
+	return
 }
 
 func (client *ExtentClient) RefreshExtentsCache(inode uint64) error {
@@ -137,6 +135,17 @@ func (client *ExtentClient) SetFileSize(inode uint64, size int) {
 	if stream != nil {
 		log.LogDebugf("SetFileSize: ino(%v) size(%v)", inode, size)
 		stream.extents.SetSize(uint64(size))
+	}
+}
+
+func (client *ExtentClient) SetAuthID(inode, authid uint64) {
+	client.streamerLock.Lock()
+	defer client.streamerLock.Unlock()
+
+	stream, ok := client.streamers[inode]
+	if ok {
+		stream.authid = authid
+		log.LogDebugf("SetAuthID: ino(%v) authid(%v)", inode, authid)
 	}
 }
 
@@ -229,7 +238,7 @@ func (client *ExtentClient) getStreamWriter(inode uint64, init bool) (stream *St
 	}
 
 	if init == true && stream.writer == nil {
-		stream.writer = NewStreamWriter(stream, inode)
+		stream.writer = NewStreamWriter(stream, inode, stream.authid)
 	}
 	return stream, stream.writer
 }
