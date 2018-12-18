@@ -104,7 +104,7 @@ func main() {
 		return
 	}
 	log.LogInfof("Hello, Cfs Storage, Current Version: %s", Version)
-	exec_shell("ulimit -n 10240000")
+	exec_shell("ulimit -n 102400000")
 	cfg := config.LoadConfigFile(*configFile)
 	role := cfg.GetString(ConfigKeyRole)
 	logDir := cfg.GetString(ConfigKeyLogDir)
