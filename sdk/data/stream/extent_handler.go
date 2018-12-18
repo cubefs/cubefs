@@ -187,10 +187,11 @@ func (eh *ExtentHandler) sender() {
 			// Initialize dp, conn, and extID
 			if eh.dp == nil {
 				if err = eh.allocateExtent(); err != nil {
-					log.LogWarnf("sender allocateExtent: failed, eh(%v) err(%v)", eh, err)
 					eh.setClosed()
 					eh.setRecovery()
+					eh.setError()
 					eh.reply <- packet
+					log.LogErrorf("sender: eh(%v) err(%v)", eh, err)
 					continue
 				}
 			}
@@ -209,14 +210,13 @@ func (eh *ExtentHandler) sender() {
 
 			//log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
 
-			// send to reply channel
 			if err = packet.writeTo(eh.conn); err != nil {
 				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
 				eh.setClosed()
 				eh.setRecovery()
 			}
-
 			eh.reply <- packet
+
 			log.LogDebugf("ExtentHandler sender: sent to the reply channel, eh(%v) packet(%v)", eh, packet)
 
 		case <-eh.doneSender:
@@ -440,7 +440,12 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 		return nil
 	}
 
-	err = errors.New(fmt.Sprintf("ExtentHandler allocateExtent: failed, reach maximum retry limit, eh(%v)", eh))
+	errmsg := fmt.Sprintf("allocateExtent failed: hit max retry limit")
+	if err != nil {
+		err = errors.Annotate(err, errmsg)
+	} else {
+		err = errors.New(errmsg)
+	}
 	return err
 }
 
