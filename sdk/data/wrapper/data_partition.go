@@ -7,7 +7,7 @@ import (
 )
 
 type DataPartition struct {
-	PartitionID   uint32
+	PartitionID   uint64
 	Status        int8
 	ReplicaNum    uint8
 	PartitionType string
@@ -63,7 +63,7 @@ func isExcluded(partitionId uint32, excludes []uint32) bool {
 	return false
 }
 
-func NewGetDataPartitionMetricsPacket(partitionid uint32) (p *proto.Packet) {
+func NewGetDataPartitionMetricsPacket(partitionid uint64) (p *proto.Packet) {
 	p = new(proto.Packet)
 	p.PartitionID = partitionid
 	p.Magic = proto.ProtoMagic
