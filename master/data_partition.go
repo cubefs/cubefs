@@ -37,15 +37,15 @@ type DataPartition struct {
 	PersistenceHosts []string
 	Peers            []proto.Peer
 	sync.RWMutex
-	total         uint64
-	used          uint64
-	MissNodes     map[string]int64
-	VolName       string
-	VolID         uint64
-	modifyTime    int64
-	createTime    int64
-	RandomWrite   bool
-	FileInCoreMap map[string]*FileInCore
+	total            uint64
+	used             uint64
+	MissNodes        map[string]int64
+	VolName          string
+	VolID            uint64
+	modifyTime       int64
+	createTime       int64
+	RandomWrite      bool
+	FileInCoreMap    map[string]*FileInCore
 }
 
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64, randomWrite bool) (partition *DataPartition) {
@@ -320,7 +320,7 @@ func (partition *DataPartition) getFileCount() {
 	}
 
 	for _, replica := range partition.Replicas {
-		msg = fmt.Sprintf(GetDataReplicaFileCountInfo+"partitionID:%v  replicaAddr:%v  FileCount:%v  "+
+		msg = fmt.Sprintf(GetDataReplicaFileCountInfo + "partitionID:%v  replicaAddr:%v  FileCount:%v  "+
 			"NodeIsActive:%v  replicaIsActive:%v  .replicaStatusOnNode:%v ", partition.PartitionID, replica.Addr, replica.FileCount,
 			replica.GetReplicaNode().isActive, replica.IsActive(DefaultDataPartitionTimeOutSec), replica.Status)
 		log.LogInfo(msg)
@@ -509,6 +509,7 @@ func (partition *DataPartition) UpdateMetric(vr *proto.PartitionReport, dataNode
 	replica.FileCount = uint32(vr.ExtentCount)
 	replica.SetAlive()
 	replica.IsLeader = vr.IsLeader
+	replica.NeedCompare = vr.NeedCompare
 	partition.checkAndRemoveMissReplica(dataNode.Addr)
 }
 
@@ -558,4 +559,17 @@ func (partition *DataPartition) isReplicaSizeAlign() bool {
 		return true
 	}
 	return false
+}
+
+func (partition *DataPartition) isNeedCompareData() (needCompare bool) {
+	partition.Lock()
+	defer partition.Unlock()
+	needCompare = true
+	for _, replica := range partition.Replicas {
+		if !replica.NeedCompare {
+			needCompare = false
+			break
+		}
+	}
+	return
 }
