@@ -160,6 +160,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp DataPartition,
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
 	}
+	go dp.ForceLoadHeader()
 
 	// Start raft for random write
 	if dpCfg.RandomWrite {
@@ -203,7 +204,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp DataPartition, err e
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
 	}
-
+	go dp.ForceLoadHeader()
 	if dpCfg.RandomWrite {
 		if err = dp.LoadApplyIndex(); err != nil {
 			log.LogErrorf("action[loadApplyIndex] %v", err)
@@ -498,11 +499,6 @@ func (dp *dataPartition) String() (m string) {
 func (dp *dataPartition) LaunchRepair(fixExtentType uint8) {
 	if dp.partitionStatus == proto.Unavaliable {
 		return
-	}
-	select {
-	case <-dp.stopC:
-		return
-	default:
 	}
 	if err := dp.updateReplicaHosts(); err != nil {
 		log.LogErrorf("action[LaunchRepair] err(%v).", err)
