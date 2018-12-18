@@ -24,7 +24,7 @@ const (
 )
 
 const (
-	MaxPacketErrorCount = 1
+	MaxPacketErrorCount = 8
 )
 
 var (
