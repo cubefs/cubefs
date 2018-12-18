@@ -57,7 +57,7 @@ type Disk struct {
 	Status       int
 	RestSize     uint64
 	partitionMap map[uint64]*DataPartition
-	space        SpaceManager
+	space        *SpaceManager
 }
 
 type PartitionVisitor func(dp *DataPartition)
@@ -262,7 +262,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 		wg.Add(1)
 		go func(partitionId uint32, filename string) {
 			var (
-				dp  DataPartition
+				dp  *DataPartition
 				err error
 			)
 			defer wg.Done()

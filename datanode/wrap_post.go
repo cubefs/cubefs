@@ -47,7 +47,7 @@ func (s *DataNode) releaseExtent(pkg *repl.Packet) {
 	if pkg.Object == nil {
 		return
 	}
-	partition := pkg.Object.(DataPartition)
+	partition := pkg.Object.(*DataPartition)
 	store := partition.GetStore()
 	if pkg.IsErrPacket() {
 		store.PutTinyExtentToUnavaliCh(pkg.ExtentID)
@@ -66,7 +66,7 @@ func (s *DataNode) addMetrics(reply *repl.Packet) {
 	if reply.Object == nil {
 		return
 	}
-	partition := reply.Object.(DataPartition)
+	partition := reply.Object.(*DataPartition)
 	if partition == nil {
 		return
 	}

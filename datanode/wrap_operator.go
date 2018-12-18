@@ -290,7 +290,7 @@ func (s *DataNode) handleLoadDataPartition(pkg *repl.Packet) {
 			err = fmt.Errorf(fmt.Sprintf("DataPartition(%v) not found", request.PartitionId))
 			response.Result = err.Error()
 		} else {
-			response = dp.(*DataPartition).Load()
+			response = dp.Load()
 			response.PartitionId = uint64(request.PartitionId)
 			response.Status = proto.TaskSuccess
 		}
@@ -536,7 +536,7 @@ func (s *DataNode) handleNotifyExtentRepair(pkg *repl.Packet) {
 
 func (s *DataNode) handleGetDataPartitionMetrics(pkg *repl.Packet) {
 	partition := pkg.Object.(*DataPartition)
-	dp := partition.(*DataPartition)
+	dp := partition
 	data, err := json.Marshal(dp.runtimeMetrics)
 	if err != nil {
 		pkg.PackErrorBody(ActionGetDataPartitionMetrics, err.Error())
