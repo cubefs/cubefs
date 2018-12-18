@@ -31,12 +31,12 @@ import (
 	"github.com/tiglabs/containerfs/master"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
+	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util/log"
 	raftProto "github.com/tiglabs/raft/proto"
 	"sort"
 	"syscall"
-	"github.com/tiglabs/containerfs/repl"
 )
 
 const (

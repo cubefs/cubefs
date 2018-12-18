@@ -33,12 +33,12 @@ import (
 	"github.com/tiglabs/containerfs/master"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
+	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/ump"
-	"github.com/tiglabs/containerfs/repl"
 )
 
 var (
@@ -324,7 +324,7 @@ func (s *DataNode) serveConn(conn net.Conn) {
 	c.SetKeepAlive(true)
 	c.SetNoDelay(true)
 
-	packetProcessor := repl.NewPacketProcessor(c,s.Prepare,s.OperatePacket,s.Post)
+	packetProcessor := repl.NewPacketProcessor(c, s.Prepare, s.OperatePacket, s.Post)
 	packetProcessor.ServerConn()
 }
 

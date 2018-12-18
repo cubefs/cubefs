@@ -29,6 +29,7 @@ import (
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
+	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
@@ -447,7 +448,7 @@ func (dp *dataPartition) ExtentRepair(extentFiles []*storage.FileInfo) {
 // GetConnect all extents information
 func (dp *dataPartition) getExtentInfo(targetAddr string) (extentFiles []*storage.FileInfo, err error) {
 	// get remote extents meta by opGetAllWaterMarker cmd
-	p := NewGetAllWaterMarker(dp.partitionId, proto.NormalExtentMode)
+	p := repl.NewGetAllWaterMarker(dp.partitionId, proto.NormalExtentMode)
 	var conn *net.TCPConn
 	target := targetAddr
 	conn, err = gConnPool.GetConnect(target) //get remote connect
@@ -485,8 +486,8 @@ func (dp *dataPartition) getExtentInfo(targetAddr string) (extentFiles []*storag
 	return
 }
 
-func NewGetAppliedId(partitionId uint32, minAppliedId uint64) (p *Packet) {
-	p = new(Packet)
+func NewGetAppliedId(partitionId uint32, minAppliedId uint64) (p *repl.Packet) {
+	p = new(repl.Packet)
 	p.Opcode = proto.OpGetAppliedId
 	p.PartitionID = partitionId
 	p.Magic = proto.ProtoMagic
@@ -497,8 +498,8 @@ func NewGetAppliedId(partitionId uint32, minAppliedId uint64) (p *Packet) {
 	return
 }
 
-func NewGetPartitionSize(partitionId uint32) (p *Packet) {
-	p = new(Packet)
+func NewGetPartitionSize(partitionId uint32) (p *repl.Packet) {
+	p = new(repl.Packet)
 	p.Opcode = proto.OpGetPartitionSize
 	p.PartitionID = partitionId
 	p.Magic = proto.ProtoMagic

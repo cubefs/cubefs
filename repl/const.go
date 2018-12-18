@@ -10,16 +10,16 @@ const (
 )
 
 const (
-	ActionSendToFollowers         = "ActionSendToFollowers"
-	LocalProcessAddr              = "LocalProcess"
-	ActionReceiveFromFollower     = "ActionReceiveFromFollower"
-	ActionWriteToCli              = "ActionWriteToCli"
-	ActionCheckAndAddInfos        = "ActionCheckAndAddInfos"
-	ActionCheckReplyAvail         = "ActionCheckReplyAvail"
+	ActionSendToFollowers     = "ActionSendToFollowers"
+	LocalProcessAddr          = "LocalProcess"
+	ActionReceiveFromFollower = "ActionReceiveFromFollower"
+	ActionWriteToCli          = "ActionWriteToCli"
+	ActionCheckAndAddInfos    = "ActionCheckAndAddInfos"
+	ActionCheckReplyAvail     = "ActionCheckReplyAvail"
 
 	ActionPreparePkg = "ActionPreparePkg"
 )
 
 const (
-	ConnIsNullErr  = "ConnIsNullErr"
+	ConnIsNullErr = "ConnIsNullErr"
 )

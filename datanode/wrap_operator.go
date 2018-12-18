@@ -36,7 +36,7 @@ import (
 	"strings"
 )
 
-func (s *DataNode) OperatePacket(pkg *repl.Packet, c *net.TCPConn)(err error) {
+func (s *DataNode) OperatePacket(pkg *repl.Packet, c *net.TCPConn) (err error) {
 	orgSize := pkg.Size
 	umpKey := fmt.Sprintf("%s_datanode_%s", s.clusterId, pkg.GetOpMsg())
 	tpObject := ump.BeforeTP(umpKey)

@@ -63,14 +63,14 @@ type PacketProcessor struct {
 	followerConnectLock sync.RWMutex
 
 	prepareFunc  func(pkg *Packet) error
-	operatorFunc func(pkg *Packet,c *net.TCPConn) error
+	operatorFunc func(pkg *Packet, c *net.TCPConn) error
 	postFunc     func(pkg *Packet) error
 
 	decideResultCodeFunc func(pkg *Packet)
 }
 
 func NewPacketProcessor(inConn *net.TCPConn, prepareFunc func(pkg *Packet) error,
-	operatorFunc func(pkg *Packet,c *net.TCPConn) error, postFunc func(pkg *Packet) error) *PacketProcessor {
+	operatorFunc func(pkg *Packet, c *net.TCPConn) error, postFunc func(pkg *Packet) error) *PacketProcessor {
 	processor := new(PacketProcessor)
 	processor.packetList = list.New()
 	processor.handleCh = make(chan struct{}, RequestChanSize)
@@ -140,11 +140,11 @@ func (processor *PacketProcessor) operatorAndForwardPkg() {
 		select {
 		case request := <-processor.toBeProcessCh:
 			if !request.isForwardPacket() {
-				processor.operatorFunc(request,processor.sourceConn)
+				processor.operatorFunc(request, processor.sourceConn)
 				processor.responseCh <- request
 			} else {
 				if _, err := processor.sendToAllfollowers(request); err == nil {
-					processor.operatorFunc(request,processor.sourceConn)
+					processor.operatorFunc(request, processor.sourceConn)
 				}
 				processor.handleCh <- struct{}{}
 			}

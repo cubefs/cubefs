@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	ErrBadNodes           = errors.New("BadNodesErr")
-	ErrArgLenMismatch     = errors.New("ArgLenMismatchErr")
+	ErrBadNodes       = errors.New("BadNodesErr")
+	ErrArgLenMismatch = errors.New("ArgLenMismatchErr")
 )
 
 type Packet struct {
