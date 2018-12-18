@@ -40,10 +40,11 @@ func newClusterValue(c *Cluster) (cv *ClusterValue) {
 
 type MetaPartitionValue struct {
 	PartitionID uint64
-	ReplicaNum  uint8
 	Start       uint64
 	End         uint64
 	VolID       uint64
+	ReplicaNum  uint8
+	Status      int8
 	VolName     string
 	Hosts       string
 	Peers       []bsProto.Peer
@@ -52,10 +53,11 @@ type MetaPartitionValue struct {
 func newMetaPartitionValue(mp *MetaPartition) (mpv *MetaPartitionValue) {
 	mpv = &MetaPartitionValue{
 		PartitionID: mp.PartitionID,
-		ReplicaNum:  mp.ReplicaNum,
 		Start:       mp.Start,
 		End:         mp.End,
 		VolID:       mp.volID,
+		ReplicaNum:  mp.ReplicaNum,
+		Status:      mp.Status,
 		VolName:     mp.volName,
 		Hosts:       mp.hostsToString(),
 		Peers:       mp.Peers,
@@ -70,6 +72,7 @@ type DataPartitionValue struct {
 	Peers         []bsProto.Peer
 	PartitionType string
 	RandomWrite   bool
+	Status        int8
 	VolID         uint64
 	VolName       string
 }
@@ -82,6 +85,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *DataPartitionValue) {
 		Peers:         dp.Peers,
 		PartitionType: dp.PartitionType,
 		RandomWrite:   dp.RandomWrite,
+		Status:        dp.Status,
 		VolID:         dp.VolID,
 		VolName:       dp.VolName,
 	}
@@ -596,12 +600,13 @@ func (c *Cluster) applyAddMetaPartition(cmd *RaftCmdData) (err error) {
 	mp := NewMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, mpv.ReplicaNum, mpv.VolName, mpv.VolID)
 	mp.Peers = mpv.Peers
 	mp.PersistenceHosts = strings.Split(mpv.Hosts, UnderlineSeparator)
+	mp.Status = mpv.Status
 	vol, err := c.getVol(mpv.VolName)
 	if err != nil {
 		log.LogErrorf("action[applyAddMetaPartition] failed,err:%v", err)
 		return
 	}
-	vol.AddMetaPartitionByRaft(mp)
+	vol.AddMetaPartition(mp)
 	return
 }
 
@@ -641,6 +646,7 @@ func (c *Cluster) applyAddDataPartition(cmd *RaftCmdData) (err error) {
 	dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, vol.Name, vol.Id, vol.RandomWrite)
 	dp.PersistenceHosts = strings.Split(dpv.Hosts, UnderlineSeparator)
 	dp.Peers = dpv.Peers
+	dp.Status = dpv.Status
 	vol.dataPartitions.putDataPartition(dp)
 	return
 }

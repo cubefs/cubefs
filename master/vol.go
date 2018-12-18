@@ -65,12 +65,9 @@ func (vol *Vol) AddMetaPartition(mp *MetaPartition) {
 	defer vol.mpsLock.Unlock()
 	if _, ok := vol.MetaPartitions[mp.PartitionID]; !ok {
 		vol.MetaPartitions[mp.PartitionID] = mp
+		return
 	}
-}
-
-func (vol *Vol) AddMetaPartitionByRaft(mp *MetaPartition) {
-	vol.mpsLock.Lock()
-	defer vol.mpsLock.Unlock()
+	//use mp replace old partition in the map
 	vol.MetaPartitions[mp.PartitionID] = mp
 }
 
@@ -279,7 +276,7 @@ func (vol *Vol) checkStatus(c *Cluster) {
 	if vol.Status != VolMarkDelete {
 		return
 	}
-	log.LogInfof("action[volCheckStatus] vol[%v],status[%v]",vol.Name,vol.Status )
+	log.LogInfof("action[volCheckStatus] vol[%v],status[%v]", vol.Name, vol.Status)
 	metaTasks := vol.getDeleteMetaTasks()
 	dataTasks := vol.getDeleteDataTasks()
 	if len(metaTasks) == 0 && len(dataTasks) == 0 {

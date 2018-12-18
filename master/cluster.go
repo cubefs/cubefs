@@ -461,6 +461,7 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 	if err = c.syncAddDataPartition(dp); err != nil {
 		goto errDeal
 	}
+	vol.dataPartitions.putDataPartition(dp)
 	log.LogInfof("action[createDataPartition] success,volName[%v],partitionId[%v]", volName, partitionID)
 	return
 errDeal:
@@ -900,6 +901,7 @@ func (c *Cluster) CreateMetaPartition(volName string, start, end uint64) (err er
 	if err = c.syncAddMetaPartition(mp); err != nil {
 		return errors.Trace(err)
 	}
+	vol.AddMetaPartition(mp)
 	log.LogInfof("action[CreateMetaPartition] success,volName[%v],partition[%v]", volName, partitionID)
 	return
 }
