@@ -30,12 +30,11 @@ type Packet struct {
 	proto.Packet
 	inode        uint64
 	kernelOffset int
-	status       int
 	errCount     int
 }
 
 func (p *Packet) String() string {
-	return fmt.Sprintf("ReqID(%v) Op(%v) Inode(%v) FileOffset(%v) Size(%v) PartitionID(%v) ExtentID(%v) ExtentOffset(%v) CRC(%v) ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.inode, p.kernelOffset, p.Size, p.PartitionID, p.ExtentID, p.ExtentOffset, p.CRC, p.GetResultMesg())
+	return fmt.Sprintf("ReqID(%v)Op(%v)Inode(%v)FileOffset(%v)Size(%v)PartitionID(%v)ExtentID(%v)ExtentOffset(%v)CRC(%v)ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.inode, p.kernelOffset, p.Size, p.PartitionID, p.ExtentID, p.ExtentOffset, p.CRC, p.GetResultMesg())
 }
 
 func NewPacket(inode uint64, offset int) *Packet {

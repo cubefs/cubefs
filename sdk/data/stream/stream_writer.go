@@ -91,6 +91,10 @@ func NewStreamWriter(stream *Streamer, inode uint64) *StreamWriter {
 }
 
 func (sw *StreamWriter) IssueWriteRequest(offset int, data []byte) (write int, err error) {
+	if atomic.LoadInt32(&sw.status) >= StreamWriterError {
+		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", sw.inode))
+	}
+
 	request := writeRequestPool.Get().(*WriteRequest)
 	request.data = data
 	request.fileOffset = offset
@@ -145,6 +149,7 @@ func (sw *StreamWriter) server() {
 		case request := <-sw.request:
 			sw.handleRequest(request)
 		case <-sw.done:
+			sw.close()
 			return
 		case <-t.C:
 			sw.traverse()
@@ -316,7 +321,7 @@ func (sw *StreamWriter) flush() (err error) {
 		eh := element.Value.(*ExtentHandler)
 
 		log.LogDebugf("StreamWriter flush begin: eh(%v)", eh)
-		_, err = eh.flush()
+		err = eh.flush()
 		if err != nil {
 			log.LogErrorf("StreamWriter flush failed: eh(%v)", eh)
 			return
@@ -324,6 +329,10 @@ func (sw *StreamWriter) flush() (err error) {
 		eh.sw.dirtylist.Remove(element)
 		if eh.getStatus() == ExtentStatusOpen {
 			sw.dirty = false
+			log.LogDebugf("StreamWriter flush handler open: eh(%v)", eh)
+		} else {
+			eh.cleanup()
+			log.LogDebugf("StreamWriter flush handler cleaned up: eh(%v)", eh)
 		}
 		log.LogDebugf("StreamWriter flush end: eh(%v)", eh)
 	}

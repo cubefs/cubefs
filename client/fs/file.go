@@ -121,13 +121,6 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 
 	start := time.Now()
 
-	log.LogDebugf("TRACE Release flush: ino(%v) req(%v)", ino, req)
-	err = f.super.ec.Flush(f.inode.ino)
-	if err != nil {
-		log.LogErrorf("Release: flush failed, ino(%v) err(%v)", f.inode.ino, err)
-		return fuse.EIO
-	}
-
 	log.LogDebugf("TRACE Release close stream: ino(%v) req(%v)", ino, req)
 	err = f.super.ec.CloseStream(ino)
 	if err != nil {
