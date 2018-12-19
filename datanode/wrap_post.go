@@ -32,7 +32,7 @@ func (s *DataNode) cleanupPkg(pkg *repl.Packet) {
 		return
 	}
 	s.releaseExtent(pkg)
-	if pkg.StoreMode == proto.TinyExtentMode && isWriteOperation(pkg) {
+	if pkg.ExtentMode == proto.TinyExtentMode && isWriteOperation(pkg) {
 		pkg.PutConnectsToPool()
 	}
 }
@@ -41,7 +41,7 @@ func (s *DataNode) releaseExtent(pkg *repl.Packet) {
 	if pkg == nil || !storage.IsTinyExtent(pkg.ExtentID) || pkg.ExtentID <= 0 || atomic.LoadInt32(&pkg.IsRelase) == HasReturnToStore {
 		return
 	}
-	if pkg.StoreMode != proto.TinyExtentMode || !isLeaderPacket(pkg) || !isWriteOperation(pkg) || !pkg.IsForwardPkg() {
+	if pkg.ExtentMode != proto.TinyExtentMode || !isLeaderPacket(pkg) || !isWriteOperation(pkg) || !pkg.IsForwardPkg() {
 		return
 	}
 	if pkg.Object == nil {

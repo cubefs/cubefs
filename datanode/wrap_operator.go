@@ -321,7 +321,7 @@ func (s *DataNode) handleMarkDelete(pkg *repl.Packet) {
 		err error
 	)
 	partition := pkg.Object.(*DataPartition)
-	if pkg.StoreMode == proto.TinyExtentMode {
+	if pkg.ExtentMode == proto.TinyExtentMode {
 		ext := new(proto.ExtentKey)
 		err = json.Unmarshal(pkg.Data, ext)
 		if err == nil {
@@ -498,7 +498,7 @@ func (s *DataNode) handleGetAllWatermark(pkg *repl.Packet) {
 	)
 	partition := pkg.Object.(*DataPartition)
 	store := partition.GetStore()
-	if pkg.StoreMode == proto.NormalExtentMode {
+	if pkg.ExtentMode == proto.NormalExtentMode {
 		fInfoList, err = store.GetAllWatermark(storage.GetStableExtentFilter())
 	} else {
 		extents := make([]uint64, 0)
