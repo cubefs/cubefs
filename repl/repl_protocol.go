@@ -196,12 +196,12 @@ func (rp *ReplProtocol) sendToAllfollowers(request *Packet) (index int, err erro
 			request.PackErrorBody(ActionSendToFollowers, err.Error())
 			return
 		}
-		nodes := request.RemainReplicates
-		request.RemainReplicates = 0
+		nodes := request.RemainFollowers
+		request.RemainFollowers = 0
 		if err == nil {
 			err = request.WriteToConn(request.followersConns[index])
 		}
-		request.RemainReplicates = nodes
+		request.RemainFollowers = nodes
 		if err != nil {
 			msg := fmt.Sprintf("request inconnect(%v) to(%v) err(%v)", rp.sourceConn.RemoteAddr().String(),
 				request.followersAddrs[index], err.Error())

@@ -59,7 +59,7 @@ func (p *Packet) resolveReplicateAddrs() (err error) {
 	followerNum := uint8(len(replicateAddrs) - 1)
 	p.followersAddrs = make([]string, followerNum)
 	p.followersConns = make([]*net.TCPConn, followerNum)
-	if p.RemainReplicates < 0 {
+	if p.RemainFollowers < 0 {
 		err = ErrBadNodes
 		return
 	}
@@ -107,7 +107,7 @@ func (p *Packet) IsMasterCommand() bool {
 }
 
 func (p *Packet) isForwardPacket() bool {
-	r := p.RemainReplicates > 0
+	r := p.RemainFollowers > 0
 	return r
 }
 
