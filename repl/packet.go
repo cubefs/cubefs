@@ -24,7 +24,6 @@ type Packet struct {
 	followersAddrs []string
 	IsRelase       int32
 	Object         interface{}
-	followerNum    uint8
 	TpObject       *ump.TpObject
 	NeedReply      bool
 }
@@ -57,12 +56,9 @@ func (p *Packet) resolveReplicateAddrs() (err error) {
 	}
 	str := string(p.Arg[:int(p.Arglen)])
 	replicateAddrs := strings.SplitN(str, proto.AddrSplit, -1)
-	p.followerNum = uint8(len(replicateAddrs) - 1)
-	p.followersAddrs = make([]string, p.followerNum)
-	p.followersConns = make([]*net.TCPConn, p.followerNum)
-	if p.followerNum > 0 {
-		p.followersAddrs = replicateAddrs[:int(p.followerNum)]
-	}
+	followerNum := uint8(len(replicateAddrs) - 1)
+	p.followersAddrs = make([]string, followerNum)
+	p.followersConns = make([]*net.TCPConn, followerNum)
 	if p.RemainReplicates < 0 {
 		err = ErrBadNodes
 		return
@@ -121,7 +117,7 @@ func NewGetAllWaterMarker(partitionId uint64, extentType uint8) (p *Packet) {
 	p.PartitionID = partitionId
 	p.Magic = proto.ProtoMagic
 	p.ReqID = proto.GeneratorRequestID()
-	p.StoreMode = extentType
+	p.ExtentMode = extentType
 
 	return
 }
@@ -134,7 +130,7 @@ func NewExtentRepairReadPacket(partitionId uint64, extentId uint64, offset, size
 	p.ExtentOffset = int64(offset)
 	p.Size = uint32(size)
 	p.Opcode = proto.OpExtentRepairRead
-	p.StoreMode = proto.NormalExtentMode
+	p.ExtentMode = proto.NormalExtentMode
 	p.ReqID = proto.GeneratorRequestID()
 
 	return
@@ -147,7 +143,7 @@ func NewStreamReadResponsePacket(requestId int64, partitionId uint64, extentId u
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpOk
 	p.ReqID = requestId
-	p.StoreMode = proto.NormalExtentMode
+	p.ExtentMode = proto.NormalExtentMode
 
 	return
 }
@@ -157,7 +153,7 @@ func NewNotifyExtentRepair(partitionId uint64) (p *Packet) {
 	p.Opcode = proto.OpNotifyExtentRepair
 	p.PartitionID = partitionId
 	p.Magic = proto.ProtoMagic
-	p.StoreMode = proto.NormalExtentMode
+	p.ExtentMode = proto.NormalExtentMode
 	p.ReqID = proto.GeneratorRequestID()
 
 	return

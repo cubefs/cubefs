@@ -200,7 +200,7 @@ func (eh *ExtentHandler) sender() {
 
 			// fill packet according to extent
 			packet.PartitionID = eh.dp.PartitionID
-			packet.StoreMode = uint8(eh.storeMode)
+			packet.ExtentMode = uint8(eh.storeMode)
 			packet.ExtentID = uint64(eh.extID)
 			packet.ExtentOffset = int64(eh.extOffset)
 			packet.Arg = ([]byte)(eh.dp.GetAllAddrs())
@@ -393,7 +393,7 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 
 	handler := eh.recoverHandler
 	if handler == nil {
-		handler = NewExtentHandler(eh.sw, packet.kernelOffset, int(packet.StoreMode))
+		handler = NewExtentHandler(eh.sw, packet.kernelOffset, int(packet.ExtentMode))
 		handler.setClosed()
 	}
 	handler.pushToRequest(packet)

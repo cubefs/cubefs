@@ -36,7 +36,7 @@ func (s *DataNode) Prepare(pkg *repl.Packet) (err error) {
 }
 
 func (s *DataNode) checkStoreMode(p *repl.Packet) (err error) {
-	if p.StoreMode == proto.TinyExtentMode || p.StoreMode == proto.NormalExtentMode {
+	if p.ExtentMode == proto.TinyExtentMode || p.ExtentMode == proto.NormalExtentMode {
 		return nil
 	}
 	return ErrStoreTypeMismatch
@@ -78,7 +78,7 @@ func (s *DataNode) checkPartition(pkg *repl.Packet) (err error) {
 // If OpCreateExtent get new extentId
 func (s *DataNode) addExtentInfo(pkg *repl.Packet) error {
 	store := pkg.Object.(*DataPartition).GetStore()
-	if isLeaderPacket(pkg) && pkg.StoreMode == proto.TinyExtentMode {
+	if isLeaderPacket(pkg) && pkg.ExtentMode == proto.TinyExtentMode {
 		extentId, err := store.GetAvaliTinyExtent() // GetConnect a valid tinyExtentId
 		if err != nil {
 			return err

@@ -42,7 +42,7 @@ var (
 
     c. receiveFollowerResponse goroutine read from handleCh,recive all replicates  pkg response,and send this pkg to responseCh
 
-	if any step error,then change request to error Packet,and send it to responseCh, the InteractWithClient can send it to client
+	if any step error,then change request to error Packet,and send it to responseCh, the operatorAndForwardPkg can send it to client
 
 */
 type ReplProtocol struct {
@@ -296,26 +296,26 @@ func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err err
 func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 	var err error
 	if reply.IsErrPacket() {
-		err = fmt.Errorf(reply.LogMessage(ActionWriteToCli, rp.sourceConn.RemoteAddr().String(),
+		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
 		reply.forceDestoryAllConnect()
-		log.LogErrorf(ActionWriteToCli+" %v", err)
+		log.LogErrorf(ActionWriteToClient+" %v", err)
 	}
 	rp.postFunc(reply)
 	if !reply.NeedReply {
-		log.LogDebugf(ActionWriteToCli+" %v", reply.LogMessage(ActionWriteToCli,
+		log.LogDebugf(ActionWriteToClient+" %v", reply.LogMessage(ActionWriteToClient,
 			rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
 		return
 	}
 
 	if err = reply.WriteToConn(rp.sourceConn); err != nil {
-		err = fmt.Errorf(reply.LogMessage(ActionWriteToCli, rp.sourceConn.RemoteAddr().String(),
+		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, err))
-		log.LogErrorf(ActionWriteToCli+" %v", err)
+		log.LogErrorf(ActionWriteToClient+" %v", err)
 		reply.forceDestoryAllConnect()
 		rp.Stop()
 	}
-	log.LogDebugf(ActionWriteToCli+" %v", reply.LogMessage(ActionWriteToCli,
+	log.LogDebugf(ActionWriteToClient+" %v", reply.LogMessage(ActionWriteToClient,
 		rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
 
 }
@@ -338,7 +338,7 @@ func (rp *ReplProtocol) Stop() {
 */
 func (rp *ReplProtocol) AllocateFollowersConnects(pkg *Packet, index int) (err error) {
 	var conn *net.TCPConn
-	if pkg.StoreMode == proto.NormalExtentMode {
+	if pkg.ExtentMode == proto.NormalExtentMode {
 		key := fmt.Sprintf("%v_%v_%v", pkg.PartitionID, pkg.ExtentID, pkg.followersAddrs[index])
 		rp.followerConnectLock.RLock()
 		conn := rp.followerConnects[key]

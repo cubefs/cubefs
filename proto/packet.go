@@ -132,7 +132,7 @@ const (
 
 type Packet struct {
 	Magic            uint8
-	StoreMode        uint8
+	ExtentMode       uint8
 	Opcode           uint8
 	ResultCode       uint8
 	RemainReplicates uint8
@@ -157,7 +157,7 @@ func NewPacket() *Packet {
 }
 
 func (p *Packet) GetStoreModeMsg() (m string) {
-	switch p.StoreMode {
+	switch p.ExtentMode {
 	case TinyExtentMode:
 		m = "TinyExtent"
 	case NormalExtentMode:
@@ -306,7 +306,7 @@ func (p *Packet) GetResultMesg() (m string) {
 
 func (p *Packet) MarshalHeader(out []byte) {
 	out[0] = p.Magic
-	out[1] = p.StoreMode
+	out[1] = p.ExtentMode
 	out[2] = p.Opcode
 	out[3] = p.ResultCode
 	out[4] = p.RemainReplicates
@@ -326,7 +326,7 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 		return errors.New("Bad Magic " + strconv.Itoa(int(p.Magic)))
 	}
 
-	p.StoreMode = in[1]
+	p.ExtentMode = in[1]
 	p.Opcode = in[2]
 	p.ResultCode = in[3]
 	p.RemainReplicates = in[4]

@@ -13,7 +13,7 @@ const (
 	ActionSendToFollowers     = "ActionSendToFollowers"
 	LocalProcessAddr          = "LocalProcess"
 	ActionReceiveFromFollower = "ActionReceiveFromFollower"
-	ActionWriteToCli          = "ActionWriteToCli"
+	ActionWriteToClient       = "ActionWriteToClient"
 	ActionCheckAndAddInfos    = "ActionCheckAndAddInfos"
 	ActionCheckReplyAvail     = "ActionCheckReplyAvail"
 
