@@ -257,6 +257,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 
 	status := eh.getStatus()
 	if status >= ExtentStatusError {
+		proto.Buffers.Put(packet.Data)
 		log.LogErrorf("processReply discard packet: handler is in error status, inflight(%v) eh(%v) packet(%v)", atomic.LoadInt32(&eh.inflight), eh, packet)
 		return
 	} else if status >= ExtentStatusRecovery {
@@ -308,6 +309,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		eh.key.Size += packet.Size
 	}
 
+	proto.Buffers.Put(packet.Data)
 	eh.dirty = true
 	return
 }
@@ -318,6 +320,7 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 	if packet.errCount >= MaxPacketErrorCount {
 		// discard packet
 		eh.setError()
+		proto.Buffers.Put(packet.Data)
 		log.LogErrorf("processReplyError discard packet: packet err count reaches max limit, eh(%v) packet(%v) err(%v)", eh, packet, errmsg)
 	} else {
 		eh.recoverPacket(packet)
@@ -388,6 +391,7 @@ func (eh *ExtentHandler) waitForFlush() {
 func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 	packet.errCount++
 	if packet.errCount >= MaxPacketErrorCount {
+		proto.Buffers.Put(packet.Data)
 		return errors.New(fmt.Sprintf("recoverPacket failed: reach max error limit, eh(%v) packet(%v)", eh, packet))
 	}
 

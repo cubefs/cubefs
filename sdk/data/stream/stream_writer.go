@@ -257,6 +257,7 @@ func (sw *StreamWriter) doOverwrite(req *ExtentRequest) (total int, err error) {
 			return e, false
 		})
 
+		proto.Buffers.Put(reqPacket.Data)
 		log.LogDebugf("doOverwrite: ino(%v) req(%v) reqPacket(%v) err(%v) replyPacket(%v)", sw.inode, req, reqPacket, err, replyPacket)
 
 		if err != nil || replyPacket.ResultCode != proto.OpOk {
@@ -373,7 +374,8 @@ func (sw *StreamWriter) traverse() (err error) {
 
 func (sw *StreamWriter) closeOpenHandler() {
 	if sw.handler != nil {
-		sw.handler.flushPacket()
+		//sw.handler.flushPacket()
+		sw.handler.flush()
 		sw.handler.setClosed()
 		if !sw.dirty {
 			// in case current handler is not in the dirty list,
