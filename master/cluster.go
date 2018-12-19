@@ -25,6 +25,7 @@ import (
 	"time"
 )
 
+//
 type Cluster struct {
 	Name                string
 	vols                map[string]*Vol
@@ -45,8 +46,8 @@ type Cluster struct {
 	volSpaceStat        sync.Map
 	BadDataPartitionIds *sync.Map
 	DisableAutoAlloc    bool
-	fsm       *MetadataFsm
-	partition raftstore.Partition
+	fsm                 *MetadataFsm
+	partition           raftstore.Partition
 }
 
 func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition raftstore.Partition) (c *Cluster) {
@@ -479,14 +480,14 @@ func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp
 	if err != nil {
 		return
 	}
-	if dataNode.Sender.syncCreatePartition(task, conn); err != nil {
+	if err = dataNode.Sender.syncCreatePartition(task, conn); err != nil {
 		return
 	}
 	dataNode.Sender.connPool.PutConnect(conn, false)
 	return
 }
 
-func (c *Cluster) syncCreateMetaPartitionToMataNode(host string, mp *MetaPartition) (err error) {
+func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartition) (err error) {
 	hosts := make([]string, 0)
 	hosts = append(hosts, host)
 	tasks := mp.generateCreateMetaPartitionTasks(hosts, mp.Peers, mp.volName)
@@ -498,7 +499,7 @@ func (c *Cluster) syncCreateMetaPartitionToMataNode(host string, mp *MetaPartiti
 	if err != nil {
 		return
 	}
-	if metaNode.Sender.syncCreatePartition(tasks[0], conn); err != nil {
+	if err = metaNode.Sender.syncCreatePartition(tasks[0], conn); err != nil {
 		return
 	}
 	metaNode.Sender.connPool.PutConnect(conn, false)
@@ -697,7 +698,7 @@ func (c *Cluster) dataPartitionOffline(offlineAddr, volName string, dp *DataPart
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.PersistenceHosts)
 	return
 errDeal:
-	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.PersistenceHosts)
 	if err != nil {
@@ -879,7 +880,7 @@ func (c *Cluster) CreateMetaPartition(volName string, start, end uint64) (err er
 			defer func() {
 				wg.Done()
 			}()
-			if err = c.syncCreateMetaPartitionToMataNode(host, mp); err != nil {
+			if err = c.syncCreateMetaPartitionToMetaNode(host, mp); err != nil {
 				errChannel <- err
 				return
 			}

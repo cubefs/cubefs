@@ -45,7 +45,7 @@ type MetaNode struct {
 func NewMetaNode(addr, clusterID string) (node *MetaNode) {
 	return &MetaNode{
 		Addr:   addr,
-		Sender: NewAdminTaskSender(addr, clusterID),
+		Sender: newAdminTaskSender(addr, clusterID),
 		Carry:  rand.Float64(),
 	}
 }

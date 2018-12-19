@@ -48,7 +48,7 @@ func NewDataNode(addr, clusterID string) (dataNode *DataNode) {
 	dataNode.Carry = rand.Float64()
 	dataNode.Total = 1
 	dataNode.Addr = addr
-	dataNode.Sender = NewAdminTaskSender(dataNode.Addr, clusterID)
+	dataNode.Sender = newAdminTaskSender(dataNode.Addr, clusterID)
 	return
 }
 
