@@ -296,26 +296,26 @@ func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err err
 func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 	var err error
 	if reply.IsErrPacket() {
-		err = fmt.Errorf(reply.LogMessage(ActionWriteToCli, rp.sourceConn.RemoteAddr().String(),
+		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
 		reply.forceDestoryAllConnect()
-		log.LogErrorf(ActionWriteToCli+" %v", err)
+		log.LogErrorf(ActionWriteToClient+" %v", err)
 	}
 	rp.postFunc(reply)
 	if !reply.NeedReply {
-		log.LogDebugf(ActionWriteToCli+" %v", reply.LogMessage(ActionWriteToCli,
+		log.LogDebugf(ActionWriteToClient+" %v", reply.LogMessage(ActionWriteToClient,
 			rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
 		return
 	}
 
 	if err = reply.WriteToConn(rp.sourceConn); err != nil {
-		err = fmt.Errorf(reply.LogMessage(ActionWriteToCli, rp.sourceConn.RemoteAddr().String(),
+		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, err))
-		log.LogErrorf(ActionWriteToCli+" %v", err)
+		log.LogErrorf(ActionWriteToClient+" %v", err)
 		reply.forceDestoryAllConnect()
 		rp.Stop()
 	}
-	log.LogDebugf(ActionWriteToCli+" %v", reply.LogMessage(ActionWriteToCli,
+	log.LogDebugf(ActionWriteToClient+" %v", reply.LogMessage(ActionWriteToClient,
 		rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
 
 }

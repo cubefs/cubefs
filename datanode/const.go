@@ -31,7 +31,7 @@ const (
 	LocalProcessAddr              = "LocalProcess"
 	ActionReceiveFromNext         = "ActionReceiveFromNext"
 	ActionStreamRead              = "ActionStreamRead"
-	ActionWriteToCli              = "ActionWriteToCli"
+	ActionWriteToCli              = "ActionWriteToClient"
 	ActionGetDataPartitionMetrics = "ActionGetDataPartitionMetrics"
 	ActionCheckAndAddInfos        = "ActionCheckAndAddInfos"
 	ActionCheckReplyAvail         = "ActionCheckReplyAvail"
