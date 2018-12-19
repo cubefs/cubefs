@@ -44,7 +44,7 @@ func (p *Packet) BeforeTp(clusterID string) (ok bool) {
 	return
 }
 
-func (p *Packet) resolveReplicateAddr() (err error) {
+func (p *Packet) resolveFollowersAddr() (err error) {
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionPreparePkg, err.Error())
@@ -55,9 +55,12 @@ func (p *Packet) resolveReplicateAddr() (err error) {
 		return
 	}
 	str := string(p.Arg[:int(p.Arglen)])
-	replicateAddrs := strings.SplitN(str, proto.AddrSplit, -1)
-	followerNum := uint8(len(replicateAddrs) - 1)
+	followerAddrs := strings.SplitN(str, proto.AddrSplit, -1)
+	followerNum := uint8(len(followerAddrs) - 1)
 	p.followersAddrs = make([]string, followerNum)
+	if followerNum> 0 {
+		p.followersAddrs = followerAddrs[:int(followerNum)]
+	}
 	p.followerConns = make([]*net.TCPConn, followerNum)
 	if p.RemainFollowers < 0 {
 		err = ErrBadNodes

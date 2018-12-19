@@ -126,7 +126,7 @@ func (rp *ReplProtocol) readPkgFromSocket() (err error) {
 	}
 	log.LogDebugf("action[readPkgFromSocket] read packet(%v) from remote(%v).",
 		pkg.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
-	if err = pkg.resolveReplicateAddr(); err != nil {
+	if err = pkg.resolveFollowersAddr(); err != nil {
 		rp.responseCh <- pkg
 		return
 	}
