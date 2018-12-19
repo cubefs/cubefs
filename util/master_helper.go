@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/tiglabs/containerfs/util/log"
-	"hash/crc32"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -39,56 +38,62 @@ type MasterHelper interface {
 }
 
 type masterHelper struct {
-	masters   []string
-	leaderIdx int
-	skipMarks *Set
 	sync.RWMutex
+	masters    []string
+	leaderAddr string
 }
 
+// AddNode add master address
 func (helper *masterHelper) AddNode(address string) {
 	helper.Lock()
-	defer helper.Unlock()
 	helper.updateMaster(address)
+	helper.Unlock()
 }
 
-func (helper *masterHelper) Leader() string {
+// Leader return current record leader address
+func (helper *masterHelper) Leader() (addr string) {
 	helper.RLock()
-	defer helper.RUnlock()
-	return helper.masters[helper.leaderIdx]
+	addr = helper.leaderAddr
+	helper.RUnlock()
+	return
 }
 
-func (helper *masterHelper) Request(method, path string, param map[string]string, reqData []byte) (respData []byte, err error) {
+// setLeader change leader addr
+func (helper *masterHelper) setLeader(addr string) {
 	helper.Lock()
-	defer helper.Unlock()
+	helper.leaderAddr = addr
+	helper.Unlock()
+}
+
+// Request make request
+func (helper *masterHelper) Request(method, path string, param map[string]string, reqData []byte) (respData []byte, err error) {
 	respData, err = helper.request(method, path, param, reqData)
-	helper.skipMarks.RemoveAll()
 	return
 }
 
 func (helper *masterHelper) request(method, path string, param map[string]string, reqData []byte) (repsData []byte, err error) {
-	for i := 0; i < len(helper.masters); i++ {
-		var index int
-		if i+int(helper.leaderIdx) < len(helper.masters) {
-			index = i + int(helper.leaderIdx)
+	leaderAddr, nodes := helper.prepareRequest()
+	host := leaderAddr
+	for i := -1; i < len(nodes); i++ {
+		if i == -1 {
+			if host == "" {
+				continue
+			}
 		} else {
-			index = (i + int(helper.leaderIdx)) - len(helper.masters)
+			host = nodes[i]
 		}
-		masterAddr := helper.masters[index]
-		mark := int(crc32.ChecksumIEEE([]byte(masterAddr)))
-		if helper.skipMarks.Has(mark) {
-			log.LogErrorf("action[request] all master address has been tried.")
-			break
-		}
-		helper.skipMarks.Add(mark)
 		var resp *http.Response
-		resp, err = helper.httpRequest(method, fmt.Sprintf("http://%s%s", masterAddr, path), param, reqData)
+		resp, err = helper.httpRequest(method, fmt.Sprintf("http://%s%s", host,
+			path), param, reqData)
 		if err != nil {
+			log.LogErrorf("[masterHelper] %s", err)
 			continue
 		}
 		stateCode := resp.StatusCode
 		repsData, err = ioutil.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
+			log.LogErrorf("[masterHelper] %s", err)
 			continue
 		}
 		switch stateCode {
@@ -96,17 +101,21 @@ func (helper *masterHelper) request(method, path string, param map[string]string
 			curMasterAddr := strings.TrimSpace(string(repsData))
 			curMasterAddr = strings.Replace(curMasterAddr, "\n", "", -1)
 			if len(curMasterAddr) == 0 {
+				log.LogErrorf("[masterHelper] request[%s] response statudCode"+
+					"[403], respBody is empty", host)
 				err = ErrNoValidMaster
 				return
 			}
-			helper.updateMaster(curMasterAddr)
 			repsData, err = helper.request(method, path, param, reqData)
 			return
 		case http.StatusOK:
+			if leaderAddr != host {
+				helper.setLeader(host)
+			}
 			return
 		default:
-			log.LogErrorf("action[request] master[%v] uri[%v] statusCode[%v] respBody[%v].",
-				resp.Request.URL.String(), masterAddr, stateCode, string(repsData))
+			log.LogErrorf("[masterHelper] master[%v] uri[%v] statusCode[%v] respBody[%v].",
+				resp.Request.URL.String(), host, stateCode, string(repsData))
 			continue
 		}
 	}
@@ -114,10 +123,21 @@ func (helper *masterHelper) request(method, path string, param map[string]string
 	return
 }
 
-func (helper *masterHelper) Nodes() []string {
+// Nodes return all address
+func (helper *masterHelper) Nodes() (nodes []string) {
 	helper.RLock()
-	defer helper.RUnlock()
-	return helper.masters
+	nodes = helper.masters
+	helper.RUnlock()
+	return
+}
+
+// prepareRequest return leader address and all address
+func (helper *masterHelper) prepareRequest() (addr string, nodes []string) {
+	helper.RLock()
+	addr = helper.leaderAddr
+	nodes = helper.masters
+	helper.RUnlock()
+	return
 }
 
 func (helper *masterHelper) httpRequest(method, url string, param map[string]string, reqData []byte) (resp *http.Response, err error) {
@@ -147,12 +167,7 @@ func (helper *masterHelper) updateMaster(address string) {
 	if !contains {
 		helper.masters = append(helper.masters, address)
 	}
-	for i, master := range helper.masters {
-		if master == address {
-			helper.leaderIdx = i
-			break
-		}
-	}
+	helper.leaderAddr = address
 }
 
 func (helper *masterHelper) mergeRequestUrl(url string, params map[string]string) string {
@@ -176,8 +191,5 @@ func (helper *masterHelper) mergeRequestUrl(url string, params map[string]string
 }
 
 func NewMasterHelper() MasterHelper {
-	return &masterHelper{
-		masters:   make([]string, 0),
-		skipMarks: NewSet(),
-	}
+	return &masterHelper{}
 }
