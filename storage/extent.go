@@ -37,11 +37,11 @@ const (
 )
 
 var (
-	BrokenExtentFileErr = errors.New("broken extent file error")
+	ErrBrokenExtentFile = errors.New("broken extent file error")
 )
 
 type ExtentInfo struct {
-	FileId  uint64    `json:"fileId"`
+	FileID  uint64    `json:"fileId"`
 	Inode   uint64    `json:"ino"`
 	Size    uint64    `json:"size"`
 	Crc     uint32    `json:"crc"`
@@ -52,10 +52,10 @@ type ExtentInfo struct {
 
 func (ei *ExtentInfo) FromExtent(extent *Extent) {
 	if extent != nil {
-		ei.FileId = extent.ID()
+		ei.FileID = extent.ID()
 		ei.Inode = extent.Ino()
 		ei.Size = uint64(extent.Size())
-		if !IsTinyExtent(ei.FileId) {
+		if !IsTinyExtent(ei.FileID) {
 			ei.Crc = extent.HeaderChecksum()
 			ei.Deleted = extent.IsMarkDelete()
 			ei.ModTime = extent.ModTime()
@@ -68,16 +68,16 @@ func (ei *ExtentInfo) String() (m string) {
 	if source == "" {
 		source = "none"
 	}
-	return fmt.Sprintf("%v_%v_%v_%v_%v_%v", ei.FileId, ei.Inode, ei.Size, ei.Crc, ei.Deleted, source)
+	return fmt.Sprintf("%v_%v_%v_%v_%v_%v", ei.FileID, ei.Inode, ei.Size, ei.Crc, ei.Deleted, source)
 }
 
-// FSExtent is an implementation of Extent for local regular extent file data management.
+// Extent is an implementation of Extent for local regular extent file data management.
 // This extent implementation manages all header info and data body in one single entry file.
 // Header of extent include inode value of this extent block and crc blocks of data blocks.
 type Extent struct {
 	file       *os.File
 	filePath   string
-	extentId   uint64
+	extentID   uint64
 	lock       sync.RWMutex
 	header     []byte
 	modifyTime time.Time
@@ -87,9 +87,9 @@ type Extent struct {
 }
 
 // NewExtentInCore create and returns a new extent instance.
-func NewExtentInCore(name string, extentId uint64) *Extent {
+func NewExtentInCore(name string, extentID uint64) *Extent {
 	e := new(Extent)
-	e.extentId = extentId
+	e.extentID = extentID
 	e.filePath = name
 	e.header = make([]byte, util.BlockHeaderSize)
 	e.closeC = make(chan bool)
@@ -114,9 +114,9 @@ func (e *Extent) Ino() (ino uint64) {
 	return
 }
 
-// ID returns the identity value (extentId) of this extent entity.
+// ID returns the identity value (extentID) of this extent entity.
 func (e *Extent) ID() uint64 {
-	return e.extentId
+	return e.extentID
 }
 
 func (e *Extent) Exist() (exsit bool) {
@@ -151,7 +151,7 @@ func (e *Extent) InitToFS(ino uint64, overwrite bool) (err error) {
 		}
 	}()
 
-	if IsTinyExtent(e.extentId) {
+	if IsTinyExtent(e.extentID) {
 		e.dataSize = 0
 		return
 	}
@@ -200,12 +200,12 @@ func (e *Extent) RestoreFromFS(loadHeader bool) (err error) {
 		err = fmt.Errorf("stat file %v: %v", e.file.Name(), err)
 		return
 	}
-	if IsTinyExtent(e.extentId) {
+	if IsTinyExtent(e.extentID) {
 		e.dataSize = info.Size()
 		return
 	}
 	if info.Size() < util.BlockHeaderSize {
-		err = BrokenExtentFileErr
+		err = ErrBrokenExtentFile
 		return
 	}
 	if loadHeader {
@@ -234,7 +234,7 @@ func (e *Extent) MarkDelete() (err error) {
 
 // IsMarkDelete test this extent if has been marked as delete.
 func (e *Extent) IsMarkDelete() bool {
-	if IsTinyExtent(e.extentId) {
+	if IsTinyExtent(e.extentID) {
 		return false
 	}
 	e.lock.RLock()
@@ -275,7 +275,7 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32) (err err
 }
 
 func (e *Extent) TinyRecover(data []byte, offset, size int64, crc uint32) (err error) {
-	if !IsTinyExtent(e.extentId) {
+	if !IsTinyExtent(e.extentID) {
 		return ErrorUnavaliExtent
 	}
 	if offset+size >= math.MaxUint32 {
@@ -291,7 +291,7 @@ func (e *Extent) TinyRecover(data []byte, offset, size int64, crc uint32) (err e
 
 // Write data to extent.
 func (e *Extent) Write(data []byte, offset, size int64, crc uint32) (err error) {
-	if IsTinyExtent(e.extentId) {
+	if IsTinyExtent(e.extentID) {
 		return e.WriteTiny(data, offset, size, crc)
 	}
 
@@ -352,7 +352,7 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32) (err error) 
 
 // Read data from extent.
 func (e *Extent) Read(data []byte, offset, size int64) (crc uint32, err error) {
-	if IsTinyExtent(e.extentId) {
+	if IsTinyExtent(e.extentID) {
 		return e.ReadTiny(data, offset, size)
 	}
 	if err = e.checkOffsetAndSize(offset, size); err != nil {
@@ -422,9 +422,9 @@ func (e *Extent) HeaderChecksum() (crc uint32) {
 }
 
 const (
-	PageSize             = 4 * util.KB
-	FALLOC_FL_KEEP_SIZE  = 1
-	FALLOC_FL_PUNCH_HOLE = 2
+	PageSize          = 4 * util.KB
+	FallocFLKeepSize  = 1
+	FallocFLPunchHole = 2
 )
 
 func (e *Extent) DeleteTiny(offset, size int64) (err error) {
@@ -438,7 +438,7 @@ func (e *Extent) DeleteTiny(offset, size int64) (err error) {
 	if int(size)%PageSize != 0 {
 		return ErrorParamMismatch
 	}
-	err = syscall.Fallocate(int(e.file.Fd()), FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE, offset, size)
+	err = syscall.Fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
 
 	return
 }

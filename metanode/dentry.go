@@ -39,9 +39,9 @@ import (
 //  | bytes |     4     |   KeyLength  |     4     |   ValLength  |
 //  +-------+-----------+--------------+-----------+--------------+
 type Dentry struct {
-	ParentId uint64 // FileId value of parent inode.
+	ParentId uint64 // FileID value of parent inode.
 	Name     string // Name of current dentry.
-	Inode    uint64 // FileId value of current inode.
+	Inode    uint64 // FileID value of current inode.
 	Type     uint32 // Dentry type.
 }
 

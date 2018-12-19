@@ -35,7 +35,7 @@ func TestFsExtent_Write(t *testing.T) {
 	}
 
 	defer extent.Close()
-	if err = extent.RestoreFromFS(); err != nil {
+	if err = extent.RestoreFromFS(false); err != nil {
 		panic(err)
 	}
 	offset := 0
@@ -59,10 +59,10 @@ func TestFsExtent_Validate(t *testing.T) {
 	var err error
 	extent := NewExtentInCore("/tmp/extent_1", 1)
 	defer extent.Close()
-	if err = extent.RestoreFromFS(); err != nil {
+	if err = extent.RestoreFromFS(false); err != nil {
 		panic(err)
 	}
-	fse := extent.(*Extent)
+	fse := extent
 	header := fse.header
 	headerReader := bytes.NewReader(header)
 	var ino uint64
