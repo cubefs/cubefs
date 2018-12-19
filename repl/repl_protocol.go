@@ -154,8 +154,11 @@ func (rp *ReplProtocol) operatorAndForwardPkg() {
 				rp.operatorFunc(request, rp.sourceConn)
 				rp.responseCh <- request
 			} else {
-				if _, err := rp.sendToAllfollowers(request); err == nil {
+				_,err:=rp.sendToAllfollowers(request)
+				if err==nil{
 					rp.operatorFunc(request, rp.sourceConn)
+				}else {
+					log.LogErrorf(err.Error())
 				}
 				rp.handleCh <- struct{}{}
 			}
@@ -186,7 +189,7 @@ func (rp *ReplProtocol) receiveFollowerResponse() {
 */
 func (rp *ReplProtocol) sendToAllfollowers(request *Packet) (index int, err error) {
 	rp.pushPacketToList(request)
-	for index = 0; index < len(request.followersConns); index++ {
+	for index = 0; index < len(request.followerConns); index++ {
 		err = rp.AllocateFollowersConnects(request, index)
 		if err != nil {
 			msg := fmt.Sprintf("request inconnect(%v) to(%v) err(%v)", rp.sourceConn.RemoteAddr().String(),
@@ -198,7 +201,7 @@ func (rp *ReplProtocol) sendToAllfollowers(request *Packet) (index int, err erro
 		nodes := request.RemainFollowers
 		request.RemainFollowers = 0
 		if err == nil {
-			err = request.WriteToConn(request.followersConns[index])
+			err = request.WriteToConn(request.followerConns[index])
 		}
 		request.RemainFollowers = nodes
 		if err != nil {
@@ -250,7 +253,7 @@ func (rp *ReplProtocol) reciveAllFollowerResponse() {
 */
 func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err error) {
 	// Receive pkg response from one member*/
-	if request.followersConns[index] == nil {
+	if request.followerConns[index] == nil {
 		err = errors.Annotatef(fmt.Errorf(ConnIsNullErr), "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
 		return
 	}
@@ -265,7 +268,7 @@ func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err err
 
 	reply := NewPacket()
 
-	if err = reply.ReadFromConn(request.followersConns[index], proto.ReadDeadlineTime); err != nil {
+	if err = reply.ReadFromConn(request.followerConns[index], proto.ReadDeadlineTime); err != nil {
 		err = errors.Annotatef(err, "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
 		log.LogErrorf("action[ActionReceiveFromFollower] %v.", request.LogMessage(ActionReceiveFromFollower, request.followersAddrs[index], request.StartT, err))
 		return
@@ -275,7 +278,7 @@ func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err err
 		reply.ExtentOffset != request.ExtentOffset || reply.CRC != request.CRC || reply.ExtentID != request.ExtentID {
 		err = fmt.Errorf(ActionCheckReplyAvail+" request (%v) reply(%v) %v from localAddr(%v)"+
 			" remoteAddr(%v) requestCrc(%v) replyCrc(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId(), request.followersAddrs[index],
-			request.followersConns[index].LocalAddr().String(), request.followersConns[index].RemoteAddr().String(), request.CRC, reply.CRC)
+			request.followerConns[index].LocalAddr().String(), request.followerConns[index].RemoteAddr().String(), request.CRC, reply.CRC)
 		log.LogErrorf("action[receiveFromReplicate] %v.", err.Error())
 		return
 	}
@@ -341,21 +344,21 @@ func (rp *ReplProtocol) AllocateFollowersConnects(pkg *Packet, index int) (err e
 		key := fmt.Sprintf("%v_%v_%v", pkg.PartitionID, pkg.ExtentID, pkg.followersAddrs[index])
 		value, ok := rp.followerConnects.Load(key)
 		if ok {
-			pkg.followersConns[index] = value.(*net.TCPConn)
+			pkg.followerConns[index] = value.(*net.TCPConn)
 		} else {
 			conn, err = gConnPool.GetConnect(pkg.followersAddrs[index])
 			if err != nil {
 				return
 			}
 			rp.followerConnects.Store(key, conn)
-			pkg.followersConns[index] = conn
+			pkg.followerConns[index] = conn
 		}
 	} else {
 		conn, err = gConnPool.GetConnect(pkg.followersAddrs[index])
 		if err != nil {
 			return
 		}
-		pkg.followersConns[index] = conn
+		pkg.followerConns[index] = conn
 	}
 	return nil
 }

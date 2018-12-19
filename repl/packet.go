@@ -20,7 +20,7 @@ var (
 
 type Packet struct {
 	proto.Packet
-	followersConns []*net.TCPConn
+	followerConns  []*net.TCPConn
 	followersAddrs []string
 	IsRelase       int32
 	Object         interface{}
@@ -58,7 +58,7 @@ func (p *Packet) resolveReplicateAddr() (err error) {
 	replicateAddrs := strings.SplitN(str, proto.AddrSplit, -1)
 	followerNum := uint8(len(replicateAddrs) - 1)
 	p.followersAddrs = make([]string, followerNum)
-	p.followersConns = make([]*net.TCPConn, followerNum)
+	p.followerConns = make([]*net.TCPConn, followerNum)
 	if p.RemainFollowers < 0 {
 		err = ErrBadNodes
 		return
@@ -68,20 +68,20 @@ func (p *Packet) resolveReplicateAddr() (err error) {
 }
 
 func (p *Packet) forceDestoryAllConnect() {
-	for i := 0; i < len(p.followersConns); i++ {
-		gConnPool.PutConnect(p.followersConns[i], ForceCloseConnect)
+	for i := 0; i < len(p.followerConns); i++ {
+		gConnPool.PutConnect(p.followerConns[i], ForceCloseConnect)
 	}
 }
 
 func (p *Packet) forceDestoryCheckUsedClosedConnect(err error) {
-	for i := 0; i < len(p.followersConns); i++ {
-		gConnPool.CheckErrorForceClose(p.followersConns[i], p.followersAddrs[i], err)
+	for i := 0; i < len(p.followerConns); i++ {
+		gConnPool.CheckErrorForceClose(p.followerConns[i], p.followersAddrs[i], err)
 	}
 }
 
 func (p *Packet) PutConnectsToPool() {
-	for i := 0; i < len(p.followersConns); i++ {
-		gConnPool.PutConnect(p.followersConns[i], NoCloseConnect)
+	for i := 0; i < len(p.followerConns); i++ {
+		gConnPool.PutConnect(p.followerConns[i], NoCloseConnect)
 	}
 }
 
