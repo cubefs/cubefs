@@ -162,7 +162,7 @@ func (rp *ReplProtocol) operatorAndForwardPkg() {
 		case request := <-rp.responseCh:
 			rp.writeResponseToClient(request)
 		case <-rp.exitC:
-			rp.CleanResource()
+			rp.cleanResource()
 			return
 		}
 	}
@@ -185,7 +185,7 @@ func (rp *ReplProtocol) receiveFollowerResponse() {
   send pkg to all followers.
 */
 func (rp *ReplProtocol) sendToAllfollowers(request *Packet) (index int, err error) {
-	rp.PushPacketToList(request)
+	rp.pushPacketToList(request)
 	for index = 0; index < len(request.followersConns); index++ {
 		err = rp.AllocateFollowersConnects(request, index)
 		if err != nil {
@@ -222,7 +222,7 @@ func (rp *ReplProtocol) reciveAllFollowerResponse() {
 		e *list.Element
 	)
 
-	if e = rp.GetFrontPacket(); e == nil {
+	if e = rp.getFrontPacket(); e == nil {
 		return
 	}
 	request := e.Value.(*Packet)
@@ -361,7 +361,7 @@ func (rp *ReplProtocol) AllocateFollowersConnects(pkg *Packet, index int) (err e
 }
 
 /*get front packet*/
-func (rp *ReplProtocol) GetFrontPacket() (e *list.Element) {
+func (rp *ReplProtocol) getFrontPacket() (e *list.Element) {
 	rp.listMux.RLock()
 	e = rp.packetList.Front()
 	rp.listMux.RUnlock()
@@ -369,14 +369,14 @@ func (rp *ReplProtocol) GetFrontPacket() (e *list.Element) {
 	return
 }
 
-func (rp *ReplProtocol) PushPacketToList(e *Packet) {
+func (rp *ReplProtocol) pushPacketToList(e *Packet) {
 	rp.listMux.Lock()
 	rp.packetList.PushBack(e)
 	rp.listMux.Unlock()
 }
 
 /*if the rp exit,then clean all packet resource*/
-func (rp *ReplProtocol) CleanResource() {
+func (rp *ReplProtocol) cleanResource() {
 	rp.listMux.Lock()
 	for e := rp.packetList.Front(); e != nil; e = e.Next() {
 		request := e.Value.(*Packet)
