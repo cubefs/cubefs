@@ -102,8 +102,8 @@ func NewExtentHandler(sw *StreamWriter, offset int, storeMode int) *ExtentHandle
 		fileOffset:   offset,
 		storeMode:    storeMode,
 		empty:        make(chan struct{}, 1024),
-		request:      make(chan *Packet, 10240),
-		reply:        make(chan *Packet, 10240),
+		request:      make(chan *Packet, 1024),
+		reply:        make(chan *Packet, 1024),
 		doneSender:   make(chan struct{}),
 		doneReceiver: make(chan struct{}),
 	}
