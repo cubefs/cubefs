@@ -21,14 +21,14 @@ import (
 	"time"
 )
 
-/*use struct define File crc and this crc in all File count*/
+// FileCrc use struct define File crc and this crc in all File count
 type FileCrc struct {
 	crc   uint32
 	count int
 	meta  *FileMetaOnNode
 }
 
-func NewFileCrc(volCrc uint32) (fc *FileCrc) {
+func newFileCrc(volCrc uint32) (fc *FileCrc) {
 	fc = new(FileCrc)
 	fc.crc = volCrc
 	fc.count = 1
@@ -36,22 +36,22 @@ func NewFileCrc(volCrc uint32) (fc *FileCrc) {
 	return
 }
 
-type FileCrcSorterByCount []*FileCrc
+type fileCrcSorterByCount []*FileCrc
 
-func (fileCrcArr FileCrcSorterByCount) Less(i, j int) bool {
+func (fileCrcArr fileCrcSorterByCount) Less(i, j int) bool {
 	return fileCrcArr[i].count < fileCrcArr[j].count
 }
 
-func (fileCrcArr FileCrcSorterByCount) Swap(i, j int) {
+func (fileCrcArr fileCrcSorterByCount) Swap(i, j int) {
 	fileCrcArr[i], fileCrcArr[j] = fileCrcArr[j], fileCrcArr[i]
 }
 
-func (fileCrcArr FileCrcSorterByCount) Len() (length int) {
+func (fileCrcArr fileCrcSorterByCount) Len() (length int) {
 	length = len(fileCrcArr)
 	return
 }
 
-func (fileCrcArr FileCrcSorterByCount) log() (msg string) {
+func (fileCrcArr fileCrcSorterByCount) log() (msg string) {
 	for _, fileCrc := range fileCrcArr {
 		addr := fileCrc.meta.getLocationAddr()
 		count := fileCrc.count
@@ -71,7 +71,7 @@ func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataRe
 
 	fms, needRepair := fc.needCrcRepair(liveVols)
 
-	if len(fms) < len(liveVols) && (time.Now().Unix()-fc.LastModify) > CheckMissFileReplicaTime {
+	if len(fms) < len(liveVols) && (time.Now().Unix()-fc.LastModify) > checkMissFileReplicaTime {
 		liveAddrs := make([]string, 0)
 		for _, replica := range liveVols {
 			liveAddrs = append(liveAddrs, replica.Addr)
@@ -83,12 +83,12 @@ func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataRe
 	}
 
 	fileCrcArr := fc.calculateCrcCount(fms)
-	sort.Sort((FileCrcSorterByCount)(fileCrcArr))
+	sort.Sort(fileCrcSorterByCount(fileCrcArr))
 	maxCountFileCrcIndex := len(fileCrcArr) - 1
 	if fileCrcArr[maxCountFileCrcIndex].count == 1 {
 		msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  CRC diffrent between all Node  "+
 			" it can not repair it ", clusterID, partitionID, fc.Name)
-		msg += (FileCrcSorterByCount)(fileCrcArr).log()
+		msg += (fileCrcSorterByCount(fileCrcArr)).log()
 		Warn(clusterID, msg)
 		return
 	}
@@ -98,7 +98,7 @@ func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataRe
 			badNode := crc.meta
 			msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  badCrc On :%v  ",
 				clusterID, partitionID, fc.Name, badNode.getLocationAddr())
-			msg += (FileCrcSorterByCount)(fileCrcArr).log()
+			msg += (fileCrcSorterByCount)(fileCrcArr).log()
 			Warn(clusterID, msg)
 		}
 	}
@@ -107,11 +107,11 @@ func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataRe
 }
 
 func (fc *FileInCore) isCheckCrc() bool {
-	return time.Now().Unix()-fc.LastModify > DefaultFileDelayCheckCrcSec
+	return time.Now().Unix()-fc.LastModify > defaultFileDelayCheckCrcSec
 }
 
 func (fc *FileInCore) isDelayCheck() bool {
-	return time.Now().Unix()-fc.LastModify > DefaultFileDelayCheckLackSec
+	return time.Now().Unix()-fc.LastModify > defaultFileDelayCheckLackSec
 }
 
 func (fc *FileInCore) needCrcRepair(liveVols []*DataReplica) (fms []*FileMetaOnNode, needRepair bool) {
@@ -164,7 +164,7 @@ func (fc *FileInCore) calculateCrcCount(badVfNodes []*FileMetaOnNode) (fileCrcAr
 		}
 
 		if isFind == false {
-			crc = NewFileCrc(crcKey)
+			crc = newFileCrc(crcKey)
 			crc.meta = badVfNodes[i]
 			fileCrcArr = append(fileCrcArr, crc)
 		} else {

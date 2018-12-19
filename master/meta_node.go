@@ -22,6 +22,7 @@ import (
 	"time"
 )
 
+//MetaNode 元数据节点
 type MetaNode struct {
 	ID                 uint64
 	Addr               string
@@ -38,14 +39,14 @@ type MetaNode struct {
 	ReportTime         time.Time
 	metaPartitionInfos []*proto.MetaPartitionReport
 	MetaPartitionCount int
-	NodeSetId          uint64
+	NodeSetID          uint64
 	sync.RWMutex
 }
 
-func NewMetaNode(addr, clusterID string) (node *MetaNode) {
+func newMetaNode(addr, clusterID string) (node *MetaNode) {
 	return &MetaNode{
 		Addr:   addr,
-		Sender: NewAdminTaskSender(addr, clusterID),
+		Sender: newAdminTaskSender(addr, clusterID),
 		Carry:  rand.Float64(),
 	}
 }
@@ -54,12 +55,14 @@ func (metaNode *MetaNode) clean() {
 	metaNode.Sender.exitCh <- struct{}{}
 }
 
+// SetCarry 实现Node接口
 func (metaNode *MetaNode) SetCarry(carry float64) {
 	metaNode.Lock()
 	defer metaNode.Unlock()
 	metaNode.Carry = carry
 }
 
+// SelectNodeForWrite 实现Node接口
 func (metaNode *MetaNode) SelectNodeForWrite() {
 	metaNode.Lock()
 	defer metaNode.Unlock()
@@ -67,17 +70,17 @@ func (metaNode *MetaNode) SelectNodeForWrite() {
 	metaNode.Carry = metaNode.Carry - 1.0
 }
 
-func (metaNode *MetaNode) IsWriteAble() (ok bool) {
+func (metaNode *MetaNode) isWriteAble() (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
-	if metaNode.IsActive && metaNode.MaxMemAvailWeight > DefaultMetaNodeReservedMem &&
-		!metaNode.isArriveThreshold() && metaNode.MetaPartitionCount < DefaultMetaPartitionCountOnEachNode {
+	if metaNode.IsActive && metaNode.MaxMemAvailWeight > defaultMetaNodeReservedMem &&
+		!metaNode.isArriveThreshold() && metaNode.MetaPartitionCount < defaultMetaPartitionCountOnEachNode {
 		ok = true
 	}
 	return
 }
 
-func (metaNode *MetaNode) IsAvailCarryNode() (ok bool) {
+func (metaNode *MetaNode) isAvailCarryNode() (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
 	return metaNode.Carry >= 1
@@ -109,7 +112,7 @@ func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, th
 
 func (metaNode *MetaNode) isArriveThreshold() bool {
 	if metaNode.Threshold <= 0 {
-		metaNode.Threshold = DefaultMetaPartitionThreshold
+		metaNode.Threshold = defaultMetaPartitionThreshold
 	}
 	return float32(float64(metaNode.Used)/float64(metaNode.Total)) > metaNode.Threshold
 }
@@ -126,12 +129,12 @@ func (metaNode *MetaNode) generateHeartbeatTask(masterAddr string) (task *proto.
 func (metaNode *MetaNode) checkHeartbeat() {
 	metaNode.Lock()
 	defer metaNode.Unlock()
-	if time.Since(metaNode.ReportTime) > time.Second*time.Duration(DefaultNodeTimeOutSec) {
+	if time.Since(metaNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
 		metaNode.IsActive = false
 	}
 }
 
-func (metaNode *MetaNode) toJson() (body []byte, err error) {
+func (metaNode *MetaNode) toJSON() (body []byte, err error) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
 	return json.Marshal(metaNode)

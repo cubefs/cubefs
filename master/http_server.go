@@ -23,103 +23,103 @@ import (
 	"net/http/httputil"
 )
 
+// api
 const (
 	// Admin APIs
-	AdminGetCluster           = "/admin/getCluster"
+	adminGetCluster           = "/admin/getCluster"
 	AdminGetDataPartition     = "/dataPartition/get"
-	AdminLoadDataPartition    = "/dataPartition/load"
-	AdminCreateDataPartition  = "/dataPartition/create"
-	AdminDataPartitionOffline = "/dataPartition/offline"
-	AdminDeleteVol            = "/vol/delete"
-	AdminUpdateVol            = "/vol/update"
-	AdminCreateVol            = "/admin/createVol"
-	AdminClusterFreeze        = "/cluster/freeze"
+	adminLoadDataPartition    = "/dataPartition/load"
+	adminCreateDataPartition  = "/dataPartition/create"
+	adminDataPartitionOffline = "/dataPartition/offline"
+	adminDeleteVol            = "/vol/delete"
+	adminUpdateVol            = "/vol/update"
+	adminCreateVol            = "/admin/createVol"
+	adminClusterFreeze        = "/cluster/freeze"
 	AdminGetIp                = "/admin/getIp"
-	AdminCreateMP             = "/metaPartition/create"
-	AdminSetMetaNodeThreshold = "/threshold/set"
+	adminCreateMP             = "/metaPartition/create"
+	adminSetMetaNodeThreshold = "/threshold/set"
 
 	// Client APIs
-	ClientDataPartitions = "/client/dataPartitions"
-	ClientVol            = "/client/vol"
-	ClientMetaPartition  = "/client/metaPartition"
-	ClientVolStat        = "/client/volStat"
+	clientDataPartitions = "/client/dataPartitions"
+	clientVol            = "/client/vol"
+	clientMetaPartition  = "/client/metaPartition"
+	clientVolStat        = "/client/volStat"
 
 	//raft node APIs
-	RaftNodeAdd    = "/raftNode/add"
-	RaftNodeRemove = "/raftNode/remove"
+	raftNodeAdd    = "/raftNode/add"
+	raftNodeRemove = "/raftNode/remove"
 
 	// Node APIs
 	AddDataNode               = "/dataNode/add"
-	DataNodeOffline           = "/dataNode/offline"
-	DiskOffLine               = "/disk/offline"
-	GetDataNode               = "/dataNode/get"
-	AddMetaNode               = "/metaNode/add"
-	MetaNodeOffline           = "/metaNode/offline"
-	GetMetaNode               = "/metaNode/get"
-	AdminLoadMetaPartition    = "/metaPartition/load"
-	AdminMetaPartitionOffline = "/metaPartition/offline"
+	dataNodeOffline           = "/dataNode/offline"
+	diskOffLine               = "/disk/offline"
+	getDataNode               = "/dataNode/get"
+	addMetaNode               = "/metaNode/add"
+	metaNodeOffline           = "/metaNode/offline"
+	getMetaNode               = "/metaNode/get"
+	adminLoadMetaPartition    = "/metaPartition/load"
+	adminMetaPartitionOffline = "/metaPartition/offline"
 
 	// Operation response
-	MetaNodeResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
+	metaNodeResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
 	DataNodeResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
 
-	GetTopologyView = "/topo/get"
+	getTopologyView = "/topo/get"
 )
 
-func (m *Master) startHttpService() (err error) {
+func (m *Server) startHTTPService() (err error) {
 	go func() {
 		m.handleFunctions()
-		http.ListenAndServe(ColonSplit+m.port, nil)
+		http.ListenAndServe(colonSplit+m.port, nil)
 	}()
 	return
 }
 
-func (m *Master) handleFunctions() {
-	http.HandleFunc(AdminGetIp, m.getIpAndClusterName)
-	http.HandleFunc(AdminGetCluster, m.getCluster)
+func (m *Server) handleFunctions() {
+	http.HandleFunc(AdminGetIp, m.getIPAndClusterName)
+	http.HandleFunc(adminGetCluster, m.getCluster)
 	http.Handle(AdminGetDataPartition, m.handlerWithInterceptor())
-	http.Handle(AdminCreateDataPartition, m.handlerWithInterceptor())
-	http.Handle(AdminLoadDataPartition, m.handlerWithInterceptor())
-	http.Handle(AdminDataPartitionOffline, m.handlerWithInterceptor())
-	http.Handle(AdminCreateVol, m.handlerWithInterceptor())
-	http.Handle(AdminDeleteVol, m.handlerWithInterceptor())
-	http.Handle(AdminUpdateVol, m.handlerWithInterceptor())
-	http.Handle(AdminClusterFreeze, m.handlerWithInterceptor())
+	http.Handle(adminCreateDataPartition, m.handlerWithInterceptor())
+	http.Handle(adminLoadDataPartition, m.handlerWithInterceptor())
+	http.Handle(adminDataPartitionOffline, m.handlerWithInterceptor())
+	http.Handle(adminCreateVol, m.handlerWithInterceptor())
+	http.Handle(adminDeleteVol, m.handlerWithInterceptor())
+	http.Handle(adminUpdateVol, m.handlerWithInterceptor())
+	http.Handle(adminClusterFreeze, m.handlerWithInterceptor())
 	http.Handle(AddDataNode, m.handlerWithInterceptor())
-	http.Handle(AddMetaNode, m.handlerWithInterceptor())
-	http.Handle(DataNodeOffline, m.handlerWithInterceptor())
-	http.Handle(DiskOffLine, m.handlerWithInterceptor())
-	http.Handle(MetaNodeOffline, m.handlerWithInterceptor())
-	http.Handle(GetDataNode, m.handlerWithInterceptor())
-	http.Handle(GetMetaNode, m.handlerWithInterceptor())
-	//http.Handle(AdminLoadMetaPartition, m.handlerWithInterceptor())
-	http.Handle(AdminMetaPartitionOffline, m.handlerWithInterceptor())
-	http.Handle(ClientDataPartitions, m.handlerWithInterceptor())
-	http.Handle(ClientVol, m.handlerWithInterceptor())
-	http.Handle(ClientMetaPartition, m.handlerWithInterceptor())
+	http.Handle(addMetaNode, m.handlerWithInterceptor())
+	http.Handle(dataNodeOffline, m.handlerWithInterceptor())
+	http.Handle(diskOffLine, m.handlerWithInterceptor())
+	http.Handle(metaNodeOffline, m.handlerWithInterceptor())
+	http.Handle(getDataNode, m.handlerWithInterceptor())
+	http.Handle(getMetaNode, m.handlerWithInterceptor())
+	//http.Handle(adminLoadMetaPartition, m.handlerWithInterceptor())
+	http.Handle(adminMetaPartitionOffline, m.handlerWithInterceptor())
+	http.Handle(clientDataPartitions, m.handlerWithInterceptor())
+	http.Handle(clientVol, m.handlerWithInterceptor())
+	http.Handle(clientMetaPartition, m.handlerWithInterceptor())
 	http.Handle(DataNodeResponse, m.handlerWithInterceptor())
-	http.Handle(MetaNodeResponse, m.handlerWithInterceptor())
-	http.Handle(AdminCreateMP, m.handlerWithInterceptor())
-	http.Handle(ClientVolStat, m.handlerWithInterceptor())
-	http.Handle(RaftNodeAdd, m.handlerWithInterceptor())
-	http.Handle(RaftNodeRemove, m.handlerWithInterceptor())
-	http.Handle(AdminSetMetaNodeThreshold, m.handlerWithInterceptor())
-	http.Handle(GetTopologyView, m.handlerWithInterceptor())
+	http.Handle(metaNodeResponse, m.handlerWithInterceptor())
+	http.Handle(adminCreateMP, m.handlerWithInterceptor())
+	http.Handle(clientVolStat, m.handlerWithInterceptor())
+	http.Handle(raftNodeAdd, m.handlerWithInterceptor())
+	http.Handle(raftNodeRemove, m.handlerWithInterceptor())
+	http.Handle(adminSetMetaNodeThreshold, m.handlerWithInterceptor())
+	http.Handle(getTopologyView, m.handlerWithInterceptor())
 
 	return
 }
 
-func (m *Master) newReverseProxy() *httputil.ReverseProxy {
+func (m *Server) newReverseProxy() *httputil.ReverseProxy {
 	return &httputil.ReverseProxy{Director: func(request *http.Request) {
 		request.URL.Scheme = "http"
 		request.URL.Host = m.leaderInfo.addr
 	}}
 }
 
-func (m *Master) handlerWithInterceptor() http.Handler {
+func (m *Server) handlerWithInterceptor() http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-
 			if m.partition.IsLeader() {
 				m.ServeHTTP(w, r)
 				return
@@ -128,76 +128,75 @@ func (m *Master) handlerWithInterceptor() http.Handler {
 				log.LogErrorf("action[handlerWithInterceptor] no leader,request[%v]", r.URL)
 				http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
 				return
-			} else {
-				m.proxy(w, r)
 			}
+			m.proxy(w, r)
 		})
 }
 
-func (m *Master) proxy(w http.ResponseWriter, r *http.Request) {
+func (m *Server) proxy(w http.ResponseWriter, r *http.Request) {
 	m.reverseProxy.ServeHTTP(w, r)
 }
 
-func (m *Master) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.LogInfof("URL[%v],remoteAddr[%v]", r.URL, r.RemoteAddr)
 	switch r.URL.Path {
-	case AdminGetCluster:
+	case adminGetCluster:
 		m.getCluster(w, r)
-	case AdminCreateDataPartition:
+	case adminCreateDataPartition:
 		m.createDataPartition(w, r)
 	case AdminGetDataPartition:
 		m.getDataPartition(w, r)
-	case AdminLoadDataPartition:
+	case adminLoadDataPartition:
 		m.loadDataPartition(w, r)
-	case AdminDataPartitionOffline:
+	case adminDataPartitionOffline:
 		m.dataPartitionOffline(w, r)
-	case AdminCreateVol:
+	case adminCreateVol:
 		m.createVol(w, r)
-	case AdminDeleteVol:
+	case adminDeleteVol:
 		m.markDeleteVol(w, r)
-	case AdminUpdateVol:
+	case adminUpdateVol:
 		m.updateVol(w, r)
-	case AdminClusterFreeze:
+	case adminClusterFreeze:
 		m.setDisableAutoAlloc(w, r)
 	case AddDataNode:
 		m.addDataNode(w, r)
-	case GetDataNode:
+	case getDataNode:
 		m.getDataNode(w, r)
-	case DataNodeOffline:
+	case dataNodeOffline:
 		m.dataNodeOffline(w, r)
-	case DiskOffLine:
+	case diskOffLine:
 		m.diskOffline(w, r)
 	case DataNodeResponse:
 		m.dataNodeTaskResponse(w, r)
-	case AddMetaNode:
+	case addMetaNode:
 		m.addMetaNode(w, r)
-	case GetMetaNode:
+	case getMetaNode:
 		m.getMetaNode(w, r)
-	case MetaNodeOffline:
+	case metaNodeOffline:
 		m.metaNodeOffline(w, r)
-	case MetaNodeResponse:
+	case metaNodeResponse:
 		m.metaNodeTaskResponse(w, r)
-	case ClientDataPartitions:
+	case clientDataPartitions:
 		m.getDataPartitions(w, r)
-	case ClientVol:
+	case clientVol:
 		m.getVol(w, r)
-	case ClientMetaPartition:
+	case clientMetaPartition:
 		m.getMetaPartition(w, r)
-	case ClientVolStat:
+	case clientVolStat:
 		m.getVolStatInfo(w, r)
-	case AdminLoadMetaPartition:
+	case adminLoadMetaPartition:
 		m.loadMetaPartition(w, r)
-	case AdminMetaPartitionOffline:
+	case adminMetaPartitionOffline:
 		m.metaPartitionOffline(w, r)
-	case AdminCreateMP:
+	case adminCreateMP:
 		m.createMetaPartition(w, r)
-	case RaftNodeAdd:
+	case raftNodeAdd:
 		m.handleAddRaftNode(w, r)
-	case RaftNodeRemove:
+	case raftNodeRemove:
 		m.handleRemoveRaftNode(w, r)
-	case AdminSetMetaNodeThreshold:
+	case adminSetMetaNodeThreshold:
 		m.setMetaNodeThreshold(w, r)
-	case GetTopologyView:
+	case getTopologyView:
 		m.getTopology(w, r)
 	default:
 
@@ -209,6 +208,7 @@ func getReturnMessage(requestType, remoteAddr, message string, code int) (logMsg
 	return
 }
 
+// HandleError 处理错误
 func HandleError(message string, err error, code int, w http.ResponseWriter) {
 	log.LogErrorf("errMsg:%v errStack:%v", message, errors.ErrorStack(err))
 	http.Error(w, message, code)

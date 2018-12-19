@@ -28,18 +28,16 @@ import (
 )
 
 const (
-	MinTaskLen         = 30
+	//MaxTaskLen 每次调度最多处理的任务数目
+	MaxTaskLen = 30
+	//TaskWorkerInterval 调度周期
 	TaskWorkerInterval = time.Microsecond * time.Duration(200)
 )
 
-/*
-master send admin command to metaNode or dataNode by the sender,
-because this command is cost very long time,so the sender just send command
-and do nothing..then the metaNode or  dataNode send a new http request to reply command response
-to master
-
-*/
-
+// AdminTaskSender master send admin command to metaNode or dataNode by the sender,
+//because this command is cost very long time,so the sender just send command
+//and do nothing..then the metaNode or  dataNode send a new http request to reply command response
+//to master
 type AdminTaskSender struct {
 	clusterID  string
 	targetAddr string
@@ -49,7 +47,7 @@ type AdminTaskSender struct {
 	connPool *util.ConnectPool
 }
 
-func NewAdminTaskSender(targetAddr, clusterID string) (sender *AdminTaskSender) {
+func newAdminTaskSender(targetAddr, clusterID string) (sender *AdminTaskSender) {
 
 	sender = &AdminTaskSender{
 		targetAddr: targetAddr,
@@ -189,6 +187,7 @@ func (sender *AdminTaskSender) syncCreatePartition(task *proto.AdminTask, conn n
 	}
 	if packet.ResultCode != proto.OpOk {
 		err = fmt.Errorf(string(packet.Data))
+		log.LogErrorf("action[syncCreatePartition],task:%v get response err[%v],", task.ID, err)
 		return
 	}
 	log.LogInfof(fmt.Sprintf("action[syncCreatePartition] sender task:%v success", task.ToString()))
@@ -196,6 +195,7 @@ func (sender *AdminTaskSender) syncCreatePartition(task *proto.AdminTask, conn n
 	return nil
 }
 
+//DelTask 删除任务
 func (sender *AdminTaskSender) DelTask(t *proto.AdminTask) {
 	sender.Lock()
 	defer sender.Unlock()
@@ -209,6 +209,7 @@ func (sender *AdminTaskSender) DelTask(t *proto.AdminTask) {
 	delete(sender.TaskMap, t.ID)
 }
 
+//PutTask 增加任务
 func (sender *AdminTaskSender) PutTask(t *proto.AdminTask) {
 	sender.Lock()
 	defer sender.Unlock()
@@ -216,13 +217,6 @@ func (sender *AdminTaskSender) PutTask(t *proto.AdminTask) {
 	if !ok {
 		sender.TaskMap[t.ID] = t
 	}
-}
-
-func (sender *AdminTaskSender) IsExist(t *proto.AdminTask) bool {
-	sender.RLock()
-	defer sender.RUnlock()
-	_, ok := sender.TaskMap[t.ID]
-	return ok
 }
 
 func (sender *AdminTaskSender) getNeedDealTask() (tasks []*proto.AdminTask) {
@@ -250,7 +244,7 @@ func (sender *AdminTaskSender) getNeedDealTask() (tasks []*proto.AdminTask) {
 		if !task.IsHeartbeatTask() && !task.IsUrgentTask() && task.CheckTaskNeedSend() {
 			tasks = append(tasks, task)
 		}
-		if len(tasks) > MinTaskLen {
+		if len(tasks) > MaxTaskLen {
 			break
 		}
 	}

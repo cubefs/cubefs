@@ -19,7 +19,7 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 )
 
-/*this struct define chunk file metadata on  dataNode */
+// FileMetaOnNode this struct define chunk file metadata on  dataNode
 type FileMetaOnNode struct {
 	Crc      uint32
 	LocAddr  string
@@ -27,13 +27,14 @@ type FileMetaOnNode struct {
 	Size     uint32
 }
 
+// FileInCore 数据分片上的文件抽象定义
 type FileInCore struct {
 	Name       string
 	LastModify int64
 	Metas      []*FileMetaOnNode
 }
 
-func NewFileMetaOnNode(volCrc uint32, volLoc string, volLocIndex int, size uint32) (fm *FileMetaOnNode) {
+func newFileMetaOnNode(volCrc uint32, volLoc string, volLocIndex int, size uint32) (fm *FileMetaOnNode) {
 	fm = new(FileMetaOnNode)
 	fm.Crc = volCrc
 	fm.LocAddr = volLoc
@@ -56,7 +57,7 @@ func (fm *FileMetaOnNode) getFileCrc() (crc uint32) {
 	return fm.Crc
 }
 
-func NewFileInCore(name string) (fc *FileInCore) {
+func newFileInCore(name string) (fc *FileInCore) {
 	fc = new(FileInCore)
 	fc.Name = name
 	fc.Metas = make([]*FileMetaOnNode, 0)
@@ -82,7 +83,7 @@ func (fc *FileInCore) updateFileInCore(volID uint64, vf *proto.File, volLoc *Dat
 	}
 
 	if isFind == false {
-		fm := NewFileMetaOnNode(vf.Crc, volLoc.Addr, volLocIndex, vf.Size)
+		fm := newFileMetaOnNode(vf.Crc, volLoc.Addr, volLocIndex, vf.Size)
 		fc.Metas = append(fc.Metas, fm)
 	}
 

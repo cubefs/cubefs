@@ -19,6 +19,7 @@ import (
 	"time"
 )
 
+//DataReplica 数据副本
 type DataReplica struct {
 	Addr                    string
 	dataNode                *DataNode
@@ -33,7 +34,7 @@ type DataReplica struct {
 	NeedCompare             bool
 }
 
-func NewDataReplica(dataNode *DataNode) (replica *DataReplica) {
+func newDataReplica(dataNode *DataNode) (replica *DataReplica) {
 	replica = new(DataReplica)
 	replica.dataNode = dataNode
 	replica.Addr = dataNode.Addr
@@ -41,40 +42,40 @@ func NewDataReplica(dataNode *DataNode) (replica *DataReplica) {
 	return
 }
 
-func (replica *DataReplica) SetAlive() {
+func (replica *DataReplica) setAlive() {
 	replica.ReportTime = time.Now().Unix()
 }
 
-func (replica *DataReplica) CheckMiss(missSec int64) (isMiss bool) {
+func (replica *DataReplica) checkMiss(missSec int64) (isMiss bool) {
 	if time.Now().Unix()-replica.ReportTime > missSec {
 		isMiss = true
 	}
 	return
 }
 
-func (replica *DataReplica) IsLive(timeOutSec int64) (avail bool) {
+func (replica *DataReplica) isLive(timeOutSec int64) (avail bool) {
 	if replica.dataNode.isActive == true && replica.Status != proto.Unavaliable &&
-		replica.IsActive(timeOutSec) == true {
+		replica.isActive(timeOutSec) == true {
 		avail = true
 	}
 
 	return
 }
 
-func (replica *DataReplica) IsActive(timeOutSec int64) bool {
+func (replica *DataReplica) isActive(timeOutSec int64) bool {
 	return time.Now().Unix()-replica.ReportTime <= timeOutSec
 }
 
-func (replica *DataReplica) GetReplicaNode() (node *DataNode) {
+func (replica *DataReplica) getReplicaNode() (node *DataNode) {
 	return replica.dataNode
 }
 
-/*check replica location is avail ,must IsActive=true and replica.Status!=DataReplicaUnavailable*/
-func (replica *DataReplica) CheckLocIsAvailContainsDiskError() (avail bool) {
-	dataNode := replica.GetReplicaNode()
+/*check replica location is avail ,must isActive=true and replica.Status!=DataReplicaUnavailable*/
+func (replica *DataReplica) checkLocIsAvailContainsDiskError() (avail bool) {
+	dataNode := replica.getReplicaNode()
 	dataNode.Lock()
 	defer dataNode.Unlock()
-	if dataNode.isActive == true && replica.IsActive(DefaultDataPartitionTimeOutSec) == true {
+	if dataNode.isActive == true && replica.isActive(defaultDataPartitionTimeOutSec) == true {
 		avail = true
 	}
 

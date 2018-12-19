@@ -20,6 +20,7 @@ import (
 	"io"
 )
 
+//MetadataSnapshot 元数据快照
 type MetadataSnapshot struct {
 	fsm      *MetadataFsm
 	applied  uint64
@@ -27,14 +28,17 @@ type MetadataSnapshot struct {
 	iterator *gorocksdb.Iterator
 }
 
+//ApplyIndex 实现Snapshot接口
 func (ms *MetadataSnapshot) ApplyIndex() uint64 {
 	return ms.applied
 }
 
+//Close 实现Snapshot接口
 func (ms *MetadataSnapshot) Close() {
 	ms.fsm.store.ReleaseSnapshot(ms.snapshot)
 }
 
+//Next 实现SnapIterator接口
 func (ms *MetadataSnapshot) Next() (data []byte, err error) {
 	md := new(RaftCmdData)
 	if ms.iterator.Valid() {

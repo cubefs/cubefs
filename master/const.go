@@ -15,102 +15,97 @@
 package master
 
 const (
-	ParaNodeAddr          = "addr"
-	ParaDiskPath          = "disk"
-	ParaName              = "name"
-	ParaId                = "id"
-	ParaCount             = "count"
-	ParaReplicas          = "replicas"
-	ParaStart             = "start"
-	ParaEnable            = "enable"
-	ParaThreshold         = "threshold"
-	ParaRandomWrite       = "randomWrite"
-	ParaDataPartitionSize = "size"
-	ParaVolCapacity       = "capacity"
+	paraNodeAddr          = "addr"
+	paraDiskPath          = "disk"
+	paraName              = "name"
+	paraID                = "id"
+	paraCount             = "count"
+	paraReplicas          = "replicas"
+	paraStart             = "start"
+	paraEnable            = "enable"
+	paraThreshold         = "threshold"
+	paraRandomWrite       = "randomWrite"
+	paraDataPartitionSize = "size"
+	paraVolCapacity       = "capacity"
 )
 
 const (
-	DeleteExcessReplicationErr     = "DeleteExcessReplicationErr "
-	AddLackReplicationErr          = "AddLackReplicationErr "
-	CheckDataPartitionDiskErrorErr = "CheckDataPartitionDiskErrorErr  "
-	GetAvailDataNodeHostsErr       = "GetAvailDataNodeHostsErr "
-	GetAvailMetaNodeHostsErr       = "GetAvailMetaNodeHostsErr "
-	GetDataReplicaFileCountInfo    = "GetDataReplicaFileCountInfo "
-	DataNodeOfflineInfo            = "dataNodeOfflineInfo"
-	DiskOfflineInfo                = "DiskOfflineInfo"
-	HandleDataPartitionOfflineErr  = "HandleDataPartitionOffLineErr "
+	deleteExcessReplicationErr     = "deleteExcessReplicationErr "
+	addLackReplicationErr          = "addLackReplicationErr "
+	checkDataPartitionDiskErrorErr = "checkDataPartitionDiskErrorErr  "
+	getAvailDataNodeHostsErr       = "getAvailDataNodeHostsErr "
+	getAvailMetaNodeHostsErr       = "getAvailMetaNodeHostsErr "
+	getDataReplicaFileCountInfo    = "getDataReplicaFileCountInfo "
+	dataNodeOfflineInfo            = "dataNodeOfflineInfo"
+	diskOfflineInfo                = "diskOfflineInfo"
+	handleDataPartitionOfflineErr  = "HandleDataPartitionOffLineErr "
 )
 
 const (
-	UnderlineSeparator = "_"
+	underlineSeparator = "_"
 )
 
 const (
-	DefaultMaxMetaPartitionInodeID  uint64  = 1<<63 - 1
-	DefaultMetaPartitionInodeIDStep uint64  = 1 << 24
-	DefaultMetaNodeReservedMem      uint64  = 1 << 32
-	RuntimeStackBufSize                     = 4096
-	NodesAliveRate                  float32 = 0.5
-	SpaceAvailRate                          = 0.90
-	DefaultNodeSetCapacity                  = 6
-	MinReadWriteDataPartitions              = 10
-	CheckMissFileReplicaTime                = 600
-	DefaultVolCapacity                      = 200
-	LoadDataPartitionPeriod                 = 12 * 60 * 60
-	DefaultInitDataPartitions               = 10
-	VolExpandDataPartitionStepRatio         = 0.1
-	VolMaxExpandDataPartitionCount          = 100
+	defaultMaxMetaPartitionInodeID  uint64  = 1<<63 - 1
+	defaultMetaPartitionInodeIDStep uint64  = 1 << 24
+	defaultMetaNodeReservedMem      uint64  = 1 << 32
+	runtimeStackBufSize                     = 4096
+	nodesAliveRate                  float32 = 0.5
+	spaceAvailRate                          = 0.90
+	defaultNodeSetCapacity                  = 6
+	minReadWriteDataPartitions              = 10
+	checkMissFileReplicaTime                = 600
+	defaultVolCapacity                      = 200
+	loadDataPartitionPeriod                 = 12 * 60 * 60
+	defaultInitDataPartitions               = 10
+	volExpandDataPartitionStepRatio         = 0.1
+	volMaxExpandDataPartitionCount          = 100
 )
 
 const (
-	OK = iota
-	Failed
+	volNormal     uint8 = 0
+	volMarkDelete uint8 = 1
 )
 
 const (
-	VolNormal     uint8 = 0
-	VolMarkDelete uint8 = 1
+	opSyncAddMetaNode          uint32 = 0x01
+	opSyncAddDataNode          uint32 = 0x02
+	opSyncAddDataPartition     uint32 = 0x03
+	opSyncAddVol               uint32 = 0x04
+	opSyncAddMetaPartition     uint32 = 0x05
+	opSyncUpdateDataPartition  uint32 = 0x06
+	opSyncUpdateMetaPartition  uint32 = 0x07
+	opSyncDeleteDataNode       uint32 = 0x08
+	opSyncDeleteMetaNode       uint32 = 0x09
+	opSyncAllocDataPartitionID uint32 = 0x0A
+	opSyncAllocMetaPartitionID uint32 = 0x0B
+	opSyncAllocCommonID        uint32 = 0x0C
+	opSyncPutCluster           uint32 = 0x0D
+	opSyncUpdateVol            uint32 = 0x0E
+	opSyncDeleteVol            uint32 = 0x0F
+	opSyncDeleteDataPartition  uint32 = 0x10
+	opSyncDeleteMetaPartition  uint32 = 0x11
+	opSyncAddNodeSet           uint32 = 0x12
+	opSyncUpdateNodeSet        uint32 = 0x13
 )
 
 const (
-	OpSyncAddMetaNode          uint32 = 0x01
-	OpSyncAddDataNode          uint32 = 0x02
-	OpSyncAddDataPartition     uint32 = 0x03
-	OpSyncAddVol               uint32 = 0x04
-	OpSyncAddMetaPartition     uint32 = 0x05
-	OpSyncUpdateDataPartition  uint32 = 0x06
-	OpSyncUpdateMetaPartition  uint32 = 0x07
-	OpSyncDeleteDataNode       uint32 = 0x08
-	OpSyncDeleteMetaNode       uint32 = 0x09
-	OpSyncAllocDataPartitionID uint32 = 0x0A
-	OpSyncAllocMetaPartitionID uint32 = 0x0B
-	OpSyncAllocCommonID        uint32 = 0x0C
-	OpSyncPutCluster           uint32 = 0x0D
-	OpSyncUpdateVol            uint32 = 0x0E
-	OpSyncDeleteVol            uint32 = 0x0F
-	OpSyncDeleteDataPartition  uint32 = 0x10
-	OpSyncDeleteMetaPartition  uint32 = 0x11
-	OpSyncAddNodeSet           uint32 = 0x12
-	OpSyncUpdateNodeSet        uint32 = 0x13
-)
-
-const (
-	KeySeparator          = "#"
-	MetaNodeAcronym       = "mn"
-	DataNodeAcronym       = "dn"
-	DataPartitionAcronym  = "dp"
-	MetaPartitionAcronym  = "mp"
-	VolAcronym            = "vol"
-	ClusterAcronym        = "c"
-	NodeSetAcronym        = "s"
-	MaxDataPartitionIDKey = KeySeparator + "max_dp_id"
-	MaxMetaPartitionIDKey = KeySeparator + "max_mp_id"
-	MaxCommonIDKey        = KeySeparator + "max_common_id"
-	MetaNodePrefix        = KeySeparator + MetaNodeAcronym + KeySeparator
-	DataNodePrefix        = KeySeparator + DataNodeAcronym + KeySeparator
-	DataPartitionPrefix   = KeySeparator + DataPartitionAcronym + KeySeparator
-	VolPrefix             = KeySeparator + VolAcronym + KeySeparator
-	MetaPartitionPrefix   = KeySeparator + MetaPartitionAcronym + KeySeparator
-	ClusterPrefix         = KeySeparator + ClusterAcronym + KeySeparator
-	NodeSetPrefix         = KeySeparator + NodeSetAcronym + KeySeparator
+	keySeparator          = "#"
+	metaNodeAcronym       = "mn"
+	dataNodeAcronym       = "dn"
+	dataPartitionAcronym  = "dp"
+	metaPartitionAcronym  = "mp"
+	volAcronym            = "vol"
+	clusterAcronym        = "c"
+	nodeSetAcronym        = "s"
+	maxDataPartitionIDKey = keySeparator + "max_dp_id"
+	maxMetaPartitionIDKey = keySeparator + "max_mp_id"
+	maxCommonIDKey        = keySeparator + "max_common_id"
+	metaNodePrefix        = keySeparator + metaNodeAcronym + keySeparator
+	dataNodePrefix        = keySeparator + dataNodeAcronym + keySeparator
+	dataPartitionPrefix   = keySeparator + dataPartitionAcronym + keySeparator
+	volPrefix             = keySeparator + volAcronym + keySeparator
+	metaPartitionPrefix   = keySeparator + metaPartitionAcronym + keySeparator
+	clusterPrefix         = keySeparator + clusterAcronym + keySeparator
+	nodeSetPrefix         = keySeparator + nodeSetAcronym + keySeparator
 )

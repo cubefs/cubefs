@@ -25,99 +25,99 @@ import (
 	"time"
 )
 
-type Topology struct {
+type topology struct {
 	setIndex   int
 	dataNodes  sync.Map
 	metaNodes  sync.Map
-	nodeSetMap map[uint64]*NodeSet
+	nodeSetMap map[uint64]*nodeSet
 	nsLock     sync.RWMutex
 }
 
-func NewTopology() (t *Topology) {
-	t = new(Topology)
-	t.nodeSetMap = make(map[uint64]*NodeSet)
+func newTopology() (t *topology) {
+	t = new(topology)
+	t.nodeSetMap = make(map[uint64]*nodeSet)
 	return
 }
 
-type TopoDataNode struct {
+type topoDataNode struct {
 	*DataNode
-	setId uint64
+	setID uint64
 }
 
-func newTopoDataNode(dataNode *DataNode, setId uint64) *TopoDataNode {
-	return &TopoDataNode{
+func newTopoDataNode(dataNode *DataNode, setID uint64) *topoDataNode {
+	return &topoDataNode{
 		DataNode: dataNode,
-		setId:    setId,
+		setID:    setID,
 	}
 }
 
-type TopoMetaNode struct {
+type topoMetaNode struct {
 	*MetaNode
-	setId uint64
+	setID uint64
 }
 
-func newTopoMetaNode(metaNode *MetaNode, setId uint64) *TopoMetaNode {
-	return &TopoMetaNode{
+func newTopoMetaNode(metaNode *MetaNode, setID uint64) *topoMetaNode {
+	return &topoMetaNode{
 		MetaNode: metaNode,
-		setId:    setId,
+		setID:    setID,
 	}
 }
 
-func (t *Topology) replaceDataNode(dataNode *DataNode) {
+func (t *topology) replaceDataNode(dataNode *DataNode) {
 	if oldRack, err := t.getRack(dataNode); err == nil {
-		oldRack.PutDataNode(dataNode)
+		oldRack.putDataNode(dataNode)
 	}
 	topoNode, ok := t.dataNodes.Load(dataNode.Addr)
 	if ok {
-		node := topoNode.(*TopoDataNode)
+		node := topoNode.(*topoDataNode)
 		node.RackName = dataNode.RackName
 		t.putDataNodeToCache(node)
 	}
 }
 
-func (t *Topology) PutDataNode(dataNode *DataNode) (err error) {
+func (t *topology) putDataNode(dataNode *DataNode) (err error) {
 
 	if _, ok := t.dataNodes.Load(dataNode.Addr); ok {
 		return
 	}
-	var ns *NodeSet
-	if ns, err = t.getNodeSet(dataNode.NodeSetId); err != nil {
-		log.LogErrorf("action[PutDataNode] nodeSet[%v] not found", dataNode.NodeSetId)
+	var ns *nodeSet
+	if ns, err = t.getNodeSet(dataNode.NodeSetID); err != nil {
+		log.LogErrorf("action[putDataNode] nodeSet[%v] not found", dataNode.NodeSetID)
 		return
 	}
 	ns.putDataNode(dataNode)
-	node := newTopoDataNode(dataNode, ns.Id)
+	node := newTopoDataNode(dataNode, ns.ID)
 	t.putDataNodeToCache(node)
 	return
 }
 
-func (t *Topology) putDataNodeToCache(dataNode *TopoDataNode) {
+func (t *topology) putDataNodeToCache(dataNode *topoDataNode) {
 	t.dataNodes.Store(dataNode.Addr, dataNode)
 }
 
-func (t *Topology) deleteDataNode(dataNode *DataNode) {
+func (t *topology) deleteDataNode(dataNode *DataNode) {
 	t.dataNodes.Delete(dataNode.Addr)
-	ns, err := t.getNodeSet(dataNode.NodeSetId)
+	ns, err := t.getNodeSet(dataNode.NodeSetID)
 	if err != nil {
 		return
 	}
 	ns.deleteDataNode(dataNode)
 }
 
-func (t *Topology) getRack(dataNode *DataNode) (rack *Rack, err error) {
+func (t *topology) getRack(dataNode *DataNode) (rack *Rack, err error) {
 	topoNode, ok := t.dataNodes.Load(dataNode.Addr)
 	if !ok {
-		return nil, errors.Annotatef(DataNodeNotFound, "%v not found", dataNode.Addr)
+		return nil, errors.Annotatef(dataNodeNotFound(dataNode.Addr), "%v not found", dataNode.Addr)
 	}
-	node := topoNode.(*TopoDataNode)
-	ns, err := t.getNodeSet(node.setId)
+	node := topoNode.(*topoDataNode)
+	ns, err := t.getNodeSet(node.setID)
 	if err != nil {
 		return
 	}
 	return ns.getRack(node.RackName)
 }
 
-func (t *Topology) getAvailNodeSetForDataNode() (nset *NodeSet) {
+func (t *topology) getAvailNodeSetForDataNode() (nset *nodeSet) {
 	allNodeSet := t.getAllNodeSet()
 	for _, ns := range allNodeSet {
 		if ns.dataNodeLen < ns.Capacity {
@@ -128,34 +128,34 @@ func (t *Topology) getAvailNodeSetForDataNode() (nset *NodeSet) {
 	return
 }
 
-func (t *Topology) putMetaNode(metaNode *MetaNode) (err error) {
+func (t *topology) putMetaNode(metaNode *MetaNode) (err error) {
 	if _, ok := t.metaNodes.Load(metaNode.Addr); ok {
 		return
 	}
-	var ns *NodeSet
-	if ns, err = t.getNodeSet(metaNode.NodeSetId); err != nil {
+	var ns *nodeSet
+	if ns, err = t.getNodeSet(metaNode.NodeSetID); err != nil {
 		return
 	}
 	ns.putMetaNode(metaNode)
-	node := newTopoMetaNode(metaNode, ns.Id)
+	node := newTopoMetaNode(metaNode, ns.ID)
 	t.putMetaNodeToCache(node)
 	return
 }
 
-func (t *Topology) deleteMetaNode(metaNode *MetaNode) {
+func (t *topology) deleteMetaNode(metaNode *MetaNode) {
 	t.metaNodes.Delete(metaNode.Addr)
-	ns, err := t.getNodeSet(metaNode.NodeSetId)
+	ns, err := t.getNodeSet(metaNode.NodeSetID)
 	if err != nil {
 		return
 	}
 	ns.deleteMetaNode(metaNode)
 }
 
-func (t *Topology) putMetaNodeToCache(metaNode *TopoMetaNode) {
+func (t *topology) putMetaNodeToCache(metaNode *topoMetaNode) {
 	t.metaNodes.Store(metaNode.Addr, metaNode)
 }
 
-func (t *Topology) getAvailNodeSetForMetaNode() (nset *NodeSet) {
+func (t *topology) getAvailNodeSetForMetaNode() (nset *nodeSet) {
 	allNodeSet := t.getAllNodeSet()
 	sort.Sort(sort.Reverse(allNodeSet))
 	for _, ns := range allNodeSet {
@@ -167,12 +167,12 @@ func (t *Topology) getAvailNodeSetForMetaNode() (nset *NodeSet) {
 	return
 }
 
-func (t *Topology) createNodeSet(c *Cluster) (ns *NodeSet, err error) {
+func (t *topology) createNodeSet(c *Cluster) (ns *nodeSet, err error) {
 	id, err := c.idAlloc.allocateCommonID()
 	if err != nil {
 		return
 	}
-	ns = newNodeSet(id, DefaultNodeSetCapacity)
+	ns = newNodeSet(id, defaultNodeSetCapacity)
 	if err = c.syncAddNodeSet(ns); err != nil {
 		return
 	}
@@ -180,36 +180,36 @@ func (t *Topology) createNodeSet(c *Cluster) (ns *NodeSet, err error) {
 	return
 }
 
-func (t *Topology) putNodeSet(ns *NodeSet) {
+func (t *topology) putNodeSet(ns *nodeSet) {
 	t.nsLock.Lock()
 	defer t.nsLock.Unlock()
-	t.nodeSetMap[ns.Id] = ns
+	t.nodeSetMap[ns.ID] = ns
 }
 
-func (t *Topology) getNodeSet(setId uint64) (ns *NodeSet, err error) {
+func (t *topology) getNodeSet(setID uint64) (ns *nodeSet, err error) {
 	t.nsLock.RLock()
 	defer t.nsLock.RUnlock()
-	ns, ok := t.nodeSetMap[setId]
+	ns, ok := t.nodeSetMap[setID]
 	if !ok {
-		return nil, errors.Errorf("set %v not found", setId)
+		return nil, errors.Errorf("set %v not found", setID)
 	}
 	return
 }
 
-func (t *Topology) getAllNodeSet() (nsc NodeSetCollection) {
+func (t *topology) getAllNodeSet() (nsc nodeSetCollection) {
 	t.nsLock.RLock()
 	defer t.nsLock.RUnlock()
-	nsc = make(NodeSetCollection, 0)
+	nsc = make(nodeSetCollection, 0)
 	for _, ns := range t.nodeSetMap {
 		nsc = append(nsc, ns)
 	}
 	return
 }
 
-func (t *Topology) allocNodeSetForDataNode(replicaNum uint8) (ns *NodeSet, err error) {
+func (t *topology) allocNodeSetForDataNode(replicaNum uint8) (ns *nodeSet, err error) {
 	nset := t.getAllNodeSet()
 	if nset == nil {
-		return nil, NoNodeSetForCreateDataPartition
+		return nil, errNoNodeSetForCreateDataPartition
 	}
 	for i := 0; i < len(nset); i++ {
 		if t.setIndex >= len(nset) {
@@ -221,14 +221,14 @@ func (t *Topology) allocNodeSetForDataNode(replicaNum uint8) (ns *NodeSet, err e
 			return
 		}
 	}
-	log.LogError(fmt.Sprintf("action[allocNodeSetForDataNode],err:%v", NoNodeSetForCreateDataPartition))
-	return nil, NoNodeSetForCreateDataPartition
+	log.LogError(fmt.Sprintf("action[allocNodeSetForDataNode],err:%v", errNoNodeSetForCreateDataPartition))
+	return nil, errNoNodeSetForCreateDataPartition
 }
 
-func (t *Topology) allocNodeSetForMetaNode(replicaNum uint8) (ns *NodeSet, err error) {
+func (t *topology) allocNodeSetForMetaNode(replicaNum uint8) (ns *nodeSet, err error) {
 	nset := t.getAllNodeSet()
 	if nset == nil {
-		return nil, NoNodeSetForCreateMetaPartition
+		return nil, errNoNodeSetForCreateMetaPartition
 	}
 	for i := 0; i < len(nset); i++ {
 		if t.setIndex >= len(nset) {
@@ -240,26 +240,26 @@ func (t *Topology) allocNodeSetForMetaNode(replicaNum uint8) (ns *NodeSet, err e
 			return
 		}
 	}
-	log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],err:%v", NoNodeSetForCreateMetaPartition))
-	return nil, NoNodeSetForCreateMetaPartition
+	log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],err:%v", errNoNodeSetForCreateMetaPartition))
+	return nil, errNoNodeSetForCreateMetaPartition
 }
 
-type NodeSetCollection []*NodeSet
+type nodeSetCollection []*nodeSet
 
-func (nsc NodeSetCollection) Len() int {
+func (nsc nodeSetCollection) Len() int {
 	return len(nsc)
 }
 
-func (nsc NodeSetCollection) Less(i, j int) bool {
+func (nsc nodeSetCollection) Less(i, j int) bool {
 	return nsc[i].metaNodeLen < nsc[j].metaNodeLen
 }
 
-func (nsc NodeSetCollection) Swap(i, j int) {
+func (nsc nodeSetCollection) Swap(i, j int) {
 	nsc[i], nsc[j] = nsc[j], nsc[i]
 }
 
-type NodeSet struct {
-	Id          uint64
+type nodeSet struct {
+	ID          uint64
 	Capacity    int
 	rackIndex   int
 	rackMap     map[string]*Rack
@@ -272,9 +272,9 @@ type NodeSet struct {
 	sync.RWMutex
 }
 
-func newNodeSet(id uint64, cap int) *NodeSet {
-	ns := &NodeSet{
-		Id:       id,
+func newNodeSet(id uint64, cap int) *nodeSet {
+	ns := &nodeSet{
+		ID:       id,
 		Capacity: cap,
 	}
 	ns.rackMap = make(map[string]*Rack)
@@ -282,39 +282,39 @@ func newNodeSet(id uint64, cap int) *NodeSet {
 	return ns
 }
 
-func (ns *NodeSet) increaseDataNodeLen() {
+func (ns *nodeSet) increaseDataNodeLen() {
 	ns.Lock()
 	defer ns.Unlock()
 	ns.dataNodeLen++
 }
 
-func (ns *NodeSet) decreaseDataNodeLen() {
+func (ns *nodeSet) decreaseDataNodeLen() {
 	ns.Lock()
 	defer ns.Unlock()
 	ns.dataNodeLen--
 }
 
-func (ns *NodeSet) increaseMetaNodeLen() {
+func (ns *nodeSet) increaseMetaNodeLen() {
 	ns.Lock()
 	defer ns.Unlock()
 	ns.metaNodeLen++
 }
 
-func (ns *NodeSet) decreaseMetaNodeLen() {
+func (ns *nodeSet) decreaseMetaNodeLen() {
 	ns.Lock()
 	defer ns.Unlock()
 	ns.metaNodeLen--
 }
 
-func (ns *NodeSet) putMetaNode(metaNode *MetaNode) {
+func (ns *nodeSet) putMetaNode(metaNode *MetaNode) {
 	ns.metaNodes.Store(metaNode.Addr, metaNode)
 }
 
-func (ns *NodeSet) deleteMetaNode(metaNode *MetaNode) {
+func (ns *nodeSet) deleteMetaNode(metaNode *MetaNode) {
 	ns.metaNodes.Delete(metaNode.Addr)
 }
 
-func (ns *NodeSet) canWriteForDataNode(replicaNum int) bool {
+func (ns *nodeSet) canWriteForDataNode(replicaNum int) bool {
 	log.LogInfof("canWriteForDataNode metaLen[%v] replicaNum[%v]", ns.dataNodeLen, replicaNum)
 	if ns.dataNodeLen < int(replicaNum) {
 		return false
@@ -322,7 +322,7 @@ func (ns *NodeSet) canWriteForDataNode(replicaNum int) bool {
 	var count int
 	ns.dataNodes.Range(func(key, value interface{}) bool {
 		node := value.(*DataNode)
-		if node.IsWriteAble() {
+		if node.isWriteAble() {
 			count++
 		}
 		if count >= replicaNum {
@@ -334,7 +334,7 @@ func (ns *NodeSet) canWriteForDataNode(replicaNum int) bool {
 	return count >= replicaNum
 }
 
-func (ns *NodeSet) canWriteForMetaNode(replicaNum int) bool {
+func (ns *nodeSet) canWriteForMetaNode(replicaNum int) bool {
 	log.LogInfof("canWriteForMetaNode metaLen[%v] replicaNum[%v]", ns.metaNodeLen, replicaNum)
 	if ns.metaNodeLen < replicaNum {
 		return false
@@ -342,7 +342,7 @@ func (ns *NodeSet) canWriteForMetaNode(replicaNum int) bool {
 	var count int
 	ns.metaNodes.Range(func(key, value interface{}) bool {
 		node := value.(*MetaNode)
-		if node.IsWriteAble() {
+		if node.isWriteAble() {
 			count++
 		}
 		if count >= replicaNum {
@@ -354,23 +354,23 @@ func (ns *NodeSet) canWriteForMetaNode(replicaNum int) bool {
 	return count >= replicaNum
 }
 
-func (ns *NodeSet) isSingleRack() bool {
+func (ns *nodeSet) isSingleRack() bool {
 	ns.rackLock.RLock()
 	defer ns.rackLock.RUnlock()
 	return len(ns.rackMap) == 1
 }
 
-func (ns *NodeSet) getRack(name string) (rack *Rack, err error) {
+func (ns *nodeSet) getRack(name string) (rack *Rack, err error) {
 	ns.rackLock.RLock()
 	defer ns.rackLock.RUnlock()
 	rack, ok := ns.rackMap[name]
 	if !ok {
-		return nil, errors.Annotatef(RackNotFound, "%v not found", name)
+		return nil, errors.Annotatef(rackNotFound(name), "%v not found", name)
 	}
 	return
 }
 
-func (ns *NodeSet) putRack(rack *Rack) {
+func (ns *nodeSet) putRack(rack *Rack) {
 	ns.rackLock.Lock()
 	defer ns.rackLock.Unlock()
 	ns.rackMap[rack.name] = rack
@@ -379,7 +379,7 @@ func (ns *NodeSet) putRack(rack *Rack) {
 	}
 }
 
-func (ns *NodeSet) isExist(rackName string) (ok bool) {
+func (ns *nodeSet) isExist(rackName string) (ok bool) {
 	for _, name := range ns.racks {
 		if name == rackName {
 			ok = true
@@ -389,23 +389,23 @@ func (ns *NodeSet) isExist(rackName string) (ok bool) {
 	return
 }
 
-func (ns *NodeSet) removeRack(name string) {
+func (ns *nodeSet) removeRack(name string) {
 	ns.rackLock.Lock()
 	defer ns.rackLock.Unlock()
 	delete(ns.rackMap, name)
 }
 
-func (ns *NodeSet) putDataNode(dataNode *DataNode) {
+func (ns *nodeSet) putDataNode(dataNode *DataNode) {
 	rack, err := ns.getRack(dataNode.RackName)
 	if err != nil {
-		rack = NewRack(dataNode.RackName)
+		rack = newRack(dataNode.RackName)
 		ns.putRack(rack)
 	}
-	rack.PutDataNode(dataNode)
+	rack.putDataNode(dataNode)
 	ns.dataNodes.Store(dataNode.Addr, dataNode)
 }
 
-func (ns *NodeSet) deleteDataNode(dataNode *DataNode) {
+func (ns *nodeSet) deleteDataNode(dataNode *DataNode) {
 	ns.dataNodes.Delete(dataNode.Addr)
 	rack, err := ns.getRack(dataNode.RackName)
 	if err != nil {
@@ -414,7 +414,7 @@ func (ns *NodeSet) deleteDataNode(dataNode *DataNode) {
 	rack.dataNodes.Delete(dataNode.Addr)
 }
 
-func (ns *NodeSet) getAllRacks() (racks []*Rack) {
+func (ns *nodeSet) getAllRacks() (racks []*Rack) {
 	ns.rackLock.RLock()
 	defer ns.rackLock.RUnlock()
 	racks = make([]*Rack, 0)
@@ -424,14 +424,14 @@ func (ns *NodeSet) getAllRacks() (racks []*Rack) {
 	return
 }
 
-func (ns *NodeSet) getRackNameByIndex(index int) (rName string) {
+func (ns *nodeSet) getRackNameByIndex(index int) (rName string) {
 	ns.rackLock.RLock()
 	defer ns.rackLock.RUnlock()
 	rName = ns.racks[index]
 	return
 }
 
-func (ns *NodeSet) allocRacks(replicaNum int, excludeRack []string) (racks []*Rack, err error) {
+func (ns *nodeSet) allocRacks(replicaNum int, excludeRack []string) (racks []*Rack, err error) {
 	racks = make([]*Rack, 0)
 	if excludeRack == nil {
 		excludeRack = make([]string, 0)
@@ -463,8 +463,8 @@ func (ns *NodeSet) allocRacks(replicaNum int, excludeRack []string) (racks []*Ra
 		}
 	}
 	if len(racks) == 0 {
-		log.LogError(fmt.Sprintf("action[allocRacks],err:%v", NoRackForCreateDataPartition))
-		return nil, NoRackForCreateDataPartition
+		log.LogError(fmt.Sprintf("action[allocRacks],err:%v", errNoRackForCreateDataPartition))
+		return nil, errNoRackForCreateDataPartition
 	}
 	if len(racks) > int(replicaNum) {
 		racks = racks[:int(replicaNum)]
@@ -473,29 +473,30 @@ func (ns *NodeSet) allocRacks(replicaNum int, excludeRack []string) (racks []*Ra
 	return
 }
 
+//Rack 机架信息
 type Rack struct {
 	name      string
 	dataNodes sync.Map
 	sync.RWMutex
 }
 
-func NewRack(name string) (rack *Rack) {
+func newRack(name string) (rack *Rack) {
 	return &Rack{name: name}
 }
 
-func (rack *Rack) PutDataNode(dataNode *DataNode) {
+func (rack *Rack) putDataNode(dataNode *DataNode) {
 	rack.dataNodes.Store(dataNode.Addr, dataNode)
 }
 
-func (rack *Rack) GetDataNode(addr string) (dataNode *DataNode, err error) {
+func (rack *Rack) getDataNode(addr string) (dataNode *DataNode, err error) {
 	value, ok := rack.dataNodes.Load(addr)
 	if !ok {
-		return nil, errors.Annotatef(DataNodeNotFound, "%v not found", addr)
+		return nil, errors.Annotatef(dataNodeNotFound(addr), "%v not found", addr)
 	}
 	dataNode = value.(*DataNode)
 	return
 }
-func (rack *Rack) RemoveDataNode(addr string) {
+func (rack *Rack) removeDataNode(addr string) {
 	rack.dataNodes.Delete(addr)
 }
 
@@ -505,7 +506,7 @@ func (rack *Rack) canWrite(replicaNum uint8) (can bool) {
 	var leastAlive uint8
 	rack.dataNodes.Range(func(addr, value interface{}) bool {
 		dataNode := value.(*DataNode)
-		if dataNode.isActive == true && dataNode.IsWriteAble() == true {
+		if dataNode.isActive == true && dataNode.isWriteAble() == true {
 			leastAlive++
 		}
 		if leastAlive >= replicaNum {
@@ -517,7 +518,7 @@ func (rack *Rack) canWrite(replicaNum uint8) (can bool) {
 	return
 }
 
-func (rack *Rack) GetDataNodeMaxTotal() (maxTotal uint64) {
+func (rack *Rack) getDataNodeMaxTotal() (maxTotal uint64) {
 	rack.dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
 		if dataNode.Total > maxTotal {
@@ -536,34 +537,34 @@ func (rack *Rack) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (
 		return
 	}
 
-	maxTotal := rack.GetDataNodeMaxTotal()
-	nodeTabs, availCarryCount := rack.GetAvailCarryDataNodeTab(maxTotal, excludeHosts, replicaNum)
+	maxTotal := rack.getDataNodeMaxTotal()
+	nodeTabs, availCarryCount := rack.getAvailCarryDataNodeTab(maxTotal, excludeHosts, replicaNum)
 	if len(nodeTabs) < replicaNum {
-		err = NoHaveAnyDataNodeToWrite
-		err = fmt.Errorf(GetAvailDataNodeHostsErr+" err:%v ,ActiveNodeCount:%v  MatchNodeCount:%v  ",
-			NoHaveAnyDataNodeToWrite, rack.DataNodeCount(), len(nodeTabs))
+		err = errNoHaveAnyDataNodeToWrite
+		err = fmt.Errorf(getAvailDataNodeHostsErr+" err:%v ,ActiveNodeCount:%v  MatchNodeCount:%v  ",
+			errNoHaveAnyDataNodeToWrite, rack.dataNodeCount(), len(nodeTabs))
 		return
 	}
 
-	nodeTabs.SetNodeTabCarry(availCarryCount, replicaNum)
+	nodeTabs.setNodeTabCarry(availCarryCount, replicaNum)
 	sort.Sort(nodeTabs)
 
 	for i := 0; i < replicaNum; i++ {
 		node := nodeTabs[i].Ptr.(*DataNode)
 		node.SelectNodeForWrite()
 		orderHosts = append(orderHosts, node.Addr)
-		peer := proto.Peer{ID: node.Id, Addr: node.Addr}
+		peer := proto.Peer{ID: node.ID, Addr: node.Addr}
 		peers = append(peers, peer)
 	}
 
-	if newHosts, err = rack.DisOrderArray(orderHosts); err != nil {
-		err = fmt.Errorf(GetAvailDataNodeHostsErr+"err:%v  orderHosts is nil", err.Error())
+	if newHosts, err = rack.disOrderArray(orderHosts); err != nil {
+		err = fmt.Errorf(getAvailDataNodeHostsErr+"err:%v  orderHosts is nil", err.Error())
 		return
 	}
 	return
 }
 
-func (rack *Rack) GetAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, replicaNum int) (nodeTabs NodeTabArrSorterByCarry, availCount int) {
+func (rack *Rack) getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, replicaNum int) (nodeTabs NodeTabArrSorterByCarry, availCount int) {
 	nodeTabs = make(NodeTabArrSorterByCarry, 0)
 	rack.dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
@@ -571,11 +572,11 @@ func (rack *Rack) GetAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []strin
 			log.LogDebugf("contains return")
 			return true
 		}
-		if dataNode.IsWriteAble() == false {
+		if dataNode.isWriteAble() == false {
 			log.LogDebugf("isWritable return")
 			return true
 		}
-		if dataNode.IsAvailCarryNode() == true {
+		if dataNode.isAvailCarryNode() == true {
 			availCount++
 		}
 		nt := new(NodeTab)
@@ -594,7 +595,7 @@ func (rack *Rack) GetAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []strin
 	return
 }
 
-func (rack *Rack) DataNodeCount() (len int) {
+func (rack *Rack) dataNodeCount() (len int) {
 
 	rack.dataNodes.Range(func(key, value interface{}) bool {
 		len++
@@ -603,14 +604,14 @@ func (rack *Rack) DataNodeCount() (len int) {
 	return
 }
 
-func (rack *Rack) DisOrderArray(oldHosts []string) (newHosts []string, err error) {
+func (rack *Rack) disOrderArray(oldHosts []string) (newHosts []string, err error) {
 	var (
 		newCurrPos int
 	)
 
 	if oldHosts == nil || len(oldHosts) == 0 {
-		log.LogError(fmt.Sprintf("action[DisOrderArray],err:%v", DisOrderArrayErr))
-		err = DisOrderArrayErr
+		log.LogError(fmt.Sprintf("action[disOrderArray],err:%v", errDisOrderArray))
+		err = errDisOrderArray
 		return
 	}
 

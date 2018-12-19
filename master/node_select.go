@@ -23,18 +23,21 @@ import (
 	"time"
 )
 
+//NodeTab 定义带权重的node
 type NodeTab struct {
 	Carry  float64
 	Weight float64
 	Ptr    Node
-	Id     uint64
+	ID     uint64
 }
 
+//Node 带权重的node需要实现此接口
 type Node interface {
 	SetCarry(carry float64)
 	SelectNodeForWrite()
 }
 
+//NodeTabArrSorterByCarry 定义带权重的node数组
 type NodeTabArrSorterByCarry []*NodeTab
 
 func (nodeTabs NodeTabArrSorterByCarry) Len() int {
@@ -49,7 +52,7 @@ func (nodeTabs NodeTabArrSorterByCarry) Swap(i, j int) {
 	nodeTabs[i], nodeTabs[j] = nodeTabs[j], nodeTabs[i]
 }
 
-func (nodeTabs NodeTabArrSorterByCarry) SetNodeTabCarry(availCarryCount, replicaNum int) {
+func (nodeTabs NodeTabArrSorterByCarry) setNodeTabCarry(availCarryCount, replicaNum int) {
 	if availCarryCount >= replicaNum {
 		return
 	}
@@ -69,7 +72,7 @@ func (nodeTabs NodeTabArrSorterByCarry) SetNodeTabCarry(availCarryCount, replica
 	}
 }
 
-func (ns *NodeSet) GetMetaNodeMaxTotal() (maxTotal uint64) {
+func (ns *nodeSet) getMetaNodeMaxTotal() (maxTotal uint64) {
 	ns.metaNodes.Range(func(key, value interface{}) bool {
 		metaNode := value.(*MetaNode)
 		if metaNode.Total > maxTotal {
@@ -80,7 +83,7 @@ func (ns *NodeSet) GetMetaNodeMaxTotal() (maxTotal uint64) {
 	return
 }
 
-func (ns *NodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
 	orderHosts := make([]string, 0)
 	newHosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
@@ -88,15 +91,15 @@ func (ns *NodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) 
 		return
 	}
 
-	maxTotal := ns.GetMetaNodeMaxTotal()
-	nodeTabs, availCarryCount := ns.GetAvailCarryMetaNodeTab(maxTotal, excludeHosts)
+	maxTotal := ns.getMetaNodeMaxTotal()
+	nodeTabs, availCarryCount := ns.getAvailCarryMetaNodeTab(maxTotal, excludeHosts)
 	if len(nodeTabs) < replicaNum {
-		err = fmt.Errorf(GetAvailMetaNodeHostsErr+" err:%v ,ActiveNodeCount:%v  MatchNodeCount:%v  ",
-			NoHaveAnyMetaNodeToWrite, ns.metaNodeLen, len(nodeTabs))
+		err = fmt.Errorf(getAvailMetaNodeHostsErr+" err:%v ,ActiveNodeCount:%v  MatchNodeCount:%v  ",
+			errNoHaveAnyMetaNodeToWrite, ns.metaNodeLen, len(nodeTabs))
 		return
 	}
 
-	nodeTabs.SetNodeTabCarry(availCarryCount, replicaNum)
+	nodeTabs.setNodeTabCarry(availCarryCount, replicaNum)
 	sort.Sort(nodeTabs)
 
 	for i := 0; i < replicaNum; i++ {
@@ -107,24 +110,24 @@ func (ns *NodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) 
 		peers = append(peers, peer)
 	}
 
-	if newHosts, err = ns.DisOrderArray(orderHosts); err != nil {
-		err = fmt.Errorf(GetAvailMetaNodeHostsErr+"err:%v  orderHosts is nil", err.Error())
+	if newHosts, err = ns.disOrderArray(orderHosts); err != nil {
+		err = fmt.Errorf(getAvailMetaNodeHostsErr+"err:%v  orderHosts is nil", err.Error())
 		return
 	}
 	return
 }
 
-func (ns *NodeSet) GetAvailCarryMetaNodeTab(maxTotal uint64, excludeHosts []string) (nodeTabs NodeTabArrSorterByCarry, availCount int) {
+func (ns *nodeSet) getAvailCarryMetaNodeTab(maxTotal uint64, excludeHosts []string) (nodeTabs NodeTabArrSorterByCarry, availCount int) {
 	nodeTabs = make(NodeTabArrSorterByCarry, 0)
 	ns.metaNodes.Range(func(key, value interface{}) bool {
 		metaNode := value.(*MetaNode)
 		if contains(excludeHosts, metaNode.Addr) == true {
 			return true
 		}
-		if metaNode.IsWriteAble() == false {
+		if metaNode.isWriteAble() == false {
 			return true
 		}
-		if metaNode.IsAvailCarryNode() == true {
+		if metaNode.isAvailCarryNode() == true {
 			availCount++
 		}
 		nt := new(NodeTab)
@@ -143,14 +146,14 @@ func (ns *NodeSet) GetAvailCarryMetaNodeTab(maxTotal uint64, excludeHosts []stri
 	return
 }
 
-func (ns *NodeSet) DisOrderArray(oldHosts []string) (newHosts []string, err error) {
+func (ns *nodeSet) disOrderArray(oldHosts []string) (newHosts []string, err error) {
 	var (
 		newCurrPos int
 	)
 
 	if oldHosts == nil || len(oldHosts) == 0 {
-		log.LogError(fmt.Sprintf("action[DisOrderArray],err:%v", DisOrderArrayErr))
-		err = DisOrderArrayErr
+		log.LogError(fmt.Sprintf("action[disOrderArray],err:%v", errDisOrderArray))
+		err = errDisOrderArray
 		return
 	}
 

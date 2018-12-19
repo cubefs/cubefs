@@ -23,43 +23,43 @@ import (
 )
 
 const (
-	ColonSplit                  = ":"
-	CommaSplit                  = ","
-	CfgPeers                    = "peers"
-	DataPartitionMissSec        = "dataPartitionMissSec"
-	DataPartitionTimeOutSec     = "dataPartitionTimeOutSec"
-	EveryLoadDataPartitionCount = "everyLoadDataPartitionCount"
-	FileDelayCheckCrc           = "fileDelayCheckCrc"
-	ReplicaNum                  = "replicaNum"
+	colonSplit                  = ":"
+	commaSplit                  = ","
+	cfgPeers                    = "peers"
+	dataPartitionMissSec        = "dataPartitionMissSec"
+	dataPartitionTimeOutSec     = "dataPartitionTimeOutSec"
+	everyLoadDataPartitionCount = "everyLoadDataPartitionCount"
+	fileDelayCheckCrc           = "fileDelayCheckCrc"
+	replicaNum                  = "replicaNum"
 )
 
 const (
-	DefaultEveryReleaseDataPartitionCount       = 1000
-	DefaultReleaseDataPartitionAfterLoadSeconds = 5 * 60
-	DefaultReleaseDataPartitionInternalSeconds  = 10
-	DefaultCheckHeartbeatIntervalSeconds        = 60
-	DefaultCheckDataPartitionIntervalSeconds    = 60
-	DefaultFileDelayCheckLackSec                = 5 * DefaultCheckHeartbeatIntervalSeconds
-	DefaultFileDelayCheckCrcSec                 = 20 * DefaultCheckHeartbeatIntervalSeconds
-	NoHeartBeatTimes                            = 3
-	DefaultNodeTimeOutSec                       = NoHeartBeatTimes * DefaultCheckHeartbeatIntervalSeconds
-	DefaultDataPartitionTimeOutSec              = 10 * DefaultCheckHeartbeatIntervalSeconds
-	DefaultDataPartitionMissSec                 = 24 * 3600
-	DefaultDataPartitionWarnInterval            = 60 * 60
-	LoadDataPartitionWaitTime                   = 120
-	DefaultLoadDataPartitionFrequencyTime       = 60 * 60 * 4
-	DefaultEveryLoadDataPartitionCount          = 50
-	DefaultMetaPartitionTimeOutSec              = 10 * DefaultCheckHeartbeatIntervalSeconds
+	defaultEveryReleaseDataPartitionCount       = 1000
+	defaultReleaseDataPartitionAfterLoadSeconds = 5 * 60
+	defaultReleaseDataPartitionInternalSeconds  = 10
+	defaultCheckHeartbeatIntervalSeconds        = 60
+	defaultCheckDataPartitionIntervalSeconds    = 60
+	defaultFileDelayCheckLackSec                = 5 * defaultCheckHeartbeatIntervalSeconds
+	defaultFileDelayCheckCrcSec                 = 20 * defaultCheckHeartbeatIntervalSeconds
+	noHeartBeatTimes                            = 3
+	defaultNodeTimeOutSec                       = noHeartBeatTimes * defaultCheckHeartbeatIntervalSeconds
+	defaultDataPartitionTimeOutSec              = 10 * defaultCheckHeartbeatIntervalSeconds
+	defaultDataPartitionMissSec                 = 24 * 3600
+	defaultDataPartitionWarnInterval            = 60 * 60
+	loadDataPartitionWaitTime                   = 120
+	defaultLoadDataPartitionFrequencyTime       = 60 * 60 * 4
+	defaultEveryLoadDataPartitionCount          = 50
+	defaultMetaPartitionTimeOutSec              = 10 * defaultCheckHeartbeatIntervalSeconds
 	//DefaultMetaPartitionMissSec                         = 3600
-	DefaultMetaPartitionWarnInterval            = 10 * 60
-	DefaultMetaPartitionThreshold       float32 = 0.75
-	DefaultMetaPartitionCountOnEachNode         = 100
+	defaultMetaPartitionWarnInterval            = 10 * 60
+	defaultMetaPartitionThreshold       float32 = 0.75
+	defaultMetaPartitionCountOnEachNode         = 100
 )
 
 //AddrDatabase ...
 var AddrDatabase = make(map[uint64]string)
 
-type ClusterConfig struct {
+type clusterConfig struct {
 	FileDelayCheckCrcSec                 int64
 	FileDelayCheckLackSec                int64
 	releaseDataPartitionAfterLoadSeconds int64
@@ -78,25 +78,25 @@ type ClusterConfig struct {
 	peerAddrs []string
 }
 
-func NewClusterConfig() (cfg *ClusterConfig) {
-	cfg = new(ClusterConfig)
-	cfg.FileDelayCheckCrcSec = DefaultFileDelayCheckCrcSec
-	cfg.FileDelayCheckLackSec = DefaultFileDelayCheckLackSec
-	cfg.everyReleaseDataPartitionCount = DefaultEveryReleaseDataPartitionCount
-	cfg.releaseDataPartitionAfterLoadSeconds = DefaultReleaseDataPartitionAfterLoadSeconds
-	cfg.NodeTimeOutSec = DefaultNodeTimeOutSec
-	cfg.DataPartitionMissSec = DefaultDataPartitionMissSec
-	cfg.DataPartitionTimeOutSec = DefaultDataPartitionTimeOutSec
-	cfg.CheckDataPartitionIntervalSeconds = DefaultCheckDataPartitionIntervalSeconds
-	cfg.DataPartitionWarnInterval = DefaultDataPartitionWarnInterval
-	cfg.everyLoadDataPartitionCount = DefaultEveryLoadDataPartitionCount
-	cfg.LoadDataPartitionFrequencyTime = DefaultLoadDataPartitionFrequencyTime
-	cfg.MetaNodeThreshold = DefaultMetaPartitionThreshold
+func newClusterConfig() (cfg *clusterConfig) {
+	cfg = new(clusterConfig)
+	cfg.FileDelayCheckCrcSec = defaultFileDelayCheckCrcSec
+	cfg.FileDelayCheckLackSec = defaultFileDelayCheckLackSec
+	cfg.everyReleaseDataPartitionCount = defaultEveryReleaseDataPartitionCount
+	cfg.releaseDataPartitionAfterLoadSeconds = defaultReleaseDataPartitionAfterLoadSeconds
+	cfg.NodeTimeOutSec = defaultNodeTimeOutSec
+	cfg.DataPartitionMissSec = defaultDataPartitionMissSec
+	cfg.DataPartitionTimeOutSec = defaultDataPartitionTimeOutSec
+	cfg.CheckDataPartitionIntervalSeconds = defaultCheckDataPartitionIntervalSeconds
+	cfg.DataPartitionWarnInterval = defaultDataPartitionWarnInterval
+	cfg.everyLoadDataPartitionCount = defaultEveryLoadDataPartitionCount
+	cfg.LoadDataPartitionFrequencyTime = defaultLoadDataPartitionFrequencyTime
+	cfg.MetaNodeThreshold = defaultMetaPartitionThreshold
 	return
 }
 
 func parsePeerAddr(peerAddr string) (id uint64, ip string, port uint64, err error) {
-	peerStr := strings.Split(peerAddr, ColonSplit)
+	peerStr := strings.Split(peerAddr, colonSplit)
 	id, err = strconv.ParseUint(peerStr[0], 10, 64)
 	if err != nil {
 		return
@@ -109,8 +109,8 @@ func parsePeerAddr(peerAddr string) (id uint64, ip string, port uint64, err erro
 	return
 }
 
-func (cfg *ClusterConfig) parsePeers(peerStr string) error {
-	peerArr := strings.Split(peerStr, CommaSplit)
+func (cfg *clusterConfig) parsePeers(peerStr string) error {
+	peerArr := strings.Split(peerStr, commaSplit)
 	cfg.peerAddrs = peerArr
 	for _, peerAddr := range peerArr {
 		id, ip, port, err := parsePeerAddr(peerAddr)

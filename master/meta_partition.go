@@ -26,17 +26,19 @@ import (
 	"time"
 )
 
+//MetaReplica 元数据分片副本
 type MetaReplica struct {
 	Addr       string
 	start      uint64
 	end        uint64
-	nodeId     uint64
+	nodeID     uint64
 	ReportTime int64
 	Status     int8
 	IsLeader   bool
 	metaNode   *MetaNode
 }
 
+//MetaPartition 元数据分片
 type MetaPartition struct {
 	PartitionID      uint64
 	Start            uint64
@@ -53,14 +55,14 @@ type MetaPartition struct {
 	sync.RWMutex
 }
 
-func NewMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {
-	mr = &MetaReplica{start: start, end: end, nodeId: metaNode.ID, Addr: metaNode.Addr}
+func newMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {
+	mr = &MetaReplica{start: start, end: end, nodeID: metaNode.ID, Addr: metaNode.Addr}
 	mr.metaNode = metaNode
 	mr.ReportTime = time.Now().Unix()
 	return
 }
 
-func NewMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName string, volID uint64) (mp *MetaPartition) {
+func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName string, volID uint64) (mp *MetaPartition) {
 	mp = &MetaPartition{PartitionID: partitionID, Start: start, End: end, volName: volName, volID: volID}
 	mp.ReplicaNum = replicaNum
 	mp.Replicas = make([]*MetaReplica, 0)
@@ -71,7 +73,7 @@ func NewMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	return
 }
 
-func (mp *MetaPartition) toJson() (body []byte, err error) {
+func (mp *MetaPartition) toJSON() (body []byte, err error) {
 	mp.RLock()
 	defer mp.RUnlock()
 	return json.Marshal(mp)
@@ -86,7 +88,7 @@ func (mp *MetaPartition) setPersistenceHosts(hosts []string) {
 }
 
 func (mp *MetaPartition) hostsToString() (hosts string) {
-	return strings.Join(mp.PersistenceHosts, UnderlineSeparator)
+	return strings.Join(mp.PersistenceHosts, underlineSeparator)
 }
 
 func (mp *MetaPartition) addReplica(mr *MetaReplica) {
@@ -129,10 +131,10 @@ func (mp *MetaPartition) updateAllReplicasEnd() {
 	}
 }
 
-func (mp *MetaPartition) UpdateEnd(c *Cluster, end uint64) {
+func (mp *MetaPartition) updateEnd(c *Cluster, end uint64) {
 	//to prevent overflow
-	if end > (DefaultMaxMetaPartitionInodeID - DefaultMetaPartitionInodeIDStep) {
-		log.LogWarnf("action[UpdateEnd] clusterID[%v] partitionID[%v] nextStart[%v] "+
+	if end > (defaultMaxMetaPartitionInodeID - defaultMetaPartitionInodeIDStep) {
+		log.LogWarnf("action[updateEnd] clusterID[%v] partitionID[%v] nextStart[%v] "+
 			"to prevent overflow ,not update end", c.Name, mp.PartitionID, end)
 		return
 	}
@@ -153,15 +155,15 @@ func (mp *MetaPartition) UpdateEnd(c *Cluster, end uint64) {
 	mp.updateAllReplicasEnd()
 	tasks = append(tasks, t)
 	c.putMetaNodeTasks(tasks)
-	if err = c.CreateMetaPartition(mp.volName, mp.End+1, DefaultMaxMetaPartitionInodeID); err != nil {
-		Warn(c.Name, fmt.Sprintf("action[UpdateEnd] clusterID[%v] partitionID[%v] create meta partition err[%v]",
+	if err = c.createMetaPartition(mp.volName, mp.End+1, defaultMaxMetaPartitionInodeID); err != nil {
+		Warn(c.Name, fmt.Sprintf("action[updateEnd] clusterID[%v] partitionID[%v] create meta partition err[%v]",
 			c.Name, mp.PartitionID, err))
 		goto errDeal
 	}
-	log.LogWarnf("action[UpdateEnd] partitionID[%v] end[%v] success", mp.PartitionID, mp.End)
+	log.LogWarnf("action[updateEnd] partitionID[%v] end[%v] success", mp.PartitionID, mp.End)
 	return
 errDeal:
-	log.LogErrorf("action[UpdateEnd] partitionID[%v] err[%v]", mp.PartitionID, err)
+	log.LogErrorf("action[updateEnd] partitionID[%v] err[%v]", mp.PartitionID, err)
 	return
 }
 
@@ -182,9 +184,9 @@ func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
 		log.LogWarnf("action[checkEnd] partition[%v] not max partition[%v]", mp.PartitionID, curMaxPartitionID)
 		return
 	}
-	if mp.End != DefaultMaxMetaPartitionInodeID {
+	if mp.End != defaultMaxMetaPartitionInodeID {
 		oldEnd := mp.End
-		mp.End = DefaultMaxMetaPartitionInodeID
+		mp.End = defaultMaxMetaPartitionInodeID
 		if err := c.syncUpdateMetaPartition(mp); err != nil {
 			mp.End = oldEnd
 			log.LogErrorf("action[checkEnd] partitionID[%v] err[%v]", mp.PartitionID, err)
@@ -245,7 +247,7 @@ func (mp *MetaPartition) getLeaderMetaReplica() (mr *MetaReplica, err error) {
 			return
 		}
 	}
-	err = NoLeader
+	err = errNoLeader
 	return
 }
 
@@ -265,7 +267,7 @@ func (mp *MetaPartition) deleteExcessReplication() (excessAddr string, t *proto.
 	for _, mr := range mp.Replicas {
 		if !contains(mp.PersistenceHosts, mr.Addr) {
 			t = mr.generateDeleteReplicaTask(mp.PartitionID)
-			err = MetaReplicaExcessError
+			err = errMetaReplicaExcess
 			break
 		}
 	}
@@ -288,7 +290,7 @@ func (mp *MetaPartition) getLackReplication() (lackAddrs []string) {
 	return
 }
 
-func (mp *MetaPartition) UpdateMetaPartition(mgr *proto.MetaPartitionReport, metaNode *MetaNode) {
+func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, metaNode *MetaNode) {
 
 	if !contains(mp.PersistenceHosts, metaNode.Addr) {
 		return
@@ -297,7 +299,7 @@ func (mp *MetaPartition) UpdateMetaPartition(mgr *proto.MetaPartitionReport, met
 	defer mp.Unlock()
 	mr, err := mp.getMetaReplica(metaNode.Addr)
 	if err != nil {
-		mr = NewMetaReplica(mp.Start, mp.End, metaNode)
+		mr = newMetaReplica(mp.Start, mp.End, metaNode)
 		mp.addReplica(mr)
 	}
 	mp.MaxNodeID = mgr.MaxInodeID
@@ -308,7 +310,7 @@ func (mp *MetaPartition) UpdateMetaPartition(mgr *proto.MetaPartitionReport, met
 func (mp *MetaPartition) canOffline(nodeAddr string, replicaNum int) (err error) {
 	liveReplicas := mp.getLiveReplica()
 	if !mp.hasMajorityReplicas(len(liveReplicas), replicaNum) {
-		err = NoHaveMajorityReplica
+		err = errNoHaveMajorityReplica
 		return
 	}
 	liveAddrs := mp.getLiveReplicasAddr(liveReplicas)
@@ -411,19 +413,19 @@ func (mp *MetaPartition) checkReplicaMiss(clusterID string, partitionMissSec, wa
 		if mp.missedReplica(addr) && mp.needWarnMissReplica(addr, warnInterval) {
 			msg := fmt.Sprintf("action[checkReplicaMiss],clusterID[%v] volName[%v] partition:%v  on Node:%v  "+
 				"miss time  > %v ",
-				clusterID, mp.volName, mp.PartitionID, addr, DefaultMetaPartitionTimeOutSec)
+				clusterID, mp.volName, mp.PartitionID, addr, defaultMetaPartitionTimeOutSec)
 			Warn(clusterID, msg)
 		}
 	}
 }
 
-func (mp *MetaPartition) GenerateReplicaTask(clusterID, volName string) (tasks []*proto.AdminTask) {
+func (mp *MetaPartition) generateReplicaTask(clusterID, volName string) (tasks []*proto.AdminTask) {
 	var msg string
 	tasks = make([]*proto.AdminTask, 0)
 	if excessAddr, task, excessErr := mp.deleteExcessReplication(); excessErr != nil {
 		msg = fmt.Sprintf("action[%v],clusterID[%v] metaPartition:%v  excess replication"+
 			" on :%v  err:%v  persistenceHosts:%v",
-			DeleteExcessReplicationErr, clusterID, mp.PartitionID, excessAddr, excessErr.Error(), mp.PersistenceHosts)
+			deleteExcessReplicationErr, clusterID, mp.PartitionID, excessAddr, excessErr.Error(), mp.PersistenceHosts)
 		log.LogWarn(msg)
 		tasks = append(tasks, task)
 	}
@@ -503,12 +505,12 @@ func (mr *MetaReplica) generateDeleteReplicaTask(partitionID uint64) (t *proto.A
 }
 
 func (mr *MetaReplica) isMissed() (miss bool) {
-	return time.Now().Unix()-mr.ReportTime > DefaultMetaPartitionTimeOutSec
+	return time.Now().Unix()-mr.ReportTime > defaultMetaPartitionTimeOutSec
 }
 
 func (mr *MetaReplica) isActive() (active bool) {
 	return mr.metaNode.IsActive && mr.Status != proto.Unavaliable &&
-		time.Now().Unix()-mr.ReportTime < DefaultMetaPartitionTimeOutSec
+		time.Now().Unix()-mr.ReportTime < defaultMetaPartitionTimeOutSec
 }
 
 func (mr *MetaReplica) setLastReportTime() {
@@ -525,7 +527,7 @@ func (mp *MetaPartition) updateMetricByRaft(mpv *MetaPartitionValue) {
 	mp.Start = mpv.Start
 	mp.End = mpv.End
 	mp.Peers = mpv.Peers
-	mp.PersistenceHosts = strings.Split(mpv.Hosts, UnderlineSeparator)
+	mp.PersistenceHosts = strings.Split(mpv.Hosts, underlineSeparator)
 
 }
 
@@ -535,7 +537,7 @@ func (mp *MetaPartition) createPartitionSuccessTriggerOperator(nodeAddr string, 
 	if err != nil {
 		return err
 	}
-	mr := NewMetaReplica(mp.Start, mp.End, metaNode)
+	mr := newMetaReplica(mp.Start, mp.End, metaNode)
 	mr.Status = proto.ReadWrite
 	mp.addReplica(mr)
 	mp.checkAndRemoveMissMetaReplica(mr.Addr)

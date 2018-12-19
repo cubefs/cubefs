@@ -24,12 +24,14 @@ import (
 	"strconv"
 )
 
+//VolStatInfo vol统计信息
 type VolStatInfo struct {
 	Name      string
 	TotalSize uint64
 	UsedSize  uint64
 }
 
+//DataPartitionResponse 简单数据分片
 type DataPartitionResponse struct {
 	PartitionID uint64
 	Status      int8
@@ -39,16 +41,18 @@ type DataPartitionResponse struct {
 	LeaderAddr  string
 }
 
+//DataPartitionsView 所有数据分片视图
 type DataPartitionsView struct {
 	DataPartitions []*DataPartitionResponse
 }
 
-func NewDataPartitionsView() (dataPartitionsView *DataPartitionsView) {
+func newDataPartitionsView() (dataPartitionsView *DataPartitionsView) {
 	dataPartitionsView = new(DataPartitionsView)
 	dataPartitionsView.DataPartitions = make([]*DataPartitionResponse, 0)
 	return
 }
 
+//MetaPartitionView 元数据分片视图
 type MetaPartitionView struct {
 	PartitionID uint64
 	Start       uint64
@@ -58,6 +62,7 @@ type MetaPartitionView struct {
 	Status      int8
 }
 
+//VolView vol视图
 type VolView struct {
 	Name           string
 	Status         uint8
@@ -65,7 +70,7 @@ type VolView struct {
 	DataPartitions []*DataPartitionResponse
 }
 
-func NewVolView(name string, status uint8) (view *VolView) {
+func newVolView(name string, status uint8) (view *VolView) {
 	view = new(VolView)
 	view.Name = name
 	view.Status = status
@@ -74,7 +79,7 @@ func NewVolView(name string, status uint8) (view *VolView) {
 	return
 }
 
-func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *MetaPartitionView) {
+func newMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *MetaPartitionView) {
 	mpView = new(MetaPartitionView)
 	mpView.PartitionID = partitionID
 	mpView.Start = start
@@ -84,7 +89,7 @@ func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *
 	return
 }
 
-func (m *Master) getDataPartitions(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
 		code = http.StatusBadRequest
@@ -97,7 +102,7 @@ func (m *Master) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		goto errDeal
 	}
 	if vol, ok = m.cluster.vols[name]; !ok {
-		err = errors.Annotatef(VolNotFound, "%v not found", name)
+		err = errors.Annotatef(volNotFound(name), "%v not found", name)
 		code = http.StatusNotFound
 		goto errDeal
 	}
@@ -113,7 +118,7 @@ errDeal:
 	return
 }
 
-func (m *Master) getVol(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
 		code = http.StatusBadRequest
@@ -125,7 +130,7 @@ func (m *Master) getVol(w http.ResponseWriter, r *http.Request) {
 		goto errDeal
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
-		err = errors.Annotatef(VolNotFound, "%v not found", name)
+		err = errors.Annotatef(volNotFound(name), "%v not found", name)
 		code = http.StatusNotFound
 		goto errDeal
 	}
@@ -140,7 +145,7 @@ errDeal:
 	return
 }
 
-func (m *Master) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
 		code = http.StatusBadRequest
@@ -153,7 +158,7 @@ func (m *Master) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 		goto errDeal
 	}
 	if vol, ok = m.cluster.vols[name]; !ok {
-		err = errors.Annotatef(VolNotFound, "%v not found", name)
+		err = errors.Annotatef(volNotFound(name), "%v not found", name)
 		code = http.StatusNotFound
 		goto errDeal
 	}
@@ -168,22 +173,22 @@ errDeal:
 	return
 }
 
-func (m *Master) getVolView(vol *Vol) (view *VolView) {
-	view = NewVolView(vol.Name, vol.Status)
+func (m *Server) getVolView(vol *Vol) (view *VolView) {
+	view = newVolView(vol.Name, vol.Status)
 	setMetaPartitions(vol, view, m.cluster.getLiveMetaNodesRate())
 	setDataPartitions(vol, view, m.cluster.getLiveDataNodesRate())
 	return
 }
 func setDataPartitions(vol *Vol, view *VolView, liveRate float32) {
-	if liveRate < NodesAliveRate {
+	if liveRate < nodesAliveRate {
 		return
 	}
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
-	view.DataPartitions = vol.dataPartitions.GetDataPartitionsView(0)
+	view.DataPartitions = vol.dataPartitions.getDataPartitionsView(0)
 }
 func setMetaPartitions(vol *Vol, view *VolView, liveRate float32) {
-	if liveRate < NodesAliveRate {
+	if liveRate < nodesAliveRate {
 		return
 	}
 	vol.mpsLock.RLock()
@@ -206,7 +211,7 @@ func volStat(vol *Vol) (stat *VolStatInfo) {
 }
 
 func getMetaPartitionView(mp *MetaPartition) (mpView *MetaPartitionView) {
-	mpView = NewMetaPartitionView(mp.PartitionID, mp.Start, mp.End, mp.Status)
+	mpView = newMetaPartitionView(mp.PartitionID, mp.Start, mp.End, mp.Status)
 	mp.Lock()
 	defer mp.Unlock()
 	for _, metaReplica := range mp.Replicas {
@@ -218,7 +223,7 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *MetaPartitionView) {
 	return
 }
 
-func (m *Master) getMetaPartition(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		body        []byte
 		code        = http.StatusBadRequest
@@ -233,16 +238,16 @@ func (m *Master) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		goto errDeal
 	}
 	if vol, ok = m.cluster.vols[name]; !ok {
-		err = errors.Annotatef(VolNotFound, "%v not found", name)
+		err = errors.Annotatef(volNotFound(name), "%v not found", name)
 		code = http.StatusNotFound
 		goto errDeal
 	}
 	if mp, ok = vol.MetaPartitions[partitionID]; !ok {
-		err = errors.Annotatef(MetaPartitionNotFound, "%v not found", partitionID)
+		err = errors.Annotatef(metaPartitionNotFound(partitionID), "%v not found", partitionID)
 		code = http.StatusNotFound
 		goto errDeal
 	}
-	if body, err = mp.toJson(); err != nil {
+	if body, err = mp.toJSON(); err != nil {
 		goto errDeal
 	}
 	m.sendOkReplyForClient(w, r, body)
@@ -266,8 +271,8 @@ func parseGetMetaPartitionPara(r *http.Request) (name string, partitionID uint64
 
 func checkMetaPartitionID(r *http.Request) (partitionID uint64, err error) {
 	var value string
-	if value = r.FormValue(ParaId); value == "" {
-		err = paraNotFound(ParaId)
+	if value = r.FormValue(paraID); value == "" {
+		err = paraNotFound(paraID)
 		return
 	}
 	return strconv.ParseUint(value, 10, 64)
@@ -279,7 +284,7 @@ func parseGetVolPara(r *http.Request) (name string, err error) {
 }
 
 func checkVolPara(r *http.Request) (name string, err error) {
-	if name = r.FormValue(ParaName); name == "" {
+	if name = r.FormValue(paraName); name == "" {
 		err = paraNotFound(name)
 		return
 	}
@@ -297,7 +302,7 @@ func checkVolPara(r *http.Request) (name string, err error) {
 	return
 }
 
-func (m *Master) sendOkReplyForClient(w http.ResponseWriter, r *http.Request, msg []byte) {
+func (m *Server) sendOkReplyForClient(w http.ResponseWriter, r *http.Request, msg []byte) {
 	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
 	w.Write(msg)
 }

@@ -35,13 +35,14 @@ const (
 	LogLevel          = "logLevel"
 	WalDir            = "walDir"
 	StoreDir          = "storeDir"
-	GroupId           = 1
+	GroupID           = 1
 	UmpModuleName     = "master"
 	CfgRetainLogs     = "retainLogs"
 	DefaultRetainLogs = 20000
 )
 
-type Master struct {
+//Server 集群管理server
+type Server struct {
 	id           uint64
 	clusterName  string
 	ip           string
@@ -50,7 +51,7 @@ type Master struct {
 	storeDir     string
 	retainLogs   uint64
 	leaderInfo   *LeaderInfo
-	config       *ClusterConfig
+	config       *clusterConfig
 	cluster      *Cluster
 	rocksDBStore *raftstore.RocksDBStore
 	raftStore    raftstore.RaftStore
@@ -60,12 +61,14 @@ type Master struct {
 	reverseProxy *httputil.ReverseProxy
 }
 
-func NewServer() *Master {
-	return &Master{}
+//NewServer 创建server
+func NewServer() *Server {
+	return &Server{}
 }
 
-func (m *Master) Start(cfg *config.Config) (err error) {
-	m.config = NewClusterConfig()
+//Start 启动server
+func (m *Server) Start(cfg *config.Config) (err error) {
+	m.config = newClusterConfig()
 	m.leaderInfo = &LeaderInfo{}
 	m.reverseProxy = m.newReverseProxy()
 	if err = m.checkConfig(cfg); err != nil {
@@ -83,33 +86,35 @@ func (m *Master) Start(cfg *config.Config) (err error) {
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
 	m.cluster.scheduleTask()
-	m.startHttpService()
+	m.startHTTPService()
 	m.wg.Add(1)
 	return nil
 }
 
-func (m *Master) Shutdown() {
+//Shutdown 关闭server
+func (m *Server) Shutdown() {
 	m.wg.Done()
 }
 
-func (m *Master) Sync() {
+//Sync 等待server运行结束
+func (m *Server) Sync() {
 	m.wg.Wait()
 }
 
-func (m *Master) checkConfig(cfg *config.Config) (err error) {
+func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.clusterName = cfg.GetString(ClusterName)
 	m.ip = cfg.GetString(IP)
 	m.port = cfg.GetString(Port)
-	vfDelayCheckCrcSec := cfg.GetString(FileDelayCheckCrc)
-	dataPartitionMissSec := cfg.GetString(DataPartitionMissSec)
-	dataPartitionTimeOutSec := cfg.GetString(DataPartitionTimeOutSec)
-	everyLoadDataPartitionCount := cfg.GetString(EveryLoadDataPartitionCount)
-	replicaNum := cfg.GetString(ReplicaNum)
+	vfDelayCheckCrcSec := cfg.GetString(fileDelayCheckCrc)
+	dataPartitionMissSec := cfg.GetString(dataPartitionMissSec)
+	dataPartitionTimeOutSec := cfg.GetString(dataPartitionTimeOutSec)
+	everyLoadDataPartitionCount := cfg.GetString(everyLoadDataPartitionCount)
+	replicaNum := cfg.GetString(replicaNum)
 	m.walDir = cfg.GetString(WalDir)
 	m.storeDir = cfg.GetString(StoreDir)
-	peerAddrs := cfg.GetString(CfgPeers)
+	peerAddrs := cfg.GetString(cfgPeers)
 	if m.retainLogs, err = strconv.ParseUint(cfg.GetString(CfgRetainLogs), 10, 64); err != nil {
-		return fmt.Errorf("%v,err:%v", ErrBadConfFile, err.Error())
+		return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
 	}
 	if m.retainLogs <= 0 {
 		m.retainLogs = DefaultRetainLogs
@@ -120,42 +125,42 @@ func (m *Master) checkConfig(cfg *config.Config) (err error) {
 	}
 
 	if m.id, err = strconv.ParseUint(cfg.GetString(ID), 10, 64); err != nil {
-		return fmt.Errorf("%v,err:%v", ErrBadConfFile, err.Error())
+		return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
 	}
 
 	if m.ip == "" || m.port == "" || m.walDir == "" || m.storeDir == "" || m.clusterName == "" {
-		return fmt.Errorf("%v,err:%v", ErrBadConfFile, "one of (ip,port,walDir,storeDir,clusterName) is null")
+		return fmt.Errorf("%v,err:%v", errBadConfFile, "one of (ip,port,walDir,storeDir,clusterName) is null")
 	}
 
 	if replicaNum != "" {
 		if m.config.replicaNum, err = strconv.Atoi(replicaNum); err != nil {
-			return fmt.Errorf("%v,err:%v", ErrBadConfFile, err.Error())
+			return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
 		}
 
 		if m.config.replicaNum > 10 {
-			return fmt.Errorf("%v,replicaNum(%v) can't too large", ErrBadConfFile, m.config.replicaNum)
+			return fmt.Errorf("%v,replicaNum(%v) can't too large", errBadConfFile, m.config.replicaNum)
 		}
 	}
 
 	if vfDelayCheckCrcSec != "" {
 		if m.config.FileDelayCheckCrcSec, err = strconv.ParseInt(vfDelayCheckCrcSec, 10, 0); err != nil {
-			return fmt.Errorf("%v,err:%v", ErrBadConfFile, err.Error())
+			return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
 		}
 	}
 
 	if dataPartitionMissSec != "" {
 		if m.config.DataPartitionMissSec, err = strconv.ParseInt(dataPartitionMissSec, 10, 0); err != nil {
-			return fmt.Errorf("%v,err:%v", ErrBadConfFile, err.Error())
+			return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
 		}
 	}
 	if dataPartitionTimeOutSec != "" {
 		if m.config.DataPartitionTimeOutSec, err = strconv.ParseInt(dataPartitionTimeOutSec, 10, 0); err != nil {
-			return fmt.Errorf("%v,err:%v", ErrBadConfFile, err.Error())
+			return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
 		}
 	}
 	if everyLoadDataPartitionCount != "" {
 		if m.config.everyLoadDataPartitionCount, err = strconv.Atoi(everyLoadDataPartitionCount); err != nil {
-			return fmt.Errorf("%v,err:%v", ErrBadConfFile, err.Error())
+			return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
 		}
 	}
 	if m.config.everyLoadDataPartitionCount <= 40 {
@@ -165,14 +170,14 @@ func (m *Master) checkConfig(cfg *config.Config) (err error) {
 	return
 }
 
-func (m *Master) createRaftServer() (err error) {
+func (m *Server) createRaftServer() (err error) {
 	raftCfg := &raftstore.Config{NodeID: m.id, WalPath: m.walDir, RetainLogs: m.retainLogs}
 	if m.raftStore, err = raftstore.NewRaftStore(raftCfg); err != nil {
 		return errors.Annotatef(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
 	}
 	fmt.Println(m.config.peers)
 	partitionCfg := &raftstore.PartitionConfig{
-		ID:      GroupId,
+		ID:      GroupID,
 		Peers:   m.config.peers,
 		Applied: m.fsm.applied,
 		SM:      m.fsm,
@@ -182,17 +187,17 @@ func (m *Master) createRaftServer() (err error) {
 	}
 	return
 }
-func (m *Master) initFsm() {
+func (m *Server) initFsm() {
 	m.fsm = newMetadataFsm(m.rocksDBStore)
-	m.fsm.RegisterLeaderChangeHandler(m.handleLeaderChange)
-	m.fsm.RegisterPeerChangeHandler(m.handlePeerChange)
-	m.fsm.RegisterApplyHandler(m.handleApply)
-	m.fsm.RegisterApplySnapshotHandler(m.handleApplySnapshot)
+	m.fsm.registerLeaderChangeHandler(m.handleLeaderChange)
+	m.fsm.registerPeerChangeHandler(m.handlePeerChange)
+	m.fsm.registerApplyHandler(m.handleApply)
+	m.fsm.registerApplySnapshotHandler(m.handleApplySnapshot)
 	m.fsm.restore()
 }
 
-func (m *Master) initCluster() {
-	m.cluster = newCluster(m.clusterName, m.leaderInfo, m.fsm, m.partition)
+func (m *Server) initCluster() {
+	m.cluster = newCluster(m.clusterName, m.leaderInfo, m.fsm, m.partition, m.config)
 	m.cluster.retainLogs = m.retainLogs
 	m.loadMetadata()
 }

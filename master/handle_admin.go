@@ -28,6 +28,7 @@ import (
 	"strings"
 )
 
+// ClusterView 集群视图
 type ClusterView struct {
 	Name               string
 	LeaderAddr         string
@@ -37,13 +38,14 @@ type ClusterView struct {
 	MaxDataPartitionID uint64
 	MaxMetaNodeID      uint64
 	MaxMetaPartitionID uint64
-	DataNodeStat       *DataNodeSpaceStat
-	MetaNodeStat       *MetaNodeSpaceStat
-	VolStat            []*VolSpaceStat
+	DataNodeStat       *dataNodeSpaceStat
+	MetaNodeStat       *metaNodeSpaceStat
+	VolStat            []*volSpaceStat
 	MetaNodes          []MetaNodeView
 	DataNodes          []DataNodeView
 }
 
+//VolStatView vol统计视图
 type VolStatView struct {
 	Name      string
 	Total     uint64 `json:"TotalGB"`
@@ -51,25 +53,28 @@ type VolStatView struct {
 	Increased uint64 `json:"IncreasedGB"`
 }
 
+//DataNodeView 数据节点视图
 type DataNodeView struct {
 	Addr   string
 	Status bool
 	ID     uint64
 }
 
+//MetaNodeView 元数据节点视图
 type MetaNodeView struct {
 	ID     uint64
 	Addr   string
 	Status bool
 }
 
+//TopologyView 集群拓扑视图
 type TopologyView struct {
 	DataNodes []DataNodeView
 	MetaNodes []MetaNodeView
 	NodeSet   []uint64
 }
 
-func (m *Master) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
+func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
 	var (
 		threshold float64
 		err       error
@@ -86,7 +91,7 @@ errDeal:
 	return
 }
 
-func (m *Master) setDisableAutoAlloc(w http.ResponseWriter, r *http.Request) {
+func (m *Server) setDisableAutoAlloc(w http.ResponseWriter, r *http.Request) {
 	var (
 		status bool
 		err    error
@@ -103,7 +108,7 @@ errDeal:
 	return
 }
 
-func (m *Master) getTopology(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
 		err  error
@@ -114,17 +119,17 @@ func (m *Master) getTopology(w http.ResponseWriter, r *http.Request) {
 		NodeSet:   make([]uint64, 0),
 	}
 	m.cluster.t.metaNodes.Range(func(key, value interface{}) bool {
-		metaNode := value.(*TopoMetaNode)
+		metaNode := value.(*topoMetaNode)
 		tv.MetaNodes = append(tv.MetaNodes, MetaNodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive})
 		return true
 	})
 	m.cluster.t.dataNodes.Range(func(key, value interface{}) bool {
-		dataNode := value.(*TopoDataNode)
-		tv.DataNodes = append(tv.DataNodes, DataNodeView{ID: dataNode.Id, Addr: dataNode.Addr, Status: dataNode.isActive})
+		dataNode := value.(*topoDataNode)
+		tv.DataNodes = append(tv.DataNodes, DataNodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive})
 		return true
 	})
 	for _, ns := range m.cluster.t.nodeSetMap {
-		tv.NodeSet = append(tv.NodeSet, ns.Id)
+		tv.NodeSet = append(tv.NodeSet, ns.ID)
 	}
 	if body, err = json.Marshal(tv); err != nil {
 		goto errDeal
@@ -138,7 +143,7 @@ errDeal:
 	return
 }
 
-func (m *Master) getCluster(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
 		err  error
@@ -154,7 +159,7 @@ func (m *Master) getCluster(w http.ResponseWriter, r *http.Request) {
 		MaxMetaPartitionID: m.cluster.idAlloc.metaPartitionID,
 		MetaNodes:          make([]MetaNodeView, 0),
 		DataNodes:          make([]DataNodeView, 0),
-		VolStat:            make([]*VolSpaceStat, 0),
+		VolStat:            make([]*volSpaceStat, 0),
 	}
 
 	vols := m.cluster.getAllVols()
@@ -168,7 +173,7 @@ func (m *Master) getCluster(w http.ResponseWriter, r *http.Request) {
 			cv.VolStat = append(cv.VolStat, newVolSpaceStat(name, 0, 0, "0.0001"))
 			continue
 		}
-		cv.VolStat = append(cv.VolStat, stat.(*VolSpaceStat))
+		cv.VolStat = append(cv.VolStat, stat.(*volSpaceStat))
 	}
 	if body, err = json.Marshal(cv); err != nil {
 		goto errDeal
@@ -182,7 +187,7 @@ errDeal:
 	return
 }
 
-func (m *Master) getIpAndClusterName(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getIPAndClusterName(w http.ResponseWriter, r *http.Request) {
 	cInfo := &proto.ClusterInfo{Cluster: m.cluster.Name, Ip: strings.Split(r.RemoteAddr, ":")[0]}
 	cInfoBytes, err := json.Marshal(cInfo)
 	if err != nil {
@@ -191,12 +196,12 @@ func (m *Master) getIpAndClusterName(w http.ResponseWriter, r *http.Request) {
 	w.Write(cInfoBytes)
 	return
 errDeal:
-	rstMsg := getReturnMessage("getIpAndClusterName", r.RemoteAddr, err.Error(), http.StatusBadRequest)
+	rstMsg := getReturnMessage("getIPAndClusterName", r.RemoteAddr, err.Error(), http.StatusBadRequest)
 	m.sendErrReply(w, r, http.StatusBadRequest, rstMsg, err)
 	return
 }
 
-func (m *Master) createMetaPartition(w http.ResponseWriter, r *http.Request) {
+func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName string
 		start   uint64
@@ -208,7 +213,7 @@ func (m *Master) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 		goto errDeal
 	}
 
-	if err = m.cluster.CreateMetaPartitionForManual(volName, start); err != nil {
+	if err = m.cluster.createMetaPartitionForManual(volName, start); err != nil {
 		goto errDeal
 	}
 	m.sendOkReply(w, r, fmt.Sprint("createMetaPartition request seccess"))
@@ -219,7 +224,7 @@ errDeal:
 	return
 }
 
-func (m *Master) createDataPartition(w http.ResponseWriter, r *http.Request) {
+func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		rstMsg                     string
 		volName                    string
@@ -254,7 +259,7 @@ errDeal:
 	return
 }
 
-func (m *Master) getDataPartition(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		body        []byte
 		dp          *DataPartition
@@ -268,7 +273,7 @@ func (m *Master) getDataPartition(w http.ResponseWriter, r *http.Request) {
 	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
 		goto errDeal
 	}
-	if body, err = dp.toJson(); err != nil {
+	if body, err = dp.toJSON(); err != nil {
 		goto errDeal
 	}
 	m.sendOkReply(w, r, string(body))
@@ -279,7 +284,7 @@ errDeal:
 	return
 }
 
-func (m *Master) loadDataPartition(w http.ResponseWriter, r *http.Request) {
+func (m *Server) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName     string
 		vol         *Vol
@@ -301,16 +306,16 @@ func (m *Master) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m.cluster.loadDataPartitionAndCheckResponse(dp)
-	msg = fmt.Sprintf(AdminLoadDataPartition+"partitionID :%v  load data partition success", partitionID)
+	msg = fmt.Sprintf(adminLoadDataPartition+"partitionID :%v  load data partition success", partitionID)
 	m.sendOkReply(w, r, msg)
 	return
 errDeal:
-	logMsg := getReturnMessage(AdminLoadDataPartition, r.RemoteAddr, err.Error(), http.StatusBadRequest)
+	logMsg := getReturnMessage(adminLoadDataPartition, r.RemoteAddr, err.Error(), http.StatusBadRequest)
 	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
-func (m *Master) dataPartitionOffline(w http.ResponseWriter, r *http.Request) {
+func (m *Server) dataPartitionOffline(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName     string
 		vol         *Vol
@@ -330,19 +335,19 @@ func (m *Master) dataPartitionOffline(w http.ResponseWriter, r *http.Request) {
 	if dp, err = vol.getDataPartitionByID(partitionID); err != nil {
 		goto errDeal
 	}
-	if err = m.cluster.dataPartitionOffline(addr, volName, dp, HandleDataPartitionOfflineErr); err != nil {
+	if err = m.cluster.dataPartitionOffline(addr, volName, dp, handleDataPartitionOfflineErr); err != nil {
 		goto errDeal
 	}
-	rstMsg = fmt.Sprintf(AdminDataPartitionOffline+" dataPartitionID :%v  on node:%v  has offline success", partitionID, addr)
+	rstMsg = fmt.Sprintf(adminDataPartitionOffline+" dataPartitionID :%v  on node:%v  has offline success", partitionID, addr)
 	m.sendOkReply(w, r, rstMsg)
 	return
 errDeal:
-	logMsg := getReturnMessage(AdminDataPartitionOffline, r.RemoteAddr, err.Error(), http.StatusBadRequest)
+	logMsg := getReturnMessage(adminDataPartitionOffline, r.RemoteAddr, err.Error(), http.StatusBadRequest)
 	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
-func (m *Master) markDeleteVol(w http.ResponseWriter, r *http.Request) {
+func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		name string
 		err  error
@@ -366,7 +371,7 @@ errDeal:
 	return
 }
 
-func (m *Master) updateVol(w http.ResponseWriter, r *http.Request) {
+func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		name     string
 		err      error
@@ -388,7 +393,7 @@ errDeal:
 	return
 }
 
-func (m *Master) createVol(w http.ResponseWriter, r *http.Request) {
+func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		name        string
 		err         error
@@ -419,7 +424,7 @@ errDeal:
 	return
 }
 
-func (m *Master) addDataNode(w http.ResponseWriter, r *http.Request) {
+func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
 		id       uint64
@@ -440,7 +445,7 @@ errDeal:
 	return
 }
 
-func (m *Master) getDataNode(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
 		dataNode *DataNode
@@ -454,7 +459,7 @@ func (m *Master) getDataNode(w http.ResponseWriter, r *http.Request) {
 	if dataNode, err = m.cluster.getDataNode(nodeAddr); err != nil {
 		goto errDeal
 	}
-	if body, err = dataNode.toJson(); err != nil {
+	if body, err = dataNode.toJSON(); err != nil {
 		goto errDeal
 	}
 	m.sendOkReply(w, r, string(body))
@@ -465,7 +470,7 @@ errDeal:
 	return
 }
 
-func (m *Master) dataNodeOffline(w http.ResponseWriter, r *http.Request) {
+func (m *Server) dataNodeOffline(w http.ResponseWriter, r *http.Request) {
 	var (
 		node        *DataNode
 		rstMsg      string
@@ -492,7 +497,7 @@ errDeal:
 	return
 }
 
-func (m *Master) diskOffline(w http.ResponseWriter, r *http.Request) {
+func (m *Server) diskOffline(w http.ResponseWriter, r *http.Request) {
 	var (
 		node                  *DataNode
 		rstMsg                string
@@ -528,7 +533,7 @@ errDeal:
 	return
 }
 
-func (m *Master) dataNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
+func (m *Server) dataNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
 	var (
 		dataNode *DataNode
 		code     = http.StatusOK
@@ -557,7 +562,7 @@ errDeal:
 	return
 }
 
-func (m *Master) addMetaNode(w http.ResponseWriter, r *http.Request) {
+func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
 		id       uint64
@@ -588,7 +593,7 @@ func parseAddDataNodePara(r *http.Request) (nodeAddr string, err error) {
 	return checkNodeAddr(r)
 }
 
-func (m *Master) getMetaNode(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
 		metaNode *MetaNode
@@ -602,7 +607,7 @@ func (m *Master) getMetaNode(w http.ResponseWriter, r *http.Request) {
 	if metaNode, err = m.cluster.getMetaNode(nodeAddr); err != nil {
 		goto errDeal
 	}
-	if body, err = metaNode.toJson(); err != nil {
+	if body, err = metaNode.toJSON(); err != nil {
 		goto errDeal
 	}
 	m.sendOkReply(w, r, string(body))
@@ -613,7 +618,7 @@ errDeal:
 	return
 }
 
-func (m *Master) metaPartitionOffline(w http.ResponseWriter, r *http.Request) {
+func (m *Server) metaPartitionOffline(w http.ResponseWriter, r *http.Request) {
 	var (
 		partitionID       uint64
 		volName, nodeAddr string
@@ -627,16 +632,16 @@ func (m *Master) metaPartitionOffline(w http.ResponseWriter, r *http.Request) {
 	if err = m.cluster.metaPartitionOffline(volName, nodeAddr, partitionID); err != nil {
 		goto errDeal
 	}
-	msg = fmt.Sprintf(AdminLoadMetaPartition+" partitionID :%v  metaPartitionOffline success", partitionID)
+	msg = fmt.Sprintf(adminLoadMetaPartition+" partitionID :%v  metaPartitionOffline success", partitionID)
 	m.sendOkReply(w, r, msg)
 	return
 errDeal:
-	logMsg := getReturnMessage(AdminMetaPartitionOffline, r.RemoteAddr, err.Error(), http.StatusBadRequest)
+	logMsg := getReturnMessage(adminMetaPartitionOffline, r.RemoteAddr, err.Error(), http.StatusBadRequest)
 	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
-func (m *Master) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
+func (m *Server) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName     string
 		vol         *Vol
@@ -658,16 +663,16 @@ func (m *Master) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m.cluster.loadMetaPartitionAndCheckResponse(mp)
-	msg = fmt.Sprintf(AdminLoadMetaPartition+" partitionID :%v  Load success", partitionID)
+	msg = fmt.Sprintf(adminLoadMetaPartition+" partitionID :%v  Load success", partitionID)
 	m.sendOkReply(w, r, msg)
 	return
 errDeal:
-	logMsg := getReturnMessage(AdminLoadMetaPartition, r.RemoteAddr, err.Error(), http.StatusBadRequest)
+	logMsg := getReturnMessage(adminLoadMetaPartition, r.RemoteAddr, err.Error(), http.StatusBadRequest)
 	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
 
-func (m *Master) metaNodeOffline(w http.ResponseWriter, r *http.Request) {
+func (m *Server) metaNodeOffline(w http.ResponseWriter, r *http.Request) {
 	var (
 		metaNode    *MetaNode
 		rstMsg      string
@@ -692,7 +697,7 @@ errDeal:
 	return
 }
 
-func (m *Master) metaNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
+func (m *Server) metaNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
 	var (
 		metaNode *MetaNode
 		code     = http.StatusOK
@@ -721,7 +726,7 @@ errDeal:
 	return
 }
 
-func (m *Master) handleAddRaftNode(w http.ResponseWriter, r *http.Request) {
+func (m *Server) handleAddRaftNode(w http.ResponseWriter, r *http.Request) {
 	var msg string
 	id, addr, err := parseRaftNodePara(r)
 	if err != nil {
@@ -740,7 +745,7 @@ errDeal:
 	return
 }
 
-func (m *Master) handleRemoveRaftNode(w http.ResponseWriter, r *http.Request) {
+func (m *Server) handleRemoveRaftNode(w http.ResponseWriter, r *http.Request) {
 	var msg string
 	id, addr, err := parseRaftNodePara(r)
 	if err != nil {
@@ -762,21 +767,21 @@ errDeal:
 func parseRaftNodePara(r *http.Request) (id uint64, host string, err error) {
 	r.ParseForm()
 	var idStr string
-	if idStr = r.FormValue(ParaId); idStr == "" {
-		err = paraNotFound(ParaId)
+	if idStr = r.FormValue(paraID); idStr == "" {
+		err = paraNotFound(paraID)
 		return
 	}
 
 	if id, err = strconv.ParseUint(idStr, 10, 64); err != nil {
 		return
 	}
-	if host = r.FormValue(ParaNodeAddr); host == "" {
-		err = paraNotFound(ParaNodeAddr)
+	if host = r.FormValue(paraNodeAddr); host == "" {
+		err = paraNotFound(paraNodeAddr)
 		return
 	}
 
-	if arr := strings.Split(host, ColonSplit); len(arr) < 2 {
-		err = UnMatchPara
+	if arr := strings.Split(host, colonSplit); len(arr) < 2 {
+		err = paraUnmatch(paraNodeAddr)
 		return
 	}
 	return
@@ -831,12 +836,12 @@ func parseUpdateVolPara(r *http.Request) (name string, capacity int, err error) 
 	if name, err = checkVolPara(r); err != nil {
 		return
 	}
-	if capacityStr := r.FormValue(ParaVolCapacity); capacityStr != "" {
+	if capacityStr := r.FormValue(paraVolCapacity); capacityStr != "" {
 		if capacity, err = strconv.Atoi(capacityStr); err != nil {
-			err = UnMatchPara
+			err = paraUnmatch(paraVolCapacity)
 		}
 	} else {
-		err = paraNotFound(ParaVolCapacity)
+		err = paraNotFound(paraVolCapacity)
 	}
 	return
 }
@@ -847,15 +852,15 @@ func parseCreateVolPara(r *http.Request) (name string, replicaNum int, randomWri
 	if name, err = checkVolPara(r); err != nil {
 		return
 	}
-	if replicaStr := r.FormValue(ParaReplicas); replicaStr == "" {
-		err = paraNotFound(ParaReplicas)
+	if replicaStr := r.FormValue(paraReplicas); replicaStr == "" {
+		err = paraNotFound(paraReplicas)
 		return
 	} else if replicaNum, err = strconv.Atoi(replicaStr); err != nil || replicaNum < 2 {
-		err = UnMatchPara
+		err = paraUnmatch(paraReplicas)
 	}
 
-	if randomWriteValue = r.FormValue(ParaRandomWrite); randomWriteValue == "" {
-		err = paraNotFound(ParaRandomWrite)
+	if randomWriteValue = r.FormValue(paraRandomWrite); randomWriteValue == "" {
+		err = paraNotFound(paraRandomWrite)
 		return
 	}
 
@@ -863,29 +868,29 @@ func parseCreateVolPara(r *http.Request) (name string, replicaNum int, randomWri
 		return
 	}
 
-	if sizeStr := r.FormValue(ParaDataPartitionSize); sizeStr != "" {
+	if sizeStr := r.FormValue(paraDataPartitionSize); sizeStr != "" {
 		if size, err = strconv.Atoi(sizeStr); err != nil {
-			err = UnMatchPara
+			err = paraUnmatch(paraDataPartitionSize)
 		}
 	}
 
-	if capacityStr := r.FormValue(ParaVolCapacity); capacityStr != "" {
+	if capacityStr := r.FormValue(paraVolCapacity); capacityStr != "" {
 		if capacity, err = strconv.Atoi(capacityStr); err != nil {
-			err = UnMatchPara
+			err = paraUnmatch(paraVolCapacity)
 		}
 	} else {
-		capacity = DefaultVolCapacity
+		capacity = defaultVolCapacity
 	}
 	return
 }
 
 func parseCreateDataPartitionPara(r *http.Request) (count int, name string, err error) {
 	r.ParseForm()
-	if countStr := r.FormValue(ParaCount); countStr == "" {
-		err = paraNotFound(ParaCount)
+	if countStr := r.FormValue(paraCount); countStr == "" {
+		err = paraNotFound(paraCount)
 		return
 	} else if count, err = strconv.Atoi(countStr); err != nil || count == 0 {
-		err = UnMatchPara
+		err = paraUnmatch(paraCount)
 		return
 	}
 	if name, err = checkVolPara(r); err != nil {
@@ -912,8 +917,8 @@ func parseDataPartitionIDAndVol(r *http.Request) (ID uint64, name string, err er
 
 func checkDataPartitionID(r *http.Request) (ID uint64, err error) {
 	var value string
-	if value = r.FormValue(ParaId); value == "" {
-		err = paraNotFound(ParaId)
+	if value = r.FormValue(paraID); value == "" {
+		err = paraNotFound(paraID)
 		return
 	}
 	return strconv.ParseUint(value, 10, 64)
@@ -935,16 +940,16 @@ func parseDataPartitionOfflinePara(r *http.Request) (nodeAddr string, ID uint64,
 }
 
 func checkNodeAddr(r *http.Request) (nodeAddr string, err error) {
-	if nodeAddr = r.FormValue(ParaNodeAddr); nodeAddr == "" {
-		err = paraNotFound(ParaNodeAddr)
+	if nodeAddr = r.FormValue(paraNodeAddr); nodeAddr == "" {
+		err = paraNotFound(paraNodeAddr)
 		return
 	}
 	return
 }
 
 func checkDiskPath(r *http.Request) (nodeAddr string, err error) {
-	if nodeAddr = r.FormValue(ParaDiskPath); nodeAddr == "" {
-		err = paraNotFound(ParaDiskPath)
+	if nodeAddr = r.FormValue(paraDiskPath); nodeAddr == "" {
+		err = paraNotFound(paraDiskPath)
 		return
 	}
 	return
@@ -982,8 +987,8 @@ func parseDisableAutoAlloc(r *http.Request) (status bool, err error) {
 
 func checkEnable(r *http.Request) (status bool, err error) {
 	var value string
-	if value = r.FormValue(ParaEnable); value == "" {
-		err = ParaEnableNotFound
+	if value = r.FormValue(paraEnable); value == "" {
+		err = paraNotFound(paraEnable)
 		return
 	}
 	if status, err = strconv.ParseBool(value); err != nil {
@@ -995,8 +1000,8 @@ func checkEnable(r *http.Request) (status bool, err error) {
 func parseSetMetaNodeThresholdPara(r *http.Request) (threshold float64, err error) {
 	r.ParseForm()
 	var value string
-	if value = r.FormValue(ParaThreshold); value == "" {
-		err = paraNotFound(ParaThreshold)
+	if value = r.FormValue(paraThreshold); value == "" {
+		err = paraNotFound(paraThreshold)
 		return
 	}
 	if threshold, err = strconv.ParseFloat(value, 64); err != nil {
@@ -1011,22 +1016,22 @@ func parseCreateMetaPartitionPara(r *http.Request) (volName string, start uint64
 	}
 
 	var value string
-	if value = r.FormValue(ParaStart); value == "" {
-		err = paraNotFound(ParaStart)
+	if value = r.FormValue(paraStart); value == "" {
+		err = paraNotFound(paraStart)
 		return
 	}
 	start, err = strconv.ParseUint(value, 10, 64)
 	return
 }
 
-func (m *Master) sendOkReply(w http.ResponseWriter, r *http.Request, msg string) {
+func (m *Server) sendOkReply(w http.ResponseWriter, r *http.Request, msg string) {
 	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
 	w.Header().Set("content-type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(msg)))
 	w.Write([]byte(msg))
 }
 
-func (m *Master) sendErrReply(w http.ResponseWriter, r *http.Request, httpCode int, msg string, err error) {
+func (m *Server) sendErrReply(w http.ResponseWriter, r *http.Request, httpCode int, msg string, err error) {
 	log.LogInfof("URL[%v],remoteAddr[%v],response err", r.URL, r.RemoteAddr)
 	HandleError(msg, err, httpCode, w)
 }
