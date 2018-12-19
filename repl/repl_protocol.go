@@ -228,7 +228,7 @@ func (rp *ReplProtocol) reciveAllFollowerResponse() {
 	}
 	request := e.Value.(*Packet)
 	defer func() {
-		rp.DelPacketFromList(request)
+		rp.deletePacket(request)
 	}()
 	for index := 0; index < len(request.followersAddrs); index++ {
 		err := rp.receiveFromFollower(request, index)
@@ -404,7 +404,7 @@ func (rp *ReplProtocol) CleanResource() {
 }
 
 /*delete source packet*/
-func (rp *ReplProtocol) DelPacketFromList(reply *Packet) (success bool) {
+func (rp *ReplProtocol) deletePacket(reply *Packet) (success bool) {
 	rp.listMux.Lock()
 	defer rp.listMux.Unlock()
 	for e := rp.packetList.Front(); e != nil; e = e.Next() {
