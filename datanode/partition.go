@@ -558,7 +558,7 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 	return
 }
 
-func (dp *DataPartition) GetAllExtentsMeta() (files []*storage.FileInfo, err error) {
+func (dp *DataPartition) GetAllExtentsMeta() (files []*storage.ExtentInfo, err error) {
 	files, err = dp.extentStore.GetAllWatermark(storage.GetStableExtentFilter())
 	if err != nil {
 		return nil, err
@@ -574,7 +574,7 @@ func (dp *DataPartition) MergeExtentStoreRepair(metas *DataPartitionRepairTask) 
 			continue
 		}
 		if store.IsExistExtent(uint64(addExtent.FileId)) {
-			fixFileSizeTask := &storage.FileInfo{Source: addExtent.Source, FileId: addExtent.FileId, Size: addExtent.Size}
+			fixFileSizeTask := &storage.ExtentInfo{Source: addExtent.Source, FileId: addExtent.FileId, Size: addExtent.Size}
 			metas.FixExtentSizeTasks = append(metas.FixExtentSizeTasks, fixFileSizeTask)
 			continue
 		}
@@ -582,7 +582,7 @@ func (dp *DataPartition) MergeExtentStoreRepair(metas *DataPartitionRepairTask) 
 		if err != nil {
 			continue
 		}
-		fixFileSizeTask := &storage.FileInfo{Source: addExtent.Source, FileId: addExtent.FileId, Size: addExtent.Size}
+		fixFileSizeTask := &storage.ExtentInfo{Source: addExtent.Source, FileId: addExtent.FileId, Size: addExtent.Size}
 		metas.FixExtentSizeTasks = append(metas.FixExtentSizeTasks, fixFileSizeTask)
 	}
 	var (

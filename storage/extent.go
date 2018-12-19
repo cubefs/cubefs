@@ -40,7 +40,7 @@ var (
 	BrokenExtentFileErr = errors.New("broken extent file error")
 )
 
-type FileInfo struct {
+type ExtentInfo struct {
 	FileId  uint64    `json:"fileId"`
 	Inode   uint64    `json:"ino"`
 	Size    uint64    `json:"size"`
@@ -50,7 +50,7 @@ type FileInfo struct {
 	Source  string    `json:"src"`
 }
 
-func (ei *FileInfo) FromExtent(extent *Extent) {
+func (ei *ExtentInfo) FromExtent(extent *Extent) {
 	if extent != nil {
 		ei.FileId = extent.ID()
 		ei.Inode = extent.Ino()
@@ -63,7 +63,7 @@ func (ei *FileInfo) FromExtent(extent *Extent) {
 	}
 }
 
-func (ei *FileInfo) String() (m string) {
+func (ei *ExtentInfo) String() (m string) {
 	source := ei.Source
 	if source == "" {
 		source = "none"

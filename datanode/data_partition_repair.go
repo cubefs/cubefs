@@ -58,16 +58,16 @@ There are 2 types of repairs, one is normal extent repair, and the other is tiny
 type DataPartitionRepairTask struct {
 	TaskType           uint8 //which type task
 	addr               string
-	extents            map[uint64]*storage.FileInfo //storage file on datapartion disk meta
-	AddExtentsTasks    []*storage.FileInfo          //generator add extent file task
-	FixExtentSizeTasks []*storage.FileInfo          //generator fixSize file task
+	extents            map[uint64]*storage.ExtentInfo //storage file on datapartion disk meta
+	AddExtentsTasks    []*storage.ExtentInfo          //generator add extent file task
+	FixExtentSizeTasks []*storage.ExtentInfo          //generator fixSize file task
 }
 
-func NewDataPartitionRepairTask(extentFiles []*storage.FileInfo) (task *DataPartitionRepairTask) {
+func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo) (task *DataPartitionRepairTask) {
 	task = &DataPartitionRepairTask{
-		extents:            make(map[uint64]*storage.FileInfo),
-		AddExtentsTasks:    make([]*storage.FileInfo, 0),
-		FixExtentSizeTasks: make([]*storage.FileInfo, 0),
+		extents:            make(map[uint64]*storage.ExtentInfo),
+		AddExtentsTasks:    make([]*storage.ExtentInfo, 0),
+		FixExtentSizeTasks: make([]*storage.ExtentInfo, 0),
 	}
 	for _, extentFile := range extentFiles {
 		task.extents[extentFile.FileId] = extentFile
@@ -158,8 +158,8 @@ func (dp *DataPartition) fillDataPartitionRepairTask(replicas []*DataPartitionRe
 }
 
 // Depending on the type of repair, call store GetAllWaterMark
-func (dp *DataPartition) getLocalExtentInfo(fixExtentMode uint8, needFixExtents []uint64) (extentFiles []*storage.FileInfo, err error) {
-	extentFiles = make([]*storage.FileInfo, 0)
+func (dp *DataPartition) getLocalExtentInfo(fixExtentMode uint8, needFixExtents []uint64) (extentFiles []*storage.ExtentInfo, err error) {
+	extentFiles = make([]*storage.ExtentInfo, 0)
 	// get local extent file metas
 	if fixExtentMode == proto.NormalExtentMode {
 		extentFiles, err = dp.extentStore.GetAllWatermark(storage.GetStableExtentFilter())
@@ -174,8 +174,8 @@ func (dp *DataPartition) getLocalExtentInfo(fixExtentMode uint8, needFixExtents 
 }
 
 // call followers get extent all watner marker ,about all extents meta
-func (dp *DataPartition) getRemoteExtentInfo(fixExtentMode uint8, needFixExtents []uint64, target string) (extentFiles []*storage.FileInfo, err error) {
-	extentFiles = make([]*storage.FileInfo, 0)
+func (dp *DataPartition) getRemoteExtentInfo(fixExtentMode uint8, needFixExtents []uint64, target string) (extentFiles []*storage.ExtentInfo, err error) {
+	extentFiles = make([]*storage.ExtentInfo, 0)
 	p := repl.NewGetAllWaterMarker(dp.partitionId, fixExtentMode)
 	if fixExtentMode == proto.TinyExtentMode {
 		p.Data, err = json.Marshal(needFixExtents)
@@ -274,8 +274,8 @@ func (dp *DataPartition) generatorExtentRepairTasks(allReplicas []*DataPartition
 
 /* pasre all extent,select maxExtentSize to member index map
  */
-func (dp *DataPartition) getSizeMaxExtentMap(allReplicas []*DataPartitionRepairTask) (maxSizeExtentMap map[uint64]*storage.FileInfo) {
-	maxSizeExtentMap = make(map[uint64]*storage.FileInfo)
+func (dp *DataPartition) getSizeMaxExtentMap(allReplicas []*DataPartitionRepairTask) (maxSizeExtentMap map[uint64]*storage.ExtentInfo) {
+	maxSizeExtentMap = make(map[uint64]*storage.ExtentInfo)
 	for index := 0; index < len(allReplicas); index++ {
 		member := allReplicas[index]
 		for extentID, extentInfo := range member.extents {
@@ -297,7 +297,7 @@ func (dp *DataPartition) getSizeMaxExtentMap(allReplicas []*DataPartitionRepairT
 }
 
 /*generator add extent if follower not have this extent*/
-func (dp *DataPartition) generatorAddExtentsTasks(allReplicas []*DataPartitionRepairTask, maxSizeExtentMap map[uint64]*storage.FileInfo) {
+func (dp *DataPartition) generatorAddExtentsTasks(allReplicas []*DataPartitionRepairTask, maxSizeExtentMap map[uint64]*storage.ExtentInfo) {
 	for extentID, maxExtentInfo := range maxSizeExtentMap {
 		if storage.IsTinyExtent(extentID) {
 			continue
@@ -308,7 +308,7 @@ func (dp *DataPartition) generatorAddExtentsTasks(allReplicas []*DataPartitionRe
 				if maxExtentInfo.Inode == 0 {
 					continue
 				}
-				addFile := &storage.FileInfo{Source: maxExtentInfo.Source, FileId: extentID, Size: maxExtentInfo.Size, Inode: maxExtentInfo.Inode}
+				addFile := &storage.ExtentInfo{Source: maxExtentInfo.Source, FileId: extentID, Size: maxExtentInfo.Size, Inode: maxExtentInfo.Inode}
 				follower.AddExtentsTasks = append(follower.AddExtentsTasks, addFile)
 				follower.FixExtentSizeTasks = append(follower.FixExtentSizeTasks, addFile)
 				log.LogInfof("action[generatorAddExtentsTasks] partition(%v) addFile(%v) on Index(%v).", dp.partitionId, addFile, index)
@@ -318,7 +318,7 @@ func (dp *DataPartition) generatorAddExtentsTasks(allReplicas []*DataPartitionRe
 }
 
 /*generator fix extent Size ,if all members  Not the same length*/
-func (dp *DataPartition) generatorFixExtentSizeTasks(allMembers []*DataPartitionRepairTask, maxSizeExtentMap map[uint64]*storage.FileInfo) (noNeedFix []uint64, needFix []uint64) {
+func (dp *DataPartition) generatorFixExtentSizeTasks(allMembers []*DataPartitionRepairTask, maxSizeExtentMap map[uint64]*storage.ExtentInfo) (noNeedFix []uint64, needFix []uint64) {
 	noNeedFix = make([]uint64, 0)
 	needFix = make([]uint64, 0)
 	for extentID, maxFileInfo := range maxSizeExtentMap {
@@ -329,13 +329,13 @@ func (dp *DataPartition) generatorFixExtentSizeTasks(allMembers []*DataPartition
 				continue
 			}
 			if extentInfo.Size < maxFileInfo.Size {
-				fixExtent := &storage.FileInfo{Source: maxFileInfo.Source, FileId: extentID, Size: maxFileInfo.Size, Inode: maxFileInfo.Inode}
+				fixExtent := &storage.ExtentInfo{Source: maxFileInfo.Source, FileId: extentID, Size: maxFileInfo.Size, Inode: maxFileInfo.Inode}
 				allMembers[index].FixExtentSizeTasks = append(allMembers[index].FixExtentSizeTasks, fixExtent)
 				log.LogInfof("action[generatorFixExtentSizeTasks] partition(%v) fixExtent(%v).", dp.partitionId, fixExtent)
 				isFix = false
 			}
 			if maxFileInfo.Inode != 0 && extentInfo.Inode == 0 {
-				fixExtent := &storage.FileInfo{Source: maxFileInfo.Source, FileId: extentID, Size: maxFileInfo.Size, Inode: maxFileInfo.Inode}
+				fixExtent := &storage.ExtentInfo{Source: maxFileInfo.Source, FileId: extentID, Size: maxFileInfo.Size, Inode: maxFileInfo.Inode}
 				allMembers[index].FixExtentSizeTasks = append(allMembers[index].FixExtentSizeTasks, fixExtent)
 				log.LogInfof("action[generatorFixExtentSizeTasks] partition(%v) Modify Ino fixExtent(%v).", dp.partitionId, fixExtent)
 			}
@@ -425,7 +425,7 @@ func (dp *DataPartition) NotifyRaftFollowerRepair(members *DataPartitionRepairTa
 
 // DoStreamExtentFixRepair executed on follower node of data partition.
 // It receive from leader notifyRepair command extent file repair.
-func (dp *DataPartition) doStreamExtentFixRepair(wg *sync.WaitGroup, remoteExtentInfo *storage.FileInfo) {
+func (dp *DataPartition) doStreamExtentFixRepair(wg *sync.WaitGroup, remoteExtentInfo *storage.ExtentInfo) {
 	defer wg.Done()
 
 	err := dp.streamRepairExtent(remoteExtentInfo)
@@ -447,7 +447,7 @@ func (dp *DataPartition) applyRepairKey(extentID int) (m string) {
 }
 
 //extent file repair function,do it on follower host
-func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.FileInfo) (err error) {
+func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo) (err error) {
 	store := dp.GetStore()
 	if !store.IsExistExtent(remoteExtentInfo.FileId) {
 		return

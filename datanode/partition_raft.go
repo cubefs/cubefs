@@ -425,7 +425,7 @@ func (s *DataNode) stopRaftServer() {
 }
 
 // Create task to repair extent files
-func (dp *DataPartition) ExtentRepair(extentFiles []*storage.FileInfo) {
+func (dp *DataPartition) ExtentRepair(extentFiles []*storage.ExtentInfo) {
 	startTime := time.Now().UnixNano()
 	log.LogInfof("action[ExtentRepair] partition=%v start.", dp.partitionId)
 
@@ -433,7 +433,7 @@ func (dp *DataPartition) ExtentRepair(extentFiles []*storage.FileInfo) {
 
 	for i := 0; i < len(extentFiles); i++ {
 		extentFile := extentFiles[i]
-		addFile := &storage.FileInfo{Source: extentFile.Source, FileId: extentFile.FileId, Size: extentFile.Size, Inode: extentFile.Inode}
+		addFile := &storage.ExtentInfo{Source: extentFile.Source, FileId: extentFile.FileId, Size: extentFile.Size, Inode: extentFile.Inode}
 		mf.AddExtentsTasks = append(mf.AddExtentsTasks, addFile)
 		log.LogDebugf("action[ExtentRepair] partition=%v extent [%v_%v] addFile[%v].",
 			dp.partitionId, dp.partitionId, extentFile.FileId, addFile)
@@ -447,7 +447,7 @@ func (dp *DataPartition) ExtentRepair(extentFiles []*storage.FileInfo) {
 }
 
 // GetConnect all extents information
-func (dp *DataPartition) getExtentInfo(targetAddr string) (extentFiles []*storage.FileInfo, err error) {
+func (dp *DataPartition) getExtentInfo(targetAddr string) (extentFiles []*storage.ExtentInfo, err error) {
 	// get remote extents meta by opGetAllWaterMarker cmd
 	p := repl.NewGetAllWaterMarker(dp.partitionId, proto.NormalExtentMode)
 	var conn *net.TCPConn
@@ -469,7 +469,7 @@ func (dp *DataPartition) getExtentInfo(targetAddr string) (extentFiles []*storag
 		err = errors.Annotatef(err, "getExtentInfo partition=%v read from host[%v]", dp.partitionId, target)
 		return
 	}
-	fileInfos := make([]*storage.FileInfo, 0)
+	fileInfos := make([]*storage.ExtentInfo, 0)
 	err = json.Unmarshal(p.Data[:p.Size], &fileInfos)
 	if err != nil {
 		gConnPool.PutConnect(conn, true)
@@ -477,7 +477,7 @@ func (dp *DataPartition) getExtentInfo(targetAddr string) (extentFiles []*storag
 		return
 	}
 
-	extentFiles = make([]*storage.FileInfo, 0)
+	extentFiles = make([]*storage.ExtentInfo, 0)
 	for _, fileInfo := range fileInfos {
 		extentFiles = append(extentFiles, fileInfo)
 	}
