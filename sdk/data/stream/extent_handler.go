@@ -102,8 +102,8 @@ func NewExtentHandler(sw *StreamWriter, offset int, storeMode int) *ExtentHandle
 		fileOffset:   offset,
 		storeMode:    storeMode,
 		empty:        make(chan struct{}, 1024),
-		request:      make(chan *Packet, 10240),
-		reply:        make(chan *Packet, 10240),
+		request:      make(chan *Packet, 1024),
+		reply:        make(chan *Packet, 1024),
 		doneSender:   make(chan struct{}),
 		doneReceiver: make(chan struct{}),
 	}
@@ -187,10 +187,11 @@ func (eh *ExtentHandler) sender() {
 			// Initialize dp, conn, and extID
 			if eh.dp == nil {
 				if err = eh.allocateExtent(); err != nil {
-					log.LogWarnf("sender allocateExtent: failed, eh(%v) err(%v)", eh, err)
 					eh.setClosed()
 					eh.setRecovery()
+					eh.setError()
 					eh.reply <- packet
+					log.LogErrorf("sender: eh(%v) err(%v)", eh, err)
 					continue
 				}
 			}
@@ -209,14 +210,13 @@ func (eh *ExtentHandler) sender() {
 
 			//log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
 
-			// send to reply channel
 			if err = packet.writeTo(eh.conn); err != nil {
 				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
 				eh.setClosed()
 				eh.setRecovery()
 			}
-
 			eh.reply <- packet
+
 			log.LogDebugf("ExtentHandler sender: sent to the reply channel, eh(%v) packet(%v)", eh, packet)
 
 		case <-eh.doneSender:
@@ -257,6 +257,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 
 	status := eh.getStatus()
 	if status >= ExtentStatusError {
+		proto.Buffers.Put(packet.Data)
 		log.LogErrorf("processReply discard packet: handler is in error status, inflight(%v) eh(%v) packet(%v)", atomic.LoadInt32(&eh.inflight), eh, packet)
 		return
 	} else if status >= ExtentStatusRecovery {
@@ -308,6 +309,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		eh.key.Size += packet.Size
 	}
 
+	proto.Buffers.Put(packet.Data)
 	eh.dirty = true
 	return
 }
@@ -318,6 +320,7 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 	if packet.errCount >= MaxPacketErrorCount {
 		// discard packet
 		eh.setError()
+		proto.Buffers.Put(packet.Data)
 		log.LogErrorf("processReplyError discard packet: packet err count reaches max limit, eh(%v) packet(%v) err(%v)", eh, packet, errmsg)
 	} else {
 		eh.recoverPacket(packet)
@@ -388,6 +391,7 @@ func (eh *ExtentHandler) waitForFlush() {
 func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 	packet.errCount++
 	if packet.errCount >= MaxPacketErrorCount {
+		proto.Buffers.Put(packet.Data)
 		return errors.New(fmt.Sprintf("recoverPacket failed: reach max error limit, eh(%v) packet(%v)", eh, packet))
 	}
 
@@ -440,7 +444,12 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 		return nil
 	}
 
-	err = errors.New(fmt.Sprintf("ExtentHandler allocateExtent: failed, reach maximum retry limit, eh(%v)", eh))
+	errmsg := fmt.Sprintf("allocateExtent failed: hit max retry limit")
+	if err != nil {
+		err = errors.Annotate(err, errmsg)
+	} else {
+		err = errors.New(errmsg)
+	}
 	return err
 }
 
