@@ -31,20 +31,18 @@ import (
 	"strings"
 )
 
-/*
- The raft interface need implement by application.
- Apply the raft wal to disk.
-*/
+// Apply the raft wal to disk.
+// The raft interface need implement by application.
 func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
 	opItem := &rndWrtOpItem{}
 	defer func(index uint64) {
 		if err != nil {
-			umpKey := fmt.Sprintf("%s_datapartition_apply_err", dp.clusterId)
-			prefix := fmt.Sprintf("datapartition_%v_extent_%v", dp.partitionId, opItem.extentId)
+			umpKey := fmt.Sprintf("%s_datapartition_apply_err", dp.clusterID)
+			prefix := fmt.Sprintf("datapartition_%v_extent_%v", dp.partitionID, opItem.extentID)
 			err = errors.Annotatef(err, prefix)
 			ump.Alarm(umpKey, err.Error())
 			resp = proto.OpExistErr
-			dp.repairC <- opItem.extentId
+			dp.repairC <- opItem.extentID
 		} else {
 			dp.uploadApplyID(index)
 			resp = proto.OpOk
@@ -61,13 +59,13 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			log.LogErrorf("randomWrite_%v err[%v] unmarshal failed", dp.ID(), err)
 			return
 		}
-		log.LogDebugf("randomWrite_%v_%v_%v_%v apply", dp.ID(), opItem.extentId, opItem.offset, opItem.size)
+		log.LogDebugf("randomWrite_%v_%v_%v_%v apply", dp.ID(), opItem.extentID, opItem.offset, opItem.size)
 		for i := 0; i < maxApplyErrRetry; i++ {
-			err = dp.GetStore().Write(opItem.extentId, opItem.offset, opItem.size, opItem.data, opItem.crc)
+			err = dp.GetStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc)
 			if err != nil {
 				if ignore := dp.checkWriteErrs(err.Error()); ignore {
 					log.LogErrorf("randomWrite_%v_%v_%v_%v extent file had deleted. err[%v]", dp.ID(),
-						opItem.extentId, opItem.offset, opItem.size, err)
+						opItem.extentID, opItem.offset, opItem.size, err)
 					err = nil
 				}
 			}
@@ -75,7 +73,7 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			if err == nil {
 				break
 			}
-			log.LogErrorf("randomWrite_%v_%v_%v_%v apply err[%v] retry[%v]", dp.ID(), opItem.extentId,
+			log.LogErrorf("randomWrite_%v_%v_%v_%v apply err[%v] retry[%v]", dp.ID(), opItem.extentID,
 				opItem.offset, opItem.size, err, i)
 		}
 	default:
@@ -85,10 +83,8 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	return
 }
 
-/*
- The raft interface need implement by application.
- Update the member information when member changed.
-*/
+// ApplyMemberChange Update the member information when member changed.
+// The raft interface need implement by application.
 func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
 	defer func(index uint64) {
 		dp.uploadApplyID(index)
@@ -111,29 +107,27 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		updated, err = dp.confUpdateNode(req, index)
 	}
 	if err != nil {
-		log.LogErrorf("action[ApplyMemberChange] dp[%v] type[%v] err[%v].", dp.partitionId, confChange.Type, err)
+		log.LogErrorf("action[ApplyMemberChange] dp[%v] type[%v] err[%v].", dp.partitionID, confChange.Type, err)
 		return
 	}
 	if updated {
 		if err = dp.StoreMeta(); err != nil {
-			log.LogErrorf("action[ApplyMemberChange] dp[%v] StoreMeta err[%v].", dp.partitionId, err)
+			log.LogErrorf("action[ApplyMemberChange] dp[%v] StoreMeta err[%v].", dp.partitionID, err)
 			return
 		}
 	}
 	return
 }
 
-// Data is already on the disk. Do not need snapshot.
+// Snapshot Data is already on the disk. Do not need snapshot.
 func (dp *DataPartition) Snapshot() (raftproto.Snapshot, error) {
-	applyID := dp.applyId
+	applyID := dp.applyID
 	snapIterator := NewItemIterator(applyID)
 	return snapIterator, nil
 }
 
-/*
- The raft interface need implement by application.
- Restore data from the member who have newest data.
-*/
+// ApplySnapshot Restore data from the member who have newest data.
+// The raft interface need implement by application.
 func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftproto.SnapIterator) (err error) {
 	var (
 		data        []byte
@@ -144,9 +138,9 @@ func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 	)
 	defer func() {
 		if err == io.EOF {
-			dp.applyId = appIndexID
+			dp.applyID = appIndexID
 			err = nil
-			log.LogDebugf("[ApplySnapshot] successful applyId[%v].", dp.applyId)
+			log.LogDebugf("[ApplySnapshot] successful applyID[%v].", dp.applyID)
 			return
 		}
 		if err != nil {
@@ -173,14 +167,14 @@ func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 
 	extentFiles, err = dp.getExtentInfo(targetAddr)
 	if err != nil {
-		err = errors.Annotatef(err, "[ApplySnapshot] getExtentInfo DataPartition[%v]", dp.partitionId)
+		err = errors.Annotatef(err, "[ApplySnapshot] getExtentInfo DataPartition[%v]", dp.partitionID)
 		return
 	}
 	dp.ExtentRepair(extentFiles)
 
 	data, err = iterator.Next()
 	appIndexID = binary.BigEndian.Uint64(data)
-	dp.applyId = appIndexID
+	dp.applyID = appIndexID
 	return
 }
 
@@ -191,9 +185,9 @@ func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
 
 func (dp *DataPartition) HandleLeaderChange(leader uint64) {
 	ump.Alarm(UmpModuleName, fmt.Sprintf("LeaderChange: partition=%d, "+
-		"newLeader=%d", dp.config.PartitionId, leader))
+		"newLeader=%d", dp.config.PartitionID, leader))
 
-	if dp.config.NodeId == leader {
+	if dp.config.NodeID == leader {
 		dp.isRaftLeader = true
 	}
 }
@@ -211,7 +205,7 @@ func (dp *DataPartition) Put(key, val interface{}) (resp interface{}, err error)
 	if val != nil {
 		item.V = val.([]byte)
 	}
-	cmd, err := item.rndWrtCmdMarshalJson()
+	cmd, err := item.rndWrtCmdMarshalJSON()
 	if err != nil {
 		return
 	}
@@ -229,6 +223,6 @@ func (dp *DataPartition) Del(key interface{}) (interface{}, error) {
 	return nil, nil
 }
 
-func (dp *DataPartition) uploadApplyID(applyId uint64) {
-	atomic.StoreUint64(&dp.applyId, applyId)
+func (dp *DataPartition) uploadApplyID(applyID uint64) {
+	atomic.StoreUint64(&dp.applyID, applyID)
 }

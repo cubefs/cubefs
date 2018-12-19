@@ -29,7 +29,7 @@ const (
 type Config struct {
 	NodeID        uint64 // Identity of raft server instance.
 	WalPath       string // Path of WAL(Write after Log)
-	IpAddr        string // IP address of node
+	IPAddr        string // IP address of node
 	HeartbeatPort int
 	ReplicatePort int
 	RetainLogs    uint64 // // RetainLogs controls how many logs we leave after truncate. The default value is 20000.

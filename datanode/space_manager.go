@@ -27,11 +27,11 @@ import (
 )
 
 type SpaceManager struct {
-	clusterId         string
+	clusterID         string
 	disks             map[string]*Disk
 	partitions        map[uint64]*DataPartition
 	raftStore         raftstore.RaftStore
-	nodeId            uint64
+	nodeID            uint64
 	diskMu            sync.RWMutex
 	partitionMu       sync.RWMutex
 	stats             *Stats
@@ -63,20 +63,20 @@ func (space *SpaceManager) Stop() {
 	close(space.stopC)
 }
 
-func (space *SpaceManager) SetNodeId(nodeId uint64) {
-	space.nodeId = nodeId
+func (space *SpaceManager) SetNodeID(nodeID uint64) {
+	space.nodeID = nodeID
 }
 
-func (space *SpaceManager) GetNodeId() (nodeId uint64) {
-	return space.nodeId
+func (space *SpaceManager) GetNodeID() (nodeID uint64) {
+	return space.nodeID
 }
 
-func (space *SpaceManager) SetClusterId(clusterId string) {
-	space.clusterId = clusterId
+func (space *SpaceManager) SetClusterID(clusterID string) {
+	space.clusterID = clusterID
 }
 
-func (space *SpaceManager) GetClusterId() (clusterId string) {
-	return space.clusterId
+func (space *SpaceManager) GetClusterID() (clusterID string) {
+	return space.clusterID
 }
 
 func (space *SpaceManager) SetRaftStore(raftStore raftstore.RaftStore) {
@@ -244,10 +244,10 @@ func (space *SpaceManager) flushDelete() {
 	}
 }
 
-func (space *SpaceManager) GetPartition(partitionId uint64) (dp *DataPartition) {
+func (space *SpaceManager) GetPartition(partitionID uint64) (dp *DataPartition) {
 	space.partitionMu.RLock()
 	defer space.partitionMu.RUnlock()
-	dp = space.partitions[partitionId]
+	dp = space.partitions[partitionID]
 
 	return
 }
@@ -263,16 +263,16 @@ func (space *SpaceManager) CreatePartition(request *proto.CreateDataPartitionReq
 	space.partitionMu.Lock()
 	defer space.partitionMu.Unlock()
 	dpCfg := &dataPartitionCfg{
-		PartitionId:   request.PartitionId,
+		PartitionID:   request.PartitionId,
 		VolName:       request.VolumeId,
 		Peers:         request.Members,
 		RaftStore:     space.raftStore,
-		NodeId:        space.nodeId,
-		ClusterId:     space.clusterId,
+		NodeID:        space.nodeID,
+		ClusterID:     space.clusterID,
 		PartitionSize: request.PartitionSize,
 		RandomWrite:   request.RandomWrite,
 	}
-	dp = space.partitions[dpCfg.PartitionId]
+	dp = space.partitions[dpCfg.PartitionID]
 	if dp != nil {
 		return
 	}
@@ -300,13 +300,13 @@ func (space *SpaceManager) CreatePartition(request *proto.CreateDataPartitionReq
 	return
 }
 
-func (space *SpaceManager) DeletePartition(dpId uint64) {
-	dp := space.GetPartition(dpId)
+func (space *SpaceManager) DeletePartition(dpID uint64) {
+	dp := space.GetPartition(dpID)
 	if dp == nil {
 		return
 	}
 	space.partitionMu.Lock()
-	delete(space.partitions, dpId)
+	delete(space.partitions, dpID)
 	space.partitionMu.Unlock()
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)

@@ -35,7 +35,7 @@ type RaftStore interface {
 }
 
 type raftStore struct {
-	nodeId     uint64
+	nodeID     uint64
 	resolver   NodeResolver
 	raftConfig *raft.Config
 	raftServer *raft.RaftServer
@@ -46,20 +46,20 @@ func (s *raftStore) RaftConfig() *raft.Config {
 	return s.raftConfig
 }
 
-func (s *raftStore) AddNode(nodeId uint64, addr string) {
+func (s *raftStore) AddNode(nodeID uint64, addr string) {
 	if s.resolver != nil {
-		s.resolver.AddNode(nodeId, addr)
+		s.resolver.AddNode(nodeID, addr)
 	}
 }
 
-func (s *raftStore) AddNodeWithPort(nodeId uint64, addr string, heartbeat int, replicate int) {
+func (s *raftStore) AddNodeWithPort(nodeID uint64, addr string, heartbeat int, replicate int) {
 	if s.resolver != nil {
-		s.resolver.AddNodeWithPort(nodeId, addr, heartbeat, replicate)
+		s.resolver.AddNodeWithPort(nodeID, addr, heartbeat, replicate)
 	}
 }
 
-func (s *raftStore) DeleteNode(nodeId uint64) {
-	DeleteNode(s.resolver, nodeId)
+func (s *raftStore) DeleteNode(nodeID uint64) {
+	DeleteNode(s.resolver, nodeID)
 }
 
 func (s *raftStore) Stop() {
@@ -106,8 +106,8 @@ func NewRaftStore(cfg *Config) (mr RaftStore, err error) {
 	if cfg.RetainLogs == 0 {
 		cfg.RetainLogs = DefaultRetainLogs
 	}
-	rc.HeartbeatAddr = fmt.Sprintf("%s:%d", cfg.IpAddr, cfg.HeartbeatPort)
-	rc.ReplicateAddr = fmt.Sprintf("%s:%d", cfg.IpAddr, cfg.ReplicatePort)
+	rc.HeartbeatAddr = fmt.Sprintf("%s:%d", cfg.IPAddr, cfg.HeartbeatPort)
+	rc.ReplicateAddr = fmt.Sprintf("%s:%d", cfg.IPAddr, cfg.ReplicatePort)
 	rc.Resolver = resolver
 	rc.RetainLogs = cfg.RetainLogs
 	rc.TickInterval = 300 * time.Millisecond
@@ -116,7 +116,7 @@ func NewRaftStore(cfg *Config) (mr RaftStore, err error) {
 		return
 	}
 	mr = &raftStore{
-		nodeId:     cfg.NodeID,
+		nodeID:     cfg.NodeID,
 		resolver:   resolver,
 		raftConfig: rc,
 		raftServer: rs,

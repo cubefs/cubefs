@@ -31,7 +31,7 @@ import (
 )
 
 var (
-	// Regexp pattern for data partition dir name validate.
+	// RegexpDataPartitionDir pattern for data partition dir name validate.
 	RegexpDataPartitionDir, _ = regexp.Compile("^datapartition_(\\d)+_(\\d)+$")
 )
 

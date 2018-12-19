@@ -38,7 +38,7 @@ type testKV struct {
 }
 
 var TestAddresses = make(map[uint64]*raftAddr)
-var maxVolId uint64 = 1
+var maxVolID uint64 = 1
 
 type testSM struct {
 	dir string
@@ -103,7 +103,7 @@ func TestRaftStore_CreateRaftStore(t *testing.T) {
 	for n := 1; n <= 3; n++ {
 		cfg.NodeID = uint64(n)
 		cfg.WalPath = path.Join("wal", strconv.FormatUint(cfg.NodeID, 10))
-		cfg.IpAddr = TestAddresses[uint64(n)].ip
+		cfg.IPAddr = TestAddresses[uint64(n)].ip
 
 		raftServer, err := NewRaftStore(&cfg)
 		if err != nil {
@@ -112,7 +112,7 @@ func TestRaftStore_CreateRaftStore(t *testing.T) {
 
 		raftServers[uint64(n)] = raftServer.(*raftStore)
 
-		peers = append(peers, PeerAddress{Peer: proto.Peer{ID: uint64(n)}, Address: cfg.IpAddr})
+		peers = append(peers, PeerAddress{Peer: proto.Peer{ID: uint64(n)}, Address: cfg.IPAddr})
 
 		for k, v := range TestAddresses {
 			raftServer.AddNode(uint64(k), v.ip)
@@ -144,8 +144,8 @@ func TestRaftStore_CreateRaftStore(t *testing.T) {
 	}
 
 	kv := &testKV{Opt: 1}
-	atomic.AddUint64(&maxVolId, 1)
-	value := strconv.FormatUint(maxVolId, 10)
+	atomic.AddUint64(&maxVolID, 1)
+	value := strconv.FormatUint(maxVolID, 10)
 	kv.K = []byte("max_value_key")
 	kv.V = []byte(value)
 
@@ -159,7 +159,7 @@ func TestRaftStore_CreateRaftStore(t *testing.T) {
 	fmt.Printf("==========encode kv end ===========\n")
 
 	for k := range raftServers {
-		fmt.Printf("==raftServer %d==nodeid %d==\n", k, raftServers[k].nodeId)
+		fmt.Printf("==raftServer %d==nodeid %d==\n", k, raftServers[k].nodeID)
 
 		for kp := range partitions {
 			leader, term := partitions[kp].LeaderTerm()

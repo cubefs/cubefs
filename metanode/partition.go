@@ -54,7 +54,7 @@ func (sp sortPeers) Swap(i, j int) {
 }
 
 /* MetRangeConfig used by create metaPartition and serialize
-PartitionId: Identity for raftStore group,RaftStore nodes in same raftStore group must have same groupID.
+PartitionID: Identity for raftStore group,RaftStore nodes in same raftStore group must have same groupID.
 Start: Minimal Inode ID of this range. (Required when initialize)
 End: Maximal Inode ID of this range. (Required when initialize)
 Cursor: Cursor ID value of Inode what have been already assigned.

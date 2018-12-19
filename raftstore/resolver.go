@@ -39,14 +39,14 @@ type nodeAddress struct {
 // NodeManager defined necessary methods for node address management.
 type NodeManager interface {
 	// AddNode used to add node address information.
-	AddNode(nodeId uint64, addr string)
+	AddNode(nodeID uint64, addr string)
 
 	// AddNode adds node address with specified port.
-	AddNodeWithPort(nodeId uint64, addr string, heartbeat int, replicate int)
+	AddNodeWithPort(nodeID uint64, addr string, heartbeat int, replicate int)
 
 	// DeleteNode used to delete node address information
 	// of specified node ID from NodeManager if possible.
-	DeleteNode(nodeId uint64)
+	DeleteNode(nodeID uint64)
 }
 
 // NodeResolver defined necessary methods for both node address resolving and management.
@@ -86,11 +86,11 @@ func (r *nodeResolver) NodeAddress(nodeID uint64, stype raft.SocketType) (addr s
 }
 
 // AddNode adds node address information.
-func (r *nodeResolver) AddNode(nodeId uint64, addr string) {
-	r.AddNodeWithPort(nodeId, addr, 0, 0)
+func (r *nodeResolver) AddNode(nodeID uint64, addr string) {
+	r.AddNodeWithPort(nodeID, addr, 0, 0)
 }
 
-func (r *nodeResolver) AddNodeWithPort(nodeId uint64, addr string, heartbeat int, replicate int) {
+func (r *nodeResolver) AddNodeWithPort(nodeID uint64, addr string, heartbeat int, replicate int) {
 	if heartbeat == 0 {
 		heartbeat = DefaultHeartbeatPort
 	}
@@ -98,7 +98,7 @@ func (r *nodeResolver) AddNodeWithPort(nodeId uint64, addr string, heartbeat int
 		replicate = DefaultReplicatePort
 	}
 	if len(strings.TrimSpace(addr)) != 0 {
-		r.nodeMap.Store(nodeId, &nodeAddress{
+		r.nodeMap.Store(nodeID, &nodeAddress{
 			Heartbeat: fmt.Sprintf("%s:%d", addr, heartbeat),
 			Replicate: fmt.Sprintf("%s:%d", addr, replicate),
 		})
@@ -106,8 +106,8 @@ func (r *nodeResolver) AddNodeWithPort(nodeId uint64, addr string, heartbeat int
 }
 
 // DeleteNode deletes node address information of specified node ID from NodeManager if possible.
-func (r *nodeResolver) DeleteNode(nodeId uint64) {
-	r.nodeMap.Delete(nodeId)
+func (r *nodeResolver) DeleteNode(nodeID uint64) {
+	r.nodeMap.Delete(nodeID)
 }
 
 // NewNodeResolver returns a new NodeResolver instance for node address management and resolving.
@@ -116,16 +116,16 @@ func NewNodeResolver() NodeResolver {
 }
 
 // AddNode add node address into specified NodeManger if possible.
-func AddNode(manager NodeManager, nodeId uint64, addr string, heartbeat int, replicate int) {
+func AddNode(manager NodeManager, nodeID uint64, addr string, heartbeat int, replicate int) {
 	if manager != nil {
-		log.LogInfof("add node %d %s\n", nodeId, addr)
-		manager.AddNode(nodeId, addr)
+		log.LogInfof("add node %d %s\n", nodeID, addr)
+		manager.AddNode(nodeID, addr)
 	}
 }
 
 // DeleteNode delete node address data from specified NodeManager if possible.
-func DeleteNode(manager NodeManager, nodeId uint64) {
+func DeleteNode(manager NodeManager, nodeID uint64) {
 	if manager != nil {
-		manager.DeleteNode(nodeId)
+		manager.DeleteNode(nodeID)
 	}
 }

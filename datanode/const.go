@@ -14,6 +14,7 @@
 
 package datanode
 
+// The status of the server
 const (
 	//Standby is server status
 	Standby uint32 = iota
@@ -28,39 +29,40 @@ const (
 )
 
 const (
-	//ActionStreamRead is StreamRead Log Prefix
-	ActionStreamRead = "ActionStreamRead"
-	//ActionGetDataPartitionMetrics is GetDataPartitionMetrics Log Prefix
-	ActionGetDataPartitionMetrics = "ActionGetDataPartitionMetrics"
+	UpdateReplicationHostsTime = 60  // Timer update replication host
+	UpdatePartitionSizeTime    = 60  // Timer update partition size
+	SimultaneouslyRecoverFiles = 7   // Files
 )
 
-const (
-	UpdateReplicationHostsTime = 60
-	UpdatePartitionSizeTime    = 60
-	SimultaneouslyRecoverFiles = 7
-)
-
+// Net type
 const (
 	NetType = "tcp"
 )
 
+// Status of load data partition extent header
 const (
 	FinishLoadDataPartitionExtentHeader = 1
 	StartLoadDataPartitionExtentHeader  = -1
 )
 
-//pack cmd response
+// Pack cmd response
 const (
 	ReadFlag         = 1
 	WriteFlag        = 2
 	MaxActiveExtents = 20000
 )
 
+// Error code
 const (
 	RaftIsNotStart = "RaftIsNotStart"
 )
 
+// Action description
 const (
+	LocalProcessAddr              = "LocalProcess"
+	ActionStreamRead              = "ActionStreamRead"                  //ActionStreamRead is StreamRead Log Prefix
+	ActionGetDataPartitionMetrics = "ActionGetDataPartitionMetrics"     //ActionGetDataPartitionMetrics is GetDataPartitionMetrics Log Prefix
+	ActionCheckReplyAvail         = "ActionCheckReplyAvail"
 	ActionCreateExtent            = "ActionCreateExtent:"
 	ActionMarkDel                 = "ActionMarkDel:"
 	ActionGetAllExtentWaterMarker = "ActionGetAllExtentWaterMarker:"
@@ -73,20 +75,23 @@ const (
 	ActionDeleteDataPartition     = "ActionDeleteDataPartition"
 )
 
+// Apply raft log opera code
 const (
 	opRandomWrite uint32 = iota
 )
 
 const (
-	maxApplyErrRetry  = 10
-	MinFixTinyExtents = 3
-	dpRetainRaftLogs  = 100000
+	maxApplyErrRetry  = 10         // Random write apply retry times
+	MinFixTinyExtents = 3          // Invalid tiny extent count
+	dpRetainRaftLogs  = 100000     // Count of raft logs per data partition
 )
 
+// Tiny extent has put back to store
 const (
 	HasReturnToStore = 1
 )
 
+// Sector size
 const (
 	DiskSectorSize = 512
 )

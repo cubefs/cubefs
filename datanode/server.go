@@ -20,7 +20,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	_ "net/http/pprof"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -142,7 +141,7 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 	if err = s.startSpaceManager(cfg); err != nil {
 		return
 	}
-	if err = s.startTcpService(); err != nil {
+	if err = s.startTCPService(); err != nil {
 		return
 	}
 
@@ -152,7 +151,7 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 
 func (s *DataNode) onShutdown() {
 	close(s.stopC)
-	s.stopTcpService()
+	s.stopTCPService()
 	s.stopRaftServer()
 	return
 }
@@ -195,8 +194,8 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	}
 
 	s.space.SetRaftStore(s.raftStore)
-	s.space.SetNodeId(s.nodeID)
-	s.space.SetClusterId(s.clusterID)
+	s.space.SetNodeID(s.nodeID)
+	s.space.SetClusterID(s.clusterID)
 
 	var wg sync.WaitGroup
 	for _, d := range cfg.GetArray(ConfigKeyDisks) {
@@ -266,8 +265,8 @@ func (s *DataNode) registerToMaster() {
 				continue
 			}
 
-			nodeId := strings.TrimSpace(string(data))
-			s.nodeID, err = strconv.ParseUint(nodeId, 10, 64)
+			nodeID := strings.TrimSpace(string(data))
+			s.nodeID, err = strconv.ParseUint(nodeID, 10, 64)
 			log.LogDebug("[tempDebug] nodeID=%v", s.nodeID)
 			return
 		case <-s.stopC:
@@ -285,11 +284,11 @@ func (s *DataNode) registerProfHandler() {
 	http.HandleFunc("/stats", s.apiGetStat)
 }
 
-func (s *DataNode) startTcpService() (err error) {
-	log.LogInfo("Start: startTcpService")
+func (s *DataNode) startTCPService() (err error) {
+	log.LogInfo("Start: startTCPService")
 	addr := fmt.Sprintf(":%v", s.port)
 	l, err := net.Listen(NetType, addr)
-	log.LogDebugf("action[startTcpService] listen %v address(%v).", NetType, addr)
+	log.LogDebugf("action[startTCPService] listen %v address(%v).", NetType, addr)
 	if err != nil {
 		log.LogError("failed to listen, err:", err)
 		return
@@ -299,20 +298,20 @@ func (s *DataNode) startTcpService() (err error) {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
-				log.LogErrorf("action[startTcpService] failed to accept, err:%s", err.Error())
+				log.LogErrorf("action[startTCPService] failed to accept, err:%s", err.Error())
 				break
 			}
-			log.LogDebugf("action[startTcpService] accept connection from %s.", conn.RemoteAddr().String())
+			log.LogDebugf("action[startTCPService] accept connection from %s.", conn.RemoteAddr().String())
 			go s.serveConn(conn)
 		}
 	}(l)
 	return
 }
 
-func (s *DataNode) stopTcpService() (err error) {
+func (s *DataNode) stopTCPService() (err error) {
 	if s.tcpListener != nil {
 		s.tcpListener.Close()
-		log.LogDebugf("action[stopTcpService] stop tcp service.")
+		log.LogDebugf("action[stopTCPService] stop tcp service.")
 	}
 	return
 }
@@ -328,11 +327,11 @@ func (s *DataNode) serveConn(conn net.Conn) {
 	packetProcessor.ServerConn()
 }
 
-func (s *DataNode) addDiskErrs(partitionId uint64, err error, flag uint8) {
+func (s *DataNode) addDiskErrs(partitionID uint64, err error, flag uint8) {
 	if err == nil {
 		return
 	}
-	dp := s.space.GetPartition(partitionId)
+	dp := s.space.GetPartition(partitionID)
 	if dp == nil {
 		return
 	}
