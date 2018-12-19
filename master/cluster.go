@@ -45,8 +45,6 @@ type Cluster struct {
 	volSpaceStat        sync.Map
 	BadDataPartitionIds *sync.Map
 	DisableAutoAlloc    bool
-
-	raftStore raftstore.RaftStore
 	fsm       *MetadataFsm
 	partition raftstore.Partition
 }
