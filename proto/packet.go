@@ -38,7 +38,7 @@ func GeneratorRequestID() int64 {
 }
 
 const (
-	AddrSplit       = "/"
+	AddrSplit = "/"
 )
 
 //operations

@@ -60,8 +60,7 @@ type ReplProtocol struct {
 	exited     bool
 	exitedMu   sync.RWMutex
 
-	followerConnects    map[string]*net.TCPConn //all follower connects
-	followerConnectLock sync.RWMutex
+	followerConnects *sync.Map
 
 	prepareFunc  func(pkg *Packet) error                 //this func is used for prepare packet
 	operatorFunc func(pkg *Packet, c *net.TCPConn) error //this func is used for operator func
@@ -77,7 +76,7 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(pkg *Packet) error,
 	rp.responseCh = make(chan *Packet, RequestChanSize)
 	rp.exitC = make(chan bool, 1)
 	rp.sourceConn = inConn
-	rp.followerConnects = make(map[string]*net.TCPConn, 0)
+	rp.followerConnects = new(sync.Map)
 	rp.prepareFunc = prepareFunc
 	rp.operatorFunc = operatorFunc
 	rp.postFunc = postFunc
@@ -340,19 +339,17 @@ func (rp *ReplProtocol) AllocateFollowersConnects(pkg *Packet, index int) (err e
 	var conn *net.TCPConn
 	if pkg.ExtentMode == proto.NormalExtentMode {
 		key := fmt.Sprintf("%v_%v_%v", pkg.PartitionID, pkg.ExtentID, pkg.followersAddrs[index])
-		rp.followerConnectLock.RLock()
-		conn := rp.followerConnects[key]
-		rp.followerConnectLock.RUnlock()
-		if conn == nil {
+		value, ok := rp.followerConnects.Load(key)
+		if ok {
+			pkg.followersConns[index] = value.(*net.TCPConn)
+		} else {
 			conn, err = gConnPool.GetConnect(pkg.followersAddrs[index])
 			if err != nil {
 				return
 			}
-			rp.followerConnectLock.Lock()
-			rp.followerConnects[key] = conn
-			rp.followerConnectLock.Unlock()
+			rp.followerConnects.Store(key, conn)
+			pkg.followersConns[index] = conn
 		}
-		pkg.followersConns[index] = conn
 	} else {
 		conn, err = gConnPool.GetConnect(pkg.followersAddrs[index])
 		if err != nil {
@@ -392,14 +389,12 @@ func (rp *ReplProtocol) CleanResource() {
 		<-rp.responseCh
 	}
 	rp.packetList = list.New()
-	rp.followerConnectLock.RLock()
-	for _, conn := range rp.followerConnects {
-		conn.Close()
-	}
-	rp.followerConnectLock.RUnlock()
-	rp.followerConnectLock.Lock()
-	rp.followerConnects = make(map[string]*net.TCPConn, 0)
-	rp.followerConnectLock.Unlock()
+	rp.followerConnects.Range(
+		func(key, value interface{}) bool {
+			conn := value.(*net.TCPConn)
+			conn.Close()
+			return true
+		})
 	rp.listMux.Unlock()
 }
 
