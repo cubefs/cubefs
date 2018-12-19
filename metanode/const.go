@@ -109,9 +109,7 @@ const (
 )
 
 var (
-	masterAddrs   []string
-	curMasterAddr string
-	UMPKey        string
+	UMPKey string
 )
 
 var (
@@ -126,8 +124,8 @@ const (
 )
 
 const (
-	metaNodeURL     = "/metaNode/add"
-	metaNodeGetName = "/admin/getIp"
+	metaNodeURL = "/metaNode/add"
+	GetIpUri    = "/admin/getIp"
 )
 
 // Configuration keys

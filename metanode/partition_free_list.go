@@ -59,7 +59,7 @@ func (mp *metaPartition) updateVolWorker() {
 			return
 		case <-t.C:
 			// GetConnect dataPartitionView
-			respBody, err := postToMaster("GET", reqURL, nil)
+			respBody, err := masterHelper.Request("GET", reqURL, nil, nil)
 			if err != nil {
 				log.LogErrorf("[updateVol] %s", err.Error())
 				break
