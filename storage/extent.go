@@ -50,7 +50,7 @@ type FileInfo struct {
 	Source  string    `json:"src"`
 }
 
-func (ei *FileInfo) FromExtent(extent Extent) {
+func (ei *FileInfo) FromExtent(extent *Extent) {
 	if extent != nil {
 		ei.FileId = extent.ID()
 		ei.Inode = extent.Ino()
@@ -71,60 +71,10 @@ func (ei *FileInfo) String() (m string) {
 	return fmt.Sprintf("%v_%v_%v_%v_%v_%v", ei.FileId, ei.Inode, ei.Size, ei.Crc, ei.Deleted, source)
 }
 
-// Extent is used to manage extent block file for extent store engine.
-type Extent interface {
-	// ID returns the identity value (extentId) of this extent entity.
-	ID() uint64
-
-	// Ino returns this inode ID of this extent block belong to.
-	Ino() uint64
-
-	// Close this extent and release FD.
-	Close() error
-
-	// InitToFS init extent data info filesystem. If entry file exist and overwrite is true,
-	// this operation will clear all data of exist entry file and initialize extent header data.
-	InitToFS(ino uint64, overwrite bool) error
-
-	// RestoreFromFS restore entity data and status from entry file stored in filesystem.
-	RestoreFromFS(loadHeader bool) error
-
-	// Write data to extent.
-	Write(data []byte, offset, size int64, crc uint32) (err error)
-
-	TinyRecover(data []byte, offset, size int64, crc uint32) (err error)
-
-	// Read data from extent.
-	Read(data []byte, offset, size int64) (crc uint32, err error)
-
-	// Flush synchronize data to disk immediately.
-	Flush() error
-
-	// MarkDelete mark this extent as deleted.
-	MarkDelete() error
-
-	DeleteTiny(offset, size int64) error
-	// IsMarkDelete test this extent if has been marked as delete.
-	IsMarkDelete() bool
-
-	// Size returns length of extent data exclude header.
-	Size() (size int64)
-
-	// ModTime returns the time when this extent was last modified.
-	ModTime() time.Time
-
-	// HeaderChecksum returns crc checksum value of extent header data
-	// include inode data and block crc.
-	HeaderChecksum() (crc uint32)
-
-	//file has exsit on disk
-	Exist() (exsit bool)
-}
-
 // FSExtent is an implementation of Extent for local regular extent file data management.
 // This extent implementation manages all header info and data body in one single entry file.
 // Header of extent include inode value of this extent block and crc blocks of data blocks.
-type fsExtent struct {
+type Extent struct {
 	file       *os.File
 	filePath   string
 	extentId   uint64
@@ -137,8 +87,8 @@ type fsExtent struct {
 }
 
 // NewExtentInCore create and returns a new extent instance.
-func NewExtentInCore(name string, extentId uint64) Extent {
-	e := new(fsExtent)
+func NewExtentInCore(name string, extentId uint64) *Extent {
+	e := new(Extent)
 	e.extentId = extentId
 	e.filePath = name
 	e.header = make([]byte, util.BlockHeaderSize)
@@ -147,7 +97,7 @@ func NewExtentInCore(name string, extentId uint64) Extent {
 }
 
 // Close this extent and release FD.
-func (e *fsExtent) Close() (err error) {
+func (e *Extent) Close() (err error) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 	if err = e.file.Close(); err != nil {
@@ -159,17 +109,17 @@ func (e *fsExtent) Close() (err error) {
 }
 
 // Ino returns this inode ID of this extent block belong to.
-func (e *fsExtent) Ino() (ino uint64) {
+func (e *Extent) Ino() (ino uint64) {
 	ino = binary.BigEndian.Uint64(e.header[:util.BlockHeaderInoSize])
 	return
 }
 
 // ID returns the identity value (extentId) of this extent entity.
-func (e *fsExtent) ID() uint64 {
+func (e *Extent) ID() uint64 {
 	return e.extentId
 }
 
-func (e *fsExtent) Exist() (exsit bool) {
+func (e *Extent) Exist() (exsit bool) {
 	_, err := os.Stat(e.filePath)
 	if err != nil {
 		if os.IsExist(err) {
@@ -182,7 +132,7 @@ func (e *fsExtent) Exist() (exsit bool) {
 
 // InitToFS init extent data info filesystem. If entry file exist and overwrite is true,
 // this operation will clear all data of exist entry file and initialize extent header data.
-func (e *fsExtent) InitToFS(ino uint64, overwrite bool) (err error) {
+func (e *Extent) InitToFS(ino uint64, overwrite bool) (err error) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 	opt := ExtentOpenOpt
@@ -234,7 +184,7 @@ func (e *fsExtent) InitToFS(ino uint64, overwrite bool) (err error) {
 }
 
 // RestoreFromFS restore entity data and status from entry file stored in filesystem.
-func (e *fsExtent) RestoreFromFS(loadHeader bool) (err error) {
+func (e *Extent) RestoreFromFS(loadHeader bool) (err error) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 	if e.file, err = os.OpenFile(e.filePath, os.O_RDWR, 0666); err != nil {
@@ -271,7 +221,7 @@ func (e *fsExtent) RestoreFromFS(loadHeader bool) (err error) {
 }
 
 // MarkDelete mark this extent as deleted.
-func (e *fsExtent) MarkDelete() (err error) {
+func (e *Extent) MarkDelete() (err error) {
 	e.lock.RLock()
 	defer e.lock.RUnlock()
 	e.header[util.MarkDeleteIndex] = util.MarkDelete
@@ -283,7 +233,7 @@ func (e *fsExtent) MarkDelete() (err error) {
 }
 
 // IsMarkDelete test this extent if has been marked as delete.
-func (e *fsExtent) IsMarkDelete() bool {
+func (e *Extent) IsMarkDelete() bool {
 	if IsTinyExtent(e.extentId) {
 		return false
 	}
@@ -293,7 +243,7 @@ func (e *fsExtent) IsMarkDelete() bool {
 }
 
 // Size returns length of extent data exclude header.
-func (e *fsExtent) Size() (size int64) {
+func (e *Extent) Size() (size int64) {
 	e.lock.RLock()
 	defer e.lock.RUnlock()
 	size = e.dataSize
@@ -301,13 +251,13 @@ func (e *fsExtent) Size() (size int64) {
 }
 
 // ModTime returns the time when this extent was last modified.
-func (e *fsExtent) ModTime() time.Time {
+func (e *Extent) ModTime() time.Time {
 	e.lock.RLock()
 	defer e.lock.RUnlock()
 	return e.modifyTime
 }
 
-func (e *fsExtent) WriteTiny(data []byte, offset, size int64, crc uint32) (err error) {
+func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32) (err error) {
 	if offset+size >= math.MaxUint32 {
 		return ErrorExtentHasFull
 	}
@@ -324,7 +274,7 @@ func (e *fsExtent) WriteTiny(data []byte, offset, size int64, crc uint32) (err e
 	return
 }
 
-func (e *fsExtent) TinyRecover(data []byte, offset, size int64, crc uint32) (err error) {
+func (e *Extent) TinyRecover(data []byte, offset, size int64, crc uint32) (err error) {
 	if !IsTinyExtent(e.extentId) {
 		return ErrorUnavaliExtent
 	}
@@ -340,7 +290,7 @@ func (e *fsExtent) TinyRecover(data []byte, offset, size int64, crc uint32) (err
 }
 
 // Write data to extent.
-func (e *fsExtent) Write(data []byte, offset, size int64, crc uint32) (err error) {
+func (e *Extent) Write(data []byte, offset, size int64, crc uint32) (err error) {
 	if IsTinyExtent(e.extentId) {
 		return e.WriteTiny(data, offset, size, crc)
 	}
@@ -401,7 +351,7 @@ func (e *fsExtent) Write(data []byte, offset, size int64, crc uint32) (err error
 }
 
 // Read data from extent.
-func (e *fsExtent) Read(data []byte, offset, size int64) (crc uint32, err error) {
+func (e *Extent) Read(data []byte, offset, size int64) (crc uint32, err error) {
 	if IsTinyExtent(e.extentId) {
 		return e.ReadTiny(data, offset, size)
 	}
@@ -417,7 +367,7 @@ func (e *fsExtent) Read(data []byte, offset, size int64) (crc uint32, err error)
 	return
 }
 
-func (e *fsExtent) ReadTiny(data []byte, offset, size int64) (crc uint32, err error) {
+func (e *Extent) ReadTiny(data []byte, offset, size int64) (crc uint32, err error) {
 	if _, err = e.file.ReadAt(data[:size], offset); err != nil {
 		return
 	}
@@ -426,7 +376,7 @@ func (e *fsExtent) ReadTiny(data []byte, offset, size int64) (crc uint32, err er
 	return
 }
 
-func (e *fsExtent) updateBlockCrc(blockNo int, crc uint32) (err error) {
+func (e *Extent) updateBlockCrc(blockNo int, crc uint32) (err error) {
 	startIdx := util.BlockHeaderCrcIndex + blockNo*util.PerBlockCrcSize
 	endIdx := startIdx + util.PerBlockCrcSize
 	binary.BigEndian.PutUint32(e.header[startIdx:endIdx], crc)
@@ -438,7 +388,7 @@ func (e *fsExtent) updateBlockCrc(blockNo int, crc uint32) (err error) {
 	return
 }
 
-func (e *fsExtent) checkOffsetAndSize(offset, size int64) error {
+func (e *Extent) checkOffsetAndSize(offset, size int64) error {
 	if offset+size > util.BlockSize*util.BlockCount {
 		return NewParamMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	}
@@ -453,14 +403,14 @@ func (e *fsExtent) checkOffsetAndSize(offset, size int64) error {
 }
 
 // Flush synchronize data to disk immediately.
-func (e *fsExtent) Flush() (err error) {
+func (e *Extent) Flush() (err error) {
 	err = e.file.Sync()
 	return
 }
 
 // HeaderChecksum returns crc checksum value of extent header data
 // include inode data and block crc.
-func (e *fsExtent) HeaderChecksum() (crc uint32) {
+func (e *Extent) HeaderChecksum() (crc uint32) {
 	e.lock.RLock()
 	defer e.lock.RUnlock()
 	blockNum := e.dataSize / util.BlockSize
@@ -477,7 +427,7 @@ const (
 	FALLOC_FL_PUNCH_HOLE = 2
 )
 
-func (e *fsExtent) DeleteTiny(offset, size int64) (err error) {
+func (e *Extent) DeleteTiny(offset, size int64) (err error) {
 	if int(offset)%PageSize != 0 {
 		return ErrorParamMismatch
 	}

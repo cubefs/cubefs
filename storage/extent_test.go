@@ -62,7 +62,7 @@ func TestFsExtent_Validate(t *testing.T) {
 	if err = extent.RestoreFromFS(); err != nil {
 		panic(err)
 	}
-	fse := extent.(*fsExtent)
+	fse := extent.(*Extent)
 	header := fse.header
 	headerReader := bytes.NewReader(header)
 	var ino uint64
