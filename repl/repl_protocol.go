@@ -60,12 +60,12 @@ type ReplProtocol struct {
 	exited     bool
 	exitedMu   sync.RWMutex
 
-	followerConnects    map[string]*net.TCPConn //all replicates connects
+	followerConnects    map[string]*net.TCPConn //all follower connects
 	followerConnectLock sync.RWMutex
 
-	prepareFunc  func(pkg *Packet) error
-	operatorFunc func(pkg *Packet, c *net.TCPConn) error
-	postFunc     func(pkg *Packet) error
+	prepareFunc  func(pkg *Packet) error                 //this func is used for prepare packet
+	operatorFunc func(pkg *Packet, c *net.TCPConn) error //this func is used for operator func
+	postFunc     func(pkg *Packet) error                 //this func is used from post packet
 }
 
 func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(pkg *Packet) error,
@@ -87,6 +87,9 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(pkg *Packet) error,
 	return rp
 }
 
+/*
+  this func is server client connnect ,read pkg from socket,and do prepare pkg
+*/
 func (rp *ReplProtocol) ServerConn() {
 	var (
 		err error
@@ -114,6 +117,9 @@ func (rp *ReplProtocol) ServerConn() {
 
 }
 
+/*
+   read pkg from client socket,and resolve followers addr,then prepare pkg
+*/
 func (rp *ReplProtocol) readPkgFromSocket() (err error) {
 	pkg := NewPacket()
 	if err = pkg.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
@@ -134,6 +140,13 @@ func (rp *ReplProtocol) readPkgFromSocket() (err error) {
 	return
 }
 
+/*
+   read pkg from toBeProcessCh,and if pkg need forward to all followers,send it to all followers
+   if send to followers,then do pkg by opcode,then notify receiveFollowerResponse gorotine,recive response
+   if packet donnot need forward,do pkg by opcode
+
+   read response from responseCh,and write response to client
+*/
 func (rp *ReplProtocol) operatorAndForwardPkg() {
 	for {
 		select {
@@ -169,6 +182,9 @@ func (rp *ReplProtocol) receiveFollowerResponse() {
 	}
 }
 
+/*
+  send pkg to all followers.
+*/
 func (rp *ReplProtocol) sendToAllfollowers(request *Packet) (index int, err error) {
 	rp.PushPacketToList(request)
 	for index = 0; index < len(request.followersConns); index++ {
@@ -198,6 +214,10 @@ func (rp *ReplProtocol) sendToAllfollowers(request *Packet) (index int, err erro
 	return
 }
 
+/*
+	recive response from all followers,if any followers failed,then the packet is failed
+
+*/
 func (rp *ReplProtocol) reciveAllFollowerResponse() {
 	var (
 		e *list.Element
@@ -222,6 +242,13 @@ func (rp *ReplProtocol) reciveAllFollowerResponse() {
 	return
 }
 
+/*
+  recive reply from followers
+  1. check request local do is failed,if failed ,return error
+  2. read from follower socket,if failed,return error
+  3. check reply is avali,if reply is not avali,then return error
+  4. check reply is a error packet,if reply error,return error
+*/
 func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err error) {
 	// Receive pkg response from one member*/
 	if request.followersConns[index] == nil {

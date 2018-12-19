@@ -29,6 +29,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"errors"
 	"github.com/tiglabs/containerfs/master"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
@@ -38,7 +39,6 @@ import (
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/ump"
-	"errors"
 )
 
 var (
