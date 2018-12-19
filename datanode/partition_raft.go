@@ -402,9 +402,9 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 	replicatePort, _ := strconv.Atoi(s.raftReplicate)
 
 	raftConf := &raftstore.Config{
-		NodeID:        s.nodeId,
+		NodeID:        s.nodeID,
 		WalPath:       s.raftDir,
-		IpAddr:        s.localIp,
+		IpAddr:        s.localIP,
 		HeartbeatPort: heartbeatPort,
 		ReplicatePort: replicatePort,
 		RetainLogs:    dpRetainRaftLogs,
@@ -583,7 +583,7 @@ func (dp *DataPartition) getAllAppliedId(setMinAppliedId bool) (allAppliedId []u
 		replicaHostParts := strings.Split(dp.replicaHosts[i], ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
-			log.LogDebugf("partition=%v local no need send msg. localIp[%v] replicaHost[%v] appliedId[%v]",
+			log.LogDebugf("partition=%v local no need send msg. localIP[%v] replicaHost[%v] appliedId[%v]",
 				dp.partitionId, LocalIP, replicaHost, dp.applyId)
 			allAppliedId[i] = dp.applyId
 			continue
@@ -631,7 +631,7 @@ func (dp *DataPartition) getMinAppliedId() {
 	//get applied id only by leader
 	leaderAddr, isLeader := dp.IsRaftLeader()
 	if !isLeader || leaderAddr == "" {
-		log.LogDebugf("[getMinAppliedId] partition=%v notRaftLeader leaderAddr[%v] localIp[%v]",
+		log.LogDebugf("[getMinAppliedId] partition=%v notRaftLeader leaderAddr[%v] localIP[%v]",
 			dp.partitionId, leaderAddr, LocalIP)
 		return
 	}

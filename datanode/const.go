@@ -15,32 +15,25 @@
 package datanode
 
 const (
+	//Standby is server status
 	Standby uint32 = iota
+	//Start is server ready start
 	Start
+	//Running is server has runing
 	Running
+	//Shutdown is sevrer has ready shutdown
 	Shutdown
+	//Stopped is server has stop
 	Stopped
 )
 
 const (
-	RequestChanSize = 10240
-)
-
-const (
-	ActionSendToNext              = "ActionSendToNext"
-	LocalProcessAddr              = "LocalProcess"
-	ActionReceiveFromNext         = "ActionReceiveFromNext"
-	ActionStreamRead              = "ActionStreamRead"
-	ActionWriteToCli              = "ActionWriteToClient"
+	//ActionStreamRead is StreamRead Log Prefix
+	ActionStreamRead = "ActionStreamRead"
+	//ActionGetDataPartitionMetrics is GetDataPartitionMetrics Log Prefix
 	ActionGetDataPartitionMetrics = "ActionGetDataPartitionMetrics"
-	ActionCheckAndAddInfos        = "ActionCheckAndAddInfos"
-	ActionCheckReplyAvail         = "ActionCheckReplyAvail"
 )
 
-const (
-	InFlow = iota
-	OutFlow
-)
 const (
 	UpdateReplicationHostsTime = 60
 	UpdatePartitionSizeTime    = 60
@@ -64,7 +57,6 @@ const (
 )
 
 const (
-	ConnIsNullErr  = "ConnIsNullErr"
 	RaftIsNotStart = "RaftIsNotStart"
 )
 
@@ -83,7 +75,6 @@ const (
 
 const (
 	opRandomWrite uint32 = iota
-	opStartRaft
 )
 
 const (

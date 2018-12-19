@@ -166,7 +166,7 @@ func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 	} else if firstHost != "" {
 		targetAddr = dp.replicaHosts[0]
 	} else {
-		err = fmt.Errorf("[ApplySnapshot]: not expect err firstHost[%s] localIp[%v] raftLeader[%v]",
+		err = fmt.Errorf("[ApplySnapshot]: not expect err firstHost[%s] localIP[%v] raftLeader[%v]",
 			firstHost, LocalIP, leaderAddr)
 		return
 	}

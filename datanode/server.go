@@ -53,7 +53,7 @@ var (
 )
 
 const (
-	GetIpFromMaster = master.AdminGetIp
+	GetIPFromMaster = master.AdminGetIp
 	DefaultRackName = "huitian_rack1"
 	DefaultRaftDir  = "raft"
 )
@@ -76,10 +76,10 @@ type DataNode struct {
 	space          *SpaceManager
 	port           string
 	rackName       string
-	clusterId      string
-	localIp        string
+	clusterID      string
+	localIP        string
 	localServeAddr string
-	nodeId         uint64
+	nodeID         uint64
 	raftDir        string
 	raftHeartbeat  string
 	raftReplicate  string
@@ -195,8 +195,8 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	}
 
 	s.space.SetRaftStore(s.raftStore)
-	s.space.SetNodeId(s.nodeId)
-	s.space.SetClusterId(s.clusterId)
+	s.space.SetNodeId(s.nodeID)
+	s.space.SetClusterId(s.clusterID)
 
 	var wg sync.WaitGroup
 	for _, d := range cfg.GetArray(ConfigKeyDisks) {
@@ -237,7 +237,7 @@ func (s *DataNode) registerToMaster() {
 	for {
 		select {
 		case <-timer.C:
-			data, err = MasterHelper.Request(http.MethodGet, GetIpFromMaster, nil, nil)
+			data, err = MasterHelper.Request(http.MethodGet, GetIPFromMaster, nil, nil)
 			masterAddr := MasterHelper.Leader()
 			if err != nil {
 				log.LogErrorf("action[registerToMaster] cannot get ip from master(%v) err(%v).",
@@ -248,7 +248,7 @@ func (s *DataNode) registerToMaster() {
 			cInfo := new(proto.ClusterInfo)
 			json.Unmarshal(data, cInfo)
 			LocalIP = string(cInfo.Ip)
-			s.clusterId = cInfo.Cluster
+			s.clusterID = cInfo.Cluster
 			s.localServeAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			if !util.IP(LocalIP) {
 				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
@@ -267,8 +267,8 @@ func (s *DataNode) registerToMaster() {
 			}
 
 			nodeId := strings.TrimSpace(string(data))
-			s.nodeId, err = strconv.ParseUint(nodeId, 10, 64)
-			log.LogDebug("[tempDebug] nodeId=%v", s.nodeId)
+			s.nodeID, err = strconv.ParseUint(nodeId, 10, 64)
+			log.LogDebug("[tempDebug] nodeID=%v", s.nodeID)
 			return
 		case <-s.stopC:
 			timer.Stop()

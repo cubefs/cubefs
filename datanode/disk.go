@@ -187,46 +187,46 @@ func (d *Disk) DetachDataPartition(dp *DataPartition) {
 	d.computeUsage()
 }
 
-func (d *Disk) GetDataPartition(partitionId uint64) (partition *DataPartition) {
+func (d *Disk) GetDataPartition(partitionID uint64) (partition *DataPartition) {
 	d.RLock()
 	defer d.RUnlock()
-	return d.partitionMap[partitionId]
+	return d.partitionMap[partitionID]
 }
 
 func (d *Disk) ForceLoadPartitionHeader() {
 	partitionList := d.DataPartitionList()
-	for _, partitionId := range partitionList {
-		partition := d.GetDataPartition(partitionId)
+	for _, partitionID := range partitionList {
+		partition := d.GetDataPartition(partitionID)
 		partition.ForceLoadHeader()
 	}
 }
 
-func (d *Disk) DataPartitionList() (partitionIds []uint64) {
+func (d *Disk) DataPartitionList() (partitionIDs []uint64) {
 	d.Lock()
 	defer d.Unlock()
-	partitionIds = make([]uint64, 0, len(d.partitionMap))
+	partitionIDs = make([]uint64, 0, len(d.partitionMap))
 	for _, dp := range d.partitionMap {
-		partitionIds = append(partitionIds, dp.ID())
+		partitionIDs = append(partitionIDs, dp.ID())
 	}
 	return
 }
 
-func unmarshalPartitionName(name string) (partitionId uint32, partitionSize int, err error) {
+func unmarshalPartitionName(name string) (partitionID uint32, partitionSize int, err error) {
 	arr := strings.Split(name, "_")
 	if len(arr) != 3 {
 		err = fmt.Errorf("error DataPartition name(%v)", name)
 		return
 	}
 	var (
-		pId int
+		pID int
 	)
-	if pId, err = strconv.Atoi(arr[1]); err != nil {
+	if pID, err = strconv.Atoi(arr[1]); err != nil {
 		return
 	}
 	if partitionSize, err = strconv.Atoi(arr[2]); err != nil {
 		return
 	}
-	partitionId = uint32(pId)
+	partitionID = uint32(pID)
 	return
 }
 
@@ -237,7 +237,7 @@ func (d *Disk) isPartitionDir(filename string) (is bool) {
 
 func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 	var (
-		partitionId   uint32
+		partitionID   uint32
 		partitionSize int
 	)
 	fileInfoList, err := ioutil.ReadDir(d.Path)
@@ -252,15 +252,15 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 			continue
 		}
 
-		if partitionId, partitionSize, err = unmarshalPartitionName(filename); err != nil {
+		if partitionID, partitionSize, err = unmarshalPartitionName(filename); err != nil {
 			log.LogErrorf("action[RestorePartition] unmarshal partitionName(%v) from disk(%v) err(%v) ",
 				filename, d.Path, err.Error())
 			continue
 		}
-		log.LogDebugf("acton[RestorePartition] disk(%v) path(%v) partitionId(%v) partitionSize(%v).",
-			d.Path, fileInfo.Name(), partitionId, partitionSize)
+		log.LogDebugf("acton[RestorePartition] disk(%v) path(%v) partitionID(%v) partitionSize(%v).",
+			d.Path, fileInfo.Name(), partitionID, partitionSize)
 		wg.Add(1)
-		go func(partitionId uint32, filename string) {
+		go func(partitionID uint32, filename string) {
 			var (
 				dp  *DataPartition
 				err error
@@ -268,7 +268,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 			defer wg.Done()
 			if dp, err = LoadDataPartition(path.Join(d.Path, filename), d); err != nil {
 				log.LogError(fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ",
-					partitionId, err.Error()))
+					partitionID, err.Error()))
 				log.LogFlush()
 				panic(err.Error())
 				return
@@ -277,7 +277,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 				visitor(dp)
 			}
 
-		}(partitionId, filename)
+		}(partitionID, filename)
 	}
 	wg.Wait()
 	go d.ForceLoadPartitionHeader()
