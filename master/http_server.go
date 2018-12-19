@@ -23,10 +23,10 @@ import (
 	"net/http/httputil"
 )
 
+// api
 const (
 	// Admin APIs
-	adminGetCluster = "/admin/getCluster"
-	//AdminGetDataPartition 获取data partition
+	adminGetCluster           = "/admin/getCluster"
 	AdminGetDataPartition     = "/dataPartition/get"
 	adminLoadDataPartition    = "/dataPartition/load"
 	adminCreateDataPartition  = "/dataPartition/create"
@@ -35,7 +35,6 @@ const (
 	adminUpdateVol            = "/vol/update"
 	adminCreateVol            = "/admin/createVol"
 	adminClusterFreeze        = "/cluster/freeze"
-	// AdminGetIp 获取ip
 	AdminGetIp                = "/admin/getIp"
 	adminCreateMP             = "/metaPartition/create"
 	adminSetMetaNodeThreshold = "/threshold/set"
@@ -51,7 +50,6 @@ const (
 	raftNodeRemove = "/raftNode/remove"
 
 	// Node APIs
-	// AddDataNode 注册data node
 	AddDataNode               = "/dataNode/add"
 	dataNodeOffline           = "/dataNode/offline"
 	diskOffLine               = "/disk/offline"
@@ -69,7 +67,7 @@ const (
 	getTopologyView = "/topo/get"
 )
 
-func (m *Master) startHttpService() (err error) {
+func (m *Server) startHTTPService() (err error) {
 	go func() {
 		m.handleFunctions()
 		http.ListenAndServe(colonSplit+m.port, nil)
@@ -77,7 +75,7 @@ func (m *Master) startHttpService() (err error) {
 	return
 }
 
-func (m *Master) handleFunctions() {
+func (m *Server) handleFunctions() {
 	http.HandleFunc(AdminGetIp, m.getIPAndClusterName)
 	http.HandleFunc(adminGetCluster, m.getCluster)
 	http.Handle(AdminGetDataPartition, m.handlerWithInterceptor())
@@ -112,17 +110,16 @@ func (m *Master) handleFunctions() {
 	return
 }
 
-func (m *Master) newReverseProxy() *httputil.ReverseProxy {
+func (m *Server) newReverseProxy() *httputil.ReverseProxy {
 	return &httputil.ReverseProxy{Director: func(request *http.Request) {
 		request.URL.Scheme = "http"
 		request.URL.Host = m.leaderInfo.addr
 	}}
 }
 
-func (m *Master) handlerWithInterceptor() http.Handler {
+func (m *Server) handlerWithInterceptor() http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-
 			if m.partition.IsLeader() {
 				m.ServeHTTP(w, r)
 				return
@@ -131,17 +128,16 @@ func (m *Master) handlerWithInterceptor() http.Handler {
 				log.LogErrorf("action[handlerWithInterceptor] no leader,request[%v]", r.URL)
 				http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
 				return
-			} else {
-				m.proxy(w, r)
 			}
+			m.proxy(w, r)
 		})
 }
 
-func (m *Master) proxy(w http.ResponseWriter, r *http.Request) {
+func (m *Server) proxy(w http.ResponseWriter, r *http.Request) {
 	m.reverseProxy.ServeHTTP(w, r)
 }
 
-func (m *Master) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.LogInfof("URL[%v],remoteAddr[%v]", r.URL, r.RemoteAddr)
 	switch r.URL.Path {
 	case adminGetCluster:
@@ -212,6 +208,7 @@ func getReturnMessage(requestType, remoteAddr, message string, code int) (logMsg
 	return
 }
 
+// HandleError 处理错误
 func HandleError(message string, err error, code int, w http.ResponseWriter) {
 	log.LogErrorf("errMsg:%v errStack:%v", message, errors.ErrorStack(err))
 	http.Error(w, message, code)

@@ -55,12 +55,14 @@ func (metaNode *MetaNode) clean() {
 	metaNode.Sender.exitCh <- struct{}{}
 }
 
+// SetCarry 实现Node接口
 func (metaNode *MetaNode) SetCarry(carry float64) {
 	metaNode.Lock()
 	defer metaNode.Unlock()
 	metaNode.Carry = carry
 }
 
+// SelectNodeForWrite 实现Node接口
 func (metaNode *MetaNode) SelectNodeForWrite() {
 	metaNode.Lock()
 	defer metaNode.Unlock()

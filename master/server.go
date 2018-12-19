@@ -35,13 +35,14 @@ const (
 	LogLevel          = "logLevel"
 	WalDir            = "walDir"
 	StoreDir          = "storeDir"
-	GroupId           = 1
+	GroupID           = 1
 	UmpModuleName     = "master"
 	CfgRetainLogs     = "retainLogs"
 	DefaultRetainLogs = 20000
 )
 
-type Master struct {
+//Server 集群管理server
+type Server struct {
 	id           uint64
 	clusterName  string
 	ip           string
@@ -60,11 +61,13 @@ type Master struct {
 	reverseProxy *httputil.ReverseProxy
 }
 
-func NewServer() *Master {
-	return &Master{}
+//NewServer 创建server
+func NewServer() *Server {
+	return &Server{}
 }
 
-func (m *Master) Start(cfg *config.Config) (err error) {
+//Start 启动server
+func (m *Server) Start(cfg *config.Config) (err error) {
 	m.config = newClusterConfig()
 	m.leaderInfo = &LeaderInfo{}
 	m.reverseProxy = m.newReverseProxy()
@@ -83,20 +86,22 @@ func (m *Master) Start(cfg *config.Config) (err error) {
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
 	m.cluster.scheduleTask()
-	m.startHttpService()
+	m.startHTTPService()
 	m.wg.Add(1)
 	return nil
 }
 
-func (m *Master) Shutdown() {
+//Shutdown 关闭server
+func (m *Server) Shutdown() {
 	m.wg.Done()
 }
 
-func (m *Master) Sync() {
+//Sync 等待server运行结束
+func (m *Server) Sync() {
 	m.wg.Wait()
 }
 
-func (m *Master) checkConfig(cfg *config.Config) (err error) {
+func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.clusterName = cfg.GetString(ClusterName)
 	m.ip = cfg.GetString(IP)
 	m.port = cfg.GetString(Port)
@@ -165,14 +170,14 @@ func (m *Master) checkConfig(cfg *config.Config) (err error) {
 	return
 }
 
-func (m *Master) createRaftServer() (err error) {
+func (m *Server) createRaftServer() (err error) {
 	raftCfg := &raftstore.Config{NodeID: m.id, WalPath: m.walDir, RetainLogs: m.retainLogs}
 	if m.raftStore, err = raftstore.NewRaftStore(raftCfg); err != nil {
 		return errors.Annotatef(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
 	}
 	fmt.Println(m.config.peers)
 	partitionCfg := &raftstore.PartitionConfig{
-		ID:      GroupId,
+		ID:      GroupID,
 		Peers:   m.config.peers,
 		Applied: m.fsm.applied,
 		SM:      m.fsm,
@@ -182,7 +187,7 @@ func (m *Master) createRaftServer() (err error) {
 	}
 	return
 }
-func (m *Master) initFsm() {
+func (m *Server) initFsm() {
 	m.fsm = newMetadataFsm(m.rocksDBStore)
 	m.fsm.registerLeaderChangeHandler(m.handleLeaderChange)
 	m.fsm.registerPeerChangeHandler(m.handlePeerChange)
@@ -191,7 +196,7 @@ func (m *Master) initFsm() {
 	m.fsm.restore()
 }
 
-func (m *Master) initCluster() {
+func (m *Server) initCluster() {
 	m.cluster = newCluster(m.clusterName, m.leaderInfo, m.fsm, m.partition, m.config)
 	m.cluster.retainLogs = m.retainLogs
 	m.loadMetadata()

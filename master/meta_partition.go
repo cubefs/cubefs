@@ -31,7 +31,7 @@ type MetaReplica struct {
 	Addr       string
 	start      uint64
 	end        uint64
-	nodeId     uint64
+	nodeID     uint64
 	ReportTime int64
 	Status     int8
 	IsLeader   bool
@@ -56,7 +56,7 @@ type MetaPartition struct {
 }
 
 func newMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {
-	mr = &MetaReplica{start: start, end: end, nodeId: metaNode.ID, Addr: metaNode.Addr}
+	mr = &MetaReplica{start: start, end: end, nodeID: metaNode.ID, Addr: metaNode.Addr}
 	mr.metaNode = metaNode
 	mr.ReportTime = time.Now().Unix()
 	return

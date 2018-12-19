@@ -113,12 +113,14 @@ func (dataNode *DataNode) isAvailCarryNode() (ok bool) {
 	return dataNode.Carry >= 1
 }
 
+// SetCarry 实现Node接口
 func (dataNode *DataNode) SetCarry(carry float64) {
 	dataNode.Lock()
 	defer dataNode.Unlock()
 	dataNode.Carry = carry
 }
 
+// SelectNodeForWrite 实现Node接口
 func (dataNode *DataNode) SelectNodeForWrite() {
 	dataNode.Lock()
 	defer dataNode.Unlock()

@@ -89,7 +89,7 @@ func newMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *
 	return
 }
 
-func (m *Master) getDataPartitions(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
 		code = http.StatusBadRequest
@@ -118,7 +118,7 @@ errDeal:
 	return
 }
 
-func (m *Master) getVol(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
 		code = http.StatusBadRequest
@@ -145,7 +145,7 @@ errDeal:
 	return
 }
 
-func (m *Master) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
 		code = http.StatusBadRequest
@@ -173,7 +173,7 @@ errDeal:
 	return
 }
 
-func (m *Master) getVolView(vol *Vol) (view *VolView) {
+func (m *Server) getVolView(vol *Vol) (view *VolView) {
 	view = newVolView(vol.Name, vol.Status)
 	setMetaPartitions(vol, view, m.cluster.getLiveMetaNodesRate())
 	setDataPartitions(vol, view, m.cluster.getLiveDataNodesRate())
@@ -223,7 +223,7 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *MetaPartitionView) {
 	return
 }
 
-func (m *Master) getMetaPartition(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		body        []byte
 		code        = http.StatusBadRequest
@@ -302,7 +302,7 @@ func checkVolPara(r *http.Request) (name string, err error) {
 	return
 }
 
-func (m *Master) sendOkReplyForClient(w http.ResponseWriter, r *http.Request, msg []byte) {
+func (m *Server) sendOkReplyForClient(w http.ResponseWriter, r *http.Request, msg []byte) {
 	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
 	w.Write(msg)
 }

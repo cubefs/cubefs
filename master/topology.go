@@ -56,10 +56,10 @@ type topoMetaNode struct {
 	setID uint64
 }
 
-func newTopoMetaNode(metaNode *MetaNode, setId uint64) *topoMetaNode {
+func newTopoMetaNode(metaNode *MetaNode, setID uint64) *topoMetaNode {
 	return &topoMetaNode{
 		MetaNode: metaNode,
-		setID:    setId,
+		setID:    setID,
 	}
 }
 

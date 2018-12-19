@@ -91,6 +91,7 @@ func (mf *MetadataFsm) restoreApplied() {
 	mf.applied = applied
 }
 
+//Apply 实现raft.StateMachine接口
 func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, err error) {
 	cmd := new(RaftCmdData)
 	if err = cmd.Unmarshal(command); err != nil {
@@ -103,11 +104,11 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 	cmdMap[applied] = []byte(strconv.FormatUint(uint64(index), 10))
 	switch cmd.Op {
 	case opSyncDeleteDataNode, opSyncDeleteMetaNode, opSyncDeleteVol, opSyncDeleteDataPartition, opSyncDeleteMetaPartition:
-		if err = mf.DelKeyAndPutIndex(cmd.K, cmdMap); err != nil {
+		if err = mf.delKeyAndPutIndex(cmd.K, cmdMap); err != nil {
 			panic(err)
 		}
 	default:
-		if err = mf.BatchPut(cmdMap); err != nil {
+		if err = mf.batchPut(cmdMap); err != nil {
 			panic(err)
 		}
 	}
@@ -118,6 +119,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 	return
 }
 
+//ApplyMemberChange 实现raft.StateMachine接口
 func (mf *MetadataFsm) ApplyMemberChange(confChange *proto.ConfChange, index uint64) (interface{}, error) {
 	var err error
 	if mf.peerChangeHandler != nil {
@@ -126,6 +128,7 @@ func (mf *MetadataFsm) ApplyMemberChange(confChange *proto.ConfChange, index uin
 	return nil, err
 }
 
+//Snapshot 实现raft.StateMachine接口
 func (mf *MetadataFsm) Snapshot() (proto.Snapshot, error) {
 	snapshot := mf.store.RocksDBSnapshot()
 	iterator := mf.store.Iterator(snapshot)
@@ -138,6 +141,7 @@ func (mf *MetadataFsm) Snapshot() (proto.Snapshot, error) {
 	}, nil
 }
 
+//ApplySnapshot 实现raft.StateMachine接口
 func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIterator) (err error) {
 	log.LogInfof(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
 	var data []byte
@@ -168,32 +172,37 @@ errDeal:
 	return err
 }
 
+//HandleFatalEvent 实现raft.StateMachine接口
 func (mf *MetadataFsm) HandleFatalEvent(err *raft.FatalError) {
 	panic(err.Err)
 }
 
+//HandleLeaderChange 实现raft.StateMachine接口
 func (mf *MetadataFsm) HandleLeaderChange(leader uint64) {
 	if mf.leaderChangeHandler != nil {
 		go mf.leaderChangeHandler(leader)
 	}
 }
 
+//Put 实现raftstore.Store接口
 func (mf *MetadataFsm) Put(key, val interface{}) (interface{}, error) {
 	return mf.store.Put(key, val)
 }
 
-func (mf *MetadataFsm) BatchPut(cmdMap map[string][]byte) (err error) {
+func (mf *MetadataFsm) batchPut(cmdMap map[string][]byte) (err error) {
 	return mf.store.BatchPut(cmdMap)
 }
 
+//Get 实现raftstore.Store接口
 func (mf *MetadataFsm) Get(key interface{}) (interface{}, error) {
 	return mf.store.Get(key)
 }
 
+//Del 实现raftstore.Store接口
 func (mf *MetadataFsm) Del(key interface{}) (interface{}, error) {
 	return mf.store.Del(key)
 }
 
-func (mf *MetadataFsm) DelKeyAndPutIndex(key string, cmdMap map[string][]byte) (err error) {
+func (mf *MetadataFsm) delKeyAndPutIndex(key string, cmdMap map[string][]byte) (err error) {
 	return mf.store.DeleteKeyAndPutIndex(key, cmdMap)
 }

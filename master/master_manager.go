@@ -26,7 +26,7 @@ type LeaderInfo struct {
 	addr string //host:port
 }
 
-func (m *Master) handleLeaderChange(leader uint64) {
+func (m *Server) handleLeaderChange(leader uint64) {
 	if leader == 0 {
 		log.LogWarnf("action[handleLeaderChange] but no leader")
 		return
@@ -42,7 +42,7 @@ func (m *Master) handleLeaderChange(leader uint64) {
 	}
 }
 
-func (m *Master) handlePeerChange(confChange *proto.ConfChange) (err error) {
+func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
 	var msg string
 	addr := string(confChange.Context)
 	switch confChange.Type {
@@ -63,22 +63,22 @@ func (m *Master) handlePeerChange(confChange *proto.ConfChange) (err error) {
 	return
 }
 
-func (m *Master) handleApply(cmd *RaftCmdData) (err error) {
+func (m *Server) handleApply(cmd *RaftCmdData) (err error) {
 	return m.cluster.handleApply(cmd)
 }
 
-func (m *Master) handleApplySnapshot() {
+func (m *Server) handleApplySnapshot() {
 	m.fsm.restore()
 	m.restoreIDAlloc()
 	return
 }
 
-func (m *Master) restoreIDAlloc() {
+func (m *Server) restoreIDAlloc() {
 	m.cluster.idAlloc.restore()
 }
 
 // load stored meta data to memory
-func (m *Master) loadMetadata() {
+func (m *Server) loadMetadata() {
 	log.LogInfo("action[loadMetadata] begin")
 	m.restoreIDAlloc()
 	var err error

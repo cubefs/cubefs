@@ -23,6 +23,7 @@ import (
 	"time"
 )
 
+//NodeTab 定义带权重的node
 type NodeTab struct {
 	Carry  float64
 	Weight float64
@@ -30,6 +31,7 @@ type NodeTab struct {
 	ID     uint64
 }
 
+//Node 带权重的node需要实现此接口
 type Node interface {
 	SetCarry(carry float64)
 	SelectNodeForWrite()

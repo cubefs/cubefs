@@ -125,9 +125,9 @@ func (c *Cluster) metaPartitionOffline(volName, nodeAddr string, partitionID uin
 	copy(onlineAddrs, newHosts)
 	for _, mr := range mp.Replicas {
 		if mr.Addr == nodeAddr {
-			removePeer = proto.Peer{ID: mr.nodeId, Addr: mr.Addr}
+			removePeer = proto.Peer{ID: mr.nodeID, Addr: mr.Addr}
 		} else {
-			newPeers = append(newPeers, proto.Peer{ID: mr.nodeId, Addr: mr.Addr})
+			newPeers = append(newPeers, proto.Peer{ID: mr.nodeID, Addr: mr.Addr})
 			newHosts = append(newHosts, mr.Addr)
 		}
 	}

@@ -25,6 +25,7 @@ import (
 	"strings"
 )
 
+// ClusterValue cluster值对象
 type ClusterValue struct {
 	Name          string
 	CompactStatus bool
@@ -38,6 +39,7 @@ func newClusterValue(c *Cluster) (cv *ClusterValue) {
 	return cv
 }
 
+// MetaPartitionValue 元数据分片值对象
 type MetaPartitionValue struct {
 	PartitionID uint64
 	Start       uint64
@@ -65,6 +67,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *MetaPartitionValue) {
 	return
 }
 
+//DataPartitionValue 数据分片值对象
 type DataPartitionValue struct {
 	PartitionID uint64
 	ReplicaNum  uint8
@@ -90,8 +93,9 @@ func newDataPartitionValue(dp *DataPartition) (dpv *DataPartitionValue) {
 	return
 }
 
+//VolValue vol值对象
 type VolValue struct {
-	Id                uint64
+	ID                uint64
 	Name              string
 	ReplicaNum        uint8
 	Status            uint8
@@ -102,7 +106,7 @@ type VolValue struct {
 
 func newVolValue(vol *Vol) (vv *VolValue) {
 	vv = &VolValue{
-		Id:                vol.ID,
+		ID:                vol.ID,
 		Name:              vol.Name,
 		ReplicaNum:        vol.mpReplicaNum,
 		Status:            vol.Status,
@@ -113,36 +117,39 @@ func newVolValue(vol *Vol) (vv *VolValue) {
 	return
 }
 
+//DataNodeValue 数据节点值对象
 type DataNodeValue struct {
-	Id        uint64
-	NodeSetId uint64
+	ID        uint64
+	NodeSetID uint64
 	Addr      string
 }
 
 func newDataNodeValue(dataNode *DataNode) *DataNodeValue {
 	return &DataNodeValue{
-		Id:        dataNode.ID,
-		NodeSetId: dataNode.NodeSetID,
+		ID:        dataNode.ID,
+		NodeSetID: dataNode.NodeSetID,
 		Addr:      dataNode.Addr,
 	}
 }
 
+//MetaNodeValue 元数据节点值对象
 type MetaNodeValue struct {
-	Id        uint64
-	NodeSetId uint64
+	ID        uint64
+	NodeSetID uint64
 	Addr      string
 }
 
 func newMetaNodeValue(metaNode *MetaNode) *MetaNodeValue {
 	return &MetaNodeValue{
-		Id:        metaNode.ID,
-		NodeSetId: metaNode.NodeSetID,
+		ID:        metaNode.ID,
+		NodeSetID: metaNode.NodeSetID,
 		Addr:      metaNode.Addr,
 	}
 }
 
+//NodeSetValue nodeSet值对象
 type NodeSetValue struct {
-	Id          uint64
+	ID          uint64
 	Capacity    int
 	MetaNodeLen int
 	DataNodeLen int
@@ -150,7 +157,7 @@ type NodeSetValue struct {
 
 func newNodeSetValue(nset *nodeSet) (nsv *NodeSetValue) {
 	nsv = &NodeSetValue{
-		Id:          nset.ID,
+		ID:          nset.ID,
 		Capacity:    nset.Capacity,
 		MetaNodeLen: nset.metaNodeLen,
 		DataNodeLen: nset.dataNodeLen,
@@ -158,16 +165,19 @@ func newNodeSetValue(nset *nodeSet) (nsv *NodeSetValue) {
 	return
 }
 
+//RaftCmdData raft 命令对象
 type RaftCmdData struct {
 	Op uint32 `json:"op"`
 	K  string `json:"k"`
 	V  []byte `json:"v"`
 }
 
+//Marshal raft命令转换成字节数组
 func (m *RaftCmdData) Marshal() ([]byte, error) {
 	return json.Marshal(m)
 }
 
+//Unmarshal 字节数组转换成raft命令
 func (m *RaftCmdData) Unmarshal(data []byte) (err error) {
 	return json.Unmarshal(data, m)
 }
@@ -466,7 +476,7 @@ func (c *Cluster) applyAddNodeSet(cmd *RaftCmdData) (err error) {
 		log.LogErrorf("action[applyAddNodeSet],err:%v", err.Error())
 		return
 	}
-	ns := newNodeSet(nsv.Id, defaultNodeSetCapacity)
+	ns := newNodeSet(nsv.ID, defaultNodeSetCapacity)
 	c.t.putNodeSet(ns)
 	return
 }
@@ -478,7 +488,7 @@ func (c *Cluster) applyUpdateNodeSet(cmd *RaftCmdData) (err error) {
 		log.LogErrorf("action[applyUpdateNodeSet],err:%v", err.Error())
 		return
 	}
-	ns, err := c.t.getNodeSet(nsv.Id)
+	ns, err := c.t.getNodeSet(nsv.ID)
 	if err != nil {
 		log.LogErrorf("action[applyUpdateNodeSet],err:%v", err.Error())
 		return
@@ -498,8 +508,8 @@ func (c *Cluster) applyAddDataNode(cmd *RaftCmdData) (err error) {
 		return
 	}
 	dataNode := newDataNode(dnv.Addr, c.Name)
-	dataNode.ID = dnv.Id
-	dataNode.NodeSetID = dnv.NodeSetId
+	dataNode.ID = dnv.ID
+	dataNode.NodeSetID = dnv.NodeSetID
 	c.dataNodes.Store(dataNode.Addr, dataNode)
 	return
 }
@@ -511,7 +521,7 @@ func (c *Cluster) applyDeleteDataNode(cmd *RaftCmdData) (err error) {
 		log.LogErrorf("action[applyDeleteDataNode],err:%v", err.Error())
 		return
 	}
-	if value, ok := c.dataNodes.Load(dnv.Id); ok {
+	if value, ok := c.dataNodes.Load(dnv.ID); ok {
 		dataNode := value.(*DataNode)
 		c.delDataNodeFromCache(dataNode)
 	}
@@ -527,8 +537,8 @@ func (c *Cluster) applyAddMetaNode(cmd *RaftCmdData) (err error) {
 	}
 	if _, err = c.getMetaNode(mnv.Addr); err != nil {
 		metaNode := newMetaNode(mnv.Addr, c.Name)
-		metaNode.ID = mnv.Id
-		metaNode.NodeSetID = mnv.NodeSetId
+		metaNode.ID = mnv.ID
+		metaNode.NodeSetID = mnv.NodeSetID
 		c.metaNodes.Store(metaNode.Addr, metaNode)
 	}
 	return nil
@@ -541,7 +551,7 @@ func (c *Cluster) applyDeleteMetaNode(cmd *RaftCmdData) (err error) {
 		log.LogErrorf("action[applyDeleteMetaNode],err:%v", err.Error())
 		return
 	}
-	if value, ok := c.metaNodes.Load(mnv.Id); ok {
+	if value, ok := c.metaNodes.Load(mnv.ID); ok {
 		metaNode := value.(*MetaNode)
 		c.delMetaNodeFromCache(metaNode)
 	}
@@ -555,7 +565,7 @@ func (c *Cluster) applyAddVol(cmd *RaftCmdData) (err error) {
 		log.LogError(fmt.Sprintf("action[applyAddVol] failed,err:%v", err))
 		return
 	}
-	vol := newVol(vv.Id, vv.Name, vv.ReplicaNum, vv.RandomWrite, vv.DataPartitionSize, vv.Capacity)
+	vol := newVol(vv.ID, vv.Name, vv.ReplicaNum, vv.RandomWrite, vv.DataPartitionSize, vv.Capacity)
 	c.putVol(vol)
 	return
 }
@@ -706,7 +716,7 @@ func (c *Cluster) loadNodeSets() (err error) {
 			log.LogErrorf("action[loadNodeSets], unmarshal err:%v", err.Error())
 			return err
 		}
-		ns := newNodeSet(nsv.Id, defaultNodeSetCapacity)
+		ns := newNodeSet(nsv.ID, defaultNodeSetCapacity)
 		ns.metaNodeLen = nsv.MetaNodeLen
 		ns.dataNodeLen = nsv.DataNodeLen
 		c.t.putNodeSet(ns)
@@ -729,24 +739,11 @@ func (c *Cluster) loadDataNodes() (err error) {
 			return
 		}
 		dataNode := newDataNode(dnv.Addr, c.Name)
-		dataNode.ID = dnv.Id
-		dataNode.NodeSetID = dnv.NodeSetId
+		dataNode.ID = dnv.ID
+		dataNode.NodeSetID = dnv.NodeSetID
 		c.dataNodes.Store(dataNode.Addr, dataNode)
 		log.LogInfof("action[loadDataNodes],dataNode[%v]", dataNode.Addr)
 	}
-	return
-}
-
-func (c *Cluster) decodeNodeSetKey(key string) (setId uint64, err error) {
-	keys := strings.Split(key, keySeparator)
-	setId, err = strconv.ParseUint(keys[2], 10, 64)
-	return
-}
-
-func (c *Cluster) decodeMetaNodeKey(key string) (nodeID uint64, addr string, err error) {
-	keys := strings.Split(key, keySeparator)
-	addr = keys[3]
-	nodeID, err = strconv.ParseUint(keys[2], 10, 64)
 	return
 }
 
@@ -763,8 +760,8 @@ func (c *Cluster) loadMetaNodes() (err error) {
 			return err
 		}
 		metaNode := newMetaNode(mnv.Addr, c.Name)
-		metaNode.ID = mnv.Id
-		metaNode.NodeSetID = mnv.NodeSetId
+		metaNode.ID = mnv.ID
+		metaNode.NodeSetID = mnv.NodeSetID
 		c.metaNodes.Store(metaNode.Addr, metaNode)
 		log.LogInfof("action[loadMetaNodes],metaNode[%v]", metaNode.Addr)
 	}
@@ -783,7 +780,7 @@ func (c *Cluster) loadVols() (err error) {
 			err = fmt.Errorf("action[loadVols],value:%v,unmarshal err:%v", string(value), err)
 			return err
 		}
-		vol := newVol(vv.Id, vv.Name, vv.ReplicaNum, vv.RandomWrite, vv.DataPartitionSize, vv.Capacity)
+		vol := newVol(vv.ID, vv.Name, vv.ReplicaNum, vv.RandomWrite, vv.DataPartitionSize, vv.Capacity)
 		vol.Status = vv.Status
 		c.putVol(vol)
 		log.LogInfof("action[loadVols],vol[%v]", vol)

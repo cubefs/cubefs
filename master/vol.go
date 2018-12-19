@@ -232,9 +232,8 @@ func (vol *Vol) checkNeedAutoCreateDataPartitions(c *Cluster) {
 	if usedSpace >= vol.getCapacity() {
 		vol.setAllDataPartitionsToReadOnly()
 		return
-	} else {
-		vol.setStatus(volNormal)
 	}
+	vol.setStatus(volNormal)
 	if vol.getStatus() == volNormal && !c.DisableAutoAlloc {
 		vol.autoCreateDataPartitions(c)
 	}

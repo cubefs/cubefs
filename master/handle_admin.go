@@ -74,7 +74,7 @@ type TopologyView struct {
 	NodeSet   []uint64
 }
 
-func (m *Master) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
+func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
 	var (
 		threshold float64
 		err       error
@@ -91,7 +91,7 @@ errDeal:
 	return
 }
 
-func (m *Master) setDisableAutoAlloc(w http.ResponseWriter, r *http.Request) {
+func (m *Server) setDisableAutoAlloc(w http.ResponseWriter, r *http.Request) {
 	var (
 		status bool
 		err    error
@@ -108,7 +108,7 @@ errDeal:
 	return
 }
 
-func (m *Master) getTopology(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
 		err  error
@@ -143,7 +143,7 @@ errDeal:
 	return
 }
 
-func (m *Master) getCluster(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
 		err  error
@@ -187,7 +187,7 @@ errDeal:
 	return
 }
 
-func (m *Master) getIPAndClusterName(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getIPAndClusterName(w http.ResponseWriter, r *http.Request) {
 	cInfo := &proto.ClusterInfo{Cluster: m.cluster.Name, Ip: strings.Split(r.RemoteAddr, ":")[0]}
 	cInfoBytes, err := json.Marshal(cInfo)
 	if err != nil {
@@ -201,7 +201,7 @@ errDeal:
 	return
 }
 
-func (m *Master) createMetaPartition(w http.ResponseWriter, r *http.Request) {
+func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName string
 		start   uint64
@@ -224,7 +224,7 @@ errDeal:
 	return
 }
 
-func (m *Master) createDataPartition(w http.ResponseWriter, r *http.Request) {
+func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		rstMsg                     string
 		volName                    string
@@ -259,7 +259,7 @@ errDeal:
 	return
 }
 
-func (m *Master) getDataPartition(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		body        []byte
 		dp          *DataPartition
@@ -284,7 +284,7 @@ errDeal:
 	return
 }
 
-func (m *Master) loadDataPartition(w http.ResponseWriter, r *http.Request) {
+func (m *Server) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName     string
 		vol         *Vol
@@ -315,7 +315,7 @@ errDeal:
 	return
 }
 
-func (m *Master) dataPartitionOffline(w http.ResponseWriter, r *http.Request) {
+func (m *Server) dataPartitionOffline(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName     string
 		vol         *Vol
@@ -347,7 +347,7 @@ errDeal:
 	return
 }
 
-func (m *Master) markDeleteVol(w http.ResponseWriter, r *http.Request) {
+func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		name string
 		err  error
@@ -371,7 +371,7 @@ errDeal:
 	return
 }
 
-func (m *Master) updateVol(w http.ResponseWriter, r *http.Request) {
+func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		name     string
 		err      error
@@ -393,7 +393,7 @@ errDeal:
 	return
 }
 
-func (m *Master) createVol(w http.ResponseWriter, r *http.Request) {
+func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		name        string
 		err         error
@@ -424,7 +424,7 @@ errDeal:
 	return
 }
 
-func (m *Master) addDataNode(w http.ResponseWriter, r *http.Request) {
+func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
 		id       uint64
@@ -445,7 +445,7 @@ errDeal:
 	return
 }
 
-func (m *Master) getDataNode(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
 		dataNode *DataNode
@@ -470,7 +470,7 @@ errDeal:
 	return
 }
 
-func (m *Master) dataNodeOffline(w http.ResponseWriter, r *http.Request) {
+func (m *Server) dataNodeOffline(w http.ResponseWriter, r *http.Request) {
 	var (
 		node        *DataNode
 		rstMsg      string
@@ -497,7 +497,7 @@ errDeal:
 	return
 }
 
-func (m *Master) diskOffline(w http.ResponseWriter, r *http.Request) {
+func (m *Server) diskOffline(w http.ResponseWriter, r *http.Request) {
 	var (
 		node                  *DataNode
 		rstMsg                string
@@ -533,7 +533,7 @@ errDeal:
 	return
 }
 
-func (m *Master) dataNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
+func (m *Server) dataNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
 	var (
 		dataNode *DataNode
 		code     = http.StatusOK
@@ -562,7 +562,7 @@ errDeal:
 	return
 }
 
-func (m *Master) addMetaNode(w http.ResponseWriter, r *http.Request) {
+func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
 		id       uint64
@@ -593,7 +593,7 @@ func parseAddDataNodePara(r *http.Request) (nodeAddr string, err error) {
 	return checkNodeAddr(r)
 }
 
-func (m *Master) getMetaNode(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
 		metaNode *MetaNode
@@ -618,7 +618,7 @@ errDeal:
 	return
 }
 
-func (m *Master) metaPartitionOffline(w http.ResponseWriter, r *http.Request) {
+func (m *Server) metaPartitionOffline(w http.ResponseWriter, r *http.Request) {
 	var (
 		partitionID       uint64
 		volName, nodeAddr string
@@ -641,7 +641,7 @@ errDeal:
 	return
 }
 
-func (m *Master) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
+func (m *Server) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName     string
 		vol         *Vol
@@ -672,7 +672,7 @@ errDeal:
 	return
 }
 
-func (m *Master) metaNodeOffline(w http.ResponseWriter, r *http.Request) {
+func (m *Server) metaNodeOffline(w http.ResponseWriter, r *http.Request) {
 	var (
 		metaNode    *MetaNode
 		rstMsg      string
@@ -697,7 +697,7 @@ errDeal:
 	return
 }
 
-func (m *Master) metaNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
+func (m *Server) metaNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
 	var (
 		metaNode *MetaNode
 		code     = http.StatusOK
@@ -726,7 +726,7 @@ errDeal:
 	return
 }
 
-func (m *Master) handleAddRaftNode(w http.ResponseWriter, r *http.Request) {
+func (m *Server) handleAddRaftNode(w http.ResponseWriter, r *http.Request) {
 	var msg string
 	id, addr, err := parseRaftNodePara(r)
 	if err != nil {
@@ -745,7 +745,7 @@ errDeal:
 	return
 }
 
-func (m *Master) handleRemoveRaftNode(w http.ResponseWriter, r *http.Request) {
+func (m *Server) handleRemoveRaftNode(w http.ResponseWriter, r *http.Request) {
 	var msg string
 	id, addr, err := parseRaftNodePara(r)
 	if err != nil {
@@ -1024,14 +1024,14 @@ func parseCreateMetaPartitionPara(r *http.Request) (volName string, start uint64
 	return
 }
 
-func (m *Master) sendOkReply(w http.ResponseWriter, r *http.Request, msg string) {
+func (m *Server) sendOkReply(w http.ResponseWriter, r *http.Request, msg string) {
 	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
 	w.Header().Set("content-type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(msg)))
 	w.Write([]byte(msg))
 }
 
-func (m *Master) sendErrReply(w http.ResponseWriter, r *http.Request, httpCode int, msg string, err error) {
+func (m *Server) sendErrReply(w http.ResponseWriter, r *http.Request, httpCode int, msg string, err error) {
 	log.LogInfof("URL[%v],remoteAddr[%v],response err", r.URL, r.RemoteAddr)
 	HandleError(msg, err, httpCode, w)
 }

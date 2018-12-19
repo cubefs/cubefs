@@ -34,8 +34,7 @@ const (
 	TaskWorkerInterval = time.Microsecond * time.Duration(200)
 )
 
-//AdminTaskSender
-// master send admin command to metaNode or dataNode by the sender,
+// AdminTaskSender master send admin command to metaNode or dataNode by the sender,
 //because this command is cost very long time,so the sender just send command
 //and do nothing..then the metaNode or  dataNode send a new http request to reply command response
 //to master
