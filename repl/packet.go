@@ -24,7 +24,6 @@ type Packet struct {
 	followersAddrs []string
 	IsRelase       int32
 	Object         interface{}
-	followerNum    uint8
 	TpObject       *ump.TpObject
 	NeedReply      bool
 }
@@ -57,12 +56,9 @@ func (p *Packet) resolveReplicateAddrs() (err error) {
 	}
 	str := string(p.Arg[:int(p.Arglen)])
 	replicateAddrs := strings.SplitN(str, proto.AddrSplit, -1)
-	p.followerNum = uint8(len(replicateAddrs) - 1)
-	p.followersAddrs = make([]string, p.followerNum)
-	p.followersConns = make([]*net.TCPConn, p.followerNum)
-	if p.followerNum > 0 {
-		p.followersAddrs = replicateAddrs[:int(p.followerNum)]
-	}
+	followerNum := uint8(len(replicateAddrs) - 1)
+	p.followersAddrs = make([]string, followerNum)
+	p.followersConns = make([]*net.TCPConn, followerNum)
 	if p.RemainReplicates < 0 {
 		err = ErrBadNodes
 		return
