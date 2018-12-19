@@ -52,7 +52,7 @@ var (
 )
 
 const (
-	GetIPFromMaster = master.AdminGetIp
+	GetIPFromMaster = master.AdminGetIP
 	DefaultRackName = "huitian_rack1"
 	DefaultRaftDir  = "raft"
 )
