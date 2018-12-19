@@ -15,11 +15,7 @@
 package metanode
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
-	"io/ioutil"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -30,12 +26,16 @@ import (
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
+	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/ump"
 )
 
-var clusterInfo *proto.ClusterInfo
+var (
+	clusterInfo  *proto.ClusterInfo
+	masterHelper util.MasterHelper
+)
 
 // The MetaNode manage Dentry and Inode information in multiple metaPartition, and
 // through the RaftStore algorithm and other MetaNodes in the RageGroup for reliable
@@ -145,8 +145,9 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogDebugf("action[parseConfig] load raftReplicatePort[%v].", m.raftReplicatePort)
 
 	addrs := cfg.GetArray(cfgMasterAddrs)
+	masterHelper = util.NewMasterHelper()
 	for _, addr := range addrs {
-		masterAddrs = append(masterAddrs, addr.(string))
+		masterHelper.AddNode(addr.(string))
 	}
 	err = m.validConfig()
 	return
@@ -163,7 +164,7 @@ func (m *MetaNode) validConfig() (err error) {
 	if m.raftDir == "" {
 		m.raftDir = defaultRaftDir
 	}
-	if len(masterAddrs) == 0 {
+	if len(masterHelper.Nodes()) == 0 {
 		err = errors.New("master address list is empty")
 		return
 	}
@@ -195,89 +196,40 @@ func (m *MetaNode) stopMetaManager() {
 }
 
 func (m *MetaNode) register() (err error) {
+	step := 0
+	reqParam := make(map[string]string)
 	for {
-		clusterInfo, err = getClusterInfo()
-		if err != nil {
-			log.LogErrorf("[register] %s", err.Error())
-			continue
+		if step < 1 {
+			clusterInfo, err = getClusterInfo()
+			if err != nil {
+				log.LogErrorf("[register] %s", err.Error())
+				continue
+			}
+			m.localAddr = clusterInfo.Ip
+			reqParam["addr"] = m.localAddr + ":" + m.listen
+			step++
 		}
-		m.localAddr = clusterInfo.Ip
-		err = m.postNodeID()
+		var respBody []byte
+		respBody, err = masterHelper.Request("POST", metaNodeURL, reqParam, nil)
 		if err != nil {
 			log.LogErrorf("[register] %s", err.Error())
 			time.Sleep(3 * time.Second)
 			continue
 		}
+		nodeIDStr := strings.TrimSpace(string(respBody))
+		if nodeIDStr == "" {
+			log.LogErrorf("[register] master respond empty body")
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		m.nodeId, err = strconv.ParseUint(nodeIDStr, 10, 64)
+		if err != nil {
+			log.LogErrorf("[register] parse to nodeID: %s", err.Error())
+			time.Sleep(3 * time.Second)
+			continue
+		}
 		return
 	}
-}
-
-func (m *MetaNode) postNodeID() (err error) {
-	reqPath := fmt.Sprintf("%s?addr=%s:%s", metaNodeURL, m.localAddr, m.listen)
-	msg, err := postToMaster("POST", reqPath, nil)
-	if err != nil {
-		err = errors.Errorf("[postNodeID] %s", err.Error())
-		return
-	}
-	nodeIDStr := strings.TrimSpace(string(msg))
-	if nodeIDStr == "" {
-		err = errors.Errorf("[postNodeID] master respond empty body")
-		return
-	}
-	m.nodeId, err = strconv.ParseUint(nodeIDStr, 10, 64)
-	return
-}
-
-func postToMaster(method string, reqPath string, body []byte) (msg []byte,
-	err error) {
-	var (
-		req  *http.Request
-		resp *http.Response
-	)
-	client := &http.Client{Timeout: 2 * time.Second}
-	for _, maddr := range masterAddrs {
-		if curMasterAddr == "" {
-			curMasterAddr = maddr
-		}
-		reqURL := fmt.Sprintf("http://%s%s", curMasterAddr, reqPath)
-		reqBody := bytes.NewBuffer(body)
-		req, err = http.NewRequest(method, reqURL, reqBody)
-		if err != nil {
-			log.LogErrorf("[postToMaster] construction NewRequest url=%s: %s",
-				reqURL, err.Error())
-			curMasterAddr = ""
-			continue
-		}
-		req.Header.Set("Connection", "close")
-		resp, err = client.Do(req)
-		if err != nil {
-			log.LogErrorf("[postToMaster] connect master url=%s: %s",
-				reqURL, err.Error())
-			curMasterAddr = ""
-			continue
-		}
-		msg, err = ioutil.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			log.LogErrorf("[postToMaster] read body url=%s: %s",
-				reqURL, err.Error())
-			curMasterAddr = ""
-			continue
-		}
-		if resp.StatusCode == http.StatusOK {
-			return
-		}
-		if resp.StatusCode == http.StatusForbidden {
-			curMasterAddr = strings.TrimSpace(string(msg))
-			err = errors.Errorf("[postToMaster] master response ")
-			continue
-		}
-		curMasterAddr = ""
-		err = errors.Errorf("[postToMaster] master response url=%s,"+
-			" status_code=%d, msg: %v", reqURL, resp.StatusCode, string(msg))
-		log.LogErrorf(err.Error())
-	}
-	return
 }
 
 func (m *MetaNode) startUMP() (err error) {
@@ -292,7 +244,7 @@ func NewServer() *MetaNode {
 }
 
 func getClusterInfo() (*proto.ClusterInfo, error) {
-	respBody, err := postToMaster("GET", "/admin/getIp", nil)
+	respBody, err := masterHelper.Request("GET", GetIpUri, nil, nil)
 	if err != nil {
 		return nil, err
 	}

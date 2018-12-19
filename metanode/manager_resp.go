@@ -45,7 +45,10 @@ func (m *metaManager) respondToMaster(data interface{}) (err error) {
 	if err != nil {
 		return
 	}
-	postToMaster("POST", masterResponsePath, jsonBytes)
+	_, err = masterHelper.Request("POST", masterResponsePath, nil, jsonBytes)
+	if err != nil {
+		err = errors.Annotate(err, "try respondToMaster failed")
+	}
 	return
 }
 
