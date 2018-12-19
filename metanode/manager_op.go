@@ -55,9 +55,6 @@ func (m *metaManager) opMasterHeartbeat(conn net.Conn, p *Packet) (err error) {
 		resp.Result = err.Error()
 		goto end
 	}
-	if curMasterAddr != req.MasterAddr {
-		curMasterAddr = req.MasterAddr
-	}
 	// collect used info
 	// machine mem total and used
 	resp.Total, _, err = util.GetMemInfo()
@@ -570,7 +567,7 @@ func (m *metaManager) opDeleteMetaPartition(conn net.Conn, p *Packet) (err error
 	}
 	adminTask.Response = resp
 	adminTask.Request = nil
-	err = m.respondToMaster(adminTask)
+	m.respondToMaster(adminTask)
 	log.LogDebugf("[opDeleteMetaPartition] req: %v, resp: %v", req, adminTask)
 	return
 }
