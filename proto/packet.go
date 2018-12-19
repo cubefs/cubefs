@@ -38,9 +38,7 @@ func GeneratorRequestID() int64 {
 }
 
 const (
-	AddrSplit       = "/"
-	ExtentPartition = "extent"
-	BlobPartition   = "blob"
+	AddrSplit = "/"
 )
 
 //operations
@@ -131,21 +129,21 @@ const (
 )
 
 type Packet struct {
-	Magic            uint8
-	ExtentMode       uint8
-	Opcode           uint8
-	ResultCode       uint8
-	RemainReplicates uint8
-	CRC              uint32
-	Size             uint32
-	Arglen           uint32
-	PartitionID      uint64
-	ExtentID         uint64
-	ExtentOffset     int64
-	ReqID            int64
-	Arg              []byte //if create or append ops, data contains addrs
-	Data             []byte
-	StartT           int64
+	Magic           uint8
+	ExtentMode      uint8
+	Opcode          uint8
+	ResultCode      uint8
+	RemainFollowers uint8
+	CRC             uint32
+	Size            uint32
+	Arglen          uint32
+	PartitionID     uint64
+	ExtentID        uint64
+	ExtentOffset    int64
+	ReqID           int64
+	Arg             []byte //if create or append ops, data contains addrs
+	Data            []byte
+	StartT          int64
 }
 
 func NewPacket() *Packet {
@@ -309,7 +307,7 @@ func (p *Packet) MarshalHeader(out []byte) {
 	out[1] = p.ExtentMode
 	out[2] = p.Opcode
 	out[3] = p.ResultCode
-	out[4] = p.RemainReplicates
+	out[4] = p.RemainFollowers
 	binary.BigEndian.PutUint32(out[5:9], p.CRC)
 	binary.BigEndian.PutUint32(out[9:13], p.Size)
 	binary.BigEndian.PutUint32(out[13:17], p.Arglen)
@@ -329,7 +327,7 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 	p.ExtentMode = in[1]
 	p.Opcode = in[2]
 	p.ResultCode = in[3]
-	p.RemainReplicates = in[4]
+	p.RemainFollowers = in[4]
 	p.CRC = binary.BigEndian.Uint32(in[5:9])
 	p.Size = binary.BigEndian.Uint32(in[9:13])
 	p.Arglen = binary.BigEndian.Uint32(in[13:17])
@@ -464,7 +462,7 @@ func (p *Packet) GetUniqueLogId() (m string) {
 }
 
 func (p *Packet) IsForwardPkg() bool {
-	return p.RemainReplicates > 0
+	return p.RemainFollowers > 0
 }
 
 func (p *Packet) LogMessage(action, remote string, start int64, err error) (m string) {
@@ -472,12 +470,12 @@ func (p *Packet) LogMessage(action, remote string, start int64, err error) (m st
 		m = fmt.Sprintf("id[%v] op[%v] remote[%v] "+
 			" cost[%v] transite[%v] nodes[%v]",
 			p.GetUniqueLogId(), action, remote,
-			(time.Now().UnixNano()-start)/1e6, p.IsForwardPkg(), p.RemainReplicates)
+			(time.Now().UnixNano()-start)/1e6, p.IsForwardPkg(), p.RemainFollowers)
 
 	} else {
 		m = fmt.Sprintf("id[%v] op[%v] remote[%v]"+
 			", err[%v] transite[%v] nodes[%v]", p.GetUniqueLogId(), action,
-			remote, err.Error(), p.IsForwardPkg(), p.RemainReplicates)
+			remote, err.Error(), p.IsForwardPkg(), p.RemainFollowers)
 	}
 
 	return
