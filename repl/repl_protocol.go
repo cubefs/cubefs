@@ -42,7 +42,7 @@ var (
 
     c. receiveFollowerResponse goroutine read from handleCh,recive all replicates  pkg response,and send this pkg to responseCh
 
-	if any step error,then change request to error Packet,and send it to responseCh, the InteractWithClient can send it to client
+	if any step error,then change request to error Packet,and send it to responseCh, the operatorAndForwardPkg can send it to client
 
 */
 type ReplProtocol struct {
