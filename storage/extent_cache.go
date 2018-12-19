@@ -141,7 +141,7 @@ func (cache *ExtentCache) fireLRU() {
 	needRemove := cache.extentList.Len() - cache.capacity
 	for i := 0; i < needRemove; i++ {
 		if e := cache.extentList.Front(); e != nil {
-			front := e.Value.(Extent)
+			front := e.Value.(*Extent)
 			if IsTinyExtent(front.ID()) {
 				continue
 			}
