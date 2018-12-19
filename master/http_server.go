@@ -64,7 +64,7 @@ const (
 
 	// Operation response
 	metaNodeResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
-	dataNodeResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
+	DataNodeResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
 
 	getTopologyView = "/topo/get"
 )
@@ -100,7 +100,7 @@ func (m *Master) handleFunctions() {
 	http.Handle(clientDataPartitions, m.handlerWithInterceptor())
 	http.Handle(clientVol, m.handlerWithInterceptor())
 	http.Handle(clientMetaPartition, m.handlerWithInterceptor())
-	http.Handle(dataNodeResponse, m.handlerWithInterceptor())
+	http.Handle(DataNodeResponse, m.handlerWithInterceptor())
 	http.Handle(metaNodeResponse, m.handlerWithInterceptor())
 	http.Handle(adminCreateMP, m.handlerWithInterceptor())
 	http.Handle(clientVolStat, m.handlerWithInterceptor())
@@ -170,7 +170,7 @@ func (m *Master) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.dataNodeOffline(w, r)
 	case diskOffLine:
 		m.diskOffline(w, r)
-	case dataNodeResponse:
+	case DataNodeResponse:
 		m.dataNodeTaskResponse(w, r)
 	case addMetaNode:
 		m.addMetaNode(w, r)
