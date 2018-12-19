@@ -35,7 +35,7 @@ const (
 	adminUpdateVol            = "/vol/update"
 	adminCreateVol            = "/admin/createVol"
 	adminClusterFreeze        = "/cluster/freeze"
-	AdminGetIp                = "/admin/getIp"
+	AdminGetIP                = "/admin/getIp"
 	adminCreateMP             = "/metaPartition/create"
 	adminSetMetaNodeThreshold = "/threshold/set"
 
@@ -76,7 +76,7 @@ func (m *Server) startHTTPService() (err error) {
 }
 
 func (m *Server) handleFunctions() {
-	http.HandleFunc(AdminGetIp, m.getIPAndClusterName)
+	http.HandleFunc(AdminGetIP, m.getIPAndClusterName)
 	http.HandleFunc(adminGetCluster, m.getCluster)
 	http.Handle(AdminGetDataPartition, m.handlerWithInterceptor())
 	http.Handle(adminCreateDataPartition, m.handlerWithInterceptor())
