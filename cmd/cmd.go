@@ -170,7 +170,7 @@ func main() {
 	}
 
 	interceptSignal(server)
-	err := server.Start(cfg)
+	err = server.Start(cfg)
 	if err != nil {
 		fmt.Println("Fatal: failed to start the baud storage daemon - ", err)
 		log.LogFatal("Fatal: failed to start the baud storage daemon - ", err)
