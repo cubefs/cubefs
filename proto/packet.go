@@ -39,8 +39,6 @@ func GeneratorRequestID() int64 {
 
 const (
 	AddrSplit       = "/"
-	ExtentPartition = "extent"
-	BlobPartition   = "blob"
 )
 
 //operations
