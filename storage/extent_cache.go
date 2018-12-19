@@ -26,7 +26,7 @@ type extentMapItem struct {
 	ele *list.Element
 }
 
-// LRUExtentCache is an implementation of ExtentCache with LRU support.
+// ExtentCache is an implementation of ExtentCache with LRU support.
 // This cache manager store extent entity into an linked table and make
 // index by using an hash map.
 // Details for LRU, this cache move the hot spot entity to back of link
@@ -50,7 +50,7 @@ func NewExtentCache(capacity int) *ExtentCache {
 	}
 }
 
-// PutConnect extent object into cache.
+// Put Connect extent object into cache.
 func (cache *ExtentCache) Put(extent *Extent) {
 	if IsTinyExtent(extent.ID()) {
 		cache.tinyLock.Lock()
@@ -68,11 +68,11 @@ func (cache *ExtentCache) Put(extent *Extent) {
 	cache.fireLRU()
 }
 
-// GetConnect extent from cache with specified extent identity (extentId).
-func (cache *ExtentCache) Get(extentId uint64) (extent *Extent, ok bool) {
-	if IsTinyExtent(extentId) {
+// Get Connect extent from cache with specified extent identity (extentID).
+func (cache *ExtentCache) Get(extentID uint64) (extent *Extent, ok bool) {
+	if IsTinyExtent(extentID) {
 		cache.tinyLock.RLock()
-		extent, ok = cache.tinyExtents[extentId]
+		extent, ok = cache.tinyExtents[extentID]
 		cache.tinyLock.RUnlock()
 		return
 	}
@@ -81,8 +81,8 @@ func (cache *ExtentCache) Get(extentId uint64) (extent *Extent, ok bool) {
 	var (
 		item *extentMapItem
 	)
-	if item, ok = cache.extentMap[extentId]; ok {
-		if !IsTinyExtent(extentId) {
+	if item, ok = cache.extentMap[extentID]; ok {
+		if !IsTinyExtent(extentID) {
 			cache.extentList.MoveToBack(item.ele)
 		}
 		extent = item.ext
@@ -90,9 +90,9 @@ func (cache *ExtentCache) Get(extentId uint64) (extent *Extent, ok bool) {
 	return
 }
 
-// Del extent stored in cache this specified extent identity (extentId).
-func (cache *ExtentCache) Del(extentId uint64) {
-	if IsTinyExtent(extentId) {
+// Del extent stored in cache this specified extent identity (extentID).
+func (cache *ExtentCache) Del(extentID uint64) {
+	if IsTinyExtent(extentID) {
 		return
 	}
 	cache.lock.Lock()
@@ -101,8 +101,8 @@ func (cache *ExtentCache) Del(extentId uint64) {
 		item *extentMapItem
 		ok   bool
 	)
-	if item, ok = cache.extentMap[extentId]; ok {
-		delete(cache.extentMap, extentId)
+	if item, ok = cache.extentMap[extentID]; ok {
+		delete(cache.extentMap, extentID)
 		cache.extentList.Remove(item.ele)
 		item.ext.Close()
 	}

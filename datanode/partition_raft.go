@@ -430,10 +430,10 @@ func (dp *DataPartition) ExtentRepair(extentFiles []*storage.ExtentInfo) {
 
 	for i := 0; i < len(extentFiles); i++ {
 		extentFile := extentFiles[i]
-		addFile := &storage.ExtentInfo{Source: extentFile.Source, FileId: extentFile.FileId, Size: extentFile.Size, Inode: extentFile.Inode}
+		addFile := &storage.ExtentInfo{Source: extentFile.Source, FileID: extentFile.FileID, Size: extentFile.Size, Inode: extentFile.Inode}
 		mf.AddExtentsTasks = append(mf.AddExtentsTasks, addFile)
 		log.LogDebugf("action[ExtentRepair] partition=%v extent [%v_%v] addFile[%v].",
-			dp.partitionID, dp.partitionID, extentFile.FileId, addFile)
+			dp.partitionID, dp.partitionID, extentFile.FileID, addFile)
 	}
 
 	dp.MergeExtentStoreRepair(mf)

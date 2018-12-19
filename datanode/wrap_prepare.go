@@ -89,7 +89,7 @@ func (s *DataNode) addExtentInfo(pkg *repl.Packet) error {
 			return err
 		}
 	} else if isLeaderPacket(pkg) && pkg.Opcode == proto.OpCreateExtent {
-		pkg.ExtentID = store.NextExtentId()
+		pkg.ExtentID = store.NextExtentID()
 	}
 
 	return nil

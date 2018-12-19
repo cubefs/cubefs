@@ -568,19 +568,19 @@ func (dp *DataPartition) GetAllExtentsMeta() (files []*storage.ExtentInfo, err e
 func (dp *DataPartition) MergeExtentStoreRepair(metas *DataPartitionRepairTask) {
 	store := dp.extentStore
 	for _, addExtent := range metas.AddExtentsTasks {
-		if storage.IsTinyExtent(addExtent.FileId) {
+		if storage.IsTinyExtent(addExtent.FileID) {
 			continue
 		}
-		if store.IsExistExtent(uint64(addExtent.FileId)) {
-			fixFileSizeTask := &storage.ExtentInfo{Source: addExtent.Source, FileId: addExtent.FileId, Size: addExtent.Size}
+		if store.IsExistExtent(uint64(addExtent.FileID)) {
+			fixFileSizeTask := &storage.ExtentInfo{Source: addExtent.Source, FileID: addExtent.FileID, Size: addExtent.Size}
 			metas.FixExtentSizeTasks = append(metas.FixExtentSizeTasks, fixFileSizeTask)
 			continue
 		}
-		err := store.Create(uint64(addExtent.FileId), addExtent.Inode)
+		err := store.Create(uint64(addExtent.FileID), addExtent.Inode)
 		if err != nil {
 			continue
 		}
-		fixFileSizeTask := &storage.ExtentInfo{Source: addExtent.Source, FileId: addExtent.FileId, Size: addExtent.Size}
+		fixFileSizeTask := &storage.ExtentInfo{Source: addExtent.Source, FileID: addExtent.FileID, Size: addExtent.Size}
 		metas.FixExtentSizeTasks = append(metas.FixExtentSizeTasks, fixFileSizeTask)
 	}
 	var (
@@ -589,7 +589,7 @@ func (dp *DataPartition) MergeExtentStoreRepair(metas *DataPartitionRepairTask) 
 	)
 	wg = new(sync.WaitGroup)
 	for _, fixExtent := range metas.FixExtentSizeTasks {
-		if !store.IsExistExtent(uint64(fixExtent.FileId)) {
+		if !store.IsExistExtent(uint64(fixExtent.FileID)) {
 			continue
 		}
 		wg.Add(1)
