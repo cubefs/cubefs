@@ -493,7 +493,7 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 func (s *DataNode) handleGetAllWatermark(pkg *repl.Packet) {
 	var (
 		buf       []byte
-		fInfoList []*storage.FileInfo
+		fInfoList []*storage.ExtentInfo
 		err       error
 	)
 	partition := pkg.Object.(*DataPartition)
@@ -522,7 +522,7 @@ func (s *DataNode) handleNotifyExtentRepair(pkg *repl.Packet) {
 		err error
 	)
 	partition := pkg.Object.(*DataPartition)
-	extents := make([]*storage.FileInfo, 0)
+	extents := make([]*storage.ExtentInfo, 0)
 	mf := NewDataPartitionRepairTask(extents)
 	err = json.Unmarshal(pkg.Data, mf)
 	if err != nil {

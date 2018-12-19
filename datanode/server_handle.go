@@ -89,7 +89,7 @@ func (s *DataNode) apiGetPartition(w http.ResponseWriter, r *http.Request) {
 	)
 	var (
 		partitionId uint64
-		files       []*storage.FileInfo
+		files       []*storage.ExtentInfo
 		err         error
 	)
 	if err = r.ParseForm(); err != nil {
@@ -113,14 +113,14 @@ func (s *DataNode) apiGetPartition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result := &struct {
-		ID        uint64              `json:"id"`
-		Size      int                 `json:"size"`
-		Used      int                 `json:"used"`
-		Status    int                 `json:"status"`
-		Path      string              `json:"path"`
-		Files     []*storage.FileInfo `json:"extents"`
-		FileCount int                 `json:"fileCount"`
-		Replicas  []string            `json:"replicas"`
+		ID        uint64                `json:"id"`
+		Size      int                   `json:"size"`
+		Used      int                   `json:"used"`
+		Status    int                   `json:"status"`
+		Path      string                `json:"path"`
+		Files     []*storage.ExtentInfo `json:"extents"`
+		FileCount int                   `json:"fileCount"`
+		Replicas  []string              `json:"replicas"`
 	}{
 		ID:        partition.ID(),
 		Size:      partition.Size(),
@@ -140,7 +140,7 @@ func (s *DataNode) apiGetExtent(w http.ResponseWriter, r *http.Request) {
 		extentId    int
 		reload      int
 		err         error
-		extentInfo  *storage.FileInfo
+		extentInfo  *storage.ExtentInfo
 	)
 	if err = r.ParseForm(); err != nil {
 		s.buildApiFailureResp(w, http.StatusBadRequest, err.Error())

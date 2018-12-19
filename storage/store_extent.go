@@ -54,19 +54,19 @@ var (
 	RegexpExtentFile, _ = regexp.Compile("^(\\d)+$")
 )
 
-type ExtentFilter func(info *FileInfo) bool
+type ExtentFilter func(info *ExtentInfo) bool
 
 // Filters
 var (
 	GetStableExtentFilter = func() ExtentFilter {
 		now := time.Now()
-		return func(info *FileInfo) bool {
+		return func(info *ExtentInfo) bool {
 			return !IsTinyExtent(info.FileId) && now.Unix()-info.ModTime.Unix() > 10*60 && info.Deleted == false && info.Size > 0
 		}
 	}
 
 	GetStableTinyExtentFilter = func(filters []uint64) ExtentFilter {
-		return func(info *FileInfo) bool {
+		return func(info *ExtentInfo) bool {
 			if !IsTinyExtent(info.FileId) {
 				return false
 			}
@@ -81,7 +81,7 @@ var (
 
 	GetEmptyExtentFilter = func() ExtentFilter {
 		now := time.Now()
-		return func(info *FileInfo) bool {
+		return func(info *ExtentInfo) bool {
 			return !IsTinyExtent(info.FileId) && now.Unix()-info.ModTime.Unix() > 60*60 && info.Deleted == false && info.Size == 0
 		}
 	}
@@ -95,11 +95,11 @@ starts at 5000000 and ends at 5000128. Each small file is constantly append to t
 the deletion of small files is removed by purgehole, while the large file extent deletes the extent directly.
 */
 type ExtentStore struct {
-	dataDir             string               //dataPartition store dataPath
-	baseExtentId        uint64               //based extentId
-	extentInfoMap       map[uint64]*FileInfo //all extentInfo
-	extentInfoMux       sync.RWMutex         //lock
-	cache               *ExtentCache         //extent cache
+	dataDir             string                 //dataPartition store dataPath
+	baseExtentId        uint64                 //based extentId
+	extentInfoMap       map[uint64]*ExtentInfo //all extentInfo
+	extentInfoMux       sync.RWMutex           //lock
+	cache               *ExtentCache           //extent cache
 	lock                sync.Mutex
 	storeSize           int      //dataPartion store size
 	metaFp              *os.File //store dataPartion meta
@@ -138,7 +138,7 @@ func NewExtentStore(dataDir string, partitionId uint64, storeSize int) (s *Exten
 	if s.deleteFp, err = os.OpenFile(deleteIdxFilePath, ExtDeleteFileOpt, 0666); err != nil {
 		return
 	}
-	s.extentInfoMap = make(map[uint64]*FileInfo, 40)
+	s.extentInfoMap = make(map[uint64]*ExtentInfo, 40)
 	s.cache = NewExtentCache(40)
 	if err = s.initBaseFileId(); err != nil {
 		err = fmt.Errorf("init base field ID: %v", err)
@@ -158,7 +158,7 @@ the replica members of the three dataPartitions.
 */
 func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 	var (
-		extentInfoSlice []*FileInfo
+		extentInfoSlice []*ExtentInfo
 	)
 	if extentInfoSlice, err = s.GetAllWatermark(GetStableExtentFilter()); err != nil {
 		return
@@ -208,7 +208,7 @@ func (s *ExtentStore) Create(extentId uint64, inode uint64) (err error) {
 	}
 	s.cache.Put(extent)
 
-	extInfo := &FileInfo{}
+	extInfo := &ExtentInfo{}
 	extInfo.FromExtent(extent)
 	s.extentInfoMux.Lock()
 	s.extentInfoMap[extentId] = extInfo
@@ -295,7 +295,7 @@ func (s *ExtentStore) initBaseFileId() (err error) {
 		extentId   uint64
 		isExtent   bool
 		extent     *Extent
-		extentInfo *FileInfo
+		extentInfo *ExtentInfo
 		loadErr    error
 	)
 	for _, f := range files {
@@ -308,7 +308,7 @@ func (s *ExtentStore) initBaseFileId() (err error) {
 		if extent, loadErr = s.getExtent(extentId); loadErr != nil {
 			continue
 		}
-		extentInfo = &FileInfo{}
+		extentInfo = &ExtentInfo{}
 		extentInfo.FromExtent(extent)
 		extentInfo.Crc = 0
 		s.extentInfoMux.Lock()
@@ -359,7 +359,7 @@ func (s *ExtentStore) Write(extentId uint64, offset, size int64, data []byte, cr
 
 func (s *ExtentStore) TinyExtentRecover(extentId uint64, offset, size int64, data []byte, crc uint32) (err error) {
 	var (
-		extentInfo *FileInfo
+		extentInfo *ExtentInfo
 		has        bool
 		extent     *Extent
 	)
@@ -430,7 +430,7 @@ func (s *ExtentStore) Read(extentId uint64, offset, size int64, nbuf []byte) (cr
 func (s *ExtentStore) MarkDelete(extentId uint64, offset, size int64) (err error) {
 	var (
 		extent     *Extent
-		extentInfo *FileInfo
+		extentInfo *ExtentInfo
 		has        bool
 	)
 
@@ -585,7 +585,7 @@ func (s *ExtentStore) Close() {
 	s.closed = true
 }
 
-func (s *ExtentStore) GetWatermark(extentId uint64, reload bool) (extentInfo *FileInfo, err error) {
+func (s *ExtentStore) GetWatermark(extentId uint64, reload bool) (extentInfo *ExtentInfo, err error) {
 	var (
 		has    bool
 		extent *Extent
@@ -619,9 +619,9 @@ func (s *ExtentStore) GetWatermarkForWrite(extentId uint64) (watermark int64, er
 	return
 }
 
-func (s *ExtentStore) GetAllWatermark(filter ExtentFilter) (extents []*FileInfo, err error) {
-	extents = make([]*FileInfo, 0)
-	extentInfoSlice := make([]*FileInfo, 0, len(s.extentInfoMap))
+func (s *ExtentStore) GetAllWatermark(filter ExtentFilter) (extents []*ExtentInfo, err error) {
+	extents = make([]*ExtentInfo, 0)
+	extentInfoSlice := make([]*ExtentInfo, 0, len(s.extentInfoMap))
 	s.extentInfoMux.RLock()
 	for _, extentId := range s.extentInfoMap {
 		extentInfoSlice = append(extentInfoSlice, extentId)
@@ -638,7 +638,7 @@ func (s *ExtentStore) GetAllWatermark(filter ExtentFilter) (extents []*FileInfo,
 }
 
 func (s *ExtentStore) BackEndLoadExtent() {
-	extentInfoSlice := make([]*FileInfo, 0, len(s.extentInfoMap))
+	extentInfoSlice := make([]*ExtentInfo, 0, len(s.extentInfoMap))
 	s.extentInfoMux.RLock()
 	for _, extentId := range s.extentInfoMap {
 		extentInfoSlice = append(extentInfoSlice, extentId)
@@ -683,7 +683,7 @@ func (s *ExtentStore) ParseExtentId(filename string) (extentId uint64, isExtent 
 func (s *ExtentStore) DeleteDirtyExtent(extentId uint64) (err error) {
 	var (
 		extent     *Extent
-		extentInfo *FileInfo
+		extentInfo *ExtentInfo
 		has        bool
 	)
 

@@ -138,7 +138,7 @@ func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 	var (
 		data        []byte
 		appIndexID  uint64
-		extentFiles []*storage.FileInfo
+		extentFiles []*storage.ExtentInfo
 		targetAddr  string
 		firstHost   string
 	)
