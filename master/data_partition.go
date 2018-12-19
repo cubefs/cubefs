@@ -27,6 +27,7 @@ import (
 	"time"
 )
 
+//DataPartition 数据分片
 type DataPartition struct {
 	PartitionID      uint64
 	LastLoadTime     int64
@@ -66,7 +67,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	return
 }
 
-func (partition *DataPartition) AddMember(replica *DataReplica) {
+func (partition *DataPartition) addMember(replica *DataReplica) {
 	for _, r := range partition.Replicas {
 		if replica.Addr == r.Addr {
 			return
@@ -75,7 +76,7 @@ func (partition *DataPartition) AddMember(replica *DataReplica) {
 	partition.Replicas = append(partition.Replicas, replica)
 }
 
-func (partition *DataPartition) GenerateCreateTasks(dataPartitionSize uint64) (tasks []*proto.AdminTask) {
+func (partition *DataPartition) generateCreateTasks(dataPartitionSize uint64) (tasks []*proto.AdminTask) {
 	tasks = make([]*proto.AdminTask, 0)
 	for _, addr := range partition.PersistenceHosts {
 		tasks = append(tasks, partition.generateCreateTask(addr, dataPartitionSize))
@@ -91,19 +92,19 @@ func (partition *DataPartition) generateCreateTask(addr string, dataPartitionSiz
 	return
 }
 
-func (partition *DataPartition) GenerateDeleteTask(addr string) (task *proto.AdminTask) {
+func (partition *DataPartition) generateDeleteTask(addr string) (task *proto.AdminTask) {
 	task = proto.NewAdminTask(proto.OpDeleteDataPartition, addr, newDeleteDataPartitionRequest(partition.PartitionID))
 	partition.resetTaskID(task)
 	return
 }
 
-func (partition *DataPartition) GenerateOfflineTask(removePeer proto.Peer, addPeer proto.Peer) (task *proto.AdminTask, err error) {
+func (partition *DataPartition) generateOfflineTask(removePeer proto.Peer, addPeer proto.Peer) (task *proto.AdminTask, err error) {
 	if !partition.RandomWrite {
-		return partition.GenerateDeleteTask(removePeer.Addr), nil
+		return partition.generateDeleteTask(removePeer.Addr), nil
 	}
 	leaderAddr := partition.getLeaderAddr()
 	if leaderAddr == "" {
-		err = NoLeader
+		err = errNoLeader
 		return
 	}
 	task = proto.NewAdminTask(proto.OpOfflineDataPartition, leaderAddr, newOfflineDataPartitionRequest(partition.PartitionID, removePeer, addPeer))
@@ -119,8 +120,8 @@ func (partition *DataPartition) hasMissOne(replicaNum int) (err error) {
 	availPersistenceHostLen := len(partition.PersistenceHosts)
 	if availPersistenceHostLen <= replicaNum-1 {
 		log.LogError(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
-			"hasMissOne", partition.PartitionID, DataReplicaHasMissOneError))
-		err = DataReplicaHasMissOneError
+			"hasMissOne", partition.PartitionID, errDataReplicaHasMissOne))
+		err = errDataReplicaHasMissOne
 	}
 	return
 }
@@ -128,10 +129,10 @@ func (partition *DataPartition) hasMissOne(replicaNum int) (err error) {
 func (partition *DataPartition) canOffLine(offlineAddr string) (err error) {
 	msg := fmt.Sprintf("action[canOffLine],partitionID:%v  RocksDBHost:%v  offLine:%v ",
 		partition.PartitionID, partition.PersistenceHosts, offlineAddr)
-	liveReplicas := partition.getLiveReplicas(DefaultDataPartitionTimeOutSec)
+	liveReplicas := partition.getLiveReplicas(defaultDataPartitionTimeOutSec)
 	otherLiveReplicas := partition.removeOfflineAddr(liveReplicas, offlineAddr)
 	if len(otherLiveReplicas) < int(partition.ReplicaNum/2) {
-		msg = fmt.Sprintf(msg+" err:%v  liveReplicas:%v ", CannotOffLineErr, len(liveReplicas))
+		msg = fmt.Sprintf(msg+" err:%v  liveReplicas:%v ", errCannotOffLine, len(liveReplicas))
 		log.LogError(msg)
 		err = fmt.Errorf(msg)
 	}
@@ -153,7 +154,7 @@ func (partition *DataPartition) removeOfflineAddr(liveReplicas []*DataReplica, o
 func (partition *DataPartition) generatorOffLineLog(offlineAddr string) (msg string) {
 	msg = fmt.Sprintf("action[generatorOffLineLog],data partition:%v  offlineaddr:%v  ",
 		partition.PartitionID, offlineAddr)
-	replicas := partition.GetAvailableDataReplicas()
+	replicas := partition.getAvailableDataReplicas()
 	for i := 0; i < len(replicas); i++ {
 		replica := replicas[i]
 		msg += fmt.Sprintf(" addr:%v  dataReplicaStatus:%v  FileCount :%v ", replica.Addr,
@@ -165,11 +166,11 @@ func (partition *DataPartition) generatorOffLineLog(offlineAddr string) (msg str
 }
 
 /*获取该副本目前有效的node,即Node在汇报心跳正常，并且该Node不是unavailable*/
-func (partition *DataPartition) GetAvailableDataReplicas() (replicas []*DataReplica) {
+func (partition *DataPartition) getAvailableDataReplicas() (replicas []*DataReplica) {
 	replicas = make([]*DataReplica, 0)
 	for i := 0; i < len(partition.Replicas); i++ {
 		replica := partition.Replicas[i]
-		if replica.CheckLocIsAvailContainsDiskError() == true && partition.isInPersistenceHosts(replica.Addr) == true {
+		if replica.checkLocIsAvailContainsDiskError() == true && partition.isInPersistenceHosts(replica.Addr) == true {
 			replicas = append(replicas, replica)
 		}
 	}
@@ -193,18 +194,18 @@ func (partition *DataPartition) offLineInMem(addr string) {
 		return
 	}
 	partition.FileInCoreMap = make(map[string]*FileInCore, 0)
-	partition.DeleteReplicaByIndex(delIndex)
+	partition.deleteReplicaByIndex(delIndex)
 	partition.modifyTime = time.Now().Unix()
 
 	return
 }
 
-func (partition *DataPartition) DeleteReplicaByIndex(index int) {
+func (partition *DataPartition) deleteReplicaByIndex(index int) {
 	var replicaAddrs []string
 	for _, replica := range partition.Replicas {
 		replicaAddrs = append(replicaAddrs, replica.Addr)
 	}
-	msg := fmt.Sprintf("DeleteReplicaByIndex replica:%v  index:%v  locations :%v ", partition.PartitionID, index, replicaAddrs)
+	msg := fmt.Sprintf("deleteReplicaByIndex replica:%v  index:%v  locations :%v ", partition.PartitionID, index, replicaAddrs)
 	log.LogInfo(msg)
 	replicasAfter := partition.Replicas[index+1:]
 	partition.Replicas = partition.Replicas[:index]
@@ -217,7 +218,7 @@ func (partition *DataPartition) generateLoadTasks() (tasks []*proto.AdminTask) {
 	defer partition.Unlock()
 	for _, addr := range partition.PersistenceHosts {
 		replica, err := partition.getReplica(addr)
-		if err != nil || replica.IsLive(DefaultDataPartitionTimeOutSec) == false {
+		if err != nil || replica.isLive(defaultDataPartitionTimeOutSec) == false {
 			continue
 		}
 		replica.LoadPartitionIsResponse = false
@@ -240,9 +241,9 @@ func (partition *DataPartition) getReplica(addr string) (replica *DataReplica, e
 			return
 		}
 	}
-	log.LogError(fmt.Sprintf("action[getReplica],partitionID:%v,locations:%v,err:%v",
-		partition.PartitionID, addr, DataReplicaNotFound))
-	return nil, errors.Annotatef(DataReplicaNotFound, "%v not found", addr)
+	log.LogErrorf("action[getReplica],partitionID:%v,locations:%v,err:%v",
+		partition.PartitionID, addr, dataReplicaNotFound(addr))
+	return nil, errors.Annotatef(dataReplicaNotFound(addr), "%v not found", addr)
 }
 
 func (partition *DataPartition) convertToDataPartitionResponse() (dpr *DataPartitionResponse) {
@@ -277,13 +278,13 @@ func (partition *DataPartition) checkLoadResponse(timeOutSec int64) (isResponse 
 			return
 		}
 		timePassed := time.Now().Unix() - partition.LastLoadTime
-		if replica.LoadPartitionIsResponse == false && timePassed > LoadDataPartitionWaitTime {
+		if replica.LoadPartitionIsResponse == false && timePassed > loadDataPartitionWaitTime {
 			msg := fmt.Sprintf("action[checkLoadResponse], partitionID:%v on Node:%v no response, spent time %v s",
 				partition.PartitionID, addr, timePassed)
 			log.LogWarn(msg)
 			return
 		}
-		if replica.IsLive(timeOutSec) == false || replica.LoadPartitionIsResponse == false {
+		if replica.isLive(timeOutSec) == false || replica.LoadPartitionIsResponse == false {
 			return
 		}
 	}
@@ -320,18 +321,18 @@ func (partition *DataPartition) getFileCount() {
 	}
 
 	for _, replica := range partition.Replicas {
-		msg = fmt.Sprintf(GetDataReplicaFileCountInfo+"partitionID:%v  replicaAddr:%v  FileCount:%v  "+
+		msg = fmt.Sprintf(getDataReplicaFileCountInfo+"partitionID:%v  replicaAddr:%v  FileCount:%v  "+
 			"NodeIsActive:%v  replicaIsActive:%v  .replicaStatusOnNode:%v ", partition.PartitionID, replica.Addr, replica.FileCount,
-			replica.GetReplicaNode().isActive, replica.IsActive(DefaultDataPartitionTimeOutSec), replica.Status)
+			replica.getReplicaNode().isActive, replica.isActive(defaultDataPartitionTimeOutSec), replica.Status)
 		log.LogInfo(msg)
 	}
 
 }
 
-func (partition *DataPartition) ReleaseDataPartition() {
+func (partition *DataPartition) releaseDataPartition() {
 	partition.Lock()
 	defer partition.Unlock()
-	liveReplicas := partition.getLiveReplicasByPersistenceHosts(DefaultDataPartitionTimeOutSec)
+	liveReplicas := partition.getLiveReplicasByPersistenceHosts(defaultDataPartitionTimeOutSec)
 	for _, replica := range liveReplicas {
 		replica.LoadPartitionIsResponse = false
 	}
@@ -343,7 +344,7 @@ func (partition *DataPartition) ReleaseDataPartition() {
 
 }
 
-func (partition *DataPartition) IsInReplicas(host string) (replica *DataReplica, ok bool) {
+func (partition *DataPartition) isInReplicas(host string) (replica *DataReplica, ok bool) {
 	for _, replica = range partition.Replicas {
 		if replica.Addr == host {
 			ok = true
@@ -363,8 +364,8 @@ func (partition *DataPartition) checkReplicaNum(c *Cluster, volName string) {
 	}
 }
 
-func (partition *DataPartition) HostsToString() (hosts string) {
-	return strings.Join(partition.PersistenceHosts, UnderlineSeparator)
+func (partition *DataPartition) hostsToString() (hosts string) {
+	return strings.Join(partition.PersistenceHosts, underlineSeparator)
 }
 
 func (partition *DataPartition) setToNormal() {
@@ -393,7 +394,7 @@ func (partition *DataPartition) getLiveReplicas(timeOutSec int64) (replicas []*D
 	replicas = make([]*DataReplica, 0)
 	for i := 0; i < len(partition.Replicas); i++ {
 		replica := partition.Replicas[i]
-		if replica.IsLive(timeOutSec) == true && partition.isInPersistenceHosts(replica.Addr) == true {
+		if replica.isLive(timeOutSec) == true && partition.isInPersistenceHosts(replica.Addr) == true {
 			replicas = append(replicas, replica)
 		}
 	}
@@ -405,11 +406,11 @@ func (partition *DataPartition) getLiveReplicas(timeOutSec int64) (replicas []*D
 func (partition *DataPartition) getLiveReplicasByPersistenceHosts(timeOutSec int64) (replicas []*DataReplica) {
 	replicas = make([]*DataReplica, 0)
 	for _, host := range partition.PersistenceHosts {
-		replica, ok := partition.IsInReplicas(host)
+		replica, ok := partition.isInReplicas(host)
 		if !ok {
 			continue
 		}
-		if replica.IsLive(timeOutSec) == true {
+		if replica.isLive(timeOutSec) == true {
 			replicas = append(replicas, replica)
 		}
 	}
@@ -423,13 +424,13 @@ func (partition *DataPartition) checkAndRemoveMissReplica(addr string) {
 	}
 }
 
-func (partition *DataPartition) LoadFile(dataNode *DataNode, resp *proto.LoadDataPartitionResponse) {
+func (partition *DataPartition) loadFile(dataNode *DataNode, resp *proto.LoadDataPartitionResponse) {
 	partition.Lock()
 	defer partition.Unlock()
 
 	index, err := partition.getReplicaIndex(dataNode.Addr)
 	if err != nil {
-		msg := fmt.Sprintf("LoadFile partitionID:%v  on Node:%v  don't report :%v ", partition.PartitionID, dataNode.Addr, err)
+		msg := fmt.Sprintf("loadFile partitionID:%v  on Node:%v  don't report :%v ", partition.PartitionID, dataNode.Addr, err)
 		log.LogWarn(msg)
 		return
 	}
@@ -440,7 +441,7 @@ func (partition *DataPartition) LoadFile(dataNode *DataNode, resp *proto.LoadDat
 		}
 		fc, ok := partition.FileInCoreMap[dpf.Name]
 		if !ok {
-			fc = NewFileInCore(dpf.Name)
+			fc = newFileInCore(dpf.Name)
 			partition.FileInCoreMap[dpf.Name] = fc
 		}
 		fc.updateFileInCore(partition.PartitionID, dpf, replica, index)
@@ -455,9 +456,9 @@ func (partition *DataPartition) getReplicaIndex(addr string) (index int, err err
 			return
 		}
 	}
-	log.LogError(fmt.Sprintf("action[getReplicaIndex],partitionID:%v,location:%v,err:%v",
-		partition.PartitionID, addr, DataReplicaNotFound))
-	return -1, errors.Annotatef(DataReplicaNotFound, "%v not found ", addr)
+	log.LogErrorf("action[getReplicaIndex],partitionID:%v,location:%v,err:%v",
+		partition.PartitionID, addr, dataReplicaNotFound(addr))
+	return -1, errors.Annotatef(dataReplicaNotFound(addr), "%v not found ", addr)
 }
 
 func (partition *DataPartition) updateForOffline(offlineAddr, newAddr, volName string, newPeers []proto.Peer, c *Cluster) (err error) {
@@ -489,7 +490,7 @@ func (partition *DataPartition) updateForOffline(offlineAddr, newAddr, volName s
 	return
 }
 
-func (partition *DataPartition) UpdateMetric(vr *proto.PartitionReport, dataNode *DataNode) {
+func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode *DataNode) {
 
 	if !partition.isInPersistenceHosts(dataNode.Addr) {
 		return
@@ -498,8 +499,8 @@ func (partition *DataPartition) UpdateMetric(vr *proto.PartitionReport, dataNode
 	defer partition.Unlock()
 	replica, err := partition.getReplica(dataNode.Addr)
 	if err != nil {
-		replica = NewDataReplica(dataNode)
-		partition.AddMember(replica)
+		replica = newDataReplica(dataNode)
+		partition.addMember(replica)
 	}
 	partition.total = vr.Total
 	partition.used = vr.Used
@@ -507,13 +508,13 @@ func (partition *DataPartition) UpdateMetric(vr *proto.PartitionReport, dataNode
 	replica.Total = vr.Total
 	replica.Used = vr.Used
 	replica.FileCount = uint32(vr.ExtentCount)
-	replica.SetAlive()
+	replica.setAlive()
 	replica.IsLeader = vr.IsLeader
 	replica.NeedCompare = vr.NeedCompare
 	partition.checkAndRemoveMissReplica(dataNode.Addr)
 }
 
-func (partition *DataPartition) toJson() (body []byte, err error) {
+func (partition *DataPartition) toJSON() (body []byte, err error) {
 	partition.RLock()
 	defer partition.RUnlock()
 	return json.Marshal(partition)
@@ -536,9 +537,9 @@ func (partition *DataPartition) createDataPartitionSuccessTriggerOperator(nodeAd
 	if err != nil {
 		return err
 	}
-	replica := NewDataReplica(dataNode)
+	replica := newDataReplica(dataNode)
 	replica.Status = proto.ReadWrite
-	partition.AddMember(replica)
+	partition.addMember(replica)
 	partition.checkAndRemoveMissReplica(replica.Addr)
 	return
 }

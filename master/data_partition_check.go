@@ -63,7 +63,7 @@ func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
 	partition.RLock()
 	defer partition.RUnlock()
 	for _, replica := range partition.Replicas {
-		replica.IsLive(timeOutSec)
+		replica.isLive(timeOutSec)
 	}
 
 }
@@ -72,8 +72,8 @@ func (partition *DataPartition) checkMiss(clusterID string, dataPartitionMissSec
 	partition.Lock()
 	defer partition.Unlock()
 	for _, replica := range partition.Replicas {
-		if partition.isInPersistenceHosts(replica.Addr) && replica.CheckMiss(dataPartitionMissSec) == true && partition.needWarnMissDataPartition(replica.Addr, dataPartitionWarnInterval) {
-			dataNode := replica.GetReplicaNode()
+		if partition.isInPersistenceHosts(replica.Addr) && replica.checkMiss(dataPartitionMissSec) == true && partition.needWarnMissDataPartition(replica.Addr, dataPartitionWarnInterval) {
+			dataNode := replica.getReplicaNode()
 			var (
 				lastReportTime time.Time
 			)
@@ -114,7 +114,7 @@ func (partition *DataPartition) needWarnMissDataPartition(addr string, dataParti
 }
 
 func (partition *DataPartition) missDataPartition(addr string) (isMiss bool) {
-	_, ok := partition.IsInReplicas(addr)
+	_, ok := partition.isInReplicas(addr)
 
 	if ok == false {
 		isMiss = true
@@ -128,7 +128,7 @@ func (partition *DataPartition) checkDiskError(clusterID string) (diskErrorAddrs
 	partition.Lock()
 	defer partition.Unlock()
 	for _, addr := range partition.PersistenceHosts {
-		replica, ok := partition.IsInReplicas(addr)
+		replica, ok := partition.isInReplicas(addr)
 		if !ok {
 			continue
 		}
@@ -143,7 +143,7 @@ func (partition *DataPartition) checkDiskError(clusterID string) (diskErrorAddrs
 
 	for _, diskAddr := range diskErrorAddrs {
 		msg := fmt.Sprintf("action[%v],clusterID[%v],partitionID:%v  On :%v  Disk Error,So Remove it From RocksDBHost",
-			CheckDataPartitionDiskErrorErr, clusterID, partition.PartitionID, diskAddr)
+			checkDataPartitionDiskErrorErr, clusterID, partition.PartitionID, diskAddr)
 		Warn(clusterID, msg)
 	}
 
@@ -157,7 +157,7 @@ func (partition *DataPartition) checkReplicationTask(clusterID string, randomWri
 		tasks = append(tasks, task)
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Excess Replication"+
 			" On :%v  Err:%v  rocksDBRecords:%v",
-			DeleteExcessReplicationErr, partition.PartitionID, excessAddr, excessErr.Error(), partition.PersistenceHosts)
+			deleteExcessReplicationErr, partition.PartitionID, excessAddr, excessErr.Error(), partition.PersistenceHosts)
 		Warn(clusterID, msg)
 
 	}
@@ -167,7 +167,7 @@ func (partition *DataPartition) checkReplicationTask(clusterID string, randomWri
 	if lackAddr, lackErr := partition.addLackReplication(dataPartitionSize); lackErr != nil {
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Lack Replication"+
 			" On :%v  Err:%v  PersistenceHosts:%v  new task to create DataReplica",
-			AddLackReplicationErr, partition.PartitionID, lackAddr, lackErr.Error(), partition.PersistenceHosts)
+			addLackReplicationErr, partition.PartitionID, lackAddr, lackErr.Error(), partition.PersistenceHosts)
 		Warn(clusterID, msg)
 	} else {
 		partition.setToNormal()
@@ -187,8 +187,8 @@ func (partition *DataPartition) deleteExcessReplication() (excessAddr string, ta
 			excessAddr = replica.Addr
 			log.LogError(fmt.Sprintf("action[deleteExcessReplication],partitionID:%v,has excess replication:%v",
 				partition.PartitionID, excessAddr))
-			err = DataReplicaExcessError
-			task = partition.GenerateDeleteTask(excessAddr)
+			err = errDataReplicaExcess
+			task = partition.generateDeleteTask(excessAddr)
 			break
 		}
 	}
@@ -205,10 +205,10 @@ func (partition *DataPartition) addLackReplication(dataPartitionSize uint64) (la
 		return
 	}
 	for _, addr := range partition.PersistenceHosts {
-		if _, ok := partition.IsInReplicas(addr); !ok {
+		if _, ok := partition.isInReplicas(addr); !ok {
 			log.LogError(fmt.Sprintf("action[addLackReplication],partitionID:%v lack replication:%v",
 				partition.PartitionID, addr))
-			err = DataReplicaLackError
+			err = errDataReplicaLack
 			lackAddr = addr
 			partition.isRecover = true
 			break

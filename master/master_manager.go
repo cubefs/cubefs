@@ -21,6 +21,7 @@ import (
 	"strings"
 )
 
+// LeaderInfo leader信息
 type LeaderInfo struct {
 	addr string //host:port
 }
@@ -47,7 +48,7 @@ func (m *Master) handlePeerChange(confChange *proto.ConfChange) (err error) {
 	switch confChange.Type {
 	case proto.ConfAddNode:
 		var arr []string
-		if arr = strings.Split(addr, ColonSplit); len(arr) < 2 {
+		if arr = strings.Split(addr, colonSplit); len(arr) < 2 {
 			msg = fmt.Sprintf("action[handlePeerChange] clusterID[%v] nodeAddr[%v] is invalid", m.clusterName, addr)
 			break
 		}

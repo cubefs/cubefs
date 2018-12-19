@@ -6,29 +6,29 @@ import (
 	"strconv"
 )
 
-type DataNodeSpaceStat struct {
+type dataNodeSpaceStat struct {
 	TotalGB    uint64
 	UsedGB     uint64
 	IncreaseGB int64
 	UsedRatio  string
 }
 
-type MetaNodeSpaceStat struct {
+type metaNodeSpaceStat struct {
 	TotalGB    uint64
 	UsedGB     uint64
 	IncreaseGB int64
 	UsedRatio  string
 }
 
-type VolSpaceStat struct {
+type volSpaceStat struct {
 	Name      string
 	TotalGB   uint64
 	UsedGB    uint64
 	UsedRatio string
 }
 
-func newVolSpaceStat(name string, total, used uint64, ratio string) *VolSpaceStat {
-	return &VolSpaceStat{
+func newVolSpaceStat(name string, total, used uint64, ratio string) *volSpaceStat {
+	return &volSpaceStat{
 		Name:      name,
 		TotalGB:   total,
 		UsedGB:    used,
@@ -57,7 +57,7 @@ func (c *Cluster) checkDataNodeAvailSpace() {
 		return
 	}
 	useRate := float64(used) / float64(total)
-	if useRate > SpaceAvailRate {
+	if useRate > spaceAvailRate {
 		Warn(c.Name, fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add dataNode",
 			c.Name, useRate, used, total))
 	}
@@ -83,7 +83,7 @@ func (c *Cluster) checkMetaNodeAvailSpace() {
 		return
 	}
 	useRate := float64(used) / float64(total)
-	if useRate > SpaceAvailRate {
+	if useRate > spaceAvailRate {
 		Warn(c.Name, fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add metaNode",
 			c.Name, useRate, used, total))
 	}

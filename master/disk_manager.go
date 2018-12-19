@@ -16,7 +16,7 @@ func (c *Cluster) startCheckBadDiskRecovery() {
 					c.checkBadDiskRecovery()
 				}
 			}
-			time.Sleep(time.Second * DefaultCheckDataPartitionIntervalSeconds)
+			time.Sleep(time.Second * defaultCheckDataPartitionIntervalSeconds)
 		}
 	}()
 }
@@ -69,7 +69,7 @@ func (c *Cluster) diskOffLine(dataNode *DataNode, badDiskPath string, badPartiti
 		for _, dp := range vol.dataPartitions.dataPartitions {
 			for _, bad := range badPartitionIds {
 				if bad == dp.PartitionID {
-					if err = c.dataPartitionOffline(dataNode.Addr, vol.Name, dp, DiskOfflineInfo); err != nil {
+					if err = c.dataPartitionOffline(dataNode.Addr, vol.Name, dp, diskOfflineInfo); err != nil {
 						return
 					}
 				}

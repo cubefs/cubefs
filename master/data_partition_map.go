@@ -25,6 +25,7 @@ import (
 	"time"
 )
 
+//DataPartitionMap dp集合
 type DataPartitionMap struct {
 	sync.RWMutex
 	dataPartitionMap           map[uint64]*DataPartition
@@ -37,7 +38,7 @@ type DataPartitionMap struct {
 	volName                    string
 }
 
-func NewDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
+func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
 	dpMap = new(DataPartitionMap)
 	dpMap.dataPartitionMap = make(map[uint64]*DataPartition, 0)
 	dpMap.dataPartitionCount = 1
@@ -52,7 +53,7 @@ func (dpMap *DataPartitionMap) getDataPartition(ID uint64) (*DataPartition, erro
 	if v, ok := dpMap.dataPartitionMap[ID]; ok {
 		return v, nil
 	}
-	return nil, errors.Annotatef(DataPartitionNotFound, "[%v] not found in [%v]", ID, dpMap.volName)
+	return nil, errors.Annotatef(dataPartitionNotFound(ID), "[%v] not found in [%v]", ID, dpMap.volName)
 }
 
 func (dpMap *DataPartitionMap) putDataPartition(dp *DataPartition) {
@@ -89,13 +90,13 @@ func (dpMap *DataPartitionMap) updateDataPartitionResponseCache(needUpdate bool,
 	defer dpMap.Unlock()
 	if dpMap.cacheDataPartitionResponse == nil || needUpdate || len(dpMap.cacheDataPartitionResponse) == 0 {
 		dpMap.cacheDataPartitionResponse = make([]byte, 0)
-		dpResps := dpMap.GetDataPartitionsView(minPartitionID)
+		dpResps := dpMap.getDataPartitionsView(minPartitionID)
 		if len(dpResps) == 0 {
 			log.LogError(fmt.Sprintf("action[updateDpResponseCache],volName[%v] minPartitionID:%v,err:%v",
-				dpMap.volName, minPartitionID, NoAvailDataPartition))
-			return nil, errors.Annotatef(NoAvailDataPartition, "volName[%v]", dpMap.volName)
+				dpMap.volName, minPartitionID, errNoAvailDataPartition))
+			return nil, errors.Annotatef(errNoAvailDataPartition, "volName[%v]", dpMap.volName)
 		}
-		cv := NewDataPartitionsView()
+		cv := newDataPartitionsView()
 		cv.DataPartitions = dpResps
 		if body, err = json.Marshal(cv); err != nil {
 			log.LogError(fmt.Sprintf("action[updateDpResponseCache],minPartitionID:%v,err:%v",
@@ -111,7 +112,7 @@ func (dpMap *DataPartitionMap) updateDataPartitionResponseCache(needUpdate bool,
 	return
 }
 
-func (dpMap *DataPartitionMap) GetDataPartitionsView(minPartitionID uint64) (dpResps []*DataPartitionResponse) {
+func (dpMap *DataPartitionMap) getDataPartitionsView(minPartitionID uint64) (dpResps []*DataPartitionResponse) {
 	dpResps = make([]*DataPartitionResponse, 0)
 	log.LogDebugf("volName[%v] DataPartitionMapLen[%v],DataPartitionsLen[%v],minPartitionID[%v]",
 		dpMap.volName, len(dpMap.dataPartitionMap), len(dpMap.dataPartitions), minPartitionID)
@@ -161,13 +162,13 @@ func (dpMap *DataPartitionMap) releaseDataPartitions(partitions []*DataPartition
 			defer func() {
 				wg.Done()
 				if err := recover(); err != nil {
-					const size = RuntimeStackBufSize
+					const size = runtimeStackBufSize
 					buf := make([]byte, size)
 					buf = buf[:runtime.Stack(buf, false)]
 					log.LogError(fmt.Sprintf("[%v] releaseDataPartitions panic %v: %s\n", dpMap.volName, err, buf))
 				}
 			}()
-			dp.ReleaseDataPartition()
+			dp.releaseDataPartition()
 		}(dp)
 	}
 	wg.Wait()
@@ -183,7 +184,7 @@ func (dpMap *DataPartitionMap) getNeedCheckDataPartitions(loadFrequencyTime int6
 		return
 	}
 	startIndex = dpMap.lastCheckIndex
-	needLoadCount := dpLen / LoadDataPartitionPeriod
+	needLoadCount := dpLen / loadDataPartitionPeriod
 	if needLoadCount == 0 {
 		needLoadCount = 1
 	}

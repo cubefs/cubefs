@@ -21,37 +21,31 @@ import (
 )
 
 var (
-	NoAvailDataPartition  = errors.New("no avail data partition")
-	DataPartitionNotFound = errors.New("data partition not found")
-	RackNotFound          = errors.New("rack not found")
-	DataNodeNotFound      = errors.New("data node not found")
-	MetaNodeNotFound      = errors.New("meta node not found")
-	VolNotFound           = errors.New("vol not found")
-	MetaPartitionNotFound = errors.New("meta partition not found")
-	DataReplicaNotFound   = errors.New("data replica not found")
-	UnMatchPara           = errors.New("para not unmatched")
-
-	DisOrderArrayErr                    = errors.New("dis order array is nil")
-	DataReplicaExcessError              = errors.New("data replica Excess error")
-	DataReplicaLackError                = errors.New("data replica Lack error")
-	DataReplicaHasMissOneError          = errors.New("data replica has miss one ,cannot miss any one")
-	NoHaveAnyDataNodeToWrite            = errors.New("No have any data node for create data partition")
-	NoHaveAnyMetaNodeToWrite            = errors.New("No have any meta node for create meta partition")
-	CannotOffLineErr                    = errors.New("cannot offline because avail data replica <0")
-	NoAnyDataNodeForCreateDataPartition = errors.New("no have enough data server for create data partition")
-	NoRackForCreateDataPartition        = errors.New("no rack for create data partition")
-	NoNodeSetForCreateDataPartition     = errors.New("no node set for create data partition")
-	NoNodeSetForCreateMetaPartition     = errors.New("no node set for create meta partition")
-	NoAnyMetaNodeForCreateMetaPartition = errors.New("no have enough meta server for create meta partition")
-	MetaReplicaExcessError              = errors.New("meta partition Replication Excess error")
-	NoHaveMajorityReplica               = errors.New("no have majority replica error")
-	NoLeader                            = errors.New("no leader")
-	ErrBadConfFile                      = errors.New("BadConfFile")
-	ParaEnableNotFound                  = errors.New("para enable not found")
+	errNoAvailDataPartition                = errors.New("no avail data partition")
+	errDisOrderArray                       = errors.New("dis order array is nil")
+	errDataReplicaExcess                   = errors.New("data replica Excess error")
+	errDataReplicaLack                     = errors.New("data replica Lack error")
+	errDataReplicaHasMissOne               = errors.New("data replica has miss one ,cannot miss any one")
+	errNoHaveAnyDataNodeToWrite            = errors.New("No have any data node for create data partition")
+	errNoHaveAnyMetaNodeToWrite            = errors.New("No have any meta node for create meta partition")
+	errCannotOffLine                       = errors.New("cannot offline because avail data replica <0")
+	errNoAnyDataNodeForCreateDataPartition = errors.New("no have enough data server for create data partition")
+	errNoRackForCreateDataPartition        = errors.New("no rack for create data partition")
+	errNoNodeSetForCreateDataPartition     = errors.New("no node set for create data partition")
+	errNoNodeSetForCreateMetaPartition     = errors.New("no node set for create meta partition")
+	errNoAnyMetaNodeForCreateMetaPartition = errors.New("no have enough meta server for create meta partition")
+	errMetaReplicaExcess                   = errors.New("meta partition Replication Excess error")
+	errNoHaveMajorityReplica               = errors.New("no have majority replica error")
+	errNoLeader                            = errors.New("no leader")
+	errBadConfFile                         = errors.New("BadConfFile")
 )
 
 func paraNotFound(name string) (err error) {
 	return errors.Errorf("parameter %v not found", name)
+}
+
+func paraUnmatch(name string) (err error) {
+	return errors.Errorf("parameter %v not match", name)
 }
 
 func elementNotFound(name string) (err error) {
@@ -59,15 +53,35 @@ func elementNotFound(name string) (err error) {
 }
 
 func metaPartitionNotFound(id uint64) (err error) {
-	return elementNotFound(fmt.Sprintf("meta partition %v", id))
-}
-
-func dataPartitionNotFound(id uint64) (err error) {
-	return elementNotFound(fmt.Sprintf("data partition %v", id))
+	return elementNotFound(fmt.Sprintf("meta partition[%v]", id))
 }
 
 func metaReplicaNotFound(addr string) (err error) {
-	return elementNotFound(fmt.Sprintf("meta replica %v", addr))
+	return elementNotFound(fmt.Sprintf("meta replica[%v]", addr))
+}
+
+func dataPartitionNotFound(id uint64) (err error) {
+	return elementNotFound(fmt.Sprintf("data partition[%v]", id))
+}
+
+func dataReplicaNotFound(addr string) (err error) {
+	return elementNotFound(fmt.Sprintf("data replica[%v]", addr))
+}
+
+func rackNotFound(name string) (err error) {
+	return elementNotFound(fmt.Sprintf("rack[%v]", name))
+}
+
+func dataNodeNotFound(addr string) (err error) {
+	return elementNotFound(fmt.Sprintf("data node[%v]", addr))
+}
+
+func metaNodeNotFound(addr string) (err error) {
+	return elementNotFound(fmt.Sprintf("meta node[%v]", addr))
+}
+
+func volNotFound(name string) (err error) {
+	return elementNotFound(fmt.Sprintf("vol[%v]", name))
 }
 
 func hasExist(name string) (err error) {

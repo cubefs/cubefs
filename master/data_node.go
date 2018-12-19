@@ -24,11 +24,12 @@ import (
 	"github.com/tiglabs/containerfs/util"
 )
 
+//DataNode 数据节点
 type DataNode struct {
 	Total      uint64 `json:"TotalWeight"`
 	Used       uint64 `json:"UsedWeight"`
 	Available  uint64
-	Id         uint64
+	ID         uint64
 	RackName   string `json:"Rack"`
 	Addr       string
 	ReportTime time.Time
@@ -40,10 +41,10 @@ type DataNode struct {
 	Sender             *AdminTaskSender
 	dataPartitionInfos []*proto.PartitionReport
 	DataPartitionCount uint32
-	NodeSetId          uint64
+	NodeSetID          uint64
 }
 
-func NewDataNode(addr, clusterID string) (dataNode *DataNode) {
+func newDataNode(addr, clusterID string) (dataNode *DataNode) {
 	dataNode = new(DataNode)
 	dataNode.Carry = rand.Float64()
 	dataNode.Total = 1
@@ -52,11 +53,11 @@ func NewDataNode(addr, clusterID string) (dataNode *DataNode) {
 	return
 }
 
-/*check node heartbeat if reportTime > DataNodeTimeOut,then IsActive is false*/
+/*check node heartbeat if reportTime > DataNodeTimeOut,then isActive is false*/
 func (dataNode *DataNode) checkHeartBeat() {
 	dataNode.Lock()
 	defer dataNode.Unlock()
-	if time.Since(dataNode.ReportTime) > time.Second*time.Duration(DefaultNodeTimeOutSec) {
+	if time.Since(dataNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
 		dataNode.isActive = false
 	}
 
@@ -76,7 +77,7 @@ func (dataNode *DataNode) getBadDiskPartitions(disk string) (partitionIds []uint
 	return
 }
 
-func (dataNode *DataNode) UpdateNodeMetric(resp *proto.DataNodeHeartBeatResponse) {
+func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartBeatResponse) {
 	dataNode.Lock()
 	defer dataNode.Unlock()
 	dataNode.Total = resp.Total
@@ -94,7 +95,7 @@ func (dataNode *DataNode) UpdateNodeMetric(resp *proto.DataNodeHeartBeatResponse
 	dataNode.isActive = true
 }
 
-func (dataNode *DataNode) IsWriteAble() (ok bool) {
+func (dataNode *DataNode) isWriteAble() (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
 
@@ -105,7 +106,7 @@ func (dataNode *DataNode) IsWriteAble() (ok bool) {
 	return
 }
 
-func (dataNode *DataNode) IsAvailCarryNode() (ok bool) {
+func (dataNode *DataNode) isAvailCarryNode() (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
 
@@ -139,7 +140,7 @@ func (dataNode *DataNode) generateHeartbeatTask(masterAddr string) (task *proto.
 	return
 }
 
-func (dataNode *DataNode) toJson() (body []byte, err error) {
+func (dataNode *DataNode) toJSON() (body []byte, err error) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
 	return json.Marshal(dataNode)

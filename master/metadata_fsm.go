@@ -26,24 +26,25 @@ import (
 )
 
 const (
-	Applied = "applied"
+	applied = "applied"
 )
 
-type RaftLeaderChangeHandler func(leader uint64)
+type raftLeaderChangeHandler func(leader uint64)
 
-type RaftPeerChangeHandler func(confChange *proto.ConfChange) (err error)
+type raftPeerChangeHandler func(confChange *proto.ConfChange) (err error)
 
-type RaftCmdApplyHandler func(cmd *RaftCmdData) (err error)
+type raftCmdApplyHandler func(cmd *RaftCmdData) (err error)
 
-type RaftApplySnapshotHandler func()
+type raftApplySnapshotHandler func()
 
+//MetadataFsm 元数据状态机
 type MetadataFsm struct {
 	store               *raftstore.RocksDBStore
 	applied             uint64
-	leaderChangeHandler RaftLeaderChangeHandler
-	peerChangeHandler   RaftPeerChangeHandler
-	applyHandler        RaftCmdApplyHandler
-	snapshotHandler     RaftApplySnapshotHandler
+	leaderChangeHandler raftLeaderChangeHandler
+	peerChangeHandler   raftPeerChangeHandler
+	applyHandler        raftCmdApplyHandler
+	snapshotHandler     raftApplySnapshotHandler
 }
 
 func newMetadataFsm(store *raftstore.RocksDBStore) (fsm *MetadataFsm) {
@@ -52,19 +53,19 @@ func newMetadataFsm(store *raftstore.RocksDBStore) (fsm *MetadataFsm) {
 	return
 }
 
-func (mf *MetadataFsm) RegisterLeaderChangeHandler(handler RaftLeaderChangeHandler) {
+func (mf *MetadataFsm) registerLeaderChangeHandler(handler raftLeaderChangeHandler) {
 	mf.leaderChangeHandler = handler
 }
 
-func (mf *MetadataFsm) RegisterPeerChangeHandler(handler RaftPeerChangeHandler) {
+func (mf *MetadataFsm) registerPeerChangeHandler(handler raftPeerChangeHandler) {
 	mf.peerChangeHandler = handler
 }
 
-func (mf *MetadataFsm) RegisterApplyHandler(handler RaftCmdApplyHandler) {
+func (mf *MetadataFsm) registerApplyHandler(handler raftCmdApplyHandler) {
 	mf.applyHandler = handler
 }
 
-func (mf *MetadataFsm) RegisterApplySnapshotHandler(handler RaftApplySnapshotHandler) {
+func (mf *MetadataFsm) registerApplySnapshotHandler(handler raftApplySnapshotHandler) {
 	mf.snapshotHandler = handler
 }
 
@@ -74,7 +75,7 @@ func (mf *MetadataFsm) restore() {
 
 func (mf *MetadataFsm) restoreApplied() {
 
-	value, err := mf.Get(Applied)
+	value, err := mf.Get(applied)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to restore applied err:%v", err.Error()))
 	}
@@ -99,9 +100,9 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 	log.LogInfof("action[fsmApply],cmd.op[%v],cmd.K[%v],cmd.V[%v]", cmd.Op, cmd.K, string(cmd.V))
 	cmdMap := make(map[string][]byte)
 	cmdMap[cmd.K] = cmd.V
-	cmdMap[Applied] = []byte(strconv.FormatUint(uint64(index), 10))
+	cmdMap[applied] = []byte(strconv.FormatUint(uint64(index), 10))
 	switch cmd.Op {
-	case OpSyncDeleteDataNode, OpSyncDeleteMetaNode, OpSyncDeleteVol, OpSyncDeleteDataPartition, OpSyncDeleteMetaPartition:
+	case opSyncDeleteDataNode, opSyncDeleteMetaNode, opSyncDeleteVol, opSyncDeleteDataPartition, opSyncDeleteMetaPartition:
 		if err = mf.DelKeyAndPutIndex(cmd.K, cmdMap); err != nil {
 			panic(err)
 		}

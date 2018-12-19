@@ -56,7 +56,7 @@ func newLoadDataPartitionMetricRequest(ID uint64) (req *proto.LoadDataPartitionR
 	return
 }
 
-func UnmarshalTaskResponse(task *proto.AdminTask) (err error) {
+func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 	bytes, err := json.Marshal(task.Response)
 	if err != nil {
 		return
@@ -93,7 +93,7 @@ func UnmarshalTaskResponse(task *proto.AdminTask) (err error) {
 	}
 
 	if response == nil {
-		return fmt.Errorf("UnmarshalTaskResponse failed")
+		return fmt.Errorf("unmarshalTaskResponse failed")
 	}
 	if err = json.Unmarshal(bytes, response); err != nil {
 		return
@@ -116,11 +116,13 @@ func contains(arr []string, element string) (ok bool) {
 	return
 }
 
+// Warn 报警统一出口
 func Warn(clusterID, msg string) {
 	umpKey := fmt.Sprintf("%s_%s", clusterID, UmpModuleName)
 	WarnBySpecialUmpKey(umpKey, msg)
 }
 
+// WarnBySpecialUmpKey 报警统一出口
 func WarnBySpecialUmpKey(umpKey, msg string) {
 	log.LogWarn(msg)
 	ump.Alarm(umpKey, msg)

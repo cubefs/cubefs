@@ -34,21 +34,18 @@ const (
 	TaskWorkerInterval = time.Microsecond * time.Duration(200)
 )
 
-/*
-master send admin command to metaNode or dataNode by the sender,
-because this command is cost very long time,so the sender just send command
-and do nothing..then the metaNode or  dataNode send a new http request to reply command response
-to master
-
-*/
-
+//AdminTaskSender
+// master send admin command to metaNode or dataNode by the sender,
+//because this command is cost very long time,so the sender just send command
+//and do nothing..then the metaNode or  dataNode send a new http request to reply command response
+//to master
 type AdminTaskSender struct {
 	clusterID  string
 	targetAddr string
 	TaskMap    map[string]*proto.AdminTask
 	sync.RWMutex
-	exitCh     chan struct{}
-	connPool   *util.ConnectPool
+	exitCh   chan struct{}
+	connPool *util.ConnectPool
 }
 
 func newAdminTaskSender(targetAddr, clusterID string) (sender *AdminTaskSender) {
@@ -199,7 +196,7 @@ func (sender *AdminTaskSender) syncCreatePartition(task *proto.AdminTask, conn n
 	return nil
 }
 
-//删除任务
+//DelTask 删除任务
 func (sender *AdminTaskSender) DelTask(t *proto.AdminTask) {
 	sender.Lock()
 	defer sender.Unlock()
@@ -213,7 +210,7 @@ func (sender *AdminTaskSender) DelTask(t *proto.AdminTask) {
 	delete(sender.TaskMap, t.ID)
 }
 
-//增加任务
+//PutTask 增加任务
 func (sender *AdminTaskSender) PutTask(t *proto.AdminTask) {
 	sender.Lock()
 	defer sender.Unlock()
