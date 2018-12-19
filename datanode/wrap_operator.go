@@ -38,7 +38,7 @@ import (
 
 func (s *DataNode) OperatePacket(pkg *repl.Packet, c *net.TCPConn) (err error) {
 	orgSize := pkg.Size
-	umpKey := fmt.Sprintf("%s_datanode_%s", s.clusterId, pkg.GetOpMsg())
+	umpKey := fmt.Sprintf("%s_datanode_%s", s.clusterID, pkg.GetOpMsg())
 	tpObject := ump.BeforeTP(umpKey)
 	start := time.Now().UnixNano()
 	defer func() {
@@ -434,7 +434,7 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 	if err = partition.RandomPartitionReadCheck(pkg, connect); err != nil {
 		pkg.PackErrorBody(ActionStreamRead, err.Error())
 		if err = pkg.WriteToConn(connect); err != nil {
-			err = fmt.Errorf(pkg.LogMessage(ActionWriteToCli, connect.RemoteAddr().String(), pkg.StartT, err))
+			err = fmt.Errorf(pkg.LogMessage(ActionStreamRead, connect.RemoteAddr().String(), pkg.StartT, err))
 			log.LogErrorf(err.Error())
 		}
 		return
@@ -443,7 +443,7 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 	needReplySize := pkg.Size
 	offset := pkg.ExtentOffset
 	store := partition.GetStore()
-	umpKey := fmt.Sprintf("%s_datanode_%s", s.clusterId, "Read")
+	umpKey := fmt.Sprintf("%s_datanode_%s", s.clusterID, "Read")
 	reply := repl.NewStreamReadResponsePacket(pkg.ReqID, pkg.PartitionID, pkg.ExtentID)
 	reply.StartT = time.Now().UnixNano()
 	for {
@@ -464,7 +464,7 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 		if err != nil {
 			reply.PackErrorBody(ActionStreamRead, err.Error())
 			if err = reply.WriteToConn(connect); err != nil {
-				err = fmt.Errorf(reply.LogMessage(ActionWriteToCli, connect.RemoteAddr().String(),
+				err = fmt.Errorf(reply.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
 					reply.StartT, err))
 				log.LogErrorf(err.Error())
 			}
@@ -473,7 +473,7 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 		reply.Size = uint32(currReadSize)
 		reply.ResultCode = proto.OpOk
 		if err = reply.WriteToConn(connect); err != nil {
-			err = fmt.Errorf(reply.LogMessage(ActionWriteToCli, connect.RemoteAddr().String(),
+			err = fmt.Errorf(reply.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
 				reply.StartT, err))
 			log.LogErrorf(err.Error())
 			connect.Close()
