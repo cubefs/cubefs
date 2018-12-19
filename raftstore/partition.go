@@ -58,7 +58,7 @@ type Partition interface {
 	Status() (status *PartitionStatus)
 
 	// LeaderTerm returns current term of leader in raft group.
-	LeaderTerm() (leaderId, term uint64)
+	LeaderTerm() (leaderID, term uint64)
 
 	// IsRaftLeader returns true if this node current is the leader in the raft group it belong to.
 	IsLeader() bool
@@ -110,8 +110,8 @@ func (p *partition) Status() (status *PartitionStatus) {
 	return
 }
 
-func (p *partition) LeaderTerm() (leaderId, term uint64) {
-	leaderId, term = p.raft.LeaderTerm(p.id)
+func (p *partition) LeaderTerm() (leaderID, term uint64) {
+	leaderID, term = p.raft.LeaderTerm(p.id)
 	return
 }
 

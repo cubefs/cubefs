@@ -92,7 +92,7 @@ func (s *DataNode) OperatePacket(pkg *repl.Packet, c *net.TCPConn) (err error) {
 	case proto.OpGetDataPartitionMetrics:
 		s.handleGetDataPartitionMetrics(pkg)
 	case proto.OpGetAppliedId:
-		s.handleGetAppliedId(pkg)
+		s.handleGetAppliedID(pkg)
 	case proto.OpOfflineDataPartition:
 		s.handleOfflineDataPartition(pkg)
 	case proto.OpGetPartitionSize:
@@ -257,7 +257,7 @@ func (s *DataNode) handleDeleteDataPartition(pkg *repl.Packet) {
 	data, _ := json.Marshal(task)
 	_, err = MasterHelper.Request("POST", master.DataNodeResponse, nil, data)
 	if err != nil {
-		err = errors.Annotatef(err, "delete DataPartition failed,partitionId(%v)", request.PartitionId)
+		err = errors.Annotatef(err, "delete DataPartition failed,partitionID(%v)", request.PartitionId)
 		log.LogErrorf("action[handleDeleteDataPartition] err(%v).", err)
 	}
 	log.LogInfof(fmt.Sprintf("action[handleDeleteDataPartition] %v error(%v)", request.PartitionId, string(data)))
@@ -310,7 +310,7 @@ func (s *DataNode) handleLoadDataPartition(pkg *repl.Packet) {
 	}
 	_, err = MasterHelper.Request("POST", master.DataNodeResponse, nil, data)
 	if err != nil {
-		err = errors.Annotatef(err, "load DataPartition failed,partitionId(%v)", request.PartitionId)
+		err = errors.Annotatef(err, "load DataPartition failed,partitionID(%v)", request.PartitionId)
 		log.LogError(errors.ErrorStack(err))
 	}
 }
@@ -541,27 +541,28 @@ func (s *DataNode) handleGetDataPartitionMetrics(pkg *repl.Packet) {
 	if err != nil {
 		pkg.PackErrorBody(ActionGetDataPartitionMetrics, err.Error())
 		return
-	} else {
-		pkg.PackOkWithBody(data)
 	}
+
+	pkg.PackOkWithBody(data)
+	return
 }
 
 // Handle OpGetAllWatermark packet.
-func (s *DataNode) handleGetAppliedId(pkg *repl.Packet) {
+func (s *DataNode) handleGetAppliedID(pkg *repl.Packet) {
 	partition := pkg.Object.(*DataPartition)
-	minAppliedId := binary.BigEndian.Uint64(pkg.Data)
-	if minAppliedId > 0 {
-		partition.SetMinAppliedId(minAppliedId)
+	minAppliedID := binary.BigEndian.Uint64(pkg.Data)
+	if minAppliedID > 0 {
+		partition.SetMinAppliedID(minAppliedID)
 	}
 
-	//return current appliedId
-	appliedId := partition.GetAppliedId()
+	//return current appliedID
+	appliedID := partition.GetAppliedID()
 
-	log.LogDebugf("[getMinAppliedId] handleGetAppliedId partition=%v minAppId=%v curAppId=%v",
-		partition.ID(), minAppliedId, appliedId)
+	log.LogDebugf("[getMinAppliedID] handleGetAppliedID partition=%v minAppId=%v curAppId=%v",
+		partition.ID(), minAppliedID, appliedID)
 
 	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, appliedId)
+	binary.BigEndian.PutUint64(buf, appliedID)
 	pkg.PackOkWithBody(buf)
 	return
 }
@@ -647,7 +648,7 @@ end:
 	data, _ := json.Marshal(adminTask)
 	_, err = MasterHelper.Request("POST", master.DataNodeResponse, nil, data)
 	if err != nil {
-		err = errors.Annotatef(err, "opOfflineDataPartition failed, partitionId(%v)", resp.PartitionId)
+		err = errors.Annotatef(err, "opOfflineDataPartition failed, partitionID(%v)", resp.PartitionId)
 		log.LogError(errors.ErrorStack(err))
 		return
 	}
@@ -656,7 +657,7 @@ end:
 	return
 }
 
-func (d *DataNode) transferToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bool, err error) {
+func (s *DataNode) transferToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bool, err error) {
 	var (
 		conn       *net.TCPConn
 		leaderAddr string

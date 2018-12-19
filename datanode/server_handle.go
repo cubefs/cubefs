@@ -43,13 +43,13 @@ func (s *DataNode) apiGetDisk(w http.ResponseWriter, r *http.Request) {
 		Disks: disks,
 		Rack:  s.rackName,
 	}
-	s.buildApiSuccessResp(w, diskReport)
+	s.buildAPISuccessResp(w, diskReport)
 }
 
 func (s *DataNode) apiGetStat(w http.ResponseWriter, r *http.Request) {
 	response := &proto.DataNodeHeartBeatResponse{}
 	s.fillHeartBeatResponse(response)
-	s.buildApiSuccessResp(w, response)
+	s.buildAPISuccessResp(w, response)
 }
 
 func (s *DataNode) apiGetPartitions(w http.ResponseWriter, r *http.Request) {
@@ -80,36 +80,36 @@ func (s *DataNode) apiGetPartitions(w http.ResponseWriter, r *http.Request) {
 		Partitions:     partitions,
 		PartitionCount: len(partitions),
 	}
-	s.buildApiSuccessResp(w, result)
+	s.buildAPISuccessResp(w, result)
 }
 
 func (s *DataNode) apiGetPartition(w http.ResponseWriter, r *http.Request) {
 	const (
-		paramPartitionId = "id"
+		paramPartitionID = "id"
 	)
 	var (
-		partitionId uint64
+		partitionID uint64
 		files       []*storage.ExtentInfo
 		err         error
 	)
 	if err = r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
-		s.buildApiFailureResp(w, http.StatusBadRequest, err.Error())
+		s.buildAPIFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if partitionId, err = strconv.ParseUint(r.FormValue(paramPartitionId), 10, 64); err != nil {
-		err = fmt.Errorf("parse param %v fail: %v", paramPartitionId, err)
-		s.buildApiFailureResp(w, http.StatusBadRequest, err.Error())
+	if partitionID, err = strconv.ParseUint(r.FormValue(paramPartitionID), 10, 64); err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramPartitionID, err)
+		s.buildAPIFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	partition := s.space.GetPartition(partitionId)
+	partition := s.space.GetPartition(partitionID)
 	if partition == nil {
-		s.buildApiFailureResp(w, http.StatusNotFound, "partition not exist")
+		s.buildAPIFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
 	if files, err = partition.GetStore().GetAllWatermark(nil); err != nil {
 		err = fmt.Errorf("get watermark fail: %v", err)
-		s.buildApiFailureResp(w, http.StatusInternalServerError, err.Error())
+		s.buildAPIFailureResp(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	result := &struct {
@@ -131,54 +131,54 @@ func (s *DataNode) apiGetPartition(w http.ResponseWriter, r *http.Request) {
 		FileCount: len(files),
 		Replicas:  partition.ReplicaHosts(),
 	}
-	s.buildApiSuccessResp(w, result)
+	s.buildAPISuccessResp(w, result)
 }
 
 func (s *DataNode) apiGetExtent(w http.ResponseWriter, r *http.Request) {
 	var (
-		partitionId uint64
-		extentId    int
+		partitionID uint64
+		extentID    int
 		reload      int
 		err         error
 		extentInfo  *storage.ExtentInfo
 	)
 	if err = r.ParseForm(); err != nil {
-		s.buildApiFailureResp(w, http.StatusBadRequest, err.Error())
+		s.buildAPIFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if partitionId, err = strconv.ParseUint(r.FormValue("partitionId"), 10, 64); err != nil {
-		s.buildApiFailureResp(w, http.StatusBadRequest, err.Error())
+	if partitionID, err = strconv.ParseUint(r.FormValue("partitionID"), 10, 64); err != nil {
+		s.buildAPIFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if extentId, err = strconv.Atoi(r.FormValue("extentId")); err != nil {
-		s.buildApiFailureResp(w, http.StatusBadRequest, err.Error())
+	if extentID, err = strconv.Atoi(r.FormValue("extentID")); err != nil {
+		s.buildAPIFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	reload, _ = strconv.Atoi(r.FormValue("reload"))
 
-	partition := s.space.GetPartition(partitionId)
+	partition := s.space.GetPartition(partitionID)
 	if partition == nil {
-		s.buildApiFailureResp(w, http.StatusNotFound, "partition not exist")
+		s.buildAPIFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	if extentInfo, err = partition.GetStore().GetWatermark(uint64(extentId), reload == 1); err != nil {
-		s.buildApiFailureResp(w, 500, err.Error())
+	if extentInfo, err = partition.GetStore().GetWatermark(uint64(extentID), reload == 1); err != nil {
+		s.buildAPIFailureResp(w, 500, err.Error())
 		return
 	}
 
-	s.buildApiSuccessResp(w, extentInfo)
+	s.buildAPISuccessResp(w, extentInfo)
 	return
 }
 
-func (s *DataNode) buildApiSuccessResp(w http.ResponseWriter, data interface{}) {
-	s.buildApiJsonResp(w, http.StatusOK, data, "")
+func (s *DataNode) buildAPISuccessResp(w http.ResponseWriter, data interface{}) {
+	s.buildAPIJSONResp(w, http.StatusOK, data, "")
 }
 
-func (s *DataNode) buildApiFailureResp(w http.ResponseWriter, code int, msg string) {
-	s.buildApiJsonResp(w, code, nil, msg)
+func (s *DataNode) buildAPIFailureResp(w http.ResponseWriter, code int, msg string) {
+	s.buildAPIJSONResp(w, code, nil, msg)
 }
 
-func (s *DataNode) buildApiJsonResp(w http.ResponseWriter, code int, data interface{}, msg string) {
+func (s *DataNode) buildAPIJSONResp(w http.ResponseWriter, code int, data interface{}, msg string) {
 	var (
 		jsonBody []byte
 		err      error

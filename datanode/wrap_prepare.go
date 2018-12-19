@@ -74,17 +74,17 @@ func (s *DataNode) checkPartition(pkg *repl.Packet) (err error) {
 	return
 }
 
-// If tinyExtent Write get the extentId and extentOffset
-// If OpCreateExtent get new extentId
+// If tinyExtent Write get the extentID and extentOffset
+// If OpCreateExtent get new extentID
 func (s *DataNode) addExtentInfo(pkg *repl.Packet) error {
 	store := pkg.Object.(*DataPartition).GetStore()
 	if isLeaderPacket(pkg) && pkg.ExtentMode == proto.TinyExtentMode {
-		extentId, err := store.GetAvaliTinyExtent() // GetConnect a valid tinyExtentId
+		extentID, err := store.GetAvaliTinyExtent() // GetConnect a valid tinyExtentId
 		if err != nil {
 			return err
 		}
-		pkg.ExtentID = extentId
-		pkg.ExtentOffset, err = store.GetWatermarkForWrite(extentId) // GetConnect offset of this extent file
+		pkg.ExtentID = extentID
+		pkg.ExtentOffset, err = store.GetWatermarkForWrite(extentID) // GetConnect offset of this extent file
 		if err != nil {
 			return err
 		}

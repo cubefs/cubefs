@@ -37,7 +37,7 @@ func (m *MetaNode) startRaftServer() (err error) {
 	raftConf := &raftstore.Config{
 		NodeID:        m.nodeId,
 		WalPath:       m.raftDir,
-		IpAddr:        m.localAddr,
+		IPAddr:        m.localAddr,
 		HeartbeatPort: heartbeatPort,
 		ReplicatePort: replicatePort,
 		RetainLogs:    2000000,

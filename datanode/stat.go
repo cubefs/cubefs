@@ -32,7 +32,7 @@ type DiskMetrics struct {
 	Path                 string
 }
 
-//various metrics such free and total storage space, traffic, etc
+//Stats various metrics such free and total storage space, traffic, etc
 type Stats struct {
 	inDataSize  uint64
 	outDataSize uint64
@@ -42,7 +42,7 @@ type Stats struct {
 	Zone                            string
 	CurrentConns                    int64
 	ClusterID                       string
-	TcpAddr                         string
+	TCPAddr                         string
 	Start                           time.Time
 	Total                           uint64
 	Used                            uint64

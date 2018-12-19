@@ -38,13 +38,13 @@ func (p *Packet) AfterTp() (ok bool) {
 	return
 }
 
-func (p *Packet) BeforeTp(clusterId string) (ok bool) {
-	umpKey := fmt.Sprintf("%s_datanode_stream%v", clusterId, p.GetOpMsg())
+func (p *Packet) BeforeTp(clusterID string) (ok bool) {
+	umpKey := fmt.Sprintf("%s_datanode_stream%v", clusterID, p.GetOpMsg())
 	p.TpObject = ump.BeforeTP(umpKey)
 	return
 }
 
-func (p *Packet) resolveReplicateAddrs() (err error) {
+func (p *Packet) resolveReplicateAddr() (err error) {
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionPreparePkg, err.Error())
@@ -111,10 +111,10 @@ func (p *Packet) isForwardPacket() bool {
 	return r
 }
 
-func NewGetAllWaterMarker(partitionId uint64, extentType uint8) (p *Packet) {
+func NewGetAllWaterMarker(partitionID uint64, extentType uint8) (p *Packet) {
 	p = new(Packet)
 	p.Opcode = proto.OpGetAllWaterMark
-	p.PartitionID = partitionId
+	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
 	p.ReqID = proto.GeneratorRequestID()
 	p.ExtentMode = extentType
@@ -122,10 +122,10 @@ func NewGetAllWaterMarker(partitionId uint64, extentType uint8) (p *Packet) {
 	return
 }
 
-func NewExtentRepairReadPacket(partitionId uint64, extentId uint64, offset, size int) (p *Packet) {
+func NewExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) (p *Packet) {
 	p = new(Packet)
-	p.ExtentID = extentId
-	p.PartitionID = partitionId
+	p.ExtentID = extentID
+	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
 	p.ExtentOffset = int64(offset)
 	p.Size = uint32(size)
@@ -136,22 +136,22 @@ func NewExtentRepairReadPacket(partitionId uint64, extentId uint64, offset, size
 	return
 }
 
-func NewStreamReadResponsePacket(requestId int64, partitionId uint64, extentId uint64) (p *Packet) {
+func NewStreamReadResponsePacket(requestID int64, partitionID uint64, extentID uint64) (p *Packet) {
 	p = new(Packet)
-	p.ExtentID = extentId
-	p.PartitionID = partitionId
+	p.ExtentID = extentID
+	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpOk
-	p.ReqID = requestId
+	p.ReqID = requestID
 	p.ExtentMode = proto.NormalExtentMode
 
 	return
 }
 
-func NewNotifyExtentRepair(partitionId uint64) (p *Packet) {
+func NewNotifyExtentRepair(partitionID uint64) (p *Packet) {
 	p = new(Packet)
 	p.Opcode = proto.OpNotifyExtentRepair
-	p.PartitionID = partitionId
+	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
 	p.ExtentMode = proto.NormalExtentMode
 	p.ReqID = proto.GeneratorRequestID()

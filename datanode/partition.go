@@ -51,8 +51,8 @@ var (
 )
 
 type DataPartitionMeta struct {
-	VolumeId      string
-	PartitionId   uint64
+	VolumeID      string
+	PartitionID   uint64
 	PartitionSize int
 	CreateTime    string
 	RandomWrite   bool
@@ -73,8 +73,8 @@ func (sp sortPeers) Swap(i, j int) {
 }
 
 func (meta *DataPartitionMeta) Validate() (err error) {
-	meta.VolumeId = strings.TrimSpace(meta.VolumeId)
-	if len(meta.VolumeId) == 0 || meta.PartitionId == 0 || meta.PartitionSize == 0 {
+	meta.VolumeID = strings.TrimSpace(meta.VolumeID)
+	if len(meta.VolumeID) == 0 || meta.PartitionID == 0 || meta.PartitionSize == 0 {
 		err = errors.New("illegal data partition meta")
 		return
 	}
@@ -82,9 +82,9 @@ func (meta *DataPartitionMeta) Validate() (err error) {
 }
 
 type DataPartition struct {
-	clusterId       string
-	volumeId        string
-	partitionId     uint64
+	clusterID       string
+	volumeID        string
+	partitionID     uint64
 	partitionStatus int
 	partitionSize   int
 	replicaHosts    []string
@@ -96,9 +96,9 @@ type DataPartition struct {
 	extentStore     *storage.ExtentStore
 	raftPartition   raftstore.Partition
 	config          *dataPartitionCfg
-	applyId         uint64
-	lastTruncateId  uint64
-	minAppliedId    uint64
+	applyID         uint64
+	lastTruncateID  uint64
+	minAppliedID    uint64
 	repairC         chan uint64
 	storeC          chan uint64
 	stopC           chan bool
@@ -149,14 +149,14 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	}
 
 	dpCfg := &dataPartitionCfg{
-		VolName:       meta.VolumeId,
+		VolName:       meta.VolumeID,
 		PartitionSize: meta.PartitionSize,
-		PartitionId:   meta.PartitionId,
+		PartitionID:   meta.PartitionID,
 		RandomWrite:   meta.RandomWrite,
 		Peers:         meta.Peers,
 		RaftStore:     disk.space.GetRaftStore(),
-		NodeId:        disk.space.GetNodeId(),
-		ClusterId:     disk.space.GetClusterId(),
+		NodeID:        disk.space.GetNodeID(),
+		ClusterID:     disk.space.GetClusterID(),
 	}
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
@@ -177,12 +177,12 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 }
 
 func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, err error) {
-	partitionId := dpCfg.PartitionId
-	dataPath := path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionId, dpCfg.PartitionSize))
+	partitionID := dpCfg.PartitionID
+	dataPath := path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
 	partition := &DataPartition{
-		volumeId:               dpCfg.VolName,
-		clusterId:              dpCfg.ClusterId,
-		partitionId:            partitionId,
+		volumeID:               dpCfg.VolName,
+		clusterID:              dpCfg.ClusterID,
+		partitionID:            partitionID,
 		disk:                   disk,
 		path:                   dataPath,
 		partitionSize:          dpCfg.PartitionSize,
@@ -195,7 +195,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		config:                 dpCfg,
 		loadExtentHeaderStatus: StartLoadDataPartitionExtentHeader,
 	}
-	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionId, dpCfg.PartitionSize)
+	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize)
 	if err != nil {
 		return
 	}
@@ -207,7 +207,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 }
 
 func (dp *DataPartition) ID() uint64 {
-	return dp.partitionId
+	return dp.partitionID
 }
 
 func (dp *DataPartition) GetExtentCount() int {
@@ -230,7 +230,7 @@ func (dp *DataPartition) IsRaftLeader() (leaderAddr string, ok bool) {
 	if leaderID == 0 {
 		return
 	}
-	ok = leaderID == dp.config.NodeId
+	ok = leaderID == dp.config.NodeID
 	for _, peer := range dp.config.Peers {
 		if leaderID == peer.ID {
 			leaderAddr = peer.Addr
@@ -334,8 +334,8 @@ func (dp *DataPartition) StoreMeta() (err error) {
 	sort.Sort(sp)
 
 	meta := &DataPartitionMeta{
-		VolumeId:      dp.config.VolName,
-		PartitionId:   dp.config.PartitionId,
+		VolumeID:      dp.config.VolName,
+		PartitionID:   dp.config.PartitionID,
 		PartitionSize: dp.config.PartitionSize,
 		Peers:         dp.config.Peers,
 		RandomWrite:   dp.config.RandomWrite,
@@ -392,14 +392,14 @@ func (dp *DataPartition) statusUpdate() {
 	dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
 }
 
-func ParseExtentId(filename string) (extentId uint64, isExtent bool) {
+func ParseExtentID(filename string) (extentID uint64, isExtent bool) {
 	if isExtent = storage.RegexpExtentFile.MatchString(filename); !isExtent {
 		return
 	}
 	var (
 		err error
 	)
-	if extentId, err = strconv.ParseUint(filename, 10, 64); err != nil {
+	if extentID, err = strconv.ParseUint(filename, 10, 64); err != nil {
 		isExtent = false
 		return
 	}
@@ -409,22 +409,20 @@ func ParseExtentId(filename string) (extentId uint64, isExtent bool) {
 
 func (dp *DataPartition) getRealSize(path string, finfo os.FileInfo) (size int64) {
 	name := finfo.Name()
-	extentid, isExtent := ParseExtentId(name)
+	extentID, isExtent := ParseExtentID(name)
 	if !isExtent {
 		return finfo.Size()
 	}
-	if storage.IsTinyExtent(extentid) {
+	if storage.IsTinyExtent(extentID) {
 		stat := new(syscall.Stat_t)
 		err := syscall.Stat(fmt.Sprintf("%v/%v", path, finfo.Name()), stat)
 		if err != nil {
 			return finfo.Size()
 		}
 		return stat.Blocks * DiskSectorSize
-
-	} else {
-		return finfo.Size()
 	}
 
+	return finfo.Size()
 }
 
 func (dp *DataPartition) computeUsage() {
@@ -451,7 +449,7 @@ func (dp *DataPartition) GetStore() *storage.ExtentStore {
 }
 
 func (dp *DataPartition) String() (m string) {
-	return fmt.Sprintf(DataPartitionPrefix+"_%v_%v", dp.partitionId, dp.partitionSize)
+	return fmt.Sprintf(DataPartitionPrefix+"_%v_%v", dp.partitionID, dp.partitionSize)
 }
 
 func (dp *DataPartition) LaunchRepair(fixExtentType uint8) {
@@ -482,12 +480,12 @@ func (dp *DataPartition) updateReplicaHosts() (err error) {
 	}
 	if !dp.compareReplicaHosts(dp.replicaHosts, replicas) {
 		log.LogInfof("action[updateReplicaHosts] partition(%v) replicaHosts changed from (%v) to (%v).",
-			dp.partitionId, dp.replicaHosts, replicas)
+			dp.partitionID, dp.replicaHosts, replicas)
 	}
 	dp.isLeader = isLeader
 	dp.replicaHosts = replicas
 	dp.updateReplicationTime = time.Now().Unix()
-	log.LogInfof(fmt.Sprintf("ActionUpdateReplicationHosts partiton[%v]", dp.partitionId))
+	log.LogInfof(fmt.Sprintf("ActionUpdateReplicationHosts partiton[%v]", dp.partitionID))
 
 	return
 }
@@ -514,7 +512,7 @@ func (dp *DataPartition) fetchReplicaHosts() (isLeader bool, replicaHosts []stri
 		HostsBuf []byte
 	)
 	params := make(map[string]string)
-	params["id"] = strconv.Itoa(int(dp.partitionId))
+	params["id"] = strconv.Itoa(int(dp.partitionID))
 	if HostsBuf, err = MasterHelper.Request("GET", AdminGetDataPartition, params, nil); err != nil {
 		isLeader = false
 		return
@@ -541,7 +539,7 @@ func (dp *DataPartition) fetchReplicaHosts() (isLeader bool, replicaHosts []stri
 
 func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 	response = &proto.LoadDataPartitionResponse{}
-	response.PartitionId = uint64(dp.partitionId)
+	response.PartitionId = uint64(dp.partitionID)
 	response.PartitionStatus = dp.partitionStatus
 	response.Used = uint64(dp.Used())
 	var err error
