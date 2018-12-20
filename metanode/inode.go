@@ -412,11 +412,13 @@ func (i *Inode) CanOpen(mt int64) (authId uint64, ok bool) {
 		i.AuthID = uint64(mt) + i.Inode
 		i.AuthTimeout = mt + defaultAuthTimeout
 		i.AccessTime = mt
+		authId = i.AuthID
 		return
 	}
 	switch {
 	case i.AuthTimeout < mt:
 		i.AuthID = uint64(mt) + i.Inode
+		authId = i.AuthID
 		fallthrough
 	case i.AuthTimeout == mt:
 		i.AuthTimeout = mt + defaultAuthTimeout
