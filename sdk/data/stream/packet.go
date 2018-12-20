@@ -57,13 +57,16 @@ func NewWritePacket(dp *wrapper.DataPartition, extentId uint64, offset int, inod
 	p.ExtentMode = proto.NormalExtentMode
 	p.ExtentID = extentId
 	p.ExtentOffset = int64(offset)
-	p.Arg = ([]byte)(dp.GetAllAddrs())
-	p.Arglen = uint32(len(p.Arg))
-	p.RemainFollowers = uint8(len(dp.Hosts) - 1)
 	p.ReqID = proto.GeneratorRequestID()
 	if isRandom {
+		p.Arg = nil
+		p.Arglen = 0
+		p.RemainFollowers = 0
 		p.Opcode = proto.OpRandomWrite
 	} else {
+		p.Arg = ([]byte)(dp.GetAllAddrs())
+		p.Arglen = uint32(len(p.Arg))
+		p.RemainFollowers = uint8(len(dp.Hosts) - 1)
 		p.Opcode = proto.OpWrite
 	}
 	p.inode = inode
