@@ -29,7 +29,7 @@ const (
 	dataPartitionMissSec        = "dataPartitionMissSec"
 	dataPartitionTimeOutSec     = "dataPartitionTimeOutSec"
 	everyLoadDataPartitionCount = "everyLoadDataPartitionCount"
-	fileDelayCheckCrc           = "fileDelayCheckCrc"
+	releaseDataPartitionAfterLoadSeconds = "releaseDataPartitionAfterLoadSeconds"
 	nodeSetCapacity             = "nodeSetCap"
 )
 
@@ -60,8 +60,6 @@ const (
 var AddrDatabase = make(map[uint64]string)
 
 type clusterConfig struct {
-	FileDelayCheckCrcSec                 int64
-	FileDelayCheckLackSec                int64
 	releaseDataPartitionAfterLoadSeconds int64
 	NodeTimeOutSec                       int64
 	DataPartitionMissSec                 int64
@@ -72,16 +70,12 @@ type clusterConfig struct {
 	everyReleaseDataPartitionCount       int
 	everyLoadDataPartitionCount          int
 	nodeSetCapacity                      int
-	MetaNodeThreshold                    float32
-
 	peers     []raftstore.PeerAddress
 	peerAddrs []string
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
 	cfg = new(clusterConfig)
-	cfg.FileDelayCheckCrcSec = defaultFileDelayCheckCrcSec
-	cfg.FileDelayCheckLackSec = defaultFileDelayCheckLackSec
 	cfg.everyReleaseDataPartitionCount = defaultEveryReleaseDataPartitionCount
 	cfg.releaseDataPartitionAfterLoadSeconds = defaultReleaseDataPartitionAfterLoadSeconds
 	cfg.NodeTimeOutSec = defaultNodeTimeOutSec
@@ -91,7 +85,6 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.DataPartitionWarnInterval = defaultDataPartitionWarnInterval
 	cfg.everyLoadDataPartitionCount = defaultEveryLoadDataPartitionCount
 	cfg.LoadDataPartitionFrequencyTime = defaultLoadDataPartitionFrequencyTime
-	cfg.MetaNodeThreshold = defaultMetaPartitionThreshold
 	return
 }
 

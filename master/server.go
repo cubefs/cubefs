@@ -107,7 +107,6 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.port = cfg.GetString(Port)
 	m.walDir = cfg.GetString(WalDir)
 	m.storeDir = cfg.GetString(StoreDir)
-	vfDelayCheckCrcSec := cfg.GetString(fileDelayCheckCrc)
 	dataPartitionMissSec := cfg.GetString(dataPartitionMissSec)
 	dataPartitionTimeOutSec := cfg.GetString(dataPartitionTimeOutSec)
 	everyLoadDataPartitionCount := cfg.GetString(everyLoadDataPartitionCount)
@@ -137,12 +136,6 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("%v,err:%v", errBadConfFile, "one of (ip,port,walDir,storeDir,clusterName) is null")
 	}
 
-	if vfDelayCheckCrcSec != "" {
-		if m.config.FileDelayCheckCrcSec, err = strconv.ParseInt(vfDelayCheckCrcSec, 10, 0); err != nil {
-			return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
-		}
-	}
-
 	if dataPartitionMissSec != "" {
 		if m.config.DataPartitionMissSec, err = strconv.ParseInt(dataPartitionMissSec, 10, 0); err != nil {
 			return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
@@ -160,6 +153,11 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	}
 	if m.config.everyLoadDataPartitionCount <= 40 {
 		m.config.everyLoadDataPartitionCount = 40
+	}
+	if releaseAfterLoadSeconds := cfg.GetString(releaseDataPartitionAfterLoadSeconds); releaseAfterLoadSeconds != "" {
+		if m.config.releaseDataPartitionAfterLoadSeconds, err = strconv.ParseInt(releaseAfterLoadSeconds, 10, 64); err != nil {
+			return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
+		}
 	}
 
 	return

@@ -399,9 +399,6 @@ func (c *Cluster) handleApply(cmd *RaftCmdData) (err error) {
 	if cmd == nil {
 		return fmt.Errorf("metadata can't be null")
 	}
-	if c == nil || c.fsm == nil {
-		return fmt.Errorf("cluster has not init")
-	}
 	switch cmd.Op {
 	case opSyncPutCluster:
 		c.applyPutCluster(cmd)
