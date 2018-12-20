@@ -47,33 +47,34 @@ type VolStatInfo struct {
 
 // VolName view managements
 //
-func (mw *MetaWrapper) PullVolumeView() (*VolumeView, error) {
+func (mw *MetaWrapper) fetchVolumeView() (*VolumeView, error) {
 	params := make(map[string]string)
 	params["name"] = mw.volname
 	body, err := mw.master.Request(http.MethodPost, MetaPartitionViewURL, params, nil)
 	if err != nil {
-		log.LogWarnf("PullVolumeView request: err(%v)", err)
+		log.LogWarnf("fetchVolumeView request: err(%v)", err)
 		return nil, err
 	}
 
 	view := new(VolumeView)
 	if err = json.Unmarshal(body, view); err != nil {
-		log.LogWarnf("PullVolumeView unmarshal: err(%v) body(%v)", err, string(body))
+		log.LogWarnf("fetchVolumeView unmarshal: err(%v) body(%v)", err, string(body))
 		return nil, err
 	}
 	return view, nil
 }
 
-func (mw *MetaWrapper) UpdateClusterInfo() error {
+// fetch and update cluster info if successful
+func (mw *MetaWrapper) updateClusterInfo() error {
 	body, err := mw.master.Request(http.MethodPost, GetClusterInfoURL, nil, nil)
 	if err != nil {
-		log.LogWarnf("UpdateClusterInfo request: err(%v)", err)
+		log.LogWarnf("updateClusterInfo request: err(%v)", err)
 		return err
 	}
 
 	info := new(proto.ClusterInfo)
 	if err = json.Unmarshal(body, info); err != nil {
-		log.LogWarnf("UpdateClusterInfo unmarshal: err(%v)", err)
+		log.LogWarnf("updateClusterInfo unmarshal: err(%v)", err)
 		return err
 	}
 	log.LogInfof("ClusterInfo: %v", *info)
@@ -81,39 +82,44 @@ func (mw *MetaWrapper) UpdateClusterInfo() error {
 	return nil
 }
 
-func (mw *MetaWrapper) UpdateVolStatInfo() error {
+func (mw *MetaWrapper) updateVolStatInfo() error {
 	params := make(map[string]string)
 	params["name"] = mw.volname
 	body, err := mw.master.Request(http.MethodPost, GetVolStatURL, params, nil)
 	if err != nil {
-		log.LogWarnf("UpdateVolStatInfo request: err(%v)", err)
+		log.LogWarnf("updateVolStatInfo request: err(%v)", err)
 		return err
 	}
 
 	info := new(VolStatInfo)
 	if err = json.Unmarshal(body, info); err != nil {
-		log.LogWarnf("UpdateVolStatInfo unmarshal: err(%v)", err)
+		log.LogWarnf("updateVolStatInfo unmarshal: err(%v)", err)
 		return err
 	}
-	log.LogInfof("UpdateVolStatInfo: info(%v)", *info)
 	atomic.StoreUint64(&mw.totalSize, info.TotalSize)
 	atomic.StoreUint64(&mw.usedSize, info.UsedSize)
+	log.LogInfof("VolStatInfo: info(%v)", *info)
 	return nil
 }
 
-func (mw *MetaWrapper) UpdateMetaPartitions() error {
-	nv, err := mw.PullVolumeView()
+func (mw *MetaWrapper) updateMetaPartitions() error {
+	view, err := mw.fetchVolumeView()
 	if err != nil {
 		return err
 	}
 
 	rwPartitions := make([]*MetaPartition, 0)
-	for _, mp := range nv.MetaPartitions {
+	for _, mp := range view.MetaPartitions {
 		mw.replaceOrInsertPartition(mp)
-		log.LogInfof("UpdateMetaPartition: mp(%v)", mp)
+		log.LogInfof("updateMetaPartition: mp(%v)", mp)
 		if mp.Status == proto.ReadWrite {
 			rwPartitions = append(rwPartitions, mp)
 		}
+	}
+
+	if len(rwPartitions) == 0 {
+		log.LogInfof("updateMetaPartition: no rw partitions")
+		return nil
 	}
 
 	mw.Lock()
@@ -128,8 +134,8 @@ func (mw *MetaWrapper) refresh() {
 	for {
 		select {
 		case <-t.C:
-			mw.UpdateMetaPartitions()
-			mw.UpdateVolStatInfo()
+			mw.updateMetaPartitions()
+			mw.updateVolStatInfo()
 		}
 	}
 }

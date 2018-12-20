@@ -83,9 +83,9 @@ func NewMetaWrapper(volname, masterHosts string) (*MetaWrapper, error) {
 	mw.partitions = make(map[uint64]*MetaPartition)
 	mw.ranges = btree.New(32)
 	mw.rwPartitions = make([]*MetaPartition, 0)
-	mw.UpdateClusterInfo()
-	mw.UpdateVolStatInfo()
-	if err := mw.UpdateMetaPartitions(); err != nil {
+	mw.updateClusterInfo()
+	mw.updateVolStatInfo()
+	if err := mw.updateMetaPartitions(); err != nil {
 		return nil, err
 	}
 	go mw.refresh()
