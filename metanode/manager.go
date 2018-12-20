@@ -208,6 +208,12 @@ func (m *metaManager) loadPartitions() (err error) {
 						log.LogFlush()
 						panic(r)
 					}
+					if err != nil {
+						log.LogErrorf("loadPartitions partition: %s, "+
+							"error: %s", fileName, err)
+						log.LogFlush()
+						panic(err)
+					}
 				}()
 				defer wg.Done()
 				if len(fileName) < 10 {
