@@ -62,17 +62,11 @@ func (s *DataNode) addMetrics(reply *repl.Packet) {
 		return
 	}
 	reply.AfterTp()
-	latency := time.Since(reply.TpObject.Start)
 	if reply.Object == nil {
 		return
 	}
 	partition := reply.Object.(*DataPartition)
 	if partition == nil {
 		return
-	}
-	if isWriteOperation(reply) {
-		partition.AddWriteMetrics(uint64(latency))
-	} else if isReadExtentOperation(reply) {
-		partition.AddReadMetrics(uint64(latency))
 	}
 }
