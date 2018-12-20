@@ -17,6 +17,7 @@ func (s *DataNode) Prepare(pkg *repl.Packet) (err error) {
 	if pkg.IsMasterCommand() {
 		return
 	}
+	pkg.BeforeTp(s.clusterID)
 	err = s.checkStoreMode(pkg)
 	if err != nil {
 		return
@@ -24,7 +25,6 @@ func (s *DataNode) Prepare(pkg *repl.Packet) (err error) {
 	if err = s.checkCrc(pkg); err != nil {
 		return
 	}
-	pkg.BeforeTp(s.clusterID)
 	if err = s.checkPartition(pkg); err != nil {
 		return
 	}
