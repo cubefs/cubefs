@@ -157,6 +157,11 @@ func (dp *DataPartition) RandomPartitionReadCheck(request *repl.Packet, connect 
 		return
 	}
 
+	if dp.applyID < dp.maxAppliedID {
+		//todo: err = storage.ErrorAgain
+		log.LogErrorf("[readCheck] applied not newest partition=%v", dp.partitionID, dp.applyID, dp.maxAppliedID)
+	}
+
 	return
 }
 
