@@ -106,11 +106,14 @@ func write(name string, isRandom bool) (verifyInfo []*VerifyInfo, err error) {
 		allData = append(allData, data...)
 		offset += int64(n)
 	}
-	crc := crc32.ChecksumIEEE(allData)
-	crcBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(crcBuf, crc)
-	if _, err := fp.Write(crcBuf); err != nil {
-		return nil, err
+
+	if !isRandom {
+		crc := crc32.ChecksumIEEE(allData)
+		crcBuf := make([]byte, 4)
+		binary.BigEndian.PutUint32(crcBuf, crc)
+		if _, err := fp.WriteAt(crcBuf, offset); err != nil {
+			return nil, err
+		}
 	}
 
 	err = syscall.Fsync(int(fp.Fd()))
@@ -147,7 +150,7 @@ func readVerify(verifyInfo []*VerifyInfo) {
 
 }
 
-func read(name string) (err error) {
+func read(name string, isRandom bool) (err error) {
 	fp, err := os.Open(name)
 	if err != nil {
 		return err
@@ -162,6 +165,10 @@ func read(name string) (err error) {
 	var n int
 	if n, err = fp.Read(data); err != nil {
 		return err
+	}
+
+	if isRandom {
+		return nil
 	}
 
 	writeCrc := binary.BigEndian.Uint32(data[size-4:])
@@ -180,10 +187,14 @@ func verifyWriteAndRead(filename string, isRandom bool) {
 		err = fmt.Errorf("filename %v write %v error", filename, err)
 		fmt.Println(err.Error())
 	}
-	err = read(filename)
+	err = read(filename, isRandom)
 	if err != nil {
 		err = fmt.Errorf("filename %v read %v error", filename, err)
 		fmt.Println(err.Error())
+		readVerify(verifyInfo)
+	}
+
+	if isRandom {
 		readVerify(verifyInfo)
 	}
 }
