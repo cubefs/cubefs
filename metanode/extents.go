@@ -112,7 +112,7 @@ func (e *ExtentsTree) Size() (size uint64) {
 	return
 }
 
-// Range calls f sequentially for each key and value present in the extent key collection.
+// Range calls f sequentially for each exporterKey and value present in the extent exporterKey collection.
 // If f returns false, range stops the iteration.
 func (e *ExtentsTree) Range(f func(item BtreeItem) bool) {
 	e.Ascend(f)

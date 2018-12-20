@@ -30,7 +30,7 @@ const (
 )
 
 // Inode wraps necessary properties of `Inode` information in file system.
-// Marshal key:
+// Marshal exporterKey:
 //  +-------+-------+
 //  | item  | Inode |
 //  +-------+-------+
@@ -173,14 +173,14 @@ func (i *Inode) Unmarshal(raw []byte) (err error) {
 	return
 }
 
-// MarshalKey marshal key to bytes.
+// MarshalKey marshal exporterKey to bytes.
 func (i *Inode) MarshalKey() (k []byte) {
 	k = make([]byte, 8)
 	binary.BigEndian.PutUint64(k, i.Inode)
 	return
 }
 
-// UnmarshalKey unmarshal key from bytes.
+// UnmarshalKey unmarshal exporterKey from bytes.
 func (i *Inode) UnmarshalKey(k []byte) (err error) {
 	i.Inode = binary.BigEndian.Uint64(k)
 	return

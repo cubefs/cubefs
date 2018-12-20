@@ -15,11 +15,13 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/tiglabs/containerfs/datanode"
 	"github.com/tiglabs/containerfs/master"
 	"github.com/tiglabs/containerfs/metanode"
+	"github.com/tiglabs/containerfs/util/exporter"
 	"github.com/tiglabs/containerfs/util/log"
-	"strings"
 
 	"flag"
 	_ "net/http/pprof"
@@ -30,9 +32,10 @@ import (
 
 	"bytes"
 	"fmt"
-	"github.com/tiglabs/containerfs/util/config"
 	"net/http"
 	"os/exec"
+
+	"github.com/tiglabs/containerfs/util/config"
 )
 
 var (
@@ -44,6 +47,7 @@ const (
 	ConfigKeyLogDir   = "logDir"
 	ConfigKeyLogLevel = "logLevel"
 	ConfigKeyProfPort = "prof"
+	ConfigKeyExporterPort = "exporterPort"
 )
 
 const (
@@ -104,9 +108,9 @@ func main() {
 		return
 	}
 	log.LogInfof("Hello, Cfs Storage, Current Version: %s", Version)
-	out,err:=exec_shell("ulimit -n 1024000")
-	if err!=nil {
-		fmt.Printf("ulimit -n 1024000  error %v out %v\n", err,out)
+	out, err := exec_shell("ulimit -n 1024000")
+	if err != nil {
+		fmt.Printf("ulimit -n 1024000  error %v out %v\n", err, out)
 		os.Exit(0)
 	}
 	fmt.Println(out)
@@ -168,6 +172,8 @@ func main() {
 		os.Exit(1)
 		return
 	}
+
+	exporter.Init(role, cfg.GetInt(ConfigKeyExporterPort))
 
 	interceptSignal(server)
 	err = server.Start(cfg)

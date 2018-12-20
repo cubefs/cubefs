@@ -2,15 +2,16 @@ package repl
 
 import (
 	"fmt"
-	"github.com/juju/errors"
-	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/storage"
-	"github.com/tiglabs/containerfs/util"
-	"github.com/tiglabs/containerfs/util/ump"
 	"io"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/storage"
+	"github.com/tiglabs/containerfs/util"
+	"github.com/tiglabs/containerfs/util/exporter"
 )
 
 var (
@@ -24,23 +25,23 @@ type Packet struct {
 	followersAddrs []string
 	IsRelase       int32
 	Object         interface{}
-	TpObject       *ump.TpObject
+	TpObject       *exporter.TpMetric
 	NeedReply      bool
 }
 
 func (p *Packet) AfterTp() (ok bool) {
-	var err error
 	if p.IsErrPacket() {
+		var err error
 		err = fmt.Errorf(p.GetOpMsg()+" failed because(%v)", string(p.Data[:p.Size]))
 	}
-	ump.AfterTP(p.TpObject, err)
+	p.TpObject.CalcTpMS()
 
 	return
 }
 
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
-	umpKey := fmt.Sprintf("%s_datanode_stream%v", clusterID, p.GetOpMsg())
-	p.TpObject = ump.BeforeTP(umpKey)
+	key := fmt.Sprintf("%s_datanode_stream%v", clusterID, p.GetOpMsg())
+	p.TpObject = exporter.RegistTp(key)
 	return
 }
 
@@ -58,7 +59,7 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 	followerAddrs := strings.SplitN(str, proto.AddrSplit, -1)
 	followerNum := uint8(len(followerAddrs) - 1)
 	p.followersAddrs = make([]string, followerNum)
-	if followerNum> 0 {
+	if followerNum > 0 {
 		p.followersAddrs = followerAddrs[:int(followerNum)]
 	}
 	p.followerConns = make([]*net.TCPConn, followerNum)

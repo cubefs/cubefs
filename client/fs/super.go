@@ -92,6 +92,6 @@ func (s *Super) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.
 	return nil
 }
 
-func (s *Super) umpKey(act string) string {
+func (s *Super) exporterKey(act string) string {
 	return fmt.Sprintf("%s_fuseclient_%s", s.cluster, act)
 }

@@ -31,8 +31,8 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
 	"github.com/tiglabs/containerfs/util"
+	"github.com/tiglabs/containerfs/util/exporter"
 	"github.com/tiglabs/containerfs/util/log"
-	"github.com/tiglabs/containerfs/util/ump"
 )
 
 const partitionPrefix = "partition_"
@@ -64,9 +64,12 @@ type metaManager struct {
 }
 
 func (m *metaManager) HandleMetaOperation(conn net.Conn, p *Packet) (err error) {
-	umpKey := UMPKey + "_" + p.GetOpMsg()
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
+<<<<<<< HEAD
+	metric := exporter.RegistTp(packet.GetOpMsg())
+=======
+	metric := exporter.RegistTp(p.GetOpMsg())
+>>>>>>> add prometheus exporter
+	defer metric.CalcTpMS()
 
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:

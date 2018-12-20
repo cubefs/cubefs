@@ -19,3 +19,5 @@ vendor/
 # vim swap
 *.swp
 java-stream-sdk/.idea/
+tmp/*
+.idea

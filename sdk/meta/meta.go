@@ -96,7 +96,7 @@ func (mw *MetaWrapper) Cluster() string {
 	return mw.cluster
 }
 
-func (mw *MetaWrapper) umpKey(act string) string {
+func (mw *MetaWrapper) exporterKey(act string) string {
 	return fmt.Sprintf("%s_sdk_meta_%s", mw.cluster, act)
 }
 
