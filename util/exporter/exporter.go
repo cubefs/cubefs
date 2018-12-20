@@ -40,7 +40,7 @@ func Init(cluster string, role string, cfg *config.Config) {
 
 	http.Handle(PromHandlerPattern, promhttp.Handler())
 
-	namespace = fmt.Sprintf("%s_%s", AppName, role)
+	namespace = AppName + "_" + role
 	addr := fmt.Sprintf(":%d", port)
 	go func() {
 		http.ListenAndServe(addr, nil)
@@ -71,19 +71,21 @@ func RegistGauge(name string) (o prometheus.Gauge) {
 		}
 	}()
 	name = metricsName(name)
-	m, ok := metricGroups.Load(name)
-	if ok {
+
+	newGauge := prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: name,
+			Help: name,
+		})
+	m, load := metricGroups.LoadOrStore(name, newGauge)
+	if load {
 		o = m.(prometheus.Gauge)
 		return
 	} else {
-		o = prometheus.NewGauge(
-			prometheus.GaugeOpts{
-				Name: name,
-				Help: name,
-			})
-		prometheus.MustRegister(o)
-
-		metricGroups.Store(name, o)
+		o = newGauge
+		if enabled {
+			prometheus.MustRegister(newGauge)
+		}
 	}
 
 	return
@@ -96,35 +98,34 @@ func RegistTp(name string) (o *TpMetric) {
 		}
 	}()
 
-	if ! enabled {
-		return
-	}
 
 	name = metricsName(name)
 
-	m, ok := metricGroups.Load(name)
-	if ok {
+	tp := TpMetricPool.Get().(*TpMetric)
+	m, load := metricGroups.LoadOrStore(name, tp)
+	if load {
 		o = m.(*TpMetric)
 		o.Start = time.Now()
 		return
 	} else {
-		o = TpMetricPool.Get().(*TpMetric)
-		o.Start = time.Now()
-		o.metric = prometheus.NewGauge(
+		tp.Start = time.Now()
+		tp.metric = prometheus.NewGauge(
 			prometheus.GaugeOpts{
 				Name: name,
 				Help: name,
 			})
-		prometheus.MustRegister(o.metric)
+		if enabled {
+			prometheus.MustRegister(tp.metric)
+		}
 
-		metricGroups.Store(name, o)
+		o = tp
 	}
 
 	return
 }
 
-func (o *TpMetric) CalcTpMS() {
-	if ! enabled {
+func (o *TpMetric) CalcTp() {
+	if o == nil || o.metric == nil {
 		return
 	}
 
@@ -134,27 +135,25 @@ func (o *TpMetric) CalcTpMS() {
 		}
 	}()
 
-	o.metric.Set(float64(time.Since(o.Start).Nanoseconds() / 1e6))
+	o.metric.Set(float64(time.Since(o.Start).Nanoseconds()))
 }
 
 func Alarm(name, detail string) {
-	if ! enabled {
-		return
-	}
-
 	name = metricsName(name + "_alarm")
-	o, ok := metricGroups.Load(name)
-	if ok {
-		m := o.(prometheus.Counter)
-		m.Add(1)
+
+	newMetric := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: name,
+			Help: name,
+		})
+	m, load := metricGroups.LoadOrStore(name, newMetric)
+	if load {
+		o := m.(prometheus.Counter)
+		o.Add(1)
 	} else {
-		m := prometheus.NewCounter(
-			prometheus.CounterOpts{
-				Name: name,
-				Help: name,
-			})
-		prometheus.MustRegister(m)
-		metricGroups.Store(name, m)
+		if enabled {
+			prometheus.MustRegister(newMetric)
+		}
 	}
 
 	return

@@ -30,7 +30,7 @@ type Packet struct {
 }
 
 func (p *Packet) AfterTp() (ok bool) {
-	p.TpObject.CalcTpMS()
+	p.TpObject.CalcTp()
 
 	return
 }

@@ -65,7 +65,7 @@ type metaManager struct {
 
 func (m *metaManager) HandleMetaOperation(conn net.Conn, p *Packet) (err error) {
 	metric := exporter.RegistTp(p.GetOpMsg())
-	defer metric.CalcTpMS()
+	defer metric.CalcTp()
 
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:

@@ -63,7 +63,7 @@ func (s *DataNode) OperatePacket(pkg *repl.Packet, c *net.TCPConn) (err error) {
 			}
 		}
 		pkg.Size = resultSize
-		tpObject.CalcTpMS()
+		tpObject.CalcTp()
 	}()
 	switch pkg.Opcode {
 	case proto.OpCreateExtent:
@@ -461,7 +461,7 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 		tpObject := exporter.RegistTp(exporterKey)
 		reply.ExtentOffset = offset
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data)
-		tpObject.CalcTpMS()
+		tpObject.CalcTp()
 		if err != nil {
 			reply.PackErrorBody(ActionStreamRead, err.Error())
 			if err = reply.WriteToConn(connect); err != nil {
