@@ -107,45 +107,51 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.port = cfg.GetString(Port)
 	m.walDir = cfg.GetString(WalDir)
 	m.storeDir = cfg.GetString(StoreDir)
-	dataPartitionMissSec := cfg.GetString(dataPartitionMissSec)
-	dataPartitionTimeOutSec := cfg.GetString(dataPartitionTimeOutSec)
-	everyLoadDataPartitionCount := cfg.GetString(everyLoadDataPartitionCount)
 	peerAddrs := cfg.GetString(cfgPeers)
-	if m.config.nodeSetCapacity, err = strconv.Atoi(cfg.GetString(nodeSetCapacity)); err != nil {
+	if m.ip == "" || m.port == "" || m.walDir == "" || m.storeDir == "" || m.clusterName == "" || peerAddrs == "" {
+		return fmt.Errorf("%v,err:%v", errBadConfFile, "one of (ip,port,walDir,storeDir,clusterName) is null")
+	}
+	if m.id, err = strconv.ParseUint(cfg.GetString(ID), 10, 64); err != nil {
 		return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
+	}
+	if err = m.config.parsePeers(peerAddrs); err != nil {
+		return
+	}
+	nodeSetCapacity := cfg.GetString(nodeSetCapacity)
+	if nodeSetCapacity != "" {
+		if m.config.nodeSetCapacity, err = strconv.Atoi(nodeSetCapacity); err != nil {
+			return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
+		}
 	}
 	if m.config.nodeSetCapacity < 3 {
 		m.config.nodeSetCapacity = defaultNodeSetCapacity
 	}
-	if m.retainLogs, err = strconv.ParseUint(cfg.GetString(CfgRetainLogs), 10, 64); err != nil {
-		return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
+	retainLogs := cfg.GetString(CfgRetainLogs)
+	if retainLogs != "" {
+		if m.retainLogs, err = strconv.ParseUint(retainLogs, 10, 64); err != nil {
+			return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
+		}
 	}
 	if m.retainLogs <= 0 {
 		m.retainLogs = DefaultRetainLogs
 	}
 	fmt.Println("retainLogs=", m.retainLogs)
-	if err = m.config.parsePeers(peerAddrs); err != nil {
-		return
-	}
 
-	if m.id, err = strconv.ParseUint(cfg.GetString(ID), 10, 64); err != nil {
-		return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
-	}
-
-	if m.ip == "" || m.port == "" || m.walDir == "" || m.storeDir == "" || m.clusterName == "" {
-		return fmt.Errorf("%v,err:%v", errBadConfFile, "one of (ip,port,walDir,storeDir,clusterName) is null")
-	}
-
+	dataPartitionMissSec := cfg.GetString(dataPartitionMissSec)
 	if dataPartitionMissSec != "" {
 		if m.config.DataPartitionMissSec, err = strconv.ParseInt(dataPartitionMissSec, 10, 0); err != nil {
 			return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
 		}
 	}
+
+	dataPartitionTimeOutSec := cfg.GetString(dataPartitionTimeOutSec)
 	if dataPartitionTimeOutSec != "" {
 		if m.config.DataPartitionTimeOutSec, err = strconv.ParseInt(dataPartitionTimeOutSec, 10, 0); err != nil {
 			return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
 		}
 	}
+
+	everyLoadDataPartitionCount := cfg.GetString(everyLoadDataPartitionCount)
 	if everyLoadDataPartitionCount != "" {
 		if m.config.everyLoadDataPartitionCount, err = strconv.Atoi(everyLoadDataPartitionCount); err != nil {
 			return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
