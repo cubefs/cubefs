@@ -97,9 +97,8 @@ func RegistTp(name string) (o *TpMetric) {
 	return
 }
 
-func (o *TpMetric) CalcTpMS() (latency int64) {
-	latency = float64(time.Since(o.Start).Nanoseconds() / 1e6)
-	o.metric.Set(latency)
+func (o *TpMetric) CalcTpMS() {
+	o.metric.Set(float64(time.Since(o.Start).Nanoseconds() / 1e6))
 }
 
 func Alarm(name, detail string) {
