@@ -207,6 +207,12 @@ func (m *metaManager) loadPartitions() (err error) {
 						log.LogFlush()
 						panic(r)
 					}
+					if err != nil {
+						log.LogErrorf("loadPartitions partition: %s, "+
+							"error: %s", fileName, err)
+						log.LogFlush()
+						panic(err)
+					}
 				}()
 				defer wg.Done()
 				if len(fileName) < 10 {
@@ -323,7 +329,7 @@ func (m *metaManager) GetPartition(id uint64) (mp MetaPartition, err error) {
 }
 
 // PartitionsMarshalJSON only marshal base information of every partition
-func (m *metaManager) PartitionsMarshalJSON() (data []byte, err error) {
+func (m *metaManager) MarshalJSON() (data []byte, err error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return json.Marshal(m.partitions)

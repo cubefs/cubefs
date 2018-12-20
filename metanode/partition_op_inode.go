@@ -235,3 +235,7 @@ func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
 	p.PackOkReply()
 	return
 }
+
+func (mp *metaPartition) GetInodeTree() *BTree {
+	return mp.inodeTree.GetTree()
+}

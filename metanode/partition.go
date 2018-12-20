@@ -113,6 +113,7 @@ type OpInode interface {
 	CreateLinkInode(req *LinkInodeReq, p *Packet) (err error)
 	EvictInode(req *EvictInodeReq, p *Packet) (err error)
 	SetAttr(reqData []byte, p *Packet) (err error)
+	GetInodeTree() *BTree
 }
 
 type OpDentry interface {
@@ -121,6 +122,7 @@ type OpDentry interface {
 	UpdateDentry(req *UpdateDentryReq, p *Packet) (err error)
 	ReadDir(req *ReadDirReq, p *Packet) (err error)
 	Lookup(req *LookupReq, p *Packet) (err error)
+	GetDentryTree() *BTree
 }
 
 type OpExtent interface {

@@ -20,44 +20,82 @@ import (
 	"strconv"
 
 	"github.com/tiglabs/containerfs/proto"
-	"strings"
 )
+
+// APIResponse HTTP API Response struct
+type APIResponse struct {
+	Code int         `json:"code"`
+	Msg  string      `json:"msg"`
+	Data interface{} `json:"data, omitempty"`
+}
+
+// NewAPIResponse create a new APIResponse object
+func NewAPIResponse(code int, msg string) *APIResponse {
+	return &APIResponse{
+		Code: code,
+		Msg:  msg,
+	}
+}
+
+// Marshal ...
+func (api *APIResponse) Marshal() ([]byte, error) {
+	return json.Marshal(api)
+}
 
 // registerAPIHandler provides some interfaces for querying metadata, inode,
 // dentry and more.
 func (m *MetaNode) registerAPIHandler() (err error) {
-	// get all partitions base information
-	http.HandleFunc("/partitions", m.partitionsHandler)
-	http.HandleFunc("/getInodeInfo", m.inodeInfoHandle)
-	http.HandleFunc("/getInodeRange", m.rangeHandle)
-	http.HandleFunc("/getExtents", m.getExtents)
-	http.HandleFunc("/getDentry", m.getDentryHandle)
+	// Get all partitions base information
+	http.HandleFunc("/getPartitions", m.getPartitionsHandler)
+	// Get information about the specified partitionID
+	http.HandleFunc("/getPartitionById", m.getPartitionByIDHandler)
+	// Get Inode information
+	http.HandleFunc("/getInode", m.getInodeHandler)
+	// Get the all extents of the inode
+	http.HandleFunc("/getExtentsByInode", m.getExtentsByInodeHandler)
+	// Get all inodes of the partitionID
+	http.HandleFunc("/getAllInode", m.getAllInodeHandler)
+	// Get dentry information
+	http.HandleFunc("/getDentry", m.getDentryHandler)
+	// Return all file information of a directory
+	http.HandleFunc("/getDirectory", m.getDirectoryHandler)
+	// Return all directory information of a partitionID
+	http.HandleFunc("/getAllDentry", m.getAllDentryHandler)
 	return
 }
 
-// partitionsHandler get the base information of all partitions
-func (m *MetaNode) partitionsHandler(w http.ResponseWriter, r *http.Request) {
-	mm := m.metaManager.(*metaManager)
-	data, err := mm.PartitionsMarshalJSON()
+// getPartitionsHandler get the base information of all partitions
+func (m *MetaNode) getPartitionsHandler(w http.ResponseWriter,
+	r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	data, err := json.Marshal(m.metaManager)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
 	}
+	resp.Data = data
+	data, _ = resp.Marshal()
 	w.Write(data)
 }
 
-func (m *MetaNode) inodeInfoHandle(w http.ResponseWriter, r *http.Request) {
+// getPartitionByIDHandler return meta-partition info
+func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter,
+	r *http.Request) {
 	r.ParseForm()
-	id, err := strconv.ParseUint(r.FormValue("id"), 10, 64)
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		w.Write(data)
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
+		resp.Msg = err.Error()
 		return
 	}
-	mp, err := m.metaManager.GetPartition(id)
+	mp, err := m.metaManager.GetPartition(pid)
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(err.Error()))
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
 		return
 	}
 	msg := make(map[string]interface{})
@@ -67,30 +105,32 @@ func (m *MetaNode) inodeInfoHandle(w http.ResponseWriter, r *http.Request) {
 	msg["peers"] = conf.Peers
 	msg["nodeId"] = conf.NodeId
 	msg["cursor"] = conf.Cursor
-	data, err := json.Marshal(msg)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
-		return
-	}
-	w.Write(data)
+	resp.Data = msg
+	resp.Code = http.StatusOK
 }
 
-func (m *MetaNode) rangeHandle(w http.ResponseWriter, r *http.Request) {
+func (m *MetaNode) getAllInodeHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
-	id, err := strconv.ParseUint(r.FormValue("id"), 10, 64)
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	shouldSkip := false
+	defer func() {
+		if !shouldSkip {
+			data, _ := resp.Marshal()
+			w.Write(data)
+		}
+	}()
+	id, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
+		resp.Msg = err.Error()
 		return
 	}
 	mp, err := m.metaManager.GetPartition(id)
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(err.Error()))
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
 		return
 	}
-	mpp := mp.(*metaPartition)
+	shouldSkip = true
 	f := func(i BtreeItem) bool {
 		var data []byte
 		if data, err = json.Marshal(i); err != nil {
@@ -105,77 +145,159 @@ func (m *MetaNode) rangeHandle(w http.ResponseWriter, r *http.Request) {
 		}
 		return true
 	}
-	mpp.getInodeTree().Ascend(f)
+	mp.GetInodeTree().Ascend(f)
 }
 
-func (m *MetaNode) getExtents(w http.ResponseWriter, r *http.Request) {
+func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
-	pidVal := r.FormValue("pid")
-	idVal := r.FormValue("ino")
-	if pidVal == "" || idVal == "" {
-		w.WriteHeader(http.StatusBadRequest)
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		w.Write(data)
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
 		return
 	}
-	pid, err := strconv.ParseUint(pidVal, 10, 64)
+	id, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
-		return
-	}
-	id, err := strconv.ParseUint(idVal, 10, 64)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
+		resp.Msg = err.Error()
 		return
 	}
 	mp, err := m.metaManager.GetPartition(pid)
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(err.Error()))
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
 		return
 	}
-	mm := mp.(*metaPartition)
-	resp := mm.getInode(NewInode(id, 0))
-	if resp.Status != proto.OpOk {
-		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte("inode id not exist"))
-		return
+	req := &InodeGetReq{
+		PartitionID: pid,
+		Inode:       id,
 	}
-	data, err := json.Marshal(resp.Msg)
+	p := &Packet{}
+	err = mp.InodeGet(req, p)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
 		return
 	}
-	w.Write(data)
+	resp.Code = http.StatusSeeOther
+	resp.Msg = p.GetResultMesg()
+	resp.Data = p.Data
 	return
 }
 
-func (m *MetaNode) getDentryHandle(w http.ResponseWriter, r *http.Request) {
+func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
+	r *http.Request) {
 	r.ParseForm()
-	// get partition ID
-	pidVal := r.FormValue("pid")
-	if pidVal = strings.TrimSpace(pidVal); pidVal == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("request param not pid"))
-		return
-	}
-	pid, err := strconv.ParseUint(pidVal, 10, 64)
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		w.Write(data)
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("not valid number"))
+		resp.Msg = err.Error()
 		return
 	}
-	p, err := m.metaManager.GetPartition(pid)
+	id, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
+		resp.Msg = err.Error()
 		return
 	}
-	mp := p.(*metaPartition)
+	mp, err := m.metaManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+	req := &proto.GetExtentsRequest{
+		PartitionID: pid,
+		Inode:       id,
+	}
+	p := &Packet{}
+	if err = mp.ExtentsList(req, p); err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	resp.Code = http.StatusSeeOther
+	resp.Msg = p.GetResultMesg()
+	resp.Data = p.Data
+	return
+}
 
+func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	name := r.FormValue("name")
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		w.Write(data)
+	}()
+	var (
+		pid  uint64
+		pIno uint64
+		err  error
+	)
+	if pid, err = strconv.ParseUint(r.FormValue("pid"), 10, 64); err == nil {
+		pIno, err = strconv.ParseUint(r.FormValue("parentIno"), 10, 64)
+	}
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+
+	mp, err := m.metaManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+	req := &LookupReq{
+		PartitionID: pid,
+		ParentID:    pIno,
+		Name:        name,
+	}
+	p := &Packet{}
+	if err = mp.Lookup(req, p); err != nil {
+		resp.Code = http.StatusSeeOther
+		resp.Msg = err.Error()
+		return
+	}
+
+	resp.Code = http.StatusSeeOther
+	resp.Msg = p.GetResultMesg()
+	resp.Data = p.Data
+	return
+
+}
+
+func (m *MetaNode) getAllDentryHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusSeeOther, "")
+	shouldSkip := false
+	defer func() {
+		if !shouldSkip {
+			data, _ := resp.Marshal()
+			w.Write(data)
+		}
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	mp, err := m.metaManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
 	var val []byte
-	tree := mp.dentryTree.GetTree()
-	tree.Ascend(func(i BtreeItem) bool {
+	mp.GetDentryTree().Ascend(func(i BtreeItem) bool {
 		val, err = json.Marshal(i)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -191,5 +313,45 @@ func (m *MetaNode) getDentryHandle(w http.ResponseWriter, r *http.Request) {
 		}
 		return true
 	})
+	shouldSkip = true
+	return
+}
+
+func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		w.Write(data)
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+
+	pIno, err := strconv.ParseUint(r.FormValue("parentIno"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+
+	mp, err := m.metaManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+	req := ReadDirReq{
+		ParentID: pIno,
+	}
+	p := &Packet{}
+	if err = mp.ReadDir(&req, p); err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	resp.Code = http.StatusSeeOther
+	resp.Msg = p.GetResultMesg()
+	resp.Data = p.Data
 	return
 }

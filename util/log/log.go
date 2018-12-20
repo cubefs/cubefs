@@ -126,6 +126,7 @@ func (writer *asyncWriter) Close() (err error) {
 
 func (writer *asyncWriter) Flush() {
 	writer.flushToFile()
+	writer.file.Sync()
 }
 
 func (writer *asyncWriter) flushToFile() {
