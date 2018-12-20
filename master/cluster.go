@@ -301,7 +301,7 @@ func (c *Cluster) createNodeSet() (ns *nodeSet, err error) {
 	if id, err = c.idAlloc.allocateCommonID(); err != nil {
 		return
 	}
-	ns = newNodeSet(id, defaultNodeSetCapacity)
+	ns = newNodeSet(id, c.cfg.nodeSetCapacity)
 	if err = c.syncAddNodeSet(ns); err != nil {
 		return
 	}

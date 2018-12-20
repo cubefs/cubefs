@@ -5,7 +5,7 @@
   "prof":"10088",
   "id":"1",
   "peers": "1:10.196.31.173:80,2:10.196.31.141:80,3:10.196.30.200:80",
-  "retainLogs":"2",
+  "retainLogs":"20000",
   "logDir": "/export/Logs/baudstorage/master",
   "logLevel":"DEBUG",
   "walDir":"/export/Logs/baudstorage/raft",

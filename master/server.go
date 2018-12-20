@@ -105,14 +105,19 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.clusterName = cfg.GetString(ClusterName)
 	m.ip = cfg.GetString(IP)
 	m.port = cfg.GetString(Port)
+	m.walDir = cfg.GetString(WalDir)
+	m.storeDir = cfg.GetString(StoreDir)
 	vfDelayCheckCrcSec := cfg.GetString(fileDelayCheckCrc)
 	dataPartitionMissSec := cfg.GetString(dataPartitionMissSec)
 	dataPartitionTimeOutSec := cfg.GetString(dataPartitionTimeOutSec)
 	everyLoadDataPartitionCount := cfg.GetString(everyLoadDataPartitionCount)
-	replicaNum := cfg.GetString(replicaNum)
-	m.walDir = cfg.GetString(WalDir)
-	m.storeDir = cfg.GetString(StoreDir)
 	peerAddrs := cfg.GetString(cfgPeers)
+	if m.config.nodeSetCapacity, err = strconv.Atoi(cfg.GetString(nodeSetCapacity)); err != nil {
+		return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
+	}
+	if m.config.nodeSetCapacity <= 0 {
+		m.config.nodeSetCapacity = defaultNodeSetCapacity
+	}
 	if m.retainLogs, err = strconv.ParseUint(cfg.GetString(CfgRetainLogs), 10, 64); err != nil {
 		return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
 	}
@@ -130,16 +135,6 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 
 	if m.ip == "" || m.port == "" || m.walDir == "" || m.storeDir == "" || m.clusterName == "" {
 		return fmt.Errorf("%v,err:%v", errBadConfFile, "one of (ip,port,walDir,storeDir,clusterName) is null")
-	}
-
-	if replicaNum != "" {
-		if m.config.replicaNum, err = strconv.Atoi(replicaNum); err != nil {
-			return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
-		}
-
-		if m.config.replicaNum > 10 {
-			return fmt.Errorf("%v,replicaNum(%v) can't too large", errBadConfFile, m.config.replicaNum)
-		}
 	}
 
 	if vfDelayCheckCrcSec != "" {

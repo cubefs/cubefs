@@ -172,7 +172,7 @@ func (t *topology) createNodeSet(c *Cluster) (ns *nodeSet, err error) {
 	if err != nil {
 		return
 	}
-	ns = newNodeSet(id, defaultNodeSetCapacity)
+	ns = newNodeSet(id, c.cfg.nodeSetCapacity)
 	if err = c.syncAddNodeSet(ns); err != nil {
 		return
 	}

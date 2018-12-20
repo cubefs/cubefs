@@ -30,7 +30,7 @@ const (
 	dataPartitionTimeOutSec     = "dataPartitionTimeOutSec"
 	everyLoadDataPartitionCount = "everyLoadDataPartitionCount"
 	fileDelayCheckCrc           = "fileDelayCheckCrc"
-	replicaNum                  = "replicaNum"
+	nodeSetCapacity             = "nodeSetCap"
 )
 
 const (
@@ -71,7 +71,7 @@ type clusterConfig struct {
 	CheckDataPartitionIntervalSeconds    int
 	everyReleaseDataPartitionCount       int
 	everyLoadDataPartitionCount          int
-	replicaNum                           int
+	nodeSetCapacity                      int
 	MetaNodeThreshold                    float32
 
 	peers     []raftstore.PeerAddress

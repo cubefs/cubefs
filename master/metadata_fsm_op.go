@@ -476,7 +476,7 @@ func (c *Cluster) applyAddNodeSet(cmd *RaftCmdData) (err error) {
 		log.LogErrorf("action[applyAddNodeSet],err:%v", err.Error())
 		return
 	}
-	ns := newNodeSet(nsv.ID, defaultNodeSetCapacity)
+	ns := newNodeSet(nsv.ID, c.cfg.nodeSetCapacity)
 	c.t.putNodeSet(ns)
 	return
 }
@@ -716,7 +716,7 @@ func (c *Cluster) loadNodeSets() (err error) {
 			log.LogErrorf("action[loadNodeSets], unmarshal err:%v", err.Error())
 			return err
 		}
-		ns := newNodeSet(nsv.ID, defaultNodeSetCapacity)
+		ns := newNodeSet(nsv.ID, c.cfg.nodeSetCapacity)
 		ns.metaNodeLen = nsv.MetaNodeLen
 		ns.dataNodeLen = nsv.DataNodeLen
 		c.t.putNodeSet(ns)
