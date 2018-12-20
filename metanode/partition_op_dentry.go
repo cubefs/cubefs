@@ -141,3 +141,7 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 	p.PackErrorWithBody(status, reply)
 	return
 }
+
+func (mp *metaPartition) GetDentryTree() *BTree {
+	return mp.dentryTree.GetTree()
+}
