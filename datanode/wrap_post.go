@@ -5,6 +5,7 @@ import (
 	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
 	"sync/atomic"
+	"time"
 )
 
 func (s *DataNode) Post(pkg *repl.Packet) error {
@@ -18,6 +19,7 @@ func (s *DataNode) Post(pkg *repl.Packet) error {
 		pkg.NeedReply = true
 	}
 	s.cleanupPkg(pkg)
+	s.addMetrics(pkg)
 	return nil
 }
 
@@ -53,4 +55,24 @@ func (s *DataNode) releaseExtent(pkg *repl.Packet) {
 		store.PutTinyExtentToAvaliCh(pkg.ExtentID)
 	}
 	atomic.StoreInt32(&pkg.IsRelase, HasReturnToStore)
+}
+
+func (s *DataNode) addMetrics(reply *repl.Packet) {
+	if reply.IsMasterCommand() {
+		return
+	}
+	reply.AfterTp()
+	latency := time.Since(reply.TpObject.Start)
+	if reply.Object == nil {
+		return
+	}
+	partition := reply.Object.(*DataPartition)
+	if partition == nil {
+		return
+	}
+	if isWriteOperation(reply) {
+		partition.AddWriteMetrics(uint64(latency))
+	} else if isReadExtentOperation(reply) {
+		partition.AddReadMetrics(uint64(latency))
+	}
 }

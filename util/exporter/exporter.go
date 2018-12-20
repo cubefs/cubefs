@@ -42,11 +42,11 @@ func Init(name string, port int64) {
 
 	m := RegistGauge("start_time")
 	defer m.Set(float64(time.Now().Unix() * 1000))
-	log.LogInfof("exporter start: %v", addr)
+	log.LogInfof("exporter Start: %v", addr)
 }
 
 type TpMetric struct {
-	start  time.Time
+	Start  time.Time
 	metric prometheus.Gauge
 }
 
@@ -79,11 +79,11 @@ func RegistTp(name string) (o *TpMetric) {
 	m, ok := metricGroups.Load(name)
 	if ok {
 		o = m.(*TpMetric)
-		o.start = time.Now()
+		o.Start = time.Now()
 		return
 	} else {
 		o = TpMetricPool.Get().(*TpMetric)
-		o.start = time.Now()
+		o.Start = time.Now()
 		o.metric = prometheus.NewGauge(
 			prometheus.GaugeOpts{
 				Name: name,
@@ -97,8 +97,9 @@ func RegistTp(name string) (o *TpMetric) {
 	return
 }
 
-func (o *TpMetric) CalcTpMS() {
-	o.metric.Set(float64(time.Since(o.start).Nanoseconds() / 1e6))
+func (o *TpMetric) CalcTpMS() (latency int64) {
+	latency = float64(time.Since(o.Start).Nanoseconds() / 1e6)
+	o.metric.Set(latency)
 }
 
 func Alarm(name, detail string) {
