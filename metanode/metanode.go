@@ -100,9 +100,6 @@ func (m *MetaNode) onStart(cfg *config.Config) (err error) {
 	if err = m.startMetaManager(); err != nil {
 		return
 	}
-	if err = m.startUMP(); err != nil {
-		return
-	}
 	if err = m.registerAPIHandler(); err != nil {
 		return
 	}
