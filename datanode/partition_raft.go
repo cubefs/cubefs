@@ -119,12 +119,13 @@ func (dp *DataPartition) stopRaft() {
 
 // StartSchedule task when data partition start or restore
 // 1. Store the raft applied id to "APPLY" file per 5 minutes.
-// 2. GetConnect the min applied id from all members and truncate raft log file per 10 minutes.
+// 2. Get the min applied id from all members and truncate raft log file per 10 minutes.
 // 3. Update partition status when apply failed and stop raft. Need manual intervention.
 func (dp *DataPartition) StartSchedule() {
 	var isRunning bool
-	truncRaftlogTimer := time.NewTimer(time.Minute * 10)
-	storeAppliedTimer := time.NewTimer(time.Minute * 5)
+	getAppliedIDTimer := time.NewTimer(time.Second * 1)
+	truncateRaftLogTimer := time.NewTimer(time.Minute * 10)
+	storeAppliedIDTimer := time.NewTimer(time.Minute * 5)
 
 	log.LogDebugf("[startSchedule] hello DataPartition schedule")
 
@@ -152,8 +153,9 @@ func (dp *DataPartition) StartSchedule() {
 			select {
 			case <-stopC:
 				log.LogDebugf("[startSchedule] stop partition=%v", dp.partitionID)
-				truncRaftlogTimer.Stop()
-				storeAppliedTimer.Stop()
+			    getAppliedIDTimer.Stop()
+				truncateRaftLogTimer.Stop()
+				storeAppliedIDTimer.Stop()
 				return
 
 			case <-readyChan:
@@ -173,20 +175,26 @@ func (dp *DataPartition) StartSchedule() {
 				dp.stopRaft()
 				log.LogErrorf("action[ExtentRepair] stop raft partition=%v_%v", dp.partitionID, extentID)
 
-			case <-truncRaftlogTimer.C:
+			case <-getAppliedIDTimer.C:
+				if dp.raftPartition != nil {
+					go dp.updateMaxMinAppliedID()
+				}
+				getAppliedIDTimer.Reset(time.Minute * 1)
+
+			case <-truncateRaftLogTimer.C:
 				if dp.raftPartition == nil {
 					break
 				}
-				dp.getMinAppliedID()
+
 				if dp.minAppliedID > dp.lastTruncateID { // Has changed
 					go dp.raftPartition.Truncate(dp.minAppliedID)
 					dp.lastTruncateID = dp.minAppliedID
 				}
-				truncRaftlogTimer.Reset(time.Minute * 10)
+				truncateRaftLogTimer.Reset(time.Minute * 10)
 
-			case <-storeAppliedTimer.C:
+			case <-storeAppliedIDTimer.C:
 				dp.storeC <- dp.applyID
-				storeAppliedTimer.Reset(time.Minute * 5)
+				storeAppliedIDTimer.Reset(time.Minute * 5)
 			}
 		}
 	}(dp.stopC)
@@ -223,7 +231,7 @@ func (dp *DataPartition) WaitingRepairedAndStartRaft() {
 				timer.Reset(5 * time.Second)
 				continue
 			}
-			if int(partitionSize) != dp.partitionSize {
+			if partitionSize != dp.extentStore.GetAllExtentSize() {
 				log.LogErrorf("partitionID[%v] leader size[%v] local size[%v]", dp.partitionID, partitionSize, dp.partitionSize)
 				timer.Reset(5 * time.Second)
 				continue
@@ -442,7 +450,7 @@ func (dp *DataPartition) ExtentRepair(extentFiles []*storage.ExtentInfo) {
 		dp.partitionID, (finishTime-startTime)/int64(time.Millisecond))
 }
 
-// GetConnect all extents information
+// Get all extents information
 func (dp *DataPartition) getExtentInfo(targetAddr string) (extentFiles []*storage.ExtentInfo, err error) {
 	// get remote extents meta by opGetAllWaterMarker cmd
 	p := repl.NewGetAllWaterMarker(dp.partitionID, proto.NormalExtentMode)
@@ -526,7 +534,7 @@ func (dp *DataPartition) findMaxAppliedID(allAppliedIDs []uint64) (maxAppliedID 
 	return maxAppliedID, index
 }
 
-// GetConnect partition size from leader
+// Get partition size from leader
 func (dp *DataPartition) getPartitionSize() (partitionSize uint64, err error) {
 	var (
 		conn *net.TCPConn
@@ -563,10 +571,14 @@ func (dp *DataPartition) getPartitionSize() (partitionSize uint64, err error) {
 	return
 }
 
-// GetConnect all member's applied id
-func (dp *DataPartition) getAllAppliedID(setMinAppliedID bool) (allAppliedID []uint64, err error) {
-	var minAppliedID uint64
+// Get all member's applied id
+func (dp *DataPartition) getAllAppliedID(setMinAppliedID bool) (allAppliedID []uint64, replyNum uint8) {
+	var (
+		minAppliedID uint64
+		err          error
+	)
 	allAppliedID = make([]uint64, len(dp.replicaHosts))
+
 	if setMinAppliedID == true {
 		minAppliedID = dp.minAppliedID
 	} else {
@@ -579,9 +591,10 @@ func (dp *DataPartition) getAllAppliedID(setMinAppliedID bool) (allAppliedID []u
 		replicaHostParts := strings.Split(dp.replicaHosts[i], ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
-			log.LogDebugf("partition=%v local no need send msg. localIP[%v] replicaHost[%v] appliedId[%v]",
+			log.LogDebugf("partition=%v local no send msg. localIP[%v] replicaHost[%v] appliedId[%v]",
 				dp.partitionID, LocalIP, replicaHost, dp.applyID)
 			allAppliedID[i] = dp.applyID
+			replyNum++
 			continue
 		}
 
@@ -589,89 +602,72 @@ func (dp *DataPartition) getAllAppliedID(setMinAppliedID bool) (allAppliedID []u
 		conn, err = gConnPool.GetConnect(target) //get remote connect
 		if err != nil {
 			err = errors.Annotatef(err, " partition=%v get host[%v] connect", dp.partitionID, target)
-			return
+			continue
 		}
-
 		err = p.WriteToConn(conn) //write command to remote host
 		if err != nil {
 			gConnPool.PutConnect(conn, true)
 			err = errors.Annotatef(err, "partition=%v write to host[%v]", dp.partitionID, target)
-			return
+			continue
 		}
 		err = p.ReadFromConn(conn, 60) //read it response
 		if err != nil {
 			gConnPool.PutConnect(conn, true)
 			err = errors.Annotatef(err, "partition=%v read from host[%v]", dp.partitionID, target)
-			return
+			continue
 		}
+		gConnPool.PutConnect(conn, true)
 
 		remoteAppliedID := binary.BigEndian.Uint64(p.Data)
+		allAppliedID[i] = remoteAppliedID
+		replyNum++
 
 		log.LogDebugf("partition=%v remoteAppliedID=%v", dp.partitionID, remoteAppliedID)
-
-		allAppliedID[i] = remoteAppliedID
-
-		gConnPool.PutConnect(conn, true)
 	}
 
 	return
 }
 
-// GetConnect all member's applied id and find the mini one
-func (dp *DataPartition) getMinAppliedID() {
+// Get all member's applied id and find the mini one
+func (dp *DataPartition) updateMaxMinAppliedID() {
 	var (
 		minAppliedID uint64
-		err          error
+		maxAppliedID uint64
 	)
 
-	//get applied id only by leader
+	// Get applied id only by leader
 	leaderAddr, isLeader := dp.IsRaftLeader()
 	if !isLeader || leaderAddr == "" {
-		log.LogDebugf("[getMinAppliedId] partition=%v notRaftLeader leaderAddr[%v] localIP[%v]",
-			dp.partitionID, leaderAddr, LocalIP)
+		log.LogDebugf("[updateMaxMinAppliedID] partitionID=%v notRaftLeader leaderAddr[%v] localIP[%v]", dp.partitionID, leaderAddr, LocalIP)
 		return
 	}
 
 	//if leader has not applied, no need to get others
 	if dp.applyID == 0 {
-		log.LogDebugf("[getMinAppliedID] partition=%v leader no apply. commit=%v", dp.partitionID, dp.raftPartition.CommittedIndex())
+		log.LogDebugf("[updateMaxMinAppliedID] partitionID=%v leader no applid. commit=%v", dp.partitionID, dp.raftPartition.CommittedIndex())
 		return
 	}
 
-	defer func() {
-		if err == nil {
-			log.LogDebugf("[getMinAppliedID] partition=%v success oldAppId=%v newAppId=%v localAppId=%v",
-				dp.partitionID, dp.minAppliedID, minAppliedID, dp.applyID)
-			//success maybe update the minAppliedID
-			dp.minAppliedID = minAppliedID
-		} else {
-			//do nothing
-			log.LogErrorf("[getMinAppliedID] partition=%v newAppId=%v localAppId=%v err %v",
-				dp.partitionID, minAppliedID, dp.applyID, err)
-		}
-	}()
-
-	allAppliedID, err := dp.getAllAppliedID(true)
-	if err != nil {
-		log.LogErrorf("[getMinAppliedID] partition=%v newAppId=%v localAppId=%v err %v",
-			dp.partitionID, minAppliedID, dp.applyID, err)
+	allAppliedID, replyNum := dp.getAllAppliedID(true)
+	if replyNum == 0 {
+		log.LogDebugf("[updateMaxMinAppliedID] partitionID=%v Get appliedId failed!", dp.partitionID)
 		return
 	}
+	if replyNum == uint8(len(allAppliedID)) {
+		// Update dp.minAppliedID when all member reply.
+		minAppliedID, _ = dp.findMinAppliedID(allAppliedID)
+		maxAppliedID, _ = dp.findMaxAppliedID(allAppliedID)
+		log.LogDebugf("[updateMaxMinAppliedID] partitionID=%v localID=%v OK! oldMinID=%v newMinID=%v oldMaxID=%v newMaxID=%v",
+			dp.partitionID, dp.applyID, dp.minAppliedID, minAppliedID, dp.maxAppliedID, maxAppliedID)
+		dp.minAppliedID = minAppliedID
+		dp.maxAppliedID = maxAppliedID
+	} else {
+		maxAppliedID, _ = dp.findMaxAppliedID(allAppliedID)
+		log.LogDebugf("[updateMaxMinAppliedID] partitionID=%v localID=%v OK! oldMinID=%v newMinID=%v",
+			dp.partitionID, dp.applyID, dp.maxAppliedID, maxAppliedID)
+		dp.maxAppliedID = maxAppliedID
+	}
 
-	minAppliedID, _ = dp.findMinAppliedID(allAppliedID)
 	return
 }
 
-// GetConnect all member's applied id and find the max one
-func (dp *DataPartition) getMaxAppliedID() (index int, err error) {
-	var allAppliedID []uint64
-	allAppliedID, err = dp.getAllAppliedID(false)
-	if err != nil {
-		log.LogErrorf("[getAllAppliedID] partition=%v localAppId=%v err %v", dp.partitionID, dp.applyID, err)
-		return
-	}
-
-	_, index = dp.findMaxAppliedID(allAppliedID)
-
-	return
-}
