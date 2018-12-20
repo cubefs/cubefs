@@ -105,6 +105,24 @@ func (vol *Vol) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err
 	return vol.dataPartitions.getDataPartition(partitionID)
 }
 
+func (vol *Vol) initMetaPartitions(c *Cluster) {
+	//init ten meta partitions
+	var (
+		start uint64
+		end   uint64
+	)
+	for index := 0; index < defaultInitMetaPartitionCount; index++ {
+		start = end + 1
+		end = defaultMetaPartitionInodeIDStep * uint64(index+1)
+		if index == defaultInitMetaPartitionCount-1 {
+			end = defaultMaxMetaPartitionInodeID
+		}
+		if err := c.createMetaPartition(vol.Name, start, end); err != nil {
+			log.LogErrorf("action[initMetaPartitions] vol[%v] init meta partition err[%v]", err)
+		}
+	}
+}
+
 func (vol *Vol) initDataPartitions(c *Cluster) {
 	//init ten data partitions
 	for i := 0; i < defaultInitDataPartitions; i++ {
