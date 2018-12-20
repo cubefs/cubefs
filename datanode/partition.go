@@ -99,6 +99,7 @@ type DataPartition struct {
 	applyID         uint64
 	lastTruncateID  uint64
 	minAppliedID    uint64
+	maxAppliedID    uint64
 	repairC         chan uint64
 	storeC          chan uint64
 	stopC           chan bool
@@ -212,10 +213,6 @@ func (dp *DataPartition) ID() uint64 {
 
 func (dp *DataPartition) GetExtentCount() int {
 	return dp.extentStore.GetExtentCount()
-}
-
-func (dp *DataPartition) GetPartitionSize() int {
-	return dp.partitionSize
 }
 
 func (dp *DataPartition) Path() string {

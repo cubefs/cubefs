@@ -559,7 +559,7 @@ func (s *DataNode) handleGetAppliedID(pkg *repl.Packet) {
 	//return current appliedID
 	appliedID := partition.GetAppliedID()
 
-	log.LogDebugf("[getMinAppliedID] handleGetAppliedID partition=%v minAppId=%v curAppId=%v",
+	log.LogDebugf("[updateMaxMinAppliedID] handleGetAppliedID partition=%v minAppId=%v curAppId=%v",
 		partition.ID(), minAppliedID, appliedID)
 
 	buf := make([]byte, 8)
@@ -570,9 +570,10 @@ func (s *DataNode) handleGetAppliedID(pkg *repl.Packet) {
 
 func (s *DataNode) handleGetPartitionSize(pkg *repl.Packet) {
 	partition := pkg.Object.(*DataPartition)
-	partitionSize := partition.GetPartitionSize()
+	usedSize := partition.extentStore.GetAllExtentSize()
+
 	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, uint64(partitionSize))
+	binary.BigEndian.PutUint64(buf, uint64(usedSize))
 	pkg.PackOkWithBody(buf)
 
 	return

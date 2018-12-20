@@ -787,3 +787,13 @@ func (s *ExtentStore) GetUnavaliTinyExtent() (extentID uint64, err error) {
 
 	}
 }
+
+func (s *ExtentStore) GetAllExtentSize() (totalSize uint64) {
+	s.extentInfoMux.RLock()
+	for _, extentInfo := range s.extentInfoMap {
+		totalSize += extentInfo.Size
+	}
+	s.extentInfoMux.RUnlock()
+
+	return totalSize
+}
