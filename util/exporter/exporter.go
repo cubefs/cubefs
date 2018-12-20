@@ -2,9 +2,9 @@ package exporter
 
 import (
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
-	"net/http"
 
 	"github.com/tiglabs/containerfs/util/log"
 
@@ -12,11 +12,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-
 const (
 	ExporterHandlerPattern = "/metrics"
-	MetricsPrefix = "cfs"
-	DefaultExporterPort = 9510
+	MetricsPrefix          = "cfs"
+	DefaultExporterPort    = 9510
 )
 
 var (
@@ -42,12 +41,12 @@ func Init(name string, port int64) {
 	}()
 
 	m := RegistGauge("start_time")
-	defer m.Set(float64(time.Now().Unix()*1000))
+	defer m.Set(float64(time.Now().Unix() * 1000))
 	log.LogInfof("exporter start: %v", addr)
 }
 
 type TpMetric struct {
-	start time.Time
+	start  time.Time
 	metric prometheus.Gauge
 }
 
@@ -99,7 +98,7 @@ func RegistTp(name string) (o *TpMetric) {
 }
 
 func (o *TpMetric) CalcTpMS() {
-	o.metric.Set(float64(time.Since(o.start).Nanoseconds()/1e6))
+	o.metric.Set(float64(time.Since(o.start).Nanoseconds() / 1e6))
 }
 
 func Alarm(name, detail string) {

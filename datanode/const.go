@@ -29,9 +29,9 @@ const (
 )
 
 const (
-	UpdateReplicationHostsTime = 60  // Timer update replication host
-	UpdatePartitionSizeTime    = 60  // Timer update partition size
-	SimultaneouslyRecoverFiles = 7   // Files
+	UpdateReplicationHostsTime = 60 // Timer update replication host
+	UpdatePartitionSizeTime    = 60 // Timer update partition size
+	SimultaneouslyRecoverFiles = 7  // Files
 )
 
 // Net type
@@ -60,8 +60,8 @@ const (
 // Action description
 const (
 	LocalProcessAddr              = "LocalProcess"
-	ActionStreamRead              = "ActionStreamRead"                  //ActionStreamRead is StreamRead Log Prefix
-	ActionGetDataPartitionMetrics = "ActionGetDataPartitionMetrics"     //ActionGetDataPartitionMetrics is GetDataPartitionMetrics Log Prefix
+	ActionStreamRead              = "ActionStreamRead"              //ActionStreamRead is StreamRead Log Prefix
+	ActionGetDataPartitionMetrics = "ActionGetDataPartitionMetrics" //ActionGetDataPartitionMetrics is GetDataPartitionMetrics Log Prefix
 	ActionCheckReplyAvail         = "ActionCheckReplyAvail"
 	ActionCreateExtent            = "ActionCreateExtent:"
 	ActionMarkDel                 = "ActionMarkDel:"
@@ -81,9 +81,9 @@ const (
 )
 
 const (
-	maxApplyErrRetry  = 10         // Random write apply retry times
-	MinFixTinyExtents = 1          // Invalid tiny extent count
-	dpRetainRaftLogs  = 100000     // Count of raft logs per data partition
+	maxApplyErrRetry  = 10     // Random write apply retry times
+	MinFixTinyExtents = 1      // Invalid tiny extent count
+	dpRetainRaftLogs  = 100000 // Count of raft logs per data partition
 )
 
 // Tiny extent has put back to store

@@ -70,7 +70,6 @@ func (dp *DataPartition) getRaftPort() (heartbeat, replicate int, err error) {
 	return
 }
 
-
 // StartRaft start raft instance when data partition start or restore.
 func (dp *DataPartition) StartRaft() (err error) {
 	var (

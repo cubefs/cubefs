@@ -18,8 +18,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/exporter"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 func newCreateDataPartitionRequest(volName string, ID uint64, randomWrite bool, members []proto.Peer, dataPartitionSize int) (req *proto.CreateDataPartitionRequest) {

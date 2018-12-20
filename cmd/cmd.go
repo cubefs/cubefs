@@ -43,10 +43,10 @@ var (
 )
 
 const (
-	ConfigKeyRole     = "role"
-	ConfigKeyLogDir   = "logDir"
-	ConfigKeyLogLevel = "logLevel"
-	ConfigKeyProfPort = "prof"
+	ConfigKeyRole         = "role"
+	ConfigKeyLogDir       = "logDir"
+	ConfigKeyLogLevel     = "logLevel"
+	ConfigKeyProfPort     = "prof"
 	ConfigKeyExporterPort = "exporterPort"
 )
 

@@ -22,8 +22,8 @@ import (
 	"sync/atomic"
 
 	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/exporter"
+	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
 	"io/ioutil"

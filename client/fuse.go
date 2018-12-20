@@ -37,8 +37,8 @@ import (
 	"github.com/tiglabs/containerfs/third_party/fuse"
 	"github.com/tiglabs/containerfs/third_party/fuse/fs"
 	"github.com/tiglabs/containerfs/util/config"
-	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/exporter"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 const (
@@ -49,7 +49,7 @@ const (
 	LoggerDir    = "client"
 	LoggerPrefix = "client"
 
-	ModuleName = "fuseclient"
+	ModuleName            = "fuseclient"
 	ConfigKeyExporterPort = "exporterKey"
 )
 

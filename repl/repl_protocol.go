@@ -154,10 +154,10 @@ func (rp *ReplProtocol) operatorAndForwardPkg() {
 				rp.operatorFunc(request, rp.sourceConn)
 				rp.responseCh <- request
 			} else {
-				_,err:=rp.sendToAllfollowers(request)
-				if err==nil{
+				_, err := rp.sendToAllfollowers(request)
+				if err == nil {
 					rp.operatorFunc(request, rp.sourceConn)
-				}else {
+				} else {
 					log.LogErrorf(err.Error())
 				}
 				rp.handleCh <- struct{}{}

@@ -21,8 +21,8 @@ import (
 	"github.com/juju/errors"
 
 	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/exporter"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 // API implementations

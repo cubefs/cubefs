@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/juju/errors"
-	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/exporter"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 type storeMsg struct {

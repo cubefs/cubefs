@@ -54,4 +54,3 @@ func (s *DataNode) releaseExtent(pkg *repl.Packet) {
 	}
 	atomic.StoreInt32(&pkg.IsRelase, HasReturnToStore)
 }
-
