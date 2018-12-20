@@ -70,6 +70,7 @@ type clusterConfig struct {
 	everyReleaseDataPartitionCount       int
 	everyLoadDataPartitionCount          int
 	nodeSetCapacity                      int
+	MetaNodeThreshold                    float32
 	peers     []raftstore.PeerAddress
 	peerAddrs []string
 }
@@ -85,6 +86,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.DataPartitionWarnInterval = defaultDataPartitionWarnInterval
 	cfg.everyLoadDataPartitionCount = defaultEveryLoadDataPartitionCount
 	cfg.LoadDataPartitionFrequencyTime = defaultLoadDataPartitionFrequencyTime
+	cfg.MetaNodeThreshold = defaultMetaPartitionThreshold
 	return
 }
 
