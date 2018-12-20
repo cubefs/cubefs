@@ -20,6 +20,7 @@ import (
 	"github.com/tiglabs/containerfs/raftstore"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
+	"github.com/tiglabs/containerfs/util/exporter"
 	"net/http/httputil"
 	"strconv"
 	"sync"
@@ -85,6 +86,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	m.cluster.idAlloc.partition = m.partition
 	m.cluster.scheduleTask()
 	m.startHTTPService()
+	exporter.Init(m.clusterName, ModuleName, cfg)
 	m.wg.Add(1)
 	return nil
 }

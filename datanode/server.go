@@ -37,6 +37,7 @@ import (
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
+	"github.com/tiglabs/containerfs/util/exporter"
 )
 
 var (
@@ -133,6 +134,8 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 	go s.registerProfHandler()
 
 	s.registerToMaster()
+
+	exporter.Init(s.clusterID, ModuleName, cfg)
 
 	if err = s.startRaftServer(cfg); err != nil {
 		return

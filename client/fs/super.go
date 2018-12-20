@@ -95,3 +95,7 @@ func (s *Super) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.
 func (s *Super) exporterKey(act string) string {
 	return fmt.Sprintf("%s_fuseclient_%s", s.cluster, act)
 }
+
+func (s *Super) ClusterName() string {
+	return s.cluster
+}

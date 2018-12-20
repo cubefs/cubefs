@@ -29,6 +29,7 @@ import (
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
+	"github.com/tiglabs/containerfs/util/exporter"
 )
 
 var (
@@ -46,6 +47,7 @@ type MetaNode struct {
 	raftDir           string //raftStore log store base dir
 	metaManager       MetaManager
 	localAddr         string
+	clusterId		  string
 	raftStore         raftstore.RaftStore
 	raftHeartbeatPort string
 	raftReplicatePort string
@@ -106,6 +108,7 @@ func (m *MetaNode) onStart(cfg *config.Config) (err error) {
 	if err = m.startServer(); err != nil {
 		return
 	}
+	exporter.Init(m.clusterId, cfg.GetString("role"), cfg)
 	return
 }
 
@@ -202,6 +205,7 @@ func (m *MetaNode) register() (err error) {
 				continue
 			}
 			m.localAddr = clusterInfo.Ip
+			m.clusterId = clusterInfo.Cluster
 			reqParam["addr"] = m.localAddr + ":" + m.listen
 			step++
 		}

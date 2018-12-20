@@ -7,15 +7,17 @@ import (
 	"time"
 
 	"github.com/tiglabs/containerfs/util/log"
+	"github.com/tiglabs/containerfs/util/config"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
-	ExporterHandlerPattern = "/metrics"
-	MetricsPrefix          = "cfs"
-	DefaultExporterPort    = 9510
+	PromHandlerPattern = "/metrics"
+	AppName          = "cfs"
+	ConfigKeyExporterPort  = "exporterPort"
+	ConfigKeyConsulAddr  = "consulAddr"
 )
 
 var (
@@ -26,19 +28,23 @@ var (
 	namespace string
 )
 
-func Init(name string, port int64) {
+func Init(cluster string, role string, cfg *config.Config) {
+	port := cfg.GetInt64(ConfigKeyExporterPort)
 	if port == 0 {
 		log.LogInfof("exporter port not set")
 		return
 	}
 
-	http.Handle(ExporterHandlerPattern, promhttp.Handler())
+	http.Handle(PromHandlerPattern, promhttp.Handler())
 
-	namespace = fmt.Sprintf("%s_%s", MetricsPrefix, name)
+	namespace = fmt.Sprintf("%s_%s", AppName, role)
 	addr := fmt.Sprintf(":%d", port)
 	go func() {
 		http.ListenAndServe(addr, nil)
 	}()
+
+	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
+	RegistConsul(consulAddr, AppName, role, cluster, port )
 
 	m := RegistGauge("start_time")
 	defer m.Set(float64(time.Now().Unix() * 1000))
@@ -51,7 +57,7 @@ type TpMetric struct {
 }
 
 func metricsName(name string) string {
-	return fmt.Sprintf("%s_%s", namespace, name)
+	return namespace + "_" + name
 }
 
 func RegistGauge(name string) (o prometheus.Gauge) {
@@ -75,6 +81,12 @@ func RegistGauge(name string) (o prometheus.Gauge) {
 }
 
 func RegistTp(name string) (o *TpMetric) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.LogErrorf("RegistTp panic,err[%v]", err)
+		}
+	}()
+
 	name = metricsName(name)
 	m, ok := metricGroups.Load(name)
 	if ok {
@@ -98,6 +110,12 @@ func RegistTp(name string) (o *TpMetric) {
 }
 
 func (o *TpMetric) CalcTpMS() {
+	defer func() {
+		if err := recover(); err != nil {
+			log.LogErrorf("RegistTp panic,err[%v]", err)
+		}
+	}()
+
 	o.metric.Set(float64(time.Since(o.Start).Nanoseconds() / 1e6))
 }
 
