@@ -46,7 +46,7 @@ const (
 )
 
 const (
-	defaultInitMetaPartitionCount               = 10
+	defaultInitMetaPartitionCount           = 3
 	defaultMaxMetaPartitionInodeID  uint64  = 1<<63 - 1
 	defaultMetaPartitionInodeIDStep uint64  = 1 << 24
 	defaultMetaNodeReservedMem      uint64  = 1 << 32
