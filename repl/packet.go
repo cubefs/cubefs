@@ -30,10 +30,6 @@ type Packet struct {
 }
 
 func (p *Packet) AfterTp() (ok bool) {
-	if p.IsErrPacket() {
-		var err error
-		err = fmt.Errorf(p.GetOpMsg()+" failed because(%v)", string(p.Data[:p.Size]))
-	}
 	p.TpObject.CalcTpMS()
 
 	return
