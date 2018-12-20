@@ -251,6 +251,6 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	return dp, nil
 }
 
-func (w *Wrapper) UmpWarningKey() string {
+func (w *Wrapper) WarningKey() string {
 	return fmt.Sprintf("%s_client_warning", w.clusterName)
 }

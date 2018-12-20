@@ -37,7 +37,6 @@ import (
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
-	"github.com/tiglabs/containerfs/util/ump"
 )
 
 var (
@@ -58,7 +57,7 @@ const (
 )
 
 const (
-	UmpModuleName = "dataNode"
+	ModuleName = "dataNode"
 )
 
 const (
@@ -145,7 +144,6 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 		return
 	}
 
-	ump.InitUmp(UmpModuleName)
 	return
 }
 

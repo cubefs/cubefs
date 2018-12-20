@@ -20,7 +20,7 @@ import (
 )
 
 // Dentry wraps necessary properties of `Dentry` information in file system.
-// Marshal key:
+// Marshal exporterKey:
 //  +-------+----------+------+
 //  | item  | ParentId | Name |
 //  +-------+----------+------+
@@ -117,7 +117,7 @@ func (d *Dentry) MarshalKey() (k []byte) {
 	return
 }
 
-// UnmarshalKey unmarshal key from bytes.
+// UnmarshalKey unmarshal exporterKey from bytes.
 func (d *Dentry) UnmarshalKey(k []byte) (err error) {
 	buff := bytes.NewBuffer(k)
 	if err = binary.Read(buff, binary.BigEndian, &d.ParentId); err != nil {
@@ -127,7 +127,7 @@ func (d *Dentry) UnmarshalKey(k []byte) (err error) {
 	return
 }
 
-// MarshalValue marshal key to bytes.
+// MarshalValue marshal exporterKey to bytes.
 func (d *Dentry) MarshalValue() (k []byte) {
 	buff := bytes.NewBuffer(make([]byte, 0))
 	buff.Grow(12)

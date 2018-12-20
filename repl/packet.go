@@ -6,7 +6,7 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util"
-	"github.com/tiglabs/containerfs/util/ump"
+	"github.com/tiglabs/containerfs/util/exporter"
 	"io"
 	"net"
 	"strings"
@@ -24,23 +24,23 @@ type Packet struct {
 	followersAddrs []string
 	IsRelase       int32
 	Object         interface{}
-	TpObject       *ump.TpObject
+	TpObject       *exporter.TpMetric
 	NeedReply      bool
 }
 
 func (p *Packet) AfterTp() (ok bool) {
-	var err error
 	if p.IsErrPacket() {
+		var err error
 		err = fmt.Errorf(p.GetOpMsg()+" failed because(%v)", string(p.Data[:p.Size]))
 	}
-	ump.AfterTP(p.TpObject, err)
+	p.TpObject.CalcTp()
 
 	return
 }
 
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
-	umpKey := fmt.Sprintf("%s_datanode_stream%v", clusterID, p.GetOpMsg())
-	p.TpObject = ump.BeforeTP(umpKey)
+	key := fmt.Sprintf("%s_datanode_stream%v", clusterID, p.GetOpMsg())
+	p.TpObject = exporter.RegistTp(key)
 	return
 }
 

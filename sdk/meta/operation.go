@@ -22,7 +22,7 @@ import (
 
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
-	"github.com/tiglabs/containerfs/util/ump"
+	"github.com/tiglabs/containerfs/util/exporter"
 )
 
 // API implementations
@@ -43,9 +43,8 @@ func (mw *MetaWrapper) open(mp *MetaPartition, inode uint64) (status int, err er
 		return
 	}
 
-	umpKey := mw.umpKey(packet.GetOpMsg())
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.RegistTp(packet.GetOpMsg())
+	defer metric.CalcTpMS()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -78,9 +77,8 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode uint32, target []byte) (s
 
 	log.LogDebugf("icreate enter: mp(%v) req(%v)", mp, string(packet.Data))
 
-	umpKey := mw.umpKey(packet.GetOpMsg())
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.RegistTp(packet.GetOpMsg())
+	defer metric.CalcTpMS()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -126,9 +124,8 @@ func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, inf
 
 	log.LogDebugf("idelete enter: mp(%v) req(%v)", mp, string(packet.Data))
 
-	umpKey := mw.umpKey(packet.GetOpMsg())
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.RegistTp(packet.GetOpMsg())
+	defer metric.CalcTpMS()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -170,9 +167,8 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, err 
 
 	log.LogDebugf("ievict enter: mp(%v) req(%v)", mp, string(packet.Data))
 
-	umpKey := mw.umpKey(packet.GetOpMsg())
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.RegistTp(packet.GetOpMsg())
+	defer metric.CalcTpMS()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -214,9 +210,8 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 
 	log.LogDebugf("dcreate enter: mp(%v) req(%v)", mp, string(packet.Data))
 
-	umpKey := mw.umpKey(packet.GetOpMsg())
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.RegistTp(packet.GetOpMsg())
+	defer metric.CalcTpMS()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -255,9 +250,8 @@ func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, 
 
 	log.LogDebugf("dupdate enter: mp(%v) req(%v)", mp, string(packet.Data))
 
-	umpKey := mw.umpKey(packet.GetOpMsg())
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.RegistTp(packet.GetOpMsg())
+	defer metric.CalcTpMS()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -299,9 +293,8 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string) 
 
 	log.LogDebugf("ddelete enter: mp(%v) req(%v)", mp, string(packet.Data))
 
-	umpKey := mw.umpKey(packet.GetOpMsg())
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.RegistTp(packet.GetOpMsg())
+	defer metric.CalcTpMS()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -342,9 +335,8 @@ func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string) (
 
 	log.LogDebugf("lookup enter: mp(%v) req(%v)", mp, string(packet.Data))
 
-	umpKey := mw.umpKey(packet.GetOpMsg())
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.RegistTp(packet.GetOpMsg())
+	defer metric.CalcTpMS()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -387,9 +379,8 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64) (status int, info *
 		return
 	}
 
-	umpKey := mw.umpKey(packet.GetOpMsg())
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.RegistTp(packet.GetOpMsg())
+	defer metric.CalcTpMS()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -430,9 +421,8 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 		return
 	}
 
-	umpKey := mw.umpKey(packet.GetOpMsg())
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.RegistTp(packet.GetOpMsg())
+	defer metric.CalcTpMS()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -478,9 +468,8 @@ func (mw *MetaWrapper) readdir(mp *MetaPartition, parentID uint64) (status int, 
 		return
 	}
 
-	umpKey := mw.umpKey(packet.GetOpMsg())
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.RegistTp(packet.GetOpMsg())
+	defer metric.CalcTpMS()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -521,9 +510,8 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 		return
 	}
 
-	umpKey := mw.umpKey(packet.GetOpMsg())
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.RegistTp(packet.GetOpMsg())
+	defer metric.CalcTpMS()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -553,9 +541,8 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (status int, 
 		return
 	}
 
-	umpKey := mw.umpKey(packet.GetOpMsg())
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.RegistTp(packet.GetOpMsg())
+	defer metric.CalcTpMS()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -597,9 +584,8 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64) (status i
 
 	log.LogDebugf("truncate enter: mp(%v) req(%v)", mp, string(packet.Data))
 
-	umpKey := mw.umpKey(packet.GetOpMsg())
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.RegistTp(packet.GetOpMsg())
+	defer metric.CalcTpMS()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -634,9 +620,8 @@ func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info 
 
 	log.LogDebugf("ilink enter: mp(%v) req(%v)", mp, string(packet.Data))
 
-	umpKey := mw.umpKey(packet.GetOpMsg())
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.RegistTp(packet.GetOpMsg())
+	defer metric.CalcTpMS()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -686,9 +671,8 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 
 	log.LogDebugf("setattr enter: mp(%v) req(%v)", mp, string(packet.Data))
 
-	umpKey := mw.umpKey(packet.GetOpMsg())
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.RegistTp(packet.GetOpMsg())
+	defer metric.CalcTpMS()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {

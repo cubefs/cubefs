@@ -38,7 +38,7 @@ import (
 	"github.com/tiglabs/containerfs/third_party/fuse/fs"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
-	"github.com/tiglabs/containerfs/util/ump"
+	"github.com/tiglabs/containerfs/util/exporter"
 )
 
 const (
@@ -49,7 +49,8 @@ const (
 	LoggerDir    = "client"
 	LoggerPrefix = "client"
 
-	UmpModuleName = "fuseclient"
+	ModuleName = "fuseclient"
+	ConfigKeyExporterPort = "exporterKey"
 )
 
 var (
@@ -59,13 +60,13 @@ var (
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	ump.InitUmp(UmpModuleName)
 	flag.Parse()
 	cfg := config.LoadConfigFile(*configFile)
 	if err := Mount(cfg); err != nil {
 		fmt.Println("Mount failed: ", err)
 		os.Exit(1)
 	}
+	exporter.Init(ModuleName, cfg.GetInt(ConfigKeyExporterPort))
 
 	fmt.Println("Done!")
 }

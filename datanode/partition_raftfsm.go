@@ -25,7 +25,7 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util/log"
-	"github.com/tiglabs/containerfs/util/ump"
+	"github.com/tiglabs/containerfs/util/exporter"
 	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
 	"strings"
@@ -37,10 +37,10 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	opItem := &rndWrtOpItem{}
 	defer func(index uint64) {
 		if err != nil {
-			umpKey := fmt.Sprintf("%s_datapartition_apply_err", dp.clusterID)
+			key := fmt.Sprintf("%s_datapartition_apply_err", dp.clusterID)
 			prefix := fmt.Sprintf("datapartition_%v_extent_%v", dp.partitionID, opItem.extentID)
 			err = errors.Annotatef(err, prefix)
-			ump.Alarm(umpKey, err.Error())
+			exporter.Alarm(key, err.Error())
 			resp = proto.OpExistErr
 			dp.repairC <- opItem.extentID
 		} else {
@@ -184,7 +184,7 @@ func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
 }
 
 func (dp *DataPartition) HandleLeaderChange(leader uint64) {
-	ump.Alarm(UmpModuleName, fmt.Sprintf("LeaderChange: partition=%d, "+
+	exporter.Alarm(ModuleName, fmt.Sprintf("LeaderChange: partition=%d, "+
 		"newLeader=%d", dp.config.PartitionID, leader))
 
 	if dp.config.NodeID == leader {

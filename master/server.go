@@ -20,7 +20,6 @@ import (
 	"github.com/tiglabs/containerfs/raftstore"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
-	"github.com/tiglabs/containerfs/util/ump"
 	"net/http/httputil"
 	"strconv"
 	"sync"
@@ -36,7 +35,7 @@ const (
 	WalDir            = "walDir"
 	StoreDir          = "storeDir"
 	GroupID           = 1
-	UmpModuleName     = "master"
+	ModuleName        = "master"
 	CfgRetainLogs     = "retainLogs"
 	DefaultRetainLogs = 20000
 )
@@ -75,7 +74,6 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		log.LogError(errors.ErrorStack(err))
 		return
 	}
-	ump.InitUmp(fmt.Sprintf("%v_%v", m.clusterName, UmpModuleName))
 	m.rocksDBStore = raftstore.NewRocksDBStore(m.storeDir)
 	m.initFsm()
 	m.initCluster()

@@ -23,7 +23,7 @@ import (
 
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
-	"github.com/tiglabs/containerfs/util/ump"
+	"github.com/tiglabs/containerfs/util/exporter"
 	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
 	"io/ioutil"
@@ -275,7 +275,7 @@ func (mp *metaPartition) HandleFatalEvent(err *raft.FatalError) {
 }
 
 func (mp *metaPartition) HandleLeaderChange(leader uint64) {
-	ump.Alarm(UMPKey, fmt.Sprintf("LeaderChange: partition=%d, "+
+	exporter.Alarm(exporterKey, fmt.Sprintf("LeaderChange: partition=%d, "+
 		"newLeader=%d", mp.config.PartitionId, leader))
 	if mp.config.NodeId != leader {
 		mp.storeChan <- &storeMsg{

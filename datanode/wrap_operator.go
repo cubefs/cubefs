@@ -30,16 +30,16 @@ import (
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
-	"github.com/tiglabs/containerfs/util/ump"
 	"github.com/tiglabs/raft"
 	raftProto "github.com/tiglabs/raft/proto"
 	"strings"
+	"github.com/tiglabs/containerfs/util/exporter"
 )
 
 func (s *DataNode) OperatePacket(pkg *repl.Packet, c *net.TCPConn) (err error) {
 	orgSize := pkg.Size
-	umpKey := fmt.Sprintf("%s_datanode_%s", s.clusterID, pkg.GetOpMsg())
-	tpObject := ump.BeforeTP(umpKey)
+	key := fmt.Sprintf("%s_datanode_%s", s.clusterID, pkg.GetOpMsg())
+	tpObject := exporter.RegistTp(key)
 	start := time.Now().UnixNano()
 	defer func() {
 		resultSize := pkg.Size
@@ -62,7 +62,7 @@ func (s *DataNode) OperatePacket(pkg *repl.Packet, c *net.TCPConn) (err error) {
 			}
 		}
 		pkg.Size = resultSize
-		ump.AfterTP(tpObject, err)
+		tpObject.CalcTp()
 	}()
 	switch pkg.Opcode {
 	case proto.OpCreateExtent:
@@ -443,7 +443,7 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 	needReplySize := pkg.Size
 	offset := pkg.ExtentOffset
 	store := partition.GetStore()
-	umpKey := fmt.Sprintf("%s_datanode_%s", s.clusterID, "Read")
+	exporterKey := fmt.Sprintf("%s_datanode_%s", s.clusterID, "Read")
 	reply := repl.NewStreamReadResponsePacket(pkg.ReqID, pkg.PartitionID, pkg.ExtentID)
 	reply.StartT = time.Now().UnixNano()
 	for {
@@ -457,10 +457,10 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 		} else {
 			reply.Data = make([]byte, currReadSize)
 		}
-		tpObject := ump.BeforeTP(umpKey)
+		tpObject := exporter.RegistTp(exporterKey)
 		reply.ExtentOffset = offset
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data)
-		ump.AfterTP(tpObject, err)
+		tpObject.CalcTp()
 		if err != nil {
 			reply.PackErrorBody(ActionStreamRead, err.Error())
 			if err = reply.WriteToConn(connect); err != nil {

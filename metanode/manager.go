@@ -32,7 +32,8 @@ import (
 	"github.com/tiglabs/containerfs/raftstore"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
-	"github.com/tiglabs/containerfs/util/ump"
+	"github.com/tiglabs/containerfs/util/exporter"
+	"golang.org/x/crypto/openpgp/packet"
 )
 
 const partitionPrefix = "partition_"
@@ -64,9 +65,8 @@ type metaManager struct {
 }
 
 func (m *metaManager) HandleMetaOperation(conn net.Conn, p *Packet) (err error) {
-	umpKey := UMPKey + "_" + p.GetOpMsg()
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
+	metric := exporter.RegistTp(packet.GetOpMsg())
+	defer metric.CalcTp()
 
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:

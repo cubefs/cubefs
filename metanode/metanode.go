@@ -29,7 +29,6 @@ import (
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
-	"github.com/tiglabs/containerfs/util/ump"
 )
 
 var (
@@ -230,12 +229,6 @@ func (m *MetaNode) register() (err error) {
 		}
 		return
 	}
-}
-
-func (m *MetaNode) startUMP() (err error) {
-	UMPKey = clusterInfo.Cluster + "_metaNode"
-	ump.InitUmp(UMPKey)
-	return
 }
 
 // NewServer create an new MetaNode instance.

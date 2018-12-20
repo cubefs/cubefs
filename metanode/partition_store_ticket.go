@@ -19,7 +19,7 @@ import (
 
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/util/log"
-	"github.com/tiglabs/containerfs/util/ump"
+	"github.com/tiglabs/containerfs/util/exporter"
 )
 
 type storeMsg struct {
@@ -44,7 +44,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				"[startSchedule]: dump partition id=%d: %v",
 				mp.config.PartitionId, err.Error())
 			log.LogErrorf(err.Error())
-			ump.Alarm(UMPKey, err.Error())
+			exporter.Alarm(exporterKey, err.Error())
 		} else {
 			curIndex = msg.applyIndex
 		}

@@ -109,7 +109,7 @@ const (
 )
 
 var (
-	UMPKey string
+	exporterKey string
 )
 
 var (

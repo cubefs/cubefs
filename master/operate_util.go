@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
-	"github.com/tiglabs/containerfs/util/ump"
+	"github.com/tiglabs/containerfs/util/exporter"
 )
 
 func newCreateDataPartitionRequest(volName string, ID uint64, randomWrite bool, members []proto.Peer, dataPartitionSize int) (req *proto.CreateDataPartitionRequest) {
@@ -118,12 +118,12 @@ func contains(arr []string, element string) (ok bool) {
 
 // Warn 报警统一出口
 func Warn(clusterID, msg string) {
-	umpKey := fmt.Sprintf("%s_%s", clusterID, UmpModuleName)
-	WarnBySpecialUmpKey(umpKey, msg)
+	key := fmt.Sprintf("%s_%s", clusterID, ModuleName)
+	WarnBySpecialKey(key, msg)
 }
 
-// WarnBySpecialUmpKey 报警统一出口
-func WarnBySpecialUmpKey(umpKey, msg string) {
+// WarnBySpecialKey 报警统一出口
+func WarnBySpecialKey(key, msg string) {
 	log.LogWarn(msg)
-	ump.Alarm(umpKey, msg)
+	exporter.Alarm(key, msg)
 }

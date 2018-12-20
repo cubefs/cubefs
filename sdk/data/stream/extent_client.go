@@ -24,7 +24,7 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/sdk/data/wrapper"
 	"github.com/tiglabs/containerfs/util/log"
-	"github.com/tiglabs/containerfs/util/ump"
+	"github.com/tiglabs/containerfs/util/exporter"
 )
 
 type AppendExtentKeyFunc func(inode uint64, key proto.ExtentKey) error
@@ -156,7 +156,7 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write 
 	if err != nil {
 		err = errors.Annotatef(err, prefix)
 		log.LogError(errors.ErrorStack(err))
-		ump.Alarm(gDataWrapper.UmpWarningKey(), err.Error())
+		exporter.Alarm(gDataWrapper.WarningKey(), err.Error())
 	}
 	return
 }

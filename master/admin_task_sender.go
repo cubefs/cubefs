@@ -119,7 +119,7 @@ func (sender *AdminTaskSender) sendTasks(tasks []*proto.AdminTask) {
 		conn, err := sender.connPool.GetConnect(sender.targetAddr)
 		if err != nil {
 			msg := fmt.Sprintf("clusterID[%v] get connection to %v,err,%v", sender.clusterID, sender.targetAddr, errors.ErrorStack(err))
-			WarnBySpecialUmpKey(fmt.Sprintf("%v_%v_sendTask", sender.clusterID, UmpModuleName), msg)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_sendTask", sender.clusterID, ModuleName), msg)
 			sender.connPool.PutConnect(conn, true)
 			sender.updateTaskInfo(task, false)
 			break
