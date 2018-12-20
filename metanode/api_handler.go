@@ -20,6 +20,7 @@ import (
 	"strconv"
 
 	"github.com/tiglabs/containerfs/proto"
+	"unsafe"
 )
 
 // APIResponse HTTP API Response struct
@@ -68,13 +69,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 func (m *MetaNode) getPartitionsHandler(w http.ResponseWriter,
 	r *http.Request) {
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
-	data, err := json.Marshal(m.metaManager)
-	if err != nil {
-		resp.Code = http.StatusInternalServerError
-		resp.Msg = err.Error()
-	}
-	resp.Data = data
-	data, _ = resp.Marshal()
+	resp.Data = m.metaManager
+	data, _ := resp.Marshal()
 	w.Write(data)
 }
 
@@ -184,7 +180,9 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Code = http.StatusSeeOther
 	resp.Msg = p.GetResultMesg()
-	resp.Data = p.Data
+	if len(p.Data) > 0 {
+		resp.Data = *(*string)(unsafe.Pointer(&p.Data))
+	}
 	return
 }
 
@@ -224,7 +222,9 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
 	}
 	resp.Code = http.StatusSeeOther
 	resp.Msg = p.GetResultMesg()
-	resp.Data = p.Data
+	if len(p.Data) > 0 {
+		resp.Data = *(*string)(unsafe.Pointer(&p.Data))
+	}
 	return
 }
 
@@ -269,7 +269,9 @@ func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 
 	resp.Code = http.StatusSeeOther
 	resp.Msg = p.GetResultMesg()
-	resp.Data = p.Data
+	if len(p.Data) > 0 {
+		resp.Data = *(*string)(unsafe.Pointer(&p.Data))
+	}
 	return
 
 }
@@ -352,6 +354,8 @@ func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Code = http.StatusSeeOther
 	resp.Msg = p.GetResultMesg()
-	resp.Data = p.Data
+	if len(p.Data) > 0 {
+		resp.Data = *(*string)(unsafe.Pointer(&p.Data))
+	}
 	return
 }
