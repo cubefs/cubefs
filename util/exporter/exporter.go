@@ -6,18 +6,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/config"
+	"github.com/tiglabs/containerfs/util/log"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
-	PromHandlerPattern = "/metrics"
-	AppName          = "cfs"
-	ConfigKeyExporterPort  = "exporterPort"
-	ConfigKeyConsulAddr  = "consulAddr"
+	PromHandlerPattern    = "/metrics"
+	AppName               = "cfs"
+	ConfigKeyExporterPort = "exporterPort"
+	ConfigKeyConsulAddr   = "consulAddr"
 )
 
 var (
@@ -26,6 +26,8 @@ var (
 		return new(TpMetric)
 	}}
 	namespace string
+	metricC  = make(chan prometheus.Collector, 1)
+	enabled = false
 )
 
 func Init(cluster string, role string, cfg *config.Config) {
@@ -34,6 +36,7 @@ func Init(cluster string, role string, cfg *config.Config) {
 		log.LogInfof("exporter port not set")
 		return
 	}
+	enabled = true
 
 	http.Handle(PromHandlerPattern, promhttp.Handler())
 
@@ -44,10 +47,11 @@ func Init(cluster string, role string, cfg *config.Config) {
 	}()
 
 	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
-	RegistConsul(consulAddr, AppName, role, cluster, port )
+	RegistConsul(consulAddr, AppName, role, cluster, port)
 
 	m := RegistGauge("start_time")
-	defer m.Set(float64(time.Now().Unix() * 1000))
+	m.Set(float64(time.Now().Unix() * 1000))
+
 	log.LogInfof("exporter Start: %v", addr)
 }
 
@@ -61,6 +65,11 @@ func metricsName(name string) string {
 }
 
 func RegistGauge(name string) (o prometheus.Gauge) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.LogErrorf("RegistGauge panic,err[%v]", err)
+		}
+	}()
 	name = metricsName(name)
 	m, ok := metricGroups.Load(name)
 	if ok {
@@ -87,7 +96,12 @@ func RegistTp(name string) (o *TpMetric) {
 		}
 	}()
 
+	if ! enabled {
+		return
+	}
+
 	name = metricsName(name)
+
 	m, ok := metricGroups.Load(name)
 	if ok {
 		o = m.(*TpMetric)
@@ -110,6 +124,10 @@ func RegistTp(name string) (o *TpMetric) {
 }
 
 func (o *TpMetric) CalcTpMS() {
+	if ! enabled {
+		return
+	}
+
 	defer func() {
 		if err := recover(); err != nil {
 			log.LogErrorf("RegistTp panic,err[%v]", err)
@@ -120,6 +138,10 @@ func (o *TpMetric) CalcTpMS() {
 }
 
 func Alarm(name, detail string) {
+	if ! enabled {
+		return
+	}
+
 	name = metricsName(name + "_alarm")
 	o, ok := metricGroups.Load(name)
 	if ok {
