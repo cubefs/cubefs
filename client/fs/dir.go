@@ -93,7 +93,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Create: parent(%v) req(%v) resp(%v) ino(%v) (%v)ns", d.inode.ino, req, resp, inode.ino, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Create: parent(%v) req(%v) resp(%v) ino(%v) authid(%v) (%v)ns", d.inode.ino, req, resp, inode.ino, authid, elapsed.Nanoseconds())
 	return child, child, nil
 }
 

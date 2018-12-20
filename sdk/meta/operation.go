@@ -83,10 +83,6 @@ func (mw *MetaWrapper) release(mp *MetaPartition, inode, authid uint64) (status 
 		return
 	}
 
-	umpKey := mw.umpKey(packet.GetOpMsg())
-	tpObject := ump.BeforeTP(umpKey)
-	defer ump.AfterTP(tpObject, err)
-
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
 		log.LogErrorf("release: mp(%v) req(%v) err(%v)", mp, *req, err)
