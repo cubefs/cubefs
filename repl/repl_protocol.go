@@ -37,20 +37,20 @@ var (
  has three goroutine:
     a. ServerConn goroutine recive pkg from client,and check it avali,then send it to toBeProcessCh
 
-    b. operatorAndForwardPkg goroutine read from toBeProcessCh,send it to all replicates,and do local,then send a sigle to handleCh
+    b. operatorAndForwardPkg goroutine read from toBeProcessCh,send it to all replicates,and do local,then send a sigle to notifyReciveCh
        and read pkg from responseCh,and write its response to client
 
-    c. receiveFollowerResponse goroutine read from handleCh,recive all replicates  pkg response,and send this pkg to responseCh
+    c. receiveResponse goroutine read from notifyReciveCh,recive all replicates  pkg response,and send this pkg to responseCh
 
 	if any step error,then change request to error Packet,and send it to responseCh, the operatorAndForwardPkg can send it to client
 
 */
 type ReplProtocol struct {
-	listMux sync.RWMutex
+	packetListLock sync.RWMutex
 
-	packetList *list.List    //store all recived pkg from client
-	handleCh   chan struct{} //if sendto all replicates success,then send a sigle to this chan
-	//the receiveFollowerResponse goroutine can recive response from allreplicates
+	packetList     *list.List    //store all recived pkg from client
+	notifyReciveCh chan struct{} //if sendto all replicates success,then send a sigle to this chan
+	//the receiveResponse goroutine can recive response from allreplicates
 
 	toBeProcessCh chan *Packet // the recive pkg goroutine recive a avali pkg,then send to this chan
 	responseCh    chan *Packet //this chan used to write client
@@ -71,7 +71,7 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(pkg *Packet) error,
 	operatorFunc func(pkg *Packet, c *net.TCPConn) error, postFunc func(pkg *Packet) error) *ReplProtocol {
 	rp := new(ReplProtocol)
 	rp.packetList = list.New()
-	rp.handleCh = make(chan struct{}, RequestChanSize)
+	rp.notifyReciveCh = make(chan struct{}, RequestChanSize)
 	rp.toBeProcessCh = make(chan *Packet, RequestChanSize)
 	rp.responseCh = make(chan *Packet, RequestChanSize)
 	rp.exitC = make(chan bool, 1)
@@ -81,7 +81,7 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(pkg *Packet) error,
 	rp.operatorFunc = operatorFunc
 	rp.postFunc = postFunc
 	go rp.operatorAndForwardPkg()
-	go rp.receiveFollowerResponse()
+	go rp.receiveResponse()
 
 	return rp
 }
@@ -107,7 +107,7 @@ func (rp *ReplProtocol) ServerConn() {
 			log.LogDebugf("action[DataNode.serveConn] event loop for %v exit.", rp.sourceConn.RemoteAddr())
 			return
 		default:
-			if err = rp.readPkgFromSocket(); err != nil {
+			if err = rp.readPkgAndPrepare(); err != nil {
 				rp.Stop()
 				return
 			}
@@ -119,12 +119,12 @@ func (rp *ReplProtocol) ServerConn() {
 /*
    read pkg from client socket,and resolve followers addr,then prepare pkg
 */
-func (rp *ReplProtocol) readPkgFromSocket() (err error) {
+func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	pkg := NewPacket()
 	if err = pkg.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
 		return
 	}
-	log.LogDebugf("action[readPkgFromSocket] read packet(%v) from remote(%v).",
+	log.LogDebugf("action[readPkgAndPrepare] read packet(%v) from remote(%v).",
 		pkg.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
 	if err = pkg.resolveFollowersAddr(); err != nil {
 		rp.responseCh <- pkg
@@ -141,7 +141,7 @@ func (rp *ReplProtocol) readPkgFromSocket() (err error) {
 
 /*
    read pkg from toBeProcessCh,and if pkg need forward to all followers,send it to all followers
-   if send to followers,then do pkg by opcode,then notify receiveFollowerResponse gorotine,recive response
+   if send to followers,then do pkg by opcode,then notify receiveResponse gorotine,recive response
    if packet donnot need forward,do pkg by opcode
 
    read response from responseCh,and write response to client
@@ -154,13 +154,13 @@ func (rp *ReplProtocol) operatorAndForwardPkg() {
 				rp.operatorFunc(request, rp.sourceConn)
 				rp.responseCh <- request
 			} else {
-				_, err := rp.sendToAllfollowers(request)
+				_, err := rp.sendRequestToAllfollowers(request)
 				if err == nil {
 					rp.operatorFunc(request, rp.sourceConn)
 				} else {
 					log.LogErrorf(err.Error())
 				}
-				rp.handleCh <- struct{}{}
+				rp.notifyReciveCh <- struct{}{}
 			}
 		case request := <-rp.responseCh:
 			rp.writeResponseToClient(request)
@@ -173,10 +173,10 @@ func (rp *ReplProtocol) operatorAndForwardPkg() {
 }
 
 // Receive response from all followers.
-func (rp *ReplProtocol) receiveFollowerResponse() {
+func (rp *ReplProtocol) receiveResponse() {
 	for {
 		select {
-		case <-rp.handleCh:
+		case <-rp.notifyReciveCh:
 			rp.reciveAllFollowerResponse()
 		case <-rp.exitC:
 			return
@@ -187,14 +187,14 @@ func (rp *ReplProtocol) receiveFollowerResponse() {
 /*
   send pkg to all followers.
 */
-func (rp *ReplProtocol) sendToAllfollowers(request *Packet) (index int, err error) {
+func (rp *ReplProtocol) sendRequestToAllfollowers(request *Packet) (index int, err error) {
 	rp.pushPacketToList(request)
 	for index = 0; index < len(request.followerConns); index++ {
 		err = rp.AllocateFollowersConnects(request, index)
 		if err != nil {
 			msg := fmt.Sprintf("request inconnect(%v) to(%v) err(%v)", rp.sourceConn.RemoteAddr().String(),
 				request.followersAddrs[index], err.Error())
-			err = errors.Annotatef(fmt.Errorf(msg), "Request(%v) sendToAllfollowers Error", request.GetUniqueLogId())
+			err = errors.Annotatef(fmt.Errorf(msg), "Request(%v) sendRequestToAllfollowers Error", request.GetUniqueLogId())
 			request.PackErrorBody(ActionSendToFollowers, err.Error())
 			return
 		}
@@ -207,7 +207,7 @@ func (rp *ReplProtocol) sendToAllfollowers(request *Packet) (index int, err erro
 		if err != nil {
 			msg := fmt.Sprintf("request inconnect(%v) to(%v) err(%v)", rp.sourceConn.RemoteAddr().String(),
 				request.followersAddrs[index], err.Error())
-			err = errors.Annotatef(fmt.Errorf(msg), "Request(%v) sendToAllfollowers Error", request.GetUniqueLogId())
+			err = errors.Annotatef(fmt.Errorf(msg), "Request(%v) sendRequestToAllfollowers Error", request.GetUniqueLogId())
 			request.PackErrorBody(ActionSendToFollowers, err.Error())
 			return
 		}
@@ -365,22 +365,22 @@ func (rp *ReplProtocol) AllocateFollowersConnects(pkg *Packet, index int) (err e
 
 /*get front packet*/
 func (rp *ReplProtocol) getFrontPacket() (e *list.Element) {
-	rp.listMux.RLock()
+	rp.packetListLock.RLock()
 	e = rp.packetList.Front()
-	rp.listMux.RUnlock()
+	rp.packetListLock.RUnlock()
 
 	return
 }
 
 func (rp *ReplProtocol) pushPacketToList(e *Packet) {
-	rp.listMux.Lock()
+	rp.packetListLock.Lock()
 	rp.packetList.PushBack(e)
-	rp.listMux.Unlock()
+	rp.packetListLock.Unlock()
 }
 
 /*if the rp exit,then clean all packet resource*/
 func (rp *ReplProtocol) cleanResource() {
-	rp.listMux.Lock()
+	rp.packetListLock.Lock()
 	for e := rp.packetList.Front(); e != nil; e = e.Next() {
 		request := e.Value.(*Packet)
 		request.forceDestoryAllConnect()
@@ -398,13 +398,13 @@ func (rp *ReplProtocol) cleanResource() {
 			conn.Close()
 			return true
 		})
-	rp.listMux.Unlock()
+	rp.packetListLock.Unlock()
 }
 
 /*delete source packet*/
 func (rp *ReplProtocol) deletePacket(reply *Packet) (success bool) {
-	rp.listMux.Lock()
-	defer rp.listMux.Unlock()
+	rp.packetListLock.Lock()
+	defer rp.packetListLock.Unlock()
 	for e := rp.packetList.Front(); e != nil; e = e.Next() {
 		request := e.Value.(*Packet)
 		if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
