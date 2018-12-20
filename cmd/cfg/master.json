@@ -10,6 +10,8 @@
   "logLevel":"DEBUG",
   "walDir":"/export/Logs/baudstorage/raft",
   "storeDir":"/export/baudstorage/rocksdbstore",
+  "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
+  "exporterPort": 9510,
   "clusterName":"baudStorage"
 }
 

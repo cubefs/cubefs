@@ -66,7 +66,7 @@ func main() {
 		fmt.Println("Mount failed: ", err)
 		os.Exit(1)
 	}
-	exporter.Init(ModuleName, cfg.GetInt(ConfigKeyExporterPort))
+	//exporter.Init(ModuleName, , cfg)
 
 	fmt.Println("Done!")
 }
@@ -112,6 +112,8 @@ func Mount(cfg *config.Config) error {
 	go func() {
 		fmt.Println(http.ListenAndServe(":"+profport, nil))
 	}()
+
+	exporter.Init(super.ClusterName(), ModuleName, cfg)
 
 	if err = fs.Serve(c, super); err != nil {
 		return err

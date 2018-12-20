@@ -11,6 +11,8 @@
     "10.196.31.173:80"
   ],
   "rack": "rack-01",
+  "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
+  "exporterPort": 9512,
   "disks": [
     "/data0:1:20000",
     "/data1:1:20000",

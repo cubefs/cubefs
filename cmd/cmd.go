@@ -20,7 +20,6 @@ import (
 	"github.com/tiglabs/containerfs/datanode"
 	"github.com/tiglabs/containerfs/master"
 	"github.com/tiglabs/containerfs/metanode"
-	"github.com/tiglabs/containerfs/util/exporter"
 	"github.com/tiglabs/containerfs/util/log"
 
 	"flag"
@@ -172,8 +171,6 @@ func main() {
 		os.Exit(1)
 		return
 	}
-
-	exporter.Init(role, cfg.GetInt(ConfigKeyExporterPort))
 
 	interceptSignal(server)
 	err = server.Start(cfg)
