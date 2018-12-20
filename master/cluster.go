@@ -698,7 +698,7 @@ func (c *Cluster) dataPartitionOffline(offlineAddr, volName string, dp *DataPart
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.PersistenceHosts)
 	return
 errDeal:
-	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.PersistenceHosts)
 	if err != nil {
@@ -773,8 +773,8 @@ func (c *Cluster) createVol(name string, replicaNum uint8, randomWrite bool, siz
 	if vol, err = c.getVol(name); err != nil {
 		goto errDeal
 	}
-
-	if err = c.createMetaPartition(name, 0, defaultMaxMetaPartitionInodeID); err != nil {
+	vol.initMetaPartitions(c)
+	if len(vol.MetaPartitions) == 0 {
 		vol.Status = volMarkDelete
 		c.syncDeleteVol(vol)
 		c.deleteVol(name)
