@@ -177,9 +177,9 @@ func (dp *DataPartition) StartSchedule() {
 
 			case <-getAppliedIDTimer.C:
 				if dp.raftPartition != nil {
-					dp.updateMaxMinAppliedID()
+					go dp.updateMaxMinAppliedID()
 				}
-				getAppliedIDTimer.Reset(time.Minute * 5)
+				getAppliedIDTimer.Reset(time.Minute * 1)
 
 			case <-truncateRaftLogTimer.C:
 				if dp.raftPartition == nil {
