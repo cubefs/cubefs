@@ -114,7 +114,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.config.nodeSetCapacity, err = strconv.Atoi(cfg.GetString(nodeSetCapacity)); err != nil {
 		return fmt.Errorf("%v,err:%v", errBadConfFile, err.Error())
 	}
-	if m.config.nodeSetCapacity <= 0 {
+	if m.config.nodeSetCapacity < 3 {
 		m.config.nodeSetCapacity = defaultNodeSetCapacity
 	}
 	if m.retainLogs, err = strconv.ParseUint(cfg.GetString(CfgRetainLogs), 10, 64); err != nil {
