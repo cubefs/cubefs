@@ -74,7 +74,7 @@ func RandStringBytesMaskImpr(n int) string {
 	return string(b)
 }
 
-func write(name string, isRandom bool) (verifyInfo []*VerifyInfo, err error) {
+func write(name string) (verifyInfo []*VerifyInfo, err error) {
 	fp, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0664)
 	if err != nil {
 		return nil, err
@@ -91,9 +91,6 @@ func write(name string, isRandom bool) (verifyInfo []*VerifyInfo, err error) {
 		}
 		v := new(VerifyInfo)
 		v.Name = name
-		if isRandom {
-			offset = rand.Int63n(9999 * 1024)
-		}
 		v.Offset = offset
 		v.Size = int64(n)
 		data := []byte(RandStringBytesMaskImpr(n))
@@ -107,13 +104,11 @@ func write(name string, isRandom bool) (verifyInfo []*VerifyInfo, err error) {
 		offset += int64(n)
 	}
 
-	if !isRandom {
-		crc := crc32.ChecksumIEEE(allData)
-		crcBuf := make([]byte, 4)
-		binary.BigEndian.PutUint32(crcBuf, crc)
-		if _, err := fp.WriteAt(crcBuf, offset); err != nil {
-			return nil, err
-		}
+	crc := crc32.ChecksumIEEE(allData)
+	crcBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(crcBuf, crc)
+	if _, err := fp.WriteAt(crcBuf, offset); err != nil {
+		return nil, err
 	}
 
 	err = syscall.Fsync(int(fp.Fd()))
@@ -150,7 +145,7 @@ func readVerify(verifyInfo []*VerifyInfo) {
 
 }
 
-func read(name string, isRandom bool) (err error) {
+func read(name string) (err error) {
 	fp, err := os.Open(name)
 	if err != nil {
 		return err
@@ -167,10 +162,6 @@ func read(name string, isRandom bool) (err error) {
 		return err
 	}
 
-	if isRandom {
-		return nil
-	}
-
 	writeCrc := binary.BigEndian.Uint32(data[size-4:])
 	actualCrc := crc32.ChecksumIEEE(data[:size-4])
 	if writeCrc != actualCrc {
@@ -181,24 +172,20 @@ func read(name string, isRandom bool) (err error) {
 	return nil
 }
 
-func verifyWriteAndRead(filename string, isRandom bool) {
-	verifyInfo, err := write(filename, isRandom)
+func verifyWriteAndRead(filename string) {
+	verifyInfo, err := write(filename)
 	if err != nil {
 		err = fmt.Errorf("filename %v write %v error", filename, err)
 		fmt.Println(err.Error())
 	}
-	err = read(filename, isRandom)
+
+	err = read(filename)
 	if err != nil {
 		err = fmt.Errorf("filename %v read %v error", filename, err)
 		fmt.Println(err.Error())
 		readVerify(verifyInfo)
 	}
-
-	if isRandom {
-		readVerify(verifyInfo)
-	}
 }
-
 
 func create(wg *sync.WaitGroup) {
 	defer wg.Done()
@@ -214,9 +201,9 @@ func create(wg *sync.WaitGroup) {
 		if *fileType {
 			err = os.MkdirAll(filename, 0755)
 		} else {
-			verifyWriteAndRead(filename, false)
+			verifyWriteAndRead(filename)
 			if *random {
-				verifyWriteAndRead(filename, *random)
+				verifyWriteAndRead(filename)
 			}
 		}
 
