@@ -33,7 +33,6 @@ import (
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/exporter"
 	"github.com/tiglabs/containerfs/util/log"
-	"golang.org/x/crypto/openpgp/packet"
 )
 
 const partitionPrefix = "partition_"
@@ -65,7 +64,11 @@ type metaManager struct {
 }
 
 func (m *metaManager) HandleMetaOperation(conn net.Conn, p *Packet) (err error) {
+<<<<<<< HEAD
 	metric := exporter.RegistTp(packet.GetOpMsg())
+=======
+	metric := exporter.RegistTp(p.GetOpMsg())
+>>>>>>> add prometheus exporter
 	defer metric.CalcTpMS()
 
 	switch p.Opcode {
