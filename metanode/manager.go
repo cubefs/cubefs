@@ -31,8 +31,8 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
 	"github.com/tiglabs/containerfs/util"
-	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/exporter"
+	"github.com/tiglabs/containerfs/util/log"
 	"golang.org/x/crypto/openpgp/packet"
 )
 
@@ -66,7 +66,7 @@ type metaManager struct {
 
 func (m *metaManager) HandleMetaOperation(conn net.Conn, p *Packet) (err error) {
 	metric := exporter.RegistTp(packet.GetOpMsg())
-	defer metric.CalcTp()
+	defer metric.CalcTpMS()
 
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:

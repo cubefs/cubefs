@@ -23,17 +23,18 @@ import (
 	"strconv"
 	"time"
 
+	"strings"
+
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/master"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util"
+	"github.com/tiglabs/containerfs/util/exporter"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/raft"
 	raftProto "github.com/tiglabs/raft/proto"
-	"strings"
-	"github.com/tiglabs/containerfs/util/exporter"
 )
 
 func (s *DataNode) OperatePacket(pkg *repl.Packet, c *net.TCPConn) (err error) {
@@ -62,7 +63,7 @@ func (s *DataNode) OperatePacket(pkg *repl.Packet, c *net.TCPConn) (err error) {
 			}
 		}
 		pkg.Size = resultSize
-		tpObject.CalcTp()
+		tpObject.CalcTpMS()
 	}()
 	switch pkg.Opcode {
 	case proto.OpCreateExtent:
@@ -460,7 +461,7 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 		tpObject := exporter.RegistTp(exporterKey)
 		reply.ExtentOffset = offset
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data)
-		tpObject.CalcTp()
+		tpObject.CalcTpMS()
 		if err != nil {
 			reply.PackErrorBody(ActionStreamRead, err.Error())
 			if err = reply.WriteToConn(connect); err != nil {

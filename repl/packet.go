@@ -2,15 +2,16 @@ package repl
 
 import (
 	"fmt"
+	"io"
+	"net"
+	"strings"
+	"time"
+
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/exporter"
-	"io"
-	"net"
-	"strings"
-	"time"
 )
 
 var (
@@ -33,7 +34,7 @@ func (p *Packet) AfterTp() (ok bool) {
 		var err error
 		err = fmt.Errorf(p.GetOpMsg()+" failed because(%v)", string(p.Data[:p.Size]))
 	}
-	p.TpObject.CalcTp()
+	p.TpObject.CalcTpMS()
 
 	return
 }
@@ -58,7 +59,7 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 	followerAddrs := strings.SplitN(str, proto.AddrSplit, -1)
 	followerNum := uint8(len(followerAddrs) - 1)
 	p.followersAddrs = make([]string, followerNum)
-	if followerNum> 0 {
+	if followerNum > 0 {
 		p.followersAddrs = followerAddrs[:int(followerNum)]
 	}
 	p.followerConns = make([]*net.TCPConn, followerNum)
