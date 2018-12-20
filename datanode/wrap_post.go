@@ -5,7 +5,6 @@ import (
 	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
 	"sync/atomic"
-	"time"
 )
 
 func (s *DataNode) Post(pkg *repl.Packet) error {
