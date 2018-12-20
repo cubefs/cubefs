@@ -48,7 +48,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	// Get all partitions base information
 	http.HandleFunc("/getPartitions", m.getPartitionsHandler)
 	// Get information about the specified partitionID
-	http.HandleFunc("/getPartitionById", m.getPartitionByIdHandler)
+	http.HandleFunc("/getPartitionById", m.getPartitionByIDHandler)
 	// Get Inode information
 	http.HandleFunc("/getInode", m.getInodeHandler)
 	// Get the all extents of the inode
@@ -64,7 +64,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	return
 }
 
-// partitionsAPIHandler get the base information of all partitions
+// getPartitionsHandler get the base information of all partitions
 func (m *MetaNode) getPartitionsHandler(w http.ResponseWriter,
 	r *http.Request) {
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
@@ -78,6 +78,7 @@ func (m *MetaNode) getPartitionsHandler(w http.ResponseWriter,
 	w.Write(data)
 }
 
+// getPartitionByIDHandler return meta-partition info
 func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter,
 	r *http.Request) {
 	r.ParseForm()
