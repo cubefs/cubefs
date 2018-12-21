@@ -236,7 +236,7 @@ func (rp *ReplProtocol) reciveAllFollowerResponse() {
 		err := rp.receiveFromFollower(request, index)
 		if err != nil {
 			request.PackErrorBody(ActionReceiveFromFollower, err.Error())
-			request.forceDestoryAllConnect()
+			request.forceDestoryFollowerConnects()
 			return
 		}
 	}
@@ -300,7 +300,7 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 	if reply.IsErrPacket() {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
-		reply.forceDestoryAllConnect()
+		reply.forceDestoryFollowerConnects()
 		log.LogErrorf(ActionWriteToClient+" %v", err)
 	}
 	rp.postFunc(reply)
@@ -314,7 +314,7 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, err))
 		log.LogErrorf(ActionWriteToClient+" %v", err)
-		reply.forceDestoryAllConnect()
+		reply.forceDestoryFollowerConnects()
 		rp.Stop()
 	}
 	log.LogDebugf(ActionWriteToClient+" %v", reply.LogMessage(ActionWriteToClient,
@@ -383,7 +383,7 @@ func (rp *ReplProtocol) cleanResource() {
 	rp.packetListLock.Lock()
 	for e := rp.packetList.Front(); e != nil; e = e.Next() {
 		request := e.Value.(*Packet)
-		request.forceDestoryAllConnect()
+		request.forceDestoryFollowerConnects()
 		rp.postFunc(request)
 
 	}
@@ -409,7 +409,7 @@ func (rp *ReplProtocol) deletePacket(reply *Packet) (success bool) {
 		request := e.Value.(*Packet)
 		if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
 			reply.ExtentOffset != request.ExtentOffset || reply.CRC != request.CRC || reply.ExtentID != request.ExtentID {
-			request.forceDestoryAllConnect()
+			request.forceDestoryFollowerConnects()
 			request.PackErrorBody(ActionReceiveFromFollower, fmt.Sprintf("unknow expect reply"))
 			break
 		}
