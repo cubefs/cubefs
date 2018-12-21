@@ -159,7 +159,7 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 	var (
 		extentInfoSlice []*ExtentInfo
 	)
-	if extentInfoSlice, err = s.GetAllWatermark(GetStableExtentFilter()); err != nil {
+	if extentInfoSlice, err = s.GetAllExtentWatermark(GetStableExtentFilter()); err != nil {
 		return
 	}
 	files = make([]*proto.File, 0, len(extentInfoSlice))
@@ -469,34 +469,7 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	return
 }
 
-func (s *ExtentStore) Cleanup() {
-	extentInfoSlice, _ := s.GetAllWatermark(GetEmptyExtentFilter())
-	if len(extentInfoSlice) == 0 {
-		return
-	}
-	for _, extentInfo := range extentInfoSlice {
-		if IsTinyExtent(extentInfo.FileID) {
-			continue
-		}
-		if extentInfo.Size == 0 {
-			log.LogWarnf("start delete empty  %v", s.getExtentKey(extentInfo.FileID))
-			extent, err := s.getExtentWithHeader(extentInfo.FileID)
-			if err != nil {
-				log.LogWarnf("delete empty  %v error %v", s.getExtentKey(extentInfo.FileID), err.Error())
-				continue
-			}
-			if extent.Size() == 0 && !extent.IsMarkDelete() {
-				err = s.DeleteDirtyExtent(extent.ID())
-				if err != nil {
-					log.LogWarnf("delete empty  %v error %v", s.getExtentKey(extentInfo.FileID), err.Error())
-				} else {
-					log.LogWarnf("delete empty  %v success", s.getExtentKey(extentInfo.FileID))
 
-				}
-			}
-		}
-	}
-}
 
 func (s *ExtentStore) FlushDelete() (err error) {
 	var (
@@ -605,7 +578,7 @@ func (s *ExtentStore) GetWatermark(extentID uint64, reload bool) (extentInfo *Ex
 	return
 }
 
-func (s *ExtentStore) GetWatermarkForWrite(extentID uint64) (watermark int64, err error) {
+func (s *ExtentStore) TinyExtentWritePrepare(extentID uint64) (watermark int64, err error) {
 	einfo, err := s.GetWatermark(extentID, false)
 	if err != nil {
 		return
@@ -618,7 +591,7 @@ func (s *ExtentStore) GetWatermarkForWrite(extentID uint64) (watermark int64, er
 	return
 }
 
-func (s *ExtentStore) GetAllWatermark(filter ExtentFilter) (extents []*ExtentInfo, err error) {
+func (s *ExtentStore) GetAllExtentWatermark(filter ExtentFilter) (extents []*ExtentInfo, err error) {
 	extents = make([]*ExtentInfo, 0)
 	extentInfoSlice := make([]*ExtentInfo, 0, len(s.extentInfoMap))
 	s.extentInfoMux.RLock()
@@ -676,42 +649,6 @@ func (s *ExtentStore) ParseExtentID(filename string) (extentID uint64, isExtent 
 		return
 	}
 	isExtent = true
-	return
-}
-
-func (s *ExtentStore) DeleteDirtyExtent(extentID uint64) (err error) {
-	var (
-		extent     *Extent
-		extentInfo *ExtentInfo
-		has        bool
-	)
-
-	s.extentInfoMux.RLock()
-	extentInfo, has = s.extentInfoMap[extentID]
-	s.extentInfoMux.RUnlock()
-	if !has {
-		return nil
-	}
-
-	if extent, err = s.getExtentWithHeader(extentID); err != nil {
-		return
-	}
-	if extent.Size() != 0 {
-		return fmt.Errorf("size %v donnot zeor ", extent.Size())
-	}
-
-	extentInfo.FromExtent(extent)
-	s.cache.Del(extent.ID())
-
-	s.extentInfoMux.Lock()
-	delete(s.extentInfoMap, extentID)
-	s.extentInfoMux.Unlock()
-
-	extentFilePath := path.Join(s.dataDir, strconv.FormatUint(extentID, 10))
-	if err = os.Remove(extentFilePath); err != nil {
-		return
-	}
-
 	return
 }
 
@@ -788,12 +725,16 @@ func (s *ExtentStore) GetUnavaliTinyExtent() (extentID uint64, err error) {
 	}
 }
 
-func (s *ExtentStore) GetAllExtentSize() (totalSize uint64) {
+func (s *ExtentStore) GetStoreSize() (totalSize uint64) {
+	extentInfos := make([]*ExtentInfo, 0)
 	s.extentInfoMux.RLock()
 	for _, extentInfo := range s.extentInfoMap {
-		totalSize += extentInfo.Size
+		extentInfos = append(extentInfos, extentInfo)
 	}
 	s.extentInfoMux.RUnlock()
+	for _, extentInfo := range extentInfos {
+		totalSize += extentInfo.Size
+	}
 
 	return totalSize
 }
