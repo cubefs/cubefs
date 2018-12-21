@@ -119,6 +119,7 @@ func (c *Cluster) startCheckDataPartitions() {
 	}()
 }
 
+//检查vol是否需要自动创建新的data partition，如果需要，则每次自动创建20个data partition
 func (c *Cluster) checkCreateDataPartitions() {
 	vols := c.copyVols()
 	for _, vol := range vols {
@@ -126,6 +127,8 @@ func (c *Cluster) checkCreateDataPartitions() {
 	}
 }
 
+//周期性的检查vol的状态，如果是逻辑删除，则生成对应的deleteMp任务和deleteDp任务,发送到对应的metaNode/dataNode
+//如果dp和mp都已经删除，则物理删除vol
 func (c *Cluster) startCheckVolStatus() {
 	go func() {
 		//check vols after switching leader two minutes
@@ -141,6 +144,7 @@ func (c *Cluster) startCheckVolStatus() {
 	}()
 }
 
+//检查data partition各个副本的状态，dp的状态，副本是否在线等
 func (c *Cluster) checkDataPartitions() {
 	vols := c.getAllNormalVols()
 	for _, vol := range vols {
@@ -163,6 +167,9 @@ func (c *Cluster) startCheckBackendLoadDataPartitions() {
 	}()
 }
 
+//1 生成文件比对任务
+//2 异步等待数据节点汇报 data partition各个副本包含的文件详情
+//3 文件的多个副本之间做crc检验，如果不一致则报警
 func (c *Cluster) backendLoadDataPartitions() {
 	vols := c.getAllNormalVols()
 	for _, vol := range vols {
@@ -181,6 +188,7 @@ func (c *Cluster) startCheckReleaseDataPartitions() {
 	}()
 }
 
+//释放为了文件比对，data partition下所有文件信息所占用的内存
 func (c *Cluster) releaseDataPartitionAfterLoad() {
 	vols := c.copyVols()
 	for _, vol := range vols {
@@ -410,6 +418,12 @@ func (c *Cluster) markDeleteVol(name string) (err error) {
 	return
 }
 
+//同步创建data partition
+//1、选择可选的dataNode
+//2、分配partitionID
+//3、与dataNode交互，同步创建data partition
+//4、创建成功，通过raft同步到其它master节点并持久化到rocksDB
+//5、创建失败，直接抛错
 func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err error) {
 	var (
 		vol         *Vol
@@ -619,6 +633,13 @@ func (c *Cluster) delDataNodeFromCache(dataNode *DataNode) {
 	go dataNode.clean()
 }
 
+//下线dp的某个副本
+//1、检查是否可以下线，下列情况不允许下线 a、该副本不在最新的host列表中 b、已经下线一个副本 c、剩余存活的副本数小于大多数
+//2、选择新的可用dataNode
+//3、持久化新的host列表
+//4、生成异步删除副本任务
+//5、同步创建新的dataPartition
+//6、设置dp为只读状态
 func (c *Cluster) dataPartitionOffline(offlineAddr, volName string, dp *DataPartition, errMsg string) (err error) {
 	var (
 		newHosts   []string
@@ -698,7 +719,7 @@ func (c *Cluster) dataPartitionOffline(offlineAddr, volName string, dp *DataPart
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.PersistenceHosts)
 	return
 errDeal:
-	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.PersistenceHosts)
 	if err != nil {
@@ -755,6 +776,10 @@ errDeal:
 	return
 }
 
+//创建vol
+//1、创建vol
+//2、初始化meta partition，默认同步创建3个mp，如果mp都没有创建成功，则删除vol
+//3、初始化data partition,默认同步创建10个dp，如果可写的dp个数小于10个，则重试创建dp，最多只能重试3次
 func (c *Cluster) createVol(name string, replicaNum uint8, randomWrite bool, size, capacity int) (err error) {
 	var (
 		vol                     *Vol
@@ -849,6 +874,12 @@ func (c *Cluster) createMetaPartitionForManual(volName string, start uint64) (er
 	return
 }
 
+//同步创建meta partition
+//1、选择可选的metaNode
+//2、分配partitionID
+//3、与metaNode交互，同步创建meta partition
+//4、创建成功，通过raft同步到其它master节点并持久化到rocksDB
+//5、创建失败，直接抛错
 func (c *Cluster) createMetaPartition(volName string, start, end uint64) (err error) {
 	var (
 		vol         *Vol
@@ -921,6 +952,9 @@ func (c *Cluster) hasEnoughWritableMetaHosts(replicaNum int, setID uint64) bool 
 	return false
 }
 
+//根据副本数选择对应数量的metaNode
+//1、选择可用的nodeSet
+//2、选择可选的metaNode
 func (c *Cluster) chooseTargetMetaHosts(replicaNum int) (hosts []string, peers []proto.Peer, err error) {
 	var (
 		masterAddr []string

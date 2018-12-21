@@ -89,6 +89,7 @@ func newMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *
 	return
 }
 
+//获取vol下所有的data partition
 func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
@@ -118,6 +119,7 @@ errDeal:
 	return
 }
 
+//获取vol下所有的data partition和meta partition
 func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
@@ -145,6 +147,7 @@ errDeal:
 	return
 }
 
+//获取vol的总容量和已使用空间信息
 func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
