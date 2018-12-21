@@ -47,7 +47,9 @@ func Init(cluster string, role string, cfg *config.Config) {
 	}()
 
 	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
-	RegistConsul(consulAddr, AppName, role, cluster, port)
+	if len(consulAddr) > 0 {
+		RegistConsul(consulAddr, AppName, role, cluster, port)
+	}
 
 	m := RegistGauge("start_time")
 	m.Set(float64(time.Now().Unix() * 1000))
@@ -57,7 +59,7 @@ func Init(cluster string, role string, cfg *config.Config) {
 
 type TpMetric struct {
 	Start  time.Time
-	metric prometheus.Gauge
+	metricName string
 }
 
 func metricsName(name string) string {
@@ -91,70 +93,68 @@ func RegistGauge(name string) (o prometheus.Gauge) {
 	return
 }
 
-func RegistTp(name string) (o *TpMetric) {
+func RegistTp(name string) (tp *TpMetric) {
 	defer func() {
 		if err := recover(); err != nil {
 			log.LogErrorf("RegistTp panic,err[%v]", err)
 		}
 	}()
 
-
-	name = metricsName(name)
-
-	tp := TpMetricPool.Get().(*TpMetric)
-	m, load := metricGroups.LoadOrStore(name, tp)
-	if load {
-		o = m.(*TpMetric)
-		o.Start = time.Now()
-		return
-	} else {
-		tp.Start = time.Now()
-		tp.metric = prometheus.NewGauge(
-			prometheus.GaugeOpts{
-				Name: name,
-				Help: name,
-			})
-		if enabled {
-			prometheus.MustRegister(tp.metric)
-		}
-
-		o = tp
-	}
+	tp = TpMetricPool.Get().(*TpMetric)
+	tp.metricName = metricsName(name)
+	tp.Start = time.Now()
 
 	return
 }
 
-func (o *TpMetric) CalcTp() {
-	if o == nil || o.metric == nil {
+func (tp *TpMetric) CalcTp() {
+	if tp == nil {
 		return
 	}
 
 	defer func() {
 		if err := recover(); err != nil {
-			log.LogErrorf("RegistTp panic,err[%v]", err)
+			log.LogErrorf("CalcTp panic,err[%v]", err)
 		}
 	}()
 
-	o.metric.Set(float64(time.Since(o.Start).Nanoseconds()))
+	go func() {
+		tpGauge := prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: tp.metricName,
+				Help: tp.metricName,
+			})
+
+		metric, load := metricGroups.LoadOrStore(tp.metricName, tpGauge)
+		if !load {
+			if enabled {
+				prometheus.MustRegister(metric.(prometheus.Gauge))
+			}
+		}
+
+		metric.(prometheus.Gauge).Set(float64(time.Since(tp.Start).Nanoseconds()))
+	} ()
 }
 
 func Alarm(name, detail string) {
 	name = metricsName(name + "_alarm")
 
-	newMetric := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: name,
-			Help: name,
-		})
-	m, load := metricGroups.LoadOrStore(name, newMetric)
-	if load {
-		o := m.(prometheus.Counter)
-		o.Add(1)
-	} else {
-		if enabled {
-			prometheus.MustRegister(newMetric)
+	go func() {
+		newMetric := prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Name: name,
+				Help: name,
+			})
+		m, load := metricGroups.LoadOrStore(name, newMetric)
+		if load {
+			o := m.(prometheus.Counter)
+			o.Add(1)
+		} else {
+			if enabled {
+				prometheus.MustRegister(newMetric)
+			}
 		}
-	}
+	}()
 
 	return
 }
