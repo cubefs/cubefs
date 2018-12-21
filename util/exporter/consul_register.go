@@ -65,11 +65,11 @@ func GetLocalIpAddr() (ipaddr string, err error) {
 func SendRegistReq(addr string, app string, role string, cluster string, port int64) {
 	host, err := GetLocalIpAddr()
 	if err != nil {
-		log.LogErrorf("")
+		log.LogErrorf("get local ip error, %v", err.Error())
 		return
 	}
 	id := GetConsulId(app, role, host, port)
-	url := fmt.Sprintf("%s%s", addr, RegisterPath)
+	url := addr + RegisterPath
 	resp, body, errs := gorequest.New().Put(url).SendMap(ConsulRegistInfo{
 		Name:    app,
 		ID:      id,
