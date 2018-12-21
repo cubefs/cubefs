@@ -359,10 +359,13 @@ func (eh *ExtentHandler) cleanup() (err error) {
 // can ONLY be called when handler is not open any more
 func (eh *ExtentHandler) appendExtentKey() (err error) {
 	//log.LogDebugf("appendExtentKey enter: eh(%v)", eh)
-	if eh.key != nil && eh.dirty == true {
-		eh.sw.stream.extents.Append(eh.key, true)
-		//log.LogDebugf("appendExtentKey before talk to meta: eh(%v)", eh)
-		err = eh.sw.stream.client.appendExtentKey(eh.inode, *eh.key)
+	if eh.key != nil {
+		if eh.dirty {
+			eh.sw.stream.extents.Append(eh.key, true)
+			err = eh.sw.stream.client.appendExtentKey(eh.inode, *eh.key)
+		} else {
+			eh.sw.stream.extents.Append(eh.key, false)
+		}
 	}
 	if err == nil {
 		eh.dirty = false
