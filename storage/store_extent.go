@@ -313,6 +313,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		s.extentInfoMux.Lock()
 		s.extentInfoMap[extentID] = extentInfo
 		s.extentInfoMux.Unlock()
+		extent.Close()
 		if !IsTinyExtent(extentID) && extentID > baseFileID {
 			baseFileID = extentID
 		}
