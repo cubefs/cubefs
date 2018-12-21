@@ -181,7 +181,7 @@ func (p *Packet) GetOpMsg() (m string) {
 	case OpStreamRead:
 		m = "StreamRead"
 	case OpGetAllWaterMark:
-		m = "GetAllWatermark"
+		m = "GetAllExtentWatermark"
 	case OpNotifyExtentRepair:
 		m = "NotifyExtentRepair"
 	case OpBlobFileRepairRead:

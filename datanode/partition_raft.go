@@ -231,7 +231,7 @@ func (dp *DataPartition) WaitingRepairedAndStartRaft() {
 				timer.Reset(5 * time.Second)
 				continue
 			}
-			if partitionSize != dp.extentStore.GetAllExtentSize() {
+			if partitionSize != dp.extentStore.GetStoreSize() {
 				log.LogErrorf("partitionID[%v] leader size[%v] local size[%v]", dp.partitionID, partitionSize, dp.partitionSize)
 				timer.Reset(5 * time.Second)
 				continue
