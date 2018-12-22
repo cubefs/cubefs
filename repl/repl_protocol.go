@@ -236,7 +236,6 @@ func (rp *ReplProtocol) reciveAllFollowerResponse() {
 		err := rp.receiveFromFollower(request, index)
 		if err != nil {
 			request.PackErrorBody(ActionReceiveFromFollower, err.Error())
-			request.forceDestoryFollowerConnects()
 			return
 		}
 	}
@@ -300,7 +299,7 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 	if reply.IsErrPacket() {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
-		reply.forceDestoryFollowerConnects()
+		reply.forceDestoryWholeFollowersPool(err)
 		log.LogErrorf(ActionWriteToClient+" %v", err)
 	}
 	rp.postFunc(reply)
