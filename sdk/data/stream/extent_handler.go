@@ -34,9 +34,10 @@ func GetGlobalHandlerID() uint64 {
 type ExtentHandler struct {
 	// Created as initial value, and will not be changed.
 	sw         *StreamWriter
-	id         uint64
+	id         uint64 // identify extent handlers
 	inode      uint64
 	fileOffset int
+	storeMode  int
 
 	// Status is open, closed, recovery, error,
 	// and can be changed only from one state to the next adjacent state.
@@ -50,9 +51,6 @@ type ExtentHandler struct {
 
 	// Increament in Write, and decreament in receiver.
 	inflight int32 // pending requests
-
-	// Assigned in Write
-	storeMode int
 
 	// Assigned in sender, and will not be changed.
 	extID int
@@ -111,7 +109,7 @@ func NewExtentHandler(sw *StreamWriter, offset int, storeMode int) *ExtentHandle
 }
 
 func (eh *ExtentHandler) String() string {
-	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)}", eh.id, eh.inode, eh.fileOffset)
+	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)StoreMode(%v)}", eh.id, eh.inode, eh.fileOffset, eh.storeMode)
 }
 
 func (eh *ExtentHandler) Write(data []byte, offset, size int) (ek *proto.ExtentKey, err error) {
@@ -123,28 +121,37 @@ func (eh *ExtentHandler) Write(data []byte, offset, size int) (ek *proto.ExtentK
 		return
 	}
 
-	// If this write request is incontinuous cannot be merged
+	var blksize int
+	if eh.storeMode == proto.TinyExtentMode {
+		blksize = util.DefaultTinySizeLimit
+	} else {
+		blksize = util.BlockSize
+	}
+
+	// If this write request is incontinuous, thus cannot be merged
 	// into this extent handler, just close it and return error.
 	// And the caller shall try to create a new extent handler.
-	if eh.fileOffset+eh.size != offset || eh.size+size > util.ExtentSize {
+	if eh.fileOffset+eh.size != offset || eh.size+size > util.ExtentSize ||
+		(eh.storeMode == proto.TinyExtentMode && eh.size+size > blksize) {
+
 		err = errors.New("ExtentHandler: full or incontinuous")
 		return
 	}
 
 	for total < size {
 		if eh.packet == nil {
-			eh.packet = NewPacket(eh.inode, offset+total)
+			eh.packet = NewPacket(eh.inode, offset+total, eh.storeMode)
 			//log.LogDebugf("ExtentHandler Write: NewPacket, eh(%v) packet(%v)", eh, eh.packet)
 		}
 		packsize := int(eh.packet.Size)
-		write = util.Min(size-total, util.BlockSize-packsize)
+		write = util.Min(size-total, blksize-packsize)
 		if write > 0 {
 			copy(eh.packet.Data[packsize:packsize+write], data[total:total+write])
 			eh.packet.Size += uint32(write)
 			total += write
 		}
 
-		if eh.packet.Size >= util.BlockSize {
+		if int(eh.packet.Size) >= blksize {
 			eh.flushPacket()
 		}
 	}
@@ -172,8 +179,6 @@ func (eh *ExtentHandler) sender() {
 		//			log.LogDebugf("sender alive: eh(%v) inflight(%v)", eh, atomic.LoadInt32(&eh.inflight))
 		case packet := <-eh.request:
 			//log.LogDebugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
-			// If handler is in recovery or error status,
-			// just forward the packet to the reply channel directly.
 			if eh.getStatus() >= ExtentStatusRecovery {
 				log.LogWarnf("sender in recovery: eh(%v) packet(%v)", eh, packet)
 				eh.reply <- packet
@@ -292,13 +297,24 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		return
 	}
 
-	// Update extent key cache
+	var (
+		extID, extOffset uint64
+	)
+
+	if eh.storeMode == proto.TinyExtentMode {
+		extID = reply.ExtentID
+		extOffset = uint64(reply.ExtentOffset)
+	} else {
+		extID = packet.ExtentID
+		extOffset = uint64(packet.kernelOffset) - uint64(eh.fileOffset)
+	}
+
 	if eh.key == nil {
 		eh.key = &proto.ExtentKey{
 			FileOffset:   uint64(eh.fileOffset),
 			PartitionId:  packet.PartitionID,
-			ExtentId:     packet.ExtentID,
-			ExtentOffset: uint64(packet.kernelOffset) - uint64(eh.fileOffset),
+			ExtentId:     extID,
+			ExtentOffset: extOffset,
 			Size:         packet.Size,
 		}
 	} else {
@@ -401,7 +417,7 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 
 	handler := eh.recoverHandler
 	if handler == nil {
-		handler = NewExtentHandler(eh.sw, packet.kernelOffset, int(packet.ExtentMode))
+		handler = NewExtentHandler(eh.sw, packet.kernelOffset, int(eh.storeMode))
 		handler.setClosed()
 	}
 	handler.pushToRequest(packet)
@@ -431,10 +447,13 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 			continue
 		}
 
-		if extID, err = eh.createExtent(dp); err != nil {
-			excludePartitions = append(excludePartitions, dp.PartitionID)
-			log.LogWarnf("allocateExtent: failed to create extent, eh(%v) err(%v) dp(%v)", eh, err, dp)
-			continue
+		if eh.storeMode == proto.NormalExtentMode {
+			if extID, err = eh.createExtent(dp); err != nil {
+				log.LogWarnf("allocateExtent: failed to create extent, eh(%v) err(%v)", eh, err)
+				continue
+			}
+		} else {
+			extID = 0
 		}
 
 		if conn, err = eh.createConnection(dp); err != nil {
