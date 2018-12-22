@@ -62,10 +62,6 @@ func (s *DataNode) checkPartition(pkg *repl.Packet) (err error) {
 	}
 	pkg.Object = dp
 	if pkg.Opcode == proto.OpWrite || pkg.Opcode == proto.OpCreateExtent {
-		if dp.Status() == proto.ReadOnly {
-			err = storage.ErrorPartitionReadOnly
-			return
-		}
 		if dp.Available() <= 0 {
 			err = storage.ErrSyscallNoSpace
 			return
