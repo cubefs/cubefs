@@ -337,6 +337,7 @@ func (m *metaManager) opOpen(conn net.Conn, p *Packet) (err error) {
 	return
 }
 
+// 获取Inode请求
 func (m *metaManager) opMetaInodeGet(conn net.Conn, p *Packet) (err error) {
 	req := &InodeGetReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
@@ -423,6 +424,7 @@ func (m *metaManager) opSetattr(conn net.Conn, p *Packet) (err error) {
 	return
 }
 
+// Lookup request
 func (m *metaManager) opMetaLookup(conn net.Conn, p *Packet) (err error) {
 	req := &proto.LookupRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
@@ -446,6 +448,7 @@ func (m *metaManager) opMetaLookup(conn net.Conn, p *Packet) (err error) {
 	return
 }
 
+// 更新Extents请求
 func (m *metaManager) opMetaExtentsAdd(conn net.Conn, p *Packet) (err error) {
 	req := &proto.AppendExtentKeyRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
@@ -475,6 +478,7 @@ func (m *metaManager) opMetaExtentsAdd(conn net.Conn, p *Packet) (err error) {
 	return
 }
 
+// 获取Extents列表
 func (m *metaManager) opMetaExtentsList(conn net.Conn, p *Packet) (err error) {
 	req := &proto.GetExtentsRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
@@ -504,6 +508,7 @@ func (m *metaManager) opMetaExtentsDel(conn net.Conn, p *Packet) (err error) {
 	panic("not implement yet")
 }
 
+// truncae请求
 func (m *metaManager) opMetaExtentsTruncate(conn net.Conn, p *Packet) (err error) {
 	req := &ExtentsTruncateReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
@@ -525,6 +530,7 @@ func (m *metaManager) opMetaExtentsTruncate(conn net.Conn, p *Packet) (err error
 	return
 }
 
+// 删除某个分片请求
 func (m *metaManager) opDeleteMetaPartition(conn net.Conn, p *Packet) (err error) {
 	adminTask := &proto.AdminTask{}
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
@@ -572,6 +578,7 @@ func (m *metaManager) opDeleteMetaPartition(conn net.Conn, p *Packet) (err error
 	return
 }
 
+// 更新某个分片的最大分配的元数据ID值
 func (m *metaManager) opUpdateMetaPartition(conn net.Conn, p *Packet) (err error) {
 	log.LogDebugf("[opUpdateMetaPartition] request.")
 	adminTask := &proto.AdminTask{}
@@ -667,6 +674,7 @@ func (m *metaManager) opLoadMetaPartition(conn net.Conn, p *Packet) (err error) 
 	return
 }
 
+// 变更替换分片成员请求
 func (m *metaManager) opOfflineMetaPartition(conn net.Conn, p *Packet) (err error) {
 	var (
 		reqData []byte
@@ -733,6 +741,7 @@ end:
 	return
 }
 
+// 批量获取Inode请求
 func (m *metaManager) opMetaBatchInodeGet(conn net.Conn, p *Packet) (err error) {
 	req := &proto.BatchInodeGetRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
