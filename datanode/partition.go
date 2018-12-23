@@ -134,6 +134,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition
 // LoadDataPartition load and returns partition instance from specified directory.
 // This method will read the partition meta file stored under the specified directory
 // and create partition instance.
+// 读取data partition的元数据文件，恢复partition实例
 func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err error) {
 	var (
 		metaFileData []byte
@@ -311,6 +312,7 @@ func (dp *DataPartition) ForceLoadHeader() {
 	dp.loadExtentHeaderStatus = FinishLoadDataPartitionExtentHeader
 }
 
+// 保存data partition的元数据到磁盘上的META文件
 func (dp *DataPartition) StoreMeta() (err error) {
 	// Store meta information into meta file.
 	var (
@@ -504,6 +506,7 @@ func (dp *DataPartition) compareReplicaHosts(v1, v2 []string) (equals bool) {
 	return
 }
 
+// 从集群管理的master拉取更新data partition成员信息
 func (dp *DataPartition) fetchReplicaHosts() (isLeader bool, replicaHosts []string, err error) {
 	var (
 		HostsBuf []byte
@@ -562,6 +565,11 @@ func (dp *DataPartition) GetAllExtentsMeta() (files []*storage.ExtentInfo, err e
 	return
 }
 
+/*
+ 成员收到extent修复通知
+ 1. Extent size小于最大Size，从extent未开始修复，补齐缺失部分内容
+ 2. Extent不存在，先创建Extent，然后修复整个extent文件
+*/
 func (dp *DataPartition) MergeExtentStoreRepair(metas *DataPartitionRepairTask) {
 	store := dp.extentStore
 	for _, addExtent := range metas.AddExtentsTasks {

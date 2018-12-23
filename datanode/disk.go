@@ -83,6 +83,7 @@ func (d *Disk) PartitionCount() int {
 	return len(d.partitionMap)
 }
 
+// 计算磁盘空间
 func (d *Disk) computeUsage() (err error) {
 	d.RLock()
 	defer d.RUnlock()
@@ -235,6 +236,7 @@ func (d *Disk) isPartitionDir(filename string) (is bool) {
 	return
 }
 
+// 读取保存在本地磁盘的文件，恢复Partition
 func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 	var (
 		partitionID   uint32
