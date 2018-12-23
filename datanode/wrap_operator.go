@@ -12,6 +12,9 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+
+// 处理DataNode之间的消息交互
+
 package datanode
 
 import (
