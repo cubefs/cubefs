@@ -460,7 +460,7 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 			proto.Buffers.Put(reply.Data)
 		}
 	}
-	pkg.ResultCode = reply.ResultCode
+	pkg.PackOkReply()
 
 	return
 }
