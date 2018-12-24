@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"bytes"
 	"github.com/tiglabs/containerfs/proto"
 	"unsafe"
 )
@@ -127,21 +128,28 @@ func (m *MetaNode) getAllInodeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	shouldSkip = true
+	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":[`)
+	if _, err := w.Write(buff.Bytes()); err != nil {
+		return
+	}
+	buff.Reset()
+	var val []byte
 	f := func(i BtreeItem) bool {
-		var data []byte
-		if data, err = json.Marshal(i); err != nil {
+		if val, err = json.Marshal(i); err != nil {
 			return false
 		}
-		if _, err = w.Write(data); err != nil {
+		if _, err = w.Write(val); err != nil {
 			return false
 		}
-		data[0] = byte('\n')
-		if _, err = w.Write(data[:1]); err != nil {
+		val[0] = byte('\n')
+		if _, err = w.Write(val[:1]); err != nil {
 			return false
 		}
 		return true
 	}
 	mp.GetInodeTree().Ascend(f)
+	buff.WriteString(`]}`)
+	w.Write(buff.Bytes())
 }
 
 func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
@@ -298,6 +306,11 @@ func (m *MetaNode) getAllDentryHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Msg = err.Error()
 		return
 	}
+	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":[`)
+	if _, err := w.Write(buff.Bytes()); err != nil {
+		return
+	}
+	buff.Reset()
 	var val []byte
 	mp.GetDentryTree().Ascend(func(i BtreeItem) bool {
 		val, err = json.Marshal(i)
@@ -316,6 +329,8 @@ func (m *MetaNode) getAllDentryHandler(w http.ResponseWriter, r *http.Request) {
 		return true
 	})
 	shouldSkip = true
+	buff.WriteString(`]}`)
+	w.Write(buff.Bytes())
 	return
 }
 
