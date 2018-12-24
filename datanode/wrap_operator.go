@@ -406,14 +406,13 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 		err error
 	)
 	partition := pkg.Object.(*DataPartition)
-	if err = partition.RandomPartitionReadCheck(pkg, connect); err != nil {
-		reply := repl.NewStreamReadResponsePacket(pkg.ReqID, pkg.PartitionID, pkg.ExtentID)
-		reply.StartT = time.Now().UnixNano()
-		reply.PackErrorBody(ActionStreamRead, err.Error())
-		if err = reply.WriteToConn(connect); err != nil {
-			err = fmt.Errorf(reply.LogMessage(ActionStreamRead, connect.RemoteAddr().String(), reply.StartT, err))
-			log.LogErrorf(err.Error())
-		}
+	err = partition.RandomPartitionReadCheck(pkg, connect)
+	if err != nil {
+		err = fmt.Errorf(pkg.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
+			pkg.StartT, err))
+		log.LogErrorf(err.Error())
+		pkg.PackErrorBody(ActionStreamRead, err.Error())
+		pkg.WriteToConn(connect)
 		return
 	}
 
@@ -453,7 +452,6 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 			err = fmt.Errorf(reply.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
 				reply.StartT, err))
 			log.LogErrorf(err.Error())
-			connect.Close()
 			return
 		}
 		needReplySize -= currReadSize
@@ -463,6 +461,7 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 		}
 	}
 	pkg.ResultCode = reply.ResultCode
+
 	return
 }
 
