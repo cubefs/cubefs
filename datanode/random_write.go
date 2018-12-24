@@ -25,6 +25,7 @@ import (
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util/log"
 	"strings"
+	"fmt"
 )
 
 type RndWrtCmdItem struct {
@@ -153,13 +154,16 @@ func (dp *DataPartition) RandomPartitionReadCheck(request *repl.Packet, connect 
 	_, ok := dp.IsRaftLeader()
 	if !ok {
 		err = storage.ErrNotLeader
-		log.LogErrorf("[readCheck] read ErrorNotLeader partition=%v", dp.partitionID)
+		logContent := fmt.Sprintf("action[ReadCheck] %v.", request.LogMessage(request.GetOpMsg(), connect.RemoteAddr().String(), request.StartT, err))
+		log.LogErrorf(logContent)
 		return
 	}
 
 	if dp.applyID < dp.maxAppliedID {
 		//todo: err = storage.ErrorAgain
-		log.LogErrorf("[readCheck] applied not newest partition=%v", dp.partitionID, dp.applyID, dp.maxAppliedID)
+		logContent := fmt.Sprintf("action[ReadCheck] %v localID=%v maxID=%v.",
+			request.LogMessage(request.GetOpMsg(), connect.RemoteAddr().String(), request.StartT, nil), dp.applyID, dp.maxAppliedID)
+		log.LogErrorf(logContent)
 	}
 
 	return

@@ -405,13 +405,6 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 	var (
 		err error
 	)
-	defer func() {
-		if err != nil {
-			pkg.PackErrorBody(ActionStreamRead, err.Error())
-		} else {
-			pkg.PackOkReply()
-		}
-	}()
 	partition := pkg.Object.(*DataPartition)
 	if err = partition.RandomPartitionReadCheck(pkg, connect); err != nil {
 		pkg.PackErrorBody(ActionStreamRead, err.Error())
