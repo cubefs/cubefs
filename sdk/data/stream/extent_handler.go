@@ -23,10 +23,6 @@ const (
 	ExtentStatusError
 )
 
-const (
-	MaxPacketErrorCount = 8
-)
-
 var (
 	GlobalHandlerID = uint64(0)
 )
