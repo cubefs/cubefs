@@ -407,9 +407,11 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 	)
 	partition := pkg.Object.(*DataPartition)
 	if err = partition.RandomPartitionReadCheck(pkg, connect); err != nil {
-		pkg.PackErrorBody(ActionStreamRead, err.Error())
-		if err = pkg.WriteToConn(connect); err != nil {
-			err = fmt.Errorf(pkg.LogMessage(ActionStreamRead, connect.RemoteAddr().String(), pkg.StartT, err))
+		reply := repl.NewStreamReadResponsePacket(pkg.ReqID, pkg.PartitionID, pkg.ExtentID)
+		reply.StartT = time.Now().UnixNano()
+		reply.PackErrorBody(ActionStreamRead, err.Error())
+		if err = reply.WriteToConn(connect); err != nil {
+			err = fmt.Errorf(reply.LogMessage(ActionStreamRead, connect.RemoteAddr().String(), reply.StartT, err))
 			log.LogErrorf(err.Error())
 		}
 		return
