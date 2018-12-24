@@ -125,6 +125,15 @@ func (s *DataNode) Sync() {
 	}
 }
 
+/*
+ DataNode启动流程
+ 1. 解析配置文件
+ 2. 注册REST API
+ 3. 向master申请注册
+ 4. 启动raft server
+ 5. 创建空间管理结构，包括磁盘，partition等
+ 6. 启动TCP监听端口
+*/
 func (s *DataNode) onStart(cfg *config.Config) (err error) {
 	s.stopC = make(chan bool, 0)
 	if err = s.parseConfig(cfg); err != nil {
@@ -225,6 +234,10 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	return nil
 }
 
+/*
+ Data node向集群管理master申请注册，将自身IP等信息汇报给master
+ 注册失败会一直重试并阻塞DataNode启动，直到注册成功
+*/
 func (s *DataNode) registerToMaster() {
 	var (
 		err  error
@@ -350,6 +363,9 @@ func (s *DataNode) addDiskErrs(partitionID uint64, err error, flag uint8) {
 	}
 }
 
+/*
+ 用排除法来判断是否是磁盘故障
+*/
 func IsDiskErr(errMsg string) bool {
 	if strings.Contains(errMsg, storage.ErrorParamMismatch.Error()) || strings.Contains(errMsg, storage.ErrorExtentNotFound.Error()) ||
 		strings.Contains(errMsg, storage.ErrorNoAvaliExtent.Error()) ||

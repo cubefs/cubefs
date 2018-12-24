@@ -79,6 +79,12 @@ func (c *Cluster) loadDataPartitionAndCheckResponse(dp *DataPartition) {
 	}()
 }
 
+//下线mp的某个副本
+//1、检查是否可以下线，下列情况不允许下线 a、该副本不在最新的host列表中  c、剩余存活的副本数小于大多数
+//2、选择新的可用metaNode
+//3、持久化新的host列表
+//4、生成异步删除副本任务
+//5、异步创建新的dataPartition
 func (c *Cluster) metaPartitionOffline(volName, nodeAddr string, partitionID uint64) (err error) {
 	var (
 		vol         *Vol

@@ -117,10 +117,13 @@ func (dp *DataPartition) stopRaft() {
 	return
 }
 
-// StartSchedule task when data partition start or restore
-// 1. Store the raft applied id to "APPLY" file per 5 minutes.
-// 2. Get the min applied id from all members and truncate raft log file per 10 minutes.
-// 3. Update partition status when apply failed and stop raft. Need manual intervention.
+/*
+ 启动data partition的同时，启动定时计划任务。
+ 1. 定时将raft applied id写入磁盘文件
+ 2. 定时收集raft成员的applied id
+ 3. 定时根据raft成员中最小的applied id将本地raft log进行截断删除。释放用来保存raft log的磁盘空间。
+ 4. 在raft log应用失败时，将partition状态更新未无效，并停止raft实例。
+*/
 func (dp *DataPartition) StartSchedule() {
 	var isRunning bool
 	getAppliedIDTimer := time.NewTimer(time.Second * 1)
@@ -204,6 +207,10 @@ func (dp *DataPartition) StartSchedule() {
 // Repair finished - Local's dp.partitionSize is same to primary's dp.partitionSize.
 // The repair task be done in statusUpdateScheduler->LaunchRepair.
 // This method just be called when create partitions.
+/*
+ 在创建新的data partition的时候，备份成员要先检查data partition已使用的空间于主成员是否一致。
+ 如果不一致则需要等待主成员将所有的extent文件都修复后，才启动raft。否则overwrite的时候会找到extent文件。
+*/
 func (dp *DataPartition) WaitingRepairedAndStartRaft() {
 	timer := time.NewTimer(0)
 	for {
@@ -231,7 +238,7 @@ func (dp *DataPartition) WaitingRepairedAndStartRaft() {
 				timer.Reset(5 * time.Second)
 				continue
 			}
-			if partitionSize != dp.extentStore.GetAllExtentSize() {
+			if partitionSize != dp.extentStore.GetStoreSize() {
 				log.LogErrorf("partitionID[%v] leader size[%v] local size[%v]", dp.partitionID, partitionSize, dp.partitionSize)
 				timer.Reset(5 * time.Second)
 				continue
@@ -251,6 +258,7 @@ func (dp *DataPartition) WaitingRepairedAndStartRaft() {
 	}
 }
 
+// 调用raft提供的接口，添加raft成员
 func (dp *DataPartition) confAddNode(req *proto.DataPartitionOfflineRequest, index uint64) (updated bool, err error) {
 	var (
 		heartbeatPort int
@@ -277,6 +285,7 @@ func (dp *DataPartition) confAddNode(req *proto.DataPartitionOfflineRequest, ind
 	return
 }
 
+// 调用raft提供的接口，删除raft成员
 func (dp *DataPartition) confRemoveNode(req *proto.DataPartitionOfflineRequest, index uint64) (updated bool, err error) {
 	if dp.raftPartition == nil {
 		err = fmt.Errorf("%s partitionID=%v applyid=%v", RaftIsNotStart, dp.partitionID, index)

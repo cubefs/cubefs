@@ -54,6 +54,17 @@ There are 2 types of repairs, one is normal extent repair, and the other is tiny
     4. send the DataPartitionRepairTask to all Replicates
     5. wait all dataParitionRepair Task do success
 */
+/*
+ 数据修复
+ 数据修复任务分为大文件的normal extent和小文件的tiny extent两种类型
+ 1. Normal extent修复流程
+    由partition成员中的主定时收集各个成员的extent信息，经过比较获得最大的extent大小。
+    定时检查本地的extent大小，如果小于最大Size，加入待修复列表，生成修复任务。
+ 2. Tiny extent修复流程
+    在新建partition时，将所有tiny extent加入到待修复extent列表中。由修复任务将所有的tiny extent创建出来；
+    由partition成员中的主定时收集各个成员的extent信息，经过比较获得最大的extent大小。
+    定时检查本地的extent大小，如果小于最大Size，加入待修复列表，生成修复任务。
+*/
 
 type DataPartitionRepairTask struct {
 	TaskType           uint8 //which type task
@@ -77,6 +88,10 @@ func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo) (task *DataPa
 }
 
 //extents repair check
+/*
+ 定时检查extent是否需要修复
+ 包括收集各成员extent大小并得到最大Size，生成修复任务，通知其他成员启动修复任务。
+*/
 func (dp *DataPartition) extentFileRepair(fixExtentsType uint8) {
 	startTime := time.Now().UnixNano()
 	log.LogInfof("action[extentFileRepair] partition(%v) start.",
@@ -134,6 +149,7 @@ func (dp *DataPartition) extentFileRepair(fixExtentsType uint8) {
 }
 
 // fill all replicasDataPartitionRepairTask
+// 获取extent信息，并申请修复任务所需空间等
 func (dp *DataPartition) fillDataPartitionRepairTask(replicas []*DataPartitionRepairTask, fixExtentMode uint8, needFixExtents []uint64) (err error) {
 	//get leaderStore all extentInfo
 	leaderExtents, err := dp.getLocalExtentInfo(fixExtentMode, needFixExtents)
@@ -162,9 +178,9 @@ func (dp *DataPartition) getLocalExtentInfo(fixExtentMode uint8, needFixExtents 
 	extentFiles = make([]*storage.ExtentInfo, 0)
 	// get local extent file metas
 	if fixExtentMode == proto.NormalExtentMode {
-		extentFiles, err = dp.extentStore.GetAllWatermark(storage.GetStableExtentFilter())
+		extentFiles, err = dp.extentStore.GetAllExtentWatermark(storage.GetStableExtentFilter())
 	} else {
-		extentFiles, err = dp.extentStore.GetAllWatermark(storage.GetStableTinyExtentFilter(needFixExtents))
+		extentFiles, err = dp.extentStore.GetAllExtentWatermark(storage.GetStableTinyExtentFilter(needFixExtents))
 	}
 	if err != nil {
 		err = errors.Annotatef(err, "getLocalExtentInfo extent DataPartition(%v) GetAllWaterMark", dp.partitionID)

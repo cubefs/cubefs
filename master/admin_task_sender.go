@@ -173,6 +173,8 @@ func (sender *AdminTaskSender) sendAdminTask(task *proto.AdminTask, conn net.Con
 	return nil
 }
 
+//同步创建data partition和meta partition,发送任务后，同步等待dataNode/metaNode的响应结果
+//如果同步创建失败，记录错误日志，然后返回
 func (sender *AdminTaskSender) syncCreatePartition(task *proto.AdminTask, conn net.Conn) (err error) {
 	log.LogInfof(fmt.Sprintf("action[syncCreatePartition] sender task:%v begin", task.ToString()))
 	packet, err := sender.buildPacket(task)

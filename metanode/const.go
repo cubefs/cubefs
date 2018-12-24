@@ -139,6 +139,7 @@ const (
 )
 
 const (
+	// 内存数据定时落盘间隔时间
 	storeTimeTicker = time.Minute * 5
 )
 

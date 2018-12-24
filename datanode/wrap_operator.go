@@ -12,6 +12,9 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+
+// 处理DataNode之间的消息交互
+
 package datanode
 
 import (
@@ -63,7 +66,7 @@ func (s *DataNode) OperatePacket(pkg *repl.Packet, c *net.TCPConn) (err error) {
 			}
 		}
 		pkg.Size = resultSize
-		tpObject.CalcTpMS()
+		tpObject.CalcTp()
 	}()
 	switch pkg.Opcode {
 	case proto.OpCreateExtent:
@@ -461,7 +464,7 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 		tpObject := exporter.RegistTp(exporterKey)
 		reply.ExtentOffset = offset
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data)
-		tpObject.CalcTpMS()
+		tpObject.CalcTp()
 		if err != nil {
 			reply.PackErrorBody(ActionStreamRead, err.Error())
 			if err = reply.WriteToConn(connect); err != nil {
@@ -500,12 +503,12 @@ func (s *DataNode) handleGetAllWatermark(pkg *repl.Packet) {
 	partition := pkg.Object.(*DataPartition)
 	store := partition.GetStore()
 	if pkg.ExtentMode == proto.NormalExtentMode {
-		fInfoList, err = store.GetAllWatermark(storage.GetStableExtentFilter())
+		fInfoList, err = store.GetAllExtentWatermark(storage.GetStableExtentFilter())
 	} else {
 		extents := make([]uint64, 0)
 		err = json.Unmarshal(pkg.Data, &extents)
 		if err == nil {
-			fInfoList, err = store.GetAllWatermark(storage.GetStableTinyExtentFilter(extents))
+			fInfoList, err = store.GetAllExtentWatermark(storage.GetStableTinyExtentFilter(extents))
 		}
 	}
 	if err != nil {
@@ -570,7 +573,7 @@ func (s *DataNode) handleGetAppliedID(pkg *repl.Packet) {
 
 func (s *DataNode) handleGetPartitionSize(pkg *repl.Packet) {
 	partition := pkg.Object.(*DataPartition)
-	usedSize := partition.extentStore.GetAllExtentSize()
+	usedSize := partition.extentStore.GetStoreSize()
 
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(usedSize))

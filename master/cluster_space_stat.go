@@ -36,6 +36,7 @@ func newVolSpaceStat(name string, total, used uint64, ratio string) *volSpaceSta
 	}
 }
 
+//检查整个集群中dataNode/metaNode/vol总空间，可用空间，每天增量空间
 func (c *Cluster) checkAvailSpace() {
 	c.checkDataNodeAvailSpace()
 	c.checkMetaNodeAvailSpace()

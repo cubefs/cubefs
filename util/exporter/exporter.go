@@ -40,14 +40,16 @@ func Init(cluster string, role string, cfg *config.Config) {
 
 	http.Handle(PromHandlerPattern, promhttp.Handler())
 
-	namespace = fmt.Sprintf("%s_%s", AppName, role)
+	namespace = AppName + "_" + role
 	addr := fmt.Sprintf(":%d", port)
 	go func() {
 		http.ListenAndServe(addr, nil)
 	}()
 
 	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
-	RegistConsul(consulAddr, AppName, role, cluster, port)
+	if len(consulAddr) > 0 {
+		RegistConsul(consulAddr, AppName, role, cluster, port)
+	}
 
 	m := RegistGauge("start_time")
 	m.Set(float64(time.Now().Unix() * 1000))
@@ -57,7 +59,7 @@ func Init(cluster string, role string, cfg *config.Config) {
 
 type TpMetric struct {
 	Start  time.Time
-	metric prometheus.Gauge
+	metricName string
 }
 
 func metricsName(name string) string {
@@ -71,91 +73,88 @@ func RegistGauge(name string) (o prometheus.Gauge) {
 		}
 	}()
 	name = metricsName(name)
-	m, ok := metricGroups.Load(name)
-	if ok {
+
+	newGauge := prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: name,
+			Help: name,
+		})
+	m, load := metricGroups.LoadOrStore(name, newGauge)
+	if load {
 		o = m.(prometheus.Gauge)
 		return
 	} else {
-		o = prometheus.NewGauge(
-			prometheus.GaugeOpts{
-				Name: name,
-				Help: name,
-			})
-		prometheus.MustRegister(o)
-
-		metricGroups.Store(name, o)
+		o = newGauge
+		if enabled {
+			prometheus.MustRegister(newGauge)
+		}
 	}
 
 	return
 }
 
-func RegistTp(name string) (o *TpMetric) {
+func RegistTp(name string) (tp *TpMetric) {
 	defer func() {
 		if err := recover(); err != nil {
 			log.LogErrorf("RegistTp panic,err[%v]", err)
 		}
 	}()
 
-	if ! enabled {
-		return
-	}
-
-	name = metricsName(name)
-
-	m, ok := metricGroups.Load(name)
-	if ok {
-		o = m.(*TpMetric)
-		o.Start = time.Now()
-		return
-	} else {
-		o = TpMetricPool.Get().(*TpMetric)
-		o.Start = time.Now()
-		o.metric = prometheus.NewGauge(
-			prometheus.GaugeOpts{
-				Name: name,
-				Help: name,
-			})
-		prometheus.MustRegister(o.metric)
-
-		metricGroups.Store(name, o)
-	}
+	tp = TpMetricPool.Get().(*TpMetric)
+	tp.metricName = metricsName(name)
+	tp.Start = time.Now()
 
 	return
 }
 
-func (o *TpMetric) CalcTpMS() {
-	if ! enabled {
+func (tp *TpMetric) CalcTp() {
+	if tp == nil {
 		return
 	}
 
 	defer func() {
 		if err := recover(); err != nil {
-			log.LogErrorf("RegistTp panic,err[%v]", err)
+			log.LogErrorf("CalcTp panic,err[%v]", err)
 		}
 	}()
 
-	o.metric.Set(float64(time.Since(o.Start).Nanoseconds() / 1e6))
+	go func() {
+		tpGauge := prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: tp.metricName,
+				Help: tp.metricName,
+			})
+
+		metric, load := metricGroups.LoadOrStore(tp.metricName, tpGauge)
+		if !load {
+			if enabled {
+				prometheus.MustRegister(metric.(prometheus.Gauge))
+			}
+		}
+
+		metric.(prometheus.Gauge).Set(float64(time.Since(tp.Start).Nanoseconds()))
+	} ()
 }
 
 func Alarm(name, detail string) {
-	if ! enabled {
-		return
-	}
-
 	name = metricsName(name + "_alarm")
-	o, ok := metricGroups.Load(name)
-	if ok {
-		m := o.(prometheus.Counter)
-		m.Add(1)
-	} else {
-		m := prometheus.NewCounter(
+
+	go func() {
+		newMetric := prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Name: name,
 				Help: name,
 			})
-		prometheus.MustRegister(m)
-		metricGroups.Store(name, m)
-	}
+		m, load := metricGroups.LoadOrStore(name, newMetric)
+		if load {
+			o := m.(prometheus.Counter)
+			o.Add(1)
+		} else {
+			if enabled {
+				prometheus.MustRegister(newMetric)
+			}
+		}
+	}()
 
 	return
 }
