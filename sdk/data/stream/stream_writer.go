@@ -353,7 +353,13 @@ func (sw *StreamWriter) traverse() (err error) {
 		eh := element.Value.(*ExtentHandler)
 
 		log.LogDebugf("StreamWriter traverse begin: eh(%v)", eh)
-		if eh.getStatus() >= ExtentStatusClosed && atomic.LoadInt32(&eh.inflight) <= 0 {
+		if eh.getStatus() >= ExtentStatusClosed {
+			// handler is beyond closed status, but there can still be
+			// unflushed packet.
+			eh.flushPacket()
+			if atomic.LoadInt32(&eh.inflight) > 0 {
+				continue
+			}
 			err = eh.appendExtentKey()
 			if err != nil {
 				return
@@ -361,13 +367,6 @@ func (sw *StreamWriter) traverse() (err error) {
 			sw.dirtylist.Remove(element)
 			eh.cleanup()
 		}
-		//		closed, err = eh.flush()
-		//		if err != nil {
-		//			return
-		//		}
-		//		if closed {
-		//			sw.dirtylist.Remove(element)
-		//		}
 		log.LogDebugf("StreamWriter traverse end: eh(%v)", eh)
 	}
 	return

@@ -134,7 +134,7 @@ func (eh *ExtentHandler) Write(data []byte, offset, size int) (ek *proto.ExtentK
 	for total < size {
 		if eh.packet == nil {
 			eh.packet = NewPacket(eh.inode, offset+total)
-			//log.LogDebugf("Handler Write: NewPacket, eh(%v) fileOffset(%v)", eh, offset+total)
+			//log.LogDebugf("ExtentHandler Write: NewPacket, eh(%v) packet(%v)", eh, eh.packet)
 		}
 		packsize := int(eh.packet.Size)
 		write = util.Min(size-total, util.BlockSize-packsize)
