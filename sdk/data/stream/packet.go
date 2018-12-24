@@ -20,6 +20,7 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/sdk/data/wrapper"
 	"github.com/tiglabs/containerfs/util"
+	"github.com/tiglabs/containerfs/util/log"
 	"hash/crc32"
 	"io"
 	"net"
@@ -235,7 +236,14 @@ func (p *Packet) ReadFromConnStream(c net.Conn, deadlineTime time.Duration) (err
 	if p.Size < 0 {
 		return
 	}
-	size := p.Size
+
+	size := int(p.Size)
+	//FIXME
+	if size > len(p.Data) {
+		log.LogErrorf("ReadFromConnStream: Size is larger than Data length, packet(%v) data len(%v)", p, len(p.Data))
+		size = len(p.Data)
+	}
+
 	_, err = io.ReadFull(c, p.Data[:size])
 	return
 }

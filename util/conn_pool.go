@@ -18,6 +18,7 @@ import (
 	"net"
 	"sync"
 	"time"
+	"strings"
 )
 
 type Object struct {
@@ -76,12 +77,21 @@ func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
 	return
 }
 
-func (cp *ConnectPool) ForceDestory(c *net.TCPConn, target string) {
+func (cp *ConnectPool) ForceDestory(c *net.TCPConn) {
 	if c == nil {
 		return
 	}
 	c.Close()
-	cp.ReleaseAllConnect(target)
+}
+
+func (cp *ConnectPool) ForceDestoryWholePool(c *net.TCPConn, target string, err error) {
+	if c == nil {
+		return
+	}
+	c.Close()
+	if err != nil && strings.Contains(err.Error(), "use of") {
+		cp.ReleaseAllConnect(target)
+	}
 }
 
 

@@ -67,9 +67,16 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 	return
 }
 
+func (p *Packet) forceDestoryWholeFollowersPool(err error) {
+	for i := 0; i < len(p.followerConns); i++ {
+		gConnPool.ForceDestoryWholePool(p.followerConns[i], p.followersAddrs[i], err)
+	}
+}
+
+
 func (p *Packet) forceDestoryFollowerConnects() {
 	for i := 0; i < len(p.followerConns); i++ {
-		gConnPool.ForceDestory(p.followerConns[i], p.followersAddrs[i])
+		gConnPool.ForceDestory(p.followerConns[i])
 	}
 }
 

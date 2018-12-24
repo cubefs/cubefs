@@ -116,12 +116,6 @@ func (s *DataNode) handleCreateExtent(pkg *repl.Packet) {
 		}
 	}()
 	partition := pkg.Object.(*DataPartition)
-	if partition.Status() == proto.ReadOnly {
-		err = storage.ErrorPartitionReadOnly
-		log.LogInfof("createFile %v ERROR %v ", pkg.GetUniqueLogId(), err)
-
-		return
-	}
 	if partition.Available() <= 0 {
 		err = storage.ErrSyscallNoSpace
 		return
@@ -351,10 +345,6 @@ func (s *DataNode) handleWrite(pkg *repl.Packet) {
 		}
 	}()
 	partition := pkg.Object.(*DataPartition)
-	if partition.Status() == proto.ReadOnly {
-		err = storage.ErrorPartitionReadOnly
-		return
-	}
 	if partition.Available() <= 0 {
 		err = storage.ErrSyscallNoSpace
 		return
@@ -382,15 +372,6 @@ func (s *DataNode) handleRandomWrite(pkg *repl.Packet) {
 		err = storage.ErrNotLeader
 		return
 	}
-	if partition.Status() == proto.ReadOnly {
-		err = storage.ErrorPartitionReadOnly
-		return
-	}
-	if partition.Available() <= 0 {
-		err = storage.ErrSyscallNoSpace
-		return
-	}
-
 	err = partition.RandomWriteSubmit(pkg)
 	if err != nil && strings.Contains(err.Error(), raft.ErrNotLeader.Error()) {
 		err = storage.ErrNotLeader
