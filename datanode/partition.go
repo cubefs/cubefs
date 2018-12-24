@@ -557,7 +557,7 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 }
 
 func (dp *DataPartition) GetAllExtentsMeta() (files []*storage.ExtentInfo, err error) {
-	files, err = dp.extentStore.GetAllWatermark(storage.GetStableExtentFilter())
+	files, err = dp.extentStore.GetAllExtentWatermark(storage.GetStableExtentFilter())
 	if err != nil {
 		return nil, err
 	}

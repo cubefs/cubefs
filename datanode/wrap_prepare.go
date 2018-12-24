@@ -84,7 +84,7 @@ func (s *DataNode) addExtentInfo(pkg *repl.Packet) error {
 			return err
 		}
 		pkg.ExtentID = extentID
-		pkg.ExtentOffset, err = store.GetWatermarkForWrite(extentID) // GetConnect offset of this extent file
+		pkg.ExtentOffset, err = store.TinyExtentWritePrepare(extentID) // GetConnect offset of this extent file
 		if err != nil {
 			return err
 		}

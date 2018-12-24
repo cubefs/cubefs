@@ -503,12 +503,12 @@ func (s *DataNode) handleGetAllWatermark(pkg *repl.Packet) {
 	partition := pkg.Object.(*DataPartition)
 	store := partition.GetStore()
 	if pkg.ExtentMode == proto.NormalExtentMode {
-		fInfoList, err = store.GetAllWatermark(storage.GetStableExtentFilter())
+		fInfoList, err = store.GetAllExtentWatermark(storage.GetStableExtentFilter())
 	} else {
 		extents := make([]uint64, 0)
 		err = json.Unmarshal(pkg.Data, &extents)
 		if err == nil {
-			fInfoList, err = store.GetAllWatermark(storage.GetStableTinyExtentFilter(extents))
+			fInfoList, err = store.GetAllExtentWatermark(storage.GetStableTinyExtentFilter(extents))
 		}
 	}
 	if err != nil {
@@ -573,7 +573,7 @@ func (s *DataNode) handleGetAppliedID(pkg *repl.Packet) {
 
 func (s *DataNode) handleGetPartitionSize(pkg *repl.Packet) {
 	partition := pkg.Object.(*DataPartition)
-	usedSize := partition.extentStore.GetAllExtentSize()
+	usedSize := partition.extentStore.GetStoreSize()
 
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(usedSize))
