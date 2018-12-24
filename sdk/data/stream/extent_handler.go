@@ -23,10 +23,6 @@ const (
 	ExtentStatusError
 )
 
-const (
-	MaxPacketErrorCount = 8
-)
-
 var (
 	GlobalHandlerID = uint64(0)
 )
@@ -317,16 +313,14 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 	eh.setClosed()
 	eh.setRecovery()
-	if packet.errCount >= MaxPacketErrorCount {
+	if err := eh.recoverPacket(packet); err != nil {
 		// discard packet
 		eh.setError()
 		proto.Buffers.Put(packet.Data)
-		log.LogErrorf("processReplyError discard packet: packet err count reaches max limit, eh(%v) packet(%v) err(%v)", eh, packet, errmsg)
+		log.LogErrorf("processReplyError discard packet: eh(%v) packet(%v) err(%v) errmsg(%v)", eh, packet, err, errmsg)
 	} else {
-		eh.recoverPacket(packet)
-		log.LogWarnf("processReplyError recover packet: from eh(%v) to recoverHandler(%v) packet(%v) err(%v)", eh, eh.recoverHandler, packet, errmsg)
+		log.LogWarnf("processReplyError recover packet: from eh(%v) to recoverHandler(%v) packet(%v) errmsg(%v)", eh, eh.recoverHandler, packet, errmsg)
 	}
-
 }
 
 func (eh *ExtentHandler) flush() (err error) {

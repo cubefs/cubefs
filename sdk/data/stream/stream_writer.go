@@ -31,6 +31,7 @@ import (
 const (
 	MaxSelectDataPartionForWrite = 32
 	MaxNewHandlerRetry           = 3
+	MaxPacketErrorCount          = 32
 )
 
 const (
