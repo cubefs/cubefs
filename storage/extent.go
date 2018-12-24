@@ -92,7 +92,6 @@ func NewExtentInCore(name string, extentID uint64) *Extent {
 	e.extentID = extentID
 	e.filePath = name
 	e.header = make([]byte, util.BlockHeaderSize)
-	e.closeC = make(chan bool)
 	return e
 }
 
@@ -103,7 +102,6 @@ func (e *Extent) Close() (err error) {
 	if err = e.file.Close(); err != nil {
 		return
 	}
-	close(e.closeC)
 	e.closed = true
 	return
 }

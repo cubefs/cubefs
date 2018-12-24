@@ -21,7 +21,7 @@ import (
 
 // ExtentMapItem stored Extent entity pointer and the element
 // pointer of the Extent entity in cache list.
-type extentMapItem struct {
+type ExtentMapItem struct {
 	ext *Extent
 	ele *list.Element
 }
@@ -32,7 +32,7 @@ type extentMapItem struct {
 // Details for LRU, this cache move the hot spot entity to back of link
 // table and release entity from front of link table.
 type ExtentCache struct {
-	extentMap   map[uint64]*extentMapItem
+	extentMap   map[uint64]*ExtentMapItem
 	extentList  *list.List
 	tinyExtents map[uint64]*Extent
 	tinyLock    sync.RWMutex
@@ -43,7 +43,7 @@ type ExtentCache struct {
 // NewExtentCache create and returns a new ExtentCache instance.
 func NewExtentCache(capacity int) *ExtentCache {
 	return &ExtentCache{
-		extentMap:   make(map[uint64]*extentMapItem),
+		extentMap:   make(map[uint64]*ExtentMapItem),
 		extentList:  list.New(),
 		capacity:    capacity,
 		tinyExtents: make(map[uint64]*Extent),
@@ -60,7 +60,7 @@ func (cache *ExtentCache) Put(extent *Extent) {
 	}
 	cache.lock.Lock()
 	defer cache.lock.Unlock()
-	item := &extentMapItem{
+	item := &ExtentMapItem{
 		ext: extent,
 		ele: cache.extentList.PushBack(extent),
 	}
@@ -79,7 +79,7 @@ func (cache *ExtentCache) Get(extentID uint64) (extent *Extent, ok bool) {
 	cache.lock.Lock()
 	defer cache.lock.Unlock()
 	var (
-		item *extentMapItem
+		item *ExtentMapItem
 	)
 	if item, ok = cache.extentMap[extentID]; ok {
 		if !IsTinyExtent(extentID) {
@@ -98,7 +98,7 @@ func (cache *ExtentCache) Del(extentID uint64) {
 	cache.lock.Lock()
 	defer cache.lock.Unlock()
 	var (
-		item *extentMapItem
+		item *ExtentMapItem
 		ok   bool
 	)
 	if item, ok = cache.extentMap[extentID]; ok {
@@ -124,7 +124,7 @@ func (cache *ExtentCache) Clear() {
 		cache.extentList.Remove(curr)
 	}
 	cache.extentList = list.New()
-	cache.extentMap = make(map[uint64]*extentMapItem)
+	cache.extentMap = make(map[uint64]*ExtentMapItem)
 }
 
 // Size returns number of extents stored in this cache.
