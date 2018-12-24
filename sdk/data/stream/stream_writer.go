@@ -32,6 +32,7 @@ const (
 	MaxSelectDataPartionForWrite = 32
 	MaxNewHandlerRetry           = 3
 	MaxPacketErrorCount          = 32
+	MaxDirtyListLen              = 8
 )
 
 const (
@@ -379,8 +380,12 @@ func (sw *StreamWriter) traverse() (err error) {
 func (sw *StreamWriter) closeOpenHandler() {
 	if sw.handler != nil {
 		sw.handler.setClosed()
-		//sw.handler.flushPacket()
-		sw.handler.flush()
+		if sw.dirtylist.Len() < MaxDirtyListLen {
+			sw.handler.flushPacket()
+		} else {
+			sw.handler.flush()
+		}
+
 		if !sw.dirty {
 			// in case current handler is not in the dirty list,
 			// and will not get cleaned up.
