@@ -45,6 +45,7 @@ func (f *poolFactory) getApply() *apply {
 	a := f.applyPool.Get().(*apply)
 	a.command = nil
 	a.future = nil
+	a.readIndexes = nil
 	return a
 }
 

@@ -152,7 +152,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:cb0b884014e47158853946f61bca8d1ce4c26bf426328b5ec888157550d0cf26"
+  digest = "1:fbf37930b6e47e46a85ecc0e12917929b28f70d22d2e68c60d77a52bf459a219"
   name = "github.com/tiglabs/raft"
   packages = [
     ".",
@@ -165,7 +165,7 @@
     "util/log",
   ]
   pruneopts = "UT"
-  revision = "022039062fce0bfa1f851b44c6be5d4f52eeb14c"
+  revision = "f5c1b8cada4f098bf933c2ac83bd434defcb7c59"
 
 [[projects]]
   branch = "master"
