@@ -238,9 +238,7 @@ func (p *Packet) ReadFromConnStream(c net.Conn, deadlineTime time.Duration) (err
 	}
 
 	size := int(p.Size)
-	//FIXME
 	if size > len(p.Data) {
-		log.LogErrorf("ReadFromConnStream: Size is larger than Data length, packet(%v) data len(%v)", p, len(p.Data))
 		size = len(p.Data)
 	}
 
