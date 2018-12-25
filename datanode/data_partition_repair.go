@@ -325,7 +325,8 @@ func (dp *DataPartition) generatorFixExtentSizeTasks(allMembers []*DataPartition
 		isFix := true
 		for index := 0; index < len(allMembers); index++ {
 			extentInfo, ok := allMembers[index].extents[extentID]
-			if !ok {
+			if !ok && storage.IsTinyExtent(extentID) {
+				noNeedFix = append(noNeedFix, extentID)
 				continue
 			}
 			if extentInfo.Size < maxFileInfo.Size {
