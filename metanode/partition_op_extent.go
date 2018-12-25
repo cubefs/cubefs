@@ -50,12 +50,14 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest,
 	)
 	if status == proto.OpOk {
 		resp := &proto.GetExtentsResponse{}
-		resp.Generation = ino.Generation
-		resp.Size = ino.Size
-		ino.Extents.Range(func(item BtreeItem) bool {
-			ext := item.(*proto.ExtentKey)
-			resp.Extents = append(resp.Extents, *ext)
-			return true
+		ino.DoFunc(func() {
+			resp.Generation = ino.Generation
+			resp.Size = ino.Size
+			ino.Extents.Range(func(item BtreeItem) bool {
+				ext := item.(*proto.ExtentKey)
+				resp.Extents = append(resp.Extents, *ext)
+				return true
+			})
 		})
 		reply, err = json.Marshal(resp)
 		if err != nil {

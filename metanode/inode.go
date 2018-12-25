@@ -404,6 +404,12 @@ func (i *Inode) SetAttr(valid, mode, uid, gid uint32) {
 	i.Unlock()
 }
 
+func (i *Inode) DoFunc(fn func()) {
+	i.RLock()
+	fn()
+	i.RUnlock()
+}
+
 func (i *Inode) CanOpen(mt int64) (authId uint64, ok bool) {
 	i.Lock()
 	defer i.Unlock()
