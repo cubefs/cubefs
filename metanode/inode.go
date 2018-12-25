@@ -120,7 +120,7 @@ func (i *Inode) Less(than BtreeItem) bool {
 	return ok && i.Inode < ino.Inode
 }
 
-func (i *Inode) MarshalJSON() ([]byte, error) {
+func (i *Inode) MarshalToJSON() ([]byte, error) {
 	i.RLock()
 	defer i.RUnlock()
 	return json.Marshal(i)

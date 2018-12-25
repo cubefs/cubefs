@@ -56,7 +56,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	// Get the all extents of the inode
 	http.HandleFunc("/getExtentsByInode", m.getExtentsByInodeHandler)
 	// Get all inodes of the partitionID
-	http.HandleFunc("/getAllInode", m.getAllInodeHandler)
+	http.HandleFunc("/getAllInodes", m.getAllInodeHandler)
 	// Get dentry information
 	http.HandleFunc("/getDentry", m.getDentryHandler)
 	// Return all file information of a directory
@@ -136,7 +136,8 @@ func (m *MetaNode) getAllInodeHandler(w http.ResponseWriter, r *http.Request) {
 	buff.Reset()
 	var val []byte
 	f := func(i BtreeItem) bool {
-		if val, err = json.Marshal(i); err != nil {
+		ino := i.(*Inode)
+		if val, err = ino.MarshalToJSON(); err != nil {
 			return false
 		}
 		if _, err = w.Write(val); err != nil {
@@ -190,7 +191,7 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	resp.Code = http.StatusSeeOther
 	resp.Msg = p.GetResultMesg()
 	if len(p.Data) > 0 {
-		resp.Data = *(*string)(unsafe.Pointer(&p.Data))
+		resp.Data = json.RawMessage(p.Data)
 	}
 	return
 }
