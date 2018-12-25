@@ -104,6 +104,7 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter,
 	msg["cursor"] = conf.Cursor
 	resp.Data = msg
 	resp.Code = http.StatusOK
+	resp.Msg = http.StatusText(http.StatusOK)
 }
 
 func (m *MetaNode) getAllInodeHandler(w http.ResponseWriter, r *http.Request) {
