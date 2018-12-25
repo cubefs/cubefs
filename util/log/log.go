@@ -81,7 +81,7 @@ type asyncWriter struct {
 	logSize     int64
 	rollingSize int64
 	buffer      *bytes.Buffer
-	flushTmp    []byte
+	flushTmp    *bytes.Buffer
 	flushC      chan bool
 	rotateDay   chan struct{}
 	mu          sync.Mutex
@@ -131,12 +131,7 @@ func (writer *asyncWriter) Flush() {
 
 func (writer *asyncWriter) flushToFile() {
 	writer.mu.Lock()
-	flushLength := writer.buffer.Len()
-	if writer.flushTmp == nil || cap(writer.flushTmp) < flushLength {
-		writer.flushTmp = make([]byte, flushLength)
-	}
-	copy(writer.flushTmp, writer.buffer.Bytes())
-	writer.buffer.Reset()
+	writer.buffer, writer.flushTmp = writer.flushTmp, writer.buffer
 	writer.mu.Unlock()
 	isRotateDay := false
 	select {
@@ -144,6 +139,7 @@ func (writer *asyncWriter) flushToFile() {
 		isRotateDay = true
 	default:
 	}
+	flushLength := writer.flushTmp.Len()
 	if (writer.logSize+int64(flushLength))/(1024*1024) >= writer.
 		rollingSize || isRotateDay {
 		oldFile := writer.fileName + "." + time.Now().Format(
@@ -159,7 +155,8 @@ func (writer *asyncWriter) flushToFile() {
 		}
 	}
 	writer.logSize += int64(flushLength)
-	writer.file.Write(writer.flushTmp[:flushLength])
+	writer.file.Write(writer.flushTmp.Bytes())
+	writer.flushTmp.Reset()
 }
 
 func (writer *asyncWriter) rename(newName string) error {
@@ -184,6 +181,7 @@ func newAsyncWriter(fileName string, rollingSize int64) (*asyncWriter, error) {
 		rollingSize: rollingSize,
 		logSize:     fInfo.Size(),
 		buffer:      bytes.NewBuffer(make([]byte, 0, WriterBufferInitSize)),
+		flushTmp:    bytes.NewBuffer(make([]byte, 0, WriterBufferInitSize)),
 		flushC:      make(chan bool, 1000),
 		rotateDay:   make(chan struct{}, 1),
 	}
