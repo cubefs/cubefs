@@ -23,6 +23,7 @@ import (
 
 func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
+	ino.AuthID = req.AuthID
 	ext := req.Extent
 	ino.Extents.Append(&ext)
 	val, err := ino.Marshal()

@@ -21,7 +21,6 @@ import (
 
 	"bytes"
 	"github.com/tiglabs/containerfs/proto"
-	"unsafe"
 )
 
 // APIResponse HTTP API Response struct
@@ -134,8 +133,18 @@ func (m *MetaNode) getAllInodeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	buff.Reset()
-	var val []byte
+	var (
+		val     []byte
+		delim   = []byte{',', '\n'}
+		isFirst = true
+	)
 	f := func(i BtreeItem) bool {
+		if !isFirst {
+			w.Write(delim)
+		}
+		if isFirst {
+			isFirst = false
+		}
 		ino := i.(*Inode)
 		if val, err = ino.MarshalToJSON(); err != nil {
 			return false
@@ -190,9 +199,7 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Code = http.StatusSeeOther
 	resp.Msg = p.GetResultMesg()
-	if len(p.Data) > 0 {
-		resp.Data = json.RawMessage(p.Data)
-	}
+	resp.Data = json.RawMessage(p.Data)
 	return
 }
 
@@ -232,9 +239,7 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
 	}
 	resp.Code = http.StatusSeeOther
 	resp.Msg = p.GetResultMesg()
-	if len(p.Data) > 0 {
-		resp.Data = *(*string)(unsafe.Pointer(&p.Data))
-	}
+	resp.Data = json.RawMessage(p.Data)
 	return
 }
 
@@ -279,9 +284,7 @@ func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 
 	resp.Code = http.StatusSeeOther
 	resp.Msg = p.GetResultMesg()
-	if len(p.Data) > 0 {
-		resp.Data = *(*string)(unsafe.Pointer(&p.Data))
-	}
+	resp.Data = json.RawMessage(p.Data)
 	return
 
 }
@@ -313,8 +316,18 @@ func (m *MetaNode) getAllDentryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	buff.Reset()
-	var val []byte
+	var (
+		val     []byte
+		delim   = []byte{',', '\n'}
+		isFirst = true
+	)
 	mp.GetDentryTree().Ascend(func(i BtreeItem) bool {
+		if !isFirst {
+			w.Write(delim)
+		}
+		if isFirst {
+			isFirst = false
+		}
 		val, err = json.Marshal(i)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -324,7 +337,6 @@ func (m *MetaNode) getAllDentryHandler(w http.ResponseWriter, r *http.Request) {
 		if _, err = w.Write(val); err != nil {
 			return false
 		}
-		val[0] = '\n'
 		if _, err = w.Write(val[:1]); err != nil {
 			return false
 		}
@@ -371,8 +383,6 @@ func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Code = http.StatusSeeOther
 	resp.Msg = p.GetResultMesg()
-	if len(p.Data) > 0 {
-		resp.Data = *(*string)(unsafe.Pointer(&p.Data))
-	}
+	resp.Data = json.RawMessage(p.Data)
 	return
 }
