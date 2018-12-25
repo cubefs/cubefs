@@ -413,26 +413,12 @@ func (i *Inode) DoFunc(fn func()) {
 func (i *Inode) CanOpen(mt int64) (authId uint64, ok bool) {
 	i.Lock()
 	defer i.Unlock()
-	if i.AuthID == 0 {
+	if i.AuthID == 0 || i.AuthTimeout < mt {
 		ok = true
 		i.AuthID = uint64(mt) + i.Inode
 		i.AuthTimeout = mt + defaultAuthTimeout
 		i.AccessTime = mt
 		authId = i.AuthID
-		return
-	}
-	switch {
-	case i.AuthTimeout < mt:
-		i.AuthID = uint64(mt) + i.Inode
-		authId = i.AuthID
-		fallthrough
-	case i.AuthTimeout == mt:
-		i.AuthTimeout = mt + defaultAuthTimeout
-		i.AccessTime = mt
-		ok = true
-	case i.AuthTimeout > mt:
-		fallthrough
-	default:
 		return
 	}
 	return

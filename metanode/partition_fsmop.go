@@ -74,7 +74,7 @@ func (mp *metaPartition) openFile(req *OpenReq) (resp *ResponseInode) {
 	}
 	resp.Status = proto.OpNotPerm
 	if proto.IsWriteFlag(req.Flag) {
-		if authID, ok := item.(*Inode).CanOpen(req.ATime); ok {
+		if authID, ok := ino2.CanOpen(req.ATime); ok {
 			resp.Status = proto.OpOk
 			resp.AuthID = authID
 		}

@@ -124,7 +124,7 @@ const (
 	defaultMetaDir = "metaDir"
 	defaultRaftDir = "raftDir"
 	// units: second
-	defaultAuthTimeout = 180
+	defaultAuthTimeout = 30
 )
 
 const (
