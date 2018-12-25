@@ -378,6 +378,11 @@ func (s *DataNode) handleRandomWrite(pkg *repl.Packet) {
 		return
 	}
 
+	if err == nil && pkg.ResultCode != proto.OpOk {
+	    err = storage.ErrorAgain
+	    return
+	}
+
 	if err == nil && pkg.Opcode == proto.OpRandomWrite && pkg.Size == util.BlockSize {
 		proto.Buffers.Put(pkg.Data)
 	}
