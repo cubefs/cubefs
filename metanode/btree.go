@@ -22,19 +22,24 @@ import (
 const defaultBTreeDegree = 32
 
 type (
+	// BtreeItem Type alias google btree Item
 	BtreeItem = btree.Item
 )
+
+// BTree wrapper google btree
 type BTree struct {
 	sync.RWMutex
 	tree *btree.BTree
 }
 
+// NewBtree create a new btree
 func NewBtree() *BTree {
 	return &BTree{
 		tree: btree.New(defaultBTreeDegree),
 	}
 }
 
+// Get Wrapper google btree get
 func (b *BTree) Get(key BtreeItem) (item BtreeItem) {
 	b.RLock()
 	item = b.tree.Get(key)
@@ -42,6 +47,7 @@ func (b *BTree) Get(key BtreeItem) (item BtreeItem) {
 	return
 }
 
+// Find get the key and execute func
 func (b *BTree) Find(key BtreeItem, fn func(i BtreeItem)) {
 	b.RLock()
 	item := b.tree.Get(key)
@@ -52,6 +58,7 @@ func (b *BTree) Find(key BtreeItem, fn func(i BtreeItem)) {
 	fn(item)
 }
 
+// Has wrapper google btree Has
 func (b *BTree) Has(key BtreeItem) (ok bool) {
 	b.RLock()
 	ok = b.tree.Has(key)
@@ -59,6 +66,7 @@ func (b *BTree) Has(key BtreeItem) (ok bool) {
 	return
 }
 
+// Delete wrapper google btree Delete
 func (b *BTree) Delete(key BtreeItem) (item BtreeItem) {
 	b.Lock()
 	item = b.tree.Delete(key)
@@ -66,6 +74,7 @@ func (b *BTree) Delete(key BtreeItem) (item BtreeItem) {
 	return
 }
 
+// ReplaceOrInsert wrapper google btree ReplaceOrInsert
 func (b *BTree) ReplaceOrInsert(key BtreeItem, replace bool) (item BtreeItem,
 	ok bool) {
 	b.Lock()
@@ -85,24 +94,28 @@ func (b *BTree) ReplaceOrInsert(key BtreeItem, replace bool) (item BtreeItem,
 	return
 }
 
+// Ascend wrapper google btree Ascend
 func (b *BTree) Ascend(fn func(i BtreeItem) bool) {
 	b.RLock()
 	b.tree.Ascend(fn)
 	b.RUnlock()
 }
 
+// AscendRange wrapper google btree AscendRange
 func (b *BTree) AscendRange(greaterOrEqual, lessThan BtreeItem, iterator func(i BtreeItem) bool) {
 	b.RLock()
 	b.tree.AscendRange(greaterOrEqual, lessThan, iterator)
 	b.RUnlock()
 }
 
+// AscendGreaterOrEqual wrapper google btree AscendGreaterOrEqual
 func (b *BTree) AscendGreaterOrEqual(pivot BtreeItem, iterator func(i BtreeItem) bool) {
 	b.RLock()
 	b.tree.AscendGreaterOrEqual(pivot, iterator)
 	b.RUnlock()
 }
 
+// GetTree clone btree
 func (b *BTree) GetTree() *BTree {
 	b.RLock()
 	t := b.tree.Clone()
@@ -112,12 +125,14 @@ func (b *BTree) GetTree() *BTree {
 	return nb
 }
 
+// Reset reset btree
 func (b *BTree) Reset() {
 	b.Lock()
 	b.tree.Clear(false)
 	b.Unlock()
 }
 
+// Len return the tree length
 func (b *BTree) Len() (size int) {
 	b.RLock()
 	size = b.tree.Len()
@@ -125,6 +140,7 @@ func (b *BTree) Len() (size int) {
 	return
 }
 
+// MaxItem return the max item
 func (b *BTree) MaxItem() BtreeItem {
 	b.RLock()
 	item := b.tree.Max()
