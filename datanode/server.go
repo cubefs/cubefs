@@ -215,6 +215,9 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		if err != nil {
 			return ErrBadConfFile
 		}
+		if restSize < util.GB*30 {
+			restSize = 30 * util.GB
+		}
 		wg.Add(1)
 		go func(wg *sync.WaitGroup, path string, restSize uint64, maxErrs int) {
 			defer wg.Done()
