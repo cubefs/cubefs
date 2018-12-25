@@ -68,6 +68,7 @@ func (mp *metaPartition) loadMeta() (err error) {
 	mp.config.Start = mConf.Start
 	mp.config.End = mConf.End
 	mp.config.Peers = mConf.Peers
+	mp.config.Cursor = mp.config.Start
 	return
 }
 
