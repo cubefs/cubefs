@@ -332,7 +332,6 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 	if err := eh.recoverPacket(packet); err != nil {
 		// discard packet
 		eh.setError()
-		proto.Buffers.Put(packet.Data)
 		log.LogErrorf("processReplyError discard packet: eh(%v) packet(%v) err(%v) errmsg(%v)", eh, packet, err, errmsg)
 	} else {
 		log.LogWarnf("processReplyError recover packet: from eh(%v) to recoverHandler(%v) packet(%v) errmsg(%v)", eh, eh.recoverHandler, packet, errmsg)
