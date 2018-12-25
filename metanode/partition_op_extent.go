@@ -73,6 +73,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq,
 	p *Packet) (err error) {
 	ino := NewInode(req.Inode, proto.Mode(os.ModePerm))
 	ino.Size = req.Size
+	ino.AuthID = req.AuthID
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PackErrorWithBody(proto.OpErr, nil)
