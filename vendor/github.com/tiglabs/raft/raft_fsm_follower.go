@@ -68,6 +68,21 @@ func stepFollower(r *raftFsm, m *proto.Message) {
 		proto.ReturnMessage(m)
 		return
 
+	case proto.ReqCheckQuorum:
+		// TODO: remove this
+		if logger.IsEnableDebug() {
+			logger.Debug("raft[%d] recv check quorum from %d, index=%d", r.id, m.From, m.Index)
+		}
+		r.electionElapsed = 0
+		r.leader = m.From
+		nmsg := proto.GetMessage()
+		nmsg.Type = proto.RespCheckQuorum
+		nmsg.Index = m.Index
+		nmsg.To = m.From
+		r.send(nmsg)
+		proto.ReturnMessage(m)
+		return
+
 	case proto.ReqMsgVote:
 		fpri, lpri := uint16(math.MaxUint16), uint16(0)
 		if pr, ok := r.replicas[m.From]; ok {
