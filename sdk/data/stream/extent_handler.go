@@ -134,7 +134,7 @@ func (eh *ExtentHandler) Write(data []byte, offset, size int) (ek *proto.ExtentK
 	for total < size {
 		if eh.packet == nil {
 			eh.packet = NewPacket(eh.inode, offset+total)
-			//log.LogDebugf("Handler Write: NewPacket, eh(%v) fileOffset(%v)", eh, offset+total)
+			//log.LogDebugf("ExtentHandler Write: NewPacket, eh(%v) packet(%v)", eh, eh.packet)
 		}
 		packsize := int(eh.packet.Size)
 		write = util.Min(size-total, util.BlockSize-packsize)
@@ -375,12 +375,19 @@ func (eh *ExtentHandler) waitForFlush() {
 		return
 	}
 
+	//	t := time.NewTicker(10 * time.Second)
+	//	defer t.Stop()
+
 	for {
 		select {
 		case <-eh.empty:
 			if atomic.LoadInt32(&eh.inflight) <= 0 {
 				return
 			}
+			//		case <-t.C:
+			//			if atomic.LoadInt32(&eh.inflight) <= 0 {
+			//				return
+			//			}
 		}
 	}
 }
@@ -416,19 +423,23 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 
 	//log.LogDebugf("ExtentHandler allocateExtent enter: eh(%v)", eh)
 
+	excludePartitions := make([]uint64, 0)
+
 	for i := 0; i < MaxSelectDataPartionForWrite; i++ {
-		if dp, err = gDataWrapper.GetWriteDataPartition(eh.sw.excludePartition); err != nil {
-			log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v)", eh)
+		if dp, err = gDataWrapper.GetWriteDataPartition(excludePartitions); err != nil {
+			log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v)", eh, excludePartitions)
 			continue
 		}
 
 		if extID, err = eh.createExtent(dp); err != nil {
-			log.LogWarnf("allocateExtent: failed to create extent, eh(%v) err(%v)", eh, err)
+			excludePartitions = append(excludePartitions, dp.PartitionID)
+			log.LogWarnf("allocateExtent: failed to create extent, eh(%v) err(%v) dp(%v)", eh, err, dp)
 			continue
 		}
 
 		if conn, err = eh.createConnection(dp); err != nil {
-			log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v)", eh, err)
+			excludePartitions = append(excludePartitions, dp.PartitionID)
+			log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v)", eh, err, dp)
 			continue
 		}
 

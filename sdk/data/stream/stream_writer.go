@@ -69,8 +69,6 @@ type StreamWriter struct {
 	inode  uint64
 	status int32
 
-	excludePartition []uint64
-
 	handler   *ExtentHandler   // current open handler
 	dirtylist *ExtentDirtyList // dirty handlers
 	dirty     bool             // whether current open handler is in the dirty list
@@ -85,7 +83,6 @@ func NewStreamWriter(stream *Streamer, inode uint64) *StreamWriter {
 	sw.inode = inode
 	sw.request = make(chan interface{}, 1000)
 	sw.done = make(chan struct{})
-	sw.excludePartition = make([]uint64, 0)
 	sw.dirtylist = NewExtentDirtyList()
 	go sw.server()
 	return sw
@@ -353,7 +350,13 @@ func (sw *StreamWriter) traverse() (err error) {
 		eh := element.Value.(*ExtentHandler)
 
 		log.LogDebugf("StreamWriter traverse begin: eh(%v)", eh)
-		if eh.getStatus() >= ExtentStatusClosed && atomic.LoadInt32(&eh.inflight) <= 0 {
+		if eh.getStatus() >= ExtentStatusClosed {
+			// handler is beyond closed status, but there can still be
+			// unflushed packet.
+			eh.flushPacket()
+			if atomic.LoadInt32(&eh.inflight) > 0 {
+				continue
+			}
 			err = eh.appendExtentKey()
 			if err != nil {
 				return
@@ -361,13 +364,6 @@ func (sw *StreamWriter) traverse() (err error) {
 			sw.dirtylist.Remove(element)
 			eh.cleanup()
 		}
-		//		closed, err = eh.flush()
-		//		if err != nil {
-		//			return
-		//		}
-		//		if closed {
-		//			sw.dirtylist.Remove(element)
-		//		}
 		log.LogDebugf("StreamWriter traverse end: eh(%v)", eh)
 	}
 	return
@@ -375,9 +371,9 @@ func (sw *StreamWriter) traverse() (err error) {
 
 func (sw *StreamWriter) closeOpenHandler() {
 	if sw.handler != nil {
+		sw.handler.setClosed()
 		//sw.handler.flushPacket()
 		sw.handler.flush()
-		sw.handler.setClosed()
 		if !sw.dirty {
 			// in case current handler is not in the dirty list,
 			// and will not get cleaned up.
