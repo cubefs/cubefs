@@ -375,12 +375,19 @@ func (eh *ExtentHandler) waitForFlush() {
 		return
 	}
 
+	//	t := time.NewTicker(10 * time.Second)
+	//	defer t.Stop()
+
 	for {
 		select {
 		case <-eh.empty:
 			if atomic.LoadInt32(&eh.inflight) <= 0 {
 				return
 			}
+			//		case <-t.C:
+			//			if atomic.LoadInt32(&eh.inflight) <= 0 {
+			//				return
+			//			}
 		}
 	}
 }

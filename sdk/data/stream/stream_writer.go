@@ -374,9 +374,9 @@ func (sw *StreamWriter) traverse() (err error) {
 
 func (sw *StreamWriter) closeOpenHandler() {
 	if sw.handler != nil {
+		sw.handler.setClosed()
 		//sw.handler.flushPacket()
 		sw.handler.flush()
-		sw.handler.setClosed()
 		if !sw.dirty {
 			// in case current handler is not in the dirty list,
 			// and will not get cleaned up.
