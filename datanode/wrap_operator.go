@@ -444,6 +444,7 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 		tpObject.CalcTp()
 		if err != nil {
 			reply.PackErrorBody(ActionStreamRead, err.Error())
+			pkg.PackErrorBody(ActionStreamRead, err.Error())
 			if err = reply.WriteToConn(connect); err != nil {
 				err = fmt.Errorf(reply.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
 					reply.StartT, err))
@@ -456,6 +457,7 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 		if err = reply.WriteToConn(connect); err != nil {
 			err = fmt.Errorf(reply.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
 				reply.StartT, err))
+			pkg.PackErrorBody(ActionStreamRead, err.Error())
 			log.LogErrorf(err.Error())
 			return
 		}
