@@ -297,8 +297,14 @@ func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err err
 func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 	var err error
 	if reply.IsErrPacket() {
-		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
-			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
+		if reply.Size <= uint32(len(reply.Data)) {
+			err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
+				reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
+		} else {
+			err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
+				reply.StartT, fmt.Errorf(string(reply.Data[:len(reply.Data)]))))
+		}
+
 		reply.forceDestoryWholeFollowersPool(err)
 		log.LogErrorf(ActionWriteToClient+" %v", err)
 	}
