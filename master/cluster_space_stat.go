@@ -36,6 +36,7 @@ func newVolSpaceStat(name string, total, used uint64, ratio string) *volSpaceSta
 	}
 }
 
+// check the total space, available space, and daily-used space in data nodes,  meta nodes, and volumes
 func (c *Cluster) checkAvailSpace() {
 	c.checkDataNodeAvailSpace()
 	c.checkMetaNodeAvailSpace()

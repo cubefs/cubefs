@@ -28,16 +28,13 @@ import (
 )
 
 const (
-	//MaxTaskLen 每次调度最多处理的任务数目
-	MaxTaskLen = 30
-	//TaskWorkerInterval 调度周期
+	// the maximum number of tasks that can be handled each time
+	MaxTaskNum = 30
+
 	TaskWorkerInterval = time.Microsecond * time.Duration(200)
 )
 
-// AdminTaskSender master send admin command to metaNode or dataNode by the sender,
-//because this command is cost very long time,so the sender just send command
-//and do nothing..then the metaNode or  dataNode send a new http request to reply command response
-//to master
+// AdminTaskSender sends administration commands to the metaNode or dataNode.
 type AdminTaskSender struct {
 	clusterID  string
 	targetAddr string
@@ -79,18 +76,18 @@ func (sender *AdminTaskSender) process() {
 }
 
 func (sender *AdminTaskSender) doDeleteTasks() {
-	delTasks := sender.getNeedDeleteTasks()
+	delTasks := sender.getToBeDeletedTasks()
 	for _, t := range delTasks {
 		sender.DelTask(t)
 	}
 	return
 }
 
-// the task which is time out will be delete
-func (sender *AdminTaskSender) getNeedDeleteTasks() (delTasks []*proto.AdminTask) {
+func (sender *AdminTaskSender) getToBeDeletedTasks() (delTasks []*proto.AdminTask) {
 	sender.RLock()
 	defer sender.RUnlock()
 	delTasks = make([]*proto.AdminTask, 0)
+
 	for _, task := range sender.TaskMap {
 		if task.CheckTaskTimeOut() {
 			log.LogWarnf(fmt.Sprintf("clusterID[%v] %v has no response util time out",
@@ -99,6 +96,8 @@ func (sender *AdminTaskSender) getNeedDeleteTasks() (delTasks []*proto.AdminTask
 				Warn(sender.clusterID, fmt.Sprintf("clusterID[%v] %v has no response util time out",
 					sender.clusterID, task.ID))
 			}
+
+			// timed-out tasks will be deleted
 			delTasks = append(delTasks, task)
 		}
 	}
@@ -106,7 +105,7 @@ func (sender *AdminTaskSender) getNeedDeleteTasks() (delTasks []*proto.AdminTask
 }
 
 func (sender *AdminTaskSender) doSendTasks() {
-	tasks := sender.getNeedDealTask()
+	tasks := sender.getToDoTasks()
 	if len(tasks) == 0 {
 		time.Sleep(time.Second)
 		return
@@ -140,7 +139,6 @@ func (sender *AdminTaskSender) updateTaskInfo(task *proto.AdminTask, connSuccess
 		task.SendTime = time.Now().Unix()
 		task.Status = proto.TaskRunning
 	}
-
 }
 
 func (sender *AdminTaskSender) buildPacket(task *proto.AdminTask) (packet *proto.Packet, err error) {
@@ -195,7 +193,7 @@ func (sender *AdminTaskSender) syncCreatePartition(task *proto.AdminTask, conn n
 	return nil
 }
 
-//DelTask 删除任务
+// DelTask deletes the to-be-deleted tasks.
 func (sender *AdminTaskSender) DelTask(t *proto.AdminTask) {
 	sender.Lock()
 	defer sender.Unlock()
@@ -209,8 +207,8 @@ func (sender *AdminTaskSender) DelTask(t *proto.AdminTask) {
 	delete(sender.TaskMap, t.ID)
 }
 
-//PutTask 增加任务
-func (sender *AdminTaskSender) PutTask(t *proto.AdminTask) {
+// AddTask adds a new task to the task map.
+func (sender *AdminTaskSender) AddTask(t *proto.AdminTask) {
 	sender.Lock()
 	defer sender.Unlock()
 	_, ok := sender.TaskMap[t.ID]
@@ -219,12 +217,12 @@ func (sender *AdminTaskSender) PutTask(t *proto.AdminTask) {
 	}
 }
 
-func (sender *AdminTaskSender) getNeedDealTask() (tasks []*proto.AdminTask) {
+func (sender *AdminTaskSender) getToDoTasks() (tasks []*proto.AdminTask) {
 	sender.RLock()
 	defer sender.RUnlock()
 	tasks = make([]*proto.AdminTask, 0)
 
-	//send heartbeat task first
+	// send heartbeat task first
 	for _, t := range sender.TaskMap {
 		if t.IsHeartbeatTask() && t.CheckTaskNeedSend() == true {
 			tasks = append(tasks, t)
@@ -232,7 +230,7 @@ func (sender *AdminTaskSender) getNeedDealTask() (tasks []*proto.AdminTask) {
 			t.SendCount++
 		}
 	}
-	//send urgent task immediately
+	// send urgent task immediately
 	for _, t := range sender.TaskMap {
 		if t.IsUrgentTask() && t.CheckTaskNeedSend() == true {
 			tasks = append(tasks, t)
@@ -244,7 +242,7 @@ func (sender *AdminTaskSender) getNeedDealTask() (tasks []*proto.AdminTask) {
 		if !task.IsHeartbeatTask() && !task.IsUrgentTask() && task.CheckTaskNeedSend() {
 			tasks = append(tasks, task)
 		}
-		if len(tasks) > MaxTaskLen {
+		if len(tasks) > MaxTaskNum {
 			break
 		}
 	}

@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ type raftCmdApplyHandler func(cmd *RaftCmdData) (err error)
 
 type raftApplySnapshotHandler func()
 
-//MetadataFsm 元数据状态机
+// MetadataFsm represents the finite state machine of a metadata partition
 type MetadataFsm struct {
 	store               *raftstore.RocksDBStore
 	applied             uint64
@@ -91,7 +91,7 @@ func (mf *MetadataFsm) restoreApplied() {
 	mf.applied = applied
 }
 
-//Apply 实现raft.StateMachine接口
+// Apply implements the interface of raft.StateMachine
 func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, err error) {
 	cmd := new(RaftCmdData)
 	if err = cmd.Unmarshal(command); err != nil {
@@ -119,7 +119,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 	return
 }
 
-//ApplyMemberChange 实现raft.StateMachine接口
+// ApplyMemberChange implements the interface of raft.StateMachine
 func (mf *MetadataFsm) ApplyMemberChange(confChange *proto.ConfChange, index uint64) (interface{}, error) {
 	var err error
 	if mf.peerChangeHandler != nil {
@@ -128,7 +128,7 @@ func (mf *MetadataFsm) ApplyMemberChange(confChange *proto.ConfChange, index uin
 	return nil, err
 }
 
-//Snapshot 实现raft.StateMachine接口
+// Snapshot implements the interface of raft.StateMachine
 func (mf *MetadataFsm) Snapshot() (proto.Snapshot, error) {
 	snapshot := mf.store.RocksDBSnapshot()
 	iterator := mf.store.Iterator(snapshot)
@@ -141,7 +141,7 @@ func (mf *MetadataFsm) Snapshot() (proto.Snapshot, error) {
 	}, nil
 }
 
-//ApplySnapshot 实现raft.StateMachine接口
+// ApplySnapshot implements the interface of raft.StateMachine
 func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIterator) (err error) {
 	log.LogInfof(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
 	var data []byte
@@ -172,19 +172,19 @@ errDeal:
 	return err
 }
 
-//HandleFatalEvent 实现raft.StateMachine接口
+// HandleFatalEvent implements the interface of raft.StateMachine
 func (mf *MetadataFsm) HandleFatalEvent(err *raft.FatalError) {
 	panic(err.Err)
 }
 
-//HandleLeaderChange 实现raft.StateMachine接口
+// HandleLeaderChange implements the interface of raft.StateMachine
 func (mf *MetadataFsm) HandleLeaderChange(leader uint64) {
 	if mf.leaderChangeHandler != nil {
 		go mf.leaderChangeHandler(leader)
 	}
 }
 
-//Put 实现raftstore.Store接口
+// Put implements the interface of raft.StateMachine
 func (mf *MetadataFsm) Put(key, val interface{}) (interface{}, error) {
 	return mf.store.Put(key, val)
 }
@@ -193,12 +193,12 @@ func (mf *MetadataFsm) batchPut(cmdMap map[string][]byte) (err error) {
 	return mf.store.BatchPut(cmdMap)
 }
 
-//Get 实现raftstore.Store接口
+// Get implements the interface of raft.StateMachine
 func (mf *MetadataFsm) Get(key interface{}) (interface{}, error) {
 	return mf.store.Get(key)
 }
 
-//Del 实现raftstore.Store接口
+// Del implements the interface of raft.StateMachine
 func (mf *MetadataFsm) Del(key interface{}) (interface{}, error) {
 	return mf.store.Del(key)
 }

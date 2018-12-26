@@ -20,8 +20,9 @@ import (
 	"github.com/juju/errors"
 )
 
+// TODO Rephrase all the messages
 var (
-	errNoAvailDataPartition                = errors.New("no avail data partition")
+	errNoAvailDataPartition                = errors.New("no available data partition")
 	errDisOrderArray                       = errors.New("dis order array is nil")
 	errDataReplicaExcess                   = errors.New("data replica Excess error")
 	errDataReplicaLack                     = errors.New("data replica Lack error")
@@ -37,13 +38,15 @@ var (
 	errMetaReplicaExcess                   = errors.New("meta partition Replication Excess error")
 	errNoHaveMajorityReplica               = errors.New("no have majority replica error")
 	errNoLeader                            = errors.New("no leader")
-	errBadConfFile                         = errors.New("BadConfFile")
+	errBadConfFile                         = errors.New("bad configuration file")
 )
 
+// TODO para -> args
 func paraNotFound(name string) (err error) {
 	return errors.Errorf("parameter %v not found", name)
 }
 
+// TODO para -> args
 func paraUnmatch(name string) (err error) {
 	return errors.Errorf("parameter %v not match", name)
 }
@@ -84,7 +87,7 @@ func volNotFound(name string) (err error) {
 	return elementNotFound(fmt.Sprintf("vol[%v]", name))
 }
 
-func hasExist(name string) (err error) {
-	err = errors.Errorf("%v has exist", name)
+func exists(name string) (err error) {
+	err = errors.Errorf("%v exists", name)
 	return
 }

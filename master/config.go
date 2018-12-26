@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -56,7 +56,7 @@ const (
 	defaultMetaPartitionCountOnEachNode         = 100
 )
 
-//AddrDatabase ...
+// AddrDatabase is a map that stores the address of a given host (e.g., the leader)
 var AddrDatabase = make(map[uint64]string)
 
 type clusterConfig struct {

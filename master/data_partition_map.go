@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,16 +25,16 @@ import (
 	"time"
 )
 
-//DataPartitionMap dp集合
+// DataPartitionMap stores all the data partitions
 type DataPartitionMap struct {
 	sync.RWMutex
 	dataPartitionMap           map[uint64]*DataPartition
 	dataPartitionCount         int
-	readWriteDataPartitions    int
-	lastCheckIndex             uint64
-	lastReleaseIndex           uint64
+	readWriteDataPartitions    int  // TODO what are readWriteDataPartitions
+	lastCheckIndex             uint64  // TODO what is lastCheckIndex
+	lastReleaseIndex           uint64  // TODO what is lastReleaseIndex
 	dataPartitions             []*DataPartition
-	cacheDataPartitionResponse []byte
+	cacheDataPartitionResponse []byte  // TODO what is cacheDataPartitionResponse
 	volName                    string
 }
 
@@ -47,7 +47,7 @@ func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
 	return
 }
 
-func (dpMap *DataPartitionMap) getDataPartition(ID uint64) (*DataPartition, error) {
+func (dpMap *DataPartitionMap) get(ID uint64) (*DataPartition, error) {
 	dpMap.RLock()
 	defer dpMap.RUnlock()
 	if v, ok := dpMap.dataPartitionMap[ID]; ok {
@@ -56,7 +56,7 @@ func (dpMap *DataPartitionMap) getDataPartition(ID uint64) (*DataPartition, erro
 	return nil, errors.Annotatef(dataPartitionNotFound(ID), "[%v] not found in [%v]", ID, dpMap.volName)
 }
 
-func (dpMap *DataPartitionMap) putDataPartition(dp *DataPartition) {
+func (dpMap *DataPartitionMap) put(dp *DataPartition) {
 	dpMap.Lock()
 	defer dpMap.Unlock()
 	_, ok := dpMap.dataPartitionMap[dp.PartitionID]
@@ -65,7 +65,8 @@ func (dpMap *DataPartitionMap) putDataPartition(dp *DataPartition) {
 		dpMap.dataPartitionMap[dp.PartitionID] = dp
 		return
 	}
-	//use dp replace old partition in the map and array
+
+	// replace the old partition with dp in the map and array
 	dpMap.dataPartitionMap[dp.PartitionID] = dp
 	dataPartitions := make([]*DataPartition, 0)
 	for index, partition := range dpMap.dataPartitions {
@@ -85,6 +86,8 @@ func (dpMap *DataPartitionMap) setReadWriteDataPartitions(readWrites int, cluste
 	dpMap.readWriteDataPartitions = readWrites
 }
 
+
+// TODO what is updateDataPartitionResponseCache?
 func (dpMap *DataPartitionMap) updateDataPartitionResponseCache(needUpdate bool, minPartitionID uint64) (body []byte, err error) {
 	dpMap.Lock()
 	defer dpMap.Unlock()
@@ -206,7 +209,7 @@ func (dpMap *DataPartitionMap) getTotalUsedSpace() (totalUsed uint64) {
 	dpMap.RLock()
 	defer dpMap.RUnlock()
 	for _, dp := range dpMap.dataPartitions {
-		totalUsed = totalUsed + dp.getMaxUsedSize()
+		totalUsed = totalUsed + dp.getMaxUsedSpace()
 	}
 	return
 }

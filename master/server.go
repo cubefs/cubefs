@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import (
 	"sync"
 )
 
-//config keys
+// configuration keys
 const (
 	ClusterName       = "clusterName"
 	ID                = "id"
@@ -41,7 +41,7 @@ const (
 	DefaultRetainLogs = 20000
 )
 
-//Server 集群管理server
+// Server represents the server in a cluster
 type Server struct {
 	id           uint64
 	clusterName  string
@@ -61,12 +61,12 @@ type Server struct {
 	reverseProxy *httputil.ReverseProxy
 }
 
-//NewServer 创建server
+// NewServer creates a new server
 func NewServer() *Server {
 	return &Server{}
 }
 
-//Start 启动server
+// Start starts a server
 func (m *Server) Start(cfg *config.Config) (err error) {
 	m.config = newClusterConfig()
 	m.leaderInfo = &LeaderInfo{}
@@ -91,12 +91,12 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	return nil
 }
 
-//Shutdown 关闭server
+// Shutdown closes the server
 func (m *Server) Shutdown() {
 	m.wg.Done()
 }
 
-//Sync 等待server运行结束
+// Sync waits for the execution termination of the server
 func (m *Server) Sync() {
 	m.wg.Wait()
 }

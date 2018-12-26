@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import (
 	"io"
 )
 
-//MetadataSnapshot 元数据快照
+// MetadataSnapshot represents the snapshot of a meta partition
 type MetadataSnapshot struct {
 	fsm      *MetadataFsm
 	applied  uint64
@@ -28,17 +28,17 @@ type MetadataSnapshot struct {
 	iterator *gorocksdb.Iterator
 }
 
-//ApplyIndex 实现Snapshot接口
+// ApplyIndex implements the Snapshot interface
 func (ms *MetadataSnapshot) ApplyIndex() uint64 {
 	return ms.applied
 }
 
-//Close 实现Snapshot接口
+// Close implements the Snapshot interface
 func (ms *MetadataSnapshot) Close() {
 	ms.fsm.store.ReleaseSnapshot(ms.snapshot)
 }
 
-//Next 实现SnapIterator接口
+// Next implements the Snapshot interface
 func (ms *MetadataSnapshot) Next() (data []byte, err error) {
 	md := new(RaftCmdData)
 	if ms.iterator.Valid() {

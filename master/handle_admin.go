@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import (
 	"strings"
 )
 
-// ClusterView 集群视图
+// ClusterView provides the view of the cluster
 type ClusterView struct {
 	Name               string
 	LeaderAddr         string
@@ -45,7 +45,7 @@ type ClusterView struct {
 	DataNodes          []DataNodeView
 }
 
-//VolStatView vol统计视图
+// VolStatView provides the view of the volume
 type VolStatView struct {
 	Name      string
 	Total     uint64 `json:"TotalGB"`
@@ -53,21 +53,21 @@ type VolStatView struct {
 	Increased uint64 `json:"IncreasedGB"`
 }
 
-//DataNodeView 数据节点视图
+// DataNodeView provides the view of the data node
 type DataNodeView struct {
 	Addr   string
 	Status bool
 	ID     uint64
 }
 
-//MetaNodeView 元数据节点视图
+// MetaNodeView provides the view of the meta node
 type MetaNodeView struct {
 	ID     uint64
 	Addr   string
 	Status bool
 }
 
-//TopologyView 集群拓扑视图
+// TopologyView provides the view of the topology view of the cluster
 type TopologyView struct {
 	DataNodes []DataNodeView
 	MetaNodes []MetaNodeView
@@ -305,7 +305,7 @@ func (m *Server) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 		goto errDeal
 	}
 
-	m.cluster.loadDataPartitionAndCheckResponse(dp)
+	m.cluster.loadDataPartition(dp)
 	msg = fmt.Sprintf(adminLoadDataPartition+"partitionID :%v  load data partition success", partitionID)
 	m.sendOkReply(w, r, msg)
 	return
@@ -315,6 +315,8 @@ errDeal:
 	return
 }
 
+
+// TODO take the data partition off?
 func (m *Server) dataPartitionOffline(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName     string
@@ -470,6 +472,7 @@ errDeal:
 	return
 }
 
+// TODO take the data node off?
 func (m *Server) dataNodeOffline(w http.ResponseWriter, r *http.Request) {
 	var (
 		node        *DataNode
@@ -497,6 +500,8 @@ errDeal:
 	return
 }
 
+
+// TODO take the disk off?
 func (m *Server) diskOffline(w http.ResponseWriter, r *http.Request) {
 	var (
 		node                  *DataNode
@@ -533,6 +538,7 @@ errDeal:
 	return
 }
 
+// TODO the response of a data node task?
 func (m *Server) dataNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
 	var (
 		dataNode *DataNode
@@ -583,11 +589,13 @@ errDeal:
 	return
 }
 
+// TODO find a better name for parseAddMetaNodePara
 func parseAddMetaNodePara(r *http.Request) (nodeAddr string, err error) {
 	r.ParseForm()
 	return checkNodeAddr(r)
 }
 
+// TODO find a better name for parseAddDataNodePara
 func parseAddDataNodePara(r *http.Request) (nodeAddr string, err error) {
 	r.ParseForm()
 	return checkNodeAddr(r)
@@ -618,6 +626,7 @@ errDeal:
 	return
 }
 
+// TODO take meta partition off?
 func (m *Server) metaPartitionOffline(w http.ResponseWriter, r *http.Request) {
 	var (
 		partitionID       uint64
@@ -672,6 +681,7 @@ errDeal:
 	return
 }
 
+// TODO take meta node off?
 func (m *Server) metaNodeOffline(w http.ResponseWriter, r *http.Request) {
 	var (
 		metaNode    *MetaNode
@@ -726,7 +736,7 @@ errDeal:
 	return
 }
 
-func (m *Server) handleAddRaftNode(w http.ResponseWriter, r *http.Request) {
+func (m *Server) addRaftNode(w http.ResponseWriter, r *http.Request) {
 	var msg string
 	id, addr, err := parseRaftNodePara(r)
 	if err != nil {
@@ -745,7 +755,7 @@ errDeal:
 	return
 }
 
-func (m *Server) handleRemoveRaftNode(w http.ResponseWriter, r *http.Request) {
+func (m *Server) removeRaftNode(w http.ResponseWriter, r *http.Request) {
 	var msg string
 	id, addr, err := parseRaftNodePara(r)
 	if err != nil {
@@ -764,6 +774,7 @@ errDeal:
 	return
 }
 
+// TODO find a better name for parseRaftNodePara
 func parseRaftNodePara(r *http.Request) (id uint64, host string, err error) {
 	r.ParseForm()
 	var idStr string
@@ -787,21 +798,25 @@ func parseRaftNodePara(r *http.Request) (id uint64, host string, err error) {
 	return
 }
 
+// TODO find a better name for parseGetMetaNodePara
 func parseGetMetaNodePara(r *http.Request) (nodeAddr string, err error) {
 	r.ParseForm()
 	return checkNodeAddr(r)
 }
 
+// TODO find a better name for parseGetDataNodePara
 func parseGetDataNodePara(r *http.Request) (nodeAddr string, err error) {
 	r.ParseForm()
 	return checkNodeAddr(r)
 }
 
+// TODO find a better name for parseDataNodeOfflinePara
 func parseDataNodeOfflinePara(r *http.Request) (nodeAddr string, err error) {
 	r.ParseForm()
 	return checkNodeAddr(r)
 }
 
+// TODO find a better name for parseDiskOfflinePara
 func parseDiskOfflinePara(r *http.Request) (nodeAddr, diskPath string, err error) {
 	r.ParseForm()
 	nodeAddr, err = checkNodeAddr(r)
@@ -826,11 +841,13 @@ func parseTaskResponse(r *http.Request) (tr *proto.AdminTask, err error) {
 	return
 }
 
+// TODO find a better name for parseDeleteVolPara
 func parseDeleteVolPara(r *http.Request) (name string, err error) {
 	r.ParseForm()
 	return checkVolPara(r)
 }
 
+// TODO find a better name for parseUpdateVolPara
 func parseUpdateVolPara(r *http.Request) (name string, capacity int, err error) {
 	r.ParseForm()
 	if name, err = checkVolPara(r); err != nil {
@@ -846,6 +863,7 @@ func parseUpdateVolPara(r *http.Request) (name string, capacity int, err error) 
 	return
 }
 
+// TODO
 func parseCreateVolPara(r *http.Request) (name string, replicaNum int, randomWrite bool, size, capacity int, err error) {
 	r.ParseForm()
 	var randomWriteValue string
@@ -884,6 +902,7 @@ func parseCreateVolPara(r *http.Request) (name string, replicaNum int, randomWri
 	return
 }
 
+// TODO
 func parseCreateDataPartitionPara(r *http.Request) (count int, name string, err error) {
 	r.ParseForm()
 	if countStr := r.FormValue(paraCount); countStr == "" {

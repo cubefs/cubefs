@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ const (
 	tinyExtentStartID = 5000000
 )
 
-/*check File: recover File,if File lack or timeOut report or crc bad*/
+// recover a file if it has bad CRC or it has been timed out before
 func (partition *DataPartition) checkFile(clusterID string) {
 	partition.Lock()
 	defer partition.Unlock()

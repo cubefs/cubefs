@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 	switch len(liveReplicas) {
 	case (int)(partition.ReplicaNum):
 		partition.Status = proto.ReadOnly
-		if partition.checkReplicaStatusOnLiveNode(liveReplicas) == true && partition.isReplicaSizeAlign() {
+		if partition.checkReplicaStatusOnLiveNode(liveReplicas) == true && partition.isReplicaSizeAligned() {
 			partition.Status = proto.ReadWrite
 		}
 	default:
@@ -196,14 +196,18 @@ func (partition *DataPartition) deleteExcessReplication() (excessAddr string, ta
 	return
 }
 
+// TODO what does addLackReplication mean? what is lackAddr
 /*add data partition lack replication,range all RocksDBHost if Hosts not in Replicas,
 then generator a task to OpRecoverCreateDataPartition to a new Node*/
 func (partition *DataPartition) addLackReplication(dataPartitionSize uint64) (lackAddr string, err error) {
 	partition.Lock()
 	defer partition.Unlock()
-	if time.Now().Unix()-partition.createTime < 120 {
+
+	// TODO why 120 here?
+	if time.Now().Unix() - partition.createTime < 120 {
 		return
 	}
+
 	for _, addr := range partition.PersistenceHosts {
 		if _, ok := partition.isInReplicas(addr); !ok {
 			log.LogError(fmt.Sprintf("action[addLackReplication],partitionID:%v lack replication:%v",

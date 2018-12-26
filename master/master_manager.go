@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import (
 	"strings"
 )
 
-// LeaderInfo leader信息
+// LeaderInfo represents the leader's information
 type LeaderInfo struct {
 	addr string //host:port
 }
@@ -34,7 +34,8 @@ func (m *Server) handleLeaderChange(leader uint64) {
 	m.leaderInfo.addr = AddrDatabase[leader]
 	log.LogWarnf("action[handleLeaderChange] change leader to [%v] ", m.leaderInfo.addr)
 	m.reverseProxy = m.newReverseProxy()
-	//Once switched to the master, the checkHeartbeat is executed
+
+	// once switching to the master, check the Heartbeat
 	if m.id == leader {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
@@ -78,7 +79,7 @@ func (m *Server) restoreIDAlloc() {
 	m.cluster.idAlloc.restore()
 }
 
-// load stored meta data to memory
+// load stored metadata into the memory
 func (m *Server) loadMetadata() {
 	log.LogInfo("action[loadMetadata] begin")
 	m.restoreIDAlloc()

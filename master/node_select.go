@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,7 +23,8 @@ import (
 	"time"
 )
 
-//NodeTab 定义带权重的node
+// TODO why it is called NodeTab?
+// NodeTab 定义带权重的node
 type NodeTab struct {
 	Carry  float64
 	Weight float64
@@ -31,23 +32,27 @@ type NodeTab struct {
 	ID     uint64
 }
 
-//Node 带权重的node需要实现此接口
+// TODO why define such interface?
+// Node defines an interface that needs to be implemented by NodeTab
 type Node interface {
 	SetCarry(carry float64)
 	SelectNodeForWrite()
 }
 
-//NodeTabArrSorterByCarry 定义带权重的node数组
+// TODO find a better name for Nodetab
+// NodeTabArrSorterByCarry defines an array sorted by carry
 type NodeTabArrSorterByCarry []*NodeTab
 
 func (nodeTabs NodeTabArrSorterByCarry) Len() int {
 	return len(nodeTabs)
 }
 
+// TODO remove unused functions
 func (nodeTabs NodeTabArrSorterByCarry) Less(i, j int) bool {
 	return nodeTabs[i].Carry > nodeTabs[j].Carry
 }
 
+// TODO remove unused functions
 func (nodeTabs NodeTabArrSorterByCarry) Swap(i, j int) {
 	nodeTabs[i], nodeTabs[j] = nodeTabs[j], nodeTabs[i]
 }
@@ -117,6 +122,7 @@ func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) 
 	return
 }
 
+// TODO find a better name for getAvailCarryMetaNodeTab
 func (ns *nodeSet) getAvailCarryMetaNodeTab(maxTotal uint64, excludeHosts []string) (nodeTabs NodeTabArrSorterByCarry, availCount int) {
 	nodeTabs = make(NodeTabArrSorterByCarry, 0)
 	ns.metaNodes.Range(func(key, value interface{}) bool {
@@ -146,6 +152,7 @@ func (ns *nodeSet) getAvailCarryMetaNodeTab(maxTotal uint64, excludeHosts []stri
 	return
 }
 
+// TODO what is disOrderArray? disorder array?
 func (ns *nodeSet) disOrderArray(oldHosts []string) (newHosts []string, err error) {
 	var (
 		newCurrPos int

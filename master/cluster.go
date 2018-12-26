@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import (
 	"time"
 )
 
-//Cluster 集群管理
+// Cluster stores all the cluster-level information.
 type Cluster struct {
 	Name                string
 	vols                map[string]*Vol
@@ -97,7 +97,8 @@ func (c *Cluster) startCheckAvailSpace() {
 
 func (c *Cluster) startCheckCreateDataPartitions() {
 	go func() {
-		//check vols after switching leader two minutes
+
+		// check volumes after switching leader two minutes
 		time.Sleep(2 * time.Minute)
 		for {
 			if c.partition != nil && c.partition.IsLeader() {
@@ -223,7 +224,7 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 		tasks = append(tasks, task)
 		return true
 	})
-	c.putDataNodeTasks(tasks)
+	c.addDataNodeTasks(tasks)
 }
 
 func (c *Cluster) checkMetaNodeHeartbeat() {
@@ -235,7 +236,7 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 		tasks = append(tasks, task)
 		return true
 	})
-	c.putMetaNodeTasks(tasks)
+	c.addMetaNodeTasks(tasks)
 }
 
 func (c *Cluster) startCheckMetaPartitions() {
@@ -460,7 +461,7 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 	if err = c.syncAddDataPartition(dp); err != nil {
 		goto errDeal
 	}
-	vol.dataPartitions.putDataPartition(dp)
+	vol.dataPartitions.put(dp)
 	log.LogInfof("action[createDataPartition] success,volName[%v],partitionId[%v]", volName, partitionID)
 	return
 errDeal:
@@ -645,7 +646,9 @@ func (c *Cluster) dataPartitionOffline(offlineAddr, volName string, dp *DataPart
 	if err = dp.hasMissOne(int(vol.dpReplicaNum)); err != nil {
 		goto errDeal
 	}
-	if err = dp.canOffLine(offlineAddr); err != nil {
+
+	// if the partition can be offline or not
+	if err = dp.canBeOffLine(offlineAddr); err != nil {
 		goto errDeal
 	}
 
@@ -686,7 +689,7 @@ func (c *Cluster) dataPartitionOffline(offlineAddr, volName string, dp *DataPart
 	dp.checkAndRemoveMissReplica(offlineAddr)
 	tasks = make([]*proto.AdminTask, 0)
 	tasks = append(tasks, task)
-	c.putDataNodeTasks(tasks)
+	c.addDataNodeTasks(tasks)
 	if err = c.syncCreateDataPartitionToDataNode(newAddr, vol.dataPartitionSize, dp); err != nil {
 		goto errDeal
 	}
@@ -802,7 +805,7 @@ func (c *Cluster) createVolInternal(name string, replicaNum uint8, randomWrite b
 		vol *Vol
 	)
 	if _, err = c.getVol(name); err == nil {
-		err = hasExist(name)
+		err = exists(name)
 		goto errDeal
 	}
 
@@ -1033,6 +1036,8 @@ func (c *Cluster) copyVols() (vols map[string]*Vol) {
 	return
 }
 
+
+// TODO what are normal vols?
 func (c *Cluster) getAllNormalVols() (vols map[string]*Vol) {
 	vols = make(map[string]*Vol, 0)
 	c.volsLock.RLock()

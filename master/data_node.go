@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import (
 	"github.com/tiglabs/containerfs/util"
 )
 
-//DataNode 数据节点
+// DataNode stores all the information about a data node
 type DataNode struct {
 	Total      uint64 `json:"TotalWeight"`
 	Used       uint64 `json:"UsedWeight"`
@@ -53,7 +53,7 @@ func newDataNode(addr, clusterID string) (dataNode *DataNode) {
 	return
 }
 
-/*check node heartbeat if reportTime > DataNodeTimeOut,then isActive is false*/
+// check heartbeat
 func (dataNode *DataNode) checkHeartBeat() {
 	dataNode.Lock()
 	defer dataNode.Unlock()
@@ -113,14 +113,14 @@ func (dataNode *DataNode) isAvailCarryNode() (ok bool) {
 	return dataNode.Carry >= 1
 }
 
-// SetCarry 实现Node接口
+// SetCarry implements "SetCarry" in the Node interface
 func (dataNode *DataNode) SetCarry(carry float64) {
 	dataNode.Lock()
 	defer dataNode.Unlock()
 	dataNode.Carry = carry
 }
 
-// SelectNodeForWrite 实现Node接口
+// SelectNodeForWrite implements "SelectNodeForWrite" in the Node interface
 func (dataNode *DataNode) SelectNodeForWrite() {
 	dataNode.Lock()
 	defer dataNode.Unlock()

@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-//DataPartition 数据分片
+// DataPartition is the unit of storing the file contents and the replication is performed in terms of the partitions
 type DataPartition struct {
 	PartitionID      uint64
 	LastLoadTime     int64
@@ -35,6 +35,8 @@ type DataPartition struct {
 	Status           int8
 	isRecover        bool
 	Replicas         []*DataReplica
+
+	// TODO what are PersistenceHosts?
 	PersistenceHosts []string
 	Peers            []proto.Peer
 	sync.RWMutex
@@ -116,9 +118,10 @@ func (partition *DataPartition) resetTaskID(t *proto.AdminTask) {
 	t.ID = fmt.Sprintf("%v_DataPartitionID[%v]", t.ID, partition.PartitionID)
 }
 
+// TODO what does "hasMissOne" mean?
 func (partition *DataPartition) hasMissOne(replicaNum int) (err error) {
-	availPersistenceHostLen := len(partition.PersistenceHosts)
-	if availPersistenceHostLen <= replicaNum-1 {
+	hostNum := len(partition.PersistenceHosts)
+	if hostNum <= replicaNum-1 {
 		log.LogError(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
 			"hasMissOne", partition.PartitionID, errDataReplicaHasMissOne))
 		err = errDataReplicaHasMissOne
@@ -126,7 +129,8 @@ func (partition *DataPartition) hasMissOne(replicaNum int) (err error) {
 	return
 }
 
-func (partition *DataPartition) canOffLine(offlineAddr string) (err error) {
+// TODO liveReplicas and otherLiveReplicas can be put into the same loop
+func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 	msg := fmt.Sprintf("action[canOffLine],partitionID:%v  RocksDBHost:%v  offLine:%v ",
 		partition.PartitionID, partition.PersistenceHosts, offlineAddr)
 	liveReplicas := partition.getLiveReplicas(defaultDataPartitionTimeOutSec)
@@ -140,6 +144,7 @@ func (partition *DataPartition) canOffLine(offlineAddr string) (err error) {
 	return
 }
 
+// TODO rephrase the name
 func (partition *DataPartition) removeOfflineAddr(liveReplicas []*DataReplica, offlineAddr string) (otherLiveReplicas []*DataReplica) {
 	otherLiveReplicas = make([]*DataReplica, 0)
 	for i := 0; i < len(liveReplicas); i++ {
@@ -165,12 +170,15 @@ func (partition *DataPartition) generatorOffLineLog(offlineAddr string) (msg str
 	return
 }
 
-/*获取该副本目前有效的node,即Node在汇报心跳正常，并且该Node不是unavailable*/
+// get all the valid replicas of the given data partition
 func (partition *DataPartition) getAvailableDataReplicas() (replicas []*DataReplica) {
 	replicas = make([]*DataReplica, 0)
 	for i := 0; i < len(partition.Replicas); i++ {
 		replica := partition.Replicas[i]
-		if replica.checkLocIsAvailContainsDiskError() == true && partition.isInPersistenceHosts(replica.Addr) == true {
+
+		// TODO rename checkLocIsAvailContainsDiskError
+		// the node reports heartbeat normally and the node is available
+		if replica.isLocationAvailable() == true && partition.isInPersistenceHosts(replica.Addr) == true {
 			replicas = append(replicas, replica)
 		}
 	}
@@ -178,6 +186,7 @@ func (partition *DataPartition) getAvailableDataReplicas() (replicas []*DataRepl
 	return
 }
 
+// TODO what does offLineInMem mean?
 func (partition *DataPartition) offLineInMem(addr string) {
 	delIndex := -1
 	var replica *DataReplica
@@ -188,6 +197,7 @@ func (partition *DataPartition) offLineInMem(addr string) {
 			break
 		}
 	}
+
 	msg := fmt.Sprintf("action[offLineInMem],data partition:%v  on Node:%v  OffLine,the node is in replicas:%v", partition.PartitionID, addr, replica != nil)
 	log.LogDebug(msg)
 	if delIndex == -1 {
@@ -212,7 +222,7 @@ func (partition *DataPartition) deleteReplicaByIndex(index int) {
 	partition.Replicas = append(partition.Replicas, replicasAfter...)
 }
 
-func (partition *DataPartition) generateLoadTasks() (tasks []*proto.AdminTask) {
+func (partition *DataPartition) createLoadTasks() (tasks []*proto.AdminTask) {
 
 	partition.Lock()
 	defer partition.Unlock()
@@ -222,13 +232,13 @@ func (partition *DataPartition) generateLoadTasks() (tasks []*proto.AdminTask) {
 			continue
 		}
 		replica.LoadPartitionIsResponse = false
-		tasks = append(tasks, partition.generateLoadTask(addr))
+		tasks = append(tasks, partition.createLoadTask(addr))
 	}
 	partition.LastLoadTime = time.Now().Unix()
 	return
 }
 
-func (partition *DataPartition) generateLoadTask(addr string) (task *proto.AdminTask) {
+func (partition *DataPartition) createLoadTask(addr string) (task *proto.AdminTask) {
 	task = proto.NewAdminTask(proto.OpLoadDataPartition, addr, newLoadDataPartitionMetricRequest(partition.PartitionID))
 	partition.resetTaskID(task)
 	return
@@ -344,6 +354,7 @@ func (partition *DataPartition) releaseDataPartition() {
 
 }
 
+// TODO why use loop here? why not just map?
 func (partition *DataPartition) isInReplicas(host string) (replica *DataReplica, ok bool) {
 	for _, replica = range partition.Replicas {
 		if replica.Addr == host {
@@ -402,7 +413,7 @@ func (partition *DataPartition) getLiveReplicas(timeOutSec int64) (replicas []*D
 	return
 }
 
-//live replica that host is in the persistenceHosts, and replica location is alive
+// get all the live replicas from the persistent hosts
 func (partition *DataPartition) getLiveReplicasByPersistenceHosts(timeOutSec int64) (replicas []*DataReplica) {
 	replicas = make([]*DataReplica, 0)
 	for _, host := range partition.PersistenceHosts {
@@ -520,7 +531,7 @@ func (partition *DataPartition) toJSON() (body []byte, err error) {
 	return json.Marshal(partition)
 }
 
-func (partition *DataPartition) getMaxUsedSize() uint64 {
+func (partition *DataPartition) getMaxUsedSpace() uint64 {
 	partition.Lock()
 	defer partition.Unlock()
 	for _, replica := range partition.Replicas {
@@ -531,6 +542,7 @@ func (partition *DataPartition) getMaxUsedSize() uint64 {
 	return partition.used
 }
 
+// TODO what does createDataPartitionSuccessTriggerOperator mean?
 // the caller must add lock
 func (partition *DataPartition) createDataPartitionSuccessTriggerOperator(nodeAddr string, c *Cluster) (err error) {
 	dataNode, err := c.getDataNode(nodeAddr)
@@ -544,14 +556,18 @@ func (partition *DataPartition) createDataPartitionSuccessTriggerOperator(nodeAd
 	return
 }
 
-//the caller add lock
-func (partition *DataPartition) isReplicaSizeAlign() bool {
+// the caller add lock
+func (partition *DataPartition) isReplicaSizeAligned() bool {
 	if len(partition.Replicas) == 0 {
 		return true
 	}
 	used := partition.Replicas[0].Used
+
+	// TODO wha does minus mean?
 	var minus float64
 	for _, replica := range partition.Replicas {
+
+		// TODO we should use a variable to buffer the result of math.Abs(float64(replica.Used)-float64(used))
 		if math.Abs(float64(replica.Used)-float64(used)) > minus {
 			minus = math.Abs(float64(replica.Used) - float64(used))
 		}
@@ -562,7 +578,8 @@ func (partition *DataPartition) isReplicaSizeAlign() bool {
 	return false
 }
 
-func (partition *DataPartition) isNeedCompareData() (needCompare bool) {
+// TODO data integrity check?
+func (partition *DataPartition) needsCompare() (needCompare bool) {
 	partition.Lock()
 	defer partition.Unlock()
 	needCompare = true

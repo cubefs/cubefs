@@ -191,9 +191,9 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case adminCreateMP:
 		m.createMetaPartition(w, r)
 	case raftNodeAdd:
-		m.handleAddRaftNode(w, r)
+		m.addRaftNode(w, r)
 	case raftNodeRemove:
-		m.handleRemoveRaftNode(w, r)
+		m.removeRaftNode(w, r)
 	case adminSetMetaNodeThreshold:
 		m.setMetaNodeThreshold(w, r)
 	case getTopologyView:

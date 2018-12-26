@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -473,7 +473,7 @@ func (ns *nodeSet) allocRacks(replicaNum int, excludeRack []string) (racks []*Ra
 	return
 }
 
-//Rack 机架信息
+// Rack stores all the rack related information
 type Rack struct {
 	name      string
 	dataNodes sync.Map

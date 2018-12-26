@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,7 +21,8 @@ import (
 	"time"
 )
 
-// FileCrc use struct define File crc and this crc in all File count
+// TODO what is FileCrc?
+// FileCrc defines the crc
 type FileCrc struct {
 	crc   uint32
 	count int

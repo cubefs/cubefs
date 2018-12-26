@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ const (
 
 const (
 	defaultInitMetaPartitionCount           = 3
-	defaultMaxMetaPartitionInodeID  uint64  = 1<<63 - 1
+	defaultMaxMetaPartitionInodeID  uint64  = 1 << 63 - 1
 	defaultMetaPartitionInodeIDStep uint64  = 1 << 24
 	defaultMetaNodeReservedMem      uint64  = 1 << 32
 	runtimeStackBufSize                     = 4096

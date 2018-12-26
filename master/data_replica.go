@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-//DataReplica 数据副本
+// DataReplica represents the replica of a data partition
 type DataReplica struct {
 	Addr                    string
 	dataNode                *DataNode
@@ -70,8 +70,8 @@ func (replica *DataReplica) getReplicaNode() (node *DataNode) {
 	return replica.dataNode
 }
 
-/*check replica location is avail ,must isActive=true and replica.Status!=DataReplicaUnavailable*/
-func (replica *DataReplica) checkLocIsAvailContainsDiskError() (avail bool) {
+// check if the replica's location is available
+func (replica *DataReplica) isLocationAvailable() (avail bool) {
 	dataNode := replica.getReplicaNode()
 	dataNode.Lock()
 	defer dataNode.Unlock()

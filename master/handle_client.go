@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,14 +24,15 @@ import (
 	"strconv"
 )
 
-//VolStatInfo vol统计信息
+// VolStatInfo defines the statistics related to a volume
 type VolStatInfo struct {
 	Name      string
 	TotalSize uint64
 	UsedSize  uint64
 }
 
-//DataPartitionResponse 简单数据分片
+// TODO the explanation does not make any sense
+// DataPartitionResponse defines the response to a data partition?
 type DataPartitionResponse struct {
 	PartitionID uint64
 	Status      int8
@@ -41,7 +42,7 @@ type DataPartitionResponse struct {
 	LeaderAddr  string
 }
 
-//DataPartitionsView 所有数据分片视图
+// DataPartitionsView defines the view of a data partition
 type DataPartitionsView struct {
 	DataPartitions []*DataPartitionResponse
 }
@@ -52,7 +53,7 @@ func newDataPartitionsView() (dataPartitionsView *DataPartitionsView) {
 	return
 }
 
-//MetaPartitionView 元数据分片视图
+// MetaPartitionView defines the view of a meta partition
 type MetaPartitionView struct {
 	PartitionID uint64
 	Start       uint64
@@ -62,7 +63,7 @@ type MetaPartitionView struct {
 	Status      int8
 }
 
-//VolView vol视图
+// VolView defines the view of a volume
 type VolView struct {
 	Name           string
 	Status         uint8
@@ -110,7 +111,7 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 	if body, err = vol.getDataPartitionsView(m.cluster.getLiveDataNodesRate()); err != nil {
 		goto errDeal
 	}
-	m.sendOkReplyForClient(w, r, body)
+	m.replyOk(w, r, body)
 	return
 errDeal:
 	logMsg := getReturnMessage("getDataPartitions", r.RemoteAddr, err.Error(), code)
@@ -137,7 +138,7 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 	if body, err = json.Marshal(m.getVolView(vol)); err != nil {
 		goto errDeal
 	}
-	m.sendOkReplyForClient(w, r, body)
+	m.replyOk(w, r, body)
 	return
 errDeal:
 	logMsg := getReturnMessage("getVol", r.RemoteAddr, err.Error(), code)
@@ -165,7 +166,7 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 	if body, err = json.Marshal(volStat(vol)); err != nil {
 		goto errDeal
 	}
-	m.sendOkReplyForClient(w, r, body)
+	m.replyOk(w, r, body)
 	return
 errDeal:
 	logMsg := getReturnMessage("getVolStatInfo", r.RemoteAddr, err.Error(), code)
@@ -250,7 +251,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 	if body, err = mp.toJSON(); err != nil {
 		goto errDeal
 	}
-	m.sendOkReplyForClient(w, r, body)
+	m.replyOk(w, r, body)
 	return
 errDeal:
 	logMsg := getReturnMessage("getMetaPartition", r.RemoteAddr, err.Error(), code)
@@ -258,6 +259,7 @@ errDeal:
 	return
 }
 
+// TODO find a better name for parseGetMetaPartitionPara
 func parseGetMetaPartitionPara(r *http.Request) (name string, partitionID uint64, err error) {
 	r.ParseForm()
 	if name, err = checkVolPara(r); err != nil {
@@ -278,6 +280,7 @@ func checkMetaPartitionID(r *http.Request) (partitionID uint64, err error) {
 	return strconv.ParseUint(value, 10, 64)
 }
 
+// TODO find a better name for parseGetVolPara
 func parseGetVolPara(r *http.Request) (name string, err error) {
 	r.ParseForm()
 	return checkVolPara(r)
@@ -302,7 +305,7 @@ func checkVolPara(r *http.Request) (name string, err error) {
 	return
 }
 
-func (m *Server) sendOkReplyForClient(w http.ResponseWriter, r *http.Request, msg []byte) {
+func (m *Server) replyOk(w http.ResponseWriter, r *http.Request, msg []byte) {
 	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
 	w.Write(msg)
 }

@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import (
 	"time"
 )
 
-func (c *Cluster) putDataNodeTasks(tasks []*proto.AdminTask) {
+func (c *Cluster) addDataNodeTasks(tasks []*proto.AdminTask) {
 
 	for _, t := range tasks {
 		if t == nil {
@@ -33,12 +33,12 @@ func (c *Cluster) putDataNodeTasks(tasks []*proto.AdminTask) {
 		if node, err := c.getDataNode(t.OperatorAddr); err != nil {
 			log.LogWarn(fmt.Sprintf("action[putTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err))
 		} else {
-			node.Sender.PutTask(t)
+			node.Sender.AddTask(t)
 		}
 	}
 }
 
-func (c *Cluster) putMetaNodeTasks(tasks []*proto.AdminTask) {
+func (c *Cluster) addMetaNodeTasks(tasks []*proto.AdminTask) {
 
 	for _, t := range tasks {
 		if t == nil {
@@ -47,7 +47,7 @@ func (c *Cluster) putMetaNodeTasks(tasks []*proto.AdminTask) {
 		if node, err := c.getMetaNode(t.OperatorAddr); err != nil {
 			log.LogWarn(fmt.Sprintf("action[putTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
 		} else {
-			node.Sender.PutTask(t)
+			node.Sender.AddTask(t)
 		}
 	}
 }
@@ -73,12 +73,21 @@ func (c *Cluster) waitLoadDataPartitionResponse(partitions []*DataPartition) {
 	wg.Wait()
 }
 
-func (c *Cluster) loadDataPartitionAndCheckResponse(dp *DataPartition) {
+func (c *Cluster) loadDataPartition(dp *DataPartition) {
 	go func() {
 		c.processLoadDataPartition(dp)
 	}()
 }
 
+// taking the given mata partition offline.
+// 1. checking if the meta partition can be offline.
+// There are two cases where the partition is not allowed to be offline:
+// (1) the replica is not in the latest host list
+// (2) there are too few replicas
+// 2. choosing a new available metanode
+// 3. persistent the new host list
+// 4. generating an async task to delete the replica
+// 5. asynchronously create a new data partition
 func (c *Cluster) metaPartitionOffline(volName, nodeAddr string, partitionID uint64) (err error) {
 	var (
 		vol         *Vol
@@ -111,11 +120,12 @@ func (c *Cluster) metaPartitionOffline(volName, nodeAddr string, partitionID uin
 		return
 	}
 
-	if err = mp.canOffline(nodeAddr, int(vol.mpReplicaNum)); err != nil {
+	if err = mp.canBeOffline(nodeAddr, int(vol.mpReplicaNum)); err != nil {
 		goto errDeal
 	}
 	if newHosts, newPeers, err = ns.getAvailMetaNodeHosts(mp.PersistenceHosts, 1); err != nil {
-		//select metaNode of other nodeSet
+
+		// choose a meta node in the node set
 		if newHosts, newPeers, err = c.chooseTargetMetaHosts(1); err != nil {
 			goto errDeal
 		}
@@ -142,10 +152,11 @@ func (c *Cluster) metaPartitionOffline(volName, nodeAddr string, partitionID uin
 	}
 	mp.removeReplicaByAddr(nodeAddr)
 	mp.checkAndRemoveMissMetaReplica(nodeAddr)
-	c.putMetaNodeTasks(tasks)
+	c.addMetaNodeTasks(tasks)
 	Warn(c.Name, fmt.Sprintf("clusterID[%v] meta partition[%v] offline addr[%v] success,new addr[%v]",
 		c.Name, partitionID, nodeAddr, newPeers[0].Addr))
 	return
+
 errDeal:
 	log.LogError(fmt.Sprintf("action[metaPartitionOffline],volName: %v,partitionID: %v,err: %v",
 		volName, partitionID, errors.ErrorStack(err)))
@@ -166,12 +177,12 @@ func (c *Cluster) processLoadMetaPartition(mp *MetaPartition) {
 
 func (c *Cluster) processLoadDataPartition(dp *DataPartition) {
 	log.LogInfo(fmt.Sprintf("action[processLoadDataPartition],partitionID:%v", dp.PartitionID))
-	if !dp.isNeedCompareData() {
+	if !dp.needsCompare() {
 		log.LogInfo(fmt.Sprintf("action[processLoadDataPartition],partitionID:%v don't need compare", dp.PartitionID))
 		return
 	}
-	loadTasks := dp.generateLoadTasks()
-	c.putDataNodeTasks(loadTasks)
+	loadTasks := dp.createLoadTasks()
+	c.addDataNodeTasks(loadTasks)
 	for i := 0; i < loadDataPartitionWaitTime; i++ {
 		if dp.checkLoadResponse(c.cfg.DataPartitionTimeOutSec) {
 			log.LogWarnf("action[checkLoadResponse]  all replica has responded,partitionID:%v ", dp.PartitionID)
@@ -179,10 +190,11 @@ func (c *Cluster) processLoadDataPartition(dp *DataPartition) {
 		}
 		time.Sleep(time.Second)
 	}
-	// response is time out
+
 	if dp.checkLoadResponse(c.cfg.DataPartitionTimeOutSec) == false {
 		return
 	}
+
 	dp.getFileCount()
 	dp.checkFile(c.Name)
 	dp.setToNormal()
@@ -368,7 +380,7 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 	metaNode.updateMetric(resp, c.cfg.MetaNodeThreshold)
 	metaNode.setNodeAlive()
 	c.t.putMetaNode(metaNode)
-	c.updateMetaNode(metaNode, resp.MetaPartitionInfo, metaNode.isArriveThreshold())
+	c.updateMetaNode(metaNode, resp.MetaPartitionInfo, metaNode.reachesThreshold())
 	metaNode.metaPartitionInfos = nil
 	logMsg = fmt.Sprintf("action[dealMetaNodeHeartbeatResp],metaNode:%v ReportTime:%v  success", metaNode.Addr, time.Now().Unix())
 	log.LogInfof(logMsg)

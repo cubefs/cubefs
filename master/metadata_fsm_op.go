@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import (
 	"strings"
 )
 
-// ClusterValue cluster值对象
+// ClusterValue represents
 type ClusterValue struct {
 	Name          string
 	CompactStatus bool
@@ -652,7 +652,7 @@ func (c *Cluster) applyAddDataPartition(cmd *RaftCmdData) (err error) {
 	dp.PersistenceHosts = strings.Split(dpv.Hosts, underlineSeparator)
 	dp.Peers = dpv.Peers
 	dp.Status = dpv.Status
-	vol.dataPartitions.putDataPartition(dp)
+	vol.dataPartitions.put(dp)
 	return
 }
 
@@ -835,7 +835,7 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID, dpv.RandomWrite)
 		dp.PersistenceHosts = strings.Split(dpv.Hosts, underlineSeparator)
 		dp.Peers = dpv.Peers
-		vol.dataPartitions.putDataPartition(dp)
+		vol.dataPartitions.put(dp)
 		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v]", vol.Name, dp.PartitionID)
 	}
 	return
