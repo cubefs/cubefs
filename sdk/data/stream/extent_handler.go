@@ -423,19 +423,23 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 
 	//log.LogDebugf("ExtentHandler allocateExtent enter: eh(%v)", eh)
 
+	excludePartitions := make([]uint64, 0)
+
 	for i := 0; i < MaxSelectDataPartionForWrite; i++ {
-		if dp, err = gDataWrapper.GetWriteDataPartition(eh.sw.excludePartition); err != nil {
-			log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v)", eh)
+		if dp, err = gDataWrapper.GetWriteDataPartition(excludePartitions); err != nil {
+			log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v)", eh, excludePartitions)
 			continue
 		}
 
 		if extID, err = eh.createExtent(dp); err != nil {
-			log.LogWarnf("allocateExtent: failed to create extent, eh(%v) err(%v)", eh, err)
+			excludePartitions = append(excludePartitions, dp.PartitionID)
+			log.LogWarnf("allocateExtent: failed to create extent, eh(%v) err(%v) dp(%v)", eh, err, dp)
 			continue
 		}
 
 		if conn, err = eh.createConnection(dp); err != nil {
-			log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v)", eh, err)
+			excludePartitions = append(excludePartitions, dp.PartitionID)
+			log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v)", eh, err, dp)
 			continue
 		}
 
