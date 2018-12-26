@@ -60,7 +60,10 @@ func (stream *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, err
 }
 
 func (stream *Streamer) read(data []byte, offset int, size int) (total int, err error) {
-	var readBytes int
+	var (
+		readBytes int
+		reader    *ExtentReader
+	)
 	//	err = stream.GetExtents()
 	//	if err != nil {
 	//		return
@@ -85,7 +88,7 @@ func (stream *Streamer) read(data []byte, offset int, size int) (total int, err 
 			total += req.Size
 			log.LogDebugf("Stream read hole: ino(%v) req(%v) total(%v)", stream.inode, req, total)
 		} else {
-			reader, err := stream.GetExtentReader(req.ExtentKey)
+			reader, err = stream.GetExtentReader(req.ExtentKey)
 			if err != nil {
 				break
 			}
