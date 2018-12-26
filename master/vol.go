@@ -112,7 +112,9 @@ func (vol *Vol) initMetaPartitions(c *Cluster) {
 		end   uint64
 	)
 	for index := 0; index < defaultInitMetaPartitionCount; index++ {
-		start = end + 1
+		if index != 0 {
+			start = end + 1
+		}
 		end = defaultMetaPartitionInodeIDStep * uint64(index+1)
 		if index == defaultInitMetaPartitionCount-1 {
 			end = defaultMaxMetaPartitionInodeID

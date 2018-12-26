@@ -16,7 +16,6 @@ package util
 
 import (
 	"net"
-	"strings"
 	"sync"
 	"time"
 )
@@ -68,8 +67,6 @@ func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
 	pool, ok := cp.pools[addr]
 	cp.RUnlock()
 	if !ok {
-		c.CloseWrite()
-		c.CloseRead()
 		c.Close()
 		return
 	}
@@ -79,49 +76,14 @@ func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
 	return
 }
 
-func (cp *ConnectPool) CheckErrorForceClose(c *net.TCPConn, target string, err error) {
+func (cp *ConnectPool) ForceDestory(c *net.TCPConn, target string) {
 	if c == nil {
 		return
 	}
-	if err == nil {
-		return
-	}
-	if strings.Contains(err.Error(), "use of closed network connection") {
-		c.Close()
-		cp.ReleaseAllConnect(target)
-		return
-	} else {
-		c.Close()
-		return
-	}
+	c.Close()
+	cp.ReleaseAllConnect(target)
 }
 
-func (cp *ConnectPool) CheckErrorForPutConnect(c *net.TCPConn, target string, err error) {
-	if c == nil {
-		return
-	}
-
-	if err != nil {
-		if strings.Contains(err.Error(), "use of closed network connection") {
-			c.Close()
-			cp.ReleaseAllConnect(target)
-			return
-		} else {
-			c.Close()
-			return
-		}
-	}
-	addr := c.RemoteAddr().String()
-	cp.RLock()
-	pool, ok := cp.pools[addr]
-	cp.RUnlock()
-	if !ok {
-		c.Close()
-		return
-	}
-	o := &Object{conn: c, idle: time.Now().UnixNano()}
-	pool.PutConnectObjectToPool(o)
-}
 
 func (cp *ConnectPool) ReleaseAllConnect(target string) {
 	cp.RLock()

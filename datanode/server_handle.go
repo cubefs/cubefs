@@ -107,7 +107,7 @@ func (s *DataNode) apiGetPartition(w http.ResponseWriter, r *http.Request) {
 		s.buildAPIFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	if files, err = partition.GetStore().GetAllWatermark(nil); err != nil {
+	if files, err = partition.GetStore().GetAllExtentWatermark(nil); err != nil {
 		err = fmt.Errorf("get watermark fail: %v", err)
 		s.buildAPIFailureResp(w, http.StatusInternalServerError, err.Error())
 		return

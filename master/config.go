@@ -23,14 +23,14 @@ import (
 )
 
 const (
-	colonSplit                  = ":"
-	commaSplit                  = ","
-	cfgPeers                    = "peers"
-	dataPartitionMissSec        = "dataPartitionMissSec"
-	dataPartitionTimeOutSec     = "dataPartitionTimeOutSec"
-	everyLoadDataPartitionCount = "everyLoadDataPartitionCount"
+	colonSplit                           = ":"
+	commaSplit                           = ","
+	cfgPeers                             = "peers"
+	dataPartitionMissSec                 = "dataPartitionMissSec"
+	dataPartitionTimeOutSec              = "dataPartitionTimeOutSec"
+	everyLoadDataPartitionCount          = "everyLoadDataPartitionCount"
 	releaseDataPartitionAfterLoadSeconds = "releaseDataPartitionAfterLoadSeconds"
-	nodeSetCapacity             = "nodeSetCap"
+	nodeSetCapacity                      = "nodeSetCap"
 )
 
 const (
@@ -71,8 +71,8 @@ type clusterConfig struct {
 	everyLoadDataPartitionCount          int
 	nodeSetCapacity                      int
 	MetaNodeThreshold                    float32
-	peers     []raftstore.PeerAddress
-	peerAddrs []string
+	peers                                []raftstore.PeerAddress
+	peerAddrs                            []string
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

@@ -31,8 +31,10 @@ import (
 	"strings"
 )
 
-// Apply the raft wal to disk.
-// The raft interface need implement by application.
+/*
+ 调用raft库需要实现的接口，应用raft log。
+ data partition将overwrite的数据写入磁盘。
+*/
 func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
 	opItem := &rndWrtOpItem{}
 	defer func(index uint64) {
@@ -83,8 +85,11 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	return
 }
 
-// ApplyMemberChange Update the member information when member changed.
-// The raft interface need implement by application.
+/*
+ 调用raft库需要实现的接口，应用成员变更。
+ 添加raft成员，删除raft成员。
+ 更新raft成员不支持。
+*/
 func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
 	defer func(index uint64) {
 		dp.uploadApplyID(index)
@@ -120,14 +125,20 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 }
 
 // Snapshot Data is already on the disk. Do not need snapshot.
+/*
+ 调用raft库需要实现的接口，将内存中的数据快照到磁盘。
+ data partition的数据已经保存在磁盘上了，不需要再次实现快照。
+*/
 func (dp *DataPartition) Snapshot() (raftproto.Snapshot, error) {
 	applyID := dp.applyID
 	snapIterator := NewItemIterator(applyID)
 	return snapIterator, nil
 }
 
-// ApplySnapshot Restore data from the member who have newest data.
-// The raft interface need implement by application.
+/*
+ 调用raft库需要实现的接口，应用快照保存的数据。
+ 从raft的leader拉取数据，恢复到本地磁盘。
+*/
 func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftproto.SnapIterator) (err error) {
 	var (
 		data        []byte
@@ -178,11 +189,17 @@ func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 	return
 }
 
+/*
+ 调用raft库需要实现的接口，出现raft panic后通知应用方。
+*/
 func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
 	// Panic while fatal event happen.
 	log.LogFatalf("action[HandleFatalEvent] err[%v].", err)
 }
 
+/*
+ 调用raft库需要实现的接口，通知应用方新的raft leader。
+*/
 func (dp *DataPartition) HandleLeaderChange(leader uint64) {
 	exporter.Alarm(ModuleName, fmt.Sprintf("LeaderChange: partition=%d, "+
 		"newLeader=%d", dp.config.PartitionID, leader))
@@ -192,6 +209,9 @@ func (dp *DataPartition) HandleLeaderChange(leader uint64) {
 	}
 }
 
+/*
+ 调用raft库需要实现的接口，将raft log提交到raft实例。
+*/
 func (dp *DataPartition) Put(key, val interface{}) (resp interface{}, err error) {
 	if dp.raftPartition == nil {
 		err = fmt.Errorf("%s key=%v", RaftIsNotStart, key)
@@ -215,10 +235,18 @@ func (dp *DataPartition) Put(key, val interface{}) (resp interface{}, err error)
 	return
 }
 
+/*
+ 调用raft库需要实现的接口，获取raft log。
+ data partition不需要实现此接口
+*/
 func (dp *DataPartition) Get(key interface{}) (interface{}, error) {
 	return nil, nil
 }
 
+/*
+ 调用raft库需要实现的接口，删除raft log。
+ data partition不需要实现此接口
+*/
 func (dp *DataPartition) Del(key interface{}) (interface{}, error) {
 	return nil, nil
 }

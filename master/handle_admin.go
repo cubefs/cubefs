@@ -74,6 +74,9 @@ type TopologyView struct {
 	NodeSet   []uint64
 }
 
+//设置元数据节点的内存使用阈值，主要用于测试达到阈值时，meta partition自动切分场景
+// 如果该节点的内存使用达到阈值，该节点上的所有 meta partition 都会被设置成只读,
+//该阈值并不会被持久化且同步到其它master节点。
 func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
 	var (
 		threshold float64
@@ -91,6 +94,9 @@ errDeal:
 	return
 }
 
+//关闭或开启vol自动创建data partition功能
+//关闭该功能，当vol已使用空间没有达到capacity，其拥有的可读写的data partition < 20时，不会为vol自动创建新的data partition
+//开启该功能，当vol已使用空间没有达到capacity，其拥有的可读写的data partition < 20时，会为vol自动创建新的data partition
 func (m *Server) setDisableAutoAlloc(w http.ResponseWriter, r *http.Request) {
 	var (
 		status bool
@@ -108,6 +114,7 @@ errDeal:
 	return
 }
 
+//查看集群的拓扑信息
 func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
@@ -143,6 +150,7 @@ errDeal:
 	return
 }
 
+//查看集群的概要信息，包括集群的meta node、data node、vol等信息
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
@@ -187,6 +195,7 @@ errDeal:
 	return
 }
 
+//获取集群标识和请求方的ip
 func (m *Server) getIPAndClusterName(w http.ResponseWriter, r *http.Request) {
 	cInfo := &proto.ClusterInfo{Cluster: m.cluster.Name, Ip: strings.Split(r.RemoteAddr, ":")[0]}
 	cInfoBytes, err := json.Marshal(cInfo)
@@ -284,6 +293,9 @@ errDeal:
 	return
 }
 
+//1 生成文件比对任务
+//2 异步等待数据节点汇报 data partition各个副本包含的文件详情
+//3 文件的多个副本之间做crc检验，如果不一致则报警
 func (m *Server) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName     string
@@ -315,8 +327,8 @@ errDeal:
 	return
 }
 
-
 // TODO take the data partition off?
+//下线data partition的某个副本，一般在发生disk error时，由管理员手动执行
 func (m *Server) dataPartitionOffline(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName     string
@@ -349,6 +361,7 @@ errDeal:
 	return
 }
 
+//逻辑删除vol，将vol标记成逻辑删除状态，等待vol巡检协程执行物理删除
 func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		name string
@@ -373,6 +386,7 @@ errDeal:
 	return
 }
 
+//更新vol容量
 func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		name     string
@@ -473,6 +487,7 @@ errDeal:
 }
 
 // TODO take the data node off?
+//下线一个数据节点，改节点上的所有data partition都会被下线
 func (m *Server) dataNodeOffline(w http.ResponseWriter, r *http.Request) {
 	var (
 		node        *DataNode
@@ -500,8 +515,8 @@ errDeal:
 	return
 }
 
-
 // TODO take the disk off?
+//下线一个节点的某块硬盘，改硬盘上的所有data partition都会被下线
 func (m *Server) diskOffline(w http.ResponseWriter, r *http.Request) {
 	var (
 		node                  *DataNode
@@ -539,6 +554,7 @@ errDeal:
 }
 
 // TODO the response of a data node task?
+//数据节点异步响应任务结果的入口，包括heartbeat，loadDataPartition，deleteDataPartition等任务
 func (m *Server) dataNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
 	var (
 		dataNode *DataNode
@@ -707,6 +723,7 @@ errDeal:
 	return
 }
 
+//元数据节点异步响应任务结果的入口，包括heartbeat，offline等任务
 func (m *Server) metaNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
 	var (
 		metaNode *MetaNode
@@ -737,6 +754,10 @@ errDeal:
 }
 
 func (m *Server) addRaftNode(w http.ResponseWriter, r *http.Request) {
+//master集群动态新增一个master节点
+//master集群新增节点，可以有两种方式，
+// a、修改master 配置文件，先停止所有的master服务，然后重启
+// b、使用该命令，master集群不停止服务增加节点，然后更新所有master节点的配置文件
 	var msg string
 	id, addr, err := parseRaftNodePara(r)
 	if err != nil {
@@ -756,6 +777,10 @@ errDeal:
 }
 
 func (m *Server) removeRaftNode(w http.ResponseWriter, r *http.Request) {
+//master集群动态下线一个master节点
+//master集群下线一个节点，可以有两种方式，
+// a、修改master 配置文件，先停止所有的master服务，然后重启
+// b、使用该命令，master集群不停止服务下线一个节点，然后更新所有master节点的配置文件
 	var msg string
 	id, addr, err := parseRaftNodePara(r)
 	if err != nil {

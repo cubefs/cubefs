@@ -30,7 +30,7 @@ type Packet struct {
 }
 
 func (p *Packet) AfterTp() (ok bool) {
-	p.TpObject.CalcTpMS()
+	p.TpObject.CalcTp()
 
 	return
 }
@@ -67,15 +67,9 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 	return
 }
 
-func (p *Packet) forceDestoryAllConnect() {
+func (p *Packet) forceDestoryFollowerConnects() {
 	for i := 0; i < len(p.followerConns); i++ {
-		gConnPool.PutConnect(p.followerConns[i], ForceCloseConnect)
-	}
-}
-
-func (p *Packet) forceDestoryCheckUsedClosedConnect(err error) {
-	for i := 0; i < len(p.followerConns); i++ {
-		gConnPool.CheckErrorForceClose(p.followerConns[i], p.followersAddrs[i], err)
+		gConnPool.ForceDestory(p.followerConns[i], p.followersAddrs[i])
 	}
 }
 
