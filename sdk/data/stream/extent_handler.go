@@ -347,6 +347,10 @@ func (eh *ExtentHandler) flush() (err error) {
 		return
 	}
 
+	if eh.storeMode == proto.TinyExtentMode {
+		eh.setClosed()
+	}
+
 	status := eh.getStatus()
 	if status >= ExtentStatusError {
 		err = errors.New(fmt.Sprintf("StreamWriter flush: extent handler in error status, eh(%v) size(%v)", eh, eh.size))
