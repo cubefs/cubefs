@@ -16,12 +16,8 @@ package raftstore
 
 import (
 	"fmt"
-	"github.com/tiglabs/containerfs/third_party/gorocksdb"
+	"github.com/tecbot/gorocksdb"
 )
-
-//#cgo CFLAGS:-I/usr/local/include
-//#cgo LDFLAGS:-L/usr/local/lib -lrocksdb -lstdc++ -lm -lz -lbz2 -lsnappy
-import "C"
 
 type RocksDBStore struct {
 	dir string
