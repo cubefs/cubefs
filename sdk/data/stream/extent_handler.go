@@ -3,7 +3,6 @@ package stream
 import (
 	"fmt"
 	"net"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -24,74 +23,79 @@ const (
 )
 
 var (
-	GlobalHandlerID = uint64(0)
+	gExtentHandlerID = uint64(0)
 )
 
-func GetGlobalHandlerID() uint64 {
-	return atomic.AddUint64(&GlobalHandlerID, 1)
+func GetExtentHandlerID() uint64 {
+	return atomic.AddUint64(&gExtentHandlerID, 1)
 }
 
 type ExtentHandler struct {
-	// Created as initial value, and will not be changed.
+	// Fields created as it is, i.e. will not be changed.
 	sw         *StreamWriter
-	id         uint64 // identify extent handlers
+	id         uint64 // extent handler id
 	inode      uint64
 	fileOffset int
 	storeMode  int
 
-	// Status is open, closed, recovery, error,
-	// and can be changed only from one state to the next adjacent state.
+	// Either open/closed/recovery/error.
+	// Can transit from one state to the next adjacent state ONLY.
 	status int32
 
 	// Created, filled and sent in Write.
 	packet *Packet
 
-	// Updated in Write
+	// Updated in *write* method ONLY.
 	size int
 
-	// Increament in Write, and decreament in receiver.
-	inflight int32 // pending requests
+	// Pending packets in sender and receiver.
+	// Does not involve the packet in open handler.
+	inflight int32
 
-	// Assigned in sender, and will not be changed.
+	// For ExtentStore mode, assigned in sender.
+	// For TinyStore mode, assigned in receiver.
+	// Will not be changed once assigned.
 	extID int
 
-	// Initialized and increased in sender.
-	extOffset int
-
-	// Allocated in sender, released in receiver and will not be changed.
+	// Allocated in sender, and released in receiver.
+	// Will not be changed.
 	conn *net.TCPConn
 	dp   *wrapper.DataPartition
 
+	// Issue a signal to this channel each time *inflight* hits zero.
+	// To wake up *waitForFlush*.
 	empty chan struct{}
 
-	// Created and updated in receiver, and will be updated to meta node when the handler is finished.
+	// Created and updated in *receiver* ONLY.
+	// Not protected by lock, therefore can be used ONLY when there is no
+	// pending and new packets.
 	key   *proto.ExtentKey
-	dirty bool
+	dirty bool // indicate if open handler is dirty.
 
-	// Created in receiver
+	// Created in receiver ONLY in recovery status.
+	// Will not be changed once assigned.
 	recoverHandler *ExtentHandler
 
-	// Marked error in receiver if packet reaches maximum recovery times,
-	// and all successive packets would be discarded.
-
+	// The stream writer will get write requests, and construct packets
+	// which will be sent to the request channel.
+	// The *sender* will get packets from *request* channel, sending to data
+	// node and passes the packet to *reply* channel.
+	// The *receiver* will get packets from "reply" channel, wait for the
+	// reply from data node, and deal with it.
 	request chan *Packet
 	reply   chan *Packet
 
-	// Signaled by stream writer only.
+	// Signaled in stream writer ONLY to exit *receiver*.
 	doneReceiver chan struct{}
 
-	// Signaled by receiver only.
+	// Signaled in receiver ONLY to exit *sender*.
 	doneSender chan struct{}
-	finished   chan struct{}
-
-	lock sync.RWMutex
 }
 
-// Only stream writer can close extent handlers
 func NewExtentHandler(sw *StreamWriter, offset int, storeMode int) *ExtentHandler {
 	eh := &ExtentHandler{
 		sw:           sw,
-		id:           GetGlobalHandlerID(),
+		id:           GetExtentHandlerID(),
 		inode:        sw.inode,
 		fileOffset:   offset,
 		storeMode:    storeMode,
@@ -112,7 +116,7 @@ func (eh *ExtentHandler) String() string {
 	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)StoreMode(%v)}", eh.id, eh.inode, eh.fileOffset, eh.storeMode)
 }
 
-func (eh *ExtentHandler) Write(data []byte, offset, size int) (ek *proto.ExtentKey, err error) {
+func (eh *ExtentHandler) write(data []byte, offset, size int) (ek *proto.ExtentKey, err error) {
 	var total, write int
 
 	status := eh.getStatus()
@@ -123,7 +127,7 @@ func (eh *ExtentHandler) Write(data []byte, offset, size int) (ek *proto.ExtentK
 
 	var blksize int
 	if eh.storeMode == proto.TinyExtentMode {
-		blksize = util.DefaultTinySizeLimit
+		blksize = eh.sw.tinySizeLimit()
 	} else {
 		blksize = util.BlockSize
 	}
@@ -197,14 +201,16 @@ func (eh *ExtentHandler) sender() {
 				}
 			}
 
-			// calculate extent offset
-			eh.extOffset = packet.fileOffset - eh.fileOffset
+			// For ExtentStore mode, calculate extent offset.
+			// For TinyStore mode, extent offset is always 0 in request packet,
+			// and the reply packet will tell the real extent offset.
+			extOffset := packet.fileOffset - eh.fileOffset
 
 			// fill packet according to extent
 			packet.PartitionID = eh.dp.PartitionID
 			packet.ExtentMode = uint8(eh.storeMode)
 			packet.ExtentID = uint64(eh.extID)
-			packet.ExtentOffset = int64(eh.extOffset)
+			packet.ExtentOffset = int64(extOffset)
 			packet.Arg = ([]byte)(eh.dp.GetAllAddrs())
 			packet.Arglen = uint32(len(packet.Arg))
 			packet.RemainFollowers = uint8(len(eh.dp.Hosts) - 1)
@@ -258,12 +264,12 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 
 	status := eh.getStatus()
 	if status >= ExtentStatusError {
-		proto.Buffers.Put(packet.Data)
+		eh.discardPacket(packet)
 		log.LogErrorf("processReply discard packet: handler is in error status, inflight(%v) eh(%v) packet(%v)", atomic.LoadInt32(&eh.inflight), eh, packet)
 		return
 	} else if status >= ExtentStatusRecovery {
 		if err := eh.recoverPacket(packet); err != nil {
-			eh.setError()
+			eh.discardPacket(packet)
 			log.LogErrorf("processReply discard packet: handler is in recovery status, inflight(%v) eh(%v) packet(%v) err(%v)", atomic.LoadInt32(&eh.inflight), eh, packet, err)
 		}
 		log.LogDebugf("processReply recover packet: handler is in recovery status, inflight(%v) from eh(%v) to recoverHandler(%v) packet(%v)", atomic.LoadInt32(&eh.inflight), eh, eh.recoverHandler, packet)
@@ -330,8 +336,7 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 	eh.setClosed()
 	eh.setRecovery()
 	if err := eh.recoverPacket(packet); err != nil {
-		// discard packet
-		eh.setError()
+		eh.discardPacket(packet)
 		log.LogErrorf("processReplyError discard packet: eh(%v) packet(%v) err(%v) errmsg(%v)", eh, packet, err, errmsg)
 	} else {
 		log.LogWarnf("processReplyError recover packet: from eh(%v) to recoverHandler(%v) packet(%v) errmsg(%v)", eh, eh.recoverHandler, packet, errmsg)
@@ -414,7 +419,6 @@ func (eh *ExtentHandler) waitForFlush() {
 func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 	packet.errCount++
 	if packet.errCount >= MaxPacketErrorCount {
-		proto.Buffers.Put(packet.Data)
 		return errors.New(fmt.Sprintf("recoverPacket failed: reach max error limit, eh(%v) packet(%v)", eh, packet))
 	}
 
@@ -431,6 +435,11 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 		eh.sw.dirtylist.Put(handler)
 	}
 	return nil
+}
+
+func (eh *ExtentHandler) discardPacket(packet *Packet) {
+	proto.Buffers.Put(packet.Data)
+	eh.setError()
 }
 
 func (eh *ExtentHandler) allocateExtent() (err error) {
