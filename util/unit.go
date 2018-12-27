@@ -46,6 +46,10 @@ const (
 	PacketHeaderSize       = 49
 )
 
+const (
+	DefaultTinySizeLimit = 1 * MB
+)
+
 func Min(a, b int) int {
 	if a > b {
 		return b

@@ -32,6 +32,7 @@ const (
 	MaxSelectDataPartionForWrite = 32
 	MaxNewHandlerRetry           = 3
 	MaxPacketErrorCount          = 32
+	MaxDirtyListLen              = 8
 )
 
 const (
@@ -276,14 +277,21 @@ func (sw *StreamWriter) doOverwrite(req *ExtentRequest) (total int, err error) {
 
 func (sw *StreamWriter) doWrite(data []byte, offset, size int) (total int, err error) {
 	var (
-		ek *proto.ExtentKey
+		ek        *proto.ExtentKey
+		storeMode int
 	)
 
-	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v)", sw.inode, offset, size)
+	if offset+size > sw.tinySizeLimit() {
+		storeMode = proto.NormalExtentMode
+	} else {
+		storeMode = proto.TinyExtentMode
+	}
+
+	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", sw.inode, offset, size, storeMode)
 
 	for i := 0; i < MaxNewHandlerRetry; i++ {
 		if sw.handler == nil {
-			sw.handler = NewExtentHandler(sw, offset, proto.NormalExtentMode)
+			sw.handler = NewExtentHandler(sw, offset, storeMode)
 			sw.dirty = false
 		}
 
@@ -372,8 +380,12 @@ func (sw *StreamWriter) traverse() (err error) {
 func (sw *StreamWriter) closeOpenHandler() {
 	if sw.handler != nil {
 		sw.handler.setClosed()
-		//sw.handler.flushPacket()
-		sw.handler.flush()
+		if sw.dirtylist.Len() < MaxDirtyListLen {
+			sw.handler.flushPacket()
+		} else {
+			sw.handler.flush()
+		}
+
 		if !sw.dirty {
 			// in case current handler is not in the dirty list,
 			// and will not get cleaned up.
@@ -410,4 +422,8 @@ func (sw *StreamWriter) truncate(size int) error {
 		return err
 	}
 	return sw.stream.client.truncate(sw.inode, uint64(size))
+}
+
+func (sw *StreamWriter) tinySizeLimit() int {
+	return util.DefaultTinySizeLimit
 }
