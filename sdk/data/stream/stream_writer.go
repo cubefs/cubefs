@@ -32,7 +32,7 @@ const (
 	MaxSelectDataPartionForWrite = 32
 	MaxNewHandlerRetry           = 3
 	MaxPacketErrorCount          = 32
-	MaxDirtyListLen              = 8
+	MaxDirtyListLen              = 0
 )
 
 const (
