@@ -16,8 +16,8 @@ package master
 
 import (
 	"fmt"
-	"github.com/tiglabs/containerfs/third_party/gorocksdb"
 	"io"
+	"github.com/tecbot/gorocksdb"
 )
 
 //MetadataSnapshot 元数据快照
