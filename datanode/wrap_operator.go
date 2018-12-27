@@ -46,13 +46,7 @@ func (s *DataNode) OperatePacket(pkg *repl.Packet, c *net.TCPConn) (err error) {
 		resultSize := pkg.Size
 		pkg.Size = orgSize
 		if pkg.IsErrPacket() {
-			if resultSize <= uint32(len(pkg.Data)) {
-				err = fmt.Errorf("op[%v] error[%v]", pkg.GetOpMsg(), string(pkg.Data[:resultSize]))
-			} else {
-				err = fmt.Errorf("op[%v] error[%v] resultSize=%v lenData=%v",
-					pkg.GetOpMsg(), string(pkg.Data[:len(pkg.Data)]), resultSize, pkg.Data)
-			}
-
+			err = fmt.Errorf("op[%v] error[%v]", pkg.GetOpMsg(), string(pkg.Data[:resultSize]))
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
 				pkg.LogMessage(pkg.GetOpMsg(), c.RemoteAddr().String(), start, err))
 			log.LogErrorf(logContent)
