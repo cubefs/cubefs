@@ -131,6 +131,8 @@ func (dp *DataPartition) extentFileRepair(fixExtentsType uint8) {
 	log.LogInfof("action[extentFileRepair] partition(%v) AvaliTinyExtents(%v) UnavaliTinyExtents(%v)"+
 		" finish cost[%vms].", dp.partitionID, dp.extentStore.GetAvaliExtentLen(), dp.extentStore.GetUnAvaliExtentLen(),
 		(finishTime-startTime)/int64(time.Millisecond))
+	log.LogInfof("action[extentFileRepair] partition(%v) end.",
+		dp.partitionID)
 
 }
 
