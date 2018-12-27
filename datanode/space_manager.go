@@ -338,7 +338,7 @@ func (s *DataNode) fillHeartBeatResponse(response *proto.DataNodeHeartBeatRespon
 			Used:            uint64(partition.Used()),
 			DiskPath:        partition.Disk().Path,
 			IsLeader:        isLeader,
-			ExtentCount:     partition.GetStore().GetExtentCount(),
+			ExtentCount:     partition.GetExtentCount(),
 			NeedCompare:     partition.LoadExtentHeaderStatus() == FinishLoadDataPartitionExtentHeader,
 		}
 		log.LogDebugf("action[Heartbeats] dpid[%v], status[%v] total[%v] used[%v] leader[%v] b[%v].", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)

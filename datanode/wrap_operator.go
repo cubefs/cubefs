@@ -72,8 +72,10 @@ func (s *DataNode) OperatePacket(pkg *repl.Packet, c *net.TCPConn) (err error) {
 		s.handleWrite(pkg)
 	case proto.OpRead:
 		s.handleRead(pkg)
-	case proto.OpStreamRead, proto.OpExtentRepairRead:
-		s.handleStreamRead(pkg, c)
+	case proto.OpStreamRead:
+		s.handleStreamRead(pkg, c, NeedCheckRaftLeader)
+	case proto.OpExtentRepairRead:
+		s.handleStreamRead(pkg, c, !NeedCheckRaftLeader)
 	case proto.OpMarkDelete:
 		s.handleMarkDelete(pkg)
 	case proto.OpRandomWrite:
@@ -405,20 +407,23 @@ func (s *DataNode) handleRead(pkg *repl.Packet) {
 	return
 }
 
+
 // Handle OpStreamRead packet.
-func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
+func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn, needCheckRaft bool) {
 	var (
 		err error
 	)
 	partition := pkg.Object.(*DataPartition)
-	err = partition.RandomPartitionReadCheck(pkg, connect)
-	if err != nil {
-		err = fmt.Errorf(pkg.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
-			pkg.StartT, err))
-		log.LogErrorf(err.Error())
-		pkg.PackErrorBody(ActionStreamRead, err.Error())
-		pkg.WriteToConn(connect)
-		return
+	if needCheckRaft {
+		err = partition.RandomPartitionReadCheck(pkg, connect)
+		if err != nil {
+			err = fmt.Errorf(pkg.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
+				pkg.StartT, err))
+			log.LogErrorf(err.Error())
+			pkg.PackErrorBody(ActionStreamRead, err.Error())
+			pkg.WriteToConn(connect)
+			return
+		}
 	}
 
 	needReplySize := pkg.Size
@@ -505,8 +510,7 @@ func (s *DataNode) handleNotifyExtentRepair(pkg *repl.Packet) {
 		err error
 	)
 	partition := pkg.Object.(*DataPartition)
-	extents := make([]*storage.ExtentInfo, 0)
-	mf := NewDataPartitionRepairTask(extents, "")
+	mf := new(DataPartitionRepairTask)
 	err = json.Unmarshal(pkg.Data, mf)
 	if err != nil {
 		pkg.PackErrorBody(ActionRepair, err.Error())
