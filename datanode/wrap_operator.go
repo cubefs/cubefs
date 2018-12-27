@@ -35,7 +35,6 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/raft"
 	raftProto "github.com/tiglabs/raft/proto"
-	"golang.org/x/text/cmd/gotext/examples/extract_http/pkg"
 )
 
 func (s *DataNode) OperatePacket(pkg *repl.Packet, c *net.TCPConn) (err error) {
