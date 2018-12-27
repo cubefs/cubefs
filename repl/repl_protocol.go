@@ -37,12 +37,12 @@ var (
  has three goroutine:
     a. ServerConn goroutine recive pkg from client,and check it avali,then send it to toBeProcessCh
 
-    b. operatorAndForwardPkg goroutine read from toBeProcessCh,send it to all replicates,and do local,then send a sigle to notifyReciveCh
+    b. OperatorAndForwardPkg goroutine read from toBeProcessCh,send it to all replicates,and do local,then send a sigle to notifyReciveCh
        and read pkg from responseCh,and write its response to client
 
-    c. receiveResponse goroutine read from notifyReciveCh,recive all replicates  pkg response,and send this pkg to responseCh
+    c. ReceiveResponse goroutine read from notifyReciveCh,recive all replicates  pkg response,and send this pkg to responseCh
 
-	if any step error,then change request to error Packet,and send it to responseCh, the operatorAndForwardPkg can send it to client
+	if any step error,then change request to error Packet,and send it to responseCh, the OperatorAndForwardPkg can send it to client
 
 */
 type ReplProtocol struct {
@@ -50,7 +50,7 @@ type ReplProtocol struct {
 
 	packetList     *list.List    //store all recived pkg from client
 	notifyReciveCh chan struct{} //if sendto all replicates success,then send a sigle to this chan
-	//the receiveResponse goroutine can recive response from allreplicates
+	//the ReceiveResponse goroutine can recive response from allreplicates
 
 	toBeProcessCh chan *Packet // the recive pkg goroutine recive a avali pkg,then send to this chan
 	responseCh    chan *Packet //this chan used to write client
@@ -80,8 +80,8 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(pkg *Packet) error,
 	rp.prepareFunc = prepareFunc
 	rp.operatorFunc = operatorFunc
 	rp.postFunc = postFunc
-	go rp.operatorAndForwardPkg()
-	go rp.receiveResponse()
+	go rp.OperatorAndForwardPkg()
+	go rp.ReceiveResponse()
 
 	return rp
 }
@@ -141,12 +141,12 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 
 /*
    read pkg from toBeProcessCh,and if pkg need forward to all followers,send it to all followers
-   if send to followers,then do pkg by opcode,then notify receiveResponse gorotine,recive response
+   if send to followers,then do pkg by opcode,then notify ReceiveResponse gorotine,recive response
    if packet donnot need forward,do pkg by opcode
 
    read response from responseCh,and write response to client
 */
-func (rp *ReplProtocol) operatorAndForwardPkg() {
+func (rp *ReplProtocol) OperatorAndForwardPkg() {
 	for {
 		select {
 		case request := <-rp.toBeProcessCh:
@@ -173,7 +173,7 @@ func (rp *ReplProtocol) operatorAndForwardPkg() {
 }
 
 // Receive response from all followers.
-func (rp *ReplProtocol) receiveResponse() {
+func (rp *ReplProtocol) ReceiveResponse() {
 	for {
 		select {
 		case <-rp.notifyReciveCh:
@@ -190,7 +190,7 @@ func (rp *ReplProtocol) receiveResponse() {
 func (rp *ReplProtocol) sendRequestToAllfollowers(request *Packet) (index int, err error) {
 	rp.pushPacketToList(request)
 	for index = 0; index < len(request.followerConns); index++ {
-		err = rp.AllocateFollowersConnects(request, index)
+		err = rp.allocateFollowersConnects(request, index)
 		if err != nil {
 			msg := fmt.Sprintf("request inconnect(%v) to(%v) err(%v)", rp.sourceConn.RemoteAddr().String(),
 				request.followersAddrs[index], err.Error())
@@ -337,7 +337,7 @@ func (rp *ReplProtocol) Stop() {
 /*
  allocate followers connects,if it is extentStore and it is Write op,then use last connects
 */
-func (rp *ReplProtocol) AllocateFollowersConnects(pkg *Packet, index int) (err error) {
+func (rp *ReplProtocol) allocateFollowersConnects(pkg *Packet, index int) (err error) {
 	var conn *net.TCPConn
 	if pkg.ExtentMode == proto.NormalExtentMode {
 		key := fmt.Sprintf("%v_%v_%v", pkg.PartitionID, pkg.ExtentID, pkg.followersAddrs[index])

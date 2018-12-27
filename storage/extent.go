@@ -82,8 +82,6 @@ type Extent struct {
 	header     []byte
 	modifyTime time.Time
 	dataSize   int64
-	closeC     chan bool
-	closed     bool
 }
 
 // NewExtentInCore create and returns a new extent instance.
@@ -92,7 +90,6 @@ func NewExtentInCore(name string, extentID uint64) *Extent {
 	e.extentID = extentID
 	e.filePath = name
 	e.header = make([]byte, util.BlockHeaderSize)
-	e.closeC = make(chan bool)
 	return e
 }
 
@@ -103,8 +100,6 @@ func (e *Extent) Close() (err error) {
 	if err = e.file.Close(); err != nil {
 		return
 	}
-	close(e.closeC)
-	e.closed = true
 	return
 }
 
