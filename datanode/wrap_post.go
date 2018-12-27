@@ -11,7 +11,7 @@ func (s *DataNode) Post(pkg *repl.Packet) error {
 	if pkg.IsMasterCommand() {
 		pkg.NeedReply = false
 	}
-	if pkg.Opcode == proto.OpStreamRead {
+	if pkg.Opcode == proto.OpStreamRead || pkg.Opcode == proto.OpExtentRepairRead {
 		pkg.NeedReply = false
 	}
 	if pkg.Opcode == proto.OpCreateDataPartition {

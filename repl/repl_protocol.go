@@ -388,7 +388,13 @@ func (rp *ReplProtocol) cleanResource() {
 	}
 	replys := len(rp.responseCh)
 	for i := 0; i < replys; i++ {
-		<-rp.responseCh
+		pkg := <-rp.responseCh
+		rp.postFunc(pkg)
+	}
+	request := len(rp.toBeProcessCh)
+	for i := 0; i < request; i++ {
+		pkg := <-rp.responseCh
+		rp.postFunc(pkg)
 	}
 	rp.packetList = list.New()
 	rp.followerConnects.Range(

@@ -172,7 +172,7 @@ func read(name string) (err error) {
 	return nil
 }
 
-func verifyWriteAndRead(filename string) {
+func verifyWriteAndRead(filename string, isRandom bool) {
 	verifyInfo, err := write(filename)
 	if err != nil {
 		err = fmt.Errorf("filename %v write %v error", filename, err)
@@ -185,6 +185,17 @@ func verifyWriteAndRead(filename string) {
 		fmt.Println(err.Error())
 		readVerify(verifyInfo)
 	}
+
+	if isRandom {
+		verifyInfo, err := write(filename)
+		if err != nil {
+			err = fmt.Errorf("filename %v overwrite %v error", filename, err)
+			fmt.Println(err.Error())
+		}
+
+		readVerify(verifyInfo)
+	}
+	return
 }
 
 func create(wg *sync.WaitGroup) {
@@ -201,10 +212,7 @@ func create(wg *sync.WaitGroup) {
 		if *fileType {
 			err = os.MkdirAll(filename, 0755)
 		} else {
-			verifyWriteAndRead(filename)
-			if *random {
-				verifyWriteAndRead(filename)
-			}
+			verifyWriteAndRead(filename, *random)
 		}
 
 		if err != nil {

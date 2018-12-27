@@ -74,7 +74,7 @@ func (s *DataNode) checkPartition(pkg *repl.Packet) (err error) {
 // If OpCreateExtent get new extentID
 func (s *DataNode) addExtentInfo(pkg *repl.Packet) error {
 	store := pkg.Object.(*DataPartition).GetStore()
-	if isLeaderPacket(pkg) && pkg.ExtentMode == proto.TinyExtentMode {
+	if isLeaderPacket(pkg) && pkg.ExtentMode == proto.TinyExtentMode && isWriteOperation(pkg) {
 		extentID, err := store.GetAvaliTinyExtent() // GetConnect a valid tinyExtentId
 		if err != nil {
 			return err

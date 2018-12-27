@@ -378,6 +378,11 @@ func (s *DataNode) handleRandomWrite(pkg *repl.Packet) {
 		return
 	}
 
+	if err == nil && pkg.ResultCode != proto.OpOk {
+	    err = storage.ErrorAgain
+	    return
+	}
+
 	if err == nil && pkg.Opcode == proto.OpRandomWrite && pkg.Size == util.BlockSize {
 		proto.Buffers.Put(pkg.Data)
 	}
@@ -405,20 +410,14 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 	var (
 		err error
 	)
-	defer func() {
-		if err != nil {
-			pkg.PackErrorBody(ActionStreamRead, err.Error())
-		} else {
-			pkg.PackOkReply()
-		}
-	}()
 	partition := pkg.Object.(*DataPartition)
-	if err = partition.RandomPartitionReadCheck(pkg, connect); err != nil {
+	err = partition.RandomPartitionReadCheck(pkg, connect)
+	if err != nil {
+		err = fmt.Errorf(pkg.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
+			pkg.StartT, err))
+		log.LogErrorf(err.Error())
 		pkg.PackErrorBody(ActionStreamRead, err.Error())
-		if err = pkg.WriteToConn(connect); err != nil {
-			err = fmt.Errorf(pkg.LogMessage(ActionStreamRead, connect.RemoteAddr().String(), pkg.StartT, err))
-			log.LogErrorf(err.Error())
-		}
+		pkg.WriteToConn(connect)
 		return
 	}
 
@@ -445,6 +444,7 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 		tpObject.CalcTp()
 		if err != nil {
 			reply.PackErrorBody(ActionStreamRead, err.Error())
+			pkg.PackErrorBody(ActionStreamRead, err.Error())
 			if err = reply.WriteToConn(connect); err != nil {
 				err = fmt.Errorf(reply.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
 					reply.StartT, err))
@@ -457,8 +457,8 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 		if err = reply.WriteToConn(connect); err != nil {
 			err = fmt.Errorf(reply.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
 				reply.StartT, err))
+			pkg.PackErrorBody(ActionStreamRead, err.Error())
 			log.LogErrorf(err.Error())
-			connect.Close()
 			return
 		}
 		needReplySize -= currReadSize
@@ -467,7 +467,8 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn) {
 			proto.Buffers.Put(reply.Data)
 		}
 	}
-	pkg.ResultCode = reply.ResultCode
+	pkg.PackOkReply()
+
 	return
 }
 

@@ -20,7 +20,6 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/sdk/data/wrapper"
 	"github.com/tiglabs/containerfs/util"
-	"github.com/tiglabs/containerfs/util/log"
 	"hash/crc32"
 	"io"
 	"net"
@@ -38,15 +37,18 @@ func (p *Packet) String() string {
 	return fmt.Sprintf("ReqID(%v)Op(%v)Inode(%v)FileOffset(%v)Size(%v)PartitionID(%v)ExtentID(%v)ExtentOffset(%v)CRC(%v)ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.inode, p.kernelOffset, p.Size, p.PartitionID, p.ExtentID, p.ExtentOffset, p.CRC, p.GetResultMesg())
 }
 
-func NewPacket(inode uint64, offset int) *Packet {
+func NewPacket(inode uint64, offset, storeMode int) *Packet {
 	p := new(Packet)
 	p.ReqID = proto.GeneratorRequestID()
 	p.Magic = proto.ProtoMagic
-	p.ExtentMode = proto.NormalExtentMode
 	p.Opcode = proto.OpWrite
 	p.inode = inode
 	p.kernelOffset = offset
-	p.Data, _ = proto.Buffers.Get(util.BlockSize)
+	if storeMode == proto.TinyExtentMode {
+		p.Data, _ = proto.Buffers.Get(util.DefaultTinySizeLimit)
+	} else {
+		p.Data, _ = proto.Buffers.Get(util.BlockSize)
+	}
 	return p
 }
 
@@ -238,9 +240,7 @@ func (p *Packet) ReadFromConnStream(c net.Conn, deadlineTime time.Duration) (err
 	}
 
 	size := int(p.Size)
-	//FIXME
 	if size > len(p.Data) {
-		log.LogErrorf("ReadFromConnStream: Size is larger than Data length, packet(%v) data len(%v)", p, len(p.Data))
 		size = len(p.Data)
 	}
 

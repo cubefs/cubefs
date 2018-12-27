@@ -27,7 +27,7 @@ import (
 type unreachableReporter func(uint64)
 
 type transportSender struct {
-	nodeId      uint64
+	nodeID      uint64
 	concurrency uint64
 	senderType  SocketType
 	resolver    SocketResolver
@@ -37,9 +37,9 @@ type transportSender struct {
 	stopc       chan struct{}
 }
 
-func newTransportSender(nodeId, concurrency uint64, buffSize int, senderType SocketType, resolver SocketResolver) *transportSender {
+func newTransportSender(nodeID, concurrency uint64, buffSize int, senderType SocketType, resolver SocketResolver) *transportSender {
 	sender := &transportSender{
-		nodeId:      nodeId,
+		nodeID:      nodeID,
 		concurrency: concurrency,
 		senderType:  senderType,
 		resolver:    resolver,
@@ -85,7 +85,7 @@ func (s *transportSender) stop() {
 
 func (s *transportSender) loopSend(recvc chan *proto.Message) {
 	util.RunWorkerUtilStop(func() {
-		conn := getConn(s.nodeId, s.senderType, s.resolver, 0, 2*time.Second)
+		conn := getConn(s.nodeID, s.senderType, s.resolver, 0, 2*time.Second)
 		bufWr := util.NewBufferWriter(conn, 16*KB)
 
 		defer func() {
@@ -109,7 +109,7 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 
 			case msg := <-recvc:
 				if conn == nil {
-					conn = getConn(s.nodeId, s.senderType, s.resolver, 0, 2*time.Second)
+					conn = getConn(s.nodeID, s.senderType, s.resolver, 0, 2*time.Second)
 					if conn == nil {
 						time.Sleep(50 * time.Millisecond)
 						continue
@@ -146,7 +146,7 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 				err = bufWr.Flush()
 			}
 			if err != nil {
-				logger.Error("[Transport]send message[%s] to %v[%s] error:[%v].", s.senderType, s.nodeId, conn.RemoteAddr(), err)
+				logger.Error("[Transport]send message[%s] to %v[%s] error:[%v].", s.senderType, s.nodeID, conn.RemoteAddr(), err)
 				conn.Close()
 				conn = nil
 			}
@@ -154,12 +154,12 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 	}, s.stopc)
 }
 
-func getConn(nodeId uint64, socketType SocketType, resolver SocketResolver, rdTime, wrTime time.Duration) (conn *util.ConnTimeout) {
+func getConn(nodeID uint64, socketType SocketType, resolver SocketResolver, rdTime, wrTime time.Duration) (conn *util.ConnTimeout) {
 	var (
 		addr string
 		err  error
 	)
-	if addr, err = resolver.NodeAddress(nodeId, socketType); err == nil {
+	if addr, err = resolver.NodeAddress(nodeID, socketType); err == nil {
 		if conn, err = util.DialTimeout(addr, 2*time.Second); err == nil {
 			conn.SetReadTimeout(rdTime)
 			conn.SetWriteTimeout(wrTime)
@@ -169,7 +169,7 @@ func getConn(nodeId uint64, socketType SocketType, resolver SocketResolver, rdTi
 	if err != nil {
 		conn = nil
 		if logger.IsEnableDebug() {
-			logger.Debug("[Transport] get connection[%s] to %v[%s] failed,error is: %s", socketType, nodeId, addr, err)
+			logger.Debug("[Transport] get connection[%s] to %v[%s] failed,error is: %s", socketType, nodeID, addr, err)
 		}
 	}
 	return

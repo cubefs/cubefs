@@ -31,6 +31,8 @@ import (
 const (
 	MaxSelectDataPartionForWrite = 32
 	MaxNewHandlerRetry           = 3
+	MaxPacketErrorCount          = 32
+	MaxDirtyListLen              = 0
 )
 
 const (
@@ -68,8 +70,6 @@ type StreamWriter struct {
 	inode  uint64
 	status int32
 
-	excludePartition []uint64
-
 	handler   *ExtentHandler   // current open handler
 	dirtylist *ExtentDirtyList // dirty handlers
 	dirty     bool             // whether current open handler is in the dirty list
@@ -84,7 +84,6 @@ func NewStreamWriter(stream *Streamer, inode uint64) *StreamWriter {
 	sw.inode = inode
 	sw.request = make(chan interface{}, 1000)
 	sw.done = make(chan struct{})
-	sw.excludePartition = make([]uint64, 0)
 	sw.dirtylist = NewExtentDirtyList()
 	go sw.server()
 	return sw
@@ -278,14 +277,21 @@ func (sw *StreamWriter) doOverwrite(req *ExtentRequest) (total int, err error) {
 
 func (sw *StreamWriter) doWrite(data []byte, offset, size int) (total int, err error) {
 	var (
-		ek *proto.ExtentKey
+		ek        *proto.ExtentKey
+		storeMode int
 	)
 
-	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v)", sw.inode, offset, size)
+	if offset+size > sw.tinySizeLimit() {
+		storeMode = proto.NormalExtentMode
+	} else {
+		storeMode = proto.TinyExtentMode
+	}
+
+	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", sw.inode, offset, size, storeMode)
 
 	for i := 0; i < MaxNewHandlerRetry; i++ {
 		if sw.handler == nil {
-			sw.handler = NewExtentHandler(sw, offset, proto.NormalExtentMode)
+			sw.handler = NewExtentHandler(sw, offset, storeMode)
 			sw.dirty = false
 		}
 
@@ -352,7 +358,13 @@ func (sw *StreamWriter) traverse() (err error) {
 		eh := element.Value.(*ExtentHandler)
 
 		log.LogDebugf("StreamWriter traverse begin: eh(%v)", eh)
-		if eh.getStatus() >= ExtentStatusClosed && atomic.LoadInt32(&eh.inflight) <= 0 {
+		if eh.getStatus() >= ExtentStatusClosed {
+			// handler is beyond closed status, but there can still be
+			// unflushed packet.
+			eh.flushPacket()
+			if atomic.LoadInt32(&eh.inflight) > 0 {
+				continue
+			}
 			err = eh.appendExtentKey()
 			if err != nil {
 				return
@@ -360,13 +372,6 @@ func (sw *StreamWriter) traverse() (err error) {
 			sw.dirtylist.Remove(element)
 			eh.cleanup()
 		}
-		//		closed, err = eh.flush()
-		//		if err != nil {
-		//			return
-		//		}
-		//		if closed {
-		//			sw.dirtylist.Remove(element)
-		//		}
 		log.LogDebugf("StreamWriter traverse end: eh(%v)", eh)
 	}
 	return
@@ -374,9 +379,13 @@ func (sw *StreamWriter) traverse() (err error) {
 
 func (sw *StreamWriter) closeOpenHandler() {
 	if sw.handler != nil {
-		//sw.handler.flushPacket()
-		sw.handler.flush()
 		sw.handler.setClosed()
+		if sw.dirtylist.Len() < MaxDirtyListLen {
+			sw.handler.flushPacket()
+		} else {
+			sw.handler.flush()
+		}
+
 		if !sw.dirty {
 			// in case current handler is not in the dirty list,
 			// and will not get cleaned up.
@@ -413,4 +422,8 @@ func (sw *StreamWriter) truncate(size int) error {
 		return err
 	}
 	return sw.stream.client.truncate(sw.inode, uint64(size))
+}
+
+func (sw *StreamWriter) tinySizeLimit() int {
+	return util.DefaultTinySizeLimit
 }
