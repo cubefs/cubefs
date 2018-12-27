@@ -464,10 +464,25 @@ func (p *Packet) PackErrorWithBody(code uint8, reply []byte) {
 }
 
 func (p *Packet) GetUniqueLogId() (m string) {
-	m = fmt.Sprintf("Req%v_Partition%v_Extent%v_ExtentOffset%v_KernelOffset%v_Size%v_StoreMode%v_Opcode%v_ResultCode%v",
-		p.ReqID, p.PartitionID, p.ExtentID, p.ExtentOffset,
-		p.KernelOffset, p.Size, p.GetStoreModeMsg(), p.GetOpMsg(), p.GetResultMesg())
+	var (
+		offset uint64
+		size   uint32
+	)
+	if p.ExtentMode == TinyExtentMode && p.Opcode == OpMarkDelete && len(p.Data) > 0 {
+		ext := new(ExtentKey)
+		err := json.Unmarshal(p.Data, ext)
+		if err == nil {
+			offset = ext.ExtentOffset
+			size = ext.Size
+		}
+	} else {
+		offset = uint64(p.ExtentOffset)
+		size = p.Size
+	}
 
+	m = fmt.Sprintf("Req%v_Partition%v_Extent%v_ExtentOffset%v_KernelOffset%v_Size%v_StoreMode%v_Opcode%v_ResultCode%v",
+		p.ReqID, p.PartitionID, p.ExtentID, offset,
+		p.KernelOffset, size, p.GetStoreModeMsg(), p.GetOpMsg(), p.GetResultMesg())
 	return
 }
 
