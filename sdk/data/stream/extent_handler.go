@@ -140,7 +140,7 @@ func (eh *ExtentHandler) Write(data []byte, offset, size int) (ek *proto.ExtentK
 
 	for total < size {
 		if eh.packet == nil {
-			eh.packet = NewPacket(eh.inode, offset+total, eh.storeMode)
+			eh.packet = NewWritePacket(eh.inode, offset+total, eh.storeMode)
 			//log.LogDebugf("ExtentHandler Write: NewPacket, eh(%v) packet(%v)", eh, eh.packet)
 		}
 		packsize := int(eh.packet.Size)
@@ -198,7 +198,7 @@ func (eh *ExtentHandler) sender() {
 			}
 
 			// calculate extent offset
-			eh.extOffset = packet.kernelOffset - eh.fileOffset
+			eh.extOffset = packet.fileOffset - eh.fileOffset
 
 			// fill packet according to extent
 			packet.PartitionID = eh.dp.PartitionID
@@ -211,7 +211,7 @@ func (eh *ExtentHandler) sender() {
 
 			//log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
 
-			if err = packet.writeTo(eh.conn); err != nil {
+			if err = packet.writeToConn(eh.conn); err != nil {
 				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
 				eh.setClosed()
 				eh.setRecovery()
@@ -285,8 +285,8 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		return
 	}
 
-	if !packet.IsEqualWriteReply(reply) {
-		errmsg := fmt.Sprintf("request and reply not match: reply(%v)", reply)
+	if !packet.isValidWriteReply(reply) {
+		errmsg := fmt.Sprintf("request and reply does not match: reply(%v)", reply)
 		eh.processReplyError(packet, errmsg)
 		return
 	}
@@ -306,7 +306,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		extOffset = uint64(reply.ExtentOffset)
 	} else {
 		extID = packet.ExtentID
-		extOffset = uint64(packet.kernelOffset) - uint64(eh.fileOffset)
+		extOffset = uint64(packet.fileOffset) - uint64(eh.fileOffset)
 	}
 
 	if eh.key == nil {
@@ -420,7 +420,7 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 
 	handler := eh.recoverHandler
 	if handler == nil {
-		handler = NewExtentHandler(eh.sw, packet.kernelOffset, int(eh.storeMode))
+		handler = NewExtentHandler(eh.sw, packet.fileOffset, int(eh.storeMode))
 		handler.setClosed()
 	}
 	handler.pushToRequest(packet)

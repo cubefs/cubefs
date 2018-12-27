@@ -48,7 +48,7 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 	offset := req.FileOffset - int(reader.key.FileOffset) + int(reader.key.ExtentOffset)
 	size := req.Size
 
-	reqPacket := NewStreamReadPacket(reader.key, offset, size, reader.inode, req.FileOffset)
+	reqPacket := NewReadPacket(reader.key, offset, size, reader.inode, req.FileOffset)
 	sc := NewStreamConn(reader.dp)
 
 	log.LogDebugf("ExtentReader Read enter: size(%v) req(%v) reqPacket(%v)", size, req, reqPacket)
@@ -59,7 +59,7 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 			replyPacket := NewReply(reqPacket.ReqID, reader.dp.PartitionID, reqPacket.ExtentID)
 			bufSize := util.Min(util.ReadBlockSize, size-readBytes)
 			replyPacket.Data = req.Data[readBytes : readBytes+bufSize]
-			e := replyPacket.ReadFromConnStream(conn, proto.ReadDeadlineTime)
+			e := replyPacket.readFromConn(conn, proto.ReadDeadlineTime)
 			if e != nil {
 				return errors.Annotatef(e, "Extent Reader Read: failed to read from connect, readBytes(%v)", readBytes), false
 			}
@@ -99,7 +99,7 @@ func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet) (er
 		err = errors.New(fmt.Sprintf("checkStreamReply: ResultCode(%v) NOK", reply.GetResultMesg()))
 		return
 	}
-	if !request.IsEqualStreamReadReply(reply) {
+	if !request.isValidReadReply(reply) {
 		err = errors.New(fmt.Sprintf("checkStreamReply: inconsistent req and reply, req(%v) reply(%v)", request, reply))
 		return
 	}
