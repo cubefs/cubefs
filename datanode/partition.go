@@ -191,6 +191,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		stopC:                  make(chan bool, 0),
 		repairC:                make(chan uint64, 0),
 		storeC:                 make(chan uint64, 128),
+		snapshot:               make([]*proto.File, 0),
 		partitionStatus:        proto.ReadWrite,
 		runtimeMetrics:         NewDataPartitionMetrics(),
 		config:                 dpCfg,
@@ -212,7 +213,9 @@ func (dp *DataPartition) ID() uint64 {
 }
 
 func (dp *DataPartition) GetExtentCount() int {
-	return dp.extentStore.GetExtentCount()
+	dp.snapshotLock.RLock()
+	defer dp.snapshotLock.RUnlock()
+	return len(dp.snapshot)
 }
 
 func (dp *DataPartition) Path() string {
