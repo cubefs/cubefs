@@ -63,13 +63,14 @@ type DataPartitionRepairTask struct {
 	FixExtentSizeTasks []*storage.ExtentInfo          //generator fixSize file task
 }
 
-func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo) (task *DataPartitionRepairTask) {
+func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo, source string) (task *DataPartitionRepairTask) {
 	task = &DataPartitionRepairTask{
 		extents:            make(map[uint64]*storage.ExtentInfo),
 		AddExtentsTasks:    make([]*storage.ExtentInfo, 0),
 		FixExtentSizeTasks: make([]*storage.ExtentInfo, 0),
 	}
 	for _, extentFile := range extentFiles {
+		extentFile.Source = source
 		task.extents[extentFile.FileID] = extentFile
 	}
 
@@ -141,7 +142,7 @@ func (dp *DataPartition) fillDataPartitionRepairTask(replicas []*DataPartitionRe
 		return err
 	}
 	//new Leader DataPartitionRepairTask
-	replicas[0] = NewDataPartitionRepairTask(leaderExtents)
+	replicas[0] = NewDataPartitionRepairTask(leaderExtents, dp.replicaHosts[0])
 	replicas[0].addr = dp.replicaHosts[0]
 
 	// new Follower DataPartitionRepair Task
@@ -150,7 +151,7 @@ func (dp *DataPartition) fillDataPartitionRepairTask(replicas []*DataPartitionRe
 		if err != nil {
 			return err
 		}
-		replicas[index] = NewDataPartitionRepairTask(extents)
+		replicas[index] = NewDataPartitionRepairTask(extents, dp.replicaHosts[index])
 		replicas[index].addr = dp.replicaHosts[index]
 	}
 
