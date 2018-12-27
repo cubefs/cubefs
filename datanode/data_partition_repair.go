@@ -314,7 +314,7 @@ func (dp *DataPartition) generatorAddExtentsTasks(allReplicas []*DataPartitionRe
 				addFile := &storage.ExtentInfo{Source: maxExtentInfo.Source, FileID: extentID, Size: maxExtentInfo.Size, Inode: maxExtentInfo.Inode}
 				follower.AddExtentsTasks = append(follower.AddExtentsTasks, addFile)
 				follower.FixExtentSizeTasks = append(follower.FixExtentSizeTasks, addFile)
-				log.LogInfof("action[generatorAddExtentsTasks] partition(%v) addFile(%v) on Index(%v).", dp.partitionID, addFile, index)
+				log.LogInfof("action[generatorAddExtentsTasks] addFile(%v_%v) on Index(%v).", dp.partitionID, addFile, index)
 			}
 		}
 	}
@@ -334,13 +334,13 @@ func (dp *DataPartition) generatorFixExtentSizeTasks(allMembers []*DataPartition
 			if extentInfo.Size < maxFileInfo.Size {
 				fixExtent := &storage.ExtentInfo{Source: maxFileInfo.Source, FileID: extentID, Size: maxFileInfo.Size, Inode: maxFileInfo.Inode}
 				allMembers[index].FixExtentSizeTasks = append(allMembers[index].FixExtentSizeTasks, fixExtent)
-				log.LogInfof("action[generatorFixExtentSizeTasks] partition(%v) fixExtent(%v).", dp.partitionID, fixExtent)
+				log.LogInfof("action[generatorFixExtentSizeTasks] fixExtent(%v_%v).", dp.partitionID, fixExtent)
 				isFix = false
 			}
 			if maxFileInfo.Inode != 0 && extentInfo.Inode == 0 {
 				fixExtent := &storage.ExtentInfo{Source: maxFileInfo.Source, FileID: extentID, Size: maxFileInfo.Size, Inode: maxFileInfo.Inode}
 				allMembers[index].FixExtentSizeTasks = append(allMembers[index].FixExtentSizeTasks, fixExtent)
-				log.LogInfof("action[generatorFixExtentSizeTasks] partition(%v) Modify Ino fixExtent(%v).", dp.partitionID, fixExtent)
+				log.LogInfof("action[generatorFixExtentSizeTasks] Modify Ino fixExtent(%v_%v).", dp.partitionID, fixExtent)
 			}
 		}
 		if storage.IsTinyExtent(extentID) {
@@ -513,13 +513,13 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			return
 		}
 
-		log.LogInfof("action[streamRepairExtent] partition(%v) extent(%v) start fix from (%v)"+
-			" remoteSize(%v) localSize(%v) reply(%v).", dp.ID(), remoteExtentInfo.FileID,
-			remoteExtentInfo.Source, remoteExtentInfo.Size, currFixOffset, reply.GetUniqueLogId())
+		log.LogInfof("action[streamRepairExtent] fix(%v_%v) start fix from (%v)"+
+			" remoteSize(%v)localSize(%v) reply(%v).", dp.ID(), remoteExtentInfo.String(),
+			remoteExtentInfo.Size, currFixOffset, reply.GetUniqueLogId())
 
 		if reply.CRC != crc32.ChecksumIEEE(reply.Data[:reply.Size]) {
-			err = fmt.Errorf("streamRepairExtent crc mismatch partition(%v) extent(%v) start fix from (%v)"+
-				" remoteSize(%v) localSize(%v) request(%v) reply(%v)", dp.ID(), remoteExtentInfo.FileID,
+			err = fmt.Errorf("streamRepairExtent crc mismatch extent(%v_%v) start fix from (%v)"+
+				" remoteSize(%v) localSize(%v) request(%v) reply(%v)", dp.ID(), remoteExtentInfo.String(),
 				remoteExtentInfo.Source, remoteExtentInfo.Size, currFixOffset, request.GetUniqueLogId(), reply.GetUniqueLogId())
 			log.LogErrorf("action[streamRepairExtent] err(%v).", err)
 			return errors.Annotatef(err, "streamRepairExtent receive data error")
