@@ -429,11 +429,11 @@ func (s *DataNode) stopRaftServer() {
 }
 
 // ExtentRepair Create task to repair extent files
-func (dp *DataPartition) ExtentRepair(extentFiles []*storage.ExtentInfo) {
+func (dp *DataPartition) ExtentRepair(extentFiles []*storage.ExtentInfo, target string) {
 	startTime := time.Now().UnixNano()
 	log.LogInfof("action[ExtentRepair] partition=%v start.", dp.partitionID)
 
-	mf := NewDataPartitionRepairTask(extentFiles)
+	mf := NewDataPartitionRepairTask(extentFiles, target)
 
 	for i := 0; i < len(extentFiles); i++ {
 		extentFile := extentFiles[i]

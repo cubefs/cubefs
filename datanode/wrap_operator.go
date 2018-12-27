@@ -506,7 +506,7 @@ func (s *DataNode) handleNotifyExtentRepair(pkg *repl.Packet) {
 	)
 	partition := pkg.Object.(*DataPartition)
 	extents := make([]*storage.ExtentInfo, 0)
-	mf := NewDataPartitionRepairTask(extents)
+	mf := NewDataPartitionRepairTask(extents, "")
 	err = json.Unmarshal(pkg.Data, mf)
 	if err != nil {
 		pkg.PackErrorBody(ActionRepair, err.Error())

@@ -170,7 +170,7 @@ func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 		err = errors.Annotatef(err, "[ApplySnapshot] getExtentInfo DataPartition[%v]", dp.partitionID)
 		return
 	}
-	dp.ExtentRepair(extentFiles)
+	dp.ExtentRepair(extentFiles, targetAddr)
 
 	data, err = iterator.Next()
 	appIndexID = binary.BigEndian.Uint64(data)
