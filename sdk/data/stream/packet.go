@@ -28,22 +28,22 @@ import (
 
 type Packet struct {
 	proto.Packet
-	inode        uint64
-	kernelOffset int
-	errCount     int
+	inode      uint64
+	fileOffset int
+	errCount   int
 }
 
 func (p *Packet) String() string {
-	return fmt.Sprintf("ReqID(%v)Op(%v)Inode(%v)FileOffset(%v)Size(%v)PartitionID(%v)ExtentID(%v)ExtentOffset(%v)CRC(%v)ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.inode, p.kernelOffset, p.Size, p.PartitionID, p.ExtentID, p.ExtentOffset, p.CRC, p.GetResultMesg())
+	return fmt.Sprintf("ReqID(%v)Op(%v)Inode(%v)FileOffset(%v)Size(%v)PartitionID(%v)ExtentID(%v)ExtentOffset(%v)CRC(%v)ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.inode, p.fileOffset, p.Size, p.PartitionID, p.ExtentID, p.ExtentOffset, p.CRC, p.GetResultMesg())
 }
 
-func NewPacket(inode uint64, offset, storeMode int) *Packet {
+func NewWritePacket(inode uint64, fileOffset, storeMode int) *Packet {
 	p := new(Packet)
 	p.ReqID = proto.GeneratorRequestID()
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpWrite
 	p.inode = inode
-	p.kernelOffset = offset
+	p.fileOffset = fileOffset
 	if storeMode == proto.TinyExtentMode {
 		p.Data, _ = proto.Buffers.Get(util.DefaultTinySizeLimit)
 	} else {
@@ -52,67 +52,43 @@ func NewPacket(inode uint64, offset, storeMode int) *Packet {
 	return p
 }
 
-func NewWritePacket(dp *wrapper.DataPartition, extentId uint64, offset int, inode uint64, kernelOffset int, isRandom bool) (p *Packet) {
-	p = new(Packet)
+func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset int, inode uint64, fileOffset int) *Packet {
+	p := new(Packet)
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
 	p.Data = make([]byte, 0)
 	p.ExtentMode = proto.NormalExtentMode
-	p.ExtentID = extentId
-	p.ExtentOffset = int64(offset)
+	p.ExtentID = extentID
+	p.ExtentOffset = int64(extentOffset)
 	p.ReqID = proto.GeneratorRequestID()
-	if isRandom {
-		p.Arg = nil
-		p.Arglen = 0
-		p.RemainFollowers = 0
-		p.Opcode = proto.OpRandomWrite
-	} else {
-		p.Arg = ([]byte)(dp.GetAllAddrs())
-		p.Arglen = uint32(len(p.Arg))
-		p.RemainFollowers = uint8(len(dp.Hosts) - 1)
-		p.Opcode = proto.OpWrite
-	}
-	p.inode = inode
-	p.kernelOffset = kernelOffset
-	p.Data, _ = proto.Buffers.Get(util.BlockSize)
-
-	return
-}
-
-func NewReadPacket(key *proto.ExtentKey, offset, size int) (p *Packet) {
-	p = new(Packet)
-	p.ExtentID = key.ExtentId
-	p.PartitionID = key.PartitionId
-	p.Magic = proto.ProtoMagic
-	p.ExtentOffset = int64(offset)
-	p.Size = uint32(size)
-	p.Opcode = proto.OpRead
-	p.ExtentMode = proto.NormalExtentMode
-	p.ReqID = proto.GeneratorRequestID()
+	p.Arg = nil
+	p.Arglen = 0
 	p.RemainFollowers = 0
-
-	return
+	p.Opcode = proto.OpRandomWrite
+	p.inode = inode
+	p.fileOffset = fileOffset
+	p.Data, _ = proto.Buffers.Get(util.BlockSize)
+	return p
 }
 
-func NewStreamReadPacket(key *proto.ExtentKey, offset, size int, inode uint64, fileOffset int) (p *Packet) {
-	p = new(Packet)
+func NewReadPacket(key *proto.ExtentKey, extentOffset, size int, inode uint64, fileOffset int) *Packet {
+	p := new(Packet)
 	p.ExtentID = key.ExtentId
 	p.PartitionID = key.PartitionId
 	p.Magic = proto.ProtoMagic
-	p.ExtentOffset = int64(offset)
+	p.ExtentOffset = int64(extentOffset)
 	p.Size = uint32(size)
 	p.Opcode = proto.OpStreamRead
 	p.ExtentMode = proto.NormalExtentMode
 	p.ReqID = proto.GeneratorRequestID()
 	p.RemainFollowers = 0
 	p.inode = inode
-	p.kernelOffset = fileOffset
-
-	return
+	p.fileOffset = fileOffset
+	return p
 }
 
-func NewCreateExtentPacket(dp *wrapper.DataPartition, inodeId uint64) (p *Packet) {
-	p = new(Packet)
+func NewCreateExtentPacket(dp *wrapper.DataPartition, inode uint64) *Packet {
+	p := new(Packet)
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
 	p.Data = make([]byte, 0)
@@ -122,101 +98,42 @@ func NewCreateExtentPacket(dp *wrapper.DataPartition, inodeId uint64) (p *Packet
 	p.RemainFollowers = uint8(len(dp.Hosts) - 1)
 	p.ReqID = proto.GeneratorRequestID()
 	p.Opcode = proto.OpCreateExtent
-
 	p.Data = make([]byte, 8)
-	binary.BigEndian.PutUint64(p.Data, inodeId)
+	binary.BigEndian.PutUint64(p.Data, inode)
 	p.Size = uint32(len(p.Data))
-
 	return p
 }
 
-func NewDeleteExtentPacket(dp *wrapper.DataPartition, extentId uint64) (p *Packet) {
-	p = new(Packet)
+func NewReply(reqID int64, partitionID uint64, extentID uint64) *Packet {
+	p := new(Packet)
+	p.ReqID = reqID
+	p.PartitionID = partitionID
+	p.ExtentID = extentID
 	p.Magic = proto.ProtoMagic
-	p.Opcode = proto.OpMarkDelete
 	p.ExtentMode = proto.NormalExtentMode
-	p.PartitionID = dp.PartitionID
-	p.ExtentID = extentId
-	p.ReqID = proto.GeneratorRequestID()
-	p.RemainFollowers = uint8(len(dp.Hosts) - 1)
-	p.Arg = ([]byte)(dp.GetAllAddrs())
-	p.Arglen = uint32(len(p.Arg))
 	return p
 }
 
-func NewReply(reqId int64, partition uint64, extentId uint64) (p *Packet) {
-	p = new(Packet)
-	p.ReqID = reqId
-	p.PartitionID = partition
-	p.ExtentID = extentId
-	p.Magic = proto.ProtoMagic
-	p.ExtentMode = proto.NormalExtentMode
-
-	return
-}
-
-func (p *Packet) IsEqualWriteReply(q *Packet) bool {
+func (p *Packet) isValidWriteReply(q *Packet) bool {
 	if p.ReqID == q.ReqID && p.PartitionID == q.PartitionID {
 		return true
 	}
 	return false
 }
 
-func (p *Packet) IsEqualReadReply(q *Packet) bool {
-	if p.ReqID == q.ReqID && p.PartitionID == q.PartitionID && p.ExtentID == q.ExtentID && p.ExtentOffset == q.ExtentOffset && p.Size == q.Size {
-		return true
-	}
-	return false
-}
-
-func (p *Packet) IsEqualStreamReadReply(q *Packet) bool {
+func (p *Packet) isValidReadReply(q *Packet) bool {
 	if p.ReqID == q.ReqID && p.PartitionID == q.PartitionID && p.ExtentID == q.ExtentID {
 		return true
 	}
-
 	return false
 }
 
-func (p *Packet) fill(data []byte, size int) (canWrite int) {
-	if p.Size+uint32(size) > util.BlockSize {
-		return
-	}
-	blockSpace := util.BlockSize
-	remain := int(blockSpace) - int(p.Size)
-	canWrite = util.Min(remain, size)
-	if canWrite <= 0 {
-		return
-	}
-	copy(p.Data[p.Size:p.Size+uint32(canWrite)], data[:canWrite])
-	p.Size += uint32(canWrite)
-
-	return
-}
-
-func (p *Packet) isFullPacket() bool {
-	return p.Size-util.BlockSize == 0
-}
-
-func (p *Packet) getPacketLength() int {
-	return int(p.Size)
-}
-
-func (p *Packet) writeTo(conn net.Conn) (err error) {
+func (p *Packet) writeToConn(conn net.Conn) error {
 	p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
-	err = p.WriteToConn(conn)
-
-	return
+	return p.WriteToConn(conn)
 }
 
-func ReadFull(c net.Conn, buf *[]byte, readSize int) (err error) {
-	if *buf == nil || readSize != util.BlockSize {
-		*buf = make([]byte, readSize)
-	}
-	_, err = io.ReadFull(c, (*buf)[:readSize])
-	return
-}
-
-func (p *Packet) ReadFromConnStream(c net.Conn, deadlineTime time.Duration) (err error) {
+func (p *Packet) readFromConn(c net.Conn, deadlineTime time.Duration) (err error) {
 	if deadlineTime != proto.NoReadDeadlineTime {
 		c.SetReadDeadline(time.Now().Add(deadlineTime * time.Second))
 	}
@@ -230,7 +147,7 @@ func (p *Packet) ReadFromConnStream(c net.Conn, deadlineTime time.Duration) (err
 	}
 
 	if p.Arglen > 0 {
-		if err = ReadFull(c, &p.Arg, int(p.Arglen)); err != nil {
+		if err = readToBuffer(c, &p.Arg, int(p.Arglen)); err != nil {
 			return
 		}
 	}
@@ -245,5 +162,13 @@ func (p *Packet) ReadFromConnStream(c net.Conn, deadlineTime time.Duration) (err
 	}
 
 	_, err = io.ReadFull(c, p.Data[:size])
+	return
+}
+
+func readToBuffer(c net.Conn, buf *[]byte, readSize int) (err error) {
+	if *buf == nil || readSize != util.BlockSize {
+		*buf = make([]byte, readSize)
+	}
+	_, err = io.ReadFull(c, (*buf)[:readSize])
 	return
 }
