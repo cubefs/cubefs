@@ -362,6 +362,30 @@ func (i *Inode) ExtentsTruncate(exts []BtreeItem, length uint64, ct int64) {
 	i.Unlock()
 }
 
+func (i *Inode) Copy() *Inode {
+	newIno := NewInode(i.Inode, i.Type)
+	i.RLock()
+	newIno.Uid = i.Uid
+	newIno.Gid = i.Gid
+	newIno.Size = i.Size
+	newIno.Generation = i.Generation
+	newIno.CreateTime = i.CreateTime
+	newIno.ModifyTime = i.ModifyTime
+	newIno.AccessTime = i.AccessTime
+	if size := len(i.LinkTarget); size > 0 {
+		newIno.LinkTarget = make([]byte, size)
+		copy(newIno.LinkTarget, i.LinkTarget)
+	}
+	newIno.NLink = i.NLink
+	newIno.Flag = i.Flag
+	newIno.AuthID = i.AuthID
+	newIno.AuthTimeout = i.AuthTimeout
+	newIno.Reserved = i.Reserved
+	newIno.Extents = i.Extents.Clone()
+	i.RUnlock()
+	return newIno
+}
+
 func (i *Inode) IncrNLink() {
 	i.Lock()
 	i.NLink++

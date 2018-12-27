@@ -72,6 +72,10 @@ func (mp *metaPartition) updateDentry(dentry *Dentry) (resp *ResponseDentry) {
 		return
 	}
 	d := item.(*Dentry)
+	if mp.isDump.Bool() {
+		d := d.Copy()
+		mp.dentryTree.ReplaceOrInsert(d, true)
+	}
 	d.Inode, dentry.Inode = dentry.Inode, d.Inode
 	resp.Msg = dentry
 	return

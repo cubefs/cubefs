@@ -28,6 +28,7 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
 	"os"
+	"path"
 )
 
 var (
@@ -164,6 +165,7 @@ type MetaPartition interface {
 //  +-----+             +-------+
 type metaPartition struct {
 	config        *MetaPartitionConfig
+	isDump        *AtomicBool
 	size          uint64 // For partition all file size
 	applyID       uint64 // For store Inode/Dentry max applyID, this index will be update after restore from dump data.
 	dentryTree    *BTree
@@ -322,6 +324,7 @@ func (mp *metaPartition) getRaftPort() (heartbeat, replicate int, err error) {
 func NewMetaPartition(conf *MetaPartitionConfig) MetaPartition {
 	mp := &metaPartition{
 		config:     conf,
+		isDump:     NewAtomicBool(),
 		dentryTree: NewBtree(),
 		inodeTree:  NewBtree(),
 		stopC:      make(chan bool),
@@ -367,26 +370,34 @@ func (mp *metaPartition) load() (err error) {
 	if err = mp.loadMeta(); err != nil {
 		return
 	}
-	if err = mp.loadInode(); err != nil {
+	loadSnapshotDir := path.Join(mp.config.RootDir, snapShotDir)
+	if err = mp.loadInode(loadSnapshotDir); err != nil {
 		return
 	}
-	if err = mp.loadDentry(); err != nil {
+	if err = mp.loadDentry(loadSnapshotDir); err != nil {
 		return
 	}
-	err = mp.loadApplyID()
+	err = mp.loadApplyID(loadSnapshotDir)
 	return
 }
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
-	if err = mp.storeInode(sm); err != nil {
+	tmpDir := path.Join(mp.config.RootDir, snapShotDirTmp)
+	if _, err = os.Stat(tmpDir); err != nil {
+		if err = os.MkdirAll(tmpDir, 0775); err != nil {
+			return
+		}
+	}
+	if err = mp.storeInode(tmpDir, sm); err != nil {
 		return
 	}
-	if err = mp.storeDentry(sm); err != nil {
+	if err = mp.storeDentry(tmpDir, sm); err != nil {
 		return
 	}
-	if err = mp.storeApplyID(sm); err != nil {
+	if err = mp.storeApplyID(tmpDir, sm); err != nil {
 		return
 	}
+	err = os.Rename(tmpDir, path.Join(mp.config.RootDir, snapShotDir))
 	return
 }
 

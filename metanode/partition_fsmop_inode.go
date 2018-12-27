@@ -57,6 +57,10 @@ func (mp *metaPartition) createLinkInode(ino *Inode) (resp *ResponseInode) {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
+	if mp.isDump.Bool() {
+		i = i.Copy()
+		mp.inodeTree.ReplaceOrInsert(i, true)
+	}
 	i.IncrNLink()
 	resp.Msg = i
 	return
@@ -170,6 +174,10 @@ func (mp *metaPartition) appendExtents(ino *Inode) (status uint8) {
 		status = proto.OpNotExistErr
 		return
 	}
+	if mp.isDump.Bool() {
+		ino2 = ino2.Copy()
+		mp.inodeTree.ReplaceOrInsert(ino2, true)
+	}
 	if !ino2.CanWrite(ino.AuthID, ino.AccessTime) {
 		status = proto.OpNotPerm
 		return
@@ -233,6 +241,10 @@ func (mp *metaPartition) evictInode(ino *Inode) (resp *ResponseInode) {
 	mp.inodeTree.Find(ino, func(item BtreeItem) {
 		isFind = true
 		i := item.(*Inode)
+		if mp.isDump.Bool() {
+			i = i.Copy()
+			mp.inodeTree.ReplaceOrInsert(i, true)
+		}
 		if proto.IsDir(i.Type) {
 			if i.GetNLink() < 2 {
 				isDelete = true
@@ -276,6 +288,10 @@ func (mp *metaPartition) setAttr(req *SetattrRequest) (err error) {
 		return
 	}
 	ino = item.(*Inode)
+	if mp.isDump.Bool() {
+		ino = ino.Copy()
+		mp.inodeTree.ReplaceOrInsert(ino, true)
+	}
 	ino.SetAttr(req.Valid, req.Mode, req.Uid, req.Gid)
 	return
 }

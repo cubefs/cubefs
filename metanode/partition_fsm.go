@@ -132,6 +132,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			inodeTree:  mp.getInodeTree(),
 			dentryTree: mp.getDentryTree(),
 		}
+		mp.isDump.SetTrue(index)
 		mp.storeChan <- msg
 	case opFSMInternalDeleteInode:
 		err = mp.internalDelete(msg.V)

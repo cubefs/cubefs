@@ -74,6 +74,10 @@ func (mp *metaPartition) openFile(req *OpenReq) (resp *ResponseInode) {
 	}
 	resp.Status = proto.OpNotPerm
 	if proto.IsWriteFlag(req.Flag) {
+		if mp.isDump.Bool() {
+			ino2 = ino2.Copy()
+			mp.inodeTree.ReplaceOrInsert(ino2, true)
+		}
 		if authID, ok := ino2.CanOpen(req.ATime); ok {
 			resp.Status = proto.OpOk
 			resp.AuthID = authID
@@ -93,6 +97,10 @@ func (mp *metaPartition) releaseOpen(ino *Inode) (status uint8) {
 	if ino2.IsDelete() {
 		status = proto.OpNotExistErr
 		return
+	}
+	if mp.isDump.Bool() {
+		ino2 = ino2.Copy()
+		mp.inodeTree.ReplaceOrInsert(ino2, true)
 	}
 	ino2.OpenRelease(ino2.AuthID)
 	return
