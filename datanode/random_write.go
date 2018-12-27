@@ -160,7 +160,7 @@ func (dp *DataPartition) RandomPartitionReadCheck(request *repl.Packet, connect 
 	}
 
 	if dp.applyID < dp.maxAppliedID {
-		//todo: err = storage.ErrorAgain
+		err = storage.ErrorAgain
 		logContent := fmt.Sprintf("action[ReadCheck] %v localID=%v maxID=%v.",
 			request.LogMessage(request.GetOpMsg(), connect.RemoteAddr().String(), request.StartT, nil), dp.applyID, dp.maxAppliedID)
 		log.LogErrorf(logContent)
