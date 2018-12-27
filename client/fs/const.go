@@ -18,7 +18,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tiglabs/containerfs/third_party/fuse"
+	"bazil.org/fuse"
 
 	"github.com/tiglabs/containerfs/proto"
 )

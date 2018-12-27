@@ -22,8 +22,8 @@ import (
 
 	"github.com/tiglabs/containerfs/sdk/data/stream"
 	"github.com/tiglabs/containerfs/sdk/meta"
-	"github.com/tiglabs/containerfs/third_party/fuse"
-	"github.com/tiglabs/containerfs/third_party/fuse/fs"
+	"bazil.org/fuse"
+	"bazil.org/fuse/fs"
 	"github.com/tiglabs/containerfs/util/log"
 )
 

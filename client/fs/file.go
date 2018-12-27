@@ -19,8 +19,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tiglabs/containerfs/third_party/fuse"
-	"github.com/tiglabs/containerfs/third_party/fuse/fs"
+	"bazil.org/fuse"
+	"bazil.org/fuse/fs"
 	"golang.org/x/net/context"
 
 	"github.com/tiglabs/containerfs/proto"

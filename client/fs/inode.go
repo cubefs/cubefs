@@ -19,7 +19,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/tiglabs/containerfs/third_party/fuse"
+	"bazil.org/fuse"
 
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
