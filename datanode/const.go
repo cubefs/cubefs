@@ -95,3 +95,7 @@ const (
 const (
 	DiskSectorSize = 512
 )
+
+const (
+	NeedCheckRaftLeader = true
+)
