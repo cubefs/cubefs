@@ -116,7 +116,7 @@ func (s *DataNode) handleCreateExtent(pkg *repl.Packet) {
 		}
 	}()
 	partition := pkg.Object.(*DataPartition)
-	if partition.Available() <= 0 {
+	if partition.Available() <= 0 || partition.disk.Status == proto.ReadOnly {
 		err = storage.ErrSyscallNoSpace
 		return
 	}
@@ -345,7 +345,7 @@ func (s *DataNode) handleWrite(pkg *repl.Packet) {
 		}
 	}()
 	partition := pkg.Object.(*DataPartition)
-	if partition.Available() <= 0 {
+	if partition.Available() <= 0 || partition.disk.Status == proto.ReadOnly {
 		err = storage.ErrSyscallNoSpace
 		return
 	}
