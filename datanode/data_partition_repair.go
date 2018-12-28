@@ -257,6 +257,9 @@ func (dp *DataPartition) getUnavaliTinyExtents() (unavaliTinyExtents []uint64) {
 		fixTinyExtents = storage.TinyExtentCount
 		dp.isFirstFixTinyExtents = false
 	}
+	if dp.extentStore.GetUnAvaliExtentLen() == 0 {
+		fixTinyExtents = storage.TinyExtentCount
+	}
 	for i := 0; i < fixTinyExtents; i++ {
 		extentID, err := dp.extentStore.GetUnavaliTinyExtent()
 		if err != nil {

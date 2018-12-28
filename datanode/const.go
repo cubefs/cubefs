@@ -82,7 +82,7 @@ const (
 
 const (
 	maxApplyErrRetry  = 10     // Random write apply retry times
-	MinFixTinyExtents = 1      // Invalid tiny extent count
+	MinFixTinyExtents = 10     // Invalid tiny extent count
 	dpRetainRaftLogs  = 100000 // Count of raft logs per data partition
 )
 
