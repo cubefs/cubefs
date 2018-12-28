@@ -33,9 +33,9 @@ import (
 	"strconv"
 	"strings"
 
+	"bazil.org/fuse"
+	"bazil.org/fuse/fs"
 	bdfs "github.com/tiglabs/containerfs/client/fs"
-	"github.com/tiglabs/containerfs/third_party/fuse"
-	"github.com/tiglabs/containerfs/third_party/fuse/fs"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/exporter"
 	"github.com/tiglabs/containerfs/util/log"
