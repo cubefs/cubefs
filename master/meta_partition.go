@@ -504,6 +504,12 @@ func (mr *MetaReplica) generateDeleteReplicaTask(partitionID uint64) (t *proto.A
 	return
 }
 
+func (mr *MetaReplica) generateLoadTask(partitionID uint64) (t *proto.AdminTask) {
+	req := &proto.MetaPartitionLoadRequest{PartitionID: partitionID}
+	t = proto.NewAdminTask(proto.OpLoadMetaPartition, mr.Addr, req)
+	resetMetaPartitionTaskID(t, partitionID)
+	return
+}
 func (mr *MetaReplica) isMissed() (miss bool) {
 	return time.Now().Unix()-mr.ReportTime > defaultMetaPartitionTimeOutSec
 }
@@ -543,3 +549,5 @@ func (mp *MetaPartition) createPartitionSuccessTriggerOperator(nodeAddr string, 
 	mp.checkAndRemoveMissMetaReplica(mr.Addr)
 	return
 }
+
+

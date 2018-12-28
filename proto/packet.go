@@ -119,10 +119,10 @@ const (
 )
 
 const (
-	WriteDeadlineTime               = 5
-	ReadDeadlineTime                = 5
-	CreateDataPartitionDeadlineTime = 20
-	NoReadDeadlineTime              = -1
+	WriteDeadlineTime        = 5
+	ReadDeadlineTime         = 5
+	SyncSendTaskDeadlineTime = 20
+	NoReadDeadlineTime       = -1
 )
 
 const (

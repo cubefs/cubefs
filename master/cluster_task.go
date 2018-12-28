@@ -161,7 +161,40 @@ func (c *Cluster) loadMetaPartitionAndCheckResponse(mp *MetaPartition) {
 }
 
 func (c *Cluster) processLoadMetaPartition(mp *MetaPartition) {
-
+	var wg sync.WaitGroup
+	errChannel := make(chan error, len(mp.PersistenceHosts))
+	for _, host := range mp.PersistenceHosts {
+		wg.Add(1)
+		go func(host string) {
+			defer func() {
+				wg.Done()
+			}()
+			mr, err := mp.getMetaReplica(host)
+			if err != nil {
+				errChannel <- err
+				return
+			}
+			task := mr.generateLoadTask(mp.PartitionID)
+			conn, err := mr.metaNode.Sender.connPool.GetConnect(mr.Addr)
+			if err != nil {
+				errChannel <- err
+				return
+			}
+			_, err = mr.metaNode.Sender.syncSendAdminTask(task, conn)
+			if err != nil {
+				errChannel <- err
+				return
+			}
+			mr.metaNode.Sender.connPool.PutConnect(conn, false)
+		}(host)
+	}
+	wg.Wait()
+	select {
+	case err := <-errChannel:
+		Warn(c.Name, err.Error())
+	default:
+	}
+	//todo add response to mp
 }
 
 func (c *Cluster) processLoadDataPartition(dp *DataPartition) {

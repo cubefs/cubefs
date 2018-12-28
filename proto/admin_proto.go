@@ -199,3 +199,8 @@ type MetaPartitionOfflineResponse struct {
 	Status      uint8
 	Result      string
 }
+
+type MetaPartitionLoadRequest struct {
+	PartitionID uint64
+}
+
