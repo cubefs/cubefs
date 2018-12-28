@@ -32,8 +32,12 @@ func NewResponseDentry() *ResponseDentry {
 // CreateDentry insert dentry into dentry tree.
 func (mp *metaPartition) createDentry(dentry *Dentry) (status uint8) {
 	status = proto.OpOk
-	if _, ok := mp.dentryTree.ReplaceOrInsert(dentry, false); !ok {
+	if item, ok := mp.dentryTree.ReplaceOrInsert(dentry, false); !ok {
 		status = proto.OpExistErr
+		d := item.(*Dentry)
+		if dentry.Type != d.Type {
+			status = proto.OpArgMismatchErr
+		}
 	}
 	return
 }

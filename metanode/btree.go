@@ -78,18 +78,21 @@ func (b *BTree) Delete(key BtreeItem) (item BtreeItem) {
 func (b *BTree) ReplaceOrInsert(key BtreeItem, replace bool) (item BtreeItem,
 	ok bool) {
 	b.Lock()
+	if replace {
+		item = b.tree.ReplaceOrInsert(key)
+		b.Unlock()
+		ok = true
+		return
+	}
+
 	item = b.tree.Get(key)
 	if item == nil {
-		item, ok = b.tree.ReplaceOrInsert(key), true
+		item = b.tree.ReplaceOrInsert(key)
 		b.Unlock()
+		ok = true
 		return
 	}
-	if !replace {
-		b.Unlock()
-		ok = false
-		return
-	}
-	item, ok = b.tree.ReplaceOrInsert(key), true
+	ok = false
 	b.Unlock()
 	return
 }
