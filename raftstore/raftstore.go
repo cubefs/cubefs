@@ -39,7 +39,7 @@ type raftStore struct {
 	resolver   NodeResolver
 	raftConfig *raft.Config
 	raftServer *raft.RaftServer
-	walPath    string
+	raftPath   string
 }
 
 func (s *raftStore) RaftConfig() *raft.Config {
@@ -92,7 +92,7 @@ func newRaftLogger(dir string) {
 func NewRaftStore(cfg *Config) (mr RaftStore, err error) {
 	resolver := NewNodeResolver()
 
-	newRaftLogger(cfg.WalPath)
+	newRaftLogger(cfg.RaftPath)
 
 	rc := raft.DefaultConfig()
 	rc.NodeID = cfg.NodeID
@@ -120,7 +120,7 @@ func NewRaftStore(cfg *Config) (mr RaftStore, err error) {
 		resolver:   resolver,
 		raftConfig: rc,
 		raftServer: rs,
-		walPath:    cfg.WalPath,
+		raftPath:   cfg.RaftPath,
 	}
 	return
 }
@@ -133,7 +133,7 @@ func (s *raftStore) CreatePartition(cfg *PartitionConfig) (p Partition, err erro
 	// ws: WaL Storage.
 	var walPath string
 	if cfg.WalPath == "" {
-		walPath = path.Join(s.walPath, strconv.FormatUint(cfg.ID, 10))
+		walPath = path.Join(s.raftPath, strconv.FormatUint(cfg.ID, 10))
 	} else {
 		walPath = path.Join(cfg.WalPath, "wal_"+strconv.FormatUint(cfg.ID, 10))
 	}
