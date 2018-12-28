@@ -424,7 +424,10 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 
 	handler := eh.recoverHandler
 	if handler == nil {
-		handler = NewExtentHandler(eh.sw, packet.fileOffset, int(eh.storeMode))
+		// Always use normal extent store mode for recovery.
+		// Because tiny extent files are limited, tiny store
+		// failures might due to lack of tiny extent file.
+		handler = NewExtentHandler(eh.sw, packet.fileOffset, proto.NormalExtentMode)
 		handler.setClosed()
 	}
 	handler.pushToRequest(packet)
