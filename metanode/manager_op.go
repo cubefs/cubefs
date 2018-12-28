@@ -34,23 +34,13 @@ func (m *metaManager) opMasterHeartbeat(conn net.Conn, p *Packet) (err error) {
 	var (
 		req       = &proto.HeartBeatRequest{}
 		resp      = &proto.MetaNodeHeartbeatResponse{}
-		adminTask = &proto.AdminTask{}
-		reqData   []byte
+		adminTask = &proto.AdminTask{
+			Request: req,
+		}
 	)
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
-		resp.Status = proto.TaskFail
-		resp.Result = err.Error()
-		goto end
-	}
-	reqData, err = json.Marshal(adminTask.Request)
-	if err != nil {
-		resp.Status = proto.TaskFail
-		resp.Result = err.Error()
-		goto end
-	}
-	if err = json.Unmarshal(reqData, req); err != nil {
 		resp.Status = proto.TaskFail
 		resp.Result = err.Error()
 		goto end
@@ -111,7 +101,10 @@ func (m *metaManager) opCreateMetaPartition(conn net.Conn, p *Packet) (err error
 		m.respondToClient(conn, p)
 	}()
 	// GetConnect task from packet.
-	adminTask := &proto.AdminTask{}
+	req := &proto.CreateMetaPartitionRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
@@ -121,23 +114,9 @@ func (m *metaManager) opCreateMetaPartition(conn net.Conn, p *Packet) (err error
 	}
 	log.LogDebugf("[opCreateMetaPartition] [remoteAddr=%s]accept a from"+
 		" master message: %v", conn.RemoteAddr(), adminTask)
-	// Marshal request body.
-	requestJson, err := json.Marshal(adminTask.Request)
-	if err != nil {
-		err = errors.Errorf("[opCreateMetaPartition]: Marshal AdminTask."+
-			"Request: %s", err.Error())
-		return
-	}
-	// Unmarshal request to entity
-	req := &proto.CreateMetaPartitionRequest{}
-	if err = json.Unmarshal(requestJson, req); err != nil {
-		err = errors.Errorf("[opCreateMetaPartition]: Unmarshal AdminTask."+
-			"Request to CreateMetaPartitionRequest: %s", err.Error())
-		return
-	}
 	// Create new  metaPartition.
-	if err = m.createPartition(req.PartitionID, req.VolName, req.Start, req.End,
-		req.Members); err != nil {
+	if err = m.createPartition(req.PartitionID, req.VolName,
+		req.Start, req.End, req.Members); err != nil {
 		err = errors.Errorf("[opCreateMetaPartition]->%s; request message: %v",
 			err.Error(), adminTask.Request)
 		return
@@ -548,22 +527,13 @@ func (m *metaManager) opMetaExtentsTruncate(conn net.Conn, p *Packet) (err error
 }
 
 func (m *metaManager) opDeleteMetaPartition(conn net.Conn, p *Packet) (err error) {
-	adminTask := &proto.AdminTask{}
+	req := &proto.DeleteMetaPartitionRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
-		m.respondToClient(conn, p)
-		return
-	}
-	req := &proto.DeleteMetaPartitionRequest{}
-	reqData, err := json.Marshal(adminTask.Request)
-	if err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
-		m.respondToClient(conn, p)
-		return
-	}
-	if err = json.Unmarshal(reqData, req); err != nil {
 		p.PackErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
 		return
@@ -596,7 +566,10 @@ func (m *metaManager) opDeleteMetaPartition(conn net.Conn, p *Packet) (err error
 
 func (m *metaManager) opUpdateMetaPartition(conn net.Conn, p *Packet) (err error) {
 	log.LogDebugf("[opUpdateMetaPartition] request.")
-	adminTask := &proto.AdminTask{}
+	req := new(UpdatePartitionReq)
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
@@ -604,22 +577,7 @@ func (m *metaManager) opUpdateMetaPartition(conn net.Conn, p *Packet) (err error
 		m.respondToClient(conn, p)
 		return
 	}
-	var (
-		reqData []byte
-		req     = new(UpdatePartitionReq)
-	)
-	reqData, err = json.Marshal(adminTask.Request)
-	if err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
-		m.respondToClient(conn, p)
-		return
-	}
-	log.LogDebugf("[opUpdateMetaPartition] req: %v", adminTask)
-	if err = json.Unmarshal(reqData, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
-		m.respondToClient(conn, p)
-		return
-	}
+
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PackErrorWithBody(proto.OpErr, nil)
@@ -690,11 +648,11 @@ func (m *metaManager) opLoadMetaPartition(conn net.Conn, p *Packet) (err error) 
 }
 
 func (m *metaManager) opOfflineMetaPartition(conn net.Conn, p *Packet) (err error) {
-	var (
-		reqData []byte
-		req     = &proto.MetaPartitionOfflineRequest{}
-	)
-	adminTask := &proto.AdminTask{}
+	var reqData []byte
+	req := &proto.MetaPartitionOfflineRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
@@ -703,17 +661,6 @@ func (m *metaManager) opOfflineMetaPartition(conn net.Conn, p *Packet) (err erro
 		return
 	}
 	log.LogDebugf("[opOfflineMetaPartition] received task: %v", adminTask)
-	reqData, err = json.Marshal(adminTask.Request)
-	if err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
-		m.respondToClient(conn, p)
-		return
-	}
-	if err = json.Unmarshal(reqData, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
-		m.respondToClient(conn, p)
-		return
-	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PackErrorWithBody(proto.OpErr, nil)
@@ -731,6 +678,13 @@ func (m *metaManager) opOfflineMetaPartition(conn net.Conn, p *Packet) (err erro
 	}
 	if req.AddPeer.ID == req.RemovePeer.ID {
 		err = errors.Errorf("[opOfflineMetaPartition]: AddPeer[%v] same withRemovePeer[%v]", req.AddPeer, req.RemovePeer)
+		resp.Result = err.Error()
+		goto end
+	}
+	reqData, err = json.Marshal(req)
+	if err != nil {
+		err = errors.Errorf("[opOfflineMetaPartition]: partitionID= %d, "+
+			"Marshal %s", req.PartitionID, err)
 		resp.Result = err.Error()
 		goto end
 	}
