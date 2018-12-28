@@ -25,6 +25,7 @@ import (
 
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
+	"hash/crc32"
 )
 
 const (
@@ -34,6 +35,7 @@ const (
 	inodeFile      = "inode"
 	dentryFile     = "dentry"
 	applyIDFile    = "apply"
+	SnapshotSign   = ".sign"
 	metaFile       = "meta"
 	metaFileTmp    = ".meta"
 )
@@ -239,7 +241,8 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 	return
 }
 
-func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (err error) {
+func (mp *metaPartition) storeInode(rootDir string,
+	sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, inodeFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
 		O_CREATE, 0755)
@@ -250,9 +253,10 @@ func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (err error) {
 		err = fp.Sync()
 		fp.Close()
 	}()
+	var data []byte
+	lenBuf := make([]byte, 4)
+	sign := crc32.NewIEEE()
 	sm.inodeTree.Ascend(func(i BtreeItem) bool {
-		var data []byte
-		lenBuf := make([]byte, 4)
 		ino := i.(*Inode)
 		if data, err = ino.Marshal(); err != nil {
 			return false
@@ -262,16 +266,24 @@ func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (err error) {
 		if _, err = fp.Write(lenBuf); err != nil {
 			return false
 		}
+		if _, err = sign.Write(lenBuf); err != nil {
+			return false
+		}
 		// Set Body Data
 		if _, err = fp.Write(data); err != nil {
 			return false
 		}
+		if _, err = sign.Write(data); err != nil {
+			return false
+		}
 		return true
 	})
+	crc = sign.Sum32()
 	return
 }
 
-func (mp *metaPartition) storeDentry(rootDir string, sm *storeMsg) (err error) {
+func (mp *metaPartition) storeDentry(rootDir string,
+	sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, dentryFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
 		O_CREATE, 0755)
@@ -282,9 +294,10 @@ func (mp *metaPartition) storeDentry(rootDir string, sm *storeMsg) (err error) {
 		err = fp.Sync()
 		fp.Close()
 	}()
+	var data []byte
+	lenBuf := make([]byte, 4)
+	sign := crc32.NewIEEE()
 	sm.dentryTree.Ascend(func(i BtreeItem) bool {
-		var data []byte
-		lenBuf := make([]byte, 4)
 		dentry := i.(*Dentry)
 		data, err = dentry.Marshal()
 		if err != nil {
@@ -295,11 +308,18 @@ func (mp *metaPartition) storeDentry(rootDir string, sm *storeMsg) (err error) {
 		if _, err = fp.Write(lenBuf); err != nil {
 			return false
 		}
+		if _, err = sign.Write(lenBuf); err != nil {
+			return false
+		}
 		if _, err = fp.Write(data); err != nil {
+			return false
+		}
+		if _, err = sign.Write(data); err != nil {
 			return false
 		}
 		return true
 	})
+	crc = sign.Sum32()
 	return
 }
 

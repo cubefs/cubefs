@@ -602,7 +602,10 @@ func (m *metaManager) opUpdateMetaPartition(conn net.Conn, p *Packet) (err error
 }
 
 func (m *metaManager) opLoadMetaPartition(conn net.Conn, p *Packet) (err error) {
-	adminTask := &proto.AdminTask{}
+	req := &proto.MetaPartitionLoadRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
@@ -610,40 +613,19 @@ func (m *metaManager) opLoadMetaPartition(conn net.Conn, p *Packet) (err error) 
 		p.WriteToConn(conn)
 		return
 	}
-	var (
-		req     = &proto.LoadMetaPartitionMetricRequest{}
-		resp    = &proto.LoadMetaPartitionMetricResponse{}
-		reqData []byte
-	)
-	if reqData, err = json.Marshal(adminTask.Request); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
-		p.WriteToConn(conn)
-		return
-	}
-	if err = json.Unmarshal(reqData, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
-		p.WriteToConn(conn)
-		return
-	}
-	m.responseAckOKToMaster(conn, p)
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		resp.Status = proto.OpErr
-		resp.Result = err.Error()
-		adminTask.Response = resp
-		adminTask.Request = nil
-		m.respondToMaster(adminTask)
+		p.PackErrorWithBody(proto.OpNotExistErr, nil)
+		m.respondToClient(conn, p)
 		return
 	}
-	mConf := mp.GetBaseConfig()
-	resp.Start = mConf.Start
-	resp.End = mConf.End
-	resp.MaxInode = mConf.Cursor
-	resp.Status = proto.OpOk
-	adminTask.Response = resp
-	adminTask.Request = nil
-	m.respondToMaster(adminTask)
-	log.LogDebugf("[opLoadMetaPartition] req[%v], response[%v].", req, adminTask)
+	if err = mp.LoadSnapshotSign(p); err != nil {
+		log.LogErrorf("[opLoadMetaPartition] req[%v], response marshal[%v]",
+			req, err.Error())
+	}
+	m.respondToClient(conn, p)
+	log.LogDebugf("[opLoadMetaPartition] req[%v], response status[%s], "+
+		"response body[%s], error[%v]", req, p.GetResultMesg(), p.Data, err)
 	return
 }
 
