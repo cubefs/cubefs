@@ -99,7 +99,6 @@ func (rp *ReplProtocol) ServerConn() {
 			!strings.Contains(err.Error(), "reset by peer") {
 			log.LogErrorf("action[serveConn] err(%v).", err)
 		}
-		rp.sourceConn.Close()
 	}()
 	for {
 		select {
@@ -330,6 +329,7 @@ func (rp *ReplProtocol) Stop() {
 			close(rp.exitC)
 		}
 		rp.exited = true
+		rp.sourceConn.Close()
 	}
 
 }
