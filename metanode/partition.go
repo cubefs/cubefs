@@ -383,11 +383,19 @@ func (mp *metaPartition) load() (err error) {
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
 	tmpDir := path.Join(mp.config.RootDir, snapShotDirTmp)
-	if _, err = os.Stat(tmpDir); err != nil {
-		if err = os.MkdirAll(tmpDir, 0775); err != nil {
-			return
-		}
+	if _, err = os.Stat(tmpDir); err == nil {
+		os.RemoveAll(tmpDir)
 	}
+	err = nil
+	if err = os.MkdirAll(tmpDir, 0775); err != nil {
+		return
+	}
+
+	defer func() {
+		if err != nil {
+			os.RemoveAll(tmpDir)
+		}
+	}()
 	if err = mp.storeInode(tmpDir, sm); err != nil {
 		return
 	}
@@ -397,7 +405,25 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 	if err = mp.storeApplyID(tmpDir, sm); err != nil {
 		return
 	}
-	err = os.Rename(tmpDir, path.Join(mp.config.RootDir, snapShotDir))
+	snapshotDir := path.Join(mp.config.RootDir, snapShotDir)
+	// check snapshotBack if or not exist
+	backupDir := path.Join(mp.config.RootDir, snapShotBackup)
+	if _, err = os.Stat(backupDir); err == nil {
+		if err = os.RemoveAll(backupDir); err != nil {
+			return
+		}
+	}
+	err = nil
+
+	// rename snapshot to backup
+	if err = os.Rename(snapshotDir, backupDir); err != nil {
+		return
+	}
+	if err = os.Rename(tmpDir, snapshotDir); err != nil {
+		os.Rename(backupDir, snapshotDir)
+		return
+	}
+	err = os.RemoveAll(backupDir)
 	return
 }
 

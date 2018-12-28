@@ -30,6 +30,7 @@ import (
 const (
 	snapShotDir    = "snapshot"
 	snapShotDirTmp = ".snapshot"
+	snapShotBackup = ".snapshot_backup"
 	inodeFile      = "inode"
 	dentryFile     = "dentry"
 	applyIDFile    = "apply"
@@ -229,9 +230,8 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 		return
 	}
 	defer func() {
-		fp.Sync()
+		err = fp.Sync()
 		fp.Close()
-		os.Remove(filename)
 	}()
 	if _, err = fp.WriteString(fmt.Sprintf("%d", sm.applyIndex)); err != nil {
 		return
@@ -247,11 +247,8 @@ func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (err error) {
 		return
 	}
 	defer func() {
-		fp.Sync()
+		err = fp.Sync()
 		fp.Close()
-		if err != nil {
-			os.RemoveAll(filename)
-		}
 	}()
 	sm.inodeTree.Ascend(func(i BtreeItem) bool {
 		var data []byte
@@ -271,9 +268,6 @@ func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (err error) {
 		}
 		return true
 	})
-	if err != nil {
-		return
-	}
 	return
 }
 
@@ -285,9 +279,8 @@ func (mp *metaPartition) storeDentry(rootDir string, sm *storeMsg) (err error) {
 		return
 	}
 	defer func() {
-		fp.Sync()
+		err = fp.Sync()
 		fp.Close()
-		os.Remove(filename)
 	}()
 	sm.dentryTree.Ascend(func(i BtreeItem) bool {
 		var data []byte
@@ -307,9 +300,6 @@ func (mp *metaPartition) storeDentry(rootDir string, sm *storeMsg) (err error) {
 		}
 		return true
 	})
-	if err != nil {
-		return
-	}
 	return
 }
 

@@ -237,6 +237,20 @@ func (m *metaManager) loadPartitions() (err error) {
 				partitionConfig.AfterStop = func() {
 					m.detachPartition(id)
 				}
+				// check snapshot dir or backup
+				snapshotDir := path.Join(partitionConfig.RootDir, snapShotDir)
+				if _, err = os.Stat(snapshotDir); err != nil {
+					backupDir := path.Join(partitionConfig.RootDir, snapShotBackup)
+					if _, err = os.Stat(backupDir); err == nil {
+						if err = os.Rename(backupDir, snapshotDir); err != nil {
+							err = errors.Annotate(err,
+								fmt.Sprintf(": fail recover backup snapshot %s",
+									snapshotDir))
+							return
+						}
+					}
+					err = nil
+				}
 				partition := NewMetaPartition(partitionConfig)
 				err = m.attachPartition(id, partition)
 				if err != nil {
