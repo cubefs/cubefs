@@ -416,9 +416,14 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 	err = nil
 
 	// rename snapshot to backup
-	if err = os.Rename(snapshotDir, backupDir); err != nil {
-		return
+	if _, err = os.Stat(snapshotDir); err == nil {
+		if err = os.Rename(snapshotDir, backupDir); err != nil {
+			return
+		}
 	}
+	err = nil
+
+	// rename snapshotTmp to snapshot
 	if err = os.Rename(tmpDir, snapshotDir); err != nil {
 		os.Rename(backupDir, snapshotDir)
 		return
