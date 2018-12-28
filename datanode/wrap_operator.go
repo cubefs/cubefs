@@ -35,6 +35,7 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/raft"
 	raftProto "github.com/tiglabs/raft/proto"
+	"hash/crc32"
 )
 
 func (s *DataNode) OperatePacket(pkg *repl.Packet, c *net.TCPConn) (err error) {
@@ -351,7 +352,28 @@ func (s *DataNode) handleWrite(pkg *repl.Packet) {
 		err = storage.ErrSyscallNoSpace
 		return
 	}
-	err = partition.GetStore().Write(pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data, pkg.CRC)
+	store := partition.GetStore()
+	if pkg.Size <= util.BlockSize {
+		err = store.Write(pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data, pkg.CRC)
+	} else {
+		size := pkg.Size
+		offset := 0
+		for size > 0 {
+			if size <= 0 {
+				break
+			}
+			currSize := util.Min(int(size), util.BlockSize)
+			data := pkg.Data[offset:offset+currSize]
+			crc := crc32.ChecksumIEEE(data)
+			err = store.Write(pkg.ExtentID, pkg.ExtentOffset+int64(offset), int64(currSize), data, crc)
+			if err != nil {
+				break
+			}
+			size -= uint32(currSize)
+			offset += currSize
+		}
+	}
+
 	s.addDiskErrs(pkg.PartitionID, err, WriteFlag)
 	if err == nil && pkg.Opcode == proto.OpWrite && pkg.Size == util.BlockSize {
 		proto.Buffers.Put(pkg.Data)
