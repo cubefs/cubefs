@@ -377,6 +377,30 @@ func (rp *ReplProtocol) pushPacketToList(e *Packet) {
 	rp.packetListLock.Unlock()
 }
 
+func (rp *ReplProtocol) cleanToBeProcessCh() {
+	request := len(rp.toBeProcessCh)
+	for i := 0; i < request; i++ {
+		select {
+		case pkg := <-rp.toBeProcessCh:
+			rp.postFunc(pkg)
+		default:
+			return
+		}
+	}
+}
+
+func (rp *ReplProtocol) cleanResponseCh() {
+	replys := len(rp.responseCh)
+	for i := 0; i < replys; i++ {
+		select {
+		case pkg := <-rp.responseCh:
+			rp.postFunc(pkg)
+		default:
+			return
+		}
+	}
+}
+
 /*if the rp exit,then clean all packet resource*/
 func (rp *ReplProtocol) cleanResource() {
 	rp.packetListLock.Lock()
@@ -384,18 +408,9 @@ func (rp *ReplProtocol) cleanResource() {
 		request := e.Value.(*Packet)
 		request.forceDestoryFollowerConnects()
 		rp.postFunc(request)
-
 	}
-	replys := len(rp.responseCh)
-	for i := 0; i < replys; i++ {
-		pkg := <-rp.responseCh
-		rp.postFunc(pkg)
-	}
-	request := len(rp.toBeProcessCh)
-	for i := 0; i < request; i++ {
-		pkg := <-rp.responseCh
-		rp.postFunc(pkg)
-	}
+	rp.cleanToBeProcessCh()
+	rp.cleanResponseCh()
 	rp.packetList = list.New()
 	rp.followerConnects.Range(
 		func(key, value interface{}) bool {

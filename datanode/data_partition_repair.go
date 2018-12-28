@@ -334,13 +334,13 @@ func (dp *DataPartition) generatorFixExtentSizeTasks(allMembers []*DataPartition
 			if extentInfo.Size < maxFileInfo.Size {
 				fixExtent := &storage.ExtentInfo{Source: maxFileInfo.Source, FileID: extentID, Size: maxFileInfo.Size, Inode: maxFileInfo.Inode}
 				allMembers[index].FixExtentSizeTasks = append(allMembers[index].FixExtentSizeTasks, fixExtent)
-				log.LogInfof("action[generatorFixExtentSizeTasks] fixExtent(%v_%v).", dp.partitionID, fixExtent)
+				log.LogInfof("action[generatorFixExtentSizeTasks] fixExtent(%v_%v) on Index(%v).", dp.partitionID, fixExtent, index)
 				isFix = false
 			}
 			if maxFileInfo.Inode != 0 && extentInfo.Inode == 0 {
 				fixExtent := &storage.ExtentInfo{Source: maxFileInfo.Source, FileID: extentID, Size: maxFileInfo.Size, Inode: maxFileInfo.Inode}
 				allMembers[index].FixExtentSizeTasks = append(allMembers[index].FixExtentSizeTasks, fixExtent)
-				log.LogInfof("action[generatorFixExtentSizeTasks] Modify Ino fixExtent(%v_%v).", dp.partitionID, fixExtent)
+				log.LogInfof("action[generatorFixExtentSizeTasks] Modify Ino fixExtent(%v_%v).on Index(%v)", dp.partitionID, fixExtent, index)
 			}
 		}
 		if storage.IsTinyExtent(extentID) {
