@@ -35,7 +35,7 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	bdfs "github.com/tiglabs/containerfs/client/fs"
+	cfs "github.com/tiglabs/containerfs/client/fs"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/exporter"
 	"github.com/tiglabs/containerfs/util/log"
@@ -66,12 +66,11 @@ func main() {
 		fmt.Println("Mount failed: ", err)
 		os.Exit(1)
 	}
-	//exporter.Init(ModuleName, , cfg)
 
 	fmt.Println("Done!")
 }
 
-func Mount(cfg *config.Config) error {
+func Mount(cfg *config.Config) (err error) {
 	mnt := cfg.GetString("mountpoint")
 	volname := cfg.GetString("volname")
 	master := cfg.GetString("master")
@@ -81,6 +80,19 @@ func Mount(cfg *config.Config) error {
 	icacheTimeout := ParseConfigString(cfg, "icacheTimeout")
 	lookupValid := ParseConfigString(cfg, "lookupValid")
 	attrValid := ParseConfigString(cfg, "attrValid")
+
+	level := ParseLogLevel(loglvl)
+	_, err = log.InitLog(path.Join(logpath, LoggerDir), LoggerPrefix, level, nil)
+	if err != nil {
+		return err
+	}
+	defer log.LogFlush()
+
+	super, err := cfs.NewSuper(volname, master, icacheTimeout, lookupValid, attrValid)
+	if err != nil {
+		log.LogError(errors.ErrorStack(err))
+		return err
+	}
 
 	c, err := fuse.Mount(
 		mnt,
@@ -95,19 +107,6 @@ func Mount(cfg *config.Config) error {
 		return err
 	}
 	defer c.Close()
-
-	level := ParseLogLevel(loglvl)
-	_, err = log.InitLog(path.Join(logpath, LoggerDir), LoggerPrefix, level, nil)
-	if err != nil {
-		return err
-	}
-	defer log.LogFlush()
-
-	super, err := bdfs.NewSuper(volname, master, icacheTimeout, lookupValid, attrValid)
-	if err != nil {
-		log.LogError(errors.ErrorStack(err))
-		return err
-	}
 
 	go func() {
 		fmt.Println(http.ListenAndServe(":"+profport, nil))
