@@ -98,13 +98,6 @@ func (f *File) Forget() {
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
 	ino := f.inode.ino
 	start := time.Now()
-	//	err = f.super.mw.Open_ll(ino)
-	//	if err != nil {
-	//		f.super.ic.Delete(ino)
-	//		log.LogErrorf("Open: ino(%v) req(%v) err(%v)", ino, req, ParseError(err))
-	//		return nil, ParseError(err)
-	//	}
-
 	err = f.super.ec.OpenStream(ino)
 	if err != nil {
 		return nil, fuse.EIO
@@ -163,7 +156,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v) req(%v)", ino, req.Offset, reqlen, req.Flags, req.FileFlags, req)
 
 	if req.FileFlags.IsWriteOnly() && req.Offset > int64(filesize) && reqlen == 1 {
-		// posix_fallocate would write 1 byte if fallocate is not supported.
+		// workaround: posix_fallocate would write 1 byte if fallocate is not supported.
 		err = f.super.ec.Truncate(ino, int(req.Offset)+reqlen)
 		if err == nil {
 			f.super.ic.Delete(ino)

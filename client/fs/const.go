@@ -28,11 +28,6 @@ const (
 )
 
 const (
-	DIR_NLINK_DEFAULT     = 2
-	REGULAR_NLINK_DEFAULT = 1
-)
-
-const (
 	DefaultBlksize    = uint32(1) << 12
 	DefaultMaxNameLen = uint32(256)
 )
