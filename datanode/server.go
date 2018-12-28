@@ -131,8 +131,6 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 		return
 	}
 
-	go s.registerProfHandler()
-
 	s.registerToMaster()
 
 	exporter.Init(s.clusterID, ModuleName, cfg)
@@ -146,6 +144,8 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 	if err = s.startTCPService(); err != nil {
 		return
 	}
+
+	go s.registerProfHandler()
 
 	return
 }
