@@ -15,7 +15,7 @@ import (
 )
 
 // A Tree implements a basic read-only directory tree for FUSE.
-// The RemainFollowers contained in it may still be writable.
+// The Nodes contained in it may still be writable.
 type Tree struct {
 	tree
 }

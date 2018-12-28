@@ -3,7 +3,7 @@
 //
 // +build darwin
 
-package fuse
+package fuse_test
 
 import (
 	"runtime"
