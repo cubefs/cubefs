@@ -260,11 +260,6 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32) (err err
 		return
 	}
 	e.dataSize = offset + size
-	watermark := e.dataSize
-	if watermark%PageSize != 0 {
-		watermark = watermark + (PageSize - watermark%PageSize)
-	}
-	e.dataSize = watermark
 
 	return
 }
