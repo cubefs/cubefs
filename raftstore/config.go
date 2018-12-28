@@ -28,7 +28,7 @@ const (
 // Config defined necessary configuration properties for raft store.
 type Config struct {
 	NodeID        uint64 // Identity of raft server instance.
-	WalPath       string // Path of WAL(Write after Log)
+	RaftPath      string // Path of raft logs
 	IPAddr        string // IP address of node
 	HeartbeatPort int
 	ReplicatePort int

@@ -407,7 +407,7 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 
 	raftConf := &raftstore.Config{
 		NodeID:        s.nodeID,
-		WalPath:       s.raftDir,
+		RaftPath:      s.raftDir,
 		IPAddr:        s.localIP,
 		HeartbeatPort: heartbeatPort,
 		ReplicatePort: replicatePort,

@@ -170,7 +170,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 }
 
 func (m *Server) createRaftServer() (err error) {
-	raftCfg := &raftstore.Config{NodeID: m.id, WalPath: m.walDir, RetainLogs: m.retainLogs}
+	raftCfg := &raftstore.Config{NodeID: m.id, RaftPath: m.walDir, RetainLogs: m.retainLogs}
 	if m.raftStore, err = raftstore.NewRaftStore(raftCfg); err != nil {
 		return errors.Annotatef(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
 	}

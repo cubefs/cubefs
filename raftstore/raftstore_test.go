@@ -102,7 +102,7 @@ func TestRaftStore_CreateRaftStore(t *testing.T) {
 
 	for n := 1; n <= 3; n++ {
 		cfg.NodeID = uint64(n)
-		cfg.WalPath = path.Join("wal", strconv.FormatUint(cfg.NodeID, 10))
+		cfg.RaftPath = path.Join("wal", strconv.FormatUint(cfg.NodeID, 10))
 		cfg.IPAddr = TestAddresses[uint64(n)].ip
 
 		raftServer, err := NewRaftStore(&cfg)
