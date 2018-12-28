@@ -1274,10 +1274,10 @@ func (r *StatfsRequest) Respond(resp *StatfsResponse) {
 // A StatfsResponse is the response to a StatfsRequest.
 type StatfsResponse struct {
 	Blocks  uint64 // Total data blocks in file system.
-	Bfree   uint64 // Available blocks in file system.
-	Bavail  uint64 // Available blocks in file system if you're not root.
+	Bfree   uint64 // Free blocks in file system.
+	Bavail  uint64 // Free blocks in file system if you're not root.
 	Files   uint64 // Total files in file system.
-	Ffree   uint64 // Available files in file system.
+	Ffree   uint64 // Free files in file system.
 	Bsize   uint32 // Block size
 	Namelen uint32 // Maximum file name length?
 	Frsize  uint32 // Fragment size, smallest addressable data size in the file system.
@@ -1432,7 +1432,7 @@ type GetxattrRequest struct {
 	// Name of the attribute requested.
 	Name string
 
-	// ExtentOffset within extended attributes.
+	// Offset within extended attributes.
 	//
 	// Only valid for OS X, and then only with the resource fork
 	// attribute.
@@ -1545,7 +1545,7 @@ type SetxattrRequest struct {
 	// TODO XATTR_REPLACE and not exist -> ENODATA
 	Flags uint32
 
-	// ExtentOffset within extended attributes.
+	// Offset within extended attributes.
 	//
 	// Only valid for OS X, and then only with the resource fork
 	// attribute.

@@ -2,7 +2,7 @@
 //
 // +build darwin freebsd
 
-package fuse
+package fuse_test
 
 import (
 	"os"

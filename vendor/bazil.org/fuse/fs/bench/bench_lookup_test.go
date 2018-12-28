@@ -1,4 +1,4 @@
-package bench
+package bench_test
 
 import (
 	"os"
