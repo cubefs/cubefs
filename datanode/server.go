@@ -213,8 +213,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 			return ErrBadConfFile
 		}
 		if !fileInfo.IsDir() {
-			err = ErrBadConfFile
-			return
+			return ErrBadConfFile
 		}
 		restSize, err := strconv.ParseUint(arr[1], 10, 64)
 		if err != nil {
