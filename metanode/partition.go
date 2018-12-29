@@ -516,7 +516,7 @@ func (mp *metaPartition) OfflinePartition(req []byte) (err error) {
 func (mp *metaPartition) LoadSnapshotSign(p *Packet) (err error) {
 	resp := &proto.MetaPartitionLoadResponse{
 		PartitionID: mp.config.PartitionId,
-		DoCompare:   false,
+		DoCompare:   true,
 	}
 	resp.ApplyID, resp.InodeSign, resp.DentrySign, err = mp.loadSnapshotSign(
 		snapShotDir)
@@ -528,14 +528,12 @@ func (mp *metaPartition) LoadSnapshotSign(p *Packet) (err error) {
 			snapShotBackup)
 	}
 	if err != nil {
-		if os.IsNotExist(err) {
-			p.PackErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		if !os.IsNotExist(err) {
+			p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return
 		}
-		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
-		return
+		resp.DoCompare = false
 	}
-	resp.DoCompare = true
 	data, err := json.Marshal(resp)
 	if err != nil {
 		return
