@@ -215,13 +215,14 @@ func (sw *StreamWriter) doOverwrite(req *ExtentRequest) (total int, err error) {
 
 	offset := req.FileOffset
 	size := req.Size
-	ekOffset := int(req.ExtentKey.FileOffset)
+	ekFileOffset := int(req.ExtentKey.FileOffset)
+	ekExtOffset := int(req.ExtentKey.ExtentOffset)
 
 	// extent key should be updated, since during prepare requests,
 	// the extent key obtained might be a local key which is not accurate.
 	req.ExtentKey = sw.stream.extents.Get(uint64(offset))
 	if req.ExtentKey == nil {
-		err = errors.New(fmt.Sprintf("doOverwrite: extent key not exist, ino(%v) ekOffset(%v) ek(%v)", sw.inode, ekOffset, req.ExtentKey))
+		err = errors.New(fmt.Sprintf("doOverwrite: extent key not exist, ino(%v) ekFileOffset(%v) ek(%v)", sw.inode, ekFileOffset, req.ExtentKey))
 		return
 	}
 
@@ -233,7 +234,7 @@ func (sw *StreamWriter) doOverwrite(req *ExtentRequest) (total int, err error) {
 	sc := NewStreamConn(dp)
 
 	for total < size {
-		reqPacket := NewOverwritePacket(dp, req.ExtentKey.ExtentId, offset-ekOffset+total, sw.inode, offset)
+		reqPacket := NewOverwritePacket(dp, req.ExtentKey.ExtentId, offset-ekFileOffset+total+ekExtOffset, sw.inode, offset)
 		packSize := util.Min(size-total, util.BlockSize)
 		copy(reqPacket.Data[:packSize], req.Data[total:total+packSize])
 		reqPacket.Size = uint32(packSize)
