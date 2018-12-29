@@ -167,7 +167,7 @@ func (c *Cluster) processLoadMetaPartition(mp *MetaPartition) {
 	mp.RLock()
 	hosts := make([]string, 0)
 	copy(hosts, mp.PersistenceHosts)
-	defer mp.RUnlock()
+	mp.RUnlock()
 	for _, host := range hosts {
 		wg.Add(1)
 		go func(host string) {
@@ -202,7 +202,8 @@ func (c *Cluster) processLoadMetaPartition(mp *MetaPartition) {
 	wg.Wait()
 	select {
 	case err := <-errChannel:
-		Warn(c.Name, err.Error())
+		msg := fmt.Sprintf("action[processLoadMetaPartition] vol[%v],mpID[%v],err[%v]", mp.volName, mp.PartitionID, err.Error())
+		Warn(c.Name, msg)
 		return
 	default:
 	}
