@@ -155,7 +155,7 @@ func (dp *DataPartition) RandomPartitionReadCheck(request *repl.Packet, connect 
 	if !ok {
 		err = storage.ErrNotLeader
 		logContent := fmt.Sprintf("action[ReadCheck] %v.", request.LogMessage(request.GetOpMsg(), connect.RemoteAddr().String(), request.StartT, err))
-		log.LogErrorf(logContent)
+		log.LogInfof(logContent)
 		return
 	}
 

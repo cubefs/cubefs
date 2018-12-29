@@ -38,6 +38,7 @@ import (
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/exporter"
+	"os"
 )
 
 var (
@@ -207,6 +208,13 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 			return ErrBadConfFile
 		}
 		path := arr[0]
+		fileInfo, err := os.Stat(path)
+		if err != nil {
+			return ErrBadConfFile
+		}
+		if !fileInfo.IsDir() {
+			return ErrBadConfFile
+		}
 		restSize, err := strconv.ParseUint(arr[1], 10, 64)
 		if err != nil {
 			return ErrBadConfFile
