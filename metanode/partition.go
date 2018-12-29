@@ -413,7 +413,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 	}
 	// Write crc to file
 	if err = ioutil.WriteFile(path.Join(tmpDir, SnapshotSign),
-		[]byte(fmt.Sprintf("%s %s", inoCRC, denCRC)), 0775); err != nil {
+		[]byte(fmt.Sprintf("%d %d", inoCRC, denCRC)), 0775); err != nil {
 		return
 	}
 	snapshotDir := path.Join(mp.config.RootDir, snapShotDir)
@@ -523,6 +523,7 @@ func (mp *metaPartition) LoadSnapshotSign(p *Packet) (err error) {
 	if err != nil {
 		if !os.IsNotExist(err) {
 			err = errors.Annotate(err, "[LoadSnapshotSign] 1st check snapshot")
+			p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return err
 		}
 		resp.ApplyID, resp.InodeSign, resp.DentrySign, err = mp.loadSnapshotSign(
