@@ -334,7 +334,8 @@ func (m *metaManager) opReleaseOpen(conn net.Conn, p *Packet) (err error) {
 	}
 	err = mp.ReleaseOpen(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opClose] ")
+	log.LogDebugf("[opClose] req: %v, resp status: %v, resp body: %s", req,
+		p.GetResultMesg(), p.Data)
 	return
 }
 
@@ -523,6 +524,8 @@ func (m *metaManager) opMetaExtentsTruncate(conn net.Conn, p *Packet) (err error
 	}
 	mp.ExtentsTruncate(req, p)
 	m.respondToClient(conn, p)
+	log.LogDebugf("[OpMetaTruncate] req: %v, resp body: %v, resp body: %s",
+		req, p.GetResultMesg(), p.Data)
 	return
 }
 
