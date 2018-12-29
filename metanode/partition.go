@@ -521,7 +521,8 @@ func (mp *metaPartition) LoadSnapshotSign(p *Packet) (err error) {
 	resp.ApplyID, resp.InodeSign, resp.DentrySign, err = mp.loadSnapshotSign(
 		snapShotDir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if !os.IsNotExist(err) {
+			err = errors.Annotate(err, "[LoadSnapshotSign] 1st check snapshot")
 			return err
 		}
 		resp.ApplyID, resp.InodeSign, resp.DentrySign, err = mp.loadSnapshotSign(
@@ -529,13 +530,17 @@ func (mp *metaPartition) LoadSnapshotSign(p *Packet) (err error) {
 	}
 	if err != nil {
 		if !os.IsNotExist(err) {
+			err = errors.Annotate(err,
+				"[LoadSnapshotSign] 2st check snapshot")
 			p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return
 		}
 		resp.DoCompare = false
+		log.LogWarnf("[LoadSnapshotSign] check snapshot not exist")
 	}
 	data, err := json.Marshal(resp)
 	if err != nil {
+		err = errors.Annotate(err, "[LoadSnapshotSign] marshal")
 		return
 	}
 	p.PackOkWithBody(data)
@@ -547,28 +552,21 @@ func (mp *metaPartition) loadSnapshotSign(baseDir string) (applyID uint64,
 	snapDir := path.Join(mp.config.RootDir, baseDir)
 	// check snapshot
 	if _, err = os.Stat(snapDir); err != nil {
-		err = errors.Annotate(err, "[loadSnapshotSign] check "+snapDir)
 		return
 	}
 	// load sign
 	data, err := ioutil.ReadFile(path.Join(snapDir, SnapshotSign))
 	if err != nil {
-		err = errors.Annotate(err, "[loadSnapshotSign] readFile "+snapDir)
 		return
 	}
 	if _, err = fmt.Sscanf(string(data), "%d %d", &inoCRC, &dentryCRC); err != nil {
-		err = errors.Annotate(err,
-			"[loadSnapshotSign] from "+snapDir+" format crc")
 		return
 	}
 	// load apply
 	if data, err = ioutil.ReadFile(path.Join(snapDir, applyIDFile)); err != nil {
-		err = errors.Annotate(err, "[loadSnapshotSign] readFile "+path.Join(snapDir, applyIDFile))
 		return
 	}
 	if _, err = fmt.Sscanf(string(data), "%d", &applyID); err != nil {
-		err = errors.Annotate(err, "[loadSnapshotSign] "+path.Join(snapDir,
-			applyIDFile)+" format scanf")
 		return
 	}
 	return
