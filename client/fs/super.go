@@ -20,10 +20,10 @@ import (
 	"golang.org/x/net/context"
 	"time"
 
-	"github.com/tiglabs/containerfs/sdk/data/stream"
-	"github.com/tiglabs/containerfs/sdk/meta"
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+	"github.com/tiglabs/containerfs/sdk/data/stream"
+	"github.com/tiglabs/containerfs/sdk/meta"
 	"github.com/tiglabs/containerfs/util/log"
 )
 

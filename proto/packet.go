@@ -137,6 +137,7 @@ type Packet struct {
 	CRC             uint32
 	Size            uint32
 	Arglen          uint32
+	KernelOffset    uint64
 	PartitionID     uint64
 	ExtentID        uint64
 	ExtentOffset    int64
@@ -314,7 +315,8 @@ func (p *Packet) MarshalHeader(out []byte) {
 	binary.BigEndian.PutUint64(out[17:25], p.PartitionID)
 	binary.BigEndian.PutUint64(out[25:33], p.ExtentID)
 	binary.BigEndian.PutUint64(out[33:41], uint64(p.ExtentOffset))
-	binary.BigEndian.PutUint64(out[41:util.PacketHeaderSize], uint64(p.ReqID))
+	binary.BigEndian.PutUint64(out[41:49], uint64(p.ReqID))
+	binary.BigEndian.PutUint64(out[49:util.PacketHeaderSize], p.KernelOffset)
 	return
 }
 
@@ -334,7 +336,8 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 	p.PartitionID = binary.BigEndian.Uint64(in[17:25])
 	p.ExtentID = binary.BigEndian.Uint64(in[25:33])
 	p.ExtentOffset = int64(binary.BigEndian.Uint64(in[33:41]))
-	p.ReqID = int64(binary.BigEndian.Uint64(in[41:util.PacketHeaderSize]))
+	p.ReqID = int64(binary.BigEndian.Uint64(in[41:49]))
+	p.KernelOffset = binary.BigEndian.Uint64(in[49:util.PacketHeaderSize])
 
 	return nil
 }
@@ -455,8 +458,9 @@ func (p *Packet) PackErrorWithBody(errCode uint8, reply []byte) {
 }
 
 func (p *Packet) GetUniqueLogId() (m string) {
-	m = fmt.Sprintf("%v_%v_%v_%v_%v_%v_%v_%v", p.ReqID, p.PartitionID, p.ExtentID,
-		p.ExtentOffset, p.Size, p.GetStoreModeMsg(), p.GetOpMsg(), p.GetResultMesg())
+	m = fmt.Sprintf("Req%v_Partition%v_Extent%v_ExtentOffset%v_KernelOffset%v_Size%v_StoreMode%v_Opcode%v_ResultCode%v",
+		p.ReqID, p.PartitionID, p.ExtentID, p.ExtentOffset,
+		p.KernelOffset, p.Size, p.GetStoreModeMsg(), p.GetOpMsg(), p.GetResultMesg())
 
 	return
 }

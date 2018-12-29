@@ -153,7 +153,7 @@ func (dp *DataPartition) StartSchedule() {
 			select {
 			case <-stopC:
 				log.LogDebugf("[startSchedule] stop partition=%v", dp.partitionID)
-			    getAppliedIDTimer.Stop()
+				getAppliedIDTimer.Stop()
 				truncateRaftLogTimer.Stop()
 				storeAppliedIDTimer.Stop()
 				return
@@ -670,4 +670,3 @@ func (dp *DataPartition) updateMaxMinAppliedID() {
 
 	return
 }
-

@@ -470,8 +470,6 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	return
 }
 
-
-
 func (s *ExtentStore) FlushDelete() (err error) {
 	var (
 		delIdxOff uint64

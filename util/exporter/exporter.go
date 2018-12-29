@@ -26,8 +26,8 @@ var (
 		return new(TpMetric)
 	}}
 	namespace string
-	metricC  = make(chan prometheus.Collector, 1)
-	enabled = false
+	metricC   = make(chan prometheus.Collector, 1)
+	enabled   = false
 )
 
 func Init(cluster string, role string, cfg *config.Config) {
@@ -58,7 +58,7 @@ func Init(cluster string, role string, cfg *config.Config) {
 }
 
 type TpMetric struct {
-	Start  time.Time
+	Start      time.Time
 	metricName string
 }
 
@@ -133,7 +133,7 @@ func (tp *TpMetric) CalcTp() {
 		}
 
 		metric.(prometheus.Gauge).Set(float64(time.Since(tp.Start).Nanoseconds()))
-	} ()
+	}()
 }
 
 func Alarm(name, detail string) {

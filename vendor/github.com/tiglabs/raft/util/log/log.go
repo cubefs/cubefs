@@ -204,10 +204,10 @@ var levels = []string{
 }
 
 type entity struct {
-	msg      string
-	now      time.Time
-	file     string
-	line     int
+	msg  string
+	now  time.Time
+	file string
+	line int
 }
 
 type Log struct {
@@ -220,7 +220,7 @@ type Log struct {
 	warn      *logWriter
 	info      *logWriter
 	debug     *logWriter
-	entityCh     chan *entity
+	entityCh  chan *entity
 }
 
 var glog *Log = NewDefaultLog()
@@ -352,7 +352,7 @@ func (l *Log) Output(calldepth int, s string, sync bool) {
 }
 
 func (l *Log) putMsg(msg string, file string, line int, now time.Time) {
-	l.entityCh <- &entity{msg: msg, file:file, line:line, now:now}
+	l.entityCh <- &entity{msg: msg, file: file, line: line, now: now}
 }
 
 func (l *Log) loopMsg() {
@@ -418,34 +418,34 @@ func (l *Log) checkLogRotation(logDir, module string) {
 	}
 }
 
-func (l *Log)Debug(format string, v ...interface{}) {
+func (l *Log) Debug(format string, v ...interface{}) {
 	if l.IsEnableDebug() {
 		l.Output(3, l.SetPrefix(fmt.Sprintf(format+"\r\n", v...), levels[DebugLevel]), false)
 	}
 }
 
-func (l *Log)Info(format string, v ...interface{}) {
+func (l *Log) Info(format string, v ...interface{}) {
 	if l.IsEnableInfo() {
 		l.Output(3, l.SetPrefix(fmt.Sprintf(format+"\r\n", v...), levels[InfoLevel]), false)
 	}
 }
 
-func (l *Log)Warn(format string, v ...interface{}) {
+func (l *Log) Warn(format string, v ...interface{}) {
 	if l.IsEnableWarn() {
 		l.Output(3, l.SetPrefix(fmt.Sprintf(format+"\r\n", v...), levels[WarnLevel]), false)
 	}
 }
 
-func (l *Log)Error(format string, v ...interface{}) {
+func (l *Log) Error(format string, v ...interface{}) {
 	l.Output(3, l.SetPrefix(fmt.Sprintf(format+"\r\n", v...), levels[ErrorLevel]), false)
 }
 
-func (l *Log)Fatal(format string, v ...interface{}) {
+func (l *Log) Fatal(format string, v ...interface{}) {
 	l.Output(3, l.SetPrefix(fmt.Sprintf(format+"\r\n", v...), levels[FatalLevel]), true)
 	os.Exit(1)
 }
 
-func (l *Log)Panic(format string, v ...interface{}) {
+func (l *Log) Panic(format string, v ...interface{}) {
 	s := fmt.Sprintf(format+"\r\n", v...)
 	l.Output(3, l.SetPrefix(s, levels[FatalLevel]), true)
 	panic(s)
@@ -454,7 +454,6 @@ func (l *Log)Panic(format string, v ...interface{}) {
 func Debug(format string, v ...interface{}) {
 	glog.Debug(format, v...)
 }
-
 
 func Info(format string, v ...interface{}) {
 	glog.Info(format, v...)

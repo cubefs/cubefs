@@ -363,7 +363,7 @@ func (s *DataNode) handleWrite(pkg *repl.Packet) {
 				break
 			}
 			currSize := util.Min(int(size), util.BlockSize)
-			data := pkg.Data[offset:offset+currSize]
+			data := pkg.Data[offset: offset+currSize]
 			crc := crc32.ChecksumIEEE(data)
 			err = store.Write(pkg.ExtentID, pkg.ExtentOffset+int64(offset), int64(currSize), data, crc)
 			if err != nil {
@@ -403,8 +403,8 @@ func (s *DataNode) handleRandomWrite(pkg *repl.Packet) {
 	}
 
 	if err == nil && pkg.ResultCode != proto.OpOk {
-	    err = storage.ErrorAgain
-	    return
+		err = storage.ErrorAgain
+		return
 	}
 
 	if err == nil && pkg.Opcode == proto.OpRandomWrite && pkg.Size == util.BlockSize {
@@ -428,7 +428,6 @@ func (s *DataNode) handleRead(pkg *repl.Packet) {
 
 	return
 }
-
 
 // Handle OpStreamRead packet.
 func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn, needCheckRaft bool) {

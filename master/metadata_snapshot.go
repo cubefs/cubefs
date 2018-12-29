@@ -16,8 +16,8 @@ package master
 
 import (
 	"fmt"
-	"io"
 	"github.com/tecbot/gorocksdb"
+	"io"
 )
 
 //MetadataSnapshot 元数据快照

@@ -73,7 +73,6 @@ func (p *Packet) forceDestoryWholeFollowersPool(err error) {
 	}
 }
 
-
 func (p *Packet) forceDestoryFollowerConnects() {
 	for i := 0; i < len(p.followerConns); i++ {
 		gConnPool.ForceDestory(p.followerConns[i])

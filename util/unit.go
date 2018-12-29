@@ -43,7 +43,7 @@ const (
 	DeleteIndexFileName    = "delete.index"
 	ExtentSize             = BlockCount * BlockSize
 	ExtentFileSizeLimit    = BlockHeaderSize + ExtentSize
-	PacketHeaderSize       = 49
+	PacketHeaderSize       = 57
 )
 
 const (

@@ -204,7 +204,7 @@ func (eh *ExtentHandler) sender() {
 			// For ExtentStore mode, calculate extent offset.
 			// For TinyStore mode, extent offset is always 0 in request packet,
 			// and the reply packet will tell the real extent offset.
-			extOffset := packet.fileOffset - eh.fileOffset
+			extOffset := int(packet.KernelOffset) - eh.fileOffset
 
 			// fill packet according to extent
 			packet.PartitionID = eh.dp.PartitionID
@@ -312,7 +312,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		extOffset = uint64(reply.ExtentOffset)
 	} else {
 		extID = packet.ExtentID
-		extOffset = uint64(packet.fileOffset) - uint64(eh.fileOffset)
+		extOffset = packet.KernelOffset - uint64(eh.fileOffset)
 	}
 
 	if eh.key == nil {
@@ -427,7 +427,7 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 		// Always use normal extent store mode for recovery.
 		// Because tiny extent files are limited, tiny store
 		// failures might due to lack of tiny extent file.
-		handler = NewExtentHandler(eh.sw, packet.fileOffset, proto.NormalExtentMode)
+		handler = NewExtentHandler(eh.sw, int(packet.KernelOffset), proto.NormalExtentMode)
 		handler.setClosed()
 	}
 	handler.pushToRequest(packet)

@@ -20,12 +20,12 @@ import (
 	"encoding/json"
 	"net"
 
+	"fmt"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util/log"
 	"strings"
-	"fmt"
 )
 
 type RndWrtCmdItem struct {

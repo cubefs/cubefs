@@ -23,14 +23,14 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 
 	"flag"
+	"fmt"
+	"github.com/tiglabs/containerfs/util/config"
+	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"runtime"
 	"syscall"
-	"fmt"
-	"net/http"
-	"github.com/tiglabs/containerfs/util/config"
 )
 
 var (

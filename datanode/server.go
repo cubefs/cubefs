@@ -36,8 +36,8 @@ import (
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/config"
-	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/exporter"
+	"github.com/tiglabs/containerfs/util/log"
 	"os"
 )
 

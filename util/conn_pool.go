@@ -16,9 +16,9 @@ package util
 
 import (
 	"net"
+	"strings"
 	"sync"
 	"time"
-	"strings"
 )
 
 type Object struct {
@@ -93,7 +93,6 @@ func (cp *ConnectPool) ForceDestoryWholePool(c *net.TCPConn, target string, err 
 		cp.ReleaseAllConnect(target)
 	}
 }
-
 
 func (cp *ConnectPool) ReleaseAllConnect(target string) {
 	cp.RLock()

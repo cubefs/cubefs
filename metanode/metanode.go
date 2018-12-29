@@ -28,8 +28,8 @@ import (
 	"github.com/tiglabs/containerfs/raftstore"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/config"
-	"github.com/tiglabs/containerfs/util/log"
 	"github.com/tiglabs/containerfs/util/exporter"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 var (
@@ -47,7 +47,7 @@ type MetaNode struct {
 	raftDir           string //raftStore log store base dir
 	metaManager       MetaManager
 	localAddr         string
-	clusterId		  string
+	clusterId         string
 	raftStore         raftstore.RaftStore
 	raftHeartbeatPort string
 	raftReplicatePort string
