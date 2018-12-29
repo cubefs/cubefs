@@ -163,11 +163,12 @@ func (c *Cluster) loadMetaPartitionAndCheckResponse(mp *MetaPartition) {
 
 func (c *Cluster) processLoadMetaPartition(mp *MetaPartition) {
 	var wg sync.WaitGroup
-	errChannel := make(chan error, len(mp.PersistenceHosts))
+	log.LogInfof("action[processLoadMetaPartition],vol[%v],mpID[%v] begin",mp.volName,mp.PartitionID)
 	mp.RLock()
-	hosts := make([]string, 0)
+	hosts := make([]string, len(mp.PersistenceHosts))
 	copy(hosts, mp.PersistenceHosts)
 	mp.RUnlock()
+	errChannel := make(chan error, len(hosts))
 	for _, host := range hosts {
 		wg.Add(1)
 		go func(host string) {
@@ -190,11 +191,13 @@ func (c *Cluster) processLoadMetaPartition(mp *MetaPartition) {
 				errChannel <- err
 				return
 			}
+			log.LogInfof("action[processLoadMetaPartition],vol[%v],mpID[%v],response[%v]",mp.volName,mp.PartitionID,string(response))
 			loadResponse := &proto.MetaPartitionLoadResponse{}
 			if err = json.Unmarshal(response, loadResponse); err != nil {
 				errChannel <- err
 				return
 			}
+			log.LogInfof("action[processLoadMetaPartition],vol[%v],mpID[%v],loadResponse[%v]",mp.volName,mp.PartitionID,loadResponse)
 			mp.addOrReplaceLoadResponse(loadResponse)
 			mr.metaNode.Sender.connPool.PutConnect(conn, false)
 		}(host)
@@ -208,6 +211,7 @@ func (c *Cluster) processLoadMetaPartition(mp *MetaPartition) {
 	default:
 	}
 	mp.checkSnapshot(c.Name)
+	log.LogInfof("action[processLoadMetaPartition],vol[%v],mpID[%v] success",mp.volName,mp.PartitionID)
 }
 
 func (c *Cluster) processLoadDataPartition(dp *DataPartition) {
