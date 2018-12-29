@@ -197,6 +197,7 @@ func (c *Cluster) processLoadMetaPartition(mp *MetaPartition) {
 				errChannel <- err
 				return
 			}
+			loadResponse.Addr = host
 			log.LogInfof("action[processLoadMetaPartition],vol[%v],mpID[%v],loadResponse[%v]",mp.volName,mp.PartitionID,loadResponse)
 			mp.addOrReplaceLoadResponse(loadResponse)
 			mr.metaNode.Sender.connPool.PutConnect(conn, false)
