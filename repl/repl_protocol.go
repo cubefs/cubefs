@@ -99,6 +99,7 @@ func (rp *ReplProtocol) ServerConn() {
 			!strings.Contains(err.Error(), "reset by peer") {
 			log.LogErrorf("action[serveConn] err(%v).", err)
 		}
+		rp.sourceConn.Close()
 	}()
 	for {
 		select {
@@ -329,7 +330,6 @@ func (rp *ReplProtocol) Stop() {
 			close(rp.exitC)
 		}
 		rp.exited = true
-		rp.sourceConn.Close()
 	}
 
 }
@@ -339,26 +339,19 @@ func (rp *ReplProtocol) Stop() {
 */
 func (rp *ReplProtocol) allocateFollowersConnects(pkg *Packet, index int) (err error) {
 	var conn *net.TCPConn
-	if pkg.ExtentMode == proto.NormalExtentMode {
-		key := fmt.Sprintf("%v_%v_%v", pkg.PartitionID, pkg.ExtentID, pkg.followersAddrs[index])
-		value, ok := rp.followerConnects.Load(key)
-		if ok {
-			pkg.followerConns[index] = value.(*net.TCPConn)
-		} else {
-			conn, err = gConnPool.GetConnect(pkg.followersAddrs[index])
-			if err != nil {
-				return
-			}
-			rp.followerConnects.Store(key, conn)
-			pkg.followerConns[index] = conn
-		}
+	key := fmt.Sprintf("%v_%v_%v", pkg.PartitionID, pkg.ExtentID, pkg.followersAddrs[index])
+	value, ok := rp.followerConnects.Load(key)
+	if ok {
+		pkg.followerConns[index] = value.(*net.TCPConn)
 	} else {
 		conn, err = gConnPool.GetConnect(pkg.followersAddrs[index])
 		if err != nil {
 			return
 		}
+		rp.followerConnects.Store(key, conn)
 		pkg.followerConns[index] = conn
 	}
+
 	return nil
 }
 
