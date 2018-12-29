@@ -191,14 +191,12 @@ func (c *Cluster) processLoadMetaPartition(mp *MetaPartition) {
 				errChannel <- err
 				return
 			}
-			log.LogInfof("action[processLoadMetaPartition],vol[%v],mpID[%v],response[%v]",mp.volName,mp.PartitionID,string(response))
 			loadResponse := &proto.MetaPartitionLoadResponse{}
 			if err = json.Unmarshal(response, loadResponse); err != nil {
 				errChannel <- err
 				return
 			}
 			loadResponse.Addr = host
-			log.LogInfof("action[processLoadMetaPartition],vol[%v],mpID[%v],loadResponse[%v]",mp.volName,mp.PartitionID,loadResponse)
 			mp.addOrReplaceLoadResponse(loadResponse)
 			mr.metaNode.Sender.connPool.PutConnect(conn, false)
 		}(host)

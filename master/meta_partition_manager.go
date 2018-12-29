@@ -90,7 +90,7 @@ func (mp *MetaPartition) checkInodeSign(clusterID string) {
 		msg := fmt.Sprintf("inode sign is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
 			signStr := strconv.FormatUint(uint64(lr.InodeSign), 10)
-			msg = msg + lr.Addr + "[" + signStr + "]"
+			msg = msg + lr.Addr + "[" + signStr + "],"
 		}
 		Warn(clusterID, msg)
 	}
@@ -109,7 +109,7 @@ func (mp *MetaPartition) checkDentrySign(clusterID string) {
 		msg := fmt.Sprintf("dentry sign is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
 			signStr := strconv.FormatUint(uint64(lr.DentrySign), 10)
-			msg = msg + lr.Addr + "[" + signStr + "]"
+			msg = msg + lr.Addr + "[" + signStr + "],"
 		}
 		Warn(clusterID, msg)
 	}
