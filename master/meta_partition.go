@@ -52,6 +52,7 @@ type MetaPartition struct {
 	PersistenceHosts []string
 	Peers            []proto.Peer
 	MissNodes        map[string]int64
+	LoadResponse     []*proto.MetaPartitionLoadResponse
 	sync.RWMutex
 }
 
@@ -70,6 +71,7 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	mp.MissNodes = make(map[string]int64, 0)
 	mp.Peers = make([]proto.Peer, 0)
 	mp.PersistenceHosts = make([]string, 0)
+	mp.LoadResponse = make([]*proto.MetaPartitionLoadResponse, 0)
 	return
 }
 
@@ -550,4 +552,16 @@ func (mp *MetaPartition) createPartitionSuccessTriggerOperator(nodeAddr string, 
 	return
 }
 
-
+func (mp *MetaPartition) addOrReplaceLoadResponse(response *proto.MetaPartitionLoadResponse) {
+	mp.Lock()
+	defer mp.Unlock()
+	loadResponse := make([]*proto.MetaPartitionLoadResponse, 0)
+	for _, lr := range mp.LoadResponse {
+		if lr.Addr == response.Addr {
+			continue
+		}
+		loadResponse = append(loadResponse, lr)
+	}
+	loadResponse = append(loadResponse, response)
+	mp.LoadResponse = loadResponse
+}

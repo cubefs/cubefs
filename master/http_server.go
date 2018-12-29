@@ -93,7 +93,7 @@ func (m *Server) handleFunctions() {
 	http.Handle(metaNodeOffline, m.handlerWithInterceptor())
 	http.Handle(getDataNode, m.handlerWithInterceptor())
 	http.Handle(getMetaNode, m.handlerWithInterceptor())
-	//http.Handle(adminLoadMetaPartition, m.handlerWithInterceptor())
+	http.Handle(adminLoadMetaPartition, m.handlerWithInterceptor())
 	http.Handle(adminMetaPartitionOffline, m.handlerWithInterceptor())
 	http.Handle(clientDataPartitions, m.handlerWithInterceptor())
 	http.Handle(clientVol, m.handlerWithInterceptor())

@@ -210,4 +210,5 @@ type MetaPartitionLoadResponse struct {
 	ApplyID     uint64
 	InodeSign   uint32
 	DentrySign  uint32
+	Addr string
 }

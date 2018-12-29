@@ -77,6 +77,7 @@ func (c *Cluster) scheduleTask() {
 	c.startCheckCreateDataPartitions()
 	c.startCheckVolStatus()
 	c.startCheckBadDiskRecovery()
+	c.startCheckLoadMetaPartitions()
 }
 
 func (c *Cluster) getMasterAddr() (addr string) {
@@ -698,7 +699,7 @@ func (c *Cluster) dataPartitionOffline(offlineAddr, volName string, dp *DataPart
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.PersistenceHosts)
 	return
 errDeal:
-	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.PersistenceHosts)
 	if err != nil {

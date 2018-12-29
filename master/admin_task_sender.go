@@ -43,8 +43,8 @@ type AdminTaskSender struct {
 	targetAddr string
 	TaskMap    map[string]*proto.AdminTask
 	sync.RWMutex
-	exitCh   chan struct{}
-	connPool *util.ConnectPool
+	exitCh     chan struct{}
+	connPool   *util.ConnectPool
 }
 
 func newAdminTaskSender(targetAddr, clusterID string) (sender *AdminTaskSender) {
@@ -173,17 +173,17 @@ func (sender *AdminTaskSender) sendAdminTask(task *proto.AdminTask, conn net.Con
 	return nil
 }
 
-func (sender *AdminTaskSender) syncSendAdminTask(task *proto.AdminTask, conn net.Conn) (response interface{}, err error) {
+func (sender *AdminTaskSender) syncSendAdminTask(task *proto.AdminTask, conn net.Conn) (response []byte, err error) {
 	log.LogInfof(fmt.Sprintf("action[syncSendAdminTask] sender task:%v begin", task.ToString()))
 	packet, err := sender.buildPacket(task)
 	if err != nil {
-		return "", errors.Annotatef(err, "action[syncSendAdminTask build packet failed,task:%v]", task.ID)
+		return nil, errors.Annotatef(err, "action[syncSendAdminTask build packet failed,task:%v]", task.ID)
 	}
 	if err = packet.WriteToConn(conn); err != nil {
-		return "", errors.Annotatef(err, "action[syncSendAdminTask],WriteToConn failed,task:%v", task.ID)
+		return nil, errors.Annotatef(err, "action[syncSendAdminTask],WriteToConn failed,task:%v", task.ID)
 	}
 	if err = packet.ReadFromConn(conn, proto.SyncSendTaskDeadlineTime); err != nil {
-		return "", errors.Annotatef(err, "action[syncSendAdminTask],ReadFromConn failed task:%v", task.ID)
+		return nil, errors.Annotatef(err, "action[syncSendAdminTask],ReadFromConn failed task:%v", task.ID)
 	}
 	if packet.ResultCode != proto.OpOk {
 		err = fmt.Errorf(string(packet.Data))
@@ -192,9 +192,8 @@ func (sender *AdminTaskSender) syncSendAdminTask(task *proto.AdminTask, conn net
 	}
 	log.LogInfof(fmt.Sprintf("action[syncSendAdminTask] sender task:%v success", task.ToString()))
 
-	return "", nil
+	return packet.Data, nil
 }
-
 
 func (sender *AdminTaskSender) syncCreatePartition(task *proto.AdminTask, conn net.Conn) (err error) {
 	log.LogInfof(fmt.Sprintf("action[syncCreatePartition] sender task:%v begin", task.ToString()))
