@@ -341,9 +341,6 @@ func (i *Inode) AppendExtents(exts []BtreeItem, ct int64) (items []BtreeItem) {
 }
 
 func (i *Inode) ExtentsTruncate(exts []BtreeItem, length uint64, ct int64) {
-	if len(exts) == 0 {
-		return
-	}
 	i.Lock()
 	for _, ext := range exts {
 		i.Extents.Delete(ext)
