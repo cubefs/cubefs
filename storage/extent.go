@@ -283,6 +283,9 @@ func (e *Extent) TinyWriteRecover(data []byte, offset, size int64, crc uint32) (
 	if !IsTinyExtent(e.extentID) {
 		return ErrorUnavaliExtent
 	}
+	if offset != e.dataSize {
+		return ErrorUnavaliExtent
+	}
 	if offset+size >= math.MaxUint32 {
 		return ErrorExtentHasFull
 	}
