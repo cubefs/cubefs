@@ -365,7 +365,7 @@ func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members [
 	conn, err = gConnPool.GetConnect(target)
 	defer func() {
 		wg.Done()
-		log.LogErrorf(ActionNotifyFollowerRepair, fmt.Sprintf(" to %v task %v failed %v", target, string(p.Data), err.Error()))
+		log.LogInfof(ActionNotifyFollowerRepair, fmt.Sprintf(" to (%v) task (%v) failed (%v)", target, string(p.Data), err))
 	}()
 	if err != nil {
 		return err
@@ -380,6 +380,7 @@ func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members [
 		return err
 	}
 	gConnPool.PutConnect(conn, true)
+	return err
 }
 
 // NotifyExtentRepair notify backup members to repair DataPartition extent
