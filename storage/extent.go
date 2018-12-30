@@ -196,7 +196,11 @@ func (e *Extent) RestoreFromFS(loadHeader bool) (err error) {
 		return
 	}
 	if IsTinyExtent(e.extentID) {
-		e.dataSize = info.Size()
+		watermark := info.Size()
+		if watermark%PageSize != 0 {
+			watermark = watermark + (PageSize - watermark%PageSize)
+		}
+		e.dataSize = watermark
 		return
 	}
 	if info.Size() < util.BlockHeaderSize {
@@ -253,18 +257,29 @@ func (e *Extent) ModTime() time.Time {
 }
 
 func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32) (err error) {
+	e.lock.Lock()
+	defer e.lock.Unlock()
 	if offset+size >= math.MaxUint32 {
 		return ErrorExtentHasFull
+	}
+	if offset != e.dataSize {
+		return ErrorUnavaliExtent
 	}
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
 		return
 	}
-	e.dataSize = offset + size
+	watermark := offset + size
+	if watermark%PageSize != 0 {
+		watermark = watermark + (PageSize - watermark%PageSize)
+	}
+	e.dataSize = watermark
 
 	return
 }
 
-func (e *Extent) TinyRecover(data []byte, offset, size int64, crc uint32) (err error) {
+func (e *Extent) TinyWriteRecover(data []byte, offset, size int64, crc uint32) (err error) {
+	e.lock.Lock()
+	defer e.lock.Unlock()
 	if !IsTinyExtent(e.extentID) {
 		return ErrorUnavaliExtent
 	}
@@ -354,6 +369,16 @@ func (e *Extent) Read(data []byte, offset, size int64) (crc uint32, err error) {
 		return
 	}
 	crc = crc32.ChecksumIEEE(data)
+	return
+}
+
+func (e *Extent) TinyReadRecover(data []byte, offset, size int64) (crc uint32, err error) {
+	_, err = e.file.ReadAt(data[:size], offset)
+	if err == io.EOF {
+		err = nil
+	}
+	crc = crc32.ChecksumIEEE(data[:size])
+
 	return
 }
 

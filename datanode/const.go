@@ -59,7 +59,7 @@ const (
 
 // Action description
 const (
-	LocalProcessAddr              = "LocalProcess"
+	ActionNotifyFollowerRepair    = "ActionNotifyFollowerRepair"
 	ActionStreamRead              = "ActionStreamRead"              //ActionStreamRead is StreamRead Log Prefix
 	ActionGetDataPartitionMetrics = "ActionGetDataPartitionMetrics" //ActionGetDataPartitionMetrics is GetDataPartitionMetrics Log Prefix
 	ActionCheckReplyAvail         = "ActionCheckReplyAvail"
