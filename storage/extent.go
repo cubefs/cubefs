@@ -277,7 +277,7 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32) (err err
 	return
 }
 
-func (e *Extent) TinyWriteRecover(data []byte, offset, size int64, crc uint32) (err error) {
+func (e *Extent) RepairWriteTiny(data []byte, offset, size int64, crc uint32) (err error) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 	if !IsTinyExtent(e.extentID) {
@@ -375,10 +375,29 @@ func (e *Extent) Read(data []byte, offset, size int64) (crc uint32, err error) {
 	return
 }
 
-func (e *Extent) TinyReadRecover(data []byte, offset, size int64) (crc uint32, err error) {
+func (e *Extent) ExtentRepairRead(data []byte, offset, size int64) (crc uint32, err error) {
+	if IsTinyExtent(e.extentID) {
+		return e.TinyExtentRepairRead(data, offset, size)
+	}
+	if err = e.checkOffsetAndSize(offset, size); err != nil {
+		return
+	}
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+	if _, err = e.file.ReadAt(data[:size], offset+util.BlockHeaderSize); err != nil {
+		return
+	}
+	crc = crc32.ChecksumIEEE(data)
+	return
+}
+
+func (e *Extent) TinyExtentRepairRead(data []byte, offset, size int64) (crc uint32, err error) {
 	_, err = e.file.ReadAt(data[:size], offset)
 	if err == io.EOF {
 		err = nil
+	}
+	if err != nil {
+		return
 	}
 	crc = crc32.ChecksumIEEE(data[:size])
 

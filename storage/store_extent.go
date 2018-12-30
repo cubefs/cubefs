@@ -357,7 +357,7 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	return nil
 }
 
-func (s *ExtentStore) TinyExtentRecover(extentID uint64, offset, size int64, data []byte, crc uint32) (err error) {
+func (s *ExtentStore) TinyExtentRepairWrite(extentID uint64, offset, size int64, data []byte, crc uint32) (err error) {
 	var (
 		extentInfo *ExtentInfo
 		has        bool
@@ -383,7 +383,7 @@ func (s *ExtentStore) TinyExtentRecover(extentID uint64, offset, size int64, dat
 	if extent.IsMarkDelete() {
 		return ErrorExtentHasDelete
 	}
-	if err = extent.TinyRecover(data, offset, size, crc); err != nil {
+	if err = extent.RepairWriteTiny(data, offset, size, crc); err != nil {
 		return err
 	}
 	extentInfo.FromExtent(extent)
@@ -424,6 +424,22 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte) (cr
 		return
 	}
 	crc, err = extent.Read(nbuf, offset, size)
+	return
+}
+
+func (s *ExtentStore) ExtentRepairRead(extentID uint64, offset, size int64, nbuf []byte) (crc uint32, err error) {
+	var extent *Extent
+	if extent, err = s.getExtentWithHeader(extentID); err != nil {
+		return
+	}
+	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
+		return
+	}
+	if extent.IsMarkDelete() {
+		err = ErrorExtentHasDelete
+		return
+	}
+	crc, err = extent.ExtentRepairRead(nbuf, offset, size)
 	return
 }
 

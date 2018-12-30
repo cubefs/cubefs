@@ -533,7 +533,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		}
 		// Write it to local extent file
 		if storage.IsTinyExtent(uint64(localExtentInfo.FileID)) {
-			err = store.TinyExtentRecover(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC)
+			err = store.TinyExtentRepairWrite(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC)
 		} else {
 			err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC)
 		}
