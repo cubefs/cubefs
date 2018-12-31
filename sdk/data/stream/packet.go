@@ -41,7 +41,7 @@ func NewPacket(inode uint64, offset int) *Packet {
 	p := new(Packet)
 	p.ReqID = proto.GeneratorRequestID()
 	p.Magic = proto.ProtoMagic
-	p.ExtentMode = proto.NormalExtentMode
+	p.ExtentType = proto.NormalExtentType
 	p.Opcode = proto.OpWrite
 	p.inode = inode
 	p.kernelOffset = offset
@@ -54,7 +54,7 @@ func NewWritePacket(dp *wrapper.DataPartition, extentId uint64, offset int, inod
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
 	p.Data = make([]byte, 0)
-	p.ExtentMode = proto.NormalExtentMode
+	p.ExtentType = proto.NormalExtentType
 	p.ExtentID = extentId
 	p.ExtentOffset = int64(offset)
 	p.ReqID = proto.GeneratorRequestID()
@@ -84,7 +84,7 @@ func NewReadPacket(key *proto.ExtentKey, offset, size int) (p *Packet) {
 	p.ExtentOffset = int64(offset)
 	p.Size = uint32(size)
 	p.Opcode = proto.OpRead
-	p.ExtentMode = proto.NormalExtentMode
+	p.ExtentType = proto.NormalExtentType
 	p.ReqID = proto.GeneratorRequestID()
 	p.RemainFollowers = 0
 
@@ -99,7 +99,7 @@ func NewStreamReadPacket(key *proto.ExtentKey, offset, size int, inode uint64, f
 	p.ExtentOffset = int64(offset)
 	p.Size = uint32(size)
 	p.Opcode = proto.OpStreamRead
-	p.ExtentMode = proto.NormalExtentMode
+	p.ExtentType = proto.NormalExtentType
 	p.ReqID = proto.GeneratorRequestID()
 	p.RemainFollowers = 0
 	p.inode = inode
@@ -113,7 +113,7 @@ func NewCreateExtentPacket(dp *wrapper.DataPartition, inodeId uint64) (p *Packet
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
 	p.Data = make([]byte, 0)
-	p.ExtentMode = proto.NormalExtentMode
+	p.ExtentType = proto.NormalExtentType
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.Arglen = uint32(len(p.Arg))
 	p.RemainFollowers = uint8(len(dp.Hosts) - 1)
@@ -131,7 +131,7 @@ func NewDeleteExtentPacket(dp *wrapper.DataPartition, extentId uint64) (p *Packe
 	p = new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpMarkDelete
-	p.ExtentMode = proto.NormalExtentMode
+	p.ExtentType = proto.NormalExtentType
 	p.PartitionID = dp.PartitionID
 	p.ExtentID = extentId
 	p.ReqID = proto.GeneratorRequestID()
@@ -147,7 +147,7 @@ func NewReply(reqId int64, partition uint64, extentId uint64) (p *Packet) {
 	p.PartitionID = partition
 	p.ExtentID = extentId
 	p.Magic = proto.ProtoMagic
-	p.ExtentMode = proto.NormalExtentMode
+	p.ExtentType = proto.NormalExtentType
 
 	return
 }

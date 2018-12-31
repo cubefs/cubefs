@@ -39,7 +39,7 @@ func (m *MetaNode) startRaftServer() (err error) {
 		WalPath:       m.raftDir,
 		IPAddr:        m.localAddr,
 		HeartbeatPort: heartbeatPort,
-		ReplicatePort: replicatePort,
+		ReplicaPort:   replicatePort,
 		RetainLogs:    2000000,
 	}
 	m.raftStore, err = raftstore.NewRaftStore(raftConf)

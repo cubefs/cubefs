@@ -47,23 +47,23 @@ type dataPartitionCfg struct {
 	RaftStore     raftstore.RaftStore `json:"-"`
 }
 
-func (dp *DataPartition) getRaftPort() (heartbeat, replicate int, err error) {
+func (dp *DataPartition) raftPort() (heartbeat, replicate int, err error) {
 	raftConfig := dp.config.RaftStore.RaftConfig()
-	heartbeatAddrParts := strings.Split(raftConfig.HeartbeatAddr, ":")
-	replicateAddrParts := strings.Split(raftConfig.ReplicateAddr, ":")
-	if len(heartbeatAddrParts) != 2 {
+	heartbeatAddrSplits := strings.Split(raftConfig.HeartbeatAddr, ":")
+	replicaAddrSplits := strings.Split(raftConfig.ReplicateAddr, ":")
+	if len(heartbeatAddrSplits) != 2 {
 		err = errors.New("illegal heartbeat address")
 		return
 	}
-	if len(replicateAddrParts) != 2 {
+	if len(replicaAddrSplits) != 2 {
 		err = errors.New("illegal replicate address")
 		return
 	}
-	heartbeat, err = strconv.Atoi(heartbeatAddrParts[1])
+	heartbeat, err = strconv.Atoi(heartbeatAddrSplits[1])
 	if err != nil {
 		return
 	}
-	replicate, err = strconv.Atoi(replicateAddrParts[1])
+	replicate, err = strconv.Atoi(replicaAddrSplits[1])
 	if err != nil {
 		return
 	}
@@ -74,11 +74,11 @@ func (dp *DataPartition) getRaftPort() (heartbeat, replicate int, err error) {
 func (dp *DataPartition) StartRaft() (err error) {
 	var (
 		heartbeatPort int
-		replicatePort int
+		replicaPort   int
 		peers         []raftstore.PeerAddress
 	)
 
-	if heartbeatPort, replicatePort, err = dp.getRaftPort(); err != nil {
+	if heartbeatPort, replicaPort, err = dp.raftPort(); err != nil {
 		return
 	}
 	for _, peer := range dp.config.Peers {
@@ -89,7 +89,7 @@ func (dp *DataPartition) StartRaft() (err error) {
 			},
 			Address:       addr,
 			HeartbeatPort: heartbeatPort,
-			ReplicatePort: replicatePort,
+			ReplicaPort:   replicaPort,
 		}
 		peers = append(peers, rp)
 	}
@@ -117,6 +117,7 @@ func (dp *DataPartition) stopRaft() {
 	return
 }
 
+// TODO needs some explanations
 /*
  启动data partition的同时，启动定时计划任务。
  1. 定时将raft applied id写入磁盘文件
@@ -126,7 +127,7 @@ func (dp *DataPartition) stopRaft() {
 */
 func (dp *DataPartition) StartSchedule() {
 	var isRunning bool
-	getAppliedIDTimer := time.NewTimer(time.Second * 1)
+	getAppliedIDTimer := time.NewTimer(time.Second * 1) // TODO what is appliedID?
 	truncateRaftLogTimer := time.NewTimer(time.Minute * 10)
 	storeAppliedIDTimer := time.NewTimer(time.Minute * 5)
 
@@ -203,7 +204,7 @@ func (dp *DataPartition) StartSchedule() {
 	}(dp.stopC)
 }
 
-// WaitingRepairedAndStartRaft Backup start raft must after all the extent files were repaired by primary.
+// StartRaftAfterRepair Backup start raft must after all the extent files were repaired by primary.
 // Repair finished - Local's dp.partitionSize is same to primary's dp.partitionSize.
 // The repair task be done in statusUpdateScheduler->LaunchRepair.
 // This method just be called when create partitions.
@@ -211,13 +212,14 @@ func (dp *DataPartition) StartSchedule() {
  在创建新的data partition的时候，备份成员要先检查data partition已使用的空间于主成员是否一致。
  如果不一致则需要等待主成员将所有的extent文件都修复后，才启动raft。否则overwrite的时候会找到extent文件。
 */
-func (dp *DataPartition) WaitingRepairedAndStartRaft() {
+func (dp *DataPartition) StartRaftAfterRepair() {
 	timer := time.NewTimer(0)
 	for {
 		select {
 		case <-timer.C:
 			if dp.isLeader {
-				// Primary needn't waiting extent repair.
+
+				// primary does not need to wait for repair
 				if err := dp.StartRaft(); err != nil {
 					log.LogErrorf("partitionID[%v] leader start raft err[%v].", dp.partitionID, err)
 					timer.Reset(5 * time.Second)
@@ -226,24 +228,28 @@ func (dp *DataPartition) WaitingRepairedAndStartRaft() {
 				log.LogDebugf("partitionID[%v] leader started.", dp.partitionID)
 				return
 			}
-			// Wait the dp.replicaHosts updated.
-			if len(dp.replicaHosts) == 0 {
+
+			// wait for dp.replicas to be updated
+			if len(dp.replicas) == 0 {
 				timer.Reset(5 * time.Second)
 				continue
 			}
-			// Backup get the dp.partitionSize from primary and compare with local.
+
+			// get the partition size from the primary and compare it with the local one
 			partitionSize, err := dp.getPartitionSize()
 			if err != nil {
 				log.LogErrorf("partitionID[%v] get leader size err[%v]", dp.partitionID, err)
 				timer.Reset(5 * time.Second)
 				continue
 			}
-			if partitionSize != dp.extentStore.GetStoreSize() {
+
+			if partitionSize != dp.extentStore.StoreSize() {
 				log.LogErrorf("partitionID[%v] leader size[%v] local size[%v]", dp.partitionID, partitionSize, dp.partitionSize)
 				timer.Reset(5 * time.Second)
 				continue
 			}
-			// Start raft
+
+			// start raft
 			if err := dp.StartRaft(); err != nil {
 				log.LogErrorf("partitionID[%v] start raft err[%v]. Retry after 20s.", dp.partitionID, err)
 				timer.Reset(5 * time.Second)
@@ -258,13 +264,13 @@ func (dp *DataPartition) WaitingRepairedAndStartRaft() {
 	}
 }
 
-// 调用raft提供的接口，添加raft成员
-func (dp *DataPartition) confAddNode(req *proto.DataPartitionOfflineRequest, index uint64) (updated bool, err error) {
+// Add a raft node.
+func (dp *DataPartition) addRaftNode(req *proto.DataPartitionOfflineRequest, index uint64) (updated bool, err error) {
 	var (
 		heartbeatPort int
 		replicatePort int
 	)
-	if heartbeatPort, replicatePort, err = dp.getRaftPort(); err != nil {
+	if heartbeatPort, replicatePort, err = dp.raftPort(); err != nil {
 		return
 	}
 
@@ -285,10 +291,10 @@ func (dp *DataPartition) confAddNode(req *proto.DataPartitionOfflineRequest, ind
 	return
 }
 
-// 调用raft提供的接口，删除raft成员
-func (dp *DataPartition) confRemoveNode(req *proto.DataPartitionOfflineRequest, index uint64) (updated bool, err error) {
+// Delete a raft node.
+func (dp *DataPartition) removeRaftNode(req *proto.DataPartitionOfflineRequest, index uint64) (updated bool, err error) {
 	if dp.raftPartition == nil {
-		err = fmt.Errorf("%s partitionID=%v applyid=%v", RaftIsNotStart, dp.partitionID, index)
+		err = fmt.Errorf("%s partitionID=%v applyid=%v", RaftNotStarted, dp.partitionID, index)
 		return
 	}
 	peerIndex := -1
@@ -313,21 +319,22 @@ func (dp *DataPartition) confRemoveNode(req *proto.DataPartitionOfflineRequest, 
 					dp.raftPartition.Delete()
 				}
 				dp.Disk().space.DeletePartition(dp.partitionID)
-				log.LogDebugf("[confRemoveNode]: remove self end.")
+				log.LogDebugf("[removeRaftNode]: remove self end.")
 				return
 			}
 		}(index)
 		updated = false
-		log.LogDebugf("[confRemoveNode]: begin remove self.")
+		log.LogDebugf("[removeRaftNode]: begin remove self.")
 		return
 	}
 	dp.config.Peers = append(dp.config.Peers[:peerIndex], dp.config.Peers[peerIndex+1:]...)
-	log.LogDebugf("[confRemoveNode]: remove peer.")
+	log.LogDebugf("[removeRaftNode]: remove peer.")
 	return
 }
 
-func (dp *DataPartition) confUpdateNode(req *proto.DataPartitionOfflineRequest, index uint64) (updated bool, err error) {
-	log.LogDebugf("[confUpdateNode]: not support.")
+// Update a raft node.
+func (dp *DataPartition) updateRaftNode(req *proto.DataPartitionOfflineRequest, index uint64) (updated bool, err error) {
+	log.LogDebugf("[updateRaftNode]: not support.")
 	return
 }
 
@@ -419,7 +426,7 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 		WalPath:       s.raftDir,
 		IPAddr:        s.localIP,
 		HeartbeatPort: heartbeatPort,
-		ReplicatePort: replicatePort,
+		ReplicaPort:   replicatePort,
 		RetainLogs:    dpRetainRaftLogs,
 	}
 	s.raftStore, err = raftstore.NewRaftStore(raftConf)
@@ -447,12 +454,12 @@ func (dp *DataPartition) ExtentRepair(extentFiles []*storage.ExtentInfo) {
 	for i := 0; i < len(extentFiles); i++ {
 		extentFile := extentFiles[i]
 		addFile := &storage.ExtentInfo{Source: extentFile.Source, FileID: extentFile.FileID, Size: extentFile.Size, Inode: extentFile.Inode}
-		mf.AddExtentsTasks = append(mf.AddExtentsTasks, addFile)
+		mf.ExtentsToBeCreated = append(mf.ExtentsToBeCreated, addFile)
 		log.LogDebugf("action[ExtentRepair] partition=%v extent [%v_%v] addFile[%v].",
 			dp.partitionID, dp.partitionID, extentFile.FileID, addFile)
 	}
 
-	dp.MergeExtentStoreRepair(mf)
+	dp.DoExtentStoreRepair(mf)
 
 	finishTime := time.Now().UnixNano()
 	log.LogInfof("action[ExtentRepair] partition=%v finish cost[%vms].",
@@ -462,7 +469,7 @@ func (dp *DataPartition) ExtentRepair(extentFiles []*storage.ExtentInfo) {
 // Get all extents information
 func (dp *DataPartition) getExtentInfo(targetAddr string) (extentFiles []*storage.ExtentInfo, err error) {
 	// get remote extents meta by opGetAllWaterMarker cmd
-	p := repl.NewGetAllWaterMarker(dp.partitionID, proto.NormalExtentMode)
+	p := repl.NewPacketToGetAllWatermarks(dp.partitionID, proto.NormalExtentType)
 	var conn *net.TCPConn
 	target := targetAddr
 	conn, err = gConnPool.GetConnect(target) //get remote connect
@@ -500,7 +507,7 @@ func (dp *DataPartition) getExtentInfo(targetAddr string) (extentFiles []*storag
 	return
 }
 
-func NewGetAppliedID(partitionID uint64, minAppliedID uint64) (p *repl.Packet) {
+func NewPacketToGetAppliedID(partitionID uint64, minAppliedID uint64) (p *repl.Packet) {
 	p = new(repl.Packet)
 	p.Opcode = proto.OpGetAppliedId
 	p.PartitionID = partitionID
@@ -512,7 +519,7 @@ func NewGetAppliedID(partitionID uint64, minAppliedID uint64) (p *repl.Packet) {
 	return
 }
 
-func NewGetPartitionSize(partitionID uint64) (p *repl.Packet) {
+func NewPacketToGetPartitionSize(partitionID uint64) (p *repl.Packet) {
 	p = new(repl.Packet)
 	p.Opcode = proto.OpGetPartitionSize
 	p.PartitionID = partitionID
@@ -544,14 +551,14 @@ func (dp *DataPartition) findMaxAppliedID(allAppliedIDs []uint64) (maxAppliedID 
 }
 
 // Get partition size from leader
-func (dp *DataPartition) getPartitionSize() (partitionSize uint64, err error) {
+func (dp *DataPartition) getPartitionSize() (size uint64, err error) {
 	var (
 		conn *net.TCPConn
 	)
 
-	p := NewGetPartitionSize(dp.partitionID)
+	p := NewPacketToGetPartitionSize(dp.partitionID)
 
-	target := dp.replicaHosts[0]
+	target := dp.replicas[0]
 	conn, err = gConnPool.GetConnect(target) //get remote connect
 	if err != nil {
 		err = errors.Annotatef(err, " partition=%v get host[%v] connect", dp.partitionID, target)
@@ -571,9 +578,9 @@ func (dp *DataPartition) getPartitionSize() (partitionSize uint64, err error) {
 		return
 	}
 
-	partitionSize = binary.BigEndian.Uint64(p.Data)
+	size = binary.BigEndian.Uint64(p.Data)
 
-	log.LogDebugf("partition=%v partitionSize=%v", dp.partitionID, partitionSize)
+	log.LogDebugf("partition=%v size=%v", dp.partitionID, size)
 
 	gConnPool.PutConnect(conn, true)
 
@@ -586,18 +593,18 @@ func (dp *DataPartition) getAllAppliedID(setMinAppliedID bool) (allAppliedID []u
 		minAppliedID uint64
 		err          error
 	)
-	allAppliedID = make([]uint64, len(dp.replicaHosts))
+	allAppliedID = make([]uint64, len(dp.replicas))
 
 	if setMinAppliedID == true {
 		minAppliedID = dp.minAppliedID
 	} else {
 		minAppliedID = 0
 	}
-	p := NewGetAppliedID(dp.partitionID, minAppliedID)
+	p := NewPacketToGetAppliedID(dp.partitionID, minAppliedID)
 
-	for i := 0; i < len(dp.replicaHosts); i++ {
+	for i := 0; i < len(dp.replicas); i++ {
 		var conn *net.TCPConn
-		replicaHostParts := strings.Split(dp.replicaHosts[i], ":")
+		replicaHostParts := strings.Split(dp.replicas[i], ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
 			log.LogDebugf("partition=%v local no send msg. localIP[%v] replicaHost[%v] appliedId[%v]",
@@ -607,7 +614,7 @@ func (dp *DataPartition) getAllAppliedID(setMinAppliedID bool) (allAppliedID []u
 			continue
 		}
 
-		target := dp.replicaHosts[i]
+		target := dp.replicas[i]
 		conn, err = gConnPool.GetConnect(target) //get remote connect
 		if err != nil {
 			err = errors.Annotatef(err, " partition=%v get host[%v] connect", dp.partitionID, target)

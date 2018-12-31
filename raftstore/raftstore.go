@@ -100,14 +100,14 @@ func NewRaftStore(cfg *Config) (mr RaftStore, err error) {
 	if cfg.HeartbeatPort <= 0 {
 		cfg.HeartbeatPort = DefaultHeartbeatPort
 	}
-	if cfg.ReplicatePort <= 0 {
-		cfg.ReplicatePort = DefaultReplicatePort
+	if cfg.ReplicaPort <= 0 {
+		cfg.ReplicaPort = DefaultReplicatePort
 	}
 	if cfg.RetainLogs == 0 {
 		cfg.RetainLogs = DefaultRetainLogs
 	}
 	rc.HeartbeatAddr = fmt.Sprintf("%s:%d", cfg.IPAddr, cfg.HeartbeatPort)
-	rc.ReplicateAddr = fmt.Sprintf("%s:%d", cfg.IPAddr, cfg.ReplicatePort)
+	rc.ReplicateAddr = fmt.Sprintf("%s:%d", cfg.IPAddr, cfg.ReplicaPort)
 	rc.Resolver = resolver
 	rc.RetainLogs = cfg.RetainLogs
 	rc.TickInterval = 300 * time.Millisecond
@@ -150,7 +150,7 @@ func (s *raftStore) CreatePartition(cfg *PartitionConfig) (p Partition, err erro
 			peerAddress.ID,
 			peerAddress.Address,
 			peerAddress.HeartbeatPort,
-			peerAddress.ReplicatePort,
+			peerAddress.ReplicaPort,
 		)
 	}
 	rc := &raft.RaftConfig{

@@ -36,7 +36,7 @@ type DataPartition struct {
 	isRecover        bool
 	Replicas         []*DataReplica
 
-	// TODO what are PersistenceHosts?
+	// TODO what are PersistenceHosts?  持久化的host列表   直接改为 hosts
 	PersistenceHosts []string
 	Peers            []proto.Peer
 	sync.RWMutex
@@ -119,6 +119,8 @@ func (partition *DataPartition) resetTaskID(t *proto.AdminTask) {
 }
 
 // TODO what does "hasMissOne" mean?
+// 三个副本 已经有一个副本丢失
+// hasMissingOneReplica
 func (partition *DataPartition) hasMissOne(replicaNum int) (err error) {
 	hostNum := len(partition.PersistenceHosts)
 	if hostNum <= replicaNum-1 {
@@ -176,7 +178,6 @@ func (partition *DataPartition) getAvailableDataReplicas() (replicas []*DataRepl
 	for i := 0; i < len(partition.Replicas); i++ {
 		replica := partition.Replicas[i]
 
-		// TODO rename checkLocIsAvailContainsDiskError
 		// the node reports heartbeat normally and the node is available
 		if replica.isLocationAvailable() == true && partition.isInPersistenceHosts(replica.Addr) == true {
 			replicas = append(replicas, replica)
@@ -187,6 +188,7 @@ func (partition *DataPartition) getAvailableDataReplicas() (replicas []*DataRepl
 }
 
 // TODO what does offLineInMem mean?
+// 从 memory 中移除 指定地址的副本  removeReplicaByAddr()
 func (partition *DataPartition) offLineInMem(addr string) {
 	delIndex := -1
 	var replica *DataReplica
@@ -354,7 +356,7 @@ func (partition *DataPartition) releaseDataPartition() {
 
 }
 
-// TODO why use loop here? why not just map?
+// TODO why use loop here? why not just map? explain why we use loop instead of map
 func (partition *DataPartition) isInReplicas(host string) (replica *DataReplica, ok bool) {
 	for _, replica = range partition.Replicas {
 		if replica.Addr == host {
@@ -544,6 +546,8 @@ func (partition *DataPartition) getMaxUsedSpace() uint64 {
 
 // TODO what does createDataPartitionSuccessTriggerOperator mean?
 // the caller must add lock
+// 创建data partition 成功后的操作
+// postprocessingXXX
 func (partition *DataPartition) createDataPartitionSuccessTriggerOperator(nodeAddr string, c *Cluster) (err error) {
 	dataNode, err := c.getDataNode(nodeAddr)
 	if err != nil {
@@ -564,7 +568,7 @@ func (partition *DataPartition) isReplicaSizeAligned() bool {
 	used := partition.Replicas[0].Used
 
 	// TODO wha does minus mean?
-	var minus float64
+	var minus float64  // TODO delta
 	for _, replica := range partition.Replicas {
 
 		// TODO we should use a variable to buffer the result of math.Abs(float64(replica.Used)-float64(used))
@@ -579,6 +583,8 @@ func (partition *DataPartition) isReplicaSizeAligned() bool {
 }
 
 // TODO data integrity check?
+// 需要比较 有的datanode 的数据没有完全加载的话比较数据的话没有意义
+// needsCompareCRC
 func (partition *DataPartition) needsCompare() (needCompare bool) {
 	partition.Lock()
 	defer partition.Unlock()

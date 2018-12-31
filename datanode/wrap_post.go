@@ -1,3 +1,17 @@
+// Copyright 2018 The CFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package datanode
 
 import (
@@ -7,6 +21,7 @@ import (
 	"sync/atomic"
 )
 
+// TODO what does the Post function do?
 func (s *DataNode) Post(pkg *repl.Packet) error {
 	if pkg.IsMasterCommand() {
 		pkg.NeedReply = false
@@ -22,7 +37,6 @@ func (s *DataNode) Post(pkg *repl.Packet) error {
 	return nil
 }
 
-// The head node release tinyExtent to store
 func (s *DataNode) cleanupPkg(pkg *repl.Packet) {
 	if pkg.IsMasterCommand() {
 		return
@@ -31,7 +45,7 @@ func (s *DataNode) cleanupPkg(pkg *repl.Packet) {
 		return
 	}
 	s.releaseExtent(pkg)
-	if pkg.ExtentMode == proto.TinyExtentMode && isWriteOperation(pkg) {
+	if pkg.ExtentType == proto.TinyExtentType && isWriteOperation(pkg) {
 		pkg.PutConnectsToPool()
 	}
 }
@@ -40,18 +54,18 @@ func (s *DataNode) releaseExtent(pkg *repl.Packet) {
 	if pkg == nil || !storage.IsTinyExtent(pkg.ExtentID) || pkg.ExtentID <= 0 || atomic.LoadInt32(&pkg.IsRelase) == HasReturnToStore {
 		return
 	}
-	if pkg.ExtentMode != proto.TinyExtentMode || !isLeaderPacket(pkg) || !isWriteOperation(pkg) || !pkg.IsForwardPkg() {
+	if pkg.ExtentType != proto.TinyExtentType || !isLeaderPacket(pkg) || !isWriteOperation(pkg) || !pkg.IsForwardPkg() {
 		return
 	}
 	if pkg.Object == nil {
 		return
 	}
 	partition := pkg.Object.(*DataPartition)
-	store := partition.GetStore()
+	store := partition.ExtentStore()
 	if pkg.IsErrPacket() {
-		store.PutTinyExtentToUnavaliCh(pkg.ExtentID)
+		store.SendToBadTinyExtentC(pkg.ExtentID)
 	} else {
-		store.PutTinyExtentToAvaliCh(pkg.ExtentID)
+		store.SendToGoodTinyExtentC(pkg.ExtentID)
 	}
 	atomic.StoreInt32(&pkg.IsRelase, HasReturnToStore)
 }

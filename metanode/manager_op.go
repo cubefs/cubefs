@@ -40,18 +40,18 @@ func (m *metaManager) opMasterHeartbeat(conn net.Conn, p *Packet) (err error) {
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
-		resp.Status = proto.TaskFail
+		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
 		goto end
 	}
 	reqData, err = json.Marshal(adminTask.Request)
 	if err != nil {
-		resp.Status = proto.TaskFail
+		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
 		goto end
 	}
 	if err = json.Unmarshal(reqData, req); err != nil {
-		resp.Status = proto.TaskFail
+		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
 		goto end
 	}
@@ -64,7 +64,7 @@ func (m *metaManager) opMasterHeartbeat(conn net.Conn, p *Packet) (err error) {
 		resp.Used = m.Sys
 	}
 	if err != nil {
-		adminTask.Status = proto.TaskFail
+		adminTask.Status = proto.TaskFailed
 		goto end
 	}
 	// every partition used
@@ -569,7 +569,7 @@ func (m *metaManager) opDeleteMetaPartition(conn net.Conn, p *Packet) (err error
 	err = mp.DeleteRaft()
 	os.RemoveAll(conf.RootDir)
 	if err != nil {
-		resp.Status = proto.TaskFail
+		resp.Status = proto.TaskFailed
 	}
 	adminTask.Response = resp
 	adminTask.Request = nil
@@ -713,7 +713,7 @@ func (m *metaManager) opOfflineMetaPartition(conn net.Conn, p *Packet) (err erro
 	resp := proto.MetaPartitionOfflineResponse{
 		PartitionID: req.PartitionID,
 		VolName:     req.VolName,
-		Status:      proto.TaskFail,
+		Status:      proto.TaskFailed,
 	}
 	if req.AddPeer.ID == req.RemovePeer.ID {
 		err = errors.Errorf("[opOfflineMetaPartition]: AddPeer[%v] same withRemovePeer[%v]", req.AddPeer, req.RemovePeer)

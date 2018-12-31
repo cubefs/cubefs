@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,14 +26,15 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 )
 
+// SpaceManager manages the disk space
 type SpaceManager struct {
 	clusterID         string
 	disks             map[string]*Disk
 	partitions        map[uint64]*DataPartition
 	raftStore         raftstore.RaftStore
 	nodeID            uint64
-	diskMu            sync.RWMutex
-	partitionMu       sync.RWMutex
+	diskMu            sync.RWMutex  // TODO change the name to dMutex
+	partitionMu       sync.RWMutex  // TODO change the name to pMutex
 	stats             *Stats
 	stopC             chan bool
 	chooseIndex       int
@@ -41,6 +42,7 @@ type SpaceManager struct {
 	createPartitionMu sync.RWMutex
 }
 
+// NewSpaceManager creates a new space manager.
 func NewSpaceManager(rack string) *SpaceManager {
 	var space *SpaceManager
 	space = &SpaceManager{}
@@ -244,7 +246,7 @@ func (space *SpaceManager) flushDelete() {
 	}
 }
 
-func (space *SpaceManager) GetPartition(partitionID uint64) (dp *DataPartition) {
+func (space *SpaceManager) Partition(partitionID uint64) (dp *DataPartition) {
 	space.partitionMu.RLock()
 	defer space.partitionMu.RUnlock()
 	dp = space.partitions[partitionID]
@@ -288,7 +290,7 @@ func (space *SpaceManager) CreatePartition(request *proto.CreateDataPartitionReq
 		break
 	}
 	if disk == nil {
-		return nil, ErrNoDiskForCreatePartition
+		return nil, ErrNoSpaceToCreatePartition
 	}
 	if dp, err = CreateDataPartition(dpCfg, disk); err != nil {
 		return
@@ -300,8 +302,9 @@ func (space *SpaceManager) CreatePartition(request *proto.CreateDataPartitionReq
 	return
 }
 
+// DeletePartition deletes a partition based on the partition id.
 func (space *SpaceManager) DeletePartition(dpID uint64) {
-	dp := space.GetPartition(dpID)
+	dp := space.Partition(dpID)
 	if dp == nil {
 		return
 	}
@@ -313,7 +316,8 @@ func (space *SpaceManager) DeletePartition(dpID uint64) {
 	os.RemoveAll(dp.Path())
 }
 
-func (s *DataNode) fillHeartBeatResponse(response *proto.DataNodeHeartBeatResponse) {
+// TODO change the name to initHeartbeatResponse or newHeartbeatResponse ?
+func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartBeatResponse) {
 	response.Status = proto.TaskSuccess
 	stat := s.space.Stats()
 	stat.Lock()
@@ -323,7 +327,7 @@ func (s *DataNode) fillHeartBeatResponse(response *proto.DataNodeHeartBeatRespon
 	response.CreatedPartitionCnt = uint32(stat.CreatedPartitionCnt)
 	response.CreatedPartitionWeights = stat.CreatedPartitionWeights
 	response.MaxWeightsForCreatePartition = stat.MaxWeightsForCreatePartition
-	response.RemainWeightsForCreatePartition = stat.RemainWeightsForCreatePartition
+	response.RemainWeightsForCreatePartition = stat.RemainingWeightsForCreatePartition
 	stat.Unlock()
 
 	response.RackName = s.rackName
@@ -338,8 +342,8 @@ func (s *DataNode) fillHeartBeatResponse(response *proto.DataNodeHeartBeatRespon
 			Used:            uint64(partition.Used()),
 			DiskPath:        partition.Disk().Path,
 			IsLeader:        isLeader,
-			ExtentCount:     partition.GetStore().GetExtentCount(),
-			NeedCompare:     partition.LoadExtentHeaderStatus() == FinishLoadDataPartitionExtentHeader,
+			ExtentCount:     partition.ExtentStore().ExtentCount(),
+			NeedCompare:     partition.LoadExtentHeaderStatus() == FinishLoadingExtentHeader,
 		}
 		log.LogDebugf("action[Heartbeats] dpid[%v], status[%v] total[%v] used[%v] leader[%v] b[%v].", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)
 		response.PartitionInfo = append(response.PartitionInfo, vr)

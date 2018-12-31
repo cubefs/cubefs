@@ -41,7 +41,7 @@ var (
 	errBadConfFile                         = errors.New("bad configuration file")
 )
 
-// TODO para -> args
+// TODO para -> args (不改)
 func paraNotFound(name string) (err error) {
 	return errors.Errorf("parameter %v not found", name)
 }

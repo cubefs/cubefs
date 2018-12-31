@@ -1,3 +1,17 @@
+// Copyright 2018 The CFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package datanode
 
 import (
@@ -10,6 +24,8 @@ import (
 	"github.com/tiglabs/containerfs/storage"
 )
 
+// TODO why use "s" for data node? This is kind of meaningless
+// TODO change to getDiskAPI
 func (s *DataNode) apiGetDisk(w http.ResponseWriter, r *http.Request) {
 	disks := make([]interface{}, 0)
 	for _, diskItem := range s.space.GetDisks() {
@@ -43,15 +59,20 @@ func (s *DataNode) apiGetDisk(w http.ResponseWriter, r *http.Request) {
 		Disks: disks,
 		Rack:  s.rackName,
 	}
-	s.buildAPISuccessResp(w, diskReport)
+	s.buildSuccessResp(w, diskReport)
 }
 
+// TODO change to getStatAPI
 func (s *DataNode) apiGetStat(w http.ResponseWriter, r *http.Request) {
+
+	// TODO there should be a better way to initialize a heartbeat response
 	response := &proto.DataNodeHeartBeatResponse{}
-	s.fillHeartBeatResponse(response)
-	s.buildAPISuccessResp(w, response)
+	s.buildHeartBeatResponse(response)
+
+	s.buildSuccessResp(w, response)
 }
 
+// TODO change to getPartitionsAPI
 func (s *DataNode) apiGetPartitions(w http.ResponseWriter, r *http.Request) {
 	partitions := make([]interface{}, 0)
 	s.space.RangePartitions(func(dp *DataPartition) bool {
@@ -68,7 +89,7 @@ func (s *DataNode) apiGetPartitions(w http.ResponseWriter, r *http.Request) {
 			Used:     dp.Used(),
 			Status:   dp.Status(),
 			Path:     dp.Path(),
-			Replicas: dp.ReplicaHosts(),
+			Replicas: dp.Replicas(),
 		}
 		partitions = append(partitions, partition)
 		return true
@@ -80,9 +101,10 @@ func (s *DataNode) apiGetPartitions(w http.ResponseWriter, r *http.Request) {
 		Partitions:     partitions,
 		PartitionCount: len(partitions),
 	}
-	s.buildAPISuccessResp(w, result)
+	s.buildSuccessResp(w, result)
 }
 
+// TODO change to getPartitionAPI
 func (s *DataNode) apiGetPartition(w http.ResponseWriter, r *http.Request) {
 	const (
 		paramPartitionID = "id"
@@ -94,22 +116,22 @@ func (s *DataNode) apiGetPartition(w http.ResponseWriter, r *http.Request) {
 	)
 	if err = r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
-		s.buildAPIFailureResp(w, http.StatusBadRequest, err.Error())
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if partitionID, err = strconv.ParseUint(r.FormValue(paramPartitionID), 10, 64); err != nil {
 		err = fmt.Errorf("parse param %v fail: %v", paramPartitionID, err)
-		s.buildAPIFailureResp(w, http.StatusBadRequest, err.Error())
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	partition := s.space.GetPartition(partitionID)
+	partition := s.space.Partition(partitionID)
 	if partition == nil {
-		s.buildAPIFailureResp(w, http.StatusNotFound, "partition not exist")
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	if files, err = partition.GetStore().GetAllExtentWatermark(nil); err != nil {
+	if files, err = partition.ExtentStore().GetAllWatermarks(nil); err != nil {
 		err = fmt.Errorf("get watermark fail: %v", err)
-		s.buildAPIFailureResp(w, http.StatusInternalServerError, err.Error())
+		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	result := &struct {
@@ -129,12 +151,13 @@ func (s *DataNode) apiGetPartition(w http.ResponseWriter, r *http.Request) {
 		Path:      partition.Path(),
 		Files:     files,
 		FileCount: len(files),
-		Replicas:  partition.ReplicaHosts(),
+		Replicas:  partition.Replicas(),
 	}
-	s.buildAPISuccessResp(w, result)
+	s.buildSuccessResp(w, result)
 }
 
-func (s *DataNode) apiGetExtent(w http.ResponseWriter, r *http.Request) {
+// TODO change to getExtentAPI
+func (s *DataNode) getExtentAPI(w http.ResponseWriter, r *http.Request) {
 	var (
 		partitionID uint64
 		extentID    int
@@ -143,42 +166,46 @@ func (s *DataNode) apiGetExtent(w http.ResponseWriter, r *http.Request) {
 		extentInfo  *storage.ExtentInfo
 	)
 	if err = r.ParseForm(); err != nil {
-		s.buildAPIFailureResp(w, http.StatusBadRequest, err.Error())
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if partitionID, err = strconv.ParseUint(r.FormValue("partitionID"), 10, 64); err != nil {
-		s.buildAPIFailureResp(w, http.StatusBadRequest, err.Error())
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if extentID, err = strconv.Atoi(r.FormValue("extentID")); err != nil {
-		s.buildAPIFailureResp(w, http.StatusBadRequest, err.Error())
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	reload, _ = strconv.Atoi(r.FormValue("reload"))
 
-	partition := s.space.GetPartition(partitionID)
+	partition := s.space.Partition(partitionID)
 	if partition == nil {
-		s.buildAPIFailureResp(w, http.StatusNotFound, "partition not exist")
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	if extentInfo, err = partition.GetStore().GetWatermark(uint64(extentID), reload == 1); err != nil {
-		s.buildAPIFailureResp(w, 500, err.Error())
+	if extentInfo, err = partition.ExtentStore().Watermark(uint64(extentID), reload == 1); err != nil {
+		s.buildFailureResp(w, 500, err.Error())
 		return
 	}
 
-	s.buildAPISuccessResp(w, extentInfo)
+	s.buildSuccessResp(w, extentInfo)
 	return
 }
 
-func (s *DataNode) buildAPISuccessResp(w http.ResponseWriter, data interface{}) {
-	s.buildAPIJSONResp(w, http.StatusOK, data, "")
+// TODO we need to find a better name for buildSuccessResp
+func (s *DataNode) buildSuccessResp(w http.ResponseWriter, data interface{}) {
+	s.buildJSONResp(w, http.StatusOK, data, "")
 }
 
-func (s *DataNode) buildAPIFailureResp(w http.ResponseWriter, code int, msg string) {
-	s.buildAPIJSONResp(w, code, nil, msg)
+// TODO we need to find a bettwe name for buildFailureResp
+func (s *DataNode) buildFailureResp(w http.ResponseWriter, code int, msg string) {
+	s.buildJSONResp(w, code, nil, msg)
 }
 
-func (s *DataNode) buildAPIJSONResp(w http.ResponseWriter, code int, data interface{}, msg string) {
+// TODO we need to find a better name for buildJSONResp
+// This seems like creating a response for the API request, correct?
+func (s *DataNode) buildJSONResp(w http.ResponseWriter, code int, data interface{}, msg string) {
 	var (
 		jsonBody []byte
 		err      error

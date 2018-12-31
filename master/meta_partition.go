@@ -131,7 +131,7 @@ func (mp *MetaPartition) updateAllReplicasEnd() {
 	}
 }
 
-// TODO it is better to call it "upper bound"
+// TODO end-> "upper bound"
 func (mp *MetaPartition) updateEnd(c *Cluster, end uint64) {
 	// overflow
 	if end > (defaultMaxMetaPartitionInodeID - defaultMetaPartitionInodeIDStep) {
@@ -208,6 +208,7 @@ func (mp *MetaPartition) getMetaReplica(addr string) (mr *MetaReplica, err error
 }
 
 // TODO check and remove the missing replica? what is the missing replica?
+// removeReplicaByAddr
 func (mp *MetaPartition) checkAndRemoveMissMetaReplica(addr string) {
 	if _, ok := mp.MissNodes[addr]; ok {
 		delete(mp.MissNodes, addr)
@@ -266,6 +267,8 @@ func (mp *MetaPartition) checkReplicaNum(c *Cluster, volName string, replicaNum 
 }
 
 // TODO what is ExcessReplication?
+// 删除多余副本, 非法的
+// removeillegealReplica
 func (mp *MetaPartition) deleteExcessReplication() (excessAddr string, t *proto.AdminTask, err error) {
 	mp.RLock()
 	defer mp.RUnlock()
@@ -279,7 +282,7 @@ func (mp *MetaPartition) deleteExcessReplication() (excessAddr string, t *proto.
 	return
 }
 
-// TODO what is lack replication?
+// TODO what is lack replication? lack-> missing
 func (mp *MetaPartition) getLackReplication() (lackAddrs []string) {
 	mp.RLock()
 	defer mp.RUnlock()
@@ -349,7 +352,7 @@ func (mp *MetaPartition) getLiveReplica() (liveReplicas []*MetaReplica) {
 	return
 }
 
-// TODO what is updateInfoToStore?
+// TODO what is updateInfoToStore? 持久化信息到rocksDB
 func (mp *MetaPartition) updateInfoToStore(newHosts []string, newPeers []proto.Peer, volName string, c *Cluster) (err error) {
 	oldHosts := make([]string, len(mp.PersistenceHosts))
 	copy(oldHosts, mp.PersistenceHosts)
@@ -386,6 +389,7 @@ func (mp *MetaPartition) missedReplica(addr string) bool {
 }
 
 // TODO what is needWarnMissReplica?
+// missing replica是否需要报警
 func (mp *MetaPartition) needWarnMissReplica(addr string, warnInterval int64) (isWarn bool) {
 	lastWarnTime, ok := mp.MissNodes[addr]
 	if !ok {
@@ -403,6 +407,7 @@ func (mp *MetaPartition) checkReplicaMiss(clusterID string, partitionMissSec, wa
 	defer mp.Unlock()
 	for _, replica := range mp.Replicas {
 		// TODO here we need some explaination of the conditions
+		// 不让报警太频繁
 		if contains(mp.PersistenceHosts, replica.Addr) && replica.isMissed() && mp.needWarnMissReplica(replica.Addr, warnInterval) {
 			metaNode := replica.metaNode
 			var (
@@ -430,7 +435,7 @@ func (mp *MetaPartition) checkReplicaMiss(clusterID string, partitionMissSec, wa
 	}
 }
 
-// TODO newReplicaTask?
+// TODO createReplicaTask?
 func (mp *MetaPartition) generateReplicaTask(clusterID, volName string) (tasks []*proto.AdminTask) {
 	var msg string
 	tasks = make([]*proto.AdminTask, 0)
@@ -478,6 +483,7 @@ func (mp *MetaPartition) generateCreateMetaPartitionTasks(specifyAddrs []string,
 }
 
 // TODO what is generateAddLackMetaReplicaTask?
+// --> createAddMissingReplicaTask
 func (mp *MetaPartition) generateAddLackMetaReplicaTask(addrs []string, volName string) (tasks []*proto.AdminTask) {
 	return mp.generateCreateMetaPartitionTasks(addrs, mp.Peers, volName)
 }
@@ -519,6 +525,7 @@ func (mr *MetaReplica) generateDeleteReplicaTask(partitionID uint64) (t *proto.A
 }
 
 // TODO should we call it inactive? why it is called missed? why we need this function? isn't it the same as !isActive()?
+// isMissing
 func (mr *MetaReplica) isMissed() (miss bool) {
 	return time.Now().Unix() - mr.ReportTime > defaultMetaPartitionTimeOutSec
 }

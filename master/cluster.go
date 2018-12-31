@@ -1071,7 +1071,7 @@ func (c *Cluster) copyVols() (vols map[string]*Vol) {
 }
 
 
-// TODO what are normal vols?
+// TODO what are normal vols? vol : 正常 或者 标记删除
 func (c *Cluster) getAllNormalVols() (vols map[string]*Vol) {
 	vols = make(map[string]*Vol, 0)
 	c.volsLock.RLock()

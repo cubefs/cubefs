@@ -348,7 +348,7 @@ func (rp *ReplProtocol) Stop() {
 */
 func (rp *ReplProtocol) AllocateFollowersConnects(pkg *Packet, index int) (err error) {
 	var conn *net.TCPConn
-	if pkg.ExtentMode == proto.NormalExtentMode {
+	if pkg.ExtentType == proto.NormalExtentType {
 		key := fmt.Sprintf("%v_%v_%v", pkg.PartitionID, pkg.ExtentID, pkg.followersAddrs[index])
 		value, ok := rp.followerConnects.Load(key)
 		if ok {

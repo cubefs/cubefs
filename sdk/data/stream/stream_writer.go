@@ -285,7 +285,7 @@ func (sw *StreamWriter) doWrite(data []byte, offset, size int) (total int, err e
 
 	for i := 0; i < MaxNewHandlerRetry; i++ {
 		if sw.handler == nil {
-			sw.handler = NewExtentHandler(sw, offset, proto.NormalExtentMode)
+			sw.handler = NewExtentHandler(sw, offset, proto.NormalExtentType)
 			sw.dirty = false
 		}
 

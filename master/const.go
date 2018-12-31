@@ -63,6 +63,7 @@ const (
 	volMaxExpandDataPartitionCount          = 100
 )
 
+// TODO explain different types of volumes (normal and markDelete)
 const (
 	volNormal     uint8 = 0
 	volMarkDelete uint8 = 1

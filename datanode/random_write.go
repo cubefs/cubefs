@@ -1,4 +1,4 @@
-// Copyright 2018 The ChuBao Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -103,7 +103,7 @@ func (rndWrtItem *RndWrtCmdItem) rndWrtCmdUnmarshal(cmd []byte) (err error) {
 	return json.Unmarshal(cmd, rndWrtItem)
 }
 
-// RandomWriteSubmit Submit the propose to raft.
+// RandomWriteSubmit submits the proposal to raft.
 func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 	val, err := rndWrtDataMarshal(pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data, pkg.CRC)
 	if err != nil {
@@ -122,7 +122,7 @@ func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 }
 
 func (dp *DataPartition) checkWriteErrs(errMsg string) (ignore bool) {
-	// file has deleted when raft log apply
+	// file has been deleted when applying the raft log
 	if strings.Contains(errMsg, storage.ErrorExtentHasDelete.Error()) {
 		return true
 	}
@@ -142,16 +142,21 @@ func (dp *DataPartition) addDiskErrs(err error, flag uint8) {
 		return
 	}
 	if flag == WriteFlag {
-		d.addWriteErr()
+		d.updateWriteErrCnt()
 	}
 }
 
+// TODO what is RandomPartitionReadCheck
 func (dp *DataPartition) RandomPartitionReadCheck(request *repl.Packet, connect net.Conn) (err error) {
 	if !dp.config.RandomWrite || request.Opcode == proto.OpExtentRepairRead {
 		return
 	}
+
+	// TODO it is better to use IsRaftLeader() to only return boolean value,
+	//  and use another getRaftLeaderAddr() to return the actual address
 	_, ok := dp.IsRaftLeader()
 	if !ok {
+		// TODO where is this err used?
 		err = storage.ErrNotLeader
 		log.LogErrorf("[readCheck] read ErrorNotLeader partition=%v", dp.partitionID)
 		return
@@ -165,24 +170,32 @@ func (dp *DataPartition) RandomPartitionReadCheck(request *repl.Packet, connect 
 	return
 }
 
+// TODO what does applyID mean here?
 type ItemIterator struct {
 	applyID uint64
 }
 
+// NewItemIterator creates a new item iterator.
 func NewItemIterator(applyID uint64) *ItemIterator {
+
+	// TODO what is si short for?
 	si := new(ItemIterator)
 	si.applyID = applyID
 	return si
 }
 
+// ApplyIndex returns the applyID
+// TODO should we call it ApplyID or ApplyIndex?
 func (si *ItemIterator) ApplyIndex() uint64 {
 	return si.applyID
 }
 
+// Close the iterator.
 func (si *ItemIterator) Close() {
 	return
 }
 
+// Next returns the next item in the iterator.
 func (si *ItemIterator) Next() (data []byte, err error) {
 	appIDBuf := make([]byte, 8)
 	binary.BigEndian.PutUint64(appIDBuf, si.applyID)

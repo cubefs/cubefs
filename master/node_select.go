@@ -12,6 +12,8 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+// node_selector.go -> 选择node 列表
+
 package master
 
 import (
@@ -24,7 +26,7 @@ import (
 )
 
 // TODO why it is called NodeTab?
-// NodeTab 定义带权重的node
+// NodeTab 定义带权重的node -> weightedNode
 type NodeTab struct {
 	Carry  float64
 	Weight float64
@@ -123,6 +125,7 @@ func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) 
 }
 
 // TODO find a better name for getAvailCarryMetaNodeTab
+// carry meta node -> getAvailCarryMetaNode
 func (ns *nodeSet) getAvailCarryMetaNodeTab(maxTotal uint64, excludeHosts []string) (nodeTabs NodeTabArrSorterByCarry, availCount int) {
 	nodeTabs = make(NodeTabArrSorterByCarry, 0)
 	ns.metaNodes.Range(func(key, value interface{}) bool {
@@ -153,6 +156,7 @@ func (ns *nodeSet) getAvailCarryMetaNodeTab(maxTotal uint64, excludeHosts []stri
 }
 
 // TODO what is disOrderArray? disorder array?
+// 把数组乱序   shuffleArray
 func (ns *nodeSet) disOrderArray(oldHosts []string) (newHosts []string, err error) {
 	var (
 		newCurrPos int

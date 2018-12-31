@@ -80,14 +80,14 @@ func (metaNode *MetaNode) isWriteAble() (ok bool) {
 	return
 }
 
-// TODO what is a carry node?
+// TODO what is a carry node? 带权重的node weightedNode
 func (metaNode *MetaNode) isAvailCarryNode() (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
 	return metaNode.Carry >= 1
 }
 
-// TODO setNodeActive?
+// TODO setNodeActive? alive -> active
 func (metaNode *MetaNode) setNodeAlive() {
 	metaNode.Lock()
 	defer metaNode.Unlock()
@@ -119,7 +119,7 @@ func (metaNode *MetaNode) reachesThreshold() bool {
 	return float32(float64(metaNode.Used)/float64(metaNode.Total)) > metaNode.Threshold
 }
 
-// TODO newHeartbeatTask
+// TODO createHeartbeatTask
 func (metaNode *MetaNode) generateHeartbeatTask(masterAddr string) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:   time.Now().Unix(),

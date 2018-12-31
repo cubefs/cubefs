@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -83,6 +83,7 @@ type (
 	SetattrRequest = proto.SetattrRequest
 )
 
+// TODO what does "when raftStore store and application apply" mean ?
 // For use when raftStore store and application apply
 const (
 	opCreateInode uint32 = iota
@@ -117,7 +118,7 @@ var (
 	ErrNotLeader = errors.New("not leader")
 )
 
-// default config
+// default configuration
 const (
 	defaultMetaDir = "metaDir"
 	defaultRaftDir = "raftDir"
@@ -128,7 +129,7 @@ const (
 	GetIpUri    = "/admin/getIp"
 )
 
-// Configuration keys
+// configuration keys
 const (
 	cfgListen            = "listen"
 	cfgMetaDir           = "metaDir"
@@ -139,7 +140,7 @@ const (
 )
 
 const (
-	// 内存数据定时落盘间隔时间
+	// interval of persisting in-memory data
 	storeTimeTicker = time.Minute * 5
 )
 

@@ -257,7 +257,7 @@ errDeal:
 }
 
 func (c *Cluster) dealOfflineDataPartitionResp(nodeAddr string, resp *proto.DataPartitionOfflineResponse) (err error) {
-	if resp.Status == proto.TaskFail {
+	if resp.Status == proto.TaskFailed {
 		msg := fmt.Sprintf("action[dealOfflineDataPartitionResp],clusterID[%v] nodeAddr %v "+
 			"offline meta partition[%v] failed,err %v",
 			c.Name, nodeAddr, resp.PartitionId, resp.Result)
@@ -269,7 +269,7 @@ func (c *Cluster) dealOfflineDataPartitionResp(nodeAddr string, resp *proto.Data
 }
 
 func (c *Cluster) dealOfflineMetaPartitionResp(nodeAddr string, resp *proto.MetaPartitionOfflineResponse) (err error) {
-	if resp.Status == proto.TaskFail {
+	if resp.Status == proto.TaskFailed {
 		msg := fmt.Sprintf("action[dealOfflineMetaPartitionResp],clusterID[%v] nodeAddr %v "+
 			"offline meta partition[%v] failed,err %v",
 			c.Name, nodeAddr, resp.PartitionID, resp.Result)
@@ -285,7 +285,7 @@ func (c *Cluster) dealLoadMetaPartitionResp(nodeAddr string, resp *proto.LoadMet
 }
 
 func (c *Cluster) dealUpdateMetaPartitionResp(nodeAddr string, resp *proto.UpdateMetaPartitionResponse) (err error) {
-	if resp.Status == proto.TaskFail {
+	if resp.Status == proto.TaskFailed {
 		msg := fmt.Sprintf("action[dealUpdateMetaPartitionResp],clusterID[%v] nodeAddr %v update meta partition failed,err %v",
 			c.Name, nodeAddr, resp.Result)
 		log.LogError(msg)
@@ -295,7 +295,7 @@ func (c *Cluster) dealUpdateMetaPartitionResp(nodeAddr string, resp *proto.Updat
 }
 
 func (c *Cluster) dealDeleteMetaPartitionResp(nodeAddr string, resp *proto.DeleteMetaPartitionResponse) (err error) {
-	if resp.Status == proto.TaskFail {
+	if resp.Status == proto.TaskFailed {
 		msg := fmt.Sprintf("action[dealDeleteMetaPartitionResp],clusterID[%v] nodeAddr %v "+
 			"delete meta partition failed,err %v", c.Name, nodeAddr, resp.Result)
 		log.LogError(msg)
@@ -322,7 +322,7 @@ errDeal:
 
 func (c *Cluster) dealCreateMetaPartitionResp(nodeAddr string, resp *proto.CreateMetaPartitionResponse) (err error) {
 	log.LogInfof("action[dealCreateMetaPartitionResp] receive resp from nodeAddr[%v] pid[%v]", nodeAddr, resp.PartitionID)
-	if resp.Status == proto.TaskFail {
+	if resp.Status == proto.TaskFailed {
 		msg := fmt.Sprintf("action[dealCreateMetaPartitionResp],clusterID[%v] nodeAddr %v create meta partition failed,err %v",
 			c.Name, nodeAddr, resp.Result)
 		log.LogError(msg)
@@ -365,7 +365,7 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 		logMsg   string
 	)
 	log.LogInfof("action[dealMetaNodeHeartbeatResp],clusterID[%v] receive nodeAddr[%v] heartbeat", c.Name, nodeAddr)
-	if resp.Status == proto.TaskFail {
+	if resp.Status == proto.TaskFailed {
 		msg := fmt.Sprintf("action[dealMetaNodeHeartbeatResp],clusterID[%v] nodeAddr %v heartbeat failed,err %v",
 			c.Name, nodeAddr, resp.Result)
 		log.LogError(msg)
@@ -457,7 +457,7 @@ func (c *Cluster) dealDeleteDataPartitionResponse(nodeAddr string, resp *proto.D
 func (c *Cluster) dealLoadDataPartitionResponse(nodeAddr string, resp *proto.LoadDataPartitionResponse) (err error) {
 	var dataNode *DataNode
 	dp, err := c.getDataPartitionByID(resp.PartitionId)
-	if err != nil || resp.Status == proto.TaskFail || resp.PartitionSnapshot == nil {
+	if err != nil || resp.Status == proto.TaskFailed || resp.PartitionSnapshot == nil {
 		return
 	}
 	if dataNode, err = c.getDataNode(nodeAddr); err != nil {

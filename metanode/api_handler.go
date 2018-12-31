@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 )
 
-// HTTP接口访问的返回结构体定义
+// APIResponse defines the structure of the response to an HTTP request
 type APIResponse struct {
 	Code int         `json:"code"`
 	Msg  string      `json:"msg"`
@@ -36,12 +36,12 @@ func NewAPIResponse(code int, msg string) *APIResponse {
 	}
 }
 
-// Marshal ...
+// Marshal is a wrapper function of json.Marshal
 func (api *APIResponse) Marshal() ([]byte, error) {
 	return json.Marshal(api)
 }
 
-// 注册HTTP接口函数控制器
+// register the APIs
 func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getPartitions", m.getPartitionsHandler)
 	http.HandleFunc("/getPartitionById", m.getPartitionByIDHandler)

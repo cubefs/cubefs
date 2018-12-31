@@ -23,6 +23,7 @@ import (
 )
 
 // TODO start recovering bad disks?
+// 检查disk下线的进度
 func (c *Cluster) startCheckBadDiskRecovery() {
 	go func() {
 		for {
@@ -84,11 +85,13 @@ func (c *Cluster) checkBadDiskRecovery() {
 
 
 // TODO take the disk off?
+// decompression hadoop 有一个专有名字
+// takeDiskOff
 func (c *Cluster) diskOffLine(dataNode *DataNode, badDiskPath string, badPartitionIds []uint64) (err error) {
 	msg := fmt.Sprintf("action[diskOffLine], Node[%v] OffLine,disk[%v]", dataNode.Addr, badDiskPath)
 	log.LogWarn(msg)
 
-	// TODO what are safeVols and what are normalVols?
+	// TODO what are safeVols and what are normalVols?  safeVols -> vols
 	safeVols := c.getAllNormalVols()
 	for _, vol := range safeVols {
 		for _, dp := range vol.dataPartitions.dataPartitions {

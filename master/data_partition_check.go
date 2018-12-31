@@ -199,6 +199,8 @@ func (partition *DataPartition) deleteExcessReplication() (excessAddr string, ta
 // TODO what does addLackReplication mean? what is lackAddr
 /*add data partition lack replication,range all RocksDBHost if Hosts not in Replicas,
 then generator a task to OpRecoverCreateDataPartition to a new Node*/
+// missingReplica
+// getMissingReplicaAddress
 func (partition *DataPartition) addLackReplication(dataPartitionSize uint64) (lackAddr string, err error) {
 	partition.Lock()
 	defer partition.Unlock()

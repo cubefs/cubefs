@@ -1,3 +1,17 @@
+// Copyright 2018 The CFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package datanode
 
 import (
@@ -8,6 +22,7 @@ import (
 	"hash/crc32"
 )
 
+// TODO add comments; what is this wrapper
 func (s *DataNode) Prepare(pkg *repl.Packet) (err error) {
 	defer func() {
 		if err != nil {
@@ -28,6 +43,8 @@ func (s *DataNode) Prepare(pkg *repl.Packet) (err error) {
 	if err = s.checkPartition(pkg); err != nil {
 		return
 	}
+
+	// TODO What does the addExtentInfo do here?
 	if err = s.addExtentInfo(pkg); err != nil {
 		return
 	}
@@ -36,10 +53,10 @@ func (s *DataNode) Prepare(pkg *repl.Packet) (err error) {
 }
 
 func (s *DataNode) checkStoreMode(p *repl.Packet) (err error) {
-	if p.ExtentMode == proto.TinyExtentMode || p.ExtentMode == proto.NormalExtentMode {
+	if p.ExtentType == proto.TinyExtentType || p.ExtentType == proto.NormalExtentType {
 		return nil
 	}
-	return ErrStoreTypeMismatch
+	return ErrIncorrectStoreType
 }
 
 func (s *DataNode) checkCrc(p *repl.Packet) (err error) {
@@ -55,7 +72,7 @@ func (s *DataNode) checkCrc(p *repl.Packet) (err error) {
 }
 
 func (s *DataNode) checkPartition(pkg *repl.Packet) (err error) {
-	dp := s.space.GetPartition(pkg.PartitionID)
+	dp := s.space.Partition(pkg.PartitionID)
 	if dp == nil {
 		err = errors.Errorf("partition %v is not exist", pkg.PartitionID)
 		return
@@ -74,17 +91,17 @@ func (s *DataNode) checkPartition(pkg *repl.Packet) (err error) {
 	return
 }
 
-// If tinyExtent Write get the extentID and extentOffset
-// If OpCreateExtent get new extentID
+
+// TODO needs some explanation here
 func (s *DataNode) addExtentInfo(pkg *repl.Packet) error {
-	store := pkg.Object.(*DataPartition).GetStore()
-	if isLeaderPacket(pkg) && pkg.ExtentMode == proto.TinyExtentMode {
-		extentID, err := store.GetAvaliTinyExtent() // GetConnect a valid tinyExtentId
+	store := pkg.Object.(*DataPartition).ExtentStore()
+	if isLeaderPacket(pkg) && pkg.ExtentType == proto.TinyExtentType {
+		extentID, err := store.GetGoodTinyExtent()
 		if err != nil {
 			return err
 		}
 		pkg.ExtentID = extentID
-		pkg.ExtentOffset, err = store.TinyExtentWritePrepare(extentID) // GetConnect offset of this extent file
+		pkg.ExtentOffset, err = store.GetTinyExtentoffset(extentID)
 		if err != nil {
 			return err
 		}
@@ -95,6 +112,7 @@ func (s *DataNode) addExtentInfo(pkg *repl.Packet) error {
 	return nil
 }
 
+// TODO what is a leader packet?
 func isLeaderPacket(p *repl.Packet) (ok bool) {
 	if p.IsForwardPkg() && (isWriteOperation(p) || isCreateExtentOperation(p) || isMarkDeleteExtentOperation(p)) {
 		ok = true

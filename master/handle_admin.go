@@ -553,8 +553,8 @@ errDeal:
 	return
 }
 
-// TODO the response of a data node task?
-//数据节点异步响应任务结果的入口，包括heartbeat，loadDataPartition，deleteDataPartition等任务
+// TODO the response of a data node task? task 返回给master的response
+// 数据节点异步响应任务结果的入口，包括heartbeat，loadDataPartition，deleteDataPartition等任务
 func (m *Server) dataNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
 	var (
 		dataNode *DataNode
@@ -606,6 +606,7 @@ errDeal:
 }
 
 // TODO find a better name for parseAddMetaNodePara
+// 解析 AddMetaNode 这个请求的参数 parseAddMetaNodeRequest
 func parseAddMetaNodePara(r *http.Request) (nodeAddr string, err error) {
 	r.ParseForm()
 	return checkNodeAddr(r)

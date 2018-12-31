@@ -25,7 +25,7 @@ type (
 	BtreeItem = btree.Item
 )
 
-// 封装Google Btree
+// wrapper of Google's btree
 type BTree struct {
 	sync.RWMutex
 	tree *btree.BTree
@@ -37,7 +37,7 @@ func NewBtree() *BTree {
 	}
 }
 
-// 返回指定key的对象，如果在树中找到；未找到返回nil
+// Get returns the object of the given key in the btree
 func (b *BTree) Get(key BtreeItem) (item BtreeItem) {
 	b.RLock()
 	item = b.tree.Get(key)
@@ -45,7 +45,7 @@ func (b *BTree) Get(key BtreeItem) (item BtreeItem) {
 	return
 }
 
-// 查找指定Key对象，如果找到则传递给函数；否则不执行此函数
+// Find searches for the given key in the btree
 func (b *BTree) Find(key BtreeItem, fn func(i BtreeItem)) {
 	b.RLock()
 	item := b.tree.Get(key)
@@ -56,7 +56,7 @@ func (b *BTree) Find(key BtreeItem, fn func(i BtreeItem)) {
 	fn(item)
 }
 
-// 检查Key对象是否在Btree中
+// Has checks if the key exists in the btree
 func (b *BTree) Has(key BtreeItem) (ok bool) {
 	b.RLock()
 	ok = b.tree.Has(key)
@@ -64,7 +64,7 @@ func (b *BTree) Has(key BtreeItem) (ok bool) {
 	return
 }
 
-// 从Btree中删除指定Key对象
+// Delete deletes the object by the given key
 func (b *BTree) Delete(key BtreeItem) (item BtreeItem) {
 	b.Lock()
 	item = b.tree.Delete(key)
@@ -118,7 +118,7 @@ func (b *BTree) AscendGreaterOrEqual(pivot BtreeItem, iterator func(i BtreeItem)
 	b.RUnlock()
 }
 
-// 克隆一份当前Btree的快照，并返回快照指针
+// GetTree makes a snapshot of the current btree, and returns the pointer
 func (b *BTree) GetTree() *BTree {
 	b.RLock()
 	t := b.tree.Clone()
@@ -128,14 +128,14 @@ func (b *BTree) GetTree() *BTree {
 	return nb
 }
 
-// 重置当前Btree
+// Reset resets the current btree
 func (b *BTree) Reset() {
 	b.Lock()
 	b.tree.Clear(false)
 	b.Unlock()
 }
 
-// 获取当前Btree 所有对象个数
+// Len returns the total number of items in the btree
 func (b *BTree) Len() (size int) {
 	b.RLock()
 	size = b.tree.Len()
@@ -143,7 +143,7 @@ func (b *BTree) Len() (size int) {
 	return
 }
 
-// 返回当前Btree的最大对象
+// MaxItem returns the max item in the btree
 func (b *BTree) MaxItem() BtreeItem {
 	b.RLock()
 	item := b.tree.Max()

@@ -84,7 +84,8 @@ func (alloc *IDAllocator) restoreMaxMetaPartitionID() {
 	log.LogInfof("action[restoreMaxMetaPartitionID] maxMpID[%v]", alloc.metaPartitionID)
 }
 
-// TODO what is a common ID?
+// TODO what is a common ID? data  partition 单独的  meta partition 也是单独的
+// datanode id， metanode id， nodeset id 这三个公用一个生成器
 func (alloc *IDAllocator) restoreMaxCommonID() {
 	value, err := alloc.store.Get(maxCommonIDKey)
 	if err != nil {

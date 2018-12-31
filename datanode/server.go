@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -41,9 +41,10 @@ import (
 )
 
 var (
-	ErrStoreTypeMismatch        = errors.New("store type error")
-	ErrPartitionNotExist        = errors.New("DataPartition not exists")
-	ErrNoDiskForCreatePartition = errors.New("no disk for create DataPartition")
+	// TODO when this mismatch could happen?
+	ErrIncorrectStoreType        = errors.New("incorrect store type")
+	ErrNoPartitionFound        = errors.New("data partition does not exist")
+	ErrNoSpaceToCreatePartition = errors.New("no disk space to create a data partition")
 	ErrBadConfFile              = errors.New("bad config file")
 
 	LocalIP      string
@@ -53,6 +54,7 @@ var (
 
 const (
 	GetIPFromMaster = master.AdminGetIP
+	// TODO we need to find a better to expose this information. Opensource community does not need to know the rack name
 	DefaultRackName = "huitian_rack1"
 	DefaultRaftDir  = "raft"
 )
@@ -71,6 +73,7 @@ const (
 	ConfigKeyRaftReplicate = "raftReplicate" // string
 )
 
+// DataNode defines the structure of a data node.
 type DataNode struct {
 	space          *SpaceManager
 	port           string
@@ -81,7 +84,7 @@ type DataNode struct {
 	nodeID         uint64
 	raftDir        string
 	raftHeartbeat  string
-	raftReplicate  string
+	raftReplicate  string // TODO should we call it raftReplica?
 	raftStore      raftstore.RaftStore
 	tcpListener    net.Listener
 	stopC          chan bool
@@ -111,6 +114,7 @@ func (s *DataNode) Start(cfg *config.Config) (err error) {
 	return
 }
 
+// Shutdown shuts down the current data node.
 func (s *DataNode) Shutdown() {
 	if atomic.CompareAndSwapUint32(&s.state, Running, Shutdown) {
 		s.onShutdown()
@@ -125,33 +129,34 @@ func (s *DataNode) Sync() {
 	}
 }
 
-/*
- DataNode启动流程
- 1. 解析配置文件
- 2. 注册REST API
- 3. 向master申请注册
- 4. 启动raft server
- 5. 创建空间管理结构，包括磁盘，partition等
- 6. 启动TCP监听端口
-*/
+// Workflow of start a data node
 func (s *DataNode) onStart(cfg *config.Config) (err error) {
 	s.stopC = make(chan bool, 0)
+
+	// 1. parse the config file
 	if err = s.parseConfig(cfg); err != nil {
 		return
 	}
 
+	// 2. register REST API
 	go s.registerProfHandler()
 
-	s.registerToMaster()
+	// 3. register itself on the master
+	s.register()
 
 	exporter.Init(s.clusterID, ModuleName, cfg)
 
+	// 4. start the raft server
 	if err = s.startRaftServer(cfg); err != nil {
 		return
 	}
+
+	// 5. create space manager (disk, partition, etc.)
 	if err = s.startSpaceManager(cfg); err != nil {
 		return
 	}
+
+	// 6. start tcp listening
 	if err = s.startTCPService(); err != nil {
 		return
 	}
@@ -210,7 +215,8 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	var wg sync.WaitGroup
 	for _, d := range cfg.GetArray(ConfigKeyDisks) {
 		log.LogDebugf("action[startSpaceManager] load disk raw config(%v).", d)
-		// Format "PATH:RESET_SIZE:MAX_ERR
+
+		// format "PATH:RESET_SIZE:MAX_ERR
 		arr := strings.Split(d.(string), ":")
 		if len(arr) != 3 {
 			return ErrBadConfFile
@@ -234,11 +240,9 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	return nil
 }
 
-/*
- Data node向集群管理master申请注册，将自身IP等信息汇报给master
- 注册失败会一直重试并阻塞DataNode启动，直到注册成功
-*/
-func (s *DataNode) registerToMaster() {
+// register registers the data node on the master to report the information such as IP address.
+// The startup of a data node will be blocked until the registration succeeds.
+func (s *DataNode) register() {
 	var (
 		err  error
 		data []byte
@@ -246,7 +250,7 @@ func (s *DataNode) registerToMaster() {
 
 	timer := time.NewTimer(0)
 
-	// GetConnect IP address and cluster ID and node ID from master.
+	// get the IP address, cluster ID and node ID from the master
 	for {
 		select {
 		case <-timer.C:
@@ -269,7 +273,7 @@ func (s *DataNode) registerToMaster() {
 				timer.Reset(5 * time.Second)
 				continue
 			}
-			// Register this data node to master.
+			// register this data node on the master
 			params := make(map[string]string)
 			params["addr"] = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			data, err = MasterHelper.Request(http.MethodPost, master.AddDataNode, params, nil)
@@ -290,19 +294,20 @@ func (s *DataNode) registerToMaster() {
 	}
 }
 
+// TODO what does "prof" mean in "registerProfHandler"? profiling?
 func (s *DataNode) registerProfHandler() {
 	http.HandleFunc("/disks", s.apiGetDisk)
 	http.HandleFunc("/partitions", s.apiGetPartitions)
 	http.HandleFunc("/partition", s.apiGetPartition)
-	http.HandleFunc("/extent", s.apiGetExtent)
+	http.HandleFunc("/extent", s.getExtentAPI)
 	http.HandleFunc("/stats", s.apiGetStat)
 }
 
 func (s *DataNode) startTCPService() (err error) {
 	log.LogInfo("Start: startTCPService")
 	addr := fmt.Sprintf(":%v", s.port)
-	l, err := net.Listen(NetType, addr)
-	log.LogDebugf("action[startTCPService] listen %v address(%v).", NetType, addr)
+	l, err := net.Listen(NetworkProtocol, addr)
+	log.LogDebugf("action[startTCPService] listen %v address(%v).", NetworkProtocol, addr)
 	if err != nil {
 		log.LogError("failed to listen, err:", err)
 		return
@@ -341,11 +346,12 @@ func (s *DataNode) serveConn(conn net.Conn) {
 	packetProcessor.ServerConn()
 }
 
+// TODO what does add diskErrs mean? This does not make any sense
 func (s *DataNode) addDiskErrs(partitionID uint64, err error, flag uint8) {
 	if err == nil {
 		return
 	}
-	dp := s.space.GetPartition(partitionID)
+	dp := s.space.Partition(partitionID)
 	if dp == nil {
 		return
 	}
@@ -357,23 +363,21 @@ func (s *DataNode) addDiskErrs(partitionID uint64, err error, flag uint8) {
 		return
 	}
 	if flag == WriteFlag {
-		d.addWriteErr()
+		d.updateWriteErrCnt()
 	} else if flag == ReadFlag {
-		d.addReadErr()
+		d.updateReadErrCnt()
 	}
 }
 
-/*
- 用排除法来判断是否是磁盘故障
-*/
+// TODO we need to find a better to handle the disk error
 func IsDiskErr(errMsg string) bool {
 	if strings.Contains(errMsg, storage.ErrorParamMismatch.Error()) || strings.Contains(errMsg, storage.ErrorExtentNotFound.Error()) ||
 		strings.Contains(errMsg, storage.ErrorNoAvaliExtent.Error()) ||
 		strings.Contains(errMsg, storage.ErrorUnavaliExtent.Error()) ||
 		strings.Contains(errMsg, io.EOF.Error()) || strings.Contains(errMsg, storage.ErrSyscallNoSpace.Error()) ||
-		strings.Contains(errMsg, storage.ErrorExtentHasDelete.Error()) || strings.Contains(errMsg, ErrPartitionNotExist.Error()) ||
+		strings.Contains(errMsg, storage.ErrorExtentHasDelete.Error()) || strings.Contains(errMsg, ErrNoPartitionFound.Error()) ||
 		strings.Contains(errMsg, storage.ErrorExtentHasExsit.Error()) ||
-		strings.Contains(errMsg, storage.ErrPkgCrcMismatch.Error()) || strings.Contains(errMsg, ErrStoreTypeMismatch.Error()) ||
+		strings.Contains(errMsg, storage.ErrPkgCrcMismatch.Error()) || strings.Contains(errMsg, ErrIncorrectStoreType.Error()) ||
 		strings.Contains(errMsg, storage.ErrorNoUnAvaliExtent.Error()) || strings.Contains(errMsg, storage.ErrorParamMismatch.Error()) ||
 		strings.Contains(errMsg, storage.ErrExtentNameFormat.Error()) || strings.Contains(errMsg, storage.ErrorAgain.Error()) ||
 		strings.Contains(errMsg, storage.ErrorExtentNotFound.Error()) || strings.Contains(errMsg, storage.ErrorExtentHasFull.Error()) || strings.Contains(errMsg, storage.ErrorPartitionReadOnly.Error()) {

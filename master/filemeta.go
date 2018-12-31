@@ -27,7 +27,7 @@ type FileMetaOnNode struct {
 	Size     uint32
 }
 
-// TODO what is FileInCore?
+// TODO what is FileInCore? file 的核心元数据
 // FileInCore 数据分片上的文件抽象定义
 type FileInCore struct {
 	Name       string

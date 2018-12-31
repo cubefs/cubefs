@@ -30,11 +30,11 @@ type DataPartitionMap struct {
 	sync.RWMutex
 	dataPartitionMap           map[uint64]*DataPartition
 	dataPartitionCount         int
-	readWriteDataPartitions    int  // TODO what are readWriteDataPartitions
-	lastCheckIndex             uint64  // TODO what is lastCheckIndex
-	lastReleaseIndex           uint64  // TODO what is lastReleaseIndex
+	readWriteDataPartitions    int  // TODO what are readWriteDataPartitions 可以读写的data partition 个数
+	lastCheckIndex             uint64  // TODO what is lastCheckIndex 上次load data partition 结束的位置 lastLoadDPIndex
+	lastReleaseIndex           uint64  // TODO what is lastReleaseIndex release callMap -> lastReleaseDPIndex
 	dataPartitions             []*DataPartition
-	cacheDataPartitionResponse []byte  // TODO what is cacheDataPartitionResponse
+	cacheDataPartitionResponse []byte  // TODO what is cacheDataPartitionResponse  返回给客户端 responseCache
 	volName                    string
 }
 
