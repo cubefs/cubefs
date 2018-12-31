@@ -55,7 +55,8 @@ func (mw *MetaWrapper) open(mp *MetaPartition, inode uint64, flag uint32) (statu
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("open: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		log.LogWarnf("open: ino(%v) mp(%v) req(%v) result(%v)", inode, mp, *req, packet.GetResultMesg())
+		return
 	}
 
 	resp := new(proto.OpenResponse)
@@ -64,6 +65,7 @@ func (mw *MetaWrapper) open(mp *MetaPartition, inode uint64, flag uint32) (statu
 		log.LogErrorf("open: mp(%v) req(%v) err(%v) PacketData(%v)", mp, *req, err, string(packet.Data))
 		return
 	}
+	log.LogDebugf("open: ino(%v) mp(%v) req(%v) resp(%v)", inode, mp, *req, *resp)
 	return statusOK, resp.AuthID, nil
 }
 
@@ -92,6 +94,7 @@ func (mw *MetaWrapper) release(mp *MetaPartition, inode, authid uint64) (status 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		log.LogErrorf("release: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		return
 	}
 
 	return statusOK, nil
