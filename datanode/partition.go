@@ -298,7 +298,6 @@ func (dp *DataPartition) EvictExtent() {
 }
 
 func (dp *DataPartition) ForceLoadHeader() {
-	dp.extentStore.BackEndLoadExtent()
 	dp.loadExtentHeaderStatus = FinishLoadDataPartitionExtentHeader
 }
 

@@ -39,7 +39,7 @@ const (
 	MarkDeleteIndex        = BlockHeaderSize - 1
 	BlockSize              = 65536 * 2
 	ReadBlockSize          = BlockSize
-	PerBlockCrcSize        = 5
+	PerBlockCrcSize        = 4
 	DirtyCrcMark           = 'D'
 	ComPleteCrcMark        = 'C'
 

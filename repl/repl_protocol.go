@@ -58,8 +58,8 @@ type ReplProtocol struct {
 	operatorFunc func(p *Packet, c *net.TCPConn) error // operator
 	postFunc     func(p *Packet) error                 // post-processing packet
 
-	isError bool
-	replId  uint64
+	isError int32
+	replId  int64
 }
 
 func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet) error,
@@ -76,6 +76,7 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet) error,
 	rp.operatorFunc = operatorFunc
 	rp.postFunc = postFunc
 	rp.exited = ReplRuning
+	rp.replId = proto.GenerateRequestID()
 	go rp.OperatorAndForwardPkt()
 	go rp.ReceiveResponse()
 
@@ -114,13 +115,21 @@ func (rp *ReplProtocol) ServerConn() {
 
 }
 
+func (rp *ReplProtocol) setReplProtocolError() {
+	atomic.StoreInt32(&rp.isError, ReplProtocolError)
+}
+
+func (rp *ReplProtocol) hasError() bool {
+	return atomic.LoadInt32(&rp.isError) == ReplProtocolError
+}
+
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	p := NewPacket()
 	if err = p.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
 		return
 	}
-	log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v).",
-		p.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
+	log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v) localAddr(%v).",
+		p.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String(), rp.sourceConn.LocalAddr().String())
 	if err = p.resolveFollowersAddr(); err != nil {
 		rp.responseCh <- p
 		return
@@ -152,7 +161,7 @@ func (rp *ReplProtocol) OperatorAndForwardPkt() {
 				if err == nil {
 					rp.operatorFunc(request, rp.sourceConn)
 				} else {
-					rp.isError = true
+					rp.setReplProtocolError()
 					log.LogErrorf(err.Error())
 				}
 				rp.ackCh <- struct{}{}
@@ -192,12 +201,11 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 	for index = 0; index < len(request.followerConns); index++ {
 		err = rp.allocateFollowersConns(request, index)
 		if err != nil {
+			rp.setReplProtocolError()
 			msg := fmt.Sprintf("request inconnect(%v) sendRequestToAllFollowers (%v) err(%v)", rp.sourceConn.RemoteAddr().String(),
 				request.followersAddrs[index], err.Error())
 			err = fmt.Errorf(msg)
 			request.PackErrorBody(ActionSendToFollowers, msg)
-			rp.isError = true
-
 			return
 		}
 		nodes := request.RemainingFollowers
@@ -207,12 +215,12 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 		}
 		request.RemainingFollowers = nodes
 		if err != nil {
+			rp.setReplProtocolError()
 			msg := fmt.Sprintf("request inconnect(%v) write RequestToAllFollowers(%v) err(%v)", rp.sourceConn.RemoteAddr().String(),
 				request.followersAddrs[index], err.Error())
 			err = fmt.Errorf(msg)
 			request.PackErrorBody(ActionSendToFollowers, err.Error())
 			request.followerConns[index].Close()
-			rp.isError = true
 
 			return
 		}
@@ -239,8 +247,8 @@ func (rp *ReplProtocol) reciveAllFollowerResponse() {
 	for index := 0; index < len(request.followersAddrs); index++ {
 		err := rp.receiveFromFollower(request, index)
 		if err != nil {
+			rp.setReplProtocolError()
 			request.PackErrorBody(ActionReceiveFromFollower, err.Error())
-			rp.isError = true
 			return
 		}
 	}
@@ -267,7 +275,7 @@ func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err err
 	reply := NewPacket()
 	defer func() {
 		reply.clean()
-		if err!=nil {
+		if err != nil {
 			request.followerConns[index].Close()
 		}
 	}()
@@ -305,8 +313,8 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 	if reply.IsErrPacket() {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
-		rp.isError = true
-		log.LogErrorf(err.Error())
+		rp.setReplProtocolError()
+		log.LogErrorf("rp is %v", rp.replId, err.Error())
 	}
 
 	// execute the post-processing function
@@ -321,10 +329,10 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, err))
 		log.LogErrorf(err.Error())
-		rp.isError = true
+		rp.setReplProtocolError()
 		rp.Stop()
 	}
-	log.LogDebugf(reply.LogMessage(ActionWriteToClient,
+	log.LogDebugf("rp is %v mesg is %v", rp.replId, reply.LogMessage(ActionWriteToClient,
 		rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
 }
 
@@ -357,6 +365,7 @@ func (rp *ReplProtocol) allocateFollowersConns(p *Packet, index int) (err error)
 		}
 		rp.followerConnects.Store(key, conn)
 		p.followerConns[index] = conn
+		log.LogWarnf("ReplId(%v) getConn from pool (%v) to (%v)", rp.replId, conn.LocalAddr().String(), conn.RemoteAddr().String())
 	}
 
 	return nil
@@ -394,7 +403,6 @@ func (rp *ReplProtocol) cleanResponseCh() {
 	for i := 0; i < replys; i++ {
 		select {
 		case p := <-rp.responseCh:
-
 			rp.postFunc(p)
 		default:
 			return
@@ -415,11 +423,7 @@ func (rp *ReplProtocol) cleanResource() {
 	rp.followerConnects.Range(
 		func(key, value interface{}) bool {
 			conn := value.(*net.TCPConn)
-			if rp.isError {
-				conn.Close()
-			} else {
-				gConnPool.PutConnect(conn, NoClosedConn)
-			}
+			conn.Close()
 			return true
 		})
 	rp.packetListLock.Unlock()
@@ -432,7 +436,7 @@ func (rp *ReplProtocol) deletePacket(reply *Packet) (success bool) {
 		request := e.Value.(*Packet)
 		if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
 			reply.ExtentOffset != request.ExtentOffset || reply.CRC != request.CRC || reply.ExtentID != request.ExtentID {
-			rp.isError = true
+			rp.setReplProtocolError()
 			request.PackErrorBody(ActionReceiveFromFollower, fmt.Sprintf("unknow expect reply"))
 			break
 		}

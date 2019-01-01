@@ -218,7 +218,7 @@ func (dp *DataPartition) DoRepair(repairTasks []*DataPartitionRepairTask) {
 		err := dp.streamRepairExtent(extentInfo)
 		if err != nil {
 			err = errors.Annotatef(err, "doStreamExtentFixRepair %v", dp.applyRepairKey(int(extentInfo.FileID)))
-			localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(extentInfo.FileID), false)
+			localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(extentInfo.FileID))
 			if opErr != nil {
 				err = errors.Annotatef(err, opErr.Error())
 			}
@@ -407,7 +407,7 @@ func (dp *DataPartition) doStreamExtentFixRepair(wg *sync.WaitGroup, remoteExten
 
 	if err != nil {
 		err = errors.Annotatef(err, "doStreamExtentFixRepair %v", dp.applyRepairKey(int(remoteExtentInfo.FileID)))
-		localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(remoteExtentInfo.FileID), false)
+		localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(remoteExtentInfo.FileID))
 		if opErr != nil {
 			err = errors.Annotatef(err, opErr.Error())
 		}
@@ -427,13 +427,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	if !store.HasExtent(remoteExtentInfo.FileID) {
 		return
 	}
-
-	defer func() {
-
-		store.Watermark(remoteExtentInfo.FileID, true)
-	}()
-
-	localExtentInfo, err := store.Watermark(remoteExtentInfo.FileID, true)
+	localExtentInfo, err := store.Watermark(remoteExtentInfo.FileID)
 	if err != nil {
 		return errors.Annotatef(err, "streamRepairExtent Watermark error")
 	}

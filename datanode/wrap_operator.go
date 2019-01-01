@@ -447,6 +447,7 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead)
 		tpObject.Set()
 		if err != nil {
+			reply.PackErrorBody(ActionStreamRead, err.Error())
 			p.PackErrorBody(ActionStreamRead, err.Error())
 			if err = reply.WriteToConn(connect); err != nil {
 				p.PackErrorBody(ActionStreamRead, err.Error())

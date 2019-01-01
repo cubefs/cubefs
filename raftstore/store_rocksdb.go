@@ -59,7 +59,7 @@ func (rs *RocksDBStore) Del(key interface{}) (result interface{}, err error) {
 	ro := gorocksdb.NewDefaultReadOptions()
 	wo := gorocksdb.NewDefaultWriteOptions()
 	wb := gorocksdb.NewWriteBatch()
-	wo.SetSync(true)
+	//wo.SetSync(true)
 	defer wb.Clear()
 	slice, err := rs.db.Get(ro, []byte(key.(string)))
 	if err != nil {
@@ -74,7 +74,7 @@ func (rs *RocksDBStore) Del(key interface{}) (result interface{}, err error) {
 func (rs *RocksDBStore) Put(key, value interface{}) (result interface{}, err error) {
 	wo := gorocksdb.NewDefaultWriteOptions()
 	wb := gorocksdb.NewWriteBatch()
-	wo.SetSync(true)
+	//wo.SetSync(true)
 	wb.Put([]byte(key.(string)), value.([]byte))
 	if err := rs.db.Write(wo, wb); err != nil {
 		return nil, err
@@ -115,7 +115,7 @@ func (rs *RocksDBStore) DeleteKeyAndPutIndex(key string, cmdMap map[string][]byt
 // BatchPut puts the key-value pairs in batch.
 func (rs *RocksDBStore) BatchPut(cmdMap map[string][]byte) error {
 	wo := gorocksdb.NewDefaultWriteOptions()
-	wo.SetSync(true)
+	//wo.SetSync(true)
 	wb := gorocksdb.NewWriteBatch()
 	for key, value := range cmdMap {
 		wb.Put([]byte(key), value)
