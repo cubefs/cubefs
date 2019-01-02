@@ -262,9 +262,6 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32) (err err
 	if offset+size >= math.MaxUint32 {
 		return ErrorExtentHasFull
 	}
-	if offset != e.dataSize {
-		return ErrorUnavaliExtent
-	}
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
 		return
 	}
