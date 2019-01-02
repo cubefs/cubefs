@@ -79,7 +79,7 @@ Example *datanode.json* is shown below:
 nohup ./cmd -c datanode.json &
 ```
 
-For detailed explanations of *datanode.json*, please refer to [datanode.md](datanode.md).
+For detailed explanations of *datanode.json*, please refer to [start_datanode.md](start_datanode.md).
 
 ### Create a volume
 

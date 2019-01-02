@@ -21,6 +21,7 @@ CFS using **JSON** as for configuration file format.
 | logLevel      | string   | Level operation for logging. Default is "error". | No       |
 | raftHeartbeat | string   | Port of raft heartbeat TCP network to be listen. | Yes      |
 | raftReplicate | string   | Port of raft replicate TCP network to be listen. | Yes      |
+| raftDir       | string   | Path for raft log file storage.                  | No       |
 | masterAddr    | []string | Addresses of master server.                      | Yes      |
 | rack          | string   | Identity of rack.                                | No       |
 | disks         | []string | Format: "PATH:MAX_ERRS:REST_SIZE".               | Yes      |
@@ -32,10 +33,11 @@ CFS using **JSON** as for configuration file format.
     "role": "datanode",
     "port": "6000",
     "prof": "6001",
-    "logDir": "/var/logs",
+    "logDir": "/export/App/datanode/logs",
     "logLevel": "debug",
     "raftHeartbeat": "9095",
     "raftReplicate": "9096",    
+    "raftDir": "/export/App/datanode/raft",
     "masterAddr": [
         "10.196.30.200:80",
         "10.196.31.141:80",
