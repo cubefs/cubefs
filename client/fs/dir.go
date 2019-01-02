@@ -72,6 +72,8 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
+	var flag uint32
+
 	start := time.Now()
 	info, err := d.super.mw.Create_ll(d.inode.ino, req.Name, proto.Mode(req.Mode.Perm()), nil)
 	if err != nil {
@@ -82,18 +84,17 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	inode := NewInode(info)
 	d.super.ic.Put(inode)
 	child := NewFile(d.super, inode)
-	authid := d.super.ec.OpenStream(inode.ino)
-	if authid == 0 && (req.Flags.IsWriteOnly() || req.Flags.IsReadWrite()) {
-		authid, err = d.super.mw.Open(inode.ino, proto.FlagWrite)
-		if err != nil || authid == 0 {
-			log.LogErrorf("Create: failed to get write authorization, ino(%v) req(%v) authid(%v) err(%v)", inode.ino, req, authid, err)
-			return nil, nil, fuse.EPERM
-		}
-		d.super.ec.SetAuthID(inode.ino, authid)
+	if req.Flags.IsWriteOnly() || req.Flags.IsReadWrite() {
+		flag = proto.FlagWrite
+	}
+	err = d.super.ec.OpenStream(inode.ino, flag)
+	if err != nil {
+		log.LogErrorf("Create: failed to get write authorization, ino(%v) req(%v) err(%v)", inode.ino, req, err)
+		return nil, nil, fuse.EPERM
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Create: parent(%v) req(%v) resp(%v) ino(%v) authid(%v) (%v)ns", d.inode.ino, req, resp, inode.ino, authid, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Create: parent(%v) req(%v) resp(%v) ino(%v) (%v)ns", d.inode.ino, req, resp, inode.ino, elapsed.Nanoseconds())
 	return child, child, nil
 }
 
