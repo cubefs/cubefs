@@ -81,18 +81,20 @@ Example *datanode.json* is shown below:
   "role": "datanode",
   "port": "6000",
   "prof": "6001",
-  "logDir": "/export/App/datanode/logs",
+  "logDir": "/export/Logs/datanode",
   "logLevel": "info",
   "raftHeartbeat": "9095",
   "raftReplicate": "9096",
+  "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
+  "exporterPort": 9512,
   "masterAddr": [
-  "11.3.26.134:80",
-  "11.3.26.102:80",
-  "11.3.26.104:80"
+  "192.168.31.173:80",
+  "192.168.31.141:80",
+  "192.168.30.200:80"
   ],
   "rack": "",
   "disks": [
-  "/export/App/datanode/data:1:40000"
+  "/data0:1:40000"
   ]  
 }
 ```
