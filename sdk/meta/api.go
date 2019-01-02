@@ -18,6 +18,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
@@ -27,6 +28,11 @@ import (
 
 const (
 	BatchIgetRespBuf = 1000
+)
+
+const (
+	OpenRetryInterval = 5 * time.Millisecond
+	OpenRetryLimit    = 1000
 )
 
 func (mw *MetaWrapper) Statfs() (total, used uint64) {
@@ -42,7 +48,14 @@ func (mw *MetaWrapper) Open(inode uint64, flag uint32) (authid uint64, err error
 		return 0, syscall.ENOENT
 	}
 
-	status, authid, err := mw.open(mp, inode, flag)
+	var status int
+	for i := 0; i < OpenRetryLimit; i++ {
+		status, authid, err = mw.open(mp, inode, flag)
+		if err != nil || status != statusNotPerm {
+			break
+		}
+		time.Sleep(OpenRetryInterval)
+	}
 	if err != nil || status != statusOK {
 		return 0, statusToErrno(status)
 	}
