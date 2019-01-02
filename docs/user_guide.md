@@ -120,9 +120,9 @@ Example *fuse.json* is shown below:
 
 ```text
 {
-  "mountpoint": "/mnt/foo",
-  "volname": "foo",
-  "master": "11.3.26.134:80,11.3.26.102:80,11.3.26.104:80",
+  "mountpoint": "/mnt/fuse",
+  "volname": "test",
+  "master": "192.168.31.173:80,192.168.31.141:80,192.168.30.200:80",
   "logpath": "/export/Logs/cfs",
   "profport": "10094",
   "loglvl": "info"

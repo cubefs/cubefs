@@ -5,7 +5,7 @@ Insert FUSE kernel module and install libfuse.
 ```bash
 modprobe fuse
 
-rpm -i fuse-2.9.2-8.el7.x86_64.rpm
+yum install -y fuse
 ```
 
 ## Prepare config file
@@ -15,9 +15,9 @@ fuse.json
 ```json
 {
   "mountpoint": "/mnt/fuse",
-  "volname": "intest",
-  "master": "10.196.31.173:80,10.196.31.141:80,10.196.30.200:80",
-  "logpath": "/export/Logs/baudstorage",
+  "volname": "test",
+  "master": "192.168.31.173:80,192.168.31.141:80,192.168.30.200:80",
+  "logpath": "/export/Logs/cfs",
   "loglvl": "info",
   "profport": "10094"
 }
