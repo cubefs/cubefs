@@ -97,5 +97,6 @@ const (
 )
 
 const (
-	NeedCheckRaftLeader = true
+	RepairRead = true
+	StreamRead = false
 )
