@@ -78,10 +78,10 @@ var (
 		}
 	}
 
-	GetEmptyExtentFilter = func() ExtentFilter {
+	GetAllExtentFilter = func() ExtentFilter {
 		now := time.Now()
 		return func(info *ExtentInfo) bool {
-			return !IsTinyExtent(info.FileID) && now.Unix()-info.ModTime.Unix() > 60*60 && info.Deleted == false && info.Size == 0
+			return IsTinyExtent(info.FileID) || now.Unix()-info.ModTime.Unix() > 60*60 && info.Deleted == false && info.Size == 0
 		}
 	}
 )
@@ -159,14 +159,11 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 	var (
 		extentInfoSlice []*ExtentInfo
 	)
-	if extentInfoSlice, err = s.GetAllExtentWatermark(GetStableExtentFilter()); err != nil {
+	if extentInfoSlice, err = s.GetAllExtentWatermark(GetAllExtentFilter()); err != nil {
 		return
 	}
 	files = make([]*proto.File, 0, len(extentInfoSlice))
 	for _, extentInfo := range extentInfoSlice {
-		if extentInfo.Size == 0 || time.Now().Unix()-extentInfo.ModTime.Unix() < 5*60 {
-			continue
-		}
 		file := &proto.File{
 			Name:     strconv.FormatUint(extentInfo.FileID, 10),
 			Crc:      extentInfo.Crc,

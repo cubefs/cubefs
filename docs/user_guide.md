@@ -22,6 +22,30 @@ cd client; go build
 
 ### Start master
 
+Example master.json is shown below:
+```json
+{
+  "role": "master",
+  "ip": "192.168.31.173",
+  "port": "80",
+  "prof":"10088",
+  "id":"1",
+  "peers": "1:192.168.31.173:80,2:192.168.31.141:80,3:192.168.30.200:80",
+  "retainLogs":"20000",
+  "logDir": "/export/Logs/cfs/master",
+  "logLevel":"DEBUG",
+  "walDir":"/export/Logs/cfs/raft",
+  "storeDir":"/export/cfs/rocksdbstore",
+  "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
+  "exporterPort": 9510,
+  "clusterName":"cfs"
+}
+```
+For detailed explanations of *master.json*, please refer to [master.md](master.md).
+```bash
+./cmd -c master.json
+```
+
 ### Start metanode
 Example meta.json is shown below:
 
@@ -79,7 +103,7 @@ Example *datanode.json* is shown below:
 nohup ./cmd -c datanode.json &
 ```
 
-For detailed explanations of *datanode.json*, please refer to [datanode.md](datanode.md).
+For detailed explanations of *datanode.json*, please refer to [start_datanode.md](start_datanode.md).
 
 ### Create a volume
 
@@ -96,9 +120,9 @@ Example *fuse.json* is shown below:
 
 ```text
 {
-  "mountpoint": "/mnt/foo",
-  "volname": "foo",
-  "master": "11.3.26.134:80,11.3.26.102:80,11.3.26.104:80",
+  "mountpoint": "/mnt/fuse",
+  "volname": "test",
+  "master": "192.168.31.173:80,192.168.31.141:80,192.168.30.200:80",
   "logpath": "/export/Logs/cfs",
   "profport": "10094",
   "loglvl": "info"
