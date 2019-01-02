@@ -71,12 +71,10 @@ func (s *DataNode) OperatePacket(pkg *repl.Packet, c *net.TCPConn) (err error) {
 		s.handleCreateExtent(pkg)
 	case proto.OpWrite:
 		s.handleWrite(pkg)
-	case proto.OpRead:
-		s.handleRead(pkg)
 	case proto.OpStreamRead:
-		s.handleStreamRead(pkg, c, NeedCheckRaftLeader)
+		s.handleStreamRead(pkg, c, StreamRead)
 	case proto.OpExtentRepairRead:
-		s.handleStreamRead(pkg, c, !NeedCheckRaftLeader)
+		s.handleStreamRead(pkg, c, RepairRead)
 	case proto.OpMarkDelete:
 		s.handleMarkDelete(pkg)
 	case proto.OpRandomWrite:
@@ -412,30 +410,13 @@ func (s *DataNode) handleRandomWrite(pkg *repl.Packet) {
 	}
 }
 
-// Handle OpRead packet.
-func (s *DataNode) handleRead(pkg *repl.Packet) {
-	pkg.Data = make([]byte, pkg.Size)
-	var err error
-	partition := pkg.Object.(*DataPartition)
-	pkg.CRC, err = partition.GetStore().Read(pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data)
-	s.addDiskErrs(pkg.PartitionID, err, ReadFlag)
-	if err == nil {
-		pkg.ResultCode = proto.OpOk
-		pkg.Arglen = 0
-	} else {
-		pkg.PackErrorBody(ActionRead, err.Error())
-	}
-
-	return
-}
-
 // Handle OpStreamRead packet.
-func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn, needCheckRaft bool) {
+func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn, isRepairRead bool) {
 	var (
 		err error
 	)
 	partition := pkg.Object.(*DataPartition)
-	if needCheckRaft {
+	if !isRepairRead {
 		err = partition.RandomPartitionReadCheck(pkg, connect)
 		if err != nil {
 			err = fmt.Errorf(pkg.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
@@ -466,7 +447,7 @@ func (s *DataNode) handleStreamRead(pkg *repl.Packet, connect net.Conn, needChec
 		}
 		tpObject := exporter.RegistTp(exporterKey)
 		reply.ExtentOffset = offset
-		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data)
+		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead)
 		tpObject.CalcTp()
 		if err != nil {
 			reply.PackErrorBody(ActionStreamRead, err.Error())

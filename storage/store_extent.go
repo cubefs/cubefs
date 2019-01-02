@@ -408,7 +408,7 @@ func IsTinyExtent(extentID uint64) bool {
 	return extentID >= TinyExtentStartID && extentID < TinyExtentStartID+TinyExtentCount
 }
 
-func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte) (crc uint32, err error) {
+func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isRepairRead bool) (crc uint32, err error) {
 	var extent *Extent
 	if extent, err = s.getExtentWithHeader(extentID); err != nil {
 		return
@@ -420,23 +420,7 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte) (cr
 		err = ErrorExtentHasDelete
 		return
 	}
-	crc, err = extent.Read(nbuf, offset, size)
-	return
-}
-
-func (s *ExtentStore) ExtentRepairRead(extentID uint64, offset, size int64, nbuf []byte) (crc uint32, err error) {
-	var extent *Extent
-	if extent, err = s.getExtentWithHeader(extentID); err != nil {
-		return
-	}
-	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
-		return
-	}
-	if extent.IsMarkDelete() {
-		err = ErrorExtentHasDelete
-		return
-	}
-	crc, err = extent.ExtentRepairRead(nbuf, offset, size)
+	crc, err = extent.Read(nbuf, offset, size, isRepairRead)
 	return
 }
 
