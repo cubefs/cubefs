@@ -22,6 +22,30 @@ cd client; go build
 
 ### Start master
 
+Example master.json is shown below:
+```json
+{
+  "role": "master",
+  "ip": "192.168.31.173",
+  "port": "80",
+  "prof":"10088",
+  "id":"1",
+  "peers": "1:192.168.31.173:80,2:192.168.31.141:80,3:192.168.30.200:80",
+  "retainLogs":"20000",
+  "logDir": "/export/Logs/cfs/master",
+  "logLevel":"DEBUG",
+  "walDir":"/export/Logs/cfs/raft",
+  "storeDir":"/export/cfs/rocksdbstore",
+  "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
+  "exporterPort": 9510,
+  "clusterName":"cfs"
+}
+```
+For detailed explanations of *master.json*, please refer to [master.md](master.md).
+```bash
+./cmd -c master.json
+```
+
 ### Start metanode
 Example meta.json is shown below:
 
