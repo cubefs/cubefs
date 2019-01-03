@@ -206,7 +206,7 @@ func (s *ExtentStore) Create(extentID uint64, inode uint64) (err error) {
 		err = ErrorExtentHasExsit
 		return err
 	}
-	if extentID >= MaxExtentId {
+	if !IsTinyExtent(extentID) && extentID >= MaxExtentId {
 		return ErrorUnavaliExtent
 	}
 	extent = NewExtentInCore(name, extentID)
