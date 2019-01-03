@@ -330,9 +330,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		if extentID < MinExtentID {
 			continue
 		}
-		log.LogInfof(fmt.Sprintf("get extnt %v", extentID))
 		if extent, loadErr = s.getExtent(extentID); loadErr != nil {
-			log.LogErrorf(fmt.Sprintf("get extnt %v error %v", extentID, loadErr))
 			continue
 		}
 		if !IsTinyExtent(extentID) {
