@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,14 +23,13 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 )
 
-// APIResponse HTTP API Response struct
+// APIResponse defines the structure of the response to an HTTP request
 type APIResponse struct {
 	Code int         `json:"code"`
 	Msg  string      `json:"msg"`
 	Data interface{} `json:"data, omitempty"`
 }
 
-// NewAPIResponse create a new APIResponse object
 func NewAPIResponse(code int, msg string) *APIResponse {
 	return &APIResponse{
 		Code: code,
@@ -38,34 +37,27 @@ func NewAPIResponse(code int, msg string) *APIResponse {
 	}
 }
 
-// Marshal ...
+// Marshal is a wrapper function of json.Marshal
 func (api *APIResponse) Marshal() ([]byte, error) {
 	return json.Marshal(api)
 }
 
-// registerAPIHandler provides some interfaces for querying metadata, inode,
-// dentry and more.
+// register the APIs
 func (m *MetaNode) registerAPIHandler() (err error) {
-	// Get all partitions base information
 	http.HandleFunc("/getPartitions", m.getPartitionsHandler)
-	// Get information about the specified partitionID
 	http.HandleFunc("/getPartitionById", m.getPartitionByIDHandler)
-	// Get Inode information
 	http.HandleFunc("/getInode", m.getInodeHandler)
-	// Get the all extents of the inode
 	http.HandleFunc("/getExtentsByInode", m.getExtentsByInodeHandler)
 	// Get all inodes of the partitionID
 	http.HandleFunc("/getAllInodes", m.getAllInodeHandler)
 	// Get dentry information
 	http.HandleFunc("/getDentry", m.getDentryHandler)
-	// Return all file information of a directory
 	http.HandleFunc("/getDirectory", m.getDirectoryHandler)
-	// Return all directory information of a partitionID
 	http.HandleFunc("/getAllDentry", m.getAllDentryHandler)
 	return
 }
 
-// getPartitionsHandler get the base information of all partitions
+// 获取全部的元数据分片基本信息接口
 func (m *MetaNode) getPartitionsHandler(w http.ResponseWriter,
 	r *http.Request) {
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
@@ -74,7 +66,7 @@ func (m *MetaNode) getPartitionsHandler(w http.ResponseWriter,
 	w.Write(data)
 }
 
-// getPartitionByIDHandler return meta-partition info
+// 获取指定分片ID的元数据当前状态信息（包含leader状态)
 func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter,
 	r *http.Request) {
 	r.ParseForm()
@@ -106,6 +98,7 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter,
 	resp.Msg = http.StatusText(http.StatusOK)
 }
 
+// 获取某个分片的全部Inode信息
 func (m *MetaNode) getAllInodeHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
@@ -163,6 +156,7 @@ func (m *MetaNode) getAllInodeHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(buff.Bytes())
 }
 
+// 获取某个Inode的信息
 func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
@@ -203,6 +197,7 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+// 获取某个Inode的Extents信息
 func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
 	r *http.Request) {
 	r.ParseForm()
@@ -243,6 +238,7 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
 	return
 }
 
+// 获取某个目录或文件信息
 func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	name := r.FormValue("name")
@@ -289,6 +285,7 @@ func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
+// 获取某个分片下的所有目录和文件信息
 func (m *MetaNode) getAllDentryHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusSeeOther, "")
@@ -348,6 +345,7 @@ func (m *MetaNode) getAllDentryHandler(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+// 获取某个目录下的所有文件信息
 func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {

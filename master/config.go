@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,37 +26,43 @@ const (
 	colonSplit                           = ":"
 	commaSplit                           = ","
 	cfgPeers                             = "peers"
-	dataPartitionMissSec                 = "dataPartitionMissSec"
+	dataPartitionMissSec                 = "dataPartitionMissSec" // TODO what is dataPartitionMissSec
 	dataPartitionTimeOutSec              = "dataPartitionTimeOutSec"
-	everyLoadDataPartitionCount          = "everyLoadDataPartitionCount"
+	everyLoadDataPartitionCount          = "everyLoadDataPartitionCount" // TODO what is everyLoadDataPartitionCount ?
 	releaseDataPartitionAfterLoadSeconds = "releaseDataPartitionAfterLoadSeconds"
 	nodeSetCapacity                      = "nodeSetCap"
 )
 
+// TODO the followings seem to be related to intervals
+// Suggested naming: defaultIntervalToXXX
 const (
 	defaultEveryReleaseDataPartitionCount       = 1000
 	defaultReleaseDataPartitionAfterLoadSeconds = 5 * 60
 	defaultReleaseDataPartitionInternalSeconds  = 10
 	defaultCheckHeartbeatIntervalSeconds        = 60
-	defaultCheckDataPartitionIntervalSeconds    = 60
-	defaultFileDelayCheckLackSec                = 5 * defaultCheckHeartbeatIntervalSeconds
-	defaultFileDelayCheckCrcSec                 = 20 * defaultCheckHeartbeatIntervalSeconds
-	noHeartBeatTimes                            = 3
-	defaultNodeTimeOutSec                       = noHeartBeatTimes * defaultCheckHeartbeatIntervalSeconds
-	defaultDataPartitionTimeOutSec              = 10 * defaultCheckHeartbeatIntervalSeconds
-	defaultDataPartitionMissSec                 = 24 * 3600
-	defaultDataPartitionWarnInterval            = 60 * 60
-	loadDataPartitionWaitTime                   = 120
-	defaultLoadDataPartitionFrequencyTime       = 60 * 60 * 4
-	defaultEveryLoadDataPartitionCount          = 50
-	defaultMetaPartitionTimeOutSec              = 10 * defaultCheckHeartbeatIntervalSeconds
+	defaultIntervalToCheckDataPartition   = 60
+	defaultFileDelayCheckLackSec          = 5 * defaultCheckHeartbeatIntervalSeconds
+	defaultFileDelayCheckCrcSec           = 20 * defaultCheckHeartbeatIntervalSeconds
+	noHeartBeatTimes                      = 3
+	defaultNodeTimeOutSec                 = noHeartBeatTimes * defaultCheckHeartbeatIntervalSeconds
+	defaultDataPartitionTimeOutSec        = 10 * defaultCheckHeartbeatIntervalSeconds
+	defaultDataPartitionMissSec           = 24 * 3600
+
+	// TODO change to defaultIntervalToCheckMissingDP ?
+	defaultDataPartitionWarningInterval   = 60 * 60
+	loadDataPartitionWaitTime             = 120 // TODO explain
+	defaultLoadDataPartitionFrequencyTime = 60 * 60 * 4 // TODO explain
+	defaultEveryLoadDataPartitionCount    = 50  // TODO what is defaultEveryLoadDataPartitionCount?
+	defaultMetaPartitionTimeOutSec        = 10 * defaultCheckHeartbeatIntervalSeconds
 	//DefaultMetaPartitionMissSec                         = 3600
-	defaultMetaPartitionWarnInterval            = 10 * 60
-	defaultMetaPartitionThreshold       float32 = 0.75
-	defaultMetaPartitionCountOnEachNode         = 100
+
+	// TODO change to defaultIntervalToCheckMissingMP?
+	defaultMetaPartitionWarningInterval            = 10 * 60 // interval of checking if a replica is missing
+	defaultMetaPartitionMemUsageThreshold  float32 = 0.75 // memory usage threshold on a meta partition
+	defaultMaxMetaPartitionCountOnEachNode         = 100
 )
 
-//AddrDatabase ...
+// AddrDatabase is a map that stores the address of a given host (e.g., the leader)
 var AddrDatabase = make(map[uint64]string)
 
 type clusterConfig struct {
@@ -66,7 +72,7 @@ type clusterConfig struct {
 	DataPartitionTimeOutSec              int64
 	DataPartitionWarnInterval            int64
 	LoadDataPartitionFrequencyTime       int64
-	CheckDataPartitionIntervalSeconds    int
+	IntervalToCheckDataPartition         int // seconds
 	everyReleaseDataPartitionCount       int
 	everyLoadDataPartitionCount          int
 	nodeSetCapacity                      int
@@ -82,11 +88,11 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.NodeTimeOutSec = defaultNodeTimeOutSec
 	cfg.DataPartitionMissSec = defaultDataPartitionMissSec
 	cfg.DataPartitionTimeOutSec = defaultDataPartitionTimeOutSec
-	cfg.CheckDataPartitionIntervalSeconds = defaultCheckDataPartitionIntervalSeconds
-	cfg.DataPartitionWarnInterval = defaultDataPartitionWarnInterval
+	cfg.IntervalToCheckDataPartition = defaultIntervalToCheckDataPartition
+	cfg.DataPartitionWarnInterval = defaultDataPartitionWarningInterval
 	cfg.everyLoadDataPartitionCount = defaultEveryLoadDataPartitionCount
 	cfg.LoadDataPartitionFrequencyTime = defaultLoadDataPartitionFrequencyTime
-	cfg.MetaNodeThreshold = defaultMetaPartitionThreshold
+	cfg.MetaNodeThreshold = defaultMetaPartitionMemUsageThreshold
 	return
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -293,9 +293,9 @@ func (sw *StreamWriter) doWrite(data []byte, offset, size int) (total int, err e
 	)
 
 	if offset+size > sw.tinySizeLimit() {
-		storeMode = proto.NormalExtentMode
+		storeMode = proto.NormalExtentType
 	} else {
-		storeMode = proto.TinyExtentMode
+		storeMode = proto.TinyExtentType
 	}
 
 	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", sw.inode, offset, size, storeMode)

@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ func NewWritePacket(inode uint64, fileOffset, storeMode int) *Packet {
 	p.Opcode = proto.OpWrite
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
-	if storeMode == proto.TinyExtentMode {
+	if storeMode == proto.TinyExtentType {
 		p.Data, _ = proto.Buffers.Get(util.DefaultTinySizeLimit)
 	} else {
 		p.Data, _ = proto.Buffers.Get(util.BlockSize)
@@ -56,7 +56,7 @@ func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
 	p.Data = make([]byte, 0)
-	p.ExtentMode = proto.NormalExtentMode
+	p.ExtentType = proto.NormalExtentType
 	p.ExtentID = extentID
 	p.ExtentOffset = int64(extentOffset)
 	p.ReqID = proto.GeneratorRequestID()
@@ -78,7 +78,7 @@ func NewReadPacket(key *proto.ExtentKey, extentOffset, size int, inode uint64, f
 	p.ExtentOffset = int64(extentOffset)
 	p.Size = uint32(size)
 	p.Opcode = proto.OpStreamRead
-	p.ExtentMode = proto.NormalExtentMode
+	p.ExtentType = proto.NormalExtentType
 	p.ReqID = proto.GeneratorRequestID()
 	p.RemainFollowers = 0
 	p.inode = inode
@@ -91,7 +91,7 @@ func NewCreateExtentPacket(dp *wrapper.DataPartition, inode uint64) *Packet {
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
 	p.Data = make([]byte, 0)
-	p.ExtentMode = proto.NormalExtentMode
+	p.ExtentType = proto.NormalExtentType
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.Arglen = uint32(len(p.Arg))
 	p.RemainFollowers = uint8(len(dp.Hosts) - 1)
@@ -109,7 +109,7 @@ func NewReply(reqID int64, partitionID uint64, extentID uint64) *Packet {
 	p.PartitionID = partitionID
 	p.ExtentID = extentID
 	p.Magic = proto.ProtoMagic
-	p.ExtentMode = proto.NormalExtentMode
+	p.ExtentType = proto.NormalExtentType
 	return p
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,36 +16,32 @@ package datanode
 
 // The status of the server
 const (
-	//Standby is server status
 	Standby uint32 = iota
-	//Start is server ready start
 	Start
-	//Running is server has runing
 	Running
-	//Shutdown is sevrer has ready shutdown
 	Shutdown
-	//Stopped is server has stop
 	Stopped
 )
 
 const (
-	UpdateReplicationHostsTime = 60 // Timer update replication host
-	UpdatePartitionSizeTime    = 60 // Timer update partition size
-	SimultaneouslyRecoverFiles = 7  // Files
+	// TODO what is replication host? the replica?
+	IntervalToUpdateReplica       = 60 // interval to update the replication host
+	IntervalToUpdatePartitionSize = 60 // interval to update the partition size
+	NumOfFilesToRecoverInParallel = 7  // number of files to be recovered simultaneously
 )
 
-// Net type
+// Network protocol
 const (
-	NetType = "tcp"
+	NetworkProtocol = "tcp"
 )
 
-// Status of load data partition extent header
+// Status of loading the extent header
 const (
-	FinishLoadDataPartitionExtentHeader = 1
-	StartLoadDataPartitionExtentHeader  = -1
+	StartLoadingExtentHeader  = -1
+	FinishLoadingExtentHeader = 1
 )
 
-// Pack cmd response
+// cmd response
 const (
 	ReadFlag         = 1
 	WriteFlag        = 2
@@ -54,10 +50,11 @@ const (
 
 // Error code
 const (
-	RaftIsNotStart = "RaftIsNotStart"
+	RaftNotStarted = "RaftNotStarted"
 )
 
 // Action description
+// TODO why not put the "Action" at the end. This reads weird.
 const (
 	ActionNotifyFollowerRepair    = "ActionNotifyFollowerRepair"
 	ActionStreamRead              = "ActionStreamRead"              //ActionStreamRead is StreamRead Log Prefix
@@ -75,17 +72,20 @@ const (
 	ActionDeleteDataPartition     = "ActionDeleteDataPartition"
 )
 
+// TODO: explain
 // Apply raft log opera code
 const (
 	opRandomWrite uint32 = iota
 )
 
 const (
-	maxApplyErrRetry  = 10     // Random write apply retry times
-	MinFixTinyExtents = 10     // Invalid tiny extent count
+	maxRetryCounts  = 10     // maximum number of retries for random writes
+	// TODO why it is called MinFixTinyExtents while the commment says "Invalid tiny extent count"
+	MinFixTinyExtents = 10      // Invalid tiny extent count
 	dpRetainRaftLogs  = 100000 // Count of raft logs per data partition
 )
 
+// TODO should we call it "IsReleased" or "IsFree"?
 // Tiny extent has put back to store
 const (
 	HasReturnToStore = 1

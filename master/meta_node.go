@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import (
 	"time"
 )
 
-//MetaNode 元数据节点
+// MetaNode defines the structure of a meta node
 type MetaNode struct {
 	ID                 uint64
 	Addr               string
@@ -55,14 +55,14 @@ func (metaNode *MetaNode) clean() {
 	metaNode.Sender.exitCh <- struct{}{}
 }
 
-// SetCarry 实现Node接口
+// SetCarry implements the Node interface
 func (metaNode *MetaNode) SetCarry(carry float64) {
 	metaNode.Lock()
 	defer metaNode.Unlock()
 	metaNode.Carry = carry
 }
 
-// SelectNodeForWrite 实现Node接口
+// SelectNodeForWrite implements the Node interface
 func (metaNode *MetaNode) SelectNodeForWrite() {
 	metaNode.Lock()
 	defer metaNode.Unlock()
@@ -74,19 +74,20 @@ func (metaNode *MetaNode) isWriteAble() (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
 	if metaNode.IsActive && metaNode.MaxMemAvailWeight > defaultMetaNodeReservedMem &&
-		!metaNode.isArriveThreshold() && metaNode.MetaPartitionCount < defaultMetaPartitionCountOnEachNode {
+		!metaNode.reachesThreshold() && metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode {
 		ok = true
 	}
 	return
 }
 
+// TODO what is a carry node? 带权重的node weightedNode
 func (metaNode *MetaNode) isAvailCarryNode() (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
 	return metaNode.Carry >= 1
 }
 
-func (metaNode *MetaNode) setNodeAlive() {
+func (metaNode *MetaNode) setNodeActive() {
 	metaNode.Lock()
 	defer metaNode.Unlock()
 	metaNode.ReportTime = time.Now()
@@ -110,13 +111,14 @@ func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, th
 	metaNode.Threshold = threshold
 }
 
-func (metaNode *MetaNode) isArriveThreshold() bool {
+func (metaNode *MetaNode) reachesThreshold() bool {
 	if metaNode.Threshold <= 0 {
-		metaNode.Threshold = defaultMetaPartitionThreshold
+		metaNode.Threshold = defaultMetaPartitionMemUsageThreshold
 	}
 	return float32(float64(metaNode.Used)/float64(metaNode.Total)) > metaNode.Threshold
 }
 
+// TODO createHeartbeatTask
 func (metaNode *MetaNode) generateHeartbeatTask(masterAddr string) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:   time.Now().Unix(),

@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,10 +31,12 @@ import (
 )
 
 var (
-	// RegexpDataPartitionDir pattern for data partition dir name validate.
+	// RegexpDataPartitionDir validates the directory name of a data partition.
 	RegexpDataPartitionDir, _ = regexp.Compile("^datapartition_(\\d)+_(\\d)+$")
 )
 
+// DiskUsage includes different statistics of the disk usage.
+// TODO it seems that these fields are duplicated with the ones in Disk
 type DiskUsage struct {
 	Total       uint64
 	Used        uint64
@@ -43,46 +45,61 @@ type DiskUsage struct {
 	Allocated   uint64
 }
 
+// Disk represents the structure of the disk
 type Disk struct {
 	sync.RWMutex
 	Path         string
-	ReadErrs     uint64
-	WriteErrs    uint64
+	ReadErrCnt     uint64 // number of read errors
+	WriteErrCnt    uint64 // number of write errors
+
+	// TODO we have the following in DiskUsage already
 	Total        uint64
 	Used         uint64
 	Available    uint64
 	Unallocated  uint64
 	Allocated    uint64
-	MaxErrs      int
-	Status       int
-	RestSize     uint64
+
+	MaxErrCnt      int // maximum number of errors TODO shouldn't this value be a constant ?
+	Status       int // TODo disk status such as XXX
+	RestSize     uint64 // TODO what is reset size?
+
+	// TODO will dpMap sound better?
 	partitionMap map[uint64]*DataPartition
 	space        *SpaceManager
 }
 
 type PartitionVisitor func(dp *DataPartition)
 
-func NewDisk(path string, restSize uint64, maxErrs int, space *SpaceManager) (d *Disk) {
+func NewDisk(path string, restSize uint64, maxErrCnt int, space *SpaceManager) (d *Disk) {
 	d = new(Disk)
 	d.Path = path
 	d.RestSize = restSize
-	d.MaxErrs = maxErrs
+
+	// TODO why maxErrs has been set twice here?
+	d.MaxErrCnt = maxErrCnt
+
 	d.space = space
 	d.partitionMap = make(map[uint64]*DataPartition)
 	d.RestSize = restSize
-	d.MaxErrs = 2000
+
+	// TODO why maxErrs has been set twice here?
+	d.MaxErrCnt = 2000
+
+	// TODO do we need to call computeUsage here? It will be called in startScheduleTasks as well
 	d.computeUsage()
 
 	d.startScheduleTasks()
 	return
 }
 
+// PartitionCount returns the number of partitions in the partition map.
 func (d *Disk) PartitionCount() int {
 	d.RLock()
 	defer d.RUnlock()
 	return len(d.partitionMap)
 }
 
+// Compute the disk usage
 func (d *Disk) computeUsage() (err error) {
 	d.RLock()
 	defer d.RUnlock()
@@ -92,21 +109,24 @@ func (d *Disk) computeUsage() (err error) {
 		return
 	}
 
-	// total
+	// TODO how about:
+	//  total := math.Max(0, int64(fs.Blocks*uint64(fs.Bsize) - d.RestSize))
 	total := int64(fs.Blocks*uint64(fs.Bsize) - d.RestSize)
 	if total < 0 {
 		total = 0
 	}
 	d.Total = uint64(total)
 
-	// available
+	// TODO how about:
+	// available := math.Max(0, int64(fs.Bavail*uint64(fs.Bsize) - d.RestSize))
 	available := int64(fs.Bavail*uint64(fs.Bsize) - d.RestSize)
 	if available < 0 {
 		available = 0
 	}
 	d.Available = uint64(available)
 
-	// used
+	// TODO how about:
+	// used := math.Max(0, int64(total - available))
 	used := int64(total - available)
 	if used < 0 {
 		used = 0
@@ -119,6 +139,8 @@ func (d *Disk) computeUsage() (err error) {
 	}
 	d.Allocated = uint64(allocatedSize)
 
+	// TODO how about:
+	// unallocated = math.Max(0, total - allocatedSize)
 	unallocated := total - allocatedSize
 	if unallocated < 0 {
 		unallocated = 0
@@ -130,14 +152,17 @@ func (d *Disk) computeUsage() (err error) {
 	return
 }
 
-func (d *Disk) addReadErr() {
-	atomic.AddUint64(&d.ReadErrs, 1)
+// TODO do we really need this wrapper?
+func (d *Disk) updateReadErrCnt() {
+	atomic.AddUint64(&d.ReadErrCnt, 1)
 }
 
-func (d *Disk) addWriteErr() {
-	atomic.AddUint64(&d.WriteErrs, 1)
+// TODO do we really need this wrapper?
+func (d *Disk) updateWriteErrCnt() {
+	atomic.AddUint64(&d.WriteErrCnt, 1)
 }
 
+// TODO we need to find a better name for this fucntion, or juts inline it. There is no "task" in this function.
 func (d *Disk) startScheduleTasks() {
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
@@ -148,19 +173,22 @@ func (d *Disk) startScheduleTasks() {
 			select {
 			case <-ticker.C:
 				d.computeUsage()
+
+				// TODO we can just inline this function here
 				d.updateSpaceInfo()
 			}
 		}
 	}()
 }
 
+// TODO we can just inline this function
 func (d *Disk) updateSpaceInfo() (err error) {
 	var statsInfo syscall.Statfs_t
 	if err = syscall.Statfs(d.Path, &statsInfo); err != nil {
-		d.addReadErr()
+		d.updateReadErrCnt()
 	}
-	currErrs := d.ReadErrs + d.WriteErrs
-	if currErrs >= uint64(d.MaxErrs) {
+	currErrs := d.ReadErrCnt + d.WriteErrCnt
+	if currErrs >= uint64(d.MaxErrCnt) {
 		d.Status = proto.Unavaliable
 	} else if d.Available <= 0 {
 		d.Status = proto.ReadOnly
@@ -169,10 +197,11 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	}
 	log.LogDebugf("action[updateSpaceInfo] disk[%v] total[%v] available[%v] remain[%v] "+
 		"restSize[%v] maxErrs[%v] readErrs[%v] writeErrs[%v] status[%v]", d.Path,
-		d.Total, d.Available, d.Unallocated, d.RestSize, d.MaxErrs, d.ReadErrs, d.WriteErrs, d.Status)
+		d.Total, d.Available, d.Unallocated, d.RestSize, d.MaxErrCnt, d.ReadErrCnt, d.WriteErrCnt, d.Status)
 	return
 }
 
+// AttachDataPartition adds a data partition to the partition map.
 func (d *Disk) AttachDataPartition(dp *DataPartition) {
 	d.Lock()
 	d.partitionMap[dp.ID()] = dp
@@ -180,6 +209,7 @@ func (d *Disk) AttachDataPartition(dp *DataPartition) {
 	d.computeUsage()
 }
 
+// DetachDataPartition removes a data partition from the partition map.
 func (d *Disk) DetachDataPartition(dp *DataPartition) {
 	d.Lock()
 	delete(d.partitionMap, dp.ID())
@@ -187,12 +217,14 @@ func (d *Disk) DetachDataPartition(dp *DataPartition) {
 	d.computeUsage()
 }
 
+// GetDataPartition returns the data partition based on the given partition ID.
 func (d *Disk) GetDataPartition(partitionID uint64) (partition *DataPartition) {
 	d.RLock()
 	defer d.RUnlock()
 	return d.partitionMap[partitionID]
 }
 
+// DataPartitionList returns a list of the data partitions
 func (d *Disk) DataPartitionList() (partitionIDs []uint64) {
 	d.Lock()
 	defer d.Unlock()
@@ -222,21 +254,25 @@ func unmarshalPartitionName(name string) (partitionID uint32, partitionSize int,
 	return
 }
 
+// TODO why we need this wrapper? It is just one line of code.
 func (d *Disk) isPartitionDir(filename string) (is bool) {
 	is = RegexpDataPartitionDir.MatchString(filename)
 	return
 }
 
+// RestorePartition reads the files stored on the local disk and restores the data partitions.
 func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 	var (
 		partitionID   uint32
 		partitionSize int
 	)
+
 	fileInfoList, err := ioutil.ReadDir(d.Path)
 	if err != nil {
 		log.LogErrorf("action[RestorePartition] read dir(%v) err(%v).", d.Path, err)
 		return
 	}
+
 	var wg sync.WaitGroup
 	for _, fileInfo := range fileInfoList {
 		filename := fileInfo.Name()
@@ -252,6 +288,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 		log.LogDebugf("acton[RestorePartition] disk(%v) path(%v) partitionID(%v) partitionSize(%v).",
 			d.Path, fileInfo.Name(), partitionID, partitionSize)
 		wg.Add(1)
+
 		go func(partitionID uint32, filename string) {
 			var (
 				dp  *DataPartition

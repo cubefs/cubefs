@@ -324,6 +324,7 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	return
 }
 
+// 变更Extents信息
 func (i *Inode) AppendExtents(exts []BtreeItem, ct int64) (items []BtreeItem) {
 	i.Lock()
 	for _, ext := range exts {
@@ -340,6 +341,7 @@ func (i *Inode) AppendExtents(exts []BtreeItem, ct int64) (items []BtreeItem) {
 	return
 }
 
+// 截断数据处理
 func (i *Inode) ExtentsTruncate(exts []BtreeItem, length uint64, ct int64) {
 	i.Lock()
 	for _, ext := range exts {

@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The The Container File System Authors Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -41,10 +41,11 @@ func (m *metaManager) opMasterHeartbeat(conn net.Conn, p *Packet) (err error) {
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
-		resp.Status = proto.TaskFail
+		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
 		goto end
 	}
+
 	// collect used info
 	// machine mem total and used
 	resp.Total, _, err = util.GetMemInfo()
@@ -54,7 +55,7 @@ func (m *metaManager) opMasterHeartbeat(conn net.Conn, p *Packet) (err error) {
 		resp.Used = m.Sys
 	}
 	if err != nil {
-		adminTask.Status = proto.TaskFail
+		adminTask.Status = proto.TaskFailed
 		goto end
 	}
 	// every partition used
@@ -339,6 +340,7 @@ func (m *metaManager) opReleaseOpen(conn net.Conn, p *Packet) (err error) {
 	return
 }
 
+// 获取Inode请求
 func (m *metaManager) opMetaInodeGet(conn net.Conn, p *Packet) (err error) {
 	req := &InodeGetReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
@@ -425,6 +427,7 @@ func (m *metaManager) opSetattr(conn net.Conn, p *Packet) (err error) {
 	return
 }
 
+// Lookup request
 func (m *metaManager) opMetaLookup(conn net.Conn, p *Packet) (err error) {
 	req := &proto.LookupRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
@@ -448,6 +451,7 @@ func (m *metaManager) opMetaLookup(conn net.Conn, p *Packet) (err error) {
 	return
 }
 
+// 更新Extents请求
 func (m *metaManager) opMetaExtentsAdd(conn net.Conn, p *Packet) (err error) {
 	req := &proto.AppendExtentKeyRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
@@ -477,6 +481,7 @@ func (m *metaManager) opMetaExtentsAdd(conn net.Conn, p *Packet) (err error) {
 	return
 }
 
+// 获取Extents列表
 func (m *metaManager) opMetaExtentsList(conn net.Conn, p *Packet) (err error) {
 	req := &proto.GetExtentsRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
@@ -506,6 +511,7 @@ func (m *metaManager) opMetaExtentsDel(conn net.Conn, p *Packet) (err error) {
 	panic("not implement yet")
 }
 
+// truncae请求
 func (m *metaManager) opMetaExtentsTruncate(conn net.Conn, p *Packet) (err error) {
 	req := &ExtentsTruncateReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
@@ -529,6 +535,7 @@ func (m *metaManager) opMetaExtentsTruncate(conn net.Conn, p *Packet) (err error
 	return
 }
 
+// 删除某个分片请求
 func (m *metaManager) opDeleteMetaPartition(conn net.Conn, p *Packet) (err error) {
 	req := &proto.DeleteMetaPartitionRequest{}
 	adminTask := &proto.AdminTask{
@@ -558,7 +565,7 @@ func (m *metaManager) opDeleteMetaPartition(conn net.Conn, p *Packet) (err error
 	err = mp.DeleteRaft()
 	os.RemoveAll(conf.RootDir)
 	if err != nil {
-		resp.Status = proto.TaskFail
+		resp.Status = proto.TaskFailed
 	}
 	adminTask.Response = resp
 	adminTask.Request = nil
@@ -567,6 +574,7 @@ func (m *metaManager) opDeleteMetaPartition(conn net.Conn, p *Packet) (err error
 	return
 }
 
+// 更新某个分片的最大分配的元数据ID值
 func (m *metaManager) opUpdateMetaPartition(conn net.Conn, p *Packet) (err error) {
 	log.LogDebugf("[opUpdateMetaPartition] request.")
 	req := new(UpdatePartitionReq)
@@ -632,6 +640,7 @@ func (m *metaManager) opLoadMetaPartition(conn net.Conn, p *Packet) (err error) 
 	return
 }
 
+// 变更替换分片成员请求
 func (m *metaManager) opOfflineMetaPartition(conn net.Conn, p *Packet) (err error) {
 	var reqData []byte
 	req := &proto.MetaPartitionOfflineRequest{}
@@ -659,7 +668,7 @@ func (m *metaManager) opOfflineMetaPartition(conn net.Conn, p *Packet) (err erro
 	resp := proto.MetaPartitionOfflineResponse{
 		PartitionID: req.PartitionID,
 		VolName:     req.VolName,
-		Status:      proto.TaskFail,
+		Status:      proto.TaskFailed,
 	}
 	if req.AddPeer.ID == req.RemovePeer.ID {
 		err = errors.Errorf("[opOfflineMetaPartition]: AddPeer[%v] same withRemovePeer[%v]", req.AddPeer, req.RemovePeer)
@@ -694,6 +703,7 @@ end:
 	return
 }
 
+// 批量获取Inode请求
 func (m *metaManager) opMetaBatchInodeGet(conn net.Conn, p *Packet) (err error) {
 	req := &proto.BatchInodeGetRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {

@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,29 +25,29 @@ import (
 	"time"
 )
 
-//Cluster 集群管理
+// Cluster stores all the cluster-level information.
 type Cluster struct {
-	Name                string
-	vols                map[string]*Vol
-	dataNodes           sync.Map
-	metaNodes           sync.Map
-	createDpLock        sync.Mutex
-	volsLock            sync.RWMutex
-	mnLock              sync.RWMutex
-	dnLock              sync.RWMutex
-	leaderInfo          *LeaderInfo
-	cfg                 *clusterConfig
-	retainLogs          uint64
-	idAlloc             *IDAllocator
-	t                   *topology
-	compactStatus       bool
-	dataNodeSpace       *dataNodeSpaceStat
-	metaNodeSpace       *metaNodeSpaceStat
-	volSpaceStat        sync.Map
-	BadDataPartitionIds *sync.Map
-	DisableAutoAlloc    bool
-	fsm                 *MetadataFsm
-	partition           raftstore.Partition
+	Name                 string
+	vols                 map[string]*Vol
+	dataNodes            sync.Map
+	metaNodes            sync.Map
+	dpMutex              sync.Mutex
+	volsMutex            sync.RWMutex
+	mnMutex              sync.RWMutex // metaNode mutex
+	dnMutex              sync.RWMutex
+	leaderInfo           *LeaderInfo
+	cfg                  *clusterConfig
+	retainLogs           uint64
+	idAlloc              *IDAllocator
+	t                    *topology
+	compactStatus        bool // TODO what is compact status?
+	dataNodeStatInfo     *nodeStatInfo
+	metaNodeStatInfo     *nodeStatInfo
+	volStatInfo          sync.Map
+	BadDataPartitionIds  *sync.Map
+	AutoAllocationSwitch bool // On: true,  Off: false
+	fsm                  *MetadataFsm
+	partition            raftstore.Partition
 }
 
 func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition raftstore.Partition, cfg *clusterConfig) (c *Cluster) {
@@ -58,8 +58,8 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.cfg = cfg
 	c.t = newTopology()
 	c.BadDataPartitionIds = new(sync.Map)
-	c.dataNodeSpace = new(dataNodeSpaceStat)
-	c.metaNodeSpace = new(metaNodeSpaceStat)
+	c.dataNodeStatInfo = new(nodeStatInfo)
+	c.metaNodeStatInfo = new(nodeStatInfo)
 	c.fsm = fsm
 	c.partition = partition
 	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
@@ -68,23 +68,24 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 }
 
 func (c *Cluster) scheduleTask() {
-	c.startCheckDataPartitions()
-	c.startCheckBackendLoadDataPartitions()
-	c.startCheckReleaseDataPartitions()
-	c.startCheckHeartbeat()
-	c.startCheckMetaPartitions()
-	c.startCheckAvailSpace()
-	c.startCheckCreateDataPartitions()
-	c.startCheckVolStatus()
-	c.startCheckBadDiskRecovery()
+	c.scheduleToCheckDataPartitions()
+	c.scheduleToCheckBackendLoadDataPartitions()
+	c.scheduleToCheckReleaseDataPartitions()
+	c.scheduleToCheckHeartbeat()
+	c.scheduleToCheckMetaPartitions()
+	c.scheduleToCheckAvailSpace()
+	c.scheduleToCheckAutoDataPartitionCreation()
+	c.scheduleToCheckVolStatus()
+	c.scheduleToCheckDiskRecoveryProgress()
 	c.startCheckLoadMetaPartitions()
 }
 
-func (c *Cluster) getMasterAddr() (addr string) {
+// TODO is this wrapper necessary?
+func (c *Cluster) masterAddr() (addr string) {
 	return c.leaderInfo.addr
 }
 
-func (c *Cluster) startCheckAvailSpace() {
+func (c *Cluster) scheduleToCheckAvailSpace() {
 	go func() {
 		for {
 			if c.partition != nil && c.partition.IsLeader() {
@@ -96,38 +97,35 @@ func (c *Cluster) startCheckAvailSpace() {
 
 }
 
-func (c *Cluster) startCheckCreateDataPartitions() {
+func (c *Cluster) scheduleToCheckAutoDataPartitionCreation() {
 	go func() {
-		//check vols after switching leader two minutes
+
+		// check volumes after switching leader two minutes
 		time.Sleep(2 * time.Minute)
 		for {
 			if c.partition != nil && c.partition.IsLeader() {
-				c.checkCreateDataPartitions()
+				vols := c.copyVols()
+				for _, vol := range vols {
+					vol.checkAutoDataPartitionCreation(c)
+				}
 			}
 			time.Sleep(2 * time.Minute)
 		}
 	}()
 }
 
-func (c *Cluster) startCheckDataPartitions() {
+func (c *Cluster) scheduleToCheckDataPartitions() {
 	go func() {
 		for {
 			if c.partition != nil && c.partition.IsLeader() {
 				c.checkDataPartitions()
 			}
-			time.Sleep(time.Second * time.Duration(c.cfg.CheckDataPartitionIntervalSeconds))
+			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
 		}
 	}()
 }
 
-func (c *Cluster) checkCreateDataPartitions() {
-	vols := c.copyVols()
-	for _, vol := range vols {
-		vol.checkNeedAutoCreateDataPartitions(c)
-	}
-}
-
-func (c *Cluster) startCheckVolStatus() {
+func (c *Cluster) scheduleToCheckVolStatus() {
 	go func() {
 		//check vols after switching leader two minutes
 		for {
@@ -137,23 +135,25 @@ func (c *Cluster) startCheckVolStatus() {
 					vol.checkStatus(c)
 				}
 			}
-			time.Sleep(time.Second * time.Duration(c.cfg.CheckDataPartitionIntervalSeconds))
+			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
 		}
 	}()
 }
 
+// Check the replica status of each data partition.
 func (c *Cluster) checkDataPartitions() {
-	vols := c.getAllNormalVols()
+	vols := c.allVols()
 	for _, vol := range vols {
 		readWrites := vol.checkDataPartitions(c)
 		vol.dataPartitions.setReadWriteDataPartitions(readWrites, c.Name)
-		vol.dataPartitions.updateDataPartitionResponseCache(true, 0)
-		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite dataPartitions:%v  ", vol.Name, vol.dataPartitions.readWriteDataPartitions)
+		vol.dataPartitions.updateResponseCache(true, 0)
+		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite partitions:%v  ", vol.Name, vol.dataPartitions.readableAndWritableCnt)
 		log.LogInfo(msg)
 	}
 }
 
-func (c *Cluster) startCheckBackendLoadDataPartitions() {
+// TODO why call this backend?
+func (c *Cluster) scheduleToCheckBackendLoadDataPartitions() {
 	go func() {
 		for {
 			if c.partition != nil && c.partition.IsLeader() {
@@ -165,13 +165,13 @@ func (c *Cluster) startCheckBackendLoadDataPartitions() {
 }
 
 func (c *Cluster) backendLoadDataPartitions() {
-	vols := c.getAllNormalVols()
+	vols := c.allVols()
 	for _, vol := range vols {
 		vol.loadDataPartition(c)
 	}
 }
 
-func (c *Cluster) startCheckReleaseDataPartitions() {
+func (c *Cluster) scheduleToCheckReleaseDataPartitions() {
 	go func() {
 		for {
 			if c.partition != nil && c.partition.IsLeader() {
@@ -182,6 +182,7 @@ func (c *Cluster) startCheckReleaseDataPartitions() {
 	}()
 }
 
+// Release the memory used for loading the data partition.
 func (c *Cluster) releaseDataPartitionAfterLoad() {
 	vols := c.copyVols()
 	for _, vol := range vols {
@@ -189,7 +190,7 @@ func (c *Cluster) releaseDataPartitionAfterLoad() {
 	}
 }
 
-func (c *Cluster) startCheckHeartbeat() {
+func (c *Cluster) scheduleToCheckHeartbeat() {
 	go func() {
 		for {
 			if c.partition != nil && c.partition.IsLeader() {
@@ -220,11 +221,11 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 	c.dataNodes.Range(func(addr, dataNode interface{}) bool {
 		node := dataNode.(*DataNode)
 		node.checkHeartBeat()
-		task := node.generateHeartbeatTask(c.getMasterAddr())
+		task := node.generateHeartbeatTask(c.masterAddr())
 		tasks = append(tasks, task)
 		return true
 	})
-	c.putDataNodeTasks(tasks)
+	c.addDataNodeTasks(tasks)
 }
 
 func (c *Cluster) checkMetaNodeHeartbeat() {
@@ -232,34 +233,34 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 	c.metaNodes.Range(func(addr, metaNode interface{}) bool {
 		node := metaNode.(*MetaNode)
 		node.checkHeartbeat()
-		task := node.generateHeartbeatTask(c.getMasterAddr())
+		task := node.generateHeartbeatTask(c.masterAddr())
 		tasks = append(tasks, task)
 		return true
 	})
-	c.putMetaNodeTasks(tasks)
+	c.addMetaNodeTasks(tasks)
 }
 
-func (c *Cluster) startCheckMetaPartitions() {
+func (c *Cluster) scheduleToCheckMetaPartitions() {
 	go func() {
 		for {
 			if c.partition != nil && c.partition.IsLeader() {
 				c.checkMetaPartitions()
 			}
-			time.Sleep(time.Second * time.Duration(c.cfg.CheckDataPartitionIntervalSeconds))
+			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
 		}
 	}()
 }
 
 func (c *Cluster) checkMetaPartitions() {
-	vols := c.getAllNormalVols()
+	vols := c.allVols()
 	for _, vol := range vols {
 		vol.checkMetaPartitions(c)
 	}
 }
 
 func (c *Cluster) addMetaNode(nodeAddr string) (id uint64, err error) {
-	c.mnLock.Lock()
-	defer c.mnLock.Unlock()
+	c.mnMutex.Lock()
+	defer c.mnMutex.Unlock()
 	var metaNode *MetaNode
 	if value, ok := c.metaNodes.Load(nodeAddr); ok {
 		metaNode = value.(*MetaNode)
@@ -269,27 +270,27 @@ func (c *Cluster) addMetaNode(nodeAddr string) (id uint64, err error) {
 	ns := c.t.getAvailNodeSetForMetaNode()
 	if ns == nil {
 		if ns, err = c.createNodeSet(); err != nil {
-			goto errDeal
+			goto errHandler
 		}
 	}
 	if id, err = c.idAlloc.allocateCommonID(); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	metaNode.ID = id
 	metaNode.NodeSetID = ns.ID
 	if err = c.syncAddMetaNode(metaNode); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	ns.increaseMetaNodeLen()
 	if err = c.syncUpdateNodeSet(ns); err != nil {
 		ns.decreaseMetaNodeLen()
-		goto errDeal
+		goto errHandler
 	}
 	c.metaNodes.Store(nodeAddr, metaNode)
 	log.LogInfof("action[addMetaNode],clusterID[%v] metaNodeAddr:%v,nodeSetId[%v],dLen[%v],mLen[%v],capacity[%v]",
 		c.Name, nodeAddr, ns.ID, ns.dataNodeLen, ns.metaNodeLen, ns.Capacity)
 	return
-errDeal:
+errHandler:
 	err = fmt.Errorf("action[addMetaNode],clusterID[%v] metaNodeAddr:%v err:%v ",
 		c.Name, nodeAddr, err.Error())
 	log.LogError(errors.ErrorStack(err))
@@ -311,8 +312,8 @@ func (c *Cluster) createNodeSet() (ns *nodeSet, err error) {
 }
 
 func (c *Cluster) addDataNode(nodeAddr string) (id uint64, err error) {
-	c.dnLock.Lock()
-	defer c.dnLock.Unlock()
+	c.dnMutex.Lock()
+	defer c.dnMutex.Unlock()
 	var dataNode *DataNode
 	if node, ok := c.dataNodes.Load(nodeAddr); ok {
 		dataNode = node.(*DataNode)
@@ -323,28 +324,28 @@ func (c *Cluster) addDataNode(nodeAddr string) (id uint64, err error) {
 	ns := c.t.getAvailNodeSetForDataNode()
 	if ns == nil {
 		if ns, err = c.createNodeSet(); err != nil {
-			goto errDeal
+			goto errHandler
 		}
 	}
-	//allocate dataNode id
+	// allocate dataNode id
 	if id, err = c.idAlloc.allocateCommonID(); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	dataNode.ID = id
 	dataNode.NodeSetID = ns.ID
 	if err = c.syncAddDataNode(dataNode); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	ns.increaseDataNodeLen()
 	if err = c.syncUpdateNodeSet(ns); err != nil {
 		ns.decreaseDataNodeLen()
-		goto errDeal
+		goto errHandler
 	}
 	c.dataNodes.Store(nodeAddr, dataNode)
 	log.LogInfof("action[addDataNode],clusterID[%v] dataNodeAddr:%v,nodeSetId[%v],dLen[%v],mLen[%v],capacity[%v]",
 		c.Name, nodeAddr, ns.ID, ns.dataNodeLen, ns.metaNodeLen, ns.Capacity)
 	return
-errDeal:
+errHandler:
 	err = fmt.Errorf("action[addDataNode],clusterID[%v] dataNodeAddr:%v err:%v ", c.Name, nodeAddr, err.Error())
 	log.LogError(errors.ErrorStack(err))
 	Warn(c.Name, err.Error())
@@ -365,7 +366,7 @@ func (c *Cluster) getDataPartitionByID(partitionID uint64) (dp *DataPartition, e
 func (c *Cluster) getMetaPartitionByID(id uint64) (mp *MetaPartition, err error) {
 	vols := c.copyVols()
 	for _, vol := range vols {
-		if mp, err = vol.getMetaPartition(id); err == nil {
+		if mp, err = vol.metaPartition(id); err == nil {
 			return
 		}
 	}
@@ -374,16 +375,16 @@ func (c *Cluster) getMetaPartitionByID(id uint64) (mp *MetaPartition, err error)
 }
 
 func (c *Cluster) putVol(vol *Vol) {
-	c.volsLock.Lock()
-	defer c.volsLock.Unlock()
+	c.volsMutex.Lock()
+	defer c.volsMutex.Unlock()
 	if _, ok := c.vols[vol.Name]; !ok {
 		c.vols[vol.Name] = vol
 	}
 }
 
 func (c *Cluster) getVol(volName string) (vol *Vol, err error) {
-	c.volsLock.RLock()
-	defer c.volsLock.RUnlock()
+	c.volsMutex.RLock()
+	defer c.volsMutex.RUnlock()
 	vol, ok := c.vols[volName]
 	if !ok {
 		err = errors.Annotatef(volNotFound(volName), "%v not found", volName)
@@ -392,8 +393,8 @@ func (c *Cluster) getVol(volName string) (vol *Vol, err error) {
 }
 
 func (c *Cluster) deleteVol(name string) {
-	c.volsLock.Lock()
-	defer c.volsLock.Unlock()
+	c.volsMutex.Lock()
+	defer c.volsMutex.Unlock()
 	delete(c.vols, name)
 	return
 }
@@ -411,6 +412,12 @@ func (c *Cluster) markDeleteVol(name string) (err error) {
 	return
 }
 
+// Synchronously create a data partition.
+// 1. Choose one of the available data nodes.
+// 2. Assign it a partition ID.
+// 3. Communicate with the data node to synchronously create a data partition.
+// - If succeeded, replicate the data through raft and persist it to RocksDB.
+// - Otherwise, throw errors
 func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err error) {
 	var (
 		vol         *Vol
@@ -419,20 +426,20 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 		targetPeers []proto.Peer
 		wg          sync.WaitGroup
 	)
-	c.createDpLock.Lock()
-	defer c.createDpLock.Unlock()
+	c.dpMutex.Lock()
+	defer c.dpMutex.Unlock()
 	if vol, err = c.getVol(volName); err != nil {
 		return
 	}
 	errChannel := make(chan error, vol.dpReplicaNum)
-	if targetHosts, targetPeers, err = c.chooseTargetDataHosts(int(vol.dpReplicaNum)); err != nil {
-		goto errDeal
+	if targetHosts, targetPeers, err = c.chooseTargetDataNodes(int(vol.dpReplicaNum)); err != nil {
+		goto errHandler
 	}
 	if partitionID, err = c.idAlloc.allocateDataPartitionID(); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	dp = newDataPartition(partitionID, vol.dpReplicaNum, volName, vol.ID, vol.RandomWrite)
-	dp.PersistenceHosts = targetHosts
+	dp.Hosts = targetHosts
 	dp.Peers = targetPeers
 	for _, host := range targetHosts {
 		wg.Add(1)
@@ -446,7 +453,7 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 			}
 			dp.Lock()
 			defer dp.Unlock()
-			if err = dp.createDataPartitionSuccessTriggerOperator(host, c); err != nil {
+			if err = dp.postProcessingDataPartitionCreation(host, c); err != nil {
 				errChannel <- err
 			}
 		}(host)
@@ -454,17 +461,17 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 	wg.Wait()
 	select {
 	case err = <-errChannel:
-		goto errDeal
+		goto errHandler
 	default:
 		dp.Status = proto.ReadWrite
 	}
 	if err = c.syncAddDataPartition(dp); err != nil {
-		goto errDeal
+		goto errHandler
 	}
-	vol.dataPartitions.putDataPartition(dp)
+	vol.dataPartitions.put(dp)
 	log.LogInfof("action[createDataPartition] success,volName[%v],partitionId[%v]", volName, partitionID)
 	return
-errDeal:
+errHandler:
 	err = fmt.Errorf("action[createDataPartition],clusterID[%v] vol[%v] Err:%v ", c.Name, volName, err.Error())
 	log.LogError(errors.ErrorStack(err))
 	Warn(c.Name, err.Error())
@@ -473,7 +480,7 @@ errDeal:
 
 func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition) (err error) {
 	task := dp.generateCreateTask(host, size)
-	dataNode, err := c.getDataNode(host)
+	dataNode, err := c.dataNode(host)
 	if err != nil {
 		return
 	}
@@ -491,8 +498,8 @@ func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp
 func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartition) (err error) {
 	hosts := make([]string, 0)
 	hosts = append(hosts, host)
-	tasks := mp.generateCreateMetaPartitionTasks(hosts, mp.Peers, mp.volName)
-	metaNode, err := c.getMetaNode(host)
+	tasks := mp.buildNewMetaPartitionTasks(hosts, mp.Peers, mp.volName)
+	metaNode, err := c.metaNode(host)
 	if err != nil {
 		return
 	}
@@ -507,7 +514,7 @@ func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartiti
 	return
 }
 
-func (c *Cluster) chooseTargetDataHosts(replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+func (c *Cluster) chooseTargetDataNodes(replicaNum int) (hosts []string, peers []proto.Peer, err error) {
 	var (
 		masterAddr  []string
 		addrs       []string
@@ -565,12 +572,12 @@ func (c *Cluster) chooseTargetDataHosts(replicaNum int) (hosts []string, peers [
 		}
 	}
 	if len(hosts) != replicaNum {
-		return nil, nil, errNoAnyDataNodeForCreateDataPartition
+		return nil, nil, noDataNodeToCreateDataPartitionErr
 	}
 	return
 }
 
-func (c *Cluster) getDataNode(addr string) (dataNode *DataNode, err error) {
+func (c *Cluster) dataNode(addr string) (dataNode *DataNode, err error) {
 	value, ok := c.dataNodes.Load(addr)
 	if !ok {
 		err = errors.Annotatef(dataNodeNotFound(addr), "%v not found", addr)
@@ -580,7 +587,7 @@ func (c *Cluster) getDataNode(addr string) (dataNode *DataNode, err error) {
 	return
 }
 
-func (c *Cluster) getMetaNode(addr string) (metaNode *MetaNode, err error) {
+func (c *Cluster) metaNode(addr string) (metaNode *MetaNode, err error) {
 	value, ok := c.metaNodes.Load(addr)
 	if !ok {
 		err = errors.Annotatef(metaNodeNotFound(addr), "%v not found", addr)
@@ -593,10 +600,10 @@ func (c *Cluster) getMetaNode(addr string) (metaNode *MetaNode, err error) {
 func (c *Cluster) dataNodeOffLine(dataNode *DataNode) (err error) {
 	msg := fmt.Sprintf("action[dataNodeOffLine], Node[%v] OffLine", dataNode.Addr)
 	log.LogWarn(msg)
-	safeVols := c.getAllNormalVols()
+	safeVols := c.allVols()
 	for _, vol := range safeVols {
-		for _, dp := range vol.dataPartitions.dataPartitions {
-			if err = c.dataPartitionOffline(dataNode.Addr, vol.Name, dp, dataNodeOfflineInfo); err != nil {
+		for _, dp := range vol.dataPartitions.partitions {
+			if err = c.decommissionDataPartition(dataNode.Addr, vol.Name, dp, dataNodeOfflineInfo); err != nil {
 				return
 			}
 		}
@@ -620,7 +627,17 @@ func (c *Cluster) delDataNodeFromCache(dataNode *DataNode) {
 	go dataNode.clean()
 }
 
-func (c *Cluster) dataPartitionOffline(offlineAddr, volName string, dp *DataPartition, errMsg string) (err error) {
+// Decommission a data partition.
+// 1. Check if we can decommission a data partition. In the following cases, we are not allowed to do so:
+// - (a) a replica is not in the latest host list;
+// - (b) there is already a replica been taken offline;
+// - (c) the remaining number of replicas is less than the majority
+// 2. Choose a new data node.
+// 3. Persist the latest host list.
+// 4. Generate an async task to delete the replica.
+// 5. Synchronously create a data partition.
+// Set the data partition as readOnly.
+func (c *Cluster) decommissionDataPartition(offlineAddr, volName string, dp *DataPartition, errMsg string) (err error) {
 	var (
 		newHosts   []string
 		newAddr    string
@@ -643,32 +660,36 @@ func (c *Cluster) dataPartitionOffline(offlineAddr, volName string, dp *DataPart
 	}
 
 	if vol, err = c.getVol(volName); err != nil {
-		goto errDeal
-	}
-	if replica, err = dp.getReplica(offlineAddr); err != nil {
-		goto errDeal
-	}
-	if err = dp.hasMissOne(int(vol.dpReplicaNum)); err != nil {
-		goto errDeal
-	}
-	if err = dp.canOffLine(offlineAddr); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 
-	if dataNode, err = c.getDataNode(offlineAddr); err != nil {
-		goto errDeal
+	if replica, err = dp.getReplica(offlineAddr); err != nil {
+		goto errHandler
+	}
+
+	if err = dp.hasMissingOneReplica(int(vol.dpReplicaNum)); err != nil {
+		goto errHandler
+	}
+
+	// if the partition can be offline or not
+	if err = dp.canBeOffLine(offlineAddr); err != nil {
+		goto errHandler
+	}
+
+	if dataNode, err = c.dataNode(offlineAddr); err != nil {
+		goto errHandler
 	}
 
 	if dataNode.RackName == "" {
 		return
 	}
 	if rack, err = c.t.getRack(dataNode); err != nil {
-		goto errDeal
+		goto errHandler
 	}
-	if newHosts, newPeers, err = rack.getAvailDataNodeHosts(dp.PersistenceHosts, 1); err != nil {
-		//select dataNode of other nodeSet
-		if newHosts, newPeers, err = c.chooseTargetDataHosts(1); err != nil {
-			goto errDeal
+	if newHosts, newPeers, err = rack.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
+		// select data nodes from the node set
+		if newHosts, newPeers, err = c.chooseTargetDataNodes(1); err != nil {
+			goto errHandler
 		}
 	}
 	newAddr = newHosts[0]
@@ -681,34 +702,34 @@ func (c *Cluster) dataPartitionOffline(offlineAddr, volName string, dp *DataPart
 	}
 
 	if task, err = dp.generateOfflineTask(removePeer, newPeers[0]); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	dp.generatorOffLineLog(offlineAddr)
 
 	if err = dp.updateForOffline(offlineAddr, newAddr, volName, newPeers, c); err != nil {
-		goto errDeal
+		goto errHandler
 	}
-	dp.offLineInMem(offlineAddr)
+	dp.removeReplicaByAddr(offlineAddr)
 	dp.checkAndRemoveMissReplica(offlineAddr)
 	tasks = make([]*proto.AdminTask, 0)
 	tasks = append(tasks, task)
-	c.putDataNodeTasks(tasks)
+	c.addDataNodeTasks(tasks)
 	if err = c.syncCreateDataPartitionToDataNode(newAddr, vol.dataPartitionSize, dp); err != nil {
-		goto errDeal
+		goto errHandler
 	}
-	if err = dp.createDataPartitionSuccessTriggerOperator(newAddr, c); err != nil {
-		goto errDeal
+	if err = dp.postProcessingDataPartitionCreation(newAddr, c); err != nil {
+		goto errHandler
 	}
 	dp.Status = proto.ReadOnly
 	dp.isRecover = true
 	c.BadDataPartitionIds.Store(fmt.Sprintf("%s:%s", offlineAddr, replica.DiskPath), badPartitionIDs)
 	log.LogWarnf("clusterID[%v] partitionID:%v  on Node:%v offline success,newHost[%v],PersistenceHosts:[%v]",
-		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.PersistenceHosts)
+		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
-errDeal:
+errHandler:
 	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
-		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.PersistenceHosts)
+		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.Hosts)
 	if err != nil {
 		Warn(c.Name, msg)
 	}
@@ -719,7 +740,7 @@ func (c *Cluster) metaNodeOffLine(metaNode *MetaNode) {
 	msg := fmt.Sprintf("action[metaNodeOffLine],clusterID[%v] Node[%v] OffLine", c.Name, metaNode.Addr)
 	log.LogWarn(msg)
 
-	safeVols := c.getAllNormalVols()
+	safeVols := c.allVols()
 	for _, vol := range safeVols {
 		for _, mp := range vol.MetaPartitions {
 			c.metaPartitionOffline(vol.Name, metaNode.Addr, mp.PartitionID)
@@ -745,24 +766,26 @@ func (c *Cluster) delMetaNodeFromCache(metaNode *MetaNode) {
 func (c *Cluster) updateVol(name string, capacity int) (err error) {
 	var vol *Vol
 	if vol, err = c.getVol(name); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	if uint64(capacity) < vol.Capacity {
 		err = fmt.Errorf("capacity[%v] less than old capacity[%v]", capacity, vol.Capacity)
-		goto errDeal
+		goto errHandler
 	}
 	vol.setCapacity(uint64(capacity))
 	if err = c.syncUpdateVol(vol); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	return
-errDeal:
+errHandler:
 	err = fmt.Errorf("action[updateVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
 	log.LogError(errors.ErrorStack(err))
 	Warn(c.Name, err.Error())
 	return
 }
 
+// Create a new volume.
+// By default we create 3 meta partitions and 10 data partitions during initialization.
 func (c *Cluster) createVol(name string, replicaNum uint8, randomWrite bool, size, capacity int) (err error) {
 	var (
 		vol                     *Vol
@@ -775,29 +798,29 @@ func (c *Cluster) createVol(name string, replicaNum uint8, randomWrite bool, siz
 		dataPartitionSize = uint64(size) * util.GB
 	}
 	if err = c.createVolInternal(name, replicaNum, randomWrite, dataPartitionSize, uint64(capacity)); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 
 	if vol, err = c.getVol(name); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	vol.initMetaPartitions(c)
 	if len(vol.MetaPartitions) == 0 {
 		vol.Status = volMarkDelete
 		c.syncDeleteVol(vol)
 		c.deleteVol(name)
-		goto errDeal
+		goto errHandler
 	}
-	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitions && retryCount < 3; retryCount++ {
+	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
 		vol.initDataPartitions(c)
 		readWriteDataPartitions = vol.checkDataPartitionStatus(c)
 	}
-	vol.dataPartitions.readWriteDataPartitions = readWriteDataPartitions
-	log.LogInfof("action[createVol] vol[%v],readWriteDataPartitions[%v]", name, readWriteDataPartitions)
+	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
+	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", name, readWriteDataPartitions)
 	return
 
 	return
-errDeal:
+errHandler:
 	err = fmt.Errorf("action[createVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
 	log.LogError(errors.ErrorStack(err))
 	Warn(c.Name, err.Error())
@@ -810,26 +833,27 @@ func (c *Cluster) createVolInternal(name string, replicaNum uint8, randomWrite b
 		vol *Vol
 	)
 	if _, err = c.getVol(name); err == nil {
-		err = hasExist(name)
-		goto errDeal
+		err = exists(name)
+		goto errHandler
 	}
 
 	if id, err = c.idAlloc.allocateCommonID(); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	vol = newVol(id, name, replicaNum, randomWrite, dpSize, capacity)
 	if err = c.syncAddVol(vol); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	return
-errDeal:
+errHandler:
 	err = fmt.Errorf("action[createVolInternal], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
 	log.LogError(errors.ErrorStack(err))
 	Warn(c.Name, err.Error())
 	return
 }
 
-func (c *Cluster) createMetaPartitionForManual(volName string, start uint64) (err error) {
+// Update the upper bound of the inode ids in a meta partition.
+func (c *Cluster) updateUpperBoundOfInodeIds(volName string, start uint64) (err error) {
 
 	var (
 		maxPartitionID uint64
@@ -840,8 +864,8 @@ func (c *Cluster) createMetaPartitionForManual(volName string, start uint64) (er
 	if vol, err = c.getVol(volName); err != nil {
 		return errors.Annotatef(err, "get vol [%v] err", volName)
 	}
-	maxPartitionID = vol.getMaxPartitionID()
-	if partition, err = vol.getMetaPartition(maxPartitionID); err != nil {
+	maxPartitionID = vol.maxPartitionID()
+	if partition, err = vol.metaPartition(maxPartitionID); err != nil {
 		return errors.Annotatef(err, "get meta partition [%v] err", maxPartitionID)
 	}
 	if start < partition.MaxNodeID {
@@ -853,7 +877,7 @@ func (c *Cluster) createMetaPartitionForManual(volName string, start uint64) (er
 	}
 	partition.Lock()
 	defer partition.Unlock()
-	partition.updateEnd(c, start)
+	partition.updateInodeIDUpperBound(c, start)
 	return
 }
 
@@ -880,7 +904,7 @@ func (c *Cluster) createMetaPartition(volName string, start, end uint64) (err er
 		return errors.Trace(err)
 	}
 	mp = newMetaPartition(partitionID, start, end, vol.mpReplicaNum, volName, vol.ID)
-	mp.setPersistenceHosts(hosts)
+	mp.setHosts(hosts)
 	mp.setPeers(peers)
 	for _, host := range hosts {
 		wg.Add(1)
@@ -894,7 +918,7 @@ func (c *Cluster) createMetaPartition(volName string, start, end uint64) (err er
 			}
 			mp.Lock()
 			defer mp.Unlock()
-			if err = mp.createPartitionSuccessTriggerOperator(host, c); err != nil {
+			if err = mp.postProcessingPartitionCreation(host, c); err != nil {
 				errChannel <- err
 			}
 		}(host)
@@ -929,6 +953,7 @@ func (c *Cluster) hasEnoughWritableMetaHosts(replicaNum int, setID uint64) bool 
 	return false
 }
 
+// Choose the target hosts from the available node sets and meta nodes.
 func (c *Cluster) chooseTargetMetaHosts(replicaNum int) (hosts []string, peers []proto.Peer, err error) {
 	var (
 		masterAddr []string
@@ -957,13 +982,12 @@ func (c *Cluster) chooseTargetMetaHosts(replicaNum int) (hosts []string, peers [
 	hosts = append(hosts, slaveAddrs...)
 	peers = append(peers, slavePeers...)
 	if len(hosts) != replicaNum {
-		return nil, nil, errNoAnyMetaNodeForCreateMetaPartition
+		return nil, nil, noMetaNodeToCreateMetaPartitionErr
 	}
 	return
 }
 
 func (c *Cluster) dataNodeCount() (len int) {
-
 	c.dataNodes.Range(func(key, value interface{}) bool {
 		len++
 		return true
@@ -971,22 +995,22 @@ func (c *Cluster) dataNodeCount() (len int) {
 	return
 }
 
-func (c *Cluster) getAllDataNodes() (dataNodes []DataNodeView) {
-	dataNodes = make([]DataNodeView, 0)
+func (c *Cluster) allDataNodes() (dataNodes []NodeView) {
+	dataNodes = make([]NodeView, 0)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
-		dataNodes = append(dataNodes, DataNodeView{Addr: dataNode.Addr, Status: dataNode.isActive, ID: dataNode.ID})
+		dataNodes = append(dataNodes, NodeView{Addr: dataNode.Addr, Status: dataNode.isActive, ID: dataNode.ID})
 		return true
 	})
 	return
 }
 
-func (c *Cluster) getLiveDataNodesRate() (rate float32) {
-	dataNodes := make([]DataNodeView, 0)
-	liveDataNodes := make([]DataNodeView, 0)
+func (c *Cluster) liveDataNodesRate() (rate float32) {
+	dataNodes := make([]NodeView, 0)
+	liveDataNodes := make([]NodeView, 0)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
-		view := DataNodeView{Addr: dataNode.Addr, Status: dataNode.isActive}
+		view := NodeView{Addr: dataNode.Addr, Status: dataNode.isActive}
 		dataNodes = append(dataNodes, view)
 		if dataNode.isActive && time.Since(dataNode.ReportTime) < time.Second*time.Duration(2*defaultCheckHeartbeatIntervalSeconds) {
 			liveDataNodes = append(liveDataNodes, view)
@@ -996,12 +1020,12 @@ func (c *Cluster) getLiveDataNodesRate() (rate float32) {
 	return float32(len(liveDataNodes)) / float32(len(dataNodes))
 }
 
-func (c *Cluster) getLiveMetaNodesRate() (rate float32) {
-	metaNodes := make([]MetaNodeView, 0)
-	liveMetaNodes := make([]MetaNodeView, 0)
+func (c *Cluster) liveMetaNodesRate() (rate float32) {
+	metaNodes := make([]NodeView, 0)
+	liveMetaNodes := make([]NodeView, 0)
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
-		view := MetaNodeView{Addr: metaNode.Addr, Status: metaNode.IsActive, ID: metaNode.ID}
+		view := NodeView{Addr: metaNode.Addr, Status: metaNode.IsActive, ID: metaNode.ID}
 		metaNodes = append(metaNodes, view)
 		if metaNode.IsActive && time.Since(metaNode.ReportTime) < time.Second*time.Duration(2*defaultCheckHeartbeatIntervalSeconds) {
 			liveMetaNodes = append(liveMetaNodes, view)
@@ -1011,20 +1035,20 @@ func (c *Cluster) getLiveMetaNodesRate() (rate float32) {
 	return float32(len(liveMetaNodes)) / float32(len(metaNodes))
 }
 
-func (c *Cluster) getAllMetaNodes() (metaNodes []MetaNodeView) {
-	metaNodes = make([]MetaNodeView, 0)
+func (c *Cluster) allMetaNodes() (metaNodes []NodeView) {
+	metaNodes = make([]NodeView, 0)
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
-		metaNodes = append(metaNodes, MetaNodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive})
+		metaNodes = append(metaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive})
 		return true
 	})
 	return
 }
 
-func (c *Cluster) getAllVols() (vols []string) {
+func (c *Cluster) allVolNames() (vols []string) {
 	vols = make([]string, 0)
-	c.volsLock.RLock()
-	defer c.volsLock.RUnlock()
+	c.volsMutex.RLock()
+	defer c.volsMutex.RUnlock()
 	for name := range c.vols {
 		vols = append(vols, name)
 	}
@@ -1033,18 +1057,20 @@ func (c *Cluster) getAllVols() (vols []string) {
 
 func (c *Cluster) copyVols() (vols map[string]*Vol) {
 	vols = make(map[string]*Vol, 0)
-	c.volsLock.RLock()
-	defer c.volsLock.RUnlock()
+	c.volsMutex.RLock()
+	defer c.volsMutex.RUnlock()
 	for name, vol := range c.vols {
 		vols[name] = vol
 	}
 	return
 }
 
-func (c *Cluster) getAllNormalVols() (vols map[string]*Vol) {
+
+// Return all the volumes except the ones that have been marked to be deleted.
+func (c *Cluster) allVols() (vols map[string]*Vol) {
 	vols = make(map[string]*Vol, 0)
-	c.volsLock.RLock()
-	defer c.volsLock.RUnlock()
+	c.volsMutex.RLock()
+	defer c.volsMutex.RUnlock()
 	for name, vol := range c.vols {
 		if vol.Status == volNormal {
 			vols[name] = vol
@@ -1053,6 +1079,7 @@ func (c *Cluster) getAllNormalVols() (vols map[string]*Vol) {
 	return
 }
 
+// TODO There is no usage for this function. Should we delete it or not?
 func (c *Cluster) getDataPartitionCapacity(vol *Vol) (count int) {
 	var totalCount uint64
 	c.dataNodes.Range(func(addr, value interface{}) bool {
@@ -1065,10 +1092,10 @@ func (c *Cluster) getDataPartitionCapacity(vol *Vol) (count int) {
 }
 
 func (c *Cluster) getDataPartitionCount() (count int) {
-	c.volsLock.RLock()
-	defer c.volsLock.RUnlock()
+	c.volsMutex.RLock()
+	defer c.volsMutex.RUnlock()
 	for _, vol := range c.vols {
-		count = count + len(vol.dataPartitions.dataPartitions)
+		count = count + len(vol.dataPartitions.partitions)
 	}
 	return
 }

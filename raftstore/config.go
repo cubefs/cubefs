@@ -31,7 +31,7 @@ type Config struct {
 	RaftPath      string // Path of raft logs
 	IPAddr        string // IP address of node
 	HeartbeatPort int
-	ReplicatePort int
+	ReplicaPort   int
 	RetainLogs    uint64 // // RetainLogs controls how many logs we leave after truncate. The default value is 20000.
 }
 
@@ -39,7 +39,7 @@ type PeerAddress struct {
 	proto.Peer
 	Address       string
 	HeartbeatPort int
-	ReplicatePort int
+	ReplicaPort   int
 }
 
 // PartitionConfig defined necessary configuration properties for raft store partition.

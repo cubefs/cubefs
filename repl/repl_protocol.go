@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,6 +43,15 @@ var (
     c. ReceiveResponse goroutine read from notifyReciveCh,recive all replicates  pkg response,and send this pkg to responseCh
 
 	if any step error,then change request to error Packet,and send it to responseCh, the OperatorAndForwardPkg can send it to client
+ 这是关于复制协议的一个结构体。复制协议的大致流程如下：
+1. ServerConn goroutine从客户端的socket读取一个包，然后解析包里面的followers地址，然后做prepare函数
+   prepare完成后，丢入toBeProcessCh 队列。如果出错，则丢到responseCh队列
+2. operatorAndForwardPkg goroutine 从toBeProcessCh队列里面取一个pkg，然后判断是否需要转发给follower
+   a.如果需要转发，先发给所有的followers，然后本地执行operator函数，再通知receiveResponse goroutine
+     让该goroutine从follower connection上读取follower response，再将该pkg丢到responseCh队列
+   b.如果不需要转发，则执行operator函数，再将该pkg丢到responseCh队列
+3.receiveResponse goroutine 从responseCh队列拿出一个reply，执行postFunc,然后判断是否需要给客户端回复响应。
+  如果需要，则写入客户端的socket
 
 */
 type ReplProtocol struct {
@@ -87,7 +96,7 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(pkg *Packet) error,
 }
 
 /*
-  this func is server client connnect ,read pkg from socket,and do prepare pkg
+  该函数不断地从客户端的socket上读取socket，然后解析follower地址，执行prepare函数，丢入toBeProcessCh队列
 */
 func (rp *ReplProtocol) ServerConn() {
 	var (
@@ -117,7 +126,7 @@ func (rp *ReplProtocol) ServerConn() {
 }
 
 /*
-   read pkg from client socket,and resolve followers addr,then prepare pkg
+  该函数不断地从客户端的socket上读取socket，然后解析follower地址，执行prepare函数，丢入toBeProcessCh队列
 */
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	pkg := NewPacket()
@@ -145,6 +154,10 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
    if packet donnot need forward,do pkg by opcode
 
    read response from responseCh,and write response to client
+   1.从toBeProcessCh 队列读取一个pkg,判断该pkg是否需要转发，如果不需要转发，则本地执行，放入responseCh队列
+   2.如果该pkg需要转发，则先发送给followers，然后执行operator函数。通知receiveResponse goroutine函数读取
+     followers的response
+   3.从responseCh队列读取一个reply，然后写个客户端的socket
 */
 func (rp *ReplProtocol) OperatorAndForwardPkg() {
 	for {
@@ -185,12 +198,13 @@ func (rp *ReplProtocol) ReceiveResponse() {
 }
 
 /*
-  send pkg to all followers.
+  先把pkg加入到列表里面，遍历所有的followerAddrs，然后发送pkg到所有的followers上
 */
 func (rp *ReplProtocol) sendRequestToAllfollowers(request *Packet) (index int, err error) {
 	rp.pushPacketToList(request)
 	for index = 0; index < len(request.followerConns); index++ {
 		err = rp.allocateFollowersConnects(request, index)
+
 		if err != nil {
 			msg := fmt.Sprintf("request inconnect(%v) to(%v) err(%v)", rp.sourceConn.RemoteAddr().String(),
 				request.followersAddrs[index], err.Error())
@@ -217,7 +231,9 @@ func (rp *ReplProtocol) sendRequestToAllfollowers(request *Packet) (index int, e
 }
 
 /*
-	recive response from all followers,if any followers failed,then the packet is failed
+ 从列表里面取出一个pkg,遍历该pkg的followers的connnect，读取response
+ 如果读取response失败，则该请求的pkg标记为失败的pkg，然后从列表里面删除该pkg
+ 并丢弃到responseCh，如果所有的follower都成功，则标记该pkg都执行成功了
 
 */
 func (rp *ReplProtocol) reciveAllFollowerResponse() {
@@ -244,11 +260,12 @@ func (rp *ReplProtocol) reciveAllFollowerResponse() {
 }
 
 /*
-  recive reply from followers
-  1. check request local do is failed,if failed ,return error
-  2. read from follower socket,if failed,return error
-  3. check reply is avali,if reply is not avali,then return error
-  4. check reply is a error packet,if reply error,return error
+  从某个follower上读取该request的response:
+  1.判断该follower的socket是否为空，为空则失败
+  2.判断该request本地是否执行成功，失败则返回错误
+  3.从follower的socket上读取response，失败返回错误
+  4.判断reply的包和request的包的一致性，如果判断失败则返回错误
+  5.如果follower执行失败，则该request也标记为失败，返回错误
 */
 func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err error) {
 	// Receive pkg response from one member*/
@@ -293,7 +310,13 @@ func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err err
 	return
 }
 
-// Write response to client and recycle the connect.
+/*
+  写一个reply to 客户端socket
+  1.判断reply是否失败，如果失败销毁所有的follower链接
+  2.执行后处理函数
+  3.判断是否需要给客户端返回response
+  4.写给客户端的socket
+*/
 func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 	var err error
 	if reply.IsErrPacket() {
@@ -335,7 +358,8 @@ func (rp *ReplProtocol) Stop() {
 }
 
 /*
- allocate followers connects,if it is extentStore and it is Write op,then use last connects
+ 分配pkg的follower链接，以key为单位，该key是partitionid,extentid,以及follower的地址作为key
+ extent走这个的原因是，确保每个pkg发到datanode的顺序保证顺序一致。
 */
 func (rp *ReplProtocol) allocateFollowersConnects(pkg *Packet, index int) (err error) {
 	var conn *net.TCPConn
@@ -343,6 +367,7 @@ func (rp *ReplProtocol) allocateFollowersConnects(pkg *Packet, index int) (err e
 	value, ok := rp.followerConnects.Load(key)
 	if ok {
 		pkg.followerConns[index] = value.(*net.TCPConn)
+
 	} else {
 		conn, err = gConnPool.GetConnect(pkg.followersAddrs[index])
 		if err != nil {

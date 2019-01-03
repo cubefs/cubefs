@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	TaskFail         = 2
+	TaskFailed       = 2
 	TaskStart        = 0
 	TaskSuccess      = 1
 	TaskRunning      = 3
@@ -80,7 +80,7 @@ func (t *AdminTask) CheckTaskIsSuccess() (isSuccess bool) {
 }
 
 func (t *AdminTask) CheckTaskIsFail() (isFail bool) {
-	if t.Status == TaskFail {
+	if t.Status == TaskFailed {
 		isFail = true
 	}
 

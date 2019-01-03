@@ -43,14 +43,14 @@ const (
 
 //operations
 const (
-	ProtoMagic        uint8 = 0xFF
-	OpInitResultCode  uint8 = 0x00
-	OpCreateExtent    uint8 = 0x01
-	OpMarkDelete      uint8 = 0x02
-	OpWrite           uint8 = 0x03
-	OpRead            uint8 = 0x04
-	OpStreamRead      uint8 = 0x05
-	OpGetAllWaterMark uint8 = 0x07
+	ProtoMagic         uint8 = 0xFF
+	OpInitResultCode   uint8 = 0x00
+	OpCreateExtent     uint8 = 0x01
+	OpMarkDelete       uint8 = 0x02
+	OpWrite            uint8 = 0x03
+	OpRead             uint8 = 0x04
+	OpStreamRead       uint8 = 0x05
+	OpGetAllWatermarks uint8 = 0x07
 
 	OpNotifyExtentRepair      uint8 = 0x08
 	OpExtentRepairRead        uint8 = 0x09
@@ -125,14 +125,15 @@ const (
 	NoReadDeadlineTime       = -1
 )
 
+// TODO what is TinyExtentType and what is NormalExtentType
 const (
-	TinyExtentMode   = 0
-	NormalExtentMode = 1
+	TinyExtentType   = 0
+	NormalExtentType = 1
 )
 
 type Packet struct {
 	Magic           uint8
-	ExtentMode      uint8
+	ExtentType      uint8
 	Opcode          uint8
 	ResultCode      uint8
 	RemainFollowers uint8
@@ -158,10 +159,10 @@ func NewPacket() *Packet {
 }
 
 func (p *Packet) GetStoreModeMsg() (m string) {
-	switch p.ExtentMode {
-	case TinyExtentMode:
+	switch p.ExtentType {
+	case TinyExtentType:
 		m = "TinyExtent"
-	case NormalExtentMode:
+	case NormalExtentType:
 		m = "NormalExtent"
 	default:
 		m = "Unknown"
@@ -183,10 +184,10 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "Read"
 	case OpStreamRead:
 		m = "StreamRead"
-	case OpGetAllWaterMark:
-		m = "GetAllExtentWatermark"
+	case OpGetAllWatermarks:
+		m = "GetAllWatermarks"
 	case OpNotifyExtentRepair:
-		m = "NotifyExtentRepair"
+		m = "NotifyReplicasToRepair"
 	case OpBlobFileRepairRead:
 		m = "BlobFileRepairRead"
 	case OpNotifyCompactBlobFile:
@@ -311,7 +312,7 @@ func (p *Packet) GetResultMesg() (m string) {
 
 func (p *Packet) MarshalHeader(out []byte) {
 	out[0] = p.Magic
-	out[1] = p.ExtentMode
+	out[1] = p.ExtentType
 	out[2] = p.Opcode
 	out[3] = p.ResultCode
 	out[4] = p.RemainFollowers
@@ -332,7 +333,7 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 		return errors.New("Bad Magic " + strconv.Itoa(int(p.Magic)))
 	}
 
-	p.ExtentMode = in[1]
+	p.ExtentType = in[1]
 	p.Opcode = in[2]
 	p.ResultCode = in[3]
 	p.RemainFollowers = in[4]

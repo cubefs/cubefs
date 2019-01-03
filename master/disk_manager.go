@@ -1,3 +1,17 @@
+// Copyright 2018 The Container File System Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package master
 
 import (
@@ -8,21 +22,21 @@ import (
 	"time"
 )
 
-func (c *Cluster) startCheckBadDiskRecovery() {
+func (c *Cluster) scheduleToCheckDiskRecoveryProgress() {
 	go func() {
 		for {
 			if c.partition != nil && c.partition.IsLeader() {
 				if c.vols != nil {
-					c.checkBadDiskRecovery()
+					c.checkDiskRecoveryProgress()
 				}
 			}
-			time.Sleep(time.Second * defaultCheckDataPartitionIntervalSeconds)
+			time.Sleep(time.Second * defaultIntervalToCheckDataPartition)
 		}
 	}()
 }
 
-func (c *Cluster) checkBadDiskRecovery() {
-	var minus float64
+func (c *Cluster) checkDiskRecoveryProgress() {
+	var diff float64
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)
 		newBadDpIds := make([]uint64, 0)
@@ -40,17 +54,20 @@ func (c *Cluster) checkBadDiskRecovery() {
 			}
 			used := partition.Replicas[0].Used
 			for _, replica := range partition.Replicas {
-				if math.Abs(float64(replica.Used)-float64(used)) > minus {
-					minus = math.Abs(float64(replica.Used) - float64(used))
+				// TODO same problem here
+				if math.Abs(float64(replica.Used)-float64(used)) > diff {
+					diff = math.Abs(float64(replica.Used) - float64(used))
 				}
 			}
-			if minus < util.GB {
+			if diff < util.GB {
 				partition.isRecover = false
+
 				Warn(c.Name, fmt.Sprintf("clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))
 			} else {
 				newBadDpIds = append(newBadDpIds, partitionID)
 			}
 		}
+
 		if len(newBadDpIds) == 0 {
 			Warn(c.Name, fmt.Sprintf("clusterID[%v],node:disk[%v] has recovered success", c.Name, key))
 			c.BadDataPartitionIds.Delete(key)
@@ -62,22 +79,29 @@ func (c *Cluster) checkBadDiskRecovery() {
 	})
 }
 
+
+// TODO take the disk off?
+// decompression hadoop 有一个专有名字
+//Commissioning and Decommissioning Nodes
+// takeDiskOff
 func (c *Cluster) diskOffLine(dataNode *DataNode, badDiskPath string, badPartitionIds []uint64) (err error) {
-	msg := fmt.Sprintf("action[diskOffLine], Node[%v] OffLine,disk[%v]", dataNode.Addr, badDiskPath)
+	msg := fmt.Sprintf("action[decommissionDisk], Node[%v] OffLine,disk[%v]", dataNode.Addr, badDiskPath)
 	log.LogWarn(msg)
-	safeVols := c.getAllNormalVols()
+
+	// TODO what are safeVols and what are normalVols?  safeVols -> vols
+	safeVols := c.allVols()
 	for _, vol := range safeVols {
-		for _, dp := range vol.dataPartitions.dataPartitions {
+		for _, dp := range vol.dataPartitions.partitions {
 			for _, bad := range badPartitionIds {
 				if bad == dp.PartitionID {
-					if err = c.dataPartitionOffline(dataNode.Addr, vol.Name, dp, diskOfflineInfo); err != nil {
+					if err = c.decommissionDataPartition(dataNode.Addr, vol.Name, dp, diskOfflineInfo); err != nil {
 						return
 					}
 				}
 			}
 		}
 	}
-	msg = fmt.Sprintf("action[diskOffLine],clusterID[%v] Node[%v] OffLine success",
+	msg = fmt.Sprintf("action[decommissionDisk],clusterID[%v] Node[%v] OffLine success",
 		c.Name, dataNode.Addr)
 	Warn(c.Name, msg)
 	return

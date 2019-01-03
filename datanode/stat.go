@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,8 +20,9 @@ import (
 	"time"
 )
 
+// TODO add comments
 type DiskMetrics struct {
-	Status               int32
+	Status               int32 // TODO we need to add comments to each entry here
 	ReadErrs             int32
 	WriteErrs            int32
 	MaxDiskErrs          int32
@@ -32,51 +33,57 @@ type DiskMetrics struct {
 	Path                 string
 }
 
-//Stats various metrics such free and total storage space, traffic, etc
+// Stats defines various metrics that will be collected during the execution
 type Stats struct {
 	inDataSize  uint64
 	outDataSize uint64
 	inFlow      uint64
 	outFlow     uint64
 
-	Zone                            string
-	CurrentConns                    int64
-	ClusterID                       string
-	TCPAddr                         string
-	Start                           time.Time
-	Total                           uint64
-	Used                            uint64
-	Available                       uint64
-	CreatedPartitionWeights         uint64 //dataPartitionCnt*dataPartitionSize
-	RemainWeightsForCreatePartition uint64 //all-useddataPartitionsWieghts
-	CreatedPartitionCnt             uint64
-	MaxWeightsForCreatePartition    uint64
+	Zone                               string
+	ConnectionCnt                      int64
+	ClusterID                          string
+	TCPAddr                            string
+	Start                              time.Time
+	Total                              uint64
+	Used                               uint64
+	Available                          uint64 // TODO what is available?
+	CreatedPartitionWeights            uint64 // TODO what is CreatedPartitionWeights dataPartitionCnt * dataPartitionSize
+	RemainingWeightsForCreatePartition uint64 // TODO what is RemainingWeightsForCreatePartition all used dataPartitionsWieghts
+	CreatedPartitionCnt                uint64
+	MaxWeightsForCreatePartition       uint64
 
 	sync.Mutex
 }
 
+// Create a new Stats
 func NewStats(zone string) (s *Stats) {
 	s = new(Stats)
 	s.Zone = zone
 	return s
 }
 
+// AddConnection adds a connection
 func (s *Stats) AddConnection() {
-	atomic.AddInt64(&s.CurrentConns, 1)
+	atomic.AddInt64(&s.ConnectionCnt, 1)
 }
 
+// RemoveConnection removes a connection
 func (s *Stats) RemoveConnection() {
-	atomic.AddInt64(&s.CurrentConns, -1)
+	atomic.AddInt64(&s.ConnectionCnt, -1)
 }
 
-func (s *Stats) GetConnectionNum() int64 {
-	return atomic.LoadInt64(&s.CurrentConns)
+// GetConnectionCount gets the connection count
+func (s *Stats) GetConnectionCount() int64 {
+	return atomic.LoadInt64(&s.ConnectionCnt)
 }
 
+// TODO what is AddInDataSize
 func (s *Stats) AddInDataSize(size uint64) {
 	atomic.AddUint64(&s.inDataSize, size)
 }
 
+// TODO what is AddOutDataSize
 func (s *Stats) AddOutDataSize(size uint64) {
 	atomic.AddUint64(&s.outDataSize, size)
 }
@@ -90,7 +97,7 @@ func (s *Stats) updateMetrics(
 	s.Used = used
 	s.Available = available
 	s.CreatedPartitionWeights = createdPartitionWeights
-	s.RemainWeightsForCreatePartition = remainWeightsForCreatePartition
+	s.RemainingWeightsForCreatePartition = remainWeightsForCreatePartition
 	s.MaxWeightsForCreatePartition = maxWeightsForCreatePartition
 	s.CreatedPartitionCnt = dataPartitionCnt
 }

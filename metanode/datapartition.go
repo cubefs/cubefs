@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ const (
 	DataPartitionViewUrl = "/client/dataPartitions"
 )
 
+// DataPartition结构体
 type DataPartition struct {
 	PartitionID   uint64
 	Status        int8
@@ -36,10 +37,12 @@ func (dp *DataPartition) GetAllAddrs() (m string) {
 	return strings.Join(dp.Hosts[1:], proto.AddrSplit) + proto.AddrSplit
 }
 
+// DataNode视图
 type DataPartitionsView struct {
 	DataPartitions []*DataPartition
 }
 
+//逻辑卷和DataNode视图关联结构体
 type Vol struct {
 	sync.RWMutex
 	dataPartitionView map[uint64]*DataPartition
@@ -51,12 +54,14 @@ func NewVol() *Vol {
 	}
 }
 
+// 获取某个数据分片ID的视图
 func (v *Vol) GetPartition(partitionID uint64) *DataPartition {
 	v.RLock()
 	defer v.RUnlock()
 	return v.dataPartitionView[partitionID]
 }
 
+// 更新视图
 func (v *Vol) UpdatePartitions(partitions *DataPartitionsView) {
 	for _, dp := range partitions.DataPartitions {
 		v.replaceOrInsert(dp)

@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -116,13 +116,13 @@ func contains(arr []string, element string) (ok bool) {
 	return
 }
 
-// Warn 报警统一出口
+// Warn provides warnings when exits
 func Warn(clusterID, msg string) {
 	key := fmt.Sprintf("%s_%s", clusterID, ModuleName)
 	WarnBySpecialKey(key, msg)
 }
 
-// WarnBySpecialKey 报警统一出口
+// WarnBySpecialKey provides warnings when exits
 func WarnBySpecialKey(key, msg string) {
 	log.LogWarn(msg)
 	exporter.Alarm(key, msg)

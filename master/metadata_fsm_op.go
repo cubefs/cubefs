@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import (
 	"strings"
 )
 
-// ClusterValue cluster值对象
+// ClusterValue represents
 type ClusterValue struct {
 	Name          string
 	CompactStatus bool
@@ -532,7 +532,7 @@ func (c *Cluster) applyAddMetaNode(cmd *RaftCmdData) (err error) {
 		log.LogErrorf("action[applyAddMetaNode],err:%v", err.Error())
 		return
 	}
-	if _, err = c.getMetaNode(mnv.Addr); err != nil {
+	if _, err = c.metaNode(mnv.Addr); err != nil {
 		metaNode := newMetaNode(mnv.Addr, c.Name)
 		metaNode.ID = mnv.ID
 		metaNode.NodeSetID = mnv.NodeSetID
@@ -604,7 +604,7 @@ func (c *Cluster) applyAddMetaPartition(cmd *RaftCmdData) (err error) {
 	}
 	mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, mpv.ReplicaNum, mpv.VolName, mpv.VolID)
 	mp.Peers = mpv.Peers
-	mp.PersistenceHosts = strings.Split(mpv.Hosts, underlineSeparator)
+	mp.Hosts = strings.Split(mpv.Hosts, underlineSeparator)
 	mp.Status = mpv.Status
 	vol, err := c.getVol(mpv.VolName)
 	if err != nil {
@@ -627,7 +627,7 @@ func (c *Cluster) applyUpdateMetaPartition(cmd *RaftCmdData) (err error) {
 		log.LogErrorf("action[applyUpdateDataPartition] failed,err:%v", err)
 		return
 	}
-	mp, err := vol.getMetaPartition(mpv.PartitionID)
+	mp, err := vol.metaPartition(mpv.PartitionID)
 	if err != nil {
 		log.LogError(fmt.Sprintf("action[applyUpdateMetaPartition] failed,err:%v", err))
 		return
@@ -649,10 +649,10 @@ func (c *Cluster) applyAddDataPartition(cmd *RaftCmdData) (err error) {
 		return
 	}
 	dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, vol.Name, vol.ID, vol.RandomWrite)
-	dp.PersistenceHosts = strings.Split(dpv.Hosts, underlineSeparator)
+	dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 	dp.Peers = dpv.Peers
 	dp.Status = dpv.Status
-	vol.dataPartitions.putDataPartition(dp)
+	vol.dataPartitions.put(dp)
 	return
 }
 
@@ -677,7 +677,7 @@ func (c *Cluster) applyUpdateDataPartition(cmd *RaftCmdData) (err error) {
 		log.LogError(fmt.Sprintf("action[applyUpdateDataPartition] failed,err:%v", err))
 		return
 	}
-	dp.PersistenceHosts = strings.Split(dpv.Hosts, underlineSeparator)
+	dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 	dp.Peers = dpv.Peers
 	return
 }
@@ -805,7 +805,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 			continue
 		}
 		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, vol.Name, mpv.VolID)
-		mp.setPersistenceHosts(strings.Split(mpv.Hosts, underlineSeparator))
+		mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
 		mp.setPeers(mpv.Peers)
 		vol.addMetaPartition(mp)
 		log.LogInfof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
@@ -833,9 +833,9 @@ func (c *Cluster) loadDataPartitions() (err error) {
 			continue
 		}
 		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID, dpv.RandomWrite)
-		dp.PersistenceHosts = strings.Split(dpv.Hosts, underlineSeparator)
+		dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 		dp.Peers = dpv.Peers
-		vol.dataPartitions.putDataPartition(dp)
+		vol.dataPartitions.put(dp)
 		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v]", vol.Name, dp.PartitionID)
 	}
 	return

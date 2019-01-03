@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,7 +21,8 @@ import (
 	"time"
 )
 
-// FileCrc use struct define File crc and this crc in all File count
+// TODO what is FileCrc?
+// FileCrc defines the crc
 type FileCrc struct {
 	crc   uint32
 	count int
@@ -71,7 +72,7 @@ func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataRe
 
 	fms, needRepair := fc.needCrcRepair(liveVols)
 
-	if len(fms) < len(liveVols) && (time.Now().Unix()-fc.LastModify) > checkMissFileReplicaTime {
+	if len(fms) < len(liveVols) && (time.Now().Unix()-fc.LastModify) > intervalToCheckMissingReplica {
 		liveAddrs := make([]string, 0)
 		for _, replica := range liveVols {
 			liveAddrs = append(liveAddrs, replica.Addr)

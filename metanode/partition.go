@@ -277,7 +277,7 @@ func (mp *metaPartition) startRaft() (err error) {
 			},
 			Address:       addr,
 			HeartbeatPort: heartbeatPort,
-			ReplicatePort: replicatePort,
+			ReplicaPort:   replicatePort,
 		}
 		peers = append(peers, rp)
 	}
@@ -487,18 +487,18 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 	resp *UpdatePartitionResp) (err error) {
 	reqData, err := json.Marshal(req)
 	if err != nil {
-		resp.Status = proto.TaskFail
+		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
 		return
 	}
 	r, err := mp.Put(opUpdatePartition, reqData)
 	if err != nil {
-		resp.Status = proto.TaskFail
+		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
 		return
 	}
 	if status := r.(uint8); status != proto.OpOk {
-		resp.Status = proto.TaskFail
+		resp.Status = proto.TaskFailed
 		p := &Packet{}
 		p.ResultCode = status
 		err = errors.Errorf("[UpdatePartition]: %s", p.GetResultMesg())

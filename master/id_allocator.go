@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import (
 	"sync/atomic"
 )
 
-//IDAllocator id分配器
+// IDAllocator generates and allocates ids
 type IDAllocator struct {
 	dataPartitionID uint64
 	metaPartitionID uint64
@@ -84,6 +84,8 @@ func (alloc *IDAllocator) restoreMaxMetaPartitionID() {
 	log.LogInfof("action[restoreMaxMetaPartitionID] maxMpID[%v]", alloc.metaPartitionID)
 }
 
+// TODO what is a common ID? data  partition 单独的  meta partition 也是单独的
+// datanode id， metanode id， nodeset id 这三个公用一个生成器
 func (alloc *IDAllocator) restoreMaxCommonID() {
 	value, err := alloc.store.Get(maxCommonIDKey)
 	if err != nil {
@@ -162,6 +164,7 @@ errDeal:
 	return
 }
 
+// TODO what is a common id?
 func (alloc *IDAllocator) allocateCommonID() (id uint64, err error) {
 	alloc.mnIDLock.Lock()
 	defer alloc.mnIDLock.Unlock()

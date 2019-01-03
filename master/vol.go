@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,17 +22,17 @@ import (
 	"sync"
 )
 
-//Vol dp和mp集合
+// Vol represents a set of meta partitionMap and data partitionMap
 type Vol struct {
 	ID                uint64
 	Name              string
-	RandomWrite       bool
+	RandomWrite       bool   // TODO seems never being used
 	dpReplicaNum      uint8
 	mpReplicaNum      uint8
 	Status            uint8
 	threshold         float32
 	dataPartitionSize uint64
-	Capacity          uint64 //GB
+	Capacity          uint64 // GB
 	MetaPartitions    map[uint64]*MetaPartition
 	mpsLock           sync.RWMutex
 	dataPartitions    *DataPartitionMap
@@ -44,7 +44,7 @@ func newVol(id uint64, name string, replicaNum uint8, randomWrite bool, dpSize, 
 	vol.RandomWrite = randomWrite
 	vol.dataPartitions = newDataPartitionMap(name)
 	vol.dpReplicaNum = replicaNum
-	vol.threshold = defaultMetaPartitionThreshold
+	vol.threshold = defaultMetaPartitionMemUsageThreshold
 	if replicaNum%2 == 0 {
 		vol.mpReplicaNum = replicaNum + 1
 	} else {
@@ -68,11 +68,11 @@ func (vol *Vol) addMetaPartition(mp *MetaPartition) {
 		vol.MetaPartitions[mp.PartitionID] = mp
 		return
 	}
-	//use mp replace old partition in the map
+	// replace the old partition in the map with mp
 	vol.MetaPartitions[mp.PartitionID] = mp
 }
 
-func (vol *Vol) getMetaPartition(partitionID uint64) (mp *MetaPartition, err error) {
+func (vol *Vol) metaPartition(partitionID uint64) (mp *MetaPartition, err error) {
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
 	mp, ok := vol.MetaPartitions[partitionID]
@@ -82,7 +82,7 @@ func (vol *Vol) getMetaPartition(partitionID uint64) (mp *MetaPartition, err err
 	return
 }
 
-func (vol *Vol) getMaxPartitionID() (maxPartitionID uint64) {
+func (vol *Vol) maxPartitionID() (maxPartitionID uint64) {
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
 	for id := range vol.MetaPartitions {
@@ -93,20 +93,21 @@ func (vol *Vol) getMaxPartitionID() (maxPartitionID uint64) {
 	return
 }
 
+// TODO find a better name
 func (vol *Vol) getDataPartitionsView(liveRate float32) (body []byte, err error) {
 	if liveRate < nodesAliveRate {
 		body = make([]byte, 0)
 		return
 	}
-	return vol.dataPartitions.updateDataPartitionResponseCache(false, 0)
+	return vol.dataPartitions.updateResponseCache(false, 0)
 }
 
 func (vol *Vol) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err error) {
-	return vol.dataPartitions.getDataPartition(partitionID)
+	return vol.dataPartitions.get(partitionID)
 }
 
 func (vol *Vol) initMetaPartitions(c *Cluster) {
-	//init ten meta partitions
+	// initialize k meta partitionMap at a time
 	var (
 		start uint64
 		end   uint64
@@ -126,49 +127,52 @@ func (vol *Vol) initMetaPartitions(c *Cluster) {
 }
 
 func (vol *Vol) initDataPartitions(c *Cluster) {
-	//init ten data partitions
-	for i := 0; i < defaultInitDataPartitions; i++ {
+	// initialize k data partitionMap at a time
+	for i := 0; i < defaultInitDataPartitionCnt; i++ {
 		c.createDataPartition(vol.Name)
 	}
 	return
 }
-func (vol *Vol) checkDataPartitionStatus(c *Cluster) (readWriteDataPartitions int) {
+func (vol *Vol) checkDataPartitionStatus(c *Cluster) (cnt int) {
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
-	for _, dp := range vol.dataPartitions.dataPartitionMap {
+	for _, dp := range vol.dataPartitions.partitionMap {
 		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec)
 		if dp.Status == proto.ReadWrite {
-			readWriteDataPartitions++
+			cnt++
 		}
 	}
 	return
 }
 
-func (vol *Vol) checkDataPartitions(c *Cluster) (readWriteDataPartitions int) {
+func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
-	for _, dp := range vol.dataPartitions.dataPartitionMap {
+	for _, dp := range vol.dataPartitions.partitionMap {
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
 		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec)
 		dp.checkMiss(c.Name, c.cfg.DataPartitionMissSec, c.cfg.DataPartitionWarnInterval)
 		dp.checkReplicaNum(c, vol.Name)
 		if dp.Status == proto.ReadWrite {
-			readWriteDataPartitions++
+			cnt++
 		}
 		diskErrorAddrs := dp.checkDiskError(c.Name)
 		if diskErrorAddrs != nil {
 			for _, addr := range diskErrorAddrs {
-				c.dataPartitionOffline(addr, vol.Name, dp, checkDataPartitionDiskErrorErr)
+				c.decommissionDataPartition(addr, vol.Name, dp, checkDataPartitionDiskErr)
 			}
 		}
 		tasks := dp.checkReplicationTask(c.Name, vol.RandomWrite, vol.dataPartitionSize)
 		if len(tasks) != 0 {
-			c.putDataNodeTasks(tasks)
+			c.addDataNodeTasks(tasks)
 		}
 	}
 	return
 }
 
+//1 生成文件比对任务
+//2 异步等待数据节点汇报 data partition各个副本包含的文件详情
+//3 文件的多个副本之间做crc检验，如果不一致则报警
 func (vol *Vol) loadDataPartition(c *Cluster) {
 	needCheckDataPartitions, startIndex := vol.dataPartitions.getNeedCheckDataPartitions(c.cfg.LoadDataPartitionFrequencyTime)
 	if len(needCheckDataPartitions) == 0 {
@@ -193,17 +197,17 @@ func (vol *Vol) releaseDataPartitions(releaseCount int, afterLoadSeconds int64) 
 
 func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	var tasks []*proto.AdminTask
-	maxPartitionID := vol.getMaxPartitionID()
+	maxPartitionID := vol.maxPartitionID()
 	mps := vol.cloneMetaPartitionMap()
 	for _, mp := range mps {
 		mp.checkStatus(true, int(vol.mpReplicaNum))
 		mp.checkReplicaLeader()
 		mp.checkReplicaNum(c, vol.Name, vol.mpReplicaNum)
 		mp.checkEnd(c, maxPartitionID)
-		mp.checkReplicaMiss(c.Name, defaultMetaPartitionTimeOutSec, defaultMetaPartitionWarnInterval)
-		tasks = append(tasks, mp.generateReplicaTask(c.Name, vol.Name)...)
+		mp.reportMissingReplicas(c.Name, defaultMetaPartitionTimeOutSec, defaultMetaPartitionWarningInterval)
+		tasks = append(tasks, mp.replicaCreationTasks(c.Name, vol.Name)...)
 	}
-	c.putMetaNodeTasks(tasks)
+	c.addMetaNodeTasks(tasks)
 }
 
 func (vol *Vol) cloneMetaPartitionMap() (mps map[uint64]*MetaPartition) {
@@ -240,7 +244,7 @@ func (vol *Vol) getCapacity() uint64 {
 	return vol.Capacity
 }
 
-func (vol *Vol) checkNeedAutoCreateDataPartitions(c *Cluster) {
+func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 	if vol.getStatus() == volMarkDelete {
 		return
 	}
@@ -254,13 +258,13 @@ func (vol *Vol) checkNeedAutoCreateDataPartitions(c *Cluster) {
 		return
 	}
 	vol.setStatus(volNormal)
-	if vol.getStatus() == volNormal && !c.DisableAutoAlloc {
+	if vol.getStatus() == volNormal && !c.AutoAllocationSwitch {
 		vol.autoCreateDataPartitions(c)
 	}
 }
 
 func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
-	if vol.dataPartitions.readWriteDataPartitions < minReadWriteDataPartitions {
+	if vol.dataPartitions.readableAndWritableCnt < minNumOfRWDataPartitions {
 		count := vol.calculateExpandNum()
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
 		for i := 0; i < count; i++ {
@@ -272,8 +276,8 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 func (vol *Vol) calculateExpandNum() (count int) {
 	calCount := float64(vol.Capacity) * float64(volExpandDataPartitionStepRatio) * float64(util.GB) / float64(util.DefaultDataPartitionSize)
 	switch {
-	case calCount < minReadWriteDataPartitions:
-		count = minReadWriteDataPartitions
+	case calCount < minNumOfRWDataPartitions:
+		count = minNumOfRWDataPartitions
 	case calCount > volMaxExpandDataPartitionCount:
 		count = volMaxExpandDataPartitionCount
 	default:
@@ -290,6 +294,9 @@ func (vol *Vol) getTotalUsedSpace() uint64 {
 	return vol.dataPartitions.getTotalUsedSpace()
 }
 
+// Periodically check the volume's status.
+// If an volume is marked as deleted, then generate corresponding delete task (meta partition or data partition)
+// If all the meta partition and data partition of this volume have been deleted, then delete this volume.
 func (vol *Vol) checkStatus(c *Cluster) {
 	vol.Lock()
 	defer vol.Unlock()
@@ -302,8 +309,8 @@ func (vol *Vol) checkStatus(c *Cluster) {
 	if len(metaTasks) == 0 && len(dataTasks) == 0 {
 		vol.deleteVolFromStore(c)
 	}
-	c.putMetaNodeTasks(metaTasks)
-	c.putDataNodeTasks(dataTasks)
+	c.addMetaNodeTasks(metaTasks)
+	c.addDataNodeTasks(dataTasks)
 	return
 }
 
@@ -312,9 +319,12 @@ func (vol *Vol) deleteVolFromStore(c *Cluster) {
 	if err := c.syncDeleteVol(vol); err != nil {
 		return
 	}
-	//delete mp and dp metadata first, then delete vol in case new vol with same name create
+
+	// delete the metadata of the meta and data partitionMap first
 	vol.deleteDataPartitionsFromStore(c)
 	vol.deleteMetaPartitionsFromStore(c)
+
+	// then delete the volume
 	c.deleteVol(vol.Name)
 }
 
@@ -330,7 +340,7 @@ func (vol *Vol) deleteMetaPartitionsFromStore(c *Cluster) {
 func (vol *Vol) deleteDataPartitionsFromStore(c *Cluster) {
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
-	for _, dp := range vol.dataPartitions.dataPartitions {
+	for _, dp := range vol.dataPartitions.partitions {
 		c.syncDeleteDataPartition(dp)
 	}
 
@@ -340,7 +350,7 @@ func (vol *Vol) getDeleteMetaTasks() (tasks []*proto.AdminTask) {
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
 	tasks = make([]*proto.AdminTask, 0)
-	//if replica has removed,the length of tasks will be zero
+
 	for _, mp := range vol.MetaPartitions {
 		for _, replica := range mp.Replicas {
 			tasks = append(tasks, replica.generateDeleteReplicaTask(mp.PartitionID))
@@ -353,8 +363,8 @@ func (vol *Vol) getDeleteDataTasks() (tasks []*proto.AdminTask) {
 	tasks = make([]*proto.AdminTask, 0)
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
-	//if replica has removed,the length of tasks will be zero
-	for _, dp := range vol.dataPartitions.dataPartitions {
+
+	for _, dp := range vol.dataPartitions.partitions {
 		for _, replica := range dp.Replicas {
 			tasks = append(tasks, dp.generateDeleteTask(replica.Addr))
 		}

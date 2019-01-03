@@ -237,6 +237,7 @@ func NewServer() *MetaNode {
 	return &MetaNode{}
 }
 
+// 获取集群信息
 func getClusterInfo() (*proto.ClusterInfo, error) {
 	respBody, err := masterHelper.Request("GET", GetIpUri, nil, nil)
 	if err != nil {

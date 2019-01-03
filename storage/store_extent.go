@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,8 +35,13 @@ import (
 	"syscall"
 )
 
+
+// TODO should we name this file as "extent_store.go" instead of "store_extent.go" ?
+
 const (
-	ExtMetaFileName        = "EXTENT_META"
+
+	// TODO what does ext mean in the following names?
+	ExtMetaFileName        = "EXTENT_META"  // TODO we should use "metadata" or "md" instead of "meta" for naming
 	ExtCrcHeaderFileName   = "EXTENT_CRC"
 	ExtMetaFileOpt         = os.O_CREATE | os.O_RDWR
 	ExtDeleteFileName      = "EXTENT_DELETE"
@@ -61,10 +66,12 @@ type ExtentFilter func(info *ExtentInfo) bool
 
 // Filters
 var (
+
+	// TODO what does the "stable" mean here? Should we call it GetStableNormalExtentFilter ?
 	GetStableExtentFilter = func() ExtentFilter {
 		now := time.Now()
 		return func(info *ExtentInfo) bool {
-			return !IsTinyExtent(info.FileID) && now.Unix()-info.ModTime.Unix() > 10*60 && info.Deleted == false && info.Size > 0
+			return !IsTinyExtent(info.FileID) && now.Unix() - info.ModTime.Unix() > 10 * 60 && info.Deleted == false && info.Size > 0
 		}
 	}
 
@@ -98,24 +105,27 @@ starts at 5000000 and ends at 5000128. Each small file is constantly append to t
 the deletion of small files is removed by purgehole, while the large file extent deletes the extent directly.
 */
 type ExtentStore struct {
-	dataDir             string                 //dataPartition store dataPath
-	baseExtentID        uint64                 //based extentID
-	extentInfoMap       map[uint64]*ExtentInfo //all extentInfo
-	extentInfoMux       sync.RWMutex           //lock
-	cache               *ExtentCache           //extent cache
-	lock                sync.Mutex
-	storeSize           int      //dataPartion store size
-	metaFp              *os.File //store dataPartion meta
-	deleteFp            *os.File //store delete extent history
+	dataDir             string                 // TODO why not call it dataPath?
+	baseExtentID        uint64                 // TODO what is baseExtentID
+	extentInfoMap       map[uint64]*ExtentInfo // map that stores all the extent information
+	extentInfoMux       sync.RWMutex           // TODO should we call it eiMutex or infoMutex?
+	cache               *ExtentCache           // extent cache
+	lock                sync.Mutex // TODO we should not call it lock. maybe just "mutex"?
+	storeSize           int      // TODO what is store size
+	metaFp              *os.File // TODO metadata file pointer?
+	deleteFp            *os.File // TODO store delete extent history?  what does this mean?
 	verifyCrcFp         *os.File
 	closeC              chan bool
 	closed              bool
-	avaliTinyExtentCh   chan uint64 //avali tinyExtent chan
-	unavaliTinyExtentCh chan uint64 //unavali tinyExtent chan
+	// avaliTinyExtentCh   chan uint64 //avali tinyExtent chan
+	// unavaliTinyExtentCh chan uint64 //unavali tinyExtent chan
+	goodTinyExtentC chan uint64 // available tinyExtent chan TODO I thought the names of all the channels should be ended with "C"
+	badTinyExtentC  chan uint64 // unavailable tinyExtent chan
 	blockSize           int
 	partitionID         uint64 //partitionID
 }
 
+// TODO Is there any special reason to warp the MkdirAll function?
 func CheckAndCreateSubdir(name string) (err error) {
 	return os.MkdirAll(name, 0755)
 }
@@ -128,7 +138,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 		return nil, fmt.Errorf("NewExtentStore [%v] err[%v]", dataDir, err)
 	}
 
-	// Load EXTENT_META
+	// TODO rename metaFilePath -> filePath ?
 	metaFilePath := path.Join(s.dataDir, ExtMetaFileName)
 	if s.metaFp, err = os.OpenFile(metaFilePath, ExtMetaFileOpt, 0666); err != nil {
 		return
@@ -142,6 +152,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 	}
 	syscall.Fallocate(int(s.verifyCrcFp.Fd()), 1, 0, ExtCrcHeaderSize)
 
+	// TODO rename deleteIdxFilePath
 	// Load EXTENT_DELETE
 	deleteIdxFilePath := path.Join(s.dataDir, ExtDeleteFileName)
 	if s.deleteFp, err = os.OpenFile(deleteIdxFilePath, ExtDeleteFileOpt, 0666); err != nil {
@@ -169,9 +180,11 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 	var (
 		extentInfoSlice []*ExtentInfo
 	)
-	if extentInfoSlice, err = s.GetAllExtentWatermark(GetAllExtentFilter()); err != nil {
+
+	if extentInfoSlice, err = s.GetAllWatermarks(GetStableExtentFilter()); err != nil {
 		return
 	}
+
 	files = make([]*proto.File, 0, len(extentInfoSlice))
 	for _, extentInfo := range extentInfoSlice {
 		file := &proto.File{
@@ -202,7 +215,7 @@ Create This function is used to create an extent id
 func (s *ExtentStore) Create(extentID uint64, inode uint64) (err error) {
 	var extent *Extent
 	name := path.Join(s.dataDir, strconv.Itoa(int(extentID)))
-	if s.IsExistExtent(extentID) {
+	if s.HasExtent(extentID) {
 		err = ErrorExtentHasExsit
 		return err
 	}
@@ -269,14 +282,16 @@ func (s *ExtentStore) loadExtentHeader(extentId uint64, e *Extent) (err error) {
 	return
 }
 
-func (s *ExtentStore) IsExistExtent(extentID uint64) (exist bool) {
+// HasExtent tells if the extent store has the extent with the given ID
+func (s *ExtentStore) HasExtent(extentID uint64) (exist bool) {
 	s.extentInfoMux.RLock()
 	defer s.extentInfoMux.RUnlock()
 	_, exist = s.extentInfoMap[extentID]
 	return
 }
 
-func (s *ExtentStore) GetExtentCount() (count int) {
+// ExtentCount returns the number of extents in the extentInfoMap
+func (s *ExtentStore) ExtentCount() (count int) {
 	s.extentInfoMux.RLock()
 	defer s.extentInfoMux.RUnlock()
 	return len(s.extentInfoMap)
@@ -598,7 +613,8 @@ func (s *ExtentStore) Close() {
 	s.closed = true
 }
 
-func (s *ExtentStore) GetWatermark(extentID uint64, reload bool) (extentInfo *ExtentInfo, err error) {
+// TODO what is the formal definition of the watermark?
+func (s *ExtentStore) Watermark(extentID uint64, reload bool) (extentInfo *ExtentInfo, err error) {
 	var (
 		has    bool
 		extent *Extent
@@ -619,20 +635,20 @@ func (s *ExtentStore) GetWatermark(extentID uint64, reload bool) (extentInfo *Ex
 	return
 }
 
-func (s *ExtentStore) TinyExtentWritePrepare(extentID uint64) (watermark int64, err error) {
-	einfo, err := s.GetWatermark(extentID, false)
+func (s *ExtentStore) GetTinyExtentoffset(extentID uint64) (watermark int64, err error) {
+	einfo, err := s.Watermark(extentID, false)
 	if err != nil {
 		return
 	}
 	watermark = int64(einfo.Size)
-	if watermark%PageSize != 0 {
-		watermark = watermark + (PageSize - watermark%PageSize)
+	if watermark % PageSize != 0 {
+		watermark = watermark + (PageSize - watermark % PageSize)
 	}
 
 	return
 }
 
-func (s *ExtentStore) GetAllExtentWatermark(filter ExtentFilter) (extents []*ExtentInfo, err error) {
+func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentInfo, err error) {
 	extents = make([]*ExtentInfo, 0)
 	extentInfoSlice := make([]*ExtentInfo, 0, len(s.extentInfoMap))
 	s.extentInfoMux.RLock()
@@ -670,14 +686,16 @@ func (s *ExtentStore) ParseExtentID(filename string) (extentID uint64, isExtent 
 */
 
 func (s *ExtentStore) initTinyExtent() (err error) {
-	s.avaliTinyExtentCh = make(chan uint64, TinyExtentCount)
-	s.unavaliTinyExtentCh = make(chan uint64, TinyExtentCount)
+	s.goodTinyExtentC = make(chan uint64, TinyExtentCount)
+	s.badTinyExtentC = make(chan uint64, TinyExtentCount)
 	var extentID uint64
-	for extentID = TinyExtentStartID; extentID < TinyExtentStartID+TinyExtentCount; extentID++ {
+
+	// TODO buffer the value of TinyExtentStartID + TinyExtentCount
+	for extentID = TinyExtentStartID; extentID < TinyExtentStartID + TinyExtentCount; extentID++ {
 		err = s.Create(extentID, 0)
 		if err == nil || err == ErrorExtentHasExsit {
 			err = nil
-			s.unavaliTinyExtentCh <- extentID
+			s.badTinyExtentC <- extentID
 			continue
 		}
 		return err
@@ -686,9 +704,9 @@ func (s *ExtentStore) initTinyExtent() (err error) {
 	return
 }
 
-func (s *ExtentStore) GetAvaliTinyExtent() (extentID uint64, err error) {
+func (s *ExtentStore) GetGoodTinyExtent() (extentID uint64, err error) {
 	select {
-	case extentID = <-s.avaliTinyExtentCh:
+	case extentID = <-s.goodTinyExtentC:
 		return
 	default:
 		return 0, ErrorNoAvaliExtent
@@ -696,41 +714,41 @@ func (s *ExtentStore) GetAvaliTinyExtent() (extentID uint64, err error) {
 	}
 }
 
-func (s *ExtentStore) PutTinyExtentToAvaliCh(extentID uint64) {
-	s.avaliTinyExtentCh <- extentID
+func (s *ExtentStore) SendToGoodTinyExtentC(extentID uint64) {
+	s.goodTinyExtentC <- extentID
 }
 
-func (s *ExtentStore) PutTinyExtentsToUnAvaliCh(extentIds []uint64) {
+func (s *ExtentStore) SendAllToBadTinyExtentC(extentIds []uint64) {
 	for _, extentID := range extentIds {
-		s.unavaliTinyExtentCh <- extentID
+		s.badTinyExtentC <- extentID
 	}
 }
 
-func (s *ExtentStore) GetAvaliExtentLen() int {
-	return len(s.avaliTinyExtentCh)
+func (s *ExtentStore) GoodTinyExtentCnt() int {
+	return len(s.goodTinyExtentC)
 }
 
-func (s *ExtentStore) GetUnAvaliExtentLen() int {
-	return len(s.unavaliTinyExtentCh)
+func (s *ExtentStore) BadTinyExtentCnt() int {
+	return len(s.badTinyExtentC)
 }
 
-func (s *ExtentStore) MoveAvaliExtentToUnavali(cnt int) {
+func (s *ExtentStore) MoveAllToBadTinyExtentC(cnt int) {
 	for i := 0; i < cnt; i++ {
-		extentID, err := s.GetAvaliTinyExtent()
+		extentID, err := s.GetGoodTinyExtent()
 		if err != nil {
 			return
 		}
-		s.PutTinyExtentToUnavaliCh(extentID)
+		s.SendToBadTinyExtentC(extentID)
 	}
 }
 
-func (s *ExtentStore) PutTinyExtentToUnavaliCh(extentID uint64) {
-	s.unavaliTinyExtentCh <- extentID
+func (s *ExtentStore) SendToBadTinyExtentC(extentID uint64) {
+	s.badTinyExtentC <- extentID
 }
 
-func (s *ExtentStore) GetUnavaliTinyExtent() (extentID uint64, err error) {
+func (s *ExtentStore) GetBadTinyExtent() (extentID uint64, err error) {
 	select {
-	case extentID = <-s.unavaliTinyExtentCh:
+	case extentID = <-s.badTinyExtentC:
 		return
 	default:
 		return 0, ErrorNoUnAvaliExtent
@@ -738,7 +756,8 @@ func (s *ExtentStore) GetUnavaliTinyExtent() (extentID uint64, err error) {
 	}
 }
 
-func (s *ExtentStore) GetStoreSize() (totalSize uint64) {
+// StoreSize returns the size of the extent store
+func (s *ExtentStore) StoreSize() (totalSize uint64) {
 	extentInfos := make([]*ExtentInfo, 0)
 	s.extentInfoMux.RLock()
 	for _, extentInfo := range s.extentInfoMap {

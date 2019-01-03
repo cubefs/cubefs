@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 )
 
-// FileMetaOnNode this struct define chunk file metadata on  dataNode
+// FileMetaOnNode defines the file metadata on a dataNode
 type FileMetaOnNode struct {
 	Crc      uint32
 	LocAddr  string
@@ -27,6 +27,7 @@ type FileMetaOnNode struct {
 	Size     uint32
 }
 
+// TODO what is FileInCore? file 的核心元数据
 // FileInCore 数据分片上的文件抽象定义
 type FileInCore struct {
 	Name       string
