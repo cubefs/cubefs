@@ -82,13 +82,18 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	inode := NewInode(info)
 	d.super.ic.Put(inode)
 	child := NewFile(d.super, inode)
-	err = d.super.ec.OpenStream(inode.ino)
-	if err != nil {
-		return nil, nil, fuse.EIO
+	authid := d.super.ec.OpenStream(inode.ino)
+	if authid == 0 && (req.Flags.IsWriteOnly() || req.Flags.IsReadWrite()) {
+		authid, err = d.super.mw.Open(inode.ino, proto.FlagWrite)
+		if err != nil || authid == 0 {
+			log.LogErrorf("Create: failed to get write authorization, ino(%v) req(%v) authid(%v) err(%v)", inode.ino, req, authid, err)
+			return nil, nil, fuse.EPERM
+		}
+		d.super.ec.SetAuthID(inode.ino, authid)
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Create: parent(%v) req(%v) resp(%v) ino(%v) (%v)ns", d.inode.ino, req, resp, inode.ino, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Create: parent(%v) req(%v) resp(%v) ino(%v) authid(%v) (%v)ns", d.inode.ino, req, resp, inode.ino, authid, elapsed.Nanoseconds())
 	return child, child, nil
 }
 

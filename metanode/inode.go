@@ -22,7 +22,6 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 	"io"
 	"sync"
-	"time"
 )
 
 const (
@@ -50,20 +49,22 @@ const (
 //  +-------+-----------+--------------+-----------+--------------+
 type Inode struct {
 	sync.RWMutex
-	Inode      uint64 // Inode ID
-	Type       uint32
-	Uid        uint32
-	Gid        uint32
-	Size       uint64
-	Generation uint64
-	CreateTime int64
-	AccessTime int64
-	ModifyTime int64
-	LinkTarget []byte // SymLink target name
-	NLink      uint32 // NodeLink counts
-	Flag       int32
-	Reserved   uint64
-	Extents    *ExtentsTree
+	Inode       uint64 // Inode ID
+	Type        uint32
+	Uid         uint32
+	Gid         uint32
+	Size        uint64
+	Generation  uint64
+	CreateTime  int64
+	AccessTime  int64
+	ModifyTime  int64
+	LinkTarget  []byte // SymLink target name
+	NLink       uint32 // NodeLink counts
+	Flag        int32
+	AuthID      uint64
+	AuthTimeout int64
+	Reserved    uint64
+	Extents     *ExtentsTree
 }
 
 func (i *Inode) String() string {
@@ -84,6 +85,8 @@ func (i *Inode) String() string {
 	buff.WriteString(fmt.Sprintf("LinkT[%s]", i.LinkTarget))
 	buff.WriteString(fmt.Sprintf("NLink[%d]", i.NLink))
 	buff.WriteString(fmt.Sprintf("Flag[%d]", i.Flag))
+	buff.WriteString(fmt.Sprintf("authId[%d]", i.AuthID))
+	buff.WriteString(fmt.Sprintf("authT[%d]", i.AuthTimeout))
 	buff.WriteString(fmt.Sprintf("Reserved[%d]", i.Reserved))
 	buff.WriteString(fmt.Sprintf("Extents[%s]", i.Extents))
 	buff.WriteString("}")
@@ -93,7 +96,7 @@ func (i *Inode) String() string {
 // NewInode returns a new Inode instance pointer with specified Inode ID, name and Inode type code.
 // The AccessTime and ModifyTime of new instance will be set to current time.
 func NewInode(ino uint64, t uint32) *Inode {
-	ts := time.Now().Unix()
+	ts := Now.GetCurrentTime().Unix()
 	i := &Inode{
 		Inode:      ino,
 		Type:       t,
@@ -117,7 +120,7 @@ func (i *Inode) Less(than BtreeItem) bool {
 	return ok && i.Inode < ino.Inode
 }
 
-func (i *Inode) MarshalJSON() ([]byte, error) {
+func (i *Inode) MarshalToJSON() ([]byte, error) {
 	i.RLock()
 	defer i.RUnlock()
 	return json.Marshal(i)
@@ -231,6 +234,12 @@ func (i *Inode) MarshalValue() (val []byte) {
 	if err = binary.Write(buff, binary.BigEndian, &i.Flag); err != nil {
 		panic(err)
 	}
+	if err = binary.Write(buff, binary.BigEndian, &i.AuthID); err != nil {
+		panic(err)
+	}
+	if err = binary.Write(buff, binary.BigEndian, &i.AuthTimeout); err != nil {
+		panic(err)
+	}
 	if err = binary.Write(buff, binary.BigEndian, &i.Reserved); err != nil {
 		panic(err)
 	}
@@ -293,6 +302,12 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &i.Flag); err != nil {
 		return
 	}
+	if err = binary.Read(buff, binary.BigEndian, &i.AuthID); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &i.AuthTimeout); err != nil {
+		return
+	}
 	if err = binary.Read(buff, binary.BigEndian, &i.Reserved); err != nil {
 		return
 	}
@@ -326,9 +341,6 @@ func (i *Inode) AppendExtents(exts []BtreeItem, ct int64) (items []BtreeItem) {
 }
 
 func (i *Inode) ExtentsTruncate(exts []BtreeItem, length uint64, ct int64) {
-	if len(exts) == 0 {
-		return
-	}
 	i.Lock()
 	for _, ext := range exts {
 		i.Extents.Delete(ext)
@@ -345,6 +357,30 @@ func (i *Inode) ExtentsTruncate(exts []BtreeItem, length uint64, ct int64) {
 	i.ModifyTime = ct
 	i.Generation++
 	i.Unlock()
+}
+
+func (i *Inode) Copy() *Inode {
+	newIno := NewInode(i.Inode, i.Type)
+	i.RLock()
+	newIno.Uid = i.Uid
+	newIno.Gid = i.Gid
+	newIno.Size = i.Size
+	newIno.Generation = i.Generation
+	newIno.CreateTime = i.CreateTime
+	newIno.ModifyTime = i.ModifyTime
+	newIno.AccessTime = i.AccessTime
+	if size := len(i.LinkTarget); size > 0 {
+		newIno.LinkTarget = make([]byte, size)
+		copy(newIno.LinkTarget, i.LinkTarget)
+	}
+	newIno.NLink = i.NLink
+	newIno.Flag = i.Flag
+	newIno.AuthID = i.AuthID
+	newIno.AuthTimeout = i.AuthTimeout
+	newIno.Reserved = i.Reserved
+	newIno.Extents = i.Extents.Clone()
+	i.RUnlock()
+	return newIno
 }
 
 func (i *Inode) IncrNLink() {
@@ -387,4 +423,41 @@ func (i *Inode) SetAttr(valid, mode, uid, gid uint32) {
 		i.Gid = gid
 	}
 	i.Unlock()
+}
+
+func (i *Inode) DoFunc(fn func()) {
+	i.RLock()
+	fn()
+	i.RUnlock()
+}
+
+func (i *Inode) CanOpen(mt int64) (authId uint64, ok bool) {
+	i.Lock()
+	defer i.Unlock()
+	if i.AuthID == 0 || i.AuthTimeout < mt {
+		ok = true
+		i.AuthID = uint64(mt) + i.Inode
+		i.AuthTimeout = mt + defaultAuthTimeout
+		i.AccessTime = mt
+		authId = i.AuthID
+		return
+	}
+	return
+}
+
+func (i *Inode) OpenRelease(authId uint64) {
+	i.Lock()
+	if i.AuthID == authId {
+		i.AuthID = 0
+	}
+	i.Unlock()
+}
+func (i *Inode) CanWrite(authId uint64, mt int64) bool {
+	i.Lock()
+	defer i.Unlock()
+	if i.AuthID != authId || i.AuthID == 0 {
+		return false
+	}
+	i.AuthTimeout = mt + defaultAuthTimeout
+	return true
 }

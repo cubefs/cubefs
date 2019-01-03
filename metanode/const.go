@@ -81,6 +81,7 @@ type (
 	EvictInodeReq = proto.EvictInodeRequest
 	// Client -> MetaNOde
 	SetattrRequest = proto.SetattrRequest
+	ReleaseReq     = proto.ReleaseRequest
 )
 
 // For use when raftStore store and application apply
@@ -106,6 +107,7 @@ const (
 	opFSMInternalDelExtentFile
 	opFSMInternalDelExtentCursor
 	opSnapExtentFile
+	opReleaseOpen
 )
 
 var (
@@ -121,6 +123,8 @@ var (
 const (
 	defaultMetaDir = "metaDir"
 	defaultRaftDir = "raftDir"
+	// units: second
+	defaultAuthTimeout = 5
 )
 
 const (

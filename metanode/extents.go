@@ -155,3 +155,9 @@ func (e *ExtentsTree) UnmarshalBinary(data []byte) (err error) {
 	}
 	return
 }
+
+func (e *ExtentsTree) Clone() *ExtentsTree {
+	return &ExtentsTree{
+		BTree: e.GetTree(),
+	}
+}

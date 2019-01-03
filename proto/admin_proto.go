@@ -199,3 +199,16 @@ type MetaPartitionOfflineResponse struct {
 	Status      uint8
 	Result      string
 }
+
+type MetaPartitionLoadRequest struct {
+	PartitionID uint64
+}
+
+type MetaPartitionLoadResponse struct {
+	PartitionID uint64
+	DoCompare   bool
+	ApplyID     uint64
+	InodeSign   uint32
+	DentrySign  uint32
+	Addr string
+}

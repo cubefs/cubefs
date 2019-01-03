@@ -68,6 +68,7 @@ type TruncRequest struct {
 type StreamWriter struct {
 	stream *Streamer
 	inode  uint64
+	authid uint64
 	status int32
 
 	handler   *ExtentHandler   // current open handler
@@ -78,10 +79,11 @@ type StreamWriter struct {
 	done    chan struct{}    // stream writer is being closed
 }
 
-func NewStreamWriter(stream *Streamer, inode uint64) *StreamWriter {
+func NewStreamWriter(stream *Streamer, inode, authid uint64) *StreamWriter {
 	sw := new(StreamWriter)
 	sw.stream = stream
 	sw.inode = inode
+	sw.authid = authid
 	sw.request = make(chan interface{}, 1000)
 	sw.done = make(chan struct{})
 	sw.dirtylist = NewExtentDirtyList()
@@ -90,6 +92,10 @@ func NewStreamWriter(stream *Streamer, inode uint64) *StreamWriter {
 }
 
 func (sw *StreamWriter) IssueWriteRequest(offset int, data []byte) (write int, err error) {
+	if sw.authid == 0 {
+		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: not authorized, ino(%v)", sw.inode))
+	}
+
 	if atomic.LoadInt32(&sw.status) >= StreamWriterError {
 		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", sw.inode))
 	}
@@ -129,6 +135,10 @@ func (sw *StreamWriter) IssueCloseRequest() error {
 }
 
 func (sw *StreamWriter) IssueTruncRequest(size int) error {
+	if sw.authid == 0 {
+		return errors.New(fmt.Sprintf("IssueTruncRequest: not authorized, ino(%v)", sw.inode))
+	}
+
 	request := truncRequestPool.Get().(*TruncRequest)
 	request.size = size
 	request.done = make(chan struct{}, 1)
@@ -422,7 +432,7 @@ func (sw *StreamWriter) truncate(size int) error {
 	if err := sw.flush(); err != nil {
 		return err
 	}
-	return sw.stream.client.truncate(sw.inode, uint64(size))
+	return sw.stream.client.truncate(sw.inode, sw.authid, uint64(size))
 }
 
 func (sw *StreamWriter) tinySizeLimit() int {

@@ -45,6 +45,7 @@ const (
 	statusAgain
 	statusError
 	statusInval
+	statusNotPerm
 )
 
 type MetaWrapper struct {
@@ -115,6 +116,8 @@ func parseStatus(result uint8) (status int) {
 		status = statusAgain
 	case proto.OpArgMismatchErr:
 		status = statusInval
+	case proto.OpNotPerm:
+		status = statusNotPerm
 	default:
 		status = statusError
 	}
@@ -136,6 +139,8 @@ func statusToErrno(status int) error {
 		return syscall.EAGAIN
 	case statusInval:
 		return syscall.EINVAL
+	case statusNotPerm:
+		return syscall.EPERM
 	case statusError:
 		return syscall.EPERM
 	default:

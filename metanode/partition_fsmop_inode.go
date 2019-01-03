@@ -24,12 +24,11 @@ import (
 type ResponseInode struct {
 	Status uint8
 	Msg    *Inode
+	AuthID uint64
 }
 
 func NewResponseInode() *ResponseInode {
-	return &ResponseInode{
-		Msg: NewInode(0, 0),
-	}
+	return &ResponseInode{}
 }
 
 // CreateInode create inode to inode tree.
@@ -57,6 +56,10 @@ func (mp *metaPartition) createLinkInode(ino *Inode) (resp *ResponseInode) {
 	if i.IsDelete() {
 		resp.Status = proto.OpNotExistErr
 		return
+	}
+	if mp.isDump.Bool() {
+		i = i.Copy()
+		mp.inodeTree.ReplaceOrInsert(i, true)
 	}
 	i.IncrNLink()
 	resp.Msg = i
@@ -171,6 +174,14 @@ func (mp *metaPartition) appendExtents(ino *Inode) (status uint8) {
 		status = proto.OpNotExistErr
 		return
 	}
+	if mp.isDump.Bool() {
+		ino2 = ino2.Copy()
+		mp.inodeTree.ReplaceOrInsert(ino2, true)
+	}
+	if !ino2.CanWrite(ino.AuthID, ino.AccessTime) {
+		status = proto.OpNotPerm
+		return
+	}
 	var items []BtreeItem
 	ino.Extents.Range(func(item BtreeItem) bool {
 		items = append(items, item)
@@ -197,6 +208,10 @@ func (mp *metaPartition) extentsTruncate(ino *Inode) (resp *ResponseInode) {
 		}
 		if i.IsDelete() {
 			resp.Status = proto.OpNotExistErr
+			return
+		}
+		if !i.CanWrite(ino.AuthID, ino.AccessTime) {
+			resp.Status = proto.OpNotPerm
 			return
 		}
 		i.Extents.AscendGreaterOrEqual(&proto.ExtentKey{FileOffset: ino.Size},
@@ -226,6 +241,10 @@ func (mp *metaPartition) evictInode(ino *Inode) (resp *ResponseInode) {
 	mp.inodeTree.Find(ino, func(item BtreeItem) {
 		isFind = true
 		i := item.(*Inode)
+		if mp.isDump.Bool() {
+			i = i.Copy()
+			mp.inodeTree.ReplaceOrInsert(i, true)
+		}
 		if proto.IsDir(i.Type) {
 			if i.GetNLink() < 2 {
 				isDelete = true
@@ -269,6 +288,10 @@ func (mp *metaPartition) setAttr(req *SetattrRequest) (err error) {
 		return
 	}
 	ino = item.(*Inode)
+	if mp.isDump.Bool() {
+		ino = ino.Copy()
+		mp.inodeTree.ReplaceOrInsert(ino, true)
+	}
 	ino.SetAttr(req.Valid, req.Mode, req.Uid, req.Gid)
 	return
 }

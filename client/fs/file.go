@@ -98,13 +98,19 @@ func (f *File) Forget() {
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
 	ino := f.inode.ino
 	start := time.Now()
-	err = f.super.ec.OpenStream(ino)
-	if err != nil {
-		return nil, fuse.EIO
+
+	authid := f.super.ec.OpenStream(ino)
+	if authid == 0 && (req.Flags.IsWriteOnly() || req.Flags.IsReadWrite()) {
+		authid, err = f.super.mw.Open(ino, proto.FlagWrite)
+		if err != nil || authid == 0 {
+			log.LogErrorf("Open: failed to get write authorization, ino(%v) req(%v) authid(%v) err(%v)", ino, req, authid, err)
+			return nil, fuse.EPERM
+		}
+		f.super.ec.SetAuthID(ino, authid)
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Open: ino(%v) req(%v) resp(%v) (%v)ns", ino, req, resp, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Open: ino(%v) req(%v) resp(%v) authid(%v) (%v)ns", ino, req, resp, authid, elapsed.Nanoseconds())
 	return f, nil
 }
 
@@ -115,7 +121,11 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 	start := time.Now()
 
 	log.LogDebugf("TRACE Release close stream: ino(%v) req(%v)", ino, req)
-	err = f.super.ec.CloseStream(ino)
+
+	authid, err := f.super.ec.CloseStream(ino)
+	if authid != 0 {
+		f.super.mw.Release(ino, authid)
+	}
 	if err != nil {
 		log.LogErrorf("Release: close writer failed, ino(%v) req(%v) err(%v)", ino, req, err)
 		return fuse.EIO

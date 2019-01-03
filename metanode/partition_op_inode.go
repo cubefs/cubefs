@@ -112,8 +112,8 @@ func (mp *metaPartition) DeleteInode(req *DeleteInoReq, p *Packet) (err error) {
 }
 
 func (mp *metaPartition) Open(req *OpenReq, p *Packet) (err error) {
-	ino := NewInode(req.Inode, 0)
-	val, err := ino.Marshal()
+	req.ATime = Now.GetCurrentTime().Unix()
+	val, err := json.Marshal(req)
 	if err != nil {
 		p.PackErrorWithBody(proto.OpErr, nil)
 		return
@@ -123,7 +123,32 @@ func (mp *metaPartition) Open(req *OpenReq, p *Packet) (err error) {
 		p.PackErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
-	p.PackErrorWithBody(resp.(uint8), nil)
+	var reply []byte
+	msg := resp.(*ResponseInode)
+	if reply, err = json.Marshal(&proto.OpenResponse{
+		AuthID: msg.AuthID,
+	}); err != nil {
+		p.PackErrorWithBody(proto.OpErr, nil)
+		return
+	}
+	p.PackErrorWithBody(msg.Status, reply)
+	return
+}
+
+func (mp *metaPartition) ReleaseOpen(req *ReleaseReq, p *Packet) (err error) {
+	ino := NewInode(req.Inode, 0)
+	ino.AuthID = req.AuthID
+	val, err := ino.Marshal()
+	if err != nil {
+		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	r, err := mp.Put(opReleaseOpen, val)
+	if err != nil {
+		p.PackErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	p.PackErrorWithBody(r.(uint8), nil)
 	return
 }
 

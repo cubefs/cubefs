@@ -77,6 +77,7 @@ func (c *Cluster) scheduleTask() {
 	c.startCheckCreateDataPartitions()
 	c.startCheckVolStatus()
 	c.startCheckBadDiskRecovery()
+	c.startCheckLoadMetaPartitions()
 }
 
 func (c *Cluster) getMasterAddr() (addr string) {
@@ -480,7 +481,7 @@ func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp
 	if err != nil {
 		return
 	}
-	if err = dataNode.Sender.syncCreatePartition(task, conn); err != nil {
+	if _, err = dataNode.Sender.syncSendAdminTask(task, conn); err != nil {
 		return
 	}
 	dataNode.Sender.connPool.PutConnect(conn, false)
@@ -499,7 +500,7 @@ func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartiti
 	if err != nil {
 		return
 	}
-	if err = metaNode.Sender.syncCreatePartition(tasks[0], conn); err != nil {
+	if _, err = metaNode.Sender.syncSendAdminTask(tasks[0], conn); err != nil {
 		return
 	}
 	metaNode.Sender.connPool.PutConnect(conn, false)

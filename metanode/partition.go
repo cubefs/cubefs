@@ -21,13 +21,16 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"fmt"
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
+	"io/ioutil"
 	"os"
+	"path"
 )
 
 var (
@@ -110,6 +113,7 @@ type OpInode interface {
 	InodeGet(req *InodeGetReq, p *Packet) (err error)
 	InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error)
 	Open(req *OpenReq, p *Packet) (err error)
+	ReleaseOpen(req *ReleaseReq, p *Packet) (err error)
 	CreateLinkInode(req *LinkInodeReq, p *Packet) (err error)
 	EvictInode(req *EvictInodeReq, p *Packet) (err error)
 	SetAttr(reqData []byte, p *Packet) (err error)
@@ -142,6 +146,7 @@ type OpPartition interface {
 	IsLeader() (leaderAddr string, isLeader bool)
 	GetCursor() uint64
 	GetBaseConfig() MetaPartitionConfig
+	LoadSnapshotSign(p *Packet) (err error)
 	StoreMeta() (err error)
 	ChangeMember(changeType raftproto.ConfChangeType, peer raftproto.Peer, context []byte) (resp interface{}, err error)
 	DeletePartition() (err error)
@@ -163,6 +168,7 @@ type MetaPartition interface {
 //  +-----+             +-------+
 type metaPartition struct {
 	config        *MetaPartitionConfig
+	isDump        *AtomicBool
 	size          uint64 // For partition all file size
 	applyID       uint64 // For store Inode/Dentry max applyID, this index will be update after restore from dump data.
 	dentryTree    *BTree
@@ -321,6 +327,7 @@ func (mp *metaPartition) getRaftPort() (heartbeat, replicate int, err error) {
 func NewMetaPartition(conf *MetaPartitionConfig) MetaPartition {
 	mp := &metaPartition{
 		config:     conf,
+		isDump:     NewAtomicBool(),
 		dentryTree: NewBtree(),
 		inodeTree:  NewBtree(),
 		stopC:      make(chan bool),
@@ -366,26 +373,73 @@ func (mp *metaPartition) load() (err error) {
 	if err = mp.loadMeta(); err != nil {
 		return
 	}
-	if err = mp.loadInode(); err != nil {
+	loadSnapshotDir := path.Join(mp.config.RootDir, snapShotDir)
+	if err = mp.loadInode(loadSnapshotDir); err != nil {
 		return
 	}
-	if err = mp.loadDentry(); err != nil {
+	if err = mp.loadDentry(loadSnapshotDir); err != nil {
 		return
 	}
-	err = mp.loadApplyID()
+	err = mp.loadApplyID(loadSnapshotDir)
 	return
 }
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
-	if err = mp.storeInode(sm); err != nil {
+	tmpDir := path.Join(mp.config.RootDir, snapShotDirTmp)
+	if _, err = os.Stat(tmpDir); err == nil {
+		os.RemoveAll(tmpDir)
+	}
+	err = nil
+	if err = os.MkdirAll(tmpDir, 0775); err != nil {
 		return
 	}
-	if err = mp.storeDentry(sm); err != nil {
+
+	defer func() {
+		if err != nil {
+			os.RemoveAll(tmpDir)
+		}
+	}()
+	var (
+		inoCRC, denCRC uint32
+	)
+	if inoCRC, err = mp.storeInode(tmpDir, sm); err != nil {
 		return
 	}
-	if err = mp.storeApplyID(sm); err != nil {
+	if denCRC, err = mp.storeDentry(tmpDir, sm); err != nil {
 		return
 	}
+	if err = mp.storeApplyID(tmpDir, sm); err != nil {
+		return
+	}
+	// Write crc to file
+	if err = ioutil.WriteFile(path.Join(tmpDir, SnapshotSign),
+		[]byte(fmt.Sprintf("%d %d", inoCRC, denCRC)), 0775); err != nil {
+		return
+	}
+	snapshotDir := path.Join(mp.config.RootDir, snapShotDir)
+	// check snapshotBack if or not exist
+	backupDir := path.Join(mp.config.RootDir, snapShotBackup)
+	if _, err = os.Stat(backupDir); err == nil {
+		if err = os.RemoveAll(backupDir); err != nil {
+			return
+		}
+	}
+	err = nil
+
+	// rename snapshot to backup
+	if _, err = os.Stat(snapshotDir); err == nil {
+		if err = os.Rename(snapshotDir, backupDir); err != nil {
+			return
+		}
+	}
+	err = nil
+
+	// rename snapshotTmp to snapshot
+	if err = os.Rename(tmpDir, snapshotDir); err != nil {
+		os.Rename(backupDir, snapshotDir)
+		return
+	}
+	err = os.RemoveAll(backupDir)
 	return
 }
 
@@ -456,6 +510,66 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 
 func (mp *metaPartition) OfflinePartition(req []byte) (err error) {
 	_, err = mp.Put(opOfflinePartition, req)
+	return
+}
+
+func (mp *metaPartition) LoadSnapshotSign(p *Packet) (err error) {
+	resp := &proto.MetaPartitionLoadResponse{
+		PartitionID: mp.config.PartitionId,
+		DoCompare:   true,
+	}
+	resp.ApplyID, resp.InodeSign, resp.DentrySign, err = mp.loadSnapshotSign(
+		snapShotDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			err = errors.Annotate(err, "[LoadSnapshotSign] 1st check snapshot")
+			p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return err
+		}
+		resp.ApplyID, resp.InodeSign, resp.DentrySign, err = mp.loadSnapshotSign(
+			snapShotBackup)
+	}
+	if err != nil {
+		if !os.IsNotExist(err) {
+			err = errors.Annotate(err,
+				"[LoadSnapshotSign] 2st check snapshot")
+			p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return
+		}
+		resp.DoCompare = false
+		log.LogWarnf("[LoadSnapshotSign] check snapshot not exist")
+	}
+	data, err := json.Marshal(resp)
+	if err != nil {
+		err = errors.Annotate(err, "[LoadSnapshotSign] marshal")
+		return
+	}
+	p.PackOkWithBody(data)
+	return
+}
+
+func (mp *metaPartition) loadSnapshotSign(baseDir string) (applyID uint64,
+	inoCRC, dentryCRC uint32, err error) {
+	snapDir := path.Join(mp.config.RootDir, baseDir)
+	// check snapshot
+	if _, err = os.Stat(snapDir); err != nil {
+		return
+	}
+	// load sign
+	data, err := ioutil.ReadFile(path.Join(snapDir, SnapshotSign))
+	if err != nil {
+		return
+	}
+	if _, err = fmt.Sscanf(string(data), "%d %d", &inoCRC, &dentryCRC); err != nil {
+		return
+	}
+	// load apply
+	if data, err = ioutil.ReadFile(path.Join(snapDir, applyIDFile)); err != nil {
+		return
+	}
+	if _, err = fmt.Sscanf(string(data), "%d", &applyID); err != nil {
+		return
+	}
 	return
 }
 

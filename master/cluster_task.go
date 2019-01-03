@@ -15,6 +15,7 @@
 package master
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
@@ -161,7 +162,55 @@ func (c *Cluster) loadMetaPartitionAndCheckResponse(mp *MetaPartition) {
 }
 
 func (c *Cluster) processLoadMetaPartition(mp *MetaPartition) {
-
+	var wg sync.WaitGroup
+	log.LogInfof("action[processLoadMetaPartition],vol[%v],mpID[%v] begin",mp.volName,mp.PartitionID)
+	mp.RLock()
+	hosts := make([]string, len(mp.PersistenceHosts))
+	copy(hosts, mp.PersistenceHosts)
+	mp.RUnlock()
+	errChannel := make(chan error, len(hosts))
+	for _, host := range hosts {
+		wg.Add(1)
+		go func(host string) {
+			defer func() {
+				wg.Done()
+			}()
+			mr, err := mp.getMetaReplica(host)
+			if err != nil {
+				errChannel <- err
+				return
+			}
+			task := mr.generateLoadTask(mp.PartitionID)
+			conn, err := mr.metaNode.Sender.connPool.GetConnect(mr.Addr)
+			if err != nil {
+				errChannel <- err
+				return
+			}
+			response, err := mr.metaNode.Sender.syncSendAdminTask(task, conn)
+			if err != nil {
+				errChannel <- err
+				return
+			}
+			loadResponse := &proto.MetaPartitionLoadResponse{}
+			if err = json.Unmarshal(response, loadResponse); err != nil {
+				errChannel <- err
+				return
+			}
+			loadResponse.Addr = host
+			mp.addOrReplaceLoadResponse(loadResponse)
+			mr.metaNode.Sender.connPool.PutConnect(conn, false)
+		}(host)
+	}
+	wg.Wait()
+	select {
+	case err := <-errChannel:
+		msg := fmt.Sprintf("action[processLoadMetaPartition] vol[%v],mpID[%v],err[%v]", mp.volName, mp.PartitionID, err.Error())
+		Warn(c.Name, msg)
+		return
+	default:
+	}
+	mp.checkSnapshot(c.Name)
+	log.LogInfof("action[processLoadMetaPartition],vol[%v],mpID[%v] success",mp.volName,mp.PartitionID)
 }
 
 func (c *Cluster) processLoadDataPartition(dp *DataPartition) {

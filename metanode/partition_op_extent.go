@@ -23,6 +23,7 @@ import (
 
 func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
+	ino.AuthID = req.AuthID
 	ext := req.Extent
 	ino.Extents.Append(&ext)
 	val, err := ino.Marshal()
@@ -50,12 +51,14 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest,
 	)
 	if status == proto.OpOk {
 		resp := &proto.GetExtentsResponse{}
-		resp.Generation = ino.Generation
-		resp.Size = ino.Size
-		ino.Extents.Range(func(item BtreeItem) bool {
-			ext := item.(*proto.ExtentKey)
-			resp.Extents = append(resp.Extents, *ext)
-			return true
+		ino.DoFunc(func() {
+			resp.Generation = ino.Generation
+			resp.Size = ino.Size
+			ino.Extents.Range(func(item BtreeItem) bool {
+				ext := item.(*proto.ExtentKey)
+				resp.Extents = append(resp.Extents, *ext)
+				return true
+			})
 		})
 		reply, err = json.Marshal(resp)
 		if err != nil {
@@ -70,6 +73,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq,
 	p *Packet) (err error) {
 	ino := NewInode(req.Inode, proto.Mode(os.ModePerm))
 	ino.Size = req.Size
+	ino.AuthID = req.AuthID
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PackErrorWithBody(proto.OpErr, nil)

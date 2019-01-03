@@ -150,3 +150,8 @@ func (d *Dentry) UnmarshalValue(val []byte) (err error) {
 	err = binary.Read(buff, binary.BigEndian, &d.Type)
 	return
 }
+
+func (d *Dentry) Copy() *Dentry {
+	newDentry := *d
+	return &newDentry
+}

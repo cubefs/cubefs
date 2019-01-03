@@ -27,6 +27,7 @@ type Streamer struct {
 	extents *ExtentCache
 	inode   uint64
 	refcnt  uint64
+	authid  uint64
 	writer  *StreamWriter
 	done    chan struct{}
 	once    sync.Once

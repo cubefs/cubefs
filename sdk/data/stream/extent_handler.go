@@ -380,7 +380,7 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 	if eh.key != nil {
 		if eh.dirty {
 			eh.sw.stream.extents.Append(eh.key, true)
-			err = eh.sw.stream.client.appendExtentKey(eh.inode, *eh.key)
+			err = eh.sw.stream.client.appendExtentKey(eh.inode, eh.sw.authid, *eh.key)
 		} else {
 			eh.sw.stream.extents.Append(eh.key, false)
 		}

@@ -90,6 +90,8 @@ func (m *metaManager) HandleMetaOperation(conn net.Conn, p *Packet) (err error) 
 		err = m.opReadDir(conn, p)
 	case proto.OpMetaOpen:
 		err = m.opOpen(conn, p)
+	case proto.OpMetaReleaseOpen:
+		err = m.opReleaseOpen(conn, p)
 	case proto.OpCreateMetaPartition:
 		err = m.opCreateMetaPartition(conn, p)
 	case proto.OpMetaNodeHeartbeat:
@@ -234,6 +236,20 @@ func (m *metaManager) loadPartitions() (err error) {
 				}
 				partitionConfig.AfterStop = func() {
 					m.detachPartition(id)
+				}
+				// check snapshot dir or backup
+				snapshotDir := path.Join(partitionConfig.RootDir, snapShotDir)
+				if _, err = os.Stat(snapshotDir); err != nil {
+					backupDir := path.Join(partitionConfig.RootDir, snapShotBackup)
+					if _, err = os.Stat(backupDir); err == nil {
+						if err = os.Rename(backupDir, snapshotDir); err != nil {
+							err = errors.Annotate(err,
+								fmt.Sprintf(": fail recover backup snapshot %s",
+									snapshotDir))
+							return
+						}
+					}
+					err = nil
 				}
 				partition := NewMetaPartition(partitionConfig)
 				err = m.attachPartition(id, partition)

@@ -25,17 +25,19 @@ import (
 
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
+	"hash/crc32"
 )
 
 const (
+	snapShotDir    = "snapshot"
+	snapShotDirTmp = ".snapshot"
+	snapShotBackup = ".snapshot_backup"
 	inodeFile      = "inode"
-	inodeFileTmp   = ".inode"
 	dentryFile     = "dentry"
-	dentryFileTmp  = ".dentry"
+	applyIDFile    = "apply"
+	SnapshotSign   = ".sign"
 	metaFile       = "meta"
 	metaFileTmp    = ".meta"
-	applyIDFile    = "apply"
-	applyIDFileTmp = ".apply"
 )
 
 // Load struct from meta
@@ -68,12 +70,13 @@ func (mp *metaPartition) loadMeta() (err error) {
 	mp.config.Start = mConf.Start
 	mp.config.End = mConf.End
 	mp.config.Peers = mConf.Peers
+	mp.config.Cursor = mp.config.Start
 	return
 }
 
 // Load inode info from inode snapshot file
-func (mp *metaPartition) loadInode() (err error) {
-	filename := path.Join(mp.config.RootDir, inodeFile)
+func (mp *metaPartition) loadInode(rootDir string) (err error) {
+	filename := path.Join(rootDir, inodeFile)
 	if _, err = os.Stat(filename); err != nil {
 		err = nil
 		return
@@ -118,8 +121,8 @@ func (mp *metaPartition) loadInode() (err error) {
 }
 
 // Load dentry from dentry snapshot file
-func (mp *metaPartition) loadDentry() (err error) {
-	filename := path.Join(mp.config.RootDir, dentryFile)
+func (mp *metaPartition) loadDentry(rootDir string) (err error) {
+	filename := path.Join(rootDir, dentryFile)
 	if _, err = os.Stat(filename); err != nil {
 		err = nil
 		return
@@ -167,8 +170,8 @@ func (mp *metaPartition) loadDentry() (err error) {
 	}
 }
 
-func (mp *metaPartition) loadApplyID() (err error) {
-	filename := path.Join(mp.config.RootDir, applyIDFile)
+func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
+	filename := path.Join(rootDir, applyIDFile)
 	if _, err = os.Stat(filename); err != nil {
 		err = nil
 		return
@@ -221,42 +224,39 @@ func (mp *metaPartition) storeMeta() (err error) {
 	return
 }
 
-func (mp *metaPartition) storeApplyID(sm *storeMsg) (err error) {
-	filename := path.Join(mp.config.RootDir, applyIDFileTmp)
+func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) {
+	filename := path.Join(rootDir, applyIDFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.
 		O_CREATE, 0755)
 	if err != nil {
 		return
 	}
 	defer func() {
-		fp.Sync()
+		err = fp.Sync()
 		fp.Close()
-		os.Remove(filename)
 	}()
 	if _, err = fp.WriteString(fmt.Sprintf("%d", sm.applyIndex)); err != nil {
 		return
 	}
-	err = os.Rename(filename, path.Join(mp.config.RootDir, applyIDFile))
 	return
 }
 
-func (mp *metaPartition) storeInode(sm *storeMsg) (err error) {
-	filename := path.Join(mp.config.RootDir, inodeFileTmp)
+func (mp *metaPartition) storeInode(rootDir string,
+	sm *storeMsg) (crc uint32, err error) {
+	filename := path.Join(rootDir, inodeFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
 		O_CREATE, 0755)
 	if err != nil {
 		return
 	}
 	defer func() {
-		fp.Sync()
+		err = fp.Sync()
 		fp.Close()
-		if err != nil {
-			os.RemoveAll(filename)
-		}
 	}()
+	var data []byte
+	lenBuf := make([]byte, 4)
+	sign := crc32.NewIEEE()
 	sm.inodeTree.Ascend(func(i BtreeItem) bool {
-		var data []byte
-		lenBuf := make([]byte, 4)
 		ino := i.(*Inode)
 		if data, err = ino.Marshal(); err != nil {
 			return false
@@ -266,34 +266,38 @@ func (mp *metaPartition) storeInode(sm *storeMsg) (err error) {
 		if _, err = fp.Write(lenBuf); err != nil {
 			return false
 		}
+		if _, err = sign.Write(lenBuf); err != nil {
+			return false
+		}
 		// Set Body Data
 		if _, err = fp.Write(data); err != nil {
 			return false
 		}
+		if _, err = sign.Write(data); err != nil {
+			return false
+		}
 		return true
 	})
-	if err != nil {
-		return
-	}
-	err = os.Rename(filename, path.Join(mp.config.RootDir, inodeFile))
+	crc = sign.Sum32()
 	return
 }
 
-func (mp *metaPartition) storeDentry(sm *storeMsg) (err error) {
-	filename := path.Join(mp.config.RootDir, dentryFileTmp)
+func (mp *metaPartition) storeDentry(rootDir string,
+	sm *storeMsg) (crc uint32, err error) {
+	filename := path.Join(rootDir, dentryFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
 		O_CREATE, 0755)
 	if err != nil {
 		return
 	}
 	defer func() {
-		fp.Sync()
+		err = fp.Sync()
 		fp.Close()
-		os.Remove(filename)
 	}()
+	var data []byte
+	lenBuf := make([]byte, 4)
+	sign := crc32.NewIEEE()
 	sm.dentryTree.Ascend(func(i BtreeItem) bool {
-		var data []byte
-		lenBuf := make([]byte, 4)
 		dentry := i.(*Dentry)
 		data, err = dentry.Marshal()
 		if err != nil {
@@ -304,15 +308,18 @@ func (mp *metaPartition) storeDentry(sm *storeMsg) (err error) {
 		if _, err = fp.Write(lenBuf); err != nil {
 			return false
 		}
+		if _, err = sign.Write(lenBuf); err != nil {
+			return false
+		}
 		if _, err = fp.Write(data); err != nil {
+			return false
+		}
+		if _, err = sign.Write(data); err != nil {
 			return false
 		}
 		return true
 	})
-	if err != nil {
-		return
-	}
-	err = os.Rename(filename, path.Join(mp.config.RootDir, dentryFile))
+	crc = sign.Sum32()
 	return
 }
 
