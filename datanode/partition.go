@@ -309,11 +309,6 @@ func (dp *DataPartition) ChangeStatus(status int) {
 	}
 }
 
-func (dp *DataPartition) ForceLoadHeader() {
-	dp.extentStore.BackEndLoadExtent()
-	dp.loadExtentHeaderStatus = FinishLoadDataPartitionExtentHeader
-}
-
 func (dp *DataPartition) StoreMeta() (err error) {
 	// Store meta information into meta file.
 	var (

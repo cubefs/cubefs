@@ -193,14 +193,6 @@ func (d *Disk) GetDataPartition(partitionID uint64) (partition *DataPartition) {
 	return d.partitionMap[partitionID]
 }
 
-func (d *Disk) ForceLoadPartitionHeader() {
-	partitionList := d.DataPartitionList()
-	for _, partitionID := range partitionList {
-		partition := d.GetDataPartition(partitionID)
-		partition.ForceLoadHeader()
-	}
-}
-
 func (d *Disk) DataPartitionList() (partitionIDs []uint64) {
 	d.Lock()
 	defer d.Unlock()
@@ -280,5 +272,4 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 		}(partitionID, filename)
 	}
 	wg.Wait()
-	go d.ForceLoadPartitionHeader()
 }

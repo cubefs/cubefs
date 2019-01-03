@@ -32,10 +32,12 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
+	"syscall"
 )
 
 const (
 	ExtMetaFileName        = "EXTENT_META"
+	ExtCrcHeaderFileName   = "EXTENT_CRC"
 	ExtMetaFileOpt         = os.O_CREATE | os.O_RDWR
 	ExtDeleteFileName      = "EXTENT_DELETE"
 	ExtDeleteFileOpt       = os.O_CREATE | os.O_RDWR | os.O_APPEND
@@ -44,6 +46,8 @@ const (
 	ExtMetaDeleteIdxOffset = 8
 	ExtMetaDeleteIdxSize   = 8
 	ExtMetaFileSize        = ExtMetaBaseIDSize + ExtMetaDeleteIdxSize
+	MaxExtentId            = 40000
+	ExtCrcHeaderSize       = MaxExtentId * util.BlockHeaderSize
 	TinyExtentCount        = 64
 	TinyExtentStartID      = 50000000
 	MinExtentID            = 2
@@ -103,6 +107,7 @@ type ExtentStore struct {
 	storeSize           int      //dataPartion store size
 	metaFp              *os.File //store dataPartion meta
 	deleteFp            *os.File //store delete extent history
+	verifyCrcFp         *os.File
 	closeC              chan bool
 	closed              bool
 	avaliTinyExtentCh   chan uint64 //avali tinyExtent chan
@@ -132,12 +137,17 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 		return
 	}
 
+	if s.verifyCrcFp, err = os.OpenFile(path.Join(s.dataDir, ExtCrcHeaderFileName), ExtMetaFileOpt, 0666); err != nil {
+		return
+	}
+	syscall.Fallocate(int(s.verifyCrcFp.Fd()), 1, 0, ExtCrcHeaderSize)
+
 	// Load EXTENT_DELETE
 	deleteIdxFilePath := path.Join(s.dataDir, ExtDeleteFileName)
 	if s.deleteFp, err = os.OpenFile(deleteIdxFilePath, ExtDeleteFileOpt, 0666); err != nil {
 		return
 	}
-	s.extentInfoMap = make(map[uint64]*ExtentInfo, 40)
+	s.extentInfoMap = make(map[uint64]*ExtentInfo, 200)
 	s.cache = NewExtentCache(40)
 	if err = s.initBaseFileID(); err != nil {
 		err = fmt.Errorf("init base field ID: %v", err)
@@ -196,7 +206,9 @@ func (s *ExtentStore) Create(extentID uint64, inode uint64) (err error) {
 		err = ErrorExtentHasExsit
 		return err
 	}
-
+	if extentID >= MaxExtentId {
+		return ErrorUnavaliExtent
+	}
 	extent = NewExtentInCore(name, extentID)
 	err = extent.InitToFS(inode, false)
 	if err != nil {
@@ -225,7 +237,6 @@ func (s *ExtentStore) UpdateBaseExtentID(id uint64) (err error) {
 		if _, err = s.metaFp.WriteAt(baseExtentIDBytes, ExtMetaBaseIDOffset); err != nil {
 			return
 		}
-		err = s.metaFp.Sync()
 	}
 	return
 }
@@ -246,6 +257,16 @@ func (s *ExtentStore) getExtentWithHeader(extentID uint64) (e *Extent, err error
 			return nil, err
 		}
 	}
+	return
+}
+
+func (s *ExtentStore) loadExtentHeader(extentId uint64, e *Extent) (err error) {
+	if extentId >= MaxExtentId {
+		return ErrorUnavaliExtent
+	}
+	e.header = make([]byte, util.BlockHeaderSize)
+	offset := extentId * util.BlockHeaderSize
+	_, err = s.verifyCrcFp.ReadAt(e.header, int64(offset))
 	return
 }
 
@@ -270,11 +291,13 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, loadHeader bool) (e *E
 		return
 	}
 	if loadHeader {
+		s.loadExtentHeader(extentID, e)
 		s.cache.Put(e)
 	}
 
 	return
 }
+
 func (s *ExtentStore) initBaseFileID() (err error) {
 	var (
 		baseFileID uint64
@@ -287,6 +310,12 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 	if err != nil {
 		return err
 	}
+
+	data := make([]byte, ExtCrcHeaderSize)
+	if _, err = s.verifyCrcFp.ReadAt(data, 0); err != nil {
+		return
+	}
+
 	var (
 		extentID   uint64
 		isExtent   bool
@@ -304,9 +333,12 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		if extent, loadErr = s.getExtent(extentID); loadErr != nil {
 			continue
 		}
+		if !IsTinyExtent(extentID) {
+			extent.header = make([]byte, util.BlockHeaderSize)
+			copy(extent.header, data[extentID*util.BlockHeaderSize:(extentID+1)*util.BlockHeaderSize])
+		}
 		extentInfo = &ExtentInfo{}
 		extentInfo.FromExtent(extent)
-		extentInfo.Crc = 0
 		s.extentInfoMux.Lock()
 		s.extentInfoMap[extentID] = extentInfo
 		s.extentInfoMux.Unlock()
@@ -323,13 +355,29 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 	return nil
 }
 
+func (s *ExtentStore) updateBlockCrc(extentID uint64, blockNo int, crc uint32, e *Extent) (err error) {
+	startIdx := util.BlockHeaderCrcIndex + blockNo*util.PerBlockCrcSize
+	endIdx := startIdx + util.PerBlockCrcSize
+	binary.BigEndian.PutUint32(e.header[startIdx:endIdx], crc)
+	verifyStart := startIdx + int(util.BlockHeaderSize*extentID)
+	if _, err = s.verifyCrcFp.WriteAt(e.header[startIdx:endIdx], int64(verifyStart)); err != nil {
+		return
+	}
+	e.modifyTime = time.Now()
+
+	return
+}
+
 func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32) (err error) {
 	var (
-		has    bool
-		extent *Extent
+		has      bool
+		extent   *Extent
+		blocks   []int
+		blockCrc []uint32
+		einfo    *ExtentInfo
 	)
 	s.extentInfoMux.RLock()
-	_, has = s.extentInfoMap[extentID]
+	einfo, has = s.extentInfoMap[extentID]
 	s.extentInfoMux.RUnlock()
 	if !has {
 		err = fmt.Errorf("extent %v not exist", extentID)
@@ -345,12 +393,14 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	if extent.IsMarkDelete() {
 		return ErrorExtentHasDelete
 	}
-	if err = extent.Write(data, offset, size, crc); err != nil {
+	blocks, blockCrc, err = extent.Write(data, offset, size, crc)
+	for index := 0; index < len(blocks); index++ {
+		s.updateBlockCrc(extentID, blocks[index], blockCrc[index], extent)
+	}
+	if err != nil {
 		return err
 	}
-	s.extentInfoMux.RLock()
-	s.extentInfoMap[extentID].FromExtent(extent)
-	s.extentInfoMux.RUnlock()
+	einfo.FromExtent(extent)
 	return nil
 }
 
@@ -524,14 +574,6 @@ func (s *ExtentStore) FlushDelete() (err error) {
 	return
 }
 
-func (s *ExtentStore) Sync(extentID uint64) (err error) {
-	var extent *Extent
-	if extent, err = s.getExtentWithHeader(extentID); err != nil {
-		return
-	}
-	return extent.Flush()
-}
-
 func (s *ExtentStore) Close() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -546,6 +588,9 @@ func (s *ExtentStore) Close() {
 	// Release meta file
 	s.metaFp.Sync()
 	s.metaFp.Close()
+
+	s.verifyCrcFp.Sync()
+	s.verifyCrcFp.Close()
 
 	// Release delete index file
 	s.deleteFp.Sync()
@@ -602,34 +647,6 @@ func (s *ExtentStore) GetAllExtentWatermark(filter ExtentFilter) (extents []*Ext
 		}
 		extents = append(extents, extentInfo)
 	}
-	return
-}
-
-func (s *ExtentStore) BackEndLoadExtent() {
-	extentInfoSlice := make([]*ExtentInfo, 0, len(s.extentInfoMap))
-	s.extentInfoMux.RLock()
-	for _, extentID := range s.extentInfoMap {
-		extentInfoSlice = append(extentInfoSlice, extentID)
-	}
-	s.extentInfoMux.RUnlock()
-	for _, extentInfo := range extentInfoSlice {
-		if extentInfo.Size == 0 {
-			continue
-		}
-		if IsTinyExtent(extentInfo.FileID) {
-			continue
-		}
-		e, err := s.getExtentWithHeader(extentInfo.FileID)
-		if err != nil {
-			continue
-		}
-		extentInfo.FromExtent(e)
-		s.extentInfoMux.Lock()
-		s.extentInfoMap[extentInfo.FileID] = extentInfo
-		s.extentInfoMux.Unlock()
-		time.Sleep(time.Millisecond * 5)
-	}
-	log.LogInfof("BackEnd Load datapartition (%v) success", s.dataDir)
 	return
 }
 
