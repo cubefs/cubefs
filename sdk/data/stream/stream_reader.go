@@ -64,12 +64,28 @@ func (stream *Streamer) read(data []byte, offset int, size int) (total int, err 
 	var (
 		readBytes int
 		reader    *ExtentReader
+		requests  []*ExtentRequest
+		flushed   bool
 	)
-	//	err = stream.GetExtents()
-	//	if err != nil {
-	//		return
-	//	}
-	requests := stream.extents.PrepareReadRequest(offset, size, data)
+
+	requests = stream.extents.PrepareReadRequest(offset, size, data)
+	for _, req := range requests {
+		if req.ExtentKey == nil {
+			continue
+		}
+		if req.ExtentKey == nil || (req.ExtentKey.PartitionId == 0 && req.ExtentKey.ExtentId == 0) {
+			if err = stream.client.Flush(stream.inode); err != nil {
+				return 0, err
+			}
+			flushed = true
+			break
+		}
+	}
+
+	if flushed {
+		requests = stream.extents.PrepareReadRequest(offset, size, data)
+	}
+
 	filesize, _ := stream.extents.Size()
 	log.LogDebugf("stream read: ino(%v) requests(%v) filesize(%v)", stream.inode, requests, filesize)
 	for _, req := range requests {
