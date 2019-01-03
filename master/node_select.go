@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-// node_selector.go -> 选择node 列表
+/* TODO change the file name to node_selector.go */
 
 package master
 
@@ -25,47 +25,41 @@ import (
 	"time"
 )
 
-// TODO why it is called NodeTab?
-// NodeTab 定义带权重的node -> weightedNode
-type NodeTab struct {
+type WeightedNode struct {
 	Carry  float64
 	Weight float64
 	Ptr    Node
 	ID     uint64
 }
 
-// TODO why define such interface?
-// Node defines an interface that needs to be implemented by NodeTab
+// Node defines an interface that needs to be implemented by WeightedNode
 type Node interface {
 	SetCarry(carry float64)
 	SelectNodeForWrite()
 }
 
-// TODO find a better name for Nodetab
-// NodeTabArrSorterByCarry defines an array sorted by carry
-type NodeTabArrSorterByCarry []*NodeTab
+// SortedWeightedNodes defines an array sorted by carry
+type SortedWeightedNodes []*WeightedNode
 
-func (nodeTabs NodeTabArrSorterByCarry) Len() int {
-	return len(nodeTabs)
+func (nodes SortedWeightedNodes) Len() int {
+	return len(nodes)
 }
 
-// TODO remove unused functions
-func (nodeTabs NodeTabArrSorterByCarry) Less(i, j int) bool {
-	return nodeTabs[i].Carry > nodeTabs[j].Carry
+func (nodes SortedWeightedNodes) Less(i, j int) bool {
+	return nodes[i].Carry > nodes[j].Carry
 }
 
-// TODO remove unused functions
-func (nodeTabs NodeTabArrSorterByCarry) Swap(i, j int) {
-	nodeTabs[i], nodeTabs[j] = nodeTabs[j], nodeTabs[i]
+func (nodes SortedWeightedNodes) Swap(i, j int) {
+	nodes[i], nodes[j] = nodes[j], nodes[i]
 }
 
-func (nodeTabs NodeTabArrSorterByCarry) setNodeTabCarry(availCarryCount, replicaNum int) {
+func (nodes SortedWeightedNodes) setNodeTabCarry(availCarryCount, replicaNum int) {
 	if availCarryCount >= replicaNum {
 		return
 	}
 	for availCarryCount < replicaNum {
 		availCarryCount = 0
-		for _, nt := range nodeTabs {
+		for _, nt := range nodes {
 			carry := nt.Carry + nt.Weight
 			if carry > 10.0 {
 				carry = 10.0
@@ -102,7 +96,7 @@ func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) 
 	nodeTabs, availCarryCount := ns.getAvailCarryMetaNodeTab(maxTotal, excludeHosts)
 	if len(nodeTabs) < replicaNum {
 		err = fmt.Errorf(getAvailMetaNodeHostsErr+" err:%v ,ActiveNodeCount:%v  MatchNodeCount:%v  ",
-			errNoHaveAnyMetaNodeToWrite, ns.metaNodeLen, len(nodeTabs))
+			noMetaNodeToWriteErr, ns.metaNodeLen, len(nodeTabs))
 		return
 	}
 
@@ -117,7 +111,7 @@ func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) 
 		peers = append(peers, peer)
 	}
 
-	if newHosts, err = ns.disOrderArray(orderHosts); err != nil {
+	if newHosts, err = ns.reshuffleHosts(orderHosts); err != nil {
 		err = fmt.Errorf(getAvailMetaNodeHostsErr+"err:%v  orderHosts is nil", err.Error())
 		return
 	}
@@ -126,8 +120,8 @@ func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) 
 
 // TODO find a better name for getAvailCarryMetaNodeTab
 // carry meta node -> getAvailCarryMetaNode
-func (ns *nodeSet) getAvailCarryMetaNodeTab(maxTotal uint64, excludeHosts []string) (nodeTabs NodeTabArrSorterByCarry, availCount int) {
-	nodeTabs = make(NodeTabArrSorterByCarry, 0)
+func (ns *nodeSet) getAvailCarryMetaNodeTab(maxTotal uint64, excludeHosts []string) (nodes SortedWeightedNodes, availCount int) {
+	nodes = make(SortedWeightedNodes, 0)
 	ns.metaNodes.Range(func(key, value interface{}) bool {
 		metaNode := value.(*MetaNode)
 		if contains(excludeHosts, metaNode.Addr) == true {
@@ -139,15 +133,15 @@ func (ns *nodeSet) getAvailCarryMetaNodeTab(maxTotal uint64, excludeHosts []stri
 		if metaNode.isAvailCarryNode() == true {
 			availCount++
 		}
-		nt := new(NodeTab)
+		nt := new(WeightedNode)
 		nt.Carry = metaNode.Carry
 		if metaNode.Used < 0 {
 			nt.Weight = 1.0
 		} else {
-			nt.Weight = (float64)(maxTotal-metaNode.Used) / (float64)(maxTotal)
+			nt.Weight = (float64)(maxTotal - metaNode.Used) / (float64)(maxTotal)
 		}
 		nt.Ptr = metaNode
-		nodeTabs = append(nodeTabs, nt)
+		nodes = append(nodes, nt)
 
 		return true
 	})
@@ -155,16 +149,14 @@ func (ns *nodeSet) getAvailCarryMetaNodeTab(maxTotal uint64, excludeHosts []stri
 	return
 }
 
-// TODO what is disOrderArray? disorder array?
-// 把数组乱序   shuffleArray
-func (ns *nodeSet) disOrderArray(oldHosts []string) (newHosts []string, err error) {
+func (ns *nodeSet) reshuffleHosts(oldHosts []string) (newHosts []string, err error) {
 	var (
 		newCurrPos int
 	)
 
 	if oldHosts == nil || len(oldHosts) == 0 {
-		log.LogError(fmt.Sprintf("action[disOrderArray],err:%v", errDisOrderArray))
-		err = errDisOrderArray
+		log.LogError(fmt.Sprintf("action[reshuffleHosts],err:%v", reshuffleArrayErr))
+		err = reshuffleArrayErr
 		return
 	}
 

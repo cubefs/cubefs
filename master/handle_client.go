@@ -100,7 +100,7 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		ok   bool
 		err  error
 	)
-	if name, err = parseGetVolPara(r); err != nil {
+	if name, err = parseAndExtractName(r); err != nil {
 		goto errDeal
 	}
 	if vol, ok = m.cluster.vols[name]; !ok {
@@ -109,13 +109,13 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		goto errDeal
 	}
 
-	if body, err = vol.getDataPartitionsView(m.cluster.getLiveDataNodesRate()); err != nil {
+	if body, err = vol.getDataPartitionsView(m.cluster.liveDataNodesRate()); err != nil {
 		goto errDeal
 	}
 	m.replyOk(w, r, body)
 	return
 errDeal:
-	logMsg := getReturnMessage("getDataPartitions", r.RemoteAddr, err.Error(), code)
+	logMsg := newLogMsg("getDataPartitions", r.RemoteAddr, err.Error(), code)
 	m.sendErrReply(w, r, code, logMsg, err)
 	return
 }
@@ -129,7 +129,7 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 		name string
 		vol  *Vol
 	)
-	if name, err = parseGetVolPara(r); err != nil {
+	if name, err = parseAndExtractName(r); err != nil {
 		goto errDeal
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
@@ -143,7 +143,7 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 	m.replyOk(w, r, body)
 	return
 errDeal:
-	logMsg := getReturnMessage("getVol", r.RemoteAddr, err.Error(), code)
+	logMsg := newLogMsg("getVol", r.RemoteAddr, err.Error(), code)
 	m.sendErrReply(w, r, code, logMsg, err)
 	return
 }
@@ -158,7 +158,7 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 		vol  *Vol
 		ok   bool
 	)
-	if name, err = parseGetVolPara(r); err != nil {
+	if name, err = parseAndExtractName(r); err != nil {
 		goto errDeal
 	}
 	if vol, ok = m.cluster.vols[name]; !ok {
@@ -172,15 +172,15 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 	m.replyOk(w, r, body)
 	return
 errDeal:
-	logMsg := getReturnMessage("getVolStatInfo", r.RemoteAddr, err.Error(), code)
+	logMsg := newLogMsg("getVolStatInfo", r.RemoteAddr, err.Error(), code)
 	m.sendErrReply(w, r, code, logMsg, err)
 	return
 }
 
 func (m *Server) getVolView(vol *Vol) (view *VolView) {
 	view = newVolView(vol.Name, vol.Status)
-	setMetaPartitions(vol, view, m.cluster.getLiveMetaNodesRate())
-	setDataPartitions(vol, view, m.cluster.getLiveDataNodesRate())
+	setMetaPartitions(vol, view, m.cluster.liveMetaNodesRate())
+	setDataPartitions(vol, view, m.cluster.liveDataNodesRate())
 	return
 }
 func setDataPartitions(vol *Vol, view *VolView, liveRate float32) {
@@ -238,7 +238,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		mp          *MetaPartition
 		ok          bool
 	)
-	if name, partitionID, err = parseGetMetaPartitionPara(r); err != nil {
+	if name, partitionID, err = extractPartitionIdAndName(r); err != nil {
 		goto errDeal
 	}
 	if vol, ok = m.cluster.vols[name]; !ok {
@@ -257,41 +257,43 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 	m.replyOk(w, r, body)
 	return
 errDeal:
-	logMsg := getReturnMessage("getMetaPartition", r.RemoteAddr, err.Error(), code)
+	logMsg := newLogMsg("metaPartition", r.RemoteAddr, err.Error(), code)
 	m.sendErrReply(w, r, code, logMsg, err)
 	return
 }
 
-// TODO find a better name for parseGetMetaPartitionPara
-func parseGetMetaPartitionPara(r *http.Request) (name string, partitionID uint64, err error) {
+// TODO find a better name for extractPartitionIdAndName
+func extractPartitionIdAndName(r *http.Request) (name string, partitionID uint64, err error) {
 	r.ParseForm()
-	if name, err = checkVolPara(r); err != nil {
+	if name, err = extractName(r); err != nil {
 		return
 	}
-	if partitionID, err = checkMetaPartitionID(r); err != nil {
+	if partitionID, err = extractMetaPartitionID(r); err != nil {
 		return
 	}
 	return
 }
 
-func checkMetaPartitionID(r *http.Request) (partitionID uint64, err error) {
+
+// TODO this function is exactly the same as extractDataPartitionID in handle_admin.go
+func extractMetaPartitionID(r *http.Request) (partitionID uint64, err error) {
 	var value string
-	if value = r.FormValue(paraID); value == "" {
-		err = paraNotFound(paraID)
+	if value = r.FormValue(idKey); value == "" {
+		err = keyNotFound(idKey)
 		return
 	}
 	return strconv.ParseUint(value, 10, 64)
 }
 
-// TODO find a better name for parseGetVolPara
-func parseGetVolPara(r *http.Request) (name string, err error) {
+// TODO find a better name for parseAndExtractName
+func parseAndExtractName(r *http.Request) (name string, err error) {
 	r.ParseForm()
-	return checkVolPara(r)
+	return extractName(r)
 }
 
-func checkVolPara(r *http.Request) (name string, err error) {
-	if name = r.FormValue(paraName); name == "" {
-		err = paraNotFound(name)
+func extractName(r *http.Request) (name string, err error) {
+	if name = r.FormValue(nameKey); name == "" {
+		err = keyNotFound(name)
 		return
 	}
 

@@ -14,31 +14,33 @@
 
 package master
 
+// TODO why not put the following into handle_admin.go?
+// Keys in the request
 const (
-	paraNodeAddr          = "addr"
-	paraDiskPath          = "disk"
-	paraName              = "name"
-	paraID                = "id"
-	paraCount             = "count"
-	paraReplicas          = "replicas"
-	paraStart             = "start"
-	paraEnable            = "enable"
-	paraThreshold         = "threshold"
-	paraRandomWrite       = "randomWrite"
-	paraDataPartitionSize = "size"
-	paraVolCapacity       = "capacity"
+	addrKey              = "addr"
+	diskPathKey          = "disk"
+	nameKey              = "name"
+	idKey                = "id"
+	countKey             = "count"
+	replicasKey          = "replicas"
+	startkey             = "start"
+	enablekey            = "enable"
+	thresholdKey         = "threshold"
+	randomWriteKey       = "randomWrite"
+	dataPartitionSizeKey = "size"
+	volCapacityKey       = "capacity"
 )
 
 const (
-	deleteExcessReplicationErr     = "deleteExcessReplicationErr "
-	addLackReplicationErr          = "addLackReplicationErr "
-	checkDataPartitionDiskErrorErr = "checkDataPartitionDiskErrorErr  "
-	getAvailDataNodeHostsErr       = "getAvailDataNodeHostsErr "
-	getAvailMetaNodeHostsErr       = "getAvailMetaNodeHostsErr "
-	getDataReplicaFileCountInfo    = "getDataReplicaFileCountInfo "
-	dataNodeOfflineInfo            = "dataNodeOfflineInfo"
-	diskOfflineInfo                = "diskOfflineInfo"
-	handleDataPartitionOfflineErr  = "HandleDataPartitionOffLineErr "
+	deleteIllegalReplicaErr       = "deleteIllegalReplicaErr "
+	addMissingReplicaErr          = "addMissingReplicaErr "
+	checkDataPartitionDiskErr     = "checkDataPartitionDiskErr  "
+	getAvailDataNodeHostsErr      = "getAvailDataNodeHostsErr "
+	getAvailMetaNodeHostsErr      = "getAvailMetaNodeHostsErr "
+	getDataReplicaFileCountInfo   = "getDataReplicaFileCountInfo "  // TODO rename
+	dataNodeOfflineInfo           = "dataNodeOfflineInfo"
+	diskOfflineInfo               = "diskOfflineInfo"
+	handleDataPartitionOfflineErr = "HandleDataPartitionOffLineErr "
 )
 
 const (
@@ -54,16 +56,17 @@ const (
 	nodesAliveRate                  float32 = 0.5
 	spaceAvailRate                          = 0.90
 	defaultNodeSetCapacity                  = 6
-	minReadWriteDataPartitions              = 10
-	checkMissFileReplicaTime                = 600
+	minNumOfRWDataPartitions                = 10
+	intervalToCheckMissingReplica           = 600
 	defaultVolCapacity                      = 200
-	loadDataPartitionPeriod                 = 12 * 60 * 60
-	defaultInitDataPartitions               = 10
+	intervalToLoadDataPartition             = 12 * 60 * 60
+	defaultInitDataPartitionCnt             = 10
 	volExpandDataPartitionStepRatio         = 0.1
 	volMaxExpandDataPartitionCount          = 100
 )
 
-// TODO explain different types of volumes (normal and markDelete)
+// TODO We can just use a flag (called "isMarkedToBeDeleted") to indicate if a volume is marked (to be deleted) or not.
+// There is no need to employ volNormal here.
 const (
 	volNormal     uint8 = 0
 	volMarkDelete uint8 = 1

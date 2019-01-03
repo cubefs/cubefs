@@ -22,25 +22,21 @@ import (
 	"time"
 )
 
-// TODO start recovering bad disks?
-// 检查disk下线的进度
-func (c *Cluster) startCheckBadDiskRecovery() {
+func (c *Cluster) scheduleToCheckDiskRecoveryProgress() {
 	go func() {
 		for {
 			if c.partition != nil && c.partition.IsLeader() {
 				if c.vols != nil {
-					c.checkBadDiskRecovery()
+					c.checkDiskRecoveryProgress()
 				}
 			}
-			time.Sleep(time.Second * defaultCheckDataPartitionIntervalSeconds)
+			time.Sleep(time.Second * defaultIntervalToCheckDataPartition)
 		}
 	}()
 }
 
-
-// TODO recovery bad disk?
-func (c *Cluster) checkBadDiskRecovery() {
-	var minus float64
+func (c *Cluster) checkDiskRecoveryProgress() {
+	var diff float64
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)
 		newBadDpIds := make([]uint64, 0)
@@ -59,13 +55,12 @@ func (c *Cluster) checkBadDiskRecovery() {
 			used := partition.Replicas[0].Used
 			for _, replica := range partition.Replicas {
 				// TODO same problem here
-				if math.Abs(float64(replica.Used)-float64(used)) > minus {
-					minus = math.Abs(float64(replica.Used) - float64(used))
+				if math.Abs(float64(replica.Used)-float64(used)) > diff {
+					diff = math.Abs(float64(replica.Used) - float64(used))
 				}
 			}
 
-			// TODO what does minus mean here?
-			if minus < util.GB {
+			if diff < util.GB {
 				Warn(c.Name, fmt.Sprintf("clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))
 				c.BadDataPartitionIds.Delete(key)
 			} else {
@@ -86,25 +81,26 @@ func (c *Cluster) checkBadDiskRecovery() {
 
 // TODO take the disk off?
 // decompression hadoop 有一个专有名字
+//Commissioning and Decommissioning Nodes
 // takeDiskOff
 func (c *Cluster) diskOffLine(dataNode *DataNode, badDiskPath string, badPartitionIds []uint64) (err error) {
-	msg := fmt.Sprintf("action[diskOffLine], Node[%v] OffLine,disk[%v]", dataNode.Addr, badDiskPath)
+	msg := fmt.Sprintf("action[decommissionDisk], Node[%v] OffLine,disk[%v]", dataNode.Addr, badDiskPath)
 	log.LogWarn(msg)
 
 	// TODO what are safeVols and what are normalVols?  safeVols -> vols
-	safeVols := c.getAllNormalVols()
+	safeVols := c.allVols()
 	for _, vol := range safeVols {
-		for _, dp := range vol.dataPartitions.dataPartitions {
+		for _, dp := range vol.dataPartitions.partitions {
 			for _, bad := range badPartitionIds {
 				if bad == dp.PartitionID {
-					if err = c.dataPartitionOffline(dataNode.Addr, vol.Name, dp, diskOfflineInfo); err != nil {
+					if err = c.decommissionDataPartition(dataNode.Addr, vol.Name, dp, diskOfflineInfo); err != nil {
 						return
 					}
 				}
 			}
 		}
 	}
-	msg = fmt.Sprintf("action[diskOffLine],clusterID[%v] Node[%v] OffLine success",
+	msg = fmt.Sprintf("action[decommissionDisk],clusterID[%v] Node[%v] OffLine success",
 		c.Name, dataNode.Addr)
 	Warn(c.Name, msg)
 	return

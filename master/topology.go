@@ -209,7 +209,7 @@ func (t *topology) getAllNodeSet() (nsc nodeSetCollection) {
 func (t *topology) allocNodeSetForDataNode(replicaNum uint8) (ns *nodeSet, err error) {
 	nset := t.getAllNodeSet()
 	if nset == nil {
-		return nil, errNoNodeSetForCreateDataPartition
+		return nil, noNodeSetToCreateDataPartitionErr
 	}
 	for i := 0; i < len(nset); i++ {
 		if t.setIndex >= len(nset) {
@@ -221,14 +221,14 @@ func (t *topology) allocNodeSetForDataNode(replicaNum uint8) (ns *nodeSet, err e
 			return
 		}
 	}
-	log.LogError(fmt.Sprintf("action[allocNodeSetForDataNode],err:%v", errNoNodeSetForCreateDataPartition))
-	return nil, errNoNodeSetForCreateDataPartition
+	log.LogError(fmt.Sprintf("action[allocNodeSetForDataNode],err:%v", noNodeSetToCreateDataPartitionErr))
+	return nil, noNodeSetToCreateDataPartitionErr
 }
 
 func (t *topology) allocNodeSetForMetaNode(replicaNum uint8) (ns *nodeSet, err error) {
 	nset := t.getAllNodeSet()
 	if nset == nil {
-		return nil, errNoNodeSetForCreateMetaPartition
+		return nil, noNodeSetToCreateMetaPartitionErr
 	}
 	for i := 0; i < len(nset); i++ {
 		if t.setIndex >= len(nset) {
@@ -240,8 +240,8 @@ func (t *topology) allocNodeSetForMetaNode(replicaNum uint8) (ns *nodeSet, err e
 			return
 		}
 	}
-	log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],err:%v", errNoNodeSetForCreateMetaPartition))
-	return nil, errNoNodeSetForCreateMetaPartition
+	log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],err:%v", noNodeSetToCreateMetaPartitionErr))
+	return nil, noNodeSetToCreateMetaPartitionErr
 }
 
 type nodeSetCollection []*nodeSet
@@ -463,8 +463,8 @@ func (ns *nodeSet) allocRacks(replicaNum int, excludeRack []string) (racks []*Ra
 		}
 	}
 	if len(racks) == 0 {
-		log.LogError(fmt.Sprintf("action[allocRacks],err:%v", errNoRackForCreateDataPartition))
-		return nil, errNoRackForCreateDataPartition
+		log.LogError(fmt.Sprintf("action[allocRacks],err:%v", noRackToCreateDataPartitionErr))
+		return nil, noRackToCreateDataPartitionErr
 	}
 	if len(racks) > int(replicaNum) {
 		racks = racks[:int(replicaNum)]
@@ -540,9 +540,9 @@ func (rack *Rack) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (
 	maxTotal := rack.getDataNodeMaxTotal()
 	nodeTabs, availCarryCount := rack.getAvailCarryDataNodeTab(maxTotal, excludeHosts, replicaNum)
 	if len(nodeTabs) < replicaNum {
-		err = errNoHaveAnyDataNodeToWrite
+		err = noDataNodeToWriteErr
 		err = fmt.Errorf(getAvailDataNodeHostsErr+" err:%v ,ActiveNodeCount:%v  MatchNodeCount:%v  ",
-			errNoHaveAnyDataNodeToWrite, rack.dataNodeCount(), len(nodeTabs))
+			noDataNodeToWriteErr, rack.dataNodeCount(), len(nodeTabs))
 		return
 	}
 
@@ -564,8 +564,8 @@ func (rack *Rack) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (
 	return
 }
 
-func (rack *Rack) getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, replicaNum int) (nodeTabs NodeTabArrSorterByCarry, availCount int) {
-	nodeTabs = make(NodeTabArrSorterByCarry, 0)
+func (rack *Rack) getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, replicaNum int) (nodeTabs SortedWeightedNodes, availCount int) {
+	nodeTabs = make(SortedWeightedNodes, 0)
 	rack.dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
 		if contains(excludeHosts, dataNode.Addr) == true {
@@ -579,7 +579,7 @@ func (rack *Rack) getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []strin
 		if dataNode.isAvailCarryNode() == true {
 			availCount++
 		}
-		nt := new(NodeTab)
+		nt := new(WeightedNode)
 		nt.Carry = dataNode.Carry
 		if dataNode.Available < 0 {
 			nt.Weight = 0.0
@@ -610,8 +610,8 @@ func (rack *Rack) disOrderArray(oldHosts []string) (newHosts []string, err error
 	)
 
 	if oldHosts == nil || len(oldHosts) == 0 {
-		log.LogError(fmt.Sprintf("action[disOrderArray],err:%v", errDisOrderArray))
-		err = errDisOrderArray
+		log.LogError(fmt.Sprintf("action[reshuffleHosts],err:%v", reshuffleArrayErr))
+		err = reshuffleArrayErr
 		return
 	}
 

@@ -557,11 +557,11 @@ func (dp *DataPartition) fetchReplicasFromMaster() (isLeader bool, replicas []st
 		replicas = nil
 		return
 	}
-	for _, host := range response.PersistenceHosts {
+	for _, host := range response.Hosts {
 		replicas = append(replicas, host)
 	}
-	if response.PersistenceHosts != nil && len(response.PersistenceHosts) >= 1 {
-		leaderAddr := strings.Split(response.PersistenceHosts[0], ":")
+	if response.Hosts != nil && len(response.Hosts) >= 1 {
+		leaderAddr := strings.Split(response.Hosts[0], ":")
 		if len(leaderAddr) == 2 && strings.TrimSpace(leaderAddr[0]) == LocalIP {
 			isLeader = true
 		}

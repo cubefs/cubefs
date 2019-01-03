@@ -25,24 +25,24 @@ import (
 	"time"
 )
 
-// DataPartitionMap stores all the data partitions
+// DataPartitionMap stores all the data partitionMap
 type DataPartitionMap struct {
 	sync.RWMutex
-	dataPartitionMap           map[uint64]*DataPartition
-	dataPartitionCount         int
-	readWriteDataPartitions    int  // TODO what are readWriteDataPartitions 可以读写的data partition 个数
-	lastCheckIndex             uint64  // TODO what is lastCheckIndex 上次load data partition 结束的位置 lastLoadDPIndex
-	lastReleaseIndex           uint64  // TODO what is lastReleaseIndex release callMap -> lastReleaseDPIndex
-	dataPartitions             []*DataPartition
-	cacheDataPartitionResponse []byte  // TODO what is cacheDataPartitionResponse  返回给客户端 responseCache
-	volName                    string
+	partitionMap           map[uint64]*DataPartition
+	totalCnt               int // total number of partitionMap  TODO this field seems useless
+	readableAndWritableCnt int    // number of readable and writable partitionMap
+	lastLoadedIndex        uint64 // last loaded partition index
+	lastReleasedIndex      uint64 // last released partition index
+	partitions             []*DataPartition
+	responseCache          []byte
+	volName                string
 }
 
 func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
 	dpMap = new(DataPartitionMap)
-	dpMap.dataPartitionMap = make(map[uint64]*DataPartition, 0)
-	dpMap.dataPartitionCount = 1
-	dpMap.dataPartitions = make([]*DataPartition, 0)
+	dpMap.partitionMap = make(map[uint64]*DataPartition, 0)
+	dpMap.totalCnt = 1
+	dpMap.partitions = make([]*DataPartition, 0)
 	dpMap.volName = volName
 	return
 }
@@ -50,7 +50,7 @@ func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
 func (dpMap *DataPartitionMap) get(ID uint64) (*DataPartition, error) {
 	dpMap.RLock()
 	defer dpMap.RUnlock()
-	if v, ok := dpMap.dataPartitionMap[ID]; ok {
+	if v, ok := dpMap.partitionMap[ID]; ok {
 		return v, nil
 	}
 	return nil, errors.Annotatef(dataPartitionNotFound(ID), "[%v] not found in [%v]", ID, dpMap.volName)
@@ -59,22 +59,22 @@ func (dpMap *DataPartitionMap) get(ID uint64) (*DataPartition, error) {
 func (dpMap *DataPartitionMap) put(dp *DataPartition) {
 	dpMap.Lock()
 	defer dpMap.Unlock()
-	_, ok := dpMap.dataPartitionMap[dp.PartitionID]
+	_, ok := dpMap.partitionMap[dp.PartitionID]
 	if !ok {
-		dpMap.dataPartitions = append(dpMap.dataPartitions, dp)
-		dpMap.dataPartitionMap[dp.PartitionID] = dp
+		dpMap.partitions = append(dpMap.partitions, dp)
+		dpMap.partitionMap[dp.PartitionID] = dp
 		return
 	}
 
 	// replace the old partition with dp in the map and array
-	dpMap.dataPartitionMap[dp.PartitionID] = dp
+	dpMap.partitionMap[dp.PartitionID] = dp
 	dataPartitions := make([]*DataPartition, 0)
-	for index, partition := range dpMap.dataPartitions {
+	for index, partition := range dpMap.partitions {
 		if partition.PartitionID == dp.PartitionID {
-			dataPartitions = append(dataPartitions, dpMap.dataPartitions[:index]...)
+			dataPartitions = append(dataPartitions, dpMap.partitions[:index]...)
 			dataPartitions = append(dataPartitions, dp)
-			dataPartitions = append(dataPartitions, dpMap.dataPartitions[index+1:]...)
-			dpMap.dataPartitions = dataPartitions
+			dataPartitions = append(dataPartitions, dpMap.partitions[index+1:]...)
+			dpMap.partitions = dataPartitions
 			break
 		}
 	}
@@ -83,21 +83,20 @@ func (dpMap *DataPartitionMap) put(dp *DataPartition) {
 func (dpMap *DataPartitionMap) setReadWriteDataPartitions(readWrites int, clusterName string) {
 	dpMap.Lock()
 	defer dpMap.Unlock()
-	dpMap.readWriteDataPartitions = readWrites
+	dpMap.readableAndWritableCnt = readWrites
 }
 
 
-// TODO what is updateDataPartitionResponseCache?
-func (dpMap *DataPartitionMap) updateDataPartitionResponseCache(needUpdate bool, minPartitionID uint64) (body []byte, err error) {
+func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitionID uint64) (body []byte, err error) {
 	dpMap.Lock()
 	defer dpMap.Unlock()
-	if dpMap.cacheDataPartitionResponse == nil || needUpdate || len(dpMap.cacheDataPartitionResponse) == 0 {
-		dpMap.cacheDataPartitionResponse = make([]byte, 0)
+	if dpMap.responseCache == nil || needsUpdate || len(dpMap.responseCache) == 0 {
+		dpMap.responseCache = make([]byte, 0)
 		dpResps := dpMap.getDataPartitionsView(minPartitionID)
 		if len(dpResps) == 0 {
 			log.LogError(fmt.Sprintf("action[updateDpResponseCache],volName[%v] minPartitionID:%v,err:%v",
-				dpMap.volName, minPartitionID, errNoAvailDataPartition))
-			return nil, errors.Annotatef(errNoAvailDataPartition, "volName[%v]", dpMap.volName)
+				dpMap.volName, minPartitionID, noAvailDataPartitionErr))
+			return nil, errors.Annotatef(noAvailDataPartitionErr, "volName[%v]", dpMap.volName)
 		}
 		cv := newDataPartitionsView()
 		cv.DataPartitions = dpResps
@@ -106,11 +105,11 @@ func (dpMap *DataPartitionMap) updateDataPartitionResponseCache(needUpdate bool,
 				minPartitionID, err.Error()))
 			return nil, errors.Annotatef(err, "volName[%v],marshal err", dpMap.volName)
 		}
-		dpMap.cacheDataPartitionResponse = body
+		dpMap.responseCache = body
 		return
 	}
-	body = make([]byte, len(dpMap.cacheDataPartitionResponse))
-	copy(body, dpMap.cacheDataPartitionResponse)
+	body = make([]byte, len(dpMap.responseCache))
+	copy(body, dpMap.responseCache)
 
 	return
 }
@@ -118,8 +117,8 @@ func (dpMap *DataPartitionMap) updateDataPartitionResponseCache(needUpdate bool,
 func (dpMap *DataPartitionMap) getDataPartitionsView(minPartitionID uint64) (dpResps []*DataPartitionResponse) {
 	dpResps = make([]*DataPartitionResponse, 0)
 	log.LogDebugf("volName[%v] DataPartitionMapLen[%v],DataPartitionsLen[%v],minPartitionID[%v]",
-		dpMap.volName, len(dpMap.dataPartitionMap), len(dpMap.dataPartitions), minPartitionID)
-	for _, dp := range dpMap.dataPartitionMap {
+		dpMap.volName, len(dpMap.partitionMap), len(dpMap.partitions), minPartitionID)
+	for _, dp := range dpMap.partitionMap {
 		if dp.PartitionID <= minPartitionID {
 			continue
 		}
@@ -134,21 +133,21 @@ func (dpMap *DataPartitionMap) getNeedReleaseDataPartitions(everyReleaseDataPart
 	partitions = make([]*DataPartition, 0)
 	dpMap.RLock()
 	defer dpMap.RUnlock()
-	dpLen := len(dpMap.dataPartitions)
+	dpLen := len(dpMap.partitions)
 	if dpLen == 0 {
 		return
 	}
-	startIndex = dpMap.lastReleaseIndex
+	startIndex = dpMap.lastReleasedIndex
 	needReleaseCount := everyReleaseDataPartitionCount
 	if dpLen < everyReleaseDataPartitionCount {
 		needReleaseCount = dpLen
 	}
 	for i := 0; i < needReleaseCount; i++ {
-		if dpMap.lastReleaseIndex >= uint64(dpLen) {
-			dpMap.lastReleaseIndex = 0
+		if dpMap.lastReleasedIndex >= uint64(dpLen) {
+			dpMap.lastReleasedIndex = 0
 		}
-		dp := dpMap.dataPartitions[dpMap.lastReleaseIndex]
-		dpMap.lastReleaseIndex++
+		dp := dpMap.partitions[dpMap.lastReleasedIndex]
+		dpMap.lastReleasedIndex++
 		if time.Now().Unix()-dp.LastLoadTime >= releaseDataPartitionAfterLoadSeconds {
 			partitions = append(partitions, dp)
 		}
@@ -157,6 +156,7 @@ func (dpMap *DataPartitionMap) getNeedReleaseDataPartitions(everyReleaseDataPart
 	return
 }
 
+// TODO find a better name
 func (dpMap *DataPartitionMap) releaseDataPartitions(partitions []*DataPartition) {
 	var wg sync.WaitGroup
 	for _, dp := range partitions {
@@ -182,21 +182,21 @@ func (dpMap *DataPartitionMap) getNeedCheckDataPartitions(loadFrequencyTime int6
 	partitions = make([]*DataPartition, 0)
 	dpMap.RLock()
 	defer dpMap.RUnlock()
-	dpLen := len(dpMap.dataPartitions)
+	dpLen := len(dpMap.partitions)
 	if dpLen == 0 {
 		return
 	}
-	startIndex = dpMap.lastCheckIndex
-	needLoadCount := dpLen / loadDataPartitionPeriod
+	startIndex = dpMap.lastLoadedIndex
+	needLoadCount := dpLen / intervalToLoadDataPartition
 	if needLoadCount == 0 {
 		needLoadCount = 1
 	}
 	for i := 0; i < needLoadCount; i++ {
-		if dpMap.lastCheckIndex >= (uint64)(len(dpMap.dataPartitions)) {
-			dpMap.lastCheckIndex = 0
+		if dpMap.lastLoadedIndex >= (uint64)(len(dpMap.partitions)) {
+			dpMap.lastLoadedIndex = 0
 		}
-		dp := dpMap.dataPartitions[dpMap.lastCheckIndex]
-		dpMap.lastCheckIndex++
+		dp := dpMap.partitions[dpMap.lastLoadedIndex]
+		dpMap.lastLoadedIndex++
 		if time.Now().Unix()-dp.LastLoadTime >= loadFrequencyTime {
 			partitions = append(partitions, dp)
 		}
@@ -208,7 +208,7 @@ func (dpMap *DataPartitionMap) getNeedCheckDataPartitions(loadFrequencyTime int6
 func (dpMap *DataPartitionMap) getTotalUsedSpace() (totalUsed uint64) {
 	dpMap.RLock()
 	defer dpMap.RUnlock()
-	for _, dp := range dpMap.dataPartitions {
+	for _, dp := range dpMap.partitions {
 		totalUsed = totalUsed + dp.getMaxUsedSpace()
 	}
 	return
@@ -217,7 +217,7 @@ func (dpMap *DataPartitionMap) getTotalUsedSpace() (totalUsed uint64) {
 func (dpMap *DataPartitionMap) setAllDataPartitionsToReadOnly() {
 	dpMap.Lock()
 	defer dpMap.Unlock()
-	for _, dp := range dpMap.dataPartitions {
+	for _, dp := range dpMap.partitions {
 		dp.Status = proto.ReadOnly
 	}
 }

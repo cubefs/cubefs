@@ -41,7 +41,7 @@ func (partition *DataPartition) checkFile(clusterID string) {
 			liveAddrs = append(liveAddrs, replica.Addr)
 		}
 		unliveAddrs := make([]string, 0)
-		for _, host := range partition.PersistenceHosts {
+		for _, host := range partition.Hosts {
 			if !contains(liveAddrs, host) {
 				unliveAddrs = append(unliveAddrs, host)
 			}
@@ -93,7 +93,7 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 
 	fms, needRepair := fc.needCrcRepair(liveReplicas)
 
-	if len(fms) < len(liveReplicas) && (time.Now().Unix()-fc.LastModify) > checkMissFileReplicaTime {
+	if len(fms) < len(liveReplicas) && (time.Now().Unix()-fc.LastModify) > intervalToCheckMissingReplica {
 		liveAddrs := make([]string, 0)
 		for _, replica := range liveReplicas {
 			liveAddrs = append(liveAddrs, replica.Addr)

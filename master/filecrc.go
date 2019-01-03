@@ -72,7 +72,7 @@ func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataRe
 
 	fms, needRepair := fc.needCrcRepair(liveVols)
 
-	if len(fms) < len(liveVols) && (time.Now().Unix()-fc.LastModify) > checkMissFileReplicaTime {
+	if len(fms) < len(liveVols) && (time.Now().Unix()-fc.LastModify) > intervalToCheckMissingReplica {
 		liveAddrs := make([]string, 0)
 		for _, replica := range liveVols {
 			liveAddrs = append(liveAddrs, replica.Addr)

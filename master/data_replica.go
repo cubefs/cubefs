@@ -19,7 +19,10 @@ import (
 	"time"
 )
 
+/* TODO rename the file as data_partition_replica.go? */
+
 // DataReplica represents the replica of a data partition
+// TODO rename to DataPartitionReplica?
 type DataReplica struct {
 	Addr                    string
 	dataNode                *DataNode

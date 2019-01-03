@@ -74,7 +74,7 @@ func (metaNode *MetaNode) isWriteAble() (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
 	if metaNode.IsActive && metaNode.MaxMemAvailWeight > defaultMetaNodeReservedMem &&
-		!metaNode.reachesThreshold() && metaNode.MetaPartitionCount < defaultMetaPartitionCountOnEachNode {
+		!metaNode.reachesThreshold() && metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode {
 		ok = true
 	}
 	return
@@ -87,8 +87,7 @@ func (metaNode *MetaNode) isAvailCarryNode() (ok bool) {
 	return metaNode.Carry >= 1
 }
 
-// TODO setNodeActive? alive -> active
-func (metaNode *MetaNode) setNodeAlive() {
+func (metaNode *MetaNode) setNodeActive() {
 	metaNode.Lock()
 	defer metaNode.Unlock()
 	metaNode.ReportTime = time.Now()
@@ -114,7 +113,7 @@ func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, th
 
 func (metaNode *MetaNode) reachesThreshold() bool {
 	if metaNode.Threshold <= 0 {
-		metaNode.Threshold = defaultMetaPartitionThreshold
+		metaNode.Threshold = defaultMetaPartitionMemUsageThreshold
 	}
 	return float32(float64(metaNode.Used)/float64(metaNode.Total)) > metaNode.Threshold
 }
