@@ -631,7 +631,10 @@ func (c *Cluster) dataPartitionOffline(offlineAddr, volName string, dp *DataPart
 		rack       *Rack
 		vol        *Vol
 		removePeer proto.Peer
+		replica    *DataReplica
 	)
+	badPartitionIDs := make([]uint64, 0)
+	badPartitionIDs = append(badPartitionIDs, dp.PartitionID)
 	dp.Lock()
 	defer dp.Unlock()
 	if ok := dp.isInPersistenceHosts(offlineAddr); !ok {
@@ -641,7 +644,9 @@ func (c *Cluster) dataPartitionOffline(offlineAddr, volName string, dp *DataPart
 	if vol, err = c.getVol(volName); err != nil {
 		goto errDeal
 	}
-
+	if replica, err = dp.getReplica(offlineAddr); err != nil {
+		goto errDeal
+	}
 	if err = dp.hasMissOne(int(vol.dpReplicaNum)); err != nil {
 		goto errDeal
 	}
@@ -694,11 +699,13 @@ func (c *Cluster) dataPartitionOffline(offlineAddr, volName string, dp *DataPart
 		goto errDeal
 	}
 	dp.Status = proto.ReadOnly
+	dp.isRecover = true
+	c.BadDataPartitionIds.Store(fmt.Sprintf("%s:%s", offlineAddr, replica.DiskPath), badPartitionIDs)
 	log.LogWarnf("clusterID[%v] partitionID:%v  on Node:%v offline success,newHost[%v],PersistenceHosts:[%v]",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.PersistenceHosts)
 	return
 errDeal:
-	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.PersistenceHosts)
 	if err != nil {

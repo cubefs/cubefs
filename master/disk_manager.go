@@ -45,14 +45,15 @@ func (c *Cluster) checkBadDiskRecovery() {
 				}
 			}
 			if minus < util.GB {
+				partition.isRecover = false
 				Warn(c.Name, fmt.Sprintf("clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))
-				c.BadDataPartitionIds.Delete(key)
 			} else {
 				newBadDpIds = append(newBadDpIds, partitionID)
 			}
 		}
 		if len(newBadDpIds) == 0 {
 			Warn(c.Name, fmt.Sprintf("clusterID[%v],node:disk[%v] has recovered success", c.Name, key))
+			c.BadDataPartitionIds.Delete(key)
 		} else {
 			c.BadDataPartitionIds.Store(key, newBadDpIds)
 		}

@@ -94,6 +94,19 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 	fms, needRepair := fc.needCrcRepair(liveReplicas)
 
 	if len(fms) < len(liveReplicas) && (time.Now().Unix()-fc.LastModify) > checkMissFileReplicaTime {
+		fileMissReplicaTime, ok := partition.FileMissReplica[fc.Name]
+		if len(partition.FileMissReplica) > 400 {
+			Warn(clusterID, fmt.Sprintf("partitionid[%v] has [%v] miss replica", partition.PartitionID, len(partition.FileMissReplica)))
+			return
+		}
+
+		if !ok {
+			partition.FileMissReplica[fc.Name] = time.Now().Unix()
+			return
+		}
+		if time.Now().Unix()-fileMissReplicaTime < checkMissFileReplicaTime {
+			return
+		}
 		liveAddrs := make([]string, 0)
 		for _, replica := range liveReplicas {
 			liveAddrs = append(liveAddrs, replica.Addr)

@@ -41,6 +41,7 @@ type ClusterView struct {
 	DataNodeStat       *dataNodeSpaceStat
 	MetaNodeStat       *metaNodeSpaceStat
 	VolStat            []*volSpaceStat
+	BadPartitionIDs    []badPartitionView
 	MetaNodes          []MetaNodeView
 	DataNodes          []DataNodeView
 }
@@ -72,6 +73,11 @@ type TopologyView struct {
 	DataNodes []DataNodeView
 	MetaNodes []MetaNodeView
 	NodeSet   []uint64
+}
+
+type badPartitionView struct {
+	DiskPath     string
+	PartitionIDs []uint64
 }
 
 func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
@@ -160,6 +166,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MetaNodes:          make([]MetaNodeView, 0),
 		DataNodes:          make([]DataNodeView, 0),
 		VolStat:            make([]*volSpaceStat, 0),
+		BadPartitionIDs:    make([]badPartitionView, 0),
 	}
 
 	vols := m.cluster.getAllVols()
@@ -175,6 +182,14 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		}
 		cv.VolStat = append(cv.VolStat, stat.(*volSpaceStat))
 	}
+	m.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
+		badDataPartitionIds := value.([]uint64)
+		path := key.(string)
+		bpv := badPartitionView{DiskPath: path, PartitionIDs: badDataPartitionIds}
+		cv.BadPartitionIDs = append(cv.BadPartitionIDs, bpv)
+		return true
+	})
+
 	if body, err = json.Marshal(cv); err != nil {
 		goto errDeal
 	}
