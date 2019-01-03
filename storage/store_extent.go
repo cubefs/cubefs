@@ -312,7 +312,8 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 	}
 
 	data := make([]byte, ExtCrcHeaderSize)
-	if _, err = s.verifyCrcFp.ReadAt(data, 0); err != nil {
+	_, err = s.verifyCrcFp.ReadAt(data, 0)
+	if err != io.EOF {
 		return
 	}
 
