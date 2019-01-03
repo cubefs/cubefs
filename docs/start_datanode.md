@@ -22,6 +22,8 @@ CFS using **JSON** as for configuration file format.
 | raftHeartbeat | string   | Port of raft heartbeat TCP network to be listen. | Yes      |
 | raftReplicate | string   | Port of raft replicate TCP network to be listen. | Yes      |
 | raftDir       | string   | Path for raft log file storage.                  | No       |
+| consulAddr    | string   | Addresses of monitor system.                     | No       |
+| exporterPort  | string   | Port for monitor system.                         | No       |
 | masterAddr    | []string | Addresses of master server.                      | Yes      |
 | rack          | string   | Identity of rack.                                | No       |
 | disks         | []string | Format: "PATH:MAX_ERRS:REST_SIZE".               | Yes      |
@@ -33,11 +35,13 @@ CFS using **JSON** as for configuration file format.
     "role": "datanode",
     "port": "6000",
     "prof": "6001",
-    "logDir": "/export/App/datanode/logs",
+    "logDir": "/export/Logs/datanode",
     "logLevel": "debug",
     "raftHeartbeat": "9095",
     "raftReplicate": "9096",    
-    "raftDir": "/export/App/datanode/raft",
+    "raftDir": "/export/Logs/datanode/raft",
+    "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
+    "exporterPort": 9512,    
     "masterAddr": [
         "10.196.30.200:80",
         "10.196.31.141:80",
