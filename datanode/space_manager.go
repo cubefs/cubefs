@@ -295,7 +295,6 @@ func (space *SpaceManager) CreatePartition(request *proto.CreateDataPartitionReq
 	}
 
 	space.partitions[dp.ID()] = dp
-	go dp.ForceLoadHeader()
 
 	return
 }

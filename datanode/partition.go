@@ -160,7 +160,6 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
 	}
-	go dp.ForceLoadHeader()
 	if dpCfg.RandomWrite {
 		if err = dp.LoadApplyIndex(); err != nil {
 			log.LogErrorf("action[loadApplyIndex] %v", err)
