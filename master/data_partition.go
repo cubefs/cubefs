@@ -38,15 +38,16 @@ type DataPartition struct {
 	PersistenceHosts []string
 	Peers            []proto.Peer
 	sync.RWMutex
-	total         uint64
-	used          uint64
-	MissNodes     map[string]int64
-	VolName       string
-	VolID         uint64
-	modifyTime    int64
-	createTime    int64
-	RandomWrite   bool
-	FileInCoreMap map[string]*FileInCore
+	total           uint64
+	used            uint64
+	MissNodes       map[string]int64
+	VolName         string
+	VolID           uint64
+	modifyTime      int64
+	createTime      int64
+	RandomWrite     bool
+	FileInCoreMap   map[string]*FileInCore
+	FileMissReplica map[string]int64
 }
 
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64, randomWrite bool) (partition *DataPartition) {
@@ -57,6 +58,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	partition.Peers = make([]proto.Peer, 0)
 	partition.Replicas = make([]*DataReplica, 0)
 	partition.FileInCoreMap = make(map[string]*FileInCore, 0)
+	partition.FileMissReplica = make(map[string]int64)
 	partition.MissNodes = make(map[string]int64)
 	partition.Status = proto.ReadOnly
 	partition.VolName = volName
@@ -341,6 +343,11 @@ func (partition *DataPartition) releaseDataPartition() {
 		delete(partition.FileInCoreMap, name)
 	}
 	partition.FileInCoreMap = make(map[string]*FileInCore, 0)
+	for name, fileMissReplicaTime := range partition.FileMissReplica {
+		if time.Now().Unix()-fileMissReplicaTime > 2*loadDataPartitionPeriod {
+			delete(partition.FileMissReplica, name)
+		}
+	}
 
 }
 
@@ -511,6 +518,7 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 	replica.setAlive()
 	replica.IsLeader = vr.IsLeader
 	replica.NeedCompare = vr.NeedCompare
+	replica.DiskPath = vr.DiskPath
 	partition.checkAndRemoveMissReplica(dataNode.Addr)
 }
 
@@ -565,6 +573,9 @@ func (partition *DataPartition) isReplicaSizeAlign() bool {
 func (partition *DataPartition) isNeedCompareData() (needCompare bool) {
 	partition.Lock()
 	defer partition.Unlock()
+	if partition.isRecover {
+		return false
+	}
 	needCompare = true
 	for _, replica := range partition.Replicas {
 		if !replica.NeedCompare {

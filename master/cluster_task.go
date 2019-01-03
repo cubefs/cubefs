@@ -167,7 +167,7 @@ func (c *Cluster) processLoadMetaPartition(mp *MetaPartition) {
 func (c *Cluster) processLoadDataPartition(dp *DataPartition) {
 	log.LogInfo(fmt.Sprintf("action[processLoadDataPartition],partitionID:%v", dp.PartitionID))
 	if !dp.isNeedCompareData() {
-		log.LogInfo(fmt.Sprintf("action[processLoadDataPartition],partitionID:%v don't need compare", dp.PartitionID))
+		log.LogInfo(fmt.Sprintf("action[processLoadDataPartition],partitionID:%v isRecover[%v] don't need compare", dp.PartitionID, dp.isRecover))
 		return
 	}
 	loadTasks := dp.generateLoadTasks()
