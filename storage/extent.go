@@ -89,6 +89,8 @@ func NewExtentInCore(name string, extentID uint64) *Extent {
 	e := new(Extent)
 	e.extentID = extentID
 	e.filePath = name
+	e.header = make([]byte, util.BlockHeaderSize)
+
 	return e
 }
 

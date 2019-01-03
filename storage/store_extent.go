@@ -261,10 +261,9 @@ func (s *ExtentStore) getExtentWithHeader(extentID uint64) (e *Extent, err error
 }
 
 func (s *ExtentStore) loadExtentHeader(extentId uint64, e *Extent) (err error) {
-	if extentId >= MaxExtentId {
+	if extentId >= MaxExtentId && !IsTinyExtent(extentId) {
 		return ErrorUnavaliExtent
 	}
-	e.header = make([]byte, util.BlockHeaderSize)
 	offset := extentId * util.BlockHeaderSize
 	_, err = s.verifyCrcFp.ReadAt(e.header, int64(offset))
 	return
@@ -331,6 +330,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		if extentID < MinExtentID {
 			continue
 		}
+		fmt.Println(fmt.Sprintf("get extnt %v", extentID))
 		if extent, loadErr = s.getExtent(extentID); loadErr != nil {
 			continue
 		}
