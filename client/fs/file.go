@@ -151,6 +151,9 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	}
 	if size > 0 {
 		resp.Data = resp.Data[:size+fuse.OutHeaderSize]
+	} else if size < 0 {
+		resp.Data = resp.Data[:fuse.OutHeaderSize]
+		log.LogErrorf("Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v)", f.inode.ino, req.Offset, req.Size, req, size)
 	}
 
 	elapsed := time.Since(start)
