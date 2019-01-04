@@ -65,21 +65,6 @@ type NodeView struct {
 	ID     uint64
 }
 
-//// TODO why not call them NodeView ?
-//// NodeView provides the view of the data node
-//type DataNodeView struct {
-//	Addr   string
-//	Status bool
-//	ID     uint64
-//}
-//
-//// NodeView provides the view of the meta node
-//type MetaNodeView struct {
-//	ID     uint64
-//	Addr   string
-//	Status bool
-//}
-
 // TopologyView provides the view of the topology view of the cluster
 type TopologyView struct {
 	DataNodes []NodeView
@@ -129,6 +114,7 @@ func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 		goto errHandler
 	}
 	m.cluster.ShouldAutoAllocate = status
+	// TODO unhandled error
 	io.WriteString(w, fmt.Sprintf("set ShouldAutoAllocate to %v successfully", status))
 	return
 errHandler:
@@ -181,7 +167,6 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	cv := &ClusterView{
 		Name:               m.cluster.Name,
 		LeaderAddr:         m.leaderInfo.addr,
-		CompactStatus:      m.cluster.compactStatus,
 		DisableAutoAlloc:   m.cluster.ShouldAutoAllocate,
 		Applied:            m.fsm.applied,
 		MaxDataPartitionID: m.cluster.idAlloc.dataPartitionID,
@@ -232,6 +217,8 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		goto errHandler
 	}
+
+	// TODO unhandled error
 	w.Write(cInfoBytes)
 	return
 errHandler:
@@ -241,33 +228,19 @@ errHandler:
 }
 
 
-// TODO see the following example of inline. This looks better than several layers of wrappers.
+// TODO see the following example of several layers of wrappers. good or bad?
 // TODO explain how the meta partition is created here
 func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName string
-		value string
 		start   uint64
 		rstMsg  string
 		err     error
 	)
 
-	if volName, err = extractName(r); err != nil {
+	if volName, start, err = validateRequestToCreateMetaPartition(r); err != nil {
 		goto errHandler
 	}
-
-	if value = r.FormValue(startkey); value == "" {
-		err = keyNotFound(startkey)
-		goto errHandler
-	}
-
-	if start, err = strconv.ParseUint(value, 10, 64); err != nil {
-		goto errHandler
-	}
-
-	//if volName, start, err = validateRequestToCreateMetaPartition(r); err != nil {
-	//
-	//}
 
 	// TODO explain
 	if err = m.cluster.updateUpperBoundOfInodeIds(volName, start); err != nil {
@@ -611,6 +584,7 @@ func (m *Server) getDataNodeTaskResponse(w http.ResponseWriter, r *http.Request)
 		code = http.StatusBadRequest
 		goto errHandler
 	}
+	// TODO unhandled error
 	io.WriteString(w, fmt.Sprintf("%v", http.StatusOK))
 	if dataNode, err = m.cluster.dataNode(tr.OperatorAddr); err != nil {
 		code = http.StatusInternalServerError
@@ -781,12 +755,15 @@ func (m *Server) getMetaNodeTaskResponse(w http.ResponseWriter, r *http.Request)
 		goto errHandler
 	}
 
+	// TODO unhandled error
 	io.WriteString(w, fmt.Sprintf("%v", http.StatusOK))
 
 	if metaNode, err = m.cluster.metaNode(tr.OperatorAddr); err != nil {
 		code = http.StatusInternalServerError
 		goto errHandler
 	}
+
+	// TODO unhandled error
 	m.cluster.handleMetaNodeTaskResponse(metaNode.Addr, tr)
 	return
 
@@ -840,6 +817,7 @@ errHandler:
 
 // Parse the request that adds/deletes a raft node.
 func parseRequestForRaftNode(r *http.Request) (id uint64, host string, err error) {
+	// TODO unhandled error
 	r.ParseForm()
 	var idStr string
 	if idStr = r.FormValue(idKey); idStr == "" {
@@ -863,6 +841,7 @@ func parseRequestForRaftNode(r *http.Request) (id uint64, host string, err error
 }
 
 func parseAndExtractNodeAddr(r *http.Request) (nodeAddr string, err error) {
+	// TODO unhandled error
 	r.ParseForm()
 	return extractNodeAddr(r)
 }
@@ -883,6 +862,7 @@ func parseAndExtractNodeAddr(r *http.Request) (nodeAddr string, err error) {
 //}
 
 func parseRequestToDecommissionNode(r *http.Request) (nodeAddr, diskPath string, err error) {
+	// TODO unhandled error
 	r.ParseForm()
 	nodeAddr, err = extractNodeAddr(r)
 	if err != nil {
@@ -895,6 +875,8 @@ func parseRequestToDecommissionNode(r *http.Request) (nodeAddr, diskPath string,
 
 func parseRequestToGetTaskResponse(r *http.Request) (tr *proto.AdminTask, err error) {
 	var body []byte
+
+	// TODO unhandled error
 	r.ParseForm()
 
 	if body, err = ioutil.ReadAll(r.Body); err != nil {
@@ -908,11 +890,13 @@ func parseRequestToGetTaskResponse(r *http.Request) (tr *proto.AdminTask, err er
 }
 
 func parseRequestToDeleteVol(r *http.Request) (name string, err error) {
+	// TODO unhandled error
 	r.ParseForm()
 	return extractName(r)
 }
 
 func parseRequestToUpdateVol(r *http.Request) (name string, capacity int, err error) {
+	// TODO unhandled error
 	r.ParseForm()
 	if name, err = extractName(r); err != nil {
 		return
@@ -928,6 +912,7 @@ func parseRequestToUpdateVol(r *http.Request) (name string, capacity int, err er
 }
 
 func parseRequestToCreateVol(r *http.Request) (name string, replicaNum int, randomWrite bool, size, capacity int, err error) {
+	// TODO unhandled error
 	r.ParseForm()
 	var randomWriteValue string
 	if name, err = extractName(r); err != nil {
@@ -966,6 +951,7 @@ func parseRequestToCreateVol(r *http.Request) (name string, replicaNum int, rand
 }
 
 func parseRequestToCreateDataPartition(r *http.Request) (count int, name string, err error) {
+	// TODO unhandled error
 	r.ParseForm()
 	if countStr := r.FormValue(countKey); countStr == "" {
 		err = keyNotFound(countKey)
@@ -981,11 +967,13 @@ func parseRequestToCreateDataPartition(r *http.Request) (count int, name string,
 }
 
 func parseRequestToGetDataPartition(r *http.Request) (ID uint64, err error) {
+	// TODO unhandled error
 	r.ParseForm()
 	return extractDataPartitionID(r)
 }
 
 func parseRequestToLoadDataPartition(r *http.Request) (ID uint64, name string, err error) {
+	// TODO unhandled error
 	r.ParseForm()
 	if ID, err = extractDataPartitionID(r); err != nil {
 		return
@@ -1006,6 +994,7 @@ func extractDataPartitionID(r *http.Request) (ID uint64, err error) {
 }
 
 func parseRequestToDecommissionDataPartition(r *http.Request) (nodeAddr string, ID uint64, name string, err error) {
+	// TODO unhandled error
 	r.ParseForm()
 	if ID, err = extractDataPartitionID(r); err != nil {
 		return
@@ -1038,6 +1027,7 @@ func extractDiskPath(r *http.Request) (diskPath string, err error) {
 }
 
 func parseRequestToLoadMetaPartition(r *http.Request) (partitionID uint64, volName string, err error) {
+	// TODO unhandled error
 	r.ParseForm()
 	if partitionID, err = extractMetaPartitionID(r); err != nil {
 		return
@@ -1049,6 +1039,7 @@ func parseRequestToLoadMetaPartition(r *http.Request) (partitionID uint64, volNa
 }
 
 func parseRequestToDecommissionMetaPartition(r *http.Request) (volName, nodeAddr string, partitionID uint64, err error) {
+	// TODO unhandled error
 	r.ParseForm()
 	if partitionID, err = extractMetaPartitionID(r); err != nil {
 		return
@@ -1063,11 +1054,12 @@ func parseRequestToDecommissionMetaPartition(r *http.Request) (volName, nodeAddr
 }
 
 func parseAndExtractStatus(r *http.Request) (status bool, err error) {
+
+	// TODO unhandled error
 	r.ParseForm()  // TODO what if this line returns an error?
 	return extractStatus(r)
 }
 
-// TODO why not inline the following?
 func extractStatus(r *http.Request) (status bool, err error) {
 	var value string
 	if value = r.FormValue(enablekey); value == "" {
@@ -1081,6 +1073,7 @@ func extractStatus(r *http.Request) (status bool, err error) {
 }
 
 func parseAndExtractThreshold(r *http.Request) (threshold float64, err error) {
+	// TODO unhandled error
 	r.ParseForm()
 	var value string
 	if value = r.FormValue(thresholdKey); value == "" {
@@ -1111,6 +1104,8 @@ func (m *Server) sendOkReply(w http.ResponseWriter, r *http.Request, msg string)
 	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
 	w.Header().Set("content-type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(msg)))
+
+	// TODO unhandled error
 	w.Write([]byte(msg))
 }
 

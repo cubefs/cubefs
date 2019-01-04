@@ -118,8 +118,7 @@ func (metaNode *MetaNode) reachesThreshold() bool {
 	return float32(float64(metaNode.Used)/float64(metaNode.Total)) > metaNode.Threshold
 }
 
-// TODO createHeartbeatTask
-func (metaNode *MetaNode) generateHeartbeatTask(masterAddr string) (task *proto.AdminTask) {
+func (metaNode *MetaNode) createHeartbeatTask(masterAddr string) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:   time.Now().Unix(),
 		MasterAddr: masterAddr,

@@ -85,6 +85,8 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
 	m.cluster.scheduleTask()
+
+	// TODO unhandled error
 	m.startHTTPService()
 	exporter.Init(m.clusterName, ModuleName, cfg)
 	m.wg.Add(1)
@@ -190,6 +192,8 @@ func (m *Server) initFsm() {
 	m.fsm = newMetadataFsm(m.rocksDBStore)
 	m.fsm.registerLeaderChangeHandler(m.handleLeaderChange)
 	m.fsm.registerPeerChangeHandler(m.handlePeerChange)
+
+	// TODO explain
 	m.fsm.registerApplyHandler(m.handleApply)
 	m.fsm.registerApplySnapshotHandler(m.handleApplySnapshot)
 	m.fsm.restore()

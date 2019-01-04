@@ -84,8 +84,7 @@ func (alloc *IDAllocator) restoreMaxMetaPartitionID() {
 	log.LogInfof("action[restoreMaxMetaPartitionID] maxMpID[%v]", alloc.metaPartitionID)
 }
 
-// TODO what is a common ID? data  partition 单独的  meta partition 也是单独的
-// datanode id， metanode id， nodeset id 这三个公用一个生成器
+// The data node, meta node, and node set share the same ID allocator.
 func (alloc *IDAllocator) restoreMaxCommonID() {
 	value, err := alloc.store.Get(maxCommonIDKey)
 	if err != nil {
@@ -128,14 +127,14 @@ func (alloc *IDAllocator) allocateDataPartitionID() (partitionID uint64, err err
 	metadata.V = []byte(value)
 	cmd, err = metadata.Marshal()
 	if err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	if _, err = alloc.partition.Submit(cmd); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	alloc.setDataPartitionID(partitionID)
 	return
-errDeal:
+errHandler:
 	log.LogError("action[allocateDataPartitionID] err:%v", err.Error())
 	return
 }
@@ -152,14 +151,14 @@ func (alloc *IDAllocator) allocateMetaPartitionID() (partitionID uint64, err err
 	metadata.V = []byte(value)
 	cmd, err = metadata.Marshal()
 	if err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	if _, err = alloc.partition.Submit(cmd); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	alloc.setMetaPartitionID(partitionID)
 	return
-errDeal:
+errHandler:
 	log.LogError("action[allocateMetaPartitionID] err:%v", err.Error())
 	return
 }
@@ -177,14 +176,14 @@ func (alloc *IDAllocator) allocateCommonID() (id uint64, err error) {
 	metadata.V = []byte(value)
 	cmd, err = metadata.Marshal()
 	if err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	if _, err = alloc.partition.Submit(cmd); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	alloc.setCommonID(id)
 	return
-errDeal:
+errHandler:
 	log.LogError("action[allocateCommonID] err:%v", err.Error())
 	return
 }

@@ -144,6 +144,8 @@ func (dpMap *DataPartitionMap) getDataPartitionsToBeReleased(everyReleaseDataPar
 		count = dpLen
 	}
 	for i := 0; i < count; i++ {
+
+		// TODO use Math?
 		if dpMap.lastReleasedIndex >= uint64(dpLen) {
 			dpMap.lastReleasedIndex = 0
 		}
@@ -157,7 +159,7 @@ func (dpMap *DataPartitionMap) getDataPartitionsToBeReleased(everyReleaseDataPar
 	return
 }
 
-// TODO find a better name
+// TODO find a better name freeMemOccupiedByDataPartitions?
 func (dpMap *DataPartitionMap) releaseDataPartitions(partitions []*DataPartition) {
 	var wg sync.WaitGroup
 	for _, dp := range partitions {
@@ -202,6 +204,8 @@ func (dpMap *DataPartitionMap) getDataPartitionsToBeChecked(loadFrequencyTime in
 		}
 		dp := dpMap.partitions[dpMap.lastLoadedIndex]
 		dpMap.lastLoadedIndex++
+
+		// TODO do we need to care about the space here?
 		if time.Now().Unix()-dp.LastLoadedTime >= loadFrequencyTime {
 			partitions = append(partitions, dp)
 		}

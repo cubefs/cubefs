@@ -34,7 +34,6 @@ type ClusterValue struct {
 func newClusterValue(c *Cluster) (cv *ClusterValue) {
 	cv = &ClusterValue{
 		Name:          c.Name,
-		CompactStatus: c.compactStatus,
 	}
 	return cv
 }
@@ -395,11 +394,14 @@ func (c *Cluster) removeRaftNode(nodeID uint64, addr string) (err error) {
 	return nil
 }
 
+// TODO rename
 func (c *Cluster) handleApply(cmd *RaftCmdData) (err error) {
 	if cmd == nil {
 		return fmt.Errorf("metadata can't be null")
 	}
 	switch cmd.Op {
+
+	// TODO all the followings need to be renamed
 	case opSyncPutCluster:
 		c.applyPutCluster(cmd)
 	case opSyncAddNodeSet:
@@ -462,7 +464,6 @@ func (c *Cluster) applyPutCluster(cmd *RaftCmdData) (err error) {
 		log.LogErrorf("action[applyPutCluster],err:%v", err.Error())
 		return
 	}
-	c.compactStatus = cv.CompactStatus
 	return
 }
 
@@ -550,7 +551,7 @@ func (c *Cluster) applyDeleteMetaNode(cmd *RaftCmdData) (err error) {
 	}
 	if value, ok := c.metaNodes.Load(mnv.ID); ok {
 		metaNode := value.(*MetaNode)
-		c.delMetaNodeFromCache(metaNode)
+		c.deleteMetaNodeFromCache(metaNode)
 	}
 	return
 }
@@ -679,25 +680,6 @@ func (c *Cluster) applyUpdateDataPartition(cmd *RaftCmdData) (err error) {
 	}
 	dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 	dp.Peers = dpv.Peers
-	return
-}
-
-func (c *Cluster) loadCompactStatus() (err error) {
-	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
-	if err != nil {
-		return errors.Annotatef(err, "action[loadCompactStatus] failed,err:%v", err)
-	}
-	for key := range result {
-		log.LogInfof("action[loadCompactStatus] cluster[%v] key[%v]", c.Name, key)
-		keys := strings.Split(key, keySeparator)
-		var status bool
-		status, err = strconv.ParseBool(keys[3])
-		if err != nil {
-			return errors.Annotatef(err, "action[loadCompactStatus] failed,err:%v", err)
-		}
-		c.compactStatus = status
-		log.LogInfof("action[loadCompactStatus] cluster[%v] status[%v]", c.Name, c.compactStatus)
-	}
 	return
 }
 

@@ -28,13 +28,13 @@ func (c *Cluster) startCheckLoadMetaPartitions() {
 					c.checkLoadMetaPartitions()
 				}
 			}
-			time.Sleep(2 * time.Second * defaultCheckDataPartitionIntervalSeconds)
+			time.Sleep(2 * time.Second * defaultIntervalToCheckDataPartition)
 		}
 	}()
 }
 
 func (c *Cluster) checkLoadMetaPartitions() {
-	vols := c.getAllNormalVols()
+	vols := c.allVols()
 	for _, vol := range vols {
 		mps := vol.cloneMetaPartitionMap()
 		for _, mp := range mps {

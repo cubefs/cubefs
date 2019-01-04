@@ -151,23 +151,23 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 		}
 		cmd := &RaftCmdData{}
 		if err = json.Unmarshal(data, cmd); err != nil {
-			goto errDeal
+			goto errHandler
 		}
 		if _, err = mf.store.Put(cmd.K, cmd.V); err != nil {
-			goto errDeal
+			goto errHandler
 		}
 
 		if err = mf.applyHandler(cmd); err != nil {
-			goto errDeal
+			goto errHandler
 		}
 	}
 	if err != nil && err != io.EOF {
-		goto errDeal
+		goto errHandler
 	}
 	mf.snapshotHandler()
 	log.LogInfof(fmt.Sprintf("action[ApplySnapshot] success,applied[%v]", mf.applied))
 	return nil
-errDeal:
+errHandler:
 	log.LogError(fmt.Sprintf("action[ApplySnapshot] failed,err:%v", err.Error()))
 	return err
 }

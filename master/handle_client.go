@@ -31,8 +31,7 @@ type VolStatInfo struct {
 	UsedSize  uint64
 }
 
-// TODO the explanation does not make any sense
-// DataPartitionResponse defines the response to a data partition?
+// TODO DataPartitionResponse defines the response to a data partition?
 type DataPartitionResponse struct {
 	PartitionID uint64
 	Status      int8
@@ -101,20 +100,20 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		err  error
 	)
 	if name, err = parseAndExtractName(r); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	if vol, ok = m.cluster.vols[name]; !ok {
 		err = errors.Annotatef(volNotFound(name), "%v not found", name)
 		code = http.StatusNotFound
-		goto errDeal
+		goto errHandler
 	}
 
 	if body, err = vol.getDataPartitionsView(m.cluster.liveDataNodesRate()); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	m.replyOk(w, r, body)
 	return
-errDeal:
+errHandler:
 	logMsg := newLogMsg("getDataPartitions", r.RemoteAddr, err.Error(), code)
 	m.sendErrReply(w, r, code, logMsg, err)
 	return
@@ -130,19 +129,19 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 		vol  *Vol
 	)
 	if name, err = parseAndExtractName(r); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
 		err = errors.Annotatef(volNotFound(name), "%v not found", name)
 		code = http.StatusNotFound
-		goto errDeal
+		goto errHandler
 	}
 	if body, err = json.Marshal(m.getVolView(vol)); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	m.replyOk(w, r, body)
 	return
-errDeal:
+errHandler:
 	logMsg := newLogMsg("getVol", r.RemoteAddr, err.Error(), code)
 	m.sendErrReply(w, r, code, logMsg, err)
 	return
@@ -159,19 +158,19 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 		ok   bool
 	)
 	if name, err = parseAndExtractName(r); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	if vol, ok = m.cluster.vols[name]; !ok {
 		err = errors.Annotatef(volNotFound(name), "%v not found", name)
 		code = http.StatusNotFound
-		goto errDeal
+		goto errHandler
 	}
 	if body, err = json.Marshal(volStat(vol)); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	m.replyOk(w, r, body)
 	return
-errDeal:
+errHandler:
 	logMsg := newLogMsg("getVolStatInfo", r.RemoteAddr, err.Error(), code)
 	m.sendErrReply(w, r, code, logMsg, err)
 	return
@@ -239,24 +238,24 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		ok          bool
 	)
 	if name, partitionID, err = extractPartitionIdAndName(r); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	if vol, ok = m.cluster.vols[name]; !ok {
 		err = errors.Annotatef(volNotFound(name), "%v not found", name)
 		code = http.StatusNotFound
-		goto errDeal
+		goto errHandler
 	}
 	if mp, ok = vol.MetaPartitions[partitionID]; !ok {
 		err = errors.Annotatef(metaPartitionNotFound(partitionID), "%v not found", partitionID)
 		code = http.StatusNotFound
-		goto errDeal
+		goto errHandler
 	}
 	if body, err = mp.toJSON(); err != nil {
-		goto errDeal
+		goto errHandler
 	}
 	m.replyOk(w, r, body)
 	return
-errDeal:
+errHandler:
 	logMsg := newLogMsg("metaPartition", r.RemoteAddr, err.Error(), code)
 	m.sendErrReply(w, r, code, logMsg, err)
 	return

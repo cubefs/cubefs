@@ -79,15 +79,11 @@ func (m *Server) restoreIDAlloc() {
 	m.cluster.idAlloc.restore()
 }
 
-// load stored metadata into the memory
+// Load stored metadata into the memory
 func (m *Server) loadMetadata() {
 	log.LogInfo("action[loadMetadata] begin")
 	m.restoreIDAlloc()
 	var err error
-	if err = m.cluster.loadCompactStatus(); err != nil {
-		panic(err)
-	}
-
 	if err = m.cluster.loadNodeSets(); err != nil {
 		panic(err)
 	}
