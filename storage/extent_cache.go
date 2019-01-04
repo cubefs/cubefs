@@ -76,8 +76,8 @@ func (cache *ExtentCache) Get(extentID uint64) (extent *Extent, ok bool) {
 		cache.tinyLock.RUnlock()
 		return
 	}
-	cache.lock.Lock()
-	defer cache.lock.Unlock()
+	cache.lock.RLock()
+	defer cache.lock.RUnlock()
 	var (
 		item *ExtentMapItem
 	)
