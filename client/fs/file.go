@@ -112,7 +112,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Open: ino(%v) req(%v) resp(%v) authid(%v) (%v)ns", ino, req, resp, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Open: ino(%v) req(%v) resp(%v) (%v)ns", ino, req, resp, elapsed.Nanoseconds())
 	return f, nil
 }
 
