@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-// TODO add comments
+// TODO add comments remove
 type DiskMetrics struct {
 	Status               int32 // TODO we need to add comments to each entry here
 	ReadErrs             int32
@@ -47,11 +47,11 @@ type Stats struct {
 	Start                              time.Time
 	Total                              uint64
 	Used                               uint64
-	Available                          uint64 // TODO what is available?
-	CreatedPartitionWeights            uint64 // TODO what is CreatedPartitionWeights dataPartitionCnt * dataPartitionSize
+	Available                          uint64 // TODO what is available?   当前机器剩余的空间
+	CreatedPartitionWeights            uint64 // TODO what is CreatedPartitionWeights dataPartitionCnt * dataPartitionSize 创建的partition中占的空间
 	RemainingWeightsForCreatePartition uint64 // TODO what is RemainingWeightsForCreatePartition all used dataPartitionsWieghts
 	CreatedPartitionCnt                uint64
-	MaxWeightsForCreatePartition       uint64
+	MaxWeightsForCreatePartition       uint64 // 可以创建最多 partition的盘的容量
 
 	sync.Mutex
 }
@@ -78,12 +78,12 @@ func (s *Stats) GetConnectionCount() int64 {
 	return atomic.LoadInt64(&s.ConnectionCnt)
 }
 
-// TODO what is AddInDataSize
+// TODO what is AddInDataSize remove
 func (s *Stats) AddInDataSize(size uint64) {
 	atomic.AddUint64(&s.inDataSize, size)
 }
 
-// TODO what is AddOutDataSize
+// TODO what is AddOutDataSize remove
 func (s *Stats) AddOutDataSize(size uint64) {
 	atomic.AddUint64(&s.outDataSize, size)
 }

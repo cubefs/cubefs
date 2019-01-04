@@ -417,7 +417,7 @@ func (s *DataNode) handleRandomWritePacket(pkg *repl.Packet) {
 }
 
 // Handle OpStreamRead packet.
-// TODO should we call it streaming read?
+// TODO should we call it streaming read? double check
 func (s *DataNode) handleStreamReadPacket(pkg *repl.Packet, connect net.Conn, isRepairRead bool) {
 	var (
 		err error
@@ -574,7 +574,7 @@ func (s *DataNode) handlePacketToGetPartitionSize(pkg *repl.Packet) {
 	return
 }
 
-// TODO find a better name
+// TODO find a better name  master 让datapartition 下线
 func (s *DataNode) handlePacketToOfflineDataPartition(pkg *repl.Packet) {
 	var (
 		err          error

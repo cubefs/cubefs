@@ -44,7 +44,7 @@ func (s *DataNode) Prepare(pkg *repl.Packet) (err error) {
 		return
 	}
 
-	// TODO What does the addExtentInfo do here?
+	// TODO What does the addExtentInfo do here? 对于一些有特殊的包， 需要添加额外信息
 	if err = s.addExtentInfo(pkg); err != nil {
 		return
 	}
@@ -109,6 +109,7 @@ func (s *DataNode) addExtentInfo(pkg *repl.Packet) error {
 }
 
 // TODO what is a leader packet?
+// 这个包需不需要转发， 发给leader的包叫leaderpacket
 func isLeaderPacket(p *repl.Packet) (ok bool) {
 	if p.IsForwardPkg() && (isWriteOperation(p) || isCreateExtentOperation(p) || isMarkDeleteExtentOperation(p)) {
 		ok = true

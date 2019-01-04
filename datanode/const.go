@@ -76,11 +76,13 @@ const (
 // Apply raft log opera code
 const (
 	opRandomWrite uint32 = iota
+	// 目前只有一个
 )
 
 const (
 	maxRetryCounts  = 10     // maximum number of retries for random writes
 	// TODO why it is called MinFixTinyExtents while the commment says "Invalid tiny extent count"
+	// 每次修复tinyExtent的时候最少修复多少个 （一共只有64个）
 	MinFixTinyExtents = 10      // Invalid tiny extent count
 	dpRetainRaftLogs  = 100000 // Count of raft logs per data partition
 )

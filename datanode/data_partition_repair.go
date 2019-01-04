@@ -67,6 +67,7 @@ There are 2 types of repairs, one is normal extent repair, and the other is tiny
 */
 
 // TODO can we just call it "repairTask"?
+// leader 上的extent信息
 type DataPartitionRepairTask struct {
 	TaskType            uint8
 	addr                string
@@ -90,12 +91,13 @@ func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo, source string
 }
 
 // Main function to perform the repair.
+// good bad ->
 func (dp *DataPartition) repair(extentType uint8) {
 	start := time.Now().UnixNano() // TODO is it ok to put the start here?
 	log.LogInfof("action[repair] partition(%v) start.",
 		dp.partitionID)
 
-	var tinyExtents []uint64
+	var tinyExtents []uint64 // unsvailable extents 小文件写
 	if extentType == proto.TinyExtentType {
 		tinyExtents = dp.badTinyExtents()
 		if len(tinyExtents) == 0 {
@@ -103,9 +105,10 @@ func (dp *DataPartition) repair(extentType uint8) {
 		}
 	}
 
-	// TODO why not put the following two lines into a function called "createDataPartitionRepairTask"?
+	// TODO why not put the following two lines into a function called "createDataPartitionRepairTask"? (OK)
 	repairTasks := make([]*DataPartitionRepairTask, len(dp.replicas))
 	err := dp.buildDataPartitionRepairTask(repairTasks, extentType, tinyExtents)
+
 	if err != nil {
 		log.LogErrorf("action[repair] partition(%v) err(%v).",
 			dp.partitionID, err)
@@ -132,9 +135,11 @@ func (dp *DataPartition) repair(extentType uint8) {
 	end := time.Now().UnixNano()
 
 	// TODO explain why we need to send all the tiny extents to the channel here
+	// 每次修复的时候看看哪些需要修复， 哪些不需要修复
 	dp.sendAllTinyExtentsToC(extentType, goodTinyExtents, badTinyExtents)
 
 	// TODO explain what does this check mean
+	// 怕修复过程中出错
 	if dp.extentStore.GoodTinyExtentCnt() + dp.extentStore.BadTinyExtentCnt() > storage.TinyExtentCount {
 		log.LogWarnf("action[repair] partition(%v) GoodTinyExtents(%v) "+
 			"BadTinyExtents(%v) finish cost[%vms].", dp.partitionID, dp.extentStore.GoodTinyExtentCnt(),
@@ -357,7 +362,7 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 	badTinyExtents = make([]uint64, 0)
 	for extentID, maxFileInfo := range maxSizeExtentMap {
 
-		// TODO what does "isFix" mean?
+		// TODO what does "isFix" mean? 已经被修复的需要被放回channel的， hasBeenRepaired = true
 		isGoodExtent := true
 		for index := 0; index < len(repairTasks); index++ {
 			extentInfo, ok := repairTasks[index].extents[extentID]

@@ -37,6 +37,7 @@ var (
 
 // DiskUsage includes different statistics of the disk usage.
 // TODO it seems that these fields are duplicated with the ones in Disk
+// remove
 type DiskUsage struct {
 	Total       uint64
 	Used        uint64
@@ -60,8 +61,8 @@ type Disk struct {
 	Allocated    uint64
 
 	MaxErrCnt      int // maximum number of errors TODO shouldn't this value be a constant ?
-	Status       int // TODo disk status such as XXX
-	RestSize     uint64 // TODO what is reset size?
+	Status       int // TODo disk status such as XXX READONLY
+	RestSize     uint64 // TODO what is reset size? 预留空间   reservedSpace
 
 	// TODO will dpMap sound better?
 	partitionMap map[uint64]*DataPartition
@@ -85,7 +86,6 @@ func NewDisk(path string, restSize uint64, maxErrCnt int, space *SpaceManager) (
 	// TODO why maxErrs has been set twice here?
 	d.MaxErrCnt = 2000
 
-	// TODO do we need to call computeUsage here? It will be called in startScheduleTasks as well
 	d.computeUsage()
 
 	d.startScheduleTasks()
@@ -153,12 +153,12 @@ func (d *Disk) computeUsage() (err error) {
 }
 
 // TODO do we really need this wrapper?
-func (d *Disk) updateReadErrCnt() {
+func (d *Disk) updateReadErrCnt() { // increase
 	atomic.AddUint64(&d.ReadErrCnt, 1)
 }
 
 // TODO do we really need this wrapper?
-func (d *Disk) updateWriteErrCnt() {
+func (d *Disk) updateWriteErrCnt() { // decrease
 	atomic.AddUint64(&d.WriteErrCnt, 1)
 }
 

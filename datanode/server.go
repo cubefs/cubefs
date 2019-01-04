@@ -42,7 +42,7 @@ import (
 )
 
 var (
-	// TODO when this mismatch could happen?
+	// TODO when this mismatch could happen? remove nottiny or extent
 	ErrIncorrectStoreType        = errors.New("incorrect store type")
 	ErrNoPartitionFound        = errors.New("data partition does not exist")
 	ErrNoSpaceToCreatePartition = errors.New("no disk space to create a data partition")
@@ -356,6 +356,7 @@ func (s *DataNode) serveConn(conn net.Conn) {
 }
 
 // TODO what does add diskErrs mean? This does not make any sense
+// diskerr 的个数增加一
 func (s *DataNode) addDiskErrs(partitionID uint64, err error, flag uint8) {
 	if err == nil {
 		return

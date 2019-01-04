@@ -51,12 +51,12 @@ var (
 )
 
 // TODO it seems that this is the metadata of a data partition. if my understanding is correct, we should name it as "DPMetadata" or simply "Metadata"
-type DPMetadata struct {
+type DPMetadata struct { // DataPartitionMetadata
 	VolumeID      string
 	PartitionID   uint64
 	PartitionSize int
 	CreateTime    string
-	RandomWrite   bool
+	RandomWrite   bool  // isRandomWrite
 	Peers         []proto.Peer
 }
 
@@ -99,19 +99,19 @@ type DataPartition struct {
 	extentStore     *storage.ExtentStore
 	raftPartition   raftstore.Partition
 	config          *dataPartitionCfg
-	applyID         uint64 // TODO what is applyID?
-	lastTruncateID  uint64 // TODO what is lastTruncateID?
-	minAppliedID    uint64 // TODO what is appliedID?
-	maxAppliedID    uint64
+	applyID         uint64 // TODO what is applyID?   raft使用的， 在raft里面已经用到的applidID  Raft 里面的
+	lastTruncateID  uint64 // TODO what is lastTruncateID?    Raft 里面的
+	minAppliedID    uint64 // TODO what is appliedID?  Raft 里面的
+	maxAppliedID    uint64 // Raft 里面的
 	repairC         chan uint64
 	storeC          chan uint64
 	stopC           chan bool
 
 	runtimeMetrics          *DataPartitionMetrics
-	updateReplicationTime   int64 // TODO what is updateReplicationTime? timestamp?
-	isFirstFixTinyExtents   bool // TODO what is isFirstFixTinyExtents?
+	updateReplicationTime   int64 // TODO what is updateReplicationTime? timestamp?  每隔多少分钟去请求master当前partition的复制组的关系
+	isFirstFixTinyExtents   bool // TODO what is isFirstFixTinyExtents?  第一次启动的时候必须把所有的tinyextent 修复 shouldRepairAllExtents
 	snapshot                []*proto.File
-	snapshotLock            sync.RWMutex // TODO should we call it snapshotMutex? or ssMutex?
+	snapshotLock            sync.RWMutex // TODO should we call it snapshotMutex?
 	intervalToUpdatePartitionSize int64
 }
 
@@ -309,7 +309,7 @@ func (dp *DataPartition) Available() int {
 	return dp.partitionSize - dp.used
 }
 
-// TODO what does this mean?
+// TODO what does this mean? remove
 func (dp *DataPartition) ChangeStatus(status int) {
 	switch status {
 	case proto.ReadOnly, proto.ReadWrite, proto.Unavaliable:
@@ -388,7 +388,7 @@ func (dp *DataPartition) statusUpdate() {
 	status := proto.ReadWrite
 	dp.computeUsage()
 
-	// TODO why not combine these two conditions together?
+	// TODO why not combine these two conditions together? 放在一块可以
 	if dp.used >= dp.partitionSize {
 		status = proto.ReadOnly
 	}
@@ -397,10 +397,11 @@ func (dp *DataPartition) statusUpdate() {
 	}
 
 	// TODO what does the compare mean here?
+	// explain
 	dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
 }
 
-// TODO why this name is capitalized?
+// TODO why this name is capitalized? 改小写
 func ParseFileName(filename string) (extentID uint64, isExtent bool) {
 	if isExtent = storage.RegexpExtentFile.MatchString(filename); !isExtent {
 		return
@@ -465,6 +466,7 @@ func (dp *DataPartition) String() (m string) {
 
 // LaunchRepair launches the repair of extens
 // TODO needs some explanations here
+//
 func (dp *DataPartition) LaunchRepair(extentType uint8) {
 	if dp.partitionStatus == proto.Unavaliable {
 		return
@@ -578,6 +580,7 @@ func (dp *DataPartition) GetAllExtentsMeta() (files []*storage.ExtentInfo, err e
  2. Extent不存在，先创建Extent，然后修复整个extent文件
 */
 // DoExtentStoreRepair performs the repairs of the extent store.
+// 修复长度加上
 func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask) {
 	store := dp.extentStore
 	for _, extentInfo := range repairTask.ExtentsToBeCreated {

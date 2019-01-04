@@ -21,7 +21,7 @@ import (
 	"sync/atomic"
 )
 
-// TODO what does the Post function do?
+// TODO what does the Post function do? 后处理函数
 func (s *DataNode) Post(pkg *repl.Packet) error {
 	if pkg.IsMasterCommand() {
 		pkg.NeedReply = false

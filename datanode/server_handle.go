@@ -14,6 +14,8 @@
 
 package datanode
 
+/* server_handler.go*/
+
 import (
 	"encoding/json"
 	"fmt"
@@ -24,7 +26,7 @@ import (
 	"github.com/tiglabs/containerfs/storage"
 )
 
-// TODO why use "s" for data node? This is kind of meaningless
+// TODO why use "s" for data node? This is kind of meaningless  server
 // TODO change to getDiskAPI
 func (s *DataNode) apiGetDisk(w http.ResponseWriter, r *http.Request) {
 	disks := make([]interface{}, 0)

@@ -147,7 +147,7 @@ func (dp *DataPartition) addDiskErrs(err error, flag uint8) {
 	}
 }
 
-// TODO what is RandomPartitionReadCheck
+// TODO what is RandomPartitionReadCheck 读的时候判断自己是不是leader
 func (dp *DataPartition) RandomPartitionReadCheck(request *repl.Packet, connect net.Conn) (err error) {
 	if !dp.config.RandomWrite || request.Opcode == proto.OpExtentRepairRead {
 		return
@@ -191,6 +191,7 @@ func NewItemIterator(applyID uint64) *ItemIterator {
 
 // ApplyIndex returns the applyID
 // TODO should we call it ApplyID or ApplyIndex?
+// raqft 里面必须实现 applyIndex方法
 func (si *ItemIterator) ApplyIndex() uint64 {
 	return si.applyID
 }

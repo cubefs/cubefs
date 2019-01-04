@@ -96,7 +96,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		return
 	}
 
-	// Change memory status TODO what does this mean?
+	// Change memory status TODO what does this mean? isUpdated
 	var (
 		updated bool
 	)
