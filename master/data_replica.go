@@ -1,4 +1,4 @@
-// Copyright 2018 The CFS Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,11 +30,11 @@ type DataReplica struct {
 	FileCount               uint32
 	loc                     uint8
 	Status                  int8
-	LoadPartitionIsResponse bool
+	LoadPartitionIsResponse bool // TODO what is LoadPartitionIsResponse?
 	Total                   uint64 `json:"TotalSize"`
 	Used                    uint64 `json:"UsedSize"`
 	IsLeader                bool
-	NeedCompare             bool
+	NeedsToCompare          bool
 	DiskPath                string
 }
 
@@ -50,9 +50,9 @@ func (replica *DataReplica) setAlive() {
 	replica.ReportTime = time.Now().Unix()
 }
 
-func (replica *DataReplica) checkMiss(missSec int64) (isMiss bool) {
+func (replica *DataReplica) isMissing(missSec int64) (isMissing bool) {
 	if time.Now().Unix()-replica.ReportTime > missSec {
-		isMiss = true
+		isMissing = true
 	}
 	return
 }

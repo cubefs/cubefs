@@ -1,4 +1,4 @@
-// Copyright 2018 The CFS Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,19 +34,19 @@ const (
 )
 
 // TODO the followings seem to be related to intervals
-// Suggested naming: defaultIntervalToXXX
+// TODO Suggested naming: defaultIntervalToXXX
 const (
-	defaultEveryReleaseDataPartitionCount       = 1000
-	defaultReleaseDataPartitionAfterLoadSeconds = 5 * 60
+	defaultEveryReleaseDataPartitionCount       = 1000 // TODO explain
+	defaultReleaseDataPartitionAfterLoadSeconds = 5 * 60 // TODO explain
 	defaultReleaseDataPartitionInternalSeconds  = 10
 	defaultCheckHeartbeatIntervalSeconds        = 60
 	defaultIntervalToCheckDataPartition   = 60
-	defaultFileDelayCheckLackSec          = 5 * defaultCheckHeartbeatIntervalSeconds
-	defaultFileDelayCheckCrcSec           = 20 * defaultCheckHeartbeatIntervalSeconds
-	noHeartBeatTimes                      = 3
+	defaultFileDelayCheckLackSec          = 5 * defaultCheckHeartbeatIntervalSeconds // TODO explain
+	defaultFileDelayCheckCrcSec           = 20 * defaultCheckHeartbeatIntervalSeconds // TODO explain
+	noHeartBeatTimes                      = 3 // TODO explain
 	defaultNodeTimeOutSec                 = noHeartBeatTimes * defaultCheckHeartbeatIntervalSeconds
 	defaultDataPartitionTimeOutSec        = 10 * defaultCheckHeartbeatIntervalSeconds
-	defaultDataPartitionMissSec           = 24 * 3600
+	defaultDataPartitionMissSec           = 24 * 3600 // TODO explain
 
 	// TODO change to defaultIntervalToCheckMissingDP ?
 	defaultDataPartitionWarningInterval   = 60 * 60
@@ -66,15 +66,15 @@ const (
 var AddrDatabase = make(map[uint64]string)
 
 type clusterConfig struct {
-	releaseDataPartitionAfterLoadSeconds int64
+	releaseDataPartitionAfterLoadSeconds int64 // TODO explain1
 	NodeTimeOutSec                       int64
-	DataPartitionMissSec                 int64
+	DataPartitionMissSec                 int64 // TODO explain
 	DataPartitionTimeOutSec              int64
-	DataPartitionWarnInterval            int64
-	LoadDataPartitionFrequencyTime       int64
+	DataPartitionWarningInterval         int64 // TODO rename? warning interval?
+	LoadDataPartitionFrequencyTime       int64 // TODO explain
 	IntervalToCheckDataPartition         int // seconds
-	everyReleaseDataPartitionCount       int
-	everyLoadDataPartitionCount          int
+	everyReleaseDataPartitionCount       int /// TODO explain
+	everyLoadDataPartitionCount          int // TODO explain
 	nodeSetCapacity                      int
 	MetaNodeThreshold                    float32
 	peers                                []raftstore.PeerAddress
@@ -89,7 +89,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.DataPartitionMissSec = defaultDataPartitionMissSec
 	cfg.DataPartitionTimeOutSec = defaultDataPartitionTimeOutSec
 	cfg.IntervalToCheckDataPartition = defaultIntervalToCheckDataPartition
-	cfg.DataPartitionWarnInterval = defaultDataPartitionWarningInterval
+	cfg.DataPartitionWarningInterval = defaultDataPartitionWarningInterval
 	cfg.everyLoadDataPartitionCount = defaultEveryLoadDataPartitionCount
 	cfg.LoadDataPartitionFrequencyTime = defaultLoadDataPartitionFrequencyTime
 	cfg.MetaNodeThreshold = defaultMetaPartitionMemUsageThreshold

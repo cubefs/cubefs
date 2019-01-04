@@ -1,4 +1,4 @@
-// Copyright 2018 The CFS Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,20 +28,20 @@ import (
 type DataNode struct {
 	Total      uint64 `json:"TotalWeight"`
 	Used       uint64 `json:"UsedWeight"`
-	Available  uint64
+	Available  uint64 // TODO what is Available?
 	ID         uint64
 	RackName   string `json:"Rack"`
 	Addr       string
 	ReportTime time.Time
 	isActive   bool
 	sync.RWMutex
-	Ratio              float64
-	SelectCount        uint64
-	Carry              float64
-	Sender             *AdminTaskSender
-	dataPartitionInfos []*proto.PartitionReport
-	DataPartitionCount uint32
-	NodeSetID          uint64
+	Ratio                float64
+	SelectCount          uint64  // TODO what is SelectCount
+	Carry                float64 // TODO what is Carry
+	Sender               *AdminTaskSender // TODO explain?
+	dataPartitionReports []*proto.PartitionReport
+	DataPartitionCount   uint32
+	NodeSetID            uint64
 }
 
 func newDataNode(addr, clusterID string) (dataNode *DataNode) {
@@ -53,8 +53,7 @@ func newDataNode(addr, clusterID string) (dataNode *DataNode) {
 	return
 }
 
-// check heartbeat
-func (dataNode *DataNode) checkHeartBeat() {
+func (dataNode *DataNode) checkLiveness() {
 	dataNode.Lock()
 	defer dataNode.Unlock()
 	if time.Since(dataNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
@@ -64,11 +63,11 @@ func (dataNode *DataNode) checkHeartBeat() {
 	return
 }
 
-func (dataNode *DataNode) getBadDiskPartitions(disk string) (partitionIds []uint64) {
+func (dataNode *DataNode) badPartitionIDs(disk string) (partitionIds []uint64) {
 	partitionIds = make([]uint64, 0)
 	dataNode.RLock()
 	defer dataNode.RUnlock()
-	for _, partitionReports := range dataNode.dataPartitionInfos {
+	for _, partitionReports := range dataNode.dataPartitionReports {
 		if partitionReports.DiskPath == disk {
 			partitionIds = append(partitionIds, partitionReports.PartitionID)
 		}
@@ -85,7 +84,7 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartBeatResponse
 	dataNode.Available = resp.Available
 	dataNode.RackName = resp.RackName
 	dataNode.DataPartitionCount = resp.CreatedPartitionCnt
-	dataNode.dataPartitionInfos = resp.PartitionInfo
+	dataNode.dataPartitionReports = resp.PartitionReports
 	if dataNode.Total == 0 {
 		dataNode.Ratio = 0.0
 	} else {
@@ -121,6 +120,7 @@ func (dataNode *DataNode) SetCarry(carry float64) {
 }
 
 // SelectNodeForWrite implements "SelectNodeForWrite" in the Node interface
+// TODO explain
 func (dataNode *DataNode) SelectNodeForWrite() {
 	dataNode.Lock()
 	defer dataNode.Unlock()
@@ -133,7 +133,7 @@ func (dataNode *DataNode) clean() {
 	dataNode.Sender.exitCh <- struct{}{}
 }
 
-func (dataNode *DataNode) generateHeartbeatTask(masterAddr string) (task *proto.AdminTask) {
+func (dataNode *DataNode) createHeartbeatTask(masterAddr string) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:   time.Now().Unix(),
 		MasterAddr: masterAddr,

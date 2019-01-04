@@ -1,4 +1,4 @@
-// Copyright 2018 The CFS Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -206,7 +206,7 @@ func volStat(vol *Vol) (stat *VolStatInfo) {
 	stat = new(VolStatInfo)
 	stat.Name = vol.Name
 	stat.TotalSize = vol.Capacity * util.GB
-	stat.UsedSize = vol.getTotalUsedSpace()
+	stat.UsedSize = vol.totalUsedSpace()
 	if stat.UsedSize > stat.TotalSize {
 		stat.UsedSize = stat.TotalSize
 	}

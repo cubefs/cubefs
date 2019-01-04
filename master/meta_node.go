@@ -1,4 +1,4 @@
-// Copyright 2018 The CFS Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -97,7 +97,7 @@ func (metaNode *MetaNode) setNodeActive() {
 func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, threshold float32) {
 	metaNode.Lock()
 	defer metaNode.Unlock()
-	metaNode.metaPartitionInfos = resp.MetaPartitionInfo
+	metaNode.metaPartitionInfos = resp.MetaPartitionReports
 	metaNode.MetaPartitionCount = len(metaNode.metaPartitionInfos)
 	metaNode.Total = resp.Total
 	metaNode.Used = resp.Used

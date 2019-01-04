@@ -1,4 +1,4 @@
-// Copyright 2018 The CFS Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -129,7 +129,8 @@ func (dpMap *DataPartitionMap) getDataPartitionsView(minPartitionID uint64) (dpR
 	return
 }
 
-func (dpMap *DataPartitionMap) getNeedReleaseDataPartitions(everyReleaseDataPartitionCount int, releaseDataPartitionAfterLoadSeconds int64) (partitions []*DataPartition, startIndex uint64) {
+// TODO what are everyReleaseDataPartitionCount and releaseDataPartitionAfterLoadSeconds ?
+func (dpMap *DataPartitionMap) getDataPartitionsToBeReleased(everyReleaseDataPartitionCount int, releaseDataPartitionAfterLoadSeconds int64) (partitions []*DataPartition, startIndex uint64) {
 	partitions = make([]*DataPartition, 0)
 	dpMap.RLock()
 	defer dpMap.RUnlock()
@@ -138,17 +139,17 @@ func (dpMap *DataPartitionMap) getNeedReleaseDataPartitions(everyReleaseDataPart
 		return
 	}
 	startIndex = dpMap.lastReleasedIndex
-	needReleaseCount := everyReleaseDataPartitionCount
+	count := everyReleaseDataPartitionCount
 	if dpLen < everyReleaseDataPartitionCount {
-		needReleaseCount = dpLen
+		count = dpLen
 	}
-	for i := 0; i < needReleaseCount; i++ {
+	for i := 0; i < count; i++ {
 		if dpMap.lastReleasedIndex >= uint64(dpLen) {
 			dpMap.lastReleasedIndex = 0
 		}
 		dp := dpMap.partitions[dpMap.lastReleasedIndex]
 		dpMap.lastReleasedIndex++
-		if time.Now().Unix()-dp.LastLoadTime >= releaseDataPartitionAfterLoadSeconds {
+		if time.Now().Unix()-dp.LastLoadedTime >= releaseDataPartitionAfterLoadSeconds {
 			partitions = append(partitions, dp)
 		}
 	}
@@ -178,7 +179,7 @@ func (dpMap *DataPartitionMap) releaseDataPartitions(partitions []*DataPartition
 
 }
 
-func (dpMap *DataPartitionMap) getNeedCheckDataPartitions(loadFrequencyTime int64) (partitions []*DataPartition, startIndex uint64) {
+func (dpMap *DataPartitionMap) getDataPartitionsToBeChecked(loadFrequencyTime int64) (partitions []*DataPartition, startIndex uint64) {
 	partitions = make([]*DataPartition, 0)
 	dpMap.RLock()
 	defer dpMap.RUnlock()
@@ -187,17 +188,21 @@ func (dpMap *DataPartitionMap) getNeedCheckDataPartitions(loadFrequencyTime int6
 		return
 	}
 	startIndex = dpMap.lastLoadedIndex
-	needLoadCount := dpLen / intervalToLoadDataPartition
-	if needLoadCount == 0 {
-		needLoadCount = 1
+
+	// TODO change to:
+	// count := math.Max(dpLen / intervalToLoadDataPartition, 1)
+	count := dpLen / intervalToLoadDataPartition // TODO what is the theory behind this?
+	if count == 0 {
+		count = 1
 	}
-	for i := 0; i < needLoadCount; i++ {
+
+	for i := 0; i < count; i++ {
 		if dpMap.lastLoadedIndex >= (uint64)(len(dpMap.partitions)) {
 			dpMap.lastLoadedIndex = 0
 		}
 		dp := dpMap.partitions[dpMap.lastLoadedIndex]
 		dpMap.lastLoadedIndex++
-		if time.Now().Unix()-dp.LastLoadTime >= loadFrequencyTime {
+		if time.Now().Unix()-dp.LastLoadedTime >= loadFrequencyTime {
 			partitions = append(partitions, dp)
 		}
 	}
@@ -205,7 +210,7 @@ func (dpMap *DataPartitionMap) getNeedCheckDataPartitions(loadFrequencyTime int6
 	return
 }
 
-func (dpMap *DataPartitionMap) getTotalUsedSpace() (totalUsed uint64) {
+func (dpMap *DataPartitionMap) totalUsedSpace() (totalUsed uint64) {
 	dpMap.RLock()
 	defer dpMap.RUnlock()
 	for _, dp := range dpMap.partitions {

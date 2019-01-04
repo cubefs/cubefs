@@ -31,23 +31,23 @@ type Cluster struct {
 	vols                 map[string]*Vol
 	dataNodes            sync.Map
 	metaNodes            sync.Map
-	dpMutex              sync.Mutex
-	volsMutex            sync.RWMutex
-	mnMutex              sync.RWMutex // metaNode mutex
-	dnMutex              sync.RWMutex
-	leaderInfo           *LeaderInfo
-	cfg                  *clusterConfig
-	retainLogs           uint64
-	idAlloc              *IDAllocator
-	t                    *topology
-	compactStatus        bool // TODO what is compact status?
-	dataNodeStatInfo     *nodeStatInfo
-	metaNodeStatInfo     *nodeStatInfo
-	volStatInfo          sync.Map
-	BadDataPartitionIds  *sync.Map
-	AutoAllocationSwitch bool // On: true,  Off: false
-	fsm                  *MetadataFsm
-	partition            raftstore.Partition
+	dpMutex             sync.Mutex
+	volsMutex           sync.RWMutex
+	mnMutex             sync.RWMutex // metaNode mutex
+	dnMutex             sync.RWMutex
+	leaderInfo          *LeaderInfo
+	cfg                 *clusterConfig
+	retainLogs          uint64
+	idAlloc             *IDAllocator
+	t                   *topology
+	compactStatus       bool // TODO what is compact status?
+	dataNodeStatInfo    *nodeStatInfo
+	metaNodeStatInfo    *nodeStatInfo
+	volStatInfo         sync.Map
+	BadDataPartitionIds *sync.Map
+	ShouldAutoAllocate  bool // On: true,  Off: false
+	fsm                 *MetadataFsm
+	partition           raftstore.Partition
 }
 
 func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition raftstore.Partition, cfg *clusterConfig) (c *Cluster) {
@@ -73,7 +73,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckReleaseDataPartitions()
 	c.scheduleToCheckHeartbeat()
 	c.scheduleToCheckMetaPartitions()
-	c.scheduleToCheckAvailSpace()
+	c.scheduleToUpdateStatInfo()
 	c.scheduleToCheckAutoDataPartitionCreation()
 	c.scheduleToCheckVolStatus()
 	c.scheduleToCheckDiskRecoveryProgress()
@@ -85,11 +85,11 @@ func (c *Cluster) masterAddr() (addr string) {
 	return c.leaderInfo.addr
 }
 
-func (c *Cluster) scheduleToCheckAvailSpace() {
+func (c *Cluster) scheduleToUpdateStatInfo() {
 	go func() {
 		for {
 			if c.partition != nil && c.partition.IsLeader() {
-				c.checkAvailSpace()
+				c.updateStatInfo()
 			}
 			time.Sleep(time.Second * defaultCheckHeartbeatIntervalSeconds)
 		}
@@ -220,8 +220,8 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 	tasks := make([]*proto.AdminTask, 0)
 	c.dataNodes.Range(func(addr, dataNode interface{}) bool {
 		node := dataNode.(*DataNode)
-		node.checkHeartBeat()
-		task := node.generateHeartbeatTask(c.masterAddr())
+		node.checkLiveness()
+		task := node.createHeartbeatTask(c.masterAddr())
 		tasks = append(tasks, task)
 		return true
 	})
@@ -404,9 +404,9 @@ func (c *Cluster) markDeleteVol(name string) (err error) {
 	if vol, err = c.getVol(name); err != nil {
 		return
 	}
-	vol.Status = volMarkDelete
+	vol.Status = markDelete
 	if err = c.syncUpdateVol(vol); err != nil {
-		vol.Status = volNormal
+		vol.Status = normal
 		return
 	}
 	return
@@ -479,7 +479,7 @@ errHandler:
 }
 
 func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition) (err error) {
-	task := dp.generateCreateTask(host, size)
+	task := dp.createTaskToCreateDataPartition(host, size)
 	dataNode, err := c.dataNode(host)
 	if err != nil {
 		return
@@ -636,7 +636,7 @@ func (c *Cluster) delDataNodeFromCache(dataNode *DataNode) {
 // 3. Persist the latest host list.
 // 4. Generate an async task to delete the replica.
 // 5. Synchronously create a data partition.
-// Set the data partition as readOnly.
+// 6. Set the data partition as readOnly.
 func (c *Cluster) decommissionDataPartition(offlineAddr, volName string, dp *DataPartition, errMsg string) (err error) {
 	var (
 		newHosts   []string
@@ -655,7 +655,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr, volName string, dp *Dat
 	badPartitionIDs = append(badPartitionIDs, dp.PartitionID)
 	dp.Lock()
 	defer dp.Unlock()
-	if ok := dp.isInPersistenceHosts(offlineAddr); !ok {
+	if ok := dp.hasHost(offlineAddr); !ok {
 		return
 	}
 
@@ -701,10 +701,10 @@ func (c *Cluster) decommissionDataPartition(offlineAddr, volName string, dp *Dat
 		}
 	}
 
-	if task, err = dp.generateOfflineTask(removePeer, newPeers[0]); err != nil {
+	if task, err = dp.createTaskToDecommissionDataPartition(removePeer, newPeers[0]); err != nil {
 		goto errHandler
 	}
-	dp.generatorOffLineLog(offlineAddr)
+	dp.logDecommissionedDataPartition(offlineAddr)
 
 	if err = dp.updateForOffline(offlineAddr, newAddr, volName, newPeers, c); err != nil {
 		goto errHandler
@@ -743,7 +743,7 @@ func (c *Cluster) metaNodeOffLine(metaNode *MetaNode) {
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
 		for _, mp := range vol.MetaPartitions {
-			c.metaPartitionOffline(vol.Name, metaNode.Addr, mp.PartitionID)
+			c.decommissionMetaPartition(vol.Name, metaNode.Addr, mp.PartitionID)
 		}
 	}
 	if err := c.syncDeleteMetaNode(metaNode); err != nil {
@@ -806,7 +806,7 @@ func (c *Cluster) createVol(name string, replicaNum uint8, randomWrite bool, siz
 	}
 	vol.initMetaPartitions(c)
 	if len(vol.MetaPartitions) == 0 {
-		vol.Status = volMarkDelete
+		vol.Status = markDelete
 		c.syncDeleteVol(vol)
 		c.deleteVol(name)
 		goto errHandler
@@ -1072,7 +1072,7 @@ func (c *Cluster) allVols() (vols map[string]*Vol) {
 	c.volsMutex.RLock()
 	defer c.volsMutex.RUnlock()
 	for name, vol := range c.vols {
-		if vol.Status == volNormal {
+		if vol.Status == normal {
 			vols[name] = vol
 		}
 	}

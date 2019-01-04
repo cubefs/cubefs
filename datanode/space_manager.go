@@ -325,12 +325,12 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartBeatRespo
 	response.Available = stat.Available
 	response.CreatedPartitionCnt = uint32(stat.CreatedPartitionCnt)
 	response.CreatedPartitionWeights = stat.CreatedPartitionWeights
-	response.MaxWeightsForCreatePartition = stat.MaxWeightsForCreatePartition
-	response.RemainWeightsForCreatePartition = stat.RemainingWeightsForCreatePartition
+	response.MaxWeights = stat.MaxWeightsForCreatePartition
+	response.RemainingWeights = stat.RemainingWeightsForCreatePartition
 	stat.Unlock()
 
 	response.RackName = s.rackName
-	response.PartitionInfo = make([]*proto.PartitionReport, 0)
+	response.PartitionReports = make([]*proto.PartitionReport, 0)
 	space := s.space
 	space.RangePartitions(func(partition *DataPartition) bool {
 		leaderAddr, isLeader := partition.IsRaftLeader()
@@ -345,7 +345,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartBeatRespo
 			NeedCompare:     true,
 		}
 		log.LogDebugf("action[Heartbeats] dpid[%v], status[%v] total[%v] used[%v] leader[%v] b[%v].", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)
-		response.PartitionInfo = append(response.PartitionInfo, vr)
+		response.PartitionReports = append(response.PartitionReports, vr)
 		return true
 	})
 }

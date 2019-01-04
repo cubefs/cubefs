@@ -118,17 +118,17 @@ type PartitionReport struct {
 }
 
 type DataNodeHeartBeatResponse struct {
-	Total                           uint64
-	Used                            uint64
-	Available                       uint64
-	CreatedPartitionWeights         uint64 //volCnt*volsize
-	RemainWeightsForCreatePartition uint64 //all-usedvolsWieghts
-	CreatedPartitionCnt             uint32
-	MaxWeightsForCreatePartition    uint64
-	RackName                        string
-	PartitionInfo                   []*PartitionReport
-	Status                          uint8
-	Result                          string
+	Total                   uint64
+	Used                    uint64
+	Available               uint64
+	CreatedPartitionWeights uint64 // volCnt * volsize
+	RemainingWeights        uint64 // create partition TODO is it necessary?
+	CreatedPartitionCnt     uint32
+	MaxWeights              uint64 // create partition
+	RackName                string
+	PartitionReports        []*PartitionReport
+	Status                  uint8
+	Result                  string
 }
 
 type MetaPartitionReport struct {
@@ -141,12 +141,12 @@ type MetaPartitionReport struct {
 }
 
 type MetaNodeHeartbeatResponse struct {
-	RackName          string
-	Total             uint64
-	Used              uint64
-	MetaPartitionInfo []*MetaPartitionReport
-	Status            uint8
-	Result            string
+	RackName             string
+	Total                uint64
+	Used                 uint64
+	MetaPartitionReports []*MetaPartitionReport
+	Status               uint8
+	Result               string
 }
 
 type DeleteFileRequest struct {

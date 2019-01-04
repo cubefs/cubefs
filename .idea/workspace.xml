@@ -1,0 +1,711 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="75de0a9f-6b8e-4ef8-9025-53537ba05dee" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/datanode/space_manager.go" beforeDir="false" afterPath="$PROJECT_DIR$/datanode/space_manager.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/cluster.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/cluster.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/cluster_space_stat.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/cluster_space_stat.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/cluster_task.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/cluster_task.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/config.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/config.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/const.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/const.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/data_node.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/data_node.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/data_partition.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/data_partition.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/data_partition_check.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/data_partition_check.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/data_partition_map.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/data_partition_map.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/data_replica.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/data_replica.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/disk_manager.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/disk_manager.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/errors.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/errors.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/filecheck.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/filecheck.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/filecrc.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/filecrc.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/filemeta.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/filemeta.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/handle_admin.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/handle_admin.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/handle_client.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/handle_client.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/id_allocator.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/id_allocator.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/master_manager.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/master_manager.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/meta_node.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/meta_node.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/meta_partition.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/meta_partition.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/meta_partition_manager.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/meta_partition_manager.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/metadata_fsm.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/metadata_fsm.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/metadata_fsm_op.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/metadata_fsm_op.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/metadata_snapshot.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/metadata_snapshot.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/node_select.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/node_select.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/operate_util.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/operate_util.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/server.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/server.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/topology.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/topology.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/master/vol.go" beforeDir="false" afterPath="$PROJECT_DIR$/master/vol.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/metanode/manager_op.go" beforeDir="false" afterPath="$PROJECT_DIR$/metanode/manager_op.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/proto/admin_proto.go" beforeDir="false" afterPath="$PROJECT_DIR$/proto/admin_proto.go" afterDir="false" />
+    </list>
+    <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileEditorManager">
+    <leaf>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/master/data_partition.go">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="167">
+              <caret line="406" column="39" selection-start-line="406" selection-start-column="39" selection-end-line="406" selection-end-column="39" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/master/data_replica.go">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="227">
+              <caret line="63" column="4" selection-start-line="63" selection-start-column="4" selection-end-line="63" selection-end-column="4" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/master/disk_manager.go">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="679">
+              <caret line="99" column="20" selection-start-line="99" selection-start-column="20" selection-end-line="99" selection-end-column="20" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/master/errors.go">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="-983">
+              <caret column="43" selection-start-column="43" selection-end-column="43" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/master/filecheck.go">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="164">
+              <caret line="125" column="33" selection-start-line="125" selection-start-column="33" selection-end-line="125" selection-end-column="33" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/master/filecrc.go">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="214">
+              <caret line="43" column="51" lean-forward="true" selection-start-line="43" selection-start-column="51" selection-end-line="43" selection-end-column="51" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/master/filemeta.go">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="-95">
+              <caret column="43" selection-start-column="43" selection-end-column="43" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/master/handle_client.go">
+          <provider selected="true" editor-type-id="text-editor">
+            <state>
+              <caret column="43" selection-start-column="43" selection-end-column="43" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/master/handle_admin.go">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="329">
+              <caret line="580" column="34" lean-forward="true" selection-start-line="580" selection-start-column="34" selection-end-line="580" selection-end-column="34" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/master/data_partition_map.go">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="-803">
+              <caret line="147" column="38" selection-start-line="147" selection-start-column="38" selection-end-line="147" selection-end-column="38" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+    </leaf>
+  </component>
+  <component name="FindInProjectRecents">
+    <findStrings>
+      <find>parseCreateMetaPartitionPara</find>
+      <find>partitionSize</find>
+      <find>start</find>
+      <find>addDataNode</find>
+      <find>DeleteVol</find>
+      <find>checkNodeAddr</find>
+      <find>extractNode</find>
+      <find>extractPartitionI</find>
+      <find>extractData</find>
+      <find>extractDataP</find>
+      <find>validateRequestToCreateMetaPartition</find>
+      <find>Decommit</find>
+      <find>DentrySign</find>
+      <find>N</find>
+      <find>NotifyExtentRepair</find>
+    </findStrings>
+  </component>
+  <component name="GOROOT" path="/usr/local/go" />
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GoLibraries">
+    <option name="indexEntireGoPath" value="false" />
+  </component>
+  <component name="IdeDocumentHistory">
+    <option name="CHANGED_PATHS">
+      <list>
+        <option value="$PROJECT_DIR$/proto/packet.go" />
+        <option value="$PROJECT_DIR$/datanode/const.go" />
+        <option value="$PROJECT_DIR$/datanode/wrap_prepare.go" />
+        <option value="$PROJECT_DIR$/datanode/space_manager.go" />
+        <option value="$PROJECT_DIR$/datanode/partition_raftfsm.go" />
+        <option value="$PROJECT_DIR$/datanode/disk.go" />
+        <option value="$PROJECT_DIR$/storage/store_extent.go" />
+        <option value="$PROJECT_DIR$/datanode/wrap_operator.go" />
+        <option value="$PROJECT_DIR$/datanode/server.go" />
+        <option value="$PROJECT_DIR$/datanode/partition.go" />
+        <option value="$PROJECT_DIR$/repl/repl_protocol.go" />
+        <option value="$PROJECT_DIR$/datanode/data_partition_repair.go" />
+        <option value="$PROJECT_DIR$/sdk/data/stream/extent_handler.go" />
+        <option value="$PROJECT_DIR$/sdk/data/stream/packet.go" />
+        <option value="$PROJECT_DIR$/sdk/data/stream/stream_writer.go" />
+        <option value="$PROJECT_DIR$/metanode/api_handler.go" />
+        <option value="$PROJECT_DIR$/metanode/btree.go" />
+        <option value="$PROJECT_DIR$/metanode/manager_op.go" />
+        <option value="$PROJECT_DIR$/master/admin_task_sender.go" />
+        <option value="$PROJECT_DIR$/master/http_server.go" />
+        <option value="$PROJECT_DIR$/master/handle_admin.go" />
+        <option value="$PROJECT_DIR$/master/errors.go" />
+        <option value="$PROJECT_DIR$/master/filemeta.go" />
+        <option value="$PROJECT_DIR$/master/handle_client.go" />
+        <option value="$PROJECT_DIR$/master/id_allocator.go" />
+        <option value="$PROJECT_DIR$/master/master_manager.go" />
+        <option value="$PROJECT_DIR$/master/meta_node.go" />
+        <option value="$PROJECT_DIR$/master/meta_partition_manager.go" />
+        <option value="$PROJECT_DIR$/master/metadata_fsm.go" />
+        <option value="$PROJECT_DIR$/master/metadata_fsm_op.go" />
+        <option value="$PROJECT_DIR$/master/metadata_snapshot.go" />
+        <option value="$PROJECT_DIR$/master/node_select.go" />
+        <option value="$PROJECT_DIR$/master/operate_util.go" />
+        <option value="$PROJECT_DIR$/master/server.go" />
+        <option value="$PROJECT_DIR$/master/topology.go" />
+        <option value="$PROJECT_DIR$/master/cluster_space_stat.go" />
+        <option value="$PROJECT_DIR$/proto/admin_proto.go" />
+        <option value="$PROJECT_DIR$/master/cluster_task.go" />
+        <option value="$PROJECT_DIR$/master/config.go" />
+        <option value="$PROJECT_DIR$/master/data_node.go" />
+        <option value="$PROJECT_DIR$/master/data_partition_map.go" />
+        <option value="$PROJECT_DIR$/master/const.go" />
+        <option value="$PROJECT_DIR$/master/cluster.go" />
+        <option value="$PROJECT_DIR$/master/vol.go" />
+        <option value="$PROJECT_DIR$/master/meta_partition.go" />
+        <option value="$PROJECT_DIR$/master/data_partition_check.go" />
+        <option value="$PROJECT_DIR$/master/disk_manager.go" />
+        <option value="$PROJECT_DIR$/master/data_replica.go" />
+        <option value="$PROJECT_DIR$/master/data_partition.go" />
+        <option value="$PROJECT_DIR$/master/filecheck.go" />
+        <option value="$PROJECT_DIR$/master/filecrc.go" />
+      </list>
+    </option>
+  </component>
+  <component name="ProjectFrameBounds" extendedState="6">
+    <option name="y" value="23" />
+    <option name="width" value="1920" />
+    <option name="height" value="977" />
+  </component>
+  <component name="ProjectView">
+    <navigator proportions="" version="1">
+      <foldersAlwaysOnTop value="true" />
+    </navigator>
+    <panes>
+      <pane id="Scope" />
+      <pane id="ProjectPane">
+        <subPane>
+          <expand>
+            <path>
+              <item name="containerfs" type="b2602c69:ProjectViewProjectNode" />
+              <item name="containerfs" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="containerfs" type="b2602c69:ProjectViewProjectNode" />
+              <item name="containerfs" type="462c0819:PsiDirectoryNode" />
+              <item name="datanode" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="containerfs" type="b2602c69:ProjectViewProjectNode" />
+              <item name="containerfs" type="462c0819:PsiDirectoryNode" />
+              <item name="master" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="containerfs" type="b2602c69:ProjectViewProjectNode" />
+              <item name="containerfs" type="462c0819:PsiDirectoryNode" />
+              <item name="metanode" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="containerfs" type="b2602c69:ProjectViewProjectNode" />
+              <item name="containerfs" type="462c0819:PsiDirectoryNode" />
+              <item name="repl" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="containerfs" type="b2602c69:ProjectViewProjectNode" />
+              <item name="containerfs" type="462c0819:PsiDirectoryNode" />
+              <item name="sdk" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="containerfs" type="b2602c69:ProjectViewProjectNode" />
+              <item name="containerfs" type="462c0819:PsiDirectoryNode" />
+              <item name="sdk" type="462c0819:PsiDirectoryNode" />
+              <item name="data" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="containerfs" type="b2602c69:ProjectViewProjectNode" />
+              <item name="containerfs" type="462c0819:PsiDirectoryNode" />
+              <item name="sdk" type="462c0819:PsiDirectoryNode" />
+              <item name="data" type="462c0819:PsiDirectoryNode" />
+              <item name="stream" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="containerfs" type="b2602c69:ProjectViewProjectNode" />
+              <item name="containerfs" type="462c0819:PsiDirectoryNode" />
+              <item name="storage" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="containerfs" type="b2602c69:ProjectViewProjectNode" />
+              <item name="External Libraries" type="cb654da1:ExternalLibrariesNode" />
+            </path>
+            <path>
+              <item name="containerfs" type="b2602c69:ProjectViewProjectNode" />
+              <item name="External Libraries" type="cb654da1:ExternalLibrariesNode" />
+              <item name="Go SDK 1.11.2" type="20ee2d1f:SyntheticLibraryElementNode" />
+            </path>
+          </expand>
+          <select />
+        </subPane>
+      </pane>
+    </panes>
+  </component>
+  <component name="PropertiesComponent">
+    <property name="WebServerToolWindowFactoryState" value="false" />
+    <property name="go.gopath.indexing.explicitly.defined" value="true" />
+    <property name="go.sdk.automatically.set" value="true" />
+    <property name="go.vendoring.notification.had.been.shown" value="true" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
+    <property name="nodejs_interpreter_path.stuck_in_default_project" value="undefined stuck path" />
+    <property name="nodejs_npm_path_reset_for_default_project" value="true" />
+  </component>
+  <component name="RunDashboard">
+    <option name="ruleStates">
+      <list>
+        <RuleState>
+          <option name="name" value="ConfigurationTypeDashboardGroupingRule" />
+        </RuleState>
+        <RuleState>
+          <option name="name" value="StatusDashboardGroupingRule" />
+        </RuleState>
+      </list>
+    </option>
+  </component>
+  <component name="TodoView">
+    <todo-panel id="selected-file">
+      <is-autoscroll-to-source value="true" />
+    </todo-panel>
+    <todo-panel id="all">
+      <are-packages-shown value="true" />
+      <is-autoscroll-to-source value="true" />
+    </todo-panel>
+  </component>
+  <component name="ToolWindowManager">
+    <frame x="0" y="23" width="1920" height="977" extended-state="6" />
+    <editor active="true" />
+    <layout>
+      <window_info id="Favorites" side_tool="true" />
+      <window_info active="true" content_ui="combo" id="Project" order="0" visible="true" weight="0.24973376" />
+      <window_info id="Structure" order="1" side_tool="true" weight="0.25" />
+      <window_info anchor="bottom" id="Docker" show_stripe_button="false" />
+      <window_info anchor="bottom" id="Database Changes" />
+      <window_info anchor="bottom" id="Version Control" weight="0.32970297" />
+      <window_info anchor="bottom" id="Terminal" weight="0.32970297" />
+      <window_info anchor="bottom" id="Event Log" side_tool="true" />
+      <window_info anchor="bottom" id="Message" order="0" />
+      <window_info anchor="bottom" id="Find" order="1" visible="true" weight="0.3762712" />
+      <window_info anchor="bottom" id="Run" order="2" />
+      <window_info anchor="bottom" id="Debug" order="3" weight="0.4" />
+      <window_info anchor="bottom" id="Cvs" order="4" weight="0.25" />
+      <window_info anchor="bottom" id="Inspection" order="5" weight="0.4" />
+      <window_info anchor="bottom" id="TODO" order="6" weight="0.32881355" />
+      <window_info anchor="right" id="Database" />
+      <window_info anchor="right" id="Commander" internal_type="SLIDING" order="0" type="SLIDING" weight="0.4" />
+      <window_info anchor="right" id="Ant Build" order="1" weight="0.25" />
+      <window_info anchor="right" content_ui="combo" id="Hierarchy" order="2" weight="0.25" />
+    </layout>
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="1" />
+  </component>
+  <component name="editorHistoryManager">
+    <entry file="file://$PROJECT_DIR$/repl/repl_protocol.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-158">
+          <caret line="422" selection-start-line="422" selection-end-line="422" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/storage/store_extent.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="167">
+          <caret line="152" column="20" selection-start-line="152" selection-start-column="20" selection-end-line="152" selection-end-column="20" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/sdk/data/stream/extent_cache.go">
+      <provider selected="true" editor-type-id="text-editor" />
+    </entry>
+    <entry file="file://$PROJECT_DIR$/sdk/data/stream/extent_handler.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="375">
+          <caret line="464" column="48" selection-start-line="464" selection-start-column="48" selection-end-line="464" selection-end-column="48" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/sdk/data/stream/packet.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-518">
+          <caret line="111" column="40" selection-start-line="111" selection-start-column="40" selection-end-line="111" selection-end-column="40" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/sdk/data/stream/stream_writer.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="287">
+          <caret line="305" selection-start-line="305" selection-end-line="305" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/metanode/btree.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="307">
+          <caret line="154" selection-start-line="154" selection-end-line="154" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/metanode/manager_op.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="52">
+          <caret line="319" selection-start-line="319" selection-end-line="319" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/metanode/api_handler.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="195">
+          <caret line="53" selection-start-line="53" selection-end-line="53" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/datanode/const.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="164">
+          <caret line="84" selection-start-line="84" selection-end-line="84" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/datanode/data_partition_repair.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="494">
+          <caret line="396" column="17" selection-start-line="396" selection-start-column="17" selection-end-line="396" selection-end-column="17" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/datanode/disk.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="494">
+          <caret line="234" column="9" selection-start-line="234" selection-start-column="9" selection-end-line="234" selection-end-column="9" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/datanode/partition.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="251">
+          <caret line="386" column="40" selection-start-line="386" selection-start-column="40" selection-end-line="386" selection-end-column="40" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/datanode/partition_raftfsm.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="15">
+          <caret line="131" lean-forward="true" selection-start-line="131" selection-end-line="131" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/datanode/server.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="412">
+          <caret line="162" column="4" selection-start-line="162" selection-start-column="4" selection-end-line="162" selection-end-column="4" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/datanode/space_manager.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="494">
+          <caret line="348" column="18" selection-start-line="348" selection-start-column="18" selection-end-line="348" selection-end-column="18" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/datanode/wrap_operator.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="92">
+          <caret line="418" selection-start-line="418" selection-end-line="418" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/datanode/wrap_prepare.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <caret column="43" selection-start-column="43" selection-end-column="43" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/http_server.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="1350">
+          <caret line="97" selection-start-line="97" selection-end-line="97" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/id_allocator.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <caret column="43" selection-start-column="43" selection-end-column="43" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/master_manager.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <caret column="43" selection-start-column="43" selection-end-column="43" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/meta_node.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <caret column="43" selection-start-column="43" selection-end-column="43" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/meta_partition_manager.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <caret column="43" selection-start-column="43" selection-end-column="43" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/metadata_fsm.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <caret column="43" selection-start-column="43" selection-end-column="43" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/metadata_fsm_op.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <caret column="43" selection-start-column="43" selection-end-column="43" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/metadata_snapshot.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <caret column="43" selection-start-column="43" selection-end-column="43" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/node_select.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <caret column="43" selection-start-column="43" selection-end-column="43" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/operate_util.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <caret column="43" selection-start-column="43" selection-end-column="43" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/server.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <caret column="43" selection-start-column="43" selection-end-column="43" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/topology.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <caret column="43" selection-start-column="43" selection-end-column="43" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/admin_task_sender.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-2">
+          <caret line="29" column="6" selection-start-line="29" selection-start-column="6" selection-end-line="29" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/cluster_space_stat.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="1800">
+          <caret line="124" column="32" lean-forward="true" selection-start-line="124" selection-start-column="32" selection-end-line="124" selection-end-column="32" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/proto/admin_proto.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-938">
+          <caret line="124" column="76" selection-start-line="124" selection-start-column="76" selection-end-line="124" selection-end-column="76" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/config.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-473">
+          <caret line="68" column="62" selection-start-line="68" selection-start-column="62" selection-end-line="68" selection-end-column="62" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/data_node.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-848">
+          <caret line="65" column="39" selection-start-line="65" selection-start-column="39" selection-end-line="65" selection-end-column="39" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/cluster_task.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="414">
+          <caret line="246" column="15" lean-forward="true" selection-start-line="246" selection-start-column="15" selection-end-line="246" selection-end-column="15" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/const.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="368">
+          <caret line="73" selection-start-line="73" selection-end-line="73" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/cluster.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="167">
+          <caret line="47" column="22" selection-start-line="47" selection-start-column="22" selection-end-line="47" selection-end-column="22" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/meta_partition.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-458">
+          <caret line="518" column="40" selection-start-line="518" selection-start-column="40" selection-end-line="518" selection-end-column="40" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/vol.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="461">
+          <caret line="362" column="61" selection-start-line="362" selection-start-column="61" selection-end-line="362" selection-end-column="61" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/data_partition_check.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-203">
+          <caret line="180" selection-start-line="180" selection-end-line="180" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/data_partition_map.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-803">
+          <caret line="147" column="38" selection-start-line="147" selection-start-column="38" selection-end-line="147" selection-end-column="38" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/disk_manager.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="679">
+          <caret line="99" column="20" selection-start-line="99" selection-start-column="20" selection-end-line="99" selection-end-column="20" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/errors.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-983">
+          <caret column="43" selection-start-column="43" selection-end-column="43" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/data_replica.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="227">
+          <caret line="63" column="4" selection-start-line="63" selection-start-column="4" selection-end-line="63" selection-end-column="4" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/data_partition.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="167">
+          <caret line="406" column="39" selection-start-line="406" selection-start-column="39" selection-end-line="406" selection-end-column="39" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/filecheck.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="164">
+          <caret line="125" column="33" selection-start-line="125" selection-start-column="33" selection-end-line="125" selection-end-column="33" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/filecrc.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="214">
+          <caret line="43" column="51" lean-forward="true" selection-start-line="43" selection-start-column="51" selection-end-line="43" selection-end-column="51" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/filemeta.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-95">
+          <caret column="43" selection-start-column="43" selection-end-column="43" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/handle_admin.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="329">
+          <caret line="580" column="34" lean-forward="true" selection-start-line="580" selection-start-column="34" selection-end-line="580" selection-end-column="34" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/master/handle_client.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <caret column="43" selection-start-column="43" selection-end-column="43" />
+        </state>
+      </provider>
+    </entry>
+  </component>
+</project>

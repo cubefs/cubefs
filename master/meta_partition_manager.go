@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ func (c *Cluster) checkLoadMetaPartitions() {
 	for _, vol := range vols {
 		mps := vol.cloneMetaPartitionMap()
 		for _, mp := range mps {
-			c.processLoadMetaPartition(mp)
+			c.doLoadMetaPartition(mp)
 		}
 	}
 }

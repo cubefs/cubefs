@@ -145,7 +145,7 @@ func (mp *MetaPartition) updateInodeIDUpperBound(c *Cluster, end uint64) {
 	tasks := make([]*proto.AdminTask, 0)
 	oldEnd := mp.End
 	mp.End = end
-	t := mp.generateUpdateMetaReplicaTask(c.Name, mp.PartitionID, end)
+	t := mp.createTaskToUpdateMetaReplica(c.Name, mp.PartitionID, end)
 
 	// if there is no leader, we don't update the end
 	if t == nil {
@@ -271,7 +271,7 @@ func (mp *MetaPartition) removeIllegalReplica() (excessAddr string, t *proto.Adm
 	defer mp.RUnlock()
 	for _, mr := range mp.Replicas {
 		if !contains(mp.Hosts, mr.Addr) {
-			t = mr.generateDeleteReplicaTask(mp.PartitionID)
+			t = mr.createTaskToDeleteReplica(mp.PartitionID)
 			err = illegalMetaReplicaErr
 			break
 		}
@@ -495,10 +495,10 @@ func resetMetaPartitionTaskID(t *proto.AdminTask, partitionID uint64) {
 	t.ID = fmt.Sprintf("%v_pid[%v]", t.ID, partitionID)
 }
 
-func (mp *MetaPartition) generateUpdateMetaReplicaTask(clusterID string, partitionID uint64, end uint64) (t *proto.AdminTask) {
+func (mp *MetaPartition) createTaskToUpdateMetaReplica(clusterID string, partitionID uint64, end uint64) (t *proto.AdminTask) {
 	mr, err := mp.getLeaderMetaReplica()
 	if err != nil {
-		msg := fmt.Sprintf("action[generateUpdateMetaReplicaTask] clusterID[%v] meta partition %v no leader",
+		msg := fmt.Sprintf("action[createTaskToUpdateMetaReplica] clusterID[%v] meta partition %v no leader",
 			clusterID, mp.PartitionID)
 		Warn(clusterID, msg)
 		return
@@ -509,14 +509,14 @@ func (mp *MetaPartition) generateUpdateMetaReplicaTask(clusterID string, partiti
 	return
 }
 
-func (mr *MetaReplica) generateDeleteReplicaTask(partitionID uint64) (t *proto.AdminTask) {
+func (mr *MetaReplica) createTaskToDeleteReplica(partitionID uint64) (t *proto.AdminTask) {
 	req := &proto.DeleteMetaPartitionRequest{PartitionID: partitionID}
 	t = proto.NewAdminTask(proto.OpDeleteMetaPartition, mr.Addr, req)
 	resetMetaPartitionTaskID(t, partitionID)
 	return
 }
 
-func (mr *MetaReplica) generateLoadTask(partitionID uint64) (t *proto.AdminTask) {
+func (mr *MetaReplica) createTaskToLoadMetaPartition(partitionID uint64) (t *proto.AdminTask) {
 	req := &proto.MetaPartitionLoadRequest{PartitionID: partitionID}
 	t = proto.NewAdminTask(proto.OpLoadMetaPartition, mr.Addr, req)
 	resetMetaPartitionTaskID(t, partitionID)

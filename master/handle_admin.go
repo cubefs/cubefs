@@ -113,11 +113,11 @@ errHandler:
 }
 
 // Turn on or off the automatic allocation of the data partitions.
-// If AutoAllocationSwitch == off, then we WILL NOT automatically allocate new data partitions for the volume when:
+// If ShouldAutoAllocate == off, then we WILL NOT automatically allocate new data partitions for the volume when:
 // 	1. the used space is below the max capacity,
 //	2. and the number of r&w data partition is less than 20.
 //
-// If AutoAllocationSwitch == on, then we WILL automatically allocate new data partitions for the volume when:
+// If ShouldAutoAllocate == on, then we WILL automatically allocate new data partitions for the volume when:
 // 	1. the used space is below the max capacity,
 //	2. and the number of r&w data partition is less than 20.
 func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
@@ -128,8 +128,8 @@ func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 	if status, err = parseAndExtractStatus(r); err != nil {
 		goto errHandler
 	}
-	m.cluster.AutoAllocationSwitch = status
-	io.WriteString(w, fmt.Sprintf("set AutoAllocationSwitch to %v successfully", status))
+	m.cluster.ShouldAutoAllocate = status
+	io.WriteString(w, fmt.Sprintf("set ShouldAutoAllocate to %v successfully", status))
 	return
 errHandler:
 	logMsg := newLogMsg("setupAutoAllocation", r.RemoteAddr, err.Error(), http.StatusBadRequest)
@@ -182,7 +182,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		Name:               m.cluster.Name,
 		LeaderAddr:         m.leaderInfo.addr,
 		CompactStatus:      m.cluster.compactStatus,
-		DisableAutoAlloc:   m.cluster.AutoAllocationSwitch,
+		DisableAutoAlloc:   m.cluster.ShouldAutoAllocate,
 		Applied:            m.fsm.applied,
 		MaxDataPartitionID: m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:      m.cluster.idAlloc.commonID,
@@ -429,7 +429,7 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	return
 
 errHandler:
-	logMsg := newLogMsg("markDeleteVol", r.RemoteAddr, err.Error(), http.StatusBadRequest)
+	logMsg := newLogMsg("markDelete", r.RemoteAddr, err.Error(), http.StatusBadRequest)
 	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
@@ -578,7 +578,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	if node, err = m.cluster.dataNode(offLineAddr); err != nil {
 		goto errHandler
 	}
-	badPartitionIds = node.getBadDiskPartitions(diskPath)
+	badPartitionIds = node.badPartitionIDs(diskPath)
 	if len(badPartitionIds) == 0 {
 		err = fmt.Errorf("node[%v] disk[%v] does not have any data partition", node.Addr, diskPath)
 		goto errHandler
@@ -586,7 +586,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	rstMsg = fmt.Sprintf("recive decommissionDisk node[%v] disk[%v], badPartitionIds[%v] has offline successfully",
 		node.Addr, diskPath, badPartitionIds)
 	m.cluster.BadDataPartitionIds.Store(fmt.Sprintf("%s:%s", offLineAddr, diskPath), badPartitionIds)
-	if err = m.cluster.diskOffLine(node, diskPath, badPartitionIds); err != nil {
+	if err = m.cluster.decommissionDisk(node, diskPath, badPartitionIds); err != nil {
 		goto errHandler
 	}
 	m.sendOkReply(w, r, rstMsg)
@@ -700,7 +700,7 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 		goto errHandler
 	}
 
-	if err = m.cluster.metaPartitionOffline(volName, nodeAddr, partitionID); err != nil {
+	if err = m.cluster.decommissionMetaPartition(volName, nodeAddr, partitionID); err != nil {
 		goto errHandler
 	}
 	msg = fmt.Sprintf(adminLoadMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", partitionID)
@@ -787,7 +787,7 @@ func (m *Server) getMetaNodeTaskResponse(w http.ResponseWriter, r *http.Request)
 		code = http.StatusInternalServerError
 		goto errHandler
 	}
-	m.cluster.dealMetaNodeTaskResponse(metaNode.Addr, tr)
+	m.cluster.handleMetaNodeTaskResponse(metaNode.Addr, tr)
 	return
 
 errHandler:

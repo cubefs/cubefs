@@ -1,4 +1,4 @@
-// Copyright 2018 The CFS Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ func newFileCrc(volCrc uint32) (fc *FileCrc) {
 	return
 }
 
+// TODO is it necessary to do so?
 type fileCrcSorterByCount []*FileCrc
 
 func (fileCrcArr fileCrcSorterByCount) Less(i, j int) bool {
@@ -83,10 +84,10 @@ func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataRe
 		return
 	}
 
-	fileCrcArr := fc.calculateCrcCount(fms)
+	fileCrcArr := fc.calculateCrc(fms)
 	sort.Sort(fileCrcSorterByCount(fileCrcArr))
-	maxCountFileCrcIndex := len(fileCrcArr) - 1
-	if fileCrcArr[maxCountFileCrcIndex].count == 1 {
+	maxIndex := len(fileCrcArr) - 1
+	if fileCrcArr[maxIndex].count == 1 {
 		msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  CRC diffrent between all Node  "+
 			" it can not repair it ", clusterID, partitionID, fc.Name)
 		msg += (fileCrcSorterByCount(fileCrcArr)).log()
@@ -95,7 +96,7 @@ func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataRe
 	}
 
 	for index, crc := range fileCrcArr {
-		if index != maxCountFileCrcIndex {
+		if index != maxIndex {
 			badNode := crc.meta
 			msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  badCrc On :%v  ",
 				clusterID, partitionID, fc.Name, badNode.getLocationAddr())
@@ -107,10 +108,12 @@ func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataRe
 	return
 }
 
+// TODO rename!
 func (fc *FileInCore) isCheckCrc() bool {
 	return time.Now().Unix()-fc.LastModify > defaultFileDelayCheckCrcSec
 }
 
+// TODO rename!
 func (fc *FileInCore) isDelayCheck() bool {
 	return time.Now().Unix()-fc.LastModify > defaultFileDelayCheckLackSec
 }
@@ -150,21 +153,21 @@ func isSameSize(fms []*FileMetaOnNode) (same bool) {
 	return true
 }
 
-func (fc *FileInCore) calculateCrcCount(badVfNodes []*FileMetaOnNode) (fileCrcArr []*FileCrc) {
+func (fc *FileInCore) calculateCrc(badVfNodes []*FileMetaOnNode) (fileCrcArr []*FileCrc) {
 	badLen := len(badVfNodes)
 	fileCrcArr = make([]*FileCrc, 0)
 	for i := 0; i < badLen; i++ {
 		crcKey := badVfNodes[i].getFileCrc()
-		isFind := false
+		isFound := false
 		var crc *FileCrc
 		for _, crc = range fileCrcArr {
 			if crc.crc == crcKey {
-				isFind = true
+				isFound = true
 				break
 			}
 		}
 
-		if isFind == false {
+		if isFound == false {
 			crc = newFileCrc(crcKey)
 			crc.meta = badVfNodes[i]
 			fileCrcArr = append(fileCrcArr, crc)

@@ -76,7 +76,7 @@ func (m *metaManager) opMasterHeartbeat(conn net.Conn, p *Packet) (err error) {
 		if mConf.Cursor >= mConf.End {
 			mpr.Status = proto.ReadOnly
 		}
-		resp.MetaPartitionInfo = append(resp.MetaPartitionInfo, mpr)
+		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
 		return true
 	})
 	resp.Status = proto.TaskSuccess

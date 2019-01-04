@@ -1,4 +1,4 @@
-// Copyright 2018 The CFS Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -149,9 +149,13 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
 	for _, dp := range vol.dataPartitions.partitionMap {
+
+		// TODO We should restructure the following checks. The logic is a bit mess here.
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
 		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec)
-		dp.checkMiss(c.Name, c.cfg.DataPartitionMissSec, c.cfg.DataPartitionWarnInterval)
+
+		// TODO what is isMissing?
+		dp.checkMiss(c.Name, c.cfg.DataPartitionMissSec, c.cfg.DataPartitionWarningInterval)
 		dp.checkReplicaNum(c, vol.Name)
 		if dp.Status == proto.ReadWrite {
 			cnt++
@@ -170,28 +174,25 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	return
 }
 
-//1 生成文件比对任务
-//2 异步等待数据节点汇报 data partition各个副本包含的文件详情
-//3 文件的多个副本之间做crc检验，如果不一致则报警
 func (vol *Vol) loadDataPartition(c *Cluster) {
-	needCheckDataPartitions, startIndex := vol.dataPartitions.getNeedCheckDataPartitions(c.cfg.LoadDataPartitionFrequencyTime)
-	if len(needCheckDataPartitions) == 0 {
+	partitions, startIndex := vol.dataPartitions.getDataPartitionsToBeChecked(c.cfg.LoadDataPartitionFrequencyTime)
+	if len(partitions) == 0 {
 		return
 	}
-	c.waitLoadDataPartitionResponse(needCheckDataPartitions)
+	c.waitForResponseToLoadDataPartition(partitions)
 	msg := fmt.Sprintf("action[loadDataPartition] vol[%v],checkStartIndex:%v checkCount:%v",
-		vol.Name, startIndex, len(needCheckDataPartitions))
+		vol.Name, startIndex, len(partitions))
 	log.LogInfo(msg)
 }
 
 func (vol *Vol) releaseDataPartitions(releaseCount int, afterLoadSeconds int64) {
-	needReleaseDataPartitions, startIndex := vol.dataPartitions.getNeedReleaseDataPartitions(releaseCount, afterLoadSeconds)
-	if len(needReleaseDataPartitions) == 0 {
+	partitions, startIndex := vol.dataPartitions.getDataPartitionsToBeReleased(releaseCount, afterLoadSeconds)
+	if len(partitions) == 0 {
 		return
 	}
-	vol.dataPartitions.releaseDataPartitions(needReleaseDataPartitions)
+	vol.dataPartitions.releaseDataPartitions(partitions)
 	msg := fmt.Sprintf("action[releaseDataPartitions] vol[%v] release data partition start:%v releaseCount:%v",
-		vol.Name, startIndex, len(needReleaseDataPartitions))
+		vol.Name, startIndex, len(partitions))
 	log.LogInfo(msg)
 }
 
@@ -200,6 +201,8 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	maxPartitionID := vol.maxPartitionID()
 	mps := vol.cloneMetaPartitionMap()
 	for _, mp := range mps {
+
+		// TODO similar problem to checkDataPartitions
 		mp.checkStatus(true, int(vol.mpReplicaNum))
 		mp.checkReplicaLeader()
 		mp.checkReplicaNum(c, vol.Name, vol.mpReplicaNum)
@@ -226,7 +229,7 @@ func (vol *Vol) setStatus(status uint8) {
 	vol.Status = status
 }
 
-func (vol *Vol) getStatus() uint8 {
+func (vol *Vol) status() uint8 {
 	vol.RLock()
 	defer vol.RUnlock()
 	return vol.Status
@@ -238,27 +241,30 @@ func (vol *Vol) setCapacity(capacity uint64) {
 	vol.Capacity = capacity
 }
 
-func (vol *Vol) getCapacity() uint64 {
+func (vol *Vol) capacity() uint64 {
 	vol.RLock()
 	defer vol.RUnlock()
 	return vol.Capacity
 }
 
+
+// TODO rename
 func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
-	if vol.getStatus() == volMarkDelete {
+	if vol.status() == markDelete {
 		return
 	}
-	if vol.getCapacity() == 0 {
+	if vol.capacity() == 0 {
 		return
 	}
-	usedSpace := vol.getTotalUsedSpace()
-	usedSpace = usedSpace / util.GB
-	if usedSpace >= vol.getCapacity() {
+	usedSpace := vol.totalUsedSpace() / util.GB
+	if usedSpace >= vol.capacity() {
 		vol.setAllDataPartitionsToReadOnly()
 		return
 	}
-	vol.setStatus(volNormal)
-	if vol.getStatus() == volNormal && !c.AutoAllocationSwitch {
+	vol.setStatus(normal)
+
+	// TODO rename ShouldAutoAllocate?
+	if vol.status() == normal && !c.ShouldAutoAllocate {
 		vol.autoCreateDataPartitions(c)
 	}
 }
@@ -273,6 +279,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 	}
 }
 
+// TODO what is expandNum?
 func (vol *Vol) calculateExpandNum() (count int) {
 	calCount := float64(vol.Capacity) * float64(volExpandDataPartitionStepRatio) * float64(util.GB) / float64(util.DefaultDataPartitionSize)
 	switch {
@@ -290,8 +297,8 @@ func (vol *Vol) setAllDataPartitionsToReadOnly() {
 	vol.dataPartitions.setAllDataPartitionsToReadOnly()
 }
 
-func (vol *Vol) getTotalUsedSpace() uint64 {
-	return vol.dataPartitions.getTotalUsedSpace()
+func (vol *Vol) totalUsedSpace() uint64 {
+	return vol.dataPartitions.totalUsedSpace()
 }
 
 // Periodically check the volume's status.
@@ -300,12 +307,12 @@ func (vol *Vol) getTotalUsedSpace() uint64 {
 func (vol *Vol) checkStatus(c *Cluster) {
 	vol.Lock()
 	defer vol.Unlock()
-	if vol.Status != volMarkDelete {
+	if vol.Status != markDelete {
 		return
 	}
 	log.LogInfof("action[volCheckStatus] vol[%v],status[%v]", vol.Name, vol.Status)
-	metaTasks := vol.getDeleteMetaTasks()
-	dataTasks := vol.getDeleteDataTasks()
+	metaTasks := vol.getTasksToDeleteMetaPartitions()
+	dataTasks := vol.getTasksToDeleteDataPartitions()
 	if len(metaTasks) == 0 && len(dataTasks) == 0 {
 		vol.deleteVolFromStore(c)
 	}
@@ -346,27 +353,27 @@ func (vol *Vol) deleteDataPartitionsFromStore(c *Cluster) {
 
 }
 
-func (vol *Vol) getDeleteMetaTasks() (tasks []*proto.AdminTask) {
+func (vol *Vol) getTasksToDeleteMetaPartitions() (tasks []*proto.AdminTask) {
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
 	tasks = make([]*proto.AdminTask, 0)
 
 	for _, mp := range vol.MetaPartitions {
 		for _, replica := range mp.Replicas {
-			tasks = append(tasks, replica.generateDeleteReplicaTask(mp.PartitionID))
+			tasks = append(tasks, replica.createTaskToDeleteReplica(mp.PartitionID))
 		}
 	}
 	return
 }
 
-func (vol *Vol) getDeleteDataTasks() (tasks []*proto.AdminTask) {
+func (vol *Vol) getTasksToDeleteDataPartitions() (tasks []*proto.AdminTask) {
 	tasks = make([]*proto.AdminTask, 0)
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
 
 	for _, dp := range vol.dataPartitions.partitions {
 		for _, replica := range dp.Replicas {
-			tasks = append(tasks, dp.generateDeleteTask(replica.Addr))
+			tasks = append(tasks, dp.createTaskToDeleteDataPartition(replica.Addr))
 		}
 	}
 	return

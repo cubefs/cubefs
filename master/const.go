@@ -1,4 +1,4 @@
-// Copyright 2018 The CFS Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -53,23 +53,23 @@ const (
 	defaultMetaPartitionInodeIDStep uint64  = 1 << 24
 	defaultMetaNodeReservedMem      uint64  = 1 << 32
 	runtimeStackBufSize                     = 4096
-	nodesAliveRate                  float32 = 0.5
-	spaceAvailRate                          = 0.90
+	nodesAliveRate                  float32 = 0.5 // TODO explain
+	spaceAvailRate                          = 0.90 // TODO explain
 	defaultNodeSetCapacity                  = 6
 	minNumOfRWDataPartitions                = 10
 	intervalToCheckMissingReplica           = 600
 	defaultVolCapacity                      = 200
 	intervalToLoadDataPartition             = 12 * 60 * 60
 	defaultInitDataPartitionCnt             = 10
-	volExpandDataPartitionStepRatio         = 0.1
-	volMaxExpandDataPartitionCount          = 100
+	volExpandDataPartitionStepRatio         = 0.1 // TODO explain
+	volMaxExpandDataPartitionCount          = 100 // TODO explain
 )
 
 // TODO We can just use a flag (called "isMarkedToBeDeleted") to indicate if a volume is marked (to be deleted) or not.
-// There is no need to employ volNormal here.
+// There is no need to employ normal here.
 const (
-	volNormal     uint8 = 0
-	volMarkDelete uint8 = 1
+	normal     uint8 = 0
+	markDelete uint8 = 1
 )
 
 const (

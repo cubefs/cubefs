@@ -29,26 +29,26 @@ import (
 
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
-	PartitionID      uint64
-	LastLoadTime     int64
-	ReplicaNum       uint8
-	Status           int8
-	isRecover        bool
-	Replicas         []*DataReplica
+	PartitionID    uint64
+	LastLoadedTime int64
+	ReplicaNum     uint8
+	Status         int8
+	isRecover      bool
+	Replicas       []*DataReplica
 
 	Hosts []string  // host addresses
 	Peers []proto.Peer
 	sync.RWMutex
-	total         uint64
-	used          uint64
-	MissingNodes  map[string]int64
-	VolName       string
-	VolID         uint64
-	modifyTime    int64
-	createTime    int64
-	RandomWrite   bool
-	FileInCoreMap map[string]*FileInCore
-	FileMissReplica map[string]int64
+	total                   uint64
+	used                    uint64
+	MissingNodes            map[string]int64  // TODO explain
+	VolName                 string
+	VolID                   uint64
+	modifyTime              int64
+	createTime              int64
+	RandomWrite             bool // TODO rename
+	FileInCoreMap           map[string]*FileInCore // TODO rename
+	FilesWithMissingReplica map[string]int64 // TODO files with missing replica?
 }
 
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64, randomWrite bool) (partition *DataPartition) {
@@ -59,7 +59,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	partition.Peers = make([]proto.Peer, 0)
 	partition.Replicas = make([]*DataReplica, 0)
 	partition.FileInCoreMap = make(map[string]*FileInCore, 0)
-	partition.FileMissReplica = make(map[string]int64)
+	partition.FilesWithMissingReplica = make(map[string]int64)
 	partition.MissingNodes = make(map[string]int64)
 
 	partition.Status = proto.ReadOnly
@@ -71,7 +71,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	return
 }
 
-func (partition *DataPartition) addMember(replica *DataReplica) {
+func (partition *DataPartition) addReplica(replica *DataReplica) {
 	for _, r := range partition.Replicas {
 		if replica.Addr == r.Addr {
 			return
@@ -80,15 +80,16 @@ func (partition *DataPartition) addMember(replica *DataReplica) {
 	partition.Replicas = append(partition.Replicas, replica)
 }
 
+// TODO not used?
 func (partition *DataPartition) generateCreateTasks(dataPartitionSize uint64) (tasks []*proto.AdminTask) {
 	tasks = make([]*proto.AdminTask, 0)
 	for _, addr := range partition.Hosts {
-		tasks = append(tasks, partition.generateCreateTask(addr, dataPartitionSize))
+		tasks = append(tasks, partition.createTaskToCreateDataPartition(addr, dataPartitionSize))
 	}
 	return
 }
 
-func (partition *DataPartition) generateCreateTask(addr string, dataPartitionSize uint64) (task *proto.AdminTask) {
+func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64) (task *proto.AdminTask) {
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
 		partition.VolName, partition.PartitionID, partition.RandomWrite, partition.Peers, int(dataPartitionSize)))
@@ -96,15 +97,15 @@ func (partition *DataPartition) generateCreateTask(addr string, dataPartitionSiz
 	return
 }
 
-func (partition *DataPartition) generateDeleteTask(addr string) (task *proto.AdminTask) {
+func (partition *DataPartition) createTaskToDeleteDataPartition(addr string) (task *proto.AdminTask) {
 	task = proto.NewAdminTask(proto.OpDeleteDataPartition, addr, newDeleteDataPartitionRequest(partition.PartitionID))
 	partition.resetTaskID(task)
 	return
 }
 
-func (partition *DataPartition) generateOfflineTask(removePeer proto.Peer, addPeer proto.Peer) (task *proto.AdminTask, err error) {
+func (partition *DataPartition) createTaskToDecommissionDataPartition(removePeer proto.Peer, addPeer proto.Peer) (task *proto.AdminTask, err error) {
 	if !partition.RandomWrite {
-		return partition.generateDeleteTask(removePeer.Addr), nil
+		return partition.createTaskToDeleteDataPartition(removePeer.Addr), nil
 	}
 	leaderAddr := partition.getLeaderAddr()
 	if leaderAddr == "" {
@@ -135,7 +136,7 @@ func (partition *DataPartition) hasMissingOneReplica(replicaNum int) (err error)
 func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 	msg := fmt.Sprintf("action[canOffLine],partitionID:%v  RocksDBHost:%v  offLine:%v ",
 		partition.PartitionID, partition.Hosts, offlineAddr)
-	liveReplicas := partition.getLiveReplicas(defaultDataPartitionTimeOutSec)
+	liveReplicas := partition.liveReplicas(defaultDataPartitionTimeOutSec)
 
 	otherLiveReplicas := make([]*DataReplica, 0)
 	for i := 0; i < len(liveReplicas); i++ {
@@ -154,10 +155,10 @@ func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 	return
 }
 
-func (partition *DataPartition) generatorOffLineLog(offlineAddr string) (msg string) {
-	msg = fmt.Sprintf("action[generatorOffLineLog],data partition:%v  offlineaddr:%v  ",
-		partition.PartitionID, offlineAddr)
-	replicas := partition.getAvailableDataReplicas()
+func (partition *DataPartition) logDecommissionedDataPartition(addr string) (msg string) {
+	msg = fmt.Sprintf("action[logDecommissionedDataPartition],data partition:%v  offlineaddr:%v  ",
+		partition.PartitionID, addr)
+	replicas := partition.availableDataReplicas()
 	for i := 0; i < len(replicas); i++ {
 		replica := replicas[i]
 		msg += fmt.Sprintf(" addr:%v  dataReplicaStatus:%v  FileCount :%v ", replica.Addr,
@@ -169,13 +170,13 @@ func (partition *DataPartition) generatorOffLineLog(offlineAddr string) (msg str
 }
 
 // get all the valid replicas of the given data partition
-func (partition *DataPartition) getAvailableDataReplicas() (replicas []*DataReplica) {
+func (partition *DataPartition) availableDataReplicas() (replicas []*DataReplica) {
 	replicas = make([]*DataReplica, 0)
 	for i := 0; i < len(partition.Replicas); i++ {
 		replica := partition.Replicas[i]
 
 		// the node reports heartbeat normally and the node is available
-		if replica.isLocationAvailable() == true && partition.isInPersistenceHosts(replica.Addr) == true {
+		if replica.isLocationAvailable() == true && partition.hasHost(replica.Addr) == true {
 			replicas = append(replicas, replica)
 		}
 	}
@@ -231,7 +232,7 @@ func (partition *DataPartition) createLoadTasks() (tasks []*proto.AdminTask) {
 		replica.LoadPartitionIsResponse = false
 		tasks = append(tasks, partition.createLoadTask(addr))
 	}
-	partition.LastLoadTime = time.Now().Unix()
+	partition.LastLoadedTime = time.Now().Unix()
 	return
 }
 
@@ -284,7 +285,7 @@ func (partition *DataPartition) checkLoadResponse(timeOutSec int64) (isResponse 
 		if err != nil {
 			return
 		}
-		timePassed := time.Now().Unix() - partition.LastLoadTime
+		timePassed := time.Now().Unix() - partition.LastLoadedTime
 		if replica.LoadPartitionIsResponse == false && timePassed > loadDataPartitionWaitTime {
 			msg := fmt.Sprintf("action[checkLoadResponse], partitionID:%v on Node:%v no response, spent time %v s",
 				partition.PartitionID, addr, timePassed)
@@ -306,7 +307,7 @@ func (partition *DataPartition) getReplicaByIndex(index uint8) (replica *DataRep
 
 func (partition *DataPartition) getFileCount() {
 	var msg string
-	needDelFiles := make([]string, 0)
+	filesToBeDeleted := make([]string, 0)
 	partition.Lock()
 	defer partition.Unlock()
 	for _, replica := range partition.Replicas {
@@ -314,7 +315,7 @@ func (partition *DataPartition) getFileCount() {
 	}
 	for _, fc := range partition.FileInCoreMap {
 		if len(fc.Metas) == 0 {
-			needDelFiles = append(needDelFiles, fc.Name)
+			filesToBeDeleted = append(filesToBeDeleted, fc.Name)
 		}
 		for _, vfNode := range fc.Metas {
 			replica := partition.getReplicaByIndex(vfNode.locIndex)
@@ -322,7 +323,7 @@ func (partition *DataPartition) getFileCount() {
 		}
 	}
 
-	for _, vfName := range needDelFiles {
+	for _, vfName := range filesToBeDeleted {
 		delete(partition.FileInCoreMap, vfName)
 	}
 
@@ -335,10 +336,11 @@ func (partition *DataPartition) getFileCount() {
 
 }
 
+// Release the memory occupied by the data partition.
 func (partition *DataPartition) releaseDataPartition() {
 	partition.Lock()
 	defer partition.Unlock()
-	liveReplicas := partition.getLiveReplicasByPersistenceHosts(defaultDataPartitionTimeOutSec)
+	liveReplicas := partition.getLiveReplicasFromHosts(defaultDataPartitionTimeOutSec)
 	for _, replica := range liveReplicas {
 		replica.LoadPartitionIsResponse = false
 	}
@@ -347,15 +349,15 @@ func (partition *DataPartition) releaseDataPartition() {
 		delete(partition.FileInCoreMap, name)
 	}
 	partition.FileInCoreMap = make(map[string]*FileInCore, 0)
-	for name, fileMissReplicaTime := range partition.FileMissReplica {
+	for name, fileMissReplicaTime := range partition.FilesWithMissingReplica {
 		if time.Now().Unix()-fileMissReplicaTime > 2*intervalToLoadDataPartition {
-			delete(partition.FileMissReplica, name)
+			delete(partition.FilesWithMissingReplica, name)
 		}
 	}
 
 }
 
-func (partition *DataPartition) isInReplicas(host string) (replica *DataReplica, ok bool) {
+func (partition *DataPartition) hasReplica(host string) (replica *DataReplica, ok bool) {
 	// using loop instead of map to save the memory
 	for _, replica = range partition.Replicas {
 		if replica.Addr == host {
@@ -392,7 +394,7 @@ func (partition *DataPartition) setStatus(status int8) {
 	partition.Status = status
 }
 
-func (partition *DataPartition) isInPersistenceHosts(addr string) (ok bool) {
+func (partition *DataPartition) hasHost(addr string) (ok bool) {
 	for _, host := range partition.Hosts {
 		if host == addr {
 			ok = true
@@ -402,11 +404,11 @@ func (partition *DataPartition) isInPersistenceHosts(addr string) (ok bool) {
 	return
 }
 
-func (partition *DataPartition) getLiveReplicas(timeOutSec int64) (replicas []*DataReplica) {
+func (partition *DataPartition) liveReplicas(timeOutSec int64) (replicas []*DataReplica) {
 	replicas = make([]*DataReplica, 0)
 	for i := 0; i < len(partition.Replicas); i++ {
 		replica := partition.Replicas[i]
-		if replica.isLive(timeOutSec) == true && partition.isInPersistenceHosts(replica.Addr) == true {
+		if replica.isLive(timeOutSec) == true && partition.hasHost(replica.Addr) == true {
 			replicas = append(replicas, replica)
 		}
 	}
@@ -415,10 +417,10 @@ func (partition *DataPartition) getLiveReplicas(timeOutSec int64) (replicas []*D
 }
 
 // get all the live replicas from the persistent hosts
-func (partition *DataPartition) getLiveReplicasByPersistenceHosts(timeOutSec int64) (replicas []*DataReplica) {
+func (partition *DataPartition) getLiveReplicasFromHosts(timeOutSec int64) (replicas []*DataReplica) {
 	replicas = make([]*DataReplica, 0)
 	for _, host := range partition.Hosts {
-		replica, ok := partition.isInReplicas(host)
+		replica, ok := partition.hasReplica(host)
 		if !ok {
 			continue
 		}
@@ -504,7 +506,7 @@ func (partition *DataPartition) updateForOffline(offlineAddr, newAddr, volName s
 
 func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode *DataNode) {
 
-	if !partition.isInPersistenceHosts(dataNode.Addr) {
+	if !partition.hasHost(dataNode.Addr) {
 		return
 	}
 	partition.Lock()
@@ -512,7 +514,7 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 	replica, err := partition.getReplica(dataNode.Addr)
 	if err != nil {
 		replica = newDataReplica(dataNode)
-		partition.addMember(replica)
+		partition.addReplica(replica)
 	}
 	partition.total = vr.Total
 	partition.used = vr.Used
@@ -522,7 +524,7 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 	replica.FileCount = uint32(vr.ExtentCount)
 	replica.setAlive()
 	replica.IsLeader = vr.IsLeader
-	replica.NeedCompare = vr.NeedCompare
+	replica.NeedsToCompare = vr.NeedCompare
 	replica.DiskPath = vr.DiskPath
 	partition.checkAndRemoveMissReplica(dataNode.Addr)
 }
@@ -551,7 +553,7 @@ func (partition *DataPartition) postProcessingDataPartitionCreation(nodeAddr str
 	}
 	replica := newDataReplica(dataNode)
 	replica.Status = proto.ReadWrite
-	partition.addMember(replica)
+	partition.addReplica(replica)
 	partition.checkAndRemoveMissReplica(replica.Addr)
 	return
 }
@@ -587,7 +589,7 @@ func (partition *DataPartition) needsToCompareCRC() (needCompare bool) {
 	}
 	needCompare = true
 	for _, replica := range partition.Replicas {
-		if !replica.NeedCompare {
+		if !replica.NeedsToCompare {
 			needCompare = false
 			break
 		}

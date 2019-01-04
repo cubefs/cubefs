@@ -79,18 +79,12 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 	})
 }
 
-
-// TODO take the disk off?
-// decompression hadoop 有一个专有名字
-//Commissioning and Decommissioning Nodes
-// takeDiskOff
-func (c *Cluster) diskOffLine(dataNode *DataNode, badDiskPath string, badPartitionIds []uint64) (err error) {
+func (c *Cluster) decommissionDisk(dataNode *DataNode, badDiskPath string, badPartitionIds []uint64) (err error) {
 	msg := fmt.Sprintf("action[decommissionDisk], Node[%v] OffLine,disk[%v]", dataNode.Addr, badDiskPath)
 	log.LogWarn(msg)
 
-	// TODO what are safeVols and what are normalVols?  safeVols -> vols
-	safeVols := c.allVols()
-	for _, vol := range safeVols {
+	vols := c.allVols()
+	for _, vol := range vols {
 		for _, dp := range vol.dataPartitions.partitions {
 			for _, bad := range badPartitionIds {
 				if bad == dp.PartitionID {
