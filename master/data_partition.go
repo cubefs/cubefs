@@ -41,7 +41,7 @@ type DataPartition struct {
 	sync.RWMutex
 	total                   uint64
 	used                    uint64
-	MissingNodes            map[string]int64  // TODO explain
+	MissingNodes            map[string]int64  // TODO explain what is the key and what is the value?
 	VolName                 string
 	VolID                   uint64
 	modifyTime              int64
@@ -568,9 +568,10 @@ func (partition *DataPartition) isReplicaSizeAligned() bool {
 	var diff float64
 	for _, replica := range partition.Replicas {
 
-		// TODO we should use a variable to buffer the result of math.Abs(float64(replica.Used)-float64(used))
-		if math.Abs(float64(replica.Used)-float64(used)) > diff {
-			diff = math.Abs(float64(replica.Used) - float64(used))
+		// TODO diff = math.Max(math.Abs(float64(replica.Used) - float64(used)), diff) ?
+		tempDiff := math.Abs(float64(replica.Used) - float64(used))
+		if tempDiff > diff {
+			diff = tempDiff
 		}
 	}
 	if diff < float64(util.GB) {

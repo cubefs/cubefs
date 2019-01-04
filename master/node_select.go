@@ -93,7 +93,7 @@ func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) 
 	}
 
 	maxTotal := ns.getMetaNodeMaxTotal()
-	nodeTabs, availCarryCount := ns.getAvailCarryMetaNodeTab(maxTotal, excludeHosts)
+	nodeTabs, availCarryCount := ns.getAvailCarryMetaNode(maxTotal, excludeHosts)
 	if len(nodeTabs) < replicaNum {
 		err = fmt.Errorf(getAvailMetaNodeHostsErr+" err:%v ,ActiveNodeCount:%v  MatchNodeCount:%v  ",
 			noMetaNodeToWriteErr, ns.metaNodeLen, len(nodeTabs))
@@ -118,9 +118,8 @@ func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) 
 	return
 }
 
-// TODO find a better name for getAvailCarryMetaNodeTab
-// carry meta node -> getAvailCarryMetaNode
-func (ns *nodeSet) getAvailCarryMetaNodeTab(maxTotal uint64, excludeHosts []string) (nodes SortedWeightedNodes, availCount int) {
+// TODO find a better name for getAvailCarryMetaNode
+func (ns *nodeSet) getAvailCarryMetaNode(maxTotal uint64, excludeHosts []string) (nodes SortedWeightedNodes, availCount int) {
 	nodes = make(SortedWeightedNodes, 0)
 	ns.metaNodes.Range(func(key, value interface{}) bool {
 		metaNode := value.(*MetaNode)

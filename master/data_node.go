@@ -129,6 +129,7 @@ func (dataNode *DataNode) SelectNodeForWrite() {
 	dataNode.Carry = dataNode.Carry - 1.0
 }
 
+// TODO rename clear()?
 func (dataNode *DataNode) clean() {
 	dataNode.Sender.exitCh <- struct{}{}
 }

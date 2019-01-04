@@ -263,7 +263,6 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 	}
 	vol.setStatus(normal)
 
-	// TODO rename ShouldAutoAllocate?
 	if vol.status() == normal && !c.ShouldAutoAllocate {
 		vol.autoCreateDataPartitions(c)
 	}

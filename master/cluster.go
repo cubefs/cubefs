@@ -27,25 +27,24 @@ import (
 
 // Cluster stores all the cluster-level information.
 type Cluster struct {
-	Name                 string
-	vols                 map[string]*Vol
-	dataNodes            sync.Map
-	metaNodes            sync.Map
-	dpMutex             sync.Mutex
-	volsMutex           sync.RWMutex
-	mnMutex             sync.RWMutex // metaNode mutex
-	dnMutex             sync.RWMutex
+	Name                string
+	vols                map[string]*Vol
+	dataNodes           sync.Map
+	metaNodes           sync.Map
+	dpMutex             sync.Mutex   // data partition mutex
+	volMutex            sync.RWMutex // volume mutex
+	mnMutex             sync.RWMutex // meta node mutex
+	dnMutex             sync.RWMutex // data node mutex
 	leaderInfo          *LeaderInfo
 	cfg                 *clusterConfig
 	retainLogs          uint64
 	idAlloc             *IDAllocator
 	t                   *topology
-	compactStatus       bool // TODO what is compact status?
 	dataNodeStatInfo    *nodeStatInfo
 	metaNodeStatInfo    *nodeStatInfo
 	volStatInfo         sync.Map
 	BadDataPartitionIds *sync.Map
-	ShouldAutoAllocate  bool // On: true,  Off: false
+	ShouldAutoAllocate  bool // Yes: true, No: false
 	fsm                 *MetadataFsm
 	partition           raftstore.Partition
 }
@@ -69,7 +68,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 
 func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckDataPartitions()
-	c.scheduleToCheckBackendLoadDataPartitions()
+	c.scheduleToLoadDataPartitions()
 	c.scheduleToCheckReleaseDataPartitions()
 	c.scheduleToCheckHeartbeat()
 	c.scheduleToCheckMetaPartitions()
@@ -80,7 +79,6 @@ func (c *Cluster) scheduleTask() {
 	c.startCheckLoadMetaPartitions()
 }
 
-// TODO is this wrapper necessary?
 func (c *Cluster) masterAddr() (addr string) {
 	return c.leaderInfo.addr
 }
@@ -153,18 +151,18 @@ func (c *Cluster) checkDataPartitions() {
 }
 
 // TODO why call this backend?
-func (c *Cluster) scheduleToCheckBackendLoadDataPartitions() {
+func (c *Cluster) scheduleToLoadDataPartitions() {
 	go func() {
 		for {
 			if c.partition != nil && c.partition.IsLeader() {
-				c.backendLoadDataPartitions()
+				c.doLoadDataPartitions()
 			}
 			time.Sleep(time.Second)
 		}
 	}()
 }
 
-func (c *Cluster) backendLoadDataPartitions() {
+func (c *Cluster) doLoadDataPartitions() {
 	vols := c.allVols()
 	for _, vol := range vols {
 		vol.loadDataPartition(c)
@@ -233,7 +231,7 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 	c.metaNodes.Range(func(addr, metaNode interface{}) bool {
 		node := metaNode.(*MetaNode)
 		node.checkHeartbeat()
-		task := node.generateHeartbeatTask(c.masterAddr())
+		task := node.createHeartbeatTask(c.masterAddr())
 		tasks = append(tasks, task)
 		return true
 	})
@@ -375,16 +373,16 @@ func (c *Cluster) getMetaPartitionByID(id uint64) (mp *MetaPartition, err error)
 }
 
 func (c *Cluster) putVol(vol *Vol) {
-	c.volsMutex.Lock()
-	defer c.volsMutex.Unlock()
+	c.volMutex.Lock()
+	defer c.volMutex.Unlock()
 	if _, ok := c.vols[vol.Name]; !ok {
 		c.vols[vol.Name] = vol
 	}
 }
 
 func (c *Cluster) getVol(volName string) (vol *Vol, err error) {
-	c.volsMutex.RLock()
-	defer c.volsMutex.RUnlock()
+	c.volMutex.RLock()
+	defer c.volMutex.RUnlock()
 	vol, ok := c.vols[volName]
 	if !ok {
 		err = errors.Annotatef(volNotFound(volName), "%v not found", volName)
@@ -393,8 +391,8 @@ func (c *Cluster) getVol(volName string) (vol *Vol, err error) {
 }
 
 func (c *Cluster) deleteVol(name string) {
-	c.volsMutex.Lock()
-	defer c.volsMutex.Unlock()
+	c.volMutex.Lock()
+	defer c.volMutex.Unlock()
 	delete(c.vols, name)
 	return
 }
@@ -743,6 +741,7 @@ func (c *Cluster) metaNodeOffLine(metaNode *MetaNode) {
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
 		for _, mp := range vol.MetaPartitions {
+			// err is not handled here.
 			c.decommissionMetaPartition(vol.Name, metaNode.Addr, mp.PartitionID)
 		}
 	}
@@ -752,12 +751,12 @@ func (c *Cluster) metaNodeOffLine(metaNode *MetaNode) {
 		Warn(c.Name, msg)
 		return
 	}
-	c.delMetaNodeFromCache(metaNode)
+	c.deleteMetaNodeFromCache(metaNode)
 	msg = fmt.Sprintf("action[metaNodeOffLine],clusterID[%v] Node[%v] OffLine success", c.Name, metaNode.Addr)
 	Warn(c.Name, msg)
 }
 
-func (c *Cluster) delMetaNodeFromCache(metaNode *MetaNode) {
+func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 	c.metaNodes.Delete(metaNode.Addr)
 	c.t.deleteMetaNode(metaNode)
 	go metaNode.clean()
@@ -807,6 +806,8 @@ func (c *Cluster) createVol(name string, replicaNum uint8, randomWrite bool, siz
 	vol.initMetaPartitions(c)
 	if len(vol.MetaPartitions) == 0 {
 		vol.Status = markDelete
+
+		// TODO unhandled error
 		c.syncDeleteVol(vol)
 		c.deleteVol(name)
 		goto errHandler
@@ -819,7 +820,6 @@ func (c *Cluster) createVol(name string, replicaNum uint8, randomWrite bool, siz
 	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", name, readWriteDataPartitions)
 	return
 
-	return
 errHandler:
 	err = fmt.Errorf("action[createVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
 	log.LogError(errors.ErrorStack(err))
@@ -827,6 +827,7 @@ errHandler:
 	return
 }
 
+// TODO what are the internals?
 func (c *Cluster) createVolInternal(name string, replicaNum uint8, randomWrite bool, dpSize, capacity uint64) (err error) {
 	var (
 		id  uint64
@@ -946,7 +947,7 @@ func (c *Cluster) hasEnoughWritableMetaHosts(replicaNum int, setID uint64) bool 
 	}
 	maxTotal := ns.getMetaNodeMaxTotal()
 	excludeHosts := make([]string, 0)
-	nodeTabs, _ := ns.getAvailCarryMetaNodeTab(maxTotal, excludeHosts)
+	nodeTabs, _ := ns.getAvailCarryMetaNode(maxTotal, excludeHosts)
 	if nodeTabs != nil && len(nodeTabs) >= replicaNum {
 		return true
 	}
@@ -1005,6 +1006,7 @@ func (c *Cluster) allDataNodes() (dataNodes []NodeView) {
 	return
 }
 
+// Percentage of active data nodes.
 func (c *Cluster) liveDataNodesRate() (rate float32) {
 	dataNodes := make([]NodeView, 0)
 	liveDataNodes := make([]NodeView, 0)
@@ -1020,6 +1022,7 @@ func (c *Cluster) liveDataNodesRate() (rate float32) {
 	return float32(len(liveDataNodes)) / float32(len(dataNodes))
 }
 
+// Percentage of active meta nodes.
 func (c *Cluster) liveMetaNodesRate() (rate float32) {
 	metaNodes := make([]NodeView, 0)
 	liveMetaNodes := make([]NodeView, 0)
@@ -1047,8 +1050,8 @@ func (c *Cluster) allMetaNodes() (metaNodes []NodeView) {
 
 func (c *Cluster) allVolNames() (vols []string) {
 	vols = make([]string, 0)
-	c.volsMutex.RLock()
-	defer c.volsMutex.RUnlock()
+	c.volMutex.RLock()
+	defer c.volMutex.RUnlock()
 	for name := range c.vols {
 		vols = append(vols, name)
 	}
@@ -1057,20 +1060,19 @@ func (c *Cluster) allVolNames() (vols []string) {
 
 func (c *Cluster) copyVols() (vols map[string]*Vol) {
 	vols = make(map[string]*Vol, 0)
-	c.volsMutex.RLock()
-	defer c.volsMutex.RUnlock()
+	c.volMutex.RLock()
+	defer c.volMutex.RUnlock()
 	for name, vol := range c.vols {
 		vols[name] = vol
 	}
 	return
 }
 
-
 // Return all the volumes except the ones that have been marked to be deleted.
 func (c *Cluster) allVols() (vols map[string]*Vol) {
 	vols = make(map[string]*Vol, 0)
-	c.volsMutex.RLock()
-	defer c.volsMutex.RUnlock()
+	c.volMutex.RLock()
+	defer c.volMutex.RUnlock()
 	for name, vol := range c.vols {
 		if vol.Status == normal {
 			vols[name] = vol
@@ -1092,21 +1094,10 @@ func (c *Cluster) getDataPartitionCapacity(vol *Vol) (count int) {
 }
 
 func (c *Cluster) getDataPartitionCount() (count int) {
-	c.volsMutex.RLock()
-	defer c.volsMutex.RUnlock()
+	c.volMutex.RLock()
+	defer c.volMutex.RUnlock()
 	for _, vol := range c.vols {
 		count = count + len(vol.dataPartitions.partitions)
-	}
-	return
-}
-
-func (c *Cluster) syncCompactStatus(status bool) (err error) {
-	oldCompactStatus := c.compactStatus
-	c.compactStatus = status
-	if err = c.syncPutCluster(); err != nil {
-		c.compactStatus = oldCompactStatus
-		log.LogErrorf("action[syncCompactStatus] failed,err:%v", err)
-		return
 	}
 	return
 }

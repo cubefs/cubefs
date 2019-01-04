@@ -148,7 +148,7 @@ func (c *Cluster) decommissionMetaPartition(volName, nodeAddr string, partitionI
 		goto errHandler
 	}
 	tasks = append(tasks, t)
-	if err = mp.updateInfoToStore(newHosts, newPeers, volName, c); err != nil {
+	if err = mp.persistToRocksDB(newHosts, newPeers, volName, c); err != nil {
 		goto errHandler
 	}
 	mp.removeReplicaByAddr(nodeAddr)
@@ -428,6 +428,8 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 
 	metaNode.updateMetric(resp, c.cfg.MetaNodeThreshold)
 	metaNode.setNodeActive()
+
+	// TODO unhandled error
 	c.t.putMetaNode(metaNode)
 	c.updateMetaNode(metaNode, resp.MetaPartitionReports, metaNode.reachesThreshold())
 	metaNode.metaPartitionInfos = nil
@@ -542,6 +544,8 @@ func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataN
 	}
 
 	dataNode.updateNodeMetric(resp)
+
+	// TODO unhandled error
 	c.t.putDataNode(dataNode)
 	c.updateDataNode(dataNode, resp.PartitionReports)
 	dataNode.dataPartitionReports = nil

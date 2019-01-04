@@ -66,7 +66,7 @@ const (
 var AddrDatabase = make(map[uint64]string)
 
 type clusterConfig struct {
-	releaseDataPartitionAfterLoadSeconds int64 // TODO explain1
+	releaseDataPartitionAfterLoadSeconds int64 // TODO explain
 	NodeTimeOutSec                       int64
 	DataPartitionMissSec                 int64 // TODO explain
 	DataPartitionTimeOutSec              int64

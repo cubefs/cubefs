@@ -550,7 +550,7 @@ func (c *Cluster) applyDeleteMetaNode(cmd *RaftCmdData) (err error) {
 	}
 	if value, ok := c.metaNodes.Load(mnv.ID); ok {
 		metaNode := value.(*MetaNode)
-		c.delMetaNodeFromCache(metaNode)
+		c.deleteMetaNodeFromCache(metaNode)
 	}
 	return
 }

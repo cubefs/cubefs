@@ -22,21 +22,6 @@ import (
 	"strconv"
 )
 
-// TODO can we merge dataNodeStatInfo and metaNodeStatInfo as "nodeStatInfo"?
-//type dataNodeStatInfo struct {
-//	TotalGB    uint64
-//	UsedGB     uint64
-//	IncreasedGB int64
-//	UsedRatio  string
-//}
-//
-//type metaNodeStatInfo struct {
-//	TotalGB    uint64
-//	UsedGB     uint64
-//	IncreasedGB int64
-//	UsedRatio  string
-//}
-
 type nodeStatInfo struct {
 	TotalGB     uint64
 	UsedGB      uint64

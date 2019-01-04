@@ -31,8 +31,7 @@ type VolStatInfo struct {
 	UsedSize  uint64
 }
 
-// TODO the explanation does not make any sense
-// DataPartitionResponse defines the response to a data partition?
+// TODO DataPartitionResponse defines the response to a data partition?
 type DataPartitionResponse struct {
 	PartitionID uint64
 	Status      int8

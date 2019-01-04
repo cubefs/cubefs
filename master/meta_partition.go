@@ -40,19 +40,19 @@ type MetaReplica struct {
 
 // MetaPartition defines the structure of a meta partition
 type MetaPartition struct {
-	PartitionID      uint64
-	Start            uint64
-	End              uint64
-	MaxNodeID        uint64
-	Replicas         []*MetaReplica
-	ReplicaNum       uint8 // TODO is this necessary ?
-	Status           int8
-	volID            uint64
-	volName          string
-	Hosts []string
-	Peers            []proto.Peer
-	MissNodes        map[string]int64
-	LoadResponse     []*proto.MetaPartitionLoadResponse
+	PartitionID  uint64
+	Start        uint64
+	End          uint64
+	MaxNodeID    uint64
+	Replicas     []*MetaReplica
+	ReplicaNum   uint8 // TODO is this necessary ?
+	Status       int8
+	volID        uint64
+	volName      string
+	Hosts        []string
+	Peers        []proto.Peer
+	MissNodes    map[string]int64
+	LoadResponse []*proto.MetaPartitionLoadResponse
 	sync.RWMutex
 }
 
@@ -127,13 +127,12 @@ func (mp *MetaPartition) removeReplicaByAddr(addr string) {
 	return
 }
 
-func (mp *MetaPartition) updateAllReplicasEnd() {
+func (mp *MetaPartition) updateInodeIDUpperBoundForAllReplicas() {
 	for _, mr := range mp.Replicas {
 		mr.end = mp.End
 	}
 }
 
-// TODO end-> "upper bound"
 func (mp *MetaPartition) updateInodeIDUpperBound(c *Cluster, end uint64) {
 	// overflow
 	if end > (defaultMaxMetaPartitionInodeID - defaultMetaPartitionInodeIDStep) {
@@ -156,8 +155,7 @@ func (mp *MetaPartition) updateInodeIDUpperBound(c *Cluster, end uint64) {
 		mp.End = oldEnd
 		goto errDeal
 	}
-	// TODO find a better name for updateAllReplicasEnd
-	mp.updateAllReplicasEnd()
+	mp.updateInodeIDUpperBoundForAllReplicas()
 	tasks = append(tasks, t)
 	c.addMetaNodeTasks(tasks)
 	if err = c.createMetaPartition(mp.volName, mp.End+1, defaultMaxMetaPartitionInodeID); err != nil {
@@ -279,7 +277,6 @@ func (mp *MetaPartition) removeIllegalReplica() (excessAddr string, t *proto.Adm
 	return
 }
 
-// TODO what is lack replication? lack-> missing
 func (mp *MetaPartition) missingReplicaAddrs() (lackAddrs []string) {
 	mp.RLock()
 	defer mp.RUnlock()
@@ -327,7 +324,7 @@ func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err erro
 	return
 }
 
-// TODO find a better name for MajorityReplicas
+// TODO inline?
 func (mp *MetaPartition) hasMajorityReplicas(liveReplicas int, replicaNum int) bool {
 	return liveReplicas >= int(mp.ReplicaNum/2+1)
 }
@@ -349,8 +346,7 @@ func (mp *MetaPartition) getLiveReplica() (liveReplicas []*MetaReplica) {
 	return
 }
 
-// TODO what is updateInfoToStore? 持久化信息到rocksDB
-func (mp *MetaPartition) updateInfoToStore(newHosts []string, newPeers []proto.Peer, volName string, c *Cluster) (err error) {
+func (mp *MetaPartition) persistToRocksDB(newHosts []string, newPeers []proto.Peer, volName string, c *Cluster) (err error) {
 	oldHosts := make([]string, len(mp.Hosts))
 	copy(oldHosts, mp.Hosts)
 	oldPeers := make([]proto.Peer, len(mp.Peers))
@@ -360,11 +356,11 @@ func (mp *MetaPartition) updateInfoToStore(newHosts []string, newPeers []proto.P
 	if err = c.syncUpdateMetaPartition(mp); err != nil {
 		mp.Hosts = oldHosts
 		mp.Peers = oldPeers
-		log.LogWarnf("action[updateInfoToStore] failed,partitionID:%v  old hosts:%v new hosts:%v oldPeers:%v  newPeers:%v",
+		log.LogWarnf("action[persistToRocksDB] failed,partitionID:%v  old hosts:%v new hosts:%v oldPeers:%v  newPeers:%v",
 			mp.PartitionID, mp.Hosts, newHosts, mp.Peers, newPeers)
 		return
 	}
-	log.LogWarnf("action[updateInfoToStore] success,partitionID:%v  old hosts:%v  new hosts:%v oldPeers:%v  newPeers:%v ",
+	log.LogWarnf("action[persistToRocksDB] success,partitionID:%v  old hosts:%v  new hosts:%v oldPeers:%v  newPeers:%v ",
 		mp.PartitionID, oldHosts, mp.Hosts, oldPeers, mp.Peers)
 	return
 }
@@ -400,8 +396,7 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID string, partitionMissSe
 	mp.Lock()
 	defer mp.Unlock()
 	for _, replica := range mp.Replicas {
-		// TODO here we need some explaination of the conditions
-		// 不让报警太频繁
+		// reduce the alarm  frequency
 		if contains(mp.Hosts, replica.Addr) && replica.isMissing() && mp.shouldReportMissingReplica(replica.Addr, warnInterval) {
 			metaNode := replica.metaNode
 			var (
@@ -444,7 +439,7 @@ func (mp *MetaPartition) replicaCreationTasks(clusterID, volName string) (tasks 
 			" on :%v Hosts:%v",
 			clusterID, mp.PartitionID, addrs, mp.Hosts)
 		log.LogWarn(msg)
-		tasks = append(tasks, mp.generateAddLackMetaReplicaTask(addrs, volName)...)
+		tasks = append(tasks, mp.createTaskToAddMissingMetaReplica(addrs, volName)...)
 	}
 
 	return
@@ -474,9 +469,7 @@ func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers
 	return
 }
 
-// TODO what is generateAddLackMetaReplicaTask?
-// --> createAddMissingReplicaTask
-func (mp *MetaPartition) generateAddLackMetaReplicaTask(addrs []string, volName string) (tasks []*proto.AdminTask) {
+func (mp *MetaPartition) createTaskToAddMissingMetaReplica(addrs []string, volName string) (tasks []*proto.AdminTask) {
 	return mp.buildNewMetaPartitionTasks(addrs, mp.Peers, volName)
 }
 

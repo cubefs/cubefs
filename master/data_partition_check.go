@@ -200,7 +200,6 @@ func (partition *DataPartition) missingReplicaAddress(dataPartitionSize uint64) 
 	partition.Lock()
 	defer partition.Unlock()
 
-	// TODO explain the choice of 120 here
 	if time.Now().Unix() - partition.createTime < 120 {
 		return
 	}
