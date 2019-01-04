@@ -25,7 +25,7 @@ import (
 	"strings"
 )
 
-// ClusterValue represents
+// TODO rename and add comments
 type ClusterValue struct {
 	Name          string
 	CompactStatus bool
@@ -38,7 +38,7 @@ func newClusterValue(c *Cluster) (cv *ClusterValue) {
 	return cv
 }
 
-// MetaPartitionValue 元数据分片值对象
+// TODO rename and add comments
 type MetaPartitionValue struct {
 	PartitionID uint64
 	Start       uint64
@@ -66,7 +66,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *MetaPartitionValue) {
 	return
 }
 
-//DataPartitionValue 数据分片值对象
+// TODO rename and add comments
 type DataPartitionValue struct {
 	PartitionID uint64
 	ReplicaNum  uint8
@@ -92,7 +92,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *DataPartitionValue) {
 	return
 }
 
-//VolValue vol值对象
+// TODO rename and add comments
 type VolValue struct {
 	ID                uint64
 	Name              string
@@ -116,7 +116,7 @@ func newVolValue(vol *Vol) (vv *VolValue) {
 	return
 }
 
-//DataNodeValue 数据节点值对象
+// TODO rename and add comments
 type DataNodeValue struct {
 	ID        uint64
 	NodeSetID uint64
@@ -131,7 +131,7 @@ func newDataNodeValue(dataNode *DataNode) *DataNodeValue {
 	}
 }
 
-//MetaNodeValue 元数据节点值对象
+// TODO rename and add comments
 type MetaNodeValue struct {
 	ID        uint64
 	NodeSetID uint64
@@ -146,7 +146,7 @@ func newMetaNodeValue(metaNode *MetaNode) *MetaNodeValue {
 	}
 }
 
-//NodeSetValue nodeSet值对象
+// TODO rename and add comments
 type NodeSetValue struct {
 	ID          uint64
 	Capacity    int
@@ -164,24 +164,23 @@ func newNodeSetValue(nset *nodeSet) (nsv *NodeSetValue) {
 	return
 }
 
-//RaftCmdData raft 命令对象
+// TODO rename and add comments
 type RaftCmdData struct {
 	Op uint32 `json:"op"`
 	K  string `json:"k"`
 	V  []byte `json:"v"`
 }
 
-//Marshal raft命令转换成字节数组
+// Marshal converts the RaftCmdData to a byte array.
 func (m *RaftCmdData) Marshal() ([]byte, error) {
 	return json.Marshal(m)
 }
 
-//Unmarshal 字节数组转换成raft命令
+// Unmarshal converts the byte array to a RaftCmdData.
 func (m *RaftCmdData) Unmarshal(data []byte) (err error) {
 	return json.Unmarshal(data, m)
 }
 
-//send data to follower by snapshot,must set operate type to each add type
 func (m *RaftCmdData) setOpType() {
 	keyArr := strings.Split(m.K, keySeparator)
 	if len(keyArr) < 2 {
@@ -227,7 +226,7 @@ func (c *Cluster) syncPutCluster() (err error) {
 	return c.submit(metadata)
 }
 
-//key=#s#id
+// key=#s#id
 func (c *Cluster) syncAddNodeSet(nset *nodeSet) (err error) {
 	return c.putNodeSetInfo(opSyncAddNodeSet, nset)
 }
@@ -248,7 +247,7 @@ func (c *Cluster) putNodeSetInfo(opType uint32, nset *nodeSet) (err error) {
 	return c.submit(metadata)
 }
 
-//key=#dp#volID#partitionID,value=json.Marshal(DataPartitionValue)
+// key=#dp#volID#partitionID,value=json.Marshal(DataPartitionValue)
 func (c *Cluster) syncAddDataPartition(dp *DataPartition) (err error) {
 	return c.putDataPartitionInfo(opSyncAddDataPartition, dp)
 }
@@ -309,7 +308,7 @@ func (c *Cluster) syncPutVolInfo(opType uint32, vol *Vol) (err error) {
 	return c.submit(metadata)
 }
 
-////key=#mp#volID#metaPartitionID,value=json.Marshal(MetaPartitionValue)
+// key=#mp#volID#metaPartitionID,value=json.Marshal(MetaPartitionValue)
 func (c *Cluster) syncAddMetaPartition(mp *MetaPartition) (err error) {
 	return c.putMetaPartitionInfo(opSyncAddMetaPartition, mp)
 }
@@ -334,7 +333,7 @@ func (c *Cluster) putMetaPartitionInfo(opType uint32, mp *MetaPartition) (err er
 	return c.submit(metadata)
 }
 
-//key=#mn#id#addr,value = nil
+// key=#mn#id#addr,value = nil
 func (c *Cluster) syncAddMetaNode(metaNode *MetaNode) (err error) {
 	return c.syncPutMetaNode(opSyncAddMetaNode, metaNode)
 }
@@ -355,7 +354,7 @@ func (c *Cluster) syncPutMetaNode(opType uint32, metaNode *MetaNode) (err error)
 	return c.submit(metadata)
 }
 
-//key=#dn#id#Addr,value = json.Marshal(dnv)
+// key=#dn#id#Addr,value = json.Marshal(dnv)
 func (c *Cluster) syncAddDataNode(dataNode *DataNode) (err error) {
 	return c.syncPutDataNodeInfo(opSyncAddDataNode, dataNode)
 }
@@ -782,7 +781,6 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		}
 		vol, err1 := c.getVol(mpv.VolName)
 		if err1 != nil {
-			// if vol not found,record log and continue
 			log.LogErrorf("action[loadMetaPartitions] err:%v", err1.Error())
 			continue
 		}
@@ -810,7 +808,6 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		}
 		vol, err1 := c.getVol(dpv.VolName)
 		if err1 != nil {
-			// if vol not found,record log and continue
 			log.LogErrorf("action[loadDataPartitions] err:%v", err1.Error())
 			continue
 		}
