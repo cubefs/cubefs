@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,17 +37,17 @@ const (
 )
 
 var (
-	ErrBrokenExtentFile = errors.New("broken extent file error")
+	BrokenExtentFileError = errors.New("broken extent file error")
 )
 
 type ExtentInfo struct {
-	FileID  uint64    `json:"fileId"`
-	Inode   uint64    `json:"ino"`
-	Size    uint64    `json:"size"`
-	Crc     uint32    `json:"crc"`
-	Deleted bool      `json:"deleted"`
-	ModTime time.Time `json:"modTime"`
-	Source  string    `json:"src"`
+	FileID     uint64    `json:"fileId"`
+	Inode      uint64    `json:"ino"`
+	Size       uint64    `json:"size"`
+	Crc        uint32    `json:"crc"`
+	IsDeleted  bool      `json:"deleted"`
+	ModifyTime time.Time `json:"modTime"`
+	Source     string    `json:"src"`
 }
 
 func (ei *ExtentInfo) FromExtent(extent *Extent) {
@@ -57,8 +57,8 @@ func (ei *ExtentInfo) FromExtent(extent *Extent) {
 		ei.Size = uint64(extent.Size())
 		if !IsTinyExtent(ei.FileID) {
 			ei.Crc = extent.HeaderChecksum()
-			ei.Deleted = extent.IsMarkDelete()
-			ei.ModTime = extent.ModTime()
+			ei.IsDeleted = extent.HasBeenMarkedAsDeleted()
+			ei.ModifyTime = extent.ModifyTime()
 		}
 	}
 }
@@ -68,7 +68,7 @@ func (ei *ExtentInfo) String() (m string) {
 	if source == "" {
 		source = "none"
 	}
-	return fmt.Sprintf("%v_%v_%v_%v_%v_%v", ei.FileID, ei.Inode, ei.Size, ei.Crc, ei.Deleted, source)
+	return fmt.Sprintf("%v_%v_%v_%v_%v_%v", ei.FileID, ei.Inode, ei.Size, ei.Crc, ei.IsDeleted, source)
 }
 
 // Extent is an implementation of Extent for local regular extent file data management.
@@ -162,13 +162,13 @@ func (e *Extent) InitToFS(ino uint64, overwrite bool) (err error) {
 	return
 }
 
-// RestoreFromFS restore entity data and status from entry file stored in filesystem.
+// RestoreFromFS restores the entity data and status from the file stored on the filesystem.
 func (e *Extent) RestoreFromFS(loadHeader bool) (err error) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 	if e.file, err = os.OpenFile(e.filePath, os.O_RDWR, 0666); err != nil {
 		if strings.Contains(err.Error(), syscall.ENOENT.Error()) {
-			err = ErrorExtentNotFound
+			err = ExtentNotFoundError
 		}
 		return err
 	}
@@ -193,7 +193,7 @@ func (e *Extent) RestoreFromFS(loadHeader bool) (err error) {
 	return
 }
 
-// MarkDelete mark this extent as deleted.
+// MarkDelete marks the extent as deleted.
 func (e *Extent) MarkDelete() (err error) {
 	e.lock.RLock()
 	defer e.lock.RUnlock()
@@ -205,8 +205,8 @@ func (e *Extent) MarkDelete() (err error) {
 	return
 }
 
-// IsMarkDelete test this extent if has been marked as delete.
-func (e *Extent) IsMarkDelete() bool {
+// HasBeenMarkedAsDeleted returns if the extent has been marked as deleted.
+func (e *Extent) HasBeenMarkedAsDeleted() bool {
 	if IsTinyExtent(e.extentID) {
 		return false
 	}
@@ -215,7 +215,7 @@ func (e *Extent) IsMarkDelete() bool {
 	return e.header[util.MarkDeleteIndex] == util.MarkDelete
 }
 
-// Size returns length of extent data exclude header.
+// Size returns length of the extent (not including the header).
 func (e *Extent) Size() (size int64) {
 	e.lock.RLock()
 	defer e.lock.RUnlock()
@@ -223,8 +223,8 @@ func (e *Extent) Size() (size int64) {
 	return
 }
 
-// ModTime returns the time when this extent was last modified.
-func (e *Extent) ModTime() time.Time {
+// ModifyTime returns the time when this extent was modified recently.
+func (e *Extent) ModifyTime() time.Time {
 	e.lock.RLock()
 	defer e.lock.RUnlock()
 	return e.modifyTime
@@ -233,17 +233,20 @@ func (e *Extent) ModTime() time.Time {
 func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32) (err error) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
-	if offset+size >= math.MaxUint32 {
-		return ErrorExtentHasFull
+
+	index := offset + size
+	if index >= math.MaxUint32 {
+		return ExtentIsFullError
 	}
+
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
 		return
 	}
-	watermark := offset + size
-	if watermark%PageSize != 0 {
-		watermark = watermark + (PageSize - watermark%PageSize)
+
+	if index%PageSize != 0 {
+		index = index + (PageSize - index%PageSize)
 	}
-	e.dataSize = watermark
+	e.dataSize = index
 
 	return
 }
@@ -252,13 +255,13 @@ func (e *Extent) RepairWriteTiny(data []byte, offset, size int64, crc uint32) (e
 	e.lock.Lock()
 	defer e.lock.Unlock()
 	if !IsTinyExtent(e.extentID) {
-		return ErrorUnavaliExtent
+		return UnavailableExtentError
 	}
 	if offset != e.dataSize {
-		return ErrorUnavaliExtent
+		return UnavailableExtentError
 	}
 	if offset+size >= math.MaxUint32 {
-		return ErrorExtentHasFull
+		return ExtentIsFullError
 	}
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
 		return
@@ -369,14 +372,14 @@ func (e *Extent) ReadTiny(data []byte, offset, size int64, isRepairRead bool) (c
 
 func (e *Extent) checkOffsetAndSize(offset, size int64) error {
 	if offset+size > util.BlockSize*util.BlockCount {
-		return NewParamMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
+		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	}
 	if offset >= util.BlockCount*util.BlockSize || size == 0 {
-		return NewParamMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
+		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	}
 
 	if size > util.BlockSize {
-		return NewParamMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
+		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	}
 	return nil
 }
@@ -408,14 +411,14 @@ const (
 
 func (e *Extent) DeleteTiny(offset, size int64) (err error) {
 	if int(offset)%PageSize != 0 {
-		return ErrorParamMismatch
+		return ParameterMismatchError
 	}
 
 	if int(size)%PageSize != 0 {
 		size += int64(PageSize - int(size)%PageSize)
 	}
 	if int(size)%PageSize != 0 {
-		return ErrorParamMismatch
+		return ParameterMismatchError
 	}
 	err = syscall.Fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
 

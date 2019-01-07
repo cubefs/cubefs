@@ -37,7 +37,7 @@ const (
 	checkDataPartitionDiskErr     = "checkDataPartitionDiskErr  "
 	getAvailDataNodeHostsErr      = "getAvailDataNodeHostsErr "
 	getAvailMetaNodeHostsErr      = "getAvailMetaNodeHostsErr "
-	getDataReplicaFileCountInfo   = "getDataReplicaFileCountInfo "  // TODO rename
+	getDataReplicaFileCountInfo   = "getDataReplicaFileCountInfo "  // TODO rename 副本上文件的个数
 	dataNodeOfflineInfo           = "dataNodeOfflineInfo"
 	diskOfflineInfo               = "diskOfflineInfo"
 	handleDataPartitionOfflineErr = "HandleDataPartitionOffLineErr "
@@ -61,8 +61,8 @@ const (
 	defaultVolCapacity                      = 200
 	intervalToLoadDataPartition             = 12 * 60 * 60
 	defaultInitDataPartitionCnt             = 10
-	volExpandDataPartitionStepRatio         = 0.1 // TODO explain
-	volMaxExpandDataPartitionCount          = 100 // TODO explain
+	volExpandDataPartitionStepRatio         = 0.1 // TODO explain  expand -》 扩容
+	volMaxExpandDataPartitionCount          = 100 // TODO explain 每次最多创建多少个
 )
 
 // TODO We can just use a flag (called "isMarkedToBeDeleted") to indicate if a volume is marked (to be deleted) or not.

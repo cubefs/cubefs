@@ -26,9 +26,9 @@ const (
 	colonSplit                           = ":"
 	commaSplit                           = ","
 	cfgPeers                             = "peers"
-	dataPartitionMissSec                 = "dataPartitionMissSec" // TODO what is dataPartitionMissSec
+	dataPartitionMissSec                 = "dataPartitionMissSec" // TODO what is dataPartitionMissSec 在dp上多少时间内没有汇报就认为这个dp missing了
 	dataPartitionTimeOutSec              = "dataPartitionTimeOutSec"
-	everyLoadDataPartitionCount          = "everyLoadDataPartitionCount" // TODO what is everyLoadDataPartitionCount ?
+	everyLoadDataPartitionCount          = "everyLoadDataPartitionCount" // TODO what is everyLoadDataPartitionCount ? 这个任务每次load多少个dp
 	releaseDataPartitionAfterLoadSeconds = "releaseDataPartitionAfterLoadSeconds"
 	nodeSetCapacity                      = "nodeSetCap"
 )
@@ -36,23 +36,23 @@ const (
 // TODO the followings seem to be related to intervals
 // TODO Suggested naming: defaultIntervalToXXX
 const (
-	defaultEveryReleaseDataPartitionCount       = 1000 // TODO explain
-	defaultReleaseDataPartitionAfterLoadSeconds = 5 * 60 // TODO explain
+	defaultEveryReleaseDataPartitionCount       = 1000 // TODO explain relase的时候每次释放多少个dp
+	defaultReleaseDataPartitionAfterLoadSeconds = 5 * 60 // TODO explain  对应的任务调度周期  这个dp必须起码加载5mins以后才能释放
 	defaultReleaseDataPartitionInternalSeconds  = 10
 	defaultCheckHeartbeatIntervalSeconds        = 60
 	defaultIntervalToCheckDataPartition   = 60
-	defaultFileDelayCheckLackSec          = 5 * defaultCheckHeartbeatIntervalSeconds // TODO explain
+	defaultFileDelayCheckLackSec          = 5 * defaultCheckHeartbeatIntervalSeconds // TODO explain 需不需要检查这个文件  （remove）
 	defaultFileDelayCheckCrcSec           = 20 * defaultCheckHeartbeatIntervalSeconds // TODO explain
-	noHeartBeatTimes                      = 3 // TODO explain
+	noHeartBeatTimes                      = 3 // TODO explain  没发生心跳的次数
 	defaultNodeTimeOutSec                 = noHeartBeatTimes * defaultCheckHeartbeatIntervalSeconds
 	defaultDataPartitionTimeOutSec        = 10 * defaultCheckHeartbeatIntervalSeconds
 	defaultDataPartitionMissSec           = 24 * 3600 // TODO explain
 
-	// TODO change to defaultIntervalToCheckMissingDP ?
+	// TODO change to defaultIntervalToCheckMissingDP ?  period， hadoop
 	defaultDataPartitionWarningInterval   = 60 * 60
-	loadDataPartitionWaitTime             = 120 // TODO explain
-	defaultLoadDataPartitionFrequencyTime = 60 * 60 * 4 // TODO explain
-	defaultEveryLoadDataPartitionCount    = 50  // TODO what is defaultEveryLoadDataPartitionCount?
+	loadDataPartitionWaitTime             = 120 // TODO explain master 等待相应的最多时间
+	defaultLoadDataPartitionFrequencyTime = 60 * 60 * 4 // TODO explain load dp的周期， 多长时间把master上的dp load 一遍
+	defaultEveryLoadDataPartitionCount    = 50  // TODO what is defaultEveryLoadDataPartitionCount? 每次load多少个
 	defaultMetaPartitionTimeOutSec        = 10 * defaultCheckHeartbeatIntervalSeconds
 	//DefaultMetaPartitionMissSec                         = 3600
 

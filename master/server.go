@@ -193,7 +193,7 @@ func (m *Server) initFsm() {
 	m.fsm.registerLeaderChangeHandler(m.handleLeaderChange)
 	m.fsm.registerPeerChangeHandler(m.handlePeerChange)
 
-	// TODO explain
+	// TODO explain raft 库
 	m.fsm.registerApplyHandler(m.handleApply)
 	m.fsm.registerApplySnapshotHandler(m.handleApplySnapshot)
 	m.fsm.restore()

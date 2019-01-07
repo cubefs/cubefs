@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,26 +19,25 @@ import (
 	"fmt"
 )
 
-// Error definitions
 var (
-	ErrorPartitionReadOnly = errors.New("partition readonly")
-	ErrorExtentHasDelete   = errors.New("has delete")
-	ErrorParamMismatch     = errors.New("parameter mismatch error")
-	ErrorNoAvaliExtent     = errors.New("no avail extent")
-	ErrorNoUnAvaliExtent   = errors.New("no Unavail extent")
-	ErrorUnavaliExtent     = errors.New("unavali extent ")
-	ErrExtentNameFormat    = errors.New("extent filePath format error")
-	ErrSyscallNoSpace      = errors.New("no space left on device")
-	ErrorAgain             = errors.New("try again")
-	ErrPkgCrcMismatch      = errors.New("pkg crc is not equal pkg data")
-	ErrNotLeader           = errors.New("not raft leader")
-	ErrNoLeader            = errors.New("raft no leader")
-	ErrorExtentNotFound    = errors.New("extent not exist")
-	ErrorExtentHasExsit    = errors.New("extent has exist")
-	ErrorExtentHasFull     = errors.New("extent has full")
+	ReadOnlyPartitionError    = errors.New("partition is readonly")
+	ExtentHasBeenDeletedError = errors.New("extent has been deleted")
+	ParameterMismatchError    = errors.New("parameter mismatch error")
+	NoAvailableExtentError    = errors.New("no available extent")
+	NoUnavailableExtentError  = errors.New("no unavailable extent")
+	UnavailableExtentError    = errors.New("extent is unavailable")
+	IncorrectFilePathError    = errors.New("format of the extent file path is incorrect")
+	NoSpaceError              = errors.New("no space left on the device")
+	TryAgainError             = errors.New("try again")
+	CrcMismatchError          = errors.New("packet crc is incorrect")
+	NotALeaderError           = errors.New("not a raft leader")
+	NoLeaderError             = errors.New("no raft leader")
+	ExtentNotFoundError       = errors.New("extent does not exist")
+	ExtentExistsError         = errors.New("extent already exists")
+	ExtentIsFullError         = errors.New("extent is full")
 )
 
-func NewParamMismatchErr(msg string) (err error) {
+func NewParameterMismatchErr(msg string) (err error) {
 	err = fmt.Errorf("parameter mismatch error: %s", msg)
 	return
 }

@@ -324,7 +324,7 @@ func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err erro
 	return
 }
 
-// TODO inline?
+// TODO inline? 统一一下
 func (mp *MetaPartition) hasMajorityReplicas(liveReplicas int, replicaNum int) bool {
 	return liveReplicas >= int(mp.ReplicaNum/2+1)
 }

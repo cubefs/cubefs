@@ -20,22 +20,22 @@ import (
 	"github.com/juju/errors"
 )
 
+// TODO err方面
 var (
 	noAvailDataPartitionErr = errors.New("no available data partition")
 	reshuffleArrayErr       = errors.New("the array to be reshuffled is nil")
 
-	// TODO rename meta replica and data replica : we do not have these two concepts
+	// TODO rename meta replica and data replica : we do not have these two concepts 加解释
 	illegalDataReplicaErr   = errors.New("data replica is illegal")
 
-	//  TODO what is the difference between the following two errs?
+	//  TODO what is the difference between the following two errs? 不改先
 	missingReplicaErr       = errors.New("a missing data replica is found")
 	hasOneMissingReplicaErr = errors.New("there is a missing data replica")
 
 	noDataNodeToWriteErr    = errors.New("No data node available for creating a data partition")
 	noMetaNodeToWriteErr    = errors.New("No meta node available for creating a meta partition")
 
-	// TODO verify this is correct: "the number of available data replicas is less than 0" ?
-	cannotBeOffLineErr      = errors.New("cannot take the data replica offline because the number of available data replicas is less than 0")
+	cannotBeOffLineErr      = errors.New("cannot take the data replica offline")
 	noDataNodeToCreateDataPartitionErr = errors.New("no enough data nodes for creating a data partition")
 	noRackToCreateDataPartitionErr     = errors.New("no rack available for creating a data partition")
 	noNodeSetToCreateDataPartitionErr  = errors.New("no node set available for creating a data partition")

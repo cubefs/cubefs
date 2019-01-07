@@ -33,7 +33,7 @@ type volStatInfo struct {
 	Name      string
 	TotalGB   uint64
 	UsedGB    uint64
-	UsedRatio string // TODO never used?
+	UsedRatio string
 }
 
 func newVolStatInfo(name string, total, used uint64, ratio string) *volStatInfo {

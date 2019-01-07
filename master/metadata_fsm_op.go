@@ -25,7 +25,7 @@ import (
 	"strings"
 )
 
-// TODO rename and add comments
+// TODO rename and add comments 叫VO
 type ClusterValue struct {
 	Name          string
 	CompactStatus bool

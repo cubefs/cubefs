@@ -24,8 +24,7 @@ const (
 )
 
 const (
-	// TODO what is replication host? the replica?
-	IntervalToUpdateReplica       = 60 // interval to update the replication host
+	IntervalToUpdateReplica       = 60 // interval to update the replica
 	IntervalToUpdatePartitionSize = 60 // interval to update the partition size
 	NumOfFilesToRecoverInParallel = 7  // number of files to be recovered simultaneously
 )
@@ -35,7 +34,7 @@ const (
 	NetworkProtocol = "tcp"
 )
 
-// Status of loading the extent header
+// TODO remove the following
 const (
 	StartLoadingExtentHeader  = -1
 	FinishLoadingExtentHeader = 1
@@ -56,7 +55,7 @@ const (
 // Action description
 // TODO why not put the "Action" at the end. This reads weird.
 const (
-	ActionNotifyFollowerRepair    = "ActionNotifyFollowerRepair"
+	ActionNotifyFollowerToRepair    = "ActionNotifyFollowerRepair"
 	ActionStreamRead              = "ActionStreamRead"              //ActionStreamRead is StreamRead Log Prefix
 	ActionGetDataPartitionMetrics = "ActionGetDataPartitionMetrics" //ActionGetDataPartitionMetrics is GetDataPartitionMetrics Log Prefix
 	ActionCheckReplyAvail         = "ActionCheckReplyAvail"

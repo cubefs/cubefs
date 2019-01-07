@@ -31,7 +31,7 @@ type VolStatInfo struct {
 	UsedSize  uint64
 }
 
-// TODO DataPartitionResponse defines the response to a data partition?
+// TODO DataPartitionResponse defines the response to a data partition? dn给master的response
 type DataPartitionResponse struct {
 	PartitionID uint64
 	Status      int8

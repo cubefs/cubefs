@@ -565,7 +565,7 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 
 // TODO it seems that there is no usage of this function
 func (dp *DataPartition) GetAllExtentsMeta() (files []*storage.ExtentInfo, err error) {
-	files, err = dp.extentStore.GetAllWatermarks(storage.GetStableExtentFilter())
+	files, err = dp.extentStore.GetAllWatermarks(storage.NormalExtentFilter())
 	if err != nil {
 		return nil, err
 	}

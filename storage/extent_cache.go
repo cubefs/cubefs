@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -152,7 +152,7 @@ func (cache *ExtentCache) fireLRU() {
 	}
 }
 
-// Flush synchronize extent stored in this cache to disk immediately.
+// Flush synchronizes the extent stored in cache to the disk.
 func (cache *ExtentCache) Flush() {
 	for _, extent := range cache.tinyExtents {
 		extent.Flush()

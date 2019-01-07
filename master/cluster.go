@@ -151,6 +151,7 @@ func (c *Cluster) checkDataPartitions() {
 }
 
 // TODO why call this backend?
+// background
 func (c *Cluster) scheduleToLoadDataPartitions() {
 	go func() {
 		for {
@@ -810,7 +811,7 @@ func (c *Cluster) createVol(name string, replicaNum uint8, randomWrite bool, siz
 		// TODO unhandled error
 		c.syncDeleteVol(vol)
 		c.deleteVol(name)
-		goto errHandler
+		goto errHandler // TODO delete or log
 	}
 	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
 		vol.initDataPartitions(c)
@@ -827,7 +828,7 @@ errHandler:
 	return
 }
 
-// TODO what are the internals?
+// TODO what are the internals? doCreateVol
 func (c *Cluster) createVolInternal(name string, replicaNum uint8, randomWrite bool, dpSize, capacity uint64) (err error) {
 	var (
 		id  uint64
@@ -1081,7 +1082,7 @@ func (c *Cluster) allVols() (vols map[string]*Vol) {
 	return
 }
 
-// TODO There is no usage for this function. Should we delete it or not?
+// TODO There is no usage for this function. Should we delete it or not? remove
 func (c *Cluster) getDataPartitionCapacity(vol *Vol) (count int) {
 	var totalCount uint64
 	c.dataNodes.Range(func(addr, value interface{}) bool {

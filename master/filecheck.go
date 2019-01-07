@@ -27,7 +27,7 @@ const (
 )
 
 // recover a file if it has bad CRC or it has been timed out before
-// TODO find a better name?
+// TODO find a better name?  validateCRC
 func (partition *DataPartition) checkFile(clusterID string) {
 	partition.Lock()
 	defer partition.Unlock()
@@ -72,7 +72,7 @@ func isTinyExtent(extentID uint64) bool {
 	return extentID >= tinyExtentStartID && extentID < tinyExtentStartID+tinyExtentCount
 }
 
-// TODO what is chunk file?
+// TODO what is chunk file? checkTinyExtentFile 跟datanode 对应起来
 func (partition *DataPartition) checkChunkFile(fc *FileInCore, liveReplicas []*DataReplica, clusterID string) {
 	if fc.isCheckCrc() == false {
 		return

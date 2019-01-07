@@ -30,7 +30,7 @@ type DataReplica struct {
 	FileCount               uint32
 	loc                     uint8
 	Status                  int8
-	LoadPartitionIsResponse bool // TODO what is LoadPartitionIsResponse?
+	LoadPartitionIsResponse bool // TODO what is LoadPartitionIsResponse? loaddp 有没有响应结果
 	Total                   uint64 `json:"TotalSize"`
 	Used                    uint64 `json:"UsedSize"`
 	IsLeader                bool

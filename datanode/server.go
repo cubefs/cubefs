@@ -381,16 +381,16 @@ func (s *DataNode) addDiskErrs(partitionID uint64, err error, flag uint8) {
 
 // TODO we need to find a better to handle the disk error
 func IsDiskErr(errMsg string) bool {
-	if strings.Contains(errMsg, storage.ErrorParamMismatch.Error()) || strings.Contains(errMsg, storage.ErrorExtentNotFound.Error()) ||
-		strings.Contains(errMsg, storage.ErrorNoAvaliExtent.Error()) ||
-		strings.Contains(errMsg, storage.ErrorUnavaliExtent.Error()) ||
-		strings.Contains(errMsg, io.EOF.Error()) || strings.Contains(errMsg, storage.ErrSyscallNoSpace.Error()) ||
-		strings.Contains(errMsg, storage.ErrorExtentHasDelete.Error()) || strings.Contains(errMsg, ErrNoPartitionFound.Error()) ||
-		strings.Contains(errMsg, storage.ErrorExtentHasExsit.Error()) ||
-		strings.Contains(errMsg, storage.ErrPkgCrcMismatch.Error()) || strings.Contains(errMsg, ErrIncorrectStoreType.Error()) ||
-		strings.Contains(errMsg, storage.ErrorNoUnAvaliExtent.Error()) || strings.Contains(errMsg, storage.ErrorParamMismatch.Error()) ||
-		strings.Contains(errMsg, storage.ErrExtentNameFormat.Error()) || strings.Contains(errMsg, storage.ErrorAgain.Error()) ||
-		strings.Contains(errMsg, storage.ErrorExtentNotFound.Error()) || strings.Contains(errMsg, storage.ErrorExtentHasFull.Error()) || strings.Contains(errMsg, storage.ErrorPartitionReadOnly.Error()) {
+	if strings.Contains(errMsg, storage.ParameterMismatchError.Error()) || strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) ||
+		strings.Contains(errMsg, storage.NoAvailableExtentError.Error()) ||
+		strings.Contains(errMsg, storage.UnavailableExtentError.Error()) ||
+		strings.Contains(errMsg, io.EOF.Error()) || strings.Contains(errMsg, storage.NoSpaceError.Error()) ||
+		strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) || strings.Contains(errMsg, ErrNoPartitionFound.Error()) ||
+		strings.Contains(errMsg, storage.ExtentExistsError.Error()) ||
+		strings.Contains(errMsg, storage.CrcMismatchError.Error()) || strings.Contains(errMsg, ErrIncorrectStoreType.Error()) ||
+		strings.Contains(errMsg, storage.NoUnavailableExtentError.Error()) || strings.Contains(errMsg, storage.ParameterMismatchError.Error()) ||
+		strings.Contains(errMsg, storage.IncorrectFilePathError.Error()) || strings.Contains(errMsg, storage.TryAgainError.Error()) ||
+		strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) || strings.Contains(errMsg, storage.ExtentIsFullError.Error()) || strings.Contains(errMsg, storage.ReadOnlyPartitionError.Error()) {
 		return false
 	}
 	return true

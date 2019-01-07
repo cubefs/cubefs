@@ -145,6 +145,7 @@ func (vol *Vol) checkDataPartitionStatus(c *Cluster) (cnt int) {
 	return
 }
 
+
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()

@@ -28,17 +28,17 @@ import (
 type DataNode struct {
 	Total      uint64 `json:"TotalWeight"`
 	Used       uint64 `json:"UsedWeight"`
-	Available  uint64 // TODO what is Available?
+	Available  uint64 // TODO what is Available? 可用空间
 	ID         uint64
 	RackName   string `json:"Rack"`
 	Addr       string
 	ReportTime time.Time
 	isActive   bool
 	sync.RWMutex
-	Ratio                float64
-	SelectCount          uint64  // TODO what is SelectCount
-	Carry                float64 // TODO what is Carry
-	Sender               *AdminTaskSender // TODO explain?
+	Ratio                float64 // 已用跟总共的比率
+	SelectCount          uint64  // TODO what is SelectCount  这个dn被选择多少次 （选择作为dp的location）
+	Carry                float64 // TODO what is Carry 磁盘使用率权重里面携带的因子 moosefs 改为 weight也行
+	Sender               *AdminTaskSender // TODO explain? 专门处理发送任务的 （task mamanger）
 	dataPartitionReports []*proto.PartitionReport
 	DataPartitionCount   uint32
 	NodeSetID            uint64

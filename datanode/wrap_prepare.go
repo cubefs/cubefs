@@ -65,7 +65,7 @@ func (s *DataNode) checkCrc(p *repl.Packet) (err error) {
 	}
 	crc := crc32.ChecksumIEEE(p.Data[:p.Size])
 	if crc != p.CRC {
-		return storage.ErrPkgCrcMismatch
+		return storage.CrcMismatchError
 	}
 
 	return
@@ -80,7 +80,7 @@ func (s *DataNode) checkPartition(pkg *repl.Packet) (err error) {
 	pkg.Object = dp
 	if pkg.Opcode == proto.OpWrite || pkg.Opcode == proto.OpCreateExtent {
 		if dp.Available() <= 0 {
-			err = storage.ErrSyscallNoSpace
+			err = storage.NoSpaceError
 			return
 		}
 	}

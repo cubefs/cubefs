@@ -15,7 +15,7 @@
 package master
 
 
-/* TODO is handle_admin.go a good name ? */
+/* TODO is handle_admin.go a good name ?  放到HTTP SERVER 也行， handle api service*/
 /* TODO double check the messages */
 
 import (
@@ -77,7 +77,7 @@ type badPartitionView struct {
 	PartitionIDs []uint64
 }
 
-// TODO explain "该阈值并不会被持久化且同步到其它master节点"
+// TODO explain "该阈值并不会被持久化且同步到其它master节点" 禁止自动扩容这个属性不持久化， 只对当前进程有效， 这个本来就是一个临时的， 升级或者网络设置的时候使用
 // Set the threshold of the memory usage on each meta node.
 // If the memory usage reaches this threshold, them all the mata partition will be marked as readOnly.
 func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {

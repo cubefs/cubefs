@@ -41,14 +41,14 @@ type DataPartition struct {
 	sync.RWMutex
 	total                   uint64
 	used                    uint64
-	MissingNodes            map[string]int64  // TODO explain what is the key and what is the value?
+	MissingNodes            map[string]int64  // TODO explain what is the key and what is the value? key 地址， value 什么时候missing的
 	VolName                 string
 	VolID                   uint64
 	modifyTime              int64
 	createTime              int64
 	RandomWrite             bool // TODO rename
 	FileInCoreMap           map[string]*FileInCore // TODO rename
-	FilesWithMissingReplica map[string]int64 // TODO files with missing replica?
+	FilesWithMissingReplica map[string]int64 // TODO files with missing replica? key 是filename， value 上次检测到缺失副本的时间
 }
 
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64, randomWrite bool) (partition *DataPartition) {

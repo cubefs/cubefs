@@ -67,7 +67,7 @@ func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
 	}
 }
 
-// TODO rename and explain
+// TODO rename and explain 检测这个dp有没有丢失的副本
 func (partition *DataPartition) checkMiss(clusterID string, dataPartitionMissSec, dataPartitionWarnInterval int64) {
 	partition.Lock()
 	defer partition.Unlock()
@@ -98,7 +98,7 @@ func (partition *DataPartition) checkMiss(clusterID string, dataPartitionMissSec
 	}
 }
 
-// TODO rename
+// TODO rename 需不需要报警
 func (partition *DataPartition) needWarnMissDataPartition(addr string, dataPartitionWarnInterval int64) (isWarn bool) {
 	warnTime, ok := partition.MissingNodes[addr]
 	if !ok {
@@ -151,7 +151,7 @@ func (partition *DataPartition) checkDiskError(clusterID string) (diskErrorAddrs
 	return
 }
 
-// TODO randomWrite has never been used
+// TODO randomWrite has never been used 可以删除
 func (partition *DataPartition) checkReplicationTask(clusterID string, randomWrite bool, dataPartitionSize uint64) (tasks []*proto.AdminTask) {
 	var msg string
 	tasks = make([]*proto.AdminTask, 0)

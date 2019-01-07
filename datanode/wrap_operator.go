@@ -123,7 +123,7 @@ func (s *DataNode) handlePacketToCreateExtent(pkg *repl.Packet) {
 	}()
 	partition := pkg.Object.(*DataPartition)
 	if partition.Available() <= 0 || partition.disk.Status == proto.ReadOnly {
-		err = storage.ErrSyscallNoSpace
+		err = storage.NoSpaceError
 		return
 	}
 	var ino uint64
@@ -353,7 +353,7 @@ func (s *DataNode) handleWritePacket(pkg *repl.Packet) {
 	}()
 	partition := pkg.Object.(*DataPartition)
 	if partition.Available() <= 0 || partition.disk.Status == proto.ReadOnly {
-		err = storage.ErrSyscallNoSpace
+		err = storage.NoSpaceError
 		return
 	}
 	store := partition.ExtentStore()
@@ -397,17 +397,17 @@ func (s *DataNode) handleRandomWritePacket(pkg *repl.Packet) {
 	partition := pkg.Object.(*DataPartition)
 	_, isLeader := partition.IsRaftLeader()
 	if !isLeader {
-		err = storage.ErrNotLeader
+		err = storage.NotALeaderError
 		return
 	}
 	err = partition.RandomWriteSubmit(pkg)
 	if err != nil && strings.Contains(err.Error(), raft.ErrNotLeader.Error()) {
-		err = storage.ErrNotLeader
+		err = storage.NotALeaderError
 		return
 	}
 
 	if err == nil && pkg.ResultCode != proto.OpOk {
-		err = storage.ErrorAgain
+		err = storage.TryAgainError
 		return
 	}
 
@@ -496,12 +496,12 @@ func (s *DataNode) handlePacketToGetAllWatermarks(pkg *repl.Packet) {
 	partition := pkg.Object.(*DataPartition)
 	store := partition.ExtentStore()
 	if pkg.ExtentType == proto.NormalExtentType {
-		fInfoList, err = store.GetAllWatermarks(storage.GetStableExtentFilter())
+		fInfoList, err = store.GetAllWatermarks(storage.NormalExtentFilter())
 	} else {
 		extents := make([]uint64, 0)
 		err = json.Unmarshal(pkg.Data, &extents)
 		if err == nil {
-			fInfoList, err = store.GetAllWatermarks(storage.GetStableTinyExtentFilter(extents))
+			fInfoList, err = store.GetAllWatermarks(storage.TinyExtentFilter(extents))
 		}
 	}
 	if err != nil {
@@ -665,9 +665,9 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bo
 		return
 	}
 
-	// return ErrNoLeader if leaderAddr is nil
+	// return NoLeaderError if leaderAddr is nil
 	if leaderAddr == "" {
-		err = storage.ErrNoLeader
+		err = storage.NoLeaderError
 		return
 	}
 

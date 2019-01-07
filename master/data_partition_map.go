@@ -29,7 +29,7 @@ import (
 type DataPartitionMap struct {
 	sync.RWMutex
 	partitionMap           map[uint64]*DataPartition
-	totalCnt               int // total number of partitionMap  TODO this field seems useless
+	totalCnt               int // total number of partitionMap  TODO this field seems useless remove
 	readableAndWritableCnt int    // number of readable and writable partitionMap
 	lastLoadedIndex        uint64 // last loaded partition index
 	lastReleasedIndex      uint64 // last released partition index
@@ -193,7 +193,7 @@ func (dpMap *DataPartitionMap) getDataPartitionsToBeChecked(loadFrequencyTime in
 
 	// TODO change to:
 	// count := math.Max(dpLen / intervalToLoadDataPartition, 1)
-	count := dpLen / intervalToLoadDataPartition // TODO what is the theory behind this?
+	count := dpLen / intervalToLoadDataPartition // TODO what is the theory behind this? count ： 需要加载多少个
 	if count == 0 {
 		count = 1
 	}
