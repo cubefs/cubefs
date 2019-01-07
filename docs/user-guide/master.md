@@ -34,6 +34,8 @@ CFS using **JSON** as for configuration file format.
 | walDir        | string   | Path for raft log file storage.                  | Yes      |
 | storeDir      | string   | Path for goleveldb file storage.                 | Yes      |
 | clusterName   | string   | The cluster identifier                           | Yes      |
+| exporterPort  | int      | The prometheus exporter port.                    | No      |
+| consulAddr    | string   | The consul register addr for prometheus exporter.| No      |
 
 **Example:**
   ```json
@@ -49,6 +51,8 @@ CFS using **JSON** as for configuration file format.
     "retainLogs":"2000",
     "walDir":"/export/raft",
     "storeDir":"/export/rocks",
+    "exporterPort": 9510,
+    "consulAddr": "http://127.0.0.1:8500",
     "clusterName":"containerfs"
 }
 ```

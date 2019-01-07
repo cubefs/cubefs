@@ -17,7 +17,6 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"regexp"
@@ -33,12 +32,12 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
 	"github.com/tiglabs/containerfs/repl"
-	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/exporter"
 	"github.com/tiglabs/containerfs/util/log"
 	"os"
+	"syscall"
 )
 
 var (
@@ -381,17 +380,9 @@ func (s *DataNode) addDiskErrs(partitionID uint64, err error, flag uint8) {
 
 // TODO we need to find a better to handle the disk error
 func IsDiskErr(errMsg string) bool {
-	if strings.Contains(errMsg, storage.ParameterMismatchError.Error()) || strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) ||
-		strings.Contains(errMsg, storage.NoAvailableExtentError.Error()) ||
-		strings.Contains(errMsg, storage.UnavailableExtentError.Error()) ||
-		strings.Contains(errMsg, io.EOF.Error()) || strings.Contains(errMsg, storage.NoSpaceError.Error()) ||
-		strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) || strings.Contains(errMsg, ErrNoPartitionFound.Error()) ||
-		strings.Contains(errMsg, storage.ExtentExistsError.Error()) ||
-		strings.Contains(errMsg, storage.CrcMismatchError.Error()) || strings.Contains(errMsg, ErrIncorrectStoreType.Error()) ||
-		strings.Contains(errMsg, storage.NoUnavailableExtentError.Error()) || strings.Contains(errMsg, storage.ParameterMismatchError.Error()) ||
-		strings.Contains(errMsg, storage.IncorrectFilePathError.Error()) || strings.Contains(errMsg, storage.TryAgainError.Error()) ||
-		strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) || strings.Contains(errMsg, storage.ExtentIsFullError.Error()) || strings.Contains(errMsg, storage.ReadOnlyPartitionError.Error()) {
-		return false
+	if strings.Contains(errMsg, syscall.EIO.Error()) {
+		return true
 	}
-	return true
+
+	return false
 }
