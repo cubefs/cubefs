@@ -59,12 +59,13 @@ func (cache *ExtentCache) Put(extent *Extent) {
 		return
 	}
 	cache.lock.Lock()
-	defer cache.lock.Unlock()
 	item := &ExtentMapItem{
 		ext: extent,
 		ele: cache.extentList.PushBack(extent),
 	}
 	cache.extentMap[extent.ID()] = item
+	cache.lock.Unlock()
+
 	cache.fireLRU()
 }
 
@@ -135,6 +136,8 @@ func (cache *ExtentCache) Size() int {
 }
 
 func (cache *ExtentCache) fireLRU() {
+	cache.lock.Lock()
+	defer cache.lock.Unlock()
 	if cache.capacity <= 0 {
 		return
 	}
