@@ -1,5 +1,3 @@
-# Overview
-
 ## Introduction
 
 ContainerFS is a distributed fle system that is designed to natively support containers running at JD’s Kubernetes platform. 

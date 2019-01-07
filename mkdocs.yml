@@ -1,0 +1,11 @@
+site_name: Container File System
+
+nav:
+- Overview: 'overview.md'
+- User Guide: 'user-guide.md'
+- Admin API: 'admin-api.md'
+- Design: 'design.md'
+- Performance: 'performance.md'
+- Evaluation: 'evaluation.md'
+
+theme: readthedocs
