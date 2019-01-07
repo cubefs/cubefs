@@ -1,8 +1,4 @@
-# Buiding and Deployment
-
-## Building
-
-### Building servers
+## Build Servers
 
 In the CFS design, servers refer to master, metanode and datanode, and are compiled into a single binary for deployment convenience.
 
@@ -10,7 +6,7 @@ In the CFS design, servers refer to master, metanode and datanode, and are compi
 cd cmd; go build cmd.go
 ```
 
-### Building client
+## Build Client
 
 Client is compiled separately.
 
@@ -18,9 +14,7 @@ Client is compiled separately.
 cd client; go build
 ```
 
-## Deployment
-
-### Start master
+## Start Master
 
 Example master.json is shown below:
 ```json
@@ -46,7 +40,7 @@ For detailed explanations of *master.json*, please refer to [master.md](master.m
 ./cmd -c master.json
 ```
 
-### Start metanode
+## Start Metanode
 Example meta.json is shown below:
 
 ```json
@@ -66,11 +60,11 @@ Example meta.json is shown below:
     ]
 }
 ```
-For detailed explanations of *meta.json*, please refer to [meta.md](meta.md).
+For detailed explanations of *meta.json*, please refer to [meta.md]().
 ```bash
 ./cmd -c meta.json
 ```
-### Start datanode
+## Start Datanode
 
 1. Prepare config file
 
@@ -105,13 +99,13 @@ Example *datanode.json* is shown below:
 nohup ./cmd -c datanode.json &
 ```
 
-For detailed explanations of *datanode.json*, please refer to [start_datanode.md](start_datanode.md).
+For detailed explanations of *datanode.json*, please refer to [datanode.md](datanode.md).
 
-### Create a volume
+## Create Volume
 
-### Allocate logical space
+## Allocate Logical Space
 
-### Mount a client
+## Mount Client
 
 1. Run "modprobe fuse" to insert FUSE kernel module.
 2. Run "rpm -i fuse-2.9.2-8.el7.x86_64.rpm" to install libfuse.
@@ -133,6 +127,6 @@ Example *fuse.json* is shown below:
 
 For detailed explanations of *fuse.json*, please refer to [client.md](client.md).
 
-For optimizing FUSE kernel to achive better performance, please refer to [fuse.md](fuse.md).
+For optimizing FUSE kernel to achive better performance, please refer to [fuse.md](../performance/fuse.md).
 
 Note that end user can start more than one client on a single machine, as long as mountpoints are different.
