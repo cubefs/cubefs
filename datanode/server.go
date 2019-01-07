@@ -39,6 +39,7 @@ import (
 	"github.com/tiglabs/containerfs/util/exporter"
 	"github.com/tiglabs/containerfs/util/log"
 	"os"
+	"syscall"
 )
 
 var (
@@ -362,17 +363,9 @@ func (s *DataNode) addDiskErrs(partitionID uint64, err error, flag uint8) {
 }
 
 func IsDiskErr(errMsg string) bool {
-	if strings.Contains(errMsg, storage.ErrorParamMismatch.Error()) || strings.Contains(errMsg, storage.ErrorExtentNotFound.Error()) ||
-		strings.Contains(errMsg, storage.ErrorNoAvaliExtent.Error()) ||
-		strings.Contains(errMsg, storage.ErrorUnavaliExtent.Error()) ||
-		strings.Contains(errMsg, io.EOF.Error()) || strings.Contains(errMsg, storage.ErrSyscallNoSpace.Error()) ||
-		strings.Contains(errMsg, storage.ErrorExtentHasDelete.Error()) || strings.Contains(errMsg, ErrPartitionNotExist.Error()) ||
-		strings.Contains(errMsg, storage.ErrorExtentHasExsit.Error()) ||
-		strings.Contains(errMsg, storage.ErrPkgCrcMismatch.Error()) || strings.Contains(errMsg, ErrStoreTypeMismatch.Error()) ||
-		strings.Contains(errMsg, storage.ErrorNoUnAvaliExtent.Error()) || strings.Contains(errMsg, storage.ErrorParamMismatch.Error()) ||
-		strings.Contains(errMsg, storage.ErrExtentNameFormat.Error()) || strings.Contains(errMsg, storage.ErrorAgain.Error()) ||
-		strings.Contains(errMsg, storage.ErrorExtentNotFound.Error()) || strings.Contains(errMsg, storage.ErrorExtentHasFull.Error()) || strings.Contains(errMsg, storage.ErrorPartitionReadOnly.Error()) {
-		return false
+	if strings.Contains(errMsg, syscall.EIO.Error()) {
+		return true
 	}
-	return true
+
+	return false
 }
