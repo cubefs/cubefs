@@ -32,7 +32,7 @@ func GetExtentHandlerID() uint64 {
 
 type ExtentHandler struct {
 	// Fields created as it is, i.e. will not be changed.
-	sw         *StreamWriter
+	stream     *Streamer
 	id         uint64 // extent handler id
 	inode      uint64
 	fileOffset int
@@ -92,11 +92,11 @@ type ExtentHandler struct {
 	doneSender chan struct{}
 }
 
-func NewExtentHandler(sw *StreamWriter, offset int, storeMode int) *ExtentHandler {
+func NewExtentHandler(stream *Streamer, offset int, storeMode int) *ExtentHandler {
 	eh := &ExtentHandler{
-		sw:           sw,
+		stream:       stream,
 		id:           GetExtentHandlerID(),
-		inode:        sw.inode,
+		inode:        stream.inode,
 		fileOffset:   offset,
 		storeMode:    storeMode,
 		empty:        make(chan struct{}, 1024),
@@ -127,7 +127,7 @@ func (eh *ExtentHandler) write(data []byte, offset, size int) (ek *proto.ExtentK
 
 	var blksize int
 	if eh.storeMode == proto.TinyExtentMode {
-		blksize = eh.sw.tinySizeLimit()
+		blksize = eh.stream.tinySizeLimit()
 	} else {
 		blksize = util.BlockSize
 	}
@@ -379,10 +379,10 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 	//log.LogDebugf("appendExtentKey enter: eh(%v)", eh)
 	if eh.key != nil {
 		if eh.dirty {
-			eh.sw.stream.extents.Append(eh.key, true)
-			err = eh.sw.stream.client.appendExtentKey(eh.inode, eh.sw.authid, *eh.key)
+			eh.stream.extents.Append(eh.key, true)
+			err = eh.stream.client.appendExtentKey(eh.inode, eh.stream.authid, *eh.key)
 		} else {
-			eh.sw.stream.extents.Append(eh.key, false)
+			eh.stream.extents.Append(eh.key, false)
 		}
 	}
 	if err == nil {
@@ -427,7 +427,7 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 		// Always use normal extent store mode for recovery.
 		// Because tiny extent files are limited, tiny store
 		// failures might due to lack of tiny extent file.
-		handler = NewExtentHandler(eh.sw, int(packet.KernelOffset), proto.NormalExtentMode)
+		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), proto.NormalExtentMode)
 		handler.setClosed()
 	}
 	handler.pushToRequest(packet)
@@ -435,7 +435,7 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 		eh.recoverHandler = handler
 		// Note: put it to dirty list after packet is sent, so this
 		// handler is not skipped in flush.
-		eh.sw.dirtylist.Put(handler)
+		eh.stream.dirtylist.Put(handler)
 	}
 	return nil
 }
@@ -569,6 +569,6 @@ func (eh *ExtentHandler) setRecovery() bool {
 }
 
 func (eh *ExtentHandler) setError() bool {
-	atomic.StoreInt32(&eh.sw.status, StreamWriterError)
+	atomic.StoreInt32(&eh.stream.status, StreamerError)
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusRecovery, ExtentStatusError)
 }
