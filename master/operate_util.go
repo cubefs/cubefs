@@ -27,7 +27,7 @@ func newCreateDataPartitionRequest(volName string, ID uint64, randomWrite bool, 
 		PartitionId:   ID,
 		PartitionSize: dataPartitionSize,
 		VolumeId:      volName,
-		RandomWrite:   randomWrite,
+		IsRandomWrite: randomWrite,
 		Members:       members,
 	}
 	return
@@ -40,8 +40,8 @@ func newDeleteDataPartitionRequest(ID uint64) (req *proto.DeleteDataPartitionReq
 	return
 }
 
-func newOfflineDataPartitionRequest(ID uint64, removePeer, addPeer proto.Peer) (req *proto.DataPartitionOfflineRequest) {
-	req = &proto.DataPartitionOfflineRequest{
+func newOfflineDataPartitionRequest(ID uint64, removePeer, addPeer proto.Peer) (req *proto.DataPartitionDecommissionRequest) {
+	req = &proto.DataPartitionDecommissionRequest{
 		PartitionId: ID,
 		RemovePeer:  removePeer,
 		AddPeer:     addPeer,
@@ -64,7 +64,7 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 	var response interface{}
 	switch task.OpCode {
 	case proto.OpDataNodeHeartbeat:
-		response = &proto.DataNodeHeartBeatResponse{}
+		response = &proto.DataNodeHeartbeatResponse{}
 	case proto.OpCreateDataPartition:
 		response = &proto.CreateDataPartitionResponse{}
 	case proto.OpDeleteDataPartition:
@@ -83,9 +83,9 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 		response = &proto.UpdateMetaPartitionResponse{}
 	case proto.OpLoadMetaPartition:
 		response = task.Response.(*proto.LoadMetaPartitionMetricResponse)
-	case proto.OpOfflineMetaPartition:
+	case proto.OpDecommissionMetaPartition:
 		response = task.Response.(*proto.MetaPartitionOfflineResponse)
-	case proto.OpOfflineDataPartition:
+	case proto.OpDecommissionDataPartition:
 		response = task.Response.(*proto.DataPartitionOfflineResponse)
 
 	default:

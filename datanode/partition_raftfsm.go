@@ -1,4 +1,4 @@
-// Copyright 2018 The CFS Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -91,28 +91,28 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		dp.uploadApplyID(index)
 	}(index)
 
-	req := &proto.DataPartitionOfflineRequest{}
+	req := &proto.DataPartitionDecommissionRequest{}
 	if err = json.Unmarshal(confChange.Context, req); err != nil {
 		return
 	}
 
-	// Change memory status TODO what does this mean? isUpdated
+	// Change memory the status
 	var (
-		updated bool
+		isUpdated bool
 	)
 	switch confChange.Type {
 	case raftproto.ConfAddNode:
-		updated, err = dp.addRaftNode(req, index)
+		isUpdated, err = dp.addRaftNode(req, index)
 	case raftproto.ConfRemoveNode:
-		updated, err = dp.removeRaftNode(req, index)
+		isUpdated, err = dp.removeRaftNode(req, index)
 	case raftproto.ConfUpdateNode:
-		updated, err = dp.updateRaftNode(req, index)
+		isUpdated, err = dp.updateRaftNode(req, index)
 	}
 	if err != nil {
 		log.LogErrorf("action[ApplyMemberChange] dp[%v] type[%v] err[%v].", dp.partitionID, confChange.Type, err)
 		return
 	}
-	if updated {
+	if isUpdated {
 		if err = dp.PersistMetadata(); err != nil {
 			log.LogErrorf("action[ApplyMemberChange] dp[%v] PersistMetadata err[%v].", dp.partitionID, err)
 			return
@@ -154,8 +154,8 @@ func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 	leaderAddr, _ := dp.IsRaftLeader()
 
 	if len(dp.replicas) > 0 {
-		replicaAddrParts := strings.Split(dp.replicas[0], ":")
-		firstHost = strings.TrimSpace(replicaAddrParts[0])
+		replicaAddr := strings.Split(dp.replicas[0], ":")
+		firstHost = strings.TrimSpace(replicaAddr[0])
 	}
 
 	if firstHost == LocalIP && leaderAddr != "" {
@@ -196,7 +196,7 @@ func (dp *DataPartition) HandleLeaderChange(leader uint64) {
 	}
 }
 
-// Put submits the raft log to the raft store. TODO check if this description is correct
+// Put submits the raft log to the raft store.
 func (dp *DataPartition) Put(key, val interface{}) (resp interface{}, err error) {
 	if dp.raftPartition == nil {
 		err = fmt.Errorf("%s key=%v", RaftNotStarted, key)

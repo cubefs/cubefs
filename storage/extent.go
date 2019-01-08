@@ -142,6 +142,7 @@ func (e *Extent) InitToFS(ino uint64, overwrite bool) (err error) {
 
 	defer func() {
 		if err != nil {
+			// TODO Unhandled errors
 			e.file.Close()
 			os.Remove(e.filePath)
 		}
@@ -230,6 +231,7 @@ func (e *Extent) ModifyTime() time.Time {
 	return e.modifyTime
 }
 
+// WriteTiny performs write on a tiny extent.
 func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32) (err error) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
@@ -251,14 +253,15 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32) (err err
 	return
 }
 
+// RepairWriteTiny repairs the tiny extent.
 func (e *Extent) RepairWriteTiny(data []byte, offset, size int64, crc uint32) (err error) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 	if !IsTinyExtent(e.extentID) {
-		return UnavailableExtentError
+		return BrokenExtentError
 	}
 	if offset != e.dataSize {
-		return UnavailableExtentError
+		return BrokenExtentError
 	}
 	if offset+size >= math.MaxUint32 {
 		return ExtentIsFullError
@@ -271,7 +274,7 @@ func (e *Extent) RepairWriteTiny(data []byte, offset, size int64, crc uint32) (e
 	return
 }
 
-// Write data to extent.
+// Write writes data to an extent.
 func (e *Extent) Write(data []byte, offset, size int64, crc uint32) (blockNos []int, blockCrcs []uint32, err error) {
 	blockNos = make([]int, 0)
 	blockCrcs = make([]uint32, 0)
@@ -301,7 +304,7 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32) (blockNos []
 		return
 	}
 
-	// Prepare read buffer for block data
+	// prepare read buffer for block data
 	var (
 		blockBuffer []byte
 		poolErr     error
@@ -311,9 +314,9 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32) (blockNos []
 	}
 	defer buf.Buffers.Put(blockBuffer)
 
-	remainCheckByteCnt := offsetInBlock + int64(writeSize)
+	remainingCheckByteCnt := offsetInBlock + int64(writeSize)
 	for {
-		if remainCheckByteCnt <= 0 {
+		if remainingCheckByteCnt <= 0 {
 			break
 		}
 		readN, readErr := e.file.ReadAt(blockBuffer, int64(blockNo*util.BlockSize))
@@ -330,13 +333,13 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32) (blockNos []
 		if readErr == io.EOF || readErr == io.ErrUnexpectedEOF || readN < util.BlockSize {
 			break
 		}
-		remainCheckByteCnt -= int64(readN)
+		remainingCheckByteCnt -= int64(readN)
 		blockNo++
 	}
 	return
 }
 
-// Read data from extent.
+// Read reads data from an extent.
 func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc uint32, err error) {
 	if IsTinyExtent(e.extentID) {
 		return e.ReadTiny(data, offset, size, isRepairRead)
@@ -360,6 +363,7 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc u
 	return
 }
 
+// ReadTiny read data from a tiny extent.
 func (e *Extent) ReadTiny(data []byte, offset, size int64, isRepairRead bool) (crc uint32, err error) {
 	_, err = e.file.ReadAt(data[:size], offset)
 	if isRepairRead && err == io.EOF {
@@ -384,14 +388,13 @@ func (e *Extent) checkOffsetAndSize(offset, size int64) error {
 	return nil
 }
 
-// Flush synchronize data to disk immediately.
+// Flush synchronizes data to the disk.
 func (e *Extent) Flush() (err error) {
 	err = e.file.Sync()
 	return
 }
 
-// HeaderChecksum returns crc checksum value of extent header data
-// include inode data and block crc.
+// HeaderChecksum returns the crc checksum of the extent header, which includes the inode data and the block crc.
 func (e *Extent) HeaderChecksum() (crc uint32) {
 	e.lock.RLock()
 	defer e.lock.RUnlock()
@@ -409,6 +412,7 @@ const (
 	FallocFLPunchHole = 2
 )
 
+// DeleteTiny deletes a tiny extent.
 func (e *Extent) DeleteTiny(offset, size int64) (err error) {
 	if int(offset)%PageSize != 0 {
 		return ParameterMismatchError

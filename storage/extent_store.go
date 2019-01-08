@@ -35,27 +35,24 @@ import (
 	"syscall"
 )
 
-
-// TODO should we name this file as "extent_store.go" instead of "store_extent.go" ?
-
 const (
 
 	// TODO what does ext mean in the following names?
-	ExtMetaFileName        = "EXTENT_META"  // TODO we should use "metadata" or "md" instead of "meta" for naming
-	ExtCrcHeaderFileName   = "EXTENT_CRC"
-	ExtMetaFileOpt         = os.O_CREATE | os.O_RDWR
-	ExtDeleteFileName      = "EXTENT_DELETE"
-	ExtDeleteFileOpt       = os.O_CREATE | os.O_RDWR | os.O_APPEND
-	ExtMetaBaseIDOffset    = 0
-	ExtMetaBaseIDSize      = 8
-	ExtMetaDeleteIdxOffset = 8
-	ExtMetaDeleteIdxSize   = 8
-	ExtMetaFileSize        = ExtMetaBaseIDSize + ExtMetaDeleteIdxSize // TODO explain
-	MaxExtentId            = 40000
-	ExtCrcHeaderSize       = MaxExtentId * util.BlockHeaderSize
-	TinyExtentCount        = 64 // TODO total number of tiny extents that each partition can have ?
-	TinyExtentStartID      = 50000000
-	MinExtentID            = 2
+	ExtMetadataFileName         = "EXTENT_META"
+	ExtCrcHeaderFileName        = "EXTENT_CRC"
+	ExtMetadataFileOpt          = os.O_CREATE | os.O_RDWR
+	ExtDeletedFileName          = "EXTENT_DELETE"
+	ExtDeletedFileOpt           = os.O_CREATE | os.O_RDWR | os.O_APPEND
+	ExtMetadataBaseIDOffset     = 0
+	ExtMetadataBaseIDSize       = 8
+	ExtMetadataDeletedIdxOffset = 8
+	ExtMetadataDeletedIdxSize   = 8
+	ExtMetadataFileSize         = ExtMetadataBaseIDSize + ExtMetadataDeletedIdxSize // TODO explain
+	MaxExtentId                 = 40000
+	ExtCrcHeaderSize            = MaxExtentId * util.BlockHeaderSize
+	TinyExtentCount             = 64 // TODO total number of tiny extents that each partition can have ?
+	TinyExtentStartID           = 50000000
+	MinExtentID                 = 2
 )
 
 var (
@@ -97,30 +94,28 @@ var (
 )
 
 // ExtentStore defines fields used in the storage engine.
-// Packets smaller than 128K are stored in the "tinyExtent", a place to persist small files.
+// Packets smaller than 128K are stored in the "tinyExtent", a place to persist the small files.
 // packets larger than or equal to 128K are stored in the normal "extent", a place to persist large files.
 // The difference between them is that the extentID of a tinyExtent starts at 5000000 and ends at 5000128.
 // Multiple small files can be appended to the same tinyExtent.
 // In addition, the deletion of small files is implemented by the punch hole from the underlying file system.
 type ExtentStore struct {
-	dataDir       string                 // TODO why not call it dataPath?
-	baseExtentID  uint64                 // TODO what is baseExtentID
-	extentInfoMap map[uint64]*ExtentInfo // map that stores all the extent information
-	eiMutex       sync.RWMutex           // mutex for extent info
-	cache         *ExtentCache           // extent cache
-	mutex         sync.Mutex             // TODO we should not call it mutex. maybe just "mutex"?
-	storeSize     int                    // TODO what is store size
-	metaFp        *os.File               // TODO metadata file pointer?
-	deleteFp      *os.File               // TODO store delete extent history?  what does this mean?
-	verifyCrcFp   *os.File
-	closeC        chan bool
-	closed        bool
-	// avaliTinyExtentCh   chan uint64 //avali tinyExtent chan
-	// unavaliTinyExtentCh chan uint64 //unavali tinyExtent chan
-	goodTinyExtentC chan uint64 // available tinyExtent chan TODO I thought the names of all the channels should be ended with "C"
-	badTinyExtentC  chan uint64 // unavailable tinyExtent chan
-	blockSize           int
-	partitionID         uint64 //partitionID
+	dataPath             string
+	baseExtentID         uint64                 // TODO what is baseExtentID
+	extentInfoMap        map[uint64]*ExtentInfo // map that stores all the extent information
+	eiMutex              sync.RWMutex           // mutex for extent info
+	cache                *ExtentCache           // extent cache
+	mutex                sync.Mutex
+	storeSize            int      // size of the extent store
+	metadataFp           *os.File // metadata file pointer?
+	deletedExtentsFp     *os.File // deleted extent file pointer
+	verifyCrcFp          *os.File
+	closeC               chan bool
+	closed               bool
+	availableTinyExtentC chan uint64 // available tinyExtent channel
+	brokenTinyExtentC    chan uint64 // broken tinyExtent channel
+	blockSize            int
+	partitionID          uint64
 }
 
 func MkdirAll(name string) (err error) {
@@ -129,30 +124,28 @@ func MkdirAll(name string) (err error) {
 
 func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *ExtentStore, err error) {
 	s = new(ExtentStore)
-	s.dataDir = dataDir
+	s.dataPath = dataDir
 	s.partitionID = partitionID
 	if err = MkdirAll(dataDir); err != nil {
 		return nil, fmt.Errorf("NewExtentStore [%v] err[%v]", dataDir, err)
 	}
 
-	// TODO rename metaFilePath -> filePath ?
-	metaFilePath := path.Join(s.dataDir, ExtMetaFileName)
-	if s.metaFp, err = os.OpenFile(metaFilePath, ExtMetaFileOpt, 0666); err != nil {
+	filePath := path.Join(s.dataPath, ExtMetadataFileName)
+	if s.metadataFp, err = os.OpenFile(filePath, ExtMetadataFileOpt, 0666); err != nil {
 		return
 	}
-	if err = s.metaFp.Truncate(ExtMetaFileSize); err != nil {
+	if err = s.metadataFp.Truncate(ExtMetadataFileSize); err != nil {
 		return
 	}
 
-	if s.verifyCrcFp, err = os.OpenFile(path.Join(s.dataDir, ExtCrcHeaderFileName), ExtMetaFileOpt, 0666); err != nil {
+	if s.verifyCrcFp, err = os.OpenFile(path.Join(s.dataPath, ExtCrcHeaderFileName), ExtMetadataFileOpt, 0666); err != nil {
 		return
 	}
 	syscall.Fallocate(int(s.verifyCrcFp.Fd()), 1, 0, ExtCrcHeaderSize)
 
-	// TODO rename deleteIdxFilePath
 	// Load EXTENT_DELETE
-	deleteIdxFilePath := path.Join(s.dataDir, ExtDeleteFileName)
-	if s.deleteFp, err = os.OpenFile(deleteIdxFilePath, ExtDeleteFileOpt, 0666); err != nil {
+	deleteIdxFilePath := path.Join(s.dataPath, ExtDeletedFileName)
+	if s.deletedExtentsFp, err = os.OpenFile(deleteIdxFilePath, ExtDeletedFileOpt, 0666); err != nil {
 		return
 	}
 	s.extentInfoMap = make(map[uint64]*ExtentInfo, 200)
@@ -206,13 +199,13 @@ func (s *ExtentStore) getExtentKey(extent uint64) string {
 // Create creates an extent.
 func (s *ExtentStore) Create(extentID uint64, inode uint64) (err error) {
 	var extent *Extent
-	name := path.Join(s.dataDir, strconv.Itoa(int(extentID)))
+	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
 	if s.HasExtent(extentID) {
 		err = ExtentExistsError
 		return err
 	}
 	if !IsTinyExtent(extentID) && extentID >= MaxExtentId {
-		return UnavailableExtentError
+		return BrokenExtentError
 	}
 	extent = NewExtentInCore(name, extentID)
 	err = extent.InitToFS(inode, false)
@@ -231,15 +224,16 @@ func (s *ExtentStore) Create(extentID uint64, inode uint64) (err error) {
 	return
 }
 
+// UpdateBaseExtentID updates the base extent ID.
 func (s *ExtentStore) UpdateBaseExtentID(id uint64) (err error) {
 	if IsTinyExtent(id) {
 		return
 	}
 	if id >= atomic.LoadUint64(&s.baseExtentID) {
 		atomic.StoreUint64(&s.baseExtentID, id)
-		baseExtentIDBytes := make([]byte, ExtMetaBaseIDSize)
+		baseExtentIDBytes := make([]byte, ExtMetadataBaseIDSize)
 		binary.BigEndian.PutUint64(baseExtentIDBytes, atomic.LoadUint64(&s.baseExtentID))
-		if _, err = s.metaFp.WriteAt(baseExtentIDBytes, ExtMetaBaseIDOffset); err != nil {
+		if _, err = s.metadataFp.WriteAt(baseExtentIDBytes, ExtMetadataBaseIDOffset); err != nil {
 			return
 		}
 	}
@@ -267,7 +261,7 @@ func (s *ExtentStore) extentWithHeader(extentID uint64) (e *Extent, err error) {
 
 func (s *ExtentStore) loadExtentHeader(extentId uint64, e *Extent) (err error) {
 	if extentId >= MaxExtentId && !IsTinyExtent(extentId) {
-		return UnavailableExtentError
+		return BrokenExtentError
 	}
 	offset := extentId * util.BlockHeaderSize
 	_, err = s.verifyCrcFp.ReadAt(e.header, int64(offset))
@@ -290,13 +284,14 @@ func (s *ExtentStore) ExtentCount() (count int) {
 }
 
 func (s *ExtentStore) loadExtentFromDisk(extentID uint64, loadHeader bool) (e *Extent, err error) {
-	name := path.Join(s.dataDir, strconv.Itoa(int(extentID)))
+	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
 	e = NewExtentInCore(name, extentID)
 	if err = e.RestoreFromFS(loadHeader); err != nil {
 		err = fmt.Errorf("restore from file %v loadHeader %v system: %v", name, loadHeader, err)
 		return
 	}
 	if loadHeader {
+		// TODO Unhandled errors
 		s.loadExtentHeader(extentID, e)
 		s.cache.Put(e)
 	}
@@ -304,15 +299,16 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, loadHeader bool) (e *E
 	return
 }
 
+// TODO explain the base file ID
 func (s *ExtentStore) initBaseFileID() (err error) {
 	var (
 		baseFileID uint64
 	)
-	baseFileIDBytes := make([]byte, ExtMetaBaseIDSize)
-	if _, err = s.metaFp.ReadAt(baseFileIDBytes, ExtMetaBaseIDOffset); err == nil {
+	baseFileIDBytes := make([]byte, ExtMetadataBaseIDSize)
+	if _, err = s.metadataFp.ReadAt(baseFileIDBytes, ExtMetadataBaseIDOffset); err == nil {
 		baseFileID = binary.BigEndian.Uint64(baseFileIDBytes)
 	}
-	files, err := ioutil.ReadDir(s.dataDir)
+	files, err := ioutil.ReadDir(s.dataPath)
 	if err != nil {
 		return err
 	}
@@ -349,6 +345,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		s.eiMutex.Lock()
 		s.extentInfoMap[extentID] = extentInfo
 		s.eiMutex.Unlock()
+		// TODO Unhandled errors
 		extent.Close()
 		if !IsTinyExtent(extentID) && extentID > baseFileID {
 			baseFileID = extentID
@@ -358,11 +355,11 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		baseFileID = MinExtentID
 	}
 	atomic.StoreUint64(&s.baseExtentID, baseFileID)
-	log.LogInfof("datadir(%v) maxBaseId(%v)", s.dataDir, baseFileID)
+	log.LogInfof("datadir(%v) maxBaseId(%v)", s.dataPath, baseFileID)
 	return nil
 }
 
-// TODO what is block CRC?
+// TODO explain the block crc
 func (s *ExtentStore) updateBlockCrc(extentID uint64, blockNo int, crc uint32, e *Extent) (err error) {
 	startIdx := util.BlockHeaderCrcIndex + blockNo*util.PerBlockCrcSize
 	endIdx := startIdx + util.PerBlockCrcSize
@@ -376,6 +373,7 @@ func (s *ExtentStore) updateBlockCrc(extentID uint64, blockNo int, crc uint32, e
 	return
 }
 
+// Write writes the given extent to the disk.
 func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32) (err error) {
 	var (
 		has        bool
@@ -403,6 +401,7 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	}
 	blocks, blockCrc, err = extent.Write(data, offset, size, crc)
 	for index := 0; index < len(blocks); index++ {
+		// TODO Unhandled errors
 		s.updateBlockCrc(extentID, blocks[index], blockCrc[index], extent)
 	}
 	if err != nil {
@@ -412,6 +411,7 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	return nil
 }
 
+// TinyExtentRepairWrite repairs the tiny extent.
 func (s *ExtentStore) TinyExtentRepairWrite(extentID uint64, offset, size int64, data []byte, crc uint32) (err error) {
 	var (
 		extentInfo *ExtentInfo
@@ -462,10 +462,12 @@ func (s *ExtentStore) checkOffsetAndSize(extentID uint64, offset, size int64) er
 	return nil
 }
 
+// IsTinyExtent checks if the given extent is tiny extent.
 func IsTinyExtent(extentID uint64) bool {
 	return extentID >= TinyExtentStartID && extentID < TinyExtentStartID+TinyExtentCount
 }
 
+// Read reads the extent based on the given id.
 func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isRepairRead bool) (crc uint32, err error) {
 	var extent *Extent
 	if extent, err = s.extentWithHeader(extentID); err != nil {
@@ -482,6 +484,7 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	return
 }
 
+// MarkDelete marks the given extent as deleted.
 func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error) {
 	var (
 		extent     *Extent
@@ -518,13 +521,14 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, extentID)
-	if _, err = s.deleteFp.Write(buf); err != nil {
+	if _, err = s.deletedExtentsFp.Write(buf); err != nil {
 		return
 	}
 
 	return
 }
 
+// FlushDelete flushes the delete operation.
 func (s *ExtentStore) FlushDelete() (err error) {
 	var (
 		delIdxOff uint64
@@ -533,22 +537,22 @@ func (s *ExtentStore) FlushDelete() (err error) {
 		extentID  uint64
 		opErr     error
 	)
-	// Load delete index offset from EXTENT_META
-	delIdxOffBytes := make([]byte, ExtMetaDeleteIdxSize)
-	if _, err = s.metaFp.ReadAt(delIdxOffBytes, ExtMetaDeleteIdxOffset); err == nil {
+	// load delete index offset from EXTENT_META
+	delIdxOffBytes := make([]byte, ExtMetadataDeletedIdxSize)
+	if _, err = s.metadataFp.ReadAt(delIdxOffBytes, ExtMetadataDeletedIdxOffset); err == nil {
 		delIdxOff = binary.BigEndian.Uint64(delIdxOffBytes)
 	} else {
 		delIdxOff = 0
 	}
 
-	// Check EXTENT_DELETE
-	if stat, err = s.deleteFp.Stat(); err != nil {
+	// check EXTENT_DELETE
+	if stat, err = s.deletedExtentsFp.Stat(); err != nil {
 		return
 	}
 
-	// Read data from EXTENT_DELETE and remove files.
+	// read data from EXTENT_DELETE and remove files.
 	readBuf := make([]byte, stat.Size()-int64(delIdxOff))
-	if readN, err = s.deleteFp.ReadAt(readBuf, int64(delIdxOff)); err != nil && err != io.EOF {
+	if readN, err = s.deletedExtentsFp.ReadAt(readBuf, int64(delIdxOff)); err != nil && err != io.EOF {
 		return
 	}
 	reader := bytes.NewReader(readBuf[:readN])
@@ -567,21 +571,22 @@ func (s *ExtentStore) FlushDelete() (err error) {
 			continue
 		}
 		s.cache.Del(extentID)
-		extentFilePath := path.Join(s.dataDir, strconv.FormatUint(extentID, 10))
+		extentFilePath := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
 		if opErr = os.Remove(extentFilePath); opErr != nil {
 			continue
 		}
 	}
 
-	// Store offset of EXTENT_DELETE into EXTENT_META
+	// store offset of EXTENT_DELETE on EXTENT_META
 	binary.BigEndian.PutUint64(delIdxOffBytes, delIdxOff)
-	if _, err = s.metaFp.WriteAt(delIdxOffBytes, ExtMetaDeleteIdxOffset); err != nil {
+	if _, err = s.metadataFp.WriteAt(delIdxOffBytes, ExtMetadataDeletedIdxOffset); err != nil {
 		return
 	}
 
 	return
 }
 
+// Close closes the extent store.
 func (s *ExtentStore) Close() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -594,19 +599,19 @@ func (s *ExtentStore) Close() {
 	s.cache.Clear()
 
 	// Release meta file
-	s.metaFp.Sync()
-	s.metaFp.Close()
+	s.metadataFp.Sync()
+	s.metadataFp.Close()
 
 	s.verifyCrcFp.Sync()
 	s.verifyCrcFp.Close()
 
 	// Release delete index file
-	s.deleteFp.Sync()
-	s.deleteFp.Close()
+	s.deletedExtentsFp.Sync()
+	s.deletedExtentsFp.Close()
 	s.closed = true
 }
 
-// TODO what is the formal definition of the watermark?
+// Watermark returns the extent info of the given extent on the record.
 func (s *ExtentStore) Watermark(extentID uint64, reload bool) (extentInfo *ExtentInfo, err error) {
 	var (
 		has    bool
@@ -628,7 +633,8 @@ func (s *ExtentStore) Watermark(extentID uint64, reload bool) (extentInfo *Exten
 	return
 }
 
-func (s *ExtentStore) GetTinyExtentoffset(extentID uint64) (watermark int64, err error) {
+// GetTinyExtentOffset returns the offset of the given extent.
+func (s *ExtentStore) GetTinyExtentOffset(extentID uint64) (watermark int64, err error) {
 	einfo, err := s.Watermark(extentID, false)
 	if err != nil {
 		return
@@ -641,6 +647,7 @@ func (s *ExtentStore) GetTinyExtentoffset(extentID uint64) (watermark int64, err
 	return
 }
 
+// GetAllWatermarks returns all the watermarks.
 func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentInfo, err error) {
 	extents = make([]*ExtentInfo, 0)
 	extentInfoSlice := make([]*ExtentInfo, 0, len(s.extentInfoMap))
@@ -659,6 +666,7 @@ func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentIn
 	return
 }
 
+// ExtentID return the extent ID.
 func (s *ExtentStore) ExtentID(filename string) (extentID uint64, isExtent bool) {
 	if isExtent = RegexpExtentFile.MatchString(filename); !isExtent {
 		return
@@ -675,8 +683,8 @@ func (s *ExtentStore) ExtentID(filename string) (extentID uint64, isExtent bool)
 }
 
 func (s *ExtentStore) initTinyExtent() (err error) {
-	s.goodTinyExtentC = make(chan uint64, TinyExtentCount)
-	s.badTinyExtentC = make(chan uint64, TinyExtentCount)
+	s.availableTinyExtentC = make(chan uint64, TinyExtentCount)
+	s.brokenTinyExtentC = make(chan uint64, TinyExtentCount)
 	var extentID uint64
 
 	// TODO buffer the value of TinyExtentStartID + TinyExtentCount
@@ -684,7 +692,7 @@ func (s *ExtentStore) initTinyExtent() (err error) {
 		err = s.Create(extentID, 0)
 		if err == nil || err == ExtentExistsError {
 			err = nil
-			s.badTinyExtentC <- extentID
+			s.brokenTinyExtentC <- extentID
 			continue
 		}
 		return err
@@ -693,9 +701,10 @@ func (s *ExtentStore) initTinyExtent() (err error) {
 	return
 }
 
-func (s *ExtentStore) GetGoodTinyExtent() (extentID uint64, err error) {
+// GetAvailableTinyExtent returns the available tiny extent from the channel.
+func (s *ExtentStore) GetAvailableTinyExtent() (extentID uint64, err error) {
 	select {
-	case extentID = <-s.goodTinyExtentC:
+	case extentID = <-s.availableTinyExtentC:
 		return
 	default:
 		return 0, NoAvailableExtentError
@@ -703,44 +712,51 @@ func (s *ExtentStore) GetGoodTinyExtent() (extentID uint64, err error) {
 	}
 }
 
-func (s *ExtentStore) SendToGoodTinyExtentC(extentID uint64) {
-	s.goodTinyExtentC <- extentID
+// SendToAvailableTinyExtentC sends the extent to the channel that stores the available tiny extents.
+func (s *ExtentStore) SendToAvailableTinyExtentC(extentID uint64) {
+	s.availableTinyExtentC <- extentID
 }
 
-func (s *ExtentStore) SendAllToBadTinyExtentC(extentIds []uint64) {
+// SendAllToBrokenTinyExtentC sends all the extents to the channel that stores the broken extents.
+func (s *ExtentStore) SendAllToBrokenTinyExtentC(extentIds []uint64) {
 	for _, extentID := range extentIds {
-		s.badTinyExtentC <- extentID
+		s.brokenTinyExtentC <- extentID
 	}
 }
 
-func (s *ExtentStore) GoodTinyExtentCnt() int {
-	return len(s.goodTinyExtentC)
+// AvailableTinyExtentCnt returns the count of the available tiny extents.
+func (s *ExtentStore) AvailableTinyExtentCnt() int {
+	return len(s.availableTinyExtentC)
 }
 
-func (s *ExtentStore) BadTinyExtentCnt() int {
-	return len(s.badTinyExtentC)
+// BrokenTinyExtentCnt returns the count of the broken tiny extents.
+func (s *ExtentStore) BrokenTinyExtentCnt() int {
+	return len(s.brokenTinyExtentC)
 }
 
-func (s *ExtentStore) MoveAllToBadTinyExtentC(cnt int) {
+// MoveAllToBrokenTinyExtentC moves all the tiny extents to the channel stores the broken extents.
+func (s *ExtentStore) MoveAllToBrokenTinyExtentC(cnt int) {
 	for i := 0; i < cnt; i++ {
-		extentID, err := s.GetGoodTinyExtent()
+		extentID, err := s.GetAvailableTinyExtent()
 		if err != nil {
 			return
 		}
-		s.SendToBadTinyExtentC(extentID)
+		s.SendToBrokenTinyExtentC(extentID)
 	}
 }
 
-func (s *ExtentStore) SendToBadTinyExtentC(extentID uint64) {
-	s.badTinyExtentC <- extentID
+// SendToBrokenTinyExtentC sends the given extent id to the channel.
+func (s *ExtentStore) SendToBrokenTinyExtentC(extentID uint64) {
+	s.brokenTinyExtentC <- extentID
 }
 
-func (s *ExtentStore) GetBadTinyExtent() (extentID uint64, err error) {
+// GetBrokenTinyExtent returns the first broken extent in the channel.
+func (s *ExtentStore) GetBrokenTinyExtent() (extentID uint64, err error) {
 	select {
-	case extentID = <-s.badTinyExtentC:
+	case extentID = <-s.brokenTinyExtentC:
 		return
 	default:
-		return 0, NoUnavailableExtentError
+		return 0, NoBrokenExtentError
 
 	}
 }

@@ -38,44 +38,42 @@ import (
 )
 
 const (
-	DataPartitionPrefix       = "datapartition"
-	DataPartitionMetaFileName = "META"
-	TempMetaFileName          = ".meta"
-	ApplyIndexFile            = "APPLY"
-	TempApplyIndexFile        = ".apply"
-	TimeLayout                = "2006-01-02 15:04:05"
+	DataPartitionPrefix           = "datapartition"
+	DataPartitionMetadataFileName = "META"
+	TempMetadataFileName          = ".meta"
+	ApplyIndexFile                = "APPLY"
+	TempApplyIndexFile            = ".apply"
+	TimeLayout                    = "2006-01-02 15:04:05"
 )
 
 var (
 	AdminGetDataPartition = master.AdminGetDataPartition
 )
 
-// TODO it seems that this is the metadata of a data partition. if my understanding is correct, we should name it as "DPMetadata" or simply "MetadataArray"
-type DPMetadata struct { // DataPartitionMetadata
+type DataPartitionMetadata struct {
 	VolumeID      string
 	PartitionID   uint64
 	PartitionSize int
 	CreateTime    string
-	RandomWrite   bool  // isRandomWrite
+	IsRandomWrite bool
 	Peers         []proto.Peer
 }
 
-type sortPeers []proto.Peer
+type sortedPeers []proto.Peer
 
-// TODO is it the right place for sortPeers?
-func (sp sortPeers) Len() int {
+func (sp sortedPeers) Len() int {
 	return len(sp)
 }
 
-func (sp sortPeers) Less(i, j int) bool {
+func (sp sortedPeers) Less(i, j int) bool {
 	return sp[i].ID < sp[j].ID
 }
 
-func (sp sortPeers) Swap(i, j int) {
+func (sp sortedPeers) Swap(i, j int) {
 	sp[i], sp[j] = sp[j], sp[i]
 }
 
-func (md *DPMetadata) Validate() (err error) {
+func (md *DataPartitionMetadata) Validate() (err error) {
 	md.VolumeID = strings.TrimSpace(md.VolumeID)
 	if len(md.VolumeID) == 0 || md.PartitionID == 0 || md.PartitionSize == 0 {
 		err = errors.New("illegal data partition metadata")
@@ -99,19 +97,19 @@ type DataPartition struct {
 	extentStore     *storage.ExtentStore
 	raftPartition   raftstore.Partition
 	config          *dataPartitionCfg
-	applyID         uint64 // TODO what is applyID?   raft使用的， 在raft里面已经用到的applidID  Raft 里面的
-	lastTruncateID  uint64 // TODO what is lastTruncateID?    Raft 里面的
-	minAppliedID    uint64 // TODO what is appliedID?  Raft 里面的
-	maxAppliedID    uint64 // Raft 里面的
+	applyID         uint64 // apply id used in Raft
+	lastTruncateID  uint64 // truncate id used in Raft
+	minAppliedID    uint64
+	maxAppliedID    uint64
 	repairC         chan uint64
 	storeC          chan uint64
 	stopC           chan bool
 
-	runtimeMetrics          *DataPartitionMetrics
-	updateReplicationTime   int64 // TODO what is updateReplicationTime? timestamp?  每隔多少分钟去请求master当前partition的复制组的关系
-	isFirstFixTinyExtents   bool // TODO what is isFirstFixTinyExtents?  第一次启动的时候必须把所有的tinyextent 修复 shouldRepairAllExtents
-	snapshot                []*proto.File
-	snapshotLock            sync.RWMutex // TODO should we call it snapshotMutex?
+	runtimeMetrics                *DataPartitionMetrics
+	intervalToUpdateReplicas      int64 // interval to ask the master for updating the replica information
+	shouldRepairAllTinyExtents    bool  // if it is the first time to start up, we should repair all the tiny extents
+	snapshot                      []*proto.File
+	snapshotMutex                 sync.RWMutex
 	intervalToUpdatePartitionSize int64
 }
 
@@ -121,13 +119,13 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition
 		return
 	}
 
-	// Start raft for random write
-	if dpCfg.RandomWrite {
-		go dp.StartSchedule()
+	// start raft for random write
+	if dpCfg.IsRandomWrite {
+		go dp.StartRaftLoggingSchedule()
 		go dp.StartRaftAfterRepair()
 	}
 
-	// Store meta information into meta file.
+	// persist file metadata
 	err = dp.PersistMetadata()
 	return
 }
@@ -139,10 +137,10 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	var (
 		metaFileData []byte
 	)
-	if metaFileData, err = ioutil.ReadFile(path.Join(partitionDir, DataPartitionMetaFileName)); err != nil {
+	if metaFileData, err = ioutil.ReadFile(path.Join(partitionDir, DataPartitionMetadataFileName)); err != nil {
 		return
 	}
-	meta := &DPMetadata{}
+	meta := &DataPartitionMetadata{}
 	if err = json.Unmarshal(metaFileData, meta); err != nil {
 		return
 	}
@@ -154,7 +152,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		VolName:       meta.VolumeID,
 		PartitionSize: meta.PartitionSize,
 		PartitionID:   meta.PartitionID,
-		RandomWrite:   meta.RandomWrite,
+		IsRandomWrite: meta.IsRandomWrite,
 		Peers:         meta.Peers,
 		RaftStore:     disk.space.GetRaftStore(),
 		NodeID:        disk.space.GetNodeID(),
@@ -164,7 +162,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		return
 	}
 
-	if dpCfg.RandomWrite {
+	if dpCfg.IsRandomWrite {
 		if err = dp.LoadApplyIndex(); err != nil {
 			log.LogErrorf("action[loadApplyIndex] %v", err)
 		}
@@ -173,7 +171,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 			return
 		}
 
-		go dp.StartSchedule()
+		go dp.StartRaftLoggingSchedule()
 	}
 	return
 }
@@ -202,8 +200,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		return
 	}
 
-	// TODO change the name
-	partition.isFirstFixTinyExtents = true
+	partition.shouldRepairAllTinyExtents = true
 	disk.AttachDataPartition(partition)
 	dp = partition
 	go partition.statusUpdateScheduler()
@@ -216,12 +213,11 @@ func (dp *DataPartition) ID() uint64 {
 }
 
 func (dp *DataPartition) GetExtentCount() int {
-	dp.snapshotLock.RLock()
-	defer dp.snapshotLock.RUnlock()
+	dp.snapshotMutex.RLock()
+	defer dp.snapshotMutex.RUnlock()
 	return len(dp.snapshot)
 }
 
-// TODO is this necessary?
 func (dp *DataPartition) Path() string {
 	return dp.path
 }
@@ -245,7 +241,6 @@ func (dp *DataPartition) IsRaftLeader() (addr string, ok bool) {
 	return
 }
 
-// TODO is it necessary?
 func (dp *DataPartition) Replicas() []string {
 	return dp.replicas
 }
@@ -255,15 +250,15 @@ func (dp *DataPartition) ReloadSnapshot() {
 	if err != nil {
 		return
 	}
-	dp.snapshotLock.Lock()
+	dp.snapshotMutex.Lock()
 	dp.snapshot = files
-	dp.snapshotLock.Unlock()
+	dp.snapshotMutex.Unlock()
 }
 
 // Snapshot returns the snapshot of the data partition.
 func (dp *DataPartition) SnapShot() (files []*proto.File) {
-	dp.snapshotLock.RLock()
-	defer dp.snapshotLock.RUnlock()
+	dp.snapshotMutex.RLock()
+	defer dp.snapshotMutex.RUnlock()
 
 	return dp.snapshot
 }
@@ -278,81 +273,72 @@ func (dp *DataPartition) Stop() {
 	dp.stopRaft()
 }
 
-// TODO is it necessary?
+// FlushDelete flushes the delete request.
 func (dp *DataPartition) FlushDelete() (err error) {
 	err = dp.extentStore.FlushDelete()
 	return
 }
 
-// TODO is it necessary?
+// Disk returns the disk instance.
 func (dp *DataPartition) Disk() *Disk {
 	return dp.disk
 }
 
-// TODO is it necessary?
+// Status returns the partition status.
 func (dp *DataPartition) Status() int {
 	return dp.partitionStatus
 }
 
-// TODO is it necessary?
+// Size returns the partition size.
 func (dp *DataPartition) Size() int {
 	return dp.partitionSize
 }
 
-// TODO is it necessary?
+// Used returns the used space.
 func (dp *DataPartition) Used() int {
 	return dp.used
 }
 
-// TODO is it necessary?
+// Available returns the available space.
 func (dp *DataPartition) Available() int {
 	return dp.partitionSize - dp.used
 }
 
-// TODO what does this mean? remove
-func (dp *DataPartition) ChangeStatus(status int) {
-	switch status {
-	case proto.ReadOnly, proto.ReadWrite, proto.Unavaliable:
-		dp.partitionStatus = status
-	}
-}
-
-
 // PersistMetadata persists the file metadata on the disk.
 func (dp *DataPartition) PersistMetadata() (err error) {
 	var (
-		metaFile *os.File
-		metaData []byte
+		metadataFile *os.File
+		metaData     []byte
 	)
-	tempFileName := path.Join(dp.Path(), TempMetaFileName)
-	if metaFile, err = os.OpenFile(tempFileName, os.O_CREATE|os.O_RDWR, 0666); err != nil {
+	fileName := path.Join(dp.Path(), TempMetadataFileName)
+	if metadataFile, err = os.OpenFile(fileName, os.O_CREATE|os.O_RDWR, 0666); err != nil {
 		return
 	}
 	defer func() {
-		metaFile.Sync()
-		metaFile.Close()
-		os.Remove(tempFileName)
+		metadataFile.Sync()
+		metadataFile.Close()
+		os.Remove(fileName)
 	}()
 
-	sp := sortPeers(dp.config.Peers)
+	sp := sortedPeers(dp.config.Peers)
 	sort.Sort(sp)
 
-	md := &DPMetadata{
+	md := &DataPartitionMetadata{
 		VolumeID:      dp.config.VolName,
 		PartitionID:   dp.config.PartitionID,
 		PartitionSize: dp.config.PartitionSize,
 		Peers:         dp.config.Peers,
-		RandomWrite:   dp.config.RandomWrite,
+		IsRandomWrite: dp.config.IsRandomWrite,
 		CreateTime:    time.Now().Format(TimeLayout),
 	}
 	if metaData, err = json.Marshal(md); err != nil {
 		return
 	}
-	if _, err = metaFile.Write(metaData); err != nil {
+	if _, err = metadataFile.Write(metaData); err != nil {
 		return
 	}
 
-	err = os.Rename(tempFileName, path.Join(dp.Path(), DataPartitionMetaFileName))
+	err = os.Rename(fileName, path.Join(dp.Path(), DataPartitionMetadataFileName))
 	return
 }
 
@@ -388,7 +374,7 @@ func (dp *DataPartition) statusUpdate() {
 	status := proto.ReadWrite
 	dp.computeUsage()
 
-	// TODO why not combine these two conditions together? 放在一块可以
+	// TODO why not combine these two conditions together?
 	if dp.used >= dp.partitionSize {
 		status = proto.ReadOnly
 	}
@@ -396,13 +382,11 @@ func (dp *DataPartition) statusUpdate() {
 		status = proto.ReadOnly
 	}
 
-	// TODO what does the compare mean here?
-	// explain
+	// TODO explain
 	dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
 }
 
-// TODO why this name is capitalized? 改小写
-func ParseFileName(filename string) (extentID uint64, isExtent bool) {
+func parseFileName(filename string) (extentID uint64, isExtent bool) {
 	if isExtent = storage.RegexpExtentFile.MatchString(filename); !isExtent {
 		return
 	}
@@ -419,7 +403,7 @@ func ParseFileName(filename string) (extentID uint64, isExtent bool) {
 
 func (dp *DataPartition) actualSize(path string, finfo os.FileInfo) (size int64) {
 	name := finfo.Name()
-	extentID, isExtent := ParseFileName(name)
+	extentID, isExtent := parseFileName(name)
 	if !isExtent {
 		return finfo.Size()
 	}
@@ -454,7 +438,6 @@ func (dp *DataPartition) computeUsage() {
 	dp.intervalToUpdatePartitionSize = time.Now().Unix()
 }
 
-// TODO why this wrapper?
 func (dp *DataPartition) ExtentStore() *storage.ExtentStore {
 	return dp.extentStore
 }
@@ -464,9 +447,7 @@ func (dp *DataPartition) String() (m string) {
 	return fmt.Sprintf(DataPartitionPrefix+"_%v_%v", dp.partitionID, dp.partitionSize)
 }
 
-// LaunchRepair launches the repair of extens
-// TODO needs some explanations here
-//
+// LaunchRepair launches the repair of extents.
 func (dp *DataPartition) LaunchRepair(extentType uint8) {
 	if dp.partitionStatus == proto.Unavaliable {
 		return
@@ -478,14 +459,14 @@ func (dp *DataPartition) LaunchRepair(extentType uint8) {
 	if !dp.isLeader {
 		return
 	}
-	if dp.extentStore.BadTinyExtentCnt() == 0 {
-		dp.extentStore.MoveAllToBadTinyExtentC(MinFixTinyExtents)
+	if dp.extentStore.BrokenTinyExtentCnt() == 0 {
+		dp.extentStore.MoveAllToBrokenTinyExtentC(MinTinyExtentsToRepair)
 	}
 	dp.repair(extentType)
 }
 
 func (dp *DataPartition) updateReplicas() (err error) {
-	if time.Now().Unix() - dp.updateReplicationTime <= IntervalToUpdateReplica {
+	if time.Now().Unix() - dp.intervalToUpdateReplicas <= IntervalToUpdateReplica {
 		return
 	}
 	dp.isLeader = false
@@ -499,7 +480,7 @@ func (dp *DataPartition) updateReplicas() (err error) {
 	}
 	dp.isLeader = isLeader
 	dp.replicas = replicas
-	dp.updateReplicationTime = time.Now().Unix()
+	dp.intervalToUpdateReplicas = time.Now().Unix()
 	log.LogInfof(fmt.Sprintf("ActionUpdateReplicationHosts partiton[%v]", dp.partitionID))
 
 	return
@@ -525,19 +506,18 @@ func (dp *DataPartition) compareReplicas(v1, v2 []string) (equals bool) {
 // Fetch the replica information from the master.
 func (dp *DataPartition) fetchReplicasFromMaster() (isLeader bool, replicas []string, err error) {
 
-	// TODO why capitalized var name?
 	var (
-		HostBuf []byte
+		bufs []byte
 	)
 	params := make(map[string]string)
 	params["id"] = strconv.Itoa(int(dp.partitionID))
-	if HostBuf, err = MasterHelper.Request("GET", AdminGetDataPartition, params, nil); err != nil {
+	if bufs, err = MasterHelper.Request("GET", AdminGetDataPartition, params, nil); err != nil {
 		isLeader = false
 		return
 	}
 	response := &master.DataPartition{}
 	replicas = make([]string, 0)
-	if err = json.Unmarshal(HostBuf, &response); err != nil {
+	if err = json.Unmarshal(bufs, &response); err != nil {
 		isLeader = false
 		replicas = nil
 		return
@@ -563,24 +543,9 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 	return
 }
 
-// TODO it seems that there is no usage of this function
-func (dp *DataPartition) GetAllExtentsMeta() (files []*storage.ExtentInfo, err error) {
-	files, err = dp.extentStore.GetAllWatermarks(storage.NormalExtentFilter())
-	if err != nil {
-		return nil, err
-	}
-
-	return
-}
-
-// TODO needs some explanation here
-/*
- 成员收到extent修复通知
- 1. Extent size小于最大Size，从extent未开始修复，补齐缺失部分内容
- 2. Extent不存在，先创建Extent，然后修复整个extent文件
-*/
 // DoExtentStoreRepair performs the repairs of the extent store.
-// 修复长度加上
+// 1. when the extent size is smaller than the max size on the record, start to repair the missing part.
+// 2. if the extent does not even exist, create the extent first, and then repair.
 func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask) {
 	store := dp.extentStore
 	for _, extentInfo := range repairTask.ExtentsToBeCreated {
@@ -606,7 +571,6 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 	wg = new(sync.WaitGroup)
 	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
 
-		// TODO why we do this check again?
 		if !store.HasExtent(uint64(extentInfo.FileID)) {
 			continue
 		}
@@ -616,7 +580,6 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		go dp.doStreamExtentFixRepair(wg, extentInfo)
 		recoverIndex++
 
-		// TODO should the following line be wrapped ?
 		if recoverIndex % NumOfFilesToRecoverInParallel == 0 {
 			wg.Wait()
 		}
@@ -624,17 +587,6 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 	wg.Wait()
 }
 
-// TODO is this function ever used ?
-func (dp *DataPartition) AddWriteMetrics(latency uint64) {
-	dp.runtimeMetrics.UpdateWriteMetrics(latency)
-}
-
-// TODO is this function ever used ?
-func (dp *DataPartition) AddReadMetrics(latency uint64) {
-	dp.runtimeMetrics.UpdateReadMetrics(latency)
-}
-
-// TODO why do we need this wrapper?
 // ChangeRaftMember is a wrapper function of changing the raft member.
 func (dp *DataPartition) ChangeRaftMember(changeType raftProto.ConfChangeType, peer raftProto.Peer, context []byte) (resp interface{}, err error) {
 	resp, err = dp.raftPartition.ChangeMember(changeType, peer, context)

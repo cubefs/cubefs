@@ -103,7 +103,7 @@ func (partition *DataPartition) createTaskToDecommissionDataPartition(removePeer
 		err = noLeaderErr
 		return
 	}
-	task = proto.NewAdminTask(proto.OpOfflineDataPartition, leaderAddr, newOfflineDataPartitionRequest(partition.PartitionID, removePeer, addPeer))
+	task = proto.NewAdminTask(proto.OpDecommissionDataPartition, leaderAddr, newOfflineDataPartitionRequest(partition.PartitionID, removePeer, addPeer))
 	partition.resetTaskID(task)
 	return
 }

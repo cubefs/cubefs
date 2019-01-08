@@ -282,10 +282,10 @@ func (c *Cluster) handleMetaNodeTaskResponse(nodeAddr string, task *proto.AdminT
 	case proto.OpLoadMetaPartition:
 		response := task.Response.(*proto.LoadMetaPartitionMetricResponse)
 		err = c.dealLoadMetaPartitionResp(task.OperatorAddr, response)
-	case proto.OpOfflineMetaPartition:
+	case proto.OpDecommissionMetaPartition:
 		response := task.Response.(*proto.MetaPartitionOfflineResponse)
 		err = c.dealOfflineMetaPartitionResp(task.OperatorAddr, response)
-	case proto.OpOfflineDataPartition:
+	case proto.OpDecommissionDataPartition:
 		response := task.Response.(*proto.DataPartitionOfflineResponse)
 		err = c.dealOfflineDataPartitionResp(task.OperatorAddr, response)
 	default:
@@ -469,7 +469,7 @@ func (c *Cluster) handleDataNodeTaskResponse(nodeAddr string, task *proto.AdminT
 		response := task.Response.(*proto.LoadDataPartitionResponse)
 		err = c.handleResponseToLoadDataPartition(task.OperatorAddr, response)
 	case proto.OpDataNodeHeartbeat:
-		response := task.Response.(*proto.DataNodeHeartBeatResponse)
+		response := task.Response.(*proto.DataNodeHeartbeatResponse)
 		err = c.handleDataNodeHeartbeatResp(task.OperatorAddr, response)
 	default:
 		err = fmt.Errorf(fmt.Sprintf("unknown operate code %v", task.OpCode))
@@ -519,7 +519,7 @@ func (c *Cluster) handleResponseToLoadDataPartition(nodeAddr string, resp *proto
 	return
 }
 
-func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataNodeHeartBeatResponse) (err error) {
+func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataNodeHeartbeatResponse) (err error) {
 
 	var (
 		dataNode *DataNode

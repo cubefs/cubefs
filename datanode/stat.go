@@ -1,4 +1,4 @@
-// Copyright 2018 The CFS Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,20 +20,7 @@ import (
 	"time"
 )
 
-// TODO add comments remove
-type DiskMetrics struct {
-	Status               int32 // TODO we need to add comments to each entry here
-	ReadErrs             int32
-	WriteErrs            int32
-	MaxDiskErrs          int32
-	MinRestWeight        int64
-	TotalWeight          int64
-	RealAvailWeight      int64
-	PartitionAvailWeight int64
-	Path                 string
-}
-
-// Stats defines various metrics that will be collected during the execution
+// Stats defines various metrics that will be collected during the execution.
 type Stats struct {
 	inDataSize  uint64
 	outDataSize uint64
@@ -47,45 +34,37 @@ type Stats struct {
 	Start                              time.Time
 	Total                              uint64
 	Used                               uint64
-	Available                          uint64 // TODO what is available?   当前机器剩余的空间
-	CreatedPartitionWeights            uint64 // TODO what is CreatedPartitionWeights dataPartitionCnt * dataPartitionSize 创建的partition中占的空间
-	RemainingWeightsForCreatePartition uint64 // TODO what is RemainingWeightsForCreatePartition all used dataPartitionsWieghts
+	Available                          uint64 // available space
+	TotalPartitionSize                 uint64 // dataPartitionCnt * dataPartitionSize
+	RemainingCapacityToCreatePartition uint64
 	CreatedPartitionCnt                uint64
-	MaxWeightsForCreatePartition       uint64 // 可以创建最多 partition的盘的容量
+
+	// the maximum capacity among all the nodes that can be used to create partition
+	MaxCapacityToCreatePartition       uint64
 
 	sync.Mutex
 }
 
-// Create a new Stats
+// NewStats creates a new Stats.
 func NewStats(zone string) (s *Stats) {
 	s = new(Stats)
 	s.Zone = zone
 	return s
 }
 
-// AddConnection adds a connection
+// AddConnection adds a connection.
 func (s *Stats) AddConnection() {
 	atomic.AddInt64(&s.ConnectionCnt, 1)
 }
 
-// RemoveConnection removes a connection
+// RemoveConnection removes a connection.
 func (s *Stats) RemoveConnection() {
 	atomic.AddInt64(&s.ConnectionCnt, -1)
 }
 
-// GetConnectionCount gets the connection count
+// GetConnectionCount gets the connection count.
 func (s *Stats) GetConnectionCount() int64 {
 	return atomic.LoadInt64(&s.ConnectionCnt)
-}
-
-// TODO what is AddInDataSize remove
-func (s *Stats) AddInDataSize(size uint64) {
-	atomic.AddUint64(&s.inDataSize, size)
-}
-
-// TODO what is AddOutDataSize remove
-func (s *Stats) AddOutDataSize(size uint64) {
-	atomic.AddUint64(&s.outDataSize, size)
 }
 
 func (s *Stats) updateMetrics(
@@ -96,8 +75,8 @@ func (s *Stats) updateMetrics(
 	s.Total = total
 	s.Used = used
 	s.Available = available
-	s.CreatedPartitionWeights = createdPartitionWeights
-	s.RemainingWeightsForCreatePartition = remainWeightsForCreatePartition
-	s.MaxWeightsForCreatePartition = maxWeightsForCreatePartition
+	s.TotalPartitionSize = createdPartitionWeights
+	s.RemainingCapacityToCreatePartition = remainWeightsForCreatePartition
+	s.MaxCapacityToCreatePartition = maxWeightsForCreatePartition
 	s.CreatedPartitionCnt = dataPartitionCnt
 }

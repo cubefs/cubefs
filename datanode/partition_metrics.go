@@ -1,4 +1,4 @@
-// Copyright 2018 The CFS Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,14 +36,12 @@ func NewDataPartitionMetrics() *DataPartitionMetrics {
 	return metrics
 }
 
-// TODO should we call it UpdateReadMetrics
 // UpdateReadMetrics updates the read-related metrics
 func (metrics *DataPartitionMetrics) UpdateReadMetrics(latency uint64) {
 	atomic.AddUint64(&metrics.ReadCnt, 1)
 	atomic.AddUint64(&metrics.TotalReadLatency, latency)
 }
 
-// TODO should we call it UpdateWriteMetrics
 // UpdateWriteMetrics updates the write-related  metrics
 func (metrics *DataPartitionMetrics) UpdateWriteMetrics(latency uint64) {
 	atomic.AddUint64(&metrics.WriteCnt, 1)
@@ -57,14 +55,4 @@ func (metrics *DataPartitionMetrics) recomputeLatency() {
 	atomic.StoreUint64(&metrics.TotalWriteLatency, 0)
 	atomic.StoreUint64(&metrics.WriteCnt, 1)
 	atomic.StoreUint64(&metrics.ReadCnt, 1)
-}
-
-// TODO no usage
-func (metrics *DataPartitionMetrics) GetWriteLatency() float64 {
-	return metrics.WriteLatency
-}
-
-// TODO no usage
-func (metrics *DataPartitionMetrics) GetReadLatency() float64 {
-	return metrics.ReadLatency
 }

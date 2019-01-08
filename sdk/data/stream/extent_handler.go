@@ -212,8 +212,8 @@ func (eh *ExtentHandler) sender() {
 			packet.ExtentID = uint64(eh.extID)
 			packet.ExtentOffset = int64(extOffset)
 			packet.Arg = ([]byte)(eh.dp.GetAllAddrs())
-			packet.Arglen = uint32(len(packet.Arg))
-			packet.RemainFollowers = uint8(len(eh.dp.Hosts) - 1)
+			packet.ArgLen = uint32(len(packet.Arg))
+			packet.RemainingFollowers = uint8(len(eh.dp.Hosts) - 1)
 
 			//log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
 

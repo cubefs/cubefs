@@ -1,4 +1,4 @@
-// Copyright 2018 The CFS Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,64 +21,63 @@ import (
 	"sync/atomic"
 )
 
-// TODO what does the Post function do? 后处理函数
-func (s *DataNode) Post(pkg *repl.Packet) error {
-	if pkg.IsMasterCommand() {
-		pkg.NeedReply = false
+func (s *DataNode) Post(p *repl.Packet) error {
+	if p.IsMasterCommand() {
+		p.NeedReply = false
 	}
-	if pkg.Opcode == proto.OpStreamRead || pkg.Opcode == proto.OpExtentRepairRead {
-		pkg.NeedReply = false
+	if p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpExtentRepairRead {
+		p.NeedReply = false
 	}
-	if pkg.Opcode == proto.OpCreateDataPartition {
-		pkg.NeedReply = true
+	if p.Opcode == proto.OpCreateDataPartition {
+		p.NeedReply = true
 	}
-	s.cleanupPkg(pkg)
-	s.addMetrics(pkg)
+	s.cleanupPkt(p)
+	s.addMetrics(p)
 	return nil
 }
 
-func (s *DataNode) cleanupPkg(pkg *repl.Packet) {
-	if pkg.IsMasterCommand() {
+func (s *DataNode) cleanupPkt(p *repl.Packet) {
+	if p.IsMasterCommand() {
 		return
 	}
-	if !isLeaderPacket(pkg) {
+	if !isLeaderPacket(p) {
 		return
 	}
-	s.releaseExtent(pkg)
-	if pkg.ExtentType == proto.TinyExtentType && isWriteOperation(pkg) {
-		pkg.PutConnectsToPool()
+	s.releaseExtent(p)
+	if p.ExtentType == proto.TinyExtentType && isWriteOperation(p) {
+		p.PutConnsToPool()
 	}
 }
 
-func (s *DataNode) releaseExtent(pkg *repl.Packet) {
-	if pkg == nil || !storage.IsTinyExtent(pkg.ExtentID) || pkg.ExtentID <= 0 || atomic.LoadInt32(&pkg.IsRelase) == HasReturnToStore {
+func (s *DataNode) releaseExtent(p *repl.Packet) {
+	if p == nil || !storage.IsTinyExtent(p.ExtentID) || p.ExtentID <= 0 || atomic.LoadInt32(&p.IsReleased) == IsReleased {
 		return
 	}
-	if pkg.ExtentType != proto.TinyExtentType || !isLeaderPacket(pkg) || !isWriteOperation(pkg) || !pkg.IsForwardPkg() {
+	if p.ExtentType != proto.TinyExtentType || !isLeaderPacket(p) || !isWriteOperation(p) || !p.IsForwardPkt() {
 		return
 	}
-	if pkg.Object == nil {
+	if p.Object == nil {
 		return
 	}
-	partition := pkg.Object.(*DataPartition)
+	partition := p.Object.(*DataPartition)
 	store := partition.ExtentStore()
-	if pkg.IsErrPacket() {
-		store.SendToBadTinyExtentC(pkg.ExtentID)
+	if p.IsErrPacket() {
+		store.SendToBrokenTinyExtentC(p.ExtentID)
 	} else {
-		store.SendToGoodTinyExtentC(pkg.ExtentID)
+		store.SendToAvailableTinyExtentC(p.ExtentID)
 	}
-	atomic.StoreInt32(&pkg.IsRelase, HasReturnToStore)
+	atomic.StoreInt32(&p.IsReleased, IsReleased)
 }
 
-func (s *DataNode) addMetrics(reply *repl.Packet) {
-	if reply.IsMasterCommand() {
+func (s *DataNode) addMetrics(p *repl.Packet) {
+	if p.IsMasterCommand() {
 		return
 	}
-	reply.AfterTp()
-	if reply.Object == nil {
+	p.AfterTp()
+	if p.Object == nil {
 		return
 	}
-	partition := reply.Object.(*DataPartition)
+	partition := p.Object.(*DataPartition)
 	if partition == nil {
 		return
 	}

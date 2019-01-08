@@ -30,44 +30,7 @@ import (
 	"hash/crc32"
 )
 
-/* dataPartitionRepair f
-
-Datapartition repair process:
-There are 2 types of repairs, one is normal extent repair, and the other is tinyExtent fix.
-	1. Each replicate member corresponds to a DataPartitionRepairTask structure, where
-       the extents member comes from all the extent information of each replicated member,
-       and all the replica members' dataPartitionRepairTask are combined to be called allReplicas.
-
-    2. Fill the DataPartitionRepairTask of all replica members, the local DataPartitionRepairTask
-	   structure calls dp.extentstore.getAllWaterMark() to get the extent information of the leader member,
-	  and the call to getRemoteExtentInfo on the follower gets the extent information of the follower member.
-
-    3.The process of generating a repair task:
-       a. Traverse all the members of the copy member DataPartitionRepairTask, and then for each extent,
-          only find the largest extentInfo, the component maxExtentInfo structure, the key is the extendId,
-           and the value is the maximum size of the extendInfo information.
-       b. Traverse all the members of the copy member DataPartitionRepairTask, if there is no in the maxExtentSizeMap,
-          add a task to create an extent for the AddExtentsTasks of the DataPartitionRepairTask. If the extentSize in
-          the member is less than the size of the extent for the maxExtentSizeMap, then the FixExtentSizeTasks for
-          the DataPartitionRepairTask Add a task to fix the extent of the extent
-
-    4. send the DataPartitionRepairTask to all Replicates
-    5. wait all dataParitionRepair Task do success
-*/
-/*
- 数据修复
- 数据修复任务分为大文件的normal extent和小文件的tiny extent两种类型
- 1. Normal extent修复流程
-    由partition成员中的主定时收集各个成员的extent信息，经过比较获得最大的extent大小。
-    定时检查本地的extent大小，如果小于最大Size，加入待修复列表，生成修复任务。
- 2. Tiny extent修复流程
-    在新建partition时，将所有tiny extent加入到待修复extent列表中。由修复任务将所有的tiny extent创建出来；
-    由partition成员中的主定时收集各个成员的extent信息，经过比较获得最大的extent大小。
-    定时检查本地的extent大小，如果小于最大Size，加入待修复列表，生成修复任务。
-*/
-
-// TODO can we just call it "repairTask"?
-// leader 上的extent信息
+// DataPartitionRepairTask defines the reapir task for the data partition.
 type DataPartitionRepairTask struct {
 	TaskType            uint8
 	addr                string
@@ -91,21 +54,35 @@ func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo, source string
 }
 
 // Main function to perform the repair.
-// good bad ->
+// The repair process can be described as follows:
+// There are two types of repairs.
+// The first one is called the normal extent repair, and the second one is called the tiny extent repair.
+// 1. normal extent repair:
+// - the leader collects all the extent information from the followers.
+// - for each extent, we compare all the replicas to find the one with the largest size.
+// - periodically check the size of the local extent, and if it is smaller than the largest size,
+//   add it to the tobeRepaired list, and generate the corresponding tasks.
+// 2. tiny extent repair:
+// - when creating the new partition, add all tiny extents to the toBeRepaired list,
+//   and the repair task will create all the tiny extents first.
+// - The leader of the replicas periodically collects the extent information of each follower
+// - for each extent, we compare all the replicas to find the one with the largest size.
+// - periodically check the size of the local extent, and if it is smaller than the largest size,
+//   add it to the tobeRepaired list, and generate the corresponding tasks.
 func (dp *DataPartition) repair(extentType uint8) {
-	start := time.Now().UnixNano() // TODO is it ok to put the start here?
+	start := time.Now().UnixNano()
 	log.LogInfof("action[repair] partition(%v) start.",
 		dp.partitionID)
 
 	var tinyExtents []uint64 // unsvailable extents 小文件写
 	if extentType == proto.TinyExtentType {
-		tinyExtents = dp.badTinyExtents()
+		tinyExtents = dp.brokenTinyExtents()
 		if len(tinyExtents) == 0 {
 			return
 		}
 	}
 
-	// TODO why not put the following two lines into a function called "createDataPartitionRepairTask"? (OK)
+	// TODO why not put the following two lines into a function called "createDataPartitionRepairTask"?
 	repairTasks := make([]*DataPartitionRepairTask, len(dp.replicas))
 	err := dp.buildDataPartitionRepairTask(repairTasks, extentType, tinyExtents)
 
@@ -113,17 +90,17 @@ func (dp *DataPartition) repair(extentType uint8) {
 		log.LogErrorf("action[repair] partition(%v) err(%v).",
 			dp.partitionID, err)
 		log.LogErrorf(errors.ErrorStack(err))
-		dp.moveToBadTinyExtentC(extentType, tinyExtents)
+		dp.moveToBrokenTinyExtentC(extentType, tinyExtents)
 		return
 	}
 
 	// compare all the extents in the replicas to compute the good and bad ones
-	goodTinyExtents, badTinyExtents := dp.prepareRepairTasks(repairTasks)
+	availableTinyExtents, brokenTinyExtents := dp.prepareRepairTasks(repairTasks)
 
 	// notify the replicas to repair the extent
 	err = dp.NotifyExtentRepair(repairTasks)
 	if err != nil {
-		dp.sendAllTinyExtentsToC(extentType, goodTinyExtents, badTinyExtents)
+		dp.sendAllTinyExtentsToC(extentType, availableTinyExtents, brokenTinyExtents)
 		log.LogErrorf("action[repair] partition(%v) err(%v).",
 			dp.partitionID, err)
 		log.LogError(errors.ErrorStack(err))
@@ -134,20 +111,18 @@ func (dp *DataPartition) repair(extentType uint8) {
 	dp.DoRepair(repairTasks)
 	end := time.Now().UnixNano()
 
-	// TODO explain why we need to send all the tiny extents to the channel here
-	// 每次修复的时候看看哪些需要修复， 哪些不需要修复
-	dp.sendAllTinyExtentsToC(extentType, goodTinyExtents, badTinyExtents)
+	// every time we need to figure out which extents need to be repaired and which ones do not.
+	dp.sendAllTinyExtentsToC(extentType, availableTinyExtents, brokenTinyExtents)
 
-	// TODO explain what does this check mean
-	// 怕修复过程中出错
-	if dp.extentStore.GoodTinyExtentCnt() + dp.extentStore.BadTinyExtentCnt() > storage.TinyExtentCount {
+	// error check
+	if dp.extentStore.AvailableTinyExtentCnt() + dp.extentStore.BrokenTinyExtentCnt() > storage.TinyExtentCount {
 		log.LogWarnf("action[repair] partition(%v) GoodTinyExtents(%v) "+
-			"BadTinyExtents(%v) finish cost[%vms].", dp.partitionID, dp.extentStore.GoodTinyExtentCnt(),
-			dp.extentStore.BadTinyExtentCnt(), (end - start) / int64(time.Millisecond))
+			"BadTinyExtents(%v) finish cost[%vms].", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(),
+			dp.extentStore.BrokenTinyExtentCnt(), (end - start) / int64(time.Millisecond))
 	}
 
 	log.LogInfof("action[repair] partition(%v) GoodTinyExtents(%v) BadTinyExtents(%v)"+
-		" finish cost[%vms].", dp.partitionID, dp.extentStore.GoodTinyExtentCnt(), dp.extentStore.BadTinyExtentCnt(),
+		" finish cost[%vms].", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(), dp.extentStore.BrokenTinyExtentCnt(),
 		(end - start) / int64(time.Millisecond))
 	log.LogInfof("action[extentFileRepair] partition(%v) end.",
 		dp.partitionID)
@@ -235,57 +210,59 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 func (dp *DataPartition) DoRepair(repairTasks []*DataPartitionRepairTask) {
 	store := dp.extentStore
 	for _, extentInfo := range repairTasks[0].ExtentsToBeCreated {
+		// TODO Unhandled errors
 		store.Create(extentInfo.FileID, extentInfo.Inode)
 	}
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
+		// TODO Unhandled errors
 		dp.streamRepairExtent(extentInfo)
 	}
 }
 
-func (dp *DataPartition) moveToBadTinyExtentC(extentType uint8, extents []uint64) {
+func (dp *DataPartition) moveToBrokenTinyExtentC(extentType uint8, extents []uint64) {
 	if extentType == proto.TinyExtentType {
-		dp.extentStore.SendAllToBadTinyExtentC(extents)
+		dp.extentStore.SendAllToBrokenTinyExtentC(extents)
 	}
 	return
 }
 
-func (dp *DataPartition) sendAllTinyExtentsToC(extentType uint8, goodTinyExtents, badTinyExtents []uint64) {
+func (dp *DataPartition) sendAllTinyExtentsToC(extentType uint8, availableTinyExtents, brokenTinyExtents []uint64) {
 	if extentType != proto.TinyExtentType {
 		return
 	}
-	for _, extentID := range goodTinyExtents {
+	for _, extentID := range availableTinyExtents {
 		if storage.IsTinyExtent(extentID) {
-			dp.extentStore.SendToGoodTinyExtentC(extentID)
+			dp.extentStore.SendToAvailableTinyExtentC(extentID)
 		}
 	}
-	for _, extentID := range badTinyExtents {
+	for _, extentID := range brokenTinyExtents {
 		if storage.IsTinyExtent(extentID) {
-			dp.extentStore.SendToBadTinyExtentC(extentID)
+			dp.extentStore.SendToBrokenTinyExtentC(extentID)
 		}
 	}
 }
 
-func (dp *DataPartition) badTinyExtents() (badTinyExtents []uint64) {
-	badTinyExtents = make([]uint64, 0)
-	extentsToBeRepaired := MinFixTinyExtents
-	if dp.isFirstFixTinyExtents {
+func (dp *DataPartition) brokenTinyExtents() (brokenTinyExtents []uint64) {
+	brokenTinyExtents = make([]uint64, 0)
+	extentsToBeRepaired := MinTinyExtentsToRepair
+	if dp.shouldRepairAllTinyExtents {
 		extentsToBeRepaired = storage.TinyExtentCount
-		dp.isFirstFixTinyExtents = false
+		dp.shouldRepairAllTinyExtents = false
 	}
-	if dp.extentStore.BadTinyExtentCnt() == 0 {
+	if dp.extentStore.BrokenTinyExtentCnt() == 0 {
 		extentsToBeRepaired = storage.TinyExtentCount
 	}
 	for i := 0; i < extentsToBeRepaired; i++ {
-		extentID, err := dp.extentStore.GetBadTinyExtent()
+		extentID, err := dp.extentStore.GetBrokenTinyExtent()
 		if err != nil {
 			return
 		}
-		badTinyExtents = append(badTinyExtents, extentID)
+		brokenTinyExtents = append(brokenTinyExtents, extentID)
 	}
 	return
 }
 
-func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTask) (goodTinyExtents []uint64, badTinyExtents []uint64) {
+func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTask) (availableTinyExtents []uint64, brokenTinyExtents []uint64) {
 	extentInfoMap := make(map[uint64]*storage.ExtentInfo)
 	for index := 0; index < len(repairTasks); index++ {
 		repairTask := repairTasks[index]
@@ -306,34 +283,9 @@ func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTa
 	}
 
 	dp.buildExtentCreationTasks(repairTasks, extentInfoMap)
-	goodTinyExtents, badTinyExtents = dp.buildExtentRepairTasks(repairTasks, extentInfoMap)
+	availableTinyExtents, brokenTinyExtents = dp.buildExtentRepairTasks(repairTasks, extentInfoMap)
 	return
 }
-
-//// TODO can we inline this function? it is hard to find a good name for it.
-///* pasre all extent,select maxExtentSize to member index map
-// */
-//func (dp *DataPartition) getMaxSizedExtentMap(repairTasks []*DataPartitionRepairTask) (extentInfoMap map[uint64]*storage.ExtentInfo) {
-//	extentInfoMap = make(map[uint64]*storage.ExtentInfo)
-//	for index := 0; index < len(repairTasks); index++ {
-//		repairTask := repairTasks[index]
-//		for extentID, extentInfo := range repairTask.extents {
-//			extentWithMaxSize, ok := extentInfoMap[extentID]
-//			if !ok {
-//				extentInfoMap[extentID] = extentInfo
-//			} else {
-//				inode := extentInfoMap[extentID].Inode
-//				if extentInfo.Size > extentWithMaxSize.Size {
-//					if extentInfo.Inode == 0 && inode != 0 {
-//						extentInfo.Inode = inode
-//					}
-//					extentInfoMap[extentID] = extentInfo
-//				}
-//			}
-//		}
-//	}
-//	return
-//}
 
 // Create a new extent if one of the replica is missing.
 func (dp *DataPartition) buildExtentCreationTasks(repairTasks []*DataPartitionRepairTask, extentInfoMap map[uint64]*storage.ExtentInfo) {
@@ -357,13 +309,12 @@ func (dp *DataPartition) buildExtentCreationTasks(repairTasks []*DataPartitionRe
 }
 
 // Repair an extent if the replicas do not have the same length.
-func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepairTask, maxSizeExtentMap map[uint64]*storage.ExtentInfo) (goodTinyExtents []uint64, badTinyExtents []uint64) {
-	goodTinyExtents = make([]uint64, 0)
-	badTinyExtents = make([]uint64, 0)
+func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepairTask, maxSizeExtentMap map[uint64]*storage.ExtentInfo) (availableTinyExtents []uint64, brokenTinyExtents []uint64) {
+	availableTinyExtents = make([]uint64, 0)
+	brokenTinyExtents = make([]uint64, 0)
 	for extentID, maxFileInfo := range maxSizeExtentMap {
 
-		// TODO what does "isFix" mean? 已经被修复的需要被放回channel的， hasBeenRepaired = true
-		isGoodExtent := true
+		hasBeenRepaired := true
 		for index := 0; index < len(repairTasks); index++ {
 			extentInfo, ok := repairTasks[index].extents[extentID]
 			if !ok {
@@ -373,7 +324,7 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 				fixExtent := &storage.ExtentInfo{Source: maxFileInfo.Source, FileID: extentID, Size: maxFileInfo.Size, Inode: maxFileInfo.Inode}
 				repairTasks[index].ExtentsToBeRepaired = append(repairTasks[index].ExtentsToBeRepaired, fixExtent)
 				log.LogInfof("action[generatorFixExtentSizeTasks] fixExtent(%v_%v) on Index(%v).", dp.partitionID, fixExtent, index)
-				isGoodExtent = false
+				hasBeenRepaired = false
 			}
 
 			if maxFileInfo.Inode != 0 && extentInfo.Inode == 0 {
@@ -383,10 +334,10 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 			}
 		}
 		if storage.IsTinyExtent(extentID) {
-			if isGoodExtent {
-				goodTinyExtents = append(goodTinyExtents, extentID)
+			if hasBeenRepaired {
+				availableTinyExtents = append(availableTinyExtents, extentID)
 			} else {
-				badTinyExtents = append(badTinyExtents, extentID)
+				brokenTinyExtents = append(brokenTinyExtents, extentID)
 			}
 		}
 	}
@@ -394,14 +345,14 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 }
 
 func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members []*DataPartitionRepairTask) (err error) {
-	p := repl.NewPacketToNotifyExtentRepair(dp.partitionID) //notify all follower to repairt task,send opnotifyRepair command
+	p := repl.NewPacketToNotifyExtentRepair(dp.partitionID) // notify all the followers to repair
 	var conn *net.TCPConn
 	target := dp.replicas[index]
 	p.Data, _ = json.Marshal(members[index])
 	conn, err = gConnPool.GetConnect(target)
 	defer func() {
 		wg.Done()
-		log.LogInfof(ActionNotifyFollowerRepair, fmt.Sprintf(" to (%v) task (%v) failed (%v)", target, string(p.Data), err))
+		log.LogInfof(ActionNotifyFollowerToRepair, fmt.Sprintf(" to (%v) task (%v) failed (%v)", target, string(p.Data), err))
 	}()
 	if err != nil {
 		return err
@@ -419,11 +370,12 @@ func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members [
 	return err
 }
 
-// NotifyExtentRepair notify backup members to repair DataPartition extent
+// NotifyExtentRepair notifies the followers to repair.
 func (dp *DataPartition) NotifyExtentRepair(members []*DataPartitionRepairTask) (err error) {
 	wg := new(sync.WaitGroup)
 	for i := 1; i < len(members); i++ {
 		wg.Add(1)
+		// TODO Unhandled errors
 		go dp.notifyFollower(wg, i, members)
 	}
 	wg.Wait()
@@ -431,8 +383,8 @@ func (dp *DataPartition) NotifyExtentRepair(members []*DataPartitionRepairTask) 
 }
 
 
-// TODO it seems that there is no usage for the following function, correct?
-// NotifyRaftFollowerToRepair notify raft follower to repair DataPartition extent*/
+// TODO remove
+// NotifyRaftFollowerToRepair notify raft follower to repair DataPartition extent.
 func (dp *DataPartition) NotifyRaftFollowerToRepair(repairTask *DataPartitionRepairTask) (err error) {
 	var wg sync.WaitGroup
 
@@ -471,8 +423,7 @@ func (dp *DataPartition) NotifyRaftFollowerToRepair(repairTask *DataPartitionRep
 	return
 }
 
-// DoStreamExtentFixRepair executed on follower node of data partition.
-// It receive from leader notifyRepair command extent file repair.
+// DoStreamExtentFixRepair executes the repair on the followers.
 func (dp *DataPartition) doStreamExtentFixRepair(wg *sync.WaitGroup, remoteExtentInfo *storage.ExtentInfo) {
 	defer wg.Done()
 
@@ -502,6 +453,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	}
 
 	defer func() {
+		// TODO Unhandled errors
 		store.Watermark(remoteExtentInfo.FileID, true)
 	}()
 

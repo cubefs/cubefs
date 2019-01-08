@@ -56,7 +56,7 @@ const (
 	OpExtentRepairRead        uint8 = 0x09
 	OpBlobFileRepairRead      uint8 = 0x0A
 	OpFlowInfo                uint8 = 0x0B
-	OpSyncDelNeedle           uint8 = 0x0C
+	OpSyncDelNeedle           uint8 = 0x0C // TODO remove?
 	OpNotifyCompactBlobFile   uint8 = 0x0D
 	OpGetDataPartitionMetrics uint8 = 0x0E
 	OpRandomWrite             uint8 = 0x0F
@@ -84,21 +84,21 @@ const (
 	OpMetaReleaseOpen   uint8 = 0x31
 
 	// Operations: Master -> MetaNode
-	OpCreateMetaPartition  uint8 = 0x40
-	OpMetaNodeHeartbeat    uint8 = 0x41
-	OpDeleteMetaPartition  uint8 = 0x42
-	OpUpdateMetaPartition  uint8 = 0x43
-	OpLoadMetaPartition    uint8 = 0x44
-	OpOfflineMetaPartition uint8 = 0x45
+	OpCreateMetaPartition       uint8 = 0x40
+	OpMetaNodeHeartbeat         uint8 = 0x41
+	OpDeleteMetaPartition       uint8 = 0x42
+	OpUpdateMetaPartition       uint8 = 0x43
+	OpLoadMetaPartition         uint8 = 0x44
+	OpDecommissionMetaPartition uint8 = 0x45
 
 	// Operations: Master -> DataNode
-	OpCreateDataPartition  uint8 = 0x60
-	OpDeleteDataPartition  uint8 = 0x61
-	OpLoadDataPartition    uint8 = 0x62
-	OpDataNodeHeartbeat    uint8 = 0x63
-	OpReplicateFile        uint8 = 0x64
-	OpDeleteFile           uint8 = 0x65
-	OpOfflineDataPartition uint8 = 0x66
+	OpCreateDataPartition       uint8 = 0x60
+	OpDeleteDataPartition       uint8 = 0x61
+	OpLoadDataPartition         uint8 = 0x62
+	OpDataNodeHeartbeat         uint8 = 0x63
+	OpReplicateFile             uint8 = 0x64
+	OpDeleteFile                uint8 = 0x65
+	OpDecommissionDataPartition uint8 = 0x66
 
 	// Commons
 	OpIntraGroupNetErr uint8 = 0xF3
@@ -132,22 +132,22 @@ const (
 )
 
 type Packet struct {
-	Magic           uint8
-	ExtentType      uint8
-	Opcode          uint8
-	ResultCode      uint8
-	RemainFollowers uint8
-	CRC             uint32
-	Size            uint32
-	Arglen          uint32
-	KernelOffset    uint64
-	PartitionID     uint64
-	ExtentID        uint64
-	ExtentOffset    int64
-	ReqID           int64
-	Arg             []byte //if create or append ops, data contains addrs
-	Data            []byte
-	StartT          int64
+	Magic              uint8
+	ExtentType         uint8
+	Opcode             uint8
+	ResultCode         uint8
+	RemainingFollowers uint8
+	CRC                uint32
+	Size               uint32
+	ArgLen             uint32
+	KernelOffset       uint64
+	PartitionID        uint64
+	ExtentID           uint64
+	ExtentOffset       int64
+	ReqID              int64
+	Arg                []byte //if create or append ops, data contains addrs
+	Data               []byte
+	StartT             int64
 }
 
 func NewPacket() *Packet {
@@ -244,16 +244,16 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpUpdateMetaPartition"
 	case OpLoadMetaPartition:
 		m = "OpLoadMetaPartition"
-	case OpOfflineMetaPartition:
-		m = "OpOfflineMetaPartition"
+	case OpDecommissionMetaPartition:
+		m = "OpDecommissionMetaPartition"
 	case OpCreateDataPartition:
 		m = "OpCreateDataPartition"
 	case OpDeleteDataPartition:
 		m = "OpDeleteDataPartition"
 	case OpLoadDataPartition:
 		m = "OpLoadDataPartition"
-	case OpOfflineDataPartition:
-		m = "OpOfflineDataPartition"
+	case OpDecommissionDataPartition:
+		m = "OpDecommissionDataPartition"
 	case OpDataNodeHeartbeat:
 		m = "OpDataNodeHeartbeat"
 	case OpReplicateFile:
@@ -315,10 +315,10 @@ func (p *Packet) MarshalHeader(out []byte) {
 	out[1] = p.ExtentType
 	out[2] = p.Opcode
 	out[3] = p.ResultCode
-	out[4] = p.RemainFollowers
+	out[4] = p.RemainingFollowers
 	binary.BigEndian.PutUint32(out[5:9], p.CRC)
 	binary.BigEndian.PutUint32(out[9:13], p.Size)
-	binary.BigEndian.PutUint32(out[13:17], p.Arglen)
+	binary.BigEndian.PutUint32(out[13:17], p.ArgLen)
 	binary.BigEndian.PutUint64(out[17:25], p.PartitionID)
 	binary.BigEndian.PutUint64(out[25:33], p.ExtentID)
 	binary.BigEndian.PutUint64(out[33:41], uint64(p.ExtentOffset))
@@ -336,10 +336,10 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 	p.ExtentType = in[1]
 	p.Opcode = in[2]
 	p.ResultCode = in[3]
-	p.RemainFollowers = in[4]
+	p.RemainingFollowers = in[4]
 	p.CRC = binary.BigEndian.Uint32(in[5:9])
 	p.Size = binary.BigEndian.Uint32(in[9:13])
-	p.Arglen = binary.BigEndian.Uint32(in[13:17])
+	p.ArgLen = binary.BigEndian.Uint32(in[13:17])
 	p.PartitionID = binary.BigEndian.Uint64(in[17:25])
 	p.ExtentID = binary.BigEndian.Uint64(in[25:33])
 	p.ExtentOffset = int64(binary.BigEndian.Uint64(in[33:41]))
@@ -371,7 +371,7 @@ func (p *Packet) WriteToNoDeadLineConn(c net.Conn) (err error) {
 
 	p.MarshalHeader(header)
 	if _, err = c.Write(header); err == nil {
-		if _, err = c.Write(p.Arg[:int(p.Arglen)]); err == nil {
+		if _, err = c.Write(p.Arg[:int(p.ArgLen)]); err == nil {
 			if p.Data != nil {
 				_, err = c.Write(p.Data[:p.Size])
 			}
@@ -391,7 +391,7 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 
 	p.MarshalHeader(header)
 	if _, err = c.Write(header); err == nil {
-		if _, err = c.Write(p.Arg[:int(p.Arglen)]); err == nil {
+		if _, err = c.Write(p.Arg[:int(p.ArgLen)]); err == nil {
 			if p.Data != nil && p.Size != 0 {
 				_, err = c.Write(p.Data[:p.Size])
 			}
@@ -423,9 +423,9 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 		return
 	}
 
-	if p.Arglen > 0 {
-		p.Arg = make([]byte, int(p.Arglen))
-		if _, err = io.ReadFull(c, p.Arg[:int(p.Arglen)]); err != nil {
+	if p.ArgLen > 0 {
+		p.Arg = make([]byte, int(p.ArgLen))
+		if _, err = io.ReadFull(c, p.Arg[:int(p.ArgLen)]); err != nil {
 			return err
 		}
 	}
@@ -445,7 +445,7 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 func (p *Packet) PackOkReply() {
 	p.ResultCode = OpOk
 	p.Size = 0
-	p.Arglen = 0
+	p.ArgLen = 0
 }
 
 func (p *Packet) PackOkWithBody(reply []byte) {
@@ -453,7 +453,7 @@ func (p *Packet) PackOkWithBody(reply []byte) {
 	p.Data = make([]byte, p.Size)
 	copy(p.Data[:p.Size], reply)
 	p.ResultCode = OpOk
-	p.Arglen = 0
+	p.ArgLen = 0
 }
 
 func (p *Packet) PackErrorWithBody(code uint8, reply []byte) {
@@ -461,7 +461,7 @@ func (p *Packet) PackErrorWithBody(code uint8, reply []byte) {
 	p.Data = make([]byte, p.Size)
 	copy(p.Data[:p.Size], reply)
 	p.ResultCode = code
-	p.Arglen = 0
+	p.ArgLen = 0
 }
 
 func (p *Packet) GetUniqueLogId() (m string) {
@@ -469,7 +469,7 @@ func (p *Packet) GetUniqueLogId() (m string) {
 		offset uint64
 		size   uint32
 	)
-	if p.ExtentMode == TinyExtentMode && p.Opcode == OpMarkDelete && len(p.Data) > 0 {
+	if p.ExtentType == TinyExtentType && p.Opcode == OpMarkDelete && len(p.Data) > 0 {
 		ext := new(ExtentKey)
 		err := json.Unmarshal(p.Data, ext)
 		if err == nil {
@@ -487,8 +487,8 @@ func (p *Packet) GetUniqueLogId() (m string) {
 	return
 }
 
-func (p *Packet) IsForwardPkg() bool {
-	return p.RemainFollowers > 0
+func (p *Packet) IsForwardPkt() bool {
+	return p.RemainingFollowers > 0
 }
 
 func (p *Packet) LogMessage(action, remote string, start int64, err error) (m string) {
@@ -496,12 +496,12 @@ func (p *Packet) LogMessage(action, remote string, start int64, err error) (m st
 		m = fmt.Sprintf("id[%v] op[%v] remote[%v] "+
 			" cost[%v] transite[%v] nodes[%v]",
 			p.GetUniqueLogId(), action, remote,
-			(time.Now().UnixNano()-start)/1e6, p.IsForwardPkg(), p.RemainFollowers)
+			(time.Now().UnixNano()-start)/1e6, p.IsForwardPkt(), p.RemainingFollowers)
 
 	} else {
 		m = fmt.Sprintf("id[%v] op[%v] remote[%v]"+
 			", err[%v] transite[%v] nodes[%v]", p.GetUniqueLogId(), action,
-			remote, err.Error(), p.IsForwardPkg(), p.RemainFollowers)
+			remote, err.Error(), p.IsForwardPkt(), p.RemainingFollowers)
 	}
 
 	return

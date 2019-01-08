@@ -37,7 +37,7 @@ type Packet struct {
 	proto.Packet
 	followerConns  []*net.TCPConn
 	followersAddrs []string
-	IsRelase       int32
+	IsReleased     int32 // TODO what is released?
 	Object         interface{}
 	TpObject       *exporter.TpMetric
 	NeedReply      bool
@@ -58,14 +58,14 @@ func (p *Packet) BeforeTp(clusterID string) (ok bool) {
 func (p *Packet) resolveFollowersAddr() (err error) {
 	defer func() {
 		if err != nil {
-			p.PackErrorBody(ActionPreparePkg, err.Error())
+			p.PackErrorBody(ActionPreparePkt, err.Error())
 		}
 	}()
-	if len(p.Arg) < int(p.Arglen) {
+	if len(p.Arg) < int(p.ArgLen) {
 		err = ErrArgLenMismatch
 		return
 	}
-	str := string(p.Arg[:int(p.Arglen)])
+	str := string(p.Arg[:int(p.ArgLen)])
 	followerAddrs := strings.SplitN(str, proto.AddrSplit, -1)
 	followerNum := uint8(len(followerAddrs) - 1)
 	p.followersAddrs = make([]string, followerNum)
@@ -73,7 +73,7 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 		p.followersAddrs = followerAddrs[:int(followerNum)]
 	}
 	p.followerConns = make([]*net.TCPConn, followerNum)
-	if p.RemainFollowers < 0 {
+	if p.RemainingFollowers < 0 {
 		err = ErrBadNodes
 		return
 	}
@@ -87,15 +87,15 @@ func (p *Packet) forceDestoryWholeFollowersPool(err error) {
 	}
 }
 
-func (p *Packet) forceDestoryFollowerConnects() {
+func (p *Packet) forceDestoryFollowerConns() {
 	for i := 0; i < len(p.followerConns); i++ {
 		gConnPool.ForceDestory(p.followerConns[i])
 	}
 }
 
-func (p *Packet) PutConnectsToPool() {
+func (p *Packet) PutConnsToPool() {
 	for i := 0; i < len(p.followerConns); i++ {
-		gConnPool.PutConnect(p.followerConns[i], NoCloseConnect)
+		gConnPool.PutConnect(p.followerConns[i], NoClosedConn)
 	}
 }
 
@@ -114,14 +114,14 @@ func (p *Packet) IsMasterCommand() bool {
 		proto.OpLoadDataPartition,
 		proto.OpCreateDataPartition,
 		proto.OpDeleteDataPartition,
-		proto.OpOfflineDataPartition:
+		proto.OpDecommissionDataPartition:
 		return true
 	}
 	return false
 }
 
 func (p *Packet) isForwardPacket() bool {
-	r := p.RemainFollowers > 0
+	r := p.RemainingFollowers > 0
 	return r
 }
 
@@ -254,8 +254,8 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (er
 		return
 	}
 
-	if p.Arglen > 0 {
-		if err = proto.ReadFull(c, &p.Arg, int(p.Arglen)); err != nil {
+	if p.ArgLen > 0 {
+		if err = proto.ReadFull(c, &p.Arg, int(p.ArgLen)); err != nil {
 			return
 		}
 	}

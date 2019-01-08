@@ -22,30 +22,29 @@ import (
 	"hash/crc32"
 )
 
-// TODO add comments; what is this wrapper
-func (s *DataNode) Prepare(pkg *repl.Packet) (err error) {
+func (s *DataNode) Prepare(p *repl.Packet) (err error) {
 	defer func() {
 		if err != nil {
-			pkg.PackErrorBody(repl.ActionPreparePkg, err.Error())
+			p.PackErrorBody(repl.ActionPreparePkt, err.Error())
 		}
 	}()
-	if pkg.IsMasterCommand() {
+	if p.IsMasterCommand() {
 		return
 	}
-	pkg.BeforeTp(s.clusterID)
-	err = s.checkStoreMode(pkg)
+	p.BeforeTp(s.clusterID)
+	err = s.checkStoreMode(p)
 	if err != nil {
 		return
 	}
-	if err = s.checkCrc(pkg); err != nil {
+	if err = s.checkCrc(p); err != nil {
 		return
 	}
-	if err = s.checkPartition(pkg); err != nil {
+	if err = s.checkPartition(p); err != nil {
 		return
 	}
 
-	// TODO What does the addExtentInfo do here? 对于一些有特殊的包， 需要添加额外信息
-	if err = s.addExtentInfo(pkg); err != nil {
+	// For certain packet, we meed to add some additional extent information.
+	if err = s.addExtentInfo(p); err != nil {
 		return
 	}
 
@@ -71,14 +70,14 @@ func (s *DataNode) checkCrc(p *repl.Packet) (err error) {
 	return
 }
 
-func (s *DataNode) checkPartition(pkg *repl.Packet) (err error) {
-	dp := s.space.Partition(pkg.PartitionID)
+func (s *DataNode) checkPartition(p *repl.Packet) (err error) {
+	dp := s.space.Partition(p.PartitionID)
 	if dp == nil {
-		err = errors.Errorf("partition %v is not exist", pkg.PartitionID)
+		err = errors.Errorf("partition %v is not exist", p.PartitionID)
 		return
 	}
-	pkg.Object = dp
-	if pkg.Opcode == proto.OpWrite || pkg.Opcode == proto.OpCreateExtent {
+	p.Object = dp
+	if p.Opcode == proto.OpWrite || p.Opcode == proto.OpCreateExtent {
 		if dp.Available() <= 0 {
 			err = storage.NoSpaceError
 			return
@@ -87,31 +86,28 @@ func (s *DataNode) checkPartition(pkg *repl.Packet) (err error) {
 	return
 }
 
-
-// TODO needs some explanation here
-func (s *DataNode) addExtentInfo(pkg *repl.Packet) error {
-	store := pkg.Object.(*DataPartition).ExtentStore()
-	if isLeaderPacket(pkg) && pkg.ExtentType == proto.TinyExtentType && isWriteOperation(pkg) {
-		extentID, err := store.GetGoodTinyExtent()
+func (s *DataNode) addExtentInfo(p *repl.Packet) error {
+	store := p.Object.(*DataPartition).ExtentStore()
+	if isLeaderPacket(p) && p.ExtentType == proto.TinyExtentType && isWriteOperation(p) {
+		extentID, err := store.GetAvailableTinyExtent()
 		if err != nil {
 			return err
 		}
-		pkg.ExtentID = extentID
-		pkg.ExtentOffset, err = store.GetTinyExtentoffset(extentID)
+		p.ExtentID = extentID
+		p.ExtentOffset, err = store.GetTinyExtentOffset(extentID)
 		if err != nil {
 			return err
 		}
-	} else if isLeaderPacket(pkg) && pkg.Opcode == proto.OpCreateExtent {
-		pkg.ExtentID = store.NextExtentID()
+	} else if isLeaderPacket(p) && p.Opcode == proto.OpCreateExtent {
+		p.ExtentID = store.NextExtentID()
 	}
 
 	return nil
 }
 
-// TODO what is a leader packet?
-// 这个包需不需要转发， 发给leader的包叫leaderpacket
+// A leader packet is the packet send to the leader and does not require packet forwarding.
 func isLeaderPacket(p *repl.Packet) (ok bool) {
-	if p.IsForwardPkg() && (isWriteOperation(p) || isCreateExtentOperation(p) || isMarkDeleteExtentOperation(p)) {
+	if p.IsForwardPkt() && (isWriteOperation(p) || isCreateExtentOperation(p) || isMarkDeleteExtentOperation(p)) {
 		ok = true
 	}
 

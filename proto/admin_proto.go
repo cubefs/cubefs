@@ -33,7 +33,7 @@ type CreateDataPartitionRequest struct {
 	PartitionId   uint64
 	PartitionSize int
 	VolumeId      string
-	RandomWrite   bool
+	IsRandomWrite bool
 	Members       []Peer
 }
 
@@ -55,7 +55,7 @@ type DeleteDataPartitionResponse struct {
 	PartitionId uint64
 }
 
-type DataPartitionOfflineRequest struct {
+type DataPartitionDecommissionRequest struct {
 	PartitionId uint64
 	RemovePeer  Peer
 	AddPeer     Peer
@@ -117,18 +117,18 @@ type PartitionReport struct {
 	NeedCompare     bool
 }
 
-type DataNodeHeartBeatResponse struct {
-	Total                   uint64
-	Used                    uint64
-	Available               uint64
-	CreatedPartitionWeights uint64 // volCnt * volsize
-	RemainingWeights        uint64 // create partition TODO is it necessary?
-	CreatedPartitionCnt     uint32
-	MaxWeights              uint64 // create partition
-	RackName                string
-	PartitionReports        []*PartitionReport
-	Status                  uint8
-	Result                  string
+type DataNodeHeartbeatResponse struct {
+	Total               uint64
+	Used                uint64
+	Available           uint64
+	TotalPartitionSize  uint64 // volCnt * volsize
+	RemainingCapacity   uint64 // remaining capacity to create partition
+	CreatedPartitionCnt uint32
+	MaxCapacity         uint64 // maximum capacity to create partition
+	RackName            string
+	PartitionReports    []*PartitionReport
+	Status              uint8
+	Result              string
 }
 
 type MetaPartitionReport struct {

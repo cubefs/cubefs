@@ -1,4 +1,4 @@
-// Copyright 2018 The CFS Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -143,13 +143,13 @@ func (dp *DataPartition) addDiskErrs(err error, flag uint8) {
 		return
 	}
 	if flag == WriteFlag {
-		d.updateWriteErrCnt()
+		d.incWriteErrCnt()
 	}
 }
 
-// TODO what is RandomPartitionReadCheck 读的时候判断自己是不是leader
-func (dp *DataPartition) RandomPartitionReadCheck(request *repl.Packet, connect net.Conn) (err error) {
-	if !dp.config.RandomWrite || request.Opcode == proto.OpExtentRepairRead {
+// CheckLeader checks if itself is the leader during read
+func (dp *DataPartition) CheckLeader(request *repl.Packet, connect net.Conn) (err error) {
+	if !dp.config.IsRandomWrite || request.Opcode == proto.OpExtentRepairRead {
 		return
 	}
 
@@ -157,7 +157,6 @@ func (dp *DataPartition) RandomPartitionReadCheck(request *repl.Packet, connect 
 	//  and use another getRaftLeaderAddr() to return the actual address
 	_, ok := dp.IsRaftLeader()
 	if !ok {
-		// TODO where is this err used?
 		err = storage.NotALeaderError
 		logContent := fmt.Sprintf("action[ReadCheck] %v.", request.LogMessage(request.GetOpMsg(), connect.RemoteAddr().String(), request.StartT, err))
 		log.LogInfof(logContent)
@@ -175,7 +174,6 @@ func (dp *DataPartition) RandomPartitionReadCheck(request *repl.Packet, connect 
 	return
 }
 
-// TODO what does applyID mean here?
 type ItemIterator struct {
 	applyID uint64
 }
@@ -183,20 +181,17 @@ type ItemIterator struct {
 // NewItemIterator creates a new item iterator.
 func NewItemIterator(applyID uint64) *ItemIterator {
 
-	// TODO what is si short for?
 	si := new(ItemIterator)
 	si.applyID = applyID
 	return si
 }
 
 // ApplyIndex returns the applyID
-// TODO should we call it ApplyID or ApplyIndex?
-// raqft 里面必须实现 applyIndex方法
 func (si *ItemIterator) ApplyIndex() uint64 {
 	return si.applyID
 }
 
-// Close the iterator.
+// Close Closes the iterator.
 func (si *ItemIterator) Close() {
 	return
 }

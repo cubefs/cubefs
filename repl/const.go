@@ -19,8 +19,8 @@ const (
 )
 
 const (
-	ForceCloseConnect = true
-	NoCloseConnect    = false
+	ForceClosedConn = true
+	NoClosedConn    = false
 )
 
 const (
@@ -29,9 +29,9 @@ const (
 	ActionReceiveFromFollower = "ActionReceiveFromFollower"
 	ActionWriteToClient       = "ActionWriteToClient"
 	ActionCheckAndAddInfos    = "ActionCheckAndAddInfos"
-	ActionCheckReplyAvail     = "ActionCheckReplyAvail"
+	ActionCheckReply          = "ActionCheckReply"
 
-	ActionPreparePkg = "ActionPreparePkg"
+	ActionPreparePkt = "ActionPreparePkt"
 )
 
 const (

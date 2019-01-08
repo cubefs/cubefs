@@ -112,7 +112,7 @@ func (m *metaManager) HandleMetaOperation(conn net.Conn, p *Packet) (err error) 
 		err = m.opUpdateMetaPartition(conn, p)
 	case proto.OpLoadMetaPartition:
 		err = m.opLoadMetaPartition(conn, p)
-	case proto.OpOfflineMetaPartition:
+	case proto.OpDecommissionMetaPartition:
 		err = m.opOfflineMetaPartition(conn, p)
 	case proto.OpMetaBatchInodeGet:
 		err = m.opMetaBatchInodeGet(conn, p)

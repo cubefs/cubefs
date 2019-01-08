@@ -34,12 +34,6 @@ const (
 	NetworkProtocol = "tcp"
 )
 
-// TODO remove the following
-const (
-	StartLoadingExtentHeader  = -1
-	FinishLoadingExtentHeader = 1
-)
-
 // cmd response
 const (
 	ReadFlag         = 1
@@ -53,43 +47,37 @@ const (
 )
 
 // Action description
-// TODO why not put the "Action" at the end. This reads weird.
 const (
-	ActionNotifyFollowerToRepair    = "ActionNotifyFollowerRepair"
-	ActionStreamRead              = "ActionStreamRead"              //ActionStreamRead is StreamRead Log Prefix
-	ActionGetDataPartitionMetrics = "ActionGetDataPartitionMetrics" //ActionGetDataPartitionMetrics is GetDataPartitionMetrics Log Prefix
+	ActionNotifyFollowerToRepair  = "ActionNotifyFollowerRepair"
+	ActionStreamRead              = "ActionStreamRead"
+	ActionGetDataPartitionMetrics = "ActionGetDataPartitionMetrics"
 	ActionCheckReplyAvail         = "ActionCheckReplyAvail"
 	ActionCreateExtent            = "ActionCreateExtent:"
-	ActionMarkDel                 = "ActionMarkDel:"
-	ActionGetAllExtentWaterMarker = "ActionGetAllExtentWaterMarker:"
+	ActionMarkDelete              = "ActionMarkDelete:"
+	ActionGetAllExtentWatermarks  = "ActionGetAllExtentWatermarks:"
 	ActionWrite                   = "ActionWrite:"
 	ActionRead                    = "ActionRead:"
 	ActionRepair                  = "ActionRepair:"
-	ActionOfflinePartition        = "ActionOfflinePartition"
+	ActionDecommissionPartition   = "ActionDecommissionPartition"
 	ActionCreateDataPartition     = "ActionCreateDataPartition"
 	ActionLoadDataPartition       = "ActionLoadDataPartition"
 	ActionDeleteDataPartition     = "ActionDeleteDataPartition"
 )
 
-// TODO: explain
-// Apply raft log opera code
+// Apply the raft log operation. Currently we only have the random write operation.
 const (
 	opRandomWrite uint32 = iota
-	// 目前只有一个
 )
 
 const (
-	maxRetryCounts  = 10     // maximum number of retries for random writes
-	// TODO why it is called MinFixTinyExtents while the commment says "Invalid tiny extent count"
-	// 每次修复tinyExtent的时候最少修复多少个 （一共只有64个）
-	MinFixTinyExtents = 10      // Invalid tiny extent count
-	dpRetainRaftLogs  = 100000 // Count of raft logs per data partition
+	maxRetryCounts         = 10     // maximum number of retries for random writes
+	MinTinyExtentsToRepair = 10     // minimum number of tiny extents to repair
+	NumOfRaftLogsToRetain  = 100000 // Count of raft logs per data partition
 )
 
-// TODO should we call it "IsReleased" or "IsFree"?
-// Tiny extent has put back to store
+// Tiny extent has been put back to store
 const (
-	HasReturnToStore = 1
+	IsReleased = 1
 )
 
 // Sector size

@@ -61,8 +61,8 @@ func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset
 	p.ExtentOffset = int64(extentOffset)
 	p.ReqID = proto.GeneratorRequestID()
 	p.Arg = nil
-	p.Arglen = 0
-	p.RemainFollowers = 0
+	p.ArgLen = 0
+	p.RemainingFollowers = 0
 	p.Opcode = proto.OpRandomWrite
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
@@ -80,7 +80,7 @@ func NewReadPacket(key *proto.ExtentKey, extentOffset, size int, inode uint64, f
 	p.Opcode = proto.OpStreamRead
 	p.ExtentType = proto.NormalExtentType
 	p.ReqID = proto.GeneratorRequestID()
-	p.RemainFollowers = 0
+	p.RemainingFollowers = 0
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
 	return p
@@ -93,8 +93,8 @@ func NewCreateExtentPacket(dp *wrapper.DataPartition, inode uint64) *Packet {
 	p.Data = make([]byte, 0)
 	p.ExtentType = proto.NormalExtentType
 	p.Arg = ([]byte)(dp.GetAllAddrs())
-	p.Arglen = uint32(len(p.Arg))
-	p.RemainFollowers = uint8(len(dp.Hosts) - 1)
+	p.ArgLen = uint32(len(p.Arg))
+	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
 	p.ReqID = proto.GeneratorRequestID()
 	p.Opcode = proto.OpCreateExtent
 	p.Data = make([]byte, 8)
@@ -145,8 +145,8 @@ func (p *Packet) readFromConn(c net.Conn, deadlineTime time.Duration) (err error
 		return
 	}
 
-	if p.Arglen > 0 {
-		if err = readToBuffer(c, &p.Arg, int(p.Arglen)); err != nil {
+	if p.ArgLen > 0 {
+		if err = readToBuffer(c, &p.Arg, int(p.ArgLen)); err != nil {
 			return
 		}
 	}

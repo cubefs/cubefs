@@ -26,20 +26,20 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 )
 
-// SpaceManager manages the disk space
+// SpaceManager manages the disk space.
 type SpaceManager struct {
-	clusterID         string
-	disks             map[string]*Disk
-	partitions        map[uint64]*DataPartition
-	raftStore         raftstore.RaftStore
-	nodeID            uint64
-	diskMu            sync.RWMutex  // TODO change the name to dMutex
-	partitionMu       sync.RWMutex  // TODO change the name to pMutex
-	stats             *Stats
-	stopC             chan bool
-	chooseIndex       int
-	diskList          []string
-	createPartitionMu sync.RWMutex
+	clusterID            string
+	disks                map[string]*Disk
+	partitions           map[uint64]*DataPartition
+	raftStore            raftstore.RaftStore
+	nodeID               uint64
+	diskMutex            sync.RWMutex
+	partitionMutex       sync.RWMutex
+	stats                *Stats
+	stopC                chan bool
+	selectedIndex        int  // TODO what is selected index
+	diskList             []string
+	createPartitionMutex sync.RWMutex
 }
 
 // NewSpaceManager creates a new space manager.
@@ -58,46 +58,46 @@ func NewSpaceManager(rack string) *SpaceManager {
 	return space
 }
 
-func (space *SpaceManager) Stop() {
+func (manager *SpaceManager) Stop() {
 	defer func() {
 		recover()
 	}()
-	close(space.stopC)
+	close(manager.stopC)
 }
 
-func (space *SpaceManager) SetNodeID(nodeID uint64) {
-	space.nodeID = nodeID
+func (manager *SpaceManager) SetNodeID(nodeID uint64) {
+	manager.nodeID = nodeID
 }
 
-func (space *SpaceManager) GetNodeID() (nodeID uint64) {
-	return space.nodeID
+func (manager *SpaceManager) GetNodeID() (nodeID uint64) {
+	return manager.nodeID
 }
 
-func (space *SpaceManager) SetClusterID(clusterID string) {
-	space.clusterID = clusterID
+func (manager *SpaceManager) SetClusterID(clusterID string) {
+	manager.clusterID = clusterID
 }
 
-func (space *SpaceManager) GetClusterID() (clusterID string) {
-	return space.clusterID
+func (manager *SpaceManager) GetClusterID() (clusterID string) {
+	return manager.clusterID
 }
 
-func (space *SpaceManager) SetRaftStore(raftStore raftstore.RaftStore) {
-	space.raftStore = raftStore
+func (manager *SpaceManager) SetRaftStore(raftStore raftstore.RaftStore) {
+	manager.raftStore = raftStore
 }
-func (space *SpaceManager) GetRaftStore() (raftStore raftstore.RaftStore) {
-	return space.raftStore
+func (manager *SpaceManager) GetRaftStore() (raftStore raftstore.RaftStore) {
+	return manager.raftStore
 }
 
-func (space *SpaceManager) RangePartitions(f func(partition *DataPartition) bool) {
+func (manager *SpaceManager) RangePartitions(f func(partition *DataPartition) bool) {
 	if f == nil {
 		return
 	}
-	space.partitionMu.RLock()
+	manager.partitionMutex.RLock()
 	partitions := make([]*DataPartition, 0)
-	for _, dp := range space.partitions {
+	for _, dp := range manager.partitions {
 		partitions = append(partitions, dp)
 	}
-	space.partitionMu.RUnlock()
+	manager.partitionMutex.RUnlock()
 
 	for _, partition := range partitions {
 		if !f(partition) {
@@ -106,48 +106,48 @@ func (space *SpaceManager) RangePartitions(f func(partition *DataPartition) bool
 	}
 }
 
-func (space *SpaceManager) GetDisks() (disks []*Disk) {
-	space.diskMu.RLock()
-	defer space.diskMu.RUnlock()
+func (manager *SpaceManager) GetDisks() (disks []*Disk) {
+	manager.diskMutex.RLock()
+	defer manager.diskMutex.RUnlock()
 	disks = make([]*Disk, 0)
-	for _, disk := range space.disks {
+	for _, disk := range manager.disks {
 		disks = append(disks, disk)
 	}
 	return
 }
 
-func (space *SpaceManager) Stats() *Stats {
-	return space.stats
+func (manager *SpaceManager) Stats() *Stats {
+	return manager.stats
 }
 
-func (space *SpaceManager) LoadDisk(path string, restSize uint64, maxErrs int) (err error) {
+func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrCnt int) (err error) {
 	var (
 		disk    *Disk
 		visitor PartitionVisitor
 	)
 	log.LogDebugf("action[LoadDisk] load disk from path(%v).", path)
 	visitor = func(dp *DataPartition) {
-		space.partitionMu.Lock()
-		defer space.partitionMu.Unlock()
-		if _, has := space.partitions[dp.ID()]; !has {
-			space.partitions[dp.ID()] = dp
-			log.LogDebugf("action[LoadDisk] put partition(%v) to space manager.", dp.ID())
+		manager.partitionMutex.Lock()
+		defer manager.partitionMutex.Unlock()
+		if _, has := manager.partitions[dp.ID()]; !has {
+			manager.partitions[dp.ID()] = dp
+			log.LogDebugf("action[LoadDisk] put partition(%v) to manager manager.", dp.ID())
 		}
 	}
-	if _, err = space.GetDisk(path); err != nil {
+	if _, err = manager.GetDisk(path); err != nil {
 
-		disk = NewDisk(path, restSize, maxErrs, space)
+		disk = NewDisk(path, reservedSpace, maxErrCnt, manager)
 		disk.RestorePartition(visitor)
-		space.putDisk(disk)
+		manager.putDisk(disk)
 		err = nil
 	}
 	return
 }
 
-func (space *SpaceManager) GetDisk(path string) (d *Disk, err error) {
-	space.diskMu.RLock()
-	defer space.diskMu.RUnlock()
-	disk, has := space.disks[path]
+func (manager *SpaceManager) GetDisk(path string) (d *Disk, err error) {
+	manager.diskMutex.RLock()
+	defer manager.diskMutex.RUnlock()
+	disk, has := manager.disks[path]
 	if has && disk != nil {
 		d = disk
 		return
@@ -156,63 +156,62 @@ func (space *SpaceManager) GetDisk(path string) (d *Disk, err error) {
 	return
 }
 
-func (space *SpaceManager) putDisk(d *Disk) {
-	space.diskMu.Lock()
-	space.disks[d.Path] = d
-	space.diskList = append(space.diskList, d.Path)
-	space.diskMu.Unlock()
-
+func (manager *SpaceManager) putDisk(d *Disk) {
+	manager.diskMutex.Lock()
+	manager.disks[d.Path] = d
+	manager.diskList = append(manager.diskList, d.Path)
+	manager.diskMutex.Unlock()
 }
 
-func (space *SpaceManager) updateMetrics() {
-	space.diskMu.RLock()
+func (manager *SpaceManager) updateMetrics() {
+	manager.diskMutex.RLock()
 	var (
-		total, used, available                                   uint64
-		createdPartitionWeights, remainWeightsForCreatePartition uint64
-		maxWeightsForCreatePartition, partitionCnt               uint64
+		total, used, available                                 uint64
+		totalPartitionSize, remainingCapacityToCreatePartition uint64
+		maxCapacityToCreatePartition, partitionCnt             uint64
 	)
-	maxWeightsForCreatePartition = 0
-	for _, d := range space.disks {
+	maxCapacityToCreatePartition = 0
+	for _, d := range manager.disks {
 		total += d.Total
 		used += d.Used
 		available += d.Available
-		createdPartitionWeights += d.Allocated
-		remainWeightsForCreatePartition += d.Unallocated
+		totalPartitionSize += d.Allocated
+		remainingCapacityToCreatePartition += d.Unallocated
 		partitionCnt += uint64(d.PartitionCount())
-		if maxWeightsForCreatePartition < d.Unallocated {
-			maxWeightsForCreatePartition = d.Unallocated
+		if maxCapacityToCreatePartition < d.Unallocated {
+			maxCapacityToCreatePartition = d.Unallocated
 		}
 	}
-	space.diskMu.RUnlock()
-	log.LogDebugf("action[updateMetrics] total(%v) used(%v) available(%v) createdPartitionWeights(%v)  remainWeightsForCreatePartition(%v) "+
-		"partitionCnt(%v) maxWeightsForCreatePartition(%v) ", total, used, available, createdPartitionWeights, remainWeightsForCreatePartition, partitionCnt, maxWeightsForCreatePartition)
-	space.stats.updateMetrics(total, used, available, createdPartitionWeights,
-		remainWeightsForCreatePartition, maxWeightsForCreatePartition, partitionCnt)
+	manager.diskMutex.RUnlock()
+	log.LogDebugf("action[updateMetrics] total(%v) used(%v) available(%v) totalPartitionSize(%v)  remainingCapacityToCreatePartition(%v) "+
+		"partitionCnt(%v) maxCapacityToCreatePartition(%v) ", total, used, available, totalPartitionSize, remainingCapacityToCreatePartition, partitionCnt, maxCapacityToCreatePartition)
+	manager.stats.updateMetrics(total, used, available, totalPartitionSize,
+		remainingCapacityToCreatePartition, maxCapacityToCreatePartition, partitionCnt)
 }
 
-func (space *SpaceManager) getMinPartitionCntDisk() (d *Disk) {
-	space.diskMu.Lock()
-	defer space.diskMu.Unlock()
+func (manager *SpaceManager) minPartitionCnt() (d *Disk) {
+	manager.diskMutex.Lock()
+	defer manager.diskMutex.Unlock()
 	var path string
-	if space.chooseIndex >= len(space.diskList) {
-		space.chooseIndex = 0
+	if manager.selectedIndex >= len(manager.diskList) {
+		manager.selectedIndex = 0
 	}
 
-	path = space.diskList[space.chooseIndex]
-	d = space.disks[path]
-	space.chooseIndex++
+	path = manager.diskList[manager.selectedIndex]
+	d = manager.disks[path]
+	manager.selectedIndex++
 
 	return
 }
 
-func (space *SpaceManager) flushDeleteScheduler() {
+func (manager *SpaceManager) flushDeleteScheduler() {
 	go func() {
 		ticker := time.NewTicker(2 * time.Minute)
 		for {
 			select {
 			case <-ticker.C:
-				space.flushDelete()
-			case <-space.stopC:
+				manager.flushDelete()
+			case <-manager.stopC:
 				ticker.Stop()
 				return
 			}
@@ -220,14 +219,14 @@ func (space *SpaceManager) flushDeleteScheduler() {
 	}()
 }
 
-func (space *SpaceManager) statUpdateScheduler() {
+func (manager *SpaceManager) statUpdateScheduler() {
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
 		for {
 			select {
 			case <-ticker.C:
-				space.updateMetrics()
-			case <-space.stopC:
+				manager.updateMetrics()
+			case <-manager.stopC:
 				ticker.Stop()
 				return
 			}
@@ -235,54 +234,55 @@ func (space *SpaceManager) statUpdateScheduler() {
 	}()
 }
 
-func (space *SpaceManager) flushDelete() {
+func (manager *SpaceManager) flushDelete() {
 	partitions := make([]*DataPartition, 0)
-	space.RangePartitions(func(dp *DataPartition) bool {
+	manager.RangePartitions(func(dp *DataPartition) bool {
 		partitions = append(partitions, dp)
 		return true
 	})
 	for _, partition := range partitions {
+		// TODO unhandled errors
 		partition.FlushDelete()
 	}
 }
 
-func (space *SpaceManager) Partition(partitionID uint64) (dp *DataPartition) {
-	space.partitionMu.RLock()
-	defer space.partitionMu.RUnlock()
-	dp = space.partitions[partitionID]
+func (manager *SpaceManager) Partition(partitionID uint64) (dp *DataPartition) {
+	manager.partitionMutex.RLock()
+	defer manager.partitionMutex.RUnlock()
+	dp = manager.partitions[partitionID]
 
 	return
 }
 
-func (space *SpaceManager) putPartition(dp *DataPartition) {
-	space.partitionMu.Lock()
-	defer space.partitionMu.Unlock()
-	space.partitions[dp.ID()] = dp
+func (manager *SpaceManager) putPartition(dp *DataPartition) {
+	manager.partitionMutex.Lock()
+	defer manager.partitionMutex.Unlock()
+	manager.partitions[dp.ID()] = dp
 	return
 }
 
-func (space *SpaceManager) CreatePartition(request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
-	space.partitionMu.Lock()
-	defer space.partitionMu.Unlock()
+func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
+	manager.partitionMutex.Lock()
+	defer manager.partitionMutex.Unlock()
 	dpCfg := &dataPartitionCfg{
 		PartitionID:   request.PartitionId,
 		VolName:       request.VolumeId,
 		Peers:         request.Members,
-		RaftStore:     space.raftStore,
-		NodeID:        space.nodeID,
-		ClusterID:     space.clusterID,
+		RaftStore:     manager.raftStore,
+		NodeID:        manager.nodeID,
+		ClusterID:     manager.clusterID,
 		PartitionSize: request.PartitionSize,
-		RandomWrite:   request.RandomWrite,
+		IsRandomWrite: request.IsRandomWrite,
 	}
-	dp = space.partitions[dpCfg.PartitionID]
+	dp = manager.partitions[dpCfg.PartitionID]
 	if dp != nil {
 		return
 	}
 	var (
 		disk *Disk
 	)
-	for i := 0; i < len(space.disks); i++ {
-		disk = space.getMinPartitionCntDisk()
+	for i := 0; i < len(manager.disks); i++ {
+		disk = manager.minPartitionCnt()
 		if disk.Available < uint64(dpCfg.PartitionSize) {
 			disk = nil
 			continue
@@ -296,27 +296,26 @@ func (space *SpaceManager) CreatePartition(request *proto.CreateDataPartitionReq
 		return
 	}
 
-	space.partitions[dp.ID()] = dp
+	manager.partitions[dp.ID()] = dp
 
 	return
 }
 
 // DeletePartition deletes a partition based on the partition id.
-func (space *SpaceManager) DeletePartition(dpID uint64) {
-	dp := space.Partition(dpID)
+func (manager *SpaceManager) DeletePartition(dpID uint64) {
+	dp := manager.Partition(dpID)
 	if dp == nil {
 		return
 	}
-	space.partitionMu.Lock()
-	delete(space.partitions, dpID)
-	space.partitionMu.Unlock()
+	manager.partitionMutex.Lock()
+	delete(manager.partitions, dpID)
+	manager.partitionMutex.Unlock()
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
 	os.RemoveAll(dp.Path())
 }
 
-// TODO change the name to initHeartbeatResponse or newHeartbeatResponse ?
-func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartBeatResponse) {
+func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatResponse) {
 	response.Status = proto.TaskSuccess
 	stat := s.space.Stats()
 	stat.Lock()
@@ -324,9 +323,9 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartBeatRespo
 	response.Total = stat.Total
 	response.Available = stat.Available
 	response.CreatedPartitionCnt = uint32(stat.CreatedPartitionCnt)
-	response.CreatedPartitionWeights = stat.CreatedPartitionWeights
-	response.MaxWeights = stat.MaxWeightsForCreatePartition
-	response.RemainingWeights = stat.RemainingWeightsForCreatePartition
+	response.TotalPartitionSize = stat.TotalPartitionSize
+	response.MaxCapacity = stat.MaxCapacityToCreatePartition
+	response.RemainingCapacity = stat.RemainingCapacityToCreatePartition
 	stat.Unlock()
 
 	response.RackName = s.rackName

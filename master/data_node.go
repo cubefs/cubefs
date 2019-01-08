@@ -76,7 +76,7 @@ func (dataNode *DataNode) badPartitionIDs(disk string) (partitionIds []uint64) {
 	return
 }
 
-func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartBeatResponse) {
+func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse) {
 	dataNode.Lock()
 	defer dataNode.Unlock()
 	dataNode.Total = resp.Total

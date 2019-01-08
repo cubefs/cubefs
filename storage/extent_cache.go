@@ -19,18 +19,14 @@ import (
 	"sync"
 )
 
-// ExtentMapItem stored Extent entity pointer and the element
-// pointer of the Extent entity in cache list.
+// ExtentMapItem stores the extent entity pointer and the element
+// pointer of the extent entity in a cache list.
 type ExtentMapItem struct {
 	ext *Extent
 	ele *list.Element
 }
 
-// ExtentCache is an implementation of ExtentCache with LRU support.
-// This cache manager store extent entity into an linked table and make
-// index by using an hash map.
-// Details for LRU, this cache move the hot spot entity to back of link
-// table and release entity from front of link table.
+// ExtentCache is an implementation of the ExtentCache with LRU support.
 type ExtentCache struct {
 	extentMap   map[uint64]*ExtentMapItem
 	extentList  *list.List
@@ -40,7 +36,7 @@ type ExtentCache struct {
 	capacity    int
 }
 
-// NewExtentCache create and returns a new ExtentCache instance.
+// NewExtentCache creates and returns a new ExtentCache instance.
 func NewExtentCache(capacity int) *ExtentCache {
 	return &ExtentCache{
 		extentMap:   make(map[uint64]*ExtentMapItem),
@@ -50,7 +46,7 @@ func NewExtentCache(capacity int) *ExtentCache {
 	}
 }
 
-// Put Connect extent object into cache.
+// Put puts an extent object into the cache.
 func (cache *ExtentCache) Put(extent *Extent) {
 	if IsTinyExtent(extent.ID()) {
 		cache.tinyLock.Lock()
@@ -69,7 +65,7 @@ func (cache *ExtentCache) Put(extent *Extent) {
 	cache.fireLRU()
 }
 
-// Get Connect extent from cache with specified extent identity (extentID).
+// Get gets the extent from the cache.
 func (cache *ExtentCache) Get(extentID uint64) (extent *Extent, ok bool) {
 	if IsTinyExtent(extentID) {
 		cache.tinyLock.RLock()
@@ -91,7 +87,7 @@ func (cache *ExtentCache) Get(extentID uint64) (extent *Extent, ok bool) {
 	return
 }
 
-// Del extent stored in cache this specified extent identity (extentID).
+// Del deletes the extent stored in the cache.
 func (cache *ExtentCache) Del(extentID uint64) {
 	if IsTinyExtent(extentID) {
 		return
@@ -105,13 +101,15 @@ func (cache *ExtentCache) Del(extentID uint64) {
 	if item, ok = cache.extentMap[extentID]; ok {
 		delete(cache.extentMap, extentID)
 		cache.extentList.Remove(item.ele)
+		// TODO Unhandled errors
 		item.ext.Close()
 	}
 }
 
-// Clear close and synchronize all extent stored in this cache and remove them from cache.
+// Clear closes all the extents stored in the cache.
 func (cache *ExtentCache) Clear() {
 	for _, extent := range cache.tinyExtents {
+		// TODO Unhandled errors
 		extent.Close()
 	}
 	cache.lock.Lock()
@@ -121,6 +119,7 @@ func (cache *ExtentCache) Clear() {
 		e = e.Next()
 		ec := curr.Value.(*Extent)
 		delete(cache.extentMap, ec.ID())
+		// TODO Unhandled errors
 		ec.Close()
 		cache.extentList.Remove(curr)
 	}
@@ -128,7 +127,7 @@ func (cache *ExtentCache) Clear() {
 	cache.extentMap = make(map[uint64]*ExtentMapItem)
 }
 
-// Size returns number of extents stored in this cache.
+// Size returns number of extents stored in the cache.
 func (cache *ExtentCache) Size() int {
 	cache.lock.RLock()
 	cache.lock.RUnlock()
@@ -155,7 +154,7 @@ func (cache *ExtentCache) fireLRU() {
 	}
 }
 
-// Flush synchronizes the extent stored in cache to the disk.
+// Flush synchronizes the extent stored in the cache to the disk.
 func (cache *ExtentCache) Flush() {
 	for _, extent := range cache.tinyExtents {
 		extent.Flush()

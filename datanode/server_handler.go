@@ -1,4 +1,4 @@
-// Copyright 2018 The CFS Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,8 +14,6 @@
 
 package datanode
 
-/* server_handler.go*/
-
 import (
 	"encoding/json"
 	"fmt"
@@ -26,9 +24,7 @@ import (
 	"github.com/tiglabs/containerfs/storage"
 )
 
-// TODO why use "s" for data node? This is kind of meaningless  server
-// TODO change to getDiskAPI
-func (s *DataNode) apiGetDisk(w http.ResponseWriter, r *http.Request) {
+func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 	disks := make([]interface{}, 0)
 	for _, diskItem := range s.space.GetDisks() {
 		disk := &struct {
@@ -49,7 +45,7 @@ func (s *DataNode) apiGetDisk(w http.ResponseWriter, r *http.Request) {
 			Unallocated: diskItem.Unallocated,
 			Allocated:   diskItem.Allocated,
 			Status:      diskItem.Status,
-			RestSize:    diskItem.RestSize,
+			RestSize:    diskItem.ReservedSpace,
 			Partitions:  diskItem.PartitionCount(),
 		}
 		disks = append(disks, disk)
@@ -64,18 +60,16 @@ func (s *DataNode) apiGetDisk(w http.ResponseWriter, r *http.Request) {
 	s.buildSuccessResp(w, diskReport)
 }
 
-// TODO change to getStatAPI
-func (s *DataNode) apiGetStat(w http.ResponseWriter, r *http.Request) {
+func (s *DataNode) getStatAPI(w http.ResponseWriter, r *http.Request) {
 
 	// TODO there should be a better way to initialize a heartbeat response
-	response := &proto.DataNodeHeartBeatResponse{}
+	response := &proto.DataNodeHeartbeatResponse{}
 	s.buildHeartBeatResponse(response)
 
 	s.buildSuccessResp(w, response)
 }
 
-// TODO change to getPartitionsAPI
-func (s *DataNode) apiGetPartitions(w http.ResponseWriter, r *http.Request) {
+func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 	partitions := make([]interface{}, 0)
 	s.space.RangePartitions(func(dp *DataPartition) bool {
 		partition := &struct {
@@ -106,8 +100,7 @@ func (s *DataNode) apiGetPartitions(w http.ResponseWriter, r *http.Request) {
 	s.buildSuccessResp(w, result)
 }
 
-// TODO change to getPartitionAPI
-func (s *DataNode) apiGetPartition(w http.ResponseWriter, r *http.Request) {
+func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 	const (
 		paramPartitionID = "id"
 	)
@@ -158,7 +151,6 @@ func (s *DataNode) apiGetPartition(w http.ResponseWriter, r *http.Request) {
 	s.buildSuccessResp(w, result)
 }
 
-// TODO change to getExtentAPI
 func (s *DataNode) getExtentAPI(w http.ResponseWriter, r *http.Request) {
 	var (
 		partitionID uint64
@@ -195,18 +187,15 @@ func (s *DataNode) getExtentAPI(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-// TODO we need to find a better name for buildSuccessResp
 func (s *DataNode) buildSuccessResp(w http.ResponseWriter, data interface{}) {
 	s.buildJSONResp(w, http.StatusOK, data, "")
 }
 
-// TODO we need to find a bettwe name for buildFailureResp
 func (s *DataNode) buildFailureResp(w http.ResponseWriter, code int, msg string) {
 	s.buildJSONResp(w, code, nil, msg)
 }
 
-// TODO we need to find a better name for buildJSONResp
-// This seems like creating a response for the API request, correct?
+// Create response for the API request.
 func (s *DataNode) buildJSONResp(w http.ResponseWriter, code int, data interface{}, msg string) {
 	var (
 		jsonBody []byte

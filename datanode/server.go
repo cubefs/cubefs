@@ -41,9 +41,7 @@ import (
 )
 
 var (
-	// TODO when this mismatch could happen? remove nottiny or extent
 	ErrIncorrectStoreType        = errors.New("incorrect store type")
-	ErrNoPartitionFound        = errors.New("data partition does not exist")
 	ErrNoSpaceToCreatePartition = errors.New("no disk space to create a data partition")
 	ErrBadConfFile              = errors.New("bad config file")
 
@@ -54,7 +52,7 @@ var (
 
 const (
 	GetIPFromMaster = master.AdminGetIP
-	// TODO we need to find a better to expose this information. Opensource community does not need to know the rack name
+	// TODO we need to find a better to expose this information.
 	DefaultRackName = "huitian_rack1"
 	DefaultRaftDir  = "raft"
 )
@@ -70,26 +68,26 @@ const (
 	ConfigKeyDisks         = "disks"         // array
 	ConfigKeyRaftDir       = "raftDir"       // string
 	ConfigKeyRaftHeartbeat = "raftHeartbeat" // string
-	ConfigKeyRaftReplicate = "raftReplicate" // string
+	ConfigKeyRaftReplicate = "raftReplica" // string
 )
 
 // DataNode defines the structure of a data node.
 type DataNode struct {
-	space          *SpaceManager
-	port           string
-	rackName       string
-	clusterID      string
-	localIP        string
-	localServeAddr string
-	nodeID         uint64
-	raftDir        string
-	raftHeartbeat  string
-	raftReplicate  string // TODO should we call it raftReplica?
-	raftStore      raftstore.RaftStore
-	tcpListener    net.Listener
-	stopC          chan bool
-	state          uint32
-	wg             sync.WaitGroup
+	space           *SpaceManager
+	port            string
+	rackName        string
+	clusterID       string
+	localIP         string
+	localServerAddr string
+	nodeID          uint64
+	raftDir         string
+	raftHeartbeat   string
+	raftReplica     string
+	raftStore       raftstore.RaftStore
+	tcpListener     net.Listener
+	stopC           chan bool
+	state           uint32
+	wg              sync.WaitGroup
 }
 
 func NewServer() *DataNode {
@@ -123,13 +121,14 @@ func (s *DataNode) Shutdown() {
 	}
 }
 
+// Sync keeps data node in sync.
 func (s *DataNode) Sync() {
 	if atomic.LoadUint32(&s.state) == Running {
 		s.wg.Wait()
 	}
 }
 
-// Workflow of start a data node
+// Workflow of starting up a data node.
 func (s *DataNode) onStart(cfg *config.Config) (err error) {
 	s.stopC = make(chan bool, 0)
 
@@ -157,7 +156,7 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 		return
 	}
 
-	go s.registerProfHandler()
+	go s.registerHandler()
 
 	return
 }
@@ -248,7 +247,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	return nil
 }
 
-// register registers the data node on the master to report the information such as IP address.
+// registers the data node on the master to report the information such as IP address.
 // The startup of a data node will be blocked until the registration succeeds.
 func (s *DataNode) register() {
 	var (
@@ -271,10 +270,11 @@ func (s *DataNode) register() {
 				continue
 			}
 			cInfo := new(proto.ClusterInfo)
+			// TODO Unhandled errors
 			json.Unmarshal(data, cInfo)
 			LocalIP = string(cInfo.Ip)
 			s.clusterID = cInfo.Cluster
-			s.localServeAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
+			s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			if !util.IP(LocalIP) {
 				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
 					LocalIP, masterAddr)
@@ -302,13 +302,12 @@ func (s *DataNode) register() {
 	}
 }
 
-// TODO what does "prof" mean in "registerProfHandler"? profiling?
-func (s *DataNode) registerProfHandler() {
-	http.HandleFunc("/disks", s.apiGetDisk)
-	http.HandleFunc("/partitions", s.apiGetPartitions)
-	http.HandleFunc("/partition", s.apiGetPartition)
+func (s *DataNode) registerHandler() {
+	http.HandleFunc("/disks", s.getDiskAPI)
+	http.HandleFunc("/partitions", s.getPartitionsAPI)
+	http.HandleFunc("/partition", s.getPartitionAPI)
 	http.HandleFunc("/extent", s.getExtentAPI)
-	http.HandleFunc("/stats", s.apiGetStat)
+	http.HandleFunc("/stats", s.getStatAPI)
 }
 
 func (s *DataNode) startTCPService() (err error) {
@@ -337,6 +336,7 @@ func (s *DataNode) startTCPService() (err error) {
 
 func (s *DataNode) stopTCPService() (err error) {
 	if s.tcpListener != nil {
+		// TODO Unhandled errors
 		s.tcpListener.Close()
 		log.LogDebugf("action[stopTCPService] stop tcp service.")
 	}
@@ -347,6 +347,7 @@ func (s *DataNode) serveConn(conn net.Conn) {
 	space := s.space
 	space.Stats().AddConnection()
 	c, _ := conn.(*net.TCPConn)
+	// TODO Unhandled errors
 	c.SetKeepAlive(true)
 	c.SetNoDelay(true)
 	c.SetLinger(10)
@@ -354,9 +355,8 @@ func (s *DataNode) serveConn(conn net.Conn) {
 	packetProcessor.ServerConn()
 }
 
-// TODO what does add diskErrs mean? This does not make any sense
-// diskerr 的个数增加一
-func (s *DataNode) addDiskErrs(partitionID uint64, err error, flag uint8) {
+// Increase the disk error count by one.
+func (s *DataNode) incDiskErrCnt(partitionID uint64, err error, flag uint8) {
 	if err == nil {
 		return
 	}
@@ -372,13 +372,12 @@ func (s *DataNode) addDiskErrs(partitionID uint64, err error, flag uint8) {
 		return
 	}
 	if flag == WriteFlag {
-		d.updateWriteErrCnt()
+		d.incWriteErrCnt()
 	} else if flag == ReadFlag {
-		d.updateReadErrCnt()
+		d.incReadErrCnt()
 	}
 }
 
-// TODO we need to find a better to handle the disk error
 func IsDiskErr(errMsg string) bool {
 	if strings.Contains(errMsg, syscall.EIO.Error()) {
 		return true

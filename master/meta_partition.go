@@ -473,7 +473,7 @@ func (mp *MetaPartition) generateOfflineTask(volName string, removePeer proto.Pe
 		return nil, errors.Trace(err)
 	}
 	req := &proto.MetaPartitionOfflineRequest{PartitionID: mp.PartitionID, VolName: volName, RemovePeer: removePeer, AddPeer: addPeer}
-	t = proto.NewAdminTask(proto.OpOfflineMetaPartition, mr.Addr, req)
+	t = proto.NewAdminTask(proto.OpDecommissionMetaPartition, mr.Addr, req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)
 	return
 }
