@@ -83,7 +83,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 	return
 }
 
-func (mp *metaPartition) DeleteInode(req *DeleteInoReq, p *Packet) (err error) {
+func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	val, err := ino.Marshal()
 	if err != nil {
@@ -99,7 +99,7 @@ func (mp *metaPartition) DeleteInode(req *DeleteInoReq, p *Packet) (err error) {
 	status := msg.Status
 	var reply []byte
 	if status == proto.OpOk {
-		resp := &DeleteInoResp{
+		resp := &UnlinkInoResp{
 			Info: &proto.InodeInfo{},
 		}
 		replyInfo(resp.Info, msg.Msg)

@@ -109,7 +109,7 @@ func (c *MetaPartitionConfig) sortPeers() {
 
 type OpInode interface {
 	CreateInode(req *CreateInoReq, p *Packet) (err error)
-	DeleteInode(req *DeleteInoReq, p *Packet) (err error)
+	UnlinkInode(req *UnlinkInoReq, p *Packet) (err error)
 	InodeGet(req *InodeGetReq, p *Packet) (err error)
 	InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error)
 	Open(req *OpenReq, p *Packet) (err error)

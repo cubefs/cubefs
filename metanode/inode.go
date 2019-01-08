@@ -393,7 +393,9 @@ func (i *Inode) IncrNLink() {
 
 func (i *Inode) DecrNLink() {
 	i.Lock()
-	i.NLink--
+	if i.NLink != 0 {
+		i.NLink--
+	}
 	i.Unlock()
 }
 

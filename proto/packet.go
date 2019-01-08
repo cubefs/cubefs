@@ -66,7 +66,7 @@ const (
 
 	// Operations: Client -> MetaNode.
 	OpMetaCreateInode   uint8 = 0x20
-	OpMetaDeleteInode   uint8 = 0x21
+	OpMetaUnlinkInode   uint8 = 0x21
 	OpMetaCreateDentry  uint8 = 0x22
 	OpMetaDeleteDentry  uint8 = 0x23
 	OpMetaOpen          uint8 = 0x24
@@ -214,8 +214,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "IntraGroupNetErr"
 	case OpMetaCreateInode:
 		m = "OpMetaCreateInode"
-	case OpMetaDeleteInode:
-		m = "OpMetaDeleteInode"
+	case OpMetaUnlinkInode:
+		m = "OpMetaUnlinkInode"
 	case OpMetaCreateDentry:
 		m = "OpMetaCreateDentry"
 	case OpMetaDeleteDentry:

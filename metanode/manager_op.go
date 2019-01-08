@@ -247,8 +247,8 @@ func (m *metaManager) opUpdateDentry(conn net.Conn, p *Packet) (err error) {
 	return
 }
 
-func (m *metaManager) opDeleteInode(conn net.Conn, p *Packet) (err error) {
-	req := &DeleteInoReq{}
+func (m *metaManager) opMetaUnlinkInode(conn net.Conn, p *Packet) (err error) {
+	req := &UnlinkInoReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
