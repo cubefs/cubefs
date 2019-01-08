@@ -35,7 +35,7 @@ Example master.json is shown below:
   "clusterName":"cfs"
 }
 ```
-For detailed explanations of *master.json*, please refer to [master.md](master.md).
+For detailed explanations of *master.json*, please refer to [master.md](user-guide/master.md).
 ```bash
 ./cmd -c master.json
 ```
@@ -60,7 +60,7 @@ Example meta.json is shown below:
     ]
 }
 ```
-For detailed explanations of *meta.json*, please refer to [meta.md]().
+For detailed explanations of *meta.json*, please refer to [meta]().
 ```bash
 ./cmd -c meta.json
 ```
@@ -99,7 +99,7 @@ Example *datanode.json* is shown below:
 nohup ./cmd -c datanode.json &
 ```
 
-For detailed explanations of *datanode.json*, please refer to [datanode.md](datanode.md).
+For detailed explanations of *datanode.json*, please refer to [datanode.md](user-guide/datanode.md).
 
 ## Create Volume
 
@@ -125,8 +125,8 @@ Example *fuse.json* is shown below:
 }
 ```
 
-For detailed explanations of *fuse.json*, please refer to [client.md](client.md).
+For detailed explanations of *fuse.json*, please refer to [client.md](user-guide/client.md).
 
-For optimizing FUSE kernel to achive better performance, please refer to [fuse.md](../performance/fuse.md).
+For optimizing FUSE kernel to achive better performance, please refer to [fuse.md](performance/fuse.md).
 
 Note that end user can start more than one client on a single machine, as long as mountpoints are different.

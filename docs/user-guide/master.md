@@ -38,7 +38,8 @@ CFS using **JSON** as for configuration file format.
 | consulAddr    | string   | The consul register addr for prometheus exporter.| No      |
 
 **Example:**
-  ```json
+
+```json
    {
     "role": "master",
     "ip": "127.0.0.1",
