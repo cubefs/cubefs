@@ -125,6 +125,24 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	start := time.Now()
 	d.dcache.Delete(req.Name)
+
+	if req.Dir {
+		childIno, childMode, err := d.super.mw.Lookup_ll(d.inode.ino, req.Name)
+		if err != nil {
+			return ParseError(err)
+		}
+		if !proto.IsDir(childMode) {
+			return syscall.ENOTDIR
+		}
+		entries, err := d.super.mw.ReadDir_ll(childIno)
+		if err != nil {
+			return ParseError(err)
+		}
+		if len(entries) != 0 {
+			return syscall.ENOTEMPTY
+		}
+	}
+
 	info, err := d.super.mw.Delete_ll(d.inode.ino, req.Name)
 	if err != nil {
 		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.inode.ino, req.Name, err)
