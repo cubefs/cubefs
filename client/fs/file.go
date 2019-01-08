@@ -163,9 +163,9 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	reqlen := len(req.Data)
 	filesize, _ := f.super.ec.GetFileSize(ino)
 
-	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v) req(%v)", ino, req.Offset, reqlen, req.Flags, req.FileFlags, req)
+	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v) filesize(%v) flags(%v) fileflags(%v) req(%v)", ino, req.Offset, reqlen, filesize, req.Flags, req.FileFlags, req)
 
-	if req.FileFlags.IsWriteOnly() && req.Offset > int64(filesize) && reqlen == 1 {
+	if req.Offset > int64(filesize) && reqlen == 1 && req.Data[0] == 0 {
 		// workaround: posix_fallocate would write 1 byte if fallocate is not supported.
 		err = f.super.ec.Truncate(ino, int(req.Offset)+reqlen)
 		if err == nil {
