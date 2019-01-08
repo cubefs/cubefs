@@ -14,7 +14,7 @@ across different data partitions on different data nodes. Writing a new file to 
 The contents of multiple small files are aggregated and stored in a single extent, and the physical offset
 of each file content in the extent is recorded in the corresponding meta node. Deleting a file content (free the disk space occupied by this file) is achieved by the punch hole interface (fallocate()) provided by the underlying file system. The advantage of this design is to eliminate the need of implementing a garbage collection mechanism and therefore avoid to employ a mapping from logical offset to physical offset in an extent.
 
-![data-subsystem.png](assert/data-subsystem.png)
+![data-subsystem.png](../assert/data-subsystem.png)
 
 **Strong Consistency**
 
@@ -23,11 +23,11 @@ CFS adopts different replication strategies. <br>
 
 - When a file is sequentially written into CFS, a primary-backup replication protocol is used to ensure the strong consistency with optimized IO throughput.<br>
 
-    ![workflow-sequentail.png](assert/workflow-sequential-write.png)
+    ![workflow-sequentail.png](../assert/workflow-sequential-write.png)
 
 - When overwriting an existing file portion during random writes, we employ a MultiRaft-based replication protocol, which is similar to the one used in the metadata subsystem, to ensure the strong consistency.<br>
 
-    ![workflow-overwriting.png](assert/workflow-overwriting.png)
+    ![workflow-overwriting.png](../assert/workflow-overwriting.png)
 
 **Failure Recovery**
 

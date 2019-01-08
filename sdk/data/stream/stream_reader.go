@@ -23,55 +23,84 @@ import (
 )
 
 type Streamer struct {
-	client  *ExtentClient
+	client *ExtentClient
+	inode  uint64
+
+	status int32
+
+	refcnt       int
+	openWriteCnt int
+	authid       uint64
+
 	extents *ExtentCache
-	inode   uint64
-	refcnt  uint64
-	authid  uint64
-	writer  *StreamWriter
-	done    chan struct{}
 	once    sync.Once
+
+	handler   *ExtentHandler   // current open handler
+	dirtylist *ExtentDirtyList // dirty handlers
+	dirty     bool             // whether current open handler is in the dirty list
+
+	request chan interface{} // request channel, write/flush/close
+	done    chan struct{}    // stream writer is being closed
 }
 
 func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
-	stream := &Streamer{
-		client:  client,
-		extents: NewExtentCache(inode),
-		inode:   inode,
-	}
-	return stream
+	s := new(Streamer)
+	s.client = client
+	s.inode = inode
+	s.extents = NewExtentCache(inode)
+	s.request = make(chan interface{}, 1000)
+	s.done = make(chan struct{})
+	s.dirtylist = NewExtentDirtyList()
+	go s.server()
+	return s
 }
 
 func (s *Streamer) String() string {
-	return fmt.Sprintf("inode(%v) extents(%v)", s.inode, s.extents.List())
+	return fmt.Sprintf("Streamer{ino(%v)}", s.inode)
 }
 
-func (stream *Streamer) GetExtents() error {
-	return stream.extents.Refresh(stream.inode, stream.client.getExtents)
+func (s *Streamer) GetExtents() error {
+	return s.extents.Refresh(s.inode, s.client.getExtents)
 }
 
 //TODO: use memory pool
-func (stream *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
+func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
 	partition, err := gDataWrapper.GetDataPartition(ek.PartitionId)
 	if err != nil {
 		return nil, err
 	}
-	reader := NewExtentReader(stream.inode, ek, partition)
+	reader := NewExtentReader(s.inode, ek, partition)
 	return reader, nil
 }
 
-func (stream *Streamer) read(data []byte, offset int, size int) (total int, err error) {
+func (s *Streamer) read(data []byte, offset int, size int) (total int, err error) {
 	var (
 		readBytes int
 		reader    *ExtentReader
+		requests  []*ExtentRequest
+		flushed   bool
 	)
-	//	err = stream.GetExtents()
-	//	if err != nil {
-	//		return
-	//	}
-	requests := stream.extents.PrepareReadRequest(offset, size, data)
-	filesize, _ := stream.extents.Size()
-	log.LogDebugf("stream read: ino(%v) requests(%v) filesize(%v)", stream.inode, requests, filesize)
+
+	requests = s.extents.PrepareReadRequest(offset, size, data)
+	for _, req := range requests {
+		if req.ExtentKey == nil {
+			continue
+		}
+		if req.ExtentKey.PartitionId == 0 && req.ExtentKey.ExtentId == 0 {
+			if err = s.IssueFlushRequest(); err != nil {
+				return 0, err
+			}
+			flushed = true
+			break
+		}
+	}
+
+	if flushed {
+		requests = s.extents.PrepareReadRequest(offset, size, data)
+	}
+
+	filesize, _ := s.extents.Size()
+	log.LogDebugf("read: ino(%v) requests(%v) filesize(%v)", s.inode, requests, filesize)
 	for _, req := range requests {
 		if req.ExtentKey == nil {
 			for i := range req.Data {
@@ -79,6 +108,9 @@ func (stream *Streamer) read(data []byte, offset int, size int) (total int, err 
 			}
 
 			if req.FileOffset+req.Size > filesize {
+				if req.FileOffset > filesize {
+					return
+				}
 				req.Size = filesize - req.FileOffset
 				total += req.Size
 				err = io.EOF
@@ -87,14 +119,14 @@ func (stream *Streamer) read(data []byte, offset int, size int) (total int, err 
 
 			// Reading a hole, just fill zero
 			total += req.Size
-			log.LogDebugf("Stream read hole: ino(%v) req(%v) total(%v)", stream.inode, req, total)
+			log.LogDebugf("Stream read hole: ino(%v) req(%v) total(%v)", s.inode, req, total)
 		} else {
-			reader, err = stream.GetExtentReader(req.ExtentKey)
+			reader, err = s.GetExtentReader(req.ExtentKey)
 			if err != nil {
 				break
 			}
 			readBytes, err = reader.Read(req)
-			log.LogDebugf("Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", stream.inode, req, readBytes, err)
+			log.LogDebugf("Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
 			total += readBytes
 			if err != nil || readBytes < req.Size {
 				break

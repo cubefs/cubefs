@@ -20,6 +20,7 @@ import (
 	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
 	"hash/crc32"
+	"fmt"
 )
 
 func (s *DataNode) Prepare(p *repl.Packet) (err error) {
@@ -99,6 +100,10 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 			return err
 		}
 	} else if isLeaderPacket(p) && p.Opcode == proto.OpCreateExtent {
+		extentId := store.NextExtentID()
+		if extentId >= storage.MaxExtentId {
+			return fmt.Errorf("partition %v has reached maxExtentId", p.PartitionID)
+		}
 		p.ExtentID = store.NextExtentID()
 	}
 

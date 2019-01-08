@@ -19,6 +19,36 @@ import (
 	"testing"
 )
 
+func TestNewMetric(t *testing.T) {
+	N := 100
+	exitCh := make(chan int, 100)
+	for i := 0; i < N; i++ {
+		go func() {
+			m := RegistMetric(fmt.Sprintf("name_%d_counter", i%17), Counter )
+			if m != nil {
+				m.Set(float64(i))
+				t.Logf("metric: %v", m.Name)
+			}
+			g := RegistMetric(fmt.Sprintf("name_%d_gauge", i%17), Gauge )
+			if g != nil {
+				g.Set(float64(i))
+				t.Logf("metric: %v", g.Name)
+			}
+			exitCh <- i
+
+		}()
+	}
+
+	x := 0
+	select {
+	case <-exitCh:
+		x += 1
+		if x == N {
+			return
+		}
+	}
+}
+
 func TestRegistGauge(t *testing.T) {
 	N := 100
 	exitCh := make(chan int, 100)
@@ -50,7 +80,7 @@ func TestRegistTp(t *testing.T) {
 		go func() {
 			m := RegistTp(fmt.Sprintf("name_%d", i%7))
 			if m != nil {
-				t.Logf("metric: %v", m.metricName)
+				t.Logf("metric: %v", m.Name)
 			}
 
 			defer m.CalcTp()

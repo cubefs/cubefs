@@ -36,9 +36,15 @@ const (
 )
 
 const (
-	StreamWriterNormal int32 = iota
-	StreamWriterError
+	StreamerNormal int32 = iota
+	StreamerError
 )
+
+type OpenRequest struct {
+	flag uint32
+	err  error
+	done chan struct{}
+}
 
 type WriteRequest struct {
 	fileOffset int
@@ -54,7 +60,8 @@ type FlushRequest struct {
 	done chan struct{}
 }
 
-type CloseRequest struct {
+type ReleaseRequest struct {
+	flag uint32
 	err  error
 	done chan struct{}
 }
@@ -65,39 +72,29 @@ type TruncRequest struct {
 	done chan struct{}
 }
 
-type StreamWriter struct {
-	stream *Streamer
-	inode  uint64
-	authid uint64
-	status int32
-
-	handler   *ExtentHandler   // current open handler
-	dirtylist *ExtentDirtyList // dirty handlers
-	dirty     bool             // whether current open handler is in the dirty list
-
-	request chan interface{} // request channel, write/flush/close
-	done    chan struct{}    // stream writer is being closed
+type EvictRequest struct {
+	err  error
+	done chan struct{}
 }
 
-func NewStreamWriter(stream *Streamer, inode, authid uint64) *StreamWriter {
-	sw := new(StreamWriter)
-	sw.stream = stream
-	sw.inode = inode
-	sw.authid = authid
-	sw.request = make(chan interface{}, 1000)
-	sw.done = make(chan struct{})
-	sw.dirtylist = NewExtentDirtyList()
-	go sw.server()
-	return sw
+func (s *Streamer) IssueOpenRequest(flag uint32) error {
+	request := openRequestPool.Get().(*OpenRequest)
+	request.done = make(chan struct{}, 1)
+	request.flag = flag
+	s.request <- request
+	<-request.done
+	err := request.err
+	openRequestPool.Put(request)
+	return err
 }
 
-func (sw *StreamWriter) IssueWriteRequest(offset int, data []byte) (write int, err error) {
-	if sw.authid == 0 {
-		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: not authorized, ino(%v)", sw.inode))
+func (s *Streamer) IssueWriteRequest(offset int, data []byte) (write int, err error) {
+	if s.authid == 0 {
+		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: not authorized, ino(%v)", s.inode))
 	}
 
-	if atomic.LoadInt32(&sw.status) >= StreamWriterError {
-		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", sw.inode))
+	if atomic.LoadInt32(&s.status) >= StreamerError {
+		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", s.inode))
 	}
 
 	request := writeRequestPool.Get().(*WriteRequest)
@@ -105,7 +102,7 @@ func (sw *StreamWriter) IssueWriteRequest(offset int, data []byte) (write int, e
 	request.fileOffset = offset
 	request.size = len(data)
 	request.done = make(chan struct{}, 1)
-	sw.request <- request
+	s.request <- request
 	<-request.done
 	err = request.err
 	write = request.writeBytes
@@ -113,112 +110,127 @@ func (sw *StreamWriter) IssueWriteRequest(offset int, data []byte) (write int, e
 	return
 }
 
-func (sw *StreamWriter) IssueFlushRequest() error {
+func (s *Streamer) IssueFlushRequest() error {
 	request := flushRequestPool.Get().(*FlushRequest)
 	request.done = make(chan struct{}, 1)
-	sw.request <- request
+	s.request <- request
 	<-request.done
 	err := request.err
 	flushRequestPool.Put(request)
 	return err
 }
 
-func (sw *StreamWriter) IssueCloseRequest() error {
-	request := closeRequestPool.Get().(*CloseRequest)
+func (s *Streamer) IssueReleaseRequest(flag uint32) error {
+	request := releaseRequestPool.Get().(*ReleaseRequest)
 	request.done = make(chan struct{}, 1)
-	sw.request <- request
+	request.flag = flag
+	s.request <- request
 	<-request.done
 	err := request.err
-	closeRequestPool.Put(request)
-	sw.done <- struct{}{}
+	releaseRequestPool.Put(request)
+	//s.done <- struct{}{}
 	return err
 }
 
-func (sw *StreamWriter) IssueTruncRequest(size int) error {
-	if sw.authid == 0 {
-		return errors.New(fmt.Sprintf("IssueTruncRequest: not authorized, ino(%v)", sw.inode))
+func (s *Streamer) IssueTruncRequest(size int) error {
+	if s.authid == 0 {
+		return errors.New(fmt.Sprintf("IssueTruncRequest: not authorized, ino(%v)", s.inode))
 	}
 
 	request := truncRequestPool.Get().(*TruncRequest)
 	request.size = size
 	request.done = make(chan struct{}, 1)
-	sw.request <- request
+	s.request <- request
 	<-request.done
 	err := request.err
 	truncRequestPool.Put(request)
 	return err
 }
 
-func (sw *StreamWriter) server() {
+func (s *Streamer) IssueEvictRequest() error {
+	request := evictRequestPool.Get().(*EvictRequest)
+	request.done = make(chan struct{}, 1)
+	s.request <- request
+	<-request.done
+	err := request.err
+	evictRequestPool.Put(request)
+	return err
+}
+
+func (s *Streamer) server() {
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
 
 	for {
 		select {
-		case request := <-sw.request:
-			sw.handleRequest(request)
-		case <-sw.done:
-			sw.close()
+		case request := <-s.request:
+			s.handleRequest(request)
+		case <-s.done:
+			s.abort()
+			log.LogDebugf("done server: ino(%v)", s.inode)
 			return
 		case <-t.C:
-			sw.traverse()
+			s.traverse()
 		}
 	}
 }
 
-func (sw *StreamWriter) handleRequest(request interface{}) (err error) {
+func (s *Streamer) handleRequest(request interface{}) {
 	switch request := request.(type) {
+	case *OpenRequest:
+		log.LogDebugf("received an open request: ino(%v) flag(%v)", s.inode, request.flag)
+		request.err = s.open(request.flag)
+		log.LogDebugf("open returned: ino(%v) flag(%v)", s.inode, request.flag)
+		request.done <- struct{}{}
 	case *WriteRequest:
-		request.writeBytes, request.err = sw.write(request.data, request.fileOffset, request.size)
+		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size)
 		request.done <- struct{}{}
-		err = request.err
 	case *TruncRequest:
-		request.err = sw.truncate(request.size)
+		request.err = s.truncate(request.size)
 		request.done <- struct{}{}
-		err = request.err
 	case *FlushRequest:
-		request.err = sw.flush()
+		request.err = s.flush()
 		request.done <- struct{}{}
-		err = request.err
-	case *CloseRequest:
-		request.err = sw.close()
+	case *ReleaseRequest:
+		request.err = s.release(request.flag)
 		request.done <- struct{}{}
-		err = request.err
+	case *EvictRequest:
+		request.err = s.evict()
+		request.done <- struct{}{}
 	default:
 	}
-	return
 }
 
-func (sw *StreamWriter) write(data []byte, offset, size int) (total int, err error) {
-	log.LogDebugf("StreamWriter write enter: ino(%v) offset(%v) size(%v)", sw.inode, offset, size)
+func (s *Streamer) write(data []byte, offset, size int) (total int, err error) {
+	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
 
-	requests := sw.stream.extents.PrepareWriteRequest(offset, size, data)
-	log.LogDebugf("StreamWriter write: ino(%v) prepared requests(%v)", sw.inode, requests)
+	requests := s.extents.PrepareWriteRequest(offset, size, data)
+	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
 	for _, req := range requests {
 		var writeSize int
 		if req.ExtentKey != nil {
-			writeSize, err = sw.doOverwrite(req)
+			writeSize, err = s.doOverwrite(req)
 		} else {
-			writeSize, err = sw.doWrite(req.Data, req.FileOffset, req.Size)
+			writeSize, err = s.doWrite(req.Data, req.FileOffset, req.Size)
 		}
 		if err != nil {
-			log.LogErrorf("StreamWriter write: ino(%v) err(%v)", sw.inode, err)
+			log.LogErrorf("Streamer write: ino(%v) err(%v)", s.inode, err)
 			break
 		}
 		total += writeSize
 	}
-	if filesize, _ := sw.stream.extents.Size(); offset+total > filesize {
-		sw.stream.extents.SetSize(uint64(offset + total))
-		log.LogDebugf("StreamWriter write: ino(%v) filesize changed to (%v)", sw.inode, offset+total)
+	if filesize, _ := s.extents.Size(); offset+total > filesize {
+		s.extents.SetSize(uint64(offset + total))
+		log.LogDebugf("Streamer write: ino(%v) filesize changed to (%v)", s.inode, offset+total)
 	}
-	log.LogDebugf("StreamWriter write exit: ino(%v) offset(%v) size(%v) done total(%v) err(%v)", sw.inode, offset, size, total, err)
+	log.LogDebugf("Streamer write exit: ino(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, offset, size, total, err)
 	return
 }
 
-func (sw *StreamWriter) doOverwrite(req *ExtentRequest) (total int, err error) {
+func (s *Streamer) doOverwrite(req *ExtentRequest) (total int, err error) {
 	var dp *wrapper.DataPartition
 
-	err = sw.flush()
+	err = s.flush()
 	if err != nil {
 		return
 	}
@@ -230,21 +242,21 @@ func (sw *StreamWriter) doOverwrite(req *ExtentRequest) (total int, err error) {
 
 	// extent key should be updated, since during prepare requests,
 	// the extent key obtained might be a local key which is not accurate.
-	req.ExtentKey = sw.stream.extents.Get(uint64(offset))
+	req.ExtentKey = s.extents.Get(uint64(offset))
 	if req.ExtentKey == nil {
-		err = errors.New(fmt.Sprintf("doOverwrite: extent key not exist, ino(%v) ekFileOffset(%v) ek(%v)", sw.inode, ekFileOffset, req.ExtentKey))
+		err = errors.New(fmt.Sprintf("doOverwrite: extent key not exist, ino(%v) ekFileOffset(%v) ek(%v)", s.inode, ekFileOffset, req.ExtentKey))
 		return
 	}
 
 	if dp, err = gDataWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
-		errors.Annotatef(err, "doOverwrite: ino(%v) failed to get datapartition, ek(%v)", sw.inode, req.ExtentKey)
+		errors.Annotatef(err, "doOverwrite: ino(%v) failed to get datapartition, ek(%v)", s.inode, req.ExtentKey)
 		return
 	}
 
 	sc := NewStreamConn(dp)
 
 	for total < size {
-		reqPacket := NewOverwritePacket(dp, req.ExtentKey.ExtentId, offset-ekFileOffset+total+ekExtOffset, sw.inode, offset)
+		reqPacket := NewOverwritePacket(dp, req.ExtentKey.ExtentId, offset-ekFileOffset+total+ekExtOffset, s.inode, offset)
 		packSize := util.Min(size-total, util.BlockSize)
 		copy(reqPacket.Data[:packSize], req.Data[total:total+packSize])
 		reqPacket.Size = uint32(packSize)
@@ -254,7 +266,7 @@ func (sw *StreamWriter) doOverwrite(req *ExtentRequest) (total int, err error) {
 		err = sc.Send(reqPacket, func(conn *net.TCPConn) (error, bool) {
 			e := replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime)
 			if e != nil {
-				return errors.Annotatef(e, "Stream Writer doOverwrite: ino(%v) failed to read from connect", sw.inode), false
+				return errors.Annotatef(e, "Stream Writer doOverwrite: ino(%v) failed to read from connect", s.inode), false
 			}
 
 			if replyPacket.ResultCode == proto.OpAgain {
@@ -268,15 +280,15 @@ func (sw *StreamWriter) doOverwrite(req *ExtentRequest) (total int, err error) {
 		})
 
 		proto.Buffers.Put(reqPacket.Data)
-		log.LogDebugf("doOverwrite: ino(%v) req(%v) reqPacket(%v) err(%v) replyPacket(%v)", sw.inode, req, reqPacket, err, replyPacket)
+		log.LogDebugf("doOverwrite: ino(%v) req(%v) reqPacket(%v) err(%v) replyPacket(%v)", s.inode, req, reqPacket, err, replyPacket)
 
 		if err != nil || replyPacket.ResultCode != proto.OpOk {
-			err = errors.New(fmt.Sprintf("doOverwrite: failed or reply NOK: err(%v) ino(%v) req(%v) replyPacket(%v)", err, sw.inode, req, replyPacket))
+			err = errors.New(fmt.Sprintf("doOverwrite: failed or reply NOK: err(%v) ino(%v) req(%v) replyPacket(%v)", err, s.inode, req, replyPacket))
 			break
 		}
 
 		if !reqPacket.isValidWriteReply(replyPacket) || reqPacket.CRC != replyPacket.CRC {
-			err = errors.New(fmt.Sprintf("doOverwrite: is not the corresponding reply, ino(%v) req(%v) replyPacket(%v)", sw.inode, req, replyPacket))
+			err = errors.New(fmt.Sprintf("doOverwrite: is not the corresponding reply, ino(%v) req(%v) replyPacket(%v)", s.inode, req, replyPacket))
 			break
 		}
 
@@ -286,89 +298,89 @@ func (sw *StreamWriter) doOverwrite(req *ExtentRequest) (total int, err error) {
 	return
 }
 
-func (sw *StreamWriter) doWrite(data []byte, offset, size int) (total int, err error) {
+func (s *Streamer) doWrite(data []byte, offset, size int) (total int, err error) {
 	var (
 		ek        *proto.ExtentKey
 		storeMode int
 	)
 
-	if offset+size > sw.tinySizeLimit() {
+	if offset+size > s.tinySizeLimit() {
 		storeMode = proto.NormalExtentType
 	} else {
 		storeMode = proto.TinyExtentType
 	}
 
-	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", sw.inode, offset, size, storeMode)
+	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
 
 	for i := 0; i < MaxNewHandlerRetry; i++ {
-		if sw.handler == nil {
-			sw.handler = NewExtentHandler(sw, offset, storeMode)
-			sw.dirty = false
+		if s.handler == nil {
+			s.handler = NewExtentHandler(s, offset, storeMode)
+			s.dirty = false
 		}
 
-		ek, err = sw.handler.write(data, offset, size)
+		ek, err = s.handler.write(data, offset, size)
 		if err == nil && ek != nil {
-			if !sw.dirty {
-				sw.dirtylist.Put(sw.handler)
-				sw.dirty = true
+			if !s.dirty {
+				s.dirtylist.Put(s.handler)
+				s.dirty = true
 			}
 			break
 		}
 
-		sw.closeOpenHandler()
+		s.closeOpenHandler()
 	}
 
 	if err != nil || ek == nil {
-		log.LogErrorf("doWrite error: ino(%v) offset(%v) size(%v) err(%v) ek(%v)", sw.inode, offset, size, err, ek)
+		log.LogErrorf("doWrite error: ino(%v) offset(%v) size(%v) err(%v) ek(%v)", s.inode, offset, size, err, ek)
 		return
 	}
 
-	sw.stream.extents.Append(ek, false)
+	s.extents.Append(ek, false)
 	total = size
 
-	log.LogDebugf("doWrite exit: ino(%v) offset(%v) size(%v) ek(%v)", sw.inode, offset, size, ek)
+	log.LogDebugf("doWrite exit: ino(%v) offset(%v) size(%v) ek(%v)", s.inode, offset, size, ek)
 	return
 }
 
-func (sw *StreamWriter) flush() (err error) {
+func (s *Streamer) flush() (err error) {
 	for {
-		element := sw.dirtylist.Get()
+		element := s.dirtylist.Get()
 		if element == nil {
 			break
 		}
 		eh := element.Value.(*ExtentHandler)
 
-		log.LogDebugf("StreamWriter flush begin: eh(%v)", eh)
+		log.LogDebugf("Streamer flush begin: eh(%v)", eh)
 		err = eh.flush()
 		if err != nil {
-			log.LogErrorf("StreamWriter flush failed: eh(%v)", eh)
+			log.LogErrorf("Streamer flush failed: eh(%v)", eh)
 			return
 		}
-		eh.sw.dirtylist.Remove(element)
+		eh.stream.dirtylist.Remove(element)
 		if eh.getStatus() == ExtentStatusOpen {
-			sw.dirty = false
-			log.LogDebugf("StreamWriter flush handler open: eh(%v)", eh)
+			s.dirty = false
+			log.LogDebugf("Streamer flush handler open: eh(%v)", eh)
 		} else {
 			eh.cleanup()
-			log.LogDebugf("StreamWriter flush handler cleaned up: eh(%v)", eh)
+			log.LogDebugf("Streamer flush handler cleaned up: eh(%v)", eh)
 		}
-		log.LogDebugf("StreamWriter flush end: eh(%v)", eh)
+		log.LogDebugf("Streamer flush end: eh(%v)", eh)
 	}
 	return
 }
 
-func (sw *StreamWriter) traverse() (err error) {
+func (s *Streamer) traverse() (err error) {
 	//var closed bool
 
-	len := sw.dirtylist.Len()
+	len := s.dirtylist.Len()
 	for i := 0; i < len; i++ {
-		element := sw.dirtylist.Get()
+		element := s.dirtylist.Get()
 		if element == nil {
 			break
 		}
 		eh := element.Value.(*ExtentHandler)
 
-		log.LogDebugf("StreamWriter traverse begin: eh(%v)", eh)
+		log.LogDebugf("Streamer traverse begin: eh(%v)", eh)
 		if eh.getStatus() >= ExtentStatusClosed {
 			// handler is beyond closed status, but there can still be
 			// unflushed packet.
@@ -380,61 +392,100 @@ func (sw *StreamWriter) traverse() (err error) {
 			if err != nil {
 				return
 			}
-			sw.dirtylist.Remove(element)
+			s.dirtylist.Remove(element)
 			eh.cleanup()
 		}
-		log.LogDebugf("StreamWriter traverse end: eh(%v)", eh)
+		log.LogDebugf("Streamer traverse end: eh(%v)", eh)
 	}
 	return
 }
 
-func (sw *StreamWriter) closeOpenHandler() {
-	if sw.handler != nil {
-		sw.handler.setClosed()
-		if sw.dirtylist.Len() < MaxDirtyListLen {
-			sw.handler.flushPacket()
+func (s *Streamer) closeOpenHandler() {
+	if s.handler != nil {
+		s.handler.setClosed()
+		if s.dirtylist.Len() < MaxDirtyListLen {
+			s.handler.flushPacket()
 		} else {
-			sw.handler.flush()
+			s.handler.flush()
 		}
 
-		if !sw.dirty {
+		if !s.dirty {
 			// in case current handler is not in the dirty list,
 			// and will not get cleaned up.
-			sw.handler.cleanup()
+			s.handler.cleanup()
 		}
-		sw.handler = nil
+		s.handler = nil
 	}
 }
 
-func (sw *StreamWriter) close() (err error) {
-	sw.closeOpenHandler()
-	err = sw.flush()
+func (s *Streamer) open(flag uint32) error {
+	s.refcnt++
+	if !proto.IsWriteFlag(flag) {
+		return nil
+	}
+
+	if s.authid == 0 {
+		authid, err := s.client.open(s.inode, flag)
+		if err != nil || authid == 0 {
+			return errors.New(fmt.Sprintf("open failed: streamer(%v) flag(%v)", s, flag))
+		}
+		s.authid = authid
+	}
+
+	s.openWriteCnt++
+	log.LogDebugf("open: streamer(%v) openWriteCnt(%v) authid(%v)", s, s.openWriteCnt, s.authid)
+	return nil
+}
+
+func (s *Streamer) release(flag uint32) error {
+	s.refcnt--
+	if !proto.IsWriteFlag(flag) {
+		return nil
+	}
+
+	s.closeOpenHandler()
+	err := s.flush()
 	if err != nil {
-		sw.abort()
+		s.abort()
 	}
-	return
+
+	s.openWriteCnt--
+	authid := s.authid
+	if s.openWriteCnt <= 0 {
+		s.client.release(s.inode, authid)
+		s.authid = 0
+	}
+	log.LogDebugf("release: streamer(%v) openWriteCnt(%v) authid(%v)", s, s.openWriteCnt, authid)
+	return err
 }
 
-func (sw *StreamWriter) abort() {
+func (s *Streamer) evict() error {
+	if s.refcnt > 0 {
+		return errors.New(fmt.Sprintf("evict: streamer(%v) refcnt(%v) openWriteCnt(%v) authid(%v)", s, s.refcnt, s.openWriteCnt, s.authid))
+	}
+	return nil
+}
+
+func (s *Streamer) abort() {
 	for {
-		element := sw.dirtylist.Get()
+		element := s.dirtylist.Get()
 		if element == nil {
 			break
 		}
 		eh := element.Value.(*ExtentHandler)
-		sw.dirtylist.Remove(element)
+		s.dirtylist.Remove(element)
 		eh.cleanup()
 	}
 }
 
-func (sw *StreamWriter) truncate(size int) error {
-	sw.closeOpenHandler()
-	if err := sw.flush(); err != nil {
+func (s *Streamer) truncate(size int) error {
+	s.closeOpenHandler()
+	if err := s.flush(); err != nil {
 		return err
 	}
-	return sw.stream.client.truncate(sw.inode, sw.authid, uint64(size))
+	return s.client.truncate(s.inode, s.authid, uint64(size))
 }
 
-func (sw *StreamWriter) tinySizeLimit() int {
+func (s *Streamer) tinySizeLimit() int {
 	return util.DefaultTinySizeLimit
 }

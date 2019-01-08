@@ -3,7 +3,14 @@ site_name: Container File System
 nav:
 - Overview: 'overview.md'
 - User Guide: 'user-guide.md'
-- Admin API: 'admin-api.md'
+- Admin API:
+    - 'cluster': 'admin-api/cluster.md'
+    - 'metanode': 'admin-api/metanode.md'
+    - 'datanode': 'admin-api/datanode.md'
+    - 'vol': 'admin-api/vol.md'
+    - 'metapartition': 'admin-api/metapartition.md'
+    - 'datapartition': 'admin-api/datapartition.md'
+    - 'master-manage': 'admin-api/master-manage.md'
 - Design: 'design.md'
 - Performance: 'performance.md'
 - Evaluation: 'evaluation.md'
