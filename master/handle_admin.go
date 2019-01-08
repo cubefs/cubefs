@@ -14,9 +14,7 @@
 
 package master
 
-
-/* TODO is handle_admin.go a good name ?  放到HTTP SERVER 也行， handle api service*/
-/* TODO double check the messages */
+/* TODO rename handle_admin.go */
 
 import (
 	"encoding/json"
@@ -38,7 +36,7 @@ type ClusterView struct {
 	LeaderAddr         string
 	CompactStatus      bool
 	DisableAutoAlloc   bool
-	Applied            uint64  // TODO what is Applied?
+	Applied            uint64
 	MaxDataPartitionID uint64
 	MaxMetaNodeID      uint64
 	MaxMetaPartitionID uint64
@@ -77,7 +75,6 @@ type badPartitionView struct {
 	PartitionIDs []uint64
 }
 
-// TODO explain "该阈值并不会被持久化且同步到其它master节点" 禁止自动扩容这个属性不持久化， 只对当前进程有效， 这个本来就是一个临时的， 升级或者网络设置的时候使用
 // Set the threshold of the memory usage on each meta node.
 // If the memory usage reaches this threshold, them all the mata partition will be marked as readOnly.
 func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
@@ -227,9 +224,6 @@ errHandler:
 	return
 }
 
-
-// TODO see the following example of several layers of wrappers. good or bad?
-// TODO explain how the meta partition is created here
 func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName string
@@ -242,8 +236,7 @@ func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 		goto errHandler
 	}
 
-	// TODO explain
-	if err = m.cluster.updateUpperBoundOfInodeIds(volName, start); err != nil {
+	if err = m.cluster.updateInodeIdRange(volName, start); err != nil {
 		goto errHandler
 	}
 	m.sendOkReply(w, r, fmt.Sprint("create meta partition successfully"))
@@ -732,7 +725,7 @@ func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {
 	if metaNode, err = m.cluster.metaNode(offLineAddr); err != nil {
 		goto errHandler
 	}
-	m.cluster.metaNodeOffLine(metaNode)
+	m.cluster.decommissionMetaNode(metaNode)
 	rstMsg = fmt.Sprintf("decommissionMetaNode metaNode [%v] has offline successfully", offLineAddr)
 	m.sendOkReply(w, r, rstMsg)
 	return
@@ -1092,8 +1085,8 @@ func validateRequestToCreateMetaPartition(r *http.Request) (volName string, star
 	}
 
 	var value string
-	if value = r.FormValue(startkey); value == "" {
-		err = keyNotFound(startkey)
+	if value = r.FormValue(startKey); value == "" {
+		err = keyNotFound(startKey)
 		return
 	}
 	start, err = strconv.ParseUint(value, 10, 64)

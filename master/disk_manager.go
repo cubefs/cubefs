@@ -54,7 +54,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			}
 			used := partition.Replicas[0].Used
 			for _, replica := range partition.Replicas {
-				// TODO same problem here
+				// TODO use math.Max
 				if math.Abs(float64(replica.Used)-float64(used)) > diff {
 					diff = math.Abs(float64(replica.Used) - float64(used))
 				}
@@ -88,7 +88,7 @@ func (c *Cluster) decommissionDisk(dataNode *DataNode, badDiskPath string, badPa
 		for _, dp := range vol.dataPartitions.partitions {
 			for _, bad := range badPartitionIds {
 				if bad == dp.PartitionID {
-					if err = c.decommissionDataPartition(dataNode.Addr, vol.Name, dp, diskOfflineInfo); err != nil {
+					if err = c.decommissionDataPartition(dataNode.Addr, vol.Name, dp, diskOfflineErr); err != nil {
 						return
 					}
 				}

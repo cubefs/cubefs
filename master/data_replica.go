@@ -19,23 +19,20 @@ import (
 	"time"
 )
 
-/* TODO rename the file as data_partition_replica.go? */
-
 // DataReplica represents the replica of a data partition
-// TODO rename to DataPartitionReplica?
 type DataReplica struct {
-	Addr                    string
-	dataNode                *DataNode
-	ReportTime              int64
-	FileCount               uint32
-	loc                     uint8
-	Status                  int8
-	LoadPartitionIsResponse bool // TODO what is LoadPartitionIsResponse? loaddp 有没有响应结果
-	Total                   uint64 `json:"TotalSize"`
-	Used                    uint64 `json:"UsedSize"`
-	IsLeader                bool
-	NeedsToCompare          bool
-	DiskPath                string
+	Addr            string
+	dataNode        *DataNode
+	ReportTime      int64
+	FileCount       uint32
+	loc             uint8
+	Status          int8
+	HasLoadResponse bool // if there is any response when loading
+	Total           uint64 `json:"TotalSize"`
+	Used            uint64 `json:"UsedSize"`
+	IsLeader        bool
+	NeedsToCompare  bool
+	DiskPath        string
 }
 
 func newDataReplica(dataNode *DataNode) (replica *DataReplica) {
@@ -50,17 +47,17 @@ func (replica *DataReplica) setAlive() {
 	replica.ReportTime = time.Now().Unix()
 }
 
-func (replica *DataReplica) isMissing(missSec int64) (isMissing bool) {
-	if time.Now().Unix()-replica.ReportTime > missSec {
+func (replica *DataReplica) isMissing(interval int64) (isMissing bool) {
+	if time.Now().Unix() - replica.ReportTime > interval {
 		isMissing = true
 	}
 	return
 }
 
-func (replica *DataReplica) isLive(timeOutSec int64) (avail bool) {
+func (replica *DataReplica) isLive(timeOutSec int64) (isAvailable bool) {
 	if replica.dataNode.isActive == true && replica.Status != proto.Unavaliable &&
 		replica.isActive(timeOutSec) == true {
-		avail = true
+		isAvailable = true
 	}
 
 	return
@@ -75,12 +72,12 @@ func (replica *DataReplica) getReplicaNode() (node *DataNode) {
 }
 
 // check if the replica's location is available
-func (replica *DataReplica) isLocationAvailable() (avail bool) {
+func (replica *DataReplica) isLocationAvailable() (isAvailable bool) {
 	dataNode := replica.getReplicaNode()
 	dataNode.Lock()
 	defer dataNode.Unlock()
 	if dataNode.isActive == true && replica.isActive(defaultDataPartitionTimeOutSec) == true {
-		avail = true
+		isAvailable = true
 	}
 
 	return

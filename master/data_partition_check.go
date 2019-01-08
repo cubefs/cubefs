@@ -67,12 +67,12 @@ func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
 	}
 }
 
-// TODO rename and explain 检测这个dp有没有丢失的副本
-func (partition *DataPartition) checkMiss(clusterID string, dataPartitionMissSec, dataPartitionWarnInterval int64) {
+// Check if there is any missing replica for a data partition.
+func (partition *DataPartition) checkMissingReplicas(clusterID string, dataPartitionMissSec, dataPartitionWarnInterval int64) {
 	partition.Lock()
 	defer partition.Unlock()
 	for _, replica := range partition.Replicas {
-		if partition.hasHost(replica.Addr) && replica.isMissing(dataPartitionMissSec) == true && partition.needWarnMissDataPartition(replica.Addr, dataPartitionWarnInterval) {
+		if partition.hasHost(replica.Addr) && replica.isMissing(dataPartitionMissSec) == true && partition.needToAlarmMissingDataPartition(replica.Addr, dataPartitionWarnInterval) {
 			dataNode := replica.getReplicaNode()
 			var (
 				lastReportTime time.Time
@@ -90,7 +90,7 @@ func (partition *DataPartition) checkMiss(clusterID string, dataPartitionMissSec
 	}
 
 	for _, addr := range partition.Hosts {
-		if partition.hasMissingDataPartition(addr) == true && partition.needWarnMissDataPartition(addr, dataPartitionWarnInterval) {
+		if partition.hasMissingDataPartition(addr) == true && partition.needToAlarmMissingDataPartition(addr, dataPartitionWarnInterval) {
 			msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] partitionID:%v  on Node:%v  "+
 				"miss time  > :%v  but server not exsit So Migrate", clusterID, partition.PartitionID, addr, dataPartitionMissSec)
 			Warn(clusterID, msg)
@@ -98,15 +98,14 @@ func (partition *DataPartition) checkMiss(clusterID string, dataPartitionMissSec
 	}
 }
 
-// TODO rename 需不需要报警
-func (partition *DataPartition) needWarnMissDataPartition(addr string, dataPartitionWarnInterval int64) (isWarn bool) {
-	warnTime, ok := partition.MissingNodes[addr]
+func (partition *DataPartition) needToAlarmMissingDataPartition(addr string, interval int64) (shouldAlarm bool) {
+	t, ok := partition.MissingNodes[addr]
 	if !ok {
 		partition.MissingNodes[addr] = time.Now().Unix()
-		isWarn = true
+		shouldAlarm = true
 	} else {
-		if time.Now().Unix()-warnTime > dataPartitionWarnInterval {
-			isWarn = true
+		if time.Now().Unix() - t > interval {
+			shouldAlarm = true
 			partition.MissingNodes[addr] = time.Now().Unix()
 		}
 	}
@@ -114,11 +113,11 @@ func (partition *DataPartition) needWarnMissDataPartition(addr string, dataParti
 	return
 }
 
-func (partition *DataPartition) hasMissingDataPartition(addr string) (isMiss bool) {
+func (partition *DataPartition) hasMissingDataPartition(addr string) (isMissing bool) {
 	_, ok := partition.hasReplica(addr)
 
 	if ok == false {
-		isMiss = true
+		isMissing = true
 	}
 
 	return
@@ -151,8 +150,7 @@ func (partition *DataPartition) checkDiskError(clusterID string) (diskErrorAddrs
 	return
 }
 
-// TODO randomWrite has never been used 可以删除
-func (partition *DataPartition) checkReplicationTask(clusterID string, randomWrite bool, dataPartitionSize uint64) (tasks []*proto.AdminTask) {
+func (partition *DataPartition) checkReplicationTask(clusterID string, dataPartitionSize uint64) (tasks []*proto.AdminTask) {
 	var msg string
 	tasks = make([]*proto.AdminTask, 0)
 	if excessAddr, task, excessErr := partition.deleteIllegalReplica(); excessErr != nil {

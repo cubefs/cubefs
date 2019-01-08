@@ -203,13 +203,11 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// TODO is this wrapper necessary?
 func newLogMsg(requestType, remoteAddr, message string, code int) (logMsg string) {
 	logMsg = fmt.Sprintf("type[%s] From [%s] httpCode[%d] Because [%s] ", requestType, remoteAddr, code, message)
 	return
 }
 
-// TODO is this wrapper necessary?
 func HandleError(message string, err error, code int, w http.ResponseWriter) {
 	log.LogErrorf("errMsg:%v errStack:%v", message, errors.ErrorStack(err))
 	http.Error(w, message, code)

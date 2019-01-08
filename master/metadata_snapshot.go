@@ -40,7 +40,7 @@ func (ms *MetadataSnapshot) Close() {
 
 // Next implements the Snapshot interface
 func (ms *MetadataSnapshot) Next() (data []byte, err error) {
-	md := new(RaftCmdData)
+	md := new(RaftCmd)
 	if ms.iterator.Valid() {
 		key := ms.iterator.Key()
 		md.K = string(key.Data())

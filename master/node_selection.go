@@ -12,8 +12,6 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-/* TODO change the file name to node_selector.go */
-
 package master
 
 import (
@@ -53,7 +51,7 @@ func (nodes SortedWeightedNodes) Swap(i, j int) {
 	nodes[i], nodes[j] = nodes[j], nodes[i]
 }
 
-func (nodes SortedWeightedNodes) setNodeTabCarry(availCarryCount, replicaNum int) {
+func (nodes SortedWeightedNodes) setNodeCarry(availCarryCount, replicaNum int) {
 	if availCarryCount >= replicaNum {
 		return
 	}
@@ -93,18 +91,18 @@ func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) 
 	}
 
 	maxTotal := ns.getMetaNodeMaxTotal()
-	nodeTabs, availCarryCount := ns.getAvailCarryMetaNode(maxTotal, excludeHosts)
-	if len(nodeTabs) < replicaNum {
+	nodes, count := ns.getAllCarryNodes(maxTotal, excludeHosts)
+	if len(nodes) < replicaNum {
 		err = fmt.Errorf(getAvailMetaNodeHostsErr+" err:%v ,ActiveNodeCount:%v  MatchNodeCount:%v  ",
-			noMetaNodeToWriteErr, ns.metaNodeLen, len(nodeTabs))
+			noMetaNodeToWriteErr, ns.metaNodeLen, len(nodes))
 		return
 	}
 
-	nodeTabs.setNodeTabCarry(availCarryCount, replicaNum)
-	sort.Sort(nodeTabs)
+	nodes.setNodeCarry(count, replicaNum)
+	sort.Sort(nodes)
 
 	for i := 0; i < replicaNum; i++ {
-		node := nodeTabs[i].Ptr.(*MetaNode)
+		node := nodes[i].Ptr.(*MetaNode)
 		node.SelectNodeForWrite()
 		orderHosts = append(orderHosts, node.Addr)
 		peer := proto.Peer{ID: node.ID, Addr: node.Addr}
@@ -118,18 +116,17 @@ func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) 
 	return
 }
 
-// TODO find a better name for getAvailCarryMetaNode
-func (ns *nodeSet) getAvailCarryMetaNode(maxTotal uint64, excludeHosts []string) (nodes SortedWeightedNodes, availCount int) {
+func (ns *nodeSet) getAllCarryNodes(maxTotal uint64, excludeHosts []string) (nodes SortedWeightedNodes, availCount int) {
 	nodes = make(SortedWeightedNodes, 0)
 	ns.metaNodes.Range(func(key, value interface{}) bool {
 		metaNode := value.(*MetaNode)
 		if contains(excludeHosts, metaNode.Addr) == true {
 			return true
 		}
-		if metaNode.isWriteAble() == false {
+		if metaNode.isWritable() == false {
 			return true
 		}
-		if metaNode.isAvailCarryNode() == true {
+		if metaNode.isCarryNode() == true {
 			availCount++
 		}
 		nt := new(WeightedNode)

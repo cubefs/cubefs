@@ -33,7 +33,7 @@ type raftLeaderChangeHandler func(leader uint64)
 
 type raftPeerChangeHandler func(confChange *proto.ConfChange) (err error)
 
-type raftCmdApplyHandler func(cmd *RaftCmdData) (err error)
+type raftCmdApplyHandler func(cmd *RaftCmd) (err error)
 
 type raftApplySnapshotHandler func()
 
@@ -53,18 +53,22 @@ func newMetadataFsm(store *raftstore.RocksDBStore) (fsm *MetadataFsm) {
 	return
 }
 
+// Corresponding to the LeaderChange interface in Raft library.
 func (mf *MetadataFsm) registerLeaderChangeHandler(handler raftLeaderChangeHandler) {
 	mf.leaderChangeHandler = handler
 }
 
+// Corresponding to the PeerChange interface in Raft library.
 func (mf *MetadataFsm) registerPeerChangeHandler(handler raftPeerChangeHandler) {
 	mf.peerChangeHandler = handler
 }
 
+// Corresponding to the Apply interface in Raft library.
 func (mf *MetadataFsm) registerApplyHandler(handler raftCmdApplyHandler) {
 	mf.applyHandler = handler
 }
 
+// Corresponding to the ApplySnapshot interface in Raft library.
 func (mf *MetadataFsm) registerApplySnapshotHandler(handler raftApplySnapshotHandler) {
 	mf.snapshotHandler = handler
 }
@@ -93,7 +97,7 @@ func (mf *MetadataFsm) restoreApplied() {
 
 // Apply implements the interface of raft.StateMachine
 func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, err error) {
-	cmd := new(RaftCmdData)
+	cmd := new(RaftCmd)
 	if err = cmd.Unmarshal(command); err != nil {
 		log.LogErrorf("action[fsmApply],unmarshal data:%v, err:%v", command, err.Error())
 		panic(err)
@@ -149,7 +153,7 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 		if data, err = iterator.Next(); err != nil {
 			break
 		}
-		cmd := &RaftCmdData{}
+		cmd := &RaftCmd{}
 		if err = json.Unmarshal(data, cmd); err != nil {
 			goto errHandler
 		}

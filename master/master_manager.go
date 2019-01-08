@@ -65,7 +65,7 @@ func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
 	return
 }
 
-func (m *Server) handleApply(cmd *RaftCmdData) (err error) {
+func (m *Server) handleApply(cmd *RaftCmd) (err error) {
 	return m.cluster.handleApply(cmd)
 }
 

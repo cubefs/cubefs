@@ -26,7 +26,7 @@ import (
 type Vol struct {
 	ID                uint64
 	Name              string
-	RandomWrite       bool   // TODO seems never being used
+	IsRandomWrite     bool
 	dpReplicaNum      uint8
 	mpReplicaNum      uint8
 	Status            uint8
@@ -41,7 +41,7 @@ type Vol struct {
 
 func newVol(id uint64, name string, replicaNum uint8, randomWrite bool, dpSize, capacity uint64) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
-	vol.RandomWrite = randomWrite
+	vol.IsRandomWrite = randomWrite
 	vol.dataPartitions = newDataPartitionMap(name)
 	vol.dpReplicaNum = replicaNum
 	vol.threshold = defaultMetaPartitionMemUsageThreshold
@@ -93,9 +93,8 @@ func (vol *Vol) maxPartitionID() (maxPartitionID uint64) {
 	return
 }
 
-// TODO find a better name
 func (vol *Vol) getDataPartitionsView(liveRate float32) (body []byte, err error) {
-	if liveRate < nodesAliveRate {
+	if liveRate < nodesActiveRate {
 		body = make([]byte, 0)
 		return
 	}
@@ -150,13 +149,10 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
 	for _, dp := range vol.dataPartitions.partitionMap {
-
-		// TODO We should restructure the following checks. The logic is a bit mess here.
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
 		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec)
 
-		// TODO what is isMissing?
-		dp.checkMiss(c.Name, c.cfg.DataPartitionMissSec, c.cfg.DataPartitionWarningInterval)
+		dp.checkMissingReplicas(c.Name, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNum(c, vol.Name)
 		if dp.Status == proto.ReadWrite {
 			cnt++
@@ -167,7 +163,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 				c.decommissionDataPartition(addr, vol.Name, dp, checkDataPartitionDiskErr)
 			}
 		}
-		tasks := dp.checkReplicationTask(c.Name, vol.RandomWrite, vol.dataPartitionSize)
+		tasks := dp.checkReplicationTask(c.Name, vol.dataPartitionSize)
 		if len(tasks) != 0 {
 			c.addDataNodeTasks(tasks)
 		}
@@ -176,7 +172,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 }
 
 func (vol *Vol) loadDataPartition(c *Cluster) {
-	partitions, startIndex := vol.dataPartitions.getDataPartitionsToBeChecked(c.cfg.LoadDataPartitionFrequencyTime)
+	partitions, startIndex := vol.dataPartitions.getDataPartitionsToBeChecked(c.cfg.PeriodToLoadALLDataPartitions)
 	if len(partitions) == 0 {
 		return
 	}
@@ -191,8 +187,8 @@ func (vol *Vol) releaseDataPartitions(releaseCount int, afterLoadSeconds int64) 
 	if len(partitions) == 0 {
 		return
 	}
-	vol.dataPartitions.releaseDataPartitions(partitions)
-	msg := fmt.Sprintf("action[releaseDataPartitions] vol[%v] release data partition start:%v releaseCount:%v",
+	vol.dataPartitions.freeMemOccupiedByDataPartitions(partitions)
+	msg := fmt.Sprintf("action[freeMemOccupiedByDataPartitions] vol[%v] release data partition start:%v releaseCount:%v",
 		vol.Name, startIndex, len(partitions))
 	log.LogInfo(msg)
 }
@@ -203,12 +199,12 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	mps := vol.cloneMetaPartitionMap()
 	for _, mp := range mps {
 
-		// TODO similar problem to checkDataPartitions
+		// TODO the following checks should be optimized.
 		mp.checkStatus(true, int(vol.mpReplicaNum))
-		mp.checkReplicaLeader()
+		mp.checkLeader()
 		mp.checkReplicaNum(c, vol.Name, vol.mpReplicaNum)
 		mp.checkEnd(c, maxPartitionID)
-		mp.reportMissingReplicas(c.Name, defaultMetaPartitionTimeOutSec, defaultMetaPartitionWarningInterval)
+		mp.reportMissingReplicas(c.Name, defaultMetaPartitionTimeOutSec, defaultIntervalToAlarmMissingMetaPartition)
 		tasks = append(tasks, mp.replicaCreationTasks(c.Name, vol.Name)...)
 	}
 	c.addMetaNodeTasks(tasks)
@@ -249,7 +245,6 @@ func (vol *Vol) capacity() uint64 {
 }
 
 
-// TODO rename
 func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 	if vol.status() == markDelete {
 		return
@@ -271,7 +266,7 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 
 func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 	if vol.dataPartitions.readableAndWritableCnt < minNumOfRWDataPartitions {
-		count := vol.calculateExpandNum()
+		count := vol.calculateExpansionNum()
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
 		for i := 0; i < count; i++ {
 			c.createDataPartition(vol.Name)
@@ -279,16 +274,16 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 	}
 }
 
-// TODO what is expandNum?
-func (vol *Vol) calculateExpandNum() (count int) {
-	calCount := float64(vol.Capacity) * float64(volExpandDataPartitionStepRatio) * float64(util.GB) / float64(util.DefaultDataPartitionSize)
+// Calculate the expansion number (the number of data partitions to be allocated to the given volume)
+func (vol *Vol) calculateExpansionNum() (count int) {
+	c := float64(vol.Capacity) * float64(volExpansionRatio) * float64(util.GB) / float64(util.DefaultDataPartitionSize)
 	switch {
-	case calCount < minNumOfRWDataPartitions:
+	case c < minNumOfRWDataPartitions:
 		count = minNumOfRWDataPartitions
-	case calCount > volMaxExpandDataPartitionCount:
-		count = volMaxExpandDataPartitionCount
+	case c > maxNumberOfDataPartitionsForExpansion:
+		count = maxNumberOfDataPartitionsForExpansion
 	default:
-		count = int(calCount)
+		count = int(c)
 	}
 	return
 }

@@ -14,7 +14,6 @@
 
 package master
 
-// TODO why not put the following into handle_admin.go?
 // Keys in the request
 const (
 	addrKey              = "addr"
@@ -23,7 +22,7 @@ const (
 	idKey                = "id"
 	countKey             = "count"
 	replicasKey          = "replicas"
-	startkey             = "start"
+	startKey             = "start"
 	enablekey            = "enable"
 	thresholdKey         = "threshold"
 	randomWriteKey       = "randomWrite"
@@ -37,10 +36,11 @@ const (
 	checkDataPartitionDiskErr     = "checkDataPartitionDiskErr  "
 	getAvailDataNodeHostsErr      = "getAvailDataNodeHostsErr "
 	getAvailMetaNodeHostsErr      = "getAvailMetaNodeHostsErr "
-	getDataReplicaFileCountInfo   = "getDataReplicaFileCountInfo "  // TODO rename 副本上文件的个数
-	dataNodeOfflineInfo           = "dataNodeOfflineInfo"
-	diskOfflineInfo               = "diskOfflineInfo"
-	handleDataPartitionOfflineErr = "HandleDataPartitionOffLineErr "
+	dataNodeOfflineErr            = "dataNodeOfflineErr "
+	diskOfflineErr                = "diskOfflineErr "
+	handleDataPartitionOfflineErr = "handleDataPartitionOffLineErr "
+
+	getFileCountOnDataReplica     = "getFileCountOnDataReplica "
 )
 
 const (
@@ -51,22 +51,22 @@ const (
 	defaultInitMetaPartitionCount           = 3
 	defaultMaxMetaPartitionInodeID  uint64  = 1 << 63 - 1
 	defaultMetaPartitionInodeIDStep uint64  = 1 << 24
-	defaultMetaNodeReservedMem      uint64  = 1 << 32
-	runtimeStackBufSize                     = 4096
-	nodesAliveRate                  float32 = 0.5 // TODO explain
-	spaceAvailRate                          = 0.90 // TODO explain
-	defaultNodeSetCapacity                  = 6
-	minNumOfRWDataPartitions                = 10
-	intervalToCheckMissingReplica           = 600
-	defaultVolCapacity                      = 200
-	intervalToLoadDataPartition             = 12 * 60 * 60
-	defaultInitDataPartitionCnt             = 10
-	volExpandDataPartitionStepRatio         = 0.1 // TODO explain  expand -》 扩容
-	volMaxExpandDataPartitionCount          = 100 // TODO explain 每次最多创建多少个
+	defaultMetaNodeReservedMem     uint64  = 1 << 32
+	runtimeStackBufSize                           = 4096
+	nodesActiveRate                       float32 = 0.5  // rate of active (live) nodes
+	spaceAvailableRate                            = 0.90
+	defaultNodeSetCapacity                        = 6
+	minNumOfRWDataPartitions                      = 10
+	intervalToCheckMissingReplica                 = 600
+	defaultVolCapacity                            = 200 // GB
+	intervalToLoadDataPartition                   = 12 * 60 * 60
+	defaultInitDataPartitionCnt                   = 10
+	volExpansionRatio                             = 0.1
+	maxNumberOfDataPartitionsForExpansion         = 100
 )
 
-// TODO We can just use a flag (called "isMarkedToBeDeleted") to indicate if a volume is marked (to be deleted) or not.
-// There is no need to employ normal here.
+// TODO There is no need to employ normal here. We can just use a flag (called "isMarkedToBeDeleted") to indicate if a
+//  volume is marked (to be deleted) or not.
 const (
 	normal     uint8 = 0
 	markDelete uint8 = 1

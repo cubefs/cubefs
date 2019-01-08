@@ -31,7 +31,7 @@ type VolStatInfo struct {
 	UsedSize  uint64
 }
 
-// TODO DataPartitionResponse defines the response to a data partition? dn给master的response
+// DataPartitionResponse defines the response from a data node to the master that is related to a data partition.
 type DataPartitionResponse struct {
 	PartitionID uint64
 	Status      int8
@@ -89,7 +89,7 @@ func newMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *
 	return
 }
 
-//获取vol下所有的data partition
+// Obtain all the data partitions in a volume.
 func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
@@ -119,7 +119,6 @@ errHandler:
 	return
 }
 
-//获取vol下所有的data partition和meta partition
 func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
@@ -147,7 +146,7 @@ errHandler:
 	return
 }
 
-//获取vol的总容量和已使用空间信息
+// Obtain the volume information such as total capacity and used space, etc.
 func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
@@ -183,7 +182,7 @@ func (m *Server) getVolView(vol *Vol) (view *VolView) {
 	return
 }
 func setDataPartitions(vol *Vol, view *VolView, liveRate float32) {
-	if liveRate < nodesAliveRate {
+	if liveRate < nodesActiveRate {
 		return
 	}
 	vol.dataPartitions.RLock()
@@ -191,7 +190,7 @@ func setDataPartitions(vol *Vol, view *VolView, liveRate float32) {
 	view.DataPartitions = vol.dataPartitions.getDataPartitionsView(0)
 }
 func setMetaPartitions(vol *Vol, view *VolView, liveRate float32) {
-	if liveRate < nodesAliveRate {
+	if liveRate < nodesActiveRate {
 		return
 	}
 	vol.mpsLock.RLock()
@@ -237,7 +236,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		mp          *MetaPartition
 		ok          bool
 	)
-	if name, partitionID, err = extractPartitionIdAndName(r); err != nil {
+	if name, partitionID, err = parseAndExtractPartitionInfo(r); err != nil {
 		goto errHandler
 	}
 	if vol, ok = m.cluster.vols[name]; !ok {
@@ -261,8 +260,8 @@ errHandler:
 	return
 }
 
-// TODO find a better name for extractPartitionIdAndName
-func extractPartitionIdAndName(r *http.Request) (name string, partitionID uint64, err error) {
+func parseAndExtractPartitionInfo(r *http.Request) (name string, partitionID uint64, err error) {
+	// TODO unhandled error
 	r.ParseForm()
 	if name, err = extractName(r); err != nil {
 		return
@@ -274,7 +273,6 @@ func extractPartitionIdAndName(r *http.Request) (name string, partitionID uint64
 }
 
 
-// TODO this function is exactly the same as extractDataPartitionID in handle_admin.go
 func extractMetaPartitionID(r *http.Request) (partitionID uint64, err error) {
 	var value string
 	if value = r.FormValue(idKey); value == "" {
@@ -284,8 +282,8 @@ func extractMetaPartitionID(r *http.Request) (partitionID uint64, err error) {
 	return strconv.ParseUint(value, 10, 64)
 }
 
-// TODO find a better name for parseAndExtractName
 func parseAndExtractName(r *http.Request) (name string, err error) {
+	// TODO unhandled error
 	r.ParseForm()
 	return extractName(r)
 }

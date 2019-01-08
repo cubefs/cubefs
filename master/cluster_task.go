@@ -34,7 +34,7 @@ func (c *Cluster) addDataNodeTasks(tasks []*proto.AdminTask) {
 		if node, err := c.dataNode(t.OperatorAddr); err != nil {
 			log.LogWarn(fmt.Sprintf("action[putTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err))
 		} else {
-			node.Sender.AddTask(t)
+			node.TaskManager.AddTask(t)
 		}
 	}
 }
@@ -232,7 +232,7 @@ func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
 	}
 	loadTasks := dp.createLoadTasks()
 	c.addDataNodeTasks(loadTasks)
-	for i := 0; i < loadDataPartitionWaitTime; i++ {
+	for i := 0; i < timeToWaitForResponse; i++ {
 		if dp.checkLoadResponse(c.cfg.DataPartitionTimeOutSec) {
 			log.LogWarnf("action[checkLoadResponse]  all replica has responded,partitionID:%v ", dp.PartitionID)
 			break
@@ -245,7 +245,7 @@ func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
 	}
 
 	dp.getFileCount()
-	dp.checkFile(c.Name)
+	dp.validateCRC(c.Name)
 	dp.setToNormal()
 }
 
@@ -456,7 +456,7 @@ func (c *Cluster) handleDataNodeTaskResponse(nodeAddr string, task *proto.AdminT
 	if dataNode, err = c.dataNode(nodeAddr); err != nil {
 		goto errHandler
 	}
-	dataNode.Sender.DelTask(task)
+	dataNode.TaskManager.DelTask(task)
 	if err = unmarshalTaskResponse(task); err != nil {
 		goto errHandler
 	}
@@ -593,8 +593,8 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 	}
 	mp.Lock()
 	defer mp.Unlock()
-	if _, err := mp.getLeaderMetaReplica(); err != nil {
-		log.LogWarnf("action[updateInodeIDUpperBound] vol[%v] id[%v] no leader", mp.volName, mp.PartitionID)
+	if _, err := mp.getMetaReplicaLeader(); err != nil {
+		log.LogWarnf("action[updateInodeIDRange] vol[%v] id[%v] no leader", mp.volName, mp.PartitionID)
 		return
 	}
 	var (
@@ -602,12 +602,12 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 		err error
 	)
 	if vol, err = c.getVol(mp.volName); err != nil {
-		log.LogWarnf("action[updateInodeIDUpperBound] vol[%v] not found", mp.volName)
+		log.LogWarnf("action[updateInodeIDRange] vol[%v] not found", mp.volName)
 		return
 	}
 	maxPartitionID := vol.maxPartitionID()
 	if mp.PartitionID < maxPartitionID {
-		log.LogWarnf("action[updateInodeIDUpperBound] vol[%v] id[%v] less than maxId[%v]", mp.volName, mp.PartitionID, maxPartitionID)
+		log.LogWarnf("action[updateInodeIDRange] vol[%v] id[%v] less than maxId[%v]", mp.volName, mp.PartitionID, maxPartitionID)
 		return
 	}
 
@@ -624,6 +624,6 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 			end = mr.MaxInodeID + defaultMetaPartitionInodeIDStep
 		}
 		log.LogWarnf("mpId[%v],start[%v],end[%v],addr[%v],used[%v]", mp.PartitionID, mp.Start, mp.End, metaNode.Addr, metaNode.Used)
-		mp.updateInodeIDUpperBound(c, end)
+		mp.updateInodeIDRange(c, end)
 	}
 }

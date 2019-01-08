@@ -179,7 +179,7 @@ func (p *Packet) GetOpMsg() (m string) {
 	case OpWrite:
 		m = "Write"
 	case OpRandomWrite:
-		m = "RandomWrite"
+		m = "IsRandomWrite"
 	case OpRead:
 		m = "Read"
 	case OpStreamRead:

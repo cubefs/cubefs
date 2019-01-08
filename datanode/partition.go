@@ -50,7 +50,7 @@ var (
 	AdminGetDataPartition = master.AdminGetDataPartition
 )
 
-// TODO it seems that this is the metadata of a data partition. if my understanding is correct, we should name it as "DPMetadata" or simply "Metadata"
+// TODO it seems that this is the metadata of a data partition. if my understanding is correct, we should name it as "DPMetadata" or simply "MetadataArray"
 type DPMetadata struct { // DataPartitionMetadata
 	VolumeID      string
 	PartitionID   uint64

@@ -20,15 +20,12 @@ import (
 	"github.com/juju/errors"
 )
 
-// TODO err方面
 var (
 	noAvailDataPartitionErr = errors.New("no available data partition")
 	reshuffleArrayErr       = errors.New("the array to be reshuffled is nil")
 
-	// TODO rename meta replica and data replica : we do not have these two concepts 加解释
 	illegalDataReplicaErr   = errors.New("data replica is illegal")
 
-	//  TODO what is the difference between the following two errs? 不改先
 	missingReplicaErr       = errors.New("a missing data replica is found")
 	hasOneMissingReplicaErr = errors.New("there is a missing data replica")
 

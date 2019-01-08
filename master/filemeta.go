@@ -19,24 +19,23 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 )
 
-// FileMetaOnNode defines the file metadata on a dataNode
-type FileMetaOnNode struct {
+// FileMetadata defines the file metadata on a dataNode
+type FileMetadata struct {
 	Crc      uint32
 	LocAddr  string
 	locIndex uint8
 	Size     uint32
 }
 
-// TODO what is FileInCore? file 的核心元数据
-// FileInCore 数据分片上的文件抽象定义
+// TODO rename
 type FileInCore struct {
-	Name       string
-	LastModify int64
-	Metas      []*FileMetaOnNode
+	Name          string
+	LastModify    int64
+	MetadataArray []*FileMetadata
 }
 
-func newFileMetaOnNode(volCrc uint32, volLoc string, volLocIndex int, size uint32) (fm *FileMetaOnNode) {
-	fm = new(FileMetaOnNode)
+func newFileMetadata(volCrc uint32, volLoc string, volLocIndex int, size uint32) (fm *FileMetadata) {
+	fm = new(FileMetadata)
 	fm.Crc = volCrc
 	fm.LocAddr = volLoc
 	fm.locIndex = uint8(volLocIndex)
@@ -44,55 +43,54 @@ func newFileMetaOnNode(volCrc uint32, volLoc string, volLocIndex int, size uint3
 	return
 }
 
-func (fm *FileMetaOnNode) String() (msg string) {
+func (fm *FileMetadata) String() (msg string) {
 	msg = fmt.Sprintf("Crc[%v] LocAddr[%d] locIndex[%v]  Size[%v]",
 		fm.Crc, fm.LocAddr, fm.locIndex, fm.Size)
 	return
 }
 
-func (fm *FileMetaOnNode) getLocationAddr() (loc string) {
+func (fm *FileMetadata) getLocationAddr() (loc string) {
 	return fm.LocAddr
 }
 
-func (fm *FileMetaOnNode) getFileCrc() (crc uint32) {
+func (fm *FileMetadata) getFileCrc() (crc uint32) {
 	return fm.Crc
 }
 
 func newFileInCore(name string) (fc *FileInCore) {
 	fc = new(FileInCore)
 	fc.Name = name
-	fc.Metas = make([]*FileMetaOnNode, 0)
+	fc.MetadataArray = make([]*FileMetadata, 0)
 
 	return
 }
 
-/*use a File and volLocation update FileInCore,
-range all FileInCore.NodeInfos,update crc and reportTime*/
+// Use the File and the volume Location for update.
 func (fc *FileInCore) updateFileInCore(volID uint64, vf *proto.File, volLoc *DataReplica, volLocIndex int) {
 	if vf.Modified > fc.LastModify {
 		fc.LastModify = vf.Modified
 	}
 
 	isFind := false
-	for i := 0; i < len(fc.Metas); i++ {
-		if fc.Metas[i].getLocationAddr() == volLoc.Addr {
-			fc.Metas[i].Crc = vf.Crc
-			fc.Metas[i].Size = vf.Size
+	for i := 0; i < len(fc.MetadataArray); i++ {
+		if fc.MetadataArray[i].getLocationAddr() == volLoc.Addr {
+			fc.MetadataArray[i].Crc = vf.Crc
+			fc.MetadataArray[i].Size = vf.Size
 			isFind = true
 			break
 		}
 	}
 
 	if isFind == false {
-		fm := newFileMetaOnNode(vf.Crc, volLoc.Addr, volLocIndex, vf.Size)
-		fc.Metas = append(fc.Metas, fm)
+		fm := newFileMetadata(vf.Crc, volLoc.Addr, volLocIndex, vf.Size)
+		fc.MetadataArray = append(fc.MetadataArray, fm)
 	}
 
 }
 
-func (fc *FileInCore) getFileMetaByAddr(replica *DataReplica) (fm *FileMetaOnNode, ok bool) {
-	for i := 0; i < len(fc.Metas); i++ {
-		fm = fc.Metas[i]
+func (fc *FileInCore) getFileMetaByAddr(replica *DataReplica) (fm *FileMetadata, ok bool) {
+	for i := 0; i < len(fc.MetadataArray); i++ {
+		fm = fc.MetadataArray[i]
 		if fm.LocAddr == replica.Addr {
 			ok = true
 			return
@@ -104,10 +102,10 @@ func (fc *FileInCore) getFileMetaByAddr(replica *DataReplica) (fm *FileMetaOnNod
 
 func (fc *FileInCore) getFileMetaAddrs() (addrs []string) {
 	addrs = make([]string, 0)
-	if len(fc.Metas) == 0 {
+	if len(fc.MetadataArray) == 0 {
 		return
 	}
-	for _, fm := range fc.Metas {
+	for _, fm := range fc.MetadataArray {
 		addrs = append(addrs, fm.LocAddr)
 	}
 	return

@@ -29,7 +29,7 @@ import (
 type DataPartitionMap struct {
 	sync.RWMutex
 	partitionMap           map[uint64]*DataPartition
-	totalCnt               int // total number of partitionMap  TODO this field seems useless remove
+	totalCnt               int // total number of partitionMap  TODO this field seems useless
 	readableAndWritableCnt int    // number of readable and writable partitionMap
 	lastLoadedIndex        uint64 // last loaded partition index
 	lastReleasedIndex      uint64 // last released partition index
@@ -129,8 +129,7 @@ func (dpMap *DataPartitionMap) getDataPartitionsView(minPartitionID uint64) (dpR
 	return
 }
 
-// TODO what are everyReleaseDataPartitionCount and releaseDataPartitionAfterLoadSeconds ?
-func (dpMap *DataPartitionMap) getDataPartitionsToBeReleased(everyReleaseDataPartitionCount int, releaseDataPartitionAfterLoadSeconds int64) (partitions []*DataPartition, startIndex uint64) {
+func (dpMap *DataPartitionMap) getDataPartitionsToBeReleased(numberOfDataPartitionsToFree int, secondsToFreeDataPartitionAfterLoad int64) (partitions []*DataPartition, startIndex uint64) {
 	partitions = make([]*DataPartition, 0)
 	dpMap.RLock()
 	defer dpMap.RUnlock()
@@ -139,19 +138,17 @@ func (dpMap *DataPartitionMap) getDataPartitionsToBeReleased(everyReleaseDataPar
 		return
 	}
 	startIndex = dpMap.lastReleasedIndex
-	count := everyReleaseDataPartitionCount
-	if dpLen < everyReleaseDataPartitionCount {
+	count := numberOfDataPartitionsToFree
+	if dpLen < numberOfDataPartitionsToFree {
 		count = dpLen
 	}
 	for i := 0; i < count; i++ {
-
-		// TODO use Math?
 		if dpMap.lastReleasedIndex >= uint64(dpLen) {
 			dpMap.lastReleasedIndex = 0
 		}
 		dp := dpMap.partitions[dpMap.lastReleasedIndex]
 		dpMap.lastReleasedIndex++
-		if time.Now().Unix()-dp.LastLoadedTime >= releaseDataPartitionAfterLoadSeconds {
+		if time.Now().Unix() - dp.LastLoadedTime >= secondsToFreeDataPartitionAfterLoad {
 			partitions = append(partitions, dp)
 		}
 	}
@@ -159,8 +156,7 @@ func (dpMap *DataPartitionMap) getDataPartitionsToBeReleased(everyReleaseDataPar
 	return
 }
 
-// TODO find a better name freeMemOccupiedByDataPartitions?
-func (dpMap *DataPartitionMap) releaseDataPartitions(partitions []*DataPartition) {
+func (dpMap *DataPartitionMap) freeMemOccupiedByDataPartitions(partitions []*DataPartition) {
 	var wg sync.WaitGroup
 	for _, dp := range partitions {
 		wg.Add(1)
@@ -171,7 +167,7 @@ func (dpMap *DataPartitionMap) releaseDataPartitions(partitions []*DataPartition
 					const size = runtimeStackBufSize
 					buf := make([]byte, size)
 					buf = buf[:runtime.Stack(buf, false)]
-					log.LogError(fmt.Sprintf("[%v] releaseDataPartitions panic %v: %s\n", dpMap.volName, err, buf))
+					log.LogError(fmt.Sprintf("[%v] freeMemOccupiedByDataPartitions panic %v: %s\n", dpMap.volName, err, buf))
 				}
 			}()
 			dp.releaseDataPartition()
@@ -191,9 +187,8 @@ func (dpMap *DataPartitionMap) getDataPartitionsToBeChecked(loadFrequencyTime in
 	}
 	startIndex = dpMap.lastLoadedIndex
 
-	// TODO change to:
-	// count := math.Max(dpLen / intervalToLoadDataPartition, 1)
-	count := dpLen / intervalToLoadDataPartition // TODO what is the theory behind this? count ： 需要加载多少个
+	// determine the number of data partitions to load
+	count := dpLen / intervalToLoadDataPartition
 	if count == 0 {
 		count = 1
 	}
@@ -205,8 +200,7 @@ func (dpMap *DataPartitionMap) getDataPartitionsToBeChecked(loadFrequencyTime in
 		dp := dpMap.partitions[dpMap.lastLoadedIndex]
 		dpMap.lastLoadedIndex++
 
-		// TODO do we need to care about the space here?
-		if time.Now().Unix()-dp.LastLoadedTime >= loadFrequencyTime {
+		if time.Now().Unix() - dp.LastLoadedTime >= loadFrequencyTime {
 			partitions = append(partitions, dp)
 		}
 	}

@@ -45,7 +45,7 @@ type MetaPartition struct {
 	End          uint64
 	MaxNodeID    uint64
 	Replicas     []*MetaReplica
-	ReplicaNum   uint8 // TODO is this necessary ?
+	ReplicaNum   uint8
 	Status       int8
 	volID        uint64
 	volName      string
@@ -127,16 +127,16 @@ func (mp *MetaPartition) removeReplicaByAddr(addr string) {
 	return
 }
 
-func (mp *MetaPartition) updateInodeIDUpperBoundForAllReplicas() {
+func (mp *MetaPartition) updateInodeIDRangeForAllReplicas() {
 	for _, mr := range mp.Replicas {
 		mr.end = mp.End
 	}
 }
 
-func (mp *MetaPartition) updateInodeIDUpperBound(c *Cluster, end uint64) {
+func (mp *MetaPartition) updateInodeIDRange(c *Cluster, end uint64) {
 	// overflow
 	if end > (defaultMaxMetaPartitionInodeID - defaultMetaPartitionInodeIDStep) {
-		log.LogWarnf("action[updateInodeIDUpperBound] clusterID[%v] partitionID[%v] nextStart[%v] "+
+		log.LogWarnf("action[updateInodeIDRange] clusterID[%v] partitionID[%v] nextStart[%v] "+
 			"to prevent overflow ,not update end", c.Name, mp.PartitionID, end)
 		return
 	}
@@ -155,18 +155,18 @@ func (mp *MetaPartition) updateInodeIDUpperBound(c *Cluster, end uint64) {
 		mp.End = oldEnd
 		goto errHandler
 	}
-	mp.updateInodeIDUpperBoundForAllReplicas()
+	mp.updateInodeIDRangeForAllReplicas()
 	tasks = append(tasks, t)
 	c.addMetaNodeTasks(tasks)
 	if err = c.createMetaPartition(mp.volName, mp.End+1, defaultMaxMetaPartitionInodeID); err != nil {
-		Warn(c.Name, fmt.Sprintf("action[updateInodeIDUpperBound] clusterID[%v] partitionID[%v] create meta partition err[%v]",
+		Warn(c.Name, fmt.Sprintf("action[updateInodeIDRange] clusterID[%v] partitionID[%v] create meta partition err[%v]",
 			c.Name, mp.PartitionID, err))
 		goto errHandler
 	}
-	log.LogWarnf("action[updateInodeIDUpperBound] partitionID[%v] end[%v] success", mp.PartitionID, mp.End)
+	log.LogWarnf("action[updateInodeIDRange] partitionID[%v] end[%v] success", mp.PartitionID, mp.End)
 	return
 errHandler:
-	log.LogErrorf("action[updateInodeIDUpperBound] partitionID[%v] err[%v]", mp.PartitionID, err)
+	log.LogErrorf("action[updateInodeIDRange] partitionID[%v] err[%v]", mp.PartitionID, err)
 	return
 }
 
@@ -213,7 +213,7 @@ func (mp *MetaPartition) removeMissingReplica(addr string) {
 	}
 }
 
-func (mp *MetaPartition) checkReplicaLeader() {
+func (mp *MetaPartition) checkLeader() {
 	mp.Lock()
 	defer mp.Unlock()
 	for _, mr := range mp.Replicas {
@@ -227,11 +227,11 @@ func (mp *MetaPartition) checkReplicaLeader() {
 func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int) {
 	mp.Lock()
 	defer mp.Unlock()
-	liveReplicas := mp.getLiveReplica()
+	liveReplicas := mp.getLiveReplicas()
 	if len(liveReplicas) <= replicaNum/2 {
 		mp.Status = proto.Unavaliable
 	} else {
-		mr, err := mp.getLeaderMetaReplica()
+		mr, err := mp.getMetaReplicaLeader()
 		if err != nil {
 			mp.Status = proto.Unavaliable
 		}
@@ -244,7 +244,7 @@ func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int) {
 	}
 }
 
-func (mp *MetaPartition) getLeaderMetaReplica() (mr *MetaReplica, err error) {
+func (mp *MetaPartition) getMetaReplicaLeader() (mr *MetaReplica, err error) {
 	for _, mr = range mp.Replicas {
 		if mr.IsLeader {
 			return
@@ -311,8 +311,8 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 }
 
 func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err error) {
-	liveReplicas := mp.getLiveReplica()
-	if !mp.hasMajorityReplicas(len(liveReplicas), replicaNum) {
+	liveReplicas := mp.getLiveReplicas()
+	if len(liveReplicas) < int(mp.ReplicaNum/2+1) {
 		err = noEnoughReplicaErr
 		return
 	}
@@ -324,11 +324,6 @@ func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err erro
 	return
 }
 
-// TODO inline? 统一一下
-func (mp *MetaPartition) hasMajorityReplicas(liveReplicas int, replicaNum int) bool {
-	return liveReplicas >= int(mp.ReplicaNum/2+1)
-}
-
 func (mp *MetaPartition) getLiveReplicasAddr(liveReplicas []*MetaReplica) (addrs []string) {
 	addrs = make([]string, 0)
 	for _, mr := range liveReplicas {
@@ -336,7 +331,7 @@ func (mp *MetaPartition) getLiveReplicasAddr(liveReplicas []*MetaReplica) (addrs
 	}
 	return
 }
-func (mp *MetaPartition) getLiveReplica() (liveReplicas []*MetaReplica) {
+func (mp *MetaPartition) getLiveReplicas() (liveReplicas []*MetaReplica) {
 	liveReplicas = make([]*MetaReplica, 0)
 	for _, mr := range mp.Replicas {
 		if mr.isActive() {
@@ -375,7 +370,6 @@ func (mp *MetaPartition) getActiveAddrs() (liveAddrs []string) {
 	return liveAddrs
 }
 
-// TODO is this wrapper necessary?
 func (mp *MetaPartition) isMissingReplica(addr string) bool {
 	return !contains(mp.getActiveAddrs(), addr)
 }
@@ -392,12 +386,12 @@ func (mp *MetaPartition) shouldReportMissingReplica(addr string, interval int64)
 	return false
 }
 
-func (mp *MetaPartition) reportMissingReplicas(clusterID string, partitionMissSec, warnInterval int64) {
+func (mp *MetaPartition) reportMissingReplicas(clusterID string, seconds, interval int64) {
 	mp.Lock()
 	defer mp.Unlock()
 	for _, replica := range mp.Replicas {
-		// reduce the alarm  frequency
-		if contains(mp.Hosts, replica.Addr) && replica.isMissing() && mp.shouldReportMissingReplica(replica.Addr, warnInterval) {
+		// reduce the alarm frequency
+		if contains(mp.Hosts, replica.Addr) && replica.isMissing() && mp.shouldReportMissingReplica(replica.Addr, interval) {
 			metaNode := replica.metaNode
 			var (
 				lastReportTime time.Time
@@ -409,13 +403,13 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID string, partitionMissSe
 			}
 			msg := fmt.Sprintf("action[reportMissingReplicas], clusterID[%v] volName[%v] partition:%v  on Node:%v  "+
 				"miss time > :%v  vlocLastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v",
-				clusterID, mp.volName, mp.PartitionID, replica.Addr, partitionMissSec, replica.ReportTime, lastReportTime, isActive)
+				clusterID, mp.volName, mp.PartitionID, replica.Addr, seconds, replica.ReportTime, lastReportTime, isActive)
 			Warn(clusterID, msg)
 		}
 	}
 
 	for _, addr := range mp.Hosts {
-		if mp.isMissingReplica(addr) && mp.shouldReportMissingReplica(addr, warnInterval) {
+		if mp.isMissingReplica(addr) && mp.shouldReportMissingReplica(addr, interval) {
 			msg := fmt.Sprintf("action[reportMissingReplicas],clusterID[%v] volName[%v] partition:%v  on Node:%v  "+
 				"miss time  > %v ",
 				clusterID, mp.volName, mp.PartitionID, addr, defaultMetaPartitionTimeOutSec)
@@ -474,7 +468,7 @@ func (mp *MetaPartition) createTaskToAddMissingMetaReplica(addrs []string, volNa
 }
 
 func (mp *MetaPartition) generateOfflineTask(volName string, removePeer proto.Peer, addPeer proto.Peer) (t *proto.AdminTask, err error) {
-	mr, err := mp.getLeaderMetaReplica()
+	mr, err := mp.getMetaReplicaLeader()
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -489,7 +483,7 @@ func resetMetaPartitionTaskID(t *proto.AdminTask, partitionID uint64) {
 }
 
 func (mp *MetaPartition) createTaskToUpdateMetaReplica(clusterID string, partitionID uint64, end uint64) (t *proto.AdminTask) {
-	mr, err := mp.getLeaderMetaReplica()
+	mr, err := mp.getMetaReplicaLeader()
 	if err != nil {
 		msg := fmt.Sprintf("action[createTaskToUpdateMetaReplica] clusterID[%v] meta partition %v no leader",
 			clusterID, mp.PartitionID)
