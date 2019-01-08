@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/buf"
 	"io"
 	"net"
@@ -469,7 +468,7 @@ func (p *Packet) GetUniqueLogId() (m string) {
 		offset uint64
 		size   uint32
 	)
-	if p.ExtentMode == TinyExtentMode && p.Opcode == OpMarkDelete && len(p.Data) > 0 {
+	if p.ExtentType == TinyExtentType && p.Opcode == OpMarkDelete && len(p.Data) > 0 {
 		ext := new(ExtentKey)
 		err := json.Unmarshal(p.Data, ext)
 		if err == nil {
