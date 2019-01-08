@@ -342,7 +342,7 @@ func (ns *nodeSet) canWriteForMetaNode(replicaNum int) bool {
 	var count int
 	ns.metaNodes.Range(func(key, value interface{}) bool {
 		node := value.(*MetaNode)
-		if node.isWriteAble() {
+		if node.isWritable() {
 			count++
 		}
 		if count >= replicaNum {
@@ -546,7 +546,7 @@ func (rack *Rack) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (
 		return
 	}
 
-	nodeTabs.setNodeTabCarry(availCarryCount, replicaNum)
+	nodeTabs.setNodeCarry(availCarryCount, replicaNum)
 	sort.Sort(nodeTabs)
 
 	for i := 0; i < replicaNum; i++ {
@@ -581,10 +581,10 @@ func (rack *Rack) getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []strin
 		}
 		nt := new(WeightedNode)
 		nt.Carry = dataNode.Carry
-		if dataNode.Available < 0 {
+		if dataNode.AvailableSpace < 0 {
 			nt.Weight = 0.0
 		} else {
-			nt.Weight = float64(dataNode.Available) / float64(maxTotal)
+			nt.Weight = float64(dataNode.AvailableSpace) / float64(maxTotal)
 		}
 		nt.Ptr = dataNode
 		nodeTabs = append(nodeTabs, nt)

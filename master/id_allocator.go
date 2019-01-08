@@ -119,7 +119,7 @@ func (alloc *IDAllocator) allocateDataPartitionID() (partitionID uint64, err err
 	alloc.dpIDLock.Lock()
 	defer alloc.dpIDLock.Unlock()
 	var cmd []byte
-	metadata := new(RaftCmdData)
+	metadata := new(RaftCmd)
 	partitionID = atomic.LoadUint64(&alloc.dataPartitionID) + 1
 	metadata.Op = opSyncAllocDataPartitionID
 	metadata.K = maxDataPartitionIDKey
@@ -143,7 +143,7 @@ func (alloc *IDAllocator) allocateMetaPartitionID() (partitionID uint64, err err
 	alloc.mpIDLock.Lock()
 	defer alloc.mpIDLock.Unlock()
 	var cmd []byte
-	metadata := new(RaftCmdData)
+	metadata := new(RaftCmd)
 	metadata.Op = opSyncAllocMetaPartitionID
 	metadata.K = maxMetaPartitionIDKey
 	partitionID = atomic.LoadUint64(&alloc.metaPartitionID) + 1
@@ -168,7 +168,7 @@ func (alloc *IDAllocator) allocateCommonID() (id uint64, err error) {
 	alloc.mnIDLock.Lock()
 	defer alloc.mnIDLock.Unlock()
 	var cmd []byte
-	metadata := new(RaftCmdData)
+	metadata := new(RaftCmd)
 	metadata.Op = opSyncAllocCommonID
 	metadata.K = maxCommonIDKey
 	id = atomic.LoadUint64(&alloc.commonID) + 1

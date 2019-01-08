@@ -14,8 +14,6 @@
 
 package master
 
-/* TODO change the name to cluster_stat.go? */
-
 import (
 	"fmt"
 	"github.com/tiglabs/containerfs/util"
@@ -33,7 +31,7 @@ type volStatInfo struct {
 	Name      string
 	TotalGB   uint64
 	UsedGB    uint64
-	UsedRatio string // TODO never used?
+	UsedRatio string
 }
 
 func newVolStatInfo(name string, total, used uint64, ratio string) *volStatInfo {
@@ -67,7 +65,7 @@ func (c *Cluster) updateDataNodeStatInfo() {
 		return
 	}
 	usedRate := float64(used) / float64(total)
-	if usedRate > spaceAvailRate {
+	if usedRate > spaceAvailableRate {
 		Warn(c.Name, fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add dataNode",
 			c.Name, usedRate, used, total))
 	}
@@ -93,7 +91,7 @@ func (c *Cluster) updateMetaNodeStatInfo() {
 		return
 	}
 	useRate := float64(used) / float64(total)
-	if useRate > spaceAvailRate {
+	if useRate > spaceAvailableRate {
 		Warn(c.Name, fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add metaNode",
 			c.Name, useRate, used, total))
 	}

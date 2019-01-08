@@ -34,8 +34,8 @@ const (
 	TaskWorkerInterval = time.Microsecond * time.Duration(200)
 )
 
-// AdminTaskSender sends administration commands to the metaNode or dataNode.
-type AdminTaskSender struct {
+// AdminTaskManager sends administration commands to the metaNode or dataNode.
+type AdminTaskManager struct {
 	clusterID  string
 	targetAddr string
 	TaskMap    map[string]*proto.AdminTask
@@ -44,9 +44,9 @@ type AdminTaskSender struct {
 	connPool   *util.ConnectPool
 }
 
-func newAdminTaskSender(targetAddr, clusterID string) (sender *AdminTaskSender) {
+func newAdminTaskManager(targetAddr, clusterID string) (sender *AdminTaskManager) {
 
-	sender = &AdminTaskSender{
+	sender = &AdminTaskManager{
 		targetAddr: targetAddr,
 		clusterID:  clusterID,
 		TaskMap:    make(map[string]*proto.AdminTask),
@@ -58,7 +58,7 @@ func newAdminTaskSender(targetAddr, clusterID string) (sender *AdminTaskSender) 
 	return
 }
 
-func (sender *AdminTaskSender) process() {
+func (sender *AdminTaskManager) process() {
 	ticker := time.NewTicker(TaskWorkerInterval)
 	defer func() {
 		ticker.Stop()
@@ -75,7 +75,7 @@ func (sender *AdminTaskSender) process() {
 	}
 }
 
-func (sender *AdminTaskSender) doDeleteTasks() {
+func (sender *AdminTaskManager) doDeleteTasks() {
 	delTasks := sender.getToBeDeletedTasks()
 	for _, t := range delTasks {
 		sender.DelTask(t)
@@ -83,7 +83,7 @@ func (sender *AdminTaskSender) doDeleteTasks() {
 	return
 }
 
-func (sender *AdminTaskSender) getToBeDeletedTasks() (delTasks []*proto.AdminTask) {
+func (sender *AdminTaskManager) getToBeDeletedTasks() (delTasks []*proto.AdminTask) {
 	sender.RLock()
 	defer sender.RUnlock()
 	delTasks = make([]*proto.AdminTask, 0)
@@ -104,7 +104,7 @@ func (sender *AdminTaskSender) getToBeDeletedTasks() (delTasks []*proto.AdminTas
 	return
 }
 
-func (sender *AdminTaskSender) doSendTasks() {
+func (sender *AdminTaskManager) doSendTasks() {
 	tasks := sender.getToDoTasks()
 	if len(tasks) == 0 {
 		time.Sleep(time.Second)
@@ -113,7 +113,7 @@ func (sender *AdminTaskSender) doSendTasks() {
 	sender.sendTasks(tasks)
 }
 
-func (sender *AdminTaskSender) sendTasks(tasks []*proto.AdminTask) {
+func (sender *AdminTaskManager) sendTasks(tasks []*proto.AdminTask) {
 	for _, task := range tasks {
 		conn, err := sender.connPool.GetConnect(sender.targetAddr)
 		if err != nil {
@@ -133,7 +133,7 @@ func (sender *AdminTaskSender) sendTasks(tasks []*proto.AdminTask) {
 	}
 }
 
-func (sender *AdminTaskSender) updateTaskInfo(task *proto.AdminTask, connSuccess bool) {
+func (sender *AdminTaskManager) updateTaskInfo(task *proto.AdminTask, connSuccess bool) {
 	task.SendCount++
 	if connSuccess {
 		task.SendTime = time.Now().Unix()
@@ -141,7 +141,7 @@ func (sender *AdminTaskSender) updateTaskInfo(task *proto.AdminTask, connSuccess
 	}
 }
 
-func (sender *AdminTaskSender) buildPacket(task *proto.AdminTask) (packet *proto.Packet, err error) {
+func (sender *AdminTaskManager) buildPacket(task *proto.AdminTask) (packet *proto.Packet, err error) {
 	packet = proto.NewPacket()
 	packet.Opcode = task.OpCode
 	packet.ReqID = proto.GeneratorRequestID()
@@ -154,7 +154,7 @@ func (sender *AdminTaskSender) buildPacket(task *proto.AdminTask) (packet *proto
 	return packet, nil
 }
 
-func (sender *AdminTaskSender) sendAdminTask(task *proto.AdminTask, conn net.Conn) (err error) {
+func (sender *AdminTaskManager) sendAdminTask(task *proto.AdminTask, conn net.Conn) (err error) {
 	packet, err := sender.buildPacket(task)
 	if err != nil {
 		return errors.Annotatef(err, "action[sendAdminTask build packet failed,task:%v]", task.ID)
@@ -171,7 +171,7 @@ func (sender *AdminTaskSender) sendAdminTask(task *proto.AdminTask, conn net.Con
 	return nil
 }
 
-func (sender *AdminTaskSender) syncSendAdminTask(task *proto.AdminTask, conn net.Conn) (response []byte, err error) {
+func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask, conn net.Conn) (response []byte, err error) {
 	log.LogInfof(fmt.Sprintf("action[syncSendAdminTask] sender task:%v begin", task.ToString()))
 	packet, err := sender.buildPacket(task)
 	if err != nil {
@@ -194,7 +194,7 @@ func (sender *AdminTaskSender) syncSendAdminTask(task *proto.AdminTask, conn net
 }
 
 // Synchronously create a data partition and a meta partition.
-func (sender *AdminTaskSender) syncCreatePartition(task *proto.AdminTask, conn net.Conn) (err error) {
+func (sender *AdminTaskManager) syncCreatePartition(task *proto.AdminTask, conn net.Conn) (err error) {
 	log.LogInfof(fmt.Sprintf("action[syncCreatePartition] sender task:%v begin", task.ToString()))
 	packet, err := sender.buildPacket(task)
 	if err != nil {
@@ -217,7 +217,7 @@ func (sender *AdminTaskSender) syncCreatePartition(task *proto.AdminTask, conn n
 }
 
 // DelTask deletes the to-be-deleted tasks.
-func (sender *AdminTaskSender) DelTask(t *proto.AdminTask) {
+func (sender *AdminTaskManager) DelTask(t *proto.AdminTask) {
 	sender.Lock()
 	defer sender.Unlock()
 	_, ok := sender.TaskMap[t.ID]
@@ -231,7 +231,7 @@ func (sender *AdminTaskSender) DelTask(t *proto.AdminTask) {
 }
 
 // AddTask adds a new task to the task map.
-func (sender *AdminTaskSender) AddTask(t *proto.AdminTask) {
+func (sender *AdminTaskManager) AddTask(t *proto.AdminTask) {
 	sender.Lock()
 	defer sender.Unlock()
 	_, ok := sender.TaskMap[t.ID]
@@ -240,7 +240,7 @@ func (sender *AdminTaskSender) AddTask(t *proto.AdminTask) {
 	}
 }
 
-func (sender *AdminTaskSender) getToDoTasks() (tasks []*proto.AdminTask) {
+func (sender *AdminTaskManager) getToDoTasks() (tasks []*proto.AdminTask) {
 	sender.RLock()
 	defer sender.RUnlock()
 	tasks = make([]*proto.AdminTask, 0)

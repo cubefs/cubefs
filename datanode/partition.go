@@ -50,7 +50,7 @@ var (
 	AdminGetDataPartition = master.AdminGetDataPartition
 )
 
-// TODO it seems that this is the metadata of a data partition. if my understanding is correct, we should name it as "DPMetadata" or simply "Metadata"
+// TODO it seems that this is the metadata of a data partition. if my understanding is correct, we should name it as "DPMetadata" or simply "MetadataArray"
 type DPMetadata struct { // DataPartitionMetadata
 	VolumeID      string
 	PartitionID   uint64
@@ -565,7 +565,7 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 
 // TODO it seems that there is no usage of this function
 func (dp *DataPartition) GetAllExtentsMeta() (files []*storage.ExtentInfo, err error) {
-	files, err = dp.extentStore.GetAllWatermarks(storage.GetStableExtentFilter())
+	files, err = dp.extentStore.GetAllWatermarks(storage.NormalExtentFilter())
 	if err != nil {
 		return nil, err
 	}

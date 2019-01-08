@@ -27,7 +27,7 @@ type MetaNode struct {
 	ID                 uint64
 	Addr               string
 	IsActive           bool
-	Sender             *AdminTaskSender
+	Sender             *AdminTaskManager
 	RackName           string `json:"Rack"`
 	MaxMemAvailWeight  uint64 `json:"MaxMemAvailWeight"`
 	Total              uint64 `json:"TotalWeight"`
@@ -46,7 +46,7 @@ type MetaNode struct {
 func newMetaNode(addr, clusterID string) (node *MetaNode) {
 	return &MetaNode{
 		Addr:   addr,
-		Sender: newAdminTaskSender(addr, clusterID),
+		Sender: newAdminTaskManager(addr, clusterID),
 		Carry:  rand.Float64(),
 	}
 }
@@ -70,7 +70,7 @@ func (metaNode *MetaNode) SelectNodeForWrite() {
 	metaNode.Carry = metaNode.Carry - 1.0
 }
 
-func (metaNode *MetaNode) isWriteAble() (ok bool) {
+func (metaNode *MetaNode) isWritable() (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
 	if metaNode.IsActive && metaNode.MaxMemAvailWeight > defaultMetaNodeReservedMem &&
@@ -80,8 +80,8 @@ func (metaNode *MetaNode) isWriteAble() (ok bool) {
 	return
 }
 
-// TODO what is a carry node? 带权重的node weightedNode
-func (metaNode *MetaNode) isAvailCarryNode() (ok bool) {
+// A carry node is the meta node whose carry is greater than one.
+func (metaNode *MetaNode) isCarryNode() (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
 	return metaNode.Carry >= 1

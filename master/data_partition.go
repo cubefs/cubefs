@@ -41,14 +41,14 @@ type DataPartition struct {
 	sync.RWMutex
 	total                   uint64
 	used                    uint64
-	MissingNodes            map[string]int64  // TODO explain what is the key and what is the value?
+	MissingNodes            map[string]int64  // key: address of the missing node, value: when the node is missing
 	VolName                 string
 	VolID                   uint64
 	modifyTime              int64
 	createTime              int64
-	RandomWrite             bool // TODO rename
+	IsRandomWrite           bool
 	FileInCoreMap           map[string]*FileInCore // TODO rename
-	FilesWithMissingReplica map[string]int64 // TODO files with missing replica?
+	FilesWithMissingReplica map[string]int64       // key: file name, value: last time when a missing replica is found
 }
 
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64, randomWrite bool) (partition *DataPartition) {
@@ -67,7 +67,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	partition.VolID = volID
 	partition.modifyTime = time.Now().Unix()
 	partition.createTime = time.Now().Unix()
-	partition.RandomWrite = randomWrite
+	partition.IsRandomWrite = randomWrite
 	return
 }
 
@@ -80,19 +80,10 @@ func (partition *DataPartition) addReplica(replica *DataReplica) {
 	partition.Replicas = append(partition.Replicas, replica)
 }
 
-// TODO not used?
-func (partition *DataPartition) generateCreateTasks(dataPartitionSize uint64) (tasks []*proto.AdminTask) {
-	tasks = make([]*proto.AdminTask, 0)
-	for _, addr := range partition.Hosts {
-		tasks = append(tasks, partition.createTaskToCreateDataPartition(addr, dataPartitionSize))
-	}
-	return
-}
-
 func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64) (task *proto.AdminTask) {
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
-		partition.VolName, partition.PartitionID, partition.RandomWrite, partition.Peers, int(dataPartitionSize)))
+		partition.VolName, partition.PartitionID, partition.IsRandomWrite, partition.Peers, int(dataPartitionSize)))
 	partition.resetTaskID(task)
 	return
 }
@@ -104,7 +95,7 @@ func (partition *DataPartition) createTaskToDeleteDataPartition(addr string) (ta
 }
 
 func (partition *DataPartition) createTaskToDecommissionDataPartition(removePeer proto.Peer, addPeer proto.Peer) (task *proto.AdminTask, err error) {
-	if !partition.RandomWrite {
+	if !partition.IsRandomWrite {
 		return partition.createTaskToDeleteDataPartition(removePeer.Addr), nil
 	}
 	leaderAddr := partition.getLeaderAddr()
@@ -229,7 +220,7 @@ func (partition *DataPartition) createLoadTasks() (tasks []*proto.AdminTask) {
 		if err != nil || replica.isLive(defaultDataPartitionTimeOutSec) == false {
 			continue
 		}
-		replica.LoadPartitionIsResponse = false
+		replica.HasLoadResponse = false
 		tasks = append(tasks, partition.createLoadTask(addr))
 	}
 	partition.LastLoadedTime = time.Now().Unix()
@@ -263,7 +254,7 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *DataParti
 	dpr.ReplicaNum = partition.ReplicaNum
 	dpr.Hosts = make([]string, len(partition.Hosts))
 	copy(dpr.Hosts, partition.Hosts)
-	dpr.RandomWrite = partition.RandomWrite
+	dpr.RandomWrite = partition.IsRandomWrite
 	dpr.LeaderAddr = partition.getLeaderAddr()
 	return
 }
@@ -286,13 +277,13 @@ func (partition *DataPartition) checkLoadResponse(timeOutSec int64) (isResponse 
 			return
 		}
 		timePassed := time.Now().Unix() - partition.LastLoadedTime
-		if replica.LoadPartitionIsResponse == false && timePassed > loadDataPartitionWaitTime {
+		if replica.HasLoadResponse == false && timePassed > timeToWaitForResponse {
 			msg := fmt.Sprintf("action[checkLoadResponse], partitionID:%v on Node:%v no response, spent time %v s",
 				partition.PartitionID, addr, timePassed)
 			log.LogWarn(msg)
 			return
 		}
-		if replica.isLive(timeOutSec) == false || replica.LoadPartitionIsResponse == false {
+		if replica.isLive(timeOutSec) == false || replica.HasLoadResponse == false {
 			return
 		}
 	}
@@ -314,10 +305,10 @@ func (partition *DataPartition) getFileCount() {
 		replica.FileCount = 0
 	}
 	for _, fc := range partition.FileInCoreMap {
-		if len(fc.Metas) == 0 {
+		if len(fc.MetadataArray) == 0 {
 			filesToBeDeleted = append(filesToBeDeleted, fc.Name)
 		}
-		for _, vfNode := range fc.Metas {
+		for _, vfNode := range fc.MetadataArray {
 			replica := partition.getReplicaByIndex(vfNode.locIndex)
 			replica.FileCount++
 		}
@@ -328,7 +319,7 @@ func (partition *DataPartition) getFileCount() {
 	}
 
 	for _, replica := range partition.Replicas {
-		msg = fmt.Sprintf(getDataReplicaFileCountInfo+"partitionID:%v  replicaAddr:%v  FileCount:%v  "+
+		msg = fmt.Sprintf(getFileCountOnDataReplica+"partitionID:%v  replicaAddr:%v  FileCount:%v  "+
 			"NodeIsActive:%v  replicaIsActive:%v  .replicaStatusOnNode:%v ", partition.PartitionID, replica.Addr, replica.FileCount,
 			replica.getReplicaNode().isActive, replica.isActive(defaultDataPartitionTimeOutSec), replica.Status)
 		log.LogInfo(msg)
@@ -342,10 +333,10 @@ func (partition *DataPartition) releaseDataPartition() {
 	defer partition.Unlock()
 	liveReplicas := partition.getLiveReplicasFromHosts(defaultDataPartitionTimeOutSec)
 	for _, replica := range liveReplicas {
-		replica.LoadPartitionIsResponse = false
+		replica.HasLoadResponse = false
 	}
 	for name, fc := range partition.FileInCoreMap {
-		fc.Metas = nil
+		fc.MetadataArray = nil
 		delete(partition.FileInCoreMap, name)
 	}
 	partition.FileInCoreMap = make(map[string]*FileInCore, 0)
@@ -460,7 +451,7 @@ func (partition *DataPartition) loadFile(dataNode *DataNode, resp *proto.LoadDat
 		}
 		fc.updateFileInCore(partition.PartitionID, dpf, replica, index)
 	}
-	replica.LoadPartitionIsResponse = true
+	replica.HasLoadResponse = true
 }
 
 func (partition *DataPartition) getReplicaIndex(addr string) (index int, err error) {

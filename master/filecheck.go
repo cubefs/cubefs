@@ -26,9 +26,8 @@ const (
 	tinyExtentStartID = 5000000
 )
 
-// recover a file if it has bad CRC or it has been timed out before
-// TODO find a better name?
-func (partition *DataPartition) checkFile(clusterID string) {
+// Recover a file if it has bad CRC or it has been timed out before.
+func (partition *DataPartition) validateCRC(clusterID string) {
 	partition.Lock()
 	defer partition.Unlock()
 	liveReplicas := partition.liveReplicas(defaultDataPartitionTimeOutSec)
@@ -37,8 +36,6 @@ func (partition *DataPartition) checkFile(clusterID string) {
 	}
 
 	if len(liveReplicas) < int(partition.ReplicaNum) {
-
-		// TODO the following two loops can be merged into one single loop
 		liveAddrs := make([]string, 0)
 		for _, replica := range liveReplicas {
 			liveAddrs = append(liveAddrs, replica.Addr)
@@ -51,18 +48,18 @@ func (partition *DataPartition) checkFile(clusterID string) {
 		}
 		Warn(clusterID, fmt.Sprintf("vol[%v],dpId[%v],liveAddrs[%v],inactiveAddrs[%v]", partition.VolName, partition.PartitionID, liveAddrs, inactiveAddrs))
 	}
-	partition.checkFileInternal(liveReplicas, clusterID)
+	partition.doValidateCRC(liveReplicas, clusterID)
 	return
 }
 
-func (partition *DataPartition) checkFileInternal(liveReplicas []*DataReplica, clusterID string) {
+func (partition *DataPartition) doValidateCRC(liveReplicas []*DataReplica, clusterID string) {
 	for _, fc := range partition.FileInCoreMap {
 		extentID, err := strconv.ParseUint(fc.Name, 10, 64)
 		if err != nil {
 			continue
 		}
 		if isTinyExtent(extentID) {
-			partition.checkChunkFile(fc, liveReplicas, clusterID)
+			partition.checkTinyExtentFile(fc, liveReplicas, clusterID)
 		} else {
 			partition.checkExtentFile(fc, liveReplicas, clusterID)
 		}
@@ -72,14 +69,13 @@ func isTinyExtent(extentID uint64) bool {
 	return extentID >= tinyExtentStartID && extentID < tinyExtentStartID+tinyExtentCount
 }
 
-// TODO what is chunk file?
-func (partition *DataPartition) checkChunkFile(fc *FileInCore, liveReplicas []*DataReplica, clusterID string) {
-	if fc.isCheckCrc() == false {
+func (partition *DataPartition) checkTinyExtentFile(fc *FileInCore, liveReplicas []*DataReplica, clusterID string) {
+	if fc.shouldCheckCrc() == false {
 		return
 	}
 	fms, _ := fc.needCrcRepair(liveReplicas)
 
-	if isSameSize(fms) {
+	if hasSameSize(fms) {
 		return
 	}
 	msg := fmt.Sprintf("CheckFileError size not match,cluster[%v],", clusterID)
@@ -90,16 +86,15 @@ func (partition *DataPartition) checkChunkFile(fc *FileInCore, liveReplicas []*D
 	return
 }
 
-// TODO compare to chunk file, what is extent file?
 func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*DataReplica, clusterID string) {
-	if fc.isCheckCrc() == false {
+	if fc.shouldCheckCrc() == false {
 		return
 	}
 
 	fms, needRepair := fc.needCrcRepair(liveReplicas)
 
 	if len(fms) < len(liveReplicas) && (time.Now().Unix()-fc.LastModify) > intervalToCheckMissingReplica {
-		fileMissReplicaTime, ok := partition.FilesWithMissingReplica[fc.Name]
+		lastReportTime, ok := partition.FilesWithMissingReplica[fc.Name]
 		if len(partition.FilesWithMissingReplica) > 400 {
 			Warn(clusterID, fmt.Sprintf("partitionid[%v] has [%v] miss replica", partition.PartitionID, len(partition.FilesWithMissingReplica)))
 			return
@@ -109,7 +104,7 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 			partition.FilesWithMissingReplica[fc.Name] = time.Now().Unix()
 			return
 		}
-		if time.Now().Unix()-fileMissReplicaTime < intervalToCheckMissingReplica {
+		if time.Now().Unix() - lastReportTime < intervalToCheckMissingReplica {
 			return
 		}
 
@@ -124,12 +119,12 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 	}
 
 	fileCrcArr := fc.calculateCrc(fms)
-	sort.Sort((fileCrcSorterByCount)(fileCrcArr))
+	sort.Sort((fileCrcSorter)(fileCrcArr))
 	maxCountFileCrcIndex := len(fileCrcArr) - 1
 	if fileCrcArr[maxCountFileCrcIndex].count == 1 {
 		msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  ExtentOffset diffrent between all Node  "+
 			" it can not repair it ", clusterID, partition.PartitionID, fc.Name)
-		msg += (fileCrcSorterByCount)(fileCrcArr).log()
+		msg += (fileCrcSorter)(fileCrcArr).log()
 		Warn(clusterID, msg)
 		return
 	}
@@ -139,7 +134,7 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 			badNode := crc.meta
 			msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  badCrc On :%v  ",
 				clusterID, partition.PartitionID, fc.Name, badNode.getLocationAddr())
-			msg += (fileCrcSorterByCount)(fileCrcArr).log()
+			msg += (fileCrcSorter)(fileCrcArr).log()
 			Warn(clusterID, msg)
 		}
 	}

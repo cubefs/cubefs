@@ -124,7 +124,7 @@ func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 
 func (dp *DataPartition) checkWriteErrs(errMsg string) (ignore bool) {
 	// file has been deleted when applying the raft log
-	if strings.Contains(errMsg, storage.ErrorExtentHasDelete.Error()) {
+	if strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) {
 		return true
 	}
 	return false
@@ -158,14 +158,14 @@ func (dp *DataPartition) RandomPartitionReadCheck(request *repl.Packet, connect 
 	_, ok := dp.IsRaftLeader()
 	if !ok {
 		// TODO where is this err used?
-		err = storage.ErrNotLeader
+		err = storage.NotALeaderError
 		logContent := fmt.Sprintf("action[ReadCheck] %v.", request.LogMessage(request.GetOpMsg(), connect.RemoteAddr().String(), request.StartT, err))
 		log.LogInfof(logContent)
 		return
 	}
 
 	if dp.applyID < dp.maxAppliedID {
-		err = storage.ErrorAgain
+		err = storage.TryAgainError
 		logContent := fmt.Sprintf("action[ReadCheck] %v localID=%v maxID=%v.",
 			request.LogMessage(request.GetOpMsg(), connect.RemoteAddr().String(), request.StartT, nil), dp.applyID, dp.maxAppliedID)
 		log.LogErrorf(logContent)

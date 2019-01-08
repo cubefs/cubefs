@@ -89,7 +89,7 @@ func (c *Cluster) scheduleToUpdateStatInfo() {
 			if c.partition != nil && c.partition.IsLeader() {
 				c.updateStatInfo()
 			}
-			time.Sleep(time.Second * defaultCheckHeartbeatIntervalSeconds)
+			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
 		}
 	}()
 
@@ -150,7 +150,6 @@ func (c *Cluster) checkDataPartitions() {
 	}
 }
 
-// TODO why call this backend?
 func (c *Cluster) scheduleToLoadDataPartitions() {
 	go func() {
 		for {
@@ -175,7 +174,7 @@ func (c *Cluster) scheduleToCheckReleaseDataPartitions() {
 			if c.partition != nil && c.partition.IsLeader() {
 				c.releaseDataPartitionAfterLoad()
 			}
-			time.Sleep(time.Second * defaultReleaseDataPartitionInternalSeconds)
+			time.Sleep(time.Second * defaultIntervalToFreeDataPartition)
 		}
 	}()
 }
@@ -184,7 +183,7 @@ func (c *Cluster) scheduleToCheckReleaseDataPartitions() {
 func (c *Cluster) releaseDataPartitionAfterLoad() {
 	vols := c.copyVols()
 	for _, vol := range vols {
-		vol.releaseDataPartitions(c.cfg.everyReleaseDataPartitionCount, c.cfg.releaseDataPartitionAfterLoadSeconds)
+		vol.releaseDataPartitions(c.cfg.numberOfDataPartitionsToFree, c.cfg.secondsToFreeDataPartitionAfterLoad)
 	}
 }
 
@@ -195,7 +194,7 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 				c.checkLeaderAddr()
 				c.checkDataNodeHeartbeat()
 			}
-			time.Sleep(time.Second * defaultCheckHeartbeatIntervalSeconds)
+			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
 		}
 	}()
 
@@ -204,7 +203,7 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 			if c.partition != nil && c.partition.IsLeader() {
 				c.checkMetaNodeHeartbeat()
 			}
-			time.Sleep(time.Second * defaultCheckHeartbeatIntervalSeconds)
+			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
 		}
 	}()
 }
@@ -436,7 +435,7 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 	if partitionID, err = c.idAlloc.allocateDataPartitionID(); err != nil {
 		goto errHandler
 	}
-	dp = newDataPartition(partitionID, vol.dpReplicaNum, volName, vol.ID, vol.RandomWrite)
+	dp = newDataPartition(partitionID, vol.dpReplicaNum, volName, vol.ID, vol.IsRandomWrite)
 	dp.Hosts = targetHosts
 	dp.Peers = targetPeers
 	for _, host := range targetHosts {
@@ -482,14 +481,14 @@ func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp
 	if err != nil {
 		return
 	}
-	conn, err := dataNode.Sender.connPool.GetConnect(dataNode.Addr)
+	conn, err := dataNode.TaskManager.connPool.GetConnect(dataNode.Addr)
 	if err != nil {
 		return
 	}
-	if _, err = dataNode.Sender.syncSendAdminTask(task, conn); err != nil {
+	if _, err = dataNode.TaskManager.syncSendAdminTask(task, conn); err != nil {
 		return
 	}
-	dataNode.Sender.connPool.PutConnect(conn, false)
+	dataNode.TaskManager.connPool.PutConnect(conn, false)
 	return
 }
 
@@ -601,7 +600,7 @@ func (c *Cluster) dataNodeOffLine(dataNode *DataNode) (err error) {
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
 		for _, dp := range vol.dataPartitions.partitions {
-			if err = c.decommissionDataPartition(dataNode.Addr, vol.Name, dp, dataNodeOfflineInfo); err != nil {
+			if err = c.decommissionDataPartition(dataNode.Addr, vol.Name, dp, dataNodeOfflineErr); err != nil {
 				return
 			}
 		}
@@ -622,7 +621,7 @@ func (c *Cluster) dataNodeOffLine(dataNode *DataNode) (err error) {
 func (c *Cluster) delDataNodeFromCache(dataNode *DataNode) {
 	c.dataNodes.Delete(dataNode.Addr)
 	c.t.deleteDataNode(dataNode)
-	go dataNode.clean()
+	go dataNode.clear()
 }
 
 // Decommission a data partition.
@@ -734,8 +733,8 @@ errHandler:
 	return
 }
 
-func (c *Cluster) metaNodeOffLine(metaNode *MetaNode) {
-	msg := fmt.Sprintf("action[metaNodeOffLine],clusterID[%v] Node[%v] OffLine", c.Name, metaNode.Addr)
+func (c *Cluster) decommissionMetaNode(metaNode *MetaNode) {
+	msg := fmt.Sprintf("action[decommissionMetaNode],clusterID[%v] Node[%v] OffLine", c.Name, metaNode.Addr)
 	log.LogWarn(msg)
 
 	safeVols := c.allVols()
@@ -746,13 +745,13 @@ func (c *Cluster) metaNodeOffLine(metaNode *MetaNode) {
 		}
 	}
 	if err := c.syncDeleteMetaNode(metaNode); err != nil {
-		msg = fmt.Sprintf("action[metaNodeOffLine],clusterID[%v] Node[%v] OffLine failed,err[%v]",
+		msg = fmt.Sprintf("action[decommissionMetaNode],clusterID[%v] Node[%v] OffLine failed,err[%v]",
 			c.Name, metaNode.Addr, err)
 		Warn(c.Name, msg)
 		return
 	}
 	c.deleteMetaNodeFromCache(metaNode)
-	msg = fmt.Sprintf("action[metaNodeOffLine],clusterID[%v] Node[%v] OffLine success", c.Name, metaNode.Addr)
+	msg = fmt.Sprintf("action[decommissionMetaNode],clusterID[%v] Node[%v] OffLine success", c.Name, metaNode.Addr)
 	Warn(c.Name, msg)
 }
 
@@ -796,7 +795,7 @@ func (c *Cluster) createVol(name string, replicaNum uint8, randomWrite bool, siz
 	} else {
 		dataPartitionSize = uint64(size) * util.GB
 	}
-	if err = c.createVolInternal(name, replicaNum, randomWrite, dataPartitionSize, uint64(capacity)); err != nil {
+	if err = c.doCreateVol(name, replicaNum, randomWrite, dataPartitionSize, uint64(capacity)); err != nil {
 		goto errHandler
 	}
 
@@ -810,7 +809,7 @@ func (c *Cluster) createVol(name string, replicaNum uint8, randomWrite bool, siz
 		// TODO unhandled error
 		c.syncDeleteVol(vol)
 		c.deleteVol(name)
-		goto errHandler
+		goto errHandler // TODO delete or log this error
 	}
 	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
 		vol.initDataPartitions(c)
@@ -827,8 +826,7 @@ errHandler:
 	return
 }
 
-// TODO what are the internals?
-func (c *Cluster) createVolInternal(name string, replicaNum uint8, randomWrite bool, dpSize, capacity uint64) (err error) {
+func (c *Cluster) doCreateVol(name string, replicaNum uint8, randomWrite bool, dpSize, capacity uint64) (err error) {
 	var (
 		id  uint64
 		vol *Vol
@@ -847,14 +845,14 @@ func (c *Cluster) createVolInternal(name string, replicaNum uint8, randomWrite b
 	}
 	return
 errHandler:
-	err = fmt.Errorf("action[createVolInternal], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
+	err = fmt.Errorf("action[doCreateVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
 	log.LogError(errors.ErrorStack(err))
 	Warn(c.Name, err.Error())
 	return
 }
 
 // Update the upper bound of the inode ids in a meta partition.
-func (c *Cluster) updateUpperBoundOfInodeIds(volName string, start uint64) (err error) {
+func (c *Cluster) updateInodeIdRange(volName string, start uint64) (err error) {
 
 	var (
 		maxPartitionID uint64
@@ -873,12 +871,12 @@ func (c *Cluster) updateUpperBoundOfInodeIds(volName string, start uint64) (err 
 		err = errors.Errorf("next meta partition start must be larger than %v", partition.MaxNodeID)
 		return
 	}
-	if _, err := partition.getLeaderMetaReplica(); err != nil {
+	if _, err := partition.getMetaReplicaLeader(); err != nil {
 		return errors.Annotate(err, "can't execute")
 	}
 	partition.Lock()
 	defer partition.Unlock()
-	partition.updateInodeIDUpperBound(c, start)
+	partition.updateInodeIDRange(c, start)
 	return
 }
 
@@ -947,8 +945,8 @@ func (c *Cluster) hasEnoughWritableMetaHosts(replicaNum int, setID uint64) bool 
 	}
 	maxTotal := ns.getMetaNodeMaxTotal()
 	excludeHosts := make([]string, 0)
-	nodeTabs, _ := ns.getAvailCarryMetaNode(maxTotal, excludeHosts)
-	if nodeTabs != nil && len(nodeTabs) >= replicaNum {
+	nodes, _ := ns.getAllCarryNodes(maxTotal, excludeHosts)
+	if nodes != nil && len(nodes) >= replicaNum {
 		return true
 	}
 	return false
@@ -1014,7 +1012,7 @@ func (c *Cluster) liveDataNodesRate() (rate float32) {
 		dataNode := node.(*DataNode)
 		view := NodeView{Addr: dataNode.Addr, Status: dataNode.isActive}
 		dataNodes = append(dataNodes, view)
-		if dataNode.isActive && time.Since(dataNode.ReportTime) < time.Second*time.Duration(2*defaultCheckHeartbeatIntervalSeconds) {
+		if dataNode.isActive && time.Since(dataNode.ReportTime) < time.Second*time.Duration(2*defaultIntervalToCheckHeartbeat) {
 			liveDataNodes = append(liveDataNodes, view)
 		}
 		return true
@@ -1030,7 +1028,7 @@ func (c *Cluster) liveMetaNodesRate() (rate float32) {
 		metaNode := node.(*MetaNode)
 		view := NodeView{Addr: metaNode.Addr, Status: metaNode.IsActive, ID: metaNode.ID}
 		metaNodes = append(metaNodes, view)
-		if metaNode.IsActive && time.Since(metaNode.ReportTime) < time.Second*time.Duration(2*defaultCheckHeartbeatIntervalSeconds) {
+		if metaNode.IsActive && time.Since(metaNode.ReportTime) < time.Second*time.Duration(2*defaultIntervalToCheckHeartbeat) {
 			liveMetaNodes = append(liveMetaNodes, view)
 		}
 		return true
@@ -1081,7 +1079,7 @@ func (c *Cluster) allVols() (vols map[string]*Vol) {
 	return
 }
 
-// TODO There is no usage for this function. Should we delete it or not?
+// TODO Remove. This function is no longer in use.
 func (c *Cluster) getDataPartitionCapacity(vol *Vol) (count int) {
 	var totalCount uint64
 	c.dataNodes.Range(func(addr, value interface{}) bool {

@@ -21,12 +21,11 @@ import (
 	"time"
 )
 
-// TODO what is FileCrc?
-// FileCrc defines the crc
+// FileCrc defines the crc of a file
 type FileCrc struct {
 	crc   uint32
 	count int
-	meta  *FileMetaOnNode
+	meta  *FileMetadata
 }
 
 func newFileCrc(volCrc uint32) (fc *FileCrc) {
@@ -37,23 +36,22 @@ func newFileCrc(volCrc uint32) (fc *FileCrc) {
 	return
 }
 
-// TODO is it necessary to do so?
-type fileCrcSorterByCount []*FileCrc
+type fileCrcSorter []*FileCrc
 
-func (fileCrcArr fileCrcSorterByCount) Less(i, j int) bool {
+func (fileCrcArr fileCrcSorter) Less(i, j int) bool {
 	return fileCrcArr[i].count < fileCrcArr[j].count
 }
 
-func (fileCrcArr fileCrcSorterByCount) Swap(i, j int) {
+func (fileCrcArr fileCrcSorter) Swap(i, j int) {
 	fileCrcArr[i], fileCrcArr[j] = fileCrcArr[j], fileCrcArr[i]
 }
 
-func (fileCrcArr fileCrcSorterByCount) Len() (length int) {
+func (fileCrcArr fileCrcSorter) Len() (length int) {
 	length = len(fileCrcArr)
 	return
 }
 
-func (fileCrcArr fileCrcSorterByCount) log() (msg string) {
+func (fileCrcArr fileCrcSorter) log() (msg string) {
 	for _, fileCrc := range fileCrcArr {
 		addr := fileCrc.meta.getLocationAddr()
 		count := fileCrc.count
@@ -67,7 +65,7 @@ func (fileCrcArr fileCrcSorterByCount) log() (msg string) {
 
 func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataReplica, clusterID string) (tasks []*proto.AdminTask) {
 	tasks = make([]*proto.AdminTask, 0)
-	if fc.isCheckCrc() == false {
+	if fc.shouldCheckCrc() == false {
 		return
 	}
 
@@ -85,12 +83,12 @@ func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataRe
 	}
 
 	fileCrcArr := fc.calculateCrc(fms)
-	sort.Sort(fileCrcSorterByCount(fileCrcArr))
+	sort.Sort(fileCrcSorter(fileCrcArr))
 	maxIndex := len(fileCrcArr) - 1
 	if fileCrcArr[maxIndex].count == 1 {
 		msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  CRC diffrent between all Node  "+
 			" it can not repair it ", clusterID, partitionID, fc.Name)
-		msg += (fileCrcSorterByCount(fileCrcArr)).log()
+		msg += (fileCrcSorter(fileCrcArr)).log()
 		Warn(clusterID, msg)
 		return
 	}
@@ -100,7 +98,7 @@ func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataRe
 			badNode := crc.meta
 			msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  badCrc On :%v  ",
 				clusterID, partitionID, fc.Name, badNode.getLocationAddr())
-			msg += (fileCrcSorterByCount)(fileCrcArr).log()
+			msg += (fileCrcSorter)(fileCrcArr).log()
 			Warn(clusterID, msg)
 		}
 	}
@@ -108,19 +106,18 @@ func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataRe
 	return
 }
 
-// TODO rename!
-func (fc *FileInCore) isCheckCrc() bool {
-	return time.Now().Unix()-fc.LastModify > defaultFileDelayCheckCrcSec
+func (fc *FileInCore) shouldCheckCrc() bool {
+	return time.Now().Unix()-fc.LastModify > defaultIntervalToCheckCrc
 }
 
-// TODO rename!
-func (fc *FileInCore) isDelayCheck() bool {
+// TODO remove
+func (fc *FileInCore) shouldDelayCheck() bool {
 	return time.Now().Unix()-fc.LastModify > defaultFileDelayCheckLackSec
 }
 
-func (fc *FileInCore) needCrcRepair(liveVols []*DataReplica) (fms []*FileMetaOnNode, needRepair bool) {
+func (fc *FileInCore) needCrcRepair(liveVols []*DataReplica) (fms []*FileMetadata, needRepair bool) {
 	var baseCrc uint32
-	fms = make([]*FileMetaOnNode, 0)
+	fms = make([]*FileMetadata, 0)
 
 	for i := 0; i < len(liveVols); i++ {
 		vol := liveVols[i]
@@ -143,7 +140,7 @@ func (fc *FileInCore) needCrcRepair(liveVols []*DataReplica) (fms []*FileMetaOnN
 	return
 }
 
-func isSameSize(fms []*FileMetaOnNode) (same bool) {
+func hasSameSize(fms []*FileMetadata) (same bool) {
 	sentry := fms[0].Size
 	for _, fm := range fms {
 		if fm.Size != sentry {
@@ -153,7 +150,7 @@ func isSameSize(fms []*FileMetaOnNode) (same bool) {
 	return true
 }
 
-func (fc *FileInCore) calculateCrc(badVfNodes []*FileMetaOnNode) (fileCrcArr []*FileCrc) {
+func (fc *FileInCore) calculateCrc(badVfNodes []*FileMetadata) (fileCrcArr []*FileCrc) {
 	badLen := len(badVfNodes)
 	fileCrcArr = make([]*FileCrc, 0)
 	for i := 0; i < badLen; i++ {

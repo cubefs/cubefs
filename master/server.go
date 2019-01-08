@@ -139,9 +139,9 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	}
 	fmt.Println("retainLogs=", m.retainLogs)
 
-	dataPartitionMissSec := cfg.GetString(dataPartitionMissSec)
-	if dataPartitionMissSec != "" {
-		if m.config.DataPartitionMissSec, err = strconv.ParseInt(dataPartitionMissSec, 10, 0); err != nil {
+	missingDataPartitionInterval := cfg.GetString(missingDataPartitionInterval)
+	if missingDataPartitionInterval != "" {
+		if m.config.MissingDataPartitionInterval, err = strconv.ParseInt(missingDataPartitionInterval, 10, 0); err != nil {
 			return fmt.Errorf("%v,err:%v", badConfErr, err.Error())
 		}
 	}
@@ -153,17 +153,17 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		}
 	}
 
-	everyLoadDataPartitionCount := cfg.GetString(everyLoadDataPartitionCount)
-	if everyLoadDataPartitionCount != "" {
-		if m.config.everyLoadDataPartitionCount, err = strconv.Atoi(everyLoadDataPartitionCount); err != nil {
+	numberOfDataPartitionsToLoad := cfg.GetString(NumberOfDataPartitionsToLoad)
+	if numberOfDataPartitionsToLoad != "" {
+		if m.config.numberOfDataPartitionsToLoad, err = strconv.Atoi(numberOfDataPartitionsToLoad); err != nil {
 			return fmt.Errorf("%v,err:%v", badConfErr, err.Error())
 		}
 	}
-	if m.config.everyLoadDataPartitionCount <= 40 {
-		m.config.everyLoadDataPartitionCount = 40
+	if m.config.numberOfDataPartitionsToLoad <= 40 {
+		m.config.numberOfDataPartitionsToLoad = 40
 	}
-	if releaseAfterLoadSeconds := cfg.GetString(releaseDataPartitionAfterLoadSeconds); releaseAfterLoadSeconds != "" {
-		if m.config.releaseDataPartitionAfterLoadSeconds, err = strconv.ParseInt(releaseAfterLoadSeconds, 10, 64); err != nil {
+	if secondsToFreeDP := cfg.GetString(secondsToFreeDataPartitionAfterLoad); secondsToFreeDP != "" {
+		if m.config.secondsToFreeDataPartitionAfterLoad, err = strconv.ParseInt(secondsToFreeDP, 10, 64); err != nil {
 			return fmt.Errorf("%v,err:%v", badConfErr, err.Error())
 		}
 	}
@@ -193,7 +193,7 @@ func (m *Server) initFsm() {
 	m.fsm.registerLeaderChangeHandler(m.handleLeaderChange)
 	m.fsm.registerPeerChangeHandler(m.handlePeerChange)
 
-	// TODO explain
+	// register the handlers for the interfaces defined in the Raft library
 	m.fsm.registerApplyHandler(m.handleApply)
 	m.fsm.registerApplySnapshotHandler(m.handleApplySnapshot)
 	m.fsm.restore()
