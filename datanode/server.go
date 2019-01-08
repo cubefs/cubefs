@@ -380,22 +380,8 @@ func (s *DataNode) addDiskErrs(partitionID uint64, err error, flag uint8) {
 
 // TODO we need to find a better to handle the disk error
 func IsDiskErr(errMsg string) bool {
-<<<<<<< Temporary merge branch 1
-	if strings.Contains(errMsg, storage.ErrorParamMismatch.Error()) || strings.Contains(errMsg, storage.ErrorExtentNotFound.Error()) ||
-		strings.Contains(errMsg, storage.ErrorNoAvaliExtent.Error()) ||
-		strings.Contains(errMsg, storage.ErrorUnavaliExtent.Error()) ||
-		strings.Contains(errMsg, io.EOF.Error()) || strings.Contains(errMsg, storage.ErrSyscallNoSpace.Error()) ||
-		strings.Contains(errMsg, storage.ErrorExtentHasDelete.Error()) || strings.Contains(errMsg, ErrNoPartitionFound.Error()) ||
-		strings.Contains(errMsg, storage.ErrorExtentHasExsit.Error()) ||
-		strings.Contains(errMsg, storage.ErrPkgCrcMismatch.Error()) || strings.Contains(errMsg, ErrIncorrectStoreType.Error()) ||
-		strings.Contains(errMsg, storage.ErrorNoUnAvaliExtent.Error()) || strings.Contains(errMsg, storage.ErrorParamMismatch.Error()) ||
-		strings.Contains(errMsg, storage.ErrExtentNameFormat.Error()) || strings.Contains(errMsg, storage.ErrorAgain.Error()) ||
-		strings.Contains(errMsg, storage.ErrorExtentNotFound.Error()) || strings.Contains(errMsg, storage.ErrorExtentHasFull.Error()) || strings.Contains(errMsg, storage.ErrorPartitionReadOnly.Error()) {
-		return false
-=======
 	if strings.Contains(errMsg, syscall.EIO.Error()) {
 		return true
->>>>>>> Temporary merge branch 2
 	}
 
 	return false
