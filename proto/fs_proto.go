@@ -111,16 +111,15 @@ type LinkInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
-// DeleteInodeRequest defines the request to delete an inode.
-// FIXME: unlink inode
-type DeleteInodeRequest struct {
+// UnlinkInodeRequest defines the request to unlink an inode.
+type UnlinkInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 }
 
-// DeleteInodeResponse defines the response to the request of deleting an inode.
-type DeleteInodeResponse struct {
+// UnlinkInodeResponse defines the response to the request of unlinking an inode.
+type UnlinkInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 

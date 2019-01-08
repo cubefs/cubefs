@@ -148,7 +148,7 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode uint32, target []byte) (s
 }
 
 func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
-	req := &proto.DeleteInodeRequest{
+	req := &proto.UnlinkInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
@@ -177,7 +177,7 @@ func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, inf
 		return
 	}
 
-	resp := new(proto.DeleteInodeResponse)
+	resp := new(proto.UnlinkInodeResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil {
 		log.LogErrorf("idelete: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
