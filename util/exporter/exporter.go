@@ -33,6 +33,15 @@ const (
 	ConfigKeyConsulAddr   = "consulAddr"
 )
 
+type MetricType int
+
+const (
+	_ MetricType = iota
+	Counter
+	Gauge
+)
+
+
 var (
 	metricGroups sync.Map
 	TpMetricPool = &sync.Pool{New: func() interface{} {
@@ -64,22 +73,128 @@ func Init(cluster string, role string, cfg *config.Config) {
 		RegistConsul(consulAddr, AppName, role, cluster, port)
 	}
 
-	m := RegistGauge("start_time")
+	m := RegistMetric("start_time", Gauge)
 	m.Set(float64(time.Now().Unix() * 1000))
 
 	log.LogInfof("exporter Start: %v", addr)
 }
 
+type PromeMetric struct {
+	Name string
+	Labels map[string]string
+	tp MetricType
+}
+
+
 type TpMetric struct {
-	Start      time.Time
-	metricName string
+	Name  string
+	Start time.Time
 }
 
 func metricsName(name string) string {
 	return namespace + "_" + name
 }
 
-func RegistGauge(name string) (o prometheus.Gauge) {
+func RegistMetricWithLabels(name string, tp MetricType, labels map[string]string) (m *PromeMetric) {
+	name = metricsName(name)
+	m = &PromeMetric{
+		Name: name,
+		Labels: labels,
+		tp: tp,
+	}
+	go m.registMetric()
+	return
+}
+func RegistMetric(name string, tp MetricType) (m *PromeMetric) {
+	return RegistMetricWithLabels(name, tp, nil)
+}
+
+func (m *PromeMetric) registMetric() {
+	if m.tp == Counter {
+		newMetrics := prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Name: m.Name,
+				ConstLabels: m.Labels,
+			})
+		go metricGroups.LoadOrStore(m.Name, newMetrics)
+	} else if m.tp == Gauge {
+		newMetrics := prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: m.Name,
+				ConstLabels: m.Labels,
+			})
+		go metricGroups.LoadOrStore(m.Name, newMetrics)
+	}
+}
+
+func (m *PromeMetric) Set(val float64 ) {
+	go func() {
+		metric, load := metricGroups.Load(m.Name)
+		if !load {
+			if m.tp == Counter {
+				newMetrics := prometheus.NewCounter(
+					prometheus.CounterOpts{
+						Name: m.Name,
+						ConstLabels: m.Labels,
+					})
+				metricGroups.LoadOrStore(m.Name, newMetrics)
+				newMetrics.Add(val)
+			} else if m.tp == Gauge {
+				newMetrics := prometheus.NewGauge(
+					prometheus.GaugeOpts{
+						Name: m.Name,
+						ConstLabels: m.Labels,
+					})
+				metricGroups.LoadOrStore(m.Name, newMetrics)
+				newMetrics.Set(val)
+			}
+
+		} else{
+			switch me := metric.(type) {
+			case prometheus.Counter:
+				me.Add(val)
+			case prometheus.Gauge:
+				me.Set(val)
+			default:
+			}
+		}
+	}()
+
+	return
+}
+
+func RegistCounter(name string) (o prometheus.Counter) {
+	return RegistCounterLables(name, nil)
+}
+
+func RegistCounterLables(name string, labels map[string]string) (o prometheus.Counter) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.LogErrorf("RegistGauge panic,err[%v]", err)
+		}
+	}()
+	name = metricsName(name)
+	newMetrics := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: name,
+			Help: name,
+			ConstLabels: labels,
+		})
+	m, load := metricGroups.LoadOrStore(name, newMetrics)
+	if load {
+		o = m.(prometheus.Counter)
+		return
+	} else {
+		o = newMetrics
+		if enabled {
+			prometheus.MustRegister(newMetrics)
+		}
+	}
+
+	return
+}
+
+func RegistGaugeLables(name string, labels map[string]string) (o prometheus.Gauge) {
 	defer func() {
 		if err := recover(); err != nil {
 			log.LogErrorf("RegistGauge panic,err[%v]", err)
@@ -91,6 +206,7 @@ func RegistGauge(name string) (o prometheus.Gauge) {
 		prometheus.GaugeOpts{
 			Name: name,
 			Help: name,
+			ConstLabels: labels,
 		})
 	m, load := metricGroups.LoadOrStore(name, newGauge)
 	if load {
@@ -106,6 +222,10 @@ func RegistGauge(name string) (o prometheus.Gauge) {
 	return
 }
 
+func RegistGauge(name string) (o prometheus.Gauge) {
+	return RegistGaugeLables(name, nil)
+}
+
 func RegistTp(name string) (tp *TpMetric) {
 	defer func() {
 		if err := recover(); err != nil {
@@ -114,7 +234,7 @@ func RegistTp(name string) (tp *TpMetric) {
 	}()
 
 	tp = TpMetricPool.Get().(*TpMetric)
-	tp.metricName = metricsName(name)
+	tp.Name = metricsName(name)
 	tp.Start = time.Now()
 
 	return
@@ -134,11 +254,10 @@ func (tp *TpMetric) CalcTp() {
 	go func() {
 		tpGauge := prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Name: tp.metricName,
-				Help: tp.metricName,
+				Name: tp.Name,
 			})
 
-		metric, load := metricGroups.LoadOrStore(tp.metricName, tpGauge)
+		metric, load := metricGroups.LoadOrStore(tp.Name, tpGauge)
 		if !load {
 			if enabled {
 				prometheus.MustRegister(metric.(prometheus.Gauge))
@@ -156,7 +275,6 @@ func Alarm(name, detail string) {
 		newMetric := prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Name: name,
-				Help: name,
 			})
 		m, load := metricGroups.LoadOrStore(name, newMetric)
 		if load {
