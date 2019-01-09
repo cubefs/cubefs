@@ -41,8 +41,8 @@ type AdminTaskManager struct {
 	targetAddr string
 	TaskMap    map[string]*proto.AdminTask
 	sync.RWMutex
-	exitCh     chan struct{}
-	connPool   *util.ConnectPool
+	exitCh   chan struct{}
+	connPool *util.ConnectPool
 }
 
 func newAdminTaskManager(targetAddr, clusterID string) (sender *AdminTaskManager) {

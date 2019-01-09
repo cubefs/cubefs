@@ -450,7 +450,7 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 			}
 			dp.Lock()
 			defer dp.Unlock()
-			if err = dp.postProcessingDataPartitionCreation(host, c); err != nil {
+			if err = dp.afterCreation(host, c); err != nil {
 				errChannel <- err
 			}
 		}(host)
@@ -701,14 +701,6 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		newPeers = append(newPeers, proto.Peer{ID: dataNode.ID, Addr: host})
 	}
 
-	for _, replica := range dp.Replicas {
-		if replica.Addr == offlineAddr {
-			removePeer = proto.Peer{ID: replica.dataNode.ID, Addr: replica.Addr}
-		} else {
-			newPeers = append(newPeers, proto.Peer{ID: replica.dataNode.ID, Addr: replica.Addr})
-		}
-	}
-
 	if task, err = dp.createTaskToDecommissionDataPartition(removePeer, newPeers[0]); err != nil {
 		goto errHandler
 	}
@@ -725,7 +717,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	if err = c.syncCreateDataPartitionToDataNode(newAddr, vol.dataPartitionSize, dp); err != nil {
 		goto errHandler
 	}
-	if err = dp.postProcessingDataPartitionCreation(newAddr, c); err != nil {
+	if err = dp.afterCreation(newAddr, c); err != nil {
 		goto errHandler
 	}
 	dp.Status = proto.ReadOnly
@@ -928,7 +920,7 @@ func (c *Cluster) createMetaPartition(volName string, start, end uint64) (err er
 			}
 			mp.Lock()
 			defer mp.Unlock()
-			if err = mp.postProcessingPartitionCreation(host, c); err != nil {
+			if err = mp.afterCreation(host, c); err != nil {
 				errChannel <- err
 			}
 		}(host)
