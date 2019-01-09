@@ -28,6 +28,7 @@ import (
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util/log"
 	"hash/crc32"
+	"github.com/tiglabs/containerfs/util"
 )
 
 // DataPartitionRepairTask defines the reapir task for the data partition.
@@ -462,10 +463,13 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	if err != nil {
 		return errors.Annotatef(err, "streamRepairExtent Watermark error")
 	}
-
+	if localExtentInfo.Size <= util.BlockSize {
+		localExtentInfo.Size = 0
+	} else {
+		localExtentInfo.Size = localExtentInfo.Size - util.BlockSize
+	}
 	// size difference between the local extent and the remote extent
 	sizeDiff := remoteExtentInfo.Size - localExtentInfo.Size
-
 	// create a new streaming read packet
 	request := repl.NewExtentRepairReadPacket(dp.ID(), remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
 	var conn *net.TCPConn
