@@ -23,7 +23,7 @@ import (
 func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err error) {
 	if req.ParentID == req.Inode {
 		err = fmt.Errorf("parentId is equal inodeId")
-		p.PackErrorWithBody(proto.OpExistErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
 		return
 	}
 
@@ -39,7 +39,7 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 	}
 	resp, err := mp.Put(opCreateDentry, val)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
 	p.ResultCode = resp.(uint8)
@@ -58,7 +58,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 	}
 	r, err := mp.Put(opDeleteDentry, val)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
 	retMsg := r.(*ResponseDentry)
@@ -70,7 +70,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 			Inode: dentry.Inode,
 		}
 		reply, err = json.Marshal(resp)
-		p.PackOkWithBody(reply)
+		p.PacketOkWithBody(reply)
 	}
 	return
 }
@@ -78,7 +78,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err error) {
 	if req.ParentID == req.Inode {
 		err = fmt.Errorf("parentId is equal inodeId")
-		p.PackErrorWithBody(proto.OpExistErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
 		return
 	}
 
@@ -94,7 +94,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 	}
 	resp, err := mp.Put(opUpdateDentry, val)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
 	msg := resp.(*ResponseDentry)
@@ -105,7 +105,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 			Inode: msg.Msg.Inode,
 		}
 		reply, err = json.Marshal(m)
-		p.PackOkWithBody(reply)
+		p.PacketOkWithBody(reply)
 	}
 	return
 }
@@ -114,10 +114,10 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 	resp := mp.readDir(req)
 	reply, err := json.Marshal(resp)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		return
 	}
-	p.PackOkWithBody(reply)
+	p.PacketOkWithBody(reply)
 	return
 }
 
@@ -138,7 +138,7 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 			status = proto.OpErr
 		}
 	}
-	p.PackErrorWithBody(status, reply)
+	p.PacketErrorWithBody(status, reply)
 	return
 }
 

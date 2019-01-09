@@ -540,7 +540,7 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 	}
 
 	if p.ResultCode != proto.OpOk {
-		err = errors.New(fmt.Sprintf("createExtent: ResultCode NOK, packet(%v) datapartionHosts(%v) ResultCode(%v)", p, dp.Hosts[0], p.GetResultMesg()))
+		err = errors.New(fmt.Sprintf("createExtent: ResultCode NOK, packet(%v) datapartionHosts(%v) ResultCode(%v)", p, dp.Hosts[0], p.GetResultMsg()))
 		return
 	}
 

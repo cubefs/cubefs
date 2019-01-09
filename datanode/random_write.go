@@ -118,7 +118,7 @@ func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 	pkg.ResultCode = resp.(uint8)
 
 	log.LogDebugf("[randomWrite] SubmitRaft: req_%v_%v_%v_%v_%v response = %v.",
-		dp.partitionID, pkg.ExtentID, pkg.ExtentOffset, pkg.Size, pkg.CRC, pkg.GetResultMesg())
+		dp.partitionID, pkg.ExtentID, pkg.ExtentOffset, pkg.Size, pkg.CRC, pkg.GetResultMsg())
 	return
 }
 

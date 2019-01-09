@@ -28,15 +28,15 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 	ino.Extents.Append(&ext)
 	val, err := ino.Marshal()
 	if err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		return
 	}
 	resp, err := mp.Put(opExtentsAdd, val)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
-	p.PackErrorWithBody(resp.(uint8), nil)
+	p.PacketErrorWithBody(resp.(uint8), nil)
 	return
 }
 
@@ -65,7 +65,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest,
 			status = proto.OpErr
 		}
 	}
-	p.PackErrorWithBody(status, reply)
+	p.PacketErrorWithBody(status, reply)
 	return
 }
 
@@ -76,15 +76,15 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq,
 	ino.AuthID = req.AuthID
 	val, err := ino.Marshal()
 	if err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		return
 	}
 	resp, err := mp.Put(opFSMExtentTruncate, val)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
 	msg := resp.(*ResponseInode)
-	p.PackErrorWithBody(msg.Status, nil)
+	p.PacketErrorWithBody(msg.Status, nil)
 	return
 }

@@ -24,30 +24,37 @@ const (
 	RootIno = uint64(1)
 )
 
+// Mode returns the fileMode.
 func Mode(osMode os.FileMode) uint32 {
 	return uint32(osMode)
 }
 
+// OsMode returns os.FileMode.
 func OsMode(mode uint32) os.FileMode {
 	return os.FileMode(mode)
 }
 
+// IsRegular checks if the mode is regular.
 func IsRegular(mode uint32) bool {
 	return OsMode(mode).IsRegular()
 }
 
+// IsDir checks if the mode is dir.
 func IsDir(mode uint32) bool {
 	return OsMode(mode).IsDir()
 }
 
+// IsSymlink checks if the mode is symlink.
 func IsSymlink(mode uint32) bool {
 	return OsMode(mode)&os.ModeSymlink != 0
 }
 
+// IsWriteFlag checks if the given flag is the write flag.
 func IsWriteFlag(flag uint32) bool {
 	return flag&FlagWrite != 0
 }
 
+// InodeInfo defines the inode struct.
 type InodeInfo struct {
 	Inode      uint64    `json:"ino"`
 	Mode       uint32    `json:"mode"`
@@ -62,20 +69,24 @@ type InodeInfo struct {
 	Target     []byte    `json:"tgt"`
 }
 
+// String returns the string format of the inode.
 func (info *InodeInfo) String() string {
 	return fmt.Sprintf("Inode(%v) Mode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v)", info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation)
 }
 
+// Dentry defines the sentry struct.
 type Dentry struct {
 	Name  string `json:"name"`
 	Inode uint64 `json:"ino"`
 	Type  uint32 `json:"type"`
 }
 
+// String returns the string format of the dentry.
 func (d Dentry) String() string {
 	return fmt.Sprintf("Dentry{Name(%v),Inode(%v),Type(%v)}", d.Name, d.Inode, d.Type)
 }
 
+// CreateInodeRequest defines the request to create an inode.
 type CreateInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
@@ -83,37 +94,44 @@ type CreateInodeRequest struct {
 	Target      []byte `json:"tgt"`
 }
 
+// CreateInodeResponse defines the response to the request of creating an inode.
 type CreateInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
+// LinkInodeRequest defines the request to link an inode.
 type LinkInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 }
 
+// LinkInodeResponse defines the response to the request of linking an inode.
 type LinkInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
-//FIXME: unlink inode
+// DeleteInodeRequest defines the request to delete an inode.
+// FIXME: unlink inode
 type DeleteInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 }
 
+// DeleteInodeResponse defines the response to the request of deleting an inode.
 type DeleteInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
+// EvictInodeRequest defines the request to evict an inode.
 type EvictInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 }
 
+// CreateDentryRequest defines the request to create a dentry.
 type CreateDentryRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
@@ -123,6 +141,7 @@ type CreateDentryRequest struct {
 	Mode        uint32 `json:"mode"`
 }
 
+// UpdateDentryRequest defines the request to update a dentry.
 type UpdateDentryRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
@@ -131,10 +150,12 @@ type UpdateDentryRequest struct {
 	Inode       uint64 `json:"ino"` // new inode number
 }
 
+// UpdateDentryResponse defines the response to the request of updating a dentry.
 type UpdateDentryResponse struct {
 	Inode uint64 `json:"ino"` // old inode number
 }
 
+// DeleteDentryRequest define the request tp delete a dentry.
 type DeleteDentryRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
@@ -142,10 +163,12 @@ type DeleteDentryRequest struct {
 	Name        string `json:"name"`
 }
 
+// DeleteDentryResponse defines the response to the request of deleting a dentry.
 type DeleteDentryResponse struct {
 	Inode uint64 `json:"ino"`
 }
 
+// OpenRequest defines the request to open a file.
 type OpenRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
@@ -154,10 +177,12 @@ type OpenRequest struct {
 	ATime       int64  `json:"atime"`
 }
 
+// OpenResponse defines the response to the open request.
 type OpenResponse struct {
 	AuthID uint64 `json:"authid"`
 }
 
+// ReleaseRequest defines the request to relase a partition.
 type ReleaseRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
@@ -165,6 +190,7 @@ type ReleaseRequest struct {
 	AuthID      uint64 `json:"authid"`
 }
 
+// LookupRequest defines the request for lookup.
 type LookupRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
@@ -172,41 +198,49 @@ type LookupRequest struct {
 	Name        string `json:"name"`
 }
 
+// LookupResponse defines the response for the loopup request.
 type LookupResponse struct {
 	Inode uint64 `json:"ino"`
 	Mode  uint32 `json:"mode"`
 }
 
+// InodeGetRequest defines the request to get the inode.
 type InodeGetRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 }
 
+// InodeGetResponse defines the response to the InodeGetRequest.
 type InodeGetResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
+// BatchInodeGetRequest defines the request to get the inode in batch.
 type BatchInodeGetRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionID uint64   `json:"pid"`
 	Inodes      []uint64 `json:"inos"`
 }
 
+// BatchInodeGetResponse defines the response to the request of getting the inode in batch.
 type BatchInodeGetResponse struct {
 	Infos []*InodeInfo `json:"infos"`
 }
 
+// ReadDirRequest defines the request to read dir.
 type ReadDirRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	ParentID    uint64 `json:"pino"`
 }
 
+// ReadDirResponse defines the response to the request of reading dir.
 type ReadDirResponse struct {
 	Children []Dentry `json:"children"`
 }
 
+// AppendExtentKeyRequest defines the request to append an extent key.
 type AppendExtentKeyRequest struct {
 	VolName     string    `json:"vol"`
 	PartitionID uint64    `json:"pid"`
@@ -215,18 +249,21 @@ type AppendExtentKeyRequest struct {
 	Extent      ExtentKey `json:"ek"`
 }
 
+// GetExtentsRequest defines the reques to get extents.
 type GetExtentsRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 }
 
+// GetExtentsResponse defines the response to the request of getting extents.
 type GetExtentsResponse struct {
 	Generation uint64      `json:"gen"`
 	Size       uint64      `json:"sz"`
 	Extents    []ExtentKey `json:"eks"`
 }
 
+// TruncateRequest defines the request to truncate.
 type TruncateRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
@@ -235,7 +272,8 @@ type TruncateRequest struct {
 	Size        uint64 `json:"sz"`
 }
 
-type SetattrRequest struct {
+// SetAttrRequest defines the request to set attribute.
+type SetAttrRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`

@@ -33,12 +33,12 @@ type Packet struct {
 }
 
 func (p *Packet) String() string {
-	return fmt.Sprintf("ReqID(%v)Op(%v)Inode(%v)FileOffset(%v)Size(%v)PartitionID(%v)ExtentID(%v)ExtentOffset(%v)CRC(%v)ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.inode, p.KernelOffset, p.Size, p.PartitionID, p.ExtentID, p.ExtentOffset, p.CRC, p.GetResultMesg())
+	return fmt.Sprintf("ReqID(%v)Op(%v)Inode(%v)FileOffset(%v)Size(%v)PartitionID(%v)ExtentID(%v)ExtentOffset(%v)CRC(%v)ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.inode, p.KernelOffset, p.Size, p.PartitionID, p.ExtentID, p.ExtentOffset, p.CRC, p.GetResultMsg())
 }
 
 func NewWritePacket(inode uint64, fileOffset, storeMode int) *Packet {
 	p := new(Packet)
-	p.ReqID = proto.GeneratorRequestID()
+	p.ReqID = proto.GenerateRequestID()
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpWrite
 	p.inode = inode
@@ -59,7 +59,7 @@ func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset
 	p.ExtentType = proto.NormalExtentType
 	p.ExtentID = extentID
 	p.ExtentOffset = int64(extentOffset)
-	p.ReqID = proto.GeneratorRequestID()
+	p.ReqID = proto.GenerateRequestID()
 	p.Arg = nil
 	p.ArgLen = 0
 	p.RemainingFollowers = 0
@@ -79,7 +79,7 @@ func NewReadPacket(key *proto.ExtentKey, extentOffset, size int, inode uint64, f
 	p.Size = uint32(size)
 	p.Opcode = proto.OpStreamRead
 	p.ExtentType = proto.NormalExtentType
-	p.ReqID = proto.GeneratorRequestID()
+	p.ReqID = proto.GenerateRequestID()
 	p.RemainingFollowers = 0
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
@@ -95,7 +95,7 @@ func NewCreateExtentPacket(dp *wrapper.DataPartition, inode uint64) *Packet {
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.ArgLen = uint32(len(p.Arg))
 	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
-	p.ReqID = proto.GeneratorRequestID()
+	p.ReqID = proto.GenerateRequestID()
 	p.Opcode = proto.OpCreateExtent
 	p.Data = make([]byte, 8)
 	binary.BigEndian.PutUint64(p.Data, inode)

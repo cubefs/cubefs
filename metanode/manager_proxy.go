@@ -38,25 +38,25 @@ func (m *metaManager) serveProxy(conn net.Conn, mp MetaPartition,
 	}
 	if leaderAddr == "" {
 		err = ErrNonLeader
-		p.PackErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		goto end
 	}
 	// GetConnect Master Conn
 	mConn, err = m.connPool.GetConnect(leaderAddr)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.connPool.PutConnect(mConn, ForceCloseConnect)
 		goto end
 	}
 	// Send Master Conn
 	if err = p.WriteToConn(mConn); err != nil {
-		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.connPool.PutConnect(mConn, ForceCloseConnect)
 		goto end
 	}
 	// Read conn from master
 	if err = p.ReadFromConn(mConn, proto.NoReadDeadlineTime); err != nil {
-		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.connPool.PutConnect(mConn, ForceCloseConnect)
 		goto end
 	}
@@ -67,6 +67,6 @@ end:
 		log.LogErrorf("[serveProxy]: %s", err.Error())
 	}
 	log.LogDebugf("[serveProxy] request:%v, response: %v", p.GetOpMsg(),
-		p.GetResultMesg())
+		p.GetResultMsg())
 	return
 }

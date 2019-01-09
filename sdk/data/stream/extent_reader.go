@@ -64,7 +64,7 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 				return errors.Annotatef(e, "Extent Reader Read: failed to read from connect, readBytes(%v)", readBytes), false
 			}
 
-			//log.LogDebugf("ExtentReader Read: ResultCode(%v) req(%v) reply(%v) readBytes(%v)", replyPacket.GetResultMesg(), reqPacket, replyPacket, readBytes)
+			//log.LogDebugf("ExtentReader Read: ResultCode(%v) req(%v) reply(%v) readBytes(%v)", replyPacket.GetResultMsg(), reqPacket, replyPacket, readBytes)
 
 			if replyPacket.ResultCode == proto.OpAgain {
 				return nil, true
@@ -96,7 +96,7 @@ func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet) (er
 	}
 
 	if reply.ResultCode != proto.OpOk {
-		err = errors.New(fmt.Sprintf("checkStreamReply: ResultCode(%v) NOK", reply.GetResultMesg()))
+		err = errors.New(fmt.Sprintf("checkStreamReply: ResultCode(%v) NOK", reply.GetResultMsg()))
 		return
 	}
 	if !request.isValidReadReply(reply) {

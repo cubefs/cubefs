@@ -14,20 +14,18 @@
 
 package proto
 
-/*
- this struct is used to master send command to metanode
-  or send command to datanode
-*/
-
+// RegisterMetaNodeResp defines the response to register a meta node.
 type RegisterMetaNodeResp struct {
 	ID uint64
 }
 
+// ClusterInfo defines the cluster infomation.
 type ClusterInfo struct {
 	Cluster string
 	Ip      string
 }
 
+// CreateDataPartitionRequest defines the request to create a data partition.
 type CreateDataPartitionRequest struct {
 	PartitionType string
 	PartitionId   uint64
@@ -37,40 +35,47 @@ type CreateDataPartitionRequest struct {
 	Members       []Peer
 }
 
+// CreateDataPartitionResponse defines the response to the request of creating a data partition.
 type CreateDataPartitionResponse struct {
 	PartitionId uint64
 	Status      uint8
 	Result      string
 }
 
+// DeleteDataPartitionRequest defines the request to delete a data partition.
 type DeleteDataPartitionRequest struct {
 	DataPartitionType string
 	PartitionId       uint64
 	PartitionSize     int
 }
 
+// DeleteDataPartitionResponse defines the response to the request of deleting a data partition.
 type DeleteDataPartitionResponse struct {
 	Status      uint8
 	Result      string
 	PartitionId uint64
 }
 
+// DataPartitionDecommissionRequest defines the request of decommissioning a data partition.
 type DataPartitionDecommissionRequest struct {
 	PartitionId uint64
 	RemovePeer  Peer
 	AddPeer     Peer
 }
 
-type DataPartitionOfflineResponse struct {
+// DataPartitionDecommissionResponse defines the response to the request of decommissioning a data partition.
+type DataPartitionDecommissionResponse struct {
 	Status      uint8
 	Result      string
 	PartitionId uint64
 }
 
+// LoadDataPartitionRequest defines the request of loading a data partition.
 type LoadDataPartitionRequest struct {
 	PartitionId uint64
 }
 
+// LoadDataPartitionResponse defines the response to the request of loading a data partition.
 type LoadDataPartitionResponse struct {
 	PartitionId       uint64
 	Used              uint64
@@ -80,6 +85,7 @@ type LoadDataPartitionResponse struct {
 	Result            string
 }
 
+// File defines the file struct.
 type File struct {
 	Name     string
 	Crc      uint32
@@ -87,12 +93,14 @@ type File struct {
 	Modified int64
 }
 
+// LoadMetaPartitionMetricRequest defines the request of loading the meta partition metrics.
 type LoadMetaPartitionMetricRequest struct {
 	PartitionID uint64
 	Start       uint64
 	End         uint64
 }
 
+// LoadMetaPartitionMetricResponse defines the response to the request of loading the meta partition metrics.
 type LoadMetaPartitionMetricResponse struct {
 	Start    uint64
 	End      uint64
@@ -101,11 +109,13 @@ type LoadMetaPartitionMetricResponse struct {
 	Result   string
 }
 
+// HeartBeatRequest define the heartbeat request.
 type HeartBeatRequest struct {
 	CurrTime   int64
 	MasterAddr string
 }
 
+// PartitionReport defines the partition report.
 type PartitionReport struct {
 	PartitionID     uint64
 	PartitionStatus int
@@ -117,6 +127,7 @@ type PartitionReport struct {
 	NeedCompare     bool
 }
 
+// DataNodeHeartbeatResponse defines the response to the data node heartbeat.
 type DataNodeHeartbeatResponse struct {
 	Total               uint64
 	Used                uint64
@@ -131,6 +142,7 @@ type DataNodeHeartbeatResponse struct {
 	Result              string
 }
 
+// MetaPartitionReport defines the meta partition report.
 type MetaPartitionReport struct {
 	PartitionID uint64
 	Start       uint64
@@ -140,6 +152,7 @@ type MetaPartitionReport struct {
 	IsLeader    bool
 }
 
+// MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
 type MetaNodeHeartbeatResponse struct {
 	RackName             string
 	Total                uint64
@@ -149,11 +162,13 @@ type MetaNodeHeartbeatResponse struct {
 	Result               string
 }
 
+// DeleteFileRequest defines the request to delete a file.
 type DeleteFileRequest struct {
 	VolId uint64
 	Name  string
 }
 
+// DeleteFileResponse defines the response to the request of deleting a file.
 type DeleteFileResponse struct {
 	Status uint8
 	Result string
@@ -161,16 +176,19 @@ type DeleteFileResponse struct {
 	Name   string
 }
 
+// DeleteMetaPartitionRequest defines the request of deleting a meta partition.
 type DeleteMetaPartitionRequest struct {
 	PartitionID uint64
 }
 
+// DeleteMetaPartitionResponse defines the response to the request of deleting a meta partition.
 type DeleteMetaPartitionResponse struct {
 	PartitionID uint64
 	Status      uint8
 	Result      string
 }
 
+// UpdateMetaPartitionRequest defines the request to update a meta partition.
 type UpdateMetaPartitionRequest struct {
 	PartitionID uint64
 	VolName     string
@@ -178,6 +196,7 @@ type UpdateMetaPartitionRequest struct {
 	End         uint64
 }
 
+// UpdateMetaPartitionResponse defines the response to the request of updating the meta partition.
 type UpdateMetaPartitionResponse struct {
 	PartitionID uint64
 	VolName     string
@@ -186,24 +205,28 @@ type UpdateMetaPartitionResponse struct {
 	Result      string
 }
 
-type MetaPartitionOfflineRequest struct {
+// MetaPartitionDecommissionRequest defines the request of decommissioning a meta partition.
+type MetaPartitionDecommissionRequest struct {
 	PartitionID uint64
 	VolName     string
 	RemovePeer  Peer
 	AddPeer     Peer
 }
 
-type MetaPartitionOfflineResponse struct {
+// MetaPartitionDecommissionResponse defines the response to the request of decommissioning a meta partition.
+type MetaPartitionDecommissionResponse struct {
 	PartitionID uint64
 	VolName     string
 	Status      uint8
 	Result      string
 }
 
+// MetaPartitionLoadRequest defines the request to load meta partition.
 type MetaPartitionLoadRequest struct {
 	PartitionID uint64
 }
 
+// MetaPartitionLoadResponse defines the response to the request of loading meta partition.
 type MetaPartitionLoadResponse struct {
 	PartitionID uint64
 	DoCompare   bool

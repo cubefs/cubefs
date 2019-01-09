@@ -144,7 +144,7 @@ func (sender *AdminTaskManager) updateTaskInfo(task *proto.AdminTask, connSucces
 func (sender *AdminTaskManager) buildPacket(task *proto.AdminTask) (packet *proto.Packet, err error) {
 	packet = proto.NewPacket()
 	packet.Opcode = task.OpCode
-	packet.ReqID = proto.GeneratorRequestID()
+	packet.ReqID = proto.GenerateRequestID()
 	body, err := json.Marshal(task)
 	if err != nil {
 		return nil, err

@@ -316,7 +316,7 @@ func (manager *SpaceManager) DeletePartition(dpID uint64) {
 }
 
 func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatResponse) {
-	response.Status = proto.TaskSuccess
+	response.Status = proto.TaskSucceeds
 	stat := s.space.Stats()
 	stat.Lock()
 	response.Used = stat.Used

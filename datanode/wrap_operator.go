@@ -115,7 +115,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 		if err != nil {
 			p.PackErrorBody(ActionCreateExtent, err.Error())
 		} else {
-			p.PackOkReply()
+			p.PacketOkReply()
 		}
 	}()
 	partition := p.Object.(*DataPartition)
@@ -142,7 +142,7 @@ func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 		if err != nil {
 			p.PackErrorBody(ActionCreateDataPartition, err.Error())
 		} else {
-			p.PackOkReply()
+			p.PacketOkReply()
 		}
 	}()
 	task := &proto.AdminTask{}
@@ -185,7 +185,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 		if err != nil {
 			p.PackErrorBody(ActionCreateDataPartition, err.Error())
 		} else {
-			p.PackOkReply()
+			p.PacketOkReply()
 		}
 	}()
 	if err != nil {
@@ -200,7 +200,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 	if task.OpCode == proto.OpDataNodeHeartbeat {
 		bytes, _ := json.Marshal(task.Request)
 		json.Unmarshal(bytes, request)
-		response.Status = proto.TaskSuccess
+		response.Status = proto.TaskSucceeds
 		MasterHelper.AddNode(request.MasterAddr)
 	} else {
 		response.Status = proto.TaskFailed
@@ -226,7 +226,7 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 		if err != nil {
 			p.PackErrorBody(ActionDeleteDataPartition, err.Error())
 		} else {
-			p.PackOkReply()
+			p.PacketOkReply()
 		}
 	}()
 	if err != nil {
@@ -244,7 +244,7 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 		} else {
 			s.space.DeletePartition(request.PartitionId)
 			response.PartitionId = uint64(request.PartitionId)
-			response.Status = proto.TaskSuccess
+			response.Status = proto.TaskSucceeds
 		}
 	} else {
 		response.PartitionId = uint64(request.PartitionId)
@@ -271,7 +271,7 @@ func (s *DataNode) handlePacketToLoadDataPartition(p *repl.Packet) {
 		if err != nil {
 			p.PackErrorBody(ActionLoadDataPartition, err.Error())
 		} else {
-			p.PackOkReply()
+			p.PacketOkReply()
 		}
 	}()
 	if err != nil {
@@ -292,7 +292,7 @@ func (s *DataNode) handlePacketToLoadDataPartition(p *repl.Packet) {
 		} else {
 			response = dp.Load()
 			response.PartitionId = uint64(request.PartitionId)
-			response.Status = proto.TaskSuccess
+			response.Status = proto.TaskSucceeds
 		}
 	} else {
 		response.PartitionId = uint64(request.PartitionId)
@@ -333,7 +333,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet) {
 	if err != nil {
 		p.PackErrorBody(ActionMarkDelete, err.Error())
 	} else {
-		p.PackOkReply()
+		p.PacketOkReply()
 	}
 
 	return
@@ -346,7 +346,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		if err != nil {
 			p.PackErrorBody(ActionWrite, err.Error())
 		} else {
-			p.PackOkReply()
+			p.PacketOkReply()
 		}
 	}()
 	partition := p.Object.(*DataPartition)
@@ -389,7 +389,7 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		if err != nil {
 			p.PackErrorBody(ActionWrite, err.Error())
 		} else {
-			p.PackOkReply()
+			p.PacketOkReply()
 		}
 	}()
 	partition := p.Object.(*DataPartition)
@@ -479,7 +479,7 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 			proto.Buffers.Put(reply.Data)
 		}
 	}
-	p.PackOkReply()
+	p.PacketOkReply()
 
 	return
 }
@@ -505,7 +505,7 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 		p.PackErrorBody(ActionGetAllExtentWatermarks, err.Error())
 	} else {
 		buf, err = json.Marshal(fInfoList)
-		p.PackOkWithBody(buf)
+		p.PacketOkWithBody(buf)
 	}
 	return
 }
@@ -523,7 +523,7 @@ func (s *DataNode) handlePacketToNotifyExtentRepair(p *repl.Packet) {
 		return
 	}
 	partition.DoExtentStoreRepair(mf)
-	p.PackOkReply()
+	p.PacketOkReply()
 	return
 }
 
@@ -536,7 +536,7 @@ func (s *DataNode) handlePacketToGetDataPartitionMetrics(p *repl.Packet) {
 		return
 	}
 
-	p.PackOkWithBody(data)
+	p.PacketOkWithBody(data)
 	return
 }
 
@@ -556,7 +556,7 @@ func (s *DataNode) handlePacketToGetAppliedID(p *repl.Packet) {
 
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, appliedID)
-	p.PackOkWithBody(buf)
+	p.PacketOkWithBody(buf)
 	return
 }
 
@@ -566,7 +566,7 @@ func (s *DataNode) handlePacketToGetPartitionSize(p *repl.Packet) {
 
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(usedSize))
-	p.PackOkWithBody(buf)
+	p.PacketOkWithBody(buf)
 
 	return
 }
@@ -610,9 +610,9 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 		return
 	}
 
-	p.PackOkReply()
+	p.PacketOkReply()
 
-	resp := proto.DataPartitionOfflineResponse{
+	resp := proto.DataPartitionDecommissionResponse{
 		PartitionId: req.PartitionId,
 		Status:      proto.TaskFailed,
 	}
@@ -634,7 +634,7 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 		log.LogErrorf(fmt.Sprintf("[opOfflineDataPartition]: RemoveNode[%v] err[%v]", req.RemovePeer, err))
 		goto end
 	}
-	resp.Status = proto.TaskSuccess
+	resp.Status = proto.TaskSucceeds
 end:
 	adminTask.Request = nil
 	adminTask.Response = resp

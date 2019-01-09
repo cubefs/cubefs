@@ -174,7 +174,7 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	}
 	currErrs := d.ReadErrCnt + d.WriteErrCnt
 	if currErrs >= uint64(d.MaxErrCnt) {
-		d.Status = proto.Unavaliable
+		d.Status = proto.Unavailable
 	} else if d.Available <= 0 {
 		d.Status = proto.ReadOnly
 	} else {

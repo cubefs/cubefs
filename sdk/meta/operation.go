@@ -55,7 +55,7 @@ func (mw *MetaWrapper) open(mp *MetaPartition, inode uint64, flag uint32) (statu
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogWarnf("open: ino(%v) mp(%v) req(%v) result(%v)", inode, mp, *req, packet.GetResultMesg())
+		log.LogWarnf("open: ino(%v) mp(%v) req(%v) result(%v)", inode, mp, *req, packet.GetResultMsg())
 		return
 	}
 
@@ -93,7 +93,7 @@ func (mw *MetaWrapper) release(mp *MetaPartition, inode, authid uint64) (status 
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("release: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		log.LogErrorf("release: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
 		return
 	}
 
@@ -129,7 +129,7 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode uint32, target []byte) (s
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("icreate: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		log.LogErrorf("icreate: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
 		return
 	}
 
@@ -176,7 +176,7 @@ func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, inf
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("idelete: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		log.LogErrorf("idelete: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
 		return
 	}
 
@@ -219,7 +219,7 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, err 
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogWarnf("ievict: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		log.LogWarnf("ievict: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
 		return
 	}
 
@@ -262,9 +262,9 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("dcreate: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		log.LogErrorf("dcreate: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
 	}
-	log.LogDebugf("dcreate exit: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+	log.LogDebugf("dcreate exit: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
 	return
 }
 
@@ -302,7 +302,7 @@ func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, 
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("dupdate: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		log.LogErrorf("dupdate: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
 		return
 	}
 
@@ -345,7 +345,7 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string) 
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("ddelete: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		log.LogErrorf("ddelete: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
 		return
 	}
 
@@ -388,7 +388,7 @@ func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string) (
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		if status != statusNoent {
-			log.LogErrorf("lookup: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+			log.LogErrorf("lookup: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
 		} else {
 			log.LogDebugf("lookup exit: mp(%v) req(%v) NoEntry", mp, *req)
 		}
@@ -431,7 +431,7 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64) (status int, info *
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("iget: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		log.LogErrorf("iget: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
 		return
 	}
 
@@ -473,7 +473,7 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 
 	status := parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("batchIget: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		log.LogErrorf("batchIget: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
 		return
 	}
 
@@ -521,7 +521,7 @@ func (mw *MetaWrapper) readdir(mp *MetaPartition, parentID uint64) (status int, 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		children = make([]proto.Dentry, 0)
-		log.LogErrorf("readdir: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		log.LogErrorf("readdir: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
 		return
 	}
 
@@ -563,7 +563,7 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode, authid uint64, 
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("appendExtentKey: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		log.LogErrorf("appendExtentKey: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
 	}
 	return status, nil
 }
@@ -595,7 +595,7 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (status int, 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		extents = make([]proto.ExtentKey, 0)
-		log.LogErrorf("getExtents: mp(%v) result(%v)", mp, packet.GetResultMesg())
+		log.LogErrorf("getExtents: mp(%v) result(%v)", mp, packet.GetResultMsg())
 		return
 	}
 
@@ -638,7 +638,7 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, authid, size uint64) (
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("truncate: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		log.LogErrorf("truncate: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
 		return
 	}
 
@@ -674,7 +674,7 @@ func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info 
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("ilink: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		log.LogErrorf("ilink: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
 		return
 	}
 
@@ -694,7 +694,7 @@ func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info 
 }
 
 func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid, gid uint32) (status int, err error) {
-	req := &proto.SetattrRequest{
+	req := &proto.SetAttrRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
@@ -725,7 +725,7 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("setattr: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMesg())
+		log.LogErrorf("setattr: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
 		return
 	}
 

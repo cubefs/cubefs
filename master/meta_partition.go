@@ -67,7 +67,7 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	mp = &MetaPartition{PartitionID: partitionID, Start: start, End: end, volName: volName, volID: volID}
 	mp.ReplicaNum = replicaNum
 	mp.Replicas = make([]*MetaReplica, 0)
-	mp.Status = proto.Unavaliable
+	mp.Status = proto.Unavailable
 	mp.MissNodes = make(map[string]int64, 0)
 	mp.Peers = make([]proto.Peer, 0)
 	mp.Hosts = make([]string, 0)
@@ -229,11 +229,11 @@ func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int) {
 	defer mp.Unlock()
 	liveReplicas := mp.getLiveReplicas()
 	if len(liveReplicas) <= replicaNum/2 {
-		mp.Status = proto.Unavaliable
+		mp.Status = proto.Unavailable
 	} else {
 		mr, err := mp.getMetaReplicaLeader()
 		if err != nil {
-			mp.Status = proto.Unavaliable
+			mp.Status = proto.Unavailable
 		}
 		mp.Status = mr.Status
 	}
@@ -472,7 +472,7 @@ func (mp *MetaPartition) generateOfflineTask(volName string, removePeer proto.Pe
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
-	req := &proto.MetaPartitionOfflineRequest{PartitionID: mp.PartitionID, VolName: volName, RemovePeer: removePeer, AddPeer: addPeer}
+	req := &proto.MetaPartitionDecommissionRequest{PartitionID: mp.PartitionID, VolName: volName, RemovePeer: removePeer, AddPeer: addPeer}
 	t = proto.NewAdminTask(proto.OpDecommissionMetaPartition, mr.Addr, req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)
 	return
@@ -514,7 +514,7 @@ func (mr *MetaReplica) isMissing() (miss bool) {
 }
 
 func (mr *MetaReplica) isActive() (active bool) {
-	return mr.metaNode.IsActive && mr.Status != proto.Unavaliable &&
+	return mr.metaNode.IsActive && mr.Status != proto.Unavailable &&
 		time.Now().Unix()-mr.ReportTime < defaultMetaPartitionTimeOutSec
 }
 

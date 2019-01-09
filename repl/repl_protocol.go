@@ -225,7 +225,7 @@ func (rp *ReplProtocol) reciveAllFollowerResponse() {
 			return
 		}
 	}
-	request.PackOkReply()
+	request.PacketOkReply()
 	return
 }
 

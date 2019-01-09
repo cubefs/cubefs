@@ -28,6 +28,7 @@ var (
 	InvalidKey   = errors.New("invalid key error")
 )
 
+// ExtentKey defines the extent key struct.
 type ExtentKey struct {
 	FileOffset   uint64
 	PartitionId  uint64
@@ -37,19 +38,23 @@ type ExtentKey struct {
 	CRC          uint32
 }
 
+// String returns the string format of the extentKey.
 func (k ExtentKey) String() string {
 	return fmt.Sprintf("ExtentKey{FileOffset(%v),Partition(%v),ExtentID(%v),ExtentOffset(%v),Size(%v),CRC(%v)}", k.FileOffset, k.PartitionId, k.ExtentId, k.ExtentOffset, k.Size, k.CRC)
 }
 
+// Less defines the less comparator.
 func (k *ExtentKey) Less(than btree.Item) bool {
 	that := than.(*ExtentKey)
 	return k.FileOffset < that.FileOffset
 }
 
+// Marshal marshals the extent key.
 func (k *ExtentKey) Marshal() (m string) {
 	return fmt.Sprintf("%v_%v_%v_%v_%v_%v", k.FileOffset, k.PartitionId, k.ExtentId, k.ExtentOffset, k.Size, k.CRC)
 }
 
+// MarshalBinary marshals the binary format of the extent key.
 func (k *ExtentKey) MarshalBinary() ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0, ExtentLength))
 	if err := binary.Write(buf, binary.BigEndian, k.FileOffset); err != nil {
@@ -73,6 +78,7 @@ func (k *ExtentKey) MarshalBinary() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// UnmarshalBinary unmarshals the binary format of the extent key.
 func (k *ExtentKey) UnmarshalBinary(buf *bytes.Buffer) (err error) {
 	if err = binary.Read(buf, binary.BigEndian, &k.FileOffset); err != nil {
 		return
@@ -95,11 +101,13 @@ func (k *ExtentKey) UnmarshalBinary(buf *bytes.Buffer) (err error) {
 	return
 }
 
+// TODO remove
 func (k *ExtentKey) UnMarshal(m string) (err error) {
 	_, err = fmt.Sscanf(m, "%v_%v_%v_%v_%v_%v", &k.FileOffset, &k.PartitionId, &k.ExtentId, &k.ExtentOffset, &k.Size, &k.CRC)
 	return
 }
 
+// TODO remove
 func (k *ExtentKey) GetExtentKey() (m string) {
 	return fmt.Sprintf("%v_%v_%v", k.PartitionId, k.ExtentId, k.ExtentOffset)
 }

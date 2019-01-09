@@ -132,7 +132,7 @@ func (partition *DataPartition) checkDiskError(clusterID string) (diskErrorAddrs
 		if !ok {
 			continue
 		}
-		if replica.Status == proto.Unavaliable {
+		if replica.Status == proto.Unavailable {
 			diskErrorAddrs = append(diskErrorAddrs, addr)
 		}
 	}

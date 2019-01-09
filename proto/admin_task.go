@@ -22,14 +22,14 @@ import (
 const (
 	TaskFailed       = 2
 	TaskStart        = 0
-	TaskSuccess      = 1
+	TaskSucceeds     = 1
 	TaskRunning      = 3
 	ResponseInterval = 5
 	ResponseTimeOut  = 100
 	MaxSendCount     = 5
 )
 
-/*task struct to node*/
+// AdminTask defines the administration task.
 type AdminTask struct {
 	ID           string
 	OpCode       uint8
@@ -42,6 +42,7 @@ type AdminTask struct {
 	Response     interface{}
 }
 
+// ToString returns the string format of the task.
 func (t *AdminTask) ToString() (msg string) {
 	msg = fmt.Sprintf("ID[%v] Status[%d] LastSendTime[%v]  SendCount[%v] Request[%v] Response[%v]",
 		t.ID, t.Status, t.SendTime, t.SendCount, t.Request, t.Response)
@@ -49,37 +50,38 @@ func (t *AdminTask) ToString() (msg string) {
 	return
 }
 
-//1.has never send, t.SendTime=0,
-//2.has send but response time out
+// CheckTaskNeedSend checks if the task needs to be sent out.
 func (t *AdminTask) CheckTaskNeedSend() (needRetry bool) {
-	if (int)(t.SendCount) < MaxSendCount && time.Now().Unix()-t.SendTime > (int64)(ResponseInterval) {
+	if (int)(t.SendCount) < MaxSendCount && time.Now().Unix() - t.SendTime > (int64)(ResponseInterval) {
 		needRetry = true
 	}
 	return
 }
 
-//the task which sendCount >=  MaxSendCount, the last send has no response after ResponseTimeOut passed,
-// to be consider time out
+// CheckTaskTimeOut checks if the task is timed out.
 func (t *AdminTask) CheckTaskTimeOut() (notResponse bool) {
-	if (int)(t.SendCount) >= MaxSendCount || (t.SendTime > 0 && (time.Now().Unix()-t.SendTime > int64(ResponseTimeOut))) {
+	if (int)(t.SendCount) >= MaxSendCount || (t.SendTime > 0 && (time.Now().Unix() - t.SendTime > int64(ResponseTimeOut))) {
 		notResponse = true
 	}
 	return
 }
 
+// SetStatus sets the status of the task.
 func (t *AdminTask) SetStatus(status int8) {
 	t.Status = status
 }
 
-func (t *AdminTask) CheckTaskIsSuccess() (isSuccess bool) {
-	if t.Status == TaskSuccess {
+// IsTaskSuccessful returns if the task has been executed successful.
+func (t *AdminTask) IsTaskSuccessful() (isSuccess bool) {
+	if t.Status == TaskSucceeds {
 		isSuccess = true
 	}
 
 	return
 }
 
-func (t *AdminTask) CheckTaskIsFail() (isFail bool) {
+// IsTaskFailed returns if the task failed.
+func (t *AdminTask) IsTaskFailed() (isFail bool) {
 	if t.Status == TaskFailed {
 		isFail = true
 	}
@@ -87,11 +89,13 @@ func (t *AdminTask) CheckTaskIsFail() (isFail bool) {
 	return
 }
 
+// IsUrgentTask returns if the task is urgent.
 func (t *AdminTask) IsUrgentTask() bool {
-	return t.isCreateTask() || t.isLoadTask() || t.isUpdateEndTask()
+	return t.isCreateTask() || t.isLoadTask() || t.isUpdateMetaPartitionTask()
 }
 
-func (t *AdminTask) isUpdateEndTask() bool {
+// isUpdateMetaPartitionTask checks if the task is to update the meta partition.
+func (t *AdminTask) isUpdateMetaPartitionTask() bool {
 	return t.OpCode == OpUpdateMetaPartition
 }
 
@@ -103,10 +107,12 @@ func (t *AdminTask) isCreateTask() bool {
 	return t.OpCode == OpCreateDataPartition || t.OpCode == OpCreateMetaPartition
 }
 
+// IsHeartbeatTask returns if the task is a heartbeat task.
 func (t *AdminTask) IsHeartbeatTask() bool {
 	return t.OpCode == OpDataNodeHeartbeat || t.OpCode == OpMetaNodeHeartbeat
 }
 
+// NewAdminTask returns a new adminTask.
 func NewAdminTask(opCode uint8, opAddr string, request interface{}) (t *AdminTask) {
 	t = new(AdminTask)
 	t.OpCode = opCode

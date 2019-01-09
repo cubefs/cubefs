@@ -14,19 +14,24 @@
 
 package proto
 
+// CreateNameSpaceRequest defines the request to create a name space.
 type CreateNameSpaceRequest struct {
 	Name string
 }
 
+// CreateNameSpaceResponse defines the response to the request of creating a name space.
 type CreateNameSpaceResponse struct {
 	Status int
 	Result string
 }
 
+// Peer defines the peer of the node id and address.
 type Peer struct {
 	ID   uint64 `json:"id"`
 	Addr string `json:"addr"`
 }
+
+// CreateMetaPartitionRequest defines the request to create a meta partition.
 type CreateMetaPartitionRequest struct {
 	MetaId      string
 	VolName     string
@@ -36,6 +41,7 @@ type CreateMetaPartitionRequest struct {
 	Members     []Peer
 }
 
+// CreateMetaPartitionResponse defines the response to the request of creating a meta partition.
 type CreateMetaPartitionResponse struct {
 	VolName     string
 	PartitionID uint64
