@@ -470,7 +470,6 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	}
 	// size difference between the local extent and the remote extent
 	sizeDiff := remoteExtentInfo.Size - localExtentInfo.Size
-
 	// create a new streaming read packet
 	request := repl.NewExtentRepairReadPacket(dp.ID(), remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
 	var conn *net.TCPConn
