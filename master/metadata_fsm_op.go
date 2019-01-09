@@ -396,33 +396,33 @@ func (c *Cluster) handleApply(cmd *RaftCmd) (err error) {
 	switch cmd.Op {
 
 	case opSyncPutCluster:
-		c.applyPutCluster(cmd)
+		err = c.applyPutCluster(cmd)
 	case opSyncAddNodeSet:
-		c.applyAddNodeSet(cmd)
+		err = c.applyAddNodeSet(cmd)
 	case opSyncUpdateNodeSet:
-		c.applyUpdateNodeSet(cmd)
+		err = c.applyUpdateNodeSet(cmd)
 	case opSyncAddDataNode:
-		c.applyAddDataNode(cmd)
+		err = c.applyAddDataNode(cmd)
 	case opSyncDeleteDataNode:
-		c.applyDeleteDataNode(cmd)
+		err = c.applyDeleteDataNode(cmd)
 	case opSyncAddMetaNode:
 		err = c.applyAddMetaNode(cmd)
 	case opSyncDeleteMetaNode:
-		c.applyDeleteMetaNode(cmd)
+		err = c.applyDeleteMetaNode(cmd)
 	case opSyncAddVol:
-		c.applyAddVol(cmd)
+		err = c.applyAddVol(cmd)
 	case opSyncUpdateVol:
-		c.applyUpdateVol(cmd)
+		err = c.applyUpdateVol(cmd)
 	case opSyncDeleteVol:
-		c.applyDeleteVol(cmd)
+		err = c.applyDeleteVol(cmd)
 	case opSyncAddMetaPartition:
-		c.applyAddMetaPartition(cmd)
+		err = c.applyAddMetaPartition(cmd)
 	case opSyncUpdateMetaPartition:
-		c.applyUpdateMetaPartition(cmd)
+		err = c.applyUpdateMetaPartition(cmd)
 	case opSyncAddDataPartition:
-		c.applyAddDataPartition(cmd)
+		err = c.applyAddDataPartition(cmd)
 	case opSyncUpdateDataPartition:
-		c.applyUpdateDataPartition(cmd)
+		err = c.applyUpdateDataPartition(cmd)
 	case opSyncAllocCommonID:
 		id, err1 := strconv.ParseUint(string(cmd.V), 10, 64)
 		if err1 != nil {
@@ -441,6 +441,10 @@ func (c *Cluster) handleApply(cmd *RaftCmd) (err error) {
 			return err1
 		}
 		c.idAlloc.setMetaPartitionID(id)
+	}
+	if err != nil {
+		log.LogErrorf("action[handleApply] failed,cmd.K[%v],cmd.V[%v]", cmd.K, string(cmd.V))
+		return
 	}
 	log.LogInfof("action[handleApply] success,cmd.K[%v],cmd.V[%v]", cmd.K, string(cmd.V))
 	curIndex := c.fsm.applied

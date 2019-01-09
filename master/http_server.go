@@ -21,51 +21,10 @@ import (
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/util/log"
 	"net/http/httputil"
+	"github.com/tiglabs/containerfs/proto"
 )
 
-// api
-const (
-	// Admin APIs
-	adminGetCluster                = "/admin/getCluster"
-	AdminGetDataPartition          = "/dataPartition/get"
-	adminLoadDataPartition         = "/dataPartition/load"
-	adminCreateDataPartition       = "/dataPartition/create"
-	adminDecommissionDataPartition = "/dataPartition/decommission"
-	adminDeleteVol                 = "/vol/delete"
-	adminUpdateVol                 = "/vol/update"
-	adminCreateVol                 = "/admin/createVol"
-	adminClusterFreeze             = "/cluster/freeze"
-	AdminGetIP                     = "/admin/getIp"
-	adminCreateMP                  = "/metaPartition/create"
-	adminSetMetaNodeThreshold      = "/threshold/set"
 
-	// Client APIs
-	clientDataPartitions = "/client/partitions"
-	clientVol            = "/client/vol"
-	clientMetaPartition  = "/client/metaPartition"
-	clientVolStat        = "/client/volStat"
-
-	//raft node APIs
-	addRaftNode    = "/raftNode/add"
-	removeRaftNode = "/raftNode/remove"
-
-	// Node APIs
-	AddDataNode                    = "/dataNode/add"
-	decommissionDataNode           = "/dataNode/decommission"
-	decommissionDisk               = "/disk/decommission"
-	getDataNode                    = "/dataNode/get"
-	addMetaNode                    = "/metaNode/add"
-	decommissionMetaNode           = "/metaNode/decommission"
-	getMetaNode                    = "/metaNode/get"
-	adminLoadMetaPartition         = "/metaPartition/load"
-	adminDecommissionMetaPartition = "/metaPartition/decommission"
-
-	// Operation response
-	getMetaNodeTaskResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
-	GetDataNodeTaskResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
-
-	getTopologyView = "/topo/get"
-)
 
 func (m *Server) startHTTPService() {
 	go func() {
@@ -79,36 +38,36 @@ func (m *Server) startHTTPService() {
 }
 
 func (m *Server) handleFunctions() {
-	http.HandleFunc(AdminGetIP, m.getIPAddr)
-	http.HandleFunc(adminGetCluster, m.getCluster)
-	http.Handle(AdminGetDataPartition, m.handlerWithInterceptor())
-	http.Handle(adminCreateDataPartition, m.handlerWithInterceptor())
-	http.Handle(adminLoadDataPartition, m.handlerWithInterceptor())
-	http.Handle(adminDecommissionDataPartition, m.handlerWithInterceptor())
-	http.Handle(adminCreateVol, m.handlerWithInterceptor())
-	http.Handle(adminDeleteVol, m.handlerWithInterceptor())
-	http.Handle(adminUpdateVol, m.handlerWithInterceptor())
-	http.Handle(adminClusterFreeze, m.handlerWithInterceptor())
-	http.Handle(AddDataNode, m.handlerWithInterceptor())
-	http.Handle(addMetaNode, m.handlerWithInterceptor())
-	http.Handle(decommissionDataNode, m.handlerWithInterceptor())
-	http.Handle(decommissionDisk, m.handlerWithInterceptor())
-	http.Handle(decommissionMetaNode, m.handlerWithInterceptor())
-	http.Handle(getDataNode, m.handlerWithInterceptor())
-	http.Handle(getMetaNode, m.handlerWithInterceptor())
-	http.Handle(adminLoadMetaPartition, m.handlerWithInterceptor())
-	http.Handle(adminDecommissionMetaPartition, m.handlerWithInterceptor())
-	http.Handle(clientDataPartitions, m.handlerWithInterceptor())
-	http.Handle(clientVol, m.handlerWithInterceptor())
-	http.Handle(clientMetaPartition, m.handlerWithInterceptor())
-	http.Handle(GetDataNodeTaskResponse, m.handlerWithInterceptor())
-	http.Handle(getMetaNodeTaskResponse, m.handlerWithInterceptor())
-	http.Handle(adminCreateMP, m.handlerWithInterceptor())
-	http.Handle(clientVolStat, m.handlerWithInterceptor())
-	http.Handle(addRaftNode, m.handlerWithInterceptor())
-	http.Handle(removeRaftNode, m.handlerWithInterceptor())
-	http.Handle(adminSetMetaNodeThreshold, m.handlerWithInterceptor())
-	http.Handle(getTopologyView, m.handlerWithInterceptor())
+	http.HandleFunc(proto.AdminGetIP, m.getIPAddr)
+	http.HandleFunc(proto.AdminGetCluster, m.getCluster)
+	http.Handle(proto.AdminGetDataPartition, m.handlerWithInterceptor())
+	http.Handle(proto.AdminCreateDataPartition, m.handlerWithInterceptor())
+	http.Handle(proto.AdminLoadDataPartition, m.handlerWithInterceptor())
+	http.Handle(proto.AdminDecommissionDataPartition, m.handlerWithInterceptor())
+	http.Handle(proto.AdminCreateVol, m.handlerWithInterceptor())
+	http.Handle(proto.AdminDeleteVol, m.handlerWithInterceptor())
+	http.Handle(proto.AdminUpdateVol, m.handlerWithInterceptor())
+	http.Handle(proto.AdminClusterFreeze, m.handlerWithInterceptor())
+	http.Handle(proto.AddDataNode, m.handlerWithInterceptor())
+	http.Handle(proto.AddMetaNode, m.handlerWithInterceptor())
+	http.Handle(proto.DecommissionDataNode, m.handlerWithInterceptor())
+	http.Handle(proto.DecommissionDisk, m.handlerWithInterceptor())
+	http.Handle(proto.DecommissionMetaNode, m.handlerWithInterceptor())
+	http.Handle(proto.GetDataNode, m.handlerWithInterceptor())
+	http.Handle(proto.GetMetaNode, m.handlerWithInterceptor())
+	http.Handle(proto.AdminLoadMetaPartition, m.handlerWithInterceptor())
+	http.Handle(proto.AdminDecommissionMetaPartition, m.handlerWithInterceptor())
+	http.Handle(proto.ClientDataPartitions, m.handlerWithInterceptor())
+	http.Handle(proto.ClientVol, m.handlerWithInterceptor())
+	http.Handle(proto.ClientMetaPartition, m.handlerWithInterceptor())
+	http.Handle(proto.GetDataNodeTaskResponse, m.handlerWithInterceptor())
+	http.Handle(proto.GetMetaNodeTaskResponse, m.handlerWithInterceptor())
+	http.Handle(proto.AdminCreateMP, m.handlerWithInterceptor())
+	http.Handle(proto.ClientVolStat, m.handlerWithInterceptor())
+	http.Handle(proto.AddRaftNode, m.handlerWithInterceptor())
+	http.Handle(proto.RemoveRaftNode, m.handlerWithInterceptor())
+	http.Handle(proto.AdminSetMetaNodeThreshold, m.handlerWithInterceptor())
+	http.Handle(proto.GetTopologyView, m.handlerWithInterceptor())
 
 	return
 }
@@ -143,69 +102,68 @@ func (m *Server) proxy(w http.ResponseWriter, r *http.Request) {
 func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.LogInfof("URL[%v],remoteAddr[%v]", r.URL, r.RemoteAddr)
 	switch r.URL.Path {
-	case adminGetCluster:
+	case proto.AdminGetCluster:
 		m.getCluster(w, r)
-	case adminCreateDataPartition:
+	case proto.AdminCreateDataPartition:
 		m.createDataPartition(w, r)
-	case AdminGetDataPartition:
+	case proto.AdminGetDataPartition:
 		m.getDataPartition(w, r)
-	case adminLoadDataPartition:
+	case proto.AdminLoadDataPartition:
 		m.loadDataPartition(w, r)
-	case adminDecommissionDataPartition:
+	case proto.AdminDecommissionDataPartition:
 		m.decommissionDataPartition(w, r)
-	case adminCreateVol:
+	case proto.AdminCreateVol:
 		m.createVol(w, r)
-	case adminDeleteVol:
+	case proto.AdminDeleteVol:
 		m.markDeleteVol(w, r)
-	case adminUpdateVol:
+	case proto.AdminUpdateVol:
 		m.updateVol(w, r)
-	case adminClusterFreeze:
+	case proto.AdminClusterFreeze:
 		m.setupAutoAllocation(w, r)
-	case AddDataNode:
+	case proto.AddDataNode:
 		m.addDataNode(w, r)
-	case getDataNode:
+	case proto.GetDataNode:
 		m.getDataNode(w, r)
-	case decommissionDataNode:
+	case proto.DecommissionDataNode:
 		m.dataNodeOffline(w, r)
-	case decommissionDisk:
+	case proto.DecommissionDisk:
 		m.decommissionDisk(w, r)
-	case GetDataNodeTaskResponse:
+	case proto.GetDataNodeTaskResponse:
 		m.handleDataNodeTaskResponse(w, r)
-	case addMetaNode:
+	case proto.AddMetaNode:
 		m.addMetaNode(w, r)
-	case getMetaNode:
+	case proto.GetMetaNode:
 		m.getMetaNode(w, r)
-	case decommissionMetaNode:
+	case proto.DecommissionMetaNode:
 		m.decommissionMetaNode(w, r)
-	case getMetaNodeTaskResponse:
+	case proto.GetMetaNodeTaskResponse:
 		m.handleMetaNodeTaskResponse(w, r)
-	case clientDataPartitions:
+	case proto.ClientDataPartitions:
 		m.getDataPartitions(w, r)
-	case clientVol:
+	case proto.ClientVol:
 		m.getVol(w, r)
-	case clientMetaPartition:
+	case proto.ClientMetaPartition:
 		m.getMetaPartition(w, r)
-	case clientVolStat:
+	case proto.ClientVolStat:
 		m.getVolStatInfo(w, r)
-	case adminLoadMetaPartition:
+	case proto.AdminLoadMetaPartition:
 		m.loadMetaPartition(w, r)
-	case adminDecommissionMetaPartition:
+	case proto.AdminDecommissionMetaPartition:
 		m.decommissionMetaPartition(w, r)
-	case adminCreateMP:
+	case proto.AdminCreateMP:
 		m.createMetaPartition(w, r)
-	case addRaftNode:
+	case proto.AddRaftNode:
 		m.addRaftNode(w, r)
-	case removeRaftNode:
+	case proto.RemoveRaftNode:
 		m.removeRaftNode(w, r)
-	case adminSetMetaNodeThreshold:
+	case proto.AdminSetMetaNodeThreshold:
 		m.setMetaNodeThreshold(w, r)
-	case getTopologyView:
+	case proto.GetTopologyView:
 		m.getTopology(w, r)
 	default:
 
 	}
 }
-
 func newLogMsg(requestType, remoteAddr, message string, code int) (logMsg string) {
 	logMsg = fmt.Sprintf("type[%s] From [%s] httpCode[%d] Because [%s] ", requestType, remoteAddr, code, message)
 	return

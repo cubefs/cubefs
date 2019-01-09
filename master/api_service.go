@@ -329,11 +329,11 @@ func (m *Server) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m.cluster.loadDataPartition(dp)
-	msg = fmt.Sprintf(adminLoadDataPartition+"partitionID :%v  load data partition successfully", partitionID)
+	msg = fmt.Sprintf(proto.AdminLoadDataPartition+"partitionID :%v  load data partition successfully", partitionID)
 	m.sendOkReply(w, r, msg)
 	return
 errHandler:
-	logMsg := newLogMsg(adminLoadDataPartition, r.RemoteAddr, err.Error(), http.StatusBadRequest)
+	logMsg := newLogMsg(proto.AdminLoadDataPartition, r.RemoteAddr, err.Error(), http.StatusBadRequest)
 	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
@@ -358,11 +358,11 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 	if err = m.cluster.decommissionDataPartition(addr, dp, handleDataPartitionOfflineErr); err != nil {
 		goto errHandler
 	}
-	rstMsg = fmt.Sprintf(adminDecommissionDataPartition+" dataPartitionID :%v  on node:%v successfully", partitionID, addr)
+	rstMsg = fmt.Sprintf(proto.AdminDecommissionDataPartition+" dataPartitionID :%v  on node:%v successfully", partitionID, addr)
 	m.sendOkReply(w, r, rstMsg)
 	return
 errHandler:
-	logMsg := newLogMsg(adminDecommissionDataPartition, r.RemoteAddr, err.Error(), http.StatusBadRequest)
+	logMsg := newLogMsg(proto.AdminDecommissionDataPartition, r.RemoteAddr, err.Error(), http.StatusBadRequest)
 	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
@@ -651,11 +651,11 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 	if err = m.cluster.decommissionMetaPartition(nodeAddr, mp); err != nil {
 		goto errHandler
 	}
-	msg = fmt.Sprintf(adminLoadMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", partitionID)
+	msg = fmt.Sprintf(proto.AdminLoadMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", partitionID)
 	m.sendOkReply(w, r, msg)
 	return
 errHandler:
-	logMsg := newLogMsg(adminDecommissionMetaPartition, r.RemoteAddr, err.Error(), http.StatusBadRequest)
+	logMsg := newLogMsg(proto.AdminDecommissionMetaPartition, r.RemoteAddr, err.Error(), http.StatusBadRequest)
 	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
@@ -677,11 +677,11 @@ func (m *Server) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m.cluster.loadMetaPartitionAndCheckResponse(mp)
-	msg = fmt.Sprintf(adminLoadMetaPartition+" partitionID :%v Load successfully", partitionID)
+	msg = fmt.Sprintf(proto.AdminLoadMetaPartition+" partitionID :%v Load successfully", partitionID)
 	m.sendOkReply(w, r, msg)
 	return
 errHandler:
-	logMsg := newLogMsg(adminLoadMetaPartition, r.RemoteAddr, err.Error(), http.StatusBadRequest)
+	logMsg := newLogMsg(proto.AdminLoadMetaPartition, r.RemoteAddr, err.Error(), http.StatusBadRequest)
 	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
@@ -1062,7 +1062,7 @@ func (m *Server) sendOkReply(w http.ResponseWriter, r *http.Request, msg string)
 }
 
 func (m *Server) sendErrReply(w http.ResponseWriter, r *http.Request, httpCode int, msg string, err error) {
-	log.LogInfof("URL[%v],remoteAddr[%v],response err", r.URL, r.RemoteAddr)
+	log.LogInfof("URL[%v],remoteAddr[%v],response err[%v]", r.URL, r.RemoteAddr,err)
 	HandleError(msg, err, httpCode, w)
 }
 

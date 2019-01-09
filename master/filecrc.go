@@ -63,7 +63,7 @@ func (fileCrcArr fileCrcSorter) log() (msg string) {
 	return
 }
 
-func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataReplica, clusterID string) (tasks []*proto.AdminTask) {
+func (fc *FileInCore) createFileCrcTask(partitionID uint64, liveVols []*DataReplica, clusterID string) (tasks []*proto.AdminTask) {
 	tasks = make([]*proto.AdminTask, 0)
 	if fc.shouldCheckCrc() == false {
 		return
