@@ -204,9 +204,6 @@ func (s *ExtentStore) Create(extentID uint64, inode uint64) (err error) {
 		err = ExtentExistsError
 		return err
 	}
-	if !IsTinyExtent(extentID) {
-		return BrokenExtentError
-	}
 	extent = NewExtentInCore(name, extentID)
 	err = extent.InitToFS(inode, false)
 	if err != nil {
@@ -260,7 +257,7 @@ func (s *ExtentStore) extentWithHeader(extentID uint64) (e *Extent, err error) {
 }
 
 func (s *ExtentStore) loadExtentHeader(extentId uint64, e *Extent) (err error) {
-	if extentId >= MaxExtentId && !IsTinyExtent(extentId) {
+	if !IsTinyExtent(extentId) {
 		return BrokenExtentError
 	}
 	offset := extentId * util.BlockHeaderSize
