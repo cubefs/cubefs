@@ -29,11 +29,11 @@ import (
 // MetaReplica defines the replica of a meta partition
 type MetaReplica struct {
 	Addr       string
-	start      uint64  // lower bound of the inode id
-	end        uint64  // upper bound of the inode id
+	start      uint64 // lower bound of the inode id
+	end        uint64 // upper bound of the inode id
 	nodeID     uint64
 	ReportTime int64
-	Status     int8    // unavailable, readOnly, readWrite
+	Status     int8 // unavailable, readOnly, readWrite
 	IsLeader   bool
 	metaNode   *MetaNode
 }
@@ -250,7 +250,7 @@ func (mp *MetaPartition) getMetaReplicaLeader() (mr *MetaReplica, err error) {
 			return
 		}
 	}
-	err = noLeaderErr
+	err = ErrNoLeader
 	return
 }
 
@@ -270,7 +270,7 @@ func (mp *MetaPartition) removeIllegalReplica() (excessAddr string, t *proto.Adm
 	for _, mr := range mp.Replicas {
 		if !contains(mp.Hosts, mr.Addr) {
 			t = mr.createTaskToDeleteReplica(mp.PartitionID)
-			err = illegalMetaReplicaErr
+			err = ErrIllegalMetaReplica
 			break
 		}
 	}
@@ -313,7 +313,7 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err error) {
 	liveReplicas := mp.getLiveReplicas()
 	if len(liveReplicas) < int(mp.ReplicaNum/2+1) {
-		err = noEnoughReplicaErr
+		err = ErrNoEnoughReplica
 		return
 	}
 	liveAddrs := mp.getLiveReplicasAddr(liveReplicas)
@@ -510,7 +510,7 @@ func (mr *MetaReplica) createTaskToLoadMetaPartition(partitionID uint64) (t *pro
 	return
 }
 func (mr *MetaReplica) isMissing() (miss bool) {
-	return time.Now().Unix() - mr.ReportTime > defaultMetaPartitionTimeOutSec
+	return time.Now().Unix()-mr.ReportTime > defaultMetaPartitionTimeOutSec
 }
 
 func (mr *MetaReplica) isActive() (active bool) {
@@ -528,7 +528,7 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	mr.setLastReportTime()
 }
 
-func (mp *MetaPartition) updateMetricByRaft(mpv *MetaPartitionValue) {
+func (mp *MetaPartition) updateMetricByRaft(mpv *metaPartitionValue) {
 	mp.Start = mpv.Start
 	mp.End = mpv.End
 	mp.Peers = mpv.Peers

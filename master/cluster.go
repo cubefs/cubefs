@@ -569,7 +569,7 @@ func (c *Cluster) chooseTargetDataNodes(replicaNum int) (hosts []string, peers [
 		}
 	}
 	if len(hosts) != replicaNum {
-		return nil, nil, noDataNodeToCreateDataPartitionErr
+		return nil, nil, ErrNoDataNodeToCreateDataPartition
 	}
 	return
 }
@@ -600,7 +600,7 @@ func (c *Cluster) dataNodeOffLine(dataNode *DataNode) (err error) {
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
 		for _, dp := range vol.dataPartitions.partitions {
-			if err = c.decommissionDataPartition(dataNode.Addr, vol.Name, dp, dataNodeOfflineErr); err != nil {
+			if err = c.decommissionDataPartition(dataNode.Addr, dp, dataNodeOfflineErr); err != nil {
 				return
 			}
 		}
@@ -634,7 +634,7 @@ func (c *Cluster) delDataNodeFromCache(dataNode *DataNode) {
 // 4. Generate an async task to delete the replica.
 // 5. Synchronously create a data partition.
 // 6. Set the data partition as readOnly.
-func (c *Cluster) decommissionDataPartition(offlineAddr, volName string, dp *DataPartition, errMsg string) (err error) {
+func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartition, errMsg string) (err error) {
 	var (
 		newHosts   []string
 		newAddr    string
@@ -656,7 +656,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr, volName string, dp *Dat
 		return
 	}
 
-	if vol, err = c.getVol(volName); err != nil {
+	if vol, err = c.getVol(dp.VolName); err != nil {
 		goto errHandler
 	}
 
@@ -690,6 +690,17 @@ func (c *Cluster) decommissionDataPartition(offlineAddr, volName string, dp *Dat
 		}
 	}
 	newAddr = newHosts[0]
+	for _, host := range dp.Hosts {
+		if host == offlineAddr {
+			removePeer = proto.Peer{ID: dataNode.ID, Addr: host}
+			continue
+		}
+		if dataNode, err = c.dataNode(host); err != nil {
+			goto errHandler
+		}
+		newPeers = append(newPeers, proto.Peer{ID: dataNode.ID, Addr: host})
+	}
+
 	for _, replica := range dp.Replicas {
 		if replica.Addr == offlineAddr {
 			removePeer = proto.Peer{ID: replica.dataNode.ID, Addr: replica.Addr}
@@ -703,7 +714,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr, volName string, dp *Dat
 	}
 	dp.logDecommissionedDataPartition(offlineAddr)
 
-	if err = dp.updateForOffline(offlineAddr, newAddr, volName, newPeers, c); err != nil {
+	if err = dp.updateForOffline(offlineAddr, newAddr, dp.VolName, newPeers, c); err != nil {
 		goto errHandler
 	}
 	dp.removeReplicaByAddr(offlineAddr)
@@ -741,7 +752,7 @@ func (c *Cluster) decommissionMetaNode(metaNode *MetaNode) {
 	for _, vol := range safeVols {
 		for _, mp := range vol.MetaPartitions {
 			// err is not handled here.
-			c.decommissionMetaPartition(vol.Name, metaNode.Addr, mp.PartitionID)
+			c.decommissionMetaPartition(metaNode.Addr, mp)
 		}
 	}
 	if err := c.syncDeleteMetaNode(metaNode); err != nil {
@@ -805,11 +816,11 @@ func (c *Cluster) createVol(name string, replicaNum uint8, randomWrite bool, siz
 	vol.initMetaPartitions(c)
 	if len(vol.MetaPartitions) == 0 {
 		vol.Status = markDelete
-
-		// TODO unhandled error
-		c.syncDeleteVol(vol)
+		if err = c.syncDeleteVol(vol); err != nil {
+			log.LogErrorf("action[createVol] failed,vol[%v] err[%v]", vol.Name, err)
+		}
 		c.deleteVol(name)
-		goto errHandler // TODO delete or log this error
+		goto errHandler
 	}
 	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
 		vol.initDataPartitions(c)
@@ -820,7 +831,7 @@ func (c *Cluster) createVol(name string, replicaNum uint8, randomWrite bool, siz
 	return
 
 errHandler:
-	err = fmt.Errorf("action[createVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
+	err = fmt.Errorf("action[createVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err)
 	log.LogError(errors.ErrorStack(err))
 	Warn(c.Name, err.Error())
 	return
@@ -852,7 +863,7 @@ errHandler:
 }
 
 // Update the upper bound of the inode ids in a meta partition.
-func (c *Cluster) updateInodeIdRange(volName string, start uint64) (err error) {
+func (c *Cluster) updateInodeIDRange(volName string, start uint64) (err error) {
 
 	var (
 		maxPartitionID uint64
@@ -981,7 +992,7 @@ func (c *Cluster) chooseTargetMetaHosts(replicaNum int) (hosts []string, peers [
 	hosts = append(hosts, slaveAddrs...)
 	peers = append(peers, slavePeers...)
 	if len(hosts) != replicaNum {
-		return nil, nil, noMetaNodeToCreateMetaPartitionErr
+		return nil, nil, ErrNoMetaNodeToCreateMetaPartition
 	}
 	return
 }
@@ -1076,18 +1087,6 @@ func (c *Cluster) allVols() (vols map[string]*Vol) {
 			vols[name] = vol
 		}
 	}
-	return
-}
-
-// TODO Remove. This function is no longer in use.
-func (c *Cluster) getDataPartitionCapacity(vol *Vol) (count int) {
-	var totalCount uint64
-	c.dataNodes.Range(func(addr, value interface{}) bool {
-		dataNode := value.(*DataNode)
-		totalCount = totalCount + dataNode.Total/vol.dataPartitionSize
-		return true
-	})
-	count = int(totalCount / uint64(vol.dpReplicaNum))
 	return
 }
 

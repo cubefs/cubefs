@@ -144,7 +144,6 @@ func (vol *Vol) checkDataPartitionStatus(c *Cluster) (cnt int) {
 	return
 }
 
-
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
@@ -160,7 +159,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		diskErrorAddrs := dp.checkDiskError(c.Name)
 		if diskErrorAddrs != nil {
 			for _, addr := range diskErrorAddrs {
-				c.decommissionDataPartition(addr, vol.Name, dp, checkDataPartitionDiskErr)
+				c.decommissionDataPartition(addr, dp, checkDataPartitionDiskErr)
 			}
 		}
 		tasks := dp.checkReplicationTask(c.Name, vol.dataPartitionSize)
@@ -199,7 +198,6 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	mps := vol.cloneMetaPartitionMap()
 	for _, mp := range mps {
 
-		// TODO the following checks should be optimized.
 		mp.checkStatus(true, int(vol.mpReplicaNum))
 		mp.checkLeader()
 		mp.checkReplicaNum(c, vol.Name, vol.mpReplicaNum)
@@ -243,7 +241,6 @@ func (vol *Vol) capacity() uint64 {
 	defer vol.RUnlock()
 	return vol.Capacity
 }
-
 
 func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 	if vol.status() == markDelete {

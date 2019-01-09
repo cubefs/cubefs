@@ -27,6 +27,7 @@ import (
 	"net"
 )
 
+//const
 const (
 	// the maximum number of tasks that can be handled each time
 	MaxTaskNum = 30
@@ -40,8 +41,8 @@ type AdminTaskManager struct {
 	targetAddr string
 	TaskMap    map[string]*proto.AdminTask
 	sync.RWMutex
-	exitCh     chan struct{}
-	connPool   *util.ConnectPool
+	exitCh   chan struct{}
+	connPool *util.ConnectPool
 }
 
 func newAdminTaskManager(targetAddr, clusterID string) (sender *AdminTaskManager) {
