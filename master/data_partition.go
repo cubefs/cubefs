@@ -114,7 +114,7 @@ func (partition *DataPartition) resetTaskID(t *proto.AdminTask) {
 
 // Check if there is a replica missing or not.
 func (partition *DataPartition) hasMissingOneReplica(replicaNum int) (err error) {
-	hostNum := len(partition.Hosts)
+	hostNum := len(partition.Replicas)
 	if hostNum <= replicaNum-1 {
 		log.LogError(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
 			"hasMissingOneReplica", partition.PartitionID, ErrHasOneMissingReplica))
@@ -318,7 +318,7 @@ func (partition *DataPartition) getFileCount() {
 	}
 
 	for _, replica := range partition.Replicas {
-		msg = fmt.Sprintf(getFileCountOnDataReplica+"partitionID:%v  replicaAddr:%v  FileCount:%v  "+
+		msg = fmt.Sprintf(getFileCountOnDataReplica + "partitionID:%v  replicaAddr:%v  FileCount:%v  "+
 			"NodeIsActive:%v  replicaIsActive:%v  .replicaStatusOnNode:%v ", partition.PartitionID, replica.Addr, replica.FileCount,
 			replica.getReplicaNode().isActive, replica.isActive(defaultDataPartitionTimeOutSec), replica.Status)
 		log.LogInfo(msg)
@@ -536,7 +536,7 @@ func (partition *DataPartition) getMaxUsedSpace() uint64 {
 	return partition.used
 }
 
-func (partition *DataPartition) postProcessingDataPartitionCreation(nodeAddr string, c *Cluster) (err error) {
+func (partition *DataPartition) afterCreation(nodeAddr string, c *Cluster) (err error) {
 	dataNode, err := c.dataNode(nodeAddr)
 	if err != nil {
 		return err
