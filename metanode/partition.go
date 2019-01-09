@@ -168,7 +168,6 @@ type MetaPartition interface {
 //  +-----+             +-------+
 type metaPartition struct {
 	config        *MetaPartitionConfig
-	isDump        *AtomicBool
 	size          uint64 // For partition all file size
 	applyID       uint64 // For store Inode/Dentry max applyID, this index will be update after restore from dump data.
 	dentryTree    *BTree
@@ -327,7 +326,6 @@ func (mp *metaPartition) getRaftPort() (heartbeat, replicate int, err error) {
 func NewMetaPartition(conf *MetaPartitionConfig) MetaPartition {
 	mp := &metaPartition{
 		config:     conf,
-		isDump:     NewAtomicBool(),
 		dentryTree: NewBtree(),
 		inodeTree:  NewBtree(),
 		stopC:      make(chan bool),

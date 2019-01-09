@@ -113,6 +113,7 @@ const (
 	OpInodeFullErr     uint8 = 0xFB
 	OpNotLeaderErr     uint8 = 0xFC
 	OpNotPerm          uint8 = 0xFD
+	OpNotEmtpy         uint8 = 0xFE
 	OpOk               uint8 = 0xF0
 
 	// For connection diagnosis
@@ -319,6 +320,8 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "NotLeaderErr"
 	case OpNotPerm:
 		m = "NotPerm"
+	case OpNotEmtpy:
+		m = "DirNotEmpty"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}

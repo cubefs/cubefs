@@ -88,7 +88,7 @@ type (
 // For use when raftStore store and application apply
 const (
 	opCreateInode uint32 = iota
-	opDeleteInode
+	opFSMUnlinkInode
 	opCreateDentry
 	opDeleteDentry
 	opOpen

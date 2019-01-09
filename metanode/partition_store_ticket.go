@@ -48,7 +48,6 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 		} else {
 			curIndex = msg.applyIndex
 		}
-		mp.isDump.SetFalse(msg.applyIndex)
 		// Truncate raft log
 		mp.raftPartition.Truncate(curIndex)
 		if _, ok := mp.IsLeader(); ok {

@@ -90,7 +90,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpErr, nil)
 		return
 	}
-	r, err := mp.Put(opDeleteInode, val)
+	r, err := mp.Put(opFSMUnlinkInode, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

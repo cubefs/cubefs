@@ -263,7 +263,7 @@ func (m *metaManager) opMetaUnlinkInode(conn net.Conn, p *Packet) (err error) {
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.DeleteInode(req, p)
+	err = mp.UnlinkInode(req, p)
 	m.respondToClient(conn, p)
 	log.LogDebugf("[opDeleteInode] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
 		p.GetResultMsg(), p.Data)
