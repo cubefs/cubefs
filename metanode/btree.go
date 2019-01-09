@@ -15,7 +15,7 @@
 package metanode
 
 import (
-	"github.com/google/btree"
+	"github.com/tiglabs/containerfs/util/btree"
 	"sync"
 )
 

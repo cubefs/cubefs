@@ -20,7 +20,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/google/btree"
+	"github.com/tiglabs/containerfs/util/btree"
 )
 
 var (
@@ -50,6 +50,10 @@ func (k *ExtentKey) Less(than btree.Item) bool {
 }
 
 // Marshal marshals the extent key.
+func (k *ExtentKey) Copy() btree.Item {
+	return k
+}
+
 func (k *ExtentKey) Marshal() (m string) {
 	return fmt.Sprintf("%v_%v_%v_%v_%v_%v", k.FileOffset, k.PartitionId, k.ExtentId, k.ExtentOffset, k.Size, k.CRC)
 }

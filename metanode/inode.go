@@ -361,7 +361,7 @@ func (i *Inode) ExtentsTruncate(exts []BtreeItem, length uint64, ct int64) {
 	i.Unlock()
 }
 
-func (i *Inode) Copy() *Inode {
+func (i *Inode) Copy() BtreeItem {
 	newIno := NewInode(i.Inode, i.Type)
 	i.RLock()
 	newIno.Uid = i.Uid
