@@ -19,10 +19,8 @@ import (
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
-	"math/rand"
 	"sort"
 	"sync"
-	"time"
 )
 
 type topology struct {
@@ -209,7 +207,7 @@ func (t *topology) getAllNodeSet() (nsc nodeSetCollection) {
 func (t *topology) allocNodeSetForDataNode(replicaNum uint8) (ns *nodeSet, err error) {
 	nset := t.getAllNodeSet()
 	if nset == nil {
-		return nil, noNodeSetToCreateDataPartitionErr
+		return nil, ErrNoNodeSetToCreateDataPartition
 	}
 	for i := 0; i < len(nset); i++ {
 		if t.setIndex >= len(nset) {
@@ -221,14 +219,14 @@ func (t *topology) allocNodeSetForDataNode(replicaNum uint8) (ns *nodeSet, err e
 			return
 		}
 	}
-	log.LogError(fmt.Sprintf("action[allocNodeSetForDataNode],err:%v", noNodeSetToCreateDataPartitionErr))
-	return nil, noNodeSetToCreateDataPartitionErr
+	log.LogError(fmt.Sprintf("action[allocNodeSetForDataNode],err:%v", ErrNoNodeSetToCreateDataPartition))
+	return nil, ErrNoNodeSetToCreateDataPartition
 }
 
 func (t *topology) allocNodeSetForMetaNode(replicaNum uint8) (ns *nodeSet, err error) {
 	nset := t.getAllNodeSet()
 	if nset == nil {
-		return nil, noNodeSetToCreateMetaPartitionErr
+		return nil, ErrNoNodeSetToCreateMetaPartition
 	}
 	for i := 0; i < len(nset); i++ {
 		if t.setIndex >= len(nset) {
@@ -240,8 +238,8 @@ func (t *topology) allocNodeSetForMetaNode(replicaNum uint8) (ns *nodeSet, err e
 			return
 		}
 	}
-	log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],err:%v", noNodeSetToCreateMetaPartitionErr))
-	return nil, noNodeSetToCreateMetaPartitionErr
+	log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],err:%v", ErrNoNodeSetToCreateMetaPartition))
+	return nil, ErrNoNodeSetToCreateMetaPartition
 }
 
 type nodeSetCollection []*nodeSet
@@ -463,8 +461,8 @@ func (ns *nodeSet) allocRacks(replicaNum int, excludeRack []string) (racks []*Ra
 		}
 	}
 	if len(racks) == 0 {
-		log.LogError(fmt.Sprintf("action[allocRacks],err:%v", noRackToCreateDataPartitionErr))
-		return nil, noRackToCreateDataPartitionErr
+		log.LogError(fmt.Sprintf("action[allocRacks],err:%v", ErrNoRackToCreateDataPartition))
+		return nil, ErrNoRackToCreateDataPartition
 	}
 	if len(racks) > int(replicaNum) {
 		racks = racks[:int(replicaNum)]
@@ -540,9 +538,9 @@ func (rack *Rack) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (
 	maxTotal := rack.getDataNodeMaxTotal()
 	nodeTabs, availCarryCount := rack.getAvailCarryDataNodeTab(maxTotal, excludeHosts, replicaNum)
 	if len(nodeTabs) < replicaNum {
-		err = noDataNodeToWriteErr
+		err = ErrNoDataNodeToWrite
 		err = fmt.Errorf(getAvailDataNodeHostsErr+" err:%v ,ActiveNodeCount:%v  MatchNodeCount:%v  ",
-			noDataNodeToWriteErr, rack.dataNodeCount(), len(nodeTabs))
+			ErrNoDataNodeToWrite, rack.dataNodeCount(), len(nodeTabs))
 		return
 	}
 
@@ -557,7 +555,7 @@ func (rack *Rack) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (
 		peers = append(peers, peer)
 	}
 
-	if newHosts, err = rack.disOrderArray(orderHosts); err != nil {
+	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
 		err = fmt.Errorf(getAvailDataNodeHostsErr+"err:%v  orderHosts is nil", err.Error())
 		return
 	}
@@ -579,7 +577,7 @@ func (rack *Rack) getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []strin
 		if dataNode.isAvailCarryNode() == true {
 			availCount++
 		}
-		nt := new(WeightedNode)
+		nt := new(weightedNode)
 		nt.Carry = dataNode.Carry
 		if dataNode.AvailableSpace < 0 {
 			nt.Weight = 0.0
@@ -601,35 +599,5 @@ func (rack *Rack) dataNodeCount() (len int) {
 		len++
 		return true
 	})
-	return
-}
-
-func (rack *Rack) disOrderArray(oldHosts []string) (newHosts []string, err error) {
-	var (
-		newCurrPos int
-	)
-
-	if oldHosts == nil || len(oldHosts) == 0 {
-		log.LogError(fmt.Sprintf("action[reshuffleHosts],err:%v", reshuffleArrayErr))
-		err = reshuffleArrayErr
-		return
-	}
-
-	lenOldHosts := len(oldHosts)
-	newHosts = make([]string, lenOldHosts)
-	if lenOldHosts == 1 {
-		copy(newHosts, oldHosts)
-		return
-	}
-
-	for randCount := 0; randCount < lenOldHosts; randCount++ {
-		remainCount := lenOldHosts - randCount
-		rand.Seed(time.Now().UnixNano())
-		oCurrPos := rand.Intn(remainCount)
-		newHosts[newCurrPos] = oldHosts[oCurrPos]
-		newCurrPos++
-		oldHosts[oCurrPos] = oldHosts[remainCount-1]
-	}
-
 	return
 }

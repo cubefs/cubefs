@@ -110,11 +110,6 @@ func (fc *FileInCore) shouldCheckCrc() bool {
 	return time.Now().Unix()-fc.LastModify > defaultIntervalToCheckCrc
 }
 
-// TODO remove
-func (fc *FileInCore) shouldDelayCheck() bool {
-	return time.Now().Unix()-fc.LastModify > defaultFileDelayCheckLackSec
-}
-
 func (fc *FileInCore) needCrcRepair(liveVols []*DataReplica) (fms []*FileMetadata, needRepair bool) {
 	var baseCrc uint32
 	fms = make([]*FileMetadata, 0)

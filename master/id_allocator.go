@@ -163,7 +163,6 @@ errHandler:
 	return
 }
 
-// TODO what is a common id?
 func (alloc *IDAllocator) allocateCommonID() (id uint64, err error) {
 	alloc.mnIDLock.Lock()
 	defer alloc.mnIDLock.Unlock()

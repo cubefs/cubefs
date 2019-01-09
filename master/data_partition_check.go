@@ -185,7 +185,7 @@ func (partition *DataPartition) deleteIllegalReplica() (excessAddr string, task 
 			excessAddr = replica.Addr
 			log.LogError(fmt.Sprintf("action[removeIllegalReplica],partitionID:%v,has excess replication:%v",
 				partition.PartitionID, excessAddr))
-			err = illegalDataReplicaErr
+			err = ErrIllegalDataReplica
 			task = partition.createTaskToDeleteDataPartition(excessAddr)
 			break
 		}
@@ -207,7 +207,7 @@ func (partition *DataPartition) missingReplicaAddress(dataPartitionSize uint64) 
 		if _, ok := partition.hasReplica(addr); !ok {
 			log.LogError(fmt.Sprintf("action[missingReplicaAddress],partitionID:%v lack replication:%v",
 				partition.PartitionID, addr))
-			err = missingReplicaErr
+			err = ErrMissingReplica
 			addr = addr
 			partition.isRecover = true
 			break

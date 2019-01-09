@@ -22,6 +22,7 @@ import (
 	"strings"
 )
 
+//config key
 const (
 	colonSplit = ":"
 	commaSplit = ","
@@ -34,18 +35,18 @@ const (
 	nodeSetCapacity                     = "nodeSetCap"
 )
 
+//default value
 const (
-	defaultTobeFreedDataPartitionCount  = 1000
+	defaultTobeFreedDataPartitionCount         = 1000
 	defaultSecondsToFreeDataPartitionAfterLoad = 5 * 60 // a data partition can only be freed after loading 5 mins
-	defaultIntervalToFreeDataPartition  = 10     // in terms of seconds
-	defaultIntervalToCheckHeartbeat     = 60
-	defaultIntervalToCheckDataPartition = 60
-	defaultFileDelayCheckLackSec        = 5 * defaultIntervalToCheckHeartbeat  // TODO remove
-	defaultIntervalToCheckCrc           = 20 * defaultIntervalToCheckHeartbeat // in terms of seconds
-	noHeartBeatTimes                    = 3                                    // number of times that no heartbeat reported
-	defaultNodeTimeOutSec               = noHeartBeatTimes * defaultIntervalToCheckHeartbeat
-	defaultDataPartitionTimeOutSec      = 10 * defaultIntervalToCheckHeartbeat
-	defaultMissingDataPartitionInterval = 24 * 3600
+	defaultIntervalToFreeDataPartition         = 10     // in terms of seconds
+	defaultIntervalToCheckHeartbeat            = 60
+	defaultIntervalToCheckDataPartition        = 60
+	defaultIntervalToCheckCrc                  = 20 * defaultIntervalToCheckHeartbeat // in terms of seconds
+	noHeartBeatTimes                           = 3                                    // number of times that no heartbeat reported
+	defaultNodeTimeOutSec                      = noHeartBeatTimes * defaultIntervalToCheckHeartbeat
+	defaultDataPartitionTimeOutSec             = 10 * defaultIntervalToCheckHeartbeat
+	defaultMissingDataPartitionInterval        = 24 * 3600
 
 	defaultIntervalToAlarmMissingDataPartition = 60 * 60
 	timeToWaitForResponse                      = 120         // time to wait for response by the master during loading partition

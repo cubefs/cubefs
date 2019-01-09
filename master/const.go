@@ -65,8 +65,6 @@ const (
 	maxNumberOfDataPartitionsForExpansion         = 100
 )
 
-// TODO There is no need to employ normal here. We can just use a flag (called "isMarkedToBeDeleted") to indicate if a
-//  volume is marked (to be deleted) or not.
 const (
 	normal     uint8 = 0
 	markDelete uint8 = 1

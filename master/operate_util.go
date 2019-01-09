@@ -20,6 +20,8 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/exporter"
 	"github.com/tiglabs/containerfs/util/log"
+	"math/rand"
+	"time"
 )
 
 func newCreateDataPartitionRequest(volName string, ID uint64, randomWrite bool, members []proto.Peer, dataPartitionSize int) (req *proto.CreateDataPartitionRequest) {
@@ -113,6 +115,29 @@ func contains(arr []string, element string) (ok bool) {
 			break
 		}
 	}
+	return
+}
+
+func reshuffleHosts(oldHosts []string) (newHosts []string, err error) {
+	if oldHosts == nil || len(oldHosts) == 0 {
+		log.LogError(fmt.Sprintf("action[reshuffleHosts],err:%v", ErrReshuffleArray))
+		err = ErrReshuffleArray
+		return
+	}
+
+	lenOldHosts := len(oldHosts)
+	newHosts = make([]string, lenOldHosts)
+	if lenOldHosts == 1 {
+		copy(newHosts, oldHosts)
+		return
+	}
+
+	for i := lenOldHosts; i > 1; i-- {
+		rand.Seed(time.Now().UnixNano())
+		oCurrPos := rand.Intn(i)
+		oldHosts[i-1], oldHosts[oCurrPos] = oldHosts[oCurrPos], oldHosts[i-1]
+	}
+	copy(newHosts, oldHosts)
 	return
 }
 

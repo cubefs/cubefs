@@ -250,7 +250,7 @@ func (mp *MetaPartition) getMetaReplicaLeader() (mr *MetaReplica, err error) {
 			return
 		}
 	}
-	err = noLeaderErr
+	err = ErrNoLeader
 	return
 }
 
@@ -270,7 +270,7 @@ func (mp *MetaPartition) removeIllegalReplica() (excessAddr string, t *proto.Adm
 	for _, mr := range mp.Replicas {
 		if !contains(mp.Hosts, mr.Addr) {
 			t = mr.createTaskToDeleteReplica(mp.PartitionID)
-			err = illegalMetaReplicaErr
+			err = ErrIllegalMetaReplica
 			break
 		}
 	}
@@ -313,7 +313,7 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err error) {
 	liveReplicas := mp.getLiveReplicas()
 	if len(liveReplicas) < int(mp.ReplicaNum/2+1) {
-		err = noEnoughReplicaErr
+		err = ErrNoEnoughReplica
 		return
 	}
 	liveAddrs := mp.getLiveReplicasAddr(liveReplicas)
@@ -528,7 +528,7 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	mr.setLastReportTime()
 }
 
-func (mp *MetaPartition) updateMetricByRaft(mpv *MetaPartitionValue) {
+func (mp *MetaPartition) updateMetricByRaft(mpv *metaPartitionValue) {
 	mp.Start = mpv.Start
 	mp.End = mpv.End
 	mp.Peers = mpv.Peers

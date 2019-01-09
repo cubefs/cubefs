@@ -36,8 +36,8 @@ type DataPartition struct {
 	isRecover      bool
 	Replicas       []*DataReplica
 
-	Hosts                   []string // host addresses
-	Peers                   []proto.Peer
+	Hosts []string // host addresses
+	Peers []proto.Peer
 	sync.RWMutex
 	total                   uint64
 	used                    uint64
@@ -47,8 +47,8 @@ type DataPartition struct {
 	modifyTime              int64
 	createTime              int64
 	IsRandomWrite           bool
-	FileInCoreMap           map[string]*FileInCore // TODO rename
-	FilesWithMissingReplica map[string]int64       // key: file name, value: last time when a missing replica is found
+	FileInCoreMap           map[string]*FileInCore
+	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
 }
 
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64, randomWrite bool) (partition *DataPartition) {
@@ -100,7 +100,7 @@ func (partition *DataPartition) createTaskToDecommissionDataPartition(removePeer
 	}
 	leaderAddr := partition.getLeaderAddr()
 	if leaderAddr == "" {
-		err = noLeaderErr
+		err = ErrNoLeader
 		return
 	}
 	task = proto.NewAdminTask(proto.OpDecommissionDataPartition, leaderAddr, newOfflineDataPartitionRequest(partition.PartitionID, removePeer, addPeer))
@@ -117,13 +117,12 @@ func (partition *DataPartition) hasMissingOneReplica(replicaNum int) (err error)
 	hostNum := len(partition.Hosts)
 	if hostNum <= replicaNum-1 {
 		log.LogError(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
-			"hasMissingOneReplica", partition.PartitionID, hasOneMissingReplicaErr))
-		err = hasOneMissingReplicaErr
+			"hasMissingOneReplica", partition.PartitionID, ErrHasOneMissingReplica))
+		err = ErrHasOneMissingReplica
 	}
 	return
 }
 
-// TODO liveReplicas and otherLiveReplicas can be put into the same loop
 func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 	msg := fmt.Sprintf("action[canOffLine],partitionID:%v  RocksDBHost:%v  offLine:%v ",
 		partition.PartitionID, partition.Hosts, offlineAddr)
@@ -138,7 +137,7 @@ func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 	}
 
 	if len(otherLiveReplicas) < int(partition.ReplicaNum/2) {
-		msg = fmt.Sprintf(msg+" err:%v  liveReplicas:%v ", cannotBeOffLineErr, len(liveReplicas))
+		msg = fmt.Sprintf(msg+" err:%v  liveReplicas:%v ", ErrCannotBeOffLine, len(liveReplicas))
 		log.LogError(msg)
 		err = fmt.Errorf(msg)
 	}
@@ -558,8 +557,6 @@ func (partition *DataPartition) isReplicaSizeAligned() bool {
 
 	var diff float64
 	for _, replica := range partition.Replicas {
-
-		// TODO diff = math.Max(math.Abs(float64(replica.Used) - float64(used)), diff) ?
 		tempDiff := math.Abs(float64(replica.Used) - float64(used))
 		if tempDiff > diff {
 			diff = tempDiff

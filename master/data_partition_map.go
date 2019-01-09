@@ -29,7 +29,6 @@ import (
 type DataPartitionMap struct {
 	sync.RWMutex
 	partitionMap           map[uint64]*DataPartition
-	totalCnt               int    // total number of partitionMap  TODO this field seems useless
 	readableAndWritableCnt int    // number of readable and writable partitionMap
 	lastLoadedIndex        uint64 // last loaded partition index
 	lastReleasedIndex      uint64 // last released partition index
@@ -41,7 +40,6 @@ type DataPartitionMap struct {
 func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
 	dpMap = new(DataPartitionMap)
 	dpMap.partitionMap = make(map[uint64]*DataPartition, 0)
-	dpMap.totalCnt = 1
 	dpMap.partitions = make([]*DataPartition, 0)
 	dpMap.volName = volName
 	return
@@ -94,8 +92,8 @@ func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitio
 		dpResps := dpMap.getDataPartitionsView(minPartitionID)
 		if len(dpResps) == 0 {
 			log.LogError(fmt.Sprintf("action[updateDpResponseCache],volName[%v] minPartitionID:%v,err:%v",
-				dpMap.volName, minPartitionID, noAvailDataPartitionErr))
-			return nil, errors.Annotatef(noAvailDataPartitionErr, "volName[%v]", dpMap.volName)
+				dpMap.volName, minPartitionID, ErrNoAvailDataPartition))
+			return nil, errors.Annotatef(ErrNoAvailDataPartition, "volName[%v]", dpMap.volName)
 		}
 		cv := newDataPartitionsView()
 		cv.DataPartitions = dpResps

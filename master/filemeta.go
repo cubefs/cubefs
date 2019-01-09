@@ -27,7 +27,7 @@ type FileMetadata struct {
 	Size     uint32
 }
 
-// TODO rename
+//FileInCore define file in data partition
 type FileInCore struct {
 	Name          string
 	LastModify    int64
