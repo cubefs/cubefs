@@ -327,7 +327,9 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32,crcFunc Updat
 			break
 		}
 		crc = crc32.ChecksumIEEE(blockBuffer[:readN])
-		err=crcFunc(e.extentID,int(blockNo),crc,e)
+		if err=crcFunc(e.extentID,int(blockNo),crc,e);err!=nil {
+			return
+		}
 		if readErr == io.EOF || readErr == io.ErrUnexpectedEOF || readN < util.BlockSize {
 			break
 		}
