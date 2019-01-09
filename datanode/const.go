@@ -89,3 +89,8 @@ const (
 	RepairRead = true
 	StreamRead = false
 )
+
+const (
+	NotUpdateSize = false
+	UpdateSize    = true
+)

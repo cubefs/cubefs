@@ -128,7 +128,6 @@ const (
 	defaultAuthTimeout = 5
 )
 
-
 // configuration keys
 const (
 	cfgListen            = "listen"
