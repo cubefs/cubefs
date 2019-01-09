@@ -213,9 +213,7 @@ func (dp *DataPartition) ID() uint64 {
 }
 
 func (dp *DataPartition) GetExtentCount() int {
-	dp.snapshotMutex.RLock()
-	defer dp.snapshotMutex.RUnlock()
-	return len(dp.snapshot)
+	return dp.extentStore.GetExtentCount()
 }
 
 func (dp *DataPartition) Path() string {
@@ -378,7 +376,7 @@ func (dp *DataPartition) statusUpdate() {
 	if dp.used >= dp.partitionSize {
 		status = proto.ReadOnly
 	}
-	if dp.extentStore.ExtentCount() >= MaxActiveExtents {
+	if dp.extentStore.GetExtentCount() >= MaxActiveExtents {
 		status = proto.ReadOnly
 	}
 

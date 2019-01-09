@@ -212,6 +212,10 @@ func (s *ExtentStore) Create(extentID uint64, inode uint64) (err error) {
 	s.cache.Put(extent)
 
 	extInfo := &ExtentInfo{}
+	err = s.updateExtentInode(extentID, inode, extent)
+	if err != nil {
+		return err
+	}
 	extInfo.FromExtent(extent)
 	s.eiMutex.Lock()
 	s.extentInfoMap[extentID] = extInfo
@@ -273,8 +277,8 @@ func (s *ExtentStore) HasExtent(extentID uint64) (exist bool) {
 	return
 }
 
-// ExtentCount returns the number of extents in the extentInfoMap
-func (s *ExtentStore) ExtentCount() (count int) {
+// GetExtentCount returns the number of extents in the extentInfoMap
+func (s *ExtentStore) GetExtentCount() (count int) {
 	s.eiMutex.RLock()
 	defer s.eiMutex.RUnlock()
 	return len(s.extentInfoMap)
@@ -363,6 +367,17 @@ func (s *ExtentStore) updateBlockCrc(extentID uint64, blockNo int, crc uint32, e
 	binary.BigEndian.PutUint32(e.header[startIdx:endIdx], crc)
 	verifyStart := startIdx + int(util.BlockHeaderSize*extentID)
 	if _, err = s.verifyCrcFp.WriteAt(e.header[startIdx:endIdx], int64(verifyStart)); err != nil {
+		return
+	}
+	e.modifyTime = time.Now()
+
+	return
+}
+
+func (s *ExtentStore) updateExtentInode(extentID uint64, inode uint64, e *Extent) (err error) {
+	binary.BigEndian.PutUint64(e.header[0:util.BlockHeaderInoSize], inode)
+	verifyStart := int(util.BlockHeaderSize * extentID)
+	if _, err = s.verifyCrcFp.WriteAt(e.header[0:util.BlockHeaderInoSize], int64(verifyStart)); err != nil {
 		return
 	}
 	e.modifyTime = time.Now()
