@@ -164,7 +164,7 @@ func (si *ItemIterator) Next() (data []byte, err error) {
 				return true
 			}
 			si.curItem = ino
-			snap := NewMetaItem(opCreateInode, ino.MarshalKey(),
+			snap := NewMetaItem(opFSMCreateInode, ino.MarshalKey(),
 				ino.MarshalValue())
 			data, err = snap.MarshalBinary()
 			si.cur++
@@ -184,7 +184,7 @@ func (si *ItemIterator) Next() (data []byte, err error) {
 				return true
 			}
 			si.curItem = dentry
-			snap := NewMetaItem(opCreateDentry, dentry.MarshalKey(),
+			snap := NewMetaItem(opFSMCreateDentry, dentry.MarshalKey(),
 				dentry.MarshalValue())
 			data, err = snap.MarshalBinary()
 			si.cur++

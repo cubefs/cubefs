@@ -477,7 +477,7 @@ func (mp *metaPartition) GetBaseConfig() MetaPartitionConfig {
 }
 
 func (mp *metaPartition) DeletePartition() (err error) {
-	_, err = mp.Put(opDeletePartition, nil)
+	_, err = mp.Put(opFSMDeletePartition, nil)
 	return
 }
 
@@ -489,7 +489,7 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 		resp.Result = err.Error()
 		return
 	}
-	r, err := mp.Put(opUpdatePartition, reqData)
+	r, err := mp.Put(opFSMUpdatePartition, reqData)
 	if err != nil {
 		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
@@ -507,7 +507,7 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 }
 
 func (mp *metaPartition) OfflinePartition(req []byte) (err error) {
-	_, err = mp.Put(opOfflinePartition, req)
+	_, err = mp.Put(opFSMOfflinePartition, req)
 	return
 }
 

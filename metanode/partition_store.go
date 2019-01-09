@@ -112,7 +112,7 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 			err = errors.Errorf("[loadInode] Unmarshal: %s", err.Error())
 			return
 		}
-		mp.createInode(ino)
+		mp.fsmCreateInode(ino)
 		mp.checkAndInsertFreeList(ino)
 		if mp.config.Cursor < ino.Inode {
 			mp.config.Cursor = ino.Inode
@@ -163,7 +163,7 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 			err = errors.Errorf("[loadDentry] Unmarshal: %s", err.Error())
 			return
 		}
-		if mp.createDentry(dentry) != proto.OpOk {
+		if mp.fsmCreateDentry(dentry) != proto.OpOk {
 			err = errors.Errorf("[loadDentry]->%s", err.Error())
 			return
 		}

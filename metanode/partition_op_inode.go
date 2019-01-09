@@ -57,7 +57,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.Put(opCreateInode, val)
+	resp, err := mp.Put(opFSMCreateInode, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -118,7 +118,7 @@ func (mp *metaPartition) Open(req *OpenReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpErr, nil)
 		return
 	}
-	resp, err := mp.Put(opOpen, val)
+	resp, err := mp.Put(opFSMOpen, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -143,7 +143,7 @@ func (mp *metaPartition) ReleaseOpen(req *ReleaseReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	r, err := mp.Put(opReleaseOpen, val)
+	r, err := mp.Put(opFSMReleaseOpen, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

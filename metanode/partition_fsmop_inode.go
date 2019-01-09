@@ -32,7 +32,7 @@ func NewResponseInode() *ResponseInode {
 }
 
 // CreateInode create inode to inode tree.
-func (mp *metaPartition) createInode(ino *Inode) (status uint8) {
+func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 	status = proto.OpOk
 	if _, ok := mp.inodeTree.ReplaceOrInsert(ino, false); !ok {
 		status = proto.OpExistErr
@@ -40,7 +40,7 @@ func (mp *metaPartition) createInode(ino *Inode) (status uint8) {
 	return
 }
 
-func (mp *metaPartition) createLinkInode(ino *Inode) (resp *ResponseInode) {
+func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *ResponseInode) {
 	resp = NewResponseInode()
 	resp.Status = proto.OpOk
 	item := mp.inodeTree.Get(ino)
@@ -165,7 +165,7 @@ func (mp *metaPartition) internalDeleteInode(ino *Inode) {
 	return
 }
 
-func (mp *metaPartition) appendExtents(ino *Inode) (status uint8) {
+func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	status = proto.OpOk
 	item := mp.inodeTree.Get(ino)
 	if item == nil {
@@ -193,7 +193,7 @@ func (mp *metaPartition) appendExtents(ino *Inode) (status uint8) {
 	return
 }
 
-func (mp *metaPartition) extentsTruncate(ino *Inode) (resp *ResponseInode) {
+func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *ResponseInode) {
 	resp = NewResponseInode()
 	resp.Status = proto.OpOk
 	isFind := false
@@ -232,7 +232,7 @@ func (mp *metaPartition) extentsTruncate(ino *Inode) (resp *ResponseInode) {
 	return
 }
 
-func (mp *metaPartition) evictInode(ino *Inode) (resp *ResponseInode) {
+func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *ResponseInode) {
 	resp = NewResponseInode()
 	resp.Status = proto.OpOk
 	isFind := false
@@ -275,7 +275,7 @@ func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 	}
 }
 
-func (mp *metaPartition) setAttr(req *SetattrRequest) (err error) {
+func (mp *metaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
 	// get Inode
 	ino := NewInode(req.Inode, req.Mode)
 	item := mp.inodeTree.Get(ino)

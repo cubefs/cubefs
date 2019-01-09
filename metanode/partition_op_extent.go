@@ -31,7 +31,7 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 		p.PacketErrorWithBody(proto.OpErr, nil)
 		return
 	}
-	resp, err := mp.Put(opExtentsAdd, val)
+	resp, err := mp.Put(opFSMExtentsAdd, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

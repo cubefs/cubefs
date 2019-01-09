@@ -46,7 +46,7 @@ func (mp *metaPartition) initInode(ino *Inode) {
 				log.LogFatalf("[initInode] marshal: %s", err.Error())
 			}
 			// put first root inode
-			resp, err := mp.Put(opCreateInode, data)
+			resp, err := mp.Put(opFSMCreateInode, data)
 			if err != nil {
 				log.LogFatalf("[initInode] raft sync: %s", err.Error())
 			}
@@ -59,7 +59,7 @@ func (mp *metaPartition) initInode(ino *Inode) {
 	}
 }
 
-func (mp *metaPartition) openFile(req *OpenReq) (resp *ResponseInode) {
+func (mp *metaPartition) fsmOpenFile(req *OpenReq) (resp *ResponseInode) {
 	ino := NewInode(req.Inode, 0)
 	item := mp.inodeTree.Get(ino)
 	resp = NewResponseInode()
@@ -82,7 +82,7 @@ func (mp *metaPartition) openFile(req *OpenReq) (resp *ResponseInode) {
 	return
 }
 
-func (mp *metaPartition) releaseOpen(ino *Inode) (status uint8) {
+func (mp *metaPartition) fsmReleaseOpen(ino *Inode) (status uint8) {
 	status = proto.OpOk
 	item := mp.inodeTree.Get(ino)
 	if item == nil {
@@ -102,7 +102,8 @@ func (mp *metaPartition) offlinePartition() (err error) {
 	return
 }
 
-func (mp *metaPartition) updatePartition(end uint64) (status uint8, err error) {
+func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8,
+	err error) {
 	status = proto.OpOk
 	oldEnd := mp.config.End
 	mp.config.End = end
@@ -116,7 +117,7 @@ func (mp *metaPartition) updatePartition(end uint64) (status uint8, err error) {
 	return
 }
 
-func (mp *metaPartition) deletePartition() (status uint8) {
+func (mp *metaPartition) fsmDeletePartition() (status uint8) {
 	mp.Stop()
 	os.RemoveAll(mp.config.RootDir)
 	return

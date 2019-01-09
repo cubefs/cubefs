@@ -87,19 +87,19 @@ type (
 // TODO what does "when raftStore store and application apply" mean ?
 // For use when raftStore store and application apply
 const (
-	opCreateInode uint32 = iota
+	opFSMCreateInode uint32 = iota
 	opFSMUnlinkInode
-	opCreateDentry
-	opDeleteDentry
-	opOpen
-	opDeletePartition
-	opUpdatePartition
-	opOfflinePartition
-	opExtentsAdd
-	opStoreTick
+	opFSMCreateDentry
+	opFSMDeleteDentry
+	opFSMOpen
+	opFSMDeletePartition
+	opFSMUpdatePartition
+	opFSMOfflinePartition
+	opFSMExtentsAdd
+	opFSMStoreTick
 	startStoreTick
 	stopStoreTick
-	opUpdateDentry
+	opFSMUpdateDentry
 	opFSMExtentTruncate
 	opFSMCreateLinkInode
 	opFSMEvictInode
@@ -108,7 +108,7 @@ const (
 	opFSMInternalDelExtentFile
 	opFSMInternalDelExtentCursor
 	opSnapExtentFile
-	opReleaseOpen
+	opFSMReleaseOpen
 )
 
 var (

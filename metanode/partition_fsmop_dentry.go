@@ -30,7 +30,7 @@ func NewResponseDentry() *ResponseDentry {
 }
 
 // CreateDentry insert dentry into dentry tree.
-func (mp *metaPartition) createDentry(dentry *Dentry) (status uint8) {
+func (mp *metaPartition) fsmCreateDentry(dentry *Dentry) (status uint8) {
 	status = proto.OpOk
 	// check inode
 	inoItem := mp.inodeTree.Get(NewInode(dentry.ParentId, 0))
@@ -70,7 +70,8 @@ func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8) {
 }
 
 // DeleteDentry delete dentry from dentry tree.
-func (mp *metaPartition) deleteDentry(dentry *Dentry) (resp *ResponseDentry) {
+func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry) (
+	resp *ResponseDentry) {
 	resp = NewResponseDentry()
 	resp.Status = proto.OpOk
 	item := mp.dentryTree.Delete(dentry)
@@ -82,7 +83,8 @@ func (mp *metaPartition) deleteDentry(dentry *Dentry) (resp *ResponseDentry) {
 	return
 }
 
-func (mp *metaPartition) updateDentry(dentry *Dentry) (resp *ResponseDentry) {
+func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
+	resp *ResponseDentry) {
 	resp = NewResponseDentry()
 	resp.Status = proto.OpOk
 	item := mp.dentryTree.Get(dentry)
