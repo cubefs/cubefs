@@ -67,10 +67,13 @@ const (
 	getTopologyView = "/topo/get"
 )
 
-func (m *Server) startHTTPService() (err error) {
+func (m *Server) startHTTPService() {
 	go func() {
 		m.handleFunctions()
-		http.ListenAndServe(colonSplit+m.port, nil)
+		if err := http.ListenAndServe(colonSplit+m.port, nil); err != nil {
+			log.LogErrorf("action[startHTTPService] failed,err[%v]", err)
+			panic(err)
+		}
 	}()
 	return
 }
@@ -167,7 +170,7 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case decommissionDisk:
 		m.decommissionDisk(w, r)
 	case GetDataNodeTaskResponse:
-		m.getDataNodeTaskResponse(w, r)
+		m.handleDataNodeTaskResponse(w, r)
 	case addMetaNode:
 		m.addMetaNode(w, r)
 	case getMetaNode:
@@ -175,7 +178,7 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case decommissionMetaNode:
 		m.decommissionMetaNode(w, r)
 	case getMetaNodeTaskResponse:
-		m.getMetaNodeTaskResponse(w, r)
+		m.handleMetaNodeTaskResponse(w, r)
 	case clientDataPartitions:
 		m.getDataPartitions(w, r)
 	case clientVol:
@@ -208,6 +211,7 @@ func newLogMsg(requestType, remoteAddr, message string, code int) (logMsg string
 	return
 }
 
+//HandleError send err to client
 func HandleError(message string, err error, code int, w http.ResponseWriter) {
 	log.LogErrorf("errMsg:%v errStack:%v", message, errors.ErrorStack(err))
 	http.Error(w, message, code)

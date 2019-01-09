@@ -17,27 +17,24 @@ package master
 import (
 	"fmt"
 	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util/log"
-	"math/rand"
 	"sort"
-	"time"
 )
 
-type WeightedNode struct {
+type weightedNode struct {
 	Carry  float64
 	Weight float64
 	Ptr    Node
 	ID     uint64
 }
 
-// Node defines an interface that needs to be implemented by WeightedNode
+// Node defines an interface that needs to be implemented by weightedNode
 type Node interface {
 	SetCarry(carry float64)
 	SelectNodeForWrite()
 }
 
 // SortedWeightedNodes defines an array sorted by carry
-type SortedWeightedNodes []*WeightedNode
+type SortedWeightedNodes []*weightedNode
 
 func (nodes SortedWeightedNodes) Len() int {
 	return len(nodes)
@@ -94,7 +91,7 @@ func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) 
 	nodes, count := ns.getAllCarryNodes(maxTotal, excludeHosts)
 	if len(nodes) < replicaNum {
 		err = fmt.Errorf(getAvailMetaNodeHostsErr+" err:%v ,ActiveNodeCount:%v  MatchNodeCount:%v  ",
-			noMetaNodeToWriteErr, ns.metaNodeLen, len(nodes))
+			ErrNoMetaNodeToWrite, ns.metaNodeLen, len(nodes))
 		return
 	}
 
@@ -109,7 +106,7 @@ func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) 
 		peers = append(peers, peer)
 	}
 
-	if newHosts, err = ns.reshuffleHosts(orderHosts); err != nil {
+	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
 		err = fmt.Errorf(getAvailMetaNodeHostsErr+"err:%v  orderHosts is nil", err.Error())
 		return
 	}
@@ -129,48 +126,18 @@ func (ns *nodeSet) getAllCarryNodes(maxTotal uint64, excludeHosts []string) (nod
 		if metaNode.isCarryNode() == true {
 			availCount++
 		}
-		nt := new(WeightedNode)
+		nt := new(weightedNode)
 		nt.Carry = metaNode.Carry
 		if metaNode.Used < 0 {
 			nt.Weight = 1.0
 		} else {
-			nt.Weight = (float64)(maxTotal - metaNode.Used) / (float64)(maxTotal)
+			nt.Weight = (float64)(maxTotal-metaNode.Used) / (float64)(maxTotal)
 		}
 		nt.Ptr = metaNode
 		nodes = append(nodes, nt)
 
 		return true
 	})
-
-	return
-}
-
-func (ns *nodeSet) reshuffleHosts(oldHosts []string) (newHosts []string, err error) {
-	var (
-		newCurrPos int
-	)
-
-	if oldHosts == nil || len(oldHosts) == 0 {
-		log.LogError(fmt.Sprintf("action[reshuffleHosts],err:%v", reshuffleArrayErr))
-		err = reshuffleArrayErr
-		return
-	}
-
-	lenOldHosts := len(oldHosts)
-	newHosts = make([]string, lenOldHosts)
-	if lenOldHosts == 1 {
-		copy(newHosts, oldHosts)
-		return
-	}
-
-	for randCount := 0; randCount < lenOldHosts; randCount++ {
-		remainCount := lenOldHosts - randCount
-		rand.Seed(time.Now().UnixNano())
-		oCurrPos := rand.Intn(remainCount)
-		newHosts[newCurrPos] = oldHosts[oCurrPos]
-		newCurrPos++
-		oldHosts[oCurrPos] = oldHosts[remainCount-1]
-	}
 
 	return
 }

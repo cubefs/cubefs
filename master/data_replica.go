@@ -27,7 +27,7 @@ type DataReplica struct {
 	FileCount       uint32
 	loc             uint8
 	Status          int8
-	HasLoadResponse bool // if there is any response when loading
+	HasLoadResponse bool   // if there is any response when loading
 	Total           uint64 `json:"TotalSize"`
 	Used            uint64 `json:"UsedSize"`
 	IsLeader        bool
@@ -48,7 +48,7 @@ func (replica *DataReplica) setAlive() {
 }
 
 func (replica *DataReplica) isMissing(interval int64) (isMissing bool) {
-	if time.Now().Unix() - replica.ReportTime > interval {
+	if time.Now().Unix()-replica.ReportTime > interval {
 		isMissing = true
 	}
 	return
