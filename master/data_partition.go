@@ -36,8 +36,8 @@ type DataPartition struct {
 	isRecover      bool
 	Replicas       []*DataReplica
 
-	Hosts []string // host addresses
-	Peers []proto.Peer
+	Hosts                   []string // host addresses
+	Peers                   []proto.Peer
 	sync.RWMutex
 	total                   uint64
 	used                    uint64

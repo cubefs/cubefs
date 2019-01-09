@@ -210,7 +210,7 @@ func (m *MetaNode) register() (err error) {
 			step++
 		}
 		var respBody []byte
-		respBody, err = masterHelper.Request("POST", metaNodeURL, reqParam, nil)
+		respBody, err = masterHelper.Request("POST", proto.AddMetaNode, reqParam, nil)
 		if err != nil {
 			log.LogErrorf("[register] %s", err.Error())
 			time.Sleep(3 * time.Second)
@@ -239,7 +239,7 @@ func NewServer() *MetaNode {
 
 // 获取集群信息
 func getClusterInfo() (*proto.ClusterInfo, error) {
-	respBody, err := masterHelper.Request("GET", GetIpUri, nil, nil)
+	respBody, err := masterHelper.Request("GET", proto.AdminGetIP, nil, nil)
 	if err != nil {
 		return nil, err
 	}
