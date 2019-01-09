@@ -41,7 +41,6 @@ const (
 	Gauge
 )
 
-
 var (
 	metricGroups sync.Map
 	TpMetricPool = &sync.Pool{New: func() interface{} {
@@ -80,11 +79,10 @@ func Init(cluster string, role string, cfg *config.Config) {
 }
 
 type PromeMetric struct {
-	Name string
+	Name   string
 	Labels map[string]string
-	tp MetricType
+	tp     MetricType
 }
-
 
 type TpMetric struct {
 	Name  string
@@ -98,9 +96,9 @@ func metricsName(name string) string {
 func RegistMetricWithLabels(name string, tp MetricType, labels map[string]string) (m *PromeMetric) {
 	name = metricsName(name)
 	m = &PromeMetric{
-		Name: name,
+		Name:   name,
 		Labels: labels,
-		tp: tp,
+		tp:     tp,
 	}
 	go m.registMetric()
 	return
@@ -113,28 +111,28 @@ func (m *PromeMetric) registMetric() {
 	if m.tp == Counter {
 		newMetrics := prometheus.NewCounter(
 			prometheus.CounterOpts{
-				Name: m.Name,
+				Name:        m.Name,
 				ConstLabels: m.Labels,
 			})
 		go metricGroups.LoadOrStore(m.Name, newMetrics)
 	} else if m.tp == Gauge {
 		newMetrics := prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Name: m.Name,
+				Name:        m.Name,
 				ConstLabels: m.Labels,
 			})
 		go metricGroups.LoadOrStore(m.Name, newMetrics)
 	}
 }
 
-func (m *PromeMetric) Set(val float64 ) {
+func (m *PromeMetric) Set(val float64) {
 	go func() {
 		metric, load := metricGroups.Load(m.Name)
 		if !load {
 			if m.tp == Counter {
 				newMetrics := prometheus.NewCounter(
 					prometheus.CounterOpts{
-						Name: m.Name,
+						Name:        m.Name,
 						ConstLabels: m.Labels,
 					})
 				metricGroups.LoadOrStore(m.Name, newMetrics)
@@ -142,14 +140,14 @@ func (m *PromeMetric) Set(val float64 ) {
 			} else if m.tp == Gauge {
 				newMetrics := prometheus.NewGauge(
 					prometheus.GaugeOpts{
-						Name: m.Name,
+						Name:        m.Name,
 						ConstLabels: m.Labels,
 					})
 				metricGroups.LoadOrStore(m.Name, newMetrics)
 				newMetrics.Set(val)
 			}
 
-		} else{
+		} else {
 			switch me := metric.(type) {
 			case prometheus.Counter:
 				me.Add(val)
@@ -176,8 +174,8 @@ func RegistCounterLables(name string, labels map[string]string) (o prometheus.Co
 	name = metricsName(name)
 	newMetrics := prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: name,
-			Help: name,
+			Name:        name,
+			Help:        name,
 			ConstLabels: labels,
 		})
 	m, load := metricGroups.LoadOrStore(name, newMetrics)
@@ -204,8 +202,8 @@ func RegistGaugeLables(name string, labels map[string]string) (o prometheus.Gaug
 
 	newGauge := prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name: name,
-			Help: name,
+			Name:        name,
+			Help:        name,
 			ConstLabels: labels,
 		})
 	m, load := metricGroups.LoadOrStore(name, newGauge)

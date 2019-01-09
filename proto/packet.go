@@ -19,13 +19,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/buf"
 	"io"
 	"net"
 	"strconv"
 	"sync/atomic"
 	"time"
-	"github.com/tiglabs/containerfs/util"
 )
 
 var (

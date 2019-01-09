@@ -38,18 +38,18 @@ var (
 // Disk represents the structure of the disk
 type Disk struct {
 	sync.RWMutex
-	Path         string
-	ReadErrCnt     uint64 // number of read errors
-	WriteErrCnt    uint64 // number of write errors
+	Path        string
+	ReadErrCnt  uint64 // number of read errors
+	WriteErrCnt uint64 // number of write errors
 
-	Total        uint64
-	Used         uint64
-	Available    uint64
-	Unallocated  uint64
-	Allocated    uint64
+	Total       uint64
+	Used        uint64
+	Available   uint64
+	Unallocated uint64
+	Allocated   uint64
 
-	MaxErrCnt     int    // maximum number of errors
-	Status        int    // disk status such as READONLY
+	MaxErrCnt     int // maximum number of errors
+	Status        int // disk status such as READONLY
 	ReservedSpace uint64
 
 	partitionMap map[uint64]*DataPartition
