@@ -260,7 +260,7 @@ func (s *ExtentStore) extentWithHeader(extentID uint64) (e *Extent, err error) {
 }
 
 func (s *ExtentStore) loadExtentHeader(extentId uint64, e *Extent) (err error) {
-	if extentId >= MaxExtentId && !IsTinyExtent(extentId) {
+	if !IsTinyExtent(extentId) {
 		return BrokenExtentError
 	}
 	offset := extentId * util.BlockHeaderSize
