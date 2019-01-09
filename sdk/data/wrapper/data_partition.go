@@ -21,14 +21,18 @@ import (
 )
 
 type DataPartition struct {
+	// Will not be changed
 	PartitionID   uint64
 	Status        int8
 	ReplicaNum    uint8
 	PartitionType string
 	Hosts         []string
 	RandomWrite   bool
-	LeaderAddr    string
-	Metrics       *DataPartitionMetrics
+
+	// Will be changed without lock, but does not matter
+	LeaderAddr string
+
+	Metrics *DataPartitionMetrics
 }
 
 type DataPartitionMetrics struct {
