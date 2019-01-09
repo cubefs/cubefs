@@ -395,8 +395,6 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	var (
 		has        bool
 		extent     *Extent
-		blocks     []int
-		blockCrc   []uint32
 		extentInfo *ExtentInfo
 	)
 	s.eiMutex.RLock()
@@ -416,11 +414,7 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	if extent.HasBeenMarkedAsDeleted() {
 		return ExtentHasBeenDeletedError
 	}
-	blocks, blockCrc, err = extent.Write(data, offset, size, crc)
-	for index := 0; index < len(blocks); index++ {
-		// TODO Unhandled errors
-		s.updateBlockCrc(extentID, blocks[index], blockCrc[index], extent)
-	}
+	err = extent.Write(data, offset, size, crc,s.updateBlockCrc)
 	if err != nil {
 		return err
 	}
