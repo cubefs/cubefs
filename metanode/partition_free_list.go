@@ -51,7 +51,7 @@ func (mp *metaPartition) startFreeList() (err error) {
 
 func (mp *metaPartition) updateVolWorker() {
 	t := time.NewTicker(UpdateVolTicket)
-	reqURL := fmt.Sprintf("%s?name=%s", DataPartitionViewUrl, mp.config.VolName)
+	reqURL := fmt.Sprintf("%s?name=%s", proto.ClientDataPartitions, mp.config.VolName)
 	for {
 		select {
 		case <-mp.stopC:

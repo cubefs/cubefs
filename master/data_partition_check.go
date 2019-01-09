@@ -104,7 +104,7 @@ func (partition *DataPartition) needToAlarmMissingDataPartition(addr string, int
 		partition.MissingNodes[addr] = time.Now().Unix()
 		shouldAlarm = true
 	} else {
-		if time.Now().Unix() - t > interval {
+		if time.Now().Unix()-t > interval {
 			shouldAlarm = true
 			partition.MissingNodes[addr] = time.Now().Unix()
 		}
@@ -198,7 +198,7 @@ func (partition *DataPartition) missingReplicaAddress(dataPartitionSize uint64) 
 	partition.Lock()
 	defer partition.Unlock()
 
-	if time.Now().Unix() - partition.createTime < 120 {
+	if time.Now().Unix()-partition.createTime < 120 {
 		return
 	}
 

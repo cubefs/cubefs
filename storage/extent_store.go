@@ -66,7 +66,7 @@ var (
 	NormalExtentFilter = func() ExtentFilter {
 		now := time.Now()
 		return func(extent *ExtentInfo) bool {
-			return !IsTinyExtent(extent.FileID) && now.Unix() - extent.ModifyTime.Unix() > 10 * 60 && extent.IsDeleted == false && extent.Size > 0
+			return !IsTinyExtent(extent.FileID) && now.Unix()-extent.ModifyTime.Unix() > 10*60 && extent.IsDeleted == false && extent.Size > 0
 		}
 	}
 
@@ -652,8 +652,8 @@ func (s *ExtentStore) GetTinyExtentOffset(extentID uint64) (watermark int64, err
 		return
 	}
 	watermark = int64(einfo.Size)
-	if watermark % PageSize != 0 {
-		watermark = watermark + (PageSize - watermark % PageSize)
+	if watermark%PageSize != 0 {
+		watermark = watermark + (PageSize - watermark%PageSize)
 	}
 
 	return
@@ -700,7 +700,7 @@ func (s *ExtentStore) initTinyExtent() (err error) {
 	var extentID uint64
 
 	// TODO buffer the value of TinyExtentStartID + TinyExtentCount
-	for extentID = TinyExtentStartID; extentID < TinyExtentStartID + TinyExtentCount; extentID++ {
+	for extentID = TinyExtentStartID; extentID < TinyExtentStartID+TinyExtentCount; extentID++ {
 		err = s.Create(extentID, 0)
 		if err == nil || err == ExtentExistsError {
 			err = nil

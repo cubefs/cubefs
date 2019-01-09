@@ -30,13 +30,6 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 )
 
-const (
-	DataPartitionViewUrl        = "/client/dataPartitions"
-	GetClusterInfoURL           = "/admin/getIp"
-	ActionGetDataPartitionView  = "ActionGetDataPartitionView"
-	MinWritableDataPartitionNum = 1
-)
-
 var (
 	MasterHelper = util.NewMasterHelper()
 )
@@ -89,7 +82,7 @@ func (w *Wrapper) updateClusterInfo() error {
 	for _, ip := range w.masters {
 		masterHelper.AddNode(ip)
 	}
-	body, err := masterHelper.Request(http.MethodPost, GetClusterInfoURL, nil, nil)
+	body, err := masterHelper.Request(http.MethodPost, proto.AdminGetCluster, nil, nil)
 	if err != nil {
 		log.LogWarnf("UpdateClusterInfo request: err(%v)", err)
 		return err
@@ -119,7 +112,7 @@ func (w *Wrapper) update() {
 func (w *Wrapper) updateDataPartition() error {
 	paras := make(map[string]string, 0)
 	paras["name"] = w.volName
-	msg, err := MasterHelper.Request(http.MethodGet, DataPartitionViewUrl, paras, nil)
+	msg, err := MasterHelper.Request(http.MethodGet, proto.ClientDataPartitions, paras, nil)
 	if err != nil {
 		return errors.Annotate(err, "updateDataPartition: request to master failed!")
 	}

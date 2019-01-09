@@ -24,15 +24,15 @@ var (
 	noAvailDataPartitionErr = errors.New("no available data partition")
 	reshuffleArrayErr       = errors.New("the array to be reshuffled is nil")
 
-	illegalDataReplicaErr   = errors.New("data replica is illegal")
+	illegalDataReplicaErr = errors.New("data replica is illegal")
 
 	missingReplicaErr       = errors.New("a missing data replica is found")
 	hasOneMissingReplicaErr = errors.New("there is a missing data replica")
 
-	noDataNodeToWriteErr    = errors.New("No data node available for creating a data partition")
-	noMetaNodeToWriteErr    = errors.New("No meta node available for creating a meta partition")
+	noDataNodeToWriteErr = errors.New("No data node available for creating a data partition")
+	noMetaNodeToWriteErr = errors.New("No meta node available for creating a meta partition")
 
-	cannotBeOffLineErr      = errors.New("cannot take the data replica offline")
+	cannotBeOffLineErr                 = errors.New("cannot take the data replica offline")
 	noDataNodeToCreateDataPartitionErr = errors.New("no enough data nodes for creating a data partition")
 	noRackToCreateDataPartitionErr     = errors.New("no rack available for creating a data partition")
 	noNodeSetToCreateDataPartitionErr  = errors.New("no node set available for creating a data partition")

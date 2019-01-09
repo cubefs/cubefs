@@ -50,7 +50,7 @@ type VolStatInfo struct {
 func (mw *MetaWrapper) fetchVolumeView() (*VolumeView, error) {
 	params := make(map[string]string)
 	params["name"] = mw.volname
-	body, err := mw.master.Request(http.MethodPost, MetaPartitionViewURL, params, nil)
+	body, err := mw.master.Request(http.MethodPost, proto.ClientVol, params, nil)
 	if err != nil {
 		log.LogWarnf("fetchVolumeView request: err(%v)", err)
 		return nil, err
@@ -66,7 +66,7 @@ func (mw *MetaWrapper) fetchVolumeView() (*VolumeView, error) {
 
 // fetch and update cluster info if successful
 func (mw *MetaWrapper) updateClusterInfo() error {
-	body, err := mw.master.Request(http.MethodPost, GetClusterInfoURL, nil, nil)
+	body, err := mw.master.Request(http.MethodPost, proto.AdminGetCluster, nil, nil)
 	if err != nil {
 		log.LogWarnf("updateClusterInfo request: err(%v)", err)
 		return err
@@ -85,7 +85,7 @@ func (mw *MetaWrapper) updateClusterInfo() error {
 func (mw *MetaWrapper) updateVolStatInfo() error {
 	params := make(map[string]string)
 	params["name"] = mw.volname
-	body, err := mw.master.Request(http.MethodPost, GetVolStatURL, params, nil)
+	body, err := mw.master.Request(http.MethodPost, proto.ClientVolStat, params, nil)
 	if err != nil {
 		log.LogWarnf("updateVolStatInfo request: err(%v)", err)
 		return err

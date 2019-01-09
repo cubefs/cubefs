@@ -174,7 +174,7 @@ func (c *Cluster) loadMetaPartitionAndCheckResponse(mp *MetaPartition) {
 
 func (c *Cluster) doLoadMetaPartition(mp *MetaPartition) {
 	var wg sync.WaitGroup
-	log.LogInfof("action[doLoadMetaPartition],vol[%v],mpID[%v] begin",mp.volName,mp.PartitionID)
+	log.LogInfof("action[doLoadMetaPartition],vol[%v],mpID[%v] begin", mp.volName, mp.PartitionID)
 	mp.RLock()
 	hosts := make([]string, len(mp.Hosts))
 	copy(hosts, mp.Hosts)
@@ -221,7 +221,7 @@ func (c *Cluster) doLoadMetaPartition(mp *MetaPartition) {
 	default:
 	}
 	mp.checkSnapshot(c.Name)
-	log.LogInfof("action[doLoadMetaPartition],vol[%v],mpID[%v] success",mp.volName,mp.PartitionID)
+	log.LogInfof("action[doLoadMetaPartition],vol[%v],mpID[%v] success", mp.volName, mp.PartitionID)
 }
 
 func (c *Cluster) doLoadDataPartition(dp *DataPartition) {

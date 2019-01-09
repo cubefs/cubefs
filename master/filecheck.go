@@ -104,7 +104,7 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 			partition.FilesWithMissingReplica[fc.Name] = time.Now().Unix()
 			return
 		}
-		if time.Now().Unix() - lastReportTime < intervalToCheckMissingReplica {
+		if time.Now().Unix()-lastReportTime < intervalToCheckMissingReplica {
 			return
 		}
 

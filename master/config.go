@@ -23,9 +23,9 @@ import (
 )
 
 const (
-	colonSplit                           = ":"
-	commaSplit                           = ","
-	cfgPeers                             = "peers"
+	colonSplit = ":"
+	commaSplit = ","
+	cfgPeers   = "peers"
 	// if the data partition has not been reported within this interval  (in terms of seconds), it will be considered as missing.
 	missingDataPartitionInterval        = "missingDataPartitionInterval"
 	dataPartitionTimeOutSec             = "dataPartitionTimeOutSec"
@@ -35,17 +35,17 @@ const (
 )
 
 const (
-	defaultTobeFreedDataPartitionCount         = 1000
+	defaultTobeFreedDataPartitionCount  = 1000
 	defaultSecondsToFreeDataPartitionAfterLoad = 5 * 60 // a data partition can only be freed after loading 5 mins
-	defaultIntervalToFreeDataPartition         = 10     // in terms of seconds
-	defaultIntervalToCheckHeartbeat            = 60
-	defaultIntervalToCheckDataPartition        = 60
-	defaultFileDelayCheckLackSec               = 5 * defaultIntervalToCheckHeartbeat  // TODO remove
-	defaultIntervalToCheckCrc                  = 20 * defaultIntervalToCheckHeartbeat // in terms of seconds
-	noHeartBeatTimes                           = 3                                    // number of times that no heartbeat reported
-	defaultNodeTimeOutSec                       = noHeartBeatTimes * defaultIntervalToCheckHeartbeat
-	defaultDataPartitionTimeOutSec              = 10 * defaultIntervalToCheckHeartbeat
-	defaultMissingDataPartitionInterval         = 24 * 3600
+	defaultIntervalToFreeDataPartition  = 10     // in terms of seconds
+	defaultIntervalToCheckHeartbeat     = 60
+	defaultIntervalToCheckDataPartition = 60
+	defaultFileDelayCheckLackSec        = 5 * defaultIntervalToCheckHeartbeat  // TODO remove
+	defaultIntervalToCheckCrc           = 20 * defaultIntervalToCheckHeartbeat // in terms of seconds
+	noHeartBeatTimes                    = 3                                    // number of times that no heartbeat reported
+	defaultNodeTimeOutSec               = noHeartBeatTimes * defaultIntervalToCheckHeartbeat
+	defaultDataPartitionTimeOutSec      = 10 * defaultIntervalToCheckHeartbeat
+	defaultMissingDataPartitionInterval = 24 * 3600
 
 	defaultIntervalToAlarmMissingDataPartition = 60 * 60
 	timeToWaitForResponse                      = 120         // time to wait for response by the master during loading partition
@@ -69,7 +69,7 @@ type clusterConfig struct {
 	DataPartitionTimeOutSec             int64
 	IntervalToAlarmMissingDataPartition int64
 	PeriodToLoadALLDataPartitions       int64
-	IntervalToCheckDataPartition        int   // seconds
+	IntervalToCheckDataPartition        int // seconds
 	numberOfDataPartitionsToFree        int
 	numberOfDataPartitionsToLoad        int
 	nodeSetCapacity                     int

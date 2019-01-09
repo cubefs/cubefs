@@ -15,12 +15,12 @@
 package datanode
 
 import (
+	"fmt"
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
 	"hash/crc32"
-	"fmt"
 )
 
 func (s *DataNode) Prepare(p *repl.Packet) (err error) {

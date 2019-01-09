@@ -30,12 +30,12 @@ import (
    transferred over the network. */
 
 type ClusterValue struct {
-	Name          string
+	Name string
 }
 
 func newClusterValue(c *Cluster) (cv *ClusterValue) {
 	cv = &ClusterValue{
-		Name:          c.Name,
+		Name: c.Name,
 	}
 	return cv
 }

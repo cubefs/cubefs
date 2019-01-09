@@ -40,9 +40,9 @@ type ClusterView struct {
 	MaxDataPartitionID uint64
 	MaxMetaNodeID      uint64
 	MaxMetaPartitionID uint64
-	DataNodeStatInfo       *nodeStatInfo
-	MetaNodeStatInfo       *nodeStatInfo
-	VolStatInfo            []*volStatInfo
+	DataNodeStatInfo   *nodeStatInfo
+	MetaNodeStatInfo   *nodeStatInfo
+	VolStatInfo        []*volStatInfo
 	BadPartitionIDs    []badPartitionView
 	MetaNodes          []NodeView
 	DataNodes          []NodeView
@@ -171,7 +171,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MaxMetaPartitionID: m.cluster.idAlloc.metaPartitionID,
 		MetaNodes:          make([]NodeView, 0),
 		DataNodes:          make([]NodeView, 0),
-		VolStatInfo:            make([]*volStatInfo, 0),
+		VolStatInfo:        make([]*volStatInfo, 0),
 		BadPartitionIDs:    make([]badPartitionView, 0),
 	}
 
@@ -273,7 +273,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	rstMsg = fmt.Sprintf(" createDataPartition succeeeds. " +
+	rstMsg = fmt.Sprintf(" createDataPartition succeeeds. "+
 		"clusterLastTotalDataPartitions[%v],vol[%v] has %v data partitionMap previously and %v data partitionMap now",
 		clusterTotalDataPartitions, volName, lastTotalDataPartitions, len(vol.dataPartitions.partitions))
 	m.sendOkReply(w, r, rstMsg)
@@ -865,7 +865,6 @@ func parseRequestToDecommissionNode(r *http.Request) (nodeAddr, diskPath string,
 	return
 }
 
-
 func parseRequestToGetTaskResponse(r *http.Request) (tr *proto.AdminTask, err error) {
 	var body []byte
 
@@ -1049,7 +1048,7 @@ func parseRequestToDecommissionMetaPartition(r *http.Request) (volName, nodeAddr
 func parseAndExtractStatus(r *http.Request) (status bool, err error) {
 
 	// TODO unhandled error
-	r.ParseForm()  // TODO what if this line returns an error?
+	r.ParseForm() // TODO what if this line returns an error?
 	return extractStatus(r)
 }
 

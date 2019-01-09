@@ -26,9 +26,9 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
+	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 	"hash/crc32"
-	"github.com/tiglabs/containerfs/util"
 )
 
 // DataPartitionRepairTask defines the reapir task for the data partition.
@@ -116,15 +116,15 @@ func (dp *DataPartition) repair(extentType uint8) {
 	dp.sendAllTinyExtentsToC(extentType, availableTinyExtents, brokenTinyExtents)
 
 	// error check
-	if dp.extentStore.AvailableTinyExtentCnt() + dp.extentStore.BrokenTinyExtentCnt() > storage.TinyExtentCount {
+	if dp.extentStore.AvailableTinyExtentCnt()+dp.extentStore.BrokenTinyExtentCnt() > storage.TinyExtentCount {
 		log.LogWarnf("action[repair] partition(%v) GoodTinyExtents(%v) "+
 			"BadTinyExtents(%v) finish cost[%vms].", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(),
-			dp.extentStore.BrokenTinyExtentCnt(), (end - start) / int64(time.Millisecond))
+			dp.extentStore.BrokenTinyExtentCnt(), (end-start)/int64(time.Millisecond))
 	}
 
 	log.LogInfof("action[repair] partition(%v) GoodTinyExtents(%v) BadTinyExtents(%v)"+
 		" finish cost[%vms].", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(), dp.extentStore.BrokenTinyExtentCnt(),
-		(end - start) / int64(time.Millisecond))
+		(end-start)/int64(time.Millisecond))
 	log.LogInfof("action[extentFileRepair] partition(%v) end.",
 		dp.partitionID)
 }
@@ -383,7 +383,6 @@ func (dp *DataPartition) NotifyExtentRepair(members []*DataPartitionRepairTask) 
 	wg.Wait()
 	return
 }
-
 
 // TODO remove
 // NotifyRaftFollowerToRepair notify raft follower to repair DataPartition extent.

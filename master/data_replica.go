@@ -48,7 +48,7 @@ func (replica *DataReplica) setAlive() {
 }
 
 func (replica *DataReplica) isMissing(interval int64) (isMissing bool) {
-	if time.Now().Unix() - replica.ReportTime > interval {
+	if time.Now().Unix()-replica.ReportTime > interval {
 		isMissing = true
 	}
 	return

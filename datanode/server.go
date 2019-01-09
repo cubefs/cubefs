@@ -41,7 +41,7 @@ import (
 )
 
 var (
-	ErrIncorrectStoreType        = errors.New("incorrect store type")
+	ErrIncorrectStoreType       = errors.New("incorrect store type")
 	ErrNoSpaceToCreatePartition = errors.New("no disk space to create a data partition")
 	ErrBadConfFile              = errors.New("bad config file")
 
@@ -68,7 +68,7 @@ const (
 	ConfigKeyDisks         = "disks"         // array
 	ConfigKeyRaftDir       = "raftDir"       // string
 	ConfigKeyRaftHeartbeat = "raftHeartbeat" // string
-	ConfigKeyRaftReplicate = "raftReplica" // string
+	ConfigKeyRaftReplicate = "raftReplica"   // string
 )
 
 // DataNode defines the structure of a data node.

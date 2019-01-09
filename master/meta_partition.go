@@ -29,11 +29,11 @@ import (
 // MetaReplica defines the replica of a meta partition
 type MetaReplica struct {
 	Addr       string
-	start      uint64  // lower bound of the inode id
-	end        uint64  // upper bound of the inode id
+	start      uint64 // lower bound of the inode id
+	end        uint64 // upper bound of the inode id
 	nodeID     uint64
 	ReportTime int64
-	Status     int8    // unavailable, readOnly, readWrite
+	Status     int8 // unavailable, readOnly, readWrite
 	IsLeader   bool
 	metaNode   *MetaNode
 }
@@ -510,7 +510,7 @@ func (mr *MetaReplica) createTaskToLoadMetaPartition(partitionID uint64) (t *pro
 	return
 }
 func (mr *MetaReplica) isMissing() (miss bool) {
-	return time.Now().Unix() - mr.ReportTime > defaultMetaPartitionTimeOutSec
+	return time.Now().Unix()-mr.ReportTime > defaultMetaPartitionTimeOutSec
 }
 
 func (mr *MetaReplica) isActive() (active bool) {

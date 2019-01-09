@@ -272,7 +272,6 @@ func parseAndExtractPartitionInfo(r *http.Request) (name string, partitionID uin
 	return
 }
 
-
 func extractMetaPartitionID(r *http.Request) (partitionID uint64, err error) {
 	var value string
 	if value = r.FormValue(idKey); value == "" {

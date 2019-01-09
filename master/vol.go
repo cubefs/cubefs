@@ -144,7 +144,6 @@ func (vol *Vol) checkDataPartitionStatus(c *Cluster) (cnt int) {
 	return
 }
 
-
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
@@ -243,7 +242,6 @@ func (vol *Vol) capacity() uint64 {
 	defer vol.RUnlock()
 	return vol.Capacity
 }
-
 
 func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 	if vol.status() == markDelete {

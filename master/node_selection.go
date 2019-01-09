@@ -134,7 +134,7 @@ func (ns *nodeSet) getAllCarryNodes(maxTotal uint64, excludeHosts []string) (nod
 		if metaNode.Used < 0 {
 			nt.Weight = 1.0
 		} else {
-			nt.Weight = (float64)(maxTotal - metaNode.Used) / (float64)(maxTotal)
+			nt.Weight = (float64)(maxTotal-metaNode.Used) / (float64)(maxTotal)
 		}
 		nt.Ptr = metaNode
 		nodes = append(nodes, nt)

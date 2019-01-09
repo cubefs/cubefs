@@ -29,7 +29,7 @@ import (
 type DataPartitionMap struct {
 	sync.RWMutex
 	partitionMap           map[uint64]*DataPartition
-	totalCnt               int // total number of partitionMap  TODO this field seems useless
+	totalCnt               int    // total number of partitionMap  TODO this field seems useless
 	readableAndWritableCnt int    // number of readable and writable partitionMap
 	lastLoadedIndex        uint64 // last loaded partition index
 	lastReleasedIndex      uint64 // last released partition index
@@ -85,7 +85,6 @@ func (dpMap *DataPartitionMap) setReadWriteDataPartitions(readWrites int, cluste
 	defer dpMap.Unlock()
 	dpMap.readableAndWritableCnt = readWrites
 }
-
 
 func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitionID uint64) (body []byte, err error) {
 	dpMap.Lock()
@@ -148,7 +147,7 @@ func (dpMap *DataPartitionMap) getDataPartitionsToBeReleased(numberOfDataPartiti
 		}
 		dp := dpMap.partitions[dpMap.lastReleasedIndex]
 		dpMap.lastReleasedIndex++
-		if time.Now().Unix() - dp.LastLoadedTime >= secondsToFreeDataPartitionAfterLoad {
+		if time.Now().Unix()-dp.LastLoadedTime >= secondsToFreeDataPartitionAfterLoad {
 			partitions = append(partitions, dp)
 		}
 	}
@@ -200,7 +199,7 @@ func (dpMap *DataPartitionMap) getDataPartitionsToBeChecked(loadFrequencyTime in
 		dp := dpMap.partitions[dpMap.lastLoadedIndex]
 		dpMap.lastLoadedIndex++
 
-		if time.Now().Unix() - dp.LastLoadedTime >= loadFrequencyTime {
+		if time.Now().Unix()-dp.LastLoadedTime >= loadFrequencyTime {
 			partitions = append(partitions, dp)
 		}
 	}

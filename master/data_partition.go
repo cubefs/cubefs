@@ -36,12 +36,12 @@ type DataPartition struct {
 	isRecover      bool
 	Replicas       []*DataReplica
 
-	Hosts []string  // host addresses
-	Peers []proto.Peer
+	Hosts                   []string // host addresses
+	Peers                   []proto.Peer
 	sync.RWMutex
 	total                   uint64
 	used                    uint64
-	MissingNodes            map[string]int64  // key: address of the missing node, value: when the node is missing
+	MissingNodes            map[string]int64 // key: address of the missing node, value: when the node is missing
 	VolName                 string
 	VolID                   uint64
 	modifyTime              int64
@@ -115,7 +115,7 @@ func (partition *DataPartition) resetTaskID(t *proto.AdminTask) {
 // Check if there is a replica missing or not.
 func (partition *DataPartition) hasMissingOneReplica(replicaNum int) (err error) {
 	hostNum := len(partition.Hosts)
-	if hostNum <= replicaNum - 1 {
+	if hostNum <= replicaNum-1 {
 		log.LogError(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
 			"hasMissingOneReplica", partition.PartitionID, hasOneMissingReplicaErr))
 		err = hasOneMissingReplicaErr
