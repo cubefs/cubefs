@@ -130,17 +130,20 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 
 	onlineAddrs = make([]string, len(newHosts))
 	copy(onlineAddrs, newHosts)
-	for _, mr := range mp.Replicas {
-		if mr.Addr == nodeAddr {
-			removePeer = proto.Peer{ID: mr.nodeID, Addr: mr.Addr}
+	for _, host := range mp.Hosts {
+		if host == nodeAddr {
+			removePeer = proto.Peer{ID: metaNode.ID, Addr: nodeAddr}
 		} else {
-			newPeers = append(newPeers, proto.Peer{ID: mr.nodeID, Addr: mr.Addr})
-			newHosts = append(newHosts, mr.Addr)
+			var mn *MetaNode
+			if mn, err = c.metaNode(host); err != nil {
+				goto errHandler
+			}
+			newPeers = append(newPeers, proto.Peer{ID: mn.ID, Addr: host})
+			newHosts = append(newHosts, host)
 		}
 	}
-
 	tasks = mp.buildNewMetaPartitionTasks(onlineAddrs, newPeers, mp.volName)
-	if t, err = mp.generateOfflineTask(mp.volName, removePeer, newPeers[0]); err != nil {
+	if t, err = mp.createTaskToDecommissionReplica(mp.volName, removePeer, newPeers[0]); err != nil {
 		goto errHandler
 	}
 	tasks = append(tasks, t)

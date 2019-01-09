@@ -467,7 +467,7 @@ func (mp *MetaPartition) createTaskToAddMissingMetaReplica(addrs []string, volNa
 	return mp.buildNewMetaPartitionTasks(addrs, mp.Peers, volName)
 }
 
-func (mp *MetaPartition) generateOfflineTask(volName string, removePeer proto.Peer, addPeer proto.Peer) (t *proto.AdminTask, err error) {
+func (mp *MetaPartition) createTaskToDecommissionReplica(volName string, removePeer proto.Peer, addPeer proto.Peer) (t *proto.AdminTask, err error) {
 	mr, err := mp.getMetaReplicaLeader()
 	if err != nil {
 		return nil, errors.Trace(err)
@@ -536,7 +536,7 @@ func (mp *MetaPartition) updateMetricByRaft(mpv *metaPartitionValue) {
 
 }
 
-func (mp *MetaPartition) postProcessingPartitionCreation(nodeAddr string, c *Cluster) (err error) {
+func (mp *MetaPartition) afterCreation(nodeAddr string, c *Cluster) (err error) {
 	metaNode, err := c.metaNode(nodeAddr)
 	if err != nil {
 		return err
