@@ -26,7 +26,6 @@ import (
 	"strings"
 
 	"github.com/juju/errors"
-	"github.com/tiglabs/containerfs/master"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
@@ -211,7 +210,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 	if data, err = json.Marshal(task); err != nil {
 		return
 	}
-	_, err = MasterHelper.Request("POST", master.GetDataNodeTaskResponse, nil, data)
+	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
 	if err != nil {
 		err = errors.Annotatef(err, "heartbeat to master(%v) failed.", request.MasterAddr)
 		return
@@ -254,7 +253,7 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 	}
 	task.Response = response
 	data, _ := json.Marshal(task)
-	_, err = MasterHelper.Request("POST", master.GetDataNodeTaskResponse, nil, data)
+	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
 	if err != nil {
 		err = errors.Annotatef(err, "delete DataPartition failed,partitionID(%v)", request.PartitionId)
 		log.LogErrorf("action[handlePacketToDeleteDataPartition] err(%v).", err)
@@ -308,7 +307,7 @@ func (s *DataNode) handlePacketToLoadDataPartition(p *repl.Packet) {
 		response.Result = err.Error()
 		err = fmt.Errorf("from master Task(%v) failed,error(%v)", task.ToString(), response.Result)
 	}
-	_, err = MasterHelper.Request("POST", master.GetDataNodeTaskResponse, nil, data)
+	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
 	if err != nil {
 		err = errors.Annotatef(err, "load DataPartition failed,partitionID(%v)", request.PartitionId)
 		log.LogError(errors.ErrorStack(err))
@@ -640,7 +639,7 @@ end:
 	adminTask.Response = resp
 
 	data, _ := json.Marshal(adminTask)
-	_, err = MasterHelper.Request("POST", master.GetDataNodeTaskResponse, nil, data)
+	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
 	if err != nil {
 		err = errors.Annotatef(err, "opOfflineDataPartition failed, partitionID(%v)", resp.PartitionId)
 		log.LogError(errors.ErrorStack(err))
