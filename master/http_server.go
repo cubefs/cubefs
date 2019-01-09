@@ -19,12 +19,10 @@ import (
 	"net/http"
 
 	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
 	"net/http/httputil"
-	"github.com/tiglabs/containerfs/proto"
 )
-
-
 
 func (m *Server) startHTTPService() {
 	go func() {

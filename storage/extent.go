@@ -232,7 +232,7 @@ func (e *Extent) ModifyTime() time.Time {
 }
 
 // WriteTiny performs write on a tiny extent.
-func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32) (err error) {
+func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdateSize bool) (err error) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
@@ -244,7 +244,9 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32) (err err
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
 		return
 	}
-
+	if !isUpdateSize {
+		return
+	}
 	if index%PageSize != 0 {
 		index = index + (PageSize - index%PageSize)
 	}
@@ -253,38 +255,17 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32) (err err
 	return
 }
 
-// RepairWriteTiny repairs the tiny extent.
-func (e *Extent) RepairWriteTiny(data []byte, offset, size int64, crc uint32) (err error) {
-	e.lock.Lock()
-	defer e.lock.Unlock()
-	if !IsTinyExtent(e.extentID) {
-		return BrokenExtentError
-	}
-	if offset != e.dataSize {
-		return BrokenExtentError
-	}
-	if offset+size >= math.MaxUint32 {
-		return ExtentIsFullError
-	}
-	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
-		return
-	}
-	e.dataSize = offset + size
-
-	return
-}
+type UpdateCrcFunc func(updateExtentID uint64, updateblockNo int, updateCrc uint32, updateE *Extent) error
 
 // Write writes data to an extent.
-func (e *Extent) Write(data []byte, offset, size int64, crc uint32) (blockNos []int, blockCrcs []uint32, err error) {
-	blockNos = make([]int, 0)
-	blockCrcs = make([]uint32, 0)
+func (e *Extent) Write(data []byte, offset, size int64, crc uint32, crcFunc UpdateCrcFunc, isUpdateSize bool) (err error) {
 	if IsTinyExtent(e.extentID) {
-		err = e.WriteTiny(data, offset, size, crc)
+		err = e.WriteTiny(data, offset, size, crc, isUpdateSize)
 		return
 	}
 
-	e.lock.RLock()
-	defer e.lock.RUnlock()
+	e.lock.Lock()
+	defer e.lock.Unlock()
 	if err = e.checkOffsetAndSize(offset, size); err != nil {
 		return
 	}
@@ -299,8 +280,7 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32) (blockNos []
 	e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
 	e.modifyTime = time.Now()
 	if offsetInBlock == 0 && size == util.BlockSize {
-		blockNos = append(blockNos, int(blockNo))
-		blockCrcs = append(blockCrcs, crc)
+		err = crcFunc(e.extentID, int(blockNo), crc, e)
 		return
 	}
 
@@ -328,8 +308,9 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32) (blockNos []
 			break
 		}
 		crc = crc32.ChecksumIEEE(blockBuffer[:readN])
-		blockNos = append(blockNos, int(blockNo))
-		blockCrcs = append(blockCrcs, crc)
+		if err = crcFunc(e.extentID, int(blockNo), crc, e); err != nil {
+			return
+		}
 		if readErr == io.EOF || readErr == io.ErrUnexpectedEOF || readN < util.BlockSize {
 			break
 		}

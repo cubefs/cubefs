@@ -355,7 +355,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	}
 	store := partition.ExtentStore()
 	if p.Size <= util.BlockSize {
-		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC)
+		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, UpdateSize)
 	} else {
 		size := p.Size
 		offset := 0
@@ -364,9 +364,9 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 				break
 			}
 			currSize := util.Min(int(size), util.BlockSize)
-			data := p.Data[offset: offset+currSize]
+			data := p.Data[offset : offset+currSize]
 			crc := crc32.ChecksumIEEE(data)
-			err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc)
+			err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, UpdateSize)
 			if err != nil {
 				break
 			}
