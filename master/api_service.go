@@ -1062,7 +1062,7 @@ func (m *Server) sendOkReply(w http.ResponseWriter, r *http.Request, msg string)
 }
 
 func (m *Server) sendErrReply(w http.ResponseWriter, r *http.Request, httpCode int, msg string, err error) {
-	log.LogInfof("URL[%v],remoteAddr[%v],response err", r.URL, r.RemoteAddr)
+	log.LogInfof("URL[%v],remoteAddr[%v],response err[%v]", r.URL, r.RemoteAddr,err)
 	HandleError(msg, err, httpCode, w)
 }
 
