@@ -54,14 +54,13 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			}
 			used := partition.Replicas[0].Used
 			for _, replica := range partition.Replicas {
-				// TODO use math.Max
-				if math.Abs(float64(replica.Used)-float64(used)) > diff {
-					diff = math.Abs(float64(replica.Used) - float64(used))
+				tmpDiff := math.Abs(float64(replica.Used) - float64(used))
+				if tmpDiff > diff {
+					diff = tmpDiff
 				}
 			}
 			if diff < util.GB {
 				partition.isRecover = false
-
 				Warn(c.Name, fmt.Sprintf("clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))
 			} else {
 				newBadDpIds = append(newBadDpIds, partitionID)
@@ -88,7 +87,7 @@ func (c *Cluster) decommissionDisk(dataNode *DataNode, badDiskPath string, badPa
 		for _, dp := range vol.dataPartitions.partitions {
 			for _, bad := range badPartitionIds {
 				if bad == dp.PartitionID {
-					if err = c.decommissionDataPartition(dataNode.Addr, vol.Name, dp, diskOfflineErr); err != nil {
+					if err = c.decommissionDataPartition(dataNode.Addr, dp, diskOfflineErr); err != nil {
 						return
 					}
 				}

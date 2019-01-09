@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"errors"
-	"github.com/tiglabs/containerfs/master"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
 	"github.com/tiglabs/containerfs/repl"
@@ -41,7 +40,7 @@ import (
 )
 
 var (
-	ErrIncorrectStoreType        = errors.New("incorrect store type")
+	ErrIncorrectStoreType       = errors.New("incorrect store type")
 	ErrNoSpaceToCreatePartition = errors.New("no disk space to create a data partition")
 	ErrBadConfFile              = errors.New("bad config file")
 
@@ -51,9 +50,8 @@ var (
 )
 
 const (
-	GetIPFromMaster = master.AdminGetIP
 	// TODO we need to find a better to expose this information.
-	DefaultRackName = "huitian_rack1"
+	DefaultRackName = "cfs_rack1"
 	DefaultRaftDir  = "raft"
 )
 
@@ -68,7 +66,7 @@ const (
 	ConfigKeyDisks         = "disks"         // array
 	ConfigKeyRaftDir       = "raftDir"       // string
 	ConfigKeyRaftHeartbeat = "raftHeartbeat" // string
-	ConfigKeyRaftReplicate = "raftReplica" // string
+	ConfigKeyRaftReplicate = "raftReplica"   // string
 )
 
 // DataNode defines the structure of a data node.
@@ -261,7 +259,7 @@ func (s *DataNode) register() {
 	for {
 		select {
 		case <-timer.C:
-			data, err = MasterHelper.Request(http.MethodGet, GetIPFromMaster, nil, nil)
+			data, err = MasterHelper.Request(http.MethodGet, proto.AdminGetIP, nil, nil)
 			masterAddr := MasterHelper.Leader()
 			if err != nil {
 				log.LogErrorf("action[registerToMaster] cannot get ip from master(%v) err(%v).",
@@ -284,7 +282,7 @@ func (s *DataNode) register() {
 			// register this data node on the master
 			params := make(map[string]string)
 			params["addr"] = fmt.Sprintf("%s:%v", LocalIP, s.port)
-			data, err = MasterHelper.Request(http.MethodPost, master.AddDataNode, params, nil)
+			data, err = MasterHelper.Request(http.MethodPost, proto.AddDataNode, params, nil)
 			if err != nil {
 				log.LogErrorf("action[registerToMaster] cannot register this node to master[%] err(%v).",
 					masterAddr, err)

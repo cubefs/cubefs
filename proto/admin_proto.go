@@ -14,6 +14,49 @@
 
 package proto
 
+const (
+	// Admin APIs
+	AdminGetCluster                = "/admin/getCluster"
+	AdminGetDataPartition          = "/dataPartition/get"
+	AdminLoadDataPartition         = "/dataPartition/load"
+	AdminCreateDataPartition       = "/dataPartition/create"
+	AdminDecommissionDataPartition = "/dataPartition/decommission"
+	AdminDeleteVol                 = "/vol/delete"
+	AdminUpdateVol                 = "/vol/update"
+	AdminCreateVol                 = "/admin/createVol"
+	AdminClusterFreeze             = "/cluster/freeze"
+	AdminGetIP                     = "/admin/getIp"
+	AdminCreateMP                  = "/metaPartition/create"
+	AdminSetMetaNodeThreshold      = "/threshold/set"
+
+	// Client APIs
+	ClientDataPartitions = "/client/partitions"
+	ClientVol            = "/client/vol"
+	ClientMetaPartition  = "/client/metaPartition"
+	ClientVolStat        = "/client/volStat"
+
+	//raft node APIs
+	AddRaftNode    = "/raftNode/add"
+	RemoveRaftNode = "/raftNode/remove"
+
+	// Node APIs
+	AddDataNode                    = "/dataNode/add"
+	DecommissionDataNode           = "/dataNode/decommission"
+	DecommissionDisk               = "/disk/decommission"
+	GetDataNode                    = "/dataNode/get"
+	AddMetaNode                    = "/metaNode/add"
+	DecommissionMetaNode           = "/metaNode/decommission"
+	GetMetaNode                    = "/metaNode/get"
+	AdminLoadMetaPartition         = "/metaPartition/load"
+	AdminDecommissionMetaPartition = "/metaPartition/decommission"
+
+	// Operation response
+	GetMetaNodeTaskResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
+	GetDataNodeTaskResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
+
+	GetTopologyView = "/topo/get"
+)
+
 // RegisterMetaNodeResp defines the response to register a meta node.
 type RegisterMetaNodeResp struct {
 	ID uint64
@@ -233,5 +276,5 @@ type MetaPartitionLoadResponse struct {
 	ApplyID     uint64
 	InodeSign   uint32
 	DentrySign  uint32
-	Addr string
+	Addr        string
 }

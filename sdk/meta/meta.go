@@ -28,11 +28,7 @@ import (
 )
 
 const (
-	HostsSeparator       = ","
-	MetaPartitionViewURL = "/client/vol"
-	GetVolStatURL        = "/client/volStat"
-	GetClusterInfoURL    = "/admin/getIp"
-
+	HostsSeparator                = ","
 	RefreshMetaPartitionsInterval = time.Minute * 5
 )
 

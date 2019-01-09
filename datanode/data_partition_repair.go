@@ -26,6 +26,7 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
+	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 	"hash/crc32"
 )
@@ -115,15 +116,15 @@ func (dp *DataPartition) repair(extentType uint8) {
 	dp.sendAllTinyExtentsToC(extentType, availableTinyExtents, brokenTinyExtents)
 
 	// error check
-	if dp.extentStore.AvailableTinyExtentCnt() + dp.extentStore.BrokenTinyExtentCnt() > storage.TinyExtentCount {
+	if dp.extentStore.AvailableTinyExtentCnt()+dp.extentStore.BrokenTinyExtentCnt() > storage.TinyExtentCount {
 		log.LogWarnf("action[repair] partition(%v) GoodTinyExtents(%v) "+
 			"BadTinyExtents(%v) finish cost[%vms].", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(),
-			dp.extentStore.BrokenTinyExtentCnt(), (end - start) / int64(time.Millisecond))
+			dp.extentStore.BrokenTinyExtentCnt(), (end-start)/int64(time.Millisecond))
 	}
 
 	log.LogInfof("action[repair] partition(%v) GoodTinyExtents(%v) BadTinyExtents(%v)"+
 		" finish cost[%vms].", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(), dp.extentStore.BrokenTinyExtentCnt(),
-		(end - start) / int64(time.Millisecond))
+		(end-start)/int64(time.Millisecond))
 	log.LogInfof("action[extentFileRepair] partition(%v) end.",
 		dp.partitionID)
 }
@@ -349,10 +350,11 @@ func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members [
 	var conn *net.TCPConn
 	target := dp.replicas[index]
 	p.Data, _ = json.Marshal(members[index])
+	taskStr := string(p.Data[:p.Size])
 	conn, err = gConnPool.GetConnect(target)
 	defer func() {
 		wg.Done()
-		log.LogInfof(ActionNotifyFollowerToRepair, fmt.Sprintf(" to (%v) task (%v) failed (%v)", target, string(p.Data), err))
+		log.LogInfof(ActionNotifyFollowerToRepair, fmt.Sprintf(" to (%v) task (%v) failed (%v)", target, taskStr, err))
 	}()
 	if err != nil {
 		return err
@@ -381,7 +383,6 @@ func (dp *DataPartition) NotifyExtentRepair(members []*DataPartitionRepairTask) 
 	wg.Wait()
 	return
 }
-
 
 // TODO remove
 // NotifyRaftFollowerToRepair notify raft follower to repair DataPartition extent.
@@ -461,10 +462,13 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	if err != nil {
 		return errors.Annotatef(err, "streamRepairExtent Watermark error")
 	}
-
+	if localExtentInfo.Size <= util.BlockSize {
+		localExtentInfo.Size = 0
+	} else {
+		localExtentInfo.Size = localExtentInfo.Size - util.BlockSize
+	}
 	// size difference between the local extent and the remote extent
 	sizeDiff := remoteExtentInfo.Size - localExtentInfo.Size
-
 	// create a new streaming read packet
 	request := repl.NewExtentRepairReadPacket(dp.ID(), remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
 	var conn *net.TCPConn
@@ -508,24 +512,20 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			return
 		}
 
-		log.LogInfof("action[streamRepairExtent] fix(%v_%v) start fix from (%v)"+
-			" remoteSize(%v)localSize(%v) reply(%v).", dp.ID(), remoteExtentInfo.String(),
-			remoteExtentInfo.Size, currFixOffset, reply.GetUniqueLogId())
-
+		log.LogInfof(fmt.Sprintf("action[streamRepairExtent] fix(%v_%v) start fix from (%v)"+
+			" remoteSize(%v)localSize(%v) reply(%v).", dp.ID(), localExtentInfo.FileID, remoteExtentInfo.String(),
+			remoteExtentInfo.Size, currFixOffset, reply.GetUniqueLogId()))
+		actualCrc:=crc32.ChecksumIEEE(reply.Data[:reply.Size])
 		if reply.CRC != crc32.ChecksumIEEE(reply.Data[:reply.Size]) {
-			err = fmt.Errorf("streamRepairExtent crc mismatch extent(%v_%v) start fix from (%v)"+
-				" remoteSize(%v) localSize(%v) request(%v) reply(%v)", dp.ID(), remoteExtentInfo.String(),
+			err = fmt.Errorf("streamRepairExtent crc mismatch expectCrc(%v) actualCrc(%v) extent(%v_%v) start fix from (%v)"+
+				" remoteSize(%v) localSize(%v) request(%v) reply(%v) ", reply.CRC,actualCrc,dp.ID(), remoteExtentInfo.String(),
 				remoteExtentInfo.Source, remoteExtentInfo.Size, currFixOffset, request.GetUniqueLogId(), reply.GetUniqueLogId())
 			log.LogErrorf("action[streamRepairExtent] err(%v).", err)
 			return errors.Annotatef(err, "streamRepairExtent receive data error")
 		}
 
 		// write to the local extent file
-		if storage.IsTinyExtent(uint64(localExtentInfo.FileID)) {
-			err = store.TinyExtentRepairWrite(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC)
-		} else {
-			err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC)
-		}
+		err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC, UpdateSize)
 		if err != nil {
 			err = errors.Annotatef(err, "streamRepairExtent repair data error")
 			log.LogErrorf("action[streamRepairExtent] err(%v).", err)

@@ -20,10 +20,6 @@ import (
 	"sync"
 )
 
-const (
-	DataPartitionViewUrl = "/client/dataPartitions"
-)
-
 // DataPartition结构体
 type DataPartition struct {
 	PartitionID   uint64

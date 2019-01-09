@@ -66,7 +66,7 @@ var (
 	NormalExtentFilter = func() ExtentFilter {
 		now := time.Now()
 		return func(extent *ExtentInfo) bool {
-			return !IsTinyExtent(extent.FileID) && now.Unix() - extent.ModifyTime.Unix() > 10 * 60 && extent.IsDeleted == false && extent.Size > 0
+			return !IsTinyExtent(extent.FileID) && now.Unix()-extent.ModifyTime.Unix() > 10*60 && extent.IsDeleted == false && extent.Size > 0
 		}
 	}
 
@@ -204,9 +204,6 @@ func (s *ExtentStore) Create(extentID uint64, inode uint64) (err error) {
 		err = ExtentExistsError
 		return err
 	}
-	if !IsTinyExtent(extentID) && extentID >= MaxExtentId {
-		return BrokenExtentError
-	}
 	extent = NewExtentInCore(name, extentID)
 	err = extent.InitToFS(inode, false)
 	if err != nil {
@@ -215,6 +212,12 @@ func (s *ExtentStore) Create(extentID uint64, inode uint64) (err error) {
 	s.cache.Put(extent)
 
 	extInfo := &ExtentInfo{}
+	if !IsTinyExtent(extentID) {
+		err = s.updateExtentInode(extentID, inode, extent)
+	}
+	if err != nil {
+		return err
+	}
 	extInfo.FromExtent(extent)
 	s.eiMutex.Lock()
 	s.extentInfoMap[extentID] = extInfo
@@ -260,7 +263,7 @@ func (s *ExtentStore) extentWithHeader(extentID uint64) (e *Extent, err error) {
 }
 
 func (s *ExtentStore) loadExtentHeader(extentId uint64, e *Extent) (err error) {
-	if extentId >= MaxExtentId && !IsTinyExtent(extentId) {
+	if !IsTinyExtent(extentId) {
 		return BrokenExtentError
 	}
 	offset := extentId * util.BlockHeaderSize
@@ -276,8 +279,8 @@ func (s *ExtentStore) HasExtent(extentID uint64) (exist bool) {
 	return
 }
 
-// ExtentCount returns the number of extents in the extentInfoMap
-func (s *ExtentStore) ExtentCount() (count int) {
+// GetExtentCount returns the number of extents in the extentInfoMap
+func (s *ExtentStore) GetExtentCount() (count int) {
 	s.eiMutex.RLock()
 	defer s.eiMutex.RUnlock()
 	return len(s.extentInfoMap)
@@ -373,13 +376,25 @@ func (s *ExtentStore) updateBlockCrc(extentID uint64, blockNo int, crc uint32, e
 	return
 }
 
+func (s *ExtentStore) updateExtentInode(extentID uint64, inode uint64, e *Extent) (err error) {
+	if IsTinyExtent(extentID) {
+		return
+	}
+	binary.BigEndian.PutUint64(e.header[0:util.BlockHeaderInoSize], inode)
+	verifyStart := int(util.BlockHeaderSize * extentID)
+	if _, err = s.verifyCrcFp.WriteAt(e.header[0:util.BlockHeaderInoSize], int64(verifyStart)); err != nil {
+		return
+	}
+	e.modifyTime = time.Now()
+
+	return
+}
+
 // Write writes the given extent to the disk.
-func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32) (err error) {
+func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, isUpdateSize bool) (err error) {
 	var (
 		has        bool
 		extent     *Extent
-		blocks     []int
-		blockCrc   []uint32
 		extentInfo *ExtentInfo
 	)
 	s.eiMutex.RLock()
@@ -399,50 +414,12 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	if extent.HasBeenMarkedAsDeleted() {
 		return ExtentHasBeenDeletedError
 	}
-	blocks, blockCrc, err = extent.Write(data, offset, size, crc)
-	for index := 0; index < len(blocks); index++ {
-		// TODO Unhandled errors
-		s.updateBlockCrc(extentID, blocks[index], blockCrc[index], extent)
-	}
+	err = extent.Write(data, offset, size, crc, s.updateBlockCrc, isUpdateSize)
 	if err != nil {
 		return err
 	}
 	extentInfo.FromExtent(extent)
 	return nil
-}
-
-// TinyExtentRepairWrite repairs the tiny extent.
-func (s *ExtentStore) TinyExtentRepairWrite(extentID uint64, offset, size int64, data []byte, crc uint32) (err error) {
-	var (
-		extentInfo *ExtentInfo
-		has        bool
-		extent     *Extent
-	)
-	if !IsTinyExtent(extentID) {
-		return fmt.Errorf("extent %v not tinyExtent", extentID)
-	}
-	s.eiMutex.RLock()
-	extentInfo, has = s.extentInfoMap[extentID]
-	s.eiMutex.RUnlock()
-	if !has {
-		err = fmt.Errorf("extent %v not exist", extentID)
-		return
-	}
-	extent, err = s.extentWithHeader(extentID)
-	if err != nil {
-		return err
-	}
-	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
-		return err
-	}
-	if extent.HasBeenMarkedAsDeleted() {
-		return ExtentHasBeenDeletedError
-	}
-	if err = extent.RepairWriteTiny(data, offset, size, crc); err != nil {
-		return err
-	}
-	extentInfo.FromExtent(extent)
-	return
 }
 
 func (s *ExtentStore) checkOffsetAndSize(extentID uint64, offset, size int64) error {
@@ -640,8 +617,8 @@ func (s *ExtentStore) GetTinyExtentOffset(extentID uint64) (watermark int64, err
 		return
 	}
 	watermark = int64(einfo.Size)
-	if watermark % PageSize != 0 {
-		watermark = watermark + (PageSize - watermark % PageSize)
+	if watermark%PageSize != 0 {
+		watermark = watermark + (PageSize - watermark%PageSize)
 	}
 
 	return
@@ -688,7 +665,7 @@ func (s *ExtentStore) initTinyExtent() (err error) {
 	var extentID uint64
 
 	// TODO buffer the value of TinyExtentStartID + TinyExtentCount
-	for extentID = TinyExtentStartID; extentID < TinyExtentStartID + TinyExtentCount; extentID++ {
+	for extentID = TinyExtentStartID; extentID < TinyExtentStartID+TinyExtentCount; extentID++ {
 		err = s.Create(extentID, 0)
 		if err == nil || err == ExtentExistsError {
 			err = nil

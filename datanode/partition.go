@@ -46,10 +46,6 @@ const (
 	TimeLayout                    = "2006-01-02 15:04:05"
 )
 
-var (
-	AdminGetDataPartition = master.AdminGetDataPartition
-)
-
 type DataPartitionMetadata struct {
 	VolumeID      string
 	PartitionID   uint64
@@ -186,7 +182,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		disk:            disk,
 		path:            dataPath,
 		partitionSize:   dpCfg.PartitionSize,
-		replicas:    make([]string, 0),
+		replicas:        make([]string, 0),
 		stopC:           make(chan bool, 0),
 		repairC:         make(chan uint64, 0),
 		storeC:          make(chan uint64, 128),
@@ -207,15 +203,12 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 	return
 }
 
-
 func (dp *DataPartition) ID() uint64 {
 	return dp.partitionID
 }
 
 func (dp *DataPartition) GetExtentCount() int {
-	dp.snapshotMutex.RLock()
-	defer dp.snapshotMutex.RUnlock()
-	return len(dp.snapshot)
+	return dp.extentStore.GetExtentCount()
 }
 
 func (dp *DataPartition) Path() string {
@@ -378,7 +371,7 @@ func (dp *DataPartition) statusUpdate() {
 	if dp.used >= dp.partitionSize {
 		status = proto.ReadOnly
 	}
-	if dp.extentStore.ExtentCount() >= MaxActiveExtents {
+	if dp.extentStore.GetExtentCount() >= MaxActiveExtents {
 		status = proto.ReadOnly
 	}
 
@@ -425,7 +418,7 @@ func (dp *DataPartition) computeUsage() {
 		files []os.FileInfo
 		err   error
 	)
-	if time.Now().Unix() - dp.intervalToUpdatePartitionSize < IntervalToUpdatePartitionSize {
+	if time.Now().Unix()-dp.intervalToUpdatePartitionSize < IntervalToUpdatePartitionSize {
 		return
 	}
 	if files, err = ioutil.ReadDir(dp.path); err != nil {
@@ -466,7 +459,7 @@ func (dp *DataPartition) LaunchRepair(extentType uint8) {
 }
 
 func (dp *DataPartition) updateReplicas() (err error) {
-	if time.Now().Unix() - dp.intervalToUpdateReplicas <= IntervalToUpdateReplica {
+	if time.Now().Unix()-dp.intervalToUpdateReplicas <= IntervalToUpdateReplica {
 		return
 	}
 	dp.isLeader = false
@@ -511,7 +504,7 @@ func (dp *DataPartition) fetchReplicasFromMaster() (isLeader bool, replicas []st
 	)
 	params := make(map[string]string)
 	params["id"] = strconv.Itoa(int(dp.partitionID))
-	if bufs, err = MasterHelper.Request("GET", AdminGetDataPartition, params, nil); err != nil {
+	if bufs, err = MasterHelper.Request("GET", proto.AdminGetDataPartition, params, nil); err != nil {
 		isLeader = false
 		return
 	}
@@ -580,7 +573,7 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		go dp.doStreamExtentFixRepair(wg, extentInfo)
 		recoverIndex++
 
-		if recoverIndex % NumOfFilesToRecoverInParallel == 0 {
+		if recoverIndex%NumOfFilesToRecoverInParallel == 0 {
 			wg.Wait()
 		}
 	}

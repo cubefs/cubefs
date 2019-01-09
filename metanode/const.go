@@ -128,11 +128,6 @@ const (
 	defaultAuthTimeout = 5
 )
 
-const (
-	metaNodeURL = "/metaNode/add"
-	GetIpUri    = "/admin/getIp"
-)
-
 // configuration keys
 const (
 	cfgListen            = "listen"

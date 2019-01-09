@@ -40,7 +40,7 @@ type Stats struct {
 	CreatedPartitionCnt                uint64
 
 	// the maximum capacity among all the nodes that can be used to create partition
-	MaxCapacityToCreatePartition       uint64
+	MaxCapacityToCreatePartition uint64
 
 	sync.Mutex
 }

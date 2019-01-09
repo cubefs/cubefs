@@ -15,12 +15,12 @@
 package datanode
 
 import (
+	"fmt"
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
 	"hash/crc32"
-	"fmt"
 )
 
 func (s *DataNode) Prepare(p *repl.Packet) (err error) {
@@ -88,6 +88,7 @@ func (s *DataNode) checkPartition(p *repl.Packet) (err error) {
 }
 
 func (s *DataNode) addExtentInfo(p *repl.Packet) error {
+	partition := p.Object.(*DataPartition)
 	store := p.Object.(*DataPartition).ExtentStore()
 	if isLeaderPacket(p) && p.ExtentType == proto.TinyExtentType && isWriteOperation(p) {
 		extentID, err := store.GetAvailableTinyExtent()
@@ -100,8 +101,7 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 			return err
 		}
 	} else if isLeaderPacket(p) && p.Opcode == proto.OpCreateExtent {
-		extentId := store.NextExtentID()
-		if extentId >= storage.MaxExtentId {
+		if partition.GetExtentCount() >= storage.MaxExtentId {
 			return fmt.Errorf("partition %v has reached maxExtentId", p.PartitionID)
 		}
 		p.ExtentID = store.NextExtentID()

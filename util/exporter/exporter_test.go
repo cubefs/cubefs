@@ -24,12 +24,12 @@ func TestNewMetric(t *testing.T) {
 	exitCh := make(chan int, 100)
 	for i := 0; i < N; i++ {
 		go func() {
-			m := RegistMetric(fmt.Sprintf("name_%d_counter", i%17), Counter )
+			m := RegistMetric(fmt.Sprintf("name_%d_counter", i%17), Counter)
 			if m != nil {
 				m.Set(float64(i))
 				t.Logf("metric: %v", m.Name)
 			}
-			g := RegistMetric(fmt.Sprintf("name_%d_gauge", i%17), Gauge )
+			g := RegistMetric(fmt.Sprintf("name_%d_gauge", i%17), Gauge)
 			if g != nil {
 				g.Set(float64(i))
 				t.Logf("metric: %v", g.Name)

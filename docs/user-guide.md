@@ -1,6 +1,6 @@
 ## Build Servers
 
-In the CFS design, servers refer to master, metanode and datanode, and are compiled into a single binary for deployment convenience.
+In the CFS design, servers refer to master, metanode and datanode, and are compiled into a single binary for deployment convenience.You'll need to build RocksDB v5.9.2+ on your machine.After that, you can build cfs using the following command
 
 ```bash
 cd cmd; go build cmd.go
@@ -49,18 +49,21 @@ Example meta.json is shown below:
     "listen": "9021",
     "prof": "9092",
     "logLevel": "debug",
-    "metaDir": "/var/cfs/metanode_meta",
-    "logDir": "/var/log/cfs",
-    "raftDir": "/var/cfs/metanode_raft",
+    "metaDir": "/export/cfs/metanode_meta",
+    "logDir": "/export/Logs/cfs/metanode",
+    "raftDir": "/export/cfs/metanode_raft",
     "raftHeartbeatPort": "9093",
     "raftReplicatePort": "9094",
+    "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
+     "exporterPort": 9511,
     "masterAddrs": [
-         "192.168.1.10:80",
-        "192.168.1.200:80"
+        "192.168.31.173:80",
+        "192.168.31.141:80",
+        "192.168.30.200:80"
     ]
 }
 ```
-For detailed explanations of *meta.json*, please refer to [meta]().
+For detailed explanations of *meta.json*, please refer to [metanode.md](user-guide/metanode.md).
 ```bash
 ./cmd -c meta.json
 ```

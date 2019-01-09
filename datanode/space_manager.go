@@ -37,7 +37,7 @@ type SpaceManager struct {
 	partitionMutex       sync.RWMutex
 	stats                *Stats
 	stopC                chan bool
-	selectedIndex        int  // TODO what is selected index
+	selectedIndex        int // TODO what is selected index
 	diskList             []string
 	createPartitionMutex sync.RWMutex
 }

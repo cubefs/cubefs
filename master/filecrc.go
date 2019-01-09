@@ -63,7 +63,7 @@ func (fileCrcArr fileCrcSorter) log() (msg string) {
 	return
 }
 
-func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataReplica, clusterID string) (tasks []*proto.AdminTask) {
+func (fc *FileInCore) createFileCrcTask(partitionID uint64, liveVols []*DataReplica, clusterID string) (tasks []*proto.AdminTask) {
 	tasks = make([]*proto.AdminTask, 0)
 	if fc.shouldCheckCrc() == false {
 		return
@@ -108,11 +108,6 @@ func (fc *FileInCore) generateFileCrcTask(partitionID uint64, liveVols []*DataRe
 
 func (fc *FileInCore) shouldCheckCrc() bool {
 	return time.Now().Unix()-fc.LastModify > defaultIntervalToCheckCrc
-}
-
-// TODO remove
-func (fc *FileInCore) shouldDelayCheck() bool {
-	return time.Now().Unix()-fc.LastModify > defaultFileDelayCheckLackSec
 }
 
 func (fc *FileInCore) needCrcRepair(liveVols []*DataReplica) (fms []*FileMetadata, needRepair bool) {

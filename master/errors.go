@@ -20,28 +20,29 @@ import (
 	"github.com/juju/errors"
 )
 
+//err
 var (
-	noAvailDataPartitionErr = errors.New("no available data partition")
-	reshuffleArrayErr       = errors.New("the array to be reshuffled is nil")
+	ErrNoAvailDataPartition = errors.New("no available data partition")
+	ErrReshuffleArray       = errors.New("the array to be reshuffled is nil")
 
-	illegalDataReplicaErr   = errors.New("data replica is illegal")
+	ErrIllegalDataReplica = errors.New("data replica is illegal")
 
-	missingReplicaErr       = errors.New("a missing data replica is found")
-	hasOneMissingReplicaErr = errors.New("there is a missing data replica")
+	ErrMissingReplica       = errors.New("a missing data replica is found")
+	ErrHasOneMissingReplica = errors.New("there is a missing data replica")
 
-	noDataNodeToWriteErr    = errors.New("No data node available for creating a data partition")
-	noMetaNodeToWriteErr    = errors.New("No meta node available for creating a meta partition")
+	ErrNoDataNodeToWrite = errors.New("No data node available for creating a data partition")
+	ErrNoMetaNodeToWrite = errors.New("No meta node available for creating a meta partition")
 
-	cannotBeOffLineErr      = errors.New("cannot take the data replica offline")
-	noDataNodeToCreateDataPartitionErr = errors.New("no enough data nodes for creating a data partition")
-	noRackToCreateDataPartitionErr     = errors.New("no rack available for creating a data partition")
-	noNodeSetToCreateDataPartitionErr  = errors.New("no node set available for creating a data partition")
-	noNodeSetToCreateMetaPartitionErr  = errors.New("no node set available for creating a meta partition")
-	noMetaNodeToCreateMetaPartitionErr = errors.New("no enough meta nodes for creating a meta partition")
-	illegalMetaReplicaErr              = errors.New("illegal meta replica")
-	noEnoughReplicaErr                 = errors.New("no enough replicas")
-	noLeaderErr                        = errors.New("no leader")
-	badConfErr                         = errors.New("bad configuration file")
+	ErrCannotBeOffLine                 = errors.New("cannot take the data replica offline")
+	ErrNoDataNodeToCreateDataPartition = errors.New("no enough data nodes for creating a data partition")
+	ErrNoRackToCreateDataPartition     = errors.New("no rack available for creating a data partition")
+	ErrNoNodeSetToCreateDataPartition  = errors.New("no node set available for creating a data partition")
+	ErrNoNodeSetToCreateMetaPartition  = errors.New("no node set available for creating a meta partition")
+	ErrNoMetaNodeToCreateMetaPartition = errors.New("no enough meta nodes for creating a meta partition")
+	ErrIllegalMetaReplica              = errors.New("illegal meta replica")
+	ErrNoEnoughReplica                 = errors.New("no enough replicas")
+	ErrNoLeader                        = errors.New("no leader")
+	ErrBadConf                         = errors.New("bad configuration file")
 )
 
 func keyNotFound(name string) (err error) {
