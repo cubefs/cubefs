@@ -435,6 +435,13 @@ func (i *Inode) DoFunc(fn func()) {
 	i.RUnlock()
 }
 
+func (i *Inode) GetAuth() (authID uint64, timeout int64) {
+	i.RLock()
+	authID, timeout = i.AuthID, i.AuthTimeout
+	i.RUnlock()
+	return
+}
+
 func (i *Inode) CanOpen(mt int64) (authId uint64, ok bool) {
 	i.Lock()
 	defer i.Unlock()

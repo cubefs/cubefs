@@ -154,10 +154,6 @@ func (mp *metaPartition) ReleaseOpen(req *ReleaseReq, p *Packet) (err error) {
 
 func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
-		return
-	}
 	retMsg := mp.getInode(ino)
 	ino = retMsg.Msg
 	var (
@@ -199,6 +195,25 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 		return
 	}
 	p.PacketOkWithBody(data)
+	return
+}
+
+func (mp *metaPartition) InodeGetAuth(ino uint64, p *Packet) (err error) {
+	resp := mp.getInode(NewInode(ino, 0))
+	status := resp.Status
+	if status != proto.OpOk {
+		p.PackErrorWithBody(status, nil)
+		return
+	}
+	authID, timeout := resp.Msg.GetAuth()
+	data, err := json.Marshal(map[string]interface{}{
+		"authID":   authID,
+		"authTime": timeout,
+	})
+	if err != nil {
+		status = proto.OpErr
+	}
+	p.PackErrorWithBody(status, data)
 	return
 }
 
