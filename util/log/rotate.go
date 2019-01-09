@@ -17,7 +17,7 @@ package log
 const (
 	// DefaultRollingSize Specifies at what size to roll the output log at
 	// Units: MB
-	DefaultRollingSize = 2 * 1024
+	DefaultRollingSize = 10 * 1024
 	// DefaultHeadRoom The tolerance for the log space limit (in megabytes)
 	DefaultHeadRoom = 10 * 1024
 )
