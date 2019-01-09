@@ -343,23 +343,23 @@ func (n *node) insert(item Item, maxItems int) Item {
 }
 
 // get finds the given key in the subtree and returns it.
-func (n *node) get(key Item) Item {
+func (n *node) get(key Item, cow *copyOnWriteContext) Item {
 	i, found := n.items.find(key)
 	if found {
+		if newNode := n.mutableFor(cow); newNode != n {
+			*n = *newNode
+		}
 		return n.items[i]
 	} else if len(n.children) > 0 {
-		return n.children[i].get(key)
+		return n.children[i].get(key, cow)
 	}
 	return nil
 }
 
 // min returns the first item in the subtree.
 func min(n *node) Item {
-	if n == nil {
-		return nil
-	}
 	for len(n.children) > 0 {
-		n = n.children[0]
+		n = n.mutableChild(0)
 	}
 	if len(n.items) == 0 {
 		return nil
@@ -369,11 +369,8 @@ func min(n *node) Item {
 
 // max returns the last item in the subtree.
 func max(n *node) Item {
-	if n == nil {
-		return nil
-	}
 	for len(n.children) > 0 {
-		n = n.children[len(n.children)-1]
+		n = n.mutableChild(len(n.children) - 1)
 	}
 	if len(n.items) == 0 {
 		return nil
@@ -829,16 +826,24 @@ func (t *BTree) Get(key Item) Item {
 	if t.root == nil {
 		return nil
 	}
-	return t.root.get(key)
+	return t.root.get(key, t.cow)
 }
 
 // Min returns the smallest item in the tree, or nil if the tree is empty.
 func (t *BTree) Min() Item {
+	if t.root == nil {
+		return nil
+	}
+	t.root = t.root.mutableFor(t.cow)
 	return min(t.root)
 }
 
 // Max returns the largest item in the tree, or nil if the tree is empty.
 func (t *BTree) Max() Item {
+	if t.root == nil {
+		return nil
+	}
+	t.root = t.root.mutableFor(t.cow)
 	return max(t.root)
 }
 
