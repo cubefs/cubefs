@@ -273,8 +273,8 @@ func (s *ExtentStore) HasExtent(extentID uint64) (exist bool) {
 	return
 }
 
-// ExtentCount returns the number of extents in the extentInfoMap
-func (s *ExtentStore) ExtentCount() (count int) {
+// GetExtentCount returns the number of extents in the extentInfoMap
+func (s *ExtentStore) GetExtentCount() (count int) {
 	s.eiMutex.RLock()
 	defer s.eiMutex.RUnlock()
 	return len(s.extentInfoMap)
