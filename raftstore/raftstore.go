@@ -27,6 +27,7 @@ import (
 	"time"
 )
 
+// RaftStore defines the interface for the raft store.
 type RaftStore interface {
 	CreatePartition(cfg *PartitionConfig) (Partition, error)
 	Stop()
@@ -42,26 +43,31 @@ type raftStore struct {
 	raftPath   string
 }
 
+// RaftConfig returns the raft configuration.
 func (s *raftStore) RaftConfig() *raft.Config {
 	return s.raftConfig
 }
 
+// AddNode adds a new node to the raft store.
 func (s *raftStore) AddNode(nodeID uint64, addr string) {
 	if s.resolver != nil {
 		s.resolver.AddNode(nodeID, addr)
 	}
 }
 
+// AddNodeWithPort add a new node with the given port.
 func (s *raftStore) AddNodeWithPort(nodeID uint64, addr string, heartbeat int, replicate int) {
 	if s.resolver != nil {
 		s.resolver.AddNodeWithPort(nodeID, addr, heartbeat, replicate)
 	}
 }
 
+// DeleteNode deletes the node with the given ID in the raft store.
 func (s *raftStore) DeleteNode(nodeID uint64) {
 	DeleteNode(s.resolver, nodeID)
 }
 
+// Stop stops the raft store server.
 func (s *raftStore) Stop() {
 	if s.raftServer != nil {
 		s.raftServer.Stop()
@@ -89,6 +95,7 @@ func newRaftLogger(dir string) {
 	return
 }
 
+// NewRaftStore returns a new raft store instance.
 func NewRaftStore(cfg *Config) (mr RaftStore, err error) {
 	resolver := NewNodeResolver()
 
@@ -101,15 +108,15 @@ func NewRaftStore(cfg *Config) (mr RaftStore, err error) {
 		cfg.HeartbeatPort = DefaultHeartbeatPort
 	}
 	if cfg.ReplicaPort <= 0 {
-		cfg.ReplicaPort = DefaultReplicatePort
+		cfg.ReplicaPort = DefaultReplicaPort
 	}
-	if cfg.RetainLogs == 0 {
-		cfg.RetainLogs = DefaultRetainLogs
+	if cfg.NumOfLogsToRetain == 0 {
+		cfg.NumOfLogsToRetain = DefaultNumOfLogsToRetain
 	}
 	rc.HeartbeatAddr = fmt.Sprintf("%s:%d", cfg.IPAddr, cfg.HeartbeatPort)
 	rc.ReplicateAddr = fmt.Sprintf("%s:%d", cfg.IPAddr, cfg.ReplicaPort)
 	rc.Resolver = resolver
-	rc.RetainLogs = cfg.RetainLogs
+	rc.RetainLogs = cfg.NumOfLogsToRetain
 	rc.TickInterval = 300 * time.Millisecond
 	rs, err := raft.NewRaftServer(rc)
 	if err != nil {
@@ -125,6 +132,7 @@ func NewRaftStore(cfg *Config) (mr RaftStore, err error) {
 	return
 }
 
+// CreatePartition creates a new partition in the raft store.
 func (s *raftStore) CreatePartition(cfg *PartitionConfig) (p Partition, err error) {
 	// Init WaL Storage for this partition.
 	// Variables:

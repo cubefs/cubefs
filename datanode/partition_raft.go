@@ -415,12 +415,12 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 	replicatePort, _ := strconv.Atoi(s.raftReplica)
 
 	raftConf := &raftstore.Config{
-		NodeID:        s.nodeID,
-		RaftPath:      s.raftDir,
-		IPAddr:        s.localIP,
-		HeartbeatPort: heartbeatPort,
-		ReplicaPort:   replicatePort,
-		RetainLogs:    NumOfRaftLogsToRetain,
+		NodeID:            s.nodeID,
+		RaftPath:          s.raftDir,
+		IPAddr:            s.localIP,
+		HeartbeatPort:     heartbeatPort,
+		ReplicaPort:       replicatePort,
+		NumOfLogsToRetain: NumOfRaftLogsToRetain,
 	}
 	s.raftStore, err = raftstore.NewRaftStore(raftConf)
 	if err != nil {

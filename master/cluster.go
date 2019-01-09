@@ -86,7 +86,7 @@ func (c *Cluster) masterAddr() (addr string) {
 func (c *Cluster) scheduleToUpdateStatInfo() {
 	go func() {
 		for {
-			if c.partition != nil && c.partition.IsLeader() {
+			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.updateStatInfo()
 			}
 			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
@@ -101,7 +101,7 @@ func (c *Cluster) scheduleToCheckAutoDataPartitionCreation() {
 		// check volumes after switching leader two minutes
 		time.Sleep(2 * time.Minute)
 		for {
-			if c.partition != nil && c.partition.IsLeader() {
+			if c.partition != nil && c.partition.IsRaftLeader() {
 				vols := c.copyVols()
 				for _, vol := range vols {
 					vol.checkAutoDataPartitionCreation(c)
@@ -115,7 +115,7 @@ func (c *Cluster) scheduleToCheckAutoDataPartitionCreation() {
 func (c *Cluster) scheduleToCheckDataPartitions() {
 	go func() {
 		for {
-			if c.partition != nil && c.partition.IsLeader() {
+			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.checkDataPartitions()
 			}
 			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
@@ -127,7 +127,7 @@ func (c *Cluster) scheduleToCheckVolStatus() {
 	go func() {
 		//check vols after switching leader two minutes
 		for {
-			if c.partition.IsLeader() {
+			if c.partition.IsRaftLeader() {
 				vols := c.copyVols()
 				for _, vol := range vols {
 					vol.checkStatus(c)
@@ -153,7 +153,7 @@ func (c *Cluster) checkDataPartitions() {
 func (c *Cluster) scheduleToLoadDataPartitions() {
 	go func() {
 		for {
-			if c.partition != nil && c.partition.IsLeader() {
+			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.doLoadDataPartitions()
 			}
 			time.Sleep(time.Second)
@@ -171,7 +171,7 @@ func (c *Cluster) doLoadDataPartitions() {
 func (c *Cluster) scheduleToCheckReleaseDataPartitions() {
 	go func() {
 		for {
-			if c.partition != nil && c.partition.IsLeader() {
+			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.releaseDataPartitionAfterLoad()
 			}
 			time.Sleep(time.Second * defaultIntervalToFreeDataPartition)
@@ -190,7 +190,7 @@ func (c *Cluster) releaseDataPartitionAfterLoad() {
 func (c *Cluster) scheduleToCheckHeartbeat() {
 	go func() {
 		for {
-			if c.partition != nil && c.partition.IsLeader() {
+			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.checkLeaderAddr()
 				c.checkDataNodeHeartbeat()
 			}
@@ -200,7 +200,7 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 
 	go func() {
 		for {
-			if c.partition != nil && c.partition.IsLeader() {
+			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.checkMetaNodeHeartbeat()
 			}
 			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
@@ -240,7 +240,7 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 func (c *Cluster) scheduleToCheckMetaPartitions() {
 	go func() {
 		for {
-			if c.partition != nil && c.partition.IsLeader() {
+			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.checkMetaPartitions()
 			}
 			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))

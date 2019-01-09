@@ -20,21 +20,22 @@ import (
 
 // Constants for network port definition.
 const (
-	DefaultHeartbeatPort = 5901
-	DefaultReplicatePort = 5902
-	DefaultRetainLogs    = 20000
+	DefaultHeartbeatPort     = 5901
+	DefaultReplicaPort       = 5902
+	DefaultNumOfLogsToRetain = 20000
 )
 
-// Config defined necessary configuration properties for raft store.
+// Config defines the configuration properties for the raft store.
 type Config struct {
-	NodeID        uint64 // Identity of raft server instance.
-	RaftPath      string // Path of raft logs
-	IPAddr        string // IP address of node
-	HeartbeatPort int
-	ReplicaPort   int
-	RetainLogs    uint64 // // RetainLogs controls how many logs we leave after truncate. The default value is 20000.
+	NodeID            uint64 // Identity of raft server instance.
+	RaftPath          string // Path of raft logs
+	IPAddr            string // IP address
+	HeartbeatPort     int
+	ReplicaPort       int
+	NumOfLogsToRetain uint64 // number of logs to be kept after truncation. The default value is 20000.
 }
 
+// PeerAddress defines the set of addresses that will be used by the peers.
 type PeerAddress struct {
 	proto.Peer
 	Address       string
@@ -42,7 +43,7 @@ type PeerAddress struct {
 	ReplicaPort   int
 }
 
-// PartitionConfig defined necessary configuration properties for raft store partition.
+// PartitionConfig defines the configuration properties for the partitions.
 type PartitionConfig struct {
 	ID      uint64
 	Applied uint64

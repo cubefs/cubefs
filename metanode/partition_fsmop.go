@@ -38,7 +38,7 @@ func (mp *metaPartition) initInode(ino *Inode) {
 			if mp.hasInode(ino) {
 				return
 			}
-			if !mp.raftPartition.IsLeader() {
+			if !mp.raftPartition.IsRaftLeader() {
 				continue
 			}
 			data, err := ino.Marshal()
