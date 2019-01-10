@@ -65,7 +65,7 @@ type metadataManager struct {
 
 // HandleMetadataOperation handles the metadata operations.
 func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet) (err error) {
-	metric := exporter.RegistTp(p.GetOpMsg())
+	metric := exporter.RegisterTp(p.GetOpMsg())
 	defer metric.CalcTp()
 
 	switch p.Opcode {
