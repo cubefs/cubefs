@@ -70,14 +70,14 @@ func (m *metaManager) respondToClient(conn net.Conn, p *Packet) (err error) {
 	if err != nil {
 		log.LogErrorf("response to client[%s], "+
 			"request[%s], response packet[%s]",
-			err.Error(), p.GetOpMsg(), p.GetResultMesg())
+			err.Error(), p.GetOpMsg(), p.GetResultMsg())
 	}
 	return
 }
 
 func (m *metaManager) responseAckOKToMaster(conn net.Conn, p *Packet) {
 	go func() {
-		p.PackOkReply()
+		p.PacketOkReply()
 		if err := p.WriteToConn(conn); err != nil {
 			log.LogErrorf("ack master response: %s", err.Error())
 		}

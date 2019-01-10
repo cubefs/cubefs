@@ -150,7 +150,7 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 			mp.uploadApplyID(index)
 		}
 	}()
-	req := &proto.MetaPartitionOfflineRequest{}
+	req := &proto.MetaPartitionDecommissionRequest{}
 	if err = json.Unmarshal(confChange.Context, req); err != nil {
 		return
 	}

@@ -19,11 +19,13 @@ import (
 	"github.com/tecbot/gorocksdb"
 )
 
+// RocksDBStore is a wrapper of the gorocksdb.DB
 type RocksDBStore struct {
 	dir string
 	db  *gorocksdb.DB
 }
 
+// NewRocksDBStore returns a new RocksDB instance.
 func NewRocksDBStore(dir string) (store *RocksDBStore) {
 	store = &RocksDBStore{dir: dir}
 	err := store.Open()
@@ -33,6 +35,7 @@ func NewRocksDBStore(dir string) (store *RocksDBStore) {
 	return store
 }
 
+// Open opens the RocksDB instance.
 func (rs *RocksDBStore) Open() error {
 	basedTableOptions := gorocksdb.NewDefaultBlockBasedTableOptions()
 	basedTableOptions.SetBlockCache(gorocksdb.NewLRUCache(3 << 30))
@@ -51,6 +54,7 @@ func (rs *RocksDBStore) Open() error {
 
 }
 
+// Del deletes a key-value pair.
 func (rs *RocksDBStore) Del(key interface{}) (result interface{}, err error) {
 	ro := gorocksdb.NewDefaultReadOptions()
 	wo := gorocksdb.NewDefaultWriteOptions()
@@ -66,6 +70,7 @@ func (rs *RocksDBStore) Del(key interface{}) (result interface{}, err error) {
 	return
 }
 
+// Put adds a new key-value pair to the RocksDB.
 func (rs *RocksDBStore) Put(key, value interface{}) (result interface{}, err error) {
 	wo := gorocksdb.NewDefaultWriteOptions()
 	wb := gorocksdb.NewWriteBatch()
@@ -78,12 +83,15 @@ func (rs *RocksDBStore) Put(key, value interface{}) (result interface{}, err err
 	return result, nil
 }
 
+// Get returns the value based on the given key.
 func (rs *RocksDBStore) Get(key interface{}) (result interface{}, err error) {
 	ro := gorocksdb.NewDefaultReadOptions()
 	ro.SetFillCache(false)
 	return rs.db.GetBytes(ro, []byte(key.(string)))
 }
 
+// DeleteKeyAndPutIndex deletes the key-value pair based on the given key and put other keys in the cmdMap to RocksDB.
+// TODO explain
 func (rs *RocksDBStore) DeleteKeyAndPutIndex(key string, cmdMap map[string][]byte) error {
 	wo := gorocksdb.NewDefaultWriteOptions()
 	wo.SetSync(true)
@@ -104,6 +112,7 @@ func (rs *RocksDBStore) DeleteKeyAndPutIndex(key string, cmdMap map[string][]byt
 	return nil
 }
 
+// BatchPut puts the key-value pairs in batch.
 func (rs *RocksDBStore) BatchPut(cmdMap map[string][]byte) error {
 	wo := gorocksdb.NewDefaultWriteOptions()
 	wo.SetSync(true)
@@ -118,6 +127,7 @@ func (rs *RocksDBStore) BatchPut(cmdMap map[string][]byte) error {
 	return nil
 }
 
+// SeekForPrefix seeks for the place where the prefix is located in the snapshots.
 func (rs *RocksDBStore) SeekForPrefix(prefix []byte) (result map[string][]byte, err error) {
 	result = make(map[string][]byte)
 	snapshot := rs.RocksDBSnapshot()
@@ -142,14 +152,17 @@ func (rs *RocksDBStore) SeekForPrefix(prefix []byte) (result map[string][]byte, 
 	return result, nil
 }
 
+// RocksDBSnapshot returns the RocksDB snapshot.
 func (rs *RocksDBStore) RocksDBSnapshot() *gorocksdb.Snapshot {
 	return rs.db.NewSnapshot()
 }
 
+// ReleaseSnapshot releases the snapshot and its resources.
 func (rs *RocksDBStore) ReleaseSnapshot(snapshot *gorocksdb.Snapshot) {
 	rs.db.ReleaseSnapshot(snapshot)
 }
 
+// Iterator returns the iterator of the snapshot.
 func (rs *RocksDBStore) Iterator(snapshot *gorocksdb.Snapshot) *gorocksdb.Iterator {
 	ro := gorocksdb.NewDefaultReadOptions()
 	ro.SetFillCache(false)

@@ -442,7 +442,7 @@ func (dp *DataPartition) String() (m string) {
 
 // LaunchRepair launches the repair of extents.
 func (dp *DataPartition) LaunchRepair(extentType uint8) {
-	if dp.partitionStatus == proto.Unavaliable {
+	if dp.partitionStatus == proto.Unavailable {
 		return
 	}
 	if err := dp.updateReplicas(); err != nil {

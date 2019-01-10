@@ -80,7 +80,7 @@ type (
 	// Client -> MetaNode
 	EvictInodeReq = proto.EvictInodeRequest
 	// Client -> MetaNOde
-	SetattrRequest = proto.SetattrRequest
+	SetattrRequest = proto.SetAttrRequest
 	ReleaseReq     = proto.ReleaseRequest
 )
 

@@ -55,7 +55,7 @@ func (replica *DataReplica) isMissing(interval int64) (isMissing bool) {
 }
 
 func (replica *DataReplica) isLive(timeOutSec int64) (isAvailable bool) {
-	if replica.dataNode.isActive == true && replica.Status != proto.Unavaliable &&
+	if replica.dataNode.isActive == true && replica.Status != proto.Unavailable &&
 		replica.isActive(timeOutSec) == true {
 		isAvailable = true
 	}

@@ -38,7 +38,7 @@ func (mp *metaPartition) initInode(ino *Inode) {
 			if mp.hasInode(ino) {
 				return
 			}
-			if !mp.raftPartition.IsLeader() {
+			if !mp.raftPartition.IsRaftLeader() {
 				continue
 			}
 			data, err := ino.Marshal()
@@ -53,7 +53,7 @@ func (mp *metaPartition) initInode(ino *Inode) {
 			p := &Packet{}
 			p.ResultCode = resp.(uint8)
 			log.LogDebugf("[initInode] raft sync: response status = %v.",
-				p.GetResultMesg())
+				p.GetResultMsg())
 			return
 		}
 	}
@@ -131,7 +131,7 @@ func (mp *metaPartition) deletePartition() (status uint8) {
 }
 
 func (mp *metaPartition) confAddNode(req *proto.
-	MetaPartitionOfflineRequest, index uint64) (updated bool, err error) {
+MetaPartitionDecommissionRequest, index uint64) (updated bool, err error) {
 	var (
 		heartbeatPort int
 		replicatePort int
@@ -157,7 +157,7 @@ func (mp *metaPartition) confAddNode(req *proto.
 	return
 }
 
-func (mp *metaPartition) confRemoveNode(req *proto.MetaPartitionOfflineRequest,
+func (mp *metaPartition) confRemoveNode(req *proto.MetaPartitionDecommissionRequest,
 	index uint64) (updated bool, err error) {
 	peerIndex := -1
 	for i, peer := range mp.config.Peers {
@@ -195,7 +195,7 @@ func (mp *metaPartition) confRemoveNode(req *proto.MetaPartitionOfflineRequest,
 	return
 }
 
-func (mp *metaPartition) confUpdateNode(req *proto.MetaPartitionOfflineRequest,
+func (mp *metaPartition) confUpdateNode(req *proto.MetaPartitionDecommissionRequest,
 	index uint64) (updated bool, err error) {
 	return
 }

@@ -80,7 +80,7 @@ func (m *Server) newReverseProxy() *httputil.ReverseProxy {
 func (m *Server) handlerWithInterceptor() http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			if m.partition.IsLeader() {
+			if m.partition.IsRaftLeader() {
 				m.ServeHTTP(w, r)
 				return
 			}

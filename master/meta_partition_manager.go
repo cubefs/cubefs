@@ -23,7 +23,7 @@ import (
 func (c *Cluster) startCheckLoadMetaPartitions() {
 	go func() {
 		for {
-			if c.partition != nil && c.partition.IsLeader() {
+			if c.partition != nil && c.partition.IsRaftLeader() {
 				if c.vols != nil {
 					c.checkLoadMetaPartitions()
 				}

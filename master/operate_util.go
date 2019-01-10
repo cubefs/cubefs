@@ -86,9 +86,9 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 	case proto.OpLoadMetaPartition:
 		response = task.Response.(*proto.LoadMetaPartitionMetricResponse)
 	case proto.OpDecommissionMetaPartition:
-		response = task.Response.(*proto.MetaPartitionOfflineResponse)
+		response = task.Response.(*proto.MetaPartitionDecommissionResponse)
 	case proto.OpDecommissionDataPartition:
-		response = task.Response.(*proto.DataPartitionOfflineResponse)
+		response = task.Response.(*proto.DataPartitionDecommissionResponse)
 
 	default:
 		log.LogError(fmt.Sprintf("unknown operate code(%v)", task.OpCode))

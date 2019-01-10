@@ -30,38 +30,37 @@ var (
 	ErrUnknownSocketType = errors.New("unknown socket type")
 )
 
-// This private struct defined necessary properties for node address info storage.
+// This private struct defines the necessary properties for node address info.
 type nodeAddress struct {
 	Heartbeat string
 	Replicate string
 }
 
-// NodeManager defined necessary methods for node address management.
+// NodeManager defines the necessary methods for node address management.
 type NodeManager interface {
-	// AddNode used to add node address information.
+	// add node address information.
 	AddNode(nodeID uint64, addr string)
 
-	// AddNode adds node address with specified port.
+	// add node address with specified port.
 	AddNodeWithPort(nodeID uint64, addr string, heartbeat int, replicate int)
 
-	// DeleteNode used to delete node address information
-	// of specified node ID from NodeManager if possible.
+	// delete node address information
 	DeleteNode(nodeID uint64)
 }
 
-// NodeResolver defined necessary methods for both node address resolving and management.
-// It extends from SocketResolver and NodeManager.
+// NodeResolver defines the methods for node address resolving and management.
+// It is extended from SocketResolver and NodeManager.
 type NodeResolver interface {
 	raft.SocketResolver
 	NodeManager
 }
 
-// This is the default parallel-safe implementation of NodeResolver interface.
+// Default thread-safe implementation of the NodeResolver interface.
 type nodeResolver struct {
 	nodeMap sync.Map
 }
 
-// NodeAddress resolve NodeID to net.Addr addresses.
+// NodeAddress resolves NodeID as net.Addr.
 // This method is necessary for SocketResolver interface implementation.
 func (r *nodeResolver) NodeAddress(nodeID uint64, stype raft.SocketType) (addr string, err error) {
 	val, ok := r.nodeMap.Load(nodeID)
@@ -90,12 +89,13 @@ func (r *nodeResolver) AddNode(nodeID uint64, addr string) {
 	r.AddNodeWithPort(nodeID, addr, 0, 0)
 }
 
+// AddNodeWithPort adds node address with specified port.
 func (r *nodeResolver) AddNodeWithPort(nodeID uint64, addr string, heartbeat int, replicate int) {
 	if heartbeat == 0 {
 		heartbeat = DefaultHeartbeatPort
 	}
 	if replicate == 0 {
-		replicate = DefaultReplicatePort
+		replicate = DefaultReplicaPort
 	}
 	if len(strings.TrimSpace(addr)) != 0 {
 		r.nodeMap.Store(nodeID, &nodeAddress{
@@ -105,7 +105,7 @@ func (r *nodeResolver) AddNodeWithPort(nodeID uint64, addr string, heartbeat int
 	}
 }
 
-// DeleteNode deletes node address information of specified node ID from NodeManager if possible.
+// DeleteNode deletes the node address information of the specified node ID from the NodeManager if possible.
 func (r *nodeResolver) DeleteNode(nodeID uint64) {
 	r.nodeMap.Delete(nodeID)
 }
@@ -115,7 +115,7 @@ func NewNodeResolver() NodeResolver {
 	return &nodeResolver{}
 }
 
-// AddNode add node address into specified NodeManger if possible.
+// AddNode adds the node address into the NodeManger if possible.
 func AddNode(manager NodeManager, nodeID uint64, addr string, heartbeat int, replicate int) {
 	if manager != nil {
 		log.LogInfof("add node %d %s\n", nodeID, addr)
@@ -123,7 +123,7 @@ func AddNode(manager NodeManager, nodeID uint64, addr string, heartbeat int, rep
 	}
 }
 
-// DeleteNode delete node address data from specified NodeManager if possible.
+// DeleteNode deletes the node address from the NodeManager if possible.
 func DeleteNode(manager NodeManager, nodeID uint64) {
 	if manager != nil {
 		manager.DeleteNode(nodeID)

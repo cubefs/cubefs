@@ -501,10 +501,10 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 		resp.Status = proto.TaskFailed
 		p := &Packet{}
 		p.ResultCode = status
-		err = errors.Errorf("[UpdatePartition]: %s", p.GetResultMesg())
-		resp.Result = p.GetResultMesg()
+		err = errors.Errorf("[UpdatePartition]: %s", p.GetResultMsg())
+		resp.Result = p.GetResultMsg()
 	}
-	resp.Status = proto.TaskSuccess
+	resp.Status = proto.TaskSucceeds
 	return
 }
 
@@ -523,7 +523,7 @@ func (mp *metaPartition) LoadSnapshotSign(p *Packet) (err error) {
 	if err != nil {
 		if !os.IsNotExist(err) {
 			err = errors.Annotate(err, "[LoadSnapshotSign] 1st check snapshot")
-			p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return err
 		}
 		resp.ApplyID, resp.InodeSign, resp.DentrySign, err = mp.loadSnapshotSign(
@@ -533,7 +533,7 @@ func (mp *metaPartition) LoadSnapshotSign(p *Packet) (err error) {
 		if !os.IsNotExist(err) {
 			err = errors.Annotate(err,
 				"[LoadSnapshotSign] 2st check snapshot")
-			p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return
 		}
 		resp.DoCompare = false
@@ -544,7 +544,7 @@ func (mp *metaPartition) LoadSnapshotSign(p *Packet) (err error) {
 		err = errors.Annotate(err, "[LoadSnapshotSign] marshal")
 		return
 	}
-	p.PackOkWithBody(data)
+	p.PacketOkWithBody(data)
 	return
 }
 

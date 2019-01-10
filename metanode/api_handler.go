@@ -192,7 +192,7 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp.Code = http.StatusSeeOther
-	resp.Msg = p.GetResultMesg()
+	resp.Msg = p.GetResultMsg()
 	resp.Data = json.RawMessage(p.Data)
 	return
 }
@@ -233,7 +233,7 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
 		return
 	}
 	resp.Code = http.StatusSeeOther
-	resp.Msg = p.GetResultMesg()
+	resp.Msg = p.GetResultMsg()
 	resp.Data = json.RawMessage(p.Data)
 	return
 }
@@ -279,7 +279,7 @@ func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp.Code = http.StatusSeeOther
-	resp.Msg = p.GetResultMesg()
+	resp.Msg = p.GetResultMsg()
 	resp.Data = json.RawMessage(p.Data)
 	return
 
@@ -380,7 +380,7 @@ func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp.Code = http.StatusSeeOther
-	resp.Msg = p.GetResultMesg()
+	resp.Msg = p.GetResultMsg()
 	resp.Data = json.RawMessage(p.Data)
 	return
 }

@@ -171,7 +171,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 					dp.config.PartitionID, applyID)
 
 			case extentID := <-dp.repairC:
-				dp.disk.Status = proto.Unavaliable
+				dp.disk.Status = proto.Unavailable
 				dp.stopRaft()
 				log.LogErrorf("action[ExtentRepair] stop raft partition=%v_%v", dp.partitionID, extentID)
 
@@ -415,12 +415,12 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 	replicatePort, _ := strconv.Atoi(s.raftReplica)
 
 	raftConf := &raftstore.Config{
-		NodeID:        s.nodeID,
-		RaftPath:      s.raftDir,
-		IPAddr:        s.localIP,
-		HeartbeatPort: heartbeatPort,
-		ReplicaPort:   replicatePort,
-		RetainLogs:    NumOfRaftLogsToRetain,
+		NodeID:            s.nodeID,
+		RaftPath:          s.raftDir,
+		IPAddr:            s.localIP,
+		HeartbeatPort:     heartbeatPort,
+		ReplicaPort:       replicatePort,
+		NumOfLogsToRetain: NumOfRaftLogsToRetain,
 	}
 	s.raftStore, err = raftstore.NewRaftStore(raftConf)
 	if err != nil {
@@ -506,7 +506,7 @@ func NewPacketToGetAppliedID(partitionID uint64, minAppliedID uint64) (p *repl.P
 	p.Opcode = proto.OpGetAppliedId
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
-	p.ReqID = proto.GeneratorRequestID()
+	p.ReqID = proto.GenerateRequestID()
 	p.Data = make([]byte, 8)
 	binary.BigEndian.PutUint64(p.Data, minAppliedID)
 	p.Size = uint32(len(p.Data))
@@ -519,7 +519,7 @@ func NewPacketToGetPartitionSize(partitionID uint64) (p *repl.Packet) {
 	p.Opcode = proto.OpGetPartitionSize
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
-	p.ReqID = proto.GeneratorRequestID()
+	p.ReqID = proto.GenerateRequestID()
 	return
 }
 

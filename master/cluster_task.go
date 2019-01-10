@@ -282,10 +282,10 @@ func (c *Cluster) handleMetaNodeTaskResponse(nodeAddr string, task *proto.AdminT
 		response := task.Response.(*proto.LoadMetaPartitionMetricResponse)
 		err = c.dealLoadMetaPartitionResp(task.OperatorAddr, response)
 	case proto.OpDecommissionMetaPartition:
-		response := task.Response.(*proto.MetaPartitionOfflineResponse)
+		response := task.Response.(*proto.MetaPartitionDecommissionResponse)
 		err = c.dealOfflineMetaPartitionResp(task.OperatorAddr, response)
 	case proto.OpDecommissionDataPartition:
-		response := task.Response.(*proto.DataPartitionOfflineResponse)
+		response := task.Response.(*proto.DataPartitionDecommissionResponse)
 		err = c.dealOfflineDataPartitionResp(task.OperatorAddr, response)
 	default:
 		err := fmt.Errorf("unknown operate code %v", task.OpCode)
@@ -304,7 +304,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) dealOfflineDataPartitionResp(nodeAddr string, resp *proto.DataPartitionOfflineResponse) (err error) {
+func (c *Cluster) dealOfflineDataPartitionResp(nodeAddr string, resp *proto.DataPartitionDecommissionResponse) (err error) {
 	if resp.Status == proto.TaskFailed {
 		msg := fmt.Sprintf("action[dealOfflineDataPartitionResp],clusterID[%v] nodeAddr %v "+
 			"offline meta partition[%v] failed,err %v",
@@ -316,7 +316,7 @@ func (c *Cluster) dealOfflineDataPartitionResp(nodeAddr string, resp *proto.Data
 	return
 }
 
-func (c *Cluster) dealOfflineMetaPartitionResp(nodeAddr string, resp *proto.MetaPartitionOfflineResponse) (err error) {
+func (c *Cluster) dealOfflineMetaPartitionResp(nodeAddr string, resp *proto.MetaPartitionDecommissionResponse) (err error) {
 	if resp.Status == proto.TaskFailed {
 		msg := fmt.Sprintf("action[dealOfflineMetaPartitionResp],clusterID[%v] nodeAddr %v "+
 			"offline meta partition[%v] failed,err %v",
@@ -490,7 +490,7 @@ func (c *Cluster) dealDeleteDataPartitionResponse(nodeAddr string, resp *proto.D
 	var (
 		dp *DataPartition
 	)
-	if resp.Status == proto.TaskSuccess {
+	if resp.Status == proto.TaskSucceeds {
 		if dp, err = c.getDataPartitionByID(resp.PartitionId); err != nil {
 			return
 		}
@@ -526,7 +526,7 @@ func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataN
 		logMsg   string
 	)
 	log.LogInfof("action[handleDataNodeHeartbeatResp] clusterID[%v] receive dataNode[%v] heartbeat, ", c.Name, nodeAddr)
-	if resp.Status != proto.TaskSuccess {
+	if resp.Status != proto.TaskSucceeds {
 		Warn(c.Name, fmt.Sprintf("action[handleDataNodeHeartbeatResp] clusterID[%v] dataNode[%v] heartbeat task failed",
 			c.Name, nodeAddr))
 		return

@@ -70,7 +70,7 @@ func (m *metaManager) opMasterHeartbeat(conn net.Conn, p *Packet) (err error) {
 		}
 		addr, isLeader := partition.IsLeader()
 		if addr == "" {
-			mpr.Status = proto.Unavaliable
+			mpr.Status = proto.Unavailable
 		}
 		mpr.IsLeader = isLeader
 		if mConf.Cursor >= mConf.End {
@@ -79,7 +79,7 @@ func (m *metaManager) opMasterHeartbeat(conn net.Conn, p *Packet) (err error) {
 		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
 		return true
 	})
-	resp.Status = proto.TaskSuccess
+	resp.Status = proto.TaskSucceeds
 end:
 	adminTask.Request = nil
 	adminTask.Response = resp
@@ -98,7 +98,7 @@ func (m *metaManager) opCreateMetaPartition(conn net.Conn, p *Packet) (err error
 			status = proto.OpErr
 			buf = []byte(err.Error())
 		}
-		p.PackErrorWithBody(status, buf)
+		p.PacketErrorWithBody(status, buf)
 		m.respondToClient(conn, p)
 	}()
 	// GetConnect task from packet.
@@ -130,13 +130,13 @@ func (m *metaManager) opCreateMetaPartition(conn net.Conn, p *Packet) (err error
 func (m *metaManager) opCreateInode(conn net.Conn, p *Packet) (err error) {
 	req := &CreateInoReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.respondToClient(conn, p)
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		m.respondToClient(conn, p)
 		return
 	}
@@ -146,20 +146,20 @@ func (m *metaManager) opCreateInode(conn net.Conn, p *Packet) (err error) {
 	err = mp.CreateInode(req, p)
 	// Reply operation result to client though TCP connection.
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opCreateInode] req:%v; resp: %v, body: %s", req, p.GetResultMesg(), p.Data)
+	log.LogDebugf("[opCreateInode] req:%v; resp: %v, body: %s", req, p.GetResultMsg(), p.Data)
 	return
 }
 
 func (m *metaManager) opMetaLinkInode(conn net.Conn, p *Packet) (err error) {
 	req := &LinkInodeReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.respondToClient(conn, p)
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		m.respondToClient(conn, p)
 		return
 	}
@@ -168,7 +168,7 @@ func (m *metaManager) opMetaLinkInode(conn net.Conn, p *Packet) (err error) {
 	}
 	err = mp.CreateLinkInode(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opMetaLinkInode] req: %v, resp: %v, body: %s", req, p.GetResultMesg(), p.Data)
+	log.LogDebugf("[opMetaLinkInode] req: %v, resp: %v, body: %s", req, p.GetResultMsg(), p.Data)
 	return
 }
 
@@ -176,13 +176,13 @@ func (m *metaManager) opMetaLinkInode(conn net.Conn, p *Packet) (err error) {
 func (m *metaManager) opCreateDentry(conn net.Conn, p *Packet) (err error) {
 	req := &CreateDentryReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.respondToClient(conn, p)
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		m.respondToClient(conn, p)
 		return
 	}
@@ -192,7 +192,7 @@ func (m *metaManager) opCreateDentry(conn net.Conn, p *Packet) (err error) {
 	err = mp.CreateDentry(req, p)
 	// Reply operation result to client though TCP connection.
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opCreateDentry] req:%v; resp: %v, body: %s", req, p.GetResultMesg(), p.Data)
+	log.LogDebugf("[opCreateDentry] req:%v; resp: %v, body: %s", req, p.GetResultMsg(), p.Data)
 	return
 }
 
@@ -200,13 +200,13 @@ func (m *metaManager) opCreateDentry(conn net.Conn, p *Packet) (err error) {
 func (m *metaManager) opDeleteDentry(conn net.Conn, p *Packet) (err error) {
 	req := &DeleteDentryReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpNotExistErr, nil)
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
@@ -217,20 +217,20 @@ func (m *metaManager) opDeleteDentry(conn net.Conn, p *Packet) (err error) {
 	// Reply operation result to client though TCP connection.
 	m.respondToClient(conn, p)
 	log.LogDebugf("[opDeleteDentry] req:%v; resp: %v, body: %s", req,
-		p.GetResultMesg(), p.Data)
+		p.GetResultMsg(), p.Data)
 	return
 }
 
 func (m *metaManager) opUpdateDentry(conn net.Conn, p *Packet) (err error) {
 	req := &UpdateDentryReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpNotExistErr, nil)
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
@@ -240,20 +240,20 @@ func (m *metaManager) opUpdateDentry(conn net.Conn, p *Packet) (err error) {
 	err = mp.UpdateDentry(req, p)
 	m.respondToClient(conn, p)
 	log.LogDebugf("[opUpdateDentry] req: %v; resp: %v, body: %s",
-		req, p.GetResultMesg(), p.Data)
+		req, p.GetResultMsg(), p.Data)
 	return
 }
 
 func (m *metaManager) opDeleteInode(conn net.Conn, p *Packet) (err error) {
 	req := &DeleteInoReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpNotExistErr, nil)
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
@@ -263,7 +263,7 @@ func (m *metaManager) opDeleteInode(conn net.Conn, p *Packet) (err error) {
 	err = mp.DeleteInode(req, p)
 	m.respondToClient(conn, p)
 	log.LogDebugf("[opDeleteInode] req:%v; resp: %v, body: %s", req,
-		p.GetResultMesg(), p.Data)
+		p.GetResultMsg(), p.Data)
 	return
 }
 
@@ -271,13 +271,13 @@ func (m *metaManager) opDeleteInode(conn net.Conn, p *Packet) (err error) {
 func (m *metaManager) opReadDir(conn net.Conn, p *Packet) (err error) {
 	req := &proto.ReadDirRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpNotExistErr, nil)
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
@@ -288,7 +288,7 @@ func (m *metaManager) opReadDir(conn net.Conn, p *Packet) (err error) {
 	// Reply operation result to client though TCP connection.
 	m.respondToClient(conn, p)
 	log.LogDebugf("[opReadDir] req:%v; resp: %v, body: %s", req,
-		p.GetResultMesg(), p.Data)
+		p.GetResultMsg(), p.Data)
 	return
 }
 
@@ -296,13 +296,13 @@ func (m *metaManager) opReadDir(conn net.Conn, p *Packet) (err error) {
 func (m *metaManager) opOpen(conn net.Conn, p *Packet) (err error) {
 	req := &proto.OpenRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpNotExistErr, nil)
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
@@ -313,20 +313,20 @@ func (m *metaManager) opOpen(conn net.Conn, p *Packet) (err error) {
 	// Reply operation result to client though TCP connection.
 	m.respondToClient(conn, p)
 	log.LogDebugf("[opOpen] req:%v; resp: %v, body: %s", req,
-		p.GetResultMesg(), p.Data)
+		p.GetResultMsg(), p.Data)
 	return
 }
 
 func (m *metaManager) opReleaseOpen(conn net.Conn, p *Packet) (err error) {
 	req := &ReleaseReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpNotExistErr, nil)
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
@@ -336,7 +336,7 @@ func (m *metaManager) opReleaseOpen(conn net.Conn, p *Packet) (err error) {
 	err = mp.ReleaseOpen(req, p)
 	m.respondToClient(conn, p)
 	log.LogDebugf("[opClose] req: %v, resp status: %v, resp body: %s", req,
-		p.GetResultMesg(), p.Data)
+		p.GetResultMsg(), p.Data)
 	return
 }
 
@@ -344,14 +344,14 @@ func (m *metaManager) opReleaseOpen(conn net.Conn, p *Packet) (err error) {
 func (m *metaManager) opMetaInodeGet(conn net.Conn, p *Packet) (err error) {
 	req := &InodeGetReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
 		err = errors.Errorf("[opMetaInodeGet]: %s", err.Error())
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpNotExistErr, nil)
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		m.respondToClient(conn, p)
 		err = errors.Errorf("[opMetaInodeGet] %s, req: %s", err.Error(),
 			string(p.Data))
@@ -366,21 +366,21 @@ func (m *metaManager) opMetaInodeGet(conn net.Conn, p *Packet) (err error) {
 	}
 	m.respondToClient(conn, p)
 	log.LogDebugf("[opMetaInodeGet] req:%v; resp: %v, body: %s", req,
-		p.GetResultMesg(), p.Data)
+		p.GetResultMsg(), p.Data)
 	return
 }
 
 func (m *metaManager) opMetaEvictInode(conn net.Conn, p *Packet) (err error) {
 	req := &proto.EvictInodeRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.respondToClient(conn, p)
 		err = errors.Errorf("[opMetaEvictInode] request unmarshal: %v", err.Error())
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpNotExistErr, nil)
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		m.respondToClient(conn, p)
 		err = errors.Errorf("[opMetaEvictInode] req: %s, resp: %v", req, err.Error())
 		return
@@ -394,14 +394,14 @@ func (m *metaManager) opMetaEvictInode(conn net.Conn, p *Packet) (err error) {
 	}
 	m.respondToClient(conn, p)
 	log.LogDebugf("[opMetaEvictInode] req: %v, resp: %v, body: %s", req,
-		p.GetResultMesg(), p.Data)
+		p.GetResultMsg(), p.Data)
 	return
 }
 
 func (m *metaManager) opSetattr(conn net.Conn, p *Packet) (err error) {
 	req := &SetattrRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.respondToClient(conn, p)
 		err = errors.Errorf("[opSetattr] req: %v, error: %v", req, err.Error())
 		return
@@ -409,7 +409,7 @@ func (m *metaManager) opSetattr(conn net.Conn, p *Packet) (err error) {
 
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.respondToClient(conn, p)
 		err = errors.Errorf("[opSetattr] req: %v, error: %v", req, err.Error())
 		return
@@ -423,7 +423,7 @@ func (m *metaManager) opSetattr(conn net.Conn, p *Packet) (err error) {
 	}
 	m.respondToClient(conn, p)
 	log.LogDebugf("[opSetattr] req: %v, resp: %v, body: %s", req,
-		p.GetResultMesg(), p.Data)
+		p.GetResultMsg(), p.Data)
 	return
 }
 
@@ -431,13 +431,13 @@ func (m *metaManager) opSetattr(conn net.Conn, p *Packet) (err error) {
 func (m *metaManager) opMetaLookup(conn net.Conn, p *Packet) (err error) {
 	req := &proto.LookupRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpNotExistErr, nil)
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
@@ -447,7 +447,7 @@ func (m *metaManager) opMetaLookup(conn net.Conn, p *Packet) (err error) {
 	err = mp.Lookup(req, p)
 	m.respondToClient(conn, p)
 	log.LogDebugf("[opMetaLookup] req:%v; resp: %v, body: %s", req,
-		p.GetResultMesg(), p.Data)
+		p.GetResultMsg(), p.Data)
 	return
 }
 
@@ -455,16 +455,16 @@ func (m *metaManager) opMetaLookup(conn net.Conn, p *Packet) (err error) {
 func (m *metaManager) opMetaExtentsAdd(conn net.Conn, p *Packet) (err error) {
 	req := &proto.AppendExtentKeyRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpNotExistErr, nil)
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		m.respondToClient(conn, p)
 		err = errors.Errorf("%s, response to client: %s", err.Error(),
-			p.GetResultMesg())
+			p.GetResultMsg())
 		return
 	}
 	if !m.serveProxy(conn, mp, p) {
@@ -474,10 +474,10 @@ func (m *metaManager) opMetaExtentsAdd(conn net.Conn, p *Packet) (err error) {
 	m.respondToClient(conn, p)
 	if err != nil {
 		log.LogErrorf("[opMetaExtentsAdd] ExtentAppend: %s, "+
-			"response to client: %s", err.Error(), p.GetResultMesg())
+			"response to client: %s", err.Error(), p.GetResultMsg())
 	}
 	log.LogDebugf("[opMetaExtentsAdd] req: %v, resp: %v, body: %s", req,
-		p.GetResultMesg(), p.Data)
+		p.GetResultMsg(), p.Data)
 	return
 }
 
@@ -485,13 +485,13 @@ func (m *metaManager) opMetaExtentsAdd(conn net.Conn, p *Packet) (err error) {
 func (m *metaManager) opMetaExtentsList(conn net.Conn, p *Packet) (err error) {
 	req := &proto.GetExtentsRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpNotExistErr, nil)
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
@@ -502,7 +502,7 @@ func (m *metaManager) opMetaExtentsList(conn net.Conn, p *Packet) (err error) {
 	err = mp.ExtentsList(req, p)
 	m.respondToClient(conn, p)
 	log.LogDebugf("[opMetaExtentsList] req:%v; resp: %v, body: %s", req,
-		p.GetResultMesg(), p.Data)
+		p.GetResultMsg(), p.Data)
 	return
 }
 
@@ -515,13 +515,13 @@ func (m *metaManager) opMetaExtentsDel(conn net.Conn, p *Packet) (err error) {
 func (m *metaManager) opMetaExtentsTruncate(conn net.Conn, p *Packet) (err error) {
 	req := &ExtentsTruncateReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpNotExistErr, nil)
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
@@ -531,7 +531,7 @@ func (m *metaManager) opMetaExtentsTruncate(conn net.Conn, p *Packet) (err error
 	mp.ExtentsTruncate(req, p)
 	m.respondToClient(conn, p)
 	log.LogDebugf("[OpMetaTruncate] req: %v, resp body: %v, resp body: %s",
-		req, p.GetResultMesg(), p.Data)
+		req, p.GetResultMsg(), p.Data)
 	return
 }
 
@@ -544,19 +544,19 @@ func (m *metaManager) opDeleteMetaPartition(conn net.Conn, p *Packet) (err error
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpNotExistErr, nil)
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
 	resp := &proto.DeleteMetaPartitionResponse{
 		PartitionID: req.PartitionID,
-		Status:      proto.TaskSuccess,
+		Status:      proto.TaskSucceeds,
 	}
 	// Ack Master Request
 	m.responseAckOKToMaster(conn, p)
@@ -584,14 +584,14 @@ func (m *metaManager) opUpdateMetaPartition(conn net.Conn, p *Packet) (err error
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
 
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
@@ -620,13 +620,13 @@ func (m *metaManager) opLoadMetaPartition(conn net.Conn, p *Packet) (err error) 
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		p.WriteToConn(conn)
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpNotExistErr, nil)
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
@@ -636,28 +636,28 @@ func (m *metaManager) opLoadMetaPartition(conn net.Conn, p *Packet) (err error) 
 	}
 	m.respondToClient(conn, p)
 	log.LogDebugf("[opLoadMetaPartition] req[%v], response status[%s], "+
-		"response body[%s], error[%v]", req, p.GetResultMesg(), p.Data, err)
+		"response body[%s], error[%v]", req, p.GetResultMsg(), p.Data, err)
 	return
 }
 
 // 变更替换分片成员请求
 func (m *metaManager) opOfflineMetaPartition(conn net.Conn, p *Packet) (err error) {
 	var reqData []byte
-	req := &proto.MetaPartitionOfflineRequest{}
+	req := &proto.MetaPartitionDecommissionRequest{}
 	adminTask := &proto.AdminTask{
 		Request: req,
 	}
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
 	log.LogDebugf("[opOfflineMetaPartition] received task: %v", adminTask)
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
 		return
 	}
@@ -665,7 +665,7 @@ func (m *metaManager) opOfflineMetaPartition(conn net.Conn, p *Packet) (err erro
 		return
 	}
 	m.responseAckOKToMaster(conn, p)
-	resp := proto.MetaPartitionOfflineResponse{
+	resp := proto.MetaPartitionDecommissionResponse{
 		PartitionID: req.PartitionID,
 		VolName:     req.VolName,
 		Status:      proto.TaskFailed,
@@ -694,7 +694,7 @@ func (m *metaManager) opOfflineMetaPartition(conn net.Conn, p *Packet) (err erro
 		resp.Result = err.Error()
 		goto end
 	}
-	resp.Status = proto.TaskSuccess
+	resp.Status = proto.TaskSucceeds
 end:
 	adminTask.Request = nil
 	adminTask.Response = resp
@@ -707,17 +707,17 @@ end:
 func (m *metaManager) opMetaBatchInodeGet(conn net.Conn, p *Packet) (err error) {
 	req := &proto.BatchInodeGetRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PackErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, nil)
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PackErrorWithBody(proto.OpNotExistErr, nil)
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		return
 	}
 	err = mp.InodeGetBatch(req, p)
 	m.respondToClient(conn, p)
 	log.LogDebugf("[opMetaBatchInodeGet] req[%v], resp[%v], body: %s", req,
-		p.GetResultMesg(), p.Data)
+		p.GetResultMsg(), p.Data)
 	return
 }

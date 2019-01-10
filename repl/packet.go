@@ -130,7 +130,7 @@ func NewPacketToGetAllWatermarks(partitionID uint64, extentType uint8) (p *Packe
 	p.Opcode = proto.OpGetAllWatermarks
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
-	p.ReqID = proto.GeneratorRequestID()
+	p.ReqID = proto.GenerateRequestID()
 	p.ExtentType = extentType
 
 	return
@@ -145,7 +145,7 @@ func NewExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size
 	p.Size = uint32(size)
 	p.Opcode = proto.OpExtentRepairRead
 	p.ExtentType = proto.NormalExtentType
-	p.ReqID = proto.GeneratorRequestID()
+	p.ReqID = proto.GenerateRequestID()
 
 	return
 }
@@ -168,7 +168,7 @@ func NewPacketToNotifyExtentRepair(partitionID uint64) (p *Packet) {
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
 	p.ExtentType = proto.NormalExtentType
-	p.ReqID = proto.GeneratorRequestID()
+	p.ReqID = proto.GenerateRequestID()
 
 	return
 }

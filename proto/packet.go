@@ -33,7 +33,8 @@ var (
 	Buffers    = buf.NewBufferPool()
 )
 
-func GeneratorRequestID() int64 {
+// GenerateRequestID generates the request ID.
+func GenerateRequestID() int64 {
 	return atomic.AddInt64(&GRequestID, 1)
 }
 
@@ -41,7 +42,7 @@ const (
 	AddrSplit = "/"
 )
 
-//operations
+// Operations
 const (
 	ProtoMagic         uint8 = 0xFF
 	OpInitResultCode   uint8 = 0x00
@@ -54,13 +55,13 @@ const (
 
 	OpNotifyExtentRepair      uint8 = 0x08
 	OpExtentRepairRead        uint8 = 0x09
-	OpBlobFileRepairRead      uint8 = 0x0A
+	OpBlobFileRepairRead      uint8 = 0x0A // TODO remove?
 	OpFlowInfo                uint8 = 0x0B
 	OpSyncDelNeedle           uint8 = 0x0C // TODO remove?
 	OpNotifyCompactBlobFile   uint8 = 0x0D
 	OpGetDataPartitionMetrics uint8 = 0x0E
 	OpRandomWrite             uint8 = 0x0F
-	OpGetAppliedId            uint8 = 0x10
+	OpGetAppliedId            uint8 = 0x10 // TODO should we call appliedID or applyID? we need to have an agreement.
 	OpGetPartitionSize        uint8 = 0x11
 
 	// Operations: Client -> MetaNode.
@@ -125,12 +126,12 @@ const (
 	NoReadDeadlineTime       = -1
 )
 
-// TODO what is TinyExtentType and what is NormalExtentType
 const (
 	TinyExtentType   = 0
 	NormalExtentType = 1
 )
 
+// Packet defines the packet structure.
 type Packet struct {
 	Magic              uint8
 	ExtentType         uint8
@@ -145,11 +146,12 @@ type Packet struct {
 	ExtentID           uint64
 	ExtentOffset       int64
 	ReqID              int64
-	Arg                []byte //if create or append ops, data contains addrs
+	Arg                []byte // for create or append ops, the data contains the address
 	Data               []byte
 	StartT             int64
 }
 
+// NewPacket returns a new packet.
 func NewPacket() *Packet {
 	p := new(Packet)
 	p.Magic = ProtoMagic
@@ -158,7 +160,8 @@ func NewPacket() *Packet {
 	return p
 }
 
-func (p *Packet) GetStoreModeMsg() (m string) {
+// GetStoreType returns the store type.
+func (p *Packet) GetStoreType() (m string) {
 	switch p.ExtentType {
 	case TinyExtentType:
 		m = "TinyExtent"
@@ -170,6 +173,7 @@ func (p *Packet) GetStoreModeMsg() (m string) {
 	return
 }
 
+// GetOpMsg returns the operation type.
 func (p *Packet) GetOpMsg() (m string) {
 	switch p.Opcode {
 	case OpCreateExtent:
@@ -272,7 +276,8 @@ func (p *Packet) GetOpMsg() (m string) {
 	return
 }
 
-func (p *Packet) GetResultMesg() (m string) {
+// GetResultMsg returns the result message.
+func (p *Packet) GetResultMsg() (m string) {
 	if p == nil {
 		return ""
 	}
@@ -310,6 +315,7 @@ func (p *Packet) GetResultMesg() (m string) {
 	return
 }
 
+// MarshalHeader marshals the packet header.
 func (p *Packet) MarshalHeader(out []byte) {
 	out[0] = p.Magic
 	out[1] = p.ExtentType
@@ -327,6 +333,7 @@ func (p *Packet) MarshalHeader(out []byte) {
 	return
 }
 
+// UnmarshalHeader unmarshals the packet header.
 func (p *Packet) UnmarshalHeader(in []byte) error {
 	p.Magic = in[0]
 	if p.Magic != ProtoMagic {
@@ -349,6 +356,7 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 	return nil
 }
 
+// MarshalData marshals the packet data.
 func (p *Packet) MarshalData(v interface{}) error {
 	data, err := json.Marshal(v)
 	if err == nil {
@@ -358,10 +366,12 @@ func (p *Packet) MarshalData(v interface{}) error {
 	return err
 }
 
+// UnmarshalData unmarshals the packet data.
 func (p *Packet) UnmarshalData(v interface{}) error {
 	return json.Unmarshal(p.Data, v)
 }
 
+// WriteToNoDeadLineConn writes through the connection without deadline.
 func (p *Packet) WriteToNoDeadLineConn(c net.Conn) (err error) {
 	header, err := Buffers.Get(util.PacketHeaderSize)
 	if err != nil {
@@ -381,6 +391,7 @@ func (p *Packet) WriteToNoDeadLineConn(c net.Conn) (err error) {
 	return
 }
 
+// WriteToConn writes through the given connection.
 func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	c.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second))
 	header, err := Buffers.Get(util.PacketHeaderSize)
@@ -401,14 +412,17 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	return
 }
 
+// ReadFull is a wrapper function of io.ReadFull.
 func ReadFull(c net.Conn, buf *[]byte, readSize int) (err error) {
 	*buf = make([]byte, readSize)
 	_, err = io.ReadFull(c, (*buf)[:readSize])
 	return
 }
 
+// ReadFromConn reads the data from the given connection.
 func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 	if timeoutSec != NoReadDeadlineTime {
+		// TODO Unhandled errors
 		c.SetReadDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
 	}
 	header, err := Buffers.Get(util.PacketHeaderSize)
@@ -442,13 +456,15 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 	return err
 }
 
-func (p *Packet) PackOkReply() {
+// PacketOkReply sets the result code as OpOk, and sets the body as empty.
+func (p *Packet) PacketOkReply() {
 	p.ResultCode = OpOk
 	p.Size = 0
 	p.ArgLen = 0
 }
 
-func (p *Packet) PackOkWithBody(reply []byte) {
+// PacketOkWithBody sets the result code as OpOk, and sets the body with the give data.
+func (p *Packet) PacketOkWithBody(reply []byte) {
 	p.Size = uint32(len(reply))
 	p.Data = make([]byte, p.Size)
 	copy(p.Data[:p.Size], reply)
@@ -456,7 +472,8 @@ func (p *Packet) PackOkWithBody(reply []byte) {
 	p.ArgLen = 0
 }
 
-func (p *Packet) PackErrorWithBody(code uint8, reply []byte) {
+// PacketErrorWithBody sets the packet with error code whose body is filled with the given data.
+func (p *Packet) PacketErrorWithBody(code uint8, reply []byte) {
 	p.Size = uint32(len(reply))
 	p.Data = make([]byte, p.Size)
 	copy(p.Data[:p.Size], reply)
@@ -464,6 +481,7 @@ func (p *Packet) PackErrorWithBody(code uint8, reply []byte) {
 	p.ArgLen = 0
 }
 
+// GetUniqueLogId returns the unique log ID.
 func (p *Packet) GetUniqueLogId() (m string) {
 	var (
 		offset uint64
@@ -483,14 +501,16 @@ func (p *Packet) GetUniqueLogId() (m string) {
 
 	m = fmt.Sprintf("Req%v_Partition%v_Extent%v_ExtentOffset%v_KernelOffset%v_Size%v_StoreMode%v_Opcode%v_ResultCode%v",
 		p.ReqID, p.PartitionID, p.ExtentID, offset,
-		p.KernelOffset, size, p.GetStoreModeMsg(), p.GetOpMsg(), p.GetResultMesg())
+		p.KernelOffset, size, p.GetStoreType(), p.GetOpMsg(), p.GetResultMsg())
 	return
 }
 
+// IsForwardPkt returns if the packet is the forward packet (a packet that will be forwarded to the followers).
 func (p *Packet) IsForwardPkt() bool {
 	return p.RemainingFollowers > 0
 }
 
+// LogMessage logs the given message.
 func (p *Packet) LogMessage(action, remote string, start int64, err error) (m string) {
 	if err == nil {
 		m = fmt.Sprintf("id[%v] op[%v] remote[%v] "+
@@ -507,6 +527,7 @@ func (p *Packet) LogMessage(action, remote string, start int64, err error) (m st
 	return
 }
 
-func (p *Packet) ShallRetry() bool {
+// ShallRetry returns if we should retry the packet.
+func (p *Packet) ShouldRetry() bool {
 	return p.ResultCode == OpAgain || p.ResultCode == OpErr
 }
