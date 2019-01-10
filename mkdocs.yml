@@ -2,19 +2,19 @@ site_name: Container File System
 
 nav:
 - Overview: 'overview.md'
-- User Guide: 'user-guide.md'
-- Master API:
-    - 'cluster': 'admin-api/cluster.md'
-    - 'metanode': 'admin-api/metanode.md'
-    - 'datanode': 'admin-api/datanode.md'
-    - 'vol': 'admin-api/vol.md'
-    - 'metapartition': 'admin-api/metapartition.md'
-    - 'datapartition': 'admin-api/datapartition.md'
-    - 'master-manage': 'admin-api/master-manage.md'
-- MetaNode API:
-    - 'partition': 'admin-api/metaNode-partition.md'
-    - 'inode': 'admin-api/metaNode-inode.md'
-    - 'dentry': 'admin-api/metaNode-dentry.md'
+- Quick Start Guide: 'user-guide.md'
+- Master Administration:
+    - 'Cluster': 'admin-api/cluster.md'
+    - 'Meta Node': 'admin-api/metanode.md'
+    - 'Data Node': 'admin-api/datanode.md'
+    - 'Volume': 'admin-api/vol.md'
+    - 'Meta Partition': 'admin-api/metapartition.md'
+    - 'Data Partition': 'admin-api/datapartition.md'
+    - 'Master Management': 'admin-api/master-manage.md'
+- MetaNode Administration:
+    - 'Partition': 'admin-api/metaNode-partition.md'
+    - 'Inode': 'admin-api/metaNode-inode.md'
+    - 'Dentry': 'admin-api/metaNode-dentry.md'
 - Design: 'design.md'
 - Performance: 'performance.md'
 - Evaluation: 'evaluation.md'
