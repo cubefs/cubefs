@@ -262,12 +262,9 @@ func (s *ExtentStore) extentWithHeader(extentID uint64) (e *Extent, err error) {
 	return
 }
 
-func (s *ExtentStore) loadExtentHeader(extentId uint64, e *Extent) (err error) {
-	if !IsTinyExtent(extentId) {
-		return BrokenExtentError
-	}
+func (s *ExtentStore) loadExtentHeader(extentId uint64,header []byte) (err error) {
 	offset := extentId * util.BlockHeaderSize
-	_, err = s.verifyCrcFp.ReadAt(e.header, int64(offset))
+	_, err = s.verifyCrcFp.ReadAt(header[:util.BlockHeaderSize], int64(offset))
 	return
 }
 
@@ -289,15 +286,21 @@ func (s *ExtentStore) GetExtentCount() (count int) {
 func (s *ExtentStore) loadExtentFromDisk(extentID uint64, loadHeader bool) (e *Extent, err error) {
 	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
 	e = NewExtentInCore(name, extentID)
-	if err = e.RestoreFromFS(loadHeader); err != nil {
+	if err = e.RestoreFromFS(); err != nil {
 		err = fmt.Errorf("restore from file %v loadHeader %v system: %v", name, loadHeader, err)
 		return
 	}
-	if loadHeader {
-		// TODO Unhandled errors
-		s.loadExtentHeader(extentID, e)
-		s.cache.Put(e)
+	if !loadHeader{
+		return
 	}
+	if IsTinyExtent(extentID) {
+		return
+	}
+	offset := extentID * util.BlockHeaderSize
+	if _, err = s.verifyCrcFp.ReadAt(e.header[:util.BlockHeaderSize], int64(offset));err!=nil {
+		return
+	}
+	s.cache.Put(e)
 
 	return
 }
@@ -446,18 +449,18 @@ func IsTinyExtent(extentID uint64) bool {
 
 // Read reads the extent based on the given id.
 func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isRepairRead bool) (crc uint32, err error) {
-	var extent *Extent
-	if extent, err = s.extentWithHeader(extentID); err != nil {
+	var e *Extent
+	if e, err = s.extentWithHeader(extentID); err != nil {
 		return
 	}
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return
 	}
-	if extent.HasBeenMarkedAsDeleted() {
+	if e.HasBeenMarkedAsDeleted() {
 		err = ExtentHasBeenDeletedError
 		return
 	}
-	crc, err = extent.Read(nbuf, offset, size, isRepairRead)
+	crc, err = e.Read(nbuf, offset, size, isRepairRead)
 	return
 }
 

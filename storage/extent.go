@@ -25,8 +25,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/buf"
 )
@@ -36,9 +34,6 @@ const (
 	ExtentOpenOptOverwrite = os.O_CREATE | os.O_RDWR
 )
 
-var (
-	BrokenExtentFileError = errors.New("broken extent file error")
-)
 
 type ExtentInfo struct {
 	FileID     uint64    `json:"fileId"`
@@ -164,7 +159,7 @@ func (e *Extent) InitToFS(ino uint64, overwrite bool) (err error) {
 }
 
 // RestoreFromFS restores the entity data and status from the file stored on the filesystem.
-func (e *Extent) RestoreFromFS(loadHeader bool) (err error) {
+func (e *Extent) RestoreFromFS() (err error) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 	if e.file, err = os.OpenFile(e.filePath, os.O_RDWR, 0666); err != nil {
@@ -338,6 +333,7 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc u
 		startIdx := util.BlockHeaderCrcIndex + blockNo*util.PerBlockCrcSize
 		endIdx := startIdx + util.PerBlockCrcSize
 		crc = binary.BigEndian.Uint32(e.header[startIdx:endIdx])
+
 		return
 	}
 	crc = crc32.ChecksumIEEE(data)
