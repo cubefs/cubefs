@@ -149,7 +149,7 @@ func (dp *DataPartition) addDiskErrs(err error, flag uint8) {
 
 // CheckLeader checks if itself is the leader during read
 func (dp *DataPartition) CheckLeader(request *repl.Packet, connect net.Conn) (err error) {
-	if !dp.config.IsRandomWrite || request.Opcode == proto.OpExtentRepairRead {
+	if request.Opcode == proto.OpExtentRepairRead {
 		return
 	}
 

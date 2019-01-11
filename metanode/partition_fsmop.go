@@ -131,7 +131,7 @@ func (mp *metaPartition) deletePartition() (status uint8) {
 }
 
 func (mp *metaPartition) confAddNode(req *proto.
-MetaPartitionDecommissionRequest, index uint64) (updated bool, err error) {
+	MetaPartitionDecommissionRequest, index uint64) (updated bool, err error) {
 	var (
 		heartbeatPort int
 		replicatePort int

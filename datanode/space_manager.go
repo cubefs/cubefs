@@ -272,7 +272,6 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		NodeID:        manager.nodeID,
 		ClusterID:     manager.clusterID,
 		PartitionSize: request.PartitionSize,
-		IsRandomWrite: request.IsRandomWrite,
 	}
 	dp = manager.partitions[dpCfg.PartitionID]
 	if dp != nil {

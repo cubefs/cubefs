@@ -51,7 +51,6 @@ type DataPartitionMetadata struct {
 	PartitionID   uint64
 	PartitionSize int
 	CreateTime    string
-	IsRandomWrite bool
 	Peers         []proto.Peer
 }
 
@@ -115,11 +114,8 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition
 		return
 	}
 
-	// start raft for random write
-	if dpCfg.IsRandomWrite {
-		go dp.StartRaftLoggingSchedule()
-		go dp.StartRaftAfterRepair()
-	}
+	go dp.StartRaftLoggingSchedule()
+	go dp.StartRaftAfterRepair()
 
 	// persist file metadata
 	err = dp.PersistMetadata()
@@ -148,7 +144,6 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		VolName:       meta.VolumeID,
 		PartitionSize: meta.PartitionSize,
 		PartitionID:   meta.PartitionID,
-		IsRandomWrite: meta.IsRandomWrite,
 		Peers:         meta.Peers,
 		RaftStore:     disk.space.GetRaftStore(),
 		NodeID:        disk.space.GetNodeID(),
@@ -158,17 +153,15 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		return
 	}
 
-	if dpCfg.IsRandomWrite {
-		if err = dp.LoadApplyIndex(); err != nil {
-			log.LogErrorf("action[loadApplyIndex] %v", err)
-		}
-
-		if err = dp.StartRaft(); err != nil {
-			return
-		}
-
-		go dp.StartRaftLoggingSchedule()
+	if err = dp.LoadApplyIndex(); err != nil {
+		log.LogErrorf("action[loadApplyIndex] %v", err)
 	}
+
+	if err = dp.StartRaft(); err != nil {
+		return
+	}
+
+	go dp.StartRaftLoggingSchedule()
 	return
 }
 
@@ -321,7 +314,6 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		PartitionID:   dp.config.PartitionID,
 		PartitionSize: dp.config.PartitionSize,
 		Peers:         dp.config.Peers,
-		IsRandomWrite: dp.config.IsRandomWrite,
 		CreateTime:    time.Now().Format(TimeLayout),
 	}
 	if metaData, err = json.Marshal(md); err != nil {

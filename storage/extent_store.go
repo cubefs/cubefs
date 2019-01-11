@@ -262,7 +262,7 @@ func (s *ExtentStore) extentWithHeader(extentID uint64) (e *Extent, err error) {
 	return
 }
 
-func (s *ExtentStore) loadExtentHeader(extentId uint64,header []byte) (err error) {
+func (s *ExtentStore) loadExtentHeader(extentId uint64, header []byte) (err error) {
 	offset := extentId * util.BlockHeaderSize
 	_, err = s.verifyCrcFp.ReadAt(header[:util.BlockHeaderSize], int64(offset))
 	return
@@ -290,14 +290,14 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, loadHeader bool) (e *E
 		err = fmt.Errorf("restore from file %v loadHeader %v system: %v", name, loadHeader, err)
 		return
 	}
-	if !loadHeader{
+	if !loadHeader {
 		return
 	}
 	if IsTinyExtent(extentID) {
 		return
 	}
 	offset := extentID * util.BlockHeaderSize
-	if _, err = s.verifyCrcFp.ReadAt(e.header[:util.BlockHeaderSize], int64(offset));err!=nil {
+	if _, err = s.verifyCrcFp.ReadAt(e.header[:util.BlockHeaderSize], int64(offset)); err != nil {
 		return
 	}
 	s.cache.Put(e)

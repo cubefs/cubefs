@@ -52,7 +52,7 @@ func (t *AdminTask) ToString() (msg string) {
 
 // CheckTaskNeedSend checks if the task needs to be sent out.
 func (t *AdminTask) CheckTaskNeedSend() (needRetry bool) {
-	if (int)(t.SendCount) < MaxSendCount && time.Now().Unix() - t.SendTime > (int64)(ResponseInterval) {
+	if (int)(t.SendCount) < MaxSendCount && time.Now().Unix()-t.SendTime > (int64)(ResponseInterval) {
 		needRetry = true
 	}
 	return
@@ -60,7 +60,7 @@ func (t *AdminTask) CheckTaskNeedSend() (needRetry bool) {
 
 // CheckTaskTimeOut checks if the task is timed out.
 func (t *AdminTask) CheckTaskTimeOut() (notResponse bool) {
-	if (int)(t.SendCount) >= MaxSendCount || (t.SendTime > 0 && (time.Now().Unix() - t.SendTime > int64(ResponseTimeOut))) {
+	if (int)(t.SendCount) >= MaxSendCount || (t.SendTime > 0 && (time.Now().Unix()-t.SendTime > int64(ResponseTimeOut))) {
 		notResponse = true
 	}
 	return

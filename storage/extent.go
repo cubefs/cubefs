@@ -17,6 +17,8 @@ package storage
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/tiglabs/containerfs/util"
+	"github.com/tiglabs/containerfs/util/buf"
 	"hash/crc32"
 	"io"
 	"math"
@@ -25,15 +27,12 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"github.com/tiglabs/containerfs/util"
-	"github.com/tiglabs/containerfs/util/buf"
 )
 
 const (
 	ExtentOpenOpt          = os.O_CREATE | os.O_RDWR | os.O_EXCL
 	ExtentOpenOptOverwrite = os.O_CREATE | os.O_RDWR
 )
-
 
 type ExtentInfo struct {
 	FileID     uint64    `json:"fileId"`
