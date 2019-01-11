@@ -72,7 +72,6 @@ type dataPartitionValue struct {
 	ReplicaNum    uint8
 	Hosts         string
 	Peers         []bsProto.Peer
-	IsRandomWrite bool
 	Status        int8
 	VolID         uint64
 	VolName       string
@@ -84,7 +83,6 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		ReplicaNum:    dp.ReplicaNum,
 		Hosts:         dp.hostsToString(),
 		Peers:         dp.Peers,
-		IsRandomWrite: dp.IsRandomWrite,
 		Status:        dp.Status,
 		VolID:         dp.VolID,
 		VolName:       dp.VolName,
@@ -97,7 +95,6 @@ type volValue struct {
 	Name              string
 	ReplicaNum        uint8
 	Status            uint8
-	RandomWrite       bool
 	DataPartitionSize uint64
 	Capacity          uint64
 }
@@ -108,7 +105,6 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		Name:              vol.Name,
 		ReplicaNum:        vol.mpReplicaNum,
 		Status:            vol.Status,
-		RandomWrite:       vol.IsRandomWrite,
 		DataPartitionSize: vol.dataPartitionSize,
 		Capacity:          vol.Capacity,
 	}
@@ -560,7 +556,7 @@ func (c *Cluster) applyAddVol(cmd *RaftCmd) (err error) {
 		log.LogError(fmt.Sprintf("action[applyAddVol] failed,err:%v", err))
 		return
 	}
-	vol := newVol(vv.ID, vv.Name, vv.ReplicaNum, vv.RandomWrite, vv.DataPartitionSize, vv.Capacity)
+	vol := newVol(vv.ID, vv.Name, vv.ReplicaNum,vv.DataPartitionSize, vv.Capacity)
 	c.putVol(vol)
 	return
 }
@@ -646,7 +642,7 @@ func (c *Cluster) applyAddDataPartition(cmd *RaftCmd) (err error) {
 		log.LogErrorf("action[applyAddDataPartition] failed,err:%v", err)
 		return
 	}
-	dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, vol.Name, vol.ID, vol.IsRandomWrite)
+	dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, vol.Name, vol.ID)
 	dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 	dp.Peers = dpv.Peers
 	dp.Status = dpv.Status
@@ -756,7 +752,7 @@ func (c *Cluster) loadVols() (err error) {
 			err = fmt.Errorf("action[loadVols],value:%v,unmarshal err:%v", string(value), err)
 			return err
 		}
-		vol := newVol(vv.ID, vv.Name, vv.ReplicaNum, vv.RandomWrite, vv.DataPartitionSize, vv.Capacity)
+		vol := newVol(vv.ID, vv.Name, vv.ReplicaNum, vv.DataPartitionSize, vv.Capacity)
 		vol.Status = vv.Status
 		c.putVol(vol)
 		log.LogInfof("action[loadVols],vol[%v]", vol)
@@ -809,7 +805,7 @@ func (c *Cluster) loadDataPartitions() (err error) {
 			log.LogErrorf("action[loadDataPartitions] err:%v", err1.Error())
 			continue
 		}
-		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID, dpv.IsRandomWrite)
+		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID)
 		dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 		dp.Peers = dpv.Peers
 		vol.dataPartitions.put(dp)

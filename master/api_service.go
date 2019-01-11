@@ -276,7 +276,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rstMsg = fmt.Sprintf(" createDataPartition succeeeds. "+
-		"clusterLastTotalDataPartitions[%v],vol[%v] has %v data partitionMap previously and %v data partitionMap now",
+		"clusterLastTotalDataPartitions[%v],vol[%v] has %v data partitions previously and %v data partitions now",
 		clusterTotalDataPartitions, volName, lastTotalDataPartitions, len(vol.dataPartitions.partitions))
 	m.sendOkReply(w, r, rstMsg)
 	return
@@ -419,17 +419,16 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		name        string
 		err         error
 		msg         string
-		randomWrite bool
 		replicaNum  int
 		size        int
 		capacity    int
 		vol         *Vol
 	)
 
-	if name, replicaNum, randomWrite, size, capacity, err = parseRequestToCreateVol(r); err != nil {
+	if name, replicaNum, size, capacity, err = parseRequestToCreateVol(r); err != nil {
 		goto errHandler
 	}
-	if err = m.cluster.createVol(name, uint8(replicaNum), randomWrite, size, capacity); err != nil {
+	if err = m.cluster.createVol(name, uint8(replicaNum),size, capacity); err != nil {
 		goto errHandler
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
@@ -867,11 +866,10 @@ func parseRequestToUpdateVol(r *http.Request) (name string, capacity int, err er
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name string, replicaNum int, randomWrite bool, size, capacity int, err error) {
+func parseRequestToCreateVol(r *http.Request) (name string, replicaNum int, size, capacity int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-	var randomWriteValue string
 	if name, err = extractName(r); err != nil {
 		return
 	}
@@ -880,15 +878,6 @@ func parseRequestToCreateVol(r *http.Request) (name string, replicaNum int, rand
 		return
 	} else if replicaNum, err = strconv.Atoi(replicaStr); err != nil || replicaNum < 2 {
 		err = unmatchedKey(replicasKey)
-	}
-
-	if randomWriteValue = r.FormValue(randomWriteKey); randomWriteValue == "" {
-		err = keyNotFound(randomWriteKey)
-		return
-	}
-
-	if randomWrite, err = strconv.ParseBool(randomWriteValue); err != nil {
-		return
 	}
 
 	if sizeStr := r.FormValue(dataPartitionSizeKey); sizeStr != "" {
@@ -1079,7 +1068,6 @@ type DataPartitionResponse struct {
 	Status      int8
 	ReplicaNum  uint8
 	Hosts       []string
-	RandomWrite bool
 	LeaderAddr  string
 }
 

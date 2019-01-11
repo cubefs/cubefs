@@ -37,7 +37,7 @@ func (m *Server) startHTTPService() {
 
 func (m *Server) handleFunctions() {
 	http.HandleFunc(proto.AdminGetIP, m.getIPAddr)
-	http.HandleFunc(proto.AdminGetCluster, m.getCluster)
+	http.Handle(proto.AdminGetCluster, m.handlerWithInterceptor())
 	http.Handle(proto.AdminGetDataPartition, m.handlerWithInterceptor())
 	http.Handle(proto.AdminCreateDataPartition, m.handlerWithInterceptor())
 	http.Handle(proto.AdminLoadDataPartition, m.handlerWithInterceptor())

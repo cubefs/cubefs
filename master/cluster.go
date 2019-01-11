@@ -435,7 +435,7 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 	if partitionID, err = c.idAlloc.allocateDataPartitionID(); err != nil {
 		goto errHandler
 	}
-	dp = newDataPartition(partitionID, vol.dpReplicaNum, volName, vol.ID, vol.IsRandomWrite)
+	dp = newDataPartition(partitionID, vol.dpReplicaNum, volName, vol.ID)
 	dp.Hosts = targetHosts
 	dp.Peers = targetPeers
 	for _, host := range targetHosts {
@@ -727,7 +727,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
 errHandler:
-	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.Hosts)
 	if err != nil {
@@ -787,7 +787,7 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name string, replicaNum uint8, randomWrite bool, size, capacity int) (err error) {
+func (c *Cluster) createVol(name string, replicaNum uint8, size, capacity int) (err error) {
 	var (
 		vol                     *Vol
 		dataPartitionSize       uint64
@@ -798,7 +798,7 @@ func (c *Cluster) createVol(name string, replicaNum uint8, randomWrite bool, siz
 	} else {
 		dataPartitionSize = uint64(size) * util.GB
 	}
-	if err = c.doCreateVol(name, replicaNum, randomWrite, dataPartitionSize, uint64(capacity)); err != nil {
+	if err = c.doCreateVol(name, replicaNum, dataPartitionSize, uint64(capacity)); err != nil {
 		goto errHandler
 	}
 
@@ -829,7 +829,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) doCreateVol(name string, replicaNum uint8, randomWrite bool, dpSize, capacity uint64) (err error) {
+func (c *Cluster) doCreateVol(name string, replicaNum uint8, dpSize, capacity uint64) (err error) {
 	var (
 		id  uint64
 		vol *Vol
@@ -842,7 +842,7 @@ func (c *Cluster) doCreateVol(name string, replicaNum uint8, randomWrite bool, d
 	if id, err = c.idAlloc.allocateCommonID(); err != nil {
 		goto errHandler
 	}
-	vol = newVol(id, name, replicaNum, randomWrite, dpSize, capacity)
+	vol = newVol(id, name, replicaNum, dpSize, capacity)
 	if err = c.syncAddVol(vol); err != nil {
 		goto errHandler
 	}
@@ -991,6 +991,14 @@ func (c *Cluster) chooseTargetMetaHosts(replicaNum int) (hosts []string, peers [
 
 func (c *Cluster) dataNodeCount() (len int) {
 	c.dataNodes.Range(func(key, value interface{}) bool {
+		len++
+		return true
+	})
+	return
+}
+
+func (c *Cluster) metaNodeCount() (len int) {
+	c.metaNodes.Range(func(key, value interface{}) bool {
 		len++
 		return true
 	})
