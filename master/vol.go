@@ -26,7 +26,6 @@ import (
 type Vol struct {
 	ID                uint64
 	Name              string
-	IsRandomWrite     bool
 	dpReplicaNum      uint8
 	mpReplicaNum      uint8
 	Status            uint8
@@ -39,9 +38,8 @@ type Vol struct {
 	sync.RWMutex
 }
 
-func newVol(id uint64, name string, replicaNum uint8, randomWrite bool, dpSize, capacity uint64) (vol *Vol) {
+func newVol(id uint64, name string, replicaNum uint8, dpSize, capacity uint64) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
-	vol.IsRandomWrite = randomWrite
 	vol.dataPartitions = newDataPartitionMap(name)
 	vol.dpReplicaNum = replicaNum
 	vol.threshold = defaultMetaPartitionMemUsageThreshold
@@ -120,7 +118,7 @@ func (vol *Vol) initMetaPartitions(c *Cluster) {
 			end = defaultMaxMetaPartitionInodeID
 		}
 		if err := c.createMetaPartition(vol.Name, start, end); err != nil {
-			log.LogErrorf("action[initMetaPartitions] vol[%v] init meta partition err[%v]", err)
+			log.LogErrorf("action[initMetaPartitions] vol[%v] init meta partition err[%v]",vol.Name, err)
 		}
 	}
 }

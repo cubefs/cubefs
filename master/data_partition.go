@@ -46,12 +46,11 @@ type DataPartition struct {
 	VolID                   uint64
 	modifyTime              int64
 	createTime              int64
-	IsRandomWrite           bool
 	FileInCoreMap           map[string]*FileInCore
 	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
 }
 
-func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64, randomWrite bool) (partition *DataPartition) {
+func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64) (partition *DataPartition) {
 	partition = new(DataPartition)
 	partition.ReplicaNum = replicaNum
 	partition.PartitionID = ID
@@ -67,7 +66,6 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	partition.VolID = volID
 	partition.modifyTime = time.Now().Unix()
 	partition.createTime = time.Now().Unix()
-	partition.IsRandomWrite = randomWrite
 	return
 }
 
@@ -83,7 +81,7 @@ func (partition *DataPartition) addReplica(replica *DataReplica) {
 func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64) (task *proto.AdminTask) {
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
-		partition.VolName, partition.PartitionID, partition.IsRandomWrite, partition.Peers, int(dataPartitionSize)))
+		partition.VolName, partition.PartitionID, partition.Peers, int(dataPartitionSize)))
 	partition.resetTaskID(task)
 	return
 }
@@ -95,9 +93,6 @@ func (partition *DataPartition) createTaskToDeleteDataPartition(addr string) (ta
 }
 
 func (partition *DataPartition) createTaskToDecommissionDataPartition(removePeer proto.Peer, addPeer proto.Peer) (task *proto.AdminTask, err error) {
-	if !partition.IsRandomWrite {
-		return partition.createTaskToDeleteDataPartition(removePeer.Addr), nil
-	}
 	leaderAddr := partition.getLeaderAddr()
 	if leaderAddr == "" {
 		err = ErrNoLeader
@@ -253,7 +248,6 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *DataParti
 	dpr.ReplicaNum = partition.ReplicaNum
 	dpr.Hosts = make([]string, len(partition.Hosts))
 	copy(dpr.Hosts, partition.Hosts)
-	dpr.RandomWrite = partition.IsRandomWrite
 	dpr.LeaderAddr = partition.getLeaderAddr()
 	return
 }

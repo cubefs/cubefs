@@ -87,6 +87,8 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	m.cluster.scheduleTask()
 	m.startHTTPService()
 	exporter.Init(m.clusterName, ModuleName, cfg)
+	metricsService := newMonitorMetrics(m.cluster)
+	metricsService.start()
 	m.wg.Add(1)
 	return nil
 }

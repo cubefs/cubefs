@@ -25,7 +25,6 @@ const (
 	startKey             = "start"
 	enablekey            = "enable"
 	thresholdKey         = "threshold"
-	randomWriteKey       = "randomWrite"
 	dataPartitionSizeKey = "size"
 	volCapacityKey       = "capacity"
 )
