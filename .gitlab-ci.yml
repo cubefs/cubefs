@@ -1,0 +1,22 @@
+before_script:
+  - go version
+  - echo $CI_PROJECT_DIR
+  - export GOPATH=/export/workspace/go
+  - echo $GOPATH
+  - echo ${CI_COMMIT_REF_NAME}
+  - rm -fr $GOPATH/src/github.com/tiglabs/containerfs
+  - ln -s $CI_PROJECT_DIR $GOPATH/src/github.com/tiglabs/
+  - cd $GOPATH/src/github.com/tiglabs/containerfs
+
+stages:
+  - build
+
+
+build_main:
+  stage: build
+  tags:
+    - cfs
+  script:
+    - cd $GOPATH/src/github.com/tiglabs/containerfs/cmd && sh build.sh
+    - cd $GOPATH/src/github.com/tiglabs/containerfs/client && sh build.sh
+
