@@ -422,7 +422,7 @@ func ReadFull(c net.Conn, buf *[]byte, readSize int) (err error) {
 // ReadFromConn reads the data from the given connection.
 func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 	if timeoutSec != NoReadDeadlineTime {
-		// TODO Unhandled errors
+
 		c.SetReadDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
 	}
 	header, err := Buffers.Get(util.PacketHeaderSize)
@@ -501,7 +501,7 @@ func (p *Packet) GetUniqueLogId() (m string) {
 
 	m = fmt.Sprintf("Req%v_Partition%v_Extent%v_ExtentOffset%v_KernelOffset%v_Size%v_StoreMode%v_Opcode%v_ResultCode%v_CRC%v",
 		p.ReqID, p.PartitionID, p.ExtentID, offset,
-		p.KernelOffset, size, p.GetStoreType(), p.GetOpMsg(), p.GetResultMsg(),p.CRC)
+		p.KernelOffset, size, p.GetStoreType(), p.GetOpMsg(), p.GetResultMsg(), p.CRC)
 	return
 }
 

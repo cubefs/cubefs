@@ -268,7 +268,7 @@ func (s *DataNode) register() {
 				continue
 			}
 			cInfo := new(proto.ClusterInfo)
-			// TODO Unhandled errors
+
 			json.Unmarshal(data, cInfo)
 			LocalIP = string(cInfo.Ip)
 			s.clusterID = cInfo.Cluster
@@ -334,7 +334,7 @@ func (s *DataNode) startTCPService() (err error) {
 
 func (s *DataNode) stopTCPService() (err error) {
 	if s.tcpListener != nil {
-		// TODO Unhandled errors
+
 		s.tcpListener.Close()
 		log.LogDebugf("action[stopTCPService] stop tcp service.")
 	}
@@ -345,7 +345,7 @@ func (s *DataNode) serveConn(conn net.Conn) {
 	space := s.space
 	space.Stats().AddConnection()
 	c, _ := conn.(*net.TCPConn)
-	// TODO Unhandled errors
+
 	c.SetKeepAlive(true)
 	c.SetNoDelay(true)
 	c.SetLinger(10)

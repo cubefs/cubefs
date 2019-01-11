@@ -211,11 +211,11 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 func (dp *DataPartition) DoRepair(repairTasks []*DataPartitionRepairTask) {
 	store := dp.extentStore
 	for _, extentInfo := range repairTasks[0].ExtentsToBeCreated {
-		// TODO Unhandled errors
+
 		store.Create(extentInfo.FileID, extentInfo.Inode)
 	}
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
-		// TODO Unhandled errors
+
 		dp.streamRepairExtent(extentInfo)
 	}
 }
@@ -377,7 +377,7 @@ func (dp *DataPartition) NotifyExtentRepair(members []*DataPartitionRepairTask) 
 	wg := new(sync.WaitGroup)
 	for i := 1; i < len(members); i++ {
 		wg.Add(1)
-		// TODO Unhandled errors
+
 		go dp.notifyFollower(wg, i, members)
 	}
 	wg.Wait()
@@ -454,7 +454,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	}
 
 	defer func() {
-		// TODO Unhandled errors
+
 		store.Watermark(remoteExtentInfo.FileID, true)
 	}()
 
@@ -463,7 +463,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		return errors.Annotatef(err, "streamRepairExtent Watermark error")
 	}
 
-	if !storage.IsTinyExtent(remoteExtentInfo.FileID){
+	if !storage.IsTinyExtent(remoteExtentInfo.FileID) {
 		if localExtentInfo.Size <= util.BlockSize {
 			localExtentInfo.Size = 0
 		} else {

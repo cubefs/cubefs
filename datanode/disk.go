@@ -73,7 +73,6 @@ func NewDisk(path string, restSize uint64, maxErrCnt int, space *SpaceManager) (
 	// TODO why maxErrs has been set twice here?
 	d.MaxErrCnt = 2000
 
-	// TODO Unhandled errors
 	d.computeUsage()
 
 	d.startScheduleToUpdateSpaceInfo()
@@ -158,7 +157,6 @@ func (d *Disk) startScheduleToUpdateSpaceInfo() {
 			select {
 			case <-ticker.C:
 
-				// TODO Unhandled errors
 				d.computeUsage()
 
 				d.updateSpaceInfo()
@@ -192,7 +190,6 @@ func (d *Disk) AttachDataPartition(dp *DataPartition) {
 	d.partitionMap[dp.ID()] = dp
 	d.Unlock()
 
-	// TODO Unhandled errors
 	d.computeUsage()
 }
 
@@ -202,7 +199,6 @@ func (d *Disk) DetachDataPartition(dp *DataPartition) {
 	delete(d.partitionMap, dp.ID())
 	d.Unlock()
 
-	// TODO Unhandled errors
 	d.computeUsage()
 }
 

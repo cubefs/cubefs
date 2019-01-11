@@ -122,21 +122,15 @@ func (e *Extent) Exist() (exsit bool) {
 
 // InitToFS init extent data info filesystem. If entry file exist and overwrite is true,
 // this operation will clear all data of exist entry file and initialize extent header data.
-func (e *Extent) InitToFS(ino uint64, overwrite bool) (err error) {
+func (e *Extent) InitToFS(ino uint64) (err error) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
-	opt := ExtentOpenOpt
-	if overwrite {
-		opt = ExtentOpenOptOverwrite
-	}
-
-	if e.file, err = os.OpenFile(e.filePath, opt, 0666); err != nil {
+	if e.file, err = os.OpenFile(e.filePath, ExtentOpenOpt, 0666); err != nil {
 		return err
 	}
 
 	defer func() {
 		if err != nil {
-			// TODO Unhandled errors
 			e.file.Close()
 			os.Remove(e.filePath)
 		}
