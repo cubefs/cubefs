@@ -499,9 +499,9 @@ func (p *Packet) GetUniqueLogId() (m string) {
 		size = p.Size
 	}
 
-	m = fmt.Sprintf("Req%v_Partition%v_Extent%v_ExtentOffset%v_KernelOffset%v_Size%v_StoreMode%v_Opcode%v_ResultCode%v",
+	m = fmt.Sprintf("Req%v_Partition%v_Extent%v_ExtentOffset%v_KernelOffset%v_Size%v_StoreMode%v_Opcode%v_ResultCode%v_CRC%v",
 		p.ReqID, p.PartitionID, p.ExtentID, offset,
-		p.KernelOffset, size, p.GetStoreType(), p.GetOpMsg(), p.GetResultMsg())
+		p.KernelOffset, size, p.GetStoreType(), p.GetOpMsg(), p.GetResultMsg(),p.CRC)
 	return
 }
 
