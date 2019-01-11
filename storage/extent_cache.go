@@ -55,6 +55,10 @@ func (cache *ExtentCache) Put(extent *Extent) {
 		return
 	}
 	cache.lock.Lock()
+	if _,ok:=cache.extentMap[extent.extentID];ok {
+		cache.lock.Unlock()
+		return
+	}
 	item := &ExtentMapItem{
 		ext: extent,
 		ele: cache.extentList.PushBack(extent),
