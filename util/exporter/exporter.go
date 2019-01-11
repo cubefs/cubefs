@@ -191,7 +191,7 @@ func RegistCounter(name string) (o prometheus.Counter) {
 }
 
 func RegistGaugeLabels(name string, labels map[string]string) (o prometheus.Gauge) {
-	pm := RegistMetricWithLabels(name, Counter, labels)
+	pm := RegistMetricWithLabels(name, Gauge, labels)
 	m, load := metricGroups.Load(pm.Key)
 	if load {
 		o = m.(prometheus.Gauge)

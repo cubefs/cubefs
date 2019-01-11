@@ -20,7 +20,7 @@ import (
 )
 
 func TestNewMetricLabels(t *testing.T) {
-	N := 1000
+	N := 100
 	exitCh := make(chan int, N)
 	for i := 0; i < N; i++ {
 		go func(i int) {
@@ -57,15 +57,15 @@ func TestNewMetric(t *testing.T) {
 	exitCh := make(chan int, N)
 	for i := 0; i < N; i++ {
 		go func() {
-			m := RegistMetric(fmt.Sprintf("name_%d_counter", i%17), Counter)
+			m := RegistCounter(fmt.Sprintf("name_%d_metric_count", i%17))
 			if m != nil {
-				m.Set(float64(i))
-				t.Logf("metric: %v, %v", m.Name, m.Key)
+				m.Add(float64(i))
+				t.Logf("metric: %v", m.Desc())
 			}
-			g := RegistMetric(fmt.Sprintf("name_%d_gauge", i%17), Gauge)
+			g := RegistGauge(fmt.Sprintf("name_%d_metric", i%17))
 			if g != nil {
 				g.Set(float64(i))
-				t.Logf("metric: %v %v", g.Name, g.Key)
+				t.Logf("metric: %v", g.Desc())
 			}
 			exitCh <- i
 
