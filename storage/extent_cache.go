@@ -54,8 +54,18 @@ func (cache *ExtentCache) Put(extent *Extent) {
 		cache.tinyLock.Unlock()
 		return
 	}
+	cache.lock.RLock()
+	item,ok:=cache.extentMap[extent.extentID]
+	if ok {
+		extent.Close()
+		cache.lock.RUnlock()
+		return
+	}
+	cache.lock.RUnlock()
+
+
 	cache.lock.Lock()
-	item := &ExtentMapItem{
+	item = &ExtentMapItem{
 		ext: extent,
 		ele: cache.extentList.PushBack(extent),
 	}
