@@ -56,6 +56,7 @@ func (cache *ExtentCache) Put(extent *Extent) {
 	}
 	cache.lock.Lock()
 	if _,ok:=cache.extentMap[extent.extentID];ok {
+		extent.Close()
 		cache.lock.Unlock()
 		return
 	}
