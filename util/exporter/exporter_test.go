@@ -19,6 +19,40 @@ import (
 	"testing"
 )
 
+func TestNewMetricLabels2(t *testing.T) {
+	N := 100
+	exitCh := make(chan int, N)
+	for i := 0; i < N; i++ {
+		go func(i int) {
+			name := fmt.Sprintf("name_%d_gauge", i%2)
+			label := fmt.Sprintf("label-%d:name", i)
+			m := RegistMetric(name, Gauge)
+			if m != nil {
+				m.SetWithLabels(float64(i),map[string]string{"volname": label, "cluster": name} )
+				t.Logf("metric: %v, %v", name, m.Metric.Desc())
+			}
+			name2 := fmt.Sprintf("name_%d_counter", i%2)
+			c := RegistMetric(name2, Counter)
+			if c != nil {
+				//c.Set(float64(i))
+				c.SetWithLabels(float64(i),map[string]string{"volname": label, "cluster": name} )
+				t.Logf("metric: %v, %v", name2, c.Metric.Desc())
+			}
+			exitCh <- i
+
+		}(i)
+	}
+
+	x := 0
+	select {
+	case <-exitCh:
+		x += 1
+		if x == N {
+			return
+		}
+	}
+}
+
 func TestNewMetricLabels(t *testing.T) {
 	N := 1000
 	exitCh := make(chan int, N)
