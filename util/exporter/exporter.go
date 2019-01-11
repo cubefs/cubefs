@@ -80,6 +80,7 @@ func Init(cluster string, role string, cfg *config.Config) {
 
 type PromeMetric struct {
 	Name   string
+	Key string
 	Labels map[string]string
 	tp     MetricType
 }
@@ -94,13 +95,18 @@ func metricsName(name string) string {
 }
 
 func RegistMetricWithLabels(name string, tp MetricType, labels map[string]string) (m *PromeMetric) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.LogErrorf("RegistGauge panic,err[%v]", err)
+		}
+	}()
 	name = metricsName(name)
 	m = &PromeMetric{
 		Name:   name,
 		Labels: labels,
 		tp:     tp,
 	}
-	go m.registMetric()
+	m.registMetric()
 	return
 }
 func RegistMetric(name string, tp MetricType) (m *PromeMetric) {
@@ -114,20 +120,27 @@ func (m *PromeMetric) registMetric() {
 				Name:        m.Name,
 				ConstLabels: m.Labels,
 			})
-		go metricGroups.LoadOrStore(m.Name, newMetrics)
+		m.Key = newMetrics.Desc().String()
+		go metricGroups.LoadOrStore(m.Key, newMetrics)
 	} else if m.tp == Gauge {
 		newMetrics := prometheus.NewGauge(
 			prometheus.GaugeOpts{
 				Name:        m.Name,
 				ConstLabels: m.Labels,
 			})
+		m.Key = newMetrics.Desc().String()
 		go metricGroups.LoadOrStore(m.Name, newMetrics)
 	}
 }
 
-func (m *PromeMetric) Set(val float64) {
+func (m *PromeMetric) Set(val float64) (err error) {
 	go func() {
-		metric, load := metricGroups.Load(m.Name)
+		defer func() {
+			if err := recover(); err != nil {
+				log.LogErrorf("RegistGauge panic,err[%v]", err)
+			}
+		}()
+		metric, load := metricGroups.Load(m.Key)
 		if !load {
 			if m.tp == Counter {
 				newMetrics := prometheus.NewCounter(
@@ -135,7 +148,9 @@ func (m *PromeMetric) Set(val float64) {
 						Name:        m.Name,
 						ConstLabels: m.Labels,
 					})
-				metricGroups.LoadOrStore(m.Name, newMetrics)
+				m.Key = newMetrics.Desc().String()
+				metricGroups.LoadOrStore(m.Key, newMetrics)
+				err = prometheus.Register(newMetrics)
 				newMetrics.Add(val)
 			} else if m.tp == Gauge {
 				newMetrics := prometheus.NewGauge(
@@ -143,10 +158,11 @@ func (m *PromeMetric) Set(val float64) {
 						Name:        m.Name,
 						ConstLabels: m.Labels,
 					})
-				metricGroups.LoadOrStore(m.Name, newMetrics)
+				m.Key = newMetrics.Desc().String()
+				metricGroups.LoadOrStore(m.Key, newMetrics)
+				err = prometheus.Register(newMetrics)
 				newMetrics.Set(val)
 			}
-
 		} else {
 			switch me := metric.(type) {
 			case prometheus.Counter:
@@ -161,67 +177,30 @@ func (m *PromeMetric) Set(val float64) {
 	return
 }
 
-func RegistCounter(name string) (o prometheus.Counter) {
-	return RegistCounterLables(name, nil)
-}
-
-func RegistCounterLables(name string, labels map[string]string) (o prometheus.Counter) {
-	defer func() {
-		if err := recover(); err != nil {
-			log.LogErrorf("RegistGauge panic,err[%v]", err)
-		}
-	}()
-	name = metricsName(name)
-	newMetrics := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name:        name,
-			Help:        name,
-			ConstLabels: labels,
-		})
-	m, load := metricGroups.LoadOrStore(name, newMetrics)
+func RegistCounterLabels(name string, labels map[string]string) (o prometheus.Counter) {
+	pm := RegistMetricWithLabels(name, Counter, labels)
+	m, load := metricGroups.Load(pm.Key)
 	if load {
 		o = m.(prometheus.Counter)
-		return
-	} else {
-		o = newMetrics
-		if enabled {
-			prometheus.MustRegister(newMetrics)
-		}
 	}
-
 	return
 }
 
-func RegistGaugeLables(name string, labels map[string]string) (o prometheus.Gauge) {
-	defer func() {
-		if err := recover(); err != nil {
-			log.LogErrorf("RegistGauge panic,err[%v]", err)
-		}
-	}()
-	name = metricsName(name)
+func RegistCounter(name string) (o prometheus.Counter) {
+	return RegistCounterLabels(name, nil)
+}
 
-	newGauge := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name:        name,
-			Help:        name,
-			ConstLabels: labels,
-		})
-	m, load := metricGroups.LoadOrStore(name, newGauge)
+func RegistGaugeLabels(name string, labels map[string]string) (o prometheus.Gauge) {
+	pm := RegistMetricWithLabels(name, Counter, labels)
+	m, load := metricGroups.Load(pm.Key)
 	if load {
 		o = m.(prometheus.Gauge)
-		return
-	} else {
-		o = newGauge
-		if enabled {
-			prometheus.MustRegister(newGauge)
-		}
 	}
-
 	return
 }
 
 func RegistGauge(name string) (o prometheus.Gauge) {
-	return RegistGaugeLables(name, nil)
+	return RegistGaugeLabels(name, nil)
 }
 
 func RegistTp(name string) (tp *TpMetric) {
@@ -254,8 +233,8 @@ func (tp *TpMetric) CalcTp() {
 			prometheus.GaugeOpts{
 				Name: tp.Name,
 			})
-
-		metric, load := metricGroups.LoadOrStore(tp.Name, tpGauge)
+		mk := tpGauge.Desc().String()
+		metric, load := metricGroups.LoadOrStore(mk, tpGauge)
 		if !load {
 			if enabled {
 				prometheus.MustRegister(metric.(prometheus.Gauge))
@@ -274,7 +253,8 @@ func Alarm(name, detail string) {
 			prometheus.CounterOpts{
 				Name: name,
 			})
-		m, load := metricGroups.LoadOrStore(name, newMetric)
+		mk := newMetric.Desc().String()
+		m, load := metricGroups.LoadOrStore(mk, newMetric)
 		if load {
 			o := m.(prometheus.Counter)
 			o.Add(1)

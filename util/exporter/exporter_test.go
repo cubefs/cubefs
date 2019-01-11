@@ -19,20 +19,53 @@ import (
 	"testing"
 )
 
+func TestNewMetricLabels(t *testing.T) {
+	N := 1000
+	exitCh := make(chan int, N)
+	for i := 0; i < N; i++ {
+		go func(i int) {
+			name := fmt.Sprintf("name_%d_gauge", i%6)
+			label := fmt.Sprintf("label-%d:name", i)
+			m := RegistMetricWithLabels(name, Gauge, map[string]string{"volname": label, "cluster": name})
+			if m != nil {
+				m.Set(float64(i))
+				t.Logf("metric: %v, %v", name, m.Key)
+			}
+			name2 := fmt.Sprintf("name_%d_counter", i%6)
+			c := RegistMetricWithLabels(name2, Counter, map[string]string{"volname": label, "cluster": name})
+			if c != nil {
+				c.Set(float64(i))
+				t.Logf("metric: %v, %v", name2, c.Key)
+			}
+			exitCh <- i
+
+		}(i)
+	}
+
+	x := 0
+	select {
+	case <-exitCh:
+		x += 1
+		if x == N {
+			return
+		}
+	}
+}
+
 func TestNewMetric(t *testing.T) {
 	N := 100
-	exitCh := make(chan int, 100)
+	exitCh := make(chan int, N)
 	for i := 0; i < N; i++ {
 		go func() {
 			m := RegistMetric(fmt.Sprintf("name_%d_counter", i%17), Counter)
 			if m != nil {
 				m.Set(float64(i))
-				t.Logf("metric: %v", m.Name)
+				t.Logf("metric: %v, %v", m.Name, m.Key)
 			}
 			g := RegistMetric(fmt.Sprintf("name_%d_gauge", i%17), Gauge)
 			if g != nil {
 				g.Set(float64(i))
-				t.Logf("metric: %v", g.Name)
+				t.Logf("metric: %v %v", g.Name, g.Key)
 			}
 			exitCh <- i
 
