@@ -205,7 +205,7 @@ func (s *ExtentStore) Create(extentID uint64, inode uint64) (err error) {
 		return err
 	}
 	extent = NewExtentInCore(name, extentID)
-	err = extent.InitToFS(inode, false)
+	err = extent.InitToFS(inode)
 	if err != nil {
 		return err
 	}
@@ -262,12 +262,6 @@ func (s *ExtentStore) extentWithHeader(extentID uint64) (e *Extent, err error) {
 	return
 }
 
-func (s *ExtentStore) loadExtentHeader(extentId uint64, header []byte) (err error) {
-	offset := extentId * util.BlockHeaderSize
-	_, err = s.verifyCrcFp.ReadAt(header[:util.BlockHeaderSize], int64(offset))
-	return
-}
-
 // HasExtent tells if the extent store has the extent with the given ID
 func (s *ExtentStore) HasExtent(extentID uint64) (exist bool) {
 	s.eiMutex.RLock()
@@ -293,13 +287,13 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, loadHeader bool) (e *E
 	if !loadHeader {
 		return
 	}
-	if IsTinyExtent(extentID) {
-		return
+	if !IsTinyExtent(extentID) {
+		offset := extentID * util.BlockHeaderSize
+		if _, err = s.verifyCrcFp.ReadAt(e.header[:util.BlockHeaderSize], int64(offset)); err != nil {
+			return
+		}
 	}
-	offset := extentID * util.BlockHeaderSize
-	if _, err = s.verifyCrcFp.ReadAt(e.header[:util.BlockHeaderSize], int64(offset)); err != nil {
-		return
-	}
+
 	s.cache.Put(e)
 
 	return
@@ -351,7 +345,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		s.eiMutex.Lock()
 		s.extentInfoMap[extentID] = extentInfo
 		s.eiMutex.Unlock()
-		// TODO Unhandled errors
+
 		extent.Close()
 		if !IsTinyExtent(extentID) && extentID > baseFileID {
 			baseFileID = extentID

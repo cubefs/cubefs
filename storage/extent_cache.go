@@ -55,6 +55,11 @@ func (cache *ExtentCache) Put(extent *Extent) {
 		return
 	}
 	cache.lock.Lock()
+	if _,ok:=cache.extentMap[extent.extentID];ok {
+		cache.lock.Unlock()
+		extent.Close()
+		return
+	}
 	item := &ExtentMapItem{
 		ext: extent,
 		ele: cache.extentList.PushBack(extent),
@@ -101,7 +106,7 @@ func (cache *ExtentCache) Del(extentID uint64) {
 	if item, ok = cache.extentMap[extentID]; ok {
 		delete(cache.extentMap, extentID)
 		cache.extentList.Remove(item.ele)
-		// TODO Unhandled errors
+
 		item.ext.Close()
 	}
 }
@@ -109,7 +114,7 @@ func (cache *ExtentCache) Del(extentID uint64) {
 // Clear closes all the extents stored in the cache.
 func (cache *ExtentCache) Clear() {
 	for _, extent := range cache.tinyExtents {
-		// TODO Unhandled errors
+
 		extent.Close()
 	}
 	cache.lock.Lock()
@@ -119,7 +124,7 @@ func (cache *ExtentCache) Clear() {
 		e = e.Next()
 		ec := curr.Value.(*Extent)
 		delete(cache.extentMap, ec.ID())
-		// TODO Unhandled errors
+
 		ec.Close()
 		cache.extentList.Remove(curr)
 	}

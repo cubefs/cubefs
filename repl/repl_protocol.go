@@ -89,7 +89,7 @@ func (rp *ReplProtocol) ServerConn() {
 			!strings.Contains(err.Error(), "reset by peer") {
 			log.LogErrorf("action[serveConn] err(%v).", err)
 		}
-		// TODO Unhandled errors
+
 		rp.sourceConn.Close()
 	}()
 	for {
@@ -138,13 +138,13 @@ func (rp *ReplProtocol) OperatorAndForwardPkt() {
 		select {
 		case request := <-rp.toBeProcessedCh:
 			if !request.isForwardPacket() {
-				// TODO Unhandled errors
+
 				rp.operatorFunc(request, rp.sourceConn)
 				rp.responseCh <- request
 			} else {
 				_, err := rp.sendRequestToAllFollowers(request)
 				if err == nil {
-					// TODO Unhandled errors
+
 					rp.operatorFunc(request, rp.sourceConn)
 				} else {
 					log.LogErrorf(err.Error())
@@ -283,7 +283,6 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 		log.LogErrorf(ActionWriteToClient+" %v", err)
 	}
 
-	// TODO Unhandled errors.
 	// execute the post-processing function
 	rp.postFunc(reply)
 	if !reply.NeedReply {
@@ -357,7 +356,7 @@ func (rp *ReplProtocol) cleanToBeProcessCh() {
 	for i := 0; i < request; i++ {
 		select {
 		case p := <-rp.toBeProcessedCh:
-			// TODO Unhandled errors
+
 			rp.postFunc(p)
 		default:
 			return
@@ -370,7 +369,7 @@ func (rp *ReplProtocol) cleanResponseCh() {
 	for i := 0; i < replys; i++ {
 		select {
 		case p := <-rp.responseCh:
-			// TODO Unhandled errors
+
 			rp.postFunc(p)
 		default:
 			return
@@ -384,7 +383,7 @@ func (rp *ReplProtocol) cleanResource() {
 	for e := rp.packetList.Front(); e != nil; e = e.Next() {
 		request := e.Value.(*Packet)
 		request.forceDestoryFollowerConns()
-		// TODO Unhandled errors
+
 		rp.postFunc(request)
 	}
 	rp.cleanToBeProcessCh()
@@ -393,7 +392,7 @@ func (rp *ReplProtocol) cleanResource() {
 	rp.followerConnects.Range(
 		func(key, value interface{}) bool {
 			conn := value.(*net.TCPConn)
-			// TODO Unhandled errors
+
 			conn.Close()
 			return true
 		})
