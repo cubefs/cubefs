@@ -118,7 +118,7 @@ func (vol *Vol) initMetaPartitions(c *Cluster) {
 			end = defaultMaxMetaPartitionInodeID
 		}
 		if err := c.createMetaPartition(vol.Name, start, end); err != nil {
-			log.LogErrorf("action[initMetaPartitions] vol[%v] init meta partition err[%v]", err)
+			log.LogErrorf("action[initMetaPartitions] vol[%v] init meta partition err[%v]",vol.Name, err)
 		}
 	}
 }

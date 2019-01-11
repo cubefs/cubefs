@@ -812,6 +812,7 @@ func (c *Cluster) createVol(name string, replicaNum uint8, size, capacity int) (
 			log.LogErrorf("action[createVol] failed,vol[%v] err[%v]", vol.Name, err)
 		}
 		c.deleteVol(name)
+		err = fmt.Errorf("action[createVol] initMetaPartitions failed")
 		goto errHandler
 	}
 	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
