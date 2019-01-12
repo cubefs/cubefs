@@ -196,15 +196,6 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 		pr.pause()
 		proto.ReturnMessage(m)
 		return
-
-	case proto.RespCheckQuorum:
-		// TODO: remove this when stable
-		if logger.IsEnableDebug() {
-			logger.Debug("raft[%d] recv check quorum resp from %d, index=%d", r.id, m.From, m.Index)
-		}
-		r.readOnly.recvAck(m.Index, m.From, r.quorum())
-		proto.ReturnMessage(m)
-		return
 	}
 }
 
@@ -262,15 +253,6 @@ func stepElectionAck(r *raftFsm, m *proto.Message) {
 		proto.ReturnMessage(m)
 		return
 
-	case proto.RespCheckQuorum:
-		// TODO: remove this when stable
-		if logger.IsEnableDebug() {
-			logger.Debug("raft[%d] recv check quorum resp from %d, index=%d", r.id, m.From, m.Index)
-		}
-		r.readOnly.recvAck(m.Index, m.From, r.quorum())
-		proto.ReturnMessage(m)
-		return
-
 	case proto.ReqMsgVote:
 		nmsg := proto.GetMessage()
 		nmsg.Type = proto.RespMsgVote
@@ -321,7 +303,6 @@ func (r *raftFsm) tickHeartbeat() {
 				r.replicas[id].resume()
 			}
 		}
-		r.bcastReadOnly()
 	}
 }
 
@@ -365,14 +346,6 @@ func (r *raftFsm) maybeCommit() bool {
 	if r.state == stateLeader && r.replicas[r.config.NodeID] != nil {
 		r.replicas[r.config.NodeID].committed = r.raftLog.committed
 	}
-
-	if r.state == stateLeader && !r.readOnly.committed && isCommit {
-		if r.raftLog.zeroTermOnErrCompacted(r.raftLog.term(r.raftLog.committed)) == r.term {
-			r.readOnly.commit(r.raftLog.committed)
-		}
-		r.bcastReadOnly()
-	}
-
 	return isCommit
 }
 
@@ -467,24 +440,4 @@ func (r *raftFsm) appendEntry(es ...*proto.Entry) {
 	r.raftLog.append(es...)
 	r.replicas[r.config.NodeID].maybeUpdate(r.raftLog.lastIndex(), r.raftLog.committed)
 	r.maybeCommit()
-}
-
-func (r *raftFsm) bcastReadOnly() {
-	index := r.readOnly.lastPending()
-	if index == 0 {
-		return
-	}
-	if logger.IsEnableDebug() {
-		logger.Debug("raft[%d] bcast readonly index: %d", r.id, index)
-	}
-	for id := range r.replicas {
-		if id == r.config.NodeID {
-			continue
-		}
-		msg := proto.GetMessage()
-		msg.Type = proto.ReqCheckQuorum
-		msg.To = id
-		msg.Index = index
-		r.send(msg)
-	}
 }

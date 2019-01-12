@@ -26,7 +26,7 @@ import (
 )
 
 type snapshotStatus struct {
-	respErr
+	deferError
 	stopCh chan struct{}
 }
 
@@ -39,7 +39,7 @@ func newSnapshotStatus() *snapshotStatus {
 }
 
 type snapshotRequest struct {
-	respErr
+	deferError
 	snapshotReader
 	header *proto.Message
 }
@@ -88,23 +88,23 @@ func (r *snapshotReader) Next() ([]byte, error) {
 	return buf, nil
 }
 
-func (s *raft) addSnapping(nodeID uint64, rs *snapshotStatus) {
+func (s *raft) addSnapping(nodeId uint64, rs *snapshotStatus) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if snap, ok := s.snapping[nodeID]; ok {
+	if snap, ok := s.snapping[nodeId]; ok {
 		close(snap.stopCh)
 	}
-	s.snapping[nodeID] = rs
+	s.snapping[nodeId] = rs
 }
 
-func (s *raft) removeSnapping(nodeID uint64) {
+func (s *raft) removeSnapping(nodeId uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if snap, ok := s.snapping[nodeID]; ok {
+	if snap, ok := s.snapping[nodeId]; ok {
 		close(snap.stopCh)
-		delete(s.snapping, nodeID)
+		delete(s.snapping, nodeId)
 	}
 }
 
@@ -161,7 +161,7 @@ func (s *raft) handleSnapshot(req *snapshotRequest) {
 
 	// validate snapshot
 	if req.header.Term < s.raftFsm.term {
-		err = fmt.Errorf("raft %v [term: %d] ignored a snapshot message with lower term from %v [term: %d]", s.raftFsm.id, s.raftFsm.term, req.header.From, req.header.Term)
+		err = fmt.Errorf("raft %v [term: %d] ignored a snapshot message with lower term from %v [term: %d].", s.raftFsm.id, s.raftFsm.term, req.header.From, req.header.Term)
 		return
 	}
 	if req.header.Term > s.raftFsm.term || s.raftFsm.state != stateFollower {

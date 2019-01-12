@@ -340,36 +340,6 @@ func (rs *RaftServer) GetPendingReplica(id uint64) (peers []uint64) {
 	return
 }
 
-// ReadIndex read index
-func (rs *RaftServer) ReadIndex(id uint64) (future *Future) {
-	rs.mu.RLock()
-	raft, ok := rs.rafts[id]
-	rs.mu.RUnlock()
-
-	future = newFuture()
-	if !ok {
-		future.respond(nil, ErrRaftNotExists)
-		return
-	}
-	raft.readIndex(future)
-	return
-}
-
-// GetEntries get raft log entries
-func (rs *RaftServer) GetEntries(id uint64, startIndex uint64, maxSize uint64) (future *Future) {
-	rs.mu.RLock()
-	raft, ok := rs.rafts[id]
-	rs.mu.RUnlock()
-
-	future = newFuture()
-	if !ok {
-		future.respond(nil, ErrRaftNotExists)
-		return
-	}
-	raft.getEntries(future, startIndex, maxSize)
-	return
-}
-
 func (rs *RaftServer) sendHeartbeat() {
 	// key: sendto nodeId; value: range ids
 	nodes := make(map[uint64]proto.HeartbeatContext)
