@@ -463,6 +463,9 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		return errors.Annotatef(err, "streamRepairExtent Watermark error")
 	}
 
+	if localExtentInfo.Size >= remoteExtentInfo.Size {
+		return nil
+	}
 	if !storage.IsTinyExtent(remoteExtentInfo.FileID) {
 		if localExtentInfo.Size <= util.BlockSize {
 			localExtentInfo.Size = 0
