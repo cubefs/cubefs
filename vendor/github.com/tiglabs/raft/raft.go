@@ -34,19 +34,10 @@ type proposal struct {
 }
 
 type apply struct {
-	term        uint64
-	index       uint64
-	future      *Future
-	command     interface{}
-	readIndexes []*Future
-}
-
-// handle user's get log entries request
-type entryRequest struct {
-	future     *Future
-	index      uint64
-	maxSize    uint64
-	onlyCommit bool
+	term    uint64
+	index   uint64
+	future  *Future
+	command interface{}
 }
 
 type softState struct {
@@ -108,9 +99,7 @@ type raft struct {
 	recvc             chan *proto.Message
 	snapRecvc         chan *snapshotRequest
 	truncatec         chan uint64
-	readIndexC        chan *Future
 	statusc           chan chan *Status
-	entryRequestC     chan *entryRequest
 	readyc            chan struct{}
 	tickc             chan struct{}
 	electc            chan struct{}
@@ -132,24 +121,22 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 	}
 
 	raft := &raft{
-		raftFsm:       r,
-		config:        config,
-		raftConfig:    raftConfig,
-		pending:       make(map[uint64]*Future),
-		snapping:      make(map[uint64]*snapshotStatus),
-		recvc:         make(chan *proto.Message, config.ReqBufferSize),
-		applyc:        make(chan *apply, config.AppBufferSize),
-		propc:         make(chan *proposal, 256),
-		snapRecvc:     make(chan *snapshotRequest, 1),
-		truncatec:     make(chan uint64, 1),
-		readIndexC:    make(chan *Future, 256),
-		statusc:       make(chan chan *Status, 1),
-		entryRequestC: make(chan *entryRequest, 16),
-		tickc:         make(chan struct{}, 64),
-		readyc:        make(chan struct{}, 1),
-		electc:        make(chan struct{}, 1),
-		stopc:         make(chan struct{}),
-		done:          make(chan struct{}),
+		raftFsm:    r,
+		config:     config,
+		raftConfig: raftConfig,
+		pending:    make(map[uint64]*Future),
+		snapping:   make(map[uint64]*snapshotStatus),
+		recvc:      make(chan *proto.Message, config.ReqBufferSize),
+		applyc:     make(chan *apply, config.AppBufferSize),
+		propc:      make(chan *proposal, 256),
+		snapRecvc:  make(chan *snapshotRequest, 1),
+		truncatec:  make(chan uint64, 1),
+		statusc:    make(chan chan *Status, 1),
+		tickc:      make(chan struct{}, 64),
+		readyc:     make(chan struct{}, 1),
+		electc:     make(chan struct{}, 1),
+		stopc:      make(chan struct{}),
+		done:       make(chan struct{}),
 	}
 	raft.curApplied.Set(r.raftLog.applied)
 	raft.peerState.replace(raftConfig.Peers)
@@ -202,9 +189,6 @@ func (s *raft) runApply() {
 
 		case apply := <-s.applyc:
 			if apply.index <= s.curApplied.Get() {
-				if len(apply.readIndexes) > 0 {
-					respondReadIndex(apply.readIndexes, nil)
-				}
 				continue
 			}
 
@@ -222,9 +206,6 @@ func (s *raft) runApply() {
 			if apply.future != nil {
 				apply.future.respond(resp, err)
 			}
-			if len(apply.readIndexes) > 0 {
-				respondReadIndex(apply.readIndexes, nil)
-			}
 			s.curApplied.Set(apply.index)
 			pool.returnApply(apply)
 		}
@@ -235,7 +216,6 @@ func (s *raft) run() {
 	defer func() {
 		s.doStop()
 		s.resetPending(ErrStopped)
-		s.raftFsm.readOnly.reset(ErrStopped)
 		s.stopSnapping()
 		s.raftConfig.Storage.Close()
 		close(s.done)
@@ -309,7 +289,7 @@ func (s *raft) run() {
 				default:
 					s.raftFsm.Step(m)
 				}
-				var respErr = true
+				var respErr bool = true
 				if m.Type == proto.RespMsgAppend && m.Reject != true {
 					respErr = false
 				}
@@ -365,26 +345,6 @@ func (s *raft) run() {
 					}
 				}
 			}()
-
-		case future := <-s.readIndexC:
-			futures := []*Future{future}
-			// handle in batch
-			var flag bool
-			for i := 1; i < 64; i++ {
-				select {
-				case f := <-s.readIndexC:
-					futures = append(futures, f)
-				default:
-					flag = true
-				}
-				if flag {
-					break
-				}
-			}
-			s.raftFsm.addReadIndex(futures)
-
-		case req := <-s.entryRequestC:
-			s.getEntriesInLoop(req)
 		}
 	}
 }
@@ -590,22 +550,6 @@ func (s *raft) persist() {
 
 func (s *raft) apply() {
 	committedEntries := s.raftFsm.raftLog.nextEnts(noLimit)
-	// check ready read index
-	if len(committedEntries) == 0 {
-		readIndexes := s.raftFsm.readOnly.getReady(s.curApplied.Get())
-		if len(readIndexes) == 0 {
-			return
-		}
-		apply := pool.getApply()
-		apply.readIndexes = readIndexes
-		select {
-		case <-s.stopc:
-			respondReadIndex(readIndexes, ErrStopped)
-		case s.applyc <- apply:
-		}
-		return
-	}
-
 	for _, entry := range committedEntries {
 		apply := pool.getApply()
 		apply.term = entry.Term
@@ -614,13 +558,13 @@ func (s *raft) apply() {
 			apply.future = future
 			delete(s.pending, entry.Index)
 		}
-		apply.readIndexes = s.raftFsm.readOnly.getReady(entry.Index)
 
 		switch entry.Type {
 		case proto.EntryNormal:
-			if len(entry.Data) > 0 {
-				apply.command = entry.Data
+			if entry.Data == nil || len(entry.Data) == 0 {
+				continue
 			}
+			apply.command = entry.Data
 
 		case proto.EntryConfChange:
 			cc := new(proto.ConfChange)
@@ -638,9 +582,6 @@ func (s *raft) apply() {
 			if apply.future != nil {
 				apply.future.respond(nil, ErrStopped)
 			}
-			if len(apply.readIndexes) > 0 {
-				respondReadIndex(apply.readIndexes, ErrStopped)
-			}
 		case s.applyc <- apply:
 		}
 	}
@@ -656,8 +597,7 @@ func (s *raft) advance() {
 
 func (s *raft) containsUpdate() bool {
 	return len(s.raftFsm.raftLog.unstableEntries()) > 0 || s.raftFsm.raftLog.committed > s.raftFsm.raftLog.applied || len(s.raftFsm.msgs) > 0 ||
-		s.raftFsm.raftLog.committed != s.prevHardSt.Commit || s.raftFsm.term != s.prevHardSt.Term || s.raftFsm.vote != s.prevHardSt.Vote ||
-		s.raftFsm.readOnly.containsUpdate(s.curApplied.Get())
+		s.raftFsm.raftLog.committed != s.prevHardSt.Commit || s.raftFsm.term != s.prevHardSt.Term || s.raftFsm.vote != s.prevHardSt.Vote
 }
 
 func (s *raft) resetPending(err error) {
@@ -685,9 +625,6 @@ func (s *raft) resetApply() {
 		case apply := <-s.applyc:
 			if apply.future != nil {
 				apply.future.respond(nil, ErrStopped)
-			}
-			if len(apply.readIndexes) > 0 {
-				respondReadIndex(apply.readIndexes, ErrStopped)
 			}
 			pool.returnApply(apply)
 		default:
@@ -744,61 +681,11 @@ func (s *raft) handlePanic(err interface{}) {
 
 	fatal := &FatalError{
 		ID:  s.raftFsm.id,
-		Err: fmt.Errorf("raft[%v] occur panic error: [%v]", s.raftFsm.id, err),
+		Err: fmt.Errorf("raft[%v] occur panic error: [%v].", s.raftFsm.id, err),
 	}
 	s.raftConfig.StateMachine.HandleFatalEvent(fatal)
 }
 
 func (s *raft) getPeers() (peers []uint64) {
 	return s.peerState.get()
-}
-
-func (s *raft) readIndex(future *Future) {
-	if !s.isLeader() {
-		future.respond(nil, ErrNotLeader)
-		return
-	}
-
-	select {
-	case <-s.stopc:
-		future.respond(nil, ErrStopped)
-	case s.readIndexC <- future:
-	}
-}
-
-func (s *raft) getEntries(future *Future, startIndex uint64, maxSize uint64) {
-	req := &entryRequest{
-		future:  future,
-		index:   startIndex,
-		maxSize: maxSize,
-	}
-	select {
-	case <-s.stopc:
-		future.respond(nil, ErrStopped)
-	case s.entryRequestC <- req:
-	}
-}
-
-func (s *raft) getEntriesInLoop(req *entryRequest) {
-	select {
-	case <-s.stopc:
-		req.future.respond(nil, ErrStopped)
-		return
-	default:
-	}
-
-	if !s.isLeader() {
-		req.future.respond(nil, ErrNotLeader)
-		return
-	}
-	if req.index > s.raftFsm.raftLog.lastIndex() {
-		req.future.respond(nil, nil)
-		return
-	}
-	if req.index < s.raftFsm.raftLog.firstIndex() {
-		req.future.respond(nil, ErrCompacted)
-		return
-	}
-	entries, err := s.raftFsm.raftLog.entries(req.index, req.maxSize)
-	req.future.respond(entries, err)
 }

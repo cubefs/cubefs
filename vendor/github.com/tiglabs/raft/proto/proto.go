@@ -40,8 +40,6 @@ const (
 	LocalMsgProp
 	LeaseMsgOffline
 	LeaseMsgTimeout
-	ReqCheckQuorum
-	RespCheckQuorum
 )
 
 const (
@@ -153,10 +151,6 @@ func (t MsgType) String() string {
 		return "LeaseMsgOffline"
 	case 13:
 		return "LeaseMsgTimeout"
-	case 14:
-		return "ReqCheckQuorum"
-	case 15:
-		return "RespCheckQuorum"
 	}
 	return "unkown"
 }
@@ -203,8 +197,7 @@ func (cc *ConfChange) String() string {
 }
 
 func (m *Message) IsResponseMsg() bool {
-	return m.Type == RespMsgAppend || m.Type == RespMsgHeartBeat || m.Type == RespMsgVote ||
-		m.Type == RespMsgElectAck || m.Type == RespMsgSnapShot || m.Type == RespCheckQuorum
+	return m.Type == RespMsgAppend || m.Type == RespMsgHeartBeat || m.Type == RespMsgVote || m.Type == RespMsgElectAck || m.Type == RespMsgSnapShot
 }
 
 func (m *Message) IsElectionMsg() bool {

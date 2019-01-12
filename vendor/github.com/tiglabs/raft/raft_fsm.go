@@ -16,6 +16,7 @@
 package raft
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -49,7 +50,6 @@ type raftFsm struct {
 	votes       map[uint64]bool
 	acks        map[uint64]bool
 	replicas    map[uint64]*replica
-	readOnly    *readOnly
 	msgs        []*proto.Message
 	step        stepFunc
 	tick        func()
@@ -72,7 +72,6 @@ func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 		leader:   NoLeader,
 		raftLog:  raftlog,
 		replicas: make(map[uint64]*replica),
-		readOnly: newReadOnly(raftConfig.ID, config.ReadOnlyOption),
 	}
 	r.rand = rand.New(rand.NewSource(int64(config.NodeID + r.id)))
 	for _, p := range raftConfig.Peers {
@@ -198,7 +197,7 @@ func (r *raftFsm) Step(m *proto.Message) {
 
 func (r *raftFsm) loadState(state proto.HardState) error {
 	if state.Commit < r.raftLog.committed || state.Commit > r.raftLog.lastIndex() {
-		return fmt.Errorf("[raft->loadState][%v] state.commit %d is out of range [%d, %d]", r.id, state.Commit, r.raftLog.committed, r.raftLog.lastIndex())
+		return errors.New(fmt.Sprintf("[raft->loadState][%v] state.commit %d is out of range [%d, %d]", r.id, state.Commit, r.raftLog.committed, r.raftLog.lastIndex()))
 	}
 
 	r.term = state.Term
@@ -317,7 +316,6 @@ func (r *raftFsm) reset(term, lasti uint64, isLeader bool) {
 	r.heartbeatElapsed = 0
 	r.votes = make(map[uint64]bool)
 	r.pendingConf = false
-	r.readOnly.reset(ErrNotLeader)
 
 	if isLeader {
 		r.randElectionTick = r.config.ElectionTick - 1
@@ -375,23 +373,6 @@ func (r *raftFsm) restore(meta proto.SnapshotMeta) {
 	for _, p := range meta.Peers {
 		r.replicas[p.ID] = newReplica(p, 0)
 	}
-}
-
-func (r *raftFsm) addReadIndex(futures []*Future) {
-	// not leader
-	if r.leader != r.config.NodeID {
-		respondReadIndex(futures, ErrNotLeader)
-		return
-	}
-
-	// check leader commit in current term
-	if !r.readOnly.committed {
-		if r.raftLog.zeroTermOnErrCompacted(r.raftLog.term(r.raftLog.committed)) == r.term {
-			r.readOnly.commit(r.raftLog.committed)
-		}
-	}
-	r.readOnly.add(r.raftLog.committed, futures)
-	r.bcastReadOnly()
 }
 
 func numOfPendingConf(ents []*proto.Entry) int {

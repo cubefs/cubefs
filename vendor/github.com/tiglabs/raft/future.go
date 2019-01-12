@@ -1,4 +1,4 @@
-// Copyright 2018 The TigLabs raft Authors.
+// Copyright 2017 The raft Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,26 +14,25 @@
 
 package raft
 
-type respErr struct {
+type deferError struct {
 	errCh chan error
 }
 
-func (e *respErr) init() {
-	e.errCh = make(chan error, 1)
+func (d *deferError) init() {
+	d.errCh = make(chan error, 1)
 }
 
-func (e *respErr) respond(err error) {
-	e.errCh <- err
-	close(e.errCh)
+func (d *deferError) respond(err error) {
+	d.errCh <- err
+	close(d.errCh)
 }
 
-func (e *respErr) error() <-chan error {
-	return e.errCh
+func (d *deferError) error() <-chan error {
+	return d.errCh
 }
 
-// Future the future
 type Future struct {
-	respErr
+	deferError
 	respCh chan interface{}
 }
 
@@ -50,11 +49,10 @@ func (f *Future) respond(resp interface{}, err error) {
 		f.respCh <- resp
 		close(f.respCh)
 	} else {
-		f.respErr.respond(err)
+		f.deferError.respond(err)
 	}
 }
 
-// Response wait response
 func (f *Future) Response() (resp interface{}, err error) {
 	select {
 	case err = <-f.error():
@@ -63,8 +61,6 @@ func (f *Future) Response() (resp interface{}, err error) {
 		return
 	}
 }
-
-// AsyncResponse export channels
 func (f *Future) AsyncResponse() (respCh <-chan interface{}, errCh <-chan error) {
 	return f.respCh, f.errCh
 }
