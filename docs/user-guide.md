@@ -1,7 +1,7 @@
 ## Build Servers
 
 In the CFS design, servers refer to master, metanode and datanode, and are compiled into a single binary for deployment convenience.
-You'll need to build RocksDB v5.9.2+ on your machine.Refer to [https://github.com/facebook/rocksdb/blob/master/INSTALL.md]
+You'll need to build RocksDB v5.9.2+ [https://github.com/facebook/rocksdb/blob/master/INSTALL.md] on your machine.
 After that, you can build cfs using the following command
 
 ```bash
