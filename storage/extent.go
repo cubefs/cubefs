@@ -321,14 +321,14 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc u
 	if _, err = e.file.ReadAt(data[:size], offset); err != nil {
 		return
 	}
-	blockNo := offset / util.BlockSize
-	if offset%util.BlockSize == 0 && size == util.BlockSize {
-		startIdx := util.BlockHeaderCrcIndex + blockNo*util.PerBlockCrcSize
-		endIdx := startIdx + util.PerBlockCrcSize
-		crc = binary.BigEndian.Uint32(e.header[startIdx:endIdx])
-
-		return
-	}
+	//blockNo := offset / util.BlockSize
+	//if offset%util.BlockSize == 0 && size == util.BlockSize {
+	//	startIdx := util.BlockHeaderCrcIndex + blockNo*util.PerBlockCrcSize
+	//	endIdx := startIdx + util.PerBlockCrcSize
+	//	crc = binary.BigEndian.Uint32(e.header[startIdx:endIdx])
+	//
+	//	return
+	//}
 	crc = crc32.ChecksumIEEE(data)
 	return
 }

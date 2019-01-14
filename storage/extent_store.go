@@ -455,6 +455,10 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 		return
 	}
 	crc, err = e.Read(nbuf, offset, size, isRepairRead)
+	//if crc == 0 {
+	//	log.LogWarnf(fmt.Sprintf("extent(%v_%v) offset(%v) size(%v) readcrc %v extent %p err %v",
+	//		s.partitionID, extentID, offset, size, crc,e,err))
+	//}
 	return
 }
 
