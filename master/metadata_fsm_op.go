@@ -68,24 +68,24 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 }
 
 type dataPartitionValue struct {
-	PartitionID   uint64
-	ReplicaNum    uint8
-	Hosts         string
-	Peers         []bsProto.Peer
-	Status        int8
-	VolID         uint64
-	VolName       string
+	PartitionID uint64
+	ReplicaNum  uint8
+	Hosts       string
+	Peers       []bsProto.Peer
+	Status      int8
+	VolID       uint64
+	VolName     string
 }
 
 func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 	dpv = &dataPartitionValue{
-		PartitionID:   dp.PartitionID,
-		ReplicaNum:    dp.ReplicaNum,
-		Hosts:         dp.hostsToString(),
-		Peers:         dp.Peers,
-		Status:        dp.Status,
-		VolID:         dp.VolID,
-		VolName:       dp.VolName,
+		PartitionID: dp.PartitionID,
+		ReplicaNum:  dp.ReplicaNum,
+		Hosts:       dp.hostsToString(),
+		Peers:       dp.Peers,
+		Status:      dp.Status,
+		VolID:       dp.VolID,
+		VolName:     dp.VolName,
 	}
 	return
 }
@@ -556,7 +556,7 @@ func (c *Cluster) applyAddVol(cmd *RaftCmd) (err error) {
 		log.LogError(fmt.Sprintf("action[applyAddVol] failed,err:%v", err))
 		return
 	}
-	vol := newVol(vv.ID, vv.Name, vv.ReplicaNum,vv.DataPartitionSize, vv.Capacity)
+	vol := newVol(vv.ID, vv.Name, vv.DataPartitionSize, vv.Capacity)
 	c.putVol(vol)
 	return
 }
@@ -752,7 +752,7 @@ func (c *Cluster) loadVols() (err error) {
 			err = fmt.Errorf("action[loadVols],value:%v,unmarshal err:%v", string(value), err)
 			return err
 		}
-		vol := newVol(vv.ID, vv.Name, vv.ReplicaNum, vv.DataPartitionSize, vv.Capacity)
+		vol := newVol(vv.ID, vv.Name, vv.DataPartitionSize, vv.Capacity)
 		vol.Status = vv.Status
 		c.putVol(vol)
 		log.LogInfof("action[loadVols],vol[%v]", vol)

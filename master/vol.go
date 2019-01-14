@@ -38,16 +38,12 @@ type Vol struct {
 	sync.RWMutex
 }
 
-func newVol(id uint64, name string, replicaNum uint8, dpSize, capacity uint64) (vol *Vol) {
+func newVol(id uint64, name string, dpSize, capacity uint64) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
-	vol.dpReplicaNum = replicaNum
+	vol.dpReplicaNum = defaultReplicaNum
 	vol.threshold = defaultMetaPartitionMemUsageThreshold
-	if replicaNum%2 == 0 {
-		vol.mpReplicaNum = replicaNum + 1
-	} else {
-		vol.mpReplicaNum = replicaNum
-	}
+	vol.mpReplicaNum = defaultReplicaNum
 	if dpSize == 0 {
 		dpSize = util.DefaultDataPartitionSize
 	}
@@ -118,7 +114,7 @@ func (vol *Vol) initMetaPartitions(c *Cluster) {
 			end = defaultMaxMetaPartitionInodeID
 		}
 		if err := c.createMetaPartition(vol.Name, start, end); err != nil {
-			log.LogErrorf("action[initMetaPartitions] vol[%v] init meta partition err[%v]",vol.Name, err)
+			log.LogErrorf("action[initMetaPartitions] vol[%v] init meta partition err[%v]", vol.Name, err)
 		}
 	}
 }

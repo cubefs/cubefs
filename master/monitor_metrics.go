@@ -14,12 +14,11 @@
 package master
 
 import (
-	"github.com/tiglabs/containerfs/util/exporter"
 	"github.com/prometheus/client_golang/prometheus"
-	"time"
+	"github.com/tiglabs/containerfs/util/exporter"
 	"github.com/tiglabs/containerfs/util/log"
-	"fmt"
 	"strconv"
+	"time"
 )
 
 const (
@@ -30,9 +29,12 @@ const (
 	MetricMetaNodesUsedGB      = "metaNodes_used_GB"
 	MetricMetaNodesTotalGB     = "metaNodes_total_GB"
 	MetricMetaNodesIncreasedGB = "metaNodes_increased_GB"
-	MetricsDataNodesCount      = "dataNodes_count"
-	MetricsMetaNodesCount      = "metaNodes_count"
-	MetricsVolCount            = "vol_count"
+	MetricDataNodesCount       = "dataNodes_count"
+	MetricMetaNodesCount       = "metaNodes_count"
+	MetricVolCount             = "vol_count"
+	MetricVolTotalGB           = "vol_total_GB"
+	MetricVolUsedGB            = "vol_used_GB"
+	MetricVolUsageGB           = "vol_usage_ratio"
 )
 
 type monitorMetrics struct {
@@ -46,6 +48,9 @@ type monitorMetrics struct {
 	metaNodesTotal     prometheus.Gauge
 	metaNodesUsed      prometheus.Gauge
 	metaNodesIncreased prometheus.Gauge
+	volTotalSpace      *exporter.PromeMetric
+	volUsedSpace       *exporter.PromeMetric
+	volUsage           *exporter.PromeMetric
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
@@ -59,9 +64,12 @@ func (mm *monitorMetrics) start() {
 	mm.metaNodesTotal = exporter.RegistGauge(MetricMetaNodesTotalGB)
 	mm.metaNodesUsed = exporter.RegistGauge(MetricMetaNodesUsedGB)
 	mm.metaNodesIncreased = exporter.RegistGauge(MetricMetaNodesIncreasedGB)
-	mm.dataNodesCount = exporter.RegistGauge(MetricsDataNodesCount)
-	mm.metaNodesCount = exporter.RegistGauge(MetricsMetaNodesCount)
-	mm.volCount = exporter.RegistGauge(MetricsVolCount)
+	mm.dataNodesCount = exporter.RegistGauge(MetricDataNodesCount)
+	mm.metaNodesCount = exporter.RegistGauge(MetricMetaNodesCount)
+	mm.volCount = exporter.RegistGauge(MetricVolCount)
+	mm.volTotalSpace = exporter.RegistMetric(MetricVolTotalGB, exporter.Gauge)
+	mm.volUsedSpace = exporter.RegistMetric(MetricVolUsedGB, exporter.Gauge)
+	mm.volUsage = exporter.RegistMetric(MetricVolUsageGB, exporter.Gauge)
 	go mm.statMetrics()
 }
 
@@ -105,16 +113,21 @@ func (mm *monitorMetrics) doStat() {
 		if !ok {
 			return true
 		}
-		volTotalGauge := exporter.RegistGauge(fmt.Sprintf("vol_%v_total_GB", key))
-		volTotalGauge.Set(float64(volStatInfo.TotalGB))
+		volName, ok := key.(string)
+		if !ok {
+			return true
+		}
+		labels := map[string]string{"volName": volName}
+		volTotalGauge := exporter.RegistMetric(MetricVolTotalGB, exporter.Gauge)
+		volTotalGauge.SetWithLabels(float64(volStatInfo.TotalGB), labels)
 
-		volUsedGauge := exporter.RegistGauge(fmt.Sprintf("vol_%v_used_GB", key))
-		volUsedGauge.Set(float64(volStatInfo.UsedGB))
+		volUsedGauge := exporter.RegistMetric(MetricVolUsedGB, exporter.Gauge)
+		volUsedGauge.SetWithLabels(float64(volStatInfo.UsedGB), labels)
 
-		volUsageRatioGauge := exporter.RegistGauge(fmt.Sprintf("vol_%v_usage_ratio", key))
+		volUsageRatioGauge := exporter.RegistMetric(MetricVolUsageGB, exporter.Gauge)
 		usedRatio, e := strconv.ParseFloat(volStatInfo.UsedRatio, 64)
 		if e == nil {
-			volUsageRatioGauge.Set(usedRatio)
+			volUsageRatioGauge.SetWithLabels(usedRatio, labels)
 		}
 
 		return true

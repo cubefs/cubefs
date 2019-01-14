@@ -58,6 +58,7 @@ const (
 	defaultIntervalToAlarmMissingMetaPartition         = 10 * 60 // interval of checking if a replica is missing
 	defaultMetaPartitionMemUsageThreshold      float32 = 0.75    // memory usage threshold on a meta partition
 	defaultMaxMetaPartitionCountOnEachNode             = 100
+	defaultReplicaNum                                  = 3
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
