@@ -25,8 +25,10 @@ import (
 )
 
 const (
-	_  = iota
+	_ = iota
+	// KB killobytes
 	KB = 1 << (10 * iota)
+	// MB megabytes
 	MB
 )
 
@@ -88,9 +90,22 @@ type Config struct {
 	// LeaseCheck whether to use the lease mechanism.
 	// The default value is false.
 	LeaseCheck bool
-	transport  Transport
+	// ReadOnlyOption specifies how the read only request is processed.
+	//
+	// ReadOnlySafe guarantees the linearizability of the read only request by
+	// communicating with the quorum. It is the default and suggested option.
+	//
+	// ReadOnlyLeaseBased ensures linearizability of the read only request by
+	// relying on the leader lease. It can be affected by clock drift.
+	// If the clock drift is unbounded, leader might keep the lease longer than it
+	// should (clock can move backward/pause without any bound). ReadIndex is not safe
+	// in that case.
+	// LeaseCheck MUST be enabled if ReadOnlyOption is ReadOnlyLeaseBased.
+	ReadOnlyOption ReadOnlyOption
+	transport      Transport
 }
 
+// TransportConfig raft server transport config
 type TransportConfig struct {
 	// HeartbeatAddr is the Heartbeat port.
 	// The default value is 3016.
@@ -109,7 +124,7 @@ type TransportConfig struct {
 	Resolver SocketResolver
 }
 
-// ReplConfig contains the parameters to create a replication.
+// RaftConfig contains the parameters to create a raft.
 type RaftConfig struct {
 	ID           uint64
 	Term         uint64
@@ -145,22 +160,25 @@ func DefaultConfig() *Config {
 // validate returns an error if any required elements of the Config are missing or invalid.
 func (c *Config) validate() error {
 	if c.NodeID == 0 {
-		return errors.New("NodeID is required!")
+		return errors.New("NodeID is required")
 	}
 	if c.TransportConfig.Resolver == nil {
-		return errors.New("Resolver is required!")
+		return errors.New("Resolver is required")
 	}
 	if c.MaxSizePerMsg > 4*MB {
-		return errors.New("MaxSizePerMsg it too high!")
+		return errors.New("MaxSizePerMsg it too high")
 	}
 	if c.MaxInflightMsgs > 1024 {
-		return errors.New("MaxInflightMsgs is too high!")
+		return errors.New("MaxInflightMsgs is too high")
 	}
 	if c.MaxSnapConcurrency > 256 {
-		return errors.New("MaxSnapConcurrency is too high!")
+		return errors.New("MaxSnapConcurrency is too high")
 	}
 	if c.MaxReplConcurrency > 256 {
-		return errors.New("MaxReplConcurrency is too high!")
+		return errors.New("MaxReplConcurrency is too high")
+	}
+	if c.ReadOnlyOption == ReadOnlyLeaseBased && !c.LeaseCheck {
+		return errors.New("LeaseCheck MUST be enabled when use ReadOnlyLeaseBased")
 	}
 
 	if strings.TrimSpace(c.TransportConfig.HeartbeatAddr) == "" {
@@ -199,23 +217,22 @@ func (c *Config) validate() error {
 	if c.SendBufferSize <= 0 {
 		c.SendBufferSize = defaultSizeSendBuffer
 	}
-
 	return nil
 }
 
 // validate returns an error if any required elements of the ReplConfig are missing or invalid.
 func (c *RaftConfig) validate() error {
 	if c.ID == 0 {
-		return errors.New("ID is required!")
+		return errors.New("ID is required")
 	}
 	if len(c.Peers) == 0 {
-		return errors.New("Peers is required!")
+		return errors.New("Peers is required")
 	}
 	if c.Storage == nil {
-		return errors.New("Storage is required!")
+		return errors.New("Storage is required")
 	}
 	if c.StateMachine == nil {
-		return errors.New("StateMachine is required!")
+		return errors.New("StateMachine is required")
 	}
 
 	return nil
