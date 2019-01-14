@@ -21,7 +21,6 @@ const (
 	nameKey              = "name"
 	idKey                = "id"
 	countKey             = "count"
-	replicasKey          = "replicas"
 	startKey             = "start"
 	enablekey            = "enable"
 	thresholdKey         = "threshold"
@@ -57,7 +56,6 @@ const (
 	defaultNodeSetCapacity                        = 6
 	minNumOfRWDataPartitions                      = 10
 	intervalToCheckMissingReplica                 = 600
-	defaultVolCapacity                            = 200 // GB
 	intervalToLoadDataPartition                   = 12 * 60 * 60
 	defaultInitDataPartitionCnt                   = 10
 	volExpansionRatio                             = 0.1

@@ -416,19 +416,18 @@ errHandler:
 
 func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		name        string
-		err         error
-		msg         string
-		replicaNum  int
-		size        int
-		capacity    int
-		vol         *Vol
+		name     string
+		err      error
+		msg      string
+		size     int
+		capacity int
+		vol      *Vol
 	)
 
-	if name, replicaNum, size, capacity, err = parseRequestToCreateVol(r); err != nil {
+	if name, size, capacity, err = parseRequestToCreateVol(r); err != nil {
 		goto errHandler
 	}
-	if err = m.cluster.createVol(name, uint8(replicaNum),size, capacity); err != nil {
+	if err = m.cluster.createVol(name, size, capacity); err != nil {
 		goto errHandler
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
@@ -866,32 +865,24 @@ func parseRequestToUpdateVol(r *http.Request) (name string, capacity int, err er
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name string, replicaNum int, size, capacity int, err error) {
+func parseRequestToCreateVol(r *http.Request) (name string, size, capacity int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
 	if name, err = extractName(r); err != nil {
 		return
 	}
-	if replicaStr := r.FormValue(replicasKey); replicaStr == "" {
-		err = keyNotFound(replicasKey)
-		return
-	} else if replicaNum, err = strconv.Atoi(replicaStr); err != nil || replicaNum < 2 {
-		err = unmatchedKey(replicasKey)
-	}
-
 	if sizeStr := r.FormValue(dataPartitionSizeKey); sizeStr != "" {
 		if size, err = strconv.Atoi(sizeStr); err != nil {
 			err = unmatchedKey(dataPartitionSizeKey)
 		}
 	}
 
-	if capacityStr := r.FormValue(volCapacityKey); capacityStr != "" {
-		if capacity, err = strconv.Atoi(capacityStr); err != nil {
-			err = unmatchedKey(volCapacityKey)
-		}
-	} else {
-		capacity = defaultVolCapacity
+	if capacityStr := r.FormValue(volCapacityKey); capacityStr == "" {
+		err = keyNotFound(volCapacityKey)
+		return
+	} else if capacity, err = strconv.Atoi(capacityStr); err != nil {
+		err = unmatchedKey(volCapacityKey)
 	}
 	return
 }
