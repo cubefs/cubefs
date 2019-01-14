@@ -80,8 +80,9 @@ func Init(cluster string, role string, cfg *config.Config) {
 
 type PromeMetric struct {
 	Name   string
-	Key string
 	Labels map[string]string
+	Key string
+	Metric prometheus.Metric
 	tp     MetricType
 }
 
@@ -113,68 +114,66 @@ func RegistMetric(name string, tp MetricType) (m *PromeMetric) {
 	return RegistMetricWithLabels(name, tp, nil)
 }
 
-func (m *PromeMetric) registMetric() {
+func (m *PromeMetric) getMetricKey() (key string, metric prometheus.Metric) {
 	if m.tp == Counter {
-		newMetrics := prometheus.NewCounter(
+		metric = prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Name:        m.Name,
 				ConstLabels: m.Labels,
 			})
-		m.Key = newMetrics.Desc().String()
-		go metricGroups.LoadOrStore(m.Key, newMetrics)
+		key = metric.Desc().String()
+		m.Metric = metric
+		m.Key = key
 	} else if m.tp == Gauge {
-		newMetrics := prometheus.NewGauge(
+		metric = prometheus.NewGauge(
 			prometheus.GaugeOpts{
 				Name:        m.Name,
 				ConstLabels: m.Labels,
 			})
-		m.Key = newMetrics.Desc().String()
-		go metricGroups.LoadOrStore(m.Name, newMetrics)
+		key = metric.Desc().String()
+		m.Metric = metric
+		m.Key = key
 	}
+
+	return
+}
+func (m *PromeMetric) registMetric() {
+	key, metric := m.getMetricKey()
+	go metricGroups.LoadOrStore(key, metric)
+}
+
+func (m *PromeMetric) SetWithLabels(val float64, labels map[string]string) (err error) {
+	go func() {
+		if labels != nil {
+			m.Labels = labels
+		}
+		key, tmpMetric := m.getMetricKey()
+		actualMetric, load := metricGroups.LoadOrStore(key, tmpMetric)
+		if !load {
+			err = prometheus.Register(actualMetric.(prometheus.Collector))
+		}
+
+		m.SetMetricVal(actualMetric, val)
+	}()
+	return
 }
 
 func (m *PromeMetric) Set(val float64) (err error) {
-	go func() {
-		defer func() {
-			if err := recover(); err != nil {
-				log.LogErrorf("RegistGauge panic,err[%v]", err)
-			}
-		}()
-		metric, load := metricGroups.Load(m.Key)
-		if !load {
-			if m.tp == Counter {
-				newMetrics := prometheus.NewCounter(
-					prometheus.CounterOpts{
-						Name:        m.Name,
-						ConstLabels: m.Labels,
-					})
-				m.Key = newMetrics.Desc().String()
-				metricGroups.LoadOrStore(m.Key, newMetrics)
-				err = prometheus.Register(newMetrics)
-				newMetrics.Add(val)
-			} else if m.tp == Gauge {
-				newMetrics := prometheus.NewGauge(
-					prometheus.GaugeOpts{
-						Name:        m.Name,
-						ConstLabels: m.Labels,
-					})
-				m.Key = newMetrics.Desc().String()
-				metricGroups.LoadOrStore(m.Key, newMetrics)
-				err = prometheus.Register(newMetrics)
-				newMetrics.Set(val)
-			}
-		} else {
-			switch me := metric.(type) {
-			case prometheus.Counter:
-				me.Add(val)
-			case prometheus.Gauge:
-				me.Set(val)
-			default:
-			}
-		}
-	}()
-
+	return m.SetWithLabels(val, nil)
 	return
+}
+
+func (m *PromeMetric) SetMetricVal(metric interface{}, val float64) {
+	if metric != nil {
+		switch metric := metric.(type) {
+		case prometheus.Counter:
+			metric.Add(val)
+		case prometheus.Gauge:
+			metric.Set(val)
+		default:
+		}
+	}
+
 }
 
 func RegistCounterLabels(name string, labels map[string]string) (o prometheus.Counter) {
