@@ -28,7 +28,11 @@ const (
 	RegisterPath = "/v1/agent/service/register"
 )
 
-type ConsulRegistInfo struct {
+/**
+ * consul register info for prometheus
+ * optional for user when set prometheus exporter
+ */
+type ConsulRegisterInfo struct {
 	Name    string
 	ID      string
 	Address string
@@ -83,7 +87,7 @@ func SendRegistReq(addr string, app string, role string, cluster string, port in
 	}
 	id := GetConsulId(app, role, host, port)
 	url := addr + RegisterPath
-	resp, body, errs := gorequest.New().Put(url).SendMap(ConsulRegistInfo{
+	resp, body, errs := gorequest.New().Put(url).SendMap(ConsulRegisterInfo{
 		Name:    app,
 		ID:      id,
 		Address: host,
