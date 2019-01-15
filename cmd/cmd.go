@@ -110,16 +110,18 @@ func main() {
 		}
 	}()
 	flag.Parse()
+
+	if *configVersion {
+		fmt.Printf("CFS server version: %s\n", Version)
+		os.Exit(0)
+	}
+
 	err := modifyOpenFiles()
 	if err != nil {
 		panic(err.Error())
 	}
-	if *configVersion {
-		fmt.Printf("Current Verson: %s\n", Version)
-		os.Exit(0)
-		return
-	}
-	log.LogInfof("Hello, Cfs Storage, Current Version: %s", Version)
+
+	log.LogInfof("Hello, CFS Storage, Current Version: %s", Version)
 	cfg := config.LoadConfigFile(*configFile)
 	role := cfg.GetString(ConfigKeyRole)
 	logDir := cfg.GetString(ConfigKeyLogDir)

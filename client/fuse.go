@@ -54,13 +54,24 @@ const (
 )
 
 var (
-	configFile = flag.String("c", "", "FUSE client config file")
+	Version = "0.01"
+)
+
+var (
+	configFile    = flag.String("c", "", "FUSE client config file")
+	configVersion = flag.Bool("v", false, "show version")
 )
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	flag.Parse()
+
+	if *configVersion {
+		fmt.Printf("CFS client verson: %s\n", Version)
+		os.Exit(0)
+	}
+
 	cfg := config.LoadConfigFile(*configFile)
 	if err := Mount(cfg); err != nil {
 		fmt.Println("Mount failed: ", err)
