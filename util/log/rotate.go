@@ -19,7 +19,9 @@ const (
 	// Units: MB
 	DefaultRollingSize = 10 * 1024
 	// DefaultHeadRoom The tolerance for the log space limit (in megabytes)
-	DefaultHeadRoom = 10 * 1024
+	DefaultHeadRoom = 50 * 1024
+	// DefaultHeadRatio The disk reserve space ratio
+	DefaultHeadRatio = 0.2
 )
 
 type LogRotate struct {
