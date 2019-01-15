@@ -21,6 +21,7 @@ import (
 
 	"bytes"
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 // APIResponse defines the structure of the response to an HTTP request
@@ -64,18 +65,19 @@ func (m *MetaNode) getPartitionsHandler(w http.ResponseWriter,
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
 	resp.Data = m.metadataManager
 	data, _ := resp.Marshal()
-	// TODO Unhandled errors
-	w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		log.LogErrorf("[getPartitionsHandler] response %s", err)
+	}
 }
 
 func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO Unhandled errors
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
-		// TODO Unhandled errors
-		w.Write(data)
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getPartitionByIDHandler] response %s", err)
+		}
 	}()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
@@ -101,7 +103,6 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO Unhandled errors
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	// when error returns we should scan (ascend) the tree.
@@ -109,8 +110,9 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if !shouldSkip {
 			data, _ := resp.Marshal()
-			// TODO Unhandled errors
-			w.Write(data)
+			if _, err := w.Write(data); err != nil {
+				log.LogErrorf("[getAllInodesHandler] response %s", err)
+			}
 		}
 	}()
 	id, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
@@ -137,12 +139,11 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 		isFirstItem = true
 	)
 	f := func(i BtreeItem) bool {
-		// TODO why not merge the following two if statements?
 		if !isFirstItem {
-			// TODO Unhandled errors
-			w.Write(delimiter)
-		}
-		if isFirstItem {
+			if _, err = w.Write(delimiter); err != nil {
+				return false
+			}
+		} else {
 			isFirstItem = false
 		}
 
@@ -161,18 +162,19 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	mp.GetInodeTree().Ascend(f)
 	buff.WriteString(`]}`)
-	// TODO Unhandled errors
-	w.Write(buff.Bytes())
+	if _, err = w.Write(buff.Bytes()); err != nil {
+		log.LogErrorf("[getAllInodesHandler] response %s", err)
+	}
 }
 
 func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO Unhandled errors
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
-		// TODO Unhandled errors
-		w.Write(data)
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getInodeHandler] response %s", err)
+		}
 	}()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
@@ -209,13 +211,13 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 
 func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
 	r *http.Request) {
-	// TODO Unhandled errors
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
-		// TODO Unhandled errors
-		w.Write(data)
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getExtentsByInodeHandler] response %s", err)
+		}
 	}()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
@@ -250,14 +252,14 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
 }
 
 func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO Unhandled errors
 	r.ParseForm()
 	name := r.FormValue("name")
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
-		// TODO Unhandled errors
-		w.Write(data)
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getDentryHandler] response %s", err)
+		}
 	}()
 	var (
 		pid  uint64
@@ -298,15 +300,15 @@ func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO Unhandled errors
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusSeeOther, "")
 	shouldSkip := false
 	defer func() {
 		if !shouldSkip {
 			data, _ := resp.Marshal()
-			// TODO Unhandled errors
-			w.Write(data)
+			if _, err := w.Write(data); err != nil {
+				log.LogErrorf("[getAllDentriesHandler] response %s", err)
+			}
 		}
 	}()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
@@ -327,22 +329,21 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 	}
 	buff.Reset()
 	var (
-		val     []byte
-		delimiter   = []byte{',', '\n'}
-		isFirst = true
+		val       []byte
+		delimiter = []byte{',', '\n'}
+		isFirst   = true
 	)
 	mp.GetDentryTree().Ascend(func(i BtreeItem) bool {
 		if !isFirst {
-			// TODO Unhandled errors
-			w.Write(delimiter)
-		}
-		if isFirst {
+			if _, err = w.Write(delimiter); err != nil {
+				return false
+			}
+		} else {
 			isFirst = false
 		}
 		val, err = json.Marshal(i)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			// TODO Unhandled errors
 			w.Write([]byte(err.Error()))
 			return false
 		}
@@ -356,8 +357,9 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 	})
 	shouldSkip = true
 	buff.WriteString(`]}`)
-	// TODO Unhandled errors
-	w.Write(buff.Bytes())
+	if _, err = w.Write(buff.Bytes()); err != nil {
+		log.LogErrorf("[getAllDentriesHandler] response %s", err)
+	}
 	return
 }
 
@@ -365,8 +367,9 @@ func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
-		// TODO Unhandled errors
-		w.Write(data)
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getDirectoryHandler] response %s", err)
+		}
 	}()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
