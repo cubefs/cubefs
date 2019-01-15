@@ -26,7 +26,7 @@ import (
 )
 
 var (
-	NotLeaderError = errors.New("NotLeaderError")
+	NotALeaderError = errors.New("NotALeaderError")
 )
 
 const (
@@ -36,6 +36,7 @@ const (
 
 type GetReplyFunc func(conn *net.TCPConn) (err error, again bool)
 
+// StreamConn defines the struct of the stream connection.
 type StreamConn struct {
 	dp       *wrapper.DataPartition
 	currAddr string
@@ -45,6 +46,7 @@ var (
 	StreamConnPool = util.NewConnectPool()
 )
 
+// NewStreamConn returns a new stream connection.
 func NewStreamConn(dp *wrapper.DataPartition) *StreamConn {
 	return &StreamConn{
 		dp:       dp,
@@ -52,10 +54,13 @@ func NewStreamConn(dp *wrapper.DataPartition) *StreamConn {
 	}
 }
 
+// String returns the string format of the stream connection.
 func (sc *StreamConn) String() string {
 	return fmt.Sprintf("Partition(%v) CurrentAddr(%v) Hosts(%v)", sc.dp.PartitionID, sc.currAddr, sc.dp.Hosts)
 }
 
+// Send send the given packet over the network through the stream connection until success
+// or the maximum number of retries is reached.
 func (sc *StreamConn) Send(req *Packet, getReply GetReplyFunc) (err error) {
 	for i := 0; i < StreamSendMaxRetry; i++ {
 		err = sc.sendToPartition(req, getReply)
@@ -78,7 +83,7 @@ func (sc *StreamConn) sendToPartition(req *Packet, getReply GetReplyFunc) (err e
 		}
 		log.LogWarnf("sendToPartition: curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		StreamConnPool.PutConnect(conn, true)
-		if err != NotLeaderError {
+		if err != NotALeaderError {
 			return
 		}
 	}
@@ -98,7 +103,7 @@ func (sc *StreamConn) sendToPartition(req *Packet, getReply GetReplyFunc) (err e
 			return
 		}
 		StreamConnPool.PutConnect(conn, true)
-		if err != NotLeaderError {
+		if err != NotALeaderError {
 			return
 		}
 	}

@@ -34,11 +34,11 @@ const (
 
 const (
 	DefaultInodeExpiration = 120 * time.Second
-	MaxInodeCache          = 10000000
+	MaxInodeCache          = 10000000 // TODO in terms of?
 )
 
 const (
-	DentryValidDuration = 5 * time.Second
+	DentryValidDuration = 5 * time.Second // TODO explain
 )
 
 const (
@@ -46,8 +46,8 @@ const (
 )
 
 var (
-	LookupValidDuration = 0 * time.Second
-	AttrValidDuration   = 30 * time.Second
+	LookupValidDuration = 0 * time.Second // TODO explain
+	AttrValidDuration   = 30 * time.Second // TODO explain
 )
 
 func ParseError(err error) fuse.Errno {

@@ -66,7 +66,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	}
 
 	inode.fillAttr(a)
-	fileSize, gen := f.super.ec.GetFileSize(ino)
+	fileSize, gen := f.super.ec.FileSize(ino)
 	log.LogDebugf("Attr: ino(%v) fileSize(%v) gen(%v) inode.gen(%v)", ino, fileSize, gen, inode.gen)
 	if gen >= inode.gen {
 		a.Size = uint64(fileSize)
@@ -168,7 +168,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) (err error) {
 	ino := f.inode.ino
 	reqlen := len(req.Data)
-	filesize, _ := f.super.ec.GetFileSize(ino)
+	filesize, _ := f.super.ec.FileSize(ino)
 
 	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v) filesize(%v) flags(%v) fileflags(%v) req(%v)", ino, req.Offset, reqlen, filesize, req.Flags, req.FileFlags, req)
 

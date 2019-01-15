@@ -14,12 +14,15 @@
 
 package wrapper
 
+/* TODO why we need this separate package? */
+
 import (
 	"fmt"
 	"github.com/tiglabs/containerfs/proto"
 	"strings"
 )
 
+// DataPartition defines the wrapper of the data partition.
 type DataPartition struct {
 	// Will not be changed
 	proto.DataPartitionResponse
@@ -28,6 +31,7 @@ type DataPartition struct {
 	Metrics *DataPartitionMetrics
 }
 
+// DataPartitionMetrics defines the wrapper of the metrics related to the data partition.
 type DataPartitionMetrics struct {
 	WriteCnt        uint64
 	ReadCnt         uint64
@@ -37,6 +41,7 @@ type DataPartitionMetrics struct {
 	ReadLatency     float64
 }
 
+// TODO do we have any naming convention for sorted items? DataPartitionSorter?
 type DataPartitionSlice []*DataPartition
 
 func (ds DataPartitionSlice) Len() int {
@@ -49,6 +54,7 @@ func (ds DataPartitionSlice) Less(i, j int) bool {
 	return ds[i].Metrics.WriteLatency < ds[j].Metrics.WriteLatency
 }
 
+// NewDataPartitionMetrics returns a new DataPartitionMetrics instance.
 func NewDataPartitionMetrics() *DataPartitionMetrics {
 	metrics := new(DataPartitionMetrics)
 	metrics.WriteCnt = 1
@@ -56,11 +62,14 @@ func NewDataPartitionMetrics() *DataPartitionMetrics {
 	return metrics
 }
 
+// String returns the string format of the data partition.
 func (dp *DataPartition) String() string {
 	return fmt.Sprintf("PartitionID(%v) Status(%v) ReplicaNum(%v) PartitionType(%v) Hosts(%v)",
 		dp.PartitionID, dp.Status, dp.ReplicaNum, dp.PartitionType, dp.Hosts)
 }
 
+// GetAllAddrs returns the addresses of all the replicas of the data partition.
+// TODO remove m?
 func (dp *DataPartition) GetAllAddrs() (m string) {
 	return strings.Join(dp.Hosts[1:], proto.AddrSplit) + proto.AddrSplit
 }
@@ -74,6 +83,7 @@ func isExcluded(partitionId uint64, excludes []uint64) bool {
 	return false
 }
 
+// TODO unused? remove?
 func NewGetDataPartitionMetricsPacket(partitionid uint64) (p *proto.Packet) {
 	p = new(proto.Packet)
 	p.PartitionID = partitionid

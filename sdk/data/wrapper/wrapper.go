@@ -42,6 +42,7 @@ type DataPartitionView struct {
 	DataPartitions []*DataPartition
 }
 
+// Wrapper TODO explain
 type Wrapper struct {
 	sync.RWMutex
 	clusterName           string
@@ -52,6 +53,7 @@ type Wrapper struct {
 	localLeaderPartitions []*DataPartition
 }
 
+// NewDataPartitionWrapper returns a new data partition wrapper.
 func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error) {
 	masters := strings.Split(masterHosts, ",")
 	w = new(Wrapper)
@@ -74,6 +76,7 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 	return
 }
 
+// GetClusterName returns the cluster name of the wrapper.
 func (w *Wrapper) GetClusterName() string {
 	return w.clusterName
 }
@@ -205,7 +208,8 @@ func (w *Wrapper) getLocalLeaderDataPartition(exclude []uint64) (*DataPartition,
 	return nil, fmt.Errorf("no writable data partition")
 }
 
-func (w *Wrapper) GetWriteDataPartition(exclude []uint64) (*DataPartition, error) {
+// GetDataPartitionForWrite returns an available data partition for write.
+func (w *Wrapper) GetDataPartitionForWrite(exclude []uint64) (*DataPartition, error) {
 	dp, err := w.getLocalLeaderDataPartition(exclude)
 	if err == nil {
 		return dp, nil
@@ -234,6 +238,7 @@ func (w *Wrapper) GetWriteDataPartition(exclude []uint64) (*DataPartition, error
 	return nil, fmt.Errorf("no writable data partition")
 }
 
+// GetDataPartition returns the data partition based on the given partition ID. 
 func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	w.RLock()
 	defer w.RUnlock()
@@ -244,6 +249,7 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	return dp, nil
 }
 
-func (w *Wrapper) WarningKey() string {
+// WarningMsg returns the warning message that contains the cluster name.
+func (w *Wrapper) WarningMsg() string {
 	return fmt.Sprintf("%s_client_warning", w.clusterName)
 }

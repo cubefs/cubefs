@@ -185,7 +185,7 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, storage.NotALeaderError.Error()) {
-		p.ResultCode = proto.OpNotLeaderErr
+		p.ResultCode = proto.OpNotALeaderErr
 	} else if strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) {
 		if p.Opcode != proto.OpWrite {
 			p.ResultCode = proto.OpNotExistErr

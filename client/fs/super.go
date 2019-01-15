@@ -27,6 +27,7 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 )
 
+// Super defines the struct of a super block.
 type Super struct {
 	cluster string
 	volname string
