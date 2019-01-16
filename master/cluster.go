@@ -44,7 +44,7 @@ type Cluster struct {
 	metaNodeStatInfo    *nodeStatInfo
 	volStatInfo         sync.Map
 	BadDataPartitionIds *sync.Map
-	ShouldAutoAllocate  bool // Yes: true, No: false
+	DisableAutoAllocate bool
 	fsm                 *MetadataFsm
 	partition           raftstore.Partition
 }
@@ -62,7 +62,6 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.fsm = fsm
 	c.partition = partition
 	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
-
 	return
 }
 
@@ -1096,6 +1095,28 @@ func (c *Cluster) getDataPartitionCount() (count int) {
 	defer c.volMutex.RUnlock()
 	for _, vol := range c.vols {
 		count = count + len(vol.dataPartitions.partitions)
+	}
+	return
+}
+
+func (c *Cluster) setMetaNodeThreshold(threshold float32) (err error) {
+	oldThreshold := c.cfg.MetaNodeThreshold
+	c.cfg.MetaNodeThreshold = threshold
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMetaNodeThreshold] err[%v]", err)
+		c.cfg.MetaNodeThreshold = oldThreshold
+		return
+	}
+	return
+}
+
+func (c *Cluster) setDisableAutoAllocate(disableAutoAllocate bool) (err error) {
+	oldFlag := c.DisableAutoAllocate
+	c.DisableAutoAllocate = disableAutoAllocate
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setDisableAutoAllocate] err[%v]", err)
+		c.DisableAutoAllocate = oldFlag
+		return
 	}
 	return
 }

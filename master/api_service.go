@@ -66,9 +66,16 @@ type NodeView struct {
 
 // TopologyView provides the view of the topology view of the cluster
 type TopologyView struct {
+	NodeSet map[uint64]*nodeSetView
+}
+
+type nodeSetView struct {
 	DataNodes []NodeView
 	MetaNodes []NodeView
-	NodeSet   []uint64
+}
+
+func newNodeSetView() *nodeSetView {
+	return &nodeSetView{DataNodes: make([]NodeView, 0), MetaNodes: make([]NodeView, 0)}
 }
 
 type badPartitionView struct {
@@ -77,7 +84,7 @@ type badPartitionView struct {
 }
 
 // Set the threshold of the memory usage on each meta node.
-// If the memory usage reaches this threshold, them all the mata partition will be marked as readOnly.
+// If the memory usage reaches this threshold, then all the mata partition will be marked as readOnly.
 func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
 	var (
 		threshold float64
@@ -86,7 +93,9 @@ func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
 	if threshold, err = parseAndExtractThreshold(r); err != nil {
 		goto errHandler
 	}
-	m.cluster.cfg.MetaNodeThreshold = float32(threshold)
+	if err = m.cluster.setMetaNodeThreshold(float32(threshold)); err != nil {
+		goto errHandler
+	}
 	m.sendOkReply(w, r, fmt.Sprintf("set threshold to %v successfully", threshold))
 	return
 errHandler:
@@ -96,11 +105,11 @@ errHandler:
 }
 
 // Turn on or off the automatic allocation of the data partitions.
-// If ShouldAutoAllocate == off, then we WILL NOT automatically allocate new data partitions for the volume when:
+// If DisableAutoAllocate == off, then we WILL NOT automatically allocate new data partitions for the volume when:
 // 	1. the used space is below the max capacity,
 //	2. and the number of r&w data partition is less than 20.
 //
-// If ShouldAutoAllocate == on, then we WILL automatically allocate new data partitions for the volume when:
+// If DisableAutoAllocate == on, then we WILL automatically allocate new data partitions for the volume when:
 // 	1. the used space is below the max capacity,
 //	2. and the number of r&w data partition is less than 20.
 func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
@@ -111,8 +120,10 @@ func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 	if status, err = parseAndExtractStatus(r); err != nil {
 		goto errHandler
 	}
-	m.cluster.ShouldAutoAllocate = status
-	if _, err = io.WriteString(w, fmt.Sprintf("set ShouldAutoAllocate to %v successfully", status)); err != nil {
+	if err = m.cluster.setDisableAutoAllocate(status); err != nil {
+		goto errHandler
+	}
+	if _, err = io.WriteString(w, fmt.Sprintf("set DisableAutoAllocate to %v successfully", status)); err != nil {
 		log.LogErrorf("action[setupAutoAllocation] send to client occurred error[%v]", err)
 	}
 	return
@@ -129,23 +140,26 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 		err  error
 	)
 	tv := &TopologyView{
-		DataNodes: make([]NodeView, 0),
-		MetaNodes: make([]NodeView, 0),
-		NodeSet:   make([]uint64, 0),
+		NodeSet: make(map[uint64]*nodeSetView, 0),
 	}
 	m.cluster.t.metaNodes.Range(func(key, value interface{}) bool {
 		metaNode := value.(*topoMetaNode)
-		tv.MetaNodes = append(tv.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive})
+		nsView, ok := tv.NodeSet[metaNode.setID]
+		if !ok {
+			nsView = newNodeSetView()
+		}
+		nsView.MetaNodes = append(nsView.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive})
 		return true
 	})
 	m.cluster.t.dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*topoDataNode)
-		tv.DataNodes = append(tv.DataNodes, NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive})
+		nsView, ok := tv.NodeSet[dataNode.setID]
+		if !ok {
+			nsView = newNodeSetView()
+		}
+		nsView.DataNodes = append(nsView.DataNodes, NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive})
 		return true
 	})
-	for _, ns := range m.cluster.t.nodeSetMap {
-		tv.NodeSet = append(tv.NodeSet, ns.ID)
-	}
 	if body, err = json.Marshal(tv); err != nil {
 		goto errHandler
 	}
@@ -153,7 +167,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 	return
 
 errHandler:
-	logMsg := newLogMsg("getCluster", r.RemoteAddr, err.Error(), http.StatusBadRequest)
+	logMsg := newLogMsg("getTopology", r.RemoteAddr, err.Error(), http.StatusBadRequest)
 	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
 	return
 }
@@ -166,7 +180,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	cv := &ClusterView{
 		Name:               m.cluster.Name,
 		LeaderAddr:         m.leaderInfo.addr,
-		DisableAutoAlloc:   m.cluster.ShouldAutoAllocate,
+		DisableAutoAlloc:   m.cluster.DisableAutoAllocate,
 		Applied:            m.fsm.applied,
 		MaxDataPartitionID: m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:      m.cluster.idAlloc.commonID,

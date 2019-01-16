@@ -30,12 +30,16 @@ import (
    transferred over the network. */
 
 type clusterValue struct {
-	Name string
+	Name                string
+	Threshold           float32
+	DisableAutoAllocate bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
 	cv = &clusterValue{
-		Name: c.Name,
+		Name:                c.Name,
+		Threshold:           c.cfg.MetaNodeThreshold,
+		DisableAutoAllocate: c.DisableAutoAllocate,
 	}
 	return cv
 }
@@ -457,6 +461,8 @@ func (c *Cluster) applyPutCluster(cmd *RaftCmd) (err error) {
 		log.LogErrorf("action[applyPutCluster],err:%v", err.Error())
 		return
 	}
+	c.cfg.MetaNodeThreshold = cv.Threshold
+	c.DisableAutoAllocate = cv.DisableAutoAllocate
 	return
 }
 
@@ -673,6 +679,24 @@ func (c *Cluster) applyUpdateDataPartition(cmd *RaftCmd) (err error) {
 	}
 	dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 	dp.Peers = dpv.Peers
+	return
+}
+
+func (c *Cluster) loadClusterValue() (err error) {
+	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadClusterValue],err:%v", err.Error())
+		return err
+	}
+	for _, value := range result {
+		cv := &clusterValue{}
+		if err = json.Unmarshal(value, cv); err != nil {
+			log.LogErrorf("action[loadClusterValue], unmarshal err:%v", err.Error())
+			return err
+		}
+		c.cfg.MetaNodeThreshold = cv.Threshold
+		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
+	}
 	return
 }
 

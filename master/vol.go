@@ -250,7 +250,7 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 	}
 	vol.setStatus(normal)
 
-	if vol.status() == normal && !c.ShouldAutoAllocate {
+	if vol.status() == normal && !c.DisableAutoAllocate {
 		vol.autoCreateDataPartitions(c)
 	}
 }

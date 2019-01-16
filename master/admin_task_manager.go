@@ -108,7 +108,6 @@ func (sender *AdminTaskManager) getToBeDeletedTasks() (delTasks []*proto.AdminTa
 func (sender *AdminTaskManager) doSendTasks() {
 	tasks := sender.getToDoTasks()
 	if len(tasks) == 0 {
-		time.Sleep(time.Second)
 		return
 	}
 	sender.sendTasks(tasks)
@@ -194,29 +193,6 @@ func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask, conn ne
 	return packet.Data, nil
 }
 
-// Synchronously create a data partition and a meta partition.
-func (sender *AdminTaskManager) syncCreatePartition(task *proto.AdminTask, conn net.Conn) (err error) {
-	log.LogInfof(fmt.Sprintf("action[syncCreatePartition] sender task:%v begin", task.ToString()))
-	packet, err := sender.buildPacket(task)
-	if err != nil {
-		return errors.Annotatef(err, "action[syncCreatePartition build packet failed,task:%v]", task.ID)
-	}
-	if err = packet.WriteToConn(conn); err != nil {
-		return errors.Annotatef(err, "action[syncCreatePartition],WriteToConn failed,task:%v", task.ID)
-	}
-	if err = packet.ReadFromConn(conn, proto.SyncSendTaskDeadlineTime); err != nil {
-		return errors.Annotatef(err, "action[syncCreatePartition],ReadFromConn failed task:%v", task.ID)
-	}
-	if packet.ResultCode != proto.OpOk {
-		err = fmt.Errorf(string(packet.Data))
-		log.LogErrorf("action[syncCreatePartition],task:%v get response err[%v],", task.ID, err)
-		return
-	}
-	log.LogInfof(fmt.Sprintf("action[syncCreatePartition] sender task:%v success", task.ToString()))
-
-	return nil
-}
-
 // DelTask deletes the to-be-deleted tasks.
 func (sender *AdminTaskManager) DelTask(t *proto.AdminTask) {
 	sender.Lock()
@@ -251,7 +227,6 @@ func (sender *AdminTaskManager) getToDoTasks() (tasks []*proto.AdminTask) {
 		if t.IsHeartbeatTask() && t.CheckTaskNeedSend() == true {
 			tasks = append(tasks, t)
 			t.SendTime = time.Now().Unix()
-			t.SendCount++
 		}
 	}
 	// send urgent task immediately
@@ -259,12 +234,12 @@ func (sender *AdminTaskManager) getToDoTasks() (tasks []*proto.AdminTask) {
 		if t.IsUrgentTask() && t.CheckTaskNeedSend() == true {
 			tasks = append(tasks, t)
 			t.SendTime = time.Now().Unix()
-			t.SendCount++
 		}
 	}
 	for _, task := range sender.TaskMap {
 		if !task.IsHeartbeatTask() && !task.IsUrgentTask() && task.CheckTaskNeedSend() {
 			tasks = append(tasks, task)
+			task.SendTime = time.Now().Unix()
 		}
 		if len(tasks) > MaxTaskNum {
 			break
