@@ -202,7 +202,7 @@ func (mp *metaPartition) InodeGetAuth(ino uint64, p *Packet) (err error) {
 	resp := mp.getInode(NewInode(ino, 0))
 	status := resp.Status
 	if status != proto.OpOk {
-		p.PackErrorWithBody(status, nil)
+		p.PacketErrorWithBody(status, nil)
 		return
 	}
 	authID, timeout := resp.Msg.GetAuth()
@@ -213,7 +213,7 @@ func (mp *metaPartition) InodeGetAuth(ino uint64, p *Packet) (err error) {
 	if err != nil {
 		status = proto.OpErr
 	}
-	p.PackErrorWithBody(status, data)
+	p.PacketErrorWithBody(status, data)
 	return
 }
 
