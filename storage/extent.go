@@ -252,8 +252,8 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, crcFunc Upda
 		return
 	}
 
-	e.lock.Lock()
-	defer e.lock.Unlock()
+	e.lock.RLock()
+	defer e.lock.RUnlock()
 	if err = e.checkOffsetAndSize(offset, size); err != nil {
 		return
 	}
