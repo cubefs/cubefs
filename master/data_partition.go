@@ -95,7 +95,7 @@ func (partition *DataPartition) createTaskToDeleteDataPartition(addr string) (ta
 func (partition *DataPartition) createTaskToDecommissionDataPartition(removePeer proto.Peer, addPeer proto.Peer) (task *proto.AdminTask, err error) {
 	leaderAddr := partition.getLeaderAddr()
 	if leaderAddr == "" {
-		err = ErrNoLeader
+		err = proto.ErrNoLeader
 		return
 	}
 	task = proto.NewAdminTask(proto.OpDecommissionDataPartition, leaderAddr, newOfflineDataPartitionRequest(partition.PartitionID, removePeer, addPeer))
@@ -112,8 +112,8 @@ func (partition *DataPartition) hasMissingOneReplica(replicaNum int) (err error)
 	hostNum := len(partition.Replicas)
 	if hostNum <= replicaNum-1 {
 		log.LogError(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
-			"hasMissingOneReplica", partition.PartitionID, ErrHasOneMissingReplica))
-		err = ErrHasOneMissingReplica
+			"hasMissingOneReplica", partition.PartitionID, proto.ErrHasOneMissingReplica))
+		err = proto.ErrHasOneMissingReplica
 	}
 	return
 }
@@ -132,7 +132,7 @@ func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 	}
 
 	if len(otherLiveReplicas) < int(partition.ReplicaNum/2) {
-		msg = fmt.Sprintf(msg+" err:%v  liveReplicas:%v ", ErrCannotBeOffLine, len(liveReplicas))
+		msg = fmt.Sprintf(msg+" err:%v  liveReplicas:%v ", proto.ErrCannotBeOffLine, len(liveReplicas))
 		log.LogError(msg)
 		err = fmt.Errorf(msg)
 	}
@@ -239,8 +239,8 @@ func (partition *DataPartition) getReplica(addr string) (replica *DataReplica, e
 	return nil, errors.Annotatef(dataReplicaNotFound(addr), "%v not found", addr)
 }
 
-func (partition *DataPartition) convertToDataPartitionResponse() (dpr *DataPartitionResponse) {
-	dpr = new(DataPartitionResponse)
+func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.DataPartitionResponse) {
+	dpr = new(proto.DataPartitionResponse)
 	partition.Lock()
 	defer partition.Unlock()
 	dpr.PartitionID = partition.PartitionID
