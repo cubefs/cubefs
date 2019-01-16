@@ -12,7 +12,6 @@ response
 {
     "Name": "containerfs",
     "LeaderAddr": "127.0.0.1:80",
-    "CompactStatus": false,
     "DisableAutoAlloc": false,
     "Applied": 225,
     "MaxDataPartitionID": 100,

@@ -35,7 +35,6 @@ import (
 type ClusterView struct {
 	Name               string
 	LeaderAddr         string
-	CompactStatus      bool
 	DisableAutoAlloc   bool
 	Applied            uint64
 	MaxDataPartitionID uint64
@@ -149,6 +148,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 			nsView = newNodeSetView()
 		}
 		nsView.MetaNodes = append(nsView.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive})
+		tv.NodeSet[metaNode.setID] = nsView
 		return true
 	})
 	m.cluster.t.dataNodes.Range(func(key, value interface{}) bool {
@@ -158,6 +158,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 			nsView = newNodeSetView()
 		}
 		nsView.DataNodes = append(nsView.DataNodes, NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive})
+		tv.NodeSet[dataNode.setID] = nsView
 		return true
 	})
 	if body, err = json.Marshal(tv); err != nil {
