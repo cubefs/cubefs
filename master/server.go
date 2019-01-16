@@ -24,6 +24,7 @@ import (
 	"net/http/httputil"
 	"strconv"
 	"sync"
+	"github.com/tiglabs/containerfs/proto"
 )
 
 // configuration keys
@@ -111,10 +112,10 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.storeDir = cfg.GetString(StoreDir)
 	peerAddrs := cfg.GetString(cfgPeers)
 	if m.ip == "" || m.port == "" || m.walDir == "" || m.storeDir == "" || m.clusterName == "" || peerAddrs == "" {
-		return fmt.Errorf("%v,err:%v", ErrBadConf, "one of (ip,port,walDir,storeDir,clusterName) is null")
+		return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, "one of (ip,port,walDir,storeDir,clusterName) is null")
 	}
 	if m.id, err = strconv.ParseUint(cfg.GetString(ID), 10, 64); err != nil {
-		return fmt.Errorf("%v,err:%v", ErrBadConf, err.Error())
+		return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 	}
 	if err = m.config.parsePeers(peerAddrs); err != nil {
 		return
@@ -122,7 +123,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	nodeSetCapacity := cfg.GetString(nodeSetCapacity)
 	if nodeSetCapacity != "" {
 		if m.config.nodeSetCapacity, err = strconv.Atoi(nodeSetCapacity); err != nil {
-			return fmt.Errorf("%v,err:%v", ErrBadConf, err.Error())
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
 	if m.config.nodeSetCapacity < 3 {
@@ -131,7 +132,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	retainLogs := cfg.GetString(CfgRetainLogs)
 	if retainLogs != "" {
 		if m.retainLogs, err = strconv.ParseUint(retainLogs, 10, 64); err != nil {
-			return fmt.Errorf("%v,err:%v", ErrBadConf, err.Error())
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
 	if m.retainLogs <= 0 {
@@ -142,21 +143,21 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	missingDataPartitionInterval := cfg.GetString(missingDataPartitionInterval)
 	if missingDataPartitionInterval != "" {
 		if m.config.MissingDataPartitionInterval, err = strconv.ParseInt(missingDataPartitionInterval, 10, 0); err != nil {
-			return fmt.Errorf("%v,err:%v", ErrBadConf, err.Error())
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
 
 	dataPartitionTimeOutSec := cfg.GetString(dataPartitionTimeOutSec)
 	if dataPartitionTimeOutSec != "" {
 		if m.config.DataPartitionTimeOutSec, err = strconv.ParseInt(dataPartitionTimeOutSec, 10, 0); err != nil {
-			return fmt.Errorf("%v,err:%v", ErrBadConf, err.Error())
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
 
 	numberOfDataPartitionsToLoad := cfg.GetString(NumberOfDataPartitionsToLoad)
 	if numberOfDataPartitionsToLoad != "" {
 		if m.config.numberOfDataPartitionsToLoad, err = strconv.Atoi(numberOfDataPartitionsToLoad); err != nil {
-			return fmt.Errorf("%v,err:%v", ErrBadConf, err.Error())
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
 	if m.config.numberOfDataPartitionsToLoad <= 40 {
@@ -164,7 +165,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	}
 	if secondsToFreeDP := cfg.GetString(secondsToFreeDataPartitionAfterLoad); secondsToFreeDP != "" {
 		if m.config.secondsToFreeDataPartitionAfterLoad, err = strconv.ParseInt(secondsToFreeDP, 10, 64); err != nil {
-			return fmt.Errorf("%v,err:%v", ErrBadConf, err.Error())
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
 

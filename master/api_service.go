@@ -17,7 +17,6 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 
@@ -59,9 +58,10 @@ type VolStatView struct {
 
 // NodeView provides the view of the data or meta node.
 type NodeView struct {
-	Addr   string
-	Status bool
-	ID     uint64
+	Addr       string
+	Status     bool
+	ID         uint64
+	IsWritable bool
 }
 
 // TopologyView provides the view of the topology view of the cluster
@@ -91,17 +91,14 @@ func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
 		err       error
 	)
 	if threshold, err = parseAndExtractThreshold(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 	if err = m.cluster.setMetaNodeThreshold(float32(threshold)); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
-	m.sendOkReply(w, r, fmt.Sprintf("set threshold to %v successfully", threshold))
-	return
-errHandler:
-	logMsg := newLogMsg("setMetaNodeThreshold", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set threshold to %v successfully", threshold)))
 }
 
 // Turn on or off the automatic allocation of the data partitions.
@@ -118,27 +115,18 @@ func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 		err    error
 	)
 	if status, err = parseAndExtractStatus(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 	if err = m.cluster.setDisableAutoAllocate(status); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
-	if _, err = io.WriteString(w, fmt.Sprintf("set DisableAutoAllocate to %v successfully", status)); err != nil {
-		log.LogErrorf("action[setupAutoAllocation] send to client occurred error[%v]", err)
-	}
-	return
-errHandler:
-	logMsg := newLogMsg("setupAutoAllocation", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set DisableAutoAllocate to %v successfully", status)))
 }
 
 // View the topology of the cluster.
 func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
-	var (
-		body []byte
-		err  error
-	)
 	tv := &TopologyView{
 		NodeSet: make(map[uint64]*nodeSetView, 0),
 	}
@@ -148,7 +136,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			nsView = newNodeSetView()
 		}
-		nsView.MetaNodes = append(nsView.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive})
+		nsView.MetaNodes = append(nsView.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
 		tv.NodeSet[metaNode.setID] = nsView
 		return true
 	})
@@ -158,27 +146,14 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			nsView = newNodeSetView()
 		}
-		nsView.DataNodes = append(nsView.DataNodes, NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive})
+		nsView.DataNodes = append(nsView.DataNodes, NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
 		tv.NodeSet[dataNode.setID] = nsView
 		return true
 	})
-	if body, err = json.Marshal(tv); err != nil {
-		goto errHandler
-	}
-	m.sendOkReply(w, r, string(body))
-	return
-
-errHandler:
-	logMsg := newLogMsg("getTopology", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(tv))
 }
 
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
-	var (
-		body []byte
-		err  error
-	)
 	cv := &ClusterView{
 		Name:               m.cluster.Name,
 		LeaderAddr:         m.leaderInfo.addr,
@@ -214,56 +189,31 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		cv.BadPartitionIDs = append(cv.BadPartitionIDs, bpv)
 		return true
 	})
-
-	if body, err = json.Marshal(cv); err != nil {
-		goto errHandler
-	}
-	m.sendOkReply(w, r, string(body))
-	return
-
-errHandler:
-	logMsg := newLogMsg("getCluster", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(cv))
 }
 
 func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 	cInfo := &proto.ClusterInfo{Cluster: m.cluster.Name, Ip: strings.Split(r.RemoteAddr, ":")[0]}
-	cInfoBytes, err := json.Marshal(cInfo)
-	if err != nil {
-		goto errHandler
-	}
-	if _, err = w.Write(cInfoBytes); err != nil {
-		log.LogErrorf("action[getIPAddr] sent to client occurred error[%v]", err)
-	}
-	return
-errHandler:
-	rstMsg := newLogMsg("getIPAddr", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, rstMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
 
 func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName string
 		start   uint64
-		rstMsg  string
 		err     error
 	)
 
 	if volName, start, err = validateRequestToCreateMetaPartition(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 
 	if err = m.cluster.updateInodeIDRange(volName, start); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
-	m.sendOkReply(w, r, fmt.Sprint("create meta partition successfully"))
-	return
-errHandler:
-	rstMsg = newLogMsg("createMetaPartition", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, rstMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprint("create meta partition successfully")))
 }
 
 func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
@@ -278,11 +228,13 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if reqCreateCount, volName, err = parseRequestToCreateDataPartition(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 
 	if vol, err = m.cluster.getVol(volName); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
 	}
 	lastTotalDataPartitions = len(vol.dataPartitions.partitions)
 	clusterTotalDataPartitions = m.cluster.getDataPartitionCount()
@@ -295,37 +247,28 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	rstMsg = fmt.Sprintf(" createDataPartition succeeeds. "+
 		"clusterLastTotalDataPartitions[%v],vol[%v] has %v data partitions previously and %v data partitions now",
 		clusterTotalDataPartitions, volName, lastTotalDataPartitions, len(vol.dataPartitions.partitions))
-	m.sendOkReply(w, r, rstMsg)
-	return
-errHandler:
-	rstMsg = newLogMsg("createDataPartition", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, rstMsg, err)
-	return
+	if err != nil {
+		rstMsg = fmt.Sprintf("%v \n err[%v]", rstMsg, err.Error())
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
 func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
-		body        []byte
 		dp          *DataPartition
 		partitionID uint64
 		err         error
 	)
 	if partitionID, err = parseRequestToGetDataPartition(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 
 	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+		return
 	}
-	if body, err = dp.toJSON(); err != nil {
-		goto errHandler
-	}
-	m.sendOkReply(w, r, string(body))
-	return
-errHandler:
-	logMsg := newLogMsg("getDataPartition", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(dp))
 }
 
 // Load the data partition.
@@ -338,21 +281,18 @@ func (m *Server) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if partitionID, err = parseRequestToLoadDataPartition(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 
 	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+		return
 	}
 
 	m.cluster.loadDataPartition(dp)
 	msg = fmt.Sprintf(proto.AdminLoadDataPartition+"partitionID :%v  load data partition successfully", partitionID)
-	m.sendOkReply(w, r, msg)
-	return
-errHandler:
-	logMsg := newLogMsg(proto.AdminLoadDataPartition, r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
 // Decommission a data partition. This usually happens when disk error has been reported.
@@ -367,21 +307,19 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 	)
 
 	if addr, partitionID, err = parseRequestToDecommissionDataPartition(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+		return
 	}
 	if err = m.cluster.decommissionDataPartition(addr, dp, handleDataPartitionOfflineErr); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 	rstMsg = fmt.Sprintf(proto.AdminDecommissionDataPartition+" dataPartitionID :%v  on node:%v successfully", partitionID, addr)
-	m.sendOkReply(w, r, rstMsg)
-	return
-errHandler:
-	logMsg := newLogMsg(proto.AdminDecommissionDataPartition, r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
 // Mark the volume as deleted, which will then be deleted later.
@@ -393,20 +331,16 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if name, err = parseRequestToDeleteVol(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 	if err = m.cluster.markDeleteVol(name); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 	msg = fmt.Sprintf("delete vol[%v] successfully,from[%v]", name, r.RemoteAddr)
 	log.LogWarn(msg)
-	m.sendOkReply(w, r, msg)
-	return
-
-errHandler:
-	logMsg := newLogMsg("markDelete", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
 func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
@@ -417,18 +351,15 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		capacity int
 	)
 	if name, capacity, err = parseRequestToUpdateVol(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 	if err = m.cluster.updateVol(name, capacity); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 	msg = fmt.Sprintf("update vol[%v] successfully\n", name)
-	m.sendOkReply(w, r, msg)
-	return
-errHandler:
-	logMsg := newLogMsg("updateVol", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
 func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
@@ -442,22 +373,15 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if name, size, capacity, err = parseRequestToCreateVol(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
-	if err = m.cluster.createVol(name, size, capacity); err != nil {
-		goto errHandler
-	}
-	if vol, err = m.cluster.getVol(name); err != nil {
-		goto errHandler
+	if vol, err = m.cluster.createVol(name, size, capacity); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 	msg = fmt.Sprintf("create vol[%v] successfully, has allocate [%v] data partitionMap", name, len(vol.dataPartitions.partitions))
-	m.sendOkReply(w, r, msg)
-	return
-
-errHandler:
-	logMsg := newLogMsg("createVol", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
 func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
@@ -467,43 +391,33 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 		err      error
 	)
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 
 	if id, err = m.cluster.addDataNode(nodeAddr); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
-	m.sendOkReply(w, r, fmt.Sprintf("%v", id))
-	return
-errHandler:
-	logMsg := newLogMsg("addDataNode", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", id)))
 }
 
 func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
 		dataNode *DataNode
-		body     []byte
 		err      error
 	)
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 
 	if dataNode, err = m.cluster.dataNode(nodeAddr); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
 	}
-	if body, err = dataNode.toJSON(); err != nil {
-		goto errHandler
-	}
-	m.sendOkReply(w, r, string(body))
-	return
-errHandler:
-	logMsg := newLogMsg("dataNode", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(dataNode))
 }
 
 // Decommission a data node. This will decommission all the data partition on that node.
@@ -516,22 +430,20 @@ func (m *Server) dataNodeOffline(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 
 	if node, err = m.cluster.dataNode(offLineAddr); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
 	}
 	if err = m.cluster.dataNodeOffLine(node); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 	rstMsg = fmt.Sprintf("decommission data node [%v] successfully", offLineAddr)
-	m.sendOkReply(w, r, rstMsg)
-	return
-errHandler:
-	logMsg := newLogMsg("decommissionDataNode", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
 // Decommission a disk. This will decommission all the data partitions on this disk.
@@ -545,62 +457,40 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if offLineAddr, diskPath, err = parseRequestToDecommissionNode(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 
 	if node, err = m.cluster.dataNode(offLineAddr); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
 	}
 	badPartitionIds = node.badPartitionIDs(diskPath)
 	if len(badPartitionIds) == 0 {
 		err = fmt.Errorf("node[%v] disk[%v] does not have any data partition", node.Addr, diskPath)
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 	rstMsg = fmt.Sprintf("recive decommissionDisk node[%v] disk[%v], badPartitionIds[%v] has offline successfully",
 		node.Addr, diskPath, badPartitionIds)
 	m.cluster.BadDataPartitionIds.Store(fmt.Sprintf("%s:%s", offLineAddr, diskPath), badPartitionIds)
 	if err = m.cluster.decommissionDisk(node, diskPath, badPartitionIds); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
-	m.sendOkReply(w, r, rstMsg)
 	Warn(m.clusterName, rstMsg)
-	return
-errHandler:
-	logMsg := newLogMsg("decommissionDisk", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
 // handle tasks such as heartbeat，loadDataPartition，deleteDataPartition, etc.
 func (m *Server) handleDataNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
-	var (
-		dataNode *DataNode
-		code     = http.StatusOK
-		tr       *proto.AdminTask
-		err      error
-	)
-
-	if tr, err = parseRequestToGetTaskResponse(r); err != nil {
-		code = http.StatusBadRequest
-		goto errHandler
+	tr, err := parseRequestToGetTaskResponse(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
-	if _, err = io.WriteString(w, fmt.Sprintf("%v", http.StatusOK)); err != nil {
-		log.LogErrorf("action[handleDataNodeTaskResponse] occurred error[%v]", err)
-	}
-	if dataNode, err = m.cluster.dataNode(tr.OperatorAddr); err != nil {
-		code = http.StatusInternalServerError
-		goto errHandler
-	}
-
-	m.cluster.handleDataNodeTaskResponse(dataNode.Addr, tr)
-
-	return
-
-errHandler:
-	logMsg := newLogMsg("handleDataNodeTaskResponse", r.RemoteAddr, err.Error(),
-		http.StatusBadRequest)
-	m.sendErrReply(w, r, code, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
+	m.cluster.handleDataNodeTaskResponse(tr.OperatorAddr, tr)
 }
 
 func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
@@ -610,43 +500,33 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 		err      error
 	)
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 
 	if id, err = m.cluster.addMetaNode(nodeAddr); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
-	m.sendOkReply(w, r, fmt.Sprintf("%v", id))
-	return
-errHandler:
-	logMsg := newLogMsg("addMetaNode", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", id)))
 }
 
 func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
 		metaNode *MetaNode
-		body     []byte
 		err      error
 	)
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 
 	if metaNode, err = m.cluster.metaNode(nodeAddr); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
+		return
 	}
-	if body, err = metaNode.toJSON(); err != nil {
-		goto errHandler
-	}
-	m.sendOkReply(w, r, string(body))
-	return
-errHandler:
-	logMsg := newLogMsg("dataNode", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(metaNode))
 }
 
 func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Request) {
@@ -658,21 +538,19 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 		err         error
 	)
 	if nodeAddr, partitionID, err = parseRequestToDecommissionMetaPartition(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
+		return
 	}
 	if err = m.cluster.decommissionMetaPartition(nodeAddr, mp); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 	msg = fmt.Sprintf(proto.AdminLoadMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", partitionID)
-	m.sendOkReply(w, r, msg)
-	return
-errHandler:
-	logMsg := newLogMsg(proto.AdminDecommissionMetaPartition, r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
 func (m *Server) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
@@ -684,21 +562,18 @@ func (m *Server) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if partitionID, err = parseRequestToLoadMetaPartition(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 
 	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
+		return
 	}
 
 	m.cluster.loadMetaPartitionAndCheckResponse(mp)
 	msg = fmt.Sprintf(proto.AdminLoadMetaPartition+" partitionID :%v Load successfully", partitionID)
-	m.sendOkReply(w, r, msg)
-	return
-errHandler:
-	logMsg := newLogMsg(proto.AdminLoadMetaPartition, r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
 func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {
@@ -710,51 +585,27 @@ func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 
 	if metaNode, err = m.cluster.metaNode(offLineAddr); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
+		return
 	}
 	m.cluster.decommissionMetaNode(metaNode)
 	rstMsg = fmt.Sprintf("decommissionMetaNode metaNode [%v] has offline successfully", offLineAddr)
-	m.sendOkReply(w, r, rstMsg)
-	return
-errHandler:
-	logMsg := newLogMsg("decommissionMetaNode", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
 func (m *Server) handleMetaNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
-	var (
-		metaNode *MetaNode
-		code     = http.StatusOK
-		tr       *proto.AdminTask
-		err      error
-	)
-
-	if tr, err = parseRequestToGetTaskResponse(r); err != nil {
-		code = http.StatusBadRequest
-		goto errHandler
+	tr, err := parseRequestToGetTaskResponse(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
-
-	if _, err = io.WriteString(w, fmt.Sprintf("%v", http.StatusOK)); err != nil {
-		log.LogErrorf("action[handleMetaNodeTaskResponse],send to client occurred error[%v]", err)
-	}
-
-	if metaNode, err = m.cluster.metaNode(tr.OperatorAddr); err != nil {
-		code = http.StatusInternalServerError
-		goto errHandler
-	}
-	m.cluster.handleMetaNodeTaskResponse(metaNode.Addr, tr)
-	return
-
-errHandler:
-	logMsg := newLogMsg("handleMetaNodeTaskResponse", r.RemoteAddr, err.Error(),
-		http.StatusBadRequest)
-	HandleError(logMsg, err, code, w)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
+	m.cluster.handleMetaNodeTaskResponse(tr.OperatorAddr, tr)
 }
 
 // Dynamically add a raft node (replica) for the master.
@@ -763,19 +614,16 @@ func (m *Server) addRaftNode(w http.ResponseWriter, r *http.Request) {
 	var msg string
 	id, addr, err := parseRequestForRaftNode(r)
 	if err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 
 	if err = m.cluster.addRaftNode(id, addr); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 	msg = fmt.Sprintf("add  raft node id :%v, addr:%v successfully \n", id, addr)
-	m.sendOkReply(w, r, msg)
-	return
-errHandler:
-	logMsg := newLogMsg("add raft node", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
 // Dynamically remove a master node. Similar to addRaftNode, this operation is performed online.
@@ -783,19 +631,16 @@ func (m *Server) removeRaftNode(w http.ResponseWriter, r *http.Request) {
 	var msg string
 	id, addr, err := parseRequestForRaftNode(r)
 	if err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 	err = m.cluster.removeRaftNode(id, addr)
 	if err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 	msg = fmt.Sprintf("remove  raft node id :%v,adr:%v successfully\n", id, addr)
-	m.sendOkReply(w, r, msg)
-	return
-errHandler:
-	logMsg := newLogMsg("remove raft node", r.RemoteAddr, err.Error(), http.StatusBadRequest)
-	m.sendErrReply(w, r, http.StatusBadRequest, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
 // Parse the request that adds/deletes a raft node.
@@ -1048,198 +893,142 @@ func validateRequestToCreateMetaPartition(r *http.Request) (volName string, star
 	return
 }
 
-func (m *Server) sendOkReply(w http.ResponseWriter, r *http.Request, msg string) {
-	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
-	w.Header().Set("content-type", "application/json")
-	w.Header().Set("Content-Length", strconv.Itoa(len(msg)))
+func newSuccessHTTPReply(data interface{}) *proto.HTTPReply {
+	return &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: proto.ErrSuc.Error(), Data: data}
+}
 
-	if _, err := w.Write([]byte(msg)); err != nil {
-		log.LogErrorf("URL[%v],remoteAddr[%v],send to client occurred error[%v]", r.URL, r.RemoteAddr, err)
+func newErrHTTPReply(err error) *proto.HTTPReply {
+	if err == nil {
+		return newSuccessHTTPReply("")
+	}
+	code, ok := proto.Err2CodeMap[err]
+	if ok {
+		return &proto.HTTPReply{Code: code, Msg: err.Error()}
+	}
+	return &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()}
+}
+
+func sendReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) (err error) {
+	reply, err := json.Marshal(httpReply)
+	if err != nil {
+		log.LogErrorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", httpReply, r.URL, r.RemoteAddr, err)
+		http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("content-type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(reply)))
+	if _, err = w.Write(reply); err != nil {
+		log.LogErrorf("fail to write http reply[%s] len[%d].URL[%v],remoteAddr[%v] err:[%v]", string(reply), len(reply), r.URL, r.RemoteAddr, err)
+	}
+	return
+}
+
+func sendOkReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) {
+	if err := sendReply(w, r, httpReply); err == nil {
+		log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
 	}
 }
 
-func (m *Server) sendErrReply(w http.ResponseWriter, r *http.Request, httpCode int, msg string, err error) {
-	log.LogInfof("URL[%v],remoteAddr[%v],response err[%v]", r.URL, r.RemoteAddr, err)
-	HandleError(msg, err, httpCode, w)
-}
-
-// VolStatInfo defines the statistics related to a volume
-type VolStatInfo struct {
-	Name      string
-	TotalSize uint64
-	UsedSize  uint64
-}
-
-// DataPartitionResponse defines the response from a data node to the master that is related to a data partition.
-type DataPartitionResponse struct {
-	PartitionID uint64
-	Status      int8
-	ReplicaNum  uint8
-	Hosts       []string
-	LeaderAddr  string
-}
-
-// DataPartitionsView defines the view of a data partition
-type DataPartitionsView struct {
-	DataPartitions []*DataPartitionResponse
-}
-
-func newDataPartitionsView() (dataPartitionsView *DataPartitionsView) {
-	dataPartitionsView = new(DataPartitionsView)
-	dataPartitionsView.DataPartitions = make([]*DataPartitionResponse, 0)
-	return
-}
-
-// MetaPartitionView defines the view of a meta partition
-type MetaPartitionView struct {
-	PartitionID uint64
-	Start       uint64
-	End         uint64
-	Members     []string
-	LeaderAddr  string
-	Status      int8
-}
-
-// VolView defines the view of a volume
-type VolView struct {
-	Name           string
-	Status         uint8
-	MetaPartitions []*MetaPartitionView
-	DataPartitions []*DataPartitionResponse
-}
-
-func newVolView(name string, status uint8) (view *VolView) {
-	view = new(VolView)
-	view.Name = name
-	view.Status = status
-	view.MetaPartitions = make([]*MetaPartitionView, 0)
-	view.DataPartitions = make([]*DataPartitionResponse, 0)
-	return
-}
-
-func newMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *MetaPartitionView) {
-	mpView = new(MetaPartitionView)
-	mpView.PartitionID = partitionID
-	mpView.Start = start
-	mpView.End = end
-	mpView.Status = status
-	mpView.Members = make([]string, 0)
-	return
+func sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) {
+	log.LogInfof("URL[%v],remoteAddr[%v],response err[%v]", r.URL, r.RemoteAddr, httpReply)
+	sendReply(w, r, httpReply)
 }
 
 // Obtain all the data partitions in a volume.
 func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 	var (
 		body []byte
-		code = http.StatusBadRequest
 		name string
 		vol  *Vol
-		ok   bool
 		err  error
 	)
 	if name, err = parseAndExtractName(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
-	if vol, ok = m.cluster.vols[name]; !ok {
-		err = errors.Annotatef(volNotFound(name), "%v not found", name)
-		code = http.StatusNotFound
-		goto errHandler
+	if vol, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
 	}
 
 	if body, err = vol.getDataPartitionsView(m.cluster.liveDataNodesRate()); err != nil {
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
-	m.replyOk(w, r, body)
-	return
-errHandler:
-	logMsg := newLogMsg("getDataPartitions", r.RemoteAddr, err.Error(), code)
-	m.sendErrReply(w, r, code, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(body))
 }
 
 func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		body []byte
-		code = http.StatusBadRequest
-		err  error
-		name string
-		vol  *Vol
+		err     error
+		name    string
+		vol     *Vol
+		volView *proto.VolView
 	)
 	if name, err = parseAndExtractName(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
-		err = errors.Annotatef(volNotFound(name), "%v not found", name)
-		code = http.StatusNotFound
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
 	}
-	if body, err = json.Marshal(m.getVolView(vol)); err != nil {
-		goto errHandler
+	if volView, err = m.getVolView(vol); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
-	m.replyOk(w, r, body)
-	return
-errHandler:
-	logMsg := newLogMsg("getVol", r.RemoteAddr, err.Error(), code)
-	m.sendErrReply(w, r, code, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(volView))
 }
 
 // Obtain the volume information such as total capacity and used space, etc.
 func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 	var (
-		body []byte
-		code = http.StatusBadRequest
 		err  error
 		name string
 		vol  *Vol
-		ok   bool
 	)
 	if name, err = parseAndExtractName(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
-	if vol, ok = m.cluster.vols[name]; !ok {
-		err = errors.Annotatef(volNotFound(name), "%v not found", name)
-		code = http.StatusNotFound
-		goto errHandler
+	if vol, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
 	}
-	if body, err = json.Marshal(volStat(vol)); err != nil {
-		goto errHandler
-	}
-	m.replyOk(w, r, body)
-	return
-errHandler:
-	logMsg := newLogMsg("getVolStatInfo", r.RemoteAddr, err.Error(), code)
-	m.sendErrReply(w, r, code, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(volStat(vol)))
 }
 
-func (m *Server) getVolView(vol *Vol) (view *VolView) {
-	view = newVolView(vol.Name, vol.Status)
-	setMetaPartitions(vol, view, m.cluster.liveMetaNodesRate())
-	setDataPartitions(vol, view, m.cluster.liveDataNodesRate())
+func (m *Server) getVolView(vol *Vol) (view *proto.VolView, err error) {
+	view = proto.NewVolView(vol.Name, vol.Status)
+	if err = setMetaPartitions(vol, view, m.cluster.liveMetaNodesRate()); err != nil {
+		return
+	}
+	err = setDataPartitions(vol, view, m.cluster.liveDataNodesRate())
 	return
 }
-func setDataPartitions(vol *Vol, view *VolView, liveRate float32) {
+func setDataPartitions(vol *Vol, view *proto.VolView, liveRate float32) (err error) {
 	if liveRate < nodesActiveRate {
-		return
+		return proto.ErrActiveDataNodesTooLess
 	}
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
 	view.DataPartitions = vol.dataPartitions.getDataPartitionsView(0)
+	return
 }
-func setMetaPartitions(vol *Vol, view *VolView, liveRate float32) {
+func setMetaPartitions(vol *Vol, view *proto.VolView, liveRate float32) (err error) {
 	if liveRate < nodesActiveRate {
-		return
+		return proto.ErrActiveMetaNodesTooLess
 	}
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
 	for _, mp := range vol.MetaPartitions {
 		view.MetaPartitions = append(view.MetaPartitions, getMetaPartitionView(mp))
 	}
+	return
 }
 
-func volStat(vol *Vol) (stat *VolStatInfo) {
-	stat = new(VolStatInfo)
+func volStat(vol *Vol) (stat *proto.VolStatInfo) {
+	stat = new(proto.VolStatInfo)
 	stat.Name = vol.Name
 	stat.TotalSize = vol.Capacity * util.GB
 	stat.UsedSize = vol.totalUsedSpace()
@@ -1250,8 +1039,8 @@ func volStat(vol *Vol) (stat *VolStatInfo) {
 	return
 }
 
-func getMetaPartitionView(mp *MetaPartition) (mpView *MetaPartitionView) {
-	mpView = newMetaPartitionView(mp.PartitionID, mp.Start, mp.End, mp.Status)
+func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
+	mpView = proto.NewMetaPartitionView(mp.PartitionID, mp.Start, mp.End, mp.Status)
 	mp.Lock()
 	defer mp.Unlock()
 	for _, metaReplica := range mp.Replicas {
@@ -1265,28 +1054,19 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *MetaPartitionView) {
 
 func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
-		body        []byte
-		code        = http.StatusBadRequest
 		err         error
 		partitionID uint64
 		mp          *MetaPartition
 	)
 	if partitionID, err = parseAndExtractPartitionInfo(r); err != nil {
-		goto errHandler
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
-		code = http.StatusNotFound
-		goto errHandler
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
+		return
 	}
-	if body, err = mp.toJSON(); err != nil {
-		goto errHandler
-	}
-	m.replyOk(w, r, body)
-	return
-errHandler:
-	logMsg := newLogMsg("metaPartition", r.RemoteAddr, err.Error(), code)
-	m.sendErrReply(w, r, code, logMsg, err)
-	return
+	sendOkReply(w, r, newSuccessHTTPReply(mp))
 }
 
 func parseAndExtractPartitionInfo(r *http.Request) (partitionID uint64, err error) {
@@ -1332,9 +1112,4 @@ func extractName(r *http.Request) (name string, err error) {
 	}
 
 	return
-}
-
-func (m *Server) replyOk(w http.ResponseWriter, r *http.Request, msg []byte) {
-	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
-	w.Write(msg)
 }

@@ -102,6 +102,9 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 		ns          *nodeSet
 	)
 	log.LogWarnf("action[decommissionMetaPartition],volName[%v],nodeAddr[%v],partitionID[%v]", mp.volName, nodeAddr, mp.PartitionID)
+	if !contains(mp.Hosts, nodeAddr) {
+		return
+	}
 	if vol, err = c.getVol(mp.volName); err != nil {
 		goto errHandler
 	}
@@ -113,15 +116,10 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 	}
 	mp.Lock()
 	defer mp.Unlock()
-	if !contains(mp.Hosts, nodeAddr) {
-		return
-	}
-
 	if err = mp.canBeOffline(nodeAddr, int(vol.mpReplicaNum)); err != nil {
 		goto errHandler
 	}
 	if newHosts, newPeers, err = ns.getAvailMetaNodeHosts(mp.Hosts, 1); err != nil {
-
 		// choose a meta node in the node set
 		if newHosts, newPeers, err = c.chooseTargetMetaHosts(1); err != nil {
 			goto errHandler

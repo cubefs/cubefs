@@ -92,15 +92,15 @@ func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitio
 		dpResps := dpMap.getDataPartitionsView(minPartitionID)
 		if len(dpResps) == 0 {
 			log.LogError(fmt.Sprintf("action[updateDpResponseCache],volName[%v] minPartitionID:%v,err:%v",
-				dpMap.volName, minPartitionID, ErrNoAvailDataPartition))
-			return nil, errors.Annotatef(ErrNoAvailDataPartition, "volName[%v]", dpMap.volName)
+				dpMap.volName, minPartitionID, proto.ErrNoAvailDataPartition))
+			return nil, proto.ErrNoAvailDataPartition
 		}
-		cv := newDataPartitionsView()
+		cv := proto.NewDataPartitionsView()
 		cv.DataPartitions = dpResps
 		if body, err = json.Marshal(cv); err != nil {
 			log.LogError(fmt.Sprintf("action[updateDpResponseCache],minPartitionID:%v,err:%v",
 				minPartitionID, err.Error()))
-			return nil, errors.Annotatef(err, "volName[%v],marshal err", dpMap.volName)
+			return nil, proto.ErrMarshalData
 		}
 		dpMap.responseCache = body
 		return
@@ -111,8 +111,8 @@ func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitio
 	return
 }
 
-func (dpMap *DataPartitionMap) getDataPartitionsView(minPartitionID uint64) (dpResps []*DataPartitionResponse) {
-	dpResps = make([]*DataPartitionResponse, 0)
+func (dpMap *DataPartitionMap) getDataPartitionsView(minPartitionID uint64) (dpResps []*proto.DataPartitionResponse) {
+	dpResps = make([]*proto.DataPartitionResponse, 0)
 	log.LogDebugf("volName[%v] DataPartitionMapLen[%v],DataPartitionsLen[%v],minPartitionID[%v]",
 		dpMap.volName, len(dpMap.partitionMap), len(dpMap.partitions), minPartitionID)
 	for _, dp := range dpMap.partitionMap {
