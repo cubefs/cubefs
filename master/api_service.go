@@ -36,6 +36,7 @@ type ClusterView struct {
 	Name               string
 	LeaderAddr         string
 	DisableAutoAlloc   bool
+	MetaNodeThreshold  float32
 	Applied            uint64
 	MaxDataPartitionID uint64
 	MaxMetaNodeID      uint64
@@ -182,6 +183,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		Name:               m.cluster.Name,
 		LeaderAddr:         m.leaderInfo.addr,
 		DisableAutoAlloc:   m.cluster.DisableAutoAllocate,
+		MetaNodeThreshold:  m.cluster.cfg.MetaNodeThreshold,
 		Applied:            m.fsm.applied,
 		MaxDataPartitionID: m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:      m.cluster.idAlloc.commonID,
