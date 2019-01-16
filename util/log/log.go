@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path"
 	"runtime"
@@ -251,6 +252,15 @@ func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 	}
 	if rotate == nil {
 		rotate = NewLogRotate()
+		fs := syscall.Statfs_t{}
+		if err := syscall.Statfs(dir, &fs); err != nil {
+			return nil, fmt.Errorf("[InitLog] stats disk space: %s",
+				err.Error())
+		}
+
+		minRatio := float64(fs.Blocks*uint64(fs.
+			Bsize)) * DefaultHeadRatio / 1024 / 1024
+		rotate.SetHeadRoomMb(int64(math.Min(minRatio, DefaultHeadRoom)))
 	}
 	l.rotate = rotate
 	err = l.initLog(dir, module, level)
