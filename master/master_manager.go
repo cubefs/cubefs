@@ -84,6 +84,9 @@ func (m *Server) loadMetadata() {
 	log.LogInfo("action[loadMetadata] begin")
 	m.restoreIDAlloc()
 	var err error
+	if err = m.cluster.loadClusterValue(); err != nil {
+		panic(err)
+	}
 	if err = m.cluster.loadNodeSets(); err != nil {
 		panic(err)
 	}
