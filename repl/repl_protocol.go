@@ -91,6 +91,7 @@ func (rp *ReplProtocol) ServerConn() {
 		}
 
 		rp.sourceConn.Close()
+		rp.Stop()
 	}()
 	for {
 		select {
