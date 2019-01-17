@@ -325,6 +325,10 @@ func (p *Packet) GetResultMsg() (m string) {
 	return
 }
 
+func (p *Packet) GetReqID() int64 {
+	return p.ReqID
+}
+
 // MarshalHeader marshals the packet header.
 func (p *Packet) MarshalHeader(out []byte) {
 	out[0] = p.Magic

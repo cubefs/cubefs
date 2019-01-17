@@ -146,7 +146,8 @@ func (m *metaManager) opCreateInode(conn net.Conn, p *Packet) (err error) {
 	err = mp.CreateInode(req, p)
 	// Reply operation result to client though TCP connection.
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opCreateInode] req:%v; resp: %v, body: %s", req, p.GetResultMsg(), p.Data)
+	log.LogDebugf("[opCreateInode] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
+		p.GetResultMsg(), p.Data)
 	return
 }
 
@@ -168,7 +169,8 @@ func (m *metaManager) opMetaLinkInode(conn net.Conn, p *Packet) (err error) {
 	}
 	err = mp.CreateLinkInode(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opMetaLinkInode] req: %v, resp: %v, body: %s", req, p.GetResultMsg(), p.Data)
+	log.LogDebugf("[opMetaLinkInode] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
+		p.GetResultMsg(), p.Data)
 	return
 }
 
@@ -192,7 +194,8 @@ func (m *metaManager) opCreateDentry(conn net.Conn, p *Packet) (err error) {
 	err = mp.CreateDentry(req, p)
 	// Reply operation result to client though TCP connection.
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opCreateDentry] req:%v; resp: %v, body: %s", req, p.GetResultMsg(), p.Data)
+	log.LogDebugf("[opCreateDentry] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
+		p.GetResultMsg(), p.Data)
 	return
 }
 
@@ -216,7 +219,7 @@ func (m *metaManager) opDeleteDentry(conn net.Conn, p *Packet) (err error) {
 	err = mp.DeleteDentry(req, p)
 	// Reply operation result to client though TCP connection.
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opDeleteDentry] req:%v; resp: %v, body: %s", req,
+	log.LogDebugf("[opDeleteDentry] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
 		p.GetResultMsg(), p.Data)
 	return
 }
@@ -239,8 +242,8 @@ func (m *metaManager) opUpdateDentry(conn net.Conn, p *Packet) (err error) {
 	}
 	err = mp.UpdateDentry(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opUpdateDentry] req: %v; resp: %v, body: %s",
-		req, p.GetResultMsg(), p.Data)
+	log.LogDebugf("[opUpdateDentry] req: %d - %v; resp: %v, body: %s",
+		p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
@@ -262,7 +265,7 @@ func (m *metaManager) opDeleteInode(conn net.Conn, p *Packet) (err error) {
 	}
 	err = mp.DeleteInode(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opDeleteInode] req:%v; resp: %v, body: %s", req,
+	log.LogDebugf("[opDeleteInode] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
 		p.GetResultMsg(), p.Data)
 	return
 }
@@ -287,7 +290,7 @@ func (m *metaManager) opReadDir(conn net.Conn, p *Packet) (err error) {
 	err = mp.ReadDir(req, p)
 	// Reply operation result to client though TCP connection.
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opReadDir] req:%v; resp: %v, body: %s", req,
+	log.LogDebugf("[opReadDir] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
 		p.GetResultMsg(), p.Data)
 	return
 }
@@ -312,7 +315,7 @@ func (m *metaManager) opOpen(conn net.Conn, p *Packet) (err error) {
 	err = mp.Open(req, p)
 	// Reply operation result to client though TCP connection.
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opOpen] req:%v; resp: %v, body: %s", req,
+	log.LogDebugf("[opOpen] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
 		p.GetResultMsg(), p.Data)
 	return
 }
@@ -335,7 +338,7 @@ func (m *metaManager) opReleaseOpen(conn net.Conn, p *Packet) (err error) {
 	}
 	err = mp.ReleaseOpen(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opClose] req: %v, resp status: %v, resp body: %s", req,
+	log.LogDebugf("[opClose] req: %d - %v, resp status: %v, resp body: %s", p.GetReqID(), req,
 		p.GetResultMsg(), p.Data)
 	return
 }
@@ -365,7 +368,7 @@ func (m *metaManager) opMetaInodeGet(conn net.Conn, p *Packet) (err error) {
 			string(p.Data))
 	}
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opMetaInodeGet] req:%v; resp: %v, body: %s", req,
+	log.LogDebugf("[opMetaInodeGet] req: %d - %v; resp: %v, body: %s", p.GetReqID(), req,
 		p.GetResultMsg(), p.Data)
 	return
 }
@@ -393,7 +396,7 @@ func (m *metaManager) opMetaEvictInode(conn net.Conn, p *Packet) (err error) {
 		err = errors.Errorf("[opMetaEvictInode] req: %s, resp: %v", req, err.Error())
 	}
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opMetaEvictInode] req: %v, resp: %v, body: %s", req,
+	log.LogDebugf("[opMetaEvictInode] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
 		p.GetResultMsg(), p.Data)
 	return
 }
@@ -422,7 +425,7 @@ func (m *metaManager) opSetattr(conn net.Conn, p *Packet) (err error) {
 		err = errors.Errorf("[opSetattr] req: %v, error: %s", req, err.Error())
 	}
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opSetattr] req: %v, resp: %v, body: %s", req,
+	log.LogDebugf("[opSetattr] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
 		p.GetResultMsg(), p.Data)
 	return
 }
@@ -446,7 +449,7 @@ func (m *metaManager) opMetaLookup(conn net.Conn, p *Packet) (err error) {
 	}
 	err = mp.Lookup(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opMetaLookup] req:%v; resp: %v, body: %s", req,
+	log.LogDebugf("[opMetaLookup] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
 		p.GetResultMsg(), p.Data)
 	return
 }
@@ -476,7 +479,7 @@ func (m *metaManager) opMetaExtentsAdd(conn net.Conn, p *Packet) (err error) {
 		log.LogErrorf("[opMetaExtentsAdd] ExtentAppend: %s, "+
 			"response to client: %s", err.Error(), p.GetResultMsg())
 	}
-	log.LogDebugf("[opMetaExtentsAdd] req: %v, resp: %v, body: %s", req,
+	log.LogDebugf("[opMetaExtentsAdd] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
 		p.GetResultMsg(), p.Data)
 	return
 }
@@ -501,7 +504,7 @@ func (m *metaManager) opMetaExtentsList(conn net.Conn, p *Packet) (err error) {
 
 	err = mp.ExtentsList(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opMetaExtentsList] req:%v; resp: %v, body: %s", req,
+	log.LogDebugf("[opMetaExtentsList] req: %d - %v; resp: %v, body: %s", p.GetReqID(), req,
 		p.GetResultMsg(), p.Data)
 	return
 }
@@ -530,8 +533,8 @@ func (m *metaManager) opMetaExtentsTruncate(conn net.Conn, p *Packet) (err error
 	}
 	mp.ExtentsTruncate(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[OpMetaTruncate] req: %v, resp body: %v, resp body: %s",
-		req, p.GetResultMsg(), p.Data)
+	log.LogDebugf("[OpMetaTruncate] req: %d - %v, resp body: %v, resp body: %s",
+		p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
@@ -570,7 +573,8 @@ func (m *metaManager) opDeleteMetaPartition(conn net.Conn, p *Packet) (err error
 	adminTask.Response = resp
 	adminTask.Request = nil
 	m.respondToMaster(adminTask)
-	log.LogDebugf("[opDeleteMetaPartition] req: %v, resp: %v", req, adminTask)
+	log.LogDebugf("[opDeleteMetaPartition] req: %d - %v, resp: %v", p.GetReqID(), req,
+		adminTask)
 	return
 }
 
@@ -717,7 +721,7 @@ func (m *metaManager) opMetaBatchInodeGet(conn net.Conn, p *Packet) (err error) 
 	}
 	err = mp.InodeGetBatch(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opMetaBatchInodeGet] req[%v], resp[%v], body: %s", req,
-		p.GetResultMsg(), p.Data)
+	log.LogDebugf("[opMetaBatchInodeGet] req: %d - %v, resp: %v, body: %s",
+		p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
