@@ -91,6 +91,7 @@ func (rp *ReplProtocol) ServerConn() {
 		}
 
 		rp.sourceConn.Close()
+		rp.Stop()
 	}()
 	for {
 		select {
@@ -108,6 +109,11 @@ func (rp *ReplProtocol) ServerConn() {
 }
 
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
+	defer func() {
+		if err!=nil {
+			rp.Stop()
+		}
+	}()
 	p := NewPacket()
 	if err = p.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
 		return
