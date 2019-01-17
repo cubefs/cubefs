@@ -216,7 +216,7 @@ func (mp *metaPartition) deleteExtentsFile(fileList *list.List) {
 				panic(err)
 			}
 			// delete dataPartition
-			if err = mp.executeDeleteDataPartition(ek); err != nil {
+			if err = mp.executeDeleteExtent(ek); err != nil {
 				mp.extDelCh <- ek
 				log.LogWarnf("[deleteExtentsFile] partitionId=%d, %s",
 					mp.config.PartitionId, err.Error())

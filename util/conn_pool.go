@@ -35,7 +35,7 @@ type ConnectPool struct {
 }
 
 func NewConnectPool() (cp *ConnectPool) {
-	cp = &ConnectPool{pools: make(map[string]*Pool), mincap: 5, maxcap: 100, timeout: int64(time.Minute)}
+	cp = &ConnectPool{pools: make(map[string]*Pool), mincap: 5, maxcap: 80, timeout: int64(time.Second*10)}
 	go cp.autoRelease()
 
 	return cp
@@ -114,7 +114,7 @@ func (cp *ConnectPool) autoRelease() {
 		for _, pool := range pools {
 			pool.AutoRelease()
 		}
-		time.Sleep(time.Minute)
+		time.Sleep(time.Second)
 	}
 
 }

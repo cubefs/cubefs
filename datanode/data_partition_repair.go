@@ -359,16 +359,14 @@ func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members [
 	if err != nil {
 		return err
 	}
+	defer gConnPool.PutConnect(conn, true)
 	p.Size = uint32(len(p.Data))
 	if err = p.WriteToConn(conn); err != nil {
-		gConnPool.PutConnect(conn, true)
 		return err
 	}
 	if err = p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
-		gConnPool.PutConnect(conn, true)
 		return err
 	}
-	gConnPool.PutConnect(conn, true)
 	return err
 }
 
