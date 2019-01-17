@@ -118,10 +118,11 @@ func (m *metaManager) HandleMetaOperation(conn net.Conn, p *Packet) (err error) 
 		err = m.opMetaBatchInodeGet(conn, p)
 	case proto.OpPing:
 	default:
-		err = fmt.Errorf("unknown Opcode: %d", p.Opcode)
+		err = fmt.Errorf("unknown Opcode: %d, reqId: %d", p.Opcode, p.GetReqID())
 	}
 	if err != nil {
-		err = errors.Errorf("[%s]: %s", p.GetOpMsg(), err.Error())
+		err = errors.Errorf("[%s] req: %d - %s", p.GetOpMsg(), p.GetReqID(),
+			err.Error())
 	}
 	return
 }
