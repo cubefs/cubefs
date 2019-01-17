@@ -66,7 +66,7 @@ func (mw *MetaWrapper) fetchVolumeView() (*VolumeView, error) {
 
 // fetch and update cluster info if successful
 func (mw *MetaWrapper) updateClusterInfo() error {
-	body, err := mw.master.Request(http.MethodPost, proto.AdminGetCluster, nil, nil)
+	body, err := mw.master.Request(http.MethodPost, proto.AdminGetIP, nil, nil)
 	if err != nil {
 		log.LogWarnf("updateClusterInfo request: err(%v)", err)
 		return err

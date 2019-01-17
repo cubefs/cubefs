@@ -82,7 +82,7 @@ func (w *Wrapper) updateClusterInfo() error {
 	for _, ip := range w.masters {
 		masterHelper.AddNode(ip)
 	}
-	body, err := masterHelper.Request(http.MethodPost, proto.AdminGetCluster, nil, nil)
+	body, err := masterHelper.Request(http.MethodPost, proto.AdminGetIP, nil, nil)
 	if err != nil {
 		log.LogWarnf("UpdateClusterInfo request: err(%v)", err)
 		return err
