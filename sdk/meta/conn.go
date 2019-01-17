@@ -69,10 +69,8 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 		addr  string
 		mc    *MetaConn
 		start time.Time
-		op    string
 	)
 
-	op = req.GetOpMsg()
 	addr = mp.LeaderAddr
 	if addr == "" {
 		goto retry
@@ -86,7 +84,7 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 	if err == nil && !resp.ShouldRetry() {
 		goto out
 	}
-	log.LogWarnf("sendToMetaPartition: leader failed mp(%v) mc(%v) err(%v) op(%v) result(%v)", mp, mc, err, op, resp.GetResultMsg())
+	log.LogWarnf("sendToMetaPartition: leader failed req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
 
 retry:
 	start = time.Now()
@@ -101,33 +99,33 @@ retry:
 			if err == nil && !resp.ShouldRetry() {
 				goto out
 			}
-			log.LogWarnf("sendToMetaPartition: retry failed mp(%v) mc(%v) err(%v) op(%v) result(%v)", mp, mc, err, op, resp.GetResultMsg())
+			log.LogWarnf("sendToMetaPartition: retry failed req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
 		}
 		if time.Since(start) > SendTimeLimit {
-			log.LogWarnf("sendToMetaPartition: retry timeout mp(%v) op(%v) time(%v)", mp, op, time.Since(start))
+			log.LogWarnf("sendToMetaPartition: retry timeout req(%v) mp(%v) time(%v)", req, mp, time.Since(start))
 			break
 		}
-		log.LogWarnf("sendToMetaPartition: mp(%v) op(%v) retry in (%v)", mp, op, SendRetryInterval)
+		log.LogWarnf("sendToMetaPartition: req(%v) mp(%v) retry in (%v)", req, mp, SendRetryInterval)
 		time.Sleep(SendRetryInterval)
 	}
 
 out:
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("sendToMetaPartition faild: mp(%v) op(%v)", mp, req.GetOpMsg()))
+		return nil, errors.New(fmt.Sprintf("sendToMetaPartition faild: req(%v) mp(%v)", req, mp))
 	}
-	log.LogDebugf("sendToMetaPartition successful: mc(%v) op(%v) result(%v)", mc, req.GetOpMsg(), resp.GetResultMsg())
+	log.LogDebugf("sendToMetaPartition successful: req(%v) mc(%v) resp(%v)", req, mc, resp)
 	return resp, nil
 }
 
 func (mc *MetaConn) send(req *proto.Packet) (resp *proto.Packet, err error) {
 	err = req.WriteToConn(mc.conn)
 	if err != nil {
-		return nil, errors.Annotatef(err, "Failed to write to conn")
+		return nil, errors.Annotatef(err, "Failed to write to conn, req(%v)", req)
 	}
 	resp = proto.NewPacket()
 	err = resp.ReadFromConn(mc.conn, proto.ReadDeadlineTime)
 	if err != nil {
-		return nil, errors.Annotatef(err, "Failed to read from conn")
+		return nil, errors.Annotatef(err, "Failed to read from conn, req(%v)", req)
 	}
 	return resp, nil
 }
