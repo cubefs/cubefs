@@ -174,7 +174,7 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write 
 }
 
 func (client *ExtentClient) Truncate(inode uint64, size int) error {
-	prefix := fmt.Sprintf("Truncate{ino(%v)size(%v)}")
+	prefix := fmt.Sprintf("Truncate{ino(%v)size(%v)}", inode, size)
 	s := client.GetStreamer(inode)
 	if s == nil {
 		return fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
