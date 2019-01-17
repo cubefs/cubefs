@@ -36,11 +36,11 @@ func (mw *MetaWrapper) open(mp *MetaPartition, inode uint64, flag uint32) (statu
 		Flag:        flag,
 	}
 
-	packet := proto.NewPacket()
+	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaOpen
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("open: err(%v)", err)
+		log.LogErrorf("open: ino(%v) packet(%v) err(%v)", inode, packet, err)
 		return
 	}
 
@@ -49,23 +49,23 @@ func (mw *MetaWrapper) open(mp *MetaPartition, inode uint64, flag uint32) (statu
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("open: mp(%v) req(%v) err(%v)", mp, *req, err)
+		log.LogErrorf("open: ino(%v) packet(%v) mp(%v) req(%v) err(%v)", inode, packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogWarnf("open: ino(%v) mp(%v) req(%v) result(%v)", inode, mp, *req, packet.GetResultMsg())
+		log.LogWarnf("open: ino(%v) packet(%v) mp(%v) req(%v) result(%v)", inode, packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
 	resp := new(proto.OpenResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil {
-		log.LogErrorf("open: mp(%v) req(%v) err(%v) PacketData(%v)", mp, *req, err, string(packet.Data))
+		log.LogErrorf("open: ino(%v) packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", inode, packet, mp, *req, err, string(packet.Data))
 		return
 	}
-	log.LogDebugf("open: ino(%v) mp(%v) req(%v) resp(%v)", inode, mp, *req, *resp)
+	log.LogDebugf("open: ino(%v) packet(%v) mp(%v) req(%v) resp(%v)", inode, packet, mp, *req, *resp)
 	return statusOK, resp.AuthID, nil
 }
 
@@ -77,26 +77,27 @@ func (mw *MetaWrapper) release(mp *MetaPartition, inode, authid uint64) (status 
 		AuthID:      authid,
 	}
 
-	packet := proto.NewPacket()
+	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaReleaseOpen
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("release: err(%v)", err)
+		log.LogErrorf("release: unmarshal failed, ino(%v) err(%v)", err)
 		return
 	}
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("release: mp(%v) req(%v) err(%v)", mp, *req, err)
+		log.LogErrorf("release: ino(%v) packet(%v) mp(%v) req(%v) err(%v)", inode, packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("release: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
+		log.LogErrorf("release: ino(%v) packet(%v) mp(%v) req(%v) result(%v)", inode, packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
+	log.LogDebugf("release: ino(%v) packet(%v) mp(%v) req(%v)", inode, packet, mp, *req)
 	return statusOK, nil
 }
 
@@ -108,7 +109,7 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode uint32, target []byte) (s
 		Target:      target,
 	}
 
-	packet := proto.NewPacket()
+	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaCreateInode
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -116,35 +117,33 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode uint32, target []byte) (s
 		return
 	}
 
-	log.LogDebugf("icreate enter: mp(%v) req(%v)", mp, string(packet.Data))
-
 	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("icreate: mp(%v) req(%v) err(%v)", mp, *req, err)
+		log.LogErrorf("icreate: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("icreate: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
+		log.LogErrorf("icreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
 	resp := new(proto.CreateInodeResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil {
-		log.LogErrorf("icreate: mp(%v) err(%v) PacketData(%v)", mp, err, string(packet.Data))
+		log.LogErrorf("icreate: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
 		return
 	}
 	if resp.Info == nil {
-		err = errors.New(fmt.Sprintf("icreate: info is nil, mp(%v) req(%v) PacketData(%v)", mp, *req, string(packet.Data)))
+		err = errors.New(fmt.Sprintf("icreate: info is nil, packet(%v) mp(%v) req(%v) PacketData(%v)", packet, mp, *req, string(packet.Data)))
 		log.LogWarn(err)
 		return
 	}
-	log.LogDebugf("icreate exit: mp(%v) req(%v) info(%v)", mp, *req, resp.Info)
+	log.LogDebugf("icreate: packet(%v) mp(%v) req(%v) info(%v)", packet, mp, *req, resp.Info)
 	return statusOK, resp.Info, nil
 }
 
@@ -155,39 +154,37 @@ func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, inf
 		Inode:       inode,
 	}
 
-	packet := proto.NewPacket()
+	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaDeleteInode
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("idelete: err(%v)", err)
+		log.LogErrorf("idelete: ino(%v) err(%v)", inode, err)
 		return
 	}
-
-	log.LogDebugf("idelete enter: mp(%v) req(%v)", mp, string(packet.Data))
 
 	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("idelete: mp(%v) req(%v) err(%v)", mp, *req, err)
+		log.LogErrorf("idelete: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("idelete: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
+		log.LogErrorf("idelete: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
 	resp := new(proto.DeleteInodeResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil {
-		log.LogErrorf("idelete: mp(%v) req(%v) err(%v) PacketData(%v)", mp, *req, err, string(packet.Data))
+		log.LogErrorf("idelete: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
 		return
 	}
 
-	log.LogDebugf("idelete exit: mp(%v) req(%v)", mp, *req)
+	log.LogDebugf("idelete: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 	return statusOK, resp.Info, nil
 }
 
@@ -198,32 +195,30 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, err 
 		Inode:       inode,
 	}
 
-	packet := proto.NewPacket()
+	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaEvictInode
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogWarnf("ievict: err(%v)", err)
+		log.LogWarnf("ievict: ino(%v) err(%v)", inode, err)
 		return
 	}
-
-	log.LogDebugf("ievict enter: mp(%v) req(%v)", mp, string(packet.Data))
 
 	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogWarnf("ievict: mp(%v) req(%v) err(%v)", mp, *req, err)
+		log.LogWarnf("ievict: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogWarnf("ievict: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
+		log.LogWarnf("ievict: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
-	log.LogDebugf("ievict exit: mp(%v) req(%v)", mp, *req)
+	log.LogDebugf("ievict exit: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 	return statusOK, nil
 }
 
@@ -241,30 +236,28 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 		Mode:        mode,
 	}
 
-	packet := proto.NewPacket()
+	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaCreateDentry
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("dcreate: err(%v)", err)
+		log.LogErrorf("dcreate: req(%v) err(%v)", *req, err)
 		return
 	}
-
-	log.LogDebugf("dcreate enter: mp(%v) req(%v)", mp, string(packet.Data))
 
 	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("dcreate: mp(%v) req(%v) err(%v)", mp, *req, err)
+		log.LogErrorf("dcreate: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("dcreate: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
+		log.LogErrorf("dcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	}
-	log.LogDebugf("dcreate exit: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
+	log.LogDebugf("dcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	return
 }
 
@@ -281,38 +274,36 @@ func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, 
 		Inode:       newInode,
 	}
 
-	packet := proto.NewPacket()
+	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaUpdateDentry
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("dupdate: err(%v)", err)
+		log.LogErrorf("dupdate: req(%v) err(%v)", *req, err)
 		return
 	}
-
-	log.LogDebugf("dupdate enter: mp(%v) req(%v)", mp, string(packet.Data))
 
 	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("dupdate: mp(%v) req(%v) err(%v)", mp, *req, err)
+		log.LogErrorf("dupdate: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("dupdate: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
+		log.LogErrorf("dupdate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
 	resp := new(proto.UpdateDentryResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil {
-		log.LogErrorf("dupdate: mp(%v) err(%v) PacketData(%v)", mp, err, string(packet.Data))
+		log.LogErrorf("dupdate: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
 		return
 	}
-	log.LogDebugf("dupdate exit: mp(%v) req(%v) oldIno(%v)", mp, *req, resp.Inode)
+	log.LogDebugf("dupdate: packet(%v) mp(%v) req(%v) oldIno(%v)", packet, mp, *req, resp.Inode)
 	return statusOK, resp.Inode, nil
 }
 
@@ -324,38 +315,36 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string) 
 		Name:        name,
 	}
 
-	packet := proto.NewPacket()
+	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaDeleteDentry
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("ddelete: err(%v)", err)
+		log.LogErrorf("ddelete: req(%v) err(%v)", *req, err)
 		return
 	}
-
-	log.LogDebugf("ddelete enter: mp(%v) req(%v)", mp, string(packet.Data))
 
 	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("ddelete: mp(%v) req(%v) err(%v)", mp, *req, err)
+		log.LogErrorf("ddelete: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("ddelete: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
+		log.LogErrorf("ddelete: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
 	resp := new(proto.DeleteDentryResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil {
-		log.LogErrorf("ddelete: mp(%v) err(%v) PacketData(%v)", mp, err, string(packet.Data))
+		log.LogErrorf("ddelete: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
 		return
 	}
-	log.LogDebugf("ddelete exit: mp(%v) req(%v) ino(%v)", mp, *req, resp.Inode)
+	log.LogDebugf("ddelete: packet(%v) mp(%v) req(%v) ino(%v)", packet, mp, *req, resp.Inode)
 	return statusOK, resp.Inode, nil
 }
 
@@ -366,7 +355,7 @@ func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string) (
 		ParentID:    parentID,
 		Name:        name,
 	}
-	packet := proto.NewPacket()
+	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaLookup
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -374,23 +363,23 @@ func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string) (
 		return
 	}
 
-	log.LogDebugf("lookup enter: mp(%v) req(%v)", mp, string(packet.Data))
+	log.LogDebugf("lookup enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
 	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("lookup: mp(%v) req(%v) err(%v)", mp, *req, err)
+		log.LogErrorf("lookup: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		if status != statusNoent {
-			log.LogErrorf("lookup: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
+			log.LogErrorf("lookup: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		} else {
-			log.LogDebugf("lookup exit: mp(%v) req(%v) NoEntry", mp, *req)
+			log.LogDebugf("lookup exit: packet(%v) mp(%v) req(%v) NoEntry", packet, mp, *req)
 		}
 		return
 	}
@@ -398,10 +387,10 @@ func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string) (
 	resp := new(proto.LookupResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil {
-		log.LogErrorf("lookup: mp(%v) err(%v) PacketData(%v)", mp, err, string(packet.Data))
+		log.LogErrorf("lookup: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
 		return
 	}
-	log.LogDebugf("lookup exit: mp(%v) req(%v) ino(%v) mode(%v)", mp, *req, resp.Inode, resp.Mode)
+	log.LogDebugf("lookup exit: packet(%v) mp(%v) req(%v) ino(%v) mode(%v)", packet, mp, *req, resp.Inode, resp.Mode)
 	return statusOK, resp.Inode, resp.Mode, nil
 }
 
@@ -412,11 +401,11 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64) (status int, info *
 		Inode:       inode,
 	}
 
-	packet := proto.NewPacket()
+	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaInodeGet
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("iget: err(%v)", err)
+		log.LogErrorf("iget: req(%v) err(%v)", *req, err)
 		return
 	}
 
@@ -425,20 +414,20 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64) (status int, info *
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("iget: mp(%v) req(%v) err(%v)", mp, *req, err)
+		log.LogErrorf("iget: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("iget: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
+		log.LogErrorf("iget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
 	resp := new(proto.InodeGetResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil || resp.Info == nil {
-		log.LogErrorf("iget: mp(%v) req(%v) err(%v) PacketData(%v)", mp, *req, err, string(packet.Data))
+		log.LogErrorf("iget: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
 		return
 	}
 	return statusOK, resp.Info, nil
@@ -455,7 +444,7 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 		Inodes:      inodes,
 	}
 
-	packet := proto.NewPacket()
+	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaBatchInodeGet
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -467,20 +456,20 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("batchIget: mp(%v) req(%v) err(%v)", mp, *req, err)
+		log.LogErrorf("batchIget: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status := parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("batchIget: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
+		log.LogErrorf("batchIget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
 	resp := new(proto.BatchInodeGetResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil {
-		log.LogErrorf("batchIget: mp(%v) err(%v) PacketData(%v)", mp, err, string(packet.Data))
+		log.LogErrorf("batchIget: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
 		return
 	}
 
@@ -501,11 +490,11 @@ func (mw *MetaWrapper) readdir(mp *MetaPartition, parentID uint64) (status int, 
 		ParentID:    parentID,
 	}
 
-	packet := proto.NewPacket()
+	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaReadDir
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("readdir: err(%v)", err)
+		log.LogErrorf("readdir: req(%v) err(%v)", *req, err)
 		return
 	}
 
@@ -514,24 +503,24 @@ func (mw *MetaWrapper) readdir(mp *MetaPartition, parentID uint64) (status int, 
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("readdir: mp(%v) req(%v) err(%v)", mp, *req, err)
+		log.LogErrorf("readdir: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		children = make([]proto.Dentry, 0)
-		log.LogErrorf("readdir: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
+		log.LogErrorf("readdir: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
 	resp := new(proto.ReadDirResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil {
-		log.LogErrorf("readdir: mp(%v) err(%v) PacketData(%v)", mp, err, string(packet.Data))
+		log.LogErrorf("readdir: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
 		return
 	}
-	log.LogDebugf("readdir: mp(%v) req(%v)", mp, *req)
+	log.LogDebugf("readdir: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 	return statusOK, resp.Children, nil
 }
 
@@ -544,11 +533,11 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode, authid uint64, 
 		Extent:      extent,
 	}
 
-	packet := proto.NewPacket()
+	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaExtentsAdd
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("appendExtentKey: err(%v)", err)
+		log.LogErrorf("appendExtentKey: req(%v) err(%v)", *req, err)
 		return
 	}
 
@@ -557,13 +546,13 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode, authid uint64, 
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("appendExtentKey: mp(%v) req(%v) err(%v)", mp, *req, err)
+		log.LogErrorf("appendExtentKey: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("appendExtentKey: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
+		log.LogErrorf("appendExtentKey: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	}
 	return status, nil
 }
@@ -575,11 +564,11 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (status int, 
 		Inode:       inode,
 	}
 
-	packet := proto.NewPacket()
+	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaExtentsList
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("getExtents: err(%v)", err)
+		log.LogErrorf("getExtents: req(%v) err(%v)", *req, err)
 		return
 	}
 
@@ -588,21 +577,21 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (status int, 
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("getExtents: mp(%v) req(%v) err(%v)", mp, *req, err)
+		log.LogErrorf("getExtents: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		extents = make([]proto.ExtentKey, 0)
-		log.LogErrorf("getExtents: mp(%v) result(%v)", mp, packet.GetResultMsg())
+		log.LogErrorf("getExtents: packet(%v) mp(%v) result(%v)", packet, mp, packet.GetResultMsg())
 		return
 	}
 
 	resp := new(proto.GetExtentsResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil {
-		log.LogErrorf("getExtents: mp(%v) err(%v) PacketData(%v)", mp, err, string(packet.Data))
+		log.LogErrorf("getExtents: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
 		return
 	}
 	return statusOK, resp.Generation, resp.Size, resp.Extents, nil
@@ -617,7 +606,7 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, authid, size uint64) (
 		Size:        size,
 	}
 
-	packet := proto.NewPacket()
+	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaTruncate
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -625,24 +614,24 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, authid, size uint64) (
 		return
 	}
 
-	log.LogDebugf("truncate enter: mp(%v) req(%v)", mp, string(packet.Data))
+	log.LogDebugf("truncate enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
 	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("truncate: mp(%v) req(%v) err(%v)", mp, *req, err)
+		log.LogErrorf("truncate: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("truncate: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
+		log.LogErrorf("truncate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
-	log.LogDebugf("truncate exit: mp(%v) req(%v)", mp, *req)
+	log.LogDebugf("truncate exit: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 	return statusOK, nil
 }
 
@@ -653,43 +642,43 @@ func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info 
 		Inode:       inode,
 	}
 
-	packet := proto.NewPacket()
+	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaLinkInode
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("ilink: err(%v)", err)
+		log.LogErrorf("ilink: req(%v) err(%v)", *req, err)
 		return
 	}
 
-	log.LogDebugf("ilink enter: mp(%v) req(%v)", mp, string(packet.Data))
+	log.LogDebugf("ilink enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
 	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("ilink: mp(%v) req(%v) err(%v)", mp, *req, err)
+		log.LogErrorf("ilink: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("ilink: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
+		log.LogErrorf("ilink: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
 	resp := new(proto.LinkInodeResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil {
-		log.LogErrorf("ilink: mp(%v) err(%v) PacketData(%v)", mp, err, string(packet.Data))
+		log.LogErrorf("ilink: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
 		return
 	}
 	if resp.Info == nil {
-		err = errors.New(fmt.Sprintf("ilink: info is nil, mp(%v) req(%v) PacketData(%v)", mp, *req, string(packet.Data)))
+		err = errors.New(fmt.Sprintf("ilink: info is nil, packet(%v) mp(%v) req(%v) PacketData(%v)", packet, mp, *req, string(packet.Data)))
 		log.LogWarn(err)
 		return
 	}
-	log.LogDebugf("ilink exit: mp(%v) req(%v) info(%v)", mp, *req, resp.Info)
+	log.LogDebugf("ilink exit: packet(%v) mp(%v) req(%v) info(%v)", packet, mp, *req, resp.Info)
 	return statusOK, resp.Info, nil
 }
 
@@ -704,7 +693,7 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 		Gid:         gid,
 	}
 
-	packet := proto.NewPacket()
+	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaSetattr
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -712,23 +701,23 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 		return
 	}
 
-	log.LogDebugf("setattr enter: mp(%v) req(%v)", mp, string(packet.Data))
+	log.LogDebugf("setattr enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
 	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("setattr: mp(%v) req(%v) err(%v)", mp, *req, err)
+		log.LogErrorf("setattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("setattr: mp(%v) req(%v) result(%v)", mp, *req, packet.GetResultMsg())
+		log.LogErrorf("setattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
-	log.LogDebugf("setattr exit: mp(%v) req(%v)", mp, *req)
+	log.LogDebugf("setattr exit: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 	return statusOK, nil
 }

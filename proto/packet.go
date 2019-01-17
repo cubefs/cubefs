@@ -156,8 +156,18 @@ func NewPacket() *Packet {
 	p := new(Packet)
 	p.Magic = ProtoMagic
 	p.StartT = time.Now().UnixNano()
-
 	return p
+}
+
+// NewPacketReqID returns a new packet with ReqID assigned.
+func NewPacketReqID() *Packet {
+	p := NewPacket()
+	p.ReqID = GenerateRequestID()
+	return p
+}
+
+func (p *Packet) String() string {
+	return fmt.Sprintf("ReqID(%v)Op(%v)PartitionID(%v)ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.PartitionID, p.GetResultMsg())
 }
 
 // GetStoreType returns the store type.
