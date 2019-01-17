@@ -160,7 +160,7 @@ func (mp *metaPartition) deleteDataPartitionMark(inoSlice []*Inode) {
 
 		ino.Extents.Range(func(item BtreeItem) bool {
 			ext := item.(*proto.ExtentKey)
-			if err = mp.executeDeleteDataPartition(ext); err != nil {
+			if err = mp.executeDeleteExtent(ext); err != nil {
 				reExt = append(reExt, ext)
 				log.LogWarnf("[deleteDataPartitionMark] delete failed extents: %s, err: %s", ext.String(), err.Error())
 			}
@@ -195,7 +195,7 @@ func (mp *metaPartition) deleteDataPartitionMark(inoSlice []*Inode) {
 
 }
 
-func (mp *metaPartition) executeDeleteDataPartition(ext *proto.ExtentKey) (err error) {
+func (mp *metaPartition) executeDeleteExtent(ext *proto.ExtentKey) (err error) {
 	// get dataNode View
 	dp := mp.vol.GetPartition(ext.PartitionId)
 	if dp == nil {
@@ -205,8 +205,9 @@ func (mp *metaPartition) executeDeleteDataPartition(ext *proto.ExtentKey) (err e
 	}
 	// delete dataNode
 	conn, err := mp.config.ConnPool.GetConnect(dp.Hosts[0])
+	defer mp.config.ConnPool.PutConnect(conn, ForceCloseConnect)
+
 	if err != nil {
-		mp.config.ConnPool.PutConnect(conn, ForceCloseConnect)
 		err = errors.Errorf("get conn from pool %s, "+
 			"extents partitionId=%d, extentId=%d",
 			err.Error(), ext.PartitionId, ext.ExtentId)
@@ -214,19 +215,16 @@ func (mp *metaPartition) executeDeleteDataPartition(ext *proto.ExtentKey) (err e
 	}
 	p := NewExtentDeletePacket(dp, ext)
 	if err = p.WriteToConn(conn); err != nil {
-		mp.config.ConnPool.PutConnect(conn, ForceCloseConnect)
 		err = errors.Errorf("write to dataNode %s, %s", p.GetUniqueLogId(),
 			err.Error())
 		return
 	}
 	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
-		mp.config.ConnPool.PutConnect(conn, ForceCloseConnect)
 		err = errors.Errorf("read response from dataNode %s, %s",
 			p.GetUniqueLogId(), err.Error())
 		return
 	}
 	log.LogDebugf("[deleteDataPartitionMark] %v", p.GetUniqueLogId())
-	mp.config.ConnPool.PutConnect(conn, NoCloseConnect)
 	return
 }
 
