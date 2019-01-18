@@ -184,13 +184,12 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		// workaround: posix_fallocate would write 1 byte if fallocate is not supported.
 		err = f.super.ec.Truncate(ino, int(req.Offset)+reqlen)
 		if err == nil {
-			f.super.ic.Delete(ino)
-			f.super.ec.RefreshExtentsCache(ino)
+			//f.super.ic.Delete(ino)
+			//f.super.ec.RefreshExtentsCache(ino)
+			f.super.ec.SetFileSize(ino, int(req.Offset)+reqlen)
 			resp.Size = reqlen
 		}
 
-		//f.super.ec.SetFileSize(ino, int(req.ExtentOffset)+reqlen)
-		//resp.Size = reqlen
 		log.LogDebugf("fallocate: ino(%v) origFilesize(%v) req(%v) err(%v)", f.inode.ino, filesize, req, err)
 		return
 	}

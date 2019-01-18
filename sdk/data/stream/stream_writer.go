@@ -279,7 +279,7 @@ func (s *Streamer) write(data []byte, offset, size int, direct bool) (total int,
 		total += writeSize
 	}
 	if filesize, _ := s.extents.Size(); offset+total > filesize {
-		s.extents.SetSize(uint64(offset + total))
+		s.extents.SetSize(uint64(offset+total), false)
 		log.LogDebugf("Streamer write: ino(%v) filesize changed to (%v)", s.inode, offset+total)
 	}
 	log.LogDebugf("Streamer write exit: ino(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, offset, size, total, err)

@@ -155,10 +155,13 @@ func (cache *ExtentCache) Size() (size int, gen uint64) {
 }
 
 // SetSize set the size of the cache.
-func (cache *ExtentCache) SetSize(size uint64) {
+func (cache *ExtentCache) SetSize(size uint64, sync bool) {
 	cache.Lock()
 	defer cache.Unlock()
 	cache.size = size
+	if sync {
+		cache.gen++
+	}
 }
 
 // List returns a list of the extents in the cache.
