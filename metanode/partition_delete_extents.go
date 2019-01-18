@@ -1,3 +1,19 @@
+// Copyright 2018 The Container File System Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
+/*TODO why we have this separate files called partition_delete_extents.go? */
+
 package metanode
 
 import (
@@ -22,7 +38,7 @@ const (
 
 var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
 
-func (mp *metaPartition) startDeleteExtents() {
+func (mp *metaPartition) startToDeleteExtents() {
 	fileList := list.New()
 	// start Append Delete Extents to File Worker
 	go mp.appendDelExtentsToFile(fileList)
@@ -57,6 +73,7 @@ LOOP:
 		if err != nil {
 			panic(err)
 		}
+		// TODO Unhandled errors
 		fp.Write(extentsFileHeader)
 		fileList.PushBack(fileName)
 	} else {
@@ -68,6 +85,7 @@ LOOP:
 		}
 	}
 
+	// TODO Unhandled errors
 	defer fp.Close()
 	var buf []byte
 	for {
@@ -75,6 +93,7 @@ LOOP:
 		case <-mp.stopC:
 			return
 		case <-mp.extReset:
+			// TODO Unhandled errors
 			fp.Close()
 			// reset fileList
 			fileList.Init()
@@ -89,6 +108,7 @@ LOOP:
 				continue
 			}
 			if fileSize >= maxDeleteExtentSize {
+				// TODO Unhandled errors
 				// close old File
 				fp.Close()
 				idx += 1
@@ -114,6 +134,7 @@ LOOP:
 
 }
 
+// TODO explain extent vs. extent file?
 func (mp *metaPartition) deleteExtentsFile(fileList *list.List) {
 	var (
 		element  *list.Element
@@ -154,6 +175,7 @@ func (mp *metaPartition) deleteExtentsFile(fileList *list.List) {
 		if _, err = fp.ReadAt(buf[:8], 0); err != nil {
 			log.LogWarnf("[deleteExtentsFile] partitionId=%d, "+
 				"read cursor least 8bytes, retry later", mp.config.PartitionId)
+			// TODO Unhandled errors
 			fp.Close()
 			continue
 		}
@@ -171,6 +193,7 @@ func (mp *metaPartition) deleteExtentsFile(fileList *list.List) {
 			buf = buf[:size]
 		}
 		n, err := fp.ReadAt(buf, int64(cursor))
+		// TODO Unhandled errors
 		fp.Close()
 		if err != nil {
 			if err == io.EOF {
@@ -216,7 +239,7 @@ func (mp *metaPartition) deleteExtentsFile(fileList *list.List) {
 				panic(err)
 			}
 			// delete dataPartition
-			if err = mp.executeDeleteExtent(ek); err != nil {
+			if err = mp.doDeleteDataPartition(ek); err != nil {
 				mp.extDelCh <- ek
 				log.LogWarnf("[deleteExtentsFile] partitionId=%d, %s",
 					mp.config.PartitionId, err.Error())

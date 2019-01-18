@@ -107,7 +107,7 @@ func (inode *Inode) fill(info *proto.InodeInfo) {
 	inode.atime = info.AccessTime
 	inode.mtime = info.ModifyTime
 	inode.target = info.Target
-	inode.mode = proto.OsMode(info.Mode)
+	inode.mode = proto.OsMode(info.Type)
 }
 
 func (inode *Inode) fillAttr(attr *fuse.Attr) {

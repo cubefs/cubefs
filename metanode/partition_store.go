@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,35 +29,34 @@ import (
 )
 
 const (
-	snapShotDir    = "snapshot"
-	snapShotDirTmp = ".snapshot"
-	snapShotBackup = ".snapshot_backup"
-	inodeFile      = "inode"
-	dentryFile     = "dentry"
-	applyIDFile    = "apply"
-	SnapshotSign   = ".sign"
-	metaFile       = "meta"
-	metaFileTmp    = ".meta"
+	snapshotDir     = "snapshot"
+	snapshotDirTmp  = ".snapshot"
+	snapshotBackup  = ".snapshot_backup"
+	inodeFile       = "inode"
+	dentryFile      = "dentry"
+	applyIDFile     = "apply"
+	SnapshotSign    = ".sign"
+	metadataFile    = "meta"
+	metadataFileTmp = ".meta"
 )
 
-// Load struct from meta
-func (mp *metaPartition) loadMeta() (err error) {
-	metaFile := path.Join(mp.config.RootDir, metaFile)
+func (mp *metaPartition) loadMetadata() (err error) {
+	metaFile := path.Join(mp.config.RootDir, metadataFile)
 	fp, err := os.OpenFile(metaFile, os.O_RDONLY, 0644)
 	if err != nil {
-		err = errors.Errorf("[loadMeta]: OpenFile %s", err.Error())
+		err = errors.Errorf("[loadMetadata]: OpenFile %s", err.Error())
 		return
 	}
 	defer fp.Close()
 	data, err := ioutil.ReadAll(fp)
 	if err != nil || len(data) == 0 {
-		err = errors.Errorf("[loadMeta]: ReadFile %s, data: %s", err.Error(),
+		err = errors.Errorf("[loadMetadata]: ReadFile %s, data: %s", err.Error(),
 			string(data))
 		return
 	}
 	mConf := &MetaPartitionConfig{}
 	if err = json.Unmarshal(data, mConf); err != nil {
-		err = errors.Errorf("[loadMeta]: Unmarshal MetaPartitionConfig %s",
+		err = errors.Errorf("[loadMetadata]: Unmarshal MetaPartitionConfig %s",
 			err.Error())
 		return
 	}
@@ -74,7 +73,6 @@ func (mp *metaPartition) loadMeta() (err error) {
 	return
 }
 
-// Load inode info from inode snapshot file
 func (mp *metaPartition) loadInode(rootDir string) (err error) {
 	filename := path.Join(rootDir, inodeFile)
 	if _, err = os.Stat(filename); err != nil {
@@ -89,7 +87,7 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 	defer fp.Close()
 	lenBuf := make([]byte, 4)
 	for {
-		// First read length
+		// first read length
 		_, err = io.ReadFull(fp, lenBuf)
 		if err != nil {
 			if err == io.EOF {
@@ -100,7 +98,8 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 			return
 		}
 		length := binary.BigEndian.Uint32(lenBuf)
-		// Now Read Body
+
+		// next read body
 		buf := make([]byte, length)
 		_, err = io.ReadFull(fp, buf)
 		if err != nil {
@@ -120,7 +119,7 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 	}
 }
 
-// Load dentry from dentry snapshot file
+// Load dentry from the dentry snapshot.
 func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 	filename := path.Join(rootDir, dentryFile)
 	if _, err = os.Stat(filename); err != nil {
@@ -136,6 +135,8 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 		err = errors.Errorf("[loadDentry] OpenFile: %s", err.Error())
 		return
 	}
+
+	// TODO Unhandled errors
 	defer fp.Close()
 	lenBuf := make([]byte, 4)
 	for {
@@ -151,7 +152,8 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 		}
 
 		length := binary.BigEndian.Uint32(lenBuf)
-		// Now Read Body Data
+
+		// next read body
 		buf := make([]byte, length)
 		_, err = io.ReadFull(fp, buf)
 		if err != nil {
@@ -196,23 +198,26 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 	return
 }
 
-// Store Meta to file
-func (mp *metaPartition) storeMeta() (err error) {
+func (mp *metaPartition) persistMetadata() (err error) {
 	if err = mp.config.checkMeta(); err != nil {
-		err = errors.Errorf("[storeMeta]->%s", err.Error())
+		err = errors.Errorf("[persistMetadata]->%s", err.Error())
 		return
 	}
+
+	// TODO Unhandled errors
 	os.MkdirAll(mp.config.RootDir, 0755)
-	filename := path.Join(mp.config.RootDir, metaFileTmp)
+	filename := path.Join(mp.config.RootDir, metadataFileTmp)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
 	if err != nil {
 		return
 	}
 	defer func() {
+		// TODO Unhandled errors
 		fp.Sync()
 		fp.Close()
 		os.Remove(filename)
 	}()
+
 	data, err := json.Marshal(mp.config)
 	if err != nil {
 		return
@@ -220,7 +225,7 @@ func (mp *metaPartition) storeMeta() (err error) {
 	if _, err = fp.Write(data); err != nil {
 		return
 	}
-	err = os.Rename(filename, path.Join(mp.config.RootDir, metaFile))
+	err = os.Rename(filename, path.Join(mp.config.RootDir, metadataFile))
 	return
 }
 
@@ -233,6 +238,7 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 	}
 	defer func() {
 		err = fp.Sync()
+		// TODO Unhandled errors
 		fp.Close()
 	}()
 	if _, err = fp.WriteString(fmt.Sprintf("%d", sm.applyIndex)); err != nil {
@@ -251,6 +257,7 @@ func (mp *metaPartition) storeInode(rootDir string,
 	}
 	defer func() {
 		err = fp.Sync()
+		// TODO Unhandled errors
 		fp.Close()
 	}()
 	var data []byte
@@ -261,7 +268,7 @@ func (mp *metaPartition) storeInode(rootDir string,
 		if data, err = ino.Marshal(); err != nil {
 			return false
 		}
-		// Set Length
+		// set length
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
 		if _, err = fp.Write(lenBuf); err != nil {
 			return false
@@ -269,7 +276,7 @@ func (mp *metaPartition) storeInode(rootDir string,
 		if _, err = sign.Write(lenBuf); err != nil {
 			return false
 		}
-		// Set Body Data
+		// set body
 		if _, err = fp.Write(data); err != nil {
 			return false
 		}
@@ -292,6 +299,7 @@ func (mp *metaPartition) storeDentry(rootDir string,
 	}
 	defer func() {
 		err = fp.Sync()
+		// TODO Unhandled errors
 		fp.Close()
 	}()
 	var data []byte
@@ -303,7 +311,7 @@ func (mp *metaPartition) storeDentry(rootDir string,
 		if err != nil {
 			return false
 		}
-		// Set Length
+		// set length
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
 		if _, err = fp.Write(lenBuf); err != nil {
 			return false
@@ -325,14 +333,17 @@ func (mp *metaPartition) storeDentry(rootDir string,
 
 func (mp *metaPartition) deleteInodeFile() {
 	filename := path.Join(mp.config.RootDir, inodeFile)
+	// TODO Unhandled errors
 	os.Remove(filename)
 }
 func (mp *metaPartition) deleteDentryFile() {
 	filename := path.Join(mp.config.RootDir, dentryFile)
+	// TODO Unhandled errors
 	os.Remove(filename)
 
 }
 func (mp *metaPartition) deleteApplyFile() {
 	filename := path.Join(mp.config.RootDir, applyIDFile)
+	// TODO Unhandled errors
 	os.Remove(filename)
 }

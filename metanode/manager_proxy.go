@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,11 +22,12 @@ import (
 )
 
 const (
-	ForceCloseConnect = true
-	NoCloseConnect    = false
+	ForceClosedConnect = true
+	NoClosedConnect    = false
 )
 
-func (m *metaManager) serveProxy(conn net.Conn, mp MetaPartition,
+// TODO explain
+func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 	p *Packet) (ok bool) {
 	var (
 		mConn      *net.TCPConn
@@ -37,30 +38,32 @@ func (m *metaManager) serveProxy(conn net.Conn, mp MetaPartition,
 		return
 	}
 	if leaderAddr == "" {
-		err = ErrNonLeader
+		err = ErrNoLeader
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		goto end
 	}
-	// GetConnect Master Conn
+
 	mConn, err = m.connPool.GetConnect(leaderAddr)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		m.connPool.PutConnect(mConn, ForceCloseConnect)
+		m.connPool.PutConnect(mConn, ForceClosedConnect)
 		goto end
 	}
-	// Send Master Conn
+
+	// send to master connection
 	if err = p.WriteToConn(mConn); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		m.connPool.PutConnect(mConn, ForceCloseConnect)
+		m.connPool.PutConnect(mConn, ForceClosedConnect)
 		goto end
 	}
-	// Read conn from master
+
+	// read connection from the master
 	if err = p.ReadFromConn(mConn, proto.NoReadDeadlineTime); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		m.connPool.PutConnect(mConn, ForceCloseConnect)
+		m.connPool.PutConnect(mConn, ForceClosedConnect)
 		goto end
 	}
-	m.connPool.PutConnect(mConn, NoCloseConnect)
+	m.connPool.PutConnect(mConn, NoClosedConnect)
 end:
 	m.respondToClient(conn, p)
 	if err != nil {

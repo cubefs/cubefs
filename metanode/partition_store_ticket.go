@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -48,10 +48,11 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 		} else {
 			curIndex = msg.applyIndex
 		}
+
 		// Truncate raft log
 		mp.raftPartition.Truncate(curIndex)
 		if _, ok := mp.IsLeader(); ok {
-			timer.Reset(storeTimeTicker)
+			timer.Reset(intervalToPersistData)
 		}
 		scheduleState = StateStopped
 	}
@@ -85,7 +86,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 			case msg := <-mp.storeChan:
 				switch msg.command {
 				case startStoreTick:
-					timer.Reset(storeTimeTicker)
+					timer.Reset(intervalToPersistData)
 				case stopStoreTick:
 					timer.Stop()
 				case opFSMStoreTick:
@@ -93,14 +94,14 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 			case <-timer.C:
 				if mp.applyID <= curIndex {
-					timer.Reset(storeTimeTicker)
+					timer.Reset(intervalToPersistData)
 					continue
 				}
 				if _, err := mp.Put(opFSMStoreTick, nil); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s",
 						err.Error())
 					if _, ok := mp.IsLeader(); ok {
-						timer.Reset(storeTimeTicker)
+						timer.Reset(intervalToPersistData)
 					}
 				}
 			}

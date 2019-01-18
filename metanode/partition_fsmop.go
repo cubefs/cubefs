@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -59,16 +59,17 @@ func (mp *metaPartition) initInode(ino *Inode) {
 	}
 }
 
-func (mp *metaPartition) fsmOpenFile(req *OpenReq) (resp *ResponseInode) {
+func (mp *metaPartition) fsmOpenFile(req *OpenReq) (resp *InodeResponse) {
+
 	ino := NewInode(req.Inode, 0)
 	item := mp.inodeTree.Get(ino)
-	resp = NewResponseInode()
+	resp = NewInodeResponse()
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
 	ino2 := item.(*Inode)
-	if ino2.IsDelete() {
+	if ino2.ShouldDelete() {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
@@ -90,7 +91,7 @@ func (mp *metaPartition) fsmReleaseOpen(ino *Inode) (status uint8) {
 		return
 	}
 	ino2 := item.(*Inode)
-	if ino2.IsDelete() {
+	if ino2.ShouldDelete() {
 		status = proto.OpNotExistErr
 		return
 	}
@@ -98,7 +99,8 @@ func (mp *metaPartition) fsmReleaseOpen(ino *Inode) (status uint8) {
 	return
 }
 
-func (mp *metaPartition) offlinePartition() (err error) {
+// Not implemented.
+func (mp *metaPartition) decommissionPartition() (err error) {
 	return
 }
 
@@ -113,12 +115,13 @@ func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8,
 			status = proto.OpDiskErr
 		}
 	}()
-	err = mp.StoreMeta()
+	err = mp.PersistMetadata()
 	return
 }
 
 func (mp *metaPartition) fsmDeletePartition() (status uint8) {
 	mp.Stop()
+	// TODO Unhandled errors
 	os.RemoveAll(mp.config.RootDir)
 	return
 }
@@ -127,26 +130,26 @@ func (mp *metaPartition) confAddNode(req *proto.
 	MetaPartitionDecommissionRequest, index uint64) (updated bool, err error) {
 	var (
 		heartbeatPort int
-		replicatePort int
+		replicaPort   int
 	)
-	if heartbeatPort, replicatePort, err = mp.getRaftPort(); err != nil {
+	if heartbeatPort, replicaPort, err = mp.getRaftPort(); err != nil {
 		return
 	}
 
-	findAddPeer := false
+	addPeer := false
 	for _, peer := range mp.config.Peers {
 		if peer.ID == req.AddPeer.ID {
-			findAddPeer = true
+			addPeer = true
 			break
 		}
 	}
-	updated = !findAddPeer
+	updated = !addPeer
 	if !updated {
 		return
 	}
 	mp.config.Peers = append(mp.config.Peers, req.AddPeer)
 	addr := strings.Split(req.AddPeer.Addr, ":")[0]
-	mp.config.RaftStore.AddNodeWithPort(req.AddPeer.ID, addr, heartbeatPort, replicatePort)
+	mp.config.RaftStore.AddNodeWithPort(req.AddPeer.ID, addr, heartbeatPort, replicaPort)
 	return
 }
 
@@ -171,9 +174,11 @@ func (mp *metaPartition) confRemoveNode(req *proto.MetaPartitionDecommissionRequ
 					continue
 				}
 				if mp.raftPartition != nil {
+					// TODO Unhandled errors
 					mp.raftPartition.Delete()
 				}
 				mp.Stop()
+				// TODO Unhandled errors
 				os.RemoveAll(mp.config.RootDir)
 				log.LogDebugf("[confRemoveNode]: remove self end.")
 				return
@@ -207,6 +212,7 @@ func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
 			continue
 		}
 		if f.Name() <= fileName {
+			// TODO Unhandled errors
 			os.Remove(path.Join(mp.config.RootDir, f.Name()))
 			continue
 		}
@@ -236,6 +242,7 @@ func (mp *metaPartition) setExtentDeleteFileCursor(buf []byte) (err error) {
 		log.LogErrorf("[setExtentDeleteFileCursor] write file %s cursor"+
 			" failed: %s", fileName, err.Error())
 	}
+	// TODO Unhandled errors
 	fp.Close()
 	return
 }

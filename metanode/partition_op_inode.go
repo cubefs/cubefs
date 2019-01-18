@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
 		return false
 	}
 	info.Inode = ino.Inode
-	info.Mode = ino.Type
+	info.Type = ino.Type
 	info.Size = ino.Size
 	info.Nlink = ino.NLink
 	info.Uid = ino.Uid
@@ -44,6 +44,7 @@ func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
 	return true
 }
 
+// CreateInode returns a new inode.
 func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 	inoID, err := mp.nextInodeID()
 	if err != nil {
@@ -83,6 +84,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 	return
 }
 
+// DeleteInode deletes an inode.
 func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	val, err := ino.Marshal()
@@ -95,7 +97,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
-	msg := r.(*ResponseInode)
+	msg := r.(*InodeResponse)
 	status := msg.Status
 	var reply []byte
 	if status == proto.OpOk {
@@ -111,6 +113,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 	return
 }
 
+// Open opens a metadata partition. TODO double check
 func (mp *metaPartition) Open(req *OpenReq, p *Packet) (err error) {
 	req.ATime = Now.GetCurrentTime().Unix()
 	val, err := json.Marshal(req)
@@ -124,7 +127,7 @@ func (mp *metaPartition) Open(req *OpenReq, p *Packet) (err error) {
 		return
 	}
 	var reply []byte
-	msg := resp.(*ResponseInode)
+	msg := resp.(*InodeResponse)
 	if reply, err = json.Marshal(&proto.OpenResponse{
 		AuthID: msg.AuthID,
 	}); err != nil {
@@ -135,6 +138,7 @@ func (mp *metaPartition) Open(req *OpenReq, p *Packet) (err error) {
 	return
 }
 
+// TODO explain
 func (mp *metaPartition) ReleaseOpen(req *ReleaseReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	ino.AuthID = req.AuthID
@@ -152,6 +156,7 @@ func (mp *metaPartition) ReleaseOpen(req *ReleaseReq, p *Packet) (err error) {
 	return
 }
 
+// InodeGet executes the inodeGet command. TODO double check
 func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	retMsg := mp.getInode(ino)
@@ -176,6 +181,7 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 	return
 }
 
+// InodeGetBatch executes the inodeBatchGet command. TODO double check
 func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error) {
 	resp := &proto.BatchInodeGetResponse{}
 	ino := NewInode(0, 0)
@@ -229,7 +235,7 @@ func (mp *metaPartition) CreateLinkInode(req *LinkInodeReq, p *Packet) (err erro
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
-	retMsg := resp.(*ResponseInode)
+	retMsg := resp.(*InodeResponse)
 	status := proto.OpNotExistErr
 	var reply []byte
 	if retMsg.Status == proto.OpOk {
@@ -249,6 +255,7 @@ func (mp *metaPartition) CreateLinkInode(req *LinkInodeReq, p *Packet) (err erro
 	return
 }
 
+// EvictInode evicts an inode.
 func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	val, err := ino.Marshal()
@@ -261,11 +268,12 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
-	msg := resp.(*ResponseInode)
+	msg := resp.(*InodeResponse)
 	p.PacketErrorWithBody(msg.Status, nil)
 	return
 }
 
+// SetAttr set the inode attributes.
 func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
 	_, err = mp.Put(opFSMSetAttr, reqData)
 	if err != nil {
@@ -276,6 +284,7 @@ func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
 	return
 }
 
+// GetInodeTree returns the inode tree.
 func (mp *metaPartition) GetInodeTree() *BTree {
 	return mp.inodeTree.GetTree()
 }
