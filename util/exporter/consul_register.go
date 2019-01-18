@@ -28,10 +28,9 @@ const (
 	RegisterPath   = "/v1/agent/service/register"
 )
 
-/**
- * consul register info for prometheus
- * optional for user when set prometheus exporter
- */
+// ConsulRegisterInfo defines the struct for consul register service.
+// Optional for user when setting prometheus exporter.
+// https://www.consul.io
 type ConsulRegisterInfo struct {
 	Name    string
 	ID      string
@@ -40,11 +39,12 @@ type ConsulRegisterInfo struct {
 	Tags    []string
 }
 
-// TODO explain
+// GetConsulId returns the consul ID.
 func GetConsulId(app string, role string, host string, port int64) string {
 	return fmt.Sprintf("%s_%s_%s_%d", app, role, host, port)
 }
 
+// RegisterConsul registers the consul service.
 func RegisterConsul(addr, app, role, cluster string, port int64) {
 	if len(addr) <= 0 {
 		return

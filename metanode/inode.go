@@ -456,7 +456,8 @@ func (i *Inode) GetAuth() (authID uint64, timeout int64) {
 	return
 }
 
-// CanOpen returns if the inode can be opened.
+// CanOpen checks if the current process has the right to open the file. It is used to prevents multiple processes to
+// open the same file.
 func (i *Inode) CanOpen(mt int64) (authId uint64, ok bool) {
 	i.Lock()
 	defer i.Unlock()
@@ -471,8 +472,8 @@ func (i *Inode) CanOpen(mt int64) (authId uint64, ok bool) {
 	return
 }
 
-// OpenRelease sets the authID as 0. TODO explain
-func (i *Inode) OpenRelease(authId uint64) {
+// ResetAuthID sets the authID as 0 (indicates that the inode/file is not in use).
+func (i *Inode) ResetAuthID(authId uint64) {
 	i.Lock()
 	if i.AuthID == authId {
 		i.AuthID = 0
@@ -480,7 +481,11 @@ func (i *Inode) OpenRelease(authId uint64) {
 	i.Unlock()
 }
 
-// CanWrite returns if the inode can be written. TODO explain
+// CanWrite returns if the current process has the write permission.
+// It is possible that a process opens a file and obtains the write permission first. Later on it stops the write for
+// some reason, and never closes the file. After timeout, another process opens the same file, but because the last
+// open is timed out, so this time the open succeeds. After writing some data, the previous process starts to work again.
+// In this case, the canWrite returns false for the previous process.
 func (i *Inode) CanWrite(authId uint64, mt int64) bool {
 	i.Lock()
 	defer i.Unlock()

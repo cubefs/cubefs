@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -50,6 +50,7 @@ var (
 	AttrValidDuration   = 30 * time.Second // TODO explain
 )
 
+// ParseError returns the error type.
 func ParseError(err error) fuse.Errno {
 	switch v := err.(type) {
 	case syscall.Errno:
@@ -61,10 +62,11 @@ func ParseError(err error) fuse.Errno {
 	}
 }
 
-func ParseMode(mode uint32) fuse.DirentType {
-	if proto.IsDir(mode) {
+// ParseType returns the dentry type.
+func ParseType(t uint32) fuse.DirentType {
+	if proto.IsDir(t) {
 		return fuse.DT_Dir
-	} else if proto.IsSymlink(mode) {
+	} else if proto.IsSymlink(t) {
 		return fuse.DT_Link
 	}
 	return fuse.DT_File

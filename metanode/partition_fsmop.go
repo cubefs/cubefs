@@ -97,7 +97,7 @@ func (mp *metaPartition) fsmReleaseOpen(ino *Inode) (status uint8) {
 		status = proto.OpNotExistErr
 		return
 	}
-	ino2.OpenRelease(ino2.AuthID)
+	ino2.ResetAuthID(ino2.AuthID)
 	return
 }
 
