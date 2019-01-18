@@ -166,7 +166,7 @@ func (m *metadataManager) opMetaLinkInode(conn net.Conn, p *Packet) (err error) 
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.CreateLinkInode(req, p)
+	err = mp.CreateInodeLink(req, p)
 	m.respondToClient(conn, p)
 	log.LogDebugf("[opMetaLinkInode] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
 		p.GetResultMsg(), p.Data)

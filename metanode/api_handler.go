@@ -421,7 +421,7 @@ func (m *MetaNode) getInodeAuth(w http.ResponseWriter, r *http.Request) {
 		resp.Msg = err.Error()
 		return
 	}
-	mp, err := m.metaManager.GetPartition(pid)
+	mp, err := m.metadataManager.GetPartition(pid)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
