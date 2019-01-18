@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import (
 	"os"
 )
 
+// ExtentAppend appends an extent.
 func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	ino.AuthID = req.AuthID
@@ -40,8 +41,8 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 	return
 }
 
-func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest,
-	p *Packet) (err error) {
+// ExtentsList returns the list of extents.
+func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	retMsg := mp.getInode(ino)
 	ino = retMsg.Msg
@@ -69,6 +70,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest,
 	return
 }
 
+// ExtentsTruncate truncates an extent.
 func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq,
 	p *Packet) (err error) {
 	ino := NewInode(req.Inode, proto.Mode(os.ModePerm))
@@ -84,7 +86,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq,
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
-	msg := resp.(*ResponseInode)
+	msg := resp.(*InodeResponse)
 	p.PacketErrorWithBody(msg.Status, nil)
 	return
 }

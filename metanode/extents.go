@@ -1,4 +1,4 @@
-// Copyright 2018 The ChuBao Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,20 +30,24 @@ var (
 	}
 )
 
+// GetExtentSlice returns an extent slice in the extent pool.
 func GetExtentSlice() []BtreeItem {
 	eks := extentsPool.Get()
 	return eks.([]BtreeItem)
 }
 
+// PutExtentSlice put an extent slice into the extent pool.
 func PutExtentSlice(eks []BtreeItem) {
 	eks = eks[:0]
 	extentsPool.Put(eks)
 }
 
+// ExtentsTree defines the struct that includes a btree for the extents.
 type ExtentsTree struct {
 	*BTree
 }
 
+// String returns the string format of the extent tree.
 func (e *ExtentsTree) String() string {
 	buff := bytes.NewBuffer(nil)
 	buff.Grow(128)
@@ -52,12 +56,14 @@ func (e *ExtentsTree) String() string {
 	return buff.String()
 }
 
+// NewExtentsTree returns a new ExtentsTree.
 func NewExtentsTree() *ExtentsTree {
 	return &ExtentsTree{
 		BTree: NewBtree(),
 	}
 }
 
+// Marshal marshals the ExtentsTree into a byte array.
 func (e *ExtentsTree) Marshal() ([]byte, error) {
 	eks := GetExtentSlice()
 	defer PutExtentSlice(eks)
@@ -72,10 +78,12 @@ func (e *ExtentsTree) Marshal() ([]byte, error) {
 	return json.Marshal(eks)
 }
 
+// MarshalJSON is the wrapper of e.Marshal().
 func (e *ExtentsTree) MarshalJSON() ([]byte, error) {
 	return e.Marshal()
 }
 
+// Append appends a btree item to the extent tree.
 func (e *ExtentsTree) Append(key BtreeItem) (items []BtreeItem) {
 	var delItems []BtreeItem
 	ext := key.(*proto.ExtentKey)
@@ -86,7 +94,6 @@ func (e *ExtentsTree) Append(key BtreeItem) (items []BtreeItem) {
 			return true
 		})
 
-	// should Delete Items
 	for _, item := range delItems {
 		delKey := item.(*proto.ExtentKey)
 		if delKey.PartitionId == ext.PartitionId && delKey.ExtentId == ext.
@@ -96,11 +103,12 @@ func (e *ExtentsTree) Append(key BtreeItem) (items []BtreeItem) {
 		e.Delete(item)
 		items = append(items, item)
 	}
-	// add Item to btree
+	// add item to btree
 	e.ReplaceOrInsert(key, true)
 	return
 }
 
+// Size returns the size of the btree.
 func (e *ExtentsTree) Size() (size uint64) {
 	item := e.MaxItem()
 	if item == nil {
@@ -112,12 +120,13 @@ func (e *ExtentsTree) Size() (size uint64) {
 	return
 }
 
-// Range calls f sequentially for each exporterKey and value present in the extent exporterKey collection.
+// Range calls f sequentially for each exporterKey and value presented in the extent exporterKey collection.
 // If f returns false, range stops the iteration.
 func (e *ExtentsTree) Range(f func(item BtreeItem) bool) {
 	e.Ascend(f)
 }
 
+// MarshalBinary marshals the data in binary.
 func (e *ExtentsTree) MarshalBinary() (data []byte, err error) {
 	var binData []byte
 	buf := bytes.NewBuffer(make([]byte, 0, 512))
@@ -141,6 +150,7 @@ func (e *ExtentsTree) MarshalBinary() (data []byte, err error) {
 	return
 }
 
+// UnmarshalBinary unmarshals the data in binary.
 func (e *ExtentsTree) UnmarshalBinary(data []byte) (err error) {
 	buf := bytes.NewBuffer(data)
 	for {
@@ -156,6 +166,7 @@ func (e *ExtentsTree) UnmarshalBinary(data []byte) (err error) {
 	return
 }
 
+// Clone returns a copy of the extent tree.
 func (e *ExtentsTree) Clone() *ExtentsTree {
 	return &ExtentsTree{
 		BTree: e.GetTree(),

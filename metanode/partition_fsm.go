@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import (
 	"strings"
 )
 
+// Apply applies the given operational commands.
 func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
 	defer func() {
 		mp.uploadApplyID(index)
@@ -132,6 +133,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			inodeTree:  mp.getInodeTree(),
 			dentryTree: mp.getDentryTree(),
 		}
+
 		mp.storeChan <- msg
 	case opFSMInternalDeleteInode:
 		err = mp.internalDelete(msg.V)
@@ -143,6 +145,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	return
 }
 
+// ApplyMemberChange  apply changes to the raft member.
 func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
 	defer func() {
 		if err == nil {
@@ -153,7 +156,7 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	if err = json.Unmarshal(confChange.Context, req); err != nil {
 		return
 	}
-	// Change memory state
+	// change memory status
 	var (
 		updated bool
 	)
@@ -170,7 +173,7 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	}
 	if updated {
 		mp.config.sortPeers()
-		if err = mp.storeMeta(); err != nil {
+		if err = mp.persistMetadata(); err != nil {
 			log.LogErrorf("action[ApplyMemberChange] err[%v].", err)
 			return
 		}
@@ -178,6 +181,7 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	return
 }
 
+// Snapshot returns the snapshot of the current meta partition.
 func (mp *metaPartition) Snapshot() (raftproto.Snapshot, error) {
 	applyID := mp.applyID
 	ino := mp.getInodeTree()
@@ -200,8 +204,8 @@ func (mp *metaPartition) Snapshot() (raftproto.Snapshot, error) {
 	return snapIter, nil
 }
 
-func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer,
-	iter raftproto.SnapIterator) (err error) {
+// ApplySnapshot applies the given snapshots.
+func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.SnapIterator) (err error) {
 	var (
 		data       []byte
 		index      int
@@ -247,6 +251,8 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer,
 		switch snap.Op {
 		case opFSMCreateInode:
 			ino := NewInode(0, 0)
+
+			// TODO Unhandled errors
 			ino.UnmarshalKey(snap.K)
 			ino.UnmarshalValue(snap.V)
 			if cursor < ino.Inode {
@@ -256,11 +262,13 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer,
 			log.LogDebugf("action[ApplySnapshot] create inode[%v].", ino)
 		case opFSMCreateDentry:
 			dentry := &Dentry{}
+
+			// TODO Unhandled errors
 			dentry.UnmarshalKey(snap.K)
 			dentry.UnmarshalValue(snap.V)
 			dentryTree.ReplaceOrInsert(dentry, true)
 			log.LogDebugf("action[ApplySnapshot] create dentry[%v].", dentry)
-		case opSnapExtentFile:
+		case opExtentFileSnapshot:
 			fileName := string(snap.K)
 			fileName = path.Join(mp.config.RootDir, fileName)
 			if err = ioutil.WriteFile(fileName, snap.V, 0644); err != nil {
@@ -275,11 +283,13 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer,
 	}
 }
 
+// HandleFatalEvent handles the fatal errors.
 func (mp *metaPartition) HandleFatalEvent(err *raft.FatalError) {
 	// Panic while fatal event happen.
 	log.LogFatalf("action[HandleFatalEvent] err[%v].", err)
 }
 
+// HandleLeaderChange handles the leader changes.
 func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 	exporter.Alarm(exporterKey, fmt.Sprintf("LeaderChange: partition=%d, "+
 		"newLeader=%d", mp.config.PartitionId, leader))
@@ -302,6 +312,7 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 	}
 }
 
+// Put puts the given key-value pair (operation key and operation request) into the raft store.
 func (mp *metaPartition) Put(key, val interface{}) (resp interface{}, err error) {
 	snap := NewMetaItem(0, nil, nil)
 	snap.Op = key.(uint32)
@@ -312,15 +323,18 @@ func (mp *metaPartition) Put(key, val interface{}) (resp interface{}, err error)
 	if err != nil {
 		return
 	}
-	//submit raftStore
+
+	// submit to the raft store
 	resp, err = mp.raftPartition.Submit(cmd)
 	return
 }
 
+// Get has not been implemented yet.
 func (mp *metaPartition) Get(key interface{}) (interface{}, error) {
 	return nil, nil
 }
 
+// Del has not been implemented yet.
 func (mp *metaPartition) Del(key interface{}) (interface{}, error) {
 	return nil, nil
 }
