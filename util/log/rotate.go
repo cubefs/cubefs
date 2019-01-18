@@ -24,11 +24,13 @@ const (
 	DefaultHeadRatio = 0.2
 )
 
+// TODO explain
 type LogRotate struct {
 	rollingSize int64
 	headRoom    int64
 }
 
+// NewLogRotate returns a new LogRotate instance.
 func NewLogRotate() *LogRotate {
 	return &LogRotate{
 		rollingSize: DefaultRollingSize,
@@ -36,10 +38,12 @@ func NewLogRotate() *LogRotate {
 	}
 }
 
+// SetRollingSizeMb sets the rolling size in terms of MB.
 func (r *LogRotate) SetRollingSizeMb(size int64) {
 	r.rollingSize = size
 }
 
+// SetHeadRoomMb sets the headroom in terms of MB.
 func (r *LogRotate) SetHeadRoomMb(size int64) {
 	r.headRoom = size
 }

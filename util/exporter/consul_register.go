@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	RegistPeriod = time.Duration(1) * time.Minute
-	RegisterPath = "/v1/agent/service/register"
+	RegisterPeriod = time.Duration(1) * time.Minute
+	RegisterPath   = "/v1/agent/service/register"
 )
 
 /**
@@ -40,20 +40,21 @@ type ConsulRegisterInfo struct {
 	Tags    []string
 }
 
+// TODO explain
 func GetConsulId(app string, role string, host string, port int64) string {
 	return fmt.Sprintf("%s_%s_%s_%d", app, role, host, port)
 }
 
-func RegistConsul(addr, app, role, cluster string, port int64) {
+func RegisterConsul(addr, app, role, cluster string, port int64) {
 	if len(addr) <= 0 {
 		return
 	}
 	log.LogInfo("consul register enable %v", addr)
-	ticker := time.NewTicker(RegistPeriod)
+	ticker := time.NewTicker(RegisterPeriod)
 	defer func() {
 		if err := recover(); err != nil {
 			ticker.Stop()
-			log.LogErrorf("RegistConsul panic,err[%v]", err)
+			log.LogErrorf("RegisterConsul panic,err[%v]", err)
 		}
 	}()
 
@@ -61,12 +62,13 @@ func RegistConsul(addr, app, role, cluster string, port int64) {
 		for {
 			select {
 			case <-ticker.C:
-				SendRegistReq(addr, app, role, cluster, port)
+				SendRegisterReq(addr, app, role, cluster, port)
 			}
 		}
 	}()
 }
 
+// GetLocalIpAddr returns the local IP address.
 func GetLocalIpAddr() (ipaddr string, err error) {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
@@ -83,7 +85,8 @@ func GetLocalIpAddr() (ipaddr string, err error) {
 	return "", fmt.Errorf("cannot get local ip")
 }
 
-func SendRegistReq(addr string, app string, role string, cluster string, port int64) {
+// SendRegisterReq sends the register request.
+func SendRegisterReq(addr string, app string, role string, cluster string, port int64) {
 	host, err := GetLocalIpAddr()
 	if err != nil {
 		log.LogErrorf("get local ip error, %v", err.Error())
@@ -103,6 +106,6 @@ func SendRegistReq(addr string, app string, role string, cluster string, port in
 		},
 	}).End()
 	if errs != nil {
-		log.LogErrorf("Error on regist consul resp: %v, body: %v", body, resp)
+		log.LogErrorf("Error on register consul resp: %v, body: %v", body, resp)
 	}
 }

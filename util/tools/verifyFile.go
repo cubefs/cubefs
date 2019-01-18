@@ -39,6 +39,7 @@ var (
 	currentCnt uint64
 )
 
+// TODO explain
 type VerifyInfo struct {
 	Name          string
 	Offset        int64
@@ -71,6 +72,7 @@ const (
 	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting in 63 bits
 )
 
+// TODO explain
 func RandStringBytesMaskImpr(n int) string {
 	b := make([]byte, n)
 	// A rand.Int63() generates 63 random bits, enough for letterIdxMax letters!
