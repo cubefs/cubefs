@@ -137,12 +137,10 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 	return
 }
 
-// TODO change to bTreeHasInode?
 func (mp *metaPartition) internalHasInode(ino *Inode) bool {
 	return mp.inodeTree.Has(ino)
 }
 
-// TODO change to bTreeDelete?
 func (mp *metaPartition) internalDelete(val []byte) (err error) {
 	if len(val) == 0 {
 		return
@@ -162,7 +160,6 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 	}
 }
 
-// TODO change to bTreeDeleteInode?
 func (mp *metaPartition) internalDeleteInode(ino *Inode) {
 	mp.inodeTree.Delete(ino)
 	return

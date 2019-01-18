@@ -83,6 +83,8 @@ func (mp *metaPartition) fsmOpenFile(req *OpenReq) (resp *InodeResponse) {
 	return
 }
 
+// When opening a file for write, we assign a "lease" to the client that requests the file first,
+// and after finishing the write, we need to release the opened file.
 func (mp *metaPartition) fsmReleaseOpen(ino *Inode) (status uint8) {
 	status = proto.OpOk
 	item := mp.inodeTree.Get(ino)

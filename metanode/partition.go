@@ -111,7 +111,7 @@ type OpInode interface {
 	InodeGetAuth(ino uint64, p *Packet) (err error)
 	Open(req *OpenReq, p *Packet) (err error)
 	ReleaseOpen(req *ReleaseReq, p *Packet) (err error)
-	CreateLinkInode(req *LinkInodeReq, p *Packet) (err error)
+	CreateInodeLink(req *LinkInodeReq, p *Packet) (err error)
 	EvictInode(req *EvictInodeReq, p *Packet) (err error)
 	SetAttr(reqData []byte, p *Packet) (err error)
 	GetInodeTree() *BTree
@@ -519,9 +519,8 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 	return
 }
 
-func (mp *metaPartition) OfflinePartition(req []byte) (err error) {
-	_, err = mp.Put(opFSMOfflinePartition, req)
-
+func (mp *metaPartition) DecommissionPartition(req []byte) (err error) {
+	_, err = mp.Put(opFSMDecommissionPartition, req)
 	return
 }
 

@@ -60,7 +60,7 @@ func (mp *metaPartition) loadMetadata() (err error) {
 			err.Error())
 		return
 	}
-	// TODO: Valid PartitionConfig
+
 	if mConf.checkMeta() != nil {
 		return
 	}

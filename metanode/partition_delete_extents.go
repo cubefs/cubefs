@@ -12,8 +12,6 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-/*TODO why we have this separate files called partition_delete_extents.go? */
-
 package metanode
 
 import (
@@ -40,10 +38,8 @@ var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
 
 func (mp *metaPartition) startToDeleteExtents() {
 	fileList := list.New()
-	// start Append Delete Extents to File Worker
 	go mp.appendDelExtentsToFile(fileList)
-	// start ticket delete file worker
-	go mp.deleteExtentsFile(fileList)
+	go mp.deleteExtentsFromList(fileList)
 }
 
 func (mp *metaPartition) appendDelExtentsToFile(fileList *list.List) {
@@ -134,8 +130,8 @@ LOOP:
 
 }
 
-// TODO explain extent vs. extent file?
-func (mp *metaPartition) deleteExtentsFile(fileList *list.List) {
+// Delete all the extents of a file.
+func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
 	var (
 		element  *list.Element
 		fileName string
@@ -162,7 +158,7 @@ func (mp *metaPartition) deleteExtentsFile(fileList *list.List) {
 			goto LOOP
 		}
 		if _, ok := mp.IsLeader(); !ok {
-			log.LogDebugf("[deleteExtentsFile] partitionId=%d, "+
+			log.LogDebugf("[deleteExtentsFromList] partitionId=%d, "+
 				"not raft leader,please ignore", mp.config.PartitionId)
 			continue
 		}
@@ -173,7 +169,7 @@ func (mp *metaPartition) deleteExtentsFile(fileList *list.List) {
 		}
 
 		if _, err = fp.ReadAt(buf[:8], 0); err != nil {
-			log.LogWarnf("[deleteExtentsFile] partitionId=%d, "+
+			log.LogWarnf("[deleteExtentsFromList] partitionId=%d, "+
 				"read cursor least 8bytes, retry later", mp.config.PartitionId)
 			// TODO Unhandled errors
 			fp.Close()
@@ -185,7 +181,7 @@ func (mp *metaPartition) deleteExtentsFile(fileList *list.List) {
 				size = uint64(proto.ExtentLength)
 			} else if size > 0 && size < uint64(proto.ExtentLength) {
 				errStr := fmt.Sprintf(
-					"[deleteExtentsFile] partitionId=%d, %s file corrupted!",
+					"[deleteExtentsFromList] partitionId=%d, %s file corrupted!",
 					mp.config.PartitionId, fileName)
 				log.LogErrorf(errStr)
 				panic(errStr)
@@ -205,19 +201,19 @@ func (mp *metaPartition) deleteExtentsFile(fileList *list.List) {
 						if _, err = mp.Put(opFSMInternalDelExtentFile,
 							[]byte(fileName)); err != nil {
 							log.LogErrorf(
-								"[deleteExtentsFile] partitionId=%d,"+
+								"[deleteExtentsFromList] partitionId=%d,"+
 									"delete old file: %s,status: %s", mp.config.PartitionId,
 								fileName, err.Error())
 						}
-						log.LogDebugf("[deleteExtentsFile] partitionId=%d "+
+						log.LogDebugf("[deleteExtentsFromList] partitionId=%d "+
 							",delete old file: %s, status: %v", mp.config.PartitionId, fileName,
 							err == nil)
 						goto LOOP
 					}
-					log.LogDebugf("[deleteExtentsFile] partitionId=%d,delete"+
+					log.LogDebugf("[deleteExtentsFromList] partitionId=%d,delete"+
 						" old file status: %s", mp.config.PartitionId, status.State)
 				} else {
-					log.LogDebugf("[deleteExtentsFile] partitionId=%d, %s"+
+					log.LogDebugf("[deleteExtentsFromList] partitionId=%d, %s"+
 						" extents delete ok", mp.config.PartitionId, fileName)
 				}
 				continue
@@ -239,19 +235,19 @@ func (mp *metaPartition) deleteExtentsFile(fileList *list.List) {
 				panic(err)
 			}
 			// delete dataPartition
-			if err = mp.doDeleteDataPartition(ek); err != nil {
+			if err = mp.doDeleteMarkedInodes(ek); err != nil {
 				mp.extDelCh <- ek
-				log.LogWarnf("[deleteExtentsFile] partitionId=%d, %s",
+				log.LogWarnf("[deleteExtentsFromList] partitionId=%d, %s",
 					mp.config.PartitionId, err.Error())
 			}
 		}
 		buff.Reset()
 		buff.WriteString(fmt.Sprintf("%s %d", fileName, cursor))
 		if _, err = mp.Put(opFSMInternalDelExtentCursor, buff.Bytes()); err != nil {
-			log.LogWarnf("[deleteExtentsFile] partitionId=%d, %s",
+			log.LogWarnf("[deleteExtentsFromList] partitionId=%d, %s",
 				mp.config.PartitionId, err.Error())
 		}
-		log.LogDebugf("[deleteExtentsFile] partitionId=%d, file=%s, cursor=%d",
+		log.LogDebugf("[deleteExtentsFromList] partitionId=%d, file=%s, cursor=%d",
 			mp.config.PartitionId, fileName, cursor)
 		goto LOOP
 	}

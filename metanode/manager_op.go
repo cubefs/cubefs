@@ -504,8 +504,7 @@ func (m *metadataManager) opMetaExtentsList(conn net.Conn, p *Packet) (err error
 }
 
 func (m *metadataManager) opMetaExtentsDel(conn net.Conn, p *Packet) (err error) {
-	// TODO: not implement yet
-	panic("not implement yet")
+	panic("not implemented yet")
 }
 
 func (m *metadataManager) opMetaExtentsTruncate(conn net.Conn, p *Packet) (err error) {

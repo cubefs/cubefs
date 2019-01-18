@@ -113,7 +113,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 	return
 }
 
-// Open opens a metadata partition. TODO double check
+// Open opens an inode to operate.
 func (mp *metaPartition) Open(req *OpenReq, p *Packet) (err error) {
 	req.ATime = Now.GetCurrentTime().Unix()
 	val, err := json.Marshal(req)
@@ -138,7 +138,8 @@ func (mp *metaPartition) Open(req *OpenReq, p *Packet) (err error) {
 	return
 }
 
-// TODO explain
+// When opening a file for write, we assign a "lease" to the client that requests the file first,
+// and after finishing the write, we need to release the opened file.
 func (mp *metaPartition) ReleaseOpen(req *ReleaseReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	ino.AuthID = req.AuthID
@@ -156,7 +157,7 @@ func (mp *metaPartition) ReleaseOpen(req *ReleaseReq, p *Packet) (err error) {
 	return
 }
 
-// InodeGet executes the inodeGet command. TODO double check
+// InodeGet executes the inodeGet command from the client.
 func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	retMsg := mp.getInode(ino)
@@ -181,7 +182,7 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 	return
 }
 
-// InodeGetBatch executes the inodeBatchGet command. TODO double check
+// InodeGetBatch executes the inodeBatchGet command from the client.
 func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error) {
 	resp := &proto.BatchInodeGetResponse{}
 	ino := NewInode(0, 0)
@@ -223,7 +224,8 @@ func (mp *metaPartition) InodeGetAuth(ino uint64, p *Packet) (err error) {
 	return
 }
 
-func (mp *metaPartition) CreateLinkInode(req *LinkInodeReq, p *Packet) (err error) {
+// CreateInodeLink creates an inode link (e.g., soft link).
+func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	val, err := ino.Marshal()
 	if err != nil {

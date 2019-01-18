@@ -68,7 +68,6 @@ func (m *MetaNode) getPartitionsHandler(w http.ResponseWriter,
 	w.Write(data)
 }
 
-// 获取指定分片ID的元数据当前状态信息（包含leader状态)
 func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Request) {
 	// TODO Unhandled errors
 	r.ParseForm()
@@ -105,7 +104,7 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 	// TODO Unhandled errors
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
-	// TODO does the shouldSkip mean?
+	// when error returns we should scan (ascend) the tree.
 	shouldSkip := false
 	defer func() {
 		if !shouldSkip {
@@ -125,6 +124,7 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Msg = err.Error()
 		return
 	}
+
 	shouldSkip = true
 	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":[`)
 	if _, err := w.Write(buff.Bytes()); err != nil {
@@ -132,20 +132,18 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	buff.Reset()
 	var (
-		val     []byte
-		delimiteriter   = []byte{',', '\n'}
-
-		// TODO we may not need this isFirst flag.
-		isFirst = true
+		val         []byte
+		delimiter   = []byte{',', '\n'}
+		isFirstItem = true
 	)
 	f := func(i BtreeItem) bool {
 		// TODO why not merge the following two if statements?
-		if !isFirst {
+		if !isFirstItem {
 			// TODO Unhandled errors
-			w.Write(delimiteriter)
+			w.Write(delimiter)
 		}
-		if isFirst {
-			isFirst = false
+		if isFirstItem {
+			isFirstItem = false
 		}
 
 		ino := i.(*Inode)

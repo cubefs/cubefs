@@ -92,7 +92,7 @@ const (
 	opFSMOpen
 	opFSMDeletePartition
 	opFSMUpdatePartition
-	opFSMOfflinePartition
+	opFSMDecommissionPartition
 	opFSMExtentsAdd
 	opFSMStoreTick
 	startStoreTick
