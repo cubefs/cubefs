@@ -15,10 +15,8 @@
 package master
 
 import (
-	"fmt"
 	"net/http"
 
-	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
 	"net/http/httputil"
@@ -161,14 +159,4 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 
 	}
-}
-func newLogMsg(requestType, remoteAddr, message string, code int) (logMsg string) {
-	logMsg = fmt.Sprintf("type[%s] From [%s] httpCode[%d] Because [%s] ", requestType, remoteAddr, code, message)
-	return
-}
-
-//HandleError send err to client
-func HandleError(message string, err error, code int, w http.ResponseWriter) {
-	log.LogErrorf("errMsg:%v errStack:%v", message, errors.ErrorStack(err))
-	http.Error(w, message, code)
 }
