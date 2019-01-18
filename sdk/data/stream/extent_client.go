@@ -89,7 +89,6 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 	return
 }
 
-// OpenStream TODO explain
 func (client *ExtentClient) OpenStream(inode uint64, flag uint32) (err error) {
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
@@ -101,7 +100,6 @@ func (client *ExtentClient) OpenStream(inode uint64, flag uint32) (err error) {
 	return s.IssueOpenRequest(flag)
 }
 
-// CloseStream TODO explain
 func (client *ExtentClient) CloseStream(inode uint64, flag uint32) (err error) {
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
@@ -113,7 +111,6 @@ func (client *ExtentClient) CloseStream(inode uint64, flag uint32) (err error) {
 	return s.IssueReleaseRequest(flag)
 }
 
-// EvictStream TODO explain
 func (client *ExtentClient) EvictStream(inode uint64) error {
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
@@ -183,7 +180,6 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write 
 	return
 }
 
-// Truncate TODO explain
 func (client *ExtentClient) Truncate(inode uint64, size int) error {
 	prefix := fmt.Sprintf("Truncate{ino(%v)size(%v)}", inode, size)
 	s := client.GetStreamer(inode)
@@ -199,7 +195,6 @@ func (client *ExtentClient) Truncate(inode uint64, size int) error {
 	return err
 }
 
-// Flush TODO explain
 func (client *ExtentClient) Flush(inode uint64) error {
 	s := client.GetStreamer(inode)
 	if s == nil {
@@ -208,7 +203,6 @@ func (client *ExtentClient) Flush(inode uint64) error {
 	return s.IssueFlushRequest()
 }
 
-// Read TODO explain
 func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int) (read int, err error) {
 	if size == 0 {
 		return

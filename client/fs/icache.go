@@ -21,7 +21,10 @@ import (
 )
 
 const (
-	MinInodeCacheEvictNum = 10 // TODO explain
+	// MinInodeCacheEvictNum is used in the foreground eviction.
+	// When clearing the inodes from the cache, it stops as soon as 10 inodes have been evicted.
+	MinInodeCacheEvictNum = 10
+	// MaxInodeCacheEvictNum is used in the back ground. We can evict 200000 inodes at max.
 	MaxInodeCacheEvictNum = 200000
 
 	BgEvictionInterval = 2 * time.Minute
@@ -115,7 +118,8 @@ func (ic *InodeCache) evict(foreground bool) {
 		}
 
 		// For background eviction, if all expired items have been evicted, just return
-		// But for foreground eviction, we need to meet the minimum inode cache evict number requirement. TODO explain
+		// But for foreground eviction, we need to evict at least MinInodeCacheEvictNum inodes.
+		// The foreground eviction, does not need to care if the inode has expired or not.
 		inode := element.Value.(*Inode)
 		if !foreground && !inode.expired() {
 			return

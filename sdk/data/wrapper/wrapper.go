@@ -42,7 +42,7 @@ type DataPartitionView struct {
 	DataPartitions []*DataPartition
 }
 
-// Wrapper TODO explain
+// Wrapper TODO rename. This name does not reflect what it is doing.
 type Wrapper struct {
 	sync.RWMutex
 	clusterName           string

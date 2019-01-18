@@ -22,7 +22,8 @@ import (
 	"sync"
 )
 
-// TODO explain
+// One inode corresponds to one streamer. All the requests to the same inode will be queued.
+// TODO rename streamer here is not a good name as it also handles overwrites, not just stream write.
 type Streamer struct {
 	client *ExtentClient
 	inode  uint64
@@ -86,7 +87,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 		flushed   bool
 	)
 
-	requests = s.extents.BuildReadRequests(offset, size, data)
+	requests = s.extents.PrepareReadRequests(offset, size, data)
 	for _, req := range requests {
 		if req.ExtentKey == nil {
 			continue
@@ -101,7 +102,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 	}
 
 	if flushed {
-		requests = s.extents.BuildReadRequests(offset, size, data)
+		requests = s.extents.PrepareReadRequests(offset, size, data)
 	}
 
 	filesize, _ := s.extents.Size()

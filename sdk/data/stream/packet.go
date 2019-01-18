@@ -26,7 +26,7 @@ import (
 	"time"
 )
 
-// Packet defines a wrapper of the packet in proto. TODO should we put it into the wrapper package?
+// Packet defines a wrapper of the packet in proto.
 type Packet struct {
 	proto.Packet
 	inode    uint64

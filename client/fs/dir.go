@@ -102,7 +102,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	return child, child, nil
 }
 
-// Forget forgets the current directory. TODO explain
+// Forget is called when the evict is invoked from the kernel.
 func (d *Dir) Forget() {
 	ino := d.inode.ino
 	defer func() {

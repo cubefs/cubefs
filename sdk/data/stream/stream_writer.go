@@ -83,7 +83,6 @@ type EvictRequest struct {
 	done chan struct{}
 }
 
-// TODO HandleOpenRequest?
 func (s *Streamer) IssueOpenRequest(flag uint32) error {
 	request := openRequestPool.Get().(*OpenRequest)
 	request.done = make(chan struct{}, 1)
@@ -95,7 +94,6 @@ func (s *Streamer) IssueOpenRequest(flag uint32) error {
 	return err
 }
 
-// TODO explain
 func (s *Streamer) IssueWriteRequest(offset int, data []byte) (write int, err error) {
 	if s.authid == 0 {
 		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: not authorized, ino(%v)", s.inode))
@@ -118,7 +116,6 @@ func (s *Streamer) IssueWriteRequest(offset int, data []byte) (write int, err er
 	return
 }
 
-// TODO explain
 func (s *Streamer) IssueFlushRequest() error {
 	request := flushRequestPool.Get().(*FlushRequest)
 	request.done = make(chan struct{}, 1)
@@ -129,7 +126,6 @@ func (s *Streamer) IssueFlushRequest() error {
 	return err
 }
 
-// TODO explain
 func (s *Streamer) IssueReleaseRequest(flag uint32) error {
 	request := releaseRequestPool.Get().(*ReleaseRequest)
 	request.done = make(chan struct{}, 1)
@@ -142,7 +138,6 @@ func (s *Streamer) IssueReleaseRequest(flag uint32) error {
 	return err
 }
 
-// TODO explain
 func (s *Streamer) IssueTruncRequest(size int) error {
 	if s.authid == 0 {
 		return errors.New(fmt.Sprintf("IssueTruncRequest: not authorized, ino(%v)", s.inode))
@@ -158,7 +153,6 @@ func (s *Streamer) IssueTruncRequest(size int) error {
 	return err
 }
 
-// TODO explain
 func (s *Streamer) IssueEvictRequest() error {
 	request := evictRequestPool.Get().(*EvictRequest)
 	request.done = make(chan struct{}, 1)
@@ -217,7 +211,7 @@ func (s *Streamer) handleRequest(request interface{}) {
 func (s *Streamer) write(data []byte, offset, size int) (total int, err error) {
 	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
 
-	requests := s.extents.BuildWriteRequests(offset, size, data)
+	requests := s.extents.PrepareWriteRequests(offset, size, data)
 	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
 	for _, req := range requests {
 		var writeSize int
@@ -254,7 +248,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest) (total int, err error) {
 	ekExtOffset := int(req.ExtentKey.ExtentOffset)
 
 	// the extent key needs to be updated because when preparing the requests,
-	// the obtained extent key could be a local key which is not accurate. TODO explain
+	// the obtained extent key could be a local key which can be inconsistent with the remote key.
 	req.ExtentKey = s.extents.Get(uint64(offset))
 	if req.ExtentKey == nil {
 		err = errors.New(fmt.Sprintf("doOverwrite: extent key not exist, ino(%v) ekFileOffset(%v) ek(%v)", s.inode, ekFileOffset, req.ExtentKey))
@@ -397,8 +391,8 @@ func (s *Streamer) traverse() (err error) {
 
 		log.LogDebugf("Streamer traverse begin: eh(%v)", eh)
 		if eh.getStatus() >= ExtentStatusClosed {
-			// handler is beyond closed status, but there can still be
-			// unflushed packet. TODO explain
+			// handler can be in different status such as close, recovery, and error,
+			// and therefore there can be packet that has been be flashed yet.
 			eh.flushPacket()
 			if atomic.LoadInt32(&eh.inflight) > 0 {
 				continue

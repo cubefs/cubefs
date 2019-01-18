@@ -50,7 +50,7 @@ func NewExtentRequest(offset, size int, data []byte, ek *proto.ExtentKey) *Exten
 type ExtentCache struct {
 	sync.RWMutex
 	inode uint64
-	gen   uint64 // TODO explain
+	gen   uint64 // generation number
 	size  uint64 // size of the cache
 	root  *btree.BTree
 }
@@ -105,7 +105,7 @@ func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey) {
 	}
 }
 
-// Append appends an extent key. TODO explain
+// Append appends an extent key.
 func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) {
 	ekEnd := ek.FileOffset + uint64(ek.Size)
 	lower := &proto.ExtentKey{FileOffset: ek.FileOffset}
@@ -115,12 +115,15 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) {
 	cache.Lock()
 	defer cache.Unlock()
 
+	// When doing the append, we do not care about the data after the file offset.
+	// Those data will be overwritten by the current extent anyway.
 	cache.root.AscendRange(lower, upper, func(i btree.Item) bool {
 		found := i.(*proto.ExtentKey)
 		discard = append(discard, found)
 		return true
 	})
 
+	// After deleting the data between lower and upper, we will do the append
 	for _, key := range discard {
 		cache.root.Delete(key)
 	}
@@ -190,8 +193,8 @@ func (cache *ExtentCache) Get(offset uint64) (ret *proto.ExtentKey) {
 	return ret
 }
 
-// BuildReadRequests generates a list of read requests. TODO explain
-func (cache *ExtentCache) BuildReadRequests(offset, size int, data []byte) []*ExtentRequest {
+// PrepareReadRequests classifies the incoming request.
+func (cache *ExtentCache) PrepareReadRequests(offset, size int, data []byte) []*ExtentRequest {
 	requests := make([]*ExtentRequest, 0)
 	pivot := &proto.ExtentKey{FileOffset: uint64(offset)}
 	upper := &proto.ExtentKey{FileOffset: uint64(offset + size)}
@@ -213,7 +216,7 @@ func (cache *ExtentCache) BuildReadRequests(offset, size int, data []byte) []*Ex
 		ekStart := int(ek.FileOffset)
 		ekEnd := int(ek.FileOffset) + int(ek.Size)
 
-		log.LogDebugf("BuildReadRequests: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
+		log.LogDebugf("PrepareReadRequests: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
 
 		if start < ekStart {
 			if end <= ekStart {
@@ -258,7 +261,7 @@ func (cache *ExtentCache) BuildReadRequests(offset, size int, data []byte) []*Ex
 		}
 	})
 
-	log.LogDebugf("BuildReadRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
+	log.LogDebugf("PrepareReadRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
 	if start < end {
 		// add hole (start, end)
 		req := NewExtentRequest(start, end-start, data[start-offset:end-offset], nil)
@@ -268,8 +271,8 @@ func (cache *ExtentCache) BuildReadRequests(offset, size int, data []byte) []*Ex
 	return requests
 }
 
-// BuildWriteRequests generates a list of write requests. TODO explain
-func (cache *ExtentCache) BuildWriteRequests(offset, size int, data []byte) []*ExtentRequest {
+// PrepareWriteRequests TODO explain
+func (cache *ExtentCache) PrepareWriteRequests(offset, size int, data []byte) []*ExtentRequest {
 	requests := make([]*ExtentRequest, 0)
 	pivot := &proto.ExtentKey{FileOffset: uint64(offset)}
 	upper := &proto.ExtentKey{FileOffset: uint64(offset + size)}
@@ -291,7 +294,7 @@ func (cache *ExtentCache) BuildWriteRequests(offset, size int, data []byte) []*E
 		ekStart := int(ek.FileOffset)
 		ekEnd := int(ek.FileOffset) + int(ek.Size)
 
-		log.LogDebugf("BuildWriteRequests: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
+		log.LogDebugf("PrepareWriteRequests: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
 
 		if start <= ekStart {
 			if end <= ekStart {
@@ -330,7 +333,7 @@ func (cache *ExtentCache) BuildWriteRequests(offset, size int, data []byte) []*E
 		}
 	})
 
-	log.LogDebugf("BuildWriteRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
+	log.LogDebugf("PrepareWriteRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
 	if start < end {
 		// add hole (start, end)
 		req := NewExtentRequest(start, end-start, data[start-offset:end-offset], nil)

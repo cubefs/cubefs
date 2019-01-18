@@ -92,12 +92,12 @@ type ExtentHandler struct {
 	// Will not be changed once assigned.
 	recoverHandler *ExtentHandler
 
-	// The stream writer gets write requests, and constructs packets
-	// which will be sent to the request channel.
-	// The *sender* gets packets from *request* channel, sends it to data
-	// node and passes the packet to *reply* channel. TODO explain
-	// The *receiver* gets packets from the *reply* channel, waits for the
-	// reply from data node, and deals with it.
+	// The stream writer gets the write requests, and constructs the packets
+	// to be sent to the request channel.
+	// The *sender* gets the packets from the *request* channel, sends it to the corresponding data
+	// node, and then throw it back to the *reply* channel.
+	// The *receiver* gets the packets from the *reply* channel, waits for the
+	// reply from the data node, and then deals with it.
 	request chan *Packet
 	reply   chan *Packet
 

@@ -118,7 +118,6 @@ func Mount(cfg *config.Config) (err error) {
 		return err
 	}
 
-	// TODO unhandled errors
 	defer c.Close()
 
 	go func() {

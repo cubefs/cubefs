@@ -34,11 +34,12 @@ const (
 
 const (
 	DefaultInodeExpiration = 120 * time.Second
-	MaxInodeCache          = 10000000 // TODO in terms of?
+	MaxInodeCache          = 10000000 // in terms of the number of items
 )
 
 const (
-	DentryValidDuration = 5 * time.Second // TODO explain
+	// the expiration duration of the dentry in the cache (used internally)
+	DentryValidDuration = 5 * time.Second
 )
 
 const (
@@ -46,8 +47,11 @@ const (
 )
 
 var (
-	LookupValidDuration = 0 * time.Second // TODO explain
-	AttrValidDuration   = 30 * time.Second // TODO explain
+	// The following two are used in the FUSE cache
+	// every time the lookup will be performed on the fly, and the result will not be cached
+	LookupValidDuration = 0 * time.Second
+	// the expiration duration of the attributes in the FUSE cache
+	AttrValidDuration   = 30 * time.Second
 )
 
 // ParseError returns the error type.

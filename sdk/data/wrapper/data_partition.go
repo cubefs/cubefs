@@ -14,7 +14,6 @@
 
 package wrapper
 
-/* TODO why we need this separate package? */
 
 import (
 	"fmt"
@@ -41,16 +40,15 @@ type DataPartitionMetrics struct {
 	ReadLatency     float64
 }
 
-// TODO do we have any naming convention for sorted items? DataPartitionSorter?
-type DataPartitionSlice []*DataPartition
+type DataPartitionSorter []*DataPartition
 
-func (ds DataPartitionSlice) Len() int {
+func (ds DataPartitionSorter) Len() int {
 	return len(ds)
 }
-func (ds DataPartitionSlice) Swap(i, j int) {
+func (ds DataPartitionSorter) Swap(i, j int) {
 	ds[i], ds[j] = ds[j], ds[i]
 }
-func (ds DataPartitionSlice) Less(i, j int) bool {
+func (ds DataPartitionSorter) Less(i, j int) bool {
 	return ds[i].Metrics.WriteLatency < ds[j].Metrics.WriteLatency
 }
 
@@ -69,8 +67,7 @@ func (dp *DataPartition) String() string {
 }
 
 // GetAllAddrs returns the addresses of all the replicas of the data partition.
-// TODO remove m?
-func (dp *DataPartition) GetAllAddrs() (m string) {
+func (dp *DataPartition) GetAllAddrs() string {
 	return strings.Join(dp.Hosts[1:], proto.AddrSplit) + proto.AddrSplit
 }
 
@@ -81,16 +78,4 @@ func isExcluded(partitionId uint64, excludes []uint64) bool {
 		}
 	}
 	return false
-}
-
-// TODO unused? remove?
-func NewGetDataPartitionMetricsPacket(partitionid uint64) (p *proto.Packet) {
-	p = new(proto.Packet)
-	p.PartitionID = partitionid
-	p.Magic = proto.ProtoMagic
-	p.ExtentType = proto.NormalExtentType
-	p.ReqID = proto.GenerateRequestID()
-	p.Opcode = proto.OpGetDataPartitionMetrics
-
-	return
 }
