@@ -171,7 +171,10 @@ func (p *Pool) AutoRelease() {
 			if time.Now().UnixNano()-int64(o.idle) > p.timeout {
 				o.conn.Close()
 			} else {
-				p.PutConnectObjectToPool(o)
+				_, err:= o.conn.Read(make([]byte, 0))
+				if err==nil {
+					p.PutConnectObjectToPool(o)
+				}
 			}
 		default:
 			return
