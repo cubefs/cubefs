@@ -55,14 +55,14 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	}
 
 	switch msg.Op {
-	case opRandomWrite:
+	case opRandomWrite, opRandomSyncWrite:
 		if opItem, err = rndWrtDataUnmarshal(msg.V); err != nil {
 			log.LogErrorf("randomWrite_%v err[%v] unmarshal failed", dp.ID(), err)
 			return
 		}
 		log.LogDebugf("randomWrite_%v_%v_%v_%v apply", dp.ID(), opItem.extentID, opItem.offset, opItem.size)
 		for i := 0; i < maxRetryCounts; i++ {
-			err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, NotUpdateSize)
+			err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, NotUpdateSize, msg.Op == opRandomSyncWrite)
 			if err != nil {
 				if ignore := dp.checkWriteErrs(err.Error()); ignore {
 					log.LogErrorf("randomWrite_%v_%v_%v_%v extent file had deleted. err[%v]", dp.ID(),

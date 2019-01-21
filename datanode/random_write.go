@@ -25,6 +25,7 @@ import (
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util/log"
 	"strings"
+	"github.com/tiglabs/containerfs/proto"
 )
 
 type RndWrtCmdItem struct {
@@ -109,7 +110,14 @@ func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 	if err != nil {
 		return
 	}
-	resp, err := dp.Put(opRandomWrite, val)
+	var (
+		resp interface{}
+	)
+	if pkg.Opcode == proto.OpRandomWrite {
+		resp, err = dp.Put(opRandomWrite, val)
+	} else {
+		resp, err = dp.Put(opRandomSyncWrite, val)
+	}
 	if err != nil {
 		return
 	}

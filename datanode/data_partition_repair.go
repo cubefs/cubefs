@@ -532,7 +532,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		}
 
 		// write to the local extent file
-		err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC, UpdateSize)
+		err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC, UpdateSize, BufferWrite)
 		if err != nil {
 			err = errors.Annotatef(err, "streamRepairExtent repair data error")
 			log.LogErrorf("action[streamRepairExtent] err(%v).", err)

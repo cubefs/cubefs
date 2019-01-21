@@ -435,7 +435,7 @@ func (s *ExtentStore) autoFixDirtyBlockCrc() {
 }
 
 // Write writes the given extent to the disk.
-func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, isUpdateSize bool) (err error) {
+func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, isUpdateSize bool, isSync bool) (err error) {
 	var (
 		has          bool
 		extent       *Extent
@@ -459,7 +459,7 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	if extent.HasBeenMarkedAsDeleted() {
 		return ExtentHasBeenDeletedError
 	}
-	isDirtyBlock, err = extent.Write(data, offset, size, crc, s.updateBlockCrc, isUpdateSize)
+	isDirtyBlock, err = extent.Write(data, offset, size, crc, s.updateBlockCrc, isUpdateSize, isSync)
 	if err != nil {
 		return err
 	}

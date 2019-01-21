@@ -56,7 +56,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 			switch p.Opcode {
 			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead:
 				log.LogRead(logContent)
-			case proto.OpWrite, proto.OpRandomWrite:
+			case proto.OpWrite, proto.OpRandomWrite, proto.OpSyncRandomWrite, proto.OpSyncWrite:
 				log.LogWrite(logContent)
 			default:
 				log.LogInfo(logContent)
@@ -68,7 +68,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	switch p.Opcode {
 	case proto.OpCreateExtent:
 		s.handlePacketToCreateExtent(p)
-	case proto.OpWrite:
+	case proto.OpWrite, proto.OpSyncWrite:
 		s.handleWritePacket(p)
 	//case proto.OpRead:
 	//	s.handleReadPacket(p)
@@ -78,7 +78,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handleStreamReadPacket(p, c, RepairRead)
 	case proto.OpMarkDelete:
 		s.handleMarkDeletePacket(p)
-	case proto.OpRandomWrite:
+	case proto.OpRandomWrite, proto.OpSyncRandomWrite:
 		s.handleRandomWritePacket(p)
 	case proto.OpNotifyExtentRepair:
 		s.handlePacketToNotifyExtentRepair(p)
@@ -355,7 +355,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	}
 	store := partition.ExtentStore()
 	if p.Size <= util.BlockSize {
-		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, UpdateSize)
+		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, UpdateSize, p.Opcode == proto.OpSyncWrite)
 	} else {
 		size := p.Size
 		offset := 0
@@ -366,7 +366,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			currSize := util.Min(int(size), util.BlockSize)
 			data := p.Data[offset : offset+currSize]
 			crc := crc32.ChecksumIEEE(data)
-			err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, UpdateSize)
+			err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, UpdateSize, p.Opcode == proto.OpSyncWrite)
 			if err != nil {
 				break
 			}

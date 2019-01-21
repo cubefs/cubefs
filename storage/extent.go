@@ -223,7 +223,7 @@ func (e *Extent) ModifyTime() time.Time {
 }
 
 // WriteTiny performs write on a tiny extent.
-func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdateSize bool) (err error) {
+func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdateSize, isSync bool) (err error) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
@@ -235,6 +235,9 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdate
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
 		return
 	}
+	if isSync {
+		e.file.Sync()
+	}
 	if !isUpdateSize {
 		return
 	}
@@ -243,15 +246,16 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdate
 	}
 	e.dataSize = index
 
+
 	return
 }
 
 type UpdateCrcFunc func(updateExtentID uint64, updateblockNo int, updateCrc uint32, updateE *Extent, isDirtyBlock bool) error
 
 // Write writes data to an extent.
-func (e *Extent) Write(data []byte, offset, size int64, crc uint32, crcFunc UpdateCrcFunc, isUpdateSize bool) (isDirtyBlock bool, err error) {
+func (e *Extent) Write(data []byte, offset, size int64, crc uint32, crcFunc UpdateCrcFunc, isUpdateSize, isSync bool) (isDirtyBlock bool, err error) {
 	if IsTinyExtent(e.extentID) {
-		err = e.WriteTiny(data, offset, size, crc, isUpdateSize)
+		err = e.WriteTiny(data, offset, size, crc, isUpdateSize, isSync)
 		return
 	}
 
@@ -267,6 +271,9 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, crcFunc Upda
 	offsetInBlock := offset % util.BlockSize
 	e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
 	e.modifyTime = time.Now()
+	if isSync {
+		e.file.Sync()
+	}
 	if offsetInBlock == 0 && size == util.BlockSize {
 		err = crcFunc(e.extentID, int(blockNo), crc, e, isDirtyBlock)
 		return
