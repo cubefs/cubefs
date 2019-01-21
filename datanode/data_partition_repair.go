@@ -179,12 +179,12 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 		p.Size = uint32(len(p.Data))
 	}
 	var conn *net.TCPConn
-	defer gConnPool.PutConnect(conn, true)
 	conn, err = gConnPool.GetConnect(target) // get remote connection
 	if err != nil {
 		err = errors.Annotatef(err, "getRemoteExtentInfo  DataPartition(%v) get host(%v) connect", dp.partitionID, target)
 		return
 	}
+	defer gConnPool.PutConnect(conn, true)
 	err = p.WriteToConn(conn) // write command to the remote host
 	if err != nil {
 		err = errors.Annotatef(err, "getRemoteExtentInfo DataPartition(%v) write to host(%v)", dp.partitionID, target)
