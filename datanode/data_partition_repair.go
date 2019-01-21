@@ -477,7 +477,11 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	// create a new streaming read packet
 	request := repl.NewExtentRepairReadPacket(dp.ID(), remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
 	var conn *net.TCPConn
-
+	leaderAddr,_:=dp.IsRaftLeader()
+	if leaderAddr==""{
+		return errors.Annotatef(storage.NoLeaderError,"streamRepairExtent no leader")
+	}
+	remoteExtentInfo.Source=leaderAddr
 	conn, err = gConnPool.GetConnect(remoteExtentInfo.Source)
 	if err != nil {
 		return errors.Annotatef(err, "streamRepairExtent get conn from host[%v] error", remoteExtentInfo.Source)

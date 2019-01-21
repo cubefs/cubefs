@@ -89,9 +89,8 @@ func (rp *ReplProtocol) ServerConn() {
 			!strings.Contains(err.Error(), "reset by peer") {
 			log.LogErrorf("action[serveConn] err(%v).", err)
 		}
-
-		rp.sourceConn.Close()
 		rp.Stop()
+		rp.sourceConn.Close()
 	}()
 	for {
 		select {
@@ -100,7 +99,6 @@ func (rp *ReplProtocol) ServerConn() {
 			return
 		default:
 			if err = rp.readPkgAndPrepare(); err != nil {
-				rp.Stop()
 				return
 			}
 		}
@@ -109,11 +107,6 @@ func (rp *ReplProtocol) ServerConn() {
 }
 
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
-	defer func() {
-		if err!=nil {
-			rp.Stop()
-		}
-	}()
 	p := NewPacket()
 	if err = p.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
 		return

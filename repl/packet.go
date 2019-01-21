@@ -143,7 +143,7 @@ func NewExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size
 	p.Magic = proto.ProtoMagic
 	p.ExtentOffset = int64(offset)
 	p.Size = uint32(size)
-	p.Opcode = proto.OpExtentRepairRead
+	p.Opcode = proto.OpStreamRead
 	p.ExtentType = proto.NormalExtentType
 	p.ReqID = proto.GenerateRequestID()
 
