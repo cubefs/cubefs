@@ -806,7 +806,11 @@ func (c *Cluster) createVol(name string, size, capacity int) (vol *Vol, err erro
 		err = proto.ErrDuplicateVol
 		goto errHandler
 	}
-	if vol, err = c.doCreateVol(name, dataPartitionSize, uint64(capacity)); err != nil {
+	if err = c.doCreateVol(name, dataPartitionSize, uint64(capacity)); err != nil {
+		goto errHandler
+	}
+	if vol, err = c.getVol(name); err != nil {
+		err = proto.ErrVolNotExists
 		goto errHandler
 	}
 	vol.initMetaPartitions(c)
@@ -834,7 +838,8 @@ errHandler:
 	return
 }
 
-func (c *Cluster) doCreateVol(name string, dpSize, capacity uint64) (vol *Vol, err error) {
+func (c *Cluster) doCreateVol(name string, dpSize, capacity uint64) (err error) {
+	var vol *Vol
 	id, err := c.idAlloc.allocateCommonID()
 	if err != nil {
 		goto errHandler
@@ -1011,7 +1016,7 @@ func (c *Cluster) allDataNodes() (dataNodes []NodeView) {
 	dataNodes = make([]NodeView, 0)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
-		dataNodes = append(dataNodes, NodeView{Addr: dataNode.Addr, Status: dataNode.isActive, ID: dataNode.ID})
+		dataNodes = append(dataNodes, NodeView{Addr: dataNode.Addr, Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble()})
 		return true
 	})
 	return
@@ -1053,7 +1058,7 @@ func (c *Cluster) allMetaNodes() (metaNodes []NodeView) {
 	metaNodes = make([]NodeView, 0)
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
-		metaNodes = append(metaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive})
+		metaNodes = append(metaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
 		return true
 	})
 	return

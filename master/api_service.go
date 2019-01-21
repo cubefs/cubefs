@@ -380,7 +380,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	msg = fmt.Sprintf("create vol[%v] successfully, has allocate [%v] data partitionMap", name, len(vol.dataPartitions.partitions))
+	msg = fmt.Sprintf("create vol[%v] successfully, has allocate [%v] data partitions", name, len(vol.dataPartitions.partitions))
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
@@ -399,7 +399,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", id)))
+	sendOkReply(w, r, newSuccessHTTPReply(id))
 }
 
 func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
@@ -508,7 +508,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", id)))
+	sendOkReply(w, r, newSuccessHTTPReply(id))
 }
 
 func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
@@ -942,6 +942,7 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		vol  *Vol
 		err  error
 	)
+	dps := proto.NewDataPartitionsView()
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -955,7 +956,10 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(body))
+	if err = json.Unmarshal(body, dps); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(dps))
 }
 
 func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {

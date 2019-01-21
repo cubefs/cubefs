@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
 	"io/ioutil"
 	"net/http"
@@ -123,7 +122,8 @@ func (helper *masterHelper) request(method, path string, param map[string]string
 				return nil, fmt.Errorf("unmarshal response body err:%v", err)
 
 			}
-			if body.Code != proto.ErrCodeSuccess {
+			// o represent proto.ErrCodeSuccess
+			if body.Code != 0 {
 				return nil, fmt.Errorf("request error, code[%d], msg[%s]", body.Code, body.Msg)
 			}
 			return []byte(body.Data), nil

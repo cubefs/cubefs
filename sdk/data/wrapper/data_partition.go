@@ -22,16 +22,9 @@ import (
 
 type DataPartition struct {
 	// Will not be changed
-	PartitionID   uint64
-	Status        int8
-	ReplicaNum    uint8
-	PartitionType string
-	Hosts         []string
+	proto.DataPartitionResponse
 	RandomWrite   bool
-
-	// Will be changed without lock, but does not matter
-	LeaderAddr string
-
+	PartitionType string
 	Metrics *DataPartitionMetrics
 }
 
