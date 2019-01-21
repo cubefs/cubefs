@@ -1,3 +1,26 @@
+## Monitor
+
+CFS use prometheus as metrics collector. It simply config as follow in master，metanode，datanode，client's config file：
+
+```json
+{
+    "exporterPort": 9510,
+    "consulAddr": "http://127.0.0.1:8500"
+}
+```
+
+as：
+
+* exporterPort：prometheus exporter Port. when set，can export prometheus metrics from URL(http://$hostip:$exporterPort/metrics). If not set, prometheus exporter will unavailable；
+* consulAddr: consul register address，it can work with prometheus to auto discover deployed cfs nodes, if not set, consul register will not work.
+
+You can use grafana as prometheus metrics web front as follow：
+
+![cfs-grafana-dasshboard](../assert/cfs-grafana-dashboard.png)
+
+import grafana DashBoard config [cfs-grafana-dashboard.json](cfs-grafana-dashboard.json).
+
+
 ## Build Servers
 
 In the CFS design, servers refer to master, metanode and datanode, and are compiled into a single binary for deployment convenience.
@@ -57,7 +80,7 @@ Example meta.json is shown below:
     "raftHeartbeatPort": "9093",
     "raftReplicatePort": "9094",
     "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
-     "exporterPort": 9511,
+    "exporterPort": 9511,
     "masterAddrs": [
         "192.168.31.173:80",
         "192.168.31.141:80",
