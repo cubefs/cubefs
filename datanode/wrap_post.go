@@ -44,9 +44,6 @@ func (s *DataNode) cleanupPkt(p *repl.Packet) {
 		return
 	}
 	s.releaseExtent(p)
-	if p.ExtentType == proto.TinyExtentType && isWriteOperation(p) {
-		p.PutConnsToPool()
-	}
 }
 
 func (s *DataNode) releaseExtent(p *repl.Packet) {

@@ -179,6 +179,7 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 		p.Size = uint32(len(p.Data))
 	}
 	var conn *net.TCPConn
+	defer gConnPool.PutConnect(conn, true)
 	conn, err = gConnPool.GetConnect(target) // get remote connection
 	if err != nil {
 		err = errors.Annotatef(err, "getRemoteExtentInfo  DataPartition(%v) get host(%v) connect", dp.partitionID, target)
@@ -186,24 +187,20 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 	}
 	err = p.WriteToConn(conn) // write command to the remote host
 	if err != nil {
-		gConnPool.PutConnect(conn, true)
 		err = errors.Annotatef(err, "getRemoteExtentInfo DataPartition(%v) write to host(%v)", dp.partitionID, target)
 		return
 	}
 	reply := new(repl.Packet)
 	err = reply.ReadFromConn(conn, 60) // read the response
 	if err != nil {
-		gConnPool.PutConnect(conn, true)
 		err = errors.Annotatef(err, "getRemoteExtentInfo DataPartition(%v) read from host(%v)", dp.partitionID, target)
 		return
 	}
 	err = json.Unmarshal(reply.Data[:reply.Size], &extentFiles)
 	if err != nil {
-		gConnPool.PutConnect(conn, true)
 		err = errors.Annotatef(err, "getRemoteExtentInfo DataPartition(%v) unmarshal json(%v)", dp.partitionID, string(p.Data[:p.Size]))
 		return
 	}
-	gConnPool.PutConnect(conn, true)
 	return
 }
 

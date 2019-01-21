@@ -293,7 +293,7 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, err))
 		log.LogErrorf(ActionWriteToClient+" %v", err)
-		reply.forceDestoryFollowerConns()
+		reply.ForceDestoryFollowerConns()
 		rp.Stop()
 	}
 	log.LogDebugf(ActionWriteToClient+" %v", reply.LogMessage(ActionWriteToClient,
@@ -380,7 +380,7 @@ func (rp *ReplProtocol) cleanResource() {
 	rp.packetListLock.Lock()
 	for e := rp.packetList.Front(); e != nil; e = e.Next() {
 		request := e.Value.(*Packet)
-		request.forceDestoryFollowerConns()
+		request.ForceDestoryFollowerConns()
 
 		rp.postFunc(request)
 	}
@@ -404,7 +404,7 @@ func (rp *ReplProtocol) deletePacket(reply *Packet) (success bool) {
 		request := e.Value.(*Packet)
 		if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
 			reply.ExtentOffset != request.ExtentOffset || reply.CRC != request.CRC || reply.ExtentID != request.ExtentID {
-			request.forceDestoryFollowerConns()
+			request.ForceDestoryFollowerConns()
 			request.PackErrorBody(ActionReceiveFromFollower, fmt.Sprintf("unknow expect reply"))
 			break
 		}
