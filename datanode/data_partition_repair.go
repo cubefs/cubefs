@@ -508,14 +508,15 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		}
 
 		if reply.ResultCode != proto.OpOk {
-			err = errors.Annotatef(err, "streamRepairExtent receive opcode error(%v) ", string(reply.Data[:reply.Size]))
+			err = errors.Annotatef(fmt.Errorf("unknow result code"),
+				"streamRepairExtent receive opcode error(%v) ", string(reply.Data[:reply.Size]))
 			log.LogErrorf("action[streamRepairExtent] err(%v).", err)
 			return
 		}
 
 		if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
 			reply.ExtentID != request.ExtentID || reply.Size == 0 || reply.ExtentOffset != int64(currFixOffset) {
-			err = errors.Annotatef(err, "streamRepairExtent receive unavalid "+
+			err = errors.Annotatef(fmt.Errorf("unavali reply"), "streamRepairExtent receive unavalid "+
 				"request(%v) reply(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId())
 			log.LogErrorf("action[streamRepairExtent] err(%v).", err)
 			return
