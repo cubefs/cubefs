@@ -38,6 +38,10 @@ type DataPartitionsView struct {
 	DataPartitions []*DataPartition
 }
 
+func NewDataPartitionsView() *DataPartitionsView {
+	return &DataPartitionsView{}
+}
+
 //逻辑卷和DataNode视图关联结构体
 type Vol struct {
 	sync.RWMutex
