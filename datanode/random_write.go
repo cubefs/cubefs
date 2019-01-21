@@ -21,7 +21,6 @@ import (
 	"net"
 
 	"fmt"
-	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util/log"
@@ -149,11 +148,6 @@ func (dp *DataPartition) addDiskErrs(err error, flag uint8) {
 
 // CheckLeader checks if itself is the leader during read
 func (dp *DataPartition) CheckLeader(request *repl.Packet, connect net.Conn) (err error) {
-	if request.Opcode == proto.OpExtentRepairRead {
-		return
-	}
-
-	// TODO it is better to use IsRaftLeader() to only return boolean value,
 	//  and use another getRaftLeaderAddr() to return the actual address
 	_, ok := dp.IsRaftLeader()
 	if !ok {

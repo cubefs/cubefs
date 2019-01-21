@@ -477,11 +477,11 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	// create a new streaming read packet
 	request := repl.NewExtentRepairReadPacket(dp.ID(), remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
 	var conn *net.TCPConn
-	leaderAddr,_:=dp.IsRaftLeader()
-	if leaderAddr==""{
-		return errors.Annotatef(storage.NoLeaderError,"streamRepairExtent no leader")
-	}
-	remoteExtentInfo.Source=leaderAddr
+	//leaderAddr,_:=dp.IsRaftLeader()
+	//if leaderAddr==""{
+	//	return errors.Annotatef(storage.NoLeaderError,"streamRepairExtent no leader")
+	//}
+	//remoteExtentInfo.Source=leaderAddr
 	conn, err = gConnPool.GetConnect(remoteExtentInfo.Source)
 	if err != nil {
 		return errors.Annotatef(err, "streamRepairExtent get conn from host[%v] error", remoteExtentInfo.Source)
@@ -508,14 +508,15 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		}
 
 		if reply.ResultCode != proto.OpOk {
-			err = errors.Annotatef(err, "streamRepairExtent receive opcode error(%v) ", string(reply.Data[:reply.Size]))
+			err = errors.Annotatef(fmt.Errorf("unknow result code"),
+				"streamRepairExtent receive opcode error(%v) ", string(reply.Data[:reply.Size]))
 			log.LogErrorf("action[streamRepairExtent] err(%v).", err)
 			return
 		}
 
 		if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
 			reply.ExtentID != request.ExtentID || reply.Size == 0 || reply.ExtentOffset != int64(currFixOffset) {
-			err = errors.Annotatef(err, "streamRepairExtent receive unavalid "+
+			err = errors.Annotatef(fmt.Errorf("unavali reply"), "streamRepairExtent receive unavalid "+
 				"request(%v) reply(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId())
 			log.LogErrorf("action[streamRepairExtent] err(%v).", err)
 			return

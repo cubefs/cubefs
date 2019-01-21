@@ -176,7 +176,6 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 	rp.pushPacketToList(request)
 	for index = 0; index < len(request.followerConns); index++ {
 		err = rp.allocateFollowersConns(request, index)
-
 		if err != nil {
 			msg := fmt.Sprintf("request inconnect(%v) to(%v) err(%v)", rp.sourceConn.RemoteAddr().String(),
 				request.followersAddrs[index], err.Error())

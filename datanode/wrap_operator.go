@@ -419,19 +419,17 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 		err error
 	)
 	partition := p.Object.(*DataPartition)
-	if !isRepairRead {
+	if !isRepairRead{
 		err = partition.CheckLeader(p, connect)
 		if err != nil {
 			err = fmt.Errorf(p.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
 				p.StartT, err))
 			log.LogErrorf(err.Error())
 			p.PackErrorBody(ActionStreamRead, err.Error())
-			// TODO unhandled error
 			p.WriteToConn(connect)
 			return
 		}
 	}
-
 	needReplySize := p.Size
 	offset := p.ExtentOffset
 	store := partition.ExtentStore()
