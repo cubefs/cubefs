@@ -213,12 +213,8 @@ func (p *Pool) GetConnectFromPool() (c *net.TCPConn, err error) {
 	default:
 		break
 	}
-	if obj==nil {
-		return p.NewConnect(p.target)
-	}
-	_, err= obj.conn.Read(make([]byte, 0))
-	if err==nil {
-		return obj.conn, nil
+	if obj!=nil {
+		return obj.conn,nil
 	}
 	return p.NewConnect(p.target)
 }
