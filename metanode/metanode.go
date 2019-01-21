@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"fmt"
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
@@ -209,25 +210,30 @@ func (m *MetaNode) register() (err error) {
 			reqParam["addr"] = m.localAddr + ":" + m.listen
 			step++
 		}
-		var respBody []byte
+		var (
+			respBody []byte
+			reply    = proto.HTTPReply{
+				Data: &m.nodeId,
+			}
+		)
 		respBody, err = masterHelper.Request("POST", proto.AddMetaNode, reqParam, nil)
 		if err != nil {
-			log.LogErrorf("[register] %s", err.Error())
-			time.Sleep(3 * time.Second)
-			continue
+			goto CONTINUE
 		}
-		nodeIDStr := strings.TrimSpace(string(respBody))
-		if nodeIDStr == "" {
-			log.LogErrorf("[register] master respond empty body")
-			time.Sleep(3 * time.Second)
-			continue
+		if err = json.Unmarshal(respBody, &reply); err != nil {
+			goto CONTINUE
 		}
-		m.nodeId, err = strconv.ParseUint(nodeIDStr, 10, 64)
-		if err != nil {
-			log.LogErrorf("[register] parse to nodeID: %s", err.Error())
-			time.Sleep(3 * time.Second)
-			continue
+		if reply.Code != proto.ErrCodeSuccess {
+			err = fmt.Errorf("[register] %s", reply.Msg)
+			goto CONTINUE
+		} else {
+			goto END
 		}
+	CONTINUE:
+		log.LogErrorf("[register] parse to nodeID: %s", err.Error())
+		time.Sleep(3 * time.Second)
+		continue
+	END:
 		return
 	}
 }
