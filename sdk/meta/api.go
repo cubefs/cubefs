@@ -132,7 +132,7 @@ create_dentry:
 		if status == statusExist {
 			return nil, syscall.EEXIST
 		} else {
-			mw.idelete(mp, info.Inode)
+			mw.iunlink(mp, info.Inode)
 			mw.ievict(mp, info.Inode)
 			return nil, statusToErrno(status)
 		}
@@ -212,7 +212,7 @@ func (mw *MetaWrapper) Delete_ll(parentID uint64, name string) (*proto.InodeInfo
 		return nil, nil
 	}
 
-	status, info, err := mw.idelete(mp, inode)
+	status, info, err := mw.iunlink(mp, inode)
 	if err != nil || status != statusOK {
 		return nil, nil
 	}
@@ -267,7 +267,7 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 	if oldInode != 0 {
 		inodeMP := mw.getPartitionByInode(oldInode)
 		if inodeMP != nil {
-			mw.idelete(inodeMP, oldInode)
+			mw.iunlink(inodeMP, oldInode)
 		}
 	}
 
@@ -358,7 +358,7 @@ func (mw *MetaWrapper) Link(parentID uint64, name string, ino uint64) (*proto.In
 		if status == statusExist {
 			return nil, syscall.EEXIST
 		} else {
-			mw.idelete(mp, ino)
+			mw.iunlink(mp, ino)
 			return nil, syscall.EAGAIN
 		}
 	}

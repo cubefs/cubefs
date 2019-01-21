@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/google/btree"
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/util/btree"
 	"github.com/tiglabs/containerfs/util/log"
 )
 
