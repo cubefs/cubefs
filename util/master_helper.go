@@ -16,8 +16,10 @@ package util
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
 	"io/ioutil"
 	"net/http"
@@ -112,7 +114,19 @@ func (helper *masterHelper) request(method, path string, param map[string]string
 			if leaderAddr != host {
 				helper.setLeader(host)
 			}
-			return
+			var body = &struct {
+				Code int32  `json:"code"`
+				Msg  string `json:"msg"`
+				Data json.RawMessage
+			}{}
+			if err := json.Unmarshal(repsData, body); err != nil {
+				return nil, fmt.Errorf("unmarshal response body err:%v", err)
+
+			}
+			if body.Code != proto.ErrCodeSuccess {
+				return nil, fmt.Errorf("request error, code[%d], msg[%s]", body.Code, body.Msg)
+			}
+			return []byte(body.Data), nil
 		default:
 			log.LogErrorf("[masterHelper] master[%v] uri[%v] statusCode[%v] respBody[%v].",
 				resp.Request.URL.String(), host, stateCode, string(repsData))

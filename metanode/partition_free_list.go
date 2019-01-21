@@ -66,20 +66,10 @@ func (mp *metaPartition) updateVolWorker() {
 			}
 
 			dataView := NewDataPartitionsView()
-			reply := proto.HTTPReply{
-				Data: dataView,
-			}
-			if err = json.Unmarshal(respBody, &reply); err != nil {
-				log.LogErrorf("[updateVol] response body unmarshal to"+
-					" HTTPReply: %s", err.Error())
+			if err = json.Unmarshal(respBody, dataView); err != nil {
+				log.LogErrorf("[updateVol] %s", err.Error())
 				break
 			}
-
-			if reply.Code != proto.ErrCodeSuccess {
-				log.LogErrorf("[updateVol] master reply: %s", reply.Msg)
-				break
-			}
-
 			mp.vol.UpdatePartitions(dataView)
 			log.LogDebugf("[updateVol] %v", dataView)
 		}
