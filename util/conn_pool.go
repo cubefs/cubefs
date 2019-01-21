@@ -191,6 +191,19 @@ func (p *Pool) ForceReleaseAllConnect() {
 	}
 }
 
+
+func (p *Pool)NewConnect(target string)(c *net.TCPConn,err error){
+	var connect net.Conn
+	connect, err = net.Dial("tcp", p.target)
+	if err == nil {
+		conn := connect.(*net.TCPConn)
+		conn.SetKeepAlive(true)
+		conn.SetNoDelay(true)
+		c = conn
+	}
+	return
+}
+
 func (p *Pool) GetConnectFromPool() (c *net.TCPConn, err error) {
 	var (
 		obj *Object
@@ -201,16 +214,12 @@ func (p *Pool) GetConnectFromPool() (c *net.TCPConn, err error) {
 	default:
 		break
 	}
-	if obj != nil {
+	if obj==nil {
+		return p.NewConnect(p.target)
+	}
+	_, err= obj.conn.Read(make([]byte, 0))
+	if err==nil {
 		return obj.conn, nil
 	}
-	var connect net.Conn
-	connect, err = net.Dial("tcp", p.target)
-	if err == nil {
-		conn := connect.(*net.TCPConn)
-		conn.SetKeepAlive(true)
-		conn.SetNoDelay(true)
-		c = conn
-	}
-	return
+	return p.NewConnect(p.target)
 }
