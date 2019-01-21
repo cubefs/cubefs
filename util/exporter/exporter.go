@@ -15,12 +15,11 @@ package exporter
 
 import (
 	"fmt"
+	"github.com/tiglabs/containerfs/util/config"
+	"github.com/tiglabs/containerfs/util/log"
 	"net/http"
 	"sync"
 	"time"
-
-	"github.com/tiglabs/containerfs/util/config"
-	"github.com/tiglabs/containerfs/util/log"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -47,7 +46,6 @@ var (
 		return new(TpMetric)
 	}}
 	namespace string
-	metricC   = make(chan prometheus.Collector, 1)
 	enabled   = false
 )
 
@@ -98,7 +96,7 @@ func metricsName(name string) string {
 func RegistMetricWithLabels(name string, tp MetricType, labels map[string]string) (m *PromeMetric) {
 	defer func() {
 		if err := recover(); err != nil {
-			log.LogErrorf("RegistGauge panic,err[%v]", err)
+			log.LogErrorf("RegistMetric panic,err[%v]", err)
 		}
 	}()
 	name = metricsName(name)
@@ -142,24 +140,28 @@ func (m *PromeMetric) registMetric() {
 	go metricGroups.LoadOrStore(key, metric)
 }
 
-func (m *PromeMetric) SetWithLabels(val float64, labels map[string]string) (err error) {
-	go func() {
-		if labels != nil {
-			m.Labels = labels
+func (m *PromeMetric) SetWithLabels(val float64, labels map[string]string) {
+	if !enabled {
+		return
+	}
+	if labels != nil {
+		m.Labels = labels
+	}
+	key, tmpMetric := m.getMetricKey()
+	actualMetric, load := metricGroups.LoadOrStore(key, tmpMetric)
+	if !load {
+		err := prometheus.Register(actualMetric.(prometheus.Collector))
+		if err == nil {
+			log.LogInfo("register metric ", key)
 		}
-		key, tmpMetric := m.getMetricKey()
-		actualMetric, load := metricGroups.LoadOrStore(key, tmpMetric)
-		if !load {
-			err = prometheus.Register(actualMetric.(prometheus.Collector))
-		}
+	}
 
-		m.SetMetricVal(actualMetric, val)
-	}()
+	m.SetMetricVal(actualMetric, val)
 	return
 }
 
-func (m *PromeMetric) Set(val float64) (err error) {
-	return m.SetWithLabels(val, nil)
+func (m *PromeMetric) Set(val float64)  {
+	m.SetWithLabels(val, nil)
 	return
 }
 
@@ -173,7 +175,6 @@ func (m *PromeMetric) SetMetricVal(metric interface{}, val float64) {
 		default:
 		}
 	}
-
 }
 
 func RegistCounterLabels(name string, labels map[string]string) (o prometheus.Counter) {
@@ -181,6 +182,17 @@ func RegistCounterLabels(name string, labels map[string]string) (o prometheus.Co
 	m, load := metricGroups.Load(pm.Key)
 	if load {
 		o = m.(prometheus.Counter)
+	} else {
+		o = prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Name:        pm.Name,
+				ConstLabels: pm.Labels,
+			})
+		metricGroups.LoadOrStore(pm.Key, o)
+		err := prometheus.Register(o)
+		if err == nil {
+			log.LogInfo("register metric ", pm.Key)
+		}
 	}
 	return
 }
@@ -194,6 +206,17 @@ func RegistGaugeLabels(name string, labels map[string]string) (o prometheus.Gaug
 	m, load := metricGroups.Load(pm.Key)
 	if load {
 		o = m.(prometheus.Gauge)
+	} else {
+		o = prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name:        pm.Name,
+				ConstLabels: pm.Labels,
+			})
+		metricGroups.LoadOrStore(pm.Key, o)
+		err := prometheus.Register(o)
+		if err == nil {
+			log.LogInfo("register metric ", pm.Key)
+		}
 	}
 	return
 }
@@ -236,7 +259,9 @@ func (tp *TpMetric) CalcTp() {
 		metric, load := metricGroups.LoadOrStore(mk, tpGauge)
 		if !load {
 			if enabled {
-				prometheus.MustRegister(metric.(prometheus.Gauge))
+				err := prometheus.Register(metric.(prometheus.Gauge))
+				if err != nil {
+				}
 			}
 		}
 
@@ -259,7 +284,9 @@ func Alarm(name, detail string) {
 			o.Add(1)
 		} else {
 			if enabled {
-				prometheus.MustRegister(newMetric)
+				err := prometheus.Register(newMetric)
+				if err != nil {
+				}
 			}
 		}
 	}()
