@@ -45,6 +45,10 @@ func GetConsulId(app string, role string, host string, port int64) string {
 }
 
 func RegistConsul(addr, app, role, cluster string, port int64) {
+	if len(addr) <= 0 {
+		return
+	}
+	log.LogInfo("consul register enable %v", addr)
 	ticker := time.NewTicker(RegistPeriod)
 	defer func() {
 		if err := recover(); err != nil {
