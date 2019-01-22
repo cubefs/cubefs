@@ -91,7 +91,7 @@ func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) 
 	nodes, count := ns.getAllCarryNodes(maxTotal, excludeHosts)
 	if len(nodes) < replicaNum {
 		err = fmt.Errorf(getAvailMetaNodeHostsErr+" err:%v ,ActiveNodeCount:%v  MatchNodeCount:%v  ",
-			ErrNoMetaNodeToWrite, ns.metaNodeLen, len(nodes))
+			proto.ErrNoMetaNodeToWrite, ns.metaNodeLen, len(nodes))
 		return
 	}
 

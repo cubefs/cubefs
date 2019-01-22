@@ -133,14 +133,13 @@ func (mp *MetaPartition) updateInodeIDRangeForAllReplicas() {
 	}
 }
 
-func (mp *MetaPartition) updateInodeIDRange(c *Cluster, end uint64) {
+func (mp *MetaPartition) updateInodeIDRange(c *Cluster, end uint64) (err error) {
 	// overflow
 	if end > (defaultMaxMetaPartitionInodeID - defaultMetaPartitionInodeIDStep) {
 		log.LogWarnf("action[updateInodeIDRange] clusterID[%v] partitionID[%v] nextStart[%v] "+
 			"to prevent overflow ,not update end", c.Name, mp.PartitionID, end)
 		return
 	}
-	var err error
 	tasks := make([]*proto.AdminTask, 0)
 	oldEnd := mp.End
 	mp.End = end
@@ -153,7 +152,8 @@ func (mp *MetaPartition) updateInodeIDRange(c *Cluster, end uint64) {
 	}
 	if err = c.syncUpdateMetaPartition(mp); err != nil {
 		mp.End = oldEnd
-		goto errHandler
+		log.LogErrorf("action[updateInodeIDRange] partitionID[%v] err[%v]", mp.PartitionID, err)
+		return proto.ErrPersistenceByRaft
 	}
 	mp.updateInodeIDRangeForAllReplicas()
 	tasks = append(tasks, t)
@@ -250,7 +250,7 @@ func (mp *MetaPartition) getMetaReplicaLeader() (mr *MetaReplica, err error) {
 			return
 		}
 	}
-	err = ErrNoLeader
+	err = proto.ErrNoLeader
 	return
 }
 
@@ -270,7 +270,7 @@ func (mp *MetaPartition) removeIllegalReplica() (excessAddr string, t *proto.Adm
 	for _, mr := range mp.Replicas {
 		if !contains(mp.Hosts, mr.Addr) {
 			t = mr.createTaskToDeleteReplica(mp.PartitionID)
-			err = ErrIllegalMetaReplica
+			err = proto.ErrIllegalMetaReplica
 			break
 		}
 	}
@@ -313,7 +313,7 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err error) {
 	liveReplicas := mp.getLiveReplicas()
 	if len(liveReplicas) < int(mp.ReplicaNum/2+1) {
-		err = ErrNoEnoughReplica
+		err = proto.ErrNoEnoughReplica
 		return
 	}
 	liveAddrs := mp.getLiveReplicasAddr(liveReplicas)

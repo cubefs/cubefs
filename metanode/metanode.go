@@ -17,7 +17,6 @@ package metanode
 import (
 	"encoding/json"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,6 +29,7 @@ import (
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/exporter"
 	"github.com/tiglabs/containerfs/util/log"
+	"strconv"
 )
 
 var (

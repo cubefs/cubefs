@@ -22,6 +22,7 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 	"math/rand"
 	"time"
+	"github.com/juju/errors"
 )
 
 func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize int) (req *proto.CreateDataPartitionRequest) {
@@ -119,8 +120,8 @@ func contains(arr []string, element string) (ok bool) {
 
 func reshuffleHosts(oldHosts []string) (newHosts []string, err error) {
 	if oldHosts == nil || len(oldHosts) == 0 {
-		log.LogError(fmt.Sprintf("action[reshuffleHosts],err:%v", ErrReshuffleArray))
-		err = ErrReshuffleArray
+		log.LogError(fmt.Sprintf("action[reshuffleHosts],err:%v", proto.ErrReshuffleArray))
+		err = proto.ErrReshuffleArray
 		return
 	}
 
@@ -150,4 +151,53 @@ func Warn(clusterID, msg string) {
 func WarnBySpecialKey(key, msg string) {
 	log.LogWarn(msg)
 	exporter.Alarm(key, msg)
+}
+
+func keyNotFound(name string) (err error) {
+	return errors.Errorf("parameter %v not found", name)
+}
+
+func unmatchedKey(name string) (err error) {
+	return errors.Errorf("parameter %v not match", name)
+}
+
+func notFoundMsg(name string) (err error) {
+	return errors.Errorf("%v not found", name)
+}
+
+func metaPartitionNotFound(id uint64) (err error) {
+	return notFoundMsg(fmt.Sprintf("meta partition[%v]", id))
+}
+
+func metaReplicaNotFound(addr string) (err error) {
+	return notFoundMsg(fmt.Sprintf("meta replica[%v]", addr))
+}
+
+func dataPartitionNotFound(id uint64) (err error) {
+	return notFoundMsg(fmt.Sprintf("data partition[%v]", id))
+}
+
+func dataReplicaNotFound(addr string) (err error) {
+	return notFoundMsg(fmt.Sprintf("data replica[%v]", addr))
+}
+
+func rackNotFound(name string) (err error) {
+	return notFoundMsg(fmt.Sprintf("rack[%v]", name))
+}
+
+func dataNodeNotFound(addr string) (err error) {
+	return notFoundMsg(fmt.Sprintf("data node[%v]", addr))
+}
+
+func metaNodeNotFound(addr string) (err error) {
+	return notFoundMsg(fmt.Sprintf("meta node[%v]", addr))
+}
+
+func volNotFound(name string) (err error) {
+	return notFoundMsg(fmt.Sprintf("vol[%v]", name))
+}
+
+func exists(name string) (err error) {
+	err = errors.Errorf("%v exists", name)
+	return
 }

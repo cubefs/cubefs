@@ -14,6 +14,7 @@
 
 package proto
 
+// api
 const (
 	// Admin APIs
 	AdminGetCluster                = "/admin/getCluster"
@@ -56,6 +57,13 @@ const (
 
 	GetTopologyView = "/topo/get"
 )
+
+// HTTPReply uniform response structure
+type HTTPReply struct {
+	Code int32       `json:"code"`
+	Msg  string      `json:"msg"`
+	Data interface{} `json:"data"`
+}
 
 // RegisterMetaNodeResp defines the response to register a meta node.
 type RegisterMetaNodeResp struct {
@@ -277,4 +285,69 @@ type MetaPartitionLoadResponse struct {
 	InodeSign   uint32
 	DentrySign  uint32
 	Addr        string
+}
+
+
+// VolStatInfo defines the statistics related to a volume
+type VolStatInfo struct {
+	Name      string
+	TotalSize uint64
+	UsedSize  uint64
+}
+
+// DataPartitionResponse defines the response from a data node to the master that is related to a data partition.
+type DataPartitionResponse struct {
+	PartitionID uint64
+	Status      int8
+	ReplicaNum  uint8
+	Hosts       []string
+	LeaderAddr  string
+}
+
+// DataPartitionsView defines the view of a data partition
+type DataPartitionsView struct {
+	DataPartitions []*DataPartitionResponse
+}
+
+func NewDataPartitionsView() (dataPartitionsView *DataPartitionsView) {
+	dataPartitionsView = new(DataPartitionsView)
+	dataPartitionsView.DataPartitions = make([]*DataPartitionResponse, 0)
+	return
+}
+
+// MetaPartitionView defines the view of a meta partition
+type MetaPartitionView struct {
+	PartitionID uint64
+	Start       uint64
+	End         uint64
+	Members     []string
+	LeaderAddr  string
+	Status      int8
+}
+
+// VolView defines the view of a volume
+type VolView struct {
+	Name           string
+	Status         uint8
+	MetaPartitions []*MetaPartitionView
+	DataPartitions []*DataPartitionResponse
+}
+
+func NewVolView(name string, status uint8) (view *VolView) {
+	view = new(VolView)
+	view.Name = name
+	view.Status = status
+	view.MetaPartitions = make([]*MetaPartitionView, 0)
+	view.DataPartitions = make([]*DataPartitionResponse, 0)
+	return
+}
+
+func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *MetaPartitionView) {
+	mpView = new(MetaPartitionView)
+	mpView.PartitionID = partitionID
+	mpView.Start = start
+	mpView.End = end
+	mpView.Status = status
+	mpView.Members = make([]string, 0)
+	return
 }

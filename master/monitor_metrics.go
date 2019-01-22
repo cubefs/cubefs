@@ -111,7 +111,7 @@ func (mm *monitorMetrics) doStat() {
 	mm.metaNodesUsed.Set(float64(mm.cluster.metaNodeStatInfo.UsedGB))
 	mm.metaNodesIncreased.Set(float64(mm.cluster.metaNodeStatInfo.IncreasedGB))
 	mm.cluster.volStatInfo.Range(func(key, value interface{}) bool {
-		volStatInfo, ok := value.(volStatInfo)
+		volStatInfo, ok := value.(*volStatInfo)
 		if !ok {
 			return true
 		}

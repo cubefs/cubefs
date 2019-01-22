@@ -64,7 +64,8 @@ func (mp *metaPartition) updateVolWorker() {
 				log.LogErrorf("[updateVol] %s", err.Error())
 				break
 			}
-			dataView := new(DataPartitionsView)
+
+			dataView := NewDataPartitionsView()
 			if err = json.Unmarshal(respBody, dataView); err != nil {
 				log.LogErrorf("[updateVol] %s", err.Error())
 				break
