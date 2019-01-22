@@ -26,6 +26,8 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 	"io"
 	"strings"
+	"sync/atomic"
+	"time"
 )
 
 var (
@@ -48,7 +50,7 @@ type ReplProtocol struct {
 
 	sourceConn *net.TCPConn
 	exitC      chan bool
-	exited     bool
+	exited     int32
 	exitedMu   sync.RWMutex
 
 	followerConnects *sync.Map
@@ -73,6 +75,7 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet) error,
 	rp.prepareFunc = prepareFunc
 	rp.operatorFunc = operatorFunc
 	rp.postFunc = postFunc
+	rp.exited=ReplRuning
 	go rp.OperatorAndForwardPkt()
 	go rp.ReceiveResponse()
 
@@ -92,7 +95,10 @@ func (rp *ReplProtocol) ServerConn() {
 			log.LogErrorf("action[serveConn] err(%v).", err)
 		}
 		rp.Stop()
-		rp.sourceConn.Close()
+		if atomic.LoadInt32(&rp.exited)==ReplHasExited{
+			rp.sourceConn.Close()
+		}
+
 	}()
 	for {
 		select {
@@ -155,6 +161,10 @@ func (rp *ReplProtocol) OperatorAndForwardPkt() {
 			rp.writeResponseToClient(request)
 		case <-rp.exitC:
 			rp.cleanResource()
+			if atomic.AddInt32(&rp.exited,-1)==ReplHasExited{
+				atomic.StoreInt32(&rp.exited,ReplHasExited)
+				rp.sourceConn.Close()
+			}
 			return
 		}
 	}
@@ -168,6 +178,10 @@ func (rp *ReplProtocol) ReceiveResponse() {
 		case <-rp.ackCh:
 			rp.reciveAllFollowerResponse()
 		case <-rp.exitC:
+			if atomic.AddInt32(&rp.exited,-1)==ReplHasExited{
+				atomic.StoreInt32(&rp.exited,ReplHasExited)
+				rp.sourceConn.Close()
+			}
 			return
 		}
 	}
@@ -309,11 +323,11 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 func (rp *ReplProtocol) Stop() {
 	rp.exitedMu.Lock()
 	defer rp.exitedMu.Unlock()
-	if !rp.exited {
+	if atomic.LoadInt32(&rp.exited)==ReplRuning {
 		if rp.exitC != nil {
 			close(rp.exitC)
 		}
-		rp.exited = true
+		atomic.StoreInt32(&rp.exited,ReplExiting)
 	}
 
 }
