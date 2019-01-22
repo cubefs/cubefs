@@ -37,3 +37,10 @@ const (
 const (
 	ConnIsNullErr = "ConnIsNullErr"
 )
+
+
+const (
+	ReplRuning = 2
+	ReplExiting = 1
+	ReplHasExited = -1
+)
