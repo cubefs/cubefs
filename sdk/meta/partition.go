@@ -17,7 +17,7 @@ package meta
 import (
 	"fmt"
 
-	"github.com/google/btree"
+	"github.com/tiglabs/containerfs/util/btree"
 )
 
 type MetaPartition struct {
@@ -32,6 +32,10 @@ type MetaPartition struct {
 func (this *MetaPartition) Less(than btree.Item) bool {
 	that := than.(*MetaPartition)
 	return this.Start < that.Start
+}
+
+func (mp *MetaPartition) Copy() btree.Item {
+	return mp
 }
 
 func (mp *MetaPartition) String() string {

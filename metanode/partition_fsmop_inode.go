@@ -32,7 +32,7 @@ func NewResponseInode() *ResponseInode {
 }
 
 // CreateInode create inode to inode tree.
-func (mp *metaPartition) createInode(ino *Inode) (status uint8) {
+func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 	status = proto.OpOk
 	if _, ok := mp.inodeTree.ReplaceOrInsert(ino, false); !ok {
 		status = proto.OpExistErr
@@ -40,7 +40,7 @@ func (mp *metaPartition) createInode(ino *Inode) (status uint8) {
 	return
 }
 
-func (mp *metaPartition) createLinkInode(ino *Inode) (resp *ResponseInode) {
+func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *ResponseInode) {
 	resp = NewResponseInode()
 	resp.Status = proto.OpOk
 	item := mp.inodeTree.Get(ino)
@@ -56,10 +56,6 @@ func (mp *metaPartition) createLinkInode(ino *Inode) (resp *ResponseInode) {
 	if i.IsDelete() {
 		resp.Status = proto.OpNotExistErr
 		return
-	}
-	if mp.isDump.Bool() {
-		i = i.Copy()
-		mp.inodeTree.ReplaceOrInsert(i, true)
 	}
 	i.IncrNLink()
 	resp.Msg = i
@@ -112,28 +108,35 @@ func (mp *metaPartition) RangeInode(f func(i BtreeItem) bool) {
 }
 
 // DeleteInode delete specified inode item from inode tree.
-func (mp *metaPartition) deleteInode(ino *Inode) (resp *ResponseInode) {
+func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *ResponseInode) {
 	resp = NewResponseInode()
 	resp.Status = proto.OpOk
 	isFind := false
-	isDelete := false
 	mp.inodeTree.Find(ino, func(i BtreeItem) {
 		isFind = true
+		isDelete := false
 		inode := i.(*Inode)
 		resp.Msg = inode
 		if proto.IsRegular(inode.Type) {
 			inode.DecrNLink()
 			return
 		}
-		// should delete inode
+		// isDir
 		isDelete = true
+		mp.dentryTree.AscendRange(&Dentry{ParentId: inode.Inode},
+			&Dentry{ParentId: inode.Inode + 1}, func(i BtreeItem) bool {
+				isDelete = false
+				return false
+			})
+		if isDelete {
+			inode.DecrNLink()
+			return
+		}
+		resp.Status = proto.OpNotEmtpy
 	})
 	if !isFind {
 		resp.Status = proto.OpNotExistErr
 		return
-	}
-	if isDelete {
-		mp.inodeTree.Delete(ino)
 	}
 	return
 }
@@ -162,7 +165,7 @@ func (mp *metaPartition) internalDeleteInode(ino *Inode) {
 	return
 }
 
-func (mp *metaPartition) appendExtents(ino *Inode) (status uint8) {
+func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	status = proto.OpOk
 	item := mp.inodeTree.Get(ino)
 	if item == nil {
@@ -173,10 +176,6 @@ func (mp *metaPartition) appendExtents(ino *Inode) (status uint8) {
 	if ino2.IsDelete() {
 		status = proto.OpNotExistErr
 		return
-	}
-	if mp.isDump.Bool() {
-		ino2 = ino2.Copy()
-		mp.inodeTree.ReplaceOrInsert(ino2, true)
 	}
 	if !ino2.CanWrite(ino.AuthID, ino.AccessTime) {
 		status = proto.OpNotPerm
@@ -194,7 +193,7 @@ func (mp *metaPartition) appendExtents(ino *Inode) (status uint8) {
 	return
 }
 
-func (mp *metaPartition) extentsTruncate(ino *Inode) (resp *ResponseInode) {
+func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *ResponseInode) {
 	resp = NewResponseInode()
 	resp.Status = proto.OpOk
 	isFind := false
@@ -233,7 +232,7 @@ func (mp *metaPartition) extentsTruncate(ino *Inode) (resp *ResponseInode) {
 	return
 }
 
-func (mp *metaPartition) evictInode(ino *Inode) (resp *ResponseInode) {
+func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *ResponseInode) {
 	resp = NewResponseInode()
 	resp.Status = proto.OpOk
 	isFind := false
@@ -241,12 +240,8 @@ func (mp *metaPartition) evictInode(ino *Inode) (resp *ResponseInode) {
 	mp.inodeTree.Find(ino, func(item BtreeItem) {
 		isFind = true
 		i := item.(*Inode)
-		if mp.isDump.Bool() {
-			i = i.Copy()
-			mp.inodeTree.ReplaceOrInsert(i, true)
-		}
 		if proto.IsDir(i.Type) {
-			if i.GetNLink() < 2 {
+			if i.GetNLink() < 1 {
 				isDelete = true
 			}
 			return
@@ -280,7 +275,7 @@ func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 	}
 }
 
-func (mp *metaPartition) setAttr(req *SetattrRequest) (err error) {
+func (mp *metaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
 	// get Inode
 	ino := NewInode(req.Inode, req.Mode)
 	item := mp.inodeTree.Get(ino)
@@ -288,10 +283,6 @@ func (mp *metaPartition) setAttr(req *SetattrRequest) (err error) {
 		return
 	}
 	ino = item.(*Inode)
-	if mp.isDump.Bool() {
-		ino = ino.Copy()
-		mp.inodeTree.ReplaceOrInsert(ino, true)
-	}
 	ino.SetAttr(req.Valid, req.Mode, req.Uid, req.Gid)
 	return
 }

@@ -105,6 +105,11 @@ func (d *Dentry) Less(than BtreeItem) (less bool) {
 	return
 }
 
+func (d *Dentry) Copy() BtreeItem {
+	newDentry := *d
+	return &newDentry
+}
+
 // MarshalKey is the bytes version of MarshalKey method which returns byte slice result.
 func (d *Dentry) MarshalKey() (k []byte) {
 	buff := bytes.NewBuffer(make([]byte, 0))
@@ -149,9 +154,4 @@ func (d *Dentry) UnmarshalValue(val []byte) (err error) {
 	}
 	err = binary.Read(buff, binary.BigEndian, &d.Type)
 	return
-}
-
-func (d *Dentry) Copy() *Dentry {
-	newDentry := *d
-	return &newDentry
 }

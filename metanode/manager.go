@@ -72,8 +72,8 @@ func (m *metaManager) HandleMetaOperation(conn net.Conn, p *Packet) (err error) 
 		err = m.opCreateInode(conn, p)
 	case proto.OpMetaLinkInode:
 		err = m.opMetaLinkInode(conn, p)
-	case proto.OpMetaDeleteInode:
-		err = m.opDeleteInode(conn, p)
+	case proto.OpMetaUnlinkInode:
+		err = m.opMetaUnlinkInode(conn, p)
 	case proto.OpMetaInodeGet:
 		err = m.opMetaInodeGet(conn, p)
 	case proto.OpMetaEvictInode:

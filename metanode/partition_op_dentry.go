@@ -37,7 +37,7 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 	if err != nil {
 		return
 	}
-	resp, err := mp.Put(opCreateDentry, val)
+	resp, err := mp.Put(opFSMCreateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -56,7 +56,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 		p.ResultCode = proto.OpErr
 		return
 	}
-	r, err := mp.Put(opDeleteDentry, val)
+	r, err := mp.Put(opFSMDeleteDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -92,7 +92,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 		p.ResultCode = proto.OpErr
 		return
 	}
-	resp, err := mp.Put(opUpdateDentry, val)
+	resp, err := mp.Put(opFSMUpdateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

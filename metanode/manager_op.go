@@ -247,8 +247,8 @@ func (m *metaManager) opUpdateDentry(conn net.Conn, p *Packet) (err error) {
 	return
 }
 
-func (m *metaManager) opDeleteInode(conn net.Conn, p *Packet) (err error) {
-	req := &DeleteInoReq{}
+func (m *metaManager) opMetaUnlinkInode(conn net.Conn, p *Packet) (err error) {
+	req := &UnlinkInoReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
@@ -263,7 +263,7 @@ func (m *metaManager) opDeleteInode(conn net.Conn, p *Packet) (err error) {
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.DeleteInode(req, p)
+	err = mp.UnlinkInode(req, p)
 	m.respondToClient(conn, p)
 	log.LogDebugf("[opDeleteInode] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
 		p.GetResultMsg(), p.Data)

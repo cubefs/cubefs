@@ -109,9 +109,10 @@ func (c *MetaPartitionConfig) sortPeers() {
 
 type OpInode interface {
 	CreateInode(req *CreateInoReq, p *Packet) (err error)
-	DeleteInode(req *DeleteInoReq, p *Packet) (err error)
+	UnlinkInode(req *UnlinkInoReq, p *Packet) (err error)
 	InodeGet(req *InodeGetReq, p *Packet) (err error)
 	InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error)
+	InodeGetAuth(ino uint64, p *Packet) (err error)
 	Open(req *OpenReq, p *Packet) (err error)
 	ReleaseOpen(req *ReleaseReq, p *Packet) (err error)
 	CreateLinkInode(req *LinkInodeReq, p *Packet) (err error)
@@ -168,7 +169,6 @@ type MetaPartition interface {
 //  +-----+             +-------+
 type metaPartition struct {
 	config        *MetaPartitionConfig
-	isDump        *AtomicBool
 	size          uint64 // For partition all file size
 	applyID       uint64 // For store Inode/Dentry max applyID, this index will be update after restore from dump data.
 	dentryTree    *BTree
@@ -327,7 +327,6 @@ func (mp *metaPartition) getRaftPort() (heartbeat, replicate int, err error) {
 func NewMetaPartition(conf *MetaPartitionConfig) MetaPartition {
 	mp := &metaPartition{
 		config:     conf,
-		isDump:     NewAtomicBool(),
 		dentryTree: NewBtree(),
 		inodeTree:  NewBtree(),
 		stopC:      make(chan bool),
@@ -479,7 +478,7 @@ func (mp *metaPartition) GetBaseConfig() MetaPartitionConfig {
 }
 
 func (mp *metaPartition) DeletePartition() (err error) {
-	_, err = mp.Put(opDeletePartition, nil)
+	_, err = mp.Put(opFSMDeletePartition, nil)
 	return
 }
 
@@ -491,7 +490,7 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 		resp.Result = err.Error()
 		return
 	}
-	r, err := mp.Put(opUpdatePartition, reqData)
+	r, err := mp.Put(opFSMUpdatePartition, reqData)
 	if err != nil {
 		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
@@ -509,7 +508,7 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 }
 
 func (mp *metaPartition) OfflinePartition(req []byte) (err error) {
-	_, err = mp.Put(opOfflinePartition, req)
+	_, err = mp.Put(opFSMOfflinePartition, req)
 	return
 }
 

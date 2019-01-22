@@ -41,7 +41,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		return
 	}
 	switch msg.Op {
-	case opCreateInode:
+	case opFSMCreateInode:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
@@ -49,90 +49,89 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if mp.config.Cursor < ino.Inode {
 			mp.config.Cursor = ino.Inode
 		}
-		resp = mp.createInode(ino)
-	case opDeleteInode:
+		resp = mp.fsmCreateInode(ino)
+	case opFSMUnlinkInode:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.deleteInode(ino)
+		resp = mp.fsmUnlinkInode(ino)
 	case opFSMExtentTruncate:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.extentsTruncate(ino)
+		resp = mp.fsmExtentsTruncate(ino)
 	case opFSMCreateLinkInode:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.createLinkInode(ino)
+		resp = mp.fsmCreateLinkInode(ino)
 	case opFSMEvictInode:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.evictInode(ino)
+		resp = mp.fsmEvictInode(ino)
 	case opFSMSetAttr:
 		req := &SetattrRequest{}
 		err = json.Unmarshal(msg.V, req)
 		if err != nil {
 			return
 		}
-		err = mp.setAttr(req)
-	case opCreateDentry:
+		err = mp.fsmSetAttr(req)
+	case opFSMCreateDentry:
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.createDentry(den)
-	case opDeleteDentry:
+		resp = mp.fsmCreateDentry(den)
+	case opFSMDeleteDentry:
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.deleteDentry(den)
-	case opUpdateDentry:
+		resp = mp.fsmDeleteDentry(den)
+	case opFSMUpdateDentry:
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.updateDentry(den)
-	case opOpen:
+		resp = mp.fsmUpdateDentry(den)
+	case opFSMOpen:
 		openReq := &OpenReq{}
 		if err = json.Unmarshal(msg.V, openReq); err != nil {
 			return
 		}
-		resp = mp.openFile(openReq)
-	case opReleaseOpen:
+		resp = mp.fsmOpenFile(openReq)
+	case opFSMReleaseOpen:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.releaseOpen(ino)
-	case opDeletePartition:
-		resp = mp.deletePartition()
-	case opUpdatePartition:
+		resp = mp.fsmReleaseOpen(ino)
+	case opFSMDeletePartition:
+		resp = mp.fsmDeletePartition()
+	case opFSMUpdatePartition:
 		req := &UpdatePartitionReq{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp, err = mp.updatePartition(req.End)
-	case opExtentsAdd:
+		resp, err = mp.fsmUpdatePartition(req.End)
+	case opFSMExtentsAdd:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.appendExtents(ino)
-	case opStoreTick:
+		resp = mp.fsmAppendExtents(ino)
+	case opFSMStoreTick:
 		msg := &storeMsg{
-			command:    opStoreTick,
+			command:    opFSMStoreTick,
 			applyIndex: index,
 			inodeTree:  mp.getInodeTree(),
 			dentryTree: mp.getDentryTree(),
 		}
-		mp.isDump.SetTrue(index)
 		mp.storeChan <- msg
 	case opFSMInternalDeleteInode:
 		err = mp.internalDelete(msg.V)
@@ -220,7 +219,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer,
 			err = nil
 			// store message
 			mp.storeChan <- &storeMsg{
-				command:    opStoreTick,
+				command:    opFSMStoreTick,
 				applyIndex: mp.applyID,
 				inodeTree:  mp.inodeTree,
 				dentryTree: mp.dentryTree,
@@ -246,7 +245,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer,
 			return
 		}
 		switch snap.Op {
-		case opCreateInode:
+		case opFSMCreateInode:
 			ino := NewInode(0, 0)
 			ino.UnmarshalKey(snap.K)
 			ino.UnmarshalValue(snap.V)
@@ -255,7 +254,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer,
 			}
 			inodeTree.ReplaceOrInsert(ino, true)
 			log.LogDebugf("action[ApplySnapshot] create inode[%v].", ino)
-		case opCreateDentry:
+		case opFSMCreateDentry:
 			dentry := &Dentry{}
 			dentry.UnmarshalKey(snap.K)
 			dentry.UnmarshalValue(snap.V)

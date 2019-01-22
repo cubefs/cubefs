@@ -361,7 +361,7 @@ func (i *Inode) ExtentsTruncate(exts []BtreeItem, length uint64, ct int64) {
 	i.Unlock()
 }
 
-func (i *Inode) Copy() *Inode {
+func (i *Inode) Copy() BtreeItem {
 	newIno := NewInode(i.Inode, i.Type)
 	i.RLock()
 	newIno.Uid = i.Uid
@@ -393,7 +393,9 @@ func (i *Inode) IncrNLink() {
 
 func (i *Inode) DecrNLink() {
 	i.Lock()
-	i.NLink--
+	if i.NLink != 0 {
+		i.NLink--
+	}
 	i.Unlock()
 }
 
@@ -431,6 +433,13 @@ func (i *Inode) DoFunc(fn func()) {
 	i.RLock()
 	fn()
 	i.RUnlock()
+}
+
+func (i *Inode) GetAuth() (authID uint64, timeout int64) {
+	i.RLock()
+	authID, timeout = i.AuthID, i.AuthTimeout
+	i.RUnlock()
+	return
 }
 
 func (i *Inode) CanOpen(mt int64) (authId uint64, ok bool) {

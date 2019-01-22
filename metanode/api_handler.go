@@ -47,6 +47,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getPartitions", m.getPartitionsHandler)
 	http.HandleFunc("/getPartitionById", m.getPartitionByIDHandler)
 	http.HandleFunc("/getInode", m.getInodeHandler)
+	http.HandleFunc("/getInodeAuth", m.getInodeAuth)
 	http.HandleFunc("/getExtentsByInode", m.getExtentsByInodeHandler)
 	// Get all inodes of the partitionID
 	http.HandleFunc("/getAllInodes", m.getAllInodeHandler)
@@ -381,6 +382,42 @@ func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Code = http.StatusSeeOther
 	resp.Msg = p.GetResultMsg()
+	resp.Data = json.RawMessage(p.Data)
+	return
+}
+
+func (m *MetaNode) getInodeAuth(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		w.Write(data)
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	ino, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	mp, err := m.metaManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	p := &Packet{}
+	if err := mp.InodeGetAuth(ino, p); err != nil {
+		resp.Code = http.StatusSeeOther
+		resp.Msg = err.Error()
+		return
+	}
+	resp.Code = http.StatusOK
+	resp.Msg = http.StatusText(resp.Code)
 	resp.Data = json.RawMessage(p.Data)
 	return
 }

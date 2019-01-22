@@ -43,9 +43,9 @@ type (
 	// MetaNode -> Client create Link Response
 	LinkInodeResp = proto.LinkInodeResponse
 	// Client -> MetaNode delete Inode request struct
-	DeleteInoReq = proto.DeleteInodeRequest
+	UnlinkInoReq = proto.UnlinkInodeRequest
 	// MetaNode -> Client delete Inode response
-	DeleteInoResp = proto.DeleteInodeResponse
+	UnlinkInoResp = proto.UnlinkInodeResponse
 	// Client -> MetaNode create Dentry request struct
 	CreateDentryReq = proto.CreateDentryRequest
 	// Client -> MetaNode delete Dentry request struct
@@ -87,19 +87,19 @@ type (
 // TODO what does "when raftStore store and application apply" mean ?
 // For use when raftStore store and application apply
 const (
-	opCreateInode uint32 = iota
-	opDeleteInode
-	opCreateDentry
-	opDeleteDentry
-	opOpen
-	opDeletePartition
-	opUpdatePartition
-	opOfflinePartition
-	opExtentsAdd
-	opStoreTick
+	opFSMCreateInode uint32 = iota
+	opFSMUnlinkInode
+	opFSMCreateDentry
+	opFSMDeleteDentry
+	opFSMOpen
+	opFSMDeletePartition
+	opFSMUpdatePartition
+	opFSMOfflinePartition
+	opFSMExtentsAdd
+	opFSMStoreTick
 	startStoreTick
 	stopStoreTick
-	opUpdateDentry
+	opFSMUpdateDentry
 	opFSMExtentTruncate
 	opFSMCreateLinkInode
 	opFSMEvictInode
@@ -108,7 +108,7 @@ const (
 	opFSMInternalDelExtentFile
 	opFSMInternalDelExtentCursor
 	opSnapExtentFile
-	opReleaseOpen
+	opFSMReleaseOpen
 )
 
 var (

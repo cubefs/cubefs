@@ -48,7 +48,6 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 		} else {
 			curIndex = msg.applyIndex
 		}
-		mp.isDump.SetFalse(msg.applyIndex)
 		// Truncate raft log
 		mp.raftPartition.Truncate(curIndex)
 		if _, ok := mp.IsLeader(); ok {
@@ -89,7 +88,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					timer.Reset(storeTimeTicker)
 				case stopStoreTick:
 					timer.Stop()
-				case opStoreTick:
+				case opFSMStoreTick:
 					msgs = append(msgs, msg)
 				}
 			case <-timer.C:
@@ -97,7 +96,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					timer.Reset(storeTimeTicker)
 					continue
 				}
-				if _, err := mp.Put(opStoreTick, nil); err != nil {
+				if _, err := mp.Put(opFSMStoreTick, nil); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s",
 						err.Error())
 					if _, ok := mp.IsLeader(); ok {

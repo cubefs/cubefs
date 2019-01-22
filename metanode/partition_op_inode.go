@@ -57,7 +57,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.Put(opCreateInode, val)
+	resp, err := mp.Put(opFSMCreateInode, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -83,14 +83,14 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 	return
 }
 
-func (mp *metaPartition) DeleteInode(req *DeleteInoReq, p *Packet) (err error) {
+func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
 		return
 	}
-	r, err := mp.Put(opDeleteInode, val)
+	r, err := mp.Put(opFSMUnlinkInode, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -99,7 +99,7 @@ func (mp *metaPartition) DeleteInode(req *DeleteInoReq, p *Packet) (err error) {
 	status := msg.Status
 	var reply []byte
 	if status == proto.OpOk {
-		resp := &DeleteInoResp{
+		resp := &UnlinkInoResp{
 			Info: &proto.InodeInfo{},
 		}
 		replyInfo(resp.Info, msg.Msg)
@@ -118,7 +118,7 @@ func (mp *metaPartition) Open(req *OpenReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpErr, nil)
 		return
 	}
-	resp, err := mp.Put(opOpen, val)
+	resp, err := mp.Put(opFSMOpen, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -143,7 +143,7 @@ func (mp *metaPartition) ReleaseOpen(req *ReleaseReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	r, err := mp.Put(opReleaseOpen, val)
+	r, err := mp.Put(opFSMReleaseOpen, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -154,10 +154,6 @@ func (mp *metaPartition) ReleaseOpen(req *ReleaseReq, p *Packet) (err error) {
 
 func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
-		return
-	}
 	retMsg := mp.getInode(ino)
 	ino = retMsg.Msg
 	var (
@@ -199,6 +195,25 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 		return
 	}
 	p.PacketOkWithBody(data)
+	return
+}
+
+func (mp *metaPartition) InodeGetAuth(ino uint64, p *Packet) (err error) {
+	resp := mp.getInode(NewInode(ino, 0))
+	status := resp.Status
+	if status != proto.OpOk {
+		p.PacketErrorWithBody(status, nil)
+		return
+	}
+	authID, timeout := resp.Msg.GetAuth()
+	data, err := json.Marshal(map[string]interface{}{
+		"authID":   authID,
+		"authTime": timeout,
+	})
+	if err != nil {
+		status = proto.OpErr
+	}
+	p.PacketErrorWithBody(status, data)
 	return
 }
 
