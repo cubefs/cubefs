@@ -81,27 +81,6 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 	return
 }
 
-func (p *Packet) forceDestoryWholeFollowersPool(err error) {
-	for i := 0; i < len(p.followerConns); i++ {
-		gConnPool.ForceDestoryWholePool(p.followerConns[i], p.followersAddrs[i], err)
-		p.followerConns[i]=nil
-	}
-}
-
-func (p *Packet) ForceDestoryFollowerConns() {
-	for i := 0; i < len(p.followerConns); i++ {
-		gConnPool.ForceDestory(p.followerConns[i])
-		p.followerConns[i]=nil
-	}
-}
-
-func (p *Packet) PutConnsToPool() {
-	for i := 0; i < len(p.followerConns); i++ {
-		gConnPool.PutConnect(p.followerConns[i], NoClosedConn)
-		p.followerConns[i]=nil
-	}
-}
-
 func NewPacket() (p *Packet) {
 	p = new(Packet)
 	p.Magic = proto.ProtoMagic

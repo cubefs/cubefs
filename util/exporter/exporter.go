@@ -79,7 +79,7 @@ func Init(cluster string, role string, cfg *config.Config) {
 type PromeMetric struct {
 	Name   string
 	Labels map[string]string
-	Key string
+	Key    string
 	Metric prometheus.Metric
 	tp     MetricType
 }
@@ -160,7 +160,7 @@ func (m *PromeMetric) SetWithLabels(val float64, labels map[string]string) {
 	return
 }
 
-func (m *PromeMetric) Set(val float64)  {
+func (m *PromeMetric) Set(val float64) {
 	m.SetWithLabels(val, nil)
 	return
 }

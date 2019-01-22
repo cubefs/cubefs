@@ -28,14 +28,14 @@ func TestNewMetricLabels2(t *testing.T) {
 			label := fmt.Sprintf("label-%d:name", i)
 			m := RegistMetric(name, Gauge)
 			if m != nil {
-				m.SetWithLabels(float64(i),map[string]string{"volname": label, "cluster": name} )
+				m.SetWithLabels(float64(i), map[string]string{"volname": label, "cluster": name})
 				t.Logf("metric: %v, %v", name, m.Metric.Desc())
 			}
 			name2 := fmt.Sprintf("name_%d_counter", i%2)
 			c := RegistMetric(name2, Counter)
 			if c != nil {
 				//c.Set(float64(i))
-				c.SetWithLabels(float64(i),map[string]string{"volname": label, "cluster": name} )
+				c.SetWithLabels(float64(i), map[string]string{"volname": label, "cluster": name})
 				t.Logf("metric: %v, %v", name2, c.Metric.Desc())
 			}
 			exitCh <- i

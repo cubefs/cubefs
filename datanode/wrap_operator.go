@@ -419,7 +419,7 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 		err error
 	)
 	partition := p.Object.(*DataPartition)
-	if !isRepairRead{
+	if !isRepairRead {
 		err = partition.CheckLeader(p, connect)
 		if err != nil {
 			err = fmt.Errorf(p.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
