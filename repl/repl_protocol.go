@@ -380,9 +380,8 @@ func (rp *ReplProtocol) cleanResource() {
 	rp.packetListLock.Lock()
 	for e := rp.packetList.Front(); e != nil; e = e.Next() {
 		request := e.Value.(*Packet)
-		request.ForceDestoryFollowerConns()
-
 		rp.postFunc(request)
+		request.ForceDestoryFollowerConns()
 	}
 	rp.cleanToBeProcessCh()
 	rp.cleanResponseCh()
