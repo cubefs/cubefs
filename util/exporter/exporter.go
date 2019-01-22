@@ -15,6 +15,7 @@ package exporter
 
 import (
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
 	"net/http"
@@ -22,7 +23,6 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -152,7 +152,7 @@ func (m *PromeMetric) SetWithLabels(val float64, labels map[string]string) {
 	if !load {
 		err := prometheus.Register(actualMetric.(prometheus.Collector))
 		if err == nil {
-			log.LogInfo("register metric ", key)
+			log.LogInfo("register metric ", key, m.tp)
 		}
 	}
 
@@ -166,14 +166,12 @@ func (m *PromeMetric) Set(val float64) {
 }
 
 func (m *PromeMetric) SetMetricVal(metric interface{}, val float64) {
-	if metric != nil {
-		switch metric := metric.(type) {
-		case prometheus.Counter:
-			metric.Add(val)
-		case prometheus.Gauge:
-			metric.Set(val)
-		default:
-		}
+	if m.tp == Counter {
+		metric := metric.(prometheus.Counter)
+		metric.Add(val)
+	} else if m.tp == Gauge {
+		metric := metric.(prometheus.Gauge)
+		metric.Set(val)
 	}
 }
 
