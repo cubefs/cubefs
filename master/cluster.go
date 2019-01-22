@@ -458,6 +458,18 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 	wg.Wait()
 	select {
 	case err = <-errChannel:
+		for _, host := range targetHosts {
+			wg.Add(1)
+			go func(host string) {
+				defer func() {
+					wg.Done()
+				}()
+				task := dp.createTaskToDeleteDataPartition(host)
+				tasks := make([]*proto.AdminTask, 0)
+				tasks = append(tasks, task)
+				c.addMetaNodeTasks(tasks)
+			}(host)
+		}
 		goto errHandler
 	default:
 		dp.Status = proto.ReadWrite
@@ -935,6 +947,22 @@ func (c *Cluster) createMetaPartition(volName string, start, end uint64) (err er
 	wg.Wait()
 	select {
 	case err = <-errChannel:
+		for _, host := range hosts {
+			wg.Add(1)
+			go func(host string) {
+				defer func() {
+					wg.Done()
+				}()
+				mr, err := mp.getMetaReplica(host)
+				if err != nil {
+					return
+				}
+				task := mr.createTaskToDeleteReplica(mp.PartitionID)
+				tasks := make([]*proto.AdminTask, 0)
+				tasks = append(tasks, task)
+				c.addMetaNodeTasks(tasks)
+			}(host)
+		}
 		return errors.Trace(err)
 	default:
 		mp.Status = proto.ReadWrite
