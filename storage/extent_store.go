@@ -290,8 +290,8 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, loadHeader bool) (e *E
 	if !IsTinyExtent(extentID) {
 		offset := extentID * util.BlockHeaderSize
 		_, err = s.verifyCrcFp.ReadAt(e.header[:util.BlockHeaderSize], int64(offset))
-		if err==io.EOF{
-			err=nil
+		if err == io.EOF {
+			err = nil
 		}
 	}
 
