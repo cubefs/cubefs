@@ -27,7 +27,6 @@ import (
 	"io"
 	"strings"
 	"sync/atomic"
-	"time"
 )
 
 var (
