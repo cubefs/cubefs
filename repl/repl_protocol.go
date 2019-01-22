@@ -24,7 +24,6 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
-	"google.golang.org/grpc/credentials/alts/core/conn"
 	"io"
 	"strings"
 )
