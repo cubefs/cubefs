@@ -22,6 +22,8 @@ build_main:
     
 deploy:
   stage: deploy
+  tags:
+    - cfs
   script:
     - sh /export/App/cfsci/scripts/deploy.sh
     
