@@ -22,7 +22,7 @@ build_main:
     
 deploy:
   stage: deploy
-  scripts:
+  script:
     - sh /export/App/cfsci/scripts/deploy.sh
     
 
