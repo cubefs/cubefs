@@ -10,6 +10,7 @@ before_script:
 
 stages:
   - build
+  - deploy
 
 
 build_main:
@@ -17,6 +18,12 @@ build_main:
   tags:
     - cfs
   script:
-    - cd $GOPATH/src/github.com/tiglabs/containerfs/cmd && sh build.sh
-    - cd $GOPATH/src/github.com/tiglabs/containerfs/client && sh build.sh
+    - sh /export/App/cfsci/scripts/build.sh
+    
+deploy:
+  stage: deploy
+  scripts:
+    - sh /export/App/cfsci/scripts/deploy.sh
+    
+
 
