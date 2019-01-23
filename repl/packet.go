@@ -51,7 +51,7 @@ func (p *Packet) AfterTp() (ok bool) {
 
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
 	key := fmt.Sprintf("%s_datanode_stream%v", clusterID, p.GetOpMsg())
-	p.TpObject = exporter.RegisterTp(key)
+	p.TpObject = exporter.RegistTp(key)
 	return
 }
 
@@ -185,7 +185,7 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, storage.NotALeaderError.Error()) {
-		p.ResultCode = proto.OpNotALeaderErr
+		p.ResultCode = proto.OpNotLeaderErr
 	} else if strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) {
 		if p.Opcode != proto.OpWrite {
 			p.ResultCode = proto.OpNotExistErr

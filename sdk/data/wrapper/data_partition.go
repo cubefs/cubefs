@@ -14,14 +14,12 @@
 
 package wrapper
 
-
 import (
 	"fmt"
 	"github.com/tiglabs/containerfs/proto"
 	"strings"
 )
 
-// DataPartition defines the wrapper of the data partition.
 type DataPartition struct {
 	// Will not be changed
 	proto.DataPartitionResponse
@@ -30,7 +28,6 @@ type DataPartition struct {
 	Metrics *DataPartitionMetrics
 }
 
-// DataPartitionMetrics defines the wrapper of the metrics related to the data partition.
 type DataPartitionMetrics struct {
 	WriteCnt        uint64
 	ReadCnt         uint64
@@ -40,19 +37,18 @@ type DataPartitionMetrics struct {
 	ReadLatency     float64
 }
 
-type DataPartitionSorter []*DataPartition
+type DataPartitionSlice []*DataPartition
 
-func (ds DataPartitionSorter) Len() int {
+func (ds DataPartitionSlice) Len() int {
 	return len(ds)
 }
-func (ds DataPartitionSorter) Swap(i, j int) {
+func (ds DataPartitionSlice) Swap(i, j int) {
 	ds[i], ds[j] = ds[j], ds[i]
 }
-func (ds DataPartitionSorter) Less(i, j int) bool {
+func (ds DataPartitionSlice) Less(i, j int) bool {
 	return ds[i].Metrics.WriteLatency < ds[j].Metrics.WriteLatency
 }
 
-// NewDataPartitionMetrics returns a new DataPartitionMetrics instance.
 func NewDataPartitionMetrics() *DataPartitionMetrics {
 	metrics := new(DataPartitionMetrics)
 	metrics.WriteCnt = 1
@@ -60,14 +56,12 @@ func NewDataPartitionMetrics() *DataPartitionMetrics {
 	return metrics
 }
 
-// String returns the string format of the data partition.
 func (dp *DataPartition) String() string {
 	return fmt.Sprintf("PartitionID(%v) Status(%v) ReplicaNum(%v) PartitionType(%v) Hosts(%v)",
 		dp.PartitionID, dp.Status, dp.ReplicaNum, dp.PartitionType, dp.Hosts)
 }
 
-// GetAllAddrs returns the addresses of all the replicas of the data partition.
-func (dp *DataPartition) GetAllAddrs() string {
+func (dp *DataPartition) GetAllAddrs() (m string) {
 	return strings.Join(dp.Hosts[1:], proto.AddrSplit) + proto.AddrSplit
 }
 
@@ -78,4 +72,15 @@ func isExcluded(partitionId uint64, excludes []uint64) bool {
 		}
 	}
 	return false
+}
+
+func NewGetDataPartitionMetricsPacket(partitionid uint64) (p *proto.Packet) {
+	p = new(proto.Packet)
+	p.PartitionID = partitionid
+	p.Magic = proto.ProtoMagic
+	p.ExtentType = proto.NormalExtentType
+	p.ReqID = proto.GenerateRequestID()
+	p.Opcode = proto.OpGetDataPartitionMetrics
+
+	return
 }

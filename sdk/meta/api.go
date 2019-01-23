@@ -361,7 +361,7 @@ func (mw *MetaWrapper) HardLink(parentID uint64, name string, inode uint64) (*pr
 	}
 
 	// create new dentry and refer to the inode
-	status, err = mw.dcreate(parentMP, parentID, name, inode, info.Type)
+	status, err = mw.dcreate(parentMP, parentID, name, inode, info.Mode)
 	if err != nil || status != statusOK {
 		if status == statusExist {
 			return nil, syscall.EEXIST
@@ -397,7 +397,6 @@ func (mw *MetaWrapper) Unlink(inode uint64) (*proto.InodeInfo, error) {
 	}
 
 	status, info, err := mw.iunlink(mp, inode)
-
 	if err != nil || status != statusOK {
 		log.LogErrorf("Unlink: ino(%v) err(%v) status(%v)", inode, err, status)
 		return nil, statusToErrno(status)

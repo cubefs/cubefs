@@ -24,13 +24,14 @@ import (
 )
 
 const (
-	RegisterPeriod = time.Duration(1) * time.Minute
-	RegisterPath   = "/v1/agent/service/register"
+	RegistPeriod = time.Duration(1) * time.Minute
+	RegisterPath = "/v1/agent/service/register"
 )
 
-// ConsulRegisterInfo defines the struct for consul register service.
-// Optional for user when setting prometheus exporter.
-// https://www.consul.io
+/**
+ * consul register info for prometheus
+ * optional for user when set prometheus exporter
+ */
 type ConsulRegisterInfo struct {
 	Name    string
 	ID      string
@@ -39,22 +40,20 @@ type ConsulRegisterInfo struct {
 	Tags    []string
 }
 
-// GetConsulId returns the consul ID.
 func GetConsulId(app string, role string, host string, port int64) string {
 	return fmt.Sprintf("%s_%s_%s_%d", app, role, host, port)
 }
 
-// RegisterConsul registers the consul service.
-func RegisterConsul(addr, app, role, cluster string, port int64) {
+func RegistConsul(addr, app, role, cluster string, port int64) {
 	if len(addr) <= 0 {
 		return
 	}
 	log.LogInfo("consul register enable %v", addr)
-	ticker := time.NewTicker(RegisterPeriod)
+	ticker := time.NewTicker(RegistPeriod)
 	defer func() {
 		if err := recover(); err != nil {
 			ticker.Stop()
-			log.LogErrorf("RegisterConsul panic,err[%v]", err)
+			log.LogErrorf("RegistConsul panic,err[%v]", err)
 		}
 	}()
 
@@ -62,13 +61,12 @@ func RegisterConsul(addr, app, role, cluster string, port int64) {
 		for {
 			select {
 			case <-ticker.C:
-				SendRegisterReq(addr, app, role, cluster, port)
+				SendRegistReq(addr, app, role, cluster, port)
 			}
 		}
 	}()
 }
 
-// GetLocalIpAddr returns the local IP address.
 func GetLocalIpAddr() (ipaddr string, err error) {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
@@ -85,8 +83,7 @@ func GetLocalIpAddr() (ipaddr string, err error) {
 	return "", fmt.Errorf("cannot get local ip")
 }
 
-// SendRegisterReq sends the register request.
-func SendRegisterReq(addr string, app string, role string, cluster string, port int64) {
+func SendRegistReq(addr string, app string, role string, cluster string, port int64) {
 	host, err := GetLocalIpAddr()
 	if err != nil {
 		log.LogErrorf("get local ip error, %v", err.Error())
@@ -106,6 +103,6 @@ func SendRegisterReq(addr string, app string, role string, cluster string, port 
 		},
 	}).End()
 	if errs != nil {
-		log.LogErrorf("Error on register consul resp: %v, body: %v", body, resp)
+		log.LogErrorf("Error on regist consul resp: %v, body: %v", body, resp)
 	}
 }

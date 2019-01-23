@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	PromHandlerPattern    = "/metrics" // TODO what is prom?
+	PromHandlerPattern    = "/metrics"
 	AppName               = "cfs"
 	ConfigKeyExporterPort = "exporterPort"
 	ConfigKeyConsulAddr   = "consulAddr"
@@ -49,7 +49,6 @@ var (
 	enabled   = false
 )
 
-// Init initializes the exporter.
 func Init(cluster string, role string, cfg *config.Config) {
 	port := cfg.GetInt64(ConfigKeyExporterPort)
 	if port == 0 {
@@ -71,16 +70,15 @@ func Init(cluster string, role string, cfg *config.Config) {
 
 	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
 	if len(consulAddr) > 0 {
-		RegisterConsul(consulAddr, AppName, role, cluster, port)
+		RegistConsul(consulAddr, AppName, role, cluster, port)
 	}
 
-	m := RegisterMetric("start_time", Gauge)
+	m := RegistMetric("start_time", Gauge)
 	m.Set(float64(time.Now().Unix() * 1000))
 
 	log.LogInfof("exporter Start: %v", addr)
 }
 
-// PromeMetric defines the struct of the metrics.
 type PromeMetric struct {
 	Name   string
 	Labels map[string]string
@@ -89,7 +87,6 @@ type PromeMetric struct {
 	tp     MetricType
 }
 
-// TODO explain
 type TpMetric struct {
 	Name  string
 	Start time.Time
@@ -99,8 +96,7 @@ func metricsName(name string) string {
 	return namespace + "_" + name
 }
 
-// RegisterMetricWithLabels registers the given metric with the given labels.
-func RegisterMetricWithLabels(name string, tp MetricType, labels map[string]string) (m *PromeMetric) {
+func RegistMetricWithLabels(name string, tp MetricType, labels map[string]string) (m *PromeMetric) {
 	defer func() {
 		if err := recover(); err != nil {
 			log.LogErrorf("RegistMetric panic,err[%v]", err)
@@ -112,13 +108,11 @@ func RegisterMetricWithLabels(name string, tp MetricType, labels map[string]stri
 		Labels: labels,
 		tp:     tp,
 	}
-	m.registerMetric()
+	m.registMetric()
 	return
 }
-
-// RegisterMetric registers the metric.
-func RegisterMetric(name string, tp MetricType) (m *PromeMetric) {
-	return RegisterMetricWithLabels(name, tp, nil)
+func RegistMetric(name string, tp MetricType) (m *PromeMetric) {
+	return RegistMetricWithLabels(name, tp, nil)
 }
 
 func (m *PromeMetric) getMetricKey() (key string, metric prometheus.Metric) {
@@ -144,7 +138,7 @@ func (m *PromeMetric) getMetricKey() (key string, metric prometheus.Metric) {
 
 	return
 }
-func (m *PromeMetric) registerMetric() {
+func (m *PromeMetric) registMetric() {
 	key, metric := m.getMetricKey()
 	go metricGroups.LoadOrStore(key, metric)
 }
@@ -184,8 +178,8 @@ func (m *PromeMetric) SetMetricVal(metric interface{}, val float64) {
 	}
 }
 
-func RegisterCounterLabels(name string, labels map[string]string) (o prometheus.Counter) {
-	pm := RegisterMetricWithLabels(name, Counter, labels)
+func RegistCounterLabels(name string, labels map[string]string) (o prometheus.Counter) {
+	pm := RegistMetricWithLabels(name, Counter, labels)
 	m, load := metricGroups.Load(pm.Key)
 	if load {
 		o = m.(prometheus.Counter)
@@ -204,12 +198,12 @@ func RegisterCounterLabels(name string, labels map[string]string) (o prometheus.
 	return
 }
 
-func RegisterCounter(name string) (o prometheus.Counter) {
-	return RegisterCounterLabels(name, nil)
+func RegistCounter(name string) (o prometheus.Counter) {
+	return RegistCounterLabels(name, nil)
 }
 
 func RegistGaugeLabels(name string, labels map[string]string) (o prometheus.Gauge) {
-	pm := RegisterMetricWithLabels(name, Gauge, labels)
+	pm := RegistMetricWithLabels(name, Gauge, labels)
 	m, load := metricGroups.Load(pm.Key)
 	if load {
 		o = m.(prometheus.Gauge)
@@ -228,15 +222,14 @@ func RegistGaugeLabels(name string, labels map[string]string) (o prometheus.Gaug
 	return
 }
 
-func RegisterGauge(name string) (o prometheus.Gauge) {
+func RegistGauge(name string) (o prometheus.Gauge) {
 	return RegistGaugeLabels(name, nil)
 }
 
-// TODO explain
-func RegisterTp(name string) (tp *TpMetric) {
+func RegistTp(name string) (tp *TpMetric) {
 	defer func() {
 		if err := recover(); err != nil {
-			log.LogErrorf("RegisterTp panic,err[%v]", err)
+			log.LogErrorf("RegistTp panic,err[%v]", err)
 		}
 	}()
 
@@ -247,7 +240,6 @@ func RegisterTp(name string) (tp *TpMetric) {
 	return
 }
 
-// TODO explain
 func (tp *TpMetric) CalcTp() {
 	if tp == nil {
 		return
@@ -292,8 +284,6 @@ func (tp *TpMetric) CalcTp() {
 	}()
 }
 
-// TODO explain
-// TODO detail is unused
 func Alarm(name, detail string) {
 	name = metricsName(name + "_alarm")
 

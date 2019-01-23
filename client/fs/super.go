@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Containerfs Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,7 +27,6 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 )
 
-// Super defines the struct of a super block.
 type Super struct {
 	cluster string
 	volname string
@@ -37,13 +36,12 @@ type Super struct {
 	orphan  *OrphanInodeList
 }
 
-// Functions that Super needs to implement
+//functions that Super needs to implement
 var (
 	_ fs.FS         = (*Super)(nil)
 	_ fs.FSStatfser = (*Super)(nil)
 )
 
-// NewSuper returns a new Super.
 func NewSuper(volname, master string, icacheTimeout, lookupValid, attrValid int64) (s *Super, err error) {
 	s = new(Super)
 	s.mw, err = meta.NewMetaWrapper(volname, master)
@@ -74,7 +72,6 @@ func NewSuper(volname, master string, icacheTimeout, lookupValid, attrValid int6
 	return s, nil
 }
 
-// Root returns the root directory where it resides.
 func (s *Super) Root() (fs.Node, error) {
 	inode, err := s.InodeGet(RootInode)
 	if err != nil {
@@ -84,7 +81,6 @@ func (s *Super) Root() (fs.Node, error) {
 	return root, nil
 }
 
-// Statfs handles the Statfs request and returns a set of statistics.
 func (s *Super) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.StatfsResponse) error {
 	total, used := s.mw.Statfs()
 	resp.Blocks = total / uint64(DefaultBlksize)
@@ -100,7 +96,6 @@ func (s *Super) exporterKey(act string) string {
 	return fmt.Sprintf("%s_fuseclient_%s", s.cluster, act)
 }
 
-// ClusterName returns the cluster name.
 func (s *Super) ClusterName() string {
 	return s.cluster
 }

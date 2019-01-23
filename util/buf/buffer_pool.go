@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Containerfs Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,12 +24,10 @@ var (
 	Buffers = NewBufferPool()
 )
 
-// BufferPool defines the struct of a buffered pool with 4 objects.
 type BufferPool struct {
 	pools [4]*sync.Pool
 }
 
-// NewBufferPool returns a new buffered pool.
 func NewBufferPool() (bufferP *BufferPool) {
 	bufferP = &BufferPool{}
 	bufferP.pools[0] = &sync.Pool{New: func() interface{} {
@@ -47,11 +45,10 @@ func NewBufferPool() (bufferP *BufferPool) {
 	return bufferP
 }
 
-// Get returns the data based on the given size. Different size corresponds to different object in the pool.
 func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
 	if size == util.PacketHeaderSize {
 		return bufferP.pools[0].Get().([]byte), nil
-	} else if size == util.BlockSize { // TODO BlockSize == ReadBlockSize. This looks incorrect.
+	} else if size == util.BlockSize {
 		return bufferP.pools[1].Get().([]byte), nil
 	} else if size == util.ReadBlockSize {
 		return bufferP.pools[2].Get().([]byte), nil
@@ -61,13 +58,11 @@ func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
 	return nil, fmt.Errorf("can only support 45 or 65536 bytes")
 }
 
-// Put puts the given data into the buffer pool.
 func (bufferP *BufferPool) Put(data []byte) {
 	if data == nil {
 		return
 	}
 	size := len(data)
-	// TODO BlockSize  == ReadBlockSize
 	if size != util.BlockSize && size != util.PacketHeaderSize && size != util.ReadBlockSize && size != util.DefaultTinySizeLimit {
 		return
 	}

@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Containerfs Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ import (
 	"encoding/binary"
 )
 
-// Dentry wraps necessary properties of the `dentry` information in file system.
+// Dentry wraps necessary properties of `Dentry` information in file system.
 // Marshal exporterKey:
 //  +-------+----------+------+
 //  | item  | ParentId | Name |
@@ -39,13 +39,13 @@ import (
 //  | bytes |     4     |   KeyLength  |     4     |   ValLength  |
 //  +-------+-----------+--------------+-----------+--------------+
 type Dentry struct {
-	ParentId uint64 // FileID value of the parent inode.
-	Name     string // Name of the current dentry.
-	Inode    uint64 // FileID value of the current inode.
-	Type     uint32
+	ParentId uint64 // FileID value of parent inode.
+	Name     string // Name of current dentry.
+	Inode    uint64 // FileID value of current inode.
+	Type     uint32 // Dentry type.
 }
 
-// Marshal marshals a dentry into a byte array.
+// Marshal dentry item to bytes.
 func (d *Dentry) Marshal() (result []byte, err error) {
 	keyBytes := d.MarshalKey()
 	valBytes := d.MarshalValue()
@@ -69,7 +69,7 @@ func (d *Dentry) Marshal() (result []byte, err error) {
 	return
 }
 
-// Unmarshal unmarshals the dentry from a byte array.
+// Unmarshal dentry item from bytes.
 func (d *Dentry) Unmarshal(raw []byte) (err error) {
 	var (
 		keyLen uint32
@@ -97,7 +97,7 @@ func (d *Dentry) Unmarshal(raw []byte) (err error) {
 	return
 }
 
-// Less tests whether the current dentry is less than the given one.
+// Less tests whether the current Dentry item is less than the given one.
 // This method is necessary fot B-Tree item implementation.
 func (d *Dentry) Less(than BtreeItem) (less bool) {
 	dentry, ok := than.(*Dentry)
@@ -110,7 +110,7 @@ func (d *Dentry) Copy() BtreeItem {
 	return &newDentry
 }
 
-// MarshalKey is the bytes version of the MarshalKey method which returns the byte slice result.
+// MarshalKey is the bytes version of MarshalKey method which returns byte slice result.
 func (d *Dentry) MarshalKey() (k []byte) {
 	buff := bytes.NewBuffer(make([]byte, 0))
 	buff.Grow(32)
@@ -122,7 +122,7 @@ func (d *Dentry) MarshalKey() (k []byte) {
 	return
 }
 
-// UnmarshalKey unmarshals the exporterKey from bytes.
+// UnmarshalKey unmarshal exporterKey from bytes.
 func (d *Dentry) UnmarshalKey(k []byte) (err error) {
 	buff := bytes.NewBuffer(k)
 	if err = binary.Read(buff, binary.BigEndian, &d.ParentId); err != nil {
@@ -132,7 +132,7 @@ func (d *Dentry) UnmarshalKey(k []byte) (err error) {
 	return
 }
 
-// MarshalValue marshals the exporterKey to bytes.
+// MarshalValue marshal exporterKey to bytes.
 func (d *Dentry) MarshalValue() (k []byte) {
 	buff := bytes.NewBuffer(make([]byte, 0))
 	buff.Grow(12)
@@ -146,7 +146,7 @@ func (d *Dentry) MarshalValue() (k []byte) {
 	return
 }
 
-// UnmarshalValue unmarshals the value from bytes.
+// UnmarshalValue unmarshal value from bytes.
 func (d *Dentry) UnmarshalValue(val []byte) (err error) {
 	buff := bytes.NewBuffer(val)
 	if err = binary.Read(buff, binary.BigEndian, &d.Inode); err != nil {

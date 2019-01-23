@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Containerfs Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@ type Packet struct {
 	proto.Packet
 }
 
-// NewPacketToDeleteExtent returns a new packet to delete the extent.
-func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) *Packet {
+// For send delete request to dataNode
+func NewExtentDeletePacket(dp *DataPartition, ext *proto.ExtentKey) *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpMarkDelete

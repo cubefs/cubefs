@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,16 +22,16 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 )
 
-// StartTcpService binds and listens to the specified port.
+// StartTcpService bind and listen specified port and accept tcp connections.
 func (m *MetaNode) startServer() (err error) {
-	// initialize and start the server.
+	// Init and start server.
 	m.httpStopC = make(chan uint8)
 	ln, err := net.Listen("tcp", ":"+m.listen)
 	if err != nil {
 		return
 	}
+	// Start goroutine for tcp accept handing.
 	go func(stopC chan uint8) {
-		// TODO Unhandled errors
 		defer ln.Close()
 		for {
 			conn, err := ln.Accept()
@@ -43,6 +43,7 @@ func (m *MetaNode) startServer() (err error) {
 			if err != nil {
 				continue
 			}
+			// Start a goroutine for tcp connection handling.
 			go m.serveConn(conn, stopC)
 		}
 	}(m.httpStopC)
@@ -61,12 +62,11 @@ func (m *MetaNode) stopServer() {
 	}
 }
 
-// Read data from the specified tcp connection until the connection is closed by the remote or the tcp service is down.
+// ServeConn read data from specified tco connection until connection
+// closed by remote or tcp service have been shutdown.
 func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
-	// TODO Unhandled errors
 	defer conn.Close()
 	c := conn.(*net.TCPConn)
-	// TODO Unhandled errors
 	c.SetKeepAlive(true)
 	c.SetNoDelay(true)
 	for {
@@ -92,8 +92,9 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 	}
 }
 
+// RoutePacket check the OpCode in specified packet and route it to handler.
 func (m *MetaNode) handlePacket(conn net.Conn, p *Packet) (err error) {
 	// Handle request
-	err = m.metadataManager.HandleMetadataOperation(conn, p)
+	err = m.metaManager.HandleMetaOperation(conn, p)
 	return
 }

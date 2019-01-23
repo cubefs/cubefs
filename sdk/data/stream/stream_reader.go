@@ -22,8 +22,6 @@ import (
 	"sync"
 )
 
-// One inode corresponds to one streamer. All the requests to the same inode will be queued.
-// TODO rename streamer here is not a good name as it also handles overwrites, not just stream write.
 type Streamer struct {
 	client *ExtentClient
 	inode  uint64
@@ -38,14 +36,13 @@ type Streamer struct {
 	once    sync.Once
 
 	handler   *ExtentHandler   // current open handler
-	dirtylist *DirtyExtentList // dirty handlers
+	dirtylist *ExtentDirtyList // dirty handlers
 	dirty     bool             // whether current open handler is in the dirty list
 
 	request chan interface{} // request channel, write/flush/close
 	done    chan struct{}    // stream writer is being closed
 }
 
-// NewStreamer returns a new streamer.
 func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
 	s := new(Streamer)
 	s.client = client
@@ -53,23 +50,20 @@ func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
 	s.extents = NewExtentCache(inode)
 	s.request = make(chan interface{}, 1000)
 	s.done = make(chan struct{})
-	s.dirtylist = NewDirtyExtentList()
+	s.dirtylist = NewExtentDirtyList()
 	go s.server()
 	return s
 }
 
-// String returns the string format of the streamer.
 func (s *Streamer) String() string {
 	return fmt.Sprintf("Streamer{ino(%v)}", s.inode)
 }
 
-// TODO should we call it RefreshExtents instead?
 func (s *Streamer) GetExtents() error {
 	return s.extents.Refresh(s.inode, s.client.getExtents)
 }
 
-// GetExtentReader returns the extent reader.
-// TODO: use memory pool
+//TODO: use memory pool
 func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
 	partition, err := gDataWrapper.GetDataPartition(ek.PartitionId)
 	if err != nil {
@@ -87,7 +81,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 		flushed   bool
 	)
 
-	requests = s.extents.PrepareReadRequests(offset, size, data)
+	requests = s.extents.PrepareReadRequest(offset, size, data)
 	for _, req := range requests {
 		if req.ExtentKey == nil {
 			continue
@@ -102,7 +96,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 	}
 
 	if flushed {
-		requests = s.extents.PrepareReadRequests(offset, size, data)
+		requests = s.extents.PrepareReadRequest(offset, size, data)
 	}
 
 	filesize, _ := s.extents.Size()

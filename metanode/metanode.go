@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Containerfs Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,14 +37,15 @@ var (
 	masterHelper util.MasterHelper
 )
 
-// The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
-// The data consistency is ensured by Raft.
+// The MetaNode manage Dentry and Inode information in multiple metaPartition, and
+// through the RaftStore algorithm and other MetaNodes in the RageGroup for reliable
+// data synchronization to maintain data consistency within the MetaGroup.
 type MetaNode struct {
 	nodeId            uint64
 	listen            string
-	metadataDir       string // root dir of the metaNode
-	raftDir           string // root dir of the raftStore log
-	metadataManager   MetadataManager
+	metaDir           string //metaNode store root dir
+	raftDir           string //raftStore log store base dir
+	metaManager       MetaManager
 	localAddr         string
 	clusterId         string
 	raftStore         raftstore.RaftStore
@@ -55,11 +56,12 @@ type MetaNode struct {
 	wg                sync.WaitGroup
 }
 
-// Start starts up the meta node with the specified configuration.
-//  1. Start and load each meta partition from the snapshot.
-//  2. Restore raftStore fsm of each meta node range.
-//  3. Start server and accept connection from the master and clients.
+// Start this MeteNode with specified configuration.
+//  1. Start and load each meta partition from snapshot.
+//  2. Restore raftStore fsm of each meta range.
+//  3. Start server and accept connection from master and clients.
 func (m *MetaNode) Start(cfg *config.Config) (err error) {
+	// Parallel safe.
 	if atomic.CompareAndSwapUint32(&m.state, StateStandby, StateStart) {
 		defer func() {
 			var newState uint32
@@ -78,7 +80,7 @@ func (m *MetaNode) Start(cfg *config.Config) (err error) {
 	return
 }
 
-// Shutdown stops the meta node.
+// Shutdown stop this MetaNode.
 func (m *MetaNode) Shutdown() {
 	if atomic.CompareAndSwapUint32(&m.state, StateRunning, StateShutdown) {
 		defer atomic.StoreUint32(&m.state, StateStopped)
@@ -111,13 +113,13 @@ func (m *MetaNode) onStart(cfg *config.Config) (err error) {
 }
 
 func (m *MetaNode) onShutdown() {
-	// shutdown node and release the resource
+	// Shutdown node and release resource.
 	m.stopServer()
 	m.stopMetaManager()
 	m.stopRaftServer()
 }
 
-// Sync blocks the invoker's goroutine until the meta node shuts down.
+// Sync will block invoker goroutine until this MetaNode shutdown.
 func (m *MetaNode) Sync() {
 	if atomic.LoadUint32(&m.state) == StateRunning {
 		m.wg.Wait()
@@ -130,13 +132,13 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		return
 	}
 	m.listen = cfg.GetString(cfgListen)
-	m.metadataDir = cfg.GetString(cfgMetadataDir)
+	m.metaDir = cfg.GetString(cfgMetaDir)
 	m.raftDir = cfg.GetString(cfgRaftDir)
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
-	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
+	m.raftReplicatePort = cfg.GetString(cfgRaftReplicatePort)
 
 	log.LogDebugf("action[parseConfig] load listen[%v].", m.listen)
-	log.LogDebugf("action[parseConfig] load metadataDir[%v].", m.metadataDir)
+	log.LogDebugf("action[parseConfig] load metaDir[%v].", m.metaDir)
 	log.LogDebugf("action[parseConfig] load raftDir[%v].", m.raftDir)
 	log.LogDebugf("action[parseConfig] load raftHeartbeatPort[%v].", m.raftHeartbeatPort)
 	log.LogDebugf("action[parseConfig] load raftReplicatePort[%v].", m.raftReplicatePort)
@@ -155,8 +157,8 @@ func (m *MetaNode) validConfig() (err error) {
 		err = errors.New("illegal listen")
 		return
 	}
-	if m.metadataDir == "" {
-		m.metadataDir = defaultMetadataDir
+	if m.metaDir == "" {
+		m.metaDir = defaultMetaDir
 	}
 	if m.raftDir == "" {
 		m.raftDir = defaultRaftDir
@@ -169,26 +171,26 @@ func (m *MetaNode) validConfig() (err error) {
 }
 
 func (m *MetaNode) startMetaManager() (err error) {
-	if _, err = os.Stat(m.metadataDir); err != nil {
-		if err = os.MkdirAll(m.metadataDir, 0755); err != nil {
+	if _, err = os.Stat(m.metaDir); err != nil {
+		if err = os.MkdirAll(m.metaDir, 0755); err != nil {
 			return
 		}
 	}
-	// load metadataManager
-	conf := MetadataManagerConfig{
+	// Load metaManager
+	conf := MetaManagerConfig{
 		NodeID:    m.nodeId,
-		RootDir:   m.metadataDir,
+		RootDir:   m.metaDir,
 		RaftStore: m.raftStore,
 	}
-	m.metadataManager = NewMetadataManager(conf)
-	err = m.metadataManager.Start()
+	m.metaManager = NewMetaManager(conf)
+	err = m.metaManager.Start()
 	log.LogDebugf("[startMetaManager] manager start finish.")
 	return
 }
 
 func (m *MetaNode) stopMetaManager() {
-	if m.metadataManager != nil {
-		m.metadataManager.Stop()
+	if m.metaManager != nil {
+		m.metaManager.Stop()
 	}
 }
 
@@ -230,11 +232,12 @@ func (m *MetaNode) register() (err error) {
 	}
 }
 
-// NewServer creates a new meta node instance.
+// NewServer create an new MetaNode instance.
 func NewServer() *MetaNode {
 	return &MetaNode{}
 }
 
+// 获取集群信息
 func getClusterInfo() (*proto.ClusterInfo, error) {
 	respBody, err := masterHelper.Request("GET", proto.AdminGetIP, nil, nil)
 	if err != nil {

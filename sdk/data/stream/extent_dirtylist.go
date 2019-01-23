@@ -19,42 +19,36 @@ import (
 	"sync"
 )
 
-// DirtyExtentList defines the struct of the dirty extent list.
-type DirtyExtentList struct {
+type ExtentDirtyList struct {
 	sync.RWMutex
 	list *list.List
 }
 
-// NewDirtyExtentList returns a new DirtyExtentList instance.
-func NewDirtyExtentList() *DirtyExtentList {
-	return &DirtyExtentList{
+func NewExtentDirtyList() *ExtentDirtyList {
+	return &ExtentDirtyList{
 		list: list.New(),
 	}
 }
 
-// Put puts a new extent handler into the dirty extent list.
-func (dl *DirtyExtentList) Put(eh *ExtentHandler) {
+func (dl *ExtentDirtyList) Put(eh *ExtentHandler) {
 	dl.Lock()
 	defer dl.Unlock()
 	dl.list.PushBack(eh)
 }
 
-// Get gets the next element in the dirty extent list.
-func (dl *DirtyExtentList) Get() *list.Element {
+func (dl *ExtentDirtyList) Get() *list.Element {
 	dl.RLock()
 	defer dl.RUnlock()
 	return dl.list.Front()
 }
 
-// Remove removes the element from the dirty extent list.
-func (dl *DirtyExtentList) Remove(e *list.Element) {
+func (dl *ExtentDirtyList) Remove(e *list.Element) {
 	dl.Lock()
 	defer dl.Unlock()
 	dl.list.Remove(e)
 }
 
-// Len returns the size of the dirty extent list.
-func (dl *DirtyExtentList) Len() int {
+func (dl *ExtentDirtyList) Len() int {
 	dl.RLock()
 	defer dl.RUnlock()
 	return dl.list.Len()

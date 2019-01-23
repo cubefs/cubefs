@@ -60,18 +60,18 @@ func newMonitorMetrics(c *Cluster) *monitorMetrics {
 }
 
 func (mm *monitorMetrics) start() {
-	mm.dataNodesTotal = exporter.RegisterGauge(MetricDataNodesTotalGB)
-	mm.dataNodesUsed = exporter.RegisterGauge(MetricDataNodesUsedGB)
-	mm.dataNodeIncreased = exporter.RegisterGauge(MetricDataNodesIncreasedGB)
-	mm.metaNodesTotal = exporter.RegisterGauge(MetricMetaNodesTotalGB)
-	mm.metaNodesUsed = exporter.RegisterGauge(MetricMetaNodesUsedGB)
-	mm.metaNodesIncreased = exporter.RegisterGauge(MetricMetaNodesIncreasedGB)
-	mm.dataNodesCount = exporter.RegisterGauge(MetricDataNodesCount)
-	mm.metaNodesCount = exporter.RegisterGauge(MetricMetaNodesCount)
-	mm.volCount = exporter.RegisterGauge(MetricVolCount)
-	mm.volTotalSpace = exporter.RegisterMetric(MetricVolTotalGB, exporter.Gauge)
-	mm.volUsedSpace = exporter.RegisterMetric(MetricVolUsedGB, exporter.Gauge)
-	mm.volUsage = exporter.RegisterMetric(MetricVolUsageGB, exporter.Gauge)
+	mm.dataNodesTotal = exporter.RegistGauge(MetricDataNodesTotalGB)
+	mm.dataNodesUsed = exporter.RegistGauge(MetricDataNodesUsedGB)
+	mm.dataNodeIncreased = exporter.RegistGauge(MetricDataNodesIncreasedGB)
+	mm.metaNodesTotal = exporter.RegistGauge(MetricMetaNodesTotalGB)
+	mm.metaNodesUsed = exporter.RegistGauge(MetricMetaNodesUsedGB)
+	mm.metaNodesIncreased = exporter.RegistGauge(MetricMetaNodesIncreasedGB)
+	mm.dataNodesCount = exporter.RegistGauge(MetricDataNodesCount)
+	mm.metaNodesCount = exporter.RegistGauge(MetricMetaNodesCount)
+	mm.volCount = exporter.RegistGauge(MetricVolCount)
+	mm.volTotalSpace = exporter.RegistMetric(MetricVolTotalGB, exporter.Gauge)
+	mm.volUsedSpace = exporter.RegistMetric(MetricVolUsedGB, exporter.Gauge)
+	mm.volUsage = exporter.RegistMetric(MetricVolUsageGB, exporter.Gauge)
 	go mm.statMetrics()
 }
 
@@ -120,13 +120,13 @@ func (mm *monitorMetrics) doStat() {
 			return true
 		}
 		labels := map[string]string{"volName": volName}
-		volTotalGauge := exporter.RegisterMetric(MetricVolTotalGB, exporter.Gauge)
+		volTotalGauge := exporter.RegistMetric(MetricVolTotalGB, exporter.Gauge)
 		volTotalGauge.SetWithLabels(float64(volStatInfo.TotalGB), labels)
 
-		volUsedGauge := exporter.RegisterMetric(MetricVolUsedGB, exporter.Gauge)
+		volUsedGauge := exporter.RegistMetric(MetricVolUsedGB, exporter.Gauge)
 		volUsedGauge.SetWithLabels(float64(volStatInfo.UsedGB), labels)
 
-		volUsageRatioGauge := exporter.RegisterMetric(MetricVolUsageGB, exporter.Gauge)
+		volUsageRatioGauge := exporter.RegistMetric(MetricVolUsageGB, exporter.Gauge)
 		usedRatio, e := strconv.ParseFloat(volStatInfo.UsedRatio, 64)
 		if e == nil {
 			volUsageRatioGauge.SetWithLabels(usedRatio, labels)

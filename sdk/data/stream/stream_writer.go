@@ -29,10 +29,10 @@ import (
 )
 
 const (
-	MaxSelectDataPartitionForWrite = 32
-	MaxNewHandlerRetry             = 3
-	MaxPacketErrorCount            = 32
-	MaxDirtyListLen                = 0
+	MaxSelectDataPartionForWrite = 32
+	MaxNewHandlerRetry           = 3
+	MaxPacketErrorCount          = 32
+	MaxDirtyListLen              = 0
 )
 
 const (
@@ -40,14 +40,12 @@ const (
 	StreamerError
 )
 
-// OpenRequest defines an open request.
 type OpenRequest struct {
 	flag uint32
 	err  error
 	done chan struct{}
 }
 
-// WriteRequest defines a write request.
 type WriteRequest struct {
 	fileOffset int
 	size       int
@@ -57,27 +55,23 @@ type WriteRequest struct {
 	done       chan struct{}
 }
 
-// FlushRequest defines a flush request.
 type FlushRequest struct {
 	err  error
 	done chan struct{}
 }
 
-// ReleaseRequest defines a release request.
 type ReleaseRequest struct {
 	flag uint32
 	err  error
 	done chan struct{}
 }
 
-// TruncRequest defines a truncate request.
 type TruncRequest struct {
 	size int
 	err  error
 	done chan struct{}
 }
 
-// EvictRequest defines an evict request.
 type EvictRequest struct {
 	err  error
 	done chan struct{}
@@ -176,7 +170,6 @@ func (s *Streamer) server() {
 			log.LogDebugf("done server: ino(%v)", s.inode)
 			return
 		case <-t.C:
-			// TODO unhandled error
 			s.traverse()
 		}
 	}
@@ -211,7 +204,7 @@ func (s *Streamer) handleRequest(request interface{}) {
 func (s *Streamer) write(data []byte, offset, size int) (total int, err error) {
 	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
 
-	requests := s.extents.PrepareWriteRequests(offset, size, data)
+	requests := s.extents.PrepareWriteRequest(offset, size, data)
 	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
 	for _, req := range requests {
 		var writeSize int
@@ -247,8 +240,8 @@ func (s *Streamer) doOverwrite(req *ExtentRequest) (total int, err error) {
 	ekFileOffset := int(req.ExtentKey.FileOffset)
 	ekExtOffset := int(req.ExtentKey.ExtentOffset)
 
-	// the extent key needs to be updated because when preparing the requests,
-	// the obtained extent key could be a local key which can be inconsistent with the remote key.
+	// extent key should be updated, since during prepare requests,
+	// the extent key obtained might be a local key which is not accurate.
 	req.ExtentKey = s.extents.Get(uint64(offset))
 	if req.ExtentKey == nil {
 		err = errors.New(fmt.Sprintf("doOverwrite: extent key not exist, ino(%v) ekFileOffset(%v) ek(%v)", s.inode, ekFileOffset, req.ExtentKey))
@@ -256,7 +249,6 @@ func (s *Streamer) doOverwrite(req *ExtentRequest) (total int, err error) {
 	}
 
 	if dp, err = gDataWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
-		// TODO unhandled error
 		errors.Annotatef(err, "doOverwrite: ino(%v) failed to get datapartition, ek(%v)", s.inode, req.ExtentKey)
 		return
 	}
@@ -281,8 +273,8 @@ func (s *Streamer) doOverwrite(req *ExtentRequest) (total int, err error) {
 				return nil, true
 			}
 
-			if replyPacket.ResultCode == proto.OpNotALeaderErr {
-				e = NotALeaderError
+			if replyPacket.ResultCode == proto.OpNotLeaderErr {
+				e = NotLeaderError
 			}
 			return e, false
 		})
@@ -369,7 +361,6 @@ func (s *Streamer) flush() (err error) {
 			s.dirty = false
 			log.LogDebugf("Streamer flush handler open: eh(%v)", eh)
 		} else {
-			// TODO unhandled error
 			eh.cleanup()
 			log.LogDebugf("Streamer flush handler cleaned up: eh(%v)", eh)
 		}
@@ -381,8 +372,8 @@ func (s *Streamer) flush() (err error) {
 func (s *Streamer) traverse() (err error) {
 	//var closed bool
 
-	length := s.dirtylist.Len()
-	for i := 0; i < length; i++ {
+	len := s.dirtylist.Len()
+	for i := 0; i < len; i++ {
 		element := s.dirtylist.Get()
 		if element == nil {
 			break
@@ -391,8 +382,8 @@ func (s *Streamer) traverse() (err error) {
 
 		log.LogDebugf("Streamer traverse begin: eh(%v)", eh)
 		if eh.getStatus() >= ExtentStatusClosed {
-			// handler can be in different status such as close, recovery, and error,
-			// and therefore there can be packet that has been be flashed yet.
+			// handler is beyond closed status, but there can still be
+			// unflushed packet.
 			eh.flushPacket()
 			if atomic.LoadInt32(&eh.inflight) > 0 {
 				continue
@@ -402,7 +393,6 @@ func (s *Streamer) traverse() (err error) {
 				return
 			}
 			s.dirtylist.Remove(element)
-			// TODO unhandled error
 			eh.cleanup()
 		}
 		log.LogDebugf("Streamer traverse end: eh(%v)", eh)
@@ -416,13 +406,12 @@ func (s *Streamer) closeOpenHandler() {
 		if s.dirtylist.Len() < MaxDirtyListLen {
 			s.handler.flushPacket()
 		} else {
-			// TODO unhandled error
 			s.handler.flush()
 		}
 
 		if !s.dirty {
-			// in case the current handler is not on the dirty list and will not get cleaned up
-			// TODO unhandled error
+			// in case current handler is not in the dirty list,
+			// and will not get cleaned up.
 			s.handler.cleanup()
 		}
 		s.handler = nil
@@ -463,7 +452,6 @@ func (s *Streamer) release(flag uint32) error {
 	s.openWriteCnt--
 	authid := s.authid
 	if s.openWriteCnt <= 0 {
-		// TODO unhandled error
 		s.client.release(s.inode, authid)
 		s.authid = 0
 	}
@@ -486,7 +474,6 @@ func (s *Streamer) abort() {
 		}
 		eh := element.Value.(*ExtentHandler)
 		s.dirtylist.Remove(element)
-		// TODO unhandled error
 		eh.cleanup()
 	}
 }

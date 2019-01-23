@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Containerfs Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ import (
 	"path"
 )
 
-// MetaItem defines the structure of the metadata operations.
 type MetaItem struct {
 	Op uint32 `json:"op"`
 	K  []byte `json:"k"`
@@ -35,7 +34,7 @@ func (s *MetaItem) MarshalJson() ([]byte, error) {
 	return json.Marshal(s)
 }
 
-// MarshalBinary marshals MetaItem to binary data.
+// MarshalBinary marshal this MetaItem entity to binary data.
 // Binary frame structure:
 //  +------+----+------+------+------+------+
 //  | Item | Op | LenK |   K  | LenV |   V  |
@@ -64,7 +63,7 @@ func (s *MetaItem) MarshalBinary() (result []byte, err error) {
 	return
 }
 
-// UnmarshalJson unmarshals binary data to MetaItem.
+// UnmarshalJson unmarshal binary data to MetaItem entity.
 func (s *MetaItem) UnmarshalJson(data []byte) error {
 	return json.Unmarshal(data, s)
 }
@@ -102,7 +101,6 @@ func (s *MetaItem) UnmarshalBinary(raw []byte) (err error) {
 	return
 }
 
-// NewMetaItem returns a new MetaItem.
 func NewMetaItem(op uint32, key, value []byte) *MetaItem {
 	return &MetaItem{
 		Op: op,
@@ -111,8 +109,7 @@ func NewMetaItem(op uint32, key, value []byte) *MetaItem {
 	}
 }
 
-// MetaItemIterator defines the iterator of the MetaItem.
-type MetaItemIterator struct {
+type ItemIterator struct {
 	applyID     uint64
 	cur         int
 	curItem     BtreeItem
@@ -125,10 +122,9 @@ type MetaItemIterator struct {
 	total       int
 }
 
-// NewMetaItemIterator returns a new MetaItemIterator.
 func NewMetaItemIterator(applyID uint64, ino, den *BTree,
-	rootDir string, filelist []string) *MetaItemIterator {
-	si := new(MetaItemIterator)
+	rootDir string, filelist []string) *ItemIterator {
+	si := new(ItemIterator)
 	si.applyID = applyID
 	si.inodeTree = ino
 	si.dentryTree = den
@@ -141,19 +137,16 @@ func NewMetaItemIterator(applyID uint64, ino, den *BTree,
 	return si
 }
 
-// ApplyIndex returns the applyID of the iterator.
-func (si *MetaItemIterator) ApplyIndex() uint64 {
+func (si *ItemIterator) ApplyIndex() uint64 {
 	return si.applyID
 }
 
-// Close closes the iterator.
-func (si *MetaItemIterator) Close() {
+func (si *ItemIterator) Close() {
 	si.cur = si.total + 1
 	return
 }
 
-// Next returns the next item.
-func (si *MetaItemIterator) Next() (data []byte, err error) {
+func (si *ItemIterator) Next() (data []byte, err error) {
 	// TODO: Redesign iterator to improve performance. [Mervin]
 	// First Send ApplyIndex
 	if si.cur == 0 {
@@ -163,7 +156,7 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 		si.cur++
 		return
 	}
-
+	// ascend Inode tree
 	if si.cur <= si.inoLen {
 		si.inodeTree.AscendGreaterOrEqual(si.curItem, func(i BtreeItem) bool {
 			ino := i.(*Inode)
@@ -180,10 +173,10 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 		return
 	}
 
+	// ascend range dentry tree
 	if si.cur == (si.inoLen + 1) {
 		si.curItem = nil
 	}
-
 	if si.cur <= si.total {
 		si.dentryTree.AscendGreaterOrEqual(si.curItem, func(i BtreeItem) bool {
 			dentry := i.(*Dentry)
@@ -203,14 +196,14 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 		data = nil
 		return
 	}
-
+	// Send delete Extents file
 	fileName := si.fileList[0]
 	fileBody, err := ioutil.ReadFile(path.Join(si.fileRootDir, fileName))
 	if err != nil {
 		data = nil
 		return
 	}
-	snap := NewMetaItem(opExtentFileSnapshot, []byte(fileName), fileBody)
+	snap := NewMetaItem(opSnapExtentFile, []byte(fileName), fileBody)
 	data, err = snap.MarshalBinary()
 	if err != nil {
 		si.fileList = si.fileList[1:]

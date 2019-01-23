@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Containerfs Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,18 +18,18 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 )
 
-type DentryResponse struct {
+type ResponseDentry struct {
 	Status uint8
 	Msg    *Dentry
 }
 
-func NewDentryResponse() *DentryResponse {
-	return &DentryResponse{
+func NewResponseDentry() *ResponseDentry {
+	return &ResponseDentry{
 		Msg: &Dentry{},
 	}
 }
 
-// Insert dentry into dentry tree.
+// CreateDentry insert dentry into dentry tree.
 func (mp *metaPartition) fsmCreateDentry(dentry *Dentry) (status uint8) {
 	status = proto.OpOk
 	// check inode
@@ -57,7 +57,7 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry) (status uint8) {
 	return
 }
 
-// Query a dentry from the dentry tree with specified dentry info.
+// GetDentry query dentry from DentryTree with specified dentry info;
 func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8) {
 	status := proto.OpOk
 	item := mp.dentryTree.Get(dentry)
@@ -69,10 +69,10 @@ func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8) {
 	return dentry, status
 }
 
-// Delete dentry from the dentry tree.
+// DeleteDentry delete dentry from dentry tree.
 func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry) (
-	resp *DentryResponse) {
-	resp = NewDentryResponse()
+	resp *ResponseDentry) {
+	resp = NewResponseDentry()
 	resp.Status = proto.OpOk
 	item := mp.dentryTree.Delete(dentry)
 	if item == nil {
@@ -84,8 +84,8 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry) (
 }
 
 func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
-	resp *DentryResponse) {
-	resp = NewDentryResponse()
+	resp *ResponseDentry) {
+	resp = NewResponseDentry()
 	resp.Status = proto.OpOk
 	item := mp.dentryTree.Get(dentry)
 	if item == nil {
