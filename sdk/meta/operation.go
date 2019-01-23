@@ -44,7 +44,7 @@ func (mw *MetaWrapper) open(mp *MetaPartition, inode uint64, flag uint32) (statu
 		return
 	}
 
-	metric := exporter.RegisterTp(packet.GetOpMsg())
+	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
@@ -117,7 +117,7 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode uint32, target []byte) (s
 		return
 	}
 
-	metric := exporter.RegisterTp(packet.GetOpMsg())
+	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
@@ -162,7 +162,7 @@ func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64) (status int, inf
 		return
 	}
 
-	metric := exporter.RegisterTp(packet.GetOpMsg())
+	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
@@ -203,7 +203,7 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, err 
 		return
 	}
 
-	metric := exporter.RegisterTp(packet.GetOpMsg())
+	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
@@ -244,7 +244,7 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 		return
 	}
 
-	metric := exporter.RegisterTp(packet.GetOpMsg())
+	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
@@ -282,7 +282,7 @@ func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, 
 		return
 	}
 
-	metric := exporter.RegisterTp(packet.GetOpMsg())
+	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
@@ -323,7 +323,7 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string) 
 		return
 	}
 
-	metric := exporter.RegisterTp(packet.GetOpMsg())
+	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
@@ -365,7 +365,7 @@ func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string) (
 
 	log.LogDebugf("lookup enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	metric := exporter.RegisterTp(packet.GetOpMsg())
+	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
@@ -409,7 +409,7 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64) (status int, info *
 		return
 	}
 
-	metric := exporter.RegisterTp(packet.GetOpMsg())
+	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
@@ -451,7 +451,7 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 		return
 	}
 
-	metric := exporter.RegisterTp(packet.GetOpMsg())
+	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
@@ -498,7 +498,7 @@ func (mw *MetaWrapper) readdir(mp *MetaPartition, parentID uint64) (status int, 
 		return
 	}
 
-	metric := exporter.RegisterTp(packet.GetOpMsg())
+	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
@@ -541,7 +541,7 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode, authid uint64, 
 		return
 	}
 
-	metric := exporter.RegisterTp(packet.GetOpMsg())
+	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
@@ -572,7 +572,7 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (status int, 
 		return
 	}
 
-	metric := exporter.RegisterTp(packet.GetOpMsg())
+	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
@@ -616,7 +616,7 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, authid, size uint64) (
 
 	log.LogDebugf("truncate enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	metric := exporter.RegisterTp(packet.GetOpMsg())
+	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
@@ -652,7 +652,7 @@ func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info 
 
 	log.LogDebugf("ilink enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	metric := exporter.RegisterTp(packet.GetOpMsg())
+	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
@@ -703,7 +703,7 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 
 	log.LogDebugf("setattr enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	metric := exporter.RegisterTp(packet.GetOpMsg())
+	metric := exporter.RegistTp(packet.GetOpMsg())
 	defer metric.CalcTp()
 
 	packet, err = mw.sendToMetaPartition(mp, packet)

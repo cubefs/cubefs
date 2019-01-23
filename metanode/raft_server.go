@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Containerfs Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import (
 	"github.com/tiglabs/containerfs/raftstore"
 )
 
-// StartRaftServer initializes the address resolver and the raftStore server instance.
+// StartRaftServer init address resolver and raftStore server instance.
 func (m *MetaNode) startRaftServer() (err error) {
 	if _, err = os.Stat(m.raftDir); err != nil {
 		if err = os.MkdirAll(m.raftDir, 0755); err != nil {
@@ -32,14 +32,14 @@ func (m *MetaNode) startRaftServer() (err error) {
 	}
 
 	heartbeatPort, _ := strconv.Atoi(m.raftHeartbeatPort)
-	replicaPort, _ := strconv.Atoi(m.raftReplicatePort)
+	replicatePort, _ := strconv.Atoi(m.raftReplicatePort)
 
 	raftConf := &raftstore.Config{
 		NodeID:            m.nodeId,
 		RaftPath:          m.raftDir,
 		IPAddr:            m.localAddr,
 		HeartbeatPort:     heartbeatPort,
-		ReplicaPort:       replicaPort,
+		ReplicaPort:       replicatePort,
 		NumOfLogsToRetain: 2000000,
 	}
 	m.raftStore, err = raftstore.NewRaftStore(raftConf)

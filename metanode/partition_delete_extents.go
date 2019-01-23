@@ -1,17 +1,3 @@
-// Copyright 2018 The Container File System Authors.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-// implied. See the License for the specific language governing
-// permissions and limitations under the License.
-
 package metanode
 
 import (
@@ -36,10 +22,12 @@ const (
 
 var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
 
-func (mp *metaPartition) startToDeleteExtents() {
+func (mp *metaPartition) startDeleteExtents() {
 	fileList := list.New()
+	// start Append Delete Extents to File Worker
 	go mp.appendDelExtentsToFile(fileList)
-	go mp.deleteExtentsFromList(fileList)
+	// start ticket delete file worker
+	go mp.deleteExtentsFile(fileList)
 }
 
 func (mp *metaPartition) appendDelExtentsToFile(fileList *list.List) {
@@ -69,7 +57,6 @@ LOOP:
 		if err != nil {
 			panic(err)
 		}
-		// TODO Unhandled errors
 		fp.Write(extentsFileHeader)
 		fileList.PushBack(fileName)
 	} else {
@@ -81,7 +68,6 @@ LOOP:
 		}
 	}
 
-	// TODO Unhandled errors
 	defer fp.Close()
 	var buf []byte
 	for {
@@ -89,7 +75,6 @@ LOOP:
 		case <-mp.stopC:
 			return
 		case <-mp.extReset:
-			// TODO Unhandled errors
 			fp.Close()
 			// reset fileList
 			fileList.Init()
@@ -104,7 +89,6 @@ LOOP:
 				continue
 			}
 			if fileSize >= maxDeleteExtentSize {
-				// TODO Unhandled errors
 				// close old File
 				fp.Close()
 				idx += 1
@@ -130,8 +114,7 @@ LOOP:
 
 }
 
-// Delete all the extents of a file.
-func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
+func (mp *metaPartition) deleteExtentsFile(fileList *list.List) {
 	var (
 		element  *list.Element
 		fileName string
@@ -158,7 +141,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
 			goto LOOP
 		}
 		if _, ok := mp.IsLeader(); !ok {
-			log.LogDebugf("[deleteExtentsFromList] partitionId=%d, "+
+			log.LogDebugf("[deleteExtentsFile] partitionId=%d, "+
 				"not raft leader,please ignore", mp.config.PartitionId)
 			continue
 		}
@@ -169,9 +152,8 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
 		}
 
 		if _, err = fp.ReadAt(buf[:8], 0); err != nil {
-			log.LogWarnf("[deleteExtentsFromList] partitionId=%d, "+
+			log.LogWarnf("[deleteExtentsFile] partitionId=%d, "+
 				"read cursor least 8bytes, retry later", mp.config.PartitionId)
-			// TODO Unhandled errors
 			fp.Close()
 			continue
 		}
@@ -181,7 +163,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
 				size = uint64(proto.ExtentLength)
 			} else if size > 0 && size < uint64(proto.ExtentLength) {
 				errStr := fmt.Sprintf(
-					"[deleteExtentsFromList] partitionId=%d, %s file corrupted!",
+					"[deleteExtentsFile] partitionId=%d, %s file corrupted!",
 					mp.config.PartitionId, fileName)
 				log.LogErrorf(errStr)
 				panic(errStr)
@@ -189,7 +171,6 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
 			buf = buf[:size]
 		}
 		n, err := fp.ReadAt(buf, int64(cursor))
-		// TODO Unhandled errors
 		fp.Close()
 		if err != nil {
 			if err == io.EOF {
@@ -201,19 +182,19 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
 						if _, err = mp.Put(opFSMInternalDelExtentFile,
 							[]byte(fileName)); err != nil {
 							log.LogErrorf(
-								"[deleteExtentsFromList] partitionId=%d,"+
+								"[deleteExtentsFile] partitionId=%d,"+
 									"delete old file: %s,status: %s", mp.config.PartitionId,
 								fileName, err.Error())
 						}
-						log.LogDebugf("[deleteExtentsFromList] partitionId=%d "+
+						log.LogDebugf("[deleteExtentsFile] partitionId=%d "+
 							",delete old file: %s, status: %v", mp.config.PartitionId, fileName,
 							err == nil)
 						goto LOOP
 					}
-					log.LogDebugf("[deleteExtentsFromList] partitionId=%d,delete"+
+					log.LogDebugf("[deleteExtentsFile] partitionId=%d,delete"+
 						" old file status: %s", mp.config.PartitionId, status.State)
 				} else {
-					log.LogDebugf("[deleteExtentsFromList] partitionId=%d, %s"+
+					log.LogDebugf("[deleteExtentsFile] partitionId=%d, %s"+
 						" extents delete ok", mp.config.PartitionId, fileName)
 				}
 				continue
@@ -235,19 +216,19 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
 				panic(err)
 			}
 			// delete dataPartition
-			if err = mp.doDeleteMarkedInodes(ek); err != nil {
+			if err = mp.executeDeleteExtent(ek); err != nil {
 				mp.extDelCh <- ek
-				log.LogWarnf("[deleteExtentsFromList] partitionId=%d, %s",
+				log.LogWarnf("[deleteExtentsFile] partitionId=%d, %s",
 					mp.config.PartitionId, err.Error())
 			}
 		}
 		buff.Reset()
 		buff.WriteString(fmt.Sprintf("%s %d", fileName, cursor))
 		if _, err = mp.Put(opFSMInternalDelExtentCursor, buff.Bytes()); err != nil {
-			log.LogWarnf("[deleteExtentsFromList] partitionId=%d, %s",
+			log.LogWarnf("[deleteExtentsFile] partitionId=%d, %s",
 				mp.config.PartitionId, err.Error())
 		}
-		log.LogDebugf("[deleteExtentsFromList] partitionId=%d, file=%s, cursor=%d",
+		log.LogDebugf("[deleteExtentsFile] partitionId=%d, file=%s, cursor=%d",
 			mp.config.PartitionId, fileName, cursor)
 		goto LOOP
 	}

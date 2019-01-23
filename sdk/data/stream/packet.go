@@ -26,20 +26,16 @@ import (
 	"time"
 )
 
-// Packet defines a wrapper of the packet in proto.
 type Packet struct {
 	proto.Packet
 	inode    uint64
 	errCount int
 }
 
-// String returns the string format of the packet.
 func (p *Packet) String() string {
-	return fmt.Sprintf("ReqID(%v)Op(%v)Inode(%v)FileOffset(%v)Size(%v)PartitionID(%v)ExtentID(%v)ExtentOffset(%v)CRC(%v)ResultCode(%v)",
-		p.ReqID, p.GetOpMsg(), p.inode, p.KernelOffset, p.Size, p.PartitionID, p.ExtentID, p.ExtentOffset, p.CRC, p.GetResultMsg())
+	return fmt.Sprintf("ReqID(%v)Op(%v)Inode(%v)FileOffset(%v)Size(%v)PartitionID(%v)ExtentID(%v)ExtentOffset(%v)CRC(%v)ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.inode, p.KernelOffset, p.Size, p.PartitionID, p.ExtentID, p.ExtentOffset, p.CRC, p.GetResultMsg())
 }
 
-// NewWritePacket returns a new write packet.
 func NewWritePacket(inode uint64, fileOffset, storeMode int) *Packet {
 	p := new(Packet)
 	p.ReqID = proto.GenerateRequestID()
@@ -55,7 +51,6 @@ func NewWritePacket(inode uint64, fileOffset, storeMode int) *Packet {
 	return p
 }
 
-// NewOverwritePacket returns a new overwrite packet.
 func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset int, inode uint64, fileOffset int) *Packet {
 	p := new(Packet)
 	p.PartitionID = dp.PartitionID
@@ -75,7 +70,6 @@ func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset
 	return p
 }
 
-// NewReadPacket returns a new read packet.
 func NewReadPacket(key *proto.ExtentKey, extentOffset, size int, inode uint64, fileOffset int) *Packet {
 	p := new(Packet)
 	p.ExtentID = key.ExtentId
@@ -92,7 +86,6 @@ func NewReadPacket(key *proto.ExtentKey, extentOffset, size int, inode uint64, f
 	return p
 }
 
-// NewCreateExtentPacket returns a new packet to create extent.
 func NewCreateExtentPacket(dp *wrapper.DataPartition, inode uint64) *Packet {
 	p := new(Packet)
 	p.PartitionID = dp.PartitionID
@@ -110,7 +103,6 @@ func NewCreateExtentPacket(dp *wrapper.DataPartition, inode uint64) *Packet {
 	return p
 }
 
-// NewReply returns a new reply packet. TODO rename to NewReplyPacket?
 func NewReply(reqID int64, partitionID uint64, extentID uint64) *Packet {
 	p := new(Packet)
 	p.ReqID = reqID

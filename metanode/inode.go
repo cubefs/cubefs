@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Containerfs Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ const (
 	DeleteMarkFlag = 1 << 0
 )
 
-// Inode wraps necessary properties of `Inode` information in the file system.
+// Inode wraps necessary properties of `Inode` information in file system.
 // Marshal exporterKey:
 //  +-------+-------+
 //  | item  | Inode |
@@ -63,11 +63,10 @@ type Inode struct {
 	Flag        int32
 	AuthID      uint64
 	AuthTimeout int64
-	Reserved    uint64 // reserved space
+	Reserved    uint64
 	Extents     *ExtentsTree
 }
 
-// String returns the string format of the inode.
 func (i *Inode) String() string {
 	i.RLock()
 	defer i.RUnlock()
@@ -94,8 +93,8 @@ func (i *Inode) String() string {
 	return buff.String()
 }
 
-// NewInode returns a new Inode instance with specified Inode ID, name and type.
-// The AccessTime and ModifyTime will be set to the current time.
+// NewInode returns a new Inode instance pointer with specified Inode ID, name and Inode type code.
+// The AccessTime and ModifyTime of new instance will be set to current time.
 func NewInode(ino uint64, t uint32) *Inode {
 	ts := Now.GetCurrentTime().Unix()
 	i := &Inode{
@@ -121,14 +120,12 @@ func (i *Inode) Less(than BtreeItem) bool {
 	return ok && i.Inode < ino.Inode
 }
 
-// MarshalToJSON is the wrapper of json.Marshal.
 func (i *Inode) MarshalToJSON() ([]byte, error) {
 	i.RLock()
 	defer i.RUnlock()
 	return json.Marshal(i)
 }
 
-// Marshal marshals the inode into a byte array.
 func (i *Inode) Marshal() (result []byte, err error) {
 	keyBytes := i.MarshalKey()
 	valBytes := i.MarshalValue()
@@ -152,7 +149,6 @@ func (i *Inode) Marshal() (result []byte, err error) {
 	return
 }
 
-// Unmarshal unmarshals the inode.
 func (i *Inode) Unmarshal(raw []byte) (err error) {
 	var (
 		keyLen uint32
@@ -180,20 +176,20 @@ func (i *Inode) Unmarshal(raw []byte) (err error) {
 	return
 }
 
-// MarshalKey marshals the exporterKey to bytes.
+// MarshalKey marshal exporterKey to bytes.
 func (i *Inode) MarshalKey() (k []byte) {
 	k = make([]byte, 8)
 	binary.BigEndian.PutUint64(k, i.Inode)
 	return
 }
 
-// UnmarshalKey unmarshals the exporterKey from bytes.
+// UnmarshalKey unmarshal exporterKey from bytes.
 func (i *Inode) UnmarshalKey(k []byte) (err error) {
 	i.Inode = binary.BigEndian.Uint64(k)
 	return
 }
 
-// MarshalValue marshals the value to bytes.
+// MarshalValue marshal value to bytes.
 func (i *Inode) MarshalValue() (val []byte) {
 	var err error
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
@@ -223,7 +219,7 @@ func (i *Inode) MarshalValue() (val []byte) {
 	if err = binary.Write(buff, binary.BigEndian, &i.ModifyTime); err != nil {
 		panic(err)
 	}
-	// write SymLink
+	// Write SymLink
 	symSize := uint32(len(i.LinkTarget))
 	if err = binary.Write(buff, binary.BigEndian, &symSize); err != nil {
 		panic(err)
@@ -247,7 +243,7 @@ func (i *Inode) MarshalValue() (val []byte) {
 	if err = binary.Write(buff, binary.BigEndian, &i.Reserved); err != nil {
 		panic(err)
 	}
-	// marshal ExtentsKey
+	// Marshal ExtentsKey
 	extData, err := i.Extents.MarshalBinary()
 	if err != nil {
 		panic(err)
@@ -261,7 +257,7 @@ func (i *Inode) MarshalValue() (val []byte) {
 	return
 }
 
-// UnmarshalValue unmarshals the value from bytes.
+// UnmarshalValue unmarshal value from bytes.
 func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	buff := bytes.NewBuffer(val)
 	if err = binary.Read(buff, binary.BigEndian, &i.Type); err != nil {
@@ -288,7 +284,7 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &i.ModifyTime); err != nil {
 		return
 	}
-	// read symLink
+	// Read symLink
 	symSize := uint32(0)
 	if err = binary.Read(buff, binary.BigEndian, &symSize); err != nil {
 		return
@@ -318,7 +314,7 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	if buff.Len() == 0 {
 		return
 	}
-	// unmarshal ExtentsKey
+	// Unmarshal ExtentsKey
 	if i.Extents == nil {
 		i.Extents = NewExtentsTree()
 	}
@@ -328,7 +324,7 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	return
 }
 
-// AppendExtents append the extent to the btree.
+// 变更Extents信息
 func (i *Inode) AppendExtents(exts []BtreeItem, ct int64) (items []BtreeItem) {
 	i.Lock()
 	for _, ext := range exts {
@@ -345,13 +341,13 @@ func (i *Inode) AppendExtents(exts []BtreeItem, ct int64) (items []BtreeItem) {
 	return
 }
 
-// ExtentsTruncate truncates the extents.
+// 截断数据处理
 func (i *Inode) ExtentsTruncate(exts []BtreeItem, length uint64, ct int64) {
 	i.Lock()
 	for _, ext := range exts {
 		i.Extents.Delete(ext)
 	}
-	// check the max item size
+	// check the max item size if or not gt the truncate size
 	item := i.Extents.MaxItem()
 	if item != nil {
 		ext := item.(*proto.ExtentKey)
@@ -365,7 +361,6 @@ func (i *Inode) ExtentsTruncate(exts []BtreeItem, length uint64, ct int64) {
 	i.Unlock()
 }
 
-// Copy returns a copy of the inode.
 func (i *Inode) Copy() BtreeItem {
 	newIno := NewInode(i.Inode, i.Type)
 	i.RLock()
@@ -390,15 +385,13 @@ func (i *Inode) Copy() BtreeItem {
 	return newIno
 }
 
-// IncNLink increases the nLink value by one.
-func (i *Inode) IncNLink() {
+func (i *Inode) IncrNLink() {
 	i.Lock()
 	i.NLink++
 	i.Unlock()
 }
 
-// DecNLink decreases the nLink value by one.
-func (i *Inode) DecNLink() {
+func (i *Inode) DecrNLink() {
 	i.Lock()
 	if i.NLink != 0 {
 		i.NLink--
@@ -406,28 +399,22 @@ func (i *Inode) DecNLink() {
 	i.Unlock()
 }
 
-// GetNLink returns the nLink value.
 func (i *Inode) GetNLink() uint32 {
 	i.RLock()
 	defer i.RUnlock()
 	return i.NLink
 }
-
-// SetDeleteMark set the deleteMark flag. TODO markDelete or deleteMark? markDelete has been used in datanode.
 func (i *Inode) SetDeleteMark() {
 	i.Lock()
 	i.Flag |= DeleteMarkFlag
 	i.Unlock()
 }
-
-// ShouldDelete returns if the inode has been marked as deleted.
-func (i *Inode) ShouldDelete() bool {
+func (i *Inode) IsDelete() bool {
 	i.RLock()
 	defer i.RUnlock()
-	return i.Flag & DeleteMarkFlag == DeleteMarkFlag
+	return i.Flag&DeleteMarkFlag == DeleteMarkFlag
 }
 
-// SetAttr sets the attributes of the inode.
 func (i *Inode) SetAttr(valid, mode, uid, gid uint32) {
 	i.Lock()
 	if mode&proto.AttrMode != 0 {
@@ -442,7 +429,6 @@ func (i *Inode) SetAttr(valid, mode, uid, gid uint32) {
 	i.Unlock()
 }
 
-// DoFunc executes the given function.
 func (i *Inode) DoFunc(fn func()) {
 	i.RLock()
 	fn()
@@ -456,8 +442,6 @@ func (i *Inode) GetAuth() (authID uint64, timeout int64) {
 	return
 }
 
-// CanOpen checks if the current process has the right to open the file. It is used to prevents multiple processes to
-// open the same file.
 func (i *Inode) CanOpen(mt int64) (authId uint64, ok bool) {
 	i.Lock()
 	defer i.Unlock()
@@ -472,20 +456,13 @@ func (i *Inode) CanOpen(mt int64) (authId uint64, ok bool) {
 	return
 }
 
-// ResetAuthID sets the authID as 0 (indicates that the inode/file is not in use).
-func (i *Inode) ResetAuthID(authId uint64) {
+func (i *Inode) OpenRelease(authId uint64) {
 	i.Lock()
 	if i.AuthID == authId {
 		i.AuthID = 0
 	}
 	i.Unlock()
 }
-
-// CanWrite returns if the current process has the write permission.
-// It is possible that a process opens a file and obtains the write permission first. Later on it stops the write for
-// some reason, and never closes the file. After timeout, another process opens the same file, but because the last
-// open is timed out, so this time the open succeeds. After writing some data, the previous process starts to work again.
-// In this case, the canWrite returns false for the previous process.
 func (i *Inode) CanWrite(authId uint64, mt int64) bool {
 	i.Lock()
 	defer i.Unlock()

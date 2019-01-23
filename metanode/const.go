@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The CFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,13 +30,13 @@ const (
 
 // Type alias.
 type (
-	// Master -> MetaNode  create metaPartition request
+	// Master -> MetaNode  create metaPartition request struct
 	CreateMetaRangeReq = proto.CreateMetaPartitionRequest
-	// MetaNode -> Master create metaPartition response
+	// MetaNode -> Master create metaPartition response struct
 	CreateMetaRangeResp = proto.CreateMetaPartitionResponse
-	// Client -> MetaNode create Inode request
+	// Client -> MetaNode create Inode request struct
 	CreateInoReq = proto.CreateInodeRequest
-	// MetaNode -> Client create Inode response
+	// MetaNode -> Client create Inode response struct
 	CreateInoResp = proto.CreateInodeResponse
 	// Client -> MetaNode create Link Request
 	LinkInodeReq = proto.LinkInodeRequest
@@ -48,23 +48,23 @@ type (
 	UnlinkInoResp = proto.UnlinkInodeResponse
 	// Client -> MetaNode create Dentry request struct
 	CreateDentryReq = proto.CreateDentryRequest
-	// Client -> MetaNode delete Dentry request
+	// Client -> MetaNode delete Dentry request struct
 	DeleteDentryReq = proto.DeleteDentryRequest
-	// MetaNode -> Client delete Dentry response
+	// MetaNode -> Client delete Dentry response struct
 	DeleteDentryResp = proto.DeleteDentryResponse
-	// Client -> MetaNode updateDentry request
+	// Client -> MetaNode updateDentry request struct
 	UpdateDentryReq = proto.UpdateDentryRequest
-	// MetaNode -> Client updateDentry response
+	// MetaNode -> Client updateDentry response struct
 	UpdateDentryResp = proto.UpdateDentryResponse
-	// Client -> MetaNode read dir request
+	// Client -> MetaNode read dir request struct
 	ReadDirReq = proto.ReadDirRequest
-	// MetaNode -> Client read dir response
+	// MetaNode -> Client read dir response struct
 	ReadDirResp = proto.ReadDirResponse
 	// MetaNode -> Client lookup
 	LookupReq = proto.LookupRequest
 	// Client -> MetaNode lookup
 	LookupResp = proto.LookupResponse
-	// Client -> MetaNode open file request
+	// Client -> MetaNode open file request struct
 	OpenReq = proto.OpenRequest
 	// Client -> MetaNode
 	InodeGetReq = proto.InodeGetRequest
@@ -84,6 +84,8 @@ type (
 	ReleaseReq     = proto.ReleaseRequest
 )
 
+// TODO what does "when raftStore store and application apply" mean ?
+// For use when raftStore store and application apply
 const (
 	opFSMCreateInode uint32 = iota
 	opFSMUnlinkInode
@@ -92,7 +94,7 @@ const (
 	opFSMOpen
 	opFSMDeletePartition
 	opFSMUpdatePartition
-	opFSMDecommissionPartition
+	opFSMOfflinePartition
 	opFSMExtentsAdd
 	opFSMStoreTick
 	startStoreTick
@@ -105,7 +107,7 @@ const (
 	opFSMSetAttr
 	opFSMInternalDelExtentFile
 	opFSMInternalDelExtentCursor
-	opExtentFileSnapshot
+	opSnapExtentFile
 	opFSMReleaseOpen
 )
 
@@ -114,30 +116,31 @@ var (
 )
 
 var (
-	ErrNoLeader   = errors.New("no leader")
-	ErrNotALeader = errors.New("not a leader")
+	ErrNonLeader = errors.New("non leader")
+	ErrNotLeader = errors.New("not leader")
 )
 
-// Default configuration
+// default configuration
 const (
-	defaultMetadataDir = "metadataDir"
-	defaultRaftDir     = "raftDir"
-	defaultAuthTimeout = 5 // seconds
+	defaultMetaDir = "metaDir"
+	defaultRaftDir = "raftDir"
+	// units: second
+	defaultAuthTimeout = 5
 )
 
-// Configuration keys
+// configuration keys
 const (
 	cfgListen            = "listen"
-	cfgMetadataDir       = "metadataDir"
+	cfgMetaDir           = "metaDir"
 	cfgRaftDir           = "raftDir"
 	cfgMasterAddrs       = "masterAddrs"
 	cfgRaftHeartbeatPort = "raftHeartbeatPort"
-	cfgRaftReplicaPort   = "raftReplicaPort"
+	cfgRaftReplicatePort = "raftReplicatePort"
 )
 
 const (
 	// interval of persisting in-memory data
-	intervalToPersistData = time.Minute * 5
+	storeTimeTicker = time.Minute * 5
 )
 
 const (

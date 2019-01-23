@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Containerfs Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,17 +21,17 @@ import (
 	"io"
 )
 
-type InodeResponse struct {
+type ResponseInode struct {
 	Status uint8
 	Msg    *Inode
 	AuthID uint64
 }
 
-func NewInodeResponse() *InodeResponse {
-	return &InodeResponse{}
+func NewResponseInode() *ResponseInode {
+	return &ResponseInode{}
 }
 
-// Create and inode and attach it to the inode tree.
+// CreateInode create inode to inode tree.
 func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 	status = proto.OpOk
 	if _, ok := mp.inodeTree.ReplaceOrInsert(ino, false); !ok {
@@ -40,8 +40,8 @@ func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 	return
 }
 
-func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
-	resp = NewInodeResponse()
+func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *ResponseInode) {
+	resp = NewResponseInode()
 	resp.Status = proto.OpOk
 	item := mp.inodeTree.Get(ino)
 	if item == nil {
@@ -53,17 +53,18 @@ func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
 		resp.Status = proto.OpArgMismatchErr
 		return
 	}
-	if i.ShouldDelete() {
+	if i.IsDelete() {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
-	i.IncNLink()
+	i.IncrNLink()
 	resp.Msg = i
 	return
 }
 
-func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse) {
-	resp = NewInodeResponse()
+// GetInode query inode from InodeTree with specified inode info;
+func (mp *metaPartition) getInode(ino *Inode) (resp *ResponseInode) {
+	resp = NewResponseInode()
 	resp.Status = proto.OpOk
 	item := mp.inodeTree.Get(ino)
 	if item == nil {
@@ -71,7 +72,7 @@ func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse) {
 		return
 	}
 	i := item.(*Inode)
-	if i.ShouldDelete() {
+	if i.IsDelete() {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
@@ -86,7 +87,7 @@ func (mp *metaPartition) hasInode(ino *Inode) (ok bool) {
 		return
 	}
 	i := item.(*Inode)
-	if i.ShouldDelete() {
+	if i.IsDelete() {
 		ok = false
 		return
 	}
@@ -94,51 +95,50 @@ func (mp *metaPartition) hasInode(ino *Inode) (ok bool) {
 	return
 }
 
+func (mp *metaPartition) internalHasInode(ino *Inode) bool {
+	return mp.inodeTree.Has(ino)
+}
+
 func (mp *metaPartition) getInodeTree() *BTree {
 	return mp.inodeTree.GetTree()
 }
 
-// Ascend is the wrapper of inodeTree.Ascend
-func (mp *metaPartition) Ascend(f func(i BtreeItem) bool) {
+func (mp *metaPartition) RangeInode(f func(i BtreeItem) bool) {
 	mp.inodeTree.Ascend(f)
 }
 
-// fsmUnlinkInode delete the specified inode from inode tree.
-func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
-	resp = NewInodeResponse()
+// DeleteInode delete specified inode item from inode tree.
+func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *ResponseInode) {
+	resp = NewResponseInode()
 	resp.Status = proto.OpOk
-	isFound := false
+	isFind := false
 	mp.inodeTree.Find(ino, func(i BtreeItem) {
-		isFound = true
-		shouldDelete := false
+		isFind = true
+		isDelete := false
 		inode := i.(*Inode)
 		resp.Msg = inode
 		if proto.IsRegular(inode.Type) {
-			inode.DecNLink()
+			inode.DecrNLink()
 			return
 		}
-
-		shouldDelete = true // TODO is it always false?
+		// isDir
+		isDelete = true
 		mp.dentryTree.AscendRange(&Dentry{ParentId: inode.Inode},
 			&Dentry{ParentId: inode.Inode + 1}, func(i BtreeItem) bool {
-				shouldDelete = false
+				isDelete = false
 				return false
 			})
-		if shouldDelete {
-			inode.DecNLink()
+		if isDelete {
+			inode.DecrNLink()
 			return
 		}
 		resp.Status = proto.OpNotEmtpy
 	})
-	if !isFound {
+	if !isFind {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
 	return
-}
-
-func (mp *metaPartition) internalHasInode(ino *Inode) bool {
-	return mp.inodeTree.Has(ino)
 }
 
 func (mp *metaPartition) internalDelete(val []byte) (err error) {
@@ -173,7 +173,7 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 		return
 	}
 	ino2 := item.(*Inode)
-	if ino2.ShouldDelete() {
+	if ino2.IsDelete() {
 		status = proto.OpNotExistErr
 		return
 	}
@@ -193,20 +193,19 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	return
 }
 
-func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
-	resp = NewInodeResponse()
-
+func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *ResponseInode) {
+	resp = NewResponseInode()
 	resp.Status = proto.OpOk
-	isFound := false
+	isFind := false
 	mp.inodeTree.Find(ino, func(item BtreeItem) {
 		var delExtents []BtreeItem
-		isFound = true
+		isFind = true
 		i := item.(*Inode)
 		if proto.IsDir(i.Type) {
 			resp.Status = proto.OpArgMismatchErr
 			return
 		}
-		if i.ShouldDelete() {
+		if i.IsDelete() {
 			resp.Status = proto.OpNotExistErr
 			return
 		}
@@ -225,7 +224,7 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 			mp.extDelCh <- ext
 		}
 	})
-	if !isFound {
+	if !isFind {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
@@ -233,23 +232,22 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	return
 }
 
-func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
-	resp = NewInodeResponse()
-
+func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *ResponseInode) {
+	resp = NewResponseInode()
 	resp.Status = proto.OpOk
-	isFound := false
-	shouldDelete := false
+	isFind := false
+	isDelete := false
 	mp.inodeTree.Find(ino, func(item BtreeItem) {
-		isFound = true
+		isFind = true
 		i := item.(*Inode)
 		if proto.IsDir(i.Type) {
 			if i.GetNLink() < 1 {
-				shouldDelete = true
+				isDelete = true
 			}
 			return
 		}
 
-		if i.ShouldDelete() {
+		if i.IsDelete() {
 			return
 		}
 		if i.GetNLink() < 1 {
@@ -258,11 +256,11 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 			mp.freeList.Push(i)
 		}
 	})
-	if !isFound {
+	if !isFind {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
-	if shouldDelete {
+	if isDelete {
 		mp.inodeTree.Delete(ino)
 	}
 	return
@@ -272,14 +270,13 @@ func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 	if proto.IsDir(ino.Type) {
 		return
 	}
-	if ino.ShouldDelete() {
+	if ino.IsDelete() {
 		mp.freeList.Push(ino)
 	}
 }
 
 func (mp *metaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
 	// get Inode
-
 	ino := NewInode(req.Inode, req.Mode)
 	item := mp.inodeTree.Get(ino)
 	if item == nil {

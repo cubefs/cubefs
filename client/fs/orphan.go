@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Containerfs Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,15 +19,12 @@ import (
 	"sync"
 )
 
-// OrphanInodeList defines the orphan inode list, which is a list of orphan inodes.
-// An orphan inode is the inode whose nlink value is 0.
 type OrphanInodeList struct {
 	sync.RWMutex
 	cache map[uint64]*list.Element
 	list  *list.List
 }
 
-// NewOrphanInodeList returns a new orphan inode list.
 func NewOrphanInodeList() *OrphanInodeList {
 	return &OrphanInodeList{
 		cache: make(map[uint64]*list.Element),
@@ -35,7 +32,6 @@ func NewOrphanInodeList() *OrphanInodeList {
 	}
 }
 
-// Put puts an inode into the orphan inode list.
 func (l *OrphanInodeList) Put(ino uint64) {
 	l.Lock()
 	defer l.Unlock()
@@ -46,7 +42,6 @@ func (l *OrphanInodeList) Put(ino uint64) {
 	}
 }
 
-// Evict remove the given inode from the orphan inode list, and evicts it.
 func (l *OrphanInodeList) Evict(ino uint64) bool {
 	l.Lock()
 	defer l.Unlock()

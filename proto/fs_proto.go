@@ -24,7 +24,7 @@ const (
 	RootIno = uint64(1)
 )
 
-// Type returns the fileMode.
+// Mode returns the fileMode.
 func Mode(osMode os.FileMode) uint32 {
 	return uint32(osMode)
 }
@@ -57,7 +57,7 @@ func IsWriteFlag(flag uint32) bool {
 // InodeInfo defines the inode struct.
 type InodeInfo struct {
 	Inode      uint64    `json:"ino"`
-	Type       uint32    `json:"mode"` // TODO rename to json:"type:
+	Mode       uint32    `json:"mode"`
 	Nlink      uint32    `json:"nlink"`
 	Size       uint64    `json:"sz"`
 	Uid        uint32    `json:"uid"`
@@ -71,7 +71,7 @@ type InodeInfo struct {
 
 // String returns the string format of the inode.
 func (info *InodeInfo) String() string {
-	return fmt.Sprintf("Inode(%v) Type(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v)", info.Inode, info.Type, OsMode(info.Type), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation)
+	return fmt.Sprintf("Inode(%v) Mode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v)", info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation)
 }
 
 // Dentry defines the sentry struct.
@@ -248,7 +248,7 @@ type AppendExtentKeyRequest struct {
 	Extent      ExtentKey `json:"ek"`
 }
 
-// GetExtentsRequest defines the request to get all extents.
+// GetExtentsRequest defines the reques to get extents.
 type GetExtentsRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`

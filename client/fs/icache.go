@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Containerfs Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,16 +21,12 @@ import (
 )
 
 const (
-	// MinInodeCacheEvictNum is used in the foreground eviction.
-	// When clearing the inodes from the cache, it stops as soon as 10 inodes have been evicted.
 	MinInodeCacheEvictNum = 10
-	// MaxInodeCacheEvictNum is used in the back ground. We can evict 200000 inodes at max.
 	MaxInodeCacheEvictNum = 200000
 
 	BgEvictionInterval = 2 * time.Minute
 )
 
-// InodeCache defines the structure of the inode cache.
 type InodeCache struct {
 	sync.RWMutex
 	cache       map[uint64]*list.Element
@@ -39,7 +35,6 @@ type InodeCache struct {
 	maxElements int
 }
 
-// NewInodeCache returns a new inode cache.
 func NewInodeCache(exp time.Duration, maxElements int) *InodeCache {
 	ic := &InodeCache{
 		cache:       make(map[uint64]*list.Element),
@@ -51,7 +46,6 @@ func NewInodeCache(exp time.Duration, maxElements int) *InodeCache {
 	return ic
 }
 
-// Put puts the given inode into the inode cache.
 func (ic *InodeCache) Put(inode *Inode) {
 	ic.Lock()
 	old, ok := ic.cache[inode.ino]
@@ -72,7 +66,6 @@ func (ic *InodeCache) Put(inode *Inode) {
 	//log.LogDebugf("InodeCache PutConnect: inode(%v)", inode)
 }
 
-// Get returns the inode based on the given inode ID.
 func (ic *InodeCache) Get(ino uint64) *Inode {
 	ic.RLock()
 	element, ok := ic.cache[ino]
@@ -91,7 +84,6 @@ func (ic *InodeCache) Get(ino uint64) *Inode {
 	return inode
 }
 
-// Delete deletes the inode based on the given inode ID.
 func (ic *InodeCache) Delete(ino uint64) {
 	//log.LogDebugf("InodeCache Delete: ino(%v)", ino)
 	ic.Lock()
@@ -103,9 +95,9 @@ func (ic *InodeCache) Delete(ino uint64) {
 	ic.Unlock()
 }
 
-// Foreground eviction cares more about the speed.
-// Background eviction evicts all expired items from the cache.
-// The caller should grab the WRITE lock of the inode cache.
+// Foreground eviction shall be quick and guarentees to make some room.
+// Background eviction should evict all expired inode cache.
+// The caller should grab the inode cache WRITE lock.
 func (ic *InodeCache) evict(foreground bool) {
 	var count int
 	//defer func() {
@@ -117,9 +109,10 @@ func (ic *InodeCache) evict(foreground bool) {
 			return
 		}
 
-		// For background eviction, if all expired items have been evicted, just return
-		// But for foreground eviction, we need to evict at least MinInodeCacheEvictNum inodes.
-		// The foreground eviction, does not need to care if the inode has expired or not.
+		// For background eviction, if all expired inode cache has been
+		// evicted, just return.
+		// But for foreground eviction, we need to meet the minimum inode
+		// cache evict number requirement.
 		inode := element.Value.(*Inode)
 		if !foreground && !inode.expired() {
 			return
@@ -131,7 +124,8 @@ func (ic *InodeCache) evict(foreground bool) {
 		count++
 	}
 
-	// For background eviction, we need to continue evict all expired items from the cache
+	// For background eviction, we need to continue evict all expired inode
+	// cache.
 	if foreground {
 		return
 	}

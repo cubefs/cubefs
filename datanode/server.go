@@ -245,7 +245,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	return nil
 }
 
-// registers the data node on the master to report the information such as IsIPV4 address.
+// registers the data node on the master to report the information such as IP address.
 // The startup of a data node will be blocked until the registration succeeds.
 func (s *DataNode) register() {
 	var (
@@ -255,7 +255,7 @@ func (s *DataNode) register() {
 
 	timer := time.NewTimer(0)
 
-	// get the IsIPV4 address, cluster ID and node ID from the master
+	// get the IP address, cluster ID and node ID from the master
 	for {
 		select {
 		case <-timer.C:
@@ -273,7 +273,7 @@ func (s *DataNode) register() {
 			LocalIP = string(cInfo.Ip)
 			s.clusterID = cInfo.Cluster
 			s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
-			if !util.IsIPV4(LocalIP) {
+			if !util.IP(LocalIP) {
 				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
 					LocalIP, masterAddr)
 				timer.Reset(5 * time.Second)
