@@ -61,4 +61,4 @@ Start Service
 
 .. code-block:: bash
 
-nohup ./master -c config.json > nohup.out &
+   nohup ./master -c config.json > nohup.out &
