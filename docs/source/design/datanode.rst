@@ -1,7 +1,7 @@
 Data Subsystem
 ===================
 
-The data subsystem is design to meet the multi-tenancy requirement of supporting the large and small files with the sequential and random accesses, and adopts two different replication protocols to ensure the strong consistency among the replicas with some tradeoffs on the performance and code usability.
+To meet the multi-tenancy requirement, the data subsystem is optimized for the storage of large and small files, which can be accessed in a sequential or random fashion.  It adopts two different replication protocols to ensure the strong consistency  with some tradeoffs on the performance and code usability.
 
 .. image:: ../pic/data-subsystem.png
    :align: center
