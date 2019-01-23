@@ -1,4 +1,4 @@
-// Copyright 2018 The CFS Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import (
 	"sync"
 )
 
-// DataPartition结构体
+// DataPartition defines the struct of data partition that will be used on the meta node.
 type DataPartition struct {
 	PartitionID   uint64
 	Status        int8
@@ -29,11 +29,12 @@ type DataPartition struct {
 	Hosts         []string
 }
 
+// GetAllAddrs returns all addresses of the data partition.
 func (dp *DataPartition) GetAllAddrs() (m string) {
 	return strings.Join(dp.Hosts[1:], proto.AddrSplit) + proto.AddrSplit
 }
 
-// DataNode视图
+// DataPartitionsView defines the view of the data node.
 type DataPartitionsView struct {
 	DataPartitions []*DataPartition
 }
@@ -42,26 +43,27 @@ func NewDataPartitionsView() *DataPartitionsView {
 	return &DataPartitionsView{}
 }
 
-//逻辑卷和DataNode视图关联结构体
+// Vol defines the view of the data partition with the read/write lock.
 type Vol struct {
 	sync.RWMutex
 	dataPartitionView map[uint64]*DataPartition
 }
 
+// NewVol returns a new volume instance.
 func NewVol() *Vol {
 	return &Vol{
 		dataPartitionView: make(map[uint64]*DataPartition),
 	}
 }
 
-// 获取某个数据分片ID的视图
+// GetPartition returns the data partition based on the given partition ID.
 func (v *Vol) GetPartition(partitionID uint64) *DataPartition {
 	v.RLock()
 	defer v.RUnlock()
 	return v.dataPartitionView[partitionID]
 }
 
-// 更新视图
+// UpdatePartitions updates the data partition.
 func (v *Vol) UpdatePartitions(partitions *DataPartitionsView) {
 	for _, dp := range partitions.DataPartitions {
 		v.replaceOrInsert(dp)

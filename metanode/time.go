@@ -12,24 +12,50 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package log
-
-// These tests are too simple.
+package metanode
 
 import (
-	"net/http"
-	_ "net/http/pprof"
-	"testing"
+	"sync"
 	"time"
 )
 
-func TestLog(t *testing.T) {
-	go func() {
-		http.ListenAndServe(":10000", nil)
-	}()
-	InitLog("/tmp/bdfs", "bdfs", DebugLevel, nil)
-	for {
-		LogDebugf("action[TestLog] current time %v.", time.Now())
-		time.Sleep(200 * time.Millisecond)
+// Now
+var Now = NewNowTime()
+
+// NowTime defines the current time.
+type NowTime struct {
+	sync.RWMutex
+	now time.Time
+}
+
+// GetCurrentTime returns the current time.
+func (t *NowTime) GetCurrentTime() (now time.Time) {
+	t.RLock()
+	now = t.now
+	t.RUnlock()
+	return
+}
+
+// UpdateTime updates the stored time.
+func (t *NowTime) UpdateTime(now time.Time) {
+	t.Lock()
+	t.now = now
+	t.Unlock()
+}
+
+// NewNowTime returns a new NowTime.
+func NewNowTime() *NowTime {
+	return &NowTime{
+		now: time.Now(),
 	}
+}
+
+func init() {
+	go func() {
+		for {
+			time.Sleep(time.Second)
+			now := time.Now()
+			Now.UpdateTime(now)
+		}
+	}()
 }

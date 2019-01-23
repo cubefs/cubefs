@@ -40,10 +40,12 @@ var (
 	gExtentHandlerID = uint64(0)
 )
 
+// GetExtentHandlerID returns the extent handler ID.
 func GetExtentHandlerID() uint64 {
 	return atomic.AddUint64(&gExtentHandlerID, 1)
 }
 
+// ExtentHandler defines the struct of the extent handler.
 type ExtentHandler struct {
 	// Fields created as it is, i.e. will not be changed.
 	stream     *Streamer
@@ -66,17 +68,17 @@ type ExtentHandler struct {
 	// Does not involve the packet in open handler.
 	inflight int32
 
-	// For ExtentStore mode, assigned in sender.
-	// For TinyStore mode, assigned in receiver.
+	// For ExtentStore,the extent ID is assigned in the sender.
+	// For TinyStore, the extent ID is assigned in the receiver.
 	// Will not be changed once assigned.
 	extID int
 
-	// Allocated in sender, and released in receiver.
+	// Allocated in the sender, and released in the receiver.
 	// Will not be changed.
 	conn *net.TCPConn
 	dp   *wrapper.DataPartition
 
-	// Issue a signal to this channel each time *inflight* hits zero.
+	// Issue a signal to this channel when *inflight* hits zero.
 	// To wake up *waitForFlush*.
 	empty chan struct{}
 
@@ -90,12 +92,12 @@ type ExtentHandler struct {
 	// Will not be changed once assigned.
 	recoverHandler *ExtentHandler
 
-	// The stream writer will get write requests, and construct packets
-	// which will be sent to the request channel.
-	// The *sender* will get packets from *request* channel, sending to data
-	// node and passes the packet to *reply* channel.
-	// The *receiver* will get packets from "reply" channel, wait for the
-	// reply from data node, and deal with it.
+	// The stream writer gets the write requests, and constructs the packets
+	// to be sent to the request channel.
+	// The *sender* gets the packets from the *request* channel, sends it to the corresponding data
+	// node, and then throw it back to the *reply* channel.
+	// The *receiver* gets the packets from the *reply* channel, waits for the
+	// reply from the data node, and then deals with it.
 	request chan *Packet
 	reply   chan *Packet
 
@@ -106,6 +108,7 @@ type ExtentHandler struct {
 	doneSender chan struct{}
 }
 
+// NewExtentHandler returns a new extent handler.
 func NewExtentHandler(stream *Streamer, offset int, storeMode int) *ExtentHandler {
 	eh := &ExtentHandler{
 		stream:       stream,
@@ -126,6 +129,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int) *ExtentHandle
 	return eh
 }
 
+// String returns the string format of the extent handler.
 func (eh *ExtentHandler) String() string {
 	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)StoreMode(%v)}", eh.id, eh.inode, eh.fileOffset, eh.storeMode)
 }
@@ -146,9 +150,9 @@ func (eh *ExtentHandler) write(data []byte, offset, size int) (ek *proto.ExtentK
 		blksize = util.BlockSize
 	}
 
-	// If this write request is incontinuous, thus cannot be merged
-	// into this extent handler, just close it and return error.
-	// And the caller shall try to create a new extent handler.
+	// If this write request is not continuous, and cannot be merged
+	// into the extent handler, just close it and return error.
+	// In this case, the caller should try to create a new extent handler.
 	if eh.fileOffset+eh.size != offset || eh.size+size > util.ExtentSize ||
 		(eh.storeMode == proto.TinyExtentType && eh.size+size > blksize) {
 
@@ -177,7 +181,7 @@ func (eh *ExtentHandler) write(data []byte, offset, size int) (ek *proto.ExtentK
 	eh.size += total
 
 	// This is just a local cache to prepare write requests.
-	// Partition and extent are not allocated yet.
+	// Partition and extent are not allocated.
 	ek = &proto.ExtentKey{
 		FileOffset: uint64(eh.fileOffset),
 		Size:       uint32(eh.size),
@@ -215,12 +219,12 @@ func (eh *ExtentHandler) sender() {
 				}
 			}
 
-			// For ExtentStore mode, calculate extent offset.
-			// For TinyStore mode, extent offset is always 0 in request packet,
-			// and the reply packet will tell the real extent offset.
+			// For ExtentStore, calculate the extent offset.
+			// For TinyStore, the extent offset is always 0 in the request packet,
+			// and the reply packet tells the real extent offset.
 			extOffset := int(packet.KernelOffset) - eh.fileOffset
 
-			// fill packet according to extent
+			// fill the packet according to the extent
 			packet.PartitionID = eh.dp.PartitionID
 			packet.ExtentType = uint8(eh.storeMode)
 			packet.ExtentID = uint64(eh.extID)
@@ -383,12 +387,13 @@ func (eh *ExtentHandler) cleanup() (err error) {
 	if eh.conn != nil {
 		conn := eh.conn
 		eh.conn = nil
+		// TODO unhandled error
 		conn.Close()
 	}
 	return
 }
 
-// can ONLY be called when handler is not open any more
+// can ONLY be called when the handler is not open any more
 func (eh *ExtentHandler) appendExtentKey() (err error) {
 	//log.LogDebugf("appendExtentKey enter: eh(%v)", eh)
 	if eh.key != nil {
@@ -470,8 +475,8 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 
 	excludePartitions := make([]uint64, 0)
 
-	for i := 0; i < MaxSelectDataPartionForWrite; i++ {
-		if dp, err = gDataWrapper.GetWriteDataPartition(excludePartitions); err != nil {
+	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
+		if dp, err = gDataWrapper.GetDataPartitionForWrite(excludePartitions); err != nil {
 			log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v)", eh, excludePartitions)
 			continue
 		}
@@ -515,6 +520,7 @@ func (eh *ExtentHandler) createConnection(dp *wrapper.DataPartition) (*net.TCPCo
 		return nil, err
 	}
 	connect := conn.(*net.TCPConn)
+	// TODO unhandled error
 	connect.SetKeepAlive(true)
 	connect.SetNoDelay(true)
 	return connect, nil
@@ -523,13 +529,16 @@ func (eh *ExtentHandler) createConnection(dp *wrapper.DataPartition) (*net.TCPCo
 func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err error) {
 	conn, err := eh.createConnection(dp)
 	if err != nil {
+		// TODO unhandled error
 		errors.Annotatef(err, "createExtent: failed to create connection, eh(%v) datapartionHosts(%v)", eh, dp.Hosts[0])
 		return
 	}
+	// TODO unhandled error
 	defer conn.Close()
 
 	p := NewCreateExtentPacket(dp, eh.inode)
 	if err = p.WriteToConn(conn); err != nil {
+		// TODO unhandled error
 		errors.Annotatef(err, "createExtent: failed to WriteToConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
 		return
 	}
@@ -553,7 +562,7 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 	return extID, nil
 }
 
-// Handler lock is held by the caller
+// Handler lock is held by the caller.
 func (eh *ExtentHandler) flushPacket() {
 	if eh.packet == nil {
 		return
@@ -565,7 +574,7 @@ func (eh *ExtentHandler) flushPacket() {
 
 func (eh *ExtentHandler) pushToRequest(packet *Packet) {
 	// Increase before sending the packet, because inflight is used
-	// to determine if handler has finished.
+	// to determine if the handler has finished.
 	atomic.AddInt32(&eh.inflight, 1)
 	eh.request <- packet
 }

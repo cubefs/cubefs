@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,11 +23,13 @@ import (
 
 const MEMINFO = "/proc/meminfo"
 
+// GetMemInfo returns the memory information.
 func GetMemInfo() (total, used uint64, err error) {
 	fp, err := os.Open(MEMINFO)
 	if err != nil {
 		return
 	}
+	// TODO Unhandled errors
 	defer fp.Close()
 	var (
 		val    uint64

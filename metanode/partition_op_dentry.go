@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 )
 
+// CreateDentry returns a new dentry.
 func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err error) {
 	if req.ParentID == req.Inode {
 		err = fmt.Errorf("parentId is equal inodeId")
@@ -46,6 +47,7 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 	return
 }
 
+// DeleteDentry deletes a dentry.
 func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err error) {
 	dentry := &Dentry{
 		ParentId: req.ParentID,
@@ -61,7 +63,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
-	retMsg := r.(*ResponseDentry)
+	retMsg := r.(*DentryResponse)
 	p.ResultCode = retMsg.Status
 	dentry = retMsg.Msg
 	if p.ResultCode == proto.OpOk {
@@ -75,6 +77,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 	return
 }
 
+// UpdateDentry updates a dentry.
 func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err error) {
 	if req.ParentID == req.Inode {
 		err = fmt.Errorf("parentId is equal inodeId")
@@ -97,7 +100,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
-	msg := resp.(*ResponseDentry)
+	msg := resp.(*DentryResponse)
 	p.ResultCode = msg.Status
 	if msg.Status == proto.OpOk {
 		var reply []byte
@@ -110,6 +113,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 	return
 }
 
+// ReadDir reads the directory based on the given request.
 func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 	resp := mp.readDir(req)
 	reply, err := json.Marshal(resp)
@@ -121,6 +125,7 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 	return
 }
 
+// Lookup looks up the given dentry from the request.
 func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 	dentry := &Dentry{
 		ParentId: req.ParentID,
@@ -142,6 +147,7 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 	return
 }
 
+// GetDentryTree returns the dentry tree stored in the meta partition.
 func (mp *metaPartition) GetDentryTree() *BTree {
 	return mp.dentryTree.GetTree()
 }

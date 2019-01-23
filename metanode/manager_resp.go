@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,9 +27,9 @@ const (
 	// ContentType: 'application/json'
 )
 
-// ReplyToMaster reply operation result to master by sending http request.
-func (m *metaManager) respondToMaster(data interface{}) (err error) {
-	// Handle panic
+// Reply operation results to the master.
+func (m *metadataManager) respondToMaster(data interface{}) (err error) {
+	// handle panic
 	defer func() {
 		if r := recover(); r != nil {
 			switch data := r.(type) {
@@ -40,7 +40,8 @@ func (m *metaManager) respondToMaster(data interface{}) (err error) {
 			}
 		}
 	}()
-	// Process data and send reply though http specified remote address.
+
+	// process data and send reply though http specified remote address.
 	jsonBytes, err := json.Marshal(data)
 	if err != nil {
 		return
@@ -52,8 +53,8 @@ func (m *metaManager) respondToMaster(data interface{}) (err error) {
 	return
 }
 
-// ReplyToClient send reply data though tcp connection to client.
-func (m *metaManager) respondToClient(conn net.Conn, p *Packet) (err error) {
+// Reply data through tcp connection to the client.
+func (m *metadataManager) respondToClient(conn net.Conn, p *Packet) (err error) {
 	// Handle panic
 	defer func() {
 		if r := recover(); r != nil {
@@ -65,7 +66,8 @@ func (m *metaManager) respondToClient(conn net.Conn, p *Packet) (err error) {
 			}
 		}
 	}()
-	// Process data and send reply though specified tcp connection.
+
+	// process data and send reply though specified tcp connection.
 	err = p.WriteToConn(conn)
 	if err != nil {
 		log.LogErrorf("response to client[%s], "+
@@ -75,7 +77,7 @@ func (m *metaManager) respondToClient(conn net.Conn, p *Packet) (err error) {
 	return
 }
 
-func (m *metaManager) responseAckOKToMaster(conn net.Conn, p *Packet) {
+func (m *metadataManager) responseAckOKToMaster(conn net.Conn, p *Packet) {
 	go func() {
 		p.PacketOkReply()
 		if err := p.WriteToConn(conn); err != nil {

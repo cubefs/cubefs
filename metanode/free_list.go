@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,8 +30,7 @@ func newFreeList() *freeList {
 	}
 }
 
-// Pop get the first item of list and delete it from list
-// if list is empty, return nil
+// Pop removes the first item on the list and returns it.
 func (i *freeList) Pop() (ino *Inode) {
 	i.Lock()
 	defer i.Unlock()
@@ -44,15 +43,14 @@ func (i *freeList) Pop() (ino *Inode) {
 	return
 }
 
-// Push inserts a new item at the back of list
+// Push inserts a new item at the back of the list.
 func (i *freeList) Push(ino *Inode) {
 	i.Lock()
 	defer i.Unlock()
 	i.list.PushBack(ino)
 }
 
-// Only get the first item of list, don't delete item
-// if list is empty, return nil
+// GetFront returns the first item on the list.
 func (i *freeList) GetFront() (ino *Inode) {
 	i.Lock()
 	defer i.Unlock()
@@ -64,7 +62,7 @@ func (i *freeList) GetFront() (ino *Inode) {
 	return
 }
 
-// Move Front item to the back of list
+// FrontMoveToBack moves the front item to the back of the list.
 func (i *freeList) FrontMoveToBack() {
 	i.Lock()
 	defer i.Unlock()

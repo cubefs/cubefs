@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import (
 	"strconv"
 )
 
+// Config defines the struct of a configuration in general.
 type Config struct {
 	data map[string]interface{}
 	Raw  []byte
@@ -32,7 +33,7 @@ func newConfig() *Config {
 	return result
 }
 
-// Loads config information from a JSON file
+// LoadConfigFile loads config information from a JSON file.
 func LoadConfigFile(filename string) *Config {
 	result := newConfig()
 	err := result.parse(filename)
@@ -42,7 +43,7 @@ func LoadConfigFile(filename string) *Config {
 	return result
 }
 
-// Loads config information from a JSON string
+// LoadConfigString loads config information from a JSON string.
 func LoadConfigString(s string) *Config {
 	result := newConfig()
 	err := json.Unmarshal([]byte(s), &result.data)
@@ -61,7 +62,7 @@ func (c *Config) parse(fileName string) error {
 	return err
 }
 
-// Returns a string for the config variable key
+// GetString returns a string for the config key.
 func (c *Config) GetString(key string) string {
 	x, present := c.data[key]
 	if !present {
@@ -73,7 +74,7 @@ func (c *Config) GetString(key string) string {
 	return ""
 }
 
-// Returns a float for the config variable key
+// GetFloat returns a float value for the config key.
 func (c *Config) GetFloat(key string) float64 {
 	x, present := c.data[key]
 	if !present {
@@ -85,7 +86,7 @@ func (c *Config) GetFloat(key string) float64 {
 	return 0
 }
 
-// Returns a bool for the config variable key
+// GetBool returns a bool value for the config key.
 func (c *Config) GetBool(key string) bool {
 	x, present := c.data[key]
 	if !present {
@@ -97,6 +98,7 @@ func (c *Config) GetBool(key string) bool {
 	return false
 }
 
+// GetBool returns a int value for the config key.
 func (c *Config) GetInt(key string) int64 {
 	x, present := c.data[key]
 	if !present {
@@ -108,6 +110,7 @@ func (c *Config) GetInt(key string) int64 {
 	return 0
 }
 
+// GetBool returns a int64 value for the config key.
 func (c *Config) GetInt64(key string) int64 {
 	x, present := c.data[key]
 	if !present {
@@ -128,7 +131,7 @@ func (c *Config) GetInt64(key string) int64 {
 	return 0
 }
 
-// Returns an array for the config variable key
+// GetArray returns an array for the config key.
 func (c *Config) GetArray(key string) []interface{} {
 	result, present := c.data[key]
 	if !present {

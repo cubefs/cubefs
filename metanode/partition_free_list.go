@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -45,7 +45,7 @@ func (mp *metaPartition) startFreeList() (err error) {
 
 	go mp.deleteWorker()
 	go mp.checkFreelistWorker()
-	mp.startDeleteExtents()
+	mp.startToDeleteExtents()
 	return
 }
 
@@ -58,7 +58,6 @@ func (mp *metaPartition) updateVolWorker() {
 			t.Stop()
 			return
 		case <-t.C:
-			// GetConnect dataPartitionView
 			respBody, err := masterHelper.Request("GET", reqURL, nil, nil)
 			if err != nil {
 				log.LogErrorf("[updateVol] %s", err.Error())
@@ -95,7 +94,7 @@ Begin:
 			goto Begin
 		}
 		for idx = 0; idx < BatchCounts; idx++ {
-			// batch get free inode from freeList
+			// batch get free inoded from the freeList
 			ino := mp.freeList.Pop()
 			if ino == nil {
 				break
@@ -105,8 +104,8 @@ Begin:
 		if len(buffSlice) == 0 {
 			goto Begin
 		}
-		mp.storeDeletedInode(buffSlice...)
-		mp.deleteDataPartitionMark(buffSlice)
+		mp.persistDeletedInodes(buffSlice...)
+		mp.deleteMarkedInodes(buffSlice)
 		if len(buffSlice) < BatchCounts {
 			goto Begin
 		}
@@ -132,7 +131,6 @@ func (mp *metaPartition) checkFreelistWorker() {
 			continue
 		}
 		for idx = 0; idx < BatchCounts; idx++ {
-			// get the first item of list
 			ino := mp.freeList.Pop()
 			if ino == nil {
 				break
@@ -147,13 +145,14 @@ func (mp *metaPartition) checkFreelistWorker() {
 				mp.freeList.Push(ino)
 				continue
 			}
-			mp.storeDeletedInode(ino)
+			mp.persistDeletedInodes(ino)
 		}
 
 	}
 }
 
-func (mp *metaPartition) deleteDataPartitionMark(inoSlice []*Inode) {
+// Delete the marked inodes.
+func (mp *metaPartition) deleteMarkedInodes(inoSlice []*Inode) {
 	shouldCommit := make([]*Inode, 0, BatchCounts)
 	var err error
 	for _, ino := range inoSlice {
@@ -161,9 +160,9 @@ func (mp *metaPartition) deleteDataPartitionMark(inoSlice []*Inode) {
 
 		ino.Extents.Range(func(item BtreeItem) bool {
 			ext := item.(*proto.ExtentKey)
-			if err = mp.executeDeleteExtent(ext); err != nil {
+			if err = mp.doDeleteMarkedInodes(ext); err != nil {
 				reExt = append(reExt, ext)
-				log.LogWarnf("[deleteDataPartitionMark] delete failed extents: %s, err: %s", ext.String(), err.Error())
+				log.LogWarnf("[deleteMarkedInodes] delete failed extents: %s, err: %s", ext.String(), err.Error())
 			}
 			return true
 		})
@@ -196,17 +195,17 @@ func (mp *metaPartition) deleteDataPartitionMark(inoSlice []*Inode) {
 
 }
 
-func (mp *metaPartition) executeDeleteExtent(ext *proto.ExtentKey) (err error) {
-	// get dataNode View
+func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) {
+	// get the data node view
 	dp := mp.vol.GetPartition(ext.PartitionId)
 	if dp == nil {
 		err = errors.Errorf("unknown dataPartitionID=%d in vol",
 			ext.PartitionId)
 		return
 	}
-	// delete dataNode
+	// delete the data node
 	conn, err := mp.config.ConnPool.GetConnect(dp.Hosts[0])
-	defer mp.config.ConnPool.PutConnect(conn, ForceCloseConnect)
+	defer mp.config.ConnPool.PutConnect(conn, ForceClosedConnect)
 
 	if err != nil {
 		err = errors.Errorf("get conn from pool %s, "+
@@ -214,7 +213,7 @@ func (mp *metaPartition) executeDeleteExtent(ext *proto.ExtentKey) (err error) {
 			err.Error(), ext.PartitionId, ext.ExtentId)
 		return
 	}
-	p := NewExtentDeletePacket(dp, ext)
+	p := NewPacketToDeleteExtent(dp, ext)
 	if err = p.WriteToConn(conn); err != nil {
 		err = errors.Errorf("write to dataNode %s, %s", p.GetUniqueLogId(),
 			err.Error())
@@ -225,14 +224,14 @@ func (mp *metaPartition) executeDeleteExtent(ext *proto.ExtentKey) (err error) {
 			p.GetUniqueLogId(), err.Error())
 		return
 	}
-	log.LogDebugf("[deleteDataPartitionMark] %v", p.GetUniqueLogId())
+	log.LogDebugf("[deleteMarkedInodes] %v", p.GetUniqueLogId())
 	return
 }
 
-func (mp *metaPartition) storeDeletedInode(inos ...*Inode) {
+func (mp *metaPartition) persistDeletedInodes(inos ...*Inode) {
 	for _, ino := range inos {
 		if _, err := mp.delInodeFp.Write(ino.MarshalKey()); err != nil {
-			log.LogWarnf("[storeDeletedInode] failed store inode=%d", ino.Inode)
+			log.LogWarnf("[persistDeletedInodes] failed store inode=%d", ino.Inode)
 			mp.freeList.Push(ino)
 		}
 	}

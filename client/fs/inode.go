@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ const (
 	LogTimeFormat = "20060102150405000"
 )
 
+// Inode defines the structure of an inode.
 type Inode struct {
 	ino    uint64
 	size   uint64
@@ -36,9 +37,9 @@ type Inode struct {
 	uid    uint32
 	gid    uint32
 	gen    uint64
-	ctime  time.Time
-	mtime  time.Time
-	atime  time.Time
+	ctime  time.Time // time of last inode change
+	mtime  time.Time // time of last modification
+	atime  time.Time // time of last access
 	mode   os.FileMode
 	target []byte
 
@@ -46,12 +47,14 @@ type Inode struct {
 	expiration int64
 }
 
+// NewInode returns a new inode.
 func NewInode(info *proto.InodeInfo) *Inode {
 	inode := new(Inode)
 	inode.fill(info)
 	return inode
 }
 
+// InodeGet return the inode based on the given inode ID.
 func (s *Super) InodeGet(ino uint64) (*Inode, error) {
 	inode := s.ic.Get(ino)
 	if inode != nil {
@@ -74,6 +77,7 @@ func (s *Super) InodeGet(ino uint64) (*Inode, error) {
 	return inode, nil
 }
 
+// String returns the string format of the inode.
 func (inode *Inode) String() string {
 	return fmt.Sprintf("ino(%v) mode(%v) size(%v) nlink(%v) gen(%v) uid(%v) gid(%v) exp(%v) mtime(%v) target(%v)", inode.ino, inode.mode, inode.size, inode.nlink, inode.gen, inode.uid, inode.gid, time.Unix(0, inode.expiration).Format(LogTimeFormat), inode.mtime, inode.target)
 }
@@ -107,7 +111,7 @@ func (inode *Inode) fill(info *proto.InodeInfo) {
 	inode.atime = info.AccessTime
 	inode.mtime = info.ModifyTime
 	inode.target = info.Target
-	inode.mode = proto.OsMode(info.Mode)
+	inode.mode = proto.OsMode(info.Type)
 }
 
 func (inode *Inode) fillAttr(attr *fuse.Attr) {
