@@ -56,13 +56,16 @@ func Init(cluster string, role string, cfg *config.Config) {
 		return
 	}
 	enabled = true
-
-	http.Handle(PromHandlerPattern, promhttp.Handler())
-
+	http.Handle(PromHandlerPattern, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
+		Timeout: 5 * time.Second,
+	}))
 	namespace = AppName + "_" + role
 	addr := fmt.Sprintf(":%d", port)
 	go func() {
-		http.ListenAndServe(addr, nil)
+		err := http.ListenAndServe(addr, nil)
+		if err != nil {
+			log.LogError("exporter http serve error: ", err)
+		}
 	}()
 
 	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
@@ -262,8 +265,22 @@ func (tp *TpMetric) CalcTp() {
 				}
 			}
 		}
-
 		metric.(prometheus.Gauge).Set(float64(time.Since(tp.Start).Nanoseconds()))
+
+		tpCount := prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Name: tp.Name + "_count",
+			})
+		mk2 := tpCount.Desc().String()
+		metric2, load2 := metricGroups.LoadOrStore(mk2, tpCount)
+		if !load2 {
+			if enabled {
+				err := prometheus.Register(metric2.(prometheus.Counter))
+				if err != nil {
+				}
+			}
+		}
+		metric2.(prometheus.Counter).Add(1)
 	}()
 }
 
