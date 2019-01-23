@@ -29,7 +29,7 @@ deploy:
     - sh /export/App/cfsci/scripts/deploy.sh
     
 restart:
-  stage: deploy
+  stage: restart
   tags:
     - cfs
   script:
