@@ -10,6 +10,15 @@ Welcome to Container File System
 
 .. toctree::
    :maxdepth: 2
+   :caption: Design Documentation
+
+   design/master
+   design/metanode
+   design/datanode
+   design/client
+
+.. toctree::
+   :maxdepth: 2
    :caption: User Documentation
 
    user-guide/master
@@ -24,16 +33,7 @@ Welcome to Container File System
    :caption: Administration
    
    administration
-   
-.. toctree::
-   :maxdepth: 2
-   :caption: Design Documentation
-   
-   design/master
-   design/metanode
-   design/datanode
-   design/client
-   
+
 .. toctree::
    :maxdepth: 0
    :caption: Evaluation

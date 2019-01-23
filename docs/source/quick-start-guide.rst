@@ -7,10 +7,10 @@ Building
 Build Servers
 ^^^^^^^^^^^^^
 
-In the CFS design, servers refer to master, metanode and datanode, and are compiled into a single binary for deployment convenience.
+In CFS, the server consists of the master, metanode and datanode. We compile them into a single binary for deployment convenience.
 
 You'll need to `build RocksDB v5.9.2+ <https://github.com/facebook/rocksdb/blob/master/INSTALL.md>`_ on your machine.
-Recommended for installation use make static_lib command. After that, you can build cfs using the following command.
+Recommended for installation use make static_lib command. After that, you can build cfs using the following command:
 
 .. code-block:: bash
 
