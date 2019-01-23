@@ -40,12 +40,12 @@ response
    }
 
 
-Offline
+Decommission
 -------
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/metaNode/offline?addr=127.0.0.1:9021"
+   curl -v "http://127.0.0.1/metaNode/decommission?addr=127.0.0.1:9021"
 
 
 remove the metaNode from cluster, meta partitions which locate the metaNode will be migrate other available metaNode asynchronous

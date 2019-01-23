@@ -9,7 +9,7 @@ Create
    curl -v "http://127.0.0.1/metaPartition/create?name=test&start=10000"
 
 
-split meta parition manully,if max meta partition of the vol which range is [0,end),end larger than start parameter,old meta paritioin range is[0,start], new meta partition is [start+1,end)
+split meta partition manually,if max meta partition of the vol which range is [0,end),end larger than start parameter,old meta partition range is[0,start], new meta partition is [start+1,end)
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
@@ -22,7 +22,7 @@ Get
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/client/metaPartition?name=test&id=1" | python -m json.tool
+   curl -v "http://127.0.0.1/client/metaPartition?id=1" | python -m json.tool
 
 
 show base information of meta partition,such as id,start,end and so on.
@@ -30,7 +30,6 @@ show base information of meta partition,such as id,start,end and so on.
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
    
-   "name", "string", "the name of vol"
    "id", "uint64", "the id of meta partition"
 
 response
@@ -51,19 +50,33 @@ response
    }
 
 
-Offline
+Decommission
 ---------
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/metaPartition/offline?name=test&id=13&addr=127.0.0.1:9021"
+   curl -v "http://127.0.0.1/metaPartition/decommission?id=13&addr=127.0.0.1:9021"
 
 
-remove the replica of meta parition,and create new replica asynchronous
+remove the replica of meta partition,and create new replica asynchronous
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
    
-   "name", "string", "the name of vol"
    "id", "uint64", "the id of meta partition"
-   "addr", "string", "the addr of replica which will be offfline"
+   "addr", "string", "the addr of replica which will be decommission"
+
+Load
+-------
+
+.. code-block:: bash
+
+   curl -v "http://127.0.0.1/metaPartition/load?id=1"
+
+
+send load task to the metaNode which meta partition locate on,then check the crc of each replica in the meta partition
+
+.. csv-table:: Parameters
+   :header: "Parameter", "Type", "Description"
+
+   "id", "uint64", "the  id of data partition"
