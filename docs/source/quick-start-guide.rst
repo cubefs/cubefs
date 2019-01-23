@@ -133,6 +133,9 @@ For detailed explanations of *datanode.json*, please refer to :doc:`user-guide/d
 
 Create Volume
 ^^^^^^^^^^^^^
+.. code-block:: bash
+
+   curl -v "http://127.0.0.1/admin/createVol?name=test&capacity=100"
 
 Mount Client
 ------------
@@ -159,3 +162,19 @@ For detailed explanations of *fuse.json*, please refer to :doc:`user-guide/clien
 
 Note that end user can start more than one client on a single machine, as long as mountpoints are different.
 
+Upgrading
+---------
+
+1. freeze the cluster
+
+.. code-block:: bash
+
+   curl -v "http://127.0.0.1/cluster/freeze?enable=true"
+
+2. upgrade each module
+
+3. closed freeze flag
+
+.. code-block:: bash
+
+   curl -v "http://127.0.0.1/cluster/freeze?enable=false"

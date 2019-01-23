@@ -17,7 +17,7 @@ Get Partition by ID
 
    curl -v http://127.0.0.1:9092/getPartitionById?pid=100
 
-Get the specified parition information, this result cnotains: leader address, raft group peer and cursor.
+Get the specified partition information, this result contains: leader address, raft group peer and cursor.
     
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"

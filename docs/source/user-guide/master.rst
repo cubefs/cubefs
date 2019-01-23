@@ -29,7 +29,7 @@ CFS use **JSON** as configuration file format.
    "logLevel", "string", "Level operation for logging. Default is *error*.", "No"
    "retainLogs", "string", "the number of raft logs will be retain.", "Yes"
    "walDir", "string", "Path for raft log file storage.", "Yes"
-   "storeDir", "string", "Path for goleveldb file storage.", "Yes"
+   "storeDir", "string", "Path for RocksDB file storage.", "Yes"
    "clusterName", "string", "The cluster identifier", "Yes"
    "exporterPort", "int", "The prometheus exporter port", "No"
    "consulAddr", "string", "The consul register addr for prometheus exporter", "No"

@@ -6,7 +6,7 @@ Create
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/dataPartition/create?count=40&name=test&type=extent"
+   curl -v "http://127.0.0.1/dataPartition/create?count=40&name=test"
 
 
 create a set of data partition
@@ -16,7 +16,6 @@ create a set of data partition
    
    "count", "int", "the num of dataPartitions will be create"
    "name", "string", "the name of vol"
-   "type", "string", "the type of data partition,now only support extent type"
 
 Get
 -------
@@ -50,19 +49,33 @@ response
        "FileInCoreMap": {}
    }
 
+Decommission
+-------------
+
+.. code-block:: bash
+
+   curl -v "http://127.0.0.1/dataPartition/decommission?id=13&addr=127.0.0.1:5000"
+
+
+remove the replica of data partition,and create new replica asynchronous
+
+.. csv-table:: Parameters
+   :header: "Parameter", "Type", "Description"
+
+   "id", "uint64", "the id of data partition"
+   "addr", "string", "the addr of replica which will be decommission"
 
 Load
 -------
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/dataPartition/load?name=test&id=1"
+   curl -v "http://127.0.0.1/dataPartition/load?id=1"
 
 
-send load task to the dataNode which data parition locate on,then check the crc of each file in the data parttion asynchronous
+send load task to the dataNode which data partition locate on,then check the crc of each file in the data partition asynchronous
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
    
-   "name", "string", "the name of vol"
    "id", "uint64", "the  id of data partition"

@@ -6,7 +6,7 @@ Create
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/admin/createVol?name=test&replicas=3&type=extent&randomWrite=true&capacity=100"
+   curl -v "http://127.0.0.1/admin/createVol?name=test&capacity=100"
 
 
 allocate a set of data partition and a meta partition to the user.
@@ -15,9 +15,6 @@ allocate a set of data partition and a meta partition to the user.
    :header: "Parameter", "Type", "Description"
    
    "name", "string", ""
-   "replicas", "int", "the number replica of data partition and meta partition"
-   "type", "string", "the type of data partition,now only support extent type"
-   "randomWrite", "bool", "true is the file in the data partition can be modified"
    "capacity", "int", "the quota of vol,unit is GB"
 
 Delete
