@@ -41,7 +41,7 @@ response
 
 
 Decommission
----------
+-------------
 
 .. code-block:: bash
 
