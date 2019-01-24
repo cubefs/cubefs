@@ -25,12 +25,14 @@ import (
 	"net"
 )
 
+// ExtentReader defines the struct of the extent reader.
 type ExtentReader struct {
 	inode uint64
 	key   *proto.ExtentKey
 	dp    *wrapper.DataPartition
 }
 
+// NewExtentReader returns a new extent reader.
 func NewExtentReader(inode uint64, key *proto.ExtentKey, dp *wrapper.DataPartition) *ExtentReader {
 	return &ExtentReader{
 		inode: inode,
@@ -39,11 +41,13 @@ func NewExtentReader(inode uint64, key *proto.ExtentKey, dp *wrapper.DataPartiti
 	}
 }
 
+// String returns the string format of the extent reader.
 func (reader *ExtentReader) String() (m string) {
 	return fmt.Sprintf("inode (%v) extentKey(%v)", reader.inode,
 		reader.key.Marshal())
 }
 
+// Read reads the extent request.
 func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) {
 	offset := req.FileOffset - int(reader.key.FileOffset) + int(reader.key.ExtentOffset)
 	size := req.Size
@@ -92,7 +96,7 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 
 func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet) (err error) {
 	if reply.ResultCode == proto.OpNotLeaderErr {
-		return NotLeaderError
+		return NotALeaderError
 	}
 
 	if reply.ResultCode != proto.OpOk {
