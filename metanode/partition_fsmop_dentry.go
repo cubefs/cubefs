@@ -30,7 +30,8 @@ func NewResponseDentry() *ResponseDentry {
 }
 
 // CreateDentry insert dentry into dentry tree.
-func (mp *metaPartition) fsmCreateDentry(dentry *Dentry) (status uint8) {
+func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
+	forceUpdate bool) (status uint8) {
 	status = proto.OpOk
 	// check inode
 	inoItem := mp.inodeTree.Get(NewInode(dentry.ParentId, 0))
@@ -43,9 +44,11 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry) (status uint8) {
 		status = proto.OpArgMismatchErr
 		return
 	}
-	if ino.GetNLink() < 2 {
-		status = proto.OpNotPerm
-		return
+	if !forceUpdate {
+		if ino.GetNLink() < 2 {
+			status = proto.OpNotPerm
+			return
+		}
 	}
 	if item, ok := mp.dentryTree.ReplaceOrInsert(dentry, false); !ok {
 		status = proto.OpExistErr

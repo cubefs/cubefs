@@ -163,7 +163,7 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 			err = errors.Errorf("[loadDentry] Unmarshal: %s", err.Error())
 			return
 		}
-		if mp.fsmCreateDentry(dentry) != proto.OpOk {
+		if mp.fsmCreateDentry(dentry, true) != proto.OpOk {
 			err = errors.Errorf("[loadDentry]->%s", err.Error())
 			return
 		}

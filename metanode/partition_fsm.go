@@ -86,7 +86,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmCreateDentry(den)
+		resp = mp.fsmCreateDentry(den, false)
 	case opFSMDeleteDentry:
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
