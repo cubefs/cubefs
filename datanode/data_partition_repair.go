@@ -461,14 +461,6 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	if localExtentInfo.Size >= remoteExtentInfo.Size {
 		return nil
 	}
-	if !storage.IsTinyExtent(remoteExtentInfo.FileID) {
-		if localExtentInfo.Size <= util.BlockSize {
-			localExtentInfo.Size = 0
-		} else {
-			localExtentInfo.Size = localExtentInfo.Size - util.BlockSize
-		}
-	}
-
 	// size difference between the local extent and the remote extent
 	sizeDiff := remoteExtentInfo.Size - localExtentInfo.Size
 	// create a new streaming read packet
