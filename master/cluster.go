@@ -33,6 +33,7 @@ type Cluster struct {
 	metaNodes           sync.Map
 	dpMutex             sync.Mutex   // data partition mutex
 	volMutex            sync.RWMutex // volume mutex
+	createVolMutex      sync.RWMutex // create volume mutex
 	mnMutex             sync.RWMutex // meta node mutex
 	dnMutex             sync.RWMutex // data node mutex
 	leaderInfo          *LeaderInfo
@@ -808,6 +809,8 @@ func (c *Cluster) createVol(name string, size, capacity int) (vol *Vol, err erro
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
 	)
+	c.createVolMutex.Lock()
+	defer c.createVolMutex.Unlock()
 	if size == 0 {
 		dataPartitionSize = util.DefaultDataPartitionSize
 	} else {

@@ -802,6 +802,10 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 			log.LogErrorf("action[loadMetaPartitions] err:%v", err1.Error())
 			continue
 		}
+		if vol.ID != mpv.VolID {
+			Warn(c.Name, fmt.Sprintf("action[loadMetaPartitions] has duplicate vol[%v],vol.ID[%v],mpv.VolID[%v]", mpv.VolName, vol.ID, mpv.VolID))
+			continue
+		}
 		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, vol.Name, mpv.VolID)
 		mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
 		mp.setPeers(mpv.Peers)
@@ -827,6 +831,10 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		vol, err1 := c.getVol(dpv.VolName)
 		if err1 != nil {
 			log.LogErrorf("action[loadDataPartitions] err:%v", err1.Error())
+			continue
+		}
+		if vol.ID != dpv.VolID {
+			Warn(c.Name, fmt.Sprintf("action[loadDataPartitions] has duplicate vol[%v],vol.ID[%v],mpv.VolID[%v]", dpv.VolName, vol.ID, dpv.VolID))
 			continue
 		}
 		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID)
