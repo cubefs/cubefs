@@ -3,7 +3,7 @@
     "listen": "9021",
     "prof": "9092",
     "logLevel": "debug",
-    "metaDir": "/export/Data/bdfs/metanode_meta",
+    "metadataDir": "/export/Data/bdfs/metanode_meta",
     "logDir": "/export/Logs/bdfs",
     "raftDir": "/export/Data/bdfs/metanode_raft",
     "raftHeartbeatPort": "9093",
