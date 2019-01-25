@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,13 +27,14 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 )
 
+// Dir defines the structure of a directory
 type Dir struct {
 	super  *Super
 	inode  *Inode
 	dcache *DentryCache
 }
 
-//functions that Dir needs to implement
+// Functions that Dir needs to implement
 var (
 	_ fs.Node                = (*Dir)(nil)
 	_ fs.NodeCreater         = (*Dir)(nil)
@@ -52,6 +53,7 @@ var (
 	_ fs.NodeRemovexattrer   = (*Dir)(nil)
 )
 
+// NewDir returns a new directory.
 func NewDir(s *Super, i *Inode) *Dir {
 	return &Dir{
 		super: s,
@@ -59,6 +61,7 @@ func NewDir(s *Super, i *Inode) *Dir {
 	}
 }
 
+// Attr set the attributes of a directory.
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	ino := d.inode.ino
 	inode, err := d.super.InodeGet(ino)
@@ -71,6 +74,7 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	return nil
 }
 
+// Create handles the create request.
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 	var flag uint32
 
@@ -98,6 +102,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	return child, child, nil
 }
 
+// Forget is called when the evict is invoked from the kernel.
 func (d *Dir) Forget() {
 	ino := d.inode.ino
 	defer func() {
@@ -113,6 +118,7 @@ func (d *Dir) Forget() {
 	}
 }
 
+// Mkdir handles the mkdir request.
 func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
 	start := time.Now()
 	info, err := d.super.mw.Create_ll(d.inode.ino, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), nil)
@@ -130,6 +136,7 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	return child, nil
 }
 
+// Remove handles the remove request.
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	start := time.Now()
 	d.dcache.Delete(req.Name)
@@ -154,6 +161,7 @@ func (d *Dir) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
 	return nil
 }
 
+// Lookup handles the lookup request.
 func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
 	var (
 		ino uint64
@@ -191,6 +199,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	return child, nil
 }
 
+// ReadDirAll gets all the dentries in a directory and puts them into the cache.
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	start := time.Now()
 	children, err := d.super.mw.ReadDir_ll(d.inode.ino)
@@ -206,7 +215,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	for _, child := range children {
 		dentry := fuse.Dirent{
 			Inode: child.Inode,
-			Type:  ParseMode(child.Type),
+			Type:  ParseType(child.Type),
 			Name:  child.Name,
 		}
 		inodes = append(inodes, child.Inode)
@@ -225,6 +234,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	return dirents, nil
 }
 
+// Rename handles the rename request.
 func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Node) error {
 	dstDir, ok := newDir.(*Dir)
 	if !ok {
@@ -244,6 +254,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	return nil
 }
 
+// Setattr handles the setattr request.
 func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
 	ino := d.inode.ino
 	start := time.Now()
@@ -268,6 +279,7 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 	return nil
 }
 
+// Symlink handles the symlink request.
 func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, error) {
 	parentIno := d.inode.ino
 	start := time.Now()
@@ -286,6 +298,7 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 	return child, nil
 }
 
+// Link handles the link request.
 func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.Node, error) {
 	var oldInode *Inode
 	switch old := old.(type) {
@@ -317,18 +330,22 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 	return newFile, nil
 }
 
+// Getxattr has not been implemented yet.
 func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
 	return fuse.ENOSYS
 }
 
+// Listxattr has not been implemented yet.
 func (d *Dir) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
 	return fuse.ENOSYS
 }
 
+// Setxattr has not been implemented yet.
 func (d *Dir) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 	return fuse.ENOSYS
 }
 
+// Removexattr has not been implemented yet.
 func (d *Dir) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
 	return fuse.ENOSYS
 }

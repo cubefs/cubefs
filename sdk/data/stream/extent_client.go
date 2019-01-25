@@ -43,6 +43,7 @@ var (
 	evictRequestPool   *sync.Pool
 )
 
+// ExtentClient defines the struct of the extent client.
 type ExtentClient struct {
 	streamers       map[uint64]*Streamer
 	streamerLock    sync.Mutex
@@ -53,6 +54,7 @@ type ExtentClient struct {
 	release         ReleaseFunc
 }
 
+// NewExtentClient returns a new extent client.
 func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc, truncate TruncateFunc, open OpenFunc, release ReleaseFunc) (client *ExtentClient, err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	client = new(ExtentClient)
@@ -128,6 +130,7 @@ func (client *ExtentClient) EvictStream(inode uint64) error {
 	return nil
 }
 
+// RefreshExtentsCache refreshes the extent cache.
 func (client *ExtentClient) RefreshExtentsCache(inode uint64) error {
 	s := client.GetStreamer(inode)
 	if s == nil {
@@ -136,7 +139,8 @@ func (client *ExtentClient) RefreshExtentsCache(inode uint64) error {
 	return s.GetExtents()
 }
 
-func (client *ExtentClient) GetFileSize(inode uint64) (size int, gen uint64) {
+// FileSize returns the file size.
+func (client *ExtentClient) FileSize(inode uint64) (size int, gen uint64) {
 	s := client.GetStreamer(inode)
 	if s == nil {
 		return
@@ -144,6 +148,7 @@ func (client *ExtentClient) GetFileSize(inode uint64) (size int, gen uint64) {
 	return s.extents.Size()
 }
 
+// SetFileSize set the file size.
 func (client *ExtentClient) SetFileSize(inode uint64, size int) {
 	s := client.GetStreamer(inode)
 	if s != nil {
@@ -152,6 +157,7 @@ func (client *ExtentClient) SetFileSize(inode uint64, size int) {
 	}
 }
 
+// Write writes the data.
 func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write int, err error) {
 	prefix := fmt.Sprintf("Write{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
 
@@ -161,6 +167,7 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write 
 	}
 
 	s.once.Do(func() {
+		// TODO unhandled error
 		s.GetExtents()
 	})
 
@@ -168,7 +175,7 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte) (write 
 	if err != nil {
 		err = errors.Annotatef(err, prefix)
 		log.LogError(errors.ErrorStack(err))
-		exporter.Alarm(gDataWrapper.WarningKey(), err.Error())
+		exporter.Alarm(gDataWrapper.WarningMsg(), err.Error())
 	}
 	return
 }
@@ -220,6 +227,7 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 	return
 }
 
+// GetStreamer returns the streamer.
 func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 	client.streamerLock.Lock()
 	defer client.streamerLock.Unlock()

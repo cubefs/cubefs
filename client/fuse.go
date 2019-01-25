@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ package main
 // Usage: ./client -c fuse.json &
 //
 // Default mountpoint is specified in fuse.json, which is "/mnt".
-// Therefore operations to "/mnt" are routed to the baudstorage.
 //
 
 import (
@@ -81,6 +80,7 @@ func main() {
 	fmt.Println("Done!")
 }
 
+// Mount mounts the volume.
 func Mount(cfg *config.Config) (err error) {
 	mnt := cfg.GetString("mountpoint")
 	volname := cfg.GetString("volname")
@@ -117,6 +117,7 @@ func Mount(cfg *config.Config) (err error) {
 	if err != nil {
 		return err
 	}
+
 	defer c.Close()
 
 	go func() {
@@ -133,6 +134,7 @@ func Mount(cfg *config.Config) (err error) {
 	return c.MountError
 }
 
+// ParseConfigString returns the value of the given key in the config.
 func ParseConfigString(cfg *config.Config, keyword string) int64 {
 	var ret int64 = -1
 	rawstr := cfg.GetString(keyword)
@@ -146,6 +148,7 @@ func ParseConfigString(cfg *config.Config, keyword string) int64 {
 	return ret
 }
 
+// ParseLogLevel returns the log level based on the given string.
 func ParseLogLevel(loglvl string) log.Level {
 	var level log.Level
 	switch strings.ToLower(loglvl) {

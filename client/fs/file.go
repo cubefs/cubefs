@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,13 +28,14 @@ import (
 	"sync"
 )
 
+// File defines the structure of a file.
 type File struct {
 	super *Super
 	inode *Inode
 	sync.RWMutex
 }
 
-//functions that File needs to implement
+// Functions that File needs to implement
 var (
 	_ fs.Node              = (*File)(nil)
 	_ fs.Handle            = (*File)(nil)
@@ -53,10 +54,12 @@ var (
 	_ fs.NodeRemovexattrer = (*File)(nil)
 )
 
+// NewFile returns a new file.
 func NewFile(s *Super, i *Inode) *File {
 	return &File{super: s, inode: i}
 }
 
+// Attr sets the attributes of a file.
 func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	ino := f.inode.ino
 	inode, err := f.super.InodeGet(ino)
@@ -66,7 +69,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	}
 
 	inode.fillAttr(a)
-	fileSize, gen := f.super.ec.GetFileSize(ino)
+	fileSize, gen := f.super.ec.FileSize(ino)
 	log.LogDebugf("Attr: ino(%v) fileSize(%v) gen(%v) inode.gen(%v)", ino, fileSize, gen, inode.gen)
 	if gen >= inode.gen {
 		a.Size = uint64(fileSize)
@@ -76,6 +79,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	return nil
 }
 
+// Forget evicts the inode of the current file. This can only happen when the inode is on the orphan list.
 func (f *File) Forget() {
 	ino := f.inode.ino
 	defer func() {
@@ -96,6 +100,7 @@ func (f *File) Forget() {
 	}
 }
 
+// Open handles the open request.
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
 	var flag uint32
 
@@ -116,6 +121,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	return f, nil
 }
 
+// Release handles the release request.
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
 	var flag uint32
 
@@ -141,6 +147,7 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 	return nil
 }
 
+// Read handles the read request.
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
 	log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) reqsize(%v) req(%v)", f.inode.ino, req.Offset, req.Size, req)
 	start := time.Now()
@@ -165,10 +172,11 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	return nil
 }
 
+// Write handles the write request.
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) (err error) {
 	ino := f.inode.ino
 	reqlen := len(req.Data)
-	filesize, _ := f.super.ec.GetFileSize(ino)
+	filesize, _ := f.super.ec.FileSize(ino)
 
 	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v) filesize(%v) flags(%v) fileflags(%v) req(%v)", ino, req.Offset, reqlen, filesize, req.Flags, req.FileFlags, req)
 
@@ -215,10 +223,12 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	return nil
 }
 
+// Flush has not been implemented.
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	return fuse.ENOSYS
 }
 
+// Fsync hanldes the fsync request.
 func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	log.LogDebugf("TRACE Fsync enter: ino(%v)", f.inode.ino)
 	start := time.Now()
@@ -233,6 +243,7 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	return nil
 }
 
+// Setattr handles the setattr request.
 func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
 	ino := f.inode.ino
 	start := time.Now()
@@ -276,6 +287,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	return nil
 }
 
+// Readlink handles the readlink request.
 func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string, error) {
 	ino := f.inode.ino
 	inode, err := f.super.InodeGet(ino)
@@ -287,18 +299,22 @@ func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string,
 	return string(inode.target), nil
 }
 
+// Getxattr has not been implemented yet.
 func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
 	return fuse.ENOSYS
 }
 
+// Listxattr has not been implemented yet.
 func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
 	return fuse.ENOSYS
 }
 
+// Setxattr has not been implemented yet.
 func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 	return fuse.ENOSYS
 }
 
+// Removexattr has not been implemented yet.
 func (f *File) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
 	return fuse.ENOSYS
 }

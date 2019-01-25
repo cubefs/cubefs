@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,10 +34,11 @@ const (
 
 const (
 	DefaultInodeExpiration = 120 * time.Second
-	MaxInodeCache          = 10000000
+	MaxInodeCache          = 10000000 // in terms of the number of items
 )
 
 const (
+	// the expiration duration of the dentry in the cache (used internally)
 	DentryValidDuration = 5 * time.Second
 )
 
@@ -46,10 +47,14 @@ const (
 )
 
 var (
+	// The following two are used in the FUSE cache
+	// every time the lookup will be performed on the fly, and the result will not be cached
 	LookupValidDuration = 0 * time.Second
+	// the expiration duration of the attributes in the FUSE cache
 	AttrValidDuration   = 30 * time.Second
 )
 
+// ParseError returns the error type.
 func ParseError(err error) fuse.Errno {
 	switch v := err.(type) {
 	case syscall.Errno:
@@ -61,10 +66,11 @@ func ParseError(err error) fuse.Errno {
 	}
 }
 
-func ParseMode(mode uint32) fuse.DirentType {
-	if proto.IsDir(mode) {
+// ParseType returns the dentry type.
+func ParseType(t uint32) fuse.DirentType {
+	if proto.IsDir(t) {
 		return fuse.DT_Dir
-	} else if proto.IsSymlink(mode) {
+	} else if proto.IsSymlink(t) {
 		return fuse.DT_Link
 	}
 	return fuse.DT_File

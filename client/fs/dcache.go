@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,12 +19,14 @@ import (
 	"time"
 )
 
+// DentryCache defines the dentry cache.
 type DentryCache struct {
 	sync.Mutex
 	cache      map[string]uint64
 	expiration time.Time
 }
 
+// NewDentryCache returns a new dentry cache.
 func NewDentryCache() *DentryCache {
 	return &DentryCache{
 		cache:      make(map[string]uint64),
@@ -32,6 +34,7 @@ func NewDentryCache() *DentryCache {
 	}
 }
 
+// Put puts an item into the cache.
 func (dc *DentryCache) Put(name string, ino uint64) {
 	if dc == nil {
 		return
@@ -42,6 +45,7 @@ func (dc *DentryCache) Put(name string, ino uint64) {
 	dc.expiration = time.Now().Add(DentryValidDuration)
 }
 
+// Get gets the item from the cache based on the given key.
 func (dc *DentryCache) Get(name string) (uint64, bool) {
 	if dc == nil {
 		return 0, false
@@ -57,6 +61,7 @@ func (dc *DentryCache) Get(name string) (uint64, bool) {
 	return ino, ok
 }
 
+// Delete deletes the item based on the given key.
 func (dc *DentryCache) Delete(name string) {
 	if dc == nil {
 		return
