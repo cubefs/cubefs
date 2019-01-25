@@ -37,20 +37,25 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 		log.LogDebugf("[startSchedule] partitionId=%d: nowAppID"+
 			"=%d, applyID=%d", mp.config.PartitionId, curIndex,
 			msg.applyIndex)
-		if err := mp.store(msg); err != nil {
-			// retry
+		if err := mp.store(msg); err == nil {
+			// truncate raft log
+			if mp.raftPartition != nil {
+				mp.raftPartition.Truncate(curIndex)
+			} else {
+				// maybe happen when start load dentry
+				log.LogWarnf("[startSchedule] raftPartition is nil so skip" +
+					" truncate raft log")
+			}
+			curIndex = msg.applyIndex
+		} else {
+			// retry again
 			mp.storeChan <- msg
-			err = errors.Errorf(
-				"[startSchedule]: dump partition id=%d: %v",
+			err = errors.Errorf("[startSchedule]: dump partition id=%d: %v",
 				mp.config.PartitionId, err.Error())
 			log.LogErrorf(err.Error())
 			exporter.Alarm(exporterKey, err.Error())
-		} else {
-			curIndex = msg.applyIndex
 		}
 
-		// Truncate raft log
-		mp.raftPartition.Truncate(curIndex)
 		if _, ok := mp.IsLeader(); ok {
 			timer.Reset(intervalToPersistData)
 		}
@@ -72,17 +77,23 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				return
 
 			case <-readyChan:
-				idx := -1
-				for i, msg := range msgs {
+				var (
+					maxIdx uint64
+					maxMsg *storeMsg
+				)
+				for _, msg := range msgs {
 					if curIndex >= msg.applyIndex {
 						continue
 					}
-					idx = i
+					if maxIdx < msg.applyIndex {
+						maxIdx = msg.applyIndex
+						maxMsg = msg
+					}
 				}
-				if idx >= 0 {
-					go dumpFunc(msgs[idx])
+				if maxMsg != nil {
+					go dumpFunc(maxMsg)
 				}
-				msgs = nil
+				msgs = msgs[:0]
 			case msg := <-mp.storeChan:
 				switch msg.command {
 				case startStoreTick:
@@ -98,8 +109,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					continue
 				}
 				if _, err := mp.Put(opFSMStoreTick, nil); err != nil {
-					log.LogErrorf("[startSchedule] raft submit: %s",
-						err.Error())
+					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 					if _, ok := mp.IsLeader(); ok {
 						timer.Reset(intervalToPersistData)
 					}
