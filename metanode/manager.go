@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,23 +37,23 @@ import (
 
 const partitionPrefix = "partition_"
 
-// MetaManager manage all metaPartition and make mapping between volName and
-// metaPartition.
-type MetaManager interface {
+// MetadataManager manages all the meta partitions.
+type MetadataManager interface {
 	Start() error
 	Stop()
 	//CreatePartition(id string, start, end uint64, peers []proto.Peer) error
-	HandleMetaOperation(conn net.Conn, p *Packet) error
+	HandleMetadataOperation(conn net.Conn, p *Packet) error
 	GetPartition(id uint64) (MetaPartition, error)
 }
 
-type MetaManagerConfig struct {
+// MetadataManagerConfig defines the configures in the metadata manager.
+type MetadataManagerConfig struct {
 	NodeID    uint64
 	RootDir   string
 	RaftStore raftstore.RaftStore
 }
 
-type metaManager struct {
+type metadataManager struct {
 	nodeId     uint64
 	rootDir    string
 	raftStore  raftstore.RaftStore
@@ -63,7 +63,8 @@ type metaManager struct {
 	partitions map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
 }
 
-func (m *metaManager) HandleMetaOperation(conn net.Conn, p *Packet) (err error) {
+// HandleMetadataOperation handles the metadata operations.
+func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet) (err error) {
 	metric := exporter.RegistTp(p.GetOpMsg())
 	defer metric.CalcTp()
 
@@ -79,7 +80,7 @@ func (m *metaManager) HandleMetaOperation(conn net.Conn, p *Packet) (err error) 
 	case proto.OpMetaEvictInode:
 		err = m.opMetaEvictInode(conn, p)
 	case proto.OpMetaSetattr:
-		err = m.opSetattr(conn, p)
+		err = m.opSetAttr(conn, p)
 	case proto.OpMetaCreateDentry:
 		err = m.opCreateDentry(conn, p)
 	case proto.OpMetaDeleteDentry:
@@ -113,7 +114,7 @@ func (m *metaManager) HandleMetaOperation(conn net.Conn, p *Packet) (err error) 
 	case proto.OpLoadMetaPartition:
 		err = m.opLoadMetaPartition(conn, p)
 	case proto.OpDecommissionMetaPartition:
-		err = m.opOfflineMetaPartition(conn, p)
+		err = m.opDecommissionMetaPartition(conn, p)
 	case proto.OpMetaBatchInodeGet:
 		err = m.opMetaBatchInodeGet(conn, p)
 	case proto.OpPing:
@@ -127,7 +128,8 @@ func (m *metaManager) HandleMetaOperation(conn net.Conn, p *Packet) (err error) 
 	return
 }
 
-func (m *metaManager) Start() (err error) {
+// Start starts the metadata manager.
+func (m *metadataManager) Start() (err error) {
 	if atomic.CompareAndSwapUint32(&m.state, StateStandby, StateStart) {
 		defer func() {
 			var newState uint32
@@ -143,20 +145,23 @@ func (m *metaManager) Start() (err error) {
 	return
 }
 
-func (m *metaManager) Stop() {
+// Stop stops the metadata manager.
+func (m *metadataManager) Stop() {
 	if atomic.CompareAndSwapUint32(&m.state, StateRunning, StateShutdown) {
 		defer atomic.StoreUint32(&m.state, StateStopped)
 		m.onStop()
 	}
 }
 
-func (m *metaManager) onStart() (err error) {
+// onStart creates the connection pool and loads the partitions.
+func (m *metadataManager) onStart() (err error) {
 	m.connPool = util.NewConnectPool()
 	err = m.loadPartitions()
 	return
 }
 
-func (m *metaManager) onStop() {
+// onStop stops each meta partitions.
+func (m *metadataManager) onStop() {
 	if m.partitions != nil {
 		for _, partition := range m.partitions {
 			partition.Stop()
@@ -165,9 +170,8 @@ func (m *metaManager) onStop() {
 	return
 }
 
-// LoadMetaPartition returns metaPartition with specified volName if the mapping
-// exist or report an error.
-func (m *metaManager) getPartition(id uint64) (mp MetaPartition, err error) {
+// LoadMetaPartition returns the meta partition with the specified volName.
+func (m *metadataManager) getPartition(id uint64) (mp MetaPartition, err error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	mp, ok := m.partitions[id]
@@ -178,10 +182,8 @@ func (m *metaManager) getPartition(id uint64) (mp MetaPartition, err error) {
 	return
 }
 
-// Load meta manager snapshot from data file and restore all  meta range
-// into this meta range manager.
-func (m *metaManager) loadPartitions() (err error) {
-	// Check metaDir directory
+func (m *metadataManager) loadPartitions() (err error) {
+	// Check metadataDir directory
 	fileInfo, err := os.Stat(m.rootDir)
 	if err != nil {
 		os.MkdirAll(m.rootDir, 0755)
@@ -189,10 +191,10 @@ func (m *metaManager) loadPartitions() (err error) {
 		return
 	}
 	if !fileInfo.IsDir() {
-		err = errors.New("metaDir must be directory")
+		err = errors.New("metadataDir must be directory")
 		return
 	}
-	// Scan data directory.
+	// scan the data directory
 	fileInfoList, err := ioutil.ReadDir(m.rootDir)
 	if err != nil {
 		return
@@ -236,12 +238,13 @@ func (m *metaManager) loadPartitions() (err error) {
 					ConnPool:  m.connPool,
 				}
 				partitionConfig.AfterStop = func() {
+					// TODO Unhandled errors
 					m.detachPartition(id)
 				}
 				// check snapshot dir or backup
-				snapshotDir := path.Join(partitionConfig.RootDir, snapShotDir)
+				snapshotDir := path.Join(partitionConfig.RootDir, snapshotDir)
 				if _, err = os.Stat(snapshotDir); err != nil {
-					backupDir := path.Join(partitionConfig.RootDir, snapShotBackup)
+					backupDir := path.Join(partitionConfig.RootDir, snapshotBackup)
 					if _, err = os.Stat(backupDir); err == nil {
 						if err = os.Rename(backupDir, snapshotDir); err != nil {
 							err = errors.Annotate(err,
@@ -265,7 +268,7 @@ func (m *metaManager) loadPartitions() (err error) {
 	return
 }
 
-func (m *metaManager) attachPartition(id uint64, partition MetaPartition) (err error) {
+func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (err error) {
 	if err = partition.Start(); err != nil {
 		return
 	}
@@ -276,7 +279,7 @@ func (m *metaManager) attachPartition(id uint64, partition MetaPartition) (err e
 	return
 }
 
-func (m *metaManager) detachPartition(id uint64) (err error) {
+func (m *metadataManager) detachPartition(id uint64) (err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, has := m.partitions[id]; has {
@@ -287,16 +290,16 @@ func (m *metaManager) detachPartition(id uint64) (err error) {
 	return
 }
 
-func (m *metaManager) createPartition(id uint64, volName string, start,
+func (m *metadataManager) createPartition(id uint64, volName string, start,
 	end uint64, peers []proto.Peer) (err error) {
-	/* Check Partition */
+	// check partitions
 	if _, err = m.getPartition(id); err == nil {
 		err = errors.Errorf("create partition id=%d is exsited!", id)
 		return
 	}
 	err = nil
-	/* Create metaPartition and add metaManager */
-	partId := fmt.Sprintf("%d", id)
+	partitionId := fmt.Sprintf("%d", id)
+
 	mpc := &MetaPartitionConfig{
 		PartitionId: id,
 		VolName:     volName,
@@ -306,18 +309,20 @@ func (m *metaManager) createPartition(id uint64, volName string, start,
 		Peers:       peers,
 		RaftStore:   m.raftStore,
 		NodeId:      m.nodeId,
-		RootDir:     path.Join(m.rootDir, partitionPrefix+partId),
+		RootDir:     path.Join(m.rootDir, partitionPrefix + partitionId),
 		ConnPool:    m.connPool,
 	}
 	mpc.AfterStop = func() {
+		// TODO Unhandled errors
 		m.detachPartition(id)
 	}
 	partition := NewMetaPartition(mpc)
-	if err = partition.StoreMeta(); err != nil {
+	if err = partition.PersistMetadata(); err != nil {
 		err = errors.Errorf("[createPartition]->%s", err.Error())
 		return
 	}
 	if err = m.attachPartition(id, partition); err != nil {
+		// TODO Unhandled errors
 		os.RemoveAll(mpc.RootDir)
 		err = errors.Errorf("[createPartition]->%s", err.Error())
 		return
@@ -325,12 +330,14 @@ func (m *metaManager) createPartition(id uint64, volName string, start,
 	return
 }
 
-func (m *metaManager) deletePartition(id uint64) (err error) {
+func (m *metadataManager) deletePartition(id uint64) (err error) {
+	// TODO Unhandled errors
 	m.detachPartition(id)
 	return
 }
 
-func (m *metaManager) Range(f func(i uint64, p MetaPartition) bool) {
+// Range scans all the meta partitions.
+func (m *metadataManager) Range(f func(i uint64, p MetaPartition) bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for k, v := range m.partitions {
@@ -340,20 +347,22 @@ func (m *metaManager) Range(f func(i uint64, p MetaPartition) bool) {
 	}
 }
 
-func (m *metaManager) GetPartition(id uint64) (mp MetaPartition, err error) {
+// GetPartition returns the meta partition with the given ID.
+func (m *metadataManager) GetPartition(id uint64) (mp MetaPartition, err error) {
 	mp, err = m.getPartition(id)
 	return
 }
 
-// PartitionsMarshalJSON only marshal base information of every partition
-func (m *metaManager) MarshalJSON() (data []byte, err error) {
+// MarshalJSON only marshals the base information of every partition.
+func (m *metadataManager) MarshalJSON() (data []byte, err error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return json.Marshal(m.partitions)
 }
 
-func NewMetaManager(conf MetaManagerConfig) MetaManager {
-	return &metaManager{
+// NewMetadataManager returns a new metadata manager.
+func NewMetadataManager(conf MetadataManagerConfig) MetadataManager {
+	return &metadataManager{
 		nodeId:     conf.NodeID,
 		rootDir:    conf.RootDir,
 		raftStore:  conf.RaftStore,

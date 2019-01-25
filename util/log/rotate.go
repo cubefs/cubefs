@@ -24,9 +24,10 @@ const (
 	DefaultHeadRatio = 0.2
 )
 
+// A log can be rotated by the size or time.
 type LogRotate struct {
-	rollingSize int64
-	headRoom    int64
+	rollingSize int64 // the size of the rotated log // TODO we should either call rotate or rolling, but not both.
+	headRoom    int64 // capacity reserved for writing the next log on the disk
 }
 
 func NewLogRotate() *LogRotate {

@@ -21,6 +21,7 @@ import (
 
 	"bytes"
 	"github.com/tiglabs/containerfs/proto"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 // APIResponse defines the structure of the response to an HTTP request
@@ -30,6 +31,7 @@ type APIResponse struct {
 	Data interface{} `json:"data, omitempty"`
 }
 
+// NewAPIResponse returns a new API response.
 func NewAPIResponse(code int, msg string) *APIResponse {
 	return &APIResponse{
 		Code: code,
@@ -49,39 +51,40 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getInode", m.getInodeHandler)
 	http.HandleFunc("/getInodeAuth", m.getInodeAuth)
 	http.HandleFunc("/getExtentsByInode", m.getExtentsByInodeHandler)
-	// Get all inodes of the partitionID
-	http.HandleFunc("/getAllInodes", m.getAllInodeHandler)
-	// Get dentry information
+	// get all inodes of the partitionID
+	http.HandleFunc("/getAllInodes", m.getAllInodesHandler)
+	// get dentry information
 	http.HandleFunc("/getDentry", m.getDentryHandler)
 	http.HandleFunc("/getDirectory", m.getDirectoryHandler)
-	http.HandleFunc("/getAllDentry", m.getAllDentryHandler)
+	http.HandleFunc("/getAllDentry", m.getAllDentriesHandler)
 	return
 }
 
-// 获取全部的元数据分片基本信息接口
 func (m *MetaNode) getPartitionsHandler(w http.ResponseWriter,
 	r *http.Request) {
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
-	resp.Data = m.metaManager
+	resp.Data = m.metadataManager
 	data, _ := resp.Marshal()
-	w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		log.LogErrorf("[getPartitionsHandler] response %s", err)
+	}
 }
 
-// 获取指定分片ID的元数据当前状态信息（包含leader状态)
-func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter,
-	r *http.Request) {
+func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
-		w.Write(data)
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getPartitionByIDHandler] response %s", err)
+		}
 	}()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
 		resp.Msg = err.Error()
 		return
 	}
-	mp, err := m.metaManager.GetPartition(pid)
+	mp, err := m.metadataManager.GetPartition(pid)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
@@ -99,15 +102,17 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter,
 	resp.Msg = http.StatusText(http.StatusOK)
 }
 
-// 获取某个分片的全部Inode信息
-func (m *MetaNode) getAllInodeHandler(w http.ResponseWriter, r *http.Request) {
+func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
+	// when error returns we should scan (ascend) the tree.
 	shouldSkip := false
 	defer func() {
 		if !shouldSkip {
 			data, _ := resp.Marshal()
-			w.Write(data)
+			if _, err := w.Write(data); err != nil {
+				log.LogErrorf("[getAllInodesHandler] response %s", err)
+			}
 		}
 	}()
 	id, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
@@ -115,12 +120,13 @@ func (m *MetaNode) getAllInodeHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Msg = err.Error()
 		return
 	}
-	mp, err := m.metaManager.GetPartition(id)
+	mp, err := m.metadataManager.GetPartition(id)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
 		return
 	}
+
 	shouldSkip = true
 	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":[`)
 	if _, err := w.Write(buff.Bytes()); err != nil {
@@ -128,17 +134,19 @@ func (m *MetaNode) getAllInodeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	buff.Reset()
 	var (
-		val     []byte
-		delim   = []byte{',', '\n'}
-		isFirst = true
+		val         []byte
+		delimiter   = []byte{',', '\n'}
+		isFirstItem = true
 	)
 	f := func(i BtreeItem) bool {
-		if !isFirst {
-			w.Write(delim)
+		if !isFirstItem {
+			if _, err = w.Write(delimiter); err != nil {
+				return false
+			}
+		} else {
+			isFirstItem = false
 		}
-		if isFirst {
-			isFirst = false
-		}
+
 		ino := i.(*Inode)
 		if val, err = ino.MarshalToJSON(); err != nil {
 			return false
@@ -154,16 +162,19 @@ func (m *MetaNode) getAllInodeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	mp.GetInodeTree().Ascend(f)
 	buff.WriteString(`]}`)
-	w.Write(buff.Bytes())
+	if _, err = w.Write(buff.Bytes()); err != nil {
+		log.LogErrorf("[getAllInodesHandler] response %s", err)
+	}
 }
 
-// 获取某个Inode的信息
 func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
-		w.Write(data)
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getInodeHandler] response %s", err)
+		}
 	}()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
@@ -175,7 +186,7 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Msg = err.Error()
 		return
 	}
-	mp, err := m.metaManager.GetPartition(pid)
+	mp, err := m.metadataManager.GetPartition(pid)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
@@ -198,14 +209,15 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-// 获取某个Inode的Extents信息
 func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
 	r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
-		w.Write(data)
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getExtentsByInodeHandler] response %s", err)
+		}
 	}()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
@@ -217,7 +229,7 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
 		resp.Msg = err.Error()
 		return
 	}
-	mp, err := m.metaManager.GetPartition(pid)
+	mp, err := m.metadataManager.GetPartition(pid)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
@@ -239,14 +251,15 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
 	return
 }
 
-// 获取某个目录或文件信息
 func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	name := r.FormValue("name")
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
-		w.Write(data)
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getDentryHandler] response %s", err)
+		}
 	}()
 	var (
 		pid  uint64
@@ -261,7 +274,7 @@ func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mp, err := m.metaManager.GetPartition(pid)
+	mp, err := m.metadataManager.GetPartition(pid)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
@@ -286,15 +299,16 @@ func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
-// 获取某个分片下的所有目录和文件信息
-func (m *MetaNode) getAllDentryHandler(w http.ResponseWriter, r *http.Request) {
+func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusSeeOther, "")
 	shouldSkip := false
 	defer func() {
 		if !shouldSkip {
 			data, _ := resp.Marshal()
-			w.Write(data)
+			if _, err := w.Write(data); err != nil {
+				log.LogErrorf("[getAllDentriesHandler] response %s", err)
+			}
 		}
 	}()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
@@ -303,7 +317,7 @@ func (m *MetaNode) getAllDentryHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Msg = err.Error()
 		return
 	}
-	mp, err := m.metaManager.GetPartition(pid)
+	mp, err := m.metadataManager.GetPartition(pid)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
@@ -315,15 +329,16 @@ func (m *MetaNode) getAllDentryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	buff.Reset()
 	var (
-		val     []byte
-		delim   = []byte{',', '\n'}
-		isFirst = true
+		val       []byte
+		delimiter = []byte{',', '\n'}
+		isFirst   = true
 	)
 	mp.GetDentryTree().Ascend(func(i BtreeItem) bool {
 		if !isFirst {
-			w.Write(delim)
-		}
-		if isFirst {
+			if _, err = w.Write(delimiter); err != nil {
+				return false
+			}
+		} else {
 			isFirst = false
 		}
 		val, err = json.Marshal(i)
@@ -342,16 +357,19 @@ func (m *MetaNode) getAllDentryHandler(w http.ResponseWriter, r *http.Request) {
 	})
 	shouldSkip = true
 	buff.WriteString(`]}`)
-	w.Write(buff.Bytes())
+	if _, err = w.Write(buff.Bytes()); err != nil {
+		log.LogErrorf("[getAllDentriesHandler] response %s", err)
+	}
 	return
 }
 
-// 获取某个目录下的所有文件信息
 func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
-		w.Write(data)
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getDirectoryHandler] response %s", err)
+		}
 	}()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
@@ -365,7 +383,7 @@ func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mp, err := m.metaManager.GetPartition(pid)
+	mp, err := m.metadataManager.GetPartition(pid)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
@@ -403,7 +421,7 @@ func (m *MetaNode) getInodeAuth(w http.ResponseWriter, r *http.Request) {
 		resp.Msg = err.Error()
 		return
 	}
-	mp, err := m.metaManager.GetPartition(pid)
+	mp, err := m.metadataManager.GetPartition(pid)
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()

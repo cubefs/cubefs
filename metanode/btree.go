@@ -22,24 +22,24 @@ import (
 const defaultBTreeDegree = 32
 
 type (
-	// BtreeItem Type alias google btree Item
+	// BtreeItem type alias google btree Item
 	BtreeItem = btree.Item
 )
 
-// wrapper of Google's btree
+// BTree is the wrapper of Google's btree.
 type BTree struct {
 	sync.RWMutex
 	tree *btree.BTree
 }
 
-// NewBtree create a new btree
+// NewBtree creates a new btree.
 func NewBtree() *BTree {
 	return &BTree{
 		tree: btree.New(defaultBTreeDegree),
 	}
 }
 
-// Get returns the object of the given key in the btree
+// Get returns the object of the given key in the btree.
 func (b *BTree) Get(key BtreeItem) (item BtreeItem) {
 	b.RLock()
 	item = b.tree.Get(key)
@@ -47,7 +47,7 @@ func (b *BTree) Get(key BtreeItem) (item BtreeItem) {
 	return
 }
 
-// Find searches for the given key in the btree
+// Find searches for the given key in the btree.
 func (b *BTree) Find(key BtreeItem, fn func(i BtreeItem)) {
 	b.RLock()
 	item := b.tree.Get(key)
@@ -58,7 +58,7 @@ func (b *BTree) Find(key BtreeItem, fn func(i BtreeItem)) {
 	fn(item)
 }
 
-// Has checks if the key exists in the btree
+// Has checks if the key exists in the btree.
 func (b *BTree) Has(key BtreeItem) (ok bool) {
 	b.RLock()
 	ok = b.tree.Has(key)
@@ -66,7 +66,7 @@ func (b *BTree) Has(key BtreeItem) (ok bool) {
 	return
 }
 
-// Delete deletes the object by the given key
+// Delete deletes the object by the given key.
 func (b *BTree) Delete(key BtreeItem) (item BtreeItem) {
 	b.Lock()
 	item = b.tree.Delete(key)
@@ -74,11 +74,8 @@ func (b *BTree) Delete(key BtreeItem) (item BtreeItem) {
 	return
 }
 
-// ReplaceOrInsert wrapper google btree ReplaceOrInsert
-// 通过参数来控制是否在插入新对象时，如果发现Btree中包含此对象后的操作；如果replace设置
-// 为True；则直接替换；否则不替换
-func (b *BTree) ReplaceOrInsert(key BtreeItem, replace bool) (item BtreeItem,
-	ok bool) {
+// ReplaceOrInsert is the wrapper of google's btree ReplaceOrInsert.
+func (b *BTree) ReplaceOrInsert(key BtreeItem, replace bool) (item BtreeItem, ok bool) {
 	b.Lock()
 	if replace {
 		item = b.tree.ReplaceOrInsert(key)
@@ -99,35 +96,30 @@ func (b *BTree) ReplaceOrInsert(key BtreeItem, replace bool) (item BtreeItem,
 	return
 }
 
-// Ascend wrapper google btree Ascend
-// 从头到尾遍历整个Btree，把每个对象逐一的传递给函数
-// 当数据量很大是，尽力不要在线使用整个函数，应该首先
-// 调用GetTree函数，获取一份当前Btree的快照，再在快照
-// 中遍历
+// Ascend is the wrapper of the google's btree Ascend.
+// This function scans the entire btree. When the data is huge, it is not recommended to use this function online.
+// Instead, it is recommended to call GetTree to obtain the snapshot of the current btree, and then do the scan on the snapshot.
 func (b *BTree) Ascend(fn func(i BtreeItem) bool) {
 	b.RLock()
 	b.tree.Ascend(fn)
 	b.RUnlock()
 }
 
-// AscendRange wrapper google btree AscendRange
-// 逐一遍历在[greaterOrEqual, lessThan)之间的对象，并把对象
-// 做为迭代函数的参数
+// AscendRange is the wrapper of the google's btree AscendRange.
 func (b *BTree) AscendRange(greaterOrEqual, lessThan BtreeItem, iterator func(i BtreeItem) bool) {
 	b.RLock()
 	b.tree.AscendRange(greaterOrEqual, lessThan, iterator)
 	b.RUnlock()
 }
 
-// AscendGreaterOrEqual wrapper google btree AscendGreaterOrEqual
-// 逐一遍历在[pivot, end)之间的对象，并把对象做为迭代函数的参数
+// AscendGreaterOrEqual is the wrapper of the google's btree AscendGreaterOrEqual
 func (b *BTree) AscendGreaterOrEqual(pivot BtreeItem, iterator func(i BtreeItem) bool) {
 	b.RLock()
 	b.tree.AscendGreaterOrEqual(pivot, iterator)
 	b.RUnlock()
 }
 
-// GetTree clone btree
+// GetTree returns the snapshot of a btree.
 func (b *BTree) GetTree() *BTree {
 	b.RLock()
 	t := b.tree.Clone()
@@ -137,14 +129,14 @@ func (b *BTree) GetTree() *BTree {
 	return nb
 }
 
-// Reset resets the current btree
+// Reset resets the current btree.
 func (b *BTree) Reset() {
 	b.Lock()
 	b.tree.Clear(false)
 	b.Unlock()
 }
 
-// Len returns the total number of items in the btree
+// Len returns the total number of items in the btree.
 func (b *BTree) Len() (size int) {
 	b.RLock()
 	size = b.tree.Len()
@@ -152,7 +144,7 @@ func (b *BTree) Len() (size int) {
 	return
 }
 
-// MaxItem returns the max item in the btree
+// MaxItem returns the largest item in the btree.
 func (b *BTree) MaxItem() BtreeItem {
 	b.RLock()
 	item := b.tree.Max()

@@ -84,7 +84,7 @@ type asyncWriter struct {
 	buffer      *bytes.Buffer
 	flushTmp    *bytes.Buffer
 	flushC      chan bool
-	rotateDay   chan struct{}
+	rotateDay   chan struct{} // TODO rotateTime?
 	mu          sync.Mutex
 }
 
@@ -134,7 +134,7 @@ func (writer *asyncWriter) flushToFile() {
 	writer.mu.Lock()
 	writer.buffer, writer.flushTmp = writer.flushTmp, writer.buffer
 	writer.mu.Unlock()
-	isRotateDay := false
+	isRotateDay := false // TODO rename?
 	select {
 	case <-writer.rotateDay:
 		isRotateDay = true
@@ -201,7 +201,8 @@ func (ob *LogObject) Flush() {
 	}
 }
 
-func (ob *LogObject) SetRotateByDay() {
+// TODO maybe find a better name?
+func (ob *LogObject) SetRotation() {
 	ob.object.rotateDay <- struct{}{}
 }
 
@@ -358,7 +359,7 @@ func LogInfo(v ...interface{}) {
 	if gLog == nil {
 		return
 	}
-	if InfoLevel&gLog.level != gLog.level {
+	if InfoLevel & gLog.level != gLog.level {
 		return
 	}
 	s := fmt.Sprintln(v...)
@@ -439,6 +440,7 @@ func LogFatal(v ...interface{}) {
 	os.Exit(1)
 }
 
+// LogFatalf logs the fatal errors with specified format.
 func LogFatalf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
@@ -452,6 +454,7 @@ func LogFatalf(format string, v ...interface{}) {
 	os.Exit(1)
 }
 
+// LogRead
 func LogRead(v ...interface{}) {
 	if gLog == nil {
 		return
@@ -468,7 +471,7 @@ func LogReadf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
 	}
-	if ReadLevel&gLog.level != gLog.level {
+	if ReadLevel & gLog.level != gLog.level {
 		return
 	}
 	s := fmt.Sprintf(format, v...)
@@ -557,13 +560,13 @@ func (l *Log) checkLogRotation(logDir, module string) {
 			continue
 		}
 
-		// Rotate log files
-		l.debugLogger.SetRotateByDay()
-		l.infoLogger.SetRotateByDay()
-		l.warnLogger.SetRotateByDay()
-		l.errorLogger.SetRotateByDay()
-		l.readLogger.SetRotateByDay()
-		l.updateLogger.SetRotateByDay()
+		// rotate log files
+		l.debugLogger.SetRotation()
+		l.infoLogger.SetRotation()
+		l.warnLogger.SetRotation()
+		l.errorLogger.SetRotation()
+		l.readLogger.SetRotation()
+		l.updateLogger.SetRotation()
 
 		l.lastRolledTime = now
 	}
