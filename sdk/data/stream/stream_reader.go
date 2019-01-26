@@ -20,6 +20,7 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 	"io"
 	"sync"
+	"syscall"
 )
 
 // One inode corresponds to one streamer. All the requests to the same inode will be queued.
@@ -81,12 +82,13 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
 
 func (s *Streamer) read(data []byte, offset int, size int) (total int, err error) {
 	var (
-		readBytes int
-		reader    *ExtentReader
-		requests  []*ExtentRequest
-		flushed   bool
+		readBytes  int
+		reader     *ExtentReader
+		requests   []*ExtentRequest
+		retryTimes int
 	)
 
+retry:
 	requests = s.extents.PrepareReadRequests(offset, size, data)
 	for _, req := range requests {
 		if req.ExtentKey == nil {
@@ -96,13 +98,13 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 			if err = s.IssueFlushRequest(); err != nil {
 				return 0, err
 			}
-			flushed = true
-			break
+			if retryTimes < 10 {
+				retryTimes++
+				goto retry
+			} else {
+				return 0, syscall.EAGAIN
+			}
 		}
-	}
-
-	if flushed {
-		requests = s.extents.PrepareReadRequests(offset, size, data)
 	}
 
 	filesize, _ := s.extents.Size()
