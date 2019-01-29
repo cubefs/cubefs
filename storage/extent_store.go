@@ -158,6 +158,10 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 	s.closeC = make(chan bool, 1)
 	s.closed = false
 	err = s.initTinyExtent()
+	if err!=nil {
+		return
+	}
+	go s.autoFixDirtyBlockCrc()
 	return
 }
 
