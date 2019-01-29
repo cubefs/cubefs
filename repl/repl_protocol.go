@@ -315,7 +315,7 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 	}
 	log.LogDebugf(ActionWriteToClient+" %v", reply.LogMessage(ActionWriteToClient,
 		rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
-
+	reply=nil
 }
 
 // Stop stops the replication protocol.
