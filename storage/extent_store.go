@@ -369,11 +369,11 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 }
 
 // TODO explain the block crc
-func (s *ExtentStore) updateBlockCrc(extentID uint64, blockNo int, crc uint32, e *Extent, isDirtyBlock bool) (err error) {
+func (s *ExtentStore) updateBlockCrc(extentID uint64, blockNo int, crc uint32, e *Extent, isDirtyBlockCrc bool) (err error) {
 	startIdx := util.BlockHeaderCrcIndex + blockNo*util.PerBlockCrcSize
 	endIdx := startIdx + util.PerBlockCrcSize
-	if isDirtyBlock {
-		e.header[startIdx] = util.DirtyBlock
+	if isDirtyBlockCrc {
+		e.header[startIdx] = util.DirtyCrcMark
 	}
 	binary.BigEndian.PutUint32(e.header[startIdx:endIdx], crc)
 	verifyStart := startIdx + int(util.BlockHeaderSize*extentID)
@@ -408,6 +408,9 @@ func (s *ExtentStore) autoFixDirtyBlockCrc() {
 	s.eiMutex.RUnlock()
 
 	for _, ei := range extentInfos {
+		if ei==nil {
+			continue
+		}
 		if ei.IsDeleted {
 			continue
 		}
@@ -418,7 +421,7 @@ func (s *ExtentStore) autoFixDirtyBlockCrc() {
 		if err != nil {
 			continue
 		}
-		extent.autoFixDirtyBlock(s.updateBlockCrc)
+		extent.autoFixDirtyCrc(s.updateBlockCrc)
 		s.eiMutex.RLock()
 		extentInfo, has := s.extentInfoMap[ei.FileID]
 		s.eiMutex.RUnlock()

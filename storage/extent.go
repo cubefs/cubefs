@@ -344,14 +344,14 @@ func (e *Extent) checkDirtyBlock() (dirtyBlocks []int) {
 	defer e.lock.RUnlock()
 	dirtyBlocks = make([]int, 0)
 	for index := 0; index < util.BlockCount; index++ {
-		if e.header[index*util.PerBlockCrcSize] == util.DirtyBlock {
+		if e.header[index*util.PerBlockCrcSize] == util.DirtyCrcMark {
 			dirtyBlocks = append(dirtyBlocks, index)
 		}
 	}
 	return
 }
 
-func (e *Extent) autoFixDirtyBlock(crcFunc UpdateCrcFunc) {
+func (e *Extent) autoFixDirtyCrc(crcFunc UpdateCrcFunc) {
 	dirtyBlocks := e.checkDirtyBlock()
 	if len(dirtyBlocks) == 0 {
 		return
