@@ -531,14 +531,20 @@ func (eh *ExtentHandler) createConnection(dp *wrapper.DataPartition) (*net.TCPCo
 }
 
 func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err error) {
-	conn, err := eh.createConnection(dp)
+	conn, err := StreamConnPool.GetConnect(dp.Hosts[0])
 	if err != nil {
 		// TODO unhandled error
 		errors.Annotatef(err, "createExtent: failed to create connection, eh(%v) datapartionHosts(%v)", eh, dp.Hosts[0])
 		return
 	}
 	// TODO unhandled error
-	defer conn.Close()
+	defer func() {
+		if err != nil {
+			StreamConnPool.PutConnect(conn, true)
+		} else {
+			StreamConnPool.PutConnect(conn, false)
+		}
+	}()
 
 	p := NewCreateExtentPacket(dp, eh.inode)
 	if err = p.WriteToConn(conn); err != nil {
