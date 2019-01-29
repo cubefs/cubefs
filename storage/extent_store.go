@@ -429,8 +429,6 @@ func (s *ExtentStore) autoFixDirtyBlockCrc() {
 			return
 		}
 		extentInfo.FromExtent(extent, false)
-		time.Sleep(time.Millisecond)
-
 	}
 
 }
