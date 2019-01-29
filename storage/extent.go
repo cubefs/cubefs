@@ -361,8 +361,8 @@ func (e *Extent) autoFixDirtyBlock(crcFunc UpdateCrcFunc) {
 	for _, dirtyBlockNo := range dirtyBlocks {
 		data := make([]byte, util.BlockSize)
 		offset := int64(dirtyBlockNo * util.BlockSize)
-		readN,err:= e.file.ReadAt(data[:util.BlockSize], offset)
-		if err!=io.EOF{
+		readN, err := e.file.ReadAt(data[:util.BlockSize], offset)
+		if err != io.EOF {
 			continue
 		}
 		crc := crc32.ChecksumIEEE(data[:readN])

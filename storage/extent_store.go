@@ -158,7 +158,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 	s.closeC = make(chan bool, 1)
 	s.closed = false
 	err = s.initTinyExtent()
-	if err!=nil {
+	if err != nil {
 		return
 	}
 	go s.autoFixDirtyBlockCrc()
@@ -648,7 +648,7 @@ func (s *ExtentStore) Watermark(extentID uint64, reload bool) (extentInfo *Exten
 		if extent, err = s.extentWithHeader(extentID); err != nil {
 			return
 		}
-		extentInfo.FromExtent(extent,true)
+		extentInfo.FromExtent(extent, true)
 	}
 	return
 }
