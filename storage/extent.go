@@ -18,7 +18,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/tiglabs/containerfs/util"
-	"github.com/tiglabs/containerfs/util/buf"
 	"hash/crc32"
 	"io"
 	"math"

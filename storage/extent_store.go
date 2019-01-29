@@ -222,7 +222,7 @@ func (s *ExtentStore) Create(extentID uint64, inode uint64) (err error) {
 	if err != nil {
 		return err
 	}
-	extInfo.FromExtent(extent)
+	extInfo.FromExtent(extent,false)
 	s.eiMutex.Lock()
 	s.extentInfoMap[extentID] = extInfo
 	s.eiMutex.Unlock()
