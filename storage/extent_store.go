@@ -337,12 +337,16 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		if extent, loadErr = s.extent(extentID); loadErr != nil {
 			continue
 		}
+		isDirtyBlock := false
 		if !IsTinyExtent(extentID) {
 			extent.header = make([]byte, util.BlockHeaderSize)
 			copy(extent.header, data[extentID*util.BlockHeaderSize:(extentID+1)*util.BlockHeaderSize])
+			if len(extent.checkDirtyBlock()) != 0 {
+				isDirtyBlock = true
+			}
 		}
 		extentInfo = &ExtentInfo{}
-		extentInfo.FromExtent(extent)
+		extentInfo.FromExtent(extent, isDirtyBlock)
 		s.eiMutex.Lock()
 		s.extentInfoMap[extentID] = extentInfo
 		s.eiMutex.Unlock()
@@ -361,9 +365,12 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 }
 
 // TODO explain the block crc
-func (s *ExtentStore) updateBlockCrc(extentID uint64, blockNo int, crc uint32, e *Extent) (err error) {
+func (s *ExtentStore) updateBlockCrc(extentID uint64, blockNo int, crc uint32, e *Extent, isDirtyBlock bool) (err error) {
 	startIdx := util.BlockHeaderCrcIndex + blockNo*util.PerBlockCrcSize
 	endIdx := startIdx + util.PerBlockCrcSize
+	if isDirtyBlock {
+		e.header[startIdx] = util.DirtyBlock
+	}
 	binary.BigEndian.PutUint32(e.header[startIdx:endIdx], crc)
 	verifyStart := startIdx + int(util.BlockHeaderSize*extentID)
 	if _, err = s.verifyCrcFp.WriteAt(e.header[startIdx:endIdx], int64(verifyStart)); err != nil {
@@ -388,12 +395,45 @@ func (s *ExtentStore) updateExtentInode(extentID uint64, inode uint64, e *Extent
 	return
 }
 
+func (s *ExtentStore) autoFixDirtyBlockCrc() {
+	extentInfos := make([]*ExtentInfo, 0)
+	s.eiMutex.RLock()
+	for _, e := range s.extentInfoMap {
+		extentInfos = append(extentInfos, e)
+	}
+	s.eiMutex.RUnlock()
+
+	for _, ei := range extentInfos {
+		if ei.IsDeleted {
+			continue
+		}
+		if IsTinyExtent(ei.FileID) {
+			continue
+		}
+		extent, err := s.extentWithHeader(ei.FileID)
+		if err != nil {
+			continue
+		}
+		extent.autoFixDirtyBlock(s.updateBlockCrc)
+		s.eiMutex.RLock()
+		extentInfo, has := s.extentInfoMap[ei.FileID]
+		s.eiMutex.RUnlock()
+		if !has {
+			return
+		}
+		extentInfo.FromExtent(extent, false)
+
+	}
+
+}
+
 // Write writes the given extent to the disk.
 func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, isUpdateSize bool) (err error) {
 	var (
-		has        bool
-		extent     *Extent
-		extentInfo *ExtentInfo
+		has          bool
+		extent       *Extent
+		extentInfo   *ExtentInfo
+		isDirtyBlock bool
 	)
 	s.eiMutex.RLock()
 	extentInfo, has = s.extentInfoMap[extentID]
@@ -412,11 +452,11 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	if extent.HasBeenMarkedAsDeleted() {
 		return ExtentHasBeenDeletedError
 	}
-	err = extent.Write(data, offset, size, crc, s.updateBlockCrc, isUpdateSize)
+	isDirtyBlock, err = extent.Write(data, offset, size, crc, s.updateBlockCrc, isUpdateSize)
 	if err != nil {
 		return err
 	}
-	extentInfo.FromExtent(extent)
+	extentInfo.FromExtent(extent, isDirtyBlock)
 	return nil
 }
 
@@ -456,10 +496,7 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 		return
 	}
 	crc, err = e.Read(nbuf, offset, size, isRepairRead)
-	//if crc == 0 {
-	//	log.LogWarnf(fmt.Sprintf("extent(%v_%v) offset(%v) size(%v) readcrc %v extent %p err %v",
-	//		s.partitionID, extentID, offset, size, crc,e,err))
-	//}
+
 	return
 }
 
@@ -489,7 +526,7 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	if err = extent.MarkDelete(); err != nil {
 		return
 	}
-	extentInfo.FromExtent(extent)
+	extentInfo.FromExtent(extent, true)
 	extentInfo.IsDeleted = true
 
 	s.cache.Del(extent.ID())
