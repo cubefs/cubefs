@@ -53,7 +53,7 @@ const (
 	runtimeStackBufSize                           = 4096
 	nodesActiveRate                       float32 = 0.5 // rate of active (live) nodes
 	spaceAvailableRate                            = 0.90
-	defaultNodeSetCapacity                        = 6
+	defaultNodeSetCapacity                        = 18
 	minNumOfRWDataPartitions                      = 10
 	intervalToCheckMissingReplica                 = 600
 	intervalToLoadDataPartition                   = 12 * 60 * 60
