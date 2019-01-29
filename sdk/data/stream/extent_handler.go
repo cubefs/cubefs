@@ -388,7 +388,11 @@ func (eh *ExtentHandler) cleanup() (err error) {
 		conn := eh.conn
 		eh.conn = nil
 		// TODO unhandled error
-		conn.Close()
+		if status := eh.getStatus(); status >= ExtentStatusRecovery {
+			StreamConnPool.PutConnect(conn, true)
+		} else {
+			StreamConnPool.PutConnect(conn, false)
+		}
 	}
 	return
 }
@@ -490,7 +494,7 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 			extID = 0
 		}
 
-		if conn, err = eh.createConnection(dp); err != nil {
+		if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
 			excludePartitions = append(excludePartitions, dp.PartitionID)
 			log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v)", eh, err, dp)
 			continue
