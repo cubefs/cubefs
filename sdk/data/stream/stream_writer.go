@@ -19,6 +19,7 @@ import (
 	"hash/crc32"
 	"net"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/juju/errors"
@@ -173,14 +174,63 @@ func (s *Streamer) server() {
 		select {
 		case request := <-s.request:
 			s.handleRequest(request)
+			s.idle = 0
 		case <-s.done:
 			s.abort()
-			log.LogDebugf("done server: ino(%v)", s.inode)
+			log.LogDebugf("done server: evict, ino(%v)", s.inode)
 			return
 		case <-t.C:
 			// TODO unhandled error
 			s.traverse()
+			if s.refcnt <= 0 {
+				if s.idle >= 10 && len(s.request) == 0 {
+					s.client.streamerLock.Lock()
+					delete(s.client.streamers, s.inode)
+					s.client.streamerLock.Unlock()
+
+					// fail the remaining requests in such case
+					s.clearRequests()
+					log.LogDebugf("done server: no requests for a long time, ino(%v)", s.inode)
+					return
+				}
+				s.idle++
+			}
 		}
+	}
+}
+
+func (s *Streamer) clearRequests() {
+	for {
+		select {
+		case request := <-s.request:
+			s.abortRequest(request)
+		default:
+			return
+		}
+	}
+}
+
+func (s *Streamer) abortRequest(request interface{}) {
+	switch request := request.(type) {
+	case *OpenRequest:
+		request.err = syscall.EAGAIN
+		request.done <- struct{}{}
+	case *WriteRequest:
+		request.err = syscall.EAGAIN
+		request.done <- struct{}{}
+	case *TruncRequest:
+		request.err = syscall.EAGAIN
+		request.done <- struct{}{}
+	case *FlushRequest:
+		request.err = syscall.EAGAIN
+		request.done <- struct{}{}
+	case *ReleaseRequest:
+		request.err = syscall.EAGAIN
+		request.done <- struct{}{}
+	case *EvictRequest:
+		request.err = syscall.EAGAIN
+		request.done <- struct{}{}
+	default:
 	}
 }
 
