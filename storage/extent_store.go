@@ -648,7 +648,7 @@ func (s *ExtentStore) Watermark(extentID uint64, reload bool) (extentInfo *Exten
 		if extent, err = s.extentWithHeader(extentID); err != nil {
 			return
 		}
-		extentInfo.FromExtent(extent)
+		extentInfo.FromExtent(extent,true)
 	}
 	return
 }

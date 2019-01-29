@@ -356,14 +356,14 @@ func (e *Extent) autoFixDirtyBlock(crcFunc UpdateCrcFunc) {
 	if len(dirtyBlocks) == 0 {
 		return
 	}
-
 	for _, dirtyBlockNo := range dirtyBlocks {
 		data := make([]byte, util.BlockSize)
 		offset := int64(dirtyBlockNo * util.BlockSize)
-		crc, err := e.Read(data, offset, util.BlockSize, true)
-		if err != io.EOF {
+		readN,err:= e.file.ReadAt(data[:util.BlockSize], offset)
+		if err!=io.EOF{
 			continue
 		}
+		crc := crc32.ChecksumIEEE(data[:readN])
 		if err = crcFunc(e.extentID, dirtyBlockNo, crc, e, false); err != nil {
 			continue
 		}
