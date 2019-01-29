@@ -356,6 +356,8 @@ func (e *Extent) autoFixDirtyBlock(crcFunc UpdateCrcFunc) {
 	if len(dirtyBlocks) == 0 {
 		return
 	}
+	e.lock.RLock()
+	defer e.lock.RUnlock()
 	for _, dirtyBlockNo := range dirtyBlocks {
 		data := make([]byte, util.BlockSize)
 		offset := int64(dirtyBlockNo * util.BlockSize)
