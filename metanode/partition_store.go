@@ -15,17 +15,17 @@
 package metanode
 
 import (
+	"bufio"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/proto"
+	"hash/crc32"
 	"io"
 	"io/ioutil"
 	"os"
 	"path"
-
-	"github.com/juju/errors"
-	"github.com/tiglabs/containerfs/proto"
-	"hash/crc32"
 )
 
 const (
@@ -85,10 +85,12 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 		return
 	}
 	defer fp.Close()
-	lenBuf := make([]byte, 4)
+	reader := bufio.NewReaderSize(fp, 4*1024*1024)
+	inoBuf := make([]byte, 4)
 	for {
+		inoBuf = inoBuf[:4]
 		// first read length
-		_, err = io.ReadFull(fp, lenBuf)
+		_, err = io.ReadFull(reader, inoBuf)
 		if err != nil {
 			if err == io.EOF {
 				err = nil
@@ -97,17 +99,21 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 			err = errors.Errorf("[loadInode] ReadHeader: %s", err.Error())
 			return
 		}
-		length := binary.BigEndian.Uint32(lenBuf)
+		length := binary.BigEndian.Uint32(inoBuf)
 
 		// next read body
-		buf := make([]byte, length)
-		_, err = io.ReadFull(fp, buf)
+		if uint32(cap(inoBuf)) >= length {
+			inoBuf = inoBuf[:length]
+		} else {
+			inoBuf = make([]byte, length)
+		}
+		_, err = io.ReadFull(reader, inoBuf)
 		if err != nil {
 			err = errors.Errorf("[loadInode] ReadBody: %s", err.Error())
 			return
 		}
 		ino := NewInode(0, 0)
-		if err = ino.Unmarshal(buf); err != nil {
+		if err = ino.Unmarshal(inoBuf); err != nil {
 			err = errors.Errorf("[loadInode] Unmarshal: %s", err.Error())
 			return
 		}
@@ -136,12 +142,13 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 		return
 	}
 
-	// TODO Unhandled errors
 	defer fp.Close()
-	lenBuf := make([]byte, 4)
+	reader := bufio.NewReaderSize(fp, 4*1024*1024)
+	dentryBuf := make([]byte, 4)
 	for {
+		dentryBuf = dentryBuf[:4]
 		// First Read 4byte header length
-		_, err = io.ReadFull(fp, lenBuf)
+		_, err = io.ReadFull(reader, dentryBuf)
 		if err != nil {
 			if err == io.EOF {
 				err = nil
@@ -151,17 +158,21 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 			return
 		}
 
-		length := binary.BigEndian.Uint32(lenBuf)
+		length := binary.BigEndian.Uint32(dentryBuf)
 
 		// next read body
-		buf := make([]byte, length)
-		_, err = io.ReadFull(fp, buf)
+		if uint32(cap(dentryBuf)) >= length {
+			dentryBuf = dentryBuf[:length]
+		} else {
+			dentryBuf = make([]byte, length)
+		}
+		_, err = io.ReadFull(reader, dentryBuf)
 		if err != nil {
 			err = errors.Errorf("[loadDentry]: ReadBody: %s", err.Error())
 			return
 		}
 		dentry := &Dentry{}
-		if err = dentry.Unmarshal(buf); err != nil {
+		if err = dentry.Unmarshal(dentryBuf); err != nil {
 			err = errors.Errorf("[loadDentry] Unmarshal: %s", err.Error())
 			return
 		}
