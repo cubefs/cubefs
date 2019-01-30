@@ -1,4 +1,4 @@
-How to tune FUSE performance
+Tune FUSE Performance
 ==============================
 
 Fetch Linux kernel source code

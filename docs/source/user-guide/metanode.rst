@@ -1,5 +1,5 @@
-Metanode
-========
+Meta Subsystem
+====================
 
 Metanode is the manager of meta partitions and replicated by MultiRaft. Each metanode manages various of partitions.  Each partition covers an inode range, and maintains two in-memory btrees: inode btree and dentry btree.
 
