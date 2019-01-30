@@ -199,8 +199,13 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		f.super.ic.Delete(ino)
 	}()
 
+	var isDirectIO bool
+	if (int(req.FileFlags) & syscall.O_DIRECT) != 0 {
+		isDirectIO = true
+	}
+
 	start := time.Now()
-	size, err := f.super.ec.Write(ino, int(req.Offset), req.Data)
+	size, err := f.super.ec.Write(ino, int(req.Offset), req.Data, isDirectIO)
 	if err != nil {
 		log.LogErrorf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
 		return fuse.EIO
@@ -210,7 +215,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		log.LogErrorf("Write: ino(%v) offset(%v) len(%v) size(%v)", ino, req.Offset, reqlen, size)
 	}
 
-	if (int(req.FileFlags) & syscall.O_DIRECT) != 0 {
+	if isDirectIO {
 		if err = f.super.ec.Flush(ino); err != nil {
 			log.LogErrorf("Write DirectIO: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
 			return fuse.EIO
