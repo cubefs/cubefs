@@ -240,7 +240,9 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdate
 		return
 	}
 	if isSync {
-		e.file.Sync()
+		if err = e.file.Sync(); err != nil {
+			return
+		}
 	}
 	if !isUpdateSize {
 		return
@@ -276,7 +278,9 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, crcFunc Upda
 	e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
 	e.modifyTime = time.Now()
 	if isSync {
-		e.file.Sync()
+		if err = e.file.Sync(); err != nil {
+			return
+		}
 	}
 	if offsetInBlock == 0 && size == util.BlockSize {
 		err = crcFunc(e.extentID, int(blockNo), crc, e, isDirtyBlock)
