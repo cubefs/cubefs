@@ -134,7 +134,7 @@ func (eh *ExtentHandler) String() string {
 	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)StoreMode(%v)}", eh.id, eh.inode, eh.fileOffset, eh.storeMode)
 }
 
-func (eh *ExtentHandler) write(data []byte, offset, size int) (ek *proto.ExtentKey, err error) {
+func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
 	var total, write int
 
 	status := eh.getStatus()
@@ -163,6 +163,9 @@ func (eh *ExtentHandler) write(data []byte, offset, size int) (ek *proto.ExtentK
 	for total < size {
 		if eh.packet == nil {
 			eh.packet = NewWritePacket(eh.inode, offset+total, eh.storeMode)
+			if direct {
+				eh.packet.Opcode = proto.OpSyncWrite
+			}
 			//log.LogDebugf("ExtentHandler Write: NewPacket, eh(%v) packet(%v)", eh, eh.packet)
 		}
 		packsize := int(eh.packet.Size)

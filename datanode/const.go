@@ -67,6 +67,7 @@ const (
 // Apply the raft log operation. Currently we only have the random write operation.
 const (
 	opRandomWrite uint32 = iota
+	opRandomSyncWrite
 )
 
 const (
@@ -93,4 +94,8 @@ const (
 const (
 	NotUpdateSize = false
 	UpdateSize    = true
+)
+
+const (
+	BufferWrite = false
 )

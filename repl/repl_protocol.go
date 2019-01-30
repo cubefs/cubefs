@@ -261,7 +261,9 @@ func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err err
 	}
 
 	reply := NewPacket()
-
+	defer func() {
+		reply.clean()
+	}()
 	if err = reply.ReadFromConn(request.followerConns[index], proto.ReadDeadlineTime); err != nil {
 		err = errors.Annotatef(err, "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
 		log.LogErrorf("action[ActionReceiveFromFollower] %v.", request.LogMessage(ActionReceiveFromFollower, request.followersAddrs[index], request.StartT, err))
@@ -288,9 +290,14 @@ func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err err
 	return
 }
 
+
+
 // Write a reply to the client.
 func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 	var err error
+	defer func() {
+		reply.clean()
+	}()
 	if reply.IsErrPacket() {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
@@ -315,7 +322,6 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 	}
 	log.LogDebugf(ActionWriteToClient+" %v", reply.LogMessage(ActionWriteToClient,
 		rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
-
 }
 
 // Stop stops the replication protocol.

@@ -114,7 +114,7 @@ func (cp *ConnectPool) autoRelease() {
 		for _, pool := range pools {
 			pool.AutoRelease()
 		}
-		time.Sleep(time.Minute)
+		time.Sleep(time.Second)
 	}
 
 }

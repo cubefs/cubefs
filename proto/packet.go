@@ -63,6 +63,8 @@ const (
 	OpRandomWrite             uint8 = 0x0F
 	OpGetAppliedId            uint8 = 0x10 // TODO should we call appliedID or applyID? we need to have an agreement.
 	OpGetPartitionSize        uint8 = 0x11
+	OpSyncRandomWrite         uint8 = 0x12
+	OpSyncWrite               uint8 = 0x13
 
 	// Operations: Client -> MetaNode.
 	OpMetaCreateInode   uint8 = 0x20
@@ -283,6 +285,10 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpGetAppliedId"
 	case OpGetPartitionSize:
 		m = "OpGetPartitionSize"
+	case OpSyncWrite:
+		m = "OpSyncWrite"
+	case OpSyncRandomWrite:
+		m = "OpSyncRandomWrite"
 	}
 	return
 }

@@ -39,7 +39,9 @@ const (
 	MarkDeleteIndex        = BlockHeaderSize - 1
 	BlockSize              = 65536 * 2
 	ReadBlockSize          = BlockSize
-	PerBlockCrcSize        = 4
+	PerBlockCrcSize        = 5
+	DirtyCrcMark           = 'D'
+
 	DeleteIndexFileName    = "delete.index"
 	ExtentSize             = BlockCount * BlockSize
 	ExtentFileSizeLimit    = BlockHeaderSize + ExtentSize

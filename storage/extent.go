@@ -18,7 +18,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/tiglabs/containerfs/util"
-	"github.com/tiglabs/containerfs/util/buf"
 	"hash/crc32"
 	"io"
 	"math"
@@ -42,17 +41,25 @@ type ExtentInfo struct {
 	IsDeleted  bool      `json:"deleted"`
 	ModifyTime time.Time `json:"modTime"`
 	Source     string    `json:"src"`
+	isDirty    bool
 }
 
-func (ei *ExtentInfo) FromExtent(extent *Extent) {
+func (ei *ExtentInfo) FromExtent(extent *Extent, isDirtyBlock bool) {
 	if extent != nil {
 		ei.FileID = extent.ID()
 		ei.Inode = extent.Ino()
 		ei.Size = uint64(extent.Size())
 		if !IsTinyExtent(ei.FileID) {
-			ei.Crc = extent.HeaderChecksum()
+			if isDirtyBlock {
+				ei.Crc = 0
+			} else {
+				ei.Crc = extent.HeaderChecksum()
+			}
 			ei.IsDeleted = extent.HasBeenMarkedAsDeleted()
 			ei.ModifyTime = extent.ModifyTime()
+			if isDirtyBlock{
+				ei.isDirty=isDirtyBlock
+			}
 		}
 	}
 }
@@ -220,7 +227,7 @@ func (e *Extent) ModifyTime() time.Time {
 }
 
 // WriteTiny performs write on a tiny extent.
-func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdateSize bool) (err error) {
+func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdateSize, isSync bool) (err error) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
@@ -232,6 +239,11 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdate
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
 		return
 	}
+	if isSync {
+		if err = e.file.Sync(); err != nil {
+			return
+		}
+	}
 	if !isUpdateSize {
 		return
 	}
@@ -240,15 +252,16 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdate
 	}
 	e.dataSize = index
 
+
 	return
 }
 
-type UpdateCrcFunc func(updateExtentID uint64, updateblockNo int, updateCrc uint32, updateE *Extent) error
+type UpdateCrcFunc func(updateExtentID uint64, updateblockNo int, updateCrc uint32, updateE *Extent, isDirtyBlock bool) error
 
 // Write writes data to an extent.
-func (e *Extent) Write(data []byte, offset, size int64, crc uint32, crcFunc UpdateCrcFunc, isUpdateSize bool) (err error) {
+func (e *Extent) Write(data []byte, offset, size int64, crc uint32, crcFunc UpdateCrcFunc, isUpdateSize, isSync bool) (isDirtyBlock bool, err error) {
 	if IsTinyExtent(e.extentID) {
-		err = e.WriteTiny(data, offset, size, crc, isUpdateSize)
+		err = e.WriteTiny(data, offset, size, crc, isUpdateSize, isSync)
 		return
 	}
 
@@ -257,54 +270,26 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, crcFunc Upda
 	if err = e.checkOffsetAndSize(offset, size); err != nil {
 		return
 	}
-	var (
-		writeSize int
-	)
-	if writeSize, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
+	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
 		return
 	}
 	blockNo := offset / util.BlockSize
 	offsetInBlock := offset % util.BlockSize
 	e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
 	e.modifyTime = time.Now()
+	if isSync {
+		if err = e.file.Sync(); err != nil {
+			return
+		}
+	}
 	if offsetInBlock == 0 && size == util.BlockSize {
-		err = crcFunc(e.extentID, int(blockNo), crc, e)
+		err = crcFunc(e.extentID, int(blockNo), crc, e, isDirtyBlock)
 		return
+	} else {
+		isDirtyBlock = true
+		err = crcFunc(e.extentID, int(blockNo), crc, e, isDirtyBlock)
 	}
 
-	// prepare read buffer for block data
-	var (
-		blockBuffer []byte
-		poolErr     error
-	)
-	if blockBuffer, poolErr = buf.Buffers.Get(util.BlockSize); poolErr != nil {
-		blockBuffer = make([]byte, util.BlockSize)
-	}
-	defer buf.Buffers.Put(blockBuffer)
-
-	remainingCheckByteCnt := offsetInBlock + int64(writeSize)
-	for {
-		if remainingCheckByteCnt <= 0 {
-			break
-		}
-		readN, readErr := e.file.ReadAt(blockBuffer, int64(blockNo*util.BlockSize))
-		if readErr != nil && readErr != io.EOF && readErr != io.ErrUnexpectedEOF {
-			err = readErr
-			return
-		}
-		if readN == 0 {
-			break
-		}
-		crc = crc32.ChecksumIEEE(blockBuffer[:readN])
-		if err = crcFunc(e.extentID, int(blockNo), crc, e); err != nil {
-			return
-		}
-		if readErr == io.EOF || readErr == io.ErrUnexpectedEOF || readN < util.BlockSize {
-			break
-		}
-		remainingCheckByteCnt -= int64(readN)
-		blockNo++
-	}
 	return
 }
 
@@ -321,14 +306,6 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc u
 	if _, err = e.file.ReadAt(data[:size], offset); err != nil {
 		return
 	}
-	//blockNo := offset / util.BlockSize
-	//if offset%util.BlockSize == 0 && size == util.BlockSize {
-	//	startIdx := util.BlockHeaderCrcIndex + blockNo*util.PerBlockCrcSize
-	//	endIdx := startIdx + util.PerBlockCrcSize
-	//	crc = binary.BigEndian.Uint32(e.header[startIdx:endIdx])
-	//
-	//	return
-	//}
 	crc = crc32.ChecksumIEEE(data)
 	return
 }
@@ -374,6 +351,39 @@ func (e *Extent) HeaderChecksum() (crc uint32) {
 	}
 	crc = crc32.ChecksumIEEE(e.header[util.BlockHeaderCrcIndex : util.BlockHeaderCrcIndex+blockNum*util.PerBlockCrcSize])
 	return
+}
+
+func (e *Extent) checkDirtyBlock() (dirtyBlocks []int) {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+	dirtyBlocks = make([]int, 0)
+	for index := 0; index < util.BlockCount; index++ {
+		if e.header[index*util.PerBlockCrcSize] == util.DirtyCrcMark {
+			dirtyBlocks = append(dirtyBlocks, index)
+		}
+	}
+	return
+}
+
+func (e *Extent) autoFixDirtyCrc(crcFunc UpdateCrcFunc) {
+	dirtyBlocks := e.checkDirtyBlock()
+	if len(dirtyBlocks) == 0 {
+		return
+	}
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+	for _, dirtyBlockNo := range dirtyBlocks {
+		data := make([]byte, util.BlockSize)
+		offset := int64(dirtyBlockNo * util.BlockSize)
+		readN, err := e.file.ReadAt(data[:util.BlockSize], offset)
+		if err != io.EOF {
+			continue
+		}
+		crc := crc32.ChecksumIEEE(data[:readN])
+		if err = crcFunc(e.extentID, dirtyBlockNo, crc, e, false); err != nil {
+			continue
+		}
+	}
 }
 
 const (

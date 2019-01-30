@@ -49,6 +49,16 @@ func (p *Packet) AfterTp() (ok bool) {
 	return
 }
 
+func (p *Packet)clean(){
+	for index:=0;index<len(p.followerConns);index++{
+		p.followerConns[index]=nil
+	}
+	p.Object=nil
+	p.TpObject=nil
+	p.Data=nil
+	p.Arg=nil
+}
+
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
 	key := fmt.Sprintf("%s_datanode_stream%v", clusterID, p.GetOpMsg())
 	p.TpObject = exporter.RegistTp(key)
