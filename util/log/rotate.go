@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ type LogRotate struct {
 	headRoom    int64 // capacity reserved for writing the next log on the disk
 }
 
+// NewLogRotate returns a new LogRotate instance.
 func NewLogRotate() *LogRotate {
 	return &LogRotate{
 		rollingSize: DefaultRollingSize,
@@ -37,10 +38,12 @@ func NewLogRotate() *LogRotate {
 	}
 }
 
+// SetRollingSizeMb sets the rolling size in terms of MB.
 func (r *LogRotate) SetRollingSizeMb(size int64) {
 	r.rollingSize = size
 }
 
+// SetHeadRoomMb sets the headroom in terms of MB.
 func (r *LogRotate) SetHeadRoomMb(size int64) {
 	r.headRoom = size
 }

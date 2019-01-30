@@ -61,7 +61,7 @@ func (p *Packet)clean(){
 
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
 	key := fmt.Sprintf("%s_datanode_stream%v", clusterID, p.GetOpMsg())
-	p.TpObject = exporter.RegistTp(key)
+	p.TpObject = exporter.RegisterTp(key)
 	return
 }
 

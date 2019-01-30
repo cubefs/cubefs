@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,10 +35,10 @@ type Level uint8
 
 const (
 	DebugLevel  Level = 1
-	InfoLevel         = DebugLevel<<1 + 1
-	WarnLevel         = InfoLevel<<1 + 1
-	ErrorLevel        = WarnLevel<<1 + 1
-	FatalLevel        = ErrorLevel<<1 + 1
+	InfoLevel         = DebugLevel << 1 + 1
+	WarnLevel         = InfoLevel << 1 + 1
+	ErrorLevel        = WarnLevel << 1 + 1
+	FatalLevel        = ErrorLevel << 1 + 1
 	ReadLevel         = InfoLevel
 	UpdateLevel       = InfoLevel
 )
@@ -98,6 +98,8 @@ func (writer *asyncWriter) flushScheduler() {
 			writer.flushToFile()
 			if !open {
 				ticker.Stop()
+
+				// TODO Unhandled errors
 				writer.file.Close()
 				return
 			}
@@ -105,6 +107,7 @@ func (writer *asyncWriter) flushScheduler() {
 	}
 }
 
+// Write writes the log.
 func (writer *asyncWriter) Write(p []byte) (n int, err error) {
 	writer.mu.Lock()
 	writer.buffer.Write(p)
@@ -118,6 +121,7 @@ func (writer *asyncWriter) Write(p []byte) (n int, err error) {
 	return
 }
 
+// Close closes the writer.
 func (writer *asyncWriter) Close() (err error) {
 	writer.mu.Lock()
 	defer writer.mu.Unlock()
@@ -125,8 +129,10 @@ func (writer *asyncWriter) Close() (err error) {
 	return
 }
 
+// Flush flushes the write.
 func (writer *asyncWriter) Flush() {
 	writer.flushToFile()
+	// TODO Unhandled errors
 	writer.file.Sync()
 }
 
@@ -148,6 +154,7 @@ func (writer *asyncWriter) flushToFile() {
 		if _, err := os.Lstat(oldFile); err != nil {
 			if err := writer.rename(oldFile); err == nil {
 				if fp, err := os.OpenFile(writer.fileName, FileOpt, 0666); err == nil {
+					// TODO Unhandled errors
 					writer.file.Close()
 					writer.file = fp
 					writer.logSize = 0
@@ -156,6 +163,7 @@ func (writer *asyncWriter) flushToFile() {
 		}
 	}
 	writer.logSize += int64(flushLength)
+	// TODO Unhandled errors
 	writer.file.Write(writer.flushTmp.Bytes())
 	writer.flushTmp.Reset()
 }
@@ -190,18 +198,19 @@ func newAsyncWriter(fileName string, rollingSize int64) (*asyncWriter, error) {
 	return w, nil
 }
 
+// LogObject defines the log object.
 type LogObject struct {
 	*log.Logger
 	object *asyncWriter
 }
 
+// Flush flushes the log object.
 func (ob *LogObject) Flush() {
 	if ob.object != nil {
 		ob.object.Flush()
 	}
 }
 
-// TODO maybe find a better name?
 func (ob *LogObject) SetRotation() {
 	ob.object.rotateDay <- struct{}{}
 }
@@ -213,6 +222,7 @@ func newLogObject(writer *asyncWriter, prefix string, flag int) *LogObject {
 	}
 }
 
+// Log defines the log struct.
 type Log struct {
 	dir            string
 	module         string
@@ -239,12 +249,15 @@ var (
 
 var gLog *Log = nil
 
+// InitLog initializes the log.
 func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 	l := new(Log)
 	l.dir = dir
 	l.module = module
 	fi, err := os.Stat(dir)
 	if err != nil {
+		// TODO unhandled errors
+		// TODO there are many unhandled errors in this file.
 		os.MkdirAll(dir, 0755)
 	} else {
 		if !fi.IsDir() {
@@ -299,6 +312,7 @@ func (l *Log) initLog(logDir, module string, level Level) error {
 	return nil
 }
 
+// SetPrefix sets the log prefix.
 func (l *Log) SetPrefix(s, level string) string {
 	_, file, line, ok := runtime.Caller(2)
 	if !ok {
@@ -315,6 +329,7 @@ func (l *Log) SetPrefix(s, level string) string {
 	return level + " " + file + ":" + strconv.Itoa(line) + ": " + s
 }
 
+// Flush flushes the log.
 func (l *Log) Flush() {
 	loggers := []*LogObject{
 		l.debugLogger,
@@ -331,6 +346,7 @@ func (l *Log) Flush() {
 	}
 }
 
+// LogWarn indicates the warnings.
 func LogWarn(v ...interface{}) {
 	if gLog == nil {
 		return
@@ -343,6 +359,7 @@ func LogWarn(v ...interface{}) {
 	gLog.warnLogger.Output(2, s)
 }
 
+// LogWarnf indicates the warnings with specific format.
 func LogWarnf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
@@ -355,6 +372,7 @@ func LogWarnf(format string, v ...interface{}) {
 	gLog.warnLogger.Output(2, s)
 }
 
+// LogInfo indicates log the information. TODO explain
 func LogInfo(v ...interface{}) {
 	if gLog == nil {
 		return
@@ -367,6 +385,7 @@ func LogInfo(v ...interface{}) {
 	gLog.infoLogger.Output(2, s)
 }
 
+// LogInfo indicates log the information with specific format. TODO explain
 func LogInfof(format string, v ...interface{}) {
 	if gLog == nil {
 		return
@@ -379,6 +398,7 @@ func LogInfof(format string, v ...interface{}) {
 	gLog.infoLogger.Output(2, s)
 }
 
+// LogError logs the errors.
 func LogError(v ...interface{}) {
 	if gLog == nil {
 		return
@@ -391,6 +411,7 @@ func LogError(v ...interface{}) {
 	gLog.errorLogger.Output(2, s)
 }
 
+// LogErrorf logs the errors with the specified format.
 func LogErrorf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
@@ -403,6 +424,7 @@ func LogErrorf(format string, v ...interface{}) {
 	gLog.errorLogger.Print(s)
 }
 
+// LogDebug logs the debug information.
 func LogDebug(v ...interface{}) {
 	if gLog == nil {
 		return
@@ -415,6 +437,7 @@ func LogDebug(v ...interface{}) {
 	gLog.debugLogger.Print(s)
 }
 
+// LogDebugf logs the debug information with specified format.
 func LogDebugf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
@@ -427,6 +450,7 @@ func LogDebugf(format string, v ...interface{}) {
 	gLog.debugLogger.Output(2, s)
 }
 
+// LogFatal logs the fatal errors.
 func LogFatal(v ...interface{}) {
 	if gLog == nil {
 		return
@@ -445,7 +469,7 @@ func LogFatalf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
 	}
-	if FatalLevel&gLog.level != gLog.level {
+	if FatalLevel & gLog.level != gLog.level {
 		return
 	}
 	s := fmt.Sprintf(format, v...)
@@ -459,7 +483,7 @@ func LogRead(v ...interface{}) {
 	if gLog == nil {
 		return
 	}
-	if ReadLevel&gLog.level != gLog.level {
+	if ReadLevel & gLog.level != gLog.level {
 		return
 	}
 	s := fmt.Sprintln(v...)
@@ -467,6 +491,7 @@ func LogRead(v ...interface{}) {
 	gLog.readLogger.Output(2, s)
 }
 
+// TODO not used?
 func LogReadf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
@@ -479,11 +504,12 @@ func LogReadf(format string, v ...interface{}) {
 	gLog.readLogger.Output(2, s)
 }
 
+// LogWrite
 func LogWrite(v ...interface{}) {
 	if gLog == nil {
 		return
 	}
-	if UpdateLevel&gLog.level != gLog.level {
+	if UpdateLevel & gLog.level != gLog.level {
 		return
 	}
 	s := fmt.Sprintln(v...)
@@ -491,11 +517,12 @@ func LogWrite(v ...interface{}) {
 	gLog.updateLogger.Output(2, s)
 }
 
+// LogWritef TODO not used
 func LogWritef(format string, v ...interface{}) {
 	if gLog == nil {
 		return
 	}
-	if UpdateLevel&gLog.level != gLog.level {
+	if UpdateLevel & gLog.level != gLog.level {
 		return
 	}
 	s := fmt.Sprintf(format, v...)
@@ -503,6 +530,7 @@ func LogWritef(format string, v ...interface{}) {
 	gLog.updateLogger.Output(2, s)
 }
 
+// LogFlush flushes the log.
 func LogFlush() {
 	if gLog != nil {
 		gLog.Flush()
@@ -522,7 +550,7 @@ func (l *Log) checkLogRotation(logDir, module string) {
 		diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
 		diskSpaceLeft -= l.rotate.headRoom * 1024 * 1024
 		if diskSpaceLeft <= 0 {
-			// collector free file list
+			// collect free file list
 			fp, err := os.Open(logDir)
 			if err != nil {
 				LogErrorf("error opening log directory: %s", err.Error())
@@ -553,7 +581,7 @@ func (l *Log) checkLogRotation(logDir, module string) {
 				}
 			}
 		}
-		// check is day rotate
+		// check if it is time to rotate
 		now := time.Now()
 		if now.Day() == l.lastRolledTime.Day() {
 			time.Sleep(DefaultRollingInterval)

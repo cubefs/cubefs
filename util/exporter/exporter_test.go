@@ -26,13 +26,13 @@ func TestNewMetricLabels2(t *testing.T) {
 		go func(i int) {
 			name := fmt.Sprintf("name_%d_gauge", i%2)
 			label := fmt.Sprintf("label-%d:name", i)
-			m := RegistMetric(name, Gauge)
+			m := RegisterMetric(name, Gauge)
 			if m != nil {
 				m.SetWithLabels(float64(i), map[string]string{"volname": label, "cluster": name})
 				t.Logf("metric: %v, %v", name, m.Metric.Desc())
 			}
 			name2 := fmt.Sprintf("name_%d_counter", i%2)
-			c := RegistMetric(name2, Counter)
+			c := RegisterMetric(name2, Counter)
 			if c != nil {
 				//c.Set(float64(i))
 				c.SetWithLabels(float64(i), map[string]string{"volname": label, "cluster": name})
@@ -60,13 +60,13 @@ func TestNewMetricLabels(t *testing.T) {
 		go func(i int) {
 			name := fmt.Sprintf("name_%d_gauge", i%6)
 			label := fmt.Sprintf("label-%d:name", i)
-			m := RegistMetricWithLabels(name, Gauge, map[string]string{"volname": label, "cluster": name})
+			m := RegisterMetricWithLabels(name, Gauge, map[string]string{"volname": label, "cluster": name})
 			if m != nil {
 				m.Set(float64(i))
 				t.Logf("metric: %v, %v", name, m.Key)
 			}
 			name2 := fmt.Sprintf("name_%d_counter", i%6)
-			c := RegistMetricWithLabels(name2, Counter, map[string]string{"volname": label, "cluster": name})
+			c := RegisterMetricWithLabels(name2, Counter, map[string]string{"volname": label, "cluster": name})
 			if c != nil {
 				c.Set(float64(i))
 				t.Logf("metric: %v, %v", name2, c.Key)
@@ -91,12 +91,13 @@ func TestNewMetric(t *testing.T) {
 	exitCh := make(chan int, N)
 	for i := 0; i < N; i++ {
 		go func() {
-			m := RegistCounter(fmt.Sprintf("name_%d_metric_count", i%17))
+			m := RegisterCounter(fmt.Sprintf("name_%d_metric_count", i%17))
+
 			if m != nil {
 				m.Add(float64(i))
 				t.Logf("metric: %v", m.Desc())
 			}
-			g := RegistGauge(fmt.Sprintf("name_%d_metric", i%17))
+			g := RegisterGauge(fmt.Sprintf("name_%d_metric", i%17))
 			if g != nil {
 				g.Set(float64(i))
 				t.Logf("metric: %v", g.Desc())
@@ -121,7 +122,7 @@ func TestRegistGauge(t *testing.T) {
 	exitCh := make(chan int, 100)
 	for i := 0; i < N; i++ {
 		go func() {
-			m := RegistGauge(fmt.Sprintf("name_%d", i%7))
+			m := RegisterGauge(fmt.Sprintf("name_%d", i%7))
 			if m != nil {
 				t.Logf("metric: %v", m.Desc().String())
 			}
@@ -145,7 +146,7 @@ func TestRegistTp(t *testing.T) {
 	exitCh := make(chan int, 100)
 	for i := 0; i < N; i++ {
 		go func() {
-			m := RegistTp(fmt.Sprintf("name_%d", i%7))
+			m := RegisterTp(fmt.Sprintf("name_%d", i%7))
 			if m != nil {
 				t.Logf("metric: %v", m.Name)
 			}

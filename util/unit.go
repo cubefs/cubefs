@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,10 +28,10 @@ const (
 )
 
 const (
-	BlockHeaderInoSize     = 8
+	BlockHeaderInoSize     = 8 // TODO explain
 	BlockHeaderCrcSize     = PerBlockCrcSize * BlockCount
 	BlockHeaderCrcIndex    = BlockHeaderInoSize
-	BlockHeaderDelMarkSize = 1
+	BlockHeaderDelMarkSize = 1 // TODO DeleteMark or MarkDelete?
 	BlockHeaderSize        = BlockHeaderInoSize + BlockHeaderCrcSize + BlockHeaderDelMarkSize
 	BlockCount             = 1024
 	MarkDelete             = 'D'
@@ -49,9 +49,10 @@ const (
 )
 
 const (
-	DefaultTinySizeLimit = 1 * MB
+	DefaultTinySizeLimit = 1 * MB // TODO explain tiny extent?
 )
 
+// TODO do we need this? we have math.
 func Min(a, b int) int {
 	if a > b {
 		return b
@@ -59,6 +60,7 @@ func Min(a, b int) int {
 	return a
 }
 
+// TODO do we need this?
 func Max(a, b int) int {
 	if a > b {
 		return a
@@ -66,7 +68,8 @@ func Max(a, b int) int {
 	return b
 }
 
-func IP(val interface{}) bool {
+// IsIPV4 returns if it is IPV4 address.
+func IsIPV4(val interface{}) bool {
 	ip4Pattern := `((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)`
 	ip4 := regexpCompile(ip4Pattern)
 	return isMatch(ip4, val)

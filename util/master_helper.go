@@ -1,4 +1,4 @@
-// Copyright 2018 The Containerfs Authors.
+// Copyright 2018 The Container File System Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ var (
 	ErrNoValidMaster = errors.New("no valid master")
 )
 
+// MasterHelper defines the helper struct to manage the master.
 type MasterHelper interface {
 	AddNode(address string)
 	Nodes() []string
@@ -44,14 +45,14 @@ type masterHelper struct {
 	leaderAddr string
 }
 
-// AddNode add master address
+// AddNode add the given address as the master address.
 func (helper *masterHelper) AddNode(address string) {
 	helper.Lock()
 	helper.updateMaster(address)
 	helper.Unlock()
 }
 
-// Leader return current record leader address
+// Leader returns the current leader address.
 func (helper *masterHelper) Leader() (addr string) {
 	helper.RLock()
 	addr = helper.leaderAddr
@@ -59,14 +60,14 @@ func (helper *masterHelper) Leader() (addr string) {
 	return
 }
 
-// setLeader change leader addr
+// Change the leader address.
 func (helper *masterHelper) setLeader(addr string) {
 	helper.Lock()
 	helper.leaderAddr = addr
 	helper.Unlock()
 }
 
-// Request make request
+// Request sends out the request through the helper.
 func (helper *masterHelper) Request(method, path string, param map[string]string, reqData []byte) (respData []byte, err error) {
 	respData, err = helper.request(method, path, param, reqData)
 	return
@@ -92,6 +93,7 @@ func (helper *masterHelper) request(method, path string, param map[string]string
 		}
 		stateCode := resp.StatusCode
 		repsData, err = ioutil.ReadAll(resp.Body)
+		// TODO Unhandled errors
 		resp.Body.Close()
 		if err != nil {
 			log.LogErrorf("[masterHelper] %s", err)
@@ -137,7 +139,7 @@ func (helper *masterHelper) request(method, path string, param map[string]string
 	return
 }
 
-// Nodes return all address
+// Nodes returns all master addresses.
 func (helper *masterHelper) Nodes() (nodes []string) {
 	helper.RLock()
 	nodes = helper.masters
@@ -145,7 +147,7 @@ func (helper *masterHelper) Nodes() (nodes []string) {
 	return
 }
 
-// prepareRequest return leader address and all address
+// prepareRequest returns the leader address and all master addresses.
 func (helper *masterHelper) prepareRequest() (addr string, nodes []string) {
 	helper.RLock()
 	addr = helper.leaderAddr
@@ -187,11 +189,11 @@ func (helper *masterHelper) updateMaster(address string) {
 func (helper *masterHelper) mergeRequestUrl(url string, params map[string]string) string {
 	if params != nil && len(params) > 0 {
 		buff := bytes.NewBuffer([]byte(url))
-		firstParam := true
+		isFirstParam := true
 		for k, v := range params {
-			if firstParam {
+			if isFirstParam {
 				buff.WriteString("?")
-				firstParam = false
+				isFirstParam = false
 			} else {
 				buff.WriteString("&")
 			}
@@ -204,6 +206,7 @@ func (helper *masterHelper) mergeRequestUrl(url string, params map[string]string
 	return url
 }
 
+// NewMasterHelper returns a new MasterHelper instance.
 func NewMasterHelper() MasterHelper {
 	return &masterHelper{}
 }
