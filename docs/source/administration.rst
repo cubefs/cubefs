@@ -1,9 +1,9 @@
-Master
-======
+Resource Manager
+==================
 
 .. toctree::
    :maxdepth: 2
-   :caption: Master
+   :caption: Resource Manager
    
    admin-api/master/cluster
    admin-api/master/metanode
@@ -13,12 +13,12 @@ Master
    admin-api/master/data-partition
    admin-api/master/management
    
-Metanode
-========
+Meta Subsystem
+===================
 
 .. toctree::
    :maxdepth: 2
-   :caption: Metanode
+   :caption: Meta Subsystem
    
    admin-api/metanode/partition
    admin-api/metanode/inode

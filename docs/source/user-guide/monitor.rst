@@ -1,4 +1,4 @@
-Monitor (optional)
+Monitor
 -----------------------
 
 CFS use prometheus as metrics collector. It simply config as follow in master，metanode，datanode，client's config file：
