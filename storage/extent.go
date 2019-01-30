@@ -41,6 +41,7 @@ type ExtentInfo struct {
 	IsDeleted  bool      `json:"deleted"`
 	ModifyTime time.Time `json:"modTime"`
 	Source     string    `json:"src"`
+	isDirty    bool
 }
 
 func (ei *ExtentInfo) FromExtent(extent *Extent, isDirtyBlock bool) {
@@ -56,6 +57,9 @@ func (ei *ExtentInfo) FromExtent(extent *Extent, isDirtyBlock bool) {
 			}
 			ei.IsDeleted = extent.HasBeenMarkedAsDeleted()
 			ei.ModifyTime = extent.ModifyTime()
+			if isDirtyBlock{
+				ei.isDirty=isDirtyBlock
+			}
 		}
 	}
 }
