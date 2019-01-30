@@ -52,6 +52,7 @@ type WriteRequest struct {
 	fileOffset int
 	size       int
 	data       []byte
+	direct     bool
 	writeBytes int
 	err        error
 	done       chan struct{}
@@ -94,7 +95,7 @@ func (s *Streamer) IssueOpenRequest(flag uint32) error {
 	return err
 }
 
-func (s *Streamer) IssueWriteRequest(offset int, data []byte) (write int, err error) {
+func (s *Streamer) IssueWriteRequest(offset int, data []byte, direct bool) (write int, err error) {
 	if s.authid == 0 {
 		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: not authorized, ino(%v)", s.inode))
 	}
@@ -107,6 +108,7 @@ func (s *Streamer) IssueWriteRequest(offset int, data []byte) (write int, err er
 	request.data = data
 	request.fileOffset = offset
 	request.size = len(data)
+	request.direct = direct
 	request.done = make(chan struct{}, 1)
 	s.request <- request
 	<-request.done
@@ -190,7 +192,7 @@ func (s *Streamer) handleRequest(request interface{}) {
 		log.LogDebugf("open returned: ino(%v) flag(%v)", s.inode, request.flag)
 		request.done <- struct{}{}
 	case *WriteRequest:
-		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size)
+		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.direct)
 		request.done <- struct{}{}
 	case *TruncRequest:
 		request.err = s.truncate(request.size)
@@ -208,7 +210,7 @@ func (s *Streamer) handleRequest(request interface{}) {
 	}
 }
 
-func (s *Streamer) write(data []byte, offset, size int) (total int, err error) {
+func (s *Streamer) write(data []byte, offset, size int, direct bool) (total int, err error) {
 	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
 
 	requests := s.extents.PrepareWriteRequests(offset, size, data)
@@ -216,9 +218,9 @@ func (s *Streamer) write(data []byte, offset, size int) (total int, err error) {
 	for _, req := range requests {
 		var writeSize int
 		if req.ExtentKey != nil {
-			writeSize, err = s.doOverwrite(req)
+			writeSize, err = s.doOverwrite(req, direct)
 		} else {
-			writeSize, err = s.doWrite(req.Data, req.FileOffset, req.Size)
+			writeSize, err = s.doWrite(req.Data, req.FileOffset, req.Size, direct)
 		}
 		if err != nil {
 			log.LogErrorf("Streamer write: ino(%v) err(%v)", s.inode, err)
@@ -234,7 +236,7 @@ func (s *Streamer) write(data []byte, offset, size int) (total int, err error) {
 	return
 }
 
-func (s *Streamer) doOverwrite(req *ExtentRequest) (total int, err error) {
+func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err error) {
 	var dp *wrapper.DataPartition
 
 	err = s.flush()
@@ -265,6 +267,9 @@ func (s *Streamer) doOverwrite(req *ExtentRequest) (total int, err error) {
 
 	for total < size {
 		reqPacket := NewOverwritePacket(dp, req.ExtentKey.ExtentId, offset-ekFileOffset+total+ekExtOffset, s.inode, offset)
+		if direct {
+			reqPacket.Opcode = proto.OpSyncRandomWrite
+		}
 		packSize := util.Min(size-total, util.BlockSize)
 		copy(reqPacket.Data[:packSize], req.Data[total:total+packSize])
 		reqPacket.Size = uint32(packSize)
@@ -306,7 +311,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest) (total int, err error) {
 	return
 }
 
-func (s *Streamer) doWrite(data []byte, offset, size int) (total int, err error) {
+func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total int, err error) {
 	var (
 		ek        *proto.ExtentKey
 		storeMode int
@@ -326,7 +331,7 @@ func (s *Streamer) doWrite(data []byte, offset, size int) (total int, err error)
 			s.dirty = false
 		}
 
-		ek, err = s.handler.write(data, offset, size)
+		ek, err = s.handler.write(data, offset, size, direct)
 		if err == nil && ek != nil {
 			if !s.dirty {
 				s.dirtylist.Put(s.handler)
