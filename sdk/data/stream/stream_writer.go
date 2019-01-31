@@ -443,6 +443,7 @@ func (s *Streamer) open(flag uint32) error {
 	if s.authid == 0 {
 		authid, err := s.client.open(s.inode, flag)
 		if err != nil || authid == 0 {
+			s.refcnt--
 			return errors.New(fmt.Sprintf("open failed: streamer(%v) flag(%v)", s, flag))
 		}
 		s.authid = authid
