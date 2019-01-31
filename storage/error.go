@@ -20,13 +20,10 @@ import (
 )
 
 var (
-	ReadOnlyPartitionError    = errors.New("partition is readonly")
 	ExtentHasBeenDeletedError = errors.New("extent has been deleted")
 	ParameterMismatchError    = errors.New("parameter mismatch error")
 	NoAvailableExtentError    = errors.New("no available extent")
 	NoBrokenExtentError       = errors.New("no unavailable extent")
-	BrokenExtentError         = errors.New("extent is unavailable")
-	IncorrectFilePathError    = errors.New("format of the extent file path is incorrect")
 	NoSpaceError              = errors.New("no space left on the device")
 	TryAgainError             = errors.New("try again")
 	CrcMismatchError          = errors.New("packet crc is incorrect")
