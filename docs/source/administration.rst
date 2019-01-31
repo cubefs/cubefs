@@ -1,9 +1,8 @@
-Resource Manager
-==================
+Resource Manager API
+=========================
 
 .. toctree::
    :maxdepth: 2
-   :caption: Resource Manager
    
    admin-api/master/cluster
    admin-api/master/metanode
@@ -13,12 +12,11 @@ Resource Manager
    admin-api/master/data-partition
    admin-api/master/management
    
-Meta Subsystem
+Meta Node API
 ===================
 
 .. toctree::
    :maxdepth: 2
-   :caption: Meta Subsystem
    
    admin-api/metanode/partition
    admin-api/metanode/inode
