@@ -30,7 +30,6 @@ import (
 
 const (
 	ExtentOpenOpt          = os.O_CREATE | os.O_RDWR | os.O_EXCL
-	ExtentOpenOptOverwrite = os.O_CREATE | os.O_RDWR
 )
 
 type ExtentInfo struct {
