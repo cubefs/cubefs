@@ -10,11 +10,11 @@ Metanode is the manager of meta partitions and replicated by MultiRaft. Each met
    "listen", "string", "Listen and accept port of the server", "Yes"
    "prof", "string", "pprof port", "Yes"
    "logLevel", "string", "Level operation for logging. Default is *error*", "No"
-   "metaDir", "string", metaNode store snapshot directory", "Yes" 
+   "metadataDir", "string", metaNode store snapshot directory", "Yes"
    "logDir", "string", "log directory", "Yes", 
    "raftDir", "string", "raft wal directory",  "Yes", 
    "raftHeartbeatPort", "string", "raft heartbeat port", "Yes" 
-   "raftReplicatePort", "string", "raft replicate port", "Yes" 
+   "raftReplicaPort", "string", "raft replicate port", "Yes"
    "consulAddr", "string", "Addresses of monitor system", "No" 
    "exporterPort", "string", "Port for monitor system", "No" 
    "masterAddrs", "string", "Addresses of master server", "Yes"
@@ -30,11 +30,11 @@ Example:
         "listen": "9021",
         "prof": "9092",
         "logLevel": "debug",
-        "metaDir": "/export/cfs/metanode_meta",
+        "metadataDir": "/export/cfs/metanode_meta",
         "logDir": "/export/Logs/cfs/metanode",
         "raftDir": "/export/cfs/metanode_raft",
         "raftHeartbeatPort": "9093",
-        "raftReplicatePort": "9094",
+        "raftReplicaPort": "9094",
         "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
          "exporterPort": 9511,
         "masterAddrs": [
