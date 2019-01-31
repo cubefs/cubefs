@@ -189,17 +189,6 @@ func (e *Extent) RestoreFromFS() (err error) {
 	return
 }
 
-// MarkDelete marks the extent as deleted.
-func (e *Extent) MarkDelete() (err error) {
-	e.lock.RLock()
-	defer e.lock.RUnlock()
-	e.header[util.MarkDeleteIndex] = util.MarkDelete
-	if _, err = e.file.WriteAt(e.header, 0); err != nil {
-		return
-	}
-	e.modifyTime = time.Now()
-	return
-}
 
 // HasBeenMarkedAsDeleted returns if the extent has been marked as deleted.
 func (e *Extent) HasBeenMarkedAsDeleted() bool {
