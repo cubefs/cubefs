@@ -530,9 +530,14 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 		return extent.DeleteTiny(offset, size)
 	}
 
-	if err = extent.MarkDelete(); err != nil {
+	extent.lock.RLock()
+	extent.header[util.MarkDeleteIndex] = util.MarkDelete
+	extent.lock.RUnlock()
+	verifyStart := int64(util.BlockHeaderSize * extentID)
+	if _, err = s.verifyCrcFp.WriteAt(extent.header, verifyStart); err != nil {
 		return
 	}
+
 	extentInfo.FromExtent(extent, true)
 	extentInfo.IsDeleted = true
 
