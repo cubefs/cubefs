@@ -70,12 +70,20 @@ type TopologyView struct {
 }
 
 type nodeSetView struct {
-	DataNodes []NodeView
+	Racks     []*RackView
 	MetaNodes []NodeView
 }
 
 func newNodeSetView() *nodeSetView {
-	return &nodeSetView{DataNodes: make([]NodeView, 0), MetaNodes: make([]NodeView, 0)}
+	return &nodeSetView{Racks: make([]*RackView, 0), MetaNodes: make([]NodeView, 0)}
+}
+
+type RackView struct {
+	DataNodes []NodeView
+}
+
+func newRackView() *RackView {
+	return &RackView{DataNodes: make([]NodeView, 0)}
 }
 
 type badPartitionView struct {
@@ -130,26 +138,24 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 	tv := &TopologyView{
 		NodeSet: make(map[uint64]*nodeSetView, 0),
 	}
-	m.cluster.t.metaNodes.Range(func(key, value interface{}) bool {
-		metaNode := value.(*topoMetaNode)
-		nsView, ok := tv.NodeSet[metaNode.setID]
-		if !ok {
-			nsView = newNodeSetView()
+	for _, ns := range m.cluster.t.nodeSetMap {
+		nsView := newNodeSetView()
+		tv.NodeSet[ns.ID] = nsView
+		ns.metaNodes.Range(func(key, value interface{}) bool {
+			metaNode := value.(*MetaNode)
+			nsView.MetaNodes = append(nsView.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
+			return true
+		})
+		for _, rack := range ns.rackMap {
+			rv := newRackView()
+			nsView.Racks = append(nsView.Racks, rv)
+			rack.dataNodes.Range(func(key, value interface{}) bool {
+				dataNode := value.(*DataNode)
+				rv.DataNodes = append(rv.DataNodes, NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
+				return true
+			})
 		}
-		nsView.MetaNodes = append(nsView.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
-		tv.NodeSet[metaNode.setID] = nsView
-		return true
-	})
-	m.cluster.t.dataNodes.Range(func(key, value interface{}) bool {
-		dataNode := value.(*topoDataNode)
-		nsView, ok := tv.NodeSet[dataNode.setID]
-		if !ok {
-			nsView = newNodeSetView()
-		}
-		nsView.DataNodes = append(nsView.DataNodes, NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
-		tv.NodeSet[dataNode.setID] = nsView
-		return true
-	})
+	}
 	sendOkReply(w, r, newSuccessHTTPReply(tv))
 }
 

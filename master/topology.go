@@ -313,7 +313,7 @@ func (ns *nodeSet) deleteMetaNode(metaNode *MetaNode) {
 }
 
 func (ns *nodeSet) canWriteForDataNode(replicaNum int) bool {
-	log.LogInfof("canWriteForDataNode metaLen[%v] replicaNum[%v]", ns.dataNodeLen, replicaNum)
+	log.LogInfof("canWriteForDataNode dataLen[%v] replicaNum[%v]", ns.dataNodeLen, replicaNum)
 	if ns.dataNodeLen < int(replicaNum) {
 		return false
 	}
@@ -371,6 +371,11 @@ func (ns *nodeSet) getRack(name string) (rack *Rack, err error) {
 func (ns *nodeSet) putRack(rack *Rack) {
 	ns.rackLock.Lock()
 	defer ns.rackLock.Unlock()
+	oldRack, ok := ns.rackMap[rack.name]
+	if ok {
+		rack = oldRack
+		return
+	}
 	ns.rackMap[rack.name] = rack
 	if ok := ns.isExist(rack.name); !ok {
 		ns.racks = append(ns.racks, rack.name)
