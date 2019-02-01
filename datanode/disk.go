@@ -282,8 +282,6 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 			if dp, err = LoadDataPartition(path.Join(d.Path, filename), d); err != nil {
 				log.LogError(fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ",
 					partitionID, err.Error()))
-				log.LogFlush()
-				panic(err.Error())
 				return
 			}
 			if visitor != nil {
