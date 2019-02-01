@@ -79,6 +79,7 @@ func newNodeSetView() *nodeSetView {
 }
 
 type RackView struct {
+	Name      string
 	DataNodes []NodeView
 }
 
@@ -148,6 +149,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 		})
 		for _, rack := range ns.rackMap {
 			rv := newRackView()
+			rv.Name = rack.name
 			nsView.Racks = append(nsView.Racks, rv)
 			rack.dataNodes.Range(func(key, value interface{}) bool {
 				dataNode := value.(*DataNode)
