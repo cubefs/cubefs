@@ -22,7 +22,7 @@ const (
 	idKey                = "id"
 	countKey             = "count"
 	startKey             = "start"
-	enablekey            = "enable"
+	enableKey            = "enable"
 	thresholdKey         = "threshold"
 	dataPartitionSizeKey = "size"
 	volCapacityKey       = "capacity"
@@ -51,7 +51,6 @@ const (
 	defaultMetaPartitionInodeIDStep       uint64  = 1 << 24
 	defaultMetaNodeReservedMem            uint64  = 1 << 32
 	runtimeStackBufSize                           = 4096
-	nodesActiveRate                       float32 = 0.5 // rate of active (live) nodes
 	spaceAvailableRate                            = 0.90
 	defaultNodeSetCapacity                        = 18
 	minNumOfRWDataPartitions                      = 10
