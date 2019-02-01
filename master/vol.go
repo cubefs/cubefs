@@ -87,11 +87,7 @@ func (vol *Vol) maxPartitionID() (maxPartitionID uint64) {
 	return
 }
 
-func (vol *Vol) getDataPartitionsView(liveRate float32) (body []byte, err error) {
-	if liveRate < nodesActiveRate {
-		body = make([]byte, 0)
-		return body, proto.ErrActiveDataNodesTooLess
-	}
+func (vol *Vol) getDataPartitionsView() (body []byte, err error) {
 	return vol.dataPartitions.updateResponseCache(false, 0)
 }
 
