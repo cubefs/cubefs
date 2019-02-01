@@ -108,9 +108,9 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
 	isFound := false
+	shouldDelete := false
 	mp.inodeTree.Find(ino, func(i BtreeItem) {
 		isFound = true
-		shouldDelete := false
 		inode := i.(*Inode)
 		resp.Msg = inode
 		if proto.IsRegular(inode.Type) {
@@ -118,21 +118,15 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 			return
 		}
 
-		shouldDelete = true // TODO is it always false?
-		mp.dentryTree.AscendRange(&Dentry{ParentId: inode.Inode},
-			&Dentry{ParentId: inode.Inode + 1}, func(i BtreeItem) bool {
-				shouldDelete = false
-				return false
-			})
-		if shouldDelete {
-			inode.DecNLink()
-			return
-		}
-		resp.Status = proto.OpNotEmtpy
+		//TODO: isDir should record subDir for fsck
+		shouldDelete = true
 	})
 	if !isFound {
 		resp.Status = proto.OpNotExistErr
 		return
+	}
+	if shouldDelete {
+		mp.inodeTree.Delete(ino)
 	}
 	return
 }

@@ -108,14 +108,6 @@ func (d *Dir) Forget() {
 	defer func() {
 		log.LogDebugf("TRACE Forget: ino(%v)", ino)
 	}()
-
-	if !d.super.orphan.Evict(ino) {
-		return
-	}
-
-	if err := d.super.mw.Evict(ino); err != nil {
-		log.LogErrorf("Forget Evict: ino(%v) err(%v)", ino, err)
-	}
 }
 
 // Mkdir handles the mkdir request.
@@ -141,7 +133,24 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	start := time.Now()
 	d.dcache.Delete(req.Name)
 
-	info, err := d.super.mw.Delete(d.inode.ino, req.Name, req.Dir)
+	if req.Dir {
+		childIno, childMode, err := d.super.mw.Lookup_ll(d.inode.ino, req.Name)
+		if err != nil {
+			return ParseError(err)
+		}
+		if !proto.IsDir(childMode) {
+			return syscall.ENOTDIR
+		}
+		entries, err := d.super.mw.ReadDir_ll(childIno)
+		if err != nil {
+			return ParseError(err)
+		}
+		if len(entries) != 0 {
+			return syscall.ENOTEMPTY
+		}
+	}
+
+	info, err := d.super.mw.Delete_ll(d.inode.ino, req.Name)
 	if err != nil {
 		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.inode.ino, req.Name, err)
 		return ParseError(err)
@@ -315,7 +324,7 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 
 	start := time.Now()
 
-	info, err := d.super.mw.HardLink(d.inode.ino, req.NewName, oldInode.ino)
+	info, err := d.super.mw.Link(d.inode.ino, req.NewName, oldInode.ino)
 	if err != nil {
 		log.LogErrorf("Link: parent(%v) name(%v) ino(%v) err(%v)", d.inode.ino, req.NewName, oldInode.ino, err)
 		return nil, ParseError(err)

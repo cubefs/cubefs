@@ -193,41 +193,28 @@ func (mw *MetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
 	return batchInfos
 }
 
-func (mw *MetaWrapper) Delete(parentID uint64, name string, isDir bool) (*proto.InodeInfo, error) {
-	var (
-		status int
-		inode  uint64
-		mode   uint32
-		err    error
-	)
-
+func (mw *MetaWrapper) Delete_ll(parentID uint64, name string) (*proto.InodeInfo, error) {
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
-		log.LogErrorf("Delete: No parent partition, parentID(%v) name(%v)", parentID, name)
+		log.LogErrorf("Delete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
 		return nil, syscall.ENOENT
 	}
 
-	if isDir {
-		if inode, mode, err = mw.Lookup_ll(parentID, name); err != nil {
-			return nil, err
-		}
-		if !proto.IsDir(mode) {
-			return nil, syscall.ENOTDIR
-		}
-		if _, err = mw.Unlink(inode); err != nil {
-			return nil, err
-		}
-	}
-
-	status, inode, err = mw.ddelete(parentMP, parentID, name)
+	status, inode, err := mw.ddelete(parentMP, parentID, name)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
 
 	// dentry is deleted successfully but inode is not, still returns success.
-	info, err := mw.Unlink(inode)
-	if err != nil {
-		log.LogWarnf("Delete: dentry delete successful, but unlink inode failed, parentID(%v) name(%v) isDir(%v) ino(%v)", parentID, name, isDir, inode)
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("Delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
+		return nil, nil
+	}
+
+	status, info, err := mw.iunlink(mp, inode)
+	if err != nil || status != statusOK {
+		return nil, nil
 	}
 	return info, nil
 }
@@ -346,60 +333,34 @@ func (mw *MetaWrapper) Truncate(inode, authid, size uint64) error {
 
 }
 
-func (mw *MetaWrapper) HardLink(parentID uint64, name string, inode uint64) (*proto.InodeInfo, error) {
-	var status int
-
+func (mw *MetaWrapper) Link(parentID uint64, name string, ino uint64) (*proto.InodeInfo, error) {
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
-		log.LogErrorf("HardLink: No parent partition, parentID(%v)", parentID)
+		log.LogErrorf("Link: No parent partition, parentID(%v)", parentID)
 		return nil, syscall.ENOENT
 	}
 
-	info, err := mw.Link(inode)
-	if err != nil {
-		return nil, err
-	}
-
-	// create new dentry and refer to the inode
-	status, err = mw.dcreate(parentMP, parentID, name, inode, info.Mode)
-	if err != nil || status != statusOK {
-		if status == statusExist {
-			return nil, syscall.EEXIST
-		} else {
-			mw.Unlink(inode)
-			return nil, syscall.EAGAIN
-		}
-	}
-	return info, nil
-}
-
-func (mw *MetaWrapper) Link(inode uint64) (*proto.InodeInfo, error) {
-	mp := mw.getPartitionByInode(inode)
+	mp := mw.getPartitionByInode(ino)
 	if mp == nil {
-		log.LogErrorf("Link: No target inode partition, ino(%v)", inode)
+		log.LogErrorf("Link: No target inode partition, ino(%v)", ino)
 		return nil, syscall.ENOENT
 	}
 
 	// increase inode nlink
-	status, info, err := mw.ilink(mp, inode)
+	status, info, err := mw.ilink(mp, ino)
 	if err != nil || status != statusOK {
-		log.LogErrorf("Unlink: ino(%v) err(%v) status(%v)", inode, err, status)
 		return nil, statusToErrno(status)
 	}
-	return info, nil
-}
 
-func (mw *MetaWrapper) Unlink(inode uint64) (*proto.InodeInfo, error) {
-	mp := mw.getPartitionByInode(inode)
-	if mp == nil {
-		log.LogErrorf("Unlink: No such partition, ino(%v)", inode)
-		return nil, syscall.EINVAL
-	}
-
-	status, info, err := mw.iunlink(mp, inode)
+	// create new dentry and refer to the inode
+	status, err = mw.dcreate(parentMP, parentID, name, ino, info.Mode)
 	if err != nil || status != statusOK {
-		log.LogErrorf("Unlink: ino(%v) err(%v) status(%v)", inode, err, status)
-		return nil, statusToErrno(status)
+		if status == statusExist {
+			return nil, syscall.EEXIST
+		} else {
+			mw.iunlink(mp, ino)
+			return nil, syscall.EAGAIN
+		}
 	}
 	return info, nil
 }

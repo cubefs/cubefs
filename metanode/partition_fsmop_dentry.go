@@ -45,10 +45,6 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 			status = proto.OpArgMismatchErr
 			return
 		}
-		if ino.GetNLink() < 2 {
-			status = proto.OpNotPerm
-			return
-		}
 	}
 	if item, ok := mp.dentryTree.ReplaceOrInsert(dentry, false); !ok {
 		status = proto.OpExistErr
