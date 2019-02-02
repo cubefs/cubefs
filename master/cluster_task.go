@@ -547,7 +547,6 @@ func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataN
 		log.LogErrorf("action[handleDataNodeHeartbeatResp] dataNode[%v] err[%v]", dataNode.Addr, err)
 	}
 	c.updateDataNode(dataNode, resp.PartitionReports)
-	dataNode.dataPartitionReports = nil
 	logMsg = fmt.Sprintf("action[handleDataNodeHeartbeatResp],dataNode:%v ReportTime:%v  success", dataNode.Addr, time.Now().Unix())
 	log.LogInfof(logMsg)
 	return
