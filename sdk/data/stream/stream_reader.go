@@ -35,6 +35,8 @@ type Streamer struct {
 	openWriteCnt int
 	authid       uint64
 
+	idle int // how long there is no new request
+
 	extents *ExtentCache
 	once    sync.Once
 

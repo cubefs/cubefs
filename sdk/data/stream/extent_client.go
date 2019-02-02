@@ -237,17 +237,3 @@ func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 	}
 	return s
 }
-
-//func (client *ExtentClient) getStreamWriter(inode uint64, init bool) (stream *Streamer, sw *StreamWriter) {
-//	client.streamerLock.Lock()
-//	defer client.streamerLock.Unlock()
-//	stream, ok := client.streamers[inode]
-//	if !ok {
-//		return nil, nil
-//	}
-//
-//	if init == true && stream.writer == nil {
-//		stream.writer = NewStreamWriter(stream, inode, stream.authid)
-//	}
-//	return stream, stream.writer
-//}
