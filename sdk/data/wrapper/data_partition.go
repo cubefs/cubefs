@@ -14,7 +14,6 @@
 
 package wrapper
 
-
 import (
 	"fmt"
 	"github.com/tiglabs/containerfs/proto"
@@ -27,17 +26,13 @@ type DataPartition struct {
 	proto.DataPartitionResponse
 	RandomWrite   bool
 	PartitionType string
-	Metrics *DataPartitionMetrics
+	Metrics       *DataPartitionMetrics
 }
 
 // DataPartitionMetrics defines the wrapper of the metrics related to the data partition.
 type DataPartitionMetrics struct {
-	WriteCnt        uint64
-	ReadCnt         uint64
-	SumWriteLatency uint64
-	SumReadLatency  uint64
-	WriteLatency    float64
-	ReadLatency     float64
+	WriteLatency float64
+	ReadLatency  float64
 }
 
 type DataPartitionSorter []*DataPartition
@@ -55,8 +50,6 @@ func (ds DataPartitionSorter) Less(i, j int) bool {
 // NewDataPartitionMetrics returns a new DataPartitionMetrics instance.
 func NewDataPartitionMetrics() *DataPartitionMetrics {
 	metrics := new(DataPartitionMetrics)
-	metrics.WriteCnt = 1
-	metrics.ReadCnt = 1
 	return metrics
 }
 

@@ -130,24 +130,7 @@ func (w *Wrapper) updateDataPartition() error {
 	rwPartitionGroups := make([]*DataPartition, 0)
 	localLeaderPartitionGroups := make([]*DataPartition, 0)
 	for _, dp := range view.DataPartitions {
-		if dp.Status == proto.ReadWrite {
-			rwPartitionGroups = append(rwPartitionGroups, dp)
-		}
-	}
-
-	for _, dp := range view.DataPartitions {
 		w.replaceOrInsertPartition(dp)
-	}
-	partitions := make([]*DataPartition, 0)
-	w.RLock()
-	for _, p := range w.partitions {
-		partitions = append(partitions, p)
-	}
-	w.RUnlock()
-
-	rwPartitionGroups = make([]*DataPartition, 0)
-	localLeaderPartitionGroups = make([]*DataPartition, 0)
-	for _, dp := range partitions {
 		if dp.Status == proto.ReadWrite {
 			rwPartitionGroups = append(rwPartitionGroups, dp)
 			if strings.Split(dp.Hosts[0], ":")[0] == LocalIP {
@@ -155,9 +138,11 @@ func (w *Wrapper) updateDataPartition() error {
 			}
 		}
 	}
-	w.rwPartition = rwPartitionGroups
-	w.localLeaderPartitions = localLeaderPartitionGroups
 
+	if len(rwPartitionGroups) > 0 {
+		w.rwPartition = rwPartitionGroups
+		w.localLeaderPartitions = localLeaderPartitionGroups
+	}
 	return nil
 }
 
@@ -184,61 +169,55 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	}
 }
 
-func (w *Wrapper) getLocalLeaderDataPartition(exclude []uint64) (*DataPartition, error) {
-	rwPartitionGroups := w.localLeaderPartitions
-	if len(rwPartitionGroups) == 0 {
-		return nil, fmt.Errorf("no writable data partition")
+func (w *Wrapper) getRandomDataPartition(partitions []*DataPartition, exclude []uint64) *DataPartition {
+	var dp *DataPartition
+
+	if len(partitions) == 0 {
+		return nil
 	}
-	var (
-		partition *DataPartition
-	)
 
 	rand.Seed(time.Now().UnixNano())
-	index := rand.Intn(len(rwPartitionGroups))
-	partition = rwPartitionGroups[index]
-	if !isExcluded(partition.PartitionID, exclude) {
-		return partition, nil
+	index := rand.Intn(len(partitions))
+	dp = partitions[index]
+	if !isExcluded(dp.PartitionID, exclude) {
+		return dp
 	}
 
-	for _, partition = range rwPartitionGroups {
-		if !isExcluded(partition.PartitionID, exclude) {
-			return partition, nil
+	for _, dp = range partitions {
+		if !isExcluded(dp.PartitionID, exclude) {
+			return dp
 		}
 	}
-	return nil, fmt.Errorf("no writable data partition")
+	return nil
+}
+
+func (w *Wrapper) getLocalLeaderDataPartition(exclude []uint64) *DataPartition {
+	w.RLock()
+	localLeaderPartitions := w.localLeaderPartitions
+	w.RUnlock()
+	return w.getRandomDataPartition(localLeaderPartitions, exclude)
 }
 
 // GetDataPartitionForWrite returns an available data partition for write.
 func (w *Wrapper) GetDataPartitionForWrite(exclude []uint64) (*DataPartition, error) {
-	dp, err := w.getLocalLeaderDataPartition(exclude)
-	if err == nil {
+	dp := w.getLocalLeaderDataPartition(exclude)
+	if dp != nil {
 		return dp, nil
 	}
+
+	w.RLock()
 	rwPartitionGroups := w.rwPartition
-	if len(rwPartitionGroups) == 0 {
-		return nil, fmt.Errorf("no writable data partition")
-	}
-	var (
-		partition *DataPartition
-	)
+	w.RUnlock()
 
-	rand.Seed(time.Now().UnixNano())
-	index := rand.Intn(len(rwPartitionGroups))
-	partition = rwPartitionGroups[index]
-
-	if !isExcluded(partition.PartitionID, exclude) {
-		return partition, nil
+	dp = w.getRandomDataPartition(rwPartitionGroups, exclude)
+	if dp != nil {
+		return dp, nil
 	}
 
-	for _, partition = range rwPartitionGroups {
-		if !isExcluded(partition.PartitionID, exclude) {
-			return partition, nil
-		}
-	}
 	return nil, fmt.Errorf("no writable data partition")
 }
 
-// GetDataPartition returns the data partition based on the given partition ID. 
+// GetDataPartition returns the data partition based on the given partition ID.
 func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	w.RLock()
 	defer w.RUnlock()
