@@ -120,7 +120,7 @@ func (w *Wrapper) updateDataPartition() error {
 		return errors.Annotate(err, "updateDataPartition: request to master failed!")
 	}
 
-	log.LogInfof("updateDataPartition: msg(%v)", string(msg))
+	log.LogInfof("updateDataPartition: start!")
 
 	view := &DataPartitionView{}
 	if err = json.Unmarshal(msg, view); err != nil {
@@ -130,6 +130,7 @@ func (w *Wrapper) updateDataPartition() error {
 	rwPartitionGroups := make([]*DataPartition, 0)
 	localLeaderPartitionGroups := make([]*DataPartition, 0)
 	for _, dp := range view.DataPartitions {
+		log.LogInfof("updateDataPartition: dp(%v)", dp)
 		w.replaceOrInsertPartition(dp)
 		if dp.Status == proto.ReadWrite {
 			rwPartitionGroups = append(rwPartitionGroups, dp)
@@ -143,6 +144,8 @@ func (w *Wrapper) updateDataPartition() error {
 		w.rwPartition = rwPartitionGroups
 		w.localLeaderPartitions = localLeaderPartitionGroups
 	}
+
+	log.LogInfof("updateDataPartition: end!")
 	return nil
 }
 
