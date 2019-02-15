@@ -43,7 +43,7 @@ func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
-	item := mp.inodeTree.Get(ino)
+	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
 		return
@@ -109,7 +109,7 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 	resp.Status = proto.OpOk
 	isFound := false
 	shouldDelete := false
-	mp.inodeTree.Find(ino, func(i BtreeItem) {
+	mp.inodeTree.CopyFind(ino, func(i BtreeItem) {
 		isFound = true
 		inode := i.(*Inode)
 		resp.Msg = inode
@@ -161,7 +161,7 @@ func (mp *metaPartition) internalDeleteInode(ino *Inode) {
 
 func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	status = proto.OpOk
-	item := mp.inodeTree.Get(ino)
+	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		status = proto.OpNotExistErr
 		return
@@ -192,7 +192,7 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 
 	resp.Status = proto.OpOk
 	isFound := false
-	mp.inodeTree.Find(ino, func(item BtreeItem) {
+	mp.inodeTree.CopyFind(ino, func(item BtreeItem) {
 		var delExtents []BtreeItem
 		isFound = true
 		i := item.(*Inode)
@@ -275,7 +275,7 @@ func (mp *metaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
 	// get Inode
 
 	ino := NewInode(req.Inode, req.Mode)
-	item := mp.inodeTree.Get(ino)
+	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		return
 	}

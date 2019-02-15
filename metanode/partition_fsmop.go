@@ -62,7 +62,7 @@ func (mp *metaPartition) initInode(ino *Inode) {
 func (mp *metaPartition) fsmOpenFile(req *OpenReq) (resp *InodeResponse) {
 
 	ino := NewInode(req.Inode, 0)
-	item := mp.inodeTree.Get(ino)
+	item := mp.inodeTree.CopyGet(ino)
 	resp = NewInodeResponse()
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
@@ -87,7 +87,7 @@ func (mp *metaPartition) fsmOpenFile(req *OpenReq) (resp *InodeResponse) {
 // and after finishing the write, we need to release the opened file.
 func (mp *metaPartition) fsmReleaseOpen(ino *Inode) (status uint8) {
 	status = proto.OpOk
-	item := mp.inodeTree.Get(ino)
+	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		status = proto.OpNotExistErr
 		return
