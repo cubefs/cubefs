@@ -15,7 +15,6 @@
 package storage
 
 import (
-	"encoding/binary"
 	"fmt"
 	"github.com/tiglabs/containerfs/util"
 	"hash/crc32"
@@ -24,12 +23,14 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
 
 const (
-	ExtentOpenOpt          = os.O_CREATE | os.O_RDWR | os.O_EXCL
+	ExtentOpenOpt  = os.O_CREATE | os.O_RDWR | os.O_EXCL
+	ExtentHasClose = -1
 )
 
 type ExtentInfo struct {
@@ -43,21 +44,19 @@ type ExtentInfo struct {
 	isDirty    bool
 }
 
-func (ei *ExtentInfo) FromExtent(extent *Extent, isDirtyBlock bool) {
-	if extent != nil {
-		ei.FileID = extent.ID()
-		ei.Inode = extent.Ino()
-		ei.Size = uint64(extent.Size())
+func (ei *ExtentInfo) FromExtent(e *Extent, isDirtyBlock bool) {
+	if e != nil {
+		ei.Size = uint64(e.dataSize)
 		if !IsTinyExtent(ei.FileID) {
 			if isDirtyBlock {
 				ei.Crc = 0
 			} else {
-				ei.Crc = extent.HeaderChecksum()
+				ei.Crc = e.HeaderChecksum()
 			}
-			ei.IsDeleted = extent.HasBeenMarkedAsDeleted()
-			ei.ModifyTime = extent.ModifyTime()
-			if isDirtyBlock{
-				ei.isDirty=isDirtyBlock
+			ei.IsDeleted = e.HasBeenMarkedAsDeleted()
+			ei.ModifyTime = e.ModifyTime()
+			if isDirtyBlock {
+				ei.isDirty = isDirtyBlock
 			}
 		}
 	}
@@ -82,6 +81,7 @@ type Extent struct {
 	header     []byte
 	modifyTime time.Time
 	dataSize   int64
+	hasClose   int32
 }
 
 // NewExtentInCore create and returns a new extent instance.
@@ -94,25 +94,19 @@ func NewExtentInCore(name string, extentID uint64) *Extent {
 	return e
 }
 
+func (e *Extent) HasClosed() bool {
+	return atomic.LoadInt32(&e.hasClose) == ExtentHasClose
+}
+
 // Close this extent and release FD.
 func (e *Extent) Close() (err error) {
-	e.lock.Lock()
-	defer e.lock.Unlock()
+	if e.HasClosed() {
+		return
+	}
 	if err = e.file.Close(); err != nil {
 		return
 	}
 	return
-}
-
-// Ino returns this inode ID of this extent block belong to.
-func (e *Extent) Ino() (ino uint64) {
-	ino = binary.BigEndian.Uint64(e.header[:util.BlockHeaderInoSize])
-	return
-}
-
-// ID returns the identity value (extentID) of this extent entity.
-func (e *Extent) ID() uint64 {
-	return e.extentID
 }
 
 func (e *Extent) Exist() (exsit bool) {
@@ -129,8 +123,6 @@ func (e *Extent) Exist() (exsit bool) {
 // InitToFS init extent data info filesystem. If entry file exist and overwrite is true,
 // this operation will clear all data of exist entry file and initialize extent header data.
 func (e *Extent) InitToFS(ino uint64) (err error) {
-	e.lock.Lock()
-	defer e.lock.Unlock()
 	if e.file, err = os.OpenFile(e.filePath, ExtentOpenOpt, 0666); err != nil {
 		return err
 	}
@@ -159,8 +151,6 @@ func (e *Extent) InitToFS(ino uint64) (err error) {
 
 // RestoreFromFS restores the entity data and status from the file stored on the filesystem.
 func (e *Extent) RestoreFromFS() (err error) {
-	e.lock.Lock()
-	defer e.lock.Unlock()
 	if e.file, err = os.OpenFile(e.filePath, os.O_RDWR, 0666); err != nil {
 		if strings.Contains(err.Error(), syscall.ENOENT.Error()) {
 			err = ExtentNotFoundError
@@ -188,37 +178,26 @@ func (e *Extent) RestoreFromFS() (err error) {
 	return
 }
 
-
 // HasBeenMarkedAsDeleted returns if the extent has been marked as deleted.
 func (e *Extent) HasBeenMarkedAsDeleted() bool {
 	if IsTinyExtent(e.extentID) {
 		return false
 	}
-	e.lock.RLock()
-	defer e.lock.RUnlock()
 	return e.header[util.MarkDeleteIndex] == util.MarkDelete
 }
 
 // Size returns length of the extent (not including the header).
 func (e *Extent) Size() (size int64) {
-	e.lock.RLock()
-	defer e.lock.RUnlock()
-	size = e.dataSize
-	return
+	return e.dataSize
 }
 
 // ModifyTime returns the time when this extent was modified recently.
 func (e *Extent) ModifyTime() time.Time {
-	e.lock.RLock()
-	defer e.lock.RUnlock()
 	return e.modifyTime
 }
 
 // WriteTiny performs write on a tiny extent.
 func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdateSize, isSync bool) (err error) {
-	e.lock.Lock()
-	defer e.lock.Unlock()
-
 	index := offset + size
 	if index >= math.MaxUint32 {
 		return ExtentIsFullError
@@ -240,7 +219,6 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdate
 	}
 	e.dataSize = index
 
-
 	return
 }
 
@@ -253,8 +231,6 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, crcFunc Upda
 		return
 	}
 
-	e.lock.RLock()
-	defer e.lock.RUnlock()
 	if err = e.checkOffsetAndSize(offset, size); err != nil {
 		return
 	}
@@ -271,6 +247,7 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, crcFunc Upda
 		}
 	}
 	if offsetInBlock == 0 && size == util.BlockSize {
+		isDirtyBlock = true
 		err = crcFunc(e.extentID, int(blockNo), crc, e, isDirtyBlock)
 		return
 	} else {
@@ -289,8 +266,6 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc u
 	if err = e.checkOffsetAndSize(offset, size); err != nil {
 		return
 	}
-	e.lock.RLock()
-	defer e.lock.RUnlock()
 	if _, err = e.file.ReadAt(data[:size], offset); err != nil {
 		return
 	}
@@ -331,8 +306,6 @@ func (e *Extent) Flush() (err error) {
 
 // HeaderChecksum returns the crc checksum of the extent header, which includes the inode data and the block crc.
 func (e *Extent) HeaderChecksum() (crc uint32) {
-	e.lock.RLock()
-	defer e.lock.RUnlock()
 	blockNum := e.dataSize / util.BlockSize
 	if e.dataSize%util.BlockSize != 0 {
 		blockNum = blockNum + 1
@@ -342,8 +315,6 @@ func (e *Extent) HeaderChecksum() (crc uint32) {
 }
 
 func (e *Extent) checkDirtyBlock() (dirtyBlocks []int) {
-	e.lock.RLock()
-	defer e.lock.RUnlock()
 	dirtyBlocks = make([]int, 0)
 	for index := 0; index < util.BlockCount; index++ {
 		if e.header[index*util.PerBlockCrcSize] == util.DirtyCrcMark {
@@ -358,8 +329,6 @@ func (e *Extent) autoFixDirtyCrc(crcFunc UpdateCrcFunc) {
 	if len(dirtyBlocks) == 0 {
 		return
 	}
-	e.lock.RLock()
-	defer e.lock.RUnlock()
 	for _, dirtyBlockNo := range dirtyBlocks {
 		data := make([]byte, util.BlockSize)
 		offset := int64(dirtyBlockNo * util.BlockSize)
