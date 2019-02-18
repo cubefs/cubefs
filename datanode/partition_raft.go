@@ -16,7 +16,6 @@ package datanode
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -30,7 +29,6 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
 	"github.com/tiglabs/containerfs/repl"
-	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
@@ -419,7 +417,7 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 		IPAddr:            s.localIP,
 		HeartbeatPort:     heartbeatPort,
 		ReplicaPort:       replicatePort,
-		NumOfLogsToRetain: NumOfRaftLogsToRetain,
+		NumOfLogsToRetain: MaxUnit64, // Data partition do not truncate raftLog by raft fsm
 	}
 	s.raftStore, err = raftstore.NewRaftStore(raftConf)
 	if err != nil {
@@ -434,69 +432,6 @@ func (s *DataNode) stopRaftServer() {
 	if s.raftStore != nil {
 		s.raftStore.Stop()
 	}
-}
-
-// ExtentRepair creates a task to repair extent files
-func (dp *DataPartition) ExtentRepair(extentFiles []*storage.ExtentInfo, target string) {
-	startTime := time.Now().UnixNano()
-	log.LogInfof("action[ExtentRepair] partition=%v start.", dp.partitionID)
-
-	mf := NewDataPartitionRepairTask(extentFiles, target)
-
-	for i := 0; i < len(extentFiles); i++ {
-		extentFile := extentFiles[i]
-		addFile := &storage.ExtentInfo{Source: extentFile.Source, FileID: extentFile.FileID, Size: extentFile.Size, Inode: extentFile.Inode}
-		mf.ExtentsToBeCreated = append(mf.ExtentsToBeCreated, addFile)
-		log.LogDebugf("action[ExtentRepair] partition=%v extent [%v_%v] addFile[%v].",
-			dp.partitionID, dp.partitionID, extentFile.FileID, addFile)
-	}
-
-	dp.DoExtentStoreRepair(mf)
-
-	finishTime := time.Now().UnixNano()
-	log.LogInfof("action[ExtentRepair] partition=%v finish cost[%vms].",
-		dp.partitionID, (finishTime-startTime)/int64(time.Millisecond))
-}
-
-// Get all extents' information
-func (dp *DataPartition) getExtentInfo(targetAddr string) (extentFiles []*storage.ExtentInfo, err error) {
-	// get remote extents meta by opGetAllWaterMarker cmd
-	p := repl.NewPacketToGetAllWatermarks(dp.partitionID, proto.NormalExtentType)
-	var conn *net.TCPConn
-	target := targetAddr
-	conn, err = gConnPool.GetConnect(target) //get remote connect
-	if err != nil {
-		err = errors.Annotatef(err, "getExtentInfo  partition=%v get host[%v] connect", dp.partitionID, target)
-		return
-	}
-	err = p.WriteToConn(conn) //write command to remote host
-	if err != nil {
-		gConnPool.PutConnect(conn, true)
-		err = errors.Annotatef(err, "getExtentInfo partition=%v write to host[%v]", dp.partitionID, target)
-		return
-	}
-	err = p.ReadFromConn(conn, 60) //read it response
-	if err != nil {
-		gConnPool.PutConnect(conn, true)
-		err = errors.Annotatef(err, "getExtentInfo partition=%v read from host[%v]", dp.partitionID, target)
-		return
-	}
-	fileInfos := make([]*storage.ExtentInfo, 0)
-	err = json.Unmarshal(p.Data[:p.Size], &fileInfos)
-	if err != nil {
-		gConnPool.PutConnect(conn, true)
-		err = errors.Annotatef(err, "getExtentInfo partition=%v unmarshal json[%v]", dp.partitionID, string(p.Data[:p.Size]))
-		return
-	}
-
-	extentFiles = make([]*storage.ExtentInfo, 0)
-	for _, fileInfo := range fileInfos {
-		extentFiles = append(extentFiles, fileInfo)
-	}
-
-	gConnPool.PutConnect(conn, true)
-
-	return
 }
 
 // NewPacketToGetAppliedID returns a new packet to get the applied ID.
@@ -582,58 +517,55 @@ func (dp *DataPartition) getPartitionSize() (size uint64, err error) {
 }
 
 // Get all members' applied ids
-func (dp *DataPartition) getAllAppliedID(setMinAppliedID bool) (allAppliedID []uint64, replyNum uint8) {
-	var (
-		minAppliedID uint64
-		err          error
-	)
+func (dp *DataPartition) getAllAppliedID(isFindLocal bool) (allAppliedID []uint64, replyNum uint8) {
 	allAppliedID = make([]uint64, len(dp.replicas))
-
-	if setMinAppliedID == true {
-		minAppliedID = dp.minAppliedID
-	} else {
-		minAppliedID = 0
-	}
-	p := NewPacketToGetAppliedID(dp.partitionID, minAppliedID)
-
+	p := NewPacketToGetAppliedID(dp.partitionID, dp.minAppliedID)
 	for i := 0; i < len(dp.replicas); i++ {
-		var conn *net.TCPConn
 		replicaHostParts := strings.Split(dp.replicas[i], ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
-		if LocalIP == replicaHost {
+		if LocalIP == replicaHost && isFindLocal{
 			log.LogDebugf("partition=%v local no send msg. localIP[%v] replicaHost[%v] appliedId[%v]",
 				dp.partitionID, LocalIP, replicaHost, dp.applyID)
 			allAppliedID[i] = dp.applyID
 			replyNum++
 			continue
 		}
-
 		target := dp.replicas[i]
-		conn, err = gConnPool.GetConnect(target)
+		appliedID, err := dp.getAppliedID(target, p)
 		if err != nil {
-			err = errors.Annotatef(err, " partition=%v get host[%v] connect", dp.partitionID, target)
+			log.LogErrorf("partition=%v getAppliedID from[%v] Failed.", dp.partitionID, target)
 			continue
 		}
-		err = p.WriteToConn(conn) // write command to the remote host
-		if err != nil {
-			gConnPool.PutConnect(conn, true)
-			err = errors.Annotatef(err, "partition=%v write to host[%v]", dp.partitionID, target)
-			continue
-		}
-		err = p.ReadFromConn(conn, 60)
-		if err != nil {
-			gConnPool.PutConnect(conn, true)
-			err = errors.Annotatef(err, "partition=%v read from host[%v]", dp.partitionID, target)
-			continue
-		}
-		gConnPool.PutConnect(conn, true)
-
-		remoteAppliedID := binary.BigEndian.Uint64(p.Data)
-		allAppliedID[i] = remoteAppliedID
+		allAppliedID[i] = appliedID
 		replyNum++
-
-		log.LogDebugf("partition=%v remoteAppliedID=%v", dp.partitionID, remoteAppliedID)
+		log.LogDebugf("partition=%v remoteAppliedID=%v", dp.partitionID, allAppliedID[i])
 	}
+
+	return
+}
+
+// Get target members' applied id
+func (dp *DataPartition) getAppliedID(target string, p *repl.Packet) (appliedID uint64, err error) {
+	var conn *net.TCPConn
+	conn, err = gConnPool.GetConnect(target)
+	if err != nil {
+		return
+	}
+	err = p.WriteToConn(conn) // write command to the remote host
+	if err != nil {
+		gConnPool.PutConnect(conn, true)
+		return
+	}
+	err = p.ReadFromConn(conn, 60)
+	if err != nil {
+		gConnPool.PutConnect(conn, true)
+		return
+	}
+	gConnPool.PutConnect(conn, true)
+
+	appliedID = binary.BigEndian.Uint64(p.Data)
+
+	log.LogDebugf("partition=%v remoteAppliedID=%v", dp.partitionID, appliedID)
 
 	return
 }
