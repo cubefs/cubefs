@@ -343,15 +343,23 @@ func (n *node) insert(item Item, maxItems int) Item {
 }
 
 // get finds the given key in the subtree and returns it.
-func (n *node) get(key Item, cow *copyOnWriteContext) Item {
+func (n *node) get(key Item) Item {
 	i, found := n.items.find(key)
 	if found {
-		if newNode := n.mutableFor(cow); newNode != n {
-			*n = *newNode
-		}
 		return n.items[i]
 	} else if len(n.children) > 0 {
-		return n.children[i].get(key, cow)
+		return n.children[i].get(key)
+	}
+	return nil
+}
+
+func (n *node) copyGet(key Item, cow *copyOnWriteContext) Item {
+	i, found := n.items.find(key)
+	if found {
+		return n.items[i]
+	} else if len(n.children) > 0 {
+		child := n.mutableChild(i)
+		return child.copyGet(key, cow)
 	}
 	return nil
 }
@@ -826,7 +834,17 @@ func (t *BTree) Get(key Item) Item {
 	if t.root == nil {
 		return nil
 	}
-	return t.root.get(key, t.cow)
+	return t.root.get(key)
+}
+
+func (t *BTree) CopyGet(key Item) Item {
+	if t.root == nil {
+		return nil
+	}
+	t2 := t.root.mutableFor(t.cow)
+	item := t2.copyGet(key, t2.cow)
+	t.root = t2
+	return item
 }
 
 // Min returns the smallest item in the tree, or nil if the tree is empty.

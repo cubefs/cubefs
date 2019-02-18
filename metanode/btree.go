@@ -47,10 +47,27 @@ func (b *BTree) Get(key BtreeItem) (item BtreeItem) {
 	return
 }
 
+func (b *BTree) CopyGet(key BtreeItem) (item BtreeItem) {
+	b.RLock()
+	item = b.tree.CopyGet(key)
+	b.RUnlock()
+	return
+}
+
 // Find searches for the given key in the btree.
 func (b *BTree) Find(key BtreeItem, fn func(i BtreeItem)) {
 	b.RLock()
 	item := b.tree.Get(key)
+	b.RUnlock()
+	if item == nil {
+		return
+	}
+	fn(item)
+}
+
+func (b *BTree) CopyFind(key BtreeItem, fn func(i BtreeItem)) {
+	b.RLock()
+	item := b.tree.CopyGet(key)
 	b.RUnlock()
 	if item == nil {
 		return

@@ -86,7 +86,7 @@ func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
 	resp *DentryResponse) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
-	item := mp.dentryTree.Get(dentry)
+	item := mp.dentryTree.CopyGet(dentry)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
 		return
