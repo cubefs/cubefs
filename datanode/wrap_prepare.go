@@ -78,7 +78,7 @@ func (s *DataNode) checkPartition(p *repl.Packet) (err error) {
 		return
 	}
 	p.Object = dp
-	if p.Opcode == proto.OpWrite || p.Opcode == proto.OpCreateExtent {
+	if isWriteOperation(p) || isCreateExtentOperation(p) {
 		if dp.Available() <= 0 {
 			err = storage.NoSpaceError
 			return
@@ -100,7 +100,7 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 		if err != nil {
 			return err
 		}
-	} else if isLeaderPacket(p) && p.Opcode == proto.OpCreateExtent {
+	} else if isLeaderPacket(p) && isCreateExtentOperation(p) {
 		if partition.GetExtentCount() >= storage.MaxExtentId {
 			return fmt.Errorf("partition %v has reached maxExtentId", p.PartitionID)
 		}
@@ -120,7 +120,7 @@ func isLeaderPacket(p *repl.Packet) (ok bool) {
 }
 
 func isWriteOperation(p *repl.Packet) bool {
-	return p.Opcode == proto.OpWrite
+	return p.Opcode == proto.OpWrite || p.Opcode == proto.OpSyncWrite
 }
 
 func isCreateExtentOperation(p *repl.Packet) bool {
