@@ -327,7 +327,7 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 			if maxFileInfo.Inode != 0 && extentInfo.Inode == 0 {
 				fixExtent := &storage.ExtentInfo{Source: maxFileInfo.Source, FileID: extentID, Size: maxFileInfo.Size, Inode: maxFileInfo.Inode}
 				repairTasks[index].ExtentsToBeRepaired = append(repairTasks[index].ExtentsToBeRepaired, fixExtent)
-				log.LogInfof("action[generatorFixExtentSizeTasks] Modify Ino fixExtent(%v_%v).on Index(%v)", dp.partitionID, fixExtent, index)
+				log.LogInfof("action[generatorFixExtentSizeTasks] Modify Inode fixExtent(%v_%v).on Index(%v)", dp.partitionID, fixExtent, index)
 			}
 		}
 		if storage.IsTinyExtent(extentID) {

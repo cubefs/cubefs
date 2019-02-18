@@ -22,8 +22,8 @@ import (
 // ExtentMapItem stores the extent entity pointer and the element
 // pointer of the extent entity in a cache list.
 type ExtentMapItem struct {
-	ext *Extent
-	ele *list.Element
+	e       *Extent
+	element *list.Element
 }
 
 // ExtentCache is an implementation of the ExtentCache with LRU support.
@@ -47,29 +47,29 @@ func NewExtentCache(capacity int) *ExtentCache {
 }
 
 // Put puts an extent object into the cache.
-func (cache *ExtentCache) Put(extent *Extent) {
-	if IsTinyExtent(extent.ID()) {
+func (cache *ExtentCache) Put(e *Extent) {
+	if IsTinyExtent(e.extentID) {
 		cache.tinyLock.Lock()
-		cache.tinyExtents[extent.ID()] = extent
+		cache.tinyExtents[e.extentID] = e
 		cache.tinyLock.Unlock()
 		return
 	}
 	cache.lock.Lock()
 	defer cache.lock.Unlock()
 	item := &ExtentMapItem{
-		ext: extent,
-		ele: cache.extentList.PushBack(extent),
+		e:       e,
+		element: cache.extentList.PushBack(e),
 	}
-	cache.extentMap[extent.ID()] = item
+	cache.extentMap[e.extentID] = item
 
 	cache.fireLRU()
 }
 
 // Get gets the extent from the cache.
-func (cache *ExtentCache) Get(extentID uint64) (extent *Extent, ok bool) {
+func (cache *ExtentCache) Get(extentID uint64) (e *Extent, ok bool) {
 	if IsTinyExtent(extentID) {
 		cache.tinyLock.RLock()
-		extent, ok = cache.tinyExtents[extentID]
+		e, ok = cache.tinyExtents[extentID]
 		cache.tinyLock.RUnlock()
 		return
 	}
@@ -80,9 +80,9 @@ func (cache *ExtentCache) Get(extentID uint64) (extent *Extent, ok bool) {
 	)
 	if item, ok = cache.extentMap[extentID]; ok {
 		if !IsTinyExtent(extentID) {
-			cache.extentList.MoveToBack(item.ele)
+			cache.extentList.MoveToBack(item.element)
 		}
-		extent = item.ext
+		e = item.e
 	}
 	return
 }
@@ -100,9 +100,9 @@ func (cache *ExtentCache) Del(extentID uint64) {
 	)
 	if item, ok = cache.extentMap[extentID]; ok {
 		delete(cache.extentMap, extentID)
-		cache.extentList.Remove(item.ele)
+		cache.extentList.Remove(item.element)
 
-		item.ext.Close()
+		item.e.Close()
 	}
 }
 
@@ -118,7 +118,7 @@ func (cache *ExtentCache) Clear() {
 		curr := e
 		e = e.Next()
 		ec := curr.Value.(*Extent)
-		delete(cache.extentMap, ec.ID())
+		delete(cache.extentMap, ec.extentID)
 
 		ec.Close()
 		cache.extentList.Remove(curr)
@@ -130,7 +130,7 @@ func (cache *ExtentCache) Clear() {
 // Size returns number of extents stored in the cache.
 func (cache *ExtentCache) Size() int {
 	cache.lock.RLock()
-	cache.lock.RUnlock()
+	defer cache.lock.RUnlock()
 	return cache.extentList.Len()
 }
 
@@ -142,10 +142,10 @@ func (cache *ExtentCache) fireLRU() {
 	for i := 0; i < needRemove; i++ {
 		if e := cache.extentList.Front(); e != nil {
 			front := e.Value.(*Extent)
-			if IsTinyExtent(front.ID()) {
+			if IsTinyExtent(front.extentID) {
 				continue
 			}
-			delete(cache.extentMap, front.ID())
+			delete(cache.extentMap, front.extentID)
 			cache.extentList.Remove(e)
 			front.Close()
 		}
@@ -160,6 +160,6 @@ func (cache *ExtentCache) Flush() {
 	cache.lock.RLock()
 	defer cache.lock.RUnlock()
 	for _, item := range cache.extentMap {
-		item.ext.Flush()
+		item.e.Flush()
 	}
 }
