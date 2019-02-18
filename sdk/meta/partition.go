@@ -111,7 +111,14 @@ func (mw *MetaWrapper) getPartitionByInode(ino uint64) *MetaPartition {
 func (mw *MetaWrapper) getRWPartitions() []*MetaPartition {
 	mw.RLock()
 	defer mw.RUnlock()
-	return mw.rwPartitions
+	rwPartitions := mw.rwPartitions
+	if len(rwPartitions) == 0 {
+		rwPartitions = make([]*MetaPartition, 0)
+		for _, mp := range mw.partitions {
+			rwPartitions = append(rwPartitions, mp)
+		}
+	}
+	return rwPartitions
 }
 
 // GetConnect the partition whose Start is Larger than ino.
