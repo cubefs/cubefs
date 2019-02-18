@@ -25,7 +25,7 @@ func (s *DataNode) Post(p *repl.Packet) error {
 	if p.IsMasterCommand() {
 		p.NeedReply = false
 	}
-	if p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpExtentRepairRead {
+	if isReadExtentOperation(p) {
 		p.NeedReply = false
 	}
 	if p.Opcode == proto.OpCreateDataPartition {
