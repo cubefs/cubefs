@@ -153,7 +153,7 @@ func (client *ExtentClient) SetFileSize(inode uint64, size int) {
 	s := client.GetStreamer(inode)
 	if s != nil {
 		log.LogDebugf("SetFileSize: ino(%v) size(%v)", inode, size)
-		s.extents.SetSize(uint64(size))
+		s.extents.SetSize(uint64(size), true)
 	}
 }
 

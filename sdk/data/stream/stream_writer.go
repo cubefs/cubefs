@@ -279,7 +279,7 @@ func (s *Streamer) write(data []byte, offset, size int, direct bool) (total int,
 		total += writeSize
 	}
 	if filesize, _ := s.extents.Size(); offset+total > filesize {
-		s.extents.SetSize(uint64(offset + total))
+		s.extents.SetSize(uint64(offset+total), false)
 		log.LogDebugf("Streamer write: ino(%v) filesize changed to (%v)", s.inode, offset+total)
 	}
 	log.LogDebugf("Streamer write exit: ino(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, offset, size, total, err)
@@ -549,10 +549,23 @@ func (s *Streamer) abort() {
 
 func (s *Streamer) truncate(size int) error {
 	s.closeOpenHandler()
-	if err := s.flush(); err != nil {
+	err := s.flush()
+	if err != nil {
 		return err
 	}
-	return s.client.truncate(s.inode, s.authid, uint64(size))
+
+	err = s.client.truncate(s.inode, s.authid, uint64(size))
+	if err != nil {
+		return err
+	}
+
+	oldsize, _ := s.extents.Size()
+	if oldsize <= size {
+		s.extents.SetSize(uint64(size), true)
+		return nil
+	}
+
+	return s.GetExtents()
 }
 
 func (s *Streamer) tinySizeLimit() int {
