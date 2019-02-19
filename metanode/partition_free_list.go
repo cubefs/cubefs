@@ -31,6 +31,7 @@ const (
 	UpdateVolTicket          = 5 * time.Minute
 	BatchCounts              = 100
 	OpenRWAppendOpt          = os.O_CREATE | os.O_RDWR | os.O_APPEND
+	TempFileValidTime        = 86400 //units: sec
 	DeleteInodeFileExtension = "INODE_DEL"
 )
 
@@ -81,10 +82,12 @@ func (mp *metaPartition) deleteWorker() {
 		isLeader bool
 	)
 	buffSlice := make([]*Inode, 0, BatchCounts)
+	var tempFileSlice []*Inode
 Begin:
 	time.Sleep(AsyncDeleteInterval)
 	for {
 		buffSlice = buffSlice[:0]
+		tempFileSlice = tempFileSlice[:0]
 		select {
 		case <-mp.stopC:
 			return
@@ -93,20 +96,28 @@ Begin:
 		if _, isLeader = mp.IsLeader(); !isLeader {
 			goto Begin
 		}
+		curTime := Now.GetCurrentTime().Unix()
 		for idx = 0; idx < BatchCounts; idx++ {
 			// batch get free inoded from the freeList
 			ino := mp.freeList.Pop()
 			if ino == nil {
 				break
 			}
+			// this is orphan or temp inode, we should delay delete
+			if !ino.ShouldDelete() && ino.GetNLink() == 0 {
+				if (curTime-ino.ModifyTime) <= TempFileValidTime || (curTime-ino.AccessTime) <= TempFileValidTime || (curTime-ino.CreateTime) <= TempFileValidTime {
+					tempFileSlice = append(tempFileSlice, ino)
+					continue
+				}
+			}
 			buffSlice = append(buffSlice, ino)
 		}
-		if len(buffSlice) == 0 {
-			goto Begin
+		for _, ino := range tempFileSlice {
+			mp.freeList.Push(ino)
 		}
 		mp.persistDeletedInodes(buffSlice...)
 		mp.deleteMarkedInodes(buffSlice)
-		if len(buffSlice) < BatchCounts {
+		if len(buffSlice)+len(tempFileSlice) < BatchCounts {
 			goto Begin
 		}
 		runtime.Gosched()
