@@ -42,7 +42,7 @@ type MetadataManager interface {
 	Start() error
 	Stop()
 	//CreatePartition(id string, start, end uint64, peers []proto.Peer) error
-	HandleMetadataOperation(conn net.Conn, p *Packet) error
+	HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) error
 	GetPartition(id uint64) (MetaPartition, error)
 }
 
@@ -64,66 +64,68 @@ type metadataManager struct {
 }
 
 // HandleMetadataOperation handles the metadata operations.
-func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	metric := exporter.RegisterTp(p.GetOpMsg())
 	defer metric.CalcTp()
 
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:
-		err = m.opCreateInode(conn, p)
+		err = m.opCreateInode(conn, p, remoteAddr)
 	case proto.OpMetaLinkInode:
-		err = m.opMetaLinkInode(conn, p)
+		err = m.opMetaLinkInode(conn, p, remoteAddr)
 	case proto.OpMetaUnlinkInode:
-		err = m.opMetaUnlinkInode(conn, p)
+		err = m.opMetaUnlinkInode(conn, p, remoteAddr)
 	case proto.OpMetaInodeGet:
-		err = m.opMetaInodeGet(conn, p)
+		err = m.opMetaInodeGet(conn, p, remoteAddr)
 	case proto.OpMetaEvictInode:
-		err = m.opMetaEvictInode(conn, p)
+		err = m.opMetaEvictInode(conn, p, remoteAddr)
 	case proto.OpMetaSetattr:
-		err = m.opSetAttr(conn, p)
+		err = m.opSetAttr(conn, p, remoteAddr)
 	case proto.OpMetaCreateDentry:
-		err = m.opCreateDentry(conn, p)
+		err = m.opCreateDentry(conn, p, remoteAddr)
 	case proto.OpMetaDeleteDentry:
-		err = m.opDeleteDentry(conn, p)
+		err = m.opDeleteDentry(conn, p, remoteAddr)
 	case proto.OpMetaUpdateDentry:
-		err = m.opUpdateDentry(conn, p)
+		err = m.opUpdateDentry(conn, p, remoteAddr)
 	case proto.OpMetaReadDir:
-		err = m.opReadDir(conn, p)
+		err = m.opReadDir(conn, p, remoteAddr)
 	case proto.OpMetaOpen:
-		err = m.opOpen(conn, p)
+		err = m.opOpen(conn, p, remoteAddr)
 	case proto.OpMetaReleaseOpen:
-		err = m.opReleaseOpen(conn, p)
+		err = m.opReleaseOpen(conn, p, remoteAddr)
 	case proto.OpCreateMetaPartition:
-		err = m.opCreateMetaPartition(conn, p)
+		err = m.opCreateMetaPartition(conn, p, remoteAddr)
 	case proto.OpMetaNodeHeartbeat:
-		err = m.opMasterHeartbeat(conn, p)
+		err = m.opMasterHeartbeat(conn, p, remoteAddr)
 	case proto.OpMetaExtentsAdd:
-		err = m.opMetaExtentsAdd(conn, p)
+		err = m.opMetaExtentsAdd(conn, p, remoteAddr)
 	case proto.OpMetaExtentsList:
-		err = m.opMetaExtentsList(conn, p)
+		err = m.opMetaExtentsList(conn, p, remoteAddr)
 	case proto.OpMetaExtentsDel:
-		err = m.opMetaExtentsDel(conn, p)
+		err = m.opMetaExtentsDel(conn, p, remoteAddr)
 	case proto.OpMetaTruncate:
-		err = m.opMetaExtentsTruncate(conn, p)
+		err = m.opMetaExtentsTruncate(conn, p, remoteAddr)
 	case proto.OpMetaLookup:
-		err = m.opMetaLookup(conn, p)
+		err = m.opMetaLookup(conn, p, remoteAddr)
 	case proto.OpDeleteMetaPartition:
-		err = m.opDeleteMetaPartition(conn, p)
+		err = m.opDeleteMetaPartition(conn, p, remoteAddr)
 	case proto.OpUpdateMetaPartition:
-		err = m.opUpdateMetaPartition(conn, p)
+		err = m.opUpdateMetaPartition(conn, p, remoteAddr)
 	case proto.OpLoadMetaPartition:
-		err = m.opLoadMetaPartition(conn, p)
+		err = m.opLoadMetaPartition(conn, p, remoteAddr)
 	case proto.OpDecommissionMetaPartition:
-		err = m.opDecommissionMetaPartition(conn, p)
+		err = m.opDecommissionMetaPartition(conn, p, remoteAddr)
 	case proto.OpMetaBatchInodeGet:
-		err = m.opMetaBatchInodeGet(conn, p)
+		err = m.opMetaBatchInodeGet(conn, p, remoteAddr)
 	case proto.OpPing:
 	default:
-		err = fmt.Errorf("unknown Opcode: %d, reqId: %d", p.Opcode, p.GetReqID())
+		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
+			p.Opcode, p.GetReqID())
 	}
 	if err != nil {
-		err = errors.Errorf("[%s] req: %d - %s", p.GetOpMsg(), p.GetReqID(),
-			err.Error())
+		err = errors.Errorf("%s [%s] req: %d - %s", remoteAddr, p.GetOpMsg(),
+			p.GetReqID(), err.Error())
 	}
 	return
 }
@@ -238,7 +240,6 @@ func (m *metadataManager) loadPartitions() (err error) {
 					ConnPool:  m.connPool,
 				}
 				partitionConfig.AfterStop = func() {
-					// TODO Unhandled errors
 					m.detachPartition(id)
 				}
 				// check snapshot dir or backup
@@ -275,7 +276,7 @@ func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (e
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.partitions[id] = partition
-	log.LogDebugf("[attachPartition] add: %v", m.partitions)
+	log.LogInfof("[attachPartition] load partition: %v success", m.partitions)
 	return
 }
 
@@ -309,7 +310,7 @@ func (m *metadataManager) createPartition(id uint64, volName string, start,
 		Peers:       peers,
 		RaftStore:   m.raftStore,
 		NodeId:      m.nodeId,
-		RootDir:     path.Join(m.rootDir, partitionPrefix + partitionId),
+		RootDir:     path.Join(m.rootDir, partitionPrefix+partitionId),
 		ConnPool:    m.connPool,
 	}
 	mpc.AfterStop = func() {
