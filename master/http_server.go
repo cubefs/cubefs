@@ -41,6 +41,7 @@ func (m *Server) handleFunctions() {
 	http.Handle(proto.AdminLoadDataPartition, m.handlerWithInterceptor())
 	http.Handle(proto.AdminDecommissionDataPartition, m.handlerWithInterceptor())
 	http.Handle(proto.AdminCreateVol, m.handlerWithInterceptor())
+	http.Handle(proto.AdminGetVol, m.handlerWithInterceptor())
 	http.Handle(proto.AdminDeleteVol, m.handlerWithInterceptor())
 	http.Handle(proto.AdminUpdateVol, m.handlerWithInterceptor())
 	http.Handle(proto.AdminClusterFreeze, m.handlerWithInterceptor())
@@ -110,6 +111,8 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.decommissionDataPartition(w, r)
 	case proto.AdminCreateVol:
 		m.createVol(w, r)
+	case proto.AdminGetVol:
+		m.getVolSimpleInfo(w, r)
 	case proto.AdminDeleteVol:
 		m.markDeleteVol(w, r)
 	case proto.AdminUpdateVol:
