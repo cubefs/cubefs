@@ -362,4 +362,5 @@ type SimpleVolView struct {
 	Capacity     uint64 // GB
 	RwDpCnt      int
 	MpCnt        int
+	DpCnt        int
 }

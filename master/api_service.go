@@ -422,6 +422,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		Capacity:     vol.Capacity,
 		RwDpCnt:      vol.dataPartitions.readableAndWritableCnt,
 		MpCnt:        len(vol.MetaPartitions),
+		DpCnt:        len(vol.dataPartitions.partitionMap),
 	}
 }
 
