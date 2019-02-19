@@ -793,3 +793,7 @@ func (s *ExtentStore) StoreSize() (totalSize uint64) {
 
 	return totalSize
 }
+
+func (s *ExtentStore) EvictExtentCache() {
+	s.cache.evict()
+}
