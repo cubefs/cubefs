@@ -68,7 +68,7 @@ a number of datanodes/metanodes (say M) are deployed as a 'set' for optimizing h
 ## Document
 https://cfs.readthedocs.io/en/latest/
 
-https://cfs.readthedocs.io/cn/latest/
+https://cfs.readthedocs.io/zh_CN/latest/
 
 ## License
 
