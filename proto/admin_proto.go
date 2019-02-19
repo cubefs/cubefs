@@ -25,6 +25,7 @@ const (
 	AdminDeleteVol                 = "/vol/delete"
 	AdminUpdateVol                 = "/vol/update"
 	AdminCreateVol                 = "/admin/createVol"
+	AdminGetVol                    = "/admin/getVol"
 	AdminClusterFreeze             = "/cluster/freeze"
 	AdminGetIP                     = "/admin/getIp"
 	AdminCreateMP                  = "/metaPartition/create"
@@ -287,7 +288,6 @@ type MetaPartitionLoadResponse struct {
 	Addr        string
 }
 
-
 // VolStatInfo defines the statistics related to a volume
 type VolStatInfo struct {
 	Name      string
@@ -350,4 +350,17 @@ func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *
 	mpView.Status = status
 	mpView.Members = make([]string, 0)
 	return
+}
+
+// SimpleVolView defines the simple view of a volume
+type SimpleVolView struct {
+	ID           uint64
+	Name         string
+	DpReplicaNum uint8
+	MpReplicaNum uint8
+	Status       uint8
+	Capacity     uint64 // GB
+	RwDpCnt      int
+	MpCnt        int
+	DpCnt        int
 }
