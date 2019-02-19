@@ -112,9 +112,13 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 	mp.inodeTree.CopyFind(ino, func(i BtreeItem) {
 		isFound = true
 		inode := i.(*Inode)
+		inode.ModifyTime = ino.ModifyTime
 		resp.Msg = inode
 		if proto.IsRegular(inode.Type) {
 			inode.DecNLink()
+			if inode.GetNLink() == 0 {
+				mp.freeList.Push(ino)
+			}
 			return
 		}
 
