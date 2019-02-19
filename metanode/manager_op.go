@@ -28,7 +28,8 @@ import (
 	"runtime"
 )
 
-func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	// For ack to master
 	m.responseAckOKToMaster(conn, p)
 	var (
@@ -81,14 +82,14 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet) (err error
 end:
 	adminTask.Request = nil
 	adminTask.Response = resp
-	// TODO Unhandled errors
 	m.respondToMaster(adminTask)
-	log.LogDebugf("[opMasterHeartbeat] req:%v; respAdminTask: %v, resp: %v",
-		req, adminTask, adminTask.Response)
+	log.LogInfof("%s [opMasterHeartbeat] req:%v; respAdminTask: %v, "+
+		"resp: %v", remoteAddr, req, adminTask, adminTask.Response)
 	return
 }
 
-func (m *metadataManager) opCreateMetaPartition(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opCreateMetaPartition(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	defer func() {
 		var buf []byte
 		status := proto.OpOk
@@ -97,8 +98,6 @@ func (m *metadataManager) opCreateMetaPartition(conn net.Conn, p *Packet) (err e
 			buf = []byte(err.Error())
 		}
 		p.PacketErrorWithBody(status, buf)
-
-		// // TODO Unhandled errors  There are so many unhandled errors in this file. Please check them carefully.
 		m.respondToClient(conn, p)
 	}()
 	req := &proto.CreateMetaPartitionRequest{}
@@ -112,8 +111,8 @@ func (m *metadataManager) opCreateMetaPartition(conn net.Conn, p *Packet) (err e
 			" struct: %s", err.Error())
 		return
 	}
-	log.LogDebugf("[opCreateMetaPartition] [remoteAddr=%s]accept a from"+
-		" master message: %v", conn.RemoteAddr(), adminTask)
+	log.LogDebugf("%s [opCreateMetaPartition] [remoteAddr=%s]accept a from"+
+		" master message: %v", remoteAddr, adminTask)
 	// create a new meta partition.
 	if err = m.createPartition(req.PartitionID, req.VolName,
 		req.Start, req.End, req.Members); err != nil {
@@ -121,12 +120,14 @@ func (m *metadataManager) opCreateMetaPartition(conn net.Conn, p *Packet) (err e
 			err.Error(), adminTask.Request)
 		return
 	}
-	log.LogDebugf("[opCreateMetaPartition] req:%v; resp: %v", req, adminTask)
+	log.LogInfof("%s [opCreateMetaPartition] req:%v; resp: %v", remoteAddr,
+		req, adminTask)
 	return
 }
 
 // Handle OpCreate inode.
-func (m *metadataManager) opCreateInode(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opCreateInode(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := &CreateInoReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -145,12 +146,13 @@ func (m *metadataManager) opCreateInode(conn net.Conn, p *Packet) (err error) {
 	err = mp.CreateInode(req, p)
 	// reply the operation result to the client through TCP
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opCreateInode] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
-		p.GetResultMsg(), p.Data)
+	log.LogDebugf("%s [opCreateInode] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
-func (m *metadataManager) opMetaLinkInode(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opMetaLinkInode(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := &LinkInodeReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -168,13 +170,14 @@ func (m *metadataManager) opMetaLinkInode(conn net.Conn, p *Packet) (err error) 
 	}
 	err = mp.CreateInodeLink(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opMetaLinkInode] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
-		p.GetResultMsg(), p.Data)
+	log.LogDebugf("%s [opMetaLinkInode] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
 // Handle OpCreate
-func (m *metadataManager) opCreateDentry(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opCreateDentry(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := &CreateDentryReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -192,13 +195,14 @@ func (m *metadataManager) opCreateDentry(conn net.Conn, p *Packet) (err error) {
 	}
 	err = mp.CreateDentry(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opCreateDentry] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
-		p.GetResultMsg(), p.Data)
+	log.LogDebugf("%s [opCreateDentry] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
 // Handle OpDelete Dentry
-func (m *metadataManager) opDeleteDentry(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opDeleteDentry(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := &DeleteDentryReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
@@ -216,12 +220,13 @@ func (m *metadataManager) opDeleteDentry(conn net.Conn, p *Packet) (err error) {
 	}
 	err = mp.DeleteDentry(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opDeleteDentry] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
-		p.GetResultMsg(), p.Data)
+	log.LogInfof("%s [opDeleteDentry] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
-func (m *metadataManager) opUpdateDentry(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opUpdateDentry(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := &UpdateDentryReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
@@ -239,12 +244,13 @@ func (m *metadataManager) opUpdateDentry(conn net.Conn, p *Packet) (err error) {
 	}
 	err = mp.UpdateDentry(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opUpdateDentry] req: %d - %v; resp: %v, body: %s",
-		p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	log.LogInfof("%s [opUpdateDentry] req: %d - %v; resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
-func (m *metadataManager) opMetaUnlinkInode(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opMetaUnlinkInode(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := &UnlinkInoReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
@@ -262,13 +268,14 @@ func (m *metadataManager) opMetaUnlinkInode(conn net.Conn, p *Packet) (err error
 	}
 	err = mp.UnlinkInode(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opDeleteInode] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
-		p.GetResultMsg(), p.Data)
+	log.LogInfof("%s [opDeleteInode] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
 // Handle OpReadDir
-func (m *metadataManager) opReadDir(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opReadDir(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := &proto.ReadDirRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
@@ -286,13 +293,14 @@ func (m *metadataManager) opReadDir(conn net.Conn, p *Packet) (err error) {
 	}
 	err = mp.ReadDir(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opReadDir] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
-		p.GetResultMsg(), p.Data)
+	log.LogDebugf("%s [opReadDir] req: %d - %v, resp: %v, body: %s", remoteAddr,
+		p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
 // Handle OpOpen
-func (m *metadataManager) opOpen(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opOpen(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := &proto.OpenRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
@@ -310,12 +318,13 @@ func (m *metadataManager) opOpen(conn net.Conn, p *Packet) (err error) {
 	}
 	err = mp.Open(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opOpen] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
-		p.GetResultMsg(), p.Data)
+	log.LogDebugf("%s [opOpen] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
-func (m *metadataManager) opReleaseOpen(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opReleaseOpen(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := &ReleaseReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
@@ -333,12 +342,13 @@ func (m *metadataManager) opReleaseOpen(conn net.Conn, p *Packet) (err error) {
 	}
 	err = mp.ReleaseOpen(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opClose] req: %d - %v, resp status: %v, resp body: %s", p.GetReqID(), req,
-		p.GetResultMsg(), p.Data)
+	log.LogDebugf("%s [opReleaseOpen] req: %d - %v, resp status: %v, resp body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
-func (m *metadataManager) opMetaInodeGet(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opMetaInodeGet(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := &InodeGetReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
@@ -362,12 +372,13 @@ func (m *metadataManager) opMetaInodeGet(conn net.Conn, p *Packet) (err error) {
 			string(p.Data))
 	}
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opMetaInodeGet] req: %d - %v; resp: %v, body: %s", p.GetReqID(), req,
-		p.GetResultMsg(), p.Data)
+	log.LogDebugf("%s [opMetaInodeGet] req: %d - %v; resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
-func (m *metadataManager) opMetaEvictInode(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opMetaEvictInode(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := &proto.EvictInodeRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -390,12 +401,13 @@ func (m *metadataManager) opMetaEvictInode(conn net.Conn, p *Packet) (err error)
 		err = errors.Errorf("[opMetaEvictInode] req: %s, resp: %v", req, err.Error())
 	}
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opMetaEvictInode] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
-		p.GetResultMsg(), p.Data)
+	log.LogInfof("%s [opMetaEvictInode] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
-func (m *metadataManager) opSetAttr(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opSetAttr(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := &SetattrRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -419,13 +431,14 @@ func (m *metadataManager) opSetAttr(conn net.Conn, p *Packet) (err error) {
 		err = errors.Errorf("[opSetAttr] req: %v, error: %s", req, err.Error())
 	}
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opSetattr] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
-		p.GetResultMsg(), p.Data)
+	log.LogDebugf("%s [opSetAttr] req: %d - %v, resp: %v, body: %s", remoteAddr,
+		p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
 // Lookup request
-func (m *metadataManager) opMetaLookup(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opMetaLookup(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := &proto.LookupRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
@@ -443,13 +456,13 @@ func (m *metadataManager) opMetaLookup(conn net.Conn, p *Packet) (err error) {
 	}
 	err = mp.Lookup(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opMetaLookup] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
-		p.GetResultMsg(), p.Data)
+	log.LogDebugf("%s [opMetaLookup] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
-// 更新Extents请求
-func (m *metadataManager) opMetaExtentsAdd(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opMetaExtentsAdd(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := &proto.AppendExtentKeyRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
@@ -470,16 +483,16 @@ func (m *metadataManager) opMetaExtentsAdd(conn net.Conn, p *Packet) (err error)
 	err = mp.ExtentAppend(req, p)
 	m.respondToClient(conn, p)
 	if err != nil {
-		log.LogErrorf("[opMetaExtentsAdd] ExtentAppend: %s, "+
-			"response to client: %s", err.Error(), p.GetResultMsg())
+		log.LogErrorf("%s [opMetaExtentsAdd] ExtentAppend: %s, "+
+			"response to client: %s", remoteAddr, err.Error(), p.GetResultMsg())
 	}
-	log.LogDebugf("[opMetaExtentsAdd] req: %d - %v, resp: %v, body: %s", p.GetReqID(), req,
-		p.GetResultMsg(), p.Data)
+	log.LogDebugf("%s [opMetaExtentsAdd] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
-// 获取Extents列表
-func (m *metadataManager) opMetaExtentsList(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opMetaExtentsList(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := &proto.GetExtentsRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
@@ -498,16 +511,18 @@ func (m *metadataManager) opMetaExtentsList(conn net.Conn, p *Packet) (err error
 
 	err = mp.ExtentsList(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opMetaExtentsList] req: %d - %v; resp: %v, body: %s", p.GetReqID(), req,
-		p.GetResultMsg(), p.Data)
+	log.LogDebugf("%s [opMetaExtentsList] req: %d - %v; resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
-func (m *metadataManager) opMetaExtentsDel(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opMetaExtentsDel(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	panic("not implemented yet")
 }
 
-func (m *metadataManager) opMetaExtentsTruncate(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opMetaExtentsTruncate(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := &ExtentsTruncateReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
@@ -525,13 +540,14 @@ func (m *metadataManager) opMetaExtentsTruncate(conn net.Conn, p *Packet) (err e
 	}
 	mp.ExtentsTruncate(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[OpMetaTruncate] req: %d - %v, resp body: %v, resp body: %s",
-		p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	log.LogDebugf("%s [OpMetaTruncate] req: %d - %v, resp body: %v, "+
+		"resp body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
 // Delete a meta partition.
-func (m *metadataManager) opDeleteMetaPartition(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opDeleteMetaPartition(conn net.Conn,
+	p *Packet, remoteAddr string) (err error) {
 	req := &proto.DeleteMetaPartitionRequest{}
 	adminTask := &proto.AdminTask{
 		Request: req,
@@ -565,13 +581,13 @@ func (m *metadataManager) opDeleteMetaPartition(conn net.Conn, p *Packet) (err e
 	adminTask.Response = resp
 	adminTask.Request = nil
 	m.respondToMaster(adminTask)
-	log.LogDebugf("[opDeleteMetaPartition] req: %d - %v, resp: %v", p.GetReqID(), req,
-		adminTask)
+	log.LogInfof("%s [opDeleteMetaPartition] req: %d - %v, resp: %v",
+		remoteAddr, p.GetReqID(), req, adminTask)
 	return
 }
 
-func (m *metadataManager) opUpdateMetaPartition(conn net.Conn, p *Packet) (err error) {
-	log.LogDebugf("[opUpdateMetaPartition] request.")
+func (m *metadataManager) opUpdateMetaPartition(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := new(UpdatePartitionReq)
 	adminTask := &proto.AdminTask{
 		Request: req,
@@ -603,11 +619,13 @@ func (m *metadataManager) opUpdateMetaPartition(conn net.Conn, p *Packet) (err e
 	adminTask.Response = resp
 	adminTask.Request = nil
 	m.respondToMaster(adminTask)
-	log.LogDebugf("[opUpdateMetaPartition] req[%v], response[%v].", req, adminTask)
+	log.LogInfof("%s [opUpdateMetaPartition] req[%v], response[%v].",
+		remoteAddr, req, adminTask)
 	return
 }
 
-func (m *metadataManager) opLoadMetaPartition(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opLoadMetaPartition(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := &proto.MetaPartitionLoadRequest{}
 	adminTask := &proto.AdminTask{
 		Request: req,
@@ -626,16 +644,18 @@ func (m *metadataManager) opLoadMetaPartition(conn net.Conn, p *Packet) (err err
 		return
 	}
 	if err = mp.LoadSnapshotSign(p); err != nil {
-		log.LogErrorf("[opLoadMetaPartition] req[%v], response marshal[%v]",
-			req, err.Error())
+		log.LogErrorf("%s [opLoadMetaPartition] req[%v], "+
+			"response marshal[%v]", remoteAddr, req, err.Error())
 	}
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opLoadMetaPartition] req[%v], response status[%s], "+
-		"response body[%s], error[%v]", req, p.GetResultMsg(), p.Data, err)
+	log.LogInfof("%s [opLoadMetaPartition] req[%v], response status[%s], "+
+		"response body[%s], error[%v]", remoteAddr, req, p.GetResultMsg(), p.Data,
+		err)
 	return
 }
 
-func (m *metadataManager) opDecommissionMetaPartition(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opDecommissionMetaPartition(conn net.Conn,
+	p *Packet, remoteAddr string) (err error) {
 	var reqData []byte
 	req := &proto.MetaPartitionDecommissionRequest{}
 	adminTask := &proto.AdminTask{
@@ -648,7 +668,6 @@ func (m *metadataManager) opDecommissionMetaPartition(conn net.Conn, p *Packet) 
 		m.respondToClient(conn, p)
 		return
 	}
-	log.LogDebugf("[opDecommissionMetaPartition] received task: %v", adminTask)
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
@@ -693,11 +712,13 @@ end:
 	adminTask.Request = nil
 	adminTask.Response = resp
 	m.respondToMaster(adminTask)
-	log.LogDebugf("[opDecommissionMetaPartition]: the end %v", adminTask)
+	log.LogInfof("%s [opDecommissionMetaPartition]: the end %v", remoteAddr,
+		adminTask)
 	return
 }
 
-func (m *metadataManager) opMetaBatchInodeGet(conn net.Conn, p *Packet) (err error) {
+func (m *metadataManager) opMetaBatchInodeGet(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	req := &proto.BatchInodeGetRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
@@ -710,7 +731,7 @@ func (m *metadataManager) opMetaBatchInodeGet(conn net.Conn, p *Packet) (err err
 	}
 	err = mp.InodeGetBatch(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("[opMetaBatchInodeGet] req: %d - %v, resp: %v, body: %s",
-		p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	log.LogDebugf("%s [opMetaBatchInodeGet] req: %d - %v, resp: %v, "+
+		"body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }

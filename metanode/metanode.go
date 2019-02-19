@@ -135,11 +135,11 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
 
-	log.LogDebugf("action[parseConfig] load listen[%v].", m.listen)
-	log.LogDebugf("action[parseConfig] load metadataDir[%v].", m.metadataDir)
-	log.LogDebugf("action[parseConfig] load raftDir[%v].", m.raftDir)
-	log.LogDebugf("action[parseConfig] load raftHeartbeatPort[%v].", m.raftHeartbeatPort)
-	log.LogDebugf("action[parseConfig] load raftReplicatePort[%v].", m.raftReplicatePort)
+	log.LogInfof("[parseConfig] load listen[%v].", m.listen)
+	log.LogInfof("[parseConfig] load metadataDir[%v].", m.metadataDir)
+	log.LogInfof("[parseConfig] load raftDir[%v].", m.raftDir)
+	log.LogInfof("[parseConfig] load raftHeartbeatPort[%v].", m.raftHeartbeatPort)
+	log.LogInfof("[parseConfig] load raftReplicatePort[%v].", m.raftReplicatePort)
 
 	addrs := cfg.GetArray(cfgMasterAddrs)
 	masterHelper = util.NewMasterHelper()
@@ -181,8 +181,9 @@ func (m *MetaNode) startMetaManager() (err error) {
 		RaftStore: m.raftStore,
 	}
 	m.metadataManager = NewMetadataManager(conf)
-	err = m.metadataManager.Start()
-	log.LogDebugf("[startMetaManager] manager start finish.")
+	if err = m.metadataManager.Start(); err == nil {
+		log.LogInfof("[startMetaManager] manager start finish.")
+	}
 	return
 }
 

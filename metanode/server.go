@@ -31,7 +31,6 @@ func (m *MetaNode) startServer() (err error) {
 		return
 	}
 	go func(stopC chan uint8) {
-		// TODO Unhandled errors
 		defer ln.Close()
 		for {
 			conn, err := ln.Accept()
@@ -46,7 +45,7 @@ func (m *MetaNode) startServer() (err error) {
 			go m.serveConn(conn, stopC)
 		}
 	}(m.httpStopC)
-	log.LogDebugf("start Server over...")
+	log.LogInfof("start server over...")
 	return
 }
 
@@ -63,12 +62,11 @@ func (m *MetaNode) stopServer() {
 
 // Read data from the specified tcp connection until the connection is closed by the remote or the tcp service is down.
 func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
-	// TODO Unhandled errors
 	defer conn.Close()
 	c := conn.(*net.TCPConn)
-	// TODO Unhandled errors
 	c.SetKeepAlive(true)
 	c.SetNoDelay(true)
+	remoteAddr := conn.RemoteAddr().String()
 	for {
 		select {
 		case <-stopC:
@@ -84,7 +82,7 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 		}
 		// Start a goroutine for packet handling. Do not block connection read goroutine.
 		go func() {
-			if err := m.handlePacket(conn, p); err != nil {
+			if err := m.handlePacket(conn, p, remoteAddr); err != nil {
 				log.LogError("serve operatorPkg: ", err.Error())
 				return
 			}
@@ -92,8 +90,9 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 	}
 }
 
-func (m *MetaNode) handlePacket(conn net.Conn, p *Packet) (err error) {
+func (m *MetaNode) handlePacket(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
 	// Handle request
-	err = m.metadataManager.HandleMetadataOperation(conn, p)
+	err = m.metadataManager.HandleMetadataOperation(conn, p, remoteAddr)
 	return
 }
