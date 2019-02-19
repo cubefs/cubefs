@@ -78,6 +78,7 @@ func newNodeSetView() *nodeSetView {
 	return &nodeSetView{Racks: make([]*RackView, 0), MetaNodes: make([]NodeView, 0)}
 }
 
+//RackView define the view of rack
 type RackView struct {
 	Name      string
 	DataNodes []NodeView
@@ -390,6 +391,39 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	}
 	msg = fmt.Sprintf("create vol[%v] successfully, has allocate [%v] data partitions", name, len(vol.dataPartitions.partitions))
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
+	var (
+		err     error
+		name    string
+		vol     *Vol
+		volView *proto.SimpleVolView
+	)
+	if name, err = parseAndExtractName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if vol, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+	volView = newSimpleView(vol)
+	sendOkReply(w, r, newSuccessHTTPReply(volView))
+}
+
+func newSimpleView(vol *Vol) *proto.SimpleVolView {
+	return &proto.SimpleVolView{
+		ID:           vol.ID,
+		Name:         vol.Name,
+		DpReplicaNum: vol.dpReplicaNum,
+		MpReplicaNum: vol.mpReplicaNum,
+		Status:       vol.Status,
+		Capacity:     vol.Capacity,
+		RwDpCnt:      vol.dataPartitions.readableAndWritableCnt,
+		MpCnt:        len(vol.MetaPartitions),
+		DpCnt:        len(vol.dataPartitions.partitionMap),
+	}
 }
 
 func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
