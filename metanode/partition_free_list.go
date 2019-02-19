@@ -23,6 +23,7 @@ import (
 	"os"
 	"path"
 	"runtime"
+	"sync"
 	"time"
 )
 
@@ -165,29 +166,39 @@ func (mp *metaPartition) checkFreelistWorker() {
 // Delete the marked inodes.
 func (mp *metaPartition) deleteMarkedInodes(inoSlice []*Inode) {
 	shouldCommit := make([]*Inode, 0, BatchCounts)
-	var err error
+	var wg sync.WaitGroup
+	var mu sync.Mutex
 	for _, ino := range inoSlice {
-		var reExt []*proto.ExtentKey
-
-		ino.Extents.Range(func(item BtreeItem) bool {
-			ext := item.(*proto.ExtentKey)
-			if err = mp.doDeleteMarkedInodes(ext); err != nil {
-				reExt = append(reExt, ext)
-				log.LogWarnf("[deleteMarkedInodes] delete failed extents: %s, err: %s", ext.String(), err.Error())
+		wg.Add(1)
+		go func(ino *Inode) {
+			defer wg.Done()
+			var reExt []*proto.ExtentKey
+			ino.Extents.Range(func(item BtreeItem) bool {
+				ext := item.(*proto.ExtentKey)
+				if err := mp.doDeleteMarkedInodes(ext); err != nil {
+					reExt = append(reExt, ext)
+					log.LogWarnf("[deleteMarkedInodes] delete failed extents: %s, err: %s", ext.String(), err.Error())
+				}
+				return true
+			})
+			if len(reExt) == 0 {
+				mu.Lock()
+				shouldCommit = append(shouldCommit, ino)
+				mu.Unlock()
+			} else {
+				newIno := NewInode(ino.Inode, ino.Type)
+				for _, ext := range reExt {
+					newIno.Extents.Append(ext)
+				}
+				mp.freeList.Push(newIno)
 			}
-			return true
-		})
-		if len(reExt) == 0 {
-			shouldCommit = append(shouldCommit, ino)
-		} else {
-			newIno := NewInode(ino.Inode, ino.Type)
-			for _, ext := range reExt {
-				newIno.Extents.Append(ext)
-			}
-			mp.freeList.Push(newIno)
-		}
+		}(ino)
 	}
-	if len(shouldCommit) > 0 {
+	wg.Wait()
+	mu.Lock()
+	cnt := len(shouldCommit)
+	mu.Unlock()
+	if cnt > 0 {
 		bufSlice := make([]byte, 0, 8*len(shouldCommit))
 		for _, ino := range shouldCommit {
 			bufSlice = append(bufSlice, ino.MarshalKey()...)
