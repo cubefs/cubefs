@@ -241,8 +241,8 @@ func (manager *SpaceManager) flushDelete() {
 		return true
 	})
 	for _, partition := range partitions {
-		// TODO unhandled errors
 		partition.FlushDelete()
+		partition.EvictExtent()
 	}
 }
 

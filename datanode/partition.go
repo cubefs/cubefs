@@ -290,6 +290,10 @@ func (dp *DataPartition) Available() int {
 	return dp.partitionSize - dp.used
 }
 
+func (dp *DataPartition) EvictExtent() {
+	dp.extentStore.EvictExtentCache()
+}
+
 // PersistMetadata persists the file metadata on the disk.
 func (dp *DataPartition) PersistMetadata() (err error) {
 	var (

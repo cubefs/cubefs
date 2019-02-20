@@ -33,6 +33,7 @@ import (
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
 	"syscall"
+	"runtime"
 )
 
 const (
@@ -139,7 +140,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 		return
 	}
 	s.extentInfoMap = make(map[uint64]*ExtentInfo, 200)
-	s.cache = NewExtentCache(100)
+	s.cache = NewExtentCache(50)
 	if err = s.initBaseFileID(); err != nil {
 		err = fmt.Errorf("init base field ID: %v", err)
 		return
@@ -355,6 +356,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 	}
 	atomic.StoreUint64(&s.baseExtentID, baseFileID)
 	log.LogInfof("datadir(%v) maxBaseId(%v)", s.dataPath, baseFileID)
+	runtime.GC()
 	return nil
 }
 
@@ -790,4 +792,8 @@ func (s *ExtentStore) StoreSize() (totalSize uint64) {
 	}
 
 	return totalSize
+}
+
+func (s *ExtentStore) EvictExtentCache() {
+	s.cache.evict()
 }
