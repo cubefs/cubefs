@@ -126,59 +126,14 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 // Note that the data in each data partition has already been saved on the disk. Therefore there is no need to take the
 // snapshot in this case.
 func (dp *DataPartition) Snapshot() (raftproto.Snapshot, error) {
-	applyID := dp.applyID
+	applyID := dp.appliedID
 	snapIterator := NewItemIterator(applyID)
 	return snapIterator, nil
 }
 
 // ApplySnapshot asks the raft leader for the snapshot data to recover the contents on the local disk.
 func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftproto.SnapIterator) (err error) {
-	var (
-		data       []byte
-		appIndexID uint64
-		extents    []*storage.ExtentInfo
-		targetAddr string
-		firstHost  string
-	)
-	defer func() {
-		if err == io.EOF {
-			dp.applyID = appIndexID
-			err = nil
-			log.LogDebugf("[ApplySnapshot] successful applyID[%v].", dp.applyID)
-			return
-		}
-		if err != nil {
-			log.LogErrorf("[ApplySnapshot]: err %s", err.Error())
-		}
-	}()
-
-	leaderAddr, _ := dp.IsRaftLeader()
-
-	if len(dp.replicas) > 0 {
-		replicaAddr := strings.Split(dp.replicas[0], ":")
-		firstHost = strings.TrimSpace(replicaAddr[0])
-	}
-
-	if firstHost == LocalIP && leaderAddr != "" {
-		targetAddr = leaderAddr
-	} else if firstHost != "" {
-		targetAddr = dp.replicas[0]
-	} else {
-		err = fmt.Errorf("[ApplySnapshot]: not expect err firstHost[%s] localIP[%v] raftLeader[%v]",
-			firstHost, LocalIP, leaderAddr)
-		return
-	}
-
-	extents, err = dp.getExtentInfo(targetAddr)
-	if err != nil {
-		err = errors.Annotatef(err, "[ApplySnapshot] getExtentInfo DataPartition[%v]", dp.partitionID)
-		return
-	}
-	dp.ExtentRepair(extents, targetAddr)
-
-	data, err = iterator.Next()
-	appIndexID = binary.BigEndian.Uint64(data)
-	dp.applyID = appIndexID
+    // Never delete the raft log which hadn't applied, so snapshot no need.
 	return
 }
 
@@ -232,5 +187,5 @@ func (dp *DataPartition) Del(key interface{}) (interface{}, error) {
 }
 
 func (dp *DataPartition) uploadApplyID(applyID uint64) {
-	atomic.StoreUint64(&dp.applyID, applyID)
+	atomic.StoreUint64(&dp.appliedID, applyID)
 }

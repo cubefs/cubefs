@@ -165,10 +165,10 @@ func (dp *DataPartition) CheckLeader(request *repl.Packet, connect net.Conn) (er
 		return
 	}
 
-	if dp.applyID < dp.maxAppliedID {
+	if dp.appliedID < dp.maxAppliedID {
 		err = storage.TryAgainError
 		logContent := fmt.Sprintf("action[ReadCheck] %v localID=%v maxID=%v.",
-			request.LogMessage(request.GetOpMsg(), connect.RemoteAddr().String(), request.StartT, nil), dp.applyID, dp.maxAppliedID)
+			request.LogMessage(request.GetOpMsg(), connect.RemoteAddr().String(), request.StartT, nil), dp.appliedID, dp.maxAppliedID)
 		log.LogErrorf(logContent)
 		return
 	}
@@ -188,7 +188,7 @@ func NewItemIterator(applyID uint64) *ItemIterator {
 	return si
 }
 
-// ApplyIndex returns the applyID
+// ApplyIndex returns the appliedID
 func (si *ItemIterator) ApplyIndex() uint64 {
 	return si.applyID
 }

@@ -95,7 +95,7 @@ type DataPartition struct {
 	extentStore     *storage.ExtentStore
 	raftPartition   raftstore.Partition
 	config          *dataPartitionCfg
-	applyID         uint64 // apply id used in Raft
+	appliedID       uint64 // apply id used in Raft
 	lastTruncateID  uint64 // truncate id used in Raft
 	minAppliedID    uint64
 	maxAppliedID    uint64
@@ -158,7 +158,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		return
 	}
 
-	if err = dp.LoadApplyIndex(); err != nil {
+	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)
 	}
 
@@ -540,6 +540,17 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 // 2. if the extent does not even exist, create the extent first, and then repair.
 func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask) {
 	store := dp.extentStore
+	allAppliedIDs, replyNum := dp.getAllAppliedID(false)
+	if replyNum > 0 {
+		minAppliedID := allAppliedIDs[0]
+		for i := 1; i < int(replyNum); i++ {
+			if allAppliedIDs[i] < minAppliedID {
+				minAppliedID = allAppliedIDs[i]
+			}
+		}
+		dp.appliedID = minAppliedID
+	}
+
 	for _, extentInfo := range repairTask.ExtentsToBeCreated {
 		if storage.IsTinyExtent(extentInfo.FileID) {
 			continue
