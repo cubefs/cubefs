@@ -119,34 +119,14 @@ func (dp *DataPartition) stopRaft() {
 // 2. collect the applied ids from raft members.
 // 3. based on the minimum applied id to cutoff and delete the saved raft log in order to free the disk space.
 func (dp *DataPartition) StartRaftLoggingSchedule() {
-	var isRunning bool
 	getAppliedIDTimer := time.NewTimer(time.Second * 1)
 	truncateRaftLogTimer := time.NewTimer(time.Minute * 10)
 	storeAppliedIDTimer := time.NewTimer(time.Minute * 5)
 
 	log.LogDebugf("[startSchedule] hello DataPartition schedule")
 
-	dumpFunc := func(appliedID uint64) {
-		log.LogDebugf("[startSchedule] partitionID=%d: appliedID=%d", dp.config.PartitionID, appliedID)
-		if err := dp.storeAppliedID(appliedID); err != nil {
-			//retry
-			dp.storeC <- appliedID
-			err = errors.Errorf("[startSchedule]: dump partition=%d: %v", dp.config.PartitionID, err.Error())
-			log.LogErrorf(err.Error())
-		}
-		isRunning = false
-	}
-
 	go func(stopC chan bool) {
-		var indexes []uint64
-		readyChan := make(chan struct{}, 1)
 		for {
-			if len(indexes) > 0 {
-				if isRunning == false {
-					isRunning = true
-					readyChan <- struct{}{}
-				}
-			}
 			select {
 			case <-stopC:
 				log.LogDebugf("[startSchedule] stop partition=%v", dp.partitionID)
@@ -154,18 +134,6 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 				truncateRaftLogTimer.Stop()
 				storeAppliedIDTimer.Stop()
 				return
-
-			case <-readyChan:
-				for _, idx := range indexes {
-					log.LogDebugf("[startSchedule] ready partition=%v: appliedID=%d", dp.config.PartitionID, idx)
-					go dumpFunc(idx)
-				}
-				indexes = nil
-
-			case applyID := <-dp.storeC:
-				indexes = append(indexes, applyID)
-				log.LogDebugf("[startSchedule] store apply id partitionID=%d: appliedID=%d",
-					dp.config.PartitionID, applyID)
 
 			case extentID := <-dp.repairC:
 				dp.disk.Status = proto.Unavailable
@@ -190,7 +158,10 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 				truncateRaftLogTimer.Reset(time.Minute * 10)
 
 			case <-storeAppliedIDTimer.C:
-				dp.storeC <- dp.appliedID
+				if err := dp.storeAppliedID(dp.appliedID); err != nil {
+					err = errors.Errorf("[startSchedule]: dump partition=%d: %v", dp.config.PartitionID, err.Error())
+					log.LogErrorf(err.Error())
+				}
 				storeAppliedIDTimer.Reset(time.Minute * 5)
 			}
 		}
