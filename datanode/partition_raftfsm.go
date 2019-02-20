@@ -61,8 +61,8 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		for i := 0; i < maxRetryCounts; i++ {
 			err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, NotUpdateSize, msg.Op == opRandomSyncWrite)
 			if err != nil {
-				if ignore := dp.checkWriteErrs(err.Error()); ignore {
-					log.LogErrorf("randomWrite_%v_%v_%v_%v extent file had deleted. err[%v]", dp.ID(),
+				if !IsDiskErr(err.Error()){
+					log.LogErrorf("randomWrite_%v_%v_%v_%v is not disk error. err[%v]", dp.ID(),
 						opItem.extentID, opItem.offset, opItem.size, err)
 					err = nil
 				}
