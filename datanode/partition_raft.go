@@ -305,13 +305,13 @@ func (dp *DataPartition) storeAppliedID(applyIndex uint64) (err error) {
 		return
 	}
 	defer func() {
-		fp.Sync()
 		fp.Close()
 		os.Remove(filename)
 	}()
 	if _, err = fp.WriteString(fmt.Sprintf("%d", applyIndex)); err != nil {
 		return
 	}
+	fp.Sync()
 	err = os.Rename(filename, path.Join(dp.Path(), ApplyIndexFile))
 	return
 }
