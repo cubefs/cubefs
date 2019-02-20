@@ -127,6 +127,7 @@ const (
 
 // Configuration keys
 const (
+	cfgLocalIP           = "localIP"
 	cfgListen            = "listen"
 	cfgMetadataDir       = "metadataDir"
 	cfgRaftDir           = "raftDir"
