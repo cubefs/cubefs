@@ -227,7 +227,7 @@ type UpdateCrcFunc func(updateExtentID uint64, updateblockNo int, updateCrc uint
 // Write writes data to an extent.
 func (e *Extent) Write(data []byte, offset, size int64, crc uint32, crcFunc UpdateCrcFunc, isUpdateSize, isSync bool) (isDirtyBlock bool, err error) {
 	if IsTinyExtent(e.extentID) {
-		err = e.WriteTiny(data, offset, size, crc, isUpdateSize, false)
+		err = e.WriteTiny(data, offset, size, crc, isUpdateSize, isSync)
 		return
 	}
 
