@@ -129,14 +129,12 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		err = errors.New("invalid configuration")
 		return
 	}
-	m.localAddr = cfg.GetString(cfgLocalIP)
 	m.listen = cfg.GetString(cfgListen)
 	m.metadataDir = cfg.GetString(cfgMetadataDir)
 	m.raftDir = cfg.GetString(cfgRaftDir)
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
 
-	log.LogInfof("[parseConfig] load localIP[%v].", m.localAddr)
 	log.LogInfof("[parseConfig] load listen[%v].", m.listen)
 	log.LogInfof("[parseConfig] load metadataDir[%v].", m.metadataDir)
 	log.LogInfof("[parseConfig] load raftDir[%v].", m.raftDir)
@@ -205,9 +203,7 @@ func (m *MetaNode) register() (err error) {
 				log.LogErrorf("[register] %s", err.Error())
 				continue
 			}
-			if m.localAddr == "" {
-				m.localAddr = clusterInfo.Ip
-			}
+			m.localAddr = clusterInfo.Ip
 			m.clusterId = clusterInfo.Cluster
 			reqParam["addr"] = m.localAddr + ":" + m.listen
 			step++
