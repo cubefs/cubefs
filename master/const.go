@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Chubao Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -46,19 +46,19 @@ const (
 )
 
 const (
-	defaultInitMetaPartitionCount                 = 3
-	defaultMaxMetaPartitionInodeID        uint64  = 1<<63 - 1
-	defaultMetaPartitionInodeIDStep       uint64  = 1 << 24
-	defaultMetaNodeReservedMem            uint64  = 1 << 32
-	runtimeStackBufSize                           = 4096
-	spaceAvailableRate                            = 0.90
-	defaultNodeSetCapacity                        = 18
-	minNumOfRWDataPartitions                      = 10
-	intervalToCheckMissingReplica                 = 600
-	intervalToLoadDataPartition                   = 12 * 60 * 60
-	defaultInitDataPartitionCnt                   = 10
-	volExpansionRatio                             = 0.1
-	maxNumberOfDataPartitionsForExpansion         = 100
+	defaultInitMetaPartitionCount                = 3
+	defaultMaxMetaPartitionInodeID        uint64 = 1<<63 - 1
+	defaultMetaPartitionInodeIDStep       uint64 = 1 << 24
+	defaultMetaNodeReservedMem            uint64 = 1 << 32
+	runtimeStackBufSize                          = 4096
+	spaceAvailableRate                           = 0.90
+	defaultNodeSetCapacity                       = 18
+	minNumOfRWDataPartitions                     = 10
+	intervalToCheckMissingReplica                = 600
+	intervalToLoadDataPartition                  = 12 * 60 * 60
+	defaultInitDataPartitionCnt                  = 10
+	volExpansionRatio                            = 0.1
+	maxNumberOfDataPartitionsForExpansion        = 100
 )
 
 const (

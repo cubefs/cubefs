@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Chubao Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -42,10 +42,10 @@ const (
 	PerBlockCrcSize        = 5
 	DirtyCrcMark           = 'D'
 
-	DeleteIndexFileName    = "delete.index"
-	ExtentSize             = BlockCount * BlockSize
-	ExtentFileSizeLimit    = BlockHeaderSize + ExtentSize
-	PacketHeaderSize       = 57
+	DeleteIndexFileName = "delete.index"
+	ExtentSize          = BlockCount * BlockSize
+	ExtentFileSizeLimit = BlockHeaderSize + ExtentSize
+	PacketHeaderSize    = 57
 )
 
 const (

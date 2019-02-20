@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Chubao Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,10 +35,10 @@ type Level uint8
 
 const (
 	DebugLevel  Level = 1
-	InfoLevel         = DebugLevel << 1 + 1
-	WarnLevel         = InfoLevel << 1 + 1
-	ErrorLevel        = WarnLevel << 1 + 1
-	FatalLevel        = ErrorLevel << 1 + 1
+	InfoLevel         = DebugLevel<<1 + 1
+	WarnLevel         = InfoLevel<<1 + 1
+	ErrorLevel        = WarnLevel<<1 + 1
+	FatalLevel        = ErrorLevel<<1 + 1
 	ReadLevel         = InfoLevel
 	UpdateLevel       = InfoLevel
 )
@@ -377,7 +377,7 @@ func LogInfo(v ...interface{}) {
 	if gLog == nil {
 		return
 	}
-	if InfoLevel & gLog.level != gLog.level {
+	if InfoLevel&gLog.level != gLog.level {
 		return
 	}
 	s := fmt.Sprintln(v...)
@@ -469,7 +469,7 @@ func LogFatalf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
 	}
-	if FatalLevel & gLog.level != gLog.level {
+	if FatalLevel&gLog.level != gLog.level {
 		return
 	}
 	s := fmt.Sprintf(format, v...)
@@ -483,7 +483,7 @@ func LogRead(v ...interface{}) {
 	if gLog == nil {
 		return
 	}
-	if ReadLevel & gLog.level != gLog.level {
+	if ReadLevel&gLog.level != gLog.level {
 		return
 	}
 	s := fmt.Sprintln(v...)
@@ -496,7 +496,7 @@ func LogReadf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
 	}
-	if ReadLevel & gLog.level != gLog.level {
+	if ReadLevel&gLog.level != gLog.level {
 		return
 	}
 	s := fmt.Sprintf(format, v...)
@@ -509,7 +509,7 @@ func LogWrite(v ...interface{}) {
 	if gLog == nil {
 		return
 	}
-	if UpdateLevel & gLog.level != gLog.level {
+	if UpdateLevel&gLog.level != gLog.level {
 		return
 	}
 	s := fmt.Sprintln(v...)
@@ -522,7 +522,7 @@ func LogWritef(format string, v ...interface{}) {
 	if gLog == nil {
 		return
 	}
-	if UpdateLevel & gLog.level != gLog.level {
+	if UpdateLevel&gLog.level != gLog.level {
 		return
 	}
 	s := fmt.Sprintf(format, v...)

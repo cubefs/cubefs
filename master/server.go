@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Chubao Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	"github.com/juju/errors"
+	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
 	"github.com/tiglabs/containerfs/util/config"
 	"github.com/tiglabs/containerfs/util/exporter"
@@ -24,7 +25,6 @@ import (
 	"net/http/httputil"
 	"strconv"
 	"sync"
-	"github.com/tiglabs/containerfs/proto"
 )
 
 // configuration keys

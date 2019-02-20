@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Chubao Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -60,7 +60,7 @@ var (
 
 // http response error code and error message definitions
 const (
-	ErrCodeSuccess                         = iota
+	ErrCodeSuccess = iota
 	ErrCodeInternalError
 	ErrCodeParamError
 	ErrCodeInvalidCfg
