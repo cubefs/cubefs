@@ -89,7 +89,7 @@ type PromeMetric struct {
 	tp     MetricType
 }
 
-// TODO explain
+// Time Point Metric
 type TpMetric struct {
 	Name  string
 	Start time.Time
@@ -101,6 +101,9 @@ func metricsName(name string) string {
 
 // RegisterMetricWithLabels registers the given metric with the given labels.
 func RegisterMetricWithLabels(name string, tp MetricType, labels map[string]string) (m *PromeMetric) {
+	if ! enabled {
+		return
+	}
 	defer func() {
 		if err := recover(); err != nil {
 			log.LogErrorf("RegistMetric panic,err[%v]", err)
@@ -122,6 +125,9 @@ func RegisterMetric(name string, tp MetricType) (m *PromeMetric) {
 }
 
 func (m *PromeMetric) getMetricKey() (key string, metric prometheus.Metric) {
+	if ! enabled {
+		return
+	}
 	if m.tp == Counter {
 		metric = prometheus.NewCounter(
 			prometheus.CounterOpts{
@@ -185,6 +191,9 @@ func (m *PromeMetric) SetMetricVal(metric interface{}, val float64) {
 }
 
 func RegisterCounterLabels(name string, labels map[string]string) (o prometheus.Counter) {
+	if ! enabled {
+		return
+	}
 	pm := RegisterMetricWithLabels(name, Counter, labels)
 	m, load := metricGroups.Load(pm.Key)
 	if load {
@@ -205,10 +214,16 @@ func RegisterCounterLabels(name string, labels map[string]string) (o prometheus.
 }
 
 func RegisterCounter(name string) (o prometheus.Counter) {
+	if ! enabled {
+		return
+	}
 	return RegisterCounterLabels(name, nil)
 }
 
 func RegistGaugeLabels(name string, labels map[string]string) (o prometheus.Gauge) {
+	if ! enabled {
+		return
+	}
 	pm := RegisterMetricWithLabels(name, Gauge, labels)
 	m, load := metricGroups.Load(pm.Key)
 	if load {
@@ -232,8 +247,11 @@ func RegisterGauge(name string) (o prometheus.Gauge) {
 	return RegistGaugeLabels(name, nil)
 }
 
-// TODO explain
+// Register Time Point metric
 func RegisterTp(name string) (tp *TpMetric) {
+	if ! enabled {
+		return
+	}
 	defer func() {
 		if err := recover(); err != nil {
 			log.LogErrorf("RegisterTp panic,err[%v]", err)
@@ -247,9 +265,9 @@ func RegisterTp(name string) (tp *TpMetric) {
 	return
 }
 
-// TODO explain
+// Calculate time point value
 func (tp *TpMetric) CalcTp() {
-	if tp == nil {
+	if tp == nil || ! enabled {
 		return
 	}
 
@@ -292,9 +310,13 @@ func (tp *TpMetric) CalcTp() {
 	}()
 }
 
-// TODO explain
-// TODO detail is unused
+// alarm metric
+// detail
 func Alarm(name, detail string) {
+	if ! enabled {
+		return
+	}
+
 	name = metricsName(name + "_alarm")
 
 	go func() {
