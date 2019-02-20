@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Chubao Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -424,7 +424,7 @@ func (i *Inode) SetDeleteMark() {
 func (i *Inode) ShouldDelete() bool {
 	i.RLock()
 	defer i.RUnlock()
-	return i.Flag & DeleteMarkFlag == DeleteMarkFlag
+	return i.Flag&DeleteMarkFlag == DeleteMarkFlag
 }
 
 // SetAttr sets the attributes of the inode.

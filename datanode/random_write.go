@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Chubao Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,11 +21,11 @@ import (
 	"net"
 
 	"fmt"
+	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util/log"
 	"strings"
-	"github.com/tiglabs/containerfs/proto"
 )
 
 type RndWrtCmdItem struct {

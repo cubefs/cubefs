@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Chubao Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -74,7 +74,7 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet) error,
 	rp.prepareFunc = prepareFunc
 	rp.operatorFunc = operatorFunc
 	rp.postFunc = postFunc
-	rp.exited=ReplRuning
+	rp.exited = ReplRuning
 	go rp.OperatorAndForwardPkt()
 	go rp.ReceiveResponse()
 
@@ -94,7 +94,7 @@ func (rp *ReplProtocol) ServerConn() {
 			log.LogErrorf("action[serveConn] err(%v).", err)
 		}
 		rp.Stop()
-		if atomic.LoadInt32(&rp.exited)==ReplHasExited{
+		if atomic.LoadInt32(&rp.exited) == ReplHasExited {
 			rp.sourceConn.Close()
 		}
 
@@ -160,8 +160,8 @@ func (rp *ReplProtocol) OperatorAndForwardPkt() {
 			rp.writeResponseToClient(request)
 		case <-rp.exitC:
 			rp.cleanResource()
-			if atomic.AddInt32(&rp.exited,-1)==ReplHasExited{
-				atomic.StoreInt32(&rp.exited,ReplHasExited)
+			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
+				atomic.StoreInt32(&rp.exited, ReplHasExited)
 				rp.sourceConn.Close()
 			}
 			return
@@ -177,8 +177,8 @@ func (rp *ReplProtocol) ReceiveResponse() {
 		case <-rp.ackCh:
 			rp.reciveAllFollowerResponse()
 		case <-rp.exitC:
-			if atomic.AddInt32(&rp.exited,-1)==ReplHasExited{
-				atomic.StoreInt32(&rp.exited,ReplHasExited)
+			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
+				atomic.StoreInt32(&rp.exited, ReplHasExited)
 				rp.sourceConn.Close()
 			}
 			return
@@ -290,8 +290,6 @@ func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err err
 	return
 }
 
-
-
 // Write a reply to the client.
 func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 	var err error
@@ -328,11 +326,11 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 func (rp *ReplProtocol) Stop() {
 	rp.exitedMu.Lock()
 	defer rp.exitedMu.Unlock()
-	if atomic.LoadInt32(&rp.exited)==ReplRuning {
+	if atomic.LoadInt32(&rp.exited) == ReplRuning {
 		if rp.exitC != nil {
 			close(rp.exitC)
 		}
-		atomic.StoreInt32(&rp.exited,ReplExiting)
+		atomic.StoreInt32(&rp.exited, ReplExiting)
 	}
 
 }

@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Chubao Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -62,9 +62,9 @@ type MetaPartitionConfig struct {
 	PartitionId uint64              `json:"partition_id"`
 	VolName     string              `json:"vol_name"`
 	Start       uint64              `json:"start"` // Minimal Inode ID of this range. (Required during initialization)
-	End         uint64              `json:"end"` // Maximal Inode ID of this range. (Required during initialization)
+	End         uint64              `json:"end"`   // Maximal Inode ID of this range. (Required during initialization)
 	Peers       []proto.Peer        `json:"peers"` // Peers information of the raftStore
-	Cursor      uint64              `json:"-"` // Cursor ID of the inode that have been assigned
+	Cursor      uint64              `json:"-"`     // Cursor ID of the inode that have been assigned
 	NodeId      uint64              `json:"-"`
 	RootDir     string              `json:"-"`
 	BeforeStart func()              `json:"-"`
@@ -173,7 +173,7 @@ type metaPartition struct {
 	size          uint64 // For partition all file size
 	applyID       uint64 // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
 	dentryTree    *BTree
-	inodeTree     *BTree              // btree for inodes
+	inodeTree     *BTree // btree for inodes
 	raftPartition raftstore.Partition
 	stopC         chan bool
 	storeChan     chan *storeMsg

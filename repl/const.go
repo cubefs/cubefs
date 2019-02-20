@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Chubao Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,9 +38,8 @@ const (
 	ConnIsNullErr = "ConnIsNullErr"
 )
 
-
 const (
-	ReplRuning = 2
-	ReplExiting = 1
+	ReplRuning    = 2
+	ReplExiting   = 1
 	ReplHasExited = -1
 )

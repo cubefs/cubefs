@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Chubao Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ var (
 	// every time the lookup will be performed on the fly, and the result will not be cached
 	LookupValidDuration = 0 * time.Second
 	// the expiration duration of the attributes in the FUSE cache
-	AttrValidDuration   = 30 * time.Second
+	AttrValidDuration = 30 * time.Second
 )
 
 // ParseError returns the error type.

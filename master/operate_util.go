@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Chubao Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,12 +17,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/exporter"
 	"github.com/tiglabs/containerfs/util/log"
 	"math/rand"
 	"time"
-	"github.com/juju/errors"
 )
 
 func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize int) (req *proto.CreateDataPartitionRequest) {

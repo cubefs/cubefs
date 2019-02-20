@@ -1,4 +1,4 @@
-// Copyright 2018 The Container File System Authors.
+// Copyright 2018 The Chubao Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -49,14 +49,14 @@ func (p *Packet) AfterTp() (ok bool) {
 	return
 }
 
-func (p *Packet)clean(){
-	for index:=0;index<len(p.followerConns);index++{
-		p.followerConns[index]=nil
+func (p *Packet) clean() {
+	for index := 0; index < len(p.followerConns); index++ {
+		p.followerConns[index] = nil
 	}
-	p.Object=nil
-	p.TpObject=nil
-	p.Data=nil
-	p.Arg=nil
+	p.Object = nil
+	p.TpObject = nil
+	p.Data = nil
+	p.Arg = nil
 }
 
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
