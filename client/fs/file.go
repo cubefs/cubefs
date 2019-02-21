@@ -195,13 +195,14 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		f.super.ic.Delete(ino)
 	}()
 
-	var isDirectIO bool
+	var isDirectIO, enSyncWrite bool
 	if (int(req.FileFlags) & syscall.O_DIRECT) != 0 {
 		isDirectIO = true
+		enSyncWrite = f.super.enSyncWrite
 	}
 
 	start := time.Now()
-	size, err := f.super.ec.Write(ino, int(req.Offset), req.Data, isDirectIO)
+	size, err := f.super.ec.Write(ino, int(req.Offset), req.Data, enSyncWrite)
 	if err != nil {
 		log.LogErrorf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
 		return fuse.EIO

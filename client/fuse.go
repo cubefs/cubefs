@@ -91,6 +91,7 @@ func Mount(cfg *config.Config) (err error) {
 	icacheTimeout := ParseConfigString(cfg, "icacheTimeout")
 	lookupValid := ParseConfigString(cfg, "lookupValid")
 	attrValid := ParseConfigString(cfg, "attrValid")
+	enSyncWrite := ParseConfigString(cfg, "enSyncWrite")
 
 	level := ParseLogLevel(loglvl)
 	_, err = log.InitLog(path.Join(logpath, LoggerDir), LoggerPrefix, level, nil)
@@ -99,7 +100,7 @@ func Mount(cfg *config.Config) (err error) {
 	}
 	defer log.LogFlush()
 
-	super, err := cfs.NewSuper(volname, master, icacheTimeout, lookupValid, attrValid)
+	super, err := cfs.NewSuper(volname, master, icacheTimeout, lookupValid, attrValid, enSyncWrite)
 	if err != nil {
 		log.LogError(errors.ErrorStack(err))
 		return err
