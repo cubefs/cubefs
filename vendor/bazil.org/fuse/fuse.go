@@ -237,7 +237,7 @@ func initMount(c *Conn, conf *mountConfig) error {
 		Library:      proto,
 		MaxReadahead: conf.maxReadahead,
 		MaxWrite:     maxWrite,
-		Flags:        InitBigWrites | InitAutoInvalData | conf.initFlags,
+		Flags:        InitBigWrites | conf.initFlags,
 	}
 	r.Respond(s)
 	return nil
