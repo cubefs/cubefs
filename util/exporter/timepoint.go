@@ -20,7 +20,7 @@ func collectTP() {
 	for {
 		m := <- TPCh
 		metric := m.Metric()
-		metric.Set(float64(m.val.Get()))
+		metric.Set(float64(m.val))
 		TPPool.Put(m)
 	}
 }
@@ -50,7 +50,7 @@ func (tp *TimePoint) Set() {
 		return
 	}
 	val := time.Since(tp.startTime).Nanoseconds()
-	tp.val.Set(val)
+	tp.val = val
 	tp.publish()
 }
 

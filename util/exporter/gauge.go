@@ -2,10 +2,10 @@ package exporter
 
 import (
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/tiglabs/baudengine/util/atomic"
-	"github.com/tiglabs/containerfs/util/log"
 	"sync"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/tiglabs/containerfs/util/log"
 )
 
 var (
@@ -21,7 +21,7 @@ func collectGauge() {
 	for {
 		m := <- GaugeCh
 		metric := m.Metric()
-		metric.Set(float64(m.val.Get()))
+		metric.Set(float64(m.val))
 		GaugePool.Put(m)
 	}
 }
@@ -29,7 +29,7 @@ func collectGauge() {
 type Gauge struct {
 	name string
 	labels map[string]string
-	val atomic.AtomicInt64
+	val int64
 	ch chan interface{}
 }
 
@@ -73,7 +73,7 @@ func (g *Gauge) Set(val int64) {
 	if ! enabled {
 		return
 	}
-	g.val.Set(val)
+	g.val = val
 	g.publish()
 }
 

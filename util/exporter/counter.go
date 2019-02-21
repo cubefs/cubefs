@@ -18,7 +18,7 @@ func collectCounter() {
 	for {
 		m := <- CounterCh
 		metric := m.Metric()
-		metric.Add(float64(m.val.Get()))
+		metric.Add(float64(m.val))
 		CounterPool.Put(m)
 	}
 }
@@ -40,7 +40,7 @@ func (c *Counter) Add(val int64) {
 	if ! enabled {
 		return
 	}
-	c.val.Set(val)
+	c.val = val
 	c.publish()
 }
 
