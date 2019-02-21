@@ -39,8 +39,7 @@ import (
 
 func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	sz := p.Size
-	key := fmt.Sprintf("%s_datanode_%s", s.clusterID, p.GetOpMsg())
-	tpObject := exporter.RegisterTp(key)
+	tpObject := exporter.RegisterTp(p.GetOpMsg())
 	start := time.Now().UnixNano()
 	defer func() {
 		resultSize := p.Size
@@ -433,7 +432,6 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 	needReplySize := p.Size
 	offset := p.ExtentOffset
 	store := partition.ExtentStore()
-	exporterKey := fmt.Sprintf("%s_datanode_%s", s.clusterID, "Read")
 	reply := repl.NewStreamReadResponsePacket(p.ReqID, p.PartitionID, p.ExtentID)
 	reply.StartT = time.Now().UnixNano()
 	for {
@@ -447,7 +445,7 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 		} else {
 			reply.Data = make([]byte, currReadSize)
 		}
-		tpObject := exporter.RegisterTp(exporterKey)
+		tpObject := exporter.RegisterTp(p.GetOpMsg())
 		reply.ExtentOffset = offset
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead)
 		tpObject.CalcTp()
