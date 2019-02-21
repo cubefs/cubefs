@@ -497,8 +497,8 @@ func (dp *DataPartition) getPartitionSize() (size uint64, err error) {
 }
 
 func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error){
-	p := NewPacketToBroadcastMinAppliedID(dp.partitionID, minAppliedID)
 	for i := 0; i < len(dp.replicas); i++ {
+		p := NewPacketToBroadcastMinAppliedID(dp.partitionID, minAppliedID)
 		replicaHostParts := strings.Split(dp.replicas[i], ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost{
@@ -534,8 +534,8 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error){
 // Get all members' applied ids
 func (dp *DataPartition) getAllAppliedID(isFindLocal bool) (allAppliedID []uint64, replyNum uint8) {
 	allAppliedID = make([]uint64, len(dp.replicas))
-	p := NewPacketToGetAppliedID(dp.partitionID)
 	for i := 0; i < len(dp.replicas); i++ {
+		p := NewPacketToGetAppliedID(dp.partitionID)
 		replicaHostParts := strings.Split(dp.replicas[i], ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost && isFindLocal{
