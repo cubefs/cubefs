@@ -56,7 +56,10 @@ func Init(cluster string, role string, cfg *config.Config) {
 		log.LogInfof("exporter port not set")
 		return
 	}
-	enabled = true
+	enabled = false
+	if ! enabled {
+		return
+	}
 	http.Handle(PromHandlerPattern, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
 		Timeout: 5 * time.Second,
 	}))
