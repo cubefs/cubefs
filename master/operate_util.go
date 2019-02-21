@@ -150,7 +150,7 @@ func Warn(clusterID, msg string) {
 // WarnBySpecialKey provides warnings when exits
 func WarnBySpecialKey(key, msg string) {
 	log.LogWarn(msg)
-	exporter.Alarm(key, msg)
+	exporter.NewAlarm(key)
 }
 
 func keyNotFound(name string) (err error) {

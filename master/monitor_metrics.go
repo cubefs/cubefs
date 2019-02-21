@@ -15,7 +15,6 @@
 package master
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tiglabs/containerfs/util/exporter"
 	"github.com/tiglabs/containerfs/util/log"
 	"strconv"
@@ -41,18 +40,18 @@ const (
 
 type monitorMetrics struct {
 	cluster            *Cluster
-	dataNodesCount     prometheus.Gauge
-	metaNodesCount     prometheus.Gauge
-	volCount           prometheus.Gauge
-	dataNodesTotal     prometheus.Gauge
-	dataNodesUsed      prometheus.Gauge
-	dataNodeIncreased  prometheus.Gauge
-	metaNodesTotal     prometheus.Gauge
-	metaNodesUsed      prometheus.Gauge
-	metaNodesIncreased prometheus.Gauge
-	volTotalSpace      *exporter.PromeMetric
-	volUsedSpace       *exporter.PromeMetric
-	volUsage           *exporter.PromeMetric
+	dataNodesCount     *exporter.Gauge
+	metaNodesCount     *exporter.Gauge
+	volCount           *exporter.Gauge
+	dataNodesTotal     *exporter.Gauge
+	dataNodesUsed      *exporter.Gauge
+	dataNodeIncreased  *exporter.Gauge
+	metaNodesTotal     *exporter.Gauge
+	metaNodesUsed      *exporter.Gauge
+	metaNodesIncreased *exporter.Gauge
+	volTotalSpace      *exporter.Gauge
+	volUsedSpace       *exporter.Gauge
+	volUsage           *exporter.Gauge
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
@@ -60,18 +59,18 @@ func newMonitorMetrics(c *Cluster) *monitorMetrics {
 }
 
 func (mm *monitorMetrics) start() {
-	mm.dataNodesTotal = exporter.RegisterGauge(MetricDataNodesTotalGB)
-	mm.dataNodesUsed = exporter.RegisterGauge(MetricDataNodesUsedGB)
-	mm.dataNodeIncreased = exporter.RegisterGauge(MetricDataNodesIncreasedGB)
-	mm.metaNodesTotal = exporter.RegisterGauge(MetricMetaNodesTotalGB)
-	mm.metaNodesUsed = exporter.RegisterGauge(MetricMetaNodesUsedGB)
-	mm.metaNodesIncreased = exporter.RegisterGauge(MetricMetaNodesIncreasedGB)
-	mm.dataNodesCount = exporter.RegisterGauge(MetricDataNodesCount)
-	mm.metaNodesCount = exporter.RegisterGauge(MetricMetaNodesCount)
-	mm.volCount = exporter.RegisterGauge(MetricVolCount)
-	mm.volTotalSpace = exporter.RegisterMetric(MetricVolTotalGB, exporter.Gauge)
-	mm.volUsedSpace = exporter.RegisterMetric(MetricVolUsedGB, exporter.Gauge)
-	mm.volUsage = exporter.RegisterMetric(MetricVolUsageGB, exporter.Gauge)
+	mm.dataNodesTotal = exporter.NewGauge(MetricDataNodesTotalGB)
+	mm.dataNodesUsed = exporter.NewGauge(MetricDataNodesUsedGB)
+	mm.dataNodeIncreased = exporter.NewGauge(MetricDataNodesIncreasedGB)
+	mm.metaNodesTotal = exporter.NewGauge(MetricMetaNodesTotalGB)
+	mm.metaNodesUsed = exporter.NewGauge(MetricMetaNodesUsedGB)
+	mm.metaNodesIncreased = exporter.NewGauge(MetricMetaNodesIncreasedGB)
+	mm.dataNodesCount = exporter.NewGauge(MetricDataNodesCount)
+	mm.metaNodesCount = exporter.NewGauge(MetricMetaNodesCount)
+	mm.volCount = exporter.NewGauge(MetricVolCount)
+	mm.volTotalSpace = exporter.NewGauge(MetricVolTotalGB)
+	mm.volUsedSpace = exporter.NewGauge(MetricVolUsedGB)
+	mm.volUsage = exporter.NewGauge(MetricVolUsageGB)
 	go mm.statMetrics()
 }
 
@@ -99,17 +98,17 @@ func (mm *monitorMetrics) statMetrics() {
 
 func (mm *monitorMetrics) doStat() {
 	dataNodeCount := mm.cluster.dataNodeCount()
-	mm.dataNodesCount.Set(float64(dataNodeCount))
+	mm.dataNodesCount.Set(int64(dataNodeCount))
 	metaNodeCount := mm.cluster.metaNodeCount()
-	mm.metaNodesCount.Set(float64(metaNodeCount))
+	mm.metaNodesCount.Set(int64(metaNodeCount))
 	volCount := len(mm.cluster.vols)
-	mm.volCount.Set(float64(volCount))
-	mm.dataNodesTotal.Set(float64(mm.cluster.dataNodeStatInfo.TotalGB))
-	mm.dataNodesUsed.Set(float64(mm.cluster.dataNodeStatInfo.UsedGB))
-	mm.dataNodeIncreased.Set(float64(mm.cluster.dataNodeStatInfo.IncreasedGB))
-	mm.metaNodesTotal.Set(float64(mm.cluster.metaNodeStatInfo.TotalGB))
-	mm.metaNodesUsed.Set(float64(mm.cluster.metaNodeStatInfo.UsedGB))
-	mm.metaNodesIncreased.Set(float64(mm.cluster.metaNodeStatInfo.IncreasedGB))
+	mm.volCount.Set(int64(volCount))
+	mm.dataNodesTotal.Set(int64(mm.cluster.dataNodeStatInfo.TotalGB))
+	mm.dataNodesUsed.Set(int64(mm.cluster.dataNodeStatInfo.UsedGB))
+	mm.dataNodeIncreased.Set(int64(mm.cluster.dataNodeStatInfo.IncreasedGB))
+	mm.metaNodesTotal.Set(int64(mm.cluster.metaNodeStatInfo.TotalGB))
+	mm.metaNodesUsed.Set(int64(mm.cluster.metaNodeStatInfo.UsedGB))
+	mm.metaNodesIncreased.Set(int64(mm.cluster.metaNodeStatInfo.IncreasedGB))
 	mm.cluster.volStatInfo.Range(func(key, value interface{}) bool {
 		volStatInfo, ok := value.(*volStatInfo)
 		if !ok {
@@ -120,16 +119,16 @@ func (mm *monitorMetrics) doStat() {
 			return true
 		}
 		labels := map[string]string{"volName": volName}
-		volTotalGauge := exporter.RegisterMetric(MetricVolTotalGB, exporter.Gauge)
-		volTotalGauge.SetWithLabels(float64(volStatInfo.TotalGB), labels)
+		volTotalGauge := exporter.NewGauge(MetricVolTotalGB)
+		volTotalGauge.SetWithLabels(int64(volStatInfo.TotalGB), labels)
 
-		volUsedGauge := exporter.RegisterMetric(MetricVolUsedGB, exporter.Gauge)
-		volUsedGauge.SetWithLabels(float64(volStatInfo.UsedGB), labels)
+		volUsedGauge := exporter.NewGauge(MetricVolUsedGB)
+		volUsedGauge.SetWithLabels(int64(volStatInfo.UsedGB), labels)
 
-		volUsageRatioGauge := exporter.RegisterMetric(MetricVolUsageGB, exporter.Gauge)
+		volUsageRatioGauge := exporter.NewGauge(MetricVolUsageGB)
 		usedRatio, e := strconv.ParseFloat(volStatInfo.UsedRatio, 64)
 		if e == nil {
-			volUsageRatioGauge.SetWithLabels(usedRatio, labels)
+			volUsageRatioGauge.SetWithLabels(int64(usedRatio), labels)
 		}
 
 		return true
