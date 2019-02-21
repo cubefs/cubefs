@@ -92,6 +92,7 @@ func Mount(cfg *config.Config) (err error) {
 	lookupValid := ParseConfigString(cfg, "lookupValid")
 	attrValid := ParseConfigString(cfg, "attrValid")
 	enSyncWrite := ParseConfigString(cfg, "enSyncWrite")
+	autoInvalData := ParseConfigString(cfg, "autoInvalData")
 
 	level := ParseLogLevel(loglvl)
 	_, err = log.InitLog(path.Join(logpath, LoggerDir), LoggerPrefix, level, nil)
@@ -111,6 +112,7 @@ func Mount(cfg *config.Config) (err error) {
 		fuse.AllowOther(),
 		fuse.MaxReadahead(MaxReadAhead),
 		fuse.AsyncRead(),
+		fuse.AutoInvalData(autoInvalData),
 		fuse.FSName("cfs-"+volname),
 		fuse.LocalVolume(),
 		fuse.VolumeName("cfs-"+volname))
