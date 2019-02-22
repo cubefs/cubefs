@@ -10,9 +10,6 @@ var (
 	TPPool = &sync.Pool{New: func() interface{} {
 		return new(TimePoint)
 	}}
-	TPCntPool = &sync.Pool{New: func() interface{} {
-		return new(TimePointCount)
-	}}
 	TPCh = make(chan *TimePoint, ChSize)
 )
 
@@ -58,7 +55,7 @@ func NewTPCnt(name string) (tpc *TimePointCount) {
 	if ! enabled {
 		return
 	}
-	tpc = TPCntPool.Get().(*TimePointCount)
+	tpc = new(TimePointCount)
 	tpc.tp = NewTP(name)
 	tpc.cnt = NewCounter(fmt.Sprintf("%s_count", name))
 	return
@@ -70,7 +67,6 @@ func (tpc *TimePointCount) Set() {
 	}
 	tpc.tp.Set()
 	tpc.cnt.Add(1)
-	TPCntPool.Put(tpc)
 }
 
 func (tp *TimePoint)publish() {
