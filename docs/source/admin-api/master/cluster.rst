@@ -16,7 +16,7 @@ response
 .. code-block:: json
 
    {
-       "Name": "containerfs",
+       "Name": "test",
        "LeaderAddr": "127.0.0.1:80",
        "DisableAutoAlloc": false,
        "Applied": 225,
