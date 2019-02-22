@@ -154,10 +154,6 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 		if _, err = w.Write(val); err != nil {
 			return false
 		}
-		val[0] = byte('\n')
-		if _, err = w.Write(val[:1]); err != nil {
-			return false
-		}
 		return true
 	}
 	mp.GetInodeTree().Ascend(f)
@@ -348,9 +344,6 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 			return false
 		}
 		if _, err = w.Write(val); err != nil {
-			return false
-		}
-		if _, err = w.Write(val[:1]); err != nil {
 			return false
 		}
 		return true
