@@ -82,7 +82,6 @@ func (dp *DataPartition) repair(extentType uint8) {
 		}
 	}
 
-	// TODO why not put the following two lines into a function called "createDataPartitionRepairTask"?
 	repairTasks := make([]*DataPartitionRepairTask, len(dp.replicas))
 	err := dp.buildDataPartitionRepairTask(repairTasks, extentType, tinyExtents)
 
@@ -124,8 +123,6 @@ func (dp *DataPartition) repair(extentType uint8) {
 	log.LogInfof("action[repair] partition(%v) GoodTinyExtents(%v) BadTinyExtents(%v)"+
 		" finish cost[%vms].", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(), dp.extentStore.BrokenTinyExtentCnt(),
 		(end-start)/int64(time.Millisecond))
-	log.LogInfof("action[extentFileRepair] partition(%v) end.",
-		dp.partitionID)
 }
 
 func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartitionRepairTask, extentType uint8, tinyExtents []uint64) (err error) {
