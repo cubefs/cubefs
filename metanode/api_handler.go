@@ -290,7 +290,9 @@ func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 
 	resp.Code = http.StatusSeeOther
 	resp.Msg = p.GetResultMsg()
-	resp.Data = json.RawMessage(p.Data)
+	if len(p.Data) > 0 {
+		resp.Data = json.RawMessage(p.Data)
+	}
 	return
 
 }
