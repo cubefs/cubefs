@@ -368,18 +368,18 @@ func (ns *nodeSet) getRack(name string) (rack *Rack, err error) {
 	return
 }
 
-func (ns *nodeSet) putRack(rack *Rack) {
+func (ns *nodeSet) putRack(rack *Rack) *Rack{
 	ns.rackLock.Lock()
 	defer ns.rackLock.Unlock()
 	oldRack, ok := ns.rackMap[rack.name]
 	if ok {
-		rack = oldRack
-		return
+		return oldRack
 	}
 	ns.rackMap[rack.name] = rack
 	if ok := ns.isExist(rack.name); !ok {
 		ns.racks = append(ns.racks, rack.name)
 	}
+	return rack
 }
 
 func (ns *nodeSet) isExist(rackName string) (ok bool) {
@@ -402,7 +402,7 @@ func (ns *nodeSet) putDataNode(dataNode *DataNode) {
 	rack, err := ns.getRack(dataNode.RackName)
 	if err != nil {
 		rack = newRack(dataNode.RackName)
-		ns.putRack(rack)
+		rack = ns.putRack(rack)
 	}
 	rack.putDataNode(dataNode)
 	ns.dataNodes.Store(dataNode.Addr, dataNode)
