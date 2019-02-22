@@ -29,12 +29,13 @@ import (
 
 // Super defines the struct of a super block.
 type Super struct {
-	cluster string
-	volname string
-	ic      *InodeCache
-	mw      *meta.MetaWrapper
-	ec      *stream.ExtentClient
-	orphan  *OrphanInodeList
+	cluster     string
+	volname     string
+	ic          *InodeCache
+	mw          *meta.MetaWrapper
+	ec          *stream.ExtentClient
+	orphan      *OrphanInodeList
+	enSyncWrite bool
 }
 
 // Functions that Super needs to implement
@@ -44,7 +45,7 @@ var (
 )
 
 // NewSuper returns a new Super.
-func NewSuper(volname, master string, icacheTimeout, lookupValid, attrValid int64) (s *Super, err error) {
+func NewSuper(volname, master string, icacheTimeout, lookupValid, attrValid, enSyncWrite int64) (s *Super, err error) {
 	s = new(Super)
 	s.mw, err = meta.NewMetaWrapper(volname, master)
 	if err != nil {
@@ -67,6 +68,9 @@ func NewSuper(volname, master string, icacheTimeout, lookupValid, attrValid int6
 	}
 	if attrValid >= 0 {
 		AttrValidDuration = time.Duration(attrValid) * time.Second
+	}
+	if enSyncWrite > 0 {
+		s.enSyncWrite = true
 	}
 	s.ic = NewInodeCache(inodeExpiration, MaxInodeCache)
 	s.orphan = NewOrphanInodeList()
