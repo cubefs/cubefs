@@ -67,7 +67,7 @@ func (ei *ExtentInfo) String() (m string) {
 	if source == "" {
 		source = "none"
 	}
-	return fmt.Sprintf("%v_%v_%v_%v_%v_%v", ei.FileID, ei.Inode, ei.Size, ei.Crc, ei.IsDeleted, source)
+	return fmt.Sprintf("%v_%v_%v_%v", ei.FileID, ei.Size, ei.IsDeleted, source)
 }
 
 // Extent is an implementation of Extent for local regular extent file data management.

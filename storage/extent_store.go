@@ -323,6 +323,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		loadErr  error
 	)
 	for _, f := range files {
+		var inode uint64
 		if extentID, isExtent = s.ExtentID(f.Name()); !isExtent {
 			continue
 		}
@@ -339,8 +340,9 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 			if len(e.checkDirtyBlock()) != 0 {
 				isDirtyBlock = true
 			}
+			inode = binary.BigEndian.Uint64(e.header[0:util.BlockHeaderInoSize])
 		}
-		ei = &ExtentInfo{}
+		ei = &ExtentInfo{FileID: extentID, Inode: inode}
 		ei.FromExtent(e, isDirtyBlock)
 		s.eiMutex.Lock()
 		s.extentInfoMap[extentID] = ei
