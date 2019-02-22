@@ -432,8 +432,7 @@ func (mp *MetaPartition) replicaCreationTasks(clusterID, volName string) (tasks 
 		msg = fmt.Sprintf("action[missingReplicaAddrs],clusterID[%v] metaPartition:%v  lack replication"+
 			" on :%v Hosts:%v",
 			clusterID, mp.PartitionID, addrs, mp.Hosts)
-		log.LogWarn(msg)
-		tasks = append(tasks, mp.createTaskToAddMissingMetaReplica(addrs, volName)...)
+		Warn(clusterID,msg)
 	}
 
 	return
@@ -461,10 +460,6 @@ func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers
 		tasks = append(tasks, t)
 	}
 	return
-}
-
-func (mp *MetaPartition) createTaskToAddMissingMetaReplica(addrs []string, volName string) (tasks []*proto.AdminTask) {
-	return mp.buildNewMetaPartitionTasks(addrs, mp.Peers, volName)
 }
 
 func (mp *MetaPartition) createTaskToDecommissionReplica(volName string, removePeer proto.Peer, addPeer proto.Peer) (t *proto.AdminTask, err error) {
