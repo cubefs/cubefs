@@ -206,7 +206,7 @@ func (s *ExtentStore) Create(extentID uint64, inode uint64) (err error) {
 	}
 	s.cache.Put(e)
 
-	extInfo := &ExtentInfo{}
+	extInfo := &ExtentInfo{FileID: extentID, Inode: inode}
 	if !IsTinyExtent(extentID) {
 		err = s.updateExtentInode(extentID, inode, e)
 	}
