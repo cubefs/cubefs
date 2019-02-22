@@ -40,7 +40,7 @@ type ConsulRegisterInfo struct {
 	Tags    []string
 }
 
-// TODO explain
+// get consul id
 func GetConsulId(app string, role string, host string, port int64) string {
 	return fmt.Sprintf("%s_%s_%s_%d", app, role, host, port)
 }
@@ -49,7 +49,7 @@ func RegisterConsul(addr, app, role, cluster string, port int64) {
 	if len(addr) <= 0 {
 		return
 	}
-	log.LogInfo("consul register enable %v", addr)
+	log.LogInfo("consul register enable ", addr)
 	ticker := time.NewTicker(RegisterPeriod)
 	defer func() {
 		if err := recover(); err != nil {

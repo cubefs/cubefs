@@ -39,12 +39,12 @@ type Packet struct {
 	followersAddrs []string
 	IsReleased     int32 // TODO what is released?
 	Object         interface{}
-	TpObject       *exporter.TpMetric
+	TpObject       *exporter.TimePointCount
 	NeedReply      bool
 }
 
 func (p *Packet) AfterTp() (ok bool) {
-	p.TpObject.CalcTp()
+	p.TpObject.Set()
 
 	return
 }
@@ -60,7 +60,7 @@ func (p *Packet) clean() {
 }
 
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
-	p.TpObject = exporter.RegisterTp(p.GetOpMsg())
+	p.TpObject = exporter.NewTPCnt(p.GetOpMsg())
 	return
 }
 

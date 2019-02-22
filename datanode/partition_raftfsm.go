@@ -41,7 +41,8 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			key := fmt.Sprintf("%s_datapartition_apply_err", dp.clusterID)
 			prefix := fmt.Sprintf("datapartition_%v_extent_%v", dp.partitionID, opItem.extentID)
 			err = errors.Annotatef(err, prefix)
-			exporter.Alarm(key, err.Error())
+			//exporter.Alarm(key, err.Error())
+			exporter.NewAlarm(key)
 			resp = proto.OpExistErr
 			dp.repairC <- opItem.extentID
 		} else {
@@ -188,8 +189,9 @@ func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
 
 // HandleLeaderChange notifies the application when the raft leader has changed.
 func (dp *DataPartition) HandleLeaderChange(leader uint64) {
-	exporter.Alarm(ModuleName, fmt.Sprintf("LeaderChange: partition=%d, "+
-		"newLeader=%d", dp.config.PartitionID, leader))
+	//exporter.Alarm(ModuleName, fmt.Sprintf("LeaderChange: partition=%d, "+
+	//	"newLeader=%d", dp.config.PartitionID, leader))
+	exporter.NewAlarm(ModuleName)
 
 	if dp.config.NodeID == leader {
 		dp.isRaftLeader = true

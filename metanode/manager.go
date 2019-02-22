@@ -66,8 +66,8 @@ type metadataManager struct {
 // HandleMetadataOperation handles the metadata operations.
 func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
-	metric := exporter.RegisterTp(p.GetOpMsg())
-	defer metric.CalcTp()
+	metric := exporter.NewTPCnt(p.GetOpMsg())
+	defer metric.Set()
 
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:

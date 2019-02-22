@@ -39,7 +39,7 @@ import (
 
 func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	sz := p.Size
-	tpObject := exporter.RegisterTp(p.GetOpMsg())
+	tpObject := exporter.NewTPCnt(p.GetOpMsg())
 	start := time.Now().UnixNano()
 	defer func() {
 		resultSize := p.Size
@@ -62,7 +62,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 			}
 		}
 		p.Size = resultSize
-		tpObject.CalcTp()
+		tpObject.Set()
 	}()
 	switch p.Opcode {
 	case proto.OpCreateExtent:
@@ -445,10 +445,10 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 		} else {
 			reply.Data = make([]byte, currReadSize)
 		}
-		tpObject := exporter.RegisterTp(p.GetOpMsg())
+		tpObject := exporter.NewTPCnt(p.GetOpMsg())
 		reply.ExtentOffset = offset
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead)
-		tpObject.CalcTp()
+		tpObject.Set()
 		if err != nil {
 			reply.PackErrorBody(ActionStreamRead, err.Error())
 			p.PackErrorBody(ActionStreamRead, err.Error())
