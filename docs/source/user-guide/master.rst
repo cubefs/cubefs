@@ -52,7 +52,7 @@ CFS use **JSON** as configuration file format.
     "storeDir":"/export/rocks",
     "exporterPort": 9510,
     "consulAddr": "http://127.0.0.1:8500",
-    "clusterName":"containerfs"
+    "clusterName":"test"
    }
 
 
