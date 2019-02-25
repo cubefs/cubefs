@@ -172,7 +172,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		port       string
 		regexpPort *regexp.Regexp
 	)
-	s.localIP = cfg.GetString(ConfigKeyLocalIP)
+	LocalIP = cfg.GetString(ConfigKeyLocalIP)
 	port = cfg.GetString(ConfigKeyPort)
 	if regexpPort, err = regexp.Compile("^(\\d)+$"); err != nil {
 		return
@@ -270,9 +270,10 @@ func (s *DataNode) register() {
 				continue
 			}
 			cInfo := new(proto.ClusterInfo)
-
 			json.Unmarshal(data, cInfo)
-			LocalIP = string(cInfo.Ip)
+			if LocalIP == "" {
+				LocalIP = string(cInfo.Ip)
+			}
 			s.clusterID = cInfo.Cluster
 			s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			if !util.IsIPV4(LocalIP) {
@@ -280,11 +281,6 @@ func (s *DataNode) register() {
 					LocalIP, masterAddr)
 				timer.Reset(5 * time.Second)
 				continue
-			}
-
-			if s.localIP != "" {
-				LocalIP = s.localIP
-				s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			}
 
 			// register this data node on the master
