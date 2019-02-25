@@ -553,9 +553,12 @@ func (dp *DataPartition) getOtherAppliedID() (appliedIDList []uint64, replyNum u
 			log.LogErrorf("partition=%v getRemoteAppliedID from[%v] Failed.", dp.partitionID, target)
 			continue
 		}
+		if appliedID == 0 {
+			log.LogDebugf("[getOtherAppliedID] partition=%v local appliedID[%v] replicaHost[%v] appliedID=0",
+				dp.partitionID, dp.appliedID, replicaHost)
+		}
 		appliedIDList[i] = appliedID
 		replyNum++
-		log.LogDebugf("partition=%v remoteAppliedID=%v", dp.partitionID, appliedIDList[i])
 	}
 
 	return
@@ -581,9 +584,12 @@ func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyN
 			log.LogErrorf("partition=%v getRemoteAppliedID from[%v] Failed.", dp.partitionID, target)
 			continue
 		}
+		if appliedID == 0 {
+			log.LogDebugf("[getAllReplicaAppliedID] partition=%v local appliedID[%v] replicaHost[%v] appliedID=0",
+				dp.partitionID, dp.appliedID, replicaHost)
+		}
 		allAppliedID[i] = appliedID
 		replyNum++
-		log.LogDebugf("partition=%v remoteAppliedID=%v", dp.partitionID, allAppliedID[i])
 	}
 
 	return
@@ -610,7 +616,7 @@ func (dp *DataPartition) getRemoteAppliedID(target string, p *repl.Packet) (appl
 
 	appliedID = binary.BigEndian.Uint64(p.Data)
 
-	log.LogDebugf("partition=%v remoteAppliedID=%v", dp.partitionID, appliedID)
+	log.LogDebugf("[getRemoteAppliedID] partition=%v remoteAppliedID=%v", dp.partitionID, appliedID)
 
 	return
 }

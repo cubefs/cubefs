@@ -131,7 +131,7 @@ func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 
 func (dp *DataPartition) checkWriteErrs(errMsg string) (ignore bool) {
 	// file has been deleted when applying the raft log
-	if strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) {
+	if strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) || strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) {
 		return true
 	}
 	return false
