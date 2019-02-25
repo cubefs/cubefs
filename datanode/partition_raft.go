@@ -631,13 +631,11 @@ func (dp *DataPartition) updateMaxMinAppliedID() {
 	// Get the applied id from the leader
 	_, isLeader := dp.IsRaftLeader()
 	if !isLeader {
-		log.LogDebugf("[updateMaxMinAppliedID] partitionID=%v notRaftLeader localIP[%v]", dp.partitionID, LocalIP)
 		return
 	}
 
 	// if leader has not applied the raft, no need to get others
 	if dp.appliedID == 0 {
-		log.LogDebugf("[updateMaxMinAppliedID] partitionID=%v leader no applid. commit=%v", dp.partitionID, dp.raftPartition.CommittedIndex())
 		return
 	}
 
