@@ -368,7 +368,7 @@ func (ns *nodeSet) getRack(name string) (rack *Rack, err error) {
 	return
 }
 
-func (ns *nodeSet) putRack(rack *Rack) *Rack{
+func (ns *nodeSet) putRack(rack *Rack) *Rack {
 	ns.rackLock.Lock()
 	defer ns.rackLock.Unlock()
 	oldRack, ok := ns.rackMap[rack.name]

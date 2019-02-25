@@ -53,7 +53,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, nil))
 			switch p.Opcode {
-			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead:
+			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead, proto.OpReadTinyDelete:
 				log.LogRead(logContent)
 			case proto.OpWrite, proto.OpRandomWrite, proto.OpSyncRandomWrite, proto.OpSyncWrite:
 				log.LogWrite(logContent)
@@ -69,8 +69,6 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handlePacketToCreateExtent(p)
 	case proto.OpWrite, proto.OpSyncWrite:
 		s.handleWritePacket(p)
-	//case proto.OpRead:
-	//	s.handleReadPacket(p)
 	case proto.OpStreamRead:
 		s.handleStreamReadPacket(p, c, StreamRead)
 	case proto.OpExtentRepairRead:
@@ -79,7 +77,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handleMarkDeletePacket(p)
 	case proto.OpRandomWrite, proto.OpSyncRandomWrite:
 		s.handleRandomWritePacket(p)
-	case proto.OpNotifyExtentRepair:
+	case proto.OpNotifyReplicasToRepair:
 		s.handlePacketToNotifyExtentRepair(p)
 	case proto.OpGetAllWatermarks:
 		s.handlePacketToGetAllWatermarks(p)
@@ -91,14 +89,14 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handlePacketToDeleteDataPartition(p)
 	case proto.OpDataNodeHeartbeat:
 		s.handleHeartbeatPacket(p)
-	case proto.OpGetDataPartitionMetrics:
-		s.handlePacketToGetDataPartitionMetrics(p)
 	case proto.OpGetAppliedId:
 		s.handlePacketToGetAppliedID(p)
 	case proto.OpDecommissionDataPartition:
 		s.handlePacketToDecommissionDataPartition(p)
 	case proto.OpGetPartitionSize:
 		s.handlePacketToGetPartitionSize(p)
+	case proto.OpReadTinyDelete:
+		s.handlePacketToReadTinyDelete(p, c)
 	default:
 		p.PackErrorBody(repl.ErrorUnknownOp.Error(), repl.ErrorUnknownOp.Error()+strconv.Itoa(int(p.Opcode)))
 	}
@@ -320,13 +318,13 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet) {
 	)
 	partition := p.Object.(*DataPartition)
 	if p.ExtentType == proto.TinyExtentType {
-		ext := new(proto.ExtentKey)
+		ext := new(proto.TinyExtentDeleteRecord)
 		err = json.Unmarshal(p.Data, ext)
 		if err == nil {
-			err = partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
+			err = partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size), ext.TinyDeleteFileOffset)
 		}
 	} else {
-		err = partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
+		err = partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0, 0)
 	}
 	if err != nil {
 		p.PackErrorBody(ActionMarkDelete, err.Error())
@@ -488,12 +486,12 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
 	store := partition.ExtentStore()
 	if p.ExtentType == proto.NormalExtentType {
-		fInfoList, err = store.GetAllWatermarks(storage.NormalExtentFilter())
+		fInfoList, _, err = store.GetAllWatermarks(storage.NormalExtentFilter())
 	} else {
 		extents := make([]uint64, 0)
 		err = json.Unmarshal(p.Data, &extents)
 		if err == nil {
-			fInfoList, err = store.GetAllWatermarks(storage.TinyExtentFilter(extents))
+			fInfoList, _, err = store.GetAllWatermarks(storage.TinyExtentFilter(extents))
 		}
 	}
 	if err != nil {
@@ -505,7 +503,53 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 	return
 }
 
-// Handle OpNotifyExtentRepair packet.
+func (s *DataNode) handlePacketToReadTinyDelete(p *repl.Packet, connect *net.TCPConn) {
+	var (
+		err error
+	)
+	partition := p.Object.(*DataPartition)
+	store := partition.ExtentStore()
+	localTinyDeleteFileSize := store.LoadTinyDeleteFileOffset()
+	needReplySize := localTinyDeleteFileSize - p.ExtentOffset
+	offset := p.ExtentOffset
+	reply := repl.NewTinyDeleteRecordResponsePacket(p.ReqID, p.PartitionID)
+	reply.StartT = time.Now().UnixNano()
+	for {
+		if needReplySize <= 0 {
+			break
+		}
+		err = nil
+		currReadSize := uint32(util.Min(int(needReplySize), MaxSyncTinyDeleteBufferSize))
+		reply.Data = make([]byte, currReadSize)
+		reply.ExtentOffset = offset
+		reply.CRC, err = store.ReadTinyDeleteRecords(offset, int64(currReadSize), reply.Data)
+		if err != nil {
+			reply.PackErrorBody(ActionStreamReadTinyDeleteRecord, err.Error())
+			if err = reply.WriteToConn(connect); err != nil {
+				err = fmt.Errorf(reply.LogMessage(ActionStreamReadTinyDeleteRecord, connect.RemoteAddr().String(),
+					reply.StartT, err))
+				log.LogErrorf(err.Error())
+			}
+			return
+		}
+		reply.Size = uint32(currReadSize)
+		reply.ResultCode = proto.OpOk
+		if err = reply.WriteToConn(connect); err != nil {
+			err = fmt.Errorf(reply.LogMessage(ActionStreamReadTinyDeleteRecord, connect.RemoteAddr().String(),
+				reply.StartT, err))
+			p.PackErrorBody(ActionStreamReadTinyDeleteRecord, err.Error())
+			log.LogErrorf(err.Error())
+			return
+		}
+		needReplySize -= int64(currReadSize)
+		offset += int64(currReadSize)
+	}
+	p.PacketOkReply()
+
+	return
+}
+
+// Handle OpNotifyReplicasToRepair packet.
 func (s *DataNode) handlePacketToNotifyExtentRepair(p *repl.Packet) {
 	var (
 		err error
@@ -519,19 +563,6 @@ func (s *DataNode) handlePacketToNotifyExtentRepair(p *repl.Packet) {
 	}
 	partition.DoExtentStoreRepair(mf)
 	p.PacketOkReply()
-	return
-}
-
-func (s *DataNode) handlePacketToGetDataPartitionMetrics(p *repl.Packet) {
-	partition := p.Object.(*DataPartition)
-	dp := partition
-	data, err := json.Marshal(dp.runtimeMetrics)
-	if err != nil {
-		p.PackErrorBody(ActionGetDataPartitionMetrics, err.Error())
-		return
-	}
-
-	p.PacketOkWithBody(data)
 	return
 }
 

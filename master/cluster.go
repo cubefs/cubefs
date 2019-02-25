@@ -704,12 +704,12 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	}
 	newAddr = newHosts[0]
 	for _, host := range dp.Hosts {
+		if dataNode, err = c.dataNode(host); err != nil {
+			goto errHandler
+		}
 		if host == offlineAddr {
 			removePeer = proto.Peer{ID: dataNode.ID, Addr: host}
 			continue
-		}
-		if dataNode, err = c.dataNode(host); err != nil {
-			goto errHandler
 		}
 		newPeers = append(newPeers, proto.Peer{ID: dataNode.ID, Addr: host})
 	}

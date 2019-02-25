@@ -118,7 +118,7 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	if err = p.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
 		return
 	}
-	log.LogDebugf("action[readPkgAndPrepare] read packet(%v) from remote(%v).",
+	log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v).",
 		p.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
 	if err = p.resolveFollowersAddr(); err != nil {
 		rp.responseCh <- p
@@ -300,13 +300,13 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
 		rp.isError = true
-		log.LogErrorf(ActionWriteToClient+" %v", err)
+		log.LogErrorf(err.Error())
 	}
 
 	// execute the post-processing function
 	rp.postFunc(reply)
 	if !reply.NeedReply {
-		log.LogDebugf(ActionWriteToClient+" %v", reply.LogMessage(ActionWriteToClient,
+		log.LogDebugf(reply.LogMessage(ActionWriteToClient,
 			rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
 		return
 	}
@@ -314,11 +314,11 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 	if err = reply.WriteToConn(rp.sourceConn); err != nil {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, err))
-		log.LogErrorf(ActionWriteToClient+" %v", err)
+		log.LogErrorf(err.Error())
 		rp.isError = true
 		rp.Stop()
 	}
-	log.LogDebugf(ActionWriteToClient+" %v", reply.LogMessage(ActionWriteToClient,
+	log.LogDebugf(reply.LogMessage(ActionWriteToClient,
 		rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
 }
 

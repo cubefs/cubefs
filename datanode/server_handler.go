@@ -105,9 +105,10 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		paramPartitionID = "id"
 	)
 	var (
-		partitionID uint64
-		files       []*storage.ExtentInfo
-		err         error
+		partitionID          uint64
+		files                []*storage.ExtentInfo
+		err                  error
+		tinyDeleteRecordSize int64
 	)
 	if err = r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
@@ -124,29 +125,31 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	if files, err = partition.ExtentStore().GetAllWatermarks(nil); err != nil {
+	if files, tinyDeleteRecordSize, err = partition.ExtentStore().GetAllWatermarks(nil); err != nil {
 		err = fmt.Errorf("get watermark fail: %v", err)
 		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	result := &struct {
-		ID        uint64                `json:"id"`
-		Size      int                   `json:"size"`
-		Used      int                   `json:"used"`
-		Status    int                   `json:"status"`
-		Path      string                `json:"path"`
-		Files     []*storage.ExtentInfo `json:"extents"`
-		FileCount int                   `json:"fileCount"`
-		Replicas  []string              `json:"replicas"`
+		ID                   uint64                `json:"id"`
+		Size                 int                   `json:"size"`
+		Used                 int                   `json:"used"`
+		Status               int                   `json:"status"`
+		Path                 string                `json:"path"`
+		Files                []*storage.ExtentInfo `json:"extents"`
+		FileCount            int                   `json:"fileCount"`
+		Replicas             []string              `json:"replicas"`
+		TinyDeleteRecordSize int64                 `json:"tinyDeleteRecordSize"`
 	}{
-		ID:        partition.ID(),
-		Size:      partition.Size(),
-		Used:      partition.Used(),
-		Status:    partition.Status(),
-		Path:      partition.Path(),
-		Files:     files,
-		FileCount: len(files),
-		Replicas:  partition.Replicas(),
+		ID:                   partition.ID(),
+		Size:                 partition.Size(),
+		Used:                 partition.Used(),
+		Status:               partition.Status(),
+		Path:                 partition.Path(),
+		Files:                files,
+		FileCount:            len(files),
+		Replicas:             partition.Replicas(),
+		TinyDeleteRecordSize: tinyDeleteRecordSize,
 	}
 	s.buildSuccessResp(w, result)
 }

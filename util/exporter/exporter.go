@@ -25,11 +25,11 @@ import (
 )
 
 const (
-	PromHandlerPattern    = "/metrics" 		// prometheus handler
-	AppName               = "cfs"			//app name
-	ConfigKeyExporterPort = "exporterPort" 	//exporter port
-	ConfigKeyConsulAddr   = "consulAddr" 	//consul addr
-	ChSize 				  = 1024 * 1024		//collect chan size
+	PromHandlerPattern    = "/metrics"     // prometheus handler
+	AppName               = "cfs"          //app name
+	ConfigKeyExporterPort = "exporterPort" //exporter port
+	ConfigKeyConsulAddr   = "consulAddr"   //consul addr
+	ChSize                = 1024 * 1024    //collect chan size
 )
 
 var (
@@ -49,7 +49,7 @@ func Init(cluster string, role string, cfg *config.Config) {
 		return
 	}
 	enabled = true
-	if ! enabled {
+	if !enabled {
 		return
 	}
 	http.Handle(PromHandlerPattern, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
@@ -78,7 +78,7 @@ func Init(cluster string, role string, cfg *config.Config) {
 }
 
 func collect() {
-	if ! enabled {
+	if !enabled {
 		return
 	}
 	go collectCounter()

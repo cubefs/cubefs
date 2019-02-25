@@ -13,13 +13,13 @@ var (
 		return new(Gauge)
 	}}
 
-	GaugeGroup  sync.Map
-	GaugeCh = make(chan *Gauge, ChSize)
+	GaugeGroup sync.Map
+	GaugeCh    = make(chan *Gauge, ChSize)
 )
 
 func collectGauge() {
 	for {
-		m := <- GaugeCh
+		m := <-GaugeCh
 		metric := m.Metric()
 		metric.Set(float64(m.val))
 		GaugePool.Put(m)
@@ -27,14 +27,14 @@ func collectGauge() {
 }
 
 type Gauge struct {
-	name string
+	name   string
 	labels map[string]string
-	val int64
-	ch chan interface{}
+	val    int64
+	ch     chan interface{}
 }
 
 func NewGauge(name string) (g *Gauge) {
-	if ! enabled {
+	if !enabled {
 		return
 	}
 	g = GaugePool.Get().(*Gauge)
@@ -51,7 +51,7 @@ func (c *Gauge) Key() (key string) {
 	return stringMD5(str)
 }
 
-func (c *Gauge) Metric() (prometheus.Gauge) {
+func (c *Gauge) Metric() prometheus.Gauge {
 	metric := prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name:        c.name,
@@ -70,14 +70,14 @@ func (c *Gauge) Metric() (prometheus.Gauge) {
 }
 
 func (g *Gauge) Set(val int64) {
-	if ! enabled {
+	if !enabled {
 		return
 	}
 	g.val = val
 	g.publish()
 }
 
-func (c *Gauge)publish() {
+func (c *Gauge) publish() {
 	select {
 	case GaugeCh <- c:
 	default:
@@ -85,10 +85,9 @@ func (c *Gauge)publish() {
 }
 
 func (g *Gauge) SetWithLabels(val int64, labels map[string]string) {
-	if ! enabled {
+	if !enabled {
 		return
 	}
 	g.labels = labels
 	g.Set(val)
 }
-

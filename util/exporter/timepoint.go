@@ -15,7 +15,7 @@ var (
 
 func collectTP() {
 	for {
-		m := <- TPCh
+		m := <-TPCh
 		metric := m.Metric()
 		metric.Set(float64(m.val))
 		TPPool.Put(m)
@@ -28,12 +28,12 @@ type TimePoint struct {
 }
 
 type TimePointCount struct {
-	tp *TimePoint
+	tp  *TimePoint
 	cnt *Counter
 }
 
 func NewTP(name string) (tp *TimePoint) {
-	if ! enabled {
+	if !enabled {
 		return
 	}
 	tp = TPPool.Get().(*TimePoint)
@@ -43,7 +43,7 @@ func NewTP(name string) (tp *TimePoint) {
 }
 
 func (tp *TimePoint) Set() {
-	if ! enabled {
+	if !enabled {
 		return
 	}
 	val := time.Since(tp.startTime).Nanoseconds()
@@ -52,7 +52,7 @@ func (tp *TimePoint) Set() {
 }
 
 func NewTPCnt(name string) (tpc *TimePointCount) {
-	if ! enabled {
+	if !enabled {
 		return
 	}
 	tpc = new(TimePointCount)
@@ -62,17 +62,16 @@ func NewTPCnt(name string) (tpc *TimePointCount) {
 }
 
 func (tpc *TimePointCount) Set() {
-	if ! enabled {
+	if !enabled {
 		return
 	}
 	tpc.tp.Set()
 	tpc.cnt.Add(1)
 }
 
-func (tp *TimePoint)publish() {
+func (tp *TimePoint) publish() {
 	select {
 	case TPCh <- tp:
 	default:
 	}
 }
-

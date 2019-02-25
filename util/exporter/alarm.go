@@ -15,7 +15,7 @@ var (
 
 func collectAlarm() {
 	for {
-		m := <- AlarmCh
+		m := <-AlarmCh
 		AlarmPool.Put(m)
 	}
 }
@@ -25,7 +25,7 @@ type Alarm struct {
 }
 
 func NewAlarm(name string) (a *Alarm) {
-	if ! enabled {
+	if !enabled {
 		return
 	}
 	a = AlarmPool.Get().(*Alarm)
@@ -34,10 +34,9 @@ func NewAlarm(name string) (a *Alarm) {
 	return
 }
 
-func (c *Alarm)publish() {
+func (c *Alarm) publish() {
 	select {
 	case AlarmCh <- c:
 	default:
 	}
 }
-

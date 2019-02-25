@@ -115,3 +115,13 @@ func (k *ExtentKey) UnMarshal(m string) (err error) {
 func (k *ExtentKey) GetExtentKey() (m string) {
 	return fmt.Sprintf("%v_%v_%v", k.PartitionId, k.ExtentId, k.ExtentOffset)
 }
+
+type TinyExtentDeleteRecord struct {
+	FileOffset           uint64
+	PartitionId          uint64
+	ExtentId             uint64
+	ExtentOffset         uint64
+	Size                 uint32
+	CRC                  uint32
+	TinyDeleteFileOffset int64
+}

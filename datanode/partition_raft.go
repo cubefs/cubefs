@@ -441,7 +441,7 @@ func (dp *DataPartition) ExtentRepair(extentFiles []*storage.ExtentInfo, target 
 	startTime := time.Now().UnixNano()
 	log.LogInfof("action[ExtentRepair] partition=%v start.", dp.partitionID)
 
-	mf := NewDataPartitionRepairTask(extentFiles, target)
+	mf := NewDataPartitionRepairTask(extentFiles, 0, target, dp.replicas[0])
 
 	for i := 0; i < len(extentFiles); i++ {
 		extentFile := extentFiles[i]

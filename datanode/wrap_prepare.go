@@ -15,6 +15,7 @@
 package datanode
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/juju/errors"
 	"github.com/tiglabs/containerfs/proto"
@@ -105,6 +106,14 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 			return fmt.Errorf("partition %v has reached maxExtentId", p.PartitionID)
 		}
 		p.ExtentID = store.NextExtentID()
+	} else if isLeaderPacket(p) && isMarkDeleteExtentOperation(p) && isTinyExtentType(p) {
+		record := new(proto.TinyExtentDeleteRecord)
+		if err := json.Unmarshal(p.Data[:p.Size], record); err != nil {
+			return fmt.Errorf("addExtentInfo failed %v", err.Error())
+		}
+		record.TinyDeleteFileOffset = store.NextTinyDeleteFileOffset()
+		p.Data, _ = json.Marshal(record)
+		p.Size = uint32(len(p.Data))
 	}
 
 	return nil
@@ -131,6 +140,10 @@ func isMarkDeleteExtentOperation(p *repl.Packet) bool {
 	return p.Opcode == proto.OpMarkDelete
 }
 
+func isTinyExtentType(p *repl.Packet) bool {
+	return p.ExtentType == proto.TinyExtentType
+}
+
 func isReadExtentOperation(p *repl.Packet) bool {
-	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpExtentRepairRead || p.Opcode == proto.OpRead
+	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpExtentRepairRead || p.Opcode == proto.OpRead || p.Opcode == proto.OpReadTinyDelete
 }

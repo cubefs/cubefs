@@ -127,6 +127,28 @@ func NewPacketToGetAllWatermarks(partitionID uint64, extentType uint8) (p *Packe
 	return
 }
 
+func NewPacketToTinyDeleteRecord(partitionID uint64, offset int64) (p *Packet) {
+	p = new(Packet)
+	p.Opcode = proto.OpReadTinyDelete
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.ReqID = proto.GenerateRequestID()
+	p.ExtentOffset = offset
+
+	return
+}
+
+func NewTinyDeleteRecordResponsePacket(requestID int64, partitionID uint64) (p *Packet) {
+	p = new(Packet)
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.Opcode = proto.OpOk
+	p.ReqID = requestID
+	p.ExtentType = proto.NormalExtentType
+
+	return
+}
+
 func NewExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) (p *Packet) {
 	p = new(Packet)
 	p.ExtentID = extentID
@@ -155,7 +177,7 @@ func NewStreamReadResponsePacket(requestID int64, partitionID uint64, extentID u
 
 func NewPacketToNotifyExtentRepair(partitionID uint64) (p *Packet) {
 	p = new(Packet)
-	p.Opcode = proto.OpNotifyExtentRepair
+	p.Opcode = proto.OpNotifyReplicasToRepair
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
 	p.ExtentType = proto.NormalExtentType
@@ -232,6 +254,8 @@ func (p *Packet) isReadOperation() bool {
 func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (err error) {
 	if deadlineTime != proto.NoReadDeadlineTime {
 		c.SetReadDeadline(time.Now().Add(deadlineTime * time.Second))
+	} else {
+		c.SetReadDeadline(time.Time{})
 	}
 	header, err := proto.Buffers.Get(util.PacketHeaderSize)
 	if err != nil {
