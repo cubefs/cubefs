@@ -201,7 +201,9 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Code = http.StatusSeeOther
 	resp.Msg = p.GetResultMsg()
-	resp.Data = json.RawMessage(p.Data)
+	if len(p.Data) > 0 {
+		resp.Data = json.RawMessage(p.Data)
+	}
 	return
 }
 
@@ -243,7 +245,9 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
 	}
 	resp.Code = http.StatusSeeOther
 	resp.Msg = p.GetResultMsg()
-	resp.Data = json.RawMessage(p.Data)
+	if len(p.Data) > 0 {
+		resp.Data = json.RawMessage(p.Data)
+	}
 	return
 }
 
@@ -290,7 +294,9 @@ func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 
 	resp.Code = http.StatusSeeOther
 	resp.Msg = p.GetResultMsg()
-	resp.Data = json.RawMessage(p.Data)
+	if len(p.Data) > 0 {
+		resp.Data = json.RawMessage(p.Data)
+	}
 	return
 
 }
@@ -393,7 +399,9 @@ func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Code = http.StatusSeeOther
 	resp.Msg = p.GetResultMsg()
-	resp.Data = json.RawMessage(p.Data)
+	if len(p.Data) > 0 {
+		resp.Data = json.RawMessage(p.Data)
+	}
 	return
 }
 
@@ -429,6 +437,8 @@ func (m *MetaNode) getInodeAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Code = http.StatusOK
 	resp.Msg = http.StatusText(resp.Code)
-	resp.Data = json.RawMessage(p.Data)
+	if len(p.Data) > 0 {
+		resp.Data = json.RawMessage(p.Data)
+	}
 	return
 }
