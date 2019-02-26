@@ -269,6 +269,9 @@ func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTa
 	for index := 0; index < len(repairTasks); index++ {
 		repairTask := repairTasks[index]
 		for extentID, extentInfo := range repairTask.extents {
+			if extentInfo.IsDeleted {
+				continue
+			}
 			extentWithMaxSize, ok := extentInfoMap[extentID]
 			if !ok {
 				extentInfoMap[extentID] = extentInfo
@@ -301,6 +304,9 @@ func (dp *DataPartition) buildExtentCreationTasks(repairTasks []*DataPartitionRe
 				if extentInfo.Inode == 0 {
 					continue
 				}
+				if extentInfo.IsDeleted {
+					continue
+				}
 				ei := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentID, Size: extentInfo.Size, Inode: extentInfo.Inode}
 				repairTask.ExtentsToBeCreated = append(repairTask.ExtentsToBeCreated, ei)
 				repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, ei)
@@ -320,6 +326,9 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 		for index := 0; index < len(repairTasks); index++ {
 			extentInfo, ok := repairTasks[index].extents[extentID]
 			if !ok {
+				continue
+			}
+			if extentInfo.IsDeleted {
 				continue
 			}
 			if extentInfo.Size < maxFileInfo.Size {

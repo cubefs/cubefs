@@ -718,6 +718,9 @@ func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentIn
 		if filter != nil && !filter(extentInfo) {
 			continue
 		}
+		if extentInfo.IsDeleted {
+			continue
+		}
 		extents = append(extents, extentInfo)
 	}
 	tinyDeleteFileSize = s.LoadTinyDeleteFileOffset()
