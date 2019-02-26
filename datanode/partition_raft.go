@@ -646,8 +646,8 @@ func (dp *DataPartition) updateMaxMinAppliedID() {
 	}
 	if replyNum == uint8(len(allAppliedID)) {                // update dp.minAppliedID when every member had replied
 		minAppliedID, _ = dp.findMinAppliedID(allAppliedID)
-		log.LogDebugf("[updateMaxMinAppliedID] partitionID=%v localID=%v OK! oldMinID=%v newMinID=%v oldMaxID=%v newMaxID=%v",
-			dp.partitionID, dp.appliedID, dp.minAppliedID, minAppliedID, dp.maxAppliedID, maxAppliedID)
+		log.LogDebugf("[updateMaxMinAppliedID] partitionID=%v localID=%v OK! oldMinID=%v newMinID=%v",
+			dp.partitionID, dp.appliedID, dp.minAppliedID, minAppliedID)
 		dp.broadcastMinAppliedID(minAppliedID)
 	}
 
