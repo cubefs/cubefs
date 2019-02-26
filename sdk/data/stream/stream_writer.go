@@ -107,6 +107,7 @@ func (s *Streamer) IssueWriteRequest(offset int, data []byte, direct bool) (writ
 		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", s.inode))
 	}
 
+	s.writeLock.Lock()
 	request := writeRequestPool.Get().(*WriteRequest)
 	request.data = data
 	request.fileOffset = offset
@@ -114,6 +115,8 @@ func (s *Streamer) IssueWriteRequest(offset int, data []byte, direct bool) (writ
 	request.direct = direct
 	request.done = make(chan struct{}, 1)
 	s.request <- request
+	s.writeLock.Unlock()
+
 	<-request.done
 	err = request.err
 	write = request.writeBytes
@@ -300,12 +303,12 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 
 	offset := req.FileOffset
 	size := req.Size
-	ekFileOffset := int(req.ExtentKey.FileOffset)
-	ekExtOffset := int(req.ExtentKey.ExtentOffset)
 
 	// the extent key needs to be updated because when preparing the requests,
 	// the obtained extent key could be a local key which can be inconsistent with the remote key.
 	req.ExtentKey = s.extents.Get(uint64(offset))
+	ekFileOffset := int(req.ExtentKey.FileOffset)
+	ekExtOffset := int(req.ExtentKey.ExtentOffset)
 	if req.ExtentKey == nil {
 		err = errors.New(fmt.Sprintf("doOverwrite: extent key not exist, ino(%v) ekFileOffset(%v) ek(%v)", s.inode, ekFileOffset, req.ExtentKey))
 		return
