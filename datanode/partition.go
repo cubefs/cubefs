@@ -540,15 +540,17 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 // 2. if the extent does not even exist, create the extent first, and then repair.
 func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask) {
 	store := dp.extentStore
-	allAppliedIDs, replyNum := dp.getOtherAppliedID()
-	if replyNum > 0 {
-		minAppliedID := allAppliedIDs[0]
-		for i := 1; i < int(replyNum); i++ {
-			if allAppliedIDs[i] < minAppliedID {
-				minAppliedID = allAppliedIDs[i]
+	if len(repairTask.ExtentsToBeCreated) > 0 {
+		allAppliedIDs, replyNum := dp.getOtherAppliedID()
+		if replyNum > 0 {
+			minAppliedID := allAppliedIDs[0]
+			for i := 1; i < int(replyNum); i++ {
+				if allAppliedIDs[i] < minAppliedID {
+					minAppliedID = allAppliedIDs[i]
+				}
 			}
+			dp.appliedID = minAppliedID
 		}
-		dp.appliedID = minAppliedID
 	}
 
 	for _, extentInfo := range repairTask.ExtentsToBeCreated {
