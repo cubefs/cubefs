@@ -246,6 +246,10 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 			p.GetUniqueLogId(), err.Error())
 		return
 	}
+	if p.ResultCode != proto.OpOk {
+		err = errors.Errorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(),
+			p.GetResultMsg())
+	}
 	log.LogDebugf("[deleteMarkedInodes] %v", p.GetUniqueLogId())
 	return
 }

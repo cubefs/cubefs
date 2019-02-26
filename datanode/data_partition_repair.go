@@ -361,11 +361,10 @@ func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members [
 	target := dp.replicas[index]
 	p.Data, _ = json.Marshal(members[index])
 	p.Size = uint32(len(p.Data))
-	taskStr := string(p.Data[:p.Size])
 	conn, err = gConnPool.GetConnect(target)
 	defer func() {
 		wg.Done()
-		log.LogInfof(fmt.Sprintf(ActionNotifyFollowerToRepair+" to (%v) task (%v) failed (%v)", target, taskStr, err))
+		log.LogInfof(fmt.Sprintf(ActionNotifyFollowerToRepair+" to host(%v) Partition(%v) failed (%v)", target, dp.partitionID, err))
 	}()
 	if err != nil {
 		return err
