@@ -856,6 +856,13 @@ func UnMarshalTinyExtent(data []byte) (extentID, offset, size uint64) {
 func (s *ExtentStore) RecordTinyDelete(extentID uint64, offset, size, tinyDeleteFileOffset int64) (err error) {
 	record := MarshalTinyExtent(extentID, offset, size)
 	_, err = s.tinyExtentDeleteFp.WriteAt(record, tinyDeleteFileOffset)
+	if err != nil {
+		return
+	}
+	if atomic.LoadInt64(&s.baseTinyDeleteOffset) < tinyDeleteFileOffset {
+		atomic.StoreInt64(&s.baseTinyDeleteOffset, tinyDeleteFileOffset)
+	}
+
 	return
 }
 
