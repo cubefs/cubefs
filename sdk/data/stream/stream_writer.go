@@ -85,11 +85,13 @@ type EvictRequest struct {
 	done chan struct{}
 }
 
+// Open request shall grab the lock until request is sent to the request channel
 func (s *Streamer) IssueOpenRequest(flag uint32) error {
 	request := openRequestPool.Get().(*OpenRequest)
 	request.done = make(chan struct{}, 1)
 	request.flag = flag
 	s.request <- request
+	s.client.streamerLock.Unlock()
 	<-request.done
 	err := request.err
 	openRequestPool.Put(request)
@@ -134,6 +136,7 @@ func (s *Streamer) IssueReleaseRequest(flag uint32) error {
 	request.done = make(chan struct{}, 1)
 	request.flag = flag
 	s.request <- request
+	s.client.streamerLock.Unlock()
 	<-request.done
 	err := request.err
 	releaseRequestPool.Put(request)
@@ -183,8 +186,8 @@ func (s *Streamer) server() {
 			// TODO unhandled error
 			s.traverse()
 			if s.refcnt <= 0 {
+				s.client.streamerLock.Lock()
 				if s.idle >= 10 && len(s.request) == 0 {
-					s.client.streamerLock.Lock()
 					delete(s.client.streamers, s.inode)
 					s.client.streamerLock.Unlock()
 
@@ -193,6 +196,7 @@ func (s *Streamer) server() {
 					log.LogDebugf("done server: no requests for a long time, ino(%v)", s.inode)
 					return
 				}
+				s.client.streamerLock.Unlock()
 				s.idle++
 			}
 		}
@@ -528,9 +532,13 @@ func (s *Streamer) release(flag uint32) error {
 }
 
 func (s *Streamer) evict() error {
-	if s.refcnt > 0 {
+	s.client.streamerLock.Lock()
+	if s.refcnt > 0 || len(s.request) != 0 {
+		s.client.streamerLock.Unlock()
 		return errors.New(fmt.Sprintf("evict: streamer(%v) refcnt(%v) openWriteCnt(%v) authid(%v)", s, s.refcnt, s.openWriteCnt, s.authid))
 	}
+	delete(s.client.streamers, s.inode)
+	s.client.streamerLock.Unlock()
 	return nil
 }
 

@@ -89,6 +89,7 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 	return
 }
 
+// Open request shall grab the lock until request is sent to the request channel
 func (client *ExtentClient) OpenStream(inode uint64, flag uint32) (err error) {
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
@@ -96,10 +97,10 @@ func (client *ExtentClient) OpenStream(inode uint64, flag uint32) (err error) {
 		s = NewStreamer(client, inode)
 		client.streamers[inode] = s
 	}
-	client.streamerLock.Unlock()
 	return s.IssueOpenRequest(flag)
 }
 
+// Release request shall grab the lock until request is sent to the request channel
 func (client *ExtentClient) CloseStream(inode uint64, flag uint32) (err error) {
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
@@ -107,24 +108,20 @@ func (client *ExtentClient) CloseStream(inode uint64, flag uint32) (err error) {
 		client.streamerLock.Unlock()
 		return
 	}
-	client.streamerLock.Unlock()
 	return s.IssueReleaseRequest(flag)
 }
 
 func (client *ExtentClient) EvictStream(inode uint64) error {
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
+	client.streamerLock.Unlock()
 	if !ok {
-		client.streamerLock.Unlock()
 		return nil
 	}
 	err := s.IssueEvictRequest()
 	if err != nil {
-		client.streamerLock.Unlock()
 		return err
 	}
-	delete(client.streamers, inode)
-	client.streamerLock.Unlock()
 
 	s.done <- struct{}{}
 	return nil
