@@ -17,7 +17,7 @@ Configurations
 CFS use **JSON** as configuration file format.
 
 .. csv-table:: Properties
-   :header: "Key", "Type", "Description", "Required"
+   :header: "Key", "Type", "Description", "Mandatory"
    
    "role", "string", "Role of process and must be set to master", "Yes"
    "ip", "string", "host ip", "Yes"
@@ -51,7 +51,7 @@ CFS use **JSON** as configuration file format.
     "walDir":"/export/raft",
     "storeDir":"/export/rocks",
     "exporterPort": 9510,
-    "consulAddr": "http://127.0.0.1:8500",
+    "consulAddr": "http://consul.prometheus-cfs.local",
     "clusterName":"test"
    }
 

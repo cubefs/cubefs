@@ -4,7 +4,7 @@ Meta Subsystem
 Metanode is the manager of meta partitions and replicated by MultiRaft. Each metanode manages various of partitions.  Each partition covers an inode range, and maintains two in-memory btrees: inode btree and dentry btree.
 
 .. csv-table:: Properties
-   :header: "Key", "Type", "Description", "Required"
+   :header: "Key", "Type", "Description", "Mandatory"
  
    "role", "string", "Role of process and must be set to *metanode*", "Yes"
    "listen", "string", "Listen and accept port of the server", "Yes"
@@ -35,7 +35,7 @@ Example:
         "raftDir": "/export/cfs/metanode_raft",
         "raftHeartbeatPort": "9093",
         "raftReplicaPort": "9094",
-        "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
+        "consulAddr": "http://consul.prometheus-cfs.local",
          "exporterPort": 9511,
         "masterAddrs": [
             "192.168.31.173:80",

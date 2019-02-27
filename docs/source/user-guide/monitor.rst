@@ -7,7 +7,7 @@ CFS use prometheus as metrics collector. It simply config as follow in master，
 
    {
        "exporterPort": 9510,
-       "consulAddr": "http://127.0.0.1:8500"
+       "consulAddr": "http://consul.prometheus-cfs.local"
    }
 
 
