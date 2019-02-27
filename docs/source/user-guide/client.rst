@@ -19,14 +19,30 @@ fuse.json
 .. code-block:: json
 
    {
-     "mountpoint": "/mnt/fuse",
-     "volname": "test",
-     "master": "192.168.31.173:80,192.168.31.141:80,192.168.30.200:80",
-     "logpath": "/export/Logs/cfs",
-     "loglvl": "info",
-     "profport": "10094"
+     "mountPoint": "/mnt/fuse",
+     "volName": "test",
+     "masterAddr": "192.168.31.173:80,192.168.31.141:80,192.168.30.200:80",
+     "logDir": "/export/Logs/cfs",
+     "logLevel": "info",
+     "profPort": "10094"
    }
 
+.. csv-table:: Supported Configurations
+   :header: "Name", "Type", "Description", "Mandatory"
+
+   "mountPoint", "string", "Mount point", "Yes"
+   "volName", "string", "Volume name", "Yes"
+   "masterAddr", "string", "Resource manager IP address", "Yes"
+   "logDir", "string", "Path to store log files", "Yes"
+   "logLevel", "string", "Log level：debug, info, warn, error", "Yes"
+   "profPort", "string", "Golang pprof port", "No"
+   "exporterPort", "string", "Performance monitor port", "No"
+   "consulAddr", "string", "Performance monitor server address", "No"
+   "lookupValid", "string", "Lookup valid duration in FUSE kernel module, unit: sec", "No"
+   "attrValid", "string", "Attr valid duration in FUSE kernel module, unit: sec", "No"
+   "icacheTimeout", "string", "Inode cache valid duration in client", "No"
+   "enSyncWrite", "string", "Enable DirectIO sync write, i.e. make sure data is fsynced in data node", "No"
+   "autoInvalData", "string", "Use AutoInvalData FUSE mount option", "No"
 
 Mount
 -----

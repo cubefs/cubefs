@@ -7,27 +7,29 @@ Building
 Build Servers
 ^^^^^^^^^^^^^
 
-In CFS, the server consists of the master, metanode and datanode. We compile them into a single binary for deployment convenience.
+In CFS, the server consists of the resource manager, metanode and datanode, which are compiled to a single binary for deployment convenience.
 
-You'll need to `build RocksDB v5.9.2+ <https://github.com/facebook/rocksdb/blob/master/INSTALL.md>`_ on your machine.
-Recommended for installation use make static_lib command. After that, you can build cfs using the following command:
+Building of CFS server depends on RocksDB, `build RocksDB v5.9.2+ <https://github.com/facebook/rocksdb/blob/master/INSTALL.md>`_ .
+Recommended installation uses `make static_lib` .
+
+CFS server is built with the following command:
 
 .. code-block:: bash
 
-   cd cmd; go build cmd.go
+   cd cmd; sh build.sh
 
 Build Client
 ^^^^^^^^^^^^
 
 .. code-block:: bash
 
-   cd client; go build
+   cd client; sh build.sh
 
 Deployment
 ----------
 
-Start Master
-^^^^^^^^^^^^
+Start Resource Manager
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
@@ -47,10 +49,10 @@ Sample *master.json* is shown as follows,
      "peers": "1:192.168.31.173:80,2:192.168.31.141:80,3:192.168.30.200:80",
      "retainLogs":"20000",
      "logDir": "/export/Logs/cfs/master",
-     "logLevel":"DEBUG",
+     "logLevel":"info",
      "walDir":"/export/Logs/cfs/raft",
      "storeDir":"/export/cfs/rocksdbstore",
-     "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
+     "consulAddr": "http://consul.prometheus-cfs.local",
      "exporterPort": 9510,
      "clusterName":"cfs"
    }
@@ -79,7 +81,7 @@ Sample *meta.json is* shown as follows,
        "raftDir": "/export/cfs/metanode_raft",
        "raftHeartbeatPort": "9093",
        "raftReplicatePort": "9094",
-       "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
+       "consulAddr": "http://consul.prometheus-cfs.local",
        "exporterPort": 9511,
        "masterAddrs": [
            "192.168.31.173:80",
@@ -96,7 +98,33 @@ Start Datanode
 
 1. Prepare data directories
 
-   **TODO**
+   **Recommendation** Using independent disks can reach better performance.
+
+   **Disk preparation**
+
+    1.1 Check available disks
+
+        .. code-block:: bash
+
+           fdisk -l
+
+    1.2 Build local Linux file system on the selected devices
+
+        .. code-block:: bash
+
+           mkfs.xfs -f /dev/sdx
+
+    1.3 Make mount point
+
+        .. code-block:: bash
+
+           mkdir /data0
+
+    1.4 Mount the device on mount point
+
+        .. code-block:: bash
+
+           mount /dev/sdx /data0
 
 2. Start datanode
 
@@ -115,8 +143,8 @@ Start Datanode
         "logDir": "/export/Logs/datanode",
         "logLevel": "info",
         "raftHeartbeat": "9095",
-        "raftReplicate": "9096",
-        "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
+        "raftReplica": "9096",
+        "consulAddr": "http://consul.prometheus-cfs.local",
         "exporterPort": 9512,
         "masterAddr": [
         "192.168.31.173:80",
@@ -133,9 +161,14 @@ For detailed explanations of *datanode.json*, please refer to :doc:`user-guide/d
 
 Create Volume
 ^^^^^^^^^^^^^
+
+By decault, there are only a few data partitions allocated upon volume creation, and will be dynamically expanded according to actual usage. For performance evaluation, it is better to preallocate enough data partitions.
+
 .. code-block:: bash
 
    curl -v "http://127.0.0.1/admin/createVol?name=test&capacity=100"
+
+
 
 Mount Client
 ------------
@@ -149,12 +182,12 @@ Mount Client
    .. code-block:: json
    
       {
-        "mountpoint": "/mnt/fuse",
-        "volname": "test",
-        "master": "192.168.31.173:80,192.168.31.141:80,192.168.30.200:80",
-        "logpath": "/export/Logs/cfs",
-        "profport": "10094",
-        "loglvl": "info"
+        "mountPoint": "/mnt/fuse",
+        "volName": "test",
+        "masterAddr": "192.168.31.173:80,192.168.31.141:80,192.168.30.200:80",
+        "logDir": "/export/Logs/cfs",
+        "profPort": "10094",
+        "logLevel": "info"
       }
 
 

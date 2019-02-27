@@ -15,7 +15,7 @@ Configurations
 --------------
 
 .. csv-table:: Properties
-   :header: "Key", "Type", "Description", "Required"
+   :header: "Key", "Type", "Description", "Mandatory"
 
    "role", "string", "Role of process and must be set to *datanode*", "Yes"
    "port", "string", "Port of TCP network to be listen", "Yes"
@@ -23,7 +23,7 @@ Configurations
    "logDir", "string", "Path for log file storage", "Yes"
    "logLevel", "string", "Level operation for logging. Default is *error*", "No"
    "raftHeartbeat", "string", "Port of raft heartbeat TCP network to be listen", "Yes"
-   "raftReplicate", "string", "Port of raft replicate TCP network to be listen", "Yes"
+   "raftReplica", "string", "Port of raft replicate TCP network to be listen", "Yes"
    "raftDir", "string", "Path for raft log file storage", "No"
    "consulAddr", "string", "Addresses of monitor system", "No"
    "exporterPort", "string", "Port for monitor system", "No"
@@ -42,9 +42,9 @@ Configurations
        "logDir": "/export/Logs/datanode",
        "logLevel": "debug",
        "raftHeartbeat": "9095",
-       "raftReplicate": "9096",    
+       "raftReplica": "9096",
        "raftDir": "/export/Logs/datanode/raft",
-       "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
+       "consulAddr": "http://consul.prometheus-cfs.local",
        "exporterPort": 9512,    
        "masterAddr": [
            "10.196.30.200:80",
