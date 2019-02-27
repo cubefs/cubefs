@@ -20,7 +20,6 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 	"io"
 	"sync"
-	"syscall"
 )
 
 // One inode corresponds to one streamer. All the requests to the same inode will be queued.
@@ -46,6 +45,8 @@ type Streamer struct {
 
 	request chan interface{} // request channel, write/flush/close
 	done    chan struct{}    // stream writer is being closed
+
+	writeLock sync.Mutex
 }
 
 // NewStreamer returns a new streamer.
@@ -84,29 +85,31 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
 
 func (s *Streamer) read(data []byte, offset int, size int) (total int, err error) {
 	var (
-		readBytes  int
-		reader     *ExtentReader
-		requests   []*ExtentRequest
-		retryTimes int
+		readBytes       int
+		reader          *ExtentReader
+		requests        []*ExtentRequest
+		revisedRequests []*ExtentRequest
 	)
 
-retry:
 	requests = s.extents.PrepareReadRequests(offset, size, data)
 	for _, req := range requests {
 		if req.ExtentKey == nil {
 			continue
 		}
-		if req.ExtentKey.PartitionId == 0 && req.ExtentKey.ExtentId == 0 {
+		if req.ExtentKey.PartitionId == 0 || req.ExtentKey.ExtentId == 0 {
+			s.writeLock.Lock()
 			if err = s.IssueFlushRequest(); err != nil {
+				s.writeLock.Unlock()
 				return 0, err
 			}
-			if retryTimes < 10 {
-				retryTimes++
-				goto retry
-			} else {
-				return 0, syscall.EAGAIN
-			}
+			revisedRequests = s.extents.PrepareReadRequests(offset, size, data)
+			s.writeLock.Unlock()
+			break
 		}
+	}
+
+	if revisedRequests != nil {
+		requests = revisedRequests
 	}
 
 	filesize, _ := s.extents.Size()
