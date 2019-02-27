@@ -201,8 +201,9 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 				continue
 			}
 
-			if partitionSize > dp.extentStore.StoreSize() {
-				log.LogErrorf("partitionID[%v] leader size[%v] local size[%v]", dp.partitionID, partitionSize, dp.partitionSize)
+			localSize := dp.extentStore.StoreSize()
+			if partitionSize > localSize {
+				log.LogErrorf("partitionID[%v] leader size[%v] local size[%v]", dp.partitionID, partitionSize, localSize)
 				timer.Reset(5 * time.Second)
 				continue
 			}
