@@ -35,6 +35,7 @@ import (
 	"hash/crc32"
 	"runtime"
 	"syscall"
+	"strings"
 )
 
 const (
@@ -751,7 +752,7 @@ func (s *ExtentStore) initTinyExtent() (err error) {
 
 	for extentID = TinyExtentStartID; extentID < TinyExtentStartID+TinyExtentCount; extentID++ {
 		err = s.Create(extentID, 0)
-		if err == nil || err == ExtentExistsError {
+		if err == nil || strings.Contains(err.Error(),syscall.EEXIST.Error()) || err==ExtentExistsError{
 			err = nil
 			s.brokenTinyExtentC <- extentID
 			continue
