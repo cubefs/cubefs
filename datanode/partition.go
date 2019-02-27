@@ -397,7 +397,7 @@ func (dp *DataPartition) actualSize(path string, finfo os.FileInfo) (size int64)
 	name := finfo.Name()
 	extentID, isExtent := parseFileName(name)
 	if !isExtent {
-		return finfo.Size()
+		return 0
 	}
 	if storage.IsTinyExtent(extentID) {
 		stat := new(syscall.Stat_t)
