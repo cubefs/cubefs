@@ -195,9 +195,9 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		f.super.ic.Delete(ino)
 	}()
 
-	var isDirectIO, enSyncWrite bool
-	if (int(req.FileFlags) & syscall.O_DIRECT) != 0 {
-		isDirectIO = true
+	var waitForFlush, enSyncWrite bool
+	if ((int(req.FileFlags) & syscall.O_DIRECT) != 0) || (req.FileFlags&fuse.OpenSync != 0) {
+		waitForFlush = true
 		enSyncWrite = f.super.enSyncWrite
 	}
 
@@ -212,9 +212,9 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		log.LogErrorf("Write: ino(%v) offset(%v) len(%v) size(%v)", ino, req.Offset, reqlen, size)
 	}
 
-	if isDirectIO {
+	if waitForFlush {
 		if err = f.super.ec.Flush(ino); err != nil {
-			log.LogErrorf("Write DirectIO: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
+			log.LogErrorf("Write: failed to wait for flush, ino(%v) offset(%v) len(%v) err(%v) req(%v)", ino, req.Offset, reqlen, err, req)
 			return fuse.EIO
 		}
 	}
