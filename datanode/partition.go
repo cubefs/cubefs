@@ -30,9 +30,12 @@ import (
 	"github.com/tiglabs/containerfs/master"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/raftstore"
+	"github.com/tiglabs/containerfs/repl"
 	"github.com/tiglabs/containerfs/storage"
 	"github.com/tiglabs/containerfs/util/log"
 	raftProto "github.com/tiglabs/raft/proto"
+	"hash/crc32"
+	"net"
 	"sort"
 	"syscall"
 )
@@ -106,6 +109,8 @@ type DataPartition struct {
 	snapshot                      []*proto.File
 	snapshotMutex                 sync.RWMutex
 	intervalToUpdatePartitionSize int64
+
+	FullSyncTinyDeleteTime int64
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, err error) {
@@ -363,7 +368,6 @@ func (dp *DataPartition) statusUpdate() {
 	status := proto.ReadWrite
 	dp.computeUsage()
 
-	// TODO why not combine these two conditions together?
 	if dp.used >= dp.partitionSize {
 		status = proto.ReadOnly
 	}
@@ -371,7 +375,6 @@ func (dp *DataPartition) statusUpdate() {
 		status = proto.ReadOnly
 	}
 
-	// TODO explain
 	dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
 }
 
@@ -574,6 +577,77 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		}
 	}
 	wg.Wait()
+	dp.doStreamFixTinyDeleteRecord(repairTask, time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
+}
+
+func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRepairTask, isFullSync bool) {
+	var (
+		localTinyDeleteFileSize int64
+		err                     error
+		conn                    *net.TCPConn
+	)
+	if !isFullSync {
+		localTinyDeleteFileSize = dp.extentStore.LoadTinyDeleteFileOffset()
+		dp.FullSyncTinyDeleteTime = time.Now().Unix()
+	}
+
+	log.LogInfof(ActionSyncTinyDeleteRecord+" start partitionId(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v)",
+		dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteFileSize, repairTask.LeaderAddr)
+	if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteFileSize {
+		return
+	}
+	defer func() {
+		log.LogInfof(ActionSyncTinyDeleteRecord+" end partitionId(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v) err(%v)",
+			dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteFileSize, repairTask.LeaderAddr, err)
+	}()
+
+	p := repl.NewPacketToTinyDeleteRecord(dp.partitionID, localTinyDeleteFileSize)
+	if conn, err = gConnPool.GetConnect(repairTask.LeaderAddr); err != nil {
+		return
+	}
+	defer gConnPool.PutConnect(conn, true)
+	if err = p.WriteToConn(conn); err != nil {
+		return
+	}
+	store := dp.extentStore
+	start := time.Now().Unix()
+	for localTinyDeleteFileSize < repairTask.LeaderTinyDeleteFileSize {
+		if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteFileSize {
+			return
+		}
+		if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+			return
+		}
+		if p.IsErrPacket() {
+			logContent := fmt.Sprintf("action[doStreamFixTinyDeleteRecord] %v.",
+				p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), start, fmt.Errorf(string(p.Data[:p.Size]))))
+			err = fmt.Errorf(logContent)
+			return
+		}
+		if p.CRC != crc32.ChecksumIEEE(p.Data[:p.Size]) {
+			err = fmt.Errorf("crc not match")
+			return
+		}
+		if p.Size%storage.EveryTinyDeleteRecordSize != 0 {
+			err = fmt.Errorf("unavali size")
+			return
+		}
+		var index int
+		for (index+1)*storage.EveryTinyDeleteRecordSize <= int(p.Size) {
+			record := p.Data[index*storage.EveryTinyDeleteRecordSize : (index+1)*storage.EveryTinyDeleteRecordSize]
+			extentID, offset, size := storage.UnMarshalTinyExtent(record)
+			localTinyDeleteFileSize += storage.EveryTinyDeleteRecordSize
+			index++
+			if !storage.IsTinyExtent(extentID) {
+				continue
+			}
+			store.MarkDelete(extentID, int64(offset), int64(size), localTinyDeleteFileSize)
+			if !isFullSync {
+				log.LogWarnf(fmt.Sprintf(ActionSyncTinyDeleteRecord+" extentID_(%v)_extentOffset(%v)_size(%v)", extentID, offset, size))
+			}
+
+		}
+	}
 }
 
 // ChangeRaftMember is a wrapper function of changing the raft member.

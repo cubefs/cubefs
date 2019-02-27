@@ -432,7 +432,7 @@ func (mp *MetaPartition) replicaCreationTasks(clusterID, volName string) (tasks 
 		msg = fmt.Sprintf("action[missingReplicaAddrs],clusterID[%v] metaPartition:%v  lack replication"+
 			" on :%v Hosts:%v",
 			clusterID, mp.PartitionID, addrs, mp.Hosts)
-		Warn(clusterID,msg)
+		Warn(clusterID, msg)
 	}
 
 	return

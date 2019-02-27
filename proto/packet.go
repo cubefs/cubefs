@@ -53,18 +53,14 @@ const (
 	OpStreamRead       uint8 = 0x05
 	OpGetAllWatermarks uint8 = 0x07
 
-	OpNotifyExtentRepair      uint8 = 0x08
-	OpExtentRepairRead        uint8 = 0x09
-	OpBlobFileRepairRead      uint8 = 0x0A // TODO remove?
-	OpFlowInfo                uint8 = 0x0B
-	OpSyncDelNeedle           uint8 = 0x0C // TODO remove?
-	OpNotifyCompactBlobFile   uint8 = 0x0D
-	OpGetDataPartitionMetrics uint8 = 0x0E
-	OpRandomWrite             uint8 = 0x0F
-	OpGetAppliedId            uint8 = 0x10 // TODO should we call appliedID or applyID? we need to have an agreement.
-	OpGetPartitionSize        uint8 = 0x11
-	OpSyncRandomWrite         uint8 = 0x12
-	OpSyncWrite               uint8 = 0x13
+	OpNotifyReplicasToRepair uint8 = 0x08
+	OpExtentRepairRead       uint8 = 0x09
+	OpRandomWrite            uint8 = 0x0F
+	OpGetAppliedId           uint8 = 0x10 // TODO should we call appliedID or applyID? we need to have an agreement.
+	OpGetPartitionSize       uint8 = 0x11
+	OpSyncRandomWrite        uint8 = 0x12
+	OpSyncWrite              uint8 = 0x13
+	OpReadTinyDelete         uint8 = 0x14
 
 	// Operations: Client -> MetaNode.
 	OpMetaCreateInode   uint8 = 0x20
@@ -118,7 +114,6 @@ const (
 	OpNotEmtpy         uint8 = 0xFE
 	OpOk               uint8 = 0xF0
 
-	// For connection diagnosis
 	OpPing uint8 = 0xFF
 )
 
@@ -190,29 +185,23 @@ func (p *Packet) GetStoreType() (m string) {
 func (p *Packet) GetOpMsg() (m string) {
 	switch p.Opcode {
 	case OpCreateExtent:
-		m = "CreateFile"
+		m = "OpCreateExtent"
 	case OpMarkDelete:
-		m = "MarkDelete"
+		m = "OpMarkDelete"
 	case OpWrite:
-		m = "Write"
+		m = "OpWrite"
 	case OpRandomWrite:
-		m = "IsRandomWrite"
+		m = "OpRandomWrite"
 	case OpRead:
 		m = "Read"
 	case OpStreamRead:
-		m = "StreamRead"
+		m = "OpStreamRead"
 	case OpGetAllWatermarks:
-		m = "GetAllWatermarks"
-	case OpNotifyExtentRepair:
-		m = "NotifyReplicasToRepair"
-	case OpBlobFileRepairRead:
-		m = "BlobFileRepairRead"
-	case OpNotifyCompactBlobFile:
-		m = "NotifyCompactBlobFile"
+		m = "OpGetAllWatermarks"
+	case OpNotifyReplicasToRepair:
+		m = "OpNotifyReplicasToRepair"
 	case OpExtentRepairRead:
-		m = "ExtentRepairRead"
-	case OpFlowInfo:
-		m = "FlowInfo"
+		m = "OpExtentRepairRead"
 	case OpIntraGroupNetErr:
 		m = "IntraGroupNetErr"
 	case OpMetaCreateInode:
@@ -277,10 +266,6 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpReplicateFile"
 	case OpDeleteFile:
 		m = "OpDeleteFile"
-	case OpPing:
-		m = "OpPing"
-	case OpGetDataPartitionMetrics:
-		m = "OpGetDataPartitionMetrics"
 	case OpGetAppliedId:
 		m = "OpGetAppliedId"
 	case OpGetPartitionSize:
@@ -289,6 +274,10 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpSyncWrite"
 	case OpSyncRandomWrite:
 		m = "OpSyncRandomWrite"
+	case OpReadTinyDelete:
+		m = "OpReadTinyDelete"
+	case OpPing:
+		m = "OpPing"
 	}
 	return
 }
@@ -312,8 +301,6 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "Again"
 	case OpOk:
 		m = "Ok"
-	case OpSyncDelNeedle:
-		m = "OpSyncHasDelNeedle"
 	case OpExistErr:
 		m = "ExistErr"
 	case OpInodeFullErr:
@@ -445,8 +432,9 @@ func ReadFull(c net.Conn, buf *[]byte, readSize int) (err error) {
 // ReadFromConn reads the data from the given connection.
 func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 	if timeoutSec != NoReadDeadlineTime {
-
 		c.SetReadDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
+	} else {
+		c.SetReadDeadline(time.Time{})
 	}
 	header, err := Buffers.Get(util.PacketHeaderSize)
 	if err != nil {
@@ -506,25 +494,26 @@ func (p *Packet) PacketErrorWithBody(code uint8, reply []byte) {
 
 // GetUniqueLogId returns the unique log ID.
 func (p *Packet) GetUniqueLogId() (m string) {
-	var (
-		offset uint64
-		size   uint32
-	)
+	m = fmt.Sprintf("Req(%v)_Partition(%v)_", p.ReqID, p.PartitionID)
 	if p.ExtentType == TinyExtentType && p.Opcode == OpMarkDelete && len(p.Data) > 0 {
-		ext := new(ExtentKey)
+		ext := new(TinyExtentDeleteRecord)
 		err := json.Unmarshal(p.Data, ext)
 		if err == nil {
-			offset = ext.ExtentOffset
-			size = ext.Size
+			m += fmt.Sprintf("Extent(%v)_ExtentOffset(%v)_TinyDeleteFileOffset(%v)_Size(%v)_Opcode(%v)_ResultCode(%v)",
+				ext.ExtentId, ext.ExtentOffset, ext.TinyDeleteFileOffset, ext.Size, p.Opcode, p.ResultCode)
+			return m
 		}
-	} else {
-		offset = uint64(p.ExtentOffset)
-		size = p.Size
+	} else if p.Opcode == OpReadTinyDelete {
+		m += fmt.Sprintf("Opcode(%v)_ResultCode(%v)", p.GetOpMsg(), p.GetResultMsg())
+		return m
+	} else if p.Opcode == OpNotifyReplicasToRepair {
+		m += fmt.Sprintf("Opcode(%v)_ResultCode(%v)", p.GetOpMsg(), p.GetResultMsg())
+		return m
 	}
-
-	m = fmt.Sprintf("Req%v_Partition%v_Extent%v_ExtentOffset%v_KernelOffset%v_Size%v_StoreMode%v_Opcode%v_ResultCode%v_CRC%v",
-		p.ReqID, p.PartitionID, p.ExtentID, offset,
-		p.KernelOffset, size, p.GetStoreType(), p.GetOpMsg(), p.GetResultMsg(), p.CRC)
+	m = fmt.Sprintf("Req(%v)_Partition(%v)_Extent(%v)_ExtentOffset(%v)_KernelOffset(%v)_"+
+		"Size(%v)_Opcode(%v)_ResultCode(%v)_CRC(%v)",
+		p.ReqID, p.PartitionID, p.ExtentID, p.ExtentOffset,
+		p.KernelOffset, p.Size, p.GetOpMsg(), p.GetResultMsg(), p.CRC)
 	return
 }
 

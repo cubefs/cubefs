@@ -32,6 +32,7 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
+	"hash/crc32"
 	"runtime"
 	"syscall"
 )
@@ -40,7 +41,9 @@ const (
 	ExtMetadataFileName         = "EXTENT_META"
 	ExtCrcHeaderFileName        = "EXTENT_CRC"
 	ExtMetadataFileOpt          = os.O_CREATE | os.O_RDWR
-	ExtDeletedFileName          = "EXTENT_DELETE"
+	TinyDeleteFileOpt           = os.O_CREATE | os.O_RDWR
+	NormalExtDeletedFileName    = "NORMALEXTENT_DELETE"
+	TinyExtDeletedFileName      = "TINYEXTENT_DELETE"
 	ExtDeletedFileOpt           = os.O_CREATE | os.O_RDWR | os.O_APPEND
 	ExtMetadataBaseIDOffset     = 0
 	ExtMetadataBaseIDSize       = 8
@@ -52,6 +55,7 @@ const (
 	TinyExtentCount             = 64 // TODO total number of tiny extents that each partition can have ?
 	TinyExtentStartID           = 50000000
 	MinExtentID                 = 2
+	EveryTinyDeleteRecordSize   = 24
 )
 
 var (
@@ -91,22 +95,24 @@ var (
 // Multiple small files can be appended to the same tinyExtent.
 // In addition, the deletion of small files is implemented by the punch hole from the underlying file system.
 type ExtentStore struct {
-	dataPath             string
-	baseExtentID         uint64                 // TODO what is baseExtentID
-	extentInfoMap        map[uint64]*ExtentInfo // map that stores all the extent information
-	eiMutex              sync.RWMutex           // mutex for extent info
-	cache                *ExtentCache           // extent cache
-	mutex                sync.Mutex
-	storeSize            int      // size of the extent store
-	metadataFp           *os.File // metadata file pointer?
-	deletedExtentsFp     *os.File // deleted extent file pointer
-	verifyCrcFp          *os.File
-	closeC               chan bool
-	closed               bool
-	availableTinyExtentC chan uint64 // available tinyExtent channel
-	brokenTinyExtentC    chan uint64 // broken tinyExtent channel
-	blockSize            int
-	partitionID          uint64
+	dataPath              string
+	baseExtentID          uint64                 // TODO what is baseExtentID
+	extentInfoMap         map[uint64]*ExtentInfo // map that stores all the extent information
+	eiMutex               sync.RWMutex           // mutex for extent info
+	cache                 *ExtentCache           // extent cache
+	mutex                 sync.Mutex
+	storeSize             int      // size of the extent store
+	metadataFp            *os.File // metadata file pointer?
+	normalExtentsDeleteFp *os.File // deleted extent file pointer
+	tinyExtentDeleteFp    *os.File
+	baseTinyDeleteOffset  int64
+	verifyCrcFp           *os.File
+	closeC                chan bool
+	closed                bool
+	availableTinyExtentC  chan uint64 // available tinyExtent channel
+	brokenTinyExtentC     chan uint64 // broken tinyExtent channel
+	blockSize             int
+	partitionID           uint64
 }
 
 func MkdirAll(name string) (err error) {
@@ -135,10 +141,21 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 	syscall.Fallocate(int(s.verifyCrcFp.Fd()), 1, 0, ExtCrcHeaderSize)
 
 	// Load EXTENT_DELETE
-	deleteIdxFilePath := path.Join(s.dataPath, ExtDeletedFileName)
-	if s.deletedExtentsFp, err = os.OpenFile(deleteIdxFilePath, ExtDeletedFileOpt, 0666); err != nil {
+	normalExtentsDeleteFpPath := path.Join(s.dataPath, NormalExtDeletedFileName)
+	if s.normalExtentsDeleteFp, err = os.OpenFile(normalExtentsDeleteFpPath, ExtDeletedFileOpt, 0666); err != nil {
 		return
 	}
+
+	tinyExtentsDeleteFpPath := path.Join(s.dataPath, TinyExtDeletedFileName)
+	if s.tinyExtentDeleteFp, err = os.OpenFile(tinyExtentsDeleteFpPath, TinyDeleteFileOpt, 0666); err != nil {
+		return
+	}
+	finfo, err := s.tinyExtentDeleteFp.Stat()
+	if err != nil {
+		return
+	}
+	s.baseTinyDeleteOffset = finfo.Size()
+
 	s.extentInfoMap = make(map[uint64]*ExtentInfo, 200)
 	s.cache = NewExtentCache(50)
 	if err = s.initBaseFileID(); err != nil {
@@ -163,7 +180,7 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 		eiSnapshot []*ExtentInfo
 	)
 
-	if eiSnapshot, err = s.GetAllWatermarks(NormalExtentFilter()); err != nil {
+	if eiSnapshot, _, err = s.GetAllWatermarks(NormalExtentFilter()); err != nil {
 		return
 	}
 
@@ -185,6 +202,14 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 // This function can only be called by the leader.
 func (s *ExtentStore) NextExtentID() (extentID uint64) {
 	return atomic.AddUint64(&s.baseExtentID, 1)
+}
+
+func (s *ExtentStore) NextTinyDeleteFileOffset() (offset int64) {
+	return atomic.AddInt64(&s.baseTinyDeleteOffset, EveryTinyDeleteRecordSize)
+}
+
+func (s *ExtentStore) LoadTinyDeleteFileOffset() (offset int64) {
+	return atomic.LoadInt64(&s.baseTinyDeleteOffset)
 }
 
 func (s *ExtentStore) getExtentKey(extent uint64) string {
@@ -502,7 +527,7 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 }
 
 // MarkDelete marks the given extent as deleted.
-func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error) {
+func (s *ExtentStore) MarkDelete(extentID uint64, offset, size, tinyDeleteFileOffset int64) (err error) {
 	var (
 		e   *Extent
 		ei  *ExtentInfo
@@ -521,7 +546,16 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	}
 
 	if IsTinyExtent(extentID) {
-		return e.DeleteTiny(offset, size)
+		if offset+size > e.dataSize {
+			return
+		}
+		if err = e.DeleteTiny(offset, size); err != nil {
+			return
+		}
+		if err = s.RecordTinyDelete(extentID, offset, size, tinyDeleteFileOffset); err != nil {
+			return
+		}
+		return
 	}
 
 	e.header[util.MarkDeleteIndex] = util.MarkDelete
@@ -541,7 +575,7 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, extentID)
-	if _, err = s.deletedExtentsFp.Write(buf); err != nil {
+	if _, err = s.normalExtentsDeleteFp.Write(buf); err != nil {
 		return
 	}
 
@@ -566,13 +600,13 @@ func (s *ExtentStore) FlushDelete() (err error) {
 	}
 
 	// check EXTENT_DELETE
-	if stat, err = s.deletedExtentsFp.Stat(); err != nil {
+	if stat, err = s.normalExtentsDeleteFp.Stat(); err != nil {
 		return
 	}
 
 	// read data from EXTENT_DELETE and remove files.
 	readBuf := make([]byte, stat.Size()-int64(delIdxOff))
-	if readN, err = s.deletedExtentsFp.ReadAt(readBuf, int64(delIdxOff)); err != nil && err != io.EOF {
+	if readN, err = s.normalExtentsDeleteFp.ReadAt(readBuf, int64(delIdxOff)); err != nil && err != io.EOF {
 		return
 	}
 	reader := bytes.NewReader(readBuf[:readN])
@@ -626,8 +660,11 @@ func (s *ExtentStore) Close() {
 	s.verifyCrcFp.Close()
 
 	// Release delete index file
-	s.deletedExtentsFp.Sync()
-	s.deletedExtentsFp.Close()
+	s.normalExtentsDeleteFp.Sync()
+	s.normalExtentsDeleteFp.Close()
+
+	s.tinyExtentDeleteFp.Sync()
+	s.tinyExtentDeleteFp.Close()
 	s.closed = true
 }
 
@@ -668,7 +705,7 @@ func (s *ExtentStore) GetTinyExtentOffset(extentID uint64) (watermark int64, err
 }
 
 // GetAllWatermarks returns all the watermarks.
-func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentInfo, err error) {
+func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentInfo, tinyDeleteFileSize int64, err error) {
 	extents = make([]*ExtentInfo, 0)
 	extentInfoSlice := make([]*ExtentInfo, 0, len(s.extentInfoMap))
 	s.eiMutex.RLock()
@@ -681,8 +718,13 @@ func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentIn
 		if filter != nil && !filter(extentInfo) {
 			continue
 		}
+		if extentInfo.IsDeleted {
+			continue
+		}
 		extents = append(extents, extentInfo)
 	}
+	tinyDeleteFileSize = s.LoadTinyDeleteFileOffset()
+
 	return
 }
 
@@ -707,7 +749,6 @@ func (s *ExtentStore) initTinyExtent() (err error) {
 	s.brokenTinyExtentC = make(chan uint64, TinyExtentCount)
 	var extentID uint64
 
-	// TODO buffer the value of TinyExtentStartID + TinyExtentCount
 	for extentID = TinyExtentStartID; extentID < TinyExtentStartID+TinyExtentCount; extentID++ {
 		err = s.Create(extentID, 0)
 		if err == nil || err == ExtentExistsError {
@@ -798,4 +839,41 @@ func (s *ExtentStore) StoreSize() (totalSize uint64) {
 
 func (s *ExtentStore) EvictExtentCache() {
 	s.cache.evict()
+}
+
+func MarshalTinyExtent(extentID uint64, offset, size int64) (data []byte) {
+	data = make([]byte, EveryTinyDeleteRecordSize)
+	binary.BigEndian.PutUint64(data[0:8], extentID)
+	binary.BigEndian.PutUint64(data[8:16], uint64(offset))
+	binary.BigEndian.PutUint64(data[16:EveryTinyDeleteRecordSize], uint64(size))
+	return data
+}
+
+func UnMarshalTinyExtent(data []byte) (extentID, offset, size uint64) {
+	extentID = binary.BigEndian.Uint64(data[0:8])
+	offset = binary.BigEndian.Uint64(data[8:16])
+	size = binary.BigEndian.Uint64(data[16:EveryTinyDeleteRecordSize])
+	return
+}
+
+func (s *ExtentStore) RecordTinyDelete(extentID uint64, offset, size, tinyDeleteFileOffset int64) (err error) {
+	record := MarshalTinyExtent(extentID, offset, size)
+	_, err = s.tinyExtentDeleteFp.WriteAt(record, tinyDeleteFileOffset)
+	if err != nil {
+		return
+	}
+	if atomic.LoadInt64(&s.baseTinyDeleteOffset) < tinyDeleteFileOffset {
+		atomic.StoreInt64(&s.baseTinyDeleteOffset, tinyDeleteFileOffset)
+	}
+
+	return
+}
+
+func (s *ExtentStore) ReadTinyDeleteRecords(offset, size int64, data []byte) (crc uint32, err error) {
+	_, err = s.tinyExtentDeleteFp.ReadAt(data[:size], offset)
+	if err != nil {
+		return
+	}
+	crc = crc32.ChecksumIEEE(data[:size])
+	return
 }

@@ -48,18 +48,20 @@ const (
 
 // Action description
 const (
-	ActionNotifyFollowerToRepair  = "ActionNotifyFollowerRepair"
-	ActionStreamRead              = "ActionStreamRead"
-	ActionGetDataPartitionMetrics = "ActionGetDataPartitionMetrics"
-	ActionCreateExtent            = "ActionCreateExtent:"
-	ActionMarkDelete              = "ActionMarkDelete:"
-	ActionGetAllExtentWatermarks  = "ActionGetAllExtentWatermarks:"
-	ActionWrite                   = "ActionWrite:"
-	ActionRepair                  = "ActionRepair:"
-	ActionDecommissionPartition   = "ActionDecommissionPartition"
-	ActionCreateDataPartition     = "ActionCreateDataPartition"
-	ActionLoadDataPartition       = "ActionLoadDataPartition"
-	ActionDeleteDataPartition     = "ActionDeleteDataPartition"
+	ActionNotifyFollowerToRepair     = "ActionNotifyFollowerRepair"
+	ActionStreamRead                 = "ActionStreamRead"
+	ActionGetDataPartitionMetrics    = "ActionGetDataPartitionMetrics"
+	ActionCreateExtent               = "ActionCreateExtent:"
+	ActionMarkDelete                 = "ActionMarkDelete:"
+	ActionGetAllExtentWatermarks     = "ActionGetAllExtentWatermarks:"
+	ActionWrite                      = "ActionWrite:"
+	ActionRepair                     = "ActionRepair:"
+	ActionDecommissionPartition      = "ActionDecommissionPartition"
+	ActionCreateDataPartition        = "ActionCreateDataPartition"
+	ActionLoadDataPartition          = "ActionLoadDataPartition"
+	ActionDeleteDataPartition        = "ActionDeleteDataPartition"
+	ActionStreamReadTinyDeleteRecord = "ActionStreamReadTinyDeleteRecord"
+	ActionSyncTinyDeleteRecord       = "ActionSyncTinyDeleteRecord"
 )
 
 // Apply the raft log operation. Currently we only have the random write operation.
@@ -96,4 +98,9 @@ const (
 
 const (
 	BufferWrite = false
+)
+
+const (
+	MaxSyncTinyDeleteBufferSize = 2400000
+	MaxFullSyncTinyDeleteTime   = 60 * 2
 )

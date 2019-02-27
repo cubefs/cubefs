@@ -32,18 +32,22 @@ import (
 
 // DataPartitionRepairTask defines the reapir task for the data partition.
 type DataPartitionRepairTask struct {
-	TaskType            uint8
-	addr                string
-	extents             map[uint64]*storage.ExtentInfo
-	ExtentsToBeCreated  []*storage.ExtentInfo
-	ExtentsToBeRepaired []*storage.ExtentInfo
+	TaskType                 uint8
+	addr                     string
+	extents                  map[uint64]*storage.ExtentInfo
+	ExtentsToBeCreated       []*storage.ExtentInfo
+	ExtentsToBeRepaired      []*storage.ExtentInfo
+	LeaderTinyDeleteFileSize int64
+	LeaderAddr               string
 }
 
-func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo, source string) (task *DataPartitionRepairTask) {
+func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo, tinyDeleteFileSize int64, source, leaderAddr string) (task *DataPartitionRepairTask) {
 	task = &DataPartitionRepairTask{
-		extents:             make(map[uint64]*storage.ExtentInfo),
-		ExtentsToBeCreated:  make([]*storage.ExtentInfo, 0),
-		ExtentsToBeRepaired: make([]*storage.ExtentInfo, 0),
+		extents:                  make(map[uint64]*storage.ExtentInfo),
+		ExtentsToBeCreated:       make([]*storage.ExtentInfo, 0),
+		ExtentsToBeRepaired:      make([]*storage.ExtentInfo, 0),
+		LeaderTinyDeleteFileSize: tinyDeleteFileSize,
+		LeaderAddr:               leaderAddr,
 	}
 	for _, extentFile := range extentFiles {
 		extentFile.Source = source
@@ -127,12 +131,13 @@ func (dp *DataPartition) repair(extentType uint8) {
 
 func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartitionRepairTask, extentType uint8, tinyExtents []uint64) (err error) {
 	// get the local extent info
-	extents, err := dp.getLocalExtentInfo(extentType, tinyExtents)
+	extents, LeaderTinyDeleteFileSize, err := dp.getLocalExtentInfo(extentType, tinyExtents)
 	if err != nil {
 		return err
 	}
+
 	// new repair task for the leader
-	repairTasks[0] = NewDataPartitionRepairTask(extents, dp.replicas[0])
+	repairTasks[0] = NewDataPartitionRepairTask(extents, LeaderTinyDeleteFileSize, dp.replicas[0], dp.replicas[0])
 	repairTasks[0].addr = dp.replicas[0]
 
 	// new repair tasks for the followers
@@ -141,20 +146,20 @@ func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartiti
 		if err != nil {
 			return err
 		}
-		repairTasks[index] = NewDataPartitionRepairTask(extents, dp.replicas[index])
+		repairTasks[index] = NewDataPartitionRepairTask(extents, LeaderTinyDeleteFileSize, dp.replicas[index], dp.replicas[0])
 		repairTasks[index].addr = dp.replicas[index]
 	}
 
 	return
 }
 
-func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint64) (extents []*storage.ExtentInfo, err error) {
+func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint64) (extents []*storage.ExtentInfo, tinyDeleteRecordSize int64, err error) {
 	extents = make([]*storage.ExtentInfo, 0)
 
 	if extentType == proto.NormalExtentType {
-		extents, err = dp.extentStore.GetAllWatermarks(storage.NormalExtentFilter())
+		extents, tinyDeleteRecordSize, err = dp.extentStore.GetAllWatermarks(storage.NormalExtentFilter())
 	} else {
-		extents, err = dp.extentStore.GetAllWatermarks(storage.TinyExtentFilter(tinyExtents))
+		extents, tinyDeleteRecordSize, err = dp.extentStore.GetAllWatermarks(storage.TinyExtentFilter(tinyExtents))
 	}
 	if err != nil {
 		err = errors.Annotatef(err, "getLocalExtentInfo extent DataPartition(%v) GetAllWaterMark", dp.partitionID)
@@ -163,13 +168,14 @@ func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint
 	return
 }
 
-func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uint64, target string) (extentFiles []*storage.ExtentInfo, err error) {
-	extentFiles = make([]*storage.ExtentInfo, 0)
+func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uint64,
+	target string) (extentFiles []*storage.ExtentInfo, err error) {
 	p := repl.NewPacketToGetAllWatermarks(dp.partitionID, extentType)
+	extentFiles = make([]*storage.ExtentInfo, 0)
 	if extentType == proto.TinyExtentType {
 		p.Data, err = json.Marshal(tinyExtents)
 		if err != nil {
-			err = errors.Annotatef(err, "getRemoteExtentInfo DataPartition(%v) GetAllWatermarks", dp.partitionID)
+			err = errors.Annotatef(err, "getRemoteExtentInfo host(%v) DataPartition(%v) GetAllWatermarks", dp.partitionID)
 			return
 		}
 		p.Size = uint32(len(p.Data))
@@ -177,7 +183,7 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 	var conn *net.TCPConn
 	conn, err = gConnPool.GetConnect(target) // get remote connection
 	if err != nil {
-		err = errors.Annotatef(err, "getRemoteExtentInfo  DataPartition(%v) get host(%v) connect", dp.partitionID, target)
+		err = errors.Annotatef(err, "getRemoteExtentInfo  host(%v) DataPartition(%v) get host(%v) connect", dp.partitionID, target)
 		return
 	}
 	defer gConnPool.PutConnect(conn, true)
@@ -194,9 +200,11 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 	}
 	err = json.Unmarshal(reply.Data[:reply.Size], &extentFiles)
 	if err != nil {
-		err = errors.Annotatef(err, "getRemoteExtentInfo DataPartition(%v) unmarshal json(%v)", dp.partitionID, string(p.Data[:p.Size]))
+		err = errors.Annotatef(err, "getRemoteExtentInfo DataPartition(%v) unmarshal json(%v) from host(%v)",
+			dp.partitionID, string(reply.Data[:reply.Size]), target)
 		return
 	}
+
 	return
 }
 
@@ -261,6 +269,9 @@ func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTa
 	for index := 0; index < len(repairTasks); index++ {
 		repairTask := repairTasks[index]
 		for extentID, extentInfo := range repairTask.extents {
+			if extentInfo.IsDeleted {
+				continue
+			}
 			extentWithMaxSize, ok := extentInfoMap[extentID]
 			if !ok {
 				extentInfoMap[extentID] = extentInfo
@@ -293,6 +304,9 @@ func (dp *DataPartition) buildExtentCreationTasks(repairTasks []*DataPartitionRe
 				if extentInfo.Inode == 0 {
 					continue
 				}
+				if extentInfo.IsDeleted {
+					continue
+				}
 				ei := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentID, Size: extentInfo.Size, Inode: extentInfo.Inode}
 				repairTask.ExtentsToBeCreated = append(repairTask.ExtentsToBeCreated, ei)
 				repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, ei)
@@ -312,6 +326,9 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 		for index := 0; index < len(repairTasks); index++ {
 			extentInfo, ok := repairTasks[index].extents[extentID]
 			if !ok {
+				continue
+			}
+			if extentInfo.IsDeleted {
 				continue
 			}
 			if extentInfo.Size < maxFileInfo.Size {
@@ -343,17 +360,16 @@ func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members [
 	var conn *net.TCPConn
 	target := dp.replicas[index]
 	p.Data, _ = json.Marshal(members[index])
-	taskStr := string(p.Data[:p.Size])
+	p.Size = uint32(len(p.Data))
 	conn, err = gConnPool.GetConnect(target)
 	defer func() {
 		wg.Done()
-		log.LogInfof(fmt.Sprintf(ActionNotifyFollowerToRepair+" to (%v) task (%v) failed (%v)", target, taskStr, err))
+		log.LogInfof(fmt.Sprintf(ActionNotifyFollowerToRepair+" to host(%v) Partition(%v) failed (%v)", target, dp.partitionID, err))
 	}()
 	if err != nil {
 		return err
 	}
 	defer gConnPool.PutConnect(conn, true)
-	p.Size = uint32(len(p.Data))
 	if err = p.WriteToConn(conn); err != nil {
 		return err
 	}
@@ -429,7 +445,7 @@ func (dp *DataPartition) doStreamExtentFixRepair(wg *sync.WaitGroup, remoteExten
 		}
 		err = errors.Annotatef(err, "partition(%v) remote(%v) local(%v)",
 			dp.partitionID, remoteExtentInfo, localExtentInfo)
-		log.LogErrorf("action[doStreamExtentFixRepair] err(%v).", err)
+		log.LogWarnf("action[doStreamExtentFixRepair] err(%v).", err)
 	}
 }
 
@@ -475,7 +491,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 
 	if err = request.WriteToConn(conn); err != nil {
 		err = errors.Annotatef(err, "streamRepairExtent send streamRead to host[%v] error", remoteExtentInfo.Source)
-		log.LogErrorf("action[streamRepairExtent] err[%v].", err)
+		log.LogWarnf("action[streamRepairExtent] err[%v].", err)
 		return
 	}
 	currFixOffset := localExtentInfo.Size

@@ -36,7 +36,7 @@ func TestNewCounter(t *testing.T) {
 			if c != nil {
 				//c.Set(float64(i))
 				c.SetWithLabels(i, map[string]string{"volname": label, "cluster": name})
-				t.Logf("metric: %v", name2 )
+				t.Logf("metric: %v", name2)
 			}
 			exitCh <- i
 
@@ -52,4 +52,3 @@ func TestNewCounter(t *testing.T) {
 		}
 	}
 }
-
