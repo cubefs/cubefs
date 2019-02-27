@@ -379,10 +379,12 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 
 	heartbeatPort, err := strconv.Atoi(s.raftHeartbeat)
 	if err != nil {
+		err = ErrBadConfFile
 		return
 	}
 	replicatePort, err := strconv.Atoi(s.raftReplica)
 	if err != nil {
+		err = ErrBadConfFile
 		return
 	}
 
