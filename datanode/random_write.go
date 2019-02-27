@@ -124,14 +124,13 @@ func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 
 	pkg.ResultCode = resp.(uint8)
 
-	log.LogDebugf("[randomWrite] SubmitRaft: req_%v_%v_%v_%v_%v response = %v.",
-		dp.partitionID, pkg.ExtentID, pkg.ExtentOffset, pkg.Size, pkg.CRC, pkg.GetResultMsg())
+	log.LogDebugf("[randomWrite] SubmitRaft: %v", pkg.GetUniqueLogId())
 	return
 }
 
 func (dp *DataPartition) checkWriteErrs(errMsg string) (ignore bool) {
 	// file has been deleted when applying the raft log
-	if strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) {
+	if strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) || strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) {
 		return true
 	}
 	return false
@@ -165,10 +164,10 @@ func (dp *DataPartition) CheckLeader(request *repl.Packet, connect net.Conn) (er
 		return
 	}
 
-	if dp.applyID < dp.maxAppliedID {
+	if dp.appliedID < dp.maxAppliedID {
 		err = storage.TryAgainError
 		logContent := fmt.Sprintf("action[ReadCheck] %v localID=%v maxID=%v.",
-			request.LogMessage(request.GetOpMsg(), connect.RemoteAddr().String(), request.StartT, nil), dp.applyID, dp.maxAppliedID)
+			request.LogMessage(request.GetOpMsg(), connect.RemoteAddr().String(), request.StartT, nil), dp.appliedID, dp.maxAppliedID)
 		log.LogErrorf(logContent)
 		return
 	}
@@ -188,7 +187,7 @@ func NewItemIterator(applyID uint64) *ItemIterator {
 	return si
 }
 
-// ApplyIndex returns the applyID
+// ApplyIndex returns the appliedID
 func (si *ItemIterator) ApplyIndex() uint64 {
 	return si.applyID
 }

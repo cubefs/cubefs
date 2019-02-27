@@ -17,7 +17,6 @@ package datanode
 import (
 	"encoding/json"
 	"net"
-	"strings"
 	"sync"
 	"time"
 
@@ -388,46 +387,6 @@ func (dp *DataPartition) NotifyExtentRepair(members []*DataPartitionRepairTask) 
 		go dp.notifyFollower(wg, i, members)
 	}
 	wg.Wait()
-	return
-}
-
-// TODO remove
-// NotifyRaftFollowerToRepair notify raft follower to repair DataPartition extent.
-func (dp *DataPartition) NotifyRaftFollowerToRepair(repairTask *DataPartitionRepairTask) (err error) {
-	var wg sync.WaitGroup
-
-	for i := 0; i < len(dp.replicas); i++ {
-		replicaAddr := strings.Split(dp.replicas[i], ":")
-		if strings.TrimSpace(replicaAddr[0]) == LocalIP {
-			continue // if the local one is the leader, then there is no need to send notification for repair
-		}
-		wg.Add(1)
-		go func(index int) {
-			defer wg.Done()
-			p := repl.NewPacketToNotifyExtentRepair(dp.partitionID)
-			var conn *net.TCPConn
-			target := dp.replicas[index]
-			conn, err = gConnPool.GetConnect(target)
-			if err != nil {
-				return
-			}
-			p.Data, err = json.Marshal(repairTask)
-			p.Size = uint32(len(p.Data))
-			err = p.WriteToConn(conn)
-			if err != nil {
-				gConnPool.PutConnect(conn, true)
-				return
-			}
-
-			if err = p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
-				gConnPool.PutConnect(conn, true)
-				return
-			}
-			gConnPool.PutConnect(conn, true)
-		}(i)
-	}
-	wg.Wait()
-
 	return
 }
 

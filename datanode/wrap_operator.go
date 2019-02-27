@@ -97,6 +97,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handlePacketToGetPartitionSize(p)
 	case proto.OpReadTinyDelete:
 		s.handlePacketToReadTinyDelete(p, c)
+	case proto.OpBroadcastMinAppliedID:
+		s.handleBroadcastMinAppliedID(p)
 	default:
 		p.PackErrorBody(repl.ErrorUnknownOp.Error(), repl.ErrorUnknownOp.Error()+strconv.Itoa(int(p.Opcode)))
 	}
@@ -566,20 +568,24 @@ func (s *DataNode) handlePacketToNotifyExtentRepair(p *repl.Packet) {
 	return
 }
 
-// Handle OpGetAllWatermarks packet.
-func (s *DataNode) handlePacketToGetAppliedID(p *repl.Packet) {
+// Handle OpBroadcastMinAppliedID
+func (s *DataNode) handleBroadcastMinAppliedID(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
 	minAppliedID := binary.BigEndian.Uint64(p.Data)
 	if minAppliedID > 0 {
 		partition.SetMinAppliedID(minAppliedID)
 	}
+	log.LogDebugf("[handleBroadcastMinAppliedID] partition=%v minAppliedID=%v", partition.ID(), minAppliedID)
+	p.PacketOkReply()
+	return
+}
 
-	//return current appliedID
-	appliedID := partition.GetAppliedID()
-
-	log.LogDebugf("[updateMaxMinAppliedID] handlePacketToGetAppliedID partition=%v minAppId=%v curAppId=%v",
-		partition.ID(), minAppliedID, appliedID)
-
+// Handle handlePacketToGetAppliedID packet.
+func (s *DataNode) handlePacketToGetAppliedID(p *repl.Packet) {
+	partition := p.Object.(*DataPartition)
+	appliedID := partition.GetAppliedID()  	//return current appliedID
+	log.LogDebugf("[handlePacketToGetAppliedID] partition=%v curAppId=%v",
+		partition.ID(), appliedID)
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, appliedID)
 	p.PacketOkWithBody(buf)

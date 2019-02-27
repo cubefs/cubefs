@@ -55,8 +55,9 @@ const (
 
 	OpNotifyReplicasToRepair uint8 = 0x08
 	OpExtentRepairRead       uint8 = 0x09
+	OpBroadcastMinAppliedID  uint8 = 0x0A
 	OpRandomWrite            uint8 = 0x0F
-	OpGetAppliedId           uint8 = 0x10 // TODO should we call appliedID or applyID? we need to have an agreement.
+	OpGetAppliedId           uint8 = 0x10
 	OpGetPartitionSize       uint8 = 0x11
 	OpSyncRandomWrite        uint8 = 0x12
 	OpSyncWrite              uint8 = 0x13
@@ -278,6 +279,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpReadTinyDelete"
 	case OpPing:
 		m = "OpPing"
+	case OpBroadcastMinAppliedID:
+		m = "OpBroadcastMinAppliedID"
 	}
 	return
 }
