@@ -49,7 +49,7 @@ const (
 var (
 	// The following two are used in the FUSE cache
 	// every time the lookup will be performed on the fly, and the result will not be cached
-	LookupValidDuration = 0 * time.Second
+	LookupValidDuration = 5 * time.Second
 	// the expiration duration of the attributes in the FUSE cache
 	AttrValidDuration = 30 * time.Second
 )
