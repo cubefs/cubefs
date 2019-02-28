@@ -80,7 +80,7 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 			Path     string   `json:"path"`
 			Replicas []string `json:"replicas"`
 		}{
-			ID:       dp.ID(),
+			ID:       dp.partitionID,
 			Size:     dp.Size(),
 			Used:     dp.Used(),
 			Status:   dp.Status(),
@@ -141,7 +141,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		Replicas             []string              `json:"replicas"`
 		TinyDeleteRecordSize int64                 `json:"tinyDeleteRecordSize"`
 	}{
-		ID:                   partition.ID(),
+		ID:                   partition.partitionID,
 		Size:                 partition.Size(),
 		Used:                 partition.Used(),
 		Status:               partition.Status(),

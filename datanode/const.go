@@ -34,6 +34,12 @@ const (
 	NetworkProtocol = "tcp"
 )
 
+// Status of load data partition extent header
+const (
+	FinishLoadDataPartitionExtentHeader = 1
+	StartLoadDataPartitionExtentHeader  = -1
+)
+
 // cmd response
 const (
 	ReadFlag         = 1
@@ -73,6 +79,8 @@ const (
 const (
 	maxRetryCounts         = 10     // maximum number of retries for random writes
 	MinTinyExtentsToRepair = 10     // minimum number of tiny extents to repair
+	NumOfRaftLogsToRetain  = 100000    // Count of raft logs per data partition
+	MaxUnit64              = 1<<64 - 1 // Unit64 max value
 )
 
 // Tiny extent has been put back to store

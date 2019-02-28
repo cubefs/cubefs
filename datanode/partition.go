@@ -109,6 +109,8 @@ type DataPartition struct {
 	snapshot                      []*proto.File
 	snapshotMutex                 sync.RWMutex
 	intervalToUpdatePartitionSize int64
+	loadExtentHeaderStatus  int
+
 
 	FullSyncTinyDeleteTime int64
 }
@@ -121,6 +123,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition
 
 	go dp.StartRaftLoggingSchedule()
 	go dp.StartRaftAfterRepair()
+	go dp.ForceLoadHeader()
 
 	// persist file metadata
 	err = dp.PersistMetadata()
@@ -199,10 +202,6 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 	dp = partition
 	go partition.statusUpdateScheduler()
 	return
-}
-
-func (dp *DataPartition) ID() uint64 {
-	return dp.partitionID
 }
 
 func (dp *DataPartition) GetExtentCount() int {
@@ -299,6 +298,11 @@ func (dp *DataPartition) EvictExtent() {
 	dp.extentStore.EvictExtentCache()
 }
 
+func (dp *DataPartition) ForceLoadHeader() {
+	dp.extentStore.BackEndLoadExtent()
+	dp.loadExtentHeaderStatus = FinishLoadDataPartitionExtentHeader
+}
+
 // PersistMetadata persists the file metadata on the disk.
 func (dp *DataPartition) PersistMetadata() (err error) {
 	var (
@@ -335,7 +339,6 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 	err = os.Rename(fileName, path.Join(dp.Path(), DataPartitionMetadataFileName))
 	return
 }
-
 func (dp *DataPartition) statusUpdateScheduler() {
 	ticker := time.NewTicker(10 * time.Second)
 	metricTicker := time.NewTicker(5 * time.Second)
@@ -531,9 +534,20 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 	response.PartitionId = uint64(dp.partitionID)
 	response.PartitionStatus = dp.partitionStatus
 	response.Used = uint64(dp.Used())
-	response.PartitionSnapshot = dp.SnapShot()
+	var err error
+	if dp.loadExtentHeaderStatus != FinishLoadDataPartitionExtentHeader {
+		response.PartitionSnapshot = make([]*proto.File, 0)
+	} else {
+		response.PartitionSnapshot = dp.SnapShot()
+	}
+	if err != nil {
+		response.Status = proto.TaskFailed
+		response.Result = err.Error()
+		return
+	}
 	return
 }
+
 
 // DoExtentStoreRepair performs the repairs of the extent store.
 // 1. when the extent size is smaller than the max size on the record, start to repair the missing part.
