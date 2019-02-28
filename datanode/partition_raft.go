@@ -177,7 +177,7 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 	for {
 		select {
 		case <-timer.C:
-			if dp.isLeader { // primary does not need to wait repair
+			if dp.isLeader {				// primary does not need to wait repair
 				if err := dp.StartRaft(); err != nil {
 					log.LogErrorf("partitionID[%v] leader start raft err[%v].", dp.partitionID, err)
 					timer.Reset(5 * time.Second)
@@ -503,12 +503,12 @@ func (dp *DataPartition) getPartitionSize() (size uint64, err error) {
 	return
 }
 
-func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) {
+func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error){
 	for i := 0; i < len(dp.replicas); i++ {
 		p := NewPacketToBroadcastMinAppliedID(dp.partitionID, minAppliedID)
 		replicaHostParts := strings.Split(dp.replicas[i], ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
-		if LocalIP == replicaHost {
+		if LocalIP == replicaHost{
 			log.LogDebugf("partition=%v local no send msg. localIP[%v] replicaHost[%v] appliedId[%v]",
 				dp.partitionID, LocalIP, replicaHost, dp.appliedID)
 			dp.minAppliedID = minAppliedID
@@ -545,7 +545,7 @@ func (dp *DataPartition) getOtherAppliedID() (appliedIDList []uint64, replyNum u
 		p := NewPacketToGetAppliedID(dp.partitionID)
 		replicaHostParts := strings.Split(dp.replicas[i], ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
-		if LocalIP == replicaHost {
+		if LocalIP == replicaHost{
 			log.LogDebugf("partition=%v localIP[%v] replicaHost[%v] appliedId[%v]",
 				dp.partitionID, LocalIP, replicaHost, dp.appliedID)
 			continue
@@ -574,7 +574,7 @@ func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyN
 		p := NewPacketToGetAppliedID(dp.partitionID)
 		replicaHostParts := strings.Split(dp.replicas[i], ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
-		if LocalIP == replicaHost {
+		if LocalIP == replicaHost{
 			log.LogDebugf("partition=%v local no send msg. localIP[%v] replicaHost[%v] appliedId[%v]",
 				dp.partitionID, LocalIP, replicaHost, dp.appliedID)
 			allAppliedID[i] = dp.appliedID
@@ -647,7 +647,7 @@ func (dp *DataPartition) updateMaxMinAppliedID() {
 		log.LogDebugf("[updateMaxMinAppliedID] partitionID=%v Get appliedId failed!", dp.partitionID)
 		return
 	}
-	if replyNum == uint8(len(allAppliedID)) { // update dp.minAppliedID when every member had replied
+	if replyNum == uint8(len(allAppliedID)) {                // update dp.minAppliedID when every member had replied
 		minAppliedID, _ = dp.findMinAppliedID(allAppliedID)
 		log.LogDebugf("[updateMaxMinAppliedID] partitionID=%v localID=%v OK! oldMinID=%v newMinID=%v",
 			dp.partitionID, dp.appliedID, dp.minAppliedID, minAppliedID)

@@ -41,7 +41,6 @@ const (
 	ReadBlockSize          = BlockSize
 	PerBlockCrcSize        = 5
 	DirtyCrcMark           = 'D'
-	ComPleteCrcMark        = 'C'
 
 	DeleteIndexFileName = "delete.index"
 	ExtentSize          = BlockCount * BlockSize

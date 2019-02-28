@@ -300,7 +300,7 @@ func (dp *DataPartition) buildExtentCreationTasks(repairTasks []*DataPartitionRe
 		for index := 0; index < len(repairTasks); index++ {
 			repairTask := repairTasks[index]
 			if _, ok := repairTask.extents[extentID]; !ok && extentInfo.IsDeleted == false {
-				if storage.IsTinyExtent(extentID) {
+				if extentInfo.Inode == 0 {
 					continue
 				}
 				if extentInfo.IsDeleted {
@@ -409,7 +409,7 @@ func (dp *DataPartition) doStreamExtentFixRepair(wg *sync.WaitGroup, remoteExten
 }
 
 func (dp *DataPartition) applyRepairKey(extentID int) (m string) {
-	return fmt.Sprintf("ApplyRepairKey(%v_%v)", dp.partitionID, extentID)
+	return fmt.Sprintf("ApplyRepairKey(%v_%v)", dp.ID(), extentID)
 }
 
 // The actual repair of an extent happens here.
@@ -435,7 +435,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	// size difference between the local extent and the remote extent
 	sizeDiff := remoteExtentInfo.Size - localExtentInfo.Size
 	// create a new streaming read packet
-	request := repl.NewExtentRepairReadPacket(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
+	request := repl.NewExtentRepairReadPacket(dp.ID(), remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
 	var conn *net.TCPConn
 	//leaderAddr,_:=dp.IsRaftLeader()
 	//if leaderAddr==""{
@@ -483,12 +483,12 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		}
 
 		log.LogInfof(fmt.Sprintf("action[streamRepairExtent] fix(%v_%v) start fix from (%v)"+
-			" remoteSize(%v)localSize(%v) reply(%v).", dp.partitionID, localExtentInfo.FileID, remoteExtentInfo.String(),
+			" remoteSize(%v)localSize(%v) reply(%v).", dp.ID(), localExtentInfo.FileID, remoteExtentInfo.String(),
 			remoteExtentInfo.Size, currFixOffset, reply.GetUniqueLogId()))
 		actualCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
 		if reply.CRC != crc32.ChecksumIEEE(reply.Data[:reply.Size]) {
 			err = fmt.Errorf("streamRepairExtent crc mismatch expectCrc(%v) actualCrc(%v) extent(%v_%v) start fix from (%v)"+
-				" remoteSize(%v) localSize(%v) request(%v) reply(%v) ", reply.CRC, actualCrc, dp.partitionID, remoteExtentInfo.String(),
+				" remoteSize(%v) localSize(%v) request(%v) reply(%v) ", reply.CRC, actualCrc, dp.ID(), remoteExtentInfo.String(),
 				remoteExtentInfo.Source, remoteExtentInfo.Size, currFixOffset, request.GetUniqueLogId(), reply.GetUniqueLogId())
 			log.LogErrorf("action[streamRepairExtent] err(%v).", err)
 			return errors.Annotatef(err, "streamRepairExtent receive data error")

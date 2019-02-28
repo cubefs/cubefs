@@ -126,6 +126,7 @@ func (d *Disk) computeUsage() (err error) {
 	}
 	d.Allocated = uint64(allocatedSize)
 
+	// TODO how about:
 	//  unallocated = math.Max(0, total - allocatedSize)
 	unallocated := total - allocatedSize
 	if unallocated < 0 {
@@ -186,7 +187,7 @@ func (d *Disk) updateSpaceInfo() (err error) {
 // AttachDataPartition adds a data partition to the partition map.
 func (d *Disk) AttachDataPartition(dp *DataPartition) {
 	d.Lock()
-	d.partitionMap[dp.partitionID] = dp
+	d.partitionMap[dp.ID()] = dp
 	d.Unlock()
 
 	d.computeUsage()
@@ -195,7 +196,7 @@ func (d *Disk) AttachDataPartition(dp *DataPartition) {
 // DetachDataPartition removes a data partition from the partition map.
 func (d *Disk) DetachDataPartition(dp *DataPartition) {
 	d.Lock()
-	delete(d.partitionMap, dp.partitionID)
+	delete(d.partitionMap, dp.ID())
 	d.Unlock()
 
 	d.computeUsage()
@@ -208,21 +209,13 @@ func (d *Disk) GetDataPartition(partitionID uint64) (partition *DataPartition) {
 	return d.partitionMap[partitionID]
 }
 
-func (d *Disk) ForceLoadPartitionHeader() {
-	partitionList := d.DataPartitionList()
-	for _, partitionID := range partitionList {
-		partition := d.GetDataPartition(partitionID)
-		partition.ForceLoadHeader()
-	}
-}
-
 // DataPartitionList returns a list of the data partitions
 func (d *Disk) DataPartitionList() (partitionIDs []uint64) {
 	d.Lock()
 	defer d.Unlock()
 	partitionIDs = make([]uint64, 0, len(d.partitionMap))
 	for _, dp := range d.partitionMap {
-		partitionIDs = append(partitionIDs, dp.partitionID)
+		partitionIDs = append(partitionIDs, dp.ID())
 	}
 	return
 }
@@ -298,5 +291,4 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 		}(partitionID, filename)
 	}
 	wg.Wait()
-	go d.ForceLoadPartitionHeader()
 }

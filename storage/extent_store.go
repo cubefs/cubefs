@@ -34,12 +34,13 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 	"hash/crc32"
 	"runtime"
-	"strings"
 	"syscall"
+	"strings"
 )
 
 const (
 	ExtMetadataFileName         = "EXTENT_META"
+	ExtCrcHeaderFileName        = "EXTENT_CRC"
 	ExtMetadataFileOpt          = os.O_CREATE | os.O_RDWR
 	TinyDeleteFileOpt           = os.O_CREATE | os.O_RDWR
 	NormalExtDeletedFileName    = "NORMALEXTENT_DELETE"
@@ -106,6 +107,7 @@ type ExtentStore struct {
 	normalExtentsDeleteFp *os.File // deleted extent file pointer
 	tinyExtentDeleteFp    *os.File
 	baseTinyDeleteOffset  int64
+	verifyCrcFp           *os.File
 	closeC                chan bool
 	closed                bool
 	availableTinyExtentC  chan uint64 // available tinyExtent channel
@@ -133,6 +135,11 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 	if err = s.metadataFp.Truncate(ExtMetadataFileSize); err != nil {
 		return
 	}
+
+	if s.verifyCrcFp, err = os.OpenFile(path.Join(s.dataPath, ExtCrcHeaderFileName), ExtMetadataFileOpt, 0666); err != nil {
+		return
+	}
+	syscall.Fallocate(int(s.verifyCrcFp.Fd()), 1, 0, ExtCrcHeaderSize)
 
 	// Load EXTENT_DELETE
 	normalExtentsDeleteFpPath := path.Join(s.dataPath, NormalExtDeletedFileName)
@@ -218,7 +225,7 @@ func (s *ExtentStore) Create(extentID uint64, inode uint64) (err error) {
 		err = ExtentExistsError
 		return err
 	}
-	e = NewExtentInCoreWithHeader(name, extentID)
+	e = NewExtentInCore(name, extentID)
 	err = e.InitToFS(inode)
 	if err != nil {
 		return err
@@ -226,6 +233,12 @@ func (s *ExtentStore) Create(extentID uint64, inode uint64) (err error) {
 	s.cache.Put(e)
 
 	extInfo := &ExtentInfo{FileID: extentID, Inode: inode}
+	if !IsTinyExtent(extentID) {
+		err = s.updateExtentInode(extentID, inode, e)
+	}
+	if err != nil {
+		return err
+	}
 	extInfo.FromExtent(e, false)
 	s.eiMutex.Lock()
 	s.extentInfoMap[extentID] = extInfo
@@ -287,17 +300,20 @@ func (s *ExtentStore) GetExtentCount() (count int) {
 
 func (s *ExtentStore) loadExtentFromDisk(extentID uint64, loadHeader bool) (e *Extent, err error) {
 	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
-	if loadHeader {
-		e = NewExtentInCoreWithHeader(name, extentID)
-	} else {
-		e = NewExtentInCore(name, extentID)
-	}
-	if err = e.RestoreFromFS(loadHeader); err != nil {
+	e = NewExtentInCore(name, extentID)
+	if err = e.RestoreFromFS(); err != nil {
 		err = fmt.Errorf("restore from file %v loadHeader %v system: %v", name, loadHeader, err)
 		return
 	}
 	if !loadHeader {
 		return
+	}
+	if !IsTinyExtent(extentID) {
+		offset := extentID * util.BlockHeaderSize
+		_, err = s.verifyCrcFp.ReadAt(e.header[:util.BlockHeaderSize], int64(offset))
+		if err == io.EOF {
+			err = nil
+		}
 	}
 
 	s.cache.Put(e)
@@ -305,6 +321,7 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, loadHeader bool) (e *E
 	return
 }
 
+// TODO explain the base file ID
 func (s *ExtentStore) initBaseFileID() (err error) {
 	var (
 		baseFileID uint64
@@ -318,6 +335,12 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		return err
 	}
 
+	data := make([]byte, ExtCrcHeaderSize)
+	_, err = s.verifyCrcFp.ReadAt(data, 0)
+	if err != io.EOF {
+		return
+	}
+
 	var (
 		extentID uint64
 		isExtent bool
@@ -326,6 +349,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		loadErr  error
 	)
 	for _, f := range files {
+		var inode uint64
 		if extentID, isExtent = s.ExtentID(f.Name()); !isExtent {
 			continue
 		}
@@ -335,8 +359,17 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		if e, loadErr = s.extent(extentID); loadErr != nil {
 			continue
 		}
-		ei = &ExtentInfo{FileID: extentID}
-		ei.FromExtent(e, true)
+		isDirtyBlock := false
+		if !IsTinyExtent(extentID) {
+			e.header = make([]byte, util.BlockHeaderSize)
+			copy(e.header, data[extentID*util.BlockHeaderSize:(extentID+1)*util.BlockHeaderSize])
+			if len(e.checkDirtyBlock()) != 0 {
+				isDirtyBlock = true
+			}
+			inode = binary.BigEndian.Uint64(e.header[0:util.BlockHeaderInoSize])
+		}
+		ei = &ExtentInfo{FileID: extentID, Inode: inode}
+		ei.FromExtent(e, isDirtyBlock)
 		s.eiMutex.Lock()
 		s.extentInfoMap[extentID] = ei
 		s.eiMutex.Unlock()
@@ -353,6 +386,37 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 	log.LogInfof("datadir(%v) maxBaseId(%v)", s.dataPath, baseFileID)
 	runtime.GC()
 	return nil
+}
+
+// TODO explain the block crc
+func (s *ExtentStore) updateBlockCrc(extentID uint64, blockNo int, crc uint32, e *Extent, isDirtyBlockCrc bool) (err error) {
+	startIdx := util.BlockHeaderCrcIndex + blockNo*util.PerBlockCrcSize
+	endIdx := startIdx + util.PerBlockCrcSize
+	if isDirtyBlockCrc {
+		e.header[startIdx] = util.DirtyCrcMark
+	}
+	binary.BigEndian.PutUint32(e.header[startIdx:endIdx], crc)
+	verifyStart := startIdx + int(util.BlockHeaderSize*extentID)
+	if _, err = s.verifyCrcFp.WriteAt(e.header[startIdx:endIdx], int64(verifyStart)); err != nil {
+		return
+	}
+	e.modifyTime = time.Now()
+
+	return
+}
+
+func (s *ExtentStore) updateExtentInode(extentID uint64, inode uint64, e *Extent) (err error) {
+	if IsTinyExtent(extentID) {
+		return
+	}
+	binary.BigEndian.PutUint64(e.header[0:util.BlockHeaderInoSize], inode)
+	verifyStart := int(util.BlockHeaderSize * extentID)
+	if _, err = s.verifyCrcFp.WriteAt(e.header[0:util.BlockHeaderInoSize], int64(verifyStart)); err != nil {
+		return
+	}
+	e.modifyTime = time.Now()
+
+	return
 }
 
 func (s *ExtentStore) autoFixDirtyBlockCrc() {
@@ -377,7 +441,7 @@ func (s *ExtentStore) autoFixDirtyBlockCrc() {
 		if err != nil {
 			continue
 		}
-		extent.autoFixDirtyCrc()
+		extent.autoFixDirtyCrc(s.updateBlockCrc)
 		s.eiMutex.RLock()
 		extentInfo, has := s.extentInfoMap[ei.FileID]
 		s.eiMutex.RUnlock()
@@ -415,7 +479,7 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	if e.HasBeenMarkedAsDeleted() {
 		return ExtentHasBeenDeletedError
 	}
-	isDirtyBlock, err = e.Write(data, offset, size, crc, isUpdateSize, isSync)
+	isDirtyBlock, err = e.Write(data, offset, size, crc, s.updateBlockCrc, isUpdateSize, isSync)
 	if err != nil {
 		return err
 	}
@@ -495,10 +559,17 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size, tinyDeleteFileOf
 		return
 	}
 
-	e.MarkDelete()
+	e.header[util.MarkDeleteIndex] = util.MarkDelete
+	verifyStart := int64(util.BlockHeaderSize * extentID)
+	if _, err = s.verifyCrcFp.WriteAt(e.header, verifyStart); err != nil {
+		return
+	}
+
 	ei.FromExtent(e, true)
 	ei.IsDeleted = true
+
 	s.cache.Del(e.extentID)
+
 	s.eiMutex.Lock()
 	delete(s.extentInfoMap, extentID)
 	s.eiMutex.Unlock()
@@ -586,6 +657,9 @@ func (s *ExtentStore) Close() {
 	s.metadataFp.Sync()
 	s.metadataFp.Close()
 
+	s.verifyCrcFp.Sync()
+	s.verifyCrcFp.Close()
+
 	// Release delete index file
 	s.normalExtentsDeleteFp.Sync()
 	s.normalExtentsDeleteFp.Close()
@@ -655,31 +729,6 @@ func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentIn
 	return
 }
 
-func (s *ExtentStore) BackEndLoadExtent() {
-	extentInfoSlice := make([]*ExtentInfo, 0, len(s.extentInfoMap))
-	s.eiMutex.RLock()
-	for _, extentID := range s.extentInfoMap {
-		extentInfoSlice = append(extentInfoSlice, extentID)
-	}
-	s.eiMutex.RUnlock()
-	for _, extentInfo := range extentInfoSlice {
-		if extentInfo.Size == 0 {
-			continue
-		}
-		if IsTinyExtent(extentInfo.FileID) {
-			continue
-		}
-		e, err := s.extentWithHeader(extentInfo.FileID)
-		if err != nil {
-			continue
-		}
-		extentInfo.FromExtent(e, len(e.checkDirtyBlock()) != 0)
-		time.Sleep(time.Millisecond * 5)
-	}
-	log.LogInfof("BackEnd Load datapartition (%v) success", s.dataPath)
-	return
-}
-
 // ExtentID return the extent ID.
 func (s *ExtentStore) ExtentID(filename string) (extentID uint64, isExtent bool) {
 	if isExtent = RegexpExtentFile.MatchString(filename); !isExtent {
@@ -703,7 +752,7 @@ func (s *ExtentStore) initTinyExtent() (err error) {
 
 	for extentID = TinyExtentStartID; extentID < TinyExtentStartID+TinyExtentCount; extentID++ {
 		err = s.Create(extentID, 0)
-		if err == nil || strings.Contains(err.Error(), syscall.EEXIST.Error()) || err == ExtentExistsError {
+		if err == nil || strings.Contains(err.Error(),syscall.EEXIST.Error()) || err==ExtentExistsError{
 			err = nil
 			s.brokenTinyExtentC <- extentID
 			continue

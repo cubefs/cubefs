@@ -54,15 +54,15 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	switch msg.Op {
 	case opRandomWrite, opRandomSyncWrite:
 		if opItem, err = rndWrtDataUnmarshal(msg.V); err != nil {
-			log.LogErrorf("randomWrite_%v err[%v] unmarshal failed", dp.partitionID, err)
+			log.LogErrorf("randomWrite_%v err[%v] unmarshal failed", dp.ID(), err)
 			return
 		}
-		log.LogDebugf("randomWrite_%v_%v_%v_%v apply", dp.partitionID, opItem.extentID, opItem.offset, opItem.size)
+		log.LogDebugf("randomWrite_%v_%v_%v_%v apply", dp.ID(), opItem.extentID, opItem.offset, opItem.size)
 		for i := 0; i < maxRetryCounts; i++ {
 			err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, NotUpdateSize, msg.Op == opRandomSyncWrite)
 			if err != nil {
-				if dp.checkWriteErrs(err.Error()) {
-					log.LogErrorf("randomWrite_%v_%v_%v_%v ignore error. err[%v]", dp.partitionID,
+				if dp.checkWriteErrs(err.Error()){
+					log.LogErrorf("randomWrite_%v_%v_%v_%v ignore error. err[%v]", dp.ID(),
 						opItem.extentID, opItem.offset, opItem.size, err)
 					err = nil
 				}
@@ -71,7 +71,7 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			if err == nil {
 				break
 			}
-			log.LogErrorf("randomWrite_%v_%v_%v_%v apply err[%v] retry[%v]", dp.partitionID, opItem.extentID,
+			log.LogErrorf("randomWrite_%v_%v_%v_%v apply err[%v] retry[%v]", dp.ID(), opItem.extentID,
 				opItem.offset, opItem.size, err, i)
 		}
 	default:
@@ -129,7 +129,7 @@ func (dp *DataPartition) Snapshot() (raftproto.Snapshot, error) {
 
 // ApplySnapshot asks the raft leader for the snapshot data to recover the contents on the local disk.
 func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftproto.SnapIterator) (err error) {
-	// Never delete the raft log which hadn't applied, so snapshot no need.
+    // Never delete the raft log which hadn't applied, so snapshot no need.
 	return
 }
 

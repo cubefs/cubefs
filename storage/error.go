@@ -32,7 +32,6 @@ var (
 	ExtentNotFoundError       = errors.New("extent does not exist")
 	ExtentExistsError         = errors.New("extent already exists")
 	ExtentIsFullError         = errors.New("extent is full")
-	BrokenExtentError         = errors.New("extent has been broken")
 )
 
 func NewParameterMismatchErr(msg string) (err error) {
