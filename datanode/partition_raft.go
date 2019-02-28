@@ -357,10 +357,18 @@ func (s *DataNode) parseRaftConfig(cfg *config.Config) (err error) {
 	}
 	s.raftHeartbeat = cfg.GetString(ConfigKeyRaftHeartbeat)
 	s.raftReplica = cfg.GetString(ConfigKeyRaftReplicate)
-
+	retainLogs := cfg.GetString(ConfigKeyRaftRetainLog)
+	if retainLogs != "" {
+		if s.raftLogsToRetain, err = strconv.ParseUint(retainLogs, 10, 64); err != nil {
+			return fmt.Errorf("%v,err:%v", ErrBadConfFile, err.Error())
+		}
+	} else {
+		s.raftLogsToRetain = DefaultRaftLogsToRetain
+	}
 	log.LogDebugf("[parseRaftConfig] load raftDir[%v].", s.raftDir)
 	log.LogDebugf("[parseRaftConfig] load raftHearbeat[%v].", s.raftHeartbeat)
 	log.LogDebugf("[parseRaftConfig] load raftReplica[%v].", s.raftReplica)
+	log.LogDebugf("[parseRaftConfig] load raftLogsToRetain[%v].", s.raftLogsToRetain)
 	return
 }
 
@@ -394,7 +402,7 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 		IPAddr:            LocalIP,
 		HeartbeatPort:     heartbeatPort,
 		ReplicaPort:       replicatePort,
-		NumOfLogsToRetain: MaxUnit64, // Data partition do not truncate raftLog by raft fsm
+		NumOfLogsToRetain: s.raftLogsToRetain,
 	}
 	s.raftStore, err = raftstore.NewRaftStore(raftConf)
 	if err != nil {
@@ -631,7 +639,7 @@ func (dp *DataPartition) updateMaxMinAppliedID() {
 		maxAppliedID uint64
 	)
 
-	// Get the applied id from the leader
+	// Get the applied id by the leader
 	_, isLeader := dp.IsRaftLeader()
 	if !isLeader {
 		return

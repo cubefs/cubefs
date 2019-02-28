@@ -50,9 +50,9 @@ var (
 )
 
 const (
-	// TODO we need to find a better to expose this information.
-	DefaultRackName = "cfs_rack1"
-	DefaultRaftDir  = "raft"
+	DefaultRackName         = "cfs_rack1"
+	DefaultRaftDir          = "raft"
+	DefaultRaftLogsToRetain = 100000 // Count of raft logs per data partition
 )
 
 const (
@@ -60,33 +60,35 @@ const (
 )
 
 const (
-	ConfigKeyLocalIP       = "localIP"       // string
-	ConfigKeyPort          = "port"          // int
-	ConfigKeyMasterAddr    = "masterAddr"    // array
-	ConfigKeyRack          = "rack"          // string
-	ConfigKeyDisks         = "disks"         // array
-	ConfigKeyRaftDir       = "raftDir"       // string
-	ConfigKeyRaftHeartbeat = "raftHeartbeat" // string
-	ConfigKeyRaftReplicate = "raftReplica"   // string
+	ConfigKeyLocalIP       = "localIP"          // string
+	ConfigKeyPort          = "port"             // int
+	ConfigKeyMasterAddr    = "masterAddr"       // array
+	ConfigKeyRack          = "rack"             // string
+	ConfigKeyDisks         = "disks"            // array
+	ConfigKeyRaftDir       = "raftDir"          // string
+	ConfigKeyRaftHeartbeat = "raftHeartbeat"    // string
+	ConfigKeyRaftReplicate = "raftReplica"      // string
+	ConfigKeyRaftRetainLog = "raftLogsToRetain" // string
 )
 
 // DataNode defines the structure of a data node.
 type DataNode struct {
-	space           *SpaceManager
-	port            string
-	rackName        string
-	clusterID       string
-	localIP         string
-	localServerAddr string
-	nodeID          uint64
-	raftDir         string
-	raftHeartbeat   string
-	raftReplica     string
-	raftStore       raftstore.RaftStore
-	tcpListener     net.Listener
-	stopC           chan bool
-	state           uint32
-	wg              sync.WaitGroup
+	space            *SpaceManager
+	port             string
+	rackName         string
+	clusterID        string
+	localIP          string
+	localServerAddr  string
+	nodeID           uint64
+	raftDir          string
+	raftHeartbeat    string
+	raftReplica      string
+	raftLogsToRetain uint64
+	raftStore        raftstore.RaftStore
+	tcpListener      net.Listener
+	stopC            chan bool
+	state            uint32
+	wg               sync.WaitGroup
 }
 
 func NewServer() *DataNode {
