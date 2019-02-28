@@ -421,9 +421,6 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 	if !isRepairRead {
 		err = partition.CheckLeader(p, connect)
 		if err != nil {
-			err = fmt.Errorf(p.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
-				p.StartT, err))
-			log.LogErrorf(err.Error())
 			p.PackErrorBody(ActionStreamRead, err.Error())
 			p.WriteToConn(connect)
 			return
@@ -450,22 +447,16 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead)
 		tpObject.Set()
 		if err != nil {
-			reply.PackErrorBody(ActionStreamRead, err.Error())
 			p.PackErrorBody(ActionStreamRead, err.Error())
 			if err = reply.WriteToConn(connect); err != nil {
-				err = fmt.Errorf(reply.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
-					reply.StartT, err))
-				log.LogErrorf(err.Error())
+				p.PackErrorBody(ActionStreamRead, err.Error())
 			}
 			return
 		}
 		reply.Size = uint32(currReadSize)
 		reply.ResultCode = proto.OpOk
 		if err = reply.WriteToConn(connect); err != nil {
-			err = fmt.Errorf(reply.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
-				reply.StartT, err))
 			p.PackErrorBody(ActionStreamRead, err.Error())
-			log.LogErrorf(err.Error())
 			return
 		}
 		needReplySize -= currReadSize

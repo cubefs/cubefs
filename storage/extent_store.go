@@ -49,12 +49,11 @@ const (
 	ExtMetadataBaseIDSize       = 8
 	ExtMetadataDeletedIdxOffset = 8
 	ExtMetadataDeletedIdxSize   = 8
-	ExtMetadataFileSize         = ExtMetadataBaseIDSize + ExtMetadataDeletedIdxSize // TODO explain
-	MaxExtentId                 = 40000
-	ExtCrcHeaderSize            = MaxExtentId * util.BlockHeaderSize
-	TinyExtentCount             = 64 // TODO total number of tiny extents that each partition can have ?
-	TinyExtentStartID           = 50000000
-	MinExtentID                 = 2
+	ExtMetadataFileSize         = ExtMetadataBaseIDSize + ExtMetadataDeletedIdxSize
+	MaxExtentCount              = 50000
+	TinyExtentCount             = 64
+	TinyExtentStartID           = 1
+	MinExtentID                 = 1024
 	EveryTinyDeleteRecordSize   = 24
 )
 
@@ -218,7 +217,7 @@ func (s *ExtentStore) Create(extentID uint64, inode uint64) (err error) {
 		err = ExtentExistsError
 		return err
 	}
-	e = NewExtentInCoreWithHeader(name, extentID)
+	e = NewExtentInCore(name, extentID)
 	err = e.InitToFS(inode)
 	if err != nil {
 		return err
@@ -288,7 +287,7 @@ func (s *ExtentStore) GetExtentCount() (count int) {
 func (s *ExtentStore) loadExtentFromDisk(extentID uint64, loadHeader bool) (e *Extent, err error) {
 	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
 	if loadHeader {
-		e = NewExtentInCoreWithHeader(name, extentID)
+		e = NewExtentInCore(name, extentID)
 	} else {
 		e = NewExtentInCore(name, extentID)
 	}
@@ -327,9 +326,6 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 	)
 	for _, f := range files {
 		if extentID, isExtent = s.ExtentID(f.Name()); !isExtent {
-			continue
-		}
-		if extentID < MinExtentID {
 			continue
 		}
 		if e, loadErr = s.extent(extentID); loadErr != nil {
