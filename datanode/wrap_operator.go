@@ -575,7 +575,7 @@ func (s *DataNode) handleBroadcastMinAppliedID(p *repl.Packet) {
 	if minAppliedID > 0 {
 		partition.SetMinAppliedID(minAppliedID)
 	}
-	log.LogDebugf("[handleBroadcastMinAppliedID] partition=%v minAppliedID=%v", partition.ID(), minAppliedID)
+	log.LogDebugf("[handleBroadcastMinAppliedID] partition=%v minAppliedID=%v", partition.partitionID, minAppliedID)
 	p.PacketOkReply()
 	return
 }
@@ -583,9 +583,9 @@ func (s *DataNode) handleBroadcastMinAppliedID(p *repl.Packet) {
 // Handle handlePacketToGetAppliedID packet.
 func (s *DataNode) handlePacketToGetAppliedID(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
-	appliedID := partition.GetAppliedID()  	//return current appliedID
+	appliedID := partition.GetAppliedID() //return current appliedID
 	log.LogDebugf("[handlePacketToGetAppliedID] partition=%v curAppId=%v",
-		partition.ID(), appliedID)
+		partition.partitionID, appliedID)
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, appliedID)
 	p.PacketOkWithBody(buf)
