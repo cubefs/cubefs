@@ -396,12 +396,20 @@ func (c *Cluster) deleteVol(name string) {
 	return
 }
 
-func (c *Cluster) markDeleteVol(name string) (err error) {
-	var vol *Vol
+func (c *Cluster) markDeleteVol(name, authKey string) (err error) {
+	var (
+		vol           *Vol
+		serverAuthKey string
+	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[markDeleteVol] err[%v]", err)
 		return proto.ErrVolNotExists
 	}
+	serverAuthKey = vol.Owner
+	if !matchKey(serverAuthKey, authKey) {
+		return proto.ErrVolAuthKeyNotMatch
+	}
+
 	vol.Status = markDelete
 	if err = c.syncUpdateVol(vol); err != nil {
 		vol.Status = normal
@@ -740,7 +748,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
 errHandler:
-	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.Hosts)
 	if err != nil {
@@ -777,12 +785,19 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 	go metaNode.clean()
 }
 
-func (c *Cluster) updateVol(name string, capacity int) (err error) {
-	var vol *Vol
+func (c *Cluster) updateVol(name, authKey string, capacity int) (err error) {
+	var (
+		vol           *Vol
+		serverAuthKey string
+	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
 		err = proto.ErrVolNotExists
 		goto errHandler
+	}
+	serverAuthKey = vol.Owner
+	if !matchKey(serverAuthKey, authKey) {
+		return proto.ErrVolAuthKeyNotMatch
 	}
 	if uint64(capacity) < vol.Capacity {
 		err = fmt.Errorf("capacity[%v] less than old capacity[%v]", capacity, vol.Capacity)
@@ -804,7 +819,7 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name string, size, capacity int) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner string, size, capacity int) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -821,7 +836,7 @@ func (c *Cluster) createVol(name string, size, capacity int) (vol *Vol, err erro
 		err = proto.ErrDuplicateVol
 		goto errHandler
 	}
-	if err = c.doCreateVol(name, dataPartitionSize, uint64(capacity)); err != nil {
+	if err = c.doCreateVol(name, owner, dataPartitionSize, uint64(capacity)); err != nil {
 		goto errHandler
 	}
 	if vol, err = c.getVol(name); err != nil {
@@ -853,13 +868,13 @@ errHandler:
 	return
 }
 
-func (c *Cluster) doCreateVol(name string, dpSize, capacity uint64) (err error) {
+func (c *Cluster) doCreateVol(name, owner string, dpSize, capacity uint64) (err error) {
 	var vol *Vol
 	id, err := c.idAlloc.allocateCommonID()
 	if err != nil {
 		goto errHandler
 	}
-	vol = newVol(id, name, dpSize, capacity)
+	vol = newVol(id, name, owner, dpSize, capacity)
 	if err = c.syncAddVol(vol); err != nil {
 		goto errHandler
 	}

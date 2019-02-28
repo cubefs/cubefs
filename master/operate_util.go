@@ -23,6 +23,9 @@ import (
 	"github.com/tiglabs/containerfs/util/log"
 	"math/rand"
 	"time"
+	"crypto/md5"
+	"encoding/hex"
+	"strings"
 )
 
 func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize int) (req *proto.CreateDataPartitionRequest) {
@@ -197,7 +200,13 @@ func volNotFound(name string) (err error) {
 	return notFoundMsg(fmt.Sprintf("vol[%v]", name))
 }
 
-func exists(name string) (err error) {
-	err = errors.Errorf("%v exists", name)
-	return
+func matchKey(serverKey, clientKey string) bool {
+	h := md5.New()
+	_, err := h.Write([]byte(serverKey))
+	if err != nil {
+		log.LogWarnf("action[matchKey] write server key[%v] failed,err[%v]", serverKey, err)
+		return false
+	}
+	cipherStr := h.Sum(nil)
+	return strings.ToLower(clientKey) == strings.ToLower(hex.EncodeToString(cipherStr))
 }

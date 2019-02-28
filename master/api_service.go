@@ -334,16 +334,17 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 // Mark the volume as deleted, which will then be deleted later.
 func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		name string
-		err  error
-		msg  string
+		name    string
+		authKey string
+		err     error
+		msg     string
 	)
 
-	if name, err = parseRequestToDeleteVol(r); err != nil {
+	if name, authKey, err = parseRequestToDeleteVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.markDeleteVol(name); err != nil {
+	if err = m.cluster.markDeleteVol(name, authKey); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -355,15 +356,16 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		name     string
+		authKey  string
 		err      error
 		msg      string
 		capacity int
 	)
-	if name, capacity, err = parseRequestToUpdateVol(r); err != nil {
+	if name, authKey, capacity, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.updateVol(name, capacity); err != nil {
+	if err = m.cluster.updateVol(name, authKey, capacity); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -374,6 +376,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		name     string
+		owner    string
 		err      error
 		msg      string
 		size     int
@@ -381,11 +384,11 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		vol      *Vol
 	)
 
-	if name, size, capacity, err = parseRequestToCreateVol(r); err != nil {
+	if name, owner, size, capacity, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.createVol(name, size, capacity); err != nil {
+	if vol, err = m.cluster.createVol(name, owner, size, capacity); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -416,6 +419,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 	return &proto.SimpleVolView{
 		ID:           vol.ID,
 		Name:         vol.Name,
+		Owner:        vol.Owner,
 		DpReplicaNum: vol.dpReplicaNum,
 		MpReplicaNum: vol.mpReplicaNum,
 		Status:       vol.Status,
@@ -745,18 +749,37 @@ func parseRequestToGetTaskResponse(r *http.Request) (tr *proto.AdminTask, err er
 	return
 }
 
-func parseRequestToDeleteVol(r *http.Request) (name string, err error) {
-	if err = r.ParseForm(); err != nil {
-		return
-	}
-	return extractName(r)
+func parseRequestToGetVol(r *http.Request) (name, authKey string, err error) {
+	return parseVolNameAndAuthKey(r)
 }
 
-func parseRequestToUpdateVol(r *http.Request) (name string, capacity int, err error) {
+func parseVolNameAndAuthKey(r *http.Request) (name, authKey string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
 	if name, err = extractName(r); err != nil {
+		return
+	}
+	if authKey, err = extractAuthKey(r); err != nil {
+		return
+	}
+	return
+
+}
+
+func parseRequestToDeleteVol(r *http.Request) (name, authKey string, err error) {
+	return parseVolNameAndAuthKey(r)
+
+}
+
+func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if name, err = extractName(r); err != nil {
+		return
+	}
+	if authKey, err = extractAuthKey(r); err != nil {
 		return
 	}
 	if capacityStr := r.FormValue(volCapacityKey); capacityStr != "" {
@@ -769,13 +792,18 @@ func parseRequestToUpdateVol(r *http.Request) (name string, capacity int, err er
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name string, size, capacity int, err error) {
+func parseRequestToCreateVol(r *http.Request) (name, owner string, size, capacity int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
 	if name, err = extractName(r); err != nil {
 		return
 	}
+	if owner = r.FormValue(volOwnerKey); owner == "" {
+		err = keyNotFound(volOwnerKey)
+		return
+	}
+
 	if sizeStr := r.FormValue(dataPartitionSizeKey); sizeStr != "" {
 		if size, err = strconv.Atoi(sizeStr); err != nil {
 			err = unmatchedKey(dataPartitionSizeKey)
@@ -1008,15 +1036,20 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		err     error
 		name    string
+		authKey string
 		vol     *Vol
 		volView *proto.VolView
 	)
-	if name, err = parseAndExtractName(r); err != nil {
+	if name, authKey, err = parseRequestToGetVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+	if !matchKey(vol.Owner, authKey) {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolAuthKeyNotMatch))
 		return
 	}
 	if volView, err = m.getVolView(vol); err != nil {
@@ -1126,6 +1159,14 @@ func extractMetaPartitionID(r *http.Request) (partitionID uint64, err error) {
 	return strconv.ParseUint(value, 10, 64)
 }
 
+func extractAuthKey(r *http.Request) (authKey string, err error) {
+	if authKey = r.FormValue(volAuthKey); authKey == "" {
+		err = keyNotFound(volAuthKey)
+		return
+	}
+	return
+}
+
 func parseAndExtractName(r *http.Request) (name string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -1135,7 +1176,7 @@ func parseAndExtractName(r *http.Request) (name string, err error) {
 
 func extractName(r *http.Request) (name string, err error) {
 	if name = r.FormValue(nameKey); name == "" {
-		err = keyNotFound(name)
+		err = keyNotFound(nameKey)
 		return
 	}
 

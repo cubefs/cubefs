@@ -84,6 +84,7 @@ func main() {
 func Mount(cfg *config.Config) (err error) {
 	mnt := cfg.GetString("mountpoint")
 	volname := cfg.GetString("volname")
+	owner := cfg.GetString("owner")
 	master := cfg.GetString("master")
 	logpath := cfg.GetString("logpath")
 	loglvl := cfg.GetString("loglvl")
@@ -94,6 +95,7 @@ func Mount(cfg *config.Config) (err error) {
 	enSyncWrite := ParseConfigString(cfg, "enSyncWrite")
 	autoInvalData := ParseConfigString(cfg, "autoInvalData")
 
+
 	level := ParseLogLevel(loglvl)
 	_, err = log.InitLog(path.Join(logpath, LoggerDir), LoggerPrefix, level, nil)
 	if err != nil {
@@ -101,7 +103,7 @@ func Mount(cfg *config.Config) (err error) {
 	}
 	defer log.LogFlush()
 
-	super, err := cfs.NewSuper(volname, master, icacheTimeout, lookupValid, attrValid, enSyncWrite)
+	super, err := cfs.NewSuper(volname,owner, master, icacheTimeout, lookupValid, attrValid, enSyncWrite)
 	if err != nil {
 		log.LogError(errors.ErrorStack(err))
 		return err
