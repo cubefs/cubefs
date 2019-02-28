@@ -86,12 +86,21 @@ type Extent struct {
 	hasClose   int32
 }
 
-// NewExtentInCore create and returns a new extent instance.
-func NewExtentInCore(name string, extentID uint64) *Extent {
+// NewExtentInCoreWithHeader create and returns a new extent instance.
+func NewExtentInCoreWithHeader(name string, extentID uint64) *Extent {
 	e := new(Extent)
 	e.extentID = extentID
 	e.filePath = name
 	e.header = make([]byte, util.BlockHeaderSize)
+
+	return e
+}
+
+// NewExtentInCoreWithHeader create and returns a new extent instance.
+func NewExtentInCore(name string, extentID uint64) *Extent {
+	e := new(Extent)
+	e.extentID = extentID
+	e.filePath = name
 
 	return e
 }
@@ -140,20 +149,8 @@ func (e *Extent) InitToFS(ino uint64) (err error) {
 		e.dataSize = 0
 		return
 	}
-	if err = e.file.Truncate(util.BlockHeaderSize); err != nil {
-		return err
-	}
 	binary.BigEndian.PutUint64(e.header[:8], ino)
 	if _, err = e.file.WriteAt(e.header[:8], 0); err != nil {
-		return err
-	}
-	emptyCrc := crc32.ChecksumIEEE(make([]byte, util.BlockSize))
-	for blockNo := 0; blockNo < util.BlockCount; blockNo++ {
-		if err = e.updateBlockCrc(blockNo, emptyCrc, false); err != nil {
-			return err
-		}
-	}
-	if err = e.file.Sync(); err != nil {
 		return err
 	}
 	e.modifyTime = time.Now()
@@ -184,7 +181,7 @@ func (e *Extent) RestoreFromFS(loadHeader bool) (err error) {
 		e.dataSize = watermark
 		return
 	}
-	if info.Size() < util.BlockHeaderSize {
+	if info.Size() < util.BlockHeaderInoSize {
 		err = BrokenExtentError
 		return
 	}
@@ -195,7 +192,7 @@ func (e *Extent) RestoreFromFS(loadHeader bool) (err error) {
 		}
 	}
 
-	e.dataSize = info.Size() - util.BlockHeaderSize
+	e.dataSize = info.Size()
 	e.modifyTime = info.ModTime()
 	return
 }

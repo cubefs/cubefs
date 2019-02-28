@@ -174,7 +174,7 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 	if extentType == proto.TinyExtentType {
 		p.Data, err = json.Marshal(tinyExtents)
 		if err != nil {
-			err = errors.Annotatef(err, "getRemoteExtentInfo DataPartition(%v) GetAllWatermarks", dp.partitionID)
+			err = errors.Annotatef(err, "getRemoteExtentInfo host(%v) DataPartition(%v) GetAllWatermarks", dp.partitionID)
 			return
 		}
 		p.Size = uint32(len(p.Data))
@@ -182,7 +182,7 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 	var conn *net.TCPConn
 	conn, err = gConnPool.GetConnect(target) // get remote connection
 	if err != nil {
-		err = errors.Annotatef(err, "getRemoteExtentInfo DataPartition(%v) get host(%v) connect", dp.partitionID, target)
+		err = errors.Annotatef(err, "getRemoteExtentInfo  host(%v) DataPartition(%v) get host(%v) connect", dp.partitionID, target)
 		return
 	}
 	defer gConnPool.PutConnect(conn, true)
@@ -215,17 +215,8 @@ func (dp *DataPartition) DoRepair(repairTasks []*DataPartitionRepairTask) {
 		store.Create(extentInfo.FileID, extentInfo.Inode)
 	}
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
-		err := dp.streamRepairExtent(extentInfo)
-		if err != nil {
-			err = errors.Annotatef(err, "doStreamExtentFixRepair %v", dp.applyRepairKey(int(extentInfo.FileID)))
-			localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(extentInfo.FileID), false)
-			if opErr != nil {
-				err = errors.Annotatef(err, opErr.Error())
-			}
-			err = errors.Annotatef(err, "partition(%v) remote(%v) local(%v)",
-				dp.partitionID, extentInfo, localExtentInfo)
-			log.LogWarnf("action[doStreamExtentFixRepair] err(%v).", err)
-		}
+
+		dp.streamRepairExtent(extentInfo)
 	}
 }
 
@@ -479,6 +470,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		if reply.ResultCode != proto.OpOk {
 			err = errors.Annotatef(fmt.Errorf("unknow result code"),
 				"streamRepairExtent receive opcode error(%v) ", string(reply.Data[:reply.Size]))
+			log.LogErrorf("action[streamRepairExtent] err(%v).", err)
 			return
 		}
 
@@ -486,6 +478,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			reply.ExtentID != request.ExtentID || reply.Size == 0 || reply.ExtentOffset != int64(currFixOffset) {
 			err = errors.Annotatef(fmt.Errorf("unavali reply"), "streamRepairExtent receive unavalid "+
 				"request(%v) reply(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId())
+			log.LogErrorf("action[streamRepairExtent] err(%v).", err)
 			return
 		}
 
@@ -497,6 +490,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			err = fmt.Errorf("streamRepairExtent crc mismatch expectCrc(%v) actualCrc(%v) extent(%v_%v) start fix from (%v)"+
 				" remoteSize(%v) localSize(%v) request(%v) reply(%v) ", reply.CRC, actualCrc, dp.partitionID, remoteExtentInfo.String(),
 				remoteExtentInfo.Source, remoteExtentInfo.Size, currFixOffset, request.GetUniqueLogId(), reply.GetUniqueLogId())
+			log.LogErrorf("action[streamRepairExtent] err(%v).", err)
 			return errors.Annotatef(err, "streamRepairExtent receive data error")
 		}
 
@@ -504,6 +498,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC, UpdateSize, BufferWrite)
 		if err != nil {
 			err = errors.Annotatef(err, "streamRepairExtent repair data error")
+			log.LogErrorf("action[streamRepairExtent] err(%v).", err)
 			return
 		}
 		currFixOffset += uint64(reply.Size)

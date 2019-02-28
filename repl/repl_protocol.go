@@ -59,7 +59,6 @@ type ReplProtocol struct {
 	postFunc     func(p *Packet) error                 // post-processing packet
 
 	isError bool
-	replId  uint64
 }
 
 func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet) error,
@@ -192,12 +191,10 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 	for index = 0; index < len(request.followerConns); index++ {
 		err = rp.allocateFollowersConns(request, index)
 		if err != nil {
-			msg := fmt.Sprintf("request inconnect(%v) sendRequestToAllFollowers (%v) err(%v)", rp.sourceConn.RemoteAddr().String(),
+			msg := fmt.Sprintf("request inconnect(%v) to(%v) err(%v)", rp.sourceConn.RemoteAddr().String(),
 				request.followersAddrs[index], err.Error())
-			err = fmt.Errorf(msg)
-			request.PackErrorBody(ActionSendToFollowers, msg)
-			rp.isError = true
-
+			err = errors.Annotatef(fmt.Errorf(msg), "Request(%v) sendRequestToAllFollowers Error", request.GetUniqueLogId())
+			request.PackErrorBody(ActionSendToFollowers, err.Error())
 			return
 		}
 		nodes := request.RemainingFollowers
@@ -207,11 +204,10 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 		}
 		request.RemainingFollowers = nodes
 		if err != nil {
-			msg := fmt.Sprintf("request inconnect(%v) write RequestToAllFollowers(%v) err(%v)", rp.sourceConn.RemoteAddr().String(),
+			msg := fmt.Sprintf("request inconnect(%v) to(%v) err(%v)", rp.sourceConn.RemoteAddr().String(),
 				request.followersAddrs[index], err.Error())
-			err = fmt.Errorf(msg)
+			err = errors.Annotatef(fmt.Errorf(msg), "Request(%v) sendRequestToAllFollowers Error", request.GetUniqueLogId())
 			request.PackErrorBody(ActionSendToFollowers, err.Error())
-			request.followerConns[index].Close()
 			rp.isError = true
 
 			return
@@ -252,13 +248,13 @@ func (rp *ReplProtocol) reciveAllFollowerResponse() {
 func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err error) {
 	// Receive p response from one member
 	if request.followerConns[index] == nil {
-		err = fmt.Errorf(ConnIsNullErr)
+		err = errors.Annotatef(fmt.Errorf(ConnIsNullErr), "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
 		return
 	}
 
 	// Check local execution result.
 	if request.IsErrPacket() {
-		err = fmt.Errorf(request.getErrMessage())
+		err = errors.Annotatef(fmt.Errorf(request.getErrMessage()), "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
 		log.LogErrorf("action[ActionReceiveFromFollower] %v.",
 			request.LogMessage(ActionReceiveFromFollower, LocalProcessAddr, request.StartT, fmt.Errorf(request.getErrMessage())))
 		return
@@ -267,11 +263,9 @@ func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err err
 	reply := NewPacket()
 	defer func() {
 		reply.clean()
-		if err!=nil {
-			request.followerConns[index].Close()
-		}
 	}()
 	if err = reply.ReadFromConn(request.followerConns[index], proto.ReadDeadlineTime); err != nil {
+		err = errors.Annotatef(err, "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
 		log.LogErrorf("action[ActionReceiveFromFollower] %v.", request.LogMessage(ActionReceiveFromFollower, request.followersAddrs[index], request.StartT, err))
 		return
 	}

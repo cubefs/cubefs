@@ -109,7 +109,8 @@ type DataPartition struct {
 	snapshot                      []*proto.File
 	snapshotMutex                 sync.RWMutex
 	intervalToUpdatePartitionSize int64
-	loadExtentHeaderStatus        int
+	loadExtentHeaderStatus  int
+
 
 	FullSyncTinyDeleteTime int64
 }
@@ -546,6 +547,7 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 	}
 	return
 }
+
 
 // DoExtentStoreRepair performs the repairs of the extent store.
 // 1. when the extent size is smaller than the max size on the record, start to repair the missing part.
