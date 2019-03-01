@@ -20,7 +20,7 @@ Using grafana as prometheus metrics web front：
    :align: center
 
 
-Also, user can use prometheus alertmanager to capture and route alerts to the correct receiver. please visit prometheus alertmanger doc webpage[https://prometheus.io/docs/alerting/configuration/]
+Also, user can use prometheus alertmanager to capture and route alerts to the correct receiver. please visit prometheus alertmanger `web-doc <https://prometheus.io/docs/alerting/alertmanager/>`_
 
 Grafana DashBoard Config:
 
