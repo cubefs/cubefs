@@ -59,6 +59,23 @@ func (p *Packet) clean() {
 	p.Arg = nil
 }
 
+func copyPacket(src, dst *Packet) {
+	dst.Magic = src.Magic
+	dst.ExtentType = src.ExtentType
+	dst.Opcode = src.Opcode
+	dst.ResultCode = src.ResultCode
+	dst.CRC = src.CRC
+	dst.Size = src.Size
+	dst.KernelOffset = src.KernelOffset
+	dst.PartitionID = src.PartitionID
+	dst.ExtentID = src.ExtentID
+	dst.ExtentOffset = src.ExtentOffset
+	dst.ReqID = src.ReqID
+	dst.Data = src.Data
+	dst.followersAddrs = src.followersAddrs
+	dst.followerConns = src.followerConns
+}
+
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
 	p.TpObject = exporter.NewTPCnt(p.GetOpMsg())
 	return

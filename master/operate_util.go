@@ -15,6 +15,8 @@
 package master
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/juju/errors"
@@ -22,10 +24,8 @@ import (
 	"github.com/tiglabs/containerfs/util/exporter"
 	"github.com/tiglabs/containerfs/util/log"
 	"math/rand"
-	"time"
-	"crypto/md5"
-	"encoding/hex"
 	"strings"
+	"time"
 )
 
 func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize int) (req *proto.CreateDataPartitionRequest) {

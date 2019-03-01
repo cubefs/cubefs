@@ -72,21 +72,21 @@ const (
 
 // DataNode defines the structure of a data node.
 type DataNode struct {
-	space            *SpaceManager
-	port             string
-	rackName         string
-	clusterID        string
-	localIP          string
-	localServerAddr  string
-	nodeID           uint64
-	raftDir          string
-	raftHeartbeat    string
-	raftReplica      string
-	raftStore        raftstore.RaftStore
-	tcpListener      net.Listener
-	stopC            chan bool
-	state            uint32
-	wg               sync.WaitGroup
+	space           *SpaceManager
+	port            string
+	rackName        string
+	clusterID       string
+	localIP         string
+	localServerAddr string
+	nodeID          uint64
+	raftDir         string
+	raftHeartbeat   string
+	raftReplica     string
+	raftStore       raftstore.RaftStore
+	tcpListener     net.Listener
+	stopC           chan bool
+	state           uint32
+	wg              sync.WaitGroup
 }
 
 func NewServer() *DataNode {
@@ -119,7 +119,6 @@ func (s *DataNode) Shutdown() {
 		atomic.StoreUint32(&s.state, Stopped)
 	}
 }
-
 
 // Sync keeps data node in sync.
 func (s *DataNode) Sync() {

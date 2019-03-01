@@ -77,8 +77,8 @@ const (
 )
 
 const (
-	maxRetryCounts         = 10     // maximum number of retries for random writes
-	MinTinyExtentsToRepair = 10     // minimum number of tiny extents to repair
+	maxRetryCounts         = 10        // maximum number of retries for random writes
+	MinTinyExtentsToRepair = 10        // minimum number of tiny extents to repair
 	NumOfRaftLogsToRetain  = 100000    // Count of raft logs per data partition
 	MaxUnit64              = 1<<64 - 1 // Unit64 max value
 )

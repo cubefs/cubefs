@@ -22,11 +22,11 @@ import (
 
 	"github.com/juju/errors"
 
+	"crypto/md5"
+	"encoding/hex"
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
-	"crypto/md5"
 	"strings"
-	"encoding/hex"
 )
 
 const (

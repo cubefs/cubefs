@@ -44,7 +44,7 @@ func (rs *RocksDBStore) Open(cacheSize int) error {
 	opts.SetBlockBasedTableFactory(basedTableOptions)
 	opts.SetCreateIfMissing(true)
 
-	opts.SetWriteBufferSize(128*util.KB)
+	opts.SetWriteBufferSize(128 * util.KB)
 	opts.SetMaxWriteBufferNumber(2)
 	opts.SetCompression(gorocksdb.NoCompression)
 	db, err := gorocksdb.OpenDb(opts, rs.dir)

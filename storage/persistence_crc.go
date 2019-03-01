@@ -24,18 +24,17 @@ type BlockCrc struct {
 	value   []byte
 }
 
-
 type UpdateCrcFunc func(extentID uint64, blockNo uint16, crc uint32) (err error)
 type ScanBlocksFunc func(extentID uint64) (bcs []*BlockCrc, err error)
 type GetExtentCrcFunc func(extentID uint64) (crc uint32, err error)
 
 func (s *ExtentStore) PersistenceBlockCrc(extentID uint64, blockNo uint16, blockCrc uint32) (err error) {
 	cmdMap := make(map[string][]byte, 0)
-	blockCrcKey:=fmt.Sprintf(BlockCrcPrefix+"%v_%v", extentID, blockNo)
-	blockCrcValue:=make([]byte,4)
+	blockCrcKey := fmt.Sprintf(BlockCrcPrefix+"%v_%v", extentID, blockNo)
+	blockCrcValue := make([]byte, 4)
 	binary.BigEndian.PutUint32(blockCrcValue[0:BlockCrcValueLen], blockCrc)
-	cmdMap[blockCrcKey] =blockCrcValue
-	_,err=s.crcStore.Put(blockCrcKey,blockCrcValue,false)
+	cmdMap[blockCrcKey] = blockCrcValue
+	_, err = s.crcStore.Put(blockCrcKey, blockCrcValue, false)
 
 	return
 }
@@ -165,4 +164,3 @@ func (s *ExtentStore) GetPersistenceInode(extentID uint64) (inode uint64, err er
 	inode = binary.BigEndian.Uint64(v.([]byte))
 	return
 }
-

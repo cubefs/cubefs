@@ -45,5 +45,5 @@ const (
 const (
 	ReplRuning    = 2
 	ReplExiting   = 1
-	ReplHasExited = -1
+	ReplHasExited = -2
 )
