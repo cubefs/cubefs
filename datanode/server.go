@@ -52,7 +52,7 @@ var (
 const (
 	DefaultRackName         = "cfs_rack1"
 	DefaultRaftDir          = "raft"
-	DefaultRaftLogsToRetain = 100000 // Count of raft logs per data partition
+	DefaultRaftLogsToRetain = 20000 // Count of raft logs per data partition
 )
 
 const (
@@ -60,15 +60,14 @@ const (
 )
 
 const (
-	ConfigKeyLocalIP       = "localIP"          // string
-	ConfigKeyPort          = "port"             // int
-	ConfigKeyMasterAddr    = "masterAddr"       // array
-	ConfigKeyRack          = "rack"             // string
-	ConfigKeyDisks         = "disks"            // array
-	ConfigKeyRaftDir       = "raftDir"          // string
-	ConfigKeyRaftHeartbeat = "raftHeartbeat"    // string
-	ConfigKeyRaftReplicate = "raftReplica"      // string
-	ConfigKeyRaftRetainLog = "raftLogsToRetain" // string
+	ConfigKeyLocalIP       = "localIP"       // string
+	ConfigKeyPort          = "port"          // int
+	ConfigKeyMasterAddr    = "masterAddr"    // array
+	ConfigKeyRack          = "rack"          // string
+	ConfigKeyDisks         = "disks"         // array
+	ConfigKeyRaftDir       = "raftDir"       // string
+	ConfigKeyRaftHeartbeat = "raftHeartbeat" // string
+	ConfigKeyRaftReplica   = "raftReplica"   // string
 )
 
 // DataNode defines the structure of a data node.
@@ -83,7 +82,6 @@ type DataNode struct {
 	raftDir          string
 	raftHeartbeat    string
 	raftReplica      string
-	raftLogsToRetain uint64
 	raftStore        raftstore.RaftStore
 	tcpListener      net.Listener
 	stopC            chan bool

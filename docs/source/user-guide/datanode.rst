@@ -26,7 +26,6 @@ Configurations
    "raftHeartbeat", "string", "Port of raft heartbeat TCP network to be listen", "Yes"
    "raftReplica", "string", "Port of raft replicate TCP network to be listen", "Yes"
    "raftDir", "string", "Path for raft log file storage", "No"
-   "raftLogsToRetain", "string", "Number of RAFT logs to retain。Default is 100000", "No"
    "consulAddr", "string", "Addresses of monitor system", "No"
    "exporterPort", "string", "Port for monitor system", "No"
    "masterAddr", "string slice", "Addresses of master server", "Yes"
