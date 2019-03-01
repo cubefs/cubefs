@@ -26,9 +26,9 @@ type RocksDBStore struct {
 }
 
 // NewRocksDBStore returns a new RocksDB instance.
-func NewRocksDBStore(dir string) (store *RocksDBStore) {
+func NewRocksDBStore(dir string, cacheSize int) (store *RocksDBStore) {
 	store = &RocksDBStore{dir: dir}
-	err := store.Open()
+	err := store.Open(cacheSize)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to Open rocksDB! err:%v", err.Error()))
 	}
@@ -36,9 +36,9 @@ func NewRocksDBStore(dir string) (store *RocksDBStore) {
 }
 
 // Open opens the RocksDB instance.
-func (rs *RocksDBStore) Open() error {
+func (rs *RocksDBStore) Open(cacheSize int) error {
 	basedTableOptions := gorocksdb.NewDefaultBlockBasedTableOptions()
-	basedTableOptions.SetBlockCache(gorocksdb.NewLRUCache(3 << 30))
+	basedTableOptions.SetBlockCache(gorocksdb.NewLRUCache(cacheSize))
 	opts := gorocksdb.NewDefaultOptions()
 	opts.SetBlockBasedTableFactory(basedTableOptions)
 	opts.SetCreateIfMissing(true)
@@ -55,11 +55,11 @@ func (rs *RocksDBStore) Open() error {
 }
 
 // Del deletes a key-value pair.
-func (rs *RocksDBStore) Del(key interface{}) (result interface{}, err error) {
+func (rs *RocksDBStore) Del(key interface{}, isSync bool) (result interface{}, err error) {
 	ro := gorocksdb.NewDefaultReadOptions()
 	wo := gorocksdb.NewDefaultWriteOptions()
 	wb := gorocksdb.NewWriteBatch()
-	//wo.SetSync(true)
+	wo.SetSync(isSync)
 	defer wb.Clear()
 	slice, err := rs.db.Get(ro, []byte(key.(string)))
 	if err != nil {
@@ -71,10 +71,10 @@ func (rs *RocksDBStore) Del(key interface{}) (result interface{}, err error) {
 }
 
 // Put adds a new key-value pair to the RocksDB.
-func (rs *RocksDBStore) Put(key, value interface{}) (result interface{}, err error) {
+func (rs *RocksDBStore) Put(key, value interface{}, isSync bool) (result interface{}, err error) {
 	wo := gorocksdb.NewDefaultWriteOptions()
 	wb := gorocksdb.NewWriteBatch()
-	//wo.SetSync(true)
+	wo.SetSync(isSync)
 	wb.Put([]byte(key.(string)), value.([]byte))
 	if err := rs.db.Write(wo, wb); err != nil {
 		return nil, err
@@ -92,9 +92,9 @@ func (rs *RocksDBStore) Get(key interface{}) (result interface{}, err error) {
 
 // DeleteKeyAndPutIndex deletes the key-value pair based on the given key and put other keys in the cmdMap to RocksDB.
 // TODO explain
-func (rs *RocksDBStore) DeleteKeyAndPutIndex(key string, cmdMap map[string][]byte) error {
+func (rs *RocksDBStore) DeleteKeyAndPutIndex(key string, cmdMap map[string][]byte, isSync bool) error {
 	wo := gorocksdb.NewDefaultWriteOptions()
-	wo.SetSync(true)
+	wo.SetSync(isSync)
 	wb := gorocksdb.NewWriteBatch()
 	defer wb.Clear()
 	wb.Delete([]byte(key))
@@ -113,9 +113,9 @@ func (rs *RocksDBStore) DeleteKeyAndPutIndex(key string, cmdMap map[string][]byt
 }
 
 // BatchPut puts the key-value pairs in batch.
-func (rs *RocksDBStore) BatchPut(cmdMap map[string][]byte) error {
+func (rs *RocksDBStore) BatchPut(cmdMap map[string][]byte, isSync bool) error {
 	wo := gorocksdb.NewDefaultWriteOptions()
-	//wo.SetSync(true)
+	wo.SetSync(isSync)
 	wb := gorocksdb.NewWriteBatch()
 	for key, value := range cmdMap {
 		wb.Put([]byte(key), value)

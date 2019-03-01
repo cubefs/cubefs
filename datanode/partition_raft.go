@@ -479,25 +479,20 @@ func (dp *DataPartition) getPartitionSize() (size uint64, err error) {
 		err = errors.Annotatef(err, " partition=%v get host[%v] connect", dp.partitionID, target)
 		return
 	}
-
+	defer gConnPool.PutConnect(conn, true)
 	err = p.WriteToConn(conn) // write command to the remote host
 	if err != nil {
-		gConnPool.PutConnect(conn, true)
 		err = errors.Annotatef(err, "partition=%v write to host[%v]", dp.partitionID, target)
 		return
 	}
 	err = p.ReadFromConn(conn, 60)
 	if err != nil {
-		gConnPool.PutConnect(conn, true)
 		err = errors.Annotatef(err, "partition=%v read from host[%v]", dp.partitionID, target)
 		return
 	}
 
 	size = binary.BigEndian.Uint64(p.Data)
-
 	log.LogDebugf("partition=%v size=%v", dp.partitionID, size)
-
-	gConnPool.PutConnect(conn, true)
 
 	return
 }
@@ -519,14 +514,13 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) 
 		if err != nil {
 			return
 		}
+		defer gConnPool.PutConnect(conn, true)
 		err = p.WriteToConn(conn)
 		if err != nil {
-			gConnPool.PutConnect(conn, true)
 			return
 		}
 		err = p.ReadFromConn(conn, 60)
 		if err != nil {
-			gConnPool.PutConnect(conn, true)
 			return
 		}
 		gConnPool.PutConnect(conn, true)
@@ -604,18 +598,15 @@ func (dp *DataPartition) getRemoteAppliedID(target string, p *repl.Packet) (appl
 	if err != nil {
 		return
 	}
+	defer gConnPool.PutConnect(conn, true)
 	err = p.WriteToConn(conn) // write command to the remote host
 	if err != nil {
-		gConnPool.PutConnect(conn, true)
 		return
 	}
 	err = p.ReadFromConn(conn, 60)
 	if err != nil {
-		gConnPool.PutConnect(conn, true)
 		return
 	}
-	gConnPool.PutConnect(conn, true)
-
 	appliedID = binary.BigEndian.Uint64(p.Data)
 
 	log.LogDebugf("[getRemoteAppliedID] partition=%v remoteAppliedID=%v", dp.partitionID, appliedID)

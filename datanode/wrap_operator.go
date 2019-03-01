@@ -694,22 +694,16 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bo
 	// forward the packet to the leader if local one is not the leader
 	conn, err = gConnPool.GetConnect(leaderAddr)
 	if err != nil {
-		gConnPool.PutConnect(conn, true)
 		return
 	}
-
+	defer gConnPool.PutConnect(conn, true)
 	err = p.WriteToConn(conn)
 	if err != nil {
-		gConnPool.PutConnect(conn, true)
 		return
 	}
-
 	if err = p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
-		gConnPool.PutConnect(conn, true)
 		return
 	}
-
-	gConnPool.PutConnect(conn, true)
 
 	return
 }

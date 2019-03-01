@@ -116,7 +116,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 		return nil, fmt.Errorf("NewExtentStore [%v] err[%v]", dataDir, err)
 	}
 
-	s.crcStore = raftstore.NewRocksDBStore(path.Join(s.dataPath, ExtCrcFileName))
+	s.crcStore = raftstore.NewRocksDBStore(path.Join(s.dataPath, ExtCrcFileName), 10*util.MB)
 	tinyExtentsDeleteFpPath := path.Join(s.dataPath, TinyExtDeletedFileName)
 	if s.tinyExtentDeleteFp, err = os.OpenFile(tinyExtentsDeleteFpPath, TinyDeleteFileOpt, 0666); err != nil {
 		return
@@ -345,25 +345,25 @@ func (s *ExtentStore) autoFixDirtyBlockCrc() {
 		if ei == nil {
 			continue
 		}
-		if !(!IsTinyExtent(ei.FileID) && time.Now().Unix()-ei.ModifyTime.Unix() > 10*60 && ei.IsDeleted == false && ei.Size > 0) {
-			continue
+		if !IsTinyExtent(ei.FileID) && time.Now().Unix()-ei.ModifyTime.Unix() > 10*60 && ei.IsDeleted == false && ei.Size > 0 {
+			extent, err := s.extentWithCache(ei.FileID)
+			if err != nil {
+				continue
+			}
+			crc, err := extent.autoFixDirtyCrc(s.PersistenceBlockCrc, s.ScanBlocks, s.GetPersistenceExtentCrc)
+			if err != nil {
+				continue
+			}
+			s.eiMutex.RLock()
+			extentInfo, has := s.extentInfoMap[ei.FileID]
+			s.eiMutex.RUnlock()
+			if !has {
+				return
+			}
+			extentInfo.FromExtent(extent, crc)
+			s.PersistenceExtentCrc(ei.FileID, crc)
 		}
-		extent, err := s.extentWithCache(ei.FileID)
-		if err != nil {
-			continue
-		}
-		crc, err := extent.autoFixDirtyCrc(s.PersistenceBlockCrc, s.ScanBlocks,s.GetPersistenceExtentCrc)
-		if err != nil {
-			continue
-		}
-		s.eiMutex.RLock()
-		extentInfo, has := s.extentInfoMap[ei.FileID]
-		s.eiMutex.RUnlock()
-		if !has {
-			return
-		}
-		extentInfo.FromExtent(extent, crc)
-		s.PersistenceExtentCrc(ei.FileID, crc)
+
 		time.Sleep(time.Microsecond * 10)
 	}
 
@@ -372,10 +372,9 @@ func (s *ExtentStore) autoFixDirtyBlockCrc() {
 // Write writes the given extent to the disk.
 func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, isUpdateSize bool, isSync bool) (err error) {
 	var (
-		has    bool
-		e      *Extent
-		ei     *ExtentInfo
-		newCrc uint32
+		has bool
+		e   *Extent
+		ei  *ExtentInfo
 	)
 	s.eiMutex.RLock()
 	ei, has = s.extentInfoMap[extentID]
@@ -391,11 +390,12 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return err
 	}
-	newCrc, err = e.Write(data, offset, size, crc, isUpdateSize, isSync, s.PersistenceBlockCrc)
+	err = e.Write(data, offset, size, crc, isUpdateSize, isSync, s.PersistenceBlockCrc)
 	if err != nil {
 		return err
 	}
-	ei.FromExtent(e, newCrc)
+	ei.FromExtent(e, 0)
+
 	return nil
 }
 

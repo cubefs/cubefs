@@ -120,6 +120,18 @@ func (s *DataNode) Shutdown() {
 	}
 }
 
+func (s *DataNode) GC() {
+	ticker := time.NewTicker(time.Second * 10)
+	for {
+		select {
+		case <-ticker.C:
+			runtime.GC()
+		case <-s.stopC:
+			return
+		}
+	}
+}
+
 // Sync keeps data node in sync.
 func (s *DataNode) Sync() {
 	if atomic.LoadUint32(&s.state) == Running {

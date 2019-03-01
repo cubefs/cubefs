@@ -76,7 +76,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		log.LogError(errors.ErrorStack(err))
 		return
 	}
-	m.rocksDBStore = raftstore.NewRocksDBStore(m.storeDir)
+	m.rocksDBStore = raftstore.NewRocksDBStore(m.storeDir, LRUCacheSize)
 	m.initFsm()
 	m.initCluster()
 	if err = m.createRaftServer(); err != nil {

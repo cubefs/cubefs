@@ -201,7 +201,7 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdate
 }
 
 // Write writes data to an extent.
-func (e *Extent) Write(data []byte, offset, size int64, crc uint32, isUpdateSize, isSync bool, crcFunc UpdateCrcFunc) (newCrc uint32, err error) {
+func (e *Extent) Write(data []byte, offset, size int64, crc uint32, isUpdateSize, isSync bool, crcFunc UpdateCrcFunc) (err error) {
 	if IsTinyExtent(e.extentID) {
 		err = e.WriteTiny(data, offset, size, crc, isUpdateSize, isSync)
 		return
@@ -224,7 +224,6 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, isUpdateSize
 	}
 	if offsetInBlock == 0 && size == util.BlockSize {
 		err = crcFunc(e.extentID, uint16(blockNo), crc)
-		newCrc = crc
 		return
 	} else {
 		err = crcFunc(e.extentID, uint16(blockNo), 0)
@@ -280,10 +279,6 @@ func (e *Extent) Flush() (err error) {
 }
 
 func (e *Extent) autoFixDirtyCrc(crcFunc UpdateCrcFunc, scanFunc ScanBlocksFunc, getExtentCrc GetExtentCrcFunc) (crc uint32, err error) {
-	crc, err = getExtentCrc(e.extentID)
-	if crc != 0 {
-		return crc, nil
-	}
 	bcs, err := scanFunc(e.extentID)
 	if err != nil {
 		return
@@ -304,7 +299,7 @@ func (e *Extent) autoFixDirtyCrc(crcFunc UpdateCrcFunc, scanFunc ScanBlocksFunc,
 		bc.crc = crc32.ChecksumIEEE(data[:readN])
 		err = crcFunc(e.extentID, bc.blockNo, bc.crc)
 		if err != nil {
-			return 0,nil
+			return 0, nil
 		}
 		binary.BigEndian.PutUint32(data[index*util.PerBlockCrcSize:(index+1)*util.PerBlockCrcSize], bc.crc)
 	}

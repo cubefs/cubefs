@@ -46,21 +46,21 @@ func (s *ExtentStore) PersistenceBlockCrc(extentID uint64, blockNo uint16, block
 	data := make([]byte, 4)
 	binary.BigEndian.PutUint32(data, 0)
 	cmdMap[fmt.Sprintf(ExtentCrcPrefix+"%v", extentID)] = data
-	err = s.crcStore.BatchPut(cmdMap)
+	err = s.crcStore.BatchPut(cmdMap, false)
 	return
 }
 
 func (s *ExtentStore) PersistenceMarkDeleteExtent(extentID uint64) (err error) {
 	key := fmt.Sprintf(MarkExtentDeletePrefix+"%v", extentID)
 	data := make([]byte, 4)
-	_, err = s.crcStore.Put(key, data)
+	_, err = s.crcStore.Put(key, data, false)
 	return
 }
 
 func (s *ExtentStore) PersistenceBaseExtentID(extentID uint64) (err error) {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, extentID)
-	_, err = s.crcStore.Put(BaseExtentIDPrefix, value)
+	_, err = s.crcStore.Put(BaseExtentIDPrefix, value, false)
 	return
 }
 
@@ -79,7 +79,7 @@ func (s *ExtentStore) GetPersistenceBaseExtentID() (extentID uint64, err error) 
 func (s *ExtentStore) PersistenceHasDeleteExtent(extentID uint64) (err error) {
 	key := fmt.Sprintf(HasExtentDeletePrefix+"%v", extentID)
 	data := make([]byte, 4)
-	_, err = s.crcStore.Put(key, data)
+	_, err = s.crcStore.Put(key, data, false)
 	if err != nil {
 		return
 	}
@@ -97,7 +97,7 @@ func (s *ExtentStore) IsMarkDeleteExtent(extentID uint64) bool {
 }
 
 func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
-	key := fmt.Sprintf("%v_", extentID)
+	key := fmt.Sprintf(BlockCrcPrefix+"%v_", extentID)
 	bcs = make([]*BlockCrc, 0)
 	result, err := s.crcStore.SeekForPrefix([]byte(key))
 	if err != nil {
@@ -129,7 +129,7 @@ func (s *ExtentStore) DeleteBlocks(extentID uint64) (bcs []*BlockCrc, err error)
 	}
 
 	for blockKey := range result {
-		s.crcStore.Del(blockKey)
+		s.crcStore.Del(blockKey, false)
 	}
 	return
 }
@@ -159,7 +159,7 @@ func (s *ExtentStore) PersistenceInode(inode uint64, extentID uint64) (err error
 	key := fmt.Sprintf(StoreInodePrefix+"%v", extentID)
 	data := make([]byte, 8)
 	binary.BigEndian.PutUint64(data, inode)
-	_, err = s.crcStore.Put(key, data)
+	_, err = s.crcStore.Put(key, data, false)
 	return
 }
 
@@ -180,7 +180,7 @@ func (s *ExtentStore) PersistenceExtentCrc(extentID uint64, crc uint32) (err err
 	key := fmt.Sprintf(ExtentCrcPrefix+"%v", extentID)
 	data := make([]byte, 4)
 	binary.BigEndian.PutUint32(data, crc)
-	_, err = s.crcStore.Put(key, data)
+	_, err = s.crcStore.Put(key, data, false)
 	return
 }
 

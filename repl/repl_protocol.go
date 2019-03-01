@@ -98,6 +98,7 @@ func (rp *ReplProtocol) ServerConn() {
 		rp.Stop()
 		if atomic.LoadInt32(&rp.exited) == ReplHasExited {
 			rp.sourceConn.Close()
+			rp.cleanResource()
 		}
 
 	}()
@@ -169,10 +170,9 @@ func (rp *ReplProtocol) OperatorAndForwardPkt() {
 		case request := <-rp.responseCh:
 			rp.writeResponseToClient(request)
 		case <-rp.exitC:
-			rp.cleanResource()
 			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
-				atomic.StoreInt32(&rp.exited, ReplHasExited)
 				rp.sourceConn.Close()
+				rp.cleanResource()
 			}
 			return
 		}
@@ -188,8 +188,8 @@ func (rp *ReplProtocol) ReceiveResponse() {
 			rp.reciveAllFollowerResponse()
 		case <-rp.exitC:
 			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
-				atomic.StoreInt32(&rp.exited, ReplHasExited)
 				rp.sourceConn.Close()
+				rp.cleanResource()
 			}
 			return
 		}
@@ -314,7 +314,8 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
 		rp.setReplProtocolError()
-		log.LogErrorf("rp is %v", rp.replId, err.Error())
+		log.LogErrorf(err.Error())
+		rp.Stop()
 	}
 
 	// execute the post-processing function
@@ -332,7 +333,7 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 		rp.setReplProtocolError()
 		rp.Stop()
 	}
-	log.LogDebugf("rp is %v mesg is %v", rp.replId, reply.LogMessage(ActionWriteToClient,
+	log.LogDebugf(reply.LogMessage(ActionWriteToClient,
 		rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
 }
 
@@ -365,7 +366,6 @@ func (rp *ReplProtocol) allocateFollowersConns(p *Packet, index int) (err error)
 		}
 		rp.followerConnects.Store(key, conn)
 		p.followerConns[index] = conn
-		log.LogWarnf("ReplId(%v) getConn from pool (%v) to (%v)", rp.replId, conn.LocalAddr().String(), conn.RemoteAddr().String())
 	}
 
 	return nil
