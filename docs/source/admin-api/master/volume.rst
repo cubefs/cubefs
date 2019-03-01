@@ -23,7 +23,7 @@ Delete
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/vol/delete?name=test&owner=cfs"
+   curl -v "http://127.0.0.1/vol/delete?name=test&authKey=md5(owner)"
 
 
 Mark the vol status to MarkDelete first, then delete data partition and meta partition asynchronous,finally delete meta data from persist store
@@ -32,14 +32,14 @@ Mark the vol status to MarkDelete first, then delete data partition and meta par
    :header: "Parameter", "Type", "Description"
    
    "name", "string", ""
-   "owner", "string", "the owner of vol"
+   "authKey", "string", "calculates the MD5 value of the owner field  as authentication information"
 
 Get
 ---------
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/client/vol?name=test&owner=cfs" | python -m json.tool
+   curl -v "http://127.0.0.1/client/vol?name=test&authKey=md5(owner)" | python -m json.tool
 
 
 show the base information of the vol,such as name,the detail of data partitions and meta partitions and so on.
@@ -48,7 +48,7 @@ show the base information of the vol,such as name,the detail of data partitions 
    :header: "Parameter", "Type", "Description"
    
    "name", "string", ""
-   "owner", "string", "the owner of vol"
+   "authKey", "string", "calculates the MD5 value of the owner field  as authentication information"
 
 response
 
@@ -93,7 +93,7 @@ Update
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/vol/update?name=test&capacity=100&owner=cfs"
+   curl -v "http://127.0.0.1/vol/update?name=test&capacity=100&authKey=md5(owner)"
 
 add the vol quota
 
@@ -102,4 +102,4 @@ add the vol quota
 
    "name", "string", ""
    "capacity", "int", "the quota of vol, unit is GB"
-   "owner", "string", "the owner of vol"
+   "authKey", "string", "calculates the MD5 value of the owner field  as authentication information"
