@@ -21,6 +21,7 @@ fuse.json
    {
      "mountPoint": "/mnt/fuse",
      "volName": "test",
+	 "owner": "cfs",
      "masterAddr": "192.168.31.173:80,192.168.31.141:80,192.168.30.200:80",
      "logDir": "/export/Logs/cfs",
      "logLevel": "info",
@@ -32,9 +33,10 @@ fuse.json
 
    "mountPoint", "string", "Mount point", "Yes"
    "volName", "string", "Volume name", "Yes"
+   "owner", "string", "Owner name as authentication", "Yes"
    "masterAddr", "string", "Resource manager IP address", "Yes"
-   "logDir", "string", "Path to store log files", "Yes"
-   "logLevel", "string", "Log level：debug, info, warn, error", "Yes"
+   "logDir", "string", "Path to store log files", "No"
+   "logLevel", "string", "Log level：debug, info, warn, error", "No"
    "profPort", "string", "Golang pprof port", "No"
    "exporterPort", "string", "Performance monitor port", "No"
    "consulAddr", "string", "Performance monitor server address", "No"
