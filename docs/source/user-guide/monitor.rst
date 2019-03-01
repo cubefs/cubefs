@@ -17,8 +17,10 @@ CFS use prometheus as metrics collector. It simply config as follow in master，
 Using grafana as prometheus metrics web front：
 
 .. image:: ../pic/cfs-grafana-dashboard.png
-   :align: center   
+   :align: center
 
+
+Also, user can use prometheus alertmanager to capture and route alerts to the correct receiver. please visit prometheus alertmanger doc webpage[https://prometheus.io/docs/alerting/configuration/]
 
 Grafana DashBoard Config:
 
