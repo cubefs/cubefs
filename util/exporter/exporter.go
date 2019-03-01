@@ -29,7 +29,7 @@ const (
 	AppName               = "cfs"          //app name
 	ConfigKeyExporterPort = "exporterPort" //exporter port
 	ConfigKeyConsulAddr   = "consulAddr"   //consul addr
-	ChSize                = 1024 * 1024    //collect chan size
+	ChSize                = 1024 * 10      //collect chan size
 )
 
 var (
@@ -49,9 +49,6 @@ func Init(cluster string, role string, cfg *config.Config) {
 		return
 	}
 	enabled = true
-	if !enabled {
-		return
-	}
 	http.Handle(PromHandlerPattern, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
 		Timeout: 5 * time.Second,
 	}))

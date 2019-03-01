@@ -10,10 +10,11 @@ var (
 	TPPool = &sync.Pool{New: func() interface{} {
 		return new(TimePoint)
 	}}
-	TPCh = make(chan *TimePoint, ChSize)
+	TPCh chan *TimePoint
 )
 
 func collectTP() {
+	TPCh = make(chan *TimePoint, ChSize)
 	for {
 		m := <-TPCh
 		metric := m.Metric()

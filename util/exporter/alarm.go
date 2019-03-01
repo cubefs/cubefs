@@ -10,10 +10,11 @@ var (
 		return new(Alarm)
 	}}
 	//AlarmGroup  sync.Map
-	AlarmCh = make(chan *Alarm, ChSize)
+	AlarmCh chan *Alarm
 )
 
 func collectAlarm() {
+	AlarmCh = make(chan *Alarm, ChSize)
 	for {
 		m := <-AlarmCh
 		AlarmPool.Put(m)
