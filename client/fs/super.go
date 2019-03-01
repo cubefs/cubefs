@@ -31,6 +31,7 @@ import (
 type Super struct {
 	cluster     string
 	volname     string
+	owner       string
 	ic          *InodeCache
 	mw          *meta.MetaWrapper
 	ec          *stream.ExtentClient
@@ -45,9 +46,9 @@ var (
 )
 
 // NewSuper returns a new Super.
-func NewSuper(volname, master string, icacheTimeout, lookupValid, attrValid, enSyncWrite int64) (s *Super, err error) {
+func NewSuper(volname, owner, master string, icacheTimeout, lookupValid, attrValid, enSyncWrite int64) (s *Super, err error) {
 	s = new(Super)
-	s.mw, err = meta.NewMetaWrapper(volname, master)
+	s.mw, err = meta.NewMetaWrapper(volname, owner, master)
 	if err != nil {
 		return nil, errors.Annotate(err, "NewMetaWrapper failed!")
 	}
@@ -58,6 +59,7 @@ func NewSuper(volname, master string, icacheTimeout, lookupValid, attrValid, enS
 	}
 
 	s.volname = volname
+	s.owner = owner
 	s.cluster = s.mw.Cluster()
 	inodeExpiration := DefaultInodeExpiration
 	if icacheTimeout >= 0 {

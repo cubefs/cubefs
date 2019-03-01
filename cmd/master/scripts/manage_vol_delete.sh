@@ -1,2 +1,2 @@
 #!/bin/bash
-curl -v "http://127.0.0.1/vol/delete?name=test"
+curl -v "http://127.0.0.1/vol/delete?name=test&authKey=md5(owner)"

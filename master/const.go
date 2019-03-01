@@ -26,6 +26,8 @@ const (
 	thresholdKey         = "threshold"
 	dataPartitionSizeKey = "size"
 	volCapacityKey       = "capacity"
+	volOwnerKey          = "owner"
+	volAuthKey           = "authKey"
 )
 
 const (

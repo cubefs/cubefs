@@ -85,7 +85,7 @@ func (m *Server) handlerWithInterceptor() http.Handler {
 			}
 			if m.leaderInfo.addr == "" {
 				log.LogErrorf("action[handlerWithInterceptor] no leader,request[%v]", r.URL)
-				http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
+				http.Error(w, "no leader", http.StatusBadRequest)
 				return
 			}
 			m.proxy(w, r)

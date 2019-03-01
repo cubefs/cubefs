@@ -26,6 +26,7 @@ import (
 type Vol struct {
 	ID                uint64
 	Name              string
+	Owner             string
 	dpReplicaNum      uint8
 	mpReplicaNum      uint8
 	Status            uint8
@@ -38,12 +39,13 @@ type Vol struct {
 	sync.RWMutex
 }
 
-func newVol(id uint64, name string, dpSize, capacity uint64) (vol *Vol) {
+func newVol(id uint64, name, owner string, dpSize, capacity uint64) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	vol.dpReplicaNum = defaultReplicaNum
 	vol.threshold = defaultMetaPartitionMemUsageThreshold
 	vol.mpReplicaNum = defaultReplicaNum
+	vol.Owner = owner
 	if dpSize == 0 {
 		dpSize = util.DefaultDataPartitionSize
 	}

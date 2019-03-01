@@ -24,6 +24,9 @@ import (
 
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util/log"
+	"crypto/md5"
+	"strings"
+	"encoding/hex"
 )
 
 const (
@@ -50,6 +53,11 @@ type VolStatInfo struct {
 func (mw *MetaWrapper) fetchVolumeView() (*VolumeView, error) {
 	params := make(map[string]string)
 	params["name"] = mw.volname
+	authKey, err := calculateAuthKey(mw.owner)
+	if err != nil {
+		return nil, err
+	}
+	params["authKey"] = authKey
 	body, err := mw.master.Request(http.MethodPost, proto.ClientVol, params, nil)
 	if err != nil {
 		log.LogWarnf("fetchVolumeView request: err(%v)", err)
@@ -138,4 +146,15 @@ func (mw *MetaWrapper) refresh() {
 			mw.updateVolStatInfo()
 		}
 	}
+}
+
+func calculateAuthKey(key string) (authKey string, err error) {
+	h := md5.New()
+	_, err = h.Write([]byte(key))
+	if err != nil {
+		log.LogErrorf("action[calculateAuthKey] calculate auth key[%v] failed,err[%v]", key, err)
+		return
+	}
+	cipherStr := h.Sum(nil)
+	return strings.ToLower(hex.EncodeToString(cipherStr)), nil
 }

@@ -47,6 +47,7 @@ type MetaWrapper struct {
 	sync.RWMutex
 	cluster string
 	volname string
+	owner   string
 	master  util.MasterHelper
 	conns   *util.ConnectPool
 
@@ -67,9 +68,10 @@ type MetaWrapper struct {
 	usedSize  uint64
 }
 
-func NewMetaWrapper(volname, masterHosts string) (*MetaWrapper, error) {
+func NewMetaWrapper(volname, owner, masterHosts string) (*MetaWrapper, error) {
 	mw := new(MetaWrapper)
 	mw.volname = volname
+	mw.owner = owner
 	master := strings.Split(masterHosts, HostsSeparator)
 	mw.master = util.NewMasterHelper()
 	for _, ip := range master {

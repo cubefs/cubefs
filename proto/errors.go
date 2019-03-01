@@ -56,11 +56,12 @@ var (
 	ErrIllegalMetaReplica              = errors.New("illegal meta replica")
 	ErrNoEnoughReplica                 = errors.New("no enough replicas")
 	ErrNoLeader                        = errors.New("no leader")
+	ErrVolAuthKeyNotMatch              = errors.New("client and server auth key do not match")
 )
 
 // http response error code and error message definitions
 const (
-	ErrCodeSuccess = iota
+	ErrCodeSuccess                         = iota
 	ErrCodeInternalError
 	ErrCodeParamError
 	ErrCodeInvalidCfg
@@ -92,6 +93,7 @@ const (
 	ErrCodeIllegalMetaReplica
 	ErrCodeNoEnoughReplica
 	ErrCodeNoLeader
+	ErrCodeVolAuthKeyNotMatch
 )
 
 // Err2CodeMap error map to code
@@ -128,4 +130,5 @@ var Err2CodeMap = map[error]int32{
 	ErrIllegalMetaReplica:              ErrCodeIllegalMetaReplica,
 	ErrNoEnoughReplica:                 ErrCodeNoEnoughReplica,
 	ErrNoLeader:                        ErrCodeNoLeader,
+	ErrVolAuthKeyNotMatch:              ErrCodeVolAuthKeyNotMatch,
 }
