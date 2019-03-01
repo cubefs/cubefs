@@ -262,12 +262,6 @@ func (dp *DataPartition) Stop() {
 	dp.stopRaft()
 }
 
-// FlushDelete flushes the delete request.
-func (dp *DataPartition) FlushDelete() (err error) {
-	err = dp.extentStore.FlushDelete()
-	return
-}
-
 // Disk returns the disk instance.
 func (dp *DataPartition) Disk() *Disk {
 	return dp.disk

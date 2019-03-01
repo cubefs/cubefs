@@ -350,7 +350,7 @@ func (s *ExtentStore) autoFixDirtyBlockCrc() {
 			if err != nil {
 				continue
 			}
-			crc, err := extent.autoFixDirtyCrc(s.PersistenceBlockCrc, s.ScanBlocks, s.GetPersistenceExtentCrc)
+			crc, err := extent.autoFixDirtyCrc(s.PersistenceBlockCrc, s.ScanBlocks)
 			if err != nil {
 				continue
 			}
@@ -435,6 +435,19 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	return
 }
 
+func (s *ExtentStore) tinyDelete(e *Extent, offset, size, tinyDeleteFileOffset int64) (err error) {
+	if offset+size > e.dataSize {
+		return
+	}
+	if err = e.DeleteTiny(offset, size); err != nil {
+		return
+	}
+	if err = s.RecordTinyDelete(e.extentID, offset, size, tinyDeleteFileOffset); err != nil {
+		return
+	}
+	return
+}
+
 // MarkDelete marks the given extent as deleted.
 func (s *ExtentStore) MarkDelete(extentID uint64, offset, size, tinyDeleteFileOffset int64) (err error) {
 	var (
@@ -455,43 +468,20 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size, tinyDeleteFileOf
 	}
 
 	if IsTinyExtent(extentID) {
-		if offset+size > e.dataSize {
-			return
-		}
-		if err = e.DeleteTiny(offset, size); err != nil {
-			return
-		}
-		if err = s.RecordTinyDelete(extentID, offset, size, tinyDeleteFileOffset); err != nil {
-			return
-		}
-		return
-	}
-
-	if err = s.PersistenceMarkDeleteExtent(extentID); err != nil {
-		return
-	}
-	ei.IsDeleted = true
-	s.cache.Del(e.extentID)
-	s.eiMutex.Lock()
-	delete(s.extentInfoMap, extentID)
-	s.eiMutex.Unlock()
-
-	return
-}
-
-// FlushDelete flushes the delete operation.
-func (s *ExtentStore) FlushDelete() (err error) {
-	extents, err := s.ScanDeleteExtent(MarkExtentDeletePrefix)
-	if err != nil {
-		return
-	}
-	for _, extentID := range extents {
+		return s.tinyDelete(e, offset, size, tinyDeleteFileOffset)
+	} else {
+		e.Close()
 		s.cache.Del(extentID)
 		extentFilePath := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
-		if opErr := os.Remove(extentFilePath); opErr != nil {
-			continue
+		if err = os.Remove(extentFilePath); err != nil {
+			return
 		}
 		s.PersistenceHasDeleteExtent(extentID)
+		ei.IsDeleted = true
+		s.cache.Del(e.extentID)
+		s.eiMutex.Lock()
+		delete(s.extentInfoMap, extentID)
+		s.eiMutex.Unlock()
 	}
 
 	return

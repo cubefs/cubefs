@@ -123,6 +123,8 @@ const (
 	ReadDeadlineTime         = 5
 	SyncSendTaskDeadlineTime = 20
 	NoReadDeadlineTime       = -1
+
+	ConnectIdleTime = 30
 )
 
 const (

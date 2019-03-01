@@ -126,7 +126,7 @@ func (rp *ReplProtocol) hasError() bool {
 
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	p := NewPacket()
-	if err = p.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
+	if err = p.ReadFromConnFromCli(rp.sourceConn, util.ConnectIdleTime); err != nil {
 		return
 	}
 	log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v) localAddr(%v).",

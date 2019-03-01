@@ -53,7 +53,6 @@ func NewSpaceManager(rack string) *SpaceManager {
 	space.stopC = make(chan bool, 0)
 
 	go space.statUpdateScheduler()
-	go space.flushDeleteScheduler()
 
 	return space
 }
@@ -204,28 +203,14 @@ func (manager *SpaceManager) minPartitionCnt() (d *Disk) {
 	return
 }
 
-func (manager *SpaceManager) flushDeleteScheduler() {
-	go func() {
-		ticker := time.NewTicker(2 * time.Minute)
-		for {
-			select {
-			case <-ticker.C:
-				manager.flushDelete()
-			case <-manager.stopC:
-				ticker.Stop()
-				return
-			}
-		}
-	}()
-}
-
 func (manager *SpaceManager) statUpdateScheduler() {
 	go func() {
-		ticker := time.NewTicker(5 * time.Second)
+		ticker := time.NewTicker(10 * time.Second)
 		for {
 			select {
 			case <-ticker.C:
 				manager.updateMetrics()
+				manager.EvictExtent()
 			case <-manager.stopC:
 				ticker.Stop()
 				return
@@ -234,14 +219,13 @@ func (manager *SpaceManager) statUpdateScheduler() {
 	}()
 }
 
-func (manager *SpaceManager) flushDelete() {
+func (manager *SpaceManager) EvictExtent() {
 	partitions := make([]*DataPartition, 0)
 	manager.RangePartitions(func(dp *DataPartition) bool {
 		partitions = append(partitions, dp)
 		return true
 	})
 	for _, partition := range partitions {
-		partition.FlushDelete()
 		partition.EvictExtent()
 	}
 }

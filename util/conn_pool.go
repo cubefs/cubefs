@@ -26,6 +26,10 @@ type Object struct {
 	idle int64
 }
 
+const (
+	ConnectIdleTime = 30
+)
+
 type ConnectPool struct {
 	sync.RWMutex
 	pools   map[string]*Pool
@@ -35,7 +39,7 @@ type ConnectPool struct {
 }
 
 func NewConnectPool() (cp *ConnectPool) {
-	cp = &ConnectPool{pools: make(map[string]*Pool), mincap: 5, maxcap: 80, timeout: int64(time.Second * 30)}
+	cp = &ConnectPool{pools: make(map[string]*Pool), mincap: 5, maxcap: 80, timeout: int64(time.Second * ConnectIdleTime)}
 	go cp.autoRelease()
 
 	return cp

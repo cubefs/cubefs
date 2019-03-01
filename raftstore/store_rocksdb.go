@@ -60,7 +60,11 @@ func (rs *RocksDBStore) Del(key interface{}, isSync bool) (result interface{}, e
 	wo := gorocksdb.NewDefaultWriteOptions()
 	wb := gorocksdb.NewWriteBatch()
 	wo.SetSync(isSync)
-	defer wb.Clear()
+	defer func() {
+		wo.Destroy()
+		wb.Clear()
+		ro.Destroy()
+	}()
 	slice, err := rs.db.Get(ro, []byte(key.(string)))
 	if err != nil {
 		return
@@ -75,6 +79,10 @@ func (rs *RocksDBStore) Put(key, value interface{}, isSync bool) (result interfa
 	wo := gorocksdb.NewDefaultWriteOptions()
 	wb := gorocksdb.NewWriteBatch()
 	wo.SetSync(isSync)
+	defer func() {
+		wo.Destroy()
+		wb.Clear()
+	}()
 	wb.Put([]byte(key.(string)), value.([]byte))
 	if err := rs.db.Write(wo, wb); err != nil {
 		return nil, err
@@ -87,6 +95,7 @@ func (rs *RocksDBStore) Put(key, value interface{}, isSync bool) (result interfa
 func (rs *RocksDBStore) Get(key interface{}) (result interface{}, err error) {
 	ro := gorocksdb.NewDefaultReadOptions()
 	ro.SetFillCache(false)
+	defer ro.Destroy()
 	return rs.db.GetBytes(ro, []byte(key.(string)))
 }
 
@@ -96,7 +105,10 @@ func (rs *RocksDBStore) DeleteKeyAndPutIndex(key string, cmdMap map[string][]byt
 	wo := gorocksdb.NewDefaultWriteOptions()
 	wo.SetSync(isSync)
 	wb := gorocksdb.NewWriteBatch()
-	defer wb.Clear()
+	defer func() {
+		wo.Destroy()
+		wb.Clear()
+	}()
 	wb.Delete([]byte(key))
 	for otherKey, value := range cmdMap {
 		if otherKey == key {
@@ -117,6 +129,10 @@ func (rs *RocksDBStore) BatchPut(cmdMap map[string][]byte, isSync bool) error {
 	wo := gorocksdb.NewDefaultWriteOptions()
 	wo.SetSync(isSync)
 	wb := gorocksdb.NewWriteBatch()
+	defer func() {
+		wo.Destroy()
+		wb.Clear()
+	}()
 	for key, value := range cmdMap {
 		wb.Put([]byte(key), value)
 	}

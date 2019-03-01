@@ -278,7 +278,7 @@ func (e *Extent) Flush() (err error) {
 	return
 }
 
-func (e *Extent) autoFixDirtyCrc(crcFunc UpdateCrcFunc, scanFunc ScanBlocksFunc, getExtentCrc GetExtentCrcFunc) (crc uint32, err error) {
+func (e *Extent) autoFixDirtyCrc(crcFunc UpdateCrcFunc, scanFunc ScanBlocksFunc) (crc uint32, err error) {
 	bcs, err := scanFunc(e.extentID)
 	if err != nil {
 		return
