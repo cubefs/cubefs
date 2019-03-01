@@ -19,8 +19,8 @@
 
 # -- Project information -----------------------------------------------------
 
-project = u'Container File System'
-copyright = u'2019, CFS Authors'
+project = u'CFS'
+copyright = u'2018, The Chubao Authors'
 author = u'CFS Authors'
 
 # The short X.Y version
@@ -102,7 +102,7 @@ html_theme = 'sphinx_rtd_theme'
 # -- Options for HTMLHelp output ---------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'ContainerFileSystemdoc'
+htmlhelp_basename = 'CFSdoc'
 
 
 # -- Options for LaTeX output ------------------------------------------------
@@ -129,8 +129,8 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'ContainerFileSystem.tex', u'Container File System Documentation',
-     u'CFS Authors', 'manual'),
+    (master_doc, 'CFS.tex', u'CFS Documentation',
+     u'The Chubao Authors', 'manual'),
 ]
 
 
@@ -139,7 +139,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'containerfilesystem', u'Container File System Documentation',
+    (master_doc, 'CFS', u'CFS Documentation',
      [author], 1)
 ]
 
@@ -150,8 +150,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'ContainerFileSystem', u'Container File System Documentation',
-     author, 'ContainerFileSystem', 'One line description of project.',
+    (master_doc, 'CFS', u'CFS Documentation',
+     author, 'CFS', 'One line description of project.',
      'Miscellaneous'),
 ]
 
