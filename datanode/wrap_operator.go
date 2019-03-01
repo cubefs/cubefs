@@ -375,9 +375,6 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	}
 
 	s.incDiskErrCnt(p.PartitionID, err, WriteFlag)
-	if err == nil && p.Opcode == proto.OpWrite && p.Size == util.BlockSize {
-		proto.Buffers.Put(p.Data)
-	}
 	return
 }
 

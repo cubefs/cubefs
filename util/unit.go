@@ -36,9 +36,9 @@ const (
 	BlockSize              = 65536 * 2
 	ReadBlockSize          = BlockSize
 	PerBlockCrcSize        = 4
-	ExtentSize          = BlockCount * BlockSize
-	ExtentFileSizeLimit = BlockHeaderSize + ExtentSize
-	PacketHeaderSize    = 57
+	ExtentSize             = BlockCount * BlockSize
+	ExtentFileSizeLimit    = BlockHeaderSize + ExtentSize
+	PacketHeaderSize       = 57
 )
 
 const (
