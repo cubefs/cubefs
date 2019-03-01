@@ -24,29 +24,19 @@ type BlockCrc struct {
 	value   []byte
 }
 
-func NewBlockCrc(extentID uint64, blockNo uint16, crc uint32) (bc *BlockCrc) {
-	bc = new(BlockCrc)
-	bc.blockNo = blockNo
-	bc.crc = crc
-	bc.value = make([]byte, BlockCrcValueLen)
-	bc.key = fmt.Sprintf(BlockCrcPrefix+"%v_%v", extentID, blockNo)
-	binary.BigEndian.PutUint32(bc.value[0:BlockCrcValueLen], bc.crc)
-
-	return
-}
 
 type UpdateCrcFunc func(extentID uint64, blockNo uint16, crc uint32) (err error)
 type ScanBlocksFunc func(extentID uint64) (bcs []*BlockCrc, err error)
 type GetExtentCrcFunc func(extentID uint64) (crc uint32, err error)
 
 func (s *ExtentStore) PersistenceBlockCrc(extentID uint64, blockNo uint16, blockCrc uint32) (err error) {
-	bc := NewBlockCrc(extentID, blockNo, blockCrc)
 	cmdMap := make(map[string][]byte, 0)
-	cmdMap[bc.key] = bc.value
-	data := make([]byte, 4)
-	binary.BigEndian.PutUint32(data, 0)
-	cmdMap[fmt.Sprintf(ExtentCrcPrefix+"%v", extentID)] = data
-	err = s.crcStore.BatchPut(cmdMap, false)
+	blockCrcKey:=fmt.Sprintf(BlockCrcPrefix+"%v_%v", extentID, blockNo)
+	blockCrcValue:=make([]byte,4)
+	binary.BigEndian.PutUint32(blockCrcValue[0:BlockCrcValueLen], blockCrc)
+	cmdMap[blockCrcKey] =blockCrcValue
+	_,err=s.crcStore.Put(blockCrcKey,blockCrcValue,false)
+
 	return
 }
 
@@ -176,23 +166,3 @@ func (s *ExtentStore) GetPersistenceInode(extentID uint64) (inode uint64, err er
 	return
 }
 
-func (s *ExtentStore) PersistenceExtentCrc(extentID uint64, crc uint32) (err error) {
-	key := fmt.Sprintf(ExtentCrcPrefix+"%v", extentID)
-	data := make([]byte, 4)
-	binary.BigEndian.PutUint32(data, crc)
-	_, err = s.crcStore.Put(key, data, false)
-	return
-}
-
-func (s *ExtentStore) GetPersistenceExtentCrc(extentID uint64) (crc uint32, err error) {
-	key := fmt.Sprintf(ExtentCrcPrefix+"%v", extentID)
-	v, err := s.crcStore.Get(key)
-	if err != nil {
-		return 0, err
-	}
-	if v == nil || len(v.([]byte)) != 4 {
-		return 0, nil
-	}
-	crc = binary.BigEndian.Uint32(v.([]byte))
-	return
-}

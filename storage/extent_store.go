@@ -361,9 +361,7 @@ func (s *ExtentStore) autoFixDirtyBlockCrc() {
 				return
 			}
 			extentInfo.FromExtent(extent, crc)
-			s.PersistenceExtentCrc(ei.FileID, crc)
 		}
-
 		time.Sleep(time.Microsecond * 10)
 	}
 

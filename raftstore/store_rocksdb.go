@@ -17,6 +17,7 @@ package raftstore
 import (
 	"fmt"
 	"github.com/tecbot/gorocksdb"
+	"github.com/tiglabs/containerfs/util"
 )
 
 // RocksDBStore is a wrapper of the gorocksdb.DB
@@ -42,6 +43,9 @@ func (rs *RocksDBStore) Open(cacheSize int) error {
 	opts := gorocksdb.NewDefaultOptions()
 	opts.SetBlockBasedTableFactory(basedTableOptions)
 	opts.SetCreateIfMissing(true)
+
+	opts.SetWriteBufferSize(128*util.KB)
+	opts.SetMaxWriteBufferNumber(2)
 	opts.SetCompression(gorocksdb.NoCompression)
 	db, err := gorocksdb.OpenDb(opts, rs.dir)
 	if err != nil {
@@ -62,8 +66,8 @@ func (rs *RocksDBStore) Del(key interface{}, isSync bool) (result interface{}, e
 	wo.SetSync(isSync)
 	defer func() {
 		wo.Destroy()
-		wb.Clear()
 		ro.Destroy()
+		wb.Destroy()
 	}()
 	slice, err := rs.db.Get(ro, []byte(key.(string)))
 	if err != nil {
@@ -81,7 +85,7 @@ func (rs *RocksDBStore) Put(key, value interface{}, isSync bool) (result interfa
 	wo.SetSync(isSync)
 	defer func() {
 		wo.Destroy()
-		wb.Clear()
+		wb.Destroy()
 	}()
 	wb.Put([]byte(key.(string)), value.([]byte))
 	if err := rs.db.Write(wo, wb); err != nil {
@@ -107,7 +111,7 @@ func (rs *RocksDBStore) DeleteKeyAndPutIndex(key string, cmdMap map[string][]byt
 	wb := gorocksdb.NewWriteBatch()
 	defer func() {
 		wo.Destroy()
-		wb.Clear()
+		wb.Destroy()
 	}()
 	wb.Delete([]byte(key))
 	for otherKey, value := range cmdMap {
@@ -131,7 +135,7 @@ func (rs *RocksDBStore) BatchPut(cmdMap map[string][]byte, isSync bool) error {
 	wb := gorocksdb.NewWriteBatch()
 	defer func() {
 		wo.Destroy()
-		wb.Clear()
+		wb.Destroy()
 	}()
 	for key, value := range cmdMap {
 		wb.Put([]byte(key), value)
