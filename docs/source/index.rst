@@ -1,4 +1,4 @@
-Welcome to Container File System
+Welcome to CFS
 ==================================
 
 .. toctree::
@@ -27,21 +27,21 @@ Welcome to Container File System
    user-guide/client
    user-guide/monitor
    user-guide/fuse
-   
+
 .. toctree::
    :maxdepth: 2
    :caption: Administration
-   
+
    administration
 
 .. toctree::
    :maxdepth: 0
    :caption: Evaluation
-   
+
    evaluation
-   
+
 .. toctree::
    :maxdepth: 2
    :caption: FAQ
-   
+
    faq
