@@ -19,6 +19,7 @@ Configurations
 
    "role", "string", "Role of process and must be set to *datanode*", "Yes"
    "port", "string", "Port of TCP network to be listen", "Yes"
+   "localIP", "string", "IP of network to be choose", "No"
    "prof", "string", "Port of HTTP based prof and api service", "Yes"
    "logDir", "string", "Path for log file storage", "Yes"
    "logLevel", "string", "Level operation for logging. Default is *error*", "No"

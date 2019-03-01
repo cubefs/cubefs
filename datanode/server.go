@@ -50,9 +50,9 @@ var (
 )
 
 const (
-	// TODO we need to find a better to expose this information.
-	DefaultRackName = "cfs_rack1"
-	DefaultRaftDir  = "raft"
+	DefaultRackName         = "cfs_rack1"
+	DefaultRaftDir          = "raft"
+	DefaultRaftLogsToRetain = 20000 // Count of raft logs per data partition
 )
 
 const (
@@ -67,26 +67,26 @@ const (
 	ConfigKeyDisks         = "disks"         // array
 	ConfigKeyRaftDir       = "raftDir"       // string
 	ConfigKeyRaftHeartbeat = "raftHeartbeat" // string
-	ConfigKeyRaftReplicate = "raftReplica"   // string
+	ConfigKeyRaftReplica   = "raftReplica"   // string
 )
 
 // DataNode defines the structure of a data node.
 type DataNode struct {
-	space           *SpaceManager
-	port            string
-	rackName        string
-	clusterID       string
-	localIP         string
-	localServerAddr string
-	nodeID          uint64
-	raftDir         string
-	raftHeartbeat   string
-	raftReplica     string
-	raftStore       raftstore.RaftStore
-	tcpListener     net.Listener
-	stopC           chan bool
-	state           uint32
-	wg              sync.WaitGroup
+	space            *SpaceManager
+	port             string
+	rackName         string
+	clusterID        string
+	localIP          string
+	localServerAddr  string
+	nodeID           uint64
+	raftDir          string
+	raftHeartbeat    string
+	raftReplica      string
+	raftStore        raftstore.RaftStore
+	tcpListener      net.Listener
+	stopC            chan bool
+	state            uint32
+	wg               sync.WaitGroup
 }
 
 func NewServer() *DataNode {
