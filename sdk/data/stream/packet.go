@@ -60,7 +60,6 @@ func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset
 	p := new(Packet)
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
-	p.Data = make([]byte, 0)
 	p.ExtentType = proto.NormalExtentType
 	p.ExtentID = extentID
 	p.ExtentOffset = int64(extentOffset)
@@ -97,7 +96,6 @@ func NewCreateExtentPacket(dp *wrapper.DataPartition, inode uint64) *Packet {
 	p := new(Packet)
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
-	p.Data = make([]byte, 0)
 	p.ExtentType = proto.NormalExtentType
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.ArgLen = uint32(len(p.Arg))

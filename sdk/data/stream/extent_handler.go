@@ -349,6 +349,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	}
 
 	proto.Buffers.Put(packet.Data)
+	packet.Data = nil
 	eh.dirty = true
 	return
 }
@@ -468,6 +469,7 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 
 func (eh *ExtentHandler) discardPacket(packet *Packet) {
 	proto.Buffers.Put(packet.Data)
+	packet.Data = nil
 	eh.setError()
 }
 
