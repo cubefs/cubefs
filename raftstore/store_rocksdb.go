@@ -17,8 +17,6 @@ package raftstore
 import (
 	"fmt"
 	"github.com/tecbot/gorocksdb"
-	"github.com/tiglabs/containerfs/util"
-	"time"
 )
 
 // RocksDBStore is a wrapper of the gorocksdb.DB

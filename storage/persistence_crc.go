@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sort"
 )
 
 const (
@@ -20,20 +21,22 @@ const (
 type BlockCrc struct {
 	blockNo uint16
 	crc     uint32
-	key     string
-	value   []byte
 }
+
+type BlockCrcArr []*BlockCrc
+
+func (arr BlockCrcArr) Len() int           { return len(arr) }
+func (arr BlockCrcArr) Less(i, j int) bool { return arr[i].blockNo < arr[j].blockNo }
+func (arr BlockCrcArr) Swap(i, j int)      { arr[i], arr[j] = arr[j], arr[i] }
 
 type UpdateCrcFunc func(extentID uint64, blockNo uint16, crc uint32) (err error)
 type ScanBlocksFunc func(extentID uint64) (bcs []*BlockCrc, err error)
 type GetExtentCrcFunc func(extentID uint64) (crc uint32, err error)
 
 func (s *ExtentStore) PersistenceBlockCrc(extentID uint64, blockNo uint16, blockCrc uint32) (err error) {
-	cmdMap := make(map[string][]byte, 0)
 	blockCrcKey := fmt.Sprintf(BlockCrcPrefix+"%v_%v", extentID, blockNo)
 	blockCrcValue := make([]byte, 4)
 	binary.BigEndian.PutUint32(blockCrcValue[0:BlockCrcValueLen], blockCrc)
-	cmdMap[blockCrcKey] = blockCrcValue
 	_, err = s.crcStore.Put(blockCrcKey, blockCrcValue, false)
 
 	return
@@ -106,6 +109,7 @@ func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
 		}
 		bcs = append(bcs, &BlockCrc{blockNo: uint16(blockNo), crc: crc})
 	}
+	sort.Sort((BlockCrcArr(bcs)))
 	return
 }
 
