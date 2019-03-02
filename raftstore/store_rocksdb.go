@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/tecbot/gorocksdb"
 	"github.com/tiglabs/containerfs/util"
+	"time"
 )
 
 // RocksDBStore is a wrapper of the gorocksdb.DB
@@ -27,9 +28,9 @@ type RocksDBStore struct {
 }
 
 // NewRocksDBStore returns a new RocksDB instance.
-func NewRocksDBStore(dir string, cacheSize int) (store *RocksDBStore) {
+func NewRocksDBStore(dir string, lruCacheSize, writeBufferSize int) (store *RocksDBStore) {
 	store = &RocksDBStore{dir: dir}
-	err := store.Open(cacheSize)
+	err := store.Open(lruCacheSize, writeBufferSize)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to Open rocksDB! err:%v", err.Error()))
 	}
@@ -37,14 +38,13 @@ func NewRocksDBStore(dir string, cacheSize int) (store *RocksDBStore) {
 }
 
 // Open opens the RocksDB instance.
-func (rs *RocksDBStore) Open(cacheSize int) error {
+func (rs *RocksDBStore) Open(lruCacheSize, writeBufferSize int) error {
 	basedTableOptions := gorocksdb.NewDefaultBlockBasedTableOptions()
-	basedTableOptions.SetBlockCache(gorocksdb.NewLRUCache(cacheSize))
+	basedTableOptions.SetBlockCache(gorocksdb.NewLRUCache(lruCacheSize))
 	opts := gorocksdb.NewDefaultOptions()
 	opts.SetBlockBasedTableFactory(basedTableOptions)
 	opts.SetCreateIfMissing(true)
-
-	opts.SetWriteBufferSize(128 * util.KB)
+	opts.SetWriteBufferSize(writeBufferSize)
 	opts.SetMaxWriteBufferNumber(2)
 	opts.SetCompression(gorocksdb.NoCompression)
 	db, err := gorocksdb.OpenDb(opts, rs.dir)
@@ -53,7 +53,6 @@ func (rs *RocksDBStore) Open(cacheSize int) error {
 		return err
 	}
 	rs.db = db
-
 	return nil
 
 }

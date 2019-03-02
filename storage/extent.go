@@ -294,7 +294,7 @@ func (e *Extent) autoFixDirtyCrc(crcFunc UpdateCrcFunc, scanFunc ScanBlocksFunc)
 		offset := int64(int64(bc.blockNo)*util.BlockSize + util.BlockHeaderSize)
 		readN, err := e.file.ReadAt(data[:util.BlockSize], offset)
 		if err != io.EOF {
-			continue
+			break
 		}
 		bc.crc = crc32.ChecksumIEEE(data[:readN])
 		err = crcFunc(e.extentID, bc.blockNo, bc.crc)

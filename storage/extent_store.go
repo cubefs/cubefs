@@ -46,6 +46,8 @@ const (
 	TinyExtentStartID         = 1
 	MinExtentID               = 1024
 	EveryTinyDeleteRecordSize = 24
+	LruCacheSize              = 128 * util.KB
+	WriteBufferSize           = 128 * util.KB
 )
 
 var (
@@ -116,7 +118,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 		return nil, fmt.Errorf("NewExtentStore [%v] err[%v]", dataDir, err)
 	}
 
-	s.crcStore = raftstore.NewRocksDBStore(path.Join(s.dataPath, ExtCrcFileName), 10*util.MB)
+	s.crcStore = raftstore.NewRocksDBStore(path.Join(s.dataPath, ExtCrcFileName), LruCacheSize, WriteBufferSize)
 	tinyExtentsDeleteFpPath := path.Join(s.dataPath, TinyExtDeletedFileName)
 	if s.tinyExtentDeleteFp, err = os.OpenFile(tinyExtentsDeleteFpPath, TinyDeleteFileOpt, 0666); err != nil {
 		return
@@ -140,7 +142,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 	if err != nil {
 		return
 	}
-	go s.loopAutoFix()
+	go s.loopAutoComputeExtentCrc()
 	return
 }
 
@@ -324,16 +326,21 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 	return nil
 }
 
-func (s *ExtentStore) loopAutoFix() {
+func (s *ExtentStore) loopAutoComputeExtentCrc() {
 	go func() {
+		ticker := time.NewTicker(time.Minute)
 		for {
-			s.autoFixDirtyBlockCrc()
-			time.Sleep(time.Minute)
+			select {
+			case <-s.closeC:
+				return
+			case <-ticker.C:
+				s.autoComputeExtentCrc()
+			}
 		}
 	}()
 }
 
-func (s *ExtentStore) autoFixDirtyBlockCrc() {
+func (s *ExtentStore) autoComputeExtentCrc() {
 	extentInfos := make([]*ExtentInfo, 0)
 	s.eiMutex.RLock()
 	for _, e := range s.extentInfoMap {
@@ -350,19 +357,22 @@ func (s *ExtentStore) autoFixDirtyBlockCrc() {
 			if err != nil {
 				continue
 			}
-			crc, err := extent.autoFixDirtyCrc(s.PersistenceBlockCrc, s.ScanBlocks)
-			if err != nil {
-				continue
-			}
 			s.eiMutex.RLock()
 			extentInfo, has := s.extentInfoMap[ei.FileID]
 			s.eiMutex.RUnlock()
 			if !has {
-				return
+				continue
+			}
+			if extentInfo.Crc != 0 {
+				continue
+			}
+			crc, err := extent.autoFixDirtyCrc(s.PersistenceBlockCrc, s.ScanBlocks)
+			if err != nil {
+				continue
 			}
 			extentInfo.FromExtent(extent, crc)
 		}
-		time.Sleep(time.Microsecond * 10)
+		time.Sleep(time.Millisecond * 10)
 	}
 
 }
