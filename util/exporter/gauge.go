@@ -14,10 +14,11 @@ var (
 	}}
 
 	GaugeGroup sync.Map
-	GaugeCh    = make(chan *Gauge, ChSize)
+	GaugeCh    chan *Gauge
 )
 
 func collectGauge() {
+	GaugeCh = make(chan *Gauge, ChSize)
 	for {
 		m := <-GaugeCh
 		metric := m.Metric()
