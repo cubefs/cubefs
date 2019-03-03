@@ -128,9 +128,6 @@ func (e *Extent) InitToFS(ino uint64) (err error) {
 		e.dataSize = 0
 		return
 	}
-	if err = e.file.Sync(); err != nil {
-		return err
-	}
 	e.modifyTime = time.Now()
 	e.dataSize = 0
 	return
