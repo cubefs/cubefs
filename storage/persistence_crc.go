@@ -3,9 +3,9 @@ package storage
 import (
 	"encoding/binary"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
-	"sort"
 )
 
 const (

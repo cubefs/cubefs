@@ -183,10 +183,10 @@ func (rp *ReplProtocol) sendRequestToFollower(wg *sync.WaitGroup, followerReques
 
 func (rp *ReplProtocol) sendRequestToAllFollowers(wg *sync.WaitGroup, request *Packet) {
 	rp.sendError = make([]error, len(request.followersAddrs))
-	followerRequests:=make([]*Packet,len(request.followersAddrs))
+	followerRequests := make([]*Packet, len(request.followersAddrs))
 	for index := 0; index < len(request.followersAddrs); index++ {
 		followerRequests[index] = new(Packet)
-		copyPacket(request,followerRequests[index])
+		copyPacket(request, followerRequests[index])
 	}
 	for index := 0; index < len(request.followersAddrs); index++ {
 		wg.Add(1)
@@ -214,11 +214,11 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 				orgRemainNodes := request.RemainingFollowers
 				rp.pushPacketToList(request)
 				rp.sendRequestToAllFollowers(wg, request)
-				wg.Add(1)
-				request.RemainingFollowers = orgRemainNodes
-				go rp.operatorFuncWithWaitGroup(wg, request)
 				wg.Wait()
-				rp.checkSendErrors(request)
+				request.RemainingFollowers = orgRemainNodes
+				if !rp.checkSendErrors(request) {
+					rp.operatorFunc(request, rp.sourceConn)
+				}
 				rp.ackCh <- struct{}{}
 			}
 		case <-rp.exitC:
