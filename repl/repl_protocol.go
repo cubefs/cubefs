@@ -163,8 +163,22 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 		rp.responseCh <- p
 		return
 	}
+	for index := 0; index < len(p.followersAddrs); index++ {
+		if err = rp.connectToFollower(p, index); err != nil {
+			rp.responseCh <- p
+			return
+		}
+	}
 	rp.toBeProcessedCh <- p
 
+	return
+}
+
+func (rp *ReplProtocol) connectToFollower(request *Packet, index int) (err error) {
+	if err = rp.allocateFollowersConns(request, index); err != nil {
+		request.PackErrorBody(ActionAllocFollowerConnect, err.Error())
+		return
+	}
 	return
 }
 
@@ -214,11 +228,11 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 				orgRemainNodes := request.RemainingFollowers
 				rp.pushPacketToList(request)
 				rp.sendRequestToAllFollowers(wg, request)
-				wg.Wait()
+				wg.Add(1)
 				request.RemainingFollowers = orgRemainNodes
-				if !rp.checkSendErrors(request) {
-					rp.operatorFunc(request, rp.sourceConn)
-				}
+				go rp.operatorFuncWithWaitGroup(wg, request)
+				wg.Wait()
+				rp.checkSendErrors(request)
 				rp.ackCh <- struct{}{}
 			}
 		case <-rp.exitC:

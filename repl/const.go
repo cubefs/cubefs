@@ -35,7 +35,8 @@ const (
 	ActionCheckAndAddInfos    = "ActionCheckAndAddInfos"
 	ActionCheckReply          = "ActionCheckReply"
 
-	ActionPreparePkt = "ActionPreparePkt"
+	ActionPreparePkt           = "ActionPreparePkt"
+	ActionAllocFollowerConnect = "ActionAllocFollowerConnect"
 )
 
 const (
