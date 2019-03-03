@@ -140,7 +140,10 @@ func (rp *ReplProtocol) WriteResponseToClientGoRoutine() {
 	}
 }
 
-func (rp *ReplProtocol) setReplProtocolError() {
+func (rp *ReplProtocol) setReplProtocolError(request *Packet, index int) {
+	key := fmt.Sprintf("%v_%v_%v", request.PartitionID, request.ExtentID, request.followersAddrs[index])
+	rp.followerConnects.Delete(key)
+	request.followerConns[index].Close()
 	atomic.StoreInt32(&rp.isError, ReplProtocolError)
 }
 
@@ -187,10 +190,6 @@ func (rp *ReplProtocol) sendRequestToFollower(wg *sync.WaitGroup, followerReques
 		wg.Done()
 	}()
 	followerRequest.RemainingFollowers = 0
-	rp.sendError[index] = rp.allocateFollowersConns(followerRequest, index)
-	if rp.sendError[index] != nil {
-		return
-	}
 	rp.sendError[index] = followerRequest.WriteToConn(followerRequest.followerConns[index])
 
 }
@@ -254,7 +253,7 @@ func (rp *ReplProtocol) operatorFuncWithWaitGroup(wg *sync.WaitGroup, request *P
 func (rp *ReplProtocol) checkSendErrors(request *Packet) (hasError bool) {
 	for index := 0; index < len(request.followersAddrs); index++ {
 		if rp.sendError[index] != nil {
-			rp.setReplProtocolError()
+			rp.setReplProtocolError(request, index)
 			hasError = true
 			err := errors.Annotatef(rp.sendError[index], "sendRequestToAllFollowers to (%v)", request.followersAddrs[index])
 			request.PackErrorBody(ActionSendToFollowers, rp.sendError[index].Error())
@@ -278,12 +277,12 @@ func (rp *ReplProtocol) reciveAllFollowerResponse() {
 	}
 	request := e.Value.(*Packet)
 	defer func() {
-		rp.deletePacket(request)
+		rp.deletePacket(request, e)
 	}()
 	for index := 0; index < len(request.followersAddrs); index++ {
 		err := rp.receiveFromFollower(request, index)
 		if err != nil {
-			rp.setReplProtocolError()
+			rp.setReplProtocolError(request, index)
 			request.PackErrorBody(ActionReceiveFromFollower, err.Error())
 			return
 		}
@@ -349,7 +348,6 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 	if reply.IsErrPacket() {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
-		rp.setReplProtocolError()
 		log.LogErrorf(err.Error())
 		rp.Stop()
 	}
@@ -366,7 +364,6 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, err))
 		log.LogErrorf(err.Error())
-		rp.setReplProtocolError()
 		rp.Stop()
 	}
 	log.LogDebugf(reply.LogMessage(ActionWriteToClient,
@@ -465,21 +462,12 @@ func (rp *ReplProtocol) cleanResource() {
 	rp.packetListLock.Unlock()
 }
 
-func (rp *ReplProtocol) deletePacket(reply *Packet) (success bool) {
+func (rp *ReplProtocol) deletePacket(reply *Packet, e *list.Element) (success bool) {
 	rp.packetListLock.Lock()
 	defer rp.packetListLock.Unlock()
-	for e := rp.packetList.Front(); e != nil; e = e.Next() {
-		request := e.Value.(*Packet)
-		if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
-			reply.ExtentOffset != request.ExtentOffset || reply.CRC != request.CRC || reply.ExtentID != request.ExtentID {
-			rp.setReplProtocolError()
-			request.PackErrorBody(ActionReceiveFromFollower, fmt.Sprintf("unknow expect reply"))
-			break
-		}
-		rp.packetList.Remove(e)
-		success = true
-		rp.responseCh <- reply
-	}
+	rp.packetList.Remove(e)
+	success = true
+	rp.responseCh <- reply
 
 	return
 }
