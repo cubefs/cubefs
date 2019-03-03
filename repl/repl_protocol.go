@@ -24,8 +24,6 @@ import (
 	"github.com/tiglabs/containerfs/proto"
 	"github.com/tiglabs/containerfs/util"
 	"github.com/tiglabs/containerfs/util/log"
-	"io"
-	"strings"
 	"sync/atomic"
 )
 
@@ -36,7 +34,7 @@ var (
 // ReplProtocol defines the struct of the replication protocol.
 // 1. ServerConn reads a packet from the client socket, and analyzes the addresses of the followers.
 // 2. After the preparation, the packet is send to toBeProcessedCh. If failure happens, send it to the response channel.
-// 3. OperatorAndForwardPkt fetches a packet from toBeProcessedCh, and determine if it needs to be forwarded to the followers.
+// 3. OperatorAndForwardPktGoRoutine fetches a packet from toBeProcessedCh, and determine if it needs to be forwarded to the followers.
 // 4. receiveResponse fetches a reply from responseCh, executes postFunc, and writes a response to the client if necessary.
 type ReplProtocol struct {
 	packetListLock sync.RWMutex
@@ -58,7 +56,9 @@ type ReplProtocol struct {
 	operatorFunc func(p *Packet, c *net.TCPConn) error // operator
 	postFunc     func(p *Packet) error                 // post-processing packet
 
-	isError bool
+	isError   int32
+	sendError []error
+	replId    int64
 }
 
 func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet) error,
@@ -75,8 +75,10 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet) error,
 	rp.operatorFunc = operatorFunc
 	rp.postFunc = postFunc
 	rp.exited = ReplRuning
-	go rp.OperatorAndForwardPkt()
-	go rp.ReceiveResponse()
+	rp.replId = proto.GenerateRequestID()
+	go rp.OperatorAndForwardPktGoRoutine()
+	go rp.ReceiveResponseFromFollowersGoRoutine()
+	go rp.WriteResponseToClientGoRoutine()
 
 	return rp
 }
@@ -88,21 +90,15 @@ func (rp *ReplProtocol) ServerConn() {
 		err error
 	)
 	defer func() {
-		if err != nil && err != io.EOF &&
-			!strings.Contains(err.Error(), "closed connection") &&
-			!strings.Contains(err.Error(), "reset by peer") {
-			log.LogErrorf("action[serveConn] err(%v).", err)
-		}
 		rp.Stop()
 		if atomic.LoadInt32(&rp.exited) == ReplHasExited {
 			rp.sourceConn.Close()
+			rp.cleanResource()
 		}
-
 	}()
 	for {
 		select {
 		case <-rp.exitC:
-			log.LogDebugf("action[DataNode.serveConn] event loop for %v exit.", rp.sourceConn.RemoteAddr())
 			return
 		default:
 			if err = rp.readPkgAndPrepare(); err != nil {
@@ -113,13 +109,52 @@ func (rp *ReplProtocol) ServerConn() {
 
 }
 
+// Receive response from all followers.
+func (rp *ReplProtocol) ReceiveResponseFromFollowersGoRoutine() {
+	for {
+		select {
+		case <-rp.ackCh:
+			rp.reciveAllFollowerResponse()
+		case <-rp.exitC:
+			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
+				rp.sourceConn.Close()
+				rp.cleanResponseCh()
+			}
+			return
+		}
+	}
+}
+
+func (rp *ReplProtocol) WriteResponseToClientGoRoutine() {
+	for {
+		select {
+		case request := <-rp.responseCh:
+			rp.writeResponseToClient(request)
+		case <-rp.exitC:
+			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
+				rp.sourceConn.Close()
+				rp.cleanResponseCh()
+			}
+			return
+		}
+	}
+}
+
+func (rp *ReplProtocol) setReplProtocolError() {
+	atomic.StoreInt32(&rp.isError, ReplProtocolError)
+}
+
+func (rp *ReplProtocol) hasError() bool {
+	return atomic.LoadInt32(&rp.isError) == ReplProtocolError
+}
+
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	p := NewPacket()
-	if err = p.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
+	if err = p.ReadFromConnFromCli(rp.sourceConn, util.ConnectIdleTime); err != nil {
 		return
 	}
-	log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v).",
-		p.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
+	log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v) localAddr(%v).",
+		p.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String(), rp.sourceConn.LocalAddr().String())
 	if err = p.resolveFollowersAddr(); err != nil {
 		rp.responseCh <- p
 		return
@@ -133,13 +168,41 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	return
 }
 
-// OperatorAndForwardPkt reads packets from the to-be-processed channel and writes responses to the client.
+func (rp *ReplProtocol) sendRequestToFollower(wg *sync.WaitGroup, followerRequest *Packet, index int) {
+	defer func() {
+		wg.Done()
+	}()
+	followerRequest.RemainingFollowers = 0
+	rp.sendError[index] = rp.allocateFollowersConns(followerRequest, index)
+	if rp.sendError[index] != nil {
+		return
+	}
+	rp.sendError[index] = followerRequest.WriteToConn(followerRequest.followerConns[index])
+
+}
+
+func (rp *ReplProtocol) sendRequestToAllFollowers(wg *sync.WaitGroup, request *Packet) {
+	rp.sendError = make([]error, len(request.followersAddrs))
+	followerRequests := make([]*Packet, len(request.followersAddrs))
+	for index := 0; index < len(request.followersAddrs); index++ {
+		followerRequests[index] = new(Packet)
+		copyPacket(request, followerRequests[index])
+	}
+	for index := 0; index < len(request.followersAddrs); index++ {
+		wg.Add(1)
+		go rp.sendRequestToFollower(wg, followerRequests[index], index)
+	}
+
+	return
+}
+
+// OperatorAndForwardPktGoRoutine reads packets from the to-be-processed channel and writes responses to the client.
 // 1. Read a packet from toBeProcessCh, and determine if it needs to be forwarded or not. If the answer is no, then
 // 	  process the packet locally and put it into responseCh.
 // 2. If the packet needs to be forwarded, the first send it to the followers, and execute the operator function.
 //    Then notify receiveResponse to read the followers' responses.
 // 3. Read a reply from responseCh, and write to the client.
-func (rp *ReplProtocol) OperatorAndForwardPkt() {
+func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 	for {
 		select {
 		case request := <-rp.toBeProcessedCh:
@@ -147,22 +210,21 @@ func (rp *ReplProtocol) OperatorAndForwardPkt() {
 				rp.operatorFunc(request, rp.sourceConn)
 				rp.responseCh <- request
 			} else {
-				_, err := rp.sendRequestToAllFollowers(request)
-				if err == nil {
+				wg := new(sync.WaitGroup)
+				orgRemainNodes := request.RemainingFollowers
+				rp.pushPacketToList(request)
+				rp.sendRequestToAllFollowers(wg, request)
+				wg.Wait()
+				request.RemainingFollowers = orgRemainNodes
+				if !rp.checkSendErrors(request) {
 					rp.operatorFunc(request, rp.sourceConn)
-				} else {
-					rp.isError = true
-					log.LogErrorf(err.Error())
 				}
 				rp.ackCh <- struct{}{}
 			}
-		case request := <-rp.responseCh:
-			rp.writeResponseToClient(request)
 		case <-rp.exitC:
-			rp.cleanResource()
 			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
-				atomic.StoreInt32(&rp.exited, ReplHasExited)
 				rp.sourceConn.Close()
+				rp.cleanResource()
 			}
 			return
 		}
@@ -170,50 +232,22 @@ func (rp *ReplProtocol) OperatorAndForwardPkt() {
 
 }
 
-// Receive response from all followers.
-func (rp *ReplProtocol) ReceiveResponse() {
-	for {
-		select {
-		case <-rp.ackCh:
-			rp.reciveAllFollowerResponse()
-		case <-rp.exitC:
-			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
-				atomic.StoreInt32(&rp.exited, ReplHasExited)
-				rp.sourceConn.Close()
-			}
-			return
-		}
-	}
+func (rp *ReplProtocol) operatorFuncWithWaitGroup(wg *sync.WaitGroup, request *Packet) {
+	defer wg.Done()
+	rp.operatorFunc(request, rp.sourceConn)
 }
 
-func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, err error) {
-	rp.pushPacketToList(request)
-	for index = 0; index < len(request.followerConns); index++ {
-		err = rp.allocateFollowersConns(request, index)
-		if err != nil {
-			msg := fmt.Sprintf("request inconnect(%v) to(%v) err(%v)", rp.sourceConn.RemoteAddr().String(),
-				request.followersAddrs[index], err.Error())
-			err = errors.Annotatef(fmt.Errorf(msg), "Request(%v) sendRequestToAllFollowers Error", request.GetUniqueLogId())
-			request.PackErrorBody(ActionSendToFollowers, err.Error())
-			return
-		}
-		nodes := request.RemainingFollowers
-		request.RemainingFollowers = 0
-		if err == nil {
-			err = request.WriteToConn(request.followerConns[index])
-		}
-		request.RemainingFollowers = nodes
-		if err != nil {
-			msg := fmt.Sprintf("request inconnect(%v) to(%v) err(%v)", rp.sourceConn.RemoteAddr().String(),
-				request.followersAddrs[index], err.Error())
-			err = errors.Annotatef(fmt.Errorf(msg), "Request(%v) sendRequestToAllFollowers Error", request.GetUniqueLogId())
-			request.PackErrorBody(ActionSendToFollowers, err.Error())
-			rp.isError = true
-
+func (rp *ReplProtocol) checkSendErrors(request *Packet) (hasError bool) {
+	for index := 0; index < len(request.followersAddrs); index++ {
+		if rp.sendError[index] != nil {
+			rp.setReplProtocolError()
+			hasError = true
+			err := errors.Annotatef(rp.sendError[index], "sendRequestToAllFollowers to (%v)", request.followersAddrs[index])
+			request.PackErrorBody(ActionSendToFollowers, rp.sendError[index].Error())
+			log.LogErrorf(err.Error())
 			return
 		}
 	}
-
 	return
 }
 
@@ -235,8 +269,8 @@ func (rp *ReplProtocol) reciveAllFollowerResponse() {
 	for index := 0; index < len(request.followersAddrs); index++ {
 		err := rp.receiveFromFollower(request, index)
 		if err != nil {
+			rp.setReplProtocolError()
 			request.PackErrorBody(ActionReceiveFromFollower, err.Error())
-			rp.isError = true
 			return
 		}
 	}
@@ -248,13 +282,13 @@ func (rp *ReplProtocol) reciveAllFollowerResponse() {
 func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err error) {
 	// Receive p response from one member
 	if request.followerConns[index] == nil {
-		err = errors.Annotatef(fmt.Errorf(ConnIsNullErr), "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
+		err = fmt.Errorf(ConnIsNullErr)
 		return
 	}
 
 	// Check local execution result.
 	if request.IsErrPacket() {
-		err = errors.Annotatef(fmt.Errorf(request.getErrMessage()), "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
+		err = fmt.Errorf(request.getErrMessage())
 		log.LogErrorf("action[ActionReceiveFromFollower] %v.",
 			request.LogMessage(ActionReceiveFromFollower, LocalProcessAddr, request.StartT, fmt.Errorf(request.getErrMessage())))
 		return
@@ -263,9 +297,11 @@ func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err err
 	reply := NewPacket()
 	defer func() {
 		reply.clean()
+		if err != nil {
+			request.followerConns[index].Close()
+		}
 	}()
 	if err = reply.ReadFromConn(request.followerConns[index], proto.ReadDeadlineTime); err != nil {
-		err = errors.Annotatef(err, "Request(%v) receiveFromReplicate Error", request.GetUniqueLogId())
 		log.LogErrorf("action[ActionReceiveFromFollower] %v.", request.LogMessage(ActionReceiveFromFollower, request.followersAddrs[index], request.StartT, err))
 		return
 	}
@@ -299,8 +335,9 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 	if reply.IsErrPacket() {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
-		rp.isError = true
+		rp.setReplProtocolError()
 		log.LogErrorf(err.Error())
+		rp.Stop()
 	}
 
 	// execute the post-processing function
@@ -315,7 +352,7 @@ func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, err))
 		log.LogErrorf(err.Error())
-		rp.isError = true
+		rp.setReplProtocolError()
 		rp.Stop()
 	}
 	log.LogDebugf(reply.LogMessage(ActionWriteToClient,
@@ -388,7 +425,6 @@ func (rp *ReplProtocol) cleanResponseCh() {
 	for i := 0; i < replys; i++ {
 		select {
 		case p := <-rp.responseCh:
-
 			rp.postFunc(p)
 		default:
 			return
@@ -409,11 +445,7 @@ func (rp *ReplProtocol) cleanResource() {
 	rp.followerConnects.Range(
 		func(key, value interface{}) bool {
 			conn := value.(*net.TCPConn)
-			if rp.isError {
-				conn.Close()
-			} else {
-				gConnPool.PutConnect(conn, NoClosedConn)
-			}
+			conn.Close()
 			return true
 		})
 	rp.packetListLock.Unlock()
@@ -426,7 +458,7 @@ func (rp *ReplProtocol) deletePacket(reply *Packet) (success bool) {
 		request := e.Value.(*Packet)
 		if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
 			reply.ExtentOffset != request.ExtentOffset || reply.CRC != request.CRC || reply.ExtentID != request.ExtentID {
-			rp.isError = true
+			rp.setReplProtocolError()
 			request.PackErrorBody(ActionReceiveFromFollower, fmt.Sprintf("unknow expect reply"))
 			break
 		}

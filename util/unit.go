@@ -30,22 +30,15 @@ const (
 const (
 	BlockHeaderInoSize     = 8 // TODO explain
 	BlockHeaderCrcSize     = PerBlockCrcSize * BlockCount
-	BlockHeaderCrcIndex    = BlockHeaderInoSize
 	BlockHeaderDelMarkSize = 1 // TODO DeleteMark or MarkDelete?
 	BlockHeaderSize        = BlockHeaderInoSize + BlockHeaderCrcSize + BlockHeaderDelMarkSize
 	BlockCount             = 1024
-	MarkDelete             = 'D'
-	UnMarkDelete           = 'U'
-	MarkDeleteIndex        = BlockHeaderSize - 1
 	BlockSize              = 65536 * 2
 	ReadBlockSize          = BlockSize
-	PerBlockCrcSize        = 5
-	DirtyCrcMark           = 'D'
-
-	DeleteIndexFileName = "delete.index"
-	ExtentSize          = BlockCount * BlockSize
-	ExtentFileSizeLimit = BlockHeaderSize + ExtentSize
-	PacketHeaderSize    = 57
+	PerBlockCrcSize        = 4
+	ExtentSize             = BlockCount * BlockSize
+	ExtentFileSizeLimit    = BlockHeaderSize + ExtentSize
+	PacketHeaderSize       = 57
 )
 
 const (

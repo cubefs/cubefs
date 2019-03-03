@@ -15,6 +15,7 @@
 package storage
 
 import (
+	"encoding/binary"
 	"fmt"
 	"github.com/tiglabs/containerfs/util"
 	"hash/crc32"
@@ -22,7 +23,6 @@ import (
 	"math"
 	"os"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -35,29 +35,22 @@ const (
 
 type ExtentInfo struct {
 	FileID     uint64    `json:"fileId"`
-	Inode      uint64    `json:"ino"`
 	Size       uint64    `json:"size"`
 	Crc        uint32    `json:"crc"`
+	Inode      uint64    `json:"inode"`
 	IsDeleted  bool      `json:"deleted"`
 	ModifyTime time.Time `json:"modTime"`
 	Source     string    `json:"src"`
 	isDirty    bool
 }
 
-func (ei *ExtentInfo) FromExtent(e *Extent, isDirtyBlock bool) {
+func (ei *ExtentInfo) FromExtent(e *Extent, crc uint32) {
 	if e != nil {
 		ei.Size = uint64(e.dataSize)
 		if !IsTinyExtent(ei.FileID) {
-			if isDirtyBlock {
-				ei.Crc = 0
-			} else {
-				ei.Crc = e.HeaderChecksum()
-			}
-			ei.IsDeleted = e.HasBeenMarkedAsDeleted()
+			ei.Crc = crc
 			ei.ModifyTime = e.ModifyTime()
-			if isDirtyBlock {
-				ei.isDirty = isDirtyBlock
-			}
+			ei.isDirty = crc == 0
 		}
 	}
 }
@@ -77,8 +70,6 @@ type Extent struct {
 	file       *os.File
 	filePath   string
 	extentID   uint64
-	lock       sync.RWMutex
-	header     []byte
 	modifyTime time.Time
 	dataSize   int64
 	hasClose   int32
@@ -89,7 +80,6 @@ func NewExtentInCore(name string, extentID uint64) *Extent {
 	e := new(Extent)
 	e.extentID = extentID
 	e.filePath = name
-	e.header = make([]byte, util.BlockHeaderSize)
 
 	return e
 }
@@ -138,13 +128,10 @@ func (e *Extent) InitToFS(ino uint64) (err error) {
 		e.dataSize = 0
 		return
 	}
-	var (
-		fileInfo os.FileInfo
-	)
-	if fileInfo, err = e.file.Stat(); err != nil {
+	if err = e.file.Sync(); err != nil {
 		return err
 	}
-	e.modifyTime = fileInfo.ModTime()
+	e.modifyTime = time.Now()
 	e.dataSize = 0
 	return
 }
@@ -172,18 +159,9 @@ func (e *Extent) RestoreFromFS() (err error) {
 		e.dataSize = watermark
 		return
 	}
-
 	e.dataSize = info.Size()
 	e.modifyTime = info.ModTime()
 	return
-}
-
-// HasBeenMarkedAsDeleted returns if the extent has been marked as deleted.
-func (e *Extent) HasBeenMarkedAsDeleted() bool {
-	if IsTinyExtent(e.extentID) {
-		return false
-	}
-	return e.header[util.MarkDeleteIndex] == util.MarkDelete
 }
 
 // Size returns length of the extent (not including the header).
@@ -222,10 +200,8 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdate
 	return
 }
 
-type UpdateCrcFunc func(updateExtentID uint64, updateblockNo int, updateCrc uint32, updateE *Extent, isDirtyBlock bool) error
-
 // Write writes data to an extent.
-func (e *Extent) Write(data []byte, offset, size int64, crc uint32, crcFunc UpdateCrcFunc, isUpdateSize, isSync bool) (isDirtyBlock bool, err error) {
+func (e *Extent) Write(data []byte, offset, size int64, crc uint32, isUpdateSize, isSync bool, crcFunc UpdateCrcFunc) (err error) {
 	if IsTinyExtent(e.extentID) {
 		err = e.WriteTiny(data, offset, size, crc, isUpdateSize, isSync)
 		return
@@ -247,12 +223,10 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, crcFunc Upda
 		}
 	}
 	if offsetInBlock == 0 && size == util.BlockSize {
-		isDirtyBlock = true
-		err = crcFunc(e.extentID, int(blockNo), crc, e, isDirtyBlock)
+		err = crcFunc(e.extentID, uint16(blockNo), crc)
 		return
 	} else {
-		isDirtyBlock = true
-		err = crcFunc(e.extentID, int(blockNo), crc, e, isDirtyBlock)
+		err = crcFunc(e.extentID, uint16(blockNo), 0)
 	}
 
 	return
@@ -304,43 +278,33 @@ func (e *Extent) Flush() (err error) {
 	return
 }
 
-// HeaderChecksum returns the crc checksum of the extent header, which includes the inode data and the block crc.
-func (e *Extent) HeaderChecksum() (crc uint32) {
-	blockNum := e.dataSize / util.BlockSize
-	if e.dataSize%util.BlockSize != 0 {
-		blockNum = blockNum + 1
-	}
-	crc = crc32.ChecksumIEEE(e.header[util.BlockHeaderCrcIndex : util.BlockHeaderCrcIndex+blockNum*util.PerBlockCrcSize])
-	return
-}
-
-func (e *Extent) checkDirtyBlock() (dirtyBlocks []int) {
-	dirtyBlocks = make([]int, 0)
-	for index := 0; index < util.BlockCount; index++ {
-		if e.header[index*util.PerBlockCrcSize] == util.DirtyCrcMark {
-			dirtyBlocks = append(dirtyBlocks, index)
-		}
-	}
-	return
-}
-
-func (e *Extent) autoFixDirtyCrc(crcFunc UpdateCrcFunc) {
-	dirtyBlocks := e.checkDirtyBlock()
-	if len(dirtyBlocks) == 0 {
+func (e *Extent) autoFixDirtyCrc(crcFunc UpdateCrcFunc, scanFunc ScanBlocksFunc) (crc uint32, err error) {
+	bcs, err := scanFunc(e.extentID)
+	if err != nil {
 		return
 	}
-	for _, dirtyBlockNo := range dirtyBlocks {
+	data := make([]byte, len(bcs)*util.PerBlockCrcSize)
+	for index := 0; index < len(bcs); index++ {
+		bc := bcs[index]
+		if bc.crc != 0 {
+			binary.BigEndian.PutUint32(data[index*util.PerBlockCrcSize:(index+1)*util.PerBlockCrcSize], bc.crc)
+			continue
+		}
 		data := make([]byte, util.BlockSize)
-		offset := int64(dirtyBlockNo * util.BlockSize)
+		offset := int64(int64(bc.blockNo)*util.BlockSize + util.BlockHeaderSize)
 		readN, err := e.file.ReadAt(data[:util.BlockSize], offset)
 		if err != io.EOF {
-			continue
+			break
 		}
-		crc := crc32.ChecksumIEEE(data[:readN])
-		if err = crcFunc(e.extentID, dirtyBlockNo, crc, e, false); err != nil {
-			continue
+		bc.crc = crc32.ChecksumIEEE(data[:readN])
+		err = crcFunc(e.extentID, bc.blockNo, bc.crc)
+		if err != nil {
+			return 0, nil
 		}
+		binary.BigEndian.PutUint32(data[index*util.PerBlockCrcSize:(index+1)*util.PerBlockCrcSize], bc.crc)
 	}
+	crc = crc32.ChecksumIEEE(data)
+	return
 }
 
 const (

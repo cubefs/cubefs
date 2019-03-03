@@ -157,7 +157,7 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 		if err = json.Unmarshal(data, cmd); err != nil {
 			goto errHandler
 		}
-		if _, err = mf.store.Put(cmd.K, cmd.V); err != nil {
+		if _, err = mf.store.Put(cmd.K, cmd.V, true); err != nil {
 			goto errHandler
 		}
 
@@ -190,11 +190,11 @@ func (mf *MetadataFsm) HandleLeaderChange(leader uint64) {
 
 // Put implements the interface of raft.StateMachine
 func (mf *MetadataFsm) Put(key, val interface{}) (interface{}, error) {
-	return mf.store.Put(key, val)
+	return mf.store.Put(key, val, true)
 }
 
 func (mf *MetadataFsm) batchPut(cmdMap map[string][]byte) (err error) {
-	return mf.store.BatchPut(cmdMap)
+	return mf.store.BatchPut(cmdMap, true)
 }
 
 // Get implements the interface of raft.StateMachine
@@ -204,9 +204,9 @@ func (mf *MetadataFsm) Get(key interface{}) (interface{}, error) {
 
 // Del implements the interface of raft.StateMachine
 func (mf *MetadataFsm) Del(key interface{}) (interface{}, error) {
-	return mf.store.Del(key)
+	return mf.store.Del(key, true)
 }
 
 func (mf *MetadataFsm) delKeyAndPutIndex(key string, cmdMap map[string][]byte) (err error) {
-	return mf.store.DeleteKeyAndPutIndex(key, cmdMap)
+	return mf.store.DeleteKeyAndPutIndex(key, cmdMap, true)
 }

@@ -375,9 +375,6 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	}
 
 	s.incDiskErrCnt(p.PartitionID, err, WriteFlag)
-	if err == nil && p.Opcode == proto.OpWrite && p.Size == util.BlockSize {
-		proto.Buffers.Put(p.Data)
-	}
 	return
 }
 
@@ -421,9 +418,6 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 	if !isRepairRead {
 		err = partition.CheckLeader(p, connect)
 		if err != nil {
-			err = fmt.Errorf(p.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
-				p.StartT, err))
-			log.LogErrorf(err.Error())
 			p.PackErrorBody(ActionStreamRead, err.Error())
 			p.WriteToConn(connect)
 			return
@@ -453,19 +447,14 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 			reply.PackErrorBody(ActionStreamRead, err.Error())
 			p.PackErrorBody(ActionStreamRead, err.Error())
 			if err = reply.WriteToConn(connect); err != nil {
-				err = fmt.Errorf(reply.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
-					reply.StartT, err))
-				log.LogErrorf(err.Error())
+				p.PackErrorBody(ActionStreamRead, err.Error())
 			}
 			return
 		}
 		reply.Size = uint32(currReadSize)
 		reply.ResultCode = proto.OpOk
 		if err = reply.WriteToConn(connect); err != nil {
-			err = fmt.Errorf(reply.LogMessage(ActionStreamRead, connect.RemoteAddr().String(),
-				reply.StartT, err))
 			p.PackErrorBody(ActionStreamRead, err.Error())
-			log.LogErrorf(err.Error())
 			return
 		}
 		needReplySize -= currReadSize
@@ -575,7 +564,7 @@ func (s *DataNode) handleBroadcastMinAppliedID(p *repl.Packet) {
 	if minAppliedID > 0 {
 		partition.SetMinAppliedID(minAppliedID)
 	}
-	log.LogDebugf("[handleBroadcastMinAppliedID] partition=%v minAppliedID=%v", partition.ID(), minAppliedID)
+	log.LogDebugf("[handleBroadcastMinAppliedID] partition=%v minAppliedID=%v", partition.partitionID, minAppliedID)
 	p.PacketOkReply()
 	return
 }
@@ -583,9 +572,9 @@ func (s *DataNode) handleBroadcastMinAppliedID(p *repl.Packet) {
 // Handle handlePacketToGetAppliedID packet.
 func (s *DataNode) handlePacketToGetAppliedID(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
-	appliedID := partition.GetAppliedID()  	//return current appliedID
+	appliedID := partition.GetAppliedID() //return current appliedID
 	log.LogDebugf("[handlePacketToGetAppliedID] partition=%v curAppId=%v",
-		partition.ID(), appliedID)
+		partition.partitionID, appliedID)
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, appliedID)
 	p.PacketOkWithBody(buf)
@@ -702,22 +691,16 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bo
 	// forward the packet to the leader if local one is not the leader
 	conn, err = gConnPool.GetConnect(leaderAddr)
 	if err != nil {
-		gConnPool.PutConnect(conn, true)
 		return
 	}
-
+	defer gConnPool.PutConnect(conn, true)
 	err = p.WriteToConn(conn)
 	if err != nil {
-		gConnPool.PutConnect(conn, true)
 		return
 	}
-
 	if err = p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
-		gConnPool.PutConnect(conn, true)
 		return
 	}
-
-	gConnPool.PutConnect(conn, true)
 
 	return
 }

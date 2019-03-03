@@ -24,6 +24,10 @@ const (
 )
 
 const (
+	ReplProtocolError = 1
+)
+
+const (
 	ActionSendToFollowers     = "ActionSendToFollowers"
 	LocalProcessAddr          = "LocalProcess"
 	ActionReceiveFromFollower = "ActionReceiveFromFollower"
@@ -41,5 +45,5 @@ const (
 const (
 	ReplRuning    = 2
 	ReplExiting   = 1
-	ReplHasExited = -1
+	ReplHasExited = -2
 )

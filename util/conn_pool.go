@@ -26,6 +26,10 @@ type Object struct {
 	idle int64
 }
 
+const (
+	ConnectIdleTime = 30
+)
+
 type ConnectPool struct {
 	sync.RWMutex
 	pools   map[string]*Pool
@@ -35,7 +39,7 @@ type ConnectPool struct {
 }
 
 func NewConnectPool() (cp *ConnectPool) {
-	cp = &ConnectPool{pools: make(map[string]*Pool), mincap: 5, maxcap: 100, timeout: int64(time.Minute)}
+	cp = &ConnectPool{pools: make(map[string]*Pool), mincap: 5, maxcap: 80, timeout: int64(time.Second * ConnectIdleTime)}
 	go cp.autoRelease()
 
 	return cp
@@ -204,16 +208,21 @@ func (p *Pool) NewConnect(target string) (c *net.TCPConn, err error) {
 
 func (p *Pool) GetConnectFromPool() (c *net.TCPConn, err error) {
 	var (
-		obj *Object
+		o *Object
 	)
-	select {
-	case obj = <-p.objects:
-		break
-	default:
-		break
+	for i := 0; i < len(p.objects); i++ {
+		select {
+		case o = <-p.objects:
+			if time.Now().UnixNano()-int64(o.idle) > p.timeout {
+				o.conn.Close()
+				o = nil
+				break
+			}
+			return o.conn, nil
+		default:
+			return p.NewConnect(p.target)
+		}
 	}
-	if obj != nil {
-		return obj.conn, nil
-	}
+
 	return p.NewConnect(p.target)
 }

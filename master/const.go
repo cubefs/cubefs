@@ -14,6 +14,8 @@
 
 package master
 
+import "github.com/tiglabs/containerfs/util"
+
 // Keys in the request
 const (
 	addrKey              = "addr"
@@ -45,6 +47,11 @@ const (
 
 const (
 	underlineSeparator = "_"
+)
+
+const (
+	LRUCacheSize    = 3 << 30
+	WriteBufferSize = 4 * util.MB
 )
 
 const (

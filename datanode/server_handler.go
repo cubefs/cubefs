@@ -80,7 +80,7 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 			Path     string   `json:"path"`
 			Replicas []string `json:"replicas"`
 		}{
-			ID:       dp.ID(),
+			ID:       dp.partitionID,
 			Size:     dp.Size(),
 			Used:     dp.Used(),
 			Status:   dp.Status(),
@@ -141,7 +141,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		Replicas             []string              `json:"replicas"`
 		TinyDeleteRecordSize int64                 `json:"tinyDeleteRecordSize"`
 	}{
-		ID:                   partition.ID(),
+		ID:                   partition.partitionID,
 		Size:                 partition.Size(),
 		Used:                 partition.Used(),
 		Status:               partition.Status(),
@@ -158,7 +158,6 @@ func (s *DataNode) getExtentAPI(w http.ResponseWriter, r *http.Request) {
 	var (
 		partitionID uint64
 		extentID    int
-		reload      int
 		err         error
 		extentInfo  *storage.ExtentInfo
 	)
@@ -174,14 +173,12 @@ func (s *DataNode) getExtentAPI(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	reload, _ = strconv.Atoi(r.FormValue("reload"))
-
 	partition := s.space.Partition(partitionID)
 	if partition == nil {
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	if extentInfo, err = partition.ExtentStore().Watermark(uint64(extentID), reload == 1); err != nil {
+	if extentInfo, err = partition.ExtentStore().Watermark(uint64(extentID)); err != nil {
 		s.buildFailureResp(w, 500, err.Error())
 		return
 	}

@@ -61,7 +61,7 @@ var (
 
 // http response error code and error message definitions
 const (
-	ErrCodeSuccess                         = iota
+	ErrCodeSuccess = iota
 	ErrCodeInternalError
 	ErrCodeParamError
 	ErrCodeInvalidCfg
