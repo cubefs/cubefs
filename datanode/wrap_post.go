@@ -15,9 +15,9 @@
 package datanode
 
 import (
-	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/repl"
-	"github.com/tiglabs/containerfs/storage"
+	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/cfs/repl"
+	"github.com/chubaofs/cfs/storage"
 	"sync/atomic"
 )
 

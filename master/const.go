@@ -14,7 +14,7 @@
 
 package master
 
-import "github.com/tiglabs/containerfs/util"
+import "github.com/chubaofs/cfs/util"
 
 // Keys in the request
 const (

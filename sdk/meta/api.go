@@ -20,8 +20,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util/log"
+	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/cfs/util/log"
 )
 
 // Low-level API, i.e. work with inode

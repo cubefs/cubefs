@@ -20,7 +20,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/tiglabs/containerfs/util/btree"
+	"github.com/chubaofs/cfs/util/btree"
 )
 
 var (

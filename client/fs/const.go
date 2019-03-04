@@ -20,7 +20,7 @@ import (
 
 	"bazil.org/fuse"
 
-	"github.com/tiglabs/containerfs/proto"
+	"github.com/chubaofs/cfs/proto"
 )
 
 const (

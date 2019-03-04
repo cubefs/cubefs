@@ -34,10 +34,10 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	cfs "github.com/tiglabs/containerfs/client/fs"
-	"github.com/tiglabs/containerfs/util/config"
-	"github.com/tiglabs/containerfs/util/exporter"
-	"github.com/tiglabs/containerfs/util/log"
+	cfs "github.com/chubaofs/cfs/client/fs"
+	"github.com/chubaofs/cfs/util/config"
+	"github.com/chubaofs/cfs/util/exporter"
+	"github.com/chubaofs/cfs/util/log"
 )
 
 const (

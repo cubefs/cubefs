@@ -15,8 +15,8 @@
 package master
 
 import (
-	"github.com/tiglabs/containerfs/util/exporter"
-	"github.com/tiglabs/containerfs/util/log"
+	"github.com/chubaofs/cfs/util/exporter"
+	"github.com/chubaofs/cfs/util/log"
 	"strconv"
 	"time"
 )

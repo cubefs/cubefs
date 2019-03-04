@@ -15,7 +15,7 @@
 package metanode
 
 import (
-	"github.com/tiglabs/containerfs/proto"
+	"github.com/chubaofs/cfs/proto"
 )
 
 type DentryResponse struct {

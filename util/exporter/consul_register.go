@@ -19,8 +19,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/chubaofs/cfs/util/log"
 	"github.com/parnurzeal/gorequest"
-	"github.com/tiglabs/containerfs/util/log"
 )
 
 const (

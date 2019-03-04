@@ -27,12 +27,12 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/cfs/raftstore"
+	"github.com/chubaofs/cfs/util"
+	"github.com/chubaofs/cfs/util/exporter"
+	"github.com/chubaofs/cfs/util/log"
 	"github.com/juju/errors"
-	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/raftstore"
-	"github.com/tiglabs/containerfs/util"
-	"github.com/tiglabs/containerfs/util/exporter"
-	"github.com/tiglabs/containerfs/util/log"
 )
 
 const partitionPrefix = "partition_"

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/chubaofs/cfs/util/log"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/tiglabs/containerfs/util/log"
 )
 
 var (

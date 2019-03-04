@@ -18,9 +18,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util/btree"
-	"github.com/tiglabs/containerfs/util/log"
+	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/cfs/util/btree"
+	"github.com/chubaofs/cfs/util/log"
 )
 
 // ExtentRequest defines the struct for the request of read or write an extent.

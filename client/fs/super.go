@@ -22,9 +22,9 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	"github.com/tiglabs/containerfs/sdk/data/stream"
-	"github.com/tiglabs/containerfs/sdk/meta"
-	"github.com/tiglabs/containerfs/util/log"
+	"github.com/chubaofs/cfs/sdk/data/stream"
+	"github.com/chubaofs/cfs/sdk/meta"
+	"github.com/chubaofs/cfs/util/log"
 )
 
 // Super defines the struct of a super block.

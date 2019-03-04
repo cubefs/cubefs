@@ -20,9 +20,9 @@ import (
 
 	"github.com/juju/errors"
 
-	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util/exporter"
-	"github.com/tiglabs/containerfs/util/log"
+	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/cfs/util/exporter"
+	"github.com/chubaofs/cfs/util/log"
 )
 
 // API implementations

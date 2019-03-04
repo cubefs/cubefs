@@ -25,12 +25,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/cfs/raftstore"
+	"github.com/chubaofs/cfs/repl"
+	"github.com/chubaofs/cfs/util/config"
+	"github.com/chubaofs/cfs/util/log"
 	"github.com/juju/errors"
-	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/raftstore"
-	"github.com/tiglabs/containerfs/repl"
-	"github.com/tiglabs/containerfs/util/config"
-	"github.com/tiglabs/containerfs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
 )
 

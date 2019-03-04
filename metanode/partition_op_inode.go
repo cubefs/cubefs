@@ -18,7 +18,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/tiglabs/containerfs/proto"
+	"github.com/chubaofs/cfs/proto"
 )
 
 func replyInfo(info *proto.InodeInfo, ino *Inode) bool {

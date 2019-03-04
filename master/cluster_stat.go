@@ -16,7 +16,7 @@ package master
 
 import (
 	"fmt"
-	"github.com/tiglabs/containerfs/util"
+	"github.com/chubaofs/cfs/util"
 	"strconv"
 )
 

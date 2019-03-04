@@ -19,10 +19,10 @@ import (
 	"net"
 	"time"
 
+	"github.com/chubaofs/cfs/sdk/data/wrapper"
+	"github.com/chubaofs/cfs/util"
+	"github.com/chubaofs/cfs/util/log"
 	"github.com/juju/errors"
-	"github.com/tiglabs/containerfs/sdk/data/wrapper"
-	"github.com/tiglabs/containerfs/util"
-	"github.com/tiglabs/containerfs/util/log"
 )
 
 var (

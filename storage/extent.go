@@ -17,7 +17,7 @@ package storage
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/tiglabs/containerfs/util"
+	"github.com/chubaofs/cfs/util"
 	"hash/crc32"
 	"io"
 	"math"

@@ -17,9 +17,9 @@ package metanode
 import (
 	"time"
 
+	"github.com/chubaofs/cfs/util/exporter"
+	"github.com/chubaofs/cfs/util/log"
 	"github.com/juju/errors"
-	"github.com/tiglabs/containerfs/util/exporter"
-	"github.com/tiglabs/containerfs/util/log"
 )
 
 type storeMsg struct {

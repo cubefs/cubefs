@@ -16,7 +16,7 @@ package master
 
 import (
 	"encoding/json"
-	"github.com/tiglabs/containerfs/proto"
+	"github.com/chubaofs/cfs/proto"
 	"math/rand"
 	"sync"
 	"time"

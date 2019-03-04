@@ -20,8 +20,8 @@ import (
 	"strconv"
 
 	"bytes"
-	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util/log"
+	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/cfs/util/log"
 )
 
 // APIResponse defines the structure of the response to an HTTP request

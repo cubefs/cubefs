@@ -16,7 +16,7 @@ package buf
 
 import (
 	"fmt"
-	"github.com/tiglabs/containerfs/util"
+	"github.com/chubaofs/cfs/util"
 	"sync"
 )
 

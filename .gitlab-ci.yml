@@ -4,9 +4,9 @@ before_script:
   - export GOPATH=/export/workspace/go
   - echo $GOPATH
   - echo ${CI_COMMIT_REF_NAME}
-  - rm -fr $GOPATH/src/github.com/tiglabs/containerfs
+  - rm -fr $GOPATH/src/github.com/chubaofs/cfs
   - ln -s $CI_PROJECT_DIR $GOPATH/src/github.com/tiglabs/
-  - cd $GOPATH/src/github.com/tiglabs/containerfs
+  - cd $GOPATH/src/github.com/chubaofs/cfs
 
 stages:
   - build

@@ -17,10 +17,10 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/cfs/repl"
+	"github.com/chubaofs/cfs/storage"
 	"github.com/juju/errors"
-	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/repl"
-	"github.com/tiglabs/containerfs/storage"
 	"hash/crc32"
 )
 

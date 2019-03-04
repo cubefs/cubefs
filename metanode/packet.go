@@ -16,8 +16,8 @@ package metanode
 
 import (
 	"encoding/json"
-	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/storage"
+	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/cfs/storage"
 )
 
 type Packet struct {

@@ -16,7 +16,7 @@ package master
 
 import (
 	"fmt"
-	"github.com/tiglabs/containerfs/raftstore"
+	"github.com/chubaofs/cfs/raftstore"
 	"github.com/tiglabs/raft/proto"
 	"strconv"
 	"strings"

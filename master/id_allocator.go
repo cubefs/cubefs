@@ -16,8 +16,8 @@ package master
 
 import (
 	"fmt"
-	"github.com/tiglabs/containerfs/raftstore"
-	"github.com/tiglabs/containerfs/util/log"
+	"github.com/chubaofs/cfs/raftstore"
+	"github.com/chubaofs/cfs/util/log"
 	"strconv"
 	"sync"
 	"sync/atomic"

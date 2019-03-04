@@ -18,10 +18,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/chubaofs/cfs/util/config"
+	"github.com/chubaofs/cfs/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/tiglabs/containerfs/util/config"
-	"github.com/tiglabs/containerfs/util/log"
 )
 
 const (

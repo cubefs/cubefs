@@ -21,9 +21,9 @@ import (
 
 	"os"
 
-	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/raftstore"
-	"github.com/tiglabs/containerfs/util/log"
+	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/cfs/raftstore"
+	"github.com/chubaofs/cfs/util/log"
 )
 
 // SpaceManager manages the disk space.

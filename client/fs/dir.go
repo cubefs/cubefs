@@ -23,8 +23,8 @@ import (
 	"bazil.org/fuse/fs"
 	"golang.org/x/net/context"
 
-	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util/log"
+	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/cfs/util/log"
 )
 
 // Dir defines the structure of a directory

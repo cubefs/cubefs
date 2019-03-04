@@ -17,8 +17,8 @@ package metanode
 import (
 	"net"
 
-	"github.com/tiglabs/containerfs/proto"
-	"github.com/tiglabs/containerfs/util/log"
+	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/cfs/util/log"
 )
 
 const (
