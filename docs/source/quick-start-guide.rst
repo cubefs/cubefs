@@ -166,7 +166,7 @@ By decault, there are only a few data partitions allocated upon volume creation,
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/admin/createVol?name=test&capacity=100"
+   curl -v "http://127.0.0.1/admin/createVol?name=test&capacity=100&owner=cfs"
 
 
 

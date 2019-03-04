@@ -8,7 +8,7 @@ this can be important as there could be  heavy accesses to the  metadata of file
 Internal Structure
 -------------------
 
-The metadata subsystem can be considered as an in-memory datastore of  the file metadata. It can have thousands of meta nodes, each of which can have hundreds of billions of meta partitions.
+The metadata subsystem can be considered as an in-memory datastore of  the file metadata. It can have thousands of meta nodes, each of which can have a set of meta partitions.
 Each meta partition on a meta node stores the file metadata in memory by maintaining a set of *inodes* and  a set of *dentries*.
 
 
