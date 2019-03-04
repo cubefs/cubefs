@@ -5,7 +5,7 @@ before_script:
   - echo $GOPATH
   - echo ${CI_COMMIT_REF_NAME}
   - rm -fr $GOPATH/src/github.com/chubaofs/cfs
-  - ln -s $CI_PROJECT_DIR $GOPATH/src/github.com/tiglabs/
+  - ln -s $CI_PROJECT_DIR $GOPATH/src/github.com/chubaofs/
   - cd $GOPATH/src/github.com/chubaofs/cfs
 
 stages:
