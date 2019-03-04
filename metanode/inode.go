@@ -400,8 +400,14 @@ func (i *Inode) IncNLink() {
 // DecNLink decreases the nLink value by one.
 func (i *Inode) DecNLink() {
 	i.Lock()
-	if i.NLink != 0 {
-		i.NLink--
+	if proto.IsDir(i.Type) {
+		if i.NLink != 2 {
+			i.NLink--
+		}
+	} else {
+		if i.NLink != 0 {
+			i.NLink--
+		}
 	}
 	i.Unlock()
 }
@@ -411,6 +417,13 @@ func (i *Inode) GetNLink() uint32 {
 	i.RLock()
 	defer i.RUnlock()
 	return i.NLink
+}
+
+func (i *Inode) IsEmptyDir() bool {
+	i.RLock()
+	ok := i.NLink == 2
+	i.RUnlock()
+	return ok
 }
 
 // SetDeleteMark set the deleteMark flag. TODO markDelete or deleteMark? markDelete has been used in datanode.
