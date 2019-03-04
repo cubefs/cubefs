@@ -19,9 +19,10 @@
 
 # -- Project information -----------------------------------------------------
 
+
 project = u'CFS'
 copyright = u'2018, The Chubao Authors'
-author = u'CFS Authors'
+author = u'The Chubao Authors'
 
 # The short X.Y version
 version = u''
@@ -102,7 +103,8 @@ html_theme = 'sphinx_rtd_theme'
 # -- Options for HTMLHelp output ---------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'CFSdoc'
+
+htmlhelp_basename = 'CFS Doc'
 
 
 # -- Options for LaTeX output ------------------------------------------------
@@ -124,37 +126,6 @@ latex_elements = {
     #
     # 'figure_align': 'htbp',
 }
-
-# Grouping the document tree into LaTeX files. List of tuples
-# (source start file, target name, title,
-#  author, documentclass [howto, manual, or own class]).
-latex_documents = [
-    (master_doc, 'CFS.tex', u'CFS Documentation',
-     u'The Chubao Authors', 'manual'),
-]
-
-
-# -- Options for manual page output ------------------------------------------
-
-# One entry per manual page. List of tuples
-# (source start file, name, description, authors, manual section).
-man_pages = [
-    (master_doc, 'CFS', u'CFS Documentation',
-     [author], 1)
-]
-
-
-# -- Options for Texinfo output ----------------------------------------------
-
-# Grouping the document tree into Texinfo files. List of tuples
-# (source start file, target name, title, author,
-#  dir menu entry, description, category)
-texinfo_documents = [
-    (master_doc, 'CFS', u'CFS Documentation',
-     author, 'CFS', 'One line description of project.',
-     'Miscellaneous'),
-]
-
 
 # -- Options for Epub output -------------------------------------------------
 
