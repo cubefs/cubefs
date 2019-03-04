@@ -28,14 +28,15 @@ const (
 )
 
 const (
-	ActionSendToFollowers     = "ActionSendToFollowers"
-	LocalProcessAddr          = "LocalProcess"
-	ActionReceiveFromFollower = "ActionReceiveFromFollower"
-	ActionWriteToClient       = "ActionWriteToClient"
-	ActionCheckAndAddInfos    = "ActionCheckAndAddInfos"
-	ActionCheckReply          = "ActionCheckReply"
+	ActionSendToFollowers      = "ActionSendToFollowers"
+	ActionSetReplProtocolError = "ActionSetReplProtocolError"
+	ActionReceiveFromFollower  = "ActionReceiveFromFollower"
+	ActionWriteToClient        = "ActionWriteToClient"
+	ActionCheckAndAddInfos     = "ActionCheckAndAddInfos"
+	ActionCheckReply           = "ActionCheckReply"
 
-	ActionPreparePkt = "ActionPreparePkt"
+	ActionPreparePkt           = "ActionPreparePkt"
+	ActionAllocFollowerConnect = "ActionAllocFollowerConnect"
 )
 
 const (
