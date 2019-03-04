@@ -123,7 +123,12 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 		}
 
 		//TODO: isDir should record subDir for fsck
-		shouldDelete = true
+		if inode.IsEmptyDir() {
+			shouldDelete = true
+		} else {
+			resp.Status = proto.OpNotEmtpy
+		}
+
 	})
 	if !isFound {
 		resp.Status = proto.OpNotExistErr

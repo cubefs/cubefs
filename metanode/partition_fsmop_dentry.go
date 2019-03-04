@@ -32,6 +32,7 @@ func NewDentryResponse() *DentryResponse {
 // Insert a dentry into the dentry tree.
 func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 	forceUpdate bool) (status uint8) {
+	var parentIno *Inode
 	status = proto.OpOk
 	if !forceUpdate {
 		// check inode
@@ -40,8 +41,8 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 			status = proto.OpNotExistErr
 			return
 		}
-		ino := inoItem.(*Inode)
-		if !proto.IsDir(ino.Type) {
+		parentIno = inoItem.(*Inode)
+		if !proto.IsDir(parentIno.Type) {
 			status = proto.OpArgMismatchErr
 			return
 		}
@@ -52,6 +53,8 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 		if dentry.Type != d.Type {
 			status = proto.OpArgMismatchErr
 		}
+	} else {
+		parentIno.IncNLink()
 	}
 	return
 }
@@ -77,6 +80,11 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry) (
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
 		return
+	} else {
+		ino := mp.inodeTree.Get(NewInode(dentry.ParentId, 0))
+		if ino != nil {
+			ino.(*Inode).DecNLink()
+		}
 	}
 	resp.Msg = item.(*Dentry)
 	return
