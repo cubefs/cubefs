@@ -120,6 +120,9 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 	if partition.Available() <= 0 || partition.disk.Status == proto.ReadOnly {
 		err = storage.NoSpaceError
 		return
+	} else if partition.disk.Status == proto.Unavailable {
+		err = storage.BrokenDiskError
+		return
 	}
 	var ino uint64
 	if len(p.Data) >= 8 && p.Size >= 8 {
@@ -350,6 +353,9 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
 	if partition.Available() <= 0 || partition.disk.Status == proto.ReadOnly {
 		err = storage.NoSpaceError
+		return
+	} else if partition.disk.Status == proto.Unavailable {
+		err = storage.BrokenDiskError
 		return
 	}
 	store := partition.ExtentStore()

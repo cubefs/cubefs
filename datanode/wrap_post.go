@@ -28,7 +28,7 @@ func (s *DataNode) Post(p *repl.Packet) error {
 	if isReadExtentOperation(p) {
 		p.NeedReply = false
 	}
-	if p.Opcode == proto.OpCreateDataPartition {
+	if p.Opcode == proto.OpCreateDataPartition || p.Opcode == proto.OpDataNodeHeartbeat {
 		p.NeedReply = true
 	}
 	s.cleanupPkt(p)
