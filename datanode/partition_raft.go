@@ -135,8 +135,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 				storeAppliedIDTimer.Stop()
 				return
 
-			case extentID := <-dp.repairC:
-				dp.disk.Status = proto.Unavailable
+			case extentID := <-dp.stopRaftC:
 				dp.stopRaft()
 				log.LogErrorf("action[ExtentRepair] stop raft partition=%v_%v", dp.partitionID, extentID)
 
