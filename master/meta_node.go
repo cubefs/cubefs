@@ -15,7 +15,6 @@
 package master
 
 import (
-	"encoding/json"
 	"github.com/chubaofs/cfs/proto"
 	"math/rand"
 	"sync"
@@ -133,10 +132,4 @@ func (metaNode *MetaNode) checkHeartbeat() {
 	if time.Since(metaNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
 		metaNode.IsActive = false
 	}
-}
-
-func (metaNode *MetaNode) toJSON() (body []byte, err error) {
-	metaNode.RLock()
-	defer metaNode.RUnlock()
-	return json.Marshal(metaNode)
 }

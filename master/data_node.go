@@ -19,7 +19,6 @@ import (
 	"sync"
 	"time"
 
-	"encoding/json"
 	"github.com/chubaofs/cfs/proto"
 	"github.com/chubaofs/cfs/util"
 )
@@ -139,10 +138,4 @@ func (dataNode *DataNode) createHeartbeatTask(masterAddr string) (task *proto.Ad
 	}
 	task = proto.NewAdminTask(proto.OpDataNodeHeartbeat, dataNode.Addr, request)
 	return
-}
-
-func (dataNode *DataNode) toJSON() (body []byte, err error) {
-	dataNode.RLock()
-	defer dataNode.RUnlock()
-	return json.Marshal(dataNode)
 }

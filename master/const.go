@@ -68,6 +68,7 @@ const (
 	defaultInitDataPartitionCnt                  = 10
 	volExpansionRatio                            = 0.1
 	maxNumberOfDataPartitionsForExpansion        = 100
+	EmptyCrcValue                         uint32 = 4045511210
 )
 
 const (
