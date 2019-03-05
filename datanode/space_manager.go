@@ -266,7 +266,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 	)
 	for i := 0; i < len(manager.disks); i++ {
 		disk = manager.minPartitionCnt()
-		if disk.Available < uint64(dpCfg.PartitionSize) {
+		if disk.Available < uint64(dpCfg.PartitionSize) || disk.Status != proto.ReadWrite {
 			disk = nil
 			continue
 		}

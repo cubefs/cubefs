@@ -62,16 +62,9 @@ func NewDisk(path string, restSize uint64, maxErrCnt int, space *SpaceManager) (
 	d = new(Disk)
 	d.Path = path
 	d.ReservedSpace = restSize
-
-	// TODO why maxErrs has been set twice here?
 	d.MaxErrCnt = maxErrCnt
-
 	d.space = space
 	d.partitionMap = make(map[uint64]*DataPartition)
-	d.ReservedSpace = restSize
-
-	// TODO why maxErrs has been set twice here?
-	d.MaxErrCnt = 2000
 
 	d.computeUsage()
 
