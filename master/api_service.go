@@ -979,6 +979,24 @@ func newErrHTTPReply(err error) *proto.HTTPReply {
 }
 
 func sendReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) (err error) {
+	switch httpReply.Data.(type) {
+	case *DataPartition:
+		dp := httpReply.Data.(*DataPartition)
+		dp.RLock()
+		defer dp.RUnlock()
+	case *MetaPartition:
+		mp := httpReply.Data.(*MetaPartition)
+		mp.RLock()
+		defer mp.RUnlock()
+	case *MetaNode:
+		mn := httpReply.Data.(*MetaNode)
+		mn.RLock()
+		defer mn.RUnlock()
+	case *DataNode:
+		dn := httpReply.Data.(*DataNode)
+		dn.RLock()
+		defer dn.RUnlock()
+	}
 	reply, err := json.Marshal(httpReply)
 	if err != nil {
 		log.LogErrorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", httpReply, r.URL, r.RemoteAddr, err)

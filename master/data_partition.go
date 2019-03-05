@@ -15,7 +15,6 @@
 package master
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/cfs/proto"
 	"github.com/chubaofs/cfs/util"
@@ -511,12 +510,6 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 	replica.NeedsToCompare = vr.NeedCompare
 	replica.DiskPath = vr.DiskPath
 	partition.checkAndRemoveMissReplica(dataNode.Addr)
-}
-
-func (partition *DataPartition) toJSON() (body []byte, err error) {
-	partition.RLock()
-	defer partition.RUnlock()
-	return json.Marshal(partition)
 }
 
 func (partition *DataPartition) getMaxUsedSpace() uint64 {

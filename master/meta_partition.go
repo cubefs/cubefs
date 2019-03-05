@@ -17,7 +17,6 @@ package master
 import (
 	"sync"
 
-	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/cfs/proto"
 	"github.com/chubaofs/cfs/util/log"
@@ -73,12 +72,6 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	mp.Hosts = make([]string, 0)
 	mp.LoadResponse = make([]*proto.MetaPartitionLoadResponse, 0)
 	return
-}
-
-func (mp *MetaPartition) toJSON() (body []byte, err error) {
-	mp.RLock()
-	defer mp.RUnlock()
-	return json.Marshal(mp)
 }
 
 func (mp *MetaPartition) setPeers(peers []proto.Peer) {

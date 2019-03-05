@@ -73,8 +73,10 @@ func (partition *DataPartition) checkTinyExtentFile(fc *FileInCore, liveReplicas
 	if fc.shouldCheckCrc() == false {
 		return
 	}
-	fms, _ := fc.needCrcRepair(liveReplicas)
-
+	fms, needRepair := fc.needCrcRepair(liveReplicas)
+	if !needRepair {
+		return
+	}
 	if hasSameSize(fms) {
 		return
 	}

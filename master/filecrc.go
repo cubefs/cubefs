@@ -16,8 +16,6 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/cfs/proto"
-	"sort"
 	"time"
 )
 
@@ -63,49 +61,6 @@ func (fileCrcArr fileCrcSorter) log() (msg string) {
 	return
 }
 
-func (fc *FileInCore) createFileCrcTask(partitionID uint64, liveVols []*DataReplica, clusterID string) (tasks []*proto.AdminTask) {
-	tasks = make([]*proto.AdminTask, 0)
-	if fc.shouldCheckCrc() == false {
-		return
-	}
-
-	fms, needRepair := fc.needCrcRepair(liveVols)
-
-	if len(fms) < len(liveVols) && (time.Now().Unix()-fc.LastModify) > intervalToCheckMissingReplica {
-		liveAddrs := make([]string, 0)
-		for _, replica := range liveVols {
-			liveAddrs = append(liveAddrs, replica.Addr)
-		}
-		Warn(clusterID, fmt.Sprintf("partitionid[%v],file[%v],fms[%v],liveAddr[%v]", partitionID, fc.Name, fc.getFileMetaAddrs(), liveAddrs))
-	}
-	if !needRepair {
-		return
-	}
-
-	fileCrcArr := fc.calculateCrc(fms)
-	sort.Sort(fileCrcSorter(fileCrcArr))
-	maxIndex := len(fileCrcArr) - 1
-	if fileCrcArr[maxIndex].count == 1 {
-		msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  CRC diffrent between all Node  "+
-			" it can not repair it ", clusterID, partitionID, fc.Name)
-		msg += (fileCrcSorter(fileCrcArr)).log()
-		Warn(clusterID, msg)
-		return
-	}
-
-	for index, crc := range fileCrcArr {
-		if index != maxIndex {
-			badNode := crc.meta
-			msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  badCrc On :%v  ",
-				clusterID, partitionID, fc.Name, badNode.getLocationAddr())
-			msg += (fileCrcSorter)(fileCrcArr).log()
-			Warn(clusterID, msg)
-		}
-	}
-
-	return
-}
-
 func (fc *FileInCore) shouldCheckCrc() bool {
 	return time.Now().Unix()-fc.LastModify > defaultIntervalToCheckCrc
 }
@@ -126,6 +81,10 @@ func (fc *FileInCore) needCrcRepair(liveVols []*DataReplica) (fms []*FileMetadat
 
 	baseCrc = fms[0].Crc
 	for _, fm := range fms {
+		if fm.getFileCrc() == EmptyCrcValue || fm.getFileCrc() == 0 {
+			needRepair = false
+			return
+		}
 		if fm.getFileCrc() != baseCrc {
 			needRepair = true
 			return
