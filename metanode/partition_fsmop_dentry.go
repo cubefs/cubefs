@@ -54,7 +54,9 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 			status = proto.OpArgMismatchErr
 		}
 	} else {
-		parentIno.IncNLink()
+		if !forceUpdate {
+			parentIno.IncNLink()
+		}
 	}
 	return
 }
