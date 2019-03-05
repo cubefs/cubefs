@@ -100,18 +100,6 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp = mp.fsmUpdateDentry(den)
-	case opFSMOpen:
-		openReq := &OpenReq{}
-		if err = json.Unmarshal(msg.V, openReq); err != nil {
-			return
-		}
-		resp = mp.fsmOpenFile(openReq)
-	case opFSMReleaseOpen:
-		ino := NewInode(0, 0)
-		if err = ino.Unmarshal(msg.V); err != nil {
-			return
-		}
-		resp = mp.fsmReleaseOpen(ino)
 	case opFSMDeletePartition:
 		resp = mp.fsmDeletePartition()
 	case opFSMUpdatePartition:
