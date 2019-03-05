@@ -90,6 +90,10 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 		err = m.opUpdateDentry(conn, p, remoteAddr)
 	case proto.OpMetaReadDir:
 		err = m.opReadDir(conn, p, remoteAddr)
+	case proto.OpMetaOpen:
+		err = m.opOpen(conn, p, remoteAddr)
+	case proto.OpMetaReleaseOpen:
+		err = m.opReleaseOpen(conn, p, remoteAddr)
 	case proto.OpCreateMetaPartition:
 		err = m.opCreateMetaPartition(conn, p, remoteAddr)
 	case proto.OpMetaNodeHeartbeat:
