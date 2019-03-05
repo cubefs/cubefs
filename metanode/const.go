@@ -89,7 +89,6 @@ const (
 	opFSMUnlinkInode
 	opFSMCreateDentry
 	opFSMDeleteDentry
-	opFSMOpen
 	opFSMDeletePartition
 	opFSMUpdatePartition
 	opFSMDecommissionPartition
@@ -106,7 +105,6 @@ const (
 	opFSMInternalDelExtentFile
 	opFSMInternalDelExtentCursor
 	opExtentFileSnapshot
-	opFSMReleaseOpen
 )
 
 var (

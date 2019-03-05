@@ -116,25 +116,15 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 // Open opens an inode to operate.
 func (mp *metaPartition) Open(req *OpenReq, p *Packet) (err error) {
 	req.ATime = Now.GetCurrentTime().Unix()
-	val, err := json.Marshal(req)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
-		return
-	}
-	resp, err := mp.Put(opFSMOpen, val)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
-		return
-	}
+	resp :=mp.fsmOpenFile(req)
 	var reply []byte
-	msg := resp.(*InodeResponse)
 	if reply, err = json.Marshal(&proto.OpenResponse{
-		AuthID: msg.AuthID,
+		AuthID: resp.AuthID,
 	}); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
 		return
 	}
-	p.PacketErrorWithBody(msg.Status, reply)
+	p.PacketErrorWithBody(resp.Status, reply)
 	return
 }
 
@@ -143,17 +133,8 @@ func (mp *metaPartition) Open(req *OpenReq, p *Packet) (err error) {
 func (mp *metaPartition) ReleaseOpen(req *ReleaseReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	ino.AuthID = req.AuthID
-	val, err := ino.Marshal()
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		return
-	}
-	r, err := mp.Put(opFSMReleaseOpen, val)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
-		return
-	}
-	p.PacketErrorWithBody(r.(uint8), nil)
+	status :=mp.fsmReleaseOpen(ino)
+	p.PacketErrorWithBody(status, nil)
 	return
 }
 

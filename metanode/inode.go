@@ -484,22 +484,31 @@ func (i *Inode) CanOpen(mt int64) (authId uint64, ok bool) {
 	return
 }
 
-// OpenRelease sets the authID as 0. TODO explain
+// OpenRelease sets the authID as 0.
 func (i *Inode) OpenRelease(authId uint64) {
 	i.Lock()
 	if i.AuthID == authId {
 		i.AuthID = 0
+		i.AuthTimeout = 0
 	}
 	i.Unlock()
 }
 
-// CanWrite returns if the inode can be written. TODO explain
+// CanWrite returns if the inode can be written.
 func (i *Inode) CanWrite(authId uint64, mt int64) bool {
 	i.Lock()
 	defer i.Unlock()
-	if i.AuthID != authId || i.AuthID == 0 {
+	if authId == 0 {
 		return false
 	}
-	i.AuthTimeout = mt + defaultAuthTimeout
+	if i.AuthTimeout >= mt {
+		if i.AuthID != authId {
+			return false
+		}
+		i.AuthTimeout = mt + defaultAuthTimeout
+		return true
+	}
+	i.AuthID = authId
+	i.AuthTimeout = mt+ defaultAuthTimeout
 	return true
 }
