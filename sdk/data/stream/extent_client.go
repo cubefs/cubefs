@@ -111,11 +111,12 @@ func (client *ExtentClient) CloseStream(inode uint64, flag uint32) (err error) {
 	return s.IssueReleaseRequest(flag)
 }
 
+// Evict request shall grab the lock until request is sent to the request channel
 func (client *ExtentClient) EvictStream(inode uint64) error {
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
-	client.streamerLock.Unlock()
 	if !ok {
+		client.streamerLock.Unlock()
 		return nil
 	}
 	err := s.IssueEvictRequest()

@@ -166,6 +166,7 @@ func (s *Streamer) IssueEvictRequest() error {
 	request := evictRequestPool.Get().(*EvictRequest)
 	request.done = make(chan struct{}, 1)
 	s.request <- request
+	s.client.streamerLock.Unlock()
 	<-request.done
 	err := request.err
 	evictRequestPool.Put(request)
