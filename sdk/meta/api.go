@@ -231,35 +231,56 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 		return syscall.ENOENT
 	}
 
-	// look up for the ino
+	// look up for the src ino
 	status, inode, mode, err := mw.lookup(srcParentMP, srcParentID, srcName)
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
+	srcMP := mw.getPartitionByInode(inode)
+	if srcMP == nil {
+		return syscall.ENOENT
+	}
+
+	status, _, err = mw.ilink(srcMP, inode)
+	if err != nil || status != statusOK {
+		return statusToErrno(status)
+	}
+
 	// create dentry in dst parent
 	status, err = mw.dcreate(dstParentMP, dstParentID, dstName, inode, mode)
 	if err != nil {
+		mw.iunlink(srcMP, inode)
 		return syscall.EAGAIN
 	}
 
-	if status == statusExist {
+	// Note that only regular files are allowed to be overwritten.
+	if status == statusExist && proto.IsRegular(mode) {
 		status, oldInode, err = mw.dupdate(dstParentMP, dstParentID, dstName, inode)
 		if err != nil {
+			mw.iunlink(srcMP, inode)
 			return syscall.EAGAIN
 		}
 	}
 
 	if status != statusOK {
+		mw.iunlink(srcMP, inode)
 		return statusToErrno(status)
 	}
 
 	// delete dentry from src parent
 	status, _, err = mw.ddelete(srcParentMP, srcParentID, srcName)
 	if err != nil || status != statusOK {
+		var (
+			sts int
+			e   error
+		)
 		if oldInode == 0 {
-			mw.ddelete(dstParentMP, dstParentID, dstName)
+			sts, _, e = mw.ddelete(dstParentMP, dstParentID, dstName)
 		} else {
-			mw.dupdate(dstParentMP, dstParentID, dstName, oldInode)
+			sts, _, e = mw.dupdate(dstParentMP, dstParentID, dstName, oldInode)
+		}
+		if e == nil && sts == statusOK {
+			mw.iunlink(srcMP, inode)
 		}
 		return statusToErrno(status)
 	}
