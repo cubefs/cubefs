@@ -28,16 +28,11 @@ const (
 )
 
 const (
-	BlockHeaderInoSize     = 8 // TODO explain
-	BlockHeaderCrcSize     = PerBlockCrcSize * BlockCount
-	BlockHeaderDelMarkSize = 1 // TODO DeleteMark or MarkDelete?
-	BlockHeaderSize        = BlockHeaderInoSize + BlockHeaderCrcSize + BlockHeaderDelMarkSize
 	BlockCount             = 1024
 	BlockSize              = 65536 * 2
 	ReadBlockSize          = BlockSize
 	PerBlockCrcSize        = 4
 	ExtentSize             = BlockCount * BlockSize
-	ExtentFileSizeLimit    = BlockHeaderSize + ExtentSize
 	PacketHeaderSize       = 57
 )
 
@@ -45,7 +40,6 @@ const (
 	DefaultTinySizeLimit = 1 * MB // TODO explain tiny extent?
 )
 
-// TODO do we need this? we have math.
 func Min(a, b int) int {
 	if a > b {
 		return b
@@ -53,7 +47,6 @@ func Min(a, b int) int {
 	return a
 }
 
-// TODO do we need this?
 func Max(a, b int) int {
 	if a > b {
 		return a
