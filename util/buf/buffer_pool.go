@@ -51,7 +51,7 @@ func NewBufferPool() (bufferP *BufferPool) {
 func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
 	if size == util.PacketHeaderSize {
 		return bufferP.pools[0].Get().([]byte), nil
-	} else if size == util.BlockSize { // TODO BlockSize == ReadBlockSize. This looks incorrect.
+	} else if size == util.BlockSize {
 		return bufferP.pools[1].Get().([]byte), nil
 	} else if size == util.ReadBlockSize {
 		return bufferP.pools[2].Get().([]byte), nil
@@ -67,10 +67,6 @@ func (bufferP *BufferPool) Put(data []byte) {
 		return
 	}
 	size := len(data)
-	// TODO BlockSize  == ReadBlockSize
-	if size != util.BlockSize && size != util.PacketHeaderSize && size != util.ReadBlockSize && size != util.DefaultTinySizeLimit {
-		return
-	}
 	if size == util.PacketHeaderSize {
 		bufferP.pools[0].Put(data)
 	} else if size == util.BlockSize {
