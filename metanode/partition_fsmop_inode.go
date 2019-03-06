@@ -114,7 +114,7 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 		inode := i.(*Inode)
 		inode.ModifyTime = ino.ModifyTime
 		resp.Msg = inode
-		if proto.IsRegular(inode.Type) {
+		if !proto.IsDir(inode.Type) {
 			inode.DecNLink()
 			if inode.GetNLink() == 0 {
 				mp.freeList.Push(ino)

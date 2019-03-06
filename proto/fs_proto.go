@@ -74,7 +74,7 @@ func (info *InodeInfo) String() string {
 	return fmt.Sprintf("Inode(%v) Mode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v)", info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation)
 }
 
-// Dentry defines the sentry struct.
+// Dentry defines the dentry struct.
 type Dentry struct {
 	Name  string `json:"name"`
 	Inode uint64 `json:"ino"`
