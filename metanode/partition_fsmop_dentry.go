@@ -49,6 +49,8 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 	}
 	if item, ok := mp.dentryTree.ReplaceOrInsert(dentry, false); !ok {
 		status = proto.OpExistErr
+		//do not allow directories and files to overwrite each
+		// other when renaming
 		d := item.(*Dentry)
 		if dentry.Type != d.Type {
 			status = proto.OpArgMismatchErr

@@ -24,7 +24,7 @@ import (
 // ExtentAppend appends an extent.
 func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
-	ino.AuthID = req.AuthID
+	ino.Swap = req.AuthID
 	ext := req.Extent
 	ino.Extents.Append(&ext)
 	val, err := ino.Marshal()
@@ -75,7 +75,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq,
 	p *Packet) (err error) {
 	ino := NewInode(req.Inode, proto.Mode(os.ModePerm))
 	ino.Size = req.Size
-	ino.AuthID = req.AuthID
+	ino.Swap = req.AuthID
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
