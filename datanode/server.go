@@ -53,6 +53,8 @@ const (
 	DefaultRackName         = "cfs_rack1"
 	DefaultRaftDir          = "raft"
 	DefaultRaftLogsToRetain = 20000 // Count of raft logs per data partition
+	DefaultDiskMaxErr       = 20
+	DefaultDiskRetain       = 30*util.GB // GB
 )
 
 const (
@@ -215,7 +217,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 
 		// format "PATH:RESET_SIZE:MAX_ERR
 		arr := strings.Split(d.(string), ":")
-		if len(arr) != 3 {
+		if len(arr) != 2 {
 			return ErrBadConfFile
 		}
 		path := arr[0]
@@ -230,18 +232,15 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		if err != nil {
 			return ErrBadConfFile
 		}
-		maxErr, err := strconv.Atoi(arr[2])
-		if err != nil {
-			return ErrBadConfFile
-		}
-		if restSize < util.GB*30 {
-			restSize = 30 * util.GB
+
+		if restSize < DefaultDiskRetain {
+			restSize = DefaultDiskRetain
 		}
 		wg.Add(1)
-		go func(wg *sync.WaitGroup, path string, restSize uint64, maxErrs int) {
+		go func(wg *sync.WaitGroup, path string, restSize uint64) {
 			defer wg.Done()
-			s.space.LoadDisk(path, restSize, maxErrs)
-		}(&wg, path, restSize, maxErr)
+			s.space.LoadDisk(path, restSize, DefaultDiskMaxErr)
+		}(&wg, path, restSize)
 	}
 	wg.Wait()
 	return nil

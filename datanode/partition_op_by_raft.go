@@ -26,9 +26,10 @@ import (
 	"github.com/chubaofs/cfs/storage"
 	"github.com/chubaofs/cfs/util/log"
 	"strings"
+	"sync/atomic"
 )
 
-type RndWrtCmdItem struct {
+type RaftCmdItem struct {
 	Op uint32 `json:"op"`
 	K  []byte `json:"k"`
 	V  []byte `json:"v"`
@@ -96,12 +97,12 @@ func rndWrtDataUnmarshal(raw []byte) (result *rndWrtOpItem, err error) {
 	return
 }
 
-func (rndWrtItem *RndWrtCmdItem) rndWrtCmdMarshalJSON() (cmd []byte, err error) {
-	return json.Marshal(rndWrtItem)
+func (raftOpItem *RaftCmdItem) raftCmdMarshalJSON() (cmd []byte, err error) {
+	return json.Marshal(raftOpItem)
 }
 
-func (rndWrtItem *RndWrtCmdItem) rndWrtCmdUnmarshal(cmd []byte) (err error) {
-	return json.Unmarshal(cmd, rndWrtItem)
+func (raftOpItem *RaftCmdItem) raftCmdUnmarshal(cmd []byte) (err error) {
+	return json.Unmarshal(cmd, raftOpItem)
 }
 
 // RandomWriteSubmit submits the proposal to raft.
@@ -124,7 +125,7 @@ func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 
 	pkg.ResultCode = resp.(uint8)
 
-	log.LogDebugf("[randomWrite] SubmitRaft: %v", pkg.GetUniqueLogId())
+	log.LogDebugf("[RandomWrite] SubmitRaft: %v", pkg.GetUniqueLogId())
 	return
 }
 
@@ -202,5 +203,41 @@ func (si *ItemIterator) Next() (data []byte, err error) {
 	appIDBuf := make([]byte, 8)
 	binary.BigEndian.PutUint64(appIDBuf, si.applyID)
 	data = appIDBuf[:]
+	return
+}
+
+// ApplyRandomWrite random write apply
+func (dp *DataPartition) ApplyRandomWrite(msg *RaftCmdItem, raftApplyID uint64) (extentID uint64, err error) {
+	opItem := &rndWrtOpItem{}
+	defer func () {
+		if err != nil {
+			atomic.StoreUint64(&dp.disk.WriteErrCnt, uint64(dp.disk.MaxErrCnt))
+			err = storage.BrokenExtentError
+		}
+	}()
+	if opItem, err = rndWrtDataUnmarshal(msg.V); err != nil {
+		log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v) unmarshal failed", raftApplyID, dp.partitionID, err)
+		return
+	}
+	extentID = opItem.extentID
+	log.LogDebugf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v)",
+		raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size)
+	for i := 0; i < maxRetryCounts; i++ {
+		err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, NotUpdateSize, msg.Op == opRandomSyncWrite)
+		if err != nil {
+			if dp.checkWriteErrs(err.Error()) {
+				log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) ignore error[%v]",
+					raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err)
+				err = nil
+			}
+		}
+		dp.addDiskErrs(err, WriteFlag)
+		if err == nil {
+			break
+		}
+		log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err[%v] retry[%v]",
+			raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err, i)
+	}
+
 	return
 }

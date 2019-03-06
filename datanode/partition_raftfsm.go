@@ -31,49 +31,28 @@ import (
 
 // Apply puts the data onto the disk.
 func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
-	opItem := &rndWrtOpItem{}
+	var extentID uint64
+	msg := &RaftCmdItem{}
 	defer func(index uint64) {
 		if err != nil {
 			key := fmt.Sprintf("%s_datapartition_apply_err", dp.clusterID)
-			prefix := fmt.Sprintf("datapartition_%v_extent_%v", dp.partitionID, opItem.extentID)
+			prefix := fmt.Sprintf("Datapartition(%v)_Extent(%v)", dp.partitionID, extentID)
 			err = errors.Annotatef(err, prefix)
-			//exporter.Alarm(key, err.Error())
 			exporter.NewAlarm(key)
 			resp = proto.OpExistErr
-			dp.repairC <- opItem.extentID
+			dp.stopRaftC <- extentID
 		} else {
 			dp.uploadApplyID(index)
 			resp = proto.OpOk
 		}
 	}(index)
-	msg := &RndWrtCmdItem{}
-	if err = msg.rndWrtCmdUnmarshal(command); err != nil {
+	if err = msg.raftCmdUnmarshal(command); err != nil {
 		return
 	}
 
 	switch msg.Op {
 	case opRandomWrite, opRandomSyncWrite:
-		if opItem, err = rndWrtDataUnmarshal(msg.V); err != nil {
-			log.LogErrorf("randomWrite_%v err[%v] unmarshal failed", dp.partitionID, err)
-			return
-		}
-		log.LogDebugf("randomWrite_%v_%v_%v_%v apply", dp.partitionID, opItem.extentID, opItem.offset, opItem.size)
-		for i := 0; i < maxRetryCounts; i++ {
-			err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, NotUpdateSize, msg.Op == opRandomSyncWrite)
-			if err != nil {
-				if dp.checkWriteErrs(err.Error()) {
-					log.LogErrorf("randomWrite_%v_%v_%v_%v ignore error. err[%v]", dp.partitionID,
-						opItem.extentID, opItem.offset, opItem.size, err)
-					err = nil
-				}
-			}
-			dp.addDiskErrs(err, WriteFlag)
-			if err == nil {
-				break
-			}
-			log.LogErrorf("randomWrite_%v_%v_%v_%v apply err[%v] retry[%v]", dp.partitionID, opItem.extentID,
-				opItem.offset, opItem.size, err, i)
-		}
+		extentID, err = dp.ApplyRandomWrite(msg, index)
 	default:
 		err = fmt.Errorf(fmt.Sprintf("Wrong random operate %v", msg.Op))
 		return
@@ -155,7 +134,7 @@ func (dp *DataPartition) Put(key, val interface{}) (resp interface{}, err error)
 		err = fmt.Errorf("%s key=%v", RaftNotStarted, key)
 		return
 	}
-	item := &RndWrtCmdItem{
+	item := &RaftCmdItem{
 		Op: key.(uint32),
 		K:  nil,
 		V:  nil,
@@ -163,7 +142,7 @@ func (dp *DataPartition) Put(key, val interface{}) (resp interface{}, err error)
 	if val != nil {
 		item.V = val.([]byte)
 	}
-	cmd, err := item.rndWrtCmdMarshalJSON()
+	cmd, err := item.raftCmdMarshalJSON()
 	if err != nil {
 		return
 	}

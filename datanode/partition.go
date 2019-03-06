@@ -99,7 +99,7 @@ type DataPartition struct {
 	lastTruncateID  uint64 // truncate id used in Raft
 	minAppliedID    uint64
 	maxAppliedID    uint64
-	repairC         chan uint64
+	stopRaftC       chan uint64
 	storeC          chan uint64
 	stopC           chan bool
 
@@ -184,7 +184,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		partitionSize:   dpCfg.PartitionSize,
 		replicas:        make([]string, 0),
 		stopC:           make(chan bool, 0),
-		repairC:         make(chan uint64, 0),
+		stopRaftC:       make(chan uint64, 0),
 		storeC:          make(chan uint64, 128),
 		snapshot:        make([]*proto.File, 0),
 		partitionStatus: proto.ReadWrite,
