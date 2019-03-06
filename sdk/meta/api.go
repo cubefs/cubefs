@@ -193,26 +193,57 @@ func (mw *MetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
 	return batchInfos
 }
 
-func (mw *MetaWrapper) Delete_ll(parentID uint64, name string) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) Delete_ll(parentID uint64, name string, isDir bool) (*proto.InodeInfo, error) {
+	var (
+		status int
+		inode  uint64
+		mode   uint32
+		err    error
+		info   *proto.InodeInfo
+		mp     *MetaPartition
+	)
+
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
 		log.LogErrorf("Delete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
 		return nil, syscall.ENOENT
 	}
 
-	status, inode, err := mw.ddelete(parentMP, parentID, name)
+	if isDir {
+		status, inode, mode, err = mw.lookup(parentMP, parentID, name)
+		if err != nil || status != statusOK {
+			return nil, statusToErrno(status)
+		}
+		if !proto.IsDir(mode) {
+			return nil, syscall.EINVAL
+		}
+		mp = mw.getPartitionByInode(inode)
+		if mp == nil {
+			log.LogErrorf("Delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
+			return nil, syscall.EAGAIN
+		}
+		status, info, err = mw.iget(mp, inode)
+		if err != nil || status != statusOK {
+			return nil, statusToErrno(status)
+		}
+		if info == nil || info.Nlink > 2 {
+			return nil, syscall.ENOTEMPTY
+		}
+	}
+
+	status, inode, err = mw.ddelete(parentMP, parentID, name)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
 
 	// dentry is deleted successfully but inode is not, still returns success.
-	mp := mw.getPartitionByInode(inode)
+	mp = mw.getPartitionByInode(inode)
 	if mp == nil {
 		log.LogErrorf("Delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
 		return nil, nil
 	}
 
-	status, info, err := mw.iunlink(mp, inode)
+	status, info, err = mw.iunlink(mp, inode)
 	if err != nil || status != statusOK {
 		return nil, nil
 	}
