@@ -49,22 +49,23 @@ const (
 //  +-------+-----------+--------------+-----------+--------------+
 type Inode struct {
 	sync.RWMutex
-	Inode       uint64 // Inode ID
-	Type        uint32
-	Uid         uint32
-	Gid         uint32
-	Size        uint64
-	Generation  uint64
-	CreateTime  int64
-	AccessTime  int64
-	ModifyTime  int64
-	LinkTarget  []byte // SymLink target name
-	NLink       uint32 // NodeLink counts
-	Flag        int32
-	AuthID      uint64
-	AuthTimeout int64
-	Reserved    uint64 // reserved space
-	Extents     *ExtentsTree
+	Inode      uint64 // Inode ID
+	Type       uint32
+	Uid        uint32
+	Gid        uint32
+	Size       uint64
+	Generation uint64
+	CreateTime int64
+	AccessTime int64
+	ModifyTime int64
+	LinkTarget []byte // SymLink target name
+	NLink      uint32 // NodeLink counts
+	Flag       int32
+	AuthID     uint64
+	Lease      int64
+	Swap 	   uint64
+	Reserved   uint64 // reserved space
+	Extents    *ExtentsTree
 }
 
 // String returns the string format of the inode.
@@ -86,8 +87,9 @@ func (i *Inode) String() string {
 	buff.WriteString(fmt.Sprintf("LinkT[%s]", i.LinkTarget))
 	buff.WriteString(fmt.Sprintf("NLink[%d]", i.NLink))
 	buff.WriteString(fmt.Sprintf("Flag[%d]", i.Flag))
-	buff.WriteString(fmt.Sprintf("authId[%d]", i.AuthID))
-	buff.WriteString(fmt.Sprintf("authT[%d]", i.AuthTimeout))
+	buff.WriteString(fmt.Sprintf("AuthID[%d]", i.AuthID))
+	buff.WriteString(fmt.Sprintf("Lease[%d]", i.Lease))
+	buff.WriteString(fmt.Sprintf("Swap[%d]", i.Swap))
 	buff.WriteString(fmt.Sprintf("Reserved[%d]", i.Reserved))
 	buff.WriteString(fmt.Sprintf("Extents[%s]", i.Extents))
 	buff.WriteString("}")
@@ -139,7 +141,8 @@ func (i *Inode) Copy() BtreeItem {
 	newIno.NLink = i.NLink
 	newIno.Flag = i.Flag
 	newIno.AuthID = i.AuthID
-	newIno.AuthTimeout = i.AuthTimeout
+	newIno.Lease = i.Lease
+	newIno.Swap = i.Swap
 	newIno.Reserved = i.Reserved
 	newIno.Extents = i.Extents.Clone()
 	i.RUnlock()
@@ -263,10 +266,7 @@ func (i *Inode) MarshalValue() (val []byte) {
 	if err = binary.Write(buff, binary.BigEndian, &i.Flag); err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, &i.AuthID); err != nil {
-		panic(err)
-	}
-	if err = binary.Write(buff, binary.BigEndian, &i.AuthTimeout); err != nil {
+	if err = binary.Write(buff, binary.BigEndian, &i.Swap); err != nil {
 		panic(err)
 	}
 	if err = binary.Write(buff, binary.BigEndian, &i.Reserved); err != nil {
@@ -331,10 +331,7 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &i.Flag); err != nil {
 		return
 	}
-	if err = binary.Read(buff, binary.BigEndian, &i.AuthID); err != nil {
-		return
-	}
-	if err = binary.Read(buff, binary.BigEndian, &i.AuthTimeout); err != nil {
+	if err = binary.Read(buff, binary.BigEndian, &i.Swap); err != nil {
 		return
 	}
 	if err = binary.Read(buff, binary.BigEndian, &i.Reserved); err != nil {
@@ -464,7 +461,7 @@ func (i *Inode) DoFunc(fn func()) {
 
 func (i *Inode) GetAuth() (authID uint64, timeout int64) {
 	i.RLock()
-	authID, timeout = i.AuthID, i.AuthTimeout
+	authID, timeout = i.AuthID, i.Lease
 	i.RUnlock()
 	return
 }
@@ -473,10 +470,10 @@ func (i *Inode) GetAuth() (authID uint64, timeout int64) {
 func (i *Inode) CanOpen(mt int64) (authId uint64, ok bool) {
 	i.Lock()
 	defer i.Unlock()
-	if i.AuthID == 0 || i.AuthTimeout < mt {
+	if i.AuthID == 0 || i.Lease < mt {
 		ok = true
 		i.AuthID = uint64(mt) + i.Inode
-		i.AuthTimeout = mt + defaultAuthTimeout
+		i.Lease = mt + defaultAuthTimeout
 		i.AccessTime = mt
 		authId = i.AuthID
 		return
@@ -489,7 +486,7 @@ func (i *Inode) OpenRelease(authId uint64) {
 	i.Lock()
 	if i.AuthID == authId {
 		i.AuthID = 0
-		i.AuthTimeout = 0
+		i.Lease = 0
 	}
 	i.Unlock()
 }
@@ -501,14 +498,14 @@ func (i *Inode) CanWrite(authId uint64, mt int64) bool {
 	if authId == 0 {
 		return false
 	}
-	if i.AuthTimeout >= mt {
+	if i.Lease >= mt {
 		if i.AuthID != authId {
 			return false
 		}
-		i.AuthTimeout = mt + defaultAuthTimeout
+		i.Lease = mt + defaultAuthTimeout
 		return true
 	}
 	i.AuthID = authId
-	i.AuthTimeout = mt+ defaultAuthTimeout
+	i.Lease = mt+ defaultAuthTimeout
 	return true
 }
