@@ -16,7 +16,6 @@ package util
 
 import (
 	"net"
-	"strings"
 	"sync"
 	"time"
 )
@@ -81,32 +80,6 @@ func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
 	return
 }
 
-func (cp *ConnectPool) ForceDestory(c *net.TCPConn) {
-	if c == nil {
-		return
-	}
-	c.Close()
-}
-
-func (cp *ConnectPool) ForceDestoryWholePool(c *net.TCPConn, target string, err error) {
-	if c == nil {
-		return
-	}
-	c.Close()
-	if err != nil && strings.Contains(err.Error(), "use of") {
-		cp.ReleaseAllConnect(target)
-	}
-}
-
-func (cp *ConnectPool) ReleaseAllConnect(target string) {
-	cp.RLock()
-	pool := cp.pools[target]
-	cp.RUnlock()
-	if pool != nil {
-		pool.ForceReleaseAllConnect()
-	}
-}
-
 func (cp *ConnectPool) autoRelease() {
 	for {
 		pools := make([]*Pool, 0)
@@ -116,7 +89,7 @@ func (cp *ConnectPool) autoRelease() {
 		}
 		cp.RUnlock()
 		for _, pool := range pools {
-			pool.AutoRelease()
+			pool.autoRelease()
 		}
 		time.Sleep(time.Second)
 	}
@@ -167,7 +140,7 @@ func (p *Pool) PutConnectObjectToPool(o *Object) {
 	}
 }
 
-func (p *Pool) AutoRelease() {
+func (p *Pool) autoRelease() {
 	connectLen := len(p.objects)
 	for i := 0; i < connectLen; i++ {
 		select {
@@ -177,17 +150,6 @@ func (p *Pool) AutoRelease() {
 			} else {
 				p.PutConnectObjectToPool(o)
 			}
-		default:
-			return
-		}
-	}
-}
-
-func (p *Pool) ForceReleaseAllConnect() {
-	for {
-		select {
-		case o := <-p.objects:
-			o.conn.Close()
 		default:
 			return
 		}

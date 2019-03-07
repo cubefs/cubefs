@@ -124,10 +124,13 @@ func (rp *ReplProtocol) ReceiveResponseFromFollowersGoRoutine() {
 	}
 }
 
-
-
-func (rp *ReplProtocol) setReplProtocolError() {
+func (rp *ReplProtocol) setReplProtocolError(request *Packet, index int) {
 	atomic.StoreInt32(&rp.isError, ReplProtocolError)
+	key := fmt.Sprintf("%v_%v_%v", request.PartitionID, request.ExtentID, request.followersAddrs[index])
+	rp.followerConnects.Delete(key)
+	if request.followerConns[index]!=nil{
+		request.followerConns[index].Close()
+	}
 }
 
 func (rp *ReplProtocol) hasError() bool {
@@ -159,7 +162,7 @@ func (rp *ReplProtocol) sendRequestToFollower(wg *sync.WaitGroup, followerReques
 	defer func() {
 		wg.Done()
 	}()
-	if rp.sendError[index]= rp.allocateFollowersConns(followerRequest, index); rp.sendError[index] != nil {
+	if rp.sendError[index] = rp.allocateFollowersConns(followerRequest, index); rp.sendError[index] != nil {
 		return
 	}
 	followerRequest.RemainingFollowers = 0
@@ -202,8 +205,8 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 				rp.sendRequestToAllFollowers(wg, request)
 				request.RemainingFollowers = orgRemainNodes
 				wg.Wait()
-				if !rp.checkSendErrors(request){
-					rp.operatorFunc(request,rp.sourceConn)
+				if !rp.checkSendErrors(request) {
+					rp.operatorFunc(request, rp.sourceConn)
 				}
 				rp.ackCh <- struct{}{}
 			}
@@ -228,11 +231,14 @@ func (rp *ReplProtocol) operatorFuncWithWaitGroup(wg *sync.WaitGroup, request *P
 func (rp *ReplProtocol) checkSendErrors(request *Packet) (hasError bool) {
 	for index := 0; index < len(request.followersAddrs); index++ {
 		if rp.sendError[index] != nil {
-			rp.setReplProtocolError()
-			hasError = true
-			err := errors.Annotatef(rp.sendError[index], "sendRequestToAllFollowers to (local(%v)->remote(%v))", request.followerConns[index].LocalAddr().String(),
-				request.followersAddrs[index])
+			var localAddr string
+			if request.followerConns[index]!=nil {
+				localAddr=request.followerConns[index].LocalAddr().String()
+			}
+			err := errors.Annotatef(rp.sendError[index],
+				"sendRequestToAllFollowers to (local(%v)->remote(%v))", localAddr,request.followersAddrs[index])
 			request.PackErrorBody(ActionSendToFollowers, rp.sendError[index].Error())
+			rp.setReplProtocolError(request,index)
 			log.LogErrorf(err.Error())
 			return true
 		}
@@ -258,7 +264,7 @@ func (rp *ReplProtocol) reciveAllFollowerResponse() {
 	for index := 0; index < len(request.followersAddrs); index++ {
 		err := rp.receiveFromFollower(request, index)
 		if err != nil {
-			rp.setReplProtocolError()
+			rp.setReplProtocolError(request, index)
 			request.PackErrorBody(ActionReceiveFromFollower, err.Error())
 			return
 		}

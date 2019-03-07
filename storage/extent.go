@@ -288,7 +288,7 @@ func (e *Extent) autoFixDirtyCrc(crcFunc UpdateCrcFunc, scanFunc ScanBlocksFunc)
 			continue
 		}
 		data := make([]byte, util.BlockSize)
-		offset := int64(int64(bc.blockNo)*util.BlockSize)
+		offset := int64(int64(bc.blockNo) * util.BlockSize)
 		readN, err := e.file.ReadAt(data[:util.BlockSize], offset)
 		if err != io.EOF {
 			break

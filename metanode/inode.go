@@ -63,7 +63,7 @@ type Inode struct {
 	Flag       int32
 	AuthID     uint64
 	Lease      int64
-	Swap 	   uint64
+	Swap       uint64
 	Reserved   uint64 // reserved space
 	Extents    *ExtentsTree
 }
@@ -506,6 +506,6 @@ func (i *Inode) CanWrite(authId uint64, mt int64) bool {
 		return true
 	}
 	i.AuthID = authId
-	i.Lease = mt+ defaultAuthTimeout
+	i.Lease = mt + defaultAuthTimeout
 	return true
 }

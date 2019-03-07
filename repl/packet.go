@@ -58,7 +58,7 @@ func (p *Packet) clean() {
 	p.TpObject = nil
 	p.Data = nil
 	p.Arg = nil
-	if p.rawBuffer !=nil{
+	if p.rawBuffer != nil {
 		proto.Buffers.Put(p.rawBuffer)
 	}
 }
@@ -261,7 +261,7 @@ func (p *Packet) PackErrorBody(action, msg string) {
 func (p *Packet) ReadFull(c net.Conn, readSize int) (err error) {
 	if p.Opcode == proto.OpWrite && readSize == util.BlockSize {
 		p.Data, _ = proto.Buffers.Get(util.BlockSize)
-		p.rawBuffer =p.Data
+		p.rawBuffer = p.Data
 	} else {
 		p.Data = make([]byte, readSize)
 	}

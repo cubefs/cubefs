@@ -116,7 +116,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 // Open opens an inode to operate.
 func (mp *metaPartition) Open(req *OpenReq, p *Packet) (err error) {
 	req.ATime = Now.GetCurrentTime().Unix()
-	resp :=mp.fsmOpenFile(req)
+	resp := mp.fsmOpenFile(req)
 	var reply []byte
 	if reply, err = json.Marshal(&proto.OpenResponse{
 		AuthID: resp.AuthID,
@@ -133,7 +133,7 @@ func (mp *metaPartition) Open(req *OpenReq, p *Packet) (err error) {
 func (mp *metaPartition) ReleaseOpen(req *ReleaseReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	ino.AuthID = req.AuthID
-	status :=mp.fsmReleaseOpen(ino)
+	status := mp.fsmReleaseOpen(ino)
 	p.PacketErrorWithBody(status, nil)
 	return
 }
