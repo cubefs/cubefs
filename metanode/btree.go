@@ -48,9 +48,9 @@ func (b *BTree) Get(key BtreeItem) (item BtreeItem) {
 }
 
 func (b *BTree) CopyGet(key BtreeItem) (item BtreeItem) {
-	b.RLock()
+	b.Lock()
 	item = b.tree.CopyGet(key)
-	b.RUnlock()
+	b.Unlock()
 	return
 }
 
@@ -66,9 +66,9 @@ func (b *BTree) Find(key BtreeItem, fn func(i BtreeItem)) {
 }
 
 func (b *BTree) CopyFind(key BtreeItem, fn func(i BtreeItem)) {
-	b.RLock()
+	b.Lock()
 	item := b.tree.CopyGet(key)
-	b.RUnlock()
+	b.Unlock()
 	if item == nil {
 		return
 	}
@@ -138,9 +138,9 @@ func (b *BTree) AscendGreaterOrEqual(pivot BtreeItem, iterator func(i BtreeItem)
 
 // GetTree returns the snapshot of a btree.
 func (b *BTree) GetTree() *BTree {
-	b.RLock()
+	b.Lock()
 	t := b.tree.Clone()
-	b.RUnlock()
+	b.Unlock()
 	nb := NewBtree()
 	nb.tree = t
 	return nb
