@@ -332,8 +332,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 	return
 }
 func (dp *DataPartition) statusUpdateScheduler() {
-	ticker := time.NewTicker(10 * time.Second)
-	metricTicker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(time.Minute)
 	var index int
 	for {
 		select {
@@ -351,10 +350,7 @@ func (dp *DataPartition) statusUpdateScheduler() {
 			dp.ReloadSnapshot()
 		case <-dp.stopC:
 			ticker.Stop()
-			metricTicker.Stop()
 			return
-		case <-metricTicker.C:
-			dp.runtimeMetrics.recomputeLatency()
 		}
 	}
 }

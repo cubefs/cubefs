@@ -145,11 +145,11 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v) localAddr(%v).",
 		request.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String(), rp.sourceConn.LocalAddr().String())
 	if err = request.resolveFollowersAddr(); err != nil {
-		rp.responseCh <- request
+		rp.responseCh<-request
 		return
 	}
 	if err = rp.prepareFunc(request); err != nil {
-		rp.responseCh <- request
+		rp.responseCh<-request
 		return
 	}
 
@@ -444,7 +444,17 @@ func (rp *ReplProtocol) deletePacket(reply *Packet, e *list.Element) (success bo
 	defer rp.packetListLock.Unlock()
 	rp.packetList.Remove(e)
 	success = true
-	rp.responseCh <- reply
+	rp.putResponse(reply)
 
 	return
+}
+
+
+func (rp *ReplProtocol)putResponse(reply *Packet)(err error){
+	select {
+		case rp.responseCh<-reply:
+			return
+		default:
+			return fmt.Errorf("replyCh has full (%v)",len(rp.responseCh))
+	}
 }

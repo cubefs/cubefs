@@ -192,7 +192,7 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 		return
 	}
 	reply := new(repl.Packet)
-	err = reply.ReadFromConn(conn, 60) // read the response
+	err = reply.ReadFromConn(conn, proto.NoReadDeadlineTime) // read the response
 	if err != nil {
 		err = errors.Annotatef(err, "getRemoteExtentInfo DataPartition(%v) read from host(%v)", dp.partitionID, target)
 		return
