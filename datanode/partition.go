@@ -105,7 +105,6 @@ type DataPartition struct {
 
 	runtimeMetrics                *DataPartitionMetrics
 	intervalToUpdateReplicas      int64 // interval to ask the master for updating the replica information
-	shouldRepairAllTinyExtents    bool  // if it is the first time to start up, we should repair all the tiny extents
 	snapshot                      []*proto.File
 	snapshotMutex                 sync.RWMutex
 	intervalToUpdatePartitionSize int64
@@ -196,7 +195,6 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		return
 	}
 
-	partition.shouldRepairAllTinyExtents = true
 	disk.AttachDataPartition(partition)
 	dp = partition
 	go partition.statusUpdateScheduler()

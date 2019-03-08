@@ -255,11 +255,7 @@ func (dp *DataPartition) sendAllTinyExtentsToC(extentType uint8, availableTinyEx
 func (dp *DataPartition) brokenTinyExtents() (brokenTinyExtents []uint64) {
 	brokenTinyExtents = make([]uint64, 0)
 	extentsToBeRepaired := MinTinyExtentsToRepair
-	if dp.shouldRepairAllTinyExtents {
-		extentsToBeRepaired = storage.TinyExtentCount
-		dp.shouldRepairAllTinyExtents = false
-	}
-	if dp.extentStore.BrokenTinyExtentCnt() == 0 {
+	if dp.extentStore.AvailableTinyExtentCnt() == 0 {
 		extentsToBeRepaired = storage.TinyExtentCount
 	}
 	for i := 0; i < extentsToBeRepaired; i++ {
