@@ -126,8 +126,6 @@ func (rp *ReplProtocol) ReceiveResponseFromFollowersGoRoutine() {
 
 func (rp *ReplProtocol) setReplProtocolError(request *Packet, index int) {
 	atomic.StoreInt32(&rp.isError, ReplProtocolError)
-	key := fmt.Sprintf("%v_%v_%v", request.PartitionID, request.ExtentID, request.followersAddrs[index])
-	rp.followerConnects.Delete(key)
 	if request.followerConns[index]!=nil{
 		request.followerConns[index].Close()
 	}
