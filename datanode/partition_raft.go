@@ -121,7 +121,7 @@ func (dp *DataPartition) stopRaft() {
 func (dp *DataPartition) StartRaftLoggingSchedule() {
 	getAppliedIDTimer := time.NewTimer(time.Second * 1)
 	truncateRaftLogTimer := time.NewTimer(time.Minute * 10)
-	storeAppliedIDTimer := time.NewTimer(time.Minute * 5)
+	storeAppliedIDTimer := time.NewTimer(time.Second * 10)
 
 	log.LogDebugf("[startSchedule] hello DataPartition schedule")
 
@@ -161,7 +161,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 					err = errors.Errorf("[startSchedule]: dump partition=%d: %v", dp.config.PartitionID, err.Error())
 					log.LogErrorf(err.Error())
 				}
-				storeAppliedIDTimer.Reset(time.Minute * 5)
+				storeAppliedIDTimer.Reset(time.Second * 10)
 			}
 		}
 	}(dp.stopC)
