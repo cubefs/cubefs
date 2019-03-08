@@ -287,9 +287,6 @@ func (dp *DataPartition) Available() int {
 	return dp.partitionSize - dp.used
 }
 
-func (dp *DataPartition) EvictExtent() {
-	dp.extentStore.EvictExtentCache()
-}
 
 func (dp *DataPartition) ForceLoadHeader() {
 	dp.loadExtentHeaderStatus = FinishLoadDataPartitionExtentHeader

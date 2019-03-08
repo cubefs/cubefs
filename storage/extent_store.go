@@ -130,7 +130,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 	s.baseTinyDeleteOffset = finfo.Size()
 
 	s.extentInfoMap = make(map[uint64]*ExtentInfo, 200)
-	s.cache = NewExtentCache(50)
+	s.cache = NewExtentCache(20)
 	if err = s.initBaseFileID(); err != nil {
 		err = fmt.Errorf("init base field ID: %v", err)
 		return
@@ -673,9 +673,6 @@ func (s *ExtentStore) StoreSize() (totalSize uint64) {
 	return totalSize
 }
 
-func (s *ExtentStore) EvictExtentCache() {
-	s.cache.evict()
-}
 
 func MarshalTinyExtent(extentID uint64, offset, size int64) (data []byte) {
 	data = make([]byte, EveryTinyDeleteRecordSize)
