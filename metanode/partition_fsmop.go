@@ -73,11 +73,12 @@ func (mp *metaPartition) fsmOpenFile(req *OpenReq) (resp *InodeResponse) {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
-	resp.Status = proto.OpNotPerm
+	resp.Status = proto.OpOk
 	if proto.IsWriteFlag(req.Flag) {
 		if authID, ok := ino2.CanOpen(req.ATime); ok {
-			resp.Status = proto.OpOk
 			resp.AuthID = authID
+		} else {
+			resp.Status = proto.OpNotPerm
 		}
 	}
 	return
