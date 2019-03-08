@@ -287,7 +287,6 @@ func (dp *DataPartition) Available() int {
 	return dp.partitionSize - dp.used
 }
 
-
 func (dp *DataPartition) ForceLoadHeader() {
 	dp.loadExtentHeaderStatus = FinishLoadDataPartitionExtentHeader
 }
@@ -539,15 +538,17 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask) {
 	store := dp.extentStore
 	if len(repairTask.ExtentsToBeCreated) > 0 {
-		allAppliedIDs, replyNum := dp.getOtherAppliedID()
-		if replyNum > 0 {
+		allAppliedIDs := dp.getOtherAppliedID()
+		if len(allAppliedIDs) > 0 {
 			minAppliedID := allAppliedIDs[0]
-			for i := 1; i < int(replyNum); i++ {
+			for i := 1; i < len(allAppliedIDs); i++ {
 				if allAppliedIDs[i] < minAppliedID {
 					minAppliedID = allAppliedIDs[i]
 				}
 			}
-			dp.appliedID = minAppliedID
+			if minAppliedID > 0 {
+				dp.appliedID = minAppliedID
+			}
 		}
 	}
 

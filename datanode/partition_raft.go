@@ -531,8 +531,8 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) 
 }
 
 // Get other replica applied ids except self
-func (dp *DataPartition) getOtherAppliedID() (appliedIDList []uint64, replyNum uint8) {
-	appliedIDList = make([]uint64, len(dp.replicas))
+func (dp *DataPartition) getOtherAppliedID() (appliedIDList []uint64) {
+	appliedIDList = make([]uint64, 0)
 	for i := 0; i < len(dp.replicas); i++ {
 		p := NewPacketToGetAppliedID(dp.partitionID)
 		replicaHostParts := strings.Split(dp.replicas[i], ":")
@@ -552,8 +552,7 @@ func (dp *DataPartition) getOtherAppliedID() (appliedIDList []uint64, replyNum u
 			log.LogDebugf("[getOtherAppliedID] partition=%v local appliedID[%v] replicaHost[%v] appliedID=0",
 				dp.partitionID, dp.appliedID, replicaHost)
 		}
-		appliedIDList[i] = appliedID
-		replyNum++
+		appliedIDList = append(appliedIDList, appliedID)
 	}
 
 	return
