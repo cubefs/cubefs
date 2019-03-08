@@ -362,7 +362,7 @@ func (rp *ReplProtocol) Stop() {
 // Note that we need to ensure the order of packets sent to the datanode is consistent here.
 func (rp *ReplProtocol) allocateFollowersConns(p *Packet, index int) (err error) {
 	var conn *net.TCPConn
-	key := fmt.Sprintf("%v_%v_%v", p.PartitionID, p.ExtentID, p.followersAddrs[index])
+	key := fmt.Sprintf("%v", p.followersAddrs[index])
 	value, ok := rp.followerConnects.Load(key)
 	if ok {
 		p.followerConns[index] = value.(*net.TCPConn)
