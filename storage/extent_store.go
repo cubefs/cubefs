@@ -38,7 +38,7 @@ import (
 )
 
 const (
-	ExtCrcFileName            = "EXTENT_CRC"
+	ExtCrcDir                 = "EXTENT_CRC"
 	TinyDeleteFileOpt         = os.O_CREATE | os.O_RDWR
 	TinyExtDeletedFileName    = "TINYEXTENT_DELETE"
 	MaxExtentCount            = 50000
@@ -48,6 +48,7 @@ const (
 	EveryTinyDeleteRecordSize = 24
 	LruCacheSize              = 128 * util.KB
 	WriteBufferSize           = 128 * util.KB
+	RocksdbMaxStartNum        = 3
 )
 
 var (
@@ -110,6 +111,10 @@ func MkdirAll(name string) (err error) {
 	return os.MkdirAll(name, 0755)
 }
 
+func IsResourceTempUnavali(err error) bool{
+	return strings.Contains(err.Error(),"Resource temporarily unavailable")
+}
+
 func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *ExtentStore, err error) {
 	s = new(ExtentStore)
 	s.dataPath = dataDir
@@ -117,8 +122,6 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 	if err = MkdirAll(dataDir); err != nil {
 		return nil, fmt.Errorf("NewExtentStore [%v] err[%v]", dataDir, err)
 	}
-
-	s.crcStore = raftstore.NewRocksDBStore(path.Join(s.dataPath, ExtCrcFileName), LruCacheSize, WriteBufferSize)
 	tinyExtentsDeleteFpPath := path.Join(s.dataPath, TinyExtDeletedFileName)
 	if s.tinyExtentDeleteFp, err = os.OpenFile(tinyExtentsDeleteFpPath, TinyDeleteFileOpt, 0666); err != nil {
 		return
@@ -128,7 +131,21 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 		return
 	}
 	s.baseTinyDeleteOffset = finfo.Size()
-
+	for i:=0;i<RocksdbMaxStartNum;i++{
+		err=s.startRockdbStore()
+		if err==nil {
+			break
+		}
+		if IsResourceTempUnavali(err){
+			lockName:=path.Join(s.dataPath, ExtCrcDir,"LOCK")
+			os.Remove(lockName)
+			err=nil
+			continue
+		}
+	}
+	if err!=nil {
+		return
+	}
 	s.extentInfoMap = make(map[uint64]*ExtentInfo, 200)
 	s.cache = NewExtentCache(20)
 	if err = s.initBaseFileID(); err != nil {
@@ -143,6 +160,17 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 		return
 	}
 	go s.loopAutoComputeExtentCrc()
+	return
+}
+
+func (s *ExtentStore)startRockdbStore()(err error){
+	defer func() {
+		if r:=recover();r!=nil{
+			err,_=r.(error)
+			return
+		}
+	}()
+	s.crcStore = raftstore.NewRocksDBStore(path.Join(s.dataPath, ExtCrcDir), LruCacheSize, WriteBufferSize)
 	return
 }
 

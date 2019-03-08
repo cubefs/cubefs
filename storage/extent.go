@@ -280,11 +280,18 @@ func (e *Extent) autoFixDirtyCrc(crcFunc UpdateCrcFunc, scanFunc ScanBlocksFunc)
 	if err != nil {
 		return
 	}
+	blockCnt := e.dataSize / util.BlockSize
+	if e.Size()%util.BlockSize != 0 {
+		blockCnt = blockCnt + 1
+	}
 	data := make([]byte, len(bcs)*util.PerBlockCrcSize)
-	for index := 0; index < len(bcs); index++ {
-		bc := bcs[index]
+	for blockNo := 0; blockNo < int(blockCnt); blockNo++ {
+		bc := bcs[blockNo]
+		if bc == nil {
+			bc = &BlockCrc{blockNo: uint16(blockNo), crc: 0}
+		}
 		if bc.crc != 0 {
-			binary.BigEndian.PutUint32(data[index*util.PerBlockCrcSize:(index+1)*util.PerBlockCrcSize], bc.crc)
+			binary.BigEndian.PutUint32(data[blockNo*util.PerBlockCrcSize:(blockNo+1)*util.PerBlockCrcSize], bc.crc)
 			continue
 		}
 		data := make([]byte, util.BlockSize)
@@ -298,7 +305,7 @@ func (e *Extent) autoFixDirtyCrc(crcFunc UpdateCrcFunc, scanFunc ScanBlocksFunc)
 		if err != nil {
 			return 0, nil
 		}
-		binary.BigEndian.PutUint32(data[index*util.PerBlockCrcSize:(index+1)*util.PerBlockCrcSize], bc.crc)
+		binary.BigEndian.PutUint32(data[blockNo*util.PerBlockCrcSize:(blockNo+1)*util.PerBlockCrcSize], bc.crc)
 	}
 	crc = crc32.ChecksumIEEE(data)
 	return

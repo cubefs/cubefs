@@ -3,7 +3,6 @@ package storage
 import (
 	"encoding/binary"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -23,14 +22,10 @@ type BlockCrc struct {
 	crc     uint32
 }
 
-type BlockCrcArr []*BlockCrc
 
-func (arr BlockCrcArr) Len() int           { return len(arr) }
-func (arr BlockCrcArr) Less(i, j int) bool { return arr[i].blockNo < arr[j].blockNo }
-func (arr BlockCrcArr) Swap(i, j int)      { arr[i], arr[j] = arr[j], arr[i] }
 
 type UpdateCrcFunc func(extentID uint64, blockNo uint16, crc uint32) (err error)
-type ScanBlocksFunc func(extentID uint64) (bcs []*BlockCrc, err error)
+type ScanBlocksFunc func(extentID uint64) (bcs map[int]*BlockCrc, err error)
 type GetExtentCrcFunc func(extentID uint64) (crc uint32, err error)
 
 func (s *ExtentStore) PersistenceBlockCrc(extentID uint64, blockNo uint16, blockCrc uint32) (err error) {
@@ -88,9 +83,9 @@ func (s *ExtentStore) IsMarkDeleteExtent(extentID uint64) bool {
 	return false
 }
 
-func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
+func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs map[int]*BlockCrc, err error) {
 	key := fmt.Sprintf(BlockCrcPrefix+"%v_", extentID)
-	bcs = make([]*BlockCrc, 0)
+	bcs = make(map[int]*BlockCrc, 0)
 	result, err := s.crcStore.SeekForPrefix([]byte(key))
 	if err != nil {
 		return
@@ -107,9 +102,9 @@ func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
 			err = nil
 			continue
 		}
-		bcs = append(bcs, &BlockCrc{blockNo: uint16(blockNo), crc: crc})
+		bc := &BlockCrc{blockNo: uint16(blockNo), crc: crc}
+		bcs[int(blockNo)] = bc
 	}
-	sort.Sort((BlockCrcArr(bcs)))
 	return
 }
 
