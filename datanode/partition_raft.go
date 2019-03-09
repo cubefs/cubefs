@@ -172,6 +172,10 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 // When the repair is finished, the local dp.partitionSize is same as the leader's dp.partitionSize.
 // The repair task can be done in statusUpdateScheduler->LaunchRepair.
 func (dp *DataPartition) StartRaftAfterRepair() {
+	var (
+		partitionSize uint64 = 0
+		err           error
+	)
 	timer := time.NewTimer(0)
 	for {
 		select {
@@ -193,11 +197,13 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 			}
 
 			// get the partition size from the primary and compare it with the local one
-			partitionSize, err := dp.getPartitionSize()
-			if err != nil {
-				log.LogErrorf("partitionID[%v] get leader size err[%v]", dp.partitionID, err)
-				timer.Reset(5 * time.Second)
-				continue
+			if partitionSize == 0 {
+				partitionSize, err = dp.getPartitionSize()
+				if err != nil {
+					log.LogErrorf("partitionID[%v] get leader size err[%v]", dp.partitionID, err)
+					timer.Reset(5 * time.Second)
+					continue
+				}
 			}
 
 			localSize := dp.extentStore.StoreSize()
