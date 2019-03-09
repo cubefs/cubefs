@@ -379,7 +379,6 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			offset += currSize
 		}
 	}
-
 	s.incDiskErrCnt(p.PartitionID, err, WriteFlag)
 	return
 }

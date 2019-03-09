@@ -19,24 +19,17 @@ const (
 )
 
 const (
-	ForceClosedConn = true
-	NoClosedConn    = false
-)
-
-const (
 	ReplProtocolError = 1
 )
 
 const (
-	ActionSendToFollowers      = "ActionSendToFollowers"
-	ActionSetReplProtocolError = "ActionSetReplProtocolError"
-	ActionReceiveFromFollower  = "ActionReceiveFromFollower"
-	ActionWriteToClient        = "ActionWriteToClient"
-	ActionCheckAndAddInfos     = "ActionCheckAndAddInfos"
-	ActionCheckReply           = "ActionCheckReply"
+	ActionSendToFollowers     = "ActionSendToFollowers"
+	ActionReceiveFromFollower = "ActionReceiveFromFollower"
+	ActionWriteToClient       = "ActionWriteToClient"
+	ActionCheckAndAddInfos    = "ActionCheckAndAddInfos"
+	ActionCheckReply          = "ActionCheckReply"
 
-	ActionPreparePkt           = "ActionPreparePkt"
-	ActionAllocFollowerConnect = "ActionAllocFollowerConnect"
+	ActionPreparePkt = "ActionPreparePkt"
 )
 
 const (
@@ -46,5 +39,5 @@ const (
 const (
 	ReplRuning    = 2
 	ReplExiting   = 1
-	ReplHasExited = -1
+	ReplHasExited = -3
 )

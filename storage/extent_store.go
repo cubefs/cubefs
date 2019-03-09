@@ -41,7 +41,7 @@ const (
 	ExtCrcDir                 = "EXTENT_CRC"
 	TinyDeleteFileOpt         = os.O_CREATE | os.O_RDWR
 	TinyExtDeletedFileName    = "TINYEXTENT_DELETE"
-	MaxExtentCount            = 50000
+	MaxExtentCount            = 20000
 	TinyExtentCount           = 64
 	TinyExtentStartID         = 1
 	MinExtentID               = 1024
@@ -49,11 +49,24 @@ const (
 	LruCacheSize              = 128 * util.KB
 	WriteBufferSize           = 128 * util.KB
 	RocksdbMaxStartNum        = 3
+	UpdateCrcInterval         = 600
 )
 
 var (
 	RegexpExtentFile, _ = regexp.Compile("^(\\d)+$")
+	SnapShotFilePool    = &sync.Pool{New: func() interface{} {
+		return new(proto.File)
+	}}
 )
+
+func GetSnapShotFileFromPool() (f *proto.File) {
+	f = SnapShotFilePool.Get().(*proto.File)
+	return
+}
+
+func PutSnapShotFileToPool(f *proto.File) {
+	SnapShotFilePool.Put(f)
+}
 
 type ExtentFilter func(info *ExtentInfo) bool
 
@@ -62,7 +75,7 @@ var (
 	NormalExtentFilter = func() ExtentFilter {
 		now := time.Now()
 		return func(ei *ExtentInfo) bool {
-			return !IsTinyExtent(ei.FileID) && now.Unix()-ei.ModifyTime.Unix() > 10*60 && ei.IsDeleted == false && ei.Size > 0
+			return !IsTinyExtent(ei.FileID) && now.Unix()-ei.ModifyTime > UpdateCrcInterval && ei.IsDeleted == false && ei.Size > 0
 		}
 	}
 
@@ -111,8 +124,8 @@ func MkdirAll(name string) (err error) {
 	return os.MkdirAll(name, 0755)
 }
 
-func IsResourceTempUnavali(err error) bool{
-	return strings.Contains(err.Error(),"Resource temporarily unavailable")
+func IsResourceTempUnavali(err error) bool {
+	return strings.Contains(err.Error(), "Resource temporarily unavailable")
 }
 
 func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *ExtentStore, err error) {
@@ -131,19 +144,19 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 		return
 	}
 	s.baseTinyDeleteOffset = finfo.Size()
-	for i:=0;i<RocksdbMaxStartNum;i++{
-		err=s.startRockdbStore()
-		if err==nil {
+	for i := 0; i < RocksdbMaxStartNum; i++ {
+		err = s.startRockdbStore()
+		if err == nil {
 			break
 		}
-		if IsResourceTempUnavali(err){
-			lockName:=path.Join(s.dataPath, ExtCrcDir,"LOCK")
+		if IsResourceTempUnavali(err) {
+			lockName := path.Join(s.dataPath, ExtCrcDir, "LOCK")
 			os.Remove(lockName)
-			err=nil
+			err = nil
 			continue
 		}
 	}
-	if err!=nil {
+	if err != nil {
 		return
 	}
 	s.extentInfoMap = make(map[uint64]*ExtentInfo, 200)
@@ -163,10 +176,10 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 	return
 }
 
-func (s *ExtentStore)startRockdbStore()(err error){
+func (s *ExtentStore) startRockdbStore() (err error) {
 	defer func() {
-		if r:=recover();r!=nil{
-			err,_=r.(error)
+		if r := recover(); r != nil {
+			err, _ = r.(error)
 			return
 		}
 	}()
@@ -186,13 +199,12 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 	}
 
 	files = make([]*proto.File, 0, len(eiSnapshot))
-	for _, extentInfo := range eiSnapshot {
-		file := &proto.File{
-			Name:     strconv.FormatUint(extentInfo.FileID, 10),
-			Crc:      extentInfo.Crc,
-			Size:     uint32(extentInfo.Size),
-			Modified: extentInfo.ModifyTime.Unix(),
-		}
+	for _, ei := range eiSnapshot {
+		file := GetSnapShotFileFromPool()
+		file.Name = strconv.FormatUint(ei.FileID, 10)
+		file.Size = uint32(ei.Size)
+		file.Modified = ei.ModifyTime
+		file.Crc = ei.Crc
 		files = append(files, file)
 	}
 	return
@@ -371,8 +383,8 @@ func (s *ExtentStore) loopAutoComputeExtentCrc() {
 func (s *ExtentStore) autoComputeExtentCrc() {
 	extentInfos := make([]*ExtentInfo, 0)
 	s.eiMutex.RLock()
-	for _, e := range s.extentInfoMap {
-		extentInfos = append(extentInfos, e)
+	for _, ei := range s.extentInfoMap {
+		extentInfos = append(extentInfos, ei)
 	}
 	s.eiMutex.RUnlock()
 
@@ -380,27 +392,27 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 		if ei == nil {
 			continue
 		}
-		if !IsTinyExtent(ei.FileID) && time.Now().Unix()-ei.ModifyTime.Unix() > 10*60 && ei.IsDeleted == false && ei.Size > 0 {
-			extent, err := s.extentWithCache(ei.FileID)
+		if !IsTinyExtent(ei.FileID) && time.Now().Unix()-ei.ModifyTime > UpdateCrcInterval && ei.IsDeleted == false && ei.Size > 0 {
+			e, err := s.extentWithCache(ei.FileID)
 			if err != nil {
 				continue
 			}
-			s.eiMutex.RLock()
-			extentInfo, has := s.extentInfoMap[ei.FileID]
-			s.eiMutex.RUnlock()
-			if !has {
+			if ei.Crc != 0 {
 				continue
 			}
-			if extentInfo.Crc != 0 {
-				continue
-			}
-			crc, err := extent.autoFixDirtyCrc(s.PersistenceBlockCrc, s.ScanBlocks)
+			extentCrc, err := e.autoFixDirtyCrc(s.PersistenceBlockCrc, s.ScanBlocks)
 			if err != nil {
 				continue
 			}
-			extentInfo.FromExtent(extent, crc)
+			if time.Now().Unix()-atomic.LoadInt64(&e.modifyTime) <= UpdateCrcInterval {
+				extentCrc = 0
+			}
+			ei.FromExtent(e, extentCrc)
+			if time.Now().Unix()-atomic.LoadInt64(&e.modifyTime) <= UpdateCrcInterval {
+				ei.FromExtent(e, 0)
+			}
 		}
-		time.Sleep(time.Millisecond * 10)
+		time.Sleep(time.Millisecond * 50)
 	}
 
 }
@@ -484,6 +496,15 @@ func (s *ExtentStore) tinyDelete(e *Extent, offset, size, tinyDeleteFileOffset i
 	return
 }
 
+func (s *ExtentStore)GetBlockCrcFromRocksdb(extentID uint64)(bcs []*BlockCrc){
+	bcs,err:=s.ScanBlocks(extentID)
+	if err!=nil {
+		return
+	}
+
+	return
+}
+
 // MarkDelete marks the given extent as deleted.
 func (s *ExtentStore) MarkDelete(extentID uint64, offset, size, tinyDeleteFileOffset int64) (err error) {
 	var (
@@ -505,20 +526,19 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size, tinyDeleteFileOf
 
 	if IsTinyExtent(extentID) {
 		return s.tinyDelete(e, offset, size, tinyDeleteFileOffset)
-	} else {
-		e.Close()
-		s.cache.Del(extentID)
-		extentFilePath := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
-		if err = os.Remove(extentFilePath); err != nil {
-			return
-		}
-		s.PersistenceHasDeleteExtent(extentID)
-		ei.IsDeleted = true
-		s.cache.Del(e.extentID)
-		s.eiMutex.Lock()
-		delete(s.extentInfoMap, extentID)
-		s.eiMutex.Unlock()
 	}
+	e.Close()
+	s.cache.Del(extentID)
+	extentFilePath := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
+	if err = os.Remove(extentFilePath); err != nil {
+		return
+	}
+	s.PersistenceHasDeleteExtent(extentID)
+	ei.IsDeleted = true
+	s.cache.Del(e.extentID)
+	s.eiMutex.Lock()
+	delete(s.extentInfoMap, extentID)
+	s.eiMutex.Unlock()
 
 	return
 }
@@ -700,7 +720,6 @@ func (s *ExtentStore) StoreSize() (totalSize uint64) {
 
 	return totalSize
 }
-
 
 func MarshalTinyExtent(extentID uint64, offset, size int64) (data []byte) {
 	data = make([]byte, EveryTinyDeleteRecordSize)

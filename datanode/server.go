@@ -156,7 +156,6 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 	if err = s.startTCPService(); err != nil {
 		return
 	}
-
 	go s.registerHandler()
 
 	return
@@ -167,6 +166,18 @@ func (s *DataNode) onShutdown() {
 	s.stopTCPService()
 	s.stopRaftServer()
 	return
+}
+
+func (s *DataNode) doGc() {
+	ticker := time.NewTicker(time.Minute)
+	for {
+		select {
+		case <-s.stopC:
+			return
+		case <-ticker.C:
+			runtime.GC()
+		}
+	}
 }
 
 func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
@@ -308,6 +319,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/partitions", s.getPartitionsAPI)
 	http.HandleFunc("/partition", s.getPartitionAPI)
 	http.HandleFunc("/extent", s.getExtentAPI)
+	http.HandleFunc("/block", s.getBlockCrcAPI)
 	http.HandleFunc("/stats", s.getStatAPI)
 }
 

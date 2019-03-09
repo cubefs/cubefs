@@ -125,6 +125,24 @@ func (rs *RocksDBStore) DeleteKeyAndPutIndex(key string, cmdMap map[string][]byt
 	return nil
 }
 
+// Put adds a new key-value pair to the RocksDB.
+func (rs *RocksDBStore) Replace(key string, value interface{}, isSync bool) (result interface{}, err error) {
+	wo := gorocksdb.NewDefaultWriteOptions()
+	wb := gorocksdb.NewWriteBatch()
+	wo.SetSync(isSync)
+	defer func() {
+		wo.Destroy()
+		wb.Destroy()
+	}()
+	wb.Delete([]byte(key))
+	wb.Put([]byte(key), value.([]byte))
+	if err := rs.db.Write(wo, wb); err != nil {
+		return nil, err
+	}
+	result = value
+	return result, nil
+}
+
 // BatchPut puts the key-value pairs in batch.
 func (rs *RocksDBStore) BatchPut(cmdMap map[string][]byte, isSync bool) error {
 	wo := gorocksdb.NewDefaultWriteOptions()

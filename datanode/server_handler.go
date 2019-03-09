@@ -61,8 +61,6 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *DataNode) getStatAPI(w http.ResponseWriter, r *http.Request) {
-
-	// TODO there should be a better way to initialize a heartbeat response
 	response := &proto.DataNodeHeartbeatResponse{}
 	s.buildHeartBeatResponse(response)
 
@@ -186,6 +184,40 @@ func (s *DataNode) getExtentAPI(w http.ResponseWriter, r *http.Request) {
 	s.buildSuccessResp(w, extentInfo)
 	return
 }
+
+func (s *DataNode) getBlockCrcAPI(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		extentID    int
+		err         error
+		blocks  []*storage.BlockCrc
+	)
+	if err = r.ParseForm(); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if partitionID, err = strconv.ParseUint(r.FormValue("partitionID"), 10, 64); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if extentID, err = strconv.Atoi(r.FormValue("extentID")); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
+	}
+	if blocks, err = partition.ExtentStore().ScanBlocks(uint64(extentID)); err != nil {
+		s.buildFailureResp(w, 500, err.Error())
+		return
+	}
+
+	s.buildSuccessResp(w, blocks)
+	return
+}
+
 
 func (s *DataNode) buildSuccessResp(w http.ResponseWriter, data interface{}) {
 	s.buildJSONResp(w, http.StatusOK, data, "")

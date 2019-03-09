@@ -37,14 +37,12 @@ const (
 // Status of load data partition extent header
 const (
 	FinishLoadDataPartitionExtentHeader = 1
-	StartLoadDataPartitionExtentHeader  = -1
 )
 
 // cmd response
 const (
-	ReadFlag         = 1
-	WriteFlag        = 2
-	MaxActiveExtents = 20000
+	ReadFlag  = 1
+	WriteFlag = 2
 )
 
 // Error code

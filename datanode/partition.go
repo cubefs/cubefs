@@ -238,6 +238,9 @@ func (dp *DataPartition) ReloadSnapshot() {
 		return
 	}
 	dp.snapshotMutex.Lock()
+	for _, f := range dp.snapshot {
+		storage.PutSnapShotFileToPool(f)
+	}
 	dp.snapshot = files
 	dp.snapshotMutex.Unlock()
 }
@@ -327,6 +330,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 }
 func (dp *DataPartition) statusUpdateScheduler() {
 	ticker := time.NewTicker(time.Minute)
+	snapshotTicker := time.NewTicker(time.Minute * 5)
 	var index int
 	for {
 		select {
@@ -341,9 +345,11 @@ func (dp *DataPartition) statusUpdateScheduler() {
 			} else {
 				dp.LaunchRepair(proto.NormalExtentType)
 			}
+		case <-snapshotTicker.C:
 			dp.ReloadSnapshot()
 		case <-dp.stopC:
 			ticker.Stop()
+			snapshotTicker.Stop()
 			return
 		}
 	}
@@ -356,7 +362,7 @@ func (dp *DataPartition) statusUpdate() {
 	if dp.used >= dp.partitionSize {
 		status = proto.ReadOnly
 	}
-	if dp.extentStore.GetExtentCount() >= MaxActiveExtents {
+	if dp.extentStore.GetExtentCount() >= storage.MaxExtentCount {
 		status = proto.ReadOnly
 	}
 
@@ -430,7 +436,7 @@ func (dp *DataPartition) LaunchRepair(extentType uint8) {
 		return
 	}
 	if err := dp.updateReplicas(); err != nil {
-		log.LogErrorf("action[LaunchRepair] err(%v).", err)
+		log.LogErrorf("action[LaunchRepair] partition(%v) err(%v).", dp.partitionID, err)
 		return
 	}
 	if !dp.isLeader {

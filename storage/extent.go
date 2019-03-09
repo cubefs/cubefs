@@ -34,23 +34,21 @@ const (
 )
 
 type ExtentInfo struct {
-	FileID     uint64    `json:"fileId"`
-	Size       uint64    `json:"size"`
-	Crc        uint32    `json:"crc"`
-	Inode      uint64    `json:"inode"`
-	IsDeleted  bool      `json:"deleted"`
-	ModifyTime time.Time `json:"modTime"`
-	Source     string    `json:"src"`
-	isDirty    bool
+	FileID     uint64 `json:"fileId"`
+	Size       uint64 `json:"size"`
+	Crc        uint32 `json:"Crc"`
+	Inode      uint64 `json:"inode"`
+	IsDeleted  bool   `json:"deleted"`
+	ModifyTime int64  `json:"modTime"`
+	Source     string `json:"src"`
 }
 
-func (ei *ExtentInfo) FromExtent(e *Extent, crc uint32) {
+func (ei *ExtentInfo) FromExtent(e *Extent, extentCrc uint32) {
 	if e != nil {
 		ei.Size = uint64(e.dataSize)
 		if !IsTinyExtent(ei.FileID) {
-			ei.Crc = crc
+			ei.Crc = extentCrc
 			ei.ModifyTime = e.ModifyTime()
-			ei.isDirty = crc == 0
 		}
 	}
 }
@@ -65,12 +63,12 @@ func (ei *ExtentInfo) String() (m string) {
 
 // Extent is an implementation of Extent for local regular extent file data management.
 // This extent implementation manages all header info and data body in one single entry file.
-// Header of extent include inode value of this extent block and crc blocks of data blocks.
+// Header of extent include inode value of this extent block and Crc blocks of data blocks.
 type Extent struct {
 	file       *os.File
 	filePath   string
 	extentID   uint64
-	modifyTime time.Time
+	modifyTime int64
 	dataSize   int64
 	hasClose   int32
 }
@@ -128,7 +126,7 @@ func (e *Extent) InitToFS(ino uint64) (err error) {
 		e.dataSize = 0
 		return
 	}
-	e.modifyTime = time.Now()
+	atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
 	e.dataSize = 0
 	return
 }
@@ -157,7 +155,7 @@ func (e *Extent) RestoreFromFS() (err error) {
 		return
 	}
 	e.dataSize = info.Size()
-	e.modifyTime = info.ModTime()
+	atomic.StoreInt64(&e.modifyTime, info.ModTime().Unix())
 	return
 }
 
@@ -167,8 +165,8 @@ func (e *Extent) Size() (size int64) {
 }
 
 // ModifyTime returns the time when this extent was modified recently.
-func (e *Extent) ModifyTime() time.Time {
-	return e.modifyTime
+func (e *Extent) ModifyTime() int64 {
+	return atomic.LoadInt64(&e.modifyTime)
 }
 
 // WriteTiny performs write on a tiny extent.
@@ -212,8 +210,10 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, isUpdateSize
 	}
 	blockNo := offset / util.BlockSize
 	offsetInBlock := offset % util.BlockSize
-	e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
-	e.modifyTime = time.Now()
+	defer func() {
+		e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
+		atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
+	}()
 	if isSync {
 		if err = e.file.Sync(); err != nil {
 			return
@@ -222,8 +222,13 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, isUpdateSize
 	if offsetInBlock == 0 && size == util.BlockSize {
 		err = crcFunc(e.extentID, uint16(blockNo), crc)
 		return
-	} else {
+	}
+	if offsetInBlock+size <= util.BlockSize {
 		err = crcFunc(e.extentID, uint16(blockNo), 0)
+		return
+	}
+	if err = crcFunc(e.extentID, uint16(blockNo), 0); err == nil {
+		err = crcFunc(e.extentID, uint16(blockNo+1), 0)
 	}
 
 	return
@@ -278,37 +283,31 @@ func (e *Extent) Flush() (err error) {
 func (e *Extent) autoFixDirtyCrc(crcFunc UpdateCrcFunc, scanFunc ScanBlocksFunc) (crc uint32, err error) {
 	bcs, err := scanFunc(e.extentID)
 	if err != nil {
-		return
-	}
-	blockCnt := e.dataSize / util.BlockSize
-	if e.Size()%util.BlockSize != 0 {
-		blockCnt = blockCnt + 1
+		return 0, err
 	}
 	data := make([]byte, len(bcs)*util.PerBlockCrcSize)
-	for blockNo := 0; blockNo < int(blockCnt); blockNo++ {
-		bc := bcs[blockNo]
-		if bc == nil {
-			bc = &BlockCrc{blockNo: uint16(blockNo), crc: 0}
-		}
-		if bc.crc != 0 {
-			binary.BigEndian.PutUint32(data[blockNo*util.PerBlockCrcSize:(blockNo+1)*util.PerBlockCrcSize], bc.crc)
+	for index := 0; index < len(bcs); index++ {
+		bc := bcs[index]
+		if bc.Crc != 0 {
+			binary.BigEndian.PutUint32(data[index*util.PerBlockCrcSize:(index+1)*util.PerBlockCrcSize], bc.Crc)
 			continue
 		}
 		data := make([]byte, util.BlockSize)
-		offset := int64(int64(bc.blockNo) * util.BlockSize)
+		offset := int64(int64(bc.BlockNo) * util.BlockSize)
 		readN, err := e.file.ReadAt(data[:util.BlockSize], offset)
 		if err != io.EOF {
 			break
 		}
-		bc.crc = crc32.ChecksumIEEE(data[:readN])
-		err = crcFunc(e.extentID, bc.blockNo, bc.crc)
+		bc.Crc = crc32.ChecksumIEEE(data[:readN])
+		err = crcFunc(e.extentID, bc.BlockNo, bc.Crc)
 		if err != nil {
 			return 0, nil
 		}
-		binary.BigEndian.PutUint32(data[blockNo*util.PerBlockCrcSize:(blockNo+1)*util.PerBlockCrcSize], bc.crc)
+		binary.BigEndian.PutUint32(data[index*util.PerBlockCrcSize:(index+1)*util.PerBlockCrcSize], bc.Crc)
 	}
 	crc = crc32.ChecksumIEEE(data)
-	return
+
+	return crc, err
 }
 
 const (
