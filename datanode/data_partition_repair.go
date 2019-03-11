@@ -165,8 +165,11 @@ func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint
 		err = errors.Annotatef(err, "getLocalExtentInfo extent DataPartition(%v) GetAllWaterMark", dp.partitionID)
 		return
 	}
-	data,_:=json.Marshal(localExtents)
-	json.Unmarshal(data,extents)
+	data,err:=json.Marshal(localExtents)
+	if err!=nil {
+		return
+	}
+	err=json.Unmarshal(data,extents)
 
 	return
 }
