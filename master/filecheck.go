@@ -19,11 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"time"
-)
-
-const (
-	tinyExtentCount   = 128
-	tinyExtentStartID = 5000000
+	"github.com/chubaofs/cfs/storage"
 )
 
 // Recover a file if it has bad CRC or it has been timed out before.
@@ -58,15 +54,12 @@ func (partition *DataPartition) doValidateCRC(liveReplicas []*DataReplica, clust
 		if err != nil {
 			continue
 		}
-		if isTinyExtent(extentID) {
+		if storage.IsTinyExtent(extentID) {
 			partition.checkTinyExtentFile(fc, liveReplicas, clusterID)
 		} else {
 			partition.checkExtentFile(fc, liveReplicas, clusterID)
 		}
 	}
-}
-func isTinyExtent(extentID uint64) bool {
-	return extentID >= tinyExtentStartID && extentID < tinyExtentStartID+tinyExtentCount
 }
 
 func (partition *DataPartition) checkTinyExtentFile(fc *FileInCore, liveReplicas []*DataReplica, clusterID string) {
