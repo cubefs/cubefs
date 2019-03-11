@@ -43,7 +43,7 @@ func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
-	mp.inodeTree.CopyFind(ino,func(item BtreeItem){
+	mp.inodeTree.CopyFind(ino, func(item BtreeItem) {
 		if item == nil {
 			resp.Status = proto.OpNotExistErr
 			return

@@ -23,6 +23,7 @@ import (
 	"math"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -43,16 +44,6 @@ type ExtentInfo struct {
 	Source     string `json:"src"`
 }
 
-func (ei *ExtentInfo) FromExtent(e *Extent, extentCrc uint32) {
-	if e != nil {
-		ei.Size = uint64(e.dataSize)
-		if !IsTinyExtent(ei.FileID) {
-			ei.Crc = extentCrc
-			ei.ModifyTime = e.ModifyTime()
-		}
-	}
-}
-
 func (ei *ExtentInfo) String() (m string) {
 	source := ei.Source
 	if source == "" {
@@ -71,6 +62,7 @@ type Extent struct {
 	modifyTime int64
 	dataSize   int64
 	hasClose   int32
+	sync.Mutex
 }
 
 // NewExtentInCore create and returns a new extent instance.
@@ -80,6 +72,19 @@ func NewExtentInCore(name string, extentID uint64) *Extent {
 	e.filePath = name
 
 	return e
+}
+
+func (e *Extent) UpdateCrc(ei *ExtentInfo, crc uint32) {
+	e.Lock()
+	defer e.Unlock()
+	if time.Now().Unix()-e.ModifyTime() <= UpdateCrcInterval {
+		crc = 0
+	}
+	ei.Size = uint64(e.dataSize)
+	if !IsTinyExtent(ei.FileID) {
+		atomic.StoreUint32(&ei.Crc, crc)
+		ei.ModifyTime = e.ModifyTime()
+	}
 }
 
 func (e *Extent) HasClosed() bool {
@@ -196,7 +201,7 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdate
 }
 
 // Write writes data to an extent.
-func (e *Extent) Write(data []byte, offset, size int64, crc uint32, isUpdateSize, isSync bool, crcFunc UpdateCrcFunc) (err error) {
+func (e *Extent) Write(data []byte, offset, size int64, crc uint32, isUpdateSize, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfo) (err error) {
 	if IsTinyExtent(e.extentID) {
 		err = e.WriteTiny(data, offset, size, crc, isUpdateSize, isSync)
 		return
@@ -230,6 +235,7 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, isUpdateSize
 	if err = crcFunc(e.extentID, uint16(blockNo), 0); err == nil {
 		err = crcFunc(e.extentID, uint16(blockNo+1), 0)
 	}
+	e.UpdateCrc(ei, 0)
 
 	return
 }

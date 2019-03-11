@@ -33,33 +33,33 @@ func NewDentryResponse() *DentryResponse {
 func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 	forceUpdate bool) (status uint8) {
 	status = proto.OpOk
-	mp.inodeTree.CopyFind(NewInode(dentry.ParentId, 0), func (item BtreeItem) {
-			var parIno *Inode
+	mp.inodeTree.CopyFind(NewInode(dentry.ParentId, 0), func(item BtreeItem) {
+		var parIno *Inode
+		if !forceUpdate {
+			if item == nil {
+				status = proto.OpNotExistErr
+				return
+			}
+			parIno = item.(*Inode)
+			if !proto.IsDir(parIno.Type) {
+				status = proto.OpArgMismatchErr
+				return
+			}
+		}
+		if item, ok := mp.dentryTree.ReplaceOrInsert(dentry, false); !ok {
+			status = proto.OpExistErr
+			//do not allow directories and files to overwrite each
+			// other when renaming
+			d := item.(*Dentry)
+			if dentry.Type != d.Type {
+				status = proto.OpArgMismatchErr
+			}
+		} else {
 			if !forceUpdate {
-				if item == nil {
-					status = proto.OpNotExistErr
-					return
-				}
-				parIno = item.(*Inode)
-				if !proto.IsDir(parIno.Type) {
-					status = proto.OpArgMismatchErr
-					return
-				}
+				parIno.IncNLink()
 			}
-			if item, ok := mp.dentryTree.ReplaceOrInsert(dentry, false); !ok {
-				status = proto.OpExistErr
-				//do not allow directories and files to overwrite each
-				// other when renaming
-				d := item.(*Dentry)
-				if dentry.Type != d.Type {
-					status = proto.OpArgMismatchErr
-				}
-			} else {
-				if !forceUpdate {
-					parIno.IncNLink()
-				}
-			}
-		})
+		}
+	})
 
 	return
 }
@@ -101,7 +101,7 @@ func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
 	resp *DentryResponse) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
-	mp.dentryTree.CopyFind(dentry, func (item BtreeItem) {
+	mp.dentryTree.CopyFind(dentry, func(item BtreeItem) {
 		if item == nil {
 			resp.Status = proto.OpNotExistErr
 			return

@@ -148,15 +148,14 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v) localAddr(%v).",
 		request.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String(), rp.sourceConn.LocalAddr().String())
 	if err = request.resolveFollowersAddr(); err != nil {
-		rp.responseCh <- request
+		err = rp.putResponse(request)
 		return
 	}
 	if err = rp.prepareFunc(request); err != nil {
-		rp.responseCh <- request
+		err = rp.putResponse(request)
 		return
 	}
-
-	rp.toBeProcessedCh <- request
+	err = rp.putToBeProcess(request)
 
 	return
 }
@@ -191,18 +190,18 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 		case request := <-rp.toBeProcessedCh:
 			if !request.isForwardPacket() {
 				rp.operatorFunc(request, rp.sourceConn)
-				rp.responseCh <- request
+				rp.putResponse(request)
 			} else {
 				orgRemainNodes := request.RemainingFollowers
 				index, err := rp.sendRequestToAllFollowers(request)
 				request.RemainingFollowers = orgRemainNodes
 				if err != nil {
 					rp.setReplProtocolError(request, index)
-					rp.responseCh <- request
+					rp.putResponse(request)
 				} else {
 					rp.pushPacketToList(request)
 					rp.operatorFunc(request, rp.sourceConn)
-					rp.ackCh <- struct{}{}
+					rp.putAck()
 				}
 			}
 		case <-rp.exitC:
@@ -447,6 +446,33 @@ func (rp *ReplProtocol) deletePacket(reply *Packet, e *list.Element) (success bo
 	defer rp.packetListLock.Unlock()
 	rp.packetList.Remove(e)
 	success = true
-	rp.responseCh <- reply
+	rp.putResponse(reply)
 	return
+}
+
+func (rp *ReplProtocol) putResponse(reply *Packet) (err error) {
+	select {
+	case rp.responseCh <- reply:
+		return
+	default:
+		return fmt.Errorf("response Chan has full (%v)", len(rp.responseCh))
+	}
+}
+
+func (rp *ReplProtocol) putToBeProcess(request *Packet) (err error) {
+	select {
+	case rp.toBeProcessedCh <- request:
+		return
+	default:
+		return fmt.Errorf("toBeProcessedCh Chan has full (%v)", len(rp.toBeProcessedCh))
+	}
+}
+
+func (rp *ReplProtocol) putAck() (err error) {
+	select {
+	case rp.ackCh <- struct{}{}:
+		return
+	default:
+		return fmt.Errorf("ack Chan has full (%v)", len(rp.ackCh))
+	}
 }

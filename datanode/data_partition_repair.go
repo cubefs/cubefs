@@ -154,7 +154,7 @@ func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartiti
 
 func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint64) (extents []*storage.ExtentInfo, tinyDeleteRecordSize int64, err error) {
 	localExtents := make([]*storage.ExtentInfo, 0)
-	extents =make([]*storage.ExtentInfo,0)
+	extents = make([]*storage.ExtentInfo, 0)
 
 	if extentType == proto.NormalExtentType {
 		localExtents, tinyDeleteRecordSize, err = dp.extentStore.GetAllWatermarks(storage.NormalExtentFilter())
@@ -165,13 +165,13 @@ func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint
 		err = errors.Annotatef(err, "getLocalExtentInfo extent DataPartition(%v) GetAllWaterMark", dp.partitionID)
 		return
 	}
-	data,err:=json.Marshal(localExtents)
-	if err!=nil {
+	data, err := json.Marshal(localExtents)
+	if err != nil {
 		err = errors.Annotatef(err, "getLocalExtentInfo extent DataPartition(%v) GetAllWaterMark", dp.partitionID)
 		return
 	}
-	
-	if err=json.Unmarshal(data,&extents);err!=nil {
+
+	if err = json.Unmarshal(data, &extents); err != nil {
 		err = errors.Annotatef(err, "getLocalExtentInfo extent DataPartition(%v) GetAllWaterMark", dp.partitionID)
 	}
 

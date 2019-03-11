@@ -204,7 +204,7 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 		file.Name = strconv.FormatUint(ei.FileID, 10)
 		file.Size = uint32(ei.Size)
 		file.Modified = ei.ModifyTime
-		file.Crc = ei.Crc
+		file.Crc = atomic.LoadUint32(&ei.Crc)
 		files = append(files, file)
 	}
 	return
@@ -247,7 +247,7 @@ func (s *ExtentStore) Create(extentID uint64, inode uint64) (err error) {
 	}
 	s.cache.Put(e)
 	extInfo := &ExtentInfo{FileID: extentID, Inode: inode}
-	extInfo.FromExtent(e, 0)
+	e.UpdateCrc(extInfo, 0)
 	s.eiMutex.Lock()
 	s.extentInfoMap[extentID] = extInfo
 	s.eiMutex.Unlock()
@@ -347,7 +347,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 			continue
 		}
 		ei.IsDeleted = s.IsMarkDeleteExtent(extentID)
-		ei.FromExtent(e, 0)
+		e.UpdateCrc(ei, 0)
 		s.eiMutex.Lock()
 		s.extentInfoMap[extentID] = ei
 		s.eiMutex.Unlock()
@@ -397,20 +397,14 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 			if err != nil {
 				continue
 			}
-			if ei.Crc != 0 {
+			if atomic.LoadUint32(&ei.Crc) != 0 {
 				continue
 			}
 			extentCrc, err := e.autoFixDirtyCrc(s.PersistenceBlockCrc, s.ScanBlocks)
 			if err != nil {
 				continue
 			}
-			if time.Now().Unix()-atomic.LoadInt64(&e.modifyTime) <= UpdateCrcInterval {
-				extentCrc = 0
-			}
-			ei.FromExtent(e, extentCrc)
-			if time.Now().Unix()-atomic.LoadInt64(&e.modifyTime) <= UpdateCrcInterval {
-				ei.FromExtent(e, 0)
-			}
+			e.UpdateCrc(ei, extentCrc)
 		}
 		time.Sleep(time.Millisecond * 50)
 	}
@@ -438,11 +432,10 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return err
 	}
-	err = e.Write(data, offset, size, crc, isUpdateSize, isSync, s.PersistenceBlockCrc)
+	err = e.Write(data, offset, size, crc, isUpdateSize, isSync, s.PersistenceBlockCrc, ei)
 	if err != nil {
 		return err
 	}
-	ei.FromExtent(e, 0)
 
 	return nil
 }
@@ -496,9 +489,9 @@ func (s *ExtentStore) tinyDelete(e *Extent, offset, size, tinyDeleteFileOffset i
 	return
 }
 
-func (s *ExtentStore)GetBlockCrcFromRocksdb(extentID uint64)(bcs []*BlockCrc){
-	bcs,err:=s.ScanBlocks(extentID)
-	if err!=nil {
+func (s *ExtentStore) GetBlockCrcFromRocksdb(extentID uint64) (bcs []*BlockCrc) {
+	bcs, err := s.ScanBlocks(extentID)
+	if err != nil {
 		return
 	}
 

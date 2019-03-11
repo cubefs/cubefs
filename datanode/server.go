@@ -156,6 +156,7 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 	if err = s.startTCPService(); err != nil {
 		return
 	}
+	go s.doGc()
 	go s.registerHandler()
 
 	return

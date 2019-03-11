@@ -190,7 +190,7 @@ func (s *DataNode) getBlockCrcAPI(w http.ResponseWriter, r *http.Request) {
 		partitionID uint64
 		extentID    int
 		err         error
-		blocks  []*storage.BlockCrc
+		blocks      []*storage.BlockCrc
 	)
 	if err = r.ParseForm(); err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
@@ -217,7 +217,6 @@ func (s *DataNode) getBlockCrcAPI(w http.ResponseWriter, r *http.Request) {
 	s.buildSuccessResp(w, blocks)
 	return
 }
-
 
 func (s *DataNode) buildSuccessResp(w http.ResponseWriter, data interface{}) {
 	s.buildJSONResp(w, http.StatusOK, data, "")

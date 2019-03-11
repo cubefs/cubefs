@@ -16,10 +16,10 @@ package master
 
 import (
 	"fmt"
+	"github.com/chubaofs/cfs/storage"
 	"sort"
 	"strconv"
 	"time"
-	"github.com/chubaofs/cfs/storage"
 )
 
 // Recover a file if it has bad CRC or it has been timed out before.
