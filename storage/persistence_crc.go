@@ -35,7 +35,7 @@ func (s *ExtentStore) PersistenceBlockCrc(extentID uint64, blockNo uint16, block
 	blockCrcKey := fmt.Sprintf(BlockCrcPrefix+"%v_%v", extentID, blockNo)
 	blockCrcValue := make([]byte, 4)
 	binary.BigEndian.PutUint32(blockCrcValue[0:BlockCrcValueLen], blockCrc)
-	_, err = s.crcStore.Put(blockCrcKey, blockCrcValue, false)
+	_, err = s.crcStore.Replace(blockCrcKey, blockCrcValue, false)
 
 	return
 }

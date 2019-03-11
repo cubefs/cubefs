@@ -68,11 +68,11 @@ func (b *BTree) Find(key BtreeItem, fn func(i BtreeItem)) {
 func (b *BTree) CopyFind(key BtreeItem, fn func(i BtreeItem)) {
 	b.Lock()
 	item := b.tree.CopyGet(key)
-	b.Unlock()
 	if item == nil {
 		return
 	}
 	fn(item)
+	b.Unlock()
 }
 
 // Has checks if the key exists in the btree.
