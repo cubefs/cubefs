@@ -169,6 +169,7 @@ func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint
 	if err!=nil {
 		return
 	}
+	
 	err=json.Unmarshal(data,extents)
 
 	return
