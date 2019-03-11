@@ -32,34 +32,35 @@ func NewDentryResponse() *DentryResponse {
 // Insert a dentry into the dentry tree.
 func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 	forceUpdate bool) (status uint8) {
-	var parentIno *Inode
 	status = proto.OpOk
-	if !forceUpdate {
-		// check inode
-		inoItem := mp.inodeTree.CopyGet(NewInode(dentry.ParentId, 0))
-		if inoItem == nil {
-			status = proto.OpNotExistErr
-			return
-		}
-		parentIno = inoItem.(*Inode)
-		if !proto.IsDir(parentIno.Type) {
-			status = proto.OpArgMismatchErr
-			return
-		}
-	}
-	if item, ok := mp.dentryTree.ReplaceOrInsert(dentry, false); !ok {
-		status = proto.OpExistErr
-		//do not allow directories and files to overwrite each
-		// other when renaming
-		d := item.(*Dentry)
-		if dentry.Type != d.Type {
-			status = proto.OpArgMismatchErr
-		}
-	} else {
-		if !forceUpdate {
-			parentIno.IncNLink()
-		}
-	}
+	mp.inodeTree.CopyFind(NewInode(dentry.ParentId, 0), func (item BtreeItem) {
+			var parIno *Inode
+			if !forceUpdate {
+				if item == nil {
+					status = proto.OpNotExistErr
+					return
+				}
+				parIno = item.(*Inode)
+				if !proto.IsDir(parIno.Type) {
+					status = proto.OpArgMismatchErr
+					return
+				}
+			}
+			if item, ok := mp.dentryTree.ReplaceOrInsert(dentry, false); !ok {
+				status = proto.OpExistErr
+				//do not allow directories and files to overwrite each
+				// other when renaming
+				d := item.(*Dentry)
+				if dentry.Type != d.Type {
+					status = proto.OpArgMismatchErr
+				}
+			} else {
+				if !forceUpdate {
+					parIno.IncNLink()
+				}
+			}
+		})
+
 	return
 }
 
@@ -85,10 +86,12 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry) (
 		resp.Status = proto.OpNotExistErr
 		return
 	} else {
-		ino := mp.inodeTree.CopyGet(NewInode(dentry.ParentId, 0))
-		if ino != nil {
-			ino.(*Inode).DecNLink()
-		}
+		mp.inodeTree.CopyFind(NewInode(dentry.ParentId, 0),
+			func(item BtreeItem) {
+				if item != nil {
+					item.(*Inode).DecNLink()
+				}
+			})
 	}
 	resp.Msg = item.(*Dentry)
 	return
@@ -98,14 +101,15 @@ func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
 	resp *DentryResponse) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
-	item := mp.dentryTree.CopyGet(dentry)
-	if item == nil {
-		resp.Status = proto.OpNotExistErr
-		return
-	}
-	d := item.(*Dentry)
-	d.Inode, dentry.Inode = dentry.Inode, d.Inode
-	resp.Msg = dentry
+	mp.dentryTree.CopyFind(dentry, func (item BtreeItem) {
+		if item == nil {
+			resp.Status = proto.OpNotExistErr
+			return
+		}
+		d := item.(*Dentry)
+		d.Inode, dentry.Inode = dentry.Inode, d.Inode
+		resp.Msg = dentry
+	})
 	return
 }
 
