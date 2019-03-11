@@ -108,10 +108,12 @@ func (mp *metaPartition) Ascend(f func(i BtreeItem) bool) {
 func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
-	isFound := false
 	shouldDelete := false
 	mp.inodeTree.CopyFind(ino, func(i BtreeItem) {
-		isFound = true
+		if i == nil {
+			resp.Status = proto.OpNotExistErr
+			return
+		}
 		inode := i.(*Inode)
 		inode.ModifyTime = ino.ModifyTime
 		resp.Msg = inode
@@ -126,15 +128,12 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 		//TODO: isDir should record subDir for fsck
 		if inode.IsEmptyDir() {
 			shouldDelete = true
+			ino = inode
 		} else {
 			resp.Status = proto.OpNotEmtpy
 		}
 
 	})
-	if !isFound {
-		resp.Status = proto.OpNotExistErr
-		return
-	}
 	if shouldDelete {
 		mp.inodeTree.Delete(ino)
 	}
@@ -202,10 +201,12 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 
 	resp.Status = proto.OpOk
-	isFound := false
 	var delExtents []BtreeItem
 	mp.inodeTree.CopyFind(ino, func(item BtreeItem) {
-		isFound = true
+		if item == nil {
+			resp.Status = proto.OpNotExistErr
+			return
+		}
 		i := item.(*Inode)
 		if proto.IsDir(i.Type) {
 			resp.Status = proto.OpArgMismatchErr
@@ -230,11 +231,6 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	for _, ext := range delExtents {
 		mp.extDelCh <- ext
 	}
-	if !isFound {
-		resp.Status = proto.OpNotExistErr
-		return
-	}
-
 	return
 }
 
@@ -242,34 +238,30 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 
 	resp.Status = proto.OpOk
-	isFound := false
-	shouldDelete := false
 	mp.inodeTree.CopyFind(ino, func(item BtreeItem) {
-		isFound = true
+		if item == nil {
+			resp.Status = proto.OpNotExistErr
+			return
+		}
 		i := item.(*Inode)
+		if i.ShouldDelete() {
+			return
+		}
 		if proto.IsDir(i.Type) {
-			if i.GetNLink() < 1 {
-				shouldDelete = true
+			if i.GetNLink() <= 2 {
+				i.SetDeleteMark()
+				// push to free list
+				mp.freeList.Push(i)
 			}
 			return
 		}
 
-		if i.ShouldDelete() {
-			return
-		}
 		if i.GetNLink() < 1 {
 			i.SetDeleteMark()
 			// push to free list
 			mp.freeList.Push(i)
 		}
 	})
-	if !isFound {
-		resp.Status = proto.OpNotExistErr
-		return
-	}
-	if shouldDelete {
-		mp.inodeTree.Delete(ino)
-	}
 	return
 }
 
