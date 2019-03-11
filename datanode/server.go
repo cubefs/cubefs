@@ -360,10 +360,8 @@ func (s *DataNode) serveConn(conn net.Conn) {
 	space := s.space
 	space.Stats().AddConnection()
 	c, _ := conn.(*net.TCPConn)
-
 	c.SetKeepAlive(true)
 	c.SetNoDelay(true)
-	c.SetLinger(10)
 	packetProcessor := repl.NewReplProtocol(c, s.Prepare, s.OperatePacket, s.Post)
 	packetProcessor.ServerConn()
 }

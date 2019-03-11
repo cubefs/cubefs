@@ -15,7 +15,7 @@
 package repl
 
 const (
-	RequestChanSize = 512
+	RequestChanSize = 10240
 )
 
 const (
