@@ -242,7 +242,7 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 	resp.Status = proto.OpOk
 	isFound := false
 	shouldDelete := false
-	mp.inodeTree.Find(ino, func(item BtreeItem) {
+	mp.inodeTree.CopyFind(ino, func(item BtreeItem) {
 		isFound = true
 		i := item.(*Inode)
 		if proto.IsDir(i.Type) {

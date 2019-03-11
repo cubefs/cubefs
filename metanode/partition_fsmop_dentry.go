@@ -36,7 +36,7 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 	status = proto.OpOk
 	if !forceUpdate {
 		// check inode
-		inoItem := mp.inodeTree.Get(NewInode(dentry.ParentId, 0))
+		inoItem := mp.inodeTree.CopyGet(NewInode(dentry.ParentId, 0))
 		if inoItem == nil {
 			status = proto.OpNotExistErr
 			return
@@ -85,7 +85,7 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry) (
 		resp.Status = proto.OpNotExistErr
 		return
 	} else {
-		ino := mp.inodeTree.Get(NewInode(dentry.ParentId, 0))
+		ino := mp.inodeTree.CopyGet(NewInode(dentry.ParentId, 0))
 		if ino != nil {
 			ino.(*Inode).DecNLink()
 		}
