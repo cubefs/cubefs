@@ -74,19 +74,6 @@ func NewExtentInCore(name string, extentID uint64) *Extent {
 	return e
 }
 
-func (e *Extent) UpdateCrc(ei *ExtentInfo, crc uint32) {
-	e.Lock()
-	defer e.Unlock()
-	if time.Now().Unix()-e.ModifyTime() <= UpdateCrcInterval {
-		crc = 0
-	}
-	ei.Size = uint64(e.dataSize)
-	if !IsTinyExtent(ei.FileID) {
-		atomic.StoreUint32(&ei.Crc, crc)
-		ei.ModifyTime = e.ModifyTime()
-	}
-}
-
 func (e *Extent) HasClosed() bool {
 	return atomic.LoadInt32(&e.hasClose) == ExtentHasClose
 }

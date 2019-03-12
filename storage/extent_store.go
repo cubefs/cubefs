@@ -167,6 +167,19 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 	return
 }
 
+func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
+	extent.Lock()
+	defer extent.Unlock()
+	if time.Now().Unix()-extent.ModifyTime() <= UpdateCrcInterval {
+		crc = 0
+	}
+	ei.Size = uint64(extent.dataSize)
+	if !IsTinyExtent(ei.FileID) {
+		atomic.StoreUint32(&ei.Crc, crc)
+		ei.ModifyTime = extent.ModifyTime()
+	}
+}
+
 // SnapShot returns the information of all the extents on the current data partition.
 // When the master sends the loadDataPartition request, the snapshot is used to compare the replicas.
 func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
@@ -199,14 +212,14 @@ func (s *ExtentStore) Create(extentID uint64) (err error) {
 		return err
 	}
 	e = NewExtentInCore(name, extentID)
-	e.header=make([]byte,util.BlockHeaderSize)
+	e.header = make([]byte, util.BlockHeaderSize)
 	err = e.InitToFS()
 	if err != nil {
 		return err
 	}
 	s.cache.Put(e)
 	extInfo := &ExtentInfo{FileID: extentID}
-	e.UpdateCrc(extInfo, 0)
+	extInfo.UpdateExtentInfo(e, 0)
 	s.eiMutex.Lock()
 	s.extentInfoMap[extentID] = extInfo
 	s.eiMutex.Unlock()
@@ -240,7 +253,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 			continue
 		}
 		ei = &ExtentInfo{FileID: extentID}
-		e.UpdateCrc(ei, 0)
+		ei.UpdateExtentInfo(e, 0)
 		s.eiMutex.Lock()
 		s.extentInfoMap[extentID] = ei
 		s.eiMutex.Unlock()
@@ -284,7 +297,7 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	if err != nil {
 		return err
 	}
-	e.UpdateCrc(ei, 0)
+	ei.UpdateExtentInfo(e, 0)
 
 	return nil
 }
@@ -672,7 +685,7 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Ext
 		return
 	}
 	if !IsTinyExtent(extentID) {
-		e.header=make([]byte,util.BlockHeaderSize)
+		e.header = make([]byte, util.BlockHeaderSize)
 		if _, err = s.verifyCrcFp.ReadAt(e.header, int64(extentID*util.BlockHeaderSize)); err != nil && err != io.EOF {
 			return
 		}
@@ -741,7 +754,7 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 			if err != nil {
 				continue
 			}
-			e.UpdateCrc(ei, extentCrc)
+			ei.UpdateExtentInfo(e, extentCrc)
 		}
 		time.Sleep(time.Millisecond * 50)
 	}
