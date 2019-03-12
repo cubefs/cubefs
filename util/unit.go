@@ -34,6 +34,7 @@ const (
 	PerBlockCrcSize  = 4
 	ExtentSize       = BlockCount * BlockSize
 	PacketHeaderSize = 57
+	BlockHeaderSize  = 4096
 )
 
 const (

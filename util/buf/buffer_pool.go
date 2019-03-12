@@ -11,8 +11,8 @@ var (
 
 const (
 	HeaderBufferPoolSize = 8192
-	BlockBufferPoolSize = 1024
-	TinyBufferPoolSize = 100
+	BlockBufferPoolSize  = 1024
+	TinyBufferPoolSize   = 100
 )
 
 // BufferPool defines the struct of a buffered pool with 4 objects.

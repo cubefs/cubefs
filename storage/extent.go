@@ -38,7 +38,6 @@ type ExtentInfo struct {
 	FileID     uint64 `json:"fileId"`
 	Size       uint64 `json:"size"`
 	Crc        uint32 `json:"Crc"`
-	Inode      uint64 `json:"inode"`
 	IsDeleted  bool   `json:"deleted"`
 	ModifyTime int64  `json:"modTime"`
 	Source     string `json:"src"`
@@ -62,6 +61,7 @@ type Extent struct {
 	modifyTime int64
 	dataSize   int64
 	hasClose   int32
+	header     []byte
 	sync.Mutex
 }
 
@@ -115,7 +115,7 @@ func (e *Extent) Exist() (exsit bool) {
 
 // InitToFS init extent data info filesystem. If entry file exist and overwrite is true,
 // this operation will clear all data of exist entry file and initialize extent header data.
-func (e *Extent) InitToFS(ino uint64) (err error) {
+func (e *Extent) InitToFS() (err error) {
 	if e.file, err = os.OpenFile(e.filePath, ExtentOpenOpt, 0666); err != nil {
 		return err
 	}
@@ -225,17 +225,16 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, isUpdateSize
 		}
 	}
 	if offsetInBlock == 0 && size == util.BlockSize {
-		err = crcFunc(e.extentID, uint16(blockNo), crc)
+		err = crcFunc(e, int(blockNo), crc)
 		return
 	}
 	if offsetInBlock+size <= util.BlockSize {
-		err = crcFunc(e.extentID, uint16(blockNo), 0)
+		err = crcFunc(e, int(blockNo), 0)
 		return
 	}
-	if err = crcFunc(e.extentID, uint16(blockNo), 0); err == nil {
-		err = crcFunc(e.extentID, uint16(blockNo+1), 0)
+	if err = crcFunc(e, int(blockNo), 0); err == nil {
+		err = crcFunc(e, int(blockNo+1), 0)
 	}
-	e.UpdateCrc(ei, 0)
 
 	return
 }
@@ -286,32 +285,33 @@ func (e *Extent) Flush() (err error) {
 	return
 }
 
-func (e *Extent) autoFixDirtyCrc(crcFunc UpdateCrcFunc, scanFunc ScanBlocksFunc) (crc uint32, err error) {
-	bcs, err := scanFunc(e.extentID)
-	if err != nil {
-		return 0, err
+func (e *Extent) autoFixDirtyCrc(crcFunc UpdateCrcFunc) (crc uint32, err error) {
+	var blockCnt int
+	blockCnt = int(e.Size() / util.BlockSize)
+	if e.Size()%util.BlockSize != 0 {
+		blockCnt += 1
 	}
-	data := make([]byte, len(bcs)*util.PerBlockCrcSize)
-	for index := 0; index < len(bcs); index++ {
-		bc := bcs[index]
-		if bc.Crc != 0 {
-			binary.BigEndian.PutUint32(data[index*util.PerBlockCrcSize:(index+1)*util.PerBlockCrcSize], bc.Crc)
+	crcData := make([]byte, blockCnt*util.PerBlockCrcSize)
+	for blockNo := 0; blockNo < blockCnt; blockNo++ {
+		blockCrc := binary.BigEndian.Uint32(e.header[blockNo*util.PerBlockCrcSize : (blockNo+1)*util.PerBlockCrcSize])
+		if blockCrc != 0 {
+			binary.BigEndian.PutUint32(crcData[blockNo*util.PerBlockCrcSize:(blockNo+1)*util.PerBlockCrcSize], blockCrc)
 			continue
 		}
-		data := make([]byte, util.BlockSize)
-		offset := int64(int64(bc.BlockNo) * util.BlockSize)
-		readN, err := e.file.ReadAt(data[:util.BlockSize], offset)
+		bdata := make([]byte, util.BlockSize)
+		offset := int64(blockNo * util.BlockSize)
+		readN, err := e.file.ReadAt(bdata[:util.BlockSize], offset)
 		if err != io.EOF {
 			break
 		}
-		bc.Crc = crc32.ChecksumIEEE(data[:readN])
-		err = crcFunc(e.extentID, bc.BlockNo, bc.Crc)
+		blockCrc = crc32.ChecksumIEEE(bdata[:readN])
+		err = crcFunc(e, blockNo, blockCrc)
 		if err != nil {
 			return 0, nil
 		}
-		binary.BigEndian.PutUint32(data[index*util.PerBlockCrcSize:(index+1)*util.PerBlockCrcSize], bc.Crc)
+		binary.BigEndian.PutUint32(crcData[blockNo*util.PerBlockCrcSize:(blockNo+1)*util.PerBlockCrcSize], blockCrc)
 	}
-	crc = crc32.ChecksumIEEE(data)
+	crc = crc32.ChecksumIEEE(crcData)
 
 	return crc, err
 }

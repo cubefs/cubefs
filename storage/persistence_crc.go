@@ -2,40 +2,38 @@ package storage
 
 import (
 	"encoding/binary"
-	"fmt"
-	"sort"
-	"strconv"
-	"strings"
-)
-
-const (
-	BlockCrcValueLen      = 4
-	HasExtentDeletePrefix = "D_"
-	BaseExtentIDPrefix    = "B_"
-	StoreInodePrefix      = "I_"
-	BlockCrcPrefix        = "C"
+	"github.com/chubaofs/cfs/util"
+	"syscall"
 )
 
 type BlockCrc struct {
-	BlockNo uint16
+	BlockNo int
 	Crc     uint32
 }
-
 type BlockCrcArr []*BlockCrc
 
 func (arr BlockCrcArr) Len() int           { return len(arr) }
 func (arr BlockCrcArr) Less(i, j int) bool { return arr[i].BlockNo < arr[j].BlockNo }
 func (arr BlockCrcArr) Swap(i, j int)      { arr[i], arr[j] = arr[j], arr[i] }
 
-type UpdateCrcFunc func(extentID uint64, blockNo uint16, crc uint32) (err error)
-type ScanBlocksFunc func(extentID uint64) (bcs []*BlockCrc, err error)
+type UpdateCrcFunc func(e *Extent, blockNo int, crc uint32) (err error)
 type GetExtentCrcFunc func(extentID uint64) (crc uint32, err error)
 
-func (s *ExtentStore) PersistenceBlockCrc(extentID uint64, blockNo uint16, blockCrc uint32) (err error) {
-	blockCrcKey := fmt.Sprintf(BlockCrcPrefix+"%v_%v", extentID, blockNo)
-	blockCrcValue := make([]byte, 4)
-	binary.BigEndian.PutUint32(blockCrcValue[0:BlockCrcValueLen], blockCrc)
-	_, err = s.crcStore.Replace(blockCrcKey, blockCrcValue, false)
+func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint32) (err error) {
+	startIdx := blockNo * util.PerBlockCrcSize
+	endIdx := startIdx + util.PerBlockCrcSize
+	binary.BigEndian.PutUint32(e.header[startIdx:endIdx], blockCrc)
+	verifyStart := startIdx + int(util.BlockHeaderSize*e.extentID)
+	if _, err = s.verifyCrcFp.WriteAt(e.header[startIdx:endIdx], int64(verifyStart)); err != nil {
+		return
+	}
+
+	return
+}
+
+func (s *ExtentStore) DeleteBlockCrc(extentID uint64) (err error) {
+	err = syscall.Fallocate(int(s.verifyCrcFp.Fd()), FallocFLPunchHole|FallocFLKeepSize,
+		int64(util.BlockHeaderSize*extentID), util.BlockHeaderSize)
 
 	return
 }
@@ -43,98 +41,25 @@ func (s *ExtentStore) PersistenceBlockCrc(extentID uint64, blockNo uint16, block
 func (s *ExtentStore) PersistenceBaseExtentID(extentID uint64) (err error) {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, extentID)
-	_, err = s.crcStore.Replace(BaseExtentIDPrefix, value, false)
+	_, err = s.metadataFp.WriteAt(value, 0)
 	return
 }
 
 func (s *ExtentStore) GetPersistenceBaseExtentID() (extentID uint64, err error) {
-	v, err := s.crcStore.Get(BaseExtentIDPrefix)
+	data := make([]byte, 8)
+	_, err = s.metadataFp.ReadAt(data, 0)
 	if err != nil {
-		return 0, err
+		return
 	}
-	if v == nil || len(v.([]byte)) != 8 {
-		return 0, fmt.Errorf("empty value")
-	}
-	extentID = binary.BigEndian.Uint64(v.([]byte))
+	extentID = binary.BigEndian.Uint64(data)
 	return
 }
 
 func (s *ExtentStore) PersistenceHasDeleteExtent(extentID uint64) (err error) {
-	key := fmt.Sprintf(HasExtentDeletePrefix+"%v", extentID)
-	data := make([]byte, 4)
-	_, err = s.crcStore.Put(key, data, false)
-	if err != nil {
-		return
-	}
-	s.DeleteBlocks(extentID)
-	return
-}
-
-func (s *ExtentStore) IsMarkDeleteExtent(extentID uint64) bool {
-	key := fmt.Sprintf(HasExtentDeletePrefix+"%v", extentID)
-	v, err := s.crcStore.Get(key)
-	if err == nil && len(v.([]byte)) == 4 {
-		return true
-	}
-	return false
-}
-
-func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
-	key := fmt.Sprintf(BlockCrcPrefix+"%v_", extentID)
-	bcs = make([]*BlockCrc, 0)
-	result, err := s.crcStore.SeekForPrefix([]byte(key))
-	if err != nil {
-		return
-	}
-
-	for key, value := range result {
-		arr := strings.Split(key, "_")
-		if len(arr) != 2 {
-			continue
-		}
-		crc := binary.BigEndian.Uint32(value)
-		blockNo, err := strconv.ParseUint(arr[1], 10, 64)
-		if err != nil {
-			err = nil
-			continue
-		}
-		bcs = append(bcs, &BlockCrc{BlockNo: uint16(blockNo), Crc: crc})
-	}
-	sort.Sort((BlockCrcArr(bcs)))
-	return
-}
-
-func (s *ExtentStore) DeleteBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
-	key := fmt.Sprintf(BlockCrcPrefix+"%v_", extentID)
-	bcs = make([]*BlockCrc, 0)
-	result, err := s.crcStore.SeekForPrefix([]byte(key))
-	if err != nil {
-		return
-	}
-
-	for blockKey := range result {
-		s.crcStore.Del(blockKey, false)
-	}
-	return
-}
-
-func (s *ExtentStore) PersistenceInode(inode uint64, extentID uint64) (err error) {
-	key := fmt.Sprintf(StoreInodePrefix+"%v", extentID)
 	data := make([]byte, 8)
-	binary.BigEndian.PutUint64(data, inode)
-	_, err = s.crcStore.Put(key, data, false)
-	return
-}
-
-func (s *ExtentStore) GetPersistenceInode(extentID uint64) (inode uint64, err error) {
-	key := fmt.Sprintf(StoreInodePrefix+"%v", extentID)
-	v, err := s.crcStore.Get(key)
-	if err != nil {
-		return 0, err
+	binary.BigEndian.PutUint64(data, extentID)
+	if _, err = s.normalExtentDeleteFp.Write(data); err != nil {
+		return
 	}
-	if v == nil || len(v.([]byte)) != 8 {
-		return 0, fmt.Errorf("cannot get inode")
-	}
-	inode = binary.BigEndian.Uint64(v.([]byte))
 	return
 }

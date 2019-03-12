@@ -565,7 +565,7 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 			repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, info)
 			continue
 		}
-		err := store.Create(uint64(extentInfo.FileID), extentInfo.Inode)
+		err := store.Create(uint64(extentInfo.FileID))
 		if err != nil {
 			continue
 		}
