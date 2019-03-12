@@ -156,7 +156,6 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 	if err = s.startTCPService(); err != nil {
 		return
 	}
-	go s.doGc()
 	go s.registerHandler()
 
 	return
@@ -169,17 +168,6 @@ func (s *DataNode) onShutdown() {
 	return
 }
 
-func (s *DataNode) doGc() {
-	ticker := time.NewTicker(time.Minute)
-	for {
-		select {
-		case <-s.stopC:
-			return
-		case <-ticker.C:
-			runtime.GC()
-		}
-	}
-}
 
 func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	var (

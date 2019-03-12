@@ -378,7 +378,7 @@ func min(n *node) Item {
 // max returns the last item in the subtree.
 func max(n *node) Item {
 	for len(n.children) > 0 {
-		n = n.children[len(n.children) - 1]
+		n = n.children[len(n.children)-1]
 	}
 	if len(n.items) == 0 {
 		return nil

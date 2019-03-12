@@ -272,7 +272,7 @@ func (e *Extent) Flush() (err error) {
 	return
 }
 
-func (e *Extent) autoFixDirtyCrc(crcFunc UpdateCrcFunc) (crc uint32, err error) {
+func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err error) {
 	var blockCnt int
 	blockCnt = int(e.Size() / util.BlockSize)
 	if e.Size()%util.BlockSize != 0 {

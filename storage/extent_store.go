@@ -184,15 +184,15 @@ func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
 // When the master sends the loadDataPartition request, the snapshot is used to compare the replicas.
 func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 	var (
-		eiSnapshot []*ExtentInfo
+		normalExtentSnapshot, tinyExtentSnapshot []*ExtentInfo
 	)
 
-	if eiSnapshot, _, err = s.GetAllWatermarks(NormalExtentFilter()); err != nil {
+	if normalExtentSnapshot, _, err = s.GetAllWatermarks(NormalExtentFilter()); err != nil {
 		return
 	}
 
-	files = make([]*proto.File, 0, len(eiSnapshot))
-	for _, ei := range eiSnapshot {
+	files = make([]*proto.File, 0, len(normalExtentSnapshot))
+	for _, ei := range normalExtentSnapshot {
 		file := GetSnapShotFileFromPool()
 		file.Name = strconv.FormatUint(ei.FileID, 10)
 		file.Size = uint32(ei.Size)
@@ -200,6 +200,15 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 		file.Crc = atomic.LoadUint32(&ei.Crc)
 		files = append(files, file)
 	}
+	tinyExtentSnapshot = s.getTinyExtentInfo()
+	for _, ei := range tinyExtentSnapshot {
+		file := GetSnapShotFileFromPool()
+		file.Name = strconv.FormatUint(ei.FileID, 10)
+		file.Size = uint32(ei.Size)
+		file.Modified = ei.ModifyTime
+		files = append(files, file)
+	}
+
 	return
 }
 
@@ -459,6 +468,22 @@ func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentIn
 		extents = append(extents, extentInfo)
 	}
 	tinyDeleteFileSize = s.LoadTinyDeleteFileOffset()
+
+	return
+}
+
+func (s *ExtentStore) getTinyExtentInfo() (extents []*ExtentInfo) {
+	extents = make([]*ExtentInfo, 0)
+	s.eiMutex.RLock()
+	var extentID uint64
+	for extentID = TinyExtentStartID; extentID < TinyExtentCount+TinyExtentStartID; extentID++ {
+		ei := s.extentInfoMap[extentID]
+		if ei == nil {
+			continue
+		}
+		extents = append(extents, ei)
+	}
+	s.eiMutex.RUnlock()
 
 	return
 }
@@ -750,7 +775,7 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 			if atomic.LoadUint32(&ei.Crc) != 0 {
 				continue
 			}
-			extentCrc, err := e.autoFixDirtyCrc(s.PersistenceBlockCrc)
+			extentCrc, err := e.autoComputeExtentCrc(s.PersistenceBlockCrc)
 			if err != nil {
 				continue
 			}
