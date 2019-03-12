@@ -30,9 +30,7 @@ type Streamer struct {
 
 	status int32
 
-	refcnt       int
-	openWriteCnt int
-	authid       uint64
+	refcnt int
 
 	idle int // how long there is no new request
 

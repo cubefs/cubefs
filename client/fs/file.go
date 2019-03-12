@@ -102,19 +102,10 @@ func (f *File) Forget() {
 
 // Open handles the open request.
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
-	var flag uint32
-
 	ino := f.inode.ino
 	start := time.Now()
 
-	if req.Flags.IsWriteOnly() || req.Flags.IsReadWrite() {
-		flag = proto.FlagWrite
-	}
-	err = f.super.ec.OpenStream(ino, flag)
-	if err != nil {
-		log.LogErrorf("Open: failed to get write authorization, ino(%v) req(%v) err(%v)", ino, req, err)
-		return nil, fuse.EPERM
-	}
+	f.super.ec.OpenStream(ino)
 
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Open: ino(%v) req(%v) resp(%v) (%v)ns", ino, req, resp, elapsed.Nanoseconds())
@@ -123,8 +114,6 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 // Release handles the release request.
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
-	var flag uint32
-
 	ino := f.inode.ino
 	log.LogDebugf("TRACE Release enter: ino(%v) req(%v)", ino, req)
 
@@ -132,10 +121,7 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 
 	//log.LogDebugf("TRACE Release close stream: ino(%v) req(%v)", ino, req)
 
-	if req.Flags.IsWriteOnly() || req.Flags.IsReadWrite() {
-		flag = proto.FlagWrite
-	}
-	err = f.super.ec.CloseStream(ino, flag)
+	err = f.super.ec.CloseStream(ino)
 	if err != nil {
 		log.LogErrorf("Release: close writer failed, ino(%v) req(%v) err(%v)", ino, req, err)
 		return fuse.EIO

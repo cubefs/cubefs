@@ -43,8 +43,6 @@ const (
 
 // OpenRequest defines an open request.
 type OpenRequest struct {
-	flag uint32
-	err  error
 	done chan struct{}
 }
 
@@ -67,7 +65,6 @@ type FlushRequest struct {
 
 // ReleaseRequest defines a release request.
 type ReleaseRequest struct {
-	flag uint32
 	err  error
 	done chan struct{}
 }
@@ -86,23 +83,17 @@ type EvictRequest struct {
 }
 
 // Open request shall grab the lock until request is sent to the request channel
-func (s *Streamer) IssueOpenRequest(flag uint32) error {
+func (s *Streamer) IssueOpenRequest() error {
 	request := openRequestPool.Get().(*OpenRequest)
 	request.done = make(chan struct{}, 1)
-	request.flag = flag
 	s.request <- request
 	s.client.streamerLock.Unlock()
 	<-request.done
-	err := request.err
 	openRequestPool.Put(request)
-	return err
+	return nil
 }
 
 func (s *Streamer) IssueWriteRequest(offset int, data []byte, direct bool) (write int, err error) {
-	if s.authid == 0 {
-		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: not authorized, ino(%v)", s.inode))
-	}
-
 	if atomic.LoadInt32(&s.status) >= StreamerError {
 		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", s.inode))
 	}
@@ -134,24 +125,18 @@ func (s *Streamer) IssueFlushRequest() error {
 	return err
 }
 
-func (s *Streamer) IssueReleaseRequest(flag uint32) error {
+func (s *Streamer) IssueReleaseRequest() error {
 	request := releaseRequestPool.Get().(*ReleaseRequest)
 	request.done = make(chan struct{}, 1)
-	request.flag = flag
 	s.request <- request
 	s.client.streamerLock.Unlock()
 	<-request.done
 	err := request.err
 	releaseRequestPool.Put(request)
-	//s.done <- struct{}{}
 	return err
 }
 
 func (s *Streamer) IssueTruncRequest(size int) error {
-	if s.authid == 0 {
-		return errors.New(fmt.Sprintf("IssueTruncRequest: not authorized, ino(%v)", s.inode))
-	}
-
 	request := truncRequestPool.Get().(*TruncRequest)
 	request.size = size
 	request.done = make(chan struct{}, 1)
@@ -221,7 +206,6 @@ func (s *Streamer) clearRequests() {
 func (s *Streamer) abortRequest(request interface{}) {
 	switch request := request.(type) {
 	case *OpenRequest:
-		request.err = syscall.EAGAIN
 		request.done <- struct{}{}
 	case *WriteRequest:
 		request.err = syscall.EAGAIN
@@ -245,9 +229,7 @@ func (s *Streamer) abortRequest(request interface{}) {
 func (s *Streamer) handleRequest(request interface{}) {
 	switch request := request.(type) {
 	case *OpenRequest:
-		log.LogDebugf("received an open request: ino(%v) flag(%v)", s.inode, request.flag)
-		request.err = s.open(request.flag)
-		log.LogDebugf("open returned: ino(%v) flag(%v)", s.inode, request.flag)
+		s.open()
 		request.done <- struct{}{}
 	case *WriteRequest:
 		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.direct)
@@ -259,7 +241,7 @@ func (s *Streamer) handleRequest(request interface{}) {
 		request.err = s.flush()
 		request.done <- struct{}{}
 	case *ReleaseRequest:
-		request.err = s.release(request.flag)
+		request.err = s.release()
 		request.done <- struct{}{}
 	case *EvictRequest:
 		request.err = s.evict()
@@ -506,46 +488,19 @@ func (s *Streamer) closeOpenHandler() {
 	}
 }
 
-func (s *Streamer) open(flag uint32) error {
+func (s *Streamer) open() {
 	s.refcnt++
-	if !proto.IsWriteFlag(flag) {
-		return nil
-	}
-
-	if s.authid == 0 {
-		authid, err := s.client.open(s.inode, flag)
-		if err != nil || authid == 0 {
-			s.refcnt--
-			return errors.New(fmt.Sprintf("open failed: streamer(%v) flag(%v)", s, flag))
-		}
-		s.authid = authid
-	}
-
-	s.openWriteCnt++
-	log.LogDebugf("open: streamer(%v) openWriteCnt(%v) authid(%v)", s, s.openWriteCnt, s.authid)
-	return nil
+	log.LogDebugf("open: streamer(%v) refcnt(%v)", s, s.refcnt)
 }
 
-func (s *Streamer) release(flag uint32) error {
+func (s *Streamer) release() error {
 	s.refcnt--
-	if !proto.IsWriteFlag(flag) {
-		return nil
-	}
-
 	s.closeOpenHandler()
 	err := s.flush()
 	if err != nil {
 		s.abort()
 	}
-
-	s.openWriteCnt--
-	authid := s.authid
-	if s.openWriteCnt <= 0 {
-		// TODO unhandled error
-		s.client.release(s.inode, authid)
-		s.authid = 0
-	}
-	log.LogDebugf("release: streamer(%v) openWriteCnt(%v) authid(%v)", s, s.openWriteCnt, authid)
+	log.LogDebugf("release: streamer(%v) refcnt(%v)", s, s.refcnt)
 	return err
 }
 
@@ -553,7 +508,7 @@ func (s *Streamer) evict() error {
 	s.client.streamerLock.Lock()
 	if s.refcnt > 0 || len(s.request) != 0 {
 		s.client.streamerLock.Unlock()
-		return errors.New(fmt.Sprintf("evict: streamer(%v) refcnt(%v) openWriteCnt(%v) authid(%v)", s, s.refcnt, s.openWriteCnt, s.authid))
+		return errors.New(fmt.Sprintf("evict: streamer(%v) refcnt(%v)", s, s.refcnt))
 	}
 	delete(s.client.streamers, s.inode)
 	s.client.streamerLock.Unlock()
@@ -580,7 +535,7 @@ func (s *Streamer) truncate(size int) error {
 		return err
 	}
 
-	err = s.client.truncate(s.inode, s.authid, uint64(size))
+	err = s.client.truncate(s.inode, uint64(size))
 	if err != nil {
 		return err
 	}

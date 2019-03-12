@@ -53,7 +53,7 @@ func NewSuper(volname, owner, master string, icacheTimeout, lookupValid, attrVal
 		return nil, errors.Annotate(err, "NewMetaWrapper failed!")
 	}
 
-	s.ec, err = stream.NewExtentClient(volname, master, s.mw.AppendExtentKey, s.mw.GetExtents, s.mw.Truncate, s.mw.Open, s.mw.Release)
+	s.ec, err = stream.NewExtentClient(volname, master, s.mw.AppendExtentKey, s.mw.GetExtents, s.mw.Truncate)
 	if err != nil {
 		return nil, errors.Annotate(err, "NewExtentClient failed!")
 	}
