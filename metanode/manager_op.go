@@ -298,55 +298,6 @@ func (m *metadataManager) opReadDir(conn net.Conn, p *Packet,
 	return
 }
 
-// Handle OpOpen
-func (m *metadataManager) opOpen(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
-	req := &proto.OpenRequest{}
-	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
-		m.respondToClient(conn, p)
-		return
-	}
-	mp, err := m.getPartition(req.PartitionID)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
-		m.respondToClient(conn, p)
-		return
-	}
-	if ok := m.serveProxy(conn, mp, p); !ok {
-		return
-	}
-	err = mp.Open(req, p)
-	m.respondToClient(conn, p)
-	log.LogDebugf("%s [opOpen] req: %d - %v, resp: %v, body: %s",
-		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
-	return
-}
-
-func (m *metadataManager) opReleaseOpen(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
-	req := &ReleaseReq{}
-	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
-		m.respondToClient(conn, p)
-		return
-	}
-	mp, err := m.getPartition(req.PartitionID)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
-		m.respondToClient(conn, p)
-		return
-	}
-	if ok := m.serveProxy(conn, mp, p); !ok {
-		return
-	}
-	err = mp.ReleaseOpen(req, p)
-	m.respondToClient(conn, p)
-	log.LogDebugf("%s [opReleaseOpen] req: %d - %v, resp status: %v, resp body: %s",
-		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
-	return
-}
-
 func (m *metadataManager) opMetaInodeGet(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
 	req := &InodeGetReq{}

@@ -59,50 +59,6 @@ func (mp *metaPartition) initInode(ino *Inode) {
 	}
 }
 
-func (mp *metaPartition) fsmOpenFile(req *OpenReq) (resp *InodeResponse) {
-	resp = NewInodeResponse()
-	ino := NewInode(req.Inode, 0)
-	mp.inodeTree.CopyFind(ino, func(item BtreeItem) {
-		if item == nil {
-			resp.Status = proto.OpNotExistErr
-			return
-		}
-		ino2 := item.(*Inode)
-		if ino2.ShouldDelete() {
-			resp.Status = proto.OpNotExistErr
-			return
-		}
-		resp.Status = proto.OpOk
-		if proto.IsWriteFlag(req.Flag) {
-			if authID, ok := ino2.CanOpen(req.ATime); ok {
-				resp.AuthID = authID
-			} else {
-				resp.Status = proto.OpNotPerm
-			}
-		}
-	})
-	return
-}
-
-// When opening a file for write, we assign a "lease" to the client that requests the file first,
-// and after finishing the write, we need to release the opened file.
-func (mp *metaPartition) fsmReleaseOpen(ino *Inode) (status uint8) {
-	status = proto.OpOk
-	mp.inodeTree.CopyFind(ino, func(item BtreeItem) {
-		if item == nil {
-			status = proto.OpNotExistErr
-			return
-		}
-		ino2 := item.(*Inode)
-		if ino2.ShouldDelete() {
-			status = proto.OpNotExistErr
-			return
-		}
-		ino2.OpenRelease(ino.AuthID)
-	})
-	return
-}
-
 // Not implemented.
 func (mp *metaPartition) decommissionPartition() (err error) {
 	return

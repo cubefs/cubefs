@@ -62,7 +62,6 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		ino.AuthID, ino.Swap = ino.Swap, ino.AuthID
 		resp = mp.fsmExtentsTruncate(ino)
 	case opFSMCreateLinkInode:
 		ino := NewInode(0, 0)
@@ -114,7 +113,6 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		ino.AuthID, ino.Swap = ino.Swap, ino.AuthID
 		resp = mp.fsmAppendExtents(ino)
 	case opFSMStoreTick:
 		msg := &storeMsg{

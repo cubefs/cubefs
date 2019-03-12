@@ -64,8 +64,6 @@ type (
 	LookupReq = proto.LookupRequest
 	// Client -> MetaNode lookup
 	LookupResp = proto.LookupResponse
-	// Client -> MetaNode open file request
-	OpenReq = proto.OpenRequest
 	// Client -> MetaNode
 	InodeGetReq = proto.InodeGetRequest
 	// Client -> MetaNode
@@ -81,7 +79,6 @@ type (
 	EvictInodeReq = proto.EvictInodeRequest
 	// Client -> MetaNOde
 	SetattrRequest = proto.SetAttrRequest
-	ReleaseReq     = proto.ReleaseRequest
 )
 
 const (
