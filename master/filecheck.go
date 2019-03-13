@@ -70,12 +70,12 @@ func (partition *DataPartition) checkTinyExtentFile(fc *FileInCore, liveReplicas
 	if !needRepair {
 		return
 	}
-	if hasSameSize(fms) {
+	if !hasSameSize(fms) {
 		return
 	}
-	msg := fmt.Sprintf("CheckFileError size not match,cluster[%v],", clusterID)
+	msg := fmt.Sprintf("CheckFileError crc not match,cluster[%v],dpID[%v]", clusterID, partition.PartitionID)
 	for _, fm := range fms {
-		msg = fmt.Sprintf(msg+"fm[%v]:%v\n", fm.locIndex, fm)
+		msg = msg + fmt.Sprintf("fm[%v]:%v\n", fm.locIndex, fm)
 	}
 	Warn(clusterID, msg)
 	return

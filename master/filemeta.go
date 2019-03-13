@@ -44,7 +44,7 @@ func newFileMetadata(volCrc uint32, volLoc string, volLocIndex int, size uint32)
 }
 
 func (fm *FileMetadata) String() (msg string) {
-	msg = fmt.Sprintf("Crc[%v] LocAddr[%d] locIndex[%v]  Size[%v]",
+	msg = fmt.Sprintf("Crc[%v] LocAddr[%v] locIndex[%v]  Size[%v]",
 		fm.Crc, fm.LocAddr, fm.locIndex, fm.Size)
 	return
 }
