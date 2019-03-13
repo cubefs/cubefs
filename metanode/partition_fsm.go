@@ -115,11 +115,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp = mp.fsmAppendExtents(ino)
 	case opFSMStoreTick:
+		inodeTree := mp.getInodeTree()
+		dentryTree := mp.getDentryTree()
 		msg := &storeMsg{
 			command:    opFSMStoreTick,
 			applyIndex: index,
-			inodeTree:  mp.getInodeTree(),
-			dentryTree: mp.getDentryTree(),
+			inodeTree:  inodeTree,
+			dentryTree: dentryTree,
 		}
 
 		mp.storeChan <- msg
