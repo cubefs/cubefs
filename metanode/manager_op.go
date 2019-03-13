@@ -25,7 +25,6 @@ import (
 	"github.com/chubaofs/cfs/util/log"
 	"github.com/juju/errors"
 	raftProto "github.com/tiglabs/raft/proto"
-	"runtime"
 )
 
 func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
@@ -48,12 +47,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	}
 
 	// collect memory info
-	resp.Total, _, err = util.GetMemInfo()
-	{
-		m := &runtime.MemStats{}
-		runtime.ReadMemStats(m)
-		resp.Used = m.Sys
-	}
+	resp.Total, resp.Used, err = util.GetMemInfo()
 	if err != nil {
 		adminTask.Status = proto.TaskFailed
 		goto end
