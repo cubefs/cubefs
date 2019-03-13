@@ -841,9 +841,8 @@ func (t *BTree) CopyGet(key Item) Item {
 	if t.root == nil {
 		return nil
 	}
-	t2 := t.root.mutableFor(t.cow)
-	item := t2.copyGet(key, t2.cow)
-	t.root = t2
+	t.root = t.root.mutableFor(t.cow)
+	item := t.root.copyGet(key, t.cow)
 	return item
 }
 

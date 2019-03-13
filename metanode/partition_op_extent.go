@@ -51,7 +51,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 	)
 	if status == proto.OpOk {
 		resp := &proto.GetExtentsResponse{}
-		ino.DoFunc(func() {
+		ino.DoReadFunc(func() {
 			resp.Generation = ino.Generation
 			resp.Size = ino.Size
 			ino.Extents.Range(func(item BtreeItem) bool {

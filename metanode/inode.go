@@ -383,11 +383,11 @@ func (i *Inode) IncNLink() {
 func (i *Inode) DecNLink() {
 	i.Lock()
 	if proto.IsDir(i.Type) {
-		if i.NLink != 2 {
+		if i.NLink > 2 {
 			i.NLink--
 		}
 	} else {
-		if i.NLink != 0 {
+		if i.NLink > 0 {
 			i.NLink--
 		}
 	}
@@ -399,6 +399,13 @@ func (i *Inode) GetNLink() uint32 {
 	i.RLock()
 	defer i.RUnlock()
 	return i.NLink
+}
+
+func (i *Inode) IsTempFile() bool {
+	i.RLock()
+	ok := i.NLink == 0
+	i.RUnlock()
+	return ok
 }
 
 func (i *Inode) IsEmptyDir() bool {
@@ -437,8 +444,13 @@ func (i *Inode) SetAttr(valid, mode, uid, gid uint32) {
 	i.Unlock()
 }
 
+func (i *Inode) DoWriteFunc(fn func()) {
+	i.Lock()
+	fn()
+	i.Unlock()
+}
 // DoFunc executes the given function.
-func (i *Inode) DoFunc(fn func()) {
+func (i *Inode) DoReadFunc(fn func()) {
 	i.RLock()
 	fn()
 	i.RUnlock()
