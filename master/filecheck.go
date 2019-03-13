@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"time"
+	"github.com/chubaofs/cfs/util/log"
 )
 
 // Recover a file if it has bad CRC or it has been timed out before.
@@ -71,6 +72,11 @@ func (partition *DataPartition) checkTinyExtentFile(fc *FileInCore, liveReplicas
 		return
 	}
 	if !hasSameSize(fms) {
+		msg := fmt.Sprintf("CheckFileError size not match,cluster[%v],dpID[%v],", clusterID, partition.PartitionID)
+		for _, fm := range fms {
+			msg = msg + fmt.Sprintf("fm[%v]:size[%v]\n", fm.locIndex, fm.Size)
+		}
+		log.LogWarn(msg)
 		return
 	}
 	msg := fmt.Sprintf("CheckFileError crc not match,cluster[%v],dpID[%v]", clusterID, partition.PartitionID)
