@@ -168,7 +168,6 @@ func (s *DataNode) onShutdown() {
 	return
 }
 
-
 func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	var (
 		port       string

@@ -124,7 +124,7 @@ const (
 	SyncSendTaskDeadlineTime = 20
 	NoReadDeadlineTime       = -1
 
-	ConnectIdleTime = 30
+	GetAllWatermarksDeadLineTime = 60
 )
 
 const (

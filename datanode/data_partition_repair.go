@@ -203,7 +203,7 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 		return
 	}
 	reply := new(repl.Packet)
-	err = reply.ReadFromConn(conn, proto.NoReadDeadlineTime) // read the response
+	err = reply.ReadFromConn(conn, proto.GetAllWatermarksDeadLineTime) // read the response
 	if err != nil {
 		err = errors.Annotatef(err, "getRemoteExtentInfo DataPartition(%v) read from host(%v)", dp.partitionID, target)
 		return
@@ -344,7 +344,8 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 			if extentInfo.Size < maxFileInfo.Size {
 				fixExtent := &storage.ExtentInfo{Source: maxFileInfo.Source, FileID: extentID, Size: maxFileInfo.Size}
 				repairTasks[index].ExtentsToBeRepaired = append(repairTasks[index].ExtentsToBeRepaired, fixExtent)
-				log.LogInfof("action[generatorFixExtentSizeTasks] fixExtent(%v_%v) on Index(%v).", dp.partitionID, fixExtent, index)
+				log.LogInfof("action[generatorFixExtentSizeTasks] fixExtent(%v_%v) on Index(%v) on(%v).",
+					dp.partitionID, fixExtent, index, repairTasks[index].addr)
 				hasBeenRepaired = false
 			}
 
@@ -434,14 +435,8 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	}
 	// size difference between the local extent and the remote extent
 	sizeDiff := remoteExtentInfo.Size - localExtentInfo.Size
-	// create a new streaming read packet
 	request := repl.NewExtentRepairReadPacket(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
 	var conn *net.TCPConn
-	//leaderAddr,_:=dp.IsRaftLeader()
-	//if leaderAddr==""{
-	//	return errors.Annotatef(storage.NoLeaderError,"streamRepairExtent no leader")
-	//}
-	//remoteExtentInfo.Source=leaderAddr
 	conn, err = gConnPool.GetConnect(remoteExtentInfo.Source)
 	if err != nil {
 		return errors.Annotatef(err, "streamRepairExtent get conn from host[%v] error", remoteExtentInfo.Source)
