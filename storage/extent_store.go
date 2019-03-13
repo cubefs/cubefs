@@ -50,6 +50,7 @@ const (
 	MinExtentID               = 1024
 	EveryTinyDeleteRecordSize = 24
 	UpdateCrcInterval         = 600
+	ExtCrcPreAllocSize		  = MaxExtentCount*util.BlockHeaderSize
 )
 
 var (
@@ -755,6 +756,14 @@ func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
 	return
 }
 
+
+
+type ExtentInfoArr []*ExtentInfo
+
+func (arr ExtentInfoArr) Len() int           { return len(arr) }
+func (arr ExtentInfoArr) Less(i, j int) bool { return arr[i].FileID < arr[j].FileID }
+func (arr ExtentInfoArr) Swap(i, j int)      { arr[i], arr[j] = arr[j], arr[i] }
+
 func (s *ExtentStore) autoComputeExtentCrc() {
 	extentInfos := make([]*ExtentInfo, 0)
 	s.eiMutex.RLock()
@@ -762,6 +771,8 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 		extentInfos = append(extentInfos, ei)
 	}
 	s.eiMutex.RUnlock()
+
+	sort.Sort(ExtentInfoArr(extentInfos))
 
 	for _, ei := range extentInfos {
 		if ei == nil {
@@ -785,3 +796,4 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 	}
 
 }
+
