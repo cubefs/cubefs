@@ -449,6 +449,7 @@ func (i *Inode) DoWriteFunc(fn func()) {
 	fn()
 	i.Unlock()
 }
+
 // DoFunc executes the given function.
 func (i *Inode) DoReadFunc(fn func()) {
 	i.RLock()

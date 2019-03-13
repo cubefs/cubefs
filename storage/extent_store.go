@@ -39,18 +39,18 @@ import (
 )
 
 const (
-	ExtCrcHeaderFileName      = "EXTENT_CRC"
-	ExtBaseExtentIDFileName   = "EXTENT_META"
-	TinyDeleteFileOpt         = os.O_CREATE | os.O_RDWR
-	TinyExtDeletedFileName    = "TINYEXTENT_DELETE"
-	NormalExtDeletedFileName  = "NORMALEXTENT_DELETE"
-	MaxExtentCount            = 20000
-	TinyExtentCount           = 64
-	TinyExtentStartID         = 1
-	MinExtentID               = 1024
-	EveryTinyDeleteRecordSize = 24
-	UpdateCrcInterval         = 600
-	ExtCrcPreAllocSize		  = MaxExtentCount*util.BlockHeaderSize
+	ExtCrcHeaderFileName            = "EXTENT_CRC"
+	ExtBaseExtentIDFileName         = "EXTENT_META"
+	TinyDeleteFileOpt               = os.O_CREATE | os.O_RDWR
+	TinyExtDeletedFileName          = "TINYEXTENT_DELETE"
+	NormalExtDeletedFileName        = "NORMALEXTENT_DELETE"
+	MaxExtentCount                  = 20000
+	TinyExtentCount                 = 64
+	TinyExtentStartID               = 1
+	MinExtentID                     = 1024
+	EveryTinyDeleteRecordSize       = 24
+	UpdateCrcInterval               = 600
+	PerAllocExtentIDCntOnVerifyFile = 1000
 )
 
 var (
@@ -102,24 +102,25 @@ var (
 // Multiple small files can be appended to the same tinyExtent.
 // In addition, the deletion of small files is implemented by the punch hole from the underlying file system.
 type ExtentStore struct {
-	dataPath             string
-	baseExtentID         uint64                 // TODO what is baseExtentID
-	extentInfoMap        map[uint64]*ExtentInfo // map that stores all the extent information
-	eiMutex              sync.RWMutex           // mutex for extent info
-	cache                *ExtentCache           // extent cache
-	mutex                sync.Mutex
-	storeSize            int      // size of the extent store
-	metadataFp           *os.File // metadata file pointer?
-	tinyExtentDeleteFp   *os.File
-	normalExtentDeleteFp *os.File
-	baseTinyDeleteOffset int64
-	closeC               chan bool
-	closed               bool
-	availableTinyExtentC chan uint64 // available tinyExtent channel
-	brokenTinyExtentC    chan uint64 // broken tinyExtent channel
-	blockSize            int
-	partitionID          uint64
-	verifyCrcFp          *os.File
+	dataPath                          string
+	baseExtentID                      uint64                 // TODO what is baseExtentID
+	extentInfoMap                     map[uint64]*ExtentInfo // map that stores all the extent information
+	eiMutex                           sync.RWMutex           // mutex for extent info
+	cache                             *ExtentCache           // extent cache
+	mutex                             sync.Mutex
+	storeSize                         int      // size of the extent store
+	metadataFp                        *os.File // metadata file pointer?
+	tinyExtentDeleteFp                *os.File
+	normalExtentDeleteFp              *os.File
+	baseTinyDeleteOffset              int64
+	closeC                            chan bool
+	closed                            bool
+	availableTinyExtentC              chan uint64 // available tinyExtent channel
+	brokenTinyExtentC                 chan uint64 // broken tinyExtent channel
+	blockSize                         int
+	partitionID                       uint64
+	verifyExtentFp                    *os.File
+	HasAllocSpaceExtentIDOnVerfiyFile uint64
 }
 
 func MkdirAll(name string) (err error) {
@@ -141,7 +142,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 		return
 	}
 	s.baseTinyDeleteOffset = finfo.Size()
-	if s.verifyCrcFp, err = os.OpenFile(path.Join(s.dataPath, ExtCrcHeaderFileName), os.O_CREATE|os.O_RDWR, 0666); err != nil {
+	if s.verifyExtentFp, err = os.OpenFile(path.Join(s.dataPath, ExtCrcHeaderFileName), os.O_CREATE|os.O_RDWR, 0666); err != nil {
 		return
 	}
 	if s.metadataFp, err = os.OpenFile(path.Join(s.dataPath, ExtBaseExtentIDFileName), os.O_CREATE|os.O_RDWR, 0666); err != nil {
@@ -157,6 +158,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 		err = fmt.Errorf("init base field ID: %v", err)
 		return
 	}
+	s.HasAllocSpaceExtentIDOnVerfiyFile = s.GetPreAllocSpaceExtentIDOnVerfiyFile()
 	s.storeSize = storeSize
 	s.closeC = make(chan bool, 1)
 	s.closed = false
@@ -415,8 +417,8 @@ func (s *ExtentStore) Close() {
 	s.tinyExtentDeleteFp.Close()
 	s.normalExtentDeleteFp.Sync()
 	s.normalExtentDeleteFp.Close()
-	s.verifyCrcFp.Sync()
-	s.verifyCrcFp.Close()
+	s.verifyExtentFp.Sync()
+	s.verifyExtentFp.Close()
 	s.closed = true
 }
 
@@ -663,6 +665,8 @@ func (s *ExtentStore) UpdateBaseExtentID(id uint64) (err error) {
 		atomic.StoreUint64(&s.baseExtentID, id)
 		err = s.PersistenceBaseExtentID(atomic.LoadUint64(&s.baseExtentID))
 	}
+	s.PreAllocSpaceOnVerfiyFile(atomic.LoadUint64(&s.baseExtentID))
+
 	return
 }
 
@@ -712,7 +716,7 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Ext
 	}
 	if !IsTinyExtent(extentID) {
 		e.header = make([]byte, util.BlockHeaderSize)
-		if _, err = s.verifyCrcFp.ReadAt(e.header, int64(extentID*util.BlockHeaderSize)); err != nil && err != io.EOF {
+		if _, err = s.verifyExtentFp.ReadAt(e.header, int64(extentID*util.BlockHeaderSize)); err != nil && err != io.EOF {
 			return
 		}
 	}
@@ -756,8 +760,6 @@ func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
 	return
 }
 
-
-
 type ExtentInfoArr []*ExtentInfo
 
 func (arr ExtentInfoArr) Len() int           { return len(arr) }
@@ -779,11 +781,11 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 			continue
 		}
 		if !IsTinyExtent(ei.FileID) && time.Now().Unix()-ei.ModifyTime > UpdateCrcInterval && ei.IsDeleted == false && ei.Size > 0 {
-			e, err := s.extentWithHeader(ei.FileID)
-			if err != nil {
+			if atomic.LoadUint32(&ei.Crc) == 0 {
 				continue
 			}
-			if atomic.LoadUint32(&ei.Crc) != 0 {
+			e, err := s.extentWithHeader(ei.FileID)
+			if err != nil {
 				continue
 			}
 			extentCrc, err := e.autoComputeExtentCrc(s.PersistenceBlockCrc)
@@ -796,4 +798,3 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 	}
 
 }
-
