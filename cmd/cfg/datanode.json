@@ -1,0 +1,23 @@
+{
+  "role": "datanode",
+  "port": "6000",
+  "prof": "6001",
+  "clusterID": "data",
+  "logDir": "/var/logs",
+  "logLevel": "debug",
+  "masterAddr": [
+    "10.196.30.200:80",
+    "10.196.31.141:80",
+    "10.196.31.173:80"
+  ],
+  "rack": "rack-01",
+  "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
+  "exporterPort": 9512,
+  "disks": [
+    "/data0:1:20000",
+    "/data1:1:20000",
+    "/data2:1:20000",
+    "/data3:1:20000",
+    "/data4:1:20000"
+  ]
+}
