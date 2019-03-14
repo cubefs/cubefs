@@ -93,7 +93,6 @@ func (helper *masterHelper) request(method, path string, param map[string]string
 		}
 		stateCode := resp.StatusCode
 		repsData, err = ioutil.ReadAll(resp.Body)
-		// TODO Unhandled errors
 		resp.Body.Close()
 		if err != nil {
 			log.LogErrorf("[masterHelper] %s", err)

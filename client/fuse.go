@@ -82,18 +82,22 @@ func main() {
 
 // Mount mounts the volume.
 func Mount(cfg *config.Config) (err error) {
-	mnt := cfg.GetString("mountpoint")
-	volname := cfg.GetString("volname")
+	mnt := cfg.GetString("mountPoint")
+	volname := cfg.GetString("volName")
 	owner := cfg.GetString("owner")
-	master := cfg.GetString("master")
-	logpath := cfg.GetString("logpath")
-	loglvl := cfg.GetString("loglvl")
-	profport := cfg.GetString("profport")
+	master := cfg.GetString("masterAddr")
+	logpath := cfg.GetString("logDir")
+	loglvl := cfg.GetString("logLevel")
+	profport := cfg.GetString("profPort")
 	icacheTimeout := ParseConfigString(cfg, "icacheTimeout")
 	lookupValid := ParseConfigString(cfg, "lookupValid")
 	attrValid := ParseConfigString(cfg, "attrValid")
 	enSyncWrite := ParseConfigString(cfg, "enSyncWrite")
 	autoInvalData := ParseConfigString(cfg, "autoInvalData")
+
+	if mnt == "" || volname == "" || owner == "" || master == "" {
+		return errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", mnt, volname, owner, master))
+	}
 
 	level := ParseLogLevel(loglvl)
 	_, err = log.InitLog(path.Join(logpath, LoggerDir), LoggerPrefix, level, nil)

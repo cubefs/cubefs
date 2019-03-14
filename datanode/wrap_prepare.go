@@ -102,7 +102,7 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 			return err
 		}
 	} else if isLeaderPacket(p) && isCreateExtentOperation(p) {
-		if partition.GetExtentCount() >= storage.MaxExtentCount {
+		if partition.GetExtentCount() >= storage.MaxExtentCount*3 {
 			return fmt.Errorf("partition %v has reached maxExtentId", p.PartitionID)
 		}
 		p.ExtentID = store.NextExtentID()

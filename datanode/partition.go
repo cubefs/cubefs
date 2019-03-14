@@ -105,7 +105,6 @@ type DataPartition struct {
 
 	runtimeMetrics                *DataPartitionMetrics
 	intervalToUpdateReplicas      int64 // interval to ask the master for updating the replica information
-	shouldRepairAllTinyExtents    bool  // if it is the first time to start up, we should repair all the tiny extents
 	snapshot                      []*proto.File
 	snapshotMutex                 sync.RWMutex
 	intervalToUpdatePartitionSize int64
@@ -196,7 +195,6 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		return
 	}
 
-	partition.shouldRepairAllTinyExtents = true
 	disk.AttachDataPartition(partition)
 	dp = partition
 	go partition.statusUpdateScheduler()
@@ -240,6 +238,9 @@ func (dp *DataPartition) ReloadSnapshot() {
 		return
 	}
 	dp.snapshotMutex.Lock()
+	for _, f := range dp.snapshot {
+		storage.PutSnapShotFileToPool(f)
+	}
 	dp.snapshot = files
 	dp.snapshotMutex.Unlock()
 }
@@ -287,10 +288,6 @@ func (dp *DataPartition) Available() int {
 	return dp.partitionSize - dp.used
 }
 
-func (dp *DataPartition) EvictExtent() {
-	dp.extentStore.EvictExtentCache()
-}
-
 func (dp *DataPartition) ForceLoadHeader() {
 	dp.loadExtentHeaderStatus = FinishLoadDataPartitionExtentHeader
 }
@@ -332,8 +329,8 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 	return
 }
 func (dp *DataPartition) statusUpdateScheduler() {
-	ticker := time.NewTicker(10 * time.Second)
-	metricTicker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(time.Minute)
+	snapshotTicker := time.NewTicker(time.Minute * 5)
 	var index int
 	for {
 		select {
@@ -348,13 +345,12 @@ func (dp *DataPartition) statusUpdateScheduler() {
 			} else {
 				dp.LaunchRepair(proto.NormalExtentType)
 			}
+		case <-snapshotTicker.C:
 			dp.ReloadSnapshot()
 		case <-dp.stopC:
 			ticker.Stop()
-			metricTicker.Stop()
+			snapshotTicker.Stop()
 			return
-		case <-metricTicker.C:
-			dp.runtimeMetrics.recomputeLatency()
 		}
 	}
 }
@@ -366,7 +362,7 @@ func (dp *DataPartition) statusUpdate() {
 	if dp.used >= dp.partitionSize {
 		status = proto.ReadOnly
 	}
-	if dp.extentStore.GetExtentCount() >= MaxActiveExtents {
+	if dp.extentStore.GetExtentCount() >= storage.MaxExtentCount {
 		status = proto.ReadOnly
 	}
 
@@ -440,7 +436,7 @@ func (dp *DataPartition) LaunchRepair(extentType uint8) {
 		return
 	}
 	if err := dp.updateReplicas(); err != nil {
-		log.LogErrorf("action[LaunchRepair] err(%v).", err)
+		log.LogErrorf("action[LaunchRepair] partition(%v) err(%v).", dp.partitionID, err)
 		return
 	}
 	if !dp.isLeader {
@@ -546,15 +542,17 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask) {
 	store := dp.extentStore
 	if len(repairTask.ExtentsToBeCreated) > 0 {
-		allAppliedIDs, replyNum := dp.getOtherAppliedID()
-		if replyNum > 0 {
+		allAppliedIDs := dp.getOtherAppliedID()
+		if len(allAppliedIDs) > 0 {
 			minAppliedID := allAppliedIDs[0]
-			for i := 1; i < int(replyNum); i++ {
+			for i := 1; i < len(allAppliedIDs); i++ {
 				if allAppliedIDs[i] < minAppliedID {
 					minAppliedID = allAppliedIDs[i]
 				}
 			}
-			dp.appliedID = minAppliedID
+			if minAppliedID > 0 {
+				dp.appliedID = minAppliedID
+			}
 		}
 	}
 
@@ -567,7 +565,7 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 			repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, info)
 			continue
 		}
-		err := store.Create(uint64(extentInfo.FileID), extentInfo.Inode)
+		err := store.Create(uint64(extentInfo.FileID))
 		if err != nil {
 			continue
 		}

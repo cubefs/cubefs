@@ -61,6 +61,7 @@ func (cache *ExtentCache) Put(e *Extent) {
 		element: cache.extentList.PushBack(e),
 	}
 	cache.extentMap[e.extentID] = item
+	cache.evict()
 }
 
 // Get gets the extent from the cache.
@@ -133,8 +134,6 @@ func (cache *ExtentCache) Size() int {
 }
 
 func (cache *ExtentCache) evict() {
-	cache.lock.Lock()
-	defer cache.lock.Unlock()
 	if cache.capacity <= 0 {
 		return
 	}

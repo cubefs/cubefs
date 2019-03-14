@@ -50,6 +50,14 @@ func (p *Packet) AfterTp() (ok bool) {
 	return
 }
 
+func (p *Packet) closeFollowerConnect() {
+	for index := 0; index < len(p.followersAddrs); index++ {
+		if p.followerConns[index] != nil {
+			p.followerConns[index].Close()
+		}
+	}
+}
+
 func (p *Packet) clean() {
 	for index := 0; index < len(p.followerConns); index++ {
 		p.followerConns[index] = nil
@@ -58,8 +66,9 @@ func (p *Packet) clean() {
 	p.TpObject = nil
 	p.Data = nil
 	p.Arg = nil
-	if p.rawBuffer !=nil{
+	if p.rawBuffer != nil {
 		proto.Buffers.Put(p.rawBuffer)
+		p.rawBuffer = nil
 	}
 }
 
@@ -260,8 +269,8 @@ func (p *Packet) PackErrorBody(action, msg string) {
 }
 func (p *Packet) ReadFull(c net.Conn, readSize int) (err error) {
 	if p.Opcode == proto.OpWrite && readSize == util.BlockSize {
-		p.Data, _ = proto.Buffers.Get(util.BlockSize)
-		p.rawBuffer =p.Data
+		p.Data, _ = proto.Buffers.Get(readSize)
+		p.rawBuffer = p.Data
 	} else {
 		p.Data = make([]byte, readSize)
 	}

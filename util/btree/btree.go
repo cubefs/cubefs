@@ -367,7 +367,7 @@ func (n *node) copyGet(key Item, cow *copyOnWriteContext) Item {
 // min returns the first item in the subtree.
 func min(n *node) Item {
 	for len(n.children) > 0 {
-		n = n.mutableChild(0)
+		n = n.children[0]
 	}
 	if len(n.items) == 0 {
 		return nil
@@ -378,7 +378,7 @@ func min(n *node) Item {
 // max returns the last item in the subtree.
 func max(n *node) Item {
 	for len(n.children) > 0 {
-		n = n.mutableChild(len(n.children) - 1)
+		n = n.children[len(n.children)-1]
 	}
 	if len(n.items) == 0 {
 		return nil
@@ -841,9 +841,8 @@ func (t *BTree) CopyGet(key Item) Item {
 	if t.root == nil {
 		return nil
 	}
-	t2 := t.root.mutableFor(t.cow)
-	item := t2.copyGet(key, t2.cow)
-	t.root = t2
+	t.root = t.root.mutableFor(t.cow)
+	item := t.root.copyGet(key, t.cow)
 	return item
 }
 
@@ -852,7 +851,6 @@ func (t *BTree) Min() Item {
 	if t.root == nil {
 		return nil
 	}
-	t.root = t.root.mutableFor(t.cow)
 	return min(t.root)
 }
 
@@ -861,7 +859,6 @@ func (t *BTree) Max() Item {
 	if t.root == nil {
 		return nil
 	}
-	t.root = t.root.mutableFor(t.cow)
 	return max(t.root)
 }
 

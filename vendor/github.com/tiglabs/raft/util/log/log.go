@@ -1,4 +1,4 @@
-// Copyright 2018 The TigLabs raft Authors.
+// Copyright 2018 The tiglabs raft Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -145,18 +145,10 @@ func (lw *logWriter) rotateFile(logDir, logFile, module string, rotate bool) {
 
 	if err == nil && logFile == errLogFileName {
 		os.Stderr = file
-		var crashMsg string
-		if err := logCrash(file); err == nil {
-			crashMsg = "Log file set up capture system level crash information success.\n"
-		} else {
-			crashMsg = "Log file set up capture system level crash information fail:\n" + err.Error() + "\n"
-		}
-
 		if f, e := file.Stat(); e == nil && f.Size() == 0 {
 			// Write header.
 			var buf bytes.Buffer
 			fmt.Fprintf(&buf, "Log file created at: %s\n", time.Now().Format("2006/01/02 15:04:05"))
-			fmt.Fprintf(&buf, crashMsg)
 			fmt.Fprintf(&buf, "Log line format: yyyy-mm-dd hh:mm:ss.uuuuuu[DIWE] file:line: msg\n")
 			fmt.Fprintf(&buf, "####################################################################\n\n")
 			lw.out.Write(buf.Bytes())

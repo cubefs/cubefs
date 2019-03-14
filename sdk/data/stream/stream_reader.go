@@ -30,9 +30,7 @@ type Streamer struct {
 
 	status int32
 
-	refcnt       int
-	openWriteCnt int
-	authid       uint64
+	refcnt int
 
 	idle int // how long there is no new request
 
@@ -127,6 +125,9 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 				req.Size = filesize - req.FileOffset
 				total += req.Size
 				err = io.EOF
+				if total == 0 {
+					log.LogErrorf("read: ino(%v) req(%v) filesize(%v)", s.inode, req, filesize)
+				}
 				return
 			}
 
@@ -142,6 +143,9 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 			log.LogDebugf("Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
 			total += readBytes
 			if err != nil || readBytes < req.Size {
+				if total == 0 {
+					log.LogErrorf("Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
+				}
 				break
 			}
 		}

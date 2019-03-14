@@ -124,11 +124,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 		err = storage.BrokenDiskError
 		return
 	}
-	var ino uint64
-	if len(p.Data) >= 8 && p.Size >= 8 {
-		ino = binary.BigEndian.Uint64(p.Data)
-	}
-	err = partition.ExtentStore().Create(p.ExtentID, ino)
+	err = partition.ExtentStore().Create(p.ExtentID)
 
 	return
 }
@@ -193,8 +189,6 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 		return
 	}
 	request := &proto.HeartBeatRequest{}
-
-	// TODO there should be a better way to initialize a heartbeat response
 	response := &proto.DataNodeHeartbeatResponse{}
 	s.buildHeartBeatResponse(response)
 
@@ -379,7 +373,6 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			offset += currSize
 		}
 	}
-
 	s.incDiskErrCnt(p.PartitionID, err, WriteFlag)
 	return
 }

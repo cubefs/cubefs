@@ -26,7 +26,7 @@ var (
 	NoBrokenExtentError       = errors.New("no unavailable extent")
 	NoSpaceError              = errors.New("no space left on the device")
 	TryAgainError             = errors.New("try again")
-	CrcMismatchError          = errors.New("packet crc is incorrect")
+	CrcMismatchError          = errors.New("packet Crc is incorrect")
 	NotALeaderError           = errors.New("not a raft leader")
 	NoLeaderError             = errors.New("no raft leader")
 	ExtentNotFoundError       = errors.New("extent does not exist")

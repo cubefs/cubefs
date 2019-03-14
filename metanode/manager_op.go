@@ -25,7 +25,6 @@ import (
 	"github.com/chubaofs/cfs/util/log"
 	"github.com/juju/errors"
 	raftProto "github.com/tiglabs/raft/proto"
-	"runtime"
 )
 
 func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
@@ -48,12 +47,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	}
 
 	// collect memory info
-	resp.Total, _, err = util.GetMemInfo()
-	{
-		m := &runtime.MemStats{}
-		runtime.ReadMemStats(m)
-		resp.Used = m.Sys
-	}
+	resp.Total, resp.Used, err = util.GetMemInfo()
 	if err != nil {
 		adminTask.Status = proto.TaskFailed
 		goto end
@@ -295,55 +289,6 @@ func (m *metadataManager) opReadDir(conn net.Conn, p *Packet,
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opReadDir] req: %d - %v, resp: %v, body: %s", remoteAddr,
 		p.GetReqID(), req, p.GetResultMsg(), p.Data)
-	return
-}
-
-// Handle OpOpen
-func (m *metadataManager) opOpen(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
-	req := &proto.OpenRequest{}
-	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
-		m.respondToClient(conn, p)
-		return
-	}
-	mp, err := m.getPartition(req.PartitionID)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
-		m.respondToClient(conn, p)
-		return
-	}
-	if ok := m.serveProxy(conn, mp, p); !ok {
-		return
-	}
-	err = mp.Open(req, p)
-	m.respondToClient(conn, p)
-	log.LogDebugf("%s [opOpen] req: %d - %v, resp: %v, body: %s",
-		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
-	return
-}
-
-func (m *metadataManager) opReleaseOpen(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
-	req := &ReleaseReq{}
-	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
-		m.respondToClient(conn, p)
-		return
-	}
-	mp, err := m.getPartition(req.PartitionID)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
-		m.respondToClient(conn, p)
-		return
-	}
-	if ok := m.serveProxy(conn, mp, p); !ok {
-		return
-	}
-	err = mp.ReleaseOpen(req, p)
-	m.respondToClient(conn, p)
-	log.LogDebugf("%s [opReleaseOpen] req: %d - %v, resp status: %v, resp body: %s",
-		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 

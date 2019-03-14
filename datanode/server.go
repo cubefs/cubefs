@@ -54,7 +54,7 @@ const (
 	DefaultRaftDir          = "raft"
 	DefaultRaftLogsToRetain = 20000 // Count of raft logs per data partition
 	DefaultDiskMaxErr       = 20
-	DefaultDiskRetain       = 30*util.GB // GB
+	DefaultDiskRetain       = 30 * util.GB // GB
 )
 
 const (
@@ -156,7 +156,6 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 	if err = s.startTCPService(); err != nil {
 		return
 	}
-
 	go s.registerHandler()
 
 	return
@@ -308,6 +307,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/partitions", s.getPartitionsAPI)
 	http.HandleFunc("/partition", s.getPartitionAPI)
 	http.HandleFunc("/extent", s.getExtentAPI)
+	http.HandleFunc("/block", s.getBlockCrcAPI)
 	http.HandleFunc("/stats", s.getStatAPI)
 }
 
@@ -348,10 +348,8 @@ func (s *DataNode) serveConn(conn net.Conn) {
 	space := s.space
 	space.Stats().AddConnection()
 	c, _ := conn.(*net.TCPConn)
-
 	c.SetKeepAlive(true)
 	c.SetNoDelay(true)
-	c.SetLinger(10)
 	packetProcessor := repl.NewReplProtocol(c, s.Prepare, s.OperatePacket, s.Post)
 	packetProcessor.ServerConn()
 }

@@ -124,7 +124,7 @@ const (
 	SyncSendTaskDeadlineTime = 20
 	NoReadDeadlineTime       = -1
 
-	ConnectIdleTime = 30
+	GetAllWatermarksDeadLineTime = 60
 )
 
 const (
@@ -476,6 +476,7 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 func (p *Packet) PacketOkReply() {
 	p.ResultCode = OpOk
 	p.Size = 0
+	p.Data = nil
 	p.ArgLen = 0
 }
 

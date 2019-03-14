@@ -50,15 +50,15 @@ type ReplProtocol struct {
 	exited     int32
 	exitedMu   sync.RWMutex
 
-	followerConnects *sync.Map
+	followerConnects map[string]*net.TCPConn
+	lock             sync.RWMutex
 
 	prepareFunc  func(p *Packet) error                 // prepare packet
 	operatorFunc func(p *Packet, c *net.TCPConn) error // operator
 	postFunc     func(p *Packet) error                 // post-processing packet
 
-	isError   int32
-	sendError []error
-	replId    int64
+	isError int32
+	replId  int64
 }
 
 func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet) error,
@@ -70,7 +70,7 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet) error,
 	rp.responseCh = make(chan *Packet, RequestChanSize)
 	rp.exitC = make(chan bool, 1)
 	rp.sourceConn = inConn
-	rp.followerConnects = new(sync.Map)
+	rp.followerConnects = make(map[string]*net.TCPConn)
 	rp.prepareFunc = prepareFunc
 	rp.operatorFunc = operatorFunc
 	rp.postFunc = postFunc
@@ -78,6 +78,7 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet) error,
 	rp.replId = proto.GenerateRequestID()
 	go rp.OperatorAndForwardPktGoRoutine()
 	go rp.ReceiveResponseFromFollowersGoRoutine()
+	go rp.writeResponseToClientGoRroutine()
 
 	return rp
 }
@@ -90,10 +91,12 @@ func (rp *ReplProtocol) ServerConn() {
 	)
 	defer func() {
 		rp.Stop()
-		if atomic.LoadInt32(&rp.exited) == ReplHasExited {
+		rp.exitedMu.Lock()
+		if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
 			rp.sourceConn.Close()
 			rp.cleanResource()
 		}
+		rp.exitedMu.Unlock()
 	}()
 	for {
 		select {
@@ -115,19 +118,22 @@ func (rp *ReplProtocol) ReceiveResponseFromFollowersGoRoutine() {
 		case <-rp.ackCh:
 			rp.reciveAllFollowerResponse()
 		case <-rp.exitC:
+			rp.exitedMu.Lock()
 			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
 				rp.sourceConn.Close()
-				rp.cleanResponseCh()
+				rp.cleanResource()
 			}
+			rp.exitedMu.Unlock()
 			return
 		}
 	}
 }
 
-
-
-func (rp *ReplProtocol) setReplProtocolError() {
+func (rp *ReplProtocol) setReplProtocolError(request *Packet, index int) {
 	atomic.StoreInt32(&rp.isError, ReplProtocolError)
+	if request.followerConns[index] != nil {
+		request.followerConns[index].Close()
+	}
 }
 
 func (rp *ReplProtocol) hasError() bool {
@@ -136,47 +142,37 @@ func (rp *ReplProtocol) hasError() bool {
 
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	request := NewPacket()
-	if err = request.ReadFromConnFromCli(rp.sourceConn, util.ConnectIdleTime); err != nil {
+	if err = request.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
 		return
 	}
 	log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v) localAddr(%v).",
 		request.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String(), rp.sourceConn.LocalAddr().String())
 	if err = request.resolveFollowersAddr(); err != nil {
-		rp.responseCh <- request
+		err = rp.putResponse(request)
 		return
 	}
 	if err = rp.prepareFunc(request); err != nil {
-		rp.responseCh <- request
+		err = rp.putResponse(request)
 		return
 	}
-
-	rp.toBeProcessedCh <- request
+	err = rp.putToBeProcess(request)
 
 	return
 }
 
-func (rp *ReplProtocol) sendRequestToFollower(wg *sync.WaitGroup, followerRequest *Packet, index int) {
-	defer func() {
-		wg.Done()
-	}()
-	if rp.sendError[index]= rp.allocateFollowersConns(followerRequest, index); rp.sendError[index] != nil {
-		return
-	}
-	followerRequest.RemainingFollowers = 0
-	rp.sendError[index] = followerRequest.WriteToConn(followerRequest.followerConns[index])
-
-}
-
-func (rp *ReplProtocol) sendRequestToAllFollowers(wg *sync.WaitGroup, request *Packet) {
-	rp.sendError = make([]error, len(request.followersAddrs))
-	followerRequests := make([]*Packet, len(request.followersAddrs))
-	for index := 0; index < len(request.followersAddrs); index++ {
-		followerRequests[index] = new(Packet)
-		copyPacket(request, followerRequests[index])
-	}
-	for index := 0; index < len(request.followersAddrs); index++ {
-		wg.Add(1)
-		go rp.sendRequestToFollower(wg, followerRequests[index], index)
+func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, err error) {
+	for index = 0; index < len(request.followersAddrs); index++ {
+		err = rp.allocateFollowersConns(request, index)
+		if err != nil {
+			request.PackErrorBody(ActionSendToFollowers, err.Error())
+			return
+		}
+		request.RemainingFollowers = 0
+		err = request.WriteToConn(request.followerConns[index])
+		if err != nil {
+			request.PackErrorBody(ActionSendToFollowers, err.Error())
+			return
+		}
 	}
 
 	return
@@ -194,26 +190,45 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 		case request := <-rp.toBeProcessedCh:
 			if !request.isForwardPacket() {
 				rp.operatorFunc(request, rp.sourceConn)
-				rp.responseCh <- request
+				rp.putResponse(request)
 			} else {
-				wg := new(sync.WaitGroup)
-				rp.pushPacketToList(request)
 				orgRemainNodes := request.RemainingFollowers
-				rp.sendRequestToAllFollowers(wg, request)
+				index, err := rp.sendRequestToAllFollowers(request)
 				request.RemainingFollowers = orgRemainNodes
-				wg.Wait()
-				if !rp.checkSendErrors(request){
-					rp.operatorFunc(request,rp.sourceConn)
+				if err != nil {
+					rp.setReplProtocolError(request, index)
+					rp.putResponse(request)
+				} else {
+					rp.pushPacketToList(request)
+					rp.operatorFunc(request, rp.sourceConn)
+					rp.putAck()
 				}
-				rp.ackCh <- struct{}{}
 			}
-		case request := <-rp.responseCh:
-			rp.writeResponseToClient(request)
 		case <-rp.exitC:
+			rp.exitedMu.Lock()
 			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
 				rp.sourceConn.Close()
 				rp.cleanResource()
 			}
+			rp.exitedMu.Unlock()
+			return
+		}
+	}
+
+}
+
+func (rp *ReplProtocol) writeResponseToClientGoRroutine() {
+	for {
+		select {
+		case request := <-rp.responseCh:
+			rp.writeResponse(request)
+		case <-rp.exitC:
+			rp.exitedMu.Lock()
+			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
+				rp.sourceConn.Close()
+				rp.cleanResource()
+			}
+			rp.exitedMu.Unlock()
 			return
 		}
 	}
@@ -223,21 +238,6 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 func (rp *ReplProtocol) operatorFuncWithWaitGroup(wg *sync.WaitGroup, request *Packet) {
 	defer wg.Done()
 	rp.operatorFunc(request, rp.sourceConn)
-}
-
-func (rp *ReplProtocol) checkSendErrors(request *Packet) (hasError bool) {
-	for index := 0; index < len(request.followersAddrs); index++ {
-		if rp.sendError[index] != nil {
-			rp.setReplProtocolError()
-			hasError = true
-			err := errors.Annotatef(rp.sendError[index], "sendRequestToAllFollowers to (local(%v)->remote(%v))", request.followerConns[index].LocalAddr().String(),
-				request.followersAddrs[index])
-			request.PackErrorBody(ActionSendToFollowers, rp.sendError[index].Error())
-			log.LogErrorf(err.Error())
-			return true
-		}
-	}
-	return
 }
 
 // Read a packet from the list, scan all the connections of the followers of this packet and read the responses.
@@ -258,7 +258,7 @@ func (rp *ReplProtocol) reciveAllFollowerResponse() {
 	for index := 0; index < len(request.followersAddrs); index++ {
 		err := rp.receiveFromFollower(request, index)
 		if err != nil {
-			rp.setReplProtocolError()
+			rp.setReplProtocolError(request, index)
 			request.PackErrorBody(ActionReceiveFromFollower, err.Error())
 			return
 		}
@@ -311,7 +311,7 @@ func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err err
 }
 
 // Write a reply to the client.
-func (rp *ReplProtocol) writeResponseToClient(reply *Packet) {
+func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	var err error
 	defer func() {
 		reply.clean()
@@ -357,20 +357,19 @@ func (rp *ReplProtocol) Stop() {
 // Allocate the connections to the followers. We use partitionId + extentId + followerAddr as the key.
 // Note that we need to ensure the order of packets sent to the datanode is consistent here.
 func (rp *ReplProtocol) allocateFollowersConns(p *Packet, index int) (err error) {
-	var conn *net.TCPConn
-	key := fmt.Sprintf("%v_%v_%v", p.PartitionID, p.ExtentID, p.followersAddrs[index])
-	value, ok := rp.followerConnects.Load(key)
-	if ok {
-		p.followerConns[index] = value.(*net.TCPConn)
-
-	} else {
+	rp.lock.RLock()
+	conn := rp.followerConnects[p.followersAddrs[index]]
+	rp.lock.RUnlock()
+	if conn == nil {
 		conn, err = gConnPool.GetConnect(p.followersAddrs[index])
 		if err != nil {
 			return
 		}
-		rp.followerConnects.Store(key, conn)
-		p.followerConns[index] = conn
+		rp.lock.Lock()
+		rp.followerConnects[p.followersAddrs[index]] = conn
+		rp.lock.Unlock()
 	}
+	p.followerConns[index] = conn
 
 	return nil
 }
@@ -394,8 +393,9 @@ func (rp *ReplProtocol) cleanToBeProcessCh() {
 	for i := 0; i < request; i++ {
 		select {
 		case p := <-rp.toBeProcessedCh:
-
 			rp.postFunc(p)
+			p.closeFollowerConnect()
+			p.clean()
 		default:
 			return
 		}
@@ -408,6 +408,8 @@ func (rp *ReplProtocol) cleanResponseCh() {
 		select {
 		case p := <-rp.responseCh:
 			rp.postFunc(p)
+			p.closeFollowerConnect()
+			p.clean()
 		default:
 			return
 		}
@@ -420,16 +422,22 @@ func (rp *ReplProtocol) cleanResource() {
 	for e := rp.packetList.Front(); e != nil; e = e.Next() {
 		request := e.Value.(*Packet)
 		rp.postFunc(request)
+		request.closeFollowerConnect()
+		request.clean()
 	}
 	rp.cleanToBeProcessCh()
 	rp.cleanResponseCh()
 	rp.packetList = list.New()
-	rp.followerConnects.Range(
-		func(key, value interface{}) bool {
-			conn := value.(*net.TCPConn)
-			conn.Close()
-			return true
-		})
+	rp.lock.RLock()
+	for _, conn := range rp.followerConnects {
+		conn.Close()
+	}
+	rp.lock.RUnlock()
+	close(rp.responseCh)
+	close(rp.toBeProcessedCh)
+	close(rp.ackCh)
+	rp.packetList = nil
+	rp.followerConnects = nil
 	rp.packetListLock.Unlock()
 }
 
@@ -438,7 +446,33 @@ func (rp *ReplProtocol) deletePacket(reply *Packet, e *list.Element) (success bo
 	defer rp.packetListLock.Unlock()
 	rp.packetList.Remove(e)
 	success = true
-	rp.responseCh <- reply
-
+	rp.putResponse(reply)
 	return
+}
+
+func (rp *ReplProtocol) putResponse(reply *Packet) (err error) {
+	select {
+	case rp.responseCh <- reply:
+		return
+	default:
+		return fmt.Errorf("response Chan has full (%v)", len(rp.responseCh))
+	}
+}
+
+func (rp *ReplProtocol) putToBeProcess(request *Packet) (err error) {
+	select {
+	case rp.toBeProcessedCh <- request:
+		return
+	default:
+		return fmt.Errorf("toBeProcessedCh Chan has full (%v)", len(rp.toBeProcessedCh))
+	}
+}
+
+func (rp *ReplProtocol) putAck() (err error) {
+	select {
+	case rp.ackCh <- struct{}{}:
+		return
+	default:
+		return fmt.Errorf("ack Chan has full (%v)", len(rp.ackCh))
+	}
 }

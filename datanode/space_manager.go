@@ -210,24 +210,12 @@ func (manager *SpaceManager) statUpdateScheduler() {
 			select {
 			case <-ticker.C:
 				manager.updateMetrics()
-				manager.EvictExtent()
 			case <-manager.stopC:
 				ticker.Stop()
 				return
 			}
 		}
 	}()
-}
-
-func (manager *SpaceManager) EvictExtent() {
-	partitions := make([]*DataPartition, 0)
-	manager.RangePartitions(func(dp *DataPartition) bool {
-		partitions = append(partitions, dp)
-		return true
-	})
-	for _, partition := range partitions {
-		partition.EvictExtent()
-	}
 }
 
 func (manager *SpaceManager) Partition(partitionID uint64) (dp *DataPartition) {

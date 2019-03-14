@@ -113,31 +113,6 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 	return
 }
 
-// Open opens an inode to operate.
-func (mp *metaPartition) Open(req *OpenReq, p *Packet) (err error) {
-	req.ATime = Now.GetCurrentTime().Unix()
-	resp :=mp.fsmOpenFile(req)
-	var reply []byte
-	if reply, err = json.Marshal(&proto.OpenResponse{
-		AuthID: resp.AuthID,
-	}); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
-		return
-	}
-	p.PacketErrorWithBody(resp.Status, reply)
-	return
-}
-
-// When opening a file for write, we assign a "lease" to the client that requests the file first,
-// and after finishing the write, we need to release the opened file.
-func (mp *metaPartition) ReleaseOpen(req *ReleaseReq, p *Packet) (err error) {
-	ino := NewInode(req.Inode, 0)
-	ino.AuthID = req.AuthID
-	status :=mp.fsmReleaseOpen(ino)
-	p.PacketErrorWithBody(status, nil)
-	return
-}
-
 // InodeGet executes the inodeGet command from the client.
 func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
@@ -183,25 +158,6 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 		return
 	}
 	p.PacketOkWithBody(data)
-	return
-}
-
-func (mp *metaPartition) InodeGetAuth(ino uint64, p *Packet) (err error) {
-	resp := mp.getInode(NewInode(ino, 0))
-	status := resp.Status
-	if status != proto.OpOk {
-		p.PacketErrorWithBody(status, nil)
-		return
-	}
-	authID, timeout := resp.Msg.GetAuth()
-	data, err := json.Marshal(map[string]interface{}{
-		"authID":   authID,
-		"authTime": timeout,
-	})
-	if err != nil {
-		status = proto.OpErr
-	}
-	p.PacketErrorWithBody(status, data)
 	return
 }
 

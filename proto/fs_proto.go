@@ -49,11 +49,6 @@ func IsSymlink(mode uint32) bool {
 	return OsMode(mode)&os.ModeSymlink != 0
 }
 
-// IsWriteFlag checks if the given flag is the write flag.
-func IsWriteFlag(flag uint32) bool {
-	return flag&FlagWrite != 0
-}
-
 // InodeInfo defines the inode struct.
 type InodeInfo struct {
 	Inode      uint64    `json:"ino"`
@@ -167,28 +162,6 @@ type DeleteDentryResponse struct {
 	Inode uint64 `json:"ino"`
 }
 
-// OpenRequest defines the request to open a file.
-type OpenRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	Inode       uint64 `json:"ino"`
-	Flag        uint32 `json:"flag"`
-	ATime       int64  `json:"atime"`
-}
-
-// OpenResponse defines the response to the open request.
-type OpenResponse struct {
-	AuthID uint64 `json:"authid"`
-}
-
-// ReleaseRequest defines the request to relase a partition.
-type ReleaseRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	Inode       uint64 `json:"ino"`
-	AuthID      uint64 `json:"authid"`
-}
-
 // LookupRequest defines the request for lookup.
 type LookupRequest struct {
 	VolName     string `json:"vol"`
@@ -244,7 +217,6 @@ type AppendExtentKeyRequest struct {
 	VolName     string    `json:"vol"`
 	PartitionID uint64    `json:"pid"`
 	Inode       uint64    `json:"ino"`
-	AuthID      uint64    `json:"authid"`
 	Extent      ExtentKey `json:"ek"`
 }
 
@@ -267,7 +239,6 @@ type TruncateRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
-	AuthID      uint64 `json:"authid"`
 	Size        uint64 `json:"sz"`
 }
 
@@ -286,8 +257,4 @@ const (
 	AttrMode uint32 = 1 << iota
 	AttrUid
 	AttrGid
-)
-
-const (
-	FlagWrite uint32 = 1 << iota
 )

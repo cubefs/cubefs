@@ -27,11 +27,9 @@ import (
 	"github.com/chubaofs/cfs/util/log"
 )
 
-type AppendExtentKeyFunc func(inode, authid uint64, key proto.ExtentKey) error
+type AppendExtentKeyFunc func(inode uint64, key proto.ExtentKey) error
 type GetExtentsFunc func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
-type TruncateFunc func(inode, authid, size uint64) error
-type OpenFunc func(inode uint64, flag uint32) (uint64, error)
-type ReleaseFunc func(inode, authid uint64) error
+type TruncateFunc func(inode, size uint64) error
 
 var (
 	gDataWrapper       *wrapper.Wrapper
@@ -50,12 +48,10 @@ type ExtentClient struct {
 	appendExtentKey AppendExtentKeyFunc
 	getExtents      GetExtentsFunc
 	truncate        TruncateFunc
-	open            OpenFunc
-	release         ReleaseFunc
 }
 
 // NewExtentClient returns a new extent client.
-func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc, truncate TruncateFunc, open OpenFunc, release ReleaseFunc) (client *ExtentClient, err error) {
+func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc, truncate TruncateFunc) (client *ExtentClient, err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	client = new(ExtentClient)
 	gDataWrapper, err = wrapper.NewDataPartitionWrapper(volname, master)
@@ -66,8 +62,6 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 	client.appendExtentKey = appendExtentKey
 	client.getExtents = getExtents
 	client.truncate = truncate
-	client.open = open
-	client.release = release
 	openRequestPool = &sync.Pool{New: func() interface{} {
 		return &OpenRequest{}
 	}}
@@ -90,25 +84,25 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 }
 
 // Open request shall grab the lock until request is sent to the request channel
-func (client *ExtentClient) OpenStream(inode uint64, flag uint32) (err error) {
+func (client *ExtentClient) OpenStream(inode uint64) error {
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
 	if !ok {
 		s = NewStreamer(client, inode)
 		client.streamers[inode] = s
 	}
-	return s.IssueOpenRequest(flag)
+	return s.IssueOpenRequest()
 }
 
 // Release request shall grab the lock until request is sent to the request channel
-func (client *ExtentClient) CloseStream(inode uint64, flag uint32) (err error) {
+func (client *ExtentClient) CloseStream(inode uint64) error {
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
 	if !ok {
 		client.streamerLock.Unlock()
-		return
+		return nil
 	}
-	return s.IssueReleaseRequest(flag)
+	return s.IssueReleaseRequest()
 }
 
 // Evict request shall grab the lock until request is sent to the request channel

@@ -76,8 +76,6 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 
 // Create handles the create request.
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
-	var flag uint32
-
 	start := time.Now()
 	info, err := d.super.mw.Create_ll(d.inode.ino, req.Name, proto.Mode(req.Mode.Perm()), nil)
 	if err != nil {
@@ -88,14 +86,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	inode := NewInode(info)
 	d.super.ic.Put(inode)
 	child := NewFile(d.super, inode)
-	if req.Flags.IsWriteOnly() || req.Flags.IsReadWrite() {
-		flag = proto.FlagWrite
-	}
-	err = d.super.ec.OpenStream(inode.ino, flag)
-	if err != nil {
-		log.LogErrorf("Create: failed to get write authorization, ino(%v) req(%v) err(%v)", inode.ino, req, err)
-		return nil, nil, fuse.EPERM
-	}
+	d.super.ec.OpenStream(inode.ino)
 
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Create: parent(%v) req(%v) resp(%v) ino(%v) (%v)ns", d.inode.ino, req, resp, inode.ino, elapsed.Nanoseconds())

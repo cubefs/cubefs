@@ -62,7 +62,6 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		ino.AuthID, ino.Swap = ino.Swap, ino.AuthID
 		resp = mp.fsmExtentsTruncate(ino)
 	case opFSMCreateLinkInode:
 		ino := NewInode(0, 0)
@@ -114,14 +113,15 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		ino.AuthID, ino.Swap = ino.Swap, ino.AuthID
 		resp = mp.fsmAppendExtents(ino)
 	case opFSMStoreTick:
+		inodeTree := mp.getInodeTree()
+		dentryTree := mp.getDentryTree()
 		msg := &storeMsg{
 			command:    opFSMStoreTick,
 			applyIndex: index,
-			inodeTree:  mp.getInodeTree(),
-			dentryTree: mp.getDentryTree(),
+			inodeTree:  inodeTree,
+			dentryTree: dentryTree,
 		}
 
 		mp.storeChan <- msg

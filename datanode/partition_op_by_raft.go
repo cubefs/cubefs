@@ -209,7 +209,7 @@ func (si *ItemIterator) Next() (data []byte, err error) {
 // ApplyRandomWrite random write apply
 func (dp *DataPartition) ApplyRandomWrite(msg *RaftCmdItem, raftApplyID uint64) (extentID uint64, err error) {
 	opItem := &rndWrtOpItem{}
-	defer func () {
+	defer func() {
 		if err != nil {
 			atomic.StoreUint64(&dp.disk.WriteErrCnt, uint64(dp.disk.MaxErrCnt))
 			err = storage.BrokenExtentError

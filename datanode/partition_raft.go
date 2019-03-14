@@ -121,7 +121,7 @@ func (dp *DataPartition) stopRaft() {
 func (dp *DataPartition) StartRaftLoggingSchedule() {
 	getAppliedIDTimer := time.NewTimer(time.Second * 1)
 	truncateRaftLogTimer := time.NewTimer(time.Minute * 10)
-	storeAppliedIDTimer := time.NewTimer(time.Minute * 5)
+	storeAppliedIDTimer := time.NewTimer(time.Second * 10)
 
 	log.LogDebugf("[startSchedule] hello DataPartition schedule")
 
@@ -161,7 +161,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 					err = errors.Errorf("[startSchedule]: dump partition=%d: %v", dp.config.PartitionID, err.Error())
 					log.LogErrorf(err.Error())
 				}
-				storeAppliedIDTimer.Reset(time.Minute * 5)
+				storeAppliedIDTimer.Reset(time.Second * 10)
 			}
 		}
 	}(dp.stopC)
@@ -172,6 +172,10 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 // When the repair is finished, the local dp.partitionSize is same as the leader's dp.partitionSize.
 // The repair task can be done in statusUpdateScheduler->LaunchRepair.
 func (dp *DataPartition) StartRaftAfterRepair() {
+	var (
+		partitionSize uint64 = 0
+		err           error
+	)
 	timer := time.NewTimer(0)
 	for {
 		select {
@@ -193,11 +197,13 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 			}
 
 			// get the partition size from the primary and compare it with the local one
-			partitionSize, err := dp.getPartitionSize()
-			if err != nil {
-				log.LogErrorf("partitionID[%v] get leader size err[%v]", dp.partitionID, err)
-				timer.Reset(5 * time.Second)
-				continue
+			if partitionSize == 0 {
+				partitionSize, err = dp.getPartitionSize()
+				if err != nil {
+					log.LogErrorf("partitionID[%v] get leader size err[%v]", dp.partitionID, err)
+					timer.Reset(5 * time.Second)
+					continue
+				}
 			}
 
 			localSize := dp.extentStore.StoreSize()
@@ -531,8 +537,8 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) 
 }
 
 // Get other replica applied ids except self
-func (dp *DataPartition) getOtherAppliedID() (appliedIDList []uint64, replyNum uint8) {
-	appliedIDList = make([]uint64, len(dp.replicas))
+func (dp *DataPartition) getOtherAppliedID() (appliedIDList []uint64) {
+	appliedIDList = make([]uint64, 0)
 	for i := 0; i < len(dp.replicas); i++ {
 		p := NewPacketToGetAppliedID(dp.partitionID)
 		replicaHostParts := strings.Split(dp.replicas[i], ":")
@@ -552,8 +558,7 @@ func (dp *DataPartition) getOtherAppliedID() (appliedIDList []uint64, replyNum u
 			log.LogDebugf("[getOtherAppliedID] partition=%v local appliedID[%v] replicaHost[%v] appliedID=0",
 				dp.partitionID, dp.appliedID, replicaHost)
 		}
-		appliedIDList[i] = appliedID
-		replyNum++
+		appliedIDList = append(appliedIDList, appliedID)
 	}
 
 	return

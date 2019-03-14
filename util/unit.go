@@ -28,12 +28,13 @@ const (
 )
 
 const (
-	BlockCount             = 1024
-	BlockSize              = 65536 * 2
-	ReadBlockSize          = BlockSize
-	PerBlockCrcSize        = 4
-	ExtentSize             = BlockCount * BlockSize
-	PacketHeaderSize       = 57
+	BlockCount       = 1024
+	BlockSize        = 65536 * 2
+	ReadBlockSize    = BlockSize
+	PerBlockCrcSize  = 4
+	ExtentSize       = BlockCount * BlockSize
+	PacketHeaderSize = 57
+	BlockHeaderSize  = 4096
 )
 
 const (
