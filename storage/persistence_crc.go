@@ -76,9 +76,9 @@ func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(currExtentID uint64) {
 			return
 		}
 		atomic.StoreUint64(&s.HasAllocSpaceExtentIDOnVerfiyFile, uint64(endAllocSpaceExtentID))
-		log.LogInfof("Action(PreAllocSpaceOnVerfiyFile) PartitionID(%v) "+
-			"PrevAllocSpaceExtentIDOnVerifyFile(%v) EndAllocSpaceExtentIDOnVerifyFile"+
-			" has allocSpaceOnVerifyFile to (%v)", s.partitionID, prevAllocSpaceExtentID, endAllocSpaceExtentID,
+		log.LogInfof("Action(PreAllocSpaceOnVerfiyFile) PartitionID(%v) currentExtent(%v)"+
+			"PrevAllocSpaceExtentIDOnVerifyFile(%v) EndAllocSpaceExtentIDOnVerifyFile(%v)"+
+			" has allocSpaceOnVerifyFile to (%v)", s.partitionID, currExtentID,prevAllocSpaceExtentID, endAllocSpaceExtentID,
 			prevAllocSpaceExtentID*util.BlockHeaderSize+size)
 	}
 

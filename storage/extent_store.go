@@ -794,7 +794,7 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 			}
 			ei.UpdateExtentInfo(e, extentCrc)
 		}
-		time.Sleep(time.Millisecond * 50)
+		time.Sleep(time.Millisecond * 100)
 	}
 
 }
