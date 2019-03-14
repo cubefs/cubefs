@@ -53,7 +53,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, nil))
 			switch p.Opcode {
-			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead, proto.OpReadTinyDelete:
+			case proto.OpStreamRead, proto.OpRead:
+			case proto.OpExtentRepairRead, proto.OpReadTinyDelete:
 				log.LogRead(logContent)
 			case proto.OpWrite, proto.OpRandomWrite, proto.OpSyncRandomWrite, proto.OpSyncWrite:
 				log.LogWrite(logContent)
@@ -456,6 +457,9 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 			p.PackErrorBody(ActionStreamRead, err.Error())
 			return
 		}
+		logContent := fmt.Sprintf("action[OperatePacket] %v.",
+			reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, nil))
+		log.LogRead(logContent)
 		needReplySize -= currReadSize
 		offset += int64(currReadSize)
 		if currReadSize == util.ReadBlockSize {
