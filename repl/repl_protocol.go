@@ -326,8 +326,6 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	// execute the post-processing function
 	rp.postFunc(reply)
 	if !reply.NeedReply {
-		log.LogDebugf(reply.LogMessage(ActionWriteToClient,
-			rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
 		return
 	}
 
