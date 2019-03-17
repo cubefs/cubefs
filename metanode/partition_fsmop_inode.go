@@ -119,7 +119,7 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 	inode.DecNLink()
 	if !proto.IsDir(inode.Type) {
 		if inode.IsTempFile() {
-			mp.freeList.Push(ino)
+			mp.freeList.Push(inode)
 		}
 		return
 	}

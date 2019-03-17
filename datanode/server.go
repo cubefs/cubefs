@@ -176,15 +176,14 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	LocalIP = cfg.GetString(ConfigKeyLocalIP)
 	port = cfg.GetString(ConfigKeyPort)
 	if regexpPort, err = regexp.Compile("^(\\d)+$"); err != nil {
-		return
+		return fmt.Errorf("Err:no port")
 	}
 	if !regexpPort.MatchString(port) {
-		err = ErrBadConfFile
-		return
+		return fmt.Errorf("Err:port must string")
 	}
 	s.port = port
 	if len(cfg.GetArray(ConfigKeyMasterAddr)) == 0 {
-		return ErrBadConfFile
+		return fmt.Errorf("Err:masterAddr unavalid")
 	}
 	for _, ip := range cfg.GetArray(ConfigKeyMasterAddr) {
 		MasterHelper.AddNode(ip.(string))
