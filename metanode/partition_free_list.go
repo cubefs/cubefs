@@ -170,6 +170,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []*Inode) {
 	var mu sync.Mutex
 	for _, ino := range inoSlice {
 		wg.Add(1)
+		i := ino
 		go func(ino *Inode) {
 			defer wg.Done()
 			var reExt []*proto.ExtentKey
@@ -192,7 +193,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []*Inode) {
 				}
 				mp.freeList.Push(newIno)
 			}
-		}(ino)
+		}(i)
 	}
 	wg.Wait()
 	mu.Lock()
