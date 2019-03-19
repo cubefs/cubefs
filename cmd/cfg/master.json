@@ -1,0 +1,21 @@
+{
+  "role": "master",
+  "ip": "10.196.31.173",
+  "port": "80",
+  "prof":"10088",
+  "id":"1",
+  "peers": "1:10.196.31.173:80,2:10.196.31.141:80,3:10.196.30.200:80",
+  "retainLogs":"20000",
+  "logDir": "/export/Logs/baudstorage/master",
+  "logLevel":"DEBUG",
+  "walDir":"/export/Logs/baudstorage/raft",
+  "storeDir":"/export/baudstorage/rocksdbstore",
+  "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
+  "exporterPort": 9510,
+  "clusterName":"baudStorage"
+}
+
+
+
+
+

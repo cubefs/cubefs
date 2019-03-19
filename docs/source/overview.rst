@@ -1,7 +1,7 @@
 Introduction
 =============
 
-CFS is a distributed fle system that is designed to natively support large scale container platforms.
+CFS(Chubao File System) is a distributed fle system that is designed to natively support large scale container platforms.
 
 High Level Architecture
 -----------------------
