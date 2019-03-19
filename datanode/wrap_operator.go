@@ -53,8 +53,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, nil))
 			switch p.Opcode {
-			case proto.OpStreamRead, proto.OpRead:
-			case proto.OpExtentRepairRead, proto.OpReadTinyDelete:
+			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead:
+			case proto.OpReadTinyDelete:
 				log.LogRead(logContent)
 			case proto.OpWrite, proto.OpRandomWrite, proto.OpSyncRandomWrite, proto.OpSyncWrite:
 				log.LogWrite(logContent)
@@ -414,6 +414,13 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 	var (
 		err error
 	)
+	defer func() {
+		if err != nil {
+			logContent := fmt.Sprintf("action[OperatePacket] %v.",
+				p.LogMessage(p.GetOpMsg(), connect.RemoteAddr().String(), p.StartT, err))
+			log.LogError(logContent)
+		}
+	}()
 	partition := p.Object.(*DataPartition)
 	if !isRepairRead {
 		err = partition.CheckLeader(p, connect)
@@ -441,7 +448,10 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 		}
 		tpObject := exporter.NewTPCnt(p.GetOpMsg())
 		reply.ExtentOffset = offset
+		p.Size = uint32(currReadSize)
+		p.ExtentOffset = offset
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead)
+		p.CRC = reply.CRC
 		tpObject.Set()
 		if err != nil {
 			reply.PackErrorBody(ActionStreamRead, err.Error())
@@ -453,13 +463,14 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 		}
 		reply.Size = uint32(currReadSize)
 		reply.ResultCode = proto.OpOk
+		p.ResultCode = proto.OpOk
+		logContent := fmt.Sprintf("action[OperatePacket] %v.",
+			p.LogMessage(p.GetOpMsg(), connect.RemoteAddr().String(), p.StartT, err))
+		log.LogRead(logContent)
 		if err = reply.WriteToConn(connect); err != nil {
 			p.PackErrorBody(ActionStreamRead, err.Error())
 			return
 		}
-		logContent := fmt.Sprintf("action[OperatePacket] %v.",
-			reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, nil))
-		log.LogRead(logContent)
 		needReplySize -= currReadSize
 		offset += int64(currReadSize)
 		if currReadSize == util.ReadBlockSize {

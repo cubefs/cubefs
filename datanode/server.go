@@ -184,7 +184,14 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	s.port = port
 	if len(cfg.GetArray(ConfigKeyMasterAddr)) == 0 {
-		return ErrBadConfFile
+		return fmt.Errorf("Err:no port")
+	}
+	if !regexpPort.MatchString(port) {
+		return fmt.Errorf("Err:port must string")
+	}
+	s.port = port
+	if len(cfg.GetArray(ConfigKeyMasterAddr)) == 0 {
+		return fmt.Errorf("Err:masterAddr unavalid")
 	}
 	for _, ip := range cfg.GetArray(ConfigKeyMasterAddr) {
 		MasterHelper.AddNode(ip.(string))
