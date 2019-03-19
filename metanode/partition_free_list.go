@@ -230,9 +230,9 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 	conn, err := mp.config.ConnPool.GetConnect(dp.Hosts[0])
 
 	defer func() {
-		if err!=nil {
+		if err != nil {
 			mp.config.ConnPool.PutConnect(conn, ForceClosedConnect)
-		}else {
+		} else {
 			mp.config.ConnPool.PutConnect(conn, NoClosedConnect)
 		}
 	}()

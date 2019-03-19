@@ -50,7 +50,6 @@ const (
 	MinExtentID                     = 1024
 	EveryTinyDeleteRecordSize       = 24
 	UpdateCrcInterval               = 600
-	PerAllocExtentIDCntOnVerifyFile = 1000
 )
 
 var (
@@ -120,7 +119,7 @@ type ExtentStore struct {
 	blockSize                         int
 	partitionID                       uint64
 	verifyExtentFp                    *os.File
-	HasAllocSpaceExtentIDOnVerfiyFile uint64
+	hasAllocSpaceExtentIDOnVerfiyFile uint64
 }
 
 func MkdirAll(name string) (err error) {
@@ -158,7 +157,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 		err = fmt.Errorf("init base field ID: %v", err)
 		return
 	}
-	s.HasAllocSpaceExtentIDOnVerfiyFile = s.GetPreAllocSpaceExtentIDOnVerfiyFile()
+	s.hasAllocSpaceExtentIDOnVerfiyFile = s.GetPreAllocSpaceExtentIDOnVerfiyFile()
 	s.storeSize = storeSize
 	s.closeC = make(chan bool, 1)
 	s.closed = false
@@ -287,18 +286,13 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 // Write writes the given extent to the disk.
 func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, isUpdateSize bool, isSync bool) (err error) {
 	var (
-		has bool
-		e   *Extent
-		ei  *ExtentInfo
+		e  *Extent
+		ei *ExtentInfo
 	)
 	s.eiMutex.RLock()
-	ei, has = s.extentInfoMap[extentID]
+	ei, _ = s.extentInfoMap[extentID]
 	s.eiMutex.RUnlock()
-	if !has {
-		err = ExtentNotFoundError
-		return
-	}
-	e, err = s.extentWithHeader(extentID)
+	e, err = s.extentWithHeader(ei)
 	if err != nil {
 		return err
 	}
@@ -339,7 +333,10 @@ func IsTinyExtent(extentID uint64) bool {
 // Read reads the extent based on the given id.
 func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isRepairRead bool) (crc uint32, err error) {
 	var e *Extent
-	if e, err = s.extentWithHeader(extentID); err != nil {
+	s.eiMutex.RLock()
+	ei := s.extentInfoMap[extentID]
+	s.eiMutex.RUnlock()
+	if e, err = s.extentWithHeader(ei); err != nil {
 		return
 	}
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
@@ -368,17 +365,12 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size, tinyDeleteFileOf
 	var (
 		e   *Extent
 		ei  *ExtentInfo
-		has bool
 	)
 
 	s.eiMutex.RLock()
-	ei, has = s.extentInfoMap[extentID]
+	ei = s.extentInfoMap[extentID]
 	s.eiMutex.RUnlock()
-	if !has {
-		return
-	}
-
-	if e, err = s.extentWithHeader(extentID); err != nil {
+	if e, err = s.extentWithHeader(ei); err != nil {
 		return nil
 	}
 
@@ -393,10 +385,8 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size, tinyDeleteFileOf
 	}
 	s.PersistenceHasDeleteExtent(extentID)
 	ei.IsDeleted = true
+	ei.ModifyTime=time.Now().Unix()
 	s.cache.Del(e.extentID)
-	s.eiMutex.Lock()
-	delete(s.extentInfoMap, extentID)
-	s.eiMutex.Unlock()
 	s.DeleteBlockCrc(extentID)
 
 	return
@@ -678,7 +668,23 @@ func (s *ExtentStore) extent(extentID uint64) (e *Extent, err error) {
 	return
 }
 
-func (s *ExtentStore) extentWithHeader(extentID uint64) (e *Extent, err error) {
+func (s *ExtentStore) extentWithHeader(ei *ExtentInfo) (e *Extent, err error) {
+	var ok bool
+	if ei == nil || ei.IsDeleted {
+		err = ExtentNotFoundError
+		return
+	}
+	if e, ok = s.cache.Get(ei.FileID); !ok {
+		if e, err = s.loadExtentFromDisk(ei.FileID, true); err != nil {
+			err = fmt.Errorf("load  %v from disk: %v", s.getExtentKey(ei.FileID), err)
+			return nil, err
+		}
+	}
+	return
+}
+
+
+func (s *ExtentStore) extentWithHeaderByExtentID(extentID uint64) (e *Extent, err error) {
 	var ok bool
 	if e, ok = s.cache.Get(extentID); !ok {
 		if e, err = s.loadExtentFromDisk(extentID, true); err != nil {
@@ -743,9 +749,10 @@ func (s *ExtentStore) loopAutoComputeExtentCrc() {
 func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
 	var blockCnt int
 	bcs = make([]*BlockCrc, 0)
-	e, err := s.extentWithHeader(extentID)
+	ei := s.extentInfoMap[extentID]
+	e, err := s.extentWithHeader(ei)
 	if err != nil {
-		return
+		return bcs, err
 	}
 	blockCnt = int(e.Size() / util.BlockSize)
 	if e.Size()%util.BlockSize != 0 {
@@ -768,11 +775,23 @@ func (arr ExtentInfoArr) Swap(i, j int)      { arr[i], arr[j] = arr[j], arr[i] }
 
 func (s *ExtentStore) autoComputeExtentCrc() {
 	extentInfos := make([]*ExtentInfo, 0)
+	deleteExtents:=make([]*ExtentInfo,0)
 	s.eiMutex.RLock()
 	for _, ei := range s.extentInfoMap {
 		extentInfos = append(extentInfos, ei)
+		if ei.IsDeleted && time.Now().Unix()-ei.ModifyTime>UpdateCrcInterval{
+			deleteExtents=append(deleteExtents,ei)
+		}
 	}
 	s.eiMutex.RUnlock()
+
+	if len(deleteExtents)>0{
+		s.eiMutex.Lock()
+		for _,ei:=range deleteExtents{
+			delete(s.extentInfoMap,ei.FileID)
+		}
+		s.eiMutex.Unlock()
+	}
 
 	sort.Sort(ExtentInfoArr(extentInfos))
 
@@ -784,7 +803,7 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 			if atomic.LoadUint32(&ei.Crc) == 0 {
 				continue
 			}
-			e, err := s.extentWithHeader(ei.FileID)
+			e, err := s.extentWithHeader(ei)
 			if err != nil {
 				continue
 			}

@@ -62,8 +62,8 @@ func (s *ExtentStore) GetPreAllocSpaceExtentIDOnVerfiyFile() (extentID uint64) {
 }
 
 func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(currExtentID uint64) {
-	if currExtentID > atomic.LoadUint64(&s.HasAllocSpaceExtentIDOnVerfiyFile) {
-		prevAllocSpaceExtentID := int64(atomic.LoadUint64(&s.HasAllocSpaceExtentIDOnVerfiyFile))
+	if currExtentID > atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile) {
+		prevAllocSpaceExtentID := int64(atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile))
 		endAllocSpaceExtentID := int64(prevAllocSpaceExtentID + 1000)
 		size := int64(1000 * util.BlockHeaderSize)
 		err := syscall.Fallocate(int(s.verifyExtentFp.Fd()), 1, prevAllocSpaceExtentID*util.BlockHeaderSize, size)
@@ -75,10 +75,10 @@ func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(currExtentID uint64) {
 		if _, err = s.metadataFp.WriteAt(data, 8); err != nil {
 			return
 		}
-		atomic.StoreUint64(&s.HasAllocSpaceExtentIDOnVerfiyFile, uint64(endAllocSpaceExtentID))
+		atomic.StoreUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile, uint64(endAllocSpaceExtentID))
 		log.LogInfof("Action(PreAllocSpaceOnVerfiyFile) PartitionID(%v) currentExtent(%v)"+
 			"PrevAllocSpaceExtentIDOnVerifyFile(%v) EndAllocSpaceExtentIDOnVerifyFile(%v)"+
-			" has allocSpaceOnVerifyFile to (%v)", s.partitionID, currExtentID,prevAllocSpaceExtentID, endAllocSpaceExtentID,
+			" has allocSpaceOnVerifyFile to (%v)", s.partitionID, currExtentID, prevAllocSpaceExtentID, endAllocSpaceExtentID,
 			prevAllocSpaceExtentID*util.BlockHeaderSize+size)
 	}
 
