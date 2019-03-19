@@ -170,6 +170,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []*Inode) {
 	var mu sync.Mutex
 	for _, ino := range inoSlice {
 		wg.Add(1)
+		i := ino
 		go func(ino *Inode) {
 			defer wg.Done()
 			var reExt []*proto.ExtentKey
@@ -192,7 +193,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []*Inode) {
 				}
 				mp.freeList.Push(newIno)
 			}
-		}(ino)
+		}(i)
 	}
 	wg.Wait()
 	mu.Lock()
@@ -227,7 +228,14 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 	}
 	// delete the data node
 	conn, err := mp.config.ConnPool.GetConnect(dp.Hosts[0])
-	defer mp.config.ConnPool.PutConnect(conn, ForceClosedConnect)
+
+	defer func() {
+		if err!=nil {
+			mp.config.ConnPool.PutConnect(conn, ForceClosedConnect)
+		}else {
+			mp.config.ConnPool.PutConnect(conn, NoClosedConnect)
+		}
+	}()
 
 	if err != nil {
 		err = errors.Errorf("get conn from pool %s, "+

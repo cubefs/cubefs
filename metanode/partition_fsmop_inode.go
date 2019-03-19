@@ -230,16 +230,12 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 	if proto.IsDir(i.Type) {
 		if i.IsEmptyDir() {
 			i.SetDeleteMark()
-			// push to free list
-			mp.freeList.Push(i)
 		}
 		return
 	}
 
 	if i.IsTempFile() {
 		i.SetDeleteMark()
-		// push to free list
-		mp.freeList.Push(i)
 	}
 	return
 }
