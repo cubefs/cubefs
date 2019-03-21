@@ -55,7 +55,7 @@ var (
 )
 
 // NewFile returns a new file.
-func NewFile(s *Super, i *Inode) *File {
+func NewFile(s *Super, i *Inode) fs.Node {
 	return &File{super: s, inode: i}
 }
 
@@ -85,6 +85,10 @@ func (f *File) Forget() {
 	defer func() {
 		log.LogDebugf("TRACE Forget: ino(%v)", ino)
 	}()
+
+	f.super.fslock.Lock()
+	delete(f.super.nodeCache, ino)
+	f.super.fslock.Unlock()
 
 	if err := f.super.ec.EvictStream(ino); err != nil {
 		log.LogWarnf("Forget: stream not ready to evict, ino(%v) err(%v)", ino, err)
