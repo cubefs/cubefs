@@ -39,17 +39,17 @@ import (
 )
 
 const (
-	ExtCrcHeaderFileName            = "EXTENT_CRC"
-	ExtBaseExtentIDFileName         = "EXTENT_META"
-	TinyDeleteFileOpt               = os.O_CREATE | os.O_RDWR
-	TinyExtDeletedFileName          = "TINYEXTENT_DELETE"
-	NormalExtDeletedFileName        = "NORMALEXTENT_DELETE"
-	MaxExtentCount                  = 20000
-	TinyExtentCount                 = 64
-	TinyExtentStartID               = 1
-	MinExtentID                     = 1024
-	EveryTinyDeleteRecordSize       = 24
-	UpdateCrcInterval               = 600
+	ExtCrcHeaderFileName      = "EXTENT_CRC"
+	ExtBaseExtentIDFileName   = "EXTENT_META"
+	TinyDeleteFileOpt         = os.O_CREATE | os.O_RDWR
+	TinyExtDeletedFileName    = "TINYEXTENT_DELETE"
+	NormalExtDeletedFileName  = "NORMALEXTENT_DELETE"
+	MaxExtentCount            = 20000
+	TinyExtentCount           = 64
+	TinyExtentStartID         = 1
+	MinExtentID               = 1024
+	EveryTinyDeleteRecordSize = 24
+	UpdateCrcInterval         = 600
 )
 
 var (
@@ -363,8 +363,8 @@ func (s *ExtentStore) tinyDelete(e *Extent, offset, size, tinyDeleteFileOffset i
 // MarkDelete marks the given extent as deleted.
 func (s *ExtentStore) MarkDelete(extentID uint64, offset, size, tinyDeleteFileOffset int64) (err error) {
 	var (
-		e   *Extent
-		ei  *ExtentInfo
+		e  *Extent
+		ei *ExtentInfo
 	)
 
 	s.eiMutex.RLock()
@@ -385,7 +385,7 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size, tinyDeleteFileOf
 	}
 	s.PersistenceHasDeleteExtent(extentID)
 	ei.IsDeleted = true
-	ei.ModifyTime=time.Now().Unix()
+	ei.ModifyTime = time.Now().Unix()
 	s.cache.Del(e.extentID)
 	s.DeleteBlockCrc(extentID)
 
@@ -683,7 +683,6 @@ func (s *ExtentStore) extentWithHeader(ei *ExtentInfo) (e *Extent, err error) {
 	return
 }
 
-
 func (s *ExtentStore) extentWithHeaderByExtentID(extentID uint64) (e *Extent, err error) {
 	var ok bool
 	if e, ok = s.cache.Get(extentID); !ok {
@@ -775,20 +774,20 @@ func (arr ExtentInfoArr) Swap(i, j int)      { arr[i], arr[j] = arr[j], arr[i] }
 
 func (s *ExtentStore) autoComputeExtentCrc() {
 	extentInfos := make([]*ExtentInfo, 0)
-	deleteExtents:=make([]*ExtentInfo,0)
+	deleteExtents := make([]*ExtentInfo, 0)
 	s.eiMutex.RLock()
 	for _, ei := range s.extentInfoMap {
 		extentInfos = append(extentInfos, ei)
-		if ei.IsDeleted && time.Now().Unix()-ei.ModifyTime>UpdateCrcInterval{
-			deleteExtents=append(deleteExtents,ei)
+		if ei.IsDeleted && time.Now().Unix()-ei.ModifyTime > UpdateCrcInterval {
+			deleteExtents = append(deleteExtents, ei)
 		}
 	}
 	s.eiMutex.RUnlock()
 
-	if len(deleteExtents)>0{
+	if len(deleteExtents) > 0 {
 		s.eiMutex.Lock()
-		for _,ei:=range deleteExtents{
-			delete(s.extentInfoMap,ei.FileID)
+		for _, ei := range deleteExtents {
+			delete(s.extentInfoMap, ei.FileID)
 		}
 		s.eiMutex.Unlock()
 	}

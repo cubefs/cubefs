@@ -20,6 +20,7 @@ import (
 	"github.com/chubaofs/cfs/proto"
 	"github.com/chubaofs/cfs/util/log"
 	"github.com/juju/errors"
+	"net"
 	"os"
 	"path"
 	"runtime"
@@ -204,18 +205,71 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []*Inode) {
 		for _, ino := range shouldCommit {
 			bufSlice = append(bufSlice, ino.MarshalKey()...)
 		}
-		// raft Commit
-		_, err := mp.Put(opFSMInternalDeleteInode, bufSlice)
+		err := mp.syncToRaftFollowersFreeInode(bufSlice)
 		if err != nil {
 			for _, ino := range shouldCommit {
 				mp.freeList.Push(ino)
 			}
-			log.LogWarnf("[deleteInodeTree] raft commit inode list: %v, "+
+			log.LogWarnf("[deleteInodeTreeOnRaftPeers] raft commit inode list: %v, "+
 				"response %s", shouldCommit, err.Error())
 		}
 		log.LogDebugf("[deleteInodeTree] inode list: %v", shouldCommit)
 	}
 
+}
+
+func (mp *metaPartition) freeInodesOnRaftFollower(inodes []byte) {
+
+}
+
+func (mp *metaPartition) syncToRaftFollowersFreeInode(hasDeleteInodes []byte) (err error) {
+	raftPeers := mp.GetPeers()
+	raftPeersError := make([]error, len(raftPeers))
+	wg := new(sync.WaitGroup)
+	for index, target := range raftPeers {
+		wg.Add(1)
+		raftPeersError[index] = mp.notifyRaftFollowerToFreeInodes(wg, target, hasDeleteInodes)
+	}
+	wg.Wait()
+	for index := 0; index < len(raftPeersError); index++ {
+		if raftPeersError[index] != nil {
+			err = raftPeersError[index]
+			return
+		}
+	}
+
+	return
+}
+
+func (mp *metaPartition) notifyRaftFollowerToFreeInodes(wg *sync.WaitGroup, target string, hasDeleteInodes []byte) (err error) {
+	var conn *net.TCPConn
+	conn, err = mp.config.ConnPool.GetConnect(target)
+	defer func() {
+		wg.Done()
+		if err != nil {
+			log.LogWarnf(err.Error())
+			mp.config.ConnPool.PutConnect(conn, ForceClosedConnect)
+		} else {
+			mp.config.ConnPool.PutConnect(conn, NoClosedConnect)
+		}
+	}()
+	if err != nil {
+		return
+	}
+	request := NewPacketToFreeInodeOnRaftFollower(mp.config.PartitionId, hasDeleteInodes)
+	if err = request.WriteToConn(conn); err != nil {
+		return
+	}
+
+	if err = request.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
+		return
+	}
+
+	if request.ResultCode != proto.OpOk {
+		err = fmt.Errorf("request(%v) error(%v)", request.GetUniqueLogId(), string(request.Data[request.Size]))
+	}
+
+	return
 }
 
 func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) {
