@@ -19,9 +19,10 @@
 
 # -- Project information -----------------------------------------------------
 
+
 project = u'CFS'
 copyright = u'2018, The Chubao Authors'
-author = u'CFS Authors'
+author = u'The Chubao Authors'
 
 # The short X.Y version
 version = u''
@@ -102,7 +103,8 @@ html_theme = 'sphinx_rtd_theme'
 # -- Options for HTMLHelp output ---------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'CFSdoc'
+
+htmlhelp_basename = 'CFS Doc'
 
 
 # -- Options for LaTeX output ------------------------------------------------
