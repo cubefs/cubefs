@@ -153,8 +153,8 @@ Start Datanode
         ],
         "rack": "",
         "disks": [
-        "/data0:1:40000"
-        ]  
+           "/data0:107374182400"
+       ]
       }
 
 For detailed explanations of *datanode.json*, please refer to :doc:`user-guide/datanode`.

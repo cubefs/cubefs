@@ -30,7 +30,7 @@ Configurations
    "exporterPort", "string", "Port for monitor system", "No"
    "masterAddr", "string slice", "Addresses of master server", "Yes"
    "rack", "string", "Identity of rack", "No"
-   "disks", "string slice", "PATH:MAX_ERRS:REST_SIZE", "Yes"
+   "disks", "string slice", "PATH:REST_SIZE", "Yes"
 
 **Example:**
 
@@ -54,11 +54,8 @@ Configurations
        ],
        "rack": "main",
        "disks": [
-           "/data0:1:20000",
-           "/data1:1:20000",
-           "/data2:1:20000",
-           "/data3:1:20000",
-           "/data4:1:20000"
+           "/data0:107374182400",
+           "/data1:107374182400"
        ]
    }
 
