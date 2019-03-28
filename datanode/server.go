@@ -308,6 +308,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/extent", s.getExtentAPI)
 	http.HandleFunc("/block", s.getBlockCrcAPI)
 	http.HandleFunc("/stats", s.getStatAPI)
+	http.HandleFunc("/raftStatus", s.getRaftStatus)
 }
 
 func (s *DataNode) startTCPService() (err error) {

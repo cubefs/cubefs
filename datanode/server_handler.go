@@ -67,6 +67,25 @@ func (s *DataNode) getStatAPI(w http.ResponseWriter, r *http.Request) {
 	s.buildSuccessResp(w, response)
 }
 
+func (s *DataNode) getRaftStatus(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramRaftID = "raftID"
+	)
+	if err := r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	raftID, err := strconv.ParseUint(r.FormValue(paramRaftID), 10, 64)
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramRaftID, err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	raftStatus := s.raftStore.RaftStatus(raftID)
+	s.buildSuccessResp(w, raftStatus)
+}
+
 func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 	partitions := make([]interface{}, 0)
 	s.space.RangePartitions(func(dp *DataPartition) bool {
