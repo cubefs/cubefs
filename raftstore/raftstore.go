@@ -32,6 +32,7 @@ type RaftStore interface {
 	CreatePartition(cfg *PartitionConfig) (Partition, error)
 	Stop()
 	RaftConfig() *raft.Config
+	RaftStatus(raftID uint64) (raftStatus *raft.Status)
 	NodeManager
 }
 
@@ -46,6 +47,10 @@ type raftStore struct {
 // RaftConfig returns the raft configuration.
 func (s *raftStore) RaftConfig() *raft.Config {
 	return s.raftConfig
+}
+
+func (s *raftStore) RaftStatus(raftID uint64) (raftStatus *raft.Status) {
+	return s.raftServer.Status(raftID)
 }
 
 // AddNode adds a new node to the raft store.
