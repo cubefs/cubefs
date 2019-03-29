@@ -165,13 +165,6 @@ func (dp *DataPartition) CheckLeader(request *repl.Packet, connect net.Conn) (er
 		return
 	}
 
-	if dp.raftPartition.AppliedIndex() < dp.maxAppliedID {
-		err = storage.TryAgainError
-		logContent := fmt.Sprintf("action[ReadCheck] %v localID=%v maxID=%v.",
-			request.LogMessage(request.GetOpMsg(), connect.RemoteAddr().String(), request.StartT, nil), dp.appliedID, dp.maxAppliedID)
-		log.LogErrorf(logContent)
-	}
-
 	return
 }
 
