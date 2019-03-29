@@ -152,7 +152,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 	}
 
 	s.extentInfoMap = make(map[uint64]*ExtentInfo, 0)
-	s.cache = NewExtentCache(20)
+	s.cache = NewExtentCache(100)
 	if err = s.initBaseFileID(); err != nil {
 		err = fmt.Errorf("init base field ID: %v", err)
 		return
