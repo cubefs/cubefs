@@ -29,7 +29,7 @@ The contents of multiple small files are aggregated and stored in a single exten
      :align: center
 
 
-  When overwriting an existing file portion during random writes, we employ a MultiRaft-based replication protocol, which is similar to the one used in the metadata subsystem, to ensure the strong consistency.<br>
+  When overwriting an existing file portion during random writes, we employ a MultiRaft-based replication protocol, which is similar to the one used in the metadata subsystem, to ensure the strong consistency.
 
   .. image:: ../pic/workflow-overwriting.png
 	 :align: center
