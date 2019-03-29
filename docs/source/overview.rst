@@ -36,19 +36,20 @@ datastore of the file metadata. It can have thousands of meta nodes, each of whi
 We employ two b-trees called inodeTree and dentryTree for 
 fast lookup of inodes and dentries in the memory. The inodeTree is indexed by the inode id, and the dentryTree is indexed by the dentry name and the parent inode id. We also maintain a range of the inode ids (denoted as start and end) stored on a meta partition for splitting.
 
-Multi-tenancy
-^^^^^^^^^^^^^
+General-Purpose Storage Engine
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-To reduce the storage cost, many applications and services are served from the same shared storage infrastructure. The workloads of  different applications and services are mixed together, where the file size can vary from a few kilobytes to hundreds of gigabytes, and the files can  be written in a sequential or random fashion. For example,  the log files usually need to be written sequentially in the execution order of the code;  some data analytics in the machine learning domain are  based on the data stored on the underlying file system; and  a database engine running on top of the file system can modify the stored data frequently.  A dedicated  file system needs to be able to serve for  all these different workloads with excellent performance.
+To reduce the storage cost, many applications and services are served from the same shared storage infrastructure (aka "multi-tenancy"). The workloads of  different applications and services are mixed together, where the file size can vary from a few kilobytes to hundreds of gigabytes, and the files can  be written in a sequential or random fashion. For example,  the log files usually need to be written sequentially in the execution order of the code;  some data analytics in the machine learning domain are  based on the data stored on the underlying file system; and  a database engine running on top of the file system can modify the stored data frequently.  A dedicated  file system needs to be able to serve for  all these different workloads with excellent performance.
 
-Strong Consistency
-^^^^^^^^^^^^^^^^^^
+Strong Replication Consistency
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 E-commence venders who move their line of business applications to the cloud usually prefer strong consistency. For example, an image processing service may not want to provide  the customer with an outdated image that does not match  the product description.  This can be easily achieved if there is only one copy of the file. But to ensure a distributed file system to continue operating properly in the event of machines failures, which can be caused by various reasons such as faulty hard drives,  bad motherboards, etc, there are usually multiple replicas of the same file.  As a result, in a desired file system,  the data read from any of the replicas must be consistent with each other.
 
-POSIX-compliance
-^^^^^^^^^^^^^^^^
+Relaxed  POSIX Semantics and Metadata Atomicity
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Having a POSIX-complaint file system interface  simplifies the development of the upper level applications, and shorten the learning curve for the new user.
+In a POSIX-compliant distributed file system,  the behavior of serving multiple processes on multiple client nodes should be the same as the behavior of a local file system serving multiple processes on a single node with direct attached storage. CFS provides POSIX-compliant APIs. However, the POSIX consistency semantics, as well as the atomicity requirement between the inode and dentry of the same file,  have been  carefully relaxed in order to better align with the needs of applications and to improve the system performance.
+
 
 

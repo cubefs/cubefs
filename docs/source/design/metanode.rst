@@ -2,7 +2,7 @@ Metadata Subsystem
 ===================
 
 The  metadata operations could make up as much as half of typical file system workloads.
-this can be important as there could be  heavy accesses to the  metadata of files by tens of thousands of clients simultaneously. A single node  that stores the file metadata could easily  become the performance bottleneck. As a result, we employ a distributed metadata subsystem to manage the file metadata. In this way, the metadata requests from different clients can be forwarded to different  nodes, which improves the scalability of the entire system.
+this can be important as there could be  heavy accesses to the  metadata of files by tens of thousands of clients simultaneously. A single node  that stores the file metadata could easily  become the performance/storage bottleneck. As a result, we employ a distributed metadata subsystem to manage the file metadata. In this way, the metadata requests from different clients can be forwarded to different  nodes, which improves the scalability of the entire system.
 
 
 Internal Structure
@@ -19,11 +19,11 @@ For example, if we have two directories *foo* and *bar*, where *foo* is the pare
 A meta partition can only store the inodes and dentries of the files from the same volume. We employ two b-trees called *inodeTree*  and *dentryTree*  for fast lookup of   inodes  and dentries in the memory. The  *inodeTree* is indexed by the inode id, and the *dentryTree*  is indexed by the dentry name and the parent inode id.   We also maintain a range of  the inode ids (denoted as *start* and *end*) stored on a meta partition for splitting (see :doc:`master`).
 
 
-Replication with Strong Consistency
+Replication
 ------------------------------------
 
 The replication during file write is performed in terms of meta partitions.
-The strong consistency among the replicas of each meta partition is ensured by a  revision of the  Raft consensus protocol  called the  MultiRaft, which has the advantage of reduced  heartbeat network traffic comparing to the original version.
+The replication consistency is ensured by a  revision of the  Raft consensus protocol  called the  MultiRaft, which has the advantage of reduced  heartbeat network traffic comparing to the original version.
 
 
 Failure Recovery
@@ -31,7 +31,7 @@ Failure Recovery
 
 The in-memory meta partitions  are  persisted  to the local disk by snapshots and  logs for backup and recovery. Some techniques such as log compaction are used to reduce the log files sizes and shorten the recovery time.
 
-It worths noting that, a  failure  that happens during a metadata operation could result an *orphan* inode with which has no dentry to be associated. The memory and disk space occupied by this inode can be hard to free.  To minimize the chance of this case to happen, the client always issues a retry after a failure until the request succeeds or the maximum retry limit is reached.
+It is worth noting that, a  failure  that happens during a metadata operation could result an *orphan* inode with which has no dentry to be associated. The memory and disk space occupied by this inode can be hard to free.  To minimize the chance of this case to happen, the client always issues a retry after a failure until the request succeeds or the maximum retry limit is reached.
 
 
 
