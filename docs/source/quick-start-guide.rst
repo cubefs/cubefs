@@ -154,7 +154,7 @@ Start Datanode
         "rack": "",
         "disks": [
            "/data0:107374182400"
-       ]
+        ]
       }
 
 For detailed explanations of *datanode.json*, please refer to :doc:`user-guide/datanode`.
@@ -184,7 +184,7 @@ Mount Client
       {
         "mountPoint": "/mnt/fuse",
         "volName": "test",
-		"owner": "cfs",
+        "owner": "cfs",
         "masterAddr": "192.168.31.173:80,192.168.31.141:80,192.168.30.200:80",
         "logDir": "/export/Logs/cfs",
         "profPort": "10094",
