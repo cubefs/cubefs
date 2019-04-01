@@ -83,6 +83,9 @@ const (
 	OpMetaSetattr       uint8 = 0x30
 	OpMetaReleaseOpen   uint8 = 0x31
 
+	//Operations: MetaNode Leader -> MetaNode Follower
+	OpMetaFreeInodesOnRaftFollower uint8 = 0x32
+
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition       uint8 = 0x40
 	OpMetaNodeHeartbeat         uint8 = 0x41

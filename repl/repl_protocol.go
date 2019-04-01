@@ -256,7 +256,7 @@ func (rp *ReplProtocol) reciveAllFollowerResponse() {
 		rp.deletePacket(request, e)
 	}()
 	for index := 0; index < len(request.followersAddrs); index++ {
-		err := rp.receiveFromFollower(request, index)
+		err := rp.checkLocalResultAndReceiveFromFollower(request, index)
 		if err != nil {
 			rp.setReplProtocolError(request, index)
 			request.PackErrorBody(ActionReceiveFromFollower, err.Error())
@@ -268,7 +268,7 @@ func (rp *ReplProtocol) reciveAllFollowerResponse() {
 }
 
 // Read the response from the follower
-func (rp *ReplProtocol) receiveFromFollower(request *Packet, index int) (err error) {
+func (rp *ReplProtocol) checkLocalResultAndReceiveFromFollower(request *Packet, index int) (err error) {
 	// Receive p response from one member
 	if request.followerConns[index] == nil {
 		err = fmt.Errorf(ConnIsNullErr)
