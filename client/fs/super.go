@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/juju/errors"
 	"golang.org/x/net/context"
+	"sync"
 	"time"
 
 	"bazil.org/fuse"
@@ -37,6 +38,9 @@ type Super struct {
 	ec          *stream.ExtentClient
 	orphan      *OrphanInodeList
 	enSyncWrite bool
+
+	nodeCache map[uint64]fs.Node
+	fslock    sync.Mutex
 }
 
 // Functions that Super needs to implement
@@ -76,6 +80,7 @@ func NewSuper(volname, owner, master string, icacheTimeout, lookupValid, attrVal
 	}
 	s.ic = NewInodeCache(inodeExpiration, MaxInodeCache)
 	s.orphan = NewOrphanInodeList()
+	s.nodeCache = make(map[uint64]fs.Node)
 	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v)", s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration)
 	return s, nil
 }

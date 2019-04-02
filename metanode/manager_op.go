@@ -170,6 +170,22 @@ func (m *metadataManager) opMetaLinkInode(conn net.Conn, p *Packet,
 }
 
 // Handle OpCreate
+func (m *metadataManager) opFreeInodeOnRaftFollower(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	mp, err := m.getPartition(p.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	mp.(*metaPartition).internalDelete(p.Data[:p.Size])
+	p.PacketOkReply()
+	m.respondToClient(conn, p)
+
+	return
+}
+
+// Handle OpCreate
 func (m *metadataManager) opCreateDentry(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
 	req := &CreateDentryReq{}

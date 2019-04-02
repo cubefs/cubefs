@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/cfs/util/log"
 	"io"
 )
 
@@ -149,6 +150,7 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 			}
 			return
 		}
+		log.LogDebugf("recive raftLeader free inode(%v)", ino.Inode)
 		mp.internalDeleteInode(ino)
 	}
 }
