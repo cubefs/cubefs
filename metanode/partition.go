@@ -360,6 +360,17 @@ func (mp *metaPartition) IsLeader() (leaderAddr string, ok bool) {
 	return
 }
 
+func (mp *metaPartition) GetPeers() (peers []string) {
+	peers = make([]string, 0)
+	for _, peer := range mp.config.Peers {
+		if mp.config.NodeId == peer.ID {
+			continue
+		}
+		peers = append(peers, peer.Addr)
+	}
+	return
+}
+
 // GetCursor returns the cursor stored in the config.
 func (mp *metaPartition) GetCursor() uint64 {
 	return mp.config.Cursor

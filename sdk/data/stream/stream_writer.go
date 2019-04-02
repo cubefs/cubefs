@@ -332,7 +332,9 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 		err = sc.Send(reqPacket, func(conn *net.TCPConn) (error, bool) {
 			e := replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime)
 			if e != nil {
-				return errors.Annotatef(e, "Stream Writer doOverwrite: ino(%v) failed to read from connect", s.inode), false
+				log.LogErrorf("Stream Writer doOverwrite: ino(%v) failed to read from connect, err(%v)", s.inode, e)
+				// Upon receiving NotALeaderError, other hosts will be retried.
+				return NotALeaderError, false
 			}
 
 			if replyPacket.ResultCode == proto.OpAgain {

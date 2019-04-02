@@ -176,14 +176,6 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	LocalIP = cfg.GetString(ConfigKeyLocalIP)
 	port = cfg.GetString(ConfigKeyPort)
 	if regexpPort, err = regexp.Compile("^(\\d)+$"); err != nil {
-		return
-	}
-	if !regexpPort.MatchString(port) {
-		err = ErrBadConfFile
-		return
-	}
-	s.port = port
-	if len(cfg.GetArray(ConfigKeyMasterAddr)) == 0 {
 		return fmt.Errorf("Err:no port")
 	}
 	if !regexpPort.MatchString(port) {
@@ -316,6 +308,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/extent", s.getExtentAPI)
 	http.HandleFunc("/block", s.getBlockCrcAPI)
 	http.HandleFunc("/stats", s.getStatAPI)
+	http.HandleFunc("/raftStatus", s.getRaftStatus)
 }
 
 func (s *DataNode) startTCPService() (err error) {

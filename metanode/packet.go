@@ -44,3 +44,18 @@ func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) *Packet {
 
 	return p
 }
+
+// NewPacketToDeleteExtent returns a new packet to delete the extent.
+func NewPacketToFreeInodeOnRaftFollower(partitionID uint64, freeInodes []byte) *Packet {
+	p := new(Packet)
+	p.Magic = proto.ProtoMagic
+	p.Opcode = proto.OpMetaFreeInodesOnRaftFollower
+	p.PartitionID = partitionID
+	p.ExtentType = proto.NormalExtentType
+	p.ReqID = proto.GenerateRequestID()
+	p.Data = make([]byte, len(freeInodes))
+	copy(p.Data, freeInodes)
+	p.Size = uint32(len(p.Data))
+
+	return p
+}
