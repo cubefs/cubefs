@@ -12,7 +12,9 @@ ChubaoFS is a distributed filesystem with the following features:
 
 * POSIX-compatible
 
-It can be mounted by containers for decoupling storage from compute.
+It can be mounted by containers for decoupling storage from compute. 
+
+And the paper has been accepted by SIGMOD 2019. 
 
 
 ## Document
