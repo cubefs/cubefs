@@ -20,12 +20,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/util/exporter"
 	"github.com/chubaofs/cfs/util/log"
 	"github.com/juju/errors"
 	"math/rand"
 	"strings"
 	"time"
+	"github.com/tiglabs/baudengine/util/ump"
 )
 
 func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize int) (req *proto.CreateDataPartitionRequest) {
@@ -153,7 +153,7 @@ func Warn(clusterID, msg string) {
 // WarnBySpecialKey provides warnings when exits
 func WarnBySpecialKey(key, msg string) {
 	log.LogWarn(msg)
-	exporter.NewAlarm(key)
+	ump.Alarm(key, msg)
 }
 
 func keyNotFound(name string) (err error) {
