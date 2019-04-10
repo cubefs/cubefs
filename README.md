@@ -2,20 +2,18 @@
 
 ## Overview
 
-ChubaoFS is a distributed filesystem with the following features: 
+CFS (ChubaoFS) is a distributed file system with the following features: 
 
 * scale-out metadata management
 
-* strong consistency
+* strong replication consistency
 
 * multiple volumes
 
 * POSIX-compatible
 
-It can be mounted by containers for decoupling storage from compute. 
-
-And the paper has been accepted by SIGMOD 2019. 
-
+For more details, please refer to our SIGMOD 2019 paper "CFS: A Distributed File System for Large Scale Container Platforms".
+ 
 
 ## Document
 https://cfs.readthedocs.io/en/latest/
