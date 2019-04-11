@@ -2,7 +2,7 @@
 
 ## Overview
 
-CFS (ChubaoFS) is a distributed file system with the following features: 
+ChubaoFS (aka CFS) is a distributed file system with the following features: 
 
 * scale-out metadata management
 
