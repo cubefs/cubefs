@@ -25,7 +25,7 @@ import (
 	"math/rand"
 	"strings"
 	"time"
-	"github.com/tiglabs/baudengine/util/ump"
+	"github.com/chubaofs/cfs/util/ump"
 )
 
 func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize int) (req *proto.CreateDataPartitionRequest) {

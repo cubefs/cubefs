@@ -25,7 +25,7 @@ import (
 	"net/http/httputil"
 	"strconv"
 	"sync"
-	"github.com/tiglabs/baudengine/util/ump"
+	"github.com/chubaofs/cfs/util/ump"
 )
 
 // configuration keys
