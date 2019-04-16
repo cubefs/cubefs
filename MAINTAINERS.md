@@ -8,4 +8,5 @@ The ChubaoFS maintainers are:
 * Tianpeng Li <skypigltp@gmail.com> @Skypigltp: DataNode and Raft
 * Wei Ding <wding109@gmail.com> @wding109: Docs
 * Zhengyi Zhu  <zhengyi.zhu.hust@gmail.com> @zhuzhengyi: Monitoring
+* Liying Zhang <zly7755@163.com> @Vivian7755: PM
 
