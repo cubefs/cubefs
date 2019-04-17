@@ -118,7 +118,8 @@ func main() {
 
 	err := modifyOpenFiles()
 	if err != nil {
-		panic(err.Error())
+		fmt.Println(fmt.Sprintf(err.Error()))
+		os.Exit(1)
 	}
 
 	log.LogInfof("Hello, CFS Storage, Current Version: %s", Version)

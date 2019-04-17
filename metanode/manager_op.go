@@ -47,7 +47,8 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	}
 
 	// collect memory info
-	resp.Total, resp.Used, err = util.GetMemInfo()
+	resp.Total = configTotalMem
+	resp.Used, err = util.GetProcessMemory(os.Getpid())
 	if err != nil {
 		adminTask.Status = proto.TaskFailed
 		goto end

@@ -56,7 +56,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead:
 			case proto.OpReadTinyDelete:
 				log.LogRead(logContent)
-			case proto.OpWrite, proto.OpRandomWrite, proto.OpSyncRandomWrite, proto.OpSyncWrite:
+			case proto.OpWrite, proto.OpRandomWrite, proto.OpSyncRandomWrite, proto.OpSyncWrite, proto.OpMarkDelete:
 				log.LogWrite(logContent)
 			default:
 				log.LogInfo(logContent)
@@ -73,9 +73,9 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	case proto.OpStreamRead:
 		s.handleStreamReadPacket(p, c, StreamRead)
 	case proto.OpExtentRepairRead:
-		s.handleStreamReadPacket(p, c, RepairRead)
+		s.handleExtentRepaiReadPacket(p, c, RepairRead)
 	case proto.OpMarkDelete:
-		s.handleMarkDeletePacket(p)
+		s.handleMarkDeletePacket(p, c)
 	case proto.OpRandomWrite, proto.OpSyncRandomWrite:
 		s.handleRandomWritePacket(p)
 	case proto.OpNotifyReplicasToRepair:
@@ -312,7 +312,7 @@ func (s *DataNode) handlePacketToLoadDataPartition(p *repl.Packet) {
 }
 
 // Handle OpMarkDelete packet.
-func (s *DataNode) handleMarkDeletePacket(p *repl.Packet) {
+func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	var (
 		err error
 	)
@@ -409,37 +409,47 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 	}
 }
 
-// Handle OpStreamRead packet.
 func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
 	var (
 		err error
 	)
 	defer func() {
 		if err != nil {
-			logContent := fmt.Sprintf("action[OperatePacket] %v.",
-				p.LogMessage(p.GetOpMsg(), connect.RemoteAddr().String(), p.StartT, err))
-			log.LogError(logContent)
+			p.PackErrorBody(ActionStreamRead, err.Error())
+			p.WriteToConn(connect)
 		}
 	}()
 	partition := p.Object.(*DataPartition)
-	if !isRepairRead {
-		err = partition.CheckLeader(p, connect)
+	if err = partition.CheckLeader(p, connect); err != nil {
+		return
+	}
+	s.handleExtentRepaiReadPacket(p, connect, isRepairRead)
+
+	return
+}
+
+func (s *DataNode) handleExtentRepaiReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
+	var (
+		err error
+	)
+	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionStreamRead, err.Error())
 			p.WriteToConn(connect)
-			return
 		}
-	}
+	}()
+	partition := p.Object.(*DataPartition)
 	needReplySize := p.Size
 	offset := p.ExtentOffset
 	store := partition.ExtentStore()
-	reply := repl.NewStreamReadResponsePacket(p.ReqID, p.PartitionID, p.ExtentID)
-	reply.StartT = time.Now().UnixNano()
+
 	for {
 		if needReplySize <= 0 {
 			break
 		}
 		err = nil
+		reply := repl.NewStreamReadResponsePacket(p.ReqID, p.PartitionID, p.ExtentID)
+		reply.StartT = p.StartT
 		currReadSize := uint32(util.Min(int(needReplySize), util.ReadBlockSize))
 		if currReadSize == util.ReadBlockSize {
 			reply.Data, _ = proto.Buffers.Get(util.ReadBlockSize)
@@ -454,21 +464,12 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 		p.CRC = reply.CRC
 		tpObject.Set()
 		if err != nil {
-			reply.PackErrorBody(ActionStreamRead, err.Error())
-			p.PackErrorBody(ActionStreamRead, err.Error())
-			if err = reply.WriteToConn(connect); err != nil {
-				p.PackErrorBody(ActionStreamRead, err.Error())
-			}
 			return
 		}
 		reply.Size = uint32(currReadSize)
 		reply.ResultCode = proto.OpOk
 		p.ResultCode = proto.OpOk
-		logContent := fmt.Sprintf("action[OperatePacket] %v.",
-			p.LogMessage(p.GetOpMsg(), connect.RemoteAddr().String(), p.StartT, err))
-		log.LogRead(logContent)
 		if err = reply.WriteToConn(connect); err != nil {
-			p.PackErrorBody(ActionStreamRead, err.Error())
 			return
 		}
 		needReplySize -= currReadSize
@@ -476,6 +477,9 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 		if currReadSize == util.ReadBlockSize {
 			proto.Buffers.Put(reply.Data)
 		}
+		logContent := fmt.Sprintf("action[operatePacket] %v.",
+			reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
+		log.LogReadf(logContent)
 	}
 	p.PacketOkReply()
 

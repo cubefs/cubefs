@@ -161,7 +161,7 @@ func (dp *DataPartition) CheckLeader(request *repl.Packet, connect net.Conn) (er
 	if !ok {
 		err = storage.NotALeaderError
 		logContent := fmt.Sprintf("action[ReadCheck] %v.", request.LogMessage(request.GetOpMsg(), connect.RemoteAddr().String(), request.StartT, err))
-		log.LogInfof(logContent)
+		log.LogWarnf(logContent)
 		return
 	}
 

@@ -33,8 +33,9 @@ import (
 )
 
 var (
-	clusterInfo  *proto.ClusterInfo
-	masterHelper util.MasterHelper
+	clusterInfo    *proto.ClusterInfo
+	masterHelper   util.MasterHelper
+	configTotalMem uint64
 )
 
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
@@ -135,6 +136,19 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftDir = cfg.GetString(cfgRaftDir)
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
+	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
+	if configTotalMem != 0 && configTotalMem <= util.GB {
+		configTotalMem = util.GB
+	}
+
+	total, _, err := util.GetMemInfo()
+	if err == nil && configTotalMem == 0 {
+		configTotalMem = total
+	}
+
+	if configTotalMem > total {
+		configTotalMem = total
+	}
 
 	log.LogInfof("[parseConfig] load localAddr[%v].", m.localAddr)
 	log.LogInfof("[parseConfig] load listen[%v].", m.listen)

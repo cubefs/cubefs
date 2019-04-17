@@ -18,8 +18,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"github.com/chubaofs/cfs/proto"
-	"io"
 	"github.com/chubaofs/cfs/util/log"
+	"io"
 )
 
 type InodeResponse struct {
@@ -150,7 +150,7 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 			}
 			return
 		}
-		log.LogDebugf("recive raftLeader free inode(%v)",ino.Inode)
+		log.LogDebugf("recive raftLeader free inode(%v)", ino.Inode)
 		mp.internalDeleteInode(ino)
 	}
 }

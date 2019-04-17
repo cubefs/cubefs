@@ -153,6 +153,7 @@ type Packet struct {
 	Arg                []byte // for create or append ops, the data contains the address
 	Data               []byte
 	StartT             int64
+	mesg               string
 }
 
 // NewPacket returns a new packet.
@@ -503,26 +504,35 @@ func (p *Packet) PacketErrorWithBody(code uint8, reply []byte) {
 
 // GetUniqueLogId returns the unique log ID.
 func (p *Packet) GetUniqueLogId() (m string) {
+	defer func() {
+		if p.mesg == "" {
+			p.mesg = m
+		}
+		m = p.mesg + fmt.Sprintf("_ResultMesg(%v)", p.GetResultMsg())
+	}()
+	if p.mesg != "" {
+		return
+	}
 	m = fmt.Sprintf("Req(%v)_Partition(%v)_", p.ReqID, p.PartitionID)
 	if p.ExtentType == TinyExtentType && p.Opcode == OpMarkDelete && len(p.Data) > 0 {
 		ext := new(TinyExtentDeleteRecord)
 		err := json.Unmarshal(p.Data, ext)
 		if err == nil {
-			m += fmt.Sprintf("Extent(%v)_ExtentOffset(%v)_TinyDeleteFileOffset(%v)_Size(%v)_Opcode(%v)_ResultCode(%v)",
-				ext.ExtentId, ext.ExtentOffset, ext.TinyDeleteFileOffset, ext.Size, p.Opcode, p.ResultCode)
+			m += fmt.Sprintf("Extent(%v)_ExtentOffset(%v)_TinyDeleteFileOffset(%v)_Size(%v)_Opcode(%v)",
+				ext.ExtentId, ext.ExtentOffset, ext.TinyDeleteFileOffset, ext.Size, p.Opcode)
 			return m
 		}
 	} else if p.Opcode == OpReadTinyDelete {
-		m += fmt.Sprintf("Opcode(%v)_ResultCode(%v)", p.GetOpMsg(), p.GetResultMsg())
+		m += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
 		return m
 	} else if p.Opcode == OpNotifyReplicasToRepair {
-		m += fmt.Sprintf("Opcode(%v)_ResultCode(%v)", p.GetOpMsg(), p.GetResultMsg())
+		m += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
 		return m
 	}
 	m = fmt.Sprintf("Req(%v)_Partition(%v)_Extent(%v)_ExtentOffset(%v)_KernelOffset(%v)_"+
-		"Size(%v)_Opcode(%v)_ResultCode(%v)_CRC(%v)",
+		"Size(%v)_Opcode(%v)_CRC(%v)",
 		p.ReqID, p.PartitionID, p.ExtentID, p.ExtentOffset,
-		p.KernelOffset, p.Size, p.GetOpMsg(), p.GetResultMsg(), p.CRC)
+		p.KernelOffset, p.Size, p.GetOpMsg(), p.CRC)
 	return
 }
 
