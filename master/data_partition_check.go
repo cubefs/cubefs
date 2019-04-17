@@ -209,7 +209,6 @@ func (partition *DataPartition) missingReplicaAddress(dataPartitionSize uint64) 
 				partition.PartitionID, addr))
 			err = proto.ErrMissingReplica
 			addr = addr
-			partition.isRecover = true
 			break
 		}
 	}

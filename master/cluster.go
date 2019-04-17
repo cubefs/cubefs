@@ -669,8 +669,6 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		removePeer proto.Peer
 		replica    *DataReplica
 	)
-	badPartitionIDs := make([]uint64, 0)
-	badPartitionIDs = append(badPartitionIDs, dp.PartitionID)
 	dp.Lock()
 	defer dp.Unlock()
 	if ok := dp.hasHost(offlineAddr); !ok {
@@ -678,10 +676,6 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	}
 
 	if vol, err = c.getVol(dp.VolName); err != nil {
-		goto errHandler
-	}
-
-	if replica, err = dp.getReplica(offlineAddr); err != nil {
 		goto errHandler
 	}
 
@@ -743,7 +737,8 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	}
 	dp.Status = proto.ReadOnly
 	dp.isRecover = true
-	c.BadDataPartitionIds.Store(fmt.Sprintf("%s:%s", offlineAddr, replica.DiskPath), badPartitionIDs)
+	replica, _ = dp.getReplica(offlineAddr)
+	c.putBadDataPartitionIDs(replica, offlineAddr, dp.PartitionID)
 	log.LogWarnf("clusterID[%v] partitionID:%v  on Node:%v offline success,newHost[%v],PersistenceHosts:[%v]",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
@@ -755,6 +750,22 @@ errHandler:
 		Warn(c.Name, msg)
 	}
 	return
+}
+
+func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, offlineAddr string, partitionID uint64) {
+	var key string
+	newBadPartitionIDs := make([]uint64, 0)
+	if replica != nil {
+		key = fmt.Sprintf("%s:%s", offlineAddr, replica.DiskPath)
+	} else {
+		key = fmt.Sprintf("%s:%s", offlineAddr, "")
+	}
+	badPartitionIDs, ok := c.BadDataPartitionIds.Load(key)
+	if ok {
+		newBadPartitionIDs = badPartitionIDs.([]uint64)
+	}
+	newBadPartitionIDs = append(newBadPartitionIDs, partitionID)
+	c.BadDataPartitionIds.Store(key, newBadPartitionIDs)
 }
 
 func (c *Cluster) decommissionMetaNode(metaNode *MetaNode) {
