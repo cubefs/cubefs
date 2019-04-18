@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"strings"
-
 	"github.com/chubaofs/cfs/proto"
 	"github.com/chubaofs/cfs/repl"
 	"github.com/chubaofs/cfs/storage"
@@ -262,7 +261,9 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 // Handle OpLoadDataPartition packet.
 func (s *DataNode) handlePacketToLoadDataPartition(p *repl.Packet) {
 	task := &proto.AdminTask{}
-	err := json.Unmarshal(p.Data, task)
+	var (
+		err error
+	)
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionLoadDataPartition, err.Error())
@@ -270,13 +271,18 @@ func (s *DataNode) handlePacketToLoadDataPartition(p *repl.Packet) {
 			p.PacketOkReply()
 		}
 	}()
-	if err != nil {
-		return
-	}
+	err = json.Unmarshal(p.Data, task)
+	p.PacketOkReply()
+	go s.asyncLoadDataPartition(task)
+}
+
+func (s *DataNode) asyncLoadDataPartition(task *proto.AdminTask) {
+	var (
+		err error
+	)
 	request := &proto.LoadDataPartitionRequest{}
 	response := &proto.LoadDataPartitionResponse{}
 	if task.OpCode == proto.OpLoadDataPartition {
-		// TODO unhandled errors
 		bytes, _ := json.Marshal(task.Request)
 		json.Unmarshal(bytes, request)
 		dp := s.space.Partition(request.PartitionId)
