@@ -61,6 +61,7 @@ type Server struct {
 	partition    raftstore.Partition
 	wg           sync.WaitGroup
 	reverseProxy *httputil.ReverseProxy
+	metaReady    bool
 }
 
 // NewServer creates a new server

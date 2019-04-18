@@ -724,6 +724,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	if err = dp.updateForOffline(offlineAddr, newAddr, dp.VolName, newPeers, c); err != nil {
 		goto errHandler
 	}
+	replica, _ = dp.getReplica(offlineAddr)
 	dp.removeReplicaByAddr(offlineAddr)
 	dp.checkAndRemoveMissReplica(offlineAddr)
 	tasks = make([]*proto.AdminTask, 0)
@@ -737,7 +738,6 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	}
 	dp.Status = proto.ReadOnly
 	dp.isRecover = true
-	replica, _ = dp.getReplica(offlineAddr)
 	c.putBadDataPartitionIDs(replica, offlineAddr, dp.PartitionID)
 	log.LogWarnf("clusterID[%v] partitionID:%v  on Node:%v offline success,newHost[%v],PersistenceHosts:[%v]",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
