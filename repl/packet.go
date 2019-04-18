@@ -230,14 +230,13 @@ var (
 
 func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 	if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
-		strings.Contains(errLog, ConnIsNullErr) || strings.Contains(errLog, ActionCheckAndAddInfos) {
+		strings.Contains(errLog, ConnIsNullErr) {
 		p.ResultCode = proto.OpIntraGroupNetErr
-		return
-	}
-
-	if strings.Contains(errMsg, storage.ParameterMismatchError.Error()) ||
+	} else if strings.Contains(errMsg, storage.ParameterMismatchError.Error()) ||
 		strings.Contains(errMsg, ErrorUnknownOp.Error()) {
 		p.ResultCode = proto.OpArgMismatchErr
+	} else if strings.Contains(errMsg, proto.ErrDataPartitionNotExists.Error()) {
+		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) ||
 		strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) {
 		p.ResultCode = proto.OpNotExistErr
@@ -247,12 +246,6 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, storage.NotALeaderError.Error()) {
 		p.ResultCode = proto.OpNotLeaderErr
-	} else if strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) {
-		if p.Opcode != proto.OpWrite {
-			p.ResultCode = proto.OpNotExistErr
-		} else {
-			p.ResultCode = proto.OpIntraGroupNetErr
-		}
 	} else {
 		p.ResultCode = proto.OpIntraGroupNetErr
 	}
@@ -260,9 +253,6 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 
 func (p *Packet) PackErrorBody(action, msg string) {
 	p.identificationErrorResultCode(action, msg)
-	if p.ResultCode == proto.OpDiskNoSpaceErr || p.ResultCode == proto.OpDiskErr {
-		p.ResultCode = proto.OpIntraGroupNetErr
-	}
 	p.Size = uint32(len([]byte(action + "_" + msg)))
 	p.Data = make([]byte, p.Size)
 	copy(p.Data[:int(p.Size)], []byte(action+"_"+msg))

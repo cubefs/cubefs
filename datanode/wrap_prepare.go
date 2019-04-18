@@ -20,7 +20,6 @@ import (
 	"github.com/chubaofs/cfs/proto"
 	"github.com/chubaofs/cfs/repl"
 	"github.com/chubaofs/cfs/storage"
-	"github.com/juju/errors"
 	"hash/crc32"
 )
 
@@ -75,7 +74,7 @@ func (s *DataNode) checkCrc(p *repl.Packet) (err error) {
 func (s *DataNode) checkPartition(p *repl.Packet) (err error) {
 	dp := s.space.Partition(p.PartitionID)
 	if dp == nil {
-		err = errors.Errorf("partition %v is not exist", p.PartitionID)
+		err = proto.ErrDataPartitionNotExists
 		return
 	}
 	p.Object = dp

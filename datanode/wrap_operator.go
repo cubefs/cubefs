@@ -23,7 +23,6 @@ import (
 	"strconv"
 	"time"
 
-	"strings"
 	"github.com/chubaofs/cfs/proto"
 	"github.com/chubaofs/cfs/repl"
 	"github.com/chubaofs/cfs/storage"
@@ -34,6 +33,7 @@ import (
 	"github.com/tiglabs/raft"
 	raftProto "github.com/tiglabs/raft/proto"
 	"hash/crc32"
+	"strings"
 )
 
 func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
