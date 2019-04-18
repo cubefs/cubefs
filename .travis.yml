@@ -1,0 +1,21 @@
+language: go
+sudo: required
+
+go:
+  - 1.12
+
+env:
+  - CFS_BUILD_BASE="20181126103126/cfs-build:latest"
+
+services: docker
+
+notifications:
+  on_success: never
+  on_failure: never
+
+before_install:
+  - docker pull ${CFS_BUILD_BASE}
+
+script:
+  - docker run --rm -v `pwd`:/go/src/github.com/chubaofs/cfs ${CFS_BUILD_BASE} /bin/bash -c "cd /go/src/github.com/chubaofs/cfs && make build"
+
