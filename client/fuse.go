@@ -38,6 +38,7 @@ import (
 	"github.com/chubaofs/cfs/util/config"
 	"github.com/chubaofs/cfs/util/exporter"
 	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/cfs/util/ump"
 )
 
 const (
@@ -132,6 +133,7 @@ func Mount(cfg *config.Config) (err error) {
 		fmt.Println(http.ListenAndServe(":"+profport, nil))
 	}()
 
+	ump.InitUmp(fmt.Sprintf("%v_%v", super.ClusterName(), ModuleName))
 	exporter.Init(super.ClusterName(), ModuleName, cfg)
 
 	if err = fs.Serve(c, super); err != nil {

@@ -26,6 +26,7 @@ import (
 	"github.com/chubaofs/cfs/sdk/data/stream"
 	"github.com/chubaofs/cfs/sdk/meta"
 	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/cfs/util/ump"
 )
 
 // Super defines the struct of a super block.
@@ -107,11 +108,20 @@ func (s *Super) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.
 	return nil
 }
 
-func (s *Super) exporterKey(act string) string {
-	return fmt.Sprintf("%s_fuseclient_%s", s.cluster, act)
-}
-
 // ClusterName returns the cluster name.
 func (s *Super) ClusterName() string {
 	return s.cluster
+}
+
+func (s *Super) exporterKey(act string) string {
+	return fmt.Sprintf("%v_fuseclient_%v", s.cluster, act)
+}
+
+func (s *Super) umpKey(act string) string {
+	return fmt.Sprintf("%v_fuseclient_%v", s.cluster, act)
+}
+
+func (s *Super) handleError(op, msg string) {
+	log.LogError(msg)
+	ump.Alarm(s.umpKey(op), msg)
 }

@@ -15,6 +15,7 @@
 package fs
 
 import (
+	"fmt"
 	"io"
 	"syscall"
 	"time"
@@ -140,16 +141,22 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 // Read handles the read request.
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
 	log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) reqsize(%v) req(%v)", f.inode.ino, req.Offset, req.Size, req)
+
 	start := time.Now()
+
 	size, err := f.super.ec.Read(f.inode.ino, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	if err != nil && err != io.EOF {
-		log.LogErrorf("Read: ino(%v) req(%v) err(%v) size(%v)", f.inode.ino, req, err, size)
+		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.inode.ino, req, err, size)
+		f.super.handleError("Read", msg)
 		return fuse.EIO
 	}
+
 	if size > req.Size {
-		log.LogErrorf("Read: ino(%v) req(%v) size(%v)", f.inode.ino, req, size)
+		msg := fmt.Sprintf("Read: read size larger than request size, ino(%v) req(%v) size(%v)", f.inode.ino, req, size)
+		f.super.handleError("Read", msg)
 		return fuse.ERANGE
 	}
+
 	if size > 0 {
 		resp.Data = resp.Data[:size+fuse.OutHeaderSize]
 	} else if size <= 0 {
@@ -192,11 +199,14 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	}
 
 	start := time.Now()
+
 	size, err := f.super.ec.Write(ino, int(req.Offset), req.Data, enSyncWrite)
 	if err != nil {
-		log.LogErrorf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
+		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
+		f.super.handleError("Write", msg)
 		return fuse.EIO
 	}
+
 	resp.Size = size
 	if size != reqlen {
 		log.LogErrorf("Write: ino(%v) offset(%v) len(%v) size(%v)", ino, req.Offset, reqlen, size)
@@ -204,7 +214,8 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 	if waitForFlush {
 		if err = f.super.ec.Flush(ino); err != nil {
-			log.LogErrorf("Write: failed to wait for flush, ino(%v) offset(%v) len(%v) err(%v) req(%v)", ino, req.Offset, reqlen, err, req)
+			msg := fmt.Sprintf("Write: failed to wait for flush, ino(%v) offset(%v) len(%v) err(%v) req(%v)", ino, req.Offset, reqlen, err, req)
+			f.super.handleError("Wrtie", msg)
 			return fuse.EIO
 		}
 	}
@@ -226,7 +237,8 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	start := time.Now()
 	err = f.super.ec.Flush(f.inode.ino)
 	if err != nil {
-		log.LogErrorf("Fsync: ino(%v) err(%v)", f.inode.ino, err)
+		msg := fmt.Sprintf("Fsync: ino(%v) err(%v)", f.inode.ino, err)
+		f.super.handleError("Fsync", msg)
 		return fuse.EIO
 	}
 	f.super.ic.Delete(f.inode.ino)
