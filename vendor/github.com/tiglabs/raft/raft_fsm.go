@@ -22,6 +22,7 @@ import (
 
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
+	"time"
 )
 
 // NoLeader is a placeholder nodeID used when there is no leader.
@@ -338,6 +339,7 @@ func (r *raftFsm) reset(term, lasti uint64, isLeader bool) {
 }
 
 func (r *raftFsm) resetRandomizedElectionTimeout() {
+	r.rand.Seed(time.Now().UnixNano())
 	r.randElectionTick = r.config.ElectionTick + r.rand.Intn(r.config.ElectionTick)
 }
 
