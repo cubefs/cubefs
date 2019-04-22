@@ -46,7 +46,7 @@ fuse.json
    "icacheTimeout", "string", "Inode cache valid duration in client", "No"
    "enSyncWrite", "string", "Enable DirectIO sync write, i.e. make sure data is fsynced in data node", "No"
    "autoInvalData", "string", "Use AutoInvalData FUSE mount option", "No"
-   "warnLogDir","string","Particularly important error message LogDir","No"
+   "warnLogDir","string","Warn message directory","No"
 
 Mount
 -----

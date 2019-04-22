@@ -27,7 +27,6 @@ type LeaderInfo struct {
 }
 
 func (m *Server) handleLeaderChange(leader uint64) {
-	m.loadMetadata()
 	if leader == 0 {
 		log.LogWarnf("action[handleLeaderChange] but no leader")
 		return

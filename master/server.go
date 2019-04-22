@@ -21,7 +21,6 @@ import (
 	"github.com/chubaofs/cfs/util/config"
 	"github.com/chubaofs/cfs/util/exporter"
 	"github.com/chubaofs/cfs/util/log"
-	"github.com/chubaofs/cfs/util/ump"
 	"github.com/juju/errors"
 	"net/http/httputil"
 	"strconv"

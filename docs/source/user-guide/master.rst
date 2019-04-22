@@ -33,7 +33,7 @@ CFS use **JSON** as configuration file format.
    "clusterName", "string", "The cluster identifier", "Yes"
    "exporterPort", "int", "The prometheus exporter port", "No"
    "consulAddr", "string", "The consul register addr for prometheus exporter", "No"
-   "warnLogDir","string","Particularly important error message LogDir","No"
+   "warnLogDir","string","Warn message directory","No"
 
 
 **Example:**

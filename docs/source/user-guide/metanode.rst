@@ -18,7 +18,7 @@ Metanode is the manager of meta partitions and replicated by MultiRaft. Each met
    "consulAddr", "string", "Addresses of monitor system", "No" 
    "exporterPort", "string", "Port for monitor system", "No" 
    "masterAddrs", "string", "Addresses of master server", "Yes"
-   "warnLogDir","string","Particularly important error message LogDir","No"
+   "warnLogDir","string","Warn message directory","No"
 
 
 

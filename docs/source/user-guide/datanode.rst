@@ -31,7 +31,7 @@ Configurations
    "masterAddr", "string slice", "Addresses of master server", "Yes"
    "rack", "string", "Identity of rack", "No"
    "disks", "string slice", "PATH:MAX_ERRS:REST_SIZE", "Yes"
-   "warnLogDir","string","Particularly important error message LogDir","No"
+   "warnLogDir","string","Warn message directory","No"
 
 
 **Example:**
