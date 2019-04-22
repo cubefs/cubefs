@@ -66,8 +66,8 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 			e := replyPacket.readFromConn(conn, proto.ReadDeadlineTime)
 			if e != nil {
 				log.LogErrorf("Extent Reader Read: failed to read from connect, readBytes(%v) err(%v)", readBytes, e)
-				// Upon receiving NotALeaderError, other hosts will be retried.
-				return NotALeaderError, false
+				// Upon receiving TryOtherAddrError, other hosts will be retried.
+				return TryOtherAddrError, false
 			}
 
 			//log.LogDebugf("ExtentReader Read: ResultCode(%v) req(%v) reply(%v) readBytes(%v)", replyPacket.GetResultMsg(), reqPacket, replyPacket, readBytes)
@@ -97,8 +97,8 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 }
 
 func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet) (err error) {
-	if reply.ResultCode == proto.OpNotLeaderErr {
-		return NotALeaderError
+	if reply.ResultCode == proto.OpTryOtherAddr {
+		return TryOtherAddrError
 	}
 
 	if reply.ResultCode != proto.OpOk {

@@ -333,16 +333,16 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 			e := replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime)
 			if e != nil {
 				log.LogErrorf("Stream Writer doOverwrite: ino(%v) failed to read from connect, err(%v)", s.inode, e)
-				// Upon receiving NotALeaderError, other hosts will be retried.
-				return NotALeaderError, false
+				// Upon receiving TryOtherAddrError, other hosts will be retried.
+				return TryOtherAddrError, false
 			}
 
 			if replyPacket.ResultCode == proto.OpAgain {
 				return nil, true
 			}
 
-			if replyPacket.ResultCode == proto.OpNotLeaderErr {
-				e = NotALeaderError
+			if replyPacket.ResultCode == proto.OpTryOtherAddr {
+				e = TryOtherAddrError
 			}
 			return e, false
 		})

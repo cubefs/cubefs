@@ -1186,3 +1186,9 @@ func (c *Cluster) setDisableAutoAllocate(disableAutoAllocate bool) (err error) {
 	}
 	return
 }
+
+func (c *Cluster) clearVols() {
+	c.volMutex.Lock()
+	defer c.volMutex.Unlock()
+	c.vols = make(map[string]*Vol, 0)
+}

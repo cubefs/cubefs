@@ -113,7 +113,7 @@ const (
 	OpAgain            uint8 = 0xF9
 	OpExistErr         uint8 = 0xFA
 	OpInodeFullErr     uint8 = 0xFB
-	OpNotLeaderErr     uint8 = 0xFC
+	OpTryOtherAddr     uint8 = 0xFC
 	OpNotPerm          uint8 = 0xFD
 	OpNotEmtpy         uint8 = 0xFE
 	OpOk               uint8 = 0xF0
@@ -318,8 +318,8 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "ArgUnmatchErr"
 	case OpNotExistErr:
 		m = "NotExistErr"
-	case OpNotLeaderErr:
-		m = "NotLeaderErr"
+	case OpTryOtherAddr:
+		m = "TryOtherAddr"
 	case OpNotPerm:
 		m = "NotPerm"
 	case OpNotEmtpy:

@@ -26,7 +26,7 @@ import (
 )
 
 var (
-	NotALeaderError = errors.New("NotALeaderError")
+	TryOtherAddrError = errors.New("TryOtherAddrError")
 )
 
 const (
@@ -83,7 +83,7 @@ func (sc *StreamConn) sendToPartition(req *Packet, getReply GetReplyFunc) (err e
 		}
 		log.LogWarnf("sendToPartition: curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		StreamConnPool.PutConnect(conn, true)
-		if err != NotALeaderError {
+		if err != TryOtherAddrError {
 			return
 		}
 	}
@@ -103,7 +103,7 @@ func (sc *StreamConn) sendToPartition(req *Packet, getReply GetReplyFunc) (err e
 			return
 		}
 		StreamConnPool.PutConnect(conn, true)
-		if err != NotALeaderError {
+		if err != TryOtherAddrError {
 			return
 		}
 	}

@@ -88,7 +88,9 @@ func (m *Server) restoreIDAlloc() {
 // Load stored metadata into the memory
 func (m *Server) loadMetadata() {
 	log.LogInfo("action[loadMetadata] begin")
+	m.clearMetadata()
 	m.restoreIDAlloc()
+	m.cluster.fsm.restore()
 	var err error
 	if err = m.cluster.loadClusterValue(); err != nil {
 		panic(err)
@@ -118,3 +120,9 @@ func (m *Server) loadMetadata() {
 	log.LogInfo("action[loadMetadata] end")
 
 }
+
+func (m *Server) clearMetadata() {
+	m.cluster.clearVols()
+	m.cluster.t = newTopology()
+}
+

@@ -21,11 +21,11 @@ import (
 	"fmt"
 	"github.com/chubaofs/cfs/proto"
 	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/cfs/util/ump"
 	"github.com/juju/errors"
 	"math/rand"
 	"strings"
 	"time"
-	"github.com/chubaofs/cfs/util/ump"
 )
 
 func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize int) (req *proto.CreateDataPartitionRequest) {

@@ -26,6 +26,7 @@ import (
 	"github.com/chubaofs/cfs/util"
 	"github.com/chubaofs/cfs/util/exporter"
 	"github.com/juju/errors"
+	"github.com/tiglabs/raft"
 )
 
 var (
@@ -236,7 +237,7 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		strings.Contains(errMsg, ErrorUnknownOp.Error()) {
 		p.ResultCode = proto.OpArgMismatchErr
 	} else if strings.Contains(errMsg, proto.ErrDataPartitionNotExists.Error()) {
-		p.ResultCode = proto.OpAgain
+		p.ResultCode = proto.OpTryOtherAddr
 	} else if strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) ||
 		strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) {
 		p.ResultCode = proto.OpNotExistErr
@@ -244,8 +245,8 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		p.ResultCode = proto.OpDiskNoSpaceErr
 	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
 		p.ResultCode = proto.OpAgain
-	} else if strings.Contains(errMsg, storage.NotALeaderError.Error()) {
-		p.ResultCode = proto.OpNotLeaderErr
+	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {
+		p.ResultCode = proto.OpTryOtherAddr
 	} else {
 		p.ResultCode = proto.OpIntraGroupNetErr
 	}

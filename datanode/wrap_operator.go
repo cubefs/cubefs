@@ -396,12 +396,12 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
 	_, isLeader := partition.IsRaftLeader()
 	if !isLeader {
-		err = storage.NotALeaderError
+		err = raft.ErrNotLeader
 		return
 	}
 	err = partition.RandomWriteSubmit(p)
 	if err != nil && strings.Contains(err.Error(), raft.ErrNotLeader.Error()) {
-		err = storage.NotALeaderError
+		err = raft.ErrNotLeader
 		return
 	}
 
