@@ -81,7 +81,6 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	m.rocksDBStore = raftstore.NewRocksDBStore(m.storeDir, LRUCacheSize, WriteBufferSize)
 	m.initFsm()
 	m.initCluster()
-	ump.InitUmp(fmt.Sprintf("%v_%v", m.clusterName, ModuleName))
 	if err = m.createRaftServer(); err != nil {
 		log.LogError(errors.ErrorStack(err))
 		return

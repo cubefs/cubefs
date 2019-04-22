@@ -125,4 +125,3 @@ func (m *Server) clearMetadata() {
 	m.cluster.clearVols()
 	m.cluster.t = newTopology()
 }
-

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path"
 )
 
 type FunctionTp struct {
@@ -45,7 +46,6 @@ type BusinessAlarm struct {
 }
 
 const (
-	LogDir              = "/export/home/tomcat/UMP-Monitor/logs/"
 	FunctionTpSufixx    = "tp.log"
 	SystemAliveSufixx   = "alive.log"
 	BusinessAlarmSufixx = "business.log"
@@ -62,6 +62,7 @@ var (
 	FunctionTpLogWrite    = &LogWrite{logCh: make(chan interface{}, ChSize)}
 	SystemAliveLogWrite   = &LogWrite{logCh: make(chan interface{}, ChSize)}
 	BusinessAlarmLogWrite = &LogWrite{logCh: make(chan interface{}, ChSize)}
+	UmpDataDir            = "/export/home/tomcat/UMP-Monitor/logs/"
 )
 
 type LogWrite struct {
@@ -79,7 +80,7 @@ func (lw *LogWrite) initLogFp(sufixx string) (err error) {
 	lw.seq = 0
 	lw.sigCh = make(chan bool, 1)
 	lw.logSufixx = sufixx
-	lw.logName = fmt.Sprintf("%s%s%s", LogDir, "ump_", lw.logSufixx)
+	lw.logName = fmt.Sprintf("%s%s%s", UmpDataDir, "ump_", lw.logSufixx)
 	if lw.logFp, err = os.OpenFile(lw.logName, LogFileOpt, 0666); err != nil {
 		return
 	}
@@ -101,7 +102,7 @@ func (lw *LogWrite) backGroundCheckFile() (err error) {
 		lw.seq = 1
 	}
 
-	name := fmt.Sprintf("%s%s%s.%d", LogDir, "ump_", lw.logSufixx, lw.seq)
+	name := fmt.Sprintf("%s%s%s.%d", UmpDataDir, "ump_", lw.logSufixx, lw.seq)
 	if _, err = os.Stat(name); err == nil {
 		os.Remove(name)
 	}
@@ -150,8 +151,11 @@ func (lw *LogWrite) backGroundWrite(umpType string) {
 	}
 }
 
-func initLogName(module string) (err error) {
-	if err = os.MkdirAll(LogDir, 0666); err != nil {
+func initLogName(module, dataDir string) (err error) {
+	if dataDir != "" {
+		UmpDataDir = dataDir
+	}
+	if err = os.MkdirAll(UmpDataDir, 0666); err != nil {
 		return
 	}
 

@@ -25,6 +25,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/chubaofs/cfs/util/config"
+	"github.com/chubaofs/cfs/util/ump"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -38,11 +39,11 @@ var (
 )
 
 const (
-	ConfigKeyRole         = "role"
-	ConfigKeyLogDir       = "logDir"
-	ConfigKeyLogLevel     = "logLevel"
-	ConfigKeyProfPort     = "prof"
-	ConfigKeyExporterPort = "exporterPort"
+	ConfigKeyRole       = "role"
+	ConfigKeyLogDir     = "logDir"
+	ConfigKeyLogLevel   = "logLevel"
+	ConfigKeyProfPort   = "prof"
+	ConfigKeyWarnLogDir = "warnLogDir"
 )
 
 const (
@@ -128,10 +129,11 @@ func main() {
 	logDir := cfg.GetString(ConfigKeyLogDir)
 	logLevel := cfg.GetString(ConfigKeyLogLevel)
 	profPort := cfg.GetString(ConfigKeyProfPort)
+	umpDatadir := cfg.GetString(ConfigKeyWarnLogDir)
 
 	//for multi-cpu scheduling
 	runtime.GOMAXPROCS(runtime.NumCPU())
-
+	ump.InitUmp(role, umpDatadir)
 	// Init server instance with specified role configuration.
 	var (
 		server Server

@@ -95,6 +95,7 @@ func Mount(cfg *config.Config) (err error) {
 	attrValid := ParseConfigString(cfg, "attrValid")
 	enSyncWrite := ParseConfigString(cfg, "enSyncWrite")
 	autoInvalData := ParseConfigString(cfg, "autoInvalData")
+	umpDatadir := cfg.GetString("warnLogDir")
 
 	if mnt == "" || volname == "" || owner == "" || master == "" {
 		return errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", mnt, volname, owner, master))
@@ -133,7 +134,7 @@ func Mount(cfg *config.Config) (err error) {
 		fmt.Println(http.ListenAndServe(":"+profport, nil))
 	}()
 
-	ump.InitUmp(fmt.Sprintf("%v_%v", super.ClusterName(), ModuleName))
+	ump.InitUmp(fmt.Sprintf("%v_%v", super.ClusterName(), ModuleName), umpDatadir)
 	exporter.Init(super.ClusterName(), ModuleName, cfg)
 
 	if err = fs.Serve(c, super); err != nil {

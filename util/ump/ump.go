@@ -56,9 +56,9 @@ var (
 	}}
 )
 
-func InitUmp(module string) {
+func InitUmp(module, dataDir string) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	if err := initLogName(module); err != nil {
+	if err := initLogName(module, dataDir); err != nil {
 		panic("init UMP Monitor failed " + err.Error())
 	}
 
