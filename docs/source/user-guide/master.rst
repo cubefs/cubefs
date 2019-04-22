@@ -33,6 +33,8 @@ CFS use **JSON** as configuration file format.
    "clusterName", "string", "The cluster identifier", "Yes"
    "exporterPort", "int", "The prometheus exporter port", "No"
    "consulAddr", "string", "The consul register addr for prometheus exporter", "No"
+   "warnLogDir","string","Particularly important error message LogDir","No"
+
 
 **Example:**
 
@@ -50,6 +52,7 @@ CFS use **JSON** as configuration file format.
     "retainLogs":"2000",
     "walDir":"/export/raft",
     "storeDir":"/export/rocks",
+    "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
     "exporterPort": 9510,
     "consulAddr": "http://consul.prometheus-cfs.local",
     "clusterName":"test"

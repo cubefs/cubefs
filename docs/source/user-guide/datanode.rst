@@ -31,6 +31,8 @@ Configurations
    "masterAddr", "string slice", "Addresses of master server", "Yes"
    "rack", "string", "Identity of rack", "No"
    "disks", "string slice", "PATH:MAX_ERRS:REST_SIZE", "Yes"
+   "warnLogDir","string","Particularly important error message LogDir","No"
+
 
 **Example:**
 
@@ -43,6 +45,7 @@ Configurations
        "logDir": "/export/Logs/datanode",
        "logLevel": "debug",
        "raftHeartbeat": "9095",
+       "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
        "raftReplica": "9096",
        "raftDir": "/export/Logs/datanode/raft",
        "consulAddr": "http://consul.prometheus-cfs.local",

@@ -23,6 +23,7 @@ fuse.json
      "volName": "test",
      "owner": "cfs",
      "masterAddr": "192.168.31.173:80,192.168.31.141:80,192.168.30.200:80",
+     "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
      "logDir": "/export/Logs/cfs",
      "logLevel": "info",
      "profPort": "10094"
@@ -45,6 +46,7 @@ fuse.json
    "icacheTimeout", "string", "Inode cache valid duration in client", "No"
    "enSyncWrite", "string", "Enable DirectIO sync write, i.e. make sure data is fsynced in data node", "No"
    "autoInvalData", "string", "Use AutoInvalData FUSE mount option", "No"
+   "warnLogDir","string","Particularly important error message LogDir","No"
 
 Mount
 -----
