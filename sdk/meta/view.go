@@ -15,26 +15,19 @@
 package meta
 
 import (
-	"encoding/json"
-	"net/http"
-	"sync/atomic"
-	"time"
-
-	"github.com/juju/errors"
-
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"github.com/chubaofs/cfs/proto"
 	"github.com/chubaofs/cfs/util/log"
+	"net/http"
 	"strings"
+	"sync/atomic"
+	"time"
 )
 
 const (
 	MaxSendToMaster = 3
-)
-
-var (
-	NotLeader = errors.New("NotLeader")
 )
 
 type VolumeView struct {
