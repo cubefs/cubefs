@@ -140,21 +140,20 @@ func (writer *asyncWriter) flushToFile() {
 	writer.mu.Lock()
 	writer.buffer, writer.flushTmp = writer.flushTmp, writer.buffer
 	writer.mu.Unlock()
-	isRotateDay := false // TODO rename?
+	isRotateDay := false
 	select {
 	case <-writer.rotateDay:
 		isRotateDay = true
 	default:
 	}
 	flushLength := writer.flushTmp.Len()
-	if (writer.logSize+int64(flushLength))/(1024*1024) >= writer.
+	if (writer.logSize+int64(flushLength)) >= writer.
 		rollingSize || isRotateDay {
 		oldFile := writer.fileName + "." + time.Now().Format(
 			FileNameDateFormat) + RolledExtension
 		if _, err := os.Lstat(oldFile); err != nil {
 			if err := writer.rename(oldFile); err == nil {
 				if fp, err := os.OpenFile(writer.fileName, FileOpt, 0666); err == nil {
-					// TODO Unhandled errors
 					writer.file.Close()
 					writer.file = fp
 					writer.logSize = 0
@@ -225,7 +224,6 @@ func newLogObject(writer *asyncWriter, prefix string, flag int) *LogObject {
 // Log defines the log struct.
 type Log struct {
 	dir            string
-	module         string
 	errorLogger    *LogObject
 	warnLogger     *LogObject
 	debugLogger    *LogObject
@@ -252,12 +250,10 @@ var gLog *Log = nil
 // InitLog initializes the log.
 func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 	l := new(Log)
+	dir = path.Join(dir, module)
 	l.dir = dir
-	l.module = module
 	fi, err := os.Stat(dir)
 	if err != nil {
-		// TODO unhandled errors
-		// TODO there are many unhandled errors in this file.
 		os.MkdirAll(dir, 0755)
 	} else {
 		if !fi.IsDir() {
