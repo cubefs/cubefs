@@ -2,7 +2,7 @@
 
 ## Overview
 
-ChubaoFS (aka CFS) is a distributed file system with the following features: 
+Chubao (储宝 in Chinese) is a distributed file system with the following features: 
 
 * scale-out metadata management
 
