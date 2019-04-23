@@ -66,6 +66,10 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	inode, err := f.super.InodeGet(ino)
 	if err != nil {
 		log.LogErrorf("Attr: ino(%v) err(%v)", ino, err)
+		if err == fuse.ENOENT {
+			a.Inode = ino
+			return nil
+		}
 		return ParseError(err)
 	}
 
