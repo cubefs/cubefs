@@ -1,6 +1,6 @@
-
-
 ## Overview
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs?ref=badge_shield)
+
 
 Chubao (储宝 in Chinese) is a distributed file system with the following features: 
 
@@ -25,3 +25,6 @@ https://cfs.readthedocs.io/zh_CN/latest/
 
 Licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
 For detail see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs?ref=badge_large)
