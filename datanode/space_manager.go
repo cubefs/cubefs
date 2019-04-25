@@ -305,6 +305,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	space.RangePartitions(func(partition *DataPartition) bool {
 		leaderAddr, isLeader := partition.IsRaftLeader()
 		vr := &proto.PartitionReport{
+			VolName:         partition.volumeID,
 			PartitionID:     uint64(partition.partitionID),
 			PartitionStatus: partition.Status(),
 			Total:           uint64(partition.Size()),

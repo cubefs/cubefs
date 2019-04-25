@@ -148,6 +148,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result := &struct {
+		VolName              string                `json:volName`
 		ID                   uint64                `json:"id"`
 		Size                 int                   `json:"size"`
 		Used                 int                   `json:"used"`
@@ -158,6 +159,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		Replicas             []string              `json:"replicas"`
 		TinyDeleteRecordSize int64                 `json:"tinyDeleteRecordSize"`
 	}{
+		VolName:              partition.volumeID,
 		ID:                   partition.partitionID,
 		Size:                 partition.Size(),
 		Used:                 partition.Used(),

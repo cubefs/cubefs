@@ -73,7 +73,6 @@ func (mp *metaPartition) updateVolWorker() {
 				break
 			}
 			mp.vol.UpdatePartitions(dataView)
-			log.LogDebugf("[updateVol] %v", dataView)
 		}
 	}
 }
