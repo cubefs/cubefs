@@ -219,6 +219,7 @@ func (t *replicateTransport) handleConn(conn *util.ConnTimeout) {
 				if msg, err := reciveMessage(bufRd); err != nil {
 					return
 				} else {
+					logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
 					if msg.Type == proto.ReqMsgSnapShot {
 						if err := t.handleSnapshot(msg, conn, bufRd); err != nil {
 							return

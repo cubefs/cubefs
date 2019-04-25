@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"fmt"
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util"
@@ -138,6 +139,7 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 					select {
 					case msg := <-recvc:
 						err = msg.Encode(bufWr)
+						logger.Debug(fmt.Sprintf("SendMesg %v to (%v) ", msg.ToString(), conn.RemoteAddr()))
 						proto.ReturnMessage(msg)
 						if err != nil {
 							goto flush

@@ -447,6 +447,7 @@ func (s *raft) reciveMessage(m *proto.Message) {
 	case <-s.stopc:
 	case s.recvc <- m:
 	default:
+		logger.Warn(fmt.Sprintf("raft[%v] discard message(%v)", s.raftConfig.ID, m.ToString()))
 		return
 	}
 }

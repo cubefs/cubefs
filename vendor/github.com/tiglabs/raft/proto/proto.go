@@ -115,6 +115,12 @@ type Message struct {
 	Snapshot     Snapshot // No need for codec
 }
 
+func (m *Message) ToString() (mesg string) {
+	return fmt.Sprintf("Mesg:[%v] type(%v) ForceVote(%v) Reject(%v) RejectIndex(%v) "+
+		"From(%v) To(%v) Term(%v) LogTrem(%v) Index(%v) Commit(%v)", m.ID,  m.Type.String(), m.ForceVote,
+		m.Reject, m.RejectIndex,m.From, m.To, m.Term, m.LogTerm, m.Index, m.Commit)
+}
+
 type ConfChange struct {
 	Type    ConfChangeType
 	Peer    Peer
