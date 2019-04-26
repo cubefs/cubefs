@@ -30,7 +30,6 @@ import (
 	"os"
 	"path"
 	"strings"
-	"time"
 )
 
 // Apply applies the given operational commands.
@@ -52,8 +51,6 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			mp.config.Cursor = ino.Inode
 		}
 		resp = mp.fsmCreateInode(ino)
-		fmt.Println(fmt.Sprintf("applyid(%v) createInode %v createTime %v response %v",index,
-			ino.Inode,time.Unix(ino.CreateTime,0),resp))
 	case opFSMUnlinkInode:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
@@ -128,13 +125,12 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 
 		mp.storeChan <- msg
-		fmt.Println("snapshot")
 	case opFSMInternalDeleteInode:
 		err = mp.internalDelete(msg.V)
 	case opFSMInternalDelExtentFile:
-		//err = mp.delOldExtentFile(msg.V)
+		err = mp.delOldExtentFile(msg.V)
 	case opFSMInternalDelExtentCursor:
-		//err = mp.setExtentDeleteFileCursor(msg.V)
+		err = mp.setExtentDeleteFileCursor(msg.V)
 	}
 	return
 }

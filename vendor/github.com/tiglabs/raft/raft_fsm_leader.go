@@ -29,7 +29,7 @@ func (r *raftFsm) becomeLeader() {
 	if r.state == stateFollower {
 		panic(AppPanicError(fmt.Sprintf("[raft->becomeLeader][%v] invalid transition [follower -> leader].", r.id)))
 	}
-
+	r.recoverCommit()
 	lasti := r.raftLog.lastIndex()
 	r.step = stepLeader
 	r.reset(r.term, lasti, true)
