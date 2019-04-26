@@ -2,7 +2,7 @@
 
 ## Overview
 
-Chubao (储宝 in Chinese) is a distributed file system with the following features: 
+ChubaoFS (储宝文件系统) is a distributed file system with the following features: 
 
 * scale-out metadata management
 
