@@ -23,6 +23,7 @@ import (
 
 	"github.com/chubaofs/cfs/proto"
 	"github.com/chubaofs/cfs/raftstore"
+	"github.com/chubaofs/cfs/util"
 	"github.com/chubaofs/cfs/util/log"
 )
 
@@ -254,7 +255,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 	)
 	for i := 0; i < len(manager.disks); i++ {
 		disk = manager.minPartitionCnt()
-		if disk.Available < uint64(dpCfg.PartitionSize) || disk.Status != proto.ReadWrite {
+		if disk.Available < 5* util.GB || disk.Status != proto.ReadWrite {
 			disk = nil
 			continue
 		}
