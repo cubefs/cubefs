@@ -18,7 +18,7 @@ import (
 	"encoding/json"
 	"net"
 
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/juju/errors"
 )
 

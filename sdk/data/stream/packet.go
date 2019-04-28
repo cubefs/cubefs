@@ -17,9 +17,9 @@ package stream
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/sdk/data/wrapper"
-	"github.com/chubaofs/cfs/util"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
+	"github.com/chubaofs/chubaofs/util"
 	"hash/crc32"
 	"io"
 	"net"

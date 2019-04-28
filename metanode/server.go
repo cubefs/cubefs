@@ -18,8 +18,8 @@ import (
 	"io"
 	"net"
 
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // StartTcpService binds and listens to the specified port.

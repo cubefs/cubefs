@@ -19,8 +19,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/chubaofs/cfs/util/config"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )

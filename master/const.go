@@ -14,7 +14,7 @@
 
 package master
 
-import "github.com/chubaofs/cfs/util"
+import "github.com/chubaofs/chubaofs/util"
 
 // Keys in the request
 const (

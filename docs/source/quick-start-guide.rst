@@ -7,12 +7,12 @@ Building
 Build Servers
 ^^^^^^^^^^^^^
 
-In CFS, the server consists of the resource manager, metanode and datanode, which are compiled to a single binary for deployment convenience.
+In ChubaoFS, the server consists of the resource manager, metanode and datanode, which are compiled to a single binary for deployment convenience.
 
-Building of CFS server depends on RocksDB, `build RocksDB v5.9.2+ <https://github.com/facebook/rocksdb/blob/master/INSTALL.md>`_ .
+Building of ChubaoFS server depends on RocksDB, `build RocksDB v5.9.2+ <https://github.com/facebook/rocksdb/blob/master/INSTALL.md>`_ .
 Recommended installation uses `make static_lib` .
 
-CFS server is built with the following command:
+ChubaoFS server is built with the following command:
 
 .. code-block:: bash
 

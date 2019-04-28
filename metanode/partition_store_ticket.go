@@ -17,8 +17,8 @@ package metanode
 import (
 	"time"
 
-	"github.com/chubaofs/cfs/util/exporter"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/juju/errors"
 )
 

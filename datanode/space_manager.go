@@ -21,9 +21,9 @@ import (
 
 	"os"
 
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/raftstore"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // SpaceManager manages the disk space.
