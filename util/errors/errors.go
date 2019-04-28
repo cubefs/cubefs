@@ -16,7 +16,6 @@ package errors
 
 import (
 	"fmt"
-	"go/build"
 	"path"
 	"runtime"
 	"strings"
@@ -24,13 +23,6 @@ import (
 
 type ErrorTrace struct {
 	msg string
-}
-
-var trimPath string
-var projectPath string = "github.com/chubaofs/cfs"
-
-func init() {
-	trimPath = path.Join(build.Default.GOPATH, "src", projectPath)
 }
 
 func New(msg string) error {
@@ -43,20 +35,20 @@ func NewError(err error) error {
 	}
 
 	_, file, line, _ := runtime.Caller(1)
-	relativePath := strings.TrimPrefix(strings.TrimPrefix(file, trimPath), "/")
+	_, fileName := path.Split(file)
 
 	return &ErrorTrace{
-		msg: fmt.Sprintf("[%v %v] %v", relativePath, line, err.Error()),
+		msg: fmt.Sprintf("[%v %v] %v", fileName, line, err.Error()),
 	}
 }
 
 func NewErrorf(format string, a ...interface{}) error {
 	msg := fmt.Sprintf(format, a...)
 	_, file, line, _ := runtime.Caller(1)
-	relativePath := strings.TrimPrefix(strings.TrimPrefix(file, trimPath), "/")
+	_, fileName := path.Split(file)
 
 	return &ErrorTrace{
-		msg: fmt.Sprintf("[%v %v] %v", relativePath, line, msg),
+		msg: fmt.Sprintf("[%v %v] %v", fileName, line, msg),
 	}
 }
 
@@ -67,16 +59,16 @@ func (e *ErrorTrace) Error() string {
 func Trace(err error, format string, a ...interface{}) error {
 	msg := fmt.Sprintf(format, a...)
 	_, file, line, _ := runtime.Caller(1)
-	relativePath := strings.TrimPrefix(strings.TrimPrefix(file, trimPath), "/")
+	_, fileName := path.Split(file)
 
 	if err == nil {
 		return &ErrorTrace{
-			msg: fmt.Sprintf("[%v %v] %v", relativePath, line, msg),
+			msg: fmt.Sprintf("[%v %v] %v", fileName, line, msg),
 		}
 	}
 
 	return &ErrorTrace{
-		msg: fmt.Sprintf("[%v %v] %v :: %v", relativePath, line, msg, err),
+		msg: fmt.Sprintf("[%v %v] %v :: %v", fileName, line, msg, err),
 	}
 }
 
