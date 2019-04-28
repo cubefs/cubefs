@@ -24,7 +24,7 @@ fuse.json
      "owner": "cfs",
      "masterAddr": "192.168.31.173:80,192.168.31.141:80,192.168.30.200:80",
      "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
-     "logDir": "/export/Logs/cfs",
+     "logDir": "/export/Logs/client",
      "logLevel": "info",
      "profPort": "10094"
    }

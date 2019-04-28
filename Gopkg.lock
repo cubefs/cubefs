@@ -209,7 +209,6 @@
   input-imports = [
     "github.com/facebookgo/ensure",
     "github.com/google/btree",
-    "github.com/chubaofs/cfs/util/errors",
     "github.com/parnurzeal/gorequest",
     "github.com/prometheus/client_golang/prometheus",
     "github.com/prometheus/client_golang/prometheus/promhttp",

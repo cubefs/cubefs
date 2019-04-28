@@ -47,7 +47,7 @@ Configurations
        "raftHeartbeat": "9095",
        "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
        "raftReplica": "9096",
-       "raftDir": "/export/Logs/datanode/raft",
+       "raftDir": "/export/Data/datanode/raft",
        "consulAddr": "http://consul.prometheus-cfs.local",
        "exporterPort": 9512,    
        "masterAddr": [
@@ -57,8 +57,8 @@ Configurations
        ],
        "rack": "main",
         "disks": [
-           "/data0:107374182400",
-           "/data1:107374182400"
+           "/data0:21474836480",
+           "/data1:21474836480"
        ]
    }
 
