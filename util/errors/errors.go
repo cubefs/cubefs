@@ -50,6 +50,16 @@ func NewError(err error) error {
 	}
 }
 
+func NewErrorf(format string, a ...interface{}) error {
+	msg := fmt.Sprintf(format, a...)
+	_, file, line, _ := runtime.Caller(1)
+	relativePath := strings.TrimPrefix(strings.TrimPrefix(file, trimPath), "/")
+
+	return &ErrorTrace{
+		msg: fmt.Sprintf("[%v %v] %v", relativePath, line, msg),
+	}
+}
+
 func (e *ErrorTrace) Error() string {
 	return e.msg
 }
@@ -69,6 +79,7 @@ func Trace(err error, format string, a ...interface{}) error {
 		msg: fmt.Sprintf("[%v %v] %v :: %v", relativePath, line, msg, err),
 	}
 }
+
 func Stack(err error) string {
 	e, ok := err.(*ErrorTrace)
 	if !ok {

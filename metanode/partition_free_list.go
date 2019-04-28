@@ -18,8 +18,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/cfs/util/errors"
 	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
 	"net"
 	"os"
 	"path"
@@ -275,7 +275,7 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 	// get the data node view
 	dp := mp.vol.GetPartition(ext.PartitionId)
 	if dp == nil {
-		err = errors.Errorf("unknown dataPartitionID=%d in vol",
+		err = errors.NewErrorf("unknown dataPartitionID=%d in vol",
 			ext.PartitionId)
 		return
 	}
@@ -291,24 +291,24 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 	}()
 
 	if err != nil {
-		err = errors.Errorf("get conn from pool %s, "+
+		err = errors.NewErrorf("get conn from pool %s, "+
 			"extents partitionId=%d, extentId=%d",
 			err.Error(), ext.PartitionId, ext.ExtentId)
 		return
 	}
 	p := NewPacketToDeleteExtent(dp, ext)
 	if err = p.WriteToConn(conn); err != nil {
-		err = errors.Errorf("write to dataNode %s, %s", p.GetUniqueLogId(),
+		err = errors.NewErrorf("write to dataNode %s, %s", p.GetUniqueLogId(),
 			err.Error())
 		return
 	}
 	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
-		err = errors.Errorf("read response from dataNode %s, %s",
+		err = errors.NewErrorf("read response from dataNode %s, %s",
 			p.GetUniqueLogId(), err.Error())
 		return
 	}
 	if p.ResultCode != proto.OpOk {
-		err = errors.Errorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(),
+		err = errors.NewErrorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(),
 			p.GetResultMsg())
 	}
 	log.LogDebugf("[deleteMarkedInodes] %v", p.GetUniqueLogId())

@@ -24,8 +24,8 @@ import (
 	"github.com/chubaofs/cfs/proto"
 	"github.com/chubaofs/cfs/storage"
 	"github.com/chubaofs/cfs/util"
+	"github.com/chubaofs/cfs/util/errors"
 	"github.com/chubaofs/cfs/util/exporter"
-	"github.com/juju/errors"
 	"github.com/tiglabs/raft"
 )
 

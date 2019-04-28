@@ -26,9 +26,9 @@ import (
 	"github.com/chubaofs/cfs/raftstore"
 	"github.com/chubaofs/cfs/util"
 	"github.com/chubaofs/cfs/util/config"
+	"github.com/chubaofs/cfs/util/errors"
 	"github.com/chubaofs/cfs/util/exporter"
 	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
 	"strconv"
 )
 

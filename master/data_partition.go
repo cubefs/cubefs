@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"github.com/chubaofs/cfs/proto"
 	"github.com/chubaofs/cfs/util"
+	"github.com/chubaofs/cfs/util/errors"
 	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
 	"math"
 	"strings"
 	"sync"
@@ -235,7 +235,7 @@ func (partition *DataPartition) getReplica(addr string) (replica *DataReplica, e
 	}
 	log.LogErrorf("action[getReplica],partitionID:%v,locations:%v,err:%v",
 		partition.PartitionID, addr, dataReplicaNotFound(addr))
-	return nil, errors.Annotatef(dataReplicaNotFound(addr), "%v not found", addr)
+	return nil, errors.Trace(dataReplicaNotFound(addr), "%v not found", addr)
 }
 
 func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.DataPartitionResponse) {
@@ -455,7 +455,7 @@ func (partition *DataPartition) getReplicaIndex(addr string) (index int, err err
 	}
 	log.LogErrorf("action[getReplicaIndex],partitionID:%v,location:%v,err:%v",
 		partition.PartitionID, addr, dataReplicaNotFound(addr))
-	return -1, errors.Annotatef(dataReplicaNotFound(addr), "%v not found ", addr)
+	return -1, errors.Trace(dataReplicaNotFound(addr), "%v not found ", addr)
 }
 
 func (partition *DataPartition) updateForOffline(offlineAddr, newAddr, volName string, newPeers []proto.Peer, c *Cluster) (err error) {
@@ -478,7 +478,7 @@ func (partition *DataPartition) updateForOffline(offlineAddr, newAddr, volName s
 	if err = c.syncUpdateDataPartition(partition); err != nil {
 		partition.Hosts = orgHosts
 		partition.Peers = oldPeers
-		return errors.Annotatef(err, "update partition[%v] failed", partition.PartitionID)
+		return errors.Trace(err, "update partition[%v] failed", partition.PartitionID)
 	}
 	msg := fmt.Sprintf("action[updateForOffline]  partitionID:%v offlineAddr:%v newAddr:%v"+
 		"oldHosts:%v newHosts:%v,oldPees[%v],newPeers[%v]",

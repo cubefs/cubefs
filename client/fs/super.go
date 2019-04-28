@@ -16,7 +16,7 @@ package fs
 
 import (
 	"fmt"
-	"github.com/juju/errors"
+	"github.com/chubaofs/cfs/util/errors"
 	"golang.org/x/net/context"
 	"sync"
 	"time"
@@ -55,12 +55,12 @@ func NewSuper(volname, owner, master string, icacheTimeout, lookupValid, attrVal
 	s = new(Super)
 	s.mw, err = meta.NewMetaWrapper(volname, owner, master)
 	if err != nil {
-		return nil, errors.Annotate(err, "NewMetaWrapper failed!")
+		return nil, errors.Trace(err, "NewMetaWrapper failed!")
 	}
 
 	s.ec, err = stream.NewExtentClient(volname, master, s.mw.AppendExtentKey, s.mw.GetExtents, s.mw.Truncate)
 	if err != nil {
-		return nil, errors.Annotate(err, "NewExtentClient failed!")
+		return nil, errors.Trace(err, "NewExtentClient failed!")
 	}
 
 	s.volname = volname

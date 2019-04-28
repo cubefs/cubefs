@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/juju/errors"
+	"github.com/chubaofs/cfs/util/errors"
 
 	"github.com/chubaofs/cfs/proto"
 	"github.com/chubaofs/cfs/util"
@@ -65,11 +65,11 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 	w.rwPartition = make([]*DataPartition, 0)
 	w.partitions = make(map[uint64]*DataPartition)
 	if err = w.updateClusterInfo(); err != nil {
-		err = errors.Annotate(err, "NewDataPartitionWrapper:")
+		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
 	}
 	if err = w.updateDataPartition(); err != nil {
-		err = errors.Annotate(err, "NewDataPartitionWrapper:")
+		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
 	}
 	go w.update()
@@ -117,14 +117,14 @@ func (w *Wrapper) updateDataPartition() error {
 	paras["name"] = w.volName
 	msg, err := MasterHelper.Request(http.MethodGet, proto.ClientDataPartitions, paras, nil)
 	if err != nil {
-		return errors.Annotate(err, "updateDataPartition: request to master failed!")
+		return errors.Trace(err, "updateDataPartition: request to master failed!")
 	}
 
 	log.LogInfof("updateDataPartition: start!")
 
 	view := &DataPartitionView{}
 	if err = json.Unmarshal(msg, view); err != nil {
-		return errors.Annotatef(err, "updateDataPartition: unmarshal failed, msg(%v)", msg)
+		return errors.Trace(err, "updateDataPartition: unmarshal failed, msg(%v)", msg)
 	}
 
 	rwPartitionGroups := make([]*DataPartition, 0)

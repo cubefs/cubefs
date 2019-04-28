@@ -29,8 +29,8 @@ import (
 	"github.com/chubaofs/cfs/raftstore"
 	"github.com/chubaofs/cfs/repl"
 	"github.com/chubaofs/cfs/util/config"
+	"github.com/chubaofs/cfs/util/errors"
 	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
 	raftproto "github.com/tiglabs/raft/proto"
 )
 
@@ -158,7 +158,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 
 			case <-storeAppliedIDTimer.C:
 				if err := dp.storeAppliedID(dp.appliedID); err != nil {
-					err = errors.Errorf("[startSchedule]: dump partition=%d: %v", dp.config.PartitionID, err.Error())
+					err = errors.NewErrorf("[startSchedule]: dump partition=%d: %v", dp.config.PartitionID, err.Error())
 					log.LogErrorf(err.Error())
 				}
 				storeAppliedIDTimer.Reset(time.Second * 10)
@@ -333,15 +333,15 @@ func (dp *DataPartition) LoadAppliedID() (err error) {
 			err = nil
 			return
 		}
-		err = errors.Errorf("[loadApplyIndex] OpenFile: %s", err.Error())
+		err = errors.NewErrorf("[loadApplyIndex] OpenFile: %s", err.Error())
 		return
 	}
 	if len(data) == 0 {
-		err = errors.Errorf("[loadApplyIndex]: ApplyIndex is empty")
+		err = errors.NewErrorf("[loadApplyIndex]: ApplyIndex is empty")
 		return
 	}
 	if _, err = fmt.Sscanf(string(data), "%d", &dp.appliedID); err != nil {
-		err = errors.Errorf("[loadApplyID] ReadApplyID: %s", err.Error())
+		err = errors.NewErrorf("[loadApplyID] ReadApplyID: %s", err.Error())
 		return
 	}
 	return
@@ -375,7 +375,7 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 
 	if _, err = os.Stat(s.raftDir); err != nil {
 		if err = os.MkdirAll(s.raftDir, 0755); err != nil {
-			err = errors.Errorf("create raft server dir: %s", err.Error())
+			err = errors.NewErrorf("create raft server dir: %s", err.Error())
 			log.LogErrorf("action[startRaftServer] cannot start raft server err[%v]", err)
 			return
 		}
@@ -402,7 +402,7 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 	}
 	s.raftStore, err = raftstore.NewRaftStore(raftConf)
 	if err != nil {
-		err = errors.Errorf("new raftStore: %s", err.Error())
+		err = errors.NewErrorf("new raftStore: %s", err.Error())
 		log.LogErrorf("action[startRaftServer] cannot start raft server err[%v]", err)
 	}
 
@@ -481,18 +481,18 @@ func (dp *DataPartition) getPartitionSize() (size uint64, err error) {
 	target := dp.replicas[0]
 	conn, err = gConnPool.GetConnect(target) //get remote connect
 	if err != nil {
-		err = errors.Annotatef(err, " partition=%v get host[%v] connect", dp.partitionID, target)
+		err = errors.Trace(err, " partition=%v get host[%v] connect", dp.partitionID, target)
 		return
 	}
 	defer gConnPool.PutConnect(conn, true)
 	err = p.WriteToConn(conn) // write command to the remote host
 	if err != nil {
-		err = errors.Annotatef(err, "partition=%v write to host[%v]", dp.partitionID, target)
+		err = errors.Trace(err, "partition=%v write to host[%v]", dp.partitionID, target)
 		return
 	}
 	err = p.ReadFromConn(conn, 60)
 	if err != nil {
-		err = errors.Annotatef(err, "partition=%v read from host[%v]", dp.partitionID, target)
+		err = errors.Trace(err, "partition=%v read from host[%v]", dp.partitionID, target)
 		return
 	}
 

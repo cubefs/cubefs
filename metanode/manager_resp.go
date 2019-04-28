@@ -18,8 +18,8 @@ import (
 	"encoding/json"
 	"net"
 
+	"github.com/chubaofs/cfs/util/errors"
 	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
 )
 
 const (
@@ -48,7 +48,7 @@ func (m *metadataManager) respondToMaster(data interface{}) (err error) {
 	}
 	_, err = masterHelper.Request("POST", masterResponsePath, nil, jsonBytes)
 	if err != nil {
-		err = errors.Annotate(err, "try respondToMaster failed")
+		err = errors.Trace(err, "try respondToMaster failed")
 	}
 	return
 }

@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/cfs/proto"
-	"github.com/juju/errors"
+	"github.com/chubaofs/cfs/util/errors"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
@@ -44,19 +44,19 @@ func (mp *metaPartition) loadMetadata() (err error) {
 	metaFile := path.Join(mp.config.RootDir, metadataFile)
 	fp, err := os.OpenFile(metaFile, os.O_RDONLY, 0644)
 	if err != nil {
-		err = errors.Errorf("[loadMetadata]: OpenFile %s", err.Error())
+		err = errors.NewErrorf("[loadMetadata]: OpenFile %s", err.Error())
 		return
 	}
 	defer fp.Close()
 	data, err := ioutil.ReadAll(fp)
 	if err != nil || len(data) == 0 {
-		err = errors.Errorf("[loadMetadata]: ReadFile %s, data: %s", err.Error(),
+		err = errors.NewErrorf("[loadMetadata]: ReadFile %s, data: %s", err.Error(),
 			string(data))
 		return
 	}
 	mConf := &MetaPartitionConfig{}
 	if err = json.Unmarshal(data, mConf); err != nil {
-		err = errors.Errorf("[loadMetadata]: Unmarshal MetaPartitionConfig %s",
+		err = errors.NewErrorf("[loadMetadata]: Unmarshal MetaPartitionConfig %s",
 			err.Error())
 		return
 	}
@@ -81,7 +81,7 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 	}
 	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
 	if err != nil {
-		err = errors.Errorf("[loadInode] OpenFile: %s", err.Error())
+		err = errors.NewErrorf("[loadInode] OpenFile: %s", err.Error())
 		return
 	}
 	defer fp.Close()
@@ -96,7 +96,7 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 				err = nil
 				return
 			}
-			err = errors.Errorf("[loadInode] ReadHeader: %s", err.Error())
+			err = errors.NewErrorf("[loadInode] ReadHeader: %s", err.Error())
 			return
 		}
 		length := binary.BigEndian.Uint32(inoBuf)
@@ -109,12 +109,12 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 		}
 		_, err = io.ReadFull(reader, inoBuf)
 		if err != nil {
-			err = errors.Errorf("[loadInode] ReadBody: %s", err.Error())
+			err = errors.NewErrorf("[loadInode] ReadBody: %s", err.Error())
 			return
 		}
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(inoBuf); err != nil {
-			err = errors.Errorf("[loadInode] Unmarshal: %s", err.Error())
+			err = errors.NewErrorf("[loadInode] Unmarshal: %s", err.Error())
 			return
 		}
 		mp.fsmCreateInode(ino)
@@ -138,7 +138,7 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 			err = nil
 			return
 		}
-		err = errors.Errorf("[loadDentry] OpenFile: %s", err.Error())
+		err = errors.NewErrorf("[loadDentry] OpenFile: %s", err.Error())
 		return
 	}
 
@@ -154,7 +154,7 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 				err = nil
 				return
 			}
-			err = errors.Errorf("[loadDentry] ReadHeader: %s", err.Error())
+			err = errors.NewErrorf("[loadDentry] ReadHeader: %s", err.Error())
 			return
 		}
 
@@ -168,16 +168,16 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 		}
 		_, err = io.ReadFull(reader, dentryBuf)
 		if err != nil {
-			err = errors.Errorf("[loadDentry]: ReadBody: %s", err.Error())
+			err = errors.NewErrorf("[loadDentry]: ReadBody: %s", err.Error())
 			return
 		}
 		dentry := &Dentry{}
 		if err = dentry.Unmarshal(dentryBuf); err != nil {
-			err = errors.Errorf("[loadDentry] Unmarshal: %s", err.Error())
+			err = errors.NewErrorf("[loadDentry] Unmarshal: %s", err.Error())
 			return
 		}
 		if status := mp.fsmCreateDentry(dentry, true); status != proto.OpOk {
-			err = errors.Errorf("[loadDentry] createDentry dentry: %v, "+
+			err = errors.NewErrorf("[loadDentry] createDentry dentry: %v, "+
 				"resp code: %d", status)
 			return
 		}
@@ -196,15 +196,15 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 			err = nil
 			return
 		}
-		err = errors.Errorf("[loadApplyID] OpenFile: %s", err.Error())
+		err = errors.NewErrorf("[loadApplyID] OpenFile: %s", err.Error())
 		return
 	}
 	if len(data) == 0 {
-		err = errors.Errorf("[loadApplyID]: ApplyID is empty")
+		err = errors.NewErrorf("[loadApplyID]: ApplyID is empty")
 		return
 	}
 	if _, err = fmt.Sscanf(string(data), "%d", &mp.applyID); err != nil {
-		err = errors.Errorf("[loadApplyID] ReadApplyID: %s", err.Error())
+		err = errors.NewErrorf("[loadApplyID] ReadApplyID: %s", err.Error())
 		return
 	}
 	return
@@ -212,7 +212,7 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 
 func (mp *metaPartition) persistMetadata() (err error) {
 	if err = mp.config.checkMeta(); err != nil {
-		err = errors.Errorf("[persistMetadata]->%s", err.Error())
+		err = errors.NewErrorf("[persistMetadata]->%s", err.Error())
 		return
 	}
 

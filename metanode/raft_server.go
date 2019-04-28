@@ -19,14 +19,14 @@ import (
 	"strconv"
 
 	"github.com/chubaofs/cfs/raftstore"
-	"github.com/juju/errors"
+	"github.com/chubaofs/cfs/util/errors"
 )
 
 // StartRaftServer initializes the address resolver and the raftStore server instance.
 func (m *MetaNode) startRaftServer() (err error) {
 	if _, err = os.Stat(m.raftDir); err != nil {
 		if err = os.MkdirAll(m.raftDir, 0755); err != nil {
-			err = errors.Errorf("create raft server dir: %s", err.Error())
+			err = errors.NewErrorf("create raft server dir: %s", err.Error())
 			return
 		}
 	}
@@ -44,7 +44,7 @@ func (m *MetaNode) startRaftServer() (err error) {
 	}
 	m.raftStore, err = raftstore.NewRaftStore(raftConf)
 	if err != nil {
-		err = errors.Errorf("new raftStore: %s", err.Error())
+		err = errors.NewErrorf("new raftStore: %s", err.Error())
 	}
 	return
 }

@@ -18,8 +18,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/cfs/util/errors"
 	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
 	"runtime"
 	"sync"
 	"time"
@@ -51,7 +51,7 @@ func (dpMap *DataPartitionMap) get(ID uint64) (*DataPartition, error) {
 	if v, ok := dpMap.partitionMap[ID]; ok {
 		return v, nil
 	}
-	return nil, errors.Annotatef(dataPartitionNotFound(ID), "[%v] not found in [%v]", ID, dpMap.volName)
+	return nil, errors.Trace(dataPartitionNotFound(ID), "[%v] not found in [%v]", ID, dpMap.volName)
 }
 
 func (dpMap *DataPartitionMap) put(dp *DataPartition) {

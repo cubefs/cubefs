@@ -19,7 +19,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/juju/errors"
+	"github.com/chubaofs/cfs/util/errors"
 
 	"github.com/chubaofs/cfs/proto"
 	"github.com/chubaofs/cfs/sdk/data/wrapper"
@@ -56,7 +56,7 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 	client = new(ExtentClient)
 	gDataWrapper, err = wrapper.NewDataPartitionWrapper(volname, master)
 	if err != nil {
-		return nil, errors.Annotatef(err, "Init dp wrapper failed!")
+		return nil, errors.Trace(err, "Init dp wrapper failed!")
 	}
 	client.streamers = make(map[uint64]*Streamer)
 	client.appendExtentKey = appendExtentKey
@@ -165,8 +165,8 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, direct 
 
 	write, err = s.IssueWriteRequest(offset, data, direct)
 	if err != nil {
-		err = errors.Annotatef(err, prefix)
-		log.LogError(errors.ErrorStack(err))
+		err = errors.Trace(err, prefix)
+		log.LogError(errors.Stack(err))
 		exporter.NewAlarm(gDataWrapper.WarningMsg())
 	}
 	return
@@ -181,8 +181,8 @@ func (client *ExtentClient) Truncate(inode uint64, size int) error {
 
 	err := s.IssueTruncRequest(size)
 	if err != nil {
-		err = errors.Annotatef(err, prefix)
-		log.LogError(errors.ErrorStack(err))
+		err = errors.Trace(err, prefix)
+		log.LogError(errors.Stack(err))
 	}
 	return err
 }

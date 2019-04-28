@@ -20,9 +20,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/cfs/util/errors"
 	"github.com/chubaofs/cfs/util/log"
 	"github.com/chubaofs/cfs/util/ump"
-	"github.com/juju/errors"
 	"math/rand"
 	"strings"
 	"time"
@@ -157,15 +157,15 @@ func WarnBySpecialKey(key, msg string) {
 }
 
 func keyNotFound(name string) (err error) {
-	return errors.Errorf("parameter %v not found", name)
+	return errors.NewErrorf("parameter %v not found", name)
 }
 
 func unmatchedKey(name string) (err error) {
-	return errors.Errorf("parameter %v not match", name)
+	return errors.NewErrorf("parameter %v not match", name)
 }
 
 func notFoundMsg(name string) (err error) {
-	return errors.Errorf("%v not found", name)
+	return errors.NewErrorf("%v not found", name)
 }
 
 func metaPartitionNotFound(id uint64) (err error) {

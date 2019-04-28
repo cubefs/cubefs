@@ -19,8 +19,8 @@ import (
 	"github.com/chubaofs/cfs/proto"
 	"github.com/chubaofs/cfs/raftstore"
 	"github.com/chubaofs/cfs/util"
+	"github.com/chubaofs/cfs/util/errors"
 	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
 	"sync"
 	"time"
 )
@@ -290,7 +290,7 @@ func (c *Cluster) addMetaNode(nodeAddr string) (id uint64, err error) {
 errHandler:
 	err = fmt.Errorf("action[addMetaNode],clusterID[%v] metaNodeAddr:%v err:%v ",
 		c.Name, nodeAddr, err.Error())
-	log.LogError(errors.ErrorStack(err))
+	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return
 }
@@ -344,7 +344,7 @@ func (c *Cluster) addDataNode(nodeAddr string) (id uint64, err error) {
 	return
 errHandler:
 	err = fmt.Errorf("action[addDataNode],clusterID[%v] dataNodeAddr:%v err:%v ", c.Name, nodeAddr, err.Error())
-	log.LogError(errors.ErrorStack(err))
+	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return
 }
@@ -384,7 +384,7 @@ func (c *Cluster) getVol(volName string) (vol *Vol, err error) {
 	defer c.volMutex.RUnlock()
 	vol, ok := c.vols[volName]
 	if !ok {
-		err = errors.Annotatef(volNotFound(volName), "%v not found", volName)
+		err = errors.Trace(volNotFound(volName), "%v not found", volName)
 	}
 	return
 }
@@ -491,7 +491,7 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 	return
 errHandler:
 	err = fmt.Errorf("action[createDataPartition],clusterID[%v] vol[%v] Err:%v ", c.Name, volName, err.Error())
-	log.LogError(errors.ErrorStack(err))
+	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return
 }
@@ -545,22 +545,22 @@ func (c *Cluster) chooseTargetDataNodes(replicaNum int) (hosts []string, peers [
 	peers = make([]proto.Peer, 0)
 	ns, err := c.t.allocNodeSetForDataNode(uint8(replicaNum))
 	if err != nil {
-		return nil, nil, errors.Trace(err)
+		return nil, nil, errors.NewError(err)
 	}
 	if ns.isSingleRack() {
 		var newHosts []string
 		if rack, err = ns.getRack(ns.racks[0]); err != nil {
-			return nil, nil, errors.Trace(err)
+			return nil, nil, errors.NewError(err)
 		}
 		if newHosts, peers, err = rack.getAvailDataNodeHosts(hosts, replicaNum); err != nil {
-			return nil, nil, errors.Trace(err)
+			return nil, nil, errors.NewError(err)
 		}
 		hosts = newHosts
 		return
 	}
 
 	if racks, err = ns.allocRacks(replicaNum, nil); err != nil {
-		return nil, nil, errors.Trace(err)
+		return nil, nil, errors.NewError(err)
 	}
 
 	if len(racks) == 2 {
@@ -569,12 +569,12 @@ func (c *Cluster) chooseTargetDataNodes(replicaNum int) (hosts []string, peers [
 		masterReplicaNum := replicaNum/2 + 1
 		slaveReplicaNum := replicaNum - masterReplicaNum
 		if masterAddr, masterPeers, err = masterRack.getAvailDataNodeHosts(hosts, masterReplicaNum); err != nil {
-			return nil, nil, errors.Trace(err)
+			return nil, nil, errors.NewError(err)
 		}
 		hosts = append(hosts, masterAddr...)
 		peers = append(peers, masterPeers...)
 		if addrs, slavePeers, err = slaveRack.getAvailDataNodeHosts(hosts, slaveReplicaNum); err != nil {
-			return nil, nil, errors.Trace(err)
+			return nil, nil, errors.NewError(err)
 		}
 		hosts = append(hosts, addrs...)
 		peers = append(peers, slavePeers...)
@@ -583,7 +583,7 @@ func (c *Cluster) chooseTargetDataNodes(replicaNum int) (hosts []string, peers [
 			rack := racks[index]
 			var selectPeers []proto.Peer
 			if addrs, selectPeers, err = rack.getAvailDataNodeHosts(hosts, 1); err != nil {
-				return nil, nil, errors.Trace(err)
+				return nil, nil, errors.NewError(err)
 			}
 			hosts = append(hosts, addrs...)
 			peers = append(peers, selectPeers...)
@@ -598,7 +598,7 @@ func (c *Cluster) chooseTargetDataNodes(replicaNum int) (hosts []string, peers [
 func (c *Cluster) dataNode(addr string) (dataNode *DataNode, err error) {
 	value, ok := c.dataNodes.Load(addr)
 	if !ok {
-		err = errors.Annotatef(dataNodeNotFound(addr), "%v not found", addr)
+		err = errors.Trace(dataNodeNotFound(addr), "%v not found", addr)
 		return
 	}
 	dataNode = value.(*DataNode)
@@ -608,7 +608,7 @@ func (c *Cluster) dataNode(addr string) (dataNode *DataNode, err error) {
 func (c *Cluster) metaNode(addr string) (metaNode *MetaNode, err error) {
 	value, ok := c.metaNodes.Load(addr)
 	if !ok {
-		err = errors.Annotatef(metaNodeNotFound(addr), "%v not found", addr)
+		err = errors.Trace(metaNodeNotFound(addr), "%v not found", addr)
 		return
 	}
 	metaNode = value.(*MetaNode)
@@ -823,7 +823,7 @@ func (c *Cluster) updateVol(name, authKey string, capacity int) (err error) {
 	return
 errHandler:
 	err = fmt.Errorf("action[updateVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
-	log.LogError(errors.ErrorStack(err))
+	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return
 }
@@ -874,7 +874,7 @@ func (c *Cluster) createVol(name, owner string, size, capacity int) (vol *Vol, e
 
 errHandler:
 	err = fmt.Errorf("action[createVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err)
-	log.LogError(errors.ErrorStack(err))
+	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return
 }
@@ -892,7 +892,7 @@ func (c *Cluster) doCreateVol(name, owner string, dpSize, capacity uint64) (err 
 	return
 errHandler:
 	err = fmt.Errorf("action[doCreateVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
-	log.LogError(errors.ErrorStack(err))
+	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return
 }
@@ -947,11 +947,11 @@ func (c *Cluster) createMetaPartition(volName string, start, end uint64) (err er
 	errChannel := make(chan error, vol.mpReplicaNum)
 
 	if hosts, peers, err = c.chooseTargetMetaHosts(int(vol.mpReplicaNum)); err != nil {
-		return errors.Trace(err)
+		return errors.NewError(err)
 	}
 	log.LogInfof("target meta hosts:%v,peers:%v", hosts, peers)
 	if partitionID, err = c.idAlloc.allocateMetaPartitionID(); err != nil {
-		return errors.Trace(err)
+		return errors.NewError(err)
 	}
 	mp = newMetaPartition(partitionID, start, end, vol.mpReplicaNum, volName, vol.ID)
 	mp.setHosts(hosts)
@@ -992,12 +992,12 @@ func (c *Cluster) createMetaPartition(volName string, start, end uint64) (err er
 				c.addMetaNodeTasks(tasks)
 			}(host)
 		}
-		return errors.Trace(err)
+		return errors.NewError(err)
 	default:
 		mp.Status = proto.ReadWrite
 	}
 	if err = c.syncAddMetaPartition(mp); err != nil {
-		return errors.Trace(err)
+		return errors.NewError(err)
 	}
 	vol.addMetaPartition(mp)
 	log.LogInfof("action[createMetaPartition] success,volName[%v],partition[%v]", volName, partitionID)
@@ -1029,12 +1029,12 @@ func (c *Cluster) chooseTargetMetaHosts(replicaNum int) (hosts []string, peers [
 		ns         *nodeSet
 	)
 	if ns, err = c.t.allocNodeSetForMetaNode(uint8(replicaNum)); err != nil {
-		return nil, nil, errors.Trace(err)
+		return nil, nil, errors.NewError(err)
 	}
 
 	hosts = make([]string, 0)
 	if masterAddr, masterPeer, err = ns.getAvailMetaNodeHosts(hosts, 1); err != nil {
-		return nil, nil, errors.Trace(err)
+		return nil, nil, errors.NewError(err)
 	}
 	peers = append(peers, masterPeer...)
 	hosts = append(hosts, masterAddr[0])
@@ -1043,7 +1043,7 @@ func (c *Cluster) chooseTargetMetaHosts(replicaNum int) (hosts []string, peers [
 		return
 	}
 	if slaveAddrs, slavePeers, err = ns.getAvailMetaNodeHosts(hosts, otherReplica); err != nil {
-		return nil, nil, errors.Trace(err)
+		return nil, nil, errors.NewError(err)
 	}
 	hosts = append(hosts, slaveAddrs...)
 	peers = append(peers, slavePeers...)

@@ -16,8 +16,8 @@ package raftstore
 
 import (
 	"fmt"
+	"github.com/chubaofs/cfs/util/errors"
 	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
 	"github.com/tiglabs/raft"
 	"strings"
 	"sync"

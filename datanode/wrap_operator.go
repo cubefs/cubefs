@@ -27,9 +27,9 @@ import (
 	"github.com/chubaofs/cfs/repl"
 	"github.com/chubaofs/cfs/storage"
 	"github.com/chubaofs/cfs/util"
+	"github.com/chubaofs/cfs/util/errors"
 	"github.com/chubaofs/cfs/util/exporter"
 	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
 	"github.com/tiglabs/raft"
 	raftProto "github.com/tiglabs/raft/proto"
 	"hash/crc32"
@@ -208,7 +208,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 	}
 	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
 	if err != nil {
-		err = errors.Annotatef(err, "heartbeat to master(%v) failed.", request.MasterAddr)
+		err = errors.Trace(err, "heartbeat to master(%v) failed.", request.MasterAddr)
 		return
 	}
 }
@@ -251,7 +251,7 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 	data, _ := json.Marshal(task)
 	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
 	if err != nil {
-		err = errors.Annotatef(err, "delete DataPartition failed,partitionID(%v)", request.PartitionId)
+		err = errors.Trace(err, "delete DataPartition failed,partitionID(%v)", request.PartitionId)
 		log.LogErrorf("action[handlePacketToDeleteDataPartition] err(%v).", err)
 	}
 	log.LogInfof(fmt.Sprintf("action[handlePacketToDeleteDataPartition] %v error(%v)", request.PartitionId, string(data)))
@@ -312,8 +312,8 @@ func (s *DataNode) asyncLoadDataPartition(task *proto.AdminTask) {
 	}
 	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
 	if err != nil {
-		err = errors.Annotatef(err, "load DataPartition failed,partitionID(%v)", request.PartitionId)
-		log.LogError(errors.ErrorStack(err))
+		err = errors.Trace(err, "load DataPartition failed,partitionID(%v)", request.PartitionId)
+		log.LogError(errors.Stack(err))
 	}
 }
 
@@ -662,7 +662,7 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 		Status:      proto.TaskFailed,
 	}
 	if req.AddPeer.ID == req.RemovePeer.ID {
-		err = errors.Errorf("[opOfflineDataPartition]: AddPeer[%v] same withRemovePeer[%v]", req.AddPeer, req.RemovePeer)
+		err = errors.NewErrorf("[opOfflineDataPartition]: AddPeer[%v] same withRemovePeer[%v]", req.AddPeer, req.RemovePeer)
 		resp.Result = err.Error()
 		goto end
 	}
@@ -687,8 +687,8 @@ end:
 	data, _ := json.Marshal(adminTask)
 	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
 	if err != nil {
-		err = errors.Annotatef(err, "opOfflineDataPartition failed, partitionID(%v)", resp.PartitionId)
-		log.LogError(errors.ErrorStack(err))
+		err = errors.Trace(err, "opOfflineDataPartition failed, partitionID(%v)", resp.PartitionId)
+		log.LogError(errors.Stack(err))
 		return
 	}
 

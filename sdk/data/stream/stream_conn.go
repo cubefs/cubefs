@@ -21,8 +21,8 @@ import (
 
 	"github.com/chubaofs/cfs/sdk/data/wrapper"
 	"github.com/chubaofs/cfs/util"
+	"github.com/chubaofs/cfs/util/errors"
 	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
 )
 
 var (

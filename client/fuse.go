@@ -23,7 +23,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/juju/errors"
+	"github.com/chubaofs/cfs/util/errors"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -109,7 +109,7 @@ func Mount(cfg *config.Config) (err error) {
 
 	super, err := cfs.NewSuper(volname, owner, master, icacheTimeout, lookupValid, attrValid, enSyncWrite)
 	if err != nil {
-		log.LogError(errors.ErrorStack(err))
+		log.LogError(errors.Stack(err))
 		return err
 	}
 

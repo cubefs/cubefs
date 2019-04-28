@@ -20,9 +20,9 @@ import (
 	"sync/atomic"
 
 	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/cfs/util/errors"
 	"github.com/chubaofs/cfs/util/exporter"
 	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
 	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
 )
@@ -37,7 +37,7 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err != nil {
 			key := fmt.Sprintf("%s_datapartition_apply_err", dp.clusterID)
 			prefix := fmt.Sprintf("Datapartition(%v)_Extent(%v)", dp.partitionID, extentID)
-			err = errors.Annotatef(err, prefix)
+			err = errors.Trace(err, prefix)
 			exporter.NewAlarm(key)
 			resp = proto.OpExistErr
 			dp.stopRaftC <- extentID

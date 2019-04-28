@@ -19,9 +19,9 @@ import (
 	"github.com/chubaofs/cfs/proto"
 	"github.com/chubaofs/cfs/raftstore"
 	"github.com/chubaofs/cfs/util/config"
+	"github.com/chubaofs/cfs/util/errors"
 	"github.com/chubaofs/cfs/util/exporter"
 	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
 	"net/http/httputil"
 	"strconv"
 	"sync"
@@ -74,14 +74,14 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	m.leaderInfo = &LeaderInfo{}
 	m.reverseProxy = m.newReverseProxy()
 	if err = m.checkConfig(cfg); err != nil {
-		log.LogError(errors.ErrorStack(err))
+		log.LogError(errors.Stack(err))
 		return
 	}
 	m.rocksDBStore = raftstore.NewRocksDBStore(m.storeDir, LRUCacheSize, WriteBufferSize)
 	m.initFsm()
 	m.initCluster()
 	if err = m.createRaftServer(); err != nil {
-		log.LogError(errors.ErrorStack(err))
+		log.LogError(errors.Stack(err))
 		return
 	}
 	m.cluster.partition = m.partition
@@ -176,7 +176,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 func (m *Server) createRaftServer() (err error) {
 	raftCfg := &raftstore.Config{NodeID: m.id, RaftPath: m.walDir, NumOfLogsToRetain: m.retainLogs}
 	if m.raftStore, err = raftstore.NewRaftStore(raftCfg); err != nil {
-		return errors.Annotatef(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
+		return errors.Trace(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
 	}
 	fmt.Println(m.config.peers)
 	partitionCfg := &raftstore.PartitionConfig{
@@ -186,7 +186,7 @@ func (m *Server) createRaftServer() (err error) {
 		SM:      m.fsm,
 	}
 	if m.partition, err = m.raftStore.CreatePartition(partitionCfg); err != nil {
-		return errors.Annotate(err, "CreatePartition failed")
+		return errors.Trace(err, "CreatePartition failed")
 	}
 	return
 }
