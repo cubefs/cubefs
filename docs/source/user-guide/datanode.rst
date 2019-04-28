@@ -4,7 +4,7 @@ Data Subsystem
 How To Start DataNode
 ---------------------
 
-Start a DataNode process by execute the server binary of CFS you built with ``-c`` argument and specify configuration file.
+Start a DataNode process by execute the server binary of ChubaoFS you built with ``-c`` argument and specify configuration file.
 
 .. code-block:: bash
 

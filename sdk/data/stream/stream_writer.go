@@ -22,11 +22,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/sdk/data/wrapper"
-	"github.com/chubaofs/cfs/util"
-	"github.com/chubaofs/cfs/util/errors"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (

@@ -19,12 +19,12 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/chubaofs/cfs/util/errors"
+	"github.com/chubaofs/chubaofs/util/errors"
 
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/sdk/data/wrapper"
-	"github.com/chubaofs/cfs/util/exporter"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
+	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 type AppendExtentKeyFunc func(inode uint64, key proto.ExtentKey) error

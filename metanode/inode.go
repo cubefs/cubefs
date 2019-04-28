@@ -19,7 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/chubaofs/proto"
 	"io"
 	"sync"
 )

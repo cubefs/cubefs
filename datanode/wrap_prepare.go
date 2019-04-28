@@ -17,9 +17,9 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/repl"
-	"github.com/chubaofs/cfs/storage"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/repl"
+	"github.com/chubaofs/chubaofs/storage"
 	"hash/crc32"
 )
 

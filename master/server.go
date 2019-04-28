@@ -16,12 +16,12 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/raftstore"
-	"github.com/chubaofs/cfs/util/config"
-	"github.com/chubaofs/cfs/util/errors"
-	"github.com/chubaofs/cfs/util/exporter"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 	"net/http/httputil"
 	"strconv"
 	"sync"

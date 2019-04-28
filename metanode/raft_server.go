@@ -18,8 +18,8 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/chubaofs/cfs/raftstore"
-	"github.com/chubaofs/cfs/util/errors"
+	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/chubaofs/chubaofs/util/errors"
 )
 
 // StartRaftServer initializes the address resolver and the raftStore server instance.

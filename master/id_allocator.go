@@ -16,8 +16,8 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/cfs/raftstore"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/chubaofs/chubaofs/util/log"
 	"strconv"
 	"sync"
 	"sync/atomic"

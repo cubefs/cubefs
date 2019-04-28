@@ -15,7 +15,7 @@
 package proto
 
 import (
-	"github.com/chubaofs/cfs/util/errors"
+	"github.com/chubaofs/chubaofs/util/errors"
 )
 
 //err

@@ -16,7 +16,7 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft/proto"
 	"strings"
 )

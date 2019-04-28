@@ -20,8 +20,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/storage"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/storage"
 )
 
 func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {

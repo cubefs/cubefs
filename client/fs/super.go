@@ -16,17 +16,17 @@ package fs
 
 import (
 	"fmt"
-	"github.com/chubaofs/cfs/util/errors"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"golang.org/x/net/context"
 	"sync"
 	"time"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	"github.com/chubaofs/cfs/sdk/data/stream"
-	"github.com/chubaofs/cfs/sdk/meta"
-	"github.com/chubaofs/cfs/util/log"
-	"github.com/chubaofs/cfs/util/ump"
+	"github.com/chubaofs/chubaofs/sdk/data/stream"
+	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/ump"
 )
 
 // Super defines the struct of a super block.

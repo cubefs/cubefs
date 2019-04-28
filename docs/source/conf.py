@@ -20,7 +20,7 @@
 # -- Project information -----------------------------------------------------
 
 
-project = u'CFS'
+project = u'ChubaoFS'
 copyright = u'2018, The Chubao Authors'
 author = u'The Chubao Authors'
 
@@ -104,7 +104,7 @@ html_theme = 'sphinx_rtd_theme'
 
 # Output file base name for HTML help builder.
 
-htmlhelp_basename = 'CFS Doc'
+htmlhelp_basename = 'ChubaoFS Doc'
 
 
 # -- Options for LaTeX output ------------------------------------------------
@@ -131,7 +131,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'CFS.tex', u'CFS Documentation',
+    (master_doc, 'ChubaoFS.tex', u'ChubaoFS Documentation',
      u'The Chubao Authors', 'manual'),
 ]
 
@@ -141,7 +141,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'CFS', u'CFS Documentation',
+    (master_doc, 'ChubaoFS', u'ChubaoFS Documentation',
      [author], 1)
 ]
 
@@ -152,8 +152,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'CFS', u'CFS Documentation',
-     author, 'CFS', 'One line description of project.',
+    (master_doc, 'ChubaoFS', u'ChubaoFS Documentation',
+     author, 'ChubaoFS', 'One line description of project.',
      'Miscellaneous'),
 ]
 

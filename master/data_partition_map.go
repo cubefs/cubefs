@@ -17,9 +17,9 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/util/errors"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
 	"runtime"
 	"sync"
 	"time"

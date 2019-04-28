@@ -18,9 +18,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/util/btree"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/btree"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // ExtentRequest defines the struct for the request of read or write an extent.

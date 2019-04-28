@@ -24,8 +24,8 @@ import (
 	"bazil.org/fuse/fs"
 	"golang.org/x/net/context"
 
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 	"sync"
 )
 
