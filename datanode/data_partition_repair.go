@@ -21,10 +21,10 @@ import (
 	"time"
 
 	"fmt"
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/repl"
-	"github.com/chubaofs/cfs/storage"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/repl"
+	"github.com/chubaofs/chubaofs/storage"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/juju/errors"
 	"hash/crc32"
 )

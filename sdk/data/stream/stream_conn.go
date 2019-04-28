@@ -19,9 +19,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/chubaofs/cfs/sdk/data/wrapper"
-	"github.com/chubaofs/cfs/util"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/juju/errors"
 )
 

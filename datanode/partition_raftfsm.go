@@ -19,9 +19,9 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/util/exporter"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/juju/errors"
 	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"

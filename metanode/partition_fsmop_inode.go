@@ -17,8 +17,8 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 	"io"
 )
 

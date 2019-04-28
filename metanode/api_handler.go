@@ -20,8 +20,8 @@ import (
 	"strconv"
 
 	"bytes"
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // APIResponse defines the structure of the response to an HTTP request

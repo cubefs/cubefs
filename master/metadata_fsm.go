@@ -17,8 +17,8 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/cfs/raftstore"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"
 	"io"
