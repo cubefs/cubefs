@@ -19,10 +19,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/util/exporter"
-	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/ump"
 	"math/rand"
 	"strings"
 	"time"
@@ -153,19 +153,19 @@ func Warn(clusterID, msg string) {
 // WarnBySpecialKey provides warnings when exits
 func WarnBySpecialKey(key, msg string) {
 	log.LogWarn(msg)
-	exporter.NewAlarm(key)
+	ump.Alarm(key, msg)
 }
 
 func keyNotFound(name string) (err error) {
-	return errors.Errorf("parameter %v not found", name)
+	return errors.NewErrorf("parameter %v not found", name)
 }
 
 func unmatchedKey(name string) (err error) {
-	return errors.Errorf("parameter %v not match", name)
+	return errors.NewErrorf("parameter %v not match", name)
 }
 
 func notFoundMsg(name string) (err error) {
-	return errors.Errorf("%v not found", name)
+	return errors.NewErrorf("%v not found", name)
 }
 
 func metaPartitionNotFound(id uint64) (err error) {

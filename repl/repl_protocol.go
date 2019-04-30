@@ -20,10 +20,10 @@ import (
 	"net"
 	"sync"
 
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/util"
-	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
 	"sync/atomic"
 )
 
@@ -286,7 +286,7 @@ func (rp *ReplProtocol) checkLocalResultAndReceiveFromFollower(request *Packet, 
 		reply.clean()
 	}()
 	if err = reply.ReadFromConn(request.followerConns[index], proto.ReadDeadlineTime); err != nil {
-		err = errors.Annotatef(err, "local(%v) follower(%v)", request.followerConns[index].LocalAddr().String(),
+		err = errors.Trace(err, "local(%v) follower(%v)", request.followerConns[index].LocalAddr().String(),
 			request.followerConns[index].RemoteAddr().String())
 		return
 	}

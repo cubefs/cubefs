@@ -22,11 +22,11 @@ import (
 	"sync/atomic"
 
 	"fmt"
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/raftstore"
-	"github.com/chubaofs/cfs/util"
-	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
 	"io/ioutil"
 	"os"
@@ -77,21 +77,21 @@ type MetaPartitionConfig struct {
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
 	if c.PartitionId <= 0 {
-		err = errors.Errorf("[checkMeta]: partition id at least 1, "+
+		err = errors.NewErrorf("[checkMeta]: partition id at least 1, "+
 			"now partition id is: %d", c.PartitionId)
 		return
 	}
 	if c.Start < 0 {
-		err = errors.Errorf("[checkMeta]: start at least 0")
+		err = errors.NewErrorf("[checkMeta]: start at least 0")
 		return
 	}
 	if c.End <= c.Start {
-		err = errors.Errorf("[checkMeta]: end=%v, "+
+		err = errors.NewErrorf("[checkMeta]: end=%v, "+
 			"start=%v; end <= start", c.End, c.Start)
 		return
 	}
 	if len(c.Peers) <= 0 {
-		err = errors.Errorf("[checkMeta]: must have peers, now peers is 0")
+		err = errors.NewErrorf("[checkMeta]: must have peers, now peers is 0")
 		return
 	}
 	return
@@ -198,7 +198,7 @@ func (mp *metaPartition) Start() (err error) {
 			mp.config.BeforeStart()
 		}
 		if err = mp.onStart(); err != nil {
-			err = errors.Errorf("[Start]->%s", err.Error())
+			err = errors.NewErrorf("[Start]->%s", err.Error())
 			return
 		}
 		if mp.config.AfterStart != nil {
@@ -232,18 +232,18 @@ func (mp *metaPartition) onStart() (err error) {
 		mp.onStop()
 	}()
 	if err = mp.load(); err != nil {
-		err = errors.Errorf("[onStart]:load partition id=%d: %s",
+		err = errors.NewErrorf("[onStart]:load partition id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
 	}
 	mp.startSchedule(mp.applyID)
 	if err = mp.startFreeList(); err != nil {
-		err = errors.Errorf("[onStart] start free list id=%d: %s",
+		err = errors.NewErrorf("[onStart] start free list id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
 	}
 	if err = mp.startRaft(); err != nil {
-		err = errors.Errorf("[onStart]start raft id=%d: %s",
+		err = errors.NewErrorf("[onStart]start raft id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
 	}
@@ -520,7 +520,7 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 		resp.Status = proto.TaskFailed
 		p := &Packet{}
 		p.ResultCode = status
-		err = errors.Errorf("[UpdatePartition]: %s", p.GetResultMsg())
+		err = errors.NewErrorf("[UpdatePartition]: %s", p.GetResultMsg())
 		resp.Result = p.GetResultMsg()
 	}
 	resp.Status = proto.TaskSucceeds
@@ -542,7 +542,7 @@ func (mp *metaPartition) LoadSnapshotSign(p *Packet) (err error) {
 		snapshotDir)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			err = errors.Annotate(err, "[LoadSnapshotSign] 1st check snapshot")
+			err = errors.Trace(err, "[LoadSnapshotSign] 1st check snapshot")
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return err
 		}
@@ -551,7 +551,7 @@ func (mp *metaPartition) LoadSnapshotSign(p *Packet) (err error) {
 	}
 	if err != nil {
 		if !os.IsNotExist(err) {
-			err = errors.Annotate(err,
+			err = errors.Trace(err,
 				"[LoadSnapshotSign] 2st check snapshot")
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return
@@ -561,7 +561,7 @@ func (mp *metaPartition) LoadSnapshotSign(p *Packet) (err error) {
 	}
 	data, err := json.Marshal(resp)
 	if err != nil {
-		err = errors.Annotate(err, "[LoadSnapshotSign] marshal")
+		err = errors.Trace(err, "[LoadSnapshotSign] marshal")
 		return
 	}
 	p.PacketOkWithBody(data)

@@ -17,14 +17,15 @@ package main
 import (
 	"strings"
 
-	"github.com/chubaofs/cfs/datanode"
-	"github.com/chubaofs/cfs/master"
-	"github.com/chubaofs/cfs/metanode"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/datanode"
+	"github.com/chubaofs/chubaofs/master"
+	"github.com/chubaofs/chubaofs/metanode"
+	"github.com/chubaofs/chubaofs/util/log"
 
 	"flag"
 	"fmt"
-	"github.com/chubaofs/cfs/util/config"
+	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/ump"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -38,11 +39,11 @@ var (
 )
 
 const (
-	ConfigKeyRole         = "role"
-	ConfigKeyLogDir       = "logDir"
-	ConfigKeyLogLevel     = "logLevel"
-	ConfigKeyProfPort     = "prof"
-	ConfigKeyExporterPort = "exporterPort"
+	ConfigKeyRole       = "role"
+	ConfigKeyLogDir     = "logDir"
+	ConfigKeyLogLevel   = "logLevel"
+	ConfigKeyProfPort   = "prof"
+	ConfigKeyWarnLogDir = "warnLogDir"
 )
 
 const (
@@ -112,25 +113,27 @@ func main() {
 	flag.Parse()
 
 	if *configVersion {
-		fmt.Printf("CFS server version: %s\n", Version)
+		fmt.Printf("ChubaoFS server version: %s\n", Version)
 		os.Exit(0)
 	}
 
 	err := modifyOpenFiles()
 	if err != nil {
-		panic(err.Error())
+		fmt.Println(fmt.Sprintf(err.Error()))
+		os.Exit(1)
 	}
 
-	log.LogInfof("Hello, CFS Storage, Current Version: %s", Version)
+	log.LogInfof("Hello, ChubaoFS Storage, Current Version: %s", Version)
 	cfg := config.LoadConfigFile(*configFile)
 	role := cfg.GetString(ConfigKeyRole)
 	logDir := cfg.GetString(ConfigKeyLogDir)
 	logLevel := cfg.GetString(ConfigKeyLogLevel)
 	profPort := cfg.GetString(ConfigKeyProfPort)
+	umpDatadir := cfg.GetString(ConfigKeyWarnLogDir)
 
 	//for multi-cpu scheduling
 	runtime.GOMAXPROCS(runtime.NumCPU())
-
+	ump.InitUmp(role, umpDatadir)
 	// Init server instance with specified role configuration.
 	var (
 		server Server

@@ -21,9 +21,10 @@ import (
 
 	"os"
 
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/raftstore"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // SpaceManager manages the disk space.
@@ -254,7 +255,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 	)
 	for i := 0; i < len(manager.disks); i++ {
 		disk = manager.minPartitionCnt()
-		if disk.Available < uint64(dpCfg.PartitionSize) || disk.Status != proto.ReadWrite {
+		if disk.Available < 5*util.GB || disk.Status != proto.ReadWrite {
 			disk = nil
 			continue
 		}
@@ -305,6 +306,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	space.RangePartitions(func(partition *DataPartition) bool {
 		leaderAddr, isLeader := partition.IsRaftLeader()
 		vr := &proto.PartitionReport{
+			VolName:         partition.volumeID,
 			PartitionID:     uint64(partition.partitionID),
 			PartitionStatus: partition.Status(),
 			Total:           uint64(partition.Size()),

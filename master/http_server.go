@@ -17,8 +17,8 @@ package master
 import (
 	"net/http"
 
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 	"net/http/httputil"
 )
 
@@ -80,8 +80,14 @@ func (m *Server) handlerWithInterceptor() http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if m.partition.IsRaftLeader() {
-				m.ServeHTTP(w, r)
-				return
+				if m.metaReady {
+					m.ServeHTTP(w, r)
+					return
+				} else {
+					log.LogWarnf("action[handlerWithInterceptor] leader meta has not ready")
+					http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
+					return
+				}
 			}
 			if m.leaderInfo.addr == "" {
 				log.LogErrorf("action[handlerWithInterceptor] no leader,request[%v]", r.URL)

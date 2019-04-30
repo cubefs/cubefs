@@ -18,6 +18,8 @@ import (
 	"net"
 	"sync"
 
+	//"fmt"
+	//"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util"
 )
@@ -96,6 +98,7 @@ func (t *heartbeatTransport) handleConn(conn *util.ConnTimeout) {
 				if msg, err := reciveMessage(bufRd); err != nil {
 					return
 				} else {
+					//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
 					t.raftServer.reciveMessage(msg)
 				}
 			}

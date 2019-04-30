@@ -23,8 +23,8 @@ import (
 	"bazil.org/fuse/fs"
 	"golang.org/x/net/context"
 
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // Dir defines the structure of a directory
@@ -179,7 +179,9 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	inode, err := d.super.InodeGet(ino)
 	if err != nil {
 		log.LogErrorf("Lookup: parent(%v) name(%v) ino(%v) err(%v)", d.inode.ino, req.Name, ino, err)
-		return nil, ParseError(err)
+		dummyInode := &Inode{ino: ino}
+		dummyChild := NewFile(d.super, dummyInode)
+		return dummyChild, nil
 	}
 	mode := inode.mode
 

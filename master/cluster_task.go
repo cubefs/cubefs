@@ -17,9 +17,9 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
 	"runtime"
 	"sync"
 	"time"
@@ -157,7 +157,7 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 
 errHandler:
 	log.LogError(fmt.Sprintf("action[decommissionMetaPartition],volName: %v,partitionID: %v,err: %v",
-		mp.volName, mp.PartitionID, errors.ErrorStack(err)))
+		mp.volName, mp.PartitionID, errors.Stack(err)))
 	Warn(c.Name, fmt.Sprintf("clusterID[%v] meta partition[%v] offline addr[%v] failed,err:%v",
 		c.Name, mp.PartitionID, nodeAddr, err))
 	return
@@ -401,7 +401,7 @@ func (c *Cluster) dealCreateMetaPartitionResp(nodeAddr string, resp *proto.Creat
 	log.LogInfof("action[dealCreateMetaPartitionResp] process resp from nodeAddr[%v] pid[%v] success", nodeAddr, resp.PartitionID)
 	return
 errHandler:
-	log.LogErrorf(fmt.Sprintf("action[dealCreateMetaPartitionResp] %v", errors.ErrorStack(err)))
+	log.LogErrorf(fmt.Sprintf("action[dealCreateMetaPartitionResp] %v", errors.Stack(err)))
 	return
 }
 
@@ -435,7 +435,7 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 	log.LogInfof(logMsg)
 	return
 errHandler:
-	logMsg = fmt.Sprintf("nodeAddr %v heartbeat error :%v", nodeAddr, errors.ErrorStack(err))
+	logMsg = fmt.Sprintf("nodeAddr %v heartbeat error :%v", nodeAddr, errors.Stack(err))
 	log.LogError(logMsg)
 	return
 }

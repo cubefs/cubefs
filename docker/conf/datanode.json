@@ -1,0 +1,18 @@
+{
+    "role": "datanode",
+    "port": "17310",
+    "prof": "17320",
+    "raftHeartbeat": "17330",
+    "raftReplica": "17340",
+    "rack": "rack-01",
+    "logDir": "/cfs/log",
+    "logLevel": "info",
+    "disks": [
+        "/cfs/disk:10737418240"
+    ],
+    "masterAddr": [
+        "192.168.0.11:17010",
+        "192.168.0.12:17010",
+        "192.168.0.13:17010"
+    ]
+}

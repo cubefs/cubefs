@@ -26,8 +26,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 var (
@@ -89,7 +89,6 @@ func (d *Disk) computeUsage() (err error) {
 		return
 	}
 
-	// TODO how about:
 	//  total := math.Max(0, int64(fs.Blocks*uint64(fs.Bsize) - d.ReservedSpace))
 	total := int64(fs.Blocks*uint64(fs.Bsize) - d.ReservedSpace)
 	if total < 0 {
@@ -97,7 +96,6 @@ func (d *Disk) computeUsage() (err error) {
 	}
 	d.Total = uint64(total)
 
-	// TODO how about:
 	//  available := math.Max(0, int64(fs.Bavail*uint64(fs.Bsize) - d.ReservedSpace))
 	available := int64(fs.Bavail*uint64(fs.Bsize) - d.ReservedSpace)
 	if available < 0 {
@@ -105,7 +103,6 @@ func (d *Disk) computeUsage() (err error) {
 	}
 	d.Available = uint64(available)
 
-	// TODO how about:
 	//  used := math.Max(0, int64(total - available))
 	used := int64(total - available)
 	if used < 0 {

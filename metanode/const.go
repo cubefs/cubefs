@@ -15,8 +15,8 @@
 package metanode
 
 import (
-	"github.com/chubaofs/cfs/proto"
-	"github.com/juju/errors"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"time"
 )
 
@@ -129,6 +129,7 @@ const (
 	cfgMasterAddrs       = "masterAddrs"
 	cfgRaftHeartbeatPort = "raftHeartbeatPort"
 	cfgRaftReplicaPort   = "raftReplicaPort"
+	cfgTotalMem          = "totalMem"
 )
 
 const (

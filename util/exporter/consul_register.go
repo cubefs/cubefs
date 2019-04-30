@@ -20,7 +20,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/parnurzeal/gorequest"
 )
 

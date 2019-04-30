@@ -1,21 +1,16 @@
-language: go
 sudo: required
 
-go:
-  - 1.12
-
-env:
-  - CFS_BUILD_BASE="chubaofs/cfs-build:1.0"
-
-services: docker
-
-notifications:
-  on_success: never
-  on_failure: never
+services:
+    - docker
 
 before_install:
-  - docker pull ${CFS_BUILD_BASE}
+    - docker pull chubaofs/cfs-build:1.0
+    - docker pull chubaofs/centos-ltp:1.0
 
 script:
-  - docker run --rm -v `pwd`:/go/src/github.com/chubaofs/cfs ${CFS_BUILD_BASE} /bin/bash -c "cd /go/src/github.com/chubaofs/cfs && make build"
+    #- docker run --rm -v `pwd`:/go/src/github.com/chubaofs/cfs "chubaofs/cfs-build:1.0" /bin/bash -c "cd /go/src/github.com/chubaofs/cfs && make ci-test"
+    - docker run --rm -v `pwd`:/go/src/github.com/chubaofs/chubaofs "chubaofs/cfs-build:1.0" /bin/bash -c "cd /go/src/github.com/chubaofs/chubaofs && make build_server"
+    - docker run --rm -v `pwd`:/go/src/github.com/chubaofs/chubaofs "chubaofs/centos-ltp:1.0" /bin/bash -c "cd /go/src/github.com/chubaofs/chubaofs && make build_client"
+    - docker-compose -f docker/docker-compose.yml up -d servers
+    - docker-compose -f docker/docker-compose.yml run --rm client
 

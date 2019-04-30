@@ -17,9 +17,9 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
 	"net"
 	"os"
 	"path"
@@ -73,7 +73,6 @@ func (mp *metaPartition) updateVolWorker() {
 				break
 			}
 			mp.vol.UpdatePartitions(dataView)
-			log.LogDebugf("[updateVol] %v", dataView)
 		}
 	}
 }
@@ -210,11 +209,15 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []*Inode) {
 			for _, ino := range shouldCommit {
 				mp.freeList.Push(ino)
 			}
-			log.LogWarnf("[deleteInodeTreeOnRaftPeers] syncToRaftFollowersFreeInode inode list: %v, "+
+			log.LogWarnf("[deleteInodeTreeOnRaftPeers] raft commit inode list: %v, "+
 				"response %s", shouldCommit, err.Error())
 		}
 		log.LogDebugf("[deleteInodeTree] inode list: %v", shouldCommit)
 	}
+
+}
+
+func (mp *metaPartition) freeInodesOnRaftFollower(inodes []byte) {
 
 }
 
@@ -272,7 +275,7 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 	// get the data node view
 	dp := mp.vol.GetPartition(ext.PartitionId)
 	if dp == nil {
-		err = errors.Errorf("unknown dataPartitionID=%d in vol",
+		err = errors.NewErrorf("unknown dataPartitionID=%d in vol",
 			ext.PartitionId)
 		return
 	}
@@ -288,24 +291,24 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 	}()
 
 	if err != nil {
-		err = errors.Errorf("get conn from pool %s, "+
+		err = errors.NewErrorf("get conn from pool %s, "+
 			"extents partitionId=%d, extentId=%d",
 			err.Error(), ext.PartitionId, ext.ExtentId)
 		return
 	}
 	p := NewPacketToDeleteExtent(dp, ext)
 	if err = p.WriteToConn(conn); err != nil {
-		err = errors.Errorf("write to dataNode %s, %s", p.GetUniqueLogId(),
+		err = errors.NewErrorf("write to dataNode %s, %s", p.GetUniqueLogId(),
 			err.Error())
 		return
 	}
 	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
-		err = errors.Errorf("read response from dataNode %s, %s",
+		err = errors.NewErrorf("read response from dataNode %s, %s",
 			p.GetUniqueLogId(), err.Error())
 		return
 	}
 	if p.ResultCode != proto.OpOk {
-		err = errors.Errorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(),
+		err = errors.NewErrorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(),
 			p.GetResultMsg())
 	}
 	log.LogDebugf("[deleteMarkedInodes] %v", p.GetUniqueLogId())

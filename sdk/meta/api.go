@@ -20,8 +20,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // Low-level API, i.e. work with inode
@@ -280,6 +280,8 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 		}
 		return statusToErrno(status)
 	}
+
+	mw.iunlink(srcMP, inode)
 
 	if oldInode != 0 {
 		inodeMP := mw.getPartitionByInode(oldInode)

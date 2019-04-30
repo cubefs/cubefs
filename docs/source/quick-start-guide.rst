@@ -7,12 +7,12 @@ Building
 Build Servers
 ^^^^^^^^^^^^^
 
-In CFS, the server consists of the resource manager, metanode and datanode, which are compiled to a single binary for deployment convenience.
+In ChubaoFS, the server consists of the resource manager, metanode and datanode, which are compiled to a single binary for deployment convenience.
 
-Building of CFS server depends on RocksDB, `build RocksDB v5.9.2+ <https://github.com/facebook/rocksdb/blob/master/INSTALL.md>`_ .
+Building of ChubaoFS server depends on RocksDB, `build RocksDB v5.9.2+ <https://github.com/facebook/rocksdb/blob/master/INSTALL.md>`_ .
 Recommended installation uses `make static_lib` .
 
-CFS server is built with the following command:
+ChubaoFS server is built with the following command:
 
 .. code-block:: bash
 
@@ -48,10 +48,11 @@ Sample *master.json* is shown as follows,
      "id":"1",
      "peers": "1:192.168.31.173:80,2:192.168.31.141:80,3:192.168.30.200:80",
      "retainLogs":"20000",
-     "logDir": "/export/Logs/cfs/master",
+     "logDir": "/export/Logs/master",
      "logLevel":"info",
-     "walDir":"/export/Logs/cfs/raft",
-     "storeDir":"/export/cfs/rocksdbstore",
+     "walDir":"/export/Data/master/raft",
+     "storeDir":"/export/Data/master/rocksdbstore",
+     "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
      "consulAddr": "http://consul.prometheus-cfs.local",
      "exporterPort": 9510,
      "clusterName":"cfs"
@@ -76,11 +77,13 @@ Sample *meta.json is* shown as follows,
        "listen": "9021",
        "prof": "9092",
        "logLevel": "debug",
-       "metaDir": "/export/cfs/metanode_meta",
-       "logDir": "/export/Logs/cfs/metanode",
-       "raftDir": "/export/cfs/metanode_raft",
+       "metaDir": "/export/Data/metanode",
+       "logDir": "/export/Logs/metanode",
+       "raftDir": "/export/Data/metanode/raft",
        "raftHeartbeatPort": "9093",
        "raftReplicatePort": "9094",
+       "totalMem":  "17179869184",
+       "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
        "consulAddr": "http://consul.prometheus-cfs.local",
        "exporterPort": 9511,
        "masterAddrs": [
@@ -144,6 +147,7 @@ Start Datanode
         "logLevel": "info",
         "raftHeartbeat": "9095",
         "raftReplica": "9096",
+        "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
         "consulAddr": "http://consul.prometheus-cfs.local",
         "exporterPort": 9512,
         "masterAddr": [
@@ -153,7 +157,8 @@ Start Datanode
         ],
         "rack": "",
         "disks": [
-           "/data0:107374182400"
+           "/data0:21474836480",
+           "/data1:21474836480",
         ]
       }
 
@@ -186,7 +191,8 @@ Mount Client
         "volName": "test",
         "owner": "cfs",
         "masterAddr": "192.168.31.173:80,192.168.31.141:80,192.168.30.200:80",
-        "logDir": "/export/Logs/cfs",
+        "logDir": "/export/Logs/client",
+        "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
         "profPort": "10094",
         "logLevel": "info"
       }

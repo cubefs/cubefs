@@ -16,7 +16,7 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft/proto"
 	"strings"
 )
@@ -35,12 +35,17 @@ func (m *Server) handleLeaderChange(leader uint64) {
 	log.LogWarnf("action[handleLeaderChange] change leader to [%v] ", m.leaderInfo.addr)
 	m.reverseProxy = m.newReverseProxy()
 
-	// once switching to the master, check the Heartbeat
 	if m.id == leader {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
-		m.cluster.checkMetaNodeHeartbeat()
+		m.loadMetadata()
+		m.metaReady = true
 		m.cluster.checkDataNodeHeartbeat()
+		m.cluster.checkMetaNodeHeartbeat()
+	} else {
+		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
+			m.clusterName, m.leaderInfo.addr))
+		m.metaReady = false
 	}
 }
 
@@ -82,7 +87,9 @@ func (m *Server) restoreIDAlloc() {
 // Load stored metadata into the memory
 func (m *Server) loadMetadata() {
 	log.LogInfo("action[loadMetadata] begin")
+	m.clearMetadata()
 	m.restoreIDAlloc()
+	m.cluster.fsm.restore()
 	var err error
 	if err = m.cluster.loadClusterValue(); err != nil {
 		panic(err)
@@ -111,4 +118,9 @@ func (m *Server) loadMetadata() {
 	}
 	log.LogInfo("action[loadMetadata] end")
 
+}
+
+func (m *Server) clearMetadata() {
+	m.cluster.clearVols()
+	m.cluster.t = newTopology()
 }

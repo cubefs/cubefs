@@ -17,7 +17,7 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 // CreateDentry returns a new dentry.

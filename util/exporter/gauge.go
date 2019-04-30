@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
