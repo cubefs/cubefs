@@ -15,15 +15,9 @@
 package raftstore
 
 import (
-	"github.com/juju/errors"
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"
 	"os"
-)
-
-// Error definitions for raft store partition.
-var (
-	ErrNotLeader = errors.New("not a raft leader")
 )
 
 // PartitionStatus is a type alias of raft.Status
@@ -85,7 +79,7 @@ type partition struct {
 func (p *partition) ChangeMember(changeType proto.ConfChangeType, peer proto.Peer, context []byte) (
 	resp interface{}, err error) {
 	if !p.IsRaftLeader() {
-		err = ErrNotLeader
+		err = raft.ErrNotLeader
 		return
 	}
 	future := p.raft.ChangeMember(p.id, changeType, peer, context)
@@ -141,7 +135,7 @@ func (p *partition) CommittedIndex() (applied uint64) {
 // Submit submits command data to raft log.
 func (p *partition) Submit(cmd []byte) (resp interface{}, err error) {
 	if !p.IsRaftLeader() {
-		err = ErrNotLeader
+		err = raft.ErrNotLeader
 		return
 	}
 	future := p.raft.Submit(p.id, cmd)

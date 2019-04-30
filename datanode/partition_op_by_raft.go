@@ -25,6 +25,7 @@ import (
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/tiglabs/raft"
 	"strings"
 	"sync/atomic"
 )
@@ -159,9 +160,9 @@ func (dp *DataPartition) CheckLeader(request *repl.Packet, connect net.Conn) (er
 	//  and use another getRaftLeaderAddr() to return the actual address
 	_, ok := dp.IsRaftLeader()
 	if !ok {
-		err = storage.NotALeaderError
+		err = raft.ErrNotLeader
 		logContent := fmt.Sprintf("action[ReadCheck] %v.", request.LogMessage(request.GetOpMsg(), connect.RemoteAddr().String(), request.StartT, err))
-		log.LogInfof(logContent)
+		log.LogWarnf(logContent)
 		return
 	}
 

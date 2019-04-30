@@ -12,7 +12,7 @@ ChubaoFS use prometheus as metrics collector. It simply config as follow in mast
 
 
 * exporterPort：prometheus exporter Port. when set，can export prometheus metrics from URL(http://$hostip:$exporterPort/metrics). If not set, prometheus exporter will unavailable；
-* consulAddr: consul register address，it can work with prometheus to auto discover deployed cfs nodes, if not set, consul register will not work.
+* consulAddr: consul register address，it can work with prometheus to auto discover deployed chubaofs nodes, if not set, consul register will not work.
 
 Using grafana as prometheus metrics web front：
 

@@ -17,8 +17,8 @@ package master
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/juju/errors"
 	"sort"
 	"sync"
 )
@@ -105,7 +105,7 @@ func (t *topology) deleteDataNode(dataNode *DataNode) {
 func (t *topology) getRack(dataNode *DataNode) (rack *Rack, err error) {
 	topoNode, ok := t.dataNodes.Load(dataNode.Addr)
 	if !ok {
-		return nil, errors.Annotatef(dataNodeNotFound(dataNode.Addr), "%v not found", dataNode.Addr)
+		return nil, errors.Trace(dataNodeNotFound(dataNode.Addr), "%v not found", dataNode.Addr)
 	}
 	node := topoNode.(*topoDataNode)
 	ns, err := t.getNodeSet(node.setID)
@@ -189,7 +189,7 @@ func (t *topology) getNodeSet(setID uint64) (ns *nodeSet, err error) {
 	defer t.nsLock.RUnlock()
 	ns, ok := t.nodeSetMap[setID]
 	if !ok {
-		return nil, errors.Errorf("set %v not found", setID)
+		return nil, errors.NewErrorf("set %v not found", setID)
 	}
 	return
 }
@@ -363,7 +363,7 @@ func (ns *nodeSet) getRack(name string) (rack *Rack, err error) {
 	defer ns.rackLock.RUnlock()
 	rack, ok := ns.rackMap[name]
 	if !ok {
-		return nil, errors.Annotatef(rackNotFound(name), "%v not found", name)
+		return nil, errors.Trace(rackNotFound(name), "%v not found", name)
 	}
 	return
 }
@@ -494,7 +494,7 @@ func (rack *Rack) putDataNode(dataNode *DataNode) {
 func (rack *Rack) getDataNode(addr string) (dataNode *DataNode, err error) {
 	value, ok := rack.dataNodes.Load(addr)
 	if !ok {
-		return nil, errors.Annotatef(dataNodeNotFound(addr), "%v not found", addr)
+		return nil, errors.Trace(dataNodeNotFound(addr), "%v not found", addr)
 	}
 	dataNode = value.(*DataNode)
 	return

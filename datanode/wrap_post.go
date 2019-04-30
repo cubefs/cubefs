@@ -23,13 +23,10 @@ import (
 
 func (s *DataNode) Post(p *repl.Packet) error {
 	if p.IsMasterCommand() {
-		p.NeedReply = false
+		p.NeedReply = true
 	}
 	if isReadExtentOperation(p) {
 		p.NeedReply = false
-	}
-	if p.Opcode == proto.OpCreateDataPartition || p.Opcode == proto.OpDataNodeHeartbeat {
-		p.NeedReply = true
 	}
 	s.cleanupPkt(p)
 	s.addMetrics(p)

@@ -19,8 +19,8 @@ import (
 
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/juju/errors"
 	"strings"
 	"time"
 )
@@ -458,7 +458,7 @@ func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers
 func (mp *MetaPartition) createTaskToDecommissionReplica(volName string, removePeer proto.Peer, addPeer proto.Peer) (t *proto.AdminTask, err error) {
 	mr, err := mp.getMetaReplicaLeader()
 	if err != nil {
-		return nil, errors.Trace(err)
+		return nil, errors.NewError(err)
 	}
 	req := &proto.MetaPartitionDecommissionRequest{PartitionID: mp.PartitionID, VolName: volName, RemovePeer: removePeer, AddPeer: addPeer}
 	t = proto.NewAdminTask(proto.OpDecommissionMetaPartition, mr.Addr, req)
