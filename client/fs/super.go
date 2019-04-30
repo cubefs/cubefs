@@ -16,16 +16,17 @@ package fs
 
 import (
 	"fmt"
-	"github.com/juju/errors"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"golang.org/x/net/context"
 	"sync"
 	"time"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	"github.com/chubaofs/cfs/sdk/data/stream"
-	"github.com/chubaofs/cfs/sdk/meta"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/sdk/data/stream"
+	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/ump"
 )
 
 // Super defines the struct of a super block.
@@ -54,12 +55,12 @@ func NewSuper(volname, owner, master string, icacheTimeout, lookupValid, attrVal
 	s = new(Super)
 	s.mw, err = meta.NewMetaWrapper(volname, owner, master)
 	if err != nil {
-		return nil, errors.Annotate(err, "NewMetaWrapper failed!")
+		return nil, errors.Trace(err, "NewMetaWrapper failed!")
 	}
 
 	s.ec, err = stream.NewExtentClient(volname, master, s.mw.AppendExtentKey, s.mw.GetExtents, s.mw.Truncate)
 	if err != nil {
-		return nil, errors.Annotate(err, "NewExtentClient failed!")
+		return nil, errors.Trace(err, "NewExtentClient failed!")
 	}
 
 	s.volname = volname
@@ -107,11 +108,20 @@ func (s *Super) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.
 	return nil
 }
 
-func (s *Super) exporterKey(act string) string {
-	return fmt.Sprintf("%s_fuseclient_%s", s.cluster, act)
-}
-
 // ClusterName returns the cluster name.
 func (s *Super) ClusterName() string {
 	return s.cluster
+}
+
+func (s *Super) exporterKey(act string) string {
+	return fmt.Sprintf("%v_fuseclient_%v", s.cluster, act)
+}
+
+func (s *Super) umpKey(act string) string {
+	return fmt.Sprintf("%v_fuseclient_%v", s.cluster, act)
+}
+
+func (s *Super) handleError(op, msg string) {
+	log.LogError(msg)
+	ump.Alarm(s.umpKey(op), msg)
 }

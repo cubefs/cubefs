@@ -27,12 +27,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/raftstore"
-	"github.com/chubaofs/cfs/util"
-	"github.com/chubaofs/cfs/util/exporter"
-	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const partitionPrefix = "partition_"
@@ -116,13 +116,12 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 		err = m.opDecommissionMetaPartition(conn, p, remoteAddr)
 	case proto.OpMetaBatchInodeGet:
 		err = m.opMetaBatchInodeGet(conn, p, remoteAddr)
-	case proto.OpPing:
 	default:
 		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
 			p.Opcode, p.GetReqID())
 	}
 	if err != nil {
-		err = errors.Errorf("%s [%s] req: %d - %s", remoteAddr, p.GetOpMsg(),
+		err = errors.NewErrorf("%s [%s] req: %d - %s", remoteAddr, p.GetOpMsg(),
 			p.GetReqID(), err.Error())
 	}
 	return
@@ -246,7 +245,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 					backupDir := path.Join(partitionConfig.RootDir, snapshotBackup)
 					if _, err = os.Stat(backupDir); err == nil {
 						if err = os.Rename(backupDir, snapshotDir); err != nil {
-							err = errors.Annotate(err,
+							err = errors.Trace(err,
 								fmt.Sprintf(": fail recover backup snapshot %s",
 									snapshotDir))
 							return
@@ -293,7 +292,7 @@ func (m *metadataManager) createPartition(id uint64, volName string, start,
 	end uint64, peers []proto.Peer) (err error) {
 	// check partitions
 	if _, err = m.getPartition(id); err == nil {
-		err = errors.Errorf("create partition id=%d is exsited!", id)
+		err = errors.NewErrorf("create partition id=%d is exsited!", id)
 		return
 	}
 	err = nil
@@ -317,13 +316,13 @@ func (m *metadataManager) createPartition(id uint64, volName string, start,
 	}
 	partition := NewMetaPartition(mpc)
 	if err = partition.PersistMetadata(); err != nil {
-		err = errors.Errorf("[createPartition]->%s", err.Error())
+		err = errors.NewErrorf("[createPartition]->%s", err.Error())
 		return
 	}
 	if err = m.attachPartition(id, partition); err != nil {
 		// TODO Unhandled errors
 		os.RemoveAll(mpc.RootDir)
-		err = errors.Errorf("[createPartition]->%s", err.Error())
+		err = errors.NewErrorf("[createPartition]->%s", err.Error())
 		return
 	}
 	return

@@ -1,7 +1,7 @@
 Data Subsystem
 ===================
 
-To meet the multi-tenancy requirement, the data subsystem is optimized for the storage of large and small files, which can be accessed in a sequential or random fashion.  It adopts two different replication protocols to ensure the strong consistency  with some tradeoffs on the performance and code usability.
+The data subsystem is optimized for the storage of large and small files, which can be accessed in a sequential or random fashion.
 
 .. image:: ../pic/data-subsystem.png
    :align: center
@@ -12,17 +12,18 @@ Features
 
 - Large File Storage
 
-  For large files, the contents are stored as a sequence of one or multiple extents, which can be distributed across different data partitions on different data nodes. Writing a new file to the extent store always causes the data to be written at the zero-offset of a new extent, which eliminates the need for the offset within the extent. The last extent of a file does not need to fill up its size limit by padding (i.e., the extent does not have holes), and never stores the data from other files.
+For large files, the contents are stored as a sequence of one or multiple extents, which can be  distributed across different data partitions on different data nodes.
+Writing a new file to the extent store always causes the data to be written at the zero-offset of a new extent, which eliminates the need for the offset within the extent. The last extent of a file  does not need to fill up its size limit by padding (i.e., the extent  does not have holes), and never stores the data from other files.
 
 - Small File Storage
 
-  The contents of multiple small files are aggregated and stored in a single extent, and the physical offset of each file content in the extent is recorded in the corresponding meta node. Deleting a file content (free the disk space occupied by this file) is achieved by the punch hole interface (fallocate()) provided by the underlying file system. The advantage of this design is to eliminate the need of implementing a garbage collection mechanism and therefore avoid to employ a mapping from logical offset to physical offset in an extent.
+The contents of multiple small files are aggregated and stored in a single extent, and the physical offset of each file content in the extent is recorded in the corresponding meta node.  ChubaoFS relies on the punch hole interface, \textit{fallocate()}\footnote{\url{http://man7.org/linux/man-pages/man2/fallocate.2.html}},  to \textit{asynchronous} free the disk space occupied by the to-be-deleted file. The advantage of this design is to eliminate the need of implementing a garbage collection mechanism and therefore avoid to employ a mapping from logical offset to physical offset  in an extent~\cite{haystack}.  Note that this is different from deleting large files, where  the extents of the file can be removed directly from the disk.
 
-- Strong Consistency
+- Replication
 
-  The replication is performed in terms of partitions during file writes. Depending on the file write pattern, CFS adopts different replication strategies.
+  The replication is performed in terms of partitions during file writes. Depending on the file write pattern, ChubaoFS adopts different replication strategies.
 
-  When a file is sequentially written into CFS, a primary-backup replication protocol is used to ensure the strong consistency with optimized IO throughput.
+  When a file is sequentially written into ChubaoFS, a primary-backup replication protocol is used to ensure the strong consistency with optimized IO throughput.
 
   .. image:: ../pic/workflow-sequential-write.png
      :align: center

@@ -15,21 +15,18 @@
 package datanode
 
 import (
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/repl"
-	"github.com/chubaofs/cfs/storage"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/repl"
+	"github.com/chubaofs/chubaofs/storage"
 	"sync/atomic"
 )
 
 func (s *DataNode) Post(p *repl.Packet) error {
 	if p.IsMasterCommand() {
-		p.NeedReply = false
+		p.NeedReply = true
 	}
 	if isReadExtentOperation(p) {
 		p.NeedReply = false
-	}
-	if p.Opcode == proto.OpCreateDataPartition || p.Opcode == proto.OpDataNodeHeartbeat {
-		p.NeedReply = true
 	}
 	s.cleanupPkt(p)
 	s.addMetrics(p)

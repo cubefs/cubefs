@@ -20,7 +20,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/chubaofs/cfs/util/btree"
+	"github.com/chubaofs/chubaofs/util/btree"
 )
 
 var (

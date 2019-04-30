@@ -26,7 +26,6 @@ const (
 	ActionSendToFollowers     = "ActionSendToFollowers"
 	ActionReceiveFromFollower = "ActionReceiveFromFollower"
 	ActionWriteToClient       = "ActionWriteToClient"
-	ActionCheckAndAddInfos    = "ActionCheckAndAddInfos"
 	ActionCheckReply          = "ActionCheckReply"
 
 	ActionPreparePkt = "ActionPreparePkt"

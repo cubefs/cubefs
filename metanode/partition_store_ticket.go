@@ -17,9 +17,9 @@ package metanode
 import (
 	"time"
 
-	"github.com/chubaofs/cfs/util/exporter"
-	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 type storeMsg struct {
@@ -50,7 +50,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 		} else {
 			// retry again
 			mp.storeChan <- msg
-			err = errors.Errorf("[startSchedule]: dump partition id=%d: %v",
+			err = errors.NewErrorf("[startSchedule]: dump partition id=%d: %v",
 				mp.config.PartitionId, err.Error())
 			log.LogErrorf(err.Error())
 			exporter.NewAlarm(exporterKey)

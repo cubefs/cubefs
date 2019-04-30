@@ -20,7 +20,7 @@ import (
 
 	"bazil.org/fuse"
 
-	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 const (

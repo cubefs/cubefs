@@ -19,14 +19,14 @@ import (
 	"net"
 	"time"
 
-	"github.com/chubaofs/cfs/sdk/data/wrapper"
-	"github.com/chubaofs/cfs/util"
-	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
+	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 var (
-	NotALeaderError = errors.New("NotALeaderError")
+	TryOtherAddrError = errors.New("TryOtherAddrError")
 )
 
 const (
@@ -83,7 +83,7 @@ func (sc *StreamConn) sendToPartition(req *Packet, getReply GetReplyFunc) (err e
 		}
 		log.LogWarnf("sendToPartition: curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		StreamConnPool.PutConnect(conn, true)
-		if err != NotALeaderError {
+		if err != TryOtherAddrError {
 			return
 		}
 	}
@@ -103,7 +103,7 @@ func (sc *StreamConn) sendToPartition(req *Packet, getReply GetReplyFunc) (err e
 			return
 		}
 		StreamConnPool.PutConnect(conn, true)
-		if err != NotALeaderError {
+		if err != TryOtherAddrError {
 			return
 		}
 	}

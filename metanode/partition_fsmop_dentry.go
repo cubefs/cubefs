@@ -15,7 +15,7 @@
 package metanode
 
 import (
-	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 type DentryResponse struct {

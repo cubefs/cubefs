@@ -1,7 +1,7 @@
 {
   "__inputs": [
     {
-      "name": "DS_CFS01",
+      "name": "DS_ChubaoFS01",
       "label": "cfs01",
       "description": "",
       "type": "datasource",
@@ -85,7 +85,7 @@
         "rgba(237, 129, 40, 0.89)",
         "#d44a3a"
       ],
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "format": "none",
       "gauge": {
         "maxValue": 100,
@@ -175,7 +175,7 @@
         "rgba(237, 129, 40, 0.89)",
         "#d44a3a"
       ],
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "format": "none",
       "gauge": {
         "maxValue": 100,
@@ -265,7 +265,7 @@
         "rgba(237, 129, 40, 0.89)",
         "#d44a3a"
       ],
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "format": "none",
       "gauge": {
         "maxValue": 100,
@@ -362,7 +362,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 6,
@@ -453,7 +453,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 6,
@@ -572,7 +572,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 6,
@@ -670,7 +670,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 6,
@@ -782,7 +782,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 6,
@@ -894,7 +894,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 6,
@@ -1020,7 +1020,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 7,
@@ -1118,7 +1118,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 7,
@@ -1264,7 +1264,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 6,
@@ -1355,7 +1355,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 6,
@@ -1467,7 +1467,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 6,
@@ -1589,7 +1589,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 8,
@@ -1680,7 +1680,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 8,
@@ -1799,7 +1799,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 8,
@@ -1897,7 +1897,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 8,
@@ -2023,7 +2023,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 8,
@@ -2127,7 +2127,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 8,
@@ -2218,7 +2218,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 8,
@@ -2316,7 +2316,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 8,
@@ -2428,7 +2428,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 8,
@@ -2526,7 +2526,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_CFS01}",
+      "datasource": "${DS_ChubaoFS01}",
       "fill": 1,
       "gridPos": {
         "h": 8,
@@ -2669,7 +2669,7 @@
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "${DS_CFS01}",
+          "datasource": "${DS_ChubaoFS01}",
           "fill": 1,
           "gridPos": {
             "h": 6,
@@ -2781,7 +2781,7 @@
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "${DS_CFS01}",
+          "datasource": "${DS_ChubaoFS01}",
           "fill": 1,
           "gridPos": {
             "h": 6,
@@ -2893,7 +2893,7 @@
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "${DS_CFS01}",
+          "datasource": "${DS_ChubaoFS01}",
           "fill": 1,
           "gridPos": {
             "h": 6,
@@ -2984,7 +2984,7 @@
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "${DS_CFS01}",
+          "datasource": "${DS_ChubaoFS01}",
           "fill": 1,
           "gridPos": {
             "h": 6,
@@ -3106,7 +3106,7 @@
       {
         "allValue": null,
         "current": {},
-        "datasource": "${DS_CFS01}",
+        "datasource": "${DS_ChubaoFS01}",
         "hide": 0,
         "includeAll": false,
         "label": "Cluster",
@@ -3126,7 +3126,7 @@
       {
         "allValue": null,
         "current": {},
-        "datasource": "${DS_CFS01}",
+        "datasource": "${DS_ChubaoFS01}",
         "hide": 0,
         "includeAll": false,
         "label": "Role",
@@ -3146,7 +3146,7 @@
       {
         "allValue": null,
         "current": {},
-        "datasource": "${DS_CFS01}",
+        "datasource": "${DS_ChubaoFS01}",
         "hide": 0,
         "includeAll": false,
         "label": "Instance",
@@ -3166,7 +3166,7 @@
       {
         "allValue": null,
         "current": {},
-        "datasource": "${DS_CFS01}",
+        "datasource": "${DS_ChubaoFS01}",
         "hide": 2,
         "includeAll": false,
         "label": "Host",

@@ -16,8 +16,8 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 	"time"
 )
 
@@ -209,7 +209,6 @@ func (partition *DataPartition) missingReplicaAddress(dataPartitionSize uint64) 
 				partition.PartitionID, addr))
 			err = proto.ErrMissingReplica
 			addr = addr
-			partition.isRecover = true
 			break
 		}
 	}

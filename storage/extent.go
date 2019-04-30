@@ -17,7 +17,7 @@ package storage
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/chubaofs/cfs/util"
+	"github.com/chubaofs/chubaofs/util"
 	"hash/crc32"
 	"io"
 	"math"

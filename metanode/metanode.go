@@ -22,19 +22,20 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/raftstore"
-	"github.com/chubaofs/cfs/util"
-	"github.com/chubaofs/cfs/util/config"
-	"github.com/chubaofs/cfs/util/exporter"
-	"github.com/chubaofs/cfs/util/log"
-	"github.com/juju/errors"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 	"strconv"
 )
 
 var (
-	clusterInfo  *proto.ClusterInfo
-	masterHelper util.MasterHelper
+	clusterInfo    *proto.ClusterInfo
+	masterHelper   util.MasterHelper
+	configTotalMem uint64
 )
 
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
@@ -135,6 +136,19 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftDir = cfg.GetString(cfgRaftDir)
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
+	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
+	if configTotalMem != 0 && configTotalMem <= util.GB {
+		configTotalMem = util.GB
+	}
+
+	total, _, err := util.GetMemInfo()
+	if err == nil && configTotalMem == 0 {
+		configTotalMem = total
+	}
+
+	if configTotalMem > total {
+		configTotalMem = total
+	}
 
 	log.LogInfof("[parseConfig] load localAddr[%v].", m.localAddr)
 	log.LogInfof("[parseConfig] load listen[%v].", m.listen)

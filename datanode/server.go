@@ -28,13 +28,13 @@ import (
 	"time"
 
 	"errors"
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/raftstore"
-	"github.com/chubaofs/cfs/repl"
-	"github.com/chubaofs/cfs/util"
-	"github.com/chubaofs/cfs/util/config"
-	"github.com/chubaofs/cfs/util/exporter"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/chubaofs/chubaofs/repl"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 	"os"
 	"syscall"
 )
@@ -52,9 +52,9 @@ var (
 const (
 	DefaultRackName         = "cfs_rack1"
 	DefaultRaftDir          = "raft"
-	DefaultRaftLogsToRetain = 20000 // Count of raft logs per data partition
+	DefaultRaftLogsToRetain = 2000 // Count of raft logs per data partition
 	DefaultDiskMaxErr       = 20
-	DefaultDiskRetain       = 30 * util.GB // GB
+	DefaultDiskRetain       = 20 * util.GB // GB
 )
 
 const (

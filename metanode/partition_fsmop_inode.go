@@ -17,9 +17,9 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/chubaofs/cfs/proto"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 	"io"
-	"github.com/chubaofs/cfs/util/log"
 )
 
 type InodeResponse struct {
@@ -150,7 +150,7 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 			}
 			return
 		}
-		log.LogDebugf("recive raftLeader free inode(%v)",ino.Inode)
+		log.LogDebugf("recive raftLeader free inode(%v)", ino.Inode)
 		mp.internalDeleteInode(ino)
 	}
 }

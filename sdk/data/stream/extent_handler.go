@@ -20,12 +20,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/juju/errors"
+	"github.com/chubaofs/chubaofs/util/errors"
 
-	"github.com/chubaofs/cfs/proto"
-	"github.com/chubaofs/cfs/sdk/data/wrapper"
-	"github.com/chubaofs/cfs/util"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // State machines
@@ -516,7 +516,7 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 
 	errmsg := fmt.Sprintf("allocateExtent failed: hit max retry limit")
 	if err != nil {
-		err = errors.Annotate(err, errmsg)
+		err = errors.Trace(err, errmsg)
 	} else {
 		err = errors.New(errmsg)
 	}
@@ -539,7 +539,7 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 	conn, err := StreamConnPool.GetConnect(dp.Hosts[0])
 	if err != nil {
 		// TODO unhandled error
-		errors.Annotatef(err, "createExtent: failed to create connection, eh(%v) datapartionHosts(%v)", eh, dp.Hosts[0])
+		errors.Trace(err, "createExtent: failed to create connection, eh(%v) datapartionHosts(%v)", eh, dp.Hosts[0])
 		return
 	}
 	// TODO unhandled error
@@ -554,12 +554,12 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 	p := NewCreateExtentPacket(dp, eh.inode)
 	if err = p.WriteToConn(conn); err != nil {
 		// TODO unhandled error
-		errors.Annotatef(err, "createExtent: failed to WriteToConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
+		errors.Trace(err, "createExtent: failed to WriteToConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
 		return
 	}
 
 	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime*2); err != nil {
-		err = errors.Annotatef(err, "createExtent: failed to ReadFromConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
+		err = errors.Trace(err, "createExtent: failed to ReadFromConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
 		return
 	}
 

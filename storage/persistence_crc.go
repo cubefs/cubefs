@@ -2,8 +2,8 @@ package storage
 
 import (
 	"encoding/binary"
-	"github.com/chubaofs/cfs/util"
-	"github.com/chubaofs/cfs/util/log"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/log"
 	"sync/atomic"
 	"syscall"
 )

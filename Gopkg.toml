@@ -33,9 +33,6 @@
   branch = "master"
   name = "github.com/google/btree"
 
-[[constraint]]
-  branch = "master"
-  name = "github.com/juju/errors"
 
 [[constraint]]
   branch = "master"
