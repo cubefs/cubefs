@@ -34,10 +34,10 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	cfs "github.com/chubaofs/cfs/client/fs"
-	"github.com/chubaofs/cfs/util/config"
-	"github.com/chubaofs/cfs/util/exporter"
-	"github.com/chubaofs/cfs/util/log"
+	cfs "github.com/chubaofs/chubaofs/client/fs"
+	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
@@ -67,7 +67,7 @@ func main() {
 	flag.Parse()
 
 	if *configVersion {
-		fmt.Printf("CFS client verson: %s\n", Version)
+		fmt.Printf("ChubaoFS client verson: %s\n", Version)
 		os.Exit(0)
 	}
 
@@ -118,9 +118,9 @@ func Mount(cfg *config.Config) (err error) {
 		fuse.MaxReadahead(MaxReadAhead),
 		fuse.AsyncRead(),
 		fuse.AutoInvalData(autoInvalData),
-		fuse.FSName("cfs-"+volname),
+		fuse.FSName("chubaofs-"+volname),
 		fuse.LocalVolume(),
-		fuse.VolumeName("cfs-"+volname))
+		fuse.VolumeName("chubaofs-"+volname))
 
 	if err != nil {
 		return err

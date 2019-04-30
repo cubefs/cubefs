@@ -18,7 +18,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/chubaofs/cfs/raftstore"
+	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/juju/errors"
 )
 

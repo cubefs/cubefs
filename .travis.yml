@@ -5,7 +5,7 @@ go:
   - 1.12
 
 env:
-  - CFS_BUILD_BASE="chubaofs/cfs-build:1.0"
+  - ChubaoFS_BUILD_BASE="chubaofs/chubaofs-build:1.0"
 
 services: docker
 
@@ -14,8 +14,8 @@ notifications:
   on_failure: never
 
 before_install:
-  - docker pull ${CFS_BUILD_BASE}
+  - docker pull ${ChubaoFS_BUILD_BASE}
 
 script:
-  - docker run --rm -v `pwd`:/go/src/github.com/chubaofs/cfs ${CFS_BUILD_BASE} /bin/bash -c "cd /go/src/github.com/chubaofs/cfs && make build"
+  - docker run --rm -v `pwd`:/go/src/github.com/chubaofs/cfs ${ChubaoFS_BUILD_BASE} /bin/bash -c "cd /go/src/github.com/chubaofs/chubaofs && make build"
 
