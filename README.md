@@ -38,4 +38,3 @@ Licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/
 For detail see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 
-[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs?ref=badge_large)
