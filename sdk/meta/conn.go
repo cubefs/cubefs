@@ -19,7 +19,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/juju/errors"
+	"github.com/chubaofs/chubaofs/util/errors"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -120,12 +120,12 @@ out:
 func (mc *MetaConn) send(req *proto.Packet) (resp *proto.Packet, err error) {
 	err = req.WriteToConn(mc.conn)
 	if err != nil {
-		return nil, errors.Annotatef(err, "Failed to write to conn, req(%v)", req)
+		return nil, errors.Trace(err, "Failed to write to conn, req(%v)", req)
 	}
 	resp = proto.NewPacket()
 	err = resp.ReadFromConn(mc.conn, proto.ReadDeadlineTime)
 	if err != nil {
-		return nil, errors.Annotatef(err, "Failed to read from conn, req(%v)", req)
+		return nil, errors.Trace(err, "Failed to read from conn, req(%v)", req)
 	}
 	return resp, nil
 }

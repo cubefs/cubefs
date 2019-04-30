@@ -23,8 +23,8 @@ import (
 	"bytes"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/juju/errors"
 	"io/ioutil"
 	"regexp"
 	"strings"
@@ -519,7 +519,6 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	}
 	rstMsg = fmt.Sprintf("recive decommissionDisk node[%v] disk[%v], badPartitionIds[%v] has offline successfully",
 		node.Addr, diskPath, badPartitionIds)
-	m.cluster.BadDataPartitionIds.Store(fmt.Sprintf("%s:%s", offLineAddr, diskPath), badPartitionIds)
 	if err = m.cluster.decommissionDisk(node, diskPath, badPartitionIds); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
