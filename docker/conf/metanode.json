@@ -1,0 +1,16 @@
+{
+    "role": "metanode",
+    "listen": "17210",
+    "prof": "17220",
+    "raftHeartbeatPort": "17230",
+    "raftReplicaPort": "17240",
+    "logLevel": "info",
+    "logDir": "/cfs/log",
+    "metadataDir": "/cfs/data/meta",
+    "raftDir": "/cfs/data/raft",
+    "masterAddrs": [
+	    "192.168.0.11:17010",
+	    "192.168.0.12:17010",
+	    "192.168.0.13:17010"
+    ]
+}

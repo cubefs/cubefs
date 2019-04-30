@@ -1,0 +1,9 @@
+{
+    "masterAddr": "192.168.0.11:17010,192.168.0.12:17010,192.168.0.13:17010",
+	"mountPoint": "/cfs/mnt",
+	"volName": "ltptest",
+    "owner": "ltptest",
+	"logDir": "/cfs/log",
+	"logLevel": "info",
+	"profport": "17410"
+}
