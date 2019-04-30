@@ -23,18 +23,17 @@ import (
 	"strconv"
 	"time"
 
-	"strings"
-
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/juju/errors"
 	"github.com/tiglabs/raft"
 	raftProto "github.com/tiglabs/raft/proto"
 	"hash/crc32"
+	"strings"
 )
 
 func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
@@ -56,7 +55,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead:
 			case proto.OpReadTinyDelete:
 				log.LogRead(logContent)
-			case proto.OpWrite, proto.OpRandomWrite, proto.OpSyncRandomWrite, proto.OpSyncWrite:
+			case proto.OpWrite, proto.OpRandomWrite, proto.OpSyncRandomWrite, proto.OpSyncWrite, proto.OpMarkDelete:
 				log.LogWrite(logContent)
 			default:
 				log.LogInfo(logContent)
@@ -73,9 +72,9 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	case proto.OpStreamRead:
 		s.handleStreamReadPacket(p, c, StreamRead)
 	case proto.OpExtentRepairRead:
-		s.handleStreamReadPacket(p, c, RepairRead)
+		s.handleExtentRepaiReadPacket(p, c, RepairRead)
 	case proto.OpMarkDelete:
-		s.handleMarkDeletePacket(p)
+		s.handleMarkDeletePacket(p, c)
 	case proto.OpRandomWrite, proto.OpSyncRandomWrite:
 		s.handleRandomWritePacket(p)
 	case proto.OpNotifyReplicasToRepair:
@@ -209,7 +208,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 	}
 	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
 	if err != nil {
-		err = errors.Annotatef(err, "heartbeat to master(%v) failed.", request.MasterAddr)
+		err = errors.Trace(err, "heartbeat to master(%v) failed.", request.MasterAddr)
 		return
 	}
 }
@@ -252,7 +251,7 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 	data, _ := json.Marshal(task)
 	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
 	if err != nil {
-		err = errors.Annotatef(err, "delete DataPartition failed,partitionID(%v)", request.PartitionId)
+		err = errors.Trace(err, "delete DataPartition failed,partitionID(%v)", request.PartitionId)
 		log.LogErrorf("action[handlePacketToDeleteDataPartition] err(%v).", err)
 	}
 	log.LogInfof(fmt.Sprintf("action[handlePacketToDeleteDataPartition] %v error(%v)", request.PartitionId, string(data)))
@@ -262,7 +261,9 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 // Handle OpLoadDataPartition packet.
 func (s *DataNode) handlePacketToLoadDataPartition(p *repl.Packet) {
 	task := &proto.AdminTask{}
-	err := json.Unmarshal(p.Data, task)
+	var (
+		err error
+	)
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionLoadDataPartition, err.Error())
@@ -270,13 +271,18 @@ func (s *DataNode) handlePacketToLoadDataPartition(p *repl.Packet) {
 			p.PacketOkReply()
 		}
 	}()
-	if err != nil {
-		return
-	}
+	err = json.Unmarshal(p.Data, task)
+	p.PacketOkReply()
+	go s.asyncLoadDataPartition(task)
+}
+
+func (s *DataNode) asyncLoadDataPartition(task *proto.AdminTask) {
+	var (
+		err error
+	)
 	request := &proto.LoadDataPartitionRequest{}
 	response := &proto.LoadDataPartitionResponse{}
 	if task.OpCode == proto.OpLoadDataPartition {
-		// TODO unhandled errors
 		bytes, _ := json.Marshal(task.Request)
 		json.Unmarshal(bytes, request)
 		dp := s.space.Partition(request.PartitionId)
@@ -306,13 +312,13 @@ func (s *DataNode) handlePacketToLoadDataPartition(p *repl.Packet) {
 	}
 	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
 	if err != nil {
-		err = errors.Annotatef(err, "load DataPartition failed,partitionID(%v)", request.PartitionId)
-		log.LogError(errors.ErrorStack(err))
+		err = errors.Trace(err, "load DataPartition failed,partitionID(%v)", request.PartitionId)
+		log.LogError(errors.Stack(err))
 	}
 }
 
 // Handle OpMarkDelete packet.
-func (s *DataNode) handleMarkDeletePacket(p *repl.Packet) {
+func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	var (
 		err error
 	)
@@ -390,12 +396,12 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
 	_, isLeader := partition.IsRaftLeader()
 	if !isLeader {
-		err = storage.NotALeaderError
+		err = raft.ErrNotLeader
 		return
 	}
 	err = partition.RandomWriteSubmit(p)
 	if err != nil && strings.Contains(err.Error(), raft.ErrNotLeader.Error()) {
-		err = storage.NotALeaderError
+		err = raft.ErrNotLeader
 		return
 	}
 
@@ -409,37 +415,47 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 	}
 }
 
-// Handle OpStreamRead packet.
 func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
 	var (
 		err error
 	)
 	defer func() {
 		if err != nil {
-			logContent := fmt.Sprintf("action[OperatePacket] %v.",
-				p.LogMessage(p.GetOpMsg(), connect.RemoteAddr().String(), p.StartT, err))
-			log.LogError(logContent)
+			p.PackErrorBody(ActionStreamRead, err.Error())
+			p.WriteToConn(connect)
 		}
 	}()
 	partition := p.Object.(*DataPartition)
-	if !isRepairRead {
-		err = partition.CheckLeader(p, connect)
+	if err = partition.CheckLeader(p, connect); err != nil {
+		return
+	}
+	s.handleExtentRepaiReadPacket(p, connect, isRepairRead)
+
+	return
+}
+
+func (s *DataNode) handleExtentRepaiReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
+	var (
+		err error
+	)
+	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionStreamRead, err.Error())
 			p.WriteToConn(connect)
-			return
 		}
-	}
+	}()
+	partition := p.Object.(*DataPartition)
 	needReplySize := p.Size
 	offset := p.ExtentOffset
 	store := partition.ExtentStore()
-	reply := repl.NewStreamReadResponsePacket(p.ReqID, p.PartitionID, p.ExtentID)
-	reply.StartT = time.Now().UnixNano()
+
 	for {
 		if needReplySize <= 0 {
 			break
 		}
 		err = nil
+		reply := repl.NewStreamReadResponsePacket(p.ReqID, p.PartitionID, p.ExtentID)
+		reply.StartT = p.StartT
 		currReadSize := uint32(util.Min(int(needReplySize), util.ReadBlockSize))
 		if currReadSize == util.ReadBlockSize {
 			reply.Data, _ = proto.Buffers.Get(util.ReadBlockSize)
@@ -454,21 +470,12 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 		p.CRC = reply.CRC
 		tpObject.Set()
 		if err != nil {
-			reply.PackErrorBody(ActionStreamRead, err.Error())
-			p.PackErrorBody(ActionStreamRead, err.Error())
-			if err = reply.WriteToConn(connect); err != nil {
-				p.PackErrorBody(ActionStreamRead, err.Error())
-			}
 			return
 		}
 		reply.Size = uint32(currReadSize)
 		reply.ResultCode = proto.OpOk
 		p.ResultCode = proto.OpOk
-		logContent := fmt.Sprintf("action[OperatePacket] %v.",
-			p.LogMessage(p.GetOpMsg(), connect.RemoteAddr().String(), p.StartT, err))
-		log.LogRead(logContent)
 		if err = reply.WriteToConn(connect); err != nil {
-			p.PackErrorBody(ActionStreamRead, err.Error())
 			return
 		}
 		needReplySize -= currReadSize
@@ -476,6 +483,9 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 		if currReadSize == util.ReadBlockSize {
 			proto.Buffers.Put(reply.Data)
 		}
+		logContent := fmt.Sprintf("action[operatePacket] %v.",
+			reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
+		log.LogReadf(logContent)
 	}
 	p.PacketOkReply()
 
@@ -652,7 +662,7 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 		Status:      proto.TaskFailed,
 	}
 	if req.AddPeer.ID == req.RemovePeer.ID {
-		err = errors.Errorf("[opOfflineDataPartition]: AddPeer[%v] same withRemovePeer[%v]", req.AddPeer, req.RemovePeer)
+		err = errors.NewErrorf("[opOfflineDataPartition]: AddPeer[%v] same withRemovePeer[%v]", req.AddPeer, req.RemovePeer)
 		resp.Result = err.Error()
 		goto end
 	}
@@ -677,8 +687,8 @@ end:
 	data, _ := json.Marshal(adminTask)
 	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
 	if err != nil {
-		err = errors.Annotatef(err, "opOfflineDataPartition failed, partitionID(%v)", resp.PartitionId)
-		log.LogError(errors.ErrorStack(err))
+		err = errors.Trace(err, "opOfflineDataPartition failed, partitionID(%v)", resp.PartitionId)
+		log.LogError(errors.Stack(err))
 		return
 	}
 

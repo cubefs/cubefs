@@ -23,11 +23,10 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/juju/errors"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"path"
 	"runtime"
 	"strconv"
 	"strings"
@@ -38,6 +37,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/ump"
 )
 
 const (
@@ -94,13 +94,14 @@ func Mount(cfg *config.Config) (err error) {
 	attrValid := ParseConfigString(cfg, "attrValid")
 	enSyncWrite := ParseConfigString(cfg, "enSyncWrite")
 	autoInvalData := ParseConfigString(cfg, "autoInvalData")
+	umpDatadir := cfg.GetString("warnLogDir")
 
 	if mnt == "" || volname == "" || owner == "" || master == "" {
 		return errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", mnt, volname, owner, master))
 	}
 
 	level := ParseLogLevel(loglvl)
-	_, err = log.InitLog(path.Join(logpath, LoggerDir), LoggerPrefix, level, nil)
+	_, err = log.InitLog(logpath, LoggerPrefix, level, nil)
 	if err != nil {
 		return err
 	}
@@ -108,7 +109,7 @@ func Mount(cfg *config.Config) (err error) {
 
 	super, err := cfs.NewSuper(volname, owner, master, icacheTimeout, lookupValid, attrValid, enSyncWrite)
 	if err != nil {
-		log.LogError(errors.ErrorStack(err))
+		log.LogError(errors.Stack(err))
 		return err
 	}
 
@@ -132,6 +133,7 @@ func Mount(cfg *config.Config) (err error) {
 		fmt.Println(http.ListenAndServe(":"+profport, nil))
 	}()
 
+	ump.InitUmp(fmt.Sprintf("%v_%v", super.ClusterName(), ModuleName), umpDatadir)
 	exporter.Init(super.ClusterName(), ModuleName, cfg)
 
 	if err = fs.Serve(c, super); err != nil {

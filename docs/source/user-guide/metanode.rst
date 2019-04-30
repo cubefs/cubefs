@@ -18,6 +18,9 @@ Metanode is the manager of meta partitions and replicated by MultiRaft. Each met
    "consulAddr", "string", "Addresses of monitor system", "No" 
    "exporterPort", "string", "Port for monitor system", "No" 
    "masterAddrs", "string", "Addresses of master server", "Yes"
+   "warnLogDir","string","Warn message directory","No"
+   "totalMem","string","max memory metadata used","No"
+
 
 
 
@@ -30,13 +33,15 @@ Example:
         "listen": "9021",
         "prof": "9092",
         "logLevel": "debug",
-        "metadataDir": "/export/cfs/metanode_meta",
-        "logDir": "/export/Logs/cfs/metanode",
-        "raftDir": "/export/cfs/metanode_raft",
+        "metaDir": "/export/Data/metanode",
+        "logDir": "/export/Logs/metanode",
+        "raftDir": "/export/Data/metanode/raft",
+        "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
         "raftHeartbeatPort": "9093",
         "raftReplicaPort": "9094",
         "consulAddr": "http://consul.prometheus-cfs.local",
-         "exporterPort": 9511,
+        "exporterPort": 9511,
+        "totalMem":  "17179869184",
         "masterAddrs": [
             "192.168.31.173:80",
             "192.168.31.141:80",

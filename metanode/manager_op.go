@@ -22,8 +22,8 @@ import (
 	"bytes"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/juju/errors"
 	raftProto "github.com/tiglabs/raft/proto"
 )
 
@@ -47,7 +47,8 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	}
 
 	// collect memory info
-	resp.Total, resp.Used, err = util.GetMemInfo()
+	resp.Total = configTotalMem
+	resp.Used, err = util.GetProcessMemory(os.Getpid())
 	if err != nil {
 		adminTask.Status = proto.TaskFailed
 		goto end
@@ -101,7 +102,7 @@ func (m *metadataManager) opCreateMetaPartition(conn net.Conn, p *Packet,
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
-		err = errors.Errorf("[opCreateMetaPartition]: Unmarshal AdminTask"+
+		err = errors.NewErrorf("[opCreateMetaPartition]: Unmarshal AdminTask"+
 			" struct: %s", err.Error())
 		return
 	}
@@ -110,7 +111,7 @@ func (m *metadataManager) opCreateMetaPartition(conn net.Conn, p *Packet,
 	// create a new meta partition.
 	if err = m.createPartition(req.PartitionID, req.VolName,
 		req.Start, req.End, req.Members); err != nil {
-		err = errors.Errorf("[opCreateMetaPartition]->%s; request message: %v",
+		err = errors.NewErrorf("[opCreateMetaPartition]->%s; request message: %v",
 			err.Error(), adminTask.Request)
 		return
 	}
@@ -314,14 +315,14 @@ func (m *metadataManager) opMetaInodeGet(conn net.Conn, p *Packet,
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
 		m.respondToClient(conn, p)
-		err = errors.Errorf("[opMetaInodeGet]: %s", err.Error())
+		err = errors.NewErrorf("[opMetaInodeGet]: %s", err.Error())
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		m.respondToClient(conn, p)
-		err = errors.Errorf("[opMetaInodeGet] %s, req: %s", err.Error(),
+		err = errors.NewErrorf("[opMetaInodeGet] %s, req: %s", err.Error(),
 			string(p.Data))
 		return
 	}
@@ -329,7 +330,7 @@ func (m *metadataManager) opMetaInodeGet(conn net.Conn, p *Packet,
 		return
 	}
 	if err = mp.InodeGet(req, p); err != nil {
-		err = errors.Errorf("[opMetaInodeGet] %s, req: %s", err.Error(),
+		err = errors.NewErrorf("[opMetaInodeGet] %s, req: %s", err.Error(),
 			string(p.Data))
 	}
 	m.respondToClient(conn, p)
@@ -344,14 +345,14 @@ func (m *metadataManager) opMetaEvictInode(conn net.Conn, p *Packet,
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.respondToClient(conn, p)
-		err = errors.Errorf("[opMetaEvictInode] request unmarshal: %v", err.Error())
+		err = errors.NewErrorf("[opMetaEvictInode] request unmarshal: %v", err.Error())
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		m.respondToClient(conn, p)
-		err = errors.Errorf("[opMetaEvictInode] req: %s, resp: %v", req, err.Error())
+		err = errors.NewErrorf("[opMetaEvictInode] req: %s, resp: %v", req, err.Error())
 		return
 	}
 	if !m.serveProxy(conn, mp, p) {
@@ -359,7 +360,7 @@ func (m *metadataManager) opMetaEvictInode(conn net.Conn, p *Packet,
 	}
 
 	if err = mp.EvictInode(req, p); err != nil {
-		err = errors.Errorf("[opMetaEvictInode] req: %s, resp: %v", req, err.Error())
+		err = errors.NewErrorf("[opMetaEvictInode] req: %s, resp: %v", req, err.Error())
 	}
 	m.respondToClient(conn, p)
 	log.LogInfof("%s [opMetaEvictInode] req: %d - %v, resp: %v, body: %s",
@@ -373,7 +374,7 @@ func (m *metadataManager) opSetAttr(conn net.Conn, p *Packet,
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.respondToClient(conn, p)
-		err = errors.Errorf("[opSetAttr] req: %v, error: %v", req, err.Error())
+		err = errors.NewErrorf("[opSetAttr] req: %v, error: %v", req, err.Error())
 		return
 	}
 
@@ -381,7 +382,7 @@ func (m *metadataManager) opSetAttr(conn net.Conn, p *Packet,
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.respondToClient(conn, p)
-		err = errors.Errorf("[opSetAttr] req: %v, error: %v", req, err.Error())
+		err = errors.NewErrorf("[opSetAttr] req: %v, error: %v", req, err.Error())
 		return
 	}
 
@@ -389,7 +390,7 @@ func (m *metadataManager) opSetAttr(conn net.Conn, p *Packet,
 		return
 	}
 	if err = mp.SetAttr(p.Data, p); err != nil {
-		err = errors.Errorf("[opSetAttr] req: %v, error: %s", req, err.Error())
+		err = errors.NewErrorf("[opSetAttr] req: %v, error: %s", req, err.Error())
 	}
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opSetAttr] req: %d - %v, resp: %v, body: %s", remoteAddr,
@@ -434,7 +435,7 @@ func (m *metadataManager) opMetaExtentsAdd(conn net.Conn, p *Packet,
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		m.respondToClient(conn, p)
-		err = errors.Errorf("%s, response to client: %s", err.Error(),
+		err = errors.NewErrorf("%s, response to client: %s", err.Error(),
 			p.GetResultMsg())
 		return
 	}
@@ -645,13 +646,13 @@ func (m *metadataManager) opDecommissionMetaPartition(conn net.Conn,
 		Status:      proto.TaskFailed,
 	}
 	if req.AddPeer.ID == req.RemovePeer.ID {
-		err = errors.Errorf("[opDecommissionMetaPartition]: AddPeer[%v] same withRemovePeer[%v]", req.AddPeer, req.RemovePeer)
+		err = errors.NewErrorf("[opDecommissionMetaPartition]: AddPeer[%v] same withRemovePeer[%v]", req.AddPeer, req.RemovePeer)
 		resp.Result = err.Error()
 		goto end
 	}
 	reqData, err = json.Marshal(req)
 	if err != nil {
-		err = errors.Errorf("[opDecommissionMetaPartition]: partitionID= %d, "+
+		err = errors.NewErrorf("[opDecommissionMetaPartition]: partitionID= %d, "+
 			"Marshal %s", req.PartitionID, err)
 		resp.Result = err.Error()
 		goto end

@@ -50,11 +50,11 @@ var (
 )
 
 const (
-	DefaultRackName         = "chubaofs_rack1"
+	DefaultRackName         = "cfs_rack1"
 	DefaultRaftDir          = "raft"
-	DefaultRaftLogsToRetain = 20000 // Count of raft logs per data partition
+	DefaultRaftLogsToRetain = 2000 // Count of raft logs per data partition
 	DefaultDiskMaxErr       = 20
-	DefaultDiskRetain       = 30 * util.GB // GB
+	DefaultDiskRetain       = 20 * util.GB // GB
 )
 
 const (

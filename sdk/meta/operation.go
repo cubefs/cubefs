@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/juju/errors"
+	"github.com/chubaofs/chubaofs/util/errors"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/exporter"

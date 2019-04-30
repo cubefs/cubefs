@@ -447,6 +447,7 @@ func (s *raft) reciveMessage(m *proto.Message) {
 	case <-s.stopc:
 	case s.recvc <- m:
 	default:
+		logger.Warn(fmt.Sprintf("raft[%v] discard message(%v)", s.raftConfig.ID, m.ToString()))
 		return
 	}
 }
@@ -538,12 +539,6 @@ func (s *raft) sendMessage(m *proto.Message) {
 
 func (s *raft) maybeChange(respErr bool) {
 	updated := false
-	if s.prevSoftSt.term != s.raftFsm.term && s.raftFsm.leader == s.config.NodeID &&
-		s.curApplied.Get() < s.raftFsm.raftLog.committed {
-		logger.Warn("raft:[%v] changed leader wait applied. curApplied %v committed %v at term %d.",
-			s.raftFsm.id, s.curApplied.Get(), s.raftFsm.raftLog.committed, s.raftFsm.term)
-		return
-	}
 	if s.prevSoftSt.term != s.raftFsm.term {
 		updated = true
 		s.prevSoftSt.term = s.raftFsm.term

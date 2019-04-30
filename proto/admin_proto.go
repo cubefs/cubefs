@@ -169,6 +169,7 @@ type HeartBeatRequest struct {
 
 // PartitionReport defines the partition report.
 type PartitionReport struct {
+	VolName         string
 	PartitionID     uint64
 	PartitionStatus int
 	Total           uint64
