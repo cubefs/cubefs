@@ -1,0 +1,208 @@
+version: '2.1'
+
+networks:
+    extnetwork:
+      ipam:
+         config:
+         - subnet: 192.168.0.0/24
+           gateway: 192.168.0.1
+
+services:
+    servers:
+        image: chubaofs/cfs-build:1.0
+        depends_on:
+            - master1
+            - master2
+            - master3
+            - metanode1
+            - metanode2
+            - metanode3
+            - datanode1
+            - datanode2
+            - datanode3
+        networks:
+            extnetwork:
+
+    master1:
+        image: chubaofs/cfs-build:1.0
+        ports:
+            - "5901"
+            - "5902"
+            - "17010"
+            - "17020"
+        volumes:
+            - ./bin:/cfs/bin
+            - ./conf/master1.json:/cfs/conf/master.json
+            - ./script/start_master.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.11
+
+    master2:
+        image: chubaofs/cfs-build:1.0
+        ports:
+            - "5901"
+            - "5902"
+            - "17010"
+            - "17020"
+        volumes:
+            - ./bin:/cfs/bin
+            - ./conf/master2.json:/cfs/conf/master.json
+            - ./script/start_master.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.12
+    master3:
+        image: chubaofs/cfs-build:1.0
+        ports:
+            - "5901"
+            - "5902"
+            - "17010"
+            - "17020"
+        volumes:
+            - ./bin:/cfs/bin
+            - ./conf/master3.json:/cfs/conf/master.json
+            - ./script/start_master.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.13
+
+    metanode1:
+        image: chubaofs/cfs-build:1.0
+        ports:
+            - "17210"
+            - "17220"
+            - "17230"
+            - "17240"
+        volumes:
+            - ./bin:/cfs/bin
+            - ./conf/metanode.json:/cfs/conf/metanode.json
+            - ./script/start_meta.sh:/cfs/script/start.sh
+        command: /bin/bash /cfs/script/start.sh
+        restart: on-failure
+        networks:
+            extnetwork:
+        depends_on:
+            - "master1"
+            - "master2"
+            - "master3"
+    metanode2:
+        image: chubaofs/cfs-build:1.0
+        ports:
+            - "17210"
+            - "17220"
+            - "17230"
+            - "17240"
+        volumes:
+            - ./bin:/cfs/bin
+            - ./conf/metanode.json:/cfs/conf/metanode.json
+            - ./script/start_meta.sh:/cfs/script/start.sh
+        command: /bin/bash /cfs/script/start.sh
+        restart: on-failure
+        networks:
+            extnetwork:
+        depends_on:
+            - "master1"
+            - "master2"
+            - "master3"
+    metanode3:
+        image: chubaofs/cfs-build:1.0
+        ports:
+            - "17210"
+            - "17220"
+            - "17230"
+            - "17240"
+        volumes:
+            - ./bin:/cfs/bin
+            - ./conf/metanode.json:/cfs/conf/metanode.json
+            - ./script/start_meta.sh:/cfs/script/start.sh
+        command: /bin/bash /cfs/script/start.sh
+        restart: on-failure
+        networks:
+            extnetwork:
+        depends_on:
+            - "master1"
+            - "master2"
+            - "master3"
+
+    datanode1:
+        image: chubaofs/cfs-build:1.0
+        ports:
+            - "17310"
+            - "17320"
+            - "17330"
+            - "17340"
+        volumes:
+            - ./bin:/cfs/bin
+            - ./conf/datanode.json:/cfs/conf/datanode.json
+            - ./script/start_datanode.sh:/cfs/script/start.sh
+        command: /bin/bash /cfs/script/start.sh
+        depends_on:
+            - "metanode1"
+            - "metanode2"
+            - "metanode3"
+        restart: on-failure
+        networks:
+            extnetwork:
+    datanode2:
+        image: chubaofs/cfs-build:1.0
+        ports:
+            - "17310"
+            - "17320"
+            - "17330"
+            - "17340"
+        volumes:
+            - ./bin:/cfs/bin
+            - ./conf/datanode.json:/cfs/conf/datanode.json
+            - ./script/start_datanode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        depends_on:
+            - "metanode1"
+            - "metanode2"
+            - "metanode3"
+        restart: on-failure
+        networks:
+            extnetwork:
+    datanode3:
+        image: chubaofs/cfs-build:1.0
+        ports:
+            - "17310"
+            - "17320"
+            - "17330"
+            - "17340"
+        volumes:
+            - ./bin:/cfs/bin
+            - ./conf/datanode.json:/cfs/conf/datanode.json
+            - ./script/start_datanode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        depends_on:
+            - "metanode1"
+            - "metanode2"
+            - "metanode3"
+        restart: on-failure
+        networks:
+            extnetwork:
+
+    client:
+        image: chubaofs/centos-ltp:1.0
+        volumes:
+            - .:/go/src/github.com/chubaofs/cfs
+            - ./bin:/cfs/bin
+            - ./conf/client.json:/cfs/conf/client.json
+            - ./script/run_test.sh:/cfs/script/start.sh
+        privileged: true
+        devices:
+            - /dev/fuse:/dev/fuse:rwm
+        cap_add:
+            - SYS_ADMIN
+        security_opt:
+            - "apparmor:unconfiged"
+        command: /bin/bash /cfs/script/start.sh
+        networks:
+            extnetwork:

@@ -1,23 +1,28 @@
 
 default: build
 
-build: pre_build build_server build_client
+build: build_server build_client
 	@echo "build done"
 
 pre_build:
-	@mkdir -p build
+	@mkdir -p docker/bin
 
-build_server:
+build_server: pre_build
 	@{ \
-		echo "build server" \
-		&& (cd cmd && sh ./build.sh && mv cmd ../build/cfs-server) \
+		echo -n "build server " \
+		&& (go build -o docker/bin/cfs-server cmd/*.go ) \
+		&& (echo "success") \
 	}
 
-build_client:
+build_client: pre_build
 	@{ \
-		echo "build client" \
-		&& (cd client && sh ./build.sh && mv client ../build/cfs-client ) \
+		echo -n "build client " \
+		&& (go build -o docker/bin/cfs-client client/*.go ) \
+		&& (echo "success") \
 	}
 
 ci-test:
-	go test $(go list ./...)
+	@{ \
+		echo "ci test" \
+		&& ( go test ./... ) \
+	}
