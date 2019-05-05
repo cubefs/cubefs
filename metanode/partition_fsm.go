@@ -34,13 +34,16 @@ import (
 
 // Apply applies the given operational commands.
 func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
-	defer func() {
-		mp.uploadApplyID(index)
-	}()
 	msg := &MetaItem{}
+	defer func() {
+		if err==nil {
+			mp.uploadApplyID(index)
+		}
+	}()
 	if err = msg.UnmarshalJson(command); err != nil {
 		return
 	}
+
 	switch msg.Op {
 	case opFSMCreateInode:
 		ino := NewInode(0, 0)
