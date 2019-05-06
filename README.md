@@ -14,11 +14,13 @@
 ## Overview
 
 
-ChubaoFS (储宝文件系统) is a distributed file system with the following features: 
+ChubaoFS (储宝文件系统) is a distributed file system for cloud native applications. It has the following features: 
 
 * scale-out metadata management
 
-* strong replication consistency
+* strong replication consistency for both append and random write
+
+* specific storage optimizations for large and small files
 
 * multiple volumes
 
