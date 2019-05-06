@@ -833,7 +833,7 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner string, size, capacity int) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner string, mpCount, size, capacity int) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -857,7 +857,7 @@ func (c *Cluster) createVol(name, owner string, size, capacity int) (vol *Vol, e
 		err = proto.ErrVolNotExists
 		goto errHandler
 	}
-	vol.initMetaPartitions(c)
+	vol.initMetaPartitions(c, mpCount)
 	if len(vol.MetaPartitions) == 0 {
 		vol.Status = markDelete
 		if err = c.syncDeleteVol(vol); err != nil {
