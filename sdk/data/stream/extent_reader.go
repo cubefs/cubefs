@@ -65,7 +65,7 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 			replyPacket.Data = req.Data[readBytes : readBytes+bufSize]
 			e := replyPacket.readFromConn(conn, proto.ReadDeadlineTime)
 			if e != nil {
-				log.LogErrorf("Extent Reader Read: failed to read from connect, readBytes(%v) err(%v)", readBytes, e)
+				log.LogWarnf("Extent Reader Read: failed to read from connect, ino(%v) req(%v) readBytes(%v) err(%v)", reader.inode, reqPacket, readBytes, e)
 				// Upon receiving TryOtherAddrError, other hosts will be retried.
 				return TryOtherAddrError, false
 			}
