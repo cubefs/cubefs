@@ -1,6 +1,6 @@
 The ChubaoFS maintainers are:
 
-* Haifeng Liu <bladehliu@qq.com> @bladehliu (super-maintainer)
+* Haifeng Liu <bladehliu@qq.com> @bladehliu (project lead, super-maintainer, 05/05/2020)
 * Weilong Guo <guowl18702995996@gmail.com> @awzhgw (super-maintainer)
 * Shuoran Liu <sjzlsr@126.com> @sjzlsr: Client and SDK
 * Hongyin Zhu <zzhniy.163.niy@163.com> @zhuhyc: Master
