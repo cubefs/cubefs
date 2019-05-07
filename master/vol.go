@@ -97,18 +97,21 @@ func (vol *Vol) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err
 	return vol.dataPartitions.get(partitionID)
 }
 
-func (vol *Vol) initMetaPartitions(c *Cluster) {
+func (vol *Vol) initMetaPartitions(c *Cluster, count int) {
 	// initialize k meta partitionMap at a time
 	var (
 		start uint64
 		end   uint64
 	)
-	for index := 0; index < defaultInitMetaPartitionCount; index++ {
+	if count < defaultInitMetaPartitionCount {
+		count = defaultInitMetaPartitionCount
+	}
+	for index := 0; index < count; index++ {
 		if index != 0 {
 			start = end + 1
 		}
 		end = defaultMetaPartitionInodeIDStep * uint64(index+1)
-		if index == defaultInitMetaPartitionCount-1 {
+		if index == count-1 {
 			end = defaultMaxMetaPartitionInodeID
 		}
 		if err := c.createMetaPartition(vol.Name, start, end); err != nil {

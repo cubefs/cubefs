@@ -18,18 +18,19 @@ import "github.com/chubaofs/chubaofs/util"
 
 // Keys in the request
 const (
-	addrKey              = "addr"
-	diskPathKey          = "disk"
-	nameKey              = "name"
-	idKey                = "id"
-	countKey             = "count"
-	startKey             = "start"
-	enableKey            = "enable"
-	thresholdKey         = "threshold"
-	dataPartitionSizeKey = "size"
-	volCapacityKey       = "capacity"
-	volOwnerKey          = "owner"
-	volAuthKey           = "authKey"
+	addrKey               = "addr"
+	diskPathKey           = "disk"
+	nameKey               = "name"
+	idKey                 = "id"
+	countKey              = "count"
+	startKey              = "start"
+	enableKey             = "enable"
+	thresholdKey          = "threshold"
+	dataPartitionSizeKey  = "size"
+	metaPartitionCountKey = "mpCount"
+	volCapacityKey        = "capacity"
+	volOwnerKey           = "owner"
+	volAuthKey            = "authKey"
 )
 
 const (

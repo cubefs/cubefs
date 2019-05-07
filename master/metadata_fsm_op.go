@@ -79,6 +79,12 @@ type dataPartitionValue struct {
 	Status      int8
 	VolID       uint64
 	VolName     string
+	Replicas    []*replicaValue
+}
+
+type replicaValue struct {
+	Addr     string
+	DiskPath string
 }
 
 func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
@@ -90,6 +96,11 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		Status:      dp.Status,
 		VolID:       dp.VolID,
 		VolName:     dp.VolName,
+		Replicas:    make([]*replicaValue, 0),
+	}
+	for _, replica := range dp.Replicas {
+		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
+		dpv.Replicas = append(dpv.Replicas, rv)
 	}
 	return
 }
@@ -842,6 +853,9 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID)
 		dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 		dp.Peers = dpv.Peers
+		for _,rv := range dpv.Replicas {
+			dp.afterCreation(rv.Addr,rv.DiskPath,c)
+		}
 		vol.dataPartitions.put(dp)
 		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v]", vol.Name, dp.PartitionID)
 	}
