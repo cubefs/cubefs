@@ -73,6 +73,7 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 
 	addr = mp.LeaderAddr
 	if addr == "" {
+		err = errors.New(fmt.Sprintf("sendToMetaPartition failed: leader addr empty, req(%v) mp(%v)", req, mp))
 		goto retry
 	}
 	mc, err = mw.getConn(mp.PartitionID, addr)
@@ -110,8 +111,8 @@ retry:
 	}
 
 out:
-	if err != nil {
-		return nil, errors.New(fmt.Sprintf("sendToMetaPartition faild: req(%v) mp(%v)", req, mp))
+	if err != nil || resp == nil {
+		return nil, errors.New(fmt.Sprintf("sendToMetaPartition failed: req(%v) mp(%v) err(%v) resp(%v)", req, mp, err, resp))
 	}
 	log.LogDebugf("sendToMetaPartition successful: req(%v) mc(%v) resp(%v)", req, mc, resp)
 	return resp, nil
