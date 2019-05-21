@@ -28,15 +28,14 @@ import (
 
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
-	PartitionID    uint64
-	LastLoadedTime int64
-	ReplicaNum     uint8
-	Status         int8
-	isRecover      bool
-	Replicas       []*DataReplica
-
-	Hosts []string // host addresses
-	Peers []proto.Peer
+	PartitionID             uint64
+	LastLoadedTime          int64
+	ReplicaNum              uint8
+	Status                  int8
+	isRecover               bool
+	Replicas                []*DataReplica
+	Hosts                   []string // host addresses
+	Peers                   []proto.Peer
 	sync.RWMutex
 	total                   uint64
 	used                    uint64
@@ -311,7 +310,7 @@ func (partition *DataPartition) getFileCount() {
 	}
 
 	for _, replica := range partition.Replicas {
-		msg = fmt.Sprintf(getFileCountOnDataReplica+"partitionID:%v  replicaAddr:%v  FileCount:%v  "+
+		msg = fmt.Sprintf(getFileCountOnDataReplica + "partitionID:%v  replicaAddr:%v  FileCount:%v  "+
 			"NodeIsActive:%v  replicaIsActive:%v  .replicaStatusOnNode:%v ", partition.PartitionID, replica.Addr, replica.FileCount,
 			replica.getReplicaNode().isActive, replica.isActive(defaultDataPartitionTimeOutSec), replica.Status)
 		log.LogInfo(msg)
@@ -487,7 +486,7 @@ func (partition *DataPartition) updateForOffline(offlineAddr, newAddr, volName s
 	return
 }
 
-func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode *DataNode) {
+func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode *DataNode, c *Cluster) {
 
 	if !partition.hasHost(dataNode.Addr) {
 		return
@@ -508,7 +507,10 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 	replica.setAlive()
 	replica.IsLeader = vr.IsLeader
 	replica.NeedsToCompare = vr.NeedCompare
-	replica.DiskPath = vr.DiskPath
+	if replica.DiskPath != vr.DiskPath && vr.DiskPath != "" {
+		replica.DiskPath = vr.DiskPath
+		c.syncUpdateDataPartition(partition)
+	}
 	partition.checkAndRemoveMissReplica(dataNode.Addr)
 }
 
@@ -523,13 +525,14 @@ func (partition *DataPartition) getMaxUsedSpace() uint64 {
 	return partition.used
 }
 
-func (partition *DataPartition) afterCreation(nodeAddr string, c *Cluster) (err error) {
+func (partition *DataPartition) afterCreation(nodeAddr, diskPath string, c *Cluster) (err error) {
 	dataNode, err := c.dataNode(nodeAddr)
 	if err != nil {
 		return err
 	}
 	replica := newDataReplica(dataNode)
 	replica.Status = proto.ReadWrite
+	replica.DiskPath = diskPath
 	partition.addReplica(replica)
 	partition.checkAndRemoveMissReplica(replica.Addr)
 	return

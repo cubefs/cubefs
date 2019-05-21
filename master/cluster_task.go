@@ -563,7 +563,7 @@ func (c *Cluster) updateDataNode(dataNode *DataNode, dps []*proto.PartitionRepor
 			continue
 		}
 		if dp, err := c.getDataPartitionByID(vr.PartitionID); err == nil {
-			dp.updateMetric(vr, dataNode)
+			dp.updateMetric(vr, dataNode,c)
 		}
 	}
 }
