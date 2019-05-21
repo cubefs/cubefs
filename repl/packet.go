@@ -46,7 +46,7 @@ type Packet struct {
 }
 
 func (p *Packet) AfterTp() (ok bool) {
-	p.TpObject.Set()
+	p.TpObject.Set(nil)
 
 	return
 }

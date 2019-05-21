@@ -67,7 +67,7 @@ type metadataManager struct {
 func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
 	metric := exporter.NewTPCnt(p.GetOpMsg())
-	defer metric.Set()
+	defer metric.Set(err)
 
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:
