@@ -6,7 +6,6 @@
   "logDir": "/export/Logs/cfs",
   "logLevel": "info",
   "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
-  "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
   "exporterPort": 9513,
   "profPort": "10094"
 }

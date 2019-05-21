@@ -8,7 +8,6 @@
     "raftDir": "/export/Data/bdfs/metanode_raft",
     "raftHeartbeatPort": "9093",
     "raftReplicaPort": "9094",
-    "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
     "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
     "exporterPort": 9511,
     "masterAddrs": [

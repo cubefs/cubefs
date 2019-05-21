@@ -380,15 +380,16 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		err      error
 		msg      string
 		size     int
+		mpCount  int
 		capacity int
 		vol      *Vol
 	)
 
-	if name, owner, size, capacity, err = parseRequestToCreateVol(r); err != nil {
+	if name, owner, mpCount, size, capacity, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.createVol(name, owner, size, capacity); err != nil {
+	if vol, err = m.cluster.createVol(name, owner, mpCount, size, capacity); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -791,7 +792,7 @@ func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity in
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name, owner string, size, capacity int, err error) {
+func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size, capacity int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -801,6 +802,12 @@ func parseRequestToCreateVol(r *http.Request) (name, owner string, size, capacit
 	if owner = r.FormValue(volOwnerKey); owner == "" {
 		err = keyNotFound(volOwnerKey)
 		return
+	}
+
+	if mpCountStr := r.FormValue(metaPartitionCountKey); mpCountStr != "" {
+		if mpCount, err = strconv.Atoi(mpCountStr); err != nil {
+			mpCount = defaultInitMetaPartitionCount
+		}
 	}
 
 	if sizeStr := r.FormValue(dataPartitionSizeKey); sizeStr != "" {

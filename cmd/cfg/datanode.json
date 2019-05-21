@@ -4,7 +4,6 @@
   "prof": "6001",
   "clusterID": "data",
   "logDir": "/var/logs",
-  "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
   "logLevel": "debug",
   "masterAddr": [
     "10.196.30.200:80",
