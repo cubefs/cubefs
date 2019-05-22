@@ -45,7 +45,7 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode uint32, target []byte) (s
 	}
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set()
+	defer metric.Set(err)
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -90,7 +90,7 @@ func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64) (status int, inf
 	}
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set()
+	defer metric.Set(err)
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -131,7 +131,7 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, err 
 	}
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set()
+	defer metric.Set(err)
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -172,7 +172,7 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 	}
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set()
+	defer metric.Set(err)
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -210,7 +210,7 @@ func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, 
 	}
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set()
+	defer metric.Set(err)
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -251,7 +251,7 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string) 
 	}
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set()
+	defer metric.Set(err)
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -293,7 +293,7 @@ func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string) (
 	log.LogDebugf("lookup enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set()
+	defer metric.Set(err)
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -337,7 +337,7 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64) (status int, info *
 	}
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set()
+	defer metric.Set(err)
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -379,7 +379,7 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 	}
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set()
+	defer metric.Set(err)
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -426,7 +426,7 @@ func (mw *MetaWrapper) readdir(mp *MetaPartition, parentID uint64) (status int, 
 	}
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set()
+	defer metric.Set(err)
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -468,7 +468,7 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 	}
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set()
+	defer metric.Set(err)
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -499,7 +499,7 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (status int, 
 	}
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set()
+	defer metric.Set(err)
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -542,7 +542,7 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64) (status i
 	log.LogDebugf("truncate enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set()
+	defer metric.Set(err)
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -578,7 +578,7 @@ func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info 
 	log.LogDebugf("ilink enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set()
+	defer metric.Set(err)
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
@@ -629,7 +629,7 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 	log.LogDebugf("setattr enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set()
+	defer metric.Set(err)
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {

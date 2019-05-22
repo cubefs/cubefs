@@ -62,7 +62,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 			}
 		}
 		p.Size = resultSize
-		tpObject.Set()
+		tpObject.Set(err)
 	}()
 	switch p.Opcode {
 	case proto.OpCreateExtent:
@@ -468,7 +468,7 @@ func (s *DataNode) handleExtentRepaiReadPacket(p *repl.Packet, connect net.Conn,
 		p.ExtentOffset = offset
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead)
 		p.CRC = reply.CRC
-		tpObject.Set()
+		tpObject.Set(err)
 		if err != nil {
 			return
 		}
