@@ -46,7 +46,25 @@ func (s *Super) MkDir(ctx context.Context, op *fuseops.MkDirOp) error {
 }
 
 func (s *Super) MkNode(ctx context.Context, op *fuseops.MkNodeOp) error {
-	return fuse.ENOSYS
+	if op.Mode&os.ModeNamedPipe == 0 && op.Mode&os.ModeSocket == 0 {
+		return fuse.ENOSYS
+	}
+
+	pino := uint64(op.Parent)
+	desc := fuse.OpDescription(op)
+
+	info, err := s.mw.Create_ll(pino, op.Name, proto.Mode(op.Mode|os.ModePerm), nil)
+	if err != nil {
+		log.LogErrorf("%v: err(%v)", desc, err)
+		return ParseError(err)
+	}
+
+	child := NewInode(info)
+	s.ic.Put(child)
+	fillChildEntry(&op.Entry, child)
+
+	log.LogDebugf("TRACE %v: child(%v)", desc, child)
+	return nil
 }
 
 func (s *Super) CreateFile(ctx context.Context, op *fuseops.CreateFileOp) error {
