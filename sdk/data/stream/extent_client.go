@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/chubaofs/chubaofs/util/errors"
 
@@ -30,6 +31,11 @@ import (
 type AppendExtentKeyFunc func(inode uint64, key proto.ExtentKey) error
 type GetExtentsFunc func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
 type TruncateFunc func(inode, size uint64) error
+
+const (
+	MaxMountRetryLimit = 5
+	MountRetryInterval = time.Second * 5
+)
 
 var (
 	gDataWrapper       *wrapper.Wrapper
@@ -54,14 +60,26 @@ type ExtentClient struct {
 func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc, truncate TruncateFunc) (client *ExtentClient, err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	client = new(ExtentClient)
+
+	limit := MaxMountRetryLimit
+retry:
 	gDataWrapper, err = wrapper.NewDataPartitionWrapper(volname, master)
 	if err != nil {
-		return nil, errors.Trace(err, "Init dp wrapper failed!")
+		if limit <= 0 {
+			return nil, errors.Trace(err, "Init data wrapper failed!")
+		} else {
+			limit--
+			time.Sleep(MountRetryInterval)
+			goto retry
+		}
 	}
+
 	client.streamers = make(map[uint64]*Streamer)
 	client.appendExtentKey = appendExtentKey
 	client.getExtents = getExtents
 	client.truncate = truncate
+
+	// Init request pools
 	openRequestPool = &sync.Pool{New: func() interface{} {
 		return &OpenRequest{}
 	}}
@@ -80,6 +98,7 @@ func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc
 	evictRequestPool = &sync.Pool{New: func() interface{} {
 		return &EvictRequest{}
 	}}
+
 	return
 }
 
