@@ -265,7 +265,7 @@ func (mp *metaPartition) notifyRaftFollowerToFreeInodes(wg *sync.WaitGroup, targ
 	}
 
 	if request.ResultCode != proto.OpOk {
-		err = fmt.Errorf("request(%v) error(%v)", request.GetUniqueLogId(), string(request.Data[request.Size]))
+		err = fmt.Errorf("request(%v) error(%v)", request.GetUniqueLogId(), string(request.Data[:request.Size]))
 	}
 
 	return
