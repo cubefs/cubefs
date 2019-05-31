@@ -52,6 +52,8 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 		return
 	}
 	ino := NewInode(inoID, req.Mode)
+	ino.Uid = req.Uid
+	ino.Gid = req.Gid
 	ino.LinkTarget = req.Target
 	val, err := ino.Marshal()
 	if err != nil {

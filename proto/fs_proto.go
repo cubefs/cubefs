@@ -86,6 +86,8 @@ type CreateInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Mode        uint32 `json:"mode"`
+	Uid         uint32 `json:"uid"`
+	Gid         uint32 `json:"gid"`
 	Target      []byte `json:"tgt"`
 }
 

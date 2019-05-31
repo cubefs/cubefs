@@ -31,7 +31,7 @@ func (s *Super) MkDir(ctx context.Context, op *fuseops.MkDirOp) error {
 	pino := uint64(op.Parent)
 	desc := fuse.OpDescription(op)
 
-	info, err := s.mw.Create_ll(pino, op.Name, proto.Mode(os.ModeDir|op.Mode.Perm()), nil)
+	info, err := s.mw.Create_ll(pino, op.Name, proto.Mode(os.ModeDir|op.Mode.Perm()), op.Uid, op.Gid, nil)
 	if err != nil {
 		log.LogErrorf("%v: err(%v)", desc, err)
 		return ParseError(err)
@@ -53,7 +53,7 @@ func (s *Super) MkNode(ctx context.Context, op *fuseops.MkNodeOp) error {
 	pino := uint64(op.Parent)
 	desc := fuse.OpDescription(op)
 
-	info, err := s.mw.Create_ll(pino, op.Name, proto.Mode(op.Mode|os.ModePerm), nil)
+	info, err := s.mw.Create_ll(pino, op.Name, proto.Mode(op.Mode|os.ModePerm), op.Uid, op.Gid, nil)
 	if err != nil {
 		log.LogErrorf("%v: err(%v)", desc, err)
 		return ParseError(err)
@@ -71,7 +71,7 @@ func (s *Super) CreateFile(ctx context.Context, op *fuseops.CreateFileOp) error 
 	pino := uint64(op.Parent)
 	desc := fuse.OpDescription(op)
 
-	info, err := s.mw.Create_ll(pino, op.Name, proto.Mode(op.Mode.Perm()), nil)
+	info, err := s.mw.Create_ll(pino, op.Name, proto.Mode(op.Mode.Perm()), op.Uid, op.Gid, nil)
 	if err != nil {
 		log.LogErrorf("%v: err(%v)", desc, err)
 		return ParseError(err)
@@ -122,7 +122,7 @@ func (s *Super) CreateSymlink(ctx context.Context, op *fuseops.CreateSymlinkOp) 
 	pino := uint64(op.Parent)
 	desc := fuse.OpDescription(op)
 
-	info, err := s.mw.Create_ll(pino, op.Name, proto.Mode(os.ModeSymlink|os.ModePerm), nil)
+	info, err := s.mw.Create_ll(pino, op.Name, proto.Mode(os.ModeSymlink|os.ModePerm), op.Uid, op.Gid, nil)
 	if err != nil {
 		log.LogErrorf("%v: err(%v)", desc, err)
 		return ParseError(err)
