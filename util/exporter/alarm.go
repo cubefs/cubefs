@@ -16,6 +16,7 @@ package exporter
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/ump"
 	"sync"
 )
 
@@ -39,12 +40,13 @@ type Alarm struct {
 	Counter
 }
 
-func NewAlarm(name string) (a *Alarm) {
+func NewAlarm(key string) (a *Alarm) {
 	if !enabled {
+		ump.Alarm(fmt.Sprintf("%v_%v_warning", clustername, modulename), key)
 		return
 	}
 	a = AlarmPool.Get().(*Alarm)
-	a.name = metricsName(fmt.Sprintf("%s_alarm", name))
+	a.name = metricsName(fmt.Sprintf("%s_alarm", key))
 	a.Add(1)
 	return
 }
