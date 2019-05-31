@@ -177,7 +177,11 @@ func main() {
 
 	if profPort != "" {
 		go func() {
-			http.ListenAndServe(fmt.Sprintf(":%v", profPort), nil)
+			err = http.ListenAndServe(fmt.Sprintf(":%v", profPort), nil)
+			if err != nil {
+				fmt.Println(fmt.Sprintf("cannot listen pprof %v err %v", profPort, err.Error()))
+				os.Exit(1)
+			}
 		}()
 	}
 
