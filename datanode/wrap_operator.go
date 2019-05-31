@@ -362,6 +362,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	store := partition.ExtentStore()
 	if p.Size <= util.BlockSize {
 		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, UpdateSize, p.Opcode == proto.OpSyncWrite)
+		partition.checkIsDiskError(err)
 	} else {
 		size := p.Size
 		offset := 0
@@ -373,6 +374,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			data := p.Data[offset : offset+currSize]
 			crc := crc32.ChecksumIEEE(data)
 			err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, UpdateSize, p.Opcode == proto.OpSyncWrite)
+			partition.checkIsDiskError(err)
 			if err != nil {
 				break
 			}
@@ -467,6 +469,7 @@ func (s *DataNode) handleExtentRepaiReadPacket(p *repl.Packet, connect net.Conn,
 		p.Size = uint32(currReadSize)
 		p.ExtentOffset = offset
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead)
+		partition.checkIsDiskError(err)
 		p.CRC = reply.CRC
 		tpObject.Set()
 		if err != nil {
