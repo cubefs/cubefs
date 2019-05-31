@@ -229,6 +229,8 @@ type MkDirOp struct {
 	// The name of the child to create, and the mode with which to create it.
 	Name string
 	Mode os.FileMode
+	Uid  uint32
+	Gid  uint32
 
 	// Set by the file system: information about the inode that was created.
 	//
@@ -256,6 +258,8 @@ type MkNodeOp struct {
 	// The name of the child to create, and the mode with which to create it.
 	Name string
 	Mode os.FileMode
+	Uid  uint32
+	Gid  uint32
 
 	// Set by the file system: information about the inode that was created.
 	//
@@ -281,6 +285,8 @@ type CreateFileOp struct {
 	// The name of the child to create, and the mode with which to create it.
 	Name string
 	Mode os.FileMode
+	Uid  uint32
+	Gid  uint32
 
 	// Set by the file system: information about the inode that was created.
 	//
@@ -307,6 +313,9 @@ type CreateSymlinkOp struct {
 
 	// The name of the symlink to create.
 	Name string
+
+	Uid uint32
+	Gid uint32
 
 	// The target of the symlink.
 	Target string
