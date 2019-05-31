@@ -55,7 +55,9 @@ const (
 )
 
 var (
-	Version = "0.01"
+	CommitID   string
+	BranchName string
+	BuildTime  string
 )
 
 var (
@@ -69,7 +71,10 @@ func main() {
 	flag.Parse()
 
 	if *configVersion {
-		fmt.Printf("CFS client v2 verson: %s\n", Version)
+		fmt.Printf("ChubaoFS Client v2\n")
+		fmt.Printf("Branch: %s\n", BranchName)
+		fmt.Printf("Commit: %s\n", CommitID)
+		fmt.Printf("Build: %s %s %s %s\n", runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime)
 		os.Exit(0)
 	}
 
