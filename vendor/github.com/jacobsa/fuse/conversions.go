@@ -140,6 +140,9 @@ func convertInMessage(
 			// opcode is mkdir. But we want the correct mode to go through, so ensure
 			// that os.ModeDir is set.
 			Mode: convertFileMode(in.Mode) | os.ModeDir,
+
+			Uid: inMsg.Header().Uid,
+			Gid: inMsg.Header().Gid,
 		}
 
 	case fusekernel.OpMknod:
@@ -161,6 +164,8 @@ func convertInMessage(
 			Parent: fuseops.InodeID(inMsg.Header().Nodeid),
 			Name:   string(name),
 			Mode:   convertFileMode(in.Mode),
+			Uid:    inMsg.Header().Uid,
+			Gid:    inMsg.Header().Gid,
 		}
 
 	case fusekernel.OpCreate:
@@ -182,6 +187,8 @@ func convertInMessage(
 			Parent: fuseops.InodeID(inMsg.Header().Nodeid),
 			Name:   string(name),
 			Mode:   convertFileMode(in.Mode),
+			Uid:    inMsg.Header().Uid,
+			Gid:    inMsg.Header().Gid,
 		}
 
 	case fusekernel.OpSymlink:
