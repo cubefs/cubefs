@@ -40,13 +40,13 @@ type Alarm struct {
 	Counter
 }
 
-func NewAlarm(key string) (a *Alarm) {
+func NewAlarm(detail string) (a *Alarm) {
 	if !enabled {
-		ump.Alarm(fmt.Sprintf("%v_%v_warning", clustername, modulename), key)
+		ump.Alarm(fmt.Sprintf("%v_%v_warning", clustername, modulename), detail)
 		return
 	}
 	a = AlarmPool.Get().(*Alarm)
-	a.name = metricsName(fmt.Sprintf("%s_alarm", key))
+	a.name = metricsName(fmt.Sprintf("%s_alarm", detail))
 	a.Add(1)
 	return
 }
