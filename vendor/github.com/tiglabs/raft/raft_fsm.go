@@ -137,7 +137,7 @@ func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 }
 
 func (r *raftFsm) doRandomSeed() {
-	ticker := time.Tick(time.Duration(rand.Intn(10)) * time.Second)
+	ticker := time.Tick(time.Duration(rand.Intn(5)) * time.Second)
 	for {
 		select {
 		case <-ticker:
