@@ -191,7 +191,7 @@ func (mp *metaPartition) setExtentDeleteFileCursor(buf []byte) (err error) {
 	if err != nil {
 		return
 	}
-	fp, err := os.OpenFile(path.Join(mp.config.RootDir, fileName), os.O_RDWR,
+	fp, err := os.OpenFile(path.Join(mp.config.RootDir, fileName), os.O_CREATE|os.O_RDWR,
 		0644)
 	if err != nil {
 		log.LogErrorf("[setExtentDeleteFileCursor] openFile %s failed: %s",
