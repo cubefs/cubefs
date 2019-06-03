@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -162,6 +163,8 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	currErrs := d.ReadErrCnt + d.WriteErrCnt
 	if currErrs >= uint64(d.MaxErrCnt) {
 		d.Status = proto.Unavailable
+		exporter.NewAlarm(fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP))
+		d.ForceExitRaftStore()
 	} else if d.Available <= 0 {
 		d.Status = proto.ReadOnly
 	} else {
@@ -203,6 +206,15 @@ func (d *Disk) ForceLoadPartitionHeader() {
 	for _, partitionID := range partitionList {
 		partition := d.GetDataPartition(partitionID)
 		partition.ForceLoadHeader()
+	}
+}
+
+func (d *Disk) ForceExitRaftStore(){
+	partitionList := d.DataPartitionList()
+	for _, partitionID := range partitionList {
+		partition := d.GetDataPartition(partitionID)
+		partition.partitionStatus=proto.Unavailable
+		partition.stopRaft()
 	}
 }
 
@@ -277,8 +289,10 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 			)
 			defer wg.Done()
 			if dp, err = LoadDataPartition(path.Join(d.Path, filename), d); err != nil {
-				log.LogError(fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ",
-					partitionID, err.Error()))
+				mesg:=fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ",
+					partitionID, err.Error())
+				log.LogError(mesg)
+				exporter.NewAlarm(mesg)
 				return
 			}
 			if visitor != nil {

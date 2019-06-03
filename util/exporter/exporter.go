@@ -34,8 +34,10 @@ const (
 )
 
 var (
-	namespace string
-	enabled   = false
+	namespace   string
+	clustername string
+	modulename  string
+	enabled     = false
 )
 
 func metricsName(name string) string {
@@ -44,6 +46,8 @@ func metricsName(name string) string {
 
 // Init initializes the exporter.
 func Init(cluster string, role string, cfg *config.Config) {
+	clustername = cluster
+	modulename = role
 	port := cfg.GetInt64(ConfigKeyExporterPort)
 	if port == 0 {
 		log.LogInfof("exporter port not set")

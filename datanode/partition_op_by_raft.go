@@ -217,6 +217,7 @@ func (dp *DataPartition) ApplyRandomWrite(msg *RaftCmdItem, raftApplyID uint64) 
 		raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size)
 	for i := 0; i < maxRetryCounts; i++ {
 		err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, NotUpdateSize, msg.Op == opRandomSyncWrite)
+		dp.checkIsDiskError(err)
 		if err != nil {
 			if dp.checkWriteErrs(err.Error()) {
 				log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) ignore error[%v]",
