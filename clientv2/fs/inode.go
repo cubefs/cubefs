@@ -46,6 +46,9 @@ type Inode struct {
 
 	// protected under the inode cache lock
 	expiration int64
+
+	// For directory inode only
+	dcache *DentryCache
 }
 
 // NewInode returns a new inode.
