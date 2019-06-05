@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/ump"
 )
 
 var (
@@ -45,6 +47,7 @@ type TimePoint struct {
 type TimePointCount struct {
 	tp  *TimePoint
 	cnt *Counter
+	to  *ump.TpObject
 }
 
 func NewTP(name string) (tp *TimePoint) {
@@ -67,17 +70,19 @@ func (tp *TimePoint) Set() {
 }
 
 func NewTPCnt(name string) (tpc *TimePointCount) {
+	tpc = new(TimePointCount)
 	if !enabled {
+		tpc.to = ump.BeforeTP(fmt.Sprintf("%v_%v_%v", clustername, modulename, name))
 		return
 	}
-	tpc = new(TimePointCount)
 	tpc.tp = NewTP(name)
 	tpc.cnt = NewCounter(fmt.Sprintf("%s_count", name))
 	return
 }
 
-func (tpc *TimePointCount) Set() {
+func (tpc *TimePointCount) Set(err error) {
 	if !enabled {
+		ump.AfterTP(tpc.to, err)
 		return
 	}
 	tpc.tp.Set()

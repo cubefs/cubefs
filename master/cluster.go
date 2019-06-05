@@ -892,6 +892,7 @@ func (c *Cluster) doCreateVol(name, owner string, dpSize, capacity uint64) (err 
 	if err = c.syncAddVol(vol); err != nil {
 		goto errHandler
 	}
+	c.putVol(vol)
 	return
 errHandler:
 	err = fmt.Errorf("action[doCreateVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())

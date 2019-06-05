@@ -24,6 +24,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/btree"
+	"github.com/chubaofs/chubaofs/util/errors"
 )
 
 const (
@@ -41,6 +42,11 @@ const (
 	statusError
 	statusInval
 	statusNotPerm
+)
+
+const (
+	MaxMountRetryLimit = 5
+	MountRetryInterval = time.Second * 5
 )
 
 type MetaWrapper struct {
@@ -83,9 +89,20 @@ func NewMetaWrapper(volname, owner, masterHosts string) (*MetaWrapper, error) {
 	mw.rwPartitions = make([]*MetaPartition, 0)
 	mw.updateClusterInfo()
 	mw.updateVolStatInfo()
+
+	limit := MaxMountRetryLimit
+retry:
 	if err := mw.updateMetaPartitions(); err != nil {
-		return nil, err
+		if limit <= 0 {
+			return nil, errors.Trace(err, "Init meta wrapper failed!")
+		} else {
+			limit--
+			time.Sleep(MountRetryInterval)
+			goto retry
+		}
+
 	}
+
 	go mw.refresh()
 	return mw, nil
 }

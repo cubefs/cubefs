@@ -40,6 +40,7 @@ var (
 	_ fs.NodeCreater         = (*Dir)(nil)
 	_ fs.NodeForgetter       = (*Dir)(nil)
 	_ fs.NodeMkdirer         = (*Dir)(nil)
+	_ fs.NodeMknoder         = (*Dir)(nil)
 	_ fs.NodeRemover         = (*Dir)(nil)
 	_ fs.NodeFsyncer         = (*Dir)(nil)
 	_ fs.NodeRequestLookuper = (*Dir)(nil)
@@ -77,7 +78,7 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 // Create handles the create request.
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 	start := time.Now()
-	info, err := d.super.mw.Create_ll(d.inode.ino, req.Name, proto.Mode(req.Mode.Perm()), nil)
+	info, err := d.super.mw.Create_ll(d.inode.ino, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
 		log.LogErrorf("Create: parent(%v) req(%v) err(%v)", d.inode.ino, req, err)
 		return nil, nil, ParseError(err)
@@ -112,7 +113,7 @@ func (d *Dir) Forget() {
 // Mkdir handles the mkdir request.
 func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
 	start := time.Now()
-	info, err := d.super.mw.Create_ll(d.inode.ino, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), nil)
+	info, err := d.super.mw.Create_ll(d.inode.ino, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
 		log.LogErrorf("Mkdir: parent(%v) req(%v) err(%v)", d.inode.ino, req, err)
 		return nil, ParseError(err)
@@ -281,11 +282,36 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 	return nil
 }
 
+func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error) {
+	if (req.Mode&os.ModeNamedPipe == 0 && req.Mode&os.ModeSocket == 0) || req.Rdev != 0 {
+		return nil, fuse.ENOSYS
+	}
+
+	start := time.Now()
+	info, err := d.super.mw.Create_ll(d.inode.ino, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil)
+	if err != nil {
+		log.LogErrorf("Mknod: parent(%v) req(%v) err(%v)", d.inode.ino, req, err)
+		return nil, ParseError(err)
+	}
+
+	inode := NewInode(info)
+	d.super.ic.Put(inode)
+	child := NewFile(d.super, inode)
+
+	d.super.fslock.Lock()
+	d.super.nodeCache[inode.ino] = child
+	d.super.fslock.Unlock()
+
+	elapsed := time.Since(start)
+	log.LogDebugf("TRACE Mknod: parent(%v) req(%v) ino(%v) (%v)ns", d.inode.ino, req, inode.ino, elapsed.Nanoseconds())
+	return child, nil
+}
+
 // Symlink handles the symlink request.
 func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, error) {
 	parentIno := d.inode.ino
 	start := time.Now()
-	info, err := d.super.mw.Create_ll(parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), []byte(req.Target))
+	info, err := d.super.mw.Create_ll(parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target))
 	if err != nil {
 		log.LogErrorf("Symlink: parent(%v) NewName(%v) err(%v)", parentIno, req.NewName, err)
 		return nil, ParseError(err)

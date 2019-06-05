@@ -53,7 +53,7 @@ const (
 	DefaultRackName         = "cfs_rack1"
 	DefaultRaftDir          = "raft"
 	DefaultRaftLogsToRetain = 2000 // Count of raft logs per data partition
-	DefaultDiskMaxErr       = 20
+	DefaultDiskMaxErr       = 1
 	DefaultDiskRetain       = 20 * util.GB // GB
 )
 

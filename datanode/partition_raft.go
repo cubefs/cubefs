@@ -257,10 +257,6 @@ func (dp *DataPartition) addRaftNode(req *proto.DataPartitionDecommissionRequest
 
 // Delete a raft node.
 func (dp *DataPartition) removeRaftNode(req *proto.DataPartitionDecommissionRequest, index uint64) (isUpdated bool, err error) {
-	if dp.raftPartition == nil {
-		err = fmt.Errorf("%s partitionID=%v applyid=%v", RaftNotStarted, dp.partitionID, index)
-		return
-	}
 	peerIndex := -1
 	for i, peer := range dp.config.Peers {
 		if peer.ID == req.RemovePeer.ID {
@@ -276,10 +272,10 @@ func (dp *DataPartition) removeRaftNode(req *proto.DataPartitionDecommissionRequ
 		go func(index uint64) {
 			for {
 				time.Sleep(time.Millisecond)
-				if dp.raftPartition.AppliedIndex() < index {
-					continue
-				}
 				if dp.raftPartition != nil {
+					if dp.raftPartition.AppliedIndex() < index {
+						continue
+					}
 					dp.raftPartition.Delete()
 				}
 				dp.Disk().space.DeletePartition(dp.partitionID)

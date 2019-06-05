@@ -19,6 +19,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 	"time"
+	"github.com/chubaofs/chubaofs/util"
 )
 
 func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64) {
@@ -36,7 +37,7 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 	switch len(liveReplicas) {
 	case (int)(partition.ReplicaNum):
 		partition.Status = proto.ReadOnly
-		if partition.checkReplicaStatusOnLiveNode(liveReplicas) == true && partition.isReplicaSizeAligned() {
+		if partition.checkReplicaStatusOnLiveNode(liveReplicas) == true && partition.isReplicaSizeAligned() && partition.canWrite() {
 			partition.Status = proto.ReadWrite
 		}
 	default:
@@ -47,6 +48,14 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 			partition.PartitionID, partition.ReplicaNum, len(liveReplicas), partition.Status, partition.Hosts)
 		log.LogInfo(msg)
 	}
+}
+
+func (partition *DataPartition) canWrite() bool {
+	avail := partition.total - partition.used
+	if int64(avail) > 10*util.GB {
+		return true
+	}
+	return false
 }
 
 func (partition *DataPartition) checkReplicaStatusOnLiveNode(liveReplicas []*DataReplica) (equal bool) {

@@ -32,6 +32,7 @@ import (
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	raftProto "github.com/tiglabs/raft/proto"
 	"hash/crc32"
@@ -423,6 +424,23 @@ func (dp *DataPartition) computeUsage() {
 
 func (dp *DataPartition) ExtentStore() *storage.ExtentStore {
 	return dp.extentStore
+}
+
+func (dp *DataPartition) checkIsDiskError(err error) {
+	if err == nil {
+		return
+	}
+	if IsDiskErr(err.Error()) {
+		mesg := fmt.Sprintf("disk path %v error on %v", dp.Path, LocalIP)
+		exporter.NewAlarm(mesg)
+		log.LogErrorf(mesg)
+		dp.stopRaft()
+		dp.disk.incReadErrCnt()
+		dp.disk.incWriteErrCnt()
+		dp.disk.Status = proto.Unavailable
+		dp.statusUpdate()
+		dp.disk.ForceExitRaftStore()
+	}
 }
 
 // String returns the string format of the data partition information.
