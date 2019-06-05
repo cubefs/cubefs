@@ -453,13 +453,14 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 			defer func() {
 				wg.Done()
 			}()
-			if err = c.syncCreateDataPartitionToDataNode(host, vol.dataPartitionSize, dp); err != nil {
+			var diskPath string
+			if diskPath, err = c.syncCreateDataPartitionToDataNode(host, vol.dataPartitionSize, dp); err != nil {
 				errChannel <- err
 				return
 			}
 			dp.Lock()
 			defer dp.Unlock()
-			if err = dp.afterCreation(host, c); err != nil {
+			if err = dp.afterCreation(host, diskPath, c); err != nil {
 				errChannel <- err
 			}
 		}(host)
@@ -476,7 +477,7 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 				task := dp.createTaskToDeleteDataPartition(host)
 				tasks := make([]*proto.AdminTask, 0)
 				tasks = append(tasks, task)
-				c.addMetaNodeTasks(tasks)
+				c.addDataNodeTasks(tasks)
 			}(host)
 		}
 		goto errHandler
@@ -496,7 +497,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition) (err error) {
+func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition) (diskPath string, err error) {
 	task := dp.createTaskToCreateDataPartition(host, size)
 	dataNode, err := c.dataNode(host)
 	if err != nil {
@@ -506,11 +507,12 @@ func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp
 	if err != nil {
 		return
 	}
-	if _, err = dataNode.TaskManager.syncSendAdminTask(task, conn); err != nil {
+	var replicaDiskPath []byte
+	if replicaDiskPath, err = dataNode.TaskManager.syncSendAdminTask(task, conn); err != nil {
 		return
 	}
 	dataNode.TaskManager.connPool.PutConnect(conn, false)
-	return
+	return string(replicaDiskPath), nil
 }
 
 func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartition) (err error) {
@@ -668,6 +670,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		vol        *Vol
 		removePeer proto.Peer
 		replica    *DataReplica
+		diskPath   string
 	)
 	dp.Lock()
 	defer dp.Unlock()
@@ -730,10 +733,10 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	tasks = make([]*proto.AdminTask, 0)
 	tasks = append(tasks, task)
 	c.addDataNodeTasks(tasks)
-	if err = c.syncCreateDataPartitionToDataNode(newAddr, vol.dataPartitionSize, dp); err != nil {
+	if diskPath, err = c.syncCreateDataPartitionToDataNode(newAddr, vol.dataPartitionSize, dp); err != nil {
 		goto errHandler
 	}
-	if err = dp.afterCreation(newAddr, c); err != nil {
+	if err = dp.afterCreation(newAddr, diskPath, c); err != nil {
 		goto errHandler
 	}
 	dp.Status = proto.ReadOnly
@@ -743,7 +746,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
 errHandler:
-	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.Hosts)
 	if err != nil {
@@ -830,7 +833,7 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner string, size, capacity int) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner string, mpCount, size, capacity int) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -854,7 +857,7 @@ func (c *Cluster) createVol(name, owner string, size, capacity int) (vol *Vol, e
 		err = proto.ErrVolNotExists
 		goto errHandler
 	}
-	vol.initMetaPartitions(c)
+	vol.initMetaPartitions(c, mpCount)
 	if len(vol.MetaPartitions) == 0 {
 		vol.Status = markDelete
 		if err = c.syncDeleteVol(vol); err != nil {
