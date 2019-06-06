@@ -98,57 +98,9 @@ start_client() {
     echo "ok"
 }
 
-wait_proc_done() {
-    proc_name=$1
-    pid=$( ps -ef | grep "$proc_name" | grep -v "grep" | awk '{print $2}' )
-    logfile=$2
-    logfile2=${logfile}-2
-    logfile3=${logfile}-3
-    maxtime=${3:-29000}
-    checktime=${4:-60}
-    retfile=${5:-"/tmp/ltpret"}
-    timeout=1
-    pout=0
-    lastlog=""
-    for i in $(seq 1 $maxtime) ; do
-        if ! `ps -ef  | grep -v "grep" | grep -q "$proc_name" ` ; then
-            echo "$proc_name run done"
-            timeout=0
-            break
-        fi
-        sleep 1
-        ((pout+=1))
-        if [ $(cat $logfile | wc -l) -gt 0  ] ; then
-            pout=0
-            cat $logfile > $logfile2 && cat $logfile2 >> $logfile3 && > $logfile
-            cat $logfile2 && rm -f $logfile2
-        fi
-        if [[ $pout -ge $checktime ]] ; then
-            echo -n "."
-            pout=0
-        fi
-    done
-    if [[ $timeout -eq 1 ]] ;then
-        echo "$proc_name run timeout"
-        exit 1
-    fi
-    ret=$(cat /tmp/ltpret)
-    exit $ret
-}
-
-run_ltptest() {
-    #yum install -y psmisc >/dev/null
-    echo "run ltp test"
-    LTPTestDir=$MntPoint/ltptest
-    LtpLog=/tmp/ltp.log
-    mkdir -p $LTPTestDir
-    nohup /bin/sh -c " /opt/ltp/runltp -pq -f fs -d $LTPTestDir > $LtpLog 2>&1; echo $? > /tmp/ltpret " &
-    wait_proc_done "runltp" $LtpLog
-}
-
 getLeaderAddr
 check_status "MetaNode"
 check_status "DataNode"
 create_vol ; sleep 3
 create_dp ; sleep 3
-start_client 
+/cfs/bin/cfs-client -c /cfs/conf/client.json >/cfs/log/cfs.out

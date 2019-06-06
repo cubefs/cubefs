@@ -14,7 +14,7 @@
 ## Overview
 
 
-ChubaoFS (储宝文件系统) is a distributed file system for cloud native applications. It has the following features: 
+ChubaoFS (储宝文件系统) is a distributed file system for cloud native applications. It has the following features:
 
 * scale-out metadata management
 
@@ -27,12 +27,25 @@ ChubaoFS (储宝文件系统) is a distributed file system for cloud native appl
 * POSIX-compatible
 
 For more details, please refer to our SIGMOD 2019 paper "ChubaoFS: A Distributed File System for Large Scale Container Platforms".
- 
+
 
 ## Document
 https://chubaofs.readthedocs.io/en/latest/
 
 https://chubaofs.readthedocs.io/zh_CN/latest/
+
+## Docker
+
+Under docker dir, there has run_docker.sh tool to run chubaofs with docker-compose, as follow command:
+```
+$ docker/run_docker.sh -r -d /data/disk
+```
+more options with
+```
+$ docker/run_docker.sh -h
+
+```
+
 
 ## License
 
