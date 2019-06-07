@@ -36,13 +36,13 @@ var (
 
 type Packet struct {
 	proto.Packet
-	followerConns  []*net.TCPConn
-	followersAddrs []string
-	IsReleased     int32 // TODO what is released?
-	Object         interface{}
-	TpObject       *exporter.TimePointCount
-	NeedReply      bool
-	rawBuffer      []byte
+	followersAddrs     []string
+	followerTransports []*FollowerTransport
+	IsReleased         int32 // TODO what is released?
+	Object             interface{}
+	TpObject           *exporter.TimePointCount
+	NeedReply          bool
+	orgBuffer          []byte
 }
 
 func (p *Packet) AfterTp() (ok bool) {
@@ -51,25 +51,15 @@ func (p *Packet) AfterTp() (ok bool) {
 	return
 }
 
-func (p *Packet) closeFollowerConnect() {
-	for index := 0; index < len(p.followersAddrs); index++ {
-		if p.followerConns[index] != nil {
-			p.followerConns[index].Close()
-		}
-	}
-}
 
 func (p *Packet) clean() {
-	for index := 0; index < len(p.followerConns); index++ {
-		p.followerConns[index] = nil
-	}
 	p.Object = nil
 	p.TpObject = nil
 	p.Data = nil
 	p.Arg = nil
-	if p.rawBuffer != nil {
-		proto.Buffers.Put(p.rawBuffer)
-		p.rawBuffer = nil
+	if p.orgBuffer != nil && len(p.orgBuffer)==util.BlockSize  {
+		proto.Buffers.Put(p.orgBuffer)
+		p.orgBuffer = nil
 	}
 }
 
@@ -85,9 +75,10 @@ func copyPacket(src, dst *Packet) {
 	dst.ExtentID = src.ExtentID
 	dst.ExtentOffset = src.ExtentOffset
 	dst.ReqID = src.ReqID
-	dst.Data = src.Data
+	dst.Data = src.orgBuffer
 	dst.followersAddrs = src.followersAddrs
-	dst.followerConns = src.followerConns
+	dst.followerTransports = src.followerTransports
+	
 }
 
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
@@ -109,10 +100,11 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 	followerAddrs := strings.SplitN(str, proto.AddrSplit, -1)
 	followerNum := uint8(len(followerAddrs) - 1)
 	p.followersAddrs = make([]string, followerNum)
+	p.orgBuffer=p.Data
 	if followerNum > 0 {
 		p.followersAddrs = followerAddrs[:int(followerNum)]
 	}
-	p.followerConns = make([]*net.TCPConn, followerNum)
+	p.followerTransports = make([]*FollowerTransport, followerNum)
 	if p.RemainingFollowers < 0 {
 		err = ErrBadNodes
 		return
@@ -261,7 +253,6 @@ func (p *Packet) PackErrorBody(action, msg string) {
 func (p *Packet) ReadFull(c net.Conn, readSize int) (err error) {
 	if p.Opcode == proto.OpWrite && readSize == util.BlockSize {
 		p.Data, _ = proto.Buffers.Get(readSize)
-		p.rawBuffer = p.Data
 	} else {
 		p.Data = make([]byte, readSize)
 	}

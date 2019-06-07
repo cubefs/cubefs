@@ -25,6 +25,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"sync/atomic"
+	"time"
 )
 
 var (
@@ -50,7 +51,7 @@ type ReplProtocol struct {
 	exited     int32
 	exitedMu   sync.RWMutex
 
-	followerConnects map[string]*net.TCPConn
+	followerConnects map[string]*FollowerTransport
 	lock             sync.RWMutex
 
 	prepareFunc  func(p *Packet) error                 // prepare packet
@@ -59,6 +60,62 @@ type ReplProtocol struct {
 
 	isError int32
 	replId  int64
+}
+
+type FollowerTransport struct {
+	addr string
+	conn net.Conn
+	sendCh chan *Packet
+	close chan struct{}
+	isclosed int32
+}
+
+func NewFollowersTransport(addr string)(ft *FollowerTransport,err error){
+	var (
+		conn net.Conn
+	)
+	if conn, err = gConnPool.GetConnect(addr);err!=nil {
+		return
+	}
+	ft=new(FollowerTransport)
+	ft.addr=addr
+	ft.conn=conn
+	ft.sendCh=make(chan *Packet,200)
+	ft.close=make(chan struct{})
+	go ft.server()
+
+	return
+}
+
+func (ft *FollowerTransport)server(){
+	for {
+		select {
+		case p:=<-ft.sendCh:
+			if err:=p.WriteToConn(ft.conn);err!=nil {
+				p.PackErrorBody(ActionSendToFollowers,err.Error())
+			}
+		case <-ft.close:
+			ft.conn.Close()
+			atomic.StoreInt32(&ft.isclosed,ReplHasExited)
+			return
+		}
+	}
+}
+
+func (ft *FollowerTransport)Destory(){
+	close(ft.close)
+	for {
+		if atomic.LoadInt32(&ft.isclosed)==ReplHasExited{
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	ft.conn.Close()
+	close(ft.sendCh)
+}
+
+func (ft *FollowerTransport)Write(p *Packet){
+	ft.sendCh<-p
 }
 
 func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet) error,
@@ -70,7 +127,7 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet) error,
 	rp.responseCh = make(chan *Packet, RequestChanSize)
 	rp.exitC = make(chan bool, 1)
 	rp.sourceConn = inConn
-	rp.followerConnects = make(map[string]*net.TCPConn)
+	rp.followerConnects = make(map[string]*FollowerTransport)
 	rp.prepareFunc = prepareFunc
 	rp.operatorFunc = operatorFunc
 	rp.postFunc = postFunc
@@ -131,14 +188,12 @@ func (rp *ReplProtocol) ReceiveResponseFromFollowersGoRoutine() {
 
 func (rp *ReplProtocol) setReplProtocolError(request *Packet, index int) {
 	atomic.StoreInt32(&rp.isError, ReplProtocolError)
-	if request.followerConns[index] != nil {
-		request.followerConns[index].Close()
-	}
 }
 
 func (rp *ReplProtocol) hasError() bool {
 	return atomic.LoadInt32(&rp.isError) == ReplProtocolError
 }
+
 
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	request := NewPacket()
@@ -162,17 +217,14 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 
 func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, err error) {
 	for index = 0; index < len(request.followersAddrs); index++ {
-		err = rp.allocateFollowersConns(request, index)
-		if err != nil {
+		if err = rp.allocateFollowersConns(request, index);err != nil {
 			request.PackErrorBody(ActionSendToFollowers, err.Error())
 			return
 		}
-		request.RemainingFollowers = 0
-		err = request.WriteToConn(request.followerConns[index])
-		if err != nil {
-			request.PackErrorBody(ActionSendToFollowers, err.Error())
-			return
-		}
+		followerRequest:=new(Packet)
+		copyPacket(request,followerRequest)
+		followerRequest.RemainingFollowers=0
+		request.followerTransports[index].Write(followerRequest)
 	}
 
 	return
@@ -192,9 +244,7 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 				rp.operatorFunc(request, rp.sourceConn)
 				rp.putResponse(request)
 			} else {
-				orgRemainNodes := request.RemainingFollowers
 				index, err := rp.sendRequestToAllFollowers(request)
-				request.RemainingFollowers = orgRemainNodes
 				if err != nil {
 					rp.setReplProtocolError(request, index)
 					rp.putResponse(request)
@@ -269,15 +319,13 @@ func (rp *ReplProtocol) reciveAllFollowerResponse() {
 
 // Read the response from the follower
 func (rp *ReplProtocol) checkLocalResultAndReceiveFromFollower(request *Packet, index int) (err error) {
-	// Receive p response from one member
-	if request.followerConns[index] == nil {
-		err = fmt.Errorf(ConnIsNullErr)
-		return
-	}
-
 	// Check local execution result.
 	if request.IsErrPacket() {
 		err = fmt.Errorf(request.getErrMessage())
+		return
+	}
+	if request.followerTransports[index]==nil {
+		err=fmt.Errorf(ConnIsNullErr)
 		return
 	}
 
@@ -285,9 +333,9 @@ func (rp *ReplProtocol) checkLocalResultAndReceiveFromFollower(request *Packet, 
 	defer func() {
 		reply.clean()
 	}()
-	if err = reply.ReadFromConn(request.followerConns[index], proto.ReadDeadlineTime); err != nil {
-		err = errors.Trace(err, "local(%v) follower(%v)", request.followerConns[index].LocalAddr().String(),
-			request.followerConns[index].RemoteAddr().String())
+	if err = reply.ReadFromConn(request.followerTransports[index].conn, proto.ReadDeadlineTime); err != nil {
+		err = errors.Trace(err, "local(%v) follower(%v)", request.followerTransports[index].conn.LocalAddr().String(),
+			request.followerTransports[index].conn.RemoteAddr().String())
 		return
 	}
 
@@ -300,8 +348,8 @@ func (rp *ReplProtocol) checkLocalResultAndReceiveFromFollower(request *Packet, 
 
 	if reply.IsErrPacket() {
 		err = fmt.Errorf(ActionReceiveFromFollower+"remote (%v) do failed(%v)  local(%v) follower(%v)",
-			request.followersAddrs[index], string(reply.Data[:reply.Size]), request.followerConns[index].LocalAddr().String(),
-			request.followerConns[index].RemoteAddr().String())
+			request.followersAddrs[index], string(reply.Data[:reply.Size]), request.followerTransports[index].conn.LocalAddr().String(),
+			request.followerTransports[index].conn.RemoteAddr().String())
 		return
 	}
 
@@ -356,20 +404,20 @@ func (rp *ReplProtocol) Stop() {
 // Note that we need to ensure the order of packets sent to the datanode is consistent here.
 func (rp *ReplProtocol) allocateFollowersConns(p *Packet, index int) (err error) {
 	rp.lock.RLock()
-	conn := rp.followerConnects[p.followersAddrs[index]]
+	transport := rp.followerConnects[p.followersAddrs[index]]
 	rp.lock.RUnlock()
-	if conn == nil {
-		conn, err = gConnPool.GetConnect(p.followersAddrs[index])
+	if transport == nil {
+		transport,err=NewFollowersTransport(p.followersAddrs[index])
 		if err != nil {
 			return
 		}
 		rp.lock.Lock()
-		rp.followerConnects[p.followersAddrs[index]] = conn
+		rp.followerConnects[p.followersAddrs[index]] = transport
 		rp.lock.Unlock()
 	}
-	p.followerConns[index] = conn
+	p.followerTransports[index]=transport
 
-	return nil
+	return
 }
 
 func (rp *ReplProtocol) getNextPacket() (e *list.Element) {
@@ -392,7 +440,6 @@ func (rp *ReplProtocol) cleanToBeProcessCh() {
 		select {
 		case p := <-rp.toBeProcessedCh:
 			rp.postFunc(p)
-			p.closeFollowerConnect()
 			p.clean()
 		default:
 			return
@@ -406,7 +453,6 @@ func (rp *ReplProtocol) cleanResponseCh() {
 		select {
 		case p := <-rp.responseCh:
 			rp.postFunc(p)
-			p.closeFollowerConnect()
 			p.clean()
 		default:
 			return
@@ -420,15 +466,14 @@ func (rp *ReplProtocol) cleanResource() {
 	for e := rp.packetList.Front(); e != nil; e = e.Next() {
 		request := e.Value.(*Packet)
 		rp.postFunc(request)
-		request.closeFollowerConnect()
 		request.clean()
 	}
 	rp.cleanToBeProcessCh()
 	rp.cleanResponseCh()
 	rp.packetList = list.New()
 	rp.lock.RLock()
-	for _, conn := range rp.followerConnects {
-		conn.Close()
+	for _, transport := range rp.followerConnects {
+		transport.Destory()
 	}
 	rp.lock.RUnlock()
 	close(rp.responseCh)
