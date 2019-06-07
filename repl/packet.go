@@ -36,13 +36,54 @@ var (
 
 type Packet struct {
 	proto.Packet
-	followersAddrs     []string
-	followerTransports []*FollowerTransport
-	IsReleased         int32 // TODO what is released?
-	Object             interface{}
-	TpObject           *exporter.TimePointCount
-	NeedReply          bool
-	orgBuffer          []byte
+	followersAddrs  []string
+	followerPackets []*FollowerPacket
+	IsReleased      int32 // TODO what is released?
+	Object          interface{}
+	TpObject        *exporter.TimePointCount
+	NeedReply       bool
+	OrgBuffer       []byte
+}
+
+type FollowerPacket struct {
+	proto.Packet
+	respCh chan error
+}
+
+func NewFollowerPacket()(fp *FollowerPacket){
+	fp=new(FollowerPacket)
+	fp.respCh=make(chan error,1)
+	return fp
+}
+
+func (p *FollowerPacket) PackErrorBody(action, msg string) {
+	p.identificationErrorResultCode(action, msg)
+	p.Size = uint32(len([]byte(action + "_" + msg)))
+	p.Data = make([]byte, p.Size)
+	copy(p.Data[:int(p.Size)], []byte(action+"_"+msg))
+}
+
+func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg string) {
+	if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
+		strings.Contains(errLog, ConnIsNullErr) {
+		p.ResultCode = proto.OpIntraGroupNetErr
+	} else if strings.Contains(errMsg, storage.ParameterMismatchError.Error()) ||
+		strings.Contains(errMsg, ErrorUnknownOp.Error()) {
+		p.ResultCode = proto.OpArgMismatchErr
+	} else if strings.Contains(errMsg, proto.ErrDataPartitionNotExists.Error()) {
+		p.ResultCode = proto.OpTryOtherAddr
+	} else if strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) ||
+		strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) {
+		p.ResultCode = proto.OpNotExistErr
+	} else if strings.Contains(errMsg, storage.NoSpaceError.Error()) {
+		p.ResultCode = proto.OpDiskNoSpaceErr
+	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
+		p.ResultCode = proto.OpAgain
+	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {
+		p.ResultCode = proto.OpTryOtherAddr
+	} else {
+		p.ResultCode = proto.OpIntraGroupNetErr
+	}
 }
 
 func (p *Packet) AfterTp() (ok bool) {
@@ -51,19 +92,23 @@ func (p *Packet) AfterTp() (ok bool) {
 	return
 }
 
-
 func (p *Packet) clean() {
 	p.Object = nil
 	p.TpObject = nil
 	p.Data = nil
 	p.Arg = nil
-	if p.orgBuffer != nil && len(p.orgBuffer)==util.BlockSize  {
-		proto.Buffers.Put(p.orgBuffer)
-		p.orgBuffer = nil
+	if p.OrgBuffer != nil && len(p.OrgBuffer) == util.BlockSize {
+		proto.Buffers.Put(p.OrgBuffer)
+		p.OrgBuffer = nil
+	}
+	for i:=0;i<len(p.followersAddrs);i++{
+		if p.followerPackets[i]!=nil {
+			close(p.followerPackets[i].respCh)
+		}
 	}
 }
 
-func copyPacket(src, dst *Packet) {
+func copyPacket(src *Packet, dst *FollowerPacket) {
 	dst.Magic = src.Magic
 	dst.ExtentType = src.ExtentType
 	dst.Opcode = src.Opcode
@@ -75,10 +120,8 @@ func copyPacket(src, dst *Packet) {
 	dst.ExtentID = src.ExtentID
 	dst.ExtentOffset = src.ExtentOffset
 	dst.ReqID = src.ReqID
-	dst.Data = src.orgBuffer
-	dst.followersAddrs = src.followersAddrs
-	dst.followerTransports = src.followerTransports
-	
+	dst.Data = src.OrgBuffer
+
 }
 
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
@@ -100,11 +143,11 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 	followerAddrs := strings.SplitN(str, proto.AddrSplit, -1)
 	followerNum := uint8(len(followerAddrs) - 1)
 	p.followersAddrs = make([]string, followerNum)
-	p.orgBuffer=p.Data
+	p.followerPackets = make([]*FollowerPacket, followerNum)
+	p.OrgBuffer = p.Data
 	if followerNum > 0 {
 		p.followersAddrs = followerAddrs[:int(followerNum)]
 	}
-	p.followerTransports = make([]*FollowerTransport, followerNum)
 	if p.RemainingFollowers < 0 {
 		err = ErrBadNodes
 		return
