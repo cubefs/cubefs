@@ -39,4 +39,8 @@ const (
 	ReplRuning    = 2
 	ReplExiting   = 1
 	ReplHasExited = -3
+
+	FollowerTransportRuning = 2
+	FollowerTransportExiting = 1
+	FollowerTransportExited= -1
 )
