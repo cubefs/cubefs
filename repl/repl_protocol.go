@@ -48,6 +48,7 @@ type ReplProtocol struct {
 	sourceConn *net.TCPConn
 	exitC      chan bool
 	exited     int32
+	exitedMu   sync.RWMutex
 
 	followerConnects map[string]*FollowerTransport
 	lock             sync.RWMutex
@@ -66,6 +67,7 @@ type FollowerTransport struct {
 	sendCh   chan *FollowerPacket
 	recvCh   chan *FollowerPacket
 	exitCh   chan struct{}
+	exitedMu sync.RWMutex
 	isclosed int32
 }
 
@@ -92,22 +94,20 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 	for {
 		select {
 		case p := <-ft.sendCh:
-			defer func() {
-				if r := recover(); r != nil {
-					fmt.Println(fmt.Sprintf("follower packet is %v lendata is %v data is %v", p.GetUniqueLogId(), len(p.Data), string(p.Data)))
-					panic(r)
-				}
-			}()
 			if err := p.WriteToConn(ft.conn); err != nil {
 				p.PackErrorBody(ActionSendToFollowers, err.Error())
+				p.respCh<-fmt.Errorf(string(p.Data[:p.Size]))
+				ft.conn.Close()
 				continue
 			}
 			ft.recvCh <- p
 		case <-ft.exitCh:
+			ft.exitedMu.Lock()
 			if atomic.AddInt32(&ft.isclosed, -1) == FollowerTransportExited {
 				ft.conn.Close()
 				atomic.StoreInt32(&ft.isclosed, FollowerTransportExited)
 			}
+			ft.exitedMu.Unlock()
 			return
 		}
 	}
@@ -119,10 +119,12 @@ func (ft *FollowerTransport) serverReadFromFollower() {
 		case p := <-ft.recvCh:
 			ft.readFollowerResult(p)
 		case <-ft.exitCh:
+			ft.exitedMu.Lock()
 			if atomic.AddInt32(&ft.isclosed, -1) == FollowerTransportExited {
 				ft.conn.Close()
 				atomic.StoreInt32(&ft.isclosed, FollowerTransportExited)
 			}
+			ft.exitedMu.Unlock()
 			return
 		}
 	}
@@ -133,8 +135,15 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 	reply := NewPacket()
 	defer func() {
 		reply.clean()
-		request.respCh <- err
+		request.respCh<-err
+		if err!=nil {
+			ft.conn.Close()
+		}
 	}()
+	if request.IsErrPacket(){
+		err=fmt.Errorf(string(request.Data[:request.Size]))
+		return
+	}
 	if err = reply.ReadFromConn(ft.conn, proto.ReadDeadlineTime); err != nil {
 		return
 	}
@@ -150,15 +159,16 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 		err = fmt.Errorf(string(reply.Data[:reply.Size]))
 		return
 	}
-
 	log.LogDebugf("action[ActionReceiveFromFollower] %v.", reply.LogMessage(ActionReceiveFromFollower,
 		ft.addr, request.StartT, err))
 	return
 }
 
 func (ft *FollowerTransport) Destory() {
+	ft.exitedMu.Lock()
 	atomic.StoreInt32(&ft.isclosed, FollowerTransportExiting)
 	close(ft.exitCh)
+	ft.exitedMu.Unlock()
 	for {
 		if atomic.LoadInt32(&ft.isclosed) == FollowerTransportExited {
 			break
@@ -203,10 +213,12 @@ func (rp *ReplProtocol) ServerConn() {
 	)
 	defer func() {
 		rp.Stop()
+		rp.exitedMu.Lock()
 		if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
 			rp.sourceConn.Close()
 			rp.cleanResource()
 		}
+		rp.exitedMu.Unlock()
 	}()
 	for {
 		select {
@@ -228,10 +240,12 @@ func (rp *ReplProtocol) ReceiveResponseFromFollowersGoRoutine() {
 		case <-rp.ackCh:
 			rp.checkLocalResultAndReciveAllFollowerResponse()
 		case <-rp.exitC:
+			rp.exitedMu.Lock()
 			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
 				rp.sourceConn.Close()
 				rp.cleanResource()
 			}
+			rp.exitedMu.Unlock()
 			return
 		}
 	}
@@ -292,7 +306,7 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 	for {
 		select {
 		case request := <-rp.toBeProcessedCh:
-			if !request.isForwardPacket() {
+			if !request.IsForwardPacket() {
 				rp.operatorFunc(request, rp.sourceConn)
 				rp.putResponse(request)
 			} else {
@@ -307,10 +321,12 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 				}
 			}
 		case <-rp.exitC:
+			rp.exitedMu.Lock()
 			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
 				rp.sourceConn.Close()
 				rp.cleanResource()
 			}
+			rp.exitedMu.Unlock()
 			return
 		}
 	}
@@ -323,10 +339,12 @@ func (rp *ReplProtocol) writeResponseToClientGoRroutine() {
 		case request := <-rp.responseCh:
 			rp.writeResponse(request)
 		case <-rp.exitC:
+			rp.exitedMu.Lock()
 			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
 				rp.sourceConn.Close()
 				rp.cleanResource()
 			}
+			rp.exitedMu.Unlock()
 			return
 		}
 	}
@@ -399,6 +417,8 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 
 // Stop stops the replication protocol.
 func (rp *ReplProtocol) Stop() {
+	rp.exitedMu.Lock()
+	defer rp.exitedMu.Unlock()
 	if atomic.LoadInt32(&rp.exited) == ReplRuning {
 		if rp.exitC != nil {
 			close(rp.exitC)
