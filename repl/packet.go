@@ -50,9 +50,9 @@ type FollowerPacket struct {
 	respCh chan error
 }
 
-func NewFollowerPacket()(fp *FollowerPacket){
-	fp=new(FollowerPacket)
-	fp.respCh=make(chan error,1)
+func NewFollowerPacket() (fp *FollowerPacket) {
+	fp = new(FollowerPacket)
+	fp.respCh = make(chan error, 1)
 	return fp
 }
 
@@ -93,18 +93,16 @@ func (p *Packet) AfterTp() (ok bool) {
 }
 
 func (p *Packet) clean() {
+	if p.Data == nil {
+		return
+	}
 	p.Object = nil
 	p.TpObject = nil
 	p.Data = nil
 	p.Arg = nil
-	if p.OrgBuffer != nil && len(p.OrgBuffer) == util.BlockSize {
+	if p.OrgBuffer != nil && len(p.OrgBuffer) == util.BlockSize && p.IsWriteOperation() {
 		proto.Buffers.Put(p.OrgBuffer)
 		p.OrgBuffer = nil
-	}
-	for i:=0;i<len(p.followersAddrs);i++{
-		if p.followerPackets[i]!=nil {
-			close(p.followerPackets[i].respCh)
-		}
 	}
 }
 
@@ -162,24 +160,6 @@ func NewPacket() (p *Packet) {
 	p.StartT = time.Now().UnixNano()
 	p.NeedReply = true
 	return
-}
-
-func (p *Packet) IsMasterCommand() bool {
-	switch p.Opcode {
-	case
-		proto.OpDataNodeHeartbeat,
-		proto.OpLoadDataPartition,
-		proto.OpCreateDataPartition,
-		proto.OpDeleteDataPartition,
-		proto.OpDecommissionDataPartition:
-		return true
-	}
-	return false
-}
-
-func (p *Packet) isForwardPacket() bool {
-	r := p.RemainingFollowers > 0
-	return r
 }
 
 func NewPacketToGetAllWatermarks(partitionID uint64, extentType uint8) (p *Packet) {
@@ -293,8 +273,9 @@ func (p *Packet) PackErrorBody(action, msg string) {
 	p.Data = make([]byte, p.Size)
 	copy(p.Data[:int(p.Size)], []byte(action+"_"+msg))
 }
-func (p *Packet) ReadFull(c net.Conn, readSize int) (err error) {
-	if p.Opcode == proto.OpWrite && readSize == util.BlockSize {
+
+func (p *Packet) ReadFull(c net.Conn, opcode uint8, readSize int) (err error) {
+	if p.IsWriteOperation() && readSize == util.BlockSize {
 		p.Data, _ = proto.Buffers.Get(readSize)
 	} else {
 		p.Data = make([]byte, readSize)
@@ -335,8 +316,59 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (er
 		return
 	}
 	size := p.Size
-	if p.isReadOperation() && p.ResultCode == proto.OpInitResultCode {
+	if p.IsReadExtentOperation() && p.ResultCode == proto.OpInitResultCode {
 		size = 0
 	}
-	return p.ReadFull(c, int(size))
+	return p.ReadFull(c, p.Opcode, int(size))
+}
+
+// A leader packet is the packet send to the leader and does not require packet forwarding.
+func (p *Packet) IsLeaderPacket() (ok bool) {
+	if p.IsForwardPkt() && p.IsWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation() {
+		ok = true
+	}
+
+	return
+}
+
+func (p *Packet) IsWriteOperation() bool {
+	return p.Opcode == proto.OpWrite || p.Opcode == proto.OpSyncWrite
+}
+
+func (p *Packet) IsCreateExtentOperation() bool {
+	return p.Opcode == proto.OpCreateExtent
+}
+
+func (p *Packet) IsMarkDeleteExtentOperation() bool {
+	return p.Opcode == proto.OpMarkDelete
+}
+
+func (p *Packet) IsTinyExtentType() bool {
+	return p.ExtentType == proto.TinyExtentType
+}
+
+func (p *Packet) IsReadExtentOperation() bool {
+	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpExtentRepairRead || p.Opcode == proto.OpRead || p.Opcode == proto.OpReadTinyDelete
+}
+
+func (p *Packet) IsRandomWriteOption() bool {
+	return p.Opcode == proto.OpRandomWrite || p.Opcode == proto.OpSyncRandomWrite
+}
+
+func (p *Packet) IsMasterCommand() bool {
+	switch p.Opcode {
+	case
+		proto.OpDataNodeHeartbeat,
+		proto.OpLoadDataPartition,
+		proto.OpCreateDataPartition,
+		proto.OpDeleteDataPartition,
+		proto.OpDecommissionDataPartition:
+		return true
+	}
+	return false
+}
+
+func (p *Packet) IsForwardPacket() bool {
+	r := p.RemainingFollowers > 0
+	return r
 }

@@ -159,12 +159,12 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
 	}
-
+	disk.space.AttachPartition(dp)
 	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)
 	}
-
 	if err = dp.StartRaft(); err != nil {
+		disk.space.DetachDataPartition(dp.partitionID)
 		return
 	}
 
@@ -426,7 +426,7 @@ func (dp *DataPartition) ExtentStore() *storage.ExtentStore {
 	return dp.extentStore
 }
 
-func (dp *DataPartition) checkIsDiskError(err error) {
+func (dp *DataPartition) checkIsDiskError(err error) (diskError bool) {
 	if err == nil {
 		return
 	}
@@ -440,7 +440,9 @@ func (dp *DataPartition) checkIsDiskError(err error) {
 		dp.disk.Status = proto.Unavailable
 		dp.statusUpdate()
 		dp.disk.ForceExitRaftStore()
+		diskError = true
 	}
+	return
 }
 
 // String returns the string format of the data partition information.

@@ -17,14 +17,6 @@ package datanode
 import (
 	"encoding/binary"
 	"fmt"
-	"io/ioutil"
-	"net"
-	"os"
-	"path"
-	"strconv"
-	"strings"
-	"time"
-
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/repl"
@@ -32,6 +24,13 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
+	"io/ioutil"
+	"net"
+	"os"
+	"path"
+	"strconv"
+	"strings"
+	"time"
 )
 
 type dataPartitionCfg struct {

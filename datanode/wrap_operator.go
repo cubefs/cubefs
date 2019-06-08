@@ -412,9 +412,6 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		return
 	}
 
-	if err == nil && p.Opcode == proto.OpRandomWrite && p.Size == util.BlockSize {
-		proto.Buffers.Put(p.Data)
-	}
 }
 
 func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
