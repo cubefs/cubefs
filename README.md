@@ -39,6 +39,7 @@ https://chubaofs.readthedocs.io/zh_CN/latest/
 Under docker dir, there has run_docker.sh tool to run chubaofs with docker-compose, as follow command:
 ```
 $ docker/run_docker.sh -r -d /data/disk
+$ docker exec -it cfs-client "/bin/bash"
 ```
 more options with
 ```
