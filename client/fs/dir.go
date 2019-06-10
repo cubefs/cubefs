@@ -143,6 +143,8 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 		return ParseError(err)
 	}
 
+	d.super.ic.Delete(d.inode.ino)
+
 	if info != nil && info.Nlink == 0 {
 		d.super.orphan.Put(info.Inode)
 		log.LogDebugf("Remove: add to orphan inode list, ino(%v)", info.Inode)
@@ -251,6 +253,9 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 		log.LogErrorf("Rename: parent(%v) req(%v) err(%v)", d.inode.ino, req, err)
 		return ParseError(err)
 	}
+
+	d.super.ic.Delete(d.inode.ino)
+	d.super.ic.Delete(dstDir.inode.ino)
 
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Rename: SrcParent(%v) OldName(%v) DstParent(%v) NewName(%v) (%v)ns", d.inode.ino, req.OldName, dstDir.inode.ino, req.NewName, elapsed.Nanoseconds())
