@@ -44,7 +44,7 @@ start_client() {
 }
 
 start_ltptest() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run --name cfs-client -d client bash -c "/cfs/script/start.sh"
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run --name cfs-client client
 }
 
 run_ltptest() {
