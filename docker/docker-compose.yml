@@ -215,6 +215,20 @@ services:
         networks:
             extnetwork:
 
+    deploy:
+        image: chubaofs/centos-ltp:1.0
+        volumes:
+            - ./script/deploy.sh:/cfs/script/deploy.sh
+        privileged: true
+        cap_add:
+            - SYS_ADMIN
+        security_opt:
+            - "apparmor:unconfiged"
+        depends_on:
+            - "servers"
+        networks:
+            extnetwork:
+
     client:
         image: chubaofs/centos-ltp:1.0
         volumes:
@@ -232,6 +246,6 @@ services:
             - "apparmor:unconfiged"
         command: /bin/bash /cfs/script/start.sh
         depends_on:
-            - "servers"
+            - "deploy"
         networks:
             extnetwork:

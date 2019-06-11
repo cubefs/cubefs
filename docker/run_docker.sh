@@ -39,6 +39,10 @@ start_servers() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml up -d servers
 }
 
+deploy() {
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run deploy bash -c "/cfs/script/deploy.sh"
+}
+
 start_client() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml run --name cfs-client -d client bash -c "/cfs/script/start_client.sh"
 }
@@ -56,6 +60,7 @@ run_ltptest() {
 run() {
     build
     start_servers
+    deploy
     start_client
 }
 
