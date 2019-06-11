@@ -64,9 +64,9 @@ func (dp *DataPartition) GetAllAddrs() string {
 	return strings.Join(dp.Hosts[1:], proto.AddrSplit) + proto.AddrSplit
 }
 
-func isExcluded(partitionId uint64, excludes []uint64) bool {
-	for _, id := range excludes {
-		if id == partitionId {
+func isExcluded(dp *DataPartition, exclude map[string]struct{}) bool {
+	for _, host := range dp.Hosts {
+		if _, exist := exclude[host]; exist {
 			return true
 		}
 	}

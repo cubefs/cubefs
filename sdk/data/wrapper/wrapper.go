@@ -172,7 +172,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	}
 }
 
-func (w *Wrapper) getRandomDataPartition(partitions []*DataPartition, exclude []uint64) *DataPartition {
+func (w *Wrapper) getRandomDataPartition(partitions []*DataPartition, exclude map[string]struct{}) *DataPartition {
 	var dp *DataPartition
 
 	if len(partitions) == 0 {
@@ -182,19 +182,19 @@ func (w *Wrapper) getRandomDataPartition(partitions []*DataPartition, exclude []
 	rand.Seed(time.Now().UnixNano())
 	index := rand.Intn(len(partitions))
 	dp = partitions[index]
-	if !isExcluded(dp.PartitionID, exclude) {
+	if !isExcluded(dp, exclude) {
 		return dp
 	}
 
 	for _, dp = range partitions {
-		if !isExcluded(dp.PartitionID, exclude) {
+		if !isExcluded(dp, exclude) {
 			return dp
 		}
 	}
 	return nil
 }
 
-func (w *Wrapper) getLocalLeaderDataPartition(exclude []uint64) *DataPartition {
+func (w *Wrapper) getLocalLeaderDataPartition(exclude map[string]struct{}) *DataPartition {
 	w.RLock()
 	localLeaderPartitions := w.localLeaderPartitions
 	w.RUnlock()
@@ -202,7 +202,7 @@ func (w *Wrapper) getLocalLeaderDataPartition(exclude []uint64) *DataPartition {
 }
 
 // GetDataPartitionForWrite returns an available data partition for write.
-func (w *Wrapper) GetDataPartitionForWrite(exclude []uint64) (*DataPartition, error) {
+func (w *Wrapper) GetDataPartitionForWrite(exclude map[string]struct{}) (*DataPartition, error) {
 	dp := w.getLocalLeaderDataPartition(exclude)
 	if dp != nil {
 		return dp, nil
