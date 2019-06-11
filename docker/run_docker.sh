@@ -18,6 +18,7 @@ Usage: ./run_docker.sh [ -h | --help ] [ -d | --disk </disk/path> ] [ -l | --ltp
     -c, --clear             clear old docker image
     -l, --ltptest           run ltp test
     -r, --run               run
+    --client                create a new anonymous client container
 EOF
     exit 0
 }
@@ -47,6 +48,10 @@ start_client() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml run --name cfs-client -d client bash -c "/cfs/script/start_client.sh"
 }
 
+start_anonymous_client() {
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run -d client bash -c "/cfs/script/start_client.sh"
+}
+
 start_ltptest() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml run --name cfs-client client
 }
@@ -64,6 +69,10 @@ run() {
     start_client
 }
 
+client() {
+    start_anonymous_client
+}
+
 cmd="run"
 
 ARGS=( "$@" )
@@ -77,6 +86,9 @@ for opt in ${ARGS[*]} ; do
             ;;
         -r|--run)
             cmd=run
+            ;;
+        --client)
+            cmd=client
             ;;
         -c|--clean)
             cmd=clean
@@ -105,6 +117,7 @@ done
 case "-$cmd" in
     -help) help ;;
     -run) run ;;
+    -client) client ;;
     -run_ltptest) run_ltptest ;;
     -clean) clean ;;
     *) help ;;
