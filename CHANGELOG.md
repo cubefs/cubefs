@@ -1,3 +1,33 @@
+## Release v1.1.1 - 2019/06/11
+
+### Feature
+
+* client: enable support to fifo and socket file types. https://github.com/chubaofs/chubaofs/pull/80/commits/a1b118423334c075b0fbdc0b059b7225e8c2173f
+* clientv2: use jacobsa fuse package instead of bazil. https://github.com/chubaofs/chubaofs/pull/68
+* docker: introduce docker compose to create a local testing ChubaoFS cluster. https://github.com/chubaofs/chubaofs/pull/79
+
+
+### Bugfix
+
+* meta: update atime in inode get operation. [metanode] https://github.com/chubaofs/chubaofs/pull/80/commits/cf76479d251ee7214d0d27625fab95498ee1ae0c
+* fix: potential panic if send returns nil resp with no error. [client] https://github.com/chubaofs/chubaofs/pull/80/commits/22f3623d5e24a84c7d1ec49fcb72be375d0d4b92
+* fix: raft election takes a long time and timeout; issue a panic if raft server is down. [raft] https://github.com/chubaofs/chubaofs/pull/80/commits/26a1f2f826d5ddd3bb6803ec462f928d12597bdd
+* fix: potential deadlock if applyHandler. [master] https://github.com/chubaofs/chubaofs/pull/80/commits/cb1eb6ebfcfedc4d1f8bd97e6b7d776bc8ecf4f4
+* fix: put vol to cache after it is persistent. [master] https://github.com/chubaofs/chubaofs/pull/80/commits/f31c5d8e260a878b5bfe9d09d8ce196c9aa2abc8
+* fix: partition is nil when apply remove raft node. [datanode] https://github.com/chubaofs/chubaofs/pull/80/commits/971cc4b9105af77b4ada52159125225e713754c0
+* fix: metanode painc. [metanode] https://github.com/chubaofs/chubaofs/pull/80/commits/a3d8b1f19b2c3f52af561e46c0c8b3eea15472fa
+* fix: panic when pprof does not start. https://github.com/chubaofs/chubaofs/pull/80/commits/77a0efe9aa35d68c039a05dc2780d6902ec08d53
+
+### Enhancement
+
+* sdk: retry if mount failed in case master is unavailable temporarily. https://github.com/chubaofs/chubaofs/pull/80/commits/d20732dbbc343dffe1893f3766305322ae8d05de
+* build: add verbose build info. https://github.com/chubaofs/chubaofs/pull/80/commits/e5316f98429ed0b680cda4e4af994774c59ac8bd
+* master: introduce data partition over-provision. https://github.com/chubaofs/chubaofs/pull/80/commits/642d1f15696b42d8470392c4dab40e4e3b6d3d8a
+* master: reserve writable data partition amount according to capacity instead of a const. https://github.com/chubaofs/chubaofs/pull/80/commits/06186f0b62df534fae3d2f817ccfb61dba921c01
+* monitor: Use UMP performance monitor if exporter is not enabled. https://github.com/chubaofs/chubaofs/pull/80/commits/ddf608f7e1705e79ba1c07285f4e61dbdf86189d
+
+
+
 ## Release v1.1.0 - 2019/05/07
 
 ### Change / Refactoring
