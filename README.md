@@ -36,12 +36,28 @@ https://chubaofs.readthedocs.io/zh_CN/latest/
 
 ## Docker
 
-Under docker dir, there has run_docker.sh tool to run chubaofs with docker-compose, as follow command:
+Under the docker directory, a helper tool called run_docker.sh is provided to run ChubaoFS with docker-compose.
+
+To start a minimal ChubaoFS cluster from scratch, note that **/data/disk** is arbitrary, and make sure there are at least 30G available space.
 ```
 $ docker/run_docker.sh -r -d /data/disk
-$ docker exec -it cfs-client "/bin/bash"
 ```
-more options with
+
+If client start successfully, use `mount` command in ChubaoFS client docker to check mount status:
+
+```
+$ mount | grep chubaofs
+```
+
+Or run server and client seperately by follow command:
+```
+$ docker/run_docker.sh -b
+$ docker/run_docker.sh -s -d /data/disk
+$ docker/run_docker.sh -c
+
+```
+
+For more usage,
 ```
 $ docker/run_docker.sh -h
 
