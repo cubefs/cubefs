@@ -2,12 +2,7 @@
 
 RootPath=$(cd $(dirname $0)/..; pwd)
 GOPATH=/go
-GoAppName=github.com/chubaofs/chubaofs
-GoAppSrcPath=$GOPATH/src/$GoAppName
-ServerBuildDockerImage="chubaofs/cfs-build:1.0"
-ClientBuildDockerImage="chubaofs/centos-ltp:1.0"
-DataNodeNum=4
-export DiskPath="./disk"
+export DiskPath="$RootPath/docker/disk"
 
 help() {
     cat <<EOF
@@ -32,8 +27,7 @@ clean() {
 
 # test & build
 build() {
-    docker run --rm -v ${RootPath}:/go/src/github.com/chubaofs/chubaofs $ServerBuildDockerImage /bin/bash -c "cd $GoAppSrcPath && make build_server"
-    docker run --rm -v ${RootPath}:/go/src/github.com/chubaofs/chubaofs $ClientBuildDockerImage /bin/bash -c "cd $GoAppSrcPath && make build_client"
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run build
 }
 
 # start server
@@ -43,7 +37,7 @@ start_servers() {
 }
 
 start_client() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run client bash -c "/cfs/script/start_client.sh && /bin/bash"
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run client bash -c "/cfs/script/start_client.sh ; /bin/bash"
 }
 
 start_ltptest() {

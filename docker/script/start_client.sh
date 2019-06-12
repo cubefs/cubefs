@@ -57,11 +57,11 @@ create_vol() {
         return
     fi
     echo -n "create vol "
-    res=$(curl -s "http://$LeaderAddr/admin/createVol?name=$VolName&replicas=2&type=extent&randomWrite=true&capacity=30&owner=ltptest")
+    res=$(curl -s "http://$LeaderAddr/admin/createVol?name=$VolName&capacity=30&owner=ltptest")
     code=$(echo "$res" | jq .code)
     if [[ $code -ne 0 ]] ; then
         echo "failed, exit"
-        #curl -s "http://$LeaderAddr/admin/getCluster" | jq
+        curl -s "http://$LeaderAddr/admin/getCluster" | jq
         exit 1
     fi
     echo "ok"
@@ -111,6 +111,6 @@ start_client() {
 getLeaderAddr
 check_status "MetaNode"
 check_status "DataNode"
-create_vol  
+create_vol
 start_client
 
