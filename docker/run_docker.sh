@@ -15,9 +15,12 @@ help() {
 Usage: ./run_docker.sh [ -h | --help ] [ -d | --disk </disk/path> ] [ -l | --ltptest ]
     -h, --help              show help info
     -d, --disk </disk/path>     set datanode local disk path
-    -c, --clear             clear old docker image
+    -b, --build             build chubaofs server and cliente
+    -s, --server            start chubaofs servers docker image
+    -c, --client            start chubaofs client docker image
     -l, --ltptest           run ltp test
-    -r, --run               run
+    -r, --run               run servers and client
+    --clear             clear old docker image
 EOF
     exit 0
 }
@@ -40,11 +43,11 @@ start_servers() {
 }
 
 start_client() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run --name cfs-client -d client bash -c "/cfs/script/start_client.sh"
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run client bash -c "/cfs/script/start_client.sh && /bin/bash"
 }
 
 start_ltptest() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run --name cfs-client client
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run client
 }
 
 run_ltptest() {
@@ -59,7 +62,7 @@ run() {
     start_client
 }
 
-cmd="run"
+cmd="help"
 
 ARGS=( "$@" )
 for opt in ${ARGS[*]} ; do
@@ -67,13 +70,22 @@ for opt in ${ARGS[*]} ; do
         -h|--help)
             help
             ;;
+        -b|--build)
+            cmd=build
+            ;;
         -l|--ltptest)
             cmd=run_ltptest
             ;;
         -r|--run)
             cmd=run
             ;;
-        -c|--clean)
+        -s|--server)
+            cmd=run_servers
+            ;;
+        -c|--client)
+            cmd=run_client
+            ;;
+        -clear|--clear)
             cmd=clean
             ;;
         *)
@@ -86,6 +98,7 @@ for opt in ${ARGS[*]} ; do
         --d|---disk)
             shift
             export DiskPath=${1:?"need disk dir path"}
+            [[ -d $DiskPath ]] || { echo "error: $DiskPath must be exist and at least 30GB free size"; exit 1; }
             shift
             ;;
         -)
@@ -100,6 +113,9 @@ done
 case "-$cmd" in
     -help) help ;;
     -run) run ;;
+    -build) build ;;
+    -run_servers) start_servers ;;
+    -run_client) start_client ;;
     -run_ltptest) run_ltptest ;;
     -clean) clean ;;
     *) help ;;

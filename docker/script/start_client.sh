@@ -6,6 +6,8 @@ src_path=/go/src/github.com/chubaofs/cfs
 
 Master1Addr="192.168.0.11:17010"
 LeaderAddr=""
+VolName="ltptest"
+TryTimes=5
 
 getLeaderAddr() {
     echo -n "check Master "
@@ -48,12 +50,18 @@ check_status() {
 }
 
 create_vol() {
+    clusterInfo=$(curl -s "http://$LeaderAddr/admin/getCluster")
+    volname=$(echo "$clusterInfo" | jq ".data.VolStatInfo[0].Name" | tr -d \")
+    if [[ "-$volname" == "-$VolName" ]] ; then
+        echo "vol ok"
+        return
+    fi
     echo -n "create vol "
-    res=$(curl -s "http://$LeaderAddr/admin/createVol?name=ltptest&replicas=2&type=extent&randomWrite=true&capacity=30&owner=ltptest")
+    res=$(curl -s "http://$LeaderAddr/admin/createVol?name=$VolName&replicas=2&type=extent&randomWrite=true&capacity=30&owner=ltptest")
     code=$(echo "$res" | jq .code)
     if [[ $code -ne 0 ]] ; then
-        echo " failed, exit"
-        curl -s "http://$LeaderAddr/admin/getCluster" | jq
+        echo "failed, exit"
+        #curl -s "http://$LeaderAddr/admin/getCluster" | jq
         exit 1
     fi
     echo "ok"
@@ -61,11 +69,11 @@ create_vol() {
 
 create_dp() {
     echo -n "create datapartition "
-    res=$(curl -s "http://$LeaderAddr/dataPartition/create?count=20&name=ltptest&type=extent" )
+    res=$(curl -s "http://$LeaderAddr/dataPartition/create?count=20&name=$VolName&type=extent" )
     code=$(echo "$res" | jq .code)
     if [[ $code -ne 0 ]] ; then
-        echo " failed, exit"
-        curl -s "http://$LeaderAddr/admin/getCluster" | jq
+        echo "failed, exit"
+        #curl -s "http://$LeaderAddr/admin/getCluster" | jq
         exit 1
     fi
     echo "ok"
@@ -86,21 +94,23 @@ print_error_info() {
 
 start_client() {
     echo -n "start client "
-    nohup /cfs/bin/cfs-client -c /cfs/conf/client.json >/cfs/log/cfs.out 2>&1 &
-    sleep 10
-    res=$( stat $MntPoint | grep -q "Inode: 1" ; echo $? )
-    if [[ $res -ne 0 ]] ; then
-        echo "failed"
-        print_error_info
-        exit $res
-    fi
-
-    echo "ok"
+    for((i=0; i<$TryTimes; i++)) ; do
+        nohup /cfs/bin/cfs-client -c /cfs/conf/client.json >/cfs/log/cfs.out 2>&1 &
+        sleep 2
+        sta=$(stat $MntPoint 2>/dev/null | tr ":：" " "  | awk '/Inode/{print $4}')
+        if [[ "x$sta" == "x1" ]] ; then
+            ok=1
+	        echo "ok"
+            exit 0
+        fi
+    done
+    echo "failed"
+    exit 1
 }
 
 getLeaderAddr
 check_status "MetaNode"
 check_status "DataNode"
-create_vol ; sleep 3
-create_dp ; sleep 3
-/cfs/bin/cfs-client -c /cfs/conf/client.json >/cfs/log/cfs.out
+create_vol  
+start_client
+
