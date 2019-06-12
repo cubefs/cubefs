@@ -108,7 +108,6 @@ start_client() {
 getLeaderAddr
 check_status "MetaNode"
 check_status "DataNode"
-create_vol ; sleep 3
-#create_dp ; sleep 3
+create_vol  
 start_client
 
