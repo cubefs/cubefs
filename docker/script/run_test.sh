@@ -149,7 +149,7 @@ run_ltptest() {
 getLeaderAddr
 check_status "MetaNode"
 check_status "DataNode"
-create_vol ; sleep 3
+create_vol ; sleep 2
 create_dp ; sleep 3
 start_client ; sleep 2
 run_ltptest
