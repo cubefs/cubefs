@@ -231,7 +231,5 @@ services:
         security_opt:
             - "apparmor:unconfiged"
         command: /bin/bash /cfs/script/start.sh
-        depends_on:
-            - "servers"
         networks:
             extnetwork:

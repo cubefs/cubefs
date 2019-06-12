@@ -52,8 +52,8 @@ create_vol() {
     res=$(curl -s "http://$LeaderAddr/admin/createVol?name=ltptest&replicas=2&type=extent&randomWrite=true&capacity=30&owner=ltptest")
     code=$(echo "$res" | jq .code)
     if [[ $code -ne 0 ]] ; then
-        echo " failed, exit"
-        curl -s "http://$LeaderAddr/admin/getCluster" | jq
+        echo "failed, exit"
+        #curl -s "http://$LeaderAddr/admin/getCluster" | jq
         exit 1
     fi
     echo "ok"
@@ -64,8 +64,8 @@ create_dp() {
     res=$(curl -s "http://$LeaderAddr/dataPartition/create?count=20&name=ltptest&type=extent" )
     code=$(echo "$res" | jq .code)
     if [[ $code -ne 0 ]] ; then
-        echo " failed, exit"
-        curl -s "http://$LeaderAddr/admin/getCluster" | jq
+        echo "failed, exit"
+        #curl -s "http://$LeaderAddr/admin/getCluster" | jq
         exit 1
     fi
     echo "ok"
@@ -91,7 +91,7 @@ start_client() {
     res=$( stat $MntPoint | grep -q "Inode: 1" ; echo $? )
     if [[ $res -ne 0 ]] ; then
         echo "failed"
-        print_error_info
+        #print_error_info
         exit $res
     fi
 
@@ -102,5 +102,7 @@ getLeaderAddr
 check_status "MetaNode"
 check_status "DataNode"
 create_vol ; sleep 3
-create_dp ; sleep 3
-/cfs/bin/cfs-client -c /cfs/conf/client.json >/cfs/log/cfs.out
+#create_dp ; sleep 3
+#/cfs/bin/cfs-client -c /cfs/conf/client.json >/cfs/log/cfs.out
+start_client
+
