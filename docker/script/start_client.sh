@@ -50,7 +50,7 @@ check_status() {
 
 create_vol() {
     clusterInfo=$(curl -s "http://$LeaderAddr/admin/getCluster")
-    volname=$(echo "$clusterInfo" | jq ".data.VolStatInfo.Name")
+    volname=$(echo "$clusterInfo" | jq ".data.VolStatInfo[0].Name")
     if [[ "-$volname" == "-$VolName" ]] ; then
         echo "vol ok"
         return
