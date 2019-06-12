@@ -7,6 +7,7 @@ src_path=/go/src/github.com/chubaofs/cfs
 Master1Addr="192.168.0.11:17010"
 LeaderAddr=""
 VolName="ltptest"
+TryTimes=5
 
 getLeaderAddr() {
     echo -n "check Master "
@@ -93,16 +94,18 @@ print_error_info() {
 
 start_client() {
     echo -n "start client "
-    nohup /cfs/bin/cfs-client -c /cfs/conf/client.json >/cfs/log/cfs.out 2>&1 &
-    sleep 10
-    res=$( stat $MntPoint | grep -q "Inode: 1" ; echo $? )
-    if [[ $res -ne 0 ]] ; then
-        echo "failed"
-        #print_error_info
-        exit $res
-    fi
-
-    echo "ok"
+    for((i=0; i<$TryTimes; i++)) ; do
+        nohup /cfs/bin/cfs-client -c /cfs/conf/client.json >/cfs/log/cfs.out 2>&1 &
+        sleep 2
+        sta=$(stat $MntPoint 2>/dev/null | tr ":：" " "  | awk '/Inode/{print $4}')
+        if [[ "x$sta" == "x1" ]] ; then
+            ok=1
+	        echo "ok"
+            exit 0
+        fi
+    done
+    echo "failed"
+    exit 1
 }
 
 getLeaderAddr
