@@ -20,6 +20,7 @@ services:
             - datanode1
             - datanode2
             - datanode3
+            - datanode4
         networks:
             extnetwork:
 
@@ -92,6 +93,7 @@ services:
             - "master1"
             - "master2"
             - "master3"
+
     metanode2:
         image: chubaofs/cfs-build:1.0
         ports:
@@ -139,6 +141,7 @@ services:
             - "17330"
             - "17340"
         volumes:
+            - ${DiskPath:-./disk}/1:/cfs/disk
             - ./bin:/cfs/bin
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
@@ -158,6 +161,7 @@ services:
             - "17330"
             - "17340"
         volumes:
+            - ${DiskPath:-./disk}/2:/cfs/disk
             - ./bin:/cfs/bin
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
@@ -177,6 +181,28 @@ services:
             - "17330"
             - "17340"
         volumes:
+            - ${DiskPath:-./disk}/3:/cfs/disk
+            - ./bin:/cfs/bin
+            - ./conf/datanode.json:/cfs/conf/datanode.json
+            - ./script/start_datanode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        depends_on:
+            - "metanode1"
+            - "metanode2"
+            - "metanode3"
+        restart: on-failure
+        networks:
+            extnetwork:
+
+    datanode4:
+        image: chubaofs/cfs-build:1.0
+        ports:
+            - "17310"
+            - "17320"
+            - "17330"
+            - "17340"
+        volumes:
+            - ${DiskPath:-./disk}/4:/cfs/disk
             - ./bin:/cfs/bin
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
@@ -196,6 +222,7 @@ services:
             - ./bin:/cfs/bin
             - ./conf/client.json:/cfs/conf/client.json
             - ./script/run_test.sh:/cfs/script/start.sh
+            - ./script/start_client.sh:/cfs/script/start_client.sh
         privileged: true
         devices:
             - /dev/fuse:/dev/fuse:rwm
