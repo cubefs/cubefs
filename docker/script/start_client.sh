@@ -61,7 +61,7 @@ create_vol() {
     code=$(echo "$res" | jq .code)
     if [[ $code -ne 0 ]] ; then
         echo "failed, exit"
-        #curl -s "http://$LeaderAddr/admin/getCluster" | jq
+        curl -s "http://$LeaderAddr/admin/getCluster" | jq
         exit 1
     fi
     echo "ok"
@@ -111,6 +111,6 @@ start_client() {
 getLeaderAddr
 check_status "MetaNode"
 check_status "DataNode"
-create_vol  
+create_vol
 start_client
 
