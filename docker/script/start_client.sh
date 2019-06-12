@@ -6,6 +6,7 @@ src_path=/go/src/github.com/chubaofs/cfs
 
 Master1Addr="192.168.0.11:17010"
 LeaderAddr=""
+VolName="ltptest"
 
 getLeaderAddr() {
     echo -n "check Master "
@@ -48,8 +49,14 @@ check_status() {
 }
 
 create_vol() {
+    clusterInfo=$(curl -s "http://$LeaderAddr/admin/getCluster")
+    volname=$(echo "$clusterInfo" | jq ".data.VolStatInfo.Name")
+    if [[ "-$volname" == "-$VolName" ]] ; then
+        echo "vol ok"
+        return
+    fi
     echo -n "create vol "
-    res=$(curl -s "http://$LeaderAddr/admin/createVol?name=ltptest&replicas=2&type=extent&randomWrite=true&capacity=30&owner=ltptest")
+    res=$(curl -s "http://$LeaderAddr/admin/createVol?name=$VolName&replicas=2&type=extent&randomWrite=true&capacity=30&owner=ltptest")
     code=$(echo "$res" | jq .code)
     if [[ $code -ne 0 ]] ; then
         echo "failed, exit"
@@ -61,7 +68,7 @@ create_vol() {
 
 create_dp() {
     echo -n "create datapartition "
-    res=$(curl -s "http://$LeaderAddr/dataPartition/create?count=20&name=ltptest&type=extent" )
+    res=$(curl -s "http://$LeaderAddr/dataPartition/create?count=20&name=$VolName&type=extent" )
     code=$(echo "$res" | jq .code)
     if [[ $code -ne 0 ]] ; then
         echo "failed, exit"
@@ -103,6 +110,5 @@ check_status "MetaNode"
 check_status "DataNode"
 create_vol ; sleep 3
 #create_dp ; sleep 3
-#/cfs/bin/cfs-client -c /cfs/conf/client.json >/cfs/log/cfs.out
 start_client
 
