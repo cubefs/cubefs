@@ -191,6 +191,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		runtimeMetrics:  NewDataPartitionMetrics(),
 		config:          dpCfg,
 	}
+	partition.replicasInit()
 	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize)
 	if err != nil {
 		return
@@ -329,6 +330,22 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 	err = os.Rename(fileName, path.Join(dp.Path(), DataPartitionMetadataFileName))
 	return
 }
+
+func (dp *DataPartition) replicasInit() {
+	replicas := make([]string, 0)
+	for _, peer := range dp.config.Peers {
+		replicas = append(replicas, peer.Addr)
+	}
+	dp.replicas = replicas
+
+	if dp.config.Peers != nil && len(dp.config.Peers) >= 1 {
+		leaderAddr := strings.Split(dp.config.Peers[0].Addr, ":")
+		if len(leaderAddr) == 2 && strings.TrimSpace(leaderAddr[0]) == LocalIP {
+			dp.isLeader = true
+		}
+	}
+}
+
 func (dp *DataPartition) statusUpdateScheduler() {
 	ticker := time.NewTicker(time.Minute)
 	snapshotTicker := time.NewTicker(time.Minute * 5)
