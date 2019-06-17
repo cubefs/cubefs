@@ -298,7 +298,7 @@ func (mp *metaPartition) stopRaft() {
 	if mp.raftPartition != nil {
 		// TODO Unhandled errors
 		mp.raftPartition.Stop()
-		mp.raftPartition=nil
+		mp.raftPartition = nil
 	}
 	return
 }

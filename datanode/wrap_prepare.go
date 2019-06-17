@@ -92,25 +92,25 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 	store := p.Object.(*DataPartition).ExtentStore()
 	var (
 		extentID uint64
-		err error
+		err      error
 	)
 	if isLeaderPacket(p) && p.ExtentType == proto.TinyExtentType && isWriteOperation(p) {
 		extentID, err = store.GetAvailableTinyExtent()
 		if err != nil {
-			return fmt.Errorf("addExtentInfo partition %v GetAvailableTinyExtent error %v", p.PartitionID,err.Error())
+			return fmt.Errorf("addExtentInfo partition %v GetAvailableTinyExtent error %v", p.PartitionID, err.Error())
 		}
 		p.ExtentID = extentID
 		p.ExtentOffset, err = store.GetTinyExtentOffset(extentID)
 		if err != nil {
-			return fmt.Errorf("addExtentInfo partition %v  %v GetTinyExtentOffset error %v", p.PartitionID,extentID,err.Error())
+			return fmt.Errorf("addExtentInfo partition %v  %v GetTinyExtentOffset error %v", p.PartitionID, extentID, err.Error())
 		}
 	} else if isLeaderPacket(p) && isCreateExtentOperation(p) {
 		if partition.GetExtentCount() >= storage.MaxExtentCount*3 {
 			return fmt.Errorf("addExtentInfo partition %v has reached maxExtentId", p.PartitionID)
 		}
-		p.ExtentID,err = store.NextExtentID()
-		if err!=nil {
-			return fmt.Errorf("addExtentInfo partition %v alloc NextExtentId error %v", p.PartitionID,err)
+		p.ExtentID, err = store.NextExtentID()
+		if err != nil {
+			return fmt.Errorf("addExtentInfo partition %v alloc NextExtentId error %v", p.PartitionID, err)
 		}
 	} else if isLeaderPacket(p) && isMarkDeleteExtentOperation(p) && isTinyExtentType(p) {
 		record := new(proto.TinyExtentDeleteRecord)

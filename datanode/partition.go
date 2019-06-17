@@ -662,15 +662,15 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 			err = fmt.Errorf("crc not match")
 			return
 		}
-		if p.Size%storage.EveryTinyDeleteRecordSize != 0 {
+		if p.Size%storage.DeleteTinyRecordSize != 0 {
 			err = fmt.Errorf("unavali size")
 			return
 		}
 		var index int
-		for (index+1)*storage.EveryTinyDeleteRecordSize <= int(p.Size) {
-			record := p.Data[index*storage.EveryTinyDeleteRecordSize : (index+1)*storage.EveryTinyDeleteRecordSize]
+		for (index+1)*storage.DeleteTinyRecordSize <= int(p.Size) {
+			record := p.Data[index*storage.DeleteTinyRecordSize : (index+1)*storage.DeleteTinyRecordSize]
 			extentID, offset, size := storage.UnMarshalTinyExtent(record)
-			localTinyDeleteFileSize += storage.EveryTinyDeleteRecordSize
+			localTinyDeleteFileSize += storage.DeleteTinyRecordSize
 			index++
 			if !storage.IsTinyExtent(extentID) {
 				continue

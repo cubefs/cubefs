@@ -209,11 +209,11 @@ func (d *Disk) ForceLoadPartitionHeader() {
 	}
 }
 
-func (d *Disk) ForceExitRaftStore(){
+func (d *Disk) ForceExitRaftStore() {
 	partitionList := d.DataPartitionList()
 	for _, partitionID := range partitionList {
 		partition := d.GetDataPartition(partitionID)
-		partition.partitionStatus=proto.Unavailable
+		partition.partitionStatus = proto.Unavailable
 		partition.stopRaft()
 	}
 }
@@ -289,7 +289,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 			)
 			defer wg.Done()
 			if dp, err = LoadDataPartition(path.Join(d.Path, filename), d); err != nil {
-				mesg:=fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ",
+				mesg := fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ",
 					partitionID, err.Error())
 				log.LogError(mesg)
 				exporter.NewAlarm(mesg)
