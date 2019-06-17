@@ -1,21 +1,17 @@
 {
   "role": "master",
-  "ip": "10.196.31.173",
+  "ip": "192.168.31.173",
   "port": "80",
   "prof":"10088",
   "id":"1",
-  "peers": "1:10.196.31.173:80,2:10.196.31.141:80,3:10.196.30.200:80",
+  "peers": "1:192.168.31.173:80,2:192.168.31.141:80,3:192.168.30.200:80",
   "retainLogs":"20000",
-  "logDir": "/export/Logs/baudstorage/master",
-  "logLevel":"DEBUG",
-  "walDir":"/export/Logs/baudstorage/raft",
-  "storeDir":"/export/baudstorage/rocksdbstore",
-  "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
+  "logDir": "/export/Logs/master",
+  "logLevel":"info",
+  "walDir":"/export/Data/master/raft",
+  "storeDir":"/export/Data/master/rocksdbstore",
+  "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
+  "consulAddr": "http://consul.prometheus-cfs.local",
   "exporterPort": 9510,
-  "clusterName":"baudStorage"
+  "clusterName":"cfs"
 }
-
-
-
-
-

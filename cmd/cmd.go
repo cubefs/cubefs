@@ -194,8 +194,8 @@ func main() {
 	interceptSignal(server)
 	err = server.Start(cfg)
 	if err != nil {
-		fmt.Println("Fatal: failed to start the baud storage daemon - ", err)
-		log.LogFatal("Fatal: failed to start the baud storage daemon - ", err)
+		fmt.Println(fmt.Sprintf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err))
+		log.LogFatal(fmt.Sprintf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err))
 		log.LogFlush()
 		os.Exit(1)
 		return

@@ -39,17 +39,17 @@ import (
 )
 
 const (
-	ExtCrcHeaderFileName      = "EXTENT_CRC"
-	ExtBaseExtentIDFileName   = "EXTENT_META"
-	TinyDeleteFileOpt         = os.O_CREATE | os.O_RDWR
-	TinyExtDeletedFileName    = "TINYEXTENT_DELETE"
-	NormalExtDeletedFileName  = "NORMALEXTENT_DELETE"
-	MaxExtentCount            = 20000
-	TinyExtentCount           = 64
-	TinyExtentStartID         = 1
-	MinExtentID               = 1024
-	EveryTinyDeleteRecordSize = 24
-	UpdateCrcInterval         = 600
+	ExtCrcHeaderFileName     = "EXTENT_CRC"
+	ExtBaseExtentIDFileName  = "EXTENT_META"
+	TinyDeleteFileOpt        = os.O_CREATE | os.O_RDWR
+	TinyExtDeletedFileName   = "TINYEXTENT_DELETE"
+	NormalExtDeletedFileName = "NORMALEXTENT_DELETE"
+	MaxExtentCount           = 20000
+	TinyExtentCount          = 64
+	TinyExtentStartID        = 1
+	MinExtentID              = 1024
+	DeleteTinyRecordSize     = 24
+	UpdateCrcInterval        = 600
 )
 
 var (
@@ -591,17 +591,17 @@ func (s *ExtentStore) StoreSize() (totalSize uint64) {
 }
 
 func MarshalTinyExtent(extentID uint64, offset, size int64) (data []byte) {
-	data = make([]byte, EveryTinyDeleteRecordSize)
+	data = make([]byte, DeleteTinyRecordSize)
 	binary.BigEndian.PutUint64(data[0:8], extentID)
 	binary.BigEndian.PutUint64(data[8:16], uint64(offset))
-	binary.BigEndian.PutUint64(data[16:EveryTinyDeleteRecordSize], uint64(size))
+	binary.BigEndian.PutUint64(data[16:DeleteTinyRecordSize], uint64(size))
 	return data
 }
 
 func UnMarshalTinyExtent(data []byte) (extentID, offset, size uint64) {
 	extentID = binary.BigEndian.Uint64(data[0:8])
 	offset = binary.BigEndian.Uint64(data[8:16])
-	size = binary.BigEndian.Uint64(data[16:EveryTinyDeleteRecordSize])
+	size = binary.BigEndian.Uint64(data[16:DeleteTinyRecordSize])
 	return
 }
 
@@ -637,7 +637,7 @@ func (s *ExtentStore) NextExtentID() (extentID uint64,err error) {
 }
 
 func (s *ExtentStore) NextTinyDeleteFileOffset() (offset int64) {
-	return atomic.AddInt64(&s.baseTinyDeleteOffset, EveryTinyDeleteRecordSize)
+	return atomic.AddInt64(&s.baseTinyDeleteOffset, DeleteTinyRecordSize)
 }
 
 func (s *ExtentStore) LoadTinyDeleteFileOffset() (offset int64) {
