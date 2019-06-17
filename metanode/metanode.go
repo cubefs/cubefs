@@ -30,6 +30,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"strconv"
+	"fmt"
 )
 
 var (
@@ -125,6 +126,10 @@ func (m *MetaNode) Sync() {
 	}
 }
 
+const (
+	MinMetaNodeMemorySize =util.GB*5
+)
+
 func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	if cfg == nil {
 		err = errors.New("invalid configuration")
@@ -137,18 +142,32 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
 	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
-	if configTotalMem != 0 && configTotalMem <= util.GB {
-		configTotalMem = util.GB
+	if configTotalMem != 0 && configTotalMem <= MinMetaNodeMemorySize {
+		configTotalMem = MinMetaNodeMemorySize
 	}
-
 	total, _, err := util.GetMemInfo()
 	if err == nil && configTotalMem == 0 {
-		configTotalMem = total
+		configTotalMem = uint64(float64(total)*0.5)
+	}
+	if configTotalMem > total {
+		configTotalMem = uint64(float64(total)*0.8)
+	}
+	if m.metadataDir==""{
+		return fmt.Errorf("bad metadataDir config")
+	}
+	if m.listen==""{
+		return fmt.Errorf("bad listen config")
+	}
+	if m.raftDir==""{
+		return fmt.Errorf("bad raftDir config")
+	}
+	if m.raftHeartbeatPort==""{
+		return fmt.Errorf("bad raftHeartbeatPort config")
+	}
+	if m.raftReplicatePort==""{
+		return fmt.Errorf("bad cfgRaftReplicaPort config")
 	}
 
-	if configTotalMem > total {
-		configTotalMem = total
-	}
 
 	log.LogInfof("[parseConfig] load localAddr[%v].", m.localAddr)
 	log.LogInfof("[parseConfig] load listen[%v].", m.listen)

@@ -3,7 +3,7 @@
   "port": "6000",
   "prof": "6001",
   "clusterID": "data",
-  "logDir": "/var/logs",
+  "logDir": "/export/Logs/",
   "logLevel": "debug",
   "masterAddr": [
     "10.196.30.200:80",
