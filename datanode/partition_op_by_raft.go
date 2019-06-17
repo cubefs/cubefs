@@ -17,16 +17,15 @@ package datanode
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
-	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft"
 	"net"
-	"strings"
 )
 
 type RaftCmdItem struct {
@@ -93,7 +92,8 @@ func UnmarshalRandWriteRaftLog(raw []byte) (opItem *rndWrtOpItem, err error) {
 		return
 	}
 	if version != BinaryMarshalMagicVersion {
-		return nil, fmt.Errorf("unknow version randWrite log,expect %v actual %v", BinaryMarshalMagicVersion, version)
+		opItem, err = UnmarshalOldVersionRaftLog(raw)
+		return
 	}
 	if err = binary.Read(buff, binary.BigEndian, &opItem.opcode); err != nil {
 		return
@@ -118,13 +118,47 @@ func UnmarshalRandWriteRaftLog(raw []byte) (opItem *rndWrtOpItem, err error) {
 	return
 }
 
-func (dp *DataPartition) checkWriteErrs(errMsg string) (ignore bool) {
-	// file has been deleted when applying the raft log
-	if strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) || strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) {
-		return true
+func UnmarshalOldVersionRaftLog(raw []byte) (opItem *rndWrtOpItem, err error) {
+	raftOpItem := new(RaftCmdItem)
+	defer func() {
+		log.LogDebugf("Unmarsh use oldVersion,result %v", err)
+	}()
+	if err = json.Unmarshal(raw, raftOpItem); err != nil {
+		return
 	}
-	return false
+	opItem, err = UnmarshalOldVersionRandWriteOpItem(raftOpItem.V)
+	if err != nil {
+		return
+	}
+	opItem.opcode = uint8(raftOpItem.Op)
+	return
 }
+
+func UnmarshalOldVersionRandWriteOpItem(raw []byte) (result *rndWrtOpItem, err error) {
+	var opItem rndWrtOpItem
+
+	buff := bytes.NewBuffer(raw)
+	if err = binary.Read(buff, binary.BigEndian, &opItem.extentID); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &opItem.offset); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &opItem.size); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &opItem.crc); err != nil {
+		return
+	}
+	opItem.data = make([]byte, opItem.size)
+	if _, err = buff.Read(opItem.data); err != nil {
+		return
+	}
+
+	result = &opItem
+	return
+}
+
 
 // CheckLeader checks if itself is the leader during read
 func (dp *DataPartition) CheckLeader(request *repl.Packet, connect net.Conn) (err error) {
