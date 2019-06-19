@@ -43,7 +43,7 @@ Configurations
        "port": "6000",
        "prof": "6001",
        "logDir": "/export/Logs/datanode",
-       "logLevel": "debug",
+       "logLevel": "info",
        "raftHeartbeat": "9095",
        "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
        "raftReplica": "9096",
