@@ -630,8 +630,10 @@ func (s *ExtentStore) ReadTinyDeleteRecords(offset, size int64, data []byte) (cr
 // NextExtentID returns the next extentID. When the client sends the request to create an extent,
 // this function generates an unique extentID within the current partition.
 // This function can only be called by the leader.
-func (s *ExtentStore) NextExtentID() (extentID uint64) {
-	return atomic.AddUint64(&s.baseExtentID, 1)
+func (s *ExtentStore) NextExtentID() (extentID uint64,err error) {
+	extentID=atomic.AddUint64(&s.baseExtentID, 1)
+	err=s.PersistenceBaseExtentID(extentID)
+	return
 }
 
 func (s *ExtentStore) NextTinyDeleteFileOffset() (offset int64) {
@@ -651,7 +653,7 @@ func (s *ExtentStore) UpdateBaseExtentID(id uint64) (err error) {
 	if IsTinyExtent(id) {
 		return
 	}
-	if id >= atomic.LoadUint64(&s.baseExtentID) {
+	if id > atomic.LoadUint64(&s.baseExtentID) {
 		atomic.StoreUint64(&s.baseExtentID, id)
 		err = s.PersistenceBaseExtentID(atomic.LoadUint64(&s.baseExtentID))
 	}

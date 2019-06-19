@@ -482,16 +482,16 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 
 	//log.LogDebugf("ExtentHandler allocateExtent enter: eh(%v)", eh)
 
-	excludePartitions := make([]uint64, 0)
+	exclude := make(map[string]struct{})
 
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
-		if dp, err = gDataWrapper.GetDataPartitionForWrite(excludePartitions); err != nil {
-			log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v)", eh, excludePartitions)
+		if dp, err = gDataWrapper.GetDataPartitionForWrite(exclude); err != nil {
+			log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v)", eh, exclude)
 			continue
 		}
 
 		if eh.storeMode == proto.NormalExtentType {
-			if extID, err = eh.createExtent(dp); err != nil {
+			if extID, err = eh.createExtent(dp, exclude); err != nil {
 				log.LogWarnf("allocateExtent: failed to create extent, eh(%v) err(%v)", eh, err)
 				continue
 			}
@@ -500,7 +500,7 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 		}
 
 		if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
-			excludePartitions = append(excludePartitions, dp.PartitionID)
+			exclude[dp.Hosts[0]] = struct{}{}
 			log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v)", eh, err, dp)
 			continue
 		}
@@ -535,14 +535,14 @@ func (eh *ExtentHandler) createConnection(dp *wrapper.DataPartition) (*net.TCPCo
 	return connect, nil
 }
 
-func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err error) {
+func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition, exclude map[string]struct{}) (extID int, err error) {
 	conn, err := StreamConnPool.GetConnect(dp.Hosts[0])
 	if err != nil {
-		// TODO unhandled error
 		errors.Trace(err, "createExtent: failed to create connection, eh(%v) datapartionHosts(%v)", eh, dp.Hosts[0])
+		exclude[dp.Hosts[0]] = struct{}{}
 		return
 	}
-	// TODO unhandled error
+
 	defer func() {
 		if err != nil {
 			StreamConnPool.PutConnect(conn, true)
@@ -553,13 +553,14 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 
 	p := NewCreateExtentPacket(dp, eh.inode)
 	if err = p.WriteToConn(conn); err != nil {
-		// TODO unhandled error
 		errors.Trace(err, "createExtent: failed to WriteToConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
+		exclude[dp.Hosts[0]] = struct{}{}
 		return
 	}
 
 	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime*2); err != nil {
 		err = errors.Trace(err, "createExtent: failed to ReadFromConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
+		exclude[dp.Hosts[0]] = struct{}{}
 		return
 	}
 

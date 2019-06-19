@@ -2,7 +2,10 @@ Resource Manager
 ============================
 
 The cluster contains dataNodes,metaNodes,vols,dataPartitions and metaPartitions,they are managed by master server. The master server caches the metadata in mem,persist to GoLevelDB,and ensure consistence by raft protocol.
+
 The master server manages dataPartition id to dataNode server mapping,metaPartition id to metaNode server mapping.
+
+At lease 3 master nodes are required in respect to high availability.
 
 Features
 --------

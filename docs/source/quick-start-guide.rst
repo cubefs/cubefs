@@ -76,8 +76,8 @@ Sample *meta.json is* shown as follows,
        "role": "metanode",
        "listen": "9021",
        "prof": "9092",
-       "logLevel": "debug",
-       "metaDir": "/export/Data/metanode",
+       "logLevel": "info",
+       "metadataDir": "/export/Data/metanode",
        "logDir": "/export/Logs/metanode",
        "raftDir": "/export/Data/metanode/raft",
        "raftHeartbeatPort": "9093",
@@ -167,13 +167,17 @@ For detailed explanations of *datanode.json*, please refer to :doc:`user-guide/d
 Create Volume
 ^^^^^^^^^^^^^
 
-By decault, there are only a few data partitions allocated upon volume creation, and will be dynamically expanded according to actual usage. For performance evaluation, it is better to preallocate enough data partitions.
+By decault, there are only a few data partitions allocated upon volume creation, and will be dynamically expanded according to actual usage.
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/admin/createVol?name=test&capacity=100&owner=cfs"
+   curl -v "http://127.0.0.1/admin/createVol?name=test&capacity=10000&owner=cfs"
 
+For performance evaluation, extra data partitions shall be pre-created according to the amount of data nodes and disks to reach maximum performance.
 
+.. code-block:: bash
+
+    curl -v "http://127.0.0.1/dataPartition/create?name=test&count=120"
 
 Mount Client
 ------------
