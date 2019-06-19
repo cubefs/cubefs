@@ -3,6 +3,8 @@ Meta Subsystem
 
 Metanode is the manager of meta partitions and replicated by MultiRaft. Each metanode manages various of partitions.  Each partition covers an inode range, and maintains two in-memory btrees: inode btree and dentry btree.
 
+At lease 3 meta nodes are required in respect to high availability.
+
 .. csv-table:: Properties
    :header: "Key", "Type", "Description", "Mandatory"
  
@@ -33,7 +35,7 @@ Example:
         "listen": "9021",
         "prof": "9092",
         "logLevel": "debug",
-        "metaDir": "/export/Data/metanode",
+        "metadataDir": "/export/Data/metanode",
         "logDir": "/export/Logs/metanode",
         "raftDir": "/export/Data/metanode/raft",
         "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
