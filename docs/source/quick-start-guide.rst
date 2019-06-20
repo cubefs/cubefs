@@ -33,7 +33,7 @@ Start Resource Manager
 
 .. code-block:: bash
 
-   nohup ./cmd -c master.json &
+   nohup ./cfs-server -c master.json &
 
 
 Sample *master.json* is shown as follows,
@@ -66,7 +66,7 @@ Start Metanode
 
 .. code-block:: bash
 
-   nohup ./cmd -c meta.json &
+   nohup ./cfs-server -c meta.json &
 
 Sample *meta.json is* shown as follows,
 
@@ -133,7 +133,7 @@ Start Datanode
 
    .. code-block:: bash
    
-      nohup ./cmd -c datanode.json &
+      nohup ./cfs-server -c datanode.json &
 
    Sample *datanode.json* is shown as follows,
    
@@ -184,7 +184,7 @@ Mount Client
 
 1. Run ``modprobe fuse`` to insert FUSE kernel module.
 2. Run ``yum install -y fuse`` to install libfuse.
-3. Run ``nohup client -c fuse.json &`` to start a client.
+3. Run ``nohup cfs-client -c fuse.json &`` to start a client.
 
    Sample *fuse.json* is shown as follows,
    

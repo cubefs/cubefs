@@ -8,7 +8,7 @@ Start a DataNode process by execute the server binary of ChubaoFS you built with
 
 .. code-block:: bash
 
-   nohup cfs-datanode -c datanode.json &
+   nohup cfs-server -c datanode.json &
 
 
 Configurations

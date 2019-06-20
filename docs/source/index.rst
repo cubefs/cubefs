@@ -1,5 +1,5 @@
 Welcome to ChubaoFS(Chubao File System)
-==================================
+==============================================
 
 .. toctree::
    :maxdepth: 2
