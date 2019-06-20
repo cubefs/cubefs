@@ -6,11 +6,12 @@
     "raftReplicaPort": "17240",
     "logLevel": "info",
     "logDir": "/cfs/log",
+    "warnLogDir":"/cfs/log",
     "metadataDir": "/cfs/data/meta",
     "raftDir": "/cfs/data/raft",
     "masterAddrs": [
-	    "192.168.0.11:17010",
-	    "192.168.0.12:17010",
-	    "192.168.0.13:17010"
+        "192.168.0.11:17010",
+        "192.168.0.12:17010",
+        "192.168.0.13:17010"
     ]
 }
