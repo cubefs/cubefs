@@ -167,7 +167,7 @@ For detailed explanations of *datanode.json*, please refer to :doc:`user-guide/d
 Create Volume
 ^^^^^^^^^^^^^
 
-By decault, there are only a few data partitions allocated upon volume creation, and will be dynamically expanded according to actual usage.
+By default, there are only a few data partitions allocated upon volume creation, and will be dynamically expanded according to actual usage.
 
 .. code-block:: bash
 
