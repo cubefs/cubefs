@@ -15,6 +15,8 @@
 package metanode
 
 import (
+	"strings"
+
 	"github.com/chubaofs/chubaofs/proto"
 )
 
@@ -51,13 +53,19 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 		}
 	}
 	if item, ok := mp.dentryTree.ReplaceOrInsert(dentry, false); !ok {
-		status = proto.OpExistErr
 		//do not allow directories and files to overwrite each
 		// other when renaming
 		d := item.(*Dentry)
 		if dentry.Type != d.Type {
 			status = proto.OpArgMismatchErr
+			return
 		}
+
+		if dentry.ParentId == d.ParentId && strings.Compare(dentry.Name, d.Name) == 0 && dentry.Inode == d.Inode {
+			return
+		}
+
+		status = proto.OpExistErr
 	} else {
 		if !forceUpdate {
 			parIno.IncNLink()
