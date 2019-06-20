@@ -226,19 +226,19 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		if !fileInfo.IsDir() {
 			return ErrBadConfFile
 		}
-		restSize, err := strconv.ParseUint(arr[1], 10, 64)
+		reservedSpace, err := strconv.ParseUint(arr[1], 10, 64)
 		if err != nil {
 			return ErrBadConfFile
 		}
 
-		if restSize < DefaultDiskRetain {
-			restSize = DefaultDiskRetain
+		if reservedSpace < DefaultDiskRetain {
+			reservedSpace = DefaultDiskRetain
 		}
 		wg.Add(1)
-		go func(wg *sync.WaitGroup, path string, restSize uint64) {
+		go func(wg *sync.WaitGroup, path string, reservedSpace uint64) {
 			defer wg.Done()
-			s.space.LoadDisk(path, restSize, DefaultDiskMaxErr)
-		}(&wg, path, restSize)
+			s.space.LoadDisk(path, reservedSpace, DefaultDiskMaxErr)
+		}(&wg, path, reservedSpace)
 	}
 	wg.Wait()
 	return nil
