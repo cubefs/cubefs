@@ -40,9 +40,9 @@ import (
 )
 
 var (
-	ErrIncorrectStoreType       = errors.New("incorrect store type")
-	ErrNoSpaceToCreatePartition = errors.New("no disk space to create a data partition")
-	ErrBadConfFile              = errors.New("bad config file")
+	ErrIncorrectStoreType       = errors.New("Incorrect store type")
+	ErrNoSpaceToCreatePartition = errors.New("No disk space to create a data partition")
+	ErrNewSpaceManagerFailed    = errors.New("Creater new space manager failed")
 
 	LocalIP      string
 	gConnPool    = util.NewConnectPool()
@@ -201,7 +201,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	s.space = NewSpaceManager(s.rackName)
 	if err != nil || len(strings.TrimSpace(s.port)) == 0 {
-		err = ErrBadConfFile
+		err = ErrNewSpaceManagerFailed
 		return
 	}
 
@@ -213,22 +213,22 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	for _, d := range cfg.GetArray(ConfigKeyDisks) {
 		log.LogDebugf("action[startSpaceManager] load disk raw config(%v).", d)
 
-		// format "PATH:RESET_SIZE:MAX_ERR
+		// format "PATH:RESET_SIZE
 		arr := strings.Split(d.(string), ":")
 		if len(arr) != 2 {
-			return ErrBadConfFile
+			return errors.New("Invalid disk configuration. Example: PATH:RESERVE_SIZE")
 		}
 		path := arr[0]
 		fileInfo, err := os.Stat(path)
 		if err != nil {
-			return ErrBadConfFile
+			return errors.New(fmt.Sprintf("Stat disk path error: %s", err.Error()))
 		}
 		if !fileInfo.IsDir() {
-			return ErrBadConfFile
+			return errors.New("Disk path is not dir")
 		}
 		reservedSpace, err := strconv.ParseUint(arr[1], 10, 64)
 		if err != nil {
-			return ErrBadConfFile
+			return errors.New(fmt.Sprintf("Invalid disk reserved space. Error: %s", err.Error()))
 		}
 
 		if reservedSpace < DefaultDiskRetain {
