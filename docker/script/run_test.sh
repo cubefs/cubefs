@@ -49,7 +49,7 @@ check_status() {
 
 create_vol() {
     echo -n "create vol "
-    res=$(curl -s "http://$LeaderAddr/admin/createVol?name=ltptest&replicas=2&type=extent&randomWrite=true&capacity=30&owner=ltptest")
+    res=$(curl -s "http://$LeaderAddr/admin/createVol?name=ltptest&capacity=30&owner=ltptest")
     code=$(echo "$res" | jq .code)
     if [[ $code -ne 0 ]] ; then
         echo " failed, exit"
@@ -149,7 +149,7 @@ run_ltptest() {
 getLeaderAddr
 check_status "MetaNode"
 check_status "DataNode"
-create_vol ; sleep 3
+create_vol ; sleep 2
 create_dp ; sleep 3
 start_client ; sleep 2
 run_ltptest

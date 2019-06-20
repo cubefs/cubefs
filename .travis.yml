@@ -4,8 +4,7 @@ services:
     - docker
 
 before_install:
-    - docker pull chubaofs/cfs-build:1.0
-    - docker pull chubaofs/centos-ltp:1.0
+    - docker pull chubaofs/cfs-base:1.0
 
 script:
     - docker/run_docker.sh -l
