@@ -56,13 +56,14 @@ var (
 	}}
 )
 
-func InitUmp(module, dataDir string) {
+func InitUmp(module, dataDir string)(err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	if err := initLogName(module, dataDir); err != nil {
-		panic("init UMP Monitor failed " + err.Error())
+		return err
 	}
 
 	backGroudWrite()
+	return nil
 }
 
 func BeforeTP(key string) (o *TpObject) {

@@ -136,7 +136,11 @@ func main() {
 
 	//for multi-cpu scheduling
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	ump.InitUmp(role, umpDatadir)
+	if err=ump.InitUmp(role, umpDatadir);err!=nil {
+		fmt.Println(fmt.Sprintf("Fatal: init warnLogDir fail:%v ", err))
+		os.Exit(1)
+	}
+
 	// Init server instance with specified role configuration.
 	var (
 		server Server
