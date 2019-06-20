@@ -157,6 +157,8 @@ func initLogName(module, dataDir string) (err error) {
 		if !strings.HasSuffix(UmpDataDir, "/") {
 			UmpDataDir += "/"
 		}
+	}else {
+		return fmt.Errorf("warnLogDir dir not config")
 	}
 	if err = os.MkdirAll(UmpDataDir, 0666); err != nil {
 		return

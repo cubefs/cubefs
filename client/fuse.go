@@ -138,7 +138,9 @@ func Mount(cfg *config.Config) (err error) {
 		fmt.Println(http.ListenAndServe(":"+profport, nil))
 	}()
 
-	ump.InitUmp(fmt.Sprintf("%v_%v", super.ClusterName(), ModuleName), umpDatadir)
+	if err=ump.InitUmp(fmt.Sprintf("%v_%v", super.ClusterName(), ModuleName), umpDatadir);err!=nil {
+		return err
+	}
 	exporter.Init(super.ClusterName(), ModuleName, cfg)
 
 	if err = fs.Serve(c, super); err != nil {
