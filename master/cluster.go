@@ -869,7 +869,7 @@ func (c *Cluster) createVol(name, owner string, mpCount, size, capacity int) (vo
 	}
 	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
 		vol.initDataPartitions(c)
-		readWriteDataPartitions = vol.checkDataPartitionStatus(c)
+		readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
 	}
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
 	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", name, readWriteDataPartitions)
