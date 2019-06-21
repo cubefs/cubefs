@@ -37,6 +37,11 @@ services:
             - ./script/start_master.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
+        ulimits:
+            nofile:
+                soft: 102400
+                hard: 102400
+        privileged: true
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.11
@@ -54,6 +59,11 @@ services:
             - ./script/start_master.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
+        ulimits:
+            nofile:
+                soft: 102400
+                hard: 102400
+        privileged: true
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.12
@@ -70,6 +80,11 @@ services:
             - ./script/start_master.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
+        ulimits:
+            nofile:
+                soft: 102400
+                hard: 102400
+        privileged: true
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.13
@@ -87,12 +102,13 @@ services:
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
         restart: on-failure
+        ulimits:
+            nofile:
+                soft: 102400
+                hard: 102400
+        privileged: true
         networks:
             extnetwork:
-        depends_on:
-            - "master1"
-            - "master2"
-            - "master3"
 
     metanode2:
         image: chubaofs/cfs-base:1.0
@@ -107,12 +123,14 @@ services:
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
         restart: on-failure
+        ulimits:
+            nofile:
+                soft: 102400
+                hard: 102400
+        privileged: true
         networks:
             extnetwork:
-        depends_on:
-            - "master1"
-            - "master2"
-            - "master3"
+
     metanode3:
         image: chubaofs/cfs-base:1.0
         ports:
@@ -126,12 +144,13 @@ services:
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
         restart: on-failure
+        ulimits:
+            nofile:
+                soft: 102400
+                hard: 102400
+        privileged: true
         networks:
             extnetwork:
-        depends_on:
-            - "master1"
-            - "master2"
-            - "master3"
 
     datanode1:
         image: chubaofs/cfs-base:1.0
@@ -146,11 +165,12 @@ services:
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
-        depends_on:
-            - "metanode1"
-            - "metanode2"
-            - "metanode3"
         restart: on-failure
+        ulimits:
+            nofile:
+                soft: 102400
+                hard: 102400
+        privileged: true
         networks:
             extnetwork:
     datanode2:
@@ -166,13 +186,15 @@ services:
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
-        depends_on:
-            - "metanode1"
-            - "metanode2"
-            - "metanode3"
         restart: on-failure
+        ulimits:
+            nofile:
+                soft: 102400
+                hard: 102400
+        privileged: true
         networks:
             extnetwork:
+
     datanode3:
         image: chubaofs/cfs-base:1.0
         ports:
@@ -187,6 +209,11 @@ services:
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
+        ulimits:
+            nofile:
+                soft: 102400
+                hard: 102400
+        privileged: true
         networks:
             extnetwork:
 
@@ -204,6 +231,11 @@ services:
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
+        ulimits:
+            nofile:
+                soft: 102400
+                hard: 102400
+        privileged: true
         networks:
             extnetwork:
 
