@@ -136,7 +136,11 @@ func main() {
 
 	//for multi-cpu scheduling
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	ump.InitUmp(role, umpDatadir)
+	if err=ump.InitUmp(role, umpDatadir);err!=nil {
+		fmt.Println(fmt.Sprintf("Fatal: init warnLogDir fail:%v ", err))
+		os.Exit(1)
+	}
+
 	// Init server instance with specified role configuration.
 	var (
 		server Server
@@ -194,8 +198,8 @@ func main() {
 	interceptSignal(server)
 	err = server.Start(cfg)
 	if err != nil {
-		fmt.Println("Fatal: failed to start the baud storage daemon - ", err)
-		log.LogFatal("Fatal: failed to start the baud storage daemon - ", err)
+		fmt.Println(fmt.Sprintf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err))
+		log.LogFatal(fmt.Sprintf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err))
 		log.LogFlush()
 		os.Exit(1)
 		return

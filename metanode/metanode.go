@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util"
@@ -148,6 +149,21 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 
 	if configTotalMem > total {
 		configTotalMem = total
+	}
+	if m.metadataDir == "" {
+		return fmt.Errorf("bad metadataDir config")
+	}
+	if m.listen == "" {
+		return fmt.Errorf("bad listen config")
+	}
+	if m.raftDir == "" {
+		return fmt.Errorf("bad raftDir config")
+	}
+	if m.raftHeartbeatPort == "" {
+		return fmt.Errorf("bad raftHeartbeatPort config")
+	}
+	if m.raftReplicatePort == "" {
+		return fmt.Errorf("bad cfgRaftReplicaPort config")
 	}
 
 	log.LogInfof("[parseConfig] load localAddr[%v].", m.localAddr)

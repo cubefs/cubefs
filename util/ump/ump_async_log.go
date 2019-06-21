@@ -1,4 +1,4 @@
-// Copyright 2018 The ChubaoFS Authors.
+// Copyright 2018 The Chubao Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -157,6 +157,8 @@ func initLogName(module, dataDir string) (err error) {
 		if !strings.HasSuffix(UmpDataDir, "/") {
 			UmpDataDir += "/"
 		}
+	}else {
+		return fmt.Errorf("warnLogDir dir not config")
 	}
 	if err = os.MkdirAll(UmpDataDir, 0666); err != nil {
 		return

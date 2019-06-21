@@ -1,4 +1,4 @@
-// Copyright 2018 The ChubaoFS Authors.
+// Copyright 2018 The Chubao Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -56,13 +56,14 @@ var (
 	}}
 )
 
-func InitUmp(module, dataDir string) {
+func InitUmp(module, dataDir string)(err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	if err := initLogName(module, dataDir); err != nil {
-		panic("init UMP Monitor failed " + err.Error())
+		return err
 	}
 
 	backGroudWrite()
+	return nil
 }
 
 func BeforeTP(key string) (o *TpObject) {

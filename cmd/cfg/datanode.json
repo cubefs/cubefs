@@ -2,22 +2,21 @@
   "role": "datanode",
   "port": "6000",
   "prof": "6001",
-  "clusterID": "data",
-  "logDir": "/var/logs",
-  "logLevel": "debug",
-  "masterAddr": [
-    "10.196.30.200:80",
-    "10.196.31.141:80",
-    "10.196.31.173:80"
-  ],
-  "rack": "rack-01",
-  "consulAddr": "http://cbconsul-cfs01.cbmonitor.svc.ht7.n.jd.local",
+  "logDir": "/export/Logs/datanode",
+  "logLevel": "info",
+  "raftHeartbeat": "9095",
+  "raftReplica": "9096",
+  "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
+  "consulAddr": "http://consul.prometheus-cfs.local",
   "exporterPort": 9512,
+  "masterAddr": [
+    "192.168.31.173:80",
+    "192.168.31.141:80",
+    "192.168.30.200:80"
+  ],
+  "rack": "",
   "disks": [
-    "/data0:1:20000",
-    "/data1:1:20000",
-    "/data2:1:20000",
-    "/data3:1:20000",
-    "/data4:1:20000"
+    "/data0:21474836480",
+    "/data1:21474836480"
   ]
 }
