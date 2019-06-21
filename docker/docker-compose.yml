@@ -220,8 +220,6 @@ services:
             - /dev/fuse:/dev/fuse:rwm
         cap_add:
             - SYS_ADMIN
-        security_opt:
-            - "apparmor:unconfiged"
         command: /bin/bash /cfs/script/start.sh
         networks:
             extnetwork:
