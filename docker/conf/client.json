@@ -6,5 +6,7 @@
 	"logDir": "/cfs/log",
     "warnLogDir":"/cfs/log",
 	"logLevel": "info",
-	"profport": "17410"
+    "consulAddr": "http://192.168.0.100:8500",
+    "exporterPort": 9500,
+	"profPort": "17410"
 }

@@ -4,6 +4,8 @@
     "prof": "17320",
     "raftHeartbeat": "17330",
     "raftReplica": "17340",
+    "consulAddr": "http://192.168.0.100:8500",
+    "exporterPort": 9500,
     "rack": "rack-01",
     "logDir": "/cfs/log",
     "warnLogDir":"/cfs/log",
