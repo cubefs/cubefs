@@ -1,0 +1,36 @@
+# my global config
+global:
+  scrape_interval:     15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
+  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
+  # scrape_timeout is set to the global default (10s).
+
+
+scrape_configs:
+  - job_name: 'consul'
+    relabel_configs:
+        - source_labels:  ["__meta_consul_service"]
+          action: replace
+          regex: "(.*)"
+          replacement: '${1}'
+          target_label: "service"
+        - source_labels: ["__meta_consul_tags"]
+          action: replace
+          regex: ',(?:[^,]+,){0}([^=]+)=([^,]+),.*'
+          replacement: '${2}'
+          target_label: '${1}'
+        - source_labels: ["__meta_consul_tags"]
+          action: replace
+          regex: ',(?:[^,]+,){1}([^=]+)=([^,]+),.*'
+          replacement: '${2}'
+          target_label: '${1}'
+        - source_labels: ["__meta_consul_tags"]
+          action: replace
+          regex: ',(?:[^,]+,){2}([^=]+)=([^,]+),.*'
+          replacement: '${2}'
+          target_label: '${1}'
+    metrics_path: /metrics
+    scheme: http
+    consul_sd_configs:
+        - server: 192.168.0.100:8500
+          services:
+              - cfs

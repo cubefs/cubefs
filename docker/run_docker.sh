@@ -13,8 +13,9 @@ Usage: ./run_docker.sh [ -h | --help ] [ -d | --disk </disk/path> ] [ -l | --ltp
     -b, --build             build chubaofs server and cliente
     -s, --server            start chubaofs servers docker image
     -c, --client            start chubaofs client docker image
+    -m, --monitor           start monitor web ui
     -l, --ltptest           run ltp test
-    -r, --run               run servers and client
+    -r, --run               run servers, client and monitor
     --clear             clear old docker image
 EOF
     exit 0
@@ -40,6 +41,10 @@ start_client() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml run client bash -c "/cfs/script/start_client.sh ; /bin/bash"
 }
 
+start_monitor() {
+    docker-compose -f ${RootPath}/docker/docker-compose.yml up -d monitor
+}
+
 start_ltptest() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml run client
 }
@@ -52,6 +57,7 @@ run_ltptest() {
 
 run() {
     build
+    start_monitor
     start_servers
     start_client
 }
@@ -78,6 +84,9 @@ for opt in ${ARGS[*]} ; do
             ;;
         -c|--client)
             cmd=run_client
+            ;;
+        -m|--monitor)
+            cmd=run_monitor
             ;;
         -clear|--clear)
             cmd=clean
@@ -110,6 +119,7 @@ case "-$cmd" in
     -build) build ;;
     -run_servers) start_servers ;;
     -run_client) start_client ;;
+    -run_monitor) start_monitor ;;
     -run_ltptest) run_ltptest ;;
     -clean) clean ;;
     *) help ;;
