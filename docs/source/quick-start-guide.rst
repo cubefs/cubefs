@@ -28,8 +28,8 @@ Build Client
 Deployment
 ----------
 
-Start Resource Manager
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+Start Resource Manager (Master)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 

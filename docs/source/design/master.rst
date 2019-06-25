@@ -1,5 +1,5 @@
-Resource Manager
-==================
+Resource Manager (Master)
+=========================
 
 The resource manager  manages the file system by  processing  different types of tasks, such as creating/deleting/updating/loading partitions and keeping track of the resource status (such as the memory/disk utilization). The resource manager is also responsible for creating new volumes and adding new meta/data nodes to the ChubaoFS cluster. It has multiple replicas, among which the consistency is maintained by a consensus algorithm such as Raft, and persisted to a key value store such as RocksDB for backup and recovery.
 

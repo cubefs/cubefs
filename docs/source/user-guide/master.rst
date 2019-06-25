@@ -1,4 +1,4 @@
-Resource Manager
+Resource Manager (Master)
 ============================
 
 The cluster contains dataNodes,metaNodes,vols,dataPartitions and metaPartitions,they are managed by master server. The master server caches the metadata in mem,persist to GoLevelDB,and ensure consistence by raft protocol.
