@@ -9,7 +9,8 @@ Create
    curl -v "http://127.0.0.1/admin/createVol?name=test&capacity=100&owner=cfs&mpCount=3"
 
 
-allocate a set of data partition and a meta partition to the user.
+| Allocate a set of data partition and a meta partition to the user.
+| Default create 10 data partition and 3 meta partition when create volume.
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
