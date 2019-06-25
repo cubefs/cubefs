@@ -30,7 +30,9 @@ Configurations
    "exporterPort", "string", "Port for monitor system", "No"
    "masterAddr", "string slice", "Addresses of master server", "Yes"
    "rack", "string", "Identity of rack", "No"
-   "disks", "string slice", "PATH:REST_SIZE", "Yes"
+   "disks", "string slice", "
+   | Format: *PATH:RETAIN*.
+   | PATH: Disk mount point. RETAIN: Retain space. (Ranges: 20G-50G.)", "Yes"
    "warnLogDir","string","Warn message directory","No"
 
 
