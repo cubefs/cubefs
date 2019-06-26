@@ -29,7 +29,6 @@ Configurations
    "consulAddr", "string", "Addresses of monitor system", "No"
    "exporterPort", "string", "Port for monitor system", "No"
    "masterAddr", "string slice", "Addresses of master server", "Yes"
-   "rack", "string", "Identity of rack", "No"
    "disks", "string slice", "
    | Format: *PATH:RETAIN*.
    | PATH: Disk mount point. RETAIN: Retain space. (Ranges: 20G-50G.)", "Yes"
@@ -57,7 +56,6 @@ Configurations
            "10.196.31.141:80",
            "10.196.31.173:80"
        ],
-       "rack": "main",
         "disks": [
            "/data0:21474836480",
            "/data1:21474836480"
