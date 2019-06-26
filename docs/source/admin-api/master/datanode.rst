@@ -27,7 +27,7 @@ response
        "TotalWeight": 39666212700160,
        "UsedWeight": 2438143586304,
        "Available": 37228069113856,
-       "Rack": "rack1",
+       "Rack": "default",
        "Addr": "10.196.30.231:6000",
        "ReportTime": "2018-12-06T10:56:38.881784447+08:00",
        "Ratio": 0.06146650815226848,

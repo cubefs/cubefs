@@ -399,6 +399,7 @@ func (ns *nodeSet) removeRack(name string) {
 }
 
 func (ns *nodeSet) putDataNode(dataNode *DataNode) {
+	dataNode.RackName = DefaultRackName
 	rack, err := ns.getRack(dataNode.RackName)
 	if err != nil {
 		rack = newRack(dataNode.RackName)
@@ -450,10 +451,12 @@ func (ns *nodeSet) allocRacks(replicaNum int, excludeRack []string) (racks []*Ra
 		}
 		rName := ns.getRackNameByIndex(ns.rackIndex)
 		if contains(excludeRack, rName) {
+			ns.rackIndex++
 			continue
 		}
 		var rack *Rack
 		if rack, err = ns.getRack(ns.racks[ns.rackIndex]); err != nil {
+			ns.rackIndex++
 			continue
 		}
 		ns.rackIndex++
