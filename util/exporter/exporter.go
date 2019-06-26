@@ -17,6 +17,7 @@ package exporter
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/config"
@@ -38,15 +39,16 @@ var (
 	clustername string
 	modulename  string
 	enabled     = false
+	replacer    = strings.NewReplacer("-", "_", ".", "_", " ", "_", ",", "_")
 )
 
 func metricsName(name string) string {
-	return fmt.Sprintf("%s_%s", namespace, name)
+	return replacer.Replace(fmt.Sprintf("%s_%s", namespace, name))
 }
 
 // Init initializes the exporter.
 func Init(cluster string, role string, cfg *config.Config) {
-	clustername = cluster
+	clustername = replacer.Replace(cluster)
 	modulename = role
 	port := cfg.GetInt64(ConfigKeyExporterPort)
 	if port == 0 {
@@ -70,7 +72,7 @@ func Init(cluster string, role string, cfg *config.Config) {
 
 	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
 	if len(consulAddr) > 0 {
-		RegisterConsul(consulAddr, AppName, role, cluster, port)
+		RegisterConsul(consulAddr, AppName, role, clustername, port)
 	}
 
 	m := NewGauge("start_time")
