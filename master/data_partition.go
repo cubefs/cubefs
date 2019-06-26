@@ -575,3 +575,14 @@ func (partition *DataPartition) needsToCompareCRC() (needCompare bool) {
 	}
 	return
 }
+
+func (partition *DataPartition) containsBadDisk(diskPath string, nodeAddr string) bool {
+	partition.RLock()
+	defer partition.RUnlock()
+	for _, replica := range partition.Replicas {
+		if nodeAddr == replica.Addr && diskPath == replica.DiskPath {
+			return true
+		}
+	}
+	return false
+}
