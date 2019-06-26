@@ -10,18 +10,18 @@ At lease 3 meta nodes are required in respect to high availability.
  
    "role", "string", "Role of process and must be set to *metanode*", "Yes"
    "listen", "string", "Listen and accept port of the server", "Yes"
-   "prof", "string", "pprof port", "Yes"
+   "prof", "string", "Pprof port", "Yes"
    "logLevel", "string", "Level operation for logging. Default is *error*", "No"
-   "metadataDir", "string", metaNode store snapshot directory", "Yes"
-   "logDir", "string", "log directory", "Yes", 
-   "raftDir", "string", "raft wal directory",  "Yes", 
-   "raftHeartbeatPort", "string", "raft heartbeat port", "Yes" 
-   "raftReplicaPort", "string", "raft replicate port", "Yes"
+   "metadataDir", "string", MetaNode store snapshot directory", "Yes"
+   "logDir", "string", "Log directory", "Yes",
+   "raftDir", "string", "Raft wal directory",  "Yes",
+   "raftHeartbeatPort", "string", "Raft heartbeat port", "Yes"
+   "raftReplicaPort", "string", "Raft replicate port", "Yes"
    "consulAddr", "string", "Addresses of monitor system", "No" 
    "exporterPort", "string", "Port for monitor system", "No" 
    "masterAddrs", "string", "Addresses of master server", "Yes"
    "warnLogDir","string","Warn message directory","No"
-   "totalMem","string","max memory metadata used","No"
+   "totalMem","string","Max memory metadata used","No"
 
 
 
