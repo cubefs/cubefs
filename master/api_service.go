@@ -501,6 +501,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		offLineAddr, diskPath string
 		err                   error
 		badPartitionIds       []uint64
+		badPartitions         []*DataPartition
 	)
 
 	if offLineAddr, diskPath, err = parseRequestToDecommissionNode(r); err != nil {
@@ -512,15 +513,18 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
 	}
-	badPartitionIds = node.badPartitionIDs(diskPath)
-	if len(badPartitionIds) == 0 {
+	badPartitions = node.badPartitions(diskPath, m.cluster)
+	if len(badPartitions) == 0 {
 		err = fmt.Errorf("node[%v] disk[%v] does not have any data partition", node.Addr, diskPath)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	for _, bdp := range badPartitions {
+		badPartitionIds = append(badPartitionIds, bdp.PartitionID)
+	}
 	rstMsg = fmt.Sprintf("recive decommissionDisk node[%v] disk[%v], badPartitionIds[%v] has offline successfully",
 		node.Addr, diskPath, badPartitionIds)
-	if err = m.cluster.decommissionDisk(node, diskPath, badPartitionIds); err != nil {
+	if err = m.cluster.decommissionDisk(node, diskPath, badPartitions); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
