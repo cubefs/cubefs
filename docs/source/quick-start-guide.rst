@@ -28,8 +28,8 @@ Build Client
 Deployment
 ----------
 
-Start Resource Manager
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+Start Resource Manager (Master)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
@@ -81,7 +81,7 @@ Sample *meta.json is* shown as follows,
        "logDir": "/export/Logs/metanode",
        "raftDir": "/export/Data/metanode/raft",
        "raftHeartbeatPort": "9093",
-       "raftReplicatePort": "9094",
+       "raftReplicaPort": "9094",
        "totalMem":  "17179869184",
        "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
        "consulAddr": "http://consul.prometheus-cfs.local",
@@ -155,7 +155,6 @@ Start Datanode
         "192.168.31.141:80",
         "192.168.30.200:80"
         ],
-        "rack": "",
         "disks": [
            "/data0:21474836480",
            "/data1:21474836480"

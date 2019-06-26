@@ -78,20 +78,13 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 	})
 }
 
-func (c *Cluster) decommissionDisk(dataNode *DataNode, badDiskPath string, badPartitionIds []uint64) (err error) {
+func (c *Cluster) decommissionDisk(dataNode *DataNode, badDiskPath string, badPartitions []*DataPartition) (err error) {
 	msg := fmt.Sprintf("action[decommissionDisk], Node[%v] OffLine,disk[%v]", dataNode.Addr, badDiskPath)
 	log.LogWarn(msg)
 
-	vols := c.allVols()
-	for _, vol := range vols {
-		for _, dp := range vol.dataPartitions.partitions {
-			for _, bad := range badPartitionIds {
-				if bad == dp.PartitionID {
-					if err = c.decommissionDataPartition(dataNode.Addr, dp, diskOfflineErr); err != nil {
-						return
-					}
-				}
-			}
+	for _, dp := range badPartitions {
+		if err = c.decommissionDataPartition(dataNode.Addr, dp, diskOfflineErr); err != nil {
+			return
 		}
 	}
 	msg = fmt.Sprintf("action[decommissionDisk],clusterID[%v] Node[%v] OffLine success",

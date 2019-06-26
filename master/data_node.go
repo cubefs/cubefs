@@ -25,20 +25,20 @@ import (
 
 // DataNode stores all the information about a data node
 type DataNode struct {
-	Total          uint64 `json:"TotalWeight"`
-	Used           uint64 `json:"UsedWeight"`
-	AvailableSpace uint64
-	ID             uint64
-	RackName       string `json:"Rack"`
-	Addr           string
-	ReportTime     time.Time
-	isActive       bool
+	Total                uint64 `json:"TotalWeight"`
+	Used                 uint64 `json:"UsedWeight"`
+	AvailableSpace       uint64
+	ID                   uint64
+	RackName             string `json:"Rack"`
+	Addr                 string
+	ReportTime           time.Time
+	isActive             bool
 	sync.RWMutex
 	UsageRatio           float64 // used / total space
 	SelectedTimes        uint64  // number times that this datanode has been selected as the location for a data partition.
 	Carry                float64 // carry is a factor used in cacluate the node's weight
 	TaskManager          *AdminTaskManager
-	dataPartitionReports []*proto.PartitionReport
+	DataPartitionReports []*proto.PartitionReport
 	DataPartitionCount   uint32
 	NodeSetID            uint64
 }
@@ -62,16 +62,16 @@ func (dataNode *DataNode) checkLiveness() {
 	return
 }
 
-func (dataNode *DataNode) badPartitionIDs(disk string) (partitionIds []uint64) {
-	partitionIds = make([]uint64, 0)
-	dataNode.RLock()
-	defer dataNode.RUnlock()
-	for _, partitionReports := range dataNode.dataPartitionReports {
-		if partitionReports.DiskPath == disk {
-			partitionIds = append(partitionIds, partitionReports.PartitionID)
-		}
+func (dataNode *DataNode) badPartitions(diskPath string, c *Cluster) (partitions []*DataPartition) {
+	partitions = make([]*DataPartition, 0)
+	vols := c.copyVols()
+	if len(vols) == 0 {
+		return partitions
 	}
-
+	for _, vol := range vols {
+		dps := vol.dataPartitions.checkBadDiskDataPartitions(diskPath, dataNode.Addr)
+		partitions = append(partitions, dps...)
+	}
 	return
 }
 
@@ -83,7 +83,7 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	dataNode.AvailableSpace = resp.Available
 	dataNode.RackName = resp.RackName
 	dataNode.DataPartitionCount = resp.CreatedPartitionCnt
-	dataNode.dataPartitionReports = resp.PartitionReports
+	dataNode.DataPartitionReports = resp.PartitionReports
 	if dataNode.Total == 0 {
 		dataNode.UsageRatio = 0.0
 	} else {

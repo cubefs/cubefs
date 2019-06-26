@@ -8,6 +8,15 @@ networks:
            gateway: 192.168.0.1
 
 services:
+    monitor:
+        image: chubaofs/cfs-base:1.0
+        depends_on:
+            - consul
+            - prometheus
+            - grafana
+        networks:
+            extnetwork:
+
     servers:
         image: chubaofs/cfs-base:1.0
         depends_on:
@@ -31,12 +40,14 @@ services:
             - "5902"
             - "17010"
             - "17020"
+            - 9500
         volumes:
             - ./bin:/cfs/bin
             - ./conf/master1.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
+        privileged: true
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.11
@@ -48,12 +59,14 @@ services:
             - "5902"
             - "17010"
             - "17020"
+            - 9500
         volumes:
             - ./bin:/cfs/bin
             - ./conf/master2.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
+        privileged: true
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.12
@@ -64,12 +77,14 @@ services:
             - "5902"
             - "17010"
             - "17020"
+            - 9500
         volumes:
             - ./bin:/cfs/bin
             - ./conf/master3.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
+        privileged: true
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.13
@@ -81,18 +96,16 @@ services:
             - "17220"
             - "17230"
             - "17240"
+            - 9500
         volumes:
             - ./bin:/cfs/bin
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
         restart: on-failure
+        privileged: true
         networks:
             extnetwork:
-        depends_on:
-            - "master1"
-            - "master2"
-            - "master3"
 
     metanode2:
         image: chubaofs/cfs-base:1.0
@@ -101,18 +114,17 @@ services:
             - "17220"
             - "17230"
             - "17240"
+            - 9500
         volumes:
             - ./bin:/cfs/bin
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
         restart: on-failure
+        privileged: true
         networks:
             extnetwork:
-        depends_on:
-            - "master1"
-            - "master2"
-            - "master3"
+
     metanode3:
         image: chubaofs/cfs-base:1.0
         ports:
@@ -120,18 +132,16 @@ services:
             - "17220"
             - "17230"
             - "17240"
+            - 9500
         volumes:
             - ./bin:/cfs/bin
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
         restart: on-failure
+        privileged: true
         networks:
             extnetwork:
-        depends_on:
-            - "master1"
-            - "master2"
-            - "master3"
 
     datanode1:
         image: chubaofs/cfs-base:1.0
@@ -140,19 +150,18 @@ services:
             - "17320"
             - "17330"
             - "17340"
+            - 9500
         volumes:
             - ${DiskPath:-./disk}/1:/cfs/disk
             - ./bin:/cfs/bin
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
-        depends_on:
-            - "metanode1"
-            - "metanode2"
-            - "metanode3"
         restart: on-failure
+        privileged: true
         networks:
             extnetwork:
+
     datanode2:
         image: chubaofs/cfs-base:1.0
         ports:
@@ -160,19 +169,18 @@ services:
             - "17320"
             - "17330"
             - "17340"
+            - 9500
         volumes:
             - ${DiskPath:-./disk}/2:/cfs/disk
             - ./bin:/cfs/bin
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
-        depends_on:
-            - "metanode1"
-            - "metanode2"
-            - "metanode3"
         restart: on-failure
+        privileged: true
         networks:
             extnetwork:
+
     datanode3:
         image: chubaofs/cfs-base:1.0
         ports:
@@ -180,6 +188,7 @@ services:
             - "17320"
             - "17330"
             - "17340"
+            - 9500
         volumes:
             - ${DiskPath:-./disk}/3:/cfs/disk
             - ./bin:/cfs/bin
@@ -187,6 +196,7 @@ services:
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
+        privileged: true
         networks:
             extnetwork:
 
@@ -197,6 +207,7 @@ services:
             - "17320"
             - "17330"
             - "17340"
+            - 9500
         volumes:
             - ${DiskPath:-./disk}/4:/cfs/disk
             - ./bin:/cfs/bin
@@ -204,11 +215,14 @@ services:
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
+        privileged: true
         networks:
             extnetwork:
 
     client:
         image: chubaofs/cfs-base:1.0
+        ports:
+            - 9500
         volumes:
             - ./bin:/cfs/bin
             - ./conf/client.json:/cfs/conf/client.json
@@ -221,6 +235,43 @@ services:
         cap_add:
             - SYS_ADMIN
         command: /bin/bash /cfs/script/start.sh
+        networks:
+            extnetwork:
+
+    consul:
+        image: consul:1.5
+        ports:
+            - 8500:8500
+        volumes:
+            - ./monitor:/monitor
+        privileged: true
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.100
+
+    prometheus:
+        image: prom/prometheus
+        ports:
+            - 9090:9090
+        volumes:
+            - ./monitor/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+        privileged: true
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.200
+
+    grafana:
+        image: grafana/grafana:6.2.0
+        environment:
+            - GF_SECURITY_ADMIN_PASSWORD=123456
+        ports:
+            - 3000:3000
+        volumes:
+            - ./monitor/grafana/grafana.ini:/etc/grafana/grafna.ini
+            - ./monitor/grafana/provisioning:/etc/grafana/provisioning
+            - ./monitor/grafana/init.sh:/grafana/init.sh
+        privileged: true
+        #command: /bin/bash
         networks:
             extnetwork:
 
