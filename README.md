@@ -73,3 +73,14 @@ For detail see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs?ref=badge_large)
+
+
+## Reference
+
+Reference to cite when you use the system in a research paper or tech report: 
+
+Haifeng Liu, et al., CFS: A Distributed File System for Large Scale Container Platforms. SIGMOD‘19, June 30-July 5, 2019, Amsterdam, Netherlands. 
+
+
+
+
