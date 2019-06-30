@@ -23,8 +23,10 @@ build_snappy() {
 build_rocksdb() {
     RocksdbSrcPath=${VendorPath}/rocksdb-5.9.2
     RocksdbBuildPath=${BuildPath}/rocksdb
-    mkdir -p ${RocksdbBuildPath}
-    cp -rf ${RocksdbSrcPath}/* ${RocksdbBuildPath}
+    if [[ ! -d ${RocksdbBuildPath} ]] ; then
+        mkdir -p ${RocksdbBuildPath}
+        cp -rf ${RocksdbSrcPath}/* ${RocksdbBuildPath}
+    fi
     echo "build rocksdb ..."
     pushd ${RocksdbBuildPath} >/dev/null
     [[ "-$LUA_PATH" != "-" ]]  && unset LUA_PATH
@@ -45,7 +47,7 @@ cgo_cflags="-I${RocksdbSrcPath}/include -I${SnappySrcPath}"
 cgo_ldflags="-L${RocksdbBuildPath} -L${SnappyBuildPath} -lrocksdb -lstdc++ -lm -lsnappy"
 rocksdb_libs=( z bz2 lz4 zstd )
 for p in ${rocksdb_libs[*]} ; do
-    found=$(find /usr -name lib${p}.so | wc -l)
+    found=$(find /usr -name lib${p}.so 2>/dev/null | wc -l)
     if [[ ${found} -gt 0 ]] ; then
         cgo_ldflags="${cgo_ldflags} -l${p}"
     fi
