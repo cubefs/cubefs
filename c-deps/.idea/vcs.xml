@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="$PROJECT_DIR$/.." vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cryptopp" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/googletest" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/jemalloc" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/protobuf" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/protobuf/third_party/benchmark" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/protobuf/third_party/googletest" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/rocksdb" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/snappy" vcs="Git" />
+  </component>
+</project>
