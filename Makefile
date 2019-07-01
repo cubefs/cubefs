@@ -25,7 +25,7 @@ MAKEFLAGS += -j$(NCPUS)
 $(info Running make with -j$(NCPUS))
 
 
-$(shell echo > bin/uptodate && chmod +x bin/uptodate)
+$(shell echo > bin/uptodate)
 
 BUILDTYPE := development
 
@@ -205,10 +205,8 @@ $(ChubaoFSClient): .ALWAYS_REBUILD
 $(ChubaoFSServer) : $(C_LIBS_COMMON) .ALWAYS_REBUILD
 	$(xgo) $(build-mode) -v $(GOFLAGS) -tags '$(TAGS)' -ldflags '$(LINKFLAGS)' $(SERVERTARGET)
 
-.PHONY: all
-build: $(ChubaoFSServer) $(ChubaoFSClient)
-
-all:$(ChubaoFSServer) $(ChubaoFSClient)
+.PHONY: default
+default: $(ChubaoFSServer) $(ChubaoFSClient)
 
 clean:
 	rm -rf $(BUILD_DIR) bin/cfs-server bin/cfs-client
