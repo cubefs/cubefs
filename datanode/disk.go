@@ -160,9 +160,7 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	if err = syscall.Statfs(d.Path, &statsInfo); err != nil {
 		d.incReadErrCnt()
 	}
-	currErrs := d.ReadErrCnt + d.WriteErrCnt
-	if currErrs >= uint64(d.MaxErrCnt) {
-		d.Status = proto.Unavailable
+	if d.Status==proto.Unavailable{
 		exporter.NewAlarm(fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP))
 		d.ForceExitRaftStore()
 	} else if d.Available <= 0 {
