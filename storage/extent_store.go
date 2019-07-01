@@ -351,7 +351,13 @@ func (s *ExtentStore) tinyDelete(e *Extent, offset, size, tinyDeleteFileOffset i
 	if offset+size > e.dataSize {
 		return
 	}
-	if err = e.DeleteTiny(offset, size); err != nil {
+	var (
+		hasDelete bool
+	)
+	if hasDelete,err = e.DeleteTiny(offset, size); err != nil {
+		return
+	}
+	if hasDelete {
 		return
 	}
 	if err = s.RecordTinyDelete(e.extentID, offset, size, tinyDeleteFileOffset); err != nil {
