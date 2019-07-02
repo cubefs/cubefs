@@ -183,8 +183,8 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
 				errStr := fmt.Sprintf(
 					"[deleteExtentsFromList] partitionId=%d, %s file corrupted!",
 					mp.config.PartitionId, fileName)
-				log.LogErrorf(errStr)
-				panic(errStr)
+				log.LogErrorf(errStr) // FIXME
+				goto LOOP
 			}
 			buf = buf[:size]
 		}
