@@ -97,7 +97,7 @@ func (vol *Vol) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err
 	return vol.dataPartitions.get(partitionID)
 }
 
-func (vol *Vol) initMetaPartitions(c *Cluster, count int) {
+func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 	// initialize k meta partitionMap at a time
 	var (
 		start uint64
@@ -105,6 +105,9 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) {
 	)
 	if count < defaultInitMetaPartitionCount {
 		count = defaultInitMetaPartitionCount
+	}
+	if count > defaultMaxInitMetaPartitionCount {
+		count = defaultMaxInitMetaPartitionCount
 	}
 	for index := 0; index < count; index++ {
 		if index != 0 {
@@ -114,10 +117,16 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) {
 		if index == count-1 {
 			end = defaultMaxMetaPartitionInodeID
 		}
-		if err := c.createMetaPartition(vol.Name, start, end); err != nil {
+		if err = c.createMetaPartition(vol.Name, start, end); err != nil {
 			log.LogErrorf("action[initMetaPartitions] vol[%v] init meta partition err[%v]", vol.Name, err)
+			break
 		}
 	}
+	if len(vol.MetaPartitions) != count {
+		err = fmt.Errorf("action[initMetaPartitions] vol[%v] init meta partition failed,mpCount[%v],expectCount[%v]",
+			vol.Name, len(vol.MetaPartitions), count)
+	}
+	return
 }
 
 func (vol *Vol) initDataPartitions(c *Cluster) {
