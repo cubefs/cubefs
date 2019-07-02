@@ -32,7 +32,7 @@ import (
 const (
 	ExtentOpenOpt  = os.O_CREATE | os.O_RDWR | os.O_EXCL
 	ExtentHasClose = -1
-	SEEK_DATA              = 3
+	SEEK_DATA      = 3
 )
 
 type ExtentInfo struct {
@@ -311,28 +311,28 @@ const (
 )
 
 // DeleteTiny deletes a tiny extent.
-func (e *Extent) DeleteTiny(offset, size int64) (hasDelete bool,err error) {
+func (e *Extent) DeleteTiny(offset, size int64) (hasDelete bool, err error) {
 	if int(offset)%PageSize != 0 {
-		return false,ParameterMismatchError
+		return false, ParameterMismatchError
 	}
 
 	if int(size)%PageSize != 0 {
 		size += int64(PageSize - int(size)%PageSize)
 	}
 	if int(size)%PageSize != 0 {
-		return false,ParameterMismatchError
+		return false, ParameterMismatchError
 	}
 
-	newOffset,err:=e.file.Seek(offset,SEEK_DATA)
-	if err!=nil {
+	newOffset, err := e.file.Seek(offset, SEEK_DATA)
+	if err != nil {
 		if strings.Contains(err.Error(), syscall.ENXIO.Error()) {
 			return true, nil
 		}
-		return false,err
+		return false, err
 	}
-	if newOffset-offset>=size{
-		hasDelete=true
-		return true,nil
+	if newOffset-offset >= size {
+		hasDelete = true
+		return true, nil
 	}
 	err = syscall.Fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
 

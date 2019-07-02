@@ -354,7 +354,7 @@ func (s *ExtentStore) tinyDelete(e *Extent, offset, size, tinyDeleteFileOffset i
 	var (
 		hasDelete bool
 	)
-	if hasDelete,err = e.DeleteTiny(offset, size); err != nil {
+	if hasDelete, err = e.DeleteTiny(offset, size); err != nil {
 		return
 	}
 	if hasDelete {
@@ -636,9 +636,9 @@ func (s *ExtentStore) ReadTinyDeleteRecords(offset, size int64, data []byte) (cr
 // NextExtentID returns the next extentID. When the client sends the request to create an extent,
 // this function generates an unique extentID within the current partition.
 // This function can only be called by the leader.
-func (s *ExtentStore) NextExtentID() (extentID uint64,err error) {
-	extentID=atomic.AddUint64(&s.baseExtentID, 1)
-	err=s.PersistenceBaseExtentID(extentID)
+func (s *ExtentStore) NextExtentID() (extentID uint64, err error) {
+	extentID = atomic.AddUint64(&s.baseExtentID, 1)
+	err = s.PersistenceBaseExtentID(extentID)
 	return
 }
 

@@ -35,7 +35,7 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	msg := &RaftCmdItem{}
 	defer func(index uint64) {
 		if err != nil {
-			prefix := fmt.Sprintf("RandomWrite Datapartition(%v)_Extent(%v) apply error (%v)", dp.partitionID, extentID,err)
+			prefix := fmt.Sprintf("RandomWrite Datapartition(%v)_Extent(%v) apply error (%v)", dp.partitionID, extentID, err)
 			err = errors.Trace(err, prefix)
 			exporter.Warning(err.Error())
 			resp = proto.OpExistErr

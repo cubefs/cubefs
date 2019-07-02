@@ -366,8 +366,8 @@ func (dp *DataPartition) statusUpdate() {
 	if dp.extentStore.GetExtentCount() >= storage.MaxExtentCount {
 		status = proto.ReadOnly
 	}
-	if dp.Status()==proto.Unavailable{
-		status= proto.Unavailable
+	if dp.Status() == proto.Unavailable {
+		status = proto.Unavailable
 	}
 
 	dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
