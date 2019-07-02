@@ -279,14 +279,14 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 // HandleFatalEvent handles the fatal errors.
 func (mp *metaPartition) HandleFatalEvent(err *raft.FatalError) {
 	// Panic while fatal event happen.
-	exporter.NewAlarm(exporterKey)
+	exporter.Warning(fmt.Sprintf("action[HandleFatalEvent] err[%v].", err))
 	log.LogFatalf("action[HandleFatalEvent] err[%v].", err)
 	panic(err.Err)
 }
 
 // HandleLeaderChange handles the leader changes.
 func (mp *metaPartition) HandleLeaderChange(leader uint64) {
-	exporter.NewAlarm(exporterKey)
+	exporter.Warning(exporterKey)
 	if mp.config.NodeId != leader {
 		mp.storeChan <- &storeMsg{
 			command: stopStoreTick,
