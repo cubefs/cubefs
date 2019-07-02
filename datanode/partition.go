@@ -435,7 +435,7 @@ func (dp *DataPartition) checkIsDiskError(err error) {
 	}
 	if IsDiskErr(err.Error()) {
 		mesg := fmt.Sprintf("disk path %v error on %v", dp.Path, LocalIP)
-		exporter.NewAlarm(mesg)
+		exporter.Warning(mesg)
 		log.LogErrorf(mesg)
 		dp.stopRaft()
 		dp.disk.incReadErrCnt()

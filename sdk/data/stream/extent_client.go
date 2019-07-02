@@ -186,7 +186,7 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, direct 
 	if err != nil {
 		err = errors.Trace(err, prefix)
 		log.LogError(errors.Stack(err))
-		exporter.NewAlarm(gDataWrapper.WarningMsg())
+		exporter.Warning(err.Error())
 	}
 	return
 }
