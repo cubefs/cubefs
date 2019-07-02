@@ -146,12 +146,12 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
 		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec)
 
-		dp.checkMissingReplicas(c.Name, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
+		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNum(c, vol.Name)
 		if dp.Status == proto.ReadWrite {
 			cnt++
 		}
-		dp.checkDiskError(c.Name)
+		dp.checkDiskError(c.Name, c.leaderInfo.addr)
 		tasks := dp.checkReplicationTask(c.Name, vol.dataPartitionSize)
 		if len(tasks) != 0 {
 			c.addDataNodeTasks(tasks)
@@ -192,7 +192,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 		mp.checkLeader()
 		mp.checkReplicaNum(c, vol.Name, vol.mpReplicaNum)
 		mp.checkEnd(c, maxPartitionID)
-		mp.reportMissingReplicas(c.Name, defaultMetaPartitionTimeOutSec, defaultIntervalToAlarmMissingMetaPartition)
+		mp.reportMissingReplicas(c.Name, c.leaderInfo.addr, defaultMetaPartitionTimeOutSec, defaultIntervalToAlarmMissingMetaPartition)
 		tasks = append(tasks, mp.replicaCreationTasks(c.Name, vol.Name)...)
 	}
 	c.addMetaNodeTasks(tasks)

@@ -522,7 +522,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	for _, bdp := range badPartitions {
 		badPartitionIds = append(badPartitionIds, bdp.PartitionID)
 	}
-	rstMsg = fmt.Sprintf("recive decommissionDisk node[%v] disk[%v], badPartitionIds[%v] has offline successfully",
+	rstMsg = fmt.Sprintf("receive decommissionDisk node[%v] disk[%v], badPartitionIds[%v] has offline successfully",
 		node.Addr, diskPath, badPartitionIds)
 	if err = m.cluster.decommissionDisk(node, diskPath, badPartitions); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -1142,12 +1142,14 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView = proto.NewMetaPartitionView(mp.PartitionID, mp.Start, mp.End, mp.Status)
 	mp.Lock()
 	defer mp.Unlock()
-	for _, metaReplica := range mp.Replicas {
-		mpView.Members = append(mpView.Members, metaReplica.Addr)
-		if metaReplica.IsLeader {
-			mpView.LeaderAddr = metaReplica.Addr
-		}
+	for _, host := range mp.Hosts {
+		mpView.Members = append(mpView.Members, host)
 	}
+	mr, err := mp.getMetaReplicaLeader()
+	if err != nil {
+		return
+	}
+	mpView.LeaderAddr = mr.Addr
 	return
 }
 

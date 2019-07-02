@@ -379,7 +379,7 @@ func (mp *MetaPartition) shouldReportMissingReplica(addr string, interval int64)
 	return false
 }
 
-func (mp *MetaPartition) reportMissingReplicas(clusterID string, seconds, interval int64) {
+func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, seconds, interval int64) {
 	mp.Lock()
 	defer mp.Unlock()
 	for _, replica := range mp.Replicas {
@@ -398,6 +398,8 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID string, seconds, interv
 				"miss time > :%v  vlocLastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v",
 				clusterID, mp.volName, mp.PartitionID, replica.Addr, seconds, replica.ReportTime, lastReportTime, isActive)
 			Warn(clusterID, msg)
+			msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, replica.Addr)
+			Warn(clusterID, msg)
 		}
 	}
 
@@ -406,6 +408,8 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID string, seconds, interv
 			msg := fmt.Sprintf("action[reportMissingReplicas],clusterID[%v] volName[%v] partition:%v  on Node:%v  "+
 				"miss time  > %v ",
 				clusterID, mp.volName, mp.PartitionID, addr, defaultMetaPartitionTimeOutSec)
+			Warn(clusterID, msg)
+			msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, addr)
 			Warn(clusterID, msg)
 		}
 	}
