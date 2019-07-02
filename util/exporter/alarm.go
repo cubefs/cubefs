@@ -46,7 +46,7 @@ func Warning(detail string) (a *Alarm) {
 		return
 	}
 	a = AlarmPool.Get().(*Alarm)
-	a.name = metricsName(fmt.Sprintf("%s_%s_alarm", clustername,modulename))
+	a.name = metricsName(fmt.Sprintf("%s_%s_alarm", clustername, modulename))
 	a.Add(1)
 	return
 }

@@ -853,8 +853,8 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID)
 		dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 		dp.Peers = dpv.Peers
-		for _,rv := range dpv.Replicas {
-			dp.afterCreation(rv.Addr,rv.DiskPath,c)
+		for _, rv := range dpv.Replicas {
+			dp.afterCreation(rv.Addr, rv.DiskPath, c)
 		}
 		vol.dataPartitions.put(dp)
 		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v]", vol.Name, dp.PartitionID)
