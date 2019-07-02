@@ -4,6 +4,7 @@ RootPath=$(cd $(dirname $0)/..; pwd)
 echo ${RootPath}
 BuildPath=${RootPath}/build
 BuildBinPath=${BuildPath}/bin
+ThirdPartyPath=${RootPath}/third-party
 
 [[ "no$GOPATH" == "no" ]] && { echo "GOPATH env not set" ; exit 1 ; }
 #rm -rf ${BuildBinPath}/*
@@ -11,28 +12,25 @@ BuildBinPath=${BuildPath}/bin
 pushd ${BuildPath}
 
 install_rocksdb() {
-  found=$(find /usr -name librocksdb.a)
+  found=$(find /usr -name librocksdb.a 2>/dev/null)
   if [[ "no$found" == "no" ]] ; then
     echo "rocksdb lib not found, now install..."
-    git clone https://github.com/facebook/rocksdb
-    pushd rocksdb
-    git checkout v5.9.2 -b v5.9.2
+    pushd ${ThirdPartyPath}/rocksdb-5.9.2
     make -j `nproc` static_lib && make install && echo "rocksdb lib install success"
-    popd
+    popd >/dev/null
   fi
 }
 
 install_snappy() {
-  found=$(find /usr -name libsnappy.a)
+  found=$(find /usr -name libsnappy.a 2>/dev/null)
   if [[ "no$found" == "no" ]] ; then
     echo "snappy lib not found, now install..."
-    git clone https://github.com/google/snappy
-    pushd snappy
-    mkdir build
+    pushd ${ThirdPartyPath}/snappy-1.1.7
+    mkdir -p build
     pushd build
     cmake .. && make -j `nproc` && make install && echo "snappy lib install success"
-    popd
-    popd
+    popd >/dev/null
+    popd >/dev/null
   fi
 }
 
@@ -43,7 +41,6 @@ BranchName=`git rev-parse --abbrev-ref HEAD`
 CommitID=`git rev-parse HEAD`
 BuildTime=`date +%Y-%m-%d\ %H:%M`
 LDFlags="-X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'"
-#MODFLAGS="-mod vendor"
 MODFLAGS=""
 
 go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-server $RootPath/cmd/*.go
