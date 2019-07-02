@@ -135,7 +135,7 @@ func (alloc *IDAllocator) allocateDataPartitionID() (partitionID uint64, err err
 	alloc.setDataPartitionID(partitionID)
 	return
 errHandler:
-	log.LogError("action[allocateDataPartitionID] err:%v", err.Error())
+	log.LogErrorf("action[allocateDataPartitionID] err:%v", err.Error())
 	return
 }
 
@@ -159,7 +159,7 @@ func (alloc *IDAllocator) allocateMetaPartitionID() (partitionID uint64, err err
 	alloc.setMetaPartitionID(partitionID)
 	return
 errHandler:
-	log.LogError("action[allocateMetaPartitionID] err:%v", err.Error())
+	log.LogErrorf("action[allocateMetaPartitionID] err:%v", err.Error())
 	return
 }
 
@@ -183,6 +183,6 @@ func (alloc *IDAllocator) allocateCommonID() (id uint64, err error) {
 	alloc.setCommonID(id)
 	return
 errHandler:
-	log.LogError("action[allocateCommonID] err:%v", err.Error())
+	log.LogErrorf("action[allocateCommonID] err:%v", err.Error())
 	return
 }
