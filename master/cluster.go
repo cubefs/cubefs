@@ -857,8 +857,7 @@ func (c *Cluster) createVol(name, owner string, mpCount, size, capacity int) (vo
 		err = proto.ErrVolNotExists
 		goto errHandler
 	}
-	vol.initMetaPartitions(c, mpCount)
-	if len(vol.MetaPartitions) == 0 {
+	if err = vol.initMetaPartitions(c, mpCount); err != nil {
 		vol.Status = markDelete
 		if err = c.syncDeleteVol(vol); err != nil {
 			log.LogErrorf("action[createVol] failed,vol[%v] err[%v]", vol.Name, err)
