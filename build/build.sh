@@ -1,41 +1,35 @@
 #!/bin/bash
 
 RootPath=$(cd $(dirname $0)/..; pwd)
-echo ${RootPath}
 BuildPath=${RootPath}/build
 BuildBinPath=${BuildPath}/bin
-ThirdPartyPath=${RootPath}/third-party
+VendorPath=${RootPath}/vendor
 
+[[ $(uname -s) != "Linux" ]] && { echo "ChubaoFS only support Linux os"; exit 1; }
 [[ "no$GOPATH" == "no" ]] && { echo "GOPATH env not set" ; exit 1 ; }
-#rm -rf ${BuildBinPath}/*
 
-pushd ${BuildPath}
+NPROC=$(nproc 2>/dev/null)
+NPROC=${NPROC:-"1"}
 
-install_rocksdb() {
-  found=$(find /usr -name librocksdb.a 2>/dev/null)
-  if [[ "no$found" == "no" ]] ; then
-    echo "rocksdb lib not found, now install..."
-    pushd ${ThirdPartyPath}/rocksdb-5.9.2
-    make -j `nproc` static_lib && make install && echo "rocksdb lib install success"
-    popd >/dev/null
-  fi
-}
-
-install_snappy() {
-  found=$(find /usr -name libsnappy.a 2>/dev/null)
-  if [[ "no$found" == "no" ]] ; then
-    echo "snappy lib not found, now install..."
-    pushd ${ThirdPartyPath}/snappy-1.1.7
+build_snappy() {
+    echo "build snappy..."
+    pushd ${VendorPath}/snappy-1.1.7
     mkdir -p build
     pushd build
-    cmake .. && make -j `nproc` && make install && echo "snappy lib install success"
+    cmake .. && make -j ${NPROC}  && echo "build snappy success" || {  echo "build snappy failed"; exit 1; }
     popd >/dev/null
     popd >/dev/null
-  fi
 }
 
-install_snappy  || { echo "install snappy lib failed!"; exit 1 ; }
-install_rocksdb || { echo "install rocksdb lib failed!"; exit 1 ; }
+build_rocksdb() {
+    echo "build rocksdb ..."
+    pushd ${VendorPath}/rocksdb-5.9.2
+    make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
+    popd >/dev/null
+}
+
+build_snappy
+build_rocksdb
 
 BranchName=`git rev-parse --abbrev-ref HEAD`
 CommitID=`git rev-parse HEAD`
@@ -43,6 +37,20 @@ BuildTime=`date +%Y-%m-%d\ %H:%M`
 LDFlags="-X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'"
 MODFLAGS=""
 
-go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-server $RootPath/cmd/*.go
-go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-client $RootPath/client/*.go
-go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-client2 $RootPath/clientv2/*.go
+cgo_cflags="-I${VendorPath}/rocksdb-5.9.2/include -I${VendorPath}/snappy-1.1.7"
+cgo_ldflags="-L${VendorPath}/rocksdb-5.9.2 -L${VendorPath}/snappy-1.1.7/build -lrocksdb -lstdc++ -lm -lsnappy"
+rocksdb_libs=( z bz2 lz4 zstd )
+for p in ${rocksdb_libs[*]} ; do
+    found=$(find /usr -name lib${p}.so | wc -l)
+    if [[ ${found} -gt 0 ]] ; then
+        cgo_ldflags="${cgo_ldflags} -l${p}"
+    fi
+done
+export CGO_CFLAGS=${cgo_cflags}
+export CGO_LDFLAGS="${cgo_ldflags}"
+
+echo -n "build cfs-server "
+go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-server $RootPath/cmd/*.go && echo "success" || echo "failed"
+
+echo -n "build cfs-client "
+go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-client $RootPath/client/*.go  && echo "success" || echo "failed"
