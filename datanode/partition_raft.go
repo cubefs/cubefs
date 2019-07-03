@@ -492,6 +492,10 @@ func (dp *DataPartition) getPartitionSize() (size uint64, err error) {
 		return
 	}
 
+	if p.ResultCode != proto.OpOk {
+		err = errors.Trace(err, "partition=%v result code not ok [%v] from host[%v]", dp.partitionID, p.ResultCode, target)
+		return
+	}
 	size = binary.BigEndian.Uint64(p.Data)
 	log.LogDebugf("partition=%v size=%v", dp.partitionID, size)
 
@@ -605,6 +609,10 @@ func (dp *DataPartition) getRemoteAppliedID(target string, p *repl.Packet) (appl
 	}
 	err = p.ReadFromConn(conn, 60)
 	if err != nil {
+		return
+	}
+	if p.ResultCode != proto.OpOk {
+		err = errors.NewErrorf("partition=%v result code not ok [%v] from host[%v]", dp.partitionID, p.ResultCode, target)
 		return
 	}
 	appliedID = binary.BigEndian.Uint64(p.Data)
