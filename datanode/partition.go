@@ -366,6 +366,9 @@ func (dp *DataPartition) statusUpdate() {
 	if dp.extentStore.GetExtentCount() >= storage.MaxExtentCount {
 		status = proto.ReadOnly
 	}
+	if dp.Status() == proto.Unavailable {
+		status = proto.Unavailable
+	}
 
 	dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
 }
@@ -432,7 +435,7 @@ func (dp *DataPartition) checkIsDiskError(err error) {
 	}
 	if IsDiskErr(err.Error()) {
 		mesg := fmt.Sprintf("disk path %v error on %v", dp.Path, LocalIP)
-		exporter.NewAlarm(mesg)
+		exporter.Warning(mesg)
 		log.LogErrorf(mesg)
 		dp.stopRaft()
 		dp.disk.incReadErrCnt()

@@ -143,10 +143,12 @@ func (w *Wrapper) updateDataPartition() error {
 	if len(rwPartitionGroups) > 0 {
 		w.rwPartition = rwPartitionGroups
 		w.localLeaderPartitions = localLeaderPartitionGroups
+	} else {
+		err = errors.New("updateDataPartition: no writable data partition")
 	}
 
 	log.LogInfof("updateDataPartition: end!")
-	return nil
+	return err
 }
 
 func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {

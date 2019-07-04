@@ -136,7 +136,7 @@ func main() {
 
 	//for multi-cpu scheduling
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	if err=ump.InitUmp(role, umpDatadir);err!=nil {
+	if err = ump.InitUmp(role, umpDatadir); err != nil {
 		fmt.Println(fmt.Sprintf("Fatal: init warnLogDir fail:%v ", err))
 		os.Exit(1)
 	}

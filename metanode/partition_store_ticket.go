@@ -53,7 +53,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 			err = errors.NewErrorf("[startSchedule]: dump partition id=%d: %v",
 				mp.config.PartitionId, err.Error())
 			log.LogErrorf(err.Error())
-			exporter.NewAlarm(exporterKey)
+			exporter.Warning(err.Error())
 		}
 
 		if _, ok := mp.IsLeader(); ok {

@@ -17,9 +17,9 @@ package master
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
 	"time"
-	"github.com/chubaofs/chubaofs/util"
 )
 
 func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64) {
@@ -77,7 +77,7 @@ func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
 }
 
 // Check if there is any missing replica for a data partition.
-func (partition *DataPartition) checkMissingReplicas(clusterID string, dataPartitionMissSec, dataPartitionWarnInterval int64) {
+func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr string, dataPartitionMissSec, dataPartitionWarnInterval int64) {
 	partition.Lock()
 	defer partition.Unlock()
 	for _, replica := range partition.Replicas {
@@ -95,6 +95,8 @@ func (partition *DataPartition) checkMissingReplicas(clusterID string, dataParti
 				"miss time > %v  lastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v So Migrate by manual",
 				clusterID, partition.PartitionID, replica.Addr, dataPartitionMissSec, replica.ReportTime, lastReportTime, isActive)
 			Warn(clusterID, msg)
+			msg = fmt.Sprintf("decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, replica.Addr)
+			Warn(clusterID, msg)
 		}
 	}
 
@@ -102,6 +104,8 @@ func (partition *DataPartition) checkMissingReplicas(clusterID string, dataParti
 		if partition.hasMissingDataPartition(addr) == true && partition.needToAlarmMissingDataPartition(addr, dataPartitionWarnInterval) {
 			msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] partitionID:%v  on Node:%v  "+
 				"miss time  > :%v  but server not exsit So Migrate", clusterID, partition.PartitionID, addr, dataPartitionMissSec)
+			Warn(clusterID, msg)
+			msg = fmt.Sprintf("decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, addr)
 			Warn(clusterID, msg)
 		}
 	}
@@ -132,7 +136,7 @@ func (partition *DataPartition) hasMissingDataPartition(addr string) (isMissing 
 	return
 }
 
-func (partition *DataPartition) checkDiskError(clusterID string) (diskErrorAddrs []string) {
+func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) (diskErrorAddrs []string) {
 	diskErrorAddrs = make([]string, 0)
 	partition.Lock()
 	defer partition.Unlock()
@@ -153,6 +157,8 @@ func (partition *DataPartition) checkDiskError(clusterID string) (diskErrorAddrs
 	for _, diskAddr := range diskErrorAddrs {
 		msg := fmt.Sprintf("action[%v],clusterID[%v],partitionID:%v  On :%v  Disk Error,So Remove it From RocksDBHost",
 			checkDataPartitionDiskErr, clusterID, partition.PartitionID, diskAddr)
+		Warn(clusterID, msg)
+		msg = fmt.Sprintf("decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, diskAddr)
 		Warn(clusterID, msg)
 	}
 

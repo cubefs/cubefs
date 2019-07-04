@@ -1,28 +1,19 @@
+# ChubaoFS Makefile
+#
 
 default: build
 
-build: build_server build_client
-	@echo "build done"
+.PHONY: build
 
-pre_build:
-	@mkdir -p docker/bin
+build:
+	@build/build.sh
 
-build_server: pre_build
-	@{ \
-		echo -n "build server " \
-		&& (go build -o docker/bin/cfs-server cmd/*.go ) \
-		&& (echo "success") \
-	}
-
-build_client: pre_build
-	@{ \
-		echo -n "build client " \
-		&& (go build -o docker/bin/cfs-client client/*.go ) \
-		&& (echo "success") \
-	}
+clean:
+	@rm -rf build/bin/*
 
 ci-test:
 	@{ \
 		echo "ci test" \
 		&& ( go test ./... ) \
 	}
+

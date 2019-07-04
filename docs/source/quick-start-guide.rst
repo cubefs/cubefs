@@ -25,6 +25,14 @@ Build Client
 
    cd client; sh build.sh
 
+Or use following command to build together:
+
+.. code-block:: bash
+
+   make build
+
+If the build is successful, `cfs-server` and `cfs-client` will be found in directory `build/bin`
+
 Deployment
 ----------
 
@@ -58,7 +66,7 @@ Sample *master.json* is shown as follows,
      "clusterName":"cfs"
    }
 
-   
+
 For detailed explanations of *master.json*, please refer to :doc:`user-guide/master`.
 
 Start Metanode
@@ -132,11 +140,11 @@ Start Datanode
 2. Start datanode
 
    .. code-block:: bash
-   
+
       nohup ./cfs-server -c datanode.json &
 
    Sample *datanode.json* is shown as follows,
-   
+
    .. code-block:: json
 
       {
@@ -183,12 +191,12 @@ Mount Client
 
 1. Run ``modprobe fuse`` to insert FUSE kernel module.
 2. Run ``yum install -y fuse`` to install libfuse.
-3. Run ``nohup cfs-client -c fuse.json &`` to start a client.
+3. Run ``cfs-client -c fuse.json`` to start a client daemon.
 
    Sample *fuse.json* is shown as follows,
-   
+
    .. code-block:: json
-   
+
       {
         "mountPoint": "/mnt/fuse",
         "volName": "test",
