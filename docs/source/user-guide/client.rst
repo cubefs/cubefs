@@ -55,4 +55,4 @@ Use the example *fuse.json*, and client is mounted on the directory */mnt/fuse*.
 
 .. code-block:: bash
 
-   nohup ./cfs-client -c fuse.json &
+   ./cfs-client -c fuse.json
