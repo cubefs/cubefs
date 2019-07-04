@@ -183,7 +183,7 @@ Mount Client
 
 1. Run ``modprobe fuse`` to insert FUSE kernel module.
 2. Run ``yum install -y fuse`` to install libfuse.
-3. Run ``nohup cfs-client -c fuse.json &`` to start a client.
+3. Run ``cfs-client -c fuse.json`` to start a client daemon.
 
    Sample *fuse.json* is shown as follows,
    
