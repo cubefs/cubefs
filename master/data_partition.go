@@ -28,14 +28,14 @@ import (
 
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
-	PartitionID    uint64
-	LastLoadedTime int64
-	ReplicaNum     uint8
-	Status         int8
-	isRecover      bool
-	Replicas       []*DataReplica
-	Hosts          []string // host addresses
-	Peers          []proto.Peer
+	PartitionID             uint64
+	LastLoadedTime          int64
+	ReplicaNum              uint8
+	Status                  int8
+	isRecover               bool
+	Replicas                []*DataReplica
+	Hosts                   []string // host addresses
+	Peers                   []proto.Peer
 	sync.RWMutex
 	total                   uint64
 	used                    uint64
@@ -79,7 +79,7 @@ func (partition *DataPartition) addReplica(replica *DataReplica) {
 func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64) (task *proto.AdminTask) {
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
-		partition.VolName, partition.PartitionID, partition.Peers, int(dataPartitionSize)))
+		partition.VolName, partition.PartitionID, partition.Peers, int(dataPartitionSize), partition.Hosts))
 	partition.resetTaskID(task)
 	return
 }
@@ -310,7 +310,7 @@ func (partition *DataPartition) getFileCount() {
 	}
 
 	for _, replica := range partition.Replicas {
-		msg = fmt.Sprintf(getFileCountOnDataReplica+"partitionID:%v  replicaAddr:%v  FileCount:%v  "+
+		msg = fmt.Sprintf(getFileCountOnDataReplica + "partitionID:%v  replicaAddr:%v  FileCount:%v  "+
 			"NodeIsActive:%v  replicaIsActive:%v  .replicaStatusOnNode:%v ", partition.PartitionID, replica.Addr, replica.FileCount,
 			replica.getReplicaNode().isActive, replica.isActive(defaultDataPartitionTimeOutSec), replica.Status)
 		log.LogInfo(msg)
