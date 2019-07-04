@@ -246,6 +246,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		PartitionID:   request.PartitionId,
 		VolName:       request.VolumeId,
 		Peers:         request.Members,
+		Hosts:         request.Hosts,
 		RaftStore:     manager.raftStore,
 		NodeID:        manager.nodeID,
 		ClusterID:     manager.clusterID,
