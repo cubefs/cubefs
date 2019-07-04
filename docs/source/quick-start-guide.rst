@@ -4,28 +4,7 @@ Quick Start Guide
 Building
 --------
 
-Build Servers
-^^^^^^^^^^^^^
-
-In ChubaoFS, the server consists of the resource manager, metanode and datanode, which are compiled to a single binary for deployment convenience.
-
-Building of ChubaoFS server depends on RocksDB, `build RocksDB v5.9.2+ <https://github.com/facebook/rocksdb/blob/master/INSTALL.md>`_ .
-Recommended installation uses `make static_lib` .
-
-ChubaoFS server is built with the following command:
-
-.. code-block:: bash
-
-   cd cmd; sh build.sh
-
-Build Client
-^^^^^^^^^^^^
-
-.. code-block:: bash
-
-   cd client; sh build.sh
-
-Or use following command to build together:
+Use following command to build server and client:
 
 .. code-block:: bash
 
