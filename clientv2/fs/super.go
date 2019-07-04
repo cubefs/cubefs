@@ -24,9 +24,27 @@ import (
 
 	"github.com/chubaofs/chubaofs/sdk/data/stream"
 	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 )
+
+type MountOption struct {
+	Config        *config.Config
+	MountPoint    string
+	Volname       string
+	Owner         string
+	Master        string
+	Logpath       string
+	Loglvl        string
+	Profport      string
+	IcacheTimeout int64
+	LookupValid   int64
+	AttrValid     int64
+	EnSyncWrite   int64
+	UmpDatadir    string
+	Rdonly        bool
+}
 
 type Super struct {
 	cluster     string
@@ -44,32 +62,32 @@ var (
 	_ fuseutil.FileSystem = (*Super)(nil)
 )
 
-func NewSuper(volname, owner, master string, icacheTimeout, lookupValid, attrValid, enSyncWrite int64) (s *Super, err error) {
+func NewSuper(opt *MountOption) (s *Super, err error) {
 	s = new(Super)
-	s.mw, err = meta.NewMetaWrapper(volname, owner, master)
+	s.mw, err = meta.NewMetaWrapper(opt.Volname, opt.Owner, opt.Master)
 	if err != nil {
 		return nil, errors.Trace(err, "NewMetaWrapper failed!")
 	}
 
-	s.ec, err = stream.NewExtentClient(volname, master, s.mw.AppendExtentKey, s.mw.GetExtents, s.mw.Truncate)
+	s.ec, err = stream.NewExtentClient(opt.Volname, opt.Master, s.mw.AppendExtentKey, s.mw.GetExtents, s.mw.Truncate)
 	if err != nil {
 		return nil, errors.Trace(err, "NewExtentClient failed!")
 	}
 
-	s.volname = volname
-	s.owner = owner
+	s.volname = opt.Volname
+	s.owner = opt.Owner
 	s.cluster = s.mw.Cluster()
 	inodeExpiration := DefaultInodeExpiration
-	if icacheTimeout >= 0 {
-		inodeExpiration = time.Duration(icacheTimeout) * time.Second
+	if opt.IcacheTimeout >= 0 {
+		inodeExpiration = time.Duration(opt.IcacheTimeout) * time.Second
 	}
-	if lookupValid >= 0 {
-		LookupValidDuration = time.Duration(lookupValid) * time.Second
+	if opt.LookupValid >= 0 {
+		LookupValidDuration = time.Duration(opt.LookupValid) * time.Second
 	}
-	if attrValid >= 0 {
-		AttrValidDuration = time.Duration(attrValid) * time.Second
+	if opt.AttrValid >= 0 {
+		AttrValidDuration = time.Duration(opt.AttrValid) * time.Second
 	}
-	if enSyncWrite > 0 {
+	if opt.EnSyncWrite > 0 {
 		s.enSyncWrite = true
 	}
 	s.hc = NewHandleCache()
