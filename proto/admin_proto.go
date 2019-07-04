@@ -85,6 +85,7 @@ type CreateDataPartitionRequest struct {
 	VolumeId      string
 	IsRandomWrite bool
 	Members       []Peer
+	Hosts         []string
 }
 
 // CreateDataPartitionResponse defines the response to the request of creating a data partition.
