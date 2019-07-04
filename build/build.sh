@@ -11,18 +11,22 @@ NPROC=$(nproc 2>/dev/null)
 NPROC=${NPROC:-"1"}
 
 build_snappy() {
+    SnappySrcPath=${VendorPath}/snappy-1.1.7
+    SnappyBuildPath=${BuildPath}/snappy
+    mkdir -p ${SnappyBuildPath}
     echo "build snappy..."
-    pushd ${VendorPath}/snappy-1.1.7 >/dev/null
-    mkdir -p build
-    pushd build >/dev/null
-    cmake .. && make -j ${NPROC}  && echo "build snappy success" || {  echo "build snappy failed"; exit 1; }
-    popd >/dev/null
+    pushd ${SnappyBuildPath} >/dev/null
+    cmake ${SnappySrcPath} && make -j ${NPROC}  && echo "build snappy success" || {  echo "build snappy failed"; exit 1; }
     popd >/dev/null
 }
 
 build_rocksdb() {
+    RocksdbSrcPath=${VendorPath}/rocksdb-5.9.2
+    RocksdbBuildPath=${BuildPath}/rocksdb
+    mkdir -p ${RocksdbBuildPath}
+    cp -rf ${RocksdbSrcPath}/* ${RocksdbBuildPath}
     echo "build rocksdb ..."
-    pushd ${VendorPath}/rocksdb-5.9.2 >/dev/null
+    pushd ${RocksdbBuildPath} >/dev/null
     [[ "-$LUA_PATH" != "-" ]]  && unset LUA_PATH
     make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
     popd >/dev/null
@@ -37,8 +41,8 @@ BuildTime=`date +%Y-%m-%d\ %H:%M`
 LDFlags="-X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'"
 MODFLAGS=""
 
-cgo_cflags="-I${VendorPath}/rocksdb-5.9.2/include -I${VendorPath}/snappy-1.1.7"
-cgo_ldflags="-L${VendorPath}/rocksdb-5.9.2 -L${VendorPath}/snappy-1.1.7/build -lrocksdb -lstdc++ -lm -lsnappy"
+cgo_cflags="-I${RocksdbSrcPath}/include -I${SnappySrcPath}"
+cgo_ldflags="-L${RocksdbBuildPath} -L${SnappyBuildPath} -lrocksdb -lstdc++ -lm -lsnappy"
 rocksdb_libs=( z bz2 lz4 zstd )
 for p in ${rocksdb_libs[*]} ; do
     found=$(find /usr -name lib${p}.so | wc -l)
