@@ -39,6 +39,7 @@ type dataPartitionCfg struct {
 	PartitionID   uint64              `json:"partition_id"`
 	PartitionSize int                 `json:"partition_size"`
 	Peers         []proto.Peer        `json:"peers"`
+	Hosts         []string            `json:"hosts"`
 	NodeID        uint64              `json:"-"`
 	RaftStore     raftstore.RaftStore `json:"-"`
 }

@@ -191,6 +191,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		runtimeMetrics:  NewDataPartitionMetrics(),
 		config:          dpCfg,
 	}
+	partition.replicasInit()
 	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize)
 	if err != nil {
 		return
@@ -200,6 +201,23 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 	dp = partition
 	go partition.statusUpdateScheduler()
 	return
+}
+
+func (dp *DataPartition) replicasInit() {
+	replicas := make([]string, 0)
+	if dp.config.Hosts == nil {
+		return
+	}
+	for _, host := range dp.config.Hosts {
+		replicas = append(replicas, host)
+	}
+	dp.replicas = replicas
+	if dp.config.Hosts != nil && len(dp.config.Hosts) >= 1 {
+		leaderAddr := strings.Split(dp.config.Hosts[0], ":")
+		if len(leaderAddr) == 2 && strings.TrimSpace(leaderAddr[0]) == LocalIP {
+			dp.isLeader = true
+		}
+	}
 }
 
 func (dp *DataPartition) GetExtentCount() int {
