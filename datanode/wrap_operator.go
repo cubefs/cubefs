@@ -548,7 +548,7 @@ func (s *DataNode) handlePacketToReadTinyDelete(p *repl.Packet, connect *net.TCP
 		reply.ExtentOffset = offset
 		reply.CRC, err = store.ReadTinyDeleteRecords(offset, int64(currReadSize), reply.Data)
 		if err != nil {
-			err=fmt.Errorf(ActionStreamReadTinyDeleteRecord+"localTinyDeleteRecordSize(%v) offset(%v)" +
+			err=fmt.Errorf(ActionStreamReadTinyDeleteRecord+" localTinyDeleteRecordSize(%v) offset(%v)" +
 				" currReadSize(%v) err(%v)",localTinyDeleteFileSize,offset,currReadSize,err)
 			return
 		}
