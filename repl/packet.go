@@ -269,9 +269,7 @@ func (p *Packet) ReadFull(c net.Conn, readSize int) (err error) {
 	return
 }
 
-func (p *Packet) isReadOperation() bool {
-	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpRead || p.Opcode == proto.OpExtentRepairRead
-}
+
 
 func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (err error) {
 	if deadlineTime != proto.NoReadDeadlineTime {
@@ -301,8 +299,39 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (er
 		return
 	}
 	size := p.Size
-	if p.isReadOperation() && p.ResultCode == proto.OpInitResultCode {
+	if p.IsReadOperation() && p.ResultCode == proto.OpInitResultCode {
 		size = 0
 	}
 	return p.ReadFull(c, int(size))
+}
+
+
+// A leader packet is the packet send to the leader and does not require packet forwarding.
+func (p *Packet) IsLeaderPacket() (ok bool) {
+	if p.IsForwardPkt() && (p.IsWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation()) {
+		ok = true
+	}
+
+	return
+}
+
+func (p *Packet)IsTinyExtentType()bool{
+	return p.ExtentType==proto.TinyExtentType
+}
+
+func (p *Packet) IsWriteOperation() bool {
+	return p.Opcode == proto.OpWrite || p.Opcode == proto.OpSyncWrite
+}
+
+func (p *Packet) IsCreateExtentOperation() bool {
+	return p.Opcode == proto.OpCreateExtent
+}
+
+
+func (p *Packet) IsMarkDeleteExtentOperation() bool {
+	return p.Opcode == proto.OpMarkDelete
+}
+
+func (p *Packet) IsReadOperation() bool {
+	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpRead || p.Opcode == proto.OpExtentRepairRead || p.Opcode==proto.OpReadTinyDelete
 }
