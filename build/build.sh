@@ -2,6 +2,7 @@
 
 RootPath=$(cd $(dirname $0)/..; pwd)
 BuildPath=${RootPath}/build
+BuildOutPath=${BuildPath}/out
 BuildBinPath=${BuildPath}/bin
 VendorPath=${RootPath}/vendor
 
@@ -12,7 +13,11 @@ NPROC=${NPROC:-"1"}
 
 build_snappy() {
     SnappySrcPath=${VendorPath}/snappy-1.1.7
-    SnappyBuildPath=${BuildPath}/snappy
+    SnappyBuildPath=${BuildOutPath}/snappy
+    found=$(find ${SnappyBuildPath} -name libsnappy.a 2>/dev/null | wc -l)
+    if [[ ${found} -gt 0 ]] ; then
+        return
+    fi
     mkdir -p ${SnappyBuildPath}
     echo "build snappy..."
     pushd ${SnappyBuildPath} >/dev/null
@@ -22,7 +27,11 @@ build_snappy() {
 
 build_rocksdb() {
     RocksdbSrcPath=${VendorPath}/rocksdb-5.9.2
-    RocksdbBuildPath=${BuildPath}/rocksdb
+    RocksdbBuildPath=${BuildOutPath}/rocksdb
+    found=$(find ${RocksdbBuildPath} -name librocksdb.a 2>/dev/null | wc -l)
+    if [[ ${found} -gt 0 ]] ; then
+        return
+    fi
     if [[ ! -d ${RocksdbBuildPath} ]] ; then
         mkdir -p ${RocksdbBuildPath}
         cp -rf ${RocksdbSrcPath}/* ${RocksdbBuildPath}
@@ -60,11 +69,62 @@ export GOPATH=/tmp/cfs/go
 
 mkdir -p $GOPATH/src/github.com/chubaofs
 SrcPath=$GOPATH/src/github.com/chubaofs/chubaofs
-ln -s $RootPath $SrcPath 2>/dev/null
-pushd $SrcPath >/dev/null
-echo -n "build cfs-server "
-go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-server ${SrcPath}/cmd/*.go && echo "success" || echo "failed"
-echo -n "build cfs-client "
-go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-client ${SrcPath}/client/*.go  && echo "success" || echo "failed"
-popd >/dev/null
+if [[  ! -e "$SrcPath" ]] ; then
+    ln -s $RootPath $SrcPath 2>/dev/null
+fi
 
+run_test() {
+    pushd $SrcPath >/dev/null
+    echo "run test "
+    go test -ldflags "${LDFlags}" ./...
+    popd >/dev/null
+}
+
+build_server() {
+    pushd $SrcPath >/dev/null
+    echo -n "build cfs-server "
+    go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-server ${SrcPath}/cmd/*.go && echo "success" || echo "failed"
+    popd >/dev/null
+}
+
+build_client() {
+    pushd $SrcPath >/dev/null
+    echo -n "build cfs-client "
+    go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-client ${SrcPath}/client/*.go  && echo "success" || echo "failed"
+    popd >/dev/null
+}
+
+clean() {
+    rm -rf ${BuildBinPath}
+}
+
+dist_clean() {
+    rm -rf ${BuildBinPath}
+    rm -rf ${BuildOutPath}
+}
+
+cmd=${1:-"all"}
+
+case "$cmd" in
+    "all")
+        build_server
+        build_client
+        ;;
+    "test")
+        run_test
+        ;;
+    "server")
+        build_server
+        ;;
+    "client")
+        build_client
+        ;;
+    "clean")
+        clean
+        ;;
+    "dist_clean")
+        dist_clean
+        ;;
+    *)
+        ;;
+esac

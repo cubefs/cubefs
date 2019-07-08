@@ -1,19 +1,38 @@
 # ChubaoFS Makefile
 #
 
-default: build
+BIN_PATH := build/bin
+BIN_SERVER := $(BIN_PATH)/cfs-server
+BIN_CLIENT := $(BIN_PATH)/cfs-client
 
-.PHONY: build
+default: all
 
-build:
-	@build/build.sh
+phony := all
+all: build
 
+phony += build build_server build_client
+build: build_server build_client
+
+build_server: $(BIN_SERVER)
+
+build_client: $(BIN_CLIENT)
+
+$(BIN_SERVER):
+	@build/build.sh server
+
+$(BIN_CLIENT):
+	@build/build.sh client
+
+phony += clean
 clean:
-	@rm -rf build/bin/*
+	@build/build.sh clean
 
-ci-test:
-	@{ \
-		echo "ci test" \
-		&& ( go test ./... ) \
-	}
+phony += dist_clean
+dist_clean:
+	@build/build.sh dist_clean
 
+phony += test
+test:
+	@build/build.sh test
+
+.PHONY: $(phony)
