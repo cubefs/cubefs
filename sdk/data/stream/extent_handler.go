@@ -499,6 +499,20 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 			extID = 0
 		}
 
+		if err!=nil {
+			//check the partition all host has live
+			for i:=0;i<len(dp.Hosts);i++{
+				host:=dp.Hosts[i]
+				if conn, err = StreamConnPool.DailTimeOut(host,proto.ReadDeadlineTime); err != nil {
+					exclude[host] = struct{}{}
+					log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v)", eh, err, dp)
+					continue
+				}
+				StreamConnPool.PutConnect(conn,false)
+			}
+			continue
+		}
+
 		if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
 			exclude[dp.Hosts[0]] = struct{}{}
 			log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v)", eh, err, dp)
