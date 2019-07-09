@@ -25,6 +25,7 @@ import (
 
 func (s *DataNode) Prepare(p *repl.Packet) (err error) {
 	defer func() {
+		p.SetPacketHasPrepare()
 		if err != nil {
 			p.PackErrorBody(repl.ActionPreparePkt, err.Error())
 		}
