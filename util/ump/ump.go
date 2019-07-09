@@ -56,7 +56,7 @@ var (
 	}}
 )
 
-func InitUmp(module, dataDir string)(err error) {
+func InitUmp(module, dataDir string) (err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	if err := initLogName(module, dataDir); err != nil {
 		return err

@@ -44,10 +44,9 @@ func NewConnectPool() (cp *ConnectPool) {
 	return cp
 }
 
-
-func (cp *ConnectPool)DailTimeOut(target string,timeout time.Duration)(c *net.TCPConn,err error){
+func DailTimeOut(target string, timeout time.Duration) (c *net.TCPConn, err error) {
 	var connect net.Conn
-	connect, err = net.DialTimeout("tcp", target,timeout)
+	connect, err = net.DialTimeout("tcp", target, timeout)
 	if err == nil {
 		conn := connect.(*net.TCPConn)
 		conn.SetKeepAlive(true)

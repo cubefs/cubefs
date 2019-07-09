@@ -17,7 +17,10 @@ package wrapper
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util"
+	"net"
 	"strings"
+	"time"
 )
 
 // DataPartition defines the wrapper of the data partition.
@@ -57,6 +60,22 @@ func NewDataPartitionMetrics() *DataPartitionMetrics {
 func (dp *DataPartition) String() string {
 	return fmt.Sprintf("PartitionID(%v) Status(%v) ReplicaNum(%v) PartitionType(%v) Hosts(%v)",
 		dp.PartitionID, dp.Status, dp.ReplicaNum, dp.PartitionType, dp.Hosts)
+}
+
+func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
+	var (
+		conn net.Conn
+		err  error
+	)
+	for i := 0; i < len(dp.Hosts); i++ {
+		host := dp.Hosts[i]
+		if conn, err = util.DailTimeOut(host, proto.ReadDeadlineTime*time.Second); err != nil {
+			exclude[host] = struct{}{}
+			continue
+		}
+		conn.Close()
+	}
+
 }
 
 // GetAllAddrs returns the addresses of all the replicas of the data partition.

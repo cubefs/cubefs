@@ -15,12 +15,12 @@
 package ump
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"strings"
-	"bytes"
 )
 
 type FunctionTp struct {
@@ -67,13 +67,13 @@ var (
 )
 
 type LogWrite struct {
-	logCh     chan interface{}
-	logName   string
-	logSize   int64
-	seq       int
-	logSufixx string
-	logFp     *os.File
-	sigCh     chan bool
+	logCh       chan interface{}
+	logName     string
+	logSize     int64
+	seq         int
+	logSufixx   string
+	logFp       *os.File
+	sigCh       chan bool
 	bf          *bytes.Buffer
 	jsonEncoder *json.Encoder
 }
