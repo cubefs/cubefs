@@ -477,6 +477,7 @@ func (s *DataNode) handleExtentRepaiReadPacket(p *repl.Packet, connect net.Conn,
 		}
 		reply.Size = uint32(currReadSize)
 		reply.ResultCode = proto.OpOk
+		reply.Opcode=p.Opcode
 		p.ResultCode = proto.OpOk
 		if err = reply.WriteToConn(connect); err != nil {
 			return
