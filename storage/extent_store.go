@@ -647,11 +647,11 @@ func (s *ExtentStore) NextTinyDeleteFileOffset() (offset int64) {
 }
 
 func (s *ExtentStore) LoadTinyDeleteFileOffset() (offset int64) {
-	finfo,err:=s.tinyExtentDeleteFp.Stat()
-	if err!=nil {
+	finfo, err := s.tinyExtentDeleteFp.Stat()
+	if err != nil {
 		return atomic.LoadInt64(&s.baseTinyDeleteOffset)
 	}
-	offset=finfo.Size()
+	offset = finfo.Size()
 	return
 }
 

@@ -477,7 +477,7 @@ func (s *DataNode) handleExtentRepaiReadPacket(p *repl.Packet, connect net.Conn,
 		}
 		reply.Size = uint32(currReadSize)
 		reply.ResultCode = proto.OpOk
-		reply.Opcode=p.Opcode
+		reply.Opcode = p.Opcode
 		p.ResultCode = proto.OpOk
 		if err = reply.WriteToConn(connect); err != nil {
 			return
@@ -549,8 +549,8 @@ func (s *DataNode) handlePacketToReadTinyDelete(p *repl.Packet, connect *net.TCP
 		reply.ExtentOffset = offset
 		reply.CRC, err = store.ReadTinyDeleteRecords(offset, int64(currReadSize), reply.Data)
 		if err != nil {
-			err=fmt.Errorf(ActionStreamReadTinyDeleteRecord+" localTinyDeleteRecordSize(%v) offset(%v)" +
-				" currReadSize(%v) err(%v)",localTinyDeleteFileSize,offset,currReadSize,err)
+			err = fmt.Errorf(ActionStreamReadTinyDeleteRecord+" localTinyDeleteRecordSize(%v) offset(%v)"+
+				" currReadSize(%v) err(%v)", localTinyDeleteFileSize, offset, currReadSize, err)
 			return
 		}
 		reply.Size = uint32(currReadSize)

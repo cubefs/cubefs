@@ -46,7 +46,7 @@ func (s *DataNode) releaseExtent(p *repl.Packet) {
 	if p == nil || !storage.IsTinyExtent(p.ExtentID) || p.ExtentID <= 0 || atomic.LoadInt32(&p.IsReleased) == IsReleased {
 		return
 	}
-	if !p.IsTinyExtentType()|| !p.IsLeaderPacket() || !p.IsWriteOperation()|| !p.IsForwardPkt() {
+	if !p.IsTinyExtentType() || !p.IsLeaderPacket() || !p.IsWriteOperation() || !p.IsForwardPkt() {
 		return
 	}
 	if p.Object == nil {

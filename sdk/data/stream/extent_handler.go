@@ -490,26 +490,13 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 			continue
 		}
 
+		extID = 0
 		if eh.storeMode == proto.NormalExtentType {
-			if extID, err = eh.createExtent(dp, exclude); err != nil {
-				log.LogWarnf("allocateExtent: failed to create extent, eh(%v) err(%v)", eh, err)
-				continue
-			}
-		} else {
-			extID = 0
+			extID, err = eh.createExtent(dp, exclude)
 		}
-
-		if err!=nil {
-			//check the partition all host has live
-			for i:=0;i<len(dp.Hosts);i++{
-				host:=dp.Hosts[i]
-				if conn, err = StreamConnPool.DailTimeOut(host,proto.ReadDeadlineTime); err != nil {
-					exclude[host] = struct{}{}
-					log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v)", eh, err, dp)
-					continue
-				}
-				StreamConnPool.PutConnect(conn,false)
-			}
+		if err != nil {
+			log.LogWarnf("allocateExtent: failed to create extent, eh(%v) err(%v)", eh, err)
+			dp.CheckAllHostsIsAvail(exclude)
 			continue
 		}
 
