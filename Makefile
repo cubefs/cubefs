@@ -4,31 +4,43 @@
 BIN_PATH := build/bin
 BIN_SERVER := $(BIN_PATH)/cfs-server
 BIN_CLIENT := $(BIN_PATH)/cfs-client
+BIN_CLIENT2 := $(BIN_PATH)/cfs-client2
+
+COMMON_SRC := build/build.sh Makefile
+COMMON_SRC += $(wildcard storage/*.go util/*/*.go util/*.go repl/*.go raftstore/*.go proto/*.go)
+SERVER_SRC := $(wildcard cmd/*.go datanode/*.go master/*.go metanode/*.go)
+CLIENT_SRC := $(wildcard client/*.go client/fs/*.go sdk/*.go)
+CLIENT2_SRC := $(wildcard clientv2/*.go clientv2/fs/*.go sdk/*.go)
 
 default: all
 
 phony := all
 all: build
 
-phony += build build_server build_client
-build: build_server build_client
+phony += build build-server build-client build-client2
+build: build-server build-client
 
-build_server: $(BIN_SERVER)
+build-server: $(BIN_SERVER)
 
-build_client: $(BIN_CLIENT)
+build-client: $(BIN_CLIENT)
 
-$(BIN_SERVER):
+build-client2: $(BIN_CLIENT2)
+
+$(BIN_SERVER): $(COMMON_SRC) ${SERVER_SRC}
 	@build/build.sh server
 
-$(BIN_CLIENT):
+$(BIN_CLIENT): $(COMMON_SRC) $(CLIENT_SRC)
 	@build/build.sh client
+
+$(BIN_CLIENT2): $(COMMON_SRC) $(CLIENT2_SRC)
+	@build/build.sh client2
 
 phony += clean
 clean:
 	@build/build.sh clean
 
 phony += dist_clean
-dist_clean:
+dist-clean:
 	@build/build.sh dist_clean
 
 phony += test
