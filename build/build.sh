@@ -19,7 +19,17 @@ GCC_LIBRARY_PATH="/lib /lib64 /usr/lib /usr/lib64 /usr/local/lib /usr/local/lib6
 cgo_cflags=""
 cgo_ldflags="-lstdc++ -lm"
 
+RM="/usr/bin/rm -rf"
+
 [[ $(uname -s) != "Linux" ]] && { echo "ChubaoFS only support Linux os"; exit 1; }
+
+TMPDIR=/tmp/cfs/$$
+export GOPATH=${TMPDIR}
+mkdir -p $GOPATH/src/github.com/chubaofs
+SrcPath=$GOPATH/src/github.com/chubaofs/chubaofs
+if [[  ! -e "$SrcPath" ]] ; then
+	ln -s $RootPath $SrcPath 2>/dev/null
+fi
 
 build_snappy() {
     found=$(find ${GCC_LIBRARY_PATH}  -name libsnappy.a -o -name libsnappy.so 2>/dev/null | wc -l)
@@ -80,13 +90,6 @@ pre_build() {
     export CGO_CFLAGS=${cgo_cflags}
     export CGO_LDFLAGS="${cgo_ldflags}"
     export GO111MODULE=off
-    export GOPATH=/tmp/cfs/go
-
-    mkdir -p $GOPATH/src/github.com/chubaofs
-    SrcPath=$GOPATH/src/github.com/chubaofs/chubaofs
-    if [[  ! -e "$SrcPath" ]] ; then
-        ln -s $RootPath $SrcPath 2>/dev/null
-    fi
 }
 
 run_test() {
@@ -122,12 +125,12 @@ build_client2() {
 }
 
 clean() {
-    rm -rf ${BuildBinPath}
+    ${RM} ${BuildBinPath}
 }
 
 dist_clean() {
-    rm -rf ${BuildBinPath}
-    rm -rf ${BuildOutPath}
+    ${RM} ${BuildBinPath}
+    ${RM} ${BuildOutPath}
 }
 
 cmd=${1:-"all"}
@@ -158,3 +161,5 @@ case "$cmd" in
     *)
         ;;
 esac
+
+${RM} ${TMPDIR}
