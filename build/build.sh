@@ -23,7 +23,7 @@ RM="/usr/bin/rm -rf"
 
 [[ $(uname -s) != "Linux" ]] && { echo "ChubaoFS only support Linux os"; exit 1; }
 
-TMPDIR=/tmp/cfs/$$
+TMPDIR=/tmp/$$
 export GOPATH=${TMPDIR}
 mkdir -p $GOPATH/src/github.com/chubaofs
 SrcPath=$GOPATH/src/github.com/chubaofs/chubaofs

@@ -12,6 +12,8 @@ SERVER_SRC := $(wildcard cmd/*.go datanode/*.go master/*.go metanode/*.go)
 CLIENT_SRC := $(wildcard client/*.go client/fs/*.go sdk/*.go)
 CLIENT2_SRC := $(wildcard clientv2/*.go clientv2/fs/*.go sdk/*.go)
 
+RM := /usr/bin/rm -rf
+
 default: all
 
 phony := all
@@ -37,11 +39,12 @@ $(BIN_CLIENT2): $(COMMON_SRC) $(CLIENT2_SRC)
 
 phony += clean
 clean:
-	@build/build.sh clean
+	@$(RM) build/bin
 
 phony += dist_clean
 dist-clean:
-	@build/build.sh dist_clean
+	@$(RM) build/bin
+	@$(RM) build/out
 
 phony += test
 test:
