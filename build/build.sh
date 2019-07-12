@@ -12,24 +12,28 @@ BuildTime=$(date +%Y-%m-%d\ %H:%M)
 LDFlags="-X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'"
 MODFLAGS=""
 
+RM="rm -rf"
+[[ -x "/usr/bin/rm" ]] && RM="/usr/bin/rm -rf"
+[[ -x "/bin/rm" ]] && RM="/bin/rm -rf"
+
 NPROC=$(nproc 2>/dev/null)
 NPROC=${NPROC:-"1"}
 
 GCC_LIBRARY_PATH="/lib /lib64 /usr/lib /usr/lib64 /usr/local/lib /usr/local/lib64"
-cgo_cflags=""
-cgo_ldflags="-lstdc++ -lm"
-
-RM="/usr/bin/rm -rf"
 
 [[ $(uname -s) != "Linux" ]] && { echo "ChubaoFS only support Linux os"; exit 1; }
 
-TMPDIR=/tmp/$$
-export GOPATH=${TMPDIR}
-mkdir -p $GOPATH/src/github.com/chubaofs
-SrcPath=$GOPATH/src/github.com/chubaofs/chubaofs
-if [[  ! -e "$SrcPath" ]] ; then
-	ln -s $RootPath $SrcPath 2>/dev/null
-fi
+TMPDIR=${HOME}/tmp/$$
+mkdir -p ${TMPDIR}
+
+set_go_path() {
+    export GOPATH=${TMPDIR}
+    mkdir -p $GOPATH/src/github.com/chubaofs
+    SrcPath=$GOPATH/src/github.com/chubaofs/chubaofs
+    if [[  ! -e "$SrcPath" ]] ; then
+        ln -s $RootPath $SrcPath 2>/dev/null
+    fi
+}
 
 build_snappy() {
     found=$(find ${GCC_LIBRARY_PATH}  -name libsnappy.a -o -name libsnappy.so 2>/dev/null | wc -l)
@@ -52,6 +56,13 @@ build_snappy() {
 }
 
 build_rocksdb() {
+    rocksdb_libs=( z bz2 lz4 zstd )
+    for p in ${rocksdb_libs[*]} ; do
+        found=$(find /usr -name lib${p}.so 2>/dev/null | wc -l)
+        if [[ ${found} -gt 0 ]] ; then
+            cgo_ldflags="${cgo_ldflags} -l${p}"
+        fi
+    done
     found=$(find ${GCC_LIBRARY_PATH} -name librocksdb.a -o -name librocksdb.so 2>/dev/null | wc -l)
     if [[ ${found} -gt 0 ]] ; then
         cgo_ldflags="${cgo_ldflags} -lrocksdb"
@@ -75,17 +86,12 @@ build_rocksdb() {
     cgo_ldflags="${cgo_ldflags} -L${RocksdbBuildPath} -lrocksdb"
 }
 
-pre_build() {
+set_server_deps() {
+    cgo_cflags=""
+    cgo_ldflags=""
+
     build_snappy
     build_rocksdb
-
-    rocksdb_libs=( z bz2 lz4 zstd )
-    for p in ${rocksdb_libs[*]} ; do
-        found=$(find /usr -name lib${p}.so 2>/dev/null | wc -l)
-        if [[ ${found} -gt 0 ]] ; then
-            cgo_ldflags="${cgo_ldflags} -l${p}"
-        fi
-    done
 
     export CGO_CFLAGS=${cgo_cflags}
     export CGO_LDFLAGS="${cgo_ldflags}"
@@ -93,7 +99,8 @@ pre_build() {
 }
 
 run_test() {
-    pre_build
+    set_go_path
+    set_server_deps
     pushd $SrcPath >/dev/null
     echo "run test "
     go test -ldflags "${LDFlags}" ./...
@@ -101,15 +108,17 @@ run_test() {
 }
 
 build_server() {
-    pre_build
+    set_go_path
+    set_server_deps
     pushd $SrcPath >/dev/null
     echo -n "build cfs-server "
     go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-server ${SrcPath}/cmd/*.go && echo "success" || echo "failed"
     popd >/dev/null
+    unset CGO_LDFLAGS CGO_CFLAGS
 }
 
 build_client() {
-    pre_build
+    set_go_path
     pushd $SrcPath >/dev/null
     echo -n "build cfs-client "
     go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-client ${SrcPath}/client/*.go  && echo "success" || echo "failed"
@@ -117,7 +126,7 @@ build_client() {
 }
 
 build_client2() {
-    pre_build
+    set_go_path
     pushd $SrcPath >/dev/null
     echo -n "build cfs-client2 "
     go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-client2 ${SrcPath}/clientv2/*.go  && echo "success" || echo "failed"
