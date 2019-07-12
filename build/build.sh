@@ -36,15 +36,14 @@ set_go_path() {
 }
 
 build_snappy() {
-    found=$(find ${GCC_LIBRARY_PATH}  -name libsnappy.a -o -name libsnappy.so 2>/dev/null | wc -l)
-    if [[ ${found} -gt 0 ]] ; then
-        cgo_ldflags="${cgo_ldflags} -lsnappy"
-        return
-    fi
-    SnappySrcPath=${VendorPath}/snappy-1.1.7
-    SnappyBuildPath=${BuildOutPath}/snappy
+    SnappySrcPath=${RocksdbBuildPath}/third-party/snappy-1.1.7
+    SnappyBuildPath=${SnappySrcPath}/build
     found=$(find ${SnappyBuildPath} -name libsnappy.a 2>/dev/null | wc -l)
     if [[ ${found} -eq 0 ]] ; then
+        if [[ ! -d ${RocksdbBuildPath} ]] ; then
+            mkdir -p ${RocksdbBuildPath}
+            cp -rf ${RocksdbSrcPath}/* ${RocksdbBuildPath}
+        fi
         mkdir -p ${SnappyBuildPath}
         echo "build snappy..."
         pushd ${SnappyBuildPath} >/dev/null
@@ -56,20 +55,11 @@ build_snappy() {
 }
 
 build_rocksdb() {
-    rocksdb_libs=( z bz2 lz4 zstd )
-    for p in ${rocksdb_libs[*]} ; do
-        found=$(find /usr -name lib${p}.so 2>/dev/null | wc -l)
-        if [[ ${found} -gt 0 ]] ; then
-            cgo_ldflags="${cgo_ldflags} -l${p}"
-        fi
-    done
-    found=$(find ${GCC_LIBRARY_PATH} -name librocksdb.a -o -name librocksdb.so 2>/dev/null | wc -l)
-    if [[ ${found} -gt 0 ]] ; then
-        cgo_ldflags="${cgo_ldflags} -lrocksdb"
-        return
-    fi
     RocksdbSrcPath=${VendorPath}/rocksdb-5.9.2
     RocksdbBuildPath=${BuildOutPath}/rocksdb
+
+    build_snappy
+
     found=$(find ${RocksdbBuildPath} -name librocksdb.a 2>/dev/null | wc -l)
     if [[ ${found} -eq 0 ]] ; then
         if [[ ! -d ${RocksdbBuildPath} ]] ; then
@@ -90,7 +80,6 @@ set_server_deps() {
     cgo_cflags=""
     cgo_ldflags=""
 
-    build_snappy
     build_rocksdb
 
     export CGO_CFLAGS=${cgo_cflags}
