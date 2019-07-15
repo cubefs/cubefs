@@ -96,7 +96,7 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 		case p := <-ft.sendCh:
 			if err := p.WriteToConn(ft.conn); err != nil {
 				p.PackErrorBody(ActionSendToFollowers, err.Error())
-				p.respCh<-fmt.Errorf(string(p.Data[:p.Size]))
+				p.respCh <- fmt.Errorf(string(p.Data[:p.Size]))
 				ft.conn.Close()
 				continue
 			}
@@ -135,13 +135,13 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 	reply := NewPacket()
 	defer func() {
 		reply.clean()
-		request.respCh<-err
-		if err!=nil {
+		request.respCh <- err
+		if err != nil {
 			ft.conn.Close()
 		}
 	}()
-	if request.IsErrPacket(){
-		err=fmt.Errorf(string(request.Data[:request.Size]))
+	if request.IsErrPacket() {
+		err = fmt.Errorf(string(request.Data[:request.Size]))
 		return
 	}
 	if err = reply.ReadFromConn(ft.conn, proto.ReadDeadlineTime); err != nil {
