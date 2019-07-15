@@ -617,6 +617,40 @@ func (c *Cluster) metaNode(addr string) (metaNode *MetaNode, err error) {
 	return
 }
 
+func (c *Cluster) getAllDataPartitionIDByDatanode(addr string) (partitionIDs []uint64) {
+	partitionIDs = make([]uint64, 0)
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		for _, dp := range vol.dataPartitions.partitions {
+			for _, host := range dp.Hosts {
+				if host == addr {
+					partitionIDs = append(partitionIDs, dp.PartitionID)
+					break
+				}
+			}
+		}
+	}
+
+	return
+}
+
+func (c *Cluster) getAllmetaPartitionIDByMetaNode(addr string) (partitionIDs []uint64) {
+	partitionIDs = make([]uint64, 0)
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		for _, mp := range vol.MetaPartitions {
+			for _, host := range mp.Hosts {
+				if host == addr {
+					partitionIDs = append(partitionIDs, mp.PartitionID)
+					break
+				}
+			}
+		}
+	}
+
+	return
+}
+
 func (c *Cluster) dataNodeOffLine(dataNode *DataNode) (err error) {
 	msg := fmt.Sprintf("action[dataNodeOffLine], Node[%v] OffLine", dataNode.Addr)
 	log.LogWarn(msg)

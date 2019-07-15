@@ -17,8 +17,8 @@ package datanode
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
@@ -95,7 +95,7 @@ func UnmarshalRandWriteRaftLog(raw []byte) (opItem *rndWrtOpItem, err error) {
 
 	if version != BinaryMarshalMagicVersion {
 		opItem, err = UnmarshalOldVersionRaftLog(raw)
-		return 
+		return
 	}
 	if err = binary.Read(buff, binary.BigEndian, &opItem.opcode); err != nil {
 		return
@@ -121,43 +121,42 @@ func UnmarshalRandWriteRaftLog(raw []byte) (opItem *rndWrtOpItem, err error) {
 }
 
 func UnmarshalOldVersionRaftLog(raw []byte) (opItem *rndWrtOpItem, err error) {
-		raftOpItem := new(RaftCmdItem)
-		defer func() {
-			log.LogDebugf("Unmarsh use oldVersion,result %v", err)
-		}()
-		if err = json.Unmarshal(raw, raftOpItem); err != nil {
-			return
-		}
-		opItem, err = UnmarshalOldVersionRandWriteOpItem(raftOpItem.V)
-		if err != nil {
-			return
-		}
-		opItem.opcode = uint8(raftOpItem.Op)
+	raftOpItem := new(RaftCmdItem)
+	defer func() {
+		log.LogDebugf("Unmarsh use oldVersion,result %v", err)
+	}()
+	if err = json.Unmarshal(raw, raftOpItem); err != nil {
 		return
+	}
+	opItem, err = UnmarshalOldVersionRandWriteOpItem(raftOpItem.V)
+	if err != nil {
+		return
+	}
+	opItem.opcode = uint8(raftOpItem.Op)
+	return
 }
 
-
 func UnmarshalOldVersionRandWriteOpItem(raw []byte) (result *rndWrtOpItem, err error) {
-    var opItem rndWrtOpItem
-    buff := bytes.NewBuffer(raw)
-    if err = binary.Read(buff, binary.BigEndian, &opItem.extentID); err != nil {
-    	return
-    }
-    if err = binary.Read(buff, binary.BigEndian, &opItem.offset); err != nil {
-    	return
-    }
-    if err = binary.Read(buff, binary.BigEndian, &opItem.size); err != nil {
-    	return
-    }
-    if err = binary.Read(buff, binary.BigEndian, &opItem.crc); err != nil {
-    	return
-    }
-    opItem.data = make([]byte, opItem.size)
-    if _, err = buff.Read(opItem.data); err != nil {
-    	return
-    }
-    result = &opItem
-    return
+	var opItem rndWrtOpItem
+	buff := bytes.NewBuffer(raw)
+	if err = binary.Read(buff, binary.BigEndian, &opItem.extentID); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &opItem.offset); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &opItem.size); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &opItem.crc); err != nil {
+		return
+	}
+	opItem.data = make([]byte, opItem.size)
+	if _, err = buff.Read(opItem.data); err != nil {
+		return
+	}
+	result = &opItem
+	return
 }
 
 func (dp *DataPartition) checkWriteErrs(errMsg string) (ignore bool) {
@@ -220,7 +219,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 			resp = proto.OpOk
 			dp.uploadApplyID(raftApplyID)
 		} else {
-			err=fmt.Errorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err[%v] retry[20]", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err)
+			err = fmt.Errorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err[%v] retry[20]", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err)
 			exporter.Warning(err.Error())
 			resp = proto.OpDiskErr
 		}

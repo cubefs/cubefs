@@ -464,6 +464,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
 	}
+	dataNode.PersistenceDataPartitions = m.cluster.getAllDataPartitionIDByDatanode(nodeAddr)
 	sendOkReply(w, r, newSuccessHTTPReply(dataNode))
 }
 
@@ -576,6 +577,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
 		return
 	}
+	metaNode.PersistenceMetaPartitions = m.cluster.getAllmetaPartitionIDByMetaNode(nodeAddr)
 	sendOkReply(w, r, newSuccessHTTPReply(metaNode))
 }
 

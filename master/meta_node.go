@@ -40,6 +40,7 @@ type MetaNode struct {
 	MetaPartitionCount int
 	NodeSetID          uint64
 	sync.RWMutex
+	PersistenceMetaPartitions []uint64
 }
 
 func newMetaNode(addr, clusterID string) (node *MetaNode) {

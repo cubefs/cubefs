@@ -153,6 +153,13 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 		return
 	}
 
+	// check local partition compare with master ,if lack,then not start
+	if err = s.checkLocalPartitionMatchWithMaster(); err != nil {
+		fmt.Println(err)
+		exporter.Warning(err.Error())
+		return
+	}
+
 	// start tcp listening
 	if err = s.startTCPService(); err != nil {
 		return
@@ -303,6 +310,47 @@ func (s *DataNode) register() {
 			return
 		}
 	}
+}
+
+type DataNodeInfo struct {
+	Addr                      string
+	PersistenceDataPartitions []uint64
+}
+
+func (s *DataNode) checkLocalPartitionMatchWithMaster() (err error) {
+	params := make(map[string]string)
+	params["addr"] = s.localServerAddr
+	var data interface{}
+	for i := 0; i < 3; i++ {
+		data, err = MasterHelper.Request(http.MethodGet, proto.GetDataNode, params, nil)
+		if err != nil {
+			log.LogErrorf("checkLocalPartitionMatchWithMaster error %v", err)
+			continue
+		}
+		break
+	}
+	dinfo:=new(DataNodeInfo)
+	if err = json.Unmarshal(data.([]byte),dinfo);err!=nil {
+		err=fmt.Errorf("checkLocalPartitionMatchWithMaster jsonUnmarsh failed %v",err)
+		log.LogErrorf(err.Error())
+		return
+	}
+	if len(dinfo.PersistenceDataPartitions) == 0 {
+		return
+	}
+	lackPartitions := make([]uint64, 0)
+	for _, partitionID := range dinfo.PersistenceDataPartitions {
+		dp := s.space.Partition(partitionID)
+		if dp == nil {
+			lackPartitions = append(lackPartitions, partitionID)
+		}
+	}
+	if len(lackPartitions) == 0 {
+		return
+	}
+	err = fmt.Errorf("LackPartitions %v on datanode %v,datanode cannot start", lackPartitions, s.localServerAddr)
+	log.LogErrorf(err.Error())
+	return
 }
 
 func (s *DataNode) registerHandler() {
