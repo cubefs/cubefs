@@ -626,10 +626,10 @@ func (s *ExtentStore) RecordTinyDelete(extentID uint64, offset, size, tinyDelete
 
 func (s *ExtentStore) ReadTinyDeleteRecords(offset, size int64, data []byte) (crc uint32, err error) {
 	_, err = s.tinyExtentDeleteFp.ReadAt(data[:size], offset)
-	if err != nil {
-		return
+	if err ==nil || err==io.EOF{
+		err=nil
+		crc = crc32.ChecksumIEEE(data[:size])
 	}
-	crc = crc32.ChecksumIEEE(data[:size])
 	return
 }
 
@@ -647,12 +647,8 @@ func (s *ExtentStore) NextTinyDeleteFileOffset() (offset int64) {
 }
 
 func (s *ExtentStore) LoadTinyDeleteFileOffset() (offset int64) {
-	finfo, err := s.tinyExtentDeleteFp.Stat()
-	if err != nil {
-		return atomic.LoadInt64(&s.baseTinyDeleteOffset)
-	}
-	offset = finfo.Size()
-	return
+	return atomic.LoadInt64(&s.baseTinyDeleteOffset)
+
 }
 
 func (s *ExtentStore) getExtentKey(extent uint64) string {
