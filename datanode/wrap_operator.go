@@ -412,9 +412,6 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		return
 	}
 
-	if err == nil && p.Opcode == proto.OpRandomWrite && p.Size == util.BlockSize {
-		proto.Buffers.Put(p.Data)
-	}
 }
 
 func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
@@ -477,6 +474,7 @@ func (s *DataNode) handleExtentRepaiReadPacket(p *repl.Packet, connect net.Conn,
 		}
 		reply.Size = uint32(currReadSize)
 		reply.ResultCode = proto.OpOk
+		reply.Opcode = p.Opcode
 		p.ResultCode = proto.OpOk
 		if err = reply.WriteToConn(connect); err != nil {
 			return
@@ -525,6 +523,12 @@ func (s *DataNode) handlePacketToReadTinyDelete(p *repl.Packet, connect *net.TCP
 	var (
 		err error
 	)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionStreamReadTinyDeleteRecord, err.Error())
+			p.WriteToConn(connect)
+		}
+	}()
 	partition := p.Object.(*DataPartition)
 	store := partition.ExtentStore()
 	localTinyDeleteFileSize := store.LoadTinyDeleteFileOffset()
@@ -542,21 +546,13 @@ func (s *DataNode) handlePacketToReadTinyDelete(p *repl.Packet, connect *net.TCP
 		reply.ExtentOffset = offset
 		reply.CRC, err = store.ReadTinyDeleteRecords(offset, int64(currReadSize), reply.Data)
 		if err != nil {
-			reply.PackErrorBody(ActionStreamReadTinyDeleteRecord, err.Error())
-			if err = reply.WriteToConn(connect); err != nil {
-				err = fmt.Errorf(reply.LogMessage(ActionStreamReadTinyDeleteRecord, connect.RemoteAddr().String(),
-					reply.StartT, err))
-				log.LogErrorf(err.Error())
-			}
+			err = fmt.Errorf(ActionStreamReadTinyDeleteRecord+" localTinyDeleteRecordSize(%v) offset(%v)"+
+				" currReadSize(%v) err(%v)", localTinyDeleteFileSize, offset, currReadSize, err)
 			return
 		}
 		reply.Size = uint32(currReadSize)
 		reply.ResultCode = proto.OpOk
 		if err = reply.WriteToConn(connect); err != nil {
-			err = fmt.Errorf(reply.LogMessage(ActionStreamReadTinyDeleteRecord, connect.RemoteAddr().String(),
-				reply.StartT, err))
-			p.PackErrorBody(ActionStreamReadTinyDeleteRecord, err.Error())
-			log.LogErrorf(err.Error())
 			return
 		}
 		needReplySize -= int64(currReadSize)

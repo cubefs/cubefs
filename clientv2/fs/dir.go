@@ -142,12 +142,21 @@ func (s *Super) LookUpInode(ctx context.Context, op *fuseops.LookUpInodeOp) erro
 
 	log.LogDebugf("TRACE enter %v: ", desc)
 
-	ino, _, err := s.mw.Lookup_ll(pino, op.Name)
+	pinode, err := s.InodeGet(pino)
 	if err != nil {
-		if err != fuse.ENOENT {
-			log.LogErrorf("%v: err(%v)", desc, err)
-		}
+		log.LogErrorf("%v: failed to get parent inode, err(%v)", desc, err)
 		return ParseError(err)
+	}
+
+	ino, ok := pinode.dcache.Get(op.Name)
+	if !ok {
+		ino, _, err = s.mw.Lookup_ll(pino, op.Name)
+		if err != nil {
+			if err != fuse.ENOENT {
+				log.LogErrorf("%v: err(%v)", desc, err)
+			}
+			return ParseError(err)
+		}
 	}
 
 	inode, err := s.InodeGet(ino)
@@ -158,6 +167,14 @@ func (s *Super) LookUpInode(ctx context.Context, op *fuseops.LookUpInodeOp) erro
 
 	fillChildEntry(&op.Entry, inode)
 
+	if inode.mode.IsRegular() {
+		fileSize, gen := s.ec.FileSize(ino)
+		log.LogDebugf("LookUpInode: Get filesize, op(%v) fileSize(%v) gen(%v) inode.gen(%v)", desc, fileSize, gen, inode.gen)
+		if gen >= inode.gen {
+			op.Entry.Attributes.Size = uint64(fileSize)
+		}
+	}
+
 	log.LogDebugf("TRACE exit %v: inode(%v)", desc, inode)
 	return nil
 }
@@ -167,6 +184,10 @@ func (s *Super) RmDir(ctx context.Context, op *fuseops.RmDirOp) error {
 	desc := fuse.OpDescription(op)
 
 	log.LogDebugf("TRACE enter %v:", desc)
+
+	if pinode, _ := s.InodeGet(pino); pinode != nil {
+		pinode.dcache.Delete(op.Name)
+	}
 
 	info, err := s.mw.Delete_ll(pino, op.Name, true)
 	if err != nil {
@@ -208,7 +229,7 @@ func (s *Super) OpenDir(ctx context.Context, op *fuseops.OpenDirOp) error {
 }
 
 func (s *Super) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) error {
-	ino := uint64(op.Inode)
+	pino := uint64(op.Inode)
 	pos := int(op.Offset)
 	desc := fuse.OpDescription(op)
 
@@ -220,16 +241,23 @@ func (s *Super) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) error {
 		return syscall.EBADF
 	}
 
+	pinode, err := s.InodeGet(pino)
+	if err != nil {
+		log.LogErrorf("%v: failed to get inode, err(%v)", desc, err)
+		return ParseError(err)
+	}
+
 	handle.lock.Lock()
 	defer handle.lock.Unlock()
 
 	if pos == 0 || handle.entries == nil {
-		children, err := s.mw.ReadDir_ll(ino)
+		children, err := s.mw.ReadDir_ll(pino)
 		if err != nil {
 			log.LogErrorf("%v: failed to readdir from metanode, err(%v)", desc, err)
 			return ParseError(err)
 		}
 		handle.entries = children
+		pinode.dcache = NewDentryCache()
 	}
 
 	if pos > len(handle.entries) {
@@ -254,6 +282,7 @@ func (s *Super) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) error {
 		}
 		op.BytesRead += nbytes
 		inodes = append(inodes, child.Inode)
+		pinode.dcache.Put(child.Name, child.Inode)
 	}
 
 	if pos == 0 {
@@ -280,6 +309,10 @@ func (s *Super) Rename(ctx context.Context, op *fuseops.RenameOp) error {
 	desc := fuse.OpDescription(op)
 
 	log.LogDebugf("TRACE enter %v: ", desc)
+
+	if oldPinode, _ := s.InodeGet(oldPino); oldPinode != nil {
+		oldPinode.dcache.Delete(op.OldName)
+	}
 
 	err := s.mw.Rename_ll(oldPino, op.OldName, newPino, op.NewName)
 	if err != nil {

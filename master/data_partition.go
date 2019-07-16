@@ -79,7 +79,7 @@ func (partition *DataPartition) addReplica(replica *DataReplica) {
 func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64) (task *proto.AdminTask) {
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
-		partition.VolName, partition.PartitionID, partition.Peers, int(dataPartitionSize)))
+		partition.VolName, partition.PartitionID, partition.Peers, int(dataPartitionSize), partition.Hosts))
 	partition.resetTaskID(task)
 	return
 }

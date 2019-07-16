@@ -154,6 +154,7 @@ type Packet struct {
 	Data               []byte
 	StartT             int64
 	mesg               string
+	HasPrepare         bool
 }
 
 // NewPacket returns a new packet.
@@ -502,15 +503,20 @@ func (p *Packet) PacketErrorWithBody(code uint8, reply []byte) {
 	p.ArgLen = 0
 }
 
+
+func (p *Packet)SetPacketHasPrepare(){
+	p.setPacketPrefix()
+	p.HasPrepare=true
+}
+
+
 // GetUniqueLogId returns the unique log ID.
 func (p *Packet) GetUniqueLogId() (m string) {
 	defer func() {
-		if p.mesg == "" {
-			p.mesg = m
-		}
-		m = p.mesg + fmt.Sprintf("_ResultMesg(%v)", p.GetResultMsg())
+		m = m + fmt.Sprintf("_ResultMesg(%v)", p.GetResultMsg())
 	}()
-	if p.mesg != "" {
+	if p.HasPrepare{
+		m=p.mesg
 		return
 	}
 	m = fmt.Sprintf("Req(%v)_Partition(%v)_", p.ReqID, p.PartitionID)
@@ -533,7 +539,33 @@ func (p *Packet) GetUniqueLogId() (m string) {
 		"Size(%v)_Opcode(%v)_CRC(%v)",
 		p.ReqID, p.PartitionID, p.ExtentID, p.ExtentOffset,
 		p.KernelOffset, p.Size, p.GetOpMsg(), p.CRC)
+
 	return
+}
+
+
+func (p *Packet)setPacketPrefix(){
+	p.mesg = fmt.Sprintf("Req(%v)_Partition(%v)_", p.ReqID, p.PartitionID)
+	if p.ExtentType == TinyExtentType && p.Opcode == OpMarkDelete && len(p.Data) > 0 {
+		ext := new(TinyExtentDeleteRecord)
+		err := json.Unmarshal(p.Data, ext)
+		if err == nil {
+			p.mesg += fmt.Sprintf("Extent(%v)_ExtentOffset(%v)_TinyDeleteFileOffset(%v)_Size(%v)_Opcode(%v)",
+				ext.ExtentId, ext.ExtentOffset, ext.TinyDeleteFileOffset, ext.Size, p.Opcode)
+			return
+		}
+	} else if p.Opcode == OpReadTinyDelete {
+		p.mesg += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
+		return
+	} else if p.Opcode == OpNotifyReplicasToRepair {
+		p.mesg += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
+		return
+	}
+	p.mesg = fmt.Sprintf("Req(%v)_Partition(%v)_Extent(%v)_ExtentOffset(%v)_KernelOffset(%v)_"+
+		"Size(%v)_Opcode(%v)_CRC(%v)",
+		p.ReqID, p.PartitionID, p.ExtentID, p.ExtentOffset,
+		p.KernelOffset, p.Size, p.GetOpMsg(), p.CRC)
+
 }
 
 // IsForwardPkt returns if the packet is the forward packet (a packet that will be forwarded to the followers).

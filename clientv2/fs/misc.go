@@ -91,6 +91,14 @@ func (s *Super) SetInodeAttributes(ctx context.Context, op *fuseops.SetInodeAttr
 		}
 	}
 
+	if inode.mode.IsRegular() {
+		fileSize, gen := s.ec.FileSize(ino)
+		log.LogDebugf("SetInodeAttributes: Get filesize, op(%v) fileSize(%v) gen(%v) inode.gen(%v)", desc, fileSize, gen, inode.gen)
+		if gen >= inode.gen {
+			op.Attributes.Size = uint64(fileSize)
+		}
+	}
+
 	log.LogDebugf("TRACE SetInodeAttributes: op(%v) returned attr(%v)", desc, op.Attributes.DebugString())
 	return nil
 }

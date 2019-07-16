@@ -20,7 +20,6 @@ import (
 	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft"
@@ -31,31 +30,7 @@ import (
 
 // Apply puts the data onto the disk.
 func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
-	var extentID uint64
-	msg := &RaftCmdItem{}
-	defer func(index uint64) {
-		if err != nil {
-			prefix := fmt.Sprintf("RandomWrite Datapartition(%v)_Extent(%v) apply error (%v)", dp.partitionID, extentID, err)
-			err = errors.Trace(err, prefix)
-			exporter.Warning(err.Error())
-			resp = proto.OpExistErr
-			dp.stopRaftC <- extentID
-		} else {
-			dp.uploadApplyID(index)
-			resp = proto.OpOk
-		}
-	}(index)
-	if err = msg.raftCmdUnmarshal(command); err != nil {
-		return
-	}
-
-	switch msg.Op {
-	case opRandomWrite, opRandomSyncWrite:
-		extentID, err = dp.ApplyRandomWrite(msg, index)
-	default:
-		err = fmt.Errorf(fmt.Sprintf("Wrong random operate %v", msg.Op))
-		return
-	}
+	resp, err = dp.ApplyRandomWrite(command, index)
 	return
 }
 
@@ -127,25 +102,12 @@ func (dp *DataPartition) HandleLeaderChange(leader uint64) {
 }
 
 // Put submits the raft log to the raft store.
-func (dp *DataPartition) Put(key, val interface{}) (resp interface{}, err error) {
+func (dp *DataPartition) Put(key interface{}, val interface{}) (resp interface{}, err error) {
 	if dp.raftPartition == nil {
 		err = fmt.Errorf("%s key=%v", RaftNotStarted, key)
 		return
 	}
-	item := &RaftCmdItem{
-		Op: key.(uint32),
-		K:  nil,
-		V:  nil,
-	}
-	if val != nil {
-		item.V = val.([]byte)
-	}
-	cmd, err := item.raftCmdMarshalJSON()
-	if err != nil {
-		return
-	}
-
-	resp, err = dp.raftPartition.Submit(cmd)
+	resp, err = dp.raftPartition.Submit(val.([]byte))
 	return
 }
 

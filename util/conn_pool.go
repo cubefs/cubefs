@@ -44,6 +44,18 @@ func NewConnectPool() (cp *ConnectPool) {
 	return cp
 }
 
+func DailTimeOut(target string, timeout time.Duration) (c *net.TCPConn, err error) {
+	var connect net.Conn
+	connect, err = net.DialTimeout("tcp", target, timeout)
+	if err == nil {
+		conn := connect.(*net.TCPConn)
+		conn.SetKeepAlive(true)
+		conn.SetNoDelay(true)
+		c = conn
+	}
+	return
+}
+
 func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error) {
 	cp.RLock()
 	pool, ok := cp.pools[targetAddr]

@@ -17,14 +17,6 @@ package datanode
 import (
 	"encoding/binary"
 	"fmt"
-	"io/ioutil"
-	"net"
-	"os"
-	"path"
-	"strconv"
-	"strings"
-	"time"
-
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/repl"
@@ -32,6 +24,13 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
+	"io/ioutil"
+	"net"
+	"os"
+	"path"
+	"strconv"
+	"strings"
+	"time"
 )
 
 type dataPartitionCfg struct {
@@ -40,6 +39,7 @@ type dataPartitionCfg struct {
 	PartitionID   uint64              `json:"partition_id"`
 	PartitionSize int                 `json:"partition_size"`
 	Peers         []proto.Peer        `json:"peers"`
+	Hosts         []string            `json:"hosts"`
 	NodeID        uint64              `json:"-"`
 	RaftStore     raftstore.RaftStore `json:"-"`
 }

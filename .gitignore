@@ -1,0 +1,10 @@
+.gitignore
+build/bin
+build/rocksdb
+build/snappy
+.DS_Store
+.idea
+.vscode
+build/out
+docker/bin
+docs/build

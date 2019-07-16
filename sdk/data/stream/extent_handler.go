@@ -490,13 +490,14 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 			continue
 		}
 
+		extID = 0
 		if eh.storeMode == proto.NormalExtentType {
-			if extID, err = eh.createExtent(dp, exclude); err != nil {
-				log.LogWarnf("allocateExtent: failed to create extent, eh(%v) err(%v)", eh, err)
-				continue
-			}
-		} else {
-			extID = 0
+			extID, err = eh.createExtent(dp, exclude)
+		}
+		if err != nil {
+			log.LogWarnf("allocateExtent: failed to create extent, eh(%v) err(%v)", eh, err)
+			dp.CheckAllHostsIsAvail(exclude)
+			continue
 		}
 
 		if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {

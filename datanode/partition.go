@@ -159,12 +159,12 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
 	}
-
+	disk.space.AttachPartition(dp)
 	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)
 	}
-
 	if err = dp.StartRaft(); err != nil {
+		disk.space.DetachDataPartition(dp.partitionID)
 		return
 	}
 
@@ -191,6 +191,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		runtimeMetrics:  NewDataPartitionMetrics(),
 		config:          dpCfg,
 	}
+	partition.replicasInit()
 	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize)
 	if err != nil {
 		return
@@ -200,6 +201,23 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 	dp = partition
 	go partition.statusUpdateScheduler()
 	return
+}
+
+func (dp *DataPartition) replicasInit() {
+	replicas := make([]string, 0)
+	if dp.config.Hosts == nil {
+		return
+	}
+	for _, host := range dp.config.Hosts {
+		replicas = append(replicas, host)
+	}
+	dp.replicas = replicas
+	if dp.config.Hosts != nil && len(dp.config.Hosts) >= 1 {
+		leaderAddr := strings.Split(dp.config.Hosts[0], ":")
+		if len(leaderAddr) == 2 && strings.TrimSpace(leaderAddr[0]) == LocalIP {
+			dp.isLeader = true
+		}
+	}
 }
 
 func (dp *DataPartition) GetExtentCount() int {
@@ -429,7 +447,7 @@ func (dp *DataPartition) ExtentStore() *storage.ExtentStore {
 	return dp.extentStore
 }
 
-func (dp *DataPartition) checkIsDiskError(err error) {
+func (dp *DataPartition) checkIsDiskError(err error) (diskError bool) {
 	if err == nil {
 		return
 	}
@@ -443,7 +461,9 @@ func (dp *DataPartition) checkIsDiskError(err error) {
 		dp.disk.Status = proto.Unavailable
 		dp.statusUpdate()
 		dp.disk.ForceExitRaftStore()
+		diskError = true
 	}
+	return
 }
 
 // String returns the string format of the data partition information.

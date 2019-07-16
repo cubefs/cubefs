@@ -15,6 +15,7 @@
 package ump
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -66,13 +67,15 @@ var (
 )
 
 type LogWrite struct {
-	logCh     chan interface{}
-	logName   string
-	logSize   int64
-	seq       int
-	logSufixx string
-	logFp     *os.File
-	sigCh     chan bool
+	logCh       chan interface{}
+	logName     string
+	logSize     int64
+	seq         int
+	logSufixx   string
+	logFp       *os.File
+	sigCh       chan bool
+	bf          *bytes.Buffer
+	jsonEncoder *json.Encoder
 }
 
 func (lw *LogWrite) initLogFp(sufixx string) (err error) {
@@ -81,6 +84,9 @@ func (lw *LogWrite) initLogFp(sufixx string) (err error) {
 	lw.sigCh = make(chan bool, 1)
 	lw.logSufixx = sufixx
 	lw.logName = fmt.Sprintf("%s%s%s", UmpDataDir, "ump_", lw.logSufixx)
+	lw.bf = bytes.NewBuffer([]byte{})
+	lw.jsonEncoder = json.NewEncoder(lw.bf)
+	lw.jsonEncoder.SetEscapeHTML(false)
 	if lw.logFp, err = os.OpenFile(lw.logName, LogFileOpt, 0666); err != nil {
 		return
 	}
@@ -131,15 +137,21 @@ func (lw *LogWrite) backGroundWrite(umpType string) {
 		switch umpType {
 		case FunctionTpType:
 			tp := obj.(*FunctionTp)
-			body, _ = json.Marshal(tp)
+			lw.jsonEncoder.Encode(tp)
+			body = append(body, lw.bf.Bytes()...)
+			lw.bf.Reset()
 			FunctionTpPool.Put(tp)
 		case SystemAliveType:
 			alive := obj.(*SystemAlive)
-			body, _ = json.Marshal(alive)
+			lw.jsonEncoder.Encode(alive)
+			body = append(body, lw.bf.Bytes()...)
+			lw.bf.Reset()
 			SystemAlivePool.Put(alive)
 		case BusinessAlarmType:
 			alarm := obj.(*BusinessAlarm)
-			body, _ = json.Marshal(alarm)
+			lw.jsonEncoder.Encode(alarm)
+			body = append(body, lw.bf.Bytes()...)
+			lw.bf.Reset()
 			AlarmPool.Put(alarm)
 		}
 		if lw.backGroundCheckFile() != nil {

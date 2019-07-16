@@ -15,7 +15,6 @@
 package datanode
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
 	"sync/atomic"
@@ -25,7 +24,7 @@ func (s *DataNode) Post(p *repl.Packet) error {
 	if p.IsMasterCommand() {
 		p.NeedReply = true
 	}
-	if isReadExtentOperation(p) {
+	if p.IsReadOperation() {
 		p.NeedReply = false
 	}
 	s.cleanupPkt(p)
@@ -37,7 +36,7 @@ func (s *DataNode) cleanupPkt(p *repl.Packet) {
 	if p.IsMasterCommand() {
 		return
 	}
-	if !isLeaderPacket(p) {
+	if !p.IsLeaderPacket() {
 		return
 	}
 	s.releaseExtent(p)
@@ -47,7 +46,7 @@ func (s *DataNode) releaseExtent(p *repl.Packet) {
 	if p == nil || !storage.IsTinyExtent(p.ExtentID) || p.ExtentID <= 0 || atomic.LoadInt32(&p.IsReleased) == IsReleased {
 		return
 	}
-	if p.ExtentType != proto.TinyExtentType || !isLeaderPacket(p) || !isWriteOperation(p) || !p.IsForwardPkt() {
+	if !p.IsTinyExtentType() || !p.IsLeaderPacket() || !p.IsWriteOperation() || !p.IsForwardPkt() {
 		return
 	}
 	if p.Object == nil {
