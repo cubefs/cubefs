@@ -626,8 +626,8 @@ func (s *ExtentStore) RecordTinyDelete(extentID uint64, offset, size, tinyDelete
 
 func (s *ExtentStore) ReadTinyDeleteRecords(offset, size int64, data []byte) (crc uint32, err error) {
 	_, err = s.tinyExtentDeleteFp.ReadAt(data[:size], offset)
-	if err ==nil || err==io.EOF{
-		err=nil
+	if err == nil || err == io.EOF {
+		err = nil
 		crc = crc32.ChecksumIEEE(data[:size])
 	}
 	return

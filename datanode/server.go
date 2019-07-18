@@ -329,9 +329,9 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (err error) {
 		}
 		break
 	}
-	dinfo:=new(DataNodeInfo)
-	if err = json.Unmarshal(data.([]byte),dinfo);err!=nil {
-		err=fmt.Errorf("checkLocalPartitionMatchWithMaster jsonUnmarsh failed %v",err)
+	dinfo := new(DataNodeInfo)
+	if err = json.Unmarshal(data.([]byte), dinfo); err != nil {
+		err = fmt.Errorf("checkLocalPartitionMatchWithMaster jsonUnmarsh failed %v", err)
 		log.LogErrorf(err.Error())
 		return
 	}
