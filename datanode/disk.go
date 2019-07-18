@@ -141,7 +141,7 @@ func (d *Disk) incWriteErrCnt() {
 func (d *Disk) startScheduleToUpdateSpaceInfo() {
 	go func() {
 		updateSpaceInfoTicker := time.NewTicker(5 * time.Second)
-		checkStatusTickser :=time.NewTicker(time.Minute*2)
+		checkStatusTickser := time.NewTicker(time.Minute * 2)
 		defer func() {
 			updateSpaceInfoTicker.Stop()
 			checkStatusTickser.Stop()
@@ -159,38 +159,38 @@ func (d *Disk) startScheduleToUpdateSpaceInfo() {
 }
 
 const (
-	DiskStatusFile=".diskStatus"
+	DiskStatusFile = ".diskStatus"
 )
 
-func (d *Disk)checkDiskStatus(){
-	path:=path.Join(d.Path,DiskStatusFile)
-	fp,err:=os.OpenFile(path,os.O_CREATE|os.O_TRUNC|os.O_RDWR,0755)
-	if err!=nil {
+func (d *Disk) checkDiskStatus() {
+	path := path.Join(d.Path, DiskStatusFile)
+	fp, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0755)
+	if err != nil {
 		d.triggerDiskError(err)
 		return
 	}
 	defer fp.Close()
-	data:=[]byte(DiskStatusFile)
-	_,err=fp.WriteAt(data,0)
-	if err!=nil {
+	data := []byte(DiskStatusFile)
+	_, err = fp.WriteAt(data, 0)
+	if err != nil {
 		d.triggerDiskError(err)
 		return
 	}
-	if err=fp.Sync();err!=nil {
+	if err = fp.Sync(); err != nil {
 		d.triggerDiskError(err)
 		return
 	}
-	if _,err=fp.ReadAt(data,0);err!=nil {
+	if _, err = fp.ReadAt(data, 0); err != nil {
 		d.triggerDiskError(err)
 		return
 	}
 }
 
-func (d *Disk)triggerDiskError(err error){
-	if err==nil {
+func (d *Disk) triggerDiskError(err error) {
+	if err == nil {
 		return
 	}
-	if IsDiskErr(err.Error()){
+	if IsDiskErr(err.Error()) {
 		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
 		exporter.Warning(mesg)
 		log.LogErrorf(mesg)

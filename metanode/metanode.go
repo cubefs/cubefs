@@ -108,13 +108,13 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 		break
 	}
 
-	minfo:=new(MetaNodeInfo)
-	if err = json.Unmarshal(data.([]byte),minfo);err!=nil {
-		err=fmt.Errorf("checkLocalPartitionMatchWithMaster jsonUnmarsh failed %v",err)
+	minfo := new(MetaNodeInfo)
+	if err = json.Unmarshal(data.([]byte), minfo); err != nil {
+		err = fmt.Errorf("checkLocalPartitionMatchWithMaster jsonUnmarsh failed %v", err)
 		log.LogErrorf(err.Error())
 		return
 	}
-	
+
 	if len(minfo.PersistenceMetaPartitions) == 0 {
 		return
 	}
