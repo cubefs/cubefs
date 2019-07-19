@@ -30,6 +30,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	"net/http"
 	"strconv"
 )
 
@@ -89,10 +90,54 @@ func (m *MetaNode) Shutdown() {
 	}
 }
 
+type MetaNodeInfo struct {
+	Addr                      string
+	PersistenceMetaPartitions []uint64
+}
+
+func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
+	params := make(map[string]string)
+	params["addr"] = m.localAddr + ":" + m.listen
+	var data interface{}
+	for i := 0; i < 3; i++ {
+		data, err = masterHelper.Request(http.MethodGet, proto.GetMetaNode, params, nil)
+		if err != nil {
+			log.LogErrorf("checkLocalPartitionMatchWithMaster error %v", err)
+			continue
+		}
+		break
+	}
+
+	minfo:=new(MetaNodeInfo)
+	if err = json.Unmarshal(data.([]byte),minfo);err!=nil {
+		err=fmt.Errorf("checkLocalPartitionMatchWithMaster jsonUnmarsh failed %v",err)
+		log.LogErrorf(err.Error())
+		return
+	}
+	
+	if len(minfo.PersistenceMetaPartitions) == 0 {
+		return
+	}
+	lackPartitions := make([]uint64, 0)
+	for _, partitionID := range minfo.PersistenceMetaPartitions {
+		_, err := m.metadataManager.GetPartition(partitionID)
+		if err != nil {
+			lackPartitions = append(lackPartitions, partitionID)
+		}
+	}
+	if len(lackPartitions) == 0 {
+		return
+	}
+	err = fmt.Errorf("LackPartitions %v on metanode %v,metanode cannot start", lackPartitions, m.localAddr+":"+m.listen)
+	log.LogErrorf(err.Error())
+	return
+}
+
 func (m *MetaNode) onStart(cfg *config.Config) (err error) {
 	if err = m.parseConfig(cfg); err != nil {
 		return
 	}
+	exporter.Init(m.clusterId, cfg.GetString("role"), cfg)
 	if err = m.register(); err != nil {
 		return
 	}
@@ -105,10 +150,16 @@ func (m *MetaNode) onStart(cfg *config.Config) (err error) {
 	if err = m.registerAPIHandler(); err != nil {
 		return
 	}
+	// check local partition compare with master ,if lack,then not start
+	if err = m.checkLocalPartitionMatchWithMaster(); err != nil {
+		fmt.Println(err)
+		exporter.Warning(err.Error())
+		return
+	}
+
 	if err = m.startServer(); err != nil {
 		return
 	}
-	exporter.Init(m.clusterId, cfg.GetString("role"), cfg)
 	return
 }
 

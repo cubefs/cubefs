@@ -503,20 +503,18 @@ func (p *Packet) PacketErrorWithBody(code uint8, reply []byte) {
 	p.ArgLen = 0
 }
 
-
-func (p *Packet)SetPacketHasPrepare(){
+func (p *Packet) SetPacketHasPrepare() {
 	p.setPacketPrefix()
-	p.HasPrepare=true
+	p.HasPrepare = true
 }
-
 
 // GetUniqueLogId returns the unique log ID.
 func (p *Packet) GetUniqueLogId() (m string) {
 	defer func() {
 		m = m + fmt.Sprintf("_ResultMesg(%v)", p.GetResultMsg())
 	}()
-	if p.HasPrepare{
-		m=p.mesg
+	if p.HasPrepare {
+		m = p.mesg
 		return
 	}
 	m = fmt.Sprintf("Req(%v)_Partition(%v)_", p.ReqID, p.PartitionID)
@@ -543,8 +541,7 @@ func (p *Packet) GetUniqueLogId() (m string) {
 	return
 }
 
-
-func (p *Packet)setPacketPrefix(){
+func (p *Packet) setPacketPrefix() {
 	p.mesg = fmt.Sprintf("Req(%v)_Partition(%v)_", p.ReqID, p.PartitionID)
 	if p.ExtentType == TinyExtentType && p.Opcode == OpMarkDelete && len(p.Data) > 0 {
 		ext := new(TinyExtentDeleteRecord)

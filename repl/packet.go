@@ -64,7 +64,7 @@ func (p *FollowerPacket) PackErrorBody(action, msg string) {
 }
 
 func (p *FollowerPacket) IsErrPacket() bool {
-	return p.ResultCode != proto.OpOk && p.ResultCode!=proto.OpInitResultCode
+	return p.ResultCode != proto.OpOk && p.ResultCode != proto.OpInitResultCode
 }
 
 func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg string) {
@@ -237,7 +237,7 @@ func NewPacketToNotifyExtentRepair(partitionID uint64) (p *Packet) {
 }
 
 func (p *Packet) IsErrPacket() bool {
-	return p.ResultCode != proto.OpOk && p.ResultCode!=proto.OpInitResultCode
+	return p.ResultCode != proto.OpOk && p.ResultCode != proto.OpInitResultCode
 }
 
 func (p *Packet) getErrMessage() (m string) {
@@ -321,8 +321,6 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (er
 	}
 	return p.ReadFull(c, p.Opcode, int(size))
 }
-
-
 
 func (p *Packet) IsMasterCommand() bool {
 	switch p.Opcode {
