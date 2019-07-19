@@ -158,6 +158,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		FileCount            int                   `json:"fileCount"`
 		Replicas             []string              `json:"replicas"`
 		TinyDeleteRecordSize int64                 `json:"tinyDeleteRecordSize"`
+		TinyExtentRealSize   map[uint64]int64      `json:"tinyExtentRealSize"`
 	}{
 		VolName:              partition.volumeID,
 		ID:                   partition.partitionID,
@@ -169,6 +170,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		FileCount:            len(files),
 		Replicas:             partition.Replicas(),
 		TinyDeleteRecordSize: tinyDeleteRecordSize,
+		TinyExtentRealSize:   partition.extentStore.GetAllTinyExtentsRealSize(),
 	}
 	s.buildSuccessResp(w, result)
 }

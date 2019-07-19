@@ -61,7 +61,8 @@ const (
 	OpGetPartitionSize       uint8 = 0x11
 	OpSyncRandomWrite        uint8 = 0x12
 	OpSyncWrite              uint8 = 0x13
-	OpReadTinyDelete         uint8 = 0x14
+	OpReadTinyDeleteRecord   uint8 = 0x14
+	OpTinyExtentRepairRead   uint8 = 0x15
 
 	// Operations: Client -> MetaNode.
 	OpMetaCreateInode   uint8 = 0x20
@@ -282,10 +283,12 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpSyncWrite"
 	case OpSyncRandomWrite:
 		m = "OpSyncRandomWrite"
-	case OpReadTinyDelete:
-		m = "OpReadTinyDelete"
+	case OpReadTinyDeleteRecord:
+		m = "OpReadTinyDeleteRecord"
 	case OpPing:
 		m = "OpPing"
+	case OpTinyExtentRepairRead:
+		m = "OpTinyExtentRepairRead"
 	case OpBroadcastMinAppliedID:
 		m = "OpBroadcastMinAppliedID"
 	}
@@ -526,7 +529,7 @@ func (p *Packet) GetUniqueLogId() (m string) {
 				ext.ExtentId, ext.ExtentOffset, ext.TinyDeleteFileOffset, ext.Size, p.Opcode)
 			return m
 		}
-	} else if p.Opcode == OpReadTinyDelete {
+	} else if p.Opcode == OpReadTinyDeleteRecord {
 		m += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
 		return m
 	} else if p.Opcode == OpNotifyReplicasToRepair {
@@ -551,7 +554,7 @@ func (p *Packet) setPacketPrefix() {
 				ext.ExtentId, ext.ExtentOffset, ext.TinyDeleteFileOffset, ext.Size, p.Opcode)
 			return
 		}
-	} else if p.Opcode == OpReadTinyDelete {
+	} else if p.Opcode == OpReadTinyDeleteRecord {
 		p.mesg += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
 		return
 	} else if p.Opcode == OpNotifyReplicasToRepair {
