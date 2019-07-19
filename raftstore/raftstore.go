@@ -34,6 +34,7 @@ type RaftStore interface {
 	RaftConfig() *raft.Config
 	RaftStatus(raftID uint64) (raftStatus *raft.Status)
 	NodeManager
+	RaftServer() *raft.RaftServer
 }
 
 type raftStore struct {
@@ -136,6 +137,10 @@ func NewRaftStore(cfg *Config) (mr RaftStore, err error) {
 		raftPath:   cfg.RaftPath,
 	}
 	return
+}
+
+func (s *raftStore) RaftServer() *raft.RaftServer {
+	return s.raftServer
 }
 
 // CreatePartition creates a new partition in the raft store.

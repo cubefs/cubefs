@@ -535,6 +535,7 @@ func (dp *DataPartition) fetchReplicasFromMaster() (isLeader bool, replicas []st
 	)
 	params := make(map[string]string)
 	params["id"] = strconv.Itoa(int(dp.partitionID))
+	params["name"] = dp.volumeID
 	if bufs, err = MasterHelper.Request("GET", proto.AdminGetDataPartition, params, nil); err != nil {
 		isLeader = false
 		return

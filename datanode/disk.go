@@ -67,9 +67,8 @@ func NewDisk(path string, restSize uint64, maxErrCnt int, space *SpaceManager) (
 	d.MaxErrCnt = maxErrCnt
 	d.space = space
 	d.partitionMap = make(map[uint64]*DataPartition)
-
 	d.computeUsage()
-
+	d.updateSpaceInfo()
 	d.startScheduleToUpdateSpaceInfo()
 	return
 }
