@@ -6,6 +6,9 @@ src_path=/go/src/github.com/chubaofs/cfs
 
 Master1Addr="192.168.0.11:17010"
 LeaderAddr=""
+VolName=ltptest
+Owner=ltptest
+AuthKey="0e20229116d5a9a4a9e876806b514a85"
 
 getLeaderAddr() {
     echo -n "check Master "
@@ -47,9 +50,10 @@ check_status() {
     echo "ok"
 }
 
+
 create_vol() {
     echo -n "create vol "
-    res=$(curl -s "http://$LeaderAddr/admin/createVol?name=ltptest&capacity=30&owner=ltptest")
+    res=$(curl -s "http://$LeaderAddr/admin/createVol?name=$VolName&capacity=30&owner=$Owner")
     code=$(echo "$res" | jq .code)
     if [[ $code -ne 0 ]] ; then
         echo " failed, exit"
@@ -61,7 +65,7 @@ create_vol() {
 
 create_dp() {
     echo -n "create datapartition "
-    res=$(curl -s "http://$LeaderAddr/dataPartition/create?count=20&name=ltptest&type=extent" )
+    res=$(curl -s "http://$LeaderAddr/dataPartition/create?count=20&name=$VolName&type=extent" )
     code=$(echo "$res" | jq .code)
     if [[ $code -ne 0 ]] ; then
         echo " failed, exit"
@@ -133,11 +137,12 @@ wait_proc_done() {
         exit 1
     fi
     ret=$(cat /tmp/ltpret)
-    exit $ret
+    if [[ "-$ret" != "-0" ]] ; then
+        exit $ret
+    fi
 }
 
 run_ltptest() {
-    #yum install -y psmisc >/dev/null
     echo "run ltp test"
     LTPTestDir=$MntPoint/ltptest
     LtpLog=/tmp/ltp.log
@@ -146,10 +151,29 @@ run_ltptest() {
     wait_proc_done "runltp" $LtpLog
 }
 
+stop_client() {
+    echo -n "stop client "
+    umount ${MntPoint} && echo "ok" || { echo "failed"; exit 1; }
+}
+
+del_vol() {
+    echo -n "del vol "
+    res=$(curl -s "http://$LeaderAddr/vol/delete?name=$VolName&authKey=$AuthKey")
+    code=$(echo "$res" | jq .code)
+    if [[ $code -ne 0 ]] ; then
+        echo "failed, exit"
+        echo "$res" | jq
+        exit 1
+    fi
+    echo "ok"
+}
+
 getLeaderAddr
 check_status "MetaNode"
 check_status "DataNode"
 create_vol ; sleep 2
 create_dp ; sleep 3
 start_client ; sleep 2
-run_ltptest
+run_ltptest && \
+stop_client && \
+del_vol
