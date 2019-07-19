@@ -1,3 +1,16 @@
+## Release v1.2.1 - 2019/07/19
+
+### Enhancement
+* when datanode or metanode start,must compare partition with master and gofmt project. https://github.com/chubaofs/chubaofs/commit/02e1989065cd89691af0991b376527ef3a029a34
+* datanode add backend check disk status func. https://github.com/chubaofs/chubaofs/commit/1b5ac0e674e37602410b2762254d093b62eb4cdf
+
+
+### Bugfix
+* update rocksdb build depends. https://github.com/chubaofs/chubaofs/commit/f665f2f33a63b55835a759c207fc0d7b00ca05a1
+* metanode panic when deleting meta partition. https://github.com/chubaofs/chubaofs/commit/c228ced18d810ef527c8d7a36e278a826ed045a3
+* when raft member become leader,must apply from appliyID to commitID. https://github.com/chubaofs/chubaofs/commit/f5c2d3211717bb14664b32a4f6bbcaba7b1e7d18
+
+
 ## Release v1.2.0 - 2019/07/16
 
 ### Feature
