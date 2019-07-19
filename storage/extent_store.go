@@ -471,6 +471,31 @@ func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentIn
 	return
 }
 
+func (s *ExtentStore) GetTinyExtentsRealSize(extentIDs []uint64) (tinyExtentRealSize map[uint64]int64) {
+	tinyExtentRealSize = make(map[uint64]int64, 0)
+	for _, extentID := range extentIDs {
+		e, err := s.extentWithHeaderByExtentID(extentID)
+		if err != nil {
+			continue
+		}
+		tinyExtentRealSize[extentID] = atomic.LoadInt64(&e.realSize)
+	}
+	return
+}
+
+func (s *ExtentStore) GetAllTinyExtentsRealSize() (tinyExtentRealSize map[uint64]int64) {
+	tinyExtentRealSize = make(map[uint64]int64, 0)
+	var extentID uint64
+	for extentID = TinyExtentStartID; extentID < TinyExtentCount+TinyExtentStartID; extentID++ {
+		e, err := s.extentWithHeaderByExtentID(extentID)
+		if err != nil {
+			continue
+		}
+		tinyExtentRealSize[extentID] = atomic.LoadInt64(&e.realSize)
+	}
+	return
+}
+
 func (s *ExtentStore) getTinyExtentInfo() (extents []*ExtentInfo) {
 	extents = make([]*ExtentInfo, 0)
 	s.eiMutex.RLock()
@@ -824,4 +849,94 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 		time.Sleep(time.Millisecond * 100)
 	}
 
+}
+
+func (s *ExtentStore) TinyExtentRecover(extentID uint64, offset, size int64, data []byte, crc uint32, isEmptyPacket bool) (err error) {
+	if !IsTinyExtent(extentID) {
+		return fmt.Errorf("extent %v not tinyExtent", extentID)
+	}
+
+	var (
+		e  *Extent
+		ei *ExtentInfo
+	)
+
+	s.eiMutex.RLock()
+	ei = s.extentInfoMap[extentID]
+	s.eiMutex.RUnlock()
+	if e, err = s.extentWithHeader(ei); err != nil {
+		return nil
+	}
+
+	if err = e.TinyExtentRecover(data, offset, size, crc, isEmptyPacket); err != nil {
+		return err
+	}
+	ei.UpdateExtentInfo(e, 0)
+
+	return nil
+}
+
+func (s *ExtentStore) TinyExtentGetFinfoSize(extentID uint64) (size uint64, err error) {
+	var (
+		e *Extent
+	)
+	if !IsTinyExtent(extentID) {
+		return 0, fmt.Errorf("unavali extent id (%v)", extentID)
+	}
+	s.eiMutex.RLock()
+	ei := s.extentInfoMap[extentID]
+	s.eiMutex.RUnlock()
+	if e, err = s.extentWithHeader(ei); err != nil {
+		return
+	}
+
+	finfo, err := e.file.Stat()
+	if err != nil {
+		return 0, err
+	}
+	size = uint64(finfo.Size())
+
+	return
+}
+
+func (s *ExtentStore) TinyExtentAvaliOffset(extentID uint64, offset int64) (newOffset, newEnd int64, err error) {
+	var e *Extent
+	if !IsTinyExtent(extentID) {
+		return 0, 0, fmt.Errorf("unavali extent(%v)", extentID)
+	}
+	s.eiMutex.RLock()
+	ei := s.extentInfoMap[extentID]
+	s.eiMutex.RUnlock()
+	if e, err = s.extentWithHeader(ei); err != nil {
+		return
+	}
+
+	defer func() {
+		if err != nil && strings.Contains(err.Error(), syscall.ENXIO.Error()) {
+			newOffset = e.dataSize
+			newEnd = e.dataSize
+			err = nil
+		}
+
+	}()
+	newOffset, newEnd, err = e.tinyExtentAvaliOffset(offset)
+
+	return
+}
+
+func (s *ExtentStore) UpdateTinyExtentRealSize(extentID uint64, leaderSize uint64) {
+	var (
+		e   *Extent
+		err error
+	)
+	if !IsTinyExtent(extentID) {
+		return
+	}
+	s.eiMutex.RLock()
+	ei := s.extentInfoMap[extentID]
+	s.eiMutex.RUnlock()
+	if e, err = s.extentWithHeader(ei); err != nil {
+		return
+	}
+	e.tinyExtentUpdateRealSize(int64(leaderSize))
 }

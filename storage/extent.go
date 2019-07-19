@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/log"
 	"hash/crc32"
 	"io"
 	"math"
@@ -33,6 +34,7 @@ const (
 	ExtentOpenOpt  = os.O_CREATE | os.O_RDWR | os.O_EXCL
 	ExtentHasClose = -1
 	SEEK_DATA      = 3
+	SEEK_HOLE      = 4
 )
 
 type ExtentInfo struct {
@@ -61,6 +63,7 @@ type Extent struct {
 	extentID   uint64
 	modifyTime int64
 	dataSize   int64
+	realSize   int64
 	hasClose   int32
 	header     []byte
 	sync.Mutex
@@ -337,4 +340,106 @@ func (e *Extent) DeleteTiny(offset, size int64) (hasDelete bool, err error) {
 	err = syscall.Fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
 
 	return
+}
+
+func (e *Extent) getRealBlockCnt() (blockNum int64) {
+	stat := new(syscall.Stat_t)
+	syscall.Stat(e.filePath, stat)
+	return stat.Blocks
+}
+
+func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, isEmptyPacket bool) (err error) {
+	e.Lock()
+	defer e.Unlock()
+	if !IsTinyExtent(e.extentID) {
+		return
+	}
+	if offset%PageSize != 0 || offset != e.dataSize {
+		return fmt.Errorf("error empty packet on (%v) offset(%v) size(%v)"+
+			" isEmptyPacket(%v)  e.dataSize(%v)", e.file.Name(), offset, size, isEmptyPacket, e.dataSize)
+	}
+	log.LogDebugf("before file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
+		"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
+	if isEmptyPacket {
+		finfo, err := e.file.Stat()
+		if err != nil {
+			return err
+		}
+		if offset < finfo.Size() {
+			return fmt.Errorf("error empty packet on (%v) offset(%v) size(%v)"+
+				" isEmptyPacket(%v) filesize(%v) e.dataSize(%v)", e.file.Name(), offset, size, isEmptyPacket, finfo.Size(), e.dataSize)
+		}
+		if err = syscall.Ftruncate(int(e.file.Fd()), offset+size); err != nil {
+			return err
+		}
+		err = syscall.Fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
+	} else {
+		_, err = e.file.WriteAt(data[:size], int64(offset))
+	}
+	if err != nil {
+		return
+	}
+	watermark := offset + size
+	if watermark%PageSize != 0 {
+		watermark = watermark + (PageSize - watermark%PageSize)
+	}
+	e.dataSize = watermark
+	log.LogDebugf("after file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
+		"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
+
+	return
+}
+
+func (e *Extent) tinyExtentAvaliOffset(offset int64) (newOffset, newEnd int64, err error) {
+	e.Lock()
+	defer e.Unlock()
+	newOffset, err = e.file.Seek(int64(offset), SEEK_DATA)
+	if err != nil {
+		return
+	}
+	newEnd, err = e.file.Seek(int64(newOffset), SEEK_HOLE)
+	if err != nil {
+		return
+	}
+	if newOffset-offset > util.BlockSize {
+		newOffset = offset + util.BlockSize
+	}
+	if newEnd-newOffset > util.BlockSize {
+		newEnd = newOffset + util.BlockSize
+	}
+	if newEnd < newOffset {
+		err = fmt.Errorf("unavali TinyExtentAvaliOffset on SEEK_DATA or SEEK_HOLE   (%v) offset(%v) "+
+			"newEnd(%v) newOffset(%v)", e.extentID, offset, newEnd, newOffset)
+	}
+	return
+}
+
+func (e *Extent) tinyExtentUpdateRealSize(leaderFileSize int64) {
+	if !IsTinyExtent(e.extentID) {
+		return
+	}
+	if e.dataSize < leaderFileSize {
+		atomic.StoreInt64(&e.realSize, 0)
+		return
+	}
+	atomic.StoreInt64(&e.realSize, 0)
+	var (
+		offset, realSize int64
+	)
+	for {
+		newOffset, err := e.file.Seek(int64(offset), SEEK_DATA)
+		if err != nil {
+			break
+		}
+		newEnd, err := e.file.Seek(int64(newOffset), SEEK_HOLE)
+		if err != nil {
+			break
+		}
+		if newOffset >= leaderFileSize || newEnd >= leaderFileSize {
+			break
+		}
+		realSize = realSize + (newEnd - newOffset)
+		offset = newEnd
+	}
+	atomic.StoreInt64(&e.realSize, realSize)
 }

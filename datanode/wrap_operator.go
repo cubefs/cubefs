@@ -53,7 +53,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, nil))
 			switch p.Opcode {
 			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead:
-			case proto.OpReadTinyDelete:
+			case proto.OpReadTinyDeleteRecord:
 				log.LogRead(logContent)
 			case proto.OpWrite, proto.OpRandomWrite, proto.OpSyncRandomWrite, proto.OpSyncWrite, proto.OpMarkDelete:
 				log.LogWrite(logContent)
@@ -73,6 +73,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handleStreamReadPacket(p, c, StreamRead)
 	case proto.OpExtentRepairRead:
 		s.handleExtentRepaiReadPacket(p, c, RepairRead)
+	case proto.OpTinyExtentRepairRead:
+		s.handleTinyExtentRepairRead(p, c)
 	case proto.OpMarkDelete:
 		s.handleMarkDeletePacket(p, c)
 	case proto.OpRandomWrite, proto.OpSyncRandomWrite:
@@ -95,8 +97,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handlePacketToDecommissionDataPartition(p)
 	case proto.OpGetPartitionSize:
 		s.handlePacketToGetPartitionSize(p)
-	case proto.OpReadTinyDelete:
-		s.handlePacketToReadTinyDelete(p, c)
+	case proto.OpReadTinyDeleteRecord:
+		s.handlePacketToReadTinyDeleteRecordFile(p, c)
 	case proto.OpBroadcastMinAppliedID:
 		s.handleBroadcastMinAppliedID(p)
 	default:
@@ -525,7 +527,113 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 	return
 }
 
-func (s *DataNode) handlePacketToReadTinyDelete(p *repl.Packet, connect *net.TCPConn) {
+func (s *DataNode) writeEmptyPacketOnTinyExtentRepairRead(reply *repl.Packet, newOffset, currentOffset int64, connect net.Conn) (replySize int64, err error) {
+	replySize = newOffset - currentOffset
+	reply.Data = make([]byte, 0)
+	reply.Size = 0
+	reply.CRC = crc32.ChecksumIEEE(reply.Data)
+	reply.ResultCode = proto.OpOk
+	reply.ExtentOffset = currentOffset
+	reply.ArgLen = EmptyPacketLength
+	reply.Arg = make([]byte, EmptyPacketLength)
+	reply.Arg[0] = EmptyResponse
+	binary.BigEndian.PutUint64(reply.Arg[1:], uint64(replySize))
+	err = reply.WriteToConn(connect)
+	reply.Size = uint32(replySize)
+	logContent := fmt.Sprintf("action[operatePacket] %v.",
+		reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
+	log.LogReadf(logContent)
+
+	return
+}
+
+// Handle handleTinyExtentRepairRead packet.
+func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.Conn) {
+	var (
+		err                 error
+		needReplySize       int64
+		tinyExtentFinfoSize uint64
+	)
+
+	defer func() {
+		if err != nil {
+			request.PackErrorBody(ActionStreamReadTinyExtentRepair, err.Error())
+			request.WriteToConn(connect)
+		}
+	}()
+	if !storage.IsTinyExtent(request.ExtentID) {
+		err = fmt.Errorf("unavali extentID (%v)", request.ExtentID)
+		return
+	}
+
+	partition := request.Object.(*DataPartition)
+	store := partition.ExtentStore()
+	tinyExtentFinfoSize, err = store.TinyExtentGetFinfoSize(request.ExtentID)
+	if err != nil {
+		return
+	}
+	needReplySize = int64(request.Size)
+	offset := request.ExtentOffset
+	if uint64(request.ExtentOffset)+uint64(request.Size) > tinyExtentFinfoSize {
+		needReplySize = int64(tinyExtentFinfoSize - uint64(request.ExtentOffset))
+	}
+
+	var (
+		newOffset, newEnd int64
+	)
+	for {
+		if needReplySize <= 0 {
+			break
+		}
+		reply := repl.NewTinyExtentStreamReadResponsePacket(request.ReqID, request.PartitionID, request.ExtentID)
+		newOffset, newEnd, err = store.TinyExtentAvaliOffset(request.ExtentID, offset)
+		if err != nil {
+			return
+		}
+		if newOffset > offset {
+			var (
+				replySize int64
+			)
+			if replySize, err = s.writeEmptyPacketOnTinyExtentRepairRead(reply, newOffset, offset, connect); err != nil {
+				return
+			}
+			needReplySize -= replySize
+			offset += replySize
+			continue
+		}
+		currNeedReplySize := newEnd - newOffset
+		currReadSize := uint32(util.Min(int(currNeedReplySize), util.ReadBlockSize))
+		if currReadSize == util.ReadBlockSize {
+			reply.Data, _ = proto.Buffers.Get(util.ReadBlockSize)
+		} else {
+			reply.Data = make([]byte, currReadSize)
+		}
+		reply.ExtentOffset = offset
+		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, false)
+		if err != nil {
+			return
+		}
+		reply.Size = uint32(currReadSize)
+		reply.ResultCode = proto.OpOk
+		if err = reply.WriteToConn(connect); err != nil {
+			connect.Close()
+			return
+		}
+		needReplySize -= int64(currReadSize)
+		offset += int64(currReadSize)
+		if currReadSize == util.ReadBlockSize {
+			proto.Buffers.Put(reply.Data)
+		}
+		logContent := fmt.Sprintf("action[operatePacket] %v.",
+			reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
+		log.LogReadf(logContent)
+	}
+
+	request.PacketOkReply()
+	return
+}
+
+func (s *DataNode) handlePacketToReadTinyDeleteRecordFile(p *repl.Packet, connect *net.TCPConn) {
 	var (
 		err error
 	)
@@ -540,7 +648,7 @@ func (s *DataNode) handlePacketToReadTinyDelete(p *repl.Packet, connect *net.TCP
 	localTinyDeleteFileSize := store.LoadTinyDeleteFileOffset()
 	needReplySize := localTinyDeleteFileSize - p.ExtentOffset
 	offset := p.ExtentOffset
-	reply := repl.NewTinyDeleteRecordResponsePacket(p.ReqID, p.PartitionID)
+	reply := repl.NewReadTinyDeleteRecordResponsePacket(p.ReqID, p.PartitionID)
 	reply.StartT = time.Now().UnixNano()
 	for {
 		if needReplySize <= 0 {

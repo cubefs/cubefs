@@ -636,6 +636,9 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 	}
 	wg.Wait()
 	dp.doStreamFixTinyDeleteRecord(repairTask, time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
+	for extentID, tinyExtentRealSize := range repairTask.LeaderTinyExtentRealSize {
+		dp.extentStore.UpdateTinyExtentRealSize(extentID, uint64(tinyExtentRealSize))
+	}
 }
 
 func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRepairTask, isFullSync bool) {
@@ -650,16 +653,16 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 	}
 
 	log.LogInfof(ActionSyncTinyDeleteRecord+" start partitionId(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v)",
-		dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteFileSize, repairTask.LeaderAddr)
-	if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteFileSize {
+		dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr)
+	if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteRecordFileSize {
 		return
 	}
 	defer func() {
 		log.LogInfof(ActionSyncTinyDeleteRecord+" end partitionId(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v) err(%v)",
-			dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteFileSize, repairTask.LeaderAddr, err)
+			dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr, err)
 	}()
 
-	p := repl.NewPacketToTinyDeleteRecord(dp.partitionID, localTinyDeleteFileSize)
+	p := repl.NewPacketToReadTinyDeleteRecord(dp.partitionID, localTinyDeleteFileSize)
 	if conn, err = gConnPool.GetConnect(repairTask.LeaderAddr); err != nil {
 		return
 	}
@@ -669,8 +672,8 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 	}
 	store := dp.extentStore
 	start := time.Now().Unix()
-	for localTinyDeleteFileSize < repairTask.LeaderTinyDeleteFileSize {
-		if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteFileSize {
+	for localTinyDeleteFileSize < repairTask.LeaderTinyDeleteRecordFileSize {
+		if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteRecordFileSize {
 			return
 		}
 		if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
