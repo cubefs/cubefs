@@ -25,6 +25,7 @@ import (
 	"net/http/httputil"
 	"strconv"
 	"sync"
+	"regexp"
 )
 
 // configuration keys
@@ -40,6 +41,11 @@ const (
 	ModuleName        = "master"
 	CfgRetainLogs     = "retainLogs"
 	DefaultRetainLogs = 20000
+)
+
+var (
+	volNameRegexp *regexp.Regexp
+	useConnPool   = true //for test
 )
 
 // Server represents the server in a cluster
@@ -77,13 +83,18 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		log.LogError(errors.Stack(err))
 		return
 	}
+	pattern := "^[a-zA-Z0-9_-]{3,256}$"
+	volNameRegexp, err = regexp.Compile(pattern)
+	if err != nil {
+		log.LogError(err)
+		return
+	}
 	m.rocksDBStore = raftstore.NewRocksDBStore(m.storeDir, LRUCacheSize, WriteBufferSize)
-	m.initFsm()
-	m.initCluster()
 	if err = m.createRaftServer(); err != nil {
 		log.LogError(errors.Stack(err))
 		return
 	}
+	m.initCluster()
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
 	m.cluster.scheduleTask()
@@ -179,6 +190,7 @@ func (m *Server) createRaftServer() (err error) {
 		return errors.Trace(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
 	}
 	fmt.Println(m.config.peers)
+	m.initFsm()
 	partitionCfg := &raftstore.PartitionConfig{
 		ID:      GroupID,
 		Peers:   m.config.peers,
@@ -191,12 +203,11 @@ func (m *Server) createRaftServer() (err error) {
 	return
 }
 func (m *Server) initFsm() {
-	m.fsm = newMetadataFsm(m.rocksDBStore)
+	m.fsm = newMetadataFsm(m.rocksDBStore,m.retainLogs,m.raftStore.RaftServer())
 	m.fsm.registerLeaderChangeHandler(m.handleLeaderChange)
 	m.fsm.registerPeerChangeHandler(m.handlePeerChange)
 
 	// register the handlers for the interfaces defined in the Raft library
-	m.fsm.registerApplyHandler(m.handleApply)
 	m.fsm.registerApplySnapshotHandler(m.handleApplySnapshot)
 	m.fsm.restore()
 }
@@ -204,5 +215,4 @@ func (m *Server) initFsm() {
 func (m *Server) initCluster() {
 	m.cluster = newCluster(m.clusterName, m.leaderInfo, m.fsm, m.partition, m.config)
 	m.cluster.retainLogs = m.retainLogs
-	m.loadMetadata()
 }

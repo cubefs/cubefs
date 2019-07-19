@@ -32,7 +32,7 @@ const (
 	// the maximum number of tasks that can be handled each time
 	MaxTaskNum = 30
 
-	TaskWorkerInterval = time.Microsecond * time.Duration(200)
+	TaskWorkerInterval = time.Second * time.Duration(2)
 )
 
 // AdminTaskManager sends administration commands to the metaNode or dataNode.
@@ -41,8 +41,8 @@ type AdminTaskManager struct {
 	targetAddr string
 	TaskMap    map[string]*proto.AdminTask
 	sync.RWMutex
-	exitCh   chan struct{}
-	connPool *util.ConnectPool
+	exitCh     chan struct{}
+	connPool   *util.ConnectPool
 }
 
 func newAdminTaskManager(targetAddr, clusterID string) (sender *AdminTaskManager) {
@@ -113,23 +113,44 @@ func (sender *AdminTaskManager) doSendTasks() {
 	sender.sendTasks(tasks)
 }
 
+func (sender *AdminTaskManager) getConn() (conn *net.TCPConn, err error) {
+	if useConnPool {
+		return sender.connPool.GetConnect(sender.targetAddr)
+	} else {
+		var connect net.Conn
+		connect, err = net.Dial("tcp", sender.targetAddr)
+		if err == nil {
+			conn = connect.(*net.TCPConn)
+			conn.SetKeepAlive(true)
+			conn.SetNoDelay(true)
+		}
+		return
+	}
+}
+
+func (sender *AdminTaskManager) putConn(conn *net.TCPConn, forceClose bool) {
+	if useConnPool {
+		sender.connPool.PutConnect(conn, forceClose)
+	}
+}
+
 func (sender *AdminTaskManager) sendTasks(tasks []*proto.AdminTask) {
 	for _, task := range tasks {
-		conn, err := sender.connPool.GetConnect(sender.targetAddr)
+		conn, err := sender.getConn()
 		if err != nil {
 			msg := fmt.Sprintf("clusterID[%v] get connection to %v,err,%v", sender.clusterID, sender.targetAddr, errors.Stack(err))
 			WarnBySpecialKey(fmt.Sprintf("%v_%v_sendTask", sender.clusterID, ModuleName), msg)
-			sender.connPool.PutConnect(conn, true)
+			sender.putConn(conn, true)
 			sender.updateTaskInfo(task, false)
 			break
 		}
 		if err = sender.sendAdminTask(task, conn); err != nil {
-			log.LogError(fmt.Sprintf("send task %v to %v,err,%v", task.ToString(), sender.targetAddr, errors.Stack(err)))
-			sender.connPool.PutConnect(conn, true)
+			log.LogError(fmt.Sprintf("send task %v to %v,err,%v", task.ID, sender.targetAddr, errors.Stack(err)))
+			sender.putConn(conn, true)
 			sender.updateTaskInfo(task, true)
 			continue
 		}
-		sender.connPool.PutConnect(conn, false)
+		sender.putConn(conn, false)
 	}
 }
 
@@ -171,12 +192,22 @@ func (sender *AdminTaskManager) sendAdminTask(task *proto.AdminTask, conn net.Co
 	return nil
 }
 
-func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask, conn net.Conn) (response []byte, err error) {
-	log.LogInfof(fmt.Sprintf("action[syncSendAdminTask] sender task:%v begin", task.ToString()))
+func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (response []byte, err error) {
 	packet, err := sender.buildPacket(task)
 	if err != nil {
 		return nil, errors.Trace(err, "action[syncSendAdminTask build packet failed,task:%v]", task.ID)
 	}
+	conn, err := sender.getConn()
+	if err != nil {
+		return nil, errors.Trace(err, "action[syncSendAdminTask get conn failed,task:%v]", task.ID)
+	}
+	defer func() {
+		if err == nil {
+			sender.putConn(conn, false)
+		} else {
+			sender.putConn(conn, true)
+		}
+	}()
 	if err = packet.WriteToConn(conn); err != nil {
 		return nil, errors.Trace(err, "action[syncSendAdminTask],WriteToConn failed,task:%v", task.ID)
 	}
@@ -188,8 +219,6 @@ func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask, conn ne
 		log.LogErrorf("action[syncSendAdminTask],task:%v get response err[%v],", task.ID, err)
 		return
 	}
-	log.LogInfof(fmt.Sprintf("action[syncSendAdminTask] sender task:%v success", task.ToString()))
-
 	return packet.Data, nil
 }
 

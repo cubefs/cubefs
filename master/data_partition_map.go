@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"runtime"
 	"sync"
@@ -51,7 +50,7 @@ func (dpMap *DataPartitionMap) get(ID uint64) (*DataPartition, error) {
 	if v, ok := dpMap.partitionMap[ID]; ok {
 		return v, nil
 	}
-	return nil, errors.Trace(dataPartitionNotFound(ID), "[%v] not found in [%v]", ID, dpMap.volName)
+	return nil, proto.ErrDataPartitionNotExists
 }
 
 func (dpMap *DataPartitionMap) put(dp *DataPartition) {
@@ -97,7 +96,8 @@ func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitio
 		}
 		cv := proto.NewDataPartitionsView()
 		cv.DataPartitions = dpResps
-		if body, err = json.Marshal(cv); err != nil {
+		reply := newSuccessHTTPReply(cv)
+		if body, err = json.Marshal(reply); err != nil {
 			log.LogError(fmt.Sprintf("action[updateDpResponseCache],minPartitionID:%v,err:%v",
 				minPartitionID, err.Error()))
 			return nil, proto.ErrMarshalData

@@ -1,0 +1,13 @@
+diff a/master/cluster.go b/master/cluster.go	(rejected hunks)
+@@ -902,9 +929,10 @@ func (c *Cluster) createVol(name, owner string, mpCount, size, capacity int) (vo
+ 	}
+ 	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
+ 		vol.initDataPartitions(c)
+-		readWriteDataPartitions = vol.checkDataPartitionStatus(c)
++		readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
+ 	}
+ 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
++	vol.updateViewCache(c)
+ 	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", name, readWriteDataPartitions)
+ 	return
+ 

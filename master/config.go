@@ -57,7 +57,7 @@ const (
 
 	defaultIntervalToAlarmMissingMetaPartition         = 10 * 60 // interval of checking if a replica is missing
 	defaultMetaPartitionMemUsageThreshold      float32 = 0.75    // memory usage threshold on a meta partition
-	defaultMaxMetaPartitionCountOnEachNode             = 100
+	defaultMaxMetaPartitionCountOnEachNode             = 10000
 	defaultReplicaNum                                  = 3
 )
 

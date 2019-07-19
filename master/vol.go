@@ -20,6 +20,8 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
 	"sync"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"encoding/json"
 )
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -36,6 +38,10 @@ type Vol struct {
 	MetaPartitions    map[uint64]*MetaPartition
 	mpsLock           sync.RWMutex
 	dataPartitions    *DataPartitionMap
+	mpsCache          []byte
+	viewCache         []byte
+	createDpMutex     sync.RWMutex
+	createMpMutex     sync.RWMutex
 	sync.RWMutex
 }
 
@@ -54,6 +60,8 @@ func newVol(id uint64, name, owner string, dpSize, capacity uint64) (vol *Vol) {
 	}
 	vol.dataPartitionSize = dpSize
 	vol.Capacity = capacity
+	vol.viewCache = make([]byte, 0)
+	vol.mpsCache = make([]byte, 0)
 	return
 }
 
@@ -73,7 +81,7 @@ func (vol *Vol) metaPartition(partitionID uint64) (mp *MetaPartition, err error)
 	defer vol.mpsLock.RUnlock()
 	mp, ok := vol.MetaPartitions[partitionID]
 	if !ok {
-		err = metaPartitionNotFound(partitionID)
+		err = proto.ErrMetaPartitionNotExists
 	}
 	return
 }
@@ -117,7 +125,7 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 		if index == count-1 {
 			end = defaultMaxMetaPartitionInodeID
 		}
-		if err = c.createMetaPartition(vol.Name, start, end); err != nil {
+		if err = vol.createMetaPartition(c, start, end); err != nil {
 			log.LogErrorf("action[initMetaPartitions] vol[%v] init meta partition err[%v]", vol.Name, err)
 			break
 		}
@@ -149,6 +157,9 @@ func (vol *Vol) checkDataPartitionStatus(c *Cluster) (cnt int) {
 }
 
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
+	if vol.getDataPartitionsCount() == 0 {
+		c.createDataPartition(vol.Name)
+	}
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
 	for _, dp := range vol.dataPartitions.partitionMap {
@@ -242,6 +253,13 @@ func (vol *Vol) capacity() uint64 {
 }
 
 func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("checkAutoDataPartitionCreation occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"checkAutoDataPartitionCreation occurred panic")
+		}
+	}()
 	if vol.status() == markDelete {
 		return
 	}
@@ -292,10 +310,77 @@ func (vol *Vol) totalUsedSpace() uint64 {
 	return vol.dataPartitions.totalUsedSpace()
 }
 
+func (vol *Vol) updateViewCache(c *Cluster) {
+	if vol.Status == markDelete {
+		return
+	}
+	view := proto.NewVolView(vol.Name, vol.Status)
+	mpViews := vol.getMetaPartitionsView()
+	view.MetaPartitions = mpViews
+	mpViewsReply := newSuccessHTTPReply(mpViews)
+	mpsBody, err := json.Marshal(mpViewsReply)
+	if err != nil {
+		log.LogErrorf("action[updateViewCache] failed,vol[%v],err[%v]", vol.Name, err)
+		return
+	}
+	vol.setMpsCache(mpsBody)
+	dpResps := vol.dataPartitions.getDataPartitionsView(0)
+	view.DataPartitions = dpResps
+	viewReply := newSuccessHTTPReply(view)
+	body, err := json.Marshal(viewReply)
+	if err != nil {
+		log.LogErrorf("action[updateViewCache] failed,vol[%v],err[%v]", vol.Name, err)
+		return
+	}
+	vol.setViewCache(body)
+}
+
+func (vol *Vol) getMetaPartitionsView() (mpViews []*proto.MetaPartitionView) {
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
+	mpViews = make([]*proto.MetaPartitionView, 0)
+	for _, mp := range vol.MetaPartitions {
+		mpViews = append(mpViews, getMetaPartitionView(mp))
+	}
+	return
+}
+
+func (vol *Vol) setMpsCache(body []byte) {
+	vol.Lock()
+	defer vol.Unlock()
+	vol.mpsCache = body
+}
+
+func (vol *Vol) getMpsCache() []byte {
+	vol.RLock()
+	defer vol.RUnlock()
+	return vol.mpsCache
+}
+
+func (vol *Vol) setViewCache(body []byte) {
+	vol.Lock()
+	defer vol.Unlock()
+	vol.viewCache = body
+}
+
+func (vol *Vol) getViewCache() []byte {
+	vol.RLock()
+	defer vol.RUnlock()
+	return vol.viewCache
+}
+
 // Periodically check the volume's status.
 // If an volume is marked as deleted, then generate corresponding delete task (meta partition or data partition)
 // If all the meta partition and data partition of this volume have been deleted, then delete this volume.
 func (vol *Vol) checkStatus(c *Cluster) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("checkStatus occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"checkStatus occurred panic")
+		}
+	}()
+	vol.updateViewCache(c)
 	vol.Lock()
 	defer vol.Unlock()
 	if vol.Status != markDelete {
@@ -371,7 +456,119 @@ func (vol *Vol) getTasksToDeleteDataPartitions() (tasks []*proto.AdminTask) {
 	return
 }
 
+func (vol *Vol) getDataPartitionsCount() (count int) {
+	vol.RLock()
+	count = len(vol.dataPartitions.partitionMap)
+	vol.RUnlock()
+	return
+}
+
 func (vol *Vol) String() string {
 	return fmt.Sprintf("name[%v],dpNum[%v],mpNum[%v],cap[%v],status[%v]",
 		vol.Name, vol.dpReplicaNum, vol.mpReplicaNum, vol.Capacity, vol.Status)
+}
+
+func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (err error) {
+	vol.createMpMutex.Lock()
+	defer vol.createMpMutex.Unlock()
+	if end < mp.Start {
+		err = fmt.Errorf("end[%v] less than mp.start[%v]", end, mp.Start)
+		return
+	}
+	maxPartitionID := vol.maxPartitionID()
+	if maxPartitionID != mp.PartitionID {
+		err = fmt.Errorf("mp[%v] is not the last meta partition[%v]", mp.PartitionID, maxPartitionID)
+		return
+	}
+	log.LogWarnf("action[splitMetaPartition],partition[%v],start[%v],end[%v]", mp.PartitionID, mp.Start, mp.End)
+	if err = mp.updateInodeIDRange(c, end); err != nil {
+		return
+	}
+	var nextMp *MetaPartition
+	if nextMp, err = vol.doCreateMetaPartition(c, mp.End+1, defaultMaxMetaPartitionInodeID); err != nil {
+		Warn(c.Name, fmt.Sprintf("action[updateEnd] clusterID[%v] partitionID[%v] create meta partition err[%v]",
+			c.Name, mp.PartitionID, err))
+		log.LogErrorf("action[updateEnd] partitionID[%v] err[%v]", mp.PartitionID, err)
+		return
+	}
+	vol.addMetaPartition(nextMp)
+	log.LogWarnf("action[splitMetaPartition],next partition[%v],start[%v],end[%v]", nextMp.PartitionID, nextMp.Start, nextMp.End)
+	return
+}
+
+func (vol *Vol) createMetaPartition(c *Cluster, start, end uint64) (err error) {
+	vol.createMpMutex.Lock()
+	defer vol.createMpMutex.Unlock()
+	var mp *MetaPartition
+	if mp, err = vol.doCreateMetaPartition(c, start, end); err != nil {
+		return
+	}
+	vol.addMetaPartition(mp)
+	return
+}
+
+func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPartition, err error) {
+	var (
+		hosts       []string
+		partitionID uint64
+		peers       []proto.Peer
+		wg          sync.WaitGroup
+	)
+	errChannel := make(chan error, vol.mpReplicaNum)
+	if hosts, peers, err = c.chooseTargetMetaHosts(int(vol.mpReplicaNum)); err != nil {
+		return nil, errors.NewError(err)
+	}
+	log.LogInfof("target meta hosts:%v,peers:%v", hosts, peers)
+	if partitionID, err = c.idAlloc.allocateMetaPartitionID(); err != nil {
+		return nil, errors.NewError(err)
+	}
+	mp = newMetaPartition(partitionID, start, end, vol.mpReplicaNum, vol.Name, vol.ID)
+	mp.setHosts(hosts)
+	mp.setPeers(peers)
+	for _, host := range hosts {
+		wg.Add(1)
+		go func(host string) {
+			defer func() {
+				wg.Done()
+			}()
+			if err = c.syncCreateMetaPartitionToMetaNode(host, mp); err != nil {
+				errChannel <- err
+				return
+			}
+			mp.Lock()
+			defer mp.Unlock()
+			if err = mp.afterCreation(host, c); err != nil {
+				errChannel <- err
+			}
+		}(host)
+	}
+	wg.Wait()
+	select {
+	case err = <-errChannel:
+		for _, host := range hosts {
+			wg.Add(1)
+			go func(host string) {
+				defer func() {
+					wg.Done()
+				}()
+				mr, err := mp.getMetaReplica(host)
+				if err != nil {
+					return
+				}
+				task := mr.createTaskToDeleteReplica(mp.PartitionID)
+				tasks := make([]*proto.AdminTask, 0)
+				tasks = append(tasks, task)
+				c.addMetaNodeTasks(tasks)
+			}(host)
+		}
+		wg.Wait()
+		return nil, errors.NewError(err)
+	default:
+		mp.Status = proto.ReadWrite
+	}
+	if err = c.syncAddMetaPartition(mp); err != nil {
+		return nil, errors.NewError(err)
+	}
+	log.LogInfof("action[CreateMetaPartition] success,volName[%v],partition[%v]", vol.Name, partitionID)
+	return
 }

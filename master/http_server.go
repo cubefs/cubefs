@@ -56,6 +56,7 @@ func (m *Server) handleFunctions() {
 	http.Handle(proto.AdminDecommissionMetaPartition, m.handlerWithInterceptor())
 	http.Handle(proto.ClientDataPartitions, m.handlerWithInterceptor())
 	http.Handle(proto.ClientVol, m.handlerWithInterceptor())
+	http.Handle(proto.ClientMetaPartitions, m.handlerWithInterceptor())
 	http.Handle(proto.ClientMetaPartition, m.handlerWithInterceptor())
 	http.Handle(proto.GetDataNodeTaskResponse, m.handlerWithInterceptor())
 	http.Handle(proto.GetMetaNodeTaskResponse, m.handlerWithInterceptor())
@@ -147,6 +148,8 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.getDataPartitions(w, r)
 	case proto.ClientVol:
 		m.getVol(w, r)
+	case proto.ClientMetaPartitions:
+		m.getMetaPartitions(w, r)
 	case proto.ClientMetaPartition:
 		m.getMetaPartition(w, r)
 	case proto.ClientVolStat:

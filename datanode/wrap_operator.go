@@ -188,29 +188,35 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 	if err != nil {
 		return
 	}
-	request := &proto.HeartBeatRequest{}
-	response := &proto.DataNodeHeartbeatResponse{}
-	s.buildHeartBeatResponse(response)
 
-	if task.OpCode == proto.OpDataNodeHeartbeat {
-		bytes, _ := json.Marshal(task.Request)
-		json.Unmarshal(bytes, request)
-		response.Status = proto.TaskSucceeds
-		MasterHelper.AddNode(request.MasterAddr)
-	} else {
-		response.Status = proto.TaskFailed
-		err = fmt.Errorf("illegal opcode")
-		response.Result = err.Error()
-	}
-	task.Response = response
-	if data, err = json.Marshal(task); err != nil {
-		return
-	}
-	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
-	if err != nil {
-		err = errors.Trace(err, "heartbeat to master(%v) failed.", request.MasterAddr)
-		return
-	}
+	go func() {
+		request := &proto.HeartBeatRequest{}
+		response := &proto.DataNodeHeartbeatResponse{}
+		s.buildHeartBeatResponse(response)
+
+		if task.OpCode == proto.OpDataNodeHeartbeat {
+			bytes, _ := json.Marshal(task.Request)
+			json.Unmarshal(bytes, request)
+			response.Status = proto.TaskSucceeds
+			MasterHelper.AddNode(request.MasterAddr)
+		} else {
+			response.Status = proto.TaskFailed
+			err = fmt.Errorf("illegal opcode")
+			response.Result = err.Error()
+		}
+		task.Response = response
+		if data, err = json.Marshal(task); err != nil {
+			return
+		}
+		_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
+		if err != nil {
+			err = errors.Trace(err, "heartbeat to master(%v) failed.", request.MasterAddr)
+			log.LogErrorf(err.Error())
+			return
+		}
+	}()
+
+
 }
 
 // Handle OpDeleteDataPartition packet.

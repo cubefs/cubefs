@@ -31,6 +31,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		log.LogWarnf("action[handleLeaderChange] but no leader")
 		return
 	}
+	oldLeaderAddr := m.leaderInfo.addr
 	m.leaderInfo.addr = AddrDatabase[leader]
 	log.LogWarnf("action[handleLeaderChange] change leader to [%v] ", m.leaderInfo.addr)
 	m.reverseProxy = m.newReverseProxy()
@@ -38,13 +39,16 @@ func (m *Server) handleLeaderChange(leader uint64) {
 	if m.id == leader {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
-		m.loadMetadata()
-		m.metaReady = true
+		if oldLeaderAddr != m.leaderInfo.addr {
+			m.loadMetadata()
+			m.metaReady = true
+		}
 		m.cluster.checkDataNodeHeartbeat()
 		m.cluster.checkMetaNodeHeartbeat()
 	} else {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
+		m.clearMetadata()
 		m.metaReady = false
 	}
 }
@@ -68,10 +72,6 @@ func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
 	}
 	Warn(m.clusterName, msg)
 	return
-}
-
-func (m *Server) handleApply(cmd *RaftCmd) (err error) {
-	return m.cluster.handleApply(cmd)
 }
 
 func (m *Server) handleApplySnapshot() {
@@ -121,6 +121,9 @@ func (m *Server) loadMetadata() {
 }
 
 func (m *Server) clearMetadata() {
+	m.cluster.clearTopology()
+	m.cluster.clearDataNodes()
+	m.cluster.clearMetaNodes()
 	m.cluster.clearVols()
 	m.cluster.t = newTopology()
 }

@@ -28,14 +28,14 @@ import (
 
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
-	PartitionID    uint64
-	LastLoadedTime int64
-	ReplicaNum     uint8
-	Status         int8
-	isRecover      bool
-	Replicas       []*DataReplica
-	Hosts          []string // host addresses
-	Peers          []proto.Peer
+	PartitionID             uint64
+	LastLoadedTime          int64
+	ReplicaNum              uint8
+	Status                  int8
+	isRecover               bool
+	Replicas                []*DataReplica
+	Hosts                   []string // host addresses
+	Peers                   []proto.Peer
 	sync.RWMutex
 	total                   uint64
 	used                    uint64
@@ -288,7 +288,6 @@ func (partition *DataPartition) getReplicaByIndex(index uint8) (replica *DataRep
 }
 
 func (partition *DataPartition) getFileCount() {
-	var msg string
 	filesToBeDeleted := make([]string, 0)
 	partition.Lock()
 	defer partition.Unlock()
@@ -308,14 +307,6 @@ func (partition *DataPartition) getFileCount() {
 	for _, vfName := range filesToBeDeleted {
 		delete(partition.FileInCoreMap, vfName)
 	}
-
-	for _, replica := range partition.Replicas {
-		msg = fmt.Sprintf(getFileCountOnDataReplica+"partitionID:%v  replicaAddr:%v  FileCount:%v  "+
-			"NodeIsActive:%v  replicaIsActive:%v  .replicaStatusOnNode:%v ", partition.PartitionID, replica.Addr, replica.FileCount,
-			replica.getReplicaNode().isActive, replica.isActive(defaultDataPartitionTimeOutSec), replica.Status)
-		log.LogInfo(msg)
-	}
-
 }
 
 // Release the memory occupied by the data partition.
@@ -508,8 +499,12 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 	replica.IsLeader = vr.IsLeader
 	replica.NeedsToCompare = vr.NeedCompare
 	if replica.DiskPath != vr.DiskPath && vr.DiskPath != "" {
+		oldDiskPath := replica.DiskPath
 		replica.DiskPath = vr.DiskPath
-		c.syncUpdateDataPartition(partition)
+		err = c.syncUpdateDataPartition(partition)
+		if err != nil {
+			replica.DiskPath = oldDiskPath
+		}
 	}
 	partition.checkAndRemoveMissReplica(dataNode.Addr)
 }
@@ -586,3 +581,16 @@ func (partition *DataPartition) containsBadDisk(diskPath string, nodeAddr string
 	}
 	return false
 }
+
+func (partition *DataPartition) getMinus() (minus float64) {
+	partition.RLock()
+	defer partition.RUnlock()
+	used := partition.Replicas[0].Used
+	for _, replica := range partition.Replicas {
+		if math.Abs(float64(replica.Used)-float64(used)) > minus {
+			minus = math.Abs(float64(replica.Used) - float64(used))
+		}
+	}
+	return minus
+}
+

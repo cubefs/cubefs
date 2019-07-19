@@ -36,6 +36,7 @@ const (
 	ClientVol            = "/client/vol"
 	ClientMetaPartition  = "/client/metaPartition"
 	ClientVolStat        = "/client/volStat"
+	ClientMetaPartitions = "/client/metaPartitions"
 
 	//raft node APIs
 	AddRaftNode    = "/raftNode/add"
@@ -136,6 +137,7 @@ type LoadDataPartitionResponse struct {
 	Status            uint8
 	PartitionStatus   int
 	Result            string
+	VolName           string
 }
 
 // File defines the file struct.
@@ -204,6 +206,7 @@ type MetaPartitionReport struct {
 	Status      int
 	MaxInodeID  uint64
 	IsLeader    bool
+	VolName     string
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.

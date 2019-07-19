@@ -40,16 +40,19 @@ type raftApplySnapshotHandler func()
 // MetadataFsm represents the finite state machine of a metadata partition
 type MetadataFsm struct {
 	store               *raftstore.RocksDBStore
+	rs                  *raft.RaftServer
 	applied             uint64
+	retainLogs          uint64
 	leaderChangeHandler raftLeaderChangeHandler
 	peerChangeHandler   raftPeerChangeHandler
-	applyHandler        raftCmdApplyHandler
 	snapshotHandler     raftApplySnapshotHandler
 }
 
-func newMetadataFsm(store *raftstore.RocksDBStore) (fsm *MetadataFsm) {
+func newMetadataFsm(store *raftstore.RocksDBStore, retainsLog uint64, rs *raft.RaftServer) (fsm *MetadataFsm) {
 	fsm = new(MetadataFsm)
 	fsm.store = store
+	fsm.rs = rs
+	fsm.retainLogs = retainsLog
 	return
 }
 
@@ -61,11 +64,6 @@ func (mf *MetadataFsm) registerLeaderChangeHandler(handler raftLeaderChangeHandl
 // Corresponding to the PeerChange interface in Raft library.
 func (mf *MetadataFsm) registerPeerChangeHandler(handler raftPeerChangeHandler) {
 	mf.peerChangeHandler = handler
-}
-
-// Corresponding to the Apply interface in Raft library.
-func (mf *MetadataFsm) registerApplyHandler(handler raftCmdApplyHandler) {
-	mf.applyHandler = handler
 }
 
 // Corresponding to the ApplySnapshot interface in Raft library.
@@ -117,6 +115,10 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		}
 	}
 	mf.applied = index
+	if mf.applied > 0 && (mf.applied%mf.retainLogs) == 0 {
+		log.LogWarnf("action[Apply],truncate raft log,retainLogs[%v],index[%v]", mf.retainLogs, mf.applied)
+		mf.rs.Truncate(GroupID, mf.applied)
+	}
 	return
 }
 
@@ -155,10 +157,6 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 			goto errHandler
 		}
 		if _, err = mf.store.Put(cmd.K, cmd.V, true); err != nil {
-			goto errHandler
-		}
-
-		if err = mf.applyHandler(cmd); err != nil {
 			goto errHandler
 		}
 	}
