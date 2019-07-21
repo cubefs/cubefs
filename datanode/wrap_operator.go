@@ -740,6 +740,8 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionDecommissionPartition, err.Error())
+		}else {
+			p.PacketOkReply()
 		}
 	}()
 
@@ -759,7 +761,7 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 		return
 	}
 	dp := s.space.Partition(req.PartitionId)
-	if err != nil {
+	if err != nil || dp== nil {
 		return
 	}
 
@@ -767,8 +769,6 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 	if !isRaftLeader {
 		return
 	}
-
-	p.PacketOkReply()
 
 	resp := proto.DataPartitionDecommissionResponse{
 		PartitionId: req.PartitionId,
