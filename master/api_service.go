@@ -590,7 +590,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
 		return
 	}
-	metaNode.PersistenceMetaPartitions = m.cluster.getAllmetaPartitionIDByMetaNode(nodeAddr)
+	metaNode.PersistenceMetaPartitions = m.cluster.getAllMetaPartitionIDByMetaNode(nodeAddr)
 	sendOkReply(w, r, newSuccessHTTPReply(metaNode))
 }
 

@@ -86,20 +86,21 @@ func (c *Cluster) loadDataPartition(dp *DataPartition) {
 // (1) the replica is not in the latest host list
 // (2) there are too few replicas
 // 2. choosing a new available meta node
-// 3. persistent the new host list
-// 4. generating an async task to delete the replica
-// 5. asynchronously create a new data partition
+// 3. synchronized decommission meta partition
+// 4. synchronized create a new meta partition
+// 5. persistent the new host list
 func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) (err error) {
 	var (
-		vol         *Vol
-		t           *proto.AdminTask
-		tasks       []*proto.AdminTask
-		newHosts    []string
-		onlineAddrs []string
-		newPeers    []proto.Peer
-		removePeer  proto.Peer
-		metaNode    *MetaNode
-		ns          *nodeSet
+		vol           *Vol
+		t             *proto.AdminTask
+		tasks         []*proto.AdminTask
+		newHosts      []string
+		onlineAddrs   []string
+		newPeers      []proto.Peer
+		removePeer    proto.Peer
+		metaNode      *MetaNode
+		ns            *nodeSet
+		leaderReplica *MetaReplica
 	)
 	log.LogWarnf("action[decommissionMetaPartition],volName[%v],nodeAddr[%v],partitionID[%v]", mp.volName, nodeAddr, mp.PartitionID)
 	if !contains(mp.Hosts, nodeAddr) {
@@ -120,7 +121,7 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 		goto errHandler
 	}
 	if newHosts, newPeers, err = ns.getAvailMetaNodeHosts(mp.Hosts, 1); err != nil {
-		// choose a meta node in the node set
+		// choose a meta node in other node set
 		if newHosts, newPeers, err = c.chooseTargetMetaHosts(1); err != nil {
 			goto errHandler
 		}
@@ -140,17 +141,30 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 			newHosts = append(newHosts, host)
 		}
 	}
-	tasks = mp.buildNewMetaPartitionTasks(onlineAddrs, newPeers, mp.volName)
 	if t, err = mp.createTaskToDecommissionReplica(mp.volName, removePeer, newPeers[0]); err != nil {
 		goto errHandler
 	}
-	tasks = append(tasks, t)
+	if leaderReplica, err = mp.getMetaReplicaLeader(); err != nil {
+		goto errHandler
+	}
+
+	if _, err = leaderReplica.metaNode.Sender.syncSendAdminTask(t); err != nil {
+		goto errHandler
+	}
+
+	tasks = mp.buildNewMetaPartitionTasks(onlineAddrs, newPeers, mp.volName)
+	if _, err = metaNode.Sender.syncSendAdminTask(tasks[0]); err != nil {
+		goto errHandler
+	}
+	if err = mp.afterCreation(onlineAddrs[0], c); err != nil {
+		goto errHandler
+	}
+
+	mp.removeReplicaByAddr(nodeAddr)
+	mp.removeMissingReplica(nodeAddr)
 	if err = mp.persistToRocksDB(newHosts, newPeers, mp.volName, c); err != nil {
 		goto errHandler
 	}
-	mp.removeReplicaByAddr(nodeAddr)
-	mp.removeMissingReplica(nodeAddr)
-	c.addMetaNodeTasks(tasks)
 	Warn(c.Name, fmt.Sprintf("clusterID[%v] meta partition[%v] offline addr[%v] success,new addr[%v]",
 		c.Name, mp.PartitionID, nodeAddr, newPeers[0].Addr))
 	return
@@ -265,9 +279,6 @@ func (c *Cluster) handleMetaNodeTaskResponse(nodeAddr string, task *proto.AdminT
 	case proto.OpUpdateMetaPartition:
 		response := task.Response.(*proto.UpdateMetaPartitionResponse)
 		err = c.dealUpdateMetaPartitionResp(task.OperatorAddr, response)
-	case proto.OpDecommissionMetaPartition:
-		response := task.Response.(*proto.MetaPartitionDecommissionResponse)
-		err = c.dealOfflineMetaPartitionResp(task.OperatorAddr, response)
 	default:
 		err := fmt.Errorf("unknown operate code %v", task.OpCode)
 		log.LogError(err)
@@ -290,18 +301,6 @@ func (c *Cluster) dealOfflineDataPartitionResp(nodeAddr string, resp *proto.Data
 		msg := fmt.Sprintf("action[dealOfflineDataPartitionResp],clusterID[%v] nodeAddr %v "+
 			"offline meta partition[%v] failed,err %v",
 			c.Name, nodeAddr, resp.PartitionId, resp.Result)
-		log.LogError(msg)
-		Warn(c.Name, msg)
-		return
-	}
-	return
-}
-
-func (c *Cluster) dealOfflineMetaPartitionResp(nodeAddr string, resp *proto.MetaPartitionDecommissionResponse) (err error) {
-	if resp.Status == proto.TaskFailed {
-		msg := fmt.Sprintf("action[dealOfflineMetaPartitionResp],clusterID[%v] nodeAddr %v "+
-			"offline meta partition[%v] failed,err %v",
-			c.Name, nodeAddr, resp.PartitionID, resp.Result)
 		log.LogError(msg)
 		Warn(c.Name, msg)
 		return
