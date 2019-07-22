@@ -76,10 +76,10 @@ func (partition *DataPartition) addReplica(replica *DataReplica) {
 	partition.Replicas = append(partition.Replicas, replica)
 }
 
-func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64) (task *proto.AdminTask) {
+func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64, peers []proto.Peer, hosts []string) (task *proto.AdminTask) {
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
-		partition.VolName, partition.PartitionID, partition.Peers, int(dataPartitionSize), partition.Hosts))
+		partition.VolName, partition.PartitionID, peers, int(dataPartitionSize), hosts))
 	partition.resetTaskID(task)
 	return
 }
@@ -448,21 +448,11 @@ func (partition *DataPartition) getReplicaIndex(addr string) (index int, err err
 	return -1, errors.Trace(dataReplicaNotFound(addr), "%v not found ", addr)
 }
 
-func (partition *DataPartition) updateForOffline(offlineAddr, newAddr, volName string, newPeers []proto.Peer, c *Cluster) (err error) {
+func (partition *DataPartition) updateForOffline(offlineAddr, newAddr, volName string, newPeers []proto.Peer, newHosts []string, c *Cluster) (err error) {
 	orgHosts := make([]string, len(partition.Hosts))
 	copy(orgHosts, partition.Hosts)
 	oldPeers := make([]proto.Peer, len(partition.Peers))
 	copy(oldPeers, partition.Peers)
-	newHosts := make([]string, 0)
-	for index, addr := range partition.Hosts {
-		if addr == offlineAddr {
-			after := partition.Hosts[index+1:]
-			newHosts = partition.Hosts[:index]
-			newHosts = append(newHosts, after...)
-			break
-		}
-	}
-	newHosts = append(newHosts, newAddr)
 	partition.Hosts = newHosts
 	partition.Peers = newPeers
 	if err = c.syncUpdateDataPartition(partition); err != nil {
@@ -472,7 +462,7 @@ func (partition *DataPartition) updateForOffline(offlineAddr, newAddr, volName s
 	}
 	msg := fmt.Sprintf("action[updateForOffline]  partitionID:%v offlineAddr:%v newAddr:%v"+
 		"oldHosts:%v newHosts:%v,oldPees[%v],newPeers[%v]",
-		partition.PartitionID, offlineAddr, newAddr, orgHosts, partition.Hosts, oldPeers, newPeers)
+		partition.PartitionID, offlineAddr, newAddr, orgHosts, partition.Hosts, oldPeers, partition.Peers)
 	log.LogInfo(msg)
 	return
 }
@@ -593,4 +583,3 @@ func (partition *DataPartition) getMinus() (minus float64) {
 	}
 	return minus
 }
-

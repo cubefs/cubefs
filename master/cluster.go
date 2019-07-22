@@ -484,7 +484,7 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 				wg.Done()
 			}()
 			var diskPath string
-			if diskPath, err = c.syncCreateDataPartitionToDataNode(host, vol.dataPartitionSize, dp); err != nil {
+			if diskPath, err = c.syncCreateDataPartitionToDataNode(host, vol.dataPartitionSize, dp, dp.Peers, dp.Hosts); err != nil {
 				errChannel <- err
 				return
 			}
@@ -532,8 +532,8 @@ errHandler:
 	return
 }
 
-func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition) (diskPath string, err error) {
-	task := dp.createTaskToCreateDataPartition(host, size)
+func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition, peers []proto.Peer, hosts []string) (diskPath string, err error) {
+	task := dp.createTaskToCreateDataPartition(host, size, peers, hosts)
 	dataNode, err := c.dataNode(host)
 	if err != nil {
 		return
@@ -672,7 +672,7 @@ func (c *Cluster) getAllDataPartitionIDByDatanode(addr string) (partitionIDs []u
 	return
 }
 
-func (c *Cluster) getAllmetaPartitionIDByMetaNode(addr string) (partitionIDs []uint64) {
+func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []uint64) {
 	partitionIDs = make([]uint64, 0)
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
@@ -725,24 +725,23 @@ func (c *Cluster) delDataNodeFromCache(dataNode *DataNode) {
 // - (b) there is already a replica been taken offline;
 // - (c) the remaining number of replicas is less than the majority
 // 2. Choose a new data node.
-// 3. Persist the latest host list.
-// 4. Generate an async task to delete the replica.
-// 5. Synchronously create a data partition.
-// 6. Set the data partition as readOnly.
+// 3. synchronized decommission data partition
+// 4. synchronized create a new data partition
+// 5. Set the data partition as readOnly.
+// 6. persistent the new host list
 func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartition, errMsg string) (err error) {
 	var (
-		newHosts   []string
-		newAddr    string
-		newPeers   []proto.Peer
-		msg        string
-		tasks      []*proto.AdminTask
-		task       *proto.AdminTask
-		dataNode   *DataNode
-		rack       *Rack
-		vol        *Vol
-		removePeer proto.Peer
-		replica    *DataReplica
-		diskPath   string
+		targetHosts []string
+		newHosts    [] string
+		newAddr     string
+		newPeers    []proto.Peer
+		msg         string
+		dataNode    *DataNode
+		rack        *Rack
+		vol         *Vol
+		removePeer  proto.Peer
+		replica     *DataReplica
+		diskPath    string
 	)
 	dp.Lock()
 	defer dp.Unlock()
@@ -773,13 +772,14 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	if rack, err = c.t.getRack(dataNode); err != nil {
 		goto errHandler
 	}
-	if newHosts, newPeers, err = rack.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
+	if targetHosts, newPeers, err = rack.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
 		// select data nodes from the node set
-		if newHosts, newPeers, err = c.chooseTargetDataNodes(1); err != nil {
+		if targetHosts, newPeers, err = c.chooseTargetDataNodes(1); err != nil {
 			goto errHandler
 		}
 	}
-	newAddr = newHosts[0]
+	newAddr = targetHosts[0]
+	newHosts = make([]string, 0)
 	for _, host := range dp.Hosts {
 		if dataNode, err = c.dataNode(host); err != nil {
 			goto errHandler
@@ -788,24 +788,15 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 			removePeer = proto.Peer{ID: dataNode.ID, Addr: host}
 			continue
 		}
+		newHosts = append(newHosts, host)
 		newPeers = append(newPeers, proto.Peer{ID: dataNode.ID, Addr: host})
 	}
-
-	if task, err = dp.createTaskToDecommissionDataPartition(removePeer, newPeers[0]); err != nil {
+	newHosts = append(newHosts, newAddr)
+	if err = c.syncDecommissionDataPartition(dp, offlineAddr, removePeer, newPeers[0]); err != nil {
 		goto errHandler
 	}
-	dp.logDecommissionedDataPartition(offlineAddr)
 
-	if err = dp.updateForOffline(offlineAddr, newAddr, dp.VolName, newPeers, c); err != nil {
-		goto errHandler
-	}
-	replica, _ = dp.getReplica(offlineAddr)
-	dp.removeReplicaByAddr(offlineAddr)
-	dp.checkAndRemoveMissReplica(offlineAddr)
-	tasks = make([]*proto.AdminTask, 0)
-	tasks = append(tasks, task)
-	c.addDataNodeTasks(tasks)
-	if diskPath, err = c.syncCreateDataPartitionToDataNode(newAddr, vol.dataPartitionSize, dp); err != nil {
+	if diskPath, err = c.syncCreateDataPartitionToDataNode(newAddr, vol.dataPartitionSize, dp, newPeers, newHosts); err != nil {
 		goto errHandler
 	}
 	if err = dp.afterCreation(newAddr, diskPath, c); err != nil {
@@ -813,7 +804,13 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	}
 	dp.Status = proto.ReadOnly
 	dp.isRecover = true
+	replica, _ = dp.getReplica(offlineAddr)
 	c.putBadDataPartitionIDs(replica, offlineAddr, dp.PartitionID)
+	dp.removeReplicaByAddr(offlineAddr)
+	dp.checkAndRemoveMissReplica(offlineAddr)
+	if err = dp.updateForOffline(offlineAddr, newAddr, dp.VolName, newPeers, newHosts, c); err != nil {
+		goto errHandler
+	}
 	log.LogWarnf("clusterID[%v] partitionID:%v  on Node:%v offline success,newHost[%v],PersistenceHosts:[%v]",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
@@ -823,6 +820,31 @@ errHandler:
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.Hosts)
 	if err != nil {
 		Warn(c.Name, msg)
+	}
+	return
+}
+
+func (c *Cluster) syncDecommissionDataPartition(dp *DataPartition, addr string, removePeer, targetPeer proto.Peer) (err error) {
+	var (
+		task     *proto.AdminTask
+		dataNode *DataNode
+	)
+	if task, err = dp.createTaskToDecommissionDataPartition(removePeer, targetPeer); err != nil {
+		return
+	}
+	dp.logDecommissionedDataPartition(addr)
+	leaderAddr := dp.getLeaderAddr()
+	if leaderAddr == "" {
+		err = proto.ErrNoLeader
+		return
+	}
+
+	if dataNode, err = c.dataNode(leaderAddr); err != nil {
+		return
+	}
+
+	if _, err = dataNode.TaskManager.syncSendAdminTask(task); err != nil {
+		return nil
 	}
 	return
 }
