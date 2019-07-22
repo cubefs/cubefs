@@ -627,56 +627,51 @@ func (m *metadataManager) opDecommissionMetaPartition(conn net.Conn,
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
-		return
+		return err
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
-		return
+		return err
 	}
 	if !m.serveProxy(conn, mp, p) {
-		return
+		return nil
 	}
 	m.responseAckOKToMaster(conn, p)
-	resp := proto.MetaPartitionDecommissionResponse{
-		PartitionID: req.PartitionID,
-		VolName:     req.VolName,
-		Status:      proto.TaskFailed,
-	}
 	if req.AddPeer.ID == req.RemovePeer.ID {
 		err = errors.NewErrorf("[opDecommissionMetaPartition]: AddPeer[%v] same withRemovePeer[%v]", req.AddPeer, req.RemovePeer)
-		resp.Result = err.Error()
-		goto end
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
 	}
 	reqData, err = json.Marshal(req)
 	if err != nil {
 		err = errors.NewErrorf("[opDecommissionMetaPartition]: partitionID= %d, "+
 			"Marshal %s", req.PartitionID, err)
-		resp.Result = err.Error()
-		goto end
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
 	}
 	_, err = mp.ChangeMember(raftProto.ConfAddNode,
 		raftProto.Peer{ID: req.AddPeer.ID}, reqData)
 	if err != nil {
-		resp.Result = err.Error()
-		goto end
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
 	}
 	_, err = mp.ChangeMember(raftProto.ConfRemoveNode,
 		raftProto.Peer{ID: req.RemovePeer.ID}, reqData)
 	if err != nil {
-		resp.Result = err.Error()
-		goto end
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
 	}
-	resp.Status = proto.TaskSucceeds
-end:
-	adminTask.Request = nil
-	adminTask.Response = resp
-	m.respondToMaster(adminTask)
-	log.LogInfof("%s [opDecommissionMetaPartition]: the end %v", remoteAddr,
-		adminTask)
+	p.PacketOkReply()
+	m.respondToClient(conn, p)
+
 	return
 }
 

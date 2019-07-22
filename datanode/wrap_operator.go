@@ -748,7 +748,7 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 	adminTask := &proto.AdminTask{}
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
-	if err := decode.Decode(adminTask); err != nil {
+	if err = decode.Decode(adminTask); err != nil {
 		return
 	}
 
@@ -761,47 +761,28 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 		return
 	}
 	dp := s.space.Partition(req.PartitionId)
-	if err != nil || dp== nil {
+	if dp==nil{
+		err=fmt.Errorf("partition %v not exsit",req.PartitionId)
 		return
 	}
 
 	isRaftLeader, err = s.forwardToRaftLeader(dp, p)
 	if !isRaftLeader {
+		err=raft.ErrNotLeader
 		return
 	}
 
-	resp := proto.DataPartitionDecommissionResponse{
-		PartitionId: req.PartitionId,
-		Status:      proto.TaskFailed,
-	}
 	if req.AddPeer.ID == req.RemovePeer.ID {
 		err = errors.NewErrorf("[opOfflineDataPartition]: AddPeer[%v] same withRemovePeer[%v]", req.AddPeer, req.RemovePeer)
-		resp.Result = err.Error()
-		goto end
+		return
 	}
 
 	_, err = dp.ChangeRaftMember(raftProto.ConfAddNode, raftProto.Peer{ID: req.AddPeer.ID}, reqData)
 	if err != nil {
-		resp.Result = err.Error()
-		log.LogErrorf(fmt.Sprintf("[opOfflineDataPartition]: AddNode[%v] err[%v]", req.AddPeer, err))
-		goto end
+		return
 	}
 	_, err = dp.ChangeRaftMember(raftProto.ConfRemoveNode, raftProto.Peer{ID: req.RemovePeer.ID}, reqData)
 	if err != nil {
-		resp.Result = err.Error()
-		log.LogErrorf(fmt.Sprintf("[opOfflineDataPartition]: RemoveNode[%v] err[%v]", req.RemovePeer, err))
-		goto end
-	}
-	resp.Status = proto.TaskSucceeds
-end:
-	adminTask.Request = nil
-	adminTask.Response = resp
-
-	data, _ := json.Marshal(adminTask)
-	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
-	if err != nil {
-		err = errors.Trace(err, "opOfflineDataPartition failed, partitionID(%v)", resp.PartitionId)
-		log.LogError(errors.Stack(err))
 		return
 	}
 
