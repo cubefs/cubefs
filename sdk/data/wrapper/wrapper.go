@@ -140,7 +140,7 @@ func (w *Wrapper) updateDataPartition() error {
 		}
 	}
 
-	if len(rwPartitionGroups) > 0 {
+	if len(rwPartitionGroups) > 10 {
 		w.rwPartition = rwPartitionGroups
 		w.localLeaderPartitions = localLeaderPartitionGroups
 	} else {
