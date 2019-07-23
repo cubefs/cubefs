@@ -1,10 +1,10 @@
 package master
 
 import (
-	"testing"
-	"time"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
+	"testing"
+	"time"
 )
 
 func TestMetaPartition(t *testing.T) {

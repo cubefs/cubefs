@@ -1,10 +1,10 @@
 package mocktest
 
 import (
-	"net"
-	"github.com/chubaofs/chubaofs/proto"
-	"net/http"
 	"bytes"
+	"github.com/chubaofs/chubaofs/proto"
+	"net"
+	"net/http"
 	"time"
 )
 

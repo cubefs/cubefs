@@ -1,15 +1,15 @@
 package mocktest
 
 import (
-	"net"
-	"io/ioutil"
-	"github.com/chubaofs/chubaofs/proto"
-	"fmt"
-	"net/http"
-	"encoding/json"
-	"github.com/chubaofs/chubaofs/util"
-	"strings"
 	"bytes"
+	"encoding/json"
+	"fmt"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"strings"
 	"sync"
 )
 

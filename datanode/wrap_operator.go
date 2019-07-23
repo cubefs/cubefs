@@ -163,6 +163,7 @@ func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 		err = fmt.Errorf("from master Task[%v] cannot unmash CreateDataPartitionRequest struct", task.ToString())
 		return
 	}
+	p.PartitionID=request.PartitionId
 	if dp, err = s.space.CreatePartition(request); err != nil {
 		err = fmt.Errorf("from master Task[%v] cannot create Partition err(%v)", task.ToString(), err)
 		return
@@ -217,7 +218,6 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			return
 		}
 	}()
-
 
 }
 
@@ -740,7 +740,7 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionDecommissionPartition, err.Error())
-		}else {
+		} else {
 			p.PacketOkReply()
 		}
 	}()
@@ -761,14 +761,14 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 		return
 	}
 	dp := s.space.Partition(req.PartitionId)
-	if dp==nil{
-		err=fmt.Errorf("partition %v not exsit",req.PartitionId)
+	if dp == nil {
+		err = fmt.Errorf("partition %v not exsit", req.PartitionId)
 		return
 	}
 
 	isRaftLeader, err = s.forwardToRaftLeader(dp, p)
 	if !isRaftLeader {
-		err=raft.ErrNotLeader
+		err = raft.ErrNotLeader
 		return
 	}
 

@@ -125,46 +125,44 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 
 	log.LogDebugf("[startSchedule] hello DataPartition schedule")
 
-	go func(stopC chan bool) {
-		for {
-			select {
-			case <-stopC:
-				log.LogDebugf("[startSchedule] stop partition=%v", dp.partitionID)
-				getAppliedIDTimer.Stop()
-				truncateRaftLogTimer.Stop()
-				storeAppliedIDTimer.Stop()
-				return
+	for {
+		select {
+		case <-dp.stopC:
+			log.LogDebugf("[startSchedule] stop partition=%v", dp.partitionID)
+			getAppliedIDTimer.Stop()
+			truncateRaftLogTimer.Stop()
+			storeAppliedIDTimer.Stop()
+			return
 
-			case extentID := <-dp.stopRaftC:
-				dp.stopRaft()
-				log.LogErrorf("action[ExtentRepair] stop raft partition=%v_%v", dp.partitionID, extentID)
+		case extentID := <-dp.stopRaftC:
+			dp.stopRaft()
+			log.LogErrorf("action[ExtentRepair] stop raft partition=%v_%v", dp.partitionID, extentID)
 
-			case <-getAppliedIDTimer.C:
-				if dp.raftPartition != nil {
-					go dp.updateMaxMinAppliedID()
-				}
-				getAppliedIDTimer.Reset(time.Minute * 1)
-
-			case <-truncateRaftLogTimer.C:
-				if dp.raftPartition == nil {
-					break
-				}
-
-				if dp.minAppliedID > dp.lastTruncateID { // Has changed
-					go dp.raftPartition.Truncate(dp.minAppliedID)
-					dp.lastTruncateID = dp.minAppliedID
-				}
-				truncateRaftLogTimer.Reset(time.Minute * 10)
-
-			case <-storeAppliedIDTimer.C:
-				if err := dp.storeAppliedID(dp.appliedID); err != nil {
-					err = errors.NewErrorf("[startSchedule]: dump partition=%d: %v", dp.config.PartitionID, err.Error())
-					log.LogErrorf(err.Error())
-				}
-				storeAppliedIDTimer.Reset(time.Second * 10)
+		case <-getAppliedIDTimer.C:
+			if dp.raftPartition != nil {
+				dp.updateMaxMinAppliedID()
 			}
+			getAppliedIDTimer.Reset(time.Minute * 1)
+
+		case <-truncateRaftLogTimer.C:
+			if dp.raftPartition == nil {
+				break
+			}
+
+			if dp.minAppliedID > dp.lastTruncateID { // Has changed
+				go dp.raftPartition.Truncate(dp.minAppliedID)
+				dp.lastTruncateID = dp.minAppliedID
+			}
+			truncateRaftLogTimer.Reset(time.Minute * 10)
+
+		case <-storeAppliedIDTimer.C:
+			if err := dp.storeAppliedID(dp.appliedID); err != nil {
+				err = errors.NewErrorf("[startSchedule]: dump partition=%d: %v", dp.config.PartitionID, err.Error())
+				log.LogErrorf(err.Error())
+			}
+			storeAppliedIDTimer.Reset(time.Second * 10)
 		}
-	}(dp.stopC)
+	}
 }
 
 // StartRaftAfterRepair starts the raft after repairing a partition.

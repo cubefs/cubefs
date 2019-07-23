@@ -15,21 +15,21 @@
 package master
 
 import (
-	"fmt"
-	"net/http"
-	"testing"
-	_ "net/http/pprof"
-	"github.com/chubaofs/chubaofs/master/mocktest"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/log"
-	"strings"
-	"time"
-	"io/ioutil"
-	"os"
 	"crypto/md5"
 	"encoding/hex"
-	"github.com/chubaofs/chubaofs/proto"
 	"encoding/json"
+	"fmt"
+	"github.com/chubaofs/chubaofs/master/mocktest"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/log"
+	"io/ioutil"
+	"net/http"
+	_ "net/http/pprof"
+	"os"
+	"strings"
+	"testing"
+	"time"
 )
 
 const (
