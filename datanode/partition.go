@@ -122,7 +122,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition
 
 	go dp.StartRaftLoggingSchedule()
 	go dp.StartRaftAfterRepair()
-	go dp.ForceLoadHeader()
+	dp.ForceLoadHeader()
 
 	// persist file metadata
 	err = dp.PersistMetadata()

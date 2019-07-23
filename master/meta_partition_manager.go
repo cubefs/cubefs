@@ -16,9 +16,9 @@ package master
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/log"
 	"strconv"
 	"time"
-	"github.com/chubaofs/chubaofs/util/log"
 )
 
 func (c *Cluster) startCheckLoadMetaPartitions() {

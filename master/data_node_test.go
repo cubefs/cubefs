@@ -1,16 +1,16 @@
 package master
 
 import (
-	"time"
-	"testing"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
+	"testing"
+	"time"
 )
 
 func TestDataNode(t *testing.T) {
 	// /dataNode/add and /dataNode/response processed by mock data server
 	addr := "127.0.0.1:9096"
-	addDataServer(addr,DefaultRackName)
+	addDataServer(addr, DefaultRackName)
 	server.cluster.checkDataNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	getDataNodeInfo(addr, t)

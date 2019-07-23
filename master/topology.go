@@ -216,7 +216,6 @@ func (t *topology) getAllNodeSet() (nsc nodeSetCollection) {
 	return
 }
 
-
 func (t *topology) allocNodeSetForDataNode(replicaNum uint8) (ns *nodeSet, err error) {
 	nset := t.getAllNodeSet()
 	if nset == nil {
@@ -460,7 +459,7 @@ func (ns *nodeSet) allocRacks(replicaNum int, excludeRack []string) (racks []*Ra
 	if excludeRack == nil {
 		excludeRack = make([]string, 0)
 	}
-	candidateRacks := make([]*Rack,0)
+	candidateRacks := make([]*Rack, 0)
 	for i := 0; i < len(racks); i++ {
 		if ns.rackIndex >= len(racks) {
 			ns.rackIndex = 0

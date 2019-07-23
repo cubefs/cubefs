@@ -282,15 +282,15 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 // DeletePartition deletes a partition based on the partition id.
 func (manager *SpaceManager) DeletePartition(dpID uint64) {
 	manager.partitionMutex.Lock()
-	dp:=manager.partitions[dpID]
-	if dp==nil {
+	dp := manager.partitions[dpID]
+	if dp == nil {
 		return
 	}
 	delete(manager.partitions, dpID)
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
 	manager.partitionMutex.Unlock()
-	
+
 	os.RemoveAll(dp.Path())
 }
 

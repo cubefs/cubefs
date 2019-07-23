@@ -160,7 +160,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		Replicas             []string              `json:"replicas"`
 		TinyDeleteRecordSize int64                 `json:"tinyDeleteRecordSize"`
 		TinyExtentRealSize   map[uint64]int64      `json:"tinyExtentRealSize"`
-		RaftStatus           *raft.Status		   `json: "raftStatus"`
+		RaftStatus           *raft.Status          `json: "raftStatus"`
 	}{
 		VolName:              partition.volumeID,
 		ID:                   partition.partitionID,
@@ -173,7 +173,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		Replicas:             partition.Replicas(),
 		TinyDeleteRecordSize: tinyDeleteRecordSize,
 		TinyExtentRealSize:   partition.extentStore.GetAllTinyExtentsRealSize(),
-		RaftStatus:			  partition.raftPartition.Status(),
+		RaftStatus:           partition.raftPartition.Status(),
 	}
 	s.buildSuccessResp(w, result)
 }

@@ -1,14 +1,14 @@
 package mocktest
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util"
 	"io/ioutil"
 	"net"
 	"net/http"
-	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"encoding/json"
-	"github.com/chubaofs/chubaofs/util"
-	"bytes"
 )
 
 type MockDataServer struct {

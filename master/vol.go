@@ -15,13 +15,13 @@
 package master
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"sync"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"encoding/json"
 )
 
 // Vol represents a set of meta partitionMap and data partitionMap

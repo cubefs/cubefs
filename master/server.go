@@ -23,9 +23,9 @@ import (
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"net/http/httputil"
+	"regexp"
 	"strconv"
 	"sync"
-	"regexp"
 )
 
 // configuration keys
@@ -203,7 +203,7 @@ func (m *Server) createRaftServer() (err error) {
 	return
 }
 func (m *Server) initFsm() {
-	m.fsm = newMetadataFsm(m.rocksDBStore,m.retainLogs,m.raftStore.RaftServer())
+	m.fsm = newMetadataFsm(m.rocksDBStore, m.retainLogs, m.raftStore.RaftServer())
 	m.fsm.registerLeaderChangeHandler(m.handleLeaderChange)
 	m.fsm.registerPeerChangeHandler(m.handlePeerChange)
 
