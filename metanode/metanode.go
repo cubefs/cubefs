@@ -189,18 +189,16 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
 	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
-	if configTotalMem != 0 && configTotalMem <= util.GB {
-		configTotalMem = util.GB
+
+	if configTotalMem==0{
+		return fmt.Errorf("bad totalMem config,Recommended to be configured as 80% of physical machine memory")
 	}
 
 	total, _, err := util.GetMemInfo()
-	if err == nil && configTotalMem == 0 {
-		configTotalMem = total
+	if err == nil && configTotalMem >total-util.GB {
+		return fmt.Errorf("bad totalMem config,Recommended to be configured as 80% of physical machine memory")
 	}
 
-	if configTotalMem > total {
-		configTotalMem = total
-	}
 	if m.metadataDir == "" {
 		return fmt.Errorf("bad metadataDir config")
 	}
