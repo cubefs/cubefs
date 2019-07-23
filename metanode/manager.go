@@ -203,19 +203,19 @@ func (m *metadataManager) loadPartitions() (err error) {
 		if fileInfo.IsDir() && strings.HasPrefix(fileInfo.Name(), partitionPrefix) {
 			wg.Add(1)
 			go func(fileName string) {
-				var err error
+				var errload error
 				defer func() {
 					if r := recover(); r != nil {
 						log.LogErrorf("loadPartitions partition: %s, "+
-							"error: %s, failed: %v", fileName, err, r)
+							"error: %s, failed: %v", fileName, errload, r)
 						log.LogFlush()
 						panic(r)
 					}
-					if err != nil {
+					if errload != nil {
 						log.LogErrorf("loadPartitions partition: %s, "+
-							"error: %s", fileName, err)
+							"error: %s", fileName, errload)
 						log.LogFlush()
-						panic(err)
+						panic(errload)
 					}
 				}()
 				defer wg.Done()
@@ -225,8 +225,8 @@ func (m *metadataManager) loadPartitions() (err error) {
 				}
 				var id uint64
 				partitionId := fileName[len(partitionPrefix):]
-				id, err = strconv.ParseUint(partitionId, 10, 64)
-				if err != nil {
+				id, errload = strconv.ParseUint(partitionId, 10, 64)
+				if errload != nil {
 					log.LogWarnf("ignore path: %s,not partition", partitionId)
 					return
 				}
@@ -241,23 +241,23 @@ func (m *metadataManager) loadPartitions() (err error) {
 				}
 				// check snapshot dir or backup
 				snapshotDir := path.Join(partitionConfig.RootDir, snapshotDir)
-				if _, err = os.Stat(snapshotDir); err != nil {
+				if _, errload = os.Stat(snapshotDir); errload != nil {
 					backupDir := path.Join(partitionConfig.RootDir, snapshotBackup)
-					if _, err = os.Stat(backupDir); err == nil {
-						if err = os.Rename(backupDir, snapshotDir); err != nil {
-							err = errors.Trace(err,
+					if _, errload = os.Stat(backupDir); errload == nil {
+						if errload = os.Rename(backupDir, snapshotDir); errload != nil {
+							errload = errors.Trace(errload,
 								fmt.Sprintf(": fail recover backup snapshot %s",
 									snapshotDir))
 							return
 						}
 					}
-					err = nil
+					errload = nil
 				}
 				partition := NewMetaPartition(partitionConfig)
-				err = m.attachPartition(id, partition)
-				if err != nil {
+				errload = m.attachPartition(id, partition)
+				if errload != nil {
 					log.LogErrorf("load partition id=%d failed: %s.",
-						id, err.Error())
+						id, errload.Error())
 				}
 			}(fileInfo.Name())
 		}
@@ -267,9 +267,12 @@ func (m *metadataManager) loadPartitions() (err error) {
 }
 
 func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (err error) {
+	fmt.Println(fmt.Sprintf("start load metaPartition %v",id))
 	if err = partition.Start(); err != nil {
+		fmt.Println(fmt.Sprintf("fininsh load metaPartition %v error %v",id,err))
 		return
 	}
+	fmt.Println(fmt.Sprintf("fininsh load metaPartition %v",id))
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.partitions[id] = partition
