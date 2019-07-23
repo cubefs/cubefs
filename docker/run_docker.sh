@@ -4,6 +4,10 @@ RootPath=$(cd $(dirname $0)/..; pwd)
 GOPATH=/go
 export DiskPath="$RootPath/docker/disk"
 
+RM=rm
+[ -e /bin/rm ] && RM=/bin/rm
+[ -e /usr/bin/rm ] && RM=/usr/bin/rm
+
 help() {
     cat <<EOF
 
@@ -33,7 +37,7 @@ build() {
 
 # start server
 start_servers() {
-    mkdir -p ${DiskPath}/{1..4}
+    mkdir -p ${DiskPath}/data/{1..4} ${DiskPath}/{master,meta}/{1..3}
     docker-compose -f ${RootPath}/docker/docker-compose.yml up -d servers
 }
 
