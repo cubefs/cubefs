@@ -39,7 +39,7 @@ func (s *Super) OpenFile(ctx context.Context, op *fuseops.OpenFileOp) error {
 func (s *Super) ReleaseFileHandle(ctx context.Context, op *fuseops.ReleaseFileHandleOp) error {
 	desc := fuse.OpDescription(op)
 
-	handle := s.hc.Get(op.Handle)
+	handle := s.hc.Release(op.Handle)
 	if handle == nil {
 		log.LogErrorf("ReleaseFileHandle: bad handle id, op(%v)", desc)
 		return syscall.EBADF
