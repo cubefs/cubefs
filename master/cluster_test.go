@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 	"time"
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 func buildPanicCluster() *Cluster {
@@ -172,4 +173,40 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 		t.Errorf("expect bad partition num[0],real num[%v]", count)
 		return
 	}
+}
+
+func TestUpdateInodeIDUpperBound(t *testing.T) {
+	vol, err := server.cluster.getVol(commonVolName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	maxPartitionID := vol.maxPartitionID()
+	vol.RLock()
+	mp := vol.MetaPartitions[maxPartitionID]
+	mpLen := len(vol.MetaPartitions)
+	vol.RUnlock()
+	mr := &proto.MetaPartitionReport{
+		PartitionID: mp.PartitionID,
+		Start:       mp.Start,
+		End:         mp.End,
+		Status:      int(mp.Status),
+		MaxInodeID:  mp.Start + 1,
+		IsLeader:    false,
+		VolName:     mp.volName,
+	}
+	metaNode, err := server.cluster.metaNode(mp.Hosts[0])
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if err = server.cluster.updateInodeIDUpperBound(mp, mr, true, metaNode); err != nil {
+		t.Error(err)
+		return
+	}
+	curMpLen := len(vol.MetaPartitions)
+	if curMpLen == mpLen {
+		t.Errorf("split failed,oldMpLen[%v],curMpLen[%v]", mpLen, curMpLen)
+	}
+
 }
