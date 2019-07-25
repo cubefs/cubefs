@@ -553,25 +553,15 @@ func (c *Cluster) updateMetaNode(metaNode *MetaNode, metaPartitions []*proto.Met
 	}
 }
 
-func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaPartitionReport, hasArriveThreshold bool, metaNode *MetaNode) {
+func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaPartitionReport, hasArriveThreshold bool, metaNode *MetaNode) (err error) {
 	if !hasArriveThreshold {
 		return
 	}
-	mp.Lock()
-	defer mp.Unlock()
-	var (
-		vol *Vol
-		err error
-	)
+	var vol *Vol
 	if vol, err = c.getVol(mp.volName); err != nil {
 		log.LogWarnf("action[updateInodeIDRange] vol[%v] not found", mp.volName)
 		return
 	}
-
-	if mp.Start != mr.Start {
-		Warn(c.Name, fmt.Sprintf("mpid[%v],start[%v],mrStart[%v],addr[%v]", mp.PartitionID, mp.Start, mr.Start, metaNode.Addr))
-	}
-
 	var end uint64
 	if mr.MaxInodeID <= 0 {
 		end = mr.Start + defaultMetaPartitionInodeIDStep
@@ -579,7 +569,8 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 		end = mr.MaxInodeID + defaultMetaPartitionInodeIDStep
 	}
 	log.LogWarnf("mpId[%v],start[%v],end[%v],addr[%v],used[%v]", mp.PartitionID, mp.Start, mp.End, metaNode.Addr, metaNode.Used)
-	if err := vol.splitMetaPartition(c, mp, end); err != nil {
+	if err = vol.splitMetaPartition(c, mp, end); err != nil {
 		log.LogError(err)
 	}
+	return
 }
