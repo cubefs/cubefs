@@ -65,28 +65,28 @@ func TestVol(t *testing.T) {
 }
 
 func createVol(name string, t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs&mpCount=2", hostAddr, proto.AdminCreateVol, name)
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs&mpCount=2", hostAddr, proto.AdminCreateVol, name)
+	fmt.Println(reqURL)
+	process(reqURL, t)
 }
 
 func getSimpleVol(name string, t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminGetVol, name)
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminGetVol, name)
+	fmt.Println(reqURL)
+	process(reqURL, t)
 }
 
 func getVol(name string, t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.ClientVol, name, buildAuthKey())
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.ClientVol, name, buildAuthKey())
+	fmt.Println(reqURL)
+	process(reqURL, t)
 }
 
 func updateVol(name string, capacity int, t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
+	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
 		hostAddr, proto.AdminUpdateVol, name, capacity, buildAuthKey())
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
+	fmt.Println(reqURL)
+	process(reqURL, t)
 	vol, err := server.cluster.getVol(name)
 	if err != nil {
 		t.Error(err)
@@ -99,17 +99,17 @@ func updateVol(name string, capacity int, t *testing.T) {
 }
 
 func statVol(name string, t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?name=%v",
+	reqURL := fmt.Sprintf("%v%v?name=%v",
 		hostAddr, proto.ClientVolStat, name)
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
+	fmt.Println(reqURL)
+	process(reqURL, t)
 }
 
 func markDeleteVol(name string, t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?name=%v&authKey=%v",
+	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v",
 		hostAddr, proto.AdminDeleteVol, name, buildAuthKey())
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
+	fmt.Println(reqURL)
+	process(reqURL, t)
 	vol, err := server.cluster.getVol(name)
 	if err != nil {
 		t.Error(err)

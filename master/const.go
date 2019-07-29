@@ -99,6 +99,7 @@ const (
 	opSyncDeleteMetaPartition  uint32 = 0x11
 	opSyncAddNodeSet           uint32 = 0x12
 	opSyncUpdateNodeSet        uint32 = 0x13
+	opSyncBatchPut             uint32 = 0x14
 )
 
 const (

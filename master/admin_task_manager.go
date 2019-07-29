@@ -41,8 +41,8 @@ type AdminTaskManager struct {
 	targetAddr string
 	TaskMap    map[string]*proto.AdminTask
 	sync.RWMutex
-	exitCh   chan struct{}
-	connPool *util.ConnectPool
+	exitCh     chan struct{}
+	connPool   *util.ConnectPool
 }
 
 func newAdminTaskManager(targetAddr, clusterID string) (sender *AdminTaskManager) {
@@ -116,16 +116,15 @@ func (sender *AdminTaskManager) doSendTasks() {
 func (sender *AdminTaskManager) getConn() (conn *net.TCPConn, err error) {
 	if useConnPool {
 		return sender.connPool.GetConnect(sender.targetAddr)
-	} else {
-		var connect net.Conn
-		connect, err = net.Dial("tcp", sender.targetAddr)
-		if err == nil {
-			conn = connect.(*net.TCPConn)
-			conn.SetKeepAlive(true)
-			conn.SetNoDelay(true)
-		}
-		return
 	}
+	var connect net.Conn
+	connect, err = net.Dial("tcp", sender.targetAddr)
+	if err == nil {
+		conn = connect.(*net.TCPConn)
+		conn.SetKeepAlive(true)
+		conn.SetNoDelay(true)
+	}
+	return
 }
 
 func (sender *AdminTaskManager) putConn(conn *net.TCPConn, forceClose bool) {
