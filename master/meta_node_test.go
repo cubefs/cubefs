@@ -18,13 +18,13 @@ func TestMetaNode(t *testing.T) {
 }
 
 func getMetaNodeInfo(addr string, t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetMetaNode, addr)
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetMetaNode, addr)
+	fmt.Println(reqURL)
+	process(reqURL, t)
 }
 
 func decommissionMetaNode(addr string, t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.DecommissionMetaNode, addr)
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.DecommissionMetaNode, addr)
+	fmt.Println(reqURL)
+	process(reqURL, t)
 }

@@ -471,19 +471,25 @@ func (vol *Vol) String() string {
 func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (err error) {
 	vol.createMpMutex.Lock()
 	defer vol.createMpMutex.Unlock()
-	if end < mp.Start {
-		err = fmt.Errorf("end[%v] less than mp.start[%v]", end, mp.Start)
-		return
-	}
 	maxPartitionID := vol.maxPartitionID()
 	if maxPartitionID != mp.PartitionID {
 		err = fmt.Errorf("mp[%v] is not the last meta partition[%v]", mp.PartitionID, maxPartitionID)
 		return
 	}
-	log.LogWarnf("action[splitMetaPartition],partition[%v],start[%v],end[%v]", mp.PartitionID, mp.Start, mp.End)
-	if err = mp.updateInodeIDRange(c, end); err != nil {
+	mp.Lock()
+	defer mp.Unlock()
+	if err = mp.canSplit(end); err != nil {
 		return
 	}
+	log.LogWarnf("action[splitMetaPartition],partition[%v],start[%v],end[%v]", mp.PartitionID, mp.Start, mp.End)
+	cmdMap := make(map[string]*RaftCmd, 0)
+	oldEnd := mp.End
+	mp.End = end
+	updateMpRaftCmd, err := c.buildMetaPartitionRaftCmd(opSyncUpdateMetaPartition, mp)
+	if err != nil {
+		return
+	}
+	cmdMap[updateMpRaftCmd.K] = updateMpRaftCmd
 	var nextMp *MetaPartition
 	if nextMp, err = vol.doCreateMetaPartition(c, mp.End+1, defaultMaxMetaPartitionInodeID); err != nil {
 		Warn(c.Name, fmt.Sprintf("action[updateEnd] clusterID[%v] partitionID[%v] create meta partition err[%v]",
@@ -491,6 +497,17 @@ func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (e
 		log.LogErrorf("action[updateEnd] partitionID[%v] err[%v]", mp.PartitionID, err)
 		return
 	}
+	addMpRaftCmd, err := c.buildMetaPartitionRaftCmd(opSyncAddMetaPartition, nextMp)
+	if err != nil {
+		return
+	}
+	cmdMap[addMpRaftCmd.K] = addMpRaftCmd
+	if err = c.syncBatchCommitCmd(cmdMap); err != nil {
+		mp.End = oldEnd
+		return errors.NewError(err)
+	}
+	mp.updateInodeIDRangeForAllReplicas()
+	mp.addUpdateMetaReplicaTask(c)
 	vol.addMetaPartition(nextMp)
 	log.LogWarnf("action[splitMetaPartition],next partition[%v],start[%v],end[%v]", nextMp.PartitionID, nextMp.Start, nextMp.End)
 	return
@@ -502,6 +519,9 @@ func (vol *Vol) createMetaPartition(c *Cluster, start, end uint64) (err error) {
 	var mp *MetaPartition
 	if mp, err = vol.doCreateMetaPartition(c, start, end); err != nil {
 		return
+	}
+	if err = c.syncAddMetaPartition(mp); err != nil {
+		return errors.NewError(err)
 	}
 	vol.addMetaPartition(mp)
 	return
@@ -566,9 +586,6 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	default:
 		mp.Status = proto.ReadWrite
 	}
-	if err = c.syncAddMetaPartition(mp); err != nil {
-		return nil, errors.NewError(err)
-	}
-	log.LogInfof("action[CreateMetaPartition] success,volName[%v],partition[%v]", vol.Name, partitionID)
+	log.LogInfof("action[doCreateMetaPartition] success,volName[%v],partition[%v]", vol.Name, partitionID)
 	return
 }

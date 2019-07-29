@@ -35,10 +35,10 @@ func createMetaPartition(vol *Vol, t *testing.T) {
 	}
 	var start uint64
 	start = mp.Start + defaultMetaPartitionInodeIDStep
-	reqUrl := fmt.Sprintf("%v%v?name=%v&start=%v",
+	reqURL := fmt.Sprintf("%v%v?name=%v&start=%v",
 		hostAddr, proto.AdminCreateMP, vol.Name, start)
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
+	fmt.Println(reqURL)
+	process(reqURL, t)
 	vol, err = server.cluster.getVol(vol.Name)
 	if err != nil {
 		t.Error(err)
@@ -58,24 +58,24 @@ func createMetaPartition(vol *Vol, t *testing.T) {
 }
 
 func getMetaPartition(volName string, id uint64, t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?name=%v&id=%v",
+	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v",
 		hostAddr, proto.ClientMetaPartition, volName, id)
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
+	fmt.Println(reqURL)
+	process(reqURL, t)
 }
 
 func loadMetaPartitionTest(vol *Vol, id uint64, t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?name=%v&id=%v", hostAddr, proto.AdminLoadMetaPartition, vol.Name, id)
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v", hostAddr, proto.AdminLoadMetaPartition, vol.Name, id)
+	fmt.Println(reqURL)
+	process(reqURL, t)
 }
 
 func decommissionMetaPartition(vol *Vol, id uint64, t *testing.T) {
 	server.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
-	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetCluster)
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetCluster)
+	fmt.Println(reqURL)
+	process(reqURL, t)
 	vol, err := server.cluster.getVol(vol.Name)
 	if err != nil {
 		t.Error(err)
@@ -87,10 +87,10 @@ func decommissionMetaPartition(vol *Vol, id uint64, t *testing.T) {
 		return
 	}
 	offlineAddr := mp.Hosts[0]
-	reqUrl = fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
+	reqURL = fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
 		hostAddr, proto.AdminDecommissionMetaPartition, vol.Name, id, offlineAddr)
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
+	fmt.Println(reqURL)
+	process(reqURL, t)
 	mp, err = server.cluster.getMetaPartitionByID(id)
 	if err != nil {
 		t.Errorf("decommissionMetaPartition,err [%v]", err)

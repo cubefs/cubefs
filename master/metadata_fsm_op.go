@@ -331,15 +331,36 @@ func (c *Cluster) syncDeleteMetaPartition(mp *MetaPartition) (err error) {
 }
 
 func (c *Cluster) putMetaPartitionInfo(opType uint32, mp *MetaPartition) (err error) {
-	metadata := new(RaftCmd)
+	metadata, err := c.buildMetaPartitionRaftCmd(opType, mp)
+	if err != nil {
+		return
+	}
+	return c.submit(metadata)
+}
+
+func (c *Cluster) buildMetaPartitionRaftCmd(opType uint32, mp *MetaPartition) (metadata *RaftCmd, err error) {
+	metadata = new(RaftCmd)
 	metadata.Op = opType
 	partitionID := strconv.FormatUint(mp.PartitionID, 10)
 	metadata.K = metaPartitionPrefix + strconv.FormatUint(mp.volID, 10) + keySeparator + partitionID
 	mpv := newMetaPartitionValue(mp)
 	if metadata.V, err = json.Marshal(mpv); err != nil {
-		return errors.New(err.Error())
+		return metadata, errors.New(err.Error())
 	}
-	return c.submit(metadata)
+	return
+}
+
+func (c *Cluster) syncBatchCommitCmd(cmdMap map[string]*RaftCmd) (err error) {
+	value, err := json.Marshal(cmdMap)
+	if err != nil {
+		return
+	}
+	cmd := &RaftCmd{
+		Op: opSyncBatchPut,
+		K:  "batch_put",
+		V:  value,
+	}
+	return c.submit(cmd)
 }
 
 // key=#mn#id#addr,value = nil

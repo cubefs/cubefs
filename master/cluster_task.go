@@ -539,15 +539,8 @@ func (c *Cluster) updateMetaNode(metaNode *MetaNode, metaPartitions []*proto.Met
 		}
 		//send latest end to replica
 		if mr.End != mp.End {
-			tasks := make([]*proto.AdminTask, 0)
-			t := mp.createTaskToUpdateMetaReplica(c.Name, mp.PartitionID, mp.End)
-			//if no leader,don't update end
-			if t != nil {
-				tasks = append(tasks, t)
-				c.addMetaNodeTasks(tasks)
-			}
+			mp.addUpdateMetaReplicaTask(c)
 		}
-
 		mp.updateMetaPartition(mr, metaNode)
 		c.updateInodeIDUpperBound(mp, mr, threshold, metaNode)
 	}

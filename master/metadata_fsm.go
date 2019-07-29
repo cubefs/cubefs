@@ -102,8 +102,21 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 	}
 	log.LogInfof("action[fsmApply],cmd.op[%v],cmd.K[%v],cmd.V[%v]", cmd.Op, cmd.K, string(cmd.V))
 	cmdMap := make(map[string][]byte)
-	cmdMap[cmd.K] = cmd.V
-	cmdMap[applied] = []byte(strconv.FormatUint(uint64(index), 10))
+	if cmd.Op != opSyncBatchPut {
+		cmdMap[cmd.K] = cmd.V
+		cmdMap[applied] = []byte(strconv.FormatUint(uint64(index), 10))
+	} else {
+		nestedCmdMap := make(map[string]*RaftCmd)
+		if err = json.Unmarshal(cmd.V, &nestedCmdMap); err != nil {
+			log.LogErrorf("action[fsmApply],unmarshal nested cmd data:%v, err:%v", command, err.Error())
+			panic(err)
+		}
+		for cmdK, cmd := range nestedCmdMap {
+			log.LogInfof("action[fsmApply],cmd.op[%v],cmd.K[%v],cmd.V[%v]", cmd.Op, cmd.K, string(cmd.V))
+			cmdMap[cmdK] = cmd.V
+		}
+		cmdMap[applied] = []byte(strconv.FormatUint(uint64(index), 10))
+	}
 	switch cmd.Op {
 	case opSyncDeleteDataNode, opSyncDeleteMetaNode, opSyncDeleteVol, opSyncDeleteDataPartition, opSyncDeleteMetaPartition:
 		if err = mf.delKeyAndPutIndex(cmd.K, cmdMap); err != nil {

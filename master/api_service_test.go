@@ -55,7 +55,7 @@ var server = createMasterServer()
 var commonVol *Vol
 
 func createMasterServer() *Server {
-	cfgJson := `{
+	cfgJSON := `{
 	"role": "master",
 		"ip": "127.0.0.1",
 		"port": "8080",
@@ -69,7 +69,7 @@ func createMasterServer() *Server {
 		"storeDir":"/export/chubaofs/rocksdbstore",
 		"clusterName":"chubaofs"
 	}`
-	cfg := config.LoadConfigString(cfgJson)
+	cfg := config.LoadConfigString(cfgJSON)
 	server := NewServer()
 	useConnPool = false
 	logDir := cfg.GetString(ConfigKeyLogDir)
@@ -149,9 +149,9 @@ func addMetaServer(addr string) {
 
 func TestSetMetaNodeThreshold(t *testing.T) {
 	threshold := 0.5
-	reqUrl := fmt.Sprintf("%v%v?threshold=%v", hostAddr, proto.AdminSetMetaNodeThreshold, threshold)
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v?threshold=%v", hostAddr, proto.AdminSetMetaNodeThreshold, threshold)
+	fmt.Println(reqURL)
+	process(reqURL, t)
 	if server.cluster.cfg.MetaNodeThreshold != float32(threshold) {
 		t.Errorf("set metanode threshold to %v failed", threshold)
 		return
@@ -160,9 +160,9 @@ func TestSetMetaNodeThreshold(t *testing.T) {
 
 func TestSetDisableAutoAlloc(t *testing.T) {
 	enable := true
-	reqUrl := fmt.Sprintf("%v%v?enable=%v", hostAddr, proto.AdminClusterFreeze, enable)
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v?enable=%v", hostAddr, proto.AdminClusterFreeze, enable)
+	fmt.Println(reqURL)
+	process(reqURL, t)
 	if server.cluster.DisableAutoAllocate != enable {
 		t.Errorf("set disableAutoAlloc to %v failed", enable)
 		return
@@ -170,19 +170,19 @@ func TestSetDisableAutoAlloc(t *testing.T) {
 }
 
 func TestGetCluster(t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetCluster)
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetCluster)
+	fmt.Println(reqURL)
+	process(reqURL, t)
 }
 
 func TestGetIpAndClusterName(t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetIP)
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetIP)
+	fmt.Println(reqURL)
+	process(reqURL, t)
 }
 
-func process(reqUrl string, t *testing.T) (reply *proto.HTTPReply) {
-	resp, err := http.Get(reqUrl)
+func process(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
+	resp, err := http.Get(reqURL)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
@@ -218,10 +218,10 @@ func TestDisk(t *testing.T) {
 }
 
 func decommissionDisk(addr, path string, t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?addr=%v&disk=%v",
+	reqURL := fmt.Sprintf("%v%v?addr=%v&disk=%v",
 		hostAddr, proto.DecommissionDisk, addr, path)
-	fmt.Println(reqUrl)
-	resp, err := http.Get(reqUrl)
+	fmt.Println(reqURL)
+	resp, err := http.Get(reqURL)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
@@ -248,15 +248,15 @@ func decommissionDisk(addr, path string, t *testing.T) {
 func TestMarkDeleteVol(t *testing.T) {
 	name := "delVol"
 	createVol(name, t)
-	reqUrl := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey())
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey())
+	process(reqURL, t)
 }
 
 func TestUpdateVol(t *testing.T) {
 	capacity := 2000
-	reqUrl := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
+	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
 		hostAddr, proto.AdminUpdateVol, commonVol.Name, capacity, buildAuthKey())
-	process(reqUrl, t)
+	process(reqURL, t)
 }
 func buildAuthKey() string {
 	h := md5.New()
@@ -266,15 +266,15 @@ func buildAuthKey() string {
 }
 
 func TestGetVolSimpleInfo(t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminGetVol, commonVol.Name)
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminGetVol, commonVol.Name)
+	process(reqURL, t)
 }
 
 func TestCreateVol(t *testing.T) {
 	name := "test_create_vol"
-	reqUrl := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs", hostAddr, proto.AdminCreateVol, name)
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs", hostAddr, proto.AdminCreateVol, name)
+	fmt.Println(reqURL)
+	process(reqURL, t)
 }
 
 func TestCreateMetaPartition(t *testing.T) {
@@ -285,9 +285,9 @@ func TestCreateMetaPartition(t *testing.T) {
 }
 
 func TestCreateDataPartition(t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?count=2&name=%v&type=extent",
+	reqURL := fmt.Sprintf("%v%v?count=2&name=%v&type=extent",
 		hostAddr, proto.AdminCreateDataPartition, commonVol.Name)
-	process(reqUrl, t)
+	process(reqURL, t)
 }
 
 func TestGetDataPartition(t *testing.T) {
@@ -296,11 +296,11 @@ func TestGetDataPartition(t *testing.T) {
 		return
 	}
 	partition := commonVol.dataPartitions.partitions[0]
-	reqUrl := fmt.Sprintf("%v%v?id=%v", hostAddr, proto.AdminGetDataPartition, partition.PartitionID)
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v?id=%v", hostAddr, proto.AdminGetDataPartition, partition.PartitionID)
+	process(reqURL, t)
 
-	reqUrl = fmt.Sprintf("%v%v?id=%v&name=%v", hostAddr, proto.AdminGetDataPartition, partition.PartitionID, partition.VolName)
-	process(reqUrl, t)
+	reqURL = fmt.Sprintf("%v%v?id=%v&name=%v", hostAddr, proto.AdminGetDataPartition, partition.PartitionID, partition.VolName)
+	process(reqURL, t)
 }
 
 func TestLoadDataPartition(t *testing.T) {
@@ -309,9 +309,9 @@ func TestLoadDataPartition(t *testing.T) {
 		return
 	}
 	partition := commonVol.dataPartitions.partitions[0]
-	reqUrl := fmt.Sprintf("%v%v?id=%v&name=%v",
+	reqURL := fmt.Sprintf("%v%v?id=%v&name=%v",
 		hostAddr, proto.AdminLoadDataPartition, partition.PartitionID, commonVol.Name)
-	process(reqUrl, t)
+	process(reqURL, t)
 }
 
 func TestDataPartitionDecommission(t *testing.T) {
@@ -323,9 +323,9 @@ func TestDataPartitionDecommission(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	partition := commonVol.dataPartitions.partitions[0]
 	offlineAddr := partition.Hosts[0]
-	reqUrl := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
+	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
 		hostAddr, proto.AdminDecommissionDataPartition, commonVol.Name, partition.PartitionID, offlineAddr)
-	process(reqUrl, t)
+	process(reqURL, t)
 	if contains(partition.Hosts, offlineAddr) {
 		t.Errorf("offlineAddr[%v],hosts[%v]", offlineAddr, partition.Hosts)
 		return
@@ -333,26 +333,26 @@ func TestDataPartitionDecommission(t *testing.T) {
 }
 
 //func TestGetAllVols(t *testing.T) {
-//	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.GetALLVols)
-//	process(reqUrl, t)
+//	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.GetALLVols)
+//	process(reqURL, t)
 //}
 //
 func TestGetMetaPartitions(t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.ClientMetaPartitions, commonVolName)
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.ClientMetaPartitions, commonVolName)
+	process(reqURL, t)
 }
 
 func TestGetDataPartitions(t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.ClientDataPartitions, commonVolName)
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.ClientDataPartitions, commonVolName)
+	process(reqURL, t)
 }
 
 func TestGetTopo(t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.GetTopologyView)
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.GetTopologyView)
+	process(reqURL, t)
 }
 
 func TestGetMetaNode(t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetMetaNode, mms1Addr)
-	process(reqUrl, t)
+	reqURL := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetMetaNode, mms1Addr)
+	process(reqURL, t)
 }

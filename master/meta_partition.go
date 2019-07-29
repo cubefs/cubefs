@@ -126,18 +126,21 @@ func (mp *MetaPartition) updateInodeIDRangeForAllReplicas() {
 	}
 }
 
-func (mp *MetaPartition) updateInodeIDRange(c *Cluster, end uint64) (err error) {
+//canSplit caller must be add lock
+func (mp *MetaPartition) canSplit(end uint64) (err error) {
+	if end < mp.Start {
+		err = fmt.Errorf("end[%v] less than mp.start[%v]", end, mp.Start)
+		return
+	}
 	// overflow
 	if end > (defaultMaxMetaPartitionInodeID - defaultMetaPartitionInodeIDStep) {
-		msg := fmt.Sprintf("action[updateInodeIDRange] clusterID[%v] partitionID[%v] nextStart[%v] "+
-			"to prevent overflow ,not update end", c.Name, mp.PartitionID, end)
+		msg := fmt.Sprintf("action[updateInodeIDRange] vol[%v] partitionID[%v] nextStart[%v] "+
+			"to prevent overflow ,not update end", mp.volName, mp.PartitionID, end)
 		log.LogWarn(msg)
 		err = fmt.Errorf(msg)
 		return
 	}
-	mp.Lock()
-	defer mp.Unlock()
-	if end < mp.MaxNodeID {
+	if end <= mp.MaxNodeID {
 		err = fmt.Errorf("next meta partition start must be larger than %v", mp.MaxNodeID)
 		return
 	}
@@ -145,25 +148,21 @@ func (mp *MetaPartition) updateInodeIDRange(c *Cluster, end uint64) (err error) 
 		log.LogWarnf("action[updateInodeIDRange] vol[%v] id[%v] no leader", mp.volName, mp.PartitionID)
 		return
 	}
-	oldEnd := mp.End
-	mp.End = end
-	if err = c.syncUpdateMetaPartition(mp); err != nil {
-		mp.End = oldEnd
-		log.LogErrorf("action[updateInodeIDRange] partitionID[%v] err[%v]", mp.PartitionID, err)
-		return proto.ErrPersistenceByRaft
-	}
-	mp.updateInodeIDRangeForAllReplicas()
+	return
+}
+
+func (mp *MetaPartition) addUpdateMetaReplicaTask(c *Cluster) (err error) {
+
 	tasks := make([]*proto.AdminTask, 0)
-	t := mp.createTaskToUpdateMetaReplica(c.Name, mp.PartitionID, end)
+	t := mp.createTaskToUpdateMetaReplica(c.Name, mp.PartitionID, mp.End)
 	//if no leader,don't update end
 	if t == nil {
-		mp.End = oldEnd
 		err = proto.ErrNoLeader
 		return
 	}
 	tasks = append(tasks, t)
 	c.addMetaNodeTasks(tasks)
-	log.LogWarnf("action[updateInodeIDRange] partitionID[%v] end[%v] success", mp.PartitionID, mp.End)
+	log.LogWarnf("action[addUpdateMetaReplicaTask] partitionID[%v] end[%v] success", mp.PartitionID, mp.End)
 	return
 }
 
@@ -184,24 +183,21 @@ func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
 		log.LogWarnf("action[checkEnd] partition[%v] not max partition[%v]", mp.PartitionID, curMaxPartitionID)
 		return
 	}
+	if _, err = mp.getMetaReplicaLeader(); err != nil {
+		log.LogWarnf("action[checkEnd] partition[%v] no leader", mp.PartitionID)
+		return
+	}
 	if mp.End != defaultMaxMetaPartitionInodeID {
 		oldEnd := mp.End
 		mp.End = defaultMaxMetaPartitionInodeID
 		if err := c.syncUpdateMetaPartition(mp); err != nil {
 			mp.End = oldEnd
 			log.LogErrorf("action[checkEnd] partitionID[%v] err[%v]", mp.PartitionID, err)
-		}
-		t := mp.createTaskToUpdateMetaReplica(c.Name, mp.PartitionID, mp.End)
-		//if no leader,don't update end
-		if t == nil {
-			mp.End = oldEnd
-			err = proto.ErrNoLeader
 			return
 		}
-		tasks := make([]*proto.AdminTask, 0)
-		tasks = append(tasks, t)
-		c.addMetaNodeTasks(tasks)
-
+		if err = mp.addUpdateMetaReplicaTask(c); err != nil {
+			mp.End = oldEnd
+		}
 	}
 	log.LogWarnf("action[checkEnd] partitionID[%v] end[%v]", mp.PartitionID, mp.End)
 }
@@ -242,6 +238,12 @@ func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int) {
 		mr, err := mp.getMetaReplicaLeader()
 		if err != nil {
 			mp.Status = proto.Unavailable
+		}
+		for _, replica := range liveReplicas {
+			if replica.Status == proto.ReadOnly {
+				mp.Status = proto.ReadOnly
+				break
+			}
 		}
 		mp.Status = mr.Status
 	}
