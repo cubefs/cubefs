@@ -44,6 +44,7 @@ type MountOption struct {
 	EnSyncWrite   int64
 	UmpDatadir    string
 	Rdonly        bool
+	WriteCache    bool
 }
 
 type Super struct {
