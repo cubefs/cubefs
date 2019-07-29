@@ -43,6 +43,8 @@ type MountOption struct {
 	EnSyncWrite   int64
 	AutoInvalData int64
 	UmpDatadir    string
+	Rdonly        bool
+	WriteCache    bool
 }
 
 // Super defines the struct of a super block.

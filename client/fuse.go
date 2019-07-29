@@ -38,6 +38,7 @@ import (
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 	cfs "github.com/chubaofs/chubaofs/client/fs"
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
@@ -191,16 +192,24 @@ func mount(opt *cfs.MountOption) (fsConn *fuse.Conn, super *cfs.Super, err error
 		return
 	}
 
-	fsConn, err = fuse.Mount(
-		opt.MountPoint,
+	options := []fuse.MountOption{
 		fuse.AllowOther(),
 		fuse.MaxReadahead(MaxReadAhead),
 		fuse.AsyncRead(),
 		fuse.AutoInvalData(opt.AutoInvalData),
-		fuse.FSName("chubaofs-"+opt.Volname),
+		fuse.FSName("chubaofs-" + opt.Volname),
 		fuse.LocalVolume(),
-		fuse.VolumeName("chubaofs-"+opt.Volname))
+		fuse.VolumeName("chubaofs-" + opt.Volname)}
 
+	if opt.Rdonly {
+		options = append(options, fuse.ReadOnly())
+	}
+
+	if opt.WriteCache {
+		options = append(options, fuse.WritebackCache())
+	}
+
+	fsConn, err = fuse.Mount(opt.MountPoint, options...)
 	return
 }
 
@@ -218,24 +227,26 @@ func parseMountOption(cfg *config.Config) (*cfs.MountOption, error) {
 	var err error
 	opt := new(cfs.MountOption)
 
-	rawmnt := cfg.GetString("mountPoint")
+	rawmnt := cfg.GetString(proto.MountPoint)
 	opt.MountPoint, err = filepath.Abs(rawmnt)
 	if err != nil {
 		return nil, errors.Trace(err, "invalide mount point (%v) ", rawmnt)
 	}
 
-	opt.Volname = cfg.GetString("volName")
-	opt.Owner = cfg.GetString("owner")
-	opt.Master = cfg.GetString("masterAddr")
-	opt.Logpath = cfg.GetString("logDir")
-	opt.Loglvl = cfg.GetString("logLevel")
-	opt.Profport = cfg.GetString("profPort")
-	opt.IcacheTimeout = parseConfigString(cfg, "icacheTimeout")
-	opt.LookupValid = parseConfigString(cfg, "lookupValid")
-	opt.AttrValid = parseConfigString(cfg, "attrValid")
-	opt.EnSyncWrite = parseConfigString(cfg, "enSyncWrite")
-	opt.AutoInvalData = parseConfigString(cfg, "autoInvalData")
-	opt.UmpDatadir = cfg.GetString("warnLogDir")
+	opt.Volname = cfg.GetString(proto.VolName)
+	opt.Owner = cfg.GetString(proto.Owner)
+	opt.Master = cfg.GetString(proto.MasterAddr)
+	opt.Logpath = cfg.GetString(proto.LogDir)
+	opt.Loglvl = cfg.GetString(proto.LogLevel)
+	opt.Profport = cfg.GetString(proto.ProfPort)
+	opt.IcacheTimeout = parseConfigString(cfg, proto.IcacheTimeout)
+	opt.LookupValid = parseConfigString(cfg, proto.LookupValid)
+	opt.AttrValid = parseConfigString(cfg, proto.AttrValid)
+	opt.EnSyncWrite = parseConfigString(cfg, proto.EnSyncWrite)
+	opt.AutoInvalData = parseConfigString(cfg, proto.AutoInvalData)
+	opt.UmpDatadir = cfg.GetString(proto.WarnLogDir)
+	opt.Rdonly = cfg.GetBool(proto.Rdonly)
+	opt.WriteCache = cfg.GetBool(proto.WriteCache)
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
