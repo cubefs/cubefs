@@ -776,16 +776,16 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 		err = errors.NewErrorf("[opOfflineDataPartition]: AddPeer[%v] same withRemovePeer[%v]", req.AddPeer, req.RemovePeer)
 		return
 	}
-
-	_, err = dp.ChangeRaftMember(raftProto.ConfAddNode, raftProto.Peer{ID: req.AddPeer.ID}, reqData)
-	if err != nil {
-		return
+	if req.AddPeer.ID != 0 {
+		_, err = dp.ChangeRaftMember(raftProto.ConfAddNode, raftProto.Peer{ID: req.AddPeer.ID}, reqData)
+		if err != nil {
+			return
+		}
 	}
 	_, err = dp.ChangeRaftMember(raftProto.ConfRemoveNode, raftProto.Peer{ID: req.RemovePeer.ID}, reqData)
 	if err != nil {
 		return
 	}
-
 	log.LogDebugf("[opOfflineDataPartition]: the end %v", adminTask)
 	return
 }

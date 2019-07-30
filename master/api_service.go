@@ -368,17 +368,18 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		name     string
-		authKey  string
-		err      error
-		msg      string
-		capacity int
+		name       string
+		authKey    string
+		err        error
+		msg        string
+		capacity   int
+		replicaNum int
 	)
-	if name, authKey, capacity, err = parseRequestToUpdateVol(r); err != nil {
+	if name, authKey, capacity, replicaNum, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.updateVol(name, authKey, capacity); err != nil {
+	if err = m.cluster.updateVol(name, authKey, uint64(capacity), uint8(replicaNum)); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -791,7 +792,7 @@ func parseRequestToDeleteVol(r *http.Request) (name, authKey string, err error) 
 
 }
 
-func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity int, err error) {
+func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity, replicaNum int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -807,6 +808,9 @@ func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity in
 		}
 	} else {
 		err = keyNotFound(volCapacityKey)
+	}
+	if replicaNumStr := r.FormValue(replicaNumKey); replicaNumStr != "" {
+		replicaNum, _ = strconv.Atoi(replicaNumStr)
 	}
 	return
 }

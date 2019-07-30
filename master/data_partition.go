@@ -28,14 +28,14 @@ import (
 
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
-	PartitionID    uint64
-	LastLoadedTime int64
-	ReplicaNum     uint8
-	Status         int8
-	isRecover      bool
-	Replicas       []*DataReplica
-	Hosts          []string // host addresses
-	Peers          []proto.Peer
+	PartitionID             uint64
+	LastLoadedTime          int64
+	ReplicaNum              uint8
+	Status                  int8
+	isRecover               bool
+	Replicas                []*DataReplica
+	Hosts                   []string // host addresses
+	Peers                   []proto.Peer
 	sync.RWMutex
 	total                   uint64
 	used                    uint64
@@ -341,13 +341,17 @@ func (partition *DataPartition) hasReplica(host string) (replica *DataReplica, o
 	return
 }
 
-func (partition *DataPartition) checkReplicaNum(c *Cluster, volName string) {
+func (partition *DataPartition) checkReplicaNum(c *Cluster, vol *Vol) {
 	partition.RLock()
 	defer partition.RUnlock()
 	if int(partition.ReplicaNum) != len(partition.Hosts) {
 		msg := fmt.Sprintf("FIX DataPartition replicaNum,clusterID[%v] volName[%v] partitionID:%v orgReplicaNum:%v",
-			c.Name, volName, partition.PartitionID, partition.ReplicaNum)
+			c.Name, vol.Name, partition.PartitionID, partition.ReplicaNum)
 		Warn(c.Name, msg)
+	}
+
+	if vol.dpReplicaNum != partition.ReplicaNum && !vol.NeedToLowerReplica {
+		vol.NeedToLowerReplica = true
 	}
 }
 
@@ -582,4 +586,15 @@ func (partition *DataPartition) getMinus() (minus float64) {
 		}
 	}
 	return minus
+}
+
+func (partition *DataPartition) getToBeDecommissionHost() (host string) {
+	partition.RLock()
+	defer partition.RUnlock()
+	hostLen := len(partition.Hosts)
+	if hostLen == 1 {
+		return
+	}
+	host = partition.Hosts[hostLen-1]
+	return
 }

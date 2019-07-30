@@ -77,14 +77,14 @@ func getSimpleVol(name string, t *testing.T) {
 }
 
 func getVol(name string, t *testing.T) {
-	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.ClientVol, name, buildAuthKey())
+	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.ClientVol, name, buildAuthKey("cfs"))
 	fmt.Println(reqURL)
 	process(reqURL, t)
 }
 
 func updateVol(name string, capacity int, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
-		hostAddr, proto.AdminUpdateVol, name, capacity, buildAuthKey())
+		hostAddr, proto.AdminUpdateVol, name, capacity, buildAuthKey("cfs"))
 	fmt.Println(reqURL)
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(name)
@@ -107,7 +107,7 @@ func statVol(name string, t *testing.T) {
 
 func markDeleteVol(name string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v",
-		hostAddr, proto.AdminDeleteVol, name, buildAuthKey())
+		hostAddr, proto.AdminDeleteVol, name, buildAuthKey("cfs"))
 	fmt.Println(reqURL)
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(name)
@@ -118,5 +118,40 @@ func markDeleteVol(name string, t *testing.T) {
 	if vol.Status != markDelete {
 		t.Errorf("markDeleteVol failed,expect[%v],real[%v]", markDelete, vol.Status)
 		return
+	}
+}
+
+func TestVolReduceReplicaNum(t *testing.T) {
+	volName := "reduce-replica-num"
+	vol, err := server.cluster.createVol(volName, volName, 3, util.DefaultDataPartitionSize, 100)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	server.cluster.checkDataNodeHeartbeat()
+	time.Sleep(2 * time.Second)
+	for _, dp := range vol.dataPartitions.partitionMap {
+		t.Logf("dp[%v] replicaNum[%v],hostLen[%v]\n", dp.PartitionID, dp.ReplicaNum, len(dp.Hosts))
+	}
+	oldReplicaNum := vol.dpReplicaNum
+	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&replicaNum=%v&authKey=%v",
+		hostAddr, proto.AdminUpdateVol, volName, 100, 1, buildAuthKey(volName))
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	if vol.dpReplicaNum != 1 {
+		t.Error("update vol replica Num to [1] failed")
+		return
+	}
+	for i := 0; i < int(oldReplicaNum); i++ {
+		t.Logf("before check,needToLowerReplica[%v] \n", vol.NeedToLowerReplica)
+		vol.checkDataPartitions(server.cluster)
+		t.Logf(" after check,needToLowerReplica[%v]\n", vol.NeedToLowerReplica)
+		vol.checkReplicaNum(server.cluster)
+	}
+	for _, dp := range vol.dataPartitions.partitionMap {
+		if dp.ReplicaNum != vol.dpReplicaNum || len(dp.Hosts) != int(vol.dpReplicaNum) {
+			t.Errorf("dp.replicaNum[%v],hosts[%v],vol.dpReplicaNum[%v]\n", dp.ReplicaNum, len(dp.Hosts), vol.dpReplicaNum)
+			return
+		}
 	}
 }

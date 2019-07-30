@@ -248,19 +248,19 @@ func decommissionDisk(addr, path string, t *testing.T) {
 func TestMarkDeleteVol(t *testing.T) {
 	name := "delVol"
 	createVol(name, t)
-	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey())
+	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey("cfs"))
 	process(reqURL, t)
 }
 
 func TestUpdateVol(t *testing.T) {
 	capacity := 2000
 	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
-		hostAddr, proto.AdminUpdateVol, commonVol.Name, capacity, buildAuthKey())
+		hostAddr, proto.AdminUpdateVol, commonVol.Name, capacity, buildAuthKey("cfs"))
 	process(reqURL, t)
 }
-func buildAuthKey() string {
+func buildAuthKey(owner string) string {
 	h := md5.New()
-	h.Write([]byte("cfs"))
+	h.Write([]byte(owner))
 	cipherStr := h.Sum(nil)
 	return hex.EncodeToString(cipherStr)
 }

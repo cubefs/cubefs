@@ -26,22 +26,23 @@ import (
 
 // Vol represents a set of meta partitionMap and data partitionMap
 type Vol struct {
-	ID                uint64
-	Name              string
-	Owner             string
-	dpReplicaNum      uint8
-	mpReplicaNum      uint8
-	Status            uint8
-	threshold         float32
-	dataPartitionSize uint64
-	Capacity          uint64 // GB
-	MetaPartitions    map[uint64]*MetaPartition
-	mpsLock           sync.RWMutex
-	dataPartitions    *DataPartitionMap
-	mpsCache          []byte
-	viewCache         []byte
-	createDpMutex     sync.RWMutex
-	createMpMutex     sync.RWMutex
+	ID                 uint64
+	Name               string
+	Owner              string
+	dpReplicaNum       uint8
+	mpReplicaNum       uint8
+	Status             uint8
+	threshold          float32
+	dataPartitionSize  uint64
+	Capacity           uint64 // GB
+	NeedToLowerReplica bool
+	MetaPartitions     map[uint64]*MetaPartition
+	mpsLock            sync.RWMutex
+	dataPartitions     *DataPartitionMap
+	mpsCache           []byte
+	viewCache          []byte
+	createDpMutex      sync.RWMutex
+	createMpMutex      sync.RWMutex
 	sync.RWMutex
 }
 
@@ -144,17 +145,6 @@ func (vol *Vol) initDataPartitions(c *Cluster) {
 	}
 	return
 }
-func (vol *Vol) checkDataPartitionStatus(c *Cluster) (cnt int) {
-	vol.dataPartitions.RLock()
-	defer vol.dataPartitions.RUnlock()
-	for _, dp := range vol.dataPartitions.partitionMap {
-		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec)
-		if dp.Status == proto.ReadWrite {
-			cnt++
-		}
-	}
-	return
-}
 
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	if vol.getDataPartitionsCount() == 0 {
@@ -167,7 +157,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec)
 
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
-		dp.checkReplicaNum(c, vol.Name)
+		dp.checkReplicaNum(c, vol)
 		if dp.Status == proto.ReadWrite {
 			cnt++
 		}
@@ -200,6 +190,42 @@ func (vol *Vol) releaseDataPartitions(releaseCount int, afterLoadSeconds int64) 
 	msg := fmt.Sprintf("action[freeMemOccupiedByDataPartitions] vol[%v] release data partition start:%v releaseCount:%v",
 		vol.Name, startIndex, len(partitions))
 	log.LogInfo(msg)
+}
+
+func (vol *Vol) checkReplicaNum(c *Cluster) {
+	if !vol.NeedToLowerReplica {
+		return
+	}
+	vol.dataPartitions.RLock()
+	defer vol.dataPartitions.RUnlock()
+	var (
+		err     error
+		replica *DataReplica
+	)
+	for _, dp := range vol.dataPartitions.partitionMap {
+		host := dp.getToBeDecommissionHost()
+		if host == "" {
+			continue
+		}
+		replica, err = dp.getReplica(host)
+		if err != nil {
+			continue
+		}
+		removePeer := proto.Peer{ID: replica.dataNode.ID, Addr: host}
+		if err = c.syncDecommissionDataPartition(dp, host, removePeer, proto.Peer{}); err != nil {
+			log.LogError(err)
+			continue
+		}
+		oldReplicaNum := dp.ReplicaNum
+		oldHosts := dp.Hosts
+		dp.ReplicaNum = dp.ReplicaNum - 1
+		dp.Hosts = dp.Hosts[:dp.ReplicaNum]
+		if err = c.syncUpdateDataPartition(dp); err != nil {
+			dp.ReplicaNum = oldReplicaNum
+			dp.Hosts = oldHosts
+		}
+	}
+	vol.NeedToLowerReplica = false
 }
 
 func (vol *Vol) checkMetaPartitions(c *Cluster) {
@@ -238,12 +264,6 @@ func (vol *Vol) status() uint8 {
 	vol.RLock()
 	defer vol.RUnlock()
 	return vol.Status
-}
-
-func (vol *Vol) setCapacity(capacity uint64) {
-	vol.Lock()
-	defer vol.Unlock()
-	vol.Capacity = capacity
 }
 
 func (vol *Vol) capacity() uint64 {

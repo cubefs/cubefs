@@ -26,16 +26,19 @@ import (
 )
 
 func (c *Cluster) addDataNodeTasks(tasks []*proto.AdminTask) {
-
 	for _, t := range tasks {
-		if t == nil {
-			continue
-		}
-		if node, err := c.dataNode(t.OperatorAddr); err != nil {
-			log.LogWarn(fmt.Sprintf("action[putTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err))
-		} else {
-			node.TaskManager.AddTask(t)
-		}
+		c.addDataNodeTask(t)
+	}
+}
+
+func (c *Cluster) addDataNodeTask(task *proto.AdminTask) {
+	if task == nil {
+		return
+	}
+	if node, err := c.dataNode(task.OperatorAddr); err != nil {
+		log.LogWarn(fmt.Sprintf("action[putTasks],nodeAddr:%v,taskID:%v,err:%v", task.OperatorAddr, task.ID, err))
+	} else {
+		node.TaskManager.AddTask(task)
 	}
 }
 
