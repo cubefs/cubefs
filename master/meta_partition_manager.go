@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-func (c *Cluster) startCheckLoadMetaPartitions() {
+func (c *Cluster) scheduleToLoadMetaPartitions() {
 	go func() {
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {

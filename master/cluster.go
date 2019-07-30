@@ -76,7 +76,8 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckAutoDataPartitionCreation()
 	c.scheduleToCheckVolStatus()
 	c.scheduleToCheckDiskRecoveryProgress()
-	c.startCheckLoadMetaPartitions()
+	c.scheduleToLoadMetaPartitions()
+	c.scheduleToReduceReplicaNum()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -281,6 +282,31 @@ func (c *Cluster) checkMetaPartitions() {
 	vols := c.allVols()
 	for _, vol := range vols {
 		vol.checkMetaPartitions(c)
+	}
+}
+
+func (c *Cluster) scheduleToReduceReplicaNum() {
+	go func() {
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				c.checkVolReduceReplicaNum()
+			}
+			time.Sleep(5 *time.Minute)
+		}
+	}()
+}
+
+func (c *Cluster) checkVolReduceReplicaNum() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("checkVolReduceReplicaNum occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"checkVolReduceReplicaNum occurred panic")
+		}
+	}()
+	vols := c.allVols()
+	for _, vol := range vols {
+		vol.checkReplicaNum(c)
 	}
 }
 
@@ -893,26 +919,38 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 	go metaNode.clean()
 }
 
-func (c *Cluster) updateVol(name, authKey string, capacity int) (err error) {
+func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum uint8) (err error) {
 	var (
-		vol           *Vol
-		serverAuthKey string
+		vol             *Vol
+		serverAuthKey   string
+		oldDpReplicaNum uint8
+		oldCapacity     uint64
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
 		err = proto.ErrVolNotExists
 		goto errHandler
 	}
+	vol.Lock()
+	defer vol.Unlock()
 	serverAuthKey = vol.Owner
 	if !matchKey(serverAuthKey, authKey) {
 		return proto.ErrVolAuthKeyNotMatch
 	}
-	if uint64(capacity) < vol.Capacity {
+	if capacity < vol.Capacity {
 		err = fmt.Errorf("capacity[%v] less than old capacity[%v]", capacity, vol.Capacity)
 		goto errHandler
 	}
-	vol.setCapacity(uint64(capacity))
+	oldCapacity = vol.Capacity
+	oldDpReplicaNum = vol.dpReplicaNum
+	vol.Capacity = capacity
+	//only reduced replica num is supported
+	if replicaNum != 0 && replicaNum < vol.dpReplicaNum {
+		vol.dpReplicaNum = replicaNum
+	}
 	if err = c.syncUpdateVol(vol); err != nil {
+		vol.Capacity = oldCapacity
+		vol.dpReplicaNum = oldDpReplicaNum
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
 		goto errHandler
