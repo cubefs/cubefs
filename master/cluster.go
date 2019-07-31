@@ -291,7 +291,7 @@ func (c *Cluster) scheduleToReduceReplicaNum() {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.checkVolReduceReplicaNum()
 			}
-			time.Sleep(5 *time.Minute)
+			time.Sleep(5 * time.Minute)
 		}
 	}()
 }
@@ -543,6 +543,7 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 		wg.Wait()
 		goto errHandler
 	default:
+		dp.total = util.DefaultDataPartitionSize
 		dp.Status = proto.ReadWrite
 	}
 	if err = c.syncAddDataPartition(dp); err != nil {

@@ -523,6 +523,7 @@ func (partition *DataPartition) afterCreation(nodeAddr, diskPath string, c *Clus
 	replica.Status = proto.ReadWrite
 	replica.DiskPath = diskPath
 	replica.ReportTime = time.Now().Unix()
+	replica.Total = util.DefaultDataPartitionSize
 	partition.addReplica(replica)
 	partition.checkAndRemoveMissReplica(replica.Addr)
 	return
