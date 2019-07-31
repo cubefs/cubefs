@@ -118,7 +118,7 @@ func (t *replicateTransport) sendSnapshot(m *proto.Message, rs *snapshotStatus) 
 		err = fmt.Errorf("snapshot concurrency exceed the limit %v.", t.config.MaxSnapConcurrency)
 		return
 	}
-	if conn = getConn(m.To, Replicate, t.config.Resolver, 10*time.Minute, 15*time.Second); conn == nil {
+	if conn = getConn(m.To, Replicate, t.config.Resolver, 10*time.Minute, 1*time.Minute); conn == nil {
 		err = fmt.Errorf("can't get connection to %v.", m.To)
 		return
 	}
