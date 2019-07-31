@@ -522,6 +522,7 @@ func (partition *DataPartition) afterCreation(nodeAddr, diskPath string, c *Clus
 	replica := newDataReplica(dataNode)
 	replica.Status = proto.ReadWrite
 	replica.DiskPath = diskPath
+	replica.ReportTime = time.Now().Unix()
 	partition.addReplica(replica)
 	partition.checkAndRemoveMissReplica(replica.Addr)
 	return
