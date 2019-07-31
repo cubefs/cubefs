@@ -68,6 +68,27 @@ func createVol(name string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs&mpCount=2", hostAddr, proto.AdminCreateVol, name)
 	fmt.Println(reqURL)
 	process(reqURL, t)
+	vol, err := server.cluster.getVol(name)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if len(vol.dataPartitions.partitions) == 0 {
+		return
+	}
+	partition := vol.dataPartitions.partitions[0]
+	if partition.Status != proto.ReadWrite {
+		t.Errorf("expect partition status[%v],real status[%v]\n", proto.ReadWrite, partition.Status)
+		return
+	}
+
+	//after check data partitions ,the status must be writable
+	vol.checkDataPartitions(server.cluster)
+	partition = vol.dataPartitions.partitions[0]
+	if partition.Status != proto.ReadWrite {
+		t.Errorf("expect partition status[%v],real status[%v]\n", proto.ReadWrite, partition.Status)
+		return
+	}
 }
 
 func getSimpleVol(name string, t *testing.T) {

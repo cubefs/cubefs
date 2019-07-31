@@ -488,14 +488,7 @@ func (vol *Vol) String() string {
 		vol.Name, vol.dpReplicaNum, vol.mpReplicaNum, vol.Capacity, vol.Status)
 }
 
-func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (err error) {
-	vol.createMpMutex.Lock()
-	defer vol.createMpMutex.Unlock()
-	maxPartitionID := vol.maxPartitionID()
-	if maxPartitionID != mp.PartitionID {
-		err = fmt.Errorf("mp[%v] is not the last meta partition[%v]", mp.PartitionID, maxPartitionID)
-		return
-	}
+func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (nextMp *MetaPartition, err error) {
 	mp.Lock()
 	defer mp.Unlock()
 	if err = mp.canSplit(end); err != nil {
@@ -510,7 +503,6 @@ func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (e
 		return
 	}
 	cmdMap[updateMpRaftCmd.K] = updateMpRaftCmd
-	var nextMp *MetaPartition
 	if nextMp, err = vol.doCreateMetaPartition(c, mp.End+1, defaultMaxMetaPartitionInodeID); err != nil {
 		Warn(c.Name, fmt.Sprintf("action[updateEnd] clusterID[%v] partitionID[%v] create meta partition err[%v]",
 			c.Name, mp.PartitionID, err))
@@ -524,10 +516,25 @@ func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (e
 	cmdMap[addMpRaftCmd.K] = addMpRaftCmd
 	if err = c.syncBatchCommitCmd(cmdMap); err != nil {
 		mp.End = oldEnd
-		return errors.NewError(err)
+		return nil, errors.NewError(err)
 	}
 	mp.updateInodeIDRangeForAllReplicas()
 	mp.addUpdateMetaReplicaTask(c)
+	return
+}
+
+func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (err error) {
+	vol.createMpMutex.Lock()
+	defer vol.createMpMutex.Unlock()
+	maxPartitionID := vol.maxPartitionID()
+	if maxPartitionID != mp.PartitionID {
+		err = fmt.Errorf("mp[%v] is not the last meta partition[%v]", mp.PartitionID, maxPartitionID)
+		return
+	}
+	nextMp, err := vol.doSplitMetaPartition(c, mp, end)
+	if err != nil {
+		return
+	}
 	vol.addMetaPartition(nextMp)
 	log.LogWarnf("action[splitMetaPartition],next partition[%v],start[%v],end[%v]", nextMp.PartitionID, nextMp.Start, nextMp.End)
 	return
