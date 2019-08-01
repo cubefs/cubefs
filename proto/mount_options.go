@@ -18,4 +18,5 @@ const (
 	AutoInvalData = "autoInvalData"
 	Rdonly        = "rdonly"
 	WriteCache    = "writecache"
+	KeepCache     = "keepcache"
 )

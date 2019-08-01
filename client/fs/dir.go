@@ -93,6 +93,10 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	d.super.nodeCache[inode.ino] = child
 	d.super.fslock.Unlock()
 
+	if d.super.keepCache {
+		resp.Flags |= fuse.OpenKeepCache
+	}
+
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Create: parent(%v) req(%v) resp(%v) ino(%v) (%v)ns", d.inode.ino, req, resp, inode.ino, elapsed.Nanoseconds())
 	return child, child, nil
