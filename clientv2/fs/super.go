@@ -45,6 +45,7 @@ type MountOption struct {
 	UmpDatadir    string
 	Rdonly        bool
 	WriteCache    bool
+	KeepCache     bool
 }
 
 type Super struct {
@@ -57,6 +58,7 @@ type Super struct {
 	ec          *stream.ExtentClient
 	orphan      *OrphanInodeList
 	enSyncWrite bool
+	keepCache   bool
 }
 
 var (
@@ -91,6 +93,7 @@ func NewSuper(opt *MountOption) (s *Super, err error) {
 	if opt.EnSyncWrite > 0 {
 		s.enSyncWrite = true
 	}
+	s.keepCache = opt.KeepCache
 	s.hc = NewHandleCache()
 	s.ic = NewInodeCache(inodeExpiration, MaxInodeCache)
 	s.orphan = NewOrphanInodeList()

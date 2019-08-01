@@ -116,6 +116,10 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 	f.super.ec.OpenStream(ino)
 
+	if f.super.keepCache {
+		resp.Flags |= fuse.OpenKeepCache
+	}
+
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Open: ino(%v) req(%v) resp(%v) (%v)ns", ino, req, resp, elapsed.Nanoseconds())
 	return f, nil

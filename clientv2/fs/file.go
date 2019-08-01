@@ -31,6 +31,7 @@ func (s *Super) OpenFile(ctx context.Context, op *fuseops.OpenFileOp) error {
 
 	s.ec.OpenStream(ino)
 	op.Handle = s.hc.Assign(ino)
+	op.KeepPageCache = s.keepCache
 
 	log.LogDebugf("TRACE Open: op(%v) handle(%v)", desc, op.Handle)
 	return nil
