@@ -239,13 +239,13 @@ func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int) {
 		if err != nil {
 			mp.Status = proto.Unavailable
 		}
+		mp.Status = mr.Status
 		for _, replica := range liveReplicas {
 			if replica.Status == proto.ReadOnly {
 				mp.Status = proto.ReadOnly
 				break
 			}
 		}
-		mp.Status = mr.Status
 	}
 
 	if writeLog && len(liveReplicas) != int(mp.ReplicaNum) {
@@ -544,6 +544,7 @@ func (mp *MetaPartition) afterCreation(nodeAddr string, c *Cluster) (err error) 
 	}
 	mr := newMetaReplica(mp.Start, mp.End, metaNode)
 	mr.Status = proto.ReadWrite
+	mr.ReportTime = time.Now().Unix()
 	mp.addReplica(mr)
 	mp.removeMissingReplica(mr.Addr)
 	return
