@@ -228,7 +228,7 @@ func (mp *MetaPartition) checkLeader() {
 	return
 }
 
-func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int) {
+func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int, maxPartitionID uint64) {
 	mp.Lock()
 	defer mp.Unlock()
 	liveReplicas := mp.getLiveReplicas()
@@ -248,6 +248,9 @@ func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int) {
 		}
 	}
 
+	if mp.PartitionID >= maxPartitionID && mp.Status == proto.ReadOnly {
+		mp.Status = proto.ReadWrite
+	}
 	if writeLog && len(liveReplicas) != int(mp.ReplicaNum) {
 		log.LogInfof("action[checkMPStatus],id:%v,status:%v,replicaNum:%v,liveReplicas:%v persistenceHosts:%v",
 			mp.PartitionID, mp.Status, mp.ReplicaNum, len(liveReplicas), mp.Hosts)

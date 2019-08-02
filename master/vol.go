@@ -230,11 +230,12 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 
 func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	var tasks []*proto.AdminTask
+	vol.checkSplitMetaPartition(c)
 	maxPartitionID := vol.maxPartitionID()
 	mps := vol.cloneMetaPartitionMap()
 	for _, mp := range mps {
 
-		mp.checkStatus(true, int(vol.mpReplicaNum))
+		mp.checkStatus(true, int(vol.mpReplicaNum), maxPartitionID)
 		mp.checkLeader()
 		mp.checkReplicaNum(c, vol.Name, vol.mpReplicaNum)
 		mp.checkEnd(c, maxPartitionID)
@@ -242,6 +243,39 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 		tasks = append(tasks, mp.replicaCreationTasks(c.Name, vol.Name)...)
 	}
 	c.addMetaNodeTasks(tasks)
+}
+
+func (vol *Vol) checkSplitMetaPartition(c *Cluster) {
+	maxPartitionID := vol.maxPartitionID()
+	partition, ok := vol.MetaPartitions[maxPartitionID]
+	if !ok {
+		return
+	}
+	liveReplicas := partition.getLiveReplicas()
+	foundReadonlyReplica := false
+	var readonlyReplica *MetaReplica
+	for _, replica := range liveReplicas {
+		if replica.Status == proto.ReadOnly {
+			foundReadonlyReplica = true
+			readonlyReplica = replica
+			break
+		}
+	}
+	if !foundReadonlyReplica {
+		return
+	}
+	if readonlyReplica.metaNode.isWritable() {
+		msg := fmt.Sprintf("action[checkSplitMetaPartition] vol[%v],max meta parition[%v] status is readonly\n",
+			vol.Name, partition.PartitionID)
+		Warn(c.Name, msg)
+		return
+	}
+	end := partition.MaxNodeID + defaultMetaPartitionInodeIDStep
+	if err := vol.splitMetaPartition(c, partition, end); err != nil {
+		msg := fmt.Sprintf("action[checkSplitMetaPartition],split meta partition[%v] failed,err[%v]\n",
+			partition.PartitionID, err)
+		Warn(c.Name, msg)
+	}
 }
 
 func (vol *Vol) cloneMetaPartitionMap() (mps map[uint64]*MetaPartition) {
@@ -524,6 +558,9 @@ func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) 
 }
 
 func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (err error) {
+	if c.DisableAutoAllocate {
+		return
+	}
 	vol.createMpMutex.Lock()
 	defer vol.createMpMutex.Unlock()
 	maxPartitionID := vol.maxPartitionID()
