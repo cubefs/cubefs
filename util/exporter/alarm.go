@@ -41,8 +41,8 @@ type Alarm struct {
 }
 
 func Warning(detail string) (a *Alarm) {
+	ump.Alarm(fmt.Sprintf("%v_%v_warning", clustername, modulename), detail)
 	if !enabled {
-		ump.Alarm(fmt.Sprintf("%v_%v_warning", clustername, modulename), detail)
 		return
 	}
 	a = AlarmPool.Get().(*Alarm)
