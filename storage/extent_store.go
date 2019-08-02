@@ -606,12 +606,14 @@ func (s *ExtentStore) GetBrokenTinyExtent() (extentID uint64, err error) {
 	}
 }
 
-// StoreSize returns the size of the extent store
-func (s *ExtentStore) StoreSize() (totalSize uint64) {
+// StoreSizeExtentID returns the size of the extent store
+func (s *ExtentStore) StoreSizeExtentID(maxExtentID uint64) (totalSize uint64) {
 	extentInfos := make([]*ExtentInfo, 0)
 	s.eiMutex.RLock()
 	for _, extentInfo := range s.extentInfoMap {
-		extentInfos = append(extentInfos, extentInfo)
+		if extentInfo.FileID <= maxExtentID {
+			extentInfos = append(extentInfos, extentInfo)
+		}
 	}
 	s.eiMutex.RUnlock()
 	for _, extentInfo := range extentInfos {
@@ -619,6 +621,23 @@ func (s *ExtentStore) StoreSize() (totalSize uint64) {
 	}
 
 	return totalSize
+}
+
+// StoreSizeExtentID returns the size of the extent store
+func (s *ExtentStore) GetMaxExtentID() (maxExtentID uint64) {
+	extentInfos := make([]*ExtentInfo, 0)
+	s.eiMutex.RLock()
+	for _, extentInfo := range s.extentInfoMap {
+		extentInfos = append(extentInfos, extentInfo)
+	}
+	s.eiMutex.RUnlock()
+	for _, extentInfo := range extentInfos {
+		if extentInfo.FileID > maxExtentID {
+			maxExtentID = extentInfo.FileID
+		}
+	}
+
+	return maxExtentID
 }
 
 func MarshalTinyExtent(extentID uint64, offset, size int64) (data []byte) {

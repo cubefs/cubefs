@@ -97,6 +97,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handlePacketToDecommissionDataPartition(p)
 	case proto.OpGetPartitionSize:
 		s.handlePacketToGetPartitionSize(p)
+	case proto.OpGetMaxExtentID:
+		s.handlePacketToGetMaxExtentID(p)
 	case proto.OpReadTinyDeleteRecord:
 		s.handlePacketToReadTinyDeleteRecordFile(p, c)
 	case proto.OpBroadcastMinAppliedID:
@@ -163,7 +165,7 @@ func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 		err = fmt.Errorf("from master Task[%v] cannot unmash CreateDataPartitionRequest struct", task.ToString())
 		return
 	}
-	p.PartitionID=request.PartitionId
+	p.PartitionID = request.PartitionId
 	if dp, err = s.space.CreatePartition(request); err != nil {
 		err = fmt.Errorf("from master Task[%v] cannot create Partition err(%v)", task.ToString(), err)
 		return
@@ -720,10 +722,21 @@ func (s *DataNode) handlePacketToGetAppliedID(p *repl.Packet) {
 
 func (s *DataNode) handlePacketToGetPartitionSize(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
-	usedSize := partition.extentStore.StoreSize()
+	usedSize := partition.extentStore.StoreSizeExtentID(p.ExtentID)
 
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(usedSize))
+	p.PacketOkWithBody(buf)
+
+	return
+}
+
+func (s *DataNode) handlePacketToGetMaxExtentID(p *repl.Packet) {
+	partition := p.Object.(*DataPartition)
+	maxExtentID := partition.extentStore.GetMaxExtentID()
+
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, uint64(maxExtentID))
 	p.PacketOkWithBody(buf)
 
 	return

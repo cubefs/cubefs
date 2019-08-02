@@ -285,14 +285,14 @@ func (fs *flushFS) ReadDir(
 	switch op.Inode {
 	case fuseops.RootInodeID:
 		dirents = []fuseutil.Dirent{
-			fuseutil.Dirent{
+			{
 				Offset: 1,
 				Inode:  fooID,
 				Name:   "foo",
 				Type:   fuseutil.DT_File,
 			},
 
-			fuseutil.Dirent{
+			{
 				Offset: 2,
 				Inode:  barID,
 				Name:   "bar",

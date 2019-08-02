@@ -31,7 +31,7 @@ const (
 	volCapacityKey        = "capacity"
 	volOwnerKey           = "owner"
 	volAuthKey            = "authKey"
-	replicaNumKey            = "replicaNum"
+	replicaNumKey         = "replicaNum"
 )
 
 const (
