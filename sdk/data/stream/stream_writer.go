@@ -16,6 +16,7 @@ package stream
 
 import (
 	"fmt"
+	"golang.org/x/net/context"
 	"hash/crc32"
 	"net"
 	"sync/atomic"
@@ -257,6 +258,9 @@ func (s *Streamer) handleRequest(request interface{}) {
 
 func (s *Streamer) write(data []byte, offset, size int, direct bool) (total int, err error) {
 	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
+
+	ctx := context.Background()
+	s.client.writeLimiter.Wait(ctx)
 
 	requests := s.extents.PrepareWriteRequests(offset, size, data)
 	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
