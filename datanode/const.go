@@ -26,7 +26,7 @@ const (
 const (
 	IntervalToUpdateReplica       = 600 // interval to update the replica
 	IntervalToUpdatePartitionSize = 60  // interval to update the partition size
-	NumOfFilesToRecoverInParallel = 7   // number of files to be recovered simultaneously
+	NumOfFilesToRecoverInParallel = 17   // number of files to be recovered simultaneously
 )
 
 // Network protocol
@@ -102,5 +102,5 @@ const (
 	EmptyResponse               = 'E'
 	EmptyPacketLength           = 9
 	MaxSyncTinyDeleteBufferSize = 2400000
-	MaxFullSyncTinyDeleteTime   = 60 * 2
+	MaxFullSyncTinyDeleteTime   = 3600 * 24
 )
