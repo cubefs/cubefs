@@ -337,6 +337,9 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 		count := vol.calculateExpansionNum()
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
 		for i := 0; i < count; i++ {
+			if c.DisableAutoAllocate {
+				return
+			}
 			c.createDataPartition(vol.Name)
 		}
 	}
