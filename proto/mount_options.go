@@ -14,6 +14,8 @@ const (
 	IcacheTimeout = "icacheTimeout"
 	LookupValid   = "lookupValid"
 	AttrValid     = "attrValid"
+	ReadRate      = "readRate"
+	WriteRate     = "writeRate"
 	EnSyncWrite   = "enSyncWrite"
 	AutoInvalData = "autoInvalData"
 	Rdonly        = "rdonly"
