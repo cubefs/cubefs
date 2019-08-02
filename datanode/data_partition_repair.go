@@ -449,13 +449,13 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	var conn *net.TCPConn
 	conn, err = gConnPool.GetConnect(remoteExtentInfo.Source)
 	if err != nil {
-		return errors.Trace(err, "streamRepairExtent get conn from host[%v] error", remoteExtentInfo.Source)
+		return errors.Trace(err, "streamRepairExtent get conn from host(%v) error", remoteExtentInfo.Source)
 	}
 	defer gConnPool.PutConnect(conn, true)
 
 	if err = request.WriteToConn(conn); err != nil {
-		err = errors.Trace(err, "streamRepairExtent send streamRead to host[%v] error", remoteExtentInfo.Source)
-		log.LogWarnf("action[streamRepairExtent] err[%v].", err)
+		err = errors.Trace(err, "streamRepairExtent send streamRead to host(%v) error", remoteExtentInfo.Source)
+		log.LogWarnf("action[streamRepairExtent] err(%v).", err)
 		return
 	}
 	currFixOffset := localExtentInfo.Size

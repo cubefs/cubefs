@@ -44,7 +44,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		resultSize := p.Size
 		p.Size = sz
 		if p.IsErrPacket() {
-			err = fmt.Errorf("op[%v] error[%v]", p.GetOpMsg(), string(p.Data[:resultSize]))
+			err = fmt.Errorf("op(%v) error(%v)", p.GetOpMsg(), string(p.Data[:resultSize]))
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, err))
 			log.LogErrorf(logContent)
@@ -97,7 +97,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handlePacketToDecommissionDataPartition(p)
 	case proto.OpGetPartitionSize:
 		s.handlePacketToGetPartitionSize(p)
-	case proto.OpGetMaxExtentID:
+	case proto.OpGetMaxExtentIDAndPartitionSize:
 		s.handlePacketToGetMaxExtentID(p)
 	case proto.OpReadTinyDeleteRecord:
 		s.handlePacketToReadTinyDeleteRecordFile(p, c)
@@ -152,22 +152,22 @@ func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 	}
 	request := &proto.CreateDataPartitionRequest{}
 	if task.OpCode != proto.OpCreateDataPartition {
-		err = fmt.Errorf("from master Task[%v] failed,error unavali opcode(%v)", task.ToString(), task.OpCode)
+		err = fmt.Errorf("from master Task(%v) failed,error unavali opcode(%v)", task.ToString(), task.OpCode)
 		return
 	}
 
 	bytes, err = json.Marshal(task.Request)
 	if err != nil {
-		err = fmt.Errorf("from master Task[%v] cannot unmashal CreateDataPartition", task.ToString())
+		err = fmt.Errorf("from master Task(%v) cannot unmashal CreateDataPartition", task.ToString())
 		return
 	}
 	if err = json.Unmarshal(bytes, request); err != nil {
-		err = fmt.Errorf("from master Task[%v] cannot unmash CreateDataPartitionRequest struct", task.ToString())
+		err = fmt.Errorf("from master Task(%v) cannot unmash CreateDataPartitionRequest struct", task.ToString())
 		return
 	}
 	p.PartitionID = request.PartitionId
 	if dp, err = s.space.CreatePartition(request); err != nil {
-		err = fmt.Errorf("from master Task[%v] cannot create Partition err(%v)", task.ToString(), err)
+		err = fmt.Errorf("from master Task(%v) cannot create Partition err(%v)", task.ToString(), err)
 		return
 	}
 	p.PacketOkWithBody([]byte(dp.Disk().Path))
@@ -790,7 +790,7 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 	log.LogInfof("handlePacketToDecommissionDataPartition recive MasterCommand: %v",string(reqData))
 
 	if req.AddPeer.ID == req.RemovePeer.ID {
-		err = errors.NewErrorf("[opOfflineDataPartition]: AddPeer[%v] same withRemovePeer[%v]", req.AddPeer, req.RemovePeer)
+		err = errors.NewErrorf("[opOfflineDataPartition]: AddPeer(%v) same withRemovePeer(%v)", req.AddPeer, req.RemovePeer)
 		return
 	}
 	if req.AddPeer.ID != 0 {

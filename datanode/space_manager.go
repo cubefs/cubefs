@@ -233,10 +233,10 @@ func (manager *SpaceManager) AttachPartition(dp *DataPartition) {
 }
 
 // DetachDataPartition removes a data partition from the partition map.
-func (manager *SpaceManager) DetachDataPartition(partitionId uint64) {
+func (manager *SpaceManager) DetachDataPartition(partitionID uint64) {
 	manager.partitionMutex.Lock()
 	defer manager.partitionMutex.Unlock()
-	delete(manager.partitions, partitionId)
+	delete(manager.partitions, partitionID)
 }
 
 func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -323,7 +323,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			ExtentCount:     partition.GetExtentCount(),
 			NeedCompare:     true,
 		}
-		log.LogDebugf("action[Heartbeats] dpid[%v], status[%v] total[%v] used[%v] leader[%v] b[%v].", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)
+		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) b(%v).", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)
 		response.PartitionReports = append(response.PartitionReports, vr)
 		return true
 	})
