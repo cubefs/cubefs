@@ -180,12 +180,20 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
-
+	m.config.heartbeatPort = cfg.GetInt64(heartbeatPortKey)
+	m.config.replicaPort = cfg.GetInt64(replicaPortKey)
+	fmt.Printf("heartbeatPort[%v],replicaPort[%v]\n", m.config.heartbeatPort, m.config.replicaPort)
 	return
 }
 
 func (m *Server) createRaftServer() (err error) {
-	raftCfg := &raftstore.Config{NodeID: m.id, RaftPath: m.walDir, NumOfLogsToRetain: m.retainLogs}
+	raftCfg := &raftstore.Config{
+		NodeID:            m.id,
+		RaftPath:          m.walDir,
+		NumOfLogsToRetain: m.retainLogs,
+		HeartbeatPort:     int(m.config.heartbeatPort),
+		ReplicaPort:       int(m.config.replicaPort),
+	}
 	if m.raftStore, err = raftstore.NewRaftStore(raftCfg); err != nil {
 		return errors.Trace(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
 	}

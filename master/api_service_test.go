@@ -51,12 +51,12 @@ const (
 	commonVolName = "commonVol"
 )
 
-var server = createMasterServer()
+var server = createDefaultMasterServerForTest()
 var commonVol *Vol
 
-func createMasterServer() *Server {
+func createDefaultMasterServerForTest() *Server {
 	cfgJSON := `{
-	"role": "master",
+		"role": "master",
 		"ip": "127.0.0.1",
 		"port": "8080",
 		"prof":"10088",
@@ -69,8 +69,41 @@ func createMasterServer() *Server {
 		"storeDir":"/export/chubaofs/rocksdbstore",
 		"clusterName":"chubaofs"
 	}`
+	testServer, err := createMasterServer(cfgJSON)
+	if err != nil {
+		panic(err)
+	}
+	//add data node
+	addDataServer(mds1Addr, "rack1")
+	addDataServer(mds2Addr, "rack1")
+	addDataServer(mds3Addr, "rack2")
+	addDataServer(mds4Addr, "rack2")
+	addDataServer(mds5Addr, "rack2")
+	// add meta node
+	addMetaServer(mms1Addr)
+	addMetaServer(mms2Addr)
+	addMetaServer(mms3Addr)
+	addMetaServer(mms4Addr)
+	addMetaServer(mms5Addr)
+	time.Sleep(5 * time.Second)
+	testServer.cluster.checkDataNodeHeartbeat()
+	testServer.cluster.checkMetaNodeHeartbeat()
+	time.Sleep(5 * time.Second)
+	testServer.cluster.scheduleToUpdateStatInfo()
+	fmt.Printf("nodeSet len[%v]\n", len(testServer.cluster.t.nodeSetMap))
+	testServer.cluster.createVol(commonVolName, "cfs", 3, 3, 100)
+	vol, err := testServer.cluster.getVol(commonVolName)
+	if err != nil {
+		panic(err)
+	}
+	commonVol = vol
+	fmt.Printf("vol[%v] has created\n", commonVol.Name)
+	return testServer
+}
+
+func createMasterServer(cfgJSON string) (server *Server, err error) {
 	cfg := config.LoadConfigString(cfgJSON)
-	server := NewServer()
+	server = NewServer()
 	useConnPool = false
 	logDir := cfg.GetString(ConfigKeyLogDir)
 	walDir := cfg.GetString(WalDir)
@@ -95,8 +128,9 @@ func createMasterServer() *Server {
 	default:
 		level = log.ErrorLevel
 	}
-	if _, err := log.InitLog(logDir, "master", level, nil); err != nil {
+	if _, err = log.InitLog(logDir, "master", level, nil); err != nil {
 		fmt.Println("Fatal: failed to start the chubaofs daemon - ", err)
+		return
 	}
 	if profPort != "" {
 		go func() {
@@ -106,35 +140,12 @@ func createMasterServer() *Server {
 			}
 		}()
 	}
-	server.Start(cfg)
+	if err = server.Start(cfg); err != nil {
+		return
+	}
 	time.Sleep(5 * time.Second)
 	fmt.Println(server.config.peerAddrs, server.leaderInfo.addr)
-	//add data node
-	addDataServer(mds1Addr, "rack1")
-	addDataServer(mds2Addr, "rack1")
-	addDataServer(mds3Addr, "rack2")
-	addDataServer(mds4Addr, "rack2")
-	addDataServer(mds5Addr, "rack2")
-	// add meta node
-	addMetaServer(mms1Addr)
-	addMetaServer(mms2Addr)
-	addMetaServer(mms3Addr)
-	addMetaServer(mms4Addr)
-	addMetaServer(mms5Addr)
-	time.Sleep(5 * time.Second)
-	server.cluster.checkDataNodeHeartbeat()
-	server.cluster.checkMetaNodeHeartbeat()
-	time.Sleep(5 * time.Second)
-	server.cluster.scheduleToUpdateStatInfo()
-	fmt.Printf("nodeSet len[%v]\n", len(server.cluster.t.nodeSetMap))
-	server.cluster.createVol(commonVolName, "cfs", 3, 3, 100)
-	vol, err := server.cluster.getVol(commonVolName)
-	if err != nil {
-		panic(err)
-	}
-	commonVol = vol
-	fmt.Printf("vol[%v] has created\n", commonVol.Name)
-	return server
+	return server, nil
 }
 
 func addDataServer(addr, rackName string) {

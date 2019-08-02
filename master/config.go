@@ -33,6 +33,8 @@ const (
 	NumberOfDataPartitionsToLoad        = "NumberOfDataPartitionsToLoad"
 	secondsToFreeDataPartitionAfterLoad = "secondsToFreeDataPartitionAfterLoad"
 	nodeSetCapacity                     = "nodeSetCap"
+	heartbeatPortKey                    = "heartbeatPort"
+	replicaPortKey                      = "replicaPort"
 )
 
 //default value
@@ -78,6 +80,8 @@ type clusterConfig struct {
 	MetaNodeThreshold                   float32
 	peers                               []raftstore.PeerAddress
 	peerAddrs                           []string
+	heartbeatPort                       int64
+	replicaPort                         int64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
