@@ -765,7 +765,6 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 		return
 	}
 
-	log.LogDebugf("[opOfflineDataPartition] received task: %v", adminTask)
 	reqData, err = json.Marshal(adminTask.Request)
 	if err != nil {
 		return
@@ -773,17 +772,22 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 	if err = json.Unmarshal(reqData, req); err != nil {
 		return
 	}
+
+	log.LogDebugf("[handlePacketToDecommissionDataPartition] received task: %v", string(reqData))
+
 	dp := s.space.Partition(req.PartitionId)
 	if dp == nil {
 		err = fmt.Errorf("partition %v not exsit", req.PartitionId)
 		return
 	}
+	p.PartitionID=req.PartitionId
 
 	isRaftLeader, err = s.forwardToRaftLeader(dp, p)
 	if !isRaftLeader {
 		err = raft.ErrNotLeader
 		return
 	}
+	log.LogInfof("handlePacketToDecommissionDataPartition recive MasterCommand: %v",string(reqData))
 
 	if req.AddPeer.ID == req.RemovePeer.ID {
 		err = errors.NewErrorf("[opOfflineDataPartition]: AddPeer[%v] same withRemovePeer[%v]", req.AddPeer, req.RemovePeer)
