@@ -73,6 +73,11 @@ func createVol(name string, t *testing.T) {
 		t.Error(err)
 		return
 	}
+	checkDataPartitionsWritableTest(vol, t)
+	checkMetaPartitionsWritableTest(vol, t)
+}
+
+func checkDataPartitionsWritableTest(vol *Vol, t *testing.T) {
 	if len(vol.dataPartitions.partitions) == 0 {
 		return
 	}
@@ -87,6 +92,28 @@ func createVol(name string, t *testing.T) {
 	partition = vol.dataPartitions.partitions[0]
 	if partition.Status != proto.ReadWrite {
 		t.Errorf("expect partition status[%v],real status[%v]\n", proto.ReadWrite, partition.Status)
+		return
+	}
+}
+
+func checkMetaPartitionsWritableTest(vol *Vol, t *testing.T) {
+	if len(vol.MetaPartitions) == 0 {
+		t.Error("no meta partition")
+		return
+	}
+
+	for _, mp := range vol.MetaPartitions {
+		if mp.Status != proto.ReadWrite {
+			t.Errorf("expect partition status[%v],real status[%v]\n", proto.ReadWrite, mp.Status)
+			return
+		}
+	}
+	maxPartitionID := vol.maxPartitionID()
+	maxMp := vol.MetaPartitions[maxPartitionID]
+	//after check meta partitions ,the status must be writable
+	maxMp.checkStatus(false, int(vol.mpReplicaNum))
+	if maxMp.Status != proto.ReadWrite {
+		t.Errorf("expect partition status[%v],real status[%v]\n", proto.ReadWrite, maxMp.Status)
 		return
 	}
 }
