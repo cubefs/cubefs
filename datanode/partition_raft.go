@@ -31,6 +31,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"encoding/json"
 )
 
 type dataPartitionCfg struct {
@@ -256,6 +257,9 @@ func (dp *DataPartition) addRaftNode(req *proto.DataPartitionDecommissionRequest
 	if !isUpdated {
 		return
 	}
+	data,_:=json.Marshal(req)
+	log.LogInfof("AddRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) Start Remove Self ",
+		req.PartitionId,dp.config.NodeID,string(data))
 	dp.config.Peers = append(dp.config.Peers, req.AddPeer)
 	addr := strings.Split(req.AddPeer.Addr, ":")[0]
 	dp.config.RaftStore.AddNodeWithPort(req.AddPeer.ID, addr, heartbeatPort, replicaPort)
@@ -265,6 +269,8 @@ func (dp *DataPartition) addRaftNode(req *proto.DataPartitionDecommissionRequest
 // Delete a raft node.
 func (dp *DataPartition) removeRaftNode(req *proto.DataPartitionDecommissionRequest, index uint64) (isUpdated bool, err error) {
 	peerIndex := -1
+	data,_:=json.Marshal(req)
+	log.LogInfof("RemoveRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) ",req.PartitionId,dp.config.NodeID,string(data))
 	for i, peer := range dp.config.Peers {
 		if peer.ID == req.RemovePeer.ID {
 			isUpdated = true
@@ -286,16 +292,19 @@ func (dp *DataPartition) removeRaftNode(req *proto.DataPartitionDecommissionRequ
 					dp.raftPartition.Delete()
 				}
 				dp.Disk().space.DeletePartition(dp.partitionID)
-				log.LogDebugf("[removeRaftNode]: remove self end.")
+				log.LogInfof("RemoveRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) Fininsh Remove Self ",
+					req.PartitionId,dp.config.NodeID,string(data))
 				return
 			}
 		}(index)
 		isUpdated = false
-		log.LogDebugf("[removeRaftNode]: begin remove self.")
+		log.LogInfof("RemoveRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) Start Remove Self ",
+			req.PartitionId,dp.config.NodeID,string(data))
 		return
 	}
 	dp.config.Peers = append(dp.config.Peers[:peerIndex], dp.config.Peers[peerIndex+1:]...)
-	log.LogDebugf("[removeRaftNode]: remove peer.")
+	log.LogInfof("RemoveRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) Start Remove Self ",
+		req.PartitionId,dp.config.NodeID,string(data))
 	return
 }
 
