@@ -16,10 +16,12 @@ package stream
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
+	"golang.org/x/net/context"
 	"io"
 	"sync"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // One inode corresponds to one streamer. All the requests to the same inode will be queued.
@@ -89,6 +91,9 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 		requests        []*ExtentRequest
 		revisedRequests []*ExtentRequest
 	)
+
+	ctx := context.Background()
+	s.client.readLimiter.Wait(ctx)
 
 	requests = s.extents.PrepareReadRequests(offset, size, data)
 	for _, req := range requests {

@@ -59,6 +59,9 @@ const (
 
 	ModuleName            = "fuseclient"
 	ConfigKeyExporterPort = "exporterKey"
+
+	ControlCommandSetRate = "/rate/set"
+	ControlCommandGetRate = "/rate/get"
 )
 
 var (
@@ -190,8 +193,10 @@ func mount(opt *cfs.MountOption) (*fuse.MountedFileSystem, error) {
 		return nil, err
 	}
 
+	http.HandleFunc(ControlCommandSetRate, super.SetRate)
+	http.HandleFunc(ControlCommandGetRate, super.GetRate)
+	http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
 	go func() {
-		http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
 		fmt.Println(http.ListenAndServe(":"+opt.Profport, nil))
 	}()
 
@@ -250,6 +255,8 @@ func parseMountOption(cfg *config.Config) (*cfs.MountOption, error) {
 	opt.IcacheTimeout = parseConfigString(cfg, proto.IcacheTimeout)
 	opt.LookupValid = parseConfigString(cfg, proto.LookupValid)
 	opt.AttrValid = parseConfigString(cfg, proto.AttrValid)
+	opt.ReadRate = parseConfigString(cfg, proto.ReadRate)
+	opt.WriteRate = parseConfigString(cfg, proto.WriteRate)
 	opt.EnSyncWrite = parseConfigString(cfg, proto.EnSyncWrite)
 	opt.UmpDatadir = cfg.GetString(proto.WarnLogDir)
 	opt.Rdonly = cfg.GetBool(proto.Rdonly)
