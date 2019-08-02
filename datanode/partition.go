@@ -163,12 +163,9 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)
 	}
-	if err = dp.StartRaft(); err != nil {
-		disk.space.DetachDataPartition(dp.partitionID)
-		return
-	}
-
 	go dp.StartRaftLoggingSchedule()
+	go dp.StartRaftAfterRepair()
+	dp.ForceLoadHeader()
 	return
 }
 

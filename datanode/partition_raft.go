@@ -196,7 +196,7 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 				timer.Reset(5 * time.Second)
 				continue
 			}
-			if initMaxExtentID == 0 {
+			if initMaxExtentID == 0 || initPartitionSize==0 {
 				initMaxExtentID, initPartitionSize, err = dp.getLeaderMaxExtentIDAndPartitionSize()
 			}
 
@@ -217,8 +217,11 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 			if currLeaderPartitionSize<initPartitionSize{
 				initPartitionSize=currLeaderPartitionSize
 			}
-
 			localSize := dp.extentStore.StoreSizeExtentID(initMaxExtentID)
+
+			log.LogInfof("StartRaftAfterRepair partitionID(%v) initMaxExtentID(%v) initPartitionSize(%v) currLeaderPartitionSize(%v)"+
+			 			"localSize(%v)",dp.partitionID,initMaxExtentID,initPartitionSize,currLeaderPartitionSize,localSize)
+
 			if initPartitionSize > localSize {
 				log.LogErrorf("partitionID(%v) leader size(%v) local size(%v)", dp.partitionID, initPartitionSize, localSize)
 				timer.Reset(5 * time.Second)
@@ -231,7 +234,7 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 				timer.Reset(5 * time.Second)
 				continue
 			}
-			log.LogDebugf("partitionID(%v) raft started.", dp.partitionID)
+			log.LogInfof("partitionID(%v) raft started.", dp.partitionID)
 			return
 		case <-dp.stopC:
 			timer.Stop()
@@ -565,7 +568,7 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize() (maxExtentID,Par
 	maxExtentID = binary.BigEndian.Uint64(p.Data[0:8])
 	PartitionSize = binary.BigEndian.Uint64(p.Data[8:16])
 
-	log.LogDebugf("partition(%v) maxExtentID(%v) PartitionSize(%v)", dp.partitionID, maxExtentID,PartitionSize)
+	log.LogInfo("partition(%v) maxExtentID(%v) PartitionSize(%v) on leader", dp.partitionID, maxExtentID,PartitionSize)
 
 	return
 }
