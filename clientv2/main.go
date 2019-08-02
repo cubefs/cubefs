@@ -126,6 +126,11 @@ func main() {
 	}()
 	syslog.SetOutput(outputFile)
 
+	if err = syscall.Dup2(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+
 	registerInterceptedSignal(opt.MountPoint)
 
 	mfs, err := mount(opt)
