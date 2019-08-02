@@ -267,12 +267,12 @@ func (m *metadataManager) loadPartitions() (err error) {
 }
 
 func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (err error) {
-	fmt.Println(fmt.Sprintf("start load metaPartition %v",id))
+	fmt.Println(fmt.Sprintf("start load metaPartition %v", id))
 	if err = partition.Start(); err != nil {
-		fmt.Println(fmt.Sprintf("fininsh load metaPartition %v error %v",id,err))
+		fmt.Println(fmt.Sprintf("fininsh load metaPartition %v error %v", id, err))
 		return
 	}
-	fmt.Println(fmt.Sprintf("fininsh load metaPartition %v",id))
+	fmt.Println(fmt.Sprintf("fininsh load metaPartition %v", id))
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.partitions[id] = partition

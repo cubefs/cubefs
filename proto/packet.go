@@ -63,6 +63,7 @@ const (
 	OpSyncWrite              uint8 = 0x13
 	OpReadTinyDeleteRecord   uint8 = 0x14
 	OpTinyExtentRepairRead   uint8 = 0x15
+	OpGetMaxExtentID         uint8 = 0x16
 
 	// Operations: Client -> MetaNode.
 	OpMetaCreateInode   uint8 = 0x20
@@ -289,6 +290,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpPing"
 	case OpTinyExtentRepairRead:
 		m = "OpTinyExtentRepairRead"
+	case OpGetMaxExtentID:
+		m = "OpGetMaxExtentID"
 	case OpBroadcastMinAppliedID:
 		m = "OpBroadcastMinAppliedID"
 	}

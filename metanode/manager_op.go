@@ -27,8 +27,8 @@ import (
 	raftProto "github.com/tiglabs/raft/proto"
 )
 
-const(
-	MaxUsedMemFactor=1.1
+const (
+	MaxUsedMemFactor = 1.1
 )
 
 func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
@@ -75,8 +75,8 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		if mConf.Cursor >= mConf.End {
 			mpr.Status = proto.ReadOnly
 		}
-		if resp.Used>uint64(float64(resp.Total)*MaxUsedMemFactor){
-			mpr.Status=proto.ReadOnly
+		if resp.Used > uint64(float64(resp.Total)*MaxUsedMemFactor) {
+			mpr.Status = proto.ReadOnly
 		}
 		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
 		return true
@@ -86,7 +86,7 @@ end:
 	adminTask.Request = nil
 	adminTask.Response = resp
 	m.respondToMaster(adminTask)
-	data,_:=json.Marshal(resp)
+	data, _ := json.Marshal(resp)
 	log.LogInfof("%s [opMasterHeartbeat] req:%v; respAdminTask: %v, "+
 		"resp: %v", remoteAddr, req, adminTask, string(data))
 	return

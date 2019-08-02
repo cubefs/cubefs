@@ -173,11 +173,13 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 	var (
 		partitionSize uint64 = 0
 		err           error
+		maxExtentID   uint64 = 0
 	)
 	timer := time.NewTimer(0)
 	for {
 		select {
 		case <-timer.C:
+			err = nil
 			if dp.isLeader { // primary does not need to wait repair
 				if err := dp.StartRaft(); err != nil {
 					log.LogErrorf("partitionID[%v] leader start raft err[%v].", dp.partitionID, err)
@@ -193,18 +195,25 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 				timer.Reset(5 * time.Second)
 				continue
 			}
-
-			// get the partition size from the primary and compare it with the local one
-			if partitionSize == 0 {
-				partitionSize, err = dp.getPartitionSize()
-				if err != nil {
-					log.LogErrorf("partitionID[%v] get leader size err[%v]", dp.partitionID, err)
-					timer.Reset(5 * time.Second)
-					continue
-				}
+			if maxExtentID == 0 {
+				maxExtentID, err = dp.getLeaderMaxExtentID()
 			}
 
-			localSize := dp.extentStore.StoreSize()
+			if err != nil {
+				log.LogErrorf("partitionID[%v] get MaxExtentID  err[%v]", dp.partitionID, err)
+				timer.Reset(5 * time.Second)
+				continue
+			}
+
+			// get the partition size from the primary and compare it with the local one
+			partitionSize, err = dp.getLeaderPartitionSize(maxExtentID)
+			if err != nil {
+				log.LogErrorf("partitionID[%v] get leader size err[%v]", dp.partitionID, err)
+				timer.Reset(5 * time.Second)
+				continue
+			}
+
+			localSize := dp.extentStore.StoreSizeExtentID(maxExtentID)
 			if partitionSize > localSize {
 				log.LogErrorf("partitionID[%v] leader size[%v] local size[%v]", dp.partitionID, partitionSize, localSize)
 				timer.Reset(5 * time.Second)
@@ -442,6 +451,16 @@ func NewPacketToGetPartitionSize(partitionID uint64) (p *repl.Packet) {
 	return
 }
 
+// NewPacketToGetPartitionSize returns a new packet to get the partition size.
+func NewPacketToGetMaxExtentID(partitionID uint64) (p *repl.Packet) {
+	p = new(repl.Packet)
+	p.Opcode = proto.OpGetMaxExtentID
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.ReqID = proto.GenerateRequestID()
+	return
+}
+
 func (dp *DataPartition) findMinAppliedID(allAppliedIDs []uint64) (minAppliedID uint64, index int) {
 	index = 0
 	minAppliedID = allAppliedIDs[0]
@@ -465,13 +484,13 @@ func (dp *DataPartition) findMaxAppliedID(allAppliedIDs []uint64) (maxAppliedID 
 }
 
 // Get the partition size from the leader.
-func (dp *DataPartition) getPartitionSize() (size uint64, err error) {
+func (dp *DataPartition) getLeaderPartitionSize(maxExtentID uint64) (size uint64, err error) {
 	var (
 		conn *net.TCPConn
 	)
 
 	p := NewPacketToGetPartitionSize(dp.partitionID)
-
+	p.ExtentID = maxExtentID
 	target := dp.replicas[0]
 	conn, err = gConnPool.GetConnect(target) //get remote connect
 	if err != nil {
@@ -496,6 +515,42 @@ func (dp *DataPartition) getPartitionSize() (size uint64, err error) {
 	}
 	size = binary.BigEndian.Uint64(p.Data)
 	log.LogDebugf("partition=%v size=%v", dp.partitionID, size)
+
+	return
+}
+
+// Get the MaxExtentID partition  from the leader.
+func (dp *DataPartition) getLeaderMaxExtentID() (maxExtentID uint64, err error) {
+	var (
+		conn *net.TCPConn
+	)
+
+	p := NewPacketToGetMaxExtentID(dp.partitionID)
+
+	target := dp.replicas[0]
+	conn, err = gConnPool.GetConnect(target) //get remote connect
+	if err != nil {
+		err = errors.Trace(err, " partition=%v get host[%v] connect", dp.partitionID, target)
+		return
+	}
+	defer gConnPool.PutConnect(conn, true)
+	err = p.WriteToConn(conn) // write command to the remote host
+	if err != nil {
+		err = errors.Trace(err, "partition=%v write to host[%v]", dp.partitionID, target)
+		return
+	}
+	err = p.ReadFromConn(conn, 60)
+	if err != nil {
+		err = errors.Trace(err, "partition=%v read from host[%v]", dp.partitionID, target)
+		return
+	}
+
+	if p.ResultCode != proto.OpOk {
+		err = errors.Trace(err, "partition=%v result code not ok [%v] from host[%v]", dp.partitionID, p.ResultCode, target)
+		return
+	}
+	maxExtentID = binary.BigEndian.Uint64(p.Data)
+	log.LogDebugf("partition=%v maxExtentID=%v", dp.partitionID, maxExtentID)
 
 	return
 }
