@@ -149,7 +149,8 @@ func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartiti
 	for index := 1; index < len(dp.replicas); index++ {
 		extents, err := dp.getRemoteExtentInfo(extentType, tinyExtents, dp.replicas[index])
 		if err != nil {
-			return err
+			log.LogErrorf("buildDataPartitionRepairTask partitionID(%v) on (%v) err(%v)",dp.partitionID,dp.replicas[index],err)
+			continue
 		}
 		repairTasks[index] = NewDataPartitionRepairTask(extents, leaderTinyExtentRealSize, leaderTinyDeleteRecordFileSize, dp.replicas[index], dp.replicas[0])
 		repairTasks[index].addr = dp.replicas[index]
@@ -289,6 +290,9 @@ func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTa
 	extentInfoMap := make(map[uint64]*storage.ExtentInfo)
 	for index := 0; index < len(repairTasks); index++ {
 		repairTask := repairTasks[index]
+		if repairTask==nil {
+			continue
+		}
 		for extentID, extentInfo := range repairTask.extents {
 			if extentInfo.IsDeleted {
 				continue
@@ -317,6 +321,9 @@ func (dp *DataPartition) buildExtentCreationTasks(repairTasks []*DataPartitionRe
 		}
 		for index := 0; index < len(repairTasks); index++ {
 			repairTask := repairTasks[index]
+			if repairTask==nil {
+				continue
+			}
 			if _, ok := repairTask.extents[extentID]; !ok && extentInfo.IsDeleted == false {
 				if storage.IsTinyExtent(extentID) {
 					continue
@@ -341,6 +348,9 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 
 		hasBeenRepaired := true
 		for index := 0; index < len(repairTasks); index++ {
+			if repairTasks[index]==nil {
+				continue
+			}
 			extentInfo, ok := repairTasks[index].extents[extentID]
 			if !ok {
 				continue
@@ -396,8 +406,10 @@ func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members [
 func (dp *DataPartition) NotifyExtentRepair(members []*DataPartitionRepairTask) (err error) {
 	wg := new(sync.WaitGroup)
 	for i := 1; i < len(members); i++ {
+		if members[i]==nil {
+			continue
+		}
 		wg.Add(1)
-
 		go dp.notifyFollower(wg, i, members)
 	}
 	wg.Wait()

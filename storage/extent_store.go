@@ -624,7 +624,7 @@ func (s *ExtentStore) StoreSizeExtentID(maxExtentID uint64) (totalSize uint64) {
 }
 
 // StoreSizeExtentID returns the size of the extent store
-func (s *ExtentStore) GetMaxExtentID() (maxExtentID uint64) {
+func (s *ExtentStore) GetMaxExtentIDAndPartitionSize() (maxExtentID,totalSize uint64) {
 	extentInfos := make([]*ExtentInfo, 0)
 	s.eiMutex.RLock()
 	for _, extentInfo := range s.extentInfoMap {
@@ -635,9 +635,10 @@ func (s *ExtentStore) GetMaxExtentID() (maxExtentID uint64) {
 		if extentInfo.FileID > maxExtentID {
 			maxExtentID = extentInfo.FileID
 		}
+		totalSize+=extentInfo.Size
 	}
 
-	return maxExtentID
+	return maxExtentID,totalSize
 }
 
 func MarshalTinyExtent(extentID uint64, offset, size int64) (data []byte) {

@@ -98,7 +98,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	case proto.OpGetPartitionSize:
 		s.handlePacketToGetPartitionSize(p)
 	case proto.OpGetMaxExtentIDAndPartitionSize:
-		s.handlePacketToGetMaxExtentID(p)
+		s.handlePacketToGetMaxExtentIDAndPartitionSize(p)
 	case proto.OpReadTinyDeleteRecord:
 		s.handlePacketToReadTinyDeleteRecordFile(p, c)
 	case proto.OpBroadcastMinAppliedID:
@@ -731,12 +731,13 @@ func (s *DataNode) handlePacketToGetPartitionSize(p *repl.Packet) {
 	return
 }
 
-func (s *DataNode) handlePacketToGetMaxExtentID(p *repl.Packet) {
+func (s *DataNode) handlePacketToGetMaxExtentIDAndPartitionSize(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
-	maxExtentID := partition.extentStore.GetMaxExtentID()
+	maxExtentID,totalPartitionSize := partition.extentStore.GetMaxExtentIDAndPartitionSize()
 
-	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, uint64(maxExtentID))
+	buf := make([]byte, 16)
+	binary.BigEndian.PutUint64(buf[0:8], uint64(maxExtentID))
+	binary.BigEndian.PutUint64(buf[8:16],totalPartitionSize)
 	p.PacketOkWithBody(buf)
 
 	return
@@ -780,14 +781,14 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 		err = fmt.Errorf("partition %v not exsit", req.PartitionId)
 		return
 	}
-	p.PartitionID=req.PartitionId
+	p.PartitionID = req.PartitionId
 
 	isRaftLeader, err = s.forwardToRaftLeader(dp, p)
 	if !isRaftLeader {
 		err = raft.ErrNotLeader
 		return
 	}
-	log.LogInfof("handlePacketToDecommissionDataPartition recive MasterCommand: %v",string(reqData))
+	log.LogInfof("handlePacketToDecommissionDataPartition recive MasterCommand: %v", string(reqData))
 
 	if req.AddPeer.ID == req.RemovePeer.ID {
 		err = errors.NewErrorf("[opOfflineDataPartition]: AddPeer(%v) same withRemovePeer(%v)", req.AddPeer, req.RemovePeer)
