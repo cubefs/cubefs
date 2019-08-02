@@ -41,8 +41,8 @@ type AdminTaskManager struct {
 	targetAddr string
 	TaskMap    map[string]*proto.AdminTask
 	sync.RWMutex
-	exitCh   chan struct{}
-	connPool *util.ConnectPool
+	exitCh     chan struct{}
+	connPool   *util.ConnectPool
 }
 
 func newAdminTaskManager(targetAddr, clusterID string) (sender *AdminTaskManager) {
@@ -192,6 +192,7 @@ func (sender *AdminTaskManager) sendAdminTask(task *proto.AdminTask, conn net.Co
 }
 
 func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (response []byte, err error) {
+	log.LogInfof("action[syncSendAdminTask],task[%v]", task)
 	packet, err := sender.buildPacket(task)
 	if err != nil {
 		return nil, errors.Trace(err, "action[syncSendAdminTask build packet failed,task:%v]", task.ID)
