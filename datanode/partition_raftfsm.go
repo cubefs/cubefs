@@ -59,12 +59,12 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		isUpdated, err = dp.updateRaftNode(req, index)
 	}
 	if err != nil {
-		log.LogErrorf("action[ApplyMemberChange] dp[%v] type[%v] err[%v].", dp.partitionID, confChange.Type, err)
+		log.LogErrorf("action[ApplyMemberChange] dp(%v) type(%v) err(%v).", dp.partitionID, confChange.Type, err)
 		return
 	}
 	if isUpdated {
 		if err = dp.PersistMetadata(); err != nil {
-			log.LogErrorf("action[ApplyMemberChange] dp[%v] PersistMetadata err[%v].", dp.partitionID, err)
+			log.LogErrorf("action[ApplyMemberChange] dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
 			return
 		}
 	}
@@ -88,7 +88,7 @@ func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 
 // HandleFatalEvent notifies the application when panic happens.
 func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
-	log.LogFatalf("action[HandleFatalEvent] err[%v].", err)
+	log.LogFatalf("action[HandleFatalEvent] err(%v).", err)
 }
 
 // HandleLeaderChange notifies the application when the raft leader has changed.

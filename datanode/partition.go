@@ -505,7 +505,7 @@ func (dp *DataPartition) updateReplicas() (err error) {
 	dp.isLeader = isLeader
 	dp.replicas = replicas
 	dp.intervalToUpdateReplicas = time.Now().Unix()
-	log.LogInfof(fmt.Sprintf("ActionUpdateReplicationHosts partiton[%v]", dp.partitionID))
+	log.LogInfof(fmt.Sprintf("ActionUpdateReplicationHosts partiton(%v)", dp.partitionID))
 
 	return
 }
@@ -652,13 +652,13 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 		dp.FullSyncTinyDeleteTime = time.Now().Unix()
 	}
 
-	log.LogInfof(ActionSyncTinyDeleteRecord+" start partitionId(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v)",
+	log.LogInfof(ActionSyncTinyDeleteRecord+" start partitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v)",
 		dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr)
 	if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteRecordFileSize {
 		return
 	}
 	defer func() {
-		log.LogInfof(ActionSyncTinyDeleteRecord+" end partitionId(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v) err(%v)",
+		log.LogInfof(ActionSyncTinyDeleteRecord+" end partitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v) err(%v)",
 			dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr, err)
 	}()
 

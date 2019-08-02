@@ -53,17 +53,17 @@ const (
 	OpStreamRead       uint8 = 0x05
 	OpGetAllWatermarks uint8 = 0x07
 
-	OpNotifyReplicasToRepair uint8 = 0x08
-	OpExtentRepairRead       uint8 = 0x09
-	OpBroadcastMinAppliedID  uint8 = 0x0A
-	OpRandomWrite            uint8 = 0x0F
-	OpGetAppliedId           uint8 = 0x10
-	OpGetPartitionSize       uint8 = 0x11
-	OpSyncRandomWrite        uint8 = 0x12
-	OpSyncWrite              uint8 = 0x13
-	OpReadTinyDeleteRecord   uint8 = 0x14
-	OpTinyExtentRepairRead   uint8 = 0x15
-	OpGetMaxExtentID         uint8 = 0x16
+	OpNotifyReplicasToRepair         uint8 = 0x08
+	OpExtentRepairRead               uint8 = 0x09
+	OpBroadcastMinAppliedID          uint8 = 0x0A
+	OpRandomWrite                    uint8 = 0x0F
+	OpGetAppliedId                   uint8 = 0x10
+	OpGetPartitionSize               uint8 = 0x11
+	OpSyncRandomWrite                uint8 = 0x12
+	OpSyncWrite                      uint8 = 0x13
+	OpReadTinyDeleteRecord           uint8 = 0x14
+	OpTinyExtentRepairRead           uint8 = 0x15
+	OpGetMaxExtentIDAndPartitionSize uint8 = 0x16
 
 	// Operations: Client -> MetaNode.
 	OpMetaCreateInode   uint8 = 0x20
@@ -290,8 +290,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpPing"
 	case OpTinyExtentRepairRead:
 		m = "OpTinyExtentRepairRead"
-	case OpGetMaxExtentID:
-		m = "OpGetMaxExtentID"
+	case OpGetMaxExtentIDAndPartitionSize:
+		m = "OpGetMaxExtentIDAndPartitionSize"
 	case OpBroadcastMinAppliedID:
 		m = "OpBroadcastMinAppliedID"
 	}

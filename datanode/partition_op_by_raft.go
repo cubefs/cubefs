@@ -219,7 +219,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 			resp = proto.OpOk
 			dp.uploadApplyID(raftApplyID)
 		} else {
-			err = fmt.Errorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err[%v] retry[20]", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err)
+			err = fmt.Errorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry[20]", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err)
 			exporter.Warning(err.Error())
 			resp = proto.OpDiskErr
 		}
@@ -238,7 +238,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 		if err == nil {
 			break
 		}
-		log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err[%v] retry[%v]", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err, i)
+		log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry(%v)", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err, i)
 	}
 
 	return

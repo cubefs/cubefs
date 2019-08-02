@@ -200,9 +200,9 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	if s.rackName == "" {
 		s.rackName = DefaultRackName
 	}
-	log.LogDebugf("action[parseConfig] load masterAddrs[%v].", MasterHelper.Nodes())
-	log.LogDebugf("action[parseConfig] load port[%v].", s.port)
-	log.LogDebugf("action[parseConfig] load rackName[%v].", s.rackName)
+	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterHelper.Nodes())
+	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
+	log.LogDebugf("action[parseConfig] load rackName(%v).", s.rackName)
 	return
 }
 
