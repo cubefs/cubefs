@@ -478,7 +478,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		reply := repl.NewPacket()
 
 		// read 64k streaming repair packet
-		if err = reply.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+		if err = reply.ReadFromConn(conn, 60); err != nil {
 			err = errors.Trace(err, "streamRepairExtent receive data error")
 			log.LogErrorf("action[streamRepairExtent] err(%v).", err)
 			return
