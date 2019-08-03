@@ -165,7 +165,6 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 	if err != nil {
 		return
 	}
-	go s.loopAutoComputeExtentCrc()
 	return
 }
 
@@ -208,6 +207,7 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 		file.Name = strconv.FormatUint(ei.FileID, 10)
 		file.Size = uint32(ei.Size)
 		file.Modified = ei.ModifyTime
+		file.Crc = 0
 		files = append(files, file)
 	}
 
@@ -785,19 +785,7 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Ext
 	return
 }
 
-func (s *ExtentStore) loopAutoComputeExtentCrc() {
-	go func() {
-		ticker := time.NewTicker(time.Minute)
-		for {
-			select {
-			case <-s.closeC:
-				return
-			case <-ticker.C:
-				s.autoComputeExtentCrc()
-			}
-		}
-	}()
-}
+
 
 func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
 	var blockCnt int
@@ -826,7 +814,7 @@ func (arr ExtentInfoArr) Len() int           { return len(arr) }
 func (arr ExtentInfoArr) Less(i, j int) bool { return arr[i].FileID < arr[j].FileID }
 func (arr ExtentInfoArr) Swap(i, j int)      { arr[i], arr[j] = arr[j], arr[i] }
 
-func (s *ExtentStore) autoComputeExtentCrc() {
+func (s *ExtentStore) AutoComputeExtentCrc() {
 	extentInfos := make([]*ExtentInfo, 0)
 	deleteExtents := make([]*ExtentInfo, 0)
 	s.eiMutex.RLock()
@@ -853,9 +841,6 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 			continue
 		}
 		if !IsTinyExtent(ei.FileID) && time.Now().Unix()-ei.ModifyTime > UpdateCrcInterval && ei.IsDeleted == false && ei.Size > 0 {
-			if atomic.LoadUint32(&ei.Crc) == 0 {
-				continue
-			}
 			e, err := s.extentWithHeader(ei)
 			if err != nil {
 				continue
@@ -866,7 +851,7 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 			}
 			ei.UpdateExtentInfo(e, extentCrc)
 		}
-		time.Sleep(time.Millisecond * 100)
+		time.Sleep(time.Millisecond * 1)
 	}
 
 }
