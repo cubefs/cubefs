@@ -254,9 +254,6 @@ func (dp *DataPartition) ReloadSnapshot() {
 		return
 	}
 	dp.snapshotMutex.Lock()
-	for _, f := range dp.snapshot {
-		storage.PutSnapShotFileToPool(f)
-	}
 	dp.snapshot = files
 	dp.snapshotMutex.Unlock()
 }

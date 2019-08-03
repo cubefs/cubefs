@@ -54,19 +54,9 @@ const (
 
 var (
 	RegexpExtentFile, _ = regexp.Compile("^(\\d)+$")
-	SnapShotFilePool    = &sync.Pool{New: func() interface{} {
-		return new(proto.File)
-	}}
 )
 
-func GetSnapShotFileFromPool() (f *proto.File) {
-	f = SnapShotFilePool.Get().(*proto.File)
-	return
-}
 
-func PutSnapShotFileToPool(f *proto.File) {
-	SnapShotFilePool.Put(f)
-}
 
 type ExtentFilter func(info *ExtentInfo) bool
 
@@ -194,7 +184,7 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 
 	files = make([]*proto.File, 0, len(normalExtentSnapshot))
 	for _, ei := range normalExtentSnapshot {
-		file := GetSnapShotFileFromPool()
+		file := new (proto.File)
 		file.Name = strconv.FormatUint(ei.FileID, 10)
 		file.Size = uint32(ei.Size)
 		file.Modified = ei.ModifyTime
@@ -203,7 +193,7 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 	}
 	tinyExtentSnapshot = s.getTinyExtentInfo()
 	for _, ei := range tinyExtentSnapshot {
-		file := GetSnapShotFileFromPool()
+		file := new (proto.File)
 		file.Name = strconv.FormatUint(ei.FileID, 10)
 		file.Size = uint32(ei.Size)
 		file.Modified = ei.ModifyTime
