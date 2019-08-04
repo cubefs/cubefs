@@ -155,7 +155,7 @@ func (c *Connection) Init() (err error) {
 
 	// Respond to the init op.
 	initOp.Library = c.protocol
-	initOp.MaxReadahead = maxReadahead
+	initOp.MaxReadahead = buffer.MaxReadSize
 	initOp.MaxWrite = buffer.MaxWriteSize
 
 	initOp.Flags = 0
