@@ -26,7 +26,7 @@ const (
 const (
 	IntervalToUpdateReplica       = 600 // interval to update the replica
 	IntervalToUpdatePartitionSize = 60  // interval to update the partition size
-	NumOfFilesToRecoverInParallel = 17   // number of files to be recovered simultaneously
+	NumOfFilesToRecoverInParallel = 17  // number of files to be recovered simultaneously
 )
 
 // Network protocol

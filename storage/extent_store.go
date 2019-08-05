@@ -56,8 +56,6 @@ var (
 	RegexpExtentFile, _ = regexp.Compile("^(\\d)+$")
 )
 
-
-
 type ExtentFilter func(info *ExtentInfo) bool
 
 // Filters
@@ -184,7 +182,7 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 
 	files = make([]*proto.File, 0, len(normalExtentSnapshot))
 	for _, ei := range normalExtentSnapshot {
-		file := new (proto.File)
+		file := new(proto.File)
 		file.Name = strconv.FormatUint(ei.FileID, 10)
 		file.Size = uint32(ei.Size)
 		file.Modified = ei.ModifyTime
@@ -193,7 +191,7 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 	}
 	tinyExtentSnapshot = s.getTinyExtentInfo()
 	for _, ei := range tinyExtentSnapshot {
-		file := new (proto.File)
+		file := new(proto.File)
 		file.Name = strconv.FormatUint(ei.FileID, 10)
 		file.Size = uint32(ei.Size)
 		file.Modified = ei.ModifyTime
@@ -614,7 +612,7 @@ func (s *ExtentStore) StoreSizeExtentID(maxExtentID uint64) (totalSize uint64) {
 }
 
 // StoreSizeExtentID returns the size of the extent store
-func (s *ExtentStore) GetMaxExtentIDAndPartitionSize() (maxExtentID,totalSize uint64) {
+func (s *ExtentStore) GetMaxExtentIDAndPartitionSize() (maxExtentID, totalSize uint64) {
 	extentInfos := make([]*ExtentInfo, 0)
 	s.eiMutex.RLock()
 	for _, extentInfo := range s.extentInfoMap {
@@ -625,10 +623,10 @@ func (s *ExtentStore) GetMaxExtentIDAndPartitionSize() (maxExtentID,totalSize ui
 		if extentInfo.FileID > maxExtentID {
 			maxExtentID = extentInfo.FileID
 		}
-		totalSize+=extentInfo.Size
+		totalSize += extentInfo.Size
 	}
 
-	return maxExtentID,totalSize
+	return maxExtentID, totalSize
 }
 
 func MarshalTinyExtent(extentID uint64, offset, size int64) (data []byte) {
@@ -774,8 +772,6 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Ext
 
 	return
 }
-
-
 
 func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
 	var blockCnt int

@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
@@ -31,7 +32,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"encoding/json"
 )
 
 type dataPartitionCfg struct {
@@ -196,7 +196,7 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 				timer.Reset(5 * time.Second)
 				continue
 			}
-			if initMaxExtentID == 0 || initPartitionSize==0 {
+			if initMaxExtentID == 0 || initPartitionSize == 0 {
 				initMaxExtentID, initPartitionSize, err = dp.getLeaderMaxExtentIDAndPartitionSize()
 			}
 
@@ -214,13 +214,13 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 				continue
 			}
 
-			if currLeaderPartitionSize<initPartitionSize{
-				initPartitionSize=currLeaderPartitionSize
+			if currLeaderPartitionSize < initPartitionSize {
+				initPartitionSize = currLeaderPartitionSize
 			}
 			localSize := dp.extentStore.StoreSizeExtentID(initMaxExtentID)
 
 			log.LogInfof("StartRaftAfterRepair partitionID(%v) initMaxExtentID(%v) initPartitionSize(%v) currLeaderPartitionSize(%v)"+
-			 			"localSize(%v)",dp.partitionID,initMaxExtentID,initPartitionSize,currLeaderPartitionSize,localSize)
+				"localSize(%v)", dp.partitionID, initMaxExtentID, initPartitionSize, currLeaderPartitionSize, localSize)
 
 			if initPartitionSize > localSize {
 				log.LogErrorf("partitionID(%v) leader size(%v) local size(%v)", dp.partitionID, initPartitionSize, localSize)
@@ -264,9 +264,9 @@ func (dp *DataPartition) addRaftNode(req *proto.DataPartitionDecommissionRequest
 	if !isUpdated {
 		return
 	}
-	data,_:=json.Marshal(req)
+	data, _ := json.Marshal(req)
 	log.LogInfof("AddRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) Start Remove Self ",
-		req.PartitionId,dp.config.NodeID,string(data))
+		req.PartitionId, dp.config.NodeID, string(data))
 	dp.config.Peers = append(dp.config.Peers, req.AddPeer)
 	addr := strings.Split(req.AddPeer.Addr, ":")[0]
 	dp.config.RaftStore.AddNodeWithPort(req.AddPeer.ID, addr, heartbeatPort, replicaPort)
@@ -276,8 +276,8 @@ func (dp *DataPartition) addRaftNode(req *proto.DataPartitionDecommissionRequest
 // Delete a raft node.
 func (dp *DataPartition) removeRaftNode(req *proto.DataPartitionDecommissionRequest, index uint64) (isUpdated bool, err error) {
 	peerIndex := -1
-	data,_:=json.Marshal(req)
-	log.LogInfof("RemoveRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) ",req.PartitionId,dp.config.NodeID,string(data))
+	data, _ := json.Marshal(req)
+	log.LogInfof("RemoveRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) ", req.PartitionId, dp.config.NodeID, string(data))
 	for i, peer := range dp.config.Peers {
 		if peer.ID == req.RemovePeer.ID {
 			isUpdated = true
@@ -300,18 +300,18 @@ func (dp *DataPartition) removeRaftNode(req *proto.DataPartitionDecommissionRequ
 				}
 				dp.Disk().space.DeletePartition(dp.partitionID)
 				log.LogInfof("RemoveRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) Fininsh Remove Self ",
-					req.PartitionId,dp.config.NodeID,string(data))
+					req.PartitionId, dp.config.NodeID, string(data))
 				return
 			}
 		}(index)
 		isUpdated = false
 		log.LogInfof("RemoveRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) Start Remove Self ",
-			req.PartitionId,dp.config.NodeID,string(data))
+			req.PartitionId, dp.config.NodeID, string(data))
 		return
 	}
 	dp.config.Peers = append(dp.config.Peers[:peerIndex], dp.config.Peers[peerIndex+1:]...)
 	log.LogInfof("RemoveRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) Start Remove Self ",
-		req.PartitionId,dp.config.NodeID,string(data))
+		req.PartitionId, dp.config.NodeID, string(data))
 	return
 }
 
@@ -530,13 +530,13 @@ func (dp *DataPartition) getLeaderPartitionSize(maxExtentID uint64) (size uint64
 		return
 	}
 	size = binary.BigEndian.Uint64(p.Data)
-	log.LogInfof("partition(%v) MaxExtentID(%v) size(%v)", dp.partitionID, maxExtentID,size)
+	log.LogInfof("partition(%v) MaxExtentID(%v) size(%v)", dp.partitionID, maxExtentID, size)
 
 	return
 }
 
 // Get the MaxExtentID partition  from the leader.
-func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize() (maxExtentID,PartitionSize uint64, err error) {
+func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize() (maxExtentID, PartitionSize uint64, err error) {
 	var (
 		conn *net.TCPConn
 	)
@@ -568,7 +568,7 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize() (maxExtentID,Par
 	maxExtentID = binary.BigEndian.Uint64(p.Data[0:8])
 	PartitionSize = binary.BigEndian.Uint64(p.Data[8:16])
 
-	log.LogInfo("partition(%v) maxExtentID(%v) PartitionSize(%v) on leader", dp.partitionID, maxExtentID,PartitionSize)
+	log.LogInfo("partition(%v) maxExtentID(%v) PartitionSize(%v) on leader", dp.partitionID, maxExtentID, PartitionSize)
 
 	return
 }
