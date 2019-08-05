@@ -56,6 +56,7 @@ type DataPartitionMetadata struct {
 	PartitionSize int
 	CreateTime    string
 	Peers         []proto.Peer
+	Hosts         []string
 }
 
 type sortedPeers []proto.Peer
@@ -152,6 +153,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		PartitionSize: meta.PartitionSize,
 		PartitionID:   meta.PartitionID,
 		Peers:         meta.Peers,
+		Hosts:         meta.Hosts,
 		RaftStore:     disk.space.GetRaftStore(),
 		NodeID:        disk.space.GetNodeID(),
 		ClusterID:     disk.space.GetClusterID(),
@@ -163,8 +165,22 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)
 	}
+
+	p := NewPacketToGetAppliedID(dp.partitionID)
+	target := dp.replicas[0]
+	leaderApplyID, err := dp.getRemoteAppliedID(target, p)
 	go dp.StartRaftLoggingSchedule()
-	go dp.StartRaftAfterRepair()
+
+	if (dp.appliedID==0 && err==nil && leaderApplyID==0) || dp.appliedID != 0 {
+		err = dp.StartRaft()
+		if err != nil {
+			log.LogErrorf("partitionID(%v) start raft err(%v)..", dp.partitionID, err)
+			disk.space.DetachDataPartition(dp.partitionID)
+		}
+	} else {
+		go dp.StartRaftAfterRepair()
+	}
+
 	dp.ForceLoadHeader()
 	return
 }
@@ -329,6 +345,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		PartitionID:   dp.config.PartitionID,
 		PartitionSize: dp.config.PartitionSize,
 		Peers:         dp.config.Peers,
+		Hosts:         dp.config.Hosts,
 		CreateTime:    time.Now().Format(TimeLayout),
 	}
 	if metaData, err = json.Marshal(md); err != nil {

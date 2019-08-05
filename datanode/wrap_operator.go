@@ -733,11 +733,11 @@ func (s *DataNode) handlePacketToGetPartitionSize(p *repl.Packet) {
 
 func (s *DataNode) handlePacketToGetMaxExtentIDAndPartitionSize(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
-	maxExtentID,totalPartitionSize := partition.extentStore.GetMaxExtentIDAndPartitionSize()
+	maxExtentID, totalPartitionSize := partition.extentStore.GetMaxExtentIDAndPartitionSize()
 
 	buf := make([]byte, 16)
 	binary.BigEndian.PutUint64(buf[0:8], uint64(maxExtentID))
-	binary.BigEndian.PutUint64(buf[8:16],totalPartitionSize)
+	binary.BigEndian.PutUint64(buf[8:16], totalPartitionSize)
 	p.PacketOkWithBody(buf)
 
 	return
