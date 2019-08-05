@@ -484,10 +484,10 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 		partition.addReplica(replica)
 	}
 	partition.total = vr.Total
-	partition.used = vr.Used
 	replica.Status = int8(vr.PartitionStatus)
 	replica.Total = vr.Total
 	replica.Used = vr.Used
+	partition.setMaxUsed()
 	replica.FileCount = uint32(vr.ExtentCount)
 	replica.setAlive()
 	replica.IsLeader = vr.IsLeader
@@ -503,14 +503,17 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 	partition.checkAndRemoveMissReplica(dataNode.Addr)
 }
 
-func (partition *DataPartition) getMaxUsedSpace() uint64 {
-	partition.Lock()
-	defer partition.Unlock()
-	for _, replica := range partition.Replicas {
-		if replica.Used > partition.used {
-			partition.used = replica.Used
+func (partition *DataPartition) setMaxUsed() {
+	var maxUsed uint64
+	for _, r := range partition.Replicas {
+		if r.Used > maxUsed {
+			maxUsed = r.Used
 		}
 	}
+	partition.used = maxUsed
+}
+
+func (partition *DataPartition) getMaxUsedSpace() uint64 {
 	return partition.used
 }
 

@@ -993,6 +993,7 @@ func (c *Cluster) createVol(name, owner string, mpCount, size, capacity int) (vo
 		readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
 	}
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
+	vol.updateViewCache(c)
 	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", name, readWriteDataPartitions)
 	return
 
