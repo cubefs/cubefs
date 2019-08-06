@@ -54,6 +54,7 @@ type ExtentClient struct {
 	appendExtentKey AppendExtentKeyFunc
 	getExtents      GetExtentsFunc
 	truncate        TruncateFunc
+	followerRead    bool
 }
 
 // NewExtentClient returns a new extent client.
@@ -78,6 +79,7 @@ retry:
 	client.appendExtentKey = appendExtentKey
 	client.getExtents = getExtents
 	client.truncate = truncate
+	client.followerRead = gDataWrapper.FollowerRead()
 
 	// Init request pools
 	openRequestPool = &sync.Pool{New: func() interface{} {
