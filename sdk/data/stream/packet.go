@@ -75,14 +75,18 @@ func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset
 }
 
 // NewReadPacket returns a new read packet.
-func NewReadPacket(key *proto.ExtentKey, extentOffset, size int, inode uint64, fileOffset int) *Packet {
+func NewReadPacket(key *proto.ExtentKey, extentOffset, size int, inode uint64, fileOffset int, followerRead bool) *Packet {
 	p := new(Packet)
 	p.ExtentID = key.ExtentId
 	p.PartitionID = key.PartitionId
 	p.Magic = proto.ProtoMagic
 	p.ExtentOffset = int64(extentOffset)
 	p.Size = uint32(size)
-	p.Opcode = proto.OpStreamRead
+	if followerRead {
+		p.Opcode = proto.OpStreamFollowerRead
+	} else {
+		p.Opcode = proto.OpStreamRead
+	}
 	p.ExtentType = proto.NormalExtentType
 	p.ReqID = proto.GenerateRequestID()
 	p.RemainingFollowers = 0

@@ -316,7 +316,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 		return
 	}
 
-	sc := NewStreamConn(dp)
+	sc := NewStreamConn(dp, false)
 
 	for total < size {
 		reqPacket := NewOverwritePacket(dp, req.ExtentKey.ExtentId, offset-ekFileOffset+total+ekExtOffset, s.inode, offset)

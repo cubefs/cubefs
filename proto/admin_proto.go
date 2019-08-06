@@ -308,6 +308,7 @@ type DataPartitionResponse struct {
 	ReplicaNum  uint8
 	Hosts       []string
 	LeaderAddr  string
+	Epoch       uint64
 }
 
 // DataPartitionsView defines the view of a data partition

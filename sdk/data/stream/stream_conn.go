@@ -17,6 +17,7 @@ package stream
 import (
 	"fmt"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
@@ -47,10 +48,25 @@ var (
 )
 
 // NewStreamConn returns a new stream connection.
-func NewStreamConn(dp *wrapper.DataPartition) *StreamConn {
+func NewStreamConn(dp *wrapper.DataPartition, follower bool) *StreamConn {
+	if !follower {
+		return &StreamConn{
+			dp:       dp,
+			currAddr: dp.LeaderAddr,
+		}
+	}
+
+	epoch := atomic.AddUint64(&dp.Epoch, 1)
+	choice := len(dp.Hosts)
+	currAddr := dp.LeaderAddr
+	if choice > 0 {
+		index := int(epoch) % choice
+		currAddr = dp.Hosts[index]
+	}
+
 	return &StreamConn{
 		dp:       dp,
-		currAddr: dp.LeaderAddr,
+		currAddr: currAddr,
 	}
 }
 
