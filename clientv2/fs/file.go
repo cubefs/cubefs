@@ -15,6 +15,7 @@
 package fs
 
 import (
+	"errors"
 	"fmt"
 	"golang.org/x/net/context"
 	"io"
@@ -61,12 +62,17 @@ func (s *Super) ReleaseFileHandle(ctx context.Context, op *fuseops.ReleaseFileHa
 }
 
 func (s *Super) ReadFile(ctx context.Context, op *fuseops.ReadFileOp) error {
+	var err error
+
 	ino := uint64(op.Inode)
 	desc := fuse.OpDescription(op)
 	offset := int(op.Offset)
 	reqlen := len(op.Dst)
 
 	log.LogDebugf("TRACE Read enter: op(%v)", desc)
+
+	metric := exporter.NewTPCnt("fileread")
+	defer metric.Set(err)
 
 	size, err := s.ec.Read(ino, op.Dst, offset, reqlen)
 	if err != nil && err != io.EOF {
@@ -80,6 +86,7 @@ func (s *Super) ReadFile(ctx context.Context, op *fuseops.ReadFileOp) error {
 		errmsg := fmt.Sprintf("ReadFile: read size larger than request len, localIP(%v) op(%v) size(%v)", s.localIP, desc, size)
 		log.LogError(errmsg)
 		exporter.Warning(errmsg)
+		err = errors.New(errmsg)
 		return fuse.EIO
 	}
 
@@ -90,6 +97,7 @@ func (s *Super) ReadFile(ctx context.Context, op *fuseops.ReadFileOp) error {
 		errmsg := fmt.Sprintf("ReadFile: read size is 0, localIP(%v) op(%v) size(%v)", s.localIP, desc, size)
 		log.LogError(errmsg)
 		exporter.Warning(errmsg)
+		err = errors.New(errmsg)
 	}
 
 	log.LogDebugf("TRACE Read exit: op(%v) size(%v)", desc, size)
@@ -130,6 +138,9 @@ func (s *Super) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) error {
 		enSyncWrite = s.enSyncWrite
 	}
 
+	metric := exporter.NewTPCnt("filewrite")
+	defer metric.Set(err)
+
 	size, err := s.ec.Write(ino, offset, op.Data, enSyncWrite)
 	if err != nil {
 		errmsg := fmt.Sprintf("WriteFile: Write failed, localIP(%v) op(%v) err(%v)", s.localIP, desc, err)
@@ -142,6 +153,7 @@ func (s *Super) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) error {
 		errmsg := fmt.Sprintf("WriteFile: incomplete write, localIP(%v) op(%v) size(%v)", s.localIP, desc, size)
 		log.LogErrorf(errmsg)
 		exporter.Warning(errmsg)
+		err = errors.New(errmsg)
 		return fuse.EIO
 	}
 
@@ -160,12 +172,17 @@ func (s *Super) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) error {
 }
 
 func (s *Super) SyncFile(ctx context.Context, op *fuseops.SyncFileOp) error {
+	var err error
+
 	ino := uint64(op.Inode)
 	desc := fuse.OpDescription(op)
 
 	log.LogDebugf("TRACE Fsync enter: op(%v)", desc)
 
-	err := s.ec.Flush(ino)
+	metric := exporter.NewTPCnt("filesync")
+	defer metric.Set(err)
+
+	err = s.ec.Flush(ino)
 	if err != nil {
 		errmsg := fmt.Sprintf("SyncFile: Flush failed, localIP(%v) op(%v) err(%v)", s.localIP, desc, err)
 		log.LogErrorf(errmsg)
