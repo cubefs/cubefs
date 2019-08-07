@@ -18,8 +18,10 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/log"
 	"net"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -70,7 +72,10 @@ func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
 	for i := 0; i < len(dp.Hosts); i++ {
 		host := dp.Hosts[i]
 		if conn, err = util.DailTimeOut(host, proto.ReadDeadlineTime*time.Second); err != nil {
-			exclude[host] = struct{}{}
+			log.LogWarnf("Dail to Host (%v) err(%v)", host, err.Error())
+			if strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()) {
+				exclude[host] = struct{}{}
+			}
 			continue
 		}
 		conn.Close()
