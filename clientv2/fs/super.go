@@ -50,6 +50,7 @@ type MountOption struct {
 
 type Super struct {
 	cluster     string
+	localIP     string
 	volname     string
 	owner       string
 	ic          *InodeCache
@@ -80,6 +81,7 @@ func NewSuper(opt *MountOption) (s *Super, err error) {
 	s.volname = opt.Volname
 	s.owner = opt.Owner
 	s.cluster = s.mw.Cluster()
+	s.localIP = s.mw.LocalIP()
 	inodeExpiration := DefaultInodeExpiration
 	if opt.IcacheTimeout >= 0 {
 		inodeExpiration = time.Duration(opt.IcacheTimeout) * time.Second

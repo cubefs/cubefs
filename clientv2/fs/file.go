@@ -15,6 +15,7 @@
 package fs
 
 import (
+	"fmt"
 	"golang.org/x/net/context"
 	"io"
 	"syscall"
@@ -22,6 +23,7 @@ import (
 	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fuseops"
 
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -68,12 +70,16 @@ func (s *Super) ReadFile(ctx context.Context, op *fuseops.ReadFileOp) error {
 
 	size, err := s.ec.Read(ino, op.Dst, offset, reqlen)
 	if err != nil && err != io.EOF {
-		log.LogErrorf("Read: op(%v) err(%v) size(%v)", desc, err, size)
+		errmsg := fmt.Sprintf("ReadFile: Read failed, localIP(%v) op(%v) err(%v) size(%v)", s.localIP, desc, err, size)
+		log.LogError(errmsg)
+		exporter.Warning(errmsg)
 		return fuse.EIO
 	}
 
 	if size > reqlen {
-		log.LogErrorf("Read: op(%v) size(%v)", desc, size)
+		errmsg := fmt.Sprintf("ReadFile: read size larger than request len, localIP(%v) op(%v) size(%v)", s.localIP, desc, size)
+		log.LogError(errmsg)
+		exporter.Warning(errmsg)
 		return fuse.EIO
 	}
 
@@ -81,7 +87,9 @@ func (s *Super) ReadFile(ctx context.Context, op *fuseops.ReadFileOp) error {
 		op.BytesRead = size
 	} else if size <= 0 {
 		op.BytesRead = 0
-		log.LogErrorf("Read: op(%v) size(%v)", desc, size)
+		errmsg := fmt.Sprintf("ReadFile: read size is 0, localIP(%v) op(%v) size(%v)", s.localIP, desc, size)
+		log.LogError(errmsg)
+		exporter.Warning(errmsg)
 	}
 
 	log.LogDebugf("TRACE Read exit: op(%v) size(%v)", desc, size)
@@ -104,7 +112,9 @@ func (s *Super) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) error {
 		// workaround: posix_fallocate would write 1 byte if fallocate is not supported.
 		err = s.ec.Truncate(ino, offset+reqlen)
 		if err != nil {
-			log.LogErrorf("fallocate failed: op(%v) origFilesize(%v) err(%v)", desc, filesize, err)
+			errmsg := fmt.Sprintf("fallocate failed: localIP(%v) op(%v) origFilesize(%v) err(%v)", s.localIP, desc, filesize, err)
+			log.LogError(errmsg)
+			exporter.Warning(errmsg)
 		}
 		log.LogDebugf("fallocate: op(%v) origFilesize(%v) err(%v)", desc, filesize, err)
 		return err
@@ -122,18 +132,24 @@ func (s *Super) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) error {
 
 	size, err := s.ec.Write(ino, offset, op.Data, enSyncWrite)
 	if err != nil {
-		log.LogErrorf("Write: failed to write, op(%v) err(%v)", desc, err)
+		errmsg := fmt.Sprintf("WriteFile: Write failed, localIP(%v) op(%v) err(%v)", s.localIP, desc, err)
+		log.LogErrorf(errmsg)
+		exporter.Warning(errmsg)
 		return fuse.EIO
 	}
 
 	if size != reqlen {
-		log.LogErrorf("Write: incomplete write, op(%v) size(%v)", desc, size)
+		errmsg := fmt.Sprintf("WriteFile: incomplete write, localIP(%v) op(%v) size(%v)", s.localIP, desc, size)
+		log.LogErrorf(errmsg)
+		exporter.Warning(errmsg)
 		return fuse.EIO
 	}
 
 	if waitForFlush {
 		if err = s.ec.Flush(ino); err != nil {
-			log.LogErrorf("Write: failed to wait for flush, op(%v) err(%v)", desc, err)
+			errmsg := fmt.Sprintf("WriteFile: Flush failed, localIP(%v) op(%v) err(%v)", s.localIP, desc, err)
+			log.LogErrorf(errmsg)
+			exporter.Warning(errmsg)
 			return fuse.EIO
 		}
 	}
@@ -151,7 +167,9 @@ func (s *Super) SyncFile(ctx context.Context, op *fuseops.SyncFileOp) error {
 
 	err := s.ec.Flush(ino)
 	if err != nil {
-		log.LogErrorf("Fsync: op(%v) err(%v)", desc, err)
+		errmsg := fmt.Sprintf("SyncFile: Flush failed, localIP(%v) op(%v) err(%v)", s.localIP, desc, err)
+		log.LogErrorf(errmsg)
+		exporter.Warning(errmsg)
 		return fuse.EIO
 	}
 	s.ic.Delete(ino)
@@ -168,7 +186,9 @@ func (s *Super) FlushFile(ctx context.Context, op *fuseops.FlushFileOp) error {
 
 	err := s.ec.Flush(ino)
 	if err != nil {
-		log.LogErrorf("Flush: op(%v) err(%v)", desc, err)
+		errmsg := fmt.Sprintf("FlushFile: Flush failed, localIP(%v) op(%v) err(%v)", s.localIP, desc, err)
+		log.LogErrorf(errmsg)
+		exporter.Warning(errmsg)
 		return fuse.EIO
 	}
 	s.ic.Delete(ino)
