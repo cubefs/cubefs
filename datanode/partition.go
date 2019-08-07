@@ -165,20 +165,23 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)
 	}
-
-	p := NewPacketToGetAppliedID(dp.partitionID)
-	target := dp.replicas[0]
-	leaderApplyID, err := dp.getRemoteAppliedID(target, p)
-	go dp.StartRaftLoggingSchedule()
-
-	if (dp.appliedID==0 && err==nil && leaderApplyID==0) || dp.appliedID != 0 {
-		err = dp.StartRaft()
-		if err != nil {
-			log.LogErrorf("partitionID(%v) start raft err(%v)..", dp.partitionID, err)
-			disk.space.DetachDataPartition(dp.partitionID)
-		}
-	} else {
+	if dp.replicas==nil || len(dp.replicas)==0 {
 		go dp.StartRaftAfterRepair()
+	}else {
+		p := NewPacketToGetAppliedID(dp.partitionID)
+		target := dp.replicas[0]
+		leaderApplyID, err := dp.getRemoteAppliedID(target, p)
+		go dp.StartRaftLoggingSchedule()
+
+		if (dp.appliedID==0 && err==nil && leaderApplyID==0) || dp.appliedID != 0 {
+			err = dp.StartRaft()
+			if err != nil {
+				log.LogErrorf("partitionID(%v) start raft err(%v)..", dp.partitionID, err)
+				disk.space.DetachDataPartition(dp.partitionID)
+			}
+		} else {
+			go dp.StartRaftAfterRepair()
+		}
 	}
 
 	dp.ForceLoadHeader()
