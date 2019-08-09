@@ -137,6 +137,11 @@ const (
 	NormalExtentType = 1
 )
 
+const (
+	NormalCreateDataPartition         = 0
+	DecommissionedCreateDataPartition = 1
+)
+
 // Packet defines the packet structure.
 type Packet struct {
 	Magic              uint8

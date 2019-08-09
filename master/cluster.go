@@ -510,7 +510,7 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 				wg.Done()
 			}()
 			var diskPath string
-			if diskPath, err = c.syncCreateDataPartitionToDataNode(host, vol.dataPartitionSize, dp, dp.Peers, dp.Hosts); err != nil {
+			if diskPath, err = c.syncCreateDataPartitionToDataNode(host, vol.dataPartitionSize, dp, dp.Peers, dp.Hosts, proto.NormalCreateDataPartition); err != nil {
 				errChannel <- err
 				return
 			}
@@ -559,8 +559,8 @@ errHandler:
 	return
 }
 
-func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition, peers []proto.Peer, hosts []string) (diskPath string, err error) {
-	task := dp.createTaskToCreateDataPartition(host, size, peers, hosts)
+func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition, peers []proto.Peer, hosts []string, createType int) (diskPath string, err error) {
+	task := dp.createTaskToCreateDataPartition(host, size, peers, hosts, createType)
 	dataNode, err := c.dataNode(host)
 	if err != nil {
 		return
@@ -823,7 +823,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		goto errHandler
 	}
 
-	if diskPath, err = c.syncCreateDataPartitionToDataNode(newAddr, vol.dataPartitionSize, dp, newPeers, newHosts); err != nil {
+	if diskPath, err = c.syncCreateDataPartitionToDataNode(newAddr, vol.dataPartitionSize, dp, newPeers, newHosts, proto.DecommissionedCreateDataPartition); err != nil {
 		goto errHandler
 	}
 	if err = dp.afterCreation(newAddr, diskPath, c); err != nil {
@@ -842,7 +842,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
 errHandler:
-	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.Hosts)
 	if err != nil {
