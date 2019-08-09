@@ -28,13 +28,14 @@ import (
 	"time"
 )
 
-func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize int, hosts []string) (req *proto.CreateDataPartitionRequest) {
+func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize int, hosts []string, createType int) (req *proto.CreateDataPartitionRequest) {
 	req = &proto.CreateDataPartitionRequest{
 		PartitionId:   ID,
 		PartitionSize: dataPartitionSize,
 		VolumeId:      volName,
 		Members:       members,
 		Hosts:         hosts,
+		CreateType:    createType,
 	}
 	return
 }
