@@ -115,15 +115,23 @@ type DataPartition struct {
 	FullSyncTinyDeleteTime int64
 }
 
-func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, err error) {
+func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk,request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
 
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
 	}
 
 	go dp.StartRaftLoggingSchedule()
-	go dp.StartRaftAfterRepair()
 	dp.ForceLoadHeader()
+
+	if request.CreateType==proto.NormalCreateDataPartition{
+		err=dp.StartRaft()
+	}else {
+		go dp.StartRaftAfterRepair()
+	}
+	if err!=nil {
+		return nil,err
+	}
 
 	// persist file metadata
 	err = dp.PersistMetadata()

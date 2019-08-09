@@ -270,7 +270,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 	if disk == nil {
 		return nil, ErrNoSpaceToCreatePartition
 	}
-	if dp, err = CreateDataPartition(dpCfg, disk); err != nil {
+	if dp, err = CreateDataPartition(dpCfg, disk,request); err != nil {
 		return
 	}
 
