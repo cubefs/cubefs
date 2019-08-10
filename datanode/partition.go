@@ -115,7 +115,7 @@ type DataPartition struct {
 	FullSyncTinyDeleteTime int64
 }
 
-func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk,request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
+func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
 
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
@@ -124,17 +124,18 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk,request *proto.Crea
 	go dp.StartRaftLoggingSchedule()
 	dp.ForceLoadHeader()
 
-	if request.CreateType==proto.NormalCreateDataPartition{
-		err=dp.StartRaft()
-	}else {
+	if request.CreateType == proto.NormalCreateDataPartition {
+		err = dp.StartRaft()
+	} else {
 		go dp.StartRaftAfterRepair()
 	}
-	if err!=nil {
-		return nil,err
+	if err != nil {
+		return nil, err
 	}
 
 	// persist file metadata
 	err = dp.PersistMetadata()
+	disk.AddSize(uint64(dp.Size()))
 	return
 }
 
@@ -173,15 +174,15 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)
 	}
-	if dp.replicas==nil || len(dp.replicas)==0 {
+	if dp.replicas == nil || len(dp.replicas) == 0 {
 		go dp.StartRaftAfterRepair()
-	}else {
+	} else {
 		p := NewPacketToGetAppliedID(dp.partitionID)
 		target := dp.replicas[0]
 		leaderApplyID, err := dp.getRemoteAppliedID(target, p)
 		go dp.StartRaftLoggingSchedule()
 
-		if (dp.appliedID==0 && err==nil && leaderApplyID==0) || dp.appliedID != 0 {
+		if (dp.appliedID == 0 && err == nil && leaderApplyID == 0) || dp.appliedID != 0 {
 			err = dp.StartRaft()
 			if err != nil {
 				log.LogErrorf("partitionID(%v) start raft err(%v)..", dp.partitionID, err)
@@ -191,7 +192,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 			go dp.StartRaftAfterRepair()
 		}
 	}
-
+	disk.AddSize(uint64(dp.Size()))
 	dp.ForceLoadHeader()
 	return
 }
