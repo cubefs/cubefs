@@ -174,14 +174,11 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)
 	}
-	if dp.replicas == nil || len(dp.replicas) == 0 {
-		go dp.StartRaftAfterRepair()
-	} else {
+
+	if dp.replicas!=nil && len(dp.replicas)!=0 {
 		p := NewPacketToGetAppliedID(dp.partitionID)
 		target := dp.replicas[0]
 		leaderApplyID, err := dp.getRemoteAppliedID(target, p)
-		go dp.StartRaftLoggingSchedule()
-
 		if (dp.appliedID == 0 && err == nil && leaderApplyID == 0) || dp.appliedID != 0 {
 			err = dp.StartRaft()
 			if err != nil {
@@ -192,6 +189,8 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 			go dp.StartRaftAfterRepair()
 		}
 	}
+	
+	go dp.StartRaftLoggingSchedule()
 	disk.AddSize(uint64(dp.Size()))
 	dp.ForceLoadHeader()
 	return
