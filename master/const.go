@@ -68,7 +68,7 @@ const (
 	minNumOfRWDataPartitions                     = 10
 	intervalToCheckMissingReplica                = 600
 	intervalToLoadDataPartition                  = 12 * 60 * 60
-	defaultInitDataPartitionCnt                  = 1
+	defaultInitDataPartitionCnt                  = 10
 	volExpansionRatio                            = 0.1
 	maxNumberOfDataPartitionsForExpansion        = 100
 	EmptyCrcValue                         uint32 = 4045511210
