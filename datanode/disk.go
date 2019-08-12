@@ -116,7 +116,7 @@ func (d *Disk) computeUsage() (err error) {
 	for _, dp := range d.partitionMap {
 		allocatedSize += int64(dp.Size())
 	}
-	atomic.StoreUint64(&d.Allocated,uint64(allocatedSize))
+	atomic.StoreUint64(&d.Allocated, uint64(allocatedSize))
 	//  unallocated = math.Max(0, total - allocatedSize)
 	unallocated := total - allocatedSize
 	if unallocated < 0 {

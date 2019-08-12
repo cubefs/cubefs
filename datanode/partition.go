@@ -51,12 +51,13 @@ const (
 )
 
 type DataPartitionMetadata struct {
-	VolumeID      string
-	PartitionID   uint64
-	PartitionSize int
-	CreateTime    string
-	Peers         []proto.Peer
-	Hosts         []string
+	VolumeID                string
+	PartitionID             uint64
+	PartitionSize           int
+	CreateTime              string
+	Peers                   []proto.Peer
+	Hosts                   []string
+	DataPartitionCreateType int
 }
 
 type sortedPeers []proto.Peer
@@ -134,7 +135,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	}
 
 	// persist file metadata
-	err = dp.PersistMetadata()
+	err = dp.PersistMetadata(request.CreateType)
 	disk.AddSize(uint64(dp.Size()))
 	return
 }
@@ -175,21 +176,17 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		log.LogErrorf("action[loadApplyIndex] %v", err)
 	}
 
-	if dp.replicas!=nil && len(dp.replicas)!=0 {
-		p := NewPacketToGetAppliedID(dp.partitionID)
-		target := dp.replicas[0]
-		leaderApplyID, err := dp.getRemoteAppliedID(target, p)
-		if (dp.appliedID == 0 && err == nil && leaderApplyID == 0) || dp.appliedID != 0 {
-			err = dp.StartRaft()
-			if err != nil {
-				log.LogErrorf("partitionID(%v) start raft err(%v)..", dp.partitionID, err)
-				disk.space.DetachDataPartition(dp.partitionID)
-			}
-		} else {
-			go dp.StartRaftAfterRepair()
-		}
+	log.LogInfof("Action(LoadDataPartition) partitionID(%v) meta(%v)", dp.partitionID, meta)
+	if meta.DataPartitionCreateType == proto.NormalCreateDataPartition {
+		err = dp.StartRaft()
+	} else {
+		go dp.StartRaftAfterRepair()
 	}
-	
+	if err != nil {
+		log.LogErrorf("partitionID(%v) start raft err(%v)..", dp.partitionID, err)
+		disk.space.DetachDataPartition(dp.partitionID)
+	}
+
 	go dp.StartRaftLoggingSchedule()
 	disk.AddSize(uint64(dp.Size()))
 	dp.ForceLoadHeader()
@@ -333,7 +330,7 @@ func (dp *DataPartition) ForceLoadHeader() {
 }
 
 // PersistMetadata persists the file metadata on the disk.
-func (dp *DataPartition) PersistMetadata() (err error) {
+func (dp *DataPartition) PersistMetadata(dataPartitionCreateType int) (err error) {
 	var (
 		metadataFile *os.File
 		metaData     []byte
@@ -352,12 +349,13 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 	sort.Sort(sp)
 
 	md := &DataPartitionMetadata{
-		VolumeID:      dp.config.VolName,
-		PartitionID:   dp.config.PartitionID,
-		PartitionSize: dp.config.PartitionSize,
-		Peers:         dp.config.Peers,
-		Hosts:         dp.config.Hosts,
-		CreateTime:    time.Now().Format(TimeLayout),
+		VolumeID:                dp.config.VolName,
+		PartitionID:             dp.config.PartitionID,
+		PartitionSize:           dp.config.PartitionSize,
+		Peers:                   dp.config.Peers,
+		Hosts:                   dp.config.Hosts,
+		DataPartitionCreateType: dataPartitionCreateType,
+		CreateTime:              time.Now().Format(TimeLayout),
 	}
 	if metaData, err = json.Marshal(md); err != nil {
 		return
@@ -365,7 +363,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 	if _, err = metadataFile.Write(metaData); err != nil {
 		return
 	}
-
+	log.LogInfof("PersistMetadata DataPartition(%v) data(%v)",dp.partitionID,string(metaData))
 	err = os.Rename(fileName, path.Join(dp.Path(), DataPartitionMetadataFileName))
 	return
 }
