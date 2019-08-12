@@ -80,6 +80,7 @@ print_error_info() {
     cat /cfs/log/cfs.out
     cat /cfs/log/client/client_info.log
     cat /cfs/log/client/client_error.log
+    cat /cfs/log/client/client_warn.log
     curl -s "http://$LeaderAddr/admin/getCluster" | jq
     mount
     df -h
@@ -134,6 +135,7 @@ wait_proc_done() {
     done
     if [[ $timeout -eq 1 ]] ;then
         echo "$proc_name run timeout"
+        print_error_info
         exit 1
     fi
     ret=$(cat /tmp/ltpret)
