@@ -229,6 +229,7 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 			}
 
 			// start raft
+			dp.PersistMetadata(proto.NormalCreateDataPartition)
 			if err := dp.StartRaft(); err != nil {
 				log.LogErrorf("partitionID(%v) start raft err(%v). Retry after 20s.", dp.partitionID, err)
 				timer.Reset(5 * time.Second)
