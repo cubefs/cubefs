@@ -263,14 +263,6 @@ func (d *Disk) GetDataPartition(partitionID uint64) (partition *DataPartition) {
 	return d.partitionMap[partitionID]
 }
 
-func (d *Disk) ForceLoadPartitionHeader() {
-	partitionList := d.DataPartitionList()
-	for _, partitionID := range partitionList {
-		partition := d.GetDataPartition(partitionID)
-		partition.ForceLoadHeader()
-	}
-}
-
 func (d *Disk) ForceExitRaftStore() {
 	partitionList := d.DataPartitionList()
 	for _, partitionID := range partitionList {
@@ -364,7 +356,6 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 		}(partitionID, filename)
 	}
 	wg.Wait()
-	go d.ForceLoadPartitionHeader()
 }
 
 func (d *Disk) AddSize(size uint64) {
