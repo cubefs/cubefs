@@ -70,7 +70,6 @@ func NewDisk(path string, restSize uint64, maxErrCnt int, space *SpaceManager) (
 	d.computeUsage()
 	d.updateSpaceInfo()
 	d.startScheduleToUpdateSpaceInfo()
-	go d.autoComputeExtentCrc()
 	return
 }
 
@@ -158,11 +157,6 @@ func (d *Disk) startScheduleToUpdateSpaceInfo() {
 }
 
 func (d *Disk) autoComputeExtentCrc() {
-	defer func() {
-		if r := recover(); r != nil {
-			d.autoComputeExtentCrc()
-		}
-	}()
 	for {
 		partitions := make([]*DataPartition, 0)
 		d.RLock()
@@ -170,9 +164,10 @@ func (d *Disk) autoComputeExtentCrc() {
 			partitions = append(partitions, dp)
 		}
 		d.RUnlock()
-		for _, dp := range d.partitionMap {
+		for _, dp := range partitions {
 			dp.extentStore.AutoComputeExtentCrc()
 		}
+		time.Sleep(time.Minute)
 	}
 }
 

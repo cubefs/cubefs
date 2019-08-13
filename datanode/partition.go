@@ -363,7 +363,7 @@ func (dp *DataPartition) PersistMetadata(dataPartitionCreateType int) (err error
 	if _, err = metadataFile.Write(metaData); err != nil {
 		return
 	}
-	log.LogInfof("PersistMetadata DataPartition(%v) data(%v)",dp.partitionID,string(metaData))
+	log.LogInfof("PersistMetadata DataPartition(%v) data(%v)", dp.partitionID, string(metaData))
 	err = os.Rename(fileName, path.Join(dp.Path(), DataPartitionMetadataFileName))
 	return
 }
