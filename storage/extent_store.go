@@ -801,6 +801,12 @@ func (arr ExtentInfoArr) Less(i, j int) bool { return arr[i].FileID < arr[j].Fil
 func (arr ExtentInfoArr) Swap(i, j int)      { arr[i], arr[j] = arr[j], arr[i] }
 
 func (s *ExtentStore) AutoComputeExtentCrc() {
+	defer func() {
+		if r := recover(); r != nil {
+			return
+		}
+	}()
+
 	extentInfos := make([]*ExtentInfo, 0)
 	deleteExtents := make([]*ExtentInfo, 0)
 	s.eiMutex.RLock()
@@ -837,7 +843,7 @@ func (s *ExtentStore) AutoComputeExtentCrc() {
 			}
 			ei.UpdateExtentInfo(e, extentCrc)
 		}
-		time.Sleep(time.Millisecond * 1)
+		time.Sleep(time.Millisecond * 50)
 	}
 
 }
