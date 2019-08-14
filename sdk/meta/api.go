@@ -158,6 +158,10 @@ func (mw *MetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
 	return batchInfos
 }
 
+/*
+ * Note that the return value of InodeInfo might be nil without error,
+ * and the caller should make sure InodeInfo is valid before using it.
+ */
 func (mw *MetaWrapper) Delete_ll(parentID uint64, name string, isDir bool) (*proto.InodeInfo, error) {
 	var (
 		status int
@@ -198,6 +202,9 @@ func (mw *MetaWrapper) Delete_ll(parentID uint64, name string, isDir bool) (*pro
 
 	status, inode, err = mw.ddelete(parentMP, parentID, name)
 	if err != nil || status != statusOK {
+		if status == statusNoent {
+			return nil, nil
+		}
 		return nil, statusToErrno(status)
 	}
 
