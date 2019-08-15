@@ -51,7 +51,7 @@ type TimePointCount struct {
 }
 
 func NewTP(name string) (tp *TimePoint) {
-	if !enabled {
+	if !enabledPrometheus {
 		return
 	}
 	tp = TPPool.Get().(*TimePoint)
@@ -61,7 +61,7 @@ func NewTP(name string) (tp *TimePoint) {
 }
 
 func (tp *TimePoint) Set() {
-	if !enabled {
+	if !enabledPrometheus {
 		return
 	}
 	val := time.Since(tp.startTime).Nanoseconds()

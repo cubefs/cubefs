@@ -63,7 +63,6 @@ type Extent struct {
 	extentID   uint64
 	modifyTime int64
 	dataSize   int64
-	realSize   int64
 	hasClose   int32
 	header     []byte
 	sync.Mutex
@@ -412,34 +411,4 @@ func (e *Extent) tinyExtentAvaliOffset(offset int64) (newOffset, newEnd int64, e
 			"newEnd(%v) newOffset(%v)", e.extentID, offset, newEnd, newOffset)
 	}
 	return
-}
-
-func (e *Extent) tinyExtentUpdateRealSize(leaderFileSize int64) {
-	if !IsTinyExtent(e.extentID) {
-		return
-	}
-	if e.dataSize < leaderFileSize {
-		atomic.StoreInt64(&e.realSize, 0)
-		return
-	}
-	atomic.StoreInt64(&e.realSize, 0)
-	var (
-		offset, realSize int64
-	)
-	for {
-		newOffset, err := e.file.Seek(int64(offset), SEEK_DATA)
-		if err != nil {
-			break
-		}
-		newEnd, err := e.file.Seek(int64(newOffset), SEEK_HOLE)
-		if err != nil {
-			break
-		}
-		if newOffset >= leaderFileSize || newEnd >= leaderFileSize {
-			break
-		}
-		realSize = realSize + (newEnd - newOffset)
-		offset = newEnd
-	}
-	atomic.StoreInt64(&e.realSize, realSize)
 }

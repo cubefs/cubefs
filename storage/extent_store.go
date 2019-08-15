@@ -54,7 +54,19 @@ const (
 
 var (
 	RegexpExtentFile, _ = regexp.Compile("^(\\d)+$")
+	SnapShotFilePool    = &sync.Pool{New: func() interface{} {
+		return new(proto.File)
+	}}
 )
+
+func GetSnapShotFileFromPool() (f *proto.File) {
+	f = SnapShotFilePool.Get().(*proto.File)
+	return
+}
+
+func PutSnapShotFileToPool(f *proto.File) {
+	SnapShotFilePool.Put(f)
+}
 
 type ExtentFilter func(info *ExtentInfo) bool
 
@@ -182,7 +194,7 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 
 	files = make([]*proto.File, 0, len(normalExtentSnapshot))
 	for _, ei := range normalExtentSnapshot {
-		file := new(proto.File)
+		file := GetSnapShotFileFromPool()
 		file.Name = strconv.FormatUint(ei.FileID, 10)
 		file.Size = uint32(ei.Size)
 		file.Modified = ei.ModifyTime
@@ -191,7 +203,7 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 	}
 	tinyExtentSnapshot = s.getTinyExtentInfo()
 	for _, ei := range tinyExtentSnapshot {
-		file := new(proto.File)
+		file := GetSnapShotFileFromPool()
 		file.Name = strconv.FormatUint(ei.FileID, 10)
 		file.Size = uint32(ei.Size)
 		file.Modified = ei.ModifyTime
@@ -456,31 +468,6 @@ func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentIn
 	}
 	tinyDeleteFileSize = s.LoadTinyDeleteFileOffset()
 
-	return
-}
-
-func (s *ExtentStore) GetTinyExtentsRealSize(extentIDs []uint64) (tinyExtentRealSize map[uint64]int64) {
-	tinyExtentRealSize = make(map[uint64]int64, 0)
-	for _, extentID := range extentIDs {
-		e, err := s.extentWithHeaderByExtentID(extentID)
-		if err != nil {
-			continue
-		}
-		tinyExtentRealSize[extentID] = atomic.LoadInt64(&e.realSize)
-	}
-	return
-}
-
-func (s *ExtentStore) GetAllTinyExtentsRealSize() (tinyExtentRealSize map[uint64]int64) {
-	tinyExtentRealSize = make(map[uint64]int64, 0)
-	var extentID uint64
-	for extentID = TinyExtentStartID; extentID < TinyExtentCount+TinyExtentStartID; extentID++ {
-		e, err := s.extentWithHeaderByExtentID(extentID)
-		if err != nil {
-			continue
-		}
-		tinyExtentRealSize[extentID] = atomic.LoadInt64(&e.realSize)
-	}
 	return
 }
 
@@ -843,7 +830,7 @@ func (s *ExtentStore) AutoComputeExtentCrc() {
 			}
 			ei.UpdateExtentInfo(e, extentCrc)
 		}
-		time.Sleep(time.Millisecond * 50)
+		time.Sleep(time.Millisecond * 100)
 	}
 
 }
@@ -921,19 +908,3 @@ func (s *ExtentStore) TinyExtentAvaliOffset(extentID uint64, offset int64) (newO
 	return
 }
 
-func (s *ExtentStore) UpdateTinyExtentRealSize(extentID uint64, leaderSize uint64) {
-	var (
-		e   *Extent
-		err error
-	)
-	if !IsTinyExtent(extentID) {
-		return
-	}
-	s.eiMutex.RLock()
-	ei := s.extentInfoMap[extentID]
-	s.eiMutex.RUnlock()
-	if e, err = s.extentWithHeader(ei); err != nil {
-		return
-	}
-	e.tinyExtentUpdateRealSize(int64(leaderSize))
-}

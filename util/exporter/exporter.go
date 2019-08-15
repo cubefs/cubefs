@@ -35,11 +35,11 @@ const (
 )
 
 var (
-	namespace   string
-	clustername string
-	modulename  string
-	enabled     = false
-	replacer    = strings.NewReplacer("-", "_", ".", "_", " ", "_", ",", "_")
+	namespace         string
+	clustername       string
+	modulename        string
+	enabledPrometheus = false
+	replacer          = strings.NewReplacer("-", "_", ".", "_", " ", "_", ",", "_")
 )
 
 func metricsName(name string) string {
@@ -55,7 +55,7 @@ func Init(cluster string, role string, cfg *config.Config) {
 		log.LogInfof("exporter port not set")
 		return
 	}
-	enabled = true
+	enabledPrometheus = true
 	http.Handle(PromHandlerPattern, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
 		Timeout: 5 * time.Second,
 	}))
@@ -82,7 +82,7 @@ func Init(cluster string, role string, cfg *config.Config) {
 }
 
 func collect() {
-	if !enabled {
+	if !enabledPrometheus {
 		return
 	}
 	go collectCounter()

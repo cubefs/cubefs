@@ -44,7 +44,7 @@ type Counter struct {
 }
 
 func NewCounter(name string) (c *Counter) {
-	if !enabled {
+	if !enabledPrometheus {
 		return
 	}
 	c = CounterPool.Get().(*Counter)
@@ -53,7 +53,7 @@ func NewCounter(name string) (c *Counter) {
 }
 
 func (c *Counter) Add(val int64) {
-	if !enabled {
+	if !enabledPrometheus {
 		return
 	}
 	c.val = val
@@ -68,7 +68,7 @@ func (c *Counter) publish() {
 }
 
 func (c *Counter) AddWithLabels(val int64, labels map[string]string) {
-	if !enabled {
+	if !enabledPrometheus {
 		return
 	}
 	c.labels = labels

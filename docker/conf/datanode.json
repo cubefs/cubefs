@@ -8,7 +8,6 @@
     "exporterPort": 9500,
     "rack": "rack-01",
     "logDir": "/cfs/log",
-    "warnLogDir":"/cfs/log",
     "logLevel": "info",
     "disks": [
         "/cfs/disk:10737418240"
