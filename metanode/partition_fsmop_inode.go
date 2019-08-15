@@ -184,6 +184,7 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	})
 	items = ino2.AppendExtents(items, ino.ModifyTime)
 	for _, item := range items {
+		log.LogInfof("fsmAppendExtents inode(%v) ext(%v)",ino2.Inode,item.(*proto.ExtentKey))
 		mp.extDelCh <- item
 	}
 	return
@@ -216,6 +217,7 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	i.ExtentsTruncate(delExtents, ino.Size, ino.ModifyTime)
 	// now we should delete the extent
 	for _, ext := range delExtents {
+		log.LogInfof("fsmExtentsTruncate inode(%v) ext(%v)",i.Inode,ext.(*proto.ExtentKey))
 		mp.extDelCh <- ext
 	}
 	return
