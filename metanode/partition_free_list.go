@@ -180,6 +180,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []*Inode) {
 					reExt = append(reExt, ext)
 					log.LogWarnf("[deleteMarkedInodes] delete failed extents: %s, err: %s", ext.String(), err.Error())
 				}
+				log.LogInfof("[deleteMarkedInodes] inode(%v) extent(%v)",ino.Inode,ext.String() )
 				return true
 			})
 			if len(reExt) == 0 {
@@ -311,7 +312,6 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 		err = errors.NewErrorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(),
 			p.GetResultMsg())
 	}
-	log.LogDebugf("[deleteMarkedInodes] %v", p.GetUniqueLogId())
 	return
 }
 
