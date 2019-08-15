@@ -378,7 +378,7 @@ func (dp *DataPartition) GetAppliedID() (id uint64) {
 func (s *DataNode) parseRaftConfig(cfg *config.Config) (err error) {
 	s.raftDir = cfg.GetString(ConfigKeyRaftDir)
 	if s.raftDir == "" {
-		s.raftDir = DefaultRaftDir
+		return fmt.Errorf("bad raftDir config")
 	}
 	s.raftHeartbeat = cfg.GetString(ConfigKeyRaftHeartbeat)
 	s.raftReplica = cfg.GetString(ConfigKeyRaftReplica)
