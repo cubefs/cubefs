@@ -39,17 +39,15 @@ type DataPartitionRepairTask struct {
 	ExtentsToBeRepaired            []*storage.ExtentInfo
 	LeaderTinyDeleteRecordFileSize int64
 	LeaderAddr                     string
-	LeaderTinyExtentRealSize       map[uint64]int64
 }
 
-func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo, leaderTinyExtentRealSize map[uint64]int64, tinyDeleteRecordFileSize int64, source, leaderAddr string) (task *DataPartitionRepairTask) {
+func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo, tinyDeleteRecordFileSize int64, source, leaderAddr string) (task *DataPartitionRepairTask) {
 	task = &DataPartitionRepairTask{
 		extents:                        make(map[uint64]*storage.ExtentInfo),
 		ExtentsToBeCreated:             make([]*storage.ExtentInfo, 0),
 		ExtentsToBeRepaired:            make([]*storage.ExtentInfo, 0),
 		LeaderTinyDeleteRecordFileSize: tinyDeleteRecordFileSize,
 		LeaderAddr:                     leaderAddr,
-		LeaderTinyExtentRealSize:       leaderTinyExtentRealSize,
 	}
 	for _, extentFile := range extentFiles {
 		extentFile.Source = source
@@ -119,9 +117,6 @@ func (dp *DataPartition) repair(extentType uint8) {
 	// every time we need to figureAnnotatef out which extents need to be repaired and which ones do not.
 	dp.sendAllTinyExtentsToC(extentType, availableTinyExtents, brokenTinyExtents)
 
-	for extentId, extentSize := range repairTasks[0].LeaderTinyExtentRealSize {
-		dp.extentStore.UpdateTinyExtentRealSize(extentId, uint64(extentSize))
-	}
 	// error check
 	if dp.extentStore.AvailableTinyExtentCnt()+dp.extentStore.BrokenTinyExtentCnt() > storage.TinyExtentCount {
 		log.LogWarnf("action[repair] partition(%v) GoodTinyExtents(%v) "+
@@ -136,13 +131,13 @@ func (dp *DataPartition) repair(extentType uint8) {
 
 func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartitionRepairTask, extentType uint8, tinyExtents []uint64) (err error) {
 	// get the local extent info
-	extents, leaderTinyExtentRealSize, leaderTinyDeleteRecordFileSize, err := dp.getLocalExtentInfo(extentType, tinyExtents)
+	extents, leaderTinyDeleteRecordFileSize, err := dp.getLocalExtentInfo(extentType, tinyExtents)
 	if err != nil {
 		return err
 	}
 
 	// new repair task for the leader
-	repairTasks[0] = NewDataPartitionRepairTask(extents, leaderTinyExtentRealSize, leaderTinyDeleteRecordFileSize, dp.replicas[0], dp.replicas[0])
+	repairTasks[0] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, dp.replicas[0], dp.replicas[0])
 	repairTasks[0].addr = dp.replicas[0]
 
 	// new repair tasks for the followers
@@ -152,14 +147,14 @@ func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartiti
 			log.LogErrorf("buildDataPartitionRepairTask partitionID(%v) on (%v) err(%v)", dp.partitionID, dp.replicas[index], err)
 			continue
 		}
-		repairTasks[index] = NewDataPartitionRepairTask(extents, leaderTinyExtentRealSize, leaderTinyDeleteRecordFileSize, dp.replicas[index], dp.replicas[0])
+		repairTasks[index] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, dp.replicas[index], dp.replicas[0])
 		repairTasks[index].addr = dp.replicas[index]
 	}
 
 	return
 }
 
-func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint64) (extents []*storage.ExtentInfo, leaderTinyExtentRealSize map[uint64]int64, leaderTinyDeleteRecordFileSize int64, err error) {
+func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint64) (extents []*storage.ExtentInfo, leaderTinyDeleteRecordFileSize int64, err error) {
 	localExtents := make([]*storage.ExtentInfo, 0)
 	extents = make([]*storage.ExtentInfo, 0)
 
@@ -181,7 +176,6 @@ func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint
 	if err = json.Unmarshal(data, &extents); err != nil {
 		err = errors.Trace(err, "getLocalExtentInfo extent DataPartition(%v) GetAllWaterMark", dp.partitionID)
 	}
-	leaderTinyExtentRealSize = dp.extentStore.GetTinyExtentsRealSize(tinyExtents)
 
 	return
 }

@@ -121,10 +121,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
 	}
-
-	go dp.StartRaftLoggingSchedule()
 	dp.ForceLoadHeader()
-
 	if request.CreateType == proto.NormalCreateDataPartition {
 		err = dp.StartRaft()
 	} else {
@@ -135,6 +132,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	}
 
 	// persist file metadata
+	go dp.StartRaftLoggingSchedule()
 	err = dp.PersistMetadata(request.CreateType)
 	disk.AddSize(uint64(dp.Size()))
 	return
@@ -278,6 +276,9 @@ func (dp *DataPartition) ReloadSnapshot() {
 		return
 	}
 	dp.snapshotMutex.Lock()
+	for _, f := range dp.snapshot {
+		storage.PutSnapShotFileToPool(f)
+	}
 	dp.snapshot = files
 	dp.snapshotMutex.Unlock()
 }
@@ -656,9 +657,6 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 	}
 	wg.Wait()
 	dp.doStreamFixTinyDeleteRecord(repairTask, time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
-	for extentID, tinyExtentRealSize := range repairTask.LeaderTinyExtentRealSize {
-		dp.extentStore.UpdateTinyExtentRealSize(extentID, uint64(tinyExtentRealSize))
-	}
 }
 
 func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRepairTask, isFullSync bool) {

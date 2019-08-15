@@ -49,7 +49,7 @@ type Gauge struct {
 }
 
 func NewGauge(name string) (g *Gauge) {
-	if !enabled {
+	if !enabledPrometheus {
 		return
 	}
 	g = GaugePool.Get().(*Gauge)
@@ -85,7 +85,7 @@ func (c *Gauge) Metric() prometheus.Gauge {
 }
 
 func (g *Gauge) Set(val int64) {
-	if !enabled {
+	if !enabledPrometheus {
 		return
 	}
 	g.val = val
@@ -100,7 +100,7 @@ func (c *Gauge) publish() {
 }
 
 func (g *Gauge) SetWithLabels(val int64, labels map[string]string) {
-	if !enabled {
+	if !enabledPrometheus {
 		return
 	}
 	g.labels = labels

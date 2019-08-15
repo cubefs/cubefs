@@ -34,13 +34,14 @@ import (
 type Level uint8
 
 const (
-	DebugLevel  Level = 1
-	InfoLevel         = DebugLevel<<1 + 1
-	WarnLevel         = InfoLevel<<1 + 1
-	ErrorLevel        = WarnLevel<<1 + 1
-	FatalLevel        = ErrorLevel<<1 + 1
-	ReadLevel         = InfoLevel
-	UpdateLevel       = InfoLevel
+	DebugLevel    Level = 1
+	InfoLevel           = DebugLevel<<1 + 1
+	WarnLevel           = InfoLevel<<1 + 1
+	ErrorLevel          = WarnLevel<<1 + 1
+	FatalLevel          = ErrorLevel<<1 + 1
+	CriticalLevel       = FatalLevel << +1
+	ReadLevel           = InfoLevel
+	UpdateLevel         = InfoLevel
 )
 
 const (
@@ -60,6 +61,7 @@ var levelPrefixes = []string{
 	"[FATAL]",
 	"[READ ]",
 	"[WRITE]",
+	"[Critical]",
 }
 
 type RolledFile []os.FileInfo
@@ -230,6 +232,7 @@ type Log struct {
 	infoLogger     *LogObject
 	readLogger     *LogObject
 	updateLogger   *LogObject
+	criticalLogger *LogObject
 	level          Level
 	msgC           chan string
 	rotate         *LogRotate
@@ -237,12 +240,13 @@ type Log struct {
 }
 
 var (
-	ErrLogFileName    = "_error.log"
-	WarnLogFileName   = "_warn.log"
-	InfoLogFileName   = "_info.log"
-	DebugLogFileName  = "_debug.log"
-	ReadLogFileName   = "_read.log"
-	UpdateLogFileName = "_write.log"
+	ErrLogFileName      = "_error.log"
+	WarnLogFileName     = "_warn.log"
+	InfoLogFileName     = "_info.log"
+	DebugLogFileName    = "_debug.log"
+	ReadLogFileName     = "_read.log"
+	UpdateLogFileName   = "_write.log"
+	CriticalLogFileName = "_critical.log"
 )
 
 var gLog *Log = nil
@@ -297,8 +301,8 @@ func (l *Log) initLog(logDir, module string, level Level) error {
 		return
 	}
 	var err error
-	logHandles := [...]**LogObject{&l.debugLogger, &l.infoLogger, &l.warnLogger, &l.errorLogger, &l.readLogger, &l.updateLogger}
-	logNames := [...]string{DebugLogFileName, InfoLogFileName, WarnLogFileName, ErrLogFileName, ReadLogFileName, UpdateLogFileName}
+	logHandles := [...]**LogObject{&l.debugLogger, &l.infoLogger, &l.warnLogger, &l.errorLogger, &l.readLogger, &l.updateLogger, &l.criticalLogger}
+	logNames := [...]string{DebugLogFileName, InfoLogFileName, WarnLogFileName, ErrLogFileName, ReadLogFileName, UpdateLogFileName, CriticalLogFileName}
 	for i := range logHandles {
 		if *logHandles[i], err = newLog(logNames[i]); err != nil {
 			return err
@@ -334,6 +338,7 @@ func (l *Log) Flush() {
 		l.errorLogger,
 		l.readLogger,
 		l.updateLogger,
+		l.criticalLogger,
 	}
 	for _, logger := range loggers {
 		if logger != nil {
@@ -451,9 +456,6 @@ func LogFatal(v ...interface{}) {
 	if gLog == nil {
 		return
 	}
-	if FatalLevel&gLog.level != gLog.level {
-		return
-	}
 	s := fmt.Sprintln(v...)
 	s = gLog.SetPrefix(s, levelPrefixes[4])
 	gLog.errorLogger.Output(2, s)
@@ -465,13 +467,30 @@ func LogFatalf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
 	}
-	if FatalLevel&gLog.level != gLog.level {
-		return
-	}
 	s := fmt.Sprintf(format, v...)
 	s = gLog.SetPrefix(s, levelPrefixes[4])
 	gLog.errorLogger.Output(2, s)
 	os.Exit(1)
+}
+
+// LogFatal logs the fatal errors.
+func LogCritical(v ...interface{}) {
+	if gLog == nil {
+		return
+	}
+	s := fmt.Sprintln(v...)
+	s = gLog.SetPrefix(s, levelPrefixes[4])
+	gLog.criticalLogger.Output(2, s)
+}
+
+// LogFatalf logs the fatal errors with specified format.
+func LogCriticalf(format string, v ...interface{}) {
+	if gLog == nil {
+		return
+	}
+	s := fmt.Sprintf(format, v...)
+	s = gLog.SetPrefix(s, levelPrefixes[4])
+	gLog.criticalLogger.Output(2, s)
 }
 
 // LogRead

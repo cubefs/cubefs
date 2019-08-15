@@ -16,6 +16,7 @@ package exporter
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/ump"
 	"sync"
 )
@@ -41,12 +42,14 @@ type Alarm struct {
 }
 
 func Warning(detail string) (a *Alarm) {
-	ump.Alarm(fmt.Sprintf("%v_%v_warning", clustername, modulename), detail)
-	if !enabled {
+	key := fmt.Sprintf("%v_%v_warning", clustername, modulename)
+	ump.Alarm(key, detail)
+	log.LogCriticalf(key, detail)
+	if !enabledPrometheus {
 		return
 	}
 	a = AlarmPool.Get().(*Alarm)
-	a.name = metricsName(fmt.Sprintf("%s_%s_alarm", clustername, modulename))
+	a.name = metricsName(key)
 	a.Add(1)
 	return
 }

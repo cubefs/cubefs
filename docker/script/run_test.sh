@@ -109,7 +109,7 @@ wait_proc_done() {
     logfile=$2
     logfile2=${logfile}-2
     logfile3=${logfile}-3
-    maxtime=${3:-29000}
+    maxtime=${3:-3000}
     checktime=${4:-60}
     retfile=${5:-"/tmp/ltpret"}
     timeout=1
