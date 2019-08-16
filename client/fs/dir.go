@@ -149,7 +149,7 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 
 	d.super.ic.Delete(d.inode.ino)
 
-	if info != nil && info.Nlink == 0 {
+	if info != nil && info.Nlink == 0 && !proto.IsDir(info.Mode) {
 		d.super.orphan.Put(info.Inode)
 		log.LogDebugf("Remove: add to orphan inode list, ino(%v)", info.Inode)
 	}
