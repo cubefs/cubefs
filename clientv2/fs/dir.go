@@ -228,6 +228,10 @@ func (s *Super) RmDir(ctx context.Context, op *fuseops.RmDirOp) error {
 		return ParseError(err)
 	}
 
+	if info != nil {
+		s.ic.Delete(info.Inode)
+	}
+
 	log.LogDebugf("TRACE exit %v: info(%v)", desc, info)
 	return nil
 }
@@ -247,6 +251,10 @@ func (s *Super) Unlink(ctx context.Context, op *fuseops.UnlinkOp) error {
 	if err != nil {
 		log.LogErrorf("%v: err(%v)", desc, err)
 		return ParseError(err)
+	}
+
+	if info != nil {
+		s.ic.Delete(info.Inode)
 	}
 
 	if info != nil && info.Nlink == 0 {
