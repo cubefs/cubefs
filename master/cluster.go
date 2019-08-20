@@ -966,7 +966,7 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner string, mpCount, size, capacity int) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner string, mpCount, size, capacity, dpReplicaNum int) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -976,7 +976,7 @@ func (c *Cluster) createVol(name, owner string, mpCount, size, capacity int) (vo
 	} else {
 		dataPartitionSize = uint64(size) * util.GB
 	}
-	if vol, err = c.doCreateVol(name, owner, dataPartitionSize, uint64(capacity)); err != nil {
+	if vol, err = c.doCreateVol(name, owner, dataPartitionSize, uint64(capacity), dpReplicaNum); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -1004,7 +1004,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) doCreateVol(name, owner string, dpSize, capacity uint64) (vol *Vol, err error) {
+func (c *Cluster) doCreateVol(name, owner string, dpSize, capacity uint64, dpReplicaNum int) (vol *Vol, err error) {
 	var id uint64
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
@@ -1016,7 +1016,7 @@ func (c *Cluster) doCreateVol(name, owner string, dpSize, capacity uint64) (vol 
 	if err != nil {
 		goto errHandler
 	}
-	vol = newVol(id, name, owner, dpSize, capacity)
+	vol = newVol(id, name, owner, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum)
 	if err = c.syncAddVol(vol); err != nil {
 		goto errHandler
 	}
