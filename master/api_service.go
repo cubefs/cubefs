@@ -389,21 +389,22 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		name     string
-		owner    string
-		err      error
-		msg      string
-		size     int
-		mpCount  int
-		capacity int
-		vol      *Vol
+		name         string
+		owner        string
+		err          error
+		msg          string
+		size         int
+		mpCount      int
+		dpReplicaNum int
+		capacity     int
+		vol          *Vol
 	)
 
-	if name, owner, mpCount, size, capacity, err = parseRequestToCreateVol(r); err != nil {
+	if name, owner, mpCount, size, capacity, dpReplicaNum, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.createVol(name, owner, mpCount, size, capacity); err != nil {
+	if vol, err = m.cluster.createVol(name, owner, mpCount, size, capacity, dpReplicaNum); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -815,7 +816,7 @@ func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity, r
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size, capacity int, err error) {
+func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size, capacity, dpReplicaNum int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -836,6 +837,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size
 	if sizeStr := r.FormValue(dataPartitionSizeKey); sizeStr != "" {
 		if size, err = strconv.Atoi(sizeStr); err != nil {
 			err = unmatchedKey(dataPartitionSizeKey)
+			return
 		}
 	}
 
@@ -844,6 +846,14 @@ func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size
 		return
 	} else if capacity, err = strconv.Atoi(capacityStr); err != nil {
 		err = unmatchedKey(volCapacityKey)
+		return
+	}
+
+	if replicaStr := r.FormValue(replicaNumKey); replicaStr == "" {
+		dpReplicaNum = defaultReplicaNum
+	} else if dpReplicaNum, err = strconv.Atoi(replicaStr); err != nil {
+		err = unmatchedKey(replicaNumKey)
+		return
 	}
 	return
 }

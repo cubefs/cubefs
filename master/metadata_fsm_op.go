@@ -109,6 +109,7 @@ type volValue struct {
 	ID                uint64
 	Name              string
 	ReplicaNum        uint8
+	DpReplicaNum      uint8
 	Status            uint8
 	DataPartitionSize uint64
 	Capacity          uint64
@@ -120,6 +121,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		ID:                vol.ID,
 		Name:              vol.Name,
 		ReplicaNum:        vol.mpReplicaNum,
+		DpReplicaNum:      vol.dpReplicaNum,
 		Status:            vol.Status,
 		DataPartitionSize: vol.dataPartitionSize,
 		Capacity:          vol.Capacity,
@@ -518,7 +520,7 @@ func (c *Cluster) loadVols() (err error) {
 			err = fmt.Errorf("action[loadVols],value:%v,unmarshal err:%v", string(value), err)
 			return err
 		}
-		vol := newVol(vv.ID, vv.Name, vv.Owner, vv.DataPartitionSize, vv.Capacity)
+		vol := newVol(vv.ID, vv.Name, vv.Owner, vv.DataPartitionSize, vv.Capacity, vv.DpReplicaNum, vv.ReplicaNum)
 		vol.Status = vv.Status
 		c.putVol(vol)
 		log.LogInfof("action[loadVols],vol[%v]", vol.Name)
