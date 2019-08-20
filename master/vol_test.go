@@ -192,10 +192,13 @@ func TestVolReduceReplicaNum(t *testing.T) {
 	}
 	for i := 0; i < int(oldReplicaNum); i++ {
 		t.Logf("before check,needToLowerReplica[%v] \n", vol.NeedToLowerReplica)
-		vol.checkDataPartitions(server.cluster)
+		vol.NeedToLowerReplica = true
 		t.Logf(" after check,needToLowerReplica[%v]\n", vol.NeedToLowerReplica)
 		vol.checkReplicaNum(server.cluster)
 	}
+	vol.NeedToLowerReplica = true
+	//check more once,the replica num of data partition must be equal with vol.dpReplicaNun
+	vol.checkReplicaNum(server.cluster)
 	for _, dp := range vol.dataPartitions.partitionMap {
 		if dp.ReplicaNum != vol.dpReplicaNum || len(dp.Hosts) != int(vol.dpReplicaNum) {
 			t.Errorf("dp.replicaNum[%v],hosts[%v],vol.dpReplicaNum[%v]\n", dp.ReplicaNum, len(dp.Hosts), vol.dpReplicaNum)

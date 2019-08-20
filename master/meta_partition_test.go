@@ -27,6 +27,7 @@ func TestMetaPartition(t *testing.T) {
 }
 
 func createMetaPartition(vol *Vol, t *testing.T) {
+	server.cluster.DisableAutoAllocate = false
 	maxPartitionID := commonVol.maxPartitionID()
 	mp, err := commonVol.metaPartition(maxPartitionID)
 	if err != nil {

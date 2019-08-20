@@ -871,7 +871,7 @@ func (c *Cluster) syncDecommissionDataPartition(dp *DataPartition, addr string, 
 	}
 
 	if _, err = dataNode.TaskManager.syncSendAdminTask(task); err != nil {
-		return nil
+		return
 	}
 	return
 }

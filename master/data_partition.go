@@ -593,13 +593,45 @@ func (partition *DataPartition) getMinus() (minus float64) {
 	return minus
 }
 
-func (partition *DataPartition) getToBeDecommissionHost() (host string) {
+func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host string) {
 	partition.RLock()
 	defer partition.RUnlock()
 	hostLen := len(partition.Hosts)
-	if hostLen == 1 {
+	if hostLen <= 1 || hostLen <= replicaNum {
 		return
 	}
 	host = partition.Hosts[hostLen-1]
+	return
+}
+
+func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) (err error) {
+	partition.Lock()
+	defer partition.Unlock()
+	replica, err := partition.getReplica(host)
+	if err != nil {
+		return
+	}
+	removePeer := proto.Peer{ID: replica.dataNode.ID, Addr: host}
+	if err = c.syncDecommissionDataPartition(partition, host, removePeer, proto.Peer{}); err != nil {
+		return
+	}
+	oldReplicaNum := partition.ReplicaNum
+	oldHosts := partition.Hosts
+	oldPeers := partition.Peers
+	partition.ReplicaNum = partition.ReplicaNum - 1
+	partition.Hosts = partition.Hosts[:partition.ReplicaNum]
+	curPeers := make([]proto.Peer, 0, partition.ReplicaNum)
+	for _, peer := range partition.Peers {
+		if peer.Addr == host {
+			continue
+		}
+		curPeers = append(curPeers, peer)
+	}
+	partition.Peers = curPeers
+	if err = c.syncUpdateDataPartition(partition); err != nil {
+		partition.ReplicaNum = oldReplicaNum
+		partition.Hosts = oldHosts
+		partition.Peers = oldPeers
+	}
 	return
 }

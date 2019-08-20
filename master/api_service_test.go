@@ -178,6 +178,7 @@ func TestSetDisableAutoAlloc(t *testing.T) {
 		t.Errorf("set disableAutoAlloc to %v failed", enable)
 		return
 	}
+	server.cluster.DisableAutoAllocate = false
 }
 
 func TestGetCluster(t *testing.T) {
