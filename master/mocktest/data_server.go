@@ -51,8 +51,8 @@ func (mds *MockDataServer) register() {
 		panic(err)
 	}
 	fmt.Println(string(body))
-	var rst *proto.HTTPReply
-	err = json.Unmarshal(body, &rst)
+	rst := &proto.HTTPReply{}
+	err = json.Unmarshal(body, rst)
 	if err != nil {
 		panic(err)
 	}
@@ -107,7 +107,44 @@ func (mds *MockDataServer) serveConn(rc net.Conn) {
 	case proto.OpLoadDataPartition:
 		err = mds.handleLoadDataPartition(conn, req, adminTask)
 		fmt.Printf("data node [%v] load data partition,id[%v],err:%v\n", mds.TcpAddr, adminTask.ID, err)
+	case proto.OpDecommissionDataPartition:
+		err = mds.handleDecommissionDataPartition(conn, req, adminTask)
+		fmt.Printf("data node [%v] load data partition,id[%v],err:%v\n", mds.TcpAddr, adminTask.ID, err)
+	default:
+		fmt.Printf("unknown code [%v]\n", req.Opcode)
 	}
+}
+
+func (mds *MockDataServer) handleDecommissionDataPartition(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
+	defer func() {
+		if err != nil {
+			responseAckErrToMaster(conn, p, err)
+		} else {
+			p.PacketOkWithBody([]byte("/cfs"))
+			p.WriteToConn(conn)
+		}
+	}()
+	// Marshal request body.
+	requestJson, err := json.Marshal(adminTask.Request)
+	if err != nil {
+		return
+	}
+	// Unmarshal request to entity
+	req := &proto.DataPartitionDecommissionRequest{}
+	if err = json.Unmarshal(requestJson, req); err != nil {
+		return
+	}
+	partitions := make([]*MockDataPartition, 0)
+	for index, dp := range mds.partitions {
+		if dp.PartitionID == req.PartitionId {
+			partitions = append(partitions, mds.partitions[:index]...)
+			partitions = append(partitions, mds.partitions[index+1:]...)
+		}
+	}
+	if len(partitions) != 0 {
+		mds.partitions = partitions
+	}
+	return
 }
 
 func (mds *MockDataServer) handleCreateDataPartition(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
@@ -115,8 +152,7 @@ func (mds *MockDataServer) handleCreateDataPartition(conn net.Conn, p *proto.Pac
 		if err != nil {
 			responseAckErrToMaster(conn, p, err)
 		} else {
-			p.PacketOkWithBody([]byte("/cfs"))
-			p.WriteToConn(conn)
+			responseAckOKToMaster(conn, p, nil)
 		}
 	}()
 	// Marshal request body.

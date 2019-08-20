@@ -147,7 +147,7 @@ func (vol *Vol) initDataPartitions(c *Cluster) {
 }
 
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
-	if vol.getDataPartitionsCount() == 0 {
+	if vol.getDataPartitionsCount() == 0 && vol.Status != markDelete {
 		c.createDataPartition(vol.Name)
 	}
 	vol.dataPartitions.RLock()
@@ -196,33 +196,16 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 	if !vol.NeedToLowerReplica {
 		return
 	}
-	vol.dataPartitions.RLock()
-	defer vol.dataPartitions.RUnlock()
-	var (
-		err     error
-		replica *DataReplica
-	)
-	for _, dp := range vol.dataPartitions.partitionMap {
-		host := dp.getToBeDecommissionHost()
+	var err error
+	dps := vol.cloneDataPartitionMap()
+	for _, dp := range dps {
+		host := dp.getToBeDecommissionHost(int(vol.dpReplicaNum))
 		if host == "" {
 			continue
 		}
-		replica, err = dp.getReplica(host)
-		if err != nil {
+		if err = dp.removeOneReplicaByHost(c, host); err != nil {
+			log.LogErrorf("action[checkReplicaNum],vol[%v],err[%v]", vol.Name, err)
 			continue
-		}
-		removePeer := proto.Peer{ID: replica.dataNode.ID, Addr: host}
-		if err = c.syncDecommissionDataPartition(dp, host, removePeer, proto.Peer{}); err != nil {
-			log.LogError(err)
-			continue
-		}
-		oldReplicaNum := dp.ReplicaNum
-		oldHosts := dp.Hosts
-		dp.ReplicaNum = dp.ReplicaNum - 1
-		dp.Hosts = dp.Hosts[:dp.ReplicaNum]
-		if err = c.syncUpdateDataPartition(dp); err != nil {
-			dp.ReplicaNum = oldReplicaNum
-			dp.Hosts = oldHosts
 		}
 	}
 	vol.NeedToLowerReplica = false
@@ -284,6 +267,16 @@ func (vol *Vol) cloneMetaPartitionMap() (mps map[uint64]*MetaPartition) {
 	defer vol.mpsLock.RUnlock()
 	for _, mp := range vol.MetaPartitions {
 		mps[mp.PartitionID] = mp
+	}
+	return
+}
+
+func (vol *Vol) cloneDataPartitionMap() (dps map[uint64]*DataPartition) {
+	vol.dataPartitions.RLock()
+	defer vol.dataPartitions.RUnlock()
+	dps = make(map[uint64]*DataPartition, 0)
+	for _, dp := range vol.dataPartitions.partitionMap {
+		dps[dp.PartitionID] = dp
 	}
 	return
 }

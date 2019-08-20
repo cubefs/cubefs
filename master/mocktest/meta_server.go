@@ -42,7 +42,7 @@ func (mms *MockMetaServer) register() {
 		panic(err)
 	}
 	fmt.Println(string(body))
-	var rst *proto.HTTPReply
+	rst := &proto.HTTPReply{}
 	err = json.Unmarshal(body, &rst)
 	if err != nil {
 		panic(err)
