@@ -252,8 +252,8 @@ func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int, maxPartition
 		mp.Status = proto.ReadWrite
 	}
 	if writeLog && len(liveReplicas) != int(mp.ReplicaNum) {
-		log.LogInfof("action[checkMPStatus],id:%v,status:%v,replicaNum:%v,liveReplicas:%v persistenceHosts:%v",
-			mp.PartitionID, mp.Status, mp.ReplicaNum, len(liveReplicas), mp.Hosts)
+		log.LogInfof("action[checkMPStatus],id:%v,status:%v,replicaNum:%v,replicas:%v,liveReplicas:%v persistenceHosts:%v",
+			mp.PartitionID, mp.Status, mp.ReplicaNum,mp.Replicas, len(liveReplicas), mp.Hosts)
 	}
 }
 

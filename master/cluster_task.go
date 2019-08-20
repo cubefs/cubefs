@@ -517,29 +517,48 @@ func (c *Cluster) updateDataNode(dataNode *DataNode, dps []*proto.PartitionRepor
 		if vr == nil {
 			continue
 		}
-		vol, err := c.getVol(vr.VolName)
-		if err != nil {
-			continue
-		}
-		if dp, err := vol.getDataPartitionByID(vr.PartitionID); err == nil {
-			dp.updateMetric(vr, dataNode, c)
+		if vr.VolName != "" {
+			vol, err := c.getVol(vr.VolName)
+			if err != nil {
+				continue
+			}
+			if dp, err := vol.getDataPartitionByID(vr.PartitionID); err == nil {
+				dp.updateMetric(vr, dataNode, c)
+			}
+		} else {
+			if dp, err := c.getDataPartitionByID(vr.PartitionID); err == nil {
+				dp.updateMetric(vr, dataNode, c)
+			}
 		}
 	}
 }
 
 func (c *Cluster) updateMetaNode(metaNode *MetaNode, metaPartitions []*proto.MetaPartitionReport, threshold bool) {
+	var (
+		vol *Vol
+		err error
+	)
 	for _, mr := range metaPartitions {
 		if mr == nil {
 			continue
 		}
-		vol, err := c.getVol(mr.VolName)
-		if err != nil {
-			continue
+		var mp *MetaPartition
+		if mr.VolName != "" {
+			vol, err = c.getVol(mr.VolName)
+			if err != nil {
+				continue
+			}
+			mp, err = vol.metaPartition(mr.PartitionID)
+			if err != nil {
+				continue
+			}
+		} else {
+			mp, err = c.getMetaPartitionByID(mr.PartitionID)
+			if err != nil {
+				continue
+			}
 		}
-		mp, err := vol.metaPartition(mr.PartitionID)
-		if err != nil {
-			continue
-		}
+
 		//send latest end to replica
 		if mr.End != mp.End {
 			mp.addUpdateMetaReplicaTask(c)
