@@ -36,7 +36,6 @@ ChubaoFS use **JSON** as configuration file format.
    "clusterName", "string", "The cluster identifier", "Yes"
    "exporterPort", "int", "The prometheus exporter port", "No"
    "consulAddr", "string", "The consul register addr for prometheus exporter", "No"
-   "warnLogDir","string","Warn message directory","No"
 
 
 **Example:**
@@ -55,7 +54,6 @@ ChubaoFS use **JSON** as configuration file format.
     "logLevel":"info",
     "walDir":"/export/Data/master/raft",
     "storeDir":"/export/Data/master/rocksdbstore",
-    "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
     "exporterPort": 9510,
     "consulAddr": "http://consul.prometheus-cfs.local",
     "clusterName":"test"
