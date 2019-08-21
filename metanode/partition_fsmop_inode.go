@@ -122,7 +122,13 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 	inode.DoWriteFunc(func() {
 		inode.ModifyTime = ino.ModifyTime
 	})
+
+	if inode.IsEmptyDir() {
+		mp.inodeTree.Delete(inode)
+	}
+
 	inode.DecNLink()
+
 	if !proto.IsDir(inode.Type) {
 		if inode.IsTempFile() {
 			mp.freeList.Push(inode)
@@ -130,9 +136,6 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 		return
 	}
 
-	if inode.IsEmptyDir() {
-		mp.inodeTree.Delete(inode)
-	}
 	return
 }
 
@@ -184,7 +187,7 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	})
 	items = ino2.AppendExtents(items, ino.ModifyTime)
 	for _, item := range items {
-		log.LogInfof("fsmAppendExtents inode(%v) ext(%v)",ino2.Inode,item.(*proto.ExtentKey))
+		log.LogInfof("fsmAppendExtents inode(%v) ext(%v)", ino2.Inode, item.(*proto.ExtentKey))
 		mp.extDelCh <- item
 	}
 	return
@@ -217,7 +220,7 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	i.ExtentsTruncate(delExtents, ino.Size, ino.ModifyTime)
 	// now we should delete the extent
 	for _, ext := range delExtents {
-		log.LogInfof("fsmExtentsTruncate inode(%v) ext(%v)",i.Inode,ext.(*proto.ExtentKey))
+		log.LogInfof("fsmExtentsTruncate inode(%v) ext(%v)", i.Inode, ext.(*proto.ExtentKey))
 		mp.extDelCh <- ext
 	}
 	return
