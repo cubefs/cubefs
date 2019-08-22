@@ -154,7 +154,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 				go dp.raftPartition.Truncate(dp.minAppliedID)
 				dp.lastTruncateID = dp.minAppliedID
 			}
-			truncateRaftLogTimer.Reset(time.Minute * 10)
+			truncateRaftLogTimer.Reset(time.Minute)
 
 		case <-storeAppliedIDTimer.C:
 			if err := dp.storeAppliedID(dp.appliedID); err != nil {
@@ -223,7 +223,7 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 				"localSize(%v)", dp.partitionID, initMaxExtentID, initPartitionSize, currLeaderPartitionSize, localSize)
 
 			if initPartitionSize > localSize {
-				log.LogErrorf("partitionID(%v) leader size(%v) local size(%v)", dp.partitionID, initPartitionSize, localSize)
+				log.LogErrorf("partitionID(%v) leader size(%v) local size(%v) wait snapshot recover", dp.partitionID, initPartitionSize, localSize)
 				timer.Reset(5 * time.Second)
 				continue
 			}
