@@ -106,13 +106,11 @@ type DataPartition struct {
 	storeC          chan uint64
 	stopC           chan bool
 
-	runtimeMetrics                *DataPartitionMetrics
 	intervalToUpdateReplicas      int64 // interval to ask the master for updating the replica information
 	snapshot                      []*proto.File
 	snapshotMutex                 sync.RWMutex
 	intervalToUpdatePartitionSize int64
 	loadExtentHeaderStatus        int
-
 	FullSyncTinyDeleteTime int64
 }
 
@@ -207,7 +205,6 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		storeC:          make(chan uint64, 128),
 		snapshot:        make([]*proto.File, 0),
 		partitionStatus: proto.ReadWrite,
-		runtimeMetrics:  NewDataPartitionMetrics(),
 		config:          dpCfg,
 	}
 	partition.replicasInit()
@@ -304,6 +301,10 @@ func (dp *DataPartition) Stop() {
 // Disk returns the disk instance.
 func (dp *DataPartition) Disk() *Disk {
 	return dp.disk
+}
+
+func (dp *DataPartition) IsRejectWrite() bool{
+	return dp.Disk().RejectWrite
 }
 
 // Status returns the partition status.

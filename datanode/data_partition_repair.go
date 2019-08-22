@@ -473,27 +473,26 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 
 		// read 64k streaming repair packet
 		if err = reply.ReadFromConn(conn, 60); err != nil {
-			err = errors.Trace(err, "streamRepairExtent receive data error")
-			log.LogErrorf("action[streamRepairExtent] err(%v).", err)
+			err = errors.Trace(err, "streamRepairExtent receive data error,localExtentSize(%v) remoteExtentSize(%v)",currFixOffset,remoteExtentInfo.Size)
 			return
 		}
 
 		if reply.ResultCode != proto.OpOk {
 			err = errors.Trace(fmt.Errorf("unknow result code"),
-				"streamRepairExtent receive opcode error(%v) ", string(reply.Data[:reply.Size]))
+				"streamRepairExtent receive opcode error(%v) ,localExtentSize(%v) remoteExtentSize(%v)", string(reply.Data[:reply.Size]),currFixOffset,remoteExtentInfo.Size)
 			return
 		}
 
 		if reply.ReqID != request.ReqID || reply.PartitionID != request.PartitionID ||
 			reply.ExtentID != request.ExtentID {
 			err = errors.Trace(fmt.Errorf("unavali reply"), "streamRepairExtent receive unavalid "+
-				"request(%v) reply(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId())
+				"request(%v) reply(%v) ,localExtentSize(%v) remoteExtentSize(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId(),currFixOffset,remoteExtentInfo.Size)
 			return
 		}
 
 		if !storage.IsTinyExtent(reply.ExtentID) && (reply.Size == 0 || reply.ExtentOffset != int64(currFixOffset)) {
 			err = errors.Trace(fmt.Errorf("unavali reply"), "streamRepairExtent receive unavalid "+
-				"request(%v) reply(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId())
+				"request(%v) reply(%v) localExtentSize(%v) remoteExtentSize(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId(),currFixOffset,remoteExtentInfo.Size)
 			return
 		}
 
@@ -524,7 +523,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 
 		// write to the local extent file
 		if err != nil {
-			err = errors.Trace(err, "streamRepairExtent repair data error")
+			err = errors.Trace(err, "streamRepairExtent repair data error ")
 			return
 		}
 		currFixOffset += uint64(reply.Size)
