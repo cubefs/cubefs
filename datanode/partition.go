@@ -111,7 +111,7 @@ type DataPartition struct {
 	snapshotMutex                 sync.RWMutex
 	intervalToUpdatePartitionSize int64
 	loadExtentHeaderStatus        int
-	FullSyncTinyDeleteTime int64
+	FullSyncTinyDeleteTime        int64
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -303,7 +303,7 @@ func (dp *DataPartition) Disk() *Disk {
 	return dp.disk
 }
 
-func (dp *DataPartition) IsRejectWrite() bool{
+func (dp *DataPartition) IsRejectWrite() bool {
 	return dp.Disk().RejectWrite
 }
 
@@ -351,11 +351,11 @@ func (dp *DataPartition) PersistMetadata(dataPartitionCreateType int) (err error
 	sort.Sort(sp)
 
 	md := &DataPartitionMetadata{
-		VolumeID:                dp.config.VolName,
-		PartitionID:             dp.config.PartitionID,
-		PartitionSize:           dp.config.PartitionSize,
-		Peers:                   dp.config.Peers,
-		Hosts:                   dp.config.Hosts,
+		VolumeID:      dp.config.VolName,
+		PartitionID:   dp.config.PartitionID,
+		PartitionSize: dp.config.PartitionSize,
+		Peers:         dp.config.Peers,
+		Hosts:         dp.config.Hosts,
 		DataPartitionCreateType: dataPartitionCreateType,
 		CreateTime:              time.Now().Format(TimeLayout),
 	}

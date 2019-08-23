@@ -99,8 +99,8 @@ const (
 )
 
 const (
-	EmptyResponse               = 'E'
-	EmptyPacketLength           = 9
-	MaxSyncTinyDeleteBufferSize = 2400000
-	MaxFullSyncTinyDeleteTime   = 3600 * 24
+	EmptyResponse                      = 'E'
+	TinyExtentRepairReadResponseArgLen = 17
+	MaxSyncTinyDeleteBufferSize        = 2400000
+	MaxFullSyncTinyDeleteTime          = 3600 * 24
 )

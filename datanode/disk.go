@@ -66,7 +66,7 @@ func NewDisk(path string, restSize uint64, maxErrCnt int, space *SpaceManager) (
 	d.Path = path
 	d.ReservedSpace = restSize
 	d.MaxErrCnt = maxErrCnt
-	d.RejectWrite=false
+	d.RejectWrite = false
 	d.space = space
 	d.partitionMap = make(map[uint64]*DataPartition)
 	d.computeUsage()
@@ -123,10 +123,10 @@ func (d *Disk) computeUsage() (err error) {
 	if unallocated < 0 {
 		unallocated = 0
 	}
-	if d.Available<=0{
-		d.RejectWrite=true
-	}else {
-		d.RejectWrite=false
+	if d.Available <= 0 {
+		d.RejectWrite = true
+	} else {
+		d.RejectWrite = false
 	}
 	d.Unallocated = uint64(unallocated)
 
