@@ -121,7 +121,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 		}
 	}()
 	partition := p.Object.(*DataPartition)
-	if partition.Available() <= 0 || partition.disk.Status == proto.ReadOnly  || partition.IsRejectWrite(){
+	if partition.Available() <= 0 || partition.disk.Status == proto.ReadOnly || partition.IsRejectWrite() {
 		err = storage.NoSpaceError
 		return
 	} else if partition.disk.Status == proto.Unavailable {
@@ -536,10 +536,8 @@ func (s *DataNode) writeEmptyPacketOnTinyExtentRepairRead(reply *repl.Packet, ne
 	reply.CRC = crc32.ChecksumIEEE(reply.Data)
 	reply.ResultCode = proto.OpOk
 	reply.ExtentOffset = currentOffset
-	reply.ArgLen = EmptyPacketLength
-	reply.Arg = make([]byte, EmptyPacketLength)
 	reply.Arg[0] = EmptyResponse
-	binary.BigEndian.PutUint64(reply.Arg[1:], uint64(replySize))
+	binary.BigEndian.PutUint64(reply.Arg[1:9], uint64(replySize))
 	err = reply.WriteToConn(connect)
 	reply.Size = uint32(replySize)
 	logContent := fmt.Sprintf("action[operatePacket] %v.",
@@ -547,6 +545,10 @@ func (s *DataNode) writeEmptyPacketOnTinyExtentRepairRead(reply *repl.Packet, ne
 	log.LogReadf(logContent)
 
 	return
+}
+
+func (s *DataNode) attachAvaliSizeOnTinyExtentRepairRead(reply *repl.Packet, avaliSize uint64) {
+	binary.BigEndian.PutUint64(reply.Arg[9:17], avaliSize)
 }
 
 // Handle handleTinyExtentRepairRead packet.
@@ -579,6 +581,7 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 	if uint64(request.ExtentOffset)+uint64(request.Size) > tinyExtentFinfoSize {
 		needReplySize = int64(tinyExtentFinfoSize - uint64(request.ExtentOffset))
 	}
+	avaliReplySize := uint64(needReplySize)
 
 	var (
 		newOffset, newEnd int64
@@ -588,6 +591,9 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 			break
 		}
 		reply := repl.NewTinyExtentStreamReadResponsePacket(request.ReqID, request.PartitionID, request.ExtentID)
+		reply.ArgLen = TinyExtentRepairReadResponseArgLen
+		reply.Arg = make([]byte, TinyExtentRepairReadResponseArgLen)
+		s.attachAvaliSizeOnTinyExtentRepairRead(reply, avaliReplySize)
 		newOffset, newEnd, err = store.TinyExtentAvaliOffset(request.ExtentID, offset)
 		if err != nil {
 			return
