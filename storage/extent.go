@@ -164,11 +164,25 @@ func (e *Extent) ModifyTime() int64 {
 	return atomic.LoadInt64(&e.modifyTime)
 }
 
+func IsRandomWrite(writeType int) bool {
+	return writeType == RandomWriteType
+}
+
+func IsAppendWrite(writeType int) bool {
+	return writeType == AppendWriteType
+}
+
 // WriteTiny performs write on a tiny extent.
-func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdateSize, isSync bool) (err error) {
+func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeType int, isSync bool) (err error) {
+	e.Lock()
+	defer e.Unlock()
 	index := offset + size
 	if index >= math.MaxUint32 {
 		return ExtentIsFullError
+	}
+
+	if IsAppendWrite(writeType) && offset != e.dataSize {
+		return ParameterMismatchError
 	}
 
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
@@ -179,7 +193,8 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdate
 			return
 		}
 	}
-	if !isUpdateSize {
+
+	if !IsAppendWrite(writeType) {
 		return
 	}
 	if index%PageSize != 0 {
@@ -191,9 +206,9 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdate
 }
 
 // Write writes data to an extent.
-func (e *Extent) Write(data []byte, offset, size int64, crc uint32, isUpdateSize, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfo) (err error) {
+func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfo) (err error) {
 	if IsTinyExtent(e.extentID) {
-		err = e.WriteTiny(data, offset, size, crc, isUpdateSize, isSync)
+		err = e.WriteTiny(data, offset, size, crc, writeType, isSync)
 		return
 	}
 
@@ -351,7 +366,7 @@ func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, 
 	e.Lock()
 	defer e.Unlock()
 	if !IsTinyExtent(e.extentID) {
-		return
+		return ParameterMismatchError
 	}
 	if offset%PageSize != 0 || offset != e.dataSize {
 		return fmt.Errorf("error empty packet on (%v) offset(%v) size(%v)"+

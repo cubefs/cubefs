@@ -50,6 +50,8 @@ const (
 	MinExtentID              = 1024
 	DeleteTinyRecordSize     = 24
 	UpdateCrcInterval        = 600
+	RandomWriteType          = 2
+	AppendWriteType          = 1
 )
 
 var (
@@ -284,7 +286,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 }
 
 // Write writes the given extent to the disk.
-func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, isUpdateSize bool, isSync bool) (err error) {
+func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, writeType int, isSync bool) (err error) {
 	var (
 		e  *Extent
 		ei *ExtentInfo
@@ -299,7 +301,7 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return err
 	}
-	err = e.Write(data, offset, size, crc, isUpdateSize, isSync, s.PersistenceBlockCrc, ei)
+	err = e.Write(data, offset, size, crc, writeType, isSync, s.PersistenceBlockCrc, ei)
 	if err != nil {
 		return err
 	}
