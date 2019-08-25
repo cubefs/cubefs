@@ -371,7 +371,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	}
 	store := partition.ExtentStore()
 	if p.Size <= util.BlockSize {
-		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, UpdateSize, p.Opcode == proto.OpSyncWrite)
+		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
 		partition.checkIsDiskError(err)
 	} else {
 		size := p.Size
@@ -383,7 +383,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			currSize := util.Min(int(size), util.BlockSize)
 			data := p.Data[offset : offset+currSize]
 			crc := crc32.ChecksumIEEE(data)
-			err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, UpdateSize, p.Opcode == proto.OpSyncWrite)
+			err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite())
 			partition.checkIsDiskError(err)
 			if err != nil {
 				break

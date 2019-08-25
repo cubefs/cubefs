@@ -89,10 +89,6 @@ const (
 	StreamRead = false
 )
 
-const (
-	NotUpdateSize = false
-	UpdateSize    = true
-)
 
 const (
 	BufferWrite = false

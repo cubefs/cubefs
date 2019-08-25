@@ -237,7 +237,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 	log.LogDebugf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v)",
 		raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size)
 	for i := 0; i < 20; i++ {
-		err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, NotUpdateSize, opItem.opcode == proto.OpSyncRandomWrite)
+		err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.RandomWriteType, opItem.opcode == proto.OpSyncRandomWrite)
 		if dp.checkIsDiskError(err) {
 			return
 		}

@@ -395,3 +395,11 @@ func (p *Packet) IsMarkDeleteExtentOperation() bool {
 func (p *Packet) IsReadOperation() bool {
 	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpRead || p.Opcode == proto.OpExtentRepairRead || p.Opcode == proto.OpReadTinyDeleteRecord || p.Opcode == proto.OpTinyExtentRepairRead
 }
+
+func (p *Packet) IsRandomWrite() bool {
+	return p.Opcode == proto.OpRandomWrite || p.Opcode == proto.OpSyncRandomWrite
+}
+
+func (p *Packet) IsSyncWrite() bool {
+	return p.Opcode == proto.OpSyncWrite || p.Opcode == proto.OpSyncRandomWrite
+}
