@@ -223,8 +223,7 @@ func registerInterceptedSignal(mnt string) {
 	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigC
-		syslog.Printf("Umount due to a received signal (%v)\n", sig)
-		fuse.Unmount(mnt)
+		syslog.Printf("Killed due to a received signal (%v)\n", sig)
 	}()
 }
 
