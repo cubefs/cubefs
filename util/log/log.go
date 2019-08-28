@@ -16,10 +16,12 @@ package log
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"math"
+	"net/http"
 	"os"
 	"path"
 	"runtime"
@@ -345,6 +347,73 @@ func (l *Log) Flush() {
 			logger.Flush()
 		}
 	}
+}
+
+const (
+	SetLogLevelPath = "/loglevel/set"
+)
+
+func SetLogLevel(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+	)
+	if err = r.ParseForm(); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	levelStr := r.FormValue("level")
+	var level Level
+	switch strings.ToLower(levelStr) {
+	case "debug":
+		level = DebugLevel
+	case "info", "read", "write":
+		level = InfoLevel
+	case "warn":
+		level = WarnLevel
+	case "error":
+		level = ErrorLevel
+	case "critical":
+		level = CriticalLevel
+	case "fatal":
+		level = FatalLevel
+	default:
+		err = fmt.Errorf("level only can be set :debug,info,warn,error,critical,read,write,fatal")
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	gLog.level = Level(level)
+	buildSuccessResp(w, "set log level success")
+}
+
+func buildSuccessResp(w http.ResponseWriter, data interface{}) {
+	buildJSONResp(w, http.StatusOK, data, "")
+}
+
+func buildFailureResp(w http.ResponseWriter, code int, msg string) {
+	buildJSONResp(w, code, nil, msg)
+}
+
+// Create response for the API request.
+func buildJSONResp(w http.ResponseWriter, code int, data interface{}, msg string) {
+	var (
+		jsonBody []byte
+		err      error
+	)
+	w.WriteHeader(code)
+	w.Header().Set("Content-Type", "application/json")
+	body := struct {
+		Code int         `json:"code"`
+		Data interface{} `json:"data"`
+		Msg  string      `json:"msg"`
+	}{
+		Code: code,
+		Data: data,
+		Msg:  msg,
+	}
+	if jsonBody, err = json.Marshal(body); err != nil {
+		return
+	}
+	w.Write(jsonBody)
 }
 
 // LogWarn indicates the warnings.

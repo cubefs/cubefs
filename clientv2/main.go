@@ -182,6 +182,7 @@ func mount(opt *cfs.MountOption) (*fuse.MountedFileSystem, error) {
 	}
 
 	go func() {
+		http.HandleFunc(log.SetLogLevelPath,log.SetLogLevel)
 		fmt.Println(http.ListenAndServe(":"+opt.Profport, nil))
 	}()
 
