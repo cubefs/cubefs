@@ -44,14 +44,15 @@ const (
 
 // Operations
 const (
-	ProtoMagic         uint8 = 0xFF
-	OpInitResultCode   uint8 = 0x00
-	OpCreateExtent     uint8 = 0x01
-	OpMarkDelete       uint8 = 0x02
-	OpWrite            uint8 = 0x03
-	OpRead             uint8 = 0x04
-	OpStreamRead       uint8 = 0x05
-	OpGetAllWatermarks uint8 = 0x07
+	ProtoMagic           uint8 = 0xFF
+	OpInitResultCode     uint8 = 0x00
+	OpCreateExtent       uint8 = 0x01
+	OpMarkDelete         uint8 = 0x02
+	OpWrite              uint8 = 0x03
+	OpRead               uint8 = 0x04
+	OpStreamRead         uint8 = 0x05
+	OpStreamFollowerRead uint8 = 0x06
+	OpGetAllWatermarks   uint8 = 0x07
 
 	OpNotifyReplicasToRepair         uint8 = 0x08
 	OpExtentRepairRead               uint8 = 0x09
@@ -211,6 +212,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "Read"
 	case OpStreamRead:
 		m = "OpStreamRead"
+	case OpStreamFollowerRead:
+		m = "OpStreamFollowerRead"
 	case OpGetAllWatermarks:
 		m = "OpGetAllWatermarks"
 	case OpNotifyReplicasToRepair:
@@ -480,7 +483,7 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 		return
 	}
 	size := p.Size
-	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead) && p.ResultCode == OpInitResultCode {
+	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode== OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
 		size = 0
 	}
 	p.Data = make([]byte, size)
