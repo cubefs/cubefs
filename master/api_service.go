@@ -398,13 +398,14 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		dpReplicaNum int
 		capacity     int
 		vol          *Vol
+		followerRead bool
 	)
 
-	if name, owner, mpCount, size, capacity, dpReplicaNum, err = parseRequestToCreateVol(r); err != nil {
+	if name, owner, mpCount, size, capacity, dpReplicaNum, followerRead, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.createVol(name, owner, mpCount, size, capacity, dpReplicaNum); err != nil {
+	if vol, err = m.cluster.createVol(name, owner, mpCount, size, capacity, dpReplicaNum, followerRead); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -440,6 +441,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		MpReplicaNum: vol.mpReplicaNum,
 		Status:       vol.Status,
 		Capacity:     vol.Capacity,
+		FollowerRead: vol.FollowerRead,
 		RwDpCnt:      vol.dataPartitions.readableAndWritableCnt,
 		MpCnt:        len(vol.MetaPartitions),
 		DpCnt:        len(vol.dataPartitions.partitionMap),
@@ -816,7 +818,7 @@ func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity, r
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size, capacity, dpReplicaNum int, err error) {
+func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size, capacity, dpReplicaNum int, followerRead bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -853,6 +855,10 @@ func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size
 		dpReplicaNum = defaultReplicaNum
 	} else if dpReplicaNum, err = strconv.Atoi(replicaStr); err != nil {
 		err = unmatchedKey(replicaNumKey)
+		return
+	}
+
+	if followerRead, err = extractFollowerRead(r); err != nil {
 		return
 	}
 	return
@@ -972,6 +978,18 @@ func extractStatus(r *http.Request) (status bool, err error) {
 		return
 	}
 	if status, err = strconv.ParseBool(value); err != nil {
+		return
+	}
+	return
+}
+
+func extractFollowerRead(r *http.Request) (followerRead bool, err error) {
+	var value string
+	if value = r.FormValue(followerReadKey); value == "" {
+		followerRead = false
+		return
+	}
+	if followerRead, err = strconv.ParseBool(value); err != nil {
 		return
 	}
 	return
