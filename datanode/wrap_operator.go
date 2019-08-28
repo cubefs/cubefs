@@ -52,7 +52,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, nil))
 			switch p.Opcode {
-			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead:
+			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead, proto.OpStreamFollowerRead:
 			case proto.OpReadTinyDeleteRecord:
 				log.LogRead(logContent)
 			case proto.OpWrite, proto.OpRandomWrite, proto.OpSyncRandomWrite, proto.OpSyncWrite, proto.OpMarkDelete:
@@ -71,6 +71,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handleWritePacket(p)
 	case proto.OpStreamRead:
 		s.handleStreamReadPacket(p, c, StreamRead)
+	case proto.OpStreamFollowerRead:
+		s.handleExtentRepaiReadPacket(p, c, RepairRead)
 	case proto.OpExtentRepairRead:
 		s.handleExtentRepaiReadPacket(p, c, RepairRead)
 	case proto.OpTinyExtentRepairRead:
@@ -370,6 +372,12 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		return
 	}
 	store := partition.ExtentStore()
+	if p.ExtentType == proto.TinyExtentType {
+		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+		s.incDiskErrCnt(p.PartitionID, err, WriteFlag)
+		return
+	}
+
 	if p.Size <= util.BlockSize {
 		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
 		partition.checkIsDiskError(err)
