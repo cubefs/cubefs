@@ -190,6 +190,7 @@ func mount(opt *cfs.MountOption) (fsConn *fuse.Conn, super *cfs.Super, err error
 	}
 
 	go func() {
+		http.HandleFunc(log.SetLogLevelPath,log.SetLogLevel)
 		fmt.Println(http.ListenAndServe(":"+opt.Profport, nil))
 	}()
 
