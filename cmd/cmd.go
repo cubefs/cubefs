@@ -15,23 +15,27 @@
 package main
 
 import (
-	"strings"
-
-	"github.com/chubaofs/chubaofs/datanode"
-	"github.com/chubaofs/chubaofs/master"
-	"github.com/chubaofs/chubaofs/metanode"
-	"github.com/chubaofs/chubaofs/util/log"
-
 	"flag"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/ump"
+	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"path"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
+
+	"github.com/jacobsa/daemonize"
+
+	"github.com/chubaofs/chubaofs/datanode"
+	"github.com/chubaofs/chubaofs/master"
+	"github.com/chubaofs/chubaofs/metanode"
+	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/ump"
 )
 
 var (
@@ -60,9 +64,14 @@ const (
 	ModuleData   = "dataNode"
 )
 
+const (
+	LoggerOutput = "output.log"
+)
+
 var (
-	configFile    = flag.String("c", "", "config file path")
-	configVersion = flag.Bool("v", false, "show version")
+	configFile       = flag.String("c", "", "config file path")
+	configVersion    = flag.Bool("v", false, "show version")
+	configForeground = flag.Bool("f", false, "run foreground")
 )
 
 type Server interface {
@@ -75,10 +84,10 @@ type Server interface {
 func interceptSignal(s Server) {
 	sigC := make(chan os.Signal, 1)
 	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM)
-	log.LogInfo("action[interceptSignal] register system signal.")
+	syslog.Println("action[interceptSignal] register system signal.")
 	go func() {
 		sig := <-sigC
-		log.LogInfo("action[interceptSignal] received signal: %s.", sig.String())
+		syslog.Printf("action[interceptSignal] received signal: %s.", sig.String())
 		s.Shutdown()
 	}()
 }
@@ -89,7 +98,7 @@ func modifyOpenFiles() (err error) {
 	if err != nil {
 		return fmt.Errorf("Error Getting Rlimit %v", err.Error())
 	}
-	fmt.Println(rLimit)
+	syslog.Println(rLimit)
 	rLimit.Max = 1024000
 	rLimit.Cur = 1024000
 	err = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit)
@@ -100,46 +109,39 @@ func modifyOpenFiles() (err error) {
 	if err != nil {
 		return fmt.Errorf("Error Getting Rlimit %v", err.Error())
 	}
-	fmt.Println("Rlimit Final", rLimit)
+	syslog.Println("Rlimit Final", rLimit)
 	return
 }
 
 func main() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogErrorf("action[main] process panic detail: %v.", r)
-			log.LogFlush()
-			panic(r)
-		}
-	}()
 	flag.Parse()
 
 	Version := fmt.Sprintf("ChubaoFS Server\nBranch: %s\nCommit: %s\nBuild: %s %s %s %s\n", BranchName, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime)
+
 	if *configVersion {
 		fmt.Printf("%v", Version)
 		os.Exit(0)
 	}
 
-	err := modifyOpenFiles()
-	if err != nil {
-		fmt.Println(fmt.Sprintf(err.Error()))
-		os.Exit(1)
+	if !*configForeground {
+		if err := startDaemon(); err != nil {
+			fmt.Printf("Server start failed: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
 	}
 
-	log.LogInfof("Hello, ChubaoFS Storage\n%s", Version)
+	/*
+	 * We are in daemon from here.
+	 * Must notify the parent process through SignalOutcome anyway.
+	 */
+
 	cfg := config.LoadConfigFile(*configFile)
 	role := cfg.GetString(ConfigKeyRole)
 	logDir := cfg.GetString(ConfigKeyLogDir)
 	logLevel := cfg.GetString(ConfigKeyLogLevel)
 	profPort := cfg.GetString(ConfigKeyProfPort)
 	umpDatadir := cfg.GetString(ConfigKeyWarnLogDir)
-
-	//for multi-cpu scheduling
-	runtime.GOMAXPROCS(runtime.NumCPU())
-	if err = ump.InitUmp(role, umpDatadir); err != nil {
-		fmt.Println(fmt.Sprintf("Fatal: init warnLogDir fail:%v ", err))
-		os.Exit(1)
-	}
 
 	// Init server instance with specified role configuration.
 	var (
@@ -157,9 +159,8 @@ func main() {
 		server = datanode.NewServer()
 		module = ModuleData
 	default:
-		fmt.Println("Fatal: role mismatch: ", role)
+		daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 		os.Exit(1)
-		return
 	}
 
 	// Init logging
@@ -179,33 +180,94 @@ func main() {
 		level = log.ErrorLevel
 	}
 
+	_, err := log.InitLog(logDir, module, level, nil)
+	if err != nil {
+		daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to init log - %v", err))
+		os.Exit(1)
+	}
+	defer log.LogFlush()
+
+	// Init output file
+	outputFilePath := path.Join(logDir, module, LoggerOutput)
+	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
+	if err != nil {
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+	defer func() {
+		outputFile.Sync()
+		outputFile.Close()
+	}()
+	syslog.SetOutput(outputFile)
+
+	if err = syscall.Dup2(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+
+	syslog.Printf("Hello, ChubaoFS Storage\n%s\n", Version)
+
+	err = modifyOpenFiles()
+	if err != nil {
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+
+	//for multi-cpu scheduling
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	if err = ump.InitUmp(role, umpDatadir); err != nil {
+		daemonize.SignalOutcome(fmt.Errorf("Fatal: init warnLogDir fail:%v ", err))
+		os.Exit(1)
+	}
+
 	if profPort != "" {
 		go func() {
 			err = http.ListenAndServe(fmt.Sprintf(":%v", profPort), nil)
 			if err != nil {
-				fmt.Println(fmt.Sprintf("cannot listen pprof %v err %v", profPort, err.Error()))
+				daemonize.SignalOutcome(fmt.Errorf("cannot listen pprof %v err %v", profPort, err))
 				os.Exit(1)
 			}
 		}()
 	}
 
-	if _, err := log.InitLog(logDir, module, level, nil); err != nil {
-		fmt.Println("Fatal: failed to init log - ", err)
-		os.Exit(1)
-		return
-	}
-
 	interceptSignal(server)
 	err = server.Start(cfg)
 	if err != nil {
-		fmt.Println(fmt.Sprintf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err))
-		log.LogFatal(fmt.Sprintf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err))
-		log.LogFlush()
+		syslog.Printf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err)
+		daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err))
 		os.Exit(1)
-		return
 	}
+
+	daemonize.SignalOutcome(nil)
+
 	// Block main goroutine until server shutdown.
 	server.Sync()
-	log.LogFlush()
 	os.Exit(0)
+}
+
+func startDaemon() error {
+	cmdPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("startDaemon failed: cannot get absolute command path, err(%v)", err)
+	}
+
+	configPath, err := filepath.Abs(*configFile)
+	if err != nil {
+		return fmt.Errorf("startDaemon failed: cannot get absolute command path of config file(%v) , err(%v)", *configFile, err)
+	}
+
+	args := []string{"-f"}
+	args = append(args, "-c")
+	args = append(args, configPath)
+
+	env := []string{
+		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
+	}
+
+	err = daemonize.Run(cmdPath, args, env, os.Stdout)
+	if err != nil {
+		return fmt.Errorf("startDaemon failed: daemon start failed, cmd(%v) args(%v) env(%v) err(%v)\n", cmdPath, args, env, err)
+	}
+
+	return nil
 }
