@@ -67,6 +67,7 @@ func createDefaultMasterServerForTest() *Server {
 		"electionTick":6,
 		"logDir": "/export/chubaofs/Logs",
 		"logLevel":"DEBUG",
+		"warnLogDir": "/export/chubaofs/Logs",
 		"walDir":"/export/chubaofs/raft",
 		"storeDir":"/export/chubaofs/rocksdbstore",
 		"clusterName":"chubaofs"

@@ -128,11 +128,12 @@ func (lw *LogWrite) backGroundCheckFile() (err error) {
 }
 
 func (lw *LogWrite) backGroundWrite(umpType string) {
-	var (
-		body []byte
-	)
+
 
 	for {
+		var (
+			body []byte
+		)
 		obj := <-lw.logCh
 		switch umpType {
 		case FunctionTpType:
