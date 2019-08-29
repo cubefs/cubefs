@@ -119,12 +119,18 @@ func NewRaftStore(cfg *Config) (mr RaftStore, err error) {
 	if cfg.NumOfLogsToRetain == 0 {
 		cfg.NumOfLogsToRetain = DefaultNumOfLogsToRetain
 	}
+	if cfg.ElectionTick < DefaultElectionTick {
+		cfg.ElectionTick = DefaultElectionTick
+	}
+	if cfg.TickInterval < DefaultTickInterval {
+		cfg.TickInterval = DefaultTickInterval
+	}
 	rc.HeartbeatAddr = fmt.Sprintf("%s:%d", cfg.IPAddr, cfg.HeartbeatPort)
 	rc.ReplicateAddr = fmt.Sprintf("%s:%d", cfg.IPAddr, cfg.ReplicaPort)
 	rc.Resolver = resolver
 	rc.RetainLogs = cfg.NumOfLogsToRetain
-	rc.TickInterval = 300 * time.Millisecond
-	rc.ElectionTick = 3
+	rc.TickInterval = time.Duration(cfg.TickInterval) * time.Millisecond
+	rc.ElectionTick = cfg.ElectionTick
 	rs, err := raft.NewRaftServer(rc)
 	if err != nil {
 		return
