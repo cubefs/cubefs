@@ -63,6 +63,8 @@ func createDefaultMasterServerForTest() *Server {
 		"id":"1",
 		"peers": "1:127.0.0.1:8080",
 		"retainLogs":"20000",
+		"tickInterval":500,
+		"electionTick":6,
 		"logDir": "/export/chubaofs/Logs",
 		"logLevel":"DEBUG",
 		"walDir":"/export/chubaofs/raft",

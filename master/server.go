@@ -41,6 +41,8 @@ const (
 	ModuleName        = "master"
 	CfgRetainLogs     = "retainLogs"
 	DefaultRetainLogs = 20000
+	cfgTickInterval   = "tickInterval"
+	cfgElectionTick   = "electionTick"
 )
 
 var (
@@ -57,6 +59,8 @@ type Server struct {
 	walDir       string
 	storeDir     string
 	retainLogs   uint64
+	tickInterval int
+	electionTick int
 	leaderInfo   *LeaderInfo
 	config       *clusterConfig
 	cluster      *Cluster
@@ -183,6 +187,14 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.config.heartbeatPort = cfg.GetInt64(heartbeatPortKey)
 	m.config.replicaPort = cfg.GetInt64(replicaPortKey)
 	fmt.Printf("heartbeatPort[%v],replicaPort[%v]\n", m.config.heartbeatPort, m.config.replicaPort)
+	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))
+	m.electionTick = int(cfg.GetFloat(cfgElectionTick))
+	if m.tickInterval <= 300 {
+		m.tickInterval = 500
+	}
+	if m.electionTick <= 3 {
+		m.electionTick = 5
+	}
 	return
 }
 
@@ -193,11 +205,13 @@ func (m *Server) createRaftServer() (err error) {
 		NumOfLogsToRetain: m.retainLogs,
 		HeartbeatPort:     int(m.config.heartbeatPort),
 		ReplicaPort:       int(m.config.replicaPort),
+		TickInterval:      m.tickInterval,
+		ElectionTick:      m.electionTick,
 	}
 	if m.raftStore, err = raftstore.NewRaftStore(raftCfg); err != nil {
 		return errors.Trace(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
 	}
-	fmt.Println(m.config.peers)
+	fmt.Println(m.config.peers, m.tickInterval, m.electionTick)
 	m.initFsm()
 	partitionCfg := &raftstore.PartitionConfig{
 		ID:      GroupID,
