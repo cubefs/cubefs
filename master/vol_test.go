@@ -111,7 +111,7 @@ func checkMetaPartitionsWritableTest(vol *Vol, t *testing.T) {
 	maxPartitionID := vol.maxPartitionID()
 	maxMp := vol.MetaPartitions[maxPartitionID]
 	//after check meta partitions ,the status must be writable
-	maxMp.checkStatus(false, int(vol.mpReplicaNum),maxPartitionID)
+	maxMp.checkStatus(false, int(vol.mpReplicaNum), maxPartitionID)
 	if maxMp.Status != proto.ReadWrite {
 		t.Errorf("expect partition status[%v],real status[%v]\n", proto.ReadWrite, maxMp.Status)
 		return
@@ -204,5 +204,32 @@ func TestVolReduceReplicaNum(t *testing.T) {
 			t.Errorf("dp.replicaNum[%v],hosts[%v],vol.dpReplicaNum[%v]\n", dp.ReplicaNum, len(dp.Hosts), vol.dpReplicaNum)
 			return
 		}
+	}
+}
+
+func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
+	name := "TestConcurrentReadWriteDataPartitionMap"
+	var volID uint64 = 1
+	vol := newVol(volID, name, name, util.DefaultDataPartitionSize, 100, defaultReplicaNum, defaultReplicaNum)
+	//unavaliable mp
+	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, name, volID)
+	vol.addMetaPartition(mp1)
+	//readonly mp
+	mp2 := newMetaPartition(2, 1, defaultMaxMetaPartitionInodeID, 3, name, volID)
+	mp2.Status = proto.ReadOnly
+	vol.addMetaPartition(mp2)
+	vol.updateViewCache(server.cluster)
+	go func() {
+		var id uint64
+		for {
+			id++
+			dp := newDataPartition(id, 3, name, volID)
+			vol.dataPartitions.put(dp)
+			time.Sleep(time.Second)
+		}
+	}()
+	for i := 0; i < 10; i++ {
+		time.Sleep(time.Second)
+		vol.updateViewCache(server.cluster)
 	}
 }
