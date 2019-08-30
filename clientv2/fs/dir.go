@@ -196,7 +196,7 @@ func (s *Super) LookUpInode(ctx context.Context, op *fuseops.LookUpInodeOp) erro
 	fillChildEntry(&op.Entry, inode)
 
 	if inode.mode.IsRegular() {
-		fileSize, gen := s.ec.FileSize(ino)
+		fileSize, gen := s.fileSize(ino)
 		log.LogDebugf("LookUpInode: Get filesize, op(%v) fileSize(%v) gen(%v) inode.gen(%v)", desc, fileSize, gen, inode.gen)
 		if gen >= inode.gen {
 			op.Entry.Attributes.Size = uint64(fileSize)

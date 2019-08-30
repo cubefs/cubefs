@@ -111,7 +111,7 @@ func (s *Super) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) error {
 	desc := fuse.OpDescription(op)
 	offset := int(op.Offset)
 	reqlen := len(op.Data)
-	filesize, _ := s.ec.FileSize(ino)
+	filesize, _ := s.fileSize(ino)
 	flags := int(op.Flags)
 
 	log.LogDebugf("TRACE Write enter: op(%v) filesize(%v)", desc, filesize)
@@ -242,4 +242,18 @@ func (s *Super) ListXattr(ctx context.Context, op *fuseops.ListXattrOp) error {
 
 func (s *Super) SetXattr(ctx context.Context, op *fuseops.SetXattrOp) error {
 	return fuse.ENOSYS
+}
+
+func (s *Super) fileSize(ino uint64) (size int, gen uint64) {
+	size, gen, valid := s.ec.FileSize(ino)
+	log.LogDebugf("fileSize: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
+
+	if !valid {
+		s.ic.Delete(ino)
+		if inode, err := s.InodeGet(ino); err == nil {
+			size = int(inode.size)
+			gen = inode.gen
+		}
+	}
+	return
 }
