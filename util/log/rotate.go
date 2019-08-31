@@ -16,12 +16,9 @@ package log
 
 const (
 	// DefaultRollingSize Specifies at what size to roll the output log at
-	// Units: MB
-	DefaultRollingSize = 20 * 1024 * 1024 * 1024
-	// DefaultHeadRoom The tolerance for the log space limit (in megabytes)
-	DefaultHeadRoom = 50 * 1024
-	// DefaultHeadRatio The disk reserve space ratio
-	DefaultHeadRatio = 0.2
+	DefaultRollingSize = 5 * 1024 * 1024 * 1024
+	// DefaultHeadRoom The tolerance for the log space limit
+	DefaultHeadRoom = 4*1024* 1024 * 1024
 )
 
 // A log can be rotated by the size or time.
@@ -38,12 +35,12 @@ func NewLogRotate() *LogRotate {
 	}
 }
 
-// SetRollingSizeMb sets the rolling size in terms of MB.
-func (r *LogRotate) SetRollingSizeMb(size int64) {
+// SetRollingSizeMb sets the rolling size in terms of .
+func (r *LogRotate) SetRollingSize(size int64) {
 	r.rollingSize = size
 }
 
-// SetHeadRoomMb sets the headroom in terms of MB.
-func (r *LogRotate) SetHeadRoomMb(size int64) {
+// SetHeadRoomMb sets the headroom in terms of
+func (r *LogRotate) SetHeadRoom(size int64) {
 	r.headRoom = size
 }

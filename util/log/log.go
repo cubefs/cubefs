@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math"
 	"net/http"
 	"os"
 	"path"
@@ -51,7 +50,7 @@ const (
 	FileOpt                = os.O_RDWR | os.O_CREATE | os.O_APPEND
 	WriterBufferInitSize   = 4 * 1024 * 1024
 	WriterBufferLenLimit   = 4 * 1024 * 1024
-	DefaultRollingInterval = 5 * time.Minute
+	DefaultRollingInterval = 1 * time.Second
 	RolledExtension        = ".old"
 )
 
@@ -273,10 +272,7 @@ func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 			return nil, fmt.Errorf("[InitLog] stats disk space: %s",
 				err.Error())
 		}
-
-		minRatio := float64(fs.Blocks*uint64(fs.
-			Bsize)) * DefaultHeadRatio / 1024 / 1024
-		rotate.SetHeadRoomMb(int64(math.Min(minRatio, DefaultHeadRoom)))
+		rotate.SetHeadRoom(int64(DefaultHeadRoom))
 	}
 	l.rotate = rotate
 	err = l.initLog(dir, module, level)
@@ -632,7 +628,7 @@ func (l *Log) checkLogRotation(logDir, module string) {
 			continue
 		}
 		diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
-		diskSpaceLeft -= l.rotate.headRoom * 1024 * 1024
+		diskSpaceLeft -= l.rotate.headRoom
 		if diskSpaceLeft <= 0 {
 			// collect free file list
 			fp, err := os.Open(logDir)
