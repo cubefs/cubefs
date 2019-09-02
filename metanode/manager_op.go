@@ -240,7 +240,7 @@ func (m *metadataManager) opDeleteDentry(conn net.Conn, p *Packet,
 	}
 	err = mp.DeleteDentry(req, p)
 	m.respondToClient(conn, p)
-	log.LogInfof("%s [opDeleteDentry] req: %d - %v, resp: %v, body: %s",
+	log.LogDebugf("%s [opDeleteDentry] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
@@ -264,7 +264,7 @@ func (m *metadataManager) opUpdateDentry(conn net.Conn, p *Packet,
 	}
 	err = mp.UpdateDentry(req, p)
 	m.respondToClient(conn, p)
-	log.LogInfof("%s [opUpdateDentry] req: %d - %v; resp: %v, body: %s",
+	log.LogDebugf("%s [opUpdateDentry] req: %d - %v; resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
@@ -288,7 +288,7 @@ func (m *metadataManager) opMetaUnlinkInode(conn net.Conn, p *Packet,
 	}
 	err = mp.UnlinkInode(req, p)
 	m.respondToClient(conn, p)
-	log.LogInfof("%s [opDeleteInode] req: %d - %v, resp: %v, body: %s",
+	log.LogDebugf("%s [opDeleteInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
@@ -372,7 +372,7 @@ func (m *metadataManager) opMetaEvictInode(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[opMetaEvictInode] req: %s, resp: %v", req, err.Error())
 	}
 	m.respondToClient(conn, p)
-	log.LogInfof("%s [opMetaEvictInode] req: %d - %v, resp: %v, body: %s",
+	log.LogDebugf("%s [opMetaEvictInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
