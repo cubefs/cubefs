@@ -28,6 +28,9 @@ import (
 	"time"
 
 	"errors"
+	"os"
+	"syscall"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/repl"
@@ -35,8 +38,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
-	"os"
-	"syscall"
 )
 
 var (
@@ -139,9 +140,7 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 		return
 	}
 
-	s.register()
-
-	exporter.Init(s.clusterID, ModuleName, cfg)
+	s.register(cfg)
 
 	// start the raft server
 	if err = s.startRaftServer(cfg); err != nil {
@@ -257,7 +256,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 
 // registers the data node on the master to report the information such as IsIPV4 address.
 // The startup of a data node will be blocked until the registration succeeds.
-func (s *DataNode) register() {
+func (s *DataNode) register(cfg *config.Config) {
 	var (
 		err  error
 		data []byte
@@ -300,6 +299,8 @@ func (s *DataNode) register() {
 					masterAddr, err)
 				continue
 			}
+
+			exporter.Init(s.clusterID, ModuleName, cfg)
 
 			nodeID := strings.TrimSpace(string(data))
 			s.nodeID, err = strconv.ParseUint(nodeID, 10, 64)
