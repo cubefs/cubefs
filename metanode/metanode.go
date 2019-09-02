@@ -23,6 +23,9 @@ import (
 	"time"
 
 	"fmt"
+	"net/http"
+	"strconv"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util"
@@ -30,8 +33,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
-	"net/http"
-	"strconv"
 )
 
 var (
@@ -137,7 +138,6 @@ func (m *MetaNode) onStart(cfg *config.Config) (err error) {
 	if err = m.parseConfig(cfg); err != nil {
 		return
 	}
-	exporter.Init(m.clusterId, cfg.GetString("role"), cfg)
 	if err = m.register(); err != nil {
 		return
 	}
@@ -160,6 +160,7 @@ func (m *MetaNode) onStart(cfg *config.Config) (err error) {
 	if err = m.startServer(); err != nil {
 		return
 	}
+	exporter.Init(m.clusterId, cfg.GetString("role"), cfg)
 	return
 }
 
