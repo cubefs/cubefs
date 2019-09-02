@@ -150,6 +150,9 @@ func (m *MetaNode) onStart(cfg *config.Config) (err error) {
 	if err = m.registerAPIHandler(); err != nil {
 		return
 	}
+
+	exporter.Init(cfg.GetString("role"), cfg)
+
 	// check local partition compare with master ,if lack,then not start
 	if err = m.checkLocalPartitionMatchWithMaster(); err != nil {
 		fmt.Println(err)
@@ -160,7 +163,7 @@ func (m *MetaNode) onStart(cfg *config.Config) (err error) {
 	if err = m.startServer(); err != nil {
 		return
 	}
-	exporter.Init(m.clusterId, cfg.GetString("role"), cfg)
+	exporter.RegistConsul(m.clusterId, cfg.GetString("role"), cfg)
 	return
 }
 

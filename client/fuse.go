@@ -105,6 +105,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	exporter.Init(ModuleName, cfg)
+
 	level := parseLogLevel(opt.Loglvl)
 	_, err = log.InitLog(opt.Logpath, LoggerPrefix, level, nil)
 	if err != nil {
@@ -141,7 +143,7 @@ func main() {
 	}
 	defer fsConn.Close()
 
-	exporter.Init(super.ClusterName(), ModuleName, cfg)
+	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
 
 	if err = fs.Serve(fsConn, super); err != nil {
 		syslog.Printf("fs Serve returns err(%v)", err)
@@ -190,7 +192,7 @@ func mount(opt *cfs.MountOption) (fsConn *fuse.Conn, super *cfs.Super, err error
 	}
 
 	go func() {
-		http.HandleFunc(log.SetLogLevelPath,log.SetLogLevel)
+		http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
 		fmt.Println(http.ListenAndServe(":"+opt.Profport, nil))
 	}()
 

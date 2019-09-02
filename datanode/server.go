@@ -140,6 +140,7 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 		return
 	}
 
+	exporter.Init(ModuleName, cfg)
 	s.register(cfg)
 
 	// start the raft server
@@ -300,7 +301,7 @@ func (s *DataNode) register(cfg *config.Config) {
 				continue
 			}
 
-			exporter.Init(s.clusterID, ModuleName, cfg)
+			exporter.RegistConsul(s.clusterID, ModuleName, cfg)
 
 			nodeID := strings.TrimSpace(string(data))
 			s.nodeID, err = strconv.ParseUint(nodeID, 10, 64)
@@ -431,7 +432,7 @@ func (s *DataNode) incDiskErrCnt(partitionID uint64, err error, flag uint8) {
 }
 
 func IsDiskErr(errMsg string) bool {
-	if strings.Contains(errMsg, syscall.EIO.Error()) || strings.Contains(errMsg,syscall.EROFS.Error()) {
+	if strings.Contains(errMsg, syscall.EIO.Error()) || strings.Contains(errMsg, syscall.EROFS.Error()) {
 		return true
 	}
 
