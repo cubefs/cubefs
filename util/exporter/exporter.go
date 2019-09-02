@@ -47,8 +47,7 @@ func metricsName(name string) string {
 }
 
 // Init initializes the exporter.
-func Init(cluster string, role string, cfg *config.Config) {
-	clustername = replacer.Replace(cluster)
+func Init(role string, cfg *config.Config) {
 	modulename = role
 	port := cfg.GetInt64(ConfigKeyExporterPort)
 	if port == 0 {
@@ -70,15 +69,19 @@ func Init(cluster string, role string, cfg *config.Config) {
 
 	collect()
 
-	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
-	if len(consulAddr) > 0 {
-		RegisterConsul(consulAddr, AppName, role, clustername, port)
-	}
-
 	m := NewGauge("start_time")
 	m.Set(time.Now().Unix() * 1000)
 
 	log.LogInfof("exporter Start: %v", addr)
+}
+
+func RegistConsul(cluster string, role string, cfg *config.Config) {
+	clustername = replacer.Replace(cluster)
+	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
+	port := cfg.GetInt64(ConfigKeyExporterPort)
+	if len(consulAddr) > 0 {
+		RegisterConsul(consulAddr, AppName, role, cluster, port)
+	}
 }
 
 func collect() {

@@ -16,16 +16,17 @@ package master
 
 import (
 	"fmt"
+	"net/http/httputil"
+	"regexp"
+	"strconv"
+	"sync"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
-	"net/http/httputil"
-	"regexp"
-	"strconv"
-	"sync"
 )
 
 // configuration keys
@@ -99,11 +100,12 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		return
 	}
 	m.initCluster()
+	exporter.Init(ModuleName, cfg)
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
 	m.cluster.scheduleTask()
 	m.startHTTPService()
-	exporter.Init(m.clusterName, ModuleName, cfg)
+	exporter.RegistConsul(m.clusterName, ModuleName, cfg)
 	metricsService := newMonitorMetrics(m.cluster)
 	metricsService.start()
 	m.wg.Add(1)

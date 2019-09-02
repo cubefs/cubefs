@@ -106,6 +106,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	exporter.Init(ModuleName, opt.Config)
+
 	level := parseLogLevel(opt.Loglvl)
 	_, err = log.InitLog(opt.Logpath, LoggerPrefix, level, nil)
 	if err != nil {
@@ -182,11 +184,11 @@ func mount(opt *cfs.MountOption) (*fuse.MountedFileSystem, error) {
 	}
 
 	go func() {
-		http.HandleFunc(log.SetLogLevelPath,log.SetLogLevel)
+		http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
 		fmt.Println(http.ListenAndServe(":"+opt.Profport, nil))
 	}()
 
-	exporter.Init(super.ClusterName(), ModuleName, opt.Config)
+	exporter.RegistConsul(super.ClusterName(), ModuleName, opt.Config)
 
 	server := fuseutil.NewFileSystemServer(super)
 	mntcfg := &fuse.MountConfig{
