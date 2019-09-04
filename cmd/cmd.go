@@ -223,8 +223,8 @@ func main() {
 	if profPort != "" {
 		go func() {
 			http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
-			err = http.ListenAndServe(fmt.Sprintf(":%v", profPort), nil)
-			if err != nil {
+			e := http.ListenAndServe(fmt.Sprintf(":%v", profPort), nil)
+			if e != nil {
 				daemonize.SignalOutcome(fmt.Errorf("cannot listen pprof %v err %v", profPort, err))
 				os.Exit(1)
 			}
