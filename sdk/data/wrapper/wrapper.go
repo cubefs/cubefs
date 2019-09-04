@@ -36,6 +36,7 @@ var (
 
 var (
 	LocalIP string
+	MinWriteAbleDataPartitionCnt=10
 )
 
 type DataPartitionView struct {
@@ -140,7 +141,7 @@ func (w *Wrapper) updateDataPartition() error {
 		}
 	}
 
-	if len(rwPartitionGroups) > 10 {
+	if len(rwPartitionGroups) >= MinWriteAbleDataPartitionCnt {
 		w.rwPartition = rwPartitionGroups
 		w.localLeaderPartitions = localLeaderPartitionGroups
 	} else {
