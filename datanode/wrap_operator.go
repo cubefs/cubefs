@@ -72,7 +72,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	case proto.OpStreamRead:
 		s.handleStreamReadPacket(p, c, StreamRead)
 	case proto.OpStreamFollowerRead:
-		s.handleExtentRepaiReadPacket(p, c, RepairRead)
+		s.handleExtentRepaiReadPacket(p, c, StreamRead)
 	case proto.OpExtentRepairRead:
 		s.handleExtentRepaiReadPacket(p, c, RepairRead)
 	case proto.OpTinyExtentRepairRead:
