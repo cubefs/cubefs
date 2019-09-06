@@ -368,16 +368,30 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		name       string
-		authKey    string
-		err        error
-		msg        string
-		capacity   int
-		replicaNum int
+		name         string
+		authKey      string
+		err          error
+		msg          string
+		capacity     int
+		replicaNum   int
+		followerRead bool
+		vol          *Vol
 	)
 	if name, authKey, capacity, replicaNum, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
+	}
+	if vol, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	var followerReadStr string
+	if followerReadStr = r.FormValue(followerReadKey); followerReadStr != "" {
+		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		vol.FollowerRead = followerRead
 	}
 	if err = m.cluster.updateVol(name, authKey, uint64(capacity), uint8(replicaNum)); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
