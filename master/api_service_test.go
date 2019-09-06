@@ -272,6 +272,24 @@ func TestUpdateVol(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
 		hostAddr, proto.AdminUpdateVol, commonVol.Name, capacity, buildAuthKey("cfs"))
 	process(reqURL, t)
+	vol, err := server.cluster.getVol(commonVolName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if vol.FollowerRead != false {
+		t.Errorf("expect FollowerRead is false, but is %v", vol.FollowerRead)
+		return
+	}
+
+	reqURL = fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v&followerRead=true",
+		hostAddr, proto.AdminUpdateVol, commonVol.Name, capacity, buildAuthKey("cfs"))
+	process(reqURL, t)
+	if vol.FollowerRead != true {
+		t.Errorf("expect FollowerRead is true, but is %v", vol.FollowerRead)
+		return
+	}
+
 }
 func buildAuthKey(owner string) string {
 	h := md5.New()
