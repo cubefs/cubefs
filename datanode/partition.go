@@ -58,6 +58,7 @@ type DataPartitionMetadata struct {
 	Peers                   []proto.Peer
 	Hosts                   []string
 	DataPartitionCreateType int
+	LastTruncateID          uint64
 }
 
 type sortedPeers []proto.Peer
@@ -112,6 +113,7 @@ type DataPartition struct {
 	intervalToUpdatePartitionSize int64
 	loadExtentHeaderStatus        int
 	FullSyncTinyDeleteTime        int64
+	DataPartitionCreateType       int
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -131,7 +133,8 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 
 	// persist file metadata
 	go dp.StartRaftLoggingSchedule()
-	err = dp.PersistMetadata(request.CreateType)
+	dp.DataPartitionCreateType = request.CreateType
+	err = dp.PersistMetadata()
 	disk.AddSize(uint64(dp.Size()))
 	return
 }
@@ -173,13 +176,15 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	}
 
 	log.LogInfof("Action(LoadDataPartition) partitionID(%v) meta(%v)", dp.partitionID, meta)
+	dp.DataPartitionCreateType = meta.DataPartitionCreateType
+	dp.lastTruncateID = meta.LastTruncateID
 	if meta.DataPartitionCreateType == proto.NormalCreateDataPartition {
 		err = dp.StartRaft()
 	} else {
 		go dp.StartRaftAfterRepair()
 	}
 	if err != nil {
-		log.LogErrorf("partitionID(%v) start raft err(%v)..", dp.partitionID, err)
+		log.LogErrorf("PartitionID(%v) start raft err(%v)..", dp.partitionID, err)
 		disk.space.DetachDataPartition(dp.partitionID)
 	}
 
@@ -332,7 +337,7 @@ func (dp *DataPartition) ForceLoadHeader() {
 }
 
 // PersistMetadata persists the file metadata on the disk.
-func (dp *DataPartition) PersistMetadata(dataPartitionCreateType int) (err error) {
+func (dp *DataPartition) PersistMetadata() (err error) {
 	var (
 		metadataFile *os.File
 		metaData     []byte
@@ -356,8 +361,9 @@ func (dp *DataPartition) PersistMetadata(dataPartitionCreateType int) (err error
 		PartitionSize: dp.config.PartitionSize,
 		Peers:         dp.config.Peers,
 		Hosts:         dp.config.Hosts,
-		DataPartitionCreateType: dataPartitionCreateType,
+		DataPartitionCreateType: dp.DataPartitionCreateType,
 		CreateTime:              time.Now().Format(TimeLayout),
+		LastTruncateID:          dp.lastTruncateID,
 	}
 	if metaData, err = json.Marshal(md); err != nil {
 		return
@@ -605,21 +611,6 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 // 2. if the extent does not even exist, create the extent first, and then repair.
 func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask) {
 	store := dp.extentStore
-	if len(repairTask.ExtentsToBeCreated) > 0 {
-		allAppliedIDs := dp.getOtherAppliedID()
-		if len(allAppliedIDs) > 0 {
-			minAppliedID := allAppliedIDs[0]
-			for i := 1; i < len(allAppliedIDs); i++ {
-				if allAppliedIDs[i] < minAppliedID {
-					minAppliedID = allAppliedIDs[i]
-				}
-			}
-			if minAppliedID > 0 {
-				dp.appliedID = minAppliedID
-			}
-		}
-	}
-
 	for _, extentInfo := range repairTask.ExtentsToBeCreated {
 		if storage.IsTinyExtent(extentInfo.FileID) {
 			continue
@@ -671,13 +662,13 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 		dp.FullSyncTinyDeleteTime = time.Now().Unix()
 	}
 
-	log.LogInfof(ActionSyncTinyDeleteRecord+" start partitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v)",
+	log.LogInfof(ActionSyncTinyDeleteRecord+" start PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v)",
 		dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr)
 	if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteRecordFileSize {
 		return
 	}
 	defer func() {
-		log.LogInfof(ActionSyncTinyDeleteRecord+" end partitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v) err(%v)",
+		log.LogInfof(ActionSyncTinyDeleteRecord+" end PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v) err(%v)",
 			dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr, err)
 	}()
 

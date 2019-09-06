@@ -261,7 +261,7 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 	data, _ := json.Marshal(task)
 	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
 	if err != nil {
-		err = errors.Trace(err, "delete DataPartition failed,partitionID(%v)", request.PartitionId)
+		err = errors.Trace(err, "delete DataPartition failed,PartitionID(%v)", request.PartitionId)
 		log.LogErrorf("action[handlePacketToDeleteDataPartition] err(%v).", err)
 	}
 	log.LogInfof(fmt.Sprintf("action[handlePacketToDeleteDataPartition] %v error(%v)", request.PartitionId, string(data)))
@@ -322,7 +322,7 @@ func (s *DataNode) asyncLoadDataPartition(task *proto.AdminTask) {
 	}
 	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
 	if err != nil {
-		err = errors.Trace(err, "load DataPartition failed,partitionID(%v)", request.PartitionId)
+		err = errors.Trace(err, "load DataPartition failed,PartitionID(%v)", request.PartitionId)
 		log.LogError(errors.Stack(err))
 	}
 }
@@ -709,7 +709,7 @@ func (s *DataNode) handleBroadcastMinAppliedID(p *repl.Packet) {
 	if minAppliedID > 0 {
 		partition.SetMinAppliedID(minAppliedID)
 	}
-	log.LogDebugf("[handleBroadcastMinAppliedID] partition=%v minAppliedID=%v", partition.partitionID, minAppliedID)
+	log.LogDebugf("[handleBroadcastMinAppliedID] partition(%v) minAppliedID(%v)", partition.partitionID, minAppliedID)
 	p.PacketOkReply()
 	return
 }
@@ -718,7 +718,7 @@ func (s *DataNode) handleBroadcastMinAppliedID(p *repl.Packet) {
 func (s *DataNode) handlePacketToGetAppliedID(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
 	appliedID := partition.GetAppliedID() //return current appliedID
-	log.LogDebugf("[handlePacketToGetAppliedID] partition=%v curAppId=%v",
+	log.LogDebugf("[handlePacketToGetAppliedID] partition(%v) curAppId(%v)",
 		partition.partitionID, appliedID)
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, appliedID)

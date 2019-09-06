@@ -305,7 +305,7 @@ func (s *DataNode) register(cfg *config.Config) {
 
 			nodeID := strings.TrimSpace(string(data))
 			s.nodeID, err = strconv.ParseUint(nodeID, 10, 64)
-			log.LogDebug("[tempDebug] nodeID=%v", s.nodeID)
+			log.LogDebug("[tempDebug] nodeID(%v)", s.nodeID)
 			return
 		case <-s.stopC:
 			timer.Stop()

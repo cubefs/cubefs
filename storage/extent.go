@@ -221,8 +221,10 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	blockNo := offset / util.BlockSize
 	offsetInBlock := offset % util.BlockSize
 	defer func() {
-		e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
-		atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
+		if IsAppendWrite(writeType) {
+			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
+			e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
+		}
 	}()
 	if isSync {
 		if err = e.file.Sync(); err != nil {

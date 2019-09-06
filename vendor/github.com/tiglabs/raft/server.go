@@ -253,6 +253,17 @@ func (rs *RaftServer) CommittedIndex(id uint64) uint64 {
 	return 0
 }
 
+func (rs *RaftServer) FirstCommittedIndex(id uint64) uint64 {
+	rs.mu.RLock()
+	raft, ok := rs.rafts[id]
+	rs.mu.RUnlock()
+
+	if ok {
+		return raft.raftFsm.raftLog.firstIndex()
+	}
+	return 0
+}
+
 func (rs *RaftServer) TryToLeader(id uint64) (future *Future) {
 	rs.mu.RLock()
 	raft, ok := rs.rafts[id]
