@@ -144,7 +144,7 @@ func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartiti
 	for index := 1; index < len(dp.replicas); index++ {
 		extents, err := dp.getRemoteExtentInfo(extentType, tinyExtents, dp.replicas[index])
 		if err != nil {
-			log.LogErrorf("buildDataPartitionRepairTask partitionID(%v) on (%v) err(%v)", dp.partitionID, dp.replicas[index], err)
+			log.LogErrorf("buildDataPartitionRepairTask PartitionID(%v) on (%v) err(%v)", dp.partitionID, dp.replicas[index], err)
 			continue
 		}
 		repairTasks[index] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, dp.replicas[index], dp.replicas[0])

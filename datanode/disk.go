@@ -334,7 +334,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 				filename, d.Path, err.Error())
 			continue
 		}
-		log.LogDebugf("acton[RestorePartition] disk(%v) path(%v) partitionID(%v) partitionSize(%v).",
+		log.LogDebugf("acton[RestorePartition] disk(%v) path(%v) PartitionID(%v) partitionSize(%v).",
 			d.Path, fileInfo.Name(), partitionID, partitionSize)
 		wg.Add(1)
 

@@ -89,7 +89,6 @@ const (
 	StreamRead = false
 )
 
-
 const (
 	BufferWrite = false
 )
