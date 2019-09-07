@@ -274,7 +274,7 @@ func (s *DataNode) register(cfg *config.Config) {
 			if err != nil {
 				log.LogErrorf("action[registerToMaster] cannot get ip from master(%v) err(%v).",
 					masterAddr, err)
-				timer.Reset(5 * time.Second)
+				timer.Reset(2 * time.Second)
 				continue
 			}
 			cInfo := new(proto.ClusterInfo)
@@ -287,7 +287,7 @@ func (s *DataNode) register(cfg *config.Config) {
 			if !util.IsIPV4(LocalIP) {
 				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
 					LocalIP, masterAddr)
-				timer.Reset(5 * time.Second)
+				timer.Reset(2 * time.Second)
 				continue
 			}
 
@@ -296,8 +296,9 @@ func (s *DataNode) register(cfg *config.Config) {
 			params["addr"] = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			data, err = MasterHelper.Request(http.MethodPost, proto.AddDataNode, params, nil)
 			if err != nil {
-				log.LogErrorf("action[registerToMaster] cannot register this node to master[%] err(%v).",
+				log.LogErrorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
 					masterAddr, err)
+				timer.Reset(2 * time.Second)
 				continue
 			}
 
@@ -305,7 +306,7 @@ func (s *DataNode) register(cfg *config.Config) {
 
 			nodeID := strings.TrimSpace(string(data))
 			s.nodeID, err = strconv.ParseUint(nodeID, 10, 64)
-			log.LogDebug("[tempDebug] nodeID(%v)", s.nodeID)
+			log.LogDebugf("[tempDebug] nodeID(%v)", s.nodeID)
 			return
 		case <-s.stopC:
 			timer.Stop()
