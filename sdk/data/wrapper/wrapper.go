@@ -35,8 +35,8 @@ var (
 )
 
 var (
-	LocalIP string
-	MinWriteAbleDataPartitionCnt=10
+	LocalIP                      string
+	MinWriteAbleDataPartitionCnt = 10
 )
 
 type DataPartitionView struct {
@@ -70,6 +70,10 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
 	}
+	if err = w.getSimpleVolView(); err != nil {
+		err = errors.Trace(err, "NewDataPartitionWrapper:")
+		return
+	}
 	if err = w.updateDataPartition(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
@@ -83,11 +87,7 @@ func (w *Wrapper) FollowerRead() bool {
 }
 
 func (w *Wrapper) updateClusterInfo() error {
-	masterHelper := util.NewMasterHelper()
-	for _, ip := range w.masters {
-		masterHelper.AddNode(ip)
-	}
-	body, err := masterHelper.Request(http.MethodPost, proto.AdminGetIP, nil, nil)
+	body, err := MasterHelper.Request(http.MethodPost, proto.AdminGetIP, nil, nil)
 	if err != nil {
 		log.LogWarnf("UpdateClusterInfo request: err(%v)", err)
 		return err
@@ -105,11 +105,9 @@ func (w *Wrapper) updateClusterInfo() error {
 }
 
 func (w *Wrapper) getSimpleVolView() error {
-	masterHelper := util.NewMasterHelper()
-	for _, ip := range w.masters {
-		masterHelper.AddNode(ip)
-	}
-	body, err := masterHelper.Request(http.MethodPost, proto.AdminGetVol, nil, nil)
+	paras := make(map[string]string, 0)
+	paras["name"] = w.volName
+	body, err := MasterHelper.Request(http.MethodPost, proto.AdminGetVol, paras, nil)
 	if err != nil {
 		log.LogWarnf("getSimpleVolView request: err(%v)", err)
 		return err
