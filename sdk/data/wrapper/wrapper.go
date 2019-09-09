@@ -35,8 +35,8 @@ var (
 )
 
 var (
-	LocalIP string
-	MinWriteAbleDataPartitionCnt=10
+	LocalIP                      string
+	MinWriteAbleDataPartitionCnt = 10
 )
 
 type DataPartitionView struct {
@@ -66,6 +66,10 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 	w.rwPartition = make([]*DataPartition, 0)
 	w.partitions = make(map[uint64]*DataPartition)
 	if err = w.updateClusterInfo(); err != nil {
+		err = errors.Trace(err, "NewDataPartitionWrapper:")
+		return
+	}
+	if err = w.getSimpleVolView(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
 	}
