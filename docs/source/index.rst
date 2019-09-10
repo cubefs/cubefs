@@ -36,6 +36,12 @@ Welcome to ChubaoFS(Chubao File System)
    administration
 
 .. toctree::
+   :maxdepth: 2
+   :caption: use case
+
+   use-case
+
+.. toctree::
    :maxdepth: 0
    :caption: Evaluation
 
