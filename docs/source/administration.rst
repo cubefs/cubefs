@@ -1,5 +1,5 @@
 Resource Manager (Master) API
-============================
+=================================
 
 .. toctree::
    :maxdepth: 2
