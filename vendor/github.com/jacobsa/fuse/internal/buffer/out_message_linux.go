@@ -18,4 +18,4 @@ package buffer
 // calculating the size of out messages.
 //
 // For 4 KiB pages, this is 128 KiB (cf. https://goo.gl/HOiEYo)
-const MaxReadSize = 1 << 19
+const MaxReadSize = 1 << 18

@@ -16,11 +16,12 @@ package master
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/log"
 	"strconv"
 	"time"
 )
 
-func (c *Cluster) startCheckLoadMetaPartitions() {
+func (c *Cluster) scheduleToLoadMetaPartitions() {
 	go func() {
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
@@ -34,6 +35,13 @@ func (c *Cluster) startCheckLoadMetaPartitions() {
 }
 
 func (c *Cluster) checkLoadMetaPartitions() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("checkDiskRecoveryProgress occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"checkDiskRecoveryProgress occurred panic")
+		}
+	}()
 	vols := c.allVols()
 	for _, vol := range vols {
 		mps := vol.cloneMetaPartitionMap()

@@ -51,7 +51,7 @@ type TimePointCount struct {
 }
 
 func NewTP(name string) (tp *TimePoint) {
-	if !enabled {
+	if !enabledPrometheus {
 		return
 	}
 	tp = TPPool.Get().(*TimePoint)
@@ -61,7 +61,7 @@ func NewTP(name string) (tp *TimePoint) {
 }
 
 func (tp *TimePoint) Set() {
-	if !enabled {
+	if !enabledPrometheus {
 		return
 	}
 	val := time.Since(tp.startTime).Nanoseconds()
@@ -71,20 +71,14 @@ func (tp *TimePoint) Set() {
 
 func NewTPCnt(name string) (tpc *TimePointCount) {
 	tpc = new(TimePointCount)
-	if !enabled {
-		tpc.to = ump.BeforeTP(fmt.Sprintf("%v_%v_%v", clustername, modulename, name))
-		return
-	}
+	tpc.to = ump.BeforeTP(fmt.Sprintf("%v_%v_%v", clustername, modulename, name))
 	tpc.tp = NewTP(name)
 	tpc.cnt = NewCounter(fmt.Sprintf("%s_count", name))
 	return
 }
 
 func (tpc *TimePointCount) Set(err error) {
-	if !enabled {
-		ump.AfterTP(tpc.to, err)
-		return
-	}
+	ump.AfterTP(tpc.to, err)
 	tpc.tp.Set()
 	tpc.cnt.Add(1)
 }

@@ -56,6 +56,7 @@ func (m *Server) handleFunctions() {
 	http.Handle(proto.AdminDecommissionMetaPartition, m.handlerWithInterceptor())
 	http.Handle(proto.ClientDataPartitions, m.handlerWithInterceptor())
 	http.Handle(proto.ClientVol, m.handlerWithInterceptor())
+	http.Handle(proto.ClientMetaPartitions, m.handlerWithInterceptor())
 	http.Handle(proto.ClientMetaPartition, m.handlerWithInterceptor())
 	http.Handle(proto.GetDataNodeTaskResponse, m.handlerWithInterceptor())
 	http.Handle(proto.GetMetaNodeTaskResponse, m.handlerWithInterceptor())
@@ -83,11 +84,10 @@ func (m *Server) handlerWithInterceptor() http.Handler {
 				if m.metaReady {
 					m.ServeHTTP(w, r)
 					return
-				} else {
-					log.LogWarnf("action[handlerWithInterceptor] leader meta has not ready")
-					http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
-					return
 				}
+				log.LogWarnf("action[handlerWithInterceptor] leader meta has not ready")
+				http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
+				return
 			}
 			if m.leaderInfo.addr == "" {
 				log.LogErrorf("action[handlerWithInterceptor] no leader,request[%v]", r.URL)
@@ -147,6 +147,8 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.getDataPartitions(w, r)
 	case proto.ClientVol:
 		m.getVol(w, r)
+	case proto.ClientMetaPartitions:
+		m.getMetaPartitions(w, r)
 	case proto.ClientMetaPartition:
 		m.getMetaPartition(w, r)
 	case proto.ClientVolStat:

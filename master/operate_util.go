@@ -28,13 +28,14 @@ import (
 	"time"
 )
 
-func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize int, hosts []string) (req *proto.CreateDataPartitionRequest) {
+func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize int, hosts []string, createType int) (req *proto.CreateDataPartitionRequest) {
 	req = &proto.CreateDataPartitionRequest{
 		PartitionId:   ID,
 		PartitionSize: dataPartitionSize,
 		VolumeId:      volName,
 		Members:       members,
 		Hosts:         hosts,
+		CreateType:    createType,
 	}
 	return
 }
@@ -71,8 +72,6 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 	switch task.OpCode {
 	case proto.OpDataNodeHeartbeat:
 		response = &proto.DataNodeHeartbeatResponse{}
-	case proto.OpCreateDataPartition:
-		response = &proto.CreateDataPartitionResponse{}
 	case proto.OpDeleteDataPartition:
 		response = &proto.DeleteDataPartitionResponse{}
 	case proto.OpLoadDataPartition:
@@ -81,19 +80,12 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 		response = &proto.DeleteFileResponse{}
 	case proto.OpMetaNodeHeartbeat:
 		response = &proto.MetaNodeHeartbeatResponse{}
-	case proto.OpCreateMetaPartition:
-		response = &proto.CreateMetaPartitionResponse{}
 	case proto.OpDeleteMetaPartition:
 		response = &proto.DeleteMetaPartitionResponse{}
 	case proto.OpUpdateMetaPartition:
 		response = &proto.UpdateMetaPartitionResponse{}
-	case proto.OpLoadMetaPartition:
-		response = task.Response.(*proto.LoadMetaPartitionMetricResponse)
 	case proto.OpDecommissionMetaPartition:
-		response = task.Response.(*proto.MetaPartitionDecommissionResponse)
-	case proto.OpDecommissionDataPartition:
-		response = task.Response.(*proto.DataPartitionDecommissionResponse)
-
+		response = &proto.MetaPartitionDecommissionResponse{}
 	default:
 		log.LogError(fmt.Sprintf("unknown operate code(%v)", task.OpCode))
 	}

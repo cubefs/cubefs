@@ -59,12 +59,13 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		isUpdated, err = dp.updateRaftNode(req, index)
 	}
 	if err != nil {
-		log.LogErrorf("action[ApplyMemberChange] dp[%v] type[%v] err[%v].", dp.partitionID, confChange.Type, err)
+		log.LogErrorf("action[ApplyMemberChange] dp(%v) type(%v) err(%v).", dp.partitionID, confChange.Type, err)
 		return
 	}
 	if isUpdated {
+		dp.DataPartitionCreateType = proto.NormalCreateDataPartition
 		if err = dp.PersistMetadata(); err != nil {
-			log.LogErrorf("action[ApplyMemberChange] dp[%v] PersistMetadata err[%v].", dp.partitionID, err)
+			log.LogErrorf("action[ApplyMemberChange] dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
 			return
 		}
 	}
@@ -75,20 +76,22 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 // Note that the data in each data partition has already been saved on the disk. Therefore there is no need to take the
 // snapshot in this case.
 func (dp *DataPartition) Snapshot() (raftproto.Snapshot, error) {
-	applyID := dp.appliedID
-	snapIterator := NewItemIterator(applyID)
+	snapIterator := NewItemIterator(dp.lastTruncateID)
+	log.LogInfof("SendSnapShot PartitionID(%v) Snapshot lastTruncateID(%v) currentApplyID(%v) firstCommitID(%v)",
+		dp.partitionID, dp.lastTruncateID, dp.appliedID, dp.raftPartition.CommittedIndex())
 	return snapIterator, nil
 }
 
 // ApplySnapshot asks the raft leader for the snapshot data to recover the contents on the local disk.
 func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftproto.SnapIterator) (err error) {
 	// Never delete the raft log which hadn't applied, so snapshot no need.
+	log.LogInfof("PartitionID(%v) ApplySnapshot to (%v)", dp.partitionID, dp.raftPartition.CommittedIndex())
 	return
 }
 
 // HandleFatalEvent notifies the application when panic happens.
 func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
-	log.LogFatalf("action[HandleFatalEvent] err[%v].", err)
+	log.LogFatalf("action[HandleFatalEvent] err(%v).", err)
 }
 
 // HandleLeaderChange notifies the application when the raft leader has changed.

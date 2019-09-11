@@ -26,7 +26,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
-	"regexp"
 	"strings"
 )
 
@@ -266,17 +265,31 @@ func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		dp          *DataPartition
 		partitionID uint64
+		volName     string
+		vol         *Vol
 		err         error
 	)
-	if partitionID, err = parseRequestToGetDataPartition(r); err != nil {
+	if partitionID, volName, err = parseRequestToGetDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
-		return
+	if volName != "" {
+		if vol, err = m.cluster.getVol(volName); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+			return
+		}
+		if dp, err = vol.getDataPartitionByID(partitionID); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+			return
+		}
+	} else {
+		if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+			return
+		}
 	}
+
 	sendOkReply(w, r, newSuccessHTTPReply(dp))
 }
 
@@ -355,17 +368,18 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		name     string
-		authKey  string
-		err      error
-		msg      string
-		capacity int
+		name       string
+		authKey    string
+		err        error
+		msg        string
+		capacity   int
+		replicaNum int
 	)
-	if name, authKey, capacity, err = parseRequestToUpdateVol(r); err != nil {
+	if name, authKey, capacity, replicaNum, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.updateVol(name, authKey, capacity); err != nil {
+	if err = m.cluster.updateVol(name, authKey, uint64(capacity), uint8(replicaNum)); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -375,21 +389,22 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		name     string
-		owner    string
-		err      error
-		msg      string
-		size     int
-		mpCount  int
-		capacity int
-		vol      *Vol
+		name         string
+		owner        string
+		err          error
+		msg          string
+		size         int
+		mpCount      int
+		dpReplicaNum int
+		capacity     int
+		vol          *Vol
 	)
 
-	if name, owner, mpCount, size, capacity, err = parseRequestToCreateVol(r); err != nil {
+	if name, owner, mpCount, size, capacity, dpReplicaNum, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.createVol(name, owner, mpCount, size, capacity); err != nil {
+	if vol, err = m.cluster.createVol(name, owner, mpCount, size, capacity, dpReplicaNum); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -577,7 +592,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
 		return
 	}
-	metaNode.PersistenceMetaPartitions = m.cluster.getAllmetaPartitionIDByMetaNode(nodeAddr)
+	metaNode.PersistenceMetaPartitions = m.cluster.getAllMetaPartitionIDByMetaNode(nodeAddr)
 	sendOkReply(w, r, newSuccessHTTPReply(metaNode))
 }
 
@@ -778,7 +793,7 @@ func parseRequestToDeleteVol(r *http.Request) (name, authKey string, err error) 
 
 }
 
-func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity int, err error) {
+func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity, replicaNum int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -795,10 +810,13 @@ func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity in
 	} else {
 		err = keyNotFound(volCapacityKey)
 	}
+	if replicaNumStr := r.FormValue(replicaNumKey); replicaNumStr != "" {
+		replicaNum, _ = strconv.Atoi(replicaNumStr)
+	}
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size, capacity int, err error) {
+func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size, capacity, dpReplicaNum int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -819,6 +837,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size
 	if sizeStr := r.FormValue(dataPartitionSizeKey); sizeStr != "" {
 		if size, err = strconv.Atoi(sizeStr); err != nil {
 			err = unmatchedKey(dataPartitionSizeKey)
+			return
 		}
 	}
 
@@ -827,6 +846,14 @@ func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size
 		return
 	} else if capacity, err = strconv.Atoi(capacityStr); err != nil {
 		err = unmatchedKey(volCapacityKey)
+		return
+	}
+
+	if replicaStr := r.FormValue(replicaNumKey); replicaStr == "" {
+		dpReplicaNum = defaultReplicaNum
+	} else if dpReplicaNum, err = strconv.Atoi(replicaStr); err != nil {
+		err = unmatchedKey(replicaNumKey)
+		return
 	}
 	return
 }
@@ -848,11 +875,15 @@ func parseRequestToCreateDataPartition(r *http.Request) (count int, name string,
 	return
 }
 
-func parseRequestToGetDataPartition(r *http.Request) (ID uint64, err error) {
+func parseRequestToGetDataPartition(r *http.Request) (ID uint64, volName string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-	return extractDataPartitionID(r)
+	if ID, err = extractDataPartitionID(r); err != nil {
+		return
+	}
+	volName = r.FormValue(nameKey)
+	return
 }
 
 func parseRequestToLoadDataPartition(r *http.Request) (ID uint64, err error) {
@@ -990,7 +1021,7 @@ func newErrHTTPReply(err error) *proto.HTTPReply {
 	return &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()}
 }
 
-func sendReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) (err error) {
+func sendOkReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) (err error) {
 	switch httpReply.Data.(type) {
 	case *DataPartition:
 		dp := httpReply.Data.(*DataPartition)
@@ -1015,6 +1046,29 @@ func sendReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPRepl
 		http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
 		return
 	}
+	send(w, r, reply)
+	return
+}
+
+func send(w http.ResponseWriter, r *http.Request, reply []byte) {
+	w.Header().Set("content-type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(reply)))
+	if _, err := w.Write(reply); err != nil {
+		log.LogErrorf("fail to write http reply[%s] len[%d].URL[%v],remoteAddr[%v] err:[%v]", string(reply), len(reply), r.URL, r.RemoteAddr, err)
+		return
+	}
+	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
+	return
+}
+
+func sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) {
+	log.LogInfof("URL[%v],remoteAddr[%v],response err[%v]", r.URL, r.RemoteAddr, httpReply)
+	reply, err := json.Marshal(httpReply)
+	if err != nil {
+		log.LogErrorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", httpReply, r.URL, r.RemoteAddr, err)
+		http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
+		return
+	}
 	w.Header().Set("content-type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(reply)))
 	if _, err = w.Write(reply); err != nil {
@@ -1023,15 +1077,22 @@ func sendReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPRepl
 	return
 }
 
-func sendOkReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) {
-	if err := sendReply(w, r, httpReply); err == nil {
-		log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
+func (m *Server) getMetaPartitions(w http.ResponseWriter, r *http.Request) {
+	var (
+		name string
+		vol  *Vol
+		err  error
+	)
+	if name, err = parseAndExtractName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
-}
-
-func sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) {
-	log.LogInfof("URL[%v],remoteAddr[%v],response err[%v]", r.URL, r.RemoteAddr, httpReply)
-	sendReply(w, r, httpReply)
+	if vol, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+	send(w, r, vol.getMpsCache())
+	return
 }
 
 // Obtain all the data partitions in a volume.
@@ -1042,7 +1103,6 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		vol  *Vol
 		err  error
 	)
-	dps := proto.NewDataPartitionsView()
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1056,10 +1116,7 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if err = json.Unmarshal(body, dps); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-	}
-	sendOkReply(w, r, newSuccessHTTPReply(dps))
+	send(w, r, body)
 }
 
 func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
@@ -1068,7 +1125,6 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 		name    string
 		authKey string
 		vol     *Vol
-		volView *proto.VolView
 	)
 	if name, authKey, err = parseRequestToGetVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1082,11 +1138,7 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolAuthKeyNotMatch))
 		return
 	}
-	if volView, err = m.getVolView(vol); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-	sendOkReply(w, r, newSuccessHTTPReply(volView))
+	send(w, r, vol.getViewCache())
 }
 
 // Obtain the volume information such as total capacity and used space, etc.
@@ -1105,27 +1157,6 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volStat(vol)))
-}
-
-func (m *Server) getVolView(vol *Vol) (view *proto.VolView, err error) {
-	view = proto.NewVolView(vol.Name, vol.Status)
-	setMetaPartitions(vol, view)
-	setDataPartitions(vol, view)
-	return
-}
-func setDataPartitions(vol *Vol, view *proto.VolView) (err error) {
-	vol.dataPartitions.RLock()
-	defer vol.dataPartitions.RUnlock()
-	view.DataPartitions = vol.dataPartitions.getDataPartitionsView(0)
-	return
-}
-func setMetaPartitions(vol *Vol, view *proto.VolView) (err error) {
-	vol.mpsLock.RLock()
-	defer vol.mpsLock.RUnlock()
-	for _, mp := range vol.MetaPartitions {
-		view.MetaPartitions = append(view.MetaPartitions, getMetaPartitionView(mp))
-	}
-	return
 }
 
 func volStat(vol *Vol) (stat *proto.VolStatInfo) {
@@ -1211,14 +1242,7 @@ func extractName(r *http.Request) (name string, err error) {
 		err = keyNotFound(nameKey)
 		return
 	}
-
-	pattern := "^[a-zA-Z0-9_-]{3,256}$"
-	reg, err := regexp.Compile(pattern)
-	if err != nil {
-		return "", err
-	}
-
-	if !reg.MatchString(name) {
+	if !volNameRegexp.MatchString(name) {
 		return "", errors.New("name can only be number and letters")
 	}
 

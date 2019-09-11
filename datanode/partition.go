@@ -51,11 +51,14 @@ const (
 )
 
 type DataPartitionMetadata struct {
-	VolumeID      string
-	PartitionID   uint64
-	PartitionSize int
-	CreateTime    string
-	Peers         []proto.Peer
+	VolumeID                string
+	PartitionID             uint64
+	PartitionSize           int
+	CreateTime              string
+	Peers                   []proto.Peer
+	Hosts                   []string
+	DataPartitionCreateType int
+	LastTruncateID          uint64
 }
 
 type sortedPeers []proto.Peer
@@ -104,28 +107,35 @@ type DataPartition struct {
 	storeC          chan uint64
 	stopC           chan bool
 
-	runtimeMetrics                *DataPartitionMetrics
 	intervalToUpdateReplicas      int64 // interval to ask the master for updating the replica information
 	snapshot                      []*proto.File
 	snapshotMutex                 sync.RWMutex
 	intervalToUpdatePartitionSize int64
 	loadExtentHeaderStatus        int
-
-	FullSyncTinyDeleteTime int64
+	FullSyncTinyDeleteTime        int64
+	DataPartitionCreateType       int
 }
 
-func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, err error) {
+func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
 
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
 	}
-
-	go dp.StartRaftLoggingSchedule()
-	go dp.StartRaftAfterRepair()
-	go dp.ForceLoadHeader()
+	dp.ForceLoadHeader()
+	if request.CreateType == proto.NormalCreateDataPartition {
+		err = dp.StartRaft()
+	} else {
+		go dp.StartRaftAfterRepair()
+	}
+	if err != nil {
+		return nil, err
+	}
 
 	// persist file metadata
+	go dp.StartRaftLoggingSchedule()
+	dp.DataPartitionCreateType = request.CreateType
 	err = dp.PersistMetadata()
+	disk.AddSize(uint64(dp.Size()))
 	return
 }
 
@@ -152,6 +162,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		PartitionSize: meta.PartitionSize,
 		PartitionID:   meta.PartitionID,
 		Peers:         meta.Peers,
+		Hosts:         meta.Hosts,
 		RaftStore:     disk.space.GetRaftStore(),
 		NodeID:        disk.space.GetNodeID(),
 		ClusterID:     disk.space.GetClusterID(),
@@ -163,12 +174,22 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)
 	}
-	if err = dp.StartRaft(); err != nil {
+	log.LogInfof("Action(LoadDataPartition) PartitionID(%v) meta(%v)", dp.partitionID, meta)
+	dp.DataPartitionCreateType = meta.DataPartitionCreateType
+	dp.lastTruncateID = meta.LastTruncateID
+	if meta.DataPartitionCreateType == proto.NormalCreateDataPartition {
+		err = dp.StartRaft()
+	} else {
+		go dp.StartRaftAfterRepair()
+	}
+	if err != nil {
+		log.LogErrorf("PartitionID(%v) start raft err(%v)..", dp.partitionID, err)
 		disk.space.DetachDataPartition(dp.partitionID)
-		return
 	}
 
 	go dp.StartRaftLoggingSchedule()
+	disk.AddSize(uint64(dp.Size()))
+	dp.ForceLoadHeader()
 	return
 }
 
@@ -188,7 +209,6 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		storeC:          make(chan uint64, 128),
 		snapshot:        make([]*proto.File, 0),
 		partitionStatus: proto.ReadWrite,
-		runtimeMetrics:  NewDataPartitionMetrics(),
 		config:          dpCfg,
 	}
 	partition.replicasInit()
@@ -287,6 +307,10 @@ func (dp *DataPartition) Disk() *Disk {
 	return dp.disk
 }
 
+func (dp *DataPartition) IsRejectWrite() bool {
+	return dp.Disk().RejectWrite
+}
+
 // Status returns the partition status.
 func (dp *DataPartition) Status() int {
 	return dp.partitionStatus
@@ -335,7 +359,10 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		PartitionID:   dp.config.PartitionID,
 		PartitionSize: dp.config.PartitionSize,
 		Peers:         dp.config.Peers,
-		CreateTime:    time.Now().Format(TimeLayout),
+		Hosts:         dp.config.Hosts,
+		DataPartitionCreateType: dp.DataPartitionCreateType,
+		CreateTime:              time.Now().Format(TimeLayout),
+		LastTruncateID:          dp.lastTruncateID,
 	}
 	if metaData, err = json.Marshal(md); err != nil {
 		return
@@ -343,7 +370,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 	if _, err = metadataFile.Write(metaData); err != nil {
 		return
 	}
-
+	log.LogInfof("PersistMetadata DataPartition(%v) data(%v)", dp.partitionID, string(metaData))
 	err = os.Rename(fileName, path.Join(dp.Path(), DataPartitionMetadataFileName))
 	return
 }
@@ -505,7 +532,7 @@ func (dp *DataPartition) updateReplicas() (err error) {
 	dp.isLeader = isLeader
 	dp.replicas = replicas
 	dp.intervalToUpdateReplicas = time.Now().Unix()
-	log.LogInfof(fmt.Sprintf("ActionUpdateReplicationHosts partiton[%v]", dp.partitionID))
+	log.LogInfof(fmt.Sprintf("ActionUpdateReplicationHosts partiton(%v)", dp.partitionID))
 
 	return
 }
@@ -535,6 +562,7 @@ func (dp *DataPartition) fetchReplicasFromMaster() (isLeader bool, replicas []st
 	)
 	params := make(map[string]string)
 	params["id"] = strconv.Itoa(int(dp.partitionID))
+	params["name"] = dp.volumeID
 	if bufs, err = MasterHelper.Request("GET", proto.AdminGetDataPartition, params, nil); err != nil {
 		isLeader = false
 		return
@@ -582,21 +610,6 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 // 2. if the extent does not even exist, create the extent first, and then repair.
 func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask) {
 	store := dp.extentStore
-	if len(repairTask.ExtentsToBeCreated) > 0 {
-		allAppliedIDs := dp.getOtherAppliedID()
-		if len(allAppliedIDs) > 0 {
-			minAppliedID := allAppliedIDs[0]
-			for i := 1; i < len(allAppliedIDs); i++ {
-				if allAppliedIDs[i] < minAppliedID {
-					minAppliedID = allAppliedIDs[i]
-				}
-			}
-			if minAppliedID > 0 {
-				dp.appliedID = minAppliedID
-			}
-		}
-	}
-
 	for _, extentInfo := range repairTask.ExtentsToBeCreated {
 		if storage.IsTinyExtent(extentInfo.FileID) {
 			continue
@@ -648,17 +661,17 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 		dp.FullSyncTinyDeleteTime = time.Now().Unix()
 	}
 
-	log.LogInfof(ActionSyncTinyDeleteRecord+" start partitionId(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v)",
-		dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteFileSize, repairTask.LeaderAddr)
-	if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteFileSize {
+	log.LogInfof(ActionSyncTinyDeleteRecord+" start PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v)",
+		dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr)
+	if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteRecordFileSize {
 		return
 	}
 	defer func() {
-		log.LogInfof(ActionSyncTinyDeleteRecord+" end partitionId(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v) err(%v)",
-			dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteFileSize, repairTask.LeaderAddr, err)
+		log.LogInfof(ActionSyncTinyDeleteRecord+" end PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v) err(%v)",
+			dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr, err)
 	}()
 
-	p := repl.NewPacketToTinyDeleteRecord(dp.partitionID, localTinyDeleteFileSize)
+	p := repl.NewPacketToReadTinyDeleteRecord(dp.partitionID, localTinyDeleteFileSize)
 	if conn, err = gConnPool.GetConnect(repairTask.LeaderAddr); err != nil {
 		return
 	}
@@ -668,8 +681,8 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 	}
 	store := dp.extentStore
 	start := time.Now().Unix()
-	for localTinyDeleteFileSize < repairTask.LeaderTinyDeleteFileSize {
-		if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteFileSize {
+	for localTinyDeleteFileSize < repairTask.LeaderTinyDeleteRecordFileSize {
+		if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteRecordFileSize {
 			return
 		}
 		if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {

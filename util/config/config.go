@@ -95,6 +95,11 @@ func (c *Config) GetBool(key string) bool {
 	if result, isBool := x.(bool); isBool {
 		return result
 	}
+	if result, isString := x.(string); isString {
+		if result == "true" {
+			return true
+		}
+	}
 	return false
 }
 

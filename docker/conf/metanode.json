@@ -8,7 +8,7 @@
     "exporterPort": 9500,
     "logLevel": "info",
     "logDir": "/cfs/log",
-    "warnLogDir":"/cfs/log",
+    "totalMem":"6442450944",
     "metadataDir": "/cfs/data/meta",
     "raftDir": "/cfs/data/raft",
     "masterAddrs": [

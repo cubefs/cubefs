@@ -19,12 +19,12 @@ import (
 	"sync"
 	"time"
 
-	"os"
-
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"math"
+	"os"
 )
 
 // SpaceManager manages the disk space.
@@ -139,6 +139,7 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrC
 		disk.RestorePartition(visitor)
 		manager.putDisk(disk)
 		err = nil
+		go disk.autoComputeExtentCrc()
 	}
 	return
 }
@@ -191,18 +192,30 @@ func (manager *SpaceManager) updateMetrics() {
 func (manager *SpaceManager) minPartitionCnt() (d *Disk) {
 	manager.diskMutex.Lock()
 	defer manager.diskMutex.Unlock()
-	var path string
-	if manager.selectedIndex >= len(manager.diskList) {
-		manager.selectedIndex = 0
+	var (
+		minWeight     float64
+		minWeightDisk *Disk
+	)
+	minWeight = math.MaxFloat64
+	for _, disk := range manager.disks {
+		if disk.Available <= 5*util.GB || disk.Status != proto.ReadWrite {
+			continue
+		}
+		diskWeight := disk.getSelectWeight()
+		if diskWeight < minWeight {
+			minWeight = diskWeight
+			minWeightDisk = disk
+		}
 	}
-
-	path = manager.diskList[manager.selectedIndex]
-	d = manager.disks[path]
-	manager.selectedIndex++
-
-	return
+	if minWeightDisk == nil {
+		return
+	}
+	if minWeightDisk.Available <= 5*util.GB || minWeightDisk.Status != proto.ReadWrite {
+		return
+	}
+	d = minWeightDisk
+	return d
 }
-
 func (manager *SpaceManager) statUpdateScheduler() {
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
@@ -233,10 +246,10 @@ func (manager *SpaceManager) AttachPartition(dp *DataPartition) {
 }
 
 // DetachDataPartition removes a data partition from the partition map.
-func (manager *SpaceManager) DetachDataPartition(partitionId uint64) {
+func (manager *SpaceManager) DetachDataPartition(partitionID uint64) {
 	manager.partitionMutex.Lock()
 	defer manager.partitionMutex.Unlock()
-	delete(manager.partitions, partitionId)
+	delete(manager.partitions, partitionID)
 }
 
 func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -256,24 +269,13 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 	if dp != nil {
 		return
 	}
-	var (
-		disk *Disk
-	)
-	for i := 0; i < len(manager.disks); i++ {
-		disk = manager.minPartitionCnt()
-		if disk.Available < 5*util.GB || disk.Status != proto.ReadWrite {
-			disk = nil
-			continue
-		}
-		break
-	}
+	disk := manager.minPartitionCnt()
 	if disk == nil {
 		return nil, ErrNoSpaceToCreatePartition
 	}
-	if dp, err = CreateDataPartition(dpCfg, disk); err != nil {
+	if dp, err = CreateDataPartition(dpCfg, disk, request); err != nil {
 		return
 	}
-
 	manager.partitions[dp.partitionID] = dp
 
 	return
@@ -322,7 +324,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			ExtentCount:     partition.GetExtentCount(),
 			NeedCompare:     true,
 		}
-		log.LogDebugf("action[Heartbeats] dpid[%v], status[%v] total[%v] used[%v] leader[%v] b[%v].", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)
+		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) b(%v).", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)
 		response.PartitionReports = append(response.PartitionReports, vr)
 		return true
 	})

@@ -151,12 +151,14 @@ func (client *ExtentClient) RefreshExtentsCache(inode uint64) error {
 }
 
 // FileSize returns the file size.
-func (client *ExtentClient) FileSize(inode uint64) (size int, gen uint64) {
+func (client *ExtentClient) FileSize(inode uint64) (size int, gen uint64, valid bool) {
 	s := client.GetStreamer(inode)
 	if s == nil {
 		return
 	}
-	return s.extents.Size()
+	valid = true
+	size, gen = s.extents.Size()
+	return
 }
 
 // SetFileSize set the file size.

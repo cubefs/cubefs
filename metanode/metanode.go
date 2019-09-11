@@ -23,6 +23,9 @@ import (
 	"time"
 
 	"fmt"
+	"net/http"
+	"strconv"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util"
@@ -30,8 +33,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
-	"net/http"
-	"strconv"
 )
 
 var (
@@ -108,13 +109,13 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 		break
 	}
 
-	minfo:=new(MetaNodeInfo)
-	if err = json.Unmarshal(data.([]byte),minfo);err!=nil {
-		err=fmt.Errorf("checkLocalPartitionMatchWithMaster jsonUnmarsh failed %v",err)
+	minfo := new(MetaNodeInfo)
+	if err = json.Unmarshal(data.([]byte), minfo); err != nil {
+		err = fmt.Errorf("checkLocalPartitionMatchWithMaster jsonUnmarsh failed %v", err)
 		log.LogErrorf(err.Error())
 		return
 	}
-	
+
 	if len(minfo.PersistenceMetaPartitions) == 0 {
 		return
 	}
@@ -137,7 +138,6 @@ func (m *MetaNode) onStart(cfg *config.Config) (err error) {
 	if err = m.parseConfig(cfg); err != nil {
 		return
 	}
-	exporter.Init(m.clusterId, cfg.GetString("role"), cfg)
 	if err = m.register(); err != nil {
 		return
 	}
@@ -150,6 +150,9 @@ func (m *MetaNode) onStart(cfg *config.Config) (err error) {
 	if err = m.registerAPIHandler(); err != nil {
 		return
 	}
+
+	exporter.Init(cfg.GetString("role"), cfg)
+
 	// check local partition compare with master ,if lack,then not start
 	if err = m.checkLocalPartitionMatchWithMaster(); err != nil {
 		fmt.Println(err)
@@ -160,6 +163,7 @@ func (m *MetaNode) onStart(cfg *config.Config) (err error) {
 	if err = m.startServer(); err != nil {
 		return
 	}
+	exporter.RegistConsul(m.clusterId, cfg.GetString("role"), cfg)
 	return
 }
 
@@ -189,18 +193,16 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
 	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
-	if configTotalMem != 0 && configTotalMem <= util.GB {
-		configTotalMem = util.GB
+
+	if configTotalMem == 0 {
+		return fmt.Errorf("bad totalMem config,Recommended to be configured as 80% of physical machine memory")
 	}
 
 	total, _, err := util.GetMemInfo()
-	if err == nil && configTotalMem == 0 {
-		configTotalMem = total
+	if err == nil && configTotalMem > total-util.GB {
+		return fmt.Errorf("bad totalMem config,Recommended to be configured as 80% of physical machine memory")
 	}
 
-	if configTotalMem > total {
-		configTotalMem = total
-	}
 	if m.metadataDir == "" {
 		return fmt.Errorf("bad metadataDir config")
 	}

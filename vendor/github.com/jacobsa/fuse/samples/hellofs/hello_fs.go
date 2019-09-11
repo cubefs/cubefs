@@ -68,20 +68,20 @@ type inodeInfo struct {
 // We have a fixed directory structure.
 var gInodeInfo = map[fuseops.InodeID]inodeInfo{
 	// root
-	rootInode: inodeInfo{
+	rootInode: {
 		attributes: fuseops.InodeAttributes{
 			Nlink: 1,
 			Mode:  0555 | os.ModeDir,
 		},
 		dir: true,
 		children: []fuseutil.Dirent{
-			fuseutil.Dirent{
+			{
 				Offset: 1,
 				Inode:  helloInode,
 				Name:   "hello",
 				Type:   fuseutil.DT_File,
 			},
-			fuseutil.Dirent{
+			{
 				Offset: 2,
 				Inode:  dirInode,
 				Name:   "dir",
@@ -91,7 +91,7 @@ var gInodeInfo = map[fuseops.InodeID]inodeInfo{
 	},
 
 	// hello
-	helloInode: inodeInfo{
+	helloInode: {
 		attributes: fuseops.InodeAttributes{
 			Nlink: 1,
 			Mode:  0444,
@@ -100,14 +100,14 @@ var gInodeInfo = map[fuseops.InodeID]inodeInfo{
 	},
 
 	// dir
-	dirInode: inodeInfo{
+	dirInode: {
 		attributes: fuseops.InodeAttributes{
 			Nlink: 1,
 			Mode:  0555 | os.ModeDir,
 		},
 		dir: true,
 		children: []fuseutil.Dirent{
-			fuseutil.Dirent{
+			{
 				Offset: 1,
 				Inode:  worldInode,
 				Name:   "world",
@@ -117,7 +117,7 @@ var gInodeInfo = map[fuseops.InodeID]inodeInfo{
 	},
 
 	// world
-	worldInode: inodeInfo{
+	worldInode: {
 		attributes: fuseops.InodeAttributes{
 			Nlink: 1,
 			Mode:  0444,

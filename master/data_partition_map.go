@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"runtime"
 	"sync"
@@ -41,6 +40,7 @@ func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
 	dpMap = new(DataPartitionMap)
 	dpMap.partitionMap = make(map[uint64]*DataPartition, 0)
 	dpMap.partitions = make([]*DataPartition, 0)
+	dpMap.responseCache = make([]byte, 0)
 	dpMap.volName = volName
 	return
 }
@@ -51,7 +51,7 @@ func (dpMap *DataPartitionMap) get(ID uint64) (*DataPartition, error) {
 	if v, ok := dpMap.partitionMap[ID]; ok {
 		return v, nil
 	}
-	return nil, errors.Trace(dataPartitionNotFound(ID), "[%v] not found in [%v]", ID, dpMap.volName)
+	return nil, proto.ErrDataPartitionNotExists
 }
 
 func (dpMap *DataPartitionMap) put(dp *DataPartition) {
@@ -84,11 +84,23 @@ func (dpMap *DataPartitionMap) setReadWriteDataPartitions(readWrites int, cluste
 	dpMap.readableAndWritableCnt = readWrites
 }
 
-func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitionID uint64) (body []byte, err error) {
+func (dpMap *DataPartitionMap) getDataPartitionResponseCache() []byte {
+	dpMap.RLock()
+	defer dpMap.RUnlock()
+	return dpMap.responseCache
+}
+
+func (dpMap *DataPartitionMap) setDataPartitionResponseCache(responseCache []byte) {
 	dpMap.Lock()
 	defer dpMap.Unlock()
-	if dpMap.responseCache == nil || needsUpdate || len(dpMap.responseCache) == 0 {
-		dpMap.responseCache = make([]byte, 0)
+	if responseCache != nil {
+		dpMap.responseCache = responseCache
+	}
+}
+
+func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitionID uint64) (body []byte, err error) {
+	responseCache := dpMap.getDataPartitionResponseCache()
+	if responseCache == nil || needsUpdate || len(responseCache) == 0 {
 		dpResps := dpMap.getDataPartitionsView(minPartitionID)
 		if len(dpResps) == 0 {
 			log.LogError(fmt.Sprintf("action[updateDpResponseCache],volName[%v] minPartitionID:%v,err:%v",
@@ -97,16 +109,17 @@ func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitio
 		}
 		cv := proto.NewDataPartitionsView()
 		cv.DataPartitions = dpResps
-		if body, err = json.Marshal(cv); err != nil {
+		reply := newSuccessHTTPReply(cv)
+		if body, err = json.Marshal(reply); err != nil {
 			log.LogError(fmt.Sprintf("action[updateDpResponseCache],minPartitionID:%v,err:%v",
 				minPartitionID, err.Error()))
 			return nil, proto.ErrMarshalData
 		}
-		dpMap.responseCache = body
+		dpMap.setDataPartitionResponseCache(body)
 		return
 	}
-	body = make([]byte, len(dpMap.responseCache))
-	copy(body, dpMap.responseCache)
+	body = make([]byte, len(responseCache))
+	copy(body, responseCache)
 
 	return
 }
@@ -115,6 +128,8 @@ func (dpMap *DataPartitionMap) getDataPartitionsView(minPartitionID uint64) (dpR
 	dpResps = make([]*proto.DataPartitionResponse, 0)
 	log.LogDebugf("volName[%v] DataPartitionMapLen[%v],DataPartitionsLen[%v],minPartitionID[%v]",
 		dpMap.volName, len(dpMap.partitionMap), len(dpMap.partitions), minPartitionID)
+	dpMap.RLock()
+	defer dpMap.RUnlock()
 	for _, dp := range dpMap.partitionMap {
 		if dp.PartitionID <= minPartitionID {
 			continue

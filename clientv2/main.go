@@ -41,6 +41,7 @@ import (
 	"github.com/jacobsa/fuse/fuseutil"
 
 	cfs "github.com/chubaofs/chubaofs/clientv2/fs"
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
@@ -105,6 +106,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	exporter.Init(ModuleName, opt.Config)
+
 	level := parseLogLevel(opt.Loglvl)
 	_, err = log.InitLog(opt.Logpath, LoggerPrefix, level, nil)
 	if err != nil {
@@ -124,6 +127,11 @@ func main() {
 		outputFile.Close()
 	}()
 	syslog.SetOutput(outputFile)
+
+	if err = syscall.Dup2(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
 
 	registerInterceptedSignal(opt.MountPoint)
 
@@ -176,10 +184,11 @@ func mount(opt *cfs.MountOption) (*fuse.MountedFileSystem, error) {
 	}
 
 	go func() {
+		http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
 		fmt.Println(http.ListenAndServe(":"+opt.Profport, nil))
 	}()
 
-	exporter.Init(super.ClusterName(), ModuleName, opt.Config)
+	exporter.RegistConsul(super.ClusterName(), ModuleName, opt.Config)
 
 	server := fuseutil.NewFileSystemServer(super)
 	mntcfg := &fuse.MountConfig{
@@ -187,6 +196,10 @@ func mount(opt *cfs.MountOption) (*fuse.MountedFileSystem, error) {
 		Subtype:                 "chubaofs",
 		ReadOnly:                opt.Rdonly,
 		DisableWritebackCaching: true,
+	}
+
+	if opt.WriteCache {
+		mntcfg.DisableWritebackCaching = false
 	}
 
 	// define extra options
@@ -206,8 +219,7 @@ func registerInterceptedSignal(mnt string) {
 	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigC
-		syslog.Printf("Umount due to a received signal (%v)\n", sig)
-		fuse.Unmount(mnt)
+		syslog.Printf("Killed due to a received signal (%v)\n", sig)
 	}()
 }
 
@@ -216,24 +228,26 @@ func parseMountOption(cfg *config.Config) (*cfs.MountOption, error) {
 	opt := new(cfs.MountOption)
 	opt.Config = cfg
 
-	rawmnt := cfg.GetString("mountPoint")
+	rawmnt := cfg.GetString(proto.MountPoint)
 	opt.MountPoint, err = filepath.Abs(rawmnt)
 	if err != nil {
 		return nil, errors.Trace(err, "invalide mount point (%v) ", rawmnt)
 	}
 
-	opt.Volname = cfg.GetString("volName")
-	opt.Owner = cfg.GetString("owner")
-	opt.Master = cfg.GetString("masterAddr")
-	opt.Logpath = cfg.GetString("logDir")
-	opt.Loglvl = cfg.GetString("logLevel")
-	opt.Profport = cfg.GetString("profPort")
-	opt.IcacheTimeout = parseConfigString(cfg, "icacheTimeout")
-	opt.LookupValid = parseConfigString(cfg, "lookupValid")
-	opt.AttrValid = parseConfigString(cfg, "attrValid")
-	opt.EnSyncWrite = parseConfigString(cfg, "enSyncWrite")
-	opt.UmpDatadir = cfg.GetString("warnLogDir")
-	opt.Rdonly = cfg.GetBool("rdonly")
+	opt.Volname = cfg.GetString(proto.VolName)
+	opt.Owner = cfg.GetString(proto.Owner)
+	opt.Master = cfg.GetString(proto.MasterAddr)
+	opt.Logpath = cfg.GetString(proto.LogDir)
+	opt.Loglvl = cfg.GetString(proto.LogLevel)
+	opt.Profport = cfg.GetString(proto.ProfPort)
+	opt.IcacheTimeout = parseConfigString(cfg, proto.IcacheTimeout)
+	opt.LookupValid = parseConfigString(cfg, proto.LookupValid)
+	opt.AttrValid = parseConfigString(cfg, proto.AttrValid)
+	opt.EnSyncWrite = parseConfigString(cfg, proto.EnSyncWrite)
+	opt.UmpDatadir = cfg.GetString(proto.WarnLogDir)
+	opt.Rdonly = cfg.GetBool(proto.Rdonly)
+	opt.WriteCache = cfg.GetBool(proto.WriteCache)
+	opt.KeepCache = cfg.GetBool(proto.KeepCache)
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))

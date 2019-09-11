@@ -54,6 +54,7 @@ type Disk struct {
 	Status        int // disk status such as READONLY
 	ReservedSpace uint64
 
+	RejectWrite  bool
 	partitionMap map[uint64]*DataPartition
 	space        *SpaceManager
 }
@@ -65,11 +66,11 @@ func NewDisk(path string, restSize uint64, maxErrCnt int, space *SpaceManager) (
 	d.Path = path
 	d.ReservedSpace = restSize
 	d.MaxErrCnt = maxErrCnt
+	d.RejectWrite = false
 	d.space = space
 	d.partitionMap = make(map[uint64]*DataPartition)
-
 	d.computeUsage()
-
+	d.updateSpaceInfo()
 	d.startScheduleToUpdateSpaceInfo()
 	return
 }
@@ -116,12 +117,16 @@ func (d *Disk) computeUsage() (err error) {
 	for _, dp := range d.partitionMap {
 		allocatedSize += int64(dp.Size())
 	}
-	d.Allocated = uint64(allocatedSize)
-
+	atomic.StoreUint64(&d.Allocated, uint64(allocatedSize))
 	//  unallocated = math.Max(0, total - allocatedSize)
 	unallocated := total - allocatedSize
 	if unallocated < 0 {
 		unallocated = 0
+	}
+	if d.Available <= 0 {
+		d.RejectWrite = true
+	} else {
+		d.RejectWrite = false
 	}
 	d.Unallocated = uint64(unallocated)
 
@@ -141,7 +146,7 @@ func (d *Disk) incWriteErrCnt() {
 func (d *Disk) startScheduleToUpdateSpaceInfo() {
 	go func() {
 		updateSpaceInfoTicker := time.NewTicker(5 * time.Second)
-		checkStatusTickser :=time.NewTicker(time.Minute*2)
+		checkStatusTickser := time.NewTicker(time.Minute * 2)
 		defer func() {
 			updateSpaceInfoTicker.Stop()
 			checkStatusTickser.Stop()
@@ -158,39 +163,54 @@ func (d *Disk) startScheduleToUpdateSpaceInfo() {
 	}()
 }
 
+func (d *Disk) autoComputeExtentCrc() {
+	for {
+		partitions := make([]*DataPartition, 0)
+		d.RLock()
+		for _, dp := range d.partitionMap {
+			partitions = append(partitions, dp)
+		}
+		d.RUnlock()
+		for _, dp := range partitions {
+			dp.extentStore.AutoComputeExtentCrc()
+		}
+		time.Sleep(time.Minute)
+	}
+}
+
 const (
-	DiskStatusFile=".diskStatus"
+	DiskStatusFile = ".diskStatus"
 )
 
-func (d *Disk)checkDiskStatus(){
-	path:=path.Join(d.Path,DiskStatusFile)
-	fp,err:=os.OpenFile(path,os.O_CREATE|os.O_TRUNC|os.O_RDWR,0755)
-	if err!=nil {
+func (d *Disk) checkDiskStatus() {
+	path := path.Join(d.Path, DiskStatusFile)
+	fp, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0755)
+	if err != nil {
 		d.triggerDiskError(err)
 		return
 	}
 	defer fp.Close()
-	data:=[]byte(DiskStatusFile)
-	_,err=fp.WriteAt(data,0)
-	if err!=nil {
+	data := []byte(DiskStatusFile)
+	_, err = fp.WriteAt(data, 0)
+	if err != nil {
 		d.triggerDiskError(err)
 		return
 	}
-	if err=fp.Sync();err!=nil {
+	if err = fp.Sync(); err != nil {
 		d.triggerDiskError(err)
 		return
 	}
-	if _,err=fp.ReadAt(data,0);err!=nil {
+	if _, err = fp.ReadAt(data, 0); err != nil {
 		d.triggerDiskError(err)
 		return
 	}
 }
 
-func (d *Disk)triggerDiskError(err error){
-	if err==nil {
+func (d *Disk) triggerDiskError(err error) {
+	if err == nil {
 		return
 	}
-	if IsDiskErr(err.Error()){
+	if IsDiskErr(err.Error()) {
 		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
 		exporter.Warning(mesg)
 		log.LogErrorf(mesg)
@@ -214,8 +234,8 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	} else {
 		d.Status = proto.ReadWrite
 	}
-	log.LogDebugf("action[updateSpaceInfo] disk[%v] total[%v] available[%v] remain[%v] "+
-		"restSize[%v] maxErrs[%v] readErrs[%v] writeErrs[%v] status[%v]", d.Path,
+	log.LogDebugf("action[updateSpaceInfo] disk(%v) total(%v) available(%v) remain(%v) "+
+		"restSize(%v) maxErrs(%v) readErrs(%v) writeErrs(%v) status(%v)", d.Path,
 		d.Total, d.Available, d.Unallocated, d.ReservedSpace, d.MaxErrCnt, d.ReadErrCnt, d.WriteErrCnt, d.Status)
 	return
 }
@@ -243,14 +263,6 @@ func (d *Disk) GetDataPartition(partitionID uint64) (partition *DataPartition) {
 	d.RLock()
 	defer d.RUnlock()
 	return d.partitionMap[partitionID]
-}
-
-func (d *Disk) ForceLoadPartitionHeader() {
-	partitionList := d.DataPartitionList()
-	for _, partitionID := range partitionList {
-		partition := d.GetDataPartition(partitionID)
-		partition.ForceLoadHeader()
-	}
 }
 
 func (d *Disk) ForceExitRaftStore() {
@@ -322,7 +334,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 				filename, d.Path, err.Error())
 			continue
 		}
-		log.LogDebugf("acton[RestorePartition] disk(%v) path(%v) partitionID(%v) partitionSize(%v).",
+		log.LogDebugf("acton[RestorePartition] disk(%v) path(%v) PartitionID(%v) partitionSize(%v).",
 			d.Path, fileInfo.Name(), partitionID, partitionSize)
 		wg.Add(1)
 
@@ -346,5 +358,12 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 		}(partitionID, filename)
 	}
 	wg.Wait()
-	go d.ForceLoadPartitionHeader()
+}
+
+func (d *Disk) AddSize(size uint64) {
+	atomic.AddUint64(&d.Allocated, size)
+}
+
+func (d *Disk) getSelectWeight() float64 {
+	return float64(atomic.LoadUint64(&d.Allocated)) / float64(d.Total)
 }

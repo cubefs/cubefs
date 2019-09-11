@@ -15,6 +15,7 @@
 package ump
 
 import (
+	"os"
 	"runtime"
 	"strconv"
 	"sync"
@@ -54,12 +55,20 @@ var (
 	FunctionTpPool = &sync.Pool{New: func() interface{} {
 		return new(FunctionTp)
 	}}
+	enableUmp = true
 )
 
 func InitUmp(module, dataDir string) (err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	if err := initLogName(module, dataDir); err != nil {
-		return err
+	if _, err = os.Stat(dataDir); err != nil {
+		enableUmp = false
+		err=nil
+		return
+	}
+	if err = initLogName(module, dataDir); err != nil {
+		enableUmp = false
+		err=nil
+		return
 	}
 
 	backGroudWrite()
@@ -67,6 +76,9 @@ func InitUmp(module, dataDir string) (err error) {
 }
 
 func BeforeTP(key string) (o *TpObject) {
+	if !enableUmp {
+		return
+	}
 	o = TpObjectPool.Get().(*TpObject)
 	o.StartTime = time.Now()
 	tp := FunctionTpPool.Get().(*FunctionTp)
@@ -80,6 +92,9 @@ func BeforeTP(key string) (o *TpObject) {
 }
 
 func AfterTP(o *TpObject, err error) {
+	if !enableUmp {
+		return
+	}
 	tp := o.UmpType.(*FunctionTp)
 	tp.ElapsedTime = strconv.FormatInt((int64)(time.Since(o.StartTime)/1e6), 10)
 	TpObjectPool.Put(o)
@@ -96,6 +111,9 @@ func AfterTP(o *TpObject, err error) {
 }
 
 func Alive(key string) {
+	if !enableUmp {
+		return
+	}
 	alive := SystemAlivePool.Get().(*SystemAlive)
 	alive.HostName = HostName
 	alive.Key = key
@@ -108,6 +126,9 @@ func Alive(key string) {
 }
 
 func Alarm(key, detail string) {
+	if !enableUmp {
+		return
+	}
 	alarm := AlarmPool.Get().(*BusinessAlarm)
 	alarm.Time = time.Now().Format(LogTimeForMat)
 	alarm.Key = key

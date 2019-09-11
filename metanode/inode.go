@@ -382,14 +382,11 @@ func (i *Inode) IncNLink() {
 // DecNLink decreases the nLink value by one.
 func (i *Inode) DecNLink() {
 	i.Lock()
-	if proto.IsDir(i.Type) {
-		if i.NLink > 2 {
-			i.NLink--
-		}
-	} else {
-		if i.NLink > 0 {
-			i.NLink--
-		}
+	if proto.IsDir(i.Type) && i.NLink == 2 {
+		i.NLink--
+	}
+	if i.NLink > 0 {
+		i.NLink--
 	}
 	i.Unlock()
 }
@@ -410,7 +407,7 @@ func (i *Inode) IsTempFile() bool {
 
 func (i *Inode) IsEmptyDir() bool {
 	i.RLock()
-	ok := i.NLink == 2
+	ok := (proto.IsDir(i.Type) && i.NLink <= 2)
 	i.RUnlock()
 	return ok
 }

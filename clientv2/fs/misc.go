@@ -39,7 +39,7 @@ func (s *Super) GetInodeAttributes(ctx context.Context, op *fuseops.GetInodeAttr
 	op.AttributesExpiration = time.Now().Add(AttrValidDuration)
 
 	if inode.mode.IsRegular() {
-		fileSize, gen := s.ec.FileSize(ino)
+		fileSize, gen := s.fileSize(ino)
 		log.LogDebugf("GetInodeAttributes: op(%v) fileSize(%v) gen(%v) inode.gen(%v)", desc, fileSize, gen, inode.gen)
 		if gen >= inode.gen {
 			op.Attributes.Size = uint64(fileSize)
@@ -92,7 +92,7 @@ func (s *Super) SetInodeAttributes(ctx context.Context, op *fuseops.SetInodeAttr
 	}
 
 	if inode.mode.IsRegular() {
-		fileSize, gen := s.ec.FileSize(ino)
+		fileSize, gen := s.fileSize(ino)
 		log.LogDebugf("SetInodeAttributes: Get filesize, op(%v) fileSize(%v) gen(%v) inode.gen(%v)", desc, fileSize, gen, inode.gen)
 		if gen >= inode.gen {
 			op.Attributes.Size = uint64(fileSize)

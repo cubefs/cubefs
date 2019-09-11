@@ -74,7 +74,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	}
 
 	inode.fillAttr(a)
-	fileSize, gen := f.super.ec.FileSize(ino)
+	fileSize, gen := f.fileSize(ino)
 	log.LogDebugf("Attr: ino(%v) fileSize(%v) gen(%v) inode.gen(%v)", ino, fileSize, gen, inode.gen)
 	if gen >= inode.gen {
 		a.Size = uint64(fileSize)
@@ -115,6 +115,10 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	start := time.Now()
 
 	f.super.ec.OpenStream(ino)
+
+	if f.super.keepCache {
+		resp.Flags |= fuse.OpenKeepCache
+	}
 
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Open: ino(%v) req(%v) resp(%v) (%v)ns", ino, req, resp, elapsed.Nanoseconds())
@@ -177,7 +181,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) (err error) {
 	ino := f.inode.ino
 	reqlen := len(req.Data)
-	filesize, _ := f.super.ec.FileSize(ino)
+	filesize, _ := f.fileSize(ino)
 
 	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v) filesize(%v) flags(%v) fileflags(%v) req(%v)", ino, req.Offset, reqlen, filesize, req.Flags, req.FileFlags, req)
 
@@ -325,4 +329,18 @@ func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 // Removexattr has not been implemented yet.
 func (f *File) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
 	return fuse.ENOSYS
+}
+
+func (f *File) fileSize(ino uint64) (size int, gen uint64) {
+	size, gen, valid := f.super.ec.FileSize(ino)
+	log.LogDebugf("fileSize: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
+
+	if !valid {
+		f.super.ic.Delete(ino)
+		if inode, err := f.super.InodeGet(ino); err == nil {
+			size = int(inode.size)
+			gen = inode.gen
+		}
+	}
+	return
 }

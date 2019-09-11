@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/log"
 	"hash/crc32"
 	"io"
 	"math"
@@ -33,6 +34,7 @@ const (
 	ExtentOpenOpt  = os.O_CREATE | os.O_RDWR | os.O_EXCL
 	ExtentHasClose = -1
 	SEEK_DATA      = 3
+	SEEK_HOLE      = 4
 )
 
 type ExtentInfo struct {
@@ -162,11 +164,25 @@ func (e *Extent) ModifyTime() int64 {
 	return atomic.LoadInt64(&e.modifyTime)
 }
 
+func IsRandomWrite(writeType int) bool {
+	return writeType == RandomWriteType
+}
+
+func IsAppendWrite(writeType int) bool {
+	return writeType == AppendWriteType
+}
+
 // WriteTiny performs write on a tiny extent.
-func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdateSize, isSync bool) (err error) {
+func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeType int, isSync bool) (err error) {
+	e.Lock()
+	defer e.Unlock()
 	index := offset + size
 	if index >= math.MaxUint32 {
 		return ExtentIsFullError
+	}
+
+	if IsAppendWrite(writeType) && offset != e.dataSize {
+		return ParameterMismatchError
 	}
 
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
@@ -177,7 +193,8 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdate
 			return
 		}
 	}
-	if !isUpdateSize {
+
+	if !IsAppendWrite(writeType) {
 		return
 	}
 	if index%PageSize != 0 {
@@ -189,9 +206,9 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, isUpdate
 }
 
 // Write writes data to an extent.
-func (e *Extent) Write(data []byte, offset, size int64, crc uint32, isUpdateSize, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfo) (err error) {
+func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfo) (err error) {
 	if IsTinyExtent(e.extentID) {
-		err = e.WriteTiny(data, offset, size, crc, isUpdateSize, isSync)
+		err = e.WriteTiny(data, offset, size, crc, writeType, isSync)
 		return
 	}
 
@@ -204,8 +221,10 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, isUpdateSize
 	blockNo := offset / util.BlockSize
 	offsetInBlock := offset % util.BlockSize
 	defer func() {
-		e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
-		atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
+		if IsAppendWrite(writeType) {
+			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
+			e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
+		}
 	}()
 	if isSync {
 		if err = e.file.Sync(); err != nil {
@@ -336,5 +355,77 @@ func (e *Extent) DeleteTiny(offset, size int64) (hasDelete bool, err error) {
 	}
 	err = syscall.Fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
 
+	return
+}
+
+func (e *Extent) getRealBlockCnt() (blockNum int64) {
+	stat := new(syscall.Stat_t)
+	syscall.Stat(e.filePath, stat)
+	return stat.Blocks
+}
+
+func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, isEmptyPacket bool) (err error) {
+	e.Lock()
+	defer e.Unlock()
+	if !IsTinyExtent(e.extentID) {
+		return ParameterMismatchError
+	}
+	if offset%PageSize != 0 || offset != e.dataSize {
+		return fmt.Errorf("error empty packet on (%v) offset(%v) size(%v)"+
+			" isEmptyPacket(%v)  e.dataSize(%v)", e.file.Name(), offset, size, isEmptyPacket, e.dataSize)
+	}
+	log.LogDebugf("before file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
+		"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
+	if isEmptyPacket {
+		finfo, err := e.file.Stat()
+		if err != nil {
+			return err
+		}
+		if offset < finfo.Size() {
+			return fmt.Errorf("error empty packet on (%v) offset(%v) size(%v)"+
+				" isEmptyPacket(%v) filesize(%v) e.dataSize(%v)", e.file.Name(), offset, size, isEmptyPacket, finfo.Size(), e.dataSize)
+		}
+		if err = syscall.Ftruncate(int(e.file.Fd()), offset+size); err != nil {
+			return err
+		}
+		err = syscall.Fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
+	} else {
+		_, err = e.file.WriteAt(data[:size], int64(offset))
+	}
+	if err != nil {
+		return
+	}
+	watermark := offset + size
+	if watermark%PageSize != 0 {
+		watermark = watermark + (PageSize - watermark%PageSize)
+	}
+	e.dataSize = watermark
+	log.LogDebugf("after file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
+		"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
+
+	return
+}
+
+func (e *Extent) tinyExtentAvaliOffset(offset int64) (newOffset, newEnd int64, err error) {
+	e.Lock()
+	defer e.Unlock()
+	newOffset, err = e.file.Seek(int64(offset), SEEK_DATA)
+	if err != nil {
+		return
+	}
+	newEnd, err = e.file.Seek(int64(newOffset), SEEK_HOLE)
+	if err != nil {
+		return
+	}
+	if newOffset-offset > util.BlockSize {
+		newOffset = offset + util.BlockSize
+	}
+	if newEnd-newOffset > util.BlockSize {
+		newEnd = newOffset + util.BlockSize
+	}
+	if newEnd < newOffset {
+		err = fmt.Errorf("unavali TinyExtentAvaliOffset on SEEK_DATA or SEEK_HOLE   (%v) offset(%v) "+
+			"newEnd(%v) newOffset(%v)", e.extentID, offset, newEnd, newOffset)
+	}
 	return
 }

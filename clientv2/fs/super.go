@@ -44,10 +44,13 @@ type MountOption struct {
 	EnSyncWrite   int64
 	UmpDatadir    string
 	Rdonly        bool
+	WriteCache    bool
+	KeepCache     bool
 }
 
 type Super struct {
 	cluster     string
+	localIP     string
 	volname     string
 	owner       string
 	ic          *InodeCache
@@ -56,6 +59,7 @@ type Super struct {
 	ec          *stream.ExtentClient
 	orphan      *OrphanInodeList
 	enSyncWrite bool
+	keepCache   bool
 }
 
 var (
@@ -77,6 +81,7 @@ func NewSuper(opt *MountOption) (s *Super, err error) {
 	s.volname = opt.Volname
 	s.owner = opt.Owner
 	s.cluster = s.mw.Cluster()
+	s.localIP = s.mw.LocalIP()
 	inodeExpiration := DefaultInodeExpiration
 	if opt.IcacheTimeout >= 0 {
 		inodeExpiration = time.Duration(opt.IcacheTimeout) * time.Second
@@ -90,6 +95,7 @@ func NewSuper(opt *MountOption) (s *Super, err error) {
 	if opt.EnSyncWrite > 0 {
 		s.enSyncWrite = true
 	}
+	s.keepCache = opt.KeepCache
 	s.hc = NewHandleCache()
 	s.ic = NewInodeCache(inodeExpiration, MaxInodeCache)
 	s.orphan = NewOrphanInodeList()

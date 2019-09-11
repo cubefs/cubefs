@@ -80,6 +80,7 @@ func (mw *MetaWrapper) updateClusterInfo() error {
 	}
 	log.LogInfof("ClusterInfo: %v", *info)
 	mw.cluster = info.Cluster
+	mw.localIP = info.Ip
 	return nil
 }
 

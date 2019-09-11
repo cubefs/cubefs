@@ -16,15 +16,17 @@ package master
 
 import (
 	"fmt"
+	"net/http/httputil"
+	"regexp"
+	"strconv"
+	"sync"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
-	"net/http/httputil"
-	"strconv"
-	"sync"
 )
 
 // configuration keys
@@ -40,6 +42,13 @@ const (
 	ModuleName        = "master"
 	CfgRetainLogs     = "retainLogs"
 	DefaultRetainLogs = 20000
+	cfgTickInterval   = "tickInterval"
+	cfgElectionTick   = "electionTick"
+)
+
+var (
+	volNameRegexp *regexp.Regexp
+	useConnPool   = true //for test
 )
 
 // Server represents the server in a cluster
@@ -51,6 +60,8 @@ type Server struct {
 	walDir       string
 	storeDir     string
 	retainLogs   uint64
+	tickInterval int
+	electionTick int
 	leaderInfo   *LeaderInfo
 	config       *clusterConfig
 	cluster      *Cluster
@@ -77,18 +88,24 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		log.LogError(errors.Stack(err))
 		return
 	}
+	pattern := "^[a-zA-Z0-9_-]{3,256}$"
+	volNameRegexp, err = regexp.Compile(pattern)
+	if err != nil {
+		log.LogError(err)
+		return
+	}
 	m.rocksDBStore = raftstore.NewRocksDBStore(m.storeDir, LRUCacheSize, WriteBufferSize)
-	m.initFsm()
-	m.initCluster()
 	if err = m.createRaftServer(); err != nil {
 		log.LogError(errors.Stack(err))
 		return
 	}
+	m.initCluster()
+	exporter.Init(ModuleName, cfg)
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
 	m.cluster.scheduleTask()
 	m.startHTTPService()
-	exporter.Init(m.clusterName, ModuleName, cfg)
+	exporter.RegistConsul(m.clusterName, ModuleName, cfg)
 	metricsService := newMonitorMetrics(m.cluster)
 	metricsService.start()
 	m.wg.Add(1)
@@ -169,16 +186,35 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
-
+	m.config.heartbeatPort = cfg.GetInt64(heartbeatPortKey)
+	m.config.replicaPort = cfg.GetInt64(replicaPortKey)
+	fmt.Printf("heartbeatPort[%v],replicaPort[%v]\n", m.config.heartbeatPort, m.config.replicaPort)
+	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))
+	m.electionTick = int(cfg.GetFloat(cfgElectionTick))
+	if m.tickInterval <= 300 {
+		m.tickInterval = 500
+	}
+	if m.electionTick <= 3 {
+		m.electionTick = 5
+	}
 	return
 }
 
 func (m *Server) createRaftServer() (err error) {
-	raftCfg := &raftstore.Config{NodeID: m.id, RaftPath: m.walDir, NumOfLogsToRetain: m.retainLogs}
+	raftCfg := &raftstore.Config{
+		NodeID:            m.id,
+		RaftPath:          m.walDir,
+		NumOfLogsToRetain: m.retainLogs,
+		HeartbeatPort:     int(m.config.heartbeatPort),
+		ReplicaPort:       int(m.config.replicaPort),
+		TickInterval:      m.tickInterval,
+		ElectionTick:      m.electionTick,
+	}
 	if m.raftStore, err = raftstore.NewRaftStore(raftCfg); err != nil {
 		return errors.Trace(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
 	}
-	fmt.Println(m.config.peers)
+	fmt.Println(m.config.peers, m.tickInterval, m.electionTick)
+	m.initFsm()
 	partitionCfg := &raftstore.PartitionConfig{
 		ID:      GroupID,
 		Peers:   m.config.peers,
@@ -191,12 +227,11 @@ func (m *Server) createRaftServer() (err error) {
 	return
 }
 func (m *Server) initFsm() {
-	m.fsm = newMetadataFsm(m.rocksDBStore)
+	m.fsm = newMetadataFsm(m.rocksDBStore, m.retainLogs, m.raftStore.RaftServer())
 	m.fsm.registerLeaderChangeHandler(m.handleLeaderChange)
 	m.fsm.registerPeerChangeHandler(m.handlePeerChange)
 
 	// register the handlers for the interfaces defined in the Raft library
-	m.fsm.registerApplyHandler(m.handleApply)
 	m.fsm.registerApplySnapshotHandler(m.handleApplySnapshot)
 	m.fsm.restore()
 }
@@ -204,5 +239,4 @@ func (m *Server) initFsm() {
 func (m *Server) initCluster() {
 	m.cluster = newCluster(m.clusterName, m.leaderInfo, m.fsm, m.partition, m.config)
 	m.cluster.retainLogs = m.retainLogs
-	m.loadMetadata()
 }

@@ -28,6 +28,9 @@ import (
 	"time"
 
 	"errors"
+	"os"
+	"syscall"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/repl"
@@ -35,8 +38,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
-	"os"
-	"syscall"
 )
 
 var (
@@ -52,7 +53,7 @@ var (
 const (
 	DefaultRackName         = "cfs_rack1"
 	DefaultRaftDir          = "raft"
-	DefaultRaftLogsToRetain = 2000 // Count of raft logs per data partition
+	DefaultRaftLogsToRetain = 10 // Count of raft logs per data partition
 	DefaultDiskMaxErr       = 1
 	DefaultDiskRetainMin    = 20 * util.GB // GB
 	DefaultDiskRetainMax    = 50 * util.GB // GB
@@ -139,9 +140,8 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 		return
 	}
 
-	s.register()
-
-	exporter.Init(s.clusterID, ModuleName, cfg)
+	exporter.Init(ModuleName, cfg)
+	s.register(cfg)
 
 	// start the raft server
 	if err = s.startRaftServer(cfg); err != nil {
@@ -200,9 +200,9 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	if s.rackName == "" {
 		s.rackName = DefaultRackName
 	}
-	log.LogDebugf("action[parseConfig] load masterAddrs[%v].", MasterHelper.Nodes())
-	log.LogDebugf("action[parseConfig] load port[%v].", s.port)
-	log.LogDebugf("action[parseConfig] load rackName[%v].", s.rackName)
+	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterHelper.Nodes())
+	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
+	log.LogDebugf("action[parseConfig] load rackName(%v).", s.rackName)
 	return
 }
 
@@ -257,7 +257,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 
 // registers the data node on the master to report the information such as IsIPV4 address.
 // The startup of a data node will be blocked until the registration succeeds.
-func (s *DataNode) register() {
+func (s *DataNode) register(cfg *config.Config) {
 	var (
 		err  error
 		data []byte
@@ -274,7 +274,7 @@ func (s *DataNode) register() {
 			if err != nil {
 				log.LogErrorf("action[registerToMaster] cannot get ip from master(%v) err(%v).",
 					masterAddr, err)
-				timer.Reset(5 * time.Second)
+				timer.Reset(2 * time.Second)
 				continue
 			}
 			cInfo := new(proto.ClusterInfo)
@@ -287,7 +287,7 @@ func (s *DataNode) register() {
 			if !util.IsIPV4(LocalIP) {
 				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
 					LocalIP, masterAddr)
-				timer.Reset(5 * time.Second)
+				timer.Reset(2 * time.Second)
 				continue
 			}
 
@@ -296,14 +296,17 @@ func (s *DataNode) register() {
 			params["addr"] = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			data, err = MasterHelper.Request(http.MethodPost, proto.AddDataNode, params, nil)
 			if err != nil {
-				log.LogErrorf("action[registerToMaster] cannot register this node to master[%] err(%v).",
+				log.LogErrorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
 					masterAddr, err)
+				timer.Reset(2 * time.Second)
 				continue
 			}
 
+			exporter.RegistConsul(s.clusterID, ModuleName, cfg)
+
 			nodeID := strings.TrimSpace(string(data))
 			s.nodeID, err = strconv.ParseUint(nodeID, 10, 64)
-			log.LogDebug("[tempDebug] nodeID=%v", s.nodeID)
+			log.LogDebugf("[tempDebug] nodeID(%v)", s.nodeID)
 			return
 		case <-s.stopC:
 			timer.Stop()
@@ -329,9 +332,9 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (err error) {
 		}
 		break
 	}
-	dinfo:=new(DataNodeInfo)
-	if err = json.Unmarshal(data.([]byte),dinfo);err!=nil {
-		err=fmt.Errorf("checkLocalPartitionMatchWithMaster jsonUnmarsh failed %v",err)
+	dinfo := new(DataNodeInfo)
+	if err = json.Unmarshal(data.([]byte), dinfo); err != nil {
+		err = fmt.Errorf("checkLocalPartitionMatchWithMaster jsonUnmarsh failed %v", err)
 		log.LogErrorf(err.Error())
 		return
 	}
@@ -430,7 +433,7 @@ func (s *DataNode) incDiskErrCnt(partitionID uint64, err error, flag uint8) {
 }
 
 func IsDiskErr(errMsg string) bool {
-	if strings.Contains(errMsg, syscall.EIO.Error()) {
+	if strings.Contains(errMsg, syscall.EIO.Error()) || strings.Contains(errMsg, syscall.EROFS.Error()) {
 		return true
 	}
 

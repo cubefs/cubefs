@@ -24,11 +24,12 @@ import (
 )
 
 type topology struct {
-	setIndex   int
-	dataNodes  sync.Map
-	metaNodes  sync.Map
-	nodeSetMap map[uint64]*nodeSet
-	nsLock     sync.RWMutex
+	setIndexForDataNode int
+	setIndexForMetaNode int
+	dataNodes           sync.Map
+	metaNodes           sync.Map
+	nodeSetMap          map[uint64]*nodeSet
+	nsLock              sync.RWMutex
 }
 
 func newTopology() (t *topology) {
@@ -59,6 +60,17 @@ func newTopoMetaNode(metaNode *MetaNode, setID uint64) *topoMetaNode {
 		MetaNode: metaNode,
 		setID:    setID,
 	}
+}
+
+func (t *topology) clear() {
+	t.dataNodes.Range(func(key, value interface{}) bool {
+		t.dataNodes.Delete(key)
+		return true
+	})
+	t.metaNodes.Range(func(key, value interface{}) bool {
+		t.metaNodes.Delete(key)
+		return true
+	})
 }
 
 func (t *topology) replaceDataNode(dataNode *DataNode) {
@@ -209,12 +221,14 @@ func (t *topology) allocNodeSetForDataNode(replicaNum uint8) (ns *nodeSet, err e
 	if nset == nil {
 		return nil, proto.ErrNoNodeSetToCreateDataPartition
 	}
+	t.nsLock.Lock()
+	defer t.nsLock.Unlock()
 	for i := 0; i < len(nset); i++ {
-		if t.setIndex >= len(nset) {
-			t.setIndex = 0
+		if t.setIndexForDataNode >= len(nset) {
+			t.setIndexForDataNode = 0
 		}
-		ns = nset[t.setIndex]
-		t.setIndex++
+		ns = nset[t.setIndexForDataNode]
+		t.setIndexForDataNode++
 		if ns.canWriteForDataNode(int(replicaNum)) {
 			return
 		}
@@ -228,12 +242,14 @@ func (t *topology) allocNodeSetForMetaNode(replicaNum uint8) (ns *nodeSet, err e
 	if nset == nil {
 		return nil, proto.ErrNoNodeSetToCreateMetaPartition
 	}
+	t.nsLock.Lock()
+	defer t.nsLock.Unlock()
 	for i := 0; i < len(nset); i++ {
-		if t.setIndex >= len(nset) {
-			t.setIndex = 0
+		if t.setIndexForMetaNode >= len(nset) {
+			t.setIndexForMetaNode = 0
 		}
-		ns = nset[t.setIndex]
-		t.setIndex++
+		ns = nset[t.setIndexForMetaNode]
+		t.setIndexForMetaNode++
 		if ns.canWriteForMetaNode(int(replicaNum)) {
 			return
 		}
@@ -399,7 +415,6 @@ func (ns *nodeSet) removeRack(name string) {
 }
 
 func (ns *nodeSet) putDataNode(dataNode *DataNode) {
-	dataNode.RackName = DefaultRackName
 	rack, err := ns.getRack(dataNode.RackName)
 	if err != nil {
 		rack = newRack(dataNode.RackName)
@@ -436,15 +451,15 @@ func (ns *nodeSet) getRackNameByIndex(index int) (rName string) {
 }
 
 func (ns *nodeSet) allocRacks(replicaNum int, excludeRack []string) (racks []*Rack, err error) {
-	racks = make([]*Rack, 0)
-	if excludeRack == nil {
-		excludeRack = make([]string, 0)
-	}
+
 	racks = ns.getAllRacks()
 	if ns.isSingleRack() {
 		return racks, nil
 	}
-
+	if excludeRack == nil {
+		excludeRack = make([]string, 0)
+	}
+	candidateRacks := make([]*Rack, 0)
 	for i := 0; i < len(racks); i++ {
 		if ns.rackIndex >= len(racks) {
 			ns.rackIndex = 0
@@ -461,20 +476,18 @@ func (ns *nodeSet) allocRacks(replicaNum int, excludeRack []string) (racks []*Ra
 		}
 		ns.rackIndex++
 
-		if rack.canWrite(1) {
-			racks = append(racks, rack)
+		if rack.canWrite(uint8(replicaNum)) {
+			candidateRacks = append(candidateRacks, rack)
 		}
-		if len(racks) >= int(replicaNum) {
+		if len(candidateRacks) >= int(replicaNum) {
 			break
 		}
 	}
-	if len(racks) == 0 {
+	if len(candidateRacks) == 0 {
 		log.LogError(fmt.Sprintf("action[allocRacks],err:%v", proto.ErrNoRackToCreateDataPartition))
 		return nil, proto.ErrNoRackToCreateDataPartition
 	}
-	if len(racks) > int(replicaNum) {
-		racks = racks[:int(replicaNum)]
-	}
+	racks = candidateRacks
 	err = nil
 	return
 }

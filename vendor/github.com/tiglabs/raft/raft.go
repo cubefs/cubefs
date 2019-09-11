@@ -20,8 +20,10 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util"
@@ -57,6 +59,11 @@ type softState struct {
 type peerState struct {
 	peers map[uint64]proto.Peer
 	mu    sync.RWMutex
+}
+
+type monitorStatus struct {
+	conErrCount    uint8
+	replicasErrCnt map[uint64]uint8
 }
 
 func (s *peerState) change(c *proto.ConfChange) {
@@ -103,6 +110,7 @@ type raft struct {
 	peerState         peerState
 	pending           map[uint64]*Future
 	snapping          map[uint64]*snapshotStatus
+	mStatus           *monitorStatus
 	propc             chan *proposal
 	applyc            chan *apply
 	recvc             chan *proto.Message
@@ -131,10 +139,15 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 		return nil, err
 	}
 
+	mStatus := &monitorStatus{
+		conErrCount:    0,
+		replicasErrCnt: make(map[uint64]uint8),
+	}
 	raft := &raft{
 		raftFsm:       r,
 		config:        config,
 		raftConfig:    raftConfig,
+		mStatus:       mStatus,
 		pending:       make(map[uint64]*Future),
 		snapping:      make(map[uint64]*snapshotStatus),
 		recvc:         make(chan *proto.Message, config.ReqBufferSize),
@@ -156,6 +169,7 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 
 	util.RunWorker(raft.runApply, raft.handlePanic)
 	util.RunWorker(raft.run, raft.handlePanic)
+	util.RunWorker(raft.monitor, raft.handlePanic)
 	return raft, nil
 }
 
@@ -385,6 +399,53 @@ func (s *raft) run() {
 
 		case req := <-s.entryRequestC:
 			s.getEntriesInLoop(req)
+		}
+	}
+}
+
+func (s *raft) monitor() {
+	statusTicker := time.NewTicker(5 * time.Second)
+	leaderTicker := time.NewTicker(1 * time.Minute)
+	for {
+		select {
+		case <-s.stopc:
+			statusTicker.Stop()
+			return
+
+		case <-statusTicker.C:
+			if s.raftFsm.leader == NoLeader || s.raftFsm.state == stateCandidate {
+				s.mStatus.conErrCount++
+			} else {
+				s.mStatus.conErrCount = 0
+			}
+			if s.mStatus.conErrCount > 5 {
+				errMsg := fmt.Sprintf("raft status not health partitionID[%d]_nodeID[%d]_leader[%v]_state[%v]_replicas[%v]",
+					s.raftFsm.id, s.raftFsm.config.NodeID, s.raftFsm.leader, s.raftFsm.state, s.raftFsm.peers())
+				exporter.Warning(errMsg)
+				logger.Error(errMsg)
+
+				s.mStatus.conErrCount = 0
+			}
+		case <-leaderTicker.C:
+			if s.raftFsm.state == stateLeader {
+				for id, p := range s.raftFsm.replicas {
+					if id == s.raftFsm.config.NodeID {
+						continue
+					}
+					if p.active == false {
+						s.mStatus.replicasErrCnt[id]++
+					} else {
+						s.mStatus.replicasErrCnt[id] = 0
+					}
+					if s.mStatus.replicasErrCnt[id] > 5 {
+						errMsg := fmt.Sprintf("raft partitionID[%d] replicaID[%v] not active peer[%v]",
+							s.raftFsm.id, id, p.peer)
+						exporter.Warning(errMsg)
+						logger.Error(errMsg)
+						s.mStatus.replicasErrCnt[id] = 0
+					}
+				}
+			}
 		}
 	}
 }

@@ -177,9 +177,9 @@ func NewPacketToGetAllWatermarks(partitionID uint64, extentType uint8) (p *Packe
 	return
 }
 
-func NewPacketToTinyDeleteRecord(partitionID uint64, offset int64) (p *Packet) {
+func NewPacketToReadTinyDeleteRecord(partitionID uint64, offset int64) (p *Packet) {
 	p = new(Packet)
-	p.Opcode = proto.OpReadTinyDelete
+	p.Opcode = proto.OpReadTinyDeleteRecord
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
 	p.ReqID = proto.GenerateRequestID()
@@ -188,7 +188,7 @@ func NewPacketToTinyDeleteRecord(partitionID uint64, offset int64) (p *Packet) {
 	return
 }
 
-func NewTinyDeleteRecordResponsePacket(requestID int64, partitionID uint64) (p *Packet) {
+func NewReadTinyDeleteRecordResponsePacket(requestID int64, partitionID uint64) (p *Packet) {
 	p = new(Packet)
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
@@ -209,6 +209,33 @@ func NewExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size
 	p.Opcode = proto.OpExtentRepairRead
 	p.ExtentType = proto.NormalExtentType
 	p.ReqID = proto.GenerateRequestID()
+
+	return
+}
+
+func NewTinyExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) (p *Packet) {
+	p = new(Packet)
+	p.ExtentID = extentID
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.ExtentOffset = int64(offset)
+	p.Size = uint32(size)
+	p.Opcode = proto.OpTinyExtentRepairRead
+	p.ExtentType = proto.TinyExtentType
+	p.ReqID = proto.GenerateRequestID()
+
+	return
+}
+
+func NewTinyExtentStreamReadResponsePacket(requestID int64, partitionID uint64, extentID uint64) (p *Packet) {
+	p = new(Packet)
+	p.ExtentID = extentID
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.Opcode = proto.OpTinyExtentRepairRead
+	p.ReqID = requestID
+	p.ExtentType = proto.TinyExtentType
+	p.StartT = time.Now().UnixNano()
 
 	return
 }
@@ -366,5 +393,13 @@ func (p *Packet) IsMarkDeleteExtentOperation() bool {
 }
 
 func (p *Packet) IsReadOperation() bool {
-	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpRead || p.Opcode == proto.OpExtentRepairRead || p.Opcode == proto.OpReadTinyDelete
+	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpRead || p.Opcode == proto.OpExtentRepairRead || p.Opcode == proto.OpReadTinyDeleteRecord || p.Opcode == proto.OpTinyExtentRepairRead
+}
+
+func (p *Packet) IsRandomWrite() bool {
+	return p.Opcode == proto.OpRandomWrite || p.Opcode == proto.OpSyncRandomWrite
+}
+
+func (p *Packet) IsSyncWrite() bool {
+	return p.Opcode == proto.OpSyncWrite || p.Opcode == proto.OpSyncRandomWrite
 }

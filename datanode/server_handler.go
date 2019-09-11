@@ -22,6 +22,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/storage"
+	"github.com/tiglabs/raft"
 )
 
 func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
@@ -158,6 +159,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		FileCount            int                   `json:"fileCount"`
 		Replicas             []string              `json:"replicas"`
 		TinyDeleteRecordSize int64                 `json:"tinyDeleteRecordSize"`
+		RaftStatus           *raft.Status          `json: "raftStatus"`
 	}{
 		VolName:              partition.volumeID,
 		ID:                   partition.partitionID,
@@ -169,6 +171,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		FileCount:            len(files),
 		Replicas:             partition.Replicas(),
 		TinyDeleteRecordSize: tinyDeleteRecordSize,
+		RaftStatus:           partition.raftPartition.Status(),
 	}
 	s.buildSuccessResp(w, result)
 }

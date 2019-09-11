@@ -39,7 +39,6 @@ Sample *master.json* is shown as follows,
      "logLevel":"info",
      "walDir":"/export/Data/master/raft",
      "storeDir":"/export/Data/master/rocksdbstore",
-     "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
      "consulAddr": "http://consul.prometheus-cfs.local",
      "exporterPort": 9510,
      "clusterName":"cfs"
@@ -70,7 +69,6 @@ Sample *meta.json is* shown as follows,
        "raftHeartbeatPort": "9093",
        "raftReplicaPort": "9094",
        "totalMem":  "17179869184",
-       "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
        "consulAddr": "http://consul.prometheus-cfs.local",
        "exporterPort": 9511,
        "masterAddrs": [
@@ -131,10 +129,10 @@ Start Datanode
         "port": "6000",
         "prof": "6001",
         "logDir": "/export/Logs/datanode",
+        "raftDir": "/export/Data/datanode/raft",
         "logLevel": "info",
         "raftHeartbeat": "9095",
         "raftReplica": "9096",
-        "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
         "consulAddr": "http://consul.prometheus-cfs.local",
         "exporterPort": 9512,
         "masterAddr": [
@@ -182,7 +180,6 @@ Mount Client
         "owner": "cfs",
         "masterAddr": "192.168.31.173:80,192.168.31.141:80,192.168.30.200:80",
         "logDir": "/export/Logs/client",
-        "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
         "profPort": "10094",
         "logLevel": "info"
       }
