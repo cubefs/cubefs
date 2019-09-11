@@ -1,3 +1,108 @@
+## Release v1.3.0 - 2019/09/12
+
+
+### Feature
+* introduce writecache mount option. https://github.com/chubaofs/chubaofs/commit/f86199564c6286828845c8c00adbc0e8b8a9ac7b
+* introduce keepcache mount option. https://github.com/chubaofs/chubaofs/commit/eadf23331258a49218dee04423d60e8a129208c1
+* add admin API for get all meta parititons under vol https://github.com/chubaofs/chubaofs/commit/3cd677b28d24211b258c259e99514f830ddd6be5
+* support for truncating raft log. https://github.com/chubaofs/chubaofs/commit/3cd677b28d24211b258c259e99514f830ddd6be5
+* dynamiclly reduce the num of replicas for vol. https://github.com/chubaofs/chubaofs/commit/07ddb382a9ad379f7393ae39f44f6ebdbb2dfad0
+* the specified number of replica num is supported when creating vol. https://github.com/chubaofs/chubaofs/commit/d0c5e78b08c3d3116570e226e388fd87ac23f11b
+* feature: daemonize server https://github.com/chubaofs/chubaofs/commit/ad203059234a80c5d696754b57dd4cf750cb17d2
+* support log module change loglevel on line. https://github.com/chubaofs/chubaofs/commit/9c1e104822672bc9965dfedac2eee4fb854b4880
+
+### Enhancement
+* extent_store LoadTinyDeleteFileOffset return s.baseTinyDeleteOffset. https://github.com/chubaofs/chubaofs/commit/e7800676fc43132f092ef7b011d9a459b784d2e3
+* enable async read by default. https://github.com/chubaofs/chubaofs/commit/5e945554614c0deb4d56daf0f3b1c62c25bf93ec
+* improve log message details for clientv2. https://github.com/chubaofs/chubaofs/commit/14e3dd7e02a04babb96d7112860b5a246e5faa45
+* compatible with string when get bool config. https://github.com/chubaofs/chubaofs/commit/a485e82f69c0b99ab3581362b3a3002f58d7c211
+* add performance tracepoint for clientv2. https://github.com/chubaofs/chubaofs/commit/9c5ee2e51c0a127a92f346f748f88ab65325ad9e
+* align out message buffer size with max read size. https://github.com/chubaofs/chubaofs/commit/b0d82fb77f1db52a61f66f92c4cc4ee7e368aa7f
+* for splitting meta partition,updating meta partition and creating new meta partition are persisted within a single transaction. https://github.com/chubaofs/chubaofs/commit/5af7a9ebbcd4578e3a09cb4626a6c729e61f9e00
+* if metanode used memory is full,then the partition must set to readonly. https://github.com/chubaofs/chubaofs/commit/6d80fdfd4126a9a5ed4bb1cbf91d2baddf8227ce
+* set report time to now after creating data partition. https://github.com/chubaofs/chubaofs/commit/01153377431fa3aa604b89a0e7c34c7aac456615
+* set writeDeadLineTime to one minute,avoid metanode gc reset conn which snapshot used as much as possible. https://github.com/chubaofs/chubaofs/commit/d4a94ae1ecff9748c4c71b62c63e6ded6c7d1816
+* add raft monitor. https://github.com/chubaofs/chubaofs/commit/9e2fce42a711571f903d905590d7cfba0cabf473
+* If the creation of a data partition fails, the successfully created replica is deleted. https://github.com/chubaofs/chubaofs/commit/3cd677b28d24211b258c259e99514f830ddd6be5
+* If the creation of a meta partition fails, the successfully created replica is deleted. https://github.com/chubaofs/chubaofs/commit/3cd677b28d24211b258c259e99514f830ddd6be5
+* add unit test case. https://github.com/chubaofs/chubaofs/commit/3cd677b28d24211b258c259e99514f830ddd6be5
+* passing create data partition type to datanode. https://github.com/chubaofs/chubaofs/commit/abffb1712b9d257abd2bb4737f5d596b99e1c115
+* if create dp is normal,must start Raft else backend start raft. https://github.com/chubaofs/chubaofs/commit/2701be38d85436650eb1e07c24b944c2847f4b5d
+* the tickInterval and electionTick support reading from a configuration file https://github.com/chubaofs/chubaofs/commit/6f0952fbd77a0cfa22df9852afbde02a6a2d86a1
+
+### Bugfix
+* fix: add del vol step after ltptest in travis-ci test script. https://github.com/chubaofs/chubaofs/commit/8274cd721ddc98e7ac3bbabd1c148232dcc62694
+* clientv2 file handle memory leak. https://github.com/chubaofs/chubaofs/commit/62ecf860d1694cbe0020fd331235704bb905774a
+* redirect stderr to an output file in daemon. https://github.com/chubaofs/chubaofs/commit/ead87acb7147594867832ebae5e61cacb30fe2d9
+* exclude data partition only when connection refused. https://github.com/chubaofs/chubaofs/commit/a4f27cfd9be309c73c9fde8b45dd25fe821f79b7
+* when delete DataParittion,the forwardToLeader mayBe painc. https://github.com/chubaofs/chubaofs/commit/c4b0e9ee77db42d9e190b40cebaffead1be106de
+* metanode load error mayme shield. https://github.com/chubaofs/chubaofs/commit/7186621728006ba92de9bbd2a94f2cc59a1d22ec
+* truncate raft corrupt data. https://github.com/chubaofs/chubaofs/commit/fceb29fc08d534f03bedf0c0c56b591518f24cac
+* when meta node memory usage arrive threshold, split meta partition occurred dead lock. https://github.com/chubaofs/chubaofs/commit/6bb1aaf2460185e95904f1cd5df0ce0e8665f09a
+* splitMetaPartition race lock with updateViewCache. https://github.com/chubaofs/chubaofs/commit/d0737f20de832d778b0a9b7b01d69b74c61be696
+* after the vol is created and before the heartbeat report, the status of the data partition is set to read only after the check dp operation is performed. https://github.com/chubaofs/chubaofs/commit/81435471a11a0866a6fe958f442e9d642de92779
+* when disk error,the raft cannot start on new data server first. https://github.com/chubaofs/chubaofs/commit/74b9f1b737d3fafc8c09c336ed91c8419cceb664
+* OpDecommissionDataPartition delete dataPartition on new server. https://github.com/chubaofs/chubaofs/commit/974e508bdbd161ab213acaad3788122dcba4b45d
+* datanode may be painc. https://github.com/chubaofs/chubaofs/commit/ac47e9ad5659a0b0b78e697f1f50e4787775616f
+* datanode auto compute crc. https://github.com/chubaofs/chubaofs/commit/84707a5f2c80499e6428f20509a610fa8f8efd97
+* DataNode: when dataPartition load,if applyId ==0 ,then start Raft. https://github.com/chubaofs/chubaofs/commit/042f939bf3a0b7c7ea4578cde94513157a5f23d5
+* the reported data partition usage decreased, and the statistical usage did not decrease accordingly. https://github.com/chubaofs/chubaofs/commit/2386b48ad9c1507ab939ec28042b643e5c55db4d
+* docker metanode.cfg add totalMem parameter. https://github.com/chubaofs/chubaofs/commit/353ece00c3ef739ddd6b7f117a68d79e40d7ac27
+* Datanode deadlock on deletePartition. https://github.com/chubaofs/chubaofs/commit/4142d38ef9f46a243cc1b18f789a1c1ecfba4af2
+* DataNode may be painc. https://github.com/chubaofs/chubaofs/commit/4a3ba7403fac4d91b90d1a0c6f8fa13345152e00
+* exclude dir inode in the orphan list. https://github.com/chubaofs/chubaofs/commit/7fff89b3c0efea31cc4d07c9267a1c3e89724888
+* evict inode cache after successful deletion. https://github.com/chubaofs/chubaofs/commit/f63e5c657d0d45238309ec28fe3831993f402e20
+* The actual reduction in the number of replicas exceeds the expected reduction in the number of replicas. https://github.com/chubaofs/chubaofs/commit/d6b118864b134bdb8cec6ccb1b75b7699d1d8c08
+* compatible with old heartbeat mode, old heartbeat mode does not report volname. https://github.com/chubaofs/chubaofs/commit/97da53f06540189bb79e5331b13c2fd097d2b96f
+* metanode mistakenly delete empty dir inode. https://github.com/chubaofs/chubaofs/commit/54774529743033bfeaf4e1eb67fb511472ba1337
+* treat ddelete not exist error as successful. https://github.com/chubaofs/chubaofs/commit/4f38ebad02d776d3faf4df594e7f17625755c7ab
+* fuse directIO read size can exceeds buffer size. https://github.com/chubaofs/chubaofs/commit/b15b78293b5e10f1d43d2c1397d357cc341a8124
+* Fix Datanode retain RaftLog https://github.com/chubaofs/chubaofs/commit/4dd740c435d69964f57222ebc55dea665c101915
+* Fix: Datanode: when tinyExtentRepair auto repair,it has been https://github.com/chubaofs/chubaofs/commit/b370e8d220d314c03a4f40e518e7f8d101edab73
+* Fix: Storage :when write tinyExtent,if offset!=e.datasize,return error https://github.com/chubaofs/chubaofs/commit/73355d2f1f72550873fc32e95acaf6623aa3d6a5
+* the buf is not reset and the old data is repeatedly written to the ump warning log, resulting in the overall performance degradation of the cluster https://github.com/chubaofs/chubaofs/commit/d69db16252f8236acb6cb7348d6a625a460a5254
+* dataPartitionMap occurred error which is concurrent map iteration and map write https://github.com/chubaofs/chubaofs/commit/3cf7c68015b89858c24152fe890c5e733414908a
+* client gets stale file size if streamer is auto evicted. https://github.com/chubaofs/chubaofs/commit/4831443a56a7342e1843db225e29645a1814007c
+* update export init for consul register https://github.com/chubaofs/chubaofs/commit/c06e1dbaf7dac5cfdd1faff2d8c215a050944217
+* err is shadowed in server main function https://github.com/chubaofs/chubaofs/commit/8ce0f64ad0f19cf8dcfab5cd1df9bf45de7d5017
+* if master only create DataPartitionCnt is 10,then cannnot mount https://github.com/chubaofs/chubaofs/commit/5e47ca00d35b8ca0fa62a9e4a52dbac6da9d5ae9
+* update export init for consul register https://github.com/chubaofs/chubaofs/commit/dfca18fa1b394fcceee2bf0696737d7197d77ddc
+* dataPartition disk error ,not recvoery raft log on new datanode https://github.com/chubaofs/chubaofs/commit/d5febd10da6008dd4fca46d91b4e7d29ebadb9ec
+* datanode register hang bug https://github.com/chubaofs/chubaofs/commit/8eaeabf5c1a74b6057a43bf0e856e94823c9ad3a
+
+### Refacoring
+* sdk When creating a datapartition, select the datapartition retry strategy. https://github.com/chubaofs/chubaofs/commit/226578551137d9655bf23aa3c8220c4fe0fc8957
+* Refactoring SDK: when write datapartition num greater 10 ,then trust master. https://github.com/chubaofs/chubaofs/commit/adfe95deef05b10d812736e613f88fbceadb260e
+* when disk error,the datapartition recover only recover avali data on tinyExtent. https://github.com/chubaofs/chubaofs/commit/1910bb9d8112acdaa87456f54abae648f817b60d
+* Decommission Meta or Data Partition must sync response to master. https://github.com/chubaofs/chubaofs/commit/b4350ade23b2d81bb5840199fcfe46d33a8cff5a
+* synchronized decommission the data partition. https://github.com/chubaofs/chubaofs/commit/501b36a1fde217116f2d9ef37ae1a37a6812798c
+* datanode api /partition add raftStatus. https://github.com/chubaofs/chubaofs/commit/2a2fa5d32de2ab42b7ce86da73f1171df5bc372e
+* StartRaftLoggingSchedule not use goroutine. https://github.com/chubaofs/chubaofs/commit/e65d12d5ddfdf8bad6a711412dd40c62c0b110e2
+* metanode must config totalMem. https://github.com/chubaofs/chubaofs/commit/9e9ae6a74cc588aa5d58038d4b8582d71a8c5c97
+* sync tinyDeleteExtent time change to 1 days. https://github.com/chubaofs/chubaofs/commit/bf4411dbd52ce03c470aab57f6b321a8de24080c
+* change partitionId varliable to partitionID. https://github.com/chubaofs/chubaofs/commit/c366fcde54ef8e07226b7d118dbd40379e317749
+* Datanode delete SnapshotFile Pool. https://github.com/chubaofs/chubaofs/commit/b376e01732f97816bd18a6dc43f96603605e4501
+* exporter add ump. https://github.com/chubaofs/chubaofs/commit/669df1f3d7632d161d87a1f9d9393def6702eab8
+* DataNode: compatible old dataPartition Meta info. https://github.com/chubaofs/chubaofs/commit/bcdfce265683109ef59250d095a71b9b1018ba31
+* add ltptest log. https://github.com/chubaofs/chubaofs/commit/67ce466ce1aa63559820453a01ecb1281fad3bd6
+* docker metanode config.json change totalMem to 6GB. https://github.com/chubaofs/chubaofs/commit/af066310afc265343346521f4db0c737d28a40d6
+* datanode create dataPartition select disk function change. https://github.com/chubaofs/chubaofs/commit/07617e7f6f2903e326fba0de944f3ad1cd012eff
+* datanode start must start StartRaftLoggingSchedule func. https://github.com/chubaofs/chubaofs/commit/78bb09f858a7dec007537172afb1b6d31c4dca48
+* Master create vol min default DataPartition set to 10. https://github.com/chubaofs/chubaofs/commit/f9062c618d0ad0a3046411348902326c90895739
+* docker: run ltptest print errorinfo. https://github.com/chubaofs/chubaofs/commit/eee4553dfee29ec810f959730b224e0bb7935437
+* when load dp,if dp status is normal,then start raft ,else wait snapshot has recover. https://github.com/chubaofs/chubaofs/commit/cc68ec3266169bb1bf96f3f254dd55dcd7f93fc7
+* Datanode delete unused func. https://github.com/chubaofs/chubaofs/commit/f3297f91ec4482b3c6a6d03671319a15fc39f0df
+* if not config warnLogDir,then donnot write umplog to disk. https://github.com/chubaofs/chubaofs/commit/6a9dbc369b670b9c2d128cdd214dd56a528202f2
+* DataNode: if not config raftDir,then not start server. https://github.com/chubaofs/chubaofs/commit/480c44af49747dcb7ac37de99f23682391367e06
+* add log on metanode delete extent. https://github.com/chubaofs/chubaofs/commit/dde79c0636a9907b4314613d15dbe7c61169f1bb
+* Doc :delete warnLogDir config. https://github.com/chubaofs/chubaofs/commit/6f05a78e23af638fd85015c09055e616fc6d0b4e
+* keep mount point in error stataus when client is killed https://github.com/chubaofs/chubaofs/commit/df1a4d9cba3d656c14686164cb0e57380922a77d
+* log checkroration checkTime change to 1 second https://github.com/chubaofs/chubaofs/commit/f732ade2bc70e5207163193f0ea0923b7621df39
+* metanode change deleteDentry or deleteInode api to log.LogDebugf https://github.com/chubaofs/chubaofs/commit/149d661e63a2ce3393ad97be9e8ae02d2b2d141a
+* Increase the judgment condition of disk error,add syscall.EROFS https://github.com/chubaofs/chubaofs/commit/06a3ab3be294f198f2a7e37b6c254798b939bce2
+* sync code from git.jd.com/chubaofs/chubaofs https://github.com/chubaofs/chubaofs/commit/2b2461598fdebe0abac152218cbbd83d48c19bf2
+
+
 ## Release v1.2.1 - 2019/07/19
 
 ### Enhancement
