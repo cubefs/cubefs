@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package master
+package authnode
 
 import (
 	"fmt"
@@ -34,7 +34,6 @@ const (
 	NumberOfDataPartitionsToLoad        = "NumberOfDataPartitionsToLoad"
 	secondsToFreeDataPartitionAfterLoad = "secondsToFreeDataPartitionAfterLoad"
 	nodeSetCapacity                     = "nodeSetCap"
-	cfgMetaNodeReservedMem              = "metaNodeReservedMem"
 	heartbeatPortKey                    = "heartbeatPort"
 	replicaPortKey                      = "replicaPort"
 )
@@ -45,6 +44,7 @@ const (
 	defaultSecondsToFreeDataPartitionAfterLoad = 5 * 60 // a data partition can only be freed after loading 5 mins
 	defaultIntervalToFreeDataPartition         = 10     // in terms of seconds
 	defaultIntervalToCheckHeartbeat            = 60
+	defaultIntervalToLoadKeystore              = 2 * 60
 	defaultIntervalToCheckDataPartition        = 60
 	defaultIntervalToCheckCrc                  = 20 * defaultIntervalToCheckHeartbeat // in terms of seconds
 	noHeartBeatTimes                           = 3                                    // number of times that no heartbeat reported
@@ -65,41 +65,18 @@ const (
 	defaultReplicaNum                                  = 3
 )
 
+type clusterConfig struct {
+	peers         []raftstore.PeerAddress
+	peerAddrs     []string
+	heartbeatPort int64
+	replicaPort   int64
+}
+
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
 var AddrDatabase = make(map[uint64]string)
 
-type clusterConfig struct {
-	secondsToFreeDataPartitionAfterLoad int64
-	NodeTimeOutSec                      int64
-	MissingDataPartitionInterval        int64
-	DataPartitionTimeOutSec             int64
-	IntervalToAlarmMissingDataPartition int64
-	PeriodToLoadALLDataPartitions       int64
-	metaNodeReservedMem                 uint64
-	IntervalToCheckDataPartition        int // seconds
-	numberOfDataPartitionsToFree        int
-	numberOfDataPartitionsToLoad        int
-	nodeSetCapacity                     int
-	MetaNodeThreshold                   float32
-	peers                               []raftstore.PeerAddress
-	peerAddrs                           []string
-	heartbeatPort                       int64
-	replicaPort                         int64
-}
-
 func newClusterConfig() (cfg *clusterConfig) {
 	cfg = new(clusterConfig)
-	cfg.numberOfDataPartitionsToFree = defaultTobeFreedDataPartitionCount
-	cfg.secondsToFreeDataPartitionAfterLoad = defaultSecondsToFreeDataPartitionAfterLoad
-	cfg.NodeTimeOutSec = defaultNodeTimeOutSec
-	cfg.MissingDataPartitionInterval = defaultMissingDataPartitionInterval
-	cfg.DataPartitionTimeOutSec = defaultDataPartitionTimeOutSec
-	cfg.IntervalToCheckDataPartition = defaultIntervalToCheckDataPartition
-	cfg.IntervalToAlarmMissingDataPartition = defaultIntervalToAlarmMissingDataPartition
-	cfg.numberOfDataPartitionsToLoad = defaultNumberOfDataPartitionsToLoad
-	cfg.PeriodToLoadALLDataPartitions = defaultPeriodToLoadAllDataPartitions
-	cfg.MetaNodeThreshold = defaultMetaPartitionMemUsageThreshold
-	cfg.metaNodeReservedMem = defaultMetaNodeReservedMem
 	return
 }
 
@@ -125,9 +102,8 @@ func (cfg *clusterConfig) parsePeers(peerStr string) error {
 		if err != nil {
 			return err
 		}
-		cfg.peers = append(cfg.peers, raftstore.PeerAddress{Peer: proto.Peer{ID: id}, Address: ip, HeartbeatPort: int(cfg.heartbeatPort), ReplicaPort: int(cfg.replicaPort)})
+		cfg.peers = append(cfg.peers, raftstore.PeerAddress{Peer: proto.Peer{ID: id}, Address: ip})
 		address := fmt.Sprintf("%v:%v", ip, port)
-		fmt.Println(address)
 		AddrDatabase[id] = address
 	}
 	return nil

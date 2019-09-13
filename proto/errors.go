@@ -57,6 +57,10 @@ var (
 	ErrNoEnoughReplica                 = errors.New("no enough replicas")
 	ErrNoLeader                        = errors.New("no leader")
 	ErrVolAuthKeyNotMatch              = errors.New("client and server auth key do not match")
+	ErrAuthKeyStoreError               = errors.New("auth keystore error")
+	ErrAuthAPIAccessGenRespError       = errors.New("auth API access response error")
+	ErrKeyNotExists                    = errors.New("key not exists")
+	ErrDuplicateKey                    = errors.New("duplicate key")
 )
 
 // http response error code and error message definitions
@@ -94,6 +98,10 @@ const (
 	ErrCodeNoEnoughReplica
 	ErrCodeNoLeader
 	ErrCodeVolAuthKeyNotMatch
+	ErrCodeAuthKeyStoreError
+	ErrCodeAuthAPIAccessGenRespError
+	ErrCodeAuthRaftNodeGenRespError
+	ErrCodeAuthReqRedirectError
 )
 
 // Err2CodeMap error map to code
@@ -131,4 +139,6 @@ var Err2CodeMap = map[error]int32{
 	ErrNoEnoughReplica:                 ErrCodeNoEnoughReplica,
 	ErrNoLeader:                        ErrCodeNoLeader,
 	ErrVolAuthKeyNotMatch:              ErrCodeVolAuthKeyNotMatch,
+	ErrAuthKeyStoreError:               ErrCodeAuthKeyStoreError,
+	ErrAuthAPIAccessGenRespError:       ErrCodeAuthAPIAccessGenRespError,
 }
