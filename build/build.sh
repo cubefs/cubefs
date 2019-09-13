@@ -122,6 +122,14 @@ build_client2() {
     popd >/dev/null
 }
 
+build_authtool() {
+    set_go_path
+    pushd $SrcPath >/dev/null
+    echo -n "build cfs-authtool "
+    go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-authtool ${SrcPath}/authtool/*.go  && echo "success" || echo "failed"
+    popd >/dev/null
+}
+
 clean() {
     ${RM} ${BuildBinPath}
 }
@@ -149,6 +157,9 @@ case "$cmd" in
         ;;
     "client2")
         build_client2
+        ;;
+    "authtool")
+        build_authtool
         ;;
     "clean")
         clean

@@ -16,10 +16,11 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/tiglabs/raft/proto"
 	"strconv"
 	"strings"
+
+	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/tiglabs/raft/proto"
 )
 
 //config key
