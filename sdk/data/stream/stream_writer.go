@@ -41,6 +41,11 @@ const (
 	StreamerError
 )
 
+const (
+	streamWriterFlushPeriod       = 3
+	streamWriterIdleTimeoutPeriod = 10
+)
+
 // OpenRequest defines an open request.
 type OpenRequest struct {
 	done chan struct{}
@@ -167,16 +172,16 @@ func (s *Streamer) server() {
 		case request := <-s.request:
 			s.handleRequest(request)
 			s.idle = 0
+			s.traversed = 0
 		case <-s.done:
 			s.abort()
 			log.LogDebugf("done server: evict, ino(%v)", s.inode)
 			return
 		case <-t.C:
-			// TODO unhandled error
 			s.traverse()
 			if s.refcnt <= 0 {
 				s.client.streamerLock.Lock()
-				if s.idle >= 10 && len(s.request) == 0 {
+				if s.idle >= streamWriterIdleTimeoutPeriod && len(s.request) == 0 {
 					delete(s.client.streamers, s.inode)
 					s.client.streamerLock.Unlock()
 
@@ -440,8 +445,7 @@ func (s *Streamer) flush() (err error) {
 }
 
 func (s *Streamer) traverse() (err error) {
-	//var closed bool
-
+	s.traversed++
 	length := s.dirtylist.Len()
 	for i := 0; i < length; i++ {
 		element := s.dirtylist.Get()
@@ -453,18 +457,25 @@ func (s *Streamer) traverse() (err error) {
 		log.LogDebugf("Streamer traverse begin: eh(%v)", eh)
 		if eh.getStatus() >= ExtentStatusClosed {
 			// handler can be in different status such as close, recovery, and error,
-			// and therefore there can be packet that has been be flashed yet.
+			// and therefore there can be packet that has not been flushed yet.
 			eh.flushPacket()
 			if atomic.LoadInt32(&eh.inflight) > 0 {
+				log.LogDebugf("Streamer traverse skipped: non-zero inflight, eh(%v)", eh)
 				continue
 			}
 			err = eh.appendExtentKey()
 			if err != nil {
+				log.LogDebugf("Streamer traverse abort: appendExtentKey failed, eh(%v) err(%v)", eh, err)
 				return
 			}
 			s.dirtylist.Remove(element)
-			// TODO unhandled error
 			eh.cleanup()
+		} else {
+			if s.traversed < streamWriterFlushPeriod {
+				log.LogDebugf("Streamer traverse skipped: traversed(%v) eh(%v)", s.traversed, eh)
+				continue
+			}
+			eh.setClosed()
 		}
 		log.LogDebugf("Streamer traverse end: eh(%v)", eh)
 	}
