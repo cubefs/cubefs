@@ -32,7 +32,8 @@ type Streamer struct {
 
 	refcnt int
 
-	idle int // how long there is no new request
+	idle      int // how long there is no new request
+	traversed int // how many times the streamer is traversed
 
 	extents *ExtentCache
 	once    sync.Once
