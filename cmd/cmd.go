@@ -123,6 +123,12 @@ func main() {
 		os.Exit(0)
 	}
 
+	/*
+	 * LoadConfigFile should be checked before start daemon, since it will
+	 * call os.Exit() w/o notifying the parent process.
+	 */
+	cfg := config.LoadConfigFile(*configFile)
+
 	if !*configForeground {
 		if err := startDaemon(); err != nil {
 			fmt.Printf("Server start failed: %v\n", err)
@@ -136,7 +142,6 @@ func main() {
 	 * Must notify the parent process through SignalOutcome anyway.
 	 */
 
-	cfg := config.LoadConfigFile(*configFile)
 	role := cfg.GetString(ConfigKeyRole)
 	logDir := cfg.GetString(ConfigKeyLogDir)
 	logLevel := cfg.GetString(ConfigKeyLogLevel)
@@ -216,6 +221,7 @@ func main() {
 	//for multi-cpu scheduling
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	if err = ump.InitUmp(role, umpDatadir); err != nil {
+		log.LogFlush()
 		daemonize.SignalOutcome(fmt.Errorf("Fatal: init warnLogDir fail:%v ", err))
 		os.Exit(1)
 	}
@@ -225,6 +231,7 @@ func main() {
 			http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
 			e := http.ListenAndServe(fmt.Sprintf(":%v", profPort), nil)
 			if e != nil {
+				log.LogFlush()
 				daemonize.SignalOutcome(fmt.Errorf("cannot listen pprof %v err %v", profPort, err))
 				os.Exit(1)
 			}
@@ -234,6 +241,7 @@ func main() {
 	interceptSignal(server)
 	err = server.Start(cfg)
 	if err != nil {
+		log.LogFlush()
 		syslog.Printf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err)
 		daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err))
 		os.Exit(1)

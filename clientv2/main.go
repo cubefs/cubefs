@@ -86,6 +86,12 @@ func main() {
 		os.Exit(0)
 	}
 
+	/*
+	 * LoadConfigFile should be checked before start daemon, since it will
+	 * call os.Exit() w/o notifying the parent process.
+	 */
+	cfg := config.LoadConfigFile(*configFile)
+
 	if !*configForeground {
 		if err := startDaemon(); err != nil {
 			fmt.Printf("Mount failed: %v\n", err)
@@ -99,7 +105,6 @@ func main() {
 	 * Must notify the parent process through SignalOutcome anyway.
 	 */
 
-	cfg := config.LoadConfigFile(*configFile)
 	opt, err := parseMountOption(cfg)
 	if err != nil {
 		daemonize.SignalOutcome(err)
@@ -137,6 +142,7 @@ func main() {
 
 	mfs, err := mount(opt)
 	if err != nil {
+		log.LogFlush()
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	} else {
@@ -144,6 +150,7 @@ func main() {
 	}
 
 	if err = mfs.Join(context.Background()); err != nil {
+		log.LogFlush()
 		syslog.Printf("mfs Joint returns error: %v", err)
 		os.Exit(1)
 	}
