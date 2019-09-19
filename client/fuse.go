@@ -85,6 +85,12 @@ func main() {
 		os.Exit(0)
 	}
 
+	/*
+	 * LoadConfigFile should be checked before start daemon, since it will
+	 * call os.Exit() w/o notifying the parent process.
+	 */
+	cfg := config.LoadConfigFile(*configFile)
+
 	if !*configForeground {
 		if err := startDaemon(); err != nil {
 			fmt.Printf("Mount failed: %v\n", err)
@@ -98,7 +104,6 @@ func main() {
 	 * Must notify the parent process through SignalOutcome anyway.
 	 */
 
-	cfg := config.LoadConfigFile(*configFile)
 	opt, err := parseMountOption(cfg)
 	if err != nil {
 		daemonize.SignalOutcome(err)
@@ -136,6 +141,7 @@ func main() {
 
 	fsConn, super, err := mount(opt)
 	if err != nil {
+		log.LogFlush()
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	} else {
@@ -146,12 +152,14 @@ func main() {
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
 
 	if err = fs.Serve(fsConn, super); err != nil {
+		log.LogFlush()
 		syslog.Printf("fs Serve returns err(%v)", err)
 		os.Exit(1)
 	}
 
 	<-fsConn.Ready
 	if fsConn.MountError != nil {
+		log.LogFlush()
 		syslog.Printf("fs Serve returns err(%v)\n", err)
 		os.Exit(1)
 	}
