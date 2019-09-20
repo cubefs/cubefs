@@ -369,9 +369,6 @@ func (vol *Vol) totalUsedSpace() uint64 {
 }
 
 func (vol *Vol) updateViewCache(c *Cluster) {
-	if vol.Status == markDelete {
-		return
-	}
 	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead)
 	mpViews := vol.getMetaPartitionsView()
 	view.MetaPartitions = mpViews
