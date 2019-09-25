@@ -43,6 +43,9 @@ type MountOption struct {
 	EnSyncWrite   int64
 	AutoInvalData int64
 	UmpDatadir    string
+	Rdonly        bool
+	WriteCache    bool
+	KeepCache     bool
 }
 
 // Super defines the struct of a super block.
@@ -55,6 +58,7 @@ type Super struct {
 	ec          *stream.ExtentClient
 	orphan      *OrphanInodeList
 	enSyncWrite bool
+	keepCache   bool
 
 	nodeCache map[uint64]fs.Node
 	fslock    sync.Mutex
@@ -95,6 +99,7 @@ func NewSuper(opt *MountOption) (s *Super, err error) {
 	if opt.EnSyncWrite > 0 {
 		s.enSyncWrite = true
 	}
+	s.keepCache = opt.KeepCache
 	s.ic = NewInodeCache(inodeExpiration, MaxInodeCache)
 	s.orphan = NewOrphanInodeList()
 	s.nodeCache = make(map[uint64]fs.Node)

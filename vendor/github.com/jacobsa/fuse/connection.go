@@ -155,13 +155,13 @@ func (c *Connection) Init() (err error) {
 
 	// Respond to the init op.
 	initOp.Library = c.protocol
-	initOp.MaxReadahead = maxReadahead
+	initOp.MaxReadahead = buffer.MaxReadSize
 	initOp.MaxWrite = buffer.MaxWriteSize
 
 	initOp.Flags = 0
 
 	// Tell the kernel not to use pitifully small 4 KiB writes.
-	initOp.Flags |= fusekernel.InitBigWrites
+	initOp.Flags |= (fusekernel.InitBigWrites | fusekernel.InitAsyncRead)
 
 	// Enable writeback caching if the user hasn't asked us not to.
 	if !c.cfg.DisableWritebackCaching {

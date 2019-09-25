@@ -6,6 +6,9 @@ src_path=/go/src/github.com/chubaofs/cfs
 
 Master1Addr="192.168.0.11:17010"
 LeaderAddr=""
+VolName=ltptest
+Owner=ltptest
+AuthKey="0e20229116d5a9a4a9e876806b514a85"
 
 getLeaderAddr() {
     echo -n "check Master "
@@ -47,9 +50,10 @@ check_status() {
     echo "ok"
 }
 
+
 create_vol() {
     echo -n "create vol "
-    res=$(curl -s "http://$LeaderAddr/admin/createVol?name=ltptest&capacity=30&owner=ltptest")
+    res=$(curl -s "http://$LeaderAddr/admin/createVol?name=$VolName&capacity=30&owner=$Owner")
     code=$(echo "$res" | jq .code)
     if [[ $code -ne 0 ]] ; then
         echo " failed, exit"
@@ -61,7 +65,7 @@ create_vol() {
 
 create_dp() {
     echo -n "create datapartition "
-    res=$(curl -s "http://$LeaderAddr/dataPartition/create?count=20&name=ltptest&type=extent" )
+    res=$(curl -s "http://$LeaderAddr/dataPartition/create?count=20&name=$VolName&type=extent" )
     code=$(echo "$res" | jq .code)
     if [[ $code -ne 0 ]] ; then
         echo " failed, exit"
@@ -76,6 +80,7 @@ print_error_info() {
     cat /cfs/log/cfs.out
     cat /cfs/log/client/client_info.log
     cat /cfs/log/client/client_error.log
+    cat /cfs/log/client/client_warn.log
     curl -s "http://$LeaderAddr/admin/getCluster" | jq
     mount
     df -h
@@ -104,7 +109,7 @@ wait_proc_done() {
     logfile=$2
     logfile2=${logfile}-2
     logfile3=${logfile}-3
-    maxtime=${3:-29000}
+    maxtime=${3:-3000}
     checktime=${4:-60}
     retfile=${5:-"/tmp/ltpret"}
     timeout=1
@@ -130,20 +135,39 @@ wait_proc_done() {
     done
     if [[ $timeout -eq 1 ]] ;then
         echo "$proc_name run timeout"
+        print_error_info
         exit 1
     fi
     ret=$(cat /tmp/ltpret)
-    exit $ret
+    if [[ "-$ret" != "-0" ]] ; then
+        exit $ret
+    fi
 }
 
 run_ltptest() {
-    #yum install -y psmisc >/dev/null
     echo "run ltp test"
     LTPTestDir=$MntPoint/ltptest
     LtpLog=/tmp/ltp.log
     mkdir -p $LTPTestDir
-    nohup /bin/sh -c " /opt/ltp/runltp -pq -f fs -d $LTPTestDir > $LtpLog 2>&1; echo $? > /tmp/ltpret " &
+    nohup /bin/sh -c " /opt/ltp/runltp  -f fs -d $LTPTestDir > $LtpLog 2>&1; echo $? > /tmp/ltpret " &
     wait_proc_done "runltp" $LtpLog
+}
+
+stop_client() {
+    echo -n "stop client "
+    umount ${MntPoint} && echo "ok" || { echo "failed"; exit 1; }
+}
+
+del_vol() {
+    echo -n "del vol "
+    res=$(curl -s "http://$LeaderAddr/vol/delete?name=$VolName&authKey=$AuthKey")
+    code=$(echo "$res" | jq .code)
+    if [[ $code -ne 0 ]] ; then
+        echo "failed, exit"
+        echo "$res" | jq
+        exit 1
+    fi
+    echo "ok"
 }
 
 getLeaderAddr
@@ -152,4 +176,6 @@ check_status "DataNode"
 create_vol ; sleep 2
 create_dp ; sleep 3
 start_client ; sleep 2
-run_ltptest
+run_ltptest && \
+stop_client && \
+del_vol

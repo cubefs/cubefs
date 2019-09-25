@@ -65,12 +65,12 @@ func (fc *FileInCore) shouldCheckCrc() bool {
 	return time.Now().Unix()-fc.LastModify > defaultIntervalToCheckCrc
 }
 
-func (fc *FileInCore) needCrcRepair(liveVols []*DataReplica) (fms []*FileMetadata, needRepair bool) {
+func (fc *FileInCore) needCrcRepair(liveReplicas []*DataReplica) (fms []*FileMetadata, needRepair bool) {
 	var baseCrc uint32
 	fms = make([]*FileMetadata, 0)
 
-	for i := 0; i < len(liveVols); i++ {
-		vol := liveVols[i]
+	for i := 0; i < len(liveReplicas); i++ {
+		vol := liveReplicas[i]
 		if fm, ok := fc.getFileMetaByAddr(vol); ok {
 			fms = append(fms, fm)
 		}

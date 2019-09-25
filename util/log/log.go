@@ -16,10 +16,12 @@ package log
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"math"
+	"net/http"
 	"os"
 	"path"
 	"runtime"
@@ -34,13 +36,14 @@ import (
 type Level uint8
 
 const (
-	DebugLevel  Level = 1
-	InfoLevel         = DebugLevel<<1 + 1
-	WarnLevel         = InfoLevel<<1 + 1
-	ErrorLevel        = WarnLevel<<1 + 1
-	FatalLevel        = ErrorLevel<<1 + 1
-	ReadLevel         = InfoLevel
-	UpdateLevel       = InfoLevel
+	DebugLevel    Level = 1
+	InfoLevel           = DebugLevel<<1 + 1
+	WarnLevel           = InfoLevel<<1 + 1
+	ErrorLevel          = WarnLevel<<1 + 1
+	FatalLevel          = ErrorLevel<<1 + 1
+	CriticalLevel       = FatalLevel << +1
+	ReadLevel           = InfoLevel
+	UpdateLevel         = InfoLevel
 )
 
 const (
@@ -48,7 +51,7 @@ const (
 	FileOpt                = os.O_RDWR | os.O_CREATE | os.O_APPEND
 	WriterBufferInitSize   = 4 * 1024 * 1024
 	WriterBufferLenLimit   = 4 * 1024 * 1024
-	DefaultRollingInterval = 5 * time.Minute
+	DefaultRollingInterval = 1 * time.Second
 	RolledExtension        = ".old"
 )
 
@@ -60,6 +63,7 @@ var levelPrefixes = []string{
 	"[FATAL]",
 	"[READ ]",
 	"[WRITE]",
+	"[Critical]",
 }
 
 type RolledFile []os.FileInfo
@@ -230,6 +234,7 @@ type Log struct {
 	infoLogger     *LogObject
 	readLogger     *LogObject
 	updateLogger   *LogObject
+	criticalLogger *LogObject
 	level          Level
 	msgC           chan string
 	rotate         *LogRotate
@@ -237,12 +242,13 @@ type Log struct {
 }
 
 var (
-	ErrLogFileName    = "_error.log"
-	WarnLogFileName   = "_warn.log"
-	InfoLogFileName   = "_info.log"
-	DebugLogFileName  = "_debug.log"
-	ReadLogFileName   = "_read.log"
-	UpdateLogFileName = "_write.log"
+	ErrLogFileName      = "_error.log"
+	WarnLogFileName     = "_warn.log"
+	InfoLogFileName     = "_info.log"
+	DebugLogFileName    = "_debug.log"
+	ReadLogFileName     = "_read.log"
+	UpdateLogFileName   = "_write.log"
+	CriticalLogFileName = "_critical.log"
 )
 
 var gLog *Log = nil
@@ -297,8 +303,8 @@ func (l *Log) initLog(logDir, module string, level Level) error {
 		return
 	}
 	var err error
-	logHandles := [...]**LogObject{&l.debugLogger, &l.infoLogger, &l.warnLogger, &l.errorLogger, &l.readLogger, &l.updateLogger}
-	logNames := [...]string{DebugLogFileName, InfoLogFileName, WarnLogFileName, ErrLogFileName, ReadLogFileName, UpdateLogFileName}
+	logHandles := [...]**LogObject{&l.debugLogger, &l.infoLogger, &l.warnLogger, &l.errorLogger, &l.readLogger, &l.updateLogger, &l.criticalLogger}
+	logNames := [...]string{DebugLogFileName, InfoLogFileName, WarnLogFileName, ErrLogFileName, ReadLogFileName, UpdateLogFileName, CriticalLogFileName}
 	for i := range logHandles {
 		if *logHandles[i], err = newLog(logNames[i]); err != nil {
 			return err
@@ -334,12 +340,80 @@ func (l *Log) Flush() {
 		l.errorLogger,
 		l.readLogger,
 		l.updateLogger,
+		l.criticalLogger,
 	}
 	for _, logger := range loggers {
 		if logger != nil {
 			logger.Flush()
 		}
 	}
+}
+
+const (
+	SetLogLevelPath = "/loglevel/set"
+)
+
+func SetLogLevel(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+	)
+	if err = r.ParseForm(); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	levelStr := r.FormValue("level")
+	var level Level
+	switch strings.ToLower(levelStr) {
+	case "debug":
+		level = DebugLevel
+	case "info", "read", "write":
+		level = InfoLevel
+	case "warn":
+		level = WarnLevel
+	case "error":
+		level = ErrorLevel
+	case "critical":
+		level = CriticalLevel
+	case "fatal":
+		level = FatalLevel
+	default:
+		err = fmt.Errorf("level only can be set :debug,info,warn,error,critical,read,write,fatal")
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	gLog.level = Level(level)
+	buildSuccessResp(w, "set log level success")
+}
+
+func buildSuccessResp(w http.ResponseWriter, data interface{}) {
+	buildJSONResp(w, http.StatusOK, data, "")
+}
+
+func buildFailureResp(w http.ResponseWriter, code int, msg string) {
+	buildJSONResp(w, code, nil, msg)
+}
+
+// Create response for the API request.
+func buildJSONResp(w http.ResponseWriter, code int, data interface{}, msg string) {
+	var (
+		jsonBody []byte
+		err      error
+	)
+	w.WriteHeader(code)
+	w.Header().Set("Content-Type", "application/json")
+	body := struct {
+		Code int         `json:"code"`
+		Data interface{} `json:"data"`
+		Msg  string      `json:"msg"`
+	}{
+		Code: code,
+		Data: data,
+		Msg:  msg,
+	}
+	if jsonBody, err = json.Marshal(body); err != nil {
+		return
+	}
+	w.Write(jsonBody)
 }
 
 // LogWarn indicates the warnings.
@@ -451,9 +525,6 @@ func LogFatal(v ...interface{}) {
 	if gLog == nil {
 		return
 	}
-	if FatalLevel&gLog.level != gLog.level {
-		return
-	}
 	s := fmt.Sprintln(v...)
 	s = gLog.SetPrefix(s, levelPrefixes[4])
 	gLog.errorLogger.Output(2, s)
@@ -465,13 +536,30 @@ func LogFatalf(format string, v ...interface{}) {
 	if gLog == nil {
 		return
 	}
-	if FatalLevel&gLog.level != gLog.level {
-		return
-	}
 	s := fmt.Sprintf(format, v...)
 	s = gLog.SetPrefix(s, levelPrefixes[4])
 	gLog.errorLogger.Output(2, s)
 	os.Exit(1)
+}
+
+// LogFatal logs the fatal errors.
+func LogCritical(v ...interface{}) {
+	if gLog == nil {
+		return
+	}
+	s := fmt.Sprintln(v...)
+	s = gLog.SetPrefix(s, levelPrefixes[4])
+	gLog.criticalLogger.Output(2, s)
+}
+
+// LogFatalf logs the fatal errors with specified format.
+func LogCriticalf(format string, v ...interface{}) {
+	if gLog == nil {
+		return
+	}
+	s := fmt.Sprintf(format, v...)
+	s = gLog.SetPrefix(s, levelPrefixes[4])
+	gLog.criticalLogger.Output(2, s)
 }
 
 // LogRead

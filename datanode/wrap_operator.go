@@ -44,7 +44,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		resultSize := p.Size
 		p.Size = sz
 		if p.IsErrPacket() {
-			err = fmt.Errorf("op[%v] error[%v]", p.GetOpMsg(), string(p.Data[:resultSize]))
+			err = fmt.Errorf("op(%v) error(%v)", p.GetOpMsg(), string(p.Data[:resultSize]))
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, err))
 			log.LogErrorf(logContent)
@@ -53,7 +53,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, nil))
 			switch p.Opcode {
 			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead:
-			case proto.OpReadTinyDelete:
+			case proto.OpReadTinyDeleteRecord:
 				log.LogRead(logContent)
 			case proto.OpWrite, proto.OpRandomWrite, proto.OpSyncRandomWrite, proto.OpSyncWrite, proto.OpMarkDelete:
 				log.LogWrite(logContent)
@@ -73,6 +73,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handleStreamReadPacket(p, c, StreamRead)
 	case proto.OpExtentRepairRead:
 		s.handleExtentRepaiReadPacket(p, c, RepairRead)
+	case proto.OpTinyExtentRepairRead:
+		s.handleTinyExtentRepairRead(p, c)
 	case proto.OpMarkDelete:
 		s.handleMarkDeletePacket(p, c)
 	case proto.OpRandomWrite, proto.OpSyncRandomWrite:
@@ -95,8 +97,10 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handlePacketToDecommissionDataPartition(p)
 	case proto.OpGetPartitionSize:
 		s.handlePacketToGetPartitionSize(p)
-	case proto.OpReadTinyDelete:
-		s.handlePacketToReadTinyDelete(p, c)
+	case proto.OpGetMaxExtentIDAndPartitionSize:
+		s.handlePacketToGetMaxExtentIDAndPartitionSize(p)
+	case proto.OpReadTinyDeleteRecord:
+		s.handlePacketToReadTinyDeleteRecordFile(p, c)
 	case proto.OpBroadcastMinAppliedID:
 		s.handleBroadcastMinAppliedID(p)
 	default:
@@ -117,7 +121,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 		}
 	}()
 	partition := p.Object.(*DataPartition)
-	if partition.Available() <= 0 || partition.disk.Status == proto.ReadOnly {
+	if partition.Available() <= 0 || partition.disk.Status == proto.ReadOnly || partition.IsRejectWrite() {
 		err = storage.NoSpaceError
 		return
 	} else if partition.disk.Status == proto.Unavailable {
@@ -148,21 +152,22 @@ func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 	}
 	request := &proto.CreateDataPartitionRequest{}
 	if task.OpCode != proto.OpCreateDataPartition {
-		err = fmt.Errorf("from master Task[%v] failed,error unavali opcode(%v)", task.ToString(), task.OpCode)
+		err = fmt.Errorf("from master Task(%v) failed,error unavali opcode(%v)", task.ToString(), task.OpCode)
 		return
 	}
 
 	bytes, err = json.Marshal(task.Request)
 	if err != nil {
-		err = fmt.Errorf("from master Task[%v] cannot unmashal CreateDataPartition", task.ToString())
+		err = fmt.Errorf("from master Task(%v) cannot unmashal CreateDataPartition", task.ToString())
 		return
 	}
 	if err = json.Unmarshal(bytes, request); err != nil {
-		err = fmt.Errorf("from master Task[%v] cannot unmash CreateDataPartitionRequest struct", task.ToString())
+		err = fmt.Errorf("from master Task(%v) cannot unmash CreateDataPartitionRequest struct", task.ToString())
 		return
 	}
+	p.PartitionID = request.PartitionId
 	if dp, err = s.space.CreatePartition(request); err != nil {
-		err = fmt.Errorf("from master Task[%v] cannot create Partition err(%v)", task.ToString(), err)
+		err = fmt.Errorf("from master Task(%v) cannot create Partition err(%v)", task.ToString(), err)
 		return
 	}
 	p.PacketOkWithBody([]byte(dp.Disk().Path))
@@ -188,29 +193,34 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 	if err != nil {
 		return
 	}
-	request := &proto.HeartBeatRequest{}
-	response := &proto.DataNodeHeartbeatResponse{}
-	s.buildHeartBeatResponse(response)
 
-	if task.OpCode == proto.OpDataNodeHeartbeat {
-		bytes, _ := json.Marshal(task.Request)
-		json.Unmarshal(bytes, request)
-		response.Status = proto.TaskSucceeds
-		MasterHelper.AddNode(request.MasterAddr)
-	} else {
-		response.Status = proto.TaskFailed
-		err = fmt.Errorf("illegal opcode")
-		response.Result = err.Error()
-	}
-	task.Response = response
-	if data, err = json.Marshal(task); err != nil {
-		return
-	}
-	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
-	if err != nil {
-		err = errors.Trace(err, "heartbeat to master(%v) failed.", request.MasterAddr)
-		return
-	}
+	go func() {
+		request := &proto.HeartBeatRequest{}
+		response := &proto.DataNodeHeartbeatResponse{}
+		s.buildHeartBeatResponse(response)
+
+		if task.OpCode == proto.OpDataNodeHeartbeat {
+			bytes, _ := json.Marshal(task.Request)
+			json.Unmarshal(bytes, request)
+			response.Status = proto.TaskSucceeds
+			MasterHelper.AddNode(request.MasterAddr)
+		} else {
+			response.Status = proto.TaskFailed
+			err = fmt.Errorf("illegal opcode")
+			response.Result = err.Error()
+		}
+		task.Response = response
+		if data, err = json.Marshal(task); err != nil {
+			return
+		}
+		_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
+		if err != nil {
+			err = errors.Trace(err, "heartbeat to master(%v) failed.", request.MasterAddr)
+			log.LogErrorf(err.Error())
+			return
+		}
+	}()
+
 }
 
 // Handle OpDeleteDataPartition packet.
@@ -251,7 +261,7 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 	data, _ := json.Marshal(task)
 	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
 	if err != nil {
-		err = errors.Trace(err, "delete DataPartition failed,partitionID(%v)", request.PartitionId)
+		err = errors.Trace(err, "delete DataPartition failed,PartitionID(%v)", request.PartitionId)
 		log.LogErrorf("action[handlePacketToDeleteDataPartition] err(%v).", err)
 	}
 	log.LogInfof(fmt.Sprintf("action[handlePacketToDeleteDataPartition] %v error(%v)", request.PartitionId, string(data)))
@@ -312,7 +322,7 @@ func (s *DataNode) asyncLoadDataPartition(task *proto.AdminTask) {
 	}
 	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
 	if err != nil {
-		err = errors.Trace(err, "load DataPartition failed,partitionID(%v)", request.PartitionId)
+		err = errors.Trace(err, "load DataPartition failed,PartitionID(%v)", request.PartitionId)
 		log.LogError(errors.Stack(err))
 	}
 }
@@ -352,7 +362,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		}
 	}()
 	partition := p.Object.(*DataPartition)
-	if partition.Available() <= 0 || partition.disk.Status == proto.ReadOnly {
+	if partition.Available() <= 0 || partition.disk.Status == proto.ReadOnly || partition.IsRejectWrite() {
 		err = storage.NoSpaceError
 		return
 	} else if partition.disk.Status == proto.Unavailable {
@@ -361,7 +371,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	}
 	store := partition.ExtentStore()
 	if p.Size <= util.BlockSize {
-		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, UpdateSize, p.Opcode == proto.OpSyncWrite)
+		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
 		partition.checkIsDiskError(err)
 	} else {
 		size := p.Size
@@ -373,7 +383,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			currSize := util.Min(int(size), util.BlockSize)
 			data := p.Data[offset : offset+currSize]
 			crc := crc32.ChecksumIEEE(data)
-			err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, UpdateSize, p.Opcode == proto.OpSyncWrite)
+			err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite())
 			partition.checkIsDiskError(err)
 			if err != nil {
 				break
@@ -519,7 +529,119 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 	return
 }
 
-func (s *DataNode) handlePacketToReadTinyDelete(p *repl.Packet, connect *net.TCPConn) {
+func (s *DataNode) writeEmptyPacketOnTinyExtentRepairRead(reply *repl.Packet, newOffset, currentOffset int64, connect net.Conn) (replySize int64, err error) {
+	replySize = newOffset - currentOffset
+	reply.Data = make([]byte, 0)
+	reply.Size = 0
+	reply.CRC = crc32.ChecksumIEEE(reply.Data)
+	reply.ResultCode = proto.OpOk
+	reply.ExtentOffset = currentOffset
+	reply.Arg[0] = EmptyResponse
+	binary.BigEndian.PutUint64(reply.Arg[1:9], uint64(replySize))
+	err = reply.WriteToConn(connect)
+	reply.Size = uint32(replySize)
+	logContent := fmt.Sprintf("action[operatePacket] %v.",
+		reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
+	log.LogReadf(logContent)
+
+	return
+}
+
+func (s *DataNode) attachAvaliSizeOnTinyExtentRepairRead(reply *repl.Packet, avaliSize uint64) {
+	binary.BigEndian.PutUint64(reply.Arg[9:17], avaliSize)
+}
+
+// Handle handleTinyExtentRepairRead packet.
+func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.Conn) {
+	var (
+		err                 error
+		needReplySize       int64
+		tinyExtentFinfoSize uint64
+	)
+
+	defer func() {
+		if err != nil {
+			request.PackErrorBody(ActionStreamReadTinyExtentRepair, err.Error())
+			request.WriteToConn(connect)
+		}
+	}()
+	if !storage.IsTinyExtent(request.ExtentID) {
+		err = fmt.Errorf("unavali extentID (%v)", request.ExtentID)
+		return
+	}
+
+	partition := request.Object.(*DataPartition)
+	store := partition.ExtentStore()
+	tinyExtentFinfoSize, err = store.TinyExtentGetFinfoSize(request.ExtentID)
+	if err != nil {
+		return
+	}
+	needReplySize = int64(request.Size)
+	offset := request.ExtentOffset
+	if uint64(request.ExtentOffset)+uint64(request.Size) > tinyExtentFinfoSize {
+		needReplySize = int64(tinyExtentFinfoSize - uint64(request.ExtentOffset))
+	}
+	avaliReplySize := uint64(needReplySize)
+
+	var (
+		newOffset, newEnd int64
+	)
+	for {
+		if needReplySize <= 0 {
+			break
+		}
+		reply := repl.NewTinyExtentStreamReadResponsePacket(request.ReqID, request.PartitionID, request.ExtentID)
+		reply.ArgLen = TinyExtentRepairReadResponseArgLen
+		reply.Arg = make([]byte, TinyExtentRepairReadResponseArgLen)
+		s.attachAvaliSizeOnTinyExtentRepairRead(reply, avaliReplySize)
+		newOffset, newEnd, err = store.TinyExtentAvaliOffset(request.ExtentID, offset)
+		if err != nil {
+			return
+		}
+		if newOffset > offset {
+			var (
+				replySize int64
+			)
+			if replySize, err = s.writeEmptyPacketOnTinyExtentRepairRead(reply, newOffset, offset, connect); err != nil {
+				return
+			}
+			needReplySize -= replySize
+			offset += replySize
+			continue
+		}
+		currNeedReplySize := newEnd - newOffset
+		currReadSize := uint32(util.Min(int(currNeedReplySize), util.ReadBlockSize))
+		if currReadSize == util.ReadBlockSize {
+			reply.Data, _ = proto.Buffers.Get(util.ReadBlockSize)
+		} else {
+			reply.Data = make([]byte, currReadSize)
+		}
+		reply.ExtentOffset = offset
+		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, false)
+		if err != nil {
+			return
+		}
+		reply.Size = uint32(currReadSize)
+		reply.ResultCode = proto.OpOk
+		if err = reply.WriteToConn(connect); err != nil {
+			connect.Close()
+			return
+		}
+		needReplySize -= int64(currReadSize)
+		offset += int64(currReadSize)
+		if currReadSize == util.ReadBlockSize {
+			proto.Buffers.Put(reply.Data)
+		}
+		logContent := fmt.Sprintf("action[operatePacket] %v.",
+			reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
+		log.LogReadf(logContent)
+	}
+
+	request.PacketOkReply()
+	return
+}
+
+func (s *DataNode) handlePacketToReadTinyDeleteRecordFile(p *repl.Packet, connect *net.TCPConn) {
 	var (
 		err error
 	)
@@ -534,7 +656,7 @@ func (s *DataNode) handlePacketToReadTinyDelete(p *repl.Packet, connect *net.TCP
 	localTinyDeleteFileSize := store.LoadTinyDeleteFileOffset()
 	needReplySize := localTinyDeleteFileSize - p.ExtentOffset
 	offset := p.ExtentOffset
-	reply := repl.NewTinyDeleteRecordResponsePacket(p.ReqID, p.PartitionID)
+	reply := repl.NewReadTinyDeleteRecordResponsePacket(p.ReqID, p.PartitionID)
 	reply.StartT = time.Now().UnixNano()
 	for {
 		if needReplySize <= 0 {
@@ -587,7 +709,7 @@ func (s *DataNode) handleBroadcastMinAppliedID(p *repl.Packet) {
 	if minAppliedID > 0 {
 		partition.SetMinAppliedID(minAppliedID)
 	}
-	log.LogDebugf("[handleBroadcastMinAppliedID] partition=%v minAppliedID=%v", partition.partitionID, minAppliedID)
+	log.LogDebugf("[handleBroadcastMinAppliedID] partition(%v) minAppliedID(%v)", partition.partitionID, minAppliedID)
 	p.PacketOkReply()
 	return
 }
@@ -596,7 +718,7 @@ func (s *DataNode) handleBroadcastMinAppliedID(p *repl.Packet) {
 func (s *DataNode) handlePacketToGetAppliedID(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
 	appliedID := partition.GetAppliedID() //return current appliedID
-	log.LogDebugf("[handlePacketToGetAppliedID] partition=%v curAppId=%v",
+	log.LogDebugf("[handlePacketToGetAppliedID] partition(%v) curAppId(%v)",
 		partition.partitionID, appliedID)
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, appliedID)
@@ -606,10 +728,22 @@ func (s *DataNode) handlePacketToGetAppliedID(p *repl.Packet) {
 
 func (s *DataNode) handlePacketToGetPartitionSize(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
-	usedSize := partition.extentStore.StoreSize()
+	usedSize := partition.extentStore.StoreSizeExtentID(p.ExtentID)
 
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(usedSize))
+	p.PacketOkWithBody(buf)
+
+	return
+}
+
+func (s *DataNode) handlePacketToGetMaxExtentIDAndPartitionSize(p *repl.Packet) {
+	partition := p.Object.(*DataPartition)
+	maxExtentID, totalPartitionSize := partition.extentStore.GetMaxExtentIDAndPartitionSize()
+
+	buf := make([]byte, 16)
+	binary.BigEndian.PutUint64(buf[0:8], uint64(maxExtentID))
+	binary.BigEndian.PutUint64(buf[8:16], totalPartitionSize)
 	p.PacketOkWithBody(buf)
 
 	return
@@ -626,17 +760,18 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionDecommissionPartition, err.Error())
+		} else {
+			p.PacketOkReply()
 		}
 	}()
 
 	adminTask := &proto.AdminTask{}
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
-	if err := decode.Decode(adminTask); err != nil {
+	if err = decode.Decode(adminTask); err != nil {
 		return
 	}
 
-	log.LogDebugf("[opOfflineDataPartition] received task: %v", adminTask)
 	reqData, err = json.Marshal(adminTask.Request)
 	if err != nil {
 		return
@@ -644,53 +779,37 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 	if err = json.Unmarshal(reqData, req); err != nil {
 		return
 	}
+
+	log.LogDebugf("[handlePacketToDecommissionDataPartition] received task: %v", string(reqData))
+
 	dp := s.space.Partition(req.PartitionId)
-	if err != nil {
+	if dp == nil {
+		err = fmt.Errorf("partition %v not exsit", req.PartitionId)
 		return
 	}
+	p.PartitionID = req.PartitionId
 
 	isRaftLeader, err = s.forwardToRaftLeader(dp, p)
 	if !isRaftLeader {
+		err = raft.ErrNotLeader
 		return
 	}
+	log.LogInfof("handlePacketToDecommissionDataPartition recive MasterCommand: %v", string(reqData))
 
-	p.PacketOkReply()
-
-	resp := proto.DataPartitionDecommissionResponse{
-		PartitionId: req.PartitionId,
-		Status:      proto.TaskFailed,
-	}
 	if req.AddPeer.ID == req.RemovePeer.ID {
-		err = errors.NewErrorf("[opOfflineDataPartition]: AddPeer[%v] same withRemovePeer[%v]", req.AddPeer, req.RemovePeer)
-		resp.Result = err.Error()
-		goto end
+		err = errors.NewErrorf("[opOfflineDataPartition]: AddPeer(%v) same withRemovePeer(%v)", req.AddPeer, req.RemovePeer)
+		return
 	}
-
-	_, err = dp.ChangeRaftMember(raftProto.ConfAddNode, raftProto.Peer{ID: req.AddPeer.ID}, reqData)
-	if err != nil {
-		resp.Result = err.Error()
-		log.LogErrorf(fmt.Sprintf("[opOfflineDataPartition]: AddNode[%v] err[%v]", req.AddPeer, err))
-		goto end
+	if req.AddPeer.ID != 0 {
+		_, err = dp.ChangeRaftMember(raftProto.ConfAddNode, raftProto.Peer{ID: req.AddPeer.ID}, reqData)
+		if err != nil {
+			return
+		}
 	}
 	_, err = dp.ChangeRaftMember(raftProto.ConfRemoveNode, raftProto.Peer{ID: req.RemovePeer.ID}, reqData)
 	if err != nil {
-		resp.Result = err.Error()
-		log.LogErrorf(fmt.Sprintf("[opOfflineDataPartition]: RemoveNode[%v] err[%v]", req.RemovePeer, err))
-		goto end
-	}
-	resp.Status = proto.TaskSucceeds
-end:
-	adminTask.Request = nil
-	adminTask.Response = resp
-
-	data, _ := json.Marshal(adminTask)
-	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
-	if err != nil {
-		err = errors.Trace(err, "opOfflineDataPartition failed, partitionID(%v)", resp.PartitionId)
-		log.LogError(errors.Stack(err))
 		return
 	}
-
 	log.LogDebugf("[opOfflineDataPartition]: the end %v", adminTask)
 	return
 }

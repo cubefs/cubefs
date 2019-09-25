@@ -148,15 +148,18 @@ func (lf *logEntryFile) ReBuildIndex() (truncateOffset int64, err error) {
 	}
 	filesize := info.Size()
 
-	var rec record
-	var offset int64
+	var (
+		rec              record
+		offset           int64
+		nextRecordOffset int64
+	)
 	r := newRecordReader(lf.f)
 	for {
 		offset, rec, err = r.Read()
 		if err != nil {
 			break
 		}
-
+		nextRecordOffset = r.offset
 		// log entry 更新索引
 		if rec.recType == recTypeLogEntry {
 			ent := &proto.Entry{}
@@ -179,7 +182,10 @@ func (lf *logEntryFile) ReBuildIndex() (truncateOffset int64, err error) {
 	if err == io.EOF {
 		err = nil
 	}
-	return filesize, err
+	if filesize != nextRecordOffset {
+		log.Warn("logName[%v],fileSize[%v],corrupt data after offset[%v]", lf.name, filesize, nextRecordOffset)
+	}
+	return offset, err
 }
 
 func (lf *logEntryFile) Name() logFileName {

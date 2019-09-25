@@ -4,11 +4,11 @@
     "prof": "17320",
     "raftHeartbeat": "17330",
     "raftReplica": "17340",
+    "raftDir":   "/cfs/log",
     "consulAddr": "http://192.168.0.100:8500",
     "exporterPort": 9500,
     "rack": "rack-01",
     "logDir": "/cfs/log",
-    "warnLogDir":"/cfs/log",
     "logLevel": "info",
     "disks": [
         "/cfs/disk:10737418240"

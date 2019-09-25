@@ -32,7 +32,6 @@ Configurations
    "disks", "string slice", "
    | Format: *PATH:RETAIN*.
    | PATH: Disk mount point. RETAIN: Retain space. (Ranges: 20G-50G.)", "Yes"
-   "warnLogDir","string","Warn message directory","No"
 
 
 **Example:**
@@ -46,7 +45,6 @@ Configurations
        "logDir": "/export/Logs/datanode",
        "logLevel": "info",
        "raftHeartbeat": "9095",
-       "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
        "raftReplica": "9096",
        "raftDir": "/export/Data/datanode/raft",
        "consulAddr": "http://consul.prometheus-cfs.local",

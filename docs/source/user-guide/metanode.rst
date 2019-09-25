@@ -20,7 +20,6 @@ At lease 3 meta nodes are required in respect to high availability.
    "consulAddr", "string", "Addresses of monitor system", "No" 
    "exporterPort", "string", "Port for monitor system", "No" 
    "masterAddrs", "string", "Addresses of master server", "Yes"
-   "warnLogDir","string","Warn message directory","No"
    "totalMem","string","Max memory metadata used","No"
 
 
@@ -38,7 +37,6 @@ Example:
         "metadataDir": "/export/Data/metanode",
         "logDir": "/export/Logs/metanode",
         "raftDir": "/export/Data/metanode/raft",
-        "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
         "raftHeartbeatPort": "9093",
         "raftReplicaPort": "9094",
         "consulAddr": "http://consul.prometheus-cfs.local",

@@ -27,6 +27,10 @@ import (
 	raftProto "github.com/tiglabs/raft/proto"
 )
 
+const (
+	MaxUsedMemFactor = 1.1
+)
+
 func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
 	// For ack to master
@@ -61,6 +65,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			End:         mConf.End,
 			Status:      proto.ReadWrite,
 			MaxInodeID:  mConf.Cursor,
+			VolName:     mConf.VolName,
 		}
 		addr, isLeader := partition.IsLeader()
 		if addr == "" {
@@ -68,6 +73,9 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		}
 		mpr.IsLeader = isLeader
 		if mConf.Cursor >= mConf.End {
+			mpr.Status = proto.ReadOnly
+		}
+		if resp.Used > uint64(float64(resp.Total)*MaxUsedMemFactor) {
 			mpr.Status = proto.ReadOnly
 		}
 		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
@@ -78,8 +86,9 @@ end:
 	adminTask.Request = nil
 	adminTask.Response = resp
 	m.respondToMaster(adminTask)
+	data, _ := json.Marshal(resp)
 	log.LogInfof("%s [opMasterHeartbeat] req:%v; respAdminTask: %v, "+
-		"resp: %v", remoteAddr, req, adminTask, adminTask.Response)
+		"resp: %v", remoteAddr, req, adminTask, string(data))
 	return
 }
 
@@ -231,7 +240,7 @@ func (m *metadataManager) opDeleteDentry(conn net.Conn, p *Packet,
 	}
 	err = mp.DeleteDentry(req, p)
 	m.respondToClient(conn, p)
-	log.LogInfof("%s [opDeleteDentry] req: %d - %v, resp: %v, body: %s",
+	log.LogDebugf("%s [opDeleteDentry] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
@@ -255,7 +264,7 @@ func (m *metadataManager) opUpdateDentry(conn net.Conn, p *Packet,
 	}
 	err = mp.UpdateDentry(req, p)
 	m.respondToClient(conn, p)
-	log.LogInfof("%s [opUpdateDentry] req: %d - %v; resp: %v, body: %s",
+	log.LogDebugf("%s [opUpdateDentry] req: %d - %v; resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
@@ -279,7 +288,7 @@ func (m *metadataManager) opMetaUnlinkInode(conn net.Conn, p *Packet,
 	}
 	err = mp.UnlinkInode(req, p)
 	m.respondToClient(conn, p)
-	log.LogInfof("%s [opDeleteInode] req: %d - %v, resp: %v, body: %s",
+	log.LogDebugf("%s [opDeleteInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
@@ -363,7 +372,7 @@ func (m *metadataManager) opMetaEvictInode(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[opMetaEvictInode] req: %s, resp: %v", req, err.Error())
 	}
 	m.respondToClient(conn, p)
-	log.LogInfof("%s [opMetaEvictInode] req: %d - %v, resp: %v, body: %s",
+	log.LogDebugf("%s [opMetaEvictInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
@@ -626,56 +635,51 @@ func (m *metadataManager) opDecommissionMetaPartition(conn net.Conn,
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
-		return
+		return err
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
-		return
+		return err
 	}
 	if !m.serveProxy(conn, mp, p) {
-		return
+		return nil
 	}
 	m.responseAckOKToMaster(conn, p)
-	resp := proto.MetaPartitionDecommissionResponse{
-		PartitionID: req.PartitionID,
-		VolName:     req.VolName,
-		Status:      proto.TaskFailed,
-	}
 	if req.AddPeer.ID == req.RemovePeer.ID {
 		err = errors.NewErrorf("[opDecommissionMetaPartition]: AddPeer[%v] same withRemovePeer[%v]", req.AddPeer, req.RemovePeer)
-		resp.Result = err.Error()
-		goto end
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
 	}
 	reqData, err = json.Marshal(req)
 	if err != nil {
 		err = errors.NewErrorf("[opDecommissionMetaPartition]: partitionID= %d, "+
 			"Marshal %s", req.PartitionID, err)
-		resp.Result = err.Error()
-		goto end
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
 	}
 	_, err = mp.ChangeMember(raftProto.ConfAddNode,
 		raftProto.Peer{ID: req.AddPeer.ID}, reqData)
 	if err != nil {
-		resp.Result = err.Error()
-		goto end
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
 	}
 	_, err = mp.ChangeMember(raftProto.ConfRemoveNode,
 		raftProto.Peer{ID: req.RemovePeer.ID}, reqData)
 	if err != nil {
-		resp.Result = err.Error()
-		goto end
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
 	}
-	resp.Status = proto.TaskSucceeds
-end:
-	adminTask.Request = nil
-	adminTask.Response = resp
-	m.respondToMaster(adminTask)
-	log.LogInfof("%s [opDecommissionMetaPartition]: the end %v", remoteAddr,
-		adminTask)
+	p.PacketOkReply()
+	m.respondToClient(conn, p)
+
 	return
 }
 

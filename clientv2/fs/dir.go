@@ -15,6 +15,7 @@
 package fs
 
 import (
+	"errors"
 	"golang.org/x/net/context"
 	"os"
 	"syscall"
@@ -24,12 +25,18 @@ import (
 	"github.com/jacobsa/fuse/fuseutil"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
 func (s *Super) MkDir(ctx context.Context, op *fuseops.MkDirOp) error {
+	var err error
+
 	pino := uint64(op.Parent)
 	desc := fuse.OpDescription(op)
+
+	metric := exporter.NewTPCnt("mkdir")
+	defer metric.Set(err)
 
 	info, err := s.mw.Create_ll(pino, op.Name, proto.Mode(os.ModeDir|op.Mode.Perm()), op.Uid, op.Gid, nil)
 	if err != nil {
@@ -46,12 +53,17 @@ func (s *Super) MkDir(ctx context.Context, op *fuseops.MkDirOp) error {
 }
 
 func (s *Super) MkNode(ctx context.Context, op *fuseops.MkNodeOp) error {
+	var err error
+
 	if op.Mode&os.ModeNamedPipe == 0 && op.Mode&os.ModeSocket == 0 {
 		return fuse.ENOSYS
 	}
 
 	pino := uint64(op.Parent)
 	desc := fuse.OpDescription(op)
+
+	metric := exporter.NewTPCnt("mknod")
+	defer metric.Set(err)
 
 	info, err := s.mw.Create_ll(pino, op.Name, proto.Mode(op.Mode|os.ModePerm), op.Uid, op.Gid, nil)
 	if err != nil {
@@ -68,8 +80,13 @@ func (s *Super) MkNode(ctx context.Context, op *fuseops.MkNodeOp) error {
 }
 
 func (s *Super) CreateFile(ctx context.Context, op *fuseops.CreateFileOp) error {
+	var err error
+
 	pino := uint64(op.Parent)
 	desc := fuse.OpDescription(op)
+
+	metric := exporter.NewTPCnt("filecreate")
+	defer metric.Set(err)
 
 	info, err := s.mw.Create_ll(pino, op.Name, proto.Mode(op.Mode.Perm()), op.Uid, op.Gid, nil)
 	if err != nil {
@@ -89,9 +106,14 @@ func (s *Super) CreateFile(ctx context.Context, op *fuseops.CreateFileOp) error 
 }
 
 func (s *Super) CreateLink(ctx context.Context, op *fuseops.CreateLinkOp) error {
+	var err error
+
 	pino := uint64(op.Parent)
 	desc := fuse.OpDescription(op)
 	ino := uint64(op.Target)
+
+	metric := exporter.NewTPCnt("link")
+	defer metric.Set(err)
 
 	inode, err := s.InodeGet(ino)
 	if err != nil {
@@ -101,6 +123,7 @@ func (s *Super) CreateLink(ctx context.Context, op *fuseops.CreateLinkOp) error 
 
 	if !inode.mode.IsRegular() {
 		log.LogErrorf("%v: not regular, mode(%v)", desc, inode.mode)
+		err = errors.New("invalid file type")
 		return fuse.EINVAL
 	}
 
@@ -119,8 +142,13 @@ func (s *Super) CreateLink(ctx context.Context, op *fuseops.CreateLinkOp) error 
 }
 
 func (s *Super) CreateSymlink(ctx context.Context, op *fuseops.CreateSymlinkOp) error {
+	var err error
+
 	pino := uint64(op.Parent)
 	desc := fuse.OpDescription(op)
+
+	metric := exporter.NewTPCnt("symlink")
+	defer metric.Set(err)
 
 	info, err := s.mw.Create_ll(pino, op.Name, proto.Mode(os.ModeSymlink|os.ModePerm), op.Uid, op.Gid, nil)
 	if err != nil {
@@ -168,7 +196,7 @@ func (s *Super) LookUpInode(ctx context.Context, op *fuseops.LookUpInodeOp) erro
 	fillChildEntry(&op.Entry, inode)
 
 	if inode.mode.IsRegular() {
-		fileSize, gen := s.ec.FileSize(ino)
+		fileSize, gen := s.fileSize(ino)
 		log.LogDebugf("LookUpInode: Get filesize, op(%v) fileSize(%v) gen(%v) inode.gen(%v)", desc, fileSize, gen, inode.gen)
 		if gen >= inode.gen {
 			op.Entry.Attributes.Size = uint64(fileSize)
@@ -180,10 +208,15 @@ func (s *Super) LookUpInode(ctx context.Context, op *fuseops.LookUpInodeOp) erro
 }
 
 func (s *Super) RmDir(ctx context.Context, op *fuseops.RmDirOp) error {
+	var err error
+
 	pino := uint64(op.Parent)
 	desc := fuse.OpDescription(op)
 
 	log.LogDebugf("TRACE enter %v:", desc)
+
+	metric := exporter.NewTPCnt("rmdir")
+	defer metric.Set(err)
 
 	if pinode, _ := s.InodeGet(pino); pinode != nil {
 		pinode.dcache.Delete(op.Name)
@@ -195,20 +228,33 @@ func (s *Super) RmDir(ctx context.Context, op *fuseops.RmDirOp) error {
 		return ParseError(err)
 	}
 
+	if info != nil {
+		s.ic.Delete(info.Inode)
+	}
+
 	log.LogDebugf("TRACE exit %v: info(%v)", desc, info)
 	return nil
 }
 
 func (s *Super) Unlink(ctx context.Context, op *fuseops.UnlinkOp) error {
+	var err error
+
 	pino := uint64(op.Parent)
 	desc := fuse.OpDescription(op)
 
 	log.LogDebugf("TRACE enter %v:", desc)
 
+	metric := exporter.NewTPCnt("unlink")
+	defer metric.Set(err)
+
 	info, err := s.mw.Delete_ll(pino, op.Name, false)
 	if err != nil {
 		log.LogErrorf("%v: err(%v)", desc, err)
 		return ParseError(err)
+	}
+
+	if info != nil {
+		s.ic.Delete(info.Inode)
 	}
 
 	if info != nil && info.Nlink == 0 {
@@ -229,15 +275,21 @@ func (s *Super) OpenDir(ctx context.Context, op *fuseops.OpenDirOp) error {
 }
 
 func (s *Super) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) error {
+	var err error
+
 	pino := uint64(op.Inode)
 	pos := int(op.Offset)
 	desc := fuse.OpDescription(op)
 
 	log.LogDebugf("TRACE enter %v: offset(%v)", desc, op.Offset)
 
+	metric := exporter.NewTPCnt("readdir")
+	defer metric.Set(err)
+
 	handle := s.hc.Get(op.Handle)
 	if handle == nil {
 		log.LogErrorf("%v: dir not opened", desc)
+		err = errors.New("bad fd")
 		return syscall.EBADF
 	}
 
@@ -262,6 +314,7 @@ func (s *Super) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) error {
 
 	if pos > len(handle.entries) {
 		log.LogErrorf("%v: offset beyond scope, pos(%v) num of entries(%v)", desc, pos, len(handle.entries))
+		err = errors.New("invalid entries")
 		return fuse.EINVAL
 	}
 
@@ -304,17 +357,22 @@ func (s *Super) ReleaseDirHandle(ctx context.Context, op *fuseops.ReleaseDirHand
 }
 
 func (s *Super) Rename(ctx context.Context, op *fuseops.RenameOp) error {
+	var err error
+
 	oldPino := uint64(op.OldParent)
 	newPino := uint64(op.NewParent)
 	desc := fuse.OpDescription(op)
 
 	log.LogDebugf("TRACE enter %v: ", desc)
 
+	metric := exporter.NewTPCnt("rename")
+	defer metric.Set(err)
+
 	if oldPinode, _ := s.InodeGet(oldPino); oldPinode != nil {
 		oldPinode.dcache.Delete(op.OldName)
 	}
 
-	err := s.mw.Rename_ll(oldPino, op.OldName, newPino, op.NewName)
+	err = s.mw.Rename_ll(oldPino, op.OldName, newPino, op.NewName)
 	if err != nil {
 		log.LogErrorf("Rename: op(%v) err(%v)", desc, err)
 		return ParseError(err)

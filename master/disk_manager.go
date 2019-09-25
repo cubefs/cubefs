@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
-	"math"
 	"time"
 )
 
@@ -36,6 +35,13 @@ func (c *Cluster) scheduleToCheckDiskRecoveryProgress() {
 }
 
 func (c *Cluster) checkDiskRecoveryProgress() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("checkDiskRecoveryProgress occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"checkDiskRecoveryProgress occurred panic")
+		}
+	}()
 	var diff float64
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)
@@ -52,13 +58,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.dpReplicaNum) {
 				continue
 			}
-			used := partition.Replicas[0].Used
-			for _, replica := range partition.Replicas {
-				tmpDiff := math.Abs(float64(replica.Used) - float64(used))
-				if tmpDiff > diff {
-					diff = tmpDiff
-				}
-			}
+			diff = partition.getMinus()
 			if diff < util.GB {
 				partition.isRecover = false
 				Warn(c.Name, fmt.Sprintf("clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))

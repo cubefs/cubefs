@@ -33,6 +33,8 @@ const (
 	NumberOfDataPartitionsToLoad        = "NumberOfDataPartitionsToLoad"
 	secondsToFreeDataPartitionAfterLoad = "secondsToFreeDataPartitionAfterLoad"
 	nodeSetCapacity                     = "nodeSetCap"
+	heartbeatPortKey                    = "heartbeatPort"
+	replicaPortKey                      = "replicaPort"
 )
 
 //default value
@@ -57,7 +59,7 @@ const (
 
 	defaultIntervalToAlarmMissingMetaPartition         = 10 * 60 // interval of checking if a replica is missing
 	defaultMetaPartitionMemUsageThreshold      float32 = 0.75    // memory usage threshold on a meta partition
-	defaultMaxMetaPartitionCountOnEachNode             = 100
+	defaultMaxMetaPartitionCountOnEachNode             = 10000
 	defaultReplicaNum                                  = 3
 )
 
@@ -78,6 +80,8 @@ type clusterConfig struct {
 	MetaNodeThreshold                   float32
 	peers                               []raftstore.PeerAddress
 	peerAddrs                           []string
+	heartbeatPort                       int64
+	replicaPort                         int64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

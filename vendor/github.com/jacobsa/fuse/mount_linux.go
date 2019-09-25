@@ -6,7 +6,10 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"syscall"
+
+	"github.com/jacobsa/fuse/internal/buffer"
 )
 
 // Begin the process of mounting at the given directory, returning a connection
@@ -36,6 +39,8 @@ func mount(
 
 	// Start fusermount, passing it a buffer in which to write stderr.
 	var stderr bytes.Buffer
+
+	cfg.Options["max_read"] = strconv.Itoa(buffer.MaxReadSize)
 
 	cmd := exec.Command(
 		"fusermount",

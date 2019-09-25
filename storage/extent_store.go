@@ -50,6 +50,8 @@ const (
 	MinExtentID              = 1024
 	DeleteTinyRecordSize     = 24
 	UpdateCrcInterval        = 600
+	RandomWriteType          = 2
+	AppendWriteType          = 1
 )
 
 var (
@@ -165,7 +167,6 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 	if err != nil {
 		return
 	}
-	go s.loopAutoComputeExtentCrc()
 	return
 }
 
@@ -208,6 +209,7 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 		file.Name = strconv.FormatUint(ei.FileID, 10)
 		file.Size = uint32(ei.Size)
 		file.Modified = ei.ModifyTime
+		file.Crc = 0
 		files = append(files, file)
 	}
 
@@ -284,7 +286,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 }
 
 // Write writes the given extent to the disk.
-func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, isUpdateSize bool, isSync bool) (err error) {
+func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, writeType int, isSync bool) (err error) {
 	var (
 		e  *Extent
 		ei *ExtentInfo
@@ -299,7 +301,7 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return err
 	}
-	err = e.Write(data, offset, size, crc, isUpdateSize, isSync, s.PersistenceBlockCrc, ei)
+	err = e.Write(data, offset, size, crc, writeType, isSync, s.PersistenceBlockCrc, ei)
 	if err != nil {
 		return err
 	}
@@ -581,12 +583,14 @@ func (s *ExtentStore) GetBrokenTinyExtent() (extentID uint64, err error) {
 	}
 }
 
-// StoreSize returns the size of the extent store
-func (s *ExtentStore) StoreSize() (totalSize uint64) {
+// StoreSizeExtentID returns the size of the extent store
+func (s *ExtentStore) StoreSizeExtentID(maxExtentID uint64) (totalSize uint64) {
 	extentInfos := make([]*ExtentInfo, 0)
 	s.eiMutex.RLock()
 	for _, extentInfo := range s.extentInfoMap {
-		extentInfos = append(extentInfos, extentInfo)
+		if extentInfo.FileID <= maxExtentID {
+			extentInfos = append(extentInfos, extentInfo)
+		}
 	}
 	s.eiMutex.RUnlock()
 	for _, extentInfo := range extentInfos {
@@ -594,6 +598,24 @@ func (s *ExtentStore) StoreSize() (totalSize uint64) {
 	}
 
 	return totalSize
+}
+
+// StoreSizeExtentID returns the size of the extent store
+func (s *ExtentStore) GetMaxExtentIDAndPartitionSize() (maxExtentID, totalSize uint64) {
+	extentInfos := make([]*ExtentInfo, 0)
+	s.eiMutex.RLock()
+	for _, extentInfo := range s.extentInfoMap {
+		extentInfos = append(extentInfos, extentInfo)
+	}
+	s.eiMutex.RUnlock()
+	for _, extentInfo := range extentInfos {
+		if extentInfo.FileID > maxExtentID {
+			maxExtentID = extentInfo.FileID
+		}
+		totalSize += extentInfo.Size
+	}
+
+	return maxExtentID, totalSize
 }
 
 func MarshalTinyExtent(extentID uint64, offset, size int64) (data []byte) {
@@ -626,10 +648,10 @@ func (s *ExtentStore) RecordTinyDelete(extentID uint64, offset, size, tinyDelete
 
 func (s *ExtentStore) ReadTinyDeleteRecords(offset, size int64, data []byte) (crc uint32, err error) {
 	_, err = s.tinyExtentDeleteFp.ReadAt(data[:size], offset)
-	if err != nil {
-		return
+	if err == nil || err == io.EOF {
+		err = nil
+		crc = crc32.ChecksumIEEE(data[:size])
 	}
-	crc = crc32.ChecksumIEEE(data[:size])
 	return
 }
 
@@ -647,12 +669,8 @@ func (s *ExtentStore) NextTinyDeleteFileOffset() (offset int64) {
 }
 
 func (s *ExtentStore) LoadTinyDeleteFileOffset() (offset int64) {
-	finfo, err := s.tinyExtentDeleteFp.Stat()
-	if err != nil {
-		return atomic.LoadInt64(&s.baseTinyDeleteOffset)
-	}
-	offset = finfo.Size()
-	return
+	return atomic.LoadInt64(&s.baseTinyDeleteOffset)
+
 }
 
 func (s *ExtentStore) getExtentKey(extent uint64) string {
@@ -744,20 +762,6 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Ext
 	return
 }
 
-func (s *ExtentStore) loopAutoComputeExtentCrc() {
-	go func() {
-		ticker := time.NewTicker(time.Minute)
-		for {
-			select {
-			case <-s.closeC:
-				return
-			case <-ticker.C:
-				s.autoComputeExtentCrc()
-			}
-		}
-	}()
-}
-
 func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
 	var blockCnt int
 	bcs = make([]*BlockCrc, 0)
@@ -785,7 +789,13 @@ func (arr ExtentInfoArr) Len() int           { return len(arr) }
 func (arr ExtentInfoArr) Less(i, j int) bool { return arr[i].FileID < arr[j].FileID }
 func (arr ExtentInfoArr) Swap(i, j int)      { arr[i], arr[j] = arr[j], arr[i] }
 
-func (s *ExtentStore) autoComputeExtentCrc() {
+func (s *ExtentStore) AutoComputeExtentCrc() {
+	defer func() {
+		if r := recover(); r != nil {
+			return
+		}
+	}()
+
 	extentInfos := make([]*ExtentInfo, 0)
 	deleteExtents := make([]*ExtentInfo, 0)
 	s.eiMutex.RLock()
@@ -812,9 +822,6 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 			continue
 		}
 		if !IsTinyExtent(ei.FileID) && time.Now().Unix()-ei.ModifyTime > UpdateCrcInterval && ei.IsDeleted == false && ei.Size > 0 {
-			if atomic.LoadUint32(&ei.Crc) == 0 {
-				continue
-			}
 			e, err := s.extentWithHeader(ei)
 			if err != nil {
 				continue
@@ -828,4 +835,77 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 		time.Sleep(time.Millisecond * 100)
 	}
 
+}
+
+func (s *ExtentStore) TinyExtentRecover(extentID uint64, offset, size int64, data []byte, crc uint32, isEmptyPacket bool) (err error) {
+	if !IsTinyExtent(extentID) {
+		return fmt.Errorf("extent %v not tinyExtent", extentID)
+	}
+
+	var (
+		e  *Extent
+		ei *ExtentInfo
+	)
+
+	s.eiMutex.RLock()
+	ei = s.extentInfoMap[extentID]
+	s.eiMutex.RUnlock()
+	if e, err = s.extentWithHeader(ei); err != nil {
+		return nil
+	}
+
+	if err = e.TinyExtentRecover(data, offset, size, crc, isEmptyPacket); err != nil {
+		return err
+	}
+	ei.UpdateExtentInfo(e, 0)
+
+	return nil
+}
+
+func (s *ExtentStore) TinyExtentGetFinfoSize(extentID uint64) (size uint64, err error) {
+	var (
+		e *Extent
+	)
+	if !IsTinyExtent(extentID) {
+		return 0, fmt.Errorf("unavali extent id (%v)", extentID)
+	}
+	s.eiMutex.RLock()
+	ei := s.extentInfoMap[extentID]
+	s.eiMutex.RUnlock()
+	if e, err = s.extentWithHeader(ei); err != nil {
+		return
+	}
+
+	finfo, err := e.file.Stat()
+	if err != nil {
+		return 0, err
+	}
+	size = uint64(finfo.Size())
+
+	return
+}
+
+func (s *ExtentStore) TinyExtentAvaliOffset(extentID uint64, offset int64) (newOffset, newEnd int64, err error) {
+	var e *Extent
+	if !IsTinyExtent(extentID) {
+		return 0, 0, fmt.Errorf("unavali extent(%v)", extentID)
+	}
+	s.eiMutex.RLock()
+	ei := s.extentInfoMap[extentID]
+	s.eiMutex.RUnlock()
+	if e, err = s.extentWithHeader(ei); err != nil {
+		return
+	}
+
+	defer func() {
+		if err != nil && strings.Contains(err.Error(), syscall.ENXIO.Error()) {
+			newOffset = e.dataSize
+			newEnd = e.dataSize
+			err = nil
+		}
+
+	}()
+	newOffset, newEnd, err = e.tinyExtentAvaliOffset(offset)
+
+	return
 }

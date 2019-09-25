@@ -26,7 +26,7 @@ const (
 const (
 	IntervalToUpdateReplica       = 600 // interval to update the replica
 	IntervalToUpdatePartitionSize = 60  // interval to update the partition size
-	NumOfFilesToRecoverInParallel = 7   // number of files to be recovered simultaneously
+	NumOfFilesToRecoverInParallel = 17  // number of files to be recovered simultaneously
 )
 
 // Network protocol
@@ -66,19 +66,12 @@ const (
 	ActionDeleteDataPartition        = "ActionDeleteDataPartition"
 	ActionStreamReadTinyDeleteRecord = "ActionStreamReadTinyDeleteRecord"
 	ActionSyncTinyDeleteRecord       = "ActionSyncTinyDeleteRecord"
+	ActionStreamReadTinyExtentRepair = "ActionStreamReadTinyExtentRepair"
 )
 
 // Apply the raft log operation. Currently we only have the random write operation.
 const (
-	opRandomWrite uint32 = iota
-	opRandomSyncWrite
-)
-
-const (
-	maxRetryCounts         = 10        // maximum number of retries for random writes
-	MinTinyExtentsToRepair = 10        // minimum number of tiny extents to repair
-	NumOfRaftLogsToRetain  = 100000    // Count of raft logs per data partition
-	MaxUnit64              = 1<<64 - 1 // Unit64 max value
+	MinTinyExtentsToRepair = 10 // minimum number of tiny extents to repair
 )
 
 // Tiny extent has been put back to store
@@ -97,15 +90,12 @@ const (
 )
 
 const (
-	NotUpdateSize = false
-	UpdateSize    = true
-)
-
-const (
 	BufferWrite = false
 )
 
 const (
-	MaxSyncTinyDeleteBufferSize = 2400000
-	MaxFullSyncTinyDeleteTime   = 60 * 2
+	EmptyResponse                      = 'E'
+	TinyExtentRepairReadResponseArgLen = 17
+	MaxSyncTinyDeleteBufferSize        = 2400000
+	MaxFullSyncTinyDeleteTime          = 3600 * 24
 )

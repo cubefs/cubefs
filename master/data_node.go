@@ -128,7 +128,7 @@ func (dataNode *DataNode) SelectNodeForWrite() {
 	dataNode.Carry = dataNode.Carry - 1.0
 }
 
-func (dataNode *DataNode) clear() {
+func (dataNode *DataNode) clean() {
 	dataNode.TaskManager.exitCh <- struct{}{}
 }
 

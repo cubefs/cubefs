@@ -31,6 +31,7 @@ const (
 	volCapacityKey        = "capacity"
 	volOwnerKey           = "owner"
 	volAuthKey            = "authKey"
+	replicaNumKey         = "replicaNum"
 )
 
 const (
@@ -60,7 +61,7 @@ const (
 	defaultMaxInitMetaPartitionCount             = 100
 	defaultMaxMetaPartitionInodeID        uint64 = 1<<63 - 1
 	defaultMetaPartitionInodeIDStep       uint64 = 1 << 24
-	defaultMetaNodeReservedMem            uint64 = 1 << 32
+	defaultMetaNodeReservedMem            uint64 = 1 << 30
 	runtimeStackBufSize                          = 4096
 	spaceAvailableRate                           = 0.90
 	defaultNodeSetCapacity                       = 18
@@ -99,6 +100,7 @@ const (
 	opSyncDeleteMetaPartition  uint32 = 0x11
 	opSyncAddNodeSet           uint32 = 0x12
 	opSyncUpdateNodeSet        uint32 = 0x13
+	opSyncBatchPut             uint32 = 0x14
 )
 
 const (

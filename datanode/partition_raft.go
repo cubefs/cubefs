@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
@@ -90,7 +91,7 @@ func (dp *DataPartition) StartRaft() (err error) {
 		}
 		peers = append(peers, rp)
 	}
-	log.LogDebugf("start partition=%v raft peers: %s path: %s",
+	log.LogDebugf("start partition(%v) raft peers: %s path: %s",
 		dp.partitionID, peers, dp.path)
 	pc := &raftstore.PartitionConfig{
 		ID:      uint64(dp.partitionID),
@@ -107,7 +108,7 @@ func (dp *DataPartition) StartRaft() (err error) {
 
 func (dp *DataPartition) stopRaft() {
 	if dp.raftPartition != nil {
-		log.LogErrorf("[FATAL] stop raft partition=%v", dp.partitionID)
+		log.LogErrorf("[FATAL] stop raft partition(%v)", dp.partitionID)
 		dp.raftPartition.Stop()
 		dp.raftPartition = nil
 	}
@@ -125,46 +126,46 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 
 	log.LogDebugf("[startSchedule] hello DataPartition schedule")
 
-	go func(stopC chan bool) {
-		for {
-			select {
-			case <-stopC:
-				log.LogDebugf("[startSchedule] stop partition=%v", dp.partitionID)
-				getAppliedIDTimer.Stop()
-				truncateRaftLogTimer.Stop()
-				storeAppliedIDTimer.Stop()
-				return
+	for {
+		select {
+		case <-dp.stopC:
+			log.LogDebugf("[startSchedule] stop partition(%v)", dp.partitionID)
+			getAppliedIDTimer.Stop()
+			truncateRaftLogTimer.Stop()
+			storeAppliedIDTimer.Stop()
+			return
 
-			case extentID := <-dp.stopRaftC:
-				dp.stopRaft()
-				log.LogErrorf("action[ExtentRepair] stop raft partition=%v_%v", dp.partitionID, extentID)
+		case extentID := <-dp.stopRaftC:
+			dp.stopRaft()
+			log.LogErrorf("action[ExtentRepair] stop raft partition(%v)_%v", dp.partitionID, extentID)
 
-			case <-getAppliedIDTimer.C:
-				if dp.raftPartition != nil {
-					go dp.updateMaxMinAppliedID()
-				}
-				getAppliedIDTimer.Reset(time.Minute * 1)
-
-			case <-truncateRaftLogTimer.C:
-				if dp.raftPartition == nil {
-					break
-				}
-
-				if dp.minAppliedID > dp.lastTruncateID { // Has changed
-					go dp.raftPartition.Truncate(dp.minAppliedID)
-					dp.lastTruncateID = dp.minAppliedID
-				}
-				truncateRaftLogTimer.Reset(time.Minute * 10)
-
-			case <-storeAppliedIDTimer.C:
-				if err := dp.storeAppliedID(dp.appliedID); err != nil {
-					err = errors.NewErrorf("[startSchedule]: dump partition=%d: %v", dp.config.PartitionID, err.Error())
-					log.LogErrorf(err.Error())
-				}
-				storeAppliedIDTimer.Reset(time.Second * 10)
+		case <-getAppliedIDTimer.C:
+			if dp.raftPartition != nil {
+				dp.updateMaxMinAppliedID()
 			}
+			getAppliedIDTimer.Reset(time.Minute * 1)
+
+		case <-truncateRaftLogTimer.C:
+			if dp.raftPartition == nil {
+				break
+			}
+
+			if dp.minAppliedID > dp.lastTruncateID { // Has changed
+				dp.raftPartition.Truncate(dp.minAppliedID)
+				dp.lastTruncateID = dp.minAppliedID
+				dp.PersistMetadata()
+				log.LogInfof("PartitionID(%v) truncated RaftLog to (%v)", dp.partitionID, dp.minAppliedID)
+			}
+			truncateRaftLogTimer.Reset(time.Minute)
+
+		case <-storeAppliedIDTimer.C:
+			if err := dp.storeAppliedID(dp.appliedID); err != nil {
+				err = errors.NewErrorf("[startSchedule]: dump partition=%d: %v", dp.config.PartitionID, err.Error())
+				log.LogErrorf(err.Error())
+			}
+			storeAppliedIDTimer.Reset(time.Second * 10)
 		}
-	}(dp.stopC)
+	}
 }
 
 // StartRaftAfterRepair starts the raft after repairing a partition.
@@ -173,20 +174,22 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 // The repair task can be done in statusUpdateScheduler->LaunchRepair.
 func (dp *DataPartition) StartRaftAfterRepair() {
 	var (
-		partitionSize uint64 = 0
-		err           error
+		initPartitionSize, initMaxExtentID uint64
+		currLeaderPartitionSize            uint64
+		err                                error
 	)
 	timer := time.NewTimer(0)
 	for {
 		select {
 		case <-timer.C:
+			err = nil
 			if dp.isLeader { // primary does not need to wait repair
 				if err := dp.StartRaft(); err != nil {
-					log.LogErrorf("partitionID[%v] leader start raft err[%v].", dp.partitionID, err)
+					log.LogErrorf("PartitionID(%v) leader start raft err(%v).", dp.partitionID, err)
 					timer.Reset(5 * time.Second)
 					continue
 				}
-				log.LogDebugf("partitionID[%v] leader started.", dp.partitionID)
+				log.LogDebugf("PartitionID(%v) leader started.", dp.partitionID)
 				return
 			}
 
@@ -195,31 +198,47 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 				timer.Reset(5 * time.Second)
 				continue
 			}
-
-			// get the partition size from the primary and compare it with the local one
-			if partitionSize == 0 {
-				partitionSize, err = dp.getPartitionSize()
-				if err != nil {
-					log.LogErrorf("partitionID[%v] get leader size err[%v]", dp.partitionID, err)
-					timer.Reset(5 * time.Second)
-					continue
-				}
+			if initMaxExtentID == 0 || initPartitionSize == 0 {
+				initMaxExtentID, initPartitionSize, err = dp.getLeaderMaxExtentIDAndPartitionSize()
 			}
 
-			localSize := dp.extentStore.StoreSize()
-			if partitionSize > localSize {
-				log.LogErrorf("partitionID[%v] leader size[%v] local size[%v]", dp.partitionID, partitionSize, localSize)
+			if err != nil {
+				log.LogErrorf("PartitionID(%v) get MaxExtentID  err(%v)", dp.partitionID, err)
+				timer.Reset(5 * time.Second)
+				continue
+			}
+
+			// get the partition size from the primary and compare it with the loparal one
+			currLeaderPartitionSize, err = dp.getLeaderPartitionSize(initMaxExtentID)
+			if err != nil {
+				log.LogErrorf("PartitionID(%v) get leader size err(%v)", dp.partitionID, err)
+				timer.Reset(5 * time.Second)
+				continue
+			}
+
+			if currLeaderPartitionSize < initPartitionSize {
+				initPartitionSize = currLeaderPartitionSize
+			}
+			localSize := dp.extentStore.StoreSizeExtentID(initMaxExtentID)
+
+			log.LogInfof("StartRaftAfterRepair PartitionID(%v) initMaxExtentID(%v) initPartitionSize(%v) currLeaderPartitionSize(%v)"+
+				"localSize(%v)", dp.partitionID, initMaxExtentID, initPartitionSize, currLeaderPartitionSize, localSize)
+
+			if initPartitionSize > localSize {
+				log.LogErrorf("PartitionID(%v) leader size(%v) local size(%v) wait snapshot recover", dp.partitionID, initPartitionSize, localSize)
 				timer.Reset(5 * time.Second)
 				continue
 			}
 
 			// start raft
+			dp.DataPartitionCreateType = proto.NormalCreateDataPartition
+			dp.PersistMetadata()
 			if err := dp.StartRaft(); err != nil {
-				log.LogErrorf("partitionID[%v] start raft err[%v]. Retry after 20s.", dp.partitionID, err)
+				log.LogErrorf("PartitionID(%v) start raft err(%v). Retry after 20s.", dp.partitionID, err)
 				timer.Reset(5 * time.Second)
 				continue
 			}
-			log.LogDebugf("partitionID[%v] raft started.", dp.partitionID)
+			log.LogInfof("PartitionID(%v) raft started.", dp.partitionID)
 			return
 		case <-dp.stopC:
 			timer.Stop()
@@ -249,6 +268,9 @@ func (dp *DataPartition) addRaftNode(req *proto.DataPartitionDecommissionRequest
 	if !isUpdated {
 		return
 	}
+	data, _ := json.Marshal(req)
+	log.LogInfof("AddRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) Start Remove Self ",
+		req.PartitionId, dp.config.NodeID, string(data))
 	dp.config.Peers = append(dp.config.Peers, req.AddPeer)
 	addr := strings.Split(req.AddPeer.Addr, ":")[0]
 	dp.config.RaftStore.AddNodeWithPort(req.AddPeer.ID, addr, heartbeatPort, replicaPort)
@@ -258,6 +280,8 @@ func (dp *DataPartition) addRaftNode(req *proto.DataPartitionDecommissionRequest
 // Delete a raft node.
 func (dp *DataPartition) removeRaftNode(req *proto.DataPartitionDecommissionRequest, index uint64) (isUpdated bool, err error) {
 	peerIndex := -1
+	data, _ := json.Marshal(req)
+	log.LogInfof("RemoveRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) ", req.PartitionId, dp.config.NodeID, string(data))
 	for i, peer := range dp.config.Peers {
 		if peer.ID == req.RemovePeer.ID {
 			isUpdated = true
@@ -279,16 +303,19 @@ func (dp *DataPartition) removeRaftNode(req *proto.DataPartitionDecommissionRequ
 					dp.raftPartition.Delete()
 				}
 				dp.Disk().space.DeletePartition(dp.partitionID)
-				log.LogDebugf("[removeRaftNode]: remove self end.")
+				log.LogInfof("RemoveRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) Fininsh Remove Self ",
+					req.PartitionId, dp.config.NodeID, string(data))
 				return
 			}
 		}(index)
 		isUpdated = false
-		log.LogDebugf("[removeRaftNode]: begin remove self.")
+		log.LogInfof("RemoveRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) Start Remove Self ",
+			req.PartitionId, dp.config.NodeID, string(data))
 		return
 	}
 	dp.config.Peers = append(dp.config.Peers[:peerIndex], dp.config.Peers[peerIndex+1:]...)
-	log.LogDebugf("[removeRaftNode]: remove peer.")
+	log.LogInfof("RemoveRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) Start Remove Self ",
+		req.PartitionId, dp.config.NodeID, string(data))
 	return
 }
 
@@ -354,13 +381,13 @@ func (dp *DataPartition) GetAppliedID() (id uint64) {
 func (s *DataNode) parseRaftConfig(cfg *config.Config) (err error) {
 	s.raftDir = cfg.GetString(ConfigKeyRaftDir)
 	if s.raftDir == "" {
-		s.raftDir = DefaultRaftDir
+		return fmt.Errorf("bad raftDir config")
 	}
 	s.raftHeartbeat = cfg.GetString(ConfigKeyRaftHeartbeat)
 	s.raftReplica = cfg.GetString(ConfigKeyRaftReplica)
-	log.LogDebugf("[parseRaftConfig] load raftDir[%v].", s.raftDir)
-	log.LogDebugf("[parseRaftConfig] load raftHearbeat[%v].", s.raftHeartbeat)
-	log.LogDebugf("[parseRaftConfig] load raftReplica[%v].", s.raftReplica)
+	log.LogDebugf("[parseRaftConfig] load raftDir(%v).", s.raftDir)
+	log.LogDebugf("[parseRaftConfig] load raftHearbeat(%v).", s.raftHeartbeat)
+	log.LogDebugf("[parseRaftConfig] load raftReplica(%v).", s.raftReplica)
 	return
 }
 
@@ -372,7 +399,7 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 	if _, err = os.Stat(s.raftDir); err != nil {
 		if err = os.MkdirAll(s.raftDir, 0755); err != nil {
 			err = errors.NewErrorf("create raft server dir: %s", err.Error())
-			log.LogErrorf("action[startRaftServer] cannot start raft server err[%v]", err)
+			log.LogErrorf("action[startRaftServer] cannot start raft server err(%v)", err)
 			return
 		}
 	}
@@ -399,7 +426,7 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 	s.raftStore, err = raftstore.NewRaftStore(raftConf)
 	if err != nil {
 		err = errors.NewErrorf("new raftStore: %s", err.Error())
-		log.LogErrorf("action[startRaftServer] cannot start raft server err[%v]", err)
+		log.LogErrorf("action[startRaftServer] cannot start raft server err(%v)", err)
 	}
 
 	return
@@ -444,6 +471,16 @@ func NewPacketToGetPartitionSize(partitionID uint64) (p *repl.Packet) {
 	return
 }
 
+// NewPacketToGetPartitionSize returns a new packet to get the partition size.
+func NewPacketToGetMaxExtentIDAndPartitionSIze(partitionID uint64) (p *repl.Packet) {
+	p = new(repl.Packet)
+	p.Opcode = proto.OpGetMaxExtentIDAndPartitionSize
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.ReqID = proto.GenerateRequestID()
+	return
+}
+
 func (dp *DataPartition) findMinAppliedID(allAppliedIDs []uint64) (minAppliedID uint64, index int) {
 	index = 0
 	minAppliedID = allAppliedIDs[0]
@@ -467,37 +504,75 @@ func (dp *DataPartition) findMaxAppliedID(allAppliedIDs []uint64) (maxAppliedID 
 }
 
 // Get the partition size from the leader.
-func (dp *DataPartition) getPartitionSize() (size uint64, err error) {
+func (dp *DataPartition) getLeaderPartitionSize(maxExtentID uint64) (size uint64, err error) {
 	var (
 		conn *net.TCPConn
 	)
 
 	p := NewPacketToGetPartitionSize(dp.partitionID)
-
+	p.ExtentID = maxExtentID
 	target := dp.replicas[0]
 	conn, err = gConnPool.GetConnect(target) //get remote connect
 	if err != nil {
-		err = errors.Trace(err, " partition=%v get host[%v] connect", dp.partitionID, target)
+		err = errors.Trace(err, " partition(%v) get host(%v) connect", dp.partitionID, target)
 		return
 	}
 	defer gConnPool.PutConnect(conn, true)
 	err = p.WriteToConn(conn) // write command to the remote host
 	if err != nil {
-		err = errors.Trace(err, "partition=%v write to host[%v]", dp.partitionID, target)
+		err = errors.Trace(err, "partition(%v) write to host(%v)", dp.partitionID, target)
 		return
 	}
 	err = p.ReadFromConn(conn, 60)
 	if err != nil {
-		err = errors.Trace(err, "partition=%v read from host[%v]", dp.partitionID, target)
+		err = errors.Trace(err, "partition(%v) read from host(%v)", dp.partitionID, target)
 		return
 	}
 
 	if p.ResultCode != proto.OpOk {
-		err = errors.Trace(err, "partition=%v result code not ok [%v] from host[%v]", dp.partitionID, p.ResultCode, target)
+		err = errors.Trace(err, "partition(%v) result code not ok (%v) from host(%v)", dp.partitionID, p.ResultCode, target)
 		return
 	}
 	size = binary.BigEndian.Uint64(p.Data)
-	log.LogDebugf("partition=%v size=%v", dp.partitionID, size)
+	log.LogInfof("partition(%v) MaxExtentID(%v) size(%v)", dp.partitionID, maxExtentID, size)
+
+	return
+}
+
+// Get the MaxExtentID partition  from the leader.
+func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize() (maxExtentID, PartitionSize uint64, err error) {
+	var (
+		conn *net.TCPConn
+	)
+
+	p := NewPacketToGetMaxExtentIDAndPartitionSIze(dp.partitionID)
+
+	target := dp.replicas[0]
+	conn, err = gConnPool.GetConnect(target) //get remote connect
+	if err != nil {
+		err = errors.Trace(err, " partition(%v) get host(%v) connect", dp.partitionID, target)
+		return
+	}
+	defer gConnPool.PutConnect(conn, true)
+	err = p.WriteToConn(conn) // write command to the remote host
+	if err != nil {
+		err = errors.Trace(err, "partition(%v) write to host(%v)", dp.partitionID, target)
+		return
+	}
+	err = p.ReadFromConn(conn, 60)
+	if err != nil {
+		err = errors.Trace(err, "partition(%v) read from host(%v)", dp.partitionID, target)
+		return
+	}
+
+	if p.ResultCode != proto.OpOk {
+		err = errors.Trace(err, "partition(%v) result code not ok (%v) from host(%v)", dp.partitionID, p.ResultCode, target)
+		return
+	}
+	maxExtentID = binary.BigEndian.Uint64(p.Data[0:8])
+	PartitionSize = binary.BigEndian.Uint64(p.Data[8:16])
+
+	log.LogInfof("partition(%v) maxExtentID(%v) PartitionSize(%v) on leader", dp.partitionID, maxExtentID, PartitionSize)
 
 	return
 }
@@ -508,7 +583,7 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) 
 		replicaHostParts := strings.Split(dp.replicas[i], ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
-			log.LogDebugf("partition=%v local no send msg. localIP[%v] replicaHost[%v] appliedId[%v]",
+			log.LogDebugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
 				dp.partitionID, LocalIP, replicaHost, dp.appliedID)
 			dp.minAppliedID = minAppliedID
 			continue
@@ -530,35 +605,7 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) 
 		}
 		gConnPool.PutConnect(conn, true)
 
-		log.LogDebugf("partition=%v minAppliedID=%v", dp.partitionID, minAppliedID)
-	}
-
-	return
-}
-
-// Get other replica applied ids except self
-func (dp *DataPartition) getOtherAppliedID() (appliedIDList []uint64) {
-	appliedIDList = make([]uint64, 0)
-	for i := 0; i < len(dp.replicas); i++ {
-		p := NewPacketToGetAppliedID(dp.partitionID)
-		replicaHostParts := strings.Split(dp.replicas[i], ":")
-		replicaHost := strings.TrimSpace(replicaHostParts[0])
-		if LocalIP == replicaHost {
-			log.LogDebugf("partition=%v localIP[%v] replicaHost[%v] appliedId[%v]",
-				dp.partitionID, LocalIP, replicaHost, dp.appliedID)
-			continue
-		}
-		target := dp.replicas[i]
-		appliedID, err := dp.getRemoteAppliedID(target, p)
-		if err != nil {
-			log.LogErrorf("partition=%v getRemoteAppliedID from[%v] Failed.", dp.partitionID, target)
-			continue
-		}
-		if appliedID == 0 {
-			log.LogDebugf("[getOtherAppliedID] partition=%v local appliedID[%v] replicaHost[%v] appliedID=0",
-				dp.partitionID, dp.appliedID, replicaHost)
-		}
-		appliedIDList = append(appliedIDList, appliedID)
+		log.LogDebugf("partition(%v) minAppliedID(%v)", dp.partitionID, minAppliedID)
 	}
 
 	return
@@ -572,7 +619,7 @@ func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyN
 		replicaHostParts := strings.Split(dp.replicas[i], ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
-			log.LogDebugf("partition=%v local no send msg. localIP[%v] replicaHost[%v] appliedId[%v]",
+			log.LogDebugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
 				dp.partitionID, LocalIP, replicaHost, dp.appliedID)
 			allAppliedID[i] = dp.appliedID
 			replyNum++
@@ -581,11 +628,11 @@ func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyN
 		target := dp.replicas[i]
 		appliedID, err := dp.getRemoteAppliedID(target, p)
 		if err != nil {
-			log.LogErrorf("partition=%v getRemoteAppliedID from[%v] Failed.", dp.partitionID, target)
+			log.LogErrorf("partition(%v) getRemoteAppliedID from(%v) Failed.", dp.partitionID, target)
 			continue
 		}
 		if appliedID == 0 {
-			log.LogDebugf("[getAllReplicaAppliedID] partition=%v local appliedID[%v] replicaHost[%v] appliedID=0",
+			log.LogDebugf("[getAllReplicaAppliedID] partition(%v) local appliedID(%v) replicaHost(%v) appliedID=0",
 				dp.partitionID, dp.appliedID, replicaHost)
 		}
 		allAppliedID[i] = appliedID
@@ -612,12 +659,12 @@ func (dp *DataPartition) getRemoteAppliedID(target string, p *repl.Packet) (appl
 		return
 	}
 	if p.ResultCode != proto.OpOk {
-		err = errors.NewErrorf("partition=%v result code not ok [%v] from host[%v]", dp.partitionID, p.ResultCode, target)
+		err = errors.NewErrorf("partition(%v) result code not ok (%v) from host(%v)", dp.partitionID, p.ResultCode, target)
 		return
 	}
 	appliedID = binary.BigEndian.Uint64(p.Data)
 
-	log.LogDebugf("[getRemoteAppliedID] partition=%v remoteAppliedID=%v", dp.partitionID, appliedID)
+	log.LogDebugf("[getRemoteAppliedID] partition(%v) remoteAppliedID(%v)", dp.partitionID, appliedID)
 
 	return
 }
@@ -642,18 +689,18 @@ func (dp *DataPartition) updateMaxMinAppliedID() {
 
 	allAppliedID, replyNum := dp.getAllReplicaAppliedID()
 	if replyNum == 0 {
-		log.LogDebugf("[updateMaxMinAppliedID] partitionID=%v Get appliedId failed!", dp.partitionID)
+		log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) Get appliedId failed!", dp.partitionID)
 		return
 	}
 	if replyNum == uint8(len(allAppliedID)) { // update dp.minAppliedID when every member had replied
 		minAppliedID, _ = dp.findMinAppliedID(allAppliedID)
-		log.LogDebugf("[updateMaxMinAppliedID] partitionID=%v localID=%v OK! oldMinID=%v newMinID=%v",
-			dp.partitionID, dp.appliedID, dp.minAppliedID, minAppliedID)
+		log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) localID(%v) OK! oldMinID(%v) newMinID(%v) allAppliedID(%v)",
+			dp.partitionID, dp.appliedID, dp.minAppliedID, minAppliedID, allAppliedID)
 		dp.broadcastMinAppliedID(minAppliedID)
 	}
 
 	maxAppliedID, _ = dp.findMaxAppliedID(allAppliedID)
-	log.LogDebugf("[updateMaxMinAppliedID] partitionID=%v localID=%v OK! oldMaxID=%v newMaxID=%v",
+	log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) localID(%v) OK! oldMaxID(%v) newMaxID(%v)",
 		dp.partitionID, dp.appliedID, dp.maxAppliedID, maxAppliedID)
 	dp.maxAppliedID = maxAppliedID
 

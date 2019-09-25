@@ -42,19 +42,19 @@ func NewFileSystem() (fs *ForgetFS) {
 	// Set up the actual file system.
 	impl := &fsImpl{
 		inodes: map[fuseops.InodeID]*inode{
-			cannedID_Root: &inode{
+			cannedID_Root: {
 				attributes: fuseops.InodeAttributes{
 					Nlink: 1,
 					Mode:  0777 | os.ModeDir,
 				},
 			},
-			cannedID_Foo: &inode{
+			cannedID_Foo: {
 				attributes: fuseops.InodeAttributes{
 					Nlink: 1,
 					Mode:  0777,
 				},
 			},
-			cannedID_Bar: &inode{
+			cannedID_Bar: {
 				attributes: fuseops.InodeAttributes{
 					Nlink: 1,
 					Mode:  0777 | os.ModeDir,
@@ -184,7 +184,7 @@ func (in *inode) Destroy() {
 // LOCKS_REQUIRED(fs.mu)
 func (fs *fsImpl) checkInvariants() {
 	// INVARIANT: For each k in inodes, k < nextInodeID
-	for k, _ := range fs.inodes {
+	for k := range fs.inodes {
 		if !(k < fs.nextInodeID) {
 			panic("Unexpectedly large inode ID")
 		}

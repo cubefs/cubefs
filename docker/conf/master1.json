@@ -12,6 +12,5 @@
     "logLevel": "info",
     "logDir": "/cfs/log",
     "walDir": "/cfs/data/wal",
-    "warnLogDir":"/cfs/log",
     "storeDir": "/cfs/data/store"
 }
