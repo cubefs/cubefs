@@ -4,34 +4,23 @@ Here we draft the engineering roadmap of ChubaoFS
 
 ## Performance Optimization
 
-Parallel raft
-
-RDMA
-
-DPDK
-
+- RDMA
+- DPDK
 
 ## Kubernetes Integration
 
-Persistent Volume
+- CSI driver
+- Operator
 
 
-## API enhancement
+## API Enhancement
 
-1, S3 interface
+- A subset of S3 APIs
+- NFSv4
 
-2, Standalone REST API for namespaceless objects
+## Database and Bigdata services on ChubaoFS
 
-
-## Database services on ChubaoFS
-
-1, HBase (Done)
-
-2, Elasticsearch (Done) 
-
-3, MySQL (still need performance tuning)
-
-
-## Linux Kernel Client
-
-WIP
+- HBase (Done)
+- Elasticsearch (Done)
+- Spark (WIP)
+- MySQL (still need performance tuning)
