@@ -5,17 +5,17 @@ Here we draft the engineering roadmap of ChubaoFS
 ## Performance Optimization
 
 - RDMA
-- DPDK (WIP)
+- DPDK
 
 ## Kubernetes Integration
 
-- CSI driver (Done)
+- CSI driver
 - Operator
 
 
 ## API Enhancement
 
-- A subset of S3 APIs (WIP)
+- A subset of S3 APIs
 - NFSv4
 
 ## Database and Bigdata services on ChubaoFS
