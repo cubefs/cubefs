@@ -96,11 +96,7 @@ Reference to cite when you use the system in a research paper or tech report:
 
 Haifeng Liu, et al., CFS: A Distributed File System for Large Scale Container Platforms. SIGMOD‘19, June 30-July 5, 2019, Amsterdam, Netherlands. https://dl.acm.org/citation.cfm?doid=3299869.3314046
 
-## Community
 
-* Twitter: [@ChubaoFS](https://twitter.com/ChubaoFS)
-* Mailing list: chubaofs-maintainers@groups.io 
-* Slack: [chubaofs.slack.com](https://chubaofs.slack.com/)
 
 
 
