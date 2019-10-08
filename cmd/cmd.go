@@ -136,7 +136,12 @@ func main() {
 	 * Must notify the parent process through SignalOutcome anyway.
 	 */
 
-	cfg := config.LoadConfigFile(*configFile)
+	cfg, err := config.LoadConfigFile(*configFile)
+	if err != nil {
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+
 	role := cfg.GetString(ConfigKeyRole)
 	logDir := cfg.GetString(ConfigKeyLogDir)
 	logLevel := cfg.GetString(ConfigKeyLogLevel)
@@ -180,7 +185,7 @@ func main() {
 		level = log.ErrorLevel
 	}
 
-	_, err := log.InitLog(logDir, module, level, nil)
+	_, err = log.InitLog(logDir, module, level, nil)
 	if err != nil {
 		daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to init log - %v", err))
 		os.Exit(1)

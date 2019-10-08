@@ -98,7 +98,12 @@ func main() {
 	 * Must notify the parent process through SignalOutcome anyway.
 	 */
 
-	cfg := config.LoadConfigFile(*configFile)
+	cfg, err := config.LoadConfigFile(*configFile)
+	if err != nil {
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+
 	opt, err := parseMountOption(cfg)
 	if err != nil {
 		daemonize.SignalOutcome(err)
