@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -102,64 +103,59 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
-	resp := NewAPIResponse(http.StatusBadRequest, "")
-	// when error returns we should scan (ascend) the tree.
-	shouldSkip := false
+	var err error
+
 	defer func() {
-		if !shouldSkip {
-			data, _ := resp.Marshal()
-			if _, err := w.Write(data); err != nil {
-				log.LogErrorf("[getAllInodesHandler] response %s", err)
+		if err != nil {
+			msg := fmt.Sprintf("[getAllInodesHandler] err(%v)", err)
+			if _, e := w.Write([]byte(msg)); e != nil {
+				log.LogErrorf("[getAllInodesHandler] failed to write response: err(%v) msg(%v)", e, msg)
 			}
 		}
 	}()
+
+	if err = r.ParseForm(); err != nil {
+		return
+	}
 	id, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
-		resp.Msg = err.Error()
 		return
 	}
 	mp, err := m.metadataManager.GetPartition(id)
 	if err != nil {
-		resp.Code = http.StatusNotFound
-		resp.Msg = err.Error()
 		return
 	}
 
-	shouldSkip = true
-	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":[`)
-	if _, err := w.Write(buff.Bytes()); err != nil {
-		return
-	}
-	buff.Reset()
-	var (
-		val         []byte
-		delimiter   = []byte{',', '\n'}
-		isFirstItem = true
-	)
+	var inode *Inode
+
 	f := func(i BtreeItem) bool {
-		if !isFirstItem {
-			if _, err = w.Write(delimiter); err != nil {
+		var (
+			data []byte
+			e    error
+		)
+
+		if inode != nil {
+			if _, e = w.Write([]byte("\n")); e != nil {
+				log.LogErrorf("[getAllInodesHandler] failed to write response: %v", e)
 				return false
 			}
-		} else {
-			isFirstItem = false
 		}
 
-		ino := i.(*Inode)
-		if val, err = ino.MarshalToJSON(); err != nil {
+		inode = i.(*Inode)
+		if data, e = inode.MarshalToJSON(); e != nil {
+			log.LogErrorf("[getAllInodesHandler] failed to marshal to json: %v", e)
 			return false
 		}
-		if _, err = w.Write(val); err != nil {
+
+		if _, e = w.Write(data); e != nil {
+			log.LogErrorf("[getAllInodesHandler] failed to write response: %v", e)
 			return false
 		}
+
 		return true
 	}
+
 	mp.GetInodeTree().Ascend(f)
-	buff.WriteString(`]}`)
-	if _, err = w.Write(buff.Bytes()); err != nil {
-		log.LogErrorf("[getAllInodesHandler] response %s", err)
-	}
 }
 
 func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
