@@ -23,7 +23,6 @@ import (
 	"net"
 	"os"
 	"path"
-	"runtime"
 	"sync"
 	"time"
 )
@@ -47,7 +46,6 @@ func (mp *metaPartition) startFreeList() (err error) {
 	go mp.updateVolWorker()
 
 	go mp.deleteWorker()
-	go mp.checkFreelistWorker()
 	mp.startToDeleteExtents()
 	return
 }
@@ -82,13 +80,12 @@ func (mp *metaPartition) deleteWorker() {
 		idx      int
 		isLeader bool
 	)
-	buffSlice := make([]*Inode, 0, BatchCounts)
-	var tempFileSlice []*Inode
+	buffSlice := make([]uint64, 0, BatchCounts)
 Begin:
-	time.Sleep(AsyncDeleteInterval)
 	for {
+		time.Sleep(AsyncDeleteInterval)
+		log.LogInfof("Start deleteWorker: partition(%v)", mp.config.PartitionId)
 		buffSlice = buffSlice[:0]
-		tempFileSlice = tempFileSlice[:0]
 		select {
 		case <-mp.stopC:
 			return
@@ -97,129 +94,79 @@ Begin:
 		if _, isLeader = mp.IsLeader(); !isLeader {
 			goto Begin
 		}
-		curTime := Now.GetCurrentTime().Unix()
 		for idx = 0; idx < BatchCounts; idx++ {
 			// batch get free inoded from the freeList
 			ino := mp.freeList.Pop()
-			if ino == nil {
+			if ino == 0 {
 				break
 			}
-			// this is orphan or temp inode, we should delay delete
-			if !ino.ShouldDelete() && ino.GetNLink() == 0 {
-				if (curTime-ino.ModifyTime) <= TempFileValidTime || (curTime-ino.AccessTime) <= TempFileValidTime || (curTime-ino.CreateTime) <= TempFileValidTime {
-					tempFileSlice = append(tempFileSlice, ino)
-					continue
-				}
-			}
 			buffSlice = append(buffSlice, ino)
+			log.LogInfof("deleteWorker: found an orphan inode: ino(%v)", ino)
 		}
-		for _, ino := range tempFileSlice {
-			mp.freeList.Push(ino)
-		}
-		mp.persistDeletedInodes(buffSlice...)
+		mp.persistDeletedInodes(buffSlice)
 		mp.deleteMarkedInodes(buffSlice)
-		if len(buffSlice)+len(tempFileSlice) < BatchCounts {
-			goto Begin
-		}
-		runtime.Gosched()
-	}
-}
-
-func (mp *metaPartition) checkFreelistWorker() {
-	var (
-		idx      int
-		isLeader bool
-	)
-	buffSlice := make([]*Inode, 0, BatchCounts)
-	for {
-		time.Sleep(time.Second)
-		buffSlice = buffSlice[:0]
-		select {
-		case <-mp.stopC:
-			return
-		default:
-		}
-		if _, isLeader = mp.IsLeader(); isLeader {
-			continue
-		}
-		for idx = 0; idx < BatchCounts; idx++ {
-			ino := mp.freeList.Pop()
-			if ino == nil {
-				break
-			}
-			buffSlice = append(buffSlice, ino)
-		}
-		if len(buffSlice) == 0 {
-			continue
-		}
-		for _, ino := range buffSlice {
-			if mp.internalHasInode(ino) {
-				mp.freeList.Push(ino)
-				continue
-			}
-			mp.persistDeletedInodes(ino)
-		}
-
+		log.LogInfof("Finish deleteWorker: partition(%v)", mp.config.PartitionId)
 	}
 }
 
 // Delete the marked inodes.
-func (mp *metaPartition) deleteMarkedInodes(inoSlice []*Inode) {
-	shouldCommit := make([]*Inode, 0, BatchCounts)
+func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
+
+	shouldCommit := make([]*Inode, 0, BatchCounts)
+
 	for _, ino := range inoSlice {
 		wg.Add(1)
-		i := ino
-		go func(ino *Inode) {
+
+		ref := &Inode{Inode: ino}
+		inode := mp.inodeTree.CopyGet(ref).(*Inode)
+
+		go func(i *Inode) {
 			defer wg.Done()
-			var reExt []*proto.ExtentKey
-			ino.Extents.Range(func(item BtreeItem) bool {
+
+			var dirtyExt []*proto.ExtentKey
+
+			i.Extents.Range(func(item BtreeItem) bool {
 				ext := item.(*proto.ExtentKey)
 				if err := mp.doDeleteMarkedInodes(ext); err != nil {
-					reExt = append(reExt, ext)
-					log.LogWarnf("[deleteMarkedInodes] delete failed extents: %s, err: %s", ext.String(), err.Error())
+					dirtyExt = append(dirtyExt, ext)
+					log.LogWarnf("[deleteMarkedInodes] delete failed extents: ino(%v) ext(%s), err(%s)", i.Inode, ext.String(), err.Error())
 				}
-				log.LogInfof("[deleteMarkedInodes] inode(%v) extent(%v)",ino.Inode,ext.String() )
+				log.LogInfof("[deleteMarkedInodes] inode(%v) extent(%v)", i.Inode, ext.String())
 				return true
 			})
-			if len(reExt) == 0 {
+			if len(dirtyExt) == 0 {
 				mu.Lock()
-				shouldCommit = append(shouldCommit, ino)
+				shouldCommit = append(shouldCommit, i)
 				mu.Unlock()
 			} else {
-				newIno := NewInode(ino.Inode, ino.Type)
-				for _, ext := range reExt {
-					newIno.Extents.Append(ext)
-				}
-				mp.freeList.Push(newIno)
+				mp.freeList.Push(i.Inode)
 			}
-		}(i)
+		}(inode)
 	}
+
 	wg.Wait()
-	mu.Lock()
-	cnt := len(shouldCommit)
-	mu.Unlock()
-	if cnt > 0 {
+
+	if len(shouldCommit) > 0 {
 		bufSlice := make([]byte, 0, 8*len(shouldCommit))
-		for _, ino := range shouldCommit {
-			bufSlice = append(bufSlice, ino.MarshalKey()...)
+		for _, inode := range shouldCommit {
+			bufSlice = append(bufSlice, inode.MarshalKey()...)
 		}
 		err := mp.syncToRaftFollowersFreeInode(bufSlice)
 		if err != nil {
-			for _, ino := range shouldCommit {
-				mp.freeList.Push(ino)
-			}
 			log.LogWarnf("[deleteInodeTreeOnRaftPeers] raft commit inode list: %v, "+
 				"response %s", shouldCommit, err.Error())
 		}
-		log.LogDebugf("[deleteInodeTree] inode list: %v", shouldCommit)
+		for _, inode := range shouldCommit {
+			if err == nil {
+				mp.internalDeleteInode(inode)
+			} else {
+				mp.freeList.Push(inode.Inode)
+			}
+		}
+		log.LogDebugf("[deleteInodeTree] inode list: %v , err(%v)", shouldCommit, err)
 	}
-
-}
-
-func (mp *metaPartition) freeInodesOnRaftFollower(inodes []byte) {
-
 }
 
 func (mp *metaPartition) syncToRaftFollowersFreeInode(hasDeleteInodes []byte) (err error) {
@@ -315,11 +262,10 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 	return
 }
 
-func (mp *metaPartition) persistDeletedInodes(inos ...*Inode) {
+func (mp *metaPartition) persistDeletedInodes(inos []uint64) {
 	for _, ino := range inos {
-		if _, err := mp.delInodeFp.Write(ino.MarshalKey()); err != nil {
-			log.LogWarnf("[persistDeletedInodes] failed store inode=%d", ino.Inode)
-			mp.freeList.Push(ino)
+		if _, err := mp.delInodeFp.WriteString(fmt.Sprintf("%v\n", ino)); err != nil {
+			log.LogWarnf("[persistDeletedInodes] failed store ino=%v", ino)
 		}
 	}
 }

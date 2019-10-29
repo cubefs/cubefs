@@ -128,14 +128,6 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 	}
 
 	inode.DecNLink()
-
-	if !proto.IsDir(inode.Type) {
-		if inode.IsTempFile() {
-			mp.freeList.Push(inode)
-		}
-		return
-	}
-
 	return
 }
 
@@ -165,6 +157,7 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 
 func (mp *metaPartition) internalDeleteInode(ino *Inode) {
 	mp.inodeTree.Delete(ino)
+	mp.freeList.Remove(ino.Inode)
 	return
 }
 
@@ -248,6 +241,7 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 
 	if i.IsTempFile() {
 		i.SetDeleteMark()
+		mp.freeList.Push(i.Inode)
 	}
 	return
 }
@@ -257,7 +251,7 @@ func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 		return
 	}
 	if ino.ShouldDelete() {
-		mp.freeList.Push(ino)
+		mp.freeList.Push(ino.Inode)
 	}
 }
 
