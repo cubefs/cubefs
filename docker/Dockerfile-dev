@@ -1,0 +1,10 @@
+FROM chubaofs/cfs-base:1.0
+
+RUN echo "deb http://deb.debian.org/debian stretch-backports main" >> /etc/apt/sources.list \
+        && apt-get update
+
+RUN apt install -y less net-tools sysstat \
+        && rm -rf /var/lib/apt/lists/* \
+        && apt clean
+
+RUN echo "alias ll='ls -la'" >> /root/.bashrc
