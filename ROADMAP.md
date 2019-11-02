@@ -18,9 +18,5 @@ Here we draft the engineering roadmap of ChubaoFS
 - A subset of S3 APIs
 - NFSv4
 
-## Database and Bigdata services on ChubaoFS
+## DataLake
 
-- HBase (Done)
-- Elasticsearch (Done)
-- Spark (WIP)
-- MySQL (still need performance tuning)
