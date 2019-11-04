@@ -226,7 +226,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	mps := vol.cloneMetaPartitionMap()
 	for _, mp := range mps {
 
-		mp.checkStatus(true, int(vol.mpReplicaNum), maxPartitionID)
+		mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID)
 		mp.checkLeader()
 		mp.checkReplicaNum(c, vol.Name, vol.mpReplicaNum)
 		mp.checkEnd(c, maxPartitionID)
@@ -600,7 +600,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		wg          sync.WaitGroup
 	)
 	errChannel := make(chan error, vol.mpReplicaNum)
-	if hosts, peers, err = c.chooseTargetMetaHosts(int(vol.mpReplicaNum)); err != nil {
+	if hosts, peers, err = c.chooseTargetMetaHosts(nil, nil, int(vol.mpReplicaNum)); err != nil {
 		return nil, errors.NewError(err)
 	}
 	log.LogInfof("target meta hosts:%v,peers:%v", hosts, peers)

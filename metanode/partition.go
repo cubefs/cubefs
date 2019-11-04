@@ -22,15 +22,16 @@ import (
 	"sync/atomic"
 
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
-	"io/ioutil"
-	"os"
-	"path"
 )
 
 var (
@@ -150,6 +151,9 @@ type OpPartition interface {
 	DeletePartition() (err error)
 	UpdatePartition(req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error)
 	DeleteRaft() error
+	IsExsitPeer(peer proto.Peer) bool
+	TryToLeader(groupID uint64) error
+	CanRemoveRaftMember(peer proto.Peer) error
 }
 
 // MetaPartition defines the interface for the meta partition operations.
@@ -180,6 +184,7 @@ type metaPartition struct {
 	extDelCh      chan BtreeItem
 	extReset      chan struct{}
 	vol           *Vol
+	manager       *metadataManager
 }
 
 // Start starts a meta partition.
@@ -297,7 +302,7 @@ func (mp *metaPartition) startRaft() (err error) {
 func (mp *metaPartition) stopRaft() {
 	if mp.raftPartition != nil {
 		// TODO Unhandled errors
-		mp.raftPartition.Stop()
+		//mp.raftPartition.Stop()
 	}
 	return
 }
@@ -326,7 +331,7 @@ func (mp *metaPartition) getRaftPort() (heartbeat, replica int, err error) {
 }
 
 // NewMetaPartition creates a new meta partition with the specified configuration.
-func NewMetaPartition(conf *MetaPartitionConfig) MetaPartition {
+func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaPartition {
 	mp := &metaPartition{
 		config:     conf,
 		dentryTree: NewBtree(),
@@ -337,6 +342,7 @@ func NewMetaPartition(conf *MetaPartitionConfig) MetaPartition {
 		extDelCh:   make(chan BtreeItem, 10000),
 		extReset:   make(chan struct{}),
 		vol:        NewVol(),
+		manager:    manager,
 	}
 	return mp
 }
@@ -530,6 +536,19 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 func (mp *metaPartition) DecommissionPartition(req []byte) (err error) {
 	_, err = mp.Put(opFSMDecommissionPartition, req)
 	return
+}
+
+func (mp *metaPartition) IsExsitPeer(peer proto.Peer) bool {
+	for _, hasExsitPeer := range mp.config.Peers {
+		if hasExsitPeer.Addr == peer.Addr && hasExsitPeer.ID == peer.ID {
+			return true
+		}
+	}
+	return false
+}
+
+func (mp *metaPartition) TryToLeader(groupID uint64) error {
+	return mp.raftPartition.TryToLeader(groupID)
 }
 
 // LoadSnapshotSign loads the snapshot signature. TODO remove? no usage?

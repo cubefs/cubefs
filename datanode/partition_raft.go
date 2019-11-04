@@ -18,13 +18,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/chubaofs/chubaofs/repl"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
-	raftproto "github.com/tiglabs/raft/proto"
 	"io/ioutil"
 	"net"
 	"os"
@@ -32,6 +25,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/chubaofs/chubaofs/repl"
+	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
+	raftproto "github.com/tiglabs/raft/proto"
 )
 
 type dataPartitionCfg struct {
@@ -115,6 +116,32 @@ func (dp *DataPartition) stopRaft() {
 	return
 }
 
+func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer) error {
+	downReplicas := dp.config.RaftStore.RaftServer().GetDownReplicas(dp.partitionID)
+	hasExsit := false
+	for _, p := range dp.config.Peers {
+		if p.ID == peer.ID {
+			hasExsit = true
+			break
+		}
+	}
+	if !hasExsit {
+		return fmt.Errorf("peer(%v) not exsit downReplicas(%v)", peer, downReplicas)
+	}
+	sumReplicas := len(dp.config.Peers)
+	if sumReplicas%2 == 1 {
+		if sumReplicas-len(downReplicas) > (sumReplicas/2 + 1) {
+			return nil
+		}
+	} else {
+		if sumReplicas-len(downReplicas) >= (sumReplicas/2 + 1) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("downReplicas(%v) too much,so donnot offline (%v)", downReplicas, peer)
+}
+
 // StartRaftLoggingSchedule starts the task schedule as follows:
 // 1. write the raft applied id into disk.
 // 2. collect the applied ids from raft members.
@@ -194,7 +221,7 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 			}
 
 			// wait for dp.replicas to be updated
-			if len(dp.replicas) == 0 {
+			if dp.getReplicaLen() == 0 {
 				timer.Reset(5 * time.Second)
 				continue
 			}
@@ -272,6 +299,11 @@ func (dp *DataPartition) addRaftNode(req *proto.DataPartitionDecommissionRequest
 	log.LogInfof("AddRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) Start Remove Self ",
 		req.PartitionId, dp.config.NodeID, string(data))
 	dp.config.Peers = append(dp.config.Peers, req.AddPeer)
+	dp.config.Hosts = append(dp.config.Hosts, req.AddPeer.Addr)
+	dp.replicasLock.Lock()
+	dp.replicas = make([]string, len(dp.config.Hosts))
+	copy(dp.replicas, dp.config.Hosts)
+	dp.replicasLock.Unlock()
 	addr := strings.Split(req.AddPeer.Addr, ":")[0]
 	dp.config.RaftStore.AddNodeWithPort(req.AddPeer.ID, addr, heartbeatPort, replicaPort)
 	return
@@ -281,41 +313,40 @@ func (dp *DataPartition) addRaftNode(req *proto.DataPartitionDecommissionRequest
 func (dp *DataPartition) removeRaftNode(req *proto.DataPartitionDecommissionRequest, index uint64) (isUpdated bool, err error) {
 	peerIndex := -1
 	data, _ := json.Marshal(req)
-	log.LogInfof("RemoveRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) ", req.PartitionId, dp.config.NodeID, string(data))
+	isUpdated = false
+	log.LogInfof("Start RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+		req.PartitionId, dp.config.NodeID, string(data))
 	for i, peer := range dp.config.Peers {
 		if peer.ID == req.RemovePeer.ID {
-			isUpdated = true
 			peerIndex = i
+			isUpdated = true
 			break
 		}
 	}
 	if !isUpdated {
-		return
-	}
-	if req.RemovePeer.ID == dp.config.NodeID {
-		go func(index uint64) {
-			for {
-				time.Sleep(time.Millisecond)
-				if dp.raftPartition != nil {
-					if dp.raftPartition.AppliedIndex() < index {
-						continue
-					}
-					dp.raftPartition.Delete()
-				}
-				dp.Disk().space.DeletePartition(dp.partitionID)
-				log.LogInfof("RemoveRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) Fininsh Remove Self ",
-					req.PartitionId, dp.config.NodeID, string(data))
-				return
-			}
-		}(index)
-		isUpdated = false
-		log.LogInfof("RemoveRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) Start Remove Self ",
+		log.LogInfof("NoUpdate RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 			req.PartitionId, dp.config.NodeID, string(data))
 		return
 	}
+	hostIndex := -1
+	for index, host := range dp.config.Hosts {
+		if host == req.RemovePeer.Addr {
+			hostIndex = index
+			break
+		}
+	}
+	if hostIndex != -1 {
+		dp.config.Hosts = append(dp.config.Hosts[:hostIndex], dp.config.Hosts[hostIndex+1:]...)
+	}
 	dp.config.Peers = append(dp.config.Peers[:peerIndex], dp.config.Peers[peerIndex+1:]...)
-	log.LogInfof("RemoveRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) Start Remove Self ",
+	if dp.config.NodeID == req.RemovePeer.ID {
+		dp.raftPartition.Delete()
+		dp.Disk().space.DeletePartition(dp.partitionID)
+		isUpdated = false
+	}
+	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionId, dp.config.NodeID, string(data))
+
 	return
 }
 
@@ -511,7 +542,7 @@ func (dp *DataPartition) getLeaderPartitionSize(maxExtentID uint64) (size uint64
 
 	p := NewPacketToGetPartitionSize(dp.partitionID)
 	p.ExtentID = maxExtentID
-	target := dp.replicas[0]
+	target := dp.getReplicaAddr(0)
 	conn, err = gConnPool.GetConnect(target) //get remote connect
 	if err != nil {
 		err = errors.Trace(err, " partition(%v) get host(%v) connect", dp.partitionID, target)
@@ -547,7 +578,7 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize() (maxExtentID, Pa
 
 	p := NewPacketToGetMaxExtentIDAndPartitionSIze(dp.partitionID)
 
-	target := dp.replicas[0]
+	target := dp.getReplicaAddr(0)
 	conn, err = gConnPool.GetConnect(target) //get remote connect
 	if err != nil {
 		err = errors.Trace(err, " partition(%v) get host(%v) connect", dp.partitionID, target)
@@ -578,9 +609,9 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize() (maxExtentID, Pa
 }
 
 func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) {
-	for i := 0; i < len(dp.replicas); i++ {
+	for i := 0; i < dp.getReplicaLen(); i++ {
 		p := NewPacketToBroadcastMinAppliedID(dp.partitionID, minAppliedID)
-		replicaHostParts := strings.Split(dp.replicas[i], ":")
+		replicaHostParts := strings.Split(dp.getReplicaAddr(i), ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
 			log.LogDebugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
@@ -588,7 +619,7 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) 
 			dp.minAppliedID = minAppliedID
 			continue
 		}
-		target := dp.replicas[i]
+		target := dp.getReplicaAddr(i)
 		var conn *net.TCPConn
 		conn, err = gConnPool.GetConnect(target)
 		if err != nil {
@@ -613,10 +644,10 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) 
 
 // Get all replica applied ids
 func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyNum uint8) {
-	allAppliedID = make([]uint64, len(dp.replicas))
-	for i := 0; i < len(dp.replicas); i++ {
+	allAppliedID = make([]uint64, dp.getReplicaLen())
+	for i := 0; i < dp.getReplicaLen(); i++ {
 		p := NewPacketToGetAppliedID(dp.partitionID)
-		replicaHostParts := strings.Split(dp.replicas[i], ":")
+		replicaHostParts := strings.Split(dp.getReplicaAddr(i), ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
 			log.LogDebugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
@@ -625,10 +656,10 @@ func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyN
 			replyNum++
 			continue
 		}
-		target := dp.replicas[i]
+		target := dp.getReplicaAddr(i)
 		appliedID, err := dp.getRemoteAppliedID(target, p)
 		if err != nil {
-			log.LogErrorf("partition(%v) getRemoteAppliedID from(%v) Failed.", dp.partitionID, target)
+			log.LogErrorf("partition(%v) getRemoteAppliedID Failed(%v).", dp.partitionID, err)
 			continue
 		}
 		if appliedID == 0 {
@@ -645,6 +676,14 @@ func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyN
 // Get target members' applied id
 func (dp *DataPartition) getRemoteAppliedID(target string, p *repl.Packet) (appliedID uint64, err error) {
 	var conn *net.TCPConn
+	start := time.Now().UnixNano()
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf(p.LogMessage(p.GetOpMsg(), target, start, err))
+			log.LogErrorf(err.Error())
+		}
+	}()
+
 	conn, err = gConnPool.GetConnect(target)
 	if err != nil {
 		return

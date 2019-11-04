@@ -50,6 +50,7 @@ const (
 	MinExtentID              = 1024
 	DeleteTinyRecordSize     = 24
 	UpdateCrcInterval        = 600
+	RepairInterval			=60
 	RandomWriteType          = 2
 	AppendWriteType          = 1
 )
@@ -77,7 +78,7 @@ var (
 	NormalExtentFilter = func() ExtentFilter {
 		now := time.Now()
 		return func(ei *ExtentInfo) bool {
-			return !IsTinyExtent(ei.FileID) && now.Unix()-ei.ModifyTime > UpdateCrcInterval && ei.IsDeleted == false && ei.Size > 0
+			return !IsTinyExtent(ei.FileID) && now.Unix()-ei.ModifyTime > RepairInterval && ei.IsDeleted == false && ei.Size > 0
 		}
 	}
 
@@ -595,6 +596,9 @@ func (s *ExtentStore) StoreSizeExtentID(maxExtentID uint64) (totalSize uint64) {
 	s.eiMutex.RUnlock()
 	for _, extentInfo := range extentInfos {
 		totalSize += extentInfo.Size
+		if extentInfo.Size>util.BlockSize*util.BlockCount{
+			log.LogErrorf("file(%v) size too much (%v)",s.dataPath,extentInfo)
+		}
 	}
 
 	return totalSize

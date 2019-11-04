@@ -68,6 +68,10 @@ type Partition interface {
 
 	// Truncate raft log
 	Truncate(index uint64)
+
+	TryToLeader(nodeID uint64) error
+
+	IsOfflinePeer() bool
 }
 
 // Default implementation of the Partition interface.
@@ -96,6 +100,12 @@ func (p *partition) Stop() (err error) {
 	return
 }
 
+func (p *partition) TryToLeader(nodeID uint64) (err error) {
+	future := p.raft.TryToLeader(nodeID)
+	_, err = future.Response()
+	return
+}
+
 // Delete stops and deletes the partition.
 func (p *partition) Delete() (err error) {
 	if err = p.Stop(); err != nil {
@@ -115,6 +125,20 @@ func (p *partition) Status() (status *PartitionStatus) {
 func (p *partition) LeaderTerm() (leaderID, term uint64) {
 	leaderID, term = p.raft.LeaderTerm(p.id)
 	return
+}
+
+func (p *partition) IsOfflinePeer() bool {
+	status := p.Status()
+	active := 0
+	sumPeers := 0
+	for _, peer := range status.Replicas {
+		if peer.Active == true {
+			active++
+		}
+		sumPeers++
+	}
+
+	return active >= (int(sumPeers)/2 + 1)
 }
 
 // IsRaftLeader returns true if this node is the leader of the raft group it belongs to.
