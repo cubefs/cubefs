@@ -52,15 +52,18 @@ const (
 
 // Action description
 const (
-	ActionNotifyFollowerToRepair     = "ActionNotifyFollowerRepair"
-	ActionStreamRead                 = "ActionStreamRead"
-	ActionGetDataPartitionMetrics    = "ActionGetDataPartitionMetrics"
-	ActionCreateExtent               = "ActionCreateExtent:"
-	ActionMarkDelete                 = "ActionMarkDelete:"
-	ActionGetAllExtentWatermarks     = "ActionGetAllExtentWatermarks:"
-	ActionWrite                      = "ActionWrite:"
-	ActionRepair                     = "ActionRepair:"
-	ActionDecommissionPartition      = "ActionDecommissionPartition"
+	ActionNotifyFollowerToRepair        = "ActionNotifyFollowerRepair"
+	ActionStreamRead                    = "ActionStreamRead"
+	ActionCreateExtent                  = "ActionCreateExtent:"
+	ActionMarkDelete                    = "ActionMarkDelete:"
+	ActionGetAllExtentWatermarks        = "ActionGetAllExtentWatermarks:"
+	ActionWrite                         = "ActionWrite:"
+	ActionRepair                        = "ActionRepair:"
+	ActionDecommissionPartition         = "ActionDecommissionPartition"
+	ActionAddDataPartitionRaftMember    = "ActionAddDataPartitionRaftMember"
+	ActionRemoveDataPartitionRaftMember = "ActionRemoveDataPartitionRaftMember"
+	ActionDataPartitionTryToLeader      = "ActionDataPartitionTryToLeader"
+
 	ActionCreateDataPartition        = "ActionCreateDataPartition"
 	ActionLoadDataPartition          = "ActionLoadDataPartition"
 	ActionDeleteDataPartition        = "ActionDeleteDataPartition"

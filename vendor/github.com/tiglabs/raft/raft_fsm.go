@@ -80,6 +80,12 @@ func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 		r.replicas[p.ID] = newReplica(p, 0)
 	}
 	if !hs.IsEmpty() {
+		if raftConfig.Applied > r.raftLog.lastIndex() {
+			raftConfig.Applied = r.raftLog.lastIndex()
+		}
+		if hs.Commit > r.raftLog.lastIndex() {
+			hs.Commit = r.raftLog.lastIndex()
+		}
 		if err := r.loadState(hs); err != nil {
 			return nil, err
 		}

@@ -114,6 +114,12 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 		err = m.opLoadMetaPartition(conn, p, remoteAddr)
 	case proto.OpDecommissionMetaPartition:
 		err = m.opDecommissionMetaPartition(conn, p, remoteAddr)
+	case proto.OpAddMetaPartitionRaftMember:
+		err = m.opAddMetaPartitionRaftMember(conn, p, remoteAddr)
+	case proto.OpRemoveMetaPartitionRaftMember:
+		err = m.opRemoveMetaPartitionRaftMember(conn, p, remoteAddr)
+	case proto.OpMetaPartitionTryToLeader:
+		err = m.opMetaPartitionTryToLeader(conn, p, remoteAddr)
 	case proto.OpMetaBatchInodeGet:
 		err = m.opMetaBatchInodeGet(conn, p, remoteAddr)
 	default:
@@ -253,7 +259,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 					}
 					errload = nil
 				}
-				partition := NewMetaPartition(partitionConfig)
+				partition := NewMetaPartition(partitionConfig, m)
 				errload = m.attachPartition(id, partition)
 				if errload != nil {
 					log.LogErrorf("load partition id=%d failed: %s.",
@@ -317,7 +323,7 @@ func (m *metadataManager) createPartition(id uint64, volName string, start,
 		// TODO Unhandled errors
 		m.detachPartition(id)
 	}
-	partition := NewMetaPartition(mpc)
+	partition := NewMetaPartition(mpc, m)
 	if err = partition.PersistMetadata(); err != nil {
 		err = errors.NewErrorf("[createPartition]->%s", err.Error())
 		return

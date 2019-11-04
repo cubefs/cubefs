@@ -216,7 +216,7 @@ func (t *topology) getAllNodeSet() (nsc nodeSetCollection) {
 	return
 }
 
-func (t *topology) allocNodeSetForDataNode(replicaNum uint8) (ns *nodeSet, err error) {
+func (t *topology) allocNodeSetForDataNode(excludeNodeSet *nodeSet, replicaNum uint8) (ns *nodeSet, err error) {
 	nset := t.getAllNodeSet()
 	if nset == nil {
 		return nil, proto.ErrNoNodeSetToCreateDataPartition
@@ -229,6 +229,9 @@ func (t *topology) allocNodeSetForDataNode(replicaNum uint8) (ns *nodeSet, err e
 		}
 		ns = nset[t.setIndexForDataNode]
 		t.setIndexForDataNode++
+		if excludeNodeSet != nil && excludeNodeSet.ID == ns.ID {
+			continue
+		}
 		if ns.canWriteForDataNode(int(replicaNum)) {
 			return
 		}
@@ -237,7 +240,7 @@ func (t *topology) allocNodeSetForDataNode(replicaNum uint8) (ns *nodeSet, err e
 	return nil, proto.ErrNoNodeSetToCreateDataPartition
 }
 
-func (t *topology) allocNodeSetForMetaNode(replicaNum uint8) (ns *nodeSet, err error) {
+func (t *topology) allocNodeSetForMetaNode(excludeNodeSet *nodeSet, replicaNum uint8) (ns *nodeSet, err error) {
 	nset := t.getAllNodeSet()
 	if nset == nil {
 		return nil, proto.ErrNoNodeSetToCreateMetaPartition
@@ -250,6 +253,9 @@ func (t *topology) allocNodeSetForMetaNode(replicaNum uint8) (ns *nodeSet, err e
 		}
 		ns = nset[t.setIndexForMetaNode]
 		t.setIndexForMetaNode++
+		if excludeNodeSet != nil && ns.ID == excludeNodeSet.ID {
+			continue
+		}
 		if ns.canWriteForMetaNode(int(replicaNum)) {
 			return
 		}
@@ -489,6 +495,85 @@ func (ns *nodeSet) allocRacks(replicaNum int, excludeRack []string) (racks []*Ra
 	}
 	racks = candidateRacks
 	err = nil
+	return
+}
+
+func (ns *nodeSet) getAvailDataNodeHosts(excludeRack *Rack, excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+	var (
+		masterAddr  []string
+		addrs       []string
+		racks       []*Rack
+		rack        *Rack
+		masterPeers []proto.Peer
+		slavePeers  []proto.Peer
+	)
+	hosts = make([]string, 0)
+	peers = make([]proto.Peer, 0)
+	if excludeHosts == nil {
+		excludeHosts = make([]string, 0)
+	}
+	if ns.isSingleRack() {
+		if excludeRack != nil && excludeRack.name == ns.racks[0] {
+			log.LogErrorf("ns[%v] no rack to createDataPartition after exclude rack[%v]", ns.ID, excludeRack.name)
+			return nil, nil, proto.ErrNoRackToCreateDataPartition
+		}
+		if rack, err = ns.getRack(ns.racks[0]); err != nil {
+			return nil, nil, errors.NewError(err)
+		}
+		if hosts, peers, err = rack.getAvailDataNodeHosts(excludeHosts, replicaNum); err != nil {
+			return nil, nil, errors.NewError(err)
+		}
+		return
+	}
+	excludeRacks := make([]string, 0)
+	if excludeRack != nil {
+		excludeRacks = append(excludeRacks, excludeRack.name)
+	}
+	if racks, err = ns.allocRacks(replicaNum, excludeRacks); err != nil {
+		return nil, nil, errors.NewError(err)
+	}
+	if len(racks) == replicaNum {
+		for index := 0; index < replicaNum; index++ {
+			rack := racks[index]
+			var selectPeers []proto.Peer
+			if addrs, selectPeers, err = rack.getAvailDataNodeHosts(excludeHosts, 1); err != nil {
+				return nil, nil, errors.NewError(err)
+			}
+			hosts = append(hosts, addrs...)
+			peers = append(peers, selectPeers...)
+			excludeHosts = append(excludeHosts, addrs...)
+		}
+		return
+	}
+	// the number of racks less than replica number,We're only dealing with one rack and two racks
+	if len(racks) == 1 {
+		if rack, err = ns.getRack(ns.racks[0]); err != nil {
+			return nil, nil, errors.NewError(err)
+		}
+		if hosts, peers, err = rack.getAvailDataNodeHosts(excludeHosts, replicaNum); err != nil {
+			return nil, nil, errors.NewError(err)
+		}
+		return
+	} else if len(racks) >= 2 {
+		masterRack := racks[0]
+		slaveRack := racks[1]
+		masterReplicaNum := replicaNum/2 + 1
+		slaveReplicaNum := replicaNum - masterReplicaNum
+		if masterAddr, masterPeers, err = masterRack.getAvailDataNodeHosts(excludeHosts, masterReplicaNum); err != nil {
+			return nil, nil, errors.NewError(err)
+		}
+		hosts = append(hosts, masterAddr...)
+		peers = append(peers, masterPeers...)
+		excludeHosts = append(excludeHosts, masterAddr...)
+		if addrs, slavePeers, err = slaveRack.getAvailDataNodeHosts(excludeHosts, slaveReplicaNum); err != nil {
+			return nil, nil, errors.NewError(err)
+		}
+		hosts = append(hosts, addrs...)
+		peers = append(peers, slavePeers...)
+	}
+	if len(hosts) != replicaNum {
+		return nil, nil, proto.ErrNoDataNodeToCreateDataPartition
+	}
 	return
 }
 

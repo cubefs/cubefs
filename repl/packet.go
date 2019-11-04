@@ -356,7 +356,10 @@ func (p *Packet) IsMasterCommand() bool {
 		proto.OpLoadDataPartition,
 		proto.OpCreateDataPartition,
 		proto.OpDeleteDataPartition,
-		proto.OpDecommissionDataPartition:
+		proto.OpDecommissionDataPartition,
+		proto.OpAddDataPartitionRaftMember,
+		proto.OpRemoveDataPartitionRaftMember,
+		proto.OpDataPartitionTryToLeader:
 		return true
 	}
 	return false
@@ -390,6 +393,10 @@ func (p *Packet) IsCreateExtentOperation() bool {
 
 func (p *Packet) IsMarkDeleteExtentOperation() bool {
 	return p.Opcode == proto.OpMarkDelete
+}
+
+func (p *Packet) IsBroadcastMinAppliedID()bool {
+	return p.Opcode==proto.OpBroadcastMinAppliedID
 }
 
 func (p *Packet) IsReadOperation() bool {

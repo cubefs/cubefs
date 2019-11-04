@@ -15,16 +15,18 @@
 package metanode
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 	"time"
 
 	"encoding/binary"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
 	"path"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 func (mp *metaPartition) initInode(ino *Inode) {
@@ -116,6 +118,9 @@ func (mp *metaPartition) confAddNode(req *proto.
 func (mp *metaPartition) confRemoveNode(req *proto.MetaPartitionDecommissionRequest,
 	index uint64) (updated bool, err error) {
 	peerIndex := -1
+	data, _ := json.Marshal(req)
+	log.LogInfof("Start RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+		req.PartitionID, mp.config.NodeId, string(data))
 	for i, peer := range mp.config.Peers {
 		if peer.ID == req.RemovePeer.ID {
 			updated = true
@@ -124,30 +129,20 @@ func (mp *metaPartition) confRemoveNode(req *proto.MetaPartitionDecommissionRequ
 		}
 	}
 	if !updated {
-		return
-	}
-	if req.RemovePeer.ID == mp.config.NodeId {
-		go func(index uint64) {
-			for {
-				time.Sleep(time.Millisecond)
-				if mp.raftPartition != nil {
-					if mp.raftPartition.AppliedIndex() < index {
-						continue
-					}
-					mp.raftPartition.Delete()
-				}
-				mp.Stop()
-				os.RemoveAll(mp.config.RootDir)
-				log.LogDebugf("[confRemoveNode]: remove self end.")
-				return
-			}
-		}(index)
-		updated = false
-		log.LogDebugf("[confRemoveNode]: begin remove self.")
+		log.LogInfof("NoUpdate RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+			req.PartitionID, mp.config.NodeId, string(data))
 		return
 	}
 	mp.config.Peers = append(mp.config.Peers[:peerIndex], mp.config.Peers[peerIndex+1:]...)
-	log.LogDebugf("[confRemoveNode]: remove peer.")
+	if mp.config.NodeId == req.RemovePeer.ID {
+		mp.Stop()
+		mp.DeleteRaft()
+		mp.manager.deletePartition(mp.GetBaseConfig().PartitionId)
+		os.RemoveAll(mp.config.RootDir)
+		updated = false
+	}
+	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+		req.PartitionID, mp.config.NodeId, string(data))
 	return
 }
 
@@ -203,4 +198,30 @@ func (mp *metaPartition) setExtentDeleteFileCursor(buf []byte) (err error) {
 	// TODO Unhandled errors
 	fp.Close()
 	return
+}
+
+func (mp *metaPartition) CanRemoveRaftMember(peer proto.Peer) error {
+	downReplicas := mp.config.RaftStore.RaftServer().GetDownReplicas(mp.config.PartitionId)
+	hasExsit := false
+	for _, p := range mp.config.Peers {
+		if p.ID == peer.ID {
+			hasExsit = true
+			break
+		}
+	}
+	if !hasExsit {
+		return fmt.Errorf("peer(%v) not exsit downReplicas(%v)", peer, downReplicas)
+	}
+	sumReplicas := len(mp.config.Peers)
+	if sumReplicas%2 == 1 {
+		if sumReplicas-len(downReplicas) > (sumReplicas/2 + 1) {
+			return nil
+		}
+	} else {
+		if sumReplicas-len(downReplicas) >= (sumReplicas/2 + 1) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("downReplicas(%v) too much,so donnot offline (%v)", downReplicas, peer)
 }

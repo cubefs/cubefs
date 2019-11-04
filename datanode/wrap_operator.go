@@ -23,6 +23,9 @@ import (
 	"strconv"
 	"time"
 
+	"hash/crc32"
+	"strings"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
@@ -32,8 +35,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft"
 	raftProto "github.com/tiglabs/raft/proto"
-	"hash/crc32"
-	"strings"
 )
 
 func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
@@ -97,6 +98,12 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handlePacketToGetAppliedID(p)
 	case proto.OpDecommissionDataPartition:
 		s.handlePacketToDecommissionDataPartition(p)
+	case proto.OpAddDataPartitionRaftMember:
+		s.handlePacketToAddDataPartitionRaftMember(p)
+	case proto.OpRemoveDataPartitionRaftMember:
+		s.handlePacketToRemoveDataPartitionRaftMember(p)
+	case proto.OpDataPartitionTryToLeader:
+		s.handlePacketToDataPartitionTryToLeaderrr(p)
 	case proto.OpGetPartitionSize:
 		s.handlePacketToGetPartitionSize(p)
 	case proto.OpGetMaxExtentIDAndPartitionSize:
@@ -163,6 +170,7 @@ func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 		err = fmt.Errorf("from master Task(%v) cannot unmashal CreateDataPartition", task.ToString())
 		return
 	}
+	p.AddMesgLog(string(bytes))
 	if err = json.Unmarshal(bytes, request); err != nil {
 		err = fmt.Errorf("from master Task(%v) cannot unmash CreateDataPartitionRequest struct", task.ToString())
 		return
@@ -205,7 +213,6 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			bytes, _ := json.Marshal(task.Request)
 			json.Unmarshal(bytes, request)
 			response.Status = proto.TaskSucceeds
-			MasterHelper.AddNode(request.MasterAddr)
 		} else {
 			response.Status = proto.TaskFailed
 			err = fmt.Errorf("illegal opcode")
@@ -240,33 +247,23 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 		return
 	}
 	request := &proto.DeleteDataPartitionRequest{}
-	response := &proto.DeleteDataPartitionResponse{}
 	if task.OpCode == proto.OpDeleteDataPartition {
 		bytes, _ := json.Marshal(task.Request)
+		p.AddMesgLog(string(bytes))
 		err = json.Unmarshal(bytes, request)
 		if err != nil {
-			response.PartitionId = uint64(request.PartitionId)
-			response.Status = proto.TaskFailed
-			response.Result = err.Error()
+			return
 		} else {
 			s.space.DeletePartition(request.PartitionId)
-			response.PartitionId = uint64(request.PartitionId)
-			response.Status = proto.TaskSucceeds
 		}
 	} else {
-		response.PartitionId = uint64(request.PartitionId)
-		response.Status = proto.TaskFailed
-		response.Result = "illegal opcode "
 		err = fmt.Errorf("illegal opcode ")
 	}
-	task.Response = response
-	data, _ := json.Marshal(task)
-	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
 	if err != nil {
 		err = errors.Trace(err, "delete DataPartition failed,PartitionID(%v)", request.PartitionId)
 		log.LogErrorf("action[handlePacketToDeleteDataPartition] err(%v).", err)
 	}
-	log.LogInfof(fmt.Sprintf("action[handlePacketToDeleteDataPartition] %v error(%v)", request.PartitionId, string(data)))
+	log.LogInfof(fmt.Sprintf("action[handlePacketToDeleteDataPartition] %v error(%v)", request.PartitionId, err))
 
 }
 
@@ -725,21 +722,20 @@ func (s *DataNode) handleBroadcastMinAppliedID(p *repl.Packet) {
 // Handle handlePacketToGetAppliedID packet.
 func (s *DataNode) handlePacketToGetAppliedID(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
-	appliedID := partition.GetAppliedID() //return current appliedID
-	log.LogDebugf("[handlePacketToGetAppliedID] partition(%v) curAppId(%v)",
-		partition.partitionID, appliedID)
+	appliedID := partition.GetAppliedID()
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, appliedID)
 	p.PacketOkWithBody(buf)
+	p.AddMesgLog(fmt.Sprintf("_AppliedID(%v)", appliedID))
 	return
 }
 
 func (s *DataNode) handlePacketToGetPartitionSize(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
 	usedSize := partition.extentStore.StoreSizeExtentID(p.ExtentID)
-
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(usedSize))
+	p.AddMesgLog(fmt.Sprintf("partitionSize_(%v)",usedSize))
 	p.PacketOkWithBody(buf)
 
 	return
@@ -787,9 +783,7 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 	if err = json.Unmarshal(reqData, req); err != nil {
 		return
 	}
-
-	log.LogDebugf("[handlePacketToDecommissionDataPartition] received task: %v", string(reqData))
-
+	p.AddMesgLog(string(reqData))
 	dp := s.space.Partition(req.PartitionId)
 	if dp == nil {
 		err = fmt.Errorf("partition %v not exsit", req.PartitionId)
@@ -802,8 +796,6 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 		err = raft.ErrNotLeader
 		return
 	}
-	log.LogInfof("handlePacketToDecommissionDataPartition recive MasterCommand: %v", string(reqData))
-
 	if req.AddPeer.ID == req.RemovePeer.ID {
 		err = errors.NewErrorf("[opOfflineDataPartition]: AddPeer(%v) same withRemovePeer(%v)", req.AddPeer, req.RemovePeer)
 		return
@@ -818,7 +810,149 @@ func (s *DataNode) handlePacketToDecommissionDataPartition(p *repl.Packet) {
 	if err != nil {
 		return
 	}
-	log.LogDebugf("[opOfflineDataPartition]: the end %v", adminTask)
+	return
+}
+
+func (s *DataNode) handlePacketToAddDataPartitionRaftMember(p *repl.Packet) {
+	var (
+		err          error
+		reqData      []byte
+		isRaftLeader bool
+		req          = &proto.AddDataPartitionRaftMemberRequest{}
+	)
+
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionAddDataPartitionRaftMember, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
+
+	adminTask := &proto.AdminTask{}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		return
+	}
+
+	reqData, err = json.Marshal(adminTask.Request)
+	if err != nil {
+		return
+	}
+	if err = json.Unmarshal(reqData, req); err != nil {
+		return
+	}
+	p.AddMesgLog(string(reqData))
+	dp := s.space.Partition(req.PartitionId)
+	if dp == nil {
+		err = proto.ErrDataPartitionNotExists
+		return
+	}
+	p.PartitionID = req.PartitionId
+	if dp.IsExsitReplica(req.AddPeer.Addr) {
+		log.LogInfof("handlePacketToAddDataPartitionRaftMember recive MasterCommand: %v "+
+			"addRaftAddr(%v) has exsit", string(reqData), req.AddPeer.Addr)
+		return
+	}
+	isRaftLeader, err = s.forwardToRaftLeader(dp, p)
+	if !isRaftLeader {
+		return
+	}
+
+	if req.AddPeer.ID != 0 {
+		_, err = dp.ChangeRaftMember(raftProto.ConfAddNode, raftProto.Peer{ID: req.AddPeer.ID}, reqData)
+		if err != nil {
+			return
+		}
+	}
+	return
+}
+
+func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
+	var (
+		err          error
+		reqData      []byte
+		isRaftLeader bool
+		req          = &proto.RemoveDataPartitionRaftMemberRequest{}
+	)
+
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionRemoveDataPartitionRaftMember, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
+
+	adminTask := &proto.AdminTask{}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		return
+	}
+
+	reqData, err = json.Marshal(adminTask.Request)
+	p.AddMesgLog(string(reqData))
+	if err != nil {
+		return
+	}
+	if err = json.Unmarshal(reqData, req); err != nil {
+		return
+	}
+
+	dp := s.space.Partition(req.PartitionId)
+	if dp == nil {
+		err = fmt.Errorf("partition %v not exsit", req.PartitionId)
+		return
+	}
+	p.PartitionID = req.PartitionId
+
+	if !dp.IsExsitReplica(req.RemovePeer.Addr) {
+		log.LogInfof("handlePacketToRemoveDataPartitionRaftMember recive MasterCommand: %v "+
+			"RemoveRaftPeer(%v) has not exsit", string(reqData), req.RemovePeer.Addr)
+		return
+	}
+
+	isRaftLeader, err = s.forwardToRaftLeader(dp, p)
+	if !isRaftLeader {
+		return
+	}
+	if err = dp.CanRemoveRaftMember(req.RemovePeer); err != nil {
+		return
+	}
+	if req.RemovePeer.ID != 0 {
+		_, err = dp.ChangeRaftMember(raftProto.ConfRemoveNode, raftProto.Peer{ID: req.RemovePeer.ID}, reqData)
+		if err != nil {
+			return
+		}
+	}
+	return
+}
+
+func (s *DataNode) handlePacketToDataPartitionTryToLeaderrr(p *repl.Packet) {
+	var (
+		err error
+	)
+
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionDataPartitionTryToLeader, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
+
+	dp := s.space.Partition(p.PartitionID)
+	if dp == nil {
+		err = fmt.Errorf("partition %v not exsit", p.PartitionID)
+		return
+	}
+
+	if dp.raftPartition.IsRaftLeader() {
+		return
+	}
+	err = dp.raftPartition.TryToLeader(dp.partitionID)
 	return
 }
 

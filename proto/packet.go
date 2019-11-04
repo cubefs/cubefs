@@ -90,21 +90,28 @@ const (
 	OpMetaFreeInodesOnRaftFollower uint8 = 0x32
 
 	// Operations: Master -> MetaNode
-	OpCreateMetaPartition       uint8 = 0x40
-	OpMetaNodeHeartbeat         uint8 = 0x41
-	OpDeleteMetaPartition       uint8 = 0x42
-	OpUpdateMetaPartition       uint8 = 0x43
-	OpLoadMetaPartition         uint8 = 0x44
-	OpDecommissionMetaPartition uint8 = 0x45
+	OpCreateMetaPartition           uint8 = 0x40
+	OpMetaNodeHeartbeat             uint8 = 0x41
+	OpDeleteMetaPartition           uint8 = 0x42
+	OpUpdateMetaPartition           uint8 = 0x43
+	OpLoadMetaPartition             uint8 = 0x44
+	OpDecommissionMetaPartition     uint8 = 0x45
+	OpAddMetaPartitionRaftMember    uint8 = 0x46
+	OpRemoveMetaPartitionRaftMember uint8 = 0x47
+	OpMetaPartitionTryToLeader      uint8 = 0x48
+
 
 	// Operations: Master -> DataNode
-	OpCreateDataPartition       uint8 = 0x60
-	OpDeleteDataPartition       uint8 = 0x61
-	OpLoadDataPartition         uint8 = 0x62
-	OpDataNodeHeartbeat         uint8 = 0x63
-	OpReplicateFile             uint8 = 0x64
-	OpDeleteFile                uint8 = 0x65
-	OpDecommissionDataPartition uint8 = 0x66
+	OpCreateDataPartition           uint8 = 0x60
+	OpDeleteDataPartition           uint8 = 0x61
+	OpLoadDataPartition             uint8 = 0x62
+	OpDataNodeHeartbeat             uint8 = 0x63
+	OpReplicateFile                 uint8 = 0x64
+	OpDeleteFile                    uint8 = 0x65
+	OpDecommissionDataPartition     uint8 = 0x66
+	OpAddDataPartitionRaftMember    uint8 = 0x67
+	OpRemoveDataPartitionRaftMember uint8 = 0x68
+	OpDataPartitionTryToLeader      uint8 = 0x69
 
 	// Commons
 	OpIntraGroupNetErr uint8 = 0xF3
@@ -302,6 +309,18 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpGetMaxExtentIDAndPartitionSize"
 	case OpBroadcastMinAppliedID:
 		m = "OpBroadcastMinAppliedID"
+	case OpRemoveDataPartitionRaftMember:
+		m = "OpRemoveDataPartitionRaftMember"
+	case OpAddDataPartitionRaftMember:
+		m = "OpAddDataPartitionRaftMember"
+	case OpAddMetaPartitionRaftMember:
+		m = "OpAddMetaPartitionRaftMember"
+	case OpRemoveMetaPartitionRaftMember:
+		m = "OpRemoveMetaPartitionRaftMember"
+	case OpMetaPartitionTryToLeader:
+		m="OpMetaPartitionTryToLeader"
+	case OpDataPartitionTryToLeader:
+		m= "OpDataPartitionTryToLeader"
 	}
 	return
 }
@@ -483,7 +502,7 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 		return
 	}
 	size := p.Size
-	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode== OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
+	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
 		size = 0
 	}
 	p.Data = make([]byte, size)
@@ -522,6 +541,14 @@ func (p *Packet) SetPacketHasPrepare() {
 	p.HasPrepare = true
 }
 
+func (p *Packet) SetPacketRePrepare() {
+	p.HasPrepare = false
+}
+
+func (p *Packet) AddMesgLog(m string) {
+	p.mesg += m
+}
+
 // GetUniqueLogId returns the unique log ID.
 func (p *Packet) GetUniqueLogId() (m string) {
 	defer func() {
@@ -540,11 +567,16 @@ func (p *Packet) GetUniqueLogId() (m string) {
 				ext.ExtentId, ext.ExtentOffset, ext.TinyDeleteFileOffset, ext.Size, p.Opcode)
 			return m
 		}
-	} else if p.Opcode == OpReadTinyDeleteRecord {
-		m += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
-		return m
-	} else if p.Opcode == OpNotifyReplicasToRepair {
-		m += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
+	} else if p.Opcode == OpReadTinyDeleteRecord || p.Opcode == OpNotifyReplicasToRepair || p.Opcode == OpDataNodeHeartbeat {
+		p.mesg += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
+		return
+	} else if p.Opcode == OpBroadcastMinAppliedID || p.Opcode == OpGetAppliedId {
+		if p.Size > 0 {
+			applyID := binary.BigEndian.Uint64(p.Data)
+			m += fmt.Sprintf("Opcode(%v)_AppliedID(%v)", p.GetOpMsg(), applyID)
+		} else {
+			m += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
+		}
 		return m
 	}
 	m = fmt.Sprintf("Req(%v)_Partition(%v)_Extent(%v)_ExtentOffset(%v)_KernelOffset(%v)_"+
@@ -565,11 +597,16 @@ func (p *Packet) setPacketPrefix() {
 				ext.ExtentId, ext.ExtentOffset, ext.TinyDeleteFileOffset, ext.Size, p.Opcode)
 			return
 		}
-	} else if p.Opcode == OpReadTinyDeleteRecord {
+	} else if p.Opcode == OpReadTinyDeleteRecord || p.Opcode == OpNotifyReplicasToRepair || p.Opcode == OpDataNodeHeartbeat {
 		p.mesg += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
 		return
-	} else if p.Opcode == OpNotifyReplicasToRepair {
-		p.mesg += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
+	} else if p.Opcode == OpBroadcastMinAppliedID || p.Opcode == OpGetAppliedId {
+		if p.Size > 0 {
+			applyID := binary.BigEndian.Uint64(p.Data)
+			p.mesg += fmt.Sprintf("Opcode(%v)_AppliedID(%v)", p.GetOpMsg(), applyID)
+		} else {
+			p.mesg += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
+		}
 		return
 	}
 	p.mesg = fmt.Sprintf("Req(%v)_Partition(%v)_Extent(%v)_ExtentOffset(%v)_KernelOffset(%v)_"+
@@ -587,14 +624,14 @@ func (p *Packet) IsForwardPkt() bool {
 // LogMessage logs the given message.
 func (p *Packet) LogMessage(action, remote string, start int64, err error) (m string) {
 	if err == nil {
-		m = fmt.Sprintf("id[%v] op[%v] remote[%v] "+
+		m = fmt.Sprintf("id[%v] remote[%v] "+
 			" cost[%v] transite[%v] nodes[%v]",
-			p.GetUniqueLogId(), action, remote,
+			p.GetUniqueLogId(), remote,
 			(time.Now().UnixNano()-start)/1e6, p.IsForwardPkt(), p.RemainingFollowers)
 
 	} else {
-		m = fmt.Sprintf("id[%v] op[%v] remote[%v]"+
-			", err[%v] transite[%v] nodes[%v]", p.GetUniqueLogId(), action,
+		m = fmt.Sprintf("id[%v]  remote[%v]"+
+			", err[%v] transite[%v] nodes[%v]", p.GetUniqueLogId(),
 			remote, err.Error(), p.IsForwardPkt(), p.RemainingFollowers)
 	}
 

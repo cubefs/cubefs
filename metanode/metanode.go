@@ -195,12 +195,12 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
 
 	if configTotalMem == 0 {
-		return fmt.Errorf("bad totalMem config,Recommended to be configured as 80% of physical machine memory")
+		return fmt.Errorf("bad totalMem config,Recommended to be configured as 80 percent of physical machine memory")
 	}
 
 	total, _, err := util.GetMemInfo()
 	if err == nil && configTotalMem > total-util.GB {
-		return fmt.Errorf("bad totalMem config,Recommended to be configured as 80% of physical machine memory")
+		return fmt.Errorf("bad totalMem config,Recommended to be configured as 80 percent of physical machine memory")
 	}
 
 	if m.metadataDir == "" {

@@ -108,7 +108,7 @@ func TestAllocRacks(t *testing.T) {
 	}
 	cluster := new(Cluster)
 	cluster.t = topo
-	hosts, _, err := cluster.chooseTargetDataNodes(replicaNum)
+	hosts, _, err := cluster.chooseTargetDataNodes(nil, nil, nil, replicaNum)
 	if err != nil {
 		t.Error(err)
 		return

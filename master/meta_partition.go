@@ -228,7 +228,7 @@ func (mp *MetaPartition) checkLeader() {
 	return
 }
 
-func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int, maxPartitionID uint64) {
+func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum int, maxPartitionID uint64) {
 	mp.Lock()
 	defer mp.Unlock()
 	liveReplicas := mp.getLiveReplicas()
@@ -252,8 +252,10 @@ func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int, maxPartition
 		mp.Status = proto.ReadWrite
 	}
 	if writeLog && len(liveReplicas) != int(mp.ReplicaNum) {
-		log.LogInfof("action[checkMPStatus],id:%v,status:%v,replicaNum:%v,replicas:%v,liveReplicas:%v persistenceHosts:%v",
-			mp.PartitionID, mp.Status, mp.ReplicaNum,mp.Replicas, len(liveReplicas), mp.Hosts)
+		msg := fmt.Sprintf("action[checkMPStatus],id:%v,status:%v,replicaNum:%v,replicas:%v,persistenceHosts:%v",
+			mp.PartitionID, mp.Status, mp.ReplicaNum, len(liveReplicas), mp.Hosts)
+		log.LogInfo(msg)
+		Warn(clusterID, msg)
 	}
 }
 
@@ -354,7 +356,7 @@ func (mp *MetaPartition) getLiveReplicas() (liveReplicas []*MetaReplica) {
 	return
 }
 
-func (mp *MetaPartition) persistToRocksDB(newHosts []string, newPeers []proto.Peer, volName string, c *Cluster) (err error) {
+func (mp *MetaPartition) persistToRocksDB(action, volName string, newHosts []string, newPeers []proto.Peer, c *Cluster) (err error) {
 	oldHosts := make([]string, len(mp.Hosts))
 	copy(oldHosts, mp.Hosts)
 	oldPeers := make([]proto.Peer, len(mp.Peers))
@@ -364,12 +366,12 @@ func (mp *MetaPartition) persistToRocksDB(newHosts []string, newPeers []proto.Pe
 	if err = c.syncUpdateMetaPartition(mp); err != nil {
 		mp.Hosts = oldHosts
 		mp.Peers = oldPeers
-		log.LogWarnf("action[persistToRocksDB] failed,partitionID:%v  old hosts:%v new hosts:%v oldPeers:%v  newPeers:%v",
-			mp.PartitionID, mp.Hosts, newHosts, mp.Peers, newPeers)
+		log.LogWarnf("action[%v_persist] failed,vol[%v] partitionID:%v  old hosts:%v new hosts:%v oldPeers:%v  newPeers:%v",
+			action, volName, mp.PartitionID, mp.Hosts, newHosts, mp.Peers, newPeers)
 		return
 	}
-	log.LogWarnf("action[persistToRocksDB] success,partitionID:%v  old hosts:%v  new hosts:%v oldPeers:%v  newPeers:%v ",
-		mp.PartitionID, oldHosts, mp.Hosts, oldPeers, mp.Peers)
+	log.LogWarnf("action[%v_persist] success,vol[%v] partitionID:%v  old hosts:%v  new hosts:%v oldPeers:%v  newPeers:%v ",
+		action, volName, mp.PartitionID, oldHosts, mp.Hosts, oldPeers, mp.Peers)
 	return
 }
 
@@ -479,6 +481,54 @@ func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers
 	return
 }
 
+func (mp *MetaPartition) tryToChangeLeader(c *Cluster, metaNode *MetaNode) (err error) {
+	task, err := mp.createTaskToTryToChangeLeader(metaNode.Addr)
+	if err != nil {
+		return
+	}
+	if _, err = metaNode.Sender.syncSendAdminTask(task); err != nil {
+		return
+	}
+	return
+}
+
+func (mp *MetaPartition) createTaskToTryToChangeLeader(addr string) (task *proto.AdminTask, err error) {
+	task = proto.NewAdminTask(proto.OpMetaPartitionTryToLeader, addr, nil)
+	resetMetaPartitionTaskID(task, mp.PartitionID)
+	return
+}
+
+func (mp *MetaPartition) createTaskToCreateReplica(host string) (t *proto.AdminTask, err error) {
+	req := &proto.CreateMetaPartitionRequest{
+		Start:       mp.Start,
+		End:         mp.End,
+		PartitionID: mp.PartitionID,
+		Members:     mp.Peers,
+		VolName:     mp.volName,
+	}
+	t = proto.NewAdminTask(proto.OpCreateMetaPartition, host, req)
+	resetMetaPartitionTaskID(t, mp.PartitionID)
+	return
+}
+
+func (mp *MetaPartition) createTaskToAddRaftMember(addPeer proto.Peer, leaderAddr string) (t *proto.AdminTask, err error) {
+	req := &proto.AddMetaPartitionRaftMemberRequest{PartitionId: mp.PartitionID, AddPeer: addPeer}
+	t = proto.NewAdminTask(proto.OpAddMetaPartitionRaftMember, leaderAddr, req)
+	resetMetaPartitionTaskID(t, mp.PartitionID)
+	return
+}
+
+func (mp *MetaPartition) createTaskToRemoveRaftMember(removePeer proto.Peer) (t *proto.AdminTask, err error) {
+	mr, err := mp.getMetaReplicaLeader()
+	if err != nil {
+		return nil, errors.NewError(err)
+	}
+	req := &proto.RemoveMetaPartitionRaftMemberRequest{PartitionId: mp.PartitionID, RemovePeer: removePeer}
+	t = proto.NewAdminTask(proto.OpRemoveMetaPartitionRaftMember, mr.Addr, req)
+	resetMetaPartitionTaskID(t, mp.PartitionID)
+	return
+}
+
 func (mp *MetaPartition) createTaskToDecommissionReplica(volName string, removePeer proto.Peer, addPeer proto.Peer) (t *proto.AdminTask, err error) {
 	mr, err := mp.getMetaReplicaLeader()
 	if err != nil {
@@ -492,6 +542,7 @@ func (mp *MetaPartition) createTaskToDecommissionReplica(volName string, removeP
 
 func resetMetaPartitionTaskID(t *proto.AdminTask, partitionID uint64) {
 	t.ID = fmt.Sprintf("%v_pid[%v]", t.ID, partitionID)
+	t.PartitionID = partitionID
 }
 
 func (mp *MetaPartition) createTaskToUpdateMetaReplica(clusterID string, partitionID uint64, end uint64) (t *proto.AdminTask) {
