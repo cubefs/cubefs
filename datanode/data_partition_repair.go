@@ -86,7 +86,7 @@ func (dp *DataPartition) repair(extentType uint8) {
 		}
 	}
 
-	repairTasks := make([]*DataPartitionRepairTask, len(dp.replicas))
+	repairTasks := make([]*DataPartitionRepairTask, dp.getReplicaLen())
 	err := dp.buildDataPartitionRepairTask(repairTasks, extentType, tinyExtents)
 
 	if err != nil {
@@ -125,8 +125,8 @@ func (dp *DataPartition) repair(extentType uint8) {
 	}
 
 	log.LogInfof("action[repair] partition(%v) GoodTinyExtents(%v) BadTinyExtents(%v)"+
-		" finish cost[%vms].", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(), dp.extentStore.BrokenTinyExtentCnt(),
-		(end-start)/int64(time.Millisecond))
+		" finish cost[%vms] masterAddr(%v).", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(),
+		dp.extentStore.BrokenTinyExtentCnt(),(end-start)/int64(time.Millisecond),MasterHelper.Nodes())
 }
 
 func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartitionRepairTask, extentType uint8, tinyExtents []uint64) (err error) {
@@ -137,18 +137,18 @@ func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartiti
 	}
 
 	// new repair task for the leader
-	repairTasks[0] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, dp.replicas[0], dp.replicas[0])
-	repairTasks[0].addr = dp.replicas[0]
+	repairTasks[0] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, dp.getReplicaAddr(0), dp.getReplicaAddr(0))
+	repairTasks[0].addr = dp.getReplicaAddr(0)
 
 	// new repair tasks for the followers
-	for index := 1; index < len(dp.replicas); index++ {
-		extents, err := dp.getRemoteExtentInfo(extentType, tinyExtents, dp.replicas[index])
+	for index := 1; index < dp.getReplicaLen(); index++ {
+		extents, err := dp.getRemoteExtentInfo(extentType, tinyExtents, dp.getReplicaAddr(index))
 		if err != nil {
-			log.LogErrorf("buildDataPartitionRepairTask PartitionID(%v) on (%v) err(%v)", dp.partitionID, dp.replicas[index], err)
+			log.LogErrorf("buildDataPartitionRepairTask PartitionID(%v) on (%v) err(%v)", dp.partitionID, dp.getReplicaAddr(index), err)
 			continue
 		}
-		repairTasks[index] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, dp.replicas[index], dp.replicas[0])
-		repairTasks[index].addr = dp.replicas[index]
+		repairTasks[index] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, dp.getReplicaAddr(index), dp.getReplicaAddr(0))
+		repairTasks[index].addr = dp.getReplicaAddr(index)
 	}
 
 	return
@@ -375,7 +375,7 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members []*DataPartitionRepairTask) (err error) {
 	p := repl.NewPacketToNotifyExtentRepair(dp.partitionID) // notify all the followers to repair
 	var conn *net.TCPConn
-	target := dp.replicas[index]
+	target := dp.getReplicaAddr(index)
 	p.Data, _ = json.Marshal(members[index])
 	p.Size = uint32(len(p.Data))
 	conn, err = gConnPool.GetConnect(target)

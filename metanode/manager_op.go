@@ -20,6 +20,8 @@ import (
 	"os"
 
 	"bytes"
+	"fmt"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
@@ -526,34 +528,26 @@ func (m *metadataManager) opDeleteMetaPartition(conn net.Conn,
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
+		p.PacketOkReply()
 		m.respondToClient(conn, p)
 		return
 	}
-	resp := &proto.DeleteMetaPartitionResponse{
-		PartitionID: req.PartitionID,
-		Status:      proto.TaskSucceeds,
-	}
 	// Ack the master request
-	m.responseAckOKToMaster(conn, p)
 	conf := mp.GetBaseConfig()
 	mp.Stop()
-	err = mp.DeleteRaft()
+	mp.DeleteRaft()
+	m.deletePartition(mp.GetBaseConfig().PartitionId)
 	os.RemoveAll(conf.RootDir)
-	if err != nil {
-		resp.Status = proto.TaskFailed
-	}
-	adminTask.Response = resp
-	adminTask.Request = nil
-	m.respondToMaster(adminTask)
+	p.PacketOkReply()
+	m.respondToClient(conn, p)
 	log.LogInfof("%s [opDeleteMetaPartition] req: %d - %v, resp: %v",
-		remoteAddr, p.GetReqID(), req, adminTask)
+		remoteAddr, p.GetReqID(), req, err)
 	return
 }
 
@@ -648,7 +642,6 @@ func (m *metadataManager) opDecommissionMetaPartition(conn net.Conn,
 	if !m.serveProxy(conn, mp, p) {
 		return nil
 	}
-	m.responseAckOKToMaster(conn, p)
 	if req.AddPeer.ID == req.RemovePeer.ID {
 		err = errors.NewErrorf("[opDecommissionMetaPartition]: AddPeer[%v] same withRemovePeer[%v]", req.AddPeer, req.RemovePeer)
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -683,6 +676,129 @@ func (m *metadataManager) opDecommissionMetaPartition(conn net.Conn,
 	return
 }
 
+func (m *metadataManager) opAddMetaPartitionRaftMember(conn net.Conn,
+	p *Packet, remoteAddr string) (err error) {
+	var reqData []byte
+	req := &proto.AddMetaPartitionRaftMemberRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpTryOtherAddr, ([]byte)(proto.ErrMetaPartitionNotExists.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+
+	if mp.IsExsitPeer(req.AddPeer) {
+		p.PacketOkReply()
+		m.respondToClient(conn, p)
+		return
+	}
+
+	if !m.serveProxy(conn, mp, p) {
+		return nil
+	}
+	reqData, err = json.Marshal(req)
+	if err != nil {
+		err = errors.NewErrorf("[opAddMetaPartitionRaftMember]: partitionID= %d, "+
+			"Marshal %s", req.PartitionId, err)
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	if req.AddPeer.ID == 0 {
+		err = errors.NewErrorf("[opAddMetaPartitionRaftMember]: partitionID= %d, "+
+			"Marshal %s", req.PartitionId, fmt.Sprintf("unavali AddPeerID %v", req.AddPeer.ID))
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	_, err = mp.ChangeMember(raftProto.ConfAddNode,
+		raftProto.Peer{ID: req.AddPeer.ID}, reqData)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+	p.PacketOkReply()
+	m.respondToClient(conn, p)
+
+	return
+}
+
+func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
+	p *Packet, remoteAddr string) (err error) {
+	var reqData []byte
+	req := &proto.RemoveMetaPartitionRaftMemberRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+
+	if !mp.IsExsitPeer(req.RemovePeer) {
+		p.PacketOkReply()
+		m.respondToClient(conn, p)
+		return
+	}
+
+	if !m.serveProxy(conn, mp, p) {
+		return nil
+	}
+	reqData, err = json.Marshal(req)
+	if err != nil {
+		err = errors.NewErrorf("[opRemoveMetaPartitionRaftMember]: partitionID= %d, "+
+			"Marshal %s", req.PartitionId, err)
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	if err = mp.CanRemoveRaftMember(req.RemovePeer); err != nil {
+		err = errors.NewErrorf("[opRemoveMetaPartitionRaftMember]: partitionID= %d, "+
+			"Marshal %s", req.PartitionId, fmt.Sprintf("unavali RemovePeerID %v", req.RemovePeer.ID))
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	if req.RemovePeer.ID == 0 {
+		err = errors.NewErrorf("[opRemoveMetaPartitionRaftMember]: partitionID= %d, "+
+			"Marshal %s", req.PartitionId, fmt.Sprintf("unavali RemovePeerID %v", req.RemovePeer.ID))
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	_, err = mp.ChangeMember(raftProto.ConfRemoveNode,
+		raftProto.Peer{ID: req.RemovePeer.ID}, reqData)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+	p.PacketOkReply()
+	m.respondToClient(conn, p)
+
+	return
+}
+
 func (m *metadataManager) opMetaBatchInodeGet(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
 	req := &proto.BatchInodeGetRequest{}
@@ -699,5 +815,23 @@ func (m *metadataManager) opMetaBatchInodeGet(conn net.Conn, p *Packet,
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaBatchInodeGet] req: %d - %v, resp: %v, "+
 		"body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opMetaPartitionTryToLeader(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	mp, err := m.getPartition(p.PartitionID)
+	if err != nil {
+		goto errDeal
+	}
+	if err = mp.TryToLeader(p.PartitionID); err != nil {
+		goto errDeal
+	}
+	p.PacketOkReply()
+	m.respondToClient(conn, p)
+	return
+errDeal:
+	p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+	m.respondToClient(conn, p)
 	return
 }

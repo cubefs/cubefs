@@ -389,3 +389,73 @@ func TestGetMetaNode(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetMetaNode, mms1Addr)
 	process(reqURL, t)
 }
+
+func TestAddDataReplica(t *testing.T) {
+	partition := commonVol.dataPartitions.partitions[0]
+	dsAddr := "127.0.0.1:9106"
+	addDataServer(dsAddr, "rack2")
+	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddDataReplica, partition.PartitionID, dsAddr)
+	process(reqURL, t)
+	partition.RLock()
+	if !contains(partition.Hosts, dsAddr) {
+		t.Errorf("hosts[%v] should contains dsAddr[%v]", partition.Hosts, dsAddr)
+		partition.RUnlock()
+		return
+	}
+	partition.RUnlock()
+}
+
+func TestRemoveDataReplica(t *testing.T) {
+	partition := commonVol.dataPartitions.partitions[0]
+	dsAddr := "127.0.0.1:9106"
+	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteDataReplica, partition.PartitionID, dsAddr)
+	process(reqURL, t)
+	partition.RLock()
+	if contains(partition.Hosts, dsAddr) {
+		t.Errorf("hosts[%v] should contains dsAddr[%v]", partition.Hosts, dsAddr)
+		partition.RUnlock()
+		return
+	}
+	partition.RUnlock()
+}
+
+func TestAddMetaReplica(t *testing.T) {
+	maxPartitionID := commonVol.maxPartitionID()
+	partition := commonVol.MetaPartitions[maxPartitionID]
+	if partition == nil {
+		t.Error("no meta partition")
+		return
+	}
+	msAddr := "127.0.0.1:8009"
+	addMetaServer(msAddr)
+	server.cluster.checkMetaNodeHeartbeat()
+	time.Sleep(2 * time.Second)
+	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaReplica, partition.PartitionID, msAddr)
+	process(reqURL, t)
+	partition.RLock()
+	if !contains(partition.Hosts, msAddr) {
+		t.Errorf("hosts[%v] should contains dsAddr[%v]", partition.Hosts, msAddr)
+		partition.RUnlock()
+		return
+	}
+	partition.RUnlock()
+}
+
+func TestRemoveMetaReplica(t *testing.T) {
+	maxPartitionID := commonVol.maxPartitionID()
+	partition := commonVol.MetaPartitions[maxPartitionID]
+	if partition == nil {
+		t.Error("no meta partition")
+		return
+	}
+	msAddr := "127.0.0.1:8009"
+	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteMetaReplica, partition.PartitionID, msAddr)
+	process(reqURL, t)
+	partition.RLock()
+	if contains(partition.Hosts, msAddr) {
+		t.Errorf("hosts[%v] should contains dsAddr[%v]", partition.Hosts, msAddr)
+		partition.RUnlock()
+		return
+	}
+	partition.RUnlock()
+}
