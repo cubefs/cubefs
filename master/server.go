@@ -49,6 +49,7 @@ const (
 var (
 	volNameRegexp *regexp.Regexp
 	useConnPool   = true //for test
+	gConfig       *clusterConfig
 )
 
 // Server represents the server in a cluster
@@ -82,6 +83,7 @@ func NewServer() *Server {
 // Start starts a server
 func (m *Server) Start(cfg *config.Config) (err error) {
 	m.config = newClusterConfig()
+	gConfig = m.config
 	m.leaderInfo = &LeaderInfo{}
 	m.reverseProxy = m.newReverseProxy()
 	if err = m.checkConfig(cfg); err != nil {
@@ -147,6 +149,17 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.config.nodeSetCapacity < 3 {
 		m.config.nodeSetCapacity = defaultNodeSetCapacity
 	}
+
+	metaNodeReservedMemory := cfg.GetString(cfgMetaNodeReservedMem)
+	if metaNodeReservedMemory != "" {
+		if m.config.metaNodeReservedMem, err = strconv.ParseUint(metaNodeReservedMemory, 10, 64); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+	if m.config.metaNodeReservedMem < 32*1024*1024 {
+		m.config.metaNodeReservedMem = defaultMetaNodeReservedMem
+	}
+
 	retainLogs := cfg.GetString(CfgRetainLogs)
 	if retainLogs != "" {
 		if m.retainLogs, err = strconv.ParseUint(retainLogs, 10, 64); err != nil {

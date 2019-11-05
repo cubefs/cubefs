@@ -23,22 +23,22 @@ import (
 
 // MetaNode defines the structure of a meta node
 type MetaNode struct {
-	ID                 uint64
-	Addr               string
-	IsActive           bool
-	Sender             *AdminTaskManager
-	RackName           string `json:"Rack"`
-	MaxMemAvailWeight  uint64 `json:"MaxMemAvailWeight"`
-	Total              uint64 `json:"TotalWeight"`
-	Used               uint64 `json:"UsedWeight"`
-	Ratio              float64
-	SelectCount        uint64
-	Carry              float64
-	Threshold          float32
-	ReportTime         time.Time
-	metaPartitionInfos []*proto.MetaPartitionReport
-	MetaPartitionCount int
-	NodeSetID          uint64
+	ID                        uint64
+	Addr                      string
+	IsActive                  bool
+	Sender                    *AdminTaskManager
+	RackName                  string `json:"Rack"`
+	MaxMemAvailWeight         uint64 `json:"MaxMemAvailWeight"`
+	Total                     uint64 `json:"TotalWeight"`
+	Used                      uint64 `json:"UsedWeight"`
+	Ratio                     float64
+	SelectCount               uint64
+	Carry                     float64
+	Threshold                 float32
+	ReportTime                time.Time
+	metaPartitionInfos        []*proto.MetaPartitionReport
+	MetaPartitionCount        int
+	NodeSetID                 uint64
 	sync.RWMutex
 	PersistenceMetaPartitions []uint64
 }
@@ -73,7 +73,7 @@ func (metaNode *MetaNode) SelectNodeForWrite() {
 func (metaNode *MetaNode) isWritable() (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
-	if metaNode.IsActive && metaNode.MaxMemAvailWeight > defaultMetaNodeReservedMem &&
+	if metaNode.IsActive && metaNode.MaxMemAvailWeight > gConfig.metaNodeReservedMem &&
 		!metaNode.reachesThreshold() && metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode {
 		ok = true
 	}
