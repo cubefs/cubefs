@@ -33,6 +33,7 @@ const (
 	NumberOfDataPartitionsToLoad        = "NumberOfDataPartitionsToLoad"
 	secondsToFreeDataPartitionAfterLoad = "secondsToFreeDataPartitionAfterLoad"
 	nodeSetCapacity                     = "nodeSetCap"
+	cfgMetaNodeReservedMem              = "metaNodeReservedMem"
 	heartbeatPortKey                    = "heartbeatPort"
 	replicaPortKey                      = "replicaPort"
 )
@@ -73,6 +74,7 @@ type clusterConfig struct {
 	DataPartitionTimeOutSec             int64
 	IntervalToAlarmMissingDataPartition int64
 	PeriodToLoadALLDataPartitions       int64
+	metaNodeReservedMem                 uint64
 	IntervalToCheckDataPartition        int // seconds
 	numberOfDataPartitionsToFree        int
 	numberOfDataPartitionsToLoad        int
@@ -96,6 +98,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.numberOfDataPartitionsToLoad = defaultNumberOfDataPartitionsToLoad
 	cfg.PeriodToLoadALLDataPartitions = defaultPeriodToLoadAllDataPartitions
 	cfg.MetaNodeThreshold = defaultMetaPartitionMemUsageThreshold
+	cfg.metaNodeReservedMem = defaultMetaNodeReservedMem
 	return
 }
 
