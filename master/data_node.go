@@ -25,14 +25,14 @@ import (
 
 // DataNode stores all the information about a data node
 type DataNode struct {
-	Total          uint64 `json:"TotalWeight"`
-	Used           uint64 `json:"UsedWeight"`
-	AvailableSpace uint64
-	ID             uint64
-	RackName       string `json:"Rack"`
-	Addr           string
-	ReportTime     time.Time
-	isActive       bool
+	Total                     uint64 `json:"TotalWeight"`
+	Used                      uint64 `json:"UsedWeight"`
+	AvailableSpace            uint64
+	ID                        uint64
+	RackName                  string `json:"Rack"`
+	Addr                      string
+	ReportTime                time.Time
+	isActive                  bool
 	sync.RWMutex
 	UsageRatio                float64 // used / total space
 	SelectedTimes             uint64  // number times that this datanode has been selected as the location for a data partition.
@@ -42,6 +42,7 @@ type DataNode struct {
 	DataPartitionCount        uint32
 	NodeSetID                 uint64
 	PersistenceDataPartitions []uint64
+	BadDisks                  []string
 }
 
 func newDataNode(addr, clusterID string) (dataNode *DataNode) {
@@ -85,6 +86,7 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	dataNode.RackName = resp.RackName
 	dataNode.DataPartitionCount = resp.CreatedPartitionCnt
 	dataNode.DataPartitionReports = resp.PartitionReports
+	dataNode.BadDisks = resp.BadDisks
 	if dataNode.Total == 0 {
 		dataNode.UsageRatio = 0.0
 	} else {

@@ -306,6 +306,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	response.TotalPartitionSize = stat.TotalPartitionSize
 	response.MaxCapacity = stat.MaxCapacityToCreatePartition
 	response.RemainingCapacity = stat.RemainingCapacityToCreatePartition
+	response.BadDisks=make([]string,0)
 	stat.Unlock()
 
 	response.RackName = s.rackName
@@ -328,4 +329,11 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 		response.PartitionReports = append(response.PartitionReports, vr)
 		return true
 	})
+
+	disks:=space.GetDisks()
+	for _,d:=range disks {
+		if d.Status==proto.Unavailable{
+			response.BadDisks=append(response.BadDisks,d.Path)
+		}
+	}
 }
