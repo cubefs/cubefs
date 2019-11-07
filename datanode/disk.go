@@ -215,6 +215,7 @@ func (d *Disk) triggerDiskError(err error) {
 		exporter.Warning(mesg)
 		log.LogErrorf(mesg)
 		d.ForceExitRaftStore()
+		d.Status=proto.Unavailable
 	}
 	return
 }
