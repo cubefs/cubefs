@@ -132,17 +132,6 @@ func (partition *DataPartition) createTaskToDeleteDataPartition(addr string) (ta
 	return
 }
 
-func (partition *DataPartition) createTaskToDecommissionDataPartition(removePeer proto.Peer, addPeer proto.Peer) (task *proto.AdminTask, err error) {
-	leaderAddr := partition.getLeaderAddr()
-	if leaderAddr == "" {
-		err = proto.ErrNoLeader
-		return
-	}
-	task = proto.NewAdminTask(proto.OpDecommissionDataPartition, leaderAddr, newOfflineDataPartitionRequest(partition.PartitionID, removePeer, addPeer))
-	partition.resetTaskID(task)
-	return
-}
-
 func (partition *DataPartition) resetTaskID(t *proto.AdminTask) {
 	t.ID = fmt.Sprintf("%v_DataPartitionID[%v]", t.ID, partition.PartitionID)
 	t.PartitionID = partition.PartitionID
@@ -177,20 +166,6 @@ func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 		log.LogError(msg)
 		err = fmt.Errorf(msg)
 	}
-
-	return
-}
-
-func (partition *DataPartition) logDecommissionedDataPartition(addr string) (msg string) {
-	msg = fmt.Sprintf("action[logDecommissionedDataPartition],data partition:%v  offlineaddr:%v  ",
-		partition.PartitionID, addr)
-	replicas := partition.availableDataReplicas()
-	for i := 0; i < len(replicas); i++ {
-		replica := replicas[i]
-		msg += fmt.Sprintf(" addr:%v  dataReplicaStatus:%v  FileCount :%v ", replica.Addr,
-			replica.Status, replica.FileCount)
-	}
-	log.LogWarn(msg)
 
 	return
 }
@@ -659,33 +634,15 @@ func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host st
 }
 
 func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) (err error) {
-	partition.Lock()
-	defer partition.Unlock()
-	replica, err := partition.getReplica(host)
-	if err != nil {
+	if err = c.removeDataReplica(partition, host, false); err != nil {
 		return
 	}
-	removePeer := proto.Peer{ID: replica.dataNode.ID, Addr: host}
-	if err = c.syncDecommissionDataPartition(partition, host, removePeer, proto.Peer{}); err != nil {
-		return
-	}
+	partition.RLock()
+	defer partition.RUnlock()
 	oldReplicaNum := partition.ReplicaNum
-	oldHosts := partition.Hosts
-	oldPeers := partition.Peers
 	partition.ReplicaNum = partition.ReplicaNum - 1
-	partition.Hosts = partition.Hosts[:partition.ReplicaNum]
-	curPeers := make([]proto.Peer, 0, partition.ReplicaNum)
-	for _, peer := range partition.Peers {
-		if peer.Addr == host {
-			continue
-		}
-		curPeers = append(curPeers, peer)
-	}
-	partition.Peers = curPeers
 	if err = c.syncUpdateDataPartition(partition); err != nil {
 		partition.ReplicaNum = oldReplicaNum
-		partition.Hosts = oldHosts
-		partition.Peers = oldPeers
 	}
 	return
 }

@@ -384,15 +384,16 @@ func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *
 
 // SimpleVolView defines the simple view of a volume
 type SimpleVolView struct {
-	ID           uint64
-	Name         string
-	Owner        string
-	DpReplicaNum uint8
-	MpReplicaNum uint8
-	Status       uint8
-	Capacity     uint64 // GB
-	RwDpCnt      int
-	MpCnt        int
-	DpCnt        int
-	FollowerRead bool
+	ID                 uint64
+	Name               string
+	Owner              string
+	DpReplicaNum       uint8
+	MpReplicaNum       uint8
+	Status             uint8
+	Capacity           uint64 // GB
+	RwDpCnt            int
+	MpCnt              int
+	DpCnt              int
+	FollowerRead       bool
+	NeedToLowerReplica bool
 }
