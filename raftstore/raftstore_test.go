@@ -115,7 +115,7 @@ func TestRaftStore_CreateRaftStore(t *testing.T) {
 		peers = append(peers, PeerAddress{Peer: proto.Peer{ID: uint64(n)}, Address: cfg.IPAddr})
 
 		for k, v := range TestAddresses {
-			raftServer.AddNode(uint64(k), v.ip)
+			raftServer.AddNodeWithPort(uint64(k), v.ip, DefaultHeartbeatPort, DefaultReplicaPort)
 		}
 
 		fmt.Printf("================new raft store %d\n", n)
