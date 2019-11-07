@@ -16,6 +16,7 @@ package raftstore
 
 import (
 	"github.com/tiglabs/raft/proto"
+	"fmt"
 )
 
 // Constants for network port definition.
@@ -65,4 +66,9 @@ type PartitionConfig struct {
 	Peers   []PeerAddress
 	SM      PartitionFsm
 	WalPath string
+}
+
+func (p PeerAddress) String() string {
+	return fmt.Sprintf(`"nodeID":"%v","peerID":"%v","priority":"%v","type":"%v","heartbeatPort":"%v","ReplicaPort":"%v"`,
+		p.ID, p.PeerID, p.Priority, p.Type.String(), p.HeartbeatPort, p.ReplicaPort)
 }

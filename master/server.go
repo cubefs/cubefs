@@ -137,6 +137,9 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.id, err = strconv.ParseUint(cfg.GetString(ID), 10, 64); err != nil {
 		return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 	}
+	m.config.heartbeatPort = cfg.GetInt64(heartbeatPortKey)
+	m.config.replicaPort = cfg.GetInt64(replicaPortKey)
+	fmt.Printf("heartbeatPort[%v],replicaPort[%v]\n", m.config.heartbeatPort, m.config.replicaPort)
 	if err = m.config.parsePeers(peerAddrs); err != nil {
 		return
 	}
@@ -199,9 +202,6 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
-	m.config.heartbeatPort = cfg.GetInt64(heartbeatPortKey)
-	m.config.replicaPort = cfg.GetInt64(replicaPortKey)
-	fmt.Printf("heartbeatPort[%v],replicaPort[%v]\n", m.config.heartbeatPort, m.config.replicaPort)
 	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))
 	m.electionTick = int(cfg.GetFloat(cfgElectionTick))
 	if m.tickInterval <= 300 {
@@ -226,7 +226,7 @@ func (m *Server) createRaftServer() (err error) {
 	if m.raftStore, err = raftstore.NewRaftStore(raftCfg); err != nil {
 		return errors.Trace(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
 	}
-	fmt.Println(m.config.peers, m.tickInterval, m.electionTick)
+	fmt.Printf("peers[%v],tickInterval[%v],electionTick[%v]\n", m.config.peers, m.tickInterval, m.electionTick)
 	m.initFsm()
 	partitionCfg := &raftstore.PartitionConfig{
 		ID:      GroupID,
