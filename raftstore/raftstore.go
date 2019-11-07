@@ -54,13 +54,6 @@ func (s *raftStore) RaftStatus(raftID uint64) (raftStatus *raft.Status) {
 	return s.raftServer.Status(raftID)
 }
 
-// AddNode adds a new node to the raft store.
-func (s *raftStore) AddNode(nodeID uint64, addr string) {
-	if s.resolver != nil {
-		s.resolver.AddNode(nodeID, addr)
-	}
-}
-
 // AddNodeWithPort add a new node with the given port.
 func (s *raftStore) AddNodeWithPort(nodeID uint64, addr string, heartbeat int, replicate int) {
 	if s.resolver != nil {
