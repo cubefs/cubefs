@@ -42,7 +42,7 @@ type MetaPartition struct {
 	PartitionID  uint64
 	Start        uint64
 	End          uint64
-	MaxNodeID    uint64
+	MaxInodeID   uint64
 	Replicas     []*MetaReplica
 	ReplicaNum   uint8
 	Status       int8
@@ -140,8 +140,8 @@ func (mp *MetaPartition) canSplit(end uint64) (err error) {
 		err = fmt.Errorf(msg)
 		return
 	}
-	if end <= mp.MaxNodeID {
-		err = fmt.Errorf("next meta partition start must be larger than %v", mp.MaxNodeID)
+	if end <= mp.MaxInodeID {
+		err = fmt.Errorf("next meta partition start must be larger than %v", mp.MaxInodeID)
 		return
 	}
 	if _, err = mp.getMetaReplicaLeader(); err != nil {
@@ -320,7 +320,7 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 		mr = newMetaReplica(mp.Start, mp.End, metaNode)
 		mp.addReplica(mr)
 	}
-	mp.MaxNodeID = mgr.MaxInodeID
+	mp.MaxInodeID = mgr.MaxInodeID
 	mr.updateMetric(mgr)
 	mp.removeMissingReplica(metaNode.Addr)
 }

@@ -261,7 +261,7 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster) {
 		Warn(c.Name, msg)
 		return
 	}
-	end := partition.MaxNodeID + defaultMetaPartitionInodeIDStep
+	end := partition.MaxInodeID + defaultMetaPartitionInodeIDStep
 	if err := vol.splitMetaPartition(c, partition, end); err != nil {
 		msg := fmt.Sprintf("action[checkSplitMetaPartition],split meta partition[%v] failed,err[%v]\n",
 			partition.PartitionID, err)
@@ -529,7 +529,7 @@ func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) 
 	if err = mp.canSplit(end); err != nil {
 		return
 	}
-	log.LogWarnf("action[splitMetaPartition],partition[%v],start[%v],end[%v]", mp.PartitionID, mp.Start, mp.End)
+	log.LogWarnf("action[splitMetaPartition],partition[%v],start[%v],end[%v],new end[%v]", mp.PartitionID, mp.Start, mp.End, end)
 	cmdMap := make(map[string]*RaftCmd, 0)
 	oldEnd := mp.End
 	mp.End = end
