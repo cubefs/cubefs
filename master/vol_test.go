@@ -171,7 +171,7 @@ func markDeleteVol(name string, t *testing.T) {
 
 func TestVolReduceReplicaNum(t *testing.T) {
 	volName := "reduce-replica-num"
-	vol, err := server.cluster.createVol(volName, volName, 3, util.DefaultDataPartitionSize, 100, defaultReplicaNum, false)
+	vol, err := server.cluster.createVol(volName, volName, 3, util.DefaultDataPartitionSize, 100, false)
 	if err != nil {
 		t.Error(err)
 		return
@@ -183,11 +183,11 @@ func TestVolReduceReplicaNum(t *testing.T) {
 	}
 	oldReplicaNum := vol.dpReplicaNum
 	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&replicaNum=%v&authKey=%v",
-		hostAddr, proto.AdminUpdateVol, volName, 100, 1, buildAuthKey(volName))
+		hostAddr, proto.AdminUpdateVol, volName, 100, 2, buildAuthKey(volName))
 	fmt.Println(reqURL)
 	process(reqURL, t)
-	if vol.dpReplicaNum != 1 {
-		t.Error("update vol replica Num to [1] failed")
+	if vol.dpReplicaNum != 2 {
+		t.Error("update vol replica Num to [2] failed")
 		return
 	}
 	for i := 0; i < int(oldReplicaNum); i++ {

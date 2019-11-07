@@ -116,6 +116,9 @@ func (mds *MockDataServer) serveConn(rc net.Conn) {
 	case proto.OpRemoveDataPartitionRaftMember:
 		err = mds.handleRemoveDataPartitionRaftMember(conn, req, adminTask)
 		fmt.Printf("data node [%v] remove data partition raft member,id[%v],err:%v\n", mds.TcpAddr, adminTask.ID, err)
+	case proto.OpDataPartitionTryToLeader:
+		err = mds.handleTryToLeader(conn, req, adminTask)
+		fmt.Printf("data node [%v] try to leader,id[%v],err:%v\n", mds.TcpAddr, adminTask.ID, err)
 	default:
 		fmt.Printf("unknown code [%v]\n", req.Opcode)
 	}
@@ -127,6 +130,11 @@ func (mds *MockDataServer) handleAddDataPartitionRaftMember(conn net.Conn, p *pr
 }
 
 func (mds *MockDataServer) handleRemoveDataPartitionRaftMember(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
+	responseAckOKToMaster(conn, p, nil)
+	return
+}
+
+func (mds *MockDataServer) handleTryToLeader(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
 	responseAckOKToMaster(conn, p, nil)
 	return
 }

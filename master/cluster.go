@@ -801,7 +801,11 @@ func (c *Cluster) buildAddDataPartitionRaftMemberTaskAndSyncSendTask(dp *DataPar
 		if resp != nil {
 			resultCode = resp.ResultCode
 		}
-		log.LogErrorf("vol[%v],data partition[%v],resultCode[%v],err[%v]", dp.VolName, dp.PartitionID, resultCode, err)
+		if err != nil {
+			log.LogErrorf("vol[%v],data partition[%v],resultCode[%v],err[%v]", dp.VolName, dp.PartitionID, resultCode, err)
+		} else {
+			log.LogWarnf("vol[%v],data partition[%v],resultCode[%v],err[%v]", dp.VolName, dp.PartitionID, resultCode, err)
+		}
 	}()
 	task, err := dp.createTaskToAddRaftMember(addPeer, leaderAddr)
 	if err != nil {
@@ -1012,31 +1016,6 @@ func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode) (err 
 	return
 }
 
-func (c *Cluster) syncDecommissionDataPartition(dp *DataPartition, addr string, removePeer, targetPeer proto.Peer) (err error) {
-	var (
-		task     *proto.AdminTask
-		dataNode *DataNode
-	)
-	if task, err = dp.createTaskToDecommissionDataPartition(removePeer, targetPeer); err != nil {
-		return
-	}
-	dp.logDecommissionedDataPartition(addr)
-	leaderAddr := dp.getLeaderAddr()
-	if leaderAddr == "" {
-		err = proto.ErrNoLeader
-		return
-	}
-
-	if dataNode, err = c.dataNode(leaderAddr); err != nil {
-		return
-	}
-
-	if _, err = dataNode.TaskManager.syncSendAdminTask(task); err != nil {
-		return
-	}
-	return
-}
-
 func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, offlineAddr string, partitionID uint64) {
 	var key string
 	newBadPartitionIDs := make([]uint64, 0)
@@ -1083,7 +1062,7 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 	go metaNode.clean()
 }
 
-func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum uint8) (err error) {
+func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum uint8, followerRead bool) (err error) {
 	var (
 		vol             *Vol
 		serverAuthKey   string
@@ -1106,10 +1085,15 @@ func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum ui
 		err = fmt.Errorf("capacity[%v] less than old capacity[%v]", capacity, vol.Capacity)
 		goto errHandler
 	}
+	if replicaNum > vol.dpReplicaNum {
+		err = fmt.Errorf("don't support new replicaNum[%v] larger than old dpReplicaNum[%v]", replicaNum, vol.dpReplicaNum)
+		goto errHandler
+	}
 	oldCapacity = vol.Capacity
 	oldDpReplicaNum = vol.dpReplicaNum
 	oldFollowerRead = vol.FollowerRead
 	vol.Capacity = capacity
+	vol.FollowerRead = followerRead
 	//only reduced replica num is supported
 	if replicaNum != 0 && replicaNum < vol.dpReplicaNum {
 		vol.dpReplicaNum = replicaNum
@@ -1132,7 +1116,7 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner string, mpCount, size, capacity, dpReplicaNum int, followerRead bool) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner string, mpCount, size, capacity int, followerRead bool) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -1142,7 +1126,7 @@ func (c *Cluster) createVol(name, owner string, mpCount, size, capacity, dpRepli
 	} else {
 		dataPartitionSize = uint64(size) * util.GB
 	}
-	if vol, err = c.doCreateVol(name, owner, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead); err != nil {
+	if vol, err = c.doCreateVol(name, owner, dataPartitionSize, uint64(capacity), defaultReplicaNum, followerRead); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -1213,7 +1197,16 @@ func (c *Cluster) updateInodeIDRange(volName string, start uint64) (err error) {
 		log.LogErrorf("action[updateInodeIDRange]  mp[%v] not found", maxPartitionID)
 		return proto.ErrMetaPartitionNotExists
 	}
-	if err = vol.splitMetaPartition(c, partition, start); err != nil {
+	adjustStart := start
+	if adjustStart < partition.Start {
+		adjustStart = partition.Start
+	}
+	if adjustStart < partition.MaxInodeID {
+		adjustStart = partition.MaxInodeID
+	}
+	adjustStart = adjustStart + defaultMetaPartitionInodeIDStep
+	log.LogWarnf("vol[%v],maxMp[%v],start[%v],adjustStart[%v]", volName, maxPartitionID, start, adjustStart)
+	if err = vol.splitMetaPartition(c, partition, adjustStart); err != nil {
 		log.LogErrorf("action[updateInodeIDRange]  mp[%v] err[%v]", partition.PartitionID, err)
 	}
 	return

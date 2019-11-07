@@ -40,6 +40,10 @@ func createMetaPartition(vol *Vol, t *testing.T) {
 		hostAddr, proto.AdminCreateMP, vol.Name, start)
 	fmt.Println(reqURL)
 	process(reqURL, t)
+	if start < mp.MaxInodeID {
+		start = mp.MaxInodeID
+	}
+	start = start + defaultMetaPartitionInodeIDStep
 	vol, err = server.cluster.getVol(vol.Name)
 	if err != nil {
 		t.Error(err)

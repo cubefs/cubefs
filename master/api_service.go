@@ -483,25 +483,21 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		capacity     int
 		replicaNum   int
 		followerRead bool
-		vol          *Vol
 	)
-	if name, authKey, capacity, replicaNum, err = parseRequestToUpdateVol(r); err != nil {
+	if name, authKey, capacity, replicaNum, followerRead, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.getVol(name); err != nil {
+	if replicaNum != 0 && replicaNum < 2 {
+		err = fmt.Errorf("replicaNum can't be less than 2,replicaNum[%v]", replicaNum)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if _, err = m.cluster.getVol(name); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	var followerReadStr string
-	if followerReadStr = r.FormValue(followerReadKey); followerReadStr != "" {
-		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-			return
-		}
-		vol.FollowerRead = followerRead
-	}
-	if err = m.cluster.updateVol(name, authKey, uint64(capacity), uint8(replicaNum)); err != nil {
+	if err = m.cluster.updateVol(name, authKey, uint64(capacity), uint8(replicaNum), followerRead); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -517,17 +513,16 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		msg          string
 		size         int
 		mpCount      int
-		dpReplicaNum int
 		capacity     int
 		vol          *Vol
 		followerRead bool
 	)
 
-	if name, owner, mpCount, size, capacity, dpReplicaNum, followerRead, err = parseRequestToCreateVol(r); err != nil {
+	if name, owner, mpCount, size, capacity, followerRead, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.createVol(name, owner, mpCount, size, capacity, dpReplicaNum, followerRead); err != nil {
+	if vol, err = m.cluster.createVol(name, owner, mpCount, size, capacity, followerRead); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -556,17 +551,18 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 
 func newSimpleView(vol *Vol) *proto.SimpleVolView {
 	return &proto.SimpleVolView{
-		ID:           vol.ID,
-		Name:         vol.Name,
-		Owner:        vol.Owner,
-		DpReplicaNum: vol.dpReplicaNum,
-		MpReplicaNum: vol.mpReplicaNum,
-		Status:       vol.Status,
-		Capacity:     vol.Capacity,
-		FollowerRead: vol.FollowerRead,
-		RwDpCnt:      vol.dataPartitions.readableAndWritableCnt,
-		MpCnt:        len(vol.MetaPartitions),
-		DpCnt:        len(vol.dataPartitions.partitionMap),
+		ID:                 vol.ID,
+		Name:               vol.Name,
+		Owner:              vol.Owner,
+		DpReplicaNum:       vol.dpReplicaNum,
+		MpReplicaNum:       vol.mpReplicaNum,
+		Status:             vol.Status,
+		Capacity:           vol.Capacity,
+		FollowerRead:       vol.FollowerRead,
+		NeedToLowerReplica: vol.NeedToLowerReplica,
+		RwDpCnt:            vol.dataPartitions.readableAndWritableCnt,
+		MpCnt:              len(vol.MetaPartitions),
+		DpCnt:              len(vol.dataPartitions.partitionMap),
 	}
 }
 
@@ -920,7 +916,7 @@ func parseRequestToDeleteVol(r *http.Request) (name, authKey string, err error) 
 
 }
 
-func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity, replicaNum int, err error) {
+func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity, replicaNum int, followerRead bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -933,17 +929,28 @@ func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity, r
 	if capacityStr := r.FormValue(volCapacityKey); capacityStr != "" {
 		if capacity, err = strconv.Atoi(capacityStr); err != nil {
 			err = unmatchedKey(volCapacityKey)
+			return
 		}
 	} else {
 		err = keyNotFound(volCapacityKey)
+		return
 	}
 	if replicaNumStr := r.FormValue(replicaNumKey); replicaNumStr != "" {
-		replicaNum, _ = strconv.Atoi(replicaNumStr)
+		if replicaNum, err = strconv.Atoi(replicaNumStr); err != nil {
+			err = unmatchedKey(replicaNumKey)
+			return
+		}
+	}
+	if followerReadStr := r.FormValue(followerReadKey); followerReadStr != "" {
+		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
+			err = unmatchedKey(followerReadKey)
+			return
+		}
 	}
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size, capacity, dpReplicaNum int, followerRead bool, err error) {
+func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size, capacity int, followerRead bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -973,13 +980,6 @@ func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size
 		return
 	} else if capacity, err = strconv.Atoi(capacityStr); err != nil {
 		err = unmatchedKey(volCapacityKey)
-		return
-	}
-
-	if replicaStr := r.FormValue(replicaNumKey); replicaStr == "" {
-		dpReplicaNum = defaultReplicaNum
-	} else if dpReplicaNum, err = strconv.Atoi(replicaStr); err != nil {
-		err = unmatchedKey(replicaNumKey)
 		return
 	}
 
@@ -1258,7 +1258,12 @@ func (m *Server) getMetaPartitions(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
-	send(w, r, vol.getMpsCache())
+	mpsCache := vol.getMpsCache()
+	if len(mpsCache) == 0 {
+		vol.updateViewCache(m.cluster)
+		mpsCache = vol.getMpsCache()
+	}
+	send(w, r, mpsCache)
 	return
 }
 
@@ -1305,7 +1310,12 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolAuthKeyNotMatch))
 		return
 	}
-	send(w, r, vol.getViewCache())
+	viewCache := vol.getViewCache()
+	if len(viewCache) == 0 {
+		vol.updateViewCache(m.cluster)
+		viewCache = vol.getViewCache()
+	}
+	send(w, r, viewCache)
 }
 
 // Obtain the volume information such as total capacity and used space, etc.

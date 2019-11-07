@@ -94,7 +94,7 @@ func createDefaultMasterServerForTest() *Server {
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
 	fmt.Printf("nodeSet len[%v]\n", len(testServer.cluster.t.nodeSetMap))
-	testServer.cluster.createVol(commonVolName, "cfs", 3, 3, 100, defaultReplicaNum, false)
+	testServer.cluster.createVol(commonVolName, "cfs", 3, 3, 100, false)
 	vol, err := testServer.cluster.getVol(commonVolName)
 	if err != nil {
 		panic(err)
@@ -220,7 +220,7 @@ func process(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
 		return
 	}
 	if reply.Code != 0 {
-		t.Errorf("failed,msg[%v]", reply.Data)
+		t.Errorf("failed,msg[%v],data[%v]", reply.Msg, reply.Data)
 		return
 	}
 	return
