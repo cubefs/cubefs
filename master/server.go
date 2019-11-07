@@ -139,6 +139,12 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	}
 	m.config.heartbeatPort = cfg.GetInt64(heartbeatPortKey)
 	m.config.replicaPort = cfg.GetInt64(replicaPortKey)
+	if m.config.heartbeatPort <= 1024 {
+		m.config.heartbeatPort = raftstore.DefaultHeartbeatPort
+	}
+	if m.config.replicaPort <= 1024 {
+		m.config.replicaPort = raftstore.DefaultReplicaPort
+	}
 	fmt.Printf("heartbeatPort[%v],replicaPort[%v]\n", m.config.heartbeatPort, m.config.replicaPort)
 	if err = m.config.parsePeers(peerAddrs); err != nil {
 		return
