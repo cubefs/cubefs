@@ -19,6 +19,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 	"strconv"
 	"time"
+	"fmt"
 )
 
 //metrics
@@ -36,6 +37,9 @@ const (
 	MetricVolTotalGB           = "vol_total_GB"
 	MetricVolUsedGB            = "vol_used_GB"
 	MetricVolUsageGB           = "vol_usage_ratio"
+	MetricDiskError            = "disk_error"
+	MetricDataNodesInactive    = "dataNodes_inactive"
+	MetricMetaNodesInactive    = "metaNodes_inactive"
 )
 
 type monitorMetrics struct {
@@ -52,6 +56,9 @@ type monitorMetrics struct {
 	volTotalSpace      *exporter.Gauge
 	volUsedSpace       *exporter.Gauge
 	volUsage           *exporter.Gauge
+	diskError          *exporter.Gauge
+	dataNodesInactive  *exporter.Gauge
+	metaNodesInactive  *exporter.Gauge
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
@@ -71,6 +78,9 @@ func (mm *monitorMetrics) start() {
 	mm.volTotalSpace = exporter.NewGauge(MetricVolTotalGB)
 	mm.volUsedSpace = exporter.NewGauge(MetricVolUsedGB)
 	mm.volUsage = exporter.NewGauge(MetricVolUsageGB)
+	mm.diskError = exporter.NewGauge(MetricDiskError)
+	mm.dataNodesInactive = exporter.NewGauge(MetricDataNodesInactive)
+	mm.metaNodesInactive = exporter.NewGauge(MetricMetaNodesInactive)
 	go mm.statMetrics()
 }
 
@@ -109,6 +119,13 @@ func (mm *monitorMetrics) doStat() {
 	mm.metaNodesTotal.Set(int64(mm.cluster.metaNodeStatInfo.TotalGB))
 	mm.metaNodesUsed.Set(int64(mm.cluster.metaNodeStatInfo.UsedGB))
 	mm.metaNodesIncreased.Set(int64(mm.cluster.metaNodeStatInfo.IncreasedGB))
+	mm.setVolMetrics()
+	mm.setDiskErrorMetric()
+	mm.setInactiveDataNodesCount()
+	mm.setInactiveMetaNodesCount()
+}
+
+func (mm *monitorMetrics) setVolMetrics() {
 	mm.cluster.volStatInfo.Range(func(key, value interface{}) bool {
 		volStatInfo, ok := value.(*volStatInfo)
 		if !ok {
@@ -135,6 +152,56 @@ func (mm *monitorMetrics) doStat() {
 	})
 }
 
+func (mm *monitorMetrics) setDiskErrorMetric() {
+	mm.cluster.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode, ok := node.(*DataNode)
+		if !ok {
+			return true
+		}
+		for _, badDisk := range dataNode.BadDisks {
+			for _, partition := range dataNode.DataPartitionReports {
+				if partition.DiskPath == badDisk {
+					labels := map[string]string{"diskError": fmt.Sprintf("%v_%v", dataNode.Addr, badDisk)}
+					volTotalGauge := exporter.NewGauge(MetricDiskError)
+					volTotalGauge.SetWithLabels(1, labels)
+					break
+				}
+			}
+		}
+		return true
+	})
+}
+
+func (mm *monitorMetrics) setInactiveMetaNodesCount() {
+	var inactiveMetaNodesCount int64
+	mm.cluster.metaNodes.Range(func(addr, node interface{}) bool {
+		metaNode, ok := node.(*MetaNode)
+		if !ok {
+			return true
+		}
+		if !metaNode.IsActive {
+			inactiveMetaNodesCount++
+		}
+		return true
+	})
+	mm.metaNodesInactive.Set(inactiveMetaNodesCount)
+}
+
+func (mm *monitorMetrics) setInactiveDataNodesCount() {
+	var inactiveDataNodesCount int64
+	mm.cluster.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode, ok := node.(*DataNode)
+		if !ok {
+			return true
+		}
+		if !dataNode.isActive {
+			inactiveDataNodesCount++
+		}
+		return true
+	})
+	mm.dataNodesInactive.Set(inactiveDataNodesCount)
+}
+
 func (mm *monitorMetrics) resetAllMetrics() {
 	mm.dataNodesCount.Set(0)
 	mm.metaNodesCount.Set(0)
@@ -145,4 +212,7 @@ func (mm *monitorMetrics) resetAllMetrics() {
 	mm.metaNodesTotal.Set(0)
 	mm.metaNodesUsed.Set(0)
 	mm.metaNodesIncreased.Set(0)
+	mm.diskError.Set(0)
+	mm.dataNodesInactive.Set(0)
+	mm.metaNodesInactive.Set(0)
 }
