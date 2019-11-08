@@ -7,16 +7,12 @@ Here we draft the engineering roadmap of ChubaoFS
 - RDMA
 - DPDK
 
-## Kubernetes Integration
+## Object Storage Interface
 
-- CSI driver
-- Operator
-
-
-## API Enhancement
-
-- A subset of S3 APIs
-- NFSv4
+to be released by the end of 2019
 
 ## DataLake
+
+## Erasure Coding
+
 
