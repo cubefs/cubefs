@@ -15,8 +15,8 @@
 package raftstore
 
 import (
-	"github.com/tiglabs/raft/proto"
 	"fmt"
+	"github.com/tiglabs/raft/proto"
 )
 
 // Constants for network port definition.

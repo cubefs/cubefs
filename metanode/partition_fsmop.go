@@ -212,13 +212,22 @@ func (mp *metaPartition) CanRemoveRaftMember(peer proto.Peer) error {
 	if !hasExsit {
 		return fmt.Errorf("peer(%v) not exsit downReplicas(%v)", peer, downReplicas)
 	}
+
+	hasDownReplicasExcludePeer := make([]uint64, 0)
+	for _, nodeID := range downReplicas {
+		if nodeID.NodeID == peer.ID {
+			continue
+		}
+		hasDownReplicasExcludePeer = append(hasDownReplicasExcludePeer, nodeID.NodeID)
+	}
+
 	sumReplicas := len(mp.config.Peers)
 	if sumReplicas%2 == 1 {
-		if sumReplicas-len(downReplicas) > (sumReplicas/2 + 1) {
+		if sumReplicas-len(hasDownReplicasExcludePeer) > (sumReplicas/2 + 1) {
 			return nil
 		}
 	} else {
-		if sumReplicas-len(downReplicas) >= (sumReplicas/2 + 1) {
+		if sumReplicas-len(hasDownReplicasExcludePeer) >= (sumReplicas/2 + 1) {
 			return nil
 		}
 	}
