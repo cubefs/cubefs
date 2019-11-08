@@ -1005,15 +1005,11 @@ func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode) (err 
 	}
 	task := dp.createTaskToDeleteDataPartition(dataNode.Addr)
 	dp.Unlock()
-	var resp *proto.Packet
-	if resp, err = dataNode.TaskManager.syncSendAdminTask(task); err != nil {
+	_, err = dataNode.TaskManager.syncSendAdminTask(task)
+	if err != nil {
 		log.LogErrorf("action[deleteDataReplica] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
-		if resp.ResultCode == proto.OpTryOtherAddr {
-			err = nil
-		}
-		return
 	}
-	return
+	return nil
 }
 
 func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, offlineAddr string, partitionID uint64) {

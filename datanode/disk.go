@@ -61,7 +61,7 @@ type Disk struct {
 
 type PartitionVisitor func(dp *DataPartition)
 
-func NewDisk(path string,  maxErrCnt int, space *SpaceManager) (d *Disk) {
+func NewDisk(path string, maxErrCnt int, space *SpaceManager) (d *Disk) {
 	d = new(Disk)
 	d.Path = path
 	d.MaxErrCnt = maxErrCnt
@@ -82,7 +82,7 @@ func (d *Disk) PartitionCount() int {
 }
 
 const (
-	ReservedPersent=0.02
+	ReservedPersent = 0.02
 )
 
 // Compute the disk usage
@@ -94,12 +94,12 @@ func (d *Disk) computeUsage() (err error) {
 	if err != nil {
 		return
 	}
-	d.ReservedSpace=uint64(float64(fs.Blocks*uint64(fs.Bsize))*0.02)
-	if d.ReservedSpace>DefaultDiskRetainMax{
-		d.ReservedSpace=DefaultDiskRetainMax
+	d.ReservedSpace = uint64(float64(fs.Blocks*uint64(fs.Bsize)) * 0.02)
+	if d.ReservedSpace > DefaultDiskRetainMax {
+		d.ReservedSpace = DefaultDiskRetainMax
 	}
-	if d.ReservedSpace<DefaultDiskRetainMin{
-		d.ReservedSpace=DefaultDiskRetainMin
+	if d.ReservedSpace < DefaultDiskRetainMin {
+		d.ReservedSpace = DefaultDiskRetainMin
 	}
 	total := int64(fs.Blocks*uint64(fs.Bsize) - d.ReservedSpace)
 	if total < 0 {
@@ -221,7 +221,7 @@ func (d *Disk) triggerDiskError(err error) {
 		exporter.Warning(mesg)
 		log.LogErrorf(mesg)
 		d.ForceExitRaftStore()
-		d.Status=proto.Unavailable
+		d.Status = proto.Unavailable
 	}
 	return
 }

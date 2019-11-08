@@ -735,7 +735,7 @@ func (s *DataNode) handlePacketToGetPartitionSize(p *repl.Packet) {
 	usedSize := partition.extentStore.StoreSizeExtentID(p.ExtentID)
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(usedSize))
-	p.AddMesgLog(fmt.Sprintf("partitionSize_(%v)",usedSize))
+	p.AddMesgLog(fmt.Sprintf("partitionSize_(%v)", usedSize))
 	p.PacketOkWithBody(buf)
 
 	return

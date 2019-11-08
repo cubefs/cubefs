@@ -19,7 +19,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 	"strconv"
 	"time"
-	"fmt"
 )
 
 //metrics
@@ -161,7 +160,9 @@ func (mm *monitorMetrics) setDiskErrorMetric() {
 		for _, badDisk := range dataNode.BadDisks {
 			for _, partition := range dataNode.DataPartitionReports {
 				if partition.DiskPath == badDisk {
-					labels := map[string]string{"diskError": fmt.Sprintf("%v_%v", dataNode.Addr, badDisk)}
+					labels := make(map[string]string, 0)
+					labels["addr"] = dataNode.Addr
+					labels["path"] = badDisk
 					volTotalGauge := exporter.NewGauge(MetricDiskError)
 					volTotalGauge.SetWithLabels(1, labels)
 					break
