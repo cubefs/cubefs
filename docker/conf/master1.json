@@ -12,5 +12,6 @@
     "logLevel": "info",
     "logDir": "/cfs/log",
     "walDir": "/cfs/data/wal",
-    "storeDir": "/cfs/data/store"
+    "storeDir": "/cfs/data/store",
+    "metaNodeReservedMem": "67108864"
 }
