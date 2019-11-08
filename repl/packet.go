@@ -395,14 +395,14 @@ func (p *Packet) IsMarkDeleteExtentOperation() bool {
 	return p.Opcode == proto.OpMarkDelete
 }
 
-func (p *Packet) IsBroadcastMinAppliedID()bool {
-	return p.Opcode==proto.OpBroadcastMinAppliedID
+func (p *Packet) IsBroadcastMinAppliedID() bool {
+	return p.Opcode == proto.OpBroadcastMinAppliedID
 }
 
 func (p *Packet) IsReadOperation() bool {
 	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpRead ||
 		p.Opcode == proto.OpExtentRepairRead || p.Opcode == proto.OpReadTinyDeleteRecord ||
-			p.Opcode == proto.OpTinyExtentRepairRead || p.Opcode==proto.OpStreamFollowerRead
+		p.Opcode == proto.OpTinyExtentRepairRead || p.Opcode == proto.OpStreamFollowerRead
 }
 
 func (p *Packet) IsRandomWrite() bool {

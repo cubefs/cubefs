@@ -189,10 +189,11 @@ func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *
 	partition.removeReplicaByAddr(removeMetaNode.Addr)
 	partition.removeMissingReplica(removeMetaNode.Addr)
 	partition.Unlock()
-	if _, err = removeMetaNode.Sender.syncSendAdminTask(task); err != nil {
-		return
+	_, err = removeMetaNode.Sender.syncSendAdminTask(task)
+	if err != nil {
+		log.LogErrorf("action[deleteMetaPartition] vol[%v],data partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
 	}
-	return
+	return nil
 }
 
 func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, removePeer proto.Peer) (err error) {

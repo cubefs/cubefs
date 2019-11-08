@@ -126,20 +126,29 @@ func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer) error {
 		}
 	}
 	if !hasExsit {
-		return fmt.Errorf("peer(%v) not exsit downReplicas(%v)", peer, downReplicas)
+		return fmt.Errorf("peer(%v) not exsit hasDownReplicasExcludePeer(%v)", peer, downReplicas)
 	}
+
+	hasDownReplicasExcludePeer := make([]uint64, 0)
+	for _, nodeID := range downReplicas {
+		if nodeID.NodeID == peer.ID {
+			continue
+		}
+		hasDownReplicasExcludePeer = append(hasDownReplicasExcludePeer, nodeID.NodeID)
+	}
+
 	sumReplicas := len(dp.config.Peers)
 	if sumReplicas%2 == 1 {
-		if sumReplicas-len(downReplicas) > (sumReplicas/2 + 1) {
+		if sumReplicas-len(hasDownReplicasExcludePeer) > (sumReplicas/2 + 1) {
 			return nil
 		}
 	} else {
-		if sumReplicas-len(downReplicas) >= (sumReplicas/2 + 1) {
+		if sumReplicas-len(hasDownReplicasExcludePeer) >= (sumReplicas/2 + 1) {
 			return nil
 		}
 	}
 
-	return fmt.Errorf("downReplicas(%v) too much,so donnot offline (%v)", downReplicas, peer)
+	return fmt.Errorf("hasDownReplicasExcludePeer(%v) too much,so donnot offline (%v)", downReplicas, peer)
 }
 
 // StartRaftLoggingSchedule starts the task schedule as follows:
