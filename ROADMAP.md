@@ -4,15 +4,20 @@ Here we draft the engineering roadmap of ChubaoFS
 
 ## Performance Optimization
 
-- RDMA
-- DPDK
+* RDMA
 
-## Object Storage Interface
+## New Features
 
-to be released by the end of 2019
+* Object Storage Interface (to be released by the end of 2019)
 
-## DataLake
+* Erasure Coding
 
-## Erasure Coding
+## Ecosystem
+
+* Data Lake
+
+* Machine Learning
+
+
 
 
