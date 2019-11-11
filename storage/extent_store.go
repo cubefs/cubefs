@@ -825,7 +825,8 @@ func (s *ExtentStore) AutoComputeExtentCrc() {
 		if ei == nil {
 			continue
 		}
-		if !IsTinyExtent(ei.FileID) && time.Now().Unix()-ei.ModifyTime > UpdateCrcInterval && ei.IsDeleted == false && ei.Size > 0 {
+		if !IsTinyExtent(ei.FileID) && time.Now().Unix()-ei.ModifyTime > UpdateCrcInterval &&
+			ei.IsDeleted == false && ei.Size > 0 && ei.Crc==0{
 			e, err := s.extentWithHeader(ei)
 			if err != nil {
 				continue
