@@ -27,17 +27,19 @@ import (
 
 // ExtentReader defines the struct of the extent reader.
 type ExtentReader struct {
-	inode uint64
-	key   *proto.ExtentKey
-	dp    *wrapper.DataPartition
+	inode        uint64
+	key          *proto.ExtentKey
+	dp           *wrapper.DataPartition
+	followerRead bool
 }
 
 // NewExtentReader returns a new extent reader.
-func NewExtentReader(inode uint64, key *proto.ExtentKey, dp *wrapper.DataPartition) *ExtentReader {
+func NewExtentReader(inode uint64, key *proto.ExtentKey, dp *wrapper.DataPartition, followerRead bool) *ExtentReader {
 	return &ExtentReader{
-		inode: inode,
-		key:   key,
-		dp:    dp,
+		inode:        inode,
+		key:          key,
+		dp:           dp,
+		followerRead: followerRead,
 	}
 }
 
@@ -52,8 +54,8 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 	offset := req.FileOffset - int(reader.key.FileOffset) + int(reader.key.ExtentOffset)
 	size := req.Size
 
-	reqPacket := NewReadPacket(reader.key, offset, size, reader.inode, req.FileOffset)
-	sc := NewStreamConn(reader.dp)
+	reqPacket := NewReadPacket(reader.key, offset, size, reader.inode, req.FileOffset, reader.followerRead)
+	sc := NewStreamConn(reader.dp, reader.followerRead)
 
 	log.LogDebugf("ExtentReader Read enter: size(%v) req(%v) reqPacket(%v)", size, req, reqPacket)
 

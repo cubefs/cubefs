@@ -58,6 +58,9 @@ const (
 
 	ModuleName            = "fuseclient"
 	ConfigKeyExporterPort = "exporterKey"
+
+	ControlCommandSetRate = "/rate/set"
+	ControlCommandGetRate = "/rate/get"
 )
 
 var (
@@ -85,6 +88,16 @@ func main() {
 		os.Exit(0)
 	}
 
+	/*
+	 * LoadConfigFile should be checked before start daemon, since it will
+	 * call os.Exit() w/o notifying the parent process.
+	 */
+	cfg, err := config.LoadConfigFile(*configFile)
+	if err != nil {
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+
 	if !*configForeground {
 		if err := startDaemon(); err != nil {
 			fmt.Printf("Mount failed: %v\n", err)
@@ -98,7 +111,6 @@ func main() {
 	 * Must notify the parent process through SignalOutcome anyway.
 	 */
 
-	cfg := config.LoadConfigFile(*configFile)
 	opt, err := parseMountOption(cfg)
 	if err != nil {
 		daemonize.SignalOutcome(err)
@@ -136,6 +148,7 @@ func main() {
 
 	fsConn, super, err := mount(opt)
 	if err != nil {
+		log.LogFlush()
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	} else {
@@ -146,12 +159,14 @@ func main() {
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
 
 	if err = fs.Serve(fsConn, super); err != nil {
+		log.LogFlush()
 		syslog.Printf("fs Serve returns err(%v)", err)
 		os.Exit(1)
 	}
 
 	<-fsConn.Ready
 	if fsConn.MountError != nil {
+		log.LogFlush()
 		syslog.Printf("fs Serve returns err(%v)\n", err)
 		os.Exit(1)
 	}
@@ -191,8 +206,10 @@ func mount(opt *cfs.MountOption) (fsConn *fuse.Conn, super *cfs.Super, err error
 		return
 	}
 
+	http.HandleFunc(ControlCommandSetRate, super.SetRate)
+	http.HandleFunc(ControlCommandGetRate, super.GetRate)
+	http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
 	go func() {
-		http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
 		fmt.Println(http.ListenAndServe(":"+opt.Profport, nil))
 	}()
 
@@ -249,6 +266,8 @@ func parseMountOption(cfg *config.Config) (*cfs.MountOption, error) {
 	opt.IcacheTimeout = parseConfigString(cfg, proto.IcacheTimeout)
 	opt.LookupValid = parseConfigString(cfg, proto.LookupValid)
 	opt.AttrValid = parseConfigString(cfg, proto.AttrValid)
+	opt.ReadRate = parseConfigString(cfg, proto.ReadRate)
+	opt.WriteRate = parseConfigString(cfg, proto.WriteRate)
 	opt.EnSyncWrite = parseConfigString(cfg, proto.EnSyncWrite)
 	opt.AutoInvalData = parseConfigString(cfg, proto.AutoInvalData)
 	opt.UmpDatadir = cfg.GetString(proto.WarnLogDir)

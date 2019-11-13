@@ -165,6 +165,7 @@ func (sender *AdminTaskManager) buildPacket(task *proto.AdminTask) (packet *prot
 	packet = proto.NewPacket()
 	packet.Opcode = task.OpCode
 	packet.ReqID = proto.GenerateRequestID()
+	packet.PartitionID = task.PartitionID
 	body, err := json.Marshal(task)
 	if err != nil {
 		return nil, err
@@ -191,9 +192,9 @@ func (sender *AdminTaskManager) sendAdminTask(task *proto.AdminTask, conn net.Co
 	return nil
 }
 
-func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (response []byte, err error) {
+func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (packet *proto.Packet, err error) {
 	log.LogInfof("action[syncSendAdminTask],task[%v]", task)
-	packet, err := sender.buildPacket(task)
+	packet, err = sender.buildPacket(task)
 	if err != nil {
 		return nil, errors.Trace(err, "action[syncSendAdminTask build packet failed,task:%v]", task.ID)
 	}
@@ -209,17 +210,17 @@ func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (respon
 		}
 	}()
 	if err = packet.WriteToConn(conn); err != nil {
-		return nil, errors.Trace(err, "action[syncSendAdminTask],WriteToConn failed,task:%v", task.ID)
+		return nil, errors.Trace(err, "action[syncSendAdminTask],WriteToConn failed,task:%v,reqID[%v]", task.ID, packet.ReqID)
 	}
 	if err = packet.ReadFromConn(conn, proto.SyncSendTaskDeadlineTime); err != nil {
-		return nil, errors.Trace(err, "action[syncSendAdminTask],ReadFromConn failed task:%v", task.ID)
+		return nil, errors.Trace(err, "action[syncSendAdminTask],ReadFromConn failed task:%v,reqID[%v]", task.ID, packet.ReqID)
 	}
 	if packet.ResultCode != proto.OpOk {
-		err = fmt.Errorf(string(packet.Data))
-		log.LogErrorf("action[syncSendAdminTask],task:%v get response code[%v] err[%v],", task.ID, packet.ResultCode, err)
+		err = fmt.Errorf("result code[%v],msg[%v]", packet.ResultCode, string(packet.Data))
+		log.LogErrorf("action[syncSendAdminTask],task:%v,reqID[%v],err[%v],", task.ID, packet.ReqID, err)
 		return
 	}
-	return packet.Data, nil
+	return packet, nil
 }
 
 // DelTask deletes the to-be-deleted tasks.

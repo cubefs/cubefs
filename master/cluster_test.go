@@ -19,7 +19,7 @@ func buildPanicVol() *Vol {
 	if err != nil {
 		return nil
 	}
-	vol := newVol(id, commonVol.Name, commonVol.Owner, commonVol.dataPartitionSize, commonVol.Capacity, defaultReplicaNum, defaultReplicaNum)
+	vol := newVol(id, commonVol.Name, commonVol.Owner, commonVol.dataPartitionSize, commonVol.Capacity, defaultReplicaNum, defaultReplicaNum, false)
 	vol.dataPartitions = nil
 	return vol
 }

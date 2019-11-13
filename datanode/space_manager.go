@@ -120,7 +120,7 @@ func (manager *SpaceManager) Stats() *Stats {
 	return manager.stats
 }
 
-func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrCnt int) (err error) {
+func (manager *SpaceManager) LoadDisk(path string, maxErrCnt int) (err error) {
 	var (
 		disk    *Disk
 		visitor PartitionVisitor
@@ -135,7 +135,7 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrC
 		}
 	}
 	if _, err = manager.GetDisk(path); err != nil {
-		disk = NewDisk(path, reservedSpace, maxErrCnt, manager)
+		disk = NewDisk(path, maxErrCnt, manager)
 		disk.RestorePartition(visitor)
 		manager.putDisk(disk)
 		err = nil
@@ -306,6 +306,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	response.TotalPartitionSize = stat.TotalPartitionSize
 	response.MaxCapacity = stat.MaxCapacityToCreatePartition
 	response.RemainingCapacity = stat.RemainingCapacityToCreatePartition
+	response.BadDisks = make([]string, 0)
 	stat.Unlock()
 
 	response.RackName = s.rackName
@@ -328,4 +329,11 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 		response.PartitionReports = append(response.PartitionReports, vr)
 		return true
 	})
+
+	disks := space.GetDisks()
+	for _, d := range disks {
+		if d.Status == proto.Unavailable {
+			response.BadDisks = append(response.BadDisks, d.Path)
+		}
+	}
 }

@@ -4,23 +4,20 @@ Here we draft the engineering roadmap of ChubaoFS
 
 ## Performance Optimization
 
-- RDMA
-- DPDK
+* RDMA
 
-## Kubernetes Integration
+## New Features
 
-- CSI driver
-- Operator
+* Object Storage Interface (to be released by the end of 2019)
+
+* Erasure Coding
+
+## Ecosystem
+
+* Data Lake
+
+* Machine Learning
 
 
-## API Enhancement
 
-- A subset of S3 APIs
-- NFSv4
 
-## Database and Bigdata services on ChubaoFS
-
-- HBase (Done)
-- Elasticsearch (Done)
-- Spark (WIP)
-- MySQL (still need performance tuning)

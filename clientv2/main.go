@@ -59,6 +59,9 @@ const (
 
 	ModuleName            = "fuseclient"
 	ConfigKeyExporterPort = "exporterKey"
+
+	ControlCommandSetRate = "/rate/set"
+	ControlCommandGetRate = "/rate/get"
 )
 
 var (
@@ -86,6 +89,16 @@ func main() {
 		os.Exit(0)
 	}
 
+	/*
+	 * LoadConfigFile should be checked before start daemon, since it will
+	 * call os.Exit() w/o notifying the parent process.
+	 */
+	cfg, err := config.LoadConfigFile(*configFile)
+	if err != nil {
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+
 	if !*configForeground {
 		if err := startDaemon(); err != nil {
 			fmt.Printf("Mount failed: %v\n", err)
@@ -99,7 +112,6 @@ func main() {
 	 * Must notify the parent process through SignalOutcome anyway.
 	 */
 
-	cfg := config.LoadConfigFile(*configFile)
 	opt, err := parseMountOption(cfg)
 	if err != nil {
 		daemonize.SignalOutcome(err)
@@ -137,6 +149,7 @@ func main() {
 
 	mfs, err := mount(opt)
 	if err != nil {
+		log.LogFlush()
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	} else {
@@ -144,6 +157,7 @@ func main() {
 	}
 
 	if err = mfs.Join(context.Background()); err != nil {
+		log.LogFlush()
 		syslog.Printf("mfs Joint returns error: %v", err)
 		os.Exit(1)
 	}
@@ -183,8 +197,10 @@ func mount(opt *cfs.MountOption) (*fuse.MountedFileSystem, error) {
 		return nil, err
 	}
 
+	http.HandleFunc(ControlCommandSetRate, super.SetRate)
+	http.HandleFunc(ControlCommandGetRate, super.GetRate)
+	http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
 	go func() {
-		http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
 		fmt.Println(http.ListenAndServe(":"+opt.Profport, nil))
 	}()
 
@@ -243,6 +259,8 @@ func parseMountOption(cfg *config.Config) (*cfs.MountOption, error) {
 	opt.IcacheTimeout = parseConfigString(cfg, proto.IcacheTimeout)
 	opt.LookupValid = parseConfigString(cfg, proto.LookupValid)
 	opt.AttrValid = parseConfigString(cfg, proto.AttrValid)
+	opt.ReadRate = parseConfigString(cfg, proto.ReadRate)
+	opt.WriteRate = parseConfigString(cfg, proto.WriteRate)
 	opt.EnSyncWrite = parseConfigString(cfg, proto.EnSyncWrite)
 	opt.UmpDatadir = cfg.GetString(proto.WarnLogDir)
 	opt.Rdonly = cfg.GetBool(proto.Rdonly)

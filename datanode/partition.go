@@ -91,6 +91,7 @@ type DataPartition struct {
 	partitionStatus int
 	partitionSize   int
 	replicas        []string // addresses of the replicas
+	replicasLock    sync.RWMutex
 	disk            *Disk
 	isLeader        bool
 	isRaftLeader    bool
@@ -231,7 +232,9 @@ func (dp *DataPartition) replicasInit() {
 	for _, host := range dp.config.Hosts {
 		replicas = append(replicas, host)
 	}
+	dp.replicasLock.Lock()
 	dp.replicas = replicas
+	dp.replicasLock.Unlock()
 	if dp.config.Hosts != nil && len(dp.config.Hosts) >= 1 {
 		leaderAddr := strings.Split(dp.config.Hosts[0], ":")
 		if len(leaderAddr) == 2 && strings.TrimSpace(leaderAddr[0]) == LocalIP {
@@ -268,7 +271,32 @@ func (dp *DataPartition) IsRaftLeader() (addr string, ok bool) {
 }
 
 func (dp *DataPartition) Replicas() []string {
+	dp.replicasLock.RLock()
+	defer dp.replicasLock.RUnlock()
 	return dp.replicas
+}
+
+func (dp *DataPartition) getReplicaAddr(index int) string {
+	dp.replicasLock.RLock()
+	defer dp.replicasLock.RUnlock()
+	return dp.replicas[index]
+}
+
+func (dp *DataPartition) getReplicaLen() int {
+	dp.replicasLock.RLock()
+	defer dp.replicasLock.RUnlock()
+	return len(dp.replicas)
+}
+
+func (dp *DataPartition) IsExsitReplica(addr string) bool {
+	dp.replicasLock.RLock()
+	defer dp.replicasLock.RUnlock()
+	for _, host := range dp.replicas {
+		if host == addr {
+			return true
+		}
+	}
+	return false
 }
 
 func (dp *DataPartition) ReloadSnapshot() {
@@ -355,11 +383,11 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 	sort.Sort(sp)
 
 	md := &DataPartitionMetadata{
-		VolumeID:      dp.config.VolName,
-		PartitionID:   dp.config.PartitionID,
-		PartitionSize: dp.config.PartitionSize,
-		Peers:         dp.config.Peers,
-		Hosts:         dp.config.Hosts,
+		VolumeID:                dp.config.VolName,
+		PartitionID:             dp.config.PartitionID,
+		PartitionSize:           dp.config.PartitionSize,
+		Peers:                   dp.config.Peers,
+		Hosts:                   dp.config.Hosts,
 		DataPartitionCreateType: dp.DataPartitionCreateType,
 		CreateTime:              time.Now().Format(TimeLayout),
 		LastTruncateID:          dp.lastTruncateID,
@@ -525,6 +553,8 @@ func (dp *DataPartition) updateReplicas() (err error) {
 	if err != nil {
 		return
 	}
+	dp.replicasLock.Lock()
+	defer dp.replicasLock.Unlock()
 	if !dp.compareReplicas(dp.replicas, replicas) {
 		log.LogInfof("action[updateReplicas] partition(%v) replicas changed from (%v) to (%v).",
 			dp.partitionID, dp.replicas, replicas)

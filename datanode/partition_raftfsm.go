@@ -20,7 +20,6 @@ import (
 	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
@@ -96,9 +95,6 @@ func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
 
 // HandleLeaderChange notifies the application when the raft leader has changed.
 func (dp *DataPartition) HandleLeaderChange(leader uint64) {
-	exporter.Warning(fmt.Sprintf("LeaderChange: partition=%d, "+
-		"newLeader=%d", dp.config.PartitionID, leader))
-
 	if dp.config.NodeID == leader {
 		dp.isRaftLeader = true
 	}

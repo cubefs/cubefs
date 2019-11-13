@@ -40,6 +40,8 @@ func (m *Server) handleFunctions() {
 	http.Handle(proto.AdminCreateDataPartition, m.handlerWithInterceptor())
 	http.Handle(proto.AdminLoadDataPartition, m.handlerWithInterceptor())
 	http.Handle(proto.AdminDecommissionDataPartition, m.handlerWithInterceptor())
+	http.Handle(proto.AdminAddDataReplica, m.handlerWithInterceptor())
+	http.Handle(proto.AdminDeleteDataReplica, m.handlerWithInterceptor())
 	http.Handle(proto.AdminCreateVol, m.handlerWithInterceptor())
 	http.Handle(proto.AdminGetVol, m.handlerWithInterceptor())
 	http.Handle(proto.AdminDeleteVol, m.handlerWithInterceptor())
@@ -54,6 +56,8 @@ func (m *Server) handleFunctions() {
 	http.Handle(proto.GetMetaNode, m.handlerWithInterceptor())
 	http.Handle(proto.AdminLoadMetaPartition, m.handlerWithInterceptor())
 	http.Handle(proto.AdminDecommissionMetaPartition, m.handlerWithInterceptor())
+	http.Handle(proto.AdminAddMetaReplica, m.handlerWithInterceptor())
+	http.Handle(proto.AdminDeleteMetaReplica, m.handlerWithInterceptor())
 	http.Handle(proto.ClientDataPartitions, m.handlerWithInterceptor())
 	http.Handle(proto.ClientVol, m.handlerWithInterceptor())
 	http.Handle(proto.ClientMetaPartitions, m.handlerWithInterceptor())
@@ -115,6 +119,10 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.loadDataPartition(w, r)
 	case proto.AdminDecommissionDataPartition:
 		m.decommissionDataPartition(w, r)
+	case proto.AdminAddDataReplica:
+		m.addDataReplica(w, r)
+	case proto.AdminDeleteDataReplica:
+		m.deleteDataReplica(w, r)
 	case proto.AdminCreateVol:
 		m.createVol(w, r)
 	case proto.AdminGetVol:
@@ -130,7 +138,7 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case proto.GetDataNode:
 		m.getDataNode(w, r)
 	case proto.DecommissionDataNode:
-		m.dataNodeOffline(w, r)
+		m.decommissionDataNode(w, r)
 	case proto.DecommissionDisk:
 		m.decommissionDisk(w, r)
 	case proto.GetDataNodeTaskResponse:
@@ -159,6 +167,10 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.decommissionMetaPartition(w, r)
 	case proto.AdminCreateMP:
 		m.createMetaPartition(w, r)
+	case proto.AdminAddMetaReplica:
+		m.addMetaReplica(w, r)
+	case proto.AdminDeleteMetaReplica:
+		m.deleteMetaReplica(w, r)
 	case proto.AddRaftNode:
 		m.addRaftNode(w, r)
 	case proto.RemoveRaftNode:

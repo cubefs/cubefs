@@ -111,7 +111,7 @@ func checkMetaPartitionsWritableTest(vol *Vol, t *testing.T) {
 	maxPartitionID := vol.maxPartitionID()
 	maxMp := vol.MetaPartitions[maxPartitionID]
 	//after check meta partitions ,the status must be writable
-	maxMp.checkStatus(false, int(vol.mpReplicaNum), maxPartitionID)
+	maxMp.checkStatus(server.cluster.Name, false, int(vol.mpReplicaNum), maxPartitionID)
 	if maxMp.Status != proto.ReadWrite {
 		t.Errorf("expect partition status[%v],real status[%v]\n", proto.ReadWrite, maxMp.Status)
 		return
@@ -171,7 +171,7 @@ func markDeleteVol(name string, t *testing.T) {
 
 func TestVolReduceReplicaNum(t *testing.T) {
 	volName := "reduce-replica-num"
-	vol, err := server.cluster.createVol(volName, volName, 3, util.DefaultDataPartitionSize, 100, defaultReplicaNum)
+	vol, err := server.cluster.createVol(volName, volName, 3, util.DefaultDataPartitionSize, 100, false)
 	if err != nil {
 		t.Error(err)
 		return
@@ -183,11 +183,11 @@ func TestVolReduceReplicaNum(t *testing.T) {
 	}
 	oldReplicaNum := vol.dpReplicaNum
 	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&replicaNum=%v&authKey=%v",
-		hostAddr, proto.AdminUpdateVol, volName, 100, 1, buildAuthKey(volName))
+		hostAddr, proto.AdminUpdateVol, volName, 100, 2, buildAuthKey(volName))
 	fmt.Println(reqURL)
 	process(reqURL, t)
-	if vol.dpReplicaNum != 1 {
-		t.Error("update vol replica Num to [1] failed")
+	if vol.dpReplicaNum != 2 {
+		t.Error("update vol replica Num to [2] failed")
 		return
 	}
 	for i := 0; i < int(oldReplicaNum); i++ {
@@ -210,7 +210,7 @@ func TestVolReduceReplicaNum(t *testing.T) {
 func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	name := "TestConcurrentReadWriteDataPartitionMap"
 	var volID uint64 = 1
-	vol := newVol(volID, name, name, util.DefaultDataPartitionSize, 100, defaultReplicaNum, defaultReplicaNum)
+	vol := newVol(volID, name, name, util.DefaultDataPartitionSize, 100, defaultReplicaNum, defaultReplicaNum, false)
 	//unavaliable mp
 	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, name, volID)
 	vol.addMetaPartition(mp1)

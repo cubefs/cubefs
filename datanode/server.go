@@ -55,8 +55,8 @@ const (
 	DefaultRaftDir          = "raft"
 	DefaultRaftLogsToRetain = 10 // Count of raft logs per data partition
 	DefaultDiskMaxErr       = 1
-	DefaultDiskRetainMin    = 20 * util.GB // GB
-	DefaultDiskRetainMax    = 50 * util.GB // GB
+	DefaultDiskRetainMin    = 5 * util.GB // GB
+	DefaultDiskRetainMax    = 30 * util.GB // GB
 )
 
 const (
@@ -234,22 +234,11 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		if !fileInfo.IsDir() {
 			return errors.New("Disk path is not dir")
 		}
-		reservedSpace, err := strconv.ParseUint(arr[1], 10, 64)
-		if err != nil {
-			return errors.New(fmt.Sprintf("Invalid disk reserved space. Error: %s", err.Error()))
-		}
-
-		if reservedSpace < DefaultDiskRetainMin {
-			reservedSpace = DefaultDiskRetainMin
-		}
-		if reservedSpace > DefaultDiskRetainMax {
-			reservedSpace = DefaultDiskRetainMax
-		}
 		wg.Add(1)
-		go func(wg *sync.WaitGroup, path string, reservedSpace uint64) {
+		go func(wg *sync.WaitGroup, path string) {
 			defer wg.Done()
-			s.space.LoadDisk(path, reservedSpace, DefaultDiskMaxErr)
-		}(&wg, path, reservedSpace)
+			s.space.LoadDisk(path, DefaultDiskMaxErr)
+		}(&wg, path)
 	}
 	wg.Wait()
 	return nil

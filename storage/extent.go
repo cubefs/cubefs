@@ -308,7 +308,7 @@ func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err er
 		bdata := make([]byte, util.BlockSize)
 		offset := int64(blockNo * util.BlockSize)
 		readN, err := e.file.ReadAt(bdata[:util.BlockSize], offset)
-		if err != io.EOF {
+		if readN == 0 && err != nil {
 			break
 		}
 		blockCrc = crc32.ChecksumIEEE(bdata[:readN])

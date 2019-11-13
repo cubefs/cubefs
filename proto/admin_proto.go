@@ -22,6 +22,8 @@ const (
 	AdminLoadDataPartition         = "/dataPartition/load"
 	AdminCreateDataPartition       = "/dataPartition/create"
 	AdminDecommissionDataPartition = "/dataPartition/decommission"
+	AdminDeleteDataReplica         = "/dataReplica/delete"
+	AdminAddDataReplica            = "/dataReplica/add"
 	AdminDeleteVol                 = "/vol/delete"
 	AdminUpdateVol                 = "/vol/update"
 	AdminCreateVol                 = "/admin/createVol"
@@ -52,6 +54,8 @@ const (
 	GetMetaNode                    = "/metaNode/get"
 	AdminLoadMetaPartition         = "/metaPartition/load"
 	AdminDecommissionMetaPartition = "/metaPartition/decommission"
+	AdminAddMetaReplica            = "/metaReplica/add"
+	AdminDeleteMetaReplica         = "/metaReplica/delete"
 
 	// Operation response
 	GetMetaNodeTaskResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
@@ -118,11 +122,28 @@ type DataPartitionDecommissionRequest struct {
 	AddPeer     Peer
 }
 
-// DataPartitionDecommissionResponse defines the response to the request of decommissioning a data partition.
-type DataPartitionDecommissionResponse struct {
-	Status      uint8
-	Result      string
+// AddDataPartitionRaftMemberRequest defines the request of add raftMember a data partition.
+type AddDataPartitionRaftMemberRequest struct {
 	PartitionId uint64
+	AddPeer     Peer
+}
+
+// RemoveDataPartitionRaftMemberRequest defines the request of add raftMember a data partition.
+type RemoveDataPartitionRaftMemberRequest struct {
+	PartitionId uint64
+	RemovePeer  Peer
+}
+
+// AddMetaPartitionRaftMemberRequest defines the request of add raftMember a meta partition.
+type AddMetaPartitionRaftMemberRequest struct {
+	PartitionId uint64
+	AddPeer     Peer
+}
+
+// RemoveMetaPartitionRaftMemberRequest defines the request of add raftMember a meta partition.
+type RemoveMetaPartitionRaftMemberRequest struct {
+	PartitionId uint64
+	RemovePeer  Peer
 }
 
 // LoadDataPartitionRequest defines the request of loading a data partition.
@@ -197,6 +218,7 @@ type DataNodeHeartbeatResponse struct {
 	PartitionReports    []*PartitionReport
 	Status              uint8
 	Result              string
+	BadDisks            []string
 }
 
 // MetaPartitionReport defines the meta partition report.
@@ -308,6 +330,7 @@ type DataPartitionResponse struct {
 	ReplicaNum  uint8
 	Hosts       []string
 	LeaderAddr  string
+	Epoch       uint64
 }
 
 // DataPartitionsView defines the view of a data partition
@@ -335,13 +358,15 @@ type MetaPartitionView struct {
 type VolView struct {
 	Name           string
 	Status         uint8
+	FollowerRead   bool
 	MetaPartitions []*MetaPartitionView
 	DataPartitions []*DataPartitionResponse
 }
 
-func NewVolView(name string, status uint8) (view *VolView) {
+func NewVolView(name string, status uint8, followerRead bool) (view *VolView) {
 	view = new(VolView)
 	view.Name = name
+	view.FollowerRead = followerRead
 	view.Status = status
 	view.MetaPartitions = make([]*MetaPartitionView, 0)
 	view.DataPartitions = make([]*DataPartitionResponse, 0)
@@ -360,14 +385,16 @@ func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *
 
 // SimpleVolView defines the simple view of a volume
 type SimpleVolView struct {
-	ID           uint64
-	Name         string
-	Owner        string
-	DpReplicaNum uint8
-	MpReplicaNum uint8
-	Status       uint8
-	Capacity     uint64 // GB
-	RwDpCnt      int
-	MpCnt        int
-	DpCnt        int
+	ID                 uint64
+	Name               string
+	Owner              string
+	DpReplicaNum       uint8
+	MpReplicaNum       uint8
+	Status             uint8
+	Capacity           uint64 // GB
+	RwDpCnt            int
+	MpCnt              int
+	DpCnt              int
+	FollowerRead       bool
+	NeedToLowerReplica bool
 }

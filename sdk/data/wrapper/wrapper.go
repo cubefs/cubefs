@@ -35,8 +35,8 @@ var (
 )
 
 var (
-	LocalIP string
-	MinWriteAbleDataPartitionCnt=10
+	LocalIP                      string
+	MinWriteAbleDataPartitionCnt = 10
 )
 
 type DataPartitionView struct {
@@ -52,6 +52,7 @@ type Wrapper struct {
 	partitions            map[uint64]*DataPartition
 	rwPartition           []*DataPartition
 	localLeaderPartitions []*DataPartition
+	followerRead          bool
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -69,6 +70,10 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
 	}
+	if err = w.getSimpleVolView(); err != nil {
+		err = errors.Trace(err, "NewDataPartitionWrapper:")
+		return
+	}
 	if err = w.updateDataPartition(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
@@ -77,16 +82,12 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 	return
 }
 
-// GetClusterName returns the cluster name of the wrapper.
-func (w *Wrapper) GetClusterName() string {
-	return w.clusterName
+func (w *Wrapper) FollowerRead() bool {
+	return w.followerRead
 }
+
 func (w *Wrapper) updateClusterInfo() error {
-	masterHelper := util.NewMasterHelper()
-	for _, ip := range w.masters {
-		masterHelper.AddNode(ip)
-	}
-	body, err := masterHelper.Request(http.MethodPost, proto.AdminGetIP, nil, nil)
+	body, err := MasterHelper.Request(http.MethodPost, proto.AdminGetIP, nil, nil)
 	if err != nil {
 		log.LogWarnf("UpdateClusterInfo request: err(%v)", err)
 		return err
@@ -100,6 +101,25 @@ func (w *Wrapper) updateClusterInfo() error {
 	log.LogInfof("ClusterInfo: %v", *info)
 	w.clusterName = info.Cluster
 	LocalIP = info.Ip
+	return nil
+}
+
+func (w *Wrapper) getSimpleVolView() error {
+	paras := make(map[string]string, 0)
+	paras["name"] = w.volName
+	body, err := MasterHelper.Request(http.MethodPost, proto.AdminGetVol, paras, nil)
+	if err != nil {
+		log.LogWarnf("getSimpleVolView request: err(%v)", err)
+		return err
+	}
+
+	view := new(proto.SimpleVolView)
+	if err = json.Unmarshal(body, view); err != nil {
+		log.LogWarnf("getSimpleVolView unmarshal: err(%v)", err)
+		return err
+	}
+	w.followerRead = view.FollowerRead
+	log.LogInfof("SimpleVolView: %v", *view)
 	return nil
 }
 
