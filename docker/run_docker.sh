@@ -96,12 +96,26 @@ for opt in ${ARGS[*]} ; do
     esac
 done
 
+function isDiskAvailable() {
+    Disk=${1:-"need diskpath"}
+    [[ -d $Disk ]] || mkdir -p $Disk
+    if [[ ! -d $Disk ]] ; then
+        echo "error: $DiskPath must be exist and at least 10GB free size"
+        exit 1
+    fi
+    available=$(df -g $Disk | tail -1 | awk '{print $4}')
+    if (($available < 10 )) ; then
+        echo "$Disk avaible size < 10GB" ;
+        exit 1
+    fi
+}
+
 for opt in ${ARGS[*]} ; do
     case "-$1" in
         --d|---disk)
             shift
             export DiskPath=${1:?"need disk dir path"}
-            [[ -d $DiskPath ]] || { echo "error: $DiskPath must be exist and at least 30GB free size"; exit 1; }
+            isDiskAvailable $DiskPath
             shift
             ;;
         -)
