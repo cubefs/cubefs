@@ -13,5 +13,6 @@
   "warnLogDir":"/export/home/tomcat/UMP-Monitor/logs/",
   "consulAddr": "http://consul.prometheus-cfs.local",
   "exporterPort": 9510,
-  "clusterName":"cfs"
+  "clusterName":"cfs",
+  "metaNodeReservedMem": "134217728"
 }

@@ -41,7 +41,8 @@ Sample *master.json* is shown as follows,
      "storeDir":"/export/Data/master/rocksdbstore",
      "consulAddr": "http://consul.prometheus-cfs.local",
      "exporterPort": 9510,
-     "clusterName":"cfs"
+     "clusterName":"cfs",
+     "metaNodeReservedMem": "134217728"
    }
 
 
