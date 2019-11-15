@@ -36,6 +36,7 @@ ChubaoFS use **JSON** as configuration file format.
    "clusterName", "string", "The cluster identifier", "Yes"
    "exporterPort", "int", "The prometheus exporter port", "No"
    "consulAddr", "string", "The consul register addr for prometheus exporter", "No"
+   "metaNodeReservedMem","string","If the metanode memory is below this value, it will be marked as read-only."
 
 
 **Example:**
@@ -56,7 +57,8 @@ ChubaoFS use **JSON** as configuration file format.
     "storeDir":"/export/Data/master/rocksdbstore",
     "exporterPort": 9510,
     "consulAddr": "http://consul.prometheus-cfs.local",
-    "clusterName":"test"
+    "clusterName":"test",
+    "metaNodeReservedMem": "134217728"
    }
 
 
