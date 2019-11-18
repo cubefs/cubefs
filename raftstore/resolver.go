@@ -110,10 +110,3 @@ func (r *nodeResolver) DeleteNode(nodeID uint64) {
 func NewNodeResolver() NodeResolver {
 	return &nodeResolver{}
 }
-
-// DeleteNode deletes the node address from the NodeManager if possible.
-func DeleteNode(manager NodeManager, nodeID uint64) {
-	if manager != nil {
-		manager.DeleteNode(nodeID)
-	}
-}

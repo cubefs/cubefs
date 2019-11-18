@@ -56,14 +56,12 @@ func (s *raftStore) RaftStatus(raftID uint64) (raftStatus *raft.Status) {
 
 // AddNodeWithPort add a new node with the given port.
 func (s *raftStore) AddNodeWithPort(nodeID uint64, addr string, heartbeat int, replicate int) {
-	if s.resolver != nil {
-		s.resolver.AddNodeWithPort(nodeID, addr, heartbeat, replicate)
-	}
+	s.resolver.AddNodeWithPort(nodeID, addr, heartbeat, replicate)
 }
 
 // DeleteNode deletes the node with the given ID in the raft store.
 func (s *raftStore) DeleteNode(nodeID uint64) {
-	DeleteNode(s.resolver, nodeID)
+	s.resolver.DeleteNode(nodeID)
 }
 
 // Stop stops the raft store server.
