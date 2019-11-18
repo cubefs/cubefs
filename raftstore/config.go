@@ -24,8 +24,8 @@ const (
 	DefaultHeartbeatPort     = 5901
 	DefaultReplicaPort       = 5902
 	DefaultNumOfLogsToRetain = 20000
-	DefaultTickInterval  = 300
-	DefaultElectionTick  = 3
+	DefaultTickInterval      = 300
+	DefaultElectionTick      = 3
 )
 
 // Config defines the configuration properties for the raft store.

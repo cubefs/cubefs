@@ -61,9 +61,10 @@ type Disk struct {
 
 type PartitionVisitor func(dp *DataPartition)
 
-func NewDisk(path string, maxErrCnt int, space *SpaceManager) (d *Disk) {
+func NewDisk(path string, reservedSpace uint64, maxErrCnt int, space *SpaceManager) (d *Disk) {
 	d = new(Disk)
 	d.Path = path
+	d.ReservedSpace = reservedSpace
 	d.MaxErrCnt = maxErrCnt
 	d.RejectWrite = false
 	d.space = space
@@ -81,10 +82,6 @@ func (d *Disk) PartitionCount() int {
 	return len(d.partitionMap)
 }
 
-const (
-	ReservedPersent = 0.02
-)
-
 // Compute the disk usage
 func (d *Disk) computeUsage() (err error) {
 	d.RLock()
@@ -94,18 +91,15 @@ func (d *Disk) computeUsage() (err error) {
 	if err != nil {
 		return
 	}
-	d.ReservedSpace = uint64(float64(fs.Blocks*uint64(fs.Bsize)) * 0.02)
-	if d.ReservedSpace > DefaultDiskRetainMax {
-		d.ReservedSpace = DefaultDiskRetainMax
-	}
-	if d.ReservedSpace < DefaultDiskRetainMin {
-		d.ReservedSpace = DefaultDiskRetainMin
-	}
+
+	//  total := math.Max(0, int64(fs.Blocks*uint64(fs.Bsize) - d.ReservedSpace))
 	total := int64(fs.Blocks*uint64(fs.Bsize) - d.ReservedSpace)
 	if total < 0 {
 		total = 0
 	}
 	d.Total = uint64(total)
+
+	//  available := math.Max(0, int64(fs.Bavail*uint64(fs.Bsize) - d.ReservedSpace))
 	available := int64(fs.Bavail*uint64(fs.Bsize) - d.ReservedSpace)
 	if available < 0 {
 		available = 0
