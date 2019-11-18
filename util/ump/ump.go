@@ -62,12 +62,12 @@ func InitUmp(module, dataDir string) (err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	if _, err = os.Stat(dataDir); err != nil {
 		enableUmp = false
-		err=nil
+		err = nil
 		return
 	}
 	if err = initLogName(module, dataDir); err != nil {
 		enableUmp = false
-		err=nil
+		err = nil
 		return
 	}
 
