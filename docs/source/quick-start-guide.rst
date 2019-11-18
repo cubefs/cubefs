@@ -156,13 +156,13 @@ By default, there are only a few data partitions allocated upon volume creation,
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/admin/createVol?name=test&capacity=10000&owner=cfs"
+   curl -v "http://192.168.31.173/admin/createVol?name=test&capacity=10000&owner=cfs"
 
 For performance evaluation, extra data partitions shall be pre-created according to the amount of data nodes and disks to reach maximum performance.
 
 .. code-block:: bash
 
-    curl -v "http://127.0.0.1/dataPartition/create?name=test&count=120"
+    curl -v "http://192.168.31.173/dataPartition/create?name=test&count=120"
 
 Mount Client
 ------------
@@ -197,7 +197,7 @@ Upgrading
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/cluster/freeze?enable=true"
+   curl -v "http://192.168.31.173/cluster/freeze?enable=true"
 
 2. upgrade each module
 
@@ -205,4 +205,4 @@ Upgrading
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/cluster/freeze?enable=false"
+   curl -v "http://192.168.31.173/cluster/freeze?enable=false"
