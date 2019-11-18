@@ -11,6 +11,7 @@ At lease 3 meta nodes are required in respect to high availability.
    "role", "string", "Role of process and must be set to *metanode*", "Yes"
    "listen", "string", "Listen and accept port of the server", "Yes"
    "prof", "string", "Pprof port", "Yes"
+   "localIP", "string", "IP of network to be choose", "No,If not specified, the ip address used to communicate with the master is used."
    "logLevel", "string", "Level operation for logging. Default is *error*", "No"
    "metadataDir", "string", MetaNode store snapshot directory", "Yes"
    "logDir", "string", "Log directory", "Yes",
@@ -33,6 +34,7 @@ Example:
         "role": "metanode",
         "listen": "9021",
         "prof": "9092",
+        "localIP":"192.168.31.173",
         "logLevel": "debug",
         "metadataDir": "/export/Data/metanode",
         "logDir": "/export/Logs/metanode",
