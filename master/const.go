@@ -47,8 +47,6 @@ const (
 	dataNodeOfflineErr            = "dataNodeOfflineErr "
 	diskOfflineErr                = "diskOfflineErr "
 	handleDataPartitionOfflineErr = "handleDataPartitionOffLineErr "
-
-	getFileCountOnDataReplica = "getFileCountOnDataReplica "
 )
 
 const (
@@ -79,6 +77,7 @@ const (
 	EmptyCrcValue                         uint32 = 4045511210
 	DefaultRackName                              = "default"
 	retrySendSyncTaskInternal                    = 3 * time.Second
+	defaultRangeOfCountDifferencesAllowed        = 50
 )
 
 const (

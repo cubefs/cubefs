@@ -19,6 +19,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 	"strconv"
 	"time"
+	"math"
 )
 
 func (c *Cluster) scheduleToLoadMetaPartitions() {
@@ -61,8 +62,8 @@ func (mp *MetaPartition) checkSnapshot(clusterID string) {
 	if !mp.isSameApplyID() {
 		return
 	}
-	mp.checkInodeSign(clusterID)
-	mp.checkDentrySign(clusterID)
+	mp.checkInodeCount(clusterID)
+	mp.checkDentryCount(clusterID)
 }
 
 func (mp *MetaPartition) doCompare() bool {
@@ -85,41 +86,43 @@ func (mp *MetaPartition) isSameApplyID() bool {
 	return rst
 }
 
-func (mp *MetaPartition) checkInodeSign(clusterID string) {
+func (mp *MetaPartition) checkInodeCount(clusterID string) {
 	isEqual := true
-	inodeSign := mp.LoadResponse[0].InodeSign
+	inodeCount := mp.LoadResponse[0].InodeCount
 	for _, loadResponse := range mp.LoadResponse {
-		if inodeSign != loadResponse.InodeSign {
+		diff := math.Abs(float64(loadResponse.InodeCount) - float64(inodeCount))
+		if diff > defaultRangeOfCountDifferencesAllowed {
 			isEqual = false
 		}
 	}
 
 	if !isEqual {
-		msg := fmt.Sprintf("inode sign is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
+		msg := fmt.Sprintf("inode count is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
-			signStr := strconv.FormatUint(uint64(lr.InodeSign), 10)
+			inodeCountStr := strconv.Itoa(lr.InodeCount)
 			applyIDStr := strconv.FormatUint(uint64(lr.ApplyID), 10)
-			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] inodeSign[" + signStr + "],"
+			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] inodeCount[" + inodeCountStr + "],"
 		}
 		Warn(clusterID, msg)
 	}
 }
 
-func (mp *MetaPartition) checkDentrySign(clusterID string) {
+func (mp *MetaPartition) checkDentryCount(clusterID string) {
 	isEqual := true
-	dentrySign := mp.LoadResponse[0].DentrySign
+	dentryCount := mp.LoadResponse[0].DentryCount
 	for _, loadResponse := range mp.LoadResponse {
-		if dentrySign != loadResponse.DentrySign {
+		diff := math.Abs(float64(loadResponse.DentryCount) - float64(dentryCount))
+		if diff > defaultRangeOfCountDifferencesAllowed {
 			isEqual = false
 		}
 	}
 
 	if !isEqual {
-		msg := fmt.Sprintf("dentry sign is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
+		msg := fmt.Sprintf("dentry count is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
-			signStr := strconv.FormatUint(uint64(lr.DentrySign), 10)
+			dentryCountStr := strconv.Itoa(lr.DentryCount)
 			applyIDStr := strconv.FormatUint(uint64(lr.ApplyID), 10)
-			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] dentrySign[" + signStr + "],"
+			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] dentryCount[" + dentryCountStr + "],"
 		}
 		Warn(clusterID, msg)
 	}

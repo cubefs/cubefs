@@ -599,7 +599,7 @@ func (m *metadataManager) opLoadMetaPartition(conn net.Conn, p *Packet,
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, nil)
-		p.WriteToConn(conn)
+		m.respondToClient(conn, p)
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
@@ -609,8 +609,11 @@ func (m *metadataManager) opLoadMetaPartition(conn net.Conn, p *Packet,
 		return
 	}
 	if err = mp.LoadSnapshotSign(p); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		log.LogErrorf("%s [opLoadMetaPartition] req[%v], "+
 			"response marshal[%v]", remoteAddr, req, err.Error())
+		m.respondToClient(conn, p)
+		return
 	}
 	m.respondToClient(conn, p)
 	log.LogInfof("%s [opLoadMetaPartition] req[%v], response status[%s], "+
