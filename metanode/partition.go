@@ -557,27 +557,14 @@ func (mp *metaPartition) LoadSnapshotSign(p *Packet) (err error) {
 		PartitionID: mp.config.PartitionId,
 		DoCompare:   true,
 	}
-	resp.ApplyID, resp.InodeSign, resp.DentrySign, err = mp.loadSnapshotSign(
+	resp.ApplyID, resp.InodeCount, resp.DentryCount, err = mp.loadSnapshotSign(
 		snapshotDir)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			err = errors.Trace(err, "[LoadSnapshotSign] 1st check snapshot")
-			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-			return err
-		}
-		resp.ApplyID, resp.InodeSign, resp.DentrySign, err = mp.loadSnapshotSign(
-			snapshotBackup)
+		err = errors.Trace(err,
+			"[LoadSnapshotSign] check snapshot")
+		return
 	}
-	if err != nil {
-		if !os.IsNotExist(err) {
-			err = errors.Trace(err,
-				"[LoadSnapshotSign] 2st check snapshot")
-			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-			return
-		}
-		resp.DoCompare = false
-		log.LogWarnf("[LoadSnapshotSign] check snapshot not exist")
-	}
+
 	data, err := json.Marshal(resp)
 	if err != nil {
 		err = errors.Trace(err, "[LoadSnapshotSign] marshal")
@@ -588,21 +575,22 @@ func (mp *metaPartition) LoadSnapshotSign(p *Packet) (err error) {
 }
 
 func (mp *metaPartition) loadSnapshotSign(baseDir string) (applyID uint64,
-	inoCRC, dentryCRC uint32, err error) {
+	inoCRC, dentryCRC int, err error) {
 	snapDir := path.Join(mp.config.RootDir, baseDir)
 	// check snapshot
 	if _, err = os.Stat(snapDir); err != nil {
 		return
 	}
-	// load signature
-	data, err := ioutil.ReadFile(path.Join(snapDir, SnapshotSign))
-	if err != nil {
-		return
-	}
-	if _, err = fmt.Sscanf(string(data), "%d %d", &inoCRC, &dentryCRC); err != nil {
-		return
-	}
+
+	mp.inodeTree.RLock()
+	inoCRC=mp.inodeTree.Len()
+	mp.inodeTree.RUnlock()
+
+	mp.dentryTree.RLock()
+	dentryCRC=mp.dentryTree.Len()
+	mp.dentryTree.RUnlock()
 	// load apply
+	var data []byte
 	if data, err = ioutil.ReadFile(path.Join(snapDir, applyIDFile)); err != nil {
 		return
 	}
