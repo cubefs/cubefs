@@ -69,22 +69,22 @@ type TopologyView struct {
 }
 
 type nodeSetView struct {
-	Racks     []*RackView
+	Cells     []*CellView
 	MetaNodes []NodeView
 }
 
 func newNodeSetView() *nodeSetView {
-	return &nodeSetView{Racks: make([]*RackView, 0), MetaNodes: make([]NodeView, 0)}
+	return &nodeSetView{Cells: make([]*CellView, 0), MetaNodes: make([]NodeView, 0)}
 }
 
-//RackView define the view of rack
-type RackView struct {
+//CellView define the view of cell
+type CellView struct {
 	Name      string
 	DataNodes []NodeView
 }
 
-func newRackView() *RackView {
-	return &RackView{DataNodes: make([]NodeView, 0)}
+func newCellView() *CellView {
+	return &CellView{DataNodes: make([]NodeView, 0)}
 }
 
 type badPartitionView struct {
@@ -147,11 +147,11 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 			nsView.MetaNodes = append(nsView.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
 			return true
 		})
-		for _, rack := range ns.rackMap {
-			rv := newRackView()
-			rv.Name = rack.name
-			nsView.Racks = append(nsView.Racks, rv)
-			rack.dataNodes.Range(func(key, value interface{}) bool {
+		for _, cell := range ns.cellMap {
+			rv := newCellView()
+			rv.Name = cell.name
+			nsView.Cells = append(nsView.Cells, rv)
+			cell.dataNodes.Range(func(key, value interface{}) bool {
 				dataNode := value.(*DataNode)
 				rv.DataNodes = append(rv.DataNodes, NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
 				return true

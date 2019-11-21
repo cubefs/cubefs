@@ -7,7 +7,7 @@
     "raftDir":   "/cfs/log",
     "consulAddr": "http://192.168.0.100:8500",
     "exporterPort": 9500,
-    "rack": "rack-01",
+    "cell": "cell-01",
     "logDir": "/cfs/log",
     "logLevel": "info",
     "disks": [

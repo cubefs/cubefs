@@ -214,7 +214,7 @@ type DataNodeHeartbeatResponse struct {
 	RemainingCapacity   uint64 // remaining capacity to create partition
 	CreatedPartitionCnt uint32
 	MaxCapacity         uint64 // maximum capacity to create partition
-	RackName            string
+	CellName            string
 	PartitionReports    []*PartitionReport
 	Status              uint8
 	Result              string
@@ -234,7 +234,7 @@ type MetaPartitionReport struct {
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
 type MetaNodeHeartbeatResponse struct {
-	RackName             string
+	CellName             string
 	Total                uint64
 	Used                 uint64
 	MetaPartitionReports []*MetaPartitionReport

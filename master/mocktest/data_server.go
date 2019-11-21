@@ -24,11 +24,11 @@ type MockDataServer struct {
 	CreatedPartitionCnt             uint64
 	MaxWeightsForCreatePartition    uint64
 	partitions                      []*MockDataPartition
-	rackName                        string
+	cellName                        string
 }
 
-func NewMockDataServer(addr string, rackName string) *MockDataServer {
-	mds := &MockDataServer{TcpAddr: addr, rackName: rackName,
+func NewMockDataServer(addr string, cellName string) *MockDataServer {
+	mds := &MockDataServer{TcpAddr: addr, cellName: cellName,
 		partitions: make([]*MockDataPartition, 0)}
 
 	return mds
@@ -213,7 +213,7 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 	response.MaxCapacity = 800 * util.GB
 	response.RemainingCapacity = 800 * util.GB
 
-	response.RackName = mds.rackName
+	response.CellName = mds.cellName
 	response.PartitionReports = make([]*proto.PartitionReport, 0)
 
 	for _, partition := range mds.partitions {

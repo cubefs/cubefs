@@ -10,7 +10,7 @@ import (
 func TestDataNode(t *testing.T) {
 	// /dataNode/add and /dataNode/response processed by mock data server
 	addr := "127.0.0.1:9096"
-	addDataServer(addr, DefaultRackName)
+	addDataServer(addr, DefaultCellName)
 	server.cluster.checkDataNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	getDataNodeInfo(addr, t)

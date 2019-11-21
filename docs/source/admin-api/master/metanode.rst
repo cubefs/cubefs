@@ -27,7 +27,7 @@ response
        "Sender": {
            "TaskMap": {}
        },
-       "Rack": "",
+       "Cell": "",
        "MaxMemAvailWeight": 66556215048,
        "TotalWeight": 67132641280,
        "UsedWeight": 576426232,

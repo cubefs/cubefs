@@ -193,8 +193,8 @@ func dataReplicaNotFound(addr string) (err error) {
 	return notFoundMsg(fmt.Sprintf("data replica[%v]", addr))
 }
 
-func rackNotFound(name string) (err error) {
-	return notFoundMsg(fmt.Sprintf("rack[%v]", name))
+func cellNotFound(name string) (err error) {
+	return notFoundMsg(fmt.Sprintf("cell[%v]", name))
 }
 
 func dataNodeNotFound(addr string) (err error) {

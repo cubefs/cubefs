@@ -77,7 +77,7 @@ const (
 	volExpansionRatio                            = 0.1
 	maxNumberOfDataPartitionsForExpansion        = 100
 	EmptyCrcValue                         uint32 = 4045511210
-	DefaultRackName                              = "default"
+	DefaultCellName                              = "default"
 	retrySendSyncTaskInternal                    = 3 * time.Second
 )
 

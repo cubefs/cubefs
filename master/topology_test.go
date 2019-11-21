@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-func createDataNodeForTopo(addr, rackName string, ns *nodeSet) (dn *DataNode) {
+func createDataNodeForTopo(addr, cellName string, ns *nodeSet) (dn *DataNode) {
 	dn = newDataNode(addr, "test")
-	dn.RackName = rackName
+	dn.CellName = cellName
 	dn.Total = 1024 * util.GB
 	dn.Used = 10 * util.GB
 	dn.AvailableSpace = 1024 * util.GB
@@ -20,90 +20,90 @@ func createDataNodeForTopo(addr, rackName string, ns *nodeSet) (dn *DataNode) {
 	return
 }
 
-func TestSingleRack(t *testing.T) {
-	//rack name must be DefaultRackName
+func TestSingleCell(t *testing.T) {
+	//cell name must be DefaultCellName
 	dataNode, err := server.cluster.dataNode(mds1Addr)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	if dataNode.RackName != DefaultRackName {
-		t.Errorf("rack name should be [%v],but now it's [%v]", DefaultRackName, dataNode.RackName)
+	if dataNode.CellName != DefaultCellName {
+		t.Errorf("cell name should be [%v],but now it's [%v]", DefaultCellName, dataNode.CellName)
 	}
 	topo := newTopology()
 	nodeSet := newNodeSet(1, 6)
 	topo.putNodeSet(nodeSet)
-	rackName := "test"
-	topo.putDataNode(createDataNodeForTopo(mds1Addr, rackName, nodeSet))
-	topo.putDataNode(createDataNodeForTopo(mds2Addr, rackName, nodeSet))
-	topo.putDataNode(createDataNodeForTopo(mds3Addr, rackName, nodeSet))
-	topo.putDataNode(createDataNodeForTopo(mds4Addr, rackName, nodeSet))
-	topo.putDataNode(createDataNodeForTopo(mds5Addr, rackName, nodeSet))
-	if !nodeSet.isSingleRack() {
-		racks := nodeSet.getAllRacks()
-		t.Errorf("topo should be single rack,rack num [%v]", len(racks))
+	cellName := "test"
+	topo.putDataNode(createDataNodeForTopo(mds1Addr, cellName, nodeSet))
+	topo.putDataNode(createDataNodeForTopo(mds2Addr, cellName, nodeSet))
+	topo.putDataNode(createDataNodeForTopo(mds3Addr, cellName, nodeSet))
+	topo.putDataNode(createDataNodeForTopo(mds4Addr, cellName, nodeSet))
+	topo.putDataNode(createDataNodeForTopo(mds5Addr, cellName, nodeSet))
+	if !nodeSet.isSingleCell() {
+		cells := nodeSet.getAllCells()
+		t.Errorf("topo should be single cell,cell num [%v]", len(cells))
 		return
 	}
 	replicaNum := 2
-	//single rack exclude,if it is a single rack excludeRacks don't take effect
-	excludeRacks := make([]string, 0)
-	excludeRacks = append(excludeRacks, rackName)
-	racks, err := nodeSet.allocRacks(replicaNum, excludeRacks)
+	//single cell exclude,if it is a single cell excludeCells don't take effect
+	excludeCells := make([]string, 0)
+	excludeCells = append(excludeCells, cellName)
+	cells, err := nodeSet.allocCells(replicaNum, excludeCells)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	if len(racks) != 1 {
-		t.Errorf("expect rack num [%v],len(racks) is %v", 0, len(racks))
-		fmt.Println(racks)
+	if len(cells) != 1 {
+		t.Errorf("expect cell num [%v],len(cells) is %v", 0, len(cells))
+		fmt.Println(cells)
 		return
 	}
 
-	//single rack normal
-	racks, err = nodeSet.allocRacks(replicaNum, nil)
+	//single cell normal
+	cells, err = nodeSet.allocCells(replicaNum, nil)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	newHosts, _, err := racks[0].getAvailDataNodeHosts(nil, replicaNum)
+	newHosts, _, err := cells[0].getAvailDataNodeHosts(nil, replicaNum)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 	fmt.Println(newHosts)
-	racks[0].removeDataNode(mds1Addr)
-	nodeSet.removeRack(rackName)
+	cells[0].removeDataNode(mds1Addr)
+	nodeSet.removeCell(cellName)
 }
 
-func TestAllocRacks(t *testing.T) {
+func TestAllocCells(t *testing.T) {
 	topo := newTopology()
 	nodeSet := newNodeSet(1, 6)
 	topo.putNodeSet(nodeSet)
-	rackCount := 3
-	//add three racks
-	rackName1 := "rack1"
-	topo.putDataNode(createDataNodeForTopo(mds1Addr, rackName1, nodeSet))
-	topo.putDataNode(createDataNodeForTopo(mds2Addr, rackName1, nodeSet))
-	rackName2 := "rack2"
-	topo.putDataNode(createDataNodeForTopo(mds3Addr, rackName2, nodeSet))
-	topo.putDataNode(createDataNodeForTopo(mds4Addr, rackName2, nodeSet))
-	rackName3 := "rack3"
-	topo.putDataNode(createDataNodeForTopo(mds5Addr, rackName3, nodeSet))
+	cellCount := 3
+	//add three cells
+	cellName1 := "cell1"
+	topo.putDataNode(createDataNodeForTopo(mds1Addr, cellName1, nodeSet))
+	topo.putDataNode(createDataNodeForTopo(mds2Addr, cellName1, nodeSet))
+	cellName2 := "cell2"
+	topo.putDataNode(createDataNodeForTopo(mds3Addr, cellName2, nodeSet))
+	topo.putDataNode(createDataNodeForTopo(mds4Addr, cellName2, nodeSet))
+	cellName3 := "cell3"
+	topo.putDataNode(createDataNodeForTopo(mds5Addr, cellName3, nodeSet))
 	nodeSet.dataNodeLen = 5
-	racks := nodeSet.getAllRacks()
-	if len(racks) != rackCount {
-		t.Errorf("expect racks num[%v],len(racks) is %v", rackCount, len(racks))
+	cells := nodeSet.getAllCells()
+	if len(cells) != cellCount {
+		t.Errorf("expect cells num[%v],len(cells) is %v", cellCount, len(cells))
 		return
 	}
 	//only pass replica num
 	replicaNum := 2
-	racks, err := nodeSet.allocRacks(replicaNum, nil)
+	cells, err := nodeSet.allocCells(replicaNum, nil)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	if len(racks) != replicaNum {
-		t.Errorf("expect racks num[%v],len(racks) is %v", replicaNum, len(racks))
+	if len(cells) != replicaNum {
+		t.Errorf("expect cells num[%v],len(cells) is %v", replicaNum, len(cells))
 		return
 	}
 	cluster := new(Cluster)
@@ -113,22 +113,22 @@ func TestAllocRacks(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	t.Logf("ChooseTargetDataHosts in multi racks,hosts[%v]", hosts)
-	//test exclude rack
-	excludeRacks := make([]string, 0)
-	excludeRacks = append(excludeRacks, rackName1)
-	racks, err = nodeSet.allocRacks(replicaNum, excludeRacks)
+	t.Logf("ChooseTargetDataHosts in multi cells,hosts[%v]", hosts)
+	//test exclude cell
+	excludeCells := make([]string, 0)
+	excludeCells = append(excludeCells, cellName1)
+	cells, err = nodeSet.allocCells(replicaNum, excludeCells)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	for _, rack := range racks {
-		if rack.name == rackName1 {
-			t.Errorf("rack [%v] should be exclued", rackName1)
+	for _, cell := range cells {
+		if cell.name == cellName1 {
+			t.Errorf("cell [%v] should be exclued", cellName1)
 			return
 		}
 	}
-	nodeSet.removeRack(rackName1)
-	nodeSet.removeRack(rackName2)
-	nodeSet.removeRack(rackName3)
+	nodeSet.removeCell(cellName1)
+	nodeSet.removeCell(cellName2)
+	nodeSet.removeCell(cellName3)
 }
