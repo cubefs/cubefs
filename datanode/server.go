@@ -51,7 +51,7 @@ var (
 )
 
 const (
-	DefaultRackName         = "cfs_rack1"
+	DefaultCellName         = "cfs_cell1"
 	DefaultRaftDir          = "raft"
 	DefaultRaftLogsToRetain = 10 // Count of raft logs per data partition
 	DefaultDiskMaxErr       = 1
@@ -67,7 +67,7 @@ const (
 	ConfigKeyLocalIP       = "localIP"       // string
 	ConfigKeyPort          = "port"          // int
 	ConfigKeyMasterAddr    = "masterAddr"    // array
-	ConfigKeyRack          = "rack"          // string
+	ConfigKeyCell          = "cell"          // string
 	ConfigKeyDisks         = "disks"         // array
 	ConfigKeyRaftDir       = "raftDir"       // string
 	ConfigKeyRaftHeartbeat = "raftHeartbeat" // string
@@ -78,7 +78,7 @@ const (
 type DataNode struct {
 	space           *SpaceManager
 	port            string
-	rackName        string
+	cellName        string
 	clusterID       string
 	localIP         string
 	localServerAddr string
@@ -196,18 +196,18 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	for _, ip := range cfg.GetArray(ConfigKeyMasterAddr) {
 		MasterHelper.AddNode(ip.(string))
 	}
-	s.rackName = cfg.GetString(ConfigKeyRack)
-	if s.rackName == "" {
-		s.rackName = DefaultRackName
+	s.cellName = cfg.GetString(ConfigKeyCell)
+	if s.cellName == "" {
+		s.cellName = DefaultCellName
 	}
 	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterHelper.Nodes())
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
-	log.LogDebugf("action[parseConfig] load rackName(%v).", s.rackName)
+	log.LogDebugf("action[parseConfig] load cellName(%v).", s.cellName)
 	return
 }
 
 func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
-	s.space = NewSpaceManager(s.rackName)
+	s.space = NewSpaceManager(s.cellName)
 	if err != nil || len(strings.TrimSpace(s.port)) == 0 {
 		err = ErrNewSpaceManagerFailed
 		return

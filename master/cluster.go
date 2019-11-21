@@ -586,12 +586,12 @@ func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartiti
 	return
 }
 
-func (c *Cluster) chooseTargetDataNodes(excludeNodeSet *nodeSet, excludeRack *Rack, excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+func (c *Cluster) chooseTargetDataNodes(excludeNodeSet *nodeSet, excludeCell *Cell, excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
 	ns, err := c.t.allocNodeSetForDataNode(excludeNodeSet, uint8(replicaNum))
 	if err != nil {
 		return nil, nil, errors.NewError(err)
 	}
-	return ns.getAvailDataNodeHosts(excludeRack, excludeHosts, replicaNum)
+	return ns.getAvailDataNodeHosts(excludeCell, excludeHosts, replicaNum)
 }
 
 func (c *Cluster) dataNode(addr string) (dataNode *DataNode, err error) {
@@ -694,7 +694,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		newAddr     string
 		msg         string
 		dataNode    *DataNode
-		rack        *Rack
+		cell        *Cell
 		replica     *DataReplica
 		ns          *nodeSet
 	)
@@ -713,21 +713,21 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		goto errHandler
 	}
 
-	if dataNode.RackName == "" {
-		err = fmt.Errorf("dataNode[%v] rack is nil", dataNode.Addr)
+	if dataNode.CellName == "" {
+		err = fmt.Errorf("dataNode[%v] cell is nil", dataNode.Addr)
 		goto errHandler
 	}
-	if rack, err = c.t.getRack(dataNode); err != nil {
+	if cell, err = c.t.getCell(dataNode); err != nil {
 		goto errHandler
 	}
-	if targetHosts, _, err = rack.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
+	if targetHosts, _, err = cell.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
 		if ns, err = c.t.getNodeSet(dataNode.NodeSetID); err != nil {
 			goto errHandler
 		}
-		// select data nodes from the other rack in same node set
-		if targetHosts, _, err = ns.getAvailDataNodeHosts(rack, dp.Hosts, 1); err != nil {
+		// select data nodes from the other cell in same node set
+		if targetHosts, _, err = ns.getAvailDataNodeHosts(cell, dp.Hosts, 1); err != nil {
 			// select data nodes from the other node set
-			if targetHosts, _, err = c.chooseTargetDataNodes(ns, rack, dp.Hosts, 1); err != nil {
+			if targetHosts, _, err = c.chooseTargetDataNodes(ns, cell, dp.Hosts, 1); err != nil {
 				goto errHandler
 			}
 		}

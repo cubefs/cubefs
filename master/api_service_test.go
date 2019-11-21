@@ -77,11 +77,11 @@ func createDefaultMasterServerForTest() *Server {
 		panic(err)
 	}
 	//add data node
-	addDataServer(mds1Addr, "rack1")
-	addDataServer(mds2Addr, "rack1")
-	addDataServer(mds3Addr, "rack2")
-	addDataServer(mds4Addr, "rack2")
-	addDataServer(mds5Addr, "rack2")
+	addDataServer(mds1Addr, "cell1")
+	addDataServer(mds2Addr, "cell1")
+	addDataServer(mds3Addr, "cell2")
+	addDataServer(mds4Addr, "cell2")
+	addDataServer(mds5Addr, "cell2")
 	// add meta node
 	addMetaServer(mms1Addr)
 	addMetaServer(mms2Addr)
@@ -151,8 +151,8 @@ func createMasterServer(cfgJSON string) (server *Server, err error) {
 	return server, nil
 }
 
-func addDataServer(addr, rackName string) {
-	mds := mocktest.NewMockDataServer(addr, rackName)
+func addDataServer(addr, cellName string) {
+	mds := mocktest.NewMockDataServer(addr, cellName)
 	mds.Start()
 }
 
@@ -393,7 +393,7 @@ func TestGetMetaNode(t *testing.T) {
 func TestAddDataReplica(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
 	dsAddr := "127.0.0.1:9106"
-	addDataServer(dsAddr, "rack2")
+	addDataServer(dsAddr, "cell2")
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddDataReplica, partition.PartitionID, dsAddr)
 	process(reqURL, t)
 	partition.RLock()

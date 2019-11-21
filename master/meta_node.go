@@ -27,7 +27,7 @@ type MetaNode struct {
 	Addr               string
 	IsActive           bool
 	Sender             *AdminTaskManager
-	RackName           string `json:"Rack"`
+	CellName           string `json:"Cell"`
 	MaxMemAvailWeight  uint64 `json:"MaxMemAvailWeight"`
 	Total              uint64 `json:"TotalWeight"`
 	Used               uint64 `json:"UsedWeight"`
@@ -107,7 +107,7 @@ func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, th
 		metaNode.Ratio = float64(resp.Used) / float64(resp.Total)
 	}
 	metaNode.MaxMemAvailWeight = resp.Total - resp.Used
-	metaNode.RackName = resp.RackName
+	metaNode.CellName = resp.CellName
 	metaNode.Threshold = threshold
 }
 

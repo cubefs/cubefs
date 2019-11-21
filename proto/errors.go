@@ -49,7 +49,7 @@ var (
 
 	ErrCannotBeOffLine                 = errors.New("cannot take the data replica offline")
 	ErrNoDataNodeToCreateDataPartition = errors.New("no enough data nodes for creating a data partition")
-	ErrNoRackToCreateDataPartition     = errors.New("no rack available for creating a data partition")
+	ErrNoCellToCreateDataPartition     = errors.New("no cell available for creating a data partition")
 	ErrNoNodeSetToCreateDataPartition  = errors.New("no node set available for creating a data partition")
 	ErrNoNodeSetToCreateMetaPartition  = errors.New("no node set available for creating a meta partition")
 	ErrNoMetaNodeToCreateMetaPartition = errors.New("no enough meta nodes for creating a meta partition")
@@ -90,7 +90,7 @@ const (
 	ErrCodeNoMetaNodeToWrite
 	ErrCodeCannotBeOffLine
 	ErrCodeNoDataNodeToCreateDataPartition
-	ErrCodeNoRackToCreateDataPartition
+	ErrCodeNoCellToCreateDataPartition
 	ErrCodeNoNodeSetToCreateDataPartition
 	ErrCodeNoNodeSetToCreateMetaPartition
 	ErrCodeNoMetaNodeToCreateMetaPartition
@@ -131,7 +131,7 @@ var Err2CodeMap = map[error]int32{
 	ErrNoMetaNodeToWrite:               ErrCodeNoMetaNodeToWrite,
 	ErrCannotBeOffLine:                 ErrCodeCannotBeOffLine,
 	ErrNoDataNodeToCreateDataPartition: ErrCodeNoDataNodeToCreateDataPartition,
-	ErrNoRackToCreateDataPartition:     ErrCodeNoRackToCreateDataPartition,
+	ErrNoCellToCreateDataPartition:     ErrCodeNoCellToCreateDataPartition,
 	ErrNoNodeSetToCreateDataPartition:  ErrCodeNoNodeSetToCreateDataPartition,
 	ErrNoNodeSetToCreateMetaPartition:  ErrCodeNoNodeSetToCreateMetaPartition,
 	ErrNoMetaNodeToCreateMetaPartition: ErrCodeNoMetaNodeToCreateMetaPartition,
