@@ -379,7 +379,7 @@ func (mp *metaPartition) GetPeers() (peers []string) {
 
 // GetCursor returns the cursor stored in the config.
 func (mp *metaPartition) GetCursor() uint64 {
-	return mp.config.Cursor
+	return atomic.LoadUint64(&mp.config.Cursor)
 }
 
 // PersistMetadata is the wrapper of persistMetadata.
@@ -557,7 +557,7 @@ func (mp *metaPartition) LoadSnapshotSign(p *Packet) (err error) {
 		PartitionID: mp.config.PartitionId,
 		DoCompare:   true,
 	}
-	resp.ApplyID, resp.InodeCount, resp.DentryCount, err = mp.loadSnapshotSign(
+	resp.ApplyID, resp.MaxInode, resp.DentryCount, err = mp.loadSnapshotSign(
 		snapshotDir)
 	if err != nil {
 		err = errors.Trace(err,
@@ -575,19 +575,16 @@ func (mp *metaPartition) LoadSnapshotSign(p *Packet) (err error) {
 }
 
 func (mp *metaPartition) loadSnapshotSign(baseDir string) (applyID uint64,
-	inoCRC, dentryCRC int, err error) {
+	maxInode, dentryCnt uint64, err error) {
 	snapDir := path.Join(mp.config.RootDir, baseDir)
 	// check snapshot
 	if _, err = os.Stat(snapDir); err != nil {
 		return
 	}
 
-	mp.inodeTree.RLock()
-	inoCRC=mp.inodeTree.Len()
-	mp.inodeTree.RUnlock()
-
+	maxInode=mp.GetCursor()
 	mp.dentryTree.RLock()
-	dentryCRC=mp.dentryTree.Len()
+	dentryCnt=uint64(mp.dentryTree.Len())
 	mp.dentryTree.RUnlock()
 	// load apply
 	var data []byte
