@@ -88,9 +88,9 @@ func (mp *MetaPartition) isSameApplyID() bool {
 
 func (mp *MetaPartition) checkInodeCount(clusterID string) {
 	isEqual := true
-	inodeCount := mp.LoadResponse[0].InodeCount
+	maxInode := mp.LoadResponse[0].MaxInode
 	for _, loadResponse := range mp.LoadResponse {
-		diff := math.Abs(float64(loadResponse.InodeCount) - float64(inodeCount))
+		diff := math.Abs(float64(loadResponse.MaxInode) - float64(maxInode))
 		if diff > defaultRangeOfCountDifferencesAllowed {
 			isEqual = false
 		}
@@ -99,9 +99,9 @@ func (mp *MetaPartition) checkInodeCount(clusterID string) {
 	if !isEqual {
 		msg := fmt.Sprintf("inode count is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
-			inodeCountStr := strconv.Itoa(lr.InodeCount)
+			inodeCountStr := strconv.FormatUint(lr.MaxInode,10)
 			applyIDStr := strconv.FormatUint(uint64(lr.ApplyID), 10)
-			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] inodeCount[" + inodeCountStr + "],"
+			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] maxInode[" + inodeCountStr + "],"
 		}
 		Warn(clusterID, msg)
 	}
@@ -120,7 +120,7 @@ func (mp *MetaPartition) checkDentryCount(clusterID string) {
 	if !isEqual {
 		msg := fmt.Sprintf("dentry count is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
-			dentryCountStr := strconv.Itoa(lr.DentryCount)
+			dentryCountStr := strconv.FormatUint(lr.DentryCount,10)
 			applyIDStr := strconv.FormatUint(uint64(lr.ApplyID), 10)
 			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] dentryCount[" + dentryCountStr + "],"
 		}

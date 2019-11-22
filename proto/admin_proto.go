@@ -311,8 +311,8 @@ type MetaPartitionLoadResponse struct {
 	PartitionID uint64
 	DoCompare   bool
 	ApplyID     uint64
-	InodeCount  int
-	DentryCount int
+	MaxInode    uint64
+	DentryCount uint64
 	Addr        string
 }
 
