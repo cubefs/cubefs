@@ -145,7 +145,7 @@ type OpPartition interface {
 	IsLeader() (leaderAddr string, isLeader bool)
 	GetCursor() uint64
 	GetBaseConfig() MetaPartitionConfig
-	LoadSnapshotSign(p *Packet) (err error)
+	ResponseLoadMetaPartition(p *Packet) (err error)
 	PersistMetadata() (err error)
 	ChangeMember(changeType raftproto.ConfChangeType, peer raftproto.Peer, context []byte) (resp interface{}, err error)
 	DeletePartition() (err error)
@@ -551,49 +551,29 @@ func (mp *metaPartition) TryToLeader(groupID uint64) error {
 	return mp.raftPartition.TryToLeader(groupID)
 }
 
-// LoadSnapshotSign loads the snapshot signature. TODO remove? no usage?
-func (mp *metaPartition) LoadSnapshotSign(p *Packet) (err error) {
+// ResponseLoadMetaPartition loads the snapshot signature. TODO remove? no usage?
+func (mp *metaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 	resp := &proto.MetaPartitionLoadResponse{
 		PartitionID: mp.config.PartitionId,
 		DoCompare:   true,
 	}
-	resp.ApplyID, resp.MaxInode, resp.DentryCount, err = mp.loadSnapshotSign(
-		snapshotDir)
+	resp.MaxInode = mp.GetCursor()
+	mp.dentryTree.RLock()
+	resp.DentryCount = uint64(mp.dentryTree.Len())
+	mp.dentryTree.RUnlock()
+	resp.ApplyID = mp.applyID
 	if err != nil {
 		err = errors.Trace(err,
-			"[LoadSnapshotSign] check snapshot")
+			"[ResponseLoadMetaPartition] check snapshot")
 		return
 	}
 
 	data, err := json.Marshal(resp)
 	if err != nil {
-		err = errors.Trace(err, "[LoadSnapshotSign] marshal")
+		err = errors.Trace(err, "[ResponseLoadMetaPartition] marshal")
 		return
 	}
 	p.PacketOkWithBody(data)
-	return
-}
-
-func (mp *metaPartition) loadSnapshotSign(baseDir string) (applyID uint64,
-	maxInode, dentryCnt uint64, err error) {
-	snapDir := path.Join(mp.config.RootDir, baseDir)
-	// check snapshot
-	if _, err = os.Stat(snapDir); err != nil {
-		return
-	}
-
-	maxInode=mp.GetCursor()
-	mp.dentryTree.RLock()
-	dentryCnt=uint64(mp.dentryTree.Len())
-	mp.dentryTree.RUnlock()
-	// load apply
-	var data []byte
-	if data, err = ioutil.ReadFile(path.Join(snapDir, applyIDFile)); err != nil {
-		return
-	}
-	if _, err = fmt.Sscanf(string(data), "%d", &applyID); err != nil {
-		return
-	}
 	return
 }
 
