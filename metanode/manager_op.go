@@ -608,7 +608,7 @@ func (m *metadataManager) opLoadMetaPartition(conn net.Conn, p *Packet,
 		m.respondToClient(conn, p)
 		return
 	}
-	if err = mp.LoadSnapshotSign(p); err != nil {
+	if err = mp.ResponseLoadMetaPartition(p); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		log.LogErrorf("%s [opLoadMetaPartition] req[%v], "+
 			"response marshal[%v]", remoteAddr, req, err.Error())
