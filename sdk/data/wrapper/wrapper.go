@@ -23,10 +23,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/errors"
-
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 

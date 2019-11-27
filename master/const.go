@@ -36,6 +36,7 @@ const (
 	volAuthKey            = "authKey"
 	replicaNumKey         = "replicaNum"
 	followerReadKey       = "followerRead"
+	authenticateKey       = "authenticate"
 )
 
 const (

@@ -45,6 +45,8 @@ const (
 	capSeparator  = ":"
 	reqLiveLength = 10
 	ClientMessage = "Token"
+	VOLRsc        = "VOL"
+	VOLAccess     = "*"
 )
 
 // api
@@ -77,6 +79,12 @@ const (
 
 	// DataServiceID defines ticket for datanode access (not supported)
 	DataServiceID = "DatanodeService"
+)
+
+const (
+	MasterNode = "master"
+	MetaNode   = "metanode"
+	DataNode   = "datanode"
 )
 
 const (
@@ -160,6 +168,9 @@ const (
 
 	// MsgMasterAPIAccessResp response type for master api access
 	MsgMasterAPIAccessResp MsgType = 0x60001
+
+	//Master API ClientVol
+	MsgMasterFetchVolViewReq MsgType = MsgMasterAPIAccessReq + 0x10000
 )
 
 // HTTPAuthReply uniform response structure
@@ -179,6 +190,8 @@ var MsgType2ResourceMap = map[MsgType]string{
 	MsgAuthGetCapsReq:        "auth:getcaps",
 	MsgAuthAddRaftNodeReq:    "auth:addnode",
 	MsgAuthRemoveRaftNodeReq: "auth:removenode",
+
+	MsgMasterFetchVolViewReq: "master:getvol",
 }
 
 // AuthGetTicketReq defines the message from client to authnode
@@ -281,7 +294,7 @@ func IsValidMsgReqType(serviceID string, msgType MsgType) (err error) {
 
 // IsValidClientID determine the validity of a clientID
 func IsValidClientID(id string) (err error) {
-	re := regexp.MustCompile("^[A-Za-z]{1,1}[A-Za-z0-9_]{0,11}$")
+	re := regexp.MustCompile("^[A-Za-z]{1,1}[A-Za-z0-9_]{0,20}$")
 	if !re.MatchString(id) {
 		err = fmt.Errorf("clientID invalid format [%s]", id)
 		return
@@ -367,7 +380,7 @@ func ParseAuthRaftNodeResp(body []byte, key []byte) (resp AuthRaftNodeResp, err 
 	return
 }
 
-func extractTicket(str string, key []byte) (ticket cryptoutil.Ticket, err error) {
+func ExtractTicket(str string, key []byte) (ticket cryptoutil.Ticket, err error) {
 	var (
 		plaintext []byte
 	)
@@ -389,7 +402,7 @@ func checkTicketCaps(ticket *cryptoutil.Ticket, kind string, cap string) (err er
 		return
 	}
 	if b := c.ContainCaps(kind, cap); !b {
-		err = fmt.Errorf("no permission to access api")
+		err = fmt.Errorf("no permission to access %v", kind)
 		return
 	}
 	return
@@ -436,7 +449,7 @@ func VerifyAPIAccessReqIDs(req *APIAccessReq) (err error) {
 
 // ExtractAPIAccessTicket verify ticket validity
 func ExtractAPIAccessTicket(req *APIAccessReq, key []byte) (ticket cryptoutil.Ticket, ts int64, err error) {
-	if ticket, err = extractTicket(req.Ticket, key); err != nil {
+	if ticket, err = ExtractTicket(req.Ticket, key); err != nil {
 		err = fmt.Errorf("extractTicket failed: %s", err.Error())
 		return
 	}
@@ -467,6 +480,18 @@ func CheckAPIAccessCaps(ticket *cryptoutil.Ticket, rscType string, mp MsgType, a
 		err = fmt.Errorf("checkTicketCaps failed: %s", err.Error())
 		return
 	}
+	return
+}
+
+func CheckVOLAccessCaps(ticket *cryptoutil.Ticket, rscType string, volName string, action string, accessNode string) (err error) {
+
+	rule := accessNode + capSeparator + volName + capSeparator + action
+
+	if err = checkTicketCaps(ticket, rscType, rule); err != nil {
+		err = fmt.Errorf("checkTicketCaps failed: %s", err.Error())
+		return
+	}
+
 	return
 }
 
