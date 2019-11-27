@@ -1,0 +1,47 @@
+version: '2'
+
+services:
+  cfs1:
+    container_name: cfs1
+    image: cfs1
+    restart: always
+    ports:
+      - "8080:8083"
+    volumes:
+      - ./authnode1.json:/app/authnode1.json
+      - ./cfs-server:/app/cfs-server
+    networks:
+      extnetwork:
+        ipv4_address: 192.168.0.14
+  cfs2:
+    container_name: cfs2
+    image: cfs2
+    restart: always
+    ports:
+      - "8081:8084"
+    volumes:
+      - ./authnode2.json:/app/authnode2.json
+      - ./cfs-server:/app/cfs-server
+    networks:
+      extnetwork:
+        ipv4_address: 192.168.0.15
+
+  cfs3:
+    container_name: cfs3
+    image: cfs3
+    restart: always
+    ports:
+      - "8082:8085"
+    volumes:
+      - ./authnode3.json:/app/authnode3.json
+      - ./cfs-server:/app/cfs-server
+    networks:
+      extnetwork:
+        ipv4_address: 192.168.0.16
+
+networks:
+  extnetwork:
+    ipam:
+      config:
+        - subnet: 192.168.0.0/24
+          gateway: 192.168.0.1

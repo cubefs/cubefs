@@ -19,10 +19,12 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"bytes"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/cryptoutil"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
@@ -483,8 +485,10 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		capacity     int
 		replicaNum   int
 		followerRead bool
+		authenticate bool
+		vol          *Vol
 	)
-	if name, authKey, capacity, replicaNum, followerRead, err = parseRequestToUpdateVol(r); err != nil {
+	if name, authKey, capacity, replicaNum, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -493,11 +497,15 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if _, err = m.cluster.getVol(name); err != nil {
+	if vol, err = m.cluster.getVol(name); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.updateVol(name, authKey, uint64(capacity), uint8(replicaNum), followerRead); err != nil {
+	if followerRead, authenticate, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.updateVol(name, authKey, uint64(capacity), uint8(replicaNum), followerRead, authenticate); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -516,13 +524,14 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		capacity     int
 		vol          *Vol
 		followerRead bool
+		authenticate bool
 	)
 
-	if name, owner, mpCount, size, capacity, followerRead, err = parseRequestToCreateVol(r); err != nil {
+	if name, owner, mpCount, size, capacity, followerRead, authenticate, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.createVol(name, owner, mpCount, size, capacity, followerRead); err != nil {
+	if vol, err = m.cluster.createVol(name, owner, mpCount, size, capacity, followerRead, authenticate); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -560,6 +569,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		Capacity:           vol.Capacity,
 		FollowerRead:       vol.FollowerRead,
 		NeedToLowerReplica: vol.NeedToLowerReplica,
+		Authenticate:       vol.authenticate,
 		RwDpCnt:            vol.dataPartitions.readableAndWritableCnt,
 		MpCnt:              len(vol.MetaPartitions),
 		DpCnt:              len(vol.dataPartitions.partitionMap),
@@ -916,7 +926,7 @@ func parseRequestToDeleteVol(r *http.Request) (name, authKey string, err error) 
 
 }
 
-func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity, replicaNum int, followerRead bool, err error) {
+func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity, replicaNum int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -941,24 +951,37 @@ func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity, r
 			return
 		}
 	}
+	return
+}
+
+func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authenticate bool, err error) {
 	if followerReadStr := r.FormValue(followerReadKey); followerReadStr != "" {
 		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
 			err = unmatchedKey(followerReadKey)
 			return
 		}
+	} else {
+		followerRead = vol.FollowerRead
+	}
+	if authenticateStr := r.FormValue(authenticateKey); authenticateStr != "" {
+		if authenticate, err = strconv.ParseBool(authenticateStr); err != nil {
+			err = unmatchedKey(authenticateKey)
+			return
+		}
+	} else {
+		authenticate = vol.authenticate
 	}
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size, capacity int, followerRead bool, err error) {
+func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size, capacity int, followerRead, authenticate bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
 	if name, err = extractName(r); err != nil {
 		return
 	}
-	if owner = r.FormValue(volOwnerKey); owner == "" {
-		err = keyNotFound(volOwnerKey)
+	if owner, err = extractOwner(r); err != nil {
 		return
 	}
 
@@ -986,6 +1009,11 @@ func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size
 	if followerRead, err = extractFollowerRead(r); err != nil {
 		return
 	}
+
+	if authenticate, err = extractAuthenticate(r); err != nil {
+		return
+	}
+
 	return
 }
 
@@ -1144,6 +1172,18 @@ func extractFollowerRead(r *http.Request) (followerRead bool, err error) {
 	return
 }
 
+func extractAuthenticate(r *http.Request) (authenticate bool, err error) {
+	var value string
+	if value = r.FormValue(authenticateKey); value == "" {
+		authenticate = false
+		return
+	}
+	if authenticate, err = strconv.ParseBool(value); err != nil {
+		return
+	}
+	return
+}
+
 func parseAndExtractThreshold(r *http.Request) (threshold float64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -1293,10 +1333,14 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		err     error
-		name    string
-		authKey string
-		vol     *Vol
+		err          error
+		name         string
+		authKey      string
+		vol          *Vol
+		checkMessage string
+		jobj         proto.APIAccessReq
+		ticket       cryptoutil.Ticket
+		ts           int64
 	)
 	if name, authKey, err = parseRequestToGetVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1315,7 +1359,27 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 		vol.updateViewCache(m.cluster)
 		viewCache = vol.getViewCache()
 	}
-	send(w, r, viewCache)
+	if vol.authenticate {
+		if jobj, ticket, ts, err = parseAndCheckTicket(r, m.cluster.MasterSecretKey, name); err != nil {
+			if err == proto.ErrExpiredTicket {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidTicket, Msg: err.Error()})
+			return
+		}
+		if checkMessage, err = genCheckMessage(&jobj, ts, ticket.SessionKey.Key); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeMasterAPIGenRespError, Msg: err.Error()})
+			return
+		}
+		resp := &proto.GetVolResponse{
+			VolViewCache: viewCache,
+			CheckMsg:     checkMessage,
+		}
+		sendOkReply(w, r, newSuccessHTTPReply(resp))
+	} else {
+		send(w, r, viewCache)
+	}
 }
 
 // Obtain the volume information such as total capacity and used space, etc.
@@ -1421,6 +1485,112 @@ func extractName(r *http.Request) (name string, err error) {
 	}
 	if !volNameRegexp.MatchString(name) {
 		return "", errors.New("name can only be number and letters")
+	}
+
+	return
+}
+
+func extractOwner(r *http.Request) (owner string, err error) {
+	if owner = r.FormValue(volOwnerKey); owner == "" {
+		err = keyNotFound(volOwnerKey)
+		return
+	}
+	if !ownerRegexp.MatchString(owner) {
+		return "", errors.New("owner can only be number and letters")
+	}
+
+	return
+}
+
+func parseAndCheckTicket(r *http.Request, key []byte, volName string) (jobj proto.APIAccessReq, ticket cryptoutil.Ticket, ts int64, err error) {
+	var (
+		plaintext []byte
+	)
+
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if plaintext, err = extractClientReqInfo(r); err != nil {
+		return
+	}
+
+	if err = json.Unmarshal([]byte(plaintext), &jobj); err != nil {
+		return
+	}
+
+	if err = proto.VerifyAPIAccessReqIDs(&jobj); err != nil {
+		return
+	}
+
+	ticket, ts, err = extractTicketMess(&jobj, key, volName)
+
+	return
+}
+
+func extractClientReqInfo(r *http.Request) (plaintext []byte, err error) {
+	var (
+		message string
+	)
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if message = r.FormValue(proto.ClientMessage); message == "" {
+		err = keyNotFound(proto.ClientMessage)
+		return
+	}
+
+	if plaintext, err = cryptoutil.Base64Decode(message); err != nil {
+		return
+	}
+
+	return
+}
+
+func extractTicketMess(req *proto.APIAccessReq, key []byte, volName string) (ticket cryptoutil.Ticket, ts int64, err error) {
+	if ticket, err = proto.ExtractTicket(req.Ticket, key); err != nil {
+		err = fmt.Errorf("extractTicket failed: %s", err.Error())
+		return
+	}
+	if time.Now().Unix() >= ticket.Exp {
+		err = proto.ErrExpiredTicket
+		return
+	}
+	if ts, err = proto.ParseVerifier(req.Verifier, ticket.SessionKey.Key); err != nil {
+		err = fmt.Errorf("parseVerifier failed: %s", err.Error())
+		return
+	}
+	if err = proto.CheckAPIAccessCaps(&ticket, proto.APIRsc, req.Type, proto.APIAccess); err != nil {
+		err = fmt.Errorf("CheckAPIAccessCaps failed: %s", err.Error())
+		return
+	}
+	if err = proto.CheckVOLAccessCaps(&ticket, proto.VOLRsc, volName, proto.VOLAccess, proto.MasterNode); err != nil {
+		err = fmt.Errorf("CheckVOLAccessCaps failed: %s", err.Error())
+		return
+	}
+	return
+}
+
+func genCheckMessage(req *proto.APIAccessReq, ts int64, key []byte) (message string, err error) {
+	var (
+		jresp []byte
+		resp  proto.APIAccessResp
+	)
+
+	resp.Type = req.Type + 1
+	resp.ClientID = req.ClientID
+	resp.ServiceID = req.ServiceID
+	resp.Verifier = ts + 1 // increase ts by one for client verify server
+
+	if jresp, err = json.Marshal(resp); err != nil {
+		err = fmt.Errorf("json marshal for response failed %s", err.Error())
+		return
+	}
+
+	if message, err = cryptoutil.EncodeMessage(jresp, key); err != nil {
+		err = fmt.Errorf("encdoe message for response failed %s", err.Error())
+		return
 	}
 
 	return

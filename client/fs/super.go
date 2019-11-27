@@ -27,6 +27,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/sdk/data/stream"
 	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/chubaofs/chubaofs/util/auth"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/ump"
@@ -51,6 +52,8 @@ type MountOption struct {
 	Rdonly        bool
 	WriteCache    bool
 	KeepCache     bool
+	Authenticate  bool
+	TicketMess    auth.TicketMess
 }
 
 // Super defines the struct of a super block.
@@ -78,7 +81,7 @@ var (
 // NewSuper returns a new Super.
 func NewSuper(opt *MountOption) (s *Super, err error) {
 	s = new(Super)
-	s.mw, err = meta.NewMetaWrapper(opt.Volname, opt.Owner, opt.Master)
+	s.mw, err = meta.NewMetaWrapper(opt.Volname, opt.Owner, opt.Master, opt.Authenticate, opt.TicketMess)
 	if err != nil {
 		return nil, errors.Trace(err, "NewMetaWrapper failed!")
 	}

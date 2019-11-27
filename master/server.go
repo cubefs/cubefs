@@ -24,6 +24,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/cryptoutil"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -44,10 +45,12 @@ const (
 	DefaultRetainLogs = 20000
 	cfgTickInterval   = "tickInterval"
 	cfgElectionTick   = "electionTick"
+	SecretKey         = "masterServiceKey"
 )
 
 var (
 	volNameRegexp *regexp.Regexp
+	ownerRegexp   *regexp.Regexp
 	useConnPool   = true //for test
 	gConfig       *clusterConfig
 )
@@ -90,8 +93,10 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		log.LogError(errors.Stack(err))
 		return
 	}
-	pattern := "^[a-zA-Z0-9_-]{3,256}$"
-	volNameRegexp, err = regexp.Compile(pattern)
+	volnamePattern := "^[a-zA-Z0-9_-]{3,256}$"
+	volNameRegexp, err = regexp.Compile(volnamePattern)
+	ownerPattern := "^[A-Za-z]{1,1}[A-Za-z0-9_]{0,20}$"
+	ownerRegexp, err = regexp.Compile(ownerPattern)
 	if err != nil {
 		log.LogError(err)
 		return
@@ -105,6 +110,10 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	exporter.Init(ModuleName, cfg)
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
+	MasterSecretKey := cfg.GetString(SecretKey)
+	if m.cluster.MasterSecretKey, err = cryptoutil.Base64Decode(MasterSecretKey); err != nil {
+		return fmt.Errorf("action[Start] failed %v, err: master service Key invalid = %s", proto.ErrInvalidCfg, MasterSecretKey)
+	}
 	m.cluster.scheduleTask()
 	m.startHTTPService()
 	exporter.RegistConsul(m.clusterName, ModuleName, cfg)

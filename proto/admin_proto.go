@@ -397,4 +397,11 @@ type SimpleVolView struct {
 	DpCnt              int
 	FollowerRead       bool
 	NeedToLowerReplica bool
+	Authenticate       bool
+}
+
+// GetVolResponse defines the response for getting meta partition
+type GetVolResponse struct {
+	VolViewCache []byte `json:"vol_view_cache"`
+	CheckMsg     string `json:"check_message"`
 }

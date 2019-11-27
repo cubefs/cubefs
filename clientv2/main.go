@@ -266,6 +266,15 @@ func parseMountOption(cfg *config.Config) (*cfs.MountOption, error) {
 	opt.Rdonly = cfg.GetBool(proto.Rdonly)
 	opt.WriteCache = cfg.GetBool(proto.WriteCache)
 	opt.KeepCache = cfg.GetBool(proto.KeepCache)
+	opt.Authenticate = cfg.GetBool(proto.Authenticate)
+	if opt.Authenticate {
+		opt.TicketMess.ClientKey = cfg.GetString(proto.ClientKey)
+		opt.TicketMess.TicketHost = cfg.GetString(proto.TicketHost)
+		opt.TicketMess.EnableHTTPS = cfg.GetBool(proto.EnableHTTPS)
+		if opt.TicketMess.EnableHTTPS {
+			opt.TicketMess.CertFile = cfg.GetString(proto.CertFile)
+		}
+	}
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))

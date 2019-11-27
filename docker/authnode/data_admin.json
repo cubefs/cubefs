@@ -1,0 +1,5 @@
+{
+  "id": "admin",
+  "role": "client",
+  "caps": "{\"API\":[\"auth:*:access\"]}"
+}

@@ -37,6 +37,7 @@ type Vol struct {
 	Capacity           uint64 // GB
 	NeedToLowerReplica bool
 	FollowerRead       bool
+	authenticate       bool
 	MetaPartitions     map[uint64]*MetaPartition
 	mpsLock            sync.RWMutex
 	dataPartitions     *DataPartitionMap
@@ -47,7 +48,7 @@ type Vol struct {
 	sync.RWMutex
 }
 
-func newVol(id uint64, name, owner string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead bool) (vol *Vol) {
+func newVol(id uint64, name, owner string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate bool) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	if dpReplicaNum < 1 {
@@ -69,6 +70,7 @@ func newVol(id uint64, name, owner string, dpSize, capacity uint64, dpReplicaNum
 	vol.dataPartitionSize = dpSize
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
+	vol.authenticate = authenticate
 	vol.viewCache = make([]byte, 0)
 	vol.mpsCache = make([]byte, 0)
 	return

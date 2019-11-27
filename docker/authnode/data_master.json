@@ -1,0 +1,5 @@
+{
+  "id": "MasterService",
+  "role": "service",
+  "caps": "{\"API\":[\"*:*:*\"]}"
+}

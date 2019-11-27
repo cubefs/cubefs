@@ -48,6 +48,7 @@ type Cluster struct {
 	DisableAutoAllocate bool
 	fsm                 *MetadataFsm
 	partition           raftstore.Partition
+	MasterSecretKey     []byte
 }
 
 func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition raftstore.Partition, cfg *clusterConfig) (c *Cluster) {
@@ -1058,13 +1059,14 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 	go metaNode.clean()
 }
 
-func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum uint8, followerRead bool) (err error) {
+func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum uint8, followerRead, authenticate bool) (err error) {
 	var (
 		vol             *Vol
 		serverAuthKey   string
 		oldDpReplicaNum uint8
 		oldCapacity     uint64
 		oldFollowerRead bool
+		oldAuthenticate bool
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
@@ -1088,8 +1090,10 @@ func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum ui
 	oldCapacity = vol.Capacity
 	oldDpReplicaNum = vol.dpReplicaNum
 	oldFollowerRead = vol.FollowerRead
+	oldAuthenticate = vol.authenticate
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
+	vol.authenticate = authenticate
 	//only reduced replica num is supported
 	if replicaNum != 0 && replicaNum < vol.dpReplicaNum {
 		vol.dpReplicaNum = replicaNum
@@ -1098,6 +1102,7 @@ func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum ui
 		vol.Capacity = oldCapacity
 		vol.dpReplicaNum = oldDpReplicaNum
 		vol.FollowerRead = oldFollowerRead
+		vol.authenticate = oldAuthenticate
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
 		goto errHandler
@@ -1112,7 +1117,7 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner string, mpCount, size, capacity int, followerRead bool) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner string, mpCount, size, capacity int, followerRead, authenticate bool) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -1122,7 +1127,7 @@ func (c *Cluster) createVol(name, owner string, mpCount, size, capacity int, fol
 	} else {
 		dataPartitionSize = uint64(size) * util.GB
 	}
-	if vol, err = c.doCreateVol(name, owner, dataPartitionSize, uint64(capacity), defaultReplicaNum, followerRead); err != nil {
+	if vol, err = c.doCreateVol(name, owner, dataPartitionSize, uint64(capacity), defaultReplicaNum, followerRead, authenticate); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -1150,7 +1155,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) doCreateVol(name, owner string, dpSize, capacity uint64, dpReplicaNum int, followerRead bool) (vol *Vol, err error) {
+func (c *Cluster) doCreateVol(name, owner string, dpSize, capacity uint64, dpReplicaNum int, followerRead, authenticate bool) (vol *Vol, err error) {
 	var id uint64
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
@@ -1162,7 +1167,7 @@ func (c *Cluster) doCreateVol(name, owner string, dpSize, capacity uint64, dpRep
 	if err != nil {
 		goto errHandler
 	}
-	vol = newVol(id, name, owner, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead)
+	vol = newVol(id, name, owner, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate)
 	if err = c.syncAddVol(vol); err != nil {
 		goto errHandler
 	}
