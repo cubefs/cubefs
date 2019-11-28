@@ -14,7 +14,7 @@ CLIENT_SRC := $(wildcard client/*.go client/fs/*.go sdk/*.go)
 CLIENT2_SRC := $(wildcard clientv2/*.go clientv2/fs/*.go sdk/*.go)
 AUTHTOOL_SRC := $(wildcard authtool/*.go)
 
-RM := $(shell [[ -x /bin/rm ]] && echo "/bin/rm -rf" || echo "/usr/bin/rm -rf" )
+RM := $(shell [ -x /bin/rm ] && echo "/bin/rm -rf" || echo "/usr/bin/rm -rf" )
 
 default: all
 
