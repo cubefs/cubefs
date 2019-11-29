@@ -72,7 +72,7 @@ Sample *meta.json is* shown as follows,
        "totalMem":  "17179869184",
        "consulAddr": "http://consul.prometheus-cfs.local",
        "exporterPort": 9511,
-       "masterAddrs": [
+       "masterAddr": [
            "192.168.31.173:80",
            "192.168.31.141:80",
            "192.168.30.200:80"
