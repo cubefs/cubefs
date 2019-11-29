@@ -20,7 +20,7 @@ At lease 3 meta nodes are required in respect to high availability.
    "raftReplicaPort", "string", "Raft replicate port", "Yes"
    "consulAddr", "string", "Addresses of monitor system", "No" 
    "exporterPort", "string", "Port for monitor system", "No" 
-   "masterAddrs", "string", "Addresses of master server", "Yes"
+   "masterAddr", "string", "Addresses of master server", "Yes"
    "totalMem","string","Max memory metadata used","No"
 
 
@@ -44,7 +44,7 @@ Example:
         "consulAddr": "http://consul.prometheus-cfs.local",
         "exporterPort": 9511,
         "totalMem":  "17179869184",
-        "masterAddrs": [
+        "masterAddr": [
             "192.168.31.173:80",
             "192.168.31.141:80",
             "192.168.30.200:80"

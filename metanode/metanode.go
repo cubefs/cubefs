@@ -226,7 +226,10 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load raftHeartbeatPort[%v].", m.raftHeartbeatPort)
 	log.LogInfof("[parseConfig] load raftReplicatePort[%v].", m.raftReplicatePort)
 
-	addrs := cfg.GetArray(cfgMasterAddrs)
+	addrs := cfg.GetArray(cfgMasterAddr)
+	if len(addrs) == 0 {
+		addrs = cfg.GetArray(cfgMasterAddrs)
+	}
 	masterHelper = util.NewMasterHelper()
 	for _, addr := range addrs {
 		masterHelper.AddNode(addr.(string))
