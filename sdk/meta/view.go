@@ -72,7 +72,7 @@ func (mw *MetaWrapper) fetchVolumeView() (*VolumeView, error) {
 			log.LogWarnf("fetchVolumeView request: err(%v)", err)
 			return nil, err
 		}
-		dataBody, err = mw.parseRespWithAuth(body, ts)
+		dataBody, err = mw.parseAndVerifyResp(body, ts)
 		if err != nil {
 			log.LogWarnf("fetchVolumeView request: err(%v)", err)
 			return nil, err
@@ -230,36 +230,14 @@ func (mw *MetaWrapper) updateTicket() error {
 	return nil
 }
 
-func (mw *MetaWrapper) verifyResponse(checkMsg string, serviceID string, ts int64) (err error) {
-	var (
-		sessionKey []byte
-		plaintext  []byte
-		resp       proto.APIAccessResp
-	)
-
-	if sessionKey, err = cryptoutil.Base64Decode(mw.sessionKey); err != nil {
-		return
-	}
-
-	if plaintext, err = cryptoutil.DecodeMessage(checkMsg, sessionKey); err != nil {
-		return
-	}
-
-	if err = json.Unmarshal(plaintext, &resp); err != nil {
-		return
-	}
-	return proto.VerifyAPIRespComm(&resp, mw.accessToken.Type, mw.owner, serviceID, ts)
-
-}
-
-func (mw *MetaWrapper) parseRespWithAuth(body []byte, ts int64) (dataBody []byte, err error) {
-	getVolResp := new(proto.GetVolResponse)
-	if err = json.Unmarshal(body, getVolResp); err != nil {
-		log.LogWarnf("fetchVolumeView unmarshal: err(%v) body(%v)", err, string(body))
+func (mw *MetaWrapper) parseAndVerifyResp(body []byte, ts int64) (dataBody []byte, err error) {
+	var resp proto.MasterAPIAccessResp
+	if resp, err = mw.parseRespWithAuth(body); err != nil {
+		log.LogWarnf("fetchVolumeView parse response failed: err(%v) body(%v)", err, string(body))
 		return nil, err
 	}
-	if err = mw.verifyResponse(getVolResp.CheckMsg, proto.MasterServiceID, ts); err != nil {
-		log.LogWarnf("fetchVolumeView verify response: err(%v) body(%v)", err, getVolResp.CheckMsg)
+	if err = proto.VerifyAPIRespComm(&(resp.APIResp), mw.accessToken.Type, mw.owner, proto.MasterServiceID, ts); err != nil {
+		log.LogWarnf("fetchVolumeView verify response: err(%v)", err)
 		return nil, err
 	}
 	var viewBody = &struct {
@@ -267,7 +245,7 @@ func (mw *MetaWrapper) parseRespWithAuth(body []byte, ts int64) (dataBody []byte
 		Msg  string `json:"msg"`
 		Data json.RawMessage
 	}{}
-	if err = json.Unmarshal(getVolResp.VolViewCache, viewBody); err != nil {
+	if err = json.Unmarshal(resp.Data, viewBody); err != nil {
 		log.LogWarnf("VolViewCache unmarshal: err(%v) body(%v)", err, viewBody)
 		return nil, err
 	}
@@ -275,4 +253,30 @@ func (mw *MetaWrapper) parseRespWithAuth(body []byte, ts int64) (dataBody []byte
 		return nil, fmt.Errorf("request error, code[%d], msg[%s]", viewBody.Code, viewBody.Msg)
 	}
 	return viewBody.Data, err
+}
+
+func (mw *MetaWrapper) parseRespWithAuth(body []byte) (resp proto.MasterAPIAccessResp, err error) {
+	var (
+		message    string
+		sessionKey []byte
+		plaintext  []byte
+	)
+
+	if err = json.Unmarshal(body, &message); err != nil {
+		return
+	}
+
+	if sessionKey, err = cryptoutil.Base64Decode(mw.sessionKey); err != nil {
+		return
+	}
+
+	if plaintext, err = cryptoutil.DecodeMessage(message, sessionKey); err != nil {
+		return
+	}
+
+	if err = json.Unmarshal(plaintext, &resp); err != nil {
+		return
+	}
+
+	return
 }

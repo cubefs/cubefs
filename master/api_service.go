@@ -1333,14 +1333,14 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		err          error
-		name         string
-		authKey      string
-		vol          *Vol
-		checkMessage string
-		jobj         proto.APIAccessReq
-		ticket       cryptoutil.Ticket
-		ts           int64
+		err     error
+		name    string
+		authKey string
+		vol     *Vol
+		message string
+		jobj    proto.APIAccessReq
+		ticket  cryptoutil.Ticket
+		ts      int64
 	)
 	if name, authKey, err = parseRequestToGetVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1368,15 +1368,11 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidTicket, Msg: err.Error()})
 			return
 		}
-		if checkMessage, err = genCheckMessage(&jobj, ts, ticket.SessionKey.Key); err != nil {
+		if message, err = genRespMessage(viewCache, &jobj, ts, ticket.SessionKey.Key); err != nil {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeMasterAPIGenRespError, Msg: err.Error()})
 			return
 		}
-		resp := &proto.GetVolResponse{
-			VolViewCache: viewCache,
-			CheckMsg:     checkMessage,
-		}
-		sendOkReply(w, r, newSuccessHTTPReply(resp))
+		sendOkReply(w, r, newSuccessHTTPReply(message))
 	} else {
 		send(w, r, viewCache)
 	}
@@ -1572,16 +1568,18 @@ func extractTicketMess(req *proto.APIAccessReq, key []byte, volName string) (tic
 	return
 }
 
-func genCheckMessage(req *proto.APIAccessReq, ts int64, key []byte) (message string, err error) {
+func genRespMessage(data []byte, req *proto.APIAccessReq, ts int64, key []byte) (message string, err error) {
 	var (
 		jresp []byte
-		resp  proto.APIAccessResp
+		resp  proto.MasterAPIAccessResp
 	)
 
-	resp.Type = req.Type + 1
-	resp.ClientID = req.ClientID
-	resp.ServiceID = req.ServiceID
-	resp.Verifier = ts + 1 // increase ts by one for client verify server
+	resp.Data = data
+
+	resp.APIResp.Type = req.Type + 1
+	resp.APIResp.ClientID = req.ClientID
+	resp.APIResp.ServiceID = req.ServiceID
+	resp.APIResp.Verifier = ts + 1 // increase ts by one for client verify server
 
 	if jresp, err = json.Marshal(resp); err != nil {
 		err = fmt.Errorf("json marshal for response failed %s", err.Error())

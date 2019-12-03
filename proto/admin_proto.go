@@ -400,8 +400,8 @@ type SimpleVolView struct {
 	Authenticate       bool
 }
 
-// GetVolResponse defines the response for getting meta partition
-type GetVolResponse struct {
-	VolViewCache []byte `json:"vol_view_cache"`
-	CheckMsg     string `json:"check_message"`
+// MasterAPIAccessResp defines the response for getting meta partition
+type MasterAPIAccessResp struct {
+	APIResp APIAccessResp `json:"api_resp"`
+	Data    []byte        `json:"data"`
 }
