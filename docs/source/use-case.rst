@@ -18,22 +18,6 @@ The advantages of using ChubaoFS to store training data sets:
 - Multiple replicas of data to ensure high data reliability without worrying about losing data.
 - Compatible with POSIX file system interface, no changes required by the application.
 
-HBase
-----------
-
-Using HDFS as a backend to store data will often encounter the following problems:
-
-- It is not friendly to small files. There are too many small files. They take up the NameNode  memory. The number of files that the file system can hold is determined by the memory size of the NameNode.
-- Complex operation and maintenance.
-- NameNode manages metadata and is hard  to expand.
-
-The advantages of using ChubaoFS as a backend storage:
-
-- Friendly to small files, unlimited number of files.
-- Simple operation and maintenance.
-- Meta node manages file metadata to support horizontal expansion.
-- Different volume file metadata is distributed on different meta nodes, isolated from each other and does not affect each other.
-
 
 ElasticSearch
 ------------------
