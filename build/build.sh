@@ -19,18 +19,18 @@ GCC_LIBRARY_PATH="/lib /lib64 /usr/lib /usr/lib64 /usr/local/lib /usr/local/lib6
 cgo_cflags=""
 cgo_ldflags="-lstdc++ -lm"
 
-[[ $(uname -s) != "Linux" ]] && { echo "ChubaoFS only support Linux os"; exit 1; }
+[ $(uname -s) != "Linux" ] && { echo "ChubaoFS only support Linux os"; exit 1; }
 
 build_snappy() {
     found=$(find ${GCC_LIBRARY_PATH}  -name libsnappy.a -o -name libsnappy.so 2>/dev/null | wc -l)
-    if [[ ${found} -gt 0 ]] ; then
+    if [ ${found} -gt 0 ] ; then
         cgo_ldflags="${cgo_ldflags} -lsnappy"
         return
     fi
     SnappySrcPath=${VendorPath}/snappy-1.1.7
     SnappyBuildPath=${BuildOutPath}/snappy
     found=$(find ${SnappyBuildPath} -name libsnappy.a 2>/dev/null | wc -l)
-    if [[ ${found} -eq 0 ]] ; then
+    if [ ${found} -eq 0 ] ; then
         mkdir -p ${SnappyBuildPath}
         echo "build snappy..."
         pushd ${SnappyBuildPath} >/dev/null
@@ -43,21 +43,21 @@ build_snappy() {
 
 build_rocksdb() {
     found=$(find ${GCC_LIBRARY_PATH} -name librocksdb.a -o -name librocksdb.so 2>/dev/null | wc -l)
-    if [[ ${found} -gt 0 ]] ; then
+    if [ ${found} -gt 0 ] ; then
         cgo_ldflags="${cgo_ldflags} -lrocksdb"
         return
     fi
     RocksdbSrcPath=${VendorPath}/rocksdb-5.9.2
     RocksdbBuildPath=${BuildOutPath}/rocksdb
     found=$(find ${RocksdbBuildPath} -name librocksdb.a 2>/dev/null | wc -l)
-    if [[ ${found} -eq 0 ]] ; then
-        if [[ ! -d ${RocksdbBuildPath} ]] ; then
+    if [ ${found} -eq 0 ] ; then
+        if [ ! -d ${RocksdbBuildPath} ] ; then
             mkdir -p ${RocksdbBuildPath}
             cp -rf ${RocksdbSrcPath}/* ${RocksdbBuildPath}
         fi
         echo "build rocksdb..."
         pushd ${RocksdbBuildPath} >/dev/null
-        [[ "-$LUA_PATH" != "-" ]]  && unset LUA_PATH
+        [ "-$LUA_PATH" != "-" ]  && unset LUA_PATH
         make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
         popd >/dev/null
     fi
@@ -72,7 +72,7 @@ pre_build() {
     rocksdb_libs=( z bz2 lz4 zstd )
     for p in ${rocksdb_libs[*]} ; do
         found=$(find /usr -name lib${p}.so 2>/dev/null | wc -l)
-        if [[ ${found} -gt 0 ]] ; then
+        if [ ${found} -gt 0 ] ; then
             cgo_ldflags="${cgo_ldflags} -l${p}"
         fi
     done
@@ -84,7 +84,7 @@ pre_build() {
 
     mkdir -p $GOPATH/src/github.com/chubaofs
     SrcPath=$GOPATH/src/github.com/chubaofs/chubaofs
-    if [[  ! -e "$SrcPath" ]] ; then
+    if [  ! -e "$SrcPath" ] ; then
         ln -s $RootPath $SrcPath 2>/dev/null
     fi
 }
@@ -92,9 +92,10 @@ pre_build() {
 run_test() {
     pre_build
     pushd $SrcPath >/dev/null
-    echo "run test "
-    go test -ldflags "${LDFlags}" ./...
+    go test ./...
+    ret=$?
     popd >/dev/null
+    exit $ret
 }
 
 build_server() {

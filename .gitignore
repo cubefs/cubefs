@@ -1,9 +1,11 @@
 build/bin
 build/rocksdb
 build/snappy
+build/out/
 .DS_Store
 .idea
 .vscode
-build/out
 docker/bin
+docker/disk
 docs/build
+tmp/

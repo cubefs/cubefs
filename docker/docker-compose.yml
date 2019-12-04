@@ -314,3 +314,17 @@ services:
               cd /go/src/github.com/chubaofs/chubaofs/client && bash ./build.sh && mv cfs-client /go/src/github.com/chubaofs/chubaofs/docker/bin/cfs-client && echo 'success' || echo "failed" ;
         networks:
             extnetwork:
+
+    test:
+        image: chubaofs/cfs-base:1.0
+        volumes:
+            - ../:/go/src/github.com/chubaofs/chubaofs
+        command:
+            - bash
+            - "-c"
+            - >-
+              set -e;
+              mkdir -p /go/src/github.com/chubaofs/chubaofs/docker/bin &&
+              cd /go/src/github.com/chubaofs/chubaofs && make test
+        networks:
+            extnetwork:

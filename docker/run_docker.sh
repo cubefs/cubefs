@@ -29,7 +29,12 @@ clean() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml down
 }
 
-# test & build
+# test
+run_test() {
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run test 
+}
+
+# build
 build() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml run build
 }
@@ -81,6 +86,9 @@ for opt in ${ARGS[*]} ; do
             ;;
         -b|--build)
             cmd=build
+            ;;
+        -t|--test)
+            cmd=run_test
             ;;
         -l|--ltptest)
             cmd=run_ltptest
@@ -146,6 +154,7 @@ case "-$cmd" in
     -run_s3node) start_s3node ;;
     -run_monitor) start_monitor ;;
     -run_ltptest) run_ltptest ;;
+    -run_test) run_test ;;
     -clean) clean ;;
     *) help ;;
 esac

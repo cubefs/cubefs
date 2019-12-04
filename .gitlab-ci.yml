@@ -3,12 +3,14 @@ before_script:
   - echo $CI_PROJECT_DIR
   - export GOPATH=/export/workspace/go
   - echo $GOPATH
+  - export CFS_SRC_PROJECT=$GOPATH/src/github.com/chubaofs
+  - export CFS_SRC_PATH=${CFS_SRC_PROJECT}/chubaofs
+  - export CI_HOME=/export/App/cfsci
   - echo ${CI_COMMIT_REF_NAME}
-  - rm -fr $GOPATH/src/github.com/chubaofs/chubaofs
-  - ln -s $CI_PROJECT_DIR $GOPATH/src/github.com/chubaofs/
-  - echo $CI_PROJECT_DIR
-  - echo $GOPATH/src/github.com/chubaofs/
-  - cd $GOPATH/src/github.com/chubaofs/chubaofs
+  - rm -fr ${CFS_SRC_PATH}
+  - ln -s $CI_PROJECT_DIR ${CFS_SRC_PROJECT}
+  - echo ${CI_PROJECT_DIR} ${CFS_SRC_PATH}
+  - cd ${CFS_SRC_PATH}
 
 stages:
   - build
@@ -22,14 +24,14 @@ build_main:
     - cfs
   script:
     - sh /export/App/cfsci/scripts/build.sh
-    
+
 deploy:
   stage: deploy
   tags:
     - cfs
   script:
     - sh /export/App/cfsci/scripts/deploy.sh
-    
+
 restart:
   stage: restart
   tags:
@@ -47,4 +49,3 @@ ltptest:
     - cfs
   script:
     - sh /export/App/cfsci/scripts/start-ltp.sh
-
