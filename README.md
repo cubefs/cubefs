@@ -12,7 +12,9 @@
 
 ## Overview
 
-ChubaoFS (储宝文件系统 in Chinese) is a distributed filesystem (and object storage as well) for cloud native applications. It has the following features:
+ChubaoFS (储宝文件系统 in Chinese) is a distributed file system and object storage service for cloud native applications. 
+
+It has the following key features:
 
 - scale-out metadata management
 
