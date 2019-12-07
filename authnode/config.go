@@ -36,7 +36,6 @@ const (
 //default value
 const (
 	defaultIntervalToCheckHeartbeat = 60
-	defaultIntervalToLoadKeystore   = 2 * 60
 )
 
 type clusterConfig struct {

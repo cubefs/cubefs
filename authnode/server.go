@@ -148,6 +148,8 @@ func (m *Server) initFsm() {
 	m.fsm.registerLeaderChangeHandler(m.handleLeaderChange)
 	m.fsm.registerPeerChangeHandler(m.handlePeerChange)
 
+	m.fsm.id = m.id
+
 	// register the handlers for the interfaces defined in the Raft library
 	m.fsm.registerApplySnapshotHandler(m.handleApplySnapshot)
 	m.fsm.restore()

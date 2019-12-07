@@ -30,6 +30,7 @@ const (
 
 const (
 	keySeparator = "#"
+	idSeparator  = "$" // To seperate ID of server that submits raft changes
 	keyAcronym   = "key"
 	ksPrefix     = keySeparator + keyAcronym + keySeparator
 )

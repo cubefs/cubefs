@@ -32,18 +32,15 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		log.LogWarnf("action[handleLeaderChange] but no leader")
 		return
 	}
-	oldLeaderAddr := m.leaderInfo.addr
 	m.leaderInfo.addr = AddrDatabase[leader]
 	log.LogWarnf("action[handleLeaderChange] change leader to [%v] ", m.leaderInfo.addr)
 	m.authProxy = m.newAuthProxy() // TODO no lock?
 
-	if m.id == leader {
-		if oldLeaderAddr != m.leaderInfo.addr {
-			if err := m.cluster.loadKeystore(); err != nil {
-				panic(err)
-			}
-			m.metaReady = true
+	if m.metaReady == false {
+		if err := m.cluster.loadKeystore(); err != nil {
+			panic(err)
 		}
+		m.metaReady = true
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/chubaofs/chubaofs/util/keystore"
@@ -56,26 +57,6 @@ func (m *RaftCmd) setOpType() {
 	}
 }
 
-// KeyInfoValue define the values for a key
-type KeyInfoValue struct {
-	ID   string `json:"id"`
-	Key  []byte `json:"key"`
-	Ts   int64  `json:"create_ts"`
-	Role string `json:"role"`
-	Caps []byte `json:"caps"`
-}
-
-func newKeyInfoValue(keyInfo *keystore.KeyInfo) (vv *KeyInfoValue) {
-	vv = &KeyInfoValue{
-		ID:   keyInfo.ID,
-		Key:  keyInfo.Key,
-		Ts:   keyInfo.Ts,
-		Role: keyInfo.Role,
-		Caps: keyInfo.Caps,
-	}
-	return
-}
-
 func (c *Cluster) submit(metadata *RaftCmd) (err error) {
 	cmd, err := metadata.Marshal()
 	if err != nil {
@@ -107,8 +88,8 @@ func (c *Cluster) syncDeleteCaps(keyInfo *keystore.KeyInfo) (err error) {
 func (c *Cluster) syncPutKeyInfo(opType uint32, keyInfo *keystore.KeyInfo) (err error) {
 	keydata := new(RaftCmd)
 	keydata.Op = opType
-	keydata.K = ksPrefix + keyInfo.ID
-	vv := newKeyInfoValue(keyInfo)
+	keydata.K = ksPrefix + keyInfo.ID + idSeparator + strconv.FormatUint(c.fsm.id, 10)
+	vv := *keyInfo
 	if keydata.V, err = json.Marshal(vv); err != nil {
 		return errors.New(err.Error())
 	}
@@ -134,17 +115,17 @@ func (c *Cluster) loadKeystore() (err error) {
 		}
 		log.LogInfof("action[loadKeystore],key[%v]", k)
 	}
-	c.ksMutex.Lock()
-	defer c.ksMutex.Unlock()
-	c.keystore = &ks
+	c.fsm.ksMutex.Lock()
+	defer c.fsm.ksMutex.Unlock()
+	c.fsm.keystore = ks
 
 	return
 }
 
 func (c *Cluster) clearKeystore() {
-	c.ksMutex.Lock()
-	defer c.ksMutex.Unlock()
-	c.keystore = nil
+	c.fsm.ksMutex.Lock()
+	defer c.fsm.ksMutex.Unlock()
+	c.fsm.keystore = nil
 }
 
 func (c *Cluster) addRaftNode(nodeID uint64, addr string) (err error) {
