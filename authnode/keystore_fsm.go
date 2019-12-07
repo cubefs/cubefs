@@ -19,8 +19,11 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
+	"sync"
 
 	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/chubaofs/chubaofs/util/keystore"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"
@@ -47,6 +50,11 @@ type KeystoreFsm struct {
 	leaderChangeHandler raftLeaderChangeHandler
 	peerChangeHandler   raftPeerChangeHandler
 	snapshotHandler     raftApplySnapshotHandler
+
+	keystore   map[string]*keystore.KeyInfo
+	ksMutex    sync.RWMutex // keystore mutex
+	opKeyMutex sync.RWMutex // operations on key mutex
+	id         uint64       // current id of server
 }
 
 func newKeystoreFsm(store *raftstore.RocksDBStore, retainsLog uint64, rs *raft.RaftServer) (fsm *KeystoreFsm) {
@@ -95,14 +103,33 @@ func (mf *KeystoreFsm) restoreApplied() {
 
 // Apply implements the interface of raft.StateMachine
 func (mf *KeystoreFsm) Apply(command []byte, index uint64) (resp interface{}, err error) {
+	var (
+		keyInfo keystore.KeyInfo
+		leader  uint64
+	)
+
 	cmd := new(RaftCmd)
 	if err = cmd.Unmarshal(command); err != nil {
 		log.LogErrorf("action[fsmApply],unmarshal data:%v, err:%v", command, err.Error())
 		panic(err)
 	}
 	log.LogInfof("action[fsmApply],cmd.op[%v],cmd.K[%v],cmd.V[%v]", cmd.Op, cmd.K, string(cmd.V))
+
+	if err = json.Unmarshal(cmd.V, &keyInfo); err != nil {
+		panic(err)
+	}
+
+	s := strings.Split(cmd.K, idSeparator)
+	if len(s) != 2 {
+		panic(fmt.Errorf("cmd.K format error %s", cmd.K))
+	}
+	leader, err = strconv.ParseUint(s[1], 10, 64)
+	if err != nil {
+		panic(fmt.Errorf("leaderID format error %s", s[1]))
+	}
+
 	cmdMap := make(map[string][]byte)
-	cmdMap[cmd.K] = cmd.V
+	cmdMap[s[0]] = cmd.V
 	cmdMap[applied] = []byte(strconv.FormatUint(uint64(index), 10))
 
 	switch cmd.Op {
@@ -110,9 +137,29 @@ func (mf *KeystoreFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		if err = mf.delKeyAndPutIndex(cmd.K, cmdMap); err != nil {
 			panic(err)
 		}
+		//if mf.leader != mf.id {
+		// We don't use above statement to avoid "leader double-change of keystore cache"
+		// Because there may a race condition: before "Apply" raftlog, leader change happens
+		// so that cache changes may not happen in newly selected leader-node and "double-change"
+		// of cache may happen in newly demoted leader node. Therefore, we use the following
+		// statement: "id" indicates which server has changed keystore cache (typical leader).
+		if mf.id != leader {
+			mf.DeleteKey(string(keyInfo.Key))
+			log.LogInfof("action[Apply], Successfully delete key in node[%d]", mf.id)
+		} else {
+			log.LogInfof("action[Apply], Already delete key in node[%d]", mf.id)
+		}
 	default:
 		if err = mf.batchPut(cmdMap); err != nil {
 			panic(err)
+		}
+		//if mf.leader != mf.id {
+		// Same reasons as the description above
+		if mf.id != leader {
+			mf.PutKey(&keyInfo)
+			log.LogInfof("action[Apply], Successfully put key in node[%d]", mf.id)
+		} else {
+			log.LogInfof("action[Apply], Already put key in node[%d]", mf.id)
 		}
 	}
 	mf.applied = index

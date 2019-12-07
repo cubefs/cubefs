@@ -17,12 +17,13 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"strconv"
+
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"
-	"io"
-	"strconv"
 )
 
 const (

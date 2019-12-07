@@ -44,6 +44,11 @@ func (m *Server) getTicket(w http.ResponseWriter, r *http.Request) {
 		message   string
 	)
 
+	if m.metaReady == false {
+		log.LogWarnf("action[handlerWithInterceptor] leader meta has not ready")
+		http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
+	}
+
 	if plaintext, err = m.extractClientReqInfo(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
