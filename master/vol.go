@@ -29,6 +29,8 @@ type Vol struct {
 	ID                 uint64
 	Name               string
 	Owner              string
+	OSSAccessKey       string
+	OSSSecretKey       string
 	dpReplicaNum       uint8
 	mpReplicaNum       uint8
 	Status             uint8
@@ -74,6 +76,29 @@ func newVol(id uint64, name, owner string, dpSize, capacity uint64, dpReplicaNum
 	vol.viewCache = make([]byte, 0)
 	vol.mpsCache = make([]byte, 0)
 	return
+}
+
+func newVolFromVolValue(vv *volValue) (vol *Vol) {
+	vol = newVol(
+		vv.ID,
+		vv.Name,
+		vv.Owner,
+		vv.DataPartitionSize,
+		vv.Capacity,
+		vv.DpReplicaNum,
+		vv.ReplicaNum,
+		vv.FollowerRead,
+		vv.Authenticate)
+	// overwrite oss secure
+	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
+	vol.Status = vv.Status
+	return vol
+}
+
+func (vol *Vol) refreshOSSSecure() (key, secret string) {
+	vol.OSSAccessKey = util.RandomString(16, util.Numeric|util.LowerLetter|util.UpperLetter)
+	vol.OSSSecretKey = util.RandomString(32, util.Numeric|util.LowerLetter|util.UpperLetter)
+	return vol.OSSAccessKey, vol.OSSSecretKey
 }
 
 func (vol *Vol) addMetaPartition(mp *MetaPartition) {
@@ -372,6 +397,8 @@ func (vol *Vol) totalUsedSpace() uint64 {
 
 func (vol *Vol) updateViewCache(c *Cluster) {
 	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead)
+	view.SetOwner(vol.Owner)
+	view.SetOSSSecure(vol.OSSAccessKey, vol.OSSSecretKey)
 	mpViews := vol.getMetaPartitionsView()
 	view.MetaPartitions = mpViews
 	mpViewsReply := newSuccessHTTPReply(mpViews)

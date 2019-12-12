@@ -353,8 +353,7 @@ func (e *Extent) DeleteTiny(offset, size int64) (hasDelete bool, err error) {
 		hasDelete = true
 		return true, nil
 	}
-	err = syscall.Fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
-
+	err = fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
 	return
 }
 
@@ -388,7 +387,7 @@ func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, 
 		if err = syscall.Ftruncate(int(e.file.Fd()), offset+size); err != nil {
 			return err
 		}
-		err = syscall.Fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
+		err = fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
 	} else {
 		_, err = e.file.WriteAt(data[:size], int64(offset))
 	}

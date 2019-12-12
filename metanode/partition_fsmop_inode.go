@@ -17,9 +17,10 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+	"io"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
-	"io"
 )
 
 type InodeResponse struct {
@@ -150,7 +151,8 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 			}
 			return
 		}
-		log.LogDebugf("recive raftLeader free inode(%v)", ino.Inode)
+		log.LogDebugf("internalDelete: received internal delete: partitionID(%v) inode(%v)",
+			mp.config.PartitionId, ino.Inode)
 		mp.internalDeleteInode(ino)
 	}
 }
@@ -158,6 +160,7 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 func (mp *metaPartition) internalDeleteInode(ino *Inode) {
 	mp.inodeTree.Delete(ino)
 	mp.freeList.Remove(ino.Inode)
+	mp.extendTree.Delete(&Extend{inode: ino.Inode}) // Also delete extend attribute.
 	return
 }
 

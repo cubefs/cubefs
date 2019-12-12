@@ -75,7 +75,7 @@ var (
 
 func NewSuper(opt *MountOption) (s *Super, err error) {
 	s = new(Super)
-	s.mw, err = meta.NewMetaWrapper(opt.Volname, opt.Owner, opt.Master, opt.Authenticate, opt.TicketMess)
+	s.mw, err = meta.NewMetaWrapper(opt.Volname, opt.Owner, opt.Master, opt.Authenticate, true, &opt.TicketMess)
 	if err != nil {
 		return nil, errors.Trace(err, "NewMetaWrapper failed!")
 	}

@@ -37,7 +37,7 @@ func createMetaPartition(vol *Vol, t *testing.T) {
 	var start uint64
 	start = mp.Start + defaultMetaPartitionInodeIDStep
 	reqURL := fmt.Sprintf("%v%v?name=%v&start=%v",
-		hostAddr, proto.AdminCreateMP, vol.Name, start)
+		hostAddr, proto.AdminCreateMetaPartition, vol.Name, start)
 	fmt.Println(reqURL)
 	process(reqURL, t)
 	if start < mp.MaxInodeID {

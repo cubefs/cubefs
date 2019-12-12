@@ -181,7 +181,7 @@ func getTicket() {
 	if err1 != nil {
 		panic(err1)
 	}
-	key, err2 := cryptoutil.Base64Decode(cfg.GetString("key"))
+	key, err2 := cryptoutil.Base64Decode(cfg.GetString("auth_key"))
 	if err2 != nil {
 		panic(err2)
 	}
@@ -464,11 +464,11 @@ func main() {
 				panic(err)
 			}
 			keyInfo := keystore.KeyInfo{
-				ID:   "AuthService",
-				Key:  random,
-				Ts:   time.Now().Unix(),
-				Role: "AuthService",
-				Caps: []byte(`{"*"}`),
+				ID:      "AuthService",
+				AuthKey: random,
+				Ts:      time.Now().Unix(),
+				Role:    "AuthService",
+				Caps:    []byte(`{"*"}`),
 			}
 			keyInfo.DumpJSONFile(*output[i])
 		}

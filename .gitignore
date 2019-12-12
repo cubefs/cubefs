@@ -1,4 +1,3 @@
-.gitignore
 build/bin
 build/rocksdb
 build/snappy

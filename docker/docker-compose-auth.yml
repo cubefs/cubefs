@@ -27,6 +27,7 @@ services:
       - datanode2
       - datanode3
       - datanode4
+      - s3node1
     networks:
       authnode_extnetwork:
 
@@ -103,6 +104,7 @@ services:
     privileged: true
     networks:
       authnode_extnetwork:
+        ipv4_address: 192.168.0.21
 
   metanode2:
     image: chubaofs/cfs-base:1.0
@@ -121,6 +123,7 @@ services:
     privileged: true
     networks:
       authnode_extnetwork:
+        ipv4_address: 192.168.0.22
 
   metanode3:
     image: chubaofs/cfs-base:1.0
@@ -139,6 +142,7 @@ services:
     privileged: true
     networks:
       authnode_extnetwork:
+        ipv4_address: 192.168.0.23
 
   datanode1:
     image: chubaofs/cfs-base:1.0
@@ -158,6 +162,7 @@ services:
     privileged: true
     networks:
       authnode_extnetwork:
+        ipv4_address: 192.168.0.31
 
   datanode2:
     image: chubaofs/cfs-base:1.0
@@ -177,6 +182,7 @@ services:
     privileged: true
     networks:
       authnode_extnetwork:
+        ipv4_address: 192.168.0.32
 
   datanode3:
     image: chubaofs/cfs-base:1.0
@@ -196,6 +202,7 @@ services:
     privileged: true
     networks:
       authnode_extnetwork:
+        ipv4_address: 192.168.0.33
 
   datanode4:
     image: chubaofs/cfs-base:1.0
@@ -215,6 +222,22 @@ services:
     privileged: true
     networks:
       authnode_extnetwork:
+        ipv4_address: 192.168.0.34
+
+  s3node1:
+    image: chubaofs/cfs-base:1.0
+    ports:
+      - "80"
+    volumes:
+      - ./bin:/cfs/bin
+      - ./conf/s3node.json:/cfs/conf/s3node.json
+      - ./script/start_s3node.sh:/cfs/script/start.sh
+    command: /bin/sh /cfs/script/start.sh
+    restart: on-failure
+    privileged: true
+    networks:
+      authnode_extnetwork:
+        ipv4_address: 192.168.0.31
 
   client:
     image: chubaofs/cfs-base:1.0

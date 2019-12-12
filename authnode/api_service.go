@@ -178,7 +178,7 @@ func genAuthRaftNodeOpResp(req *proto.APIAccessReq, ts int64, key []byte, msg st
 	}
 
 	if message, err = cryptoutil.EncodeMessage(jresp, key); err != nil {
-		err = fmt.Errorf("encdoe message for response failed %s", err.Error())
+		err = fmt.Errorf("encode message for response failed %s", err.Error())
 		return
 	}
 
@@ -302,17 +302,27 @@ func (m *Server) handleGetKey(keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo,
 }
 
 func (m *Server) handleAddCaps(keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo, err error) {
-	if res, err = m.cluster.AddCaps(keyInfo.ID, keyInfo); err != nil {
-		return
+	if keyInfo.ID == "" {
+		var akInfo *keystore.AccessKeyInfo
+		if akInfo, err = m.cluster.GetAKInfo(keyInfo.AccessKey); err != nil {
+			return
+		}
+		return m.cluster.AddCaps(akInfo.ID, keyInfo)
+	} else {
+		return m.cluster.AddCaps(keyInfo.ID, keyInfo)
 	}
-	return
 }
 
 func (m *Server) handleDeleteCaps(keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo, err error) {
-	if res, err = m.cluster.DeleteCaps(keyInfo.ID, keyInfo); err != nil {
-		return
+	if keyInfo.ID == "" {
+		var akInfo *keystore.AccessKeyInfo
+		if akInfo, err = m.cluster.GetAKInfo(keyInfo.AccessKey); err != nil {
+			return
+		}
+		return m.cluster.DeleteCaps(akInfo.ID, keyInfo)
+	} else {
+		return m.cluster.DeleteCaps(keyInfo.ID, keyInfo)
 	}
-	return
 }
 
 func (m *Server) extractClientReqInfo(r *http.Request) (plaintext []byte, err error) {
@@ -335,6 +345,28 @@ func (m *Server) extractClientReqInfo(r *http.Request) (plaintext []byte, err er
 	return
 }
 
+func (m *Server) osCapsOp(writer http.ResponseWriter, request *http.Request) {
+	//TODO
+	/*
+		case proto.MsgAuthOSAddCapsReq:
+			fallthrough
+		case proto.MsgAuthOSDeleteCapsReq:
+			if err = keyInfo.IsValidAK(); err != nil {
+				sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+				return
+			}
+			if err = keyInfo.IsValidCaps(); err != nil {
+				sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+				return
+			}
+		case proto.MsgAuthOSGetCapsReq:
+			if err = keyInfo.IsValidAK(); err != nil {
+				sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+				return
+			}
+	*/
+}
+
 func (m *Server) genTicket(key []byte, serviceID string, IP string, caps []byte) (ticket cryptoutil.Ticket) {
 	currentTime := time.Now().Unix()
 	ticket.Version = cryptoutil.TicketVersion
@@ -354,14 +386,14 @@ func (m *Server) getSecretKey(id string) (key []byte, err error) {
 	if keyInfo, err = m.getSecretKeyInfo(id); err != nil {
 		return
 	}
-	return keyInfo.Key, err
+	return keyInfo.AuthKey, err
 }
 
 func (m *Server) getSecretKeyInfo(id string) (keyInfo *keystore.KeyInfo, err error) {
 	if id == proto.AuthServiceID {
 		keyInfo = &keystore.KeyInfo{
-			Key:  m.cluster.AuthSecretKey,
-			Caps: []byte(`{"API": ["*:*:*"]}`),
+			AuthKey: m.cluster.AuthSecretKey,
+			Caps:    []byte(`{"API": ["*:*:*"]}`),
 		}
 	} else {
 		if keyInfo, err = m.cluster.GetKey(id); err != nil {
@@ -417,7 +449,7 @@ func (m *Server) genGetTicketAuthResp(req *proto.AuthGetTicketReq, ts int64, r *
 	if keyInfo, err = m.getSecretKeyInfo(resp.ClientID); err != nil {
 		return
 	}
-	clientKey = keyInfo.Key
+	clientKey = keyInfo.AuthKey
 	if message, err = cryptoutil.EncodeMessage(jresp, clientKey); err != nil {
 		return
 	}
@@ -459,7 +491,7 @@ func genAuthAPIAccessResp(req *proto.APIAccessReq, keyInfo *keystore.KeyInfo, ts
 	}
 
 	if message, err = cryptoutil.EncodeMessage(jresp, key); err != nil {
-		err = fmt.Errorf("encdoe message for response failed %s", err.Error())
+		err = fmt.Errorf("encode message for response failed %s", err.Error())
 		return
 	}
 

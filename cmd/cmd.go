@@ -28,6 +28,8 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/chubaofs/chubaofs/objectnode"
+
 	"github.com/jacobsa/daemonize"
 
 	"github.com/chubaofs/chubaofs/authnode"
@@ -58,6 +60,7 @@ const (
 	RoleMeta   = "metanode"
 	RoleData   = "datanode"
 	RoleAuth   = "authnode"
+	RoleObject = "objectnode"
 )
 
 const (
@@ -65,6 +68,7 @@ const (
 	ModuleMeta   = "metaNode"
 	ModuleData   = "dataNode"
 	ModuleAuth   = "authNode"
+	ModuleObject = "objectNode"
 )
 
 const (
@@ -173,6 +177,9 @@ func main() {
 	case RoleAuth:
 		server = authnode.NewServer()
 		module = ModuleAuth
+	case RoleObject:
+		server = objectnode.NewServer()
+		module = ModuleObject
 	default:
 		daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 		os.Exit(1)

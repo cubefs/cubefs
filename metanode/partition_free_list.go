@@ -15,7 +15,6 @@
 package metanode
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
@@ -52,25 +51,34 @@ func (mp *metaPartition) startFreeList() (err error) {
 
 func (mp *metaPartition) updateVolWorker() {
 	t := time.NewTicker(UpdateVolTicket)
-	reqURL := fmt.Sprintf("%s?name=%s", proto.ClientDataPartitions, mp.config.VolName)
+	var convert = func(view *proto.DataPartitionsView) *DataPartitionsView {
+		newView := &DataPartitionsView{
+			DataPartitions: make([]*DataPartition, len(view.DataPartitions)),
+		}
+		for i:=0; i<len(view.DataPartitions); i++ {
+			newView.DataPartitions[i] = &DataPartition{
+				PartitionID: view.DataPartitions[i].PartitionID,
+				Status: view.DataPartitions[i].Status,
+				Hosts: view.DataPartitions[i].Hosts,
+				ReplicaNum: view.DataPartitions[i].ReplicaNum,
+			}
+		}
+		return newView
+	}
 	for {
 		select {
 		case <-mp.stopC:
 			t.Stop()
 			return
 		case <-t.C:
-			respBody, err := masterHelper.Request("GET", reqURL, nil, nil)
+			volName := mp.config.VolName
+			dataView, err := masterClient.ClientAPI().GetDataPartitions(volName)
 			if err != nil {
-				log.LogErrorf("[updateVol] %s", err.Error())
+				log.LogErrorf("updateVolWorker: get data partitions view fail: volume(%v) err(%v)",
+					volName, err)
 				break
 			}
-
-			dataView := NewDataPartitionsView()
-			if err = json.Unmarshal(respBody, dataView); err != nil {
-				log.LogErrorf("[updateVol] %s", err.Error())
-				break
-			}
-			mp.vol.UpdatePartitions(dataView)
+			mp.vol.UpdatePartitions(convert(dataView))
 		}
 	}
 }

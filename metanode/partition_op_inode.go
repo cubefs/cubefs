@@ -229,3 +229,19 @@ func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
 func (mp *metaPartition) GetInodeTree() *BTree {
 	return mp.inodeTree.GetTree()
 }
+
+func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error) {
+	ino := NewInode(req.Inode, 0)
+	encoded, err := ino.Marshal()
+	if err != nil {
+		p.ResultCode = proto.OpErr
+		return
+	}
+	_, err = mp.Put(opFSMInternalDeleteInode, encoded)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	p.PacketOkReply()
+	return
+}

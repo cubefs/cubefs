@@ -648,3 +648,475 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 	log.LogDebugf("setattr exit: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 	return statusOK, nil
 }
+
+func (mw *MetaWrapper) createSession(mp *MetaPartition, path string) (status int, multipartId string, err error) {
+	req := &proto.CreateMultipartRequest{
+		PartitionId: mp.PartitionID,
+		VolName:     mw.volname,
+		Path:        path,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpCreateMultipart
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("create session: err(%v)", err)
+		return
+	}
+
+	log.LogDebugf("createSession enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("createSession: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("createSession: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.CreateMultipartResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("createSession: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
+		return
+	}
+	return statusOK, resp.Info.ID, nil
+}
+
+func (mw *MetaWrapper) getMultipart(mp *MetaPartition, multipartId string) (status int, info *proto.MultipartInfo, err error) {
+	req := &proto.GetMultipartRequest{
+		PartitionId: mp.PartitionID,
+		VolName:     mw.volname,
+		MultipartId: multipartId,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpGetMultipart
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("get session: err(%v)", err)
+		return
+	}
+
+	log.LogDebugf("getMultipart enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("getMultipart: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("getMultipart: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.GetMultipartResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("getMultipart: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
+		return
+	}
+
+	return statusOK, resp.Info, nil
+}
+
+func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, multipartId string, partId uint16, size uint64, md5 string, indoe uint64) (status int, err error) {
+	part := &proto.MultipartPartInfo{
+		ID:    partId,
+		Inode: indoe,
+		MD5:   md5,
+		Size:  size,
+	}
+
+	req := &proto.AddMultipartPartRequest{
+		PartitionId: mp.PartitionID,
+		VolName:     mw.volname,
+		MultipartId: multipartId,
+		Part:        part,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpAddMultipartPart
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("addMultipartPart: marshal packet fail, err(%v)", err)
+		return
+	}
+
+	log.LogDebugf("addMultipartPart entry: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("addMultipartPart: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("addMultipartPart: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	return statusOK, nil
+}
+
+func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, err error) {
+	req := &proto.DeleteInodeRequest{
+		VolName:     mw.volname,
+		PartitionId: mp.PartitionID,
+		Inode:       inode,
+	}
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaDeleteInode
+	if err = packet.MarshalData(req); err != nil {
+		log.LogErrorf("delete inode: err[%v]", err)
+		return
+	}
+	log.LogDebugf("delete inode: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("delete inode: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("idelete: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+	log.LogDebugf("idelete: packet(%v) mp(%v) req(%v) ino(%v)", packet, mp, *req, inode)
+	return statusOK, nil
+}
+
+func (mw *MetaWrapper) removeMultipart(mp *MetaPartition, multipartId string) (status int, err error) {
+	req := &proto.RemoveMultipartRequest{
+		PartitionId: mp.PartitionID,
+		VolName:     mw.volname,
+		MultipartId: multipartId,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpRemoveMultipart
+	if err = packet.MarshalData(req); err != nil {
+		log.LogErrorf("delete session: err[%v]", err)
+		return
+	}
+	log.LogDebugf("delete session: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("delete session: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("delete session: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+	log.LogDebugf("delete session: packet(%v) mp(%v) req(%v) PacketData(%v)", packet, mp, *req, packet.Data)
+	return statusOK, nil
+}
+
+func (mw *MetaWrapper) appendExtentKeys(mp *MetaPartition, inode uint64, extents []proto.ExtentKey) (status int, err error) {
+	req := &proto.AppendExtentKeysRequest{
+		VolName:     mw.volname,
+		PartitionId: mp.PartitionID,
+		Inode:       inode,
+		Extents:     extents,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaBatchExtentsAdd
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("batch append extent: req(%v) err(%v)", *req, err)
+		return
+	}
+	log.LogDebugf("appendExtentKeys: batch append extent: packet(%v) mp(%v) req(%v)", packet, mp, *req)
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("batch append extent: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("batch append extent: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	log.LogDebugf("batch append extent: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	return
+}
+
+func (mw *MetaWrapper) setXAttr(mp *MetaPartition, inode uint64, name []byte, value []byte) (status int, err error) {
+	req := &proto.SetXAttrRequest{
+		VolName:     mw.volname,
+		PartitionId: mp.PartitionID,
+		Inode:       inode,
+		Key:         string(name),
+		Value:       string(value),
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaSetXAttr
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("setXAttr: matshal packet fail, err(%v)", err)
+		return
+	}
+	log.LogDebugf("setXAttr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("setXAttr: send to partition fail, packet(%v) mp(%v) req(%v) err(%v)",
+			packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("setXAttr: received fail status, packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	log.LogDebugf("setXAttr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	return
+}
+
+func (mw *MetaWrapper) getXAttr(mp *MetaPartition, inode uint64, name string) (value []byte, status int, err error) {
+	req := &proto.GetXAttrRequest{
+		VolName:     mw.volname,
+		PartitionId: mp.PartitionID,
+		Inode:       inode,
+		Key:         name,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaGetXAttr
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("get xattr: req(%v) err(%v)", *req, err)
+		return
+	}
+	log.LogDebugf("get xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("get xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("get xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.GetXAttrResponse)
+	if err = packet.UnmarshalData(resp); err != nil {
+		log.LogErrorf("get xattr: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
+		return
+	}
+	value = []byte(resp.Value)
+
+	log.LogDebugf("get xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	return
+}
+
+func (mw *MetaWrapper) removeXAttr(mp *MetaPartition, inode uint64, name string) (status int, err error) {
+	req := &proto.RemoveXAttrRequest{
+		VolName:     mw.volname,
+		PartitionId: mp.PartitionID,
+		Inode:       inode,
+		Key:         name,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaRemoveXAttr
+	if err = packet.MarshalData(req); err != nil {
+		log.LogErrorf("remove xattr: req(%v) err(%v)", *req, err)
+		return
+	}
+	log.LogErrorf("remove xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
+
+	if packet, err = mw.sendToMetaPartition(mp, packet); err != nil {
+		log.LogErrorf("remove xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("remove xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	log.LogErrorf("remove xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	return
+}
+
+func (mw *MetaWrapper) listXAttr(mp *MetaPartition, inode uint64) (vals map[string][]byte, status int, err error) {
+	req := &proto.ListXAttrRequest{
+		VolName:     mw.volname,
+		PartitionId: mp.PartitionID,
+		Inode:       inode,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaListXAttr
+	if err = packet.MarshalData(req); err != nil {
+		log.LogErrorf("list xattr: req(%v) err(%v)", *req, err)
+		return
+	}
+	log.LogErrorf("list xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
+
+	if packet, err = mw.sendToMetaPartition(mp, packet); err != nil {
+		log.LogErrorf("list xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("list xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.ListXAttrResponse)
+	if err = packet.UnmarshalData(resp); err != nil {
+		log.LogErrorf("list xattr: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
+		return
+	}
+
+	vals = make(map[string][]byte)
+	for k, v := range resp.XAttr {
+		vals[k] = []byte(v)
+	}
+
+	log.LogErrorf("list xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	return
+}
+
+func (mw *MetaWrapper) listSessions(mp *MetaPartition, prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) (status int, sessions *proto.ListMultipartResponse, err error) {
+	req := &proto.ListMultipartRequest{
+		VolName:           mw.volname,
+		PartitionId:       mp.PartitionID,
+		Marker:            keyMarker,
+		MultipartIdMarker: multipartIdMarker,
+		Max:               maxUploads,
+		Delimiter:         delimiter,
+		Prefix:            prefix,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpListMultiparts
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("list sessions : err(%v)", err)
+		return
+	}
+
+	log.LogDebugf("listSessions enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("listSessions: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("listSessions: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.ListMultipartResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("listSessions: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
+		return
+	}
+
+	return statusOK, resp, nil
+}
+
+func (mw *MetaWrapper) batchGetXAttr(mp *MetaPartition, inodes []uint64, keys []string) ([]*proto.XAttrInfo, error) {
+	var (
+		err error
+	)
+	req := &proto.BatchGetXAttrRequest{
+		VolName:     mw.volname,
+		PartitionId: mp.PartitionID,
+		Inodes:      inodes,
+		Keys:        keys,
+	}
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaBatchGetXAttr
+	err = packet.MarshalData(req)
+	if err != nil {
+		return nil, err
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("batchGetXAttr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return nil, err
+	}
+
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("batchIget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return nil, err
+	}
+
+	resp := new(proto.BatchGetXAttrResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("batchIget: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		return nil, err
+	}
+
+	return resp.XAttrs, nil
+}

@@ -20,6 +20,8 @@ import (
 	"syscall"
 	"time"
 
+	"sort"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 )
@@ -156,6 +158,49 @@ func (mw *MetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
 		batchInfos = append(batchInfos, infos...)
 	}
 	return batchInfos
+}
+
+// InodeDelete_ll is a low-level api that removes specified inode immediately
+// and do not effect extent data managed by this inode.
+func (mw *MetaWrapper) InodeDelete_ll(inode uint64) error {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("InodeDelete: No such partition, ino(%v)", inode)
+		return syscall.ENOENT
+	}
+	status, err := mw.idelete(mp, inode)
+	if err != nil || status != statusOK {
+		return statusToErrno(status)
+	}
+	log.LogDebugf("InodeDelete_ll: inode(%v)", inode)
+	return nil
+}
+
+func (mw *MetaWrapper) BatchGetXAttr(inodes []uint64, keys []string) ([]*proto.XAttrInfo, error) {
+	batchInfos := make([]*proto.XAttrInfo, 0)
+	var wg sync.WaitGroup
+	var errGlobal error
+
+	for _, mp := range mw.partitions {
+		wg.Add(1)
+		go func(mp *MetaPartition) {
+			defer wg.Done()
+			xAttrInfos, err := mw.batchGetXAttr(mp, inodes, keys)
+			if err != nil {
+				errGlobal = err
+				log.LogErrorf("BatchGetXAttr: Get xattr from partion %s in batch failed cause : %s", mp.PartitionID, err)
+				return
+			}
+			batchInfos = append(batchInfos, xAttrInfos...)
+		}(mp)
+	}
+
+	wg.Wait()
+	if errGlobal != nil {
+		return nil, errGlobal
+	}
+	log.LogDebugf("BatchGetXAttr: inodes(%v) xattrInfos(%v)", len(inodes), len(batchInfos))
+	return batchInfos, nil
 }
 
 /*
@@ -313,6 +358,34 @@ func (mw *MetaWrapper) ReadDir_ll(parentID uint64) ([]proto.Dentry, error) {
 	return children, nil
 }
 
+func (mw *MetaWrapper) DentryCreate_ll(parentID uint64, name string, inode uint64, mode uint32) error {
+	parentMP := mw.getPartitionByInode(parentID)
+	if parentMP == nil {
+		return syscall.ENOENT
+	}
+	var err error
+	var status int
+	if status, err = mw.dcreate(parentMP, parentID, name, inode, mode); err != nil || status != statusOK {
+		return statusToErrno(status)
+	}
+	return nil
+}
+
+func (mw *MetaWrapper) DentryUpdate_ll(parentID uint64, name string, inode uint64) (oldInode uint64, err error) {
+	parentMP := mw.getPartitionByInode(parentID)
+	if parentMP == nil {
+		err = syscall.ENOENT
+		return
+	}
+	var status int
+	status, oldInode, err = mw.dupdate(parentMP, parentID, name, inode)
+	if err != nil || status != statusOK {
+		err = statusToErrno(status)
+		return
+	}
+	return
+}
+
 // Used as a callback by stream sdk
 func (mw *MetaWrapper) AppendExtentKey(inode uint64, ek proto.ExtentKey) error {
 	mp := mw.getPartitionByInode(inode)
@@ -326,6 +399,22 @@ func (mw *MetaWrapper) AppendExtentKey(inode uint64, ek proto.ExtentKey) error {
 		return statusToErrno(status)
 	}
 	log.LogDebugf("AppendExtentKey: ino(%v) ek(%v)", inode, ek)
+	return nil
+}
+
+// AppendExtentKeys append multiple extent key into specified inode with single request.
+func (mw *MetaWrapper) AppendExtentKeys(inode uint64, eks []proto.ExtentKey) error {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		return syscall.ENOENT
+	}
+
+	status, err := mw.appendExtentKeys(mp, inode, eks)
+	if err != nil || status != statusOK {
+		log.LogErrorf("AppendExtentKeys: inode(%v) extentKeys(%v) err(%v) status(%v)", inode, eks, err, status)
+		return statusToErrno(status)
+	}
+	log.LogDebugf("AppendExtentKeys: ino(%v) extentKeys(%v)", inode, eks)
 	return nil
 }
 
@@ -419,5 +508,208 @@ func (mw *MetaWrapper) Setattr(inode uint64, valid, mode, uid, gid uint32) error
 		return statusToErrno(status)
 	}
 
+	return nil
+}
+
+func (mw *MetaWrapper) InodeCreate_ll(mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
+	var (
+		status       int
+		err          error
+		info         *proto.InodeInfo
+		mp           *MetaPartition
+		rwPartitions []*MetaPartition
+	)
+
+	rwPartitions = mw.getRWPartitions()
+	length := len(rwPartitions)
+	epoch := atomic.AddUint64(&mw.epoch, 1)
+	for i := 0; i < length; i++ {
+		index := (int(epoch) + i) % length
+		mp = rwPartitions[index]
+		status, info, err = mw.icreate(mp, mode, uid, gid, target)
+		if err == nil && status == statusOK {
+			return info, nil
+		}
+	}
+	return nil, syscall.ENOMEM
+}
+
+// InodeUnlink_ll is a low-level api that makes specified inode link value +1.
+func (mw *MetaWrapper) InodeLink_ll(inode uint64) (*proto.InodeInfo, error) {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("InodeLink_ll: No such partition, ino(%v)", inode)
+		return nil, syscall.EINVAL
+	}
+	status, info, err := mw.ilink(mp, inode)
+	if err != nil || status != statusOK {
+		log.LogErrorf("InodeLink_ll: ino(%v) err(%v) status(%v)", inode, err, status)
+		return nil, statusToErrno(status)
+	}
+	return info, nil
+}
+
+// InodeUnlink_ll is a low-level api that makes specified inode link value -1.
+func (mw *MetaWrapper) InodeUnlink_ll(inode uint64) (*proto.InodeInfo, error) {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("InodeUnlink_ll: No such partition, ino(%v)", inode)
+		return nil, syscall.EINVAL
+	}
+	status, info, err := mw.iunlink(mp, inode)
+	if err != nil || status != statusOK {
+		log.LogErrorf("InodeUnlink_ll: ino(%v) err(%v) status(%v)", inode, err, status)
+		return nil, statusToErrno(status)
+	}
+	return info, nil
+}
+
+func (mw *MetaWrapper) InitMultipart_ll(path string, parentId uint64) (multipartId string, err error) {
+	mp := mw.getPartitionByInode(parentId)
+	if mp == nil {
+		log.LogErrorf("InitMultipart: No such partition, ino(%v)", parentId)
+		return "", syscall.EINVAL
+	}
+
+	status, sessionId, err := mw.createSession(mp, path)
+	if err != nil || status != statusOK {
+		log.LogErrorf("InitMultipart: err(%v) status(%v)", err, status)
+		return "", statusToErrno(status)
+	}
+	return sessionId, nil
+}
+
+func (mw *MetaWrapper) GetMultipart_ll(multipartId string, parentId uint64) (info *proto.MultipartInfo, err error) {
+	mp := mw.getPartitionByInode(parentId)
+	if mp == nil {
+		log.LogErrorf("GetMultipartRequest: No such partition, ino(%v)", parentId)
+		return nil, syscall.EINVAL
+	}
+
+	status, multipartInfo, err := mw.getMultipart(mp, multipartId)
+	if err != nil || status != statusOK {
+		log.LogErrorf("GetMultipartRequest: err(%v) status(%v)", err, status)
+		return nil, statusToErrno(status)
+	}
+	return multipartInfo, nil
+}
+
+func (mw *MetaWrapper) AddMultipartPart_ll(multipartId string, parentId uint64, partId uint16, size uint64, md5 string, inode uint64) error {
+	mp := mw.getPartitionByInode(parentId)
+	if mp == nil {
+		log.LogErrorf("AddMultipartPart: No such partition, ino(%v)", parentId)
+		return syscall.EINVAL
+	}
+	status, err := mw.addMultipartPart(mp, multipartId, partId, size, md5, inode)
+	if err != nil || status != statusOK {
+		log.LogErrorf("AddMultipartPart: err(%v) status(%v)", err, status)
+		return statusToErrno(status)
+	}
+	return nil
+}
+
+func (mw *MetaWrapper) RemoveMultipart_ll(multipartID string, parentId uint64) error {
+	mp := mw.getPartitionByInode(parentId)
+	if mp == nil {
+		log.LogErrorf("RemoveMultipart_ll: no such partition, ino(%v)", parentId)
+		return syscall.EINVAL
+	}
+
+	status, err := mw.removeMultipart(mp, multipartID)
+	if err != nil || status != statusOK {
+		log.LogErrorf("RemoveMultipart_ll: partition get multipart fail, partitionID(%v) multipartID(%v) err(%v) status(%v)",
+			mp.PartitionID, multipartID, err, status)
+		return statusToErrno(status)
+	}
+	return nil
+}
+
+func (mw *MetaWrapper) ListMultipart_ll(prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) (sessionResponse []*proto.MultipartInfo, err error) {
+	partitions := mw.partitions
+	var wg = sync.WaitGroup{}
+	//var prefixes = make([]string, 0)
+	var sessions = make([]*proto.MultipartInfo, 0)
+	//var allSessions = make([]*proto.ListMultipartResponse, 0)
+
+	for _, mp := range partitions {
+		wg.Add(1)
+		go func(mp *MetaPartition) {
+			defer wg.Done()
+			status, response, err := mw.listSessions(mp, prefix, delimiter, keyMarker, multipartIdMarker, maxUploads+1)
+			if err != nil || status != statusOK {
+				log.LogErrorf("ListMultipart: partition list multipart fail, partitionID(%v) err(%v) status(%v)",
+					mp.PartitionID, err, status)
+				err = statusToErrno(status)
+				return
+			}
+			//allSessions = append(allSessions, response)
+			sessions = append(sessions, response.Multiparts...)
+		}(mp)
+	}
+
+	// combine sessions from per partition
+	wg.Wait()
+
+	// reorder sessions by path
+	sort.SliceStable(sessions, func(i, j int) bool {
+		return sessions[i].Path < sessions[j].Path
+	})
+	return sessions, nil
+}
+
+func (mw *MetaWrapper) XAttrSet_ll(inode uint64, name, value []byte) error {
+	var err error
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("XAttrSet_ll: no such partition, inode(%v)", inode)
+		return syscall.ENOENT
+	}
+	var status int
+	status, err = mw.setXAttr(mp, inode, name, value)
+	if err != nil || status != statusOK {
+		return statusToErrno(status)
+	}
+	log.LogDebugf("XAttrSet_ll: set xattr, inode(%v) name(%v) value(%v) status(%v)", inode, name, value, status)
+	return nil
+}
+
+func (mw *MetaWrapper) XAttrGet_ll(inode uint64, name string) (*proto.XAttrInfo, error) {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("InodeGet_ll: no such partition, ino(%v)", inode)
+		return nil, syscall.ENOENT
+	}
+
+	value, status, err := mw.getXAttr(mp, inode, name)
+	if err != nil || status != statusOK {
+		return nil, statusToErrno(status)
+	}
+
+	xAttrValues := make(map[string]string)
+	xAttrValues[name] = string(value)
+
+	xAttr := &proto.XAttrInfo{
+		Inode:  inode,
+		XAttrs: xAttrValues,
+	}
+
+	log.LogDebugf("XAttrGet_ll: get xattr, inode(%v) name(%v) value(%v)", inode, string(name), string(value))
+	return xAttr, nil
+}
+
+// XAttrDel_ll is a low-level meta api that deletes specified xattr.
+func (mw *MetaWrapper) XAttrDel_ll(inode uint64, name string) error {
+	var err error
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("XAttrDel_ll: no such partition, inode(%v)", inode)
+		return syscall.ENOENT
+	}
+	var status int
+	status, err = mw.removeXAttr(mp, inode, name)
+	if err != nil || status != statusOK {
+		return statusToErrno(status)
+	}
+	log.LogDebugf("XAttrDel_ll: remove xattr, inode(%v) name(%v) status(%v)", inode, name, status)
 	return nil
 }

@@ -64,7 +64,7 @@ func (m *Server) handleFunctions() {
 	http.Handle(proto.ClientMetaPartition, m.handlerWithInterceptor())
 	http.Handle(proto.GetDataNodeTaskResponse, m.handlerWithInterceptor())
 	http.Handle(proto.GetMetaNodeTaskResponse, m.handlerWithInterceptor())
-	http.Handle(proto.AdminCreateMP, m.handlerWithInterceptor())
+	http.Handle(proto.AdminCreateMetaPartition, m.handlerWithInterceptor())
 	http.Handle(proto.ClientVolStat, m.handlerWithInterceptor())
 	http.Handle(proto.AddRaftNode, m.handlerWithInterceptor())
 	http.Handle(proto.RemoveRaftNode, m.handlerWithInterceptor())
@@ -165,7 +165,7 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.loadMetaPartition(w, r)
 	case proto.AdminDecommissionMetaPartition:
 		m.decommissionMetaPartition(w, r)
-	case proto.AdminCreateMP:
+	case proto.AdminCreateMetaPartition:
 		m.createMetaPartition(w, r)
 	case proto.AdminAddMetaReplica:
 		m.addMetaReplica(w, r)

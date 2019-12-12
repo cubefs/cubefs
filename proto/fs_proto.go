@@ -17,6 +17,7 @@ package proto
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -67,6 +68,22 @@ type InodeInfo struct {
 // String returns the string format of the inode.
 func (info *InodeInfo) String() string {
 	return fmt.Sprintf("Inode(%v) Mode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v)", info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation)
+}
+
+type XAttrInfo struct {
+	Inode  uint64
+	XAttrs map[string]string
+}
+
+func (info XAttrInfo) String() string {
+	builder := strings.Builder{}
+	for k, v := range info.XAttrs {
+		if builder.Len() != 0 {
+			builder.WriteString(",")
+		}
+		builder.WriteString(fmt.Sprintf("%s:%s", k, v))
+	}
+	return fmt.Sprintf("XAttrInfo{Inode(%v), XAttrs(%v)}", info.Inode, builder.String())
 }
 
 // Dentry defines the dentry struct.
@@ -214,7 +231,7 @@ type ReadDirResponse struct {
 	Children []Dentry `json:"children"`
 }
 
-// AppendExtentKeyRequest defines the request to append an extent key.
+// BatchAppendExtentKeyRequest defines the request to append an extent key.
 type AppendExtentKeyRequest struct {
 	VolName     string    `json:"vol"`
 	PartitionID uint64    `json:"pid"`
@@ -260,3 +277,136 @@ const (
 	AttrUid
 	AttrGid
 )
+
+// DeleteInodeRequest defines the request to delete an inode.
+type DeleteInodeRequest struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+}
+
+// AppendExtentKeysRequest defines the request to append an extent key.
+type AppendExtentKeysRequest struct {
+	VolName     string      `json:"vol"`
+	PartitionId uint64      `json:"pid"`
+	Inode       uint64      `json:"ino"`
+	Extents     []ExtentKey `json:"eks"`
+}
+
+type SetXAttrRequest struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+	Key         string `json:"key"`
+	Value       string `json:"val"`
+}
+
+type GetXAttrRequest struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+	Key         string `json:"key"`
+}
+
+type GetXAttrResponse struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+	Key         string `json:"key"`
+	Value       string `json:"val"`
+}
+
+type RemoveXAttrRequest struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+	Key         string `json:"key"`
+}
+
+type ListXAttrRequest struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+}
+
+type ListXAttrResponse struct {
+	VolName     string            `json:"vol"`
+	PartitionId uint64            `json:"pid"`
+	Inode       uint64            `json:"ino"`
+	XAttr       map[string]string `json:"xattr"`
+}
+
+type BatchGetXAttrRequest struct {
+	VolName     string   `json:"vol"`
+	PartitionId uint64   `json:"pid"`
+	Inodes      []uint64 `json:"inos"`
+	Keys        []string `json:"keys"`
+}
+
+type BatchGetXAttrResponse struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+	XAttrs      []*XAttrInfo
+}
+
+type MultipartInfo struct {
+	ID       string               `json:"id"`
+	Path     string               `json:"path"`
+	InitTime time.Time            `json:"itime"`
+	Parts    []*MultipartPartInfo `json:"parts"`
+}
+
+type MultipartPartInfo struct {
+	ID         uint16    `json:"id"`
+	Inode      uint64    `json:"ino"`
+	MD5        string    `json:"md5"`
+	Size       uint64    `json:"sz"`
+	UploadTime time.Time `json:"ut"`
+}
+
+type CreateMultipartRequest struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+	Path        string `json:"path"`
+}
+
+type CreateMultipartResponse struct {
+	Info *MultipartInfo `json:"info"`
+}
+
+type GetMultipartRequest struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+	MultipartId string `json:"mid"`
+}
+
+type GetMultipartResponse struct {
+	Info *MultipartInfo `json:"info"`
+}
+
+type AddMultipartPartRequest struct {
+	VolName     string             `json:"vol"`
+	PartitionId uint64             `json:"pid"`
+	MultipartId string             `json:"mid"`
+	Part        *MultipartPartInfo `json:"part"`
+}
+
+type RemoveMultipartRequest struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+	MultipartId string `json:"mid"`
+}
+
+type ListMultipartRequest struct {
+	VolName           string `json:"vol"`
+	PartitionId       uint64 `json:"pid"`
+	Marker            string `json:"mk"`
+	MultipartIdMarker string `json:"mmk"`
+	Max               uint64 `json:"max"`
+	Delimiter         string `json:"dm"`
+	Prefix            string `json:"pf"`
+}
+
+type ListMultipartResponse struct {
+	Multiparts []*MultipartInfo `json:"mps"`
+}

@@ -17,8 +17,9 @@ package metanode
 import (
 	"encoding/json"
 
-	"github.com/chubaofs/chubaofs/proto"
 	"os"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 // ExtentAppend appends an extent.
@@ -86,5 +87,32 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq,
 	}
 	msg := resp.(*InodeResponse)
 	p.PacketErrorWithBody(msg.Status, nil)
+	return
+}
+
+func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p *Packet) (err error) {
+	ino := NewInode(req.Inode, 0)
+	extents := req.Extents
+	for _, extent := range extents {
+		ino.Extents.Append(&proto.ExtentKey{
+			FileOffset:   extent.FileOffset,
+			PartitionId:  extent.PartitionId,
+			ExtentId:     extent.ExtentId,
+			ExtentOffset: extent.ExtentOffset,
+			Size:         extent.Size,
+			CRC:          extent.CRC,
+		})
+	}
+	val, err := ino.Marshal()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, nil)
+		return
+	}
+	resp, err := mp.Put(opFSMExtentsAdd, val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	p.PacketErrorWithBody(resp.(uint8), nil)
 	return
 }

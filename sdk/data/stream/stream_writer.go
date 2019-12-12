@@ -319,7 +319,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 		return
 	}
 
-	if dp, err = gDataWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
+	if dp, err = s.client.dataWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
 		// TODO unhandled error
 		errors.Trace(err, "doOverwrite: ino(%v) failed to get datapartition, ek(%v)", s.inode, req.ExtentKey)
 		return

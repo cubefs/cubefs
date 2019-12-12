@@ -52,6 +52,8 @@ func (m *RaftCmd) setOpType() {
 	switch keyArr[1] {
 	case keyAcronym:
 		m.Op = opSyncAddKey
+	case akAcronym:
+		m.Op = opSyncAddKey
 	default:
 		log.LogWarnf("action[setOpType] unknown opCode[%v]", keyArr[1])
 	}
@@ -73,6 +75,10 @@ func (c *Cluster) syncAddKey(keyInfo *keystore.KeyInfo) (err error) {
 	return c.syncPutKeyInfo(opSyncAddKey, keyInfo)
 }
 
+func (c *Cluster) syncAddAccessKey(akInfo *keystore.AccessKeyInfo) (err error) {
+	return c.syncPutAccessKeyInfo(opSyncAddKey, akInfo)
+}
+
 func (c *Cluster) syncAddCaps(keyInfo *keystore.KeyInfo) (err error) {
 	return c.syncPutKeyInfo(opSyncAddCaps, keyInfo)
 }
@@ -90,6 +96,17 @@ func (c *Cluster) syncPutKeyInfo(opType uint32, keyInfo *keystore.KeyInfo) (err 
 	keydata.Op = opType
 	keydata.K = ksPrefix + keyInfo.ID + idSeparator + strconv.FormatUint(c.fsm.id, 10)
 	vv := *keyInfo
+	if keydata.V, err = json.Marshal(vv); err != nil {
+		return errors.New(err.Error())
+	}
+	return c.submit(keydata)
+}
+
+func (c *Cluster) syncPutAccessKeyInfo(opType uint32, accessKeyInfo *keystore.AccessKeyInfo) (err error) {
+	keydata := new(RaftCmd)
+	keydata.Op = opType
+	keydata.K = akPrefix + accessKeyInfo.AccessKey + idSeparator + strconv.FormatUint(c.fsm.id, 10)
+	vv := *accessKeyInfo
 	if keydata.V, err = json.Marshal(vv); err != nil {
 		return errors.New(err.Error())
 	}
@@ -126,6 +143,38 @@ func (c *Cluster) clearKeystore() {
 	c.fsm.ksMutex.Lock()
 	defer c.fsm.ksMutex.Unlock()
 	c.fsm.keystore = nil
+}
+
+func (c *Cluster) loadAKstore() (err error) {
+	aks := make(map[string]*keystore.AccessKeyInfo, 0)
+	log.LogInfof("action[loadAccessKeystore]")
+	result, err := c.fsm.store.SeekForPrefix([]byte(akPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadAccessKeystore], err: %v", err.Error())
+		return err
+	}
+	for _, value := range result {
+		ak := &keystore.AccessKeyInfo{}
+		if err = json.Unmarshal(value, ak); err != nil {
+			err = fmt.Errorf("action[loadAccessKeystore], value: %v, unmarshal err: %v", string(value), err)
+			return err
+		}
+		if _, ok := aks[ak.AccessKey]; !ok {
+			aks[ak.AccessKey] = ak
+		}
+		log.LogInfof("action[loadAccessKeystore], access key[%v]", ak)
+	}
+	c.fsm.aksMutex.Lock()
+	defer c.fsm.aksMutex.Unlock()
+	c.fsm.accessKeystore = aks
+
+	return
+}
+
+func (c *Cluster) clearAKstore() {
+	c.fsm.aksMutex.Lock()
+	defer c.fsm.aksMutex.Unlock()
+	c.fsm.accessKeystore = nil
 }
 
 func (c *Cluster) addRaftNode(nodeID uint64, addr string) (err error) {

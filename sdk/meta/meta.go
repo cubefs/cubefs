@@ -16,6 +16,8 @@ package meta
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/auth"
+	"github.com/chubaofs/chubaofs/util/cryptoutil"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -26,11 +28,10 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/auth"
 	"github.com/chubaofs/chubaofs/util/btree"
-	"github.com/chubaofs/chubaofs/util/cryptoutil"
 	"github.com/chubaofs/chubaofs/util/errors"
 	cfslog "github.com/chubaofs/chubaofs/util/log"
+	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 )
 
 const (
@@ -59,12 +60,14 @@ const (
 
 type MetaWrapper struct {
 	sync.RWMutex
-	cluster string
-	localIP string
-	volname string
-	owner   string
-	master  util.MasterHelper
-	conns   *util.ConnectPool
+	cluster         string
+	localIP         string
+	volname         string
+	ossSecure       *OSSSecure
+	owner           string
+	ownerValidation bool
+	mc              *masterSDK.MasterClient
+	conns           *util.ConnectPool
 
 	// Partitions and ranges should be modified together. So do not
 	// use partitions and ranges directly. Use the helper functions instead.
@@ -87,6 +90,9 @@ type MetaWrapper struct {
 	accessToken  proto.APIAccessReq
 	sessionKey   string
 	ticketMess   auth.TicketMess
+
+	closeCh   chan struct{}
+	closeOnce sync.Once
 }
 
 //the ticket from authnode
@@ -97,10 +103,11 @@ type Ticket struct {
 	Ticket     string `json:"ticket"`
 }
 
-func NewMetaWrapper(volname, owner, masterHosts string, authenticate bool, ticketMess auth.TicketMess) (*MetaWrapper, error) {
+func NewMetaWrapper(volname, owner, masterHosts string, authenticate, validateOwner bool, ticketMess *auth.TicketMess) (*MetaWrapper, error) {
 	mw := new(MetaWrapper)
+	mw.closeCh = make(chan struct{}, 1)
 	if authenticate {
-		ticket, err := getTicketFromAuthnode(owner, ticketMess)
+		ticket, err := getTicketFromAuthnode(owner, *ticketMess)
 		if err != nil {
 			return nil, errors.Trace(err, "Get ticket from authnode failed!")
 		}
@@ -109,21 +116,19 @@ func NewMetaWrapper(volname, owner, masterHosts string, authenticate bool, ticke
 		mw.accessToken.ClientID = owner
 		mw.accessToken.ServiceID = proto.MasterServiceID
 		mw.sessionKey = ticket.SessionKey
-		mw.ticketMess = ticketMess
+		mw.ticketMess = *ticketMess
 	}
 	mw.volname = volname
 	mw.owner = owner
-	master := strings.Split(masterHosts, HostsSeparator)
-	mw.master = util.NewMasterHelper()
-	for _, ip := range master {
-		mw.master.AddNode(ip)
-	}
+	mw.ownerValidation = validateOwner
+	masters := strings.Split(masterHosts, HostsSeparator)
+	mw.mc = masterSDK.NewMasterClient(masters, false)
 	mw.conns = util.NewConnectPool()
 	mw.partitions = make(map[uint64]*MetaPartition)
 	mw.ranges = btree.New(32)
 	mw.rwPartitions = make([]*MetaPartition, 0)
-	mw.updateClusterInfo()
-	mw.updateVolStatInfo()
+	_ = mw.updateClusterInfo()
+	_ = mw.updateVolStatInfo()
 
 	limit := MaxMountRetryLimit
 retry:
@@ -140,6 +145,16 @@ retry:
 
 	go mw.refresh()
 	return mw, nil
+}
+
+func (mw *MetaWrapper) OSSSecure() (accessKey, secretKey string) {
+	return mw.ossSecure.AccessKey, mw.ossSecure.SecretKey
+}
+
+func (mw *MetaWrapper) Close() {
+	mw.closeOnce.Do(func() {
+		close(mw.closeCh)
+	})
 }
 
 func (mw *MetaWrapper) Cluster() string {
