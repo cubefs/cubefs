@@ -99,5 +99,5 @@ arXiv: https://arxiv.org/abs/1911.03001
 ## Community
 
 - Twitter: [@ChubaoFS](https://twitter.com/ChubaoFS)
-- Mailing list: chubaofs-maintainers@groups.io
+- Mailing list: should use chubaofs-users@groups.io
 - Slack: [chubaofs.slack.com](https://chubaofs.slack.com/)
