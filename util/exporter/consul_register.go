@@ -15,13 +15,15 @@
 package exporter
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/parnurzeal/gorequest"
 )
 
 const (
@@ -34,11 +36,11 @@ const (
  * optional for user when set prometheus exporter
  */
 type ConsulRegisterInfo struct {
-	Name    string
-	ID      string
-	Address string
-	Port    int64
-	Tags    []string
+	Name    string   `json:"Name"`
+	ID      string   `json:"ID"`
+	Address string   `json:"Address"`
+	Port    int64    `json:"Port"`
+	Tags    []string `json:"Tags"`
 }
 
 // get consul id
@@ -50,7 +52,7 @@ func RegisterConsul(addr, app, role, cluster string, port int64) {
 	if len(addr) <= 0 {
 		return
 	}
-	log.LogInfo("consul register enable ", addr)
+	log.LogDebugf("consul register enable %v", addr)
 	ticker := time.NewTicker(RegisterPeriod)
 	defer func() {
 		if err := recover(); err != nil {
@@ -95,7 +97,7 @@ func SendRegisterReq(addr string, app string, role string, cluster string, port 
 	}
 	id := GetConsulId(app, role, host, port)
 	url := addr + RegisterPath
-	resp, body, errs := gorequest.New().Put(url).SendMap(ConsulRegisterInfo{
+	cInfo := &ConsulRegisterInfo{
 		Name:    app,
 		ID:      id,
 		Address: host,
@@ -105,8 +107,21 @@ func SendRegisterReq(addr string, app string, role string, cluster string, port 
 			"role=" + role,
 			"cluster=" + cluster,
 		},
-	}).End()
-	if errs != nil {
-		log.LogErrorf("Error on register consul resp: %v, body: %v", body, resp)
+	}
+	client := &http.Client{}
+	cInfoBytes, err1 := json.Marshal(cInfo)
+	if err1 != nil {
+		log.LogErrorf("marshal error, %v", err1.Error())
+		return
+	}
+	req, err2 := http.NewRequest(http.MethodPut, url, bytes.NewBuffer(cInfoBytes))
+	if err2 != nil {
+		log.LogErrorf("new request error, %v", err2.Error())
+		return
+	}
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	_, err3 := client.Do(req)
+	if err3 != nil {
+		log.LogErrorf("Error on register consul resp: %v, ", err3.Error())
 	}
 }
