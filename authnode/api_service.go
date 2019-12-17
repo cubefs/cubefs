@@ -302,27 +302,11 @@ func (m *Server) handleGetKey(keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo,
 }
 
 func (m *Server) handleAddCaps(keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo, err error) {
-	if keyInfo.ID == "" {
-		var akInfo *keystore.AccessKeyInfo
-		if akInfo, err = m.cluster.GetAKInfo(keyInfo.AccessKey); err != nil {
-			return
-		}
-		return m.cluster.AddCaps(akInfo.ID, keyInfo)
-	} else {
-		return m.cluster.AddCaps(keyInfo.ID, keyInfo)
-	}
+	return m.cluster.AddCaps(keyInfo.ID, keyInfo)
 }
 
 func (m *Server) handleDeleteCaps(keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo, err error) {
-	if keyInfo.ID == "" {
-		var akInfo *keystore.AccessKeyInfo
-		if akInfo, err = m.cluster.GetAKInfo(keyInfo.AccessKey); err != nil {
-			return
-		}
-		return m.cluster.DeleteCaps(akInfo.ID, keyInfo)
-	} else {
-		return m.cluster.DeleteCaps(keyInfo.ID, keyInfo)
-	}
+	return m.cluster.DeleteCaps(keyInfo.ID, keyInfo)
 }
 
 func (m *Server) extractClientReqInfo(r *http.Request) (plaintext []byte, err error) {
@@ -345,26 +329,85 @@ func (m *Server) extractClientReqInfo(r *http.Request) (plaintext []byte, err er
 	return
 }
 
-func (m *Server) osCapsOp(writer http.ResponseWriter, request *http.Request) {
-	//TODO
-	/*
-		case proto.MsgAuthOSAddCapsReq:
-			fallthrough
-		case proto.MsgAuthOSDeleteCapsReq:
-			if err = keyInfo.IsValidAK(); err != nil {
-				sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-				return
-			}
-			if err = keyInfo.IsValidCaps(); err != nil {
-				sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-				return
-			}
-		case proto.MsgAuthOSGetCapsReq:
-			if err = keyInfo.IsValidAK(); err != nil {
-				sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-				return
-			}
-	*/
+func (m *Server) osCapsOp(w http.ResponseWriter, r *http.Request) {
+	var (
+		plaintext []byte
+		err       error
+		jobj      proto.AuthOSAccessKeyReq
+		ticket    cryptoutil.Ticket
+		ts        int64
+		newAkCaps *keystore.AccessKeyCaps
+		message   string
+	)
+
+	if plaintext, err = m.extractClientReqInfo(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = json.Unmarshal([]byte(plaintext), &jobj); err != nil {
+		sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: "Unmarshal AuthOSAccessKeyReq failed: " + err.Error()})
+		return
+	}
+
+	apiReq := jobj.APIReq
+	akCaps := jobj.AKCaps
+
+	if err = akCaps.IsValidAK(); err != nil {
+		sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	switch apiReq.Type {
+	case proto.MsgAuthOSAddCapsReq:
+		fallthrough
+	case proto.MsgAuthOSDeleteCapsReq:
+		if err = akCaps.IsValidCaps(); err != nil {
+			sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+	case proto.MsgAuthOSGetCapsReq:
+	default:
+		sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("invalid request messge type %x", int32(apiReq.Type)).Error()})
+		return
+	}
+
+	if err = proto.VerifyAPIAccessReqIDs(&apiReq); err != nil {
+		sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: "VerifyAPIAccessReqIDs failed: " + err.Error()})
+		return
+	}
+
+	if ticket, ts, err = proto.ExtractAPIAccessTicket(&apiReq, m.cluster.AuthSecretKey); err != nil {
+		sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		return
+	}
+
+	if err = proto.CheckAPIAccessCaps(&ticket, proto.APIRsc, apiReq.Type, proto.APIAccess); err != nil {
+		sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: "CheckAPIAccessCaps failed: " + err.Error()})
+		return
+	}
+
+	switch apiReq.Type {
+	case proto.MsgAuthOSAddCapsReq:
+		newAkCaps, err = m.handleOSAddCaps(&akCaps)
+	case proto.MsgAuthOSDeleteCapsReq:
+		newAkCaps, err = m.handleOSDeleteCaps(&akCaps)
+	case proto.MsgAuthOSGetCapsReq:
+		newAkCaps, err = m.handleOSGetCaps(&akCaps)
+	}
+
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeAuthKeyStoreError, Msg: err.Error()})
+		return
+	}
+
+	if message, err = genAuthOSCapsOpResp(&apiReq, newAkCaps, ts, ticket.SessionKey.Key); err != nil {
+		sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeAuthOSCapsOpGenRespError, Msg: err.Error()})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPAuthReply(message))
+	return
 }
 
 func (m *Server) genTicket(key []byte, serviceID string, IP string, caps []byte) (ticket cryptoutil.Ticket) {
@@ -484,6 +527,86 @@ func genAuthAPIAccessResp(req *proto.APIAccessReq, keyInfo *keystore.KeyInfo, ts
 	resp.APIResp.Verifier = ts + 1 // increase ts by one for client verify server
 
 	resp.KeyInfo = *keyInfo
+
+	if jresp, err = json.Marshal(resp); err != nil {
+		err = fmt.Errorf("json marshal for response failed %s", err.Error())
+		return
+	}
+
+	if message, err = cryptoutil.EncodeMessage(jresp, key); err != nil {
+		err = fmt.Errorf("encode message for response failed %s", err.Error())
+		return
+	}
+
+	return
+}
+
+func (m *Server) handleOSAddCaps(akCaps *keystore.AccessKeyCaps) (newAKCaps *keystore.AccessKeyCaps, err error) {
+	var akInfo *keystore.AccessKeyInfo
+	if akInfo, err = m.cluster.GetAKInfo(akCaps.AccessKey); err != nil {
+		return
+	}
+	keyInfo := &keystore.KeyInfo{
+		ID:   akInfo.ID,
+		Caps: akCaps.Caps,
+	}
+	if keyInfo, err = m.cluster.AddCaps(akInfo.ID, keyInfo); err != nil {
+		return
+	}
+	newAKCaps = &keystore.AccessKeyCaps{
+		AccessKey: keyInfo.AccessKey,
+		Caps:      keyInfo.Caps,
+	}
+	return newAKCaps, err
+}
+
+func (m *Server) handleOSDeleteCaps(akCaps *keystore.AccessKeyCaps) (newAKCaps *keystore.AccessKeyCaps, err error) {
+	var akInfo *keystore.AccessKeyInfo
+	if akInfo, err = m.cluster.GetAKInfo(akCaps.AccessKey); err != nil {
+		return
+	}
+	keyInfo := &keystore.KeyInfo{
+		ID:   akInfo.ID,
+		Caps: akCaps.Caps,
+	}
+	if keyInfo, err = m.cluster.DeleteCaps(akInfo.ID, keyInfo); err != nil {
+		return
+	}
+	newAKCaps = &keystore.AccessKeyCaps{
+		AccessKey: keyInfo.AccessKey,
+		Caps:      keyInfo.Caps,
+	}
+	return newAKCaps, err
+}
+
+func (m *Server) handleOSGetCaps(akCaps *keystore.AccessKeyCaps) (newAKCaps *keystore.AccessKeyCaps, err error) {
+	var akInfo *keystore.AccessKeyInfo
+	var keyInfo *keystore.KeyInfo
+	if akInfo, err = m.cluster.GetAKInfo(akCaps.AccessKey); err != nil {
+		return
+	}
+	if keyInfo, err = m.getSecretKeyInfo(akInfo.ID); err != nil {
+		return
+	}
+	newAKCaps = &keystore.AccessKeyCaps{
+		AccessKey: keyInfo.AccessKey,
+		Caps:      keyInfo.Caps,
+	}
+	return newAKCaps, err
+}
+
+func genAuthOSCapsOpResp(req *proto.APIAccessReq, akCaps *keystore.AccessKeyCaps, ts int64, key []byte) (message string, err error) {
+	var (
+		jresp []byte
+		resp  proto.AuthOSAccessKeyResp
+	)
+
+	resp.APIResp.Type = req.Type + 1
+	resp.APIResp.ClientID = req.ClientID
+	resp.APIResp.ServiceID = req.ServiceID
+	resp.APIResp.Verifier = ts + 1 // increase ts by one for client verify server
+
+	resp.AKCaps = *akCaps
 
 	if jresp, err = json.Marshal(resp); err != nil {
 		err = fmt.Errorf("json marshal for response failed %s", err.Error())

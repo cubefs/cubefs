@@ -123,6 +123,7 @@ errHandler:
 func (c *Cluster) DeleteKey(id string) (res *keystore.KeyInfo, err error) {
 	c.fsm.opKeyMutex.Lock()
 	defer c.fsm.opKeyMutex.Unlock()
+	akInfo := new(keystore.AccessKeyInfo)
 	if res, err = c.fsm.GetKey(id); err != nil {
 		err = proto.ErrKeyNotExists
 		goto errHandler
@@ -130,7 +131,13 @@ func (c *Cluster) DeleteKey(id string) (res *keystore.KeyInfo, err error) {
 	if err = c.syncDeleteKey(res); err != nil {
 		goto errHandler
 	}
+	akInfo.AccessKey = res.AccessKey
+	akInfo.ID = res.ID
+	if err = c.syncDeleteAccessKey(akInfo); err != nil {
+		goto errHandler
+	}
 	c.fsm.DeleteKey(id)
+	c.fsm.DeleteAKInfo(akInfo.AccessKey)
 	return
 errHandler:
 	err = fmt.Errorf("action[DeleteKey], clusterID[%v] ID:%v, err:%v ", c.Name, id, err.Error())

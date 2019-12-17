@@ -28,6 +28,9 @@ const (
 	DeleteCaps     = "deletecaps"
 	AddRaftNode    = "addraftnode"
 	RemoveRaftNode = "removeraftnode"
+	OSAddCaps      = "osaddcaps"
+	OSDeleteCaps   = "osdeletecaps"
+	OSGetCaps      = "osgetcaps"
 	HTTP           = "http://"
 	HTTPS          = "https://"
 )
@@ -41,6 +44,9 @@ var action2PathMap = map[string]string{
 	DeleteCaps:     proto.AdminDeleteCaps,
 	AddRaftNode:    proto.AdminAddRaftNode,
 	RemoveRaftNode: proto.AdminRemoveRaftNode,
+	OSAddCaps:      proto.OSAddCaps,
+	OSDeleteCaps:   proto.OSDeleteCaps,
+	OSGetCaps:      proto.OSGetCaps,
 }
 
 var (

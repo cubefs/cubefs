@@ -54,6 +54,6 @@ func (mf *KeystoreFsm) GetAKInfo(accessKey string) (akInfo *keystore.AccessKeyIn
 func (mf *KeystoreFsm) DeleteAKInfo(accessKey string) {
 	mf.aksMutex.Lock()
 	defer mf.aksMutex.Unlock()
-	//TODO
+	delete(mf.accessKeystore, accessKey)
 	return
 }

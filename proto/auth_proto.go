@@ -293,15 +293,15 @@ type AuthRaftNodeResp struct {
 }
 
 // AuthAPIAccessKeystoreReq defines Auth API for put/delete Access Keystore vols
-type AuthAPIAccessKeystoreReq struct {
-	APIReq        APIAccessReq           `json:"api_req"`
-	AccessKeyInfo keystore.AccessKeyInfo `json:"access_key_info"`
+type AuthOSAccessKeyReq struct {
+	APIReq APIAccessReq           `json:"api_req"`
+	AKCaps keystore.AccessKeyCaps `json:"access_key_caps"`
 }
 
 // AuthAPIAccessKeystoreResp defines the response for put/delete Access Keystore vols
-type AuthAPIAccessKeystoreResp struct {
-	APIResp       APIAccessResp          `json:"api_resp"`
-	AccessKeyInfo keystore.AccessKeyInfo `json:"access_key_info"`
+type AuthOSAccessKeyResp struct {
+	APIResp APIAccessResp          `json:"api_resp"`
+	AKCaps  keystore.AccessKeyCaps `json:"access_key_caps"`
 }
 
 // IsValidServiceID determine the validity of a serviceID

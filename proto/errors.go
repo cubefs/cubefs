@@ -57,6 +57,7 @@ var (
 	ErrVolAuthKeyNotMatch              = errors.New("client and server auth key do not match")
 	ErrAuthKeyStoreError               = errors.New("auth keystore error")
 	ErrAuthAPIAccessGenRespError       = errors.New("auth API access response error")
+	ErrAuthOSCapsOpGenRespError        = errors.New("auth Object Storage Node API response error")
 	ErrKeyNotExists                    = errors.New("key not exists")
 	ErrDuplicateKey                    = errors.New("duplicate key")
 	ErrAccessKeyNotExists              = errors.New("access key not exists")
@@ -103,6 +104,7 @@ const (
 	ErrCodeAuthKeyStoreError
 	ErrCodeAuthAPIAccessGenRespError
 	ErrCodeAuthRaftNodeGenRespError
+	ErrCodeAuthOSCapsOpGenRespError
 	ErrCodeAuthReqRedirectError
 	ErrCodeAccessKeyNotExists
 	ErrCodeInvalidTicket
@@ -147,6 +149,7 @@ var Err2CodeMap = map[error]int32{
 	ErrVolAuthKeyNotMatch:              ErrCodeVolAuthKeyNotMatch,
 	ErrAuthKeyStoreError:               ErrCodeAuthKeyStoreError,
 	ErrAuthAPIAccessGenRespError:       ErrCodeAuthAPIAccessGenRespError,
+	ErrAuthOSCapsOpGenRespError:        ErrCodeAuthOSCapsOpGenRespError,
 	ErrAccessKeyNotExists:              ErrCodeAccessKeyNotExists,
 	ErrInvalidTicket:                   ErrCodeInvalidTicket,
 	ErrExpiredTicket:                   ErrCodeExpiredTicket,

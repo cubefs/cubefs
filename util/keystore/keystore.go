@@ -26,11 +26,6 @@ type KeyInfo struct {
 	Caps      []byte `json:"caps"`
 }
 
-type AccessKeyInfo struct {
-	AccessKey string `json:"access_key"`
-	ID        string `json:"id"`
-}
-
 // DumpJSONFile dump KeyInfo to file in json format
 func (u *KeyInfo) DumpJSONFile(filename string) (err error) {
 	var (
@@ -117,15 +112,6 @@ func (u *KeyInfo) IsValidKeyInfo() (err error) {
 		return
 	}
 	if err = u.IsValidCaps(); err != nil {
-		return
-	}
-	return
-}
-
-func (u *KeyInfo) IsValidAK() (err error) {
-	re := regexp.MustCompile("^[A-Za-z0-9]{16}$")
-	if !re.MatchString(u.AccessKey) {
-		err = fmt.Errorf("invalid AccessKey [%s]", u.AccessKey)
 		return
 	}
 	return

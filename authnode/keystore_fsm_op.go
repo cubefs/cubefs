@@ -87,6 +87,10 @@ func (c *Cluster) syncDeleteKey(keyInfo *keystore.KeyInfo) (err error) {
 	return c.syncPutKeyInfo(opSyncDeleteKey, keyInfo)
 }
 
+func (c *Cluster) syncDeleteAccessKey(akInfo *keystore.AccessKeyInfo) (err error) {
+	return c.syncPutAccessKeyInfo(opSyncDeleteKey, akInfo)
+}
+
 func (c *Cluster) syncDeleteCaps(keyInfo *keystore.KeyInfo) (err error) {
 	return c.syncPutKeyInfo(opSyncDeleteCaps, keyInfo)
 }
