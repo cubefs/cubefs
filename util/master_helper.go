@@ -33,6 +33,8 @@ const (
 
 var (
 	ErrNoValidMaster = errors.New("no valid master")
+	ErrInvalidTicket = errors.New("invalid ticket")
+	ErrExpiredTicket = errors.New("expired ticket")
 )
 
 // MasterHelper defines the helper struct to manage the master.
@@ -129,7 +131,13 @@ func (helper *masterHelper) request(method, path string, param map[string]string
 			}
 			// o represent proto.ErrCodeSuccess
 			if body.Code != 0 {
-				return nil, fmt.Errorf("request error, code[%d], msg[%s]", body.Code, body.Msg)
+				if body.Code == 37 {
+					return nil, ErrInvalidTicket
+				} else if body.Code == 38 {
+					return nil, ErrExpiredTicket
+				} else {
+					return nil, fmt.Errorf("request error, code[%d], msg[%s]", body.Code, body.Msg)
+				}
 			}
 			return []byte(body.Data), nil
 		default:

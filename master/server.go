@@ -24,6 +24,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/cryptoutil"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -44,11 +45,14 @@ const (
 	DefaultRetainLogs = 20000
 	cfgTickInterval   = "tickInterval"
 	cfgElectionTick   = "electionTick"
+	SecretKey         = "masterServiceKey"
 )
 
 var (
 	volNameRegexp *regexp.Regexp
+	ownerRegexp   *regexp.Regexp
 	useConnPool   = true //for test
+	gConfig       *clusterConfig
 )
 
 // Server represents the server in a cluster
@@ -82,14 +86,17 @@ func NewServer() *Server {
 // Start starts a server
 func (m *Server) Start(cfg *config.Config) (err error) {
 	m.config = newClusterConfig()
+	gConfig = m.config
 	m.leaderInfo = &LeaderInfo{}
 	m.reverseProxy = m.newReverseProxy()
 	if err = m.checkConfig(cfg); err != nil {
 		log.LogError(errors.Stack(err))
 		return
 	}
-	pattern := "^[a-zA-Z0-9_-]{3,256}$"
-	volNameRegexp, err = regexp.Compile(pattern)
+	volnamePattern := "^[a-zA-Z0-9_-]{3,256}$"
+	volNameRegexp, err = regexp.Compile(volnamePattern)
+	ownerPattern := "^[A-Za-z]{1,1}[A-Za-z0-9_]{0,20}$"
+	ownerRegexp, err = regexp.Compile(ownerPattern)
 	if err != nil {
 		log.LogError(err)
 		return
@@ -103,6 +110,10 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	exporter.Init(ModuleName, cfg)
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
+	MasterSecretKey := cfg.GetString(SecretKey)
+	if m.cluster.MasterSecretKey, err = cryptoutil.Base64Decode(MasterSecretKey); err != nil {
+		return fmt.Errorf("action[Start] failed %v, err: master service Key invalid = %s", proto.ErrInvalidCfg, MasterSecretKey)
+	}
 	m.cluster.scheduleTask()
 	m.startHTTPService()
 	exporter.RegistConsul(m.clusterName, ModuleName, cfg)
@@ -135,6 +146,15 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.id, err = strconv.ParseUint(cfg.GetString(ID), 10, 64); err != nil {
 		return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 	}
+	m.config.heartbeatPort = cfg.GetInt64(heartbeatPortKey)
+	m.config.replicaPort = cfg.GetInt64(replicaPortKey)
+	if m.config.heartbeatPort <= 1024 {
+		m.config.heartbeatPort = raftstore.DefaultHeartbeatPort
+	}
+	if m.config.replicaPort <= 1024 {
+		m.config.replicaPort = raftstore.DefaultReplicaPort
+	}
+	fmt.Printf("heartbeatPort[%v],replicaPort[%v]\n", m.config.heartbeatPort, m.config.replicaPort)
 	if err = m.config.parsePeers(peerAddrs); err != nil {
 		return
 	}
@@ -147,6 +167,17 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.config.nodeSetCapacity < 3 {
 		m.config.nodeSetCapacity = defaultNodeSetCapacity
 	}
+
+	metaNodeReservedMemory := cfg.GetString(cfgMetaNodeReservedMem)
+	if metaNodeReservedMemory != "" {
+		if m.config.metaNodeReservedMem, err = strconv.ParseUint(metaNodeReservedMemory, 10, 64); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+	if m.config.metaNodeReservedMem < 32*1024*1024 {
+		m.config.metaNodeReservedMem = defaultMetaNodeReservedMem
+	}
+
 	retainLogs := cfg.GetString(CfgRetainLogs)
 	if retainLogs != "" {
 		if m.retainLogs, err = strconv.ParseUint(retainLogs, 10, 64); err != nil {
@@ -186,9 +217,6 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
-	m.config.heartbeatPort = cfg.GetInt64(heartbeatPortKey)
-	m.config.replicaPort = cfg.GetInt64(replicaPortKey)
-	fmt.Printf("heartbeatPort[%v],replicaPort[%v]\n", m.config.heartbeatPort, m.config.replicaPort)
 	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))
 	m.electionTick = int(cfg.GetFloat(cfgElectionTick))
 	if m.tickInterval <= 300 {
@@ -213,7 +241,7 @@ func (m *Server) createRaftServer() (err error) {
 	if m.raftStore, err = raftstore.NewRaftStore(raftCfg); err != nil {
 		return errors.Trace(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
 	}
-	fmt.Println(m.config.peers, m.tickInterval, m.electionTick)
+	fmt.Printf("peers[%v],tickInterval[%v],electionTick[%v]\n", m.config.peers, m.tickInterval, m.electionTick)
 	m.initFsm()
 	partitionCfg := &raftstore.PartitionConfig{
 		ID:      GroupID,

@@ -4,6 +4,8 @@ RootPath=$(cd $(dirname $0)/..; pwd)
 GOPATH=/go
 export DiskPath="$RootPath/docker/disk"
 
+MIN_DNDISK_AVAIL_SIZE_GB=10
+
 help() {
     cat <<EOF
 
@@ -33,6 +35,7 @@ build() {
 
 # start server
 start_servers() {
+    isDiskAvailable $DiskPath
     mkdir -p ${DiskPath}/{1..4}
     docker-compose -f ${RootPath}/docker/docker-compose.yml up -d servers
 }
@@ -96,12 +99,27 @@ for opt in ${ARGS[*]} ; do
     esac
 done
 
+function isDiskAvailable() {
+    Disk=${1:-"need diskpath"}
+    [[ -d $Disk ]] || mkdir -p $Disk
+    if [[ ! -d $Disk ]] ; then
+        echo "error: $DiskPath must be exist and at least 10GB free size"
+        exit 1
+    fi
+    avail_sectors=$(df  $Disk | tail -1 | awk '{print $4}')
+    avail_GB=$(( $avail_sectors / 1024 / 1024 / 2  ))
+    if (( $avail_GB < $MIN_DNDISK_AVAIL_SIZE_GB )) ; then
+        echo "$Disk: avaible size $avail_GB GB < Min Disk avaible size $MIN_DNDISK_AVAIL_SIZE_GB GB" ;
+        exit 1
+    fi
+}
+
 for opt in ${ARGS[*]} ; do
     case "-$1" in
         --d|---disk)
             shift
             export DiskPath=${1:?"need disk dir path"}
-            [[ -d $DiskPath ]] || { echo "error: $DiskPath must be exist and at least 30GB free size"; exit 1; }
+            isDiskAvailable $DiskPath
             shift
             ;;
         -)

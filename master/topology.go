@@ -74,13 +74,13 @@ func (t *topology) clear() {
 }
 
 func (t *topology) replaceDataNode(dataNode *DataNode) {
-	if oldRack, err := t.getRack(dataNode); err == nil {
-		oldRack.putDataNode(dataNode)
+	if oldCell, err := t.getCell(dataNode); err == nil {
+		oldCell.putDataNode(dataNode)
 	}
 	topoNode, ok := t.dataNodes.Load(dataNode.Addr)
 	if ok {
 		node := topoNode.(*topoDataNode)
-		node.RackName = dataNode.RackName
+		node.CellName = dataNode.CellName
 		t.putDataNodeToCache(node)
 	}
 }
@@ -114,7 +114,7 @@ func (t *topology) deleteDataNode(dataNode *DataNode) {
 	ns.deleteDataNode(dataNode)
 }
 
-func (t *topology) getRack(dataNode *DataNode) (rack *Rack, err error) {
+func (t *topology) getCell(dataNode *DataNode) (cell *Cell, err error) {
 	topoNode, ok := t.dataNodes.Load(dataNode.Addr)
 	if !ok {
 		return nil, errors.Trace(dataNodeNotFound(dataNode.Addr), "%v not found", dataNode.Addr)
@@ -124,7 +124,7 @@ func (t *topology) getRack(dataNode *DataNode) (rack *Rack, err error) {
 	if err != nil {
 		return
 	}
-	return ns.getRack(node.RackName)
+	return ns.getCell(node.CellName)
 }
 
 func (t *topology) getAvailNodeSetForDataNode() (nset *nodeSet) {
@@ -216,7 +216,7 @@ func (t *topology) getAllNodeSet() (nsc nodeSetCollection) {
 	return
 }
 
-func (t *topology) allocNodeSetForDataNode(replicaNum uint8) (ns *nodeSet, err error) {
+func (t *topology) allocNodeSetForDataNode(excludeNodeSet *nodeSet, replicaNum uint8) (ns *nodeSet, err error) {
 	nset := t.getAllNodeSet()
 	if nset == nil {
 		return nil, proto.ErrNoNodeSetToCreateDataPartition
@@ -229,6 +229,9 @@ func (t *topology) allocNodeSetForDataNode(replicaNum uint8) (ns *nodeSet, err e
 		}
 		ns = nset[t.setIndexForDataNode]
 		t.setIndexForDataNode++
+		if excludeNodeSet != nil && excludeNodeSet.ID == ns.ID {
+			continue
+		}
 		if ns.canWriteForDataNode(int(replicaNum)) {
 			return
 		}
@@ -237,7 +240,7 @@ func (t *topology) allocNodeSetForDataNode(replicaNum uint8) (ns *nodeSet, err e
 	return nil, proto.ErrNoNodeSetToCreateDataPartition
 }
 
-func (t *topology) allocNodeSetForMetaNode(replicaNum uint8) (ns *nodeSet, err error) {
+func (t *topology) allocNodeSetForMetaNode(excludeNodeSet *nodeSet, replicaNum uint8) (ns *nodeSet, err error) {
 	nset := t.getAllNodeSet()
 	if nset == nil {
 		return nil, proto.ErrNoNodeSetToCreateMetaPartition
@@ -250,6 +253,9 @@ func (t *topology) allocNodeSetForMetaNode(replicaNum uint8) (ns *nodeSet, err e
 		}
 		ns = nset[t.setIndexForMetaNode]
 		t.setIndexForMetaNode++
+		if excludeNodeSet != nil && ns.ID == excludeNodeSet.ID {
+			continue
+		}
 		if ns.canWriteForMetaNode(int(replicaNum)) {
 			return
 		}
@@ -275,10 +281,10 @@ func (nsc nodeSetCollection) Swap(i, j int) {
 type nodeSet struct {
 	ID          uint64
 	Capacity    int
-	rackIndex   int
-	rackMap     map[string]*Rack
-	racks       []string
-	rackLock    sync.RWMutex
+	cellIndex   int
+	cellMap     map[string]*Cell
+	cells       []string
+	cellLock    sync.RWMutex
 	dataNodeLen int
 	metaNodeLen int
 	metaNodes   sync.Map
@@ -291,8 +297,8 @@ func newNodeSet(id uint64, cap int) *nodeSet {
 		ID:       id,
 		Capacity: cap,
 	}
-	ns.rackMap = make(map[string]*Rack)
-	ns.racks = make([]string, 0)
+	ns.cellMap = make(map[string]*Cell)
+	ns.cells = make([]string, 0)
 	return ns
 }
 
@@ -368,39 +374,39 @@ func (ns *nodeSet) canWriteForMetaNode(replicaNum int) bool {
 	return count >= replicaNum
 }
 
-func (ns *nodeSet) isSingleRack() bool {
-	ns.rackLock.RLock()
-	defer ns.rackLock.RUnlock()
-	return len(ns.rackMap) == 1
+func (ns *nodeSet) isSingleCell() bool {
+	ns.cellLock.RLock()
+	defer ns.cellLock.RUnlock()
+	return len(ns.cellMap) == 1
 }
 
-func (ns *nodeSet) getRack(name string) (rack *Rack, err error) {
-	ns.rackLock.RLock()
-	defer ns.rackLock.RUnlock()
-	rack, ok := ns.rackMap[name]
+func (ns *nodeSet) getCell(name string) (cell *Cell, err error) {
+	ns.cellLock.RLock()
+	defer ns.cellLock.RUnlock()
+	cell, ok := ns.cellMap[name]
 	if !ok {
-		return nil, errors.Trace(rackNotFound(name), "%v not found", name)
+		return nil, errors.Trace(cellNotFound(name), "%v not found", name)
 	}
 	return
 }
 
-func (ns *nodeSet) putRack(rack *Rack) *Rack {
-	ns.rackLock.Lock()
-	defer ns.rackLock.Unlock()
-	oldRack, ok := ns.rackMap[rack.name]
+func (ns *nodeSet) putCell(cell *Cell) *Cell {
+	ns.cellLock.Lock()
+	defer ns.cellLock.Unlock()
+	oldCell, ok := ns.cellMap[cell.name]
 	if ok {
-		return oldRack
+		return oldCell
 	}
-	ns.rackMap[rack.name] = rack
-	if ok := ns.isExist(rack.name); !ok {
-		ns.racks = append(ns.racks, rack.name)
+	ns.cellMap[cell.name] = cell
+	if ok := ns.isExist(cell.name); !ok {
+		ns.cells = append(ns.cells, cell.name)
 	}
-	return rack
+	return cell
 }
 
-func (ns *nodeSet) isExist(rackName string) (ok bool) {
-	for _, name := range ns.racks {
-		if name == rackName {
+func (ns *nodeSet) isExist(cellName string) (ok bool) {
+	for _, name := range ns.cells {
+		if name == cellName {
 			ok = true
 			return
 		}
@@ -408,122 +414,201 @@ func (ns *nodeSet) isExist(rackName string) (ok bool) {
 	return
 }
 
-func (ns *nodeSet) removeRack(name string) {
-	ns.rackLock.Lock()
-	defer ns.rackLock.Unlock()
-	delete(ns.rackMap, name)
+func (ns *nodeSet) removeCell(name string) {
+	ns.cellLock.Lock()
+	defer ns.cellLock.Unlock()
+	delete(ns.cellMap, name)
 }
 
 func (ns *nodeSet) putDataNode(dataNode *DataNode) {
-	rack, err := ns.getRack(dataNode.RackName)
+	cell, err := ns.getCell(dataNode.CellName)
 	if err != nil {
-		rack = newRack(dataNode.RackName)
-		rack = ns.putRack(rack)
+		cell = newCell(dataNode.CellName)
+		cell = ns.putCell(cell)
 	}
-	rack.putDataNode(dataNode)
+	cell.putDataNode(dataNode)
 	ns.dataNodes.Store(dataNode.Addr, dataNode)
 }
 
 func (ns *nodeSet) deleteDataNode(dataNode *DataNode) {
 	ns.dataNodes.Delete(dataNode.Addr)
-	rack, err := ns.getRack(dataNode.RackName)
+	cell, err := ns.getCell(dataNode.CellName)
 	if err != nil {
 		return
 	}
-	rack.dataNodes.Delete(dataNode.Addr)
+	cell.dataNodes.Delete(dataNode.Addr)
 }
 
-func (ns *nodeSet) getAllRacks() (racks []*Rack) {
-	ns.rackLock.RLock()
-	defer ns.rackLock.RUnlock()
-	racks = make([]*Rack, 0)
-	for _, rack := range ns.rackMap {
-		racks = append(racks, rack)
+func (ns *nodeSet) getAllCells() (cells []*Cell) {
+	ns.cellLock.RLock()
+	defer ns.cellLock.RUnlock()
+	cells = make([]*Cell, 0)
+	for _, cell := range ns.cellMap {
+		cells = append(cells, cell)
 	}
 	return
 }
 
-func (ns *nodeSet) getRackNameByIndex(index int) (rName string) {
-	ns.rackLock.RLock()
-	defer ns.rackLock.RUnlock()
-	rName = ns.racks[index]
+func (ns *nodeSet) getCellNameByIndex(index int) (rName string) {
+	ns.cellLock.RLock()
+	defer ns.cellLock.RUnlock()
+	rName = ns.cells[index]
 	return
 }
 
-func (ns *nodeSet) allocRacks(replicaNum int, excludeRack []string) (racks []*Rack, err error) {
+func (ns *nodeSet) allocCells(replicaNum int, excludeCell []string) (cells []*Cell, err error) {
 
-	racks = ns.getAllRacks()
-	if ns.isSingleRack() {
-		return racks, nil
+	cells = ns.getAllCells()
+	if ns.isSingleCell() {
+		return cells, nil
 	}
-	if excludeRack == nil {
-		excludeRack = make([]string, 0)
+	if excludeCell == nil {
+		excludeCell = make([]string, 0)
 	}
-	candidateRacks := make([]*Rack, 0)
-	for i := 0; i < len(racks); i++ {
-		if ns.rackIndex >= len(racks) {
-			ns.rackIndex = 0
+	candidateCells := make([]*Cell, 0)
+	for i := 0; i < len(cells); i++ {
+		if ns.cellIndex >= len(cells) {
+			ns.cellIndex = 0
 		}
-		rName := ns.getRackNameByIndex(ns.rackIndex)
-		if contains(excludeRack, rName) {
-			ns.rackIndex++
+		rName := ns.getCellNameByIndex(ns.cellIndex)
+		if contains(excludeCell, rName) {
+			ns.cellIndex++
 			continue
 		}
-		var rack *Rack
-		if rack, err = ns.getRack(ns.racks[ns.rackIndex]); err != nil {
-			ns.rackIndex++
+		var cell *Cell
+		if cell, err = ns.getCell(ns.cells[ns.cellIndex]); err != nil {
+			ns.cellIndex++
 			continue
 		}
-		ns.rackIndex++
+		ns.cellIndex++
 
-		if rack.canWrite(uint8(replicaNum)) {
-			candidateRacks = append(candidateRacks, rack)
+		if cell.canWrite(uint8(replicaNum)) {
+			candidateCells = append(candidateCells, cell)
 		}
-		if len(candidateRacks) >= int(replicaNum) {
+		if len(candidateCells) >= int(replicaNum) {
 			break
 		}
 	}
-	if len(candidateRacks) == 0 {
-		log.LogError(fmt.Sprintf("action[allocRacks],err:%v", proto.ErrNoRackToCreateDataPartition))
-		return nil, proto.ErrNoRackToCreateDataPartition
+	if len(candidateCells) == 0 {
+		log.LogError(fmt.Sprintf("action[allocCells],err:%v", proto.ErrNoCellToCreateDataPartition))
+		return nil, proto.ErrNoCellToCreateDataPartition
 	}
-	racks = candidateRacks
+	cells = candidateCells
 	err = nil
 	return
 }
 
-// Rack stores all the rack related information
-type Rack struct {
+func (ns *nodeSet) getAvailDataNodeHosts(excludeCell *Cell, excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+	var (
+		masterAddr  []string
+		addrs       []string
+		cells       []*Cell
+		cell        *Cell
+		masterPeers []proto.Peer
+		slavePeers  []proto.Peer
+	)
+	hosts = make([]string, 0)
+	peers = make([]proto.Peer, 0)
+	if excludeHosts == nil {
+		excludeHosts = make([]string, 0)
+	}
+	if ns.isSingleCell() {
+		if excludeCell != nil && excludeCell.name == ns.cells[0] {
+			log.LogErrorf("ns[%v] no cell to createDataPartition after exclude cell[%v]", ns.ID, excludeCell.name)
+			return nil, nil, proto.ErrNoCellToCreateDataPartition
+		}
+		if cell, err = ns.getCell(ns.cells[0]); err != nil {
+			return nil, nil, errors.NewError(err)
+		}
+		if hosts, peers, err = cell.getAvailDataNodeHosts(excludeHosts, replicaNum); err != nil {
+			return nil, nil, errors.NewError(err)
+		}
+		return
+	}
+	excludeCells := make([]string, 0)
+	if excludeCell != nil {
+		excludeCells = append(excludeCells, excludeCell.name)
+	}
+	if cells, err = ns.allocCells(replicaNum, excludeCells); err != nil {
+		return nil, nil, errors.NewError(err)
+	}
+	if len(cells) == replicaNum {
+		for index := 0; index < replicaNum; index++ {
+			cell := cells[index]
+			var selectPeers []proto.Peer
+			if addrs, selectPeers, err = cell.getAvailDataNodeHosts(excludeHosts, 1); err != nil {
+				return nil, nil, errors.NewError(err)
+			}
+			hosts = append(hosts, addrs...)
+			peers = append(peers, selectPeers...)
+			excludeHosts = append(excludeHosts, addrs...)
+		}
+		return
+	}
+	// the number of cells less than replica number,We're only dealing with one cell and two cells
+	if len(cells) == 1 {
+		if cell, err = ns.getCell(ns.cells[0]); err != nil {
+			return nil, nil, errors.NewError(err)
+		}
+		if hosts, peers, err = cell.getAvailDataNodeHosts(excludeHosts, replicaNum); err != nil {
+			return nil, nil, errors.NewError(err)
+		}
+		return
+	} else if len(cells) >= 2 {
+		masterCell := cells[0]
+		slaveCell := cells[1]
+		masterReplicaNum := replicaNum/2 + 1
+		slaveReplicaNum := replicaNum - masterReplicaNum
+		if masterAddr, masterPeers, err = masterCell.getAvailDataNodeHosts(excludeHosts, masterReplicaNum); err != nil {
+			return nil, nil, errors.NewError(err)
+		}
+		hosts = append(hosts, masterAddr...)
+		peers = append(peers, masterPeers...)
+		excludeHosts = append(excludeHosts, masterAddr...)
+		if addrs, slavePeers, err = slaveCell.getAvailDataNodeHosts(excludeHosts, slaveReplicaNum); err != nil {
+			return nil, nil, errors.NewError(err)
+		}
+		hosts = append(hosts, addrs...)
+		peers = append(peers, slavePeers...)
+	}
+	if len(hosts) != replicaNum {
+		return nil, nil, proto.ErrNoDataNodeToCreateDataPartition
+	}
+	return
+}
+
+// Cell stores all the cell related information
+type Cell struct {
 	name      string
 	dataNodes sync.Map
 	sync.RWMutex
 }
 
-func newRack(name string) (rack *Rack) {
-	return &Rack{name: name}
+func newCell(name string) (cell *Cell) {
+	return &Cell{name: name}
 }
 
-func (rack *Rack) putDataNode(dataNode *DataNode) {
-	rack.dataNodes.Store(dataNode.Addr, dataNode)
+func (cell *Cell) putDataNode(dataNode *DataNode) {
+	cell.dataNodes.Store(dataNode.Addr, dataNode)
 }
 
-func (rack *Rack) getDataNode(addr string) (dataNode *DataNode, err error) {
-	value, ok := rack.dataNodes.Load(addr)
+func (cell *Cell) getDataNode(addr string) (dataNode *DataNode, err error) {
+	value, ok := cell.dataNodes.Load(addr)
 	if !ok {
 		return nil, errors.Trace(dataNodeNotFound(addr), "%v not found", addr)
 	}
 	dataNode = value.(*DataNode)
 	return
 }
-func (rack *Rack) removeDataNode(addr string) {
-	rack.dataNodes.Delete(addr)
+func (cell *Cell) removeDataNode(addr string) {
+	cell.dataNodes.Delete(addr)
 }
 
-func (rack *Rack) canWrite(replicaNum uint8) (can bool) {
-	rack.RLock()
-	defer rack.RUnlock()
+func (cell *Cell) canWrite(replicaNum uint8) (can bool) {
+	cell.RLock()
+	defer cell.RUnlock()
 	var leastAlive uint8
-	rack.dataNodes.Range(func(addr, value interface{}) bool {
+	cell.dataNodes.Range(func(addr, value interface{}) bool {
 		dataNode := value.(*DataNode)
 		if dataNode.isActive == true && dataNode.isWriteAble() == true {
 			leastAlive++
@@ -537,8 +622,8 @@ func (rack *Rack) canWrite(replicaNum uint8) (can bool) {
 	return
 }
 
-func (rack *Rack) getDataNodeMaxTotal() (maxTotal uint64) {
-	rack.dataNodes.Range(func(key, value interface{}) bool {
+func (cell *Cell) getDataNodeMaxTotal() (maxTotal uint64) {
+	cell.dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
 		if dataNode.Total > maxTotal {
 			maxTotal = dataNode.Total
@@ -548,7 +633,7 @@ func (rack *Rack) getDataNodeMaxTotal() (maxTotal uint64) {
 	return
 }
 
-func (rack *Rack) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (cell *Cell) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
 	orderHosts := make([]string, 0)
 	newHosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
@@ -556,12 +641,12 @@ func (rack *Rack) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (
 		return
 	}
 
-	maxTotal := rack.getDataNodeMaxTotal()
-	nodeTabs, availCarryCount := rack.getAvailCarryDataNodeTab(maxTotal, excludeHosts, replicaNum)
+	maxTotal := cell.getDataNodeMaxTotal()
+	nodeTabs, availCarryCount := cell.getAvailCarryDataNodeTab(maxTotal, excludeHosts, replicaNum)
 	if len(nodeTabs) < replicaNum {
 		err = proto.ErrNoDataNodeToWrite
 		err = fmt.Errorf(getAvailDataNodeHostsErr+" err:%v ,ActiveNodeCount:%v  MatchNodeCount:%v  ",
-			proto.ErrNoDataNodeToWrite, rack.dataNodeCount(), len(nodeTabs))
+			proto.ErrNoDataNodeToWrite, cell.dataNodeCount(), len(nodeTabs))
 		return
 	}
 
@@ -583,9 +668,9 @@ func (rack *Rack) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (
 	return
 }
 
-func (rack *Rack) getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, replicaNum int) (nodeTabs SortedWeightedNodes, availCount int) {
+func (cell *Cell) getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, replicaNum int) (nodeTabs SortedWeightedNodes, availCount int) {
 	nodeTabs = make(SortedWeightedNodes, 0)
-	rack.dataNodes.Range(func(key, value interface{}) bool {
+	cell.dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
 		if contains(excludeHosts, dataNode.Addr) == true {
 			log.LogDebugf("contains return")
@@ -614,9 +699,9 @@ func (rack *Rack) getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []strin
 	return
 }
 
-func (rack *Rack) dataNodeCount() (len int) {
+func (cell *Cell) dataNodeCount() (len int) {
 
-	rack.dataNodes.Range(func(key, value interface{}) bool {
+	cell.dataNodes.Range(func(key, value interface{}) bool {
 		len++
 		return true
 	})

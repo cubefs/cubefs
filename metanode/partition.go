@@ -22,15 +22,16 @@ import (
 	"sync/atomic"
 
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
-	"io/ioutil"
-	"os"
-	"path"
 )
 
 var (
@@ -144,12 +145,15 @@ type OpPartition interface {
 	IsLeader() (leaderAddr string, isLeader bool)
 	GetCursor() uint64
 	GetBaseConfig() MetaPartitionConfig
-	LoadSnapshotSign(p *Packet) (err error)
+	ResponseLoadMetaPartition(p *Packet) (err error)
 	PersistMetadata() (err error)
 	ChangeMember(changeType raftproto.ConfChangeType, peer raftproto.Peer, context []byte) (resp interface{}, err error)
 	DeletePartition() (err error)
 	UpdatePartition(req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error)
 	DeleteRaft() error
+	IsExsitPeer(peer proto.Peer) bool
+	TryToLeader(groupID uint64) error
+	CanRemoveRaftMember(peer proto.Peer) error
 }
 
 // MetaPartition defines the interface for the meta partition operations.
@@ -180,6 +184,7 @@ type metaPartition struct {
 	extDelCh      chan BtreeItem
 	extReset      chan struct{}
 	vol           *Vol
+	manager       *metadataManager
 }
 
 // Start starts a meta partition.
@@ -297,7 +302,7 @@ func (mp *metaPartition) startRaft() (err error) {
 func (mp *metaPartition) stopRaft() {
 	if mp.raftPartition != nil {
 		// TODO Unhandled errors
-		mp.raftPartition.Stop()
+		//mp.raftPartition.Stop()
 	}
 	return
 }
@@ -326,7 +331,7 @@ func (mp *metaPartition) getRaftPort() (heartbeat, replica int, err error) {
 }
 
 // NewMetaPartition creates a new meta partition with the specified configuration.
-func NewMetaPartition(conf *MetaPartitionConfig) MetaPartition {
+func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaPartition {
 	mp := &metaPartition{
 		config:     conf,
 		dentryTree: NewBtree(),
@@ -337,6 +342,7 @@ func NewMetaPartition(conf *MetaPartitionConfig) MetaPartition {
 		extDelCh:   make(chan BtreeItem, 10000),
 		extReset:   make(chan struct{}),
 		vol:        NewVol(),
+		manager:    manager,
 	}
 	return mp
 }
@@ -373,7 +379,7 @@ func (mp *metaPartition) GetPeers() (peers []string) {
 
 // GetCursor returns the cursor stored in the config.
 func (mp *metaPartition) GetCursor() uint64 {
-	return mp.config.Cursor
+	return atomic.LoadUint64(&mp.config.Cursor)
 }
 
 // PersistMetadata is the wrapper of persistMetadata.
@@ -532,64 +538,42 @@ func (mp *metaPartition) DecommissionPartition(req []byte) (err error) {
 	return
 }
 
-// LoadSnapshotSign loads the snapshot signature. TODO remove? no usage?
-func (mp *metaPartition) LoadSnapshotSign(p *Packet) (err error) {
+func (mp *metaPartition) IsExsitPeer(peer proto.Peer) bool {
+	for _, hasExsitPeer := range mp.config.Peers {
+		if hasExsitPeer.Addr == peer.Addr && hasExsitPeer.ID == peer.ID {
+			return true
+		}
+	}
+	return false
+}
+
+func (mp *metaPartition) TryToLeader(groupID uint64) error {
+	return mp.raftPartition.TryToLeader(groupID)
+}
+
+// ResponseLoadMetaPartition loads the snapshot signature. TODO remove? no usage?
+func (mp *metaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 	resp := &proto.MetaPartitionLoadResponse{
 		PartitionID: mp.config.PartitionId,
 		DoCompare:   true,
 	}
-	resp.ApplyID, resp.InodeSign, resp.DentrySign, err = mp.loadSnapshotSign(
-		snapshotDir)
+	resp.MaxInode = mp.GetCursor()
+	mp.dentryTree.RLock()
+	resp.DentryCount = uint64(mp.dentryTree.Len())
+	mp.dentryTree.RUnlock()
+	resp.ApplyID = mp.applyID
 	if err != nil {
-		if !os.IsNotExist(err) {
-			err = errors.Trace(err, "[LoadSnapshotSign] 1st check snapshot")
-			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-			return err
-		}
-		resp.ApplyID, resp.InodeSign, resp.DentrySign, err = mp.loadSnapshotSign(
-			snapshotBackup)
+		err = errors.Trace(err,
+			"[ResponseLoadMetaPartition] check snapshot")
+		return
 	}
-	if err != nil {
-		if !os.IsNotExist(err) {
-			err = errors.Trace(err,
-				"[LoadSnapshotSign] 2st check snapshot")
-			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-			return
-		}
-		resp.DoCompare = false
-		log.LogWarnf("[LoadSnapshotSign] check snapshot not exist")
-	}
+
 	data, err := json.Marshal(resp)
 	if err != nil {
-		err = errors.Trace(err, "[LoadSnapshotSign] marshal")
+		err = errors.Trace(err, "[ResponseLoadMetaPartition] marshal")
 		return
 	}
 	p.PacketOkWithBody(data)
-	return
-}
-
-func (mp *metaPartition) loadSnapshotSign(baseDir string) (applyID uint64,
-	inoCRC, dentryCRC uint32, err error) {
-	snapDir := path.Join(mp.config.RootDir, baseDir)
-	// check snapshot
-	if _, err = os.Stat(snapDir); err != nil {
-		return
-	}
-	// load signature
-	data, err := ioutil.ReadFile(path.Join(snapDir, SnapshotSign))
-	if err != nil {
-		return
-	}
-	if _, err = fmt.Sscanf(string(data), "%d %d", &inoCRC, &dentryCRC); err != nil {
-		return
-	}
-	// load apply
-	if data, err = ioutil.ReadFile(path.Join(snapDir, applyIDFile)); err != nil {
-		return
-	}
-	if _, err = fmt.Sscanf(string(data), "%d", &applyID); err != nil {
-		return
-	}
 	return
 }
 

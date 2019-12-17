@@ -106,6 +106,7 @@ services:
         privileged: true
         networks:
             extnetwork:
+                ipv4_address: 192.168.0.21
 
     metanode2:
         image: chubaofs/cfs-base:1.0
@@ -124,6 +125,7 @@ services:
         privileged: true
         networks:
             extnetwork:
+                ipv4_address: 192.168.0.22
 
     metanode3:
         image: chubaofs/cfs-base:1.0
@@ -142,6 +144,7 @@ services:
         privileged: true
         networks:
             extnetwork:
+                ipv4_address: 192.168.0.23
 
     datanode1:
         image: chubaofs/cfs-base:1.0
@@ -161,6 +164,7 @@ services:
         privileged: true
         networks:
             extnetwork:
+                ipv4_address: 192.168.0.31
 
     datanode2:
         image: chubaofs/cfs-base:1.0
@@ -180,6 +184,7 @@ services:
         privileged: true
         networks:
             extnetwork:
+                ipv4_address: 192.168.0.32
 
     datanode3:
         image: chubaofs/cfs-base:1.0
@@ -199,6 +204,7 @@ services:
         privileged: true
         networks:
             extnetwork:
+                ipv4_address: 192.168.0.33
 
     datanode4:
         image: chubaofs/cfs-base:1.0
@@ -218,6 +224,7 @@ services:
         privileged: true
         networks:
             extnetwork:
+                ipv4_address: 192.168.0.34
 
     client:
         image: chubaofs/cfs-base:1.0

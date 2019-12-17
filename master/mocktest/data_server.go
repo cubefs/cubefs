@@ -24,11 +24,11 @@ type MockDataServer struct {
 	CreatedPartitionCnt             uint64
 	MaxWeightsForCreatePartition    uint64
 	partitions                      []*MockDataPartition
-	rackName                        string
+	cellName                        string
 }
 
-func NewMockDataServer(addr string, rackName string) *MockDataServer {
-	mds := &MockDataServer{TcpAddr: addr, rackName: rackName,
+func NewMockDataServer(addr string, cellName string) *MockDataServer {
+	mds := &MockDataServer{TcpAddr: addr, cellName: cellName,
 		partitions: make([]*MockDataPartition, 0)}
 
 	return mds
@@ -109,10 +109,34 @@ func (mds *MockDataServer) serveConn(rc net.Conn) {
 		fmt.Printf("data node [%v] load data partition,id[%v],err:%v\n", mds.TcpAddr, adminTask.ID, err)
 	case proto.OpDecommissionDataPartition:
 		err = mds.handleDecommissionDataPartition(conn, req, adminTask)
-		fmt.Printf("data node [%v] load data partition,id[%v],err:%v\n", mds.TcpAddr, adminTask.ID, err)
+		fmt.Printf("data node [%v] decommission data partition,id[%v],err:%v\n", mds.TcpAddr, adminTask.ID, err)
+	case proto.OpAddDataPartitionRaftMember:
+		err = mds.handleAddDataPartitionRaftMember(conn, req, adminTask)
+		fmt.Printf("data node [%v] add data partition raft member,id[%v],err:%v\n", mds.TcpAddr, adminTask.ID, err)
+	case proto.OpRemoveDataPartitionRaftMember:
+		err = mds.handleRemoveDataPartitionRaftMember(conn, req, adminTask)
+		fmt.Printf("data node [%v] remove data partition raft member,id[%v],err:%v\n", mds.TcpAddr, adminTask.ID, err)
+	case proto.OpDataPartitionTryToLeader:
+		err = mds.handleTryToLeader(conn, req, adminTask)
+		fmt.Printf("data node [%v] try to leader,id[%v],err:%v\n", mds.TcpAddr, adminTask.ID, err)
 	default:
 		fmt.Printf("unknown code [%v]\n", req.Opcode)
 	}
+}
+
+func (mds *MockDataServer) handleAddDataPartitionRaftMember(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
+	responseAckOKToMaster(conn, p, nil)
+	return
+}
+
+func (mds *MockDataServer) handleRemoveDataPartitionRaftMember(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
+	responseAckOKToMaster(conn, p, nil)
+	return
+}
+
+func (mds *MockDataServer) handleTryToLeader(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
+	responseAckOKToMaster(conn, p, nil)
+	return
 }
 
 func (mds *MockDataServer) handleDecommissionDataPartition(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
@@ -189,7 +213,7 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 	response.MaxCapacity = 800 * util.GB
 	response.RemainingCapacity = 800 * util.GB
 
-	response.RackName = mds.rackName
+	response.CellName = mds.cellName
 	response.PartitionReports = make([]*proto.PartitionReport, 0)
 
 	for _, partition := range mds.partitions {

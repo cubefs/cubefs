@@ -1,0 +1,5 @@
+{
+  "id": "ltptest",
+  "role": "client",
+  "caps": "{\"API\":[\"master:getvol:access\"], \"VOL\":[\"master:ltptest:*\"]}"
+}

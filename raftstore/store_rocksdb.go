@@ -16,6 +16,7 @@ package raftstore
 
 import (
 	"fmt"
+
 	"github.com/tecbot/gorocksdb"
 )
 

@@ -15,6 +15,7 @@
 package raftstore
 
 import (
+	"fmt"
 	"github.com/tiglabs/raft/proto"
 )
 
@@ -23,8 +24,8 @@ const (
 	DefaultHeartbeatPort     = 5901
 	DefaultReplicaPort       = 5902
 	DefaultNumOfLogsToRetain = 20000
-	DefaultTickInterval  = 300
-	DefaultElectionTick  = 3
+	DefaultTickInterval      = 300
+	DefaultElectionTick      = 3
 )
 
 // Config defines the configuration properties for the raft store.
@@ -65,4 +66,9 @@ type PartitionConfig struct {
 	Peers   []PeerAddress
 	SM      PartitionFsm
 	WalPath string
+}
+
+func (p PeerAddress) String() string {
+	return fmt.Sprintf(`"nodeID":"%v","peerID":"%v","priority":"%v","type":"%v","heartbeatPort":"%v","ReplicaPort":"%v"`,
+		p.ID, p.PeerID, p.Priority, p.Type.String(), p.HeartbeatPort, p.ReplicaPort)
 }

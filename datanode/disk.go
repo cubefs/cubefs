@@ -61,10 +61,10 @@ type Disk struct {
 
 type PartitionVisitor func(dp *DataPartition)
 
-func NewDisk(path string, restSize uint64, maxErrCnt int, space *SpaceManager) (d *Disk) {
+func NewDisk(path string, reservedSpace uint64, maxErrCnt int, space *SpaceManager) (d *Disk) {
 	d = new(Disk)
 	d.Path = path
-	d.ReservedSpace = restSize
+	d.ReservedSpace = reservedSpace
 	d.MaxErrCnt = maxErrCnt
 	d.RejectWrite = false
 	d.space = space
@@ -215,6 +215,7 @@ func (d *Disk) triggerDiskError(err error) {
 		exporter.Warning(mesg)
 		log.LogErrorf(mesg)
 		d.ForceExitRaftStore()
+		d.Status = proto.Unavailable
 	}
 	return
 }

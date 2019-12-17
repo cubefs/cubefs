@@ -16,6 +16,7 @@ Welcome to ChubaoFS(Chubao File System)
    design/metanode
    design/datanode
    design/client
+   design/authnode
 
 .. toctree::
    :maxdepth: 2
@@ -25,6 +26,7 @@ Welcome to ChubaoFS(Chubao File System)
    user-guide/metanode
    user-guide/datanode
    user-guide/client
+   user-guide/authnode
    user-guide/monitor
    user-guide/fuse
    user-guide/docker
@@ -34,6 +36,12 @@ Welcome to ChubaoFS(Chubao File System)
    :caption: Administration
 
    administration
+
+.. toctree::
+   :maxdepth: 2
+   :caption: use case
+
+   use-case
 
 .. toctree::
    :maxdepth: 0

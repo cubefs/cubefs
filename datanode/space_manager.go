@@ -44,13 +44,13 @@ type SpaceManager struct {
 }
 
 // NewSpaceManager creates a new space manager.
-func NewSpaceManager(rack string) *SpaceManager {
+func NewSpaceManager(cell string) *SpaceManager {
 	var space *SpaceManager
 	space = &SpaceManager{}
 	space.disks = make(map[string]*Disk)
 	space.diskList = make([]string, 0)
 	space.partitions = make(map[uint64]*DataPartition)
-	space.stats = NewStats(rack)
+	space.stats = NewStats(cell)
 	space.stopC = make(chan bool, 0)
 
 	go space.statUpdateScheduler()
@@ -306,9 +306,10 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	response.TotalPartitionSize = stat.TotalPartitionSize
 	response.MaxCapacity = stat.MaxCapacityToCreatePartition
 	response.RemainingCapacity = stat.RemainingCapacityToCreatePartition
+	response.BadDisks = make([]string, 0)
 	stat.Unlock()
 
-	response.RackName = s.rackName
+	response.CellName = s.cellName
 	response.PartitionReports = make([]*proto.PartitionReport, 0)
 	space := s.space
 	space.RangePartitions(func(partition *DataPartition) bool {
@@ -328,4 +329,11 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 		response.PartitionReports = append(response.PartitionReports, vr)
 		return true
 	})
+
+	disks := space.GetDisks()
+	for _, d := range disks {
+		if d.Status == proto.Unavailable {
+			response.BadDisks = append(response.BadDisks, d.Path)
+		}
+	}
 }

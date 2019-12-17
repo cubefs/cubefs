@@ -41,7 +41,8 @@ Sample *master.json* is shown as follows,
      "storeDir":"/export/Data/master/rocksdbstore",
      "consulAddr": "http://consul.prometheus-cfs.local",
      "exporterPort": 9510,
-     "clusterName":"cfs"
+     "clusterName":"cfs",
+     "metaNodeReservedMem": "134217728"
    }
 
 
@@ -71,7 +72,7 @@ Sample *meta.json is* shown as follows,
        "totalMem":  "17179869184",
        "consulAddr": "http://consul.prometheus-cfs.local",
        "exporterPort": 9511,
-       "masterAddrs": [
+       "masterAddr": [
            "192.168.31.173:80",
            "192.168.31.141:80",
            "192.168.30.200:80"
@@ -136,9 +137,9 @@ Start Datanode
         "consulAddr": "http://consul.prometheus-cfs.local",
         "exporterPort": 9512,
         "masterAddr": [
-        "192.168.31.173:80",
-        "192.168.31.141:80",
-        "192.168.30.200:80"
+           "192.168.31.173:80",
+           "192.168.31.141:80",
+           "192.168.30.200:80"
         ],
         "disks": [
            "/data0:21474836480",
@@ -155,13 +156,13 @@ By default, there are only a few data partitions allocated upon volume creation,
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/admin/createVol?name=test&capacity=10000&owner=cfs"
+   curl -v "http://192.168.31.173/admin/createVol?name=test&capacity=10000&owner=cfs"
 
 For performance evaluation, extra data partitions shall be pre-created according to the amount of data nodes and disks to reach maximum performance.
 
 .. code-block:: bash
 
-    curl -v "http://127.0.0.1/dataPartition/create?name=test&count=120"
+    curl -v "http://192.168.31.173/dataPartition/create?name=test&count=120"
 
 Mount Client
 ------------
@@ -196,7 +197,7 @@ Upgrading
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/cluster/freeze?enable=true"
+   curl -v "http://192.168.31.173/cluster/freeze?enable=true"
 
 2. upgrade each module
 
@@ -204,4 +205,4 @@ Upgrading
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/cluster/freeze?enable=false"
+   curl -v "http://192.168.31.173/cluster/freeze?enable=false"

@@ -77,11 +77,11 @@ func createDefaultMasterServerForTest() *Server {
 		panic(err)
 	}
 	//add data node
-	addDataServer(mds1Addr, "rack1")
-	addDataServer(mds2Addr, "rack1")
-	addDataServer(mds3Addr, "rack2")
-	addDataServer(mds4Addr, "rack2")
-	addDataServer(mds5Addr, "rack2")
+	addDataServer(mds1Addr, "cell1")
+	addDataServer(mds2Addr, "cell1")
+	addDataServer(mds3Addr, "cell2")
+	addDataServer(mds4Addr, "cell2")
+	addDataServer(mds5Addr, "cell2")
 	// add meta node
 	addMetaServer(mms1Addr)
 	addMetaServer(mms2Addr)
@@ -94,7 +94,7 @@ func createDefaultMasterServerForTest() *Server {
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
 	fmt.Printf("nodeSet len[%v]\n", len(testServer.cluster.t.nodeSetMap))
-	testServer.cluster.createVol(commonVolName, "cfs", 3, 3, 100,defaultReplicaNum)
+	testServer.cluster.createVol(commonVolName, "cfs", 3, 3, 100, false, false)
 	vol, err := testServer.cluster.getVol(commonVolName)
 	if err != nil {
 		panic(err)
@@ -151,8 +151,8 @@ func createMasterServer(cfgJSON string) (server *Server, err error) {
 	return server, nil
 }
 
-func addDataServer(addr, rackName string) {
-	mds := mocktest.NewMockDataServer(addr, rackName)
+func addDataServer(addr, cellName string) {
+	mds := mocktest.NewMockDataServer(addr, cellName)
 	mds.Start()
 }
 
@@ -220,7 +220,7 @@ func process(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
 		return
 	}
 	if reply.Code != 0 {
-		t.Errorf("failed,msg[%v]", reply.Data)
+		t.Errorf("failed,msg[%v],data[%v]", reply.Msg, reply.Data)
 		return
 	}
 	return
@@ -272,6 +272,24 @@ func TestUpdateVol(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
 		hostAddr, proto.AdminUpdateVol, commonVol.Name, capacity, buildAuthKey("cfs"))
 	process(reqURL, t)
+	vol, err := server.cluster.getVol(commonVolName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if vol.FollowerRead != false {
+		t.Errorf("expect FollowerRead is false, but is %v", vol.FollowerRead)
+		return
+	}
+
+	reqURL = fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v&followerRead=true",
+		hostAddr, proto.AdminUpdateVol, commonVol.Name, capacity, buildAuthKey("cfs"))
+	process(reqURL, t)
+	if vol.FollowerRead != true {
+		t.Errorf("expect FollowerRead is true, but is %v", vol.FollowerRead)
+		return
+	}
+
 }
 func buildAuthKey(owner string) string {
 	h := md5.New()
@@ -370,4 +388,74 @@ func TestGetTopo(t *testing.T) {
 func TestGetMetaNode(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetMetaNode, mms1Addr)
 	process(reqURL, t)
+}
+
+func TestAddDataReplica(t *testing.T) {
+	partition := commonVol.dataPartitions.partitions[0]
+	dsAddr := "127.0.0.1:9106"
+	addDataServer(dsAddr, "cell2")
+	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddDataReplica, partition.PartitionID, dsAddr)
+	process(reqURL, t)
+	partition.RLock()
+	if !contains(partition.Hosts, dsAddr) {
+		t.Errorf("hosts[%v] should contains dsAddr[%v]", partition.Hosts, dsAddr)
+		partition.RUnlock()
+		return
+	}
+	partition.RUnlock()
+}
+
+func TestRemoveDataReplica(t *testing.T) {
+	partition := commonVol.dataPartitions.partitions[0]
+	dsAddr := "127.0.0.1:9106"
+	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteDataReplica, partition.PartitionID, dsAddr)
+	process(reqURL, t)
+	partition.RLock()
+	if contains(partition.Hosts, dsAddr) {
+		t.Errorf("hosts[%v] should contains dsAddr[%v]", partition.Hosts, dsAddr)
+		partition.RUnlock()
+		return
+	}
+	partition.RUnlock()
+}
+
+func TestAddMetaReplica(t *testing.T) {
+	maxPartitionID := commonVol.maxPartitionID()
+	partition := commonVol.MetaPartitions[maxPartitionID]
+	if partition == nil {
+		t.Error("no meta partition")
+		return
+	}
+	msAddr := "127.0.0.1:8009"
+	addMetaServer(msAddr)
+	server.cluster.checkMetaNodeHeartbeat()
+	time.Sleep(2 * time.Second)
+	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaReplica, partition.PartitionID, msAddr)
+	process(reqURL, t)
+	partition.RLock()
+	if !contains(partition.Hosts, msAddr) {
+		t.Errorf("hosts[%v] should contains dsAddr[%v]", partition.Hosts, msAddr)
+		partition.RUnlock()
+		return
+	}
+	partition.RUnlock()
+}
+
+func TestRemoveMetaReplica(t *testing.T) {
+	maxPartitionID := commonVol.maxPartitionID()
+	partition := commonVol.MetaPartitions[maxPartitionID]
+	if partition == nil {
+		t.Error("no meta partition")
+		return
+	}
+	msAddr := "127.0.0.1:8009"
+	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteMetaReplica, partition.PartitionID, msAddr)
+	process(reqURL, t)
+	partition.RLock()
+	if contains(partition.Hosts, msAddr) {
+		t.Errorf("hosts[%v] should contains dsAddr[%v]", partition.Hosts, msAddr)
+		partition.RUnlock()
+		return
+	}
+	partition.RUnlock()
 }

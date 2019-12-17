@@ -14,7 +14,10 @@
 
 package master
 
-import "github.com/chubaofs/chubaofs/util"
+import (
+	"github.com/chubaofs/chubaofs/util"
+	"time"
+)
 
 // Keys in the request
 const (
@@ -32,6 +35,8 @@ const (
 	volOwnerKey           = "owner"
 	volAuthKey            = "authKey"
 	replicaNumKey         = "replicaNum"
+	followerReadKey       = "followerRead"
+	authenticateKey       = "authenticate"
 )
 
 const (
@@ -43,8 +48,6 @@ const (
 	dataNodeOfflineErr            = "dataNodeOfflineErr "
 	diskOfflineErr                = "diskOfflineErr "
 	handleDataPartitionOfflineErr = "handleDataPartitionOffLineErr "
-
-	getFileCountOnDataReplica = "getFileCountOnDataReplica "
 )
 
 const (
@@ -67,12 +70,15 @@ const (
 	defaultNodeSetCapacity                       = 18
 	minNumOfRWDataPartitions                     = 10
 	intervalToCheckMissingReplica                = 600
+	intervalToWarnDataPartition                  = 600
 	intervalToLoadDataPartition                  = 12 * 60 * 60
 	defaultInitDataPartitionCnt                  = 10
 	volExpansionRatio                            = 0.1
 	maxNumberOfDataPartitionsForExpansion        = 100
 	EmptyCrcValue                         uint32 = 4045511210
-	DefaultRackName                              = "default"
+	DefaultCellName                              = "default"
+	retrySendSyncTaskInternal                    = 3 * time.Second
+	defaultRangeOfCountDifferencesAllowed        = 50
 )
 
 const (

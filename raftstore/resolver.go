@@ -17,7 +17,6 @@ package raftstore
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft"
 	"strings"
 	"sync"
@@ -38,9 +37,6 @@ type nodeAddress struct {
 
 // NodeManager defines the necessary methods for node address management.
 type NodeManager interface {
-	// add node address information.
-	AddNode(nodeID uint64, addr string)
-
 	// add node address with specified port.
 	AddNodeWithPort(nodeID uint64, addr string, heartbeat int, replicate int)
 
@@ -113,19 +109,4 @@ func (r *nodeResolver) DeleteNode(nodeID uint64) {
 // NewNodeResolver returns a new NodeResolver instance for node address management and resolving.
 func NewNodeResolver() NodeResolver {
 	return &nodeResolver{}
-}
-
-// AddNode adds the node address into the NodeManger if possible.
-func AddNode(manager NodeManager, nodeID uint64, addr string, heartbeat int, replicate int) {
-	if manager != nil {
-		log.LogInfof("add node %d %s\n", nodeID, addr)
-		manager.AddNode(nodeID, addr)
-	}
-}
-
-// DeleteNode deletes the node address from the NodeManager if possible.
-func DeleteNode(manager NodeManager, nodeID uint64) {
-	if manager != nil {
-		manager.DeleteNode(nodeID)
-	}
 }

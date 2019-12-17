@@ -34,13 +34,13 @@ func newConfig() *Config {
 }
 
 // LoadConfigFile loads config information from a JSON file.
-func LoadConfigFile(filename string) *Config {
+func LoadConfigFile(filename string) (*Config, error) {
 	result := newConfig()
 	err := result.parse(filename)
 	if err != nil {
-		log.Fatalf("error loading config file %s: %s", filename, err)
+		log.Printf("error loading config file %s: %s", filename, err)
 	}
-	return result
+	return result, err
 }
 
 // LoadConfigString loads config information from a JSON string.

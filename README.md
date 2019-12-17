@@ -10,32 +10,31 @@
 
 <img src="https://user-images.githubusercontent.com/47099843/55525970-bf53d880-56c5-11e9-8c28-55d208859824.png" width="400" height="293" />
 
-
 ## Overview
 
-ChubaoFS (储宝文件系统 in Chinese) is a distributed filesystem (and object storage as well) for cloud native applications. It has the following features:
+ChubaoFS (储宝文件系统 in Chinese) is a distributed file system and object storage service for cloud native applications. 
 
-* scale-out metadata management
+It has the following key features:
 
-* strong replication consistency for both append and random write
+- scale-out metadata management
 
-* specific storage optimizations for large and small files
+- strong replication consistency for both append and random write
 
-* multi-tenancy
+- specific storage optimizations for large and small files
 
-* POSIX-compatible & mountable
+- multi-tenancy
 
-* S3-like object storage interface
+- POSIX-compatible & mountable
 
-In particular, ChubaoFS can be used to decouple computing from storage for online applications, database or data processing services and machine learning jobs orchestrated by Kubernetes. 
+- S3-like object storage interface
 
+In particular, ChubaoFS can be used to decouple computing from storage for online applications, database or data processing services and machine learning jobs orchestrated by Kubernetes.
 
 ## Document
 
 https://chubaofs.readthedocs.io/en/latest/
 
 https://chubaofs.readthedocs.io/zh_CN/latest/
-
 
 ## Build
 
@@ -49,12 +48,11 @@ $ make
 
 If the build is successful, `cfs-server` and `cfs-client` will be found in directory `build/bin`
 
-
 ## Docker
 
 Under the docker directory, a helper tool called run_docker.sh is provided to run ChubaoFS with docker-compose.
 
-To start a minimal ChubaoFS cluster from scratch, note that **/data/disk** is arbitrary, and make sure there are at least 30G available space.
+To start a minimal ChubaoFS cluster from scratch, note that **/data/disk** is arbitrary, and make sure there are at least 10G available space.
 
 ```
 $ docker/run_docker.sh -r -d /data/disk
@@ -83,28 +81,26 @@ For more usage:
 $ docker/run_docker.sh -h
 ```
 
-
 ## License
+
+ChubaoFS is currently a [CNCF Sandbox Project](https://www.cncf.io/sandbox-projects/)
+
 
 Licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
 For detail see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs?ref=badge_large)
 
-
 ## Reference
 
-Reference to cite when you use the system in a research paper or tech report: 
+Reference to cite when you use the system in a research paper or tech report:
 
 Haifeng Liu, et al., CFS: A Distributed File System for Large Scale Container Platforms. SIGMOD‘19, June 30-July 5, 2019, Amsterdam, Netherlands. https://dl.acm.org/citation.cfm?doid=3299869.3314046
 
 arXiv: https://arxiv.org/abs/1911.03001
 
-
 ## Community
 
-* Twitter: [@ChubaoFS](https://twitter.com/ChubaoFS)
-* Mailing list: chubaofs-maintainers@groups.io 
-* Slack: [chubaofs.slack.com](https://chubaofs.slack.com/)
-
-
+- Twitter: [@ChubaoFS](https://twitter.com/ChubaoFS)
+- Mailing list: should use chubaofs-users@groups.io
+- Slack: [chubaofs.slack.com](https://chubaofs.slack.com/)

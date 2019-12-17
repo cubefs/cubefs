@@ -47,6 +47,10 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 		msg := fmt.Sprintf("action[extractStatus],partitionID:%v  replicaNum:%v  liveReplicas:%v   Status:%v  RocksDBHost:%v ",
 			partition.PartitionID, partition.ReplicaNum, len(liveReplicas), partition.Status, partition.Hosts)
 		log.LogInfo(msg)
+		if time.Now().Unix()-partition.lastWarnTime > intervalToWarnDataPartition {
+			Warn(clusterName, msg)
+			partition.lastWarnTime = time.Now().Unix()
+		}
 	}
 }
 
@@ -94,8 +98,7 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 			msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] paritionID:%v  on Node:%v  "+
 				"miss time > %v  lastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v So Migrate by manual",
 				clusterID, partition.PartitionID, replica.Addr, dataPartitionMissSec, replica.ReportTime, lastReportTime, isActive)
-			Warn(clusterID, msg)
-			msg = fmt.Sprintf("decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, replica.Addr)
+			msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, replica.Addr)
 			Warn(clusterID, msg)
 		}
 	}
@@ -104,8 +107,7 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 		if partition.hasMissingDataPartition(addr) == true && partition.needToAlarmMissingDataPartition(addr, dataPartitionWarnInterval) {
 			msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] partitionID:%v  on Node:%v  "+
 				"miss time  > :%v  but server not exsit So Migrate", clusterID, partition.PartitionID, addr, dataPartitionMissSec)
-			Warn(clusterID, msg)
-			msg = fmt.Sprintf("decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, addr)
+			msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, addr)
 			Warn(clusterID, msg)
 		}
 	}
@@ -157,8 +159,7 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) (di
 	for _, diskAddr := range diskErrorAddrs {
 		msg := fmt.Sprintf("action[%v],clusterID[%v],partitionID:%v  On :%v  Disk Error,So Remove it From RocksDBHost",
 			checkDataPartitionDiskErr, clusterID, partition.PartitionID, diskAddr)
-		Warn(clusterID, msg)
-		msg = fmt.Sprintf("decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, diskAddr)
+		msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, diskAddr)
 		Warn(clusterID, msg)
 	}
 

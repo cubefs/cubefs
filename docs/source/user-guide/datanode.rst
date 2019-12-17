@@ -19,7 +19,7 @@ Configurations
 
    "role", "string", "Role of process and must be set to *datanode*", "Yes"
    "port", "string", "Port of TCP network to be listen", "Yes"
-   "localIP", "string", "IP of network to be choose", "No"
+   "localIP", "string", "IP of network to be choose", "No,If not specified, the ip address used to communicate with the master is used."
    "prof", "string", "Port of HTTP based prof and api service", "Yes"
    "logDir", "string", "Path for log file storage", "Yes"
    "logLevel", "string", "Level operation for logging. Default is *error*", "No"
@@ -42,6 +42,7 @@ Configurations
        "role": "datanode",
        "port": "6000",
        "prof": "6001",
+       "localIP":"192.168.31.174",
        "logDir": "/export/Logs/datanode",
        "logLevel": "info",
        "raftHeartbeat": "9095",
@@ -50,9 +51,9 @@ Configurations
        "consulAddr": "http://consul.prometheus-cfs.local",
        "exporterPort": 9512,    
        "masterAddr": [
-           "10.196.30.200:80",
-           "10.196.31.141:80",
-           "10.196.31.173:80"
+            "192.168.31.173:80",
+            "192.168.31.141:80",
+            "192.168.30.200:80"
        ],
         "disks": [
            "/data0:21474836480",

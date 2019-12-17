@@ -14,9 +14,7 @@
 
 package proto
 
-import (
-	"github.com/chubaofs/chubaofs/util/errors"
-)
+import "github.com/chubaofs/chubaofs/util/errors"
 
 //err
 var (
@@ -49,7 +47,7 @@ var (
 
 	ErrCannotBeOffLine                 = errors.New("cannot take the data replica offline")
 	ErrNoDataNodeToCreateDataPartition = errors.New("no enough data nodes for creating a data partition")
-	ErrNoRackToCreateDataPartition     = errors.New("no rack available for creating a data partition")
+	ErrNoCellToCreateDataPartition     = errors.New("no cell available for creating a data partition")
 	ErrNoNodeSetToCreateDataPartition  = errors.New("no node set available for creating a data partition")
 	ErrNoNodeSetToCreateMetaPartition  = errors.New("no node set available for creating a meta partition")
 	ErrNoMetaNodeToCreateMetaPartition = errors.New("no enough meta nodes for creating a meta partition")
@@ -57,6 +55,13 @@ var (
 	ErrNoEnoughReplica                 = errors.New("no enough replicas")
 	ErrNoLeader                        = errors.New("no leader")
 	ErrVolAuthKeyNotMatch              = errors.New("client and server auth key do not match")
+	ErrAuthKeyStoreError               = errors.New("auth keystore error")
+	ErrAuthAPIAccessGenRespError       = errors.New("auth API access response error")
+	ErrKeyNotExists                    = errors.New("key not exists")
+	ErrDuplicateKey                    = errors.New("duplicate key")
+	ErrInvalidTicket                   = errors.New("invalid ticket")
+	ErrExpiredTicket                   = errors.New("expired ticket")
+	ErrMasterAPIGenRespError           = errors.New("master API generate response error")
 )
 
 // http response error code and error message definitions
@@ -86,7 +91,7 @@ const (
 	ErrCodeNoMetaNodeToWrite
 	ErrCodeCannotBeOffLine
 	ErrCodeNoDataNodeToCreateDataPartition
-	ErrCodeNoRackToCreateDataPartition
+	ErrCodeNoCellToCreateDataPartition
 	ErrCodeNoNodeSetToCreateDataPartition
 	ErrCodeNoNodeSetToCreateMetaPartition
 	ErrCodeNoMetaNodeToCreateMetaPartition
@@ -94,6 +99,13 @@ const (
 	ErrCodeNoEnoughReplica
 	ErrCodeNoLeader
 	ErrCodeVolAuthKeyNotMatch
+	ErrCodeAuthKeyStoreError
+	ErrCodeAuthAPIAccessGenRespError
+	ErrCodeAuthRaftNodeGenRespError
+	ErrCodeAuthReqRedirectError
+	ErrCodeInvalidTicket
+	ErrCodeExpiredTicket
+	ErrCodeMasterAPIGenRespError
 )
 
 // Err2CodeMap error map to code
@@ -123,7 +135,7 @@ var Err2CodeMap = map[error]int32{
 	ErrNoMetaNodeToWrite:               ErrCodeNoMetaNodeToWrite,
 	ErrCannotBeOffLine:                 ErrCodeCannotBeOffLine,
 	ErrNoDataNodeToCreateDataPartition: ErrCodeNoDataNodeToCreateDataPartition,
-	ErrNoRackToCreateDataPartition:     ErrCodeNoRackToCreateDataPartition,
+	ErrNoCellToCreateDataPartition:     ErrCodeNoCellToCreateDataPartition,
 	ErrNoNodeSetToCreateDataPartition:  ErrCodeNoNodeSetToCreateDataPartition,
 	ErrNoNodeSetToCreateMetaPartition:  ErrCodeNoNodeSetToCreateMetaPartition,
 	ErrNoMetaNodeToCreateMetaPartition: ErrCodeNoMetaNodeToCreateMetaPartition,
@@ -131,4 +143,9 @@ var Err2CodeMap = map[error]int32{
 	ErrNoEnoughReplica:                 ErrCodeNoEnoughReplica,
 	ErrNoLeader:                        ErrCodeNoLeader,
 	ErrVolAuthKeyNotMatch:              ErrCodeVolAuthKeyNotMatch,
+	ErrAuthKeyStoreError:               ErrCodeAuthKeyStoreError,
+	ErrAuthAPIAccessGenRespError:       ErrCodeAuthAPIAccessGenRespError,
+	ErrInvalidTicket:                   ErrCodeInvalidTicket,
+	ErrExpiredTicket:                   ErrCodeExpiredTicket,
+	ErrMasterAPIGenRespError:           ErrCodeMasterAPIGenRespError,
 }

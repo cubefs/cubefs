@@ -28,14 +28,14 @@ import (
 
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
-	PartitionID             uint64
-	LastLoadedTime          int64
-	ReplicaNum              uint8
-	Status                  int8
-	isRecover               bool
-	Replicas                []*DataReplica
-	Hosts                   []string // host addresses
-	Peers                   []proto.Peer
+	PartitionID    uint64
+	LastLoadedTime int64
+	ReplicaNum     uint8
+	Status         int8
+	isRecover      bool
+	Replicas       []*DataReplica
+	Hosts          []string // host addresses
+	Peers          []proto.Peer
 	sync.RWMutex
 	total                   uint64
 	used                    uint64
@@ -44,6 +44,7 @@ type DataPartition struct {
 	VolID                   uint64
 	modifyTime              int64
 	createTime              int64
+	lastWarnTime            int64
 	FileInCoreMap           map[string]*FileInCore
 	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
 }
@@ -64,7 +65,14 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64)
 	partition.VolID = volID
 	partition.modifyTime = time.Now().Unix()
 	partition.createTime = time.Now().Unix()
+	partition.lastWarnTime = time.Now().Unix()
 	return
+}
+
+func (partition *DataPartition) resetFilesWithMissingReplica() {
+	partition.Lock()
+	defer partition.Unlock()
+	partition.FilesWithMissingReplica = make(map[string]int64)
 }
 
 func (partition *DataPartition) addReplica(replica *DataReplica) {
@@ -74,6 +82,40 @@ func (partition *DataPartition) addReplica(replica *DataReplica) {
 		}
 	}
 	partition.Replicas = append(partition.Replicas, replica)
+}
+
+func (partition *DataPartition) tryToChangeLeader(c *Cluster, dataNode *DataNode) (err error) {
+	task, err := partition.createTaskToTryToChangeLeader(dataNode.Addr)
+	if err != nil {
+		return
+	}
+	if _, err = dataNode.TaskManager.syncSendAdminTask(task); err != nil {
+		return
+	}
+	return
+}
+
+func (partition *DataPartition) createTaskToTryToChangeLeader(addr string) (task *proto.AdminTask, err error) {
+	task = proto.NewAdminTask(proto.OpDataPartitionTryToLeader, addr, nil)
+	partition.resetTaskID(task)
+	return
+}
+
+func (partition *DataPartition) createTaskToAddRaftMember(addPeer proto.Peer, leaderAddr string) (task *proto.AdminTask, err error) {
+	task = proto.NewAdminTask(proto.OpAddDataPartitionRaftMember, leaderAddr, newAddDataPartitionRaftMemberRequest(partition.PartitionID, addPeer))
+	partition.resetTaskID(task)
+	return
+}
+
+func (partition *DataPartition) createTaskToRemoveRaftMember(removePeer proto.Peer) (task *proto.AdminTask, err error) {
+	leaderAddr := partition.getLeaderAddr()
+	if leaderAddr == "" {
+		err = proto.ErrNoLeader
+		return
+	}
+	task = proto.NewAdminTask(proto.OpRemoveDataPartitionRaftMember, leaderAddr, newRemoveDataPartitionRaftMemberRequest(partition.PartitionID, removePeer))
+	partition.resetTaskID(task)
+	return
 }
 
 func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64, peers []proto.Peer, hosts []string, createType int) (task *proto.AdminTask) {
@@ -90,19 +132,9 @@ func (partition *DataPartition) createTaskToDeleteDataPartition(addr string) (ta
 	return
 }
 
-func (partition *DataPartition) createTaskToDecommissionDataPartition(removePeer proto.Peer, addPeer proto.Peer) (task *proto.AdminTask, err error) {
-	leaderAddr := partition.getLeaderAddr()
-	if leaderAddr == "" {
-		err = proto.ErrNoLeader
-		return
-	}
-	task = proto.NewAdminTask(proto.OpDecommissionDataPartition, leaderAddr, newOfflineDataPartitionRequest(partition.PartitionID, removePeer, addPeer))
-	partition.resetTaskID(task)
-	return
-}
-
 func (partition *DataPartition) resetTaskID(t *proto.AdminTask) {
 	t.ID = fmt.Sprintf("%v_DataPartitionID[%v]", t.ID, partition.PartitionID)
+	t.PartitionID = partition.PartitionID
 }
 
 // Check if there is a replica missing or not.
@@ -134,20 +166,6 @@ func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 		log.LogError(msg)
 		err = fmt.Errorf(msg)
 	}
-
-	return
-}
-
-func (partition *DataPartition) logDecommissionedDataPartition(addr string) (msg string) {
-	msg = fmt.Sprintf("action[logDecommissionedDataPartition],data partition:%v  offlineaddr:%v  ",
-		partition.PartitionID, addr)
-	replicas := partition.availableDataReplicas()
-	for i := 0; i < len(replicas); i++ {
-		replica := replicas[i]
-		msg += fmt.Sprintf(" addr:%v  dataReplicaStatus:%v  FileCount :%v ", replica.Addr,
-			replica.Status, replica.FileCount)
-	}
-	log.LogWarn(msg)
 
 	return
 }
@@ -251,6 +269,17 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 }
 
 func (partition *DataPartition) getLeaderAddr() (leaderAddr string) {
+	for _, replica := range partition.Replicas {
+		if replica.IsLeader {
+			return replica.Addr
+		}
+	}
+	return
+}
+
+func (partition *DataPartition) getLeaderAddrWithLock() (leaderAddr string) {
+	partition.RLock()
+	defer partition.RUnlock()
 	for _, replica := range partition.Replicas {
 		if replica.IsLeader {
 			return replica.Addr
@@ -452,7 +481,7 @@ func (partition *DataPartition) getReplicaIndex(addr string) (index int, err err
 	return -1, errors.Trace(dataReplicaNotFound(addr), "%v not found ", addr)
 }
 
-func (partition *DataPartition) updateForOffline(offlineAddr, newAddr, volName string, newPeers []proto.Peer, newHosts []string, c *Cluster) (err error) {
+func (partition *DataPartition) update(action, volName string, newPeers []proto.Peer, newHosts []string, c *Cluster) (err error) {
 	orgHosts := make([]string, len(partition.Hosts))
 	copy(orgHosts, partition.Hosts)
 	oldPeers := make([]proto.Peer, len(partition.Peers))
@@ -462,11 +491,11 @@ func (partition *DataPartition) updateForOffline(offlineAddr, newAddr, volName s
 	if err = c.syncUpdateDataPartition(partition); err != nil {
 		partition.Hosts = orgHosts
 		partition.Peers = oldPeers
-		return errors.Trace(err, "update partition[%v] failed", partition.PartitionID)
+		return errors.Trace(err, "action[%v] update partition[%v] vol[%v] failed", action, partition.PartitionID, volName)
 	}
-	msg := fmt.Sprintf("action[updateForOffline]  partitionID:%v offlineAddr:%v newAddr:%v"+
+	msg := fmt.Sprintf("action[%v] success,vol[%v] partitionID:%v "+
 		"oldHosts:%v newHosts:%v,oldPees[%v],newPeers[%v]",
-		partition.PartitionID, offlineAddr, newAddr, orgHosts, partition.Hosts, oldPeers, partition.Peers)
+		action, volName, partition.PartitionID, orgHosts, partition.Hosts, oldPeers, partition.Peers)
 	log.LogInfo(msg)
 	return
 }
@@ -605,33 +634,15 @@ func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host st
 }
 
 func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) (err error) {
-	partition.Lock()
-	defer partition.Unlock()
-	replica, err := partition.getReplica(host)
-	if err != nil {
+	if err = c.removeDataReplica(partition, host, false); err != nil {
 		return
 	}
-	removePeer := proto.Peer{ID: replica.dataNode.ID, Addr: host}
-	if err = c.syncDecommissionDataPartition(partition, host, removePeer, proto.Peer{}); err != nil {
-		return
-	}
+	partition.RLock()
+	defer partition.RUnlock()
 	oldReplicaNum := partition.ReplicaNum
-	oldHosts := partition.Hosts
-	oldPeers := partition.Peers
 	partition.ReplicaNum = partition.ReplicaNum - 1
-	partition.Hosts = partition.Hosts[:partition.ReplicaNum]
-	curPeers := make([]proto.Peer, 0, partition.ReplicaNum)
-	for _, peer := range partition.Peers {
-		if peer.Addr == host {
-			continue
-		}
-		curPeers = append(curPeers, peer)
-	}
-	partition.Peers = curPeers
 	if err = c.syncUpdateDataPartition(partition); err != nil {
 		partition.ReplicaNum = oldReplicaNum
-		partition.Hosts = oldHosts
-		partition.Peers = oldPeers
 	}
 	return
 }

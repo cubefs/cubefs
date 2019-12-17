@@ -16,14 +16,14 @@ package stream
 
 import (
 	"fmt"
+	"golang.org/x/time/rate"
 	"runtime"
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/errors"
-
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 )
@@ -35,6 +35,12 @@ type TruncateFunc func(inode, size uint64) error
 const (
 	MaxMountRetryLimit = 5
 	MountRetryInterval = time.Second * 5
+
+	defaultReadLimitRate  = rate.Inf
+	defaultReadLimitBurst = 128
+
+	defaultWriteLimitRate  = rate.Inf
+	defaultWriteLimitBurst = 128
 )
 
 var (
@@ -49,15 +55,20 @@ var (
 
 // ExtentClient defines the struct of the extent client.
 type ExtentClient struct {
-	streamers       map[uint64]*Streamer
-	streamerLock    sync.Mutex
+	streamers    map[uint64]*Streamer
+	streamerLock sync.Mutex
+
+	readLimiter  *rate.Limiter
+	writeLimiter *rate.Limiter
+
 	appendExtentKey AppendExtentKeyFunc
 	getExtents      GetExtentsFunc
 	truncate        TruncateFunc
+	followerRead    bool
 }
 
 // NewExtentClient returns a new extent client.
-func NewExtentClient(volname, master string, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc, truncate TruncateFunc) (client *ExtentClient, err error) {
+func NewExtentClient(volname, master string, readRate, writeRate int64, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc, truncate TruncateFunc) (client *ExtentClient, err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	client = new(ExtentClient)
 
@@ -78,6 +89,7 @@ retry:
 	client.appendExtentKey = appendExtentKey
 	client.getExtents = getExtents
 	client.truncate = truncate
+	client.followerRead = gDataWrapper.FollowerRead()
 
 	// Init request pools
 	openRequestPool = &sync.Pool{New: func() interface{} {
@@ -98,6 +110,21 @@ retry:
 	evictRequestPool = &sync.Pool{New: func() interface{} {
 		return &EvictRequest{}
 	}}
+
+	var readLimit, writeLimit rate.Limit
+	if readRate <= 0 {
+		readLimit = defaultReadLimitRate
+	} else {
+		readLimit = rate.Limit(readRate)
+	}
+	if writeRate <= 0 {
+		writeLimit = defaultWriteLimitRate
+	} else {
+		writeLimit = rate.Limit(writeRate)
+	}
+
+	client.readLimiter = rate.NewLimiter(readLimit, defaultReadLimitBurst)
+	client.writeLimiter = rate.NewLimiter(writeLimit, defaultWriteLimitBurst)
 
 	return
 }
@@ -249,4 +276,33 @@ func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 		return nil
 	}
 	return s
+}
+
+func (client *ExtentClient) GetRate() string {
+	return fmt.Sprintf("read: %v\nwrite: %v\n", getRate(client.readLimiter), getRate(client.writeLimiter))
+}
+
+func getRate(lim *rate.Limiter) string {
+	val := int(lim.Limit())
+	if val > 0 {
+		return fmt.Sprintf("%v", val)
+	}
+	return "unlimited"
+}
+
+func (client *ExtentClient) SetReadRate(val int) string {
+	return setRate(client.readLimiter, val)
+}
+
+func (client *ExtentClient) SetWriteRate(val int) string {
+	return setRate(client.writeLimiter, val)
+}
+
+func setRate(lim *rate.Limiter, val int) string {
+	if val > 0 {
+		lim.SetLimit(rate.Limit(val))
+		return fmt.Sprintf("%v", val)
+	}
+	lim.SetLimit(rate.Inf)
+	return "unlimited"
 }

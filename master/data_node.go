@@ -29,7 +29,7 @@ type DataNode struct {
 	Used           uint64 `json:"UsedWeight"`
 	AvailableSpace uint64
 	ID             uint64
-	RackName       string `json:"Rack"`
+	CellName       string `json:"Cell"`
 	Addr           string
 	ReportTime     time.Time
 	isActive       bool
@@ -42,6 +42,7 @@ type DataNode struct {
 	DataPartitionCount        uint32
 	NodeSetID                 uint64
 	PersistenceDataPartitions []uint64
+	BadDisks                  []string
 }
 
 func newDataNode(addr, clusterID string) (dataNode *DataNode) {
@@ -82,9 +83,10 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	dataNode.Total = resp.Total
 	dataNode.Used = resp.Used
 	dataNode.AvailableSpace = resp.Available
-	dataNode.RackName = resp.RackName
+	dataNode.CellName = resp.CellName
 	dataNode.DataPartitionCount = resp.CreatedPartitionCnt
 	dataNode.DataPartitionReports = resp.PartitionReports
+	dataNode.BadDisks = resp.BadDisks
 	if dataNode.Total == 0 {
 		dataNode.UsageRatio = 0.0
 	} else {

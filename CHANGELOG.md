@@ -1,3 +1,50 @@
+## Release v1.4.0 - 2019/11/13
+
+
+### Feature
+* datanode : support read from follower and if packet is tinyExtent,then do write it once https://github.com/chubaofs/chubaofs/commit/c03e9f6ae70d31c6457612614b9236f686924602
+* vol add followerRead field to support reading data from foll owner https://github.com/chubaofs/chubaofs/commit/7e19af029acadd5b17563c1754833fd289d21fb5
+* support read from raft follower instead of just leader  https://github.com/chubaofs/chubaofs/commit/c03a7bcf15c135629946cd8a1e293787cc3abfa4
+* support to modify whether vol supports reading data from a replica https://github.com/chubaofs/chubaofs/commit/99d8bafca4b5a70b4857436c3d9c6dcd388c850c
+* introduce read and write iops rate limit https://github.com/chubaofs/chubaofs/commit/66205b324ab9d545a8546757d78ac1b9fd62c4a4
+* add metrics https://github.com/chubaofs/chubaofs/commit/929785698d07232729074eca01f636d699e94fde
+
+### Enhancement
+* if vol has been marked deleted,data partitions, meta partition information reported by heartbeat will no longer be accepted https://github.com/chubaofs/chubaofs/commit/4e573923f5e5d160b38ca6e4a13d724f45df7f93
+* use static ip for meta and data nodes https://github.com/chubaofs/chubaofs/commit/7078944218268571ea00b43deae4ac930301d0b9
+* improve debug environment using docker https://github.com/chubaofs/chubaofs/commit/a62899782dfa00da7773d9d2156b596d8cde6bc6
+* support custom meta node reserved memory https://github.com/chubaofs/chubaofs/commit/a2b699fc8fdda77a6f6f8d0b4ee299beb9478f11
+* data partition and meta partition must have three replicas except reducing replicas to 2 https://github.com/chubaofs/chubaofs/commit/be2d5f54b95f2ab9566d8a172f9ca151a411f5c0
+* adjust demo config parameters https://github.com/chubaofs/chubaofs/commit/6ccdd06d691ab53f55ab4514e4f1c15f75525525
+*  update grafana dashbord for disk error metric https://github.com/chubaofs/chubaofs/commit/f8760cb99c2d44de977bf83c956ec9c74b3e6877
+
+### Bugfix
+* OpFollowerRead if read eof,return error https://github.com/chubaofs/chubaofs/commit/3a28ee72df08a37461c927ec4f8e3baf3608112f
+* get follower read option in init https://github.com/chubaofs/chubaofs/commit/d695718a332a580652a5397512abfd1f64c714fe
+* stream traverse process never gets triggered in some situation https://github.com/chubaofs/chubaofs/commit/09de5abea9b675d142035000bbe67482016a42dd
+* check LoadConfigFile before starting daemon https://github.com/chubaofs/chubaofs/commit/938c1075a327ac903ce33770f07b52f0ac6c415d
+* return error from function LoadConfigFile to the caller https://github.com/chubaofs/chubaofs/commit/c8b46cc021550345af3ad0285be92ce81303992d
+* extentStorage engine :autoComputeCrc compute crc error https://github.com/chubaofs/chubaofs/commit/1b0305425e7cde77c3a2ccd6dd937cfc3afc928e
+* clean up async delete process of metanode https://github.com/chubaofs/chubaofs/commit/7d8382577456e17718a3b235a58a2bbb84d99a84
+* set default port to non-system reserved port  https://github.com/chubaofs/chubaofs/commit/506fac1f803912353dcacd658999166f63b6882d
+
+### Refacoring
+* leader change not warning on raft https://github.com/chubaofs/chubaofs/commit/4ea5b2510f4845c36a9878138e4974ffd69bb7ad
+* remove go module files for now https://github.com/chubaofs/chubaofs/commit/2c9af0a2d62bfba692e3363fdca4d0616a1dc99d
+* clean up response of get all inodes info https://github.com/chubaofs/chubaofs/commit/bc0d850ff30c964f03cc12d7cb58f8cf7976a891
+* master, datanode and metanode Fix dp or mp offline process https://github.com/chubaofs/chubaofs/commit/ced4b8b92482d910c8ab4494eb829d7af54bf02d
+* delete resverd space on datanode config file https://github.com/chubaofs/chubaofs/commit/1f64bf46a8f0c25d02e12cfd197b66fb0bb70e91
+* use AddNodeWithPort replace AddNode,and delete AddNode API https://github.com/chubaofs/chubaofs/commit/b56c817c9572d1f78b36a85cb5a71ea156eed61b
+* delete resverd space on datanode config file https://github.com/chubaofs/chubaofs/commit/1f64bf46a8f0c25d02e12cfd197b66fb0bb70e91
+* refine labels of the disk error metric https://github.com/chubaofs/chubaofs/commit/c4ee0aea946630d32c25bbc9b9aff7dd788c5314
+* optimize auto compute crc https://github.com/chubaofs/chubaofs/commit/f9d3ba1d4c031c5b3b0f0162833aceb5606fefba
+
+### Document
+* add use cases https://github.com/chubaofs/chubaofs/commit/93a36485f510ceadba2ed819ac1c2f7dafa4a0e2
+
+
+
+
 ## Release v1.3.0 - 2019/09/12
 
 

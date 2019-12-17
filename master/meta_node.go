@@ -27,7 +27,7 @@ type MetaNode struct {
 	Addr               string
 	IsActive           bool
 	Sender             *AdminTaskManager
-	RackName           string `json:"Rack"`
+	CellName           string `json:"Cell"`
 	MaxMemAvailWeight  uint64 `json:"MaxMemAvailWeight"`
 	Total              uint64 `json:"TotalWeight"`
 	Used               uint64 `json:"UsedWeight"`
@@ -73,7 +73,7 @@ func (metaNode *MetaNode) SelectNodeForWrite() {
 func (metaNode *MetaNode) isWritable() (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
-	if metaNode.IsActive && metaNode.MaxMemAvailWeight > defaultMetaNodeReservedMem &&
+	if metaNode.IsActive && metaNode.MaxMemAvailWeight > gConfig.metaNodeReservedMem &&
 		!metaNode.reachesThreshold() && metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode {
 		ok = true
 	}
@@ -107,7 +107,7 @@ func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, th
 		metaNode.Ratio = float64(resp.Used) / float64(resp.Total)
 	}
 	metaNode.MaxMemAvailWeight = resp.Total - resp.Used
-	metaNode.RackName = resp.RackName
+	metaNode.CellName = resp.CellName
 	metaNode.Threshold = threshold
 }
 

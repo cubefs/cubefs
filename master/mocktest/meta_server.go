@@ -109,9 +109,33 @@ func (mms *MockMetaServer) serveConn(rc net.Conn) {
 	case proto.OpDecommissionMetaPartition:
 		err = mms.handleDecommissionMetaPartition(conn, req, adminTask)
 		fmt.Printf("meta node [%v] offline meta partition,err:%v\n", mms.TcpAddr, err)
+	case proto.OpAddMetaPartitionRaftMember:
+		err = mms.handleAddMetaPartitionRaftMember(conn, req, adminTask)
+		fmt.Printf("meta node [%v] add data partition raft member,id[%v],err:%v\n", mms.TcpAddr, adminTask.ID, err)
+	case proto.OpRemoveMetaPartitionRaftMember:
+		err = mms.handleRemoveMetaPartitionRaftMember(conn, req, adminTask)
+		fmt.Printf("meta node [%v] remove data partition raft member,id[%v],err:%v\n", mms.TcpAddr, adminTask.ID, err)
+	case proto.OpMetaPartitionTryToLeader:
+		err = mms.handleTryToLeader(conn, req, adminTask)
+		fmt.Printf("meta node [%v] try to leader,id[%v],err:%v\n", mms.TcpAddr, adminTask.ID, err)
 	default:
 		fmt.Printf("unknown code [%v]\n", req.Opcode)
 	}
+}
+
+func (mms *MockMetaServer) handleAddMetaPartitionRaftMember(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
+	responseAckOKToMaster(conn, p, nil)
+	return
+}
+
+func (mms *MockMetaServer) handleRemoveMetaPartitionRaftMember(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
+	responseAckOKToMaster(conn, p, nil)
+	return
+}
+
+func (mms *MockMetaServer) handleTryToLeader(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
+	responseAckOKToMaster(conn, p, nil)
+	return
 }
 
 func (mms *MockMetaServer) handleCreateMetaPartition(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
@@ -272,8 +296,8 @@ func (mms *MockMetaServer) handleLoadMetaPartition(conn net.Conn, p *proto.Packe
 		PartitionID: req.PartitionID,
 		DoCompare:   true,
 		ApplyID:     100,
-		InodeSign:   123456,
-		DentrySign:  123456,
+		MaxInode:    123456,
+		DentryCount: 123456,
 	}
 	data, err = json.Marshal(resp)
 	if err != nil {

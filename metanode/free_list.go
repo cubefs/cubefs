@@ -20,55 +20,47 @@ import (
 )
 
 type freeList struct {
-	sync.RWMutex
-	list *list.List
+	sync.Mutex
+	list  *list.List
+	index map[uint64]*list.Element
 }
 
 func newFreeList() *freeList {
 	return &freeList{
-		list: list.New(),
+		list:  list.New(),
+		index: make(map[uint64]*list.Element),
 	}
 }
 
 // Pop removes the first item on the list and returns it.
-func (i *freeList) Pop() (ino *Inode) {
-	i.Lock()
-	defer i.Unlock()
-	item := i.list.Front()
+func (fl *freeList) Pop() (ino uint64) {
+	fl.Lock()
+	defer fl.Unlock()
+	item := fl.list.Front()
 	if item == nil {
 		return
 	}
-	val := i.list.Remove(item)
-	ino = val.(*Inode)
+	val := fl.list.Remove(item)
+	ino = val.(uint64)
+	delete(fl.index, ino)
 	return
 }
 
 // Push inserts a new item at the back of the list.
-func (i *freeList) Push(ino *Inode) {
-	i.Lock()
-	defer i.Unlock()
-	i.list.PushBack(ino)
+func (fl *freeList) Push(ino uint64) {
+	fl.Lock()
+	defer fl.Unlock()
+	if _, ok := fl.index[ino]; !ok {
+		item := fl.list.PushBack(ino)
+		fl.index[ino] = item
+	}
 }
 
-// GetFront returns the first item on the list.
-func (i *freeList) GetFront() (ino *Inode) {
-	i.Lock()
-	defer i.Unlock()
-	item := i.list.Front()
-	if item == nil {
-		return
+func (fl *freeList) Remove(ino uint64) {
+	fl.Lock()
+	defer fl.Unlock()
+	if item, ok := fl.index[ino]; ok {
+		fl.list.Remove(item)
+		delete(fl.index, ino)
 	}
-	ino = item.Value.(*Inode)
-	return
-}
-
-// FrontMoveToBack moves the front item to the back of the list.
-func (i *freeList) FrontMoveToBack() {
-	i.Lock()
-	defer i.Unlock()
-	item := i.list.Front()
-	if item == nil {
-		return
-	}
-	i.list.MoveToBack(item)
 }

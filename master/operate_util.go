@@ -56,6 +56,22 @@ func newOfflineDataPartitionRequest(ID uint64, removePeer, addPeer proto.Peer) (
 	return
 }
 
+func newAddDataPartitionRaftMemberRequest(ID uint64, addPeer proto.Peer) (req *proto.AddDataPartitionRaftMemberRequest) {
+	req = &proto.AddDataPartitionRaftMemberRequest{
+		PartitionId: ID,
+		AddPeer:     addPeer,
+	}
+	return
+}
+
+func newRemoveDataPartitionRaftMemberRequest(ID uint64, removePeer proto.Peer) (req *proto.RemoveDataPartitionRaftMemberRequest) {
+	req = &proto.RemoveDataPartitionRaftMemberRequest{
+		PartitionId: ID,
+		RemovePeer:  removePeer,
+	}
+	return
+}
+
 func newLoadDataPartitionMetricRequest(ID uint64) (req *proto.LoadDataPartitionRequest) {
 	req = &proto.LoadDataPartitionRequest{
 		PartitionId: ID,
@@ -177,8 +193,8 @@ func dataReplicaNotFound(addr string) (err error) {
 	return notFoundMsg(fmt.Sprintf("data replica[%v]", addr))
 }
 
-func rackNotFound(name string) (err error) {
-	return notFoundMsg(fmt.Sprintf("rack[%v]", name))
+func cellNotFound(name string) (err error) {
+	return notFoundMsg(fmt.Sprintf("cell[%v]", name))
 }
 
 func dataNodeNotFound(addr string) (err error) {
