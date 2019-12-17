@@ -14,21 +14,24 @@
 
 ChubaoFS (储宝文件系统 in Chinese) is a distributed file system and object storage service for cloud native applications. 
 
-It has the following key features:
+Some of the key features include:
 
-- scale-out metadata management
+- Scale-out metadata management
 
-- strong replication consistency for both append and random write
+- Strong replication consistency for both append and random write
 
-- specific storage optimizations for large and small files
+- Specific storage optimizations for large and small files
 
-- multi-tenancy
+- Multi-tenancy
 
 - POSIX-compatible & mountable
 
 - S3-like object storage interface
 
-In particular, ChubaoFS can be used to decouple computing from storage for online applications, database or data processing services and machine learning jobs orchestrated by Kubernetes.
+ChubaoFS is production ready. It has been commonly used as the underlying storage platform for online applications, database or data processing services and machine learning jobs orchestrated by Kubernetes. 
+By separating storage from compute, one can scale up or down based on the workload and independent of the other, providing total flexibility in matching resources to the actual storage and compute capacity required at any given time.
+
+ChubaoFS is currently a [CNCF Sandbox Project](https://www.cncf.io/sandbox-projects/).
 
 ## Document
 
@@ -38,7 +41,6 @@ https://chubaofs.readthedocs.io/zh_CN/latest/
 
 ## Build
 
-Build latest version of chubaofs is simply as following:
 
 ```
 $ git clone http://github.com/chubaofs/chubaofs.git
@@ -46,27 +48,30 @@ $ cd chubaofs
 $ make
 ```
 
-If the build is successful, `cfs-server` and `cfs-client` will be found in directory `build/bin`
+If the build succeeds, `cfs-server` and `cfs-client` can be found in `build/bin`
 
 ## Docker
 
-Under the docker directory, a helper tool called run_docker.sh is provided to run ChubaoFS with docker-compose.
+A helper tool called `run_docker.sh` (under the `docker` directory) has been provided to run ChubaoFS with [docker-compose](https://docs.docker.com/compose/).
 
-To start a minimal ChubaoFS cluster from scratch, note that **/data/disk** is arbitrary, and make sure there are at least 10G available space.
 
 ```
 $ docker/run_docker.sh -r -d /data/disk
 ```
 
-If client starts successfully, use `mount` command in client docker shell to check mount status:
+Note that **/data/disk** can be any directory but please make sure it has at least 10G available space. 
+
+
+To check the mount status, use the `mount` command in the client docker shell:
 
 ```
 $ mount | grep chubaofs
 ```
 
-Open http://127.0.0.1:3000 in browser, login with `admin/123456` to view grafana monitor metrics.
 
-Or run server and client seperately by following commands:
+To view grafana monitor metrics, open http://127.0.0.1:3000 in browser and login with `admin/123456`.
+ 
+To run server and client separately, use the following commands:
 
 ```
 $ docker/run_docker.sh -b
@@ -83,21 +88,16 @@ $ docker/run_docker.sh -h
 
 ## License
 
-ChubaoFS is currently a [CNCF Sandbox Project](https://www.cncf.io/sandbox-projects/)
-
-
-Licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
+ChubaoFS is licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
 For detail see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs?ref=badge_large)
 
 ## Reference
 
-Reference to cite when you use the system in a research paper or tech report:
+Haifeng Liu, et al., CFS: A Distributed File System for Large Scale Container Platforms. SIGMOD‘19, June 30-July 5, 2019, Amsterdam, Netherlands. 
 
-Haifeng Liu, et al., CFS: A Distributed File System for Large Scale Container Platforms. SIGMOD‘19, June 30-July 5, 2019, Amsterdam, Netherlands. https://dl.acm.org/citation.cfm?doid=3299869.3314046
-
-arXiv: https://arxiv.org/abs/1911.03001
+For more information, please refer to https://dl.acm.org/citation.cfm?doid=3299869.3314046 and https://arxiv.org/abs/1911.03001
 
 ## Community
 
