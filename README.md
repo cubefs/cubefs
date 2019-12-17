@@ -83,6 +83,9 @@ $ docker/run_docker.sh -h
 
 ## License
 
+ChubaoFS is currently a [CNCF Sandbox Project](https://www.cncf.io/sandbox-projects/)
+
+
 Licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
 For detail see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
