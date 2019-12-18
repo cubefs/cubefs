@@ -35,6 +35,15 @@ const (
 	HTTPS          = "https://"
 )
 
+const (
+	ID         = "id"
+	Role       = "role"
+	Caps       = "caps"
+	AccessKey  = "access_key"
+	AuthKey    = "auth_key"
+	SessionKey = "session_key"
+)
+
 var action2PathMap = map[string]string{
 	GetTicket:      proto.ClientGetTicket,
 	CreateKey:      proto.AdminCreateKey,
@@ -187,12 +196,12 @@ func getTicket() {
 	if err1 != nil {
 		panic(err1)
 	}
-	key, err2 := cryptoutil.Base64Decode(cfg.GetString("auth_key"))
+	key, err2 := cryptoutil.Base64Decode(cfg.GetString(AuthKey))
 	if err2 != nil {
 		panic(err2)
 	}
 	keyring := keyRing{
-		ID:  cfg.GetString("id"),
+		ID:  cfg.GetString(ID),
 		Key: key,
 	}
 
@@ -228,6 +237,12 @@ func accessAuthServer() {
 		msg = proto.MsgAuthAddRaftNodeReq
 	case RemoveRaftNode:
 		msg = proto.MsgAuthRemoveRaftNodeReq
+	case OSAddCaps:
+		msg = proto.MsgAuthOSAddCapsReq
+	case OSDeleteCaps:
+		msg = proto.MsgAuthOSDeleteCapsReq
+	case OSGetCaps:
+		msg = proto.MsgAuthOSGetCapsReq
 	default:
 		panic(fmt.Errorf("wrong requst [%s]", flaginfo.api.request))
 	}
@@ -239,11 +254,11 @@ func accessAuthServer() {
 
 	apiReq := &proto.APIAccessReq{
 		Type:      msg,
-		ClientID:  ticketCFG.GetString("id"),
+		ClientID:  ticketCFG.GetString(ID),
 		ServiceID: proto.AuthServiceID,
 	}
 
-	if sessionKey, err = cryptoutil.Base64Decode(ticketCFG.GetString("session_key")); err != nil {
+	if sessionKey, err = cryptoutil.Base64Decode(ticketCFG.GetString(SessionKey)); err != nil {
 		panic(err)
 	}
 
@@ -262,39 +277,28 @@ func accessAuthServer() {
 		message = proto.AuthAPIAccessReq{
 			APIReq: *apiReq,
 			KeyInfo: keystore.KeyInfo{
-				ID:   dataCFG.GetString("id"),
-				Role: dataCFG.GetString("role"),
-				Caps: []byte(dataCFG.GetString("caps")),
+				ID:   dataCFG.GetString(ID),
+				Role: dataCFG.GetString(Role),
+				Caps: []byte(dataCFG.GetString(Caps)),
 			},
 		}
 	case DeleteKey:
-		message = proto.AuthAPIAccessReq{
-			APIReq: *apiReq,
-			KeyInfo: keystore.KeyInfo{
-				ID: dataCFG.GetString("id"),
-			},
-		}
+		fallthrough
 	case GetKey:
 		message = proto.AuthAPIAccessReq{
 			APIReq: *apiReq,
 			KeyInfo: keystore.KeyInfo{
-				ID: dataCFG.GetString("id"),
+				ID: dataCFG.GetString(ID),
 			},
 		}
 	case AddCaps:
-		message = proto.AuthAPIAccessReq{
-			APIReq: *apiReq,
-			KeyInfo: keystore.KeyInfo{
-				ID:   dataCFG.GetString("id"),
-				Caps: []byte(dataCFG.GetString("caps")),
-			},
-		}
+		fallthrough
 	case DeleteCaps:
 		message = proto.AuthAPIAccessReq{
 			APIReq: *apiReq,
 			KeyInfo: keystore.KeyInfo{
-				ID:   dataCFG.GetString("id"),
-				Caps: []byte(dataCFG.GetString("caps")),
+				ID:   dataCFG.GetString(ID),
+				Caps: []byte(dataCFG.GetString(Caps)),
 			},
 		}
 	case AddRaftNode:
@@ -303,8 +307,25 @@ func accessAuthServer() {
 		message = proto.AuthRaftNodeReq{
 			APIReq: *apiReq,
 			RaftNodeInfo: proto.AuthRaftNodeInfo{
-				ID:   uint64(dataCFG.GetInt64("id")),
+				ID:   uint64(dataCFG.GetInt64(ID)),
 				Addr: dataCFG.GetString("addr"),
+			},
+		}
+	case OSAddCaps:
+		fallthrough
+	case OSDeleteCaps:
+		message = proto.AuthOSAccessKeyReq{
+			APIReq: *apiReq,
+			AKCaps: keystore.AccessKeyCaps{
+				AccessKey: dataCFG.GetString(AccessKey),
+				Caps:      []byte(dataCFG.GetString(Caps)),
+			},
+		}
+	case OSGetCaps:
+		message = proto.AuthOSAccessKeyReq{
+			APIReq: *apiReq,
+			AKCaps: keystore.AccessKeyCaps{
+				AccessKey: dataCFG.GetString(AccessKey),
 			},
 		}
 	default:
@@ -340,7 +361,7 @@ func accessAuthServer() {
 			panic(err)
 		}
 
-		if err = proto.VerifyAPIRespComm(&resp.APIResp, msg, ticketCFG.GetString("id"), proto.AuthServiceID, ts); err != nil {
+		if err = proto.VerifyAPIRespComm(&resp.APIResp, msg, ticketCFG.GetString(ID), proto.AuthServiceID, ts); err != nil {
 			panic(err)
 		}
 
@@ -363,11 +384,27 @@ func accessAuthServer() {
 			panic(err)
 		}
 
-		if err = proto.VerifyAPIRespComm(&resp.APIResp, msg, ticketCFG.GetString("id"), proto.AuthServiceID, ts); err != nil {
+		if err = proto.VerifyAPIRespComm(&resp.APIResp, msg, ticketCFG.GetString(ID), proto.AuthServiceID, ts); err != nil {
 			panic(err)
 		}
 
 		fmt.Printf(resp.Msg + "\n")
+	case OSAddCaps:
+		fallthrough
+	case OSDeleteCaps:
+		fallthrough
+	case OSGetCaps:
+		var resp proto.AuthOSAccessKeyResp
+		if resp, err = proto.ParseAuthOSAKResp(body, sessionKey); err != nil {
+			panic(err)
+		}
+		if err = proto.VerifyAPIRespComm(&resp.APIResp, msg, ticketCFG.GetString(ID), proto.AuthServiceID, ts); err != nil {
+			panic(err)
+		}
+		if res, err = resp.AKCaps.DumpJSONStr(); err != nil {
+			panic(err)
+		}
+		fmt.Printf(res + "\n")
 	}
 
 	return

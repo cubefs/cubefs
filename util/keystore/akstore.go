@@ -1,6 +1,7 @@
 package keystore
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/caps"
 	"regexp"
@@ -30,5 +31,21 @@ func (u *AccessKeyCaps) IsValidAK() (err error) {
 		err = fmt.Errorf("invalid AccessKey [%s]", u.AccessKey)
 		return
 	}
+	return
+}
+
+func (u *AccessKeyCaps) DumpJSONStr() (r string, err error) {
+	dumpInfo := struct {
+		AccessKey string `json:"access_key"`
+		Caps      string `json:"caps"`
+	}{
+		u.AccessKey,
+		string(u.Caps),
+	}
+	data, err := json.MarshalIndent(dumpInfo, "", "  ")
+	if err != nil {
+		return
+	}
+	r = string(data)
 	return
 }

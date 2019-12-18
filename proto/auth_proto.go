@@ -419,6 +419,22 @@ func ParseAuthRaftNodeResp(body []byte, key []byte) (resp AuthRaftNodeResp, err 
 	return
 }
 
+func ParseAuthOSAKResp(body []byte, key []byte) (resp AuthOSAccessKeyResp, err error) {
+	var (
+		plaintext []byte
+	)
+
+	if plaintext, err = GetDataFromResp(body, key); err != nil {
+		return
+	}
+
+	if err = json.Unmarshal(plaintext, &resp); err != nil {
+		return
+	}
+
+	return
+}
+
 func ExtractTicket(str string, key []byte) (ticket cryptoutil.Ticket, err error) {
 	var (
 		plaintext []byte
