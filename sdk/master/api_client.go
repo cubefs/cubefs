@@ -69,7 +69,9 @@ func (api *ClientAPI) GetVolumeWithAuthnode(volName string, authKey string, toke
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
 	request.addParam(proto.ClientMessage, token)
-	body, err = api.mc.serveRequest(request)
+	if body, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
 	if decoder != nil {
 		if body, err = decoder.Decode(body); err != nil {
 			return

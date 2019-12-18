@@ -45,7 +45,7 @@ const (
 	capSeparator    = ":"
 	reqLiveLength   = 10
 	ClientMessage   = "Token"
-	OwnerVOLRsc     = "VOL"
+	OwnerVOLRsc     = "OwnerVOL"
 	NoneOwnerVOLRsc = "NoneOwnerVOL"
 	VOLAccess       = "*"
 )
@@ -522,11 +522,15 @@ func CheckAPIAccessCaps(ticket *cryptoutil.Ticket, rscType string, mp MsgType, a
 	return
 }
 
-func CheckVOLAccessCaps(ticket *cryptoutil.Ticket, rscType string, volName string, action string, accessNode string) (err error) {
+func CheckVOLAccessCaps(ticket *cryptoutil.Ticket, volName string, action string, accessNode string) (err error) {
 
 	rule := accessNode + capSeparator + volName + capSeparator + action
 
-	if err = checkTicketCaps(ticket, rscType, rule); err != nil {
+	if err = checkTicketCaps(ticket, OwnerVOLRsc, rule); err != nil {
+		err = fmt.Errorf("checkTicketCaps failed: %s", err.Error())
+		return
+	}
+	if err = checkTicketCaps(ticket, NoneOwnerVOLRsc, rule); err != nil {
 		err = fmt.Errorf("checkTicketCaps failed: %s", err.Error())
 		return
 	}

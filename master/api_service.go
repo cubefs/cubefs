@@ -1596,7 +1596,7 @@ func extractTicketMess(req *proto.APIAccessReq, key []byte, volName string) (tic
 		err = fmt.Errorf("CheckAPIAccessCaps failed: %s", err.Error())
 		return
 	}
-	if err = proto.CheckVOLAccessCaps(&ticket, proto.OwnerVOLRsc, volName, proto.VOLAccess, proto.MasterNode); err != nil {
+	if err = proto.CheckVOLAccessCaps(&ticket, volName, proto.VOLAccess, proto.MasterNode); err != nil {
 		err = fmt.Errorf("CheckVOLAccessCaps failed: %s", err.Error())
 		return
 	}
