@@ -18,7 +18,7 @@ ChubaoFS has been commonly used as the underlying storage system/service for onl
 An advantage of doing so is to separate storage from compute - one can scale up or down based on the workload and independent of the other, providing total flexibility in matching resources to the actual storage and compute capacity required at any given time.
 
 
-Some of the key features of ChubaoFS include:
+Some key features of ChubaoFS include:
 
 - Scale-out metadata management
 
@@ -32,7 +32,6 @@ Some of the key features of ChubaoFS include:
 
 - S3-compatible object storage interface
 
-ChubaoFS is currently a [CNCF Sandbox Project](https://www.cncf.io/sandbox-projects/).
 
 ## Document
 
