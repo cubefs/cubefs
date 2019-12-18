@@ -12,7 +12,7 @@
 
 ## Overview
 
-ChubaoFS (储宝文件系统 in Chinese) is a distributed file system and object storage service for cloud native applications. 
+ChubaoFS (储宝文件系统 in Chinese) is a distributed file system and object storage service for cloud native applications, it is hosted by the [Cloud Native Computing Foundation](https://cncf.io) (CNCF) as a [sandbox](https://www.cncf.io/sandbox-projects/) project.
 
 It has the following key features:
 
