@@ -30,6 +30,7 @@ services:
             - datanode2
             - datanode3
             - datanode4
+            - objectnode1
         networks:
             extnetwork:
 
@@ -225,6 +226,21 @@ services:
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.34
+
+    objectnode1:
+        image: chubaofs/cfs-base:1.0
+        ports:
+            - "80"
+        volumes:
+            - ./bin:/cfs/bin
+            - ./conf/objectnode.json:/cfs/conf/objectnode.json
+            - ./script/start_objectnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.41
 
     client:
         image: chubaofs/cfs-base:1.0

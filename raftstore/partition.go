@@ -63,9 +63,6 @@ type Partition interface {
 	// CommittedIndex returns the current index of the applied raft log in the raft store partition.
 	CommittedIndex() uint64
 
-	// FirstCommittedIndex returns the first committed index of raft log in the raft store partition.
-	FirstCommittedIndex() uint64
-
 	// Truncate raft log
 	Truncate(index uint64)
 
@@ -157,11 +154,6 @@ func (p *partition) AppliedIndex() (applied uint64) {
 func (p *partition) CommittedIndex() (applied uint64) {
 	applied = p.raft.CommittedIndex(p.id)
 	return
-}
-
-// FirstCommittedIndex returns the first committed index of raft log in the raft store partition.
-func (p *partition) FirstCommittedIndex() uint64 {
-	return p.raft.FirstCommittedIndex(p.id)
 }
 
 // Submit submits command data to raft log.

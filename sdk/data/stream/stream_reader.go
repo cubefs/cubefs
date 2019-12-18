@@ -76,7 +76,7 @@ func (s *Streamer) GetExtents() error {
 // GetExtentReader returns the extent reader.
 // TODO: use memory pool
 func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
-	partition, err := gDataWrapper.GetDataPartition(ek.PartitionId)
+	partition, err := s.client.dataWrapper.GetDataPartition(ek.PartitionId)
 	if err != nil {
 		return nil, err
 	}

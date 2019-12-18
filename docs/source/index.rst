@@ -24,6 +24,7 @@ Welcome to ChubaoFS(Chubao File System)
    user-guide/master
    user-guide/metanode
    user-guide/datanode
+   user-guide/objectnode
    user-guide/client
    user-guide/monitor
    user-guide/fuse

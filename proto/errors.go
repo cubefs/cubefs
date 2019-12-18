@@ -59,6 +59,7 @@ var (
 	ErrAuthAPIAccessGenRespError       = errors.New("auth API access response error")
 	ErrKeyNotExists                    = errors.New("key not exists")
 	ErrDuplicateKey                    = errors.New("duplicate key")
+	ErrAccessKeyNotExists              = errors.New("access key not exists")
 	ErrInvalidTicket                   = errors.New("invalid ticket")
 	ErrExpiredTicket                   = errors.New("expired ticket")
 	ErrMasterAPIGenRespError           = errors.New("master API generate response error")
@@ -103,6 +104,7 @@ const (
 	ErrCodeAuthAPIAccessGenRespError
 	ErrCodeAuthRaftNodeGenRespError
 	ErrCodeAuthReqRedirectError
+	ErrCodeAccessKeyNotExists
 	ErrCodeInvalidTicket
 	ErrCodeExpiredTicket
 	ErrCodeMasterAPIGenRespError
@@ -145,6 +147,7 @@ var Err2CodeMap = map[error]int32{
 	ErrVolAuthKeyNotMatch:              ErrCodeVolAuthKeyNotMatch,
 	ErrAuthKeyStoreError:               ErrCodeAuthKeyStoreError,
 	ErrAuthAPIAccessGenRespError:       ErrCodeAuthAPIAccessGenRespError,
+	ErrAccessKeyNotExists:              ErrCodeAccessKeyNotExists,
 	ErrInvalidTicket:                   ErrCodeInvalidTicket,
 	ErrExpiredTicket:                   ErrCodeExpiredTicket,
 	ErrMasterAPIGenRespError:           ErrCodeMasterAPIGenRespError,

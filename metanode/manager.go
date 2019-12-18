@@ -122,6 +122,32 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 		err = m.opMetaPartitionTryToLeader(conn, p, remoteAddr)
 	case proto.OpMetaBatchInodeGet:
 		err = m.opMetaBatchInodeGet(conn, p, remoteAddr)
+	case proto.OpMetaDeleteInode:
+		err = m.opMetaDeleteInode(conn, p, remoteAddr)
+	case proto.OpMetaBatchExtentsAdd:
+		err = m.opMetaBatchExtentsAdd(conn, p, remoteAddr)
+	// operations for extend attributes
+	case proto.OpMetaSetXAttr:
+		err = m.opMetaSetXAttr(conn, p, remoteAddr)
+	case proto.OpMetaGetXAttr:
+		err = m.opMetaGetXAttr(conn, p, remoteAddr)
+	case proto.OpMetaBatchGetXAttr:
+		err = m.opMetaBatchGetXAttr(conn, p, remoteAddr)
+	case proto.OpMetaRemoveXAttr:
+		err = m.opMetaRemoveXAttr(conn, p, remoteAddr)
+	case proto.OpMetaListXAttr:
+		err = m.opMetaListXAttr(conn, p, remoteAddr)
+	// operations for multipart session
+	case proto.OpCreateMultipart:
+		err = m.opCreateMultipart(conn, p, remoteAddr)
+	case proto.OpListMultiparts:
+		err = m.opListMultipart(conn, p, remoteAddr)
+	case proto.OpRemoveMultipart:
+		err = m.opRemoveMultipart(conn, p, remoteAddr)
+	case proto.OpAddMultipartPart:
+		err = m.opAppendMultipart(conn, p, remoteAddr)
+	case proto.OpGetMultipart:
+		err = m.opGetMultipart(conn, p, remoteAddr)
 	default:
 		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
 			p.Opcode, p.GetReqID())

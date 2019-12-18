@@ -15,8 +15,8 @@
 package datanode
 
 import (
-	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/master"
 	"net"
 	"net/http"
 	"regexp"
@@ -34,6 +34,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/repl"
+	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/exporter"
@@ -47,7 +48,7 @@ var (
 
 	LocalIP      string
 	gConnPool    = util.NewConnectPool()
-	MasterHelper = util.NewMasterHelper()
+	MasterClient = masterSDK.NewMasterClient(nil, false)
 )
 
 const (
@@ -87,6 +88,7 @@ type DataNode struct {
 	raftHeartbeat   string
 	raftReplica     string
 	raftStore       raftstore.RaftStore
+
 	tcpListener     net.Listener
 	stopC           chan bool
 	state           uint32
@@ -194,13 +196,13 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("Err:masterAddr unavalid")
 	}
 	for _, ip := range cfg.GetArray(ConfigKeyMasterAddr) {
-		MasterHelper.AddNode(ip.(string))
+		MasterClient.AddNode(ip.(string))
 	}
 	s.cellName = cfg.GetString(ConfigKeyCell)
 	if s.cellName == "" {
 		s.cellName = DefaultCellName
 	}
-	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterHelper.Nodes())
+	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
 	log.LogDebugf("action[parseConfig] load cellName(%v).", s.cellName)
 	return
@@ -258,7 +260,6 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 func (s *DataNode) register(cfg *config.Config) {
 	var (
 		err  error
-		data []byte
 	)
 
 	timer := time.NewTimer(0)
@@ -267,20 +268,18 @@ func (s *DataNode) register(cfg *config.Config) {
 	for {
 		select {
 		case <-timer.C:
-			data, err = MasterHelper.Request(http.MethodGet, proto.AdminGetIP, nil, nil)
-			masterAddr := MasterHelper.Leader()
-			if err != nil {
+			var ci *proto.ClusterInfo
+			if ci, err = MasterClient.AdminAPI().GetClusterInfo(); err != nil {
 				log.LogErrorf("action[registerToMaster] cannot get ip from master(%v) err(%v).",
-					masterAddr, err)
+					MasterClient.Leader(), err)
 				timer.Reset(2 * time.Second)
 				continue
 			}
-			cInfo := new(proto.ClusterInfo)
-			json.Unmarshal(data, cInfo)
+			masterAddr := MasterClient.Leader()
+			s.clusterID = ci.Cluster
 			if LocalIP == "" {
-				LocalIP = string(cInfo.Ip)
+				LocalIP = string(ci.Ip)
 			}
-			s.clusterID = cInfo.Cluster
 			s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			if !util.IsIPV4(LocalIP) {
 				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
@@ -290,21 +289,16 @@ func (s *DataNode) register(cfg *config.Config) {
 			}
 
 			// register this data node on the master
-			params := make(map[string]string)
-			params["addr"] = fmt.Sprintf("%s:%v", LocalIP, s.port)
-			data, err = MasterHelper.Request(http.MethodPost, proto.AddDataNode, params, nil)
-			if err != nil {
+			var nodeID uint64
+			if nodeID, err = MasterClient.NodeAPI().AddDataNode(fmt.Sprintf("%s:%v", LocalIP, s.port)); err != nil {
 				log.LogErrorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
 					masterAddr, err)
 				timer.Reset(2 * time.Second)
 				continue
 			}
-
 			exporter.RegistConsul(s.clusterID, ModuleName, cfg)
-
-			nodeID := strings.TrimSpace(string(data))
-			s.nodeID, err = strconv.ParseUint(nodeID, 10, 64)
-			log.LogDebugf("[tempDebug] nodeID(%v)", s.nodeID)
+			s.nodeID = nodeID
+			log.LogDebugf("register: register DataNode: nodeID(%v)", s.nodeID)
 			return
 		case <-s.stopC:
 			timer.Stop()
@@ -319,23 +313,21 @@ type DataNodeInfo struct {
 }
 
 func (s *DataNode) checkLocalPartitionMatchWithMaster() (err error) {
-	params := make(map[string]string)
-	params["addr"] = s.localServerAddr
-	var data interface{}
+	var convert = func(node *master.DataNode) *DataNodeInfo {
+		result := &DataNodeInfo{}
+		result.Addr = node.Addr
+		result.PersistenceDataPartitions = node.PersistenceDataPartitions
+		return result
+	}
+	var dataNode *master.DataNode
 	for i := 0; i < 3; i++ {
-		data, err = MasterHelper.Request(http.MethodGet, proto.GetDataNode, params, nil)
-		if err != nil {
+		if dataNode, err = MasterClient.NodeAPI().GetDataNode(s.localServerAddr); err != nil {
 			log.LogErrorf("checkLocalPartitionMatchWithMaster error %v", err)
 			continue
 		}
 		break
 	}
-	dinfo := new(DataNodeInfo)
-	if err = json.Unmarshal(data.([]byte), dinfo); err != nil {
-		err = fmt.Errorf("checkLocalPartitionMatchWithMaster jsonUnmarsh failed %v", err)
-		log.LogErrorf(err.Error())
-		return
-	}
+	dinfo := convert(dataNode)
 	if len(dinfo.PersistenceDataPartitions) == 0 {
 		return
 	}

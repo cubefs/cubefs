@@ -1168,6 +1168,8 @@ func (c *Cluster) doCreateVol(name, owner string, dpSize, capacity uint64, dpRep
 		goto errHandler
 	}
 	vol = newVol(id, name, owner, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate)
+	// refresh oss secure
+	vol.refreshOSSSecure()
 	if err = c.syncAddVol(vol); err != nil {
 		goto errHandler
 	}

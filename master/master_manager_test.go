@@ -61,6 +61,7 @@ func TestRaft(t *testing.T) {
 }
 
 func snapshotTest(t *testing.T) {
+	var err error
 	mdSnapshot, err := server.cluster.fsm.Snapshot()
 	if err != nil {
 		t.Error(err)
@@ -68,7 +69,12 @@ func snapshotTest(t *testing.T) {
 	}
 	t.Logf("snapshot apply index[%v]\n", mdSnapshot.ApplyIndex())
 	s := &Server{}
-	dbStore := raftstore.NewRocksDBStore("/export/chubaofs/raft2", LRUCacheSize, WriteBufferSize)
+
+	var dbStore *raftstore.RocksDBStore
+	dbStore, err = raftstore.NewRocksDBStore("/export/chubaofs/raft2", LRUCacheSize, WriteBufferSize)
+	if err != nil {
+		t.Fatalf("ioen rocks db store fail cause: %v", err)
+	}
 	fsm := &MetadataFsm{
 		rs:    server.fsm.rs,
 		store: dbStore,

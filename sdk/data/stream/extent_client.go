@@ -44,7 +44,6 @@ const (
 )
 
 var (
-	gDataWrapper       *wrapper.Wrapper
 	openRequestPool    *sync.Pool
 	writeRequestPool   *sync.Pool
 	flushRequestPool   *sync.Pool
@@ -61,6 +60,7 @@ type ExtentClient struct {
 	readLimiter  *rate.Limiter
 	writeLimiter *rate.Limiter
 
+	dataWrapper     *wrapper.Wrapper
 	appendExtentKey AppendExtentKeyFunc
 	getExtents      GetExtentsFunc
 	truncate        TruncateFunc
@@ -74,7 +74,7 @@ func NewExtentClient(volname, master string, readRate, writeRate int64, appendEx
 
 	limit := MaxMountRetryLimit
 retry:
-	gDataWrapper, err = wrapper.NewDataPartitionWrapper(volname, master)
+	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(volname, master)
 	if err != nil {
 		if limit <= 0 {
 			return nil, errors.Trace(err, "Init data wrapper failed!")
@@ -89,7 +89,7 @@ retry:
 	client.appendExtentKey = appendExtentKey
 	client.getExtents = getExtents
 	client.truncate = truncate
-	client.followerRead = gDataWrapper.FollowerRead()
+	client.followerRead = client.dataWrapper.FollowerRead()
 
 	// Init request pools
 	openRequestPool = &sync.Pool{New: func() interface{} {
@@ -305,4 +305,8 @@ func setRate(lim *rate.Limiter, val int) string {
 	}
 	lim.SetLimit(rate.Inf)
 	return "unlimited"
+}
+
+func (client *ExtentClient) Close() error {
+	return nil
 }

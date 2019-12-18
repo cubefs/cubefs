@@ -15,23 +15,18 @@
 package wrapper
 
 import (
-	"encoding/json"
 	"fmt"
 	"math/rand"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 )
 
-var (
-	MasterHelper = util.NewMasterHelper()
-)
 
 var (
 	LocalIP                      string
@@ -52,6 +47,7 @@ type Wrapper struct {
 	rwPartition           []*DataPartition
 	localLeaderPartitions []*DataPartition
 	followerRead          bool
+	mc *masterSDK.MasterClient
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -59,9 +55,7 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 	masters := strings.Split(masterHosts, ",")
 	w = new(Wrapper)
 	w.masters = masters
-	for _, m := range w.masters {
-		MasterHelper.AddNode(m)
-	}
+	w.mc = masterSDK.NewMasterClient(masters, false)
 	w.volName = volName
 	w.rwPartition = make([]*DataPartition, 0)
 	w.partitions = make(map[uint64]*DataPartition)
@@ -85,40 +79,29 @@ func (w *Wrapper) FollowerRead() bool {
 	return w.followerRead
 }
 
-func (w *Wrapper) updateClusterInfo() error {
-	body, err := MasterHelper.Request(http.MethodPost, proto.AdminGetIP, nil, nil)
-	if err != nil {
-		log.LogWarnf("UpdateClusterInfo request: err(%v)", err)
-		return err
+func (w *Wrapper) updateClusterInfo() (err error) {
+	var info *proto.ClusterInfo
+	if info, err = w.mc.AdminAPI().GetClusterInfo(); err != nil {
+		log.LogWarnf("UpdateClusterInfo: get cluster info fail: err(%v)", err)
+		return
 	}
-
-	info := new(proto.ClusterInfo)
-	if err = json.Unmarshal(body, info); err != nil {
-		log.LogWarnf("UpdateClusterInfo unmarshal: err(%v)", err)
-		return err
-	}
-	log.LogInfof("ClusterInfo: %v", *info)
+	log.LogInfof("UpdateClusterInfo: get cluster info: cluster(%v) localIP(%v)", info.Cluster, info.Ip)
 	w.clusterName = info.Cluster
 	LocalIP = info.Ip
-	return nil
+	return
 }
 
-func (w *Wrapper) getSimpleVolView() error {
-	paras := make(map[string]string, 0)
-	paras["name"] = w.volName
-	body, err := MasterHelper.Request(http.MethodPost, proto.AdminGetVol, paras, nil)
-	if err != nil {
-		log.LogWarnf("getSimpleVolView request: err(%v)", err)
-		return err
-	}
-
-	view := new(proto.SimpleVolView)
-	if err = json.Unmarshal(body, view); err != nil {
-		log.LogWarnf("getSimpleVolView unmarshal: err(%v)", err)
-		return err
+func (w *Wrapper) getSimpleVolView() (err error) {
+	var view *proto.SimpleVolView
+	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
+		log.LogWarnf("getSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
+		return
 	}
 	w.followerRead = view.FollowerRead
-	log.LogInfof("SimpleVolView: %v", *view)
+	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) " +
+		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v)",
+		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
+		view.DpCnt, view.FollowerRead)
 	return nil
 }
 
@@ -132,24 +115,23 @@ func (w *Wrapper) update() {
 	}
 }
 
-func (w *Wrapper) updateDataPartition() error {
-	paras := make(map[string]string, 0)
-	paras["name"] = w.volName
-	msg, err := MasterHelper.Request(http.MethodGet, proto.ClientDataPartitions, paras, nil)
-	if err != nil {
-		return errors.Trace(err, "updateDataPartition: request to master failed!")
+func (w *Wrapper) updateDataPartition() (err error) {
+
+	var dpv *proto.DataPartitionsView
+	if dpv, err = w.mc.ClientAPI().GetDataPartitions(w.volName); err != nil {
+		log.LogErrorf("updateDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
+		return
 	}
+	log.LogInfof("updateDataPartition: get data partitions: volume(%v) partitions(%v)", len(dpv.DataPartitions))
 
-	log.LogInfof("updateDataPartition: start!")
-
-	view := &DataPartitionView{}
-	if err = json.Unmarshal(msg, view); err != nil {
-		return errors.Trace(err, "updateDataPartition: unmarshal failed, msg(%v)", msg)
+	var convert = func(response *proto.DataPartitionResponse) *DataPartition {
+		return &DataPartition{ DataPartitionResponse: *response }
 	}
 
 	rwPartitionGroups := make([]*DataPartition, 0)
 	localLeaderPartitionGroups := make([]*DataPartition, 0)
-	for _, dp := range view.DataPartitions {
+	for _, partition := range dpv.DataPartitions {
+		dp := convert(partition)
 		log.LogInfof("updateDataPartition: dp(%v)", dp)
 		w.replaceOrInsertPartition(dp)
 		if dp.Status == proto.ReadWrite {
@@ -167,7 +149,7 @@ func (w *Wrapper) updateDataPartition() error {
 		err = errors.New("updateDataPartition: no writable data partition")
 	}
 
-	log.LogInfof("updateDataPartition: end!")
+	log.LogInfof("updateDataPartition: finish")
 	return err
 }
 

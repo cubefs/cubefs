@@ -21,15 +21,15 @@ import (
 	"io"
 	"sync/atomic"
 
+	"io/ioutil"
+	"os"
+	"path"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
-	"io/ioutil"
-	"os"
-	"path"
-	"strings"
 )
 
 // Apply applies the given operational commands.
@@ -120,13 +120,16 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	case opFSMStoreTick:
 		inodeTree := mp.getInodeTree()
 		dentryTree := mp.getDentryTree()
+		extendTree := mp.extendTree.GetTree()
+		multipartTree := mp.multipartTree.GetTree()
 		msg := &storeMsg{
-			command:    opFSMStoreTick,
-			applyIndex: index,
-			inodeTree:  inodeTree,
-			dentryTree: dentryTree,
+			command:       opFSMStoreTick,
+			applyIndex:    index,
+			inodeTree:     inodeTree,
+			dentryTree:    dentryTree,
+			extendTree:    extendTree,
+			multipartTree: multipartTree,
 		}
-
 		mp.storeChan <- msg
 	case opFSMInternalDeleteInode:
 		err = mp.internalDelete(msg.V)
@@ -134,6 +137,30 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		err = mp.delOldExtentFile(msg.V)
 	case opFSMInternalDelExtentCursor:
 		err = mp.setExtentDeleteFileCursor(msg.V)
+	case opFSMSetXAttr:
+		var extend *Extend
+		if extend, err = NewExtendFromBytes(msg.V); err != nil {
+			return
+		}
+		err = mp.fsmSetXAttr(extend)
+	case opFSMRemoveXAttr:
+		var extend *Extend
+		if extend, err = NewExtendFromBytes(msg.V); err != nil {
+			return
+		}
+		err = mp.fsmRemoveXAttr(extend)
+	case opFSMCreateMultipart:
+		var multipart *Multipart
+		multipart = MultipartFromBytes(msg.V)
+		resp = mp.fsmCreateMultipart(multipart)
+	case opFSMRemoveMultipart:
+		var multipart *Multipart
+		multipart = MultipartFromBytes(msg.V)
+		resp = mp.fsmRemoveMultipart(multipart)
+	case opFSMAppendMultipart:
+		var multipart *Multipart
+		multipart = MultipartFromBytes(msg.V)
+		resp = mp.fsmAppendMultipart(multipart)
 	}
 	return
 }
@@ -175,37 +202,22 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 }
 
 // Snapshot returns the snapshot of the current meta partition.
-func (mp *metaPartition) Snapshot() (raftproto.Snapshot, error) {
-	applyID := mp.applyID
-	ino := mp.getInodeTree()
-	dentry := mp.getDentryTree()
-	finfos, err := ioutil.ReadDir(mp.config.RootDir)
-	if err != nil {
-		return nil, err
-	}
-	var fileList []string
-	for _, in := range finfos {
-		if in.IsDir() {
-			continue
-		}
-		if strings.HasPrefix(in.Name(), prefixDelExtent) {
-			fileList = append(fileList, in.Name())
-		}
-	}
-	snapIter := NewMetaItemIterator(applyID, ino, dentry, mp.config.RootDir,
-		fileList)
-	return snapIter, nil
+func (mp *metaPartition) Snapshot() (snap raftproto.Snapshot, err error) {
+	snap, err = newMetaItemIterator(mp)
+	return
 }
 
 // ApplySnapshot applies the given snapshots.
 func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.SnapIterator) (err error) {
 	var (
-		data       []byte
-		index      int
-		appIndexID uint64
-		cursor     uint64
-		inodeTree  = NewBtree()
-		dentryTree = NewBtree()
+		data          []byte
+		index         int
+		appIndexID    uint64
+		cursor        uint64
+		inodeTree     = NewBtree()
+		dentryTree    = NewBtree()
+		extendTree    = NewBtree()
+		multipartTree = NewBtree()
 	)
 	defer func() {
 		if err == io.EOF {
@@ -216,16 +228,18 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			err = nil
 			// store message
 			mp.storeChan <- &storeMsg{
-				command:    opFSMStoreTick,
-				applyIndex: mp.applyID,
-				inodeTree:  mp.inodeTree,
-				dentryTree: mp.dentryTree,
+				command:       opFSMStoreTick,
+				applyIndex:    mp.applyID,
+				inodeTree:     mp.inodeTree,
+				dentryTree:    mp.dentryTree,
+				extendTree:    mp.extendTree,
+				multipartTree: mp.multipartTree,
 			}
 			mp.extReset <- struct{}{}
-			log.LogDebugf("[ApplySnapshot] successful.")
+			log.LogDebugf("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v)", mp.config.PartitionId, mp.applyID)
 			return
 		}
-		log.LogErrorf("[ApplySnapshot]: %s", err.Error())
+		log.LogErrorf("ApplySnapshot: stop with error: partitionID(%v) err(%v)", mp.config.PartitionId, err)
 	}()
 	for {
 		data, err = iter.Next()
@@ -252,23 +266,38 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				cursor = ino.Inode
 			}
 			inodeTree.ReplaceOrInsert(ino, true)
-			log.LogDebugf("action[ApplySnapshot] create inode[%v].", ino)
+			log.LogDebugf("ApplySnapshot: create inode: partitonID(%v) inode(%v).", mp.config.PartitionId, ino)
 		case opFSMCreateDentry:
 			dentry := &Dentry{}
-
-			// TODO Unhandled errors
-			dentry.UnmarshalKey(snap.K)
-			dentry.UnmarshalValue(snap.V)
+			if err = dentry.UnmarshalKey(snap.K); err != nil {
+				return
+			}
+			if err = dentry.UnmarshalValue(snap.V); err != nil {
+				return
+			}
 			dentryTree.ReplaceOrInsert(dentry, true)
-			log.LogDebugf("action[ApplySnapshot] create dentry[%v].", dentry)
+			log.LogDebugf("ApplySnapshot: create dentry: partitionID(%v) err(%v)", mp.config.PartitionId, dentry)
+		case opFSMSetXAttr:
+			var extend *Extend
+			if extend, err = NewExtendFromBytes(snap.V); err != nil {
+				return
+			}
+			extendTree.ReplaceOrInsert(extend, true)
+			log.LogDebugf("ApplySnapshot: set extend attributes: partitionID(%v) extend(%v)",
+				mp.config.PartitionId, extend)
+		case opFSMCreateMultipart:
+			var multipart = MultipartFromBytes(snap.V)
+			multipartTree.ReplaceOrInsert(multipart, true)
+			log.LogDebugf("ApplySnapshot: create multipart: partitoinID(%v) multipart(%v)", mp.config.PartitionId, multipart)
 		case opExtentFileSnapshot:
 			fileName := string(snap.K)
 			fileName = path.Join(mp.config.RootDir, fileName)
 			if err = ioutil.WriteFile(fileName, snap.V, 0644); err != nil {
-				log.LogErrorf("action[ApplySnapshot] SnapDeleteExtent[%v].",
-					err.Error())
+				log.LogErrorf("ApplySnapshot: write snap extent delete file fail: partitionID(%v) err(%v)",
+					mp.config.PartitionId, err)
 			}
-			log.LogDebugf("action[ApplySnapshot] SnapDeleteExtent[%v].", fileName)
+			log.LogDebugf("ApplySnapshot: write snap extent delete file: partitonID(%v) filename(%v).",
+				mp.config.PartitionId, fileName)
 		default:
 			err = fmt.Errorf("unknown op=%d", snap.Op)
 			return

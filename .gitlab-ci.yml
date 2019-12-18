@@ -1,0 +1,50 @@
+before_script:
+  - go version
+  - echo $CI_PROJECT_DIR
+  - export GOPATH=/export/workspace/go
+  - echo $GOPATH
+  - echo ${CI_COMMIT_REF_NAME}
+  - rm -fr $GOPATH/src/github.com/chubaofs/chubaofs
+  - ln -s $CI_PROJECT_DIR $GOPATH/src/github.com/chubaofs/
+  - echo $CI_PROJECT_DIR
+  - echo $GOPATH/src/github.com/chubaofs/
+  - cd $GOPATH/src/github.com/chubaofs/chubaofs
+
+stages:
+  - build
+  - deploy
+  - restart
+  - ltptest
+
+build_main:
+  stage: build
+  tags:
+    - cfs
+  script:
+    - sh /export/App/cfsci/scripts/build.sh
+    
+deploy:
+  stage: deploy
+  tags:
+    - cfs
+  script:
+    - sh /export/App/cfsci/scripts/deploy.sh
+    
+restart:
+  stage: restart
+  tags:
+    - cfs
+  script:
+    - sh /export/App/cfsci/scripts/stop-ltp.sh
+    - sh /export/App/cfsci/scripts/stop-client.sh
+    - sh /export/App/cfsci/scripts/stop-server.sh
+    - sh /export/App/cfsci/scripts/start-server.sh
+    - sh /export/App/cfsci/scripts/start-client.sh
+
+ltptest:
+  stage: ltptest
+  tags:
+    - cfs
+  script:
+    - sh /export/App/cfsci/scripts/start-ltp.sh
+

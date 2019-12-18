@@ -18,9 +18,14 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
 	"path"
+	"reflect"
+	"strings"
+	"sync"
 )
 
 // MetaItem defines the structure of the metadata operations.
@@ -111,34 +116,127 @@ func NewMetaItem(op uint32, key, value []byte) *MetaItem {
 	}
 }
 
-// MetaItemIterator defines the iterator of the MetaItem.
-type MetaItemIterator struct {
-	applyID     uint64
-	cur         int
-	curItem     BtreeItem
-	inoLen      int
-	inodeTree   *BTree
-	dentryLen   int
-	dentryTree  *BTree
-	fileRootDir string
-	fileList    []string
-	total       int
+type fileData struct {
+	filename string
+	data     []byte
 }
 
-// NewMetaItemIterator returns a new MetaItemIterator.
-func NewMetaItemIterator(applyID uint64, ino, den *BTree,
-	rootDir string, filelist []string) *MetaItemIterator {
-	si := new(MetaItemIterator)
-	si.applyID = applyID
-	si.inodeTree = ino
-	si.dentryTree = den
-	si.cur = 0
-	si.inoLen = ino.Len()
-	si.dentryLen = den.Len()
-	si.fileRootDir = rootDir
-	si.fileList = filelist
-	si.total = si.inoLen + si.dentryLen
-	return si
+// MetaItemIterator defines the iterator of the MetaItem.
+type MetaItemIterator struct {
+	fileRootDir   string
+	applyID       uint64
+	inodeTree     *BTree
+	dentryTree    *BTree
+	extendTree    *BTree
+	multipartTree *BTree
+
+	filenames []string
+
+	dataCh    chan interface{}
+	errorCh   chan error
+	err       error
+	closeCh   chan struct{}
+	closeOnce sync.Once
+}
+
+// newMetaItemIterator returns a new MetaItemIterator.
+func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
+	si = new(MetaItemIterator)
+	si.fileRootDir = mp.config.RootDir
+	si.applyID = mp.applyID
+	si.inodeTree = mp.inodeTree.GetTree()
+	si.dentryTree = mp.dentryTree.GetTree()
+	si.extendTree = mp.extendTree.GetTree()
+	si.multipartTree = mp.multipartTree.GetTree()
+	si.dataCh = make(chan interface{})
+	si.errorCh = make(chan error, 1)
+	si.closeCh = make(chan struct{})
+
+	// collect extend del files
+	var filenames = make([]string, 0)
+	var fileInfos []os.FileInfo
+	if fileInfos, err = ioutil.ReadDir(mp.config.RootDir); err != nil {
+		return
+	}
+
+	for _, fileInfo := range fileInfos {
+		if !fileInfo.IsDir() && strings.HasPrefix(fileInfo.Name(), prefixDelExtent) {
+			filenames = append(filenames, fileInfo.Name())
+		}
+	}
+	si.filenames = filenames
+
+	// start data producer
+	go func(iter *MetaItemIterator) {
+		defer func() {
+			close(iter.dataCh)
+			close(iter.errorCh)
+		}()
+		var produceItem = func(item interface{}) (success bool) {
+			select {
+			case iter.dataCh <- item:
+				return true
+			case <-iter.closeCh:
+				return false
+			}
+		}
+		var produceError = func(err error) {
+			select {
+			case iter.errorCh <- err:
+			default:
+			}
+		}
+		var checkClose = func() (closed bool) {
+			select {
+			case <-iter.closeCh:
+				return true
+			default:
+				return false
+			}
+		}
+		// process inodes
+		iter.inodeTree.Ascend(func(i BtreeItem) bool {
+			return produceItem(i)
+		})
+		if checkClose() {
+			return
+		}
+		// process dentries
+		iter.dentryTree.Ascend(func(i BtreeItem) bool {
+			return produceItem(i)
+		})
+		if checkClose() {
+			return
+		}
+		// process extends
+		iter.extendTree.Ascend(func(i BtreeItem) bool {
+			return produceItem(i)
+		})
+		if checkClose() {
+			return
+		}
+		// process multiparts
+		iter.multipartTree.Ascend(func(i BtreeItem) bool {
+			return produceItem(i)
+		})
+		if checkClose() {
+			return
+		}
+		// process extent del files
+		var err error
+		var raw []byte
+		for _, filename := range iter.filenames {
+			if raw, err = ioutil.ReadFile(path.Join(iter.fileRootDir, filename)); err != nil {
+				produceError(err)
+				return
+			}
+			if !produceItem(&fileData{filename: filename, data: raw}) {
+				return
+			}
+		}
+	}(si)
+
+	return
 }
 
 // ApplyIndex returns the applyID of the iterator.
@@ -148,72 +246,65 @@ func (si *MetaItemIterator) ApplyIndex() uint64 {
 
 // Close closes the iterator.
 func (si *MetaItemIterator) Close() {
-	si.cur = si.total + 1
+	si.closeOnce.Do(func() {
+		close(si.closeCh)
+	})
 	return
 }
 
 // Next returns the next item.
 func (si *MetaItemIterator) Next() (data []byte, err error) {
-	// TODO: Redesign iterator to improve performance. [Mervin]
-	// First Send ApplyIndex
-	if si.cur == 0 {
-		appIdBuf := make([]byte, 8)
-		binary.BigEndian.PutUint64(appIdBuf, si.applyID)
-		data = appIdBuf[:]
-		si.cur++
+
+	if si.err != nil {
+		err = si.err
+		return
+	}
+	var item interface{}
+	select {
+	case item = <-si.dataCh:
+		if item == nil {
+			err, si.err = io.EOF, io.EOF
+			si.Close()
+			return
+		}
+	case err = <-si.errorCh:
+		si.err = err
+		si.Close()
 		return
 	}
 
-	if si.cur <= si.inoLen {
-		si.inodeTree.AscendGreaterOrEqual(si.curItem, func(i BtreeItem) bool {
-			ino := i.(*Inode)
-			if si.curItem == ino {
-				return true
-			}
-			si.curItem = ino
-			snap := NewMetaItem(opFSMCreateInode, ino.MarshalKey(),
-				ino.MarshalValue())
-			data, err = snap.MarshalBinary()
-			si.cur++
-			return false
-		})
-		return
+	var snap *MetaItem
+	switch typedItem := item.(type) {
+	case *Inode:
+		snap = NewMetaItem(opFSMCreateInode, typedItem.MarshalKey(), typedItem.MarshalValue())
+	case *Dentry:
+		snap = NewMetaItem(opFSMCreateDentry, typedItem.MarshalKey(), typedItem.MarshalValue())
+	case *Extend:
+		var raw []byte
+		if raw, err = typedItem.Bytes(); err != nil {
+			si.err = err
+			si.Close()
+			return
+		}
+		snap = NewMetaItem(opFSMSetXAttr, nil, raw)
+	case *Multipart:
+		var raw []byte
+		if raw, err = typedItem.Bytes(); err != nil {
+			si.err = err
+			si.Close()
+			return
+		}
+		snap = NewMetaItem(opFSMCreateMultipart, nil, raw)
+	case *fileData:
+		snap = NewMetaItem(opExtentFileSnapshot, []byte(typedItem.filename), typedItem.data)
+	default:
+		panic(fmt.Sprintf("unknown item type: %v", reflect.TypeOf(item).Name()))
 	}
 
-	if si.cur == (si.inoLen + 1) {
-		si.curItem = nil
-	}
-
-	if si.cur <= si.total {
-		si.dentryTree.AscendGreaterOrEqual(si.curItem, func(i BtreeItem) bool {
-			dentry := i.(*Dentry)
-			if si.curItem == dentry {
-				return true
-			}
-			si.curItem = dentry
-			snap := NewMetaItem(opFSMCreateDentry, dentry.MarshalKey(),
-				dentry.MarshalValue())
-			data, err = snap.MarshalBinary()
-			si.cur++
-			return false
-		})
-	}
-	if len(si.fileList) == 0 {
-		err = io.EOF
-		data = nil
+	if data, err = snap.MarshalBinary(); err != nil {
+		si.err = err
+		si.Close()
 		return
-	}
-
-	fileName := si.fileList[0]
-	fileBody, err := ioutil.ReadFile(path.Join(si.fileRootDir, fileName))
-	if err != nil {
-		data = nil
-		return
-	}
-	snap := NewMetaItem(opExtentFileSnapshot, []byte(fileName), fileBody)
-	data, err = snap.MarshalBinary()
-	if err != nil {
-		si.fileList = si.fileList[1:]
 	}
 	return
 }

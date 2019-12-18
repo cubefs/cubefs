@@ -22,13 +22,14 @@ import (
 	"time"
 
 	"bytes"
+	"io/ioutil"
+	"strings"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/cryptoutil"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"io/ioutil"
-	"strings"
 )
 
 // ClusterView provides the view of a cluster.
@@ -903,8 +904,43 @@ func parseRequestToGetTaskResponse(r *http.Request) (tr *proto.AdminTask, err er
 	return
 }
 
-func parseRequestToGetVol(r *http.Request) (name, authKey string, err error) {
-	return parseVolNameAndAuthKey(r)
+func parseVolName(r *http.Request) (name string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if name, err = extractName(r); err != nil {
+		return
+	}
+	return
+}
+
+type getVolParameter struct {
+	name                string
+	authKey             string
+	skipOwnerValidation bool
+}
+
+func parseGetVolParameter(r *http.Request) (p *getVolParameter, err error) {
+	p = &getVolParameter{}
+	skipOwnerValidationVal := r.Header.Get(proto.SkipOwnerValidation)
+	if len(skipOwnerValidationVal) > 0 {
+		if p.skipOwnerValidation, err = strconv.ParseBool(skipOwnerValidationVal); err != nil {
+			return
+		}
+	}
+	if p.name = r.FormValue(nameKey); p.name == "" {
+		err = keyNotFound(nameKey)
+		return
+	}
+	if !volNameRegexp.MatchString(p.name) {
+		err = errors.New("name can only be number and letters")
+		return
+	}
+	if p.authKey = r.FormValue(volAuthKey); !p.skipOwnerValidation && len(p.authKey) == 0 {
+		err = keyNotFound(volAuthKey)
+		return
+	}
+	return
 }
 
 func parseVolNameAndAuthKey(r *http.Request) (name, authKey string, err error) {
@@ -1333,24 +1369,23 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		err          error
-		name         string
-		authKey      string
-		vol          *Vol
-		checkMessage string
-		jobj         proto.APIAccessReq
-		ticket       cryptoutil.Ticket
-		ts           int64
+		err     error
+		vol     *Vol
+		message string
+		jobj    proto.APIAccessReq
+		ticket  cryptoutil.Ticket
+		ts      int64
+		param   *getVolParameter
 	)
-	if name, authKey, err = parseRequestToGetVol(r); err != nil {
+	if param, err = parseGetVolParameter(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.getVol(name); err != nil {
+	if vol, err = m.cluster.getVol(param.name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
-	if !matchKey(vol.Owner, authKey) {
+	if !param.skipOwnerValidation && !matchKey(vol.Owner, param.authKey) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolAuthKeyNotMatch))
 		return
 	}
@@ -1360,7 +1395,7 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 		viewCache = vol.getViewCache()
 	}
 	if vol.authenticate {
-		if jobj, ticket, ts, err = parseAndCheckTicket(r, m.cluster.MasterSecretKey, name); err != nil {
+		if jobj, ticket, ts, err = parseAndCheckTicket(r, m.cluster.MasterSecretKey, param.name); err != nil {
 			if err == proto.ErrExpiredTicket {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
@@ -1368,15 +1403,11 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidTicket, Msg: err.Error()})
 			return
 		}
-		if checkMessage, err = genCheckMessage(&jobj, ts, ticket.SessionKey.Key); err != nil {
+		if message, err = genRespMessage(viewCache, &jobj, ts, ticket.SessionKey.Key); err != nil {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeMasterAPIGenRespError, Msg: err.Error()})
 			return
 		}
-		resp := &proto.GetVolResponse{
-			VolViewCache: viewCache,
-			CheckMsg:     checkMessage,
-		}
-		sendOkReply(w, r, newSuccessHTTPReply(resp))
+		sendOkReply(w, r, newSuccessHTTPReply(message))
 	} else {
 		send(w, r, viewCache)
 	}
@@ -1565,23 +1596,25 @@ func extractTicketMess(req *proto.APIAccessReq, key []byte, volName string) (tic
 		err = fmt.Errorf("CheckAPIAccessCaps failed: %s", err.Error())
 		return
 	}
-	if err = proto.CheckVOLAccessCaps(&ticket, proto.VOLRsc, volName, proto.VOLAccess, proto.MasterNode); err != nil {
+	if err = proto.CheckVOLAccessCaps(&ticket, proto.OwnerVOLRsc, volName, proto.VOLAccess, proto.MasterNode); err != nil {
 		err = fmt.Errorf("CheckVOLAccessCaps failed: %s", err.Error())
 		return
 	}
 	return
 }
 
-func genCheckMessage(req *proto.APIAccessReq, ts int64, key []byte) (message string, err error) {
+func genRespMessage(data []byte, req *proto.APIAccessReq, ts int64, key []byte) (message string, err error) {
 	var (
 		jresp []byte
-		resp  proto.APIAccessResp
+		resp  proto.MasterAPIAccessResp
 	)
 
-	resp.Type = req.Type + 1
-	resp.ClientID = req.ClientID
-	resp.ServiceID = req.ServiceID
-	resp.Verifier = ts + 1 // increase ts by one for client verify server
+	resp.Data = data
+
+	resp.APIResp.Type = req.Type + 1
+	resp.APIResp.ClientID = req.ClientID
+	resp.APIResp.ServiceID = req.ServiceID
+	resp.APIResp.Verifier = ts + 1 // increase ts by one for client verify server
 
 	if jresp, err = json.Marshal(resp); err != nil {
 		err = fmt.Errorf("json marshal for response failed %s", err.Error())

@@ -92,6 +92,12 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fallthrough
 	case proto.AdminRemoveRaftNode:
 		m.raftNodeOp(w, r)
+	case proto.OSAddCaps:
+		fallthrough
+	case proto.OSDeleteCaps:
+		fallthrough
+	case proto.OSGetCaps:
+		m.osCapsOp(w, r)
 	default:
 		sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: "Invalid requst URL"})
 	}
@@ -107,7 +113,9 @@ func (m *Server) handleFunctions() {
 	http.Handle(proto.AdminGetCaps, m.handlerWithInterceptor())
 	http.Handle(proto.AdminAddRaftNode, m.handlerWithInterceptor())
 	http.Handle(proto.AdminRemoveRaftNode, m.handlerWithInterceptor())
-
+	http.Handle(proto.OSAddCaps, m.handlerWithInterceptor())
+	http.Handle(proto.OSDeleteCaps, m.handlerWithInterceptor())
+	http.Handle(proto.OSGetCaps, m.handlerWithInterceptor())
 	return
 }
 
