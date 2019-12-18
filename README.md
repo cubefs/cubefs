@@ -12,9 +12,9 @@
 
 ## Overview
 
-ChubaoFS (储宝文件系统 in Chinese) is a distributed file system and object storage service for cloud native applications, it is hosted by the [Cloud Native Computing Foundation](https://cncf.io) (CNCF) as a [sandbox](https://www.cncf.io/sandbox-projects/) project.
+ChubaoFS (储宝文件系统 in Chinese) is a distributed file system and object storage service for cloud native applications. It is hosted by the [Cloud Native Computing Foundation](https://cncf.io) (CNCF) as a [sandbox](https://www.cncf.io/sandbox-projects/) project.
 
-ChubaoFS has been commonly used as the underlying storage system/service for online applications, database or data processing services and machine learning jobs orchestrated by Kubernetes. 
+ChubaoFS has been commonly used as the underlying storage infrastructure for online applications, database or data processing services and machine learning jobs orchestrated by Kubernetes. 
 An advantage of doing so is to separate storage from compute - one can scale up or down based on the workload and independent of the other, providing total flexibility in matching resources to the actual storage and compute capacity required at any given time.
 
 
@@ -22,17 +22,18 @@ Some of the key features of ChubaoFS include:
 
 - Scale-out metadata management
 
-- Strong replication consistency for both append and random write
+- Strong replication consistency
 
-- Specific storage optimizations for large and small files
+- Specific performance optimizations for large/small files and sequential/random writes
 
 - Multi-tenancy
 
-- POSIX-compatible & mountable
+- POSIX-compatible and mountable
 
 - S3-compatible object storage interface
 
-ChubaoFS is currently a [CNCF Sandbox Project](https://www.cncf.io/sandbox-projects/).
+ChubaoFS is currently a [CNCF Sandbox Project](https://www.cncf.io/sandbox-projects/). And we are committed to making it better and more mature. Please stay tuned. 
+
 
 ## Document
 
