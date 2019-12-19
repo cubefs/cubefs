@@ -56,12 +56,16 @@ response
 
 .. code-block:: json
 
-   {
-       "Name": "test",
-       "VolType": "extent",
-       "MetaPartitions": {},
-       "DataPartitions": {}
-   }
+    {
+        "Name": "test",
+        "VolType": "extent",
+        "MetaPartitions": {},
+        "DataPartitions": {},
+        "OSSSecure": {
+            "AccessKey": "l9aC5S9OzlneHguZ",
+            "SecretKey": "4sL0xJfHVVHKOC3MDwPfaF1AcGm5a2XL"
+        }
+    }
 
 
 Stat

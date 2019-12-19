@@ -1269,7 +1269,7 @@ func (v *volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multi
 	return uploads, NextMarker, NextSessionIdMarker, IsTruncated, prefixes, nil
 }
 
-func (v *volume) ListParts(path, sessionId string, maxParts, partNumberMarker uint64) (parts []*FSPart, nextMarker uint64, IsTruncated bool, err error) {
+func (v *volume) ListParts(path, sessionId string, maxParts, partNumberMarker uint64) (parts []*FSPart, nextMarker uint64, isTruncated bool, err error) {
 	var parentId uint64
 	dirs, _ := splitPath(path)
 	// process path
@@ -1284,10 +1284,10 @@ func (v *volume) ListParts(path, sessionId string, maxParts, partNumberMarker ui
 
 	sessionParts := multipartInfo.Parts
 	resLength := maxParts
-	IsTruncated = true
+	isTruncated = true
 	if (uint64(len(sessionParts)) - partNumberMarker) < maxParts {
 		resLength = uint64(len(sessionParts)) - partNumberMarker
-		IsTruncated = false
+		isTruncated = false
 		nextMarker = 0
 	} else {
 		nextMarker = partNumberMarker + resLength
@@ -1304,7 +1304,7 @@ func (v *volume) ListParts(path, sessionId string, maxParts, partNumberMarker ui
 		parts = append(parts, fsPart)
 	}
 
-	return parts, nextMarker, IsTruncated, nil
+	return parts, nextMarker, isTruncated, nil
 }
 
 func (v *volume) CopyFile(targetPath, sourcePath string) (info *FSFileInfo, err error) {

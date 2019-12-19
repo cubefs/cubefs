@@ -12,5 +12,5 @@ The ChubaoFS maintainers are:
 * Zhengyi Zhu  <zhengyi.zhu.hust@gmail.com> @zhuzhengyi: Monitoring and ObjectNode 
 * Liying Zhang <zly7755@163.com> @Vivian7755: Product Management & Advocate
 * Junyuan Zeng <jzeng04@gmail.com> @jzeng4: Authorization Node
-* Xihao Xu<xxscott@163.com> @xxscott: CSI Driver
-* Wenjia Wu<buaa1214wwj@126.com> @wenjia322: Authorization Node
+* Xihao Xu <xxscott@163.com> @xxscott: CSI Driver
+* Wenjia Wu <buaa1214wwj@126.com> @wenjia322: Authorization Node

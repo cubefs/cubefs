@@ -149,6 +149,36 @@ Start Datanode
 
 For detailed explanations of *datanode.json*, please refer to :doc:`user-guide/datanode`.
 
+Start ObjectNode
+^^^^^^^^^^^^^^^^
+
+.. code-block:: bash
+
+   nohup ./cfs-server -c objectnode.json &
+
+Sample *objectnode.json is* shown as follows,
+
+.. code-block:: json
+
+    {
+        "role": "objectnode",
+        "domains": [
+            "object.cfs.local"
+        ],
+        "listen": 80,
+        "masters": [
+            "master1.cfs.local:80",
+            "master2.cfs.local:80",
+            "master3.cfs.local:80"
+        ],
+        "logLevel": "info",
+        "logDir": "/export/Logs/objectnode",
+        "region": "cn_bj"
+    }
+
+
+For detailed explanations of *meta.json*, please refer to :doc:`user-guide/objectnode`.
+
 Create Volume
 ^^^^^^^^^^^^^
 
