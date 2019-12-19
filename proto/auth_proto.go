@@ -543,12 +543,10 @@ func CheckVOLAccessCaps(ticket *cryptoutil.Ticket, volName string, action string
 	rule := accessNode + capSeparator + volName + capSeparator + action
 
 	if err = checkTicketCaps(ticket, OwnerVOLRsc, rule); err != nil {
-		err = fmt.Errorf("checkTicketCaps failed: %s", err.Error())
-		return
-	}
-	if err = checkTicketCaps(ticket, NoneOwnerVOLRsc, rule); err != nil {
-		err = fmt.Errorf("checkTicketCaps failed: %s", err.Error())
-		return
+		if err = checkTicketCaps(ticket, NoneOwnerVOLRsc, rule); err != nil {
+			err = fmt.Errorf("checkTicketCaps failed: %s", err.Error())
+			return
+		}
 	}
 
 	return

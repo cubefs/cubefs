@@ -91,8 +91,7 @@ func (c *Cluster) CreateNewKey(id string, keyInfo *keystore.KeyInfo) (res *keyst
 	c.fsm.opKeyMutex.Lock()
 	defer c.fsm.opKeyMutex.Unlock()
 	accessKeyInfo := &keystore.AccessKeyInfo{
-		AccessKey: keyInfo.AccessKey,
-		ID:        keyInfo.ID,
+		ID: keyInfo.ID,
 	}
 	if _, err = c.fsm.GetKey(id); err == nil {
 		err = proto.ErrDuplicateKey
@@ -106,6 +105,7 @@ func (c *Cluster) CreateNewKey(id string, keyInfo *keystore.KeyInfo) (res *keyst
 	if err = c.syncAddKey(keyInfo); err != nil {
 		goto errHandler
 	}
+	accessKeyInfo.AccessKey = keyInfo.AccessKey
 	if err = c.syncAddAccessKey(accessKeyInfo); err != nil {
 		goto errHandler
 	}
