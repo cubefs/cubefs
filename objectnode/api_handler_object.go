@@ -43,7 +43,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, _, object, vl, err := o.parseRequestParams(r)
 	if err != nil {
-		log.LogErrorf("getObjectHandler: parse request parameters fail, requestId(%o) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("getObjectHandler: parse request parameters fail, requestId(%v) err(%v)", RequestIDFromRequest(r), err)
 		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
@@ -100,7 +100,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// get object meta
 	fileInfo, err := vl.FileInfo(object)
 	if err != nil {
-		log.LogErrorf("getObjectHandler: volume get file info fail, requestId(%o) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("getObjectHandler: volume get file info fail, requestId(%v) err(%v)", RequestIDFromRequest(r), err)
 		_ = NoSuchKey.ServeResponse(w, r)
 		return
 	}
@@ -155,22 +155,22 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// check args
 	_, _, object, vl, err := o.parseRequestParams(r)
-	log.LogInfof("headObjectHandler: parse request params result in header object handler, object : (%o), vl : (%o), err : (%o)", object, vl.name, err)
 	if err != nil {
-		log.LogErrorf("headObjectHandler: parse request parameters fail, requestId(%o) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("headObjectHandler: parse request parameters fail, requestId(%v) err(%v)", RequestIDFromRequest(r), err)
 		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
+	log.LogInfof("headObjectHandler: parse request params result in header object handler, object(%v) vl(%v) err(%v)", object, vl.name, err)
 
 	// get object meta
 	fileInfo, err := vl.FileInfo(object)
 	if err != nil && err == syscall.ENOENT {
-		log.LogErrorf("headObjectHandler: get file meta fail, requestId(%o), err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("headObjectHandler: get file meta fail, requestId(%v), err(%v)", RequestIDFromRequest(r), err)
 		_ = NoSuchKey.ServeResponse(w, r)
 		return
 	}
 	if err != nil {
-		log.LogErrorf("headObjectHandler: get file meta fail, requestId(%o), err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("headObjectHandler: get file meta fail, requestId(%v), err(%v)", RequestIDFromRequest(r), err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
@@ -195,7 +195,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 
 	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil && err != io.EOF {
-		log.LogErrorf("deleteObjectsHandler: read request body fail: requestID(%o) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("deleteObjectsHandler: read request body fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
@@ -203,14 +203,14 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	deleteReq := DeleteRequest{}
 	err = UnmarshalXMLEntity(bytes, &deleteReq)
 	if err != nil {
-		log.LogErrorf("deleteObjectsHandler: unmarshal xml fail: requestID(%o) err(%v)",
+		log.LogErrorf("deleteObjectsHandler: unmarshal xml fail: requestID(%v) err(%v)",
 			RequestIDFromRequest(r), err)
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
 
 	if len(deleteReq.Objects) <= 0 {
-		log.LogDebugf("deleteObjectsHandler: non objects found in request: requestID(%o)", RequestIDFromRequest(r))
+		log.LogDebugf("deleteObjectsHandler: non objects found in request: requestID(%v)", RequestIDFromRequest(r))
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
@@ -240,12 +240,12 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 
 			err = vl.DeleteFile(obj.Key)
 			if err != nil {
-			ossError := transferError(obj.Key, err)
+				ossError := transferError(obj.Key, err)
 				deletedErrorsCh <- &ossError
 			} else {
 				deleted := Deleted{Key: obj.Key}
 				deletedObjectsCh <- &deleted
-				log.LogDebugf("deleteObjectsHandler: delete object: requestID(%v) key(%o)", RequestIDFromRequest(r),
+				log.LogDebugf("deleteObjectsHandler: delete object: requestID(%v) key(%v)", RequestIDFromRequest(r),
 					deleted.Key)
 			}
 		}(object)
@@ -274,7 +274,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	var bytesRes []byte
 	var marshalError error
 	if bytesRes, marshalError = MarshalXMLEntity(deletesResult); marshalError != nil {
-		log.LogErrorf("deleteObjectsHandler: marshal xml entity fail: requestID(%o) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("deleteObjectsHandler: marshal xml entity fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
 		if respErr := InternalError.ServeResponse(w, r); respErr != nil {
 			log.LogErrorf("deleteObjectsHandler: write response fail: requestID(%v) err(%v)", RequestIDFromRequest(r), respErr)
 			return
@@ -391,7 +391,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	fsFileInfo, err := vl.CopyFile(object, sourceObject)
 	if err != nil {
-		log.LogErrorf("copyObjectHandler: volume copy file fail: requestID(%o) volume(%v) source(%v) target(%v) err(%v)",
+		log.LogErrorf("copyObjectHandler: volume copy file fail: requestID(%v) volume(%v) source(%v) target(%v) err(%v)",
 			RequestIDFromRequest(r), vl.name, sourceObject, object, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
@@ -405,7 +405,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var bytes []byte
 	var marshalError error
 	if bytes, marshalError = MarshalXMLEntity(copyResult); marshalError != nil {
-		log.LogErrorf("copyObjectHandler: marshal xml entity fail: requestID(%o) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("copyObjectHandler: marshal xml entity fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
@@ -424,7 +424,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	// check args
 	_, bucket, _, vl, err := o.parseRequestParams(r)
 	if err != nil {
-		log.LogErrorf("getBucketV1Handler: parse request parameters fail, requestID(%o) err(%v)",
+		log.LogErrorf("getBucketV1Handler: parse request parameters fail, requestID(%v) err(%v)",
 			RequestIDFromRequest(r), err)
 		_ = NoSuchBucket.ServeResponse(w, r)
 		return
@@ -460,7 +460,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 
 	fsFileInfos, nextMarker, isTruncated, prefixes, err := vl.ListFilesV1(listBucketRequest)
 	if err != nil {
-		log.LogErrorf("getBucketV1Handler: list file fail, requestID(%o), err(%o)", r.URL, err)
+		log.LogErrorf("getBucketV1Handler: list file fail, requestID(%v), err(%v)", r.URL, err)
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
@@ -506,7 +506,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	var bytes []byte
 	var marshalError error
 	if bytes, marshalError = MarshalXMLEntity(listBucketResult); marshalError != nil {
-		log.LogErrorf("getBucketV1Handler: marshal result fail, requestID(%o) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("getBucketV1Handler: marshal result fail, requestID(%v) err(%v)", RequestIDFromRequest(r), err)
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
@@ -527,7 +527,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	// check args
 	_, bucket, _, vl, err := o.parseRequestParams(r)
 	if err != nil {
-		log.LogErrorf("getBucketV2Handler: parse request parameters fail, requestID(%o) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("getBucketV2Handler: parse request parameters fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
@@ -579,7 +579,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 
 	fsFileInfos, keyCount, nextToken, isTruncated, prefixes, err := vl.ListFilesV2(request)
 	if err != nil {
-		log.LogErrorf("getBucketV2Handler: request id [%o], Get files list failed cause : %o", r.URL, err)
+		log.LogErrorf("getBucketV2Handler: request id [%v], Get files list failed cause : %v", r.URL, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
@@ -650,14 +650,14 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, bucket, object, vl, err := o.parseRequestParams(r)
 	if err != nil {
-		log.LogErrorf("putObjectHandler: parser request parameters fail, requestID(%o) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("putObjectHandler: parser request parameters fail, requestID(%v) err(%v)", RequestIDFromRequest(r), err)
 		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
 
 	// check args
 	if bucket == "" || object == "" {
-		log.LogErrorf("putObjectHandler: illegal bucket or object found: requestID(%o)", RequestIDFromRequest(r))
+		log.LogErrorf("putObjectHandler: illegal bucket or object found: requestID(%v)", RequestIDFromRequest(r))
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
@@ -714,7 +714,7 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// check content MD5
 	if checkMD5 && requestMD5 != fsFileInfo.ETag {
-		log.LogErrorf("putObjectHandler: MD5 validate fail: requestID(%v) requestMD5(%o) serverMD5(%o)",
+		log.LogErrorf("putObjectHandler: MD5 validate fail: requestID(%v) requestMD5(%v) serverMD5(%v)",
 			r.URL.EscapedPath(), requestMD5, fsFileInfo.ETag)
 		_ = BadDigest.ServeResponse(w, r)
 		return
@@ -733,14 +733,14 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 
 	_, _, object, vl, err := o.parseRequestParams(r)
 	if err != nil {
-		log.LogErrorf("[GetObject] request id [%o], Bucket or object can not be empty", r.URL)
+		log.LogErrorf("deleteObjectHandler: parse request params fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
 		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
 
 	err = vl.DeleteFile(object)
 	if err != nil {
-		log.LogErrorf("[DeleteFile] request id [%o], Delete object failed cause : %o", r.URL.String(), err)
+		log.LogErrorf("deleteObjectHandler: volume delete file fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}

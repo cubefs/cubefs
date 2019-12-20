@@ -76,11 +76,11 @@ func (o *ObjectNode) parseRequestParams(r *http.Request) (vars map[string]string
 		if vm, ok := o.vm.(*volumeManager); ok {
 			vl, err = vm.loadVolume(bucket)
 			if err != nil {
-				log.LogErrorf("parseRequestParams: load volume fail, requestId(%o) bucket(%v) err(%v)",
+				log.LogErrorf("parseRequestParams: load volume fail, requestId(%v) bucket(%v) err(%v)",
 					RequestIDFromRequest(r), bucket, err)
 			}
 		} else {
-			log.LogErrorf("parseRequestParams: load volume fail, requestId(%o) bucket(%v) err(%v)",
+			log.LogErrorf("parseRequestParams: load volume fail, requestId(%v) bucket(%v) err(%v)",
 				RequestIDFromRequest(r), bucket, err)
 		}
 	}
@@ -108,7 +108,7 @@ func (o *ObjectNode) getVol(bucket string) (vol *volume, err error) {
 func (o *ObjectNode) errorResponse(w http.ResponseWriter, r *http.Request, err error, ec *ErrorCode) {
 	if err != nil || ec != nil {
 		if err != nil {
-			log.LogErrorf("Handler: parse request parameters fail, requestID(%o) err(%v)",
+			log.LogErrorf("errorResponse: found error: requestID(%v) err(%v)",
 				RequestIDFromRequest(r), err)
 		}
 		if ec == nil {

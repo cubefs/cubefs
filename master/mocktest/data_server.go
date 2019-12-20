@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
-	"io/ioutil"
 	"net"
-	"net/http"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/util"
 )
 
 type MockDataServer struct {
@@ -25,11 +25,16 @@ type MockDataServer struct {
 	MaxWeightsForCreatePartition    uint64
 	partitions                      []*MockDataPartition
 	cellName                        string
+	mc                              *master.MasterClient
 }
 
 func NewMockDataServer(addr string, cellName string) *MockDataServer {
-	mds := &MockDataServer{TcpAddr: addr, cellName: cellName,
-		partitions: make([]*MockDataPartition, 0)}
+	mds := &MockDataServer{
+		TcpAddr:    addr,
+		cellName:   cellName,
+		partitions: make([]*MockDataPartition, 0),
+		mc:         master.NewMasterClient([]string{hostAddr}, false),
+	}
 
 	return mds
 }
@@ -40,24 +45,11 @@ func (mds *MockDataServer) Start() {
 }
 
 func (mds *MockDataServer) register() {
-	reqUrl := fmt.Sprintf("%v?addr=%v", urlAddDataNode, mds.TcpAddr)
-	resp, err := http.Get(reqUrl)
+	nodeID, err := mds.mc.NodeAPI().AddDataNode(mds.TcpAddr)
 	if err != nil {
 		panic(err)
 	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(string(body))
-	rst := &proto.HTTPReply{}
-	err = json.Unmarshal(body, rst)
-	if err != nil {
-		panic(err)
-	}
-	nodeIDFloat := rst.Data.(float64)
-	mds.nodeID = uint64(nodeIDFloat)
+	mds.nodeID = nodeID
 }
 
 func (mds *MockDataServer) start() {
@@ -232,21 +224,21 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 	}
 
 	task.Response = response
-	data, err := json.Marshal(task)
-	if err != nil {
+	if err = mds.mc.NodeAPI().ResponseDataNodeTask(task); err != nil {
 		return
 	}
-	_, err = PostToMaster(http.MethodPost, urlDataNodeResponse, data)
 	return
 }
 
 func (mds *MockDataServer) handleDeleteDataPartition(conn net.Conn, pkg *proto.Packet) (err error) {
-	responseAckOKToMaster(conn, pkg, nil)
+	err = responseAckOKToMaster(conn, pkg, nil)
 	return
 }
 
 func (mds *MockDataServer) handleLoadDataPartition(conn net.Conn, pkg *proto.Packet, task *proto.AdminTask) (err error) {
-	responseAckOKToMaster(conn, pkg, nil)
+	if err = responseAckOKToMaster(conn, pkg, nil); err != nil {
+		return
+	}
 	// Marshal request body.
 	requestJson, err := json.Marshal(task.Request)
 	if err != nil {
@@ -274,16 +266,9 @@ func (mds *MockDataServer) handleLoadDataPartition(conn net.Conn, pkg *proto.Pac
 	}
 	//response.VolName = partition.VolName
 	task.Response = response
-	data, err := json.Marshal(task)
-	if err != nil {
-		response.PartitionId = partitionID
-		response.Status = proto.TaskFailed
-		response.Result = err.Error()
-	}
-	if err != nil {
+	if err = mds.mc.NodeAPI().ResponseDataNodeTask(task); err != nil {
 		return
 	}
-	_, err = PostToMaster(http.MethodPost, urlDataNodeResponse, data)
 	return
 }
 

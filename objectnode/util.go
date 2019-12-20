@@ -67,7 +67,7 @@ func parseTimeRFC1123(timeStr string) (time.Time, error) {
 func transferError(key string, err error) Error {
 	// TODO: complete sys error transfer
 	ossError := Error{
-		Key: key,
+		Key:     key,
 		Message: err.Error(),
 	}
 	return ossError

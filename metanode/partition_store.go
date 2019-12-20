@@ -426,7 +426,7 @@ func (mp *metaPartition) storeInode(rootDir string,
 		return true
 	})
 	crc = sign.Sum32()
-	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%) numInodes(%v) crc(%v)",
+	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), crc)
 	return
 }
@@ -470,7 +470,7 @@ func (mp *metaPartition) storeDentry(rootDir string,
 		return true
 	})
 	crc = sign.Sum32()
-	log.LogInfof("storeDentry: store complete: partitoinID(%v) volume(%) numDentries(%v) crc(%v)",
+	log.LogInfof("storeDentry: store complete: partitoinID(%v) volume(%v) numDentries(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.dentryTree.Len(), crc)
 	return
 }
@@ -535,7 +535,7 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 		return
 	}
 	crc = crc32.Sum32()
-	log.LogInfof("storeExtend: store complete: partitoinID(%v) volume(%) numExtends(%v) crc(%v)",
+	log.LogInfof("storeExtend: store complete: partitoinID(%v) volume(%v) numExtends(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, extendTree.Len(), crc)
 	return
 }
@@ -600,7 +600,7 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 		return
 	}
 	crc = crc32.Sum32()
-	log.LogInfof("storeMultipart: store complete: partitoinID(%v) volume(%) numMultiparts(%v) crc(%v)",
+	log.LogInfof("storeMultipart: store complete: partitoinID(%v) volume(%v) numMultiparts(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, multipartTree.Len(), crc)
 	return
 }

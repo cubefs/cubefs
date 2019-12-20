@@ -4,24 +4,28 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
-	"io/ioutil"
 	"net"
-	"net/http"
 	"strings"
 	"sync"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/util"
 )
 
 type MockMetaServer struct {
 	NodeID     uint64
 	TcpAddr    string
+	mc         *master.MasterClient
 	partitions map[uint64]*MockMetaPartition // Key: metaRangeId, Val: metaPartition
 	sync.RWMutex
 }
 
 func NewMockMetaServer(addr string) *MockMetaServer {
-	mms := &MockMetaServer{TcpAddr: addr, partitions: make(map[uint64]*MockMetaPartition, 0)}
+	mms := &MockMetaServer{
+		TcpAddr: addr, partitions: make(map[uint64]*MockMetaPartition, 0),
+		mc: master.NewMasterClient([]string{hostAddr}, false),
+	}
 	return mms
 }
 
@@ -31,24 +35,11 @@ func (mms *MockMetaServer) Start() {
 }
 
 func (mms *MockMetaServer) register() {
-	reqUrl := fmt.Sprintf("%v?addr=%v", urlAddMetaNode, mms.TcpAddr)
-	resp, err := http.Get(reqUrl)
+	nodeID, err := mms.mc.NodeAPI().AddMetaNode(mms.TcpAddr)
 	if err != nil {
 		panic(err)
 	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(string(body))
-	rst := &proto.HTTPReply{}
-	err = json.Unmarshal(body, &rst)
-	if err != nil {
-		panic(err)
-	}
-	nodeIDFloat := rst.Data.(float64)
-	mms.NodeID = uint64(nodeIDFloat)
+	mms.NodeID = nodeID
 
 }
 
@@ -217,12 +208,7 @@ end:
 func (mms *MockMetaServer) postResponseToMaster(adminTask *proto.AdminTask, resp interface{}) (err error) {
 	adminTask.Request = nil
 	adminTask.Response = resp
-	data, err := json.Marshal(adminTask)
-	if err != nil {
-		return
-	}
-	_, err = PostToMaster(http.MethodPost, urlMetaNodeResponse, data)
-	if err != nil {
+	if err = mms.mc.NodeAPI().ResponseMetaNodeTask(adminTask); err != nil {
 		return
 	}
 	return

@@ -29,14 +29,14 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 
 	_, bucket, object, vl, err := o.parseRequestParams(r)
 	if err != nil {
-		log.LogErrorf("createMultipleUploadHandler: parse request parameters fail, requestID(%o) err(%v)",
+		log.LogErrorf("createMultipleUploadHandler: parse request parameters fail, requestID(%v) err(%v)",
 			RequestIDFromRequest(r), err)
 		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
 	uploadId, initErr := vl.InitMultipart(object)
 	if initErr != nil {
-		log.LogErrorf("createMultipleUploadHandler:  init multipart fail, requestID(%o) err(%v)",
+		log.LogErrorf("createMultipleUploadHandler:  init multipart fail, requestID(%v) err(%v)",
 			RequestIDFromRequest(r), err)
 		_ = NoSuchBucket.ServeResponse(w, r)
 		return
@@ -76,7 +76,7 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 	// check args
 	params, _, object, vl, err := o.parseRequestParams(r)
 	if err != nil {
-		log.LogErrorf("uploadPartHandler: parse request parameters fail, requestID(%o) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("uploadPartHandler: parse request parameters fail, requestID(%v) err(%v)", RequestIDFromRequest(r), err)
 		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
@@ -92,7 +92,7 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 
 	var partNumberInt uint64
 	if partNumberInt, err = strconv.ParseUint(partNumber, 10, 64); err != nil {
-		log.LogErrorf("uploadPartHandler: parse part number fail, requestID(%o) raw(%v) err(%v)",
+		log.LogErrorf("uploadPartHandler: parse part number fail, requestID(%v) raw(%v) err(%v)",
 			RequestIDFromRequest(r), partNumber, err)
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
@@ -135,7 +135,7 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 	var partNoMarkerInt uint64
 
 	if uploadId == "" {
-		log.LogErrorf("listPartsHandler: illegal update ID, requestID(%o) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("listPartsHandler: illegal update ID, requestID(%v) err(%v)", RequestIDFromRequest(r), err)
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
@@ -196,7 +196,7 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 	var bytes []byte
 	var marshalError error
 	if bytes, marshalError = MarshalXMLEntity(listPartsResult); marshalError != nil {
-		log.LogErrorf("listPartsHandler: marshal result fail, requestID(%o) err(%v)",
+		log.LogErrorf("listPartsHandler: marshal result fail, requestID(%v) err(%v)",
 			RequestIDFromRequest(r), err)
 		_ = InternalError.ServeResponse(w, r)
 		return
@@ -219,7 +219,7 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 
 	params, bucket, object, vl, err := o.parseRequestParams(r)
 	if err != nil {
-		log.LogErrorf("[UploadPart] request id [%o], Get volume failed cause : %o", r.URL, err)
+		log.LogErrorf("completeMultipartUploadHandler: parse request params fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
 		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
@@ -227,19 +227,19 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	// get upload id and part number
 	uploadId := params[ParamUploadId]
 	if uploadId == "" {
-		log.LogErrorf("[CompleteMultipartUpload] request id [%o], Upload id can not be empty", r.URL.String())
+		log.LogErrorf("completeMultipartUploadHandler: non upload ID specified: requestID(%v)", RequestIDFromRequest(r))
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
 
 	fsFileInfo, err := vl.CompleteMultipart(object, uploadId)
 	if err != nil {
-		log.LogErrorf("completeMultipartUploadHandler: complete multipart fail, requestID(%o) uploadID(%v) err(%v)",
+		log.LogErrorf("completeMultipartUploadHandler: complete multipart fail, requestID(%v) uploadID(%v) err(%v)",
 			RequestIDFromRequest(r), uploadId, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
-	log.LogDebugf("completeMultipartUploadHandler: complete multipart, requestID(%o) uploadID(%v) path(%v)",
+	log.LogDebugf("completeMultipartUploadHandler: complete multipart, requestID(%v) uploadID(%v) path(%v)",
 		RequestIDFromRequest(r), uploadId, object)
 
 	// write response
@@ -252,7 +252,7 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	var bytes []byte
 	var marshalError error
 	if bytes, marshalError = MarshalXMLEntity(completeResult); marshalError != nil {
-		log.LogErrorf("completeMultipartUploadHandler: marshal result fail, requestID(%o) err(%v)", RequestIDFromRequest(r), marshalError)
+		log.LogErrorf("completeMultipartUploadHandler: marshal result fail, requestID(%v) err(%v)", RequestIDFromRequest(r), marshalError)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
@@ -275,7 +275,7 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 	// check args
 	params, _, object, vl, err := o.parseRequestParams(r)
 	if err != nil {
-		log.LogErrorf("abortMultipartUploadHandler: parse request parameters fail, requestID(%o) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("abortMultipartUploadHandler: parse request parameters fail, requestID(%v) err(%v)", RequestIDFromRequest(r), err)
 		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
@@ -284,11 +284,11 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 	//// Abort multipart upload
 	err = vl.AbortMultipart(object, uploadId)
 	if err != nil {
-		log.LogErrorf("abortMultipartUploadHandler: volume abort multipart fail, requestID(%o) uploadID(%v) err(%v)", RequestIDFromRequest(r), uploadId, err)
+		log.LogErrorf("abortMultipartUploadHandler: volume abort multipart fail, requestID(%v) uploadID(%v) err(%v)", RequestIDFromRequest(r), uploadId, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
-	log.LogDebugf("abortMultipartUploadHandler: volume abort multipart, requestID(%o) uploadID(%v) path(%v)", RequestIDFromRequest(r), uploadId, object)
+	log.LogDebugf("abortMultipartUploadHandler: volume abort multipart, requestID(%v) uploadID(%v) path(%v)", RequestIDFromRequest(r), uploadId, object)
 	return
 }
 
@@ -299,7 +299,7 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 	// check args
 	params, bucket, _, vl, err := o.parseRequestParams(r)
 	if err != nil {
-		log.LogErrorf("abortMultipartUploadHandler: parse request parameters fail, requestID(%o) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("listMultipartUploadsHandler: parse request parameters fail, requestID(%v) err(%v)", RequestIDFromRequest(r), err)
 		_ = NoSuchBucket.ServeResponse(w, r)
 	}
 
@@ -316,7 +316,7 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 	} else {
 		maxUploadsInt, err = strconv.ParseUint(maxUploads, 10, 64)
 		if err != nil {
-			log.LogErrorf("[ListMultipartUploads] request id [%o], Param max-uploads is invalid, failed info : %o", r.URL, err)
+			log.LogErrorf("listMultipartUploadsHandler: parse max uploads option fail: requestID(%v), err(%v)", RequestIDFromRequest(r), err)
 			_ = InvalidArgument.ServeResponse(w, r)
 			return
 		}
@@ -327,7 +327,7 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 
 	fsUploads, nextKeyMarker, nextUploadIdMarker, IsTruncated, prefixes, err := vl.ListMultipartUploads(prefix, delimiter, keyMarker, uploadIdMarker, maxUploadsInt)
 	if err != nil {
-		log.LogErrorf("[ListMultipartUploads] request id [%o], List multipart uploads failed cause : %o", r.URL, err)
+		log.LogErrorf("listMultipartUploadsHandler: volume list multipart uploads fail: requestID(%v), err(%v)", RequestIDFromRequest(r), err)
 		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
@@ -360,7 +360,7 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 	var bytes []byte
 	var marshalError error
 	if bytes, marshalError = MarshalXMLEntity(listUploadsResult); marshalError != nil {
-		log.LogErrorf("[ListMultipartUploads] request id [%o], Marshal list uploads result failed cause : %o", r.URL, err)
+		log.LogErrorf("listMultipartUploadsHandler: marshal xml entity fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
@@ -368,6 +368,6 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 	// set response header
 	w.Header().Set(HeaderNameContentType, HeaderValueContentTypeXML)
 	w.Header().Set(HeaderNameContentLength, strconv.Itoa(len(bytes)))
-	w.Write(bytes)
+	_, _ = w.Write(bytes)
 	return
 }

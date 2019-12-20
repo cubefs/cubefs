@@ -149,7 +149,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result := &struct {
-		VolName              string                `json:volName`
+		VolName              string                `json:"volName"`
 		ID                   uint64                `json:"id"`
 		Size                 int                   `json:"size"`
 		Used                 int                   `json:"used"`
@@ -159,7 +159,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		FileCount            int                   `json:"fileCount"`
 		Replicas             []string              `json:"replicas"`
 		TinyDeleteRecordSize int64                 `json:"tinyDeleteRecordSize"`
-		RaftStatus           *raft.Status          `json: "raftStatus"`
+		RaftStatus           *raft.Status          `json:"raftStatus"`
 	}{
 		VolName:              partition.volumeID,
 		ID:                   partition.partitionID,

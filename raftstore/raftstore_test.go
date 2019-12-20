@@ -49,6 +49,16 @@ type TestFsm struct {
 	testSM
 }
 
+func (TestFsm) Put(key, val interface{}) (interface{}, error) {
+	fmt.Printf("===test raft put key(%v) val(%v)", key, val)
+	return nil, nil
+}
+
+func (TestFsm) Del(key interface{}) (interface{}, error) {
+	fmt.Printf("===test raft del key(%v)", key)
+	return nil, nil
+}
+
 func (*testSM) Apply(command []byte, index uint64) (interface{}, error) {
 	fmt.Printf("===test raft apply index %d\n", index)
 	return nil, nil
@@ -84,7 +94,7 @@ func TestRaftStore_CreateRaftStore(t *testing.T) {
 	var (
 		cfg     Config
 		err     error
-		testFsm TestFsm
+		testFsm *TestFsm
 		peers   []PeerAddress
 		data    []byte
 	)
@@ -126,7 +136,7 @@ func TestRaftStore_CreateRaftStore(t *testing.T) {
 				Applied: 0,
 				Leader:  3,
 				Term:    10,
-				SM:      &testFsm,
+				SM:      testFsm,
 				Peers:   peers,
 			}
 

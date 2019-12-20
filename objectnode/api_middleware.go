@@ -66,7 +66,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 				if sb.Len() != 0 {
 					sb.WriteString(",")
 				}
-				sb.WriteString(fmt.Sprintf("%o:[%o]", k, header.Get(k)))
+				sb.WriteString(fmt.Sprintf("%v:[%v]", k, header.Get(k)))
 			}
 			return "{" + sb.String() + "}"
 		}

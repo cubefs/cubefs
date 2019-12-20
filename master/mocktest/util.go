@@ -2,20 +2,16 @@ package mocktest
 
 import (
 	"bytes"
-	"github.com/chubaofs/chubaofs/proto"
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 const (
 	ColonSeparator = ":"
-	hostAddr       = "http://127.0.0.1:8080"
-	urlAddDataNode = hostAddr + "/dataNode/add"
-	urlAddMetaNode = hostAddr + "/metaNode/add"
-	// Operation response
-	urlMetaNodeResponse = hostAddr + "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
-	urlDataNodeResponse = hostAddr + "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
+	hostAddr       = "127.0.0.1:8080"
 )
 
 func responseAckOKToMaster(conn net.Conn, p *proto.Packet, data []byte) error {

@@ -100,7 +100,7 @@ func isSignaturedV4(r *http.Request) bool {
 func (o *ObjectNode) checkSignatureV4(r *http.Request) (bool, error) {
 	_, _, _, vl, _ := o.parseRequestParams(r)
 	if vl == nil {
-		log.LogInfof("[handleHttpRestAPI] invalid request, has no authorization info, request id [%o]", r.URL.EscapedPath())
+		log.LogInfof("checkSignatureV4: no volume info: requestID(%v)", RequestIDFromRequest(r))
 		return false, nil
 	}
 	_, secretKey := vl.OSSSecure()
