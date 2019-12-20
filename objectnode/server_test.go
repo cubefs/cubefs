@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -44,11 +45,9 @@ func TestObjectNode_Lifecycle(t *testing.T) {
 	if err = node.Start(cfg); err != nil {
 		t.Fatalf("start node server fail cause: %v", err)
 	}
-	//go func() {
-	//	fmt.Printf("node server will be shutdown after 3 seconds.\n")
-	//	time.Sleep(3 * time.Second)
-	//	fmt.Printf("node server will be shutdown.\n")
-	//	node.Shutdown()
-	//}()
+	go func() {
+		time.Sleep(3 * time.Second)
+		node.Shutdown()
+	}()
 	node.Sync()
 }
