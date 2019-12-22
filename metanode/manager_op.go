@@ -1087,6 +1087,22 @@ func (m *metadataManager) opAppendMultipart(conn net.Conn, p *Packet, remote str
 }
 
 func (m *metadataManager) opListMultipart(conn net.Conn, p *Packet, remote string) (err error) {
-	// TODO: implement method 'opListMultipart'
+	req := &proto.ListMultipartRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.ListMultipart(req, p)
+	_ = m.respondToClient(conn, p)
 	return
 }

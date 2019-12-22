@@ -148,6 +148,7 @@ type OpMultipart interface {
 	CreateMultipart(req *proto.CreateMultipartRequest, p *Packet) (err error)
 	AppendMultipart(req *proto.AddMultipartPartRequest, p *Packet) (err error)
 	RemoveMultipart(req *proto.RemoveMultipartRequest, p *Packet) (err error)
+	ListMultipart(req *proto.ListMultipartRequest, p *Packet) (err error)
 }
 
 // OpMeta defines the interface for the metadata operations.
