@@ -17,16 +17,16 @@ package fs
 import (
 	"fmt"
 	"io"
-	"syscall"
 	"time"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 	"golang.org/x/net/context"
 
+	"sync"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
-	"sync"
 )
 
 // File defines the structure of a file.
@@ -201,7 +201,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	}()
 
 	var waitForFlush, enSyncWrite bool
-	if ((int(req.FileFlags) & syscall.O_DIRECT) != 0) || (req.FileFlags&fuse.OpenSync != 0) {
+	if isDirectIOEnabled(req.FileFlags) || (req.FileFlags&fuse.OpenSync != 0) {
 		waitForFlush = true
 		enSyncWrite = f.super.enSyncWrite
 	}
