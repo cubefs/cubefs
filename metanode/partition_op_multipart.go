@@ -138,6 +138,7 @@ func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *P
 }
 
 func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packet) (err error) {
+
 	max := int(req.Max)
 	marker := req.Marker
 	multipartIdMarker := req.MultipartIdMarker

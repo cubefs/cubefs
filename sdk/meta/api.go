@@ -635,7 +635,7 @@ func (mw *MetaWrapper) ListMultipart_ll(prefix, delimiter, keyMarker string, mul
 		wg.Add(1)
 		go func(mp *MetaPartition) {
 			defer wg.Done()
-			status, response, err := mw.listSessions(mp, prefix, delimiter, keyMarker, multipartIdMarker, maxUploads+1)
+			status, response, err := mw.listMultiparts(mp, prefix, delimiter, keyMarker, multipartIdMarker, maxUploads+1)
 			if err != nil || status != statusOK {
 				log.LogErrorf("ListMultipart: partition list multipart fail, partitionID(%v) err(%v) status(%v)",
 					mp.PartitionID, err, status)

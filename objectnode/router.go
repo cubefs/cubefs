@@ -98,12 +98,6 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			Path("/{object:.+}").
 			HandlerFunc(o.policyCheck(o.putObjectHandler, []Action{PutObjectAction}))
 
-		// Delete object
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html .
-		r.Methods(http.MethodDelete).
-			Path("/{object:.+}").
-			HandlerFunc(o.policyCheck(o.deleteObjectHandler, []Action{DeleteObjectAction}))
-
 		// Abort multipart
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_AbortMultipartUpload.html .
 		r.Methods(http.MethodDelete).
@@ -222,6 +216,12 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.Methods(http.MethodDelete).
 			HandlerFunc(o.policyCheck(o.deleteBucketPolicyHandler, []Action{DeleteBucketPolicyAction})).
 			Queries("policy", "")
+
+		// Delete object
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html .
+		r.Methods(http.MethodDelete).
+			Path("/{object:.+}").
+			HandlerFunc(o.policyCheck(o.deleteObjectHandler, []Action{DeleteObjectAction}))
 
 		// Get bucket acl
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketAcl.html
