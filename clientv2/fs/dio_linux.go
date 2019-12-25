@@ -12,10 +12,12 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package storage
+package fs
 
-import "syscall"
+import (
+	"syscall"
+)
 
-func fallocate(fd int, mode uint32, off int64, len int64) (err error) {
-	return syscall.Fallocate(fd, mode, off, len)
+func isDirectIOEnabled(flags int) bool {
+	return (int(flags) & syscall.O_DIRECT) != 0
 }

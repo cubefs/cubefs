@@ -16,9 +16,10 @@ package storage
 
 import (
 	"encoding/binary"
+	"sync/atomic"
+
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
-	"sync/atomic"
 )
 
 type BlockCrc struct {

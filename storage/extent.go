@@ -17,8 +17,6 @@ package storage
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/log"
 	"hash/crc32"
 	"io"
 	"math"
@@ -28,6 +26,9 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (

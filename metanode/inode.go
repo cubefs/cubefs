@@ -374,13 +374,16 @@ func (i *Inode) ExtentsTruncate(exts []BtreeItem, length uint64, ct int64) {
 
 // IncNLink increases the nLink value by one.
 func (i *Inode) IncNLink() {
+	mtime := Now.GetCurrentTime().Unix()
 	i.Lock()
 	i.NLink++
+	i.ModifyTime = mtime
 	i.Unlock()
 }
 
 // DecNLink decreases the nLink value by one.
 func (i *Inode) DecNLink() {
+	mtime := Now.GetCurrentTime().Unix()
 	i.Lock()
 	if proto.IsDir(i.Type) && i.NLink == 2 {
 		i.NLink--
@@ -388,6 +391,7 @@ func (i *Inode) DecNLink() {
 	if i.NLink > 0 {
 		i.NLink--
 	}
+	i.ModifyTime = mtime
 	i.Unlock()
 }
 
