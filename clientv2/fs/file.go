@@ -17,9 +17,10 @@ package fs
 import (
 	"errors"
 	"fmt"
-	"golang.org/x/net/context"
 	"io"
 	"syscall"
+
+	"golang.org/x/net/context"
 
 	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fuseops"
@@ -133,7 +134,7 @@ func (s *Super) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) error {
 	}()
 
 	var waitForFlush, enSyncWrite bool
-	if (flags&syscall.O_DIRECT != 0) || (flags&syscall.O_SYNC != 0) {
+	if isDirectIOEnabled(flags) || (flags&syscall.O_SYNC != 0) {
 		waitForFlush = true
 		enSyncWrite = s.enSyncWrite
 	}
