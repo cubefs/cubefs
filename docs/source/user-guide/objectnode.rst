@@ -62,62 +62,12 @@ Object Node using `JSON` format configuration file.
 Fetch Authentication Keys
 ----------------------------
 Authentication keys owned by volume and stored with volume view (volume topology) by Resource Manager (Master).
-User can fetch it by using administration API, see :doc:`/admin-api/master/volume`
+User can fetch it by using administration API, see **Get Volume Information** at :doc:`/admin-api/master/volume`
 
-Supported S3-Compatible APIs
-----------------------------
+Using Object Storage Interface
+-------------------------------
+Object Subsystem (ObjectNode) provides S3-compatible object storage interface, so that you can operate files by using native Amazon S3 SDKs.
 
-Bucket APIs
-^^^^^^^^^^^
+For detail about list of supported APIs, see **Supported S3-compatible APIs** at :doc:`/design/objectnode`
 
-.. csv-table::
-    :header: "Name", "API Reference"
-
-    "HeadBucket", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadBucket.html"
-    "GetBucketLocation", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLocation.html"
-
-Object APIs
-^^^^^^^^^^^
-
-.. csv-table::
-    :header: "Name", "API Reference"
-
-    "HeadObject", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html"
-    "PutObjects", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html"
-    "GetObject", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html"
-    "ListObjects", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjects.html"
-    "ListObjectsV2", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html"
-    "DeleteObject", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html"
-    "DeleteObjects", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjects.html"
-    "CopyObject", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html"
-
-Multipart Upload APIs
-^^^^^^^^^^^^^^^^^^^^^
-
-.. csv-table::
-    :header: "Name", "API Reference"
-
-    "CreateMultipartUpload", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateMultipartUpload.html"
-    "ListMultipartUploads", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListMultipartUploads.html"
-    "AbortMultipartUpload", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_AbortMultipartUpload.html"
-    "CompleteMultipartUpload", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_CompleteMultipartUpload.html"
-    "ListParts", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListParts.html"
-    "UploadPart", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPart.html"
-    "UploadPartCopy", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPartCopy.html"
-
-Supported SDKs
---------------
-Object Node provides S3-compatible object storage interface, so that you can operate files by using native Amazon S3 SDKs.
-
-.. csv-table::
-   :header: "Name", "Language", "Link"
-
-    "AWS SDK for Java", "Java", "https://aws.amazon.com/sdk-for-java/"
-    "AWS SDK for JavaScript", "JavaScript", "https://aws.amazon.com/sdk-for-browser/"
-    "AWS SDK for JavaScript inNode.js", "JavaScript", "https://aws.amazon.com/sdk-for-node-js/"
-    "AWS SDK for Go", "Go", "https://docs.aws.amazon.com/sdk-for-go/"
-    "AWS SDK for PHP", "PHP", "https://aws.amazon.com/sdk-for-php/"
-    "AWS SDK for Ruby", "Ruby", "https://aws.amazon.com/sdk-for-ruby/"
-    "AWS SDK for .NET", ".NET", "https://aws.amazon.com/sdk-for-net/"
-    "AWS SDK for C++", "C++", "https://aws.amazon.com/sdk-for-cpp/"
-    "Boto3", "Python", "https://aws.amazon.com/sdk-for-python/"
+For detail about list of supported SDKs, see **Supported SDKs** at :doc:`/design/objectnode`
