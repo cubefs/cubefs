@@ -26,7 +26,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/master"
+	"hash/crc32"
+	"net"
+	"sort"
+	"syscall"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/repl"
@@ -35,10 +39,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	raftProto "github.com/tiglabs/raft/proto"
-	"hash/crc32"
-	"net"
-	"sort"
-	"syscall"
 )
 
 const (
@@ -587,7 +587,7 @@ func (dp *DataPartition) compareReplicas(v1, v2 []string) (equals bool) {
 // Fetch the replica information from the master.
 func (dp *DataPartition) fetchReplicasFromMaster() (isLeader bool, replicas []string, err error) {
 
-	var partition *master.DataPartition
+	var partition *proto.DataPartitionInfo
 	if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
 		isLeader = false
 		return

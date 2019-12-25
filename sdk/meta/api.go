@@ -188,7 +188,7 @@ func (mw *MetaWrapper) BatchGetXAttr(inodes []uint64, keys []string) ([]*proto.X
 			xAttrInfos, err := mw.batchGetXAttr(mp, inodes, keys)
 			if err != nil {
 				errGlobal = err
-				log.LogErrorf("BatchGetXAttr: Get xattr from partion %s in batch failed cause : %s", mp.PartitionID, err)
+				log.LogErrorf("BatchGetXAttr: get xattr from partition fail: partitionID(%v) err(%s)", mp.PartitionID, err)
 				return
 			}
 			batchInfos = append(batchInfos, xAttrInfos...)

@@ -19,10 +19,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/master/mocktest"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
@@ -30,6 +26,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/chubaofs/chubaofs/master/mocktest"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
@@ -65,10 +66,10 @@ func createDefaultMasterServerForTest() *Server {
 		"retainLogs":"20000",
 		"tickInterval":500,
 		"electionTick":6,
-		"logDir": "/export/chubaofs/Logs",
+		"logDir": "/tmp/chubaofs/Logs",
 		"logLevel":"DEBUG",
-		"walDir":"/export/chubaofs/raft",
-		"storeDir":"/export/chubaofs/rocksdbstore",
+		"walDir":"/tmp/chubaofs/raft",
+		"storeDir":"/tmp/chubaofs/rocksdbstore",
 		"clusterName":"chubaofs"
 	}`
 	testServer, err := createMasterServer(cfgJSON)

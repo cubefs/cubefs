@@ -2,12 +2,13 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore"
-	rproto "github.com/tiglabs/raft/proto"
 	"io/ioutil"
 	"net/http"
 	"testing"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/raftstore"
+	rproto "github.com/tiglabs/raft/proto"
 )
 
 func TestHandleLeaderChange(t *testing.T) {
@@ -71,9 +72,9 @@ func snapshotTest(t *testing.T) {
 	s := &Server{}
 
 	var dbStore *raftstore.RocksDBStore
-	dbStore, err = raftstore.NewRocksDBStore("/export/chubaofs/raft2", LRUCacheSize, WriteBufferSize)
+	dbStore, err = raftstore.NewRocksDBStore("/tmp/chubaofs/raft2", LRUCacheSize, WriteBufferSize)
 	if err != nil {
-		t.Fatalf("ioen rocks db store fail cause: %v", err)
+		t.Fatalf("init rocks db store fail cause: %v", err)
 	}
 	fsm := &MetadataFsm{
 		rs:    server.fsm.rs,

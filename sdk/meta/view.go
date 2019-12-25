@@ -20,16 +20,17 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
+	"sync/atomic"
+	"time"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util/cryptoutil"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/jacobsa/daemonize"
-	"os"
-	"strings"
-	"sync/atomic"
-	"time"
 )
 
 const (
@@ -48,11 +49,7 @@ type OSSSecure struct {
 	SecretKey string
 }
 
-type VolStatInfo struct {
-	Name      string
-	TotalSize uint64
-	UsedSize  uint64
-}
+type VolStatInfo = proto.VolStatInfo
 
 func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 	var vv *proto.VolView
@@ -130,23 +127,14 @@ func (mw *MetaWrapper) updateClusterInfo() (err error) {
 
 func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 
-	var convert = func(info *proto.VolStatInfo) *VolStatInfo {
-		return &VolStatInfo{
-			Name:      info.Name,
-			TotalSize: info.TotalSize,
-			UsedSize:  info.UsedSize,
-		}
-	}
-
-	var volStatInfo *proto.VolStatInfo
-	if volStatInfo, err = mw.mc.ClientAPI().GetVolumeStat(mw.volname); err != nil {
+	var info *proto.VolStatInfo
+	if info, err = mw.mc.ClientAPI().GetVolumeStat(mw.volname); err != nil {
 		log.LogWarnf("updateVolStatInfo: get volume status fail: volume(%v) err(%v)", mw.volname, err)
 		return
 	}
-	var info = convert(volStatInfo)
 	atomic.StoreUint64(&mw.totalSize, info.TotalSize)
 	atomic.StoreUint64(&mw.usedSize, info.UsedSize)
-	log.LogInfof("VolStatInfo: info(%v)", *info)
+	log.LogInfof("VolStatInfo: info(%v)", info)
 	return
 }
 

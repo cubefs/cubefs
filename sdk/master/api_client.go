@@ -19,7 +19,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/chubaofs/chubaofs/master"
 	"github.com/chubaofs/chubaofs/proto"
 )
 
@@ -98,14 +97,14 @@ func (api *ClientAPI) GetVolumeStat(volName string) (info *proto.VolStatInfo, er
 	return
 }
 
-func (api *ClientAPI) GetMetaPartition(partitionID uint64) (partition *master.MetaPartition, err error) {
+func (api *ClientAPI) GetMetaPartition(partitionID uint64) (partition *proto.MetaPartitionInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.ClientMetaPartition)
 	request.addParam("id", strconv.FormatUint(partitionID, 10))
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	partition = &master.MetaPartition{}
+	partition = &proto.MetaPartitionInfo{}
 	if err = json.Unmarshal(data, partition); err != nil {
 		return
 	}

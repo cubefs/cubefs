@@ -19,7 +19,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/chubaofs/chubaofs/master"
 	"github.com/chubaofs/chubaofs/proto"
 )
 
@@ -49,28 +48,28 @@ func (api *NodeAPI) AddMetaNode(serverAddr string) (id uint64, err error) {
 	return
 }
 
-func (api *NodeAPI) GetDataNode(serverHost string) (node *master.DataNode, err error) {
+func (api *NodeAPI) GetDataNode(serverHost string) (node *proto.DataNodeInfo, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.GetDataNode)
 	request.addParam("addr", serverHost)
 	if buf, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	node = &master.DataNode{}
+	node = &proto.DataNodeInfo{}
 	if err = json.Unmarshal(buf, &node); err != nil {
 		return
 	}
 	return
 }
 
-func (api *NodeAPI) GetMetaNode(serverHost string) (node *master.MetaNode, err error) {
+func (api *NodeAPI) GetMetaNode(serverHost string) (node *proto.MetaNodeInfo, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.GetMetaNode)
 	request.addParam("addr", serverHost)
 	if buf, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	node = &master.MetaNode{}
+	node = &proto.MetaNodeInfo{}
 	if err = json.Unmarshal(buf, &node); err != nil {
 		return
 	}

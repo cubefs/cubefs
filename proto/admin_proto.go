@@ -319,13 +319,6 @@ type MetaPartitionLoadResponse struct {
 	Addr        string
 }
 
-// VolStatInfo defines the statistics related to a volume
-type VolStatInfo struct {
-	Name      string
-	TotalSize uint64
-	UsedSize  uint64
-}
-
 // DataPartitionResponse defines the response from a data node to the master that is related to a data partition.
 type DataPartitionResponse struct {
 	PartitionID uint64

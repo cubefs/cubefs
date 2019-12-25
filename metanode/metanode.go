@@ -15,13 +15,13 @@
 package metanode
 
 import (
-	"github.com/chubaofs/chubaofs/master"
-	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 
 	"fmt"
 	"strconv"
@@ -91,13 +91,8 @@ func (m *MetaNode) Shutdown() {
 	}
 }
 
-type MetaNodeInfo struct {
-	Addr                      string
-	PersistenceMetaPartitions []uint64
-}
-
 func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
-	var metaNodeInfo *master.MetaNode
+	var metaNodeInfo *proto.MetaNodeInfo
 	for i := 0; i < 3; i++ {
 		if metaNodeInfo, err = masterClient.NodeAPI().GetMetaNode(fmt.Sprintf("%s:%s", m.localAddr, m.listen)); err != nil {
 			log.LogErrorf("checkLocalPartitionMatchWithMaster: get MetaNode info fail: err(%v)", err)

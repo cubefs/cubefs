@@ -16,7 +16,6 @@ package datanode
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/master"
 	"net"
 	"net/http"
 	"regexp"
@@ -89,10 +88,10 @@ type DataNode struct {
 	raftReplica     string
 	raftStore       raftstore.RaftStore
 
-	tcpListener     net.Listener
-	stopC           chan bool
-	state           uint32
-	wg              sync.WaitGroup
+	tcpListener net.Listener
+	stopC       chan bool
+	state       uint32
+	wg          sync.WaitGroup
 }
 
 func NewServer() *DataNode {
@@ -259,7 +258,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 // The startup of a data node will be blocked until the registration succeeds.
 func (s *DataNode) register(cfg *config.Config) {
 	var (
-		err  error
+		err error
 	)
 
 	timer := time.NewTimer(0)
@@ -313,13 +312,13 @@ type DataNodeInfo struct {
 }
 
 func (s *DataNode) checkLocalPartitionMatchWithMaster() (err error) {
-	var convert = func(node *master.DataNode) *DataNodeInfo {
+	var convert = func(node *proto.DataNodeInfo) *DataNodeInfo {
 		result := &DataNodeInfo{}
 		result.Addr = node.Addr
 		result.PersistenceDataPartitions = node.PersistenceDataPartitions
 		return result
 	}
-	var dataNode *master.DataNode
+	var dataNode *proto.DataNodeInfo
 	for i := 0; i < 3; i++ {
 		if dataNode, err = MasterClient.NodeAPI().GetDataNode(s.localServerAddr); err != nil {
 			log.LogErrorf("checkLocalPartitionMatchWithMaster error %v", err)

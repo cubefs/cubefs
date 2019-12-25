@@ -19,7 +19,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/chubaofs/chubaofs/master"
 	"github.com/chubaofs/chubaofs/proto"
 )
 
@@ -27,20 +26,20 @@ type AdminAPI struct {
 	mc *MasterClient
 }
 
-func (api *AdminAPI) GetCluster() (cv *master.ClusterView, err error) {
+func (api *AdminAPI) GetCluster() (cv *proto.ClusterView, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetCluster)
 	if buf, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	cv = &master.ClusterView{}
+	cv = &proto.ClusterView{}
 	if err = json.Unmarshal(buf, &cv); err != nil {
 		return
 	}
 	return
 }
 
-func (api *AdminAPI) GetDataPartition(volName string, partitionID uint64) (partition *master.DataPartition, err error) {
+func (api *AdminAPI) GetDataPartition(volName string, partitionID uint64) (partition *proto.DataPartitionInfo, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetDataPartition)
 	request.addParam("id", strconv.Itoa(int(partitionID)))
@@ -48,7 +47,7 @@ func (api *AdminAPI) GetDataPartition(volName string, partitionID uint64) (parti
 	if buf, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	partition = &master.DataPartition{}
+	partition = &proto.DataPartitionInfo{}
 	if err = json.Unmarshal(buf, &partition); err != nil {
 		return
 	}

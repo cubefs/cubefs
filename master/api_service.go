@@ -90,10 +90,7 @@ func newCellView() *CellView {
 	return &CellView{DataNodes: make([]NodeView, 0)}
 }
 
-type badPartitionView struct {
-	DiskPath     string
-	PartitionIDs []uint64
-}
+type badPartitionView = proto.BadPartitionView
 
 // Set the threshold of the memory usage on each meta node.
 // If the memory usage reaches this threshold, then all the mata partition will be marked as readOnly.
@@ -165,7 +162,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
-	cv := &ClusterView{
+	cv := &proto.ClusterView{
 		Name:               m.cluster.Name,
 		LeaderAddr:         m.leaderInfo.addr,
 		DisableAutoAlloc:   m.cluster.DisableAutoAllocate,
@@ -174,10 +171,10 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MaxDataPartitionID: m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:      m.cluster.idAlloc.commonID,
 		MaxMetaPartitionID: m.cluster.idAlloc.metaPartitionID,
-		MetaNodes:          make([]NodeView, 0),
-		DataNodes:          make([]NodeView, 0),
-		VolStatInfo:        make([]*volStatInfo, 0),
-		BadPartitionIDs:    make([]badPartitionView, 0),
+		MetaNodes:          make([]proto.NodeView, 0),
+		DataNodes:          make([]proto.NodeView, 0),
+		VolStatInfo:        make([]*proto.VolStatInfo, 0),
+		BadPartitionIDs:    make([]proto.BadPartitionView, 0),
 	}
 
 	vols := m.cluster.allVolNames()
@@ -293,7 +290,7 @@ func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	sendOkReply(w, r, newSuccessHTTPReply(dp))
+	sendOkReply(w, r, newSuccessHTTPReply(dp.ToProto()))
 }
 
 // Load the data partition.
@@ -597,9 +594,10 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr string
-		dataNode *DataNode
-		err      error
+		nodeAddr     string
+		dataNode     *DataNode
+		dataNodeInfo *proto.DataNodeInfo
+		err          error
 	)
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -611,7 +609,27 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dataNode.PersistenceDataPartitions = m.cluster.getAllDataPartitionIDByDatanode(nodeAddr)
-	sendOkReply(w, r, newSuccessHTTPReply(dataNode))
+
+	dataNodeInfo = &proto.DataNodeInfo{
+		Total:                     dataNode.Total,
+		Used:                      dataNode.Used,
+		AvailableSpace:            dataNode.AvailableSpace,
+		ID:                        dataNode.ID,
+		CellName:                  dataNode.CellName,
+		Addr:                      dataNode.Addr,
+		ReportTime:                dataNode.ReportTime,
+		IsActive:                  dataNode.isActive,
+		UsageRatio:                dataNode.UsageRatio,
+		SelectedTimes:             dataNode.SelectedTimes,
+		Carry:                     dataNode.Carry,
+		DataPartitionReports:      dataNode.DataPartitionReports,
+		DataPartitionCount:        dataNode.DataPartitionCount,
+		NodeSetID:                 dataNode.NodeSetID,
+		PersistenceDataPartitions: dataNode.PersistenceDataPartitions,
+		BadDisks:                  dataNode.BadDisks,
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))
 }
 
 // Decommission a data node. This will decommission all the data partition on that node.
@@ -710,9 +728,10 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr string
-		metaNode *MetaNode
-		err      error
+		nodeAddr     string
+		metaNode     *MetaNode
+		metaNodeInfo *proto.MetaNodeInfo
+		err          error
 	)
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -724,7 +743,24 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	metaNode.PersistenceMetaPartitions = m.cluster.getAllMetaPartitionIDByMetaNode(nodeAddr)
-	sendOkReply(w, r, newSuccessHTTPReply(metaNode))
+	metaNodeInfo = &proto.MetaNodeInfo{
+		ID:                        metaNode.ID,
+		Addr:                      metaNode.Addr,
+		IsActive:                  metaNode.IsActive,
+		CellName:                  metaNode.CellName,
+		MaxMemAvailWeight:         metaNode.MaxMemAvailWeight,
+		Total:                     metaNode.Total,
+		Used:                      metaNode.Used,
+		Ratio:                     metaNode.Ratio,
+		SelectCount:               metaNode.SelectCount,
+		Carry:                     metaNode.Carry,
+		Threshold:                 metaNode.Threshold,
+		ReportTime:                metaNode.ReportTime,
+		MetaPartitionCount:        metaNode.MetaPartitionCount,
+		NodeSetID:                 metaNode.NodeSetID,
+		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }
 
 func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Request) {
@@ -1472,7 +1508,34 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(mp))
+
+	var toInfo = func(mp *MetaPartition) *proto.MetaPartitionInfo {
+		var replicas = make([]*proto.MetaReplicaInfo, len(mp.Replicas))
+		for i := 0; i < len(replicas); i++ {
+			replicas[i] = &proto.MetaReplicaInfo{
+				Addr:       mp.Replicas[i].Addr,
+				ReportTime: mp.Replicas[i].ReportTime,
+				Status:     mp.Replicas[i].Status,
+				IsLeader:   mp.Replicas[i].IsLeader,
+			}
+		}
+		var mpInfo = &proto.MetaPartitionInfo{
+			PartitionID:  mp.PartitionID,
+			Start:        mp.Start,
+			End:          mp.End,
+			MaxInodeID:   mp.MaxInodeID,
+			Replicas:     replicas,
+			ReplicaNum:   mp.ReplicaNum,
+			Status:       mp.Status,
+			Hosts:        mp.Hosts,
+			Peers:        mp.Peers,
+			MissNodes:    mp.MissNodes,
+			LoadResponse: mp.LoadResponse,
+		}
+		return mpInfo
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(toInfo(mp)))
 }
 
 func parseAndExtractPartitionInfo(r *http.Request) (partitionID uint64, err error) {
