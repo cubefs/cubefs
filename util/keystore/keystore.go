@@ -17,11 +17,13 @@ var roleSet = map[string]bool{
 
 // KeyInfo defines the key info structure in key store
 type KeyInfo struct {
-	ID   string `json:"id"`
-	Key  []byte `json:"key"`
-	Ts   int64  `json:"create_ts"`
-	Role string `json:"role"`
-	Caps []byte `json:"caps"`
+	ID        string `json:"id"`
+	AuthKey   []byte `json:"auth_key"`
+	AccessKey string `json:"access_key"`
+	SecretKey string `json:"secret_key"`
+	Ts        int64  `json:"create_ts"`
+	Role      string `json:"role"`
+	Caps      []byte `json:"caps"`
 }
 
 // DumpJSONFile dump KeyInfo to file in json format
@@ -49,14 +51,18 @@ func (u *KeyInfo) DumpJSONFile(filename string) (err error) {
 // DumpJSONStr dump KeyInfo to string in json format
 func (u *KeyInfo) DumpJSONStr() (r string, err error) {
 	dumpInfo := struct {
-		ID   string `json:"id"`
-		Key  []byte `json:"key"`
-		Ts   int64  `json:"create_ts"`
-		Role string `json:"role"`
-		Caps string `json:"caps"`
+		ID        string `json:"id"`
+		AuthKey   []byte `json:"auth_key"`
+		AccessKey string `json:"access_key"`
+		SecretKey string `json:"secret_key"`
+		Ts        int64  `json:"create_ts"`
+		Role      string `json:"role"`
+		Caps      string `json:"caps"`
 	}{
 		u.ID,
-		u.Key,
+		u.AuthKey,
+		u.AccessKey,
+		u.SecretKey,
 		u.Ts,
 		u.Role,
 		string(u.Caps),

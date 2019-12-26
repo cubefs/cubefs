@@ -187,10 +187,7 @@ func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 
 // Handle OpHeartbeat packet.
 func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
-	var (
-		data []byte
-		err  error
-	)
+	var err  error
 	task := &proto.AdminTask{}
 	err = json.Unmarshal(p.Data, task)
 	defer func() {
@@ -210,8 +207,8 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 		s.buildHeartBeatResponse(response)
 
 		if task.OpCode == proto.OpDataNodeHeartbeat {
-			bytes, _ := json.Marshal(task.Request)
-			json.Unmarshal(bytes, request)
+			marshaled, _ := json.Marshal(task.Request)
+			_ = json.Unmarshal(marshaled, request)
 			response.Status = proto.TaskSucceeds
 		} else {
 			response.Status = proto.TaskFailed
@@ -219,11 +216,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			response.Result = err.Error()
 		}
 		task.Response = response
-		if data, err = json.Marshal(task); err != nil {
-			return
-		}
-		_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
-		if err != nil {
+		if err = MasterClient.NodeAPI().ResponseDataNodeTask(task); err != nil {
 			err = errors.Trace(err, "heartbeat to master(%v) failed.", request.MasterAddr)
 			log.LogErrorf(err.Error())
 			return
@@ -312,15 +305,7 @@ func (s *DataNode) asyncLoadDataPartition(task *proto.AdminTask) {
 		response.Result = err.Error()
 	}
 	task.Response = response
-	data, err := json.Marshal(task)
-	if err != nil {
-		response.PartitionId = uint64(request.PartitionId)
-		response.Status = proto.TaskFailed
-		response.Result = err.Error()
-		err = fmt.Errorf("from master Task(%v) failed,error(%v)", task.ToString(), response.Result)
-	}
-	_, err = MasterHelper.Request("POST", proto.GetDataNodeTaskResponse, nil, data)
-	if err != nil {
+	if err = MasterClient.NodeAPI().ResponseDataNodeTask(task); err != nil {
 		err = errors.Trace(err, "load DataPartition failed,PartitionID(%v)", request.PartitionId)
 		log.LogError(errors.Stack(err))
 	}

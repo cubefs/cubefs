@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"bytes"
 	"encoding/json"
 	"sort"
 	"strconv"
@@ -113,6 +114,15 @@ type OpInode interface {
 	EvictInode(req *EvictInodeReq, p *Packet) (err error)
 	SetAttr(reqData []byte, p *Packet) (err error)
 	GetInodeTree() *BTree
+	DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error)
+}
+
+type OpExtend interface {
+	SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err error)
+	GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err error)
+	BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packet) (err error)
+	RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error)
+	ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err error)
 }
 
 // OpDentry defines the interface for the dentry operations.
@@ -130,6 +140,15 @@ type OpExtent interface {
 	ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error)
 	ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error)
 	ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (err error)
+	BatchExtentAppend(req *proto.AppendExtentKeysRequest, p *Packet) (err error)
+}
+
+type OpMultipart interface {
+	GetMultipart(req *proto.GetMultipartRequest, p *Packet) (err error)
+	CreateMultipart(req *proto.CreateMultipartRequest, p *Packet) (err error)
+	AppendMultipart(req *proto.AddMultipartPartRequest, p *Packet) (err error)
+	RemoveMultipart(req *proto.RemoveMultipartRequest, p *Packet) (err error)
+	ListMultipart(req *proto.ListMultipartRequest, p *Packet) (err error)
 }
 
 // OpMeta defines the interface for the metadata operations.
@@ -138,6 +157,8 @@ type OpMeta interface {
 	OpDentry
 	OpExtent
 	OpPartition
+	OpExtend
+	OpMultipart
 }
 
 // OpPartition defines the interface for the partition operations.
@@ -175,6 +196,8 @@ type metaPartition struct {
 	applyID       uint64 // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
 	dentryTree    *BTree
 	inodeTree     *BTree // btree for inodes
+	extendTree    *BTree // btree for inode extend (XAttr) management
+	multipartTree *BTree // collection for multipart management
 	raftPartition raftstore.Partition
 	stopC         chan bool
 	storeChan     chan *storeMsg
@@ -333,16 +356,18 @@ func (mp *metaPartition) getRaftPort() (heartbeat, replica int, err error) {
 // NewMetaPartition creates a new meta partition with the specified configuration.
 func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaPartition {
 	mp := &metaPartition{
-		config:     conf,
-		dentryTree: NewBtree(),
-		inodeTree:  NewBtree(),
-		stopC:      make(chan bool),
-		storeChan:  make(chan *storeMsg, 5),
-		freeList:   newFreeList(),
-		extDelCh:   make(chan BtreeItem, 10000),
-		extReset:   make(chan struct{}),
-		vol:        NewVol(),
-		manager:    manager,
+		config:        conf,
+		dentryTree:    NewBtree(),
+		inodeTree:     NewBtree(),
+		extendTree:    NewBtree(),
+		multipartTree: NewBtree(),
+		stopC:         make(chan bool),
+		storeChan:     make(chan *storeMsg, 5),
+		freeList:      newFreeList(),
+		extDelCh:      make(chan BtreeItem, 10000),
+		extReset:      make(chan struct{}),
+		vol:           NewVol(),
+		manager:       manager,
 	}
 	return mp
 }
@@ -393,14 +418,20 @@ func (mp *metaPartition) load() (err error) {
 	if err = mp.loadMetadata(); err != nil {
 		return
 	}
-	loadSnapshotDir := path.Join(mp.config.RootDir, snapshotDir)
-	if err = mp.loadInode(loadSnapshotDir); err != nil {
+	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
+	if err = mp.loadInode(snapshotPath); err != nil {
 		return
 	}
-	if err = mp.loadDentry(loadSnapshotDir); err != nil {
+	if err = mp.loadDentry(snapshotPath); err != nil {
 		return
 	}
-	err = mp.loadApplyID(loadSnapshotDir)
+	if err = mp.loadExtend(snapshotPath); err != nil {
+		return
+	}
+	if err = mp.loadMultipart(snapshotPath); err != nil {
+		return
+	}
+	err = mp.loadApplyID(snapshotPath)
 	return
 }
 
@@ -421,21 +452,28 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 			os.RemoveAll(tmpDir)
 		}
 	}()
-	var (
-		inoCRC, denCRC uint32
-	)
-	if inoCRC, err = mp.storeInode(tmpDir, sm); err != nil {
-		return
+	var crcBuffer = bytes.NewBuffer(make([]byte, 0, 16))
+	var storeFuncs = []func(dir string, sm *storeMsg) (uint32, error){
+		mp.storeInode,
+		mp.storeDentry,
+		mp.storeExtend,
+		mp.storeMultipart,
 	}
-	if denCRC, err = mp.storeDentry(tmpDir, sm); err != nil {
-		return
+	for _, storeFunc := range storeFuncs {
+		var crc uint32
+		if crc, err = storeFunc(tmpDir, sm); err != nil {
+			return
+		}
+		if crcBuffer.Len() != 0 {
+			crcBuffer.WriteString(" ")
+		}
+		crcBuffer.WriteString(fmt.Sprintf("%d", crc))
 	}
 	if err = mp.storeApplyID(tmpDir, sm); err != nil {
 		return
 	}
 	// write crc to file
-	if err = ioutil.WriteFile(path.Join(tmpDir, SnapshotSign),
-		[]byte(fmt.Sprintf("%d %d", inoCRC, denCRC)), 0775); err != nil {
+	if err = ioutil.WriteFile(path.Join(tmpDir, SnapshotSign), crcBuffer.Bytes(), 0775); err != nil {
 		return
 	}
 	snapshotDir := path.Join(mp.config.RootDir, snapshotDir)
@@ -457,7 +495,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 	err = nil
 
 	if err = os.Rename(tmpDir, snapshotDir); err != nil {
-		os.Rename(backupDir, snapshotDir)
+		_ = os.Rename(backupDir, snapshotDir)
 		return
 	}
 	err = os.RemoveAll(backupDir)
@@ -589,9 +627,15 @@ func (mp *metaPartition) Reset() (err error) {
 	mp.dentryTree.Reset()
 	mp.config.Cursor = 0
 	mp.applyID = 0
-	// delete ino/dentry applyID file
-	mp.deleteApplyFile()
-	mp.deleteDentryFile()
-	mp.deleteInodeFile()
+
+	// remove files
+	filenames := []string{applyIDFile, dentryFile, inodeFile, extendFile, multipartFile}
+	for _, filename := range filenames {
+		filepath := path.Join(mp.config.RootDir, filename)
+		if err = os.Remove(filepath); err != nil {
+			return
+		}
+	}
+
 	return
 }

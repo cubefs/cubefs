@@ -15,24 +15,16 @@
 package master
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 // DataReplica represents the replica of a data partition
 type DataReplica struct {
-	Addr            string
-	dataNode        *DataNode
-	ReportTime      int64
-	FileCount       uint32
-	loc             uint8
-	Status          int8
-	HasLoadResponse bool   // if there is any response when loading
-	Total           uint64 `json:"TotalSize"`
-	Used            uint64 `json:"UsedSize"`
-	IsLeader        bool
-	NeedsToCompare  bool
-	DiskPath        string
+	proto.DataReplica
+	dataNode *DataNode
+	loc      uint8
 }
 
 func newDataReplica(dataNode *DataNode) (replica *DataReplica) {

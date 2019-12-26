@@ -57,8 +57,10 @@ var (
 	ErrVolAuthKeyNotMatch              = errors.New("client and server auth key do not match")
 	ErrAuthKeyStoreError               = errors.New("auth keystore error")
 	ErrAuthAPIAccessGenRespError       = errors.New("auth API access response error")
+	ErrAuthOSCapsOpGenRespError        = errors.New("auth Object Storage Node API response error")
 	ErrKeyNotExists                    = errors.New("key not exists")
 	ErrDuplicateKey                    = errors.New("duplicate key")
+	ErrAccessKeyNotExists              = errors.New("access key not exists")
 	ErrInvalidTicket                   = errors.New("invalid ticket")
 	ErrExpiredTicket                   = errors.New("expired ticket")
 	ErrMasterAPIGenRespError           = errors.New("master API generate response error")
@@ -102,7 +104,9 @@ const (
 	ErrCodeAuthKeyStoreError
 	ErrCodeAuthAPIAccessGenRespError
 	ErrCodeAuthRaftNodeGenRespError
+	ErrCodeAuthOSCapsOpGenRespError
 	ErrCodeAuthReqRedirectError
+	ErrCodeAccessKeyNotExists
 	ErrCodeInvalidTicket
 	ErrCodeExpiredTicket
 	ErrCodeMasterAPIGenRespError
@@ -145,6 +149,8 @@ var Err2CodeMap = map[error]int32{
 	ErrVolAuthKeyNotMatch:              ErrCodeVolAuthKeyNotMatch,
 	ErrAuthKeyStoreError:               ErrCodeAuthKeyStoreError,
 	ErrAuthAPIAccessGenRespError:       ErrCodeAuthAPIAccessGenRespError,
+	ErrAuthOSCapsOpGenRespError:        ErrCodeAuthOSCapsOpGenRespError,
+	ErrAccessKeyNotExists:              ErrCodeAccessKeyNotExists,
 	ErrInvalidTicket:                   ErrCodeInvalidTicket,
 	ErrExpiredTicket:                   ErrCodeExpiredTicket,
 	ErrMasterAPIGenRespError:           ErrCodeMasterAPIGenRespError,

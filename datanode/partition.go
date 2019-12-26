@@ -26,7 +26,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/master"
+	"hash/crc32"
+	"net"
+	"sort"
+	"syscall"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/repl"
@@ -35,10 +39,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	raftProto "github.com/tiglabs/raft/proto"
-	"hash/crc32"
-	"net"
-	"sort"
-	"syscall"
 )
 
 const (
@@ -507,7 +507,7 @@ func (dp *DataPartition) checkIsDiskError(err error) (diskError bool) {
 		return
 	}
 	if IsDiskErr(err.Error()) {
-		mesg := fmt.Sprintf("disk path %v error on %v", dp.Path, LocalIP)
+		mesg := fmt.Sprintf("disk path %v error on %v", dp.Path(), LocalIP)
 		exporter.Warning(mesg)
 		log.LogErrorf(mesg)
 		dp.stopRaft()
@@ -587,28 +587,16 @@ func (dp *DataPartition) compareReplicas(v1, v2 []string) (equals bool) {
 // Fetch the replica information from the master.
 func (dp *DataPartition) fetchReplicasFromMaster() (isLeader bool, replicas []string, err error) {
 
-	var (
-		bufs []byte
-	)
-	params := make(map[string]string)
-	params["id"] = strconv.Itoa(int(dp.partitionID))
-	params["name"] = dp.volumeID
-	if bufs, err = MasterHelper.Request("GET", proto.AdminGetDataPartition, params, nil); err != nil {
+	var partition *proto.DataPartitionInfo
+	if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
 		isLeader = false
 		return
 	}
-	response := &master.DataPartition{}
-	replicas = make([]string, 0)
-	if err = json.Unmarshal(bufs, &response); err != nil {
-		isLeader = false
-		replicas = nil
-		return
-	}
-	for _, host := range response.Hosts {
+	for _, host := range partition.Hosts {
 		replicas = append(replicas, host)
 	}
-	if response.Hosts != nil && len(response.Hosts) >= 1 {
-		leaderAddr := strings.Split(response.Hosts[0], ":")
+	if partition.Hosts != nil && len(partition.Hosts) >= 1 {
+		leaderAddr := strings.Split(partition.Hosts[0], ":")
 		if len(leaderAddr) == 2 && strings.TrimSpace(leaderAddr[0]) == LocalIP {
 			isLeader = true
 		}

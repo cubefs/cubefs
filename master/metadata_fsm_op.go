@@ -116,6 +116,13 @@ type volValue struct {
 	Owner             string
 	FollowerRead      bool
 	Authenticate      bool
+	OSSAccessKey      string
+	OSSSecretKey      string
+}
+
+func (v *volValue) Bytes() (raw []byte, err error) {
+	raw, err = json.Marshal(v)
+	return
 }
 
 func newVolValue(vol *Vol) (vv *volValue) {
@@ -130,8 +137,18 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		Owner:             vol.Owner,
 		FollowerRead:      vol.FollowerRead,
 		Authenticate:      vol.authenticate,
+		OSSAccessKey:      vol.OSSAccessKey,
+		OSSSecretKey:      vol.OSSSecretKey,
 	}
 	return
+}
+
+func newVolValueFromBytes(raw []byte) (*volValue, error) {
+	vv := &volValue{}
+	if err := json.Unmarshal(raw, vv); err != nil {
+		return nil, err
+	}
+	return vv, nil
 }
 
 type dataNodeValue struct {
@@ -519,12 +536,12 @@ func (c *Cluster) loadVols() (err error) {
 		return err
 	}
 	for _, value := range result {
-		vv := &volValue{}
-		if err = json.Unmarshal(value, vv); err != nil {
+		var vv *volValue
+		if vv, err = newVolValueFromBytes(value); err != nil {
 			err = fmt.Errorf("action[loadVols],value:%v,unmarshal err:%v", string(value), err)
 			return err
 		}
-		vol := newVol(vv.ID, vv.Name, vv.Owner, vv.DataPartitionSize, vv.Capacity, vv.DpReplicaNum, vv.ReplicaNum, vv.FollowerRead, vv.Authenticate)
+		vol := newVolFromVolValue(vv)
 		vol.Status = vv.Status
 		c.putVol(vol)
 		log.LogInfof("action[loadVols],vol[%v]", vol.Name)

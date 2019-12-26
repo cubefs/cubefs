@@ -30,6 +30,7 @@ services:
             - datanode2
             - datanode3
             - datanode4
+            - objectnode1
         networks:
             extnetwork:
 
@@ -226,6 +227,21 @@ services:
             extnetwork:
                 ipv4_address: 192.168.0.34
 
+    objectnode1:
+        image: chubaofs/cfs-base:1.0
+        ports:
+            - "80"
+        volumes:
+            - ./bin:/cfs/bin
+            - ./conf/objectnode.json:/cfs/conf/objectnode.json
+            - ./script/start_objectnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.41
+
     client:
         image: chubaofs/cfs-base:1.0
         ports:
@@ -296,5 +312,19 @@ services:
               cd /go/src/github.com/chubaofs/chubaofs/cmd && bash ./build.sh && mv cfs-server /go/src/github.com/chubaofs/chubaofs/docker/bin/cfs-server && echo "success" || echo "failed" ;
               echo -n 'build client ' ;
               cd /go/src/github.com/chubaofs/chubaofs/client && bash ./build.sh && mv cfs-client /go/src/github.com/chubaofs/chubaofs/docker/bin/cfs-client && echo 'success' || echo "failed" ;
+        networks:
+            extnetwork:
+
+    test:
+        image: chubaofs/cfs-base:1.0
+        volumes:
+            - ../:/go/src/github.com/chubaofs/chubaofs
+        command:
+            - bash
+            - "-c"
+            - >-
+              set -e;
+              mkdir -p /go/src/github.com/chubaofs/chubaofs/docker/bin &&
+              cd /go/src/github.com/chubaofs/chubaofs && make test
         networks:
             extnetwork:

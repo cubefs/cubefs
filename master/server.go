@@ -101,7 +101,10 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		log.LogError(err)
 		return
 	}
-	m.rocksDBStore = raftstore.NewRocksDBStore(m.storeDir, LRUCacheSize, WriteBufferSize)
+	if m.rocksDBStore, err = raftstore.NewRocksDBStore(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
+		return
+	}
+
 	if err = m.createRaftServer(); err != nil {
 		log.LogError(errors.Stack(err))
 		return

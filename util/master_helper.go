@@ -33,8 +33,6 @@ const (
 
 var (
 	ErrNoValidMaster = errors.New("no valid master")
-	ErrInvalidTicket = errors.New("invalid ticket")
-	ErrExpiredTicket = errors.New("expired ticket")
 )
 
 // MasterHelper defines the helper struct to manage the master.
@@ -42,7 +40,7 @@ type MasterHelper interface {
 	AddNode(address string)
 	Nodes() []string
 	Leader() string
-	Request(method, path string, param map[string]string, body []byte) (data []byte, err error)
+	Request(method, path string, param, header map[string]string, body []byte) (data []byte, err error)
 }
 
 type masterHelper struct {
@@ -74,12 +72,12 @@ func (helper *masterHelper) setLeader(addr string) {
 }
 
 // Request sends out the request through the helper.
-func (helper *masterHelper) Request(method, path string, param map[string]string, reqData []byte) (respData []byte, err error) {
-	respData, err = helper.request(method, path, param, reqData)
+func (helper *masterHelper) Request(method, path string, param, header map[string]string, reqData []byte) (respData []byte, err error) {
+	respData, err = helper.request(method, path, param, header, reqData)
 	return
 }
 
-func (helper *masterHelper) request(method, path string, param map[string]string, reqData []byte) (repsData []byte, err error) {
+func (helper *masterHelper) request(method, path string, param, header map[string]string, reqData []byte) (repsData []byte, err error) {
 	leaderAddr, nodes := helper.prepareRequest()
 	host := leaderAddr
 	for i := -1; i < len(nodes); i++ {
@@ -92,7 +90,7 @@ func (helper *masterHelper) request(method, path string, param map[string]string
 		}
 		var resp *http.Response
 		resp, err = helper.httpRequest(method, fmt.Sprintf("http://%s%s", host,
-			path), param, reqData)
+			path), param, header, reqData)
 		if err != nil {
 			log.LogErrorf("[masterHelper] %s", err)
 			continue
@@ -114,16 +112,16 @@ func (helper *masterHelper) request(method, path string, param map[string]string
 				err = ErrNoValidMaster
 				return
 			}
-			repsData, err = helper.request(method, path, param, reqData)
+			repsData, err = helper.request(method, path, param, header, reqData)
 			return
 		case http.StatusOK:
 			if leaderAddr != host {
 				helper.setLeader(host)
 			}
 			var body = &struct {
-				Code int32  `json:"code"`
-				Msg  string `json:"msg"`
-				Data json.RawMessage
+				Code int32           `json:"code"`
+				Msg  string          `json:"msg"`
+				Data json.RawMessage `json:"data"`
 			}{}
 			if err := json.Unmarshal(repsData, body); err != nil {
 				return nil, fmt.Errorf("unmarshal response body err:%v", err)
@@ -131,13 +129,7 @@ func (helper *masterHelper) request(method, path string, param map[string]string
 			}
 			// o represent proto.ErrCodeSuccess
 			if body.Code != 0 {
-				if body.Code == 37 {
-					return nil, ErrInvalidTicket
-				} else if body.Code == 38 {
-					return nil, ErrExpiredTicket
-				} else {
-					return nil, fmt.Errorf("request error, code[%d], msg[%s]", body.Code, body.Msg)
-				}
+				return nil, fmt.Errorf("request error, code[%d], msg[%s]", body.Code, body.Msg)
 			}
 			return []byte(body.Data), nil
 		default:
@@ -167,7 +159,7 @@ func (helper *masterHelper) prepareRequest() (addr string, nodes []string) {
 	return
 }
 
-func (helper *masterHelper) httpRequest(method, url string, param map[string]string, reqData []byte) (resp *http.Response, err error) {
+func (helper *masterHelper) httpRequest(method, url string, param, header map[string]string, reqData []byte) (resp *http.Response, err error) {
 	client := &http.Client{}
 	reader := bytes.NewReader(reqData)
 	client.Timeout = requestTimeout
@@ -179,6 +171,9 @@ func (helper *masterHelper) httpRequest(method, url string, param map[string]str
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Connection", "close")
+	for k, v := range header {
+		req.Header.Set(k, v)
+	}
 	resp, err = client.Do(req)
 	return
 }

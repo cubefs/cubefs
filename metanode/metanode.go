@@ -15,15 +15,15 @@
 package metanode
 
 import (
-	"encoding/json"
 	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
+
 	"fmt"
-	"net/http"
 	"strconv"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -37,7 +37,7 @@ import (
 
 var (
 	clusterInfo    *proto.ClusterInfo
-	masterHelper   util.MasterHelper
+	masterClient   *masterSDK.MasterClient
 	configTotalMem uint64
 )
 
@@ -91,36 +91,21 @@ func (m *MetaNode) Shutdown() {
 	}
 }
 
-type MetaNodeInfo struct {
-	Addr                      string
-	PersistenceMetaPartitions []uint64
-}
-
 func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
-	params := make(map[string]string)
-	params["addr"] = m.localAddr + ":" + m.listen
-	var data interface{}
+	var metaNodeInfo *proto.MetaNodeInfo
 	for i := 0; i < 3; i++ {
-		data, err = masterHelper.Request(http.MethodGet, proto.GetMetaNode, params, nil)
-		if err != nil {
-			log.LogErrorf("checkLocalPartitionMatchWithMaster error %v", err)
+		if metaNodeInfo, err = masterClient.NodeAPI().GetMetaNode(fmt.Sprintf("%s:%s", m.localAddr, m.listen)); err != nil {
+			log.LogErrorf("checkLocalPartitionMatchWithMaster: get MetaNode info fail: err(%v)", err)
 			continue
 		}
 		break
 	}
 
-	minfo := new(MetaNodeInfo)
-	if err = json.Unmarshal(data.([]byte), minfo); err != nil {
-		err = fmt.Errorf("checkLocalPartitionMatchWithMaster jsonUnmarsh failed %v", err)
-		log.LogErrorf(err.Error())
-		return
-	}
-
-	if len(minfo.PersistenceMetaPartitions) == 0 {
+	if len(metaNodeInfo.PersistenceMetaPartitions) == 0 {
 		return
 	}
 	lackPartitions := make([]uint64, 0)
-	for _, partitionID := range minfo.PersistenceMetaPartitions {
+	for _, partitionID := range metaNodeInfo.PersistenceMetaPartitions {
 		_, err := m.metadataManager.GetPartition(partitionID)
 		if err != nil {
 			lackPartitions = append(lackPartitions, partitionID)
@@ -226,14 +211,12 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load raftHeartbeatPort[%v].", m.raftHeartbeatPort)
 	log.LogInfof("[parseConfig] load raftReplicatePort[%v].", m.raftReplicatePort)
 
-	addrs := cfg.GetArray(cfgMasterAddr)
-	if len(addrs) == 0 {
-		addrs = cfg.GetArray(cfgMasterAddrs)
-	}
-	masterHelper = util.NewMasterHelper()
+	addrs := cfg.GetArray(cfgMasterAddrs)
+	masters := make([]string, 0, len(addrs))
 	for _, addr := range addrs {
-		masterHelper.AddNode(addr.(string))
+		masters = append(masters, addr.(string))
 	}
+	masterClient = masterSDK.NewMasterClient(masters, false)
 	err = m.validConfig()
 	return
 }
@@ -249,7 +232,7 @@ func (m *MetaNode) validConfig() (err error) {
 	if m.raftDir == "" {
 		m.raftDir = defaultRaftDir
 	}
-	if len(masterHelper.Nodes()) == 0 {
+	if len(masterClient.Nodes()) == 0 {
 		err = errors.New("master address list is empty")
 		return
 	}
@@ -283,10 +266,10 @@ func (m *MetaNode) stopMetaManager() {
 
 func (m *MetaNode) register() (err error) {
 	step := 0
-	reqParam := make(map[string]string)
+	var nodeAddress string
 	for {
 		if step < 1 {
-			clusterInfo, err = getClusterInfo()
+			clusterInfo, err = getClientIP()
 			if err != nil {
 				log.LogErrorf("[register] %s", err.Error())
 				continue
@@ -295,28 +278,16 @@ func (m *MetaNode) register() (err error) {
 				m.localAddr = clusterInfo.Ip
 			}
 			m.clusterId = clusterInfo.Cluster
-			reqParam["addr"] = m.localAddr + ":" + m.listen
+			nodeAddress = m.localAddr + ":" + m.listen
 			step++
 		}
-		var respBody []byte
-		respBody, err = masterHelper.Request("POST", proto.AddMetaNode, reqParam, nil)
-		if err != nil {
-			log.LogErrorf("[register] %s", err.Error())
+		var nodeID uint64
+		if nodeID, err = masterClient.NodeAPI().AddMetaNode(nodeAddress); err != nil {
+			log.LogErrorf("register: register to master fail: address(%v) err(%s)", nodeAddress, err)
 			time.Sleep(3 * time.Second)
 			continue
 		}
-		nodeIDStr := strings.TrimSpace(string(respBody))
-		if nodeIDStr == "" {
-			log.LogErrorf("[register] master respond empty body")
-			time.Sleep(3 * time.Second)
-			continue
-		}
-		m.nodeId, err = strconv.ParseUint(nodeIDStr, 10, 64)
-		if err != nil {
-			log.LogErrorf("[register] parse to nodeID: %s", err.Error())
-			time.Sleep(3 * time.Second)
-			continue
-		}
+		m.nodeId = nodeID
 		return
 	}
 }
@@ -326,14 +297,7 @@ func NewServer() *MetaNode {
 	return &MetaNode{}
 }
 
-func getClusterInfo() (*proto.ClusterInfo, error) {
-	respBody, err := masterHelper.Request("GET", proto.AdminGetIP, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	cInfo := &proto.ClusterInfo{}
-	if err = json.Unmarshal(respBody, cInfo); err != nil {
-		return nil, err
-	}
-	return cInfo, nil
+func getClientIP() (ci *proto.ClusterInfo, err error) {
+	ci, err = masterClient.AdminAPI().GetClusterInfo()
+	return
 }

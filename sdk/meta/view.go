@@ -20,17 +20,17 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/cryptoutil"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/jacobsa/daemonize"
-	"net/http"
 	"os"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/util/cryptoutil"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/jacobsa/daemonize"
 )
 
 const (
@@ -38,99 +38,104 @@ const (
 )
 
 type VolumeView struct {
-	VolName        string
+	Name           string
+	Owner          string
 	MetaPartitions []*MetaPartition
+	OSSSecure      *OSSSecure
 }
 
-type VolStatInfo struct {
-	Name      string
-	TotalSize uint64
-	UsedSize  uint64
+type OSSSecure struct {
+	AccessKey string
+	SecretKey string
 }
 
-// VolName view managements
-//
-func (mw *MetaWrapper) fetchVolumeView() (*VolumeView, error) {
-	params := make(map[string]string)
-	params["name"] = mw.volname
-	authKey, err := calculateAuthKey(mw.owner)
-	if err != nil {
-		return nil, err
-	}
-	params["authKey"] = authKey
-	var dataBody []byte
-	if mw.authenticate {
-		mw.accessToken.Type = proto.MsgMasterFetchVolViewReq
-		tokenMessage, ts, err := genMasterToken(mw.accessToken, mw.sessionKey)
-		if err != nil {
-			log.LogWarnf("fetchVolumeView generate token failed: err(%v)", err)
-			return nil, err
+type VolStatInfo = proto.VolStatInfo
+
+func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
+	var vv *proto.VolView
+	if mw.ownerValidation {
+		var authKey string
+		if authKey, err = calculateAuthKey(mw.owner); err != nil {
+			return
 		}
-		params[proto.ClientMessage] = tokenMessage
-		body, err := mw.master.Request(http.MethodPost, proto.ClientVol, params, nil)
-		if err != nil {
-			log.LogWarnf("fetchVolumeView request: err(%v)", err)
-			return nil, err
-		}
-		dataBody, err = mw.parseRespWithAuth(body, ts)
-		if err != nil {
-			log.LogWarnf("fetchVolumeView request: err(%v)", err)
-			return nil, err
+		if mw.authenticate {
+			var (
+				tokenMessage string
+				ts           int64
+			)
+			mw.accessToken.Type = proto.MsgMasterFetchVolViewReq
+			if tokenMessage, ts, err = genMasterToken(mw.accessToken, mw.sessionKey); err != nil {
+				log.LogWarnf("fetchVolumeView generate token failed: err(%v)", err)
+				return nil, err
+			}
+			var decoder master.Decoder = func(raw []byte) ([]byte, error) {
+				return mw.parseAndVerifyResp(raw, ts)
+			}
+			if vv, err = mw.mc.ClientAPI().GetVolumeWithAuthnode(mw.volname, authKey, tokenMessage, decoder); err != nil {
+				return
+			}
+		} else {
+			if vv, err = mw.mc.ClientAPI().GetVolume(mw.volname, authKey); err != nil {
+				return
+			}
 		}
 	} else {
-		body, err := mw.master.Request(http.MethodPost, proto.ClientVol, params, nil)
-		if err != nil {
-			log.LogWarnf("fetchVolumeView request: err(%v)", err)
-			return nil, err
+		if vv, err = mw.mc.ClientAPI().GetVolumeWithoutAuthKey(mw.volname); err != nil {
+			return
 		}
-		dataBody = body
 	}
-
-	view := new(VolumeView)
-	if err = json.Unmarshal(dataBody, view); err != nil {
-		log.LogWarnf("fetchVolumeView unmarshal: err(%v) body(%v)", err, string(dataBody))
-		return nil, err
+	var convert = func(volView *proto.VolView) *VolumeView {
+		result := &VolumeView{
+			Name:           volView.Name,
+			Owner:          volView.Owner,
+			MetaPartitions: make([]*MetaPartition, len(volView.MetaPartitions)),
+			OSSSecure:      &OSSSecure{},
+		}
+		if volView.OSSSecure != nil {
+			result.OSSSecure.AccessKey = volView.OSSSecure.AccessKey
+			result.OSSSecure.SecretKey = volView.OSSSecure.SecretKey
+		}
+		for i, mp := range volView.MetaPartitions {
+			result.MetaPartitions[i] = &MetaPartition{
+				PartitionID: mp.PartitionID,
+				Start:       mp.Start,
+				End:         mp.End,
+				Members:     mp.Members,
+				LeaderAddr:  mp.LeaderAddr,
+				Status:      mp.Status,
+			}
+		}
+		return result
 	}
-	return view, nil
+	view = convert(vv)
+	return
 }
 
 // fetch and update cluster info if successful
-func (mw *MetaWrapper) updateClusterInfo() error {
-	body, err := mw.master.Request(http.MethodPost, proto.AdminGetIP, nil, nil)
-	if err != nil {
-		log.LogWarnf("updateClusterInfo request: err(%v)", err)
-		return err
+func (mw *MetaWrapper) updateClusterInfo() (err error) {
+	var info *proto.ClusterInfo
+	if info, err = mw.mc.AdminAPI().GetClusterInfo(); err != nil {
+		log.LogWarnf("updateClusterInfo: get cluster info fail: err(%v)", err)
+		return
 	}
-
-	info := new(proto.ClusterInfo)
-	if err = json.Unmarshal(body, info); err != nil {
-		log.LogWarnf("updateClusterInfo unmarshal: err(%v)", err)
-		return err
-	}
-	log.LogInfof("ClusterInfo: %v", *info)
+	log.LogInfof("updateClusterInfo: get cluster info: cluster(%v) localIP(%v)",
+		info.Cluster, info.Ip)
 	mw.cluster = info.Cluster
 	mw.localIP = info.Ip
-	return nil
+	return
 }
 
-func (mw *MetaWrapper) updateVolStatInfo() error {
-	params := make(map[string]string)
-	params["name"] = mw.volname
-	body, err := mw.master.Request(http.MethodPost, proto.ClientVolStat, params, nil)
-	if err != nil {
-		log.LogWarnf("updateVolStatInfo request: err(%v)", err)
-		return err
-	}
+func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 
-	info := new(VolStatInfo)
-	if err = json.Unmarshal(body, info); err != nil {
-		log.LogWarnf("updateVolStatInfo unmarshal: err(%v)", err)
-		return err
+	var info *proto.VolStatInfo
+	if info, err = mw.mc.ClientAPI().GetVolumeStat(mw.volname); err != nil {
+		log.LogWarnf("updateVolStatInfo: get volume status fail: volume(%v) err(%v)", mw.volname, err)
+		return
 	}
 	atomic.StoreUint64(&mw.totalSize, info.TotalSize)
 	atomic.StoreUint64(&mw.usedSize, info.UsedSize)
-	log.LogInfof("VolStatInfo: info(%v)", *info)
-	return nil
+	log.LogInfof("VolStatInfo: info(%v)", info)
+	return
 }
 
 func (mw *MetaWrapper) updateMetaPartitions() error {
@@ -138,7 +143,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 	if err != nil {
 		log.LogInfof("error: %v", err.Error())
 		switch err {
-		case util.ErrExpiredTicket:
+		case proto.ErrExpiredTicket:
 			if e := mw.updateTicket(); e != nil {
 				log.LogFlush()
 				daemonize.SignalOutcome(err)
@@ -146,7 +151,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 			}
 			log.LogInfof("updateTicket: ok!")
 			return err
-		case util.ErrInvalidTicket:
+		case proto.ErrInvalidTicket:
 			log.LogFlush()
 			daemonize.SignalOutcome(err)
 			os.Exit(1)
@@ -163,9 +168,10 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 			rwPartitions = append(rwPartitions, mp)
 		}
 	}
+	mw.ossSecure = view.OSSSecure
 
 	if len(rwPartitions) == 0 {
-		log.LogInfof("updateMetaPartition: no rw partitions")
+		log.LogInfof("updateMetaPartition: no valid partitions")
 		return nil
 	}
 
@@ -181,8 +187,15 @@ func (mw *MetaWrapper) refresh() {
 	for {
 		select {
 		case <-t.C:
-			mw.updateMetaPartitions()
-			mw.updateVolStatInfo()
+			var err error
+			if err = mw.updateMetaPartitions(); err != nil {
+				log.LogErrorf("updateMetaPartition fail cause: %v", err)
+			}
+			if err = mw.updateVolStatInfo(); err != nil {
+				log.LogErrorf("updateVolStatInfo fail cause: %v", err)
+			}
+		case <-mw.closeCh:
+			return
 		}
 	}
 }
@@ -230,36 +243,14 @@ func (mw *MetaWrapper) updateTicket() error {
 	return nil
 }
 
-func (mw *MetaWrapper) verifyResponse(checkMsg string, serviceID string, ts int64) (err error) {
-	var (
-		sessionKey []byte
-		plaintext  []byte
-		resp       proto.APIAccessResp
-	)
-
-	if sessionKey, err = cryptoutil.Base64Decode(mw.sessionKey); err != nil {
-		return
-	}
-
-	if plaintext, err = cryptoutil.DecodeMessage(checkMsg, sessionKey); err != nil {
-		return
-	}
-
-	if err = json.Unmarshal(plaintext, &resp); err != nil {
-		return
-	}
-	return proto.VerifyAPIRespComm(&resp, mw.accessToken.Type, mw.owner, serviceID, ts)
-
-}
-
-func (mw *MetaWrapper) parseRespWithAuth(body []byte, ts int64) (dataBody []byte, err error) {
-	getVolResp := new(proto.GetVolResponse)
-	if err = json.Unmarshal(body, getVolResp); err != nil {
-		log.LogWarnf("fetchVolumeView unmarshal: err(%v) body(%v)", err, string(body))
+func (mw *MetaWrapper) parseAndVerifyResp(body []byte, ts int64) (dataBody []byte, err error) {
+	var resp proto.MasterAPIAccessResp
+	if resp, err = mw.parseRespWithAuth(body); err != nil {
+		log.LogWarnf("fetchVolumeView parse response failed: err(%v) body(%v)", err, string(body))
 		return nil, err
 	}
-	if err = mw.verifyResponse(getVolResp.CheckMsg, proto.MasterServiceID, ts); err != nil {
-		log.LogWarnf("fetchVolumeView verify response: err(%v) body(%v)", err, getVolResp.CheckMsg)
+	if err = proto.VerifyAPIRespComm(&(resp.APIResp), mw.accessToken.Type, mw.owner, proto.MasterServiceID, ts); err != nil {
+		log.LogWarnf("fetchVolumeView verify response: err(%v)", err)
 		return nil, err
 	}
 	var viewBody = &struct {
@@ -267,7 +258,7 @@ func (mw *MetaWrapper) parseRespWithAuth(body []byte, ts int64) (dataBody []byte
 		Msg  string `json:"msg"`
 		Data json.RawMessage
 	}{}
-	if err = json.Unmarshal(getVolResp.VolViewCache, viewBody); err != nil {
+	if err = json.Unmarshal(resp.Data, viewBody); err != nil {
 		log.LogWarnf("VolViewCache unmarshal: err(%v) body(%v)", err, viewBody)
 		return nil, err
 	}
@@ -275,4 +266,30 @@ func (mw *MetaWrapper) parseRespWithAuth(body []byte, ts int64) (dataBody []byte
 		return nil, fmt.Errorf("request error, code[%d], msg[%s]", viewBody.Code, viewBody.Msg)
 	}
 	return viewBody.Data, err
+}
+
+func (mw *MetaWrapper) parseRespWithAuth(body []byte) (resp proto.MasterAPIAccessResp, err error) {
+	var (
+		message    string
+		sessionKey []byte
+		plaintext  []byte
+	)
+
+	if err = json.Unmarshal(body, &message); err != nil {
+		return
+	}
+
+	if sessionKey, err = cryptoutil.Base64Decode(mw.sessionKey); err != nil {
+		return
+	}
+
+	if plaintext, err = cryptoutil.DecodeMessage(message, sessionKey); err != nil {
+		return
+	}
+
+	if err = json.Unmarshal(plaintext, &resp); err != nil {
+		return
+	}
+
+	return
 }

@@ -17,6 +17,7 @@ package authnode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -57,6 +58,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *KeystoreFsm, partition
 	c.fsm = fsm
 	c.partition = partition
 	c.fsm.keystore = make(map[string]*keystore.KeyInfo, 0)
+	c.fsm.accessKeystore = make(map[string]*keystore.AccessKeyInfo, 0)
 	return
 }
 
@@ -88,17 +90,28 @@ func (c *Cluster) checkLeaderAddr() {
 func (c *Cluster) CreateNewKey(id string, keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo, err error) {
 	c.fsm.opKeyMutex.Lock()
 	defer c.fsm.opKeyMutex.Unlock()
+	accessKeyInfo := &keystore.AccessKeyInfo{
+		ID: keyInfo.ID,
+	}
 	if _, err = c.fsm.GetKey(id); err == nil {
 		err = proto.ErrDuplicateKey
 		goto errHandler
 	}
 	keyInfo.Ts = time.Now().Unix()
-	keyInfo.Key = cryptoutil.GenSecretKey([]byte(c.AuthRootKey), keyInfo.Ts, id)
+	keyInfo.AuthKey = cryptoutil.GenSecretKey([]byte(c.AuthRootKey), keyInfo.Ts, id)
+	//TODO check duplicate
+	keyInfo.AccessKey = util.RandomString(16, util.Numeric|util.LowerLetter|util.UpperLetter)
+	keyInfo.SecretKey = util.RandomString(32, util.Numeric|util.LowerLetter|util.UpperLetter)
 	if err = c.syncAddKey(keyInfo); err != nil {
+		goto errHandler
+	}
+	accessKeyInfo.AccessKey = keyInfo.AccessKey
+	if err = c.syncAddAccessKey(accessKeyInfo); err != nil {
 		goto errHandler
 	}
 	res = keyInfo
 	c.fsm.PutKey(keyInfo)
+	c.fsm.PutAKInfo(accessKeyInfo)
 	return
 errHandler:
 	err = fmt.Errorf("action[CreateNewKey], clusterID[%v] ID:%v, err:%v ", c.Name, keyInfo, err.Error())
@@ -110,6 +123,7 @@ errHandler:
 func (c *Cluster) DeleteKey(id string) (res *keystore.KeyInfo, err error) {
 	c.fsm.opKeyMutex.Lock()
 	defer c.fsm.opKeyMutex.Unlock()
+	akInfo := new(keystore.AccessKeyInfo)
 	if res, err = c.fsm.GetKey(id); err != nil {
 		err = proto.ErrKeyNotExists
 		goto errHandler
@@ -117,7 +131,13 @@ func (c *Cluster) DeleteKey(id string) (res *keystore.KeyInfo, err error) {
 	if err = c.syncDeleteKey(res); err != nil {
 		goto errHandler
 	}
+	akInfo.AccessKey = res.AccessKey
+	akInfo.ID = res.ID
+	if err = c.syncDeleteAccessKey(akInfo); err != nil {
+		goto errHandler
+	}
 	c.fsm.DeleteKey(id)
+	c.fsm.DeleteAKInfo(akInfo.AccessKey)
 	return
 errHandler:
 	err = fmt.Errorf("action[DeleteKey], clusterID[%v] ID:%v, err:%v ", c.Name, id, err.Error())
@@ -134,6 +154,19 @@ func (c *Cluster) GetKey(id string) (res *keystore.KeyInfo, err error) {
 	return
 errHandler:
 	err = fmt.Errorf("action[GetKey], clusterID[%v] ID:%v, err:%v ", c.Name, id, err.Error())
+	log.LogError(errors.Stack(err))
+	return
+}
+
+// GetKey get a key from the AKstore
+func (c *Cluster) GetAKInfo(accessKey string) (akInfo *keystore.AccessKeyInfo, err error) {
+	if akInfo, err = c.fsm.GetAKInfo(accessKey); err != nil {
+		err = proto.ErrAccessKeyNotExists
+		goto errHandler
+	}
+	return
+errHandler:
+	err = fmt.Errorf("action[GetAKInfo], clusterID[%v] ID:%v, err:%v ", c.Name, accessKey, err.Error())
 	log.LogError(errors.Stack(err))
 	return
 }

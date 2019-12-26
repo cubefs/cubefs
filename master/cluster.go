@@ -16,13 +16,14 @@ package master
 
 import (
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"sync"
-	"time"
 )
 
 // Cluster stores all the cluster-level information.
@@ -1168,6 +1169,8 @@ func (c *Cluster) doCreateVol(name, owner string, dpSize, capacity uint64, dpRep
 		goto errHandler
 	}
 	vol = newVol(id, name, owner, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate)
+	// refresh oss secure
+	vol.refreshOSSSecure()
 	if err = c.syncAddVol(vol); err != nil {
 		goto errHandler
 	}
@@ -1266,21 +1269,21 @@ func (c *Cluster) metaNodeCount() (len int) {
 	return
 }
 
-func (c *Cluster) allDataNodes() (dataNodes []NodeView) {
-	dataNodes = make([]NodeView, 0)
+func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
+	dataNodes = make([]proto.NodeView, 0)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
-		dataNodes = append(dataNodes, NodeView{Addr: dataNode.Addr, Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble()})
+		dataNodes = append(dataNodes, proto.NodeView{Addr: dataNode.Addr, Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble()})
 		return true
 	})
 	return
 }
 
-func (c *Cluster) allMetaNodes() (metaNodes []NodeView) {
-	metaNodes = make([]NodeView, 0)
+func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
+	metaNodes = make([]proto.NodeView, 0)
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
-		metaNodes = append(metaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
+		metaNodes = append(metaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
 		return true
 	})
 	return

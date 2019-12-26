@@ -355,7 +355,6 @@ func (e *Extent) DeleteTiny(offset, size int64) (hasDelete bool, err error) {
 		return true, nil
 	}
 	err = fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
-
 	return
 }
 

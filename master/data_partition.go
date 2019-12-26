@@ -16,14 +16,15 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
 	"math"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // DataPartition represents the structure of storing the file contents.
@@ -645,4 +646,30 @@ func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) 
 		partition.ReplicaNum = oldReplicaNum
 	}
 	return
+}
+
+func (partition *DataPartition) ToProto() *proto.DataPartitionInfo {
+	var replicas = make([]*proto.DataReplica, len(partition.Replicas))
+	for i, replica := range partition.Replicas {
+		replicas[i] = &replica.DataReplica
+	}
+	var fileInCoreMap = make(map[string]*proto.FileInCore)
+	for k, v := range partition.FileInCoreMap {
+		var fc = v.ToProto()
+		fileInCoreMap[k] = &fc
+	}
+	return &proto.DataPartitionInfo{
+		PartitionID:             partition.PartitionID,
+		LastLoadedTime:          partition.LastLoadedTime,
+		ReplicaNum:              partition.ReplicaNum,
+		Status:                  partition.Status,
+		Replicas:                replicas,
+		Hosts:                   partition.Hosts,
+		Peers:                   partition.Peers,
+		MissingNodes:            partition.MissingNodes,
+		VolName:                 partition.VolName,
+		VolID:                   partition.VolID,
+		FileInCoreMap:           fileInCoreMap,
+		FilesWithMissingReplica: partition.FilesWithMissingReplica,
+	}
 }

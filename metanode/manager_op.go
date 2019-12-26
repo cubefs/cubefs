@@ -117,7 +117,7 @@ func (m *metadataManager) opCreateMetaPartition(conn net.Conn, p *Packet,
 			" struct: %s", err.Error())
 		return
 	}
-	log.LogDebugf("%s [opCreateMetaPartition] [remoteAddr=%s]accept a from"+
+	log.LogDebugf("[opCreateMetaPartition] [remoteAddr=%s]accept a from"+
 		" master message: %v", remoteAddr, adminTask)
 	// create a new meta partition.
 	if err = m.createPartition(req.PartitionID, req.VolName,
@@ -363,7 +363,7 @@ func (m *metadataManager) opMetaEvictInode(conn net.Conn, p *Packet,
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[opMetaEvictInode] req: %s, resp: %v", req, err.Error())
+		err = errors.NewErrorf("[opMetaEvictInode] req: %v, resp: %v", req, err.Error())
 		return
 	}
 	if !m.serveProxy(conn, mp, p) {
@@ -371,7 +371,7 @@ func (m *metadataManager) opMetaEvictInode(conn net.Conn, p *Packet,
 	}
 
 	if err = mp.EvictInode(req, p); err != nil {
-		err = errors.NewErrorf("[opMetaEvictInode] req: %s, resp: %v", req, err.Error())
+		err = errors.NewErrorf("[opMetaEvictInode] req: %v, resp: %v", req, err.Error())
 	}
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaEvictInode] req: %d - %v, resp: %v, body: %s",
@@ -836,5 +836,273 @@ func (m *metadataManager) opMetaPartitionTryToLeader(conn net.Conn, p *Packet,
 errDeal:
 	p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 	m.respondToClient(conn, p)
+	return
+}
+
+func (m *metadataManager) opMetaDeleteInode(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	req := &proto.DeleteInodeRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.DeleteInode(req, p)
+	_ = m.respondToClient(conn, p)
+	log.LogDebugf("%s [opMetaDeleteInode] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opMetaSetXAttr(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.SetXAttrRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.SetXAttr(req, p)
+	_ = m.respondToClient(conn, p)
+	log.LogDebugf("%s [opMetaSetXAttr] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opMetaGetXAttr(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.GetXAttrRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.GetXAttr(req, p)
+	_ = m.respondToClient(conn, p)
+	log.LogDebugf("%s [opMetaGetXAttr] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opMetaBatchGetXAttr(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.BatchGetXAttrRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.BatchGetXAttr(req, p)
+	_ = m.respondToClient(conn, p)
+	log.LogDebugf("%s [opMetaBatchGetXAttr req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opMetaRemoveXAttr(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.RemoveXAttrRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.RemoveXAttr(req, p)
+	_ = m.respondToClient(conn, p)
+	log.LogDebugf("%s [opMetaGetXAttr] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opMetaListXAttr(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.ListXAttrRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.ListXAttr(req, p)
+	_ = m.respondToClient(conn, p)
+	log.LogDebugf("%s [opMetaGetXAttr] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opMetaBatchExtentsAdd(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.AppendExtentKeysRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.BatchExtentAppend(req, p)
+	_ = m.respondToClient(conn, p)
+	log.LogDebugf("%s [opMetaBatchExtentsAdd] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opCreateMultipart(conn net.Conn, p *Packet, remote string) (err error) {
+	req := &proto.CreateMultipartRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.CreateMultipart(req, p)
+	_ = m.respondToClient(conn, p)
+	return
+}
+
+func (m *metadataManager) opRemoveMultipart(conn net.Conn, p *Packet, remote string) (err error) {
+	req := &proto.RemoveMultipartRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.RemoveMultipart(req, p)
+	_ = m.respondToClient(conn, p)
+	return
+}
+
+func (m *metadataManager) opGetMultipart(conn net.Conn, p *Packet, remote string) (err error) {
+	req := &proto.GetMultipartRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.GetMultipart(req, p)
+	_ = m.respondToClient(conn, p)
+	return
+}
+
+func (m *metadataManager) opAppendMultipart(conn net.Conn, p *Packet, remote string) (err error) {
+	defer func() {
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		}
+		_ = m.respondToClient(conn, p)
+	}()
+	req := &proto.AddMultipartPartRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.AppendMultipart(req, p)
+	return
+}
+
+func (m *metadataManager) opListMultipart(conn net.Conn, p *Packet, remote string) (err error) {
+	req := &proto.ListMultipartRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.ListMultipart(req, p)
+	_ = m.respondToClient(conn, p)
 	return
 }

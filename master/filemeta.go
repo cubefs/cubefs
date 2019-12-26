@@ -16,31 +16,14 @@ package master
 
 import (
 	"fmt"
+
 	"github.com/chubaofs/chubaofs/proto"
 )
 
 // FileMetadata defines the file metadata on a dataNode
 type FileMetadata struct {
-	Crc      uint32
-	LocAddr  string
+	proto.FileMetadata
 	locIndex uint8
-	Size     uint32
-}
-
-//FileInCore define file in data partition
-type FileInCore struct {
-	Name          string
-	LastModify    int64
-	MetadataArray []*FileMetadata
-}
-
-func newFileMetadata(volCrc uint32, volLoc string, volLocIndex int, size uint32) (fm *FileMetadata) {
-	fm = new(FileMetadata)
-	fm.Crc = volCrc
-	fm.LocAddr = volLoc
-	fm.locIndex = uint8(volLocIndex)
-	fm.Size = size
-	return
 }
 
 func (fm *FileMetadata) String() (msg string) {
@@ -57,12 +40,43 @@ func (fm *FileMetadata) getFileCrc() (crc uint32) {
 	return fm.Crc
 }
 
+//FileInCore define file in data partition
+type FileInCore struct {
+	proto.FileInCore
+	MetadataArray []*FileMetadata
+}
+
+func newFileMetadata(volCrc uint32, volLoc string, volLocIndex int, size uint32) (fm *FileMetadata) {
+	fm = new(FileMetadata)
+	fm.Crc = volCrc
+	fm.LocAddr = volLoc
+	fm.locIndex = uint8(volLocIndex)
+	fm.Size = size
+	return
+}
+
 func newFileInCore(name string) (fc *FileInCore) {
 	fc = new(FileInCore)
 	fc.Name = name
 	fc.MetadataArray = make([]*FileMetadata, 0)
 
 	return
+}
+
+func (fc FileInCore) ToProto() proto.FileInCore {
+	var metadataArray = make([]*proto.FileMetadata, len(fc.MetadataArray))
+	for i, metadata := range fc.MetadataArray {
+		metadataArray[i] = &proto.FileMetadata{
+			Crc:     metadata.Crc,
+			LocAddr: metadata.LocAddr,
+			Size:    metadata.Size,
+		}
+	}
+	return proto.FileInCore{
+		Name:          fc.Name,
+		LastModify:    fc.LastModify,
+		MetadataArray: metadataArray,
+	}
 }
 
 // Use the File and the volume Location for update.

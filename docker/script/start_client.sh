@@ -94,8 +94,8 @@ print_error_info() {
 
 start_client() {
     echo -n "start client "
+    /cfs/bin/cfs-client -c  /cfs/conf/client.json
     for((i=0; i<$TryTimes; i++)) ; do
-        nohup /cfs/bin/cfs-client -c /cfs/conf/client.json >/cfs/log/cfs.out 2>&1 &
         sleep 2
         sta=$(stat $MntPoint 2>/dev/null | tr ":：" " "  | awk '/Inode/{print $4}')
         if [[ "x$sta" == "x1" ]] ; then

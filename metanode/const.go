@@ -77,7 +77,7 @@ type (
 
 	// Client -> MetaNode
 	EvictInodeReq = proto.EvictInodeRequest
-	// Client -> MetaNOde
+	// Client -> MetaNode
 	SetattrRequest = proto.SetAttrRequest
 )
 
@@ -102,6 +102,11 @@ const (
 	opFSMInternalDelExtentFile
 	opFSMInternalDelExtentCursor
 	opExtentFileSnapshot
+	opFSMSetXAttr
+	opFSMRemoveXAttr
+	opFSMCreateMultipart
+	opFSMRemoveMultipart
+	opFSMAppendMultipart
 )
 
 var (

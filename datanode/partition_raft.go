@@ -305,8 +305,8 @@ func (dp *DataPartition) addRaftNode(req *proto.DataPartitionDecommissionRequest
 		return
 	}
 	data, _ := json.Marshal(req)
-	log.LogInfof("AddRaftNode PartitionID(%v) nodeID(%v) index(%v) do RaftLog (%v) Start Remove Self ",
-		req.PartitionId, dp.config.NodeID, string(data))
+	log.LogInfof("addRaftNode: remove self: partitionID(%v) nodeID(%v) index(%v) data(%v) ",
+		req.PartitionId, dp.config.NodeID, index, string(data))
 	dp.config.Peers = append(dp.config.Peers, req.AddPeer)
 	dp.config.Hosts = append(dp.config.Hosts, req.AddPeer.Addr)
 	dp.replicasLock.Lock()

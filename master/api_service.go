@@ -22,13 +22,14 @@ import (
 	"time"
 
 	"bytes"
+	"io/ioutil"
+	"strings"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/cryptoutil"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"io/ioutil"
-	"strings"
 )
 
 // ClusterView provides the view of a cluster.
@@ -89,10 +90,7 @@ func newCellView() *CellView {
 	return &CellView{DataNodes: make([]NodeView, 0)}
 }
 
-type badPartitionView struct {
-	DiskPath     string
-	PartitionIDs []uint64
-}
+type badPartitionView = proto.BadPartitionView
 
 // Set the threshold of the memory usage on each meta node.
 // If the memory usage reaches this threshold, then all the mata partition will be marked as readOnly.
@@ -164,7 +162,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
-	cv := &ClusterView{
+	cv := &proto.ClusterView{
 		Name:               m.cluster.Name,
 		LeaderAddr:         m.leaderInfo.addr,
 		DisableAutoAlloc:   m.cluster.DisableAutoAllocate,
@@ -173,10 +171,10 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MaxDataPartitionID: m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:      m.cluster.idAlloc.commonID,
 		MaxMetaPartitionID: m.cluster.idAlloc.metaPartitionID,
-		MetaNodes:          make([]NodeView, 0),
-		DataNodes:          make([]NodeView, 0),
-		VolStatInfo:        make([]*volStatInfo, 0),
-		BadPartitionIDs:    make([]badPartitionView, 0),
+		MetaNodes:          make([]proto.NodeView, 0),
+		DataNodes:          make([]proto.NodeView, 0),
+		VolStatInfo:        make([]*proto.VolStatInfo, 0),
+		BadPartitionIDs:    make([]proto.BadPartitionView, 0),
 	}
 
 	vols := m.cluster.allVolNames()
@@ -292,7 +290,7 @@ func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	sendOkReply(w, r, newSuccessHTTPReply(dp))
+	sendOkReply(w, r, newSuccessHTTPReply(dp.ToProto()))
 }
 
 // Load the data partition.
@@ -596,9 +594,10 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr string
-		dataNode *DataNode
-		err      error
+		nodeAddr     string
+		dataNode     *DataNode
+		dataNodeInfo *proto.DataNodeInfo
+		err          error
 	)
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -610,7 +609,27 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dataNode.PersistenceDataPartitions = m.cluster.getAllDataPartitionIDByDatanode(nodeAddr)
-	sendOkReply(w, r, newSuccessHTTPReply(dataNode))
+
+	dataNodeInfo = &proto.DataNodeInfo{
+		Total:                     dataNode.Total,
+		Used:                      dataNode.Used,
+		AvailableSpace:            dataNode.AvailableSpace,
+		ID:                        dataNode.ID,
+		CellName:                  dataNode.CellName,
+		Addr:                      dataNode.Addr,
+		ReportTime:                dataNode.ReportTime,
+		IsActive:                  dataNode.isActive,
+		UsageRatio:                dataNode.UsageRatio,
+		SelectedTimes:             dataNode.SelectedTimes,
+		Carry:                     dataNode.Carry,
+		DataPartitionReports:      dataNode.DataPartitionReports,
+		DataPartitionCount:        dataNode.DataPartitionCount,
+		NodeSetID:                 dataNode.NodeSetID,
+		PersistenceDataPartitions: dataNode.PersistenceDataPartitions,
+		BadDisks:                  dataNode.BadDisks,
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))
 }
 
 // Decommission a data node. This will decommission all the data partition on that node.
@@ -709,9 +728,10 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr string
-		metaNode *MetaNode
-		err      error
+		nodeAddr     string
+		metaNode     *MetaNode
+		metaNodeInfo *proto.MetaNodeInfo
+		err          error
 	)
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -723,7 +743,24 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	metaNode.PersistenceMetaPartitions = m.cluster.getAllMetaPartitionIDByMetaNode(nodeAddr)
-	sendOkReply(w, r, newSuccessHTTPReply(metaNode))
+	metaNodeInfo = &proto.MetaNodeInfo{
+		ID:                        metaNode.ID,
+		Addr:                      metaNode.Addr,
+		IsActive:                  metaNode.IsActive,
+		CellName:                  metaNode.CellName,
+		MaxMemAvailWeight:         metaNode.MaxMemAvailWeight,
+		Total:                     metaNode.Total,
+		Used:                      metaNode.Used,
+		Ratio:                     metaNode.Ratio,
+		SelectCount:               metaNode.SelectCount,
+		Carry:                     metaNode.Carry,
+		Threshold:                 metaNode.Threshold,
+		ReportTime:                metaNode.ReportTime,
+		MetaPartitionCount:        metaNode.MetaPartitionCount,
+		NodeSetID:                 metaNode.NodeSetID,
+		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }
 
 func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Request) {
@@ -903,8 +940,43 @@ func parseRequestToGetTaskResponse(r *http.Request) (tr *proto.AdminTask, err er
 	return
 }
 
-func parseRequestToGetVol(r *http.Request) (name, authKey string, err error) {
-	return parseVolNameAndAuthKey(r)
+func parseVolName(r *http.Request) (name string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if name, err = extractName(r); err != nil {
+		return
+	}
+	return
+}
+
+type getVolParameter struct {
+	name                string
+	authKey             string
+	skipOwnerValidation bool
+}
+
+func parseGetVolParameter(r *http.Request) (p *getVolParameter, err error) {
+	p = &getVolParameter{}
+	skipOwnerValidationVal := r.Header.Get(proto.SkipOwnerValidation)
+	if len(skipOwnerValidationVal) > 0 {
+		if p.skipOwnerValidation, err = strconv.ParseBool(skipOwnerValidationVal); err != nil {
+			return
+		}
+	}
+	if p.name = r.FormValue(nameKey); p.name == "" {
+		err = keyNotFound(nameKey)
+		return
+	}
+	if !volNameRegexp.MatchString(p.name) {
+		err = errors.New("name can only be number and letters")
+		return
+	}
+	if p.authKey = r.FormValue(volAuthKey); !p.skipOwnerValidation && len(p.authKey) == 0 {
+		err = keyNotFound(volAuthKey)
+		return
+	}
+	return
 }
 
 func parseVolNameAndAuthKey(r *http.Request) (name, authKey string, err error) {
@@ -1333,24 +1405,23 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		err          error
-		name         string
-		authKey      string
-		vol          *Vol
-		checkMessage string
-		jobj         proto.APIAccessReq
-		ticket       cryptoutil.Ticket
-		ts           int64
+		err     error
+		vol     *Vol
+		message string
+		jobj    proto.APIAccessReq
+		ticket  cryptoutil.Ticket
+		ts      int64
+		param   *getVolParameter
 	)
-	if name, authKey, err = parseRequestToGetVol(r); err != nil {
+	if param, err = parseGetVolParameter(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.getVol(name); err != nil {
+	if vol, err = m.cluster.getVol(param.name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
-	if !matchKey(vol.Owner, authKey) {
+	if !param.skipOwnerValidation && !matchKey(vol.Owner, param.authKey) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolAuthKeyNotMatch))
 		return
 	}
@@ -1360,7 +1431,7 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 		viewCache = vol.getViewCache()
 	}
 	if vol.authenticate {
-		if jobj, ticket, ts, err = parseAndCheckTicket(r, m.cluster.MasterSecretKey, name); err != nil {
+		if jobj, ticket, ts, err = parseAndCheckTicket(r, m.cluster.MasterSecretKey, param.name); err != nil {
 			if err == proto.ErrExpiredTicket {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
@@ -1368,15 +1439,11 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidTicket, Msg: err.Error()})
 			return
 		}
-		if checkMessage, err = genCheckMessage(&jobj, ts, ticket.SessionKey.Key); err != nil {
+		if message, err = genRespMessage(viewCache, &jobj, ts, ticket.SessionKey.Key); err != nil {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeMasterAPIGenRespError, Msg: err.Error()})
 			return
 		}
-		resp := &proto.GetVolResponse{
-			VolViewCache: viewCache,
-			CheckMsg:     checkMessage,
-		}
-		sendOkReply(w, r, newSuccessHTTPReply(resp))
+		sendOkReply(w, r, newSuccessHTTPReply(message))
 	} else {
 		send(w, r, viewCache)
 	}
@@ -1441,7 +1508,34 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(mp))
+
+	var toInfo = func(mp *MetaPartition) *proto.MetaPartitionInfo {
+		var replicas = make([]*proto.MetaReplicaInfo, len(mp.Replicas))
+		for i := 0; i < len(replicas); i++ {
+			replicas[i] = &proto.MetaReplicaInfo{
+				Addr:       mp.Replicas[i].Addr,
+				ReportTime: mp.Replicas[i].ReportTime,
+				Status:     mp.Replicas[i].Status,
+				IsLeader:   mp.Replicas[i].IsLeader,
+			}
+		}
+		var mpInfo = &proto.MetaPartitionInfo{
+			PartitionID:  mp.PartitionID,
+			Start:        mp.Start,
+			End:          mp.End,
+			MaxInodeID:   mp.MaxInodeID,
+			Replicas:     replicas,
+			ReplicaNum:   mp.ReplicaNum,
+			Status:       mp.Status,
+			Hosts:        mp.Hosts,
+			Peers:        mp.Peers,
+			MissNodes:    mp.MissNodes,
+			LoadResponse: mp.LoadResponse,
+		}
+		return mpInfo
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(toInfo(mp)))
 }
 
 func parseAndExtractPartitionInfo(r *http.Request) (partitionID uint64, err error) {
@@ -1565,23 +1659,25 @@ func extractTicketMess(req *proto.APIAccessReq, key []byte, volName string) (tic
 		err = fmt.Errorf("CheckAPIAccessCaps failed: %s", err.Error())
 		return
 	}
-	if err = proto.CheckVOLAccessCaps(&ticket, proto.VOLRsc, volName, proto.VOLAccess, proto.MasterNode); err != nil {
+	if err = proto.CheckVOLAccessCaps(&ticket, volName, proto.VOLAccess, proto.MasterNode); err != nil {
 		err = fmt.Errorf("CheckVOLAccessCaps failed: %s", err.Error())
 		return
 	}
 	return
 }
 
-func genCheckMessage(req *proto.APIAccessReq, ts int64, key []byte) (message string, err error) {
+func genRespMessage(data []byte, req *proto.APIAccessReq, ts int64, key []byte) (message string, err error) {
 	var (
 		jresp []byte
-		resp  proto.APIAccessResp
+		resp  proto.MasterAPIAccessResp
 	)
 
-	resp.Type = req.Type + 1
-	resp.ClientID = req.ClientID
-	resp.ServiceID = req.ServiceID
-	resp.Verifier = ts + 1 // increase ts by one for client verify server
+	resp.Data = data
+
+	resp.APIResp.Type = req.Type + 1
+	resp.APIResp.ClientID = req.ClientID
+	resp.APIResp.ServiceID = req.ServiceID
+	resp.APIResp.Verifier = ts + 1 // increase ts by one for client verify server
 
 	if jresp, err = json.Marshal(resp); err != nil {
 		err = fmt.Errorf("json marshal for response failed %s", err.Error())

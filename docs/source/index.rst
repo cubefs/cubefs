@@ -15,6 +15,7 @@ Welcome to ChubaoFS(Chubao File System)
    design/master
    design/metanode
    design/datanode
+   design/objectnode.rst
    design/client
    design/authnode
 
@@ -25,6 +26,7 @@ Welcome to ChubaoFS(Chubao File System)
    user-guide/master
    user-guide/metanode
    user-guide/datanode
+   user-guide/objectnode
    user-guide/client
    user-guide/authnode
    user-guide/monitor

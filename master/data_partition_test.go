@@ -2,10 +2,11 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
 	"testing"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util"
 )
 
 func TestDataPartition(t *testing.T) {
@@ -69,8 +70,12 @@ func loadDataPartitionTest(dp *DataPartition, t *testing.T) {
 	for _, replica := range dp.Replicas {
 		t.Logf("replica[%v],response[%v]", replica.Addr, replica.HasLoadResponse)
 	}
-	tinyFile := &FileInCore{Name: "50000011", LastModify: 1562507765}
-	extentFile := &FileInCore{Name: "10", LastModify: 1562507765}
+	tinyFile := &FileInCore{}
+	tinyFile.Name = "50000011"
+	tinyFile.LastModify = 1562507765
+	extentFile := &FileInCore{}
+	extentFile.Name = "10"
+	extentFile.LastModify = 1562507765
 	for index, host := range dp.Hosts {
 		fm := newFileMetadata(uint32(404551221)+uint32(index), host, index, 2*util.MB)
 		tinyFile.MetadataArray = append(tinyFile.MetadataArray, fm)

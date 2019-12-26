@@ -19,8 +19,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/errors"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
@@ -28,6 +26,12 @@ import (
 	"path"
 	"strings"
 	"sync/atomic"
+
+	"github.com/chubaofs/chubaofs/util/log"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
+	mmap "github.com/edsrzf/mmap-go"
 )
 
 const (
@@ -36,6 +40,8 @@ const (
 	snapshotBackup  = ".snapshot_backup"
 	inodeFile       = "inode"
 	dentryFile      = "dentry"
+	extendFile      = "extend"
+	multipartFile   = "multipart"
 	applyIDFile     = "apply"
 	SnapshotSign    = ".sign"
 	metadataFile    = "meta"
@@ -72,10 +78,20 @@ func (mp *metaPartition) loadMetadata() (err error) {
 	mp.config.End = mConf.End
 	mp.config.Peers = mConf.Peers
 	mp.config.Cursor = mp.config.Start
+
+	log.LogInfof("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
+		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
 	return
 }
 
 func (mp *metaPartition) loadInode(rootDir string) (err error) {
+	var numInodes uint64
+	defer func() {
+		if err == nil {
+			log.LogInfof("loadInode: load complete: partitonID(%v) volume(%v) numInodes(%v)",
+				mp.config.PartitionId, mp.config.VolName, numInodes)
+		}
+	}()
 	filename := path.Join(rootDir, inodeFile)
 	if _, err = os.Stat(filename); err != nil {
 		err = nil
@@ -124,11 +140,19 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 		if mp.config.Cursor < ino.Inode {
 			mp.config.Cursor = ino.Inode
 		}
+		numInodes += 1
 	}
 }
 
 // Load dentry from the dentry snapshot.
 func (mp *metaPartition) loadDentry(rootDir string) (err error) {
+	var numDentries uint64
+	defer func() {
+		if err == nil {
+			log.LogInfof("loadDentry: load complete: partitonID(%v) volume(%v) numDentries(%v)",
+				mp.config.PartitionId, mp.config.VolName, numDentries)
+		}
+	}()
 	filename := path.Join(rootDir, dentryFile)
 	if _, err = os.Stat(filename); err != nil {
 		err = nil
@@ -179,11 +203,96 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 			return
 		}
 		if status := mp.fsmCreateDentry(dentry, true); status != proto.OpOk {
-			err = errors.NewErrorf("[loadDentry] createDentry dentry: %v, "+
-				"resp code: %d", status)
+			err = errors.NewErrorf("[loadDentry] createDentry dentry: %v, resp code: %d", dentry, status)
 			return
 		}
+		numDentries += 1
 	}
+}
+
+func (mp *metaPartition) loadExtend(rootDir string) error {
+	var err error
+	filename := path.Join(rootDir, extendFile)
+	if _, err = os.Stat(filename); err != nil {
+		return nil
+	}
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = fp.Close()
+	}()
+	var mem mmap.MMap
+	if mem, err = mmap.Map(fp, mmap.RDONLY, 0); err != nil {
+		return err
+	}
+	defer func() {
+		_ = mem.Unmap()
+	}()
+	var offset, n int
+	// read number of extends
+	var numExtends uint64
+	numExtends, n = binary.Uvarint(mem)
+	offset += n
+	for i := uint64(0); i < numExtends; i++ {
+		// read length
+		var numBytes uint64
+		numBytes, n = binary.Uvarint(mem[offset:])
+		offset += n
+		var extend *Extend
+		if extend, err = NewExtendFromBytes(mem[offset : offset+int(numBytes)]); err != nil {
+			return err
+		}
+		log.LogDebugf("loadExtend: new extend from bytes: partitionID（%v) volume(%v) inode(%v)",
+			mp.config.PartitionId, mp.config.VolName, extend.inode)
+		_ = mp.fsmSetXAttr(extend)
+		offset += int(numBytes)
+	}
+	log.LogInfof("loadExtend: load complete: partitionID(%v) volume(%v) numExtends(%v) filename(%v)",
+		mp.config.PartitionId, mp.config.VolName, numExtends, filename)
+	return nil
+}
+
+func (mp *metaPartition) loadMultipart(rootDir string) error {
+	var err error
+	filename := path.Join(rootDir, multipartFile)
+	if _, err = os.Stat(filename); err != nil {
+		return nil
+	}
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = fp.Close()
+	}()
+	var mem mmap.MMap
+	if mem, err = mmap.Map(fp, mmap.RDONLY, 0); err != nil {
+		return err
+	}
+	defer func() {
+		_ = mem.Unmap()
+	}()
+	var offset, n int
+	// read number of extends
+	var numMultiparts uint64
+	numMultiparts, n = binary.Uvarint(mem)
+	offset += n
+	for i := uint64(0); i < numMultiparts; i++ {
+		// read length
+		var numBytes uint64
+		numBytes, n = binary.Uvarint(mem[offset:])
+		offset += n
+		var multipart *Multipart
+		multipart = MultipartFromBytes(mem[offset : offset+int(numBytes)])
+		log.LogDebugf("loadMultipart: create multipart from bytes: partitionID（%v) multipartID(%v)", mp.config.PartitionId, multipart.id)
+		mp.fsmCreateMultipart(multipart)
+		offset += int(numBytes)
+	}
+	log.LogInfof("loadMultipart: load complete: partitionID(%v) numMultiparts(%v) filename(%v)",
+		mp.config.PartitionId, numMultiparts, filename)
+	return nil
 }
 
 func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
@@ -219,7 +328,8 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 	if cursor > atomic.LoadUint64(&mp.config.Cursor) {
 		atomic.StoreUint64(&mp.config.Cursor, cursor)
 	}
-
+	log.LogInfof("loadApplyID: load complete: partitionID(%v) volume(%v) applyID(%v) filename(%v)",
+		mp.config.PartitionId, mp.config.VolName, mp.applyID, filename)
 	return
 }
 
@@ -250,7 +360,11 @@ func (mp *metaPartition) persistMetadata() (err error) {
 	if _, err = fp.Write(data); err != nil {
 		return
 	}
-	err = os.Rename(filename, path.Join(mp.config.RootDir, metadataFile))
+	if err = os.Rename(filename, path.Join(mp.config.RootDir, metadataFile)); err != nil {
+		return
+	}
+	log.LogInfof("persistMetata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
+		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
 	return
 }
 
@@ -268,6 +382,8 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 	if _, err = fp.WriteString(fmt.Sprintf("%d|%d", sm.applyIndex, atomic.LoadUint64(&mp.config.Cursor))); err != nil {
 		return
 	}
+	log.LogInfof("storeApplyID: store complete: partitionID(%v) volume(%v) applyID(%v)",
+		mp.config.PartitionId, mp.config.VolName, sm.applyIndex)
 	return
 }
 
@@ -310,6 +426,8 @@ func (mp *metaPartition) storeInode(rootDir string,
 		return true
 	})
 	crc = sign.Sum32()
+	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v)",
+		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), crc)
 	return
 }
 
@@ -352,22 +470,137 @@ func (mp *metaPartition) storeDentry(rootDir string,
 		return true
 	})
 	crc = sign.Sum32()
+	log.LogInfof("storeDentry: store complete: partitoinID(%v) volume(%v) numDentries(%v) crc(%v)",
+		mp.config.PartitionId, mp.config.VolName, sm.dentryTree.Len(), crc)
 	return
 }
 
-func (mp *metaPartition) deleteInodeFile() {
-	filename := path.Join(mp.config.RootDir, inodeFile)
-	// TODO Unhandled errors
-	os.Remove(filename)
-}
-func (mp *metaPartition) deleteDentryFile() {
-	filename := path.Join(mp.config.RootDir, dentryFile)
-	// TODO Unhandled errors
-	os.Remove(filename)
+func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, err error) {
+	var extendTree = sm.extendTree
+	var fp = path.Join(rootDir, extendFile)
+	var f *os.File
+	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
+	if err != nil {
+		return
+	}
+	defer func() {
+		closeErr := f.Close()
+		if err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
+	var writer = bufio.NewWriterSize(f, 4*1024*1024)
+	var crc32 = crc32.NewIEEE()
+	var varintTmp = make([]byte, binary.MaxVarintLen64)
+	var n int
+	// write number of extends
+	n = binary.PutUvarint(varintTmp, uint64(extendTree.Len()))
+	if _, err = writer.Write(varintTmp[:n]); err != nil {
+		return
+	}
+	if _, err = crc32.Write(varintTmp[:n]); err != nil {
+		return
+	}
+	extendTree.Ascend(func(i BtreeItem) bool {
+		e := i.(*Extend)
+		var raw []byte
+		if raw, err = e.Bytes(); err != nil {
+			return false
+		}
+		// write length
+		n = binary.PutUvarint(varintTmp, uint64(len(raw)))
+		if _, err = writer.Write(varintTmp[:n]); err != nil {
+			return false
+		}
+		if _, err = crc32.Write(varintTmp[:n]); err != nil {
+			return false
+		}
+		// write raw
+		if _, err = writer.Write(raw); err != nil {
+			return false
+		}
+		if _, err = crc32.Write(raw); err != nil {
+			return false
+		}
+		return true
+	})
+	if err != nil {
+		return
+	}
 
+	if err = writer.Flush(); err != nil {
+		return
+	}
+	if err = f.Sync(); err != nil {
+		return
+	}
+	crc = crc32.Sum32()
+	log.LogInfof("storeExtend: store complete: partitoinID(%v) volume(%v) numExtends(%v) crc(%v)",
+		mp.config.PartitionId, mp.config.VolName, extendTree.Len(), crc)
+	return
 }
-func (mp *metaPartition) deleteApplyFile() {
-	filename := path.Join(mp.config.RootDir, applyIDFile)
-	// TODO Unhandled errors
-	os.Remove(filename)
+
+func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint32, err error) {
+	var multipartTree = sm.multipartTree
+	var fp = path.Join(rootDir, multipartFile)
+	var f *os.File
+	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
+	if err != nil {
+		return
+	}
+	defer func() {
+		closeErr := f.Close()
+		if err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
+	var writer = bufio.NewWriterSize(f, 4*1024*1024)
+	var crc32 = crc32.NewIEEE()
+	var varintTmp = make([]byte, binary.MaxVarintLen64)
+	var n int
+	// write number of extends
+	n = binary.PutUvarint(varintTmp, uint64(multipartTree.Len()))
+	if _, err = writer.Write(varintTmp[:n]); err != nil {
+		return
+	}
+	if _, err = crc32.Write(varintTmp[:n]); err != nil {
+		return
+	}
+	multipartTree.Ascend(func(i BtreeItem) bool {
+		m := i.(*Multipart)
+		var raw []byte
+		if raw, err = m.Bytes(); err != nil {
+			return false
+		}
+		// write length
+		n = binary.PutUvarint(varintTmp, uint64(len(raw)))
+		if _, err = writer.Write(varintTmp[:n]); err != nil {
+			return false
+		}
+		if _, err = crc32.Write(varintTmp[:n]); err != nil {
+			return false
+		}
+		// write raw
+		if _, err = writer.Write(raw); err != nil {
+			return false
+		}
+		if _, err = crc32.Write(raw); err != nil {
+			return false
+		}
+		return true
+	})
+	if err != nil {
+		return
+	}
+
+	if err = writer.Flush(); err != nil {
+		return
+	}
+	if err = f.Sync(); err != nil {
+		return
+	}
+	crc = crc32.Sum32()
+	log.LogInfof("storeMultipart: store complete: partitoinID(%v) volume(%v) numMultiparts(%v) crc(%v)",
+		mp.config.PartitionId, mp.config.VolName, multipartTree.Len(), crc)
+	return
 }

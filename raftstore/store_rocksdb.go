@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/tecbot/gorocksdb"
+	"os"
 )
 
 // RocksDBStore is a wrapper of the gorocksdb.DB
@@ -27,13 +28,15 @@ type RocksDBStore struct {
 }
 
 // NewRocksDBStore returns a new RocksDB instance.
-func NewRocksDBStore(dir string, lruCacheSize, writeBufferSize int) (store *RocksDBStore) {
-	store = &RocksDBStore{dir: dir}
-	err := store.Open(lruCacheSize, writeBufferSize)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to Open rocksDB! err:%v", err.Error()))
+func NewRocksDBStore(dir string, lruCacheSize, writeBufferSize int) (store *RocksDBStore, err error) {
+	if err = os.MkdirAll(dir, os.ModePerm); err != nil {
+		return
 	}
-	return store
+	store = &RocksDBStore{dir: dir}
+	if err = store.Open(lruCacheSize, writeBufferSize); err != nil {
+		return
+	}
+	return
 }
 
 // Open opens the RocksDB instance.

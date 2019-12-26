@@ -15,10 +15,12 @@
 package master
 
 import (
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/log"
 	"strconv"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 //metrics
@@ -136,10 +138,10 @@ func (mm *monitorMetrics) setVolMetrics() {
 		}
 		labels := map[string]string{"volName": volName}
 		volTotalGauge := exporter.NewGauge(MetricVolTotalGB)
-		volTotalGauge.SetWithLabels(int64(volStatInfo.TotalGB), labels)
+		volTotalGauge.SetWithLabels(int64(volStatInfo.TotalSize/util.GB), labels)
 
 		volUsedGauge := exporter.NewGauge(MetricVolUsedGB)
-		volUsedGauge.SetWithLabels(int64(volStatInfo.UsedGB), labels)
+		volUsedGauge.SetWithLabels(int64(volStatInfo.UsedSize/util.GB), labels)
 
 		volUsageRatioGauge := exporter.NewGauge(MetricVolUsageGB)
 		usedRatio, e := strconv.ParseFloat(volStatInfo.UsedRatio, 64)

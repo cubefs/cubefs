@@ -30,7 +30,7 @@ const (
 	AdminGetVol                    = "/admin/getVol"
 	AdminClusterFreeze             = "/cluster/freeze"
 	AdminGetIP                     = "/admin/getIp"
-	AdminCreateMP                  = "/metaPartition/create"
+	AdminCreateMetaPartition       = "/metaPartition/create"
 	AdminSetMetaNodeThreshold      = "/threshold/set"
 
 	// Client APIs
@@ -62,6 +62,9 @@ const (
 	GetDataNodeTaskResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
 
 	GetTopologyView = "/topo/get"
+
+	// Header keys
+	SkipOwnerValidation = "Skip-Owner-Validation"
 )
 
 // HTTPReply uniform response structure
@@ -316,13 +319,6 @@ type MetaPartitionLoadResponse struct {
 	Addr        string
 }
 
-// VolStatInfo defines the statistics related to a volume
-type VolStatInfo struct {
-	Name      string
-	TotalSize uint64
-	UsedSize  uint64
-}
-
 // DataPartitionResponse defines the response from a data node to the master that is related to a data partition.
 type DataPartitionResponse struct {
 	PartitionID uint64
@@ -354,13 +350,28 @@ type MetaPartitionView struct {
 	Status      int8
 }
 
+type OSSSecure struct {
+	AccessKey string
+	SecretKey string
+}
+
 // VolView defines the view of a volume
 type VolView struct {
 	Name           string
+	Owner          string
 	Status         uint8
 	FollowerRead   bool
 	MetaPartitions []*MetaPartitionView
 	DataPartitions []*DataPartitionResponse
+	OSSSecure      *OSSSecure
+}
+
+func (v *VolView) SetOwner(owner string) {
+	v.Owner = owner
+}
+
+func (v *VolView) SetOSSSecure(accessKey, secretKey string) {
+	v.OSSSecure = &OSSSecure{AccessKey: accessKey, SecretKey: secretKey}
 }
 
 func NewVolView(name string, status uint8, followerRead bool) (view *VolView) {
@@ -400,8 +411,8 @@ type SimpleVolView struct {
 	Authenticate       bool
 }
 
-// GetVolResponse defines the response for getting meta partition
-type GetVolResponse struct {
-	VolViewCache []byte `json:"vol_view_cache"`
-	CheckMsg     string `json:"check_message"`
+// MasterAPIAccessResp defines the response for getting meta partition
+type MasterAPIAccessResp struct {
+	APIResp APIAccessResp `json:"api_resp"`
+	Data    []byte        `json:"data"`
 }

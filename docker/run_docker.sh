@@ -11,10 +11,11 @@ help() {
 
 Usage: ./run_docker.sh [ -h | --help ] [ -d | --disk </disk/path> ] [ -l | --ltptest ]
     -h, --help              show help info
-    -d, --disk </disk/path>     set datanode local disk path
-    -b, --build             build chubaofs server and cliente
-    -s, --server            start chubaofs servers docker image
-    -c, --client            start chubaofs client docker image
+    -d, --disk </disk/path>     set ChubaoFS DataNode local disk path
+    -b, --build             build ChubaoFS server and client
+    -s, --server            start ChubaoFS servers docker image
+    -o, --object-node       start ChubaoFS
+    -c, --client            start ChubaoFS client docker image
     -m, --monitor           start monitor web ui
     -l, --ltptest           run ltp test
     -r, --run               run servers, client and monitor
@@ -28,7 +29,12 @@ clean() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml down
 }
 
-# test & build
+# test
+run_test() {
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run test 
+}
+
+# build
 build() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml run build
 }
@@ -42,6 +48,10 @@ start_servers() {
 
 start_client() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml run client bash -c "/cfs/script/start_client.sh ; /bin/bash"
+}
+
+start_objectnode() {
+    docker-compose -f ${RootPath}/docker/docker-compose.yml up -d objectnode
 }
 
 start_monitor() {
@@ -62,6 +72,7 @@ run() {
     build
     start_monitor
     start_servers
+    start_objectnode
     start_client
 }
 
@@ -75,6 +86,9 @@ for opt in ${ARGS[*]} ; do
             ;;
         -b|--build)
             cmd=build
+            ;;
+        -t|--test)
+            cmd=run_test
             ;;
         -l|--ltptest)
             cmd=run_ltptest
@@ -137,8 +151,10 @@ case "-$cmd" in
     -build) build ;;
     -run_servers) start_servers ;;
     -run_client) start_client ;;
+    -run_s3node) start_s3node ;;
     -run_monitor) start_monitor ;;
     -run_ltptest) run_ltptest ;;
+    -run_test) run_test ;;
     -clean) clean ;;
     *) help ;;
 esac

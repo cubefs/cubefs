@@ -3,12 +3,12 @@
 #write authkey to authnode.json
 cd ..
 cd ..
-cp ./build/bin/cfs-server /home/wuwenjia/gocode/src/github.com/chubaofs/chubaofs/docker/authnode/
-cp ./build/bin/cfs-authtool /home/wuwenjia/gocode/src/github.com/chubaofs/chubaofs/docker/authnode/
+cp ./build/bin/cfs-server /home/wuwenjia/gocode/src/github.com/chubaofs/chubaofs/docker/authnode/.
+cp ./build/bin/cfs-authtool /home/wuwenjia/gocode/src/github.com/chubaofs/chubaofs/docker/authnode/.
 cd docker/authnode
 ./cfs-authtool authkey
-authnodeKey=$(sed -n '3p' authservice.json | sed 's/key/authServiceKey/g')
-authnodeRootKey=$(sed -n '3p' authroot.json | sed 's/key/authRootKey/g')
+authnodeKey=$(sed -n '3p' authservice.json | sed 's/auth_key/authServiceKey/g')
+authnodeRootKey=$(sed -n '3p' authroot.json | sed 's/auth_key/authRootKey/g')
 line=`expr $(cat authnode1.json | wc -l) - 1`
 sed -i "${line}i ${authnodeRootKey}" authnode1.json
 sed -i "${line}i ${authnodeRootKey}" authnode2.json
@@ -34,8 +34,8 @@ sleep 2s
 ./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=./ticket_admin.json -data=./data_client.json -output=./key_client.json AuthService createkey
 
 #write key to json file
-clientKey=$(sed -n '3p' key_client.json | sed 's/key/clientKey/g')
-masterKey=$(sed -n '3p' key_master.json | sed 's/key/masterServiceKey/g')
+clientKey=$(sed -n '3p' key_client.json | sed 's/auth_key/clientKey/g')
+masterKey=$(sed -n '3p' key_master.json | sed 's/auth_key/masterServiceKey/g')
 cd ..
 cd ..
 lineClient=`expr $(cat docker/conf/client.json | wc -l) - 1`

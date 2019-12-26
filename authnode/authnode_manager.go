@@ -40,6 +40,9 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		if err := m.cluster.loadKeystore(); err != nil {
 			panic(err)
 		}
+		if err := m.cluster.loadAKstore(); err != nil {
+			panic(err)
+		}
 		m.metaReady = true
 	}
 }
@@ -66,7 +69,7 @@ func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
 }
 
 func (m *Server) handleApplySnapshot() {
-	log.LogInfo("clusterID[%v] peerID:%v action[handleApplySnapshot]", m.clusterName, m.id)
+	log.LogInfof("clusterID[%v] peerID:%v action[handleApplySnapshot]", m.clusterName, m.id)
 	m.fsm.restore()
 	return
 }

@@ -15,20 +15,15 @@
 package metanode
 
 import (
-	"encoding/json"
+	"github.com/chubaofs/chubaofs/proto"
 	"net"
 
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
-const (
-	masterResponsePath = "/metaNode/response" // Method: 'POST',
-	// ContentType: 'application/json'
-)
-
 // Reply operation results to the master.
-func (m *metadataManager) respondToMaster(data interface{}) (err error) {
+func (m *metadataManager) respondToMaster(task *proto.AdminTask) (err error) {
 	// handle panic
 	defer func() {
 		if r := recover(); r != nil {
@@ -40,14 +35,7 @@ func (m *metadataManager) respondToMaster(data interface{}) (err error) {
 			}
 		}
 	}()
-
-	// process data and send reply though http specified remote address.
-	jsonBytes, err := json.Marshal(data)
-	if err != nil {
-		return
-	}
-	_, err = masterHelper.Request("POST", masterResponsePath, nil, jsonBytes)
-	if err != nil {
+	if err = masterClient.NodeAPI().ResponseMetaNodeTask(task); err != nil {
 		err = errors.Trace(err, "try respondToMaster failed")
 	}
 	return

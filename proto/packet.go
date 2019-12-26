@@ -19,13 +19,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/buf"
 	"io"
 	"net"
 	"strconv"
 	"sync/atomic"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/buf"
 )
 
 var (
@@ -89,6 +90,14 @@ const (
 	//Operations: MetaNode Leader -> MetaNode Follower
 	OpMetaFreeInodesOnRaftFollower uint8 = 0x32
 
+	OpMetaDeleteInode     uint8 = 0x33 // delete specified inode immediately and do not remove data.
+	OpMetaBatchExtentsAdd uint8 = 0x34 // for extents batch attachment
+	OpMetaSetXAttr        uint8 = 0x35
+	OpMetaGetXAttr        uint8 = 0x36
+	OpMetaRemoveXAttr     uint8 = 0x37
+	OpMetaListXAttr       uint8 = 0x38
+	OpMetaBatchGetXAttr   uint8 = 0x39
+
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition           uint8 = 0x40
 	OpMetaNodeHeartbeat             uint8 = 0x41
@@ -111,6 +120,13 @@ const (
 	OpAddDataPartitionRaftMember    uint8 = 0x67
 	OpRemoveDataPartitionRaftMember uint8 = 0x68
 	OpDataPartitionTryToLeader      uint8 = 0x69
+
+	// Operations: MultipartInfo
+	OpCreateMultipart  uint8 = 0x70
+	OpGetMultipart     uint8 = 0x71
+	OpAddMultipartPart uint8 = 0x72
+	OpRemoveMultipart  uint8 = 0x73
+	OpListMultiparts   uint8 = 0x74
 
 	// Commons
 	OpIntraGroupNetErr uint8 = 0xF3
@@ -320,6 +336,30 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaPartitionTryToLeader"
 	case OpDataPartitionTryToLeader:
 		m = "OpDataPartitionTryToLeader"
+	case OpMetaDeleteInode:
+		m = "OpMetaDeleteInode"
+	case OpMetaBatchExtentsAdd:
+		m = "OpMetaBatchExtentsAdd"
+	case OpMetaSetXAttr:
+		m = "OpMetaSetXAttr"
+	case OpMetaGetXAttr:
+		m = "OpMetaGetXAttr"
+	case OpMetaRemoveXAttr:
+		m = "OpMetaRemoveXAttr"
+	case OpMetaListXAttr:
+		m = "OpMetaListXAttr"
+	case OpMetaBatchGetXAttr:
+		m = "OpMetaBatchGetXAttr"
+	case OpCreateMultipart:
+		m = "OpCreateMultipart"
+	case OpGetMultipart:
+		m = "OpGetMultipart"
+	case OpAddMultipartPart:
+		m = "OpAddMultipartPart"
+	case OpRemoveMultipart:
+		m = "OpRemoveMultipart"
+	case OpListMultiparts:
+		m = "OpListMultiparts"
 	}
 	return
 }

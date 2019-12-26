@@ -16,30 +16,22 @@ package master
 
 import (
 	"fmt"
+	"strconv"
+
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
-	"strconv"
 )
 
-type nodeStatInfo struct {
-	TotalGB     uint64
-	UsedGB      uint64
-	IncreasedGB int64
-	UsedRatio   string
-}
+type nodeStatInfo = proto.NodeStatInfo
 
-type volStatInfo struct {
-	Name      string
-	TotalGB   uint64
-	UsedGB    uint64
-	UsedRatio string
-}
+type volStatInfo = proto.VolStatInfo
 
 func newVolStatInfo(name string, total, used uint64, ratio string) *volStatInfo {
 	return &volStatInfo{
 		Name:      name,
-		TotalGB:   total,
-		UsedGB:    used,
+		TotalSize: total,
+		UsedSize:  used,
 		UsedRatio: ratio,
 	}
 }
@@ -118,6 +110,6 @@ func (c *Cluster) updateVolStatInfo() {
 			continue
 		}
 		useRate := float64(used) / float64(total)
-		c.volStatInfo.Store(vol.Name, newVolStatInfo(vol.Name, total/util.GB, used/util.GB, strconv.FormatFloat(useRate, 'f', 3, 32)))
+		c.volStatInfo.Store(vol.Name, newVolStatInfo(vol.Name, total, used, strconv.FormatFloat(useRate, 'f', 3, 32)))
 	}
 }

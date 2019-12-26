@@ -40,13 +40,14 @@ type MsgType uint32
 type Nonce uint64
 
 const (
-	APIRsc        = "API"
-	APIAccess     = "access"
-	capSeparator  = ":"
-	reqLiveLength = 10
-	ClientMessage = "Token"
-	VOLRsc        = "VOL"
-	VOLAccess     = "*"
+	APIRsc          = "API"
+	APIAccess       = "access"
+	capSeparator    = ":"
+	reqLiveLength   = 10
+	ClientMessage   = "Token"
+	OwnerVOLRsc     = "OwnerVOL"
+	NoneOwnerVOLRsc = "NoneOwnerVOL"
+	VOLAccess       = "*"
 )
 
 // api
@@ -65,6 +66,11 @@ const (
 	//raft node APIs
 	AdminAddRaftNode    = "/admin/addraftnode"
 	AdminRemoveRaftNode = "/admin/removeraftnode"
+
+	// Object node APIs
+	OSAddCaps    = "/os/addcaps"
+	OSDeleteCaps = "/os/deletecaps"
+	OSGetCaps    = "/os/getcaps"
 )
 
 const (
@@ -163,6 +169,24 @@ const (
 	// MsgAuthRemoveRaftNodeResp response type for authnode remove node
 	MsgAuthRemoveRaftNodeResp MsgType = MsgAuthBase + 0x58001
 
+	// MsgAuthOSAddCapsReq request type from ObjectNode to add caps
+	MsgAuthOSAddCapsReq MsgType = MsgAuthBase + 0x61000
+
+	// MsgAuthOSAddCapsResp request type from ObjectNode to add caps
+	MsgAuthOSAddCapsResp MsgType = MsgAuthBase + 0x61001
+
+	// MsgAuthOSDeleteCapsReq request type from ObjectNode to delete caps
+	MsgAuthOSDeleteCapsReq MsgType = MsgAuthBase + 0x62000
+
+	// MsgAuthOSDeleteCapsResp request type from ObjectNode to delete caps
+	MsgAuthOSDeleteCapsResp MsgType = MsgAuthBase + 0x62001
+
+	// MsgAuthOSGetCapsReq request type from ObjectNode to get caps
+	MsgAuthOSGetCapsReq MsgType = MsgAuthBase + 0x63000
+
+	// MsgAuthOSGetCapsResp response type from ObjectNode to get caps
+	MsgAuthOSGetCapsResp MsgType = MsgAuthBase + 0x63001
+
 	// MsgMasterAPIAccessReq request type for master api access
 	MsgMasterAPIAccessReq MsgType = 0x60000
 
@@ -190,6 +214,9 @@ var MsgType2ResourceMap = map[MsgType]string{
 	MsgAuthGetCapsReq:        "auth:getcaps",
 	MsgAuthAddRaftNodeReq:    "auth:addnode",
 	MsgAuthRemoveRaftNodeReq: "auth:removenode",
+	MsgAuthOSAddCapsReq:      "auth:osaddcaps",
+	MsgAuthOSDeleteCapsReq:   "auth:osdeletecaps",
+	MsgAuthOSGetCapsReq:      "auth:osgetcaps",
 
 	MsgMasterFetchVolViewReq: "master:getvol",
 }
@@ -225,7 +252,7 @@ type APIAccessReq struct {
 	Ticket    string  `json:"ticket"`
 }
 
-// APIAccessResp defines the respose for access restful api
+// APIAccessResp defines the response for access restful api
 // use Timestamp as verifier for MITM mitigation
 // verifier is also used to verify the server identity
 type APIAccessResp struct {
@@ -241,7 +268,7 @@ type AuthAPIAccessReq struct {
 	KeyInfo keystore.KeyInfo `json:"key_info"`
 }
 
-// AuthAPIAccessResp defines the respose for creating an key in authnode
+// AuthAPIAccessResp defines the response for creating an key in authnode
 type AuthAPIAccessResp struct {
 	APIResp APIAccessResp    `json:"api_resp"`
 	KeyInfo keystore.KeyInfo `json:"key_info"`
@@ -253,16 +280,28 @@ type AuthRaftNodeInfo struct {
 	Addr string `json:"addr"`
 }
 
-// AuthRaftNodeReq defines Auth API request for add/remove a raft ndoe
+// AuthRaftNodeReq defines Auth API request for add/remove a raft node
 type AuthRaftNodeReq struct {
 	APIReq       APIAccessReq     `json:"api_req"`
 	RaftNodeInfo AuthRaftNodeInfo `json:"node_info"`
 }
 
-// AuthRaftNodeResp defines Auth API respose for add/remove a raft ndoe
+// AuthRaftNodeResp defines Auth API response for add/remove a raft node
 type AuthRaftNodeResp struct {
 	APIResp APIAccessResp `json:"api_resp"`
 	Msg     string        `json:"msg"`
+}
+
+// AuthAPIAccessKeystoreReq defines Auth API for put/delete Access Keystore vols
+type AuthOSAccessKeyReq struct {
+	APIReq APIAccessReq           `json:"api_req"`
+	AKCaps keystore.AccessKeyCaps `json:"access_key_caps"`
+}
+
+// AuthAPIAccessKeystoreResp defines the response for put/delete Access Keystore vols
+type AuthOSAccessKeyResp struct {
+	APIResp APIAccessResp          `json:"api_resp"`
+	AKCaps  keystore.AccessKeyCaps `json:"access_key_caps"`
 }
 
 // IsValidServiceID determine the validity of a serviceID
@@ -365,6 +404,22 @@ func ParseAuthAPIAccessResp(body []byte, key []byte) (resp AuthAPIAccessResp, er
 
 // ParseAuthRaftNodeResp parse and validate the auth raft node resp
 func ParseAuthRaftNodeResp(body []byte, key []byte) (resp AuthRaftNodeResp, err error) {
+	var (
+		plaintext []byte
+	)
+
+	if plaintext, err = GetDataFromResp(body, key); err != nil {
+		return
+	}
+
+	if err = json.Unmarshal(plaintext, &resp); err != nil {
+		return
+	}
+
+	return
+}
+
+func ParseAuthOSAKResp(body []byte, key []byte) (resp AuthOSAccessKeyResp, err error) {
 	var (
 		plaintext []byte
 	)
@@ -483,13 +538,15 @@ func CheckAPIAccessCaps(ticket *cryptoutil.Ticket, rscType string, mp MsgType, a
 	return
 }
 
-func CheckVOLAccessCaps(ticket *cryptoutil.Ticket, rscType string, volName string, action string, accessNode string) (err error) {
+func CheckVOLAccessCaps(ticket *cryptoutil.Ticket, volName string, action string, accessNode string) (err error) {
 
 	rule := accessNode + capSeparator + volName + capSeparator + action
 
-	if err = checkTicketCaps(ticket, rscType, rule); err != nil {
-		err = fmt.Errorf("checkTicketCaps failed: %s", err.Error())
-		return
+	if err = checkTicketCaps(ticket, OwnerVOLRsc, rule); err != nil {
+		if err = checkTicketCaps(ticket, NoneOwnerVOLRsc, rule); err != nil {
+			err = fmt.Errorf("checkTicketCaps failed: %s", err.Error())
+			return
+		}
 	}
 
 	return
