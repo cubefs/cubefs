@@ -85,7 +85,7 @@ Object APIs
     :header: "API", "Reference"
 
     "``HeadObject``", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html"
-    "``PutObjects``", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html"
+    "``PutObject``", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html"
     "``GetObject``", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html"
     "``ListObjects``", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjects.html"
     "``ListObjectsV2``", "https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html"
