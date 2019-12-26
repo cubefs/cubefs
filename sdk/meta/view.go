@@ -234,7 +234,7 @@ func genMasterToken(req proto.APIAccessReq, key string) (message string, ts int6
 }
 
 func (mw *MetaWrapper) updateTicket() error {
-	ticket, err := getTicketFromAuthnode(mw.owner, mw.ticketMess)
+	ticket, err := mw.ac.API().GetTicket(mw.owner, mw.ticketMess.ClientKey, proto.MasterServiceID)
 	if err != nil {
 		return errors.Trace(err, "Update ticket from authnode failed!")
 	}

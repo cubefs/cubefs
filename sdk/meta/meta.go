@@ -16,29 +16,23 @@ package meta
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/auth"
-	"github.com/chubaofs/chubaofs/util/cryptoutil"
-	"io/ioutil"
-	"log"
-	"net/http"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
+	authSDK "github.com/chubaofs/chubaofs/sdk/auth"
+	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/auth"
 	"github.com/chubaofs/chubaofs/util/btree"
 	"github.com/chubaofs/chubaofs/util/errors"
-	cfslog "github.com/chubaofs/chubaofs/util/log"
-	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 )
 
 const (
 	HostsSeparator                = ","
 	RefreshMetaPartitionsInterval = time.Minute * 5
-	GetTicketMaxRetry             = 5
-	GetTicketSleepInterval        = 100 * time.Millisecond
 )
 
 const (
@@ -67,6 +61,7 @@ type MetaWrapper struct {
 	owner           string
 	ownerValidation bool
 	mc              *masterSDK.MasterClient
+	ac              *authSDK.AuthClient
 	conns           *util.ConnectPool
 
 	// Partitions and ranges should be modified together. So do not
@@ -86,7 +81,7 @@ type MetaWrapper struct {
 	usedSize  uint64
 
 	authenticate bool
-	Ticket       Ticket
+	Ticket       auth.Ticket
 	accessToken  proto.APIAccessReq
 	sessionKey   string
 	ticketMess   auth.TicketMess
@@ -95,19 +90,12 @@ type MetaWrapper struct {
 	closeOnce sync.Once
 }
 
-//the ticket from authnode
-type Ticket struct {
-	ID         string `json:"client_id"`
-	SessionKey string `json:"session_key"`
-	ServiceID  string `json:"service_id"`
-	Ticket     string `json:"ticket"`
-}
-
 func NewMetaWrapper(volname, owner, masterHosts string, authenticate, validateOwner bool, ticketMess *auth.TicketMess) (*MetaWrapper, error) {
 	mw := new(MetaWrapper)
 	mw.closeCh = make(chan struct{}, 1)
+	mw.ac = authSDK.NewAuthClient(ticketMess.TicketHost, ticketMess.EnableHTTPS, ticketMess.CertFile)
 	if authenticate {
-		ticket, err := getTicketFromAuthnode(owner, *ticketMess)
+		ticket, err := mw.ac.API().GetTicket(owner, ticketMess.ClientKey, proto.MasterServiceID)
 		if err != nil {
 			return nil, errors.Trace(err, "Get ticket from authnode failed!")
 		}
@@ -214,84 +202,4 @@ func statusToErrno(status int) error {
 	default:
 	}
 	return syscall.EIO
-}
-
-func getTicketFromAuthnode(owner string, ticketMess auth.TicketMess) (ticket Ticket, err error) {
-	var (
-		key      []byte
-		ts       int64
-		msgResp  proto.AuthGetTicketResp
-		body     []byte
-		urlProto string
-		url      string
-		client   *http.Client
-	)
-
-	key, err = cryptoutil.Base64Decode(ticketMess.ClientKey)
-	if err != nil {
-		return
-	}
-	// construct request body
-	message := proto.AuthGetTicketReq{
-		Type:      proto.MsgAuthTicketReq,
-		ClientID:  owner,
-		ServiceID: proto.MasterServiceID,
-	}
-
-	if message.Verifier, ts, err = cryptoutil.GenVerifier(key); err != nil {
-		return
-	}
-
-	if ticketMess.EnableHTTPS {
-		urlProto = "https://"
-		certFile := loadCertfile(ticketMess.CertFile)
-		client, err = cryptoutil.CreateClientX(&certFile)
-		if err != nil {
-			return
-		}
-	} else {
-		urlProto = "http://"
-		client = &http.Client{}
-	}
-
-	authnode := strings.Split(ticketMess.TicketHost, HostsSeparator)
-	//TODO don't retry if the param is wrong
-	for i := 0; i < GetTicketMaxRetry; i++ {
-		for _, ip := range authnode {
-			url = urlProto + ip + proto.ClientGetTicket
-			body, err = proto.SendData(client, url, message)
-
-			if err != nil {
-				continue
-			}
-
-			if msgResp, err = proto.ParseAuthGetTicketResp(body, key); err != nil {
-				continue
-			}
-
-			if err = proto.VerifyTicketRespComm(&msgResp, proto.MsgAuthTicketReq, owner, "MasterService", ts); err != nil {
-				continue
-			}
-
-			ticket.Ticket = msgResp.Ticket
-			ticket.ServiceID = msgResp.ServiceID
-			ticket.SessionKey = cryptoutil.Base64Encode(msgResp.SessionKey.Key)
-			ticket.ID = owner
-			cfslog.LogInfof("GetTicket: ok!")
-			return
-		}
-		cfslog.LogWarnf("GetTicket: getReply error and will RETRY, url(%v) err(%v)", url, err)
-		time.Sleep(GetTicketSleepInterval)
-	}
-	cfslog.LogWarnf("GetTicket exit: send to addr(%v) err(%v)", url, err)
-	return
-}
-
-func loadCertfile(path string) (caCert []byte) {
-	var err error
-	caCert, err = ioutil.ReadFile(path)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return
 }
