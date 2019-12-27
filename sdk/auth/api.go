@@ -12,7 +12,7 @@ type API struct {
 	ac *AuthClient
 }
 
-func (api *API) GetTicket(owner string, userKey string, serviceID string) (ticket *auth.Ticket, err error) {
+func (api *API) GetTicket(id string, userKey string, serviceID string) (ticket *auth.Ticket, err error) {
 	var (
 		key      []byte
 		ts       int64
@@ -21,7 +21,7 @@ func (api *API) GetTicket(owner string, userKey string, serviceID string) (ticke
 	)
 	message := proto.AuthGetTicketReq{
 		Type:      proto.MsgAuthTicketReq,
-		ClientID:  owner,
+		ClientID:  id,
 		ServiceID: proto.MasterServiceID,
 	}
 	if key, err = cryptoutil.Base64Decode(userKey); err != nil {
@@ -36,11 +36,11 @@ func (api *API) GetTicket(owner string, userKey string, serviceID string) (ticke
 	if err = json.Unmarshal(respData, &msgResp); err != nil {
 		return
 	}
-	if err = proto.VerifyTicketRespComm(&msgResp, proto.MsgAuthTicketReq, owner, serviceID, ts); err != nil {
+	if err = proto.VerifyTicketRespComm(&msgResp, proto.MsgAuthTicketReq, id, serviceID, ts); err != nil {
 		return
 	}
 	ticket = &auth.Ticket{
-		ID:         owner,
+		ID:         id,
 		SessionKey: cryptoutil.Base64Encode(msgResp.SessionKey.Key),
 		ServiceID:  cryptoutil.Base64Encode(msgResp.SessionKey.Key),
 		Ticket:     msgResp.Ticket,
@@ -48,17 +48,17 @@ func (api *API) GetTicket(owner string, userKey string, serviceID string) (ticke
 	return
 }
 
-func (api *API) OSSAddCaps(owner string, ticket *auth.Ticket, akCaps *keystore.AccessKeyCaps) (caps *keystore.AccessKeyCaps, err error) {
-	return api.ac.serveOSSRequest(owner, ticket, akCaps, proto.MsgAuthOSAddCapsReq, proto.OSAddCaps)
+func (api *API) OSSAddCaps(ticket *auth.Ticket, akCaps *keystore.AccessKeyCaps) (caps *keystore.AccessKeyCaps, err error) {
+	return api.ac.serveOSSRequest(ticket.ID, ticket, akCaps, proto.MsgAuthOSAddCapsReq, proto.OSAddCaps)
 }
 
-func (api *API) OSSDeleteCaps(owner string, ticket *auth.Ticket, akCaps *keystore.AccessKeyCaps) (caps *keystore.AccessKeyCaps, err error) {
-	return api.ac.serveOSSRequest(owner, ticket, akCaps, proto.MsgAuthOSDeleteCapsReq, proto.OSDeleteCaps)
+func (api *API) OSSDeleteCaps(ticket *auth.Ticket, akCaps *keystore.AccessKeyCaps) (caps *keystore.AccessKeyCaps, err error) {
+	return api.ac.serveOSSRequest(ticket.ID, ticket, akCaps, proto.MsgAuthOSDeleteCapsReq, proto.OSDeleteCaps)
 }
 
-func (api *API) OSSGetCaps(owner string, ticket *auth.Ticket, accessKey string) (caps *keystore.AccessKeyCaps, err error) {
+func (api *API) OSSGetCaps(ticket *auth.Ticket, accessKey string) (caps *keystore.AccessKeyCaps, err error) {
 	akCaps := &keystore.AccessKeyCaps{
 		AccessKey: accessKey,
 	}
-	return api.ac.serveOSSRequest(owner, ticket, akCaps, proto.MsgAuthOSGetCapsReq, proto.OSGetCaps)
+	return api.ac.serveOSSRequest(ticket.ID, ticket, akCaps, proto.MsgAuthOSGetCapsReq, proto.OSGetCaps)
 }

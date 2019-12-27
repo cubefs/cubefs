@@ -590,6 +590,7 @@ func (m *Server) handleOSGetCaps(akCaps *keystore.AccessKeyCaps) (newAKCaps *key
 	}
 	newAKCaps = &keystore.AccessKeyCaps{
 		AccessKey: keyInfo.AccessKey,
+		SecretKey: keyInfo.SecretKey,
 		Caps:      keyInfo.Caps,
 	}
 	return newAKCaps, err

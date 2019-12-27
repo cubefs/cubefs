@@ -107,7 +107,7 @@ func (c *AuthClient) request(key []byte, data interface{}, path string) (respDat
 	return nil, fmt.Errorf("Request authnode: getReply error, url(%v) err(%v)", url, err)
 }
 
-func (c *AuthClient) serveOSSRequest(owner string, ticket *auth.Ticket, akCaps *keystore.AccessKeyCaps, reqType proto.MsgType, reqPath string) (caps *keystore.AccessKeyCaps, err error) {
+func (c *AuthClient) serveOSSRequest(id string, ticket *auth.Ticket, akCaps *keystore.AccessKeyCaps, reqType proto.MsgType, reqPath string) (caps *keystore.AccessKeyCaps, err error) {
 	var (
 		sessionKey []byte
 		ts         int64
@@ -116,7 +116,7 @@ func (c *AuthClient) serveOSSRequest(owner string, ticket *auth.Ticket, akCaps *
 	)
 	apiReq := &proto.APIAccessReq{
 		Type:      reqType,
-		ClientID:  owner,
+		ClientID:  id,
 		ServiceID: proto.AuthServiceID,
 		Ticket:    ticket.Ticket,
 	}
@@ -136,7 +136,7 @@ func (c *AuthClient) serveOSSRequest(owner string, ticket *auth.Ticket, akCaps *
 	if err = json.Unmarshal(respData, &resp); err != nil {
 		return
 	}
-	if err = proto.VerifyAPIRespComm(&resp.APIResp, reqType, owner, proto.AuthServiceID, ts); err != nil {
+	if err = proto.VerifyAPIRespComm(&resp.APIResp, reqType, id, proto.AuthServiceID, ts); err != nil {
 		return
 	}
 	return &resp.AKCaps, err
