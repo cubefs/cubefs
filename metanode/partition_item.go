@@ -194,6 +194,9 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 				return false
 			}
 		}
+		// process index ID
+		produceItem(si.applyID)
+
 		// process inodes
 		iter.inodeTree.Ascend(func(i BtreeItem) bool {
 			return produceItem(i)
@@ -260,14 +263,17 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 		return
 	}
 	var item interface{}
+	var open bool
 	select {
-	case item = <-si.dataCh:
-		if item == nil {
-			err, si.err = io.EOF, io.EOF
-			si.Close()
-			return
-		}
-	case err = <-si.errorCh:
+	case item, open = <-si.dataCh:
+	case err, open = <-si.errorCh:
+	}
+	if item == nil || !open {
+		err, si.err = io.EOF, io.EOF
+		si.Close()
+		return
+	}
+	if err != nil {
 		si.err = err
 		si.Close()
 		return
@@ -275,6 +281,11 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 
 	var snap *MetaItem
 	switch typedItem := item.(type) {
+	case uint64:
+		applyIDBuf := make([]byte, 8)
+		binary.BigEndian.PutUint64(applyIDBuf, si.applyID)
+		data = applyIDBuf
+		return
 	case *Inode:
 		snap = NewMetaItem(opFSMCreateInode, typedItem.MarshalKey(), typedItem.MarshalValue())
 	case *Dentry:
