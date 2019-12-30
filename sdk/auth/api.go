@@ -48,11 +48,19 @@ func (api *API) GetTicket(id string, userKey string, serviceID string) (ticket *
 	return
 }
 
-func (api *API) OSSAddCaps(ticket *auth.Ticket, akCaps *keystore.AccessKeyCaps) (caps *keystore.AccessKeyCaps, err error) {
+func (api *API) OSSAddCaps(ticket *auth.Ticket, accessKey string, caps []byte) (newAKCaps *keystore.AccessKeyCaps, err error) {
+	akCaps := &keystore.AccessKeyCaps{
+		AccessKey: accessKey,
+		Caps:      caps,
+	}
 	return api.ac.serveOSSRequest(ticket.ID, ticket, akCaps, proto.MsgAuthOSAddCapsReq, proto.OSAddCaps)
 }
 
-func (api *API) OSSDeleteCaps(ticket *auth.Ticket, akCaps *keystore.AccessKeyCaps) (caps *keystore.AccessKeyCaps, err error) {
+func (api *API) OSSDeleteCaps(ticket *auth.Ticket, accessKey string, caps []byte) (newAKCaps *keystore.AccessKeyCaps, err error) {
+	akCaps := &keystore.AccessKeyCaps{
+		AccessKey: accessKey,
+		Caps:      caps,
+	}
 	return api.ac.serveOSSRequest(ticket.ID, ticket, akCaps, proto.MsgAuthOSDeleteCapsReq, proto.OSDeleteCaps)
 }
 
