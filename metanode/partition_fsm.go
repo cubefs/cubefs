@@ -255,6 +255,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		if err = snap.UnmarshalBinary(data); err != nil {
 			return
 		}
+		index++
 		switch snap.Op {
 		case opFSMCreateInode:
 			ino := NewInode(0, 0)

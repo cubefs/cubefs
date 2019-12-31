@@ -14,7 +14,6 @@ Usage: ./run_docker.sh [ -h | --help ] [ -d | --disk </disk/path> ] [ -l | --ltp
     -d, --disk </disk/path>     set ChubaoFS DataNode local disk path
     -b, --build             build ChubaoFS server and client
     -s, --server            start ChubaoFS servers docker image
-    -o, --object-node       start ChubaoFS
     -c, --client            start ChubaoFS client docker image
     -m, --monitor           start monitor web ui
     -l, --ltptest           run ltp test
@@ -50,10 +49,6 @@ start_client() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml run client bash -c "/cfs/script/start_client.sh ; /bin/bash"
 }
 
-start_objectnode() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml up -d objectnode
-}
-
 start_monitor() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml up -d monitor
 }
@@ -72,7 +67,6 @@ run() {
     build
     start_monitor
     start_servers
-    start_objectnode
     start_client
 }
 
@@ -151,7 +145,6 @@ case "-$cmd" in
     -build) build ;;
     -run_servers) start_servers ;;
     -run_client) start_client ;;
-    -run_s3node) start_s3node ;;
     -run_monitor) start_monitor ;;
     -run_ltptest) run_ltptest ;;
     -run_test) run_test ;;
