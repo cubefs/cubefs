@@ -277,7 +277,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				return
 			}
 			dentryTree.ReplaceOrInsert(dentry, true)
-			log.LogDebugf("ApplySnapshot: create dentry: partitionID(%v) err(%v)", mp.config.PartitionId, dentry)
+			log.LogDebugf("ApplySnapshot: create dentry: partitionID(%v) dentry(%v)", mp.config.PartitionId, dentry)
 		case opFSMSetXAttr:
 			var extend *Extend
 			if extend, err = NewExtendFromBytes(snap.V); err != nil {
@@ -289,7 +289,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		case opFSMCreateMultipart:
 			var multipart = MultipartFromBytes(snap.V)
 			multipartTree.ReplaceOrInsert(multipart, true)
-			log.LogDebugf("ApplySnapshot: create multipart: partitoinID(%v) multipart(%v)", mp.config.PartitionId, multipart)
+			log.LogDebugf("ApplySnapshot: create multipart: partitionID(%v) multipart(%v)", mp.config.PartitionId, multipart)
 		case opExtentFileSnapshot:
 			fileName := string(snap.K)
 			fileName = path.Join(mp.config.RootDir, fileName)
