@@ -473,11 +473,67 @@ func (vol *Vol) checkStatus(c *Cluster) {
 	log.LogInfof("action[volCheckStatus] vol[%v],status[%v]", vol.Name, vol.Status)
 	metaTasks := vol.getTasksToDeleteMetaPartitions()
 	dataTasks := vol.getTasksToDeleteDataPartitions()
+
 	if len(metaTasks) == 0 && len(dataTasks) == 0 {
 		vol.deleteVolFromStore(c)
 	}
-	c.addMetaNodeTasks(metaTasks)
-	c.addDataNodeTasks(dataTasks)
+	go func() {
+		for _, metaTask := range metaTasks {
+			vol.deleteMetaPartitionFromMetaNode(c, metaTask)
+		}
+
+		for _, dataTask := range dataTasks {
+			vol.deleteDataPartitionFromDataNode(c, dataTask)
+		}
+	}()
+
+	return
+}
+
+func (vol *Vol) deleteMetaPartitionFromMetaNode(c *Cluster, task *proto.AdminTask) {
+	mp, err := vol.metaPartition(task.PartitionID)
+	if err != nil {
+		return
+	}
+	metaNode, err := c.metaNode(task.OperatorAddr)
+	if err != nil {
+		return
+	}
+	_, err = metaNode.Sender.syncSendAdminTask(task)
+	if err != nil {
+		log.LogErrorf("action[deleteMetaPartition] vol[%v],meta partition[%v],err[%v]", mp.volName, mp.PartitionID, err)
+		return
+	}
+	mp.Lock()
+	mp.removeReplicaByAddr(metaNode.Addr)
+	mp.removeMissingReplica(metaNode.Addr)
+	mp.Unlock()
+	return
+}
+
+func (vol *Vol) deleteDataPartitionFromDataNode(c *Cluster, task *proto.AdminTask) {
+	dp, err := vol.getDataPartitionByID(task.PartitionID)
+	if err != nil {
+		return
+	}
+	dataNode, err := c.dataNode(task.OperatorAddr)
+	if err != nil {
+		return
+	}
+	_, err = dataNode.TaskManager.syncSendAdminTask(task)
+	if err != nil {
+		log.LogErrorf("action[deleteDataReplica] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
+		return
+	}
+	dp.Lock()
+	dp.removeReplicaByAddr(dataNode.Addr)
+	dp.checkAndRemoveMissReplica(dataNode.Addr)
+	if err = dp.update("deleteDataReplica", dp.VolName, dp.Peers, dp.Hosts, c); err != nil {
+		dp.Unlock()
+		return
+	}
+	dp.Unlock()
+
 	return
 }
 

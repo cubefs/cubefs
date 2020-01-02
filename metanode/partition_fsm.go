@@ -316,7 +316,7 @@ func (mp *metaPartition) HandleFatalEvent(err *raft.FatalError) {
 
 // HandleLeaderChange handles the leader changes.
 func (mp *metaPartition) HandleLeaderChange(leader uint64) {
-	exporter.Warning(exporterKey)
+	exporter.Warning(fmt.Sprintf("metaPartition(%v) changeLeader to (%v)",mp.config.PartitionId,leader))
 	if mp.config.NodeId != leader {
 		mp.storeChan <- &storeMsg{
 			command: stopStoreTick,
