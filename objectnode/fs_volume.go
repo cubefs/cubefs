@@ -1238,8 +1238,8 @@ func (v *volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multi
 
 	// get maxUploads number sessions from combined sessions
 	if len(sessions) > int(maxUploads) {
-		sessions = sessions[:maxUploads]
 		nextUpload = sessions[maxUploads]
+		sessions = sessions[:maxUploads]
 		NextMarker = nextUpload.Path
 		NextSessionIdMarker = nextUpload.ID
 		IsTruncated = true
