@@ -70,3 +70,10 @@ func (api *API) OSSGetCaps(ticket *auth.Ticket, accessKey string) (caps *keystor
 	}
 	return api.ac.serveOSSRequest(ticket.ID, ticket, akCaps, proto.MsgAuthOSGetCapsReq, proto.OSGetCaps)
 }
+
+func (api *API) AdminGetCaps(ticket *auth.Ticket, userID string) (res *keystore.KeyInfo, err error) {
+	keyInfo := &keystore.KeyInfo{
+		ID: userID,
+	}
+	return api.ac.serveAdminRequest(ticket.ID, ticket, keyInfo, proto.MsgAuthGetCapsReq, proto.AdminGetCaps)
+}

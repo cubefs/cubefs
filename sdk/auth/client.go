@@ -142,6 +142,41 @@ func (c *AuthClient) serveOSSRequest(id string, ticket *auth.Ticket, akCaps *key
 	return &resp.AKCaps, err
 }
 
+func (c *AuthClient) serveAdminRequest(id string, ticket *auth.Ticket, keyInfo *keystore.KeyInfo, reqType proto.MsgType, reqPath string) (res *keystore.KeyInfo, err error) {
+	var (
+		sessionKey []byte
+		ts         int64
+		resp       proto.AuthAPIAccessResp
+		respData   []byte
+	)
+	apiReq := &proto.APIAccessReq{
+		Type:      reqType,
+		ClientID:  id,
+		ServiceID: proto.AuthServiceID,
+		Ticket:    ticket.Ticket,
+	}
+	if sessionKey, err = cryptoutil.Base64Decode(ticket.SessionKey); err != nil {
+		return nil, err
+	}
+	if apiReq.Verifier, ts, err = cryptoutil.GenVerifier(sessionKey); err != nil {
+		return nil, err
+	}
+	message := &proto.AuthAPIAccessReq{
+		APIReq:  *apiReq,
+		KeyInfo: *keyInfo,
+	}
+	if respData, err = c.request(sessionKey, message, reqPath); err != nil {
+		return
+	}
+	if err = json.Unmarshal(respData, &resp); err != nil {
+		return
+	}
+	if err = proto.VerifyAPIRespComm(&resp.APIResp, reqType, id, proto.AuthServiceID, ts); err != nil {
+		return
+	}
+	return &resp.KeyInfo, err
+}
+
 func loadCertfile(path string) (caCert []byte, err error) {
 	caCert, err = ioutil.ReadFile(path)
 	if err != nil {
