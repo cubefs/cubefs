@@ -81,13 +81,6 @@ func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8,
 	return
 }
 
-func (mp *metaPartition) fsmDeletePartition() (status uint8) {
-	mp.Stop()
-	// TODO Unhandled errors
-	os.RemoveAll(mp.config.RootDir)
-	return
-}
-
 func (mp *metaPartition) confAddNode(req *proto.
 	MetaPartitionDecommissionRequest, index uint64) (updated bool, err error) {
 	var (

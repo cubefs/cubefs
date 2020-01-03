@@ -55,12 +55,12 @@ func (mp *metaPartition) updateVolWorker() {
 		newView := &DataPartitionsView{
 			DataPartitions: make([]*DataPartition, len(view.DataPartitions)),
 		}
-		for i:=0; i<len(view.DataPartitions); i++ {
+		for i := 0; i < len(view.DataPartitions); i++ {
 			newView.DataPartitions[i] = &DataPartition{
 				PartitionID: view.DataPartitions[i].PartitionID,
-				Status: view.DataPartitions[i].Status,
-				Hosts: view.DataPartitions[i].Hosts,
-				ReplicaNum: view.DataPartitions[i].ReplicaNum,
+				Status:      view.DataPartitions[i].Status,
+				Hosts:       view.DataPartitions[i].Hosts,
+				ReplicaNum:  view.DataPartitions[i].ReplicaNum,
 			}
 		}
 		return newView
