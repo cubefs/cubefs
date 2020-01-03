@@ -146,7 +146,7 @@ func (b *BTree) GetTree() *BTree {
 // Reset resets the current btree.
 func (b *BTree) Reset() {
 	b.Lock()
-	b.tree.Clear(false)
+	b.tree.Clear(true)
 	b.Unlock()
 }
 
