@@ -112,7 +112,11 @@ func (m *Server) raftNodeOp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if ticket, ts, err = proto.ExtractAPIAccessTicket(&apiReq, m.cluster.AuthSecretKey); err != nil {
-		sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		if err == proto.ErrExpiredTicket {
+			sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeExpiredTicket, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		} else {
+			sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		}
 		return
 	}
 
@@ -245,7 +249,11 @@ func (m *Server) apiAccessEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if ticket, ts, err = proto.ExtractAPIAccessTicket(&apiReq, m.cluster.AuthSecretKey); err != nil {
-		sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		if err == proto.ErrExpiredTicket {
+			sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeExpiredTicket, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		} else {
+			sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		}
 		return
 	}
 
@@ -395,7 +403,11 @@ func (m *Server) osCapsOp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if ticket, ts, err = proto.ExtractAPIAccessTicket(&apiReq, m.cluster.AuthSecretKey); err != nil {
-		sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		if err == proto.ErrExpiredTicket {
+			sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeExpiredTicket, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		} else {
+			sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		}
 		return
 	}
 

@@ -26,7 +26,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/keystore"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/gorilla/mux"
 )
@@ -173,20 +175,16 @@ func (o *ObjectNode) checkSignatureV2(r *http.Request) (bool, error) {
 		return false, err
 	}
 
-	v, err := o.vm.Volume(authInfo.bucket)
+	var akCaps *keystore.AccessKeyCaps
+	akCaps, err = o.authClient.API().OSSGetCaps(proto.ObjectServiceID, o.authKey, authInfo.accessKeyId)
 	if err != nil {
-		log.LogInfof("load Volume error: %v, %v", authInfo.r, err)
+		log.LogInfof("get secretKey from authnode error: accessKey(%v), err(%v)", authInfo.accessKeyId, err)
 		return false, err
 	}
-	volAccessKey, volSecret := v.OSSSecure()
-
-	if authInfo.accessKeyId != volAccessKey {
-		log.LogInfof("load Volume error: %v, %v", authInfo.accessKeyId, volAccessKey)
-		return false, errors.New("")
-	}
+	//volAccessKey, volSecret := v.OSSSecure()
 
 	// 2. calculate new signature
-	newSignature, err1 := calculateSignatureV2(authInfo, volSecret, o.domains)
+	newSignature, err1 := calculateSignatureV2(authInfo, akCaps.SecretKey, o.domains)
 	if err1 != nil {
 		log.LogInfof("calculute SignatureV2 error: %v, %v", authInfo.r, err)
 		return false, err1
@@ -264,9 +262,11 @@ func (o *ObjectNode) checkPresignedSignatureV2(r *http.Request) (bool, error) {
 		RequestIDFromRequest(r), r.URL.String(), accessKey, signature, expires)
 
 	//check access key
-	vlKey, secretKey := vl.OSSSecure()
-	if vlKey == "" || accessKey != vlKey {
-		return false, nil
+	var akCaps *keystore.AccessKeyCaps
+	akCaps, err = o.authClient.API().OSSGetCaps(proto.ObjectServiceID, o.authKey, accessKey)
+	if err != nil {
+		log.LogInfof("get secretKey from authnode error: accessKey(%v), err(%v)", accessKey, err)
+		return false, err
 	}
 
 	// check expires
@@ -278,7 +278,7 @@ func (o *ObjectNode) checkPresignedSignatureV2(r *http.Request) (bool, error) {
 	//calculatePresignedSignature
 	uri := strings.Split(r.RequestURI, "?")[0]
 	canoncialResourceQuery := getCanonicalQueryV2(uri, r.URL.Query().Encode())
-	calSignature := calPresignedSignatureV2(r.Method, canoncialResourceQuery, expires, secretKey, r.Header)
+	calSignature := calPresignedSignatureV2(r.Method, canoncialResourceQuery, expires, akCaps.SecretKey, r.Header)
 	if calSignature != signature {
 		log.LogDebugf("checkPresignedSignatureV2: invalid signature: requestID(%v) client(%v) server(%v)",
 			RequestIDFromRequest(r), signature, calSignature)

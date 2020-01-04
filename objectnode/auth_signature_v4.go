@@ -24,7 +24,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/keystore"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/gorilla/mux"
 )
@@ -103,12 +105,17 @@ func (o *ObjectNode) checkSignatureV4(r *http.Request) (bool, error) {
 		log.LogInfof("checkSignatureV4: no volume info: requestID(%v)", RequestIDFromRequest(r))
 		return false, nil
 	}
-	_, secretKey := vl.OSSSecure()
 	req, err := parseRequestV4(r)
 	if err != nil {
 		return false, err
 	}
-	newSignature := calculateSignatureV4(r, o.region, secretKey, req.SignedHeaders)
+	var akCaps *keystore.AccessKeyCaps
+	akCaps, err = o.authClient.API().OSSGetCaps(proto.ObjectServiceID, o.authKey, req.Credential.AccessKey)
+	if err != nil {
+		log.LogInfof("get secretKey from authnode error: accessKey(%v), err(%v)", req.Credential.AccessKey, err)
+		return false, err
+	}
+	newSignature := calculateSignatureV4(r, o.region, akCaps.SecretKey, req.SignedHeaders)
 	if req.Signature != newSignature {
 		log.LogDebugf("checkSignatureV4: invalid signature: requestID(%v) client(%v) server(%v)",
 			RequestIDFromRequest(r), req.Signature, newSignature)
@@ -143,19 +150,11 @@ func (o *ObjectNode) checkPresignedSignatureV4(r *http.Request) (pass bool, err 
 	}
 
 	// check accessKey valid
-	var v Volume
-	v, err = o.vm.Volume(req.bucket)
+	var akCaps *keystore.AccessKeyCaps
+	akCaps, err = o.authClient.API().OSSGetCaps(proto.ObjectServiceID, o.authKey, req.Credential.AccessKey)
 	if err != nil {
-		log.LogErrorf("checkPresignedSignatureV4: get volume fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
-		return
-	}
-	//check accesskey
-	vaKey, secretKey := v.OSSSecure()
-	if req.Credential.AccessKey != vaKey {
-		log.LogInfof("checkPresignedSignatureV4: credential accessKey invalid: requestID(%v) requestAK(%v) volAK(%v)",
-			RequestIDFromRequest(r), req.Credential.AccessKey, vaKey)
-		err = errors.New("accesskey invalid")
-		return
+		log.LogInfof("get secretKey from authnode error: accessKey(%v), err(%v)", req.Credential.AccessKey, err)
+		return false, err
 	}
 	// create canonicalRequest
 	var canonicalHeader http.Header
@@ -177,7 +176,7 @@ func (o *ObjectNode) checkPresignedSignatureV4(r *http.Request) (pass bool, err 
 		canonicalRequestString)
 
 	// build signingKey
-	signingKey := buildSigningKey(SCHEME, secretKey, req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)
+	signingKey := buildSigningKey(SCHEME, akCaps.SecretKey, req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)
 
 	// build stringToSign
 	scope := buildScope(req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)

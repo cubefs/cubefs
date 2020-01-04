@@ -21,6 +21,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	authSDK "github.com/chubaofs/chubaofs/sdk/auth"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -38,11 +39,14 @@ const (
 
 // Configuration keys
 const (
-	configListen    = "listen"
-	configDomains   = "domains"
-	configMasters   = "masters"
-	configAuthnodes = "authNodes"
-	configRegion    = "region"
+	configListen      = "listen"
+	configDomains     = "domains"
+	configMasters     = "masters"
+	configRegion      = "region"
+	configAuthnodes   = "authNodes"
+	configAuthkey     = "authKey"
+	configEnableHTTPS = "enableHTTPS"
+	configCertFile    = "certFile"
 )
 
 // Default of configuration value
@@ -63,6 +67,8 @@ type ObjectNode struct {
 	vm         VolumeManager
 	state      uint32
 	wg         sync.WaitGroup
+	authKey    string
+	authClient *authSDK.AuthClient
 }
 
 func (o *ObjectNode) Start(cfg *config.Config) (err error) {
@@ -131,6 +137,13 @@ func (o *ObjectNode) parseConfig(cfg *config.Config) (err error) {
 		region = defaultRegion
 	}
 	o.region = region
+
+	//parse authnode info
+	authNodes := cfg.GetString(configAuthnodes)
+	enableHTTPS := cfg.GetBool(configEnableHTTPS)
+	certFile := cfg.GetString(configCertFile)
+	o.authKey = cfg.GetString(configAuthkey)
+	o.authClient = authSDK.NewAuthClient(authNodes, enableHTTPS, certFile)
 	return
 }
 
@@ -139,6 +152,7 @@ func (o *ObjectNode) handleStart(cfg *config.Config) (err error) {
 	if err = o.parseConfig(cfg); err != nil {
 		return
 	}
+
 	// start rest api
 	if err = o.startMuxRestAPI(); err != nil {
 		log.LogInfof("handleStart: start mux rest api fail, err(%v)", err)

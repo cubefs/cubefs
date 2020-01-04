@@ -42,6 +42,7 @@ type AuthClient struct {
 	authnodes   []string
 	enableHTTPS bool
 	certFile    string
+	ticket      *auth.Ticket
 	leaderAddr  string
 }
 
@@ -56,7 +57,7 @@ func NewAuthClient(authnodeStr string, enableHTTPS bool, certFile string) *AuthC
 	return &AuthClient{authnodes: authnodes, enableHTTPS: enableHTTPS, certFile: certFile}
 }
 
-func (c *AuthClient) request(key []byte, data interface{}, path string) (respData []byte, err error) {
+func (c *AuthClient) request(clientID, clientKey string, key []byte, data interface{}, path string) (respData []byte, err error) {
 	var (
 		body     []byte
 		urlProto string
@@ -91,6 +92,12 @@ func (c *AuthClient) request(key []byte, data interface{}, path string) (respDat
 				return nil, fmt.Errorf("unmarshal response body err:%v", err)
 			}
 			if jobj.Code != 0 {
+				if jobj.Code == proto.ErrCodeExpiredTicket {
+					c.ticket, err = c.API().GetTicket(clientID, clientKey, proto.AuthServiceID)
+					if err == nil {
+						c.request(clientID, clientKey, key, data, path)
+					}
+				}
 				err = fmt.Errorf(jobj.Msg)
 				return nil, fmt.Errorf("request error, code[%d], msg[%s]", jobj.Code, err)
 			}
@@ -107,7 +114,7 @@ func (c *AuthClient) request(key []byte, data interface{}, path string) (respDat
 	return nil, fmt.Errorf("Request authnode: getReply error, url(%v) err(%v)", url, err)
 }
 
-func (c *AuthClient) serveOSSRequest(id string, ticket *auth.Ticket, akCaps *keystore.AccessKeyCaps, reqType proto.MsgType, reqPath string) (caps *keystore.AccessKeyCaps, err error) {
+func (c *AuthClient) serveOSSRequest(id, key string, ticket *auth.Ticket, akCaps *keystore.AccessKeyCaps, reqType proto.MsgType, reqPath string) (caps *keystore.AccessKeyCaps, err error) {
 	var (
 		sessionKey []byte
 		ts         int64
@@ -130,7 +137,7 @@ func (c *AuthClient) serveOSSRequest(id string, ticket *auth.Ticket, akCaps *key
 		APIReq: *apiReq,
 		AKCaps: *akCaps,
 	}
-	if respData, err = c.request(sessionKey, message, reqPath); err != nil {
+	if respData, err = c.request(id, key, sessionKey, message, reqPath); err != nil {
 		return
 	}
 	if err = json.Unmarshal(respData, &resp); err != nil {
@@ -142,7 +149,7 @@ func (c *AuthClient) serveOSSRequest(id string, ticket *auth.Ticket, akCaps *key
 	return &resp.AKCaps, err
 }
 
-func (c *AuthClient) serveAdminRequest(id string, ticket *auth.Ticket, keyInfo *keystore.KeyInfo, reqType proto.MsgType, reqPath string) (res *keystore.KeyInfo, err error) {
+func (c *AuthClient) serveAdminRequest(id, key string, ticket *auth.Ticket, keyInfo *keystore.KeyInfo, reqType proto.MsgType, reqPath string) (res *keystore.KeyInfo, err error) {
 	var (
 		sessionKey []byte
 		ts         int64
@@ -165,7 +172,7 @@ func (c *AuthClient) serveAdminRequest(id string, ticket *auth.Ticket, keyInfo *
 		APIReq:  *apiReq,
 		KeyInfo: *keyInfo,
 	}
-	if respData, err = c.request(sessionKey, message, reqPath); err != nil {
+	if respData, err = c.request(id, key, sessionKey, message, reqPath); err != nil {
 		return
 	}
 	if err = json.Unmarshal(respData, &resp); err != nil {
