@@ -103,8 +103,6 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp = mp.fsmUpdateDentry(den)
-	case opFSMDeletePartition:
-		resp = mp.fsmDeletePartition()
 	case opFSMUpdatePartition:
 		req := &UpdatePartitionReq{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
@@ -255,6 +253,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		if err = snap.UnmarshalBinary(data); err != nil {
 			return
 		}
+		index++
 		switch snap.Op {
 		case opFSMCreateInode:
 			ino := NewInode(0, 0)
@@ -276,7 +275,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				return
 			}
 			dentryTree.ReplaceOrInsert(dentry, true)
-			log.LogDebugf("ApplySnapshot: create dentry: partitionID(%v) err(%v)", mp.config.PartitionId, dentry)
+			log.LogDebugf("ApplySnapshot: create dentry: partitionID(%v) dentry(%v)", mp.config.PartitionId, dentry)
 		case opFSMSetXAttr:
 			var extend *Extend
 			if extend, err = NewExtendFromBytes(snap.V); err != nil {
@@ -288,7 +287,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		case opFSMCreateMultipart:
 			var multipart = MultipartFromBytes(snap.V)
 			multipartTree.ReplaceOrInsert(multipart, true)
-			log.LogDebugf("ApplySnapshot: create multipart: partitoinID(%v) multipart(%v)", mp.config.PartitionId, multipart)
+			log.LogDebugf("ApplySnapshot: create multipart: partitionID(%v) multipart(%v)", mp.config.PartitionId, multipart)
 		case opExtentFileSnapshot:
 			fileName := string(snap.K)
 			fileName = path.Join(mp.config.RootDir, fileName)
@@ -315,7 +314,7 @@ func (mp *metaPartition) HandleFatalEvent(err *raft.FatalError) {
 
 // HandleLeaderChange handles the leader changes.
 func (mp *metaPartition) HandleLeaderChange(leader uint64) {
-	exporter.Warning(exporterKey)
+	exporter.Warning(fmt.Sprintf("metaPartition(%v) changeLeader to (%v)", mp.config.PartitionId, leader))
 	if mp.config.NodeId != leader {
 		mp.storeChan <- &storeMsg{
 			command: stopStoreTick,

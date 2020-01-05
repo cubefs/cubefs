@@ -181,6 +181,7 @@ func (s *raft) stop() {
 		s.doStop()
 	}
 	<-s.done
+
 }
 
 func (s *raft) doStop() {
@@ -191,6 +192,7 @@ func (s *raft) doStop() {
 	case <-s.stopc:
 		return
 	default:
+		s.raftFsm.StopFsm()
 		close(s.stopc)
 		s.restoringSnapshot.Set(false)
 	}

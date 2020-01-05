@@ -169,7 +169,7 @@ type OpPartition interface {
 	ResponseLoadMetaPartition(p *Packet) (err error)
 	PersistMetadata() (err error)
 	ChangeMember(changeType raftproto.ConfChangeType, peer raftproto.Peer, context []byte) (resp interface{}, err error)
-	DeletePartition() (err error)
+	Reset() (err error)
 	UpdatePartition(req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error)
 	DeleteRaft() error
 	IsExsitPeer(peer proto.Peer) bool
@@ -539,12 +539,6 @@ func (mp *metaPartition) GetBaseConfig() MetaPartitionConfig {
 	return *mp.config
 }
 
-// DeletePartition deletes the meta partition. TODO remove? no usage?
-func (mp *metaPartition) DeletePartition() (err error) {
-	_, err = mp.Put(opFSMDeletePartition, nil)
-	return
-}
-
 // UpdatePartition updates the meta partition. TODO remove? no usage?
 func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 	resp *UpdatePartitionResp) (err error) {
@@ -596,9 +590,7 @@ func (mp *metaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 		DoCompare:   true,
 	}
 	resp.MaxInode = mp.GetCursor()
-	mp.dentryTree.RLock()
 	resp.DentryCount = uint64(mp.dentryTree.Len())
-	mp.dentryTree.RUnlock()
 	resp.ApplyID = mp.applyID
 	if err != nil {
 		err = errors.Trace(err,

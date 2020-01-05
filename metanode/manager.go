@@ -364,8 +364,14 @@ func (m *metadataManager) createPartition(id uint64, volName string, start,
 }
 
 func (m *metadataManager) deletePartition(id uint64) (err error) {
-	// TODO Unhandled errors
-	m.detachPartition(id)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	mp, has := m.partitions[id]
+	if !has {
+		return
+	}
+	mp.Reset()
+	delete(m.partitions, id)
 	return
 }
 
