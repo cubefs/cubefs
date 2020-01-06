@@ -17,14 +17,33 @@ IO Performance and benchmark scalability test by fio_.
 1. Sequential Read
 ===================
 
+**Setup**
+
+.. code-block:: bash
+
+    #!/bin/bash
+    fio -directory={} \
+        -ioengine=psync \
+        -rw=read \  # sequential read
+        -bs=128k \  # block size
+        -direct=1 \ # enable direct IO
+        -group_reporting=1 \
+        -fallocate=none \
+        -time_based=1 \
+        -runtime=120 \
+        -name=test_file_c{} \
+        -numjobs={} \
+        -nrfiles=1 \
+        -size=10G
+
 **Bandwidth**
 
 .. image:: pic/cfs-fio-sequential-read-bandwidth.png
    :align: center
    :scale: 50 %
-   :alt: Sequential Read Bandwidth (Mb/s)
+   :alt: Sequential Read Bandwidth (MB/s)
 
-.. csv-table:: Sequential Read Bandwidth (Mb/s)
+.. csv-table:: Sequential Read Bandwidth (MB/s)
    :file: csv/cfs-fio-sequential-read-bandwidth.csv
 
 **IOPS**
@@ -50,14 +69,31 @@ IO Performance and benchmark scalability test by fio_.
 2. Sequential Write
 ===================
 
+**Setup**
+
+.. code-block:: bash
+
+    #!/bin/bash
+    fio -directory={} \
+        -ioengine=psync \
+        -rw=write \ # sequential write
+        -bs=128k \  # block size
+        -direct=1 \ # enable direct IO
+        -group_reporting=1 \
+        -fallocate=none \
+        -name=test_file_c{} \
+        -numjobs={} \
+        -nrfiles=1 \
+        -size=10G
+
 **Bandwidth**
 
 .. image:: pic/cfs-fio-sequential-write-bandwidth.png
    :align: center
    :scale: 50 %
-   :alt: Sequential Write Bandwidth (Mb/s)
+   :alt: Sequential Write Bandwidth (MB/s)
 
-.. csv-table:: Sequential Write Bandwidth (Mb/s)
+.. csv-table:: Sequential Write Bandwidth (MB/s)
    :file: csv/cfs-fio-sequential-write-bandwidth.csv
 
 **IOPS**
@@ -83,14 +119,33 @@ IO Performance and benchmark scalability test by fio_.
 3. Random Read
 ===================
 
+**Setup**
+
+.. code-block:: bash
+
+    #!/bin/bash
+    fio -directory={} \
+        -ioengine=psync \
+        -rw=randread \ # random read
+        -bs=4k \       # block size
+        -direct=1 \    # enable direct IO
+        -group_reporting=1 \
+        -fallocate=none \
+        -time_based=1 \
+        -runtime=120 \
+        -name=test_file_c{} \
+        -numjobs={} \
+        -nrfiles=1 \
+        -size=10G
+
 **Bandwidth**
 
 .. image:: pic/cfs-fio-random-read-bandwidth.png
    :align: center
    :scale: 50 %
-   :alt:  Random Read Bandwidth
+   :alt:  Random Read Bandwidth (MB/s)
 
-.. csv-table:: Random Read Bandwidth
+.. csv-table:: Random Read Bandwidth (MB/s)
    :file: csv/cfs-fio-random-read-bandwidth.csv
 
 **IOPS**
@@ -116,14 +171,33 @@ IO Performance and benchmark scalability test by fio_.
 4. Random Write
 ===================
 
+**Setup**
+
+.. code-block:: bash
+
+    #!/bin/bash
+    fio -directory={} \
+        -ioengine=psync \
+        -rw=randwrite \ # random write
+        -bs=4k \        # block size
+        -direct=1 \     # enable direct IO
+        -group_reporting=1 \
+        -fallocate=none \
+        -time_based=1 \
+        -runtime=120 \
+        -name=test_file_c{} \
+        -numjobs={} \
+        -nrfiles=1 \
+        -size=10G
+
 **Bandwidth**
 
 .. image:: pic/cfs-fio-random-write-bandwidth.png
    :align: center
    :scale: 50 %
-   :alt:  Random Write Bandwidth
+   :alt:  Random Write Bandwidth (MB/s)
 
-.. csv-table:: Random Write Bandwidth
+.. csv-table:: Random Write Bandwidth (MB/s)
    :file: csv/cfs-fio-random-write-bandwidth.csv
 
 **IOPS**
@@ -152,6 +226,17 @@ Metadata Performance and Scalability
 Metadata performance and scalability benchmark test by mdtest_.
 
 .. _mdtest: https://github.com/LLNL/mdtest
+
+**Setup**
+
+.. code-block:: bash
+
+    #!/bin/bash
+    TEST_PATH=/mnt/cfs/mdtest # mount point of ChubaoFS volume
+    for CLIENTS in 1 2 4 8 # number of clients
+    do
+    mpirun --allow-run-as-root -np $CLIENTS --hostfile hfile01 mdtest -n 5000 -u -z 2 -i 3 -d $TEST_PATH;
+    done
 
 **Dir Creation**
 
@@ -223,6 +308,35 @@ Metadata performance and scalability benchmark test by mdtest_.
 .. csv-table:: Tree Removal Benchmark
    :file: csv/cfs-mdtest-tree-removal.csv
 
+Small File Performance and Scalability
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Small file operation performance and scalability benchmark test by mdtest_.
+
+.. _mdtest: https://github.com/LLNL/mdtest
+
+**Setup**
+
+.. code-block:: bash
+
+    #!/bin/bash
+    set -e
+    TARGET_PATH="/mnt/test/mdtest" # mount point of ChubaoFS volume
+    for FILE_SIZE in 1024 2048 4096 8192 16384 32768 65536 131072 # file size
+    do
+    mpirun --allow-run-as-root -np 512 --hostfile hfile64 mdtest -n 1000 -w $i -e $FILE_SIZE -y -u -i 3 -N 1 -F -R -d $TARGET_PATH;
+    done
+
+**Benchmark**
+
+.. image:: pic/cfs-small-file-benchmark.png
+   :align: center
+   :scale: 50 %
+   :alt: Small File Benchmark
+
+.. csv-table:: Small File Benchmark
+   :file: csv/cfs-small-file-benchmark.csv
+
 Integrity
 -----------------
 
@@ -231,13 +345,13 @@ Integrity
 Workload
 --------------
 
-- database backup
+- Database backup
 
 - Java application logs
 
-- code git repo
+- Code git repo
 
-- database systems
+- Database systems
   
   MyRocks,
   MySQL Innodb,
@@ -246,9 +360,9 @@ Workload
 Scalability
 ----------------
 
-- volume scalability: tens to millions of cfs volumes
+- Volume Scalability: tens to millions of cfs volumes
 
-- metadata scalability: a big volume with billions of files/directories
+- Metadata Scalability: a big volume with billions of files/directories
 
 
 
