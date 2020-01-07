@@ -140,9 +140,9 @@ IO Performance and benchmark scalability test by fio_.
 .. image:: pic/cfs-fio-sequential-write-latency.png
    :align: center
    :scale: 50 %
-   :alt: Sequential Write Latency
+   :alt: Sequential Write Latency (Microsecond)
 
-.. csv-table:: Sequential Write Latency
+.. csv-table:: Sequential Write Latency (Microsecond)
    :file: csv/cfs-fio-sequential-write-latency.csv
 
 3. Random Read
@@ -192,9 +192,9 @@ IO Performance and benchmark scalability test by fio_.
 .. image:: pic/cfs-fio-random-read-latency.png
    :align: center
    :scale: 50 %
-   :alt:  Random Read Latency
+   :alt:  Random Read Latency (Microsecond)
 
-.. csv-table:: Random Read Latency
+.. csv-table:: Random Read Latency (Microsecond)
    :file: csv/cfs-fio-random-read-latency.csv
 
 4. Random Write
