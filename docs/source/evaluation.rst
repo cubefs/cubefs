@@ -7,6 +7,35 @@ Environment
 .. csv-table:: Environment
    :file: csv/performance-environment.csv
 
+Small File Performance and Scalability
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Small file operation performance and scalability benchmark test by mdtest_.
+
+.. _mdtest: https://github.com/LLNL/mdtest
+
+**Setup**
+
+.. code-block:: bash
+
+    #!/bin/bash
+    set -e
+    TARGET_PATH="/mnt/test/mdtest" # mount point of ChubaoFS volume
+    for FILE_SIZE in 1024 2048 4096 8192 16384 32768 65536 131072 # file size
+    do
+    mpirun --allow-run-as-root -np 512 --hostfile hfile64 mdtest -n 1000 -w $i -e $FILE_SIZE -y -u -i 3 -N 1 -F -R -d $TARGET_PATH;
+    done
+
+**Benchmark**
+
+.. image:: pic/cfs-small-file-benchmark.png
+   :align: center
+   :scale: 50 %
+   :alt: Small File Benchmark
+
+.. csv-table:: Small File Benchmark
+   :file: csv/cfs-small-file-benchmark.csv
+
 IO Performance and Scalability
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -307,35 +336,6 @@ Metadata performance and scalability benchmark test by mdtest_.
 
 .. csv-table:: Tree Removal Benchmark
    :file: csv/cfs-mdtest-tree-removal.csv
-
-Small File Performance and Scalability
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Small file operation performance and scalability benchmark test by mdtest_.
-
-.. _mdtest: https://github.com/LLNL/mdtest
-
-**Setup**
-
-.. code-block:: bash
-
-    #!/bin/bash
-    set -e
-    TARGET_PATH="/mnt/test/mdtest" # mount point of ChubaoFS volume
-    for FILE_SIZE in 1024 2048 4096 8192 16384 32768 65536 131072 # file size
-    do
-    mpirun --allow-run-as-root -np 512 --hostfile hfile64 mdtest -n 1000 -w $i -e $FILE_SIZE -y -u -i 3 -N 1 -F -R -d $TARGET_PATH;
-    done
-
-**Benchmark**
-
-.. image:: pic/cfs-small-file-benchmark.png
-   :align: center
-   :scale: 50 %
-   :alt: Small File Benchmark
-
-.. csv-table:: Small File Benchmark
-   :file: csv/cfs-small-file-benchmark.csv
 
 Integrity
 -----------------
