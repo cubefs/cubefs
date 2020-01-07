@@ -4,8 +4,26 @@ Performance
 Environment
 ^^^^^^^^^^^
 
-.. csv-table:: Environment
+**Cluster Information**
+
+.. csv-table:: Cluster Information
    :file: csv/performance-environment.csv
+
+**Volume Setup**
+
+.. code-block:: bash
+
+    #!/bin/bash
+    # create volume
+    curl "http://${MASTER}/admin/createVol?name=intest&owner=cfs&capacity=300000000&mpCount=10"
+    # increase 1500 data partitions
+    curl "http://${MASTER}/dataPartition/create?name=intest&count=1500"
+
+
+- Initial number of Meta Partitions: ``10``
+- Number of Meta Replication: ``3``
+- Initial number of Data Partitions: ``1510``
+- Number of Data Replication: ``3``
 
 Small File Performance and Scalability
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
