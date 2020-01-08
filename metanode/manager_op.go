@@ -18,7 +18,7 @@ import (
 	"encoding/json"
 	"net"
 	"os"
-
+	"runtime"
 	"bytes"
 	"fmt"
 
@@ -546,6 +546,7 @@ func (m *metadataManager) opDeleteMetaPartition(conn net.Conn,
 	os.RemoveAll(conf.RootDir)
 	p.PacketOkReply()
 	m.respondToClient(conn, p)
+	runtime.GC()
 	log.LogInfof("%s [opDeleteMetaPartition] req: %d - %v, resp: %v",
 		remoteAddr, p.GetReqID(), req, err)
 	return
