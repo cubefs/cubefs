@@ -88,6 +88,12 @@ For more usage:
 $ docker/run_docker.sh -h
 ```
 
+## Centos 7.x
+### Binary    Download
+| Platform   | Architecture | URL                                                          |
+| ---------- | --------     | ------                                                       |
+| GNU/Linux  | 64-bit Intel | http://storage.jd.com/chubaofsrelease/chubaofs_v1.5.0.tar.gz |
+
 ## License
 
 ChubaoFS is licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
