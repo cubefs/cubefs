@@ -83,7 +83,8 @@ func (as *authnodeStore) refresh() {
 			for ak := range as.akCapsStore {
 				akCaps, err := as.authClient.API().OSSGetCaps(proto.ObjectServiceID, as.authKey, ak)
 				if err != nil {
-					log.LogInfof("update user policy failed: accessKey(%v), err(%v)", ak, err)
+					delete(as.akCapsStore, ak)
+					log.LogInfof("update user policy failed and delete: accessKey(%v), err(%v)", ak, err)
 					continue
 				}
 				as.akCapsStore[ak] = akCaps
@@ -107,9 +108,10 @@ func (as *authnodeStore) GetAkCaps(accessKey string) (akCaps *keystore.AccessKey
 	return
 }
 
-func (as *authnodeStore) Delete(vol, path, key string) (err error) {
-	//TODO: implement authonode store put method
-
+func (as *authnodeStore) Delete(accessKey string) (err error) {
+	as.capsMu.Lock()
+	defer as.capsMu.Unlock()
+	delete(as.akCapsStore, accessKey)
 	return
 }
 
