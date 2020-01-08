@@ -72,7 +72,7 @@ type FSPart struct {
 }
 
 type Volume interface {
-	OSSSecure() (accessKey, secretKey string)
+	OSSSecure() (accessKey, secretKey string) //todo delete
 	OSSMeta() *OSSMeta
 
 	// ListFiles return an FileInfo slice of specified volume, like read dir for hole volume.

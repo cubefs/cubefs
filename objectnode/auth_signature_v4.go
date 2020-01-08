@@ -24,7 +24,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/keystore"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -110,8 +109,7 @@ func (o *ObjectNode) checkSignatureV4(r *http.Request) (bool, error) {
 		return false, err
 	}
 	var akCaps *keystore.AccessKeyCaps
-	akCaps, err = o.authClient.API().OSSGetCaps(proto.ObjectServiceID, o.authKey, req.Credential.AccessKey)
-	if err != nil {
+	if akCaps, err = o.authStore.GetAkCaps(req.Credential.AccessKey); err != nil {
 		log.LogInfof("get secretKey from authnode error: accessKey(%v), err(%v)", req.Credential.AccessKey, err)
 		return false, err
 	}
@@ -151,8 +149,7 @@ func (o *ObjectNode) checkPresignedSignatureV4(r *http.Request) (pass bool, err 
 
 	// check accessKey valid
 	var akCaps *keystore.AccessKeyCaps
-	akCaps, err = o.authClient.API().OSSGetCaps(proto.ObjectServiceID, o.authKey, req.Credential.AccessKey)
-	if err != nil {
+	if akCaps, err = o.authStore.GetAkCaps(req.Credential.AccessKey); err != nil {
 		log.LogInfof("get secretKey from authnode error: accessKey(%v), err(%v)", req.Credential.AccessKey, err)
 		return false, err
 	}

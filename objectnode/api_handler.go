@@ -25,16 +25,17 @@ import (
 )
 
 type RequestParam struct {
-	account  string
-	resource string
-	bucket   string
-	object   string
-	actions  []Action
-	sourceIP string
-	vol      *volume
-	condVals map[string][]string
-	isOwner  bool
-	vars     map[string]string
+	account   string
+	resource  string
+	bucket    string
+	object    string
+	actions   []Action
+	sourceIP  string
+	vol       *volume
+	condVals  map[string][]string
+	isOwner   bool
+	vars      map[string]string
+	accessKey string
 }
 
 func (o *ObjectNode) parseRequestParam(r *http.Request) (*RequestParam, error) {
@@ -62,6 +63,7 @@ func (o *ObjectNode) parseRequestParam(r *http.Request) (*RequestParam, error) {
 		if auth.accessKey == accessKey {
 			p.isOwner = true
 		}
+		p.accessKey = auth.accessKey
 	}
 
 	return p, nil

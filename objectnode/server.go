@@ -21,7 +21,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	authSDK "github.com/chubaofs/chubaofs/sdk/auth"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -67,8 +66,7 @@ type ObjectNode struct {
 	vm         VolumeManager
 	state      uint32
 	wg         sync.WaitGroup
-	authKey    string
-	authClient *authSDK.AuthClient
+	authStore  *authnodeStore
 }
 
 func (o *ObjectNode) Start(cfg *config.Config) (err error) {
@@ -142,8 +140,9 @@ func (o *ObjectNode) parseConfig(cfg *config.Config) (err error) {
 	authNodes := cfg.GetString(configAuthnodes)
 	enableHTTPS := cfg.GetBool(configEnableHTTPS)
 	certFile := cfg.GetString(configCertFile)
-	o.authKey = cfg.GetString(configAuthkey)
-	o.authClient = authSDK.NewAuthClient(authNodes, enableHTTPS, certFile)
+	authKey := cfg.GetString(configAuthkey)
+	o.authStore = newAuthStore(authKey, authNodes, certFile, enableHTTPS)
+
 	return
 }
 

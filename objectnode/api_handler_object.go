@@ -466,8 +466,8 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// get owner
-	aceesKey, _ := vl.OSSSecure()
-	bucketOwner := NewBucketOwner(aceesKey)
+	accessKey, _ := vl.OSSSecure()
+	bucketOwner := NewBucketOwner(accessKey)
 	var contents = make([]*Content, 0)
 	if len(fsFileInfos) > 0 {
 		for _, fsFileInfo := range fsFileInfos {

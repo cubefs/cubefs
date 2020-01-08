@@ -23,7 +23,18 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/caps"
+	"github.com/chubaofs/chubaofs/util/keystore"
 	"github.com/chubaofs/chubaofs/util/log"
+)
+
+type ActionType string
+
+const (
+	Read      ActionType = "r"
+	Write     ActionType = "w"
+	ReadWrite ActionType = "rw"
 )
 
 // https://docs.aws.amazon.com/AmazonS3/latest/dev/example-bucket-policies.html
@@ -31,6 +42,7 @@ const (
 	PolicyDefaultVersion  = "2012-10-17"
 	BucketPolicyLimitSize = 20 * 1024 //Bucket policies are limited to 20KB
 	ArnSplitToken         = ":"
+	S3Flag                = "S3"
 )
 
 //https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/example-bucket-policies.html
@@ -180,7 +192,7 @@ func (p *Policy) IsAllowed(params *RequestParam) bool {
 	return false
 }
 
-func (o *ObjectNode) policyCheck(f http.HandlerFunc, actions []Action) http.HandlerFunc {
+func (o *ObjectNode) policyCheck(f http.HandlerFunc, actions []Action, actionType ActionType) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
 			err error
@@ -231,6 +243,26 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc, actions []Action) http.Hand
 				return
 			}
 		}
-
+		//check user policy
+		var akCaps *keystore.AccessKeyCaps
+		if akCaps, err = o.authStore.GetAkCaps(param.accessKey); err != nil {
+			log.LogInfof("get user policy from authnode error: accessKey(%v), err(%v)", param.accessKey, err)
+			return
+		}
+		cap := new(caps.Caps)
+		if err = cap.Init(akCaps.Caps); err != nil {
+			log.LogInfof("load user caps err: %v", err)
+			return
+		}
+		curCap := S3Flag + ArnSplitToken + param.bucket + ArnSplitToken + string(actionType)
+		rwCap := S3Flag + ArnSplitToken + param.bucket + ArnSplitToken + string(ReadWrite)
+		var userAllowed bool
+		//TODO owner need check？
+		userAllowed = cap.ContainCaps(proto.OwnerVOLRsc, curCap) || cap.ContainCaps(proto.OwnerVOLRsc, rwCap) ||
+			cap.ContainCaps(proto.NoneOwnerVOLRsc, curCap) || cap.ContainCaps(proto.NoneOwnerVOLRsc, rwCap)
+		if !userAllowed {
+			log.LogWarnf("user policy not allowed %v", param)
+			return
+		}
 	}
 }

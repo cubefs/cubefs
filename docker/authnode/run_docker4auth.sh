@@ -32,10 +32,13 @@ sleep 2s
 ./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=./ticket_admin.json -data=./data_master.json -output=./key_master.json AuthService createkey
 #create key for client
 ./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=./ticket_admin.json -data=./data_client.json -output=./key_client.json AuthService createkey
+#create key for objectnode
+./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=./ticket_admin.json -data=./data_objectnode.json -output=./key_object.json AuthService createkey
 
 #write key to json file
 clientKey=$(sed -n '3p' key_client.json | sed 's/auth_key/clientKey/g')
 masterKey=$(sed -n '3p' key_master.json | sed 's/auth_key/masterServiceKey/g')
+objectKey=$(sed -n '3p' key_object.json | sed 's/auth_key/authKey/g')
 cd ..
 cd ..
 lineClient=`expr $(cat docker/conf/client.json | wc -l) - 1`
@@ -44,6 +47,8 @@ lineMaster=`expr $(cat docker/conf/master1.json | wc -l) - 1`
 sed -i "${lineMaster}i ${masterKey}" docker/conf/master1.json
 sed -i "${lineMaster}i ${masterKey}" docker/conf/master2.json
 sed -i "${lineMaster}i ${masterKey}" docker/conf/master3.json
+lineObject=`expr $(cat docker/conf/objectnode.json | wc -l) - 1`
+sed -i "${lineObject}i ${objectKey}" docker/conf/objectnode.json
 
 #delete temp files
 rm -f ./docker/authnode/authservice.json
@@ -53,3 +58,4 @@ rm -f ./docker/authnode/key_admin.json
 rm -f ./docker/authnode/ticket_admin.json
 rm -f ./docker/authnode/key_master.json
 rm -f ./docker/authnode/key_client.json
+rm -f ./docker/authnode/key_object.json
