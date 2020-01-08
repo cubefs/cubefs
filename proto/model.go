@@ -66,6 +66,7 @@ type MetaPartitionInfo struct {
 	Replicas     []*MetaReplicaInfo
 	ReplicaNum   uint8
 	Status       int8
+	IsRecover    bool
 	Hosts        []string
 	Peers        []Peer
 	MissNodes    map[string]int64
@@ -82,20 +83,21 @@ type MetaReplicaInfo struct {
 
 // ClusterView provides the view of a cluster.
 type ClusterView struct {
-	Name               string
-	LeaderAddr         string
-	DisableAutoAlloc   bool
-	MetaNodeThreshold  float32
-	Applied            uint64
-	MaxDataPartitionID uint64
-	MaxMetaNodeID      uint64
-	MaxMetaPartitionID uint64
-	DataNodeStatInfo   *NodeStatInfo
-	MetaNodeStatInfo   *NodeStatInfo
-	VolStatInfo        []*VolStatInfo
-	BadPartitionIDs    []BadPartitionView
-	MetaNodes          []NodeView
-	DataNodes          []NodeView
+	Name                string
+	LeaderAddr          string
+	DisableAutoAlloc    bool
+	MetaNodeThreshold   float32
+	Applied             uint64
+	MaxDataPartitionID  uint64
+	MaxMetaNodeID       uint64
+	MaxMetaPartitionID  uint64
+	DataNodeStatInfo    *NodeStatInfo
+	MetaNodeStatInfo    *NodeStatInfo
+	VolStatInfo         []*VolStatInfo
+	BadPartitionIDs     []BadPartitionView
+	BadMetaPartitionIDs []BadPartitionView
+	MetaNodes           []NodeView
+	DataNodes           []NodeView
 }
 
 // NodeView provides the view of the data or meta node.
@@ -107,7 +109,7 @@ type NodeView struct {
 }
 
 type BadPartitionView struct {
-	DiskPath     string
+	Path         string
 	PartitionIDs []uint64
 }
 
@@ -161,7 +163,7 @@ type DataReplica struct {
 	ReportTime      int64
 	FileCount       uint32
 	Status          int8
-	HasLoadResponse bool   // if there is any response when loading
+	HasLoadResponse bool // if there is any response when loading
 	Total           uint64 `json:"TotalSize"`
 	Used            uint64 `json:"UsedSize"`
 	IsLeader        bool

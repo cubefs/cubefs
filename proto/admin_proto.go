@@ -345,6 +345,8 @@ type MetaPartitionView struct {
 	PartitionID uint64
 	Start       uint64
 	End         uint64
+	MaxInodeID  uint64
+	IsRecover   bool
 	Members     []string
 	LeaderAddr  string
 	Status      int8

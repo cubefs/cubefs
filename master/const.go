@@ -79,6 +79,7 @@ const (
 	DefaultCellName                              = "default"
 	retrySendSyncTaskInternal                    = 3 * time.Second
 	defaultRangeOfCountDifferencesAllowed        = 50
+	defaultMinusOfMaxInodeID                     = 1000
 )
 
 const (

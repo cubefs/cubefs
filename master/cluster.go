@@ -46,6 +46,7 @@ type Cluster struct {
 	metaNodeStatInfo    *nodeStatInfo
 	volStatInfo         sync.Map
 	BadDataPartitionIds *sync.Map
+	BadMetaPartitionIds *sync.Map
 	DisableAutoAllocate bool
 	fsm                 *MetadataFsm
 	partition           raftstore.Partition
@@ -60,6 +61,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.cfg = cfg
 	c.t = newTopology()
 	c.BadDataPartitionIds = new(sync.Map)
+	c.BadMetaPartitionIds = new(sync.Map)
 	c.dataNodeStatInfo = new(nodeStatInfo)
 	c.metaNodeStatInfo = new(nodeStatInfo)
 	c.fsm = fsm
@@ -78,6 +80,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckAutoDataPartitionCreation()
 	c.scheduleToCheckVolStatus()
 	c.scheduleToCheckDiskRecoveryProgress()
+	c.scheduleToCheckMetaPartitionRecoveryProgress()
 	c.scheduleToLoadMetaPartitions()
 	c.scheduleToReduceReplicaNum()
 }
@@ -748,7 +751,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
 errHandler:
-	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.Hosts)
 	if err != nil {
@@ -771,6 +774,11 @@ func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAd
 
 	// if the partition can be offline or not
 	if err = dp.canBeOffLine(offlineAddr); err != nil {
+		return
+	}
+
+	if dp.isRecover {
+		err = fmt.Errorf("vol[%v],data partition[%v] is recovering,[%v] can't be decommissioned", vol.Name, dp.PartitionID, offlineAddr)
 		return
 	}
 	return
@@ -1012,6 +1020,16 @@ func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode) (err 
 		log.LogErrorf("action[deleteDataReplica] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
 	}
 	return nil
+}
+
+func (c *Cluster) putBadMetaPartitions(offlineAddr string, partitionID uint64) {
+	newBadPartitionIDs := make([]uint64, 0)
+	badPartitionIDs, ok := c.BadMetaPartitionIds.Load(offlineAddr)
+	if ok {
+		newBadPartitionIDs = badPartitionIDs.([]uint64)
+	}
+	newBadPartitionIDs = append(newBadPartitionIDs, partitionID)
+	c.BadMetaPartitionIds.Store(offlineAddr, newBadPartitionIDs)
 }
 
 func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, offlineAddr string, partitionID uint64) {
