@@ -42,7 +42,7 @@ const (
 	PolicyDefaultVersion  = "2012-10-17"
 	BucketPolicyLimitSize = 20 * 1024 //Bucket policies are limited to 20KB
 	ArnSplitToken         = ":"
-	S3Flag                = "S3"
+	S3Flag                = "s3"
 )
 
 //https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/example-bucket-policies.html
@@ -256,11 +256,10 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc, actions []Action, actionTyp
 		}
 		curCap := S3Flag + ArnSplitToken + param.bucket + ArnSplitToken + string(actionType)
 		rwCap := S3Flag + ArnSplitToken + param.bucket + ArnSplitToken + string(ReadWrite)
-		var userAllowed bool
 		//TODO owner need check？
-		userAllowed = cap.ContainCaps(proto.OwnerVOLRsc, curCap) || cap.ContainCaps(proto.OwnerVOLRsc, rwCap) ||
+		allowed = cap.ContainCaps(proto.OwnerVOLRsc, curCap) || cap.ContainCaps(proto.OwnerVOLRsc, rwCap) ||
 			cap.ContainCaps(proto.NoneOwnerVOLRsc, curCap) || cap.ContainCaps(proto.NoneOwnerVOLRsc, rwCap)
-		if !userAllowed {
+		if !allowed {
 			log.LogWarnf("user policy not allowed %v", param)
 			return
 		}
