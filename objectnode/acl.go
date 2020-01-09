@@ -109,8 +109,8 @@ type Permission string
 
 // grantee
 type Grantee struct {
-	Xmlns        string `xmlns:si,attr,omitempty`
-	Xmlsi        string `xsi:type,attr,omitempty`
+	Xmlns        string `xml:"xmlns:xsi,attr,omitempty"`
+	Xmlsi        string `xml:"xsi:type,attr,omitempty"`
 	Id           string `xml:"ID,omitempty"`
 	URI          string `xml:"URI,omitempty"`
 	Type         string `xml:"Type,omitempty"`
@@ -132,7 +132,7 @@ type AccessControlList struct {
 // owner
 type Owner struct {
 	Id          string `xml:"ID"`
-	DispalyName string `xml:"DisplayName"`
+	DisplayName string `xml:"DisplayName"`
 }
 
 // access control policy
