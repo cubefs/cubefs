@@ -71,7 +71,10 @@ func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request)
 		}
 
 	} else {
-		acl = &AccessControlPolicy{}
+		accessKey, _ := vol.OSSSecure()
+		acl = &AccessControlPolicy{
+			Owner: Owner{Id: accessKey, DisplayName: accessKey},
+		}
 		acl.Acl.Grants = append(acl.Acl.Grants, defaultGrant)
 		aclData, err = xml.Marshal(acl)
 		if err != nil {
