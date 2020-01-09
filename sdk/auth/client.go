@@ -57,7 +57,7 @@ func NewAuthClient(authnodeStr string, enableHTTPS bool, certFile string) *AuthC
 	return &AuthClient{authnodes: authnodes, enableHTTPS: enableHTTPS, certFile: certFile}
 }
 
-func (c *AuthClient) request(clientID, clientKey string, key []byte, data interface{}, path string) (respData []byte, err error) {
+func (c *AuthClient) request(clientID, clientKey string, key []byte, data interface{}, path, serviceID string) (respData []byte, err error) {
 	var (
 		body     []byte
 		urlProto string
@@ -93,9 +93,9 @@ func (c *AuthClient) request(clientID, clientKey string, key []byte, data interf
 			}
 			if jobj.Code != 0 {
 				if jobj.Code == proto.ErrCodeExpiredTicket {
-					c.ticket, err = c.API().GetTicket(clientID, clientKey, proto.AuthServiceID)
+					c.ticket, err = c.API().GetTicket(clientID, clientKey, serviceID)
 					if err == nil {
-						c.request(clientID, clientKey, key, data, path)
+						c.request(clientID, clientKey, key, data, path, serviceID)
 					}
 				}
 				err = fmt.Errorf(jobj.Msg)
@@ -137,7 +137,7 @@ func (c *AuthClient) serveOSSRequest(id, key string, ticket *auth.Ticket, akCaps
 		APIReq: *apiReq,
 		AKCaps: *akCaps,
 	}
-	if respData, err = c.request(id, key, sessionKey, message, reqPath); err != nil {
+	if respData, err = c.request(id, key, sessionKey, message, reqPath, proto.AuthServiceID); err != nil {
 		return
 	}
 	if err = json.Unmarshal(respData, &resp); err != nil {
@@ -172,7 +172,7 @@ func (c *AuthClient) serveAdminRequest(id, key string, ticket *auth.Ticket, keyI
 		APIReq:  *apiReq,
 		KeyInfo: *keyInfo,
 	}
-	if respData, err = c.request(id, key, sessionKey, message, reqPath); err != nil {
+	if respData, err = c.request(id, key, sessionKey, message, reqPath, proto.AuthServiceID); err != nil {
 		return
 	}
 	if err = json.Unmarshal(respData, &resp); err != nil {

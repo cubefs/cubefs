@@ -324,4 +324,4 @@ services:
         mkdir -p /go/src/github.com/chubaofs/chubaofs/docker/bin &&
         cd /go/src/github.com/chubaofs/chubaofs && make test
     networks:
-      extnetwork:
+      authnode_extnetwork:

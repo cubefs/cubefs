@@ -1430,7 +1430,7 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 		vol.updateViewCache(m.cluster)
 		viewCache = vol.getViewCache()
 	}
-	if vol.authenticate {
+	if !param.skipOwnerValidation && vol.authenticate {
 		if jobj, ticket, ts, err = parseAndCheckTicket(r, m.cluster.MasterSecretKey, param.name); err != nil {
 			if err == proto.ErrExpiredTicket {
 				sendErrReply(w, r, newErrHTTPReply(err))

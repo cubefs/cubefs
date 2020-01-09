@@ -22,7 +22,7 @@ func (api *API) GetTicket(clientId string, clientKey string, serviceID string) (
 	message := proto.AuthGetTicketReq{
 		Type:      proto.MsgAuthTicketReq,
 		ClientID:  clientId,
-		ServiceID: proto.MasterServiceID,
+		ServiceID: serviceID,
 	}
 	if key, err = cryptoutil.Base64Decode(clientKey); err != nil {
 		return
@@ -30,7 +30,7 @@ func (api *API) GetTicket(clientId string, clientKey string, serviceID string) (
 	if message.Verifier, ts, err = cryptoutil.GenVerifier(key); err != nil {
 		return
 	}
-	if respData, err = api.ac.request(clientId, clientKey, key, message, proto.ClientGetTicket); err != nil {
+	if respData, err = api.ac.request(clientId, clientKey, key, message, proto.ClientGetTicket, serviceID); err != nil {
 		return
 	}
 	if err = json.Unmarshal(respData, &msgResp); err != nil {
