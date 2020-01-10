@@ -23,6 +23,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 	"strings"
 	"time"
+	"math"
 )
 
 // MetaReplica defines the replica of a meta partition
@@ -31,6 +32,7 @@ type MetaReplica struct {
 	start      uint64 // lower bound of the inode id
 	end        uint64 // upper bound of the inode id
 	nodeID     uint64
+	MaxInodeID uint64
 	ReportTime int64
 	Status     int8 // unavailable, readOnly, readWrite
 	IsLeader   bool
@@ -46,6 +48,7 @@ type MetaPartition struct {
 	Replicas     []*MetaReplica
 	ReplicaNum   uint8
 	Status       int8
+	IsRecover    bool
 	volID        uint64
 	volName      string
 	Hosts        []string
@@ -320,8 +323,8 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 		mr = newMetaReplica(mp.Start, mp.End, metaNode)
 		mp.addReplica(mr)
 	}
-	mp.MaxInodeID = mgr.MaxInodeID
 	mr.updateMetric(mgr)
+	mp.setMaxInodeID()
 	mp.removeMissingReplica(metaNode.Addr)
 }
 
@@ -335,6 +338,17 @@ func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err erro
 	if len(liveReplicas) == (replicaNum/2+1) && contains(liveAddrs, nodeAddr) {
 		err = fmt.Errorf("live replicas num will be less than majority after offline nodeAddr: %v", nodeAddr)
 		return
+	}
+	return
+}
+
+// Check if there is a replica missing or not.
+func (mp *MetaPartition) hasMissingOneReplica(replicaNum int) (err error) {
+	hostNum := len(mp.Replicas)
+	if hostNum <= replicaNum-1 {
+		log.LogError(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
+			"hasMissingOneReplica", mp.PartitionID, proto.ErrHasOneMissingReplica))
+		err = proto.ErrHasOneMissingReplica
 	}
 	return
 }
@@ -588,6 +602,7 @@ func (mr *MetaReplica) setLastReportTime() {
 func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	mr.Status = (int8)(mgr.Status)
 	mr.IsLeader = mgr.IsLeader
+	mr.MaxInodeID = mgr.MaxInodeID
 	mr.setLastReportTime()
 }
 
@@ -616,4 +631,31 @@ func (mp *MetaPartition) addOrReplaceLoadResponse(response *proto.MetaPartitionL
 	}
 	loadResponse = append(loadResponse, response)
 	mp.LoadResponse = loadResponse
+}
+
+func (mp *MetaPartition) getMinusOfMaxInodeID() (minus float64) {
+	mp.RLock()
+	defer mp.RUnlock()
+	var sentry float64
+	for index, replica := range mp.Replicas {
+		if index == 0 {
+			sentry = float64(replica.MaxInodeID)
+			continue
+		}
+		diff := math.Abs(float64(replica.MaxInodeID) - sentry)
+		if diff > minus {
+			minus = diff
+		}
+	}
+	return
+}
+
+func (mp *MetaPartition) setMaxInodeID() {
+	var maxUsed uint64
+	for _, r := range mp.Replicas {
+		if r.MaxInodeID > maxUsed {
+			maxUsed = r.MaxInodeID
+		}
+	}
+	mp.MaxInodeID = maxUsed
 }

@@ -40,7 +40,7 @@ var (
 	ErrIllegalDataReplica = errors.New("data replica is illegal")
 
 	ErrMissingReplica       = errors.New("a missing data replica is found")
-	ErrHasOneMissingReplica = errors.New("there is a missing data replica")
+	ErrHasOneMissingReplica = errors.New("there is a missing replica")
 
 	ErrNoDataNodeToWrite = errors.New("No data node available for creating a data partition")
 	ErrNoMetaNodeToWrite = errors.New("No meta node available for creating a meta partition")
@@ -68,7 +68,7 @@ var (
 
 // http response error code and error message definitions
 const (
-	ErrCodeSuccess = iota
+	ErrCodeSuccess                         = iota
 	ErrCodeInternalError
 	ErrCodeParamError
 	ErrCodeInvalidCfg

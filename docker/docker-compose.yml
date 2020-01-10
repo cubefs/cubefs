@@ -26,6 +26,7 @@ services:
             - metanode1
             - metanode2
             - metanode3
+            - metanode4
             - datanode1
             - datanode2
             - datanode3
@@ -146,6 +147,25 @@ services:
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.23
+
+    metanode4:
+            image: chubaofs/cfs-base:1.0
+            ports:
+                - "17210"
+                - "17220"
+                - "17230"
+                - "17240"
+                - 9500
+            volumes:
+                - ./bin:/cfs/bin
+                - ./conf/metanode.json:/cfs/conf/metanode.json
+                - ./script/start_meta.sh:/cfs/script/start.sh
+            command: /bin/bash /cfs/script/start.sh
+            restart: on-failure
+            privileged: true
+            networks:
+                extnetwork:
+                    ipv4_address: 192.168.0.24
 
     datanode1:
         image: chubaofs/cfs-base:1.0

@@ -258,6 +258,9 @@ func decommissionDisk(addr, path string, t *testing.T) {
 		t.Error(err)
 		return
 	}
+	server.cluster.checkDataNodeHeartbeat()
+	time.Sleep(5 * time.Second)
+	server.cluster.checkDiskRecoveryProgress()
 }
 
 func TestMarkDeleteVol(t *testing.T) {
@@ -363,6 +366,7 @@ func TestDataPartitionDecommission(t *testing.T) {
 		t.Errorf("offlineAddr[%v],hosts[%v]", offlineAddr, partition.Hosts)
 		return
 	}
+	partition.isRecover = false
 }
 
 //func TestGetAllVols(t *testing.T) {
@@ -416,6 +420,7 @@ func TestRemoveDataReplica(t *testing.T) {
 		partition.RUnlock()
 		return
 	}
+	partition.isRecover = false
 	partition.RUnlock()
 }
 
