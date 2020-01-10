@@ -16,6 +16,8 @@ package objectnode
 
 import (
 	"context"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/master"
 	"net/http"
 	"regexp"
 	"sync"
@@ -41,7 +43,6 @@ const (
 	configListen      = "listen"
 	configDomains     = "domains"
 	configMasters     = "masters"
-	configRegion      = "region"
 	configAuthnodes   = "authNodes"
 	configAuthkey     = "authKey"
 	configEnableHTTPS = "enableHTTPS"
@@ -51,7 +52,6 @@ const (
 // Default of configuration value
 const (
 	defaultListen = ":80"
-	defaultRegion = "cfs_default"
 )
 
 var (
@@ -64,6 +64,7 @@ type ObjectNode struct {
 	region     string
 	httpServer *http.Server
 	vm         VolumeManager
+	mc         *master.MasterClient
 	state      uint32
 	wg         sync.WaitGroup
 	authStore  *authnodeStore
@@ -100,7 +101,7 @@ func (o *ObjectNode) Sync() {
 	}
 }
 
-func (o *ObjectNode) parseConfig(cfg *config.Config) (err error) {
+func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	// parse listen
 	listen := cfg.GetString(configListen)
 	if len(listen) == 0 {
@@ -111,53 +112,62 @@ func (o *ObjectNode) parseConfig(cfg *config.Config) (err error) {
 		return
 	}
 	o.listen = listen
+	log.LogInfof("loadConfig: setup config: %v(%v)", configListen, listen)
 
 	// parse domain
-	domainCfgs := cfg.GetArray(configDomains)
-	domains := make([]string, len(domainCfgs))
-	for i, domainCfg := range domainCfgs {
-		domains[i] = domainCfg.(string)
-	}
+	domains := cfg.GetStringSlice(configDomains)
 	o.domains = domains
+	log.LogInfof("loadConfig: setup config: %v(%v)", configDomains, domains)
 
 	// parse master config
-	masterCfgs := cfg.GetArray(configMasters)
-	masters := make([]string, len(masterCfgs))
-	for i, masterCfg := range masterCfgs {
-		masters[i] = masterCfg.(string)
+	masters := cfg.GetStringSlice(configMasters)
+	if len(masters) == 0 {
+		return config.NewIllegalConfigError(configMasters)
 	}
+	log.LogInfof("loadConfig: setup config: %v(%v)", configMasters, masters)
+
+	o.mc = master.NewMasterClient(masters, false)
 	o.vm = NewVolumeManager(masters)
 	o.vm.InitStore(new(xattrStore))
 
-	// parse region
-	region := cfg.GetString(configRegion)
-	if len(region) == 0 {
-		region = defaultRegion
+	//parse AuthNode info
+	authNodes := cfg.GetStringSlice(configAuthnodes)
+	if len(authNodes) == 0 {
+		return config.NewIllegalConfigError(configAuthnodes)
 	}
-	o.region = region
+	log.LogInfof("loadConfig: setup config: %v(%v)", configAuthnodes, authNodes)
 
-	//parse authnode info
-	authNodes := cfg.GetString(configAuthnodes)
 	enableHTTPS := cfg.GetBool(configEnableHTTPS)
+
 	certFile := cfg.GetString(configCertFile)
 	authKey := cfg.GetString(configAuthkey)
-	o.authStore = newAuthStore(authKey, authNodes, certFile, enableHTTPS)
+	log.LogInfof("loadConfig: setup config: %v(%v)", configAuthkey, authKey)
+
+	o.authStore = newAuthStore(authNodes, authKey, certFile, enableHTTPS)
 
 	return
 }
 
 func (o *ObjectNode) handleStart(cfg *config.Config) (err error) {
 	// parse config
-	if err = o.parseConfig(cfg); err != nil {
+	if err = o.loadConfig(cfg); err != nil {
 		return
 	}
 
-	// start rest api
-	if err = o.startMuxRestAPI(); err != nil {
-		log.LogInfof("handleStart: start mux rest api fail, err(%v)", err)
+	// Get cluster info from master
+	var ci *proto.ClusterInfo
+	if ci, err = o.mc.AdminAPI().GetClusterInfo(); err != nil {
 		return
 	}
-	log.LogInfo("s3node start success")
+	o.region = ci.Cluster
+	log.LogInfof("handleStart: get cluster information: region(%v)", o.region)
+
+	// start rest api
+	if err = o.startMuxRestAPI(); err != nil {
+		log.LogInfof("handleStart: start rest api fail: err(%v)", err)
+		return
+	}
+	log.LogInfo("object subsystem start success")
 	return
 }
 

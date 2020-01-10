@@ -23,7 +23,6 @@ Object Node using `JSON` format configuration file.
 
    "role", "string", "Role of process and must be set to *objectnode*", "Yes"
    "listen", "string", "Listen and accept port of the server. Default: 80", "Yes"
-   "region", "string", "Region of this gateway. Used by S3-like interface signature validation. Default: cfs_default", "No"
    "domains", "string slice", "
    | Format: *DOMAIN*.
    | DOMAIN: Domain of S3-like interface which makes wildcard domain support", "No"
@@ -33,6 +32,10 @@ Object Node using `JSON` format configuration file.
    | Format: *HOST:PORT*.
    | HOST: Hostname, domain or IP address of master (resource manager).
    | PORT: port number which listened by this master", "Yes"
+   "authNodes", "string slice", "
+   | Format: *HOST:PORT*.
+   | HOST: Hostname, domain or IP address of AuthNode.
+   | PORT: port number which listened by this AuthNode", "Yes"
    "exporterPort", "string", "Port for monitor system", "No"
    "prof", "string", "Pprof port", "Yes"
 
@@ -44,7 +47,6 @@ Object Node using `JSON` format configuration file.
    {
         "role": "objectnode",
         "listen": 80,
-        "region": "test",
         "domains": [
             "object.cfs.local"
         ],

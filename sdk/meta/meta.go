@@ -94,7 +94,7 @@ func NewMetaWrapper(volname, owner, masterHosts string, authenticate, validateOw
 	mw := new(MetaWrapper)
 	mw.closeCh = make(chan struct{}, 1)
 	if authenticate {
-		mw.ac = authSDK.NewAuthClient(ticketMess.TicketHost, ticketMess.EnableHTTPS, ticketMess.CertFile)
+		mw.ac = authSDK.NewAuthClient(ticketMess.TicketHosts, ticketMess.EnableHTTPS, ticketMess.CertFile)
 		ticket, err := mw.ac.API().GetTicket(owner, ticketMess.ClientKey, proto.MasterServiceID)
 		if err != nil {
 			return nil, errors.Trace(err, "Get ticket from authnode failed!")

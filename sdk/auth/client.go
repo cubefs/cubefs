@@ -23,7 +23,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/keystore"
 	"io/ioutil"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -32,7 +31,6 @@ import (
 
 const (
 	requestTimeout       = 30 * time.Second
-	HostsSeparator       = ","
 	RequestMaxRetry      = 5
 	RequestSleepInterval = 100 * time.Millisecond
 )
@@ -52,9 +50,8 @@ func (c *AuthClient) API() *API {
 	}
 }
 
-func NewAuthClient(authnodeStr string, enableHTTPS bool, certFile string) *AuthClient {
-	authnodes := strings.Split(authnodeStr, HostsSeparator)
-	return &AuthClient{authnodes: authnodes, enableHTTPS: enableHTTPS, certFile: certFile}
+func NewAuthClient(authNodes []string, enableHTTPS bool, certFile string) *AuthClient {
+	return &AuthClient{authnodes: authNodes, enableHTTPS: enableHTTPS, certFile: certFile}
 }
 
 func (c *AuthClient) request(clientID, clientKey string, key []byte, data interface{}, path, serviceID string) (respData []byte, err error) {

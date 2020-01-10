@@ -16,6 +16,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"strconv"
@@ -136,11 +137,24 @@ func (c *Config) GetInt64(key string) int64 {
 	return 0
 }
 
-// GetArray returns an array for the config key.
-func (c *Config) GetArray(key string) []interface{} {
+// GetSlice returns an array for the config key.
+func (c *Config) GetSlice(key string) []interface{} {
 	result, present := c.data[key]
 	if !present {
 		return []interface{}(nil)
 	}
 	return result.([]interface{})
+}
+
+func (c *Config) GetStringSlice(key string) []string {
+	s := c.GetSlice(key)
+	result := make([]string, 0, len(s))
+	for _, item := range s {
+		result = append(result, item.(string))
+	}
+	return result
+}
+
+func NewIllegalConfigError(configKey string) error {
+	return fmt.Errorf("illegal config %s", configKey)
 }

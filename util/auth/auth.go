@@ -2,7 +2,7 @@ package auth
 
 type TicketMess struct {
 	ClientKey   string
-	TicketHost  string
+	TicketHosts []string
 	EnableHTTPS bool
 	CertFile    string
 }

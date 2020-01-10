@@ -37,7 +37,7 @@ type authnodeStore struct {
 	closeOnce   sync.Once
 }
 
-func newAuthStore(authKey, authNodes, certFile string, enableHTTPS bool) *authnodeStore {
+func newAuthStore(authNodes []string, authKey, certFile string, enableHTTPS bool) *authnodeStore {
 	authClient := authSDK.NewAuthClient(authNodes, enableHTTPS, certFile)
 	as := &authnodeStore{
 		authKey:     authKey,

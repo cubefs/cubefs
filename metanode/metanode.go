@@ -211,10 +211,12 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load raftHeartbeatPort[%v].", m.raftHeartbeatPort)
 	log.LogInfof("[parseConfig] load raftReplicatePort[%v].", m.raftReplicatePort)
 
-	addrs := cfg.GetArray(cfgMasterAddrs)
-	masters := make([]string, 0, len(addrs))
-	for _, addr := range addrs {
-		masters = append(masters, addr.(string))
+	masters := cfg.GetStringSlice(cfgMasterAddrs)
+	if len(masters) == 0 {
+		return config.NewIllegalConfigError(cfgMasterAddrs)
+	}
+	for _, master := range masters {
+		masters = append(masters, master)
 	}
 	masterClient = masterSDK.NewMasterClient(masters, false)
 	err = m.validConfig()

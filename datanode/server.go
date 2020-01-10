@@ -191,11 +191,12 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("Err:port must string")
 	}
 	s.port = port
-	if len(cfg.GetArray(ConfigKeyMasterAddr)) == 0 {
-		return fmt.Errorf("Err:masterAddr unavalid")
+	masters := cfg.GetStringSlice(ConfigKeyMasterAddr)
+	if len(masters) == 0 {
+		return fmt.Errorf("invliad config %s", ConfigKeyMasterAddr)
 	}
-	for _, ip := range cfg.GetArray(ConfigKeyMasterAddr) {
-		MasterClient.AddNode(ip.(string))
+	for _, master := range masters {
+		MasterClient.AddNode(master)
 	}
 	s.cellName = cfg.GetString(ConfigKeyCell)
 	if s.cellName == "" {
@@ -219,7 +220,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	s.space.SetClusterID(s.clusterID)
 
 	var wg sync.WaitGroup
-	for _, d := range cfg.GetArray(ConfigKeyDisks) {
+	for _, d := range cfg.GetSlice(ConfigKeyDisks) {
 		log.LogDebugf("action[startSpaceManager] load disk raw config(%v).", d)
 
 		// format "PATH:RESET_SIZE

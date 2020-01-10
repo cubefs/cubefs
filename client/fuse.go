@@ -277,7 +277,9 @@ func parseMountOption(cfg *config.Config) (*cfs.MountOption, error) {
 	opt.Authenticate = cfg.GetBool(proto.Authenticate)
 	if opt.Authenticate {
 		opt.TicketMess.ClientKey = cfg.GetString(proto.ClientKey)
-		opt.TicketMess.TicketHost = cfg.GetString(proto.TicketHost)
+		ticketHostConfig := cfg.GetString(proto.TicketHost)
+		ticketHosts := strings.Split(ticketHostConfig, ",")
+		opt.TicketMess.TicketHosts = ticketHosts
 		opt.TicketMess.EnableHTTPS = cfg.GetBool(proto.EnableHTTPS)
 		if opt.TicketMess.EnableHTTPS {
 			opt.TicketMess.CertFile = cfg.GetString(proto.CertFile)
