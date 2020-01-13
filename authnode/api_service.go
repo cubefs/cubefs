@@ -621,6 +621,7 @@ func (m *Server) handleOSGetCaps(akCaps *keystore.AccessKeyCaps) (newAKCaps *key
 		AccessKey: keyInfo.AccessKey,
 		SecretKey: keyInfo.SecretKey,
 		Caps:      keyInfo.Caps,
+		ID:        keyInfo.ID,
 	}
 	return newAKCaps, err
 }

@@ -250,6 +250,11 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.Methods(http.MethodGet).
 			HandlerFunc(o.policyCheck(o.getBucketV1Handler, []Action{ListBucketAction}, Read))
 
+		// Create buckets
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucket.html
+		router.Methods(http.MethodPut).
+			HandlerFunc(o.policyCheck(o.createBucketHandler, []Action{CreateBucketAction}, Write)) //TODO write权限好像无效？？
+		//todo Queris的用途？参数？Path是否需要？
 	}
 
 	// List buckets

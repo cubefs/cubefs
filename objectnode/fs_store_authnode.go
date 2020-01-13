@@ -96,16 +96,17 @@ func (as *authnodeStore) refresh() {
 	}
 }
 
-func (as *authnodeStore) GetAkCaps(accessKey string) (akCaps *keystore.AccessKeyCaps, err error) {
+func (as *authnodeStore) GetAkCaps(accessKey string) (*keystore.AccessKeyCaps, error) {
+	var err error
 	akCaps, exit := as.Get(accessKey)
 	if !exit {
 		if akCaps, err = as.authClient.API().OSSGetCaps(proto.ObjectServiceID, as.authKey, accessKey); err != nil {
 			log.LogInfof("load user policy err: %v", err)
-			return
+			return akCaps, err
 		}
 		as.Put(accessKey, akCaps)
 	}
-	return
+	return akCaps, err
 }
 
 func (as *authnodeStore) Delete(accessKey string) (err error) {

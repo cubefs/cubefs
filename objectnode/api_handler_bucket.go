@@ -17,13 +17,64 @@ package objectnode
 import (
 	"net/http"
 
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/util/keystore"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/gorilla/mux"
 )
+
+type CreateBucketConfiguration struct {
+	xmlns              string `xml:"xmlns"` //todo ???
+	locationConstraint string `xml:"locationConstraint"`
+}
 
 // Head bucket
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadBucket.html
 func (o *ObjectNode) headBucketHandler(w http.ResponseWriter, r *http.Request) {
 	// do nothing
+}
+
+// Create bucket
+// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucket.html
+func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		mc  *master.MasterClient
+		err error
+		ec  *ErrorCode
+	)
+	defer o.errorResponse(w, r, err, ec)
+
+	log.LogInfof("Create bucket")
+	vars := mux.Vars(r)
+	bucket := vars["bucket"]
+	if bucket == "" {
+		ec = &InvalidBucketName
+		return
+	}
+	auth := parseRequestAuthInfo(r)
+	var akCaps *keystore.AccessKeyCaps
+	if akCaps, err = o.authStore.GetAkCaps(auth.accessKey); err != nil {
+		log.LogInfof("get user info from authnode error: accessKey(%v), err(%v)", auth.accessKey, err)
+		return
+	}
+	//todo required error code？
+	if mc, err = o.vm.GetMasterClient(); err != nil {
+		log.LogInfof("get master client error: err(%v)", err)
+		return
+	}
+	//todo what params to createVol？
+	if err = mc.AdminAPI().CreateDefaultVolume(bucket, akCaps.ID); err != nil {
+		log.LogInfof("create bucket[%v] error: accessKey(%v), err(%v)", bucket, auth.accessKey, err)
+		return
+	}
+	//todo parse body
+	//todo add const
+	cap := "{\"OwnerVOL\":[\"*:" + bucket + ":*\"]}"
+	if _, err = o.authStore.authClient.API().OSSAddCaps(proto.ObjectServiceID, o.authStore.authKey, auth.accessKey, []byte(cap)); err != nil {
+		return
+	}
+	w.Header().Set("Location", o.region)
 }
 
 // List buckets

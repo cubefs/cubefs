@@ -18,11 +18,13 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
 type volumeManager struct {
 	masters   []string
+	mc        *master.MasterClient
 	volumes   map[string]*volume // volume key -> vol
 	volMu     sync.RWMutex
 	store     Store
@@ -92,6 +94,17 @@ func (m *volumeManager) GetStore() (Store, error) {
 		return nil, errors.New("store not init")
 	}
 	return m.store, nil
+}
+
+func (m *volumeManager) InitMasterClient(masters []string, useSSL bool) {
+	m.mc = master.NewMasterClient(masters, useSSL)
+}
+
+func (m *volumeManager) GetMasterClient() (*master.MasterClient, error) {
+	if m.mc == nil {
+		return nil, errors.New("master client not init")
+	}
+	return m.mc, nil
 }
 
 func NewVolumeManager(masters []string) VolumeManager {

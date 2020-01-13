@@ -26,6 +26,7 @@ const (
 	DeleteObjectAction                      = "s3:DeleteObject" //
 	HeadObjectAction                        = "s3:HeadObject"
 	CreateBucketAction                      = "s3:CreateBucket" //
+	DeleteBucketAction                      = "s3:DeleteBucket"
 	ListBucketAction                        = "s3:ListBucket"
 	ListBucketVersionsAction                = "s3:ListBucketVersions" // List
 	ListBucketMultipartUploadsAction        = "s3:ListBucketMultipartUploads"

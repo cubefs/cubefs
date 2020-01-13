@@ -120,6 +120,7 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	log.LogInfof("loadConfig: setup config: %v(%v)", configDomains, domains)
 
 	// parse master config
+	enableHTTPS := cfg.GetBool(configEnableHTTPS)
 	masters := cfg.GetStringSlice(configMasters)
 	if len(masters) == 0 {
 		return config.NewIllegalConfigError(configMasters)
@@ -129,6 +130,7 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	o.mc = master.NewMasterClient(masters, false)
 	o.vm = NewVolumeManager(masters)
 	o.vm.InitStore(new(xattrStore))
+	o.vm.InitMasterClient(masters, enableHTTPS)
 
 	//parse AuthNode info
 	authNodes := cfg.GetStringSlice(configAuthnodes)
@@ -137,8 +139,7 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	}
 	log.LogInfof("loadConfig: setup config: %v(%v)", configAuthnodes, authNodes)
 
-	enableHTTPS := cfg.GetBool(configEnableHTTPS)
-
+	//parse authnode info
 	certFile := cfg.GetString(configCertFile)
 	authKey := cfg.GetString(configAuthkey)
 	log.LogInfof("loadConfig: setup config: %v(%v)", configAuthkey, authKey)

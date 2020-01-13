@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/master"
 )
 
 type VolumeManager interface {
@@ -28,6 +29,8 @@ type VolumeManager interface {
 	Release(volName string)
 	GetStore() (Store, error)
 	InitStore(s Store)
+	InitMasterClient(masters []string, useSSL bool)
+	GetMasterClient() (*master.MasterClient, error)
 	Close()
 }
 
