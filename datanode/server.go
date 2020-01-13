@@ -45,7 +45,7 @@ var (
 	ErrNoSpaceToCreatePartition = errors.New("No disk space to create a data partition")
 	ErrNewSpaceManagerFailed    = errors.New("Creater new space manager failed")
 
-	LocalIP      string
+	LocalIP ,serverPort     string
 	gConnPool    = util.NewConnectPool()
 	MasterClient = masterSDK.NewMasterClient(nil, false)
 )
@@ -184,6 +184,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	)
 	LocalIP = cfg.GetString(ConfigKeyLocalIP)
 	port = cfg.GetString(ConfigKeyPort)
+	serverPort=port
 	if regexpPort, err = regexp.Compile("^(\\d)+$"); err != nil {
 		return fmt.Errorf("Err:no port")
 	}
