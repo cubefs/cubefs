@@ -15,7 +15,10 @@
 package objectnode
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"net/http"
+	"strings"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
@@ -25,7 +28,7 @@ import (
 )
 
 type CreateBucketConfiguration struct {
-	xmlns              string `xml:"xmlns"` //todo ???
+	xmlns              string `xml:"xmlns"`
 	locationConstraint string `xml:"locationConstraint"`
 }
 
@@ -41,40 +44,103 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 	var (
 		mc  *master.MasterClient
 		err error
-		ec  *ErrorCode
 	)
-	defer o.errorResponse(w, r, err, ec)
 
-	log.LogInfof("Create bucket")
+	log.LogInfof("Create bucket...")
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 	if bucket == "" {
-		ec = &InvalidBucketName
+		_ = InvalidBucketName.ServeResponse(w, r)
 		return
 	}
 	auth := parseRequestAuthInfo(r)
 	var akCaps *keystore.AccessKeyCaps
 	if akCaps, err = o.authStore.GetAkCaps(auth.accessKey); err != nil {
-		log.LogInfof("get user info from authnode error: accessKey(%v), err(%v)", auth.accessKey, err)
+		log.LogErrorf("get user info from authnode error: accessKey(%v), err(%v)", auth.accessKey, err)
+		_ = InternalError.ServeResponse(w, r)
 		return
 	}
 	//todo required error code？
 	if mc, err = o.vm.GetMasterClient(); err != nil {
-		log.LogInfof("get master client error: err(%v)", err)
+		log.LogErrorf("get master client error: err(%v)", err)
+		_ = InternalError.ServeResponse(w, r)
 		return
 	}
 	//todo what params to createVol？
 	if err = mc.AdminAPI().CreateDefaultVolume(bucket, akCaps.ID); err != nil {
-		log.LogInfof("create bucket[%v] error: accessKey(%v), err(%v)", bucket, auth.accessKey, err)
+		log.LogErrorf("create bucket[%v] error: accessKey(%v), err(%v)", bucket, auth.accessKey, err)
+		_ = InternalError.ServeResponse(w, r)
 		return
 	}
 	//todo parse body
 	//todo add const
 	cap := "{\"OwnerVOL\":[\"*:" + bucket + ":*\"]}"
 	if _, err = o.authStore.authClient.API().OSSAddCaps(proto.ObjectServiceID, o.authStore.authKey, auth.accessKey, []byte(cap)); err != nil {
+		log.LogErrorf("add bucket cap[%v] for user[%v] error: err(%v)", cap, auth.accessKey, err)
+		_ = InternalError.ServeResponse(w, r)
 		return
 	}
 	w.Header().Set("Location", o.region)
+	return
+}
+
+// Delete bucket
+// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucket.html
+func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request) {
+	log.LogInfof("Delete bucket...")
+
+	var (
+		volState *proto.VolStatInfo
+		mc       *master.MasterClient
+		authKey  string
+		err      error
+	)
+	vars := mux.Vars(r)
+	bucket := vars["bucket"]
+	if bucket == "" {
+		_ = InvalidBucketName.ServeResponse(w, r)
+		return
+	}
+	auth := parseRequestAuthInfo(r)
+	var akCaps *keystore.AccessKeyCaps
+	if akCaps, err = o.authStore.GetAkCaps(auth.accessKey); err != nil {
+		log.LogErrorf("get user info from authnode error: accessKey(%v), err(%v)", auth.accessKey, err)
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+	// get volume use state
+	if mc, err = o.vm.GetMasterClient(); err != nil {
+		log.LogErrorf("get master client error: err(%v)", err)
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+	if volState, err = mc.ClientAPI().GetVolumeStat(bucket); err != nil {
+		log.LogErrorf("get bucket state from master error: err(%v)", err)
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+	if volState.UsedSize != 0 {
+		_ = BucketNotEmpty.ServeResponse(w, r)
+		return
+	}
+	// todo delete all related user cap
+	cap := "{\"OwnerVOL\":[\"*:" + bucket + ":*\"]}"
+	if _, err = o.authStore.authClient.API().OSSDeleteCaps(proto.ObjectServiceID, o.authStore.authKey, auth.accessKey, []byte(cap)); err != nil {
+		log.LogErrorf("delete bucket cap[%v] for user[%v] error: err(%v)", cap, auth.accessKey, err)
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+	// delete volume from master
+	if authKey, err = calculateMD5(akCaps.ID); err != nil {
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+	if err = mc.AdminAPI().DeleteVolume(bucket, authKey); err != nil {
+		log.LogErrorf("delete bucket[%v] error: accessKey(%v), err(%v)", bucket, auth.accessKey, err)
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+	return
 }
 
 // List buckets
@@ -101,4 +167,15 @@ func (o *ObjectNode) getBucketLocation(w http.ResponseWriter, r *http.Request) {
 		log.LogErrorf("getBucketLocation: write response body fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
 	}
 	return
+}
+
+func calculateMD5(key string) (authKey string, err error) {
+	h := md5.New()
+	_, err = h.Write([]byte(key))
+	if err != nil {
+		log.LogErrorf("action[calculateAuthKey] calculate auth key[%v] failed,err[%v]", key, err)
+		return
+	}
+	cipherStr := h.Sum(nil)
+	return strings.ToLower(hex.EncodeToString(cipherStr)), nil
 }

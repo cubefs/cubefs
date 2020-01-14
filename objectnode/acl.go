@@ -41,12 +41,12 @@ const (
 var (
 	aclBucketPermissionActions = map[Permission][]Action{
 		ReadPermission:     {ListBucketAction, ListBucketVersionsAction, ListBucketMultipartUploadsAction},
-		WritePermission:    {PutObjectAction, DeleteObjectAction},
+		WritePermission:    {PutObjectAction, DeleteObjectAction, DeleteBucketAction},
 		ReadACPPermission:  {GetBucketAclAction},
 		WriteACPPermission: {PutBucketAclAction},
 		FullControlPermission: {
 			ListBucketAction, ListBucketVersionsAction, ListBucketMultipartUploadsAction,
-			PutObjectAction, DeleteObjectAction,
+			PutObjectAction, DeleteObjectAction, DeleteBucketAction,
 			GetBucketAclAction,
 			PutBucketAclAction},
 	}

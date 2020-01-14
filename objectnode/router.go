@@ -250,18 +250,21 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.Methods(http.MethodGet).
 			HandlerFunc(o.policyCheck(o.getBucketV1Handler, []Action{ListBucketAction}, Read))
 
-		// Create buckets
+		// Create bucket
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucket.html
-		router.Methods(http.MethodPut).
+		r.Methods(http.MethodPut).
 			HandlerFunc(o.createBucketHandler)
-		//TODO policycheck need?
-		//todo Queris？Path？
-	}
 
-	// List buckets
-	// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBuckets.html
-	router.Methods(http.MethodGet).
-		HandlerFunc(o.policyCheck(o.listBucketsHandler, []Action{ListBucketAction}, Read))
+		// Delete bucket
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucket.html
+		r.Methods(http.MethodDelete).
+			HandlerFunc(o.policyCheck(o.deleteBucketHandler, []Action{DeleteBucketAction}, Write))
+
+		// List buckets
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBuckets.html
+		router.Methods(http.MethodGet).
+			HandlerFunc(o.listBucketsHandler)
+	}
 
 	// Unsupported operation
 	router.NotFoundHandler = http.HandlerFunc(o.unsupportedOperationHandler)
