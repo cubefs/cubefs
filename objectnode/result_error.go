@@ -90,4 +90,5 @@ var (
 	NoSuchKey                           = ErrorCode{ErrorCode: "NoLoggingStatusForKey", ErrorMessage: "The specified key does not exist.", StatusCode: http.StatusNotFound}
 	PreconditionFailed                  = ErrorCode{ErrorCode: "PreconditionFailed", ErrorMessage: "At least one of the preconditions you specified did not hold.", StatusCode: http.StatusPreconditionFailed}
 	MaxContentLength                    = ErrorCode{ErrorCode: "MaxContentLength", ErrorMessage: "Content-Length is bigger than 20KB.", StatusCode: http.StatusLengthRequired}
+	DuplicatedBucket                    = ErrorCode{ErrorCode: "CreateBucketFailed", ErrorMessage: "Duplicate bucket name.", StatusCode: http.StatusBadRequest}
 )

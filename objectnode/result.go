@@ -278,3 +278,14 @@ type ListXAttrsResult struct {
 	XMLName xml.Name `xml:"ListXAttrsResult"`
 	XAttrs  []*XAttr `xml:"XAttrs>XAttr"`
 }
+
+type Bucket struct {
+	CreationDate string `xml:"CreationDate"`
+	Name         string `xml:"Name"`
+}
+
+type ListBucketsOutput struct {
+	XMLName xml.Name  `xml:"ListBucketsOutput"`
+	Buckets []*Bucket `xml:"Buckets"`
+	Owner   *Owner    `xml:"Owner"`
+}

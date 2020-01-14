@@ -22,6 +22,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/util/caps"
 	"github.com/chubaofs/chubaofs/util/keystore"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/gorilla/mux"
@@ -53,6 +54,10 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = InvalidBucketName.ServeResponse(w, r)
 		return
 	}
+	if vol, _ := o.getVol(bucket); vol != nil {
+		log.LogInfof("create bucket failed: duplicated bucket name[%v]", bucket)
+		_ = DuplicatedBucket.ServeResponse(w, r)
+	}
 	auth := parseRequestAuthInfo(r)
 	var akCaps *keystore.AccessKeyCaps
 	if akCaps, err = o.authStore.GetAkCaps(auth.accessKey); err != nil {
@@ -68,7 +73,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 	}
 	//todo what params to createVol？
 	if err = mc.AdminAPI().CreateDefaultVolume(bucket, akCaps.ID); err != nil {
-		log.LogErrorf("create bucket[%v] error: accessKey(%v), err(%v)", bucket, auth.accessKey, err)
+		log.LogErrorf("create bucket[%v] failed: accessKey(%v), err(%v)", bucket, auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
@@ -126,7 +131,7 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 	// todo delete all related user cap
 	cap := "{\"OwnerVOL\":[\"*:" + bucket + ":*\"]}"
 	if _, err = o.authStore.authClient.API().OSSDeleteCaps(proto.ObjectServiceID, o.authStore.authKey, auth.accessKey, []byte(cap)); err != nil {
-		log.LogErrorf("delete bucket cap[%v] for user[%v] error: err(%v)", cap, auth.accessKey, err)
+		log.LogErrorf("delete bucket cap[%v] for user[%v] failed: err(%v)", cap, auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
@@ -146,7 +151,47 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 // List buckets
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBuckets.html
 func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO: implement 'listBucketsHandler'
+	log.LogInfof("List buckets...")
+
+	var err error
+	auth := parseRequestAuthInfo(r)
+	var akCaps *keystore.AccessKeyCaps
+	if akCaps, err = o.authStore.GetAkCaps(auth.accessKey); err != nil {
+		log.LogErrorf("get user info from authnode error: accessKey(%v), err(%v)", auth.accessKey, err)
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+
+	var curCaps = &caps.Caps{}
+	if err = curCaps.Init(akCaps.Caps); err != nil {
+		log.LogErrorf("init caps error: caps(%v), err(%v)", akCaps.Caps, err)
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+	ownerVols := curCaps.OwnerVOL
+	var buckets = make([]*Bucket, 0)
+	for _, ownerVol := range ownerVols {
+		s := strings.Split(ownerVol, ":")
+		bucket := &Bucket{Name: s[1]}
+		buckets = append(buckets, bucket)
+	}
+
+	owner := &Owner{DisplayName: akCaps.AccessKey, Id: akCaps.AccessKey}
+	listBucketOutput := &ListBucketsOutput{
+		Buckets: buckets,
+		Owner:   owner,
+	}
+
+	var bytes []byte
+	var marshalError error
+	if bytes, marshalError = MarshalXMLEntity(listBucketOutput); marshalError != nil {
+		log.LogErrorf("listBucketsHandler: marshal result fail, requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+
+	w.Write(bytes)
+	return
 }
 
 // Get bucket location
