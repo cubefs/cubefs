@@ -87,14 +87,7 @@ func isPresignedSignaturedV4(r *http.Request) bool {
 
 // is request signature V4
 func isSignaturedV4(r *http.Request) bool {
-	for _, h := range AuthSignatureV4Headers {
-		_, ok := r.Header[h]
-		if !ok {
-			return false
-		}
-	}
-
-	return true
+	return strings.HasPrefix(r.Header.Get(HeaderNameAuthorization), SignatureV4Algorithm)
 }
 
 // check request signature valid
