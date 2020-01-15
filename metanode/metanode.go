@@ -39,6 +39,7 @@ var (
 	clusterInfo    *proto.ClusterInfo
 	masterClient   *masterSDK.MasterClient
 	configTotalMem uint64
+	serverPort       string
 )
 
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
@@ -173,6 +174,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	m.localAddr = cfg.GetString(cfgLocalIP)
 	m.listen = cfg.GetString(cfgListen)
+	serverPort=m.listen
 	m.metadataDir = cfg.GetString(cfgMetadataDir)
 	m.raftDir = cfg.GetString(cfgRaftDir)
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)

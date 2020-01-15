@@ -21,15 +21,20 @@ Object Node using `JSON` format configuration file.
 .. csv-table::
    :header: "Key", "Type", "Description", "Mandatory"
 
-   "role", "string", "Role of process and must be set to *objectnode*", "Yes"
-   "listen", "string", "Listen and accept port of the server. Default: 80", "Yes"
+   "role", "string", "Role of process and must be set to ``objectnode``", "Yes"
+   "listen", "string", "
+   | Listen and accept ip address and port of this server.
+   | Format: ``IP:PORT`` or ``:PORT``
+   | Default: ``:80``", "Yes"
    "domains", "string slice", "
-   | Format: *DOMAIN*.
-   | DOMAIN: Domain of S3-like interface which makes wildcard domain support", "No"
+   | Domain of S3-like interface which makes wildcard domain support
+   | Format: ``DOMAIN``", "No"
    "logDir", "string", "Log directory", "Yes"
-   "logLevel", "string", "Level operation for logging. Default is *error*", "No"
+   "logLevel", "string", "
+   | Level operation for logging.
+   | Default: ``error``", "No"
    "masters", "string slice", "
-   | Format: *HOST:PORT*.
+   | Format: ``HOST:PORT``.
    | HOST: Hostname, domain or IP address of master (resource manager).
    | PORT: port number which listened by this master", "Yes"
    "authNodes", "string slice", "
@@ -46,7 +51,7 @@ Object Node using `JSON` format configuration file.
 
    {
         "role": "objectnode",
-        "listen": 80,
+        "listen": ":80",
         "domains": [
             "object.cfs.local"
         ],

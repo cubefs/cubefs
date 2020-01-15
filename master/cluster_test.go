@@ -175,6 +175,82 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 	}
 }
 
+func TestPanicCheckBadMetaPartitionRecovery(t *testing.T) {
+	c := buildPanicCluster()
+	vol, err := c.getVol(commonVolName)
+	if err != nil {
+		t.Error(err)
+	}
+	partitionID, err := server.cluster.idAlloc.allocateMetaPartitionID()
+	if err != nil {
+		t.Error(err)
+	}
+	dp := newMetaPartition(partitionID, 0, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID)
+	c.BadMetaPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
+	c.scheduleToCheckMetaPartitionRecoveryProgress()
+}
+
+func TestCheckBadMetaPartitionRecovery(t *testing.T) {
+	server.cluster.checkMetaNodeHeartbeat()
+	time.Sleep(5 * time.Second)
+	//clear
+	server.cluster.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
+		server.cluster.BadMetaPartitionIds.Delete(key)
+		return true
+	})
+	vol, err := server.cluster.getVol(commonVolName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	vol.RLock()
+	mps := make([]*MetaPartition, 0)
+	for _, mp := range vol.MetaPartitions {
+		mps = append(mps, mp)
+	}
+	mpsMapLen := len(vol.MetaPartitions)
+	vol.RUnlock()
+	mpsLen := len(mps)
+	if mpsLen != mpsMapLen {
+		t.Errorf("mpsLen[%v],mpsMapLen[%v]", mpsLen, mpsMapLen)
+		return
+	}
+	for _, mp := range mps {
+		mp.RLock()
+		if len(mp.Replicas) == 0 {
+			mpsLen--
+			mp.RUnlock()
+			return
+		}
+		addr := mp.Replicas[0].metaNode.Addr
+		server.cluster.putBadMetaPartitions(addr, mp.PartitionID)
+		mp.RUnlock()
+	}
+	count := 0
+	server.cluster.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
+		badMetaPartitionIds := value.([]uint64)
+		count = count + len(badMetaPartitionIds)
+		return true
+	})
+
+	if count != mpsLen {
+		t.Errorf("expect bad partition num[%v],real num[%v]", mpsLen, count)
+		return
+	}
+	//check recovery
+	server.cluster.checkMetaPartitionRecoveryProgress()
+
+	count = 0
+	server.cluster.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
+		count++
+		return true
+	})
+	if count != 0 {
+		t.Errorf("expect bad partition num[0],real num[%v]", count)
+		return
+	}
+}
+
 func TestUpdateInodeIDUpperBound(t *testing.T) {
 	vol, err := server.cluster.getVol(commonVolName)
 	if err != nil {

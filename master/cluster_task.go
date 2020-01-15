@@ -108,7 +108,7 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 	oldHosts = mp.Hosts
 	mp.RUnlock()
 	if err = c.validateDecommissionMetaPartition(mp, nodeAddr); err != nil {
-		return
+		goto errHandler
 	}
 	if metaNode, err = c.metaNode(nodeAddr); err != nil {
 		goto errHandler
@@ -128,6 +128,8 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 	if err = c.addMetaReplica(mp, newPeers[0].Addr); err != nil {
 		goto errHandler
 	}
+	mp.IsRecover = true
+	c.putBadMetaPartitions(nodeAddr, mp.PartitionID)
 	Warn(c.Name, fmt.Sprintf("action[decommissionMetaPartition] clusterID[%v] vol[%v] meta partition[%v] "+
 		"offline addr[%v] success,new addr[%v]", c.Name, mp.volName, mp.PartitionID, nodeAddr, newPeers[0].Addr))
 	return
@@ -148,6 +150,15 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 		return
 	}
 	if err = mp.canBeOffline(nodeAddr, int(vol.mpReplicaNum)); err != nil {
+		return
+	}
+
+	if err = mp.hasMissingOneReplica(int(vol.mpReplicaNum)); err != nil {
+		return
+	}
+
+	if mp.IsRecover {
+		err = fmt.Errorf("vol[%v],meta partition[%v] is recovering,[%v] can't be decommissioned", vol.Name, mp.PartitionID, nodeAddr)
 		return
 	}
 	return

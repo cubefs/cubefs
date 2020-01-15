@@ -16,7 +16,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": 21,
-  "iteration": 1573200227128,
+  "iteration": 1578879879321,
   "links": [],
   "panels": [
     {
@@ -42,6 +42,7 @@
         "#d44a3a"
       ],
       "datasource": null,
+      "description": "master node total count of cluster",
       "format": "none",
       "gauge": {
         "maxValue": 100,
@@ -100,7 +101,7 @@
         }
       ],
       "thresholds": "",
-      "title": "master_count",
+      "title": "MasterCount",
       "type": "singlestat",
       "valueFontSize": "80%",
       "valueMaps": [
@@ -180,7 +181,7 @@
         }
       ],
       "thresholds": "",
-      "title": "metanode_count",
+      "title": "MetanodeCount",
       "type": "singlestat",
       "valueFontSize": "80%",
       "valueMaps": [
@@ -260,7 +261,7 @@
         }
       ],
       "thresholds": "",
-      "title": "datanode_count",
+      "title": "DatanodeCount",
       "type": "singlestat",
       "valueFontSize": "80%",
       "valueMaps": [
@@ -340,7 +341,7 @@
         }
       ],
       "thresholds": "",
-      "title": "client_count",
+      "title": "ClientCount",
       "type": "singlestat",
       "valueFontSize": "80%",
       "valueMaps": [
@@ -362,6 +363,7 @@
         "#d44a3a"
       ],
       "datasource": "default",
+      "description": "Cluster volume total count",
       "format": "none",
       "gauge": {
         "maxValue": 100,
@@ -420,7 +422,7 @@
         }
       ],
       "thresholds": "",
-      "title": "vol_count",
+      "title": "VolumeCount",
       "type": "singlestat",
       "valueFontSize": "80%",
       "valueMaps": [
@@ -501,7 +503,7 @@
         }
       ],
       "thresholds": "",
-      "title": "process_start_time",
+      "title": "ProcessStartTime",
       "type": "singlestat",
       "valueFontSize": "80%",
       "valueMaps": [
@@ -568,7 +570,288 @@
       "thresholds": [],
       "timeFrom": null,
       "timeShift": null,
-      "title": "node alive",
+      "title": "NodeAlive",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "locale",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "default",
+      "fill": 1,
+      "gridPos": {
+        "h": 6,
+        "w": 7,
+        "x": 7,
+        "y": 5
+      },
+      "id": 179,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "percentage": false,
+      "pointradius": 5,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [
+        {
+          "alias": "sum"
+        }
+      ],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "sum(cfs_master_disk_error{app=\"$app\", cluster=\"$cluster\"} > 0)",
+          "format": "time_series",
+          "intervalFactor": 1,
+          "legendFormat": "sum",
+          "refId": "D"
+        },
+        {
+          "expr": "cfs_master_disk_error{app=\"$app\", cluster=\"$cluster\"} > 0",
+          "format": "time_series",
+          "intervalFactor": 1,
+          "legendFormat": "{{addr}}_{{path}}",
+          "refId": "A"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "DiskError",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "locale",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "locale",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "default",
+      "fill": 1,
+      "gridPos": {
+        "h": 6,
+        "w": 7,
+        "x": 14,
+        "y": 5
+      },
+      "id": 180,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "percentage": false,
+      "pointradius": 5,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "cfs_master_metaNodes_inactive{app=\"$app\", cluster=\"$cluster\"}> 0",
+          "format": "time_series",
+          "hide": false,
+          "intervalFactor": 1,
+          "legendFormat": "{{instance}}",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(cfs_master_metaNodes_inactive{app=\"$app\", cluster=\"$cluster\"}> 0)",
+          "format": "time_series",
+          "hide": false,
+          "intervalFactor": 1,
+          "legendFormat": "sum",
+          "refId": "A"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "MetaNodesInactive",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "locale",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "default",
+      "fill": 1,
+      "gridPos": {
+        "h": 6,
+        "w": 7,
+        "x": 0,
+        "y": 11
+      },
+      "id": 181,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "percentage": false,
+      "pointradius": 5,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "cfs_master_dataNodes_inactive{app=\"$app\", cluster=\"$cluster\"}> 0",
+          "format": "time_series",
+          "hide": false,
+          "intervalFactor": 1,
+          "legendFormat": "{{instance}}",
+          "refId": "C"
+        },
+        {
+          "expr": "sum(cfs_master_dataNodes_inactive{app=\"$app\", cluster=\"$cluster\"}> 0)",
+          "format": "time_series",
+          "hide": false,
+          "intervalFactor": 1,
+          "legendFormat": "sum",
+          "refId": "A"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "DatanodeInactive",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -616,7 +899,7 @@
         "h": 6,
         "w": 7,
         "x": 7,
-        "y": 5
+        "y": 11
       },
       "id": 177,
       "legend": {
@@ -651,7 +934,7 @@
           "format": "time_series",
           "hide": false,
           "intervalFactor": 1,
-          "legendFormat": "total_GB",
+          "legendFormat": "TotalGB",
           "refId": "B"
         },
         {
@@ -659,7 +942,7 @@
           "format": "time_series",
           "hide": false,
           "intervalFactor": 1,
-          "legendFormat": "used_GB",
+          "legendFormat": "UsedGB",
           "refId": "A"
         },
         {
@@ -667,7 +950,7 @@
           "format": "time_series",
           "hide": false,
           "intervalFactor": 1,
-          "legendFormat": "increased_GB",
+          "legendFormat": "IncreasedGB",
           "refId": "C"
         },
         {
@@ -675,14 +958,14 @@
           "format": "time_series",
           "hide": false,
           "intervalFactor": 1,
-          "legendFormat": "used_ratio",
+          "legendFormat": "UsedRatio",
           "refId": "D"
         }
       ],
       "thresholds": [],
       "timeFrom": null,
       "timeShift": null,
-      "title": "dataNode_size",
+      "title": "DatanodeSize",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -730,7 +1013,7 @@
         "h": 6,
         "w": 7,
         "x": 14,
-        "y": 5
+        "y": 11
       },
       "id": 92,
       "legend": {
@@ -780,7 +1063,7 @@
       "thresholds": [],
       "timeFrom": null,
       "timeShift": null,
-      "title": "metanode_size",
+      "title": "MetanodeSize",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -828,7 +1111,7 @@
         "h": 6,
         "w": 7,
         "x": 0,
-        "y": 11
+        "y": 17
       },
       "id": 175,
       "legend": {
@@ -894,7 +1177,7 @@
       "thresholds": [],
       "timeFrom": null,
       "timeShift": null,
-      "title": "vol_size",
+      "title": "VolumeSize",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -942,7 +1225,7 @@
         "h": 6,
         "w": 7,
         "x": 7,
-        "y": 11
+        "y": 17
       },
       "id": 90,
       "legend": {
@@ -978,7 +1261,7 @@
       "thresholds": [],
       "timeFrom": null,
       "timeShift": null,
-      "title": "vol_count",
+      "title": "VolumeCount",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1026,7 +1309,7 @@
         "h": 6,
         "w": 7,
         "x": 14,
-        "y": 11
+        "y": 17
       },
       "id": 73,
       "legend": {
@@ -1151,7 +1434,7 @@
       "thresholds": [],
       "timeFrom": null,
       "timeShift": null,
-      "title": "metanode_OpMeta",
+      "title": "MetanodeOperations",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1176,287 +1459,6 @@
         },
         {
           "format": "ops",
-          "label": null,
-          "logBase": 1,
-          "max": null,
-          "min": null,
-          "show": true
-        }
-      ],
-      "yaxis": {
-        "align": false,
-        "alignLevel": null
-      }
-    },
-    {
-      "aliasColors": {},
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
-      "datasource": "default",
-      "fill": 1,
-      "gridPos": {
-        "h": 6,
-        "w": 7,
-        "x": 0,
-        "y": 17
-      },
-      "id": 179,
-      "legend": {
-        "avg": false,
-        "current": false,
-        "max": false,
-        "min": false,
-        "show": true,
-        "total": false,
-        "values": false
-      },
-      "lines": true,
-      "linewidth": 1,
-      "links": [],
-      "nullPointMode": "null",
-      "percentage": false,
-      "pointradius": 5,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [
-        {
-          "alias": "sum"
-        }
-      ],
-      "spaceLength": 10,
-      "stack": false,
-      "steppedLine": false,
-      "targets": [
-        {
-          "expr": "sum(cfs_master_disk_error{app=\"$app\", cluster=\"$cluster\"} > 0)",
-          "format": "time_series",
-          "intervalFactor": 1,
-          "legendFormat": "sum",
-          "refId": "D"
-        },
-        {
-          "expr": "cfs_master_disk_error{app=\"$app\", cluster=\"$cluster\"} > 0",
-          "format": "time_series",
-          "intervalFactor": 1,
-          "legendFormat": "{{addr}}_{{path}}",
-          "refId": "A"
-        }
-      ],
-      "thresholds": [],
-      "timeFrom": null,
-      "timeShift": null,
-      "title": "disk_error",
-      "tooltip": {
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "type": "graph",
-      "xaxis": {
-        "buckets": null,
-        "mode": "time",
-        "name": null,
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "format": "locale",
-          "label": null,
-          "logBase": 1,
-          "max": null,
-          "min": null,
-          "show": true
-        },
-        {
-          "format": "locale",
-          "label": null,
-          "logBase": 1,
-          "max": null,
-          "min": null,
-          "show": true
-        }
-      ],
-      "yaxis": {
-        "align": false,
-        "alignLevel": null
-      }
-    },
-    {
-      "aliasColors": {},
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
-      "datasource": "default",
-      "fill": 1,
-      "gridPos": {
-        "h": 6,
-        "w": 7,
-        "x": 7,
-        "y": 17
-      },
-      "id": 180,
-      "legend": {
-        "avg": false,
-        "current": false,
-        "max": false,
-        "min": false,
-        "show": true,
-        "total": false,
-        "values": false
-      },
-      "lines": true,
-      "linewidth": 1,
-      "links": [],
-      "nullPointMode": "null",
-      "percentage": false,
-      "pointradius": 5,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "stack": false,
-      "steppedLine": false,
-      "targets": [
-        {
-          "expr": "cfs_master_metaNodes_inactive{app=\"$app\", cluster=\"$cluster\"}> 0",
-          "format": "time_series",
-          "hide": false,
-          "intervalFactor": 1,
-          "legendFormat": "{{instance}}",
-          "refId": "B"
-        },
-        {
-          "expr": "sum(cfs_master_metaNodes_inactive{app=\"$app\", cluster=\"$cluster\"}> 0)",
-          "format": "time_series",
-          "hide": false,
-          "intervalFactor": 1,
-          "legendFormat": "sum",
-          "refId": "A"
-        }
-      ],
-      "thresholds": [],
-      "timeFrom": null,
-      "timeShift": null,
-      "title": "metaNodes_inactive",
-      "tooltip": {
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "type": "graph",
-      "xaxis": {
-        "buckets": null,
-        "mode": "time",
-        "name": null,
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "format": "locale",
-          "label": null,
-          "logBase": 1,
-          "max": null,
-          "min": null,
-          "show": true
-        },
-        {
-          "format": "short",
-          "label": null,
-          "logBase": 1,
-          "max": null,
-          "min": null,
-          "show": true
-        }
-      ],
-      "yaxis": {
-        "align": false,
-        "alignLevel": null
-      }
-    },
-    {
-      "aliasColors": {},
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
-      "datasource": "default",
-      "fill": 1,
-      "gridPos": {
-        "h": 6,
-        "w": 7,
-        "x": 14,
-        "y": 17
-      },
-      "id": 181,
-      "legend": {
-        "avg": false,
-        "current": false,
-        "max": false,
-        "min": false,
-        "show": true,
-        "total": false,
-        "values": false
-      },
-      "lines": true,
-      "linewidth": 1,
-      "links": [],
-      "nullPointMode": "null",
-      "percentage": false,
-      "pointradius": 5,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "stack": false,
-      "steppedLine": false,
-      "targets": [
-        {
-          "expr": "cfs_master_dataNodes_inactive{app=\"$app\", cluster=\"$cluster\"}> 0",
-          "format": "time_series",
-          "hide": false,
-          "intervalFactor": 1,
-          "legendFormat": "{{instance}}",
-          "refId": "C"
-        },
-        {
-          "expr": "sum(cfs_master_dataNodes_inactive{app=\"$app\", cluster=\"$cluster\"}> 0)",
-          "format": "time_series",
-          "hide": false,
-          "intervalFactor": 1,
-          "legendFormat": "sum",
-          "refId": "A"
-        }
-      ],
-      "thresholds": [],
-      "timeFrom": null,
-      "timeShift": null,
-      "title": "dataNodes_inactive",
-      "tooltip": {
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "type": "graph",
-      "xaxis": {
-        "buckets": null,
-        "mode": "time",
-        "name": null,
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "format": "locale",
-          "label": null,
-          "logBase": 1,
-          "max": null,
-          "min": null,
-          "show": true
-        },
-        {
-          "format": "short",
           "label": null,
           "logBase": 1,
           "max": null,
@@ -1626,7 +1628,7 @@
       "thresholds": [],
       "timeFrom": null,
       "timeShift": null,
-      "title": "metanode_OpMetaInode",
+      "title": "MetanodeInodeOperations",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1750,7 +1752,7 @@
       "thresholds": [],
       "timeFrom": null,
       "timeShift": null,
-      "title": "metanode_OpMetaDentry",
+      "title": "MetanodeDentryOperation",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1902,7 +1904,7 @@
       "thresholds": [],
       "timeFrom": null,
       "timeShift": null,
-      "title": "datanode_OpExtent",
+      "title": "DatanodeExtentOperations",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1993,7 +1995,7 @@
       "thresholds": [],
       "timeFrom": null,
       "timeShift": null,
-      "title": "metanode_OpMetaPartition",
+      "title": "MetapartitionOperations",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -2105,7 +2107,7 @@
       "thresholds": [],
       "timeFrom": null,
       "timeShift": null,
-      "title": "datanode_OpDataPartition",
+      "title": "DatapartitionOperations",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -2143,7 +2145,7 @@
       }
     },
     {
-      "collapsed": true,
+      "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -2151,480 +2153,479 @@
         "y": 35
       },
       "id": 34,
-      "panels": [
-        {
-          "aliasColors": {},
-          "bars": true,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "gridPos": {
-            "h": 7,
-            "w": 7,
-            "x": 0,
-            "y": 3
-          },
-          "id": 162,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": false,
-          "linewidth": 1,
-          "links": [],
-          "nullPointMode": "null",
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "seriesOverrides": [
-            {
-              "alias": "master_count",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "go_info{cluster=\"$cluster\", role=\"master\"}",
-              "format": "time_series",
-              "hide": false,
-              "intervalFactor": 1,
-              "legendFormat": "master_{{instance}}",
-              "refId": "C"
-            },
-            {
-              "expr": "count(go_info{cluster=~\"$cluster\", role=~\"master\"})",
-              "format": "time_series",
-              "hide": false,
-              "intervalFactor": 1,
-              "legendFormat": "master_count",
-              "refId": "G"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeShift": null,
-          "title": "[[cluster]]_[[role]]_nodes",
-          "tooltip": {
-            "shared": true,
-            "sort": 0,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "locale",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            },
-            {
-              "format": "locale",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": true,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "gridPos": {
-            "h": 7,
-            "w": 7,
-            "x": 7,
-            "y": 3
-          },
-          "id": 163,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": false,
-          "linewidth": 1,
-          "links": [],
-          "nullPointMode": "null",
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "seriesOverrides": [],
-          "spaceLength": 10,
-          "stack": true,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "go_info{cluster=\"$cluster\", role=\"metanode\"}",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "meta_{{instance}}",
-              "refId": "C"
-            },
-            {
-              "expr": "sum([[app]]_master_metaNodes_count{cluster=~\"$cluster\"})",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "metaNode",
-              "refId": "B"
-            },
-            {
-              "expr": "sum([[app]]_master_dataNodes_count{cluster=~\"$cluster\"})",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "datanode",
-              "refId": "A"
-            },
-            {
-              "expr": "[[app]]_master_metaNodes_count",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "meta_count",
-              "refId": "D"
-            },
-            {
-              "expr": "[[app]]_master_dataNodes_count",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "datanode_count",
-              "refId": "E"
-            },
-            {
-              "expr": "count(process_start_time_seconds{role=\"fuseclient\"})",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "client_count",
-              "refId": "F"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeShift": null,
-          "title": "[[cluster]]_metanode_alive",
-          "tooltip": {
-            "shared": true,
-            "sort": 0,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "locale",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            },
-            {
-              "format": "short",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": true,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "gridPos": {
-            "h": 7,
-            "w": 7,
-            "x": 0,
-            "y": 10
-          },
-          "id": 164,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": false,
-          "linewidth": 1,
-          "links": [],
-          "nullPointMode": "null",
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "seriesOverrides": [],
-          "spaceLength": 10,
-          "stack": true,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "go_info{cluster=\"$cluster\", role=\"dataNode\"}",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "C"
-            },
-            {
-              "expr": "sum([[app]]_master_metaNodes_count{cluster=~\"$cluster\"})",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "metaNode",
-              "refId": "B"
-            },
-            {
-              "expr": "sum([[app]]_master_dataNodes_count{cluster=~\"$cluster\"})",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "datanode",
-              "refId": "A"
-            },
-            {
-              "expr": "[[app]]_master_metaNodes_count",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "meta_count",
-              "refId": "D"
-            },
-            {
-              "expr": "[[app]]_master_dataNodes_count",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "datanode_count",
-              "refId": "E"
-            },
-            {
-              "expr": "count(process_start_time_seconds{role=\"fuseclient\"})",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "client_count",
-              "refId": "F"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeShift": null,
-          "title": "[[cluster]]_datanode_alive",
-          "tooltip": {
-            "shared": true,
-            "sort": 0,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "locale",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            },
-            {
-              "format": "short",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": true,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "gridPos": {
-            "h": 7,
-            "w": 7,
-            "x": 7,
-            "y": 10
-          },
-          "id": 165,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": false,
-          "linewidth": 1,
-          "links": [],
-          "nullPointMode": "null",
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "seriesOverrides": [],
-          "spaceLength": 10,
-          "stack": true,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "go_info{cluster=\"$cluster\", role=\"fuseclient\"}",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "fuseclient_{{instance}}",
-              "refId": "C"
-            },
-            {
-              "expr": "sum([[app]]_master_metaNodes_count{cluster=~\"$cluster\"})",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "metaNode",
-              "refId": "B"
-            },
-            {
-              "expr": "sum([[app]]_master_dataNodes_count{cluster=~\"$cluster\"})",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "datanode",
-              "refId": "A"
-            },
-            {
-              "expr": "[[app]]_master_metaNodes_count",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "meta_count",
-              "refId": "D"
-            },
-            {
-              "expr": "[[app]]_master_dataNodes_count",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "datanode_count",
-              "refId": "E"
-            },
-            {
-              "expr": "count(process_start_time_seconds{role=\"fuseclient\"})",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "client_count",
-              "refId": "F"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeShift": null,
-          "title": "[[cluster]]_fuseclient_alive",
-          "tooltip": {
-            "shared": true,
-            "sort": 0,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "locale",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            },
-            {
-              "format": "short",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        }
-      ],
+      "panels": [],
       "title": "Master",
       "type": "row"
+    },
+    {
+      "aliasColors": {},
+      "bars": true,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": null,
+      "fill": 1,
+      "gridPos": {
+        "h": 7,
+        "w": 7,
+        "x": 0,
+        "y": 36
+      },
+      "id": 162,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": false,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "percentage": false,
+      "pointradius": 5,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [
+        {
+          "alias": "master_count",
+          "yaxis": 2
+        }
+      ],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "go_info{cluster=\"$cluster\", role=\"master\"}",
+          "format": "time_series",
+          "hide": false,
+          "intervalFactor": 1,
+          "legendFormat": "[[cluster]]_master_{{instance}}",
+          "refId": "C"
+        },
+        {
+          "expr": "count(go_info{cluster=~\"$cluster\", role=~\"master\"})",
+          "format": "time_series",
+          "hide": false,
+          "intervalFactor": 1,
+          "legendFormat": "[[cluster]]_master_count",
+          "refId": "G"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "[[role]]_nodes",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "locale",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "locale",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": true,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": null,
+      "fill": 1,
+      "gridPos": {
+        "h": 7,
+        "w": 7,
+        "x": 7,
+        "y": 36
+      },
+      "id": 163,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": false,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "percentage": false,
+      "pointradius": 5,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": true,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "go_info{cluster=\"$cluster\", role=\"metanode\"}",
+          "format": "time_series",
+          "intervalFactor": 1,
+          "legendFormat": "meta_{{instance}}",
+          "refId": "C"
+        },
+        {
+          "expr": "sum([[app]]_master_metaNodes_count{cluster=~\"$cluster\"})",
+          "format": "time_series",
+          "hide": true,
+          "intervalFactor": 1,
+          "legendFormat": "metaNode",
+          "refId": "B"
+        },
+        {
+          "expr": "sum([[app]]_master_dataNodes_count{cluster=~\"$cluster\"})",
+          "format": "time_series",
+          "hide": true,
+          "intervalFactor": 1,
+          "legendFormat": "datanode",
+          "refId": "A"
+        },
+        {
+          "expr": "[[app]]_master_metaNodes_count",
+          "format": "time_series",
+          "hide": true,
+          "intervalFactor": 1,
+          "legendFormat": "meta_count",
+          "refId": "D"
+        },
+        {
+          "expr": "[[app]]_master_dataNodes_count",
+          "format": "time_series",
+          "hide": true,
+          "intervalFactor": 1,
+          "legendFormat": "datanode_count",
+          "refId": "E"
+        },
+        {
+          "expr": "count(process_start_time_seconds{role=\"fuseclient\"})",
+          "format": "time_series",
+          "hide": true,
+          "intervalFactor": 1,
+          "legendFormat": "client_count",
+          "refId": "F"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "[[cluster]]_metanode_alive",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "locale",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": true,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": null,
+      "fill": 1,
+      "gridPos": {
+        "h": 7,
+        "w": 7,
+        "x": 0,
+        "y": 43
+      },
+      "id": 164,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": false,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "percentage": false,
+      "pointradius": 5,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": true,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "go_info{cluster=\"$cluster\", role=\"dataNode\"}",
+          "format": "time_series",
+          "intervalFactor": 1,
+          "legendFormat": "{{instance}}",
+          "refId": "C"
+        },
+        {
+          "expr": "sum([[app]]_master_metaNodes_count{cluster=~\"$cluster\"})",
+          "format": "time_series",
+          "hide": true,
+          "intervalFactor": 1,
+          "legendFormat": "metaNode",
+          "refId": "B"
+        },
+        {
+          "expr": "sum([[app]]_master_dataNodes_count{cluster=~\"$cluster\"})",
+          "format": "time_series",
+          "hide": true,
+          "intervalFactor": 1,
+          "legendFormat": "datanode",
+          "refId": "A"
+        },
+        {
+          "expr": "[[app]]_master_metaNodes_count",
+          "format": "time_series",
+          "hide": true,
+          "intervalFactor": 1,
+          "legendFormat": "meta_count",
+          "refId": "D"
+        },
+        {
+          "expr": "[[app]]_master_dataNodes_count",
+          "format": "time_series",
+          "hide": true,
+          "intervalFactor": 1,
+          "legendFormat": "datanode_count",
+          "refId": "E"
+        },
+        {
+          "expr": "count(process_start_time_seconds{role=\"fuseclient\"})",
+          "format": "time_series",
+          "hide": true,
+          "intervalFactor": 1,
+          "legendFormat": "client_count",
+          "refId": "F"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "[[cluster]]_datanode_alive",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "locale",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": true,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": null,
+      "fill": 1,
+      "gridPos": {
+        "h": 7,
+        "w": 7,
+        "x": 7,
+        "y": 43
+      },
+      "id": 165,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": false,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "percentage": false,
+      "pointradius": 5,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": true,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "go_info{cluster=\"$cluster\", role=\"fuseclient\"}",
+          "format": "time_series",
+          "intervalFactor": 1,
+          "legendFormat": "fuseclient_{{instance}}",
+          "refId": "C"
+        },
+        {
+          "expr": "sum([[app]]_master_metaNodes_count{cluster=~\"$cluster\"})",
+          "format": "time_series",
+          "hide": true,
+          "intervalFactor": 1,
+          "legendFormat": "metaNode",
+          "refId": "B"
+        },
+        {
+          "expr": "sum([[app]]_master_dataNodes_count{cluster=~\"$cluster\"})",
+          "format": "time_series",
+          "hide": true,
+          "intervalFactor": 1,
+          "legendFormat": "datanode",
+          "refId": "A"
+        },
+        {
+          "expr": "[[app]]_master_metaNodes_count",
+          "format": "time_series",
+          "hide": true,
+          "intervalFactor": 1,
+          "legendFormat": "meta_count",
+          "refId": "D"
+        },
+        {
+          "expr": "[[app]]_master_dataNodes_count",
+          "format": "time_series",
+          "hide": true,
+          "intervalFactor": 1,
+          "legendFormat": "datanode_count",
+          "refId": "E"
+        },
+        {
+          "expr": "count(process_start_time_seconds{role=\"fuseclient\"})",
+          "format": "time_series",
+          "hide": true,
+          "intervalFactor": 1,
+          "legendFormat": "client_count",
+          "refId": "F"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "[[cluster]]_fuseclient_alive",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "locale",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
     },
     {
       "collapsed": true,
@@ -2632,7 +2633,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 36
+        "y": 50
       },
       "id": 36,
       "panels": [
@@ -2647,7 +2648,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 4
+            "y": 3
           },
           "id": 117,
           "legend": {
@@ -2697,7 +2698,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaCreateInode",
+          "title": "InodeCreate",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -2745,7 +2746,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 4
+            "y": 3
           },
           "id": 44,
           "legend": {
@@ -2821,7 +2822,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaBatchInodeGet",
+          "title": "InodeBatchGet",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -2869,7 +2870,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 4
+            "y": 3
           },
           "id": 119,
           "legend": {
@@ -2959,7 +2960,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaLinkInode",
+          "title": "InodeLink",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -3007,7 +3008,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 12
+            "y": 11
           },
           "id": 120,
           "legend": {
@@ -3084,7 +3085,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaEvictInode",
+          "title": "InodeEvict",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -3127,12 +3128,13 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": null,
+          "description": "",
           "fill": 1,
           "gridPos": {
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 12
+            "y": 11
           },
           "id": 121,
           "legend": {
@@ -3177,7 +3179,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpLoadMetaPartition",
+          "title": "LoadMetaPartition",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -3225,7 +3227,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 12
+            "y": 11
           },
           "id": 58,
           "legend": {
@@ -3269,7 +3271,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpCreateMetaPartition",
+          "title": "CreateMetaPartition",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -3317,7 +3319,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 20
+            "y": 19
           },
           "id": 88,
           "legend": {
@@ -3353,7 +3355,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaExtentsList",
+          "title": "MetaExtentsList",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -3401,7 +3403,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 20
+            "y": 19
           },
           "id": 50,
           "legend": {
@@ -3445,7 +3447,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaExtentsAdd",
+          "title": "MetaExtentsAdd",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -3493,7 +3495,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 20
+            "y": 19
           },
           "id": 126,
           "legend": {
@@ -3530,7 +3532,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaNodeHeartbeat",
+          "title": "MetaNodeHeartbeat",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -3578,7 +3580,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 28
+            "y": 27
           },
           "id": 72,
           "legend": {
@@ -3630,7 +3632,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaCreateDentry",
+          "title": "MetaCreateDentry",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -3678,7 +3680,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 28
+            "y": 27
           },
           "id": 125,
           "legend": {
@@ -3763,7 +3765,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaLookup",
+          "title": "MetaLookup",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -3811,7 +3813,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 28
+            "y": 27
           },
           "id": 122,
           "legend": {
@@ -3864,7 +3866,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaDeleteDentry",
+          "title": "MetaDeleteDentry",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -3912,7 +3914,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 36
+            "y": 35
           },
           "id": 124,
           "legend": {
@@ -3962,7 +3964,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaReadDir",
+          "title": "MetaReadDir",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -4010,7 +4012,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 36
+            "y": 35
           },
           "id": 129,
           "legend": {
@@ -4095,7 +4097,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaReleaseOpen",
+          "title": "MetaReleaseOpen",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -4143,7 +4145,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 36
+            "y": 35
           },
           "id": 116,
           "legend": {
@@ -4220,7 +4222,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaDeleteInode",
+          "title": "MetaDeleteInode",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -4268,7 +4270,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 44
+            "y": 43
           },
           "id": 127,
           "legend": {
@@ -4353,7 +4355,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaTruncate",
+          "title": "MetaTruncate",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -4401,7 +4403,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 44
+            "y": 43
           },
           "id": 128,
           "legend": {
@@ -4486,7 +4488,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaSetattr",
+          "title": "MetaSetattr",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -4534,7 +4536,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 44
+            "y": 43
           },
           "id": 123,
           "legend": {
@@ -4587,7 +4589,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaUpdateDentry",
+          "title": "MetaUpdateDentry",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -4635,7 +4637,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 52
+            "y": 51
           },
           "id": 46,
           "legend": {
@@ -4719,7 +4721,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaOpen",
+          "title": "MetaOpen",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -4766,7 +4768,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 37
+        "y": 51
       },
       "id": 27,
       "panels": [
@@ -4776,12 +4778,13 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": null,
+          "description": "",
           "fill": 1,
           "gridPos": {
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 5
+            "y": 52
           },
           "id": 132,
           "legend": {
@@ -4831,7 +4834,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "DataNodeHeartbeat",
+          "title": "DatanodeHeartbeat",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -4879,7 +4882,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 5
+            "y": 52
           },
           "id": 133,
           "legend": {
@@ -5036,7 +5039,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpCreateDataPartition",
+          "title": "CreateDataPartition",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -5084,7 +5087,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 5
+            "y": 52
           },
           "id": 137,
           "legend": {
@@ -5182,7 +5185,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 13
+            "y": 60
           },
           "id": 138,
           "legend": {
@@ -5387,7 +5390,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 13
+            "y": 60
           },
           "id": 134,
           "legend": {
@@ -5485,7 +5488,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 13
+            "y": 60
           },
           "id": 135,
           "legend": {
@@ -5583,7 +5586,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 21
+            "y": 68
           },
           "id": 142,
           "legend": {
@@ -5681,7 +5684,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 21
+            "y": 68
           },
           "id": 143,
           "legend": {
@@ -5782,7 +5785,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 21
+            "y": 68
           },
           "id": 139,
           "legend": {
@@ -5987,7 +5990,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 29
+            "y": 76
           },
           "id": 144,
           "legend": {
@@ -6085,7 +6088,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 29
+            "y": 76
           },
           "id": 145,
           "legend": {
@@ -6183,7 +6186,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 29
+            "y": 76
           },
           "id": 74,
           "legend": {
@@ -6231,7 +6234,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpBroadcastMinAppliedID",
+          "title": "BroadcastMinAppliedID",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -6279,7 +6282,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 37
+            "y": 84
           },
           "id": 141,
           "legend": {
@@ -6377,7 +6380,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 37
+            "y": 84
           },
           "id": 136,
           "legend": {
@@ -6582,7 +6585,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 37
+            "y": 84
           },
           "id": 146,
           "legend": {
@@ -6680,7 +6683,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 45
+            "y": 92
           },
           "id": 131,
           "legend": {
@@ -6885,7 +6888,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 45
+            "y": 92
           },
           "id": 140,
           "legend": {
@@ -7042,7 +7045,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpRandomWrite",
+          "title": "RandomWrite",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -7089,7 +7092,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 38
+        "y": 52
       },
       "id": 66,
       "panels": [
@@ -7104,7 +7107,7 @@
             "h": 7,
             "w": 8,
             "x": 0,
-            "y": 6
+            "y": 5
           },
           "id": 64,
           "legend": {
@@ -7154,7 +7157,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "MetaReaddir",
+          "title": "MetaReadDir",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -7202,7 +7205,7 @@
             "h": 7,
             "w": 8,
             "x": 8,
-            "y": 6
+            "y": 5
           },
           "id": 157,
           "legend": {
@@ -7332,7 +7335,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaCreateInode",
+          "title": "MetaCreateInode",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -7380,7 +7383,7 @@
             "h": 7,
             "w": 8,
             "x": 16,
-            "y": 6
+            "y": 5
           },
           "id": 156,
           "legend": {
@@ -7558,7 +7561,7 @@
             "h": 7,
             "w": 8,
             "x": 0,
-            "y": 13
+            "y": 12
           },
           "id": 160,
           "legend": {
@@ -7640,7 +7643,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaDeleteDentry",
+          "title": "MetaDeleteDentry",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -7688,7 +7691,7 @@
             "h": 7,
             "w": 8,
             "x": 8,
-            "y": 13
+            "y": 12
           },
           "id": 68,
           "legend": {
@@ -7769,7 +7772,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaCreateDentry",
+          "title": "MetaCreateDentry",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -7817,7 +7820,7 @@
             "h": 7,
             "w": 8,
             "x": 16,
-            "y": 13
+            "y": 12
           },
           "id": 102,
           "legend": {
@@ -7905,7 +7908,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaExtentsList",
+          "title": "MetaExtentsList",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -7953,7 +7956,7 @@
             "h": 7,
             "w": 8,
             "x": 0,
-            "y": 20
+            "y": 19
           },
           "id": 69,
           "legend": {
@@ -8009,7 +8012,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaExtentsAdd",
+          "title": "MetaExtentsAdd",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -8057,7 +8060,7 @@
             "h": 7,
             "w": 8,
             "x": 8,
-            "y": 20
+            "y": 19
           },
           "id": 148,
           "legend": {
@@ -8219,7 +8222,7 @@
             "h": 7,
             "w": 8,
             "x": 16,
-            "y": 20
+            "y": 19
           },
           "id": 67,
           "legend": {
@@ -8349,7 +8352,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaBatchInodeGet",
+          "title": "MetaBatchInodeGet",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -8397,7 +8400,7 @@
             "h": 7,
             "w": 8,
             "x": 0,
-            "y": 27
+            "y": 26
           },
           "id": 152,
           "legend": {
@@ -8477,7 +8480,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "filecreate",
+          "title": "FileCreate",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -8525,7 +8528,7 @@
             "h": 7,
             "w": 8,
             "x": 8,
-            "y": 27
+            "y": 26
           },
           "id": 158,
           "legend": {
@@ -8623,7 +8626,7 @@
             "h": 7,
             "w": 8,
             "x": 16,
-            "y": 27
+            "y": 26
           },
           "id": 155,
           "legend": {
@@ -8801,7 +8804,7 @@
             "h": 7,
             "w": 8,
             "x": 0,
-            "y": 34
+            "y": 33
           },
           "id": 153,
           "legend": {
@@ -8883,7 +8886,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "filesync",
+          "title": "FileSync",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -8931,7 +8934,7 @@
             "h": 7,
             "w": 8,
             "x": 8,
-            "y": 34
+            "y": 33
           },
           "id": 100,
           "legend": {
@@ -8979,7 +8982,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "fileread",
+          "title": "FileRead",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -9021,15 +9024,15 @@
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": null,
+          "datasource": "default",
           "fill": 1,
           "gridPos": {
             "h": 7,
             "w": 8,
             "x": 16,
-            "y": 34
+            "y": 33
           },
-          "id": 150,
+          "id": 154,
           "legend": {
             "avg": false,
             "current": false,
@@ -9049,7 +9052,7 @@
           "renderer": "flot",
           "seriesOverrides": [
             {
-              "alias": "/.*_ops_.*/",
+              "alias": "/.*_count_.*/",
               "yaxis": 2
             }
           ],
@@ -9058,90 +9061,58 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "[[app]]_fuseclient_OpMetaOpen{app=\"$app\", cluster=\"$cluster\", instance=\"$instance\"}",
-              "format": "time_series",
-              "hide": false,
-              "intervalFactor": 1,
-              "legendFormat": "MetaOpen_{{instance}}",
-              "refId": "B"
-            },
-            {
-              "expr": "[[app]]_fuseclient_OpMetaReadDir{app=\"$app\", cluster=\"$cluster\"}",
+              "expr": "[[app]]_fuseclient_filecreate{app=~\"$app\",cluster=\"$cluster\"}",
               "format": "time_series",
               "hide": true,
               "intervalFactor": 1,
-              "legendFormat": "MetaReaddir_{{instance}}",
-              "refId": "K"
-            },
-            {
-              "expr": "[[app]]_fuseclient_OpMetaSetattr{app=\"$app\", cluster=\"$cluster\"}",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "MetaSetattr_{{instance}}",
-              "refId": "L"
-            },
-            {
-              "expr": "[[app]]_fuseclient_OpMetaLookup{app=\"$app\", cluster=\"$cluster\"}",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "MetaLookup_{{instance}}",
+              "legendFormat": "filecreate_{{instance}}",
               "refId": "A"
             },
             {
-              "expr": "[[app]]_fuseclient_OpMetaTruncate{app=\"$app\", cluster=\"$cluster\"}",
+              "expr": "rate([[app]]_fuseclient_filecreate_count{app=~\"$app\",cluster=\"$cluster\"}[1m])",
               "format": "time_series",
               "hide": true,
               "intervalFactor": 1,
-              "legendFormat": "MetaTruncate_{{instance}}",
+              "legendFormat": "filecreate_count_{{instance}}",
+              "refId": "B"
+            },
+            {
+              "expr": "[[app]]_fuseclient_filesync{app=~\"$app\",cluster=\"$cluster\"}",
+              "format": "time_series",
+              "hide": true,
+              "intervalFactor": 1,
+              "legendFormat": "filesync_{{instance}}",
               "refId": "C"
             },
             {
-              "expr": "rate([[app]]_fuseclient_OpMetaOpen_count{app=\"$app\", cluster=\"$cluster\", instance=\"$instance\"}[1m])",
+              "expr": "rate([[app]]_fuseclient_filesync_count{app=~\"$app\",cluster=\"$cluster\"}[1m])",
               "format": "time_series",
-              "hide": false,
+              "hide": true,
               "intervalFactor": 1,
-              "legendFormat": "MetaOpen_ops_{{instance}}",
+              "legendFormat": "filesync_count_{{instance}}",
               "refId": "D"
             },
             {
-              "expr": "rate([[app]]_fuseclient_OpMetaReadDir{app=\"$app\", cluster=\"$cluster\"}[1m])",
+              "expr": "[[app]]_fuseclient_filewrite{app=~\"$app\",cluster=\"$cluster\", instance=\"$instance\"}",
               "format": "time_series",
-              "hide": true,
+              "hide": false,
               "intervalFactor": 1,
-              "legendFormat": "MetaReaddir_ops_{{instance}}",
+              "legendFormat": "filewrite_{{instance}}",
               "refId": "E"
             },
             {
-              "expr": "rate([[app]]_fuseclient_OpMetaSetattr{app=\"$app\", cluster=\"$cluster\"}[1m])",
+              "expr": "rate([[app]]_fuseclient_filewrite_count{app=~\"$app\",cluster=\"$cluster\", instance=\"$instance\"}[1m])",
               "format": "time_series",
-              "hide": true,
+              "hide": false,
               "intervalFactor": 1,
-              "legendFormat": "MetaSetattr_ops_{{instance}}",
+              "legendFormat": "filewrite_count_{{instance}}",
               "refId": "F"
-            },
-            {
-              "expr": "rate([[app]]_fuseclient_OpMetaLookup{app=\"$app\", cluster=\"$cluster\"}[1m])",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "MetaLookup_ops_{{instance}}",
-              "refId": "G"
-            },
-            {
-              "expr": "rate([[app]]_fuseclient_OpMetaTruncate{app=\"$app\", cluster=\"$cluster\"}[1m])",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "MetaTruncate_ops_{{instance}}",
-              "refId": "H"
             }
           ],
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "MetaOpen",
+          "title": "FileWrite",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -9189,7 +9160,7 @@
             "h": 7,
             "w": 8,
             "x": 0,
-            "y": 41
+            "y": 40
           },
           "id": 147,
           "legend": {
@@ -9345,354 +9316,13 @@
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "default",
-          "fill": 1,
-          "gridPos": {
-            "h": 7,
-            "w": 8,
-            "x": 8,
-            "y": 41
-          },
-          "id": 154,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "links": [],
-          "nullPointMode": "null",
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "seriesOverrides": [
-            {
-              "alias": "/.*_count_.*/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "[[app]]_fuseclient_filecreate{app=~\"$app\",cluster=\"$cluster\"}",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "filecreate_{{instance}}",
-              "refId": "A"
-            },
-            {
-              "expr": "rate([[app]]_fuseclient_filecreate_count{app=~\"$app\",cluster=\"$cluster\"}[1m])",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "filecreate_count_{{instance}}",
-              "refId": "B"
-            },
-            {
-              "expr": "[[app]]_fuseclient_filesync{app=~\"$app\",cluster=\"$cluster\"}",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "filesync_{{instance}}",
-              "refId": "C"
-            },
-            {
-              "expr": "rate([[app]]_fuseclient_filesync_count{app=~\"$app\",cluster=\"$cluster\"}[1m])",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "filesync_count_{{instance}}",
-              "refId": "D"
-            },
-            {
-              "expr": "[[app]]_fuseclient_filewrite{app=~\"$app\",cluster=\"$cluster\", instance=\"$instance\"}",
-              "format": "time_series",
-              "hide": false,
-              "intervalFactor": 1,
-              "legendFormat": "filewrite_{{instance}}",
-              "refId": "E"
-            },
-            {
-              "expr": "rate([[app]]_fuseclient_filewrite_count{app=~\"$app\",cluster=\"$cluster\", instance=\"$instance\"}[1m])",
-              "format": "time_series",
-              "hide": false,
-              "intervalFactor": 1,
-              "legendFormat": "filewrite_count_{{instance}}",
-              "refId": "F"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeShift": null,
-          "title": "filewrite",
-          "tooltip": {
-            "shared": true,
-            "sort": 0,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "gridPos": {
-            "h": 7,
-            "w": 8,
-            "x": 16,
-            "y": 41
-          },
-          "id": 98,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "links": [],
-          "nullPointMode": "null",
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "seriesOverrides": [],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "[[app]]_fuseclient_StreamWrite{instance=~\"$instance\",cluster=\"$cluster\", instance=\"$instance\"}",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "Write",
-              "refId": "A"
-            },
-            {
-              "expr": "[[app]]_fuseclient_StreamRead{instance=~\"$instance\",cluster=\"$cluster\", instance=\"$instance\"}",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "Read",
-              "refId": "C"
-            },
-            {
-              "expr": "[[app]]_fuseclient_StreamOverwrite{instance=~\"$instance\",cluster=\"$cluster\", instance=\"$instance\"}",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "Overwrite",
-              "refId": "D"
-            },
-            {
-              "expr": "[[app]]_fuseclient_StreamCreateExtent{instance=~\"$instance\",cluster=\"$cluster\", instance=\"$instance\"}",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "CreateExtent",
-              "refId": "B"
-            },
-            {
-              "expr": "[[app]]_fuseclient_StreamSyncWrite{instance=~\"$instance\",cluster=\"$cluster\"}",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "SyncWrite",
-              "refId": "E"
-            },
-            {
-              "expr": "[[app]]_fuseclient_StreamSyncOverwrite{instance=~\"$instance\",cluster=\"$cluster\"}",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "SyncOverwrite",
-              "refId": "F"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeShift": null,
-          "title": "fuseclient_StreamSDK_latency",
-          "tooltip": {
-            "shared": true,
-            "sort": 0,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            },
-            {
-              "format": "short",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "gridPos": {
-            "h": 7,
-            "w": 8,
-            "x": 0,
-            "y": 48
-          },
-          "id": 106,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "links": [],
-          "nullPointMode": "null",
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "seriesOverrides": [],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "[[app]]_fuseclient_FlushInRead{app=\"$app\", cluster=\"$cluster\", instance=\"$instance\"}",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "FlushInRead_{{instance}}",
-              "refId": "A"
-            },
-            {
-              "expr": "[[app]]_fuseclient_StreamPrepareReadRequests{app=~\"$app\", cluster=\"$cluster\", instance=\"$instance\"}",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "PrepareReadRequest_{{instance}}",
-              "refId": "B"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeShift": null,
-          "title": "FlushInRead",
-          "tooltip": {
-            "shared": true,
-            "sort": 0,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            },
-            {
-              "format": "short",
-              "label": null,
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
           "datasource": null,
           "fill": 1,
           "gridPos": {
             "h": 7,
             "w": 8,
             "x": 8,
-            "y": 48
+            "y": 40
           },
           "id": 149,
           "legend": {
@@ -9854,9 +9484,171 @@
             "h": 7,
             "w": 8,
             "x": 16,
-            "y": 48
+            "y": 40
           },
-          "id": 151,
+          "id": 150,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "links": [],
+          "nullPointMode": "null",
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [
+            {
+              "alias": "/.*_ops_.*/",
+              "yaxis": 2
+            }
+          ],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "[[app]]_fuseclient_OpMetaOpen{app=\"$app\", cluster=\"$cluster\", instance=\"$instance\"}",
+              "format": "time_series",
+              "hide": false,
+              "intervalFactor": 1,
+              "legendFormat": "MetaOpen_{{instance}}",
+              "refId": "B"
+            },
+            {
+              "expr": "[[app]]_fuseclient_OpMetaReadDir{app=\"$app\", cluster=\"$cluster\"}",
+              "format": "time_series",
+              "hide": true,
+              "intervalFactor": 1,
+              "legendFormat": "MetaReaddir_{{instance}}",
+              "refId": "K"
+            },
+            {
+              "expr": "[[app]]_fuseclient_OpMetaSetattr{app=\"$app\", cluster=\"$cluster\"}",
+              "format": "time_series",
+              "hide": true,
+              "intervalFactor": 1,
+              "legendFormat": "MetaSetattr_{{instance}}",
+              "refId": "L"
+            },
+            {
+              "expr": "[[app]]_fuseclient_OpMetaLookup{app=\"$app\", cluster=\"$cluster\"}",
+              "format": "time_series",
+              "hide": true,
+              "intervalFactor": 1,
+              "legendFormat": "MetaLookup_{{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "[[app]]_fuseclient_OpMetaTruncate{app=\"$app\", cluster=\"$cluster\"}",
+              "format": "time_series",
+              "hide": true,
+              "intervalFactor": 1,
+              "legendFormat": "MetaTruncate_{{instance}}",
+              "refId": "C"
+            },
+            {
+              "expr": "rate([[app]]_fuseclient_OpMetaOpen_count{app=\"$app\", cluster=\"$cluster\", instance=\"$instance\"}[1m])",
+              "format": "time_series",
+              "hide": false,
+              "intervalFactor": 1,
+              "legendFormat": "MetaOpen_ops_{{instance}}",
+              "refId": "D"
+            },
+            {
+              "expr": "rate([[app]]_fuseclient_OpMetaReadDir{app=\"$app\", cluster=\"$cluster\"}[1m])",
+              "format": "time_series",
+              "hide": true,
+              "intervalFactor": 1,
+              "legendFormat": "MetaReaddir_ops_{{instance}}",
+              "refId": "E"
+            },
+            {
+              "expr": "rate([[app]]_fuseclient_OpMetaSetattr{app=\"$app\", cluster=\"$cluster\"}[1m])",
+              "format": "time_series",
+              "hide": true,
+              "intervalFactor": 1,
+              "legendFormat": "MetaSetattr_ops_{{instance}}",
+              "refId": "F"
+            },
+            {
+              "expr": "rate([[app]]_fuseclient_OpMetaLookup{app=\"$app\", cluster=\"$cluster\"}[1m])",
+              "format": "time_series",
+              "hide": true,
+              "intervalFactor": 1,
+              "legendFormat": "MetaLookup_ops_{{instance}}",
+              "refId": "G"
+            },
+            {
+              "expr": "rate([[app]]_fuseclient_OpMetaTruncate{app=\"$app\", cluster=\"$cluster\"}[1m])",
+              "format": "time_series",
+              "hide": true,
+              "intervalFactor": 1,
+              "legendFormat": "MetaTruncate_ops_{{instance}}",
+              "refId": "H"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeShift": null,
+          "title": "MetaOpen",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "ns",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "ops",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": null,
+          "fill": 1,
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 0,
+            "y": 47
+          },
+          "id": 106,
           "legend": {
             "avg": false,
             "current": false,
@@ -9882,15 +9674,14 @@
             {
               "expr": "[[app]]_fuseclient_FlushInRead{app=\"$app\", cluster=\"$cluster\", instance=\"$instance\"}",
               "format": "time_series",
-              "hide": true,
               "intervalFactor": 1,
               "legendFormat": "FlushInRead_{{instance}}",
               "refId": "A"
             },
             {
-              "expr": "[[app]]_fuseclient_PrepareReadRequest{app=~\"$app\", cluster=\"$cluster\", instance=\"$instance\"}",
+              "expr": "[[app]]_fuseclient_StreamPrepareReadRequests{app=~\"$app\", cluster=\"$cluster\", instance=\"$instance\"}",
               "format": "time_series",
-              "hide": false,
+              "hide": true,
               "intervalFactor": 1,
               "legendFormat": "PrepareReadRequest_{{instance}}",
               "refId": "B"
@@ -9899,7 +9690,256 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "PrepareReadRequest",
+          "title": "FlushInRead",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "ns",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": null,
+          "fill": 1,
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 8,
+            "y": 47
+          },
+          "id": 161,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "links": [],
+          "nullPointMode": "null",
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [
+            {
+              "alias": "/.*_count_.*/",
+              "yaxis": 2
+            }
+          ],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "[[app]]_fuseclient_OpMetaCreateDentry{app=~\"$app\", cluster=\"$cluster\"}",
+              "format": "time_series",
+              "hide": true,
+              "intervalFactor": 1,
+              "legendFormat": "OpMetaCreateDentry_{{instance}}",
+              "refId": "C"
+            },
+            {
+              "expr": "[[app]]_fuseclient_OpMetaDeleteDentry{app=~\"$app\", cluster=\"$cluster\"}",
+              "format": "time_series",
+              "hide": true,
+              "intervalFactor": 1,
+              "legendFormat": "OpMetaDeleteDentry_{{instance}}",
+              "refId": "E"
+            },
+            {
+              "expr": "[[app]]_fuseclient_OpMetaUpdateDentry{app=~\"$app\", cluster=\"$cluster\", instance=\"$instance\"}",
+              "format": "time_series",
+              "hide": false,
+              "intervalFactor": 1,
+              "legendFormat": "OpMetaUpdateDentry_{{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "[[app]]_fuseclient_OpMetaCreateDentry_count{app=~\"$app\", cluster=\"$cluster\"}",
+              "format": "time_series",
+              "hide": true,
+              "intervalFactor": 1,
+              "legendFormat": "OpMetaCreateDentry_count_{{instance}}",
+              "refId": "B"
+            },
+            {
+              "expr": "[[app]]_fuseclient_OpMetaDeleteDentry_count{app=~\"$app\", cluster=\"$cluster\"}",
+              "format": "time_series",
+              "hide": true,
+              "intervalFactor": 1,
+              "legendFormat": "OpMetaDeleteDentry_count_{{instance}}",
+              "refId": "D"
+            },
+            {
+              "expr": "[[app]]_fuseclient_OpMetaUpdateDentry_count{app=~\"$app\", cluster=\"$cluster\", instance=\"$instance\"}",
+              "format": "time_series",
+              "hide": false,
+              "intervalFactor": 1,
+              "legendFormat": "OpMetaUpdateDentry_count_{{instance}}",
+              "refId": "F"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeShift": null,
+          "title": "MetaUpdateDentry",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "ns",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "ops",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": null,
+          "fill": 1,
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 16,
+            "y": 47
+          },
+          "id": 98,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "links": [],
+          "nullPointMode": "null",
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "[[app]]_fuseclient_StreamWrite{instance=~\"$instance\",cluster=\"$cluster\", instance=\"$instance\"}",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "Write",
+              "refId": "A"
+            },
+            {
+              "expr": "[[app]]_fuseclient_StreamRead{instance=~\"$instance\",cluster=\"$cluster\", instance=\"$instance\"}",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "Read",
+              "refId": "C"
+            },
+            {
+              "expr": "[[app]]_fuseclient_StreamOverwrite{instance=~\"$instance\",cluster=\"$cluster\", instance=\"$instance\"}",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "Overwrite",
+              "refId": "D"
+            },
+            {
+              "expr": "[[app]]_fuseclient_StreamCreateExtent{instance=~\"$instance\",cluster=\"$cluster\", instance=\"$instance\"}",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "CreateExtent",
+              "refId": "B"
+            },
+            {
+              "expr": "[[app]]_fuseclient_StreamSyncWrite{instance=~\"$instance\",cluster=\"$cluster\"}",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "SyncWrite",
+              "refId": "E"
+            },
+            {
+              "expr": "[[app]]_fuseclient_StreamSyncOverwrite{instance=~\"$instance\",cluster=\"$cluster\"}",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "SyncOverwrite",
+              "refId": "F"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeShift": null,
+          "title": "StreamSDKLatency",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -9947,7 +9987,7 @@
             "h": 7,
             "w": 8,
             "x": 0,
-            "y": 55
+            "y": 54
           },
           "id": 159,
           "legend": {
@@ -10044,10 +10084,10 @@
           "gridPos": {
             "h": 7,
             "w": 8,
-            "x": 8,
-            "y": 55
+            "x": 16,
+            "y": 54
           },
-          "id": 161,
+          "id": 151,
           "legend": {
             "avg": false,
             "current": false,
@@ -10065,69 +10105,32 @@
           "pointradius": 5,
           "points": false,
           "renderer": "flot",
-          "seriesOverrides": [
-            {
-              "alias": "/.*_count_.*/",
-              "yaxis": 2
-            }
-          ],
+          "seriesOverrides": [],
           "spaceLength": 10,
           "stack": false,
           "steppedLine": false,
           "targets": [
             {
-              "expr": "[[app]]_fuseclient_OpMetaCreateDentry{app=~\"$app\", cluster=\"$cluster\"}",
+              "expr": "[[app]]_fuseclient_FlushInRead{app=\"$app\", cluster=\"$cluster\", instance=\"$instance\"}",
               "format": "time_series",
               "hide": true,
               "intervalFactor": 1,
-              "legendFormat": "OpMetaCreateDentry_{{instance}}",
-              "refId": "C"
-            },
-            {
-              "expr": "[[app]]_fuseclient_OpMetaDeleteDentry{app=~\"$app\", cluster=\"$cluster\"}",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "OpMetaDeleteDentry_{{instance}}",
-              "refId": "E"
-            },
-            {
-              "expr": "[[app]]_fuseclient_OpMetaUpdateDentry{app=~\"$app\", cluster=\"$cluster\", instance=\"$instance\"}",
-              "format": "time_series",
-              "hide": false,
-              "intervalFactor": 1,
-              "legendFormat": "OpMetaUpdateDentry_{{instance}}",
+              "legendFormat": "FlushInRead_{{instance}}",
               "refId": "A"
             },
             {
-              "expr": "[[app]]_fuseclient_OpMetaCreateDentry_count{app=~\"$app\", cluster=\"$cluster\"}",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "OpMetaCreateDentry_count_{{instance}}",
-              "refId": "B"
-            },
-            {
-              "expr": "[[app]]_fuseclient_OpMetaDeleteDentry_count{app=~\"$app\", cluster=\"$cluster\"}",
-              "format": "time_series",
-              "hide": true,
-              "intervalFactor": 1,
-              "legendFormat": "OpMetaDeleteDentry_count_{{instance}}",
-              "refId": "D"
-            },
-            {
-              "expr": "[[app]]_fuseclient_OpMetaUpdateDentry_count{app=~\"$app\", cluster=\"$cluster\", instance=\"$instance\"}",
+              "expr": "[[app]]_fuseclient_PrepareReadRequest{app=~\"$app\", cluster=\"$cluster\", instance=\"$instance\"}",
               "format": "time_series",
               "hide": false,
               "intervalFactor": 1,
-              "legendFormat": "OpMetaUpdateDentry_count_{{instance}}",
-              "refId": "F"
+              "legendFormat": "PrepareReadRequest_{{instance}}",
+              "refId": "B"
             }
           ],
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "OpMetaUpdateDentry",
+          "title": "PrepareReadRequest",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -10151,7 +10154,7 @@
               "show": true
             },
             {
-              "format": "ops",
+              "format": "short",
               "label": null,
               "logBase": 1,
               "max": null,
@@ -10174,7 +10177,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 39
+        "y": 53
       },
       "id": 60,
       "panels": [
@@ -11990,9 +11993,9 @@
       {
         "allValue": null,
         "current": {
-          "selected": false,
-          "text": "click_stream",
-          "value": "click_stream"
+          "tags": [],
+          "text": "spark",
+          "value": "spark"
         },
         "datasource": "default",
         "hide": 0,
@@ -12014,9 +12017,8 @@
       {
         "allValue": null,
         "current": {
-          "selected": false,
-          "text": "master",
-          "value": "master"
+          "text": "fuseclient",
+          "value": "fuseclient"
         },
         "datasource": "default",
         "hide": 0,
@@ -12038,9 +12040,8 @@
       {
         "allValue": null,
         "current": {
-          "selected": true,
-          "text": "10.194.138.195:9061",
-          "value": "10.194.138.195:9061"
+          "text": "10.170.6.247:9500",
+          "value": "10.170.6.247:9500"
         },
         "datasource": "default",
         "hide": 0,
@@ -12062,9 +12063,8 @@
       {
         "allValue": null,
         "current": {
-          "selected": true,
-          "text": "10.194.138.195",
-          "value": "10.194.138.195"
+          "text": "10.170.6.247",
+          "value": "10.170.6.247"
         },
         "datasource": "default",
         "hide": 2,
@@ -12086,9 +12086,9 @@
       {
         "allValue": null,
         "current": {
-          "selected": true,
-          "text": "zhytest",
-          "value": "zhytest"
+          "tags": [],
+          "text": "clickhourse",
+          "value": "clickhourse"
         },
         "datasource": "default",
         "hide": 0,
@@ -12141,5 +12141,5 @@
   "timezone": "",
   "title": "chubaofs",
   "uid": "J8XJyOmZk",
-  "version": 367
+  "version": 484
 }

@@ -1,3 +1,39 @@
+## Release v1.5.0 - 2020/01/08
+
+### Feature
+* add a general Authentication & Authorization framework for ChubaoFS. https://github.com/chubaofs/chubaofs/commit/60a4977980e093d746d88e848dc3d1f87e17dfb5
+* object storage interface. Add ObjectNode to provide S3-compatible APIs. https://github.com/chubaofs/chubaofs/commit/d609fedb5c031e27f79dce9c004fdbb101070ac1
+
+### Enhancement
+* check disk path size in run-docker script. https://github.com/chubaofs/chubaofs/commit/ba6f2e068f40515491066cfe349d0266f92d9d5c
+* support building ChubaoFS docker image that contains cfs-server and cfs-client. https://github.com/chubaofs/chubaofs/commit/e1483f5ec531882d193c3ae8237012789f018831
+* add go test in docker-compose. https://github.com/chubaofs/chubaofs/commit/7ec1e318be0601e2130d2279201541268a29a28b
+* add authorization to master api getVol. https://github.com/chubaofs/chubaofs/commit/df6ff2a3285c2f77d90baa76ef352d3ec3f38bc4
+* support building under the Darwin(Apple MacOS) and Microsoft Windows operating system environment. https://github.com/chubaofs/chubaofs/commit/03718f1ed5ed096b3a3f2b810abeffcaec743159
+
+### Bug fix
+* set DataNode disk size in docker script to be compatible with lower version of `df`. https://github.com/chubaofs/chubaofs/commit/874ea2db1d31b7fc716e9ff9d15c6cd8b60d7c78
+* the `reservedSpace` parameter invalid when gt 30GB. https://github.com/chubaofs/chubaofs/commit/c955e66b89239ae2875bb1116771cd77b816b665
+* the mtime of parent inode does not change when create or delete a `dentry`. https://github.com/chubaofs/chubaofs/commit/e8c2450c8d2fe4f5cb36a0fd3abfa1215646d559
+* MetaNode `opResponseLoadPartition` removes duplicate locks. https://github.com/chubaofs/chubaofs/commit/d1bf9f90cd336bc4d12259c9b5980f1e860d21fb
+* MetaNode leak memory on DeleteMetaPartition operator. https://github.com/chubaofs/chubaofs/commit/d09a832544d798c37f366d159bef0635a00e7acc
+
+### Refactoring
+* change configuration file of Master daemon. https://github.com/chubaofs/chubaofs/commit/8d505ed5ccff6fb597b20a1de82b6ba723e32fa5
+* remove unnecessary function in raft store. https://github.com/chubaofs/chubaofs/commit/910d7e4b63f4f2e4642b864903a9ae9c4f048a2c
+* change metaNode `loadSnapshotSign` command about `inodeCount` and `dentryCount`. https://github.com/chubaofs/chubaofs/commit/d50269f0a804656a26bd5f24d851202f47a2b4ad
+* rename `rack` to `cell`. https://github.com/chubaofs/chubaofs/commit/ed269b65062534abbbaf255646fbc3749c66f3d6
+* improve meta partition replicas verification by `MaxInode` and `DentryCnt`. https://github.com/chubaofs/chubaofs/commit/800685f337dd4b17a40340348b2f8cff64ee7769
+* change parameter name in MetaNode configuration file. https://github.com/chubaofs/chubaofs/commit/f40266a183b55d205140bacf8190fc6baf448767
+* using current applyID to replace snapshot applyID in MetaNode LoadMetaPartition response action. https://github.com/chubaofs/chubaofs/commit/a693321306085e94cfbce0f0721fd996d994a9b4
+* delete data partition and meta partition synchronously. https://github.com/chubaofs/chubaofs/commit/77d92b16e040db7279b18f2c4769f476a39290fe
+
+### Document
+* add design and user guide document for AuthNode. https://github.com/chubaofs/chubaofs/commit/108e9986f256e8136cbf1b0ef7eb8bf273e3a0e2
+* update configuration file sample in document. https://github.com/chubaofs/chubaofs/commit/7f869dbc15a1f78d94e67d0ca4b273357e22510d
+* add design and user guide document for object subsystem. https://github.com/chubaofs/chubaofs/commit/360b538e0bff9447305026c36f2351cb7696f8e2
+* add IO, small file and metadata performance benchmark data to document.https://github.com/chubaofs/chubaofs/commit/d2a012ad24f9b1c4d8ff233902ebd649b6d5f45d
+
 ## Release v1.4.0 - 2019/11/13
 
 
@@ -16,9 +52,9 @@
 * support custom meta node reserved memory https://github.com/chubaofs/chubaofs/commit/a2b699fc8fdda77a6f6f8d0b4ee299beb9478f11
 * data partition and meta partition must have three replicas except reducing replicas to 2 https://github.com/chubaofs/chubaofs/commit/be2d5f54b95f2ab9566d8a172f9ca151a411f5c0
 * adjust demo config parameters https://github.com/chubaofs/chubaofs/commit/6ccdd06d691ab53f55ab4514e4f1c15f75525525
-*  update grafana dashbord for disk error metric https://github.com/chubaofs/chubaofs/commit/f8760cb99c2d44de977bf83c956ec9c74b3e6877
+* update grafana dashbord for disk error metric https://github.com/chubaofs/chubaofs/commit/f8760cb99c2d44de977bf83c956ec9c74b3e6877
 
-### Bugfix
+### Bug fix
 * OpFollowerRead if read eof,return error https://github.com/chubaofs/chubaofs/commit/3a28ee72df08a37461c927ec4f8e3baf3608112f
 * get follower read option in init https://github.com/chubaofs/chubaofs/commit/d695718a332a580652a5397512abfd1f64c714fe
 * stream traverse process never gets triggered in some situation https://github.com/chubaofs/chubaofs/commit/09de5abea9b675d142035000bbe67482016a42dd
@@ -28,14 +64,13 @@
 * clean up async delete process of metanode https://github.com/chubaofs/chubaofs/commit/7d8382577456e17718a3b235a58a2bbb84d99a84
 * set default port to non-system reserved port  https://github.com/chubaofs/chubaofs/commit/506fac1f803912353dcacd658999166f63b6882d
 
-### Refacoring
+### Refactoring
 * leader change not warning on raft https://github.com/chubaofs/chubaofs/commit/4ea5b2510f4845c36a9878138e4974ffd69bb7ad
 * remove go module files for now https://github.com/chubaofs/chubaofs/commit/2c9af0a2d62bfba692e3363fdca4d0616a1dc99d
 * clean up response of get all inodes info https://github.com/chubaofs/chubaofs/commit/bc0d850ff30c964f03cc12d7cb58f8cf7976a891
-* master, datanode and metanode Fix dp or mp offline process https://github.com/chubaofs/chubaofs/commit/ced4b8b92482d910c8ab4494eb829d7af54bf02d
-* delete resverd space on datanode config file https://github.com/chubaofs/chubaofs/commit/1f64bf46a8f0c25d02e12cfd197b66fb0bb70e91
+* master, DataNode and MetaNode Fix dp or mp offline process https://github.com/chubaofs/chubaofs/commit/ced4b8b92482d910c8ab4494eb829d7af54bf02d
 * use AddNodeWithPort replace AddNode,and delete AddNode API https://github.com/chubaofs/chubaofs/commit/b56c817c9572d1f78b36a85cb5a71ea156eed61b
-* delete resverd space on datanode config file https://github.com/chubaofs/chubaofs/commit/1f64bf46a8f0c25d02e12cfd197b66fb0bb70e91
+* delete reserved space on DataNode config file https://github.com/chubaofs/chubaofs/commit/1f64bf46a8f0c25d02e12cfd197b66fb0bb70e91
 * refine labels of the disk error metric https://github.com/chubaofs/chubaofs/commit/c4ee0aea946630d32c25bbc9b9aff7dd788c5314
 * optimize auto compute crc https://github.com/chubaofs/chubaofs/commit/f9d3ba1d4c031c5b3b0f0162833aceb5606fefba
 
@@ -117,7 +152,7 @@
 * dataPartition disk error ,not recvoery raft log on new datanode https://github.com/chubaofs/chubaofs/commit/d5febd10da6008dd4fca46d91b4e7d29ebadb9ec
 * datanode register hang bug https://github.com/chubaofs/chubaofs/commit/8eaeabf5c1a74b6057a43bf0e856e94823c9ad3a
 
-### Refacoring
+### Refactoring
 * sdk When creating a datapartition, select the datapartition retry strategy. https://github.com/chubaofs/chubaofs/commit/226578551137d9655bf23aa3c8220c4fe0fc8957
 * Refactoring SDK: when write datapartition num greater 10 ,then trust master. https://github.com/chubaofs/chubaofs/commit/adfe95deef05b10d812736e613f88fbceadb260e
 * when disk error,the datapartition recover only recover avali data on tinyExtent. https://github.com/chubaofs/chubaofs/commit/1910bb9d8112acdaa87456f54abae648f817b60d
@@ -186,7 +221,7 @@
 * change random write raft serialize not use json. https://github.com/chubaofs/chubaofs/commit/6144a94c280cee34eae42bd9dc04d009969bea33
 
 
-### Bugfix:
+### Bug fix:
 
 * fix: when datanode is killed, maxBaseExtentId is corrupted.https://github.com/chubaofs/chubaofs/commit/e8552fe1c194acc7d58db969dc8673c1a150bbc5
 * Once vol is created successfully, the state of the data partition it has should be writable. https://github.com/chubaofs/chubaofs/commit/2d954a376fb500cc6dc6d32f3191cfe2541cd3a6

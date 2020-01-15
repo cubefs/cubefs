@@ -52,6 +52,12 @@ Welcome to ChubaoFS(Chubao File System)
    evaluation
 
 .. toctree::
+   :maxdepth: 0
+   :caption: Contributing
+
+   contributing
+
+.. toctree::
    :maxdepth: 2
    :caption: FAQ
 

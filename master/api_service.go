@@ -32,32 +32,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
-// ClusterView provides the view of a cluster.
-type ClusterView struct {
-	Name               string
-	LeaderAddr         string
-	DisableAutoAlloc   bool
-	MetaNodeThreshold  float32
-	Applied            uint64
-	MaxDataPartitionID uint64
-	MaxMetaNodeID      uint64
-	MaxMetaPartitionID uint64
-	DataNodeStatInfo   *nodeStatInfo
-	MetaNodeStatInfo   *nodeStatInfo
-	VolStatInfo        []*volStatInfo
-	BadPartitionIDs    []badPartitionView
-	MetaNodes          []NodeView
-	DataNodes          []NodeView
-}
-
-// VolStatView provides the view of the volume.
-type VolStatView struct {
-	Name      string
-	Total     uint64 `json:"TotalGB"`
-	Used      uint64 `json:"UsedGB"`
-	Increased uint64 `json:"IncreasedGB"`
-}
-
 // NodeView provides the view of the data or meta node.
 type NodeView struct {
 	Addr       string
@@ -163,18 +137,19 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	cv := &proto.ClusterView{
-		Name:               m.cluster.Name,
-		LeaderAddr:         m.leaderInfo.addr,
-		DisableAutoAlloc:   m.cluster.DisableAutoAllocate,
-		MetaNodeThreshold:  m.cluster.cfg.MetaNodeThreshold,
-		Applied:            m.fsm.applied,
-		MaxDataPartitionID: m.cluster.idAlloc.dataPartitionID,
-		MaxMetaNodeID:      m.cluster.idAlloc.commonID,
-		MaxMetaPartitionID: m.cluster.idAlloc.metaPartitionID,
-		MetaNodes:          make([]proto.NodeView, 0),
-		DataNodes:          make([]proto.NodeView, 0),
-		VolStatInfo:        make([]*proto.VolStatInfo, 0),
-		BadPartitionIDs:    make([]proto.BadPartitionView, 0),
+		Name:                m.cluster.Name,
+		LeaderAddr:          m.leaderInfo.addr,
+		DisableAutoAlloc:    m.cluster.DisableAutoAllocate,
+		MetaNodeThreshold:   m.cluster.cfg.MetaNodeThreshold,
+		Applied:             m.fsm.applied,
+		MaxDataPartitionID:  m.cluster.idAlloc.dataPartitionID,
+		MaxMetaNodeID:       m.cluster.idAlloc.commonID,
+		MaxMetaPartitionID:  m.cluster.idAlloc.metaPartitionID,
+		MetaNodes:           make([]proto.NodeView, 0),
+		DataNodes:           make([]proto.NodeView, 0),
+		VolStatInfo:         make([]*proto.VolStatInfo, 0),
+		BadPartitionIDs:     make([]proto.BadPartitionView, 0),
+		BadMetaPartitionIDs: make([]proto.BadPartitionView, 0),
 	}
 
 	vols := m.cluster.allVolNames()
@@ -193,8 +168,15 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	m.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)
 		path := key.(string)
-		bpv := badPartitionView{DiskPath: path, PartitionIDs: badDataPartitionIds}
+		bpv := badPartitionView{Path: path, PartitionIDs: badDataPartitionIds}
 		cv.BadPartitionIDs = append(cv.BadPartitionIDs, bpv)
+		return true
+	})
+	m.cluster.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
+		badPartitionIds := value.([]uint64)
+		path := key.(string)
+		bpv := badPartitionView{Path: path, PartitionIDs: badPartitionIds}
+		cv.BadMetaPartitionIDs = append(cv.BadMetaPartitionIDs, bpv)
 		return true
 	})
 	sendOkReply(w, r, newSuccessHTTPReply(cv))
@@ -1491,6 +1473,8 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 		return
 	}
 	mpView.LeaderAddr = mr.Addr
+	mpView.MaxInodeID = mp.MaxInodeID
+	mpView.IsRecover = mp.IsRecover
 	return
 }
 
@@ -1527,6 +1511,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			Replicas:     replicas,
 			ReplicaNum:   mp.ReplicaNum,
 			Status:       mp.Status,
+			IsRecover:    mp.IsRecover,
 			Hosts:        mp.Hosts,
 			Peers:        mp.Peers,
 			MissNodes:    mp.MissNodes,
