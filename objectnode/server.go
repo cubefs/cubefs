@@ -60,6 +60,7 @@ var (
 
 type ObjectNode struct {
 	domains    []string
+	wildcards  Wildcards
 	listen     string
 	region     string
 	httpServer *http.Server
@@ -117,6 +118,9 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	// parse domain
 	domains := cfg.GetStringSlice(configDomains)
 	o.domains = domains
+	if o.wildcards, err = NewWildcards(domains); err != nil {
+		return
+	}
 	log.LogInfof("loadConfig: setup config: %v(%v)", configDomains, domains)
 
 	// parse master config

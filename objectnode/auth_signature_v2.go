@@ -181,7 +181,7 @@ func (o *ObjectNode) checkSignatureV2(r *http.Request) (bool, error) {
 	}
 
 	// 2. calculate new signature
-	newSignature, err1 := calculateSignatureV2(authInfo, akCaps.SecretKey, o.domains)
+	newSignature, err1 := calculateSignatureV2(authInfo, akCaps.SecretKey, o.wildcards)
 	if err1 != nil {
 		log.LogInfof("calculute SignatureV2 error: %v, %v", authInfo.r, err)
 		return false, err1
@@ -214,13 +214,10 @@ CanonicalizedResource = [ "/" + Bucket ] +
 
 CanonicalizedAmzHeaders = <described below>
 */
-func calculateSignatureV2(authInfo *requestAuthInfoV2, secretKey string, domains []string) (signature string, err error) {
+func calculateSignatureV2(authInfo *requestAuthInfoV2, secretKey string, wildcards Wildcards) (signature string, err error) {
 
 	//encodedResource := strings.Split(authInfo.r.RequestURI, "?")[0]
-	canonicalResource, err1 := getCanonicalizedResourceV2(authInfo.r, domains)
-	if err1 != nil {
-		return "", err1
-	}
+	canonicalResource := getCanonicalizedResourceV2(authInfo.r, wildcards)
 
 	canonicalResourceQuery := getCanonicalQueryV2(canonicalResource, authInfo.r.URL.Query().Encode())
 
@@ -253,7 +250,9 @@ func calculateSignatureV2(authInfo *requestAuthInfoV2, secretKey string, domains
 //
 //
 func (o *ObjectNode) checkPresignedSignatureV2(r *http.Request) (bool, error) {
-	//
+
+	var err error
+
 	uris := strings.SplitN(r.RequestURI, "?", 2)
 	if len(uris) < 2 {
 		log.LogInfof("checkPresignedSignatureV2 error, request url invalid %v ", r.RequestURI)
@@ -290,9 +289,10 @@ func (o *ObjectNode) checkPresignedSignatureV2(r *http.Request) (bool, error) {
 	}
 
 	//calculatePresignedSignature
-	uri := strings.Split(r.RequestURI, "?")[0]
-	canoncialResourceQuery := getCanonicalQueryV2(uri, r.URL.Query().Encode())
-	calSignature := calPresignedSignatureV2(r.Method, canoncialResourceQuery, expires, akCaps.SecretKey, r.Header)
+	var canonicalResource string
+	canonicalResource = getCanonicalizedResourceV2(r, o.wildcards)
+	canonicalResourceQuery := getCanonicalQueryV2(canonicalResource, r.URL.Query().Encode())
+	calSignature := calPresignedSignatureV2(r.Method, canonicalResourceQuery, expires, akCaps.SecretKey, r.Header)
 	if calSignature != signature {
 		log.LogDebugf("checkPresignedSignatureV2: invalid signature: requestID(%v) client(%v) server(%v)",
 			RequestIDFromRequest(r), signature, calSignature)
@@ -400,22 +400,13 @@ func calPresignedSignatureV2(method, canonicalQuery, expires, secretKey string, 
 	return base64.StdEncoding.EncodeToString(hm.Sum(nil))
 }
 
-func getCanonicalizedResourceV2(r *http.Request, domains []string) (resource string, err error) {
-	path := strings.Split(r.RequestURI, "?")[0]
-	if len(domains) > 0 {
-		for _, d := range domains {
-			if !strings.HasSuffix(r.Host, "."+d) {
-				continue
-			}
-			vars := mux.Vars(r)
-			bucket := vars["bucket"]
-			resource = "/" + bucket + path
-			return
-		}
-
+func getCanonicalizedResourceV2(r *http.Request, ws Wildcards) (resource string) {
+	// TODO: fix this
+	path := r.URL.Path
+	if bucket, wildcard := ws.Parse(r.Host); wildcard {
+		resource = "/" + bucket + path
 	} else {
 		resource = path
 	}
-
 	return
 }

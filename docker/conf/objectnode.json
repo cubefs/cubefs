@@ -1,9 +1,8 @@
 {
   "role": "objectnode",
-  "hosts": "127.0.0.1",
   "logDir": "/cfs/log/",
   "logLevel": "debug",
-  "listen": 80,
+  "listen": ":80",
   "masters": [
     "192.168.0.11:17010",
     "192.168.0.12:17010",
@@ -15,5 +14,8 @@
     "192.168.0.16:8082"
   ],
   "enableHTTPS": "false",
-  "certFile": ""
+  "certFile": "",
+  "domains": [
+    "object.chubao.io"
+  ]
 }
