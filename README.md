@@ -41,8 +41,22 @@ https://chubaofs.readthedocs.io/en/latest/
 
 https://chubaofs.readthedocs.io/zh_CN/latest/
 
-## Build
+## Benchmark
 
+Small file operation performance and scalability benchmark test by [mdtest](https://github.com/LLNL/mdtest).
+
+<img src="https://raw.githubusercontent.com/chubaofs/chubaofs/master/docs/source/pic/cfs-small-file-benchmark.png" width="600" align=center/>
+
+|File Size (KB)	|  1	|  2	|  4	|  8	|   16  |   32  |   64  |  128 |
+|:-|:-|:-|:-|:-|:-|:-|:-|:-|
+|Creation (TPS)	|70383	|70383	|73738	|74617	|69479	|67435	|47540	|27147 |
+|Read (TPS)	    |108600	|118193	|118346	|122975	|116374	|110795	|90462	|62082 |
+|Removal (TPS)	|87648	|84651	|83532	|79279	|85498	|86523	|80946	|84441 |
+|Stat (TPS)	    |231961	|263270	|264207	|252309	|240244	|244906	|273576	|242930|
+
+Refer to [chubaofs.readthedocs.io](https://chubaofs.readthedocs.io/en/latest/evaluation.html) for performance and scalability of `IO` and `Metadata`.
+
+## Build Server and Client
 
 ```
 $ git clone http://github.com/chubaofs/chubaofs.git
@@ -52,7 +66,69 @@ $ make
 
 If the build succeeds, `cfs-server` and `cfs-client` can be found in `build/bin`
 
-## Docker
+## Deploy ChubaoFS Cluster with Helm in Kubernetes 
+
+The [chubaofs-helm](https://github.com/chubaofs/chubaofs-helm) repository can help you deploy ChubaoFS cluster quickly in containers orchestrated by kubernetes.
+Kubernetes 1.16+ and Helm 3 are required.
+
+Initialize Helm:
+
+``` 
+$ helm init
+```
+
+Add repository to download Helm chart of ChubaoFS:
+
+``` 
+$ helm repo add chubaofs https://chubaofs.github.io/chubaofs-charts
+$ helm repo update
+```
+
+Create the configuration file `chubaofs.yaml` and put it in a user-defined path.
+
+```
+$ cat ~/chubaofs.yaml 
+```
+
+``` yaml
+path:
+  data: /chubaofs/data
+  log: /chubaofs/log
+
+datanode:
+  disks:
+    - disk: "/data0:21474836480"
+    - disk: "/data1:21474836480"
+      
+metanode:
+  total_mem: "2147483648"
+```
+
+> Note that `chubaofs-helm/chubaofs/values.yaml` includes all the parameters of ChubaoFS.
+> Parameters `path.data` and `path.log` define paths to store the data and logs of ChubaoFS server, respectively.
+
+Label the nodes in Kubernetes according to different roles(master/metanode/datanode):
+
+```
+$ kubectl label node <nodename> chuabaofs-master=enabled
+$ kubectl label node <nodename> chuabaofs-metanode=enabled
+$ kubectl label node <nodename> chuabaofs-datanode=enabled
+```
+
+Install ChubaoFS cluster with Helm:
+```
+$ helm install chubaofs chubaofs/chubaofs --version 1.5.0 -f ~/chubaofs.yaml
+```
+
+Delete ChubaoFS cluster:
+
+```
+$ helm delete chubaofs
+```
+
+Refer to [chubaofs-helm](https://github.com/chubaofs/chubaofs-helm/blob/master/README.md) for deployment with Helm 2 and deployment of monitoring system.
+
+## Deploy ChubaoFS Cluster with Docker
 
 A helper tool called `run_docker.sh` (under the `docker` directory) has been provided to run ChubaoFS with [docker-compose](https://docs.docker.com/compose/).
 
