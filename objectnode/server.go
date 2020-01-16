@@ -57,6 +57,7 @@ var (
 
 type ObjectNode struct {
 	domains    []string
+	wildcards  Wildcards
 	listen     string
 	region     string
 	httpServer *http.Server
@@ -115,6 +116,9 @@ func (o *ObjectNode) parseConfig(cfg *config.Config) (err error) {
 		domains[i] = domainCfg.(string)
 	}
 	o.domains = domains
+	if o.wildcards, err = NewWildcards(domains); err != nil {
+		return
+	}
 
 	// parse master config
 	masterCfgs := cfg.GetArray(configMasters)
