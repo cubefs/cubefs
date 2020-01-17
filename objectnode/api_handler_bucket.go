@@ -19,6 +19,7 @@ import (
 	"encoding/hex"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
@@ -172,13 +173,13 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 	var buckets = make([]*Bucket, 0)
 	for _, ownerVol := range ownerVols {
 		s := strings.Split(ownerVol, ":")
-		bucket := &Bucket{Name: s[1]}
+		var bucket = &Bucket{Name: s[1], CreationDate: time.Now()} //todo time
 		buckets = append(buckets, bucket)
 	}
 
 	owner := &Owner{DisplayName: akCaps.AccessKey, Id: akCaps.AccessKey}
 	listBucketOutput := &ListBucketsOutput{
-		Buckets: buckets,
+		Buckets: &Buckets{Bucket: buckets},
 		Owner:   owner,
 	}
 
@@ -189,8 +190,9 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
-
-	w.Write(bytes)
+	if _, err = w.Write(bytes); err != nil {
+		log.LogErrorf("listBucketsHandler: write response body fail, requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+	}
 	return
 }
 
