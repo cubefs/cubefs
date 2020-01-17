@@ -1331,7 +1331,7 @@ func (v *volume) CopyFile(targetPath, sourcePath string) (info *FSFileInfo, err 
 	newDirs, newFilename := splitPath(targetPath)
 	// process source targetPath
 	var newParentId uint64
-	if newParentId, err = v.lookupDirectories(newDirs, false); err != nil {
+	if newParentId, err = v.lookupDirectories(newDirs, true); err != nil {
 		return nil, err
 	}
 
