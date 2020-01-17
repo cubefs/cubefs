@@ -23,24 +23,29 @@ import (
 // register api routers
 func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
-	var routers []*mux.Router
+	var bucketRouters []*mux.Router
 	bRouter := router.PathPrefix("/").Subrouter()
 	for _, d := range o.domains {
-		routers = append(routers, bRouter.Host("{bucket:.+}."+d).Subrouter())
-		routers = append(routers, bRouter.Host("{bucket:.+}."+d+":{port:[0-9]+}").Subrouter())
+		bucketRouters = append(bucketRouters, bRouter.Host("{bucket:.+}."+d).Subrouter())
+		bucketRouters = append(bucketRouters, bRouter.Host("{bucket:.+}."+d+":{port:[0-9]+}").Subrouter())
 	}
-	routers = append(routers, bRouter.PathPrefix("/{bucket}").Subrouter())
+	bucketRouters = append(bucketRouters, bRouter.PathPrefix("/{bucket}").Subrouter())
 
-	for _, r := range routers {
-
-		// List parts
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListParts.html
-		r.Methods(http.MethodGet).
+	var registerBucketHttpHeadRouters = func(r *mux.Router) {
+		// Head object
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html
+		r.Methods(http.MethodHead).
 			Path("/{object:.+}").
-			HandlerFunc(o.policyCheck(o.listPartsHandler, []Action{ListMultipartUploadPartsAction})).
-			Queries("uploadId", "{uploadId:.*}")
+			HandlerFunc(o.policyCheck(o.headObjectHandler, []Action{GetObjectAction}))
 
-		// Get object with presgined auth signature v2
+		// Head bucket
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadBucket.html
+		r.Methods(http.MethodHead).
+			HandlerFunc(o.policyCheck(o.headBucketHandler, []Action{ListBucketAction}))
+	}
+
+	var registerBucketHttpGetRouters = func(r *mux.Router) {
+		// Get object with pre-signed auth signature v2
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html
 		r.Methods(http.MethodGet).
 			Path("/{object:.+}").
@@ -48,7 +53,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			Queries("AWSAccessKeyId", "{accessKey:.+}",
 				"Expires", "{expires:[0-9]+}", "Signature", "{signature:.+}")
 
-		// Get object with presigned auth signature v4
+		// Get object with pre-signed auth signature v4
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html
 		r.Methods(http.MethodGet).
 			Path("/{object:.+}").
@@ -58,93 +63,12 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 				"X-Amz-Date", "{date:.+}", "X-Amz-SignedHeaders", "{signedHeaders:.+}",
 				"X-Amz-Expires", "{expires:[0-9]+}")
 
-		// Get object
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html
-		r.Methods(http.MethodGet).
-			Path("/{object:.+}").
-			HandlerFunc(o.policyCheck(o.getObjectHandler, []Action{GetObjectAction}))
-
-		// Create multipart upload
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateMultipartUpload.html
-		r.Methods(http.MethodPost).
-			Path("/{object:.+}").
-			HandlerFunc(o.policyCheck(o.createMultipleUploadHandler, []Action{PutObjectAction})).
-			Queries("uploads", "")
-
-		// Complete multipart
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CompleteMultipartUpload.html
-		r.Methods(http.MethodPost).
-			Path("/{object:.+}").
-			HandlerFunc(o.policyCheck(o.completeMultipartUploadHandler, []Action{PutObjectAction})).
-			Queries("uploadId", "{uploadId:.*}")
-
-		// Upload part
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPart.html .
-		r.Methods(http.MethodPut).
-			Path("/{object:.+}").
-			HandlerFunc(o.policyCheck(o.uploadPartHandler, []Action{PutObjectAction})).
-			Queries("partNumber", "{partNumber:[0-9]+}", "uploadId", "{uploadId:.*}")
-
-		// Copy object
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html .
-		r.Methods(http.MethodPut).
-			Path("/{object:.+}").
-			HeadersRegexp(HeaderNameCopySource, ".*?(\\/|%2F).*?").
-			HandlerFunc(o.policyCheck(o.copyObjectHandler, []Action{PutObjectAction}))
-
-		// Put object
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html
-		r.Methods(http.MethodPut).
-			Path("/{object:.+}").
-			HandlerFunc(o.policyCheck(o.putObjectHandler, []Action{PutObjectAction}))
-
-		// Abort multipart
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_AbortMultipartUpload.html .
-		r.Methods(http.MethodDelete).
-			Path("/{object:.+}").
-			HandlerFunc(o.policyCheck(o.abortMultipartUploadHandler, []Action{AbortMultipartUploadAction})).
-			Queries("uploadId", "{uploadId:.*}")
-
-		// Head object
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html
-		r.Methods(http.MethodHead).
-			Path("/{object:.+}").
-			HandlerFunc(o.policyCheck(o.headObjectHandler, []Action{GetObjectAction}))
-
 		// Get object tagging
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectTagging.html
 		r.Methods(http.MethodGet).
 			Path("/{object:.+}").
 			HandlerFunc(o.policyCheck(o.getObjectTagging, []Action{GetBucketPolicyAction})).
 			Queries("tagging", "")
-
-		// Put object tagging
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectTagging.html
-		r.Methods(http.MethodPut).
-			Path("/{object:.+}").
-			HandlerFunc(o.policyCheck(o.putObjectTagging, []Action{PutBucketPolicyAction})).
-			Queries("tagging", "")
-
-		// Delete object tagging
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjectTagging.html
-		r.Methods(http.MethodDelete).
-			Path("/{object:.+").
-			HandlerFunc(o.policyCheck(o.deleteObjectTagging, []Action{PutBucketPolicyAction})).
-			Queries("tagging", "")
-
-		// Put object xattrs
-		// Notes: ChubaoFS owned API for XAttr operation
-		r.Methods(http.MethodPut).
-			Path("/{object:.+}").
-			HandlerFunc(o.putObjectXAttr).
-			Queries("xattr", "")
-
-		// Delete object xattrs
-		// Notes: ChubaoFS owned API for XAttr operation
-		r.Methods(http.MethodDelete).
-			Path("/{object:.+}").
-			HandlerFunc(o.deleteObjectXAttr).
-			Queries("xattr", "key", "{key:.+}}")
 
 		// Get object XAttr
 		// Notes: ChubaoFS owned API for XAttr operation
@@ -158,6 +82,19 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			Path("/{object:.+}").
 			HandlerFunc(o.listObjectXAttrs).
 			Queries("xattr", "")
+
+		// Get object acl
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAcl.html
+		r.Methods(http.MethodGet).
+			Path("/{objject:.+}").
+			HandlerFunc(o.policyCheck(o.getObjectACLHandler, []Action{GetObjectAclAction})).
+			Queries("acl", "")
+
+		// Get object
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html
+		r.Methods(http.MethodGet).
+			Path("/{object:.+}").
+			HandlerFunc(o.policyCheck(o.getObjectHandler, []Action{GetObjectAction}))
 
 		// List objects version 2
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html
@@ -177,22 +114,6 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			HandlerFunc(o.policyCheck(o.listPartsHandler, []Action{ListMultipartUploadPartsAction})).
 			Queries("uploadId", "{uploadId:.*}")
 
-		// Delete objects (multiple objects)
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjects.html
-		r.Methods(http.MethodPost).
-			HandlerFunc(o.policyCheck(o.deleteObjectsHandler, []Action{DeleteObjectAction})).
-			Queries("delete", "")
-
-		// List objects version 1
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjects.html
-		r.Methods(http.MethodGet).
-			HandlerFunc(o.policyCheck(o.getBucketV1Handler, []Action{ListBucketAction}))
-
-		// Head bucket
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadBucket.html
-		r.Methods(http.MethodHead).
-			HandlerFunc(o.policyCheck(o.headBucketHandler, []Action{ListBucketAction}))
-
 		// Get bucket location
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLocation.html
 		r.Methods(http.MethodGet).
@@ -205,42 +126,68 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			HandlerFunc(o.policyCheck(o.getBucketPolicyHandler, []Action{GetBucketPolicyAction})).
 			Queries("policy", "")
 
-		// Put bucket policy
-		// https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketPolicy.html
-		r.Methods(http.MethodPut).
-			HandlerFunc(o.policyCheck(o.putBucketPolicyHandler, []Action{PutBucketPolicyAction})).
-			Queries("policy", "")
-
-		// Delete bucket policy
-		// https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketPolicy.html
-		r.Methods(http.MethodDelete).
-			HandlerFunc(o.policyCheck(o.deleteBucketPolicyHandler, []Action{DeleteBucketPolicyAction})).
-			Queries("policy", "")
-
-		// Delete object
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html .
-		r.Methods(http.MethodDelete).
-			Path("/{object:.+}").
-			HandlerFunc(o.policyCheck(o.deleteObjectHandler, []Action{DeleteObjectAction}))
-
 		// Get bucket acl
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketAcl.html
 		r.Methods(http.MethodGet).
 			HandlerFunc(o.policyCheck(o.getBucketACLHandler, []Action{GetBucketAclAction})).
 			Queries("acl", "")
 
-		// Put bucket acl
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketAcl.html
-		r.Methods(http.MethodPut).
-			HandlerFunc(o.policyCheck(o.putBucketACLHandler, []Action{PutBucketAclAction})).
-			Queries("acl", "")
-
-		// Get object acl
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAcl.html
+		// List objects version 1
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjects.html
 		r.Methods(http.MethodGet).
-			Path("/{objject:.+}").
-			HandlerFunc(o.policyCheck(o.getObjectACLHandler, []Action{GetObjectAclAction})).
-			Queries("acl", "")
+			HandlerFunc(o.policyCheck(o.getBucketV1Handler, []Action{ListBucketAction}))
+	}
+
+	var registerBucketHttpPostRouters = func(r *mux.Router) {
+		// Create multipart upload
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateMultipartUpload.html
+		r.Methods(http.MethodPost).
+			Path("/{object:.+}").
+			HandlerFunc(o.policyCheck(o.createMultipleUploadHandler, []Action{PutObjectAction})).
+			Queries("uploads", "")
+
+		// Complete multipart
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CompleteMultipartUpload.html
+		r.Methods(http.MethodPost).
+			Path("/{object:.+}").
+			HandlerFunc(o.policyCheck(o.completeMultipartUploadHandler, []Action{PutObjectAction})).
+			Queries("uploadId", "{uploadId:.*}")
+
+		// Delete objects (multiple objects)
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjects.html
+		r.Methods(http.MethodPost).
+			HandlerFunc(o.policyCheck(o.deleteObjectsHandler, []Action{DeleteObjectAction})).
+			Queries("delete", "")
+	}
+
+	var registerBucketHttpPutRouters = func(r *mux.Router) {
+		// Upload part
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPart.html .
+		r.Methods(http.MethodPut).
+			Path("/{object:.+}").
+			HandlerFunc(o.policyCheck(o.uploadPartHandler, []Action{PutObjectAction})).
+			Queries("partNumber", "{partNumber:[0-9]+}", "uploadId", "{uploadId:.*}")
+
+		// Copy object
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html .
+		r.Methods(http.MethodPut).
+			Path("/{object:.+}").
+			HeadersRegexp(HeaderNameCopySource, ".*?(\\/|%2F).*?").
+			HandlerFunc(o.policyCheck(o.copyObjectHandler, []Action{PutObjectAction}))
+
+		// Put object tagging
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectTagging.html
+		r.Methods(http.MethodPut).
+			Path("/{object:.+}").
+			HandlerFunc(o.policyCheck(o.putObjectTagging, []Action{PutBucketPolicyAction})).
+			Queries("tagging", "")
+
+		// Put object xattrs
+		// Notes: ChubaoFS owned API for XAttr operation
+		r.Methods(http.MethodPut).
+			Path("/{object:.+}").
+			HandlerFunc(o.putObjectXAttr).
+			Queries("xattr", "")
 
 		// Put object acl
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketAcl.html
@@ -249,6 +196,67 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			HandlerFunc(o.policyCheck(o.putObjectACLHandler, []Action{PutObjectAclAction})).
 			Queries("acl", "")
 
+		// Put object
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html
+		r.Methods(http.MethodPut).
+			Path("/{object:.+}").
+			HandlerFunc(o.policyCheck(o.putObjectHandler, []Action{PutObjectAction}))
+
+		// Put bucket acl
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketAcl.html
+		r.Methods(http.MethodPut).
+			HandlerFunc(o.policyCheck(o.putBucketACLHandler, []Action{PutBucketAclAction})).
+			Queries("acl", "")
+
+		// Put bucket policy
+		// https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketPolicy.html
+		r.Methods(http.MethodPut).
+			HandlerFunc(o.policyCheck(o.putBucketPolicyHandler, []Action{PutBucketPolicyAction})).
+			Queries("policy", "")
+	}
+
+	var registerBucketHttpDeleteRouters = func(r *mux.Router) {
+		// Abort multipart
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_AbortMultipartUpload.html .
+		r.Methods(http.MethodDelete).
+			Path("/{object:.+}").
+			HandlerFunc(o.policyCheck(o.abortMultipartUploadHandler, []Action{AbortMultipartUploadAction})).
+			Queries("uploadId", "{uploadId:.*}")
+
+		// Delete object tagging
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjectTagging.html
+		r.Methods(http.MethodDelete).
+			Path("/{object:.+").
+			HandlerFunc(o.policyCheck(o.deleteObjectTagging, []Action{PutBucketPolicyAction})).
+			Queries("tagging", "")
+
+		// Delete object xattrs
+		// Notes: ChubaoFS owned API for XAttr operation
+		r.Methods(http.MethodDelete).
+			Path("/{object:.+}").
+			HandlerFunc(o.deleteObjectXAttr).
+			Queries("xattr", "key", "{key:.+}}")
+
+		// Delete object
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html .
+		r.Methods(http.MethodDelete).
+			Path("/{object:.+}").
+			HandlerFunc(o.policyCheck(o.deleteObjectHandler, []Action{DeleteObjectAction}))
+
+		// Delete bucket policy
+		// https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketPolicy.html
+		r.Methods(http.MethodDelete).
+			HandlerFunc(o.policyCheck(o.deleteBucketPolicyHandler, []Action{DeleteBucketPolicyAction})).
+			Queries("policy", "")
+
+	}
+
+	for _, r := range bucketRouters {
+		registerBucketHttpHeadRouters(r)
+		registerBucketHttpGetRouters(r)
+		registerBucketHttpPostRouters(r)
+		registerBucketHttpPutRouters(r)
+		registerBucketHttpDeleteRouters(r)
 	}
 
 	// List buckets
