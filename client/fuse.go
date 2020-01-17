@@ -148,6 +148,7 @@ func main() {
 
 	fsConn, super, err := mount(opt)
 	if err != nil {
+		syslog.Println("mount err", err)
 		log.LogFlush()
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
