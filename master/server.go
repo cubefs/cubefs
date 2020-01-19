@@ -139,7 +139,7 @@ func (m *Server) Sync() {
 func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.clusterName = cfg.GetString(ClusterName)
 	m.ip = cfg.GetString(IP)
-	m.port = cfg.GetString(Port)
+	m.port = cfg.GetString(proto.ListenPort)
 	m.walDir = cfg.GetString(WalDir)
 	m.storeDir = cfg.GetString(StoreDir)
 	peerAddrs := cfg.GetString(cfgPeers)

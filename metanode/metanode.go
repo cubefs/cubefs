@@ -173,7 +173,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		return
 	}
 	m.localAddr = cfg.GetString(cfgLocalIP)
-	m.listen = cfg.GetString(cfgListen)
+	m.listen = cfg.GetString(proto.ListenPort)
 	serverPort=m.listen
 	m.metadataDir = cfg.GetString(cfgMetadataDir)
 	m.raftDir = cfg.GetString(cfgRaftDir)
@@ -213,7 +213,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load raftHeartbeatPort[%v].", m.raftHeartbeatPort)
 	log.LogInfof("[parseConfig] load raftReplicatePort[%v].", m.raftReplicatePort)
 
-	addrs := cfg.GetArray(cfgMasterAddrs)
+	addrs := cfg.GetArray(proto.MasterAddr)
 	masters := make([]string, 0, len(addrs))
 	for _, addr := range addrs {
 		masters = append(masters, addr.(string))

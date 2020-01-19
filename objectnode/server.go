@@ -16,6 +16,7 @@ package objectnode
 
 import (
 	"context"
+	"github.com/chubaofs/chubaofs/proto"
 	"net/http"
 	"regexp"
 	"sync"
@@ -99,7 +100,7 @@ func (o *ObjectNode) Sync() {
 
 func (o *ObjectNode) parseConfig(cfg *config.Config) (err error) {
 	// parse listen
-	listen := cfg.GetString(configListen)
+	listen := cfg.GetString(proto.ListenPort)
 	if len(listen) == 0 {
 		listen = defaultListen
 	}
@@ -121,7 +122,7 @@ func (o *ObjectNode) parseConfig(cfg *config.Config) (err error) {
 	}
 
 	// parse master config
-	masterCfgs := cfg.GetArray(configMasters)
+	masterCfgs := cfg.GetArray(proto.MasterAddr)
 	masters := make([]string, len(masterCfgs))
 	for i, masterCfg := range masterCfgs {
 		masters[i] = masterCfg.(string)
