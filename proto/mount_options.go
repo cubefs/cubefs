@@ -26,4 +26,9 @@ const (
 	ClientKey     = "clientKey"
 	TicketHost    = "ticketHost"
 	EnableHTTPS   = "enableHTTPS"
+
+
+	ListenPort = "listen"
 )
+
+

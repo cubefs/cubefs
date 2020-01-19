@@ -183,7 +183,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		regexpPort *regexp.Regexp
 	)
 	LocalIP = cfg.GetString(ConfigKeyLocalIP)
-	port = cfg.GetString(ConfigKeyPort)
+	port = cfg.GetString(proto.ListenPort)
 	serverPort=port
 	if regexpPort, err = regexp.Compile("^(\\d)+$"); err != nil {
 		return fmt.Errorf("Err:no port")
@@ -192,10 +192,10 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("Err:port must string")
 	}
 	s.port = port
-	if len(cfg.GetArray(ConfigKeyMasterAddr)) == 0 {
+	if len(cfg.GetArray(proto.MasterAddr)) == 0 {
 		return fmt.Errorf("Err:masterAddr unavalid")
 	}
-	for _, ip := range cfg.GetArray(ConfigKeyMasterAddr) {
+	for _, ip := range cfg.GetArray(proto.MasterAddr) {
 		MasterClient.AddNode(ip.(string))
 	}
 	s.cellName = cfg.GetString(ConfigKeyCell)
