@@ -11,21 +11,24 @@ CommitID=$(git rev-parse HEAD)
 BuildTime=$(date +%Y-%m-%d\ %H:%M)
 LDFlags="-X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'"
 MODFLAGS=""
+SysRocksLibFirst=0
 
 NPROC=$(nproc 2>/dev/null)
 NPROC=${NPROC:-"1"}
 
-GCC_LIBRARY_PATH="/lib /lib64 /usr/lib /usr/lib64 /usr/local/lib /usr/local/lib64"
+GCC_LIBRARY_PATH=${GCC_LIBRARY_PATH:-"/lib /lib64 /usr/lib /usr/lib64 /usr/local/lib /usr/local/lib64"}
 cgo_cflags=""
 cgo_ldflags="-lstdc++ -lm"
 
 [ $(uname -s) != "Linux" ] && { echo "ChubaoFS only support Linux os"; exit 1; }
 
 build_snappy() {
-    found=$(find ${GCC_LIBRARY_PATH}  -name libsnappy.a -o -name libsnappy.so 2>/dev/null | wc -l)
-    if [ ${found} -gt 0 ] ; then
-        cgo_ldflags="${cgo_ldflags} -lsnappy"
-        return
+    if [ ${SysRocksLibFirst} -eq 1 ] ; then
+        found=$(find ${GCC_LIBRARY_PATH}  -name libsnappy.a -o -name libsnappy.so 2>/dev/null | wc -l)
+        if [ ${found} -gt 0 ] ; then
+            cgo_ldflags="${cgo_ldflags} -lsnappy"
+            return
+        fi
     fi
     SnappySrcPath=${VendorPath}/snappy-1.1.7
     SnappyBuildPath=${BuildOutPath}/snappy
@@ -42,10 +45,12 @@ build_snappy() {
 }
 
 build_rocksdb() {
-    found=$(find ${GCC_LIBRARY_PATH} -name librocksdb.a -o -name librocksdb.so 2>/dev/null | wc -l)
-    if [ ${found} -gt 0 ] ; then
-        cgo_ldflags="${cgo_ldflags} -lrocksdb"
-        return
+    if [ ${SysRocksLibFirst} -eq 1 ] ; then
+        found=$(find ${GCC_LIBRARY_PATH} -name librocksdb.a -o -name librocksdb.so 2>/dev/null | wc -l)
+        if [ ${found} -gt 0 ] ; then
+            cgo_ldflags="${cgo_ldflags} -lrocksdb"
+            return
+        fi
     fi
     RocksdbSrcPath=${VendorPath}/rocksdb-5.9.2
     RocksdbBuildPath=${BuildOutPath}/rocksdb
@@ -142,6 +147,11 @@ dist_clean() {
 cmd=${1:-"all"}
 
 case "$cmd" in
+    "all-sysrocks")
+        SysRocksLibFirst=1
+        build_server
+        build_client
+        ;;
     "all")
         build_server
         build_client
