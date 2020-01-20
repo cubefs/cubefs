@@ -177,7 +177,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
-	if m.config.metaNodeReservedMem < 32*1024*1024 {
+	if m.config.metaNodeReservedMem < defaultMetaNodeReservedMem {
 		m.config.metaNodeReservedMem = defaultMetaNodeReservedMem
 	}
 

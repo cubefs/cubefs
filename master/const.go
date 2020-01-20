@@ -64,7 +64,7 @@ const (
 	defaultMaxInitMetaPartitionCount             = 100
 	defaultMaxMetaPartitionInodeID        uint64 = 1<<63 - 1
 	defaultMetaPartitionInodeIDStep       uint64 = 1 << 24
-	defaultMetaNodeReservedMem            uint64 = 1 << 30
+	defaultMetaNodeReservedMem            uint64 = 1 << 26
 	runtimeStackBufSize                          = 4096
 	spaceAvailableRate                           = 0.90
 	defaultNodeSetCapacity                       = 18

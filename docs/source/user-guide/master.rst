@@ -36,7 +36,12 @@ ChubaoFS use **JSON** as configuration file format.
    "clusterName", "string", "The cluster identifier", "Yes"
    "exporterPort", "int", "The prometheus exporter port", "No"
    "consulAddr", "string", "The consul register addr for prometheus exporter", "No"
-   "metaNodeReservedMem","string","If the metanode memory is below this value, it will be marked as read-only."
+   "metaNodeReservedMem","string","
+   | If the metanode memory is below this value, it will be marked as read-only.
+   | Unit: ``Byte``
+   | Default: ``67108864 (64 MB)``
+   | Minimal: ``67108864 (64 MB)``
+   | Recommendation: ``gt 1073741824 (1 GB)``", "No"
 
 
 **Example:**
