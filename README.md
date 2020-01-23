@@ -180,5 +180,5 @@ For more information, please refer to https://dl.acm.org/citation.cfm?doid=32998
 ## Community
 
 - Twitter: [@ChubaoFS](https://twitter.com/ChubaoFS)
-- Mailing list: should use chubaofs-users@groups.io
+- Mailing list: chubaofs-users@groups.io
 - Slack: [chubaofs.slack.com](https://chubaofs.slack.com/)
