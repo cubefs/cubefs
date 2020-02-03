@@ -92,11 +92,6 @@ func isSignaturedV4(r *http.Request) bool {
 
 // check request signature valid
 func (o *ObjectNode) checkSignatureV4(r *http.Request) (bool, error) {
-	_, _, _, vl, _ := o.parseRequestParams(r)
-	if vl == nil {
-		log.LogInfof("checkSignatureV4: no volume info: requestID(%v)", RequestIDFromRequest(r))
-		return false, nil
-	}
 	req, err := parseRequestV4(r)
 	if err != nil {
 		return false, err

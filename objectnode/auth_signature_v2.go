@@ -349,11 +349,6 @@ func getCanonicalQueryV2(encodeResource string, encodeQuery string) string {
 	if canonicalQuery != "" {
 		return encodeResource + "?" + canonicalQuery
 	}
-
-	if encodeResource == "/" {
-		return ""
-	}
-
 	return encodeResource
 }
 
