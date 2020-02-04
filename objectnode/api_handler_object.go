@@ -17,6 +17,7 @@ package objectnode
 import (
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -24,6 +25,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/chubaofs/chubaofs/proto"
 
 	"sync"
 	"syscall"
@@ -750,22 +753,113 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 
 // Get object tagging
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectTagging.html
-func (o *ObjectNode) getObjectTagging(w http.ResponseWriter, r *http.Request) {
+func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// TODO: implement handler 'GetObjectTagging'
+	var err error
+	var param *RequestParam
+	if param, err = o.parseRequestParam(r); err != nil {
+		log.LogErrorf("getObjectTaggingHandler: parse request param fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+	if param.vol == nil {
+		_ = NoSuchBucket.ServeResponse(w, r)
+		return
+	}
+
+	var xattrInfo *proto.XAttrInfo
+	if xattrInfo, err = param.vol.GetXAttr(param.object, XAttrKeyOSSTagging); err != nil {
+		log.LogErrorf("getObjectTaggingHandler: volume get XAttr fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+
+	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
+
+	var output = NewGetObjectTaggingOutput()
+	if err = json.Unmarshal(ossTaggingData, output); err != nil {
+		log.LogErrorf("getObjectTaggingHandler: decode tagging from json fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+
+	var encoded []byte
+	if encoded, err = MarshalXMLEntity(output); err != nil {
+		log.LogErrorf("getObjectTaggingHandler: encode output fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+
+	if _, err = w.Write(encoded); err != nil {
+		log.LogErrorf("getObjectTaggingHandler: write response fail: requestID(%v) err（%v)", RequestIDFromRequest(r), err)
+	}
+
 	return
 }
 
 // Put object tagging
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectTagging.html
-func (o *ObjectNode) putObjectTagging(w http.ResponseWriter, r *http.Request) {
-	// TODO: implement handler 'PutObjectTagging'
+func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+	var param *RequestParam
+	if param, err = o.parseRequestParam(r); err != nil {
+		log.LogErrorf("putObjectTaggingHandler: parse request param fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+	if param.vol == nil {
+		_ = NoSuchBucket.ServeResponse(w, r)
+		return
+	}
+
+	var requestBody []byte
+	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
+		log.LogErrorf("putObjectTaggingHandler: read request body data fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+
+	var tagging = NewTagging()
+	if err = UnmarshalXMLEntity(requestBody, tagging); err != nil {
+		log.LogWarnf("putObjectTaggingHandler: decode request body fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+
+	var encoded []byte
+	if encoded, err = json.Marshal(tagging); err != nil {
+		log.LogWarnf("putObjectTaggingHandler: encode tagging data fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+
+	if err = param.vol.SetXAttr(param.object, XAttrKeyOSSTagging, encoded); err != nil {
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+
 	return
 }
 
 // Delete object tagging
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjectTagging.html
-func (o *ObjectNode) deleteObjectTagging(w http.ResponseWriter, r *http.Request) {
-	// TODO: implement handler 'DeleteObjectTagging'
+func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+	var param *RequestParam
+	if param, err = o.parseRequestParam(r); err != nil {
+		log.LogErrorf("deleteObjectTaggingHandler: parse request param fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+	if param.vol == nil {
+		_ = NoSuchBucket.ServeResponse(w, r)
+		return
+	}
+
+	if err = param.vol.DeleteXAttr(param.object, XAttrKeyOSSTagging); err != nil {
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
 	return
 }
 

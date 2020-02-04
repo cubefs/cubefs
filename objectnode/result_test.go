@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -193,16 +194,40 @@ func TestUnmarshalDeleteRequest(t *testing.T) {
 }
 
 func TestMarshalTagging(t *testing.T) {
-	tagging := &Tagging{
-		TagSet: []*Tag{
-			{
-				Key:   "tag1",
-				Value: "val1",
-			},
-			{
-				Key:   "tag2",
-				Value: "val2",
-			},
+	tagging := NewTagging()
+	tagging.TagSet = []*Tag{
+		{
+			Key:   "tag1",
+			Value: "val1",
+		},
+		{
+			Key:   "tag2",
+			Value: "val2",
+		},
+	}
+	marshaled, err := MarshalXMLEntity(tagging)
+	if err != nil {
+		t.Fatalf("marshal tagging fail: err(%v)", err)
+	}
+	t.Logf("xml result:\n%v", string(marshaled))
+
+	marshaled, err = json.Marshal(tagging)
+	if err != nil {
+		t.Fatalf("marshal tagging fail: err(%v)", err)
+	}
+	t.Logf("json result:\n%v", string(marshaled))
+}
+
+func TestMarshalGetObjectTaggingOutput(t *testing.T) {
+	tagging := NewGetObjectTaggingOutput()
+	tagging.TagSet = []*Tag{
+		{
+			Key:   "tag1",
+			Value: "val1",
+		},
+		{
+			Key:   "tag2",
+			Value: "val2",
 		},
 	}
 	marshaled, err := MarshalXMLEntity(tagging)

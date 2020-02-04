@@ -85,8 +85,8 @@ const (
 // XAttr keys for ObjectNode compatible feature
 const (
 	XAttrKeyOSSETag    = "oss:etag"
-	XAttrKeyOSSTagging = "oss:tg"
-	XAttrKeyOSSPolicy  = "oss:ply"
+	XAttrKeyOSSTagging = "oss:tagging"
+	XAttrKeyOSSPolicy  = "oss:policy"
 )
 
 const (

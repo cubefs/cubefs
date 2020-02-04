@@ -953,14 +953,14 @@ func (v *volume) FileInfo(path string) (info *FSFileInfo, err error) {
 		logger.Error("FileInfo: meta get xattr fail, inode(%v) path(%v) err(%v)", fileInode, path, err)
 		return
 	}
-	md5Val := xAttrInfo.XAttrs[XAttrKeyOSSETag]
+	md5Val := xAttrInfo.Get(XAttrKeyOSSETag)
 
 	info = &FSFileInfo{
 		Path:       path,
 		Size:       int64(fileInodeInfo.Size),
 		Mode:       os.FileMode(fileInodeInfo.Mode),
 		ModifyTime: fileInodeInfo.ModifyTime,
-		ETag:       md5Val,
+		ETag:       string(md5Val),
 		Inode:      fileInodeInfo.Inode,
 	}
 	return
@@ -1208,7 +1208,7 @@ func (v *volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 		return
 	}
 	for _, xAttrInfo := range batchXAttrInfos {
-		md5Map[xAttrInfo.Inode] = xAttrInfo.XAttrs[XAttrKeyOSSETag]
+		md5Map[xAttrInfo.Inode] = string(xAttrInfo.Get(XAttrKeyOSSETag))
 	}
 	for _, fileInfo := range fileInfos {
 		fileInfo.ETag = md5Map[fileInfo.Inode]
@@ -1347,14 +1347,14 @@ func (v *volume) CopyFile(targetPath, sourcePath string) (info *FSFileInfo, err 
 		log.LogErrorf("CopyFile: meta set xattr fail: inode(%v) err(%v)", sourceFileInode, err)
 		return nil, err
 	}
-	md5Val := xAttrInfo.XAttrs[XAttrKeyOSSETag]
+	md5Val := xAttrInfo.Get(XAttrKeyOSSETag)
 
 	info = &FSFileInfo{
 		Path:       targetPath,
 		Size:       int64(inodeInfo.Size),
 		Mode:       os.FileMode(inodeInfo.Size),
 		ModifyTime: inodeInfo.ModifyTime,
-		ETag:       md5Val,
+		ETag:       string(md5Val),
 		Inode:      inodeInfo.Inode,
 	}
 	return

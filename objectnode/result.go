@@ -251,13 +251,30 @@ type ListBucketResultV2 struct {
 }
 
 type Tag struct {
-	Key   string `xml:"Key"`
-	Value string `xml:"Value"`
+	Key   string `xml:"Key",json:"k"`
+	Value string `xml:"Value",json:"v"`
 }
 
 type Tagging struct {
-	XMLName xml.Name `xml:"Tagging"`
-	TagSet  []*Tag   `xml:"TagSet>Tag"`
+	XMLName xml.Name `json:"-"`
+	TagSet  []*Tag   `xml:"TagSet>Tag",json:"ts"`
+}
+
+func NewTagging() *Tagging {
+	return &Tagging{
+		XMLName: xml.Name{Local: "Tagging"},
+	}
+}
+
+func NewGetObjectTaggingOutput() *Tagging {
+	return &Tagging{
+		XMLName: xml.Name{Local: "GetObjectTaggingOutput"},
+	}
+}
+
+type GetObjectTaggingOutput struct {
+	XMLName xml.Name `xml:"GetObjectTaggingOutput"`
+	Tagging
 }
 
 type GetBucketLocationOutput struct {

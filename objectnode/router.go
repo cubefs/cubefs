@@ -67,7 +67,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectTagging.html
 		r.Methods(http.MethodGet).
 			Path("/{object:.+}").
-			HandlerFunc(o.policyCheck(o.getObjectTagging, []Action{GetBucketPolicyAction}, Read)).
+			HandlerFunc(o.policyCheck(o.getObjectTaggingHandler, []Action{GetBucketPolicyAction}, Read)).
 			Queries("tagging", "")
 
 		// Get object XAttr
@@ -179,7 +179,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectTagging.html
 		r.Methods(http.MethodPut).
 			Path("/{object:.+}").
-			HandlerFunc(o.policyCheck(o.putObjectTagging, []Action{PutObjectTaggingAction}, Write)).
+			HandlerFunc(o.policyCheck(o.putObjectTaggingHandler, []Action{PutObjectTaggingAction}, Write)).
 			Queries("tagging", "")
 
 		// Put object xattrs
@@ -232,7 +232,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjectTagging.html
 		r.Methods(http.MethodDelete).
 			Path("/{object:.+").
-			HandlerFunc(o.policyCheck(o.deleteObjectTagging, []Action{PutBucketPolicyAction}, Write)).
+			HandlerFunc(o.policyCheck(o.deleteObjectTaggingHandler, []Action{PutBucketPolicyAction}, Write)).
 			Queries("tagging", "")
 
 		// Delete object xattrs

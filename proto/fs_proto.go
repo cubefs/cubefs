@@ -75,6 +75,18 @@ type XAttrInfo struct {
 	XAttrs map[string]string
 }
 
+func (info XAttrInfo) Get(key string) []byte {
+	return []byte(info.XAttrs[key])
+}
+
+func (info XAttrInfo) VisitAll(visitor func(key string, value []byte) bool) {
+	for k, v := range info.XAttrs {
+		if visitor == nil || !visitor(k, []byte(v)) {
+			return
+		}
+	}
+}
+
 func (info XAttrInfo) String() string {
 	builder := strings.Builder{}
 	for k, v := range info.XAttrs {
