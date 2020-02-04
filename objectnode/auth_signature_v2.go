@@ -132,9 +132,9 @@ func parseRequestAuthInfoV2(r *http.Request) (ra *requestAuthInfoV2, err error) 
 }
 
 func isSignaturedV2(r *http.Request) bool {
-	_, ok1 := r.Header[HeaderNameAuthorization]
-	_, ok2 := r.Header["X-Amz-Content-Sha256"]
-	if ok1 && !ok2 {
+	hasV2 := strings.HasPrefix(r.Header.Get(HeaderNameAuthorization), RequestHeaderV2AuthorizationScheme)
+	hasV4 := strings.HasPrefix(r.Header.Get(HeaderNameAuthorization), SignatureV4Algorithm)
+	if hasV2 && !hasV4 {
 		log.LogDebugf("[handleHttpRestAPI] invalid request, has no authorization info, request id [%s]", r.URL.EscapedPath())
 		return true
 	}
@@ -215,11 +215,11 @@ func calculateSignatureV2(authInfo *requestAuthInfoV2, secretKey string, wildcar
 		canonicalHeaders += "\n"
 	}
 	contentHash := authInfo.r.Header.Get(HeaderNameContentMD5)
-	contentEnc := authInfo.r.Header.Get(HeaderNameContentEnc)
+	contentType := authInfo.r.Header.Get(HeaderNameContentType)
 	stringToSign := strings.Join([]string{
 		method,
 		contentHash,
-		contentEnc,
+		contentType,
 		date,
 		canonicalHeaders,
 	}, "\n")
