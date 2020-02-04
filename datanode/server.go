@@ -45,9 +45,9 @@ var (
 	ErrNoSpaceToCreatePartition = errors.New("No disk space to create a data partition")
 	ErrNewSpaceManagerFailed    = errors.New("Creater new space manager failed")
 
-	LocalIP ,serverPort     string
-	gConnPool    = util.NewConnectPool()
-	MasterClient = masterSDK.NewMasterClient(nil, false)
+	LocalIP, serverPort string
+	gConnPool           = util.NewConnectPool()
+	MasterClient        = masterSDK.NewMasterClient(nil, false)
 )
 
 const (
@@ -183,8 +183,8 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		regexpPort *regexp.Regexp
 	)
 	LocalIP = cfg.GetString(ConfigKeyLocalIP)
-	port = cfg.GetString(ConfigKeyPort)
-	serverPort=port
+	port = cfg.GetString(proto.ListenPort)
+	serverPort = port
 	if regexpPort, err = regexp.Compile("^(\\d)+$"); err != nil {
 		return fmt.Errorf("Err:no port")
 	}
@@ -192,12 +192,11 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("Err:port must string")
 	}
 	s.port = port
-	masters := cfg.GetStringSlice(ConfigKeyMasterAddr)
-	if len(masters) == 0 {
-		return fmt.Errorf("invliad config %s", ConfigKeyMasterAddr)
+	if len(cfg.GetSlice(proto.MasterAddr)) == 0 {
+		return fmt.Errorf("Err:masterAddr unavalid")
 	}
-	for _, master := range masters {
-		MasterClient.AddNode(master)
+	for _, ip := range cfg.GetSlice(proto.MasterAddr) {
+		MasterClient.AddNode(ip.(string))
 	}
 	s.cellName = cfg.GetString(ConfigKeyCell)
 	if s.cellName == "" {
@@ -211,7 +210,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 
 func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	s.space = NewSpaceManager(s.cellName)
-	if err != nil || len(strings.TrimSpace(s.port)) == 0 {
+	if len(strings.TrimSpace(s.port)) == 0 {
 		err = ErrNewSpaceManagerFailed
 		return
 	}

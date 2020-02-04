@@ -39,7 +39,7 @@ var (
 	clusterInfo    *proto.ClusterInfo
 	masterClient   *masterSDK.MasterClient
 	configTotalMem uint64
-	serverPort       string
+	serverPort     string
 )
 
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
@@ -173,8 +173,8 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		return
 	}
 	m.localAddr = cfg.GetString(cfgLocalIP)
-	m.listen = cfg.GetString(cfgListen)
-	serverPort=m.listen
+	m.listen = cfg.GetString(proto.ListenPort)
+	serverPort = m.listen
 	m.metadataDir = cfg.GetString(cfgMetadataDir)
 	m.raftDir = cfg.GetString(cfgRaftDir)
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
@@ -213,12 +213,10 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load raftHeartbeatPort[%v].", m.raftHeartbeatPort)
 	log.LogInfof("[parseConfig] load raftReplicatePort[%v].", m.raftReplicatePort)
 
-	masters := cfg.GetStringSlice(cfgMasterAddrs)
-	if len(masters) == 0 {
-		return config.NewIllegalConfigError(cfgMasterAddrs)
-	}
-	for _, master := range masters {
-		masters = append(masters, master)
+	addrs := cfg.GetSlice(proto.MasterAddr)
+	masters := make([]string, 0, len(addrs))
+	for _, addr := range addrs {
+		masters = append(masters, addr.(string))
 	}
 	masterClient = masterSDK.NewMasterClient(masters, false)
 	err = m.validConfig()

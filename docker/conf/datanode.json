@@ -1,6 +1,6 @@
 {
     "role": "datanode",
-    "port": "17310",
+    "listen": "17310",
     "prof": "17320",
     "raftHeartbeat": "17330",
     "raftReplica": "17340",

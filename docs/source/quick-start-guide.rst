@@ -30,7 +30,7 @@ Sample *master.json* is shown as follows,
    {
      "role": "master",
      "ip": "192.168.31.173",
-     "port": "80",
+     "listen": "80",
      "prof":"10088",
      "id":"1",
      "peers": "1:192.168.31.173:80,2:192.168.31.141:80,3:192.168.30.200:80",
@@ -127,7 +127,7 @@ Start Datanode
 
       {
         "role": "datanode",
-        "port": "6000",
+        "listen": "6000",
         "prof": "6001",
         "logDir": "/export/Logs/datanode",
         "raftDir": "/export/Data/datanode/raft",
@@ -166,7 +166,7 @@ Sample *objectnode.json is* shown as follows,
             "object.cfs.local"
         ],
         "listen": 80,
-        "masters": [
+        "masterAddr": [
             "master1.cfs.local:80",
             "master2.cfs.local:80",
             "master3.cfs.local:80"

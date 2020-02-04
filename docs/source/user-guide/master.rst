@@ -24,7 +24,7 @@ ChubaoFS use **JSON** as configuration file format.
    
    "role", "string", "Role of process and must be set to master", "Yes"
    "ip", "string", "host ip", "Yes"
-   "port", "string", "Http port which api service listen on", "Yes"
+   "listen", "string", "Http port which api service listen on", "Yes"
    "prof", "string", "golang pprof port", "Yes"
    "id", "string", "identy different master node", "Yes"
    "peers", "string", "the member information of raft group", "Yes"
@@ -47,7 +47,7 @@ ChubaoFS use **JSON** as configuration file format.
     "role": "master",
     "id":"1",
     "ip": "192.168.31.173",
-    "port": "80",
+    "listen": "80",
     "prof":"10088",
     "peers": "1:192.168.31.173:80,2:192.168.31.141:80,3:192.168.30.200:80",
     "retainLogs":"20000",

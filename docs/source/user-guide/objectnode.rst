@@ -33,7 +33,7 @@ Object Node using `JSON` format configuration file.
    "logLevel", "string", "
    | Level operation for logging.
    | Default: ``error``", "No"
-   "masters", "string slice", "
+   "masterAddr", "string slice", "
    | Format: ``HOST:PORT``.
    | HOST: Hostname, domain or IP address of master (resource manager).
    | PORT: port number which listened by this master", "Yes"
@@ -57,7 +57,7 @@ Object Node using `JSON` format configuration file.
         ],
         "logDir": "/opt/cfs/objectnode/logs",
         "logLevel": "debug",
-        "masters": [
+        "masterAddr": [
 	        "172.20.240.95:7002",
 	        "172.20.240.94:7002",
 	        "172.20.240.67:7002"

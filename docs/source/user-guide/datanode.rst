@@ -18,7 +18,7 @@ Configurations
    :header: "Key", "Type", "Description", "Mandatory"
 
    "role", "string", "Role of process and must be set to *datanode*", "Yes"
-   "port", "string", "Port of TCP network to be listen", "Yes"
+   "listen", "string", "Port of TCP network to be listen", "Yes"
    "localIP", "string", "IP of network to be choose", "No,If not specified, the ip address used to communicate with the master is used."
    "prof", "string", "Port of HTTP based prof and api service", "Yes"
    "logDir", "string", "Path for log file storage", "Yes"
@@ -40,7 +40,7 @@ Configurations
 
    {
        "role": "datanode",
-       "port": "6000",
+       "listen": "6000",
        "prof": "6001",
        "localIP":"192.168.31.174",
        "logDir": "/export/Logs/datanode",

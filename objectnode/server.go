@@ -16,15 +16,15 @@ package objectnode
 
 import (
 	"context"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/master"
+	"errors"
 	"net/http"
 	"regexp"
 	"sync"
 	"sync/atomic"
 
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/gorilla/mux"
 )
@@ -104,7 +104,7 @@ func (o *ObjectNode) Sync() {
 
 func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	// parse listen
-	listen := cfg.GetString(configListen)
+	listen := cfg.GetString(proto.ListenPort)
 	if len(listen) == 0 {
 		listen = defaultListen
 	}
@@ -125,9 +125,10 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 
 	// parse master config
 	enableHTTPS := cfg.GetBool(configEnableHTTPS)
-	masters := cfg.GetStringSlice(configMasters)
-	if len(masters) == 0 {
-		return config.NewIllegalConfigError(configMasters)
+	masterCfgs := cfg.GetSlice(proto.MasterAddr)
+	masters := make([]string, len(masterCfgs))
+	for i, masterCfg := range masterCfgs {
+		masters[i] = masterCfg.(string)
 	}
 	log.LogInfof("loadConfig: setup config: %v(%v)", configMasters, masters)
 

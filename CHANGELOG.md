@@ -1,3 +1,21 @@
+## Release v1.5.1 - 2020/01/19
+
+### Enhancement
+* support building docker image that contains both cfs-server and cfs-client. https://github.com/chubaofs/chubaofs/commit/8f41e5fbe8c26a057f0ba042d06716ac0da4b0b9
+
+### Bug fix
+* only one replica of meta partition can be taken offline at the same time. https://github.com/chubaofs/chubaofs/commit/3450baeebc3a2d914d668765cc051bd4972bc7e2
+* check if server port is open before raft leader change. https://github.com/chubaofs/chubaofs/commit/42d2dedb952592bc739ab1a0bfa3c99a4972ff94
+* solved several issue in signature algorithm version 2. https://github.com/chubaofs/chubaofs/commit/7bfca0937d86e20d368f19b1e258700e479a1559
+* solved the issue related to copying files across folder through object storage interface. https://github.com/chubaofs/chubaofs/commit/0a102eb8c8afc0f26d7cff4c98435c1881cd2747
+
+### Refactoring
+* update dashboard configuration of grafana. https://github.com/chubaofs/chubaofs/commit/790d4b850feb8b7ebb2067afd3408663a9acb2b0
+* unified the configuration of master address and listening port in documentation. https://github.com/chubaofs/chubaofs/commit/5fc59115d46dda21804935494623cbe2318456c6
+
+### Document
+* added benchmark data and guidelines for deploying ChubaoFS cluster with Helm in README file. https://github.com/chubaofs/chubaofs/commit/6c334e5b61423558b90685c72b5ce42147146749
+
 ## Release v1.5.0 - 2020/01/08
 
 ### Feature
