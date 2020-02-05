@@ -254,6 +254,12 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			HandlerFunc(o.policyCheck(o.deleteBucketPolicyHandler, []Action{DeleteBucketPolicyAction}, Write)).
 			Queries("policy", "")
 
+		// Delete bucket tagging
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketTagging.html
+		r.Methods(http.MethodDelete).
+			Handler(o.policyCheck(o.deleteBucketTaggingHandler, []Action{DeleteBucketTaggingAction}, Write)).
+			Queries("tagging", "")
+
 		// Delete bucket
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucket.html
 		r.Methods(http.MethodDelete).HandlerFunc(o.policyCheck(o.deleteBucketHandler, []Action{DeleteBucketAction}, Write))

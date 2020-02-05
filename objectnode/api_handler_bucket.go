@@ -137,7 +137,7 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	// delete volume from master
-	if authKey, err = calculateMD5(akCaps.ID); err != nil {
+	if authKey, err = calculateAuthKey(akCaps.ID); err != nil {
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
@@ -146,6 +146,9 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
+
+	// release volume from volume manager
+	o.vm.Release(bucket)
 	return
 }
 
@@ -216,11 +219,42 @@ func (o *ObjectNode) getBucketLocation(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func calculateMD5(key string) (authKey string, err error) {
+// Delete bucket tagging
+// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketTagging.html
+func (o *ObjectNode) deleteBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		param *RequestParam
+		err   error
+	)
+	if param, err = o.parseRequestParam(r); err != nil {
+		log.LogErrorf("deleteBucketTaggingHandler: parse request param fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+
+	var volume Volume
+	if len(param.bucket) == 0 {
+		_ = NoSuchBucket.ServeResponse(w, r)
+		return
+	}
+	if volume, err = o.vm.Volume(param.bucket); err != nil {
+		log.LogErrorf("deleteBucketTaggingHandler: load volume fail: requestID(%v) volume(%v) err(%v)", RequestIDFromRequest(r), param.bucket, err)
+		_ = NoSuchBucket.ServeResponse(w, r)
+		return
+	}
+	if err = volume.DeleteXAttr("/", XAttrKeyOSSTagging); err != nil {
+		log.LogErrorf("deleteBucketTaggingHandler: volume delete tagging xattr fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+	return
+}
+
+func calculateAuthKey(key string) (authKey string, err error) {
 	h := md5.New()
 	_, err = h.Write([]byte(key))
 	if err != nil {
-		log.LogErrorf("action[calculateAuthKey] calculate auth key[%v] failed,err[%v]", key, err)
+		log.LogErrorf("calculateAuthKey: calculate auth key fail: key[%v] err[%v]", key, err)
 		return
 	}
 	cipherStr := h.Sum(nil)
