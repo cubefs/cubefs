@@ -125,10 +125,9 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 
 	// parse master config
 	enableHTTPS := cfg.GetBool(configEnableHTTPS)
-	masterCfgs := cfg.GetSlice(proto.MasterAddr)
-	masters := make([]string, len(masterCfgs))
-	for i, masterCfg := range masterCfgs {
-		masters[i] = masterCfg.(string)
+	masters := cfg.GetStringSlice(proto.MasterAddr)
+	if len(masters) == 0 {
+		return config.NewIllegalConfigError(proto.MasterAddr)
 	}
 	log.LogInfof("loadConfig: setup config: %v(%v)", configMasters, masters)
 
