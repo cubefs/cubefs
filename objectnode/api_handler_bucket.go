@@ -17,6 +17,8 @@ package objectnode
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
+	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
@@ -216,6 +218,92 @@ func (o *ObjectNode) getBucketLocation(w http.ResponseWriter, r *http.Request) {
 	if _, err = w.Write(marshaled); err != nil {
 		log.LogErrorf("getBucketLocation: write response body fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
 	}
+	return
+}
+
+// Get bucket tagging
+// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketTagging.html
+func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+	var param *RequestParam
+	if param, err = o.parseRequestParam(r); err != nil {
+		log.LogErrorf("getBucketTaggingHandler: parse request param fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+	if param.vol == nil {
+		_ = NoSuchBucket.ServeResponse(w, r)
+		return
+	}
+
+	var xattrInfo *proto.XAttrInfo
+	if xattrInfo, err = param.vol.GetXAttr("/", XAttrKeyOSSTagging); err != nil {
+		log.LogErrorf("getBucketTaggingHandler: volume get XAttr fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
+	var output = NewGetBucketTaggingOutput()
+	if err = json.Unmarshal(ossTaggingData, output); err != nil {
+		log.LogErrorf("getBucketTaggingHandler: decode tagging from json fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+
+	var encoded []byte
+	if encoded, err = MarshalXMLEntity(output); err != nil {
+		log.LogErrorf("getBucketTaggingHandler: encode output fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+
+	if _, err = w.Write(encoded); err != nil {
+		log.LogErrorf("getBucketTaggingHandler: write response fail: requestID(%v) err（%v)", RequestIDFromRequest(r), err)
+	}
+	return
+}
+
+// Put bucket tagging
+// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketTagging.html
+func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+	var param *RequestParam
+	if param, err = o.parseRequestParam(r); err != nil {
+		log.LogErrorf("putBucketTaggingHandler: parse request param fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+	if param.vol == nil {
+		_ = NoSuchBucket.ServeResponse(w, r)
+		return
+	}
+
+	var requestBody []byte
+	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
+		log.LogErrorf("putBucketTaggingHandler: read request body data fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+
+	var tagging = NewTagging()
+	if err = UnmarshalXMLEntity(requestBody, tagging); err != nil {
+		log.LogWarnf("putBucketTaggingHandler: decode request body fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+
+	var encoded []byte
+	if encoded, err = json.Marshal(tagging); err != nil {
+		log.LogWarnf("putBucketTaggingHandler: encode tagging data fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+
+	if err = param.vol.SetXAttr("/", XAttrKeyOSSTagging, encoded); err != nil {
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+
 	return
 }
 

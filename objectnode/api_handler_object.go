@@ -754,7 +754,6 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 // Get object tagging
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectTagging.html
 func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO: implement handler 'GetObjectTagging'
 	var err error
 	var param *RequestParam
 	if param, err = o.parseRequestParam(r); err != nil {

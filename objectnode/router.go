@@ -132,6 +132,12 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			HandlerFunc(o.policyCheck(o.getBucketACLHandler, []Action{GetBucketAclAction}, Read)).
 			Queries("acl", "")
 
+		// Get bucket tagging
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketTagging.html
+		r.Methods(http.MethodGet).
+			HandlerFunc(o.policyCheck(o.getBucketTaggingHandler, []Action{GetBucketTaggingAction}, Read)).
+			Queries("tagging", "")
+
 		// List objects version 1
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjects.html
 		r.Methods(http.MethodGet).
@@ -213,6 +219,12 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.Methods(http.MethodPut).
 			HandlerFunc(o.policyCheck(o.putBucketPolicyHandler, []Action{PutBucketPolicyAction}, Write)).
 			Queries("policy", "")
+
+		// Put bucket tagging
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketTagging.html
+		r.Methods(http.MethodPut).
+			HandlerFunc(o.policyCheck(o.putBucketTaggingHandler, []Action{PutBucketTaggingAction}, Write)).
+			Queries("tagging", "")
 
 		// Create bucket
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucket.html

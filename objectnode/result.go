@@ -272,6 +272,12 @@ func NewGetObjectTaggingOutput() *Tagging {
 	}
 }
 
+func NewGetBucketTaggingOutput() *Tagging {
+	return &Tagging{
+		XMLName: xml.Name{Local: "GetBucketTaggingOutput"},
+	}
+}
+
 type GetObjectTaggingOutput struct {
 	XMLName xml.Name `xml:"GetObjectTaggingOutput"`
 	Tagging
