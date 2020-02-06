@@ -14,6 +14,11 @@ GFS and HDFS
 GFS and its open source implementation HDFS (https://github.com/apache/hadoop) are designed for storing large files with sequential access.
 Both of them adopt the master-slave architecture, where the single master stores all the file metadata. Unlike GFS and HDFS, ChubaoFS employs  a separate  metadata subsystem  to provide a scalable solution for   the  metadata storage so that the resource manager has less chance to become the bottleneck.
 
+Hadoop Ozone
+^^^^^^^^^^^^
+Hadoop Ozone is a scalable distributed object storage system designed for Hadoop. It was originally proposed to solve the problem of HDFS namenode expansion. It reconstructs the namenode metadata management part of hdfs and reuses the datanode of hdfs.
+ChubaoFS has many of the same design concepts like ozone such as: supporting for volume isolation, compatible with both raft/master-slave synchronous replication mechanisms, implenting for s3-compatible interfaces. In addition, ChubaoFS's POSIX fuse-client interface supports random file reading and writing, and optimizes reading and writing of small files.
+
 Haystack
 ^^^^^^^^
 Haystack from Facebook takes after log-structured filesystems to serve long tail of requests seen by sharing photos in a large social network. The key insight is to avoid disk operations when accessing metadata.
