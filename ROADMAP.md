@@ -9,7 +9,7 @@ Here we draft the engineering roadmap of ChubaoFS
 
 ## Ecosystem
 
-* ChubaoSpark, leveraging ChubaoFS for remote shuffule service.  
+* ChubaoSpark, leveraging ChubaoFS to disaggregating storage from compute for the shuffle service.  
 
 
 
