@@ -2,21 +2,14 @@
 
 Here we draft the engineering roadmap of ChubaoFS
 
-## Performance Optimization
 
-* RDMA
+## Key Features
 
-## New Features
-
-* Object Storage Interface (to be released by the end of 2019)
-
-* Erasure Coding
+* Erasure Coding (to be released in April 2020)
 
 ## Ecosystem
 
-* Data Lake
-
-* Machine Learning
+* ChubaoSpark, leveraging ChubaoFS for remote shuffule service.  
 
 
 
