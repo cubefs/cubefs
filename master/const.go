@@ -37,6 +37,8 @@ const (
 	replicaNumKey         = "replicaNum"
 	followerReadKey       = "followerRead"
 	authenticateKey       = "authenticate"
+	akKey                 = "ak"
+	policyKey             = "policy"
 )
 
 const (
@@ -108,10 +110,19 @@ const (
 	opSyncAddNodeSet           uint32 = 0x12
 	opSyncUpdateNodeSet        uint32 = 0x13
 	opSyncBatchPut             uint32 = 0x14
+	opSyncAddAKPolicy          uint32 = 0x15
+	opSyncDeleteAKPolicy       uint32 = 0x16
+	opSyncUpdateAKPolicy       uint32 = 0x17
+	opSyncAddUserAK            uint32 = 0x18
+	opSyncDeleteUserAK         uint32 = 0x19
+	opSyncAddVolAK             uint32 = 0x1A //todo
+	opSyncDeleteVolAK          uint32 = 0x1B
+	opSyncUpdateVolAK          uint32 = 0x1C
 )
 
 const (
 	keySeparator          = "#"
+	idSeparator           = "$" // To seperate ID of server that submits raft changes
 	metaNodeAcronym       = "mn"
 	dataNodeAcronym       = "dn"
 	dataPartitionAcronym  = "dp"
@@ -129,4 +140,11 @@ const (
 	metaPartitionPrefix   = keySeparator + metaPartitionAcronym + keySeparator
 	clusterPrefix         = keySeparator + clusterAcronym + keySeparator
 	nodeSetPrefix         = keySeparator + nodeSetAcronym + keySeparator
+
+	akAcronym    = "ak"
+	userAcronym  = "user"
+	volAKAcronym = "volak"
+	akPrefix     = keySeparator + akAcronym + keySeparator
+	userPrefix   = keySeparator + userAcronym + keySeparator
+	volAKPrefix  = keySeparator + volAKAcronym + keySeparator
 )

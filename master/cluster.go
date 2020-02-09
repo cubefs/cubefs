@@ -50,6 +50,12 @@ type Cluster struct {
 	DisableAutoAllocate bool
 	fsm                 *MetadataFsm
 	partition           raftstore.Partition
+	akStore             sync.Map //K: ak, V: AKPolicy
+	userAk              sync.Map //K: user, V: ak
+	volAKs              sync.Map //K: vol, V: aks
+	akStoreMutex        sync.RWMutex
+	userAKMutex         sync.RWMutex
+	volAKsMutex         sync.RWMutex
 	MasterSecretKey     []byte
 }
 
@@ -751,7 +757,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
 errHandler:
-	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.Hosts)
 	if err != nil {

@@ -64,11 +64,13 @@ var (
 	ErrInvalidTicket                   = errors.New("invalid ticket")
 	ErrExpiredTicket                   = errors.New("expired ticket")
 	ErrMasterAPIGenRespError           = errors.New("master API generate response error")
+	ErrDuplicateUserID                 = errors.New("duplicate user id")
+	ErrOSSUserNotExists                = errors.New("oss user not exists")
 )
 
 // http response error code and error message definitions
 const (
-	ErrCodeSuccess                         = iota
+	ErrCodeSuccess = iota
 	ErrCodeInternalError
 	ErrCodeParamError
 	ErrCodeInvalidCfg
@@ -110,6 +112,8 @@ const (
 	ErrCodeInvalidTicket
 	ErrCodeExpiredTicket
 	ErrCodeMasterAPIGenRespError
+	ErrCodeDuplicateUserID
+	ErrCodeOSSUserNotExists
 )
 
 // Err2CodeMap error map to code
@@ -154,4 +158,6 @@ var Err2CodeMap = map[error]int32{
 	ErrInvalidTicket:                   ErrCodeInvalidTicket,
 	ErrExpiredTicket:                   ErrCodeExpiredTicket,
 	ErrMasterAPIGenRespError:           ErrCodeMasterAPIGenRespError,
+	ErrDuplicateUserID:                 ErrCodeDuplicateUserID,
+	ErrOSSUserNotExists:                ErrCodeOSSUserNotExists,
 }

@@ -125,5 +125,6 @@ func (m *Server) clearMetadata() {
 	m.cluster.clearDataNodes()
 	m.cluster.clearMetaNodes()
 	m.cluster.clearVols()
+	//todo
 	m.cluster.t = newTopology()
 }

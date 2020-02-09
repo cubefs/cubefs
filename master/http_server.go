@@ -70,7 +70,13 @@ func (m *Server) handleFunctions() {
 	http.Handle(proto.RemoveRaftNode, m.handlerWithInterceptor())
 	http.Handle(proto.AdminSetMetaNodeThreshold, m.handlerWithInterceptor())
 	http.Handle(proto.GetTopologyView, m.handlerWithInterceptor())
-
+	http.Handle(proto.OSSCreateUser, m.handlerWithInterceptor())
+	http.Handle(proto.OSSDeleteUser, m.handlerWithInterceptor())
+	http.Handle(proto.OSSAddPolicy, m.handlerWithInterceptor())
+	http.Handle(proto.OSSDeletePolicy, m.handlerWithInterceptor())
+	http.Handle(proto.OSSGetAKInfo, m.handlerWithInterceptor())
+	http.Handle(proto.OSSGetUserInfo, m.handlerWithInterceptor())
+	http.Handle(proto.OSSGetVolAKs, m.handlerWithInterceptor())
 	return
 }
 
@@ -179,6 +185,20 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.setMetaNodeThreshold(w, r)
 	case proto.GetTopologyView:
 		m.getTopology(w, r)
+	case proto.OSSCreateUser:
+		m.createOSSUser(w, r)
+	case proto.OSSDeleteUser:
+		m.deleteOSSUser(w, r)
+	case proto.OSSAddPolicy:
+		m.addOSSPolicy(w, r)
+	case proto.OSSDeletePolicy:
+		m.deleteOSSPolicy(w, r)
+	case proto.OSSGetAKInfo:
+		m.getOSSAKInfo(w, r)
+	case proto.OSSGetUserInfo:
+		m.getOSSUserInfo(w, r)
+	case proto.OSSGetVolAKs:
+		// todo
 	default:
 
 	}

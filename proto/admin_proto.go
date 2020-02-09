@@ -65,6 +65,15 @@ const (
 
 	// Header keys
 	SkipOwnerValidation = "Skip-Owner-Validation"
+
+	// Object Store APIs
+	OSSCreateUser   = "/oss/createuser"
+	OSSDeleteUser   = "/oss/deleteuser"
+	OSSAddPolicy    = "/oss/addpolicy"
+	OSSDeletePolicy = "/oss/deletepolicy"
+	OSSGetUserInfo  = "/oss/userinfo"
+	OSSGetAKInfo    = "/oss/akinfo"
+	OSSGetVolAKs    = "/oss/volaks"
 )
 
 // HTTPReply uniform response structure

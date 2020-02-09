@@ -20,6 +20,7 @@ import (
 	bsProto "github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/oss"
 	"github.com/tiglabs/raft/proto"
 	"strconv"
 	"strings"
@@ -240,6 +241,8 @@ func (m *RaftCmd) setOpType() {
 		m.Op = opSyncAllocMetaPartitionID
 	case maxCommonIDKey:
 		m.Op = opSyncAllocCommonID
+	case akAcronym:
+		//todo
 	default:
 		log.LogWarnf("action[setOpType] unknown opCode[%v]", keyArr[1])
 	}
@@ -612,4 +615,67 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v]", vol.Name, dp.PartitionID)
 	}
 	return
+}
+
+// key=#ak#accesskey,value = akPolicy
+func (c *Cluster) syncAddAKPolicy(akPolicy *oss.AKPolicy) (err error) {
+	return c.syncPutAKPolicy(opSyncAddAKPolicy, akPolicy)
+}
+
+func (c *Cluster) syncDeleteAKPolicy(akPolicy *oss.AKPolicy) (err error) {
+	return c.syncPutAKPolicy(opSyncDeleteAKPolicy, akPolicy)
+}
+
+func (c *Cluster) syncUpdateAKPolicy(akPolicy *oss.AKPolicy) (err error) {
+	return c.syncPutAKPolicy(opSyncUpdateAKPolicy, akPolicy)
+}
+
+func (c *Cluster) syncPutAKPolicy(opType uint32, akPolicy *oss.AKPolicy) (err error) {
+	metadata := new(RaftCmd)
+	metadata.Op = opType
+	metadata.K = akPrefix + akPolicy.AccessKey
+	metadata.V, err = json.Marshal(akPolicy)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	return c.submit(metadata)
+}
+
+// key=#user#userid,value = akPolicy
+func (c *Cluster) syncAddUserAK(userAK *oss.UserAK) (err error) {
+	return c.syncPutUserAK(opSyncAddUserAK, userAK)
+}
+
+func (c *Cluster) syncDeleteUserAK(userAK *oss.UserAK) (err error) {
+	return c.syncPutUserAK(opSyncDeleteUserAK, userAK)
+}
+
+func (c *Cluster) syncPutUserAK(opType uint32, userAK *oss.UserAK) (err error) {
+	metadata := new(RaftCmd)
+	metadata.Op = opType
+	metadata.K = userPrefix + userAK.UserID
+	metadata.V, err = json.Marshal(userAK)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	return c.submit(metadata)
+}
+
+func (c *Cluster) syncAddVolAK(volAK *oss.VolAK) (err error) {
+	return c.syncPutVolAK(opSyncAddVolAK, volAK)
+}
+
+func (c *Cluster) syncUpdateVolAK(volAK *oss.VolAK) (err error) {
+	return c.syncPutVolAK(opSyncUpdateVolAK, volAK)
+}
+
+func (c *Cluster) syncPutVolAK(opType uint32, volAK *oss.VolAK) (err error) {
+	metadata := new(RaftCmd)
+	metadata.Op = opType
+	metadata.K = volAKPrefix + volAK.Vol
+	metadata.V, err = json.Marshal(volAK)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	return c.submit(metadata)
 }
