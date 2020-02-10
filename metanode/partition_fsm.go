@@ -347,11 +347,11 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 }
 
 // Put puts the given key-value pair (operation key and operation request) into the raft store.
-func (mp *metaPartition) Put(key, val interface{}) (resp interface{}, err error) {
+func (mp *metaPartition) submit(op uint32, data []byte) (resp interface{}, err error) {
 	snap := NewMetaItem(0, nil, nil)
-	snap.Op = key.(uint32)
-	if val != nil {
-		snap.V = val.([]byte)
+	snap.Op = op
+	if data != nil {
+		snap.V = data
 	}
 	cmd, err := snap.MarshalJson()
 	if err != nil {
@@ -361,16 +361,6 @@ func (mp *metaPartition) Put(key, val interface{}) (resp interface{}, err error)
 	// submit to the raft store
 	resp, err = mp.raftPartition.Submit(cmd)
 	return
-}
-
-// Get has not been implemented yet.
-func (mp *metaPartition) Get(key interface{}) (interface{}, error) {
-	return nil, nil
-}
-
-// Del has not been implemented yet.
-func (mp *metaPartition) Del(key interface{}) (interface{}, error) {
-	return nil, nil
 }
 
 func (mp *metaPartition) uploadApplyID(applyId uint64) {

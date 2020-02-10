@@ -548,7 +548,7 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 		resp.Result = err.Error()
 		return
 	}
-	r, err := mp.Put(opFSMUpdatePartition, reqData)
+	r, err := mp.submit(opFSMUpdatePartition, reqData)
 	if err != nil {
 		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
@@ -566,7 +566,7 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 }
 
 func (mp *metaPartition) DecommissionPartition(req []byte) (err error) {
-	_, err = mp.Put(opFSMDecommissionPartition, req)
+	_, err = mp.submit(opFSMDecommissionPartition, req)
 	return
 }
 

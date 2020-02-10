@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"encoding/json"
+
 	"github.com/chubaofs/chubaofs/proto"
 )
 
@@ -126,6 +127,6 @@ func (mp *metaPartition) putExtend(op uint32, extend *Extend) (resp interface{},
 	if marshaled, err = extend.Bytes(); err != nil {
 		return
 	}
-	resp, err = mp.Put(op, marshaled)
+	resp, err = mp.submit(op, marshaled)
 	return
 }

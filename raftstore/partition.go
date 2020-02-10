@@ -15,9 +15,10 @@
 package raftstore
 
 import (
+	"os"
+
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"
-	"os"
 )
 
 // PartitionStatus is a type alias of raft.Status
@@ -26,10 +27,7 @@ type PartitionStatus = raft.Status
 // PartitionFsm wraps necessary methods include both FSM implementation
 // and data storage operation for raft store partition.
 // It extends from raft StateMachine and Store.
-type PartitionFsm interface {
-	raft.StateMachine
-	Store
-}
+type PartitionFsm = raft.StateMachine
 
 // Partition wraps necessary methods for raft store partition operation.
 // Partition is a shard for multi-raft in RaftSore. RaftStore is based on multi-raft which
