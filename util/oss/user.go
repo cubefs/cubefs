@@ -21,8 +21,8 @@ type UserPolicy struct {
 }
 
 type VolAK struct {
-	Vol       string   `json:"vol"`
-	AKAndAPIs []string `json:"user_aks"`
+	Vol          string   `json:"vol"`
+	AKAndActions []string `json:"user_ak_action"`
 }
 
 func (policy *UserPolicy) Add(addPolicy *UserPolicy) {

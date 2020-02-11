@@ -25,9 +25,8 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util/caps"
-	"github.com/chubaofs/chubaofs/util/keystore"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/oss"
 	"github.com/gorilla/mux"
 )
 
@@ -62,9 +61,9 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = DuplicatedBucket.ServeResponse(w, r)
 	}
 	auth := parseRequestAuthInfo(r)
-	var akCaps *keystore.AccessKeyCaps
-	if akCaps, err = o.authStore.GetAkCaps(auth.accessKey); err != nil {
-		log.LogErrorf("get user info from authnode error: accessKey(%v), err(%v)", auth.accessKey, err)
+	var akPolicy *oss.AKPolicy
+	if akPolicy, err = o.getAkInfo(auth.accessKey); err != nil {
+		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
@@ -75,16 +74,17 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	//todo what params to createVol？
-	if err = mc.AdminAPI().CreateDefaultVolume(bucket, akCaps.ID); err != nil {
+	if err = mc.AdminAPI().CreateDefaultVolume(bucket, akPolicy.UserID); err != nil {
 		log.LogErrorf("create bucket[%v] failed: accessKey(%v), err(%v)", bucket, auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
 	//todo parse body
-	//todo add const
-	cap := "{\"OwnerVOL\":[\"*:" + bucket + ":*\"]}"
-	if _, err = o.authStore.authClient.API().OSSAddCaps(proto.ObjectServiceID, o.authStore.authKey, auth.accessKey, []byte(cap)); err != nil {
-		log.LogErrorf("add bucket cap[%v] for user[%v] error: err(%v)", cap, auth.accessKey, err)
+	policy := &oss.UserPolicy{
+		OwnVol: []string{bucket},
+	}
+	if _, err = o.mc.OSSAPI().AddPolicy(auth.accessKey, policy); err != nil {
+		log.LogErrorf("add bucket[%v] policy for user[%v] error: err(%v)", bucket, auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
@@ -110,9 +110,9 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	auth := parseRequestAuthInfo(r)
-	var akCaps *keystore.AccessKeyCaps
-	if akCaps, err = o.authStore.GetAkCaps(auth.accessKey); err != nil {
-		log.LogErrorf("get user info from authnode error: accessKey(%v), err(%v)", auth.accessKey, err)
+	var akPolicy *oss.AKPolicy
+	if akPolicy, err = o.getAkInfo(auth.accessKey); err != nil {
+		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
@@ -131,15 +131,14 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = BucketNotEmpty.ServeResponse(w, r)
 		return
 	}
-	// todo delete all related user cap
-	cap := "{\"OwnerVOL\":[\"*:" + bucket + ":*\"]}"
-	if _, err = o.authStore.authClient.API().OSSDeleteCaps(proto.ObjectServiceID, o.authStore.authKey, auth.accessKey, []byte(cap)); err != nil {
-		log.LogErrorf("delete bucket cap[%v] for user[%v] failed: err(%v)", cap, auth.accessKey, err)
+	if err = mc.OSSAPI().DeleteVolPolicy(bucket); err != nil {
+		log.LogErrorf("delete bucket[%v] error: delete related policy err(%v)", bucket, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
 	// delete volume from master
-	if authKey, err = calculateAuthKey(akCaps.ID); err != nil {
+	if authKey, err = calculateAuthKey(akPolicy.UserID); err != nil {
+		log.LogErrorf("delete bucket[%v] error: calculate authKey(%v) err(%v)", bucket, akPolicy.UserID, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
@@ -161,28 +160,21 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 
 	var err error
 	auth := parseRequestAuthInfo(r)
-	var akCaps *keystore.AccessKeyCaps
-	if akCaps, err = o.authStore.GetAkCaps(auth.accessKey); err != nil {
-		log.LogErrorf("get user info from authnode error: accessKey(%v), err(%v)", auth.accessKey, err)
+	var akPolicy *oss.AKPolicy
+	if akPolicy, err = o.getAkInfo(auth.accessKey); err != nil {
+		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
 
-	var curCaps = &caps.Caps{}
-	if err = curCaps.Init(akCaps.Caps); err != nil {
-		log.LogErrorf("init caps error: caps(%v), err(%v)", akCaps.Caps, err)
-		_ = InternalError.ServeResponse(w, r)
-		return
-	}
-	ownerVols := curCaps.OwnerVOL
+	ownVols := akPolicy.Policy.OwnVol
 	var buckets = make([]*Bucket, 0)
-	for _, ownerVol := range ownerVols {
-		s := strings.Split(ownerVol, ":")
-		var bucket = &Bucket{Name: s[1], CreationDate: time.Now()} //todo time
+	for _, ownVol := range ownVols {
+		var bucket = &Bucket{Name: ownVol, CreationDate: time.Now()} //todo time
 		buckets = append(buckets, bucket)
 	}
 
-	owner := &Owner{DisplayName: akCaps.AccessKey, Id: akCaps.AccessKey}
+	owner := &Owner{DisplayName: akPolicy.AccessKey, Id: akPolicy.AccessKey}
 	listBucketOutput := &ListBucketsOutput{
 		Buckets: &Buckets{Bucket: buckets},
 		Owner:   owner,
@@ -347,4 +339,17 @@ func calculateAuthKey(key string) (authKey string, err error) {
 	}
 	cipherStr := h.Sum(nil)
 	return strings.ToLower(hex.EncodeToString(cipherStr)), nil
+}
+
+func (o *ObjectNode) getAkInfo(accessKey string) (*oss.AKPolicy, error) {
+	var err error
+	akPolicy, exit := o.userStore.Get(accessKey)
+	if !exit {
+		if akPolicy, err = o.mc.OSSAPI().GetAKInfo(accessKey); err != nil {
+			log.LogInfof("load user policy err: %v", err)
+			return akPolicy, err
+		}
+		o.userStore.Put(accessKey, akPolicy)
+	}
+	return akPolicy, err
 }

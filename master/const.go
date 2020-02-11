@@ -15,8 +15,9 @@
 package master
 
 import (
-	"github.com/chubaofs/chubaofs/util"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util"
 )
 
 // Keys in the request
@@ -115,7 +116,7 @@ const (
 	opSyncUpdateAKPolicy       uint32 = 0x17
 	opSyncAddUserAK            uint32 = 0x18
 	opSyncDeleteUserAK         uint32 = 0x19
-	opSyncAddVolAK             uint32 = 0x1A //todo
+	opSyncAddVolAK             uint32 = 0x1A
 	opSyncDeleteVolAK          uint32 = 0x1B
 	opSyncUpdateVolAK          uint32 = 0x1C
 )

@@ -67,13 +67,13 @@ const (
 	SkipOwnerValidation = "Skip-Owner-Validation"
 
 	// Object Store APIs
-	OSSCreateUser   = "/oss/createuser"
-	OSSDeleteUser   = "/oss/deleteuser"
-	OSSAddPolicy    = "/oss/addpolicy"
-	OSSDeletePolicy = "/oss/deletepolicy"
-	OSSGetUserInfo  = "/oss/userinfo"
-	OSSGetAKInfo    = "/oss/akinfo"
-	OSSGetVolAKs    = "/oss/volaks"
+	OSSCreateUser      = "/oss/createuser"
+	OSSDeleteUser      = "/oss/deleteuser"
+	OSSAddPolicy       = "/oss/addpolicy"
+	OSSDeletePolicy    = "/oss/deletepolicy"
+	OSSDeleteVolPolicy = "/oss/deletevolpolicy"
+	OSSGetUserInfo     = "/oss/userinfo"
+	OSSGetAKInfo       = "/oss/akinfo"
 )
 
 // HTTPReply uniform response structure

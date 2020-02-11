@@ -25,8 +25,8 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/keystore"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/oss"
 	"github.com/gorilla/mux"
 )
 
@@ -96,12 +96,12 @@ func (o *ObjectNode) checkSignatureV4(r *http.Request) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	var akCaps *keystore.AccessKeyCaps
-	if akCaps, err = o.authStore.GetAkCaps(req.Credential.AccessKey); err != nil {
-		log.LogInfof("get secretKey from authnode error: accessKey(%v), err(%v)", req.Credential.AccessKey, err)
+	var akPolicy *oss.AKPolicy
+	if akPolicy, err = o.getAkInfo(req.Credential.AccessKey); err != nil {
+		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", req.Credential.AccessKey, err)
 		return false, err
 	}
-	newSignature := calculateSignatureV4(r, o.region, akCaps.SecretKey, req.SignedHeaders)
+	newSignature := calculateSignatureV4(r, o.region, akPolicy.SecretKey, req.SignedHeaders)
 	if req.Signature != newSignature {
 		log.LogDebugf("checkSignatureV4: invalid signature: requestID(%v) client(%v) server(%v)",
 			RequestIDFromRequest(r), req.Signature, newSignature)
@@ -136,9 +136,9 @@ func (o *ObjectNode) checkPresignedSignatureV4(r *http.Request) (pass bool, err 
 	}
 
 	// check accessKey valid
-	var akCaps *keystore.AccessKeyCaps
-	if akCaps, err = o.authStore.GetAkCaps(req.Credential.AccessKey); err != nil {
-		log.LogInfof("get secretKey from authnode error: accessKey(%v), err(%v)", req.Credential.AccessKey, err)
+	var akPolicy *oss.AKPolicy
+	if akPolicy, err = o.getAkInfo(req.Credential.AccessKey); err != nil {
+		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", req.Credential.AccessKey, err)
 		return false, err
 	}
 	// create canonicalRequest
@@ -161,7 +161,7 @@ func (o *ObjectNode) checkPresignedSignatureV4(r *http.Request) (pass bool, err 
 		canonicalRequestString)
 
 	// build signingKey
-	signingKey := buildSigningKey(SCHEME, akCaps.SecretKey, req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)
+	signingKey := buildSigningKey(SCHEME, akPolicy.SecretKey, req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)
 
 	// build stringToSign
 	scope := buildScope(req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)

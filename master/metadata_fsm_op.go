@@ -17,13 +17,14 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
+
 	bsProto "github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/oss"
 	"github.com/tiglabs/raft/proto"
-	"strconv"
-	"strings"
 )
 
 /* We defines several "values" such as clusterValue, metaPartitionValue, dataPartitionValue, volValue, dataNodeValue,
@@ -242,7 +243,11 @@ func (m *RaftCmd) setOpType() {
 	case maxCommonIDKey:
 		m.Op = opSyncAllocCommonID
 	case akAcronym:
-		//todo
+		m.Op = opSyncAddAKPolicy
+	case userAcronym:
+		m.Op = opSyncAddUserAK
+	case volAKAcronym:
+		m.Op = opSyncAddVolAK
 	default:
 		log.LogWarnf("action[setOpType] unknown opCode[%v]", keyArr[1])
 	}
@@ -665,6 +670,10 @@ func (c *Cluster) syncAddVolAK(volAK *oss.VolAK) (err error) {
 	return c.syncPutVolAK(opSyncAddVolAK, volAK)
 }
 
+func (c *Cluster) syncDeleteVolAK(volAK *oss.VolAK) (err error) {
+	return c.syncPutVolAK(opSyncDeleteVolAK, volAK)
+}
+
 func (c *Cluster) syncUpdateVolAK(volAK *oss.VolAK) (err error) {
 	return c.syncPutVolAK(opSyncUpdateVolAK, volAK)
 }
@@ -678,4 +687,9 @@ func (c *Cluster) syncPutVolAK(opType uint32, volAK *oss.VolAK) (err error) {
 		return errors.New(err.Error())
 	}
 	return c.submit(metadata)
+}
+
+func (c *Cluster) loadAKInfo() (err error) {
+	//todo 3
+	return
 }

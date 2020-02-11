@@ -66,6 +66,8 @@ var (
 	ErrMasterAPIGenRespError           = errors.New("master API generate response error")
 	ErrDuplicateUserID                 = errors.New("duplicate user id")
 	ErrOSSUserNotExists                = errors.New("oss user not exists")
+	ErrReadBodyError                   = errors.New("read request body failed")
+	ErrVolPolicyNotExists              = errors.New("vol policy not exists")
 )
 
 // http response error code and error message definitions
@@ -114,6 +116,8 @@ const (
 	ErrCodeMasterAPIGenRespError
 	ErrCodeDuplicateUserID
 	ErrCodeOSSUserNotExists
+	ErrCodeReadBodyError
+	ErrCodeVolPolicyNotExists
 )
 
 // Err2CodeMap error map to code
@@ -160,4 +164,6 @@ var Err2CodeMap = map[error]int32{
 	ErrMasterAPIGenRespError:           ErrCodeMasterAPIGenRespError,
 	ErrDuplicateUserID:                 ErrCodeDuplicateUserID,
 	ErrOSSUserNotExists:                ErrCodeOSSUserNotExists,
+	ErrReadBodyError:                   ErrCodeReadBodyError,
+	ErrVolPolicyNotExists:              ErrCodeVolPolicyNotExists,
 }

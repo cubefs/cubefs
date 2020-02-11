@@ -120,7 +120,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 	}
 	switch cmd.Op {
 	case opSyncDeleteDataNode, opSyncDeleteMetaNode, opSyncDeleteVol, opSyncDeleteDataPartition, opSyncDeleteMetaPartition,
-		opSyncDeleteAKPolicy, opSyncDeleteUserAK:
+		opSyncDeleteAKPolicy, opSyncDeleteUserAK, opSyncDeleteVolAK:
 		if err = mf.delKeyAndPutIndex(cmd.K, cmdMap); err != nil {
 			panic(err)
 		}

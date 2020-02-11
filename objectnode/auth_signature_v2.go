@@ -27,8 +27,8 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/keystore"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/oss"
 	"github.com/gorilla/mux"
 )
 
@@ -174,14 +174,14 @@ func (o *ObjectNode) checkSignatureV2(r *http.Request) (bool, error) {
 		return false, err
 	}
 
-	var akCaps *keystore.AccessKeyCaps
-	if akCaps, err = o.authStore.GetAkCaps(authInfo.accessKeyId); err != nil {
-		log.LogInfof("get secretKey from authnode error: accessKey(%v), err(%v)", authInfo.accessKeyId, err)
+	var akPolicy *oss.AKPolicy
+	if akPolicy, err = o.getAkInfo(authInfo.accessKeyId); err != nil {
+		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", authInfo.accessKeyId, err)
 		return false, err
 	}
 
 	// 2. calculate new signature
-	newSignature, err1 := calculateSignatureV2(authInfo, akCaps.SecretKey, o.wildcards)
+	newSignature, err1 := calculateSignatureV2(authInfo, akPolicy.SecretKey, o.wildcards)
 	if err1 != nil {
 		log.LogInfof("calculute SignatureV2 error: %v, %v", authInfo.r, err)
 		return false, err1
@@ -276,9 +276,9 @@ func (o *ObjectNode) checkPresignedSignatureV2(r *http.Request) (bool, error) {
 		RequestIDFromRequest(r), r.URL.String(), accessKey, signature, expires)
 
 	//check access key
-	var akCaps *keystore.AccessKeyCaps
-	if akCaps, err = o.authStore.GetAkCaps(accessKey); err != nil {
-		log.LogInfof("get secretKey from authnode error: accessKey(%v), err(%v)", accessKey, err)
+	var akPolicy *oss.AKPolicy
+	if akPolicy, err = o.getAkInfo(accessKey); err != nil {
+		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", accessKey, err)
 		return false, err
 	}
 
@@ -292,7 +292,7 @@ func (o *ObjectNode) checkPresignedSignatureV2(r *http.Request) (bool, error) {
 	var canonicalResource string
 	canonicalResource = getCanonicalizedResourceV2(r, o.wildcards)
 	canonicalResourceQuery := getCanonicalQueryV2(canonicalResource, r.URL.Query().Encode())
-	calSignature := calPresignedSignatureV2(r.Method, canonicalResourceQuery, expires, akCaps.SecretKey, r.Header)
+	calSignature := calPresignedSignatureV2(r.Method, canonicalResourceQuery, expires, akPolicy.SecretKey, r.Header)
 	if calSignature != signature {
 		log.LogDebugf("checkPresignedSignatureV2: invalid signature: requestID(%v) client(%v) server(%v)",
 			RequestIDFromRequest(r), signature, calSignature)

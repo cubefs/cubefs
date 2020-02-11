@@ -43,10 +43,7 @@ const (
 	configListen      = "listen"
 	configDomains     = "domains"
 	configMasters     = "masters"
-	configAuthnodes   = "authNodes"
-	configAuthkey     = "authKey"
 	configEnableHTTPS = "enableHTTPS"
-	configCertFile    = "certFile"
 )
 
 // Default of configuration value
@@ -68,7 +65,7 @@ type ObjectNode struct {
 	mc         *master.MasterClient
 	state      uint32
 	wg         sync.WaitGroup
-	authStore  *authnodeStore
+	userStore  *UserStore
 }
 
 func (o *ObjectNode) Start(cfg *config.Config) (err error) {
@@ -135,20 +132,7 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	o.vm = NewVolumeManager(masters)
 	o.vm.InitStore(new(xattrStore))
 	o.vm.InitMasterClient(masters, enableHTTPS)
-
-	//parse AuthNode info
-	authNodes := cfg.GetStringSlice(configAuthnodes)
-	if len(authNodes) == 0 {
-		return config.NewIllegalConfigError(configAuthnodes)
-	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configAuthnodes, authNodes)
-
-	//parse authnode info
-	certFile := cfg.GetString(configCertFile)
-	authKey := cfg.GetString(configAuthkey)
-	log.LogInfof("loadConfig: setup config: %v(%v)", configAuthkey, authKey)
-
-	o.authStore = newAuthStore(authNodes, authKey, certFile, enableHTTPS)
+	o.userStore = o.newUserStore()
 
 	return
 }

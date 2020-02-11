@@ -19,13 +19,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
 	"io/ioutil"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -73,6 +73,12 @@ func (c *MasterClient) ClientAPI() *ClientAPI {
 
 func (c *MasterClient) NodeAPI() *NodeAPI {
 	return &NodeAPI{
+		mc: c,
+	}
+}
+
+func (c *MasterClient) OSSAPI() *OSSAPI {
+	return &OSSAPI{
 		mc: c,
 	}
 }

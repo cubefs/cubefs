@@ -2,12 +2,17 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/oss"
+)
+
+const (
+	accessKeyLength = 16
+	secretKeyLength = 32
 )
 
 func (c *Cluster) createKey(owner string) (akPolicy *oss.AKPolicy, err error) {
@@ -15,8 +20,8 @@ func (c *Cluster) createKey(owner string) (akPolicy *oss.AKPolicy, err error) {
 		userAK *oss.UserAK
 		exit   bool
 	)
-	accessKey := util.RandomString(16, util.Numeric|util.LowerLetter|util.UpperLetter)
-	secretKey := util.RandomString(32, util.Numeric|util.LowerLetter|util.UpperLetter)
+	accessKey := util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
+	secretKey := util.RandomString(secretKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
 	c.akStoreMutex.Lock()
 	defer c.akStoreMutex.Unlock()
 	c.userAKMutex.Lock()
@@ -28,7 +33,7 @@ func (c *Cluster) createKey(owner string) (akPolicy *oss.AKPolicy, err error) {
 	}
 	_, exit = c.akStore.Load(accessKey)
 	for exit {
-		accessKey = util.RandomString(16, util.Numeric|util.LowerLetter|util.UpperLetter)
+		accessKey = util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
 		_, exit = c.akStore.Load(accessKey)
 	}
 
@@ -159,6 +164,51 @@ errHandler:
 	return
 }
 
+func (c *Cluster) deleteVolPolicy(vol string) (err error) {
+	var (
+		volAK    *oss.VolAK
+		akPolicy *oss.AKPolicy
+	)
+	//get related ak
+	if value, exit := c.volAKs.Load(vol); exit {
+		volAK = value.(*oss.VolAK)
+	} else {
+		err = proto.ErrVolPolicyNotExists
+		goto errHandler
+	}
+	//delete policy
+	for _, akAndAction := range volAK.AKAndActions {
+		ak := akAndAction[:accessKeyLength]
+		action := akAndAction[accessKeyLength+1:]
+		if akPolicy, err = c.getAKInfo(ak); err != nil {
+			goto errHandler
+		}
+		var userPolicy *oss.UserPolicy
+		if action == "all" {
+			userPolicy = &oss.UserPolicy{OwnVol: []string{vol}}
+		} else {
+			userPolicy = &oss.UserPolicy{NoneOwnVol: map[string][]string{vol: {action}}}
+		}
+		akPolicy.Policy.Delete(userPolicy)
+		if err = c.syncUpdateAKPolicy(akPolicy); err != nil {
+			err = proto.ErrPersistenceByRaft
+			goto errHandler
+		}
+	}
+	//delete vol index
+	if err = c.syncDeleteVolAK(volAK); err != nil {
+		goto errHandler
+	}
+	c.volAKs.Delete(volAK.Vol)
+	log.LogInfof("action[deleteOSSVolPolicy], clusterID[%v] volName: %v", c.Name, vol)
+	return
+errHandler:
+	err = fmt.Errorf("action[deleteOSSVolPolicy], clusterID[%v] volName: %v err: %v", c.Name, vol, err.Error())
+	log.LogError(errors.Stack(err))
+	Warn(c.Name, err.Error())
+	return
+}
+
 func (c *Cluster) getAKInfo(ak string) (akPolicy *oss.AKPolicy, err error) {
 	if value, exit := c.akStore.Load(ak); exit {
 		akPolicy = value.(*oss.AKPolicy)
@@ -184,15 +234,17 @@ func (c *Cluster) addVolAKs(ak string, policy *oss.UserPolicy) (err error) {
 	return
 }
 
-func (c *Cluster) addAKToVol(akAndAPI string, vol string) (err error) {
+func (c *Cluster) addAKToVol(akAndAction string, vol string) (err error) {
+	c.volAKsMutex.Lock()
+	defer c.volAKsMutex.Unlock()
 	var volAK *oss.VolAK
 	if value, ok := c.volAKs.Load(vol); ok {
 		volAK = value.(*oss.VolAK)
-		volAK.AKAndAPIs = append(volAK.AKAndAPIs, akAndAPI)
+		volAK.AKAndActions = append(volAK.AKAndActions, akAndAction)
 	} else {
 		aks := make([]string, 0)
-		aks = append(aks, akAndAPI)
-		volAK = &oss.VolAK{Vol: vol, AKAndAPIs: aks}
+		aks = append(aks, akAndAction)
+		volAK = &oss.VolAK{Vol: vol, AKAndActions: aks}
 		c.volAKs.Store(vol, volAK)
 	}
 	if err = c.syncAddVolAK(volAK); err != nil {
@@ -218,11 +270,11 @@ func (c *Cluster) deleteVolAKs(ak string, policy *oss.UserPolicy) (err error) {
 	return
 }
 
-func (c *Cluster) deleteAKFromVol(akAndAPI string, vol string) (err error) {
+func (c *Cluster) deleteAKFromVol(akAndAction string, vol string) (err error) {
 	var volAK *oss.VolAK
 	if value, ok := c.volAKs.Load(vol); ok {
 		volAK = value.(*oss.VolAK)
-		volAK.AKAndAPIs = removeAK(volAK.AKAndAPIs, akAndAPI)
+		volAK.AKAndActions = removeAK(volAK.AKAndActions, akAndAction)
 	}
 	if err = c.syncUpdateVolAK(volAK); err != nil {
 		err = proto.ErrPersistenceByRaft
@@ -239,4 +291,8 @@ func removeAK(array []string, element string) []string {
 	}
 	log.LogErrorf("Delete user policy failed: remove accesskey [%v] form vol", element)
 	return array
+}
+
+func (c *Cluster) deleteAKInfoFromCache(metaNode *MetaNode) {
+	//todo 3
 }

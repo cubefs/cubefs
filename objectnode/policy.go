@@ -23,10 +23,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/caps"
-	"github.com/chubaofs/chubaofs/util/keystore"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/oss"
 )
 
 type ActionType string
@@ -192,7 +190,7 @@ func (p *Policy) IsAllowed(params *RequestParam) bool {
 	return false
 }
 
-func (o *ObjectNode) policyCheck(f http.HandlerFunc, actions []Action, actionType ActionType) http.HandlerFunc {
+func (o *ObjectNode) policyCheck(f http.HandlerFunc, actions []Action) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
 			err error
@@ -244,22 +242,26 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc, actions []Action, actionTyp
 			}
 		}
 		//check user policy
-		var akCaps *keystore.AccessKeyCaps
-		if akCaps, err = o.authStore.GetAkCaps(param.accessKey); err != nil {
-			log.LogInfof("get user policy from authnode error: accessKey(%v), err(%v)", param.accessKey, err)
+		var akPolicy *oss.AKPolicy
+		if akPolicy, err = o.getAkInfo(param.accessKey); err != nil {
+			log.LogInfof("get user policy from master error: accessKey(%v), err(%v)", param.accessKey, err)
 			return
 		}
-		cap := new(caps.Caps)
-		if err = cap.Init(akCaps.Caps); err != nil {
-			log.LogInfof("load user caps err: %v", err)
+		if contains(akPolicy.Policy.OwnVol, param.bucket) {
+			allowed = true
 			return
 		}
-		curCap := S3Flag + ArnSplitToken + param.bucket + ArnSplitToken + string(actionType)
-		rwCap := S3Flag + ArnSplitToken + param.bucket + ArnSplitToken + string(ReadWrite)
-		//TODO owner need check？
-		allowed = cap.ContainCaps(proto.OwnerVOLRsc, curCap) || cap.ContainCaps(proto.OwnerVOLRsc, rwCap) ||
-			cap.ContainCaps(proto.NoneOwnerVOLRsc, curCap) || cap.ContainCaps(proto.NoneOwnerVOLRsc, rwCap)
-		if !allowed {
+		if apis, exit := akPolicy.Policy.NoneOwnVol[param.bucket]; exit {
+			for _, action := range actions {
+				if !contains(apis, string(action)) {
+					allowed = false
+					log.LogWarnf("user policy not allowed %v", param)
+					return
+				}
+			}
+			allowed = true
+		} else {
+			allowed = false
 			log.LogWarnf("user policy not allowed %v", param)
 			return
 		}

@@ -3,11 +3,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/oss"
+	"io/ioutil"
 	"net/http"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/oss"
 )
 
 func (m *Server) createOSSUser(w http.ResponseWriter, r *http.Request) {
@@ -84,9 +85,19 @@ func (m *Server) addOSSPolicy(w http.ResponseWriter, r *http.Request) {
 		ak         string
 		akPolicy   *oss.AKPolicy
 		userPolicy *oss.UserPolicy
+		body       []byte
 		err        error
 	)
-	if ak, userPolicy, err = parseAKAndPolicy(r); err != nil {
+	if body, err = ioutil.ReadAll(r.Body); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeReadBodyError, Msg: err.Error()})
+		return
+	}
+	userPolicy = &oss.UserPolicy{}
+	if err = json.Unmarshal(body, userPolicy); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeUnmarshalData, Msg: err.Error()})
+		return
+	}
+	if ak, err = parseAccessKey(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -102,9 +113,19 @@ func (m *Server) deleteOSSPolicy(w http.ResponseWriter, r *http.Request) {
 		ak         string
 		akPolicy   *oss.AKPolicy
 		userPolicy *oss.UserPolicy
+		body       []byte
 		err        error
 	)
-	if ak, userPolicy, err = parseAKAndPolicy(r); err != nil {
+	if body, err = ioutil.ReadAll(r.Body); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeReadBodyError, Msg: err.Error()})
+		return
+	}
+	userPolicy = &oss.UserPolicy{}
+	if err = json.Unmarshal(body, userPolicy); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeUnmarshalData, Msg: err.Error()})
+		return
+	}
+	if ak, err = parseAccessKey(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -113,6 +134,24 @@ func (m *Server) deleteOSSPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(akPolicy))
+}
+
+func (m *Server) deleteOSSVolPolicy(w http.ResponseWriter, r *http.Request) {
+	var (
+		vol string
+		err error
+	)
+	if vol, err = parseVolName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.deleteVolPolicy(vol); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	msg := fmt.Sprintf("delete OSS vol[%v] policy successfully", vol)
+	log.LogWarn(msg)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
 func parseAKAndPolicy(r *http.Request) (ak string, userPolicy *oss.UserPolicy, err error) {
