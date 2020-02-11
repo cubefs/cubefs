@@ -1060,7 +1060,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size
 		return
 	}
 
-	if followerRead, err = extractFollowerRead(r); err != nil {
+	if followerRead, err = extractFollowerReadToCreateVol(r); err != nil {
 		return
 	}
 
@@ -1214,10 +1214,10 @@ func extractStatus(r *http.Request) (status bool, err error) {
 	return
 }
 
-func extractFollowerRead(r *http.Request) (followerRead bool, err error) {
+func extractFollowerReadToCreateVol(r *http.Request) (followerRead bool, err error) {
 	var value string
 	if value = r.FormValue(followerReadKey); value == "" {
-		followerRead = false
+		followerRead = true
 		return
 	}
 	if followerRead, err = strconv.ParseBool(value); err != nil {
