@@ -27,6 +27,7 @@ import (
 	"os"
 	"path"
 
+	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util"
@@ -212,13 +213,13 @@ type metaPartition struct {
 
 // Start starts a meta partition.
 func (mp *metaPartition) Start() (err error) {
-	if atomic.CompareAndSwapUint32(&mp.state, StateStandby, StateStart) {
+	if atomic.CompareAndSwapUint32(&mp.state, common.StateStandby, common.StateStart) {
 		defer func() {
 			var newState uint32
 			if err != nil {
-				newState = StateStandby
+				newState = common.StateStandby
 			} else {
-				newState = StateRunning
+				newState = common.StateRunning
 			}
 			atomic.StoreUint32(&mp.state, newState)
 		}()
@@ -238,8 +239,8 @@ func (mp *metaPartition) Start() (err error) {
 
 // Stop stops a meta partition.
 func (mp *metaPartition) Stop() {
-	if atomic.CompareAndSwapUint32(&mp.state, StateRunning, StateShutdown) {
-		defer atomic.StoreUint32(&mp.state, StateStopped)
+	if atomic.CompareAndSwapUint32(&mp.state, common.StateRunning, common.StateShutdown) {
+		defer atomic.StoreUint32(&mp.state, common.StateStopped)
 		if mp.config.BeforeStop != nil {
 			mp.config.BeforeStop()
 		}

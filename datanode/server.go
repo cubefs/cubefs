@@ -23,13 +23,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"errors"
 	"os"
 	"syscall"
 
+	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/repl"
@@ -45,9 +45,9 @@ var (
 	ErrNoSpaceToCreatePartition = errors.New("No disk space to create a data partition")
 	ErrNewSpaceManagerFailed    = errors.New("Creater new space manager failed")
 
-	LocalIP ,serverPort     string
-	gConnPool    = util.NewConnectPool()
-	MasterClient = masterSDK.NewMasterClient(nil, false)
+	LocalIP, serverPort string
+	gConnPool           = util.NewConnectPool()
+	MasterClient        = masterSDK.NewMasterClient(nil, false)
 )
 
 const (
@@ -90,8 +90,8 @@ type DataNode struct {
 
 	tcpListener net.Listener
 	stopC       chan bool
-	state       uint32
-	wg          sync.WaitGroup
+
+	control common.Control
 }
 
 func NewServer() *DataNode {
@@ -100,40 +100,26 @@ func NewServer() *DataNode {
 
 func (s *DataNode) Start(cfg *config.Config) (err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	if atomic.CompareAndSwapUint32(&s.state, Standby, Start) {
-		defer func() {
-			if err != nil {
-				atomic.StoreUint32(&s.state, Standby)
-			} else {
-				atomic.StoreUint32(&s.state, Running)
-			}
-		}()
-		if err = s.onStart(cfg); err != nil {
-			return
-		}
-		s.wg.Add(1)
-	}
-	return
+	return s.control.Start(s, cfg, doStart)
 }
 
 // Shutdown shuts down the current data node.
 func (s *DataNode) Shutdown() {
-	if atomic.CompareAndSwapUint32(&s.state, Running, Shutdown) {
-		s.onShutdown()
-		s.wg.Done()
-		atomic.StoreUint32(&s.state, Stopped)
-	}
+	s.control.Shutdown(s, doShutdown)
 }
 
 // Sync keeps data node in sync.
 func (s *DataNode) Sync() {
-	if atomic.LoadUint32(&s.state) == Running {
-		s.wg.Wait()
-	}
+	s.control.Sync()
 }
 
 // Workflow of starting up a data node.
-func (s *DataNode) onStart(cfg *config.Config) (err error) {
+func doStart(server common.Server, cfg *config.Config) (err error) {
+	s, ok := server.(*DataNode)
+	if !ok {
+		return errors.New("Invalid Node Type!")
+	}
+
 	s.stopC = make(chan bool, 0)
 
 	// parse the config file
@@ -170,11 +156,14 @@ func (s *DataNode) onStart(cfg *config.Config) (err error) {
 	return
 }
 
-func (s *DataNode) onShutdown() {
+func doShutdown(server common.Server) {
+	s, ok := server.(*DataNode)
+	if !ok {
+		return
+	}
 	close(s.stopC)
 	s.stopTCPService()
 	s.stopRaftServer()
-	return
 }
 
 func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
@@ -184,7 +173,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	)
 	LocalIP = cfg.GetString(ConfigKeyLocalIP)
 	port = cfg.GetString(proto.ListenPort)
-	serverPort=port
+	serverPort = port
 	if regexpPort, err = regexp.Compile("^(\\d)+$"); err != nil {
 		return fmt.Errorf("Err:no port")
 	}

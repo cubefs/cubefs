@@ -14,15 +14,6 @@
 
 package datanode
 
-// The status of the server
-const (
-	Standby uint32 = iota
-	Start
-	Running
-	Shutdown
-	Stopped
-)
-
 const (
 	IntervalToUpdateReplica       = 600 // interval to update the replica
 	IntervalToUpdatePartitionSize = 60  // interval to update the partition size
