@@ -27,6 +27,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util"
@@ -161,13 +162,13 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 
 // Start starts the metadata manager.
 func (m *metadataManager) Start() (err error) {
-	if atomic.CompareAndSwapUint32(&m.state, StateStandby, StateStart) {
+	if atomic.CompareAndSwapUint32(&m.state, common.StateStandby, common.StateStart) {
 		defer func() {
 			var newState uint32
 			if err != nil {
-				newState = StateStandby
+				newState = common.StateStandby
 			} else {
-				newState = StateRunning
+				newState = common.StateRunning
 			}
 			atomic.StoreUint32(&m.state, newState)
 		}()
@@ -178,8 +179,8 @@ func (m *metadataManager) Start() (err error) {
 
 // Stop stops the metadata manager.
 func (m *metadataManager) Stop() {
-	if atomic.CompareAndSwapUint32(&m.state, StateRunning, StateShutdown) {
-		defer atomic.StoreUint32(&m.state, StateStopped)
+	if atomic.CompareAndSwapUint32(&m.state, common.StateRunning, common.StateShutdown) {
+		defer atomic.StoreUint32(&m.state, common.StateStopped)
 		m.onStop()
 	}
 }

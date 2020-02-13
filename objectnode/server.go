@@ -19,22 +19,12 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"net/http"
 	"regexp"
-	"sync"
-	"sync/atomic"
 
+	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/gorilla/mux"
-)
-
-// The status of the s3 server
-const (
-	Standby uint32 = iota
-	Start
-	Running
-	Shutdown
-	Stopped
 )
 
 // Configuration keys
@@ -63,39 +53,20 @@ type ObjectNode struct {
 	region     string
 	httpServer *http.Server
 	vm         VolumeManager
-	state      uint32
-	wg         sync.WaitGroup
+
+	control common.Control
 }
 
 func (o *ObjectNode) Start(cfg *config.Config) (err error) {
-	if atomic.CompareAndSwapUint32(&o.state, Standby, Start) {
-		defer func() {
-			if err != nil {
-				atomic.StoreUint32(&o.state, Standby)
-			} else {
-				atomic.StoreUint32(&o.state, Running)
-			}
-		}()
-		if err = o.handleStart(cfg); err != nil {
-			return
-		}
-		o.wg.Add(1)
-	}
-	return
+	return o.control.Start(o, cfg, handleStart)
 }
 
 func (o *ObjectNode) Shutdown() {
-	if atomic.CompareAndSwapUint32(&o.state, Running, Shutdown) {
-		o.handleShutdown()
-		o.wg.Done()
-		atomic.StoreUint32(&o.state, Stopped)
-	}
+	o.control.Shutdown(o, handleShutdown)
 }
 
 func (o *ObjectNode) Sync() {
-	if atomic.LoadUint32(&o.state) == Running {
-		o.wg.Wait()
-	}
+	o.control.Sync()
 }
 
 func (o *ObjectNode) parseConfig(cfg *config.Config) (err error) {
@@ -139,7 +110,11 @@ func (o *ObjectNode) parseConfig(cfg *config.Config) (err error) {
 	return
 }
 
-func (o *ObjectNode) handleStart(cfg *config.Config) (err error) {
+func handleStart(s common.Server, cfg *config.Config) (err error) {
+	o, ok := s.(*ObjectNode)
+	if !ok {
+		return errors.New("Invalid Node Type!")
+	}
 	// parse config
 	if err = o.parseConfig(cfg); err != nil {
 		return
@@ -153,7 +128,11 @@ func (o *ObjectNode) handleStart(cfg *config.Config) (err error) {
 	return
 }
 
-func (o *ObjectNode) handleShutdown() {
+func handleShutdown(s common.Server) {
+	o, ok := s.(*ObjectNode)
+	if !ok {
+		return
+	}
 	o.shutdownRestAPI()
 }
 

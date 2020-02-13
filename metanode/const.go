@@ -20,14 +20,6 @@ import (
 	"time"
 )
 
-const (
-	StateStandby uint32 = iota
-	StateStart
-	StateRunning
-	StateShutdown
-	StateStopped
-)
-
 // Type alias.
 type (
 	// Master -> MetaNode  create metaPartition request
