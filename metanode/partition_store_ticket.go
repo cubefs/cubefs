@@ -17,6 +17,7 @@ package metanode
 import (
 	"time"
 
+	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -34,7 +35,7 @@ type storeMsg struct {
 func (mp *metaPartition) startSchedule(curIndex uint64) {
 	timer := time.NewTimer(time.Hour * 24 * 365)
 	timer.Stop()
-	scheduleState := StateStopped
+	scheduleState := common.StateStopped
 	dumpFunc := func(msg *storeMsg) {
 		log.LogDebugf("[startSchedule] partitionId=%d: nowAppID"+
 			"=%d, applyID=%d", mp.config.PartitionId, curIndex,
@@ -61,15 +62,15 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 		if _, ok := mp.IsLeader(); ok {
 			timer.Reset(intervalToPersistData)
 		}
-		scheduleState = StateStopped
+		scheduleState = common.StateStopped
 	}
 	go func(stopC chan bool) {
 		var msgs []*storeMsg
 		readyChan := make(chan struct{}, 1)
 		for {
 			if len(msgs) > 0 {
-				if scheduleState == StateStopped {
-					scheduleState = StateRunning
+				if scheduleState == common.StateStopped {
+					scheduleState = common.StateRunning
 					readyChan <- struct{}{}
 				}
 			}

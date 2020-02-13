@@ -33,6 +33,7 @@ import (
 	"github.com/jacobsa/daemonize"
 
 	"github.com/chubaofs/chubaofs/authnode"
+	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/datanode"
 	"github.com/chubaofs/chubaofs/master"
 	"github.com/chubaofs/chubaofs/metanode"
@@ -81,14 +82,7 @@ var (
 	configForeground = flag.Bool("f", false, "run foreground")
 )
 
-type Server interface {
-	Start(cfg *config.Config) error
-	Shutdown()
-	// Sync will block invoker goroutine until this MetaNode shutdown.
-	Sync()
-}
-
-func interceptSignal(s Server) {
+func interceptSignal(s common.Server) {
 	sigC := make(chan os.Signal, 1)
 	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM)
 	syslog.Println("action[interceptSignal] register system signal.")
@@ -161,7 +155,7 @@ func main() {
 
 	// Init server instance with specified role configuration.
 	var (
-		server Server
+		server common.Server
 		module string
 	)
 	switch role {

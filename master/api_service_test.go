@@ -59,7 +59,7 @@ func createDefaultMasterServerForTest() *Server {
 	cfgJSON := `{
 		"role": "master",
 		"ip": "127.0.0.1",
-		"port": "8080",
+		"listen": "8080",
 		"prof":"10088",
 		"id":"1",
 		"peers": "1:127.0.0.1:8080",
