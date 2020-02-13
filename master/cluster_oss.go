@@ -219,6 +219,8 @@ func (c *Cluster) getAKInfo(ak string) (akPolicy *oss.AKPolicy, err error) {
 }
 
 func (c *Cluster) addVolAKs(ak string, policy *oss.UserPolicy) (err error) {
+	c.volAKsMutex.Lock()
+	defer c.volAKsMutex.Unlock()
 	for _, vol := range policy.OwnVol {
 		if err = c.addAKToVol(ak+"_all", vol); err != nil {
 			return
@@ -235,11 +237,11 @@ func (c *Cluster) addVolAKs(ak string, policy *oss.UserPolicy) (err error) {
 }
 
 func (c *Cluster) addAKToVol(akAndAction string, vol string) (err error) {
-	c.volAKsMutex.Lock()
-	defer c.volAKsMutex.Unlock()
 	var volAK *oss.VolAK
 	if value, ok := c.volAKs.Load(vol); ok {
 		volAK = value.(*oss.VolAK)
+		volAK.Lock()
+		defer volAK.Unlock()
 		volAK.AKAndActions = append(volAK.AKAndActions, akAndAction)
 	} else {
 		aks := make([]string, 0)
@@ -274,6 +276,8 @@ func (c *Cluster) deleteAKFromVol(akAndAction string, vol string) (err error) {
 	var volAK *oss.VolAK
 	if value, ok := c.volAKs.Load(vol); ok {
 		volAK = value.(*oss.VolAK)
+		volAK.Lock()
+		defer volAK.Unlock()
 		volAK.AKAndActions = removeAK(volAK.AKAndActions, akAndAction)
 	}
 	if err = c.syncUpdateVolAK(volAK); err != nil {
@@ -293,6 +297,23 @@ func removeAK(array []string, element string) []string {
 	return array
 }
 
-func (c *Cluster) deleteAKInfoFromCache(metaNode *MetaNode) {
-	//todo 3
+func (c *Cluster) clearAKStore() {
+	c.akStore.Range(func(key, value interface{}) bool {
+		c.akStore.Delete(key)
+		return true
+	})
+}
+
+func (c *Cluster) clearUserAK() {
+	c.userAk.Range(func(key, value interface{}) bool {
+		c.userAk.Delete(key)
+		return true
+	})
+}
+
+func (c *Cluster) clearVolAKs() {
+	c.volAKs.Range(func(key, value interface{}) bool {
+		c.volAKs.Delete(key)
+		return true
+	})
 }

@@ -39,7 +39,6 @@ const (
 	followerReadKey       = "followerRead"
 	authenticateKey       = "authenticate"
 	akKey                 = "ak"
-	policyKey             = "policy"
 )
 
 const (

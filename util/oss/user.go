@@ -17,17 +17,18 @@ type AKPolicy struct {
 type UserPolicy struct {
 	OwnVol     []string
 	NoneOwnVol map[string][]string
-	Mutex      sync.RWMutex
+	sync.RWMutex
 }
 
 type VolAK struct {
 	Vol          string   `json:"vol"`
 	AKAndActions []string `json:"user_ak_action"`
+	sync.RWMutex
 }
 
 func (policy *UserPolicy) Add(addPolicy *UserPolicy) {
-	policy.Mutex.Lock()
-	defer policy.Mutex.Unlock()
+	policy.Lock()
+	defer policy.Unlock()
 	policy.OwnVol = append(policy.OwnVol, addPolicy.OwnVol...)
 	for k, v := range addPolicy.NoneOwnVol {
 		if apis, ok := policy.NoneOwnVol[k]; ok {
@@ -39,8 +40,8 @@ func (policy *UserPolicy) Add(addPolicy *UserPolicy) {
 }
 
 func (policy *UserPolicy) Delete(addPolicy *UserPolicy) {
-	policy.Mutex.Lock()
-	defer policy.Mutex.Unlock()
+	policy.Lock()
+	defer policy.Unlock()
 	policy.OwnVol = append(policy.OwnVol, addPolicy.OwnVol...)
 	for k, v := range addPolicy.NoneOwnVol {
 		if apis, ok := policy.NoneOwnVol[k]; ok {

@@ -689,7 +689,56 @@ func (c *Cluster) syncPutVolAK(opType uint32, volAK *oss.VolAK) (err error) {
 	return c.submit(metadata)
 }
 
-func (c *Cluster) loadAKInfo() (err error) {
-	//todo 3
+func (c *Cluster) loadAKStore() (err error) {
+	result, err := c.fsm.store.SeekForPrefix([]byte(akPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadAccessKeyInfo], err: %v", err.Error())
+		return err
+	}
+	for _, value := range result {
+		aks := &oss.AKPolicy{}
+		if err = json.Unmarshal(value, aks); err != nil {
+			err = fmt.Errorf("action[loadAccessKeyInfo], unmarshal err: %v", err.Error())
+			return err
+		}
+		c.akStore.Store(aks.AccessKey, aks)
+		log.LogInfof("action[loadAccessKeyInfo], ak[%v]", aks.AccessKey)
+	}
+	return
+}
+
+func (c *Cluster) loadUserAK() (err error) {
+	result, err := c.fsm.store.SeekForPrefix([]byte(userPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadUserAK], err: %v", err.Error())
+		return err
+	}
+	for _, value := range result {
+		user := &oss.UserAK{}
+		if err = json.Unmarshal(value, user); err != nil {
+			err = fmt.Errorf("action[loadUserAK], unmarshal err: %v", err.Error())
+			return err
+		}
+		c.userAk.Store(user.UserID, user)
+		log.LogInfof("action[loadUserAK], userID[%v]", user.UserID)
+	}
+	return
+}
+
+func (c *Cluster) loadVolAKs() (err error) {
+	result, err := c.fsm.store.SeekForPrefix([]byte(volAKPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadVolAKs], err: %v", err.Error())
+		return err
+	}
+	for _, value := range result {
+		volAK := &oss.VolAK{}
+		if err = json.Unmarshal(value, volAK); err != nil {
+			err = fmt.Errorf("action[loadVolAKs], unmarshal err: %v", err.Error())
+			return err
+		}
+		c.volAKs.Store(volAK.Vol, volAK)
+		log.LogInfof("action[loadVolAKs], vol[%v]", volAK.Vol)
+	}
 	return
 }
