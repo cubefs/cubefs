@@ -17,8 +17,6 @@ package metanode
 import (
 	"os"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
@@ -26,6 +24,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util"
@@ -39,7 +38,7 @@ var (
 	clusterInfo    *proto.ClusterInfo
 	masterClient   *masterSDK.MasterClient
 	configTotalMem uint64
-	serverPort       string
+	serverPort     string
 )
 
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
@@ -56,8 +55,8 @@ type MetaNode struct {
 	raftHeartbeatPort string
 	raftReplicatePort string
 	httpStopC         chan uint8
-	state             uint32
-	wg                sync.WaitGroup
+
+	control common.Control
 }
 
 // Start starts up the meta node with the specified configuration.
@@ -65,31 +64,12 @@ type MetaNode struct {
 //  2. Restore raftStore fsm of each meta node range.
 //  3. Start server and accept connection from the master and clients.
 func (m *MetaNode) Start(cfg *config.Config) (err error) {
-	if atomic.CompareAndSwapUint32(&m.state, StateStandby, StateStart) {
-		defer func() {
-			var newState uint32
-			if err != nil {
-				newState = StateStandby
-			} else {
-				newState = StateRunning
-			}
-			atomic.StoreUint32(&m.state, newState)
-		}()
-		if err = m.onStart(cfg); err != nil {
-			return
-		}
-		m.wg.Add(1)
-	}
-	return
+	return m.control.Start(m, cfg, doStart)
 }
 
 // Shutdown stops the meta node.
 func (m *MetaNode) Shutdown() {
-	if atomic.CompareAndSwapUint32(&m.state, StateRunning, StateShutdown) {
-		defer atomic.StoreUint32(&m.state, StateStopped)
-		m.onShutdown()
-		m.wg.Done()
-	}
+	m.control.Shutdown(m, doShutdown)
 }
 
 func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
@@ -120,7 +100,11 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 	return
 }
 
-func (m *MetaNode) onStart(cfg *config.Config) (err error) {
+func doStart(s common.Server, cfg *config.Config) (err error) {
+	m, ok := s.(*MetaNode)
+	if !ok {
+		return errors.New("Invalid Node Type!")
+	}
 	if err = m.parseConfig(cfg); err != nil {
 		return
 	}
@@ -153,7 +137,11 @@ func (m *MetaNode) onStart(cfg *config.Config) (err error) {
 	return
 }
 
-func (m *MetaNode) onShutdown() {
+func doShutdown(s common.Server) {
+	m, ok := s.(*MetaNode)
+	if !ok {
+		return
+	}
 	// shutdown node and release the resource
 	m.stopServer()
 	m.stopMetaManager()
@@ -162,9 +150,7 @@ func (m *MetaNode) onShutdown() {
 
 // Sync blocks the invoker's goroutine until the meta node shuts down.
 func (m *MetaNode) Sync() {
-	if atomic.LoadUint32(&m.state) == StateRunning {
-		m.wg.Wait()
-	}
+	m.control.Sync()
 }
 
 func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
@@ -174,7 +160,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	m.localAddr = cfg.GetString(cfgLocalIP)
 	m.listen = cfg.GetString(proto.ListenPort)
-	serverPort=m.listen
+	serverPort = m.listen
 	m.metadataDir = cfg.GetString(cfgMetadataDir)
 	m.raftDir = cfg.GetString(cfgRaftDir)
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
