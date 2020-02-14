@@ -102,3 +102,28 @@ func (api *NodeAPI) ResponseDataNodeTask(task *proto.AdminTask) (err error) {
 	}
 	return
 }
+
+func (api *NodeAPI) AddCodecNode(serverAddr string) (id uint64, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AddCodecNode)
+	request.addParam("addr", serverAddr)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	id, err = strconv.ParseUint(string(data), 10, 64)
+	return
+}
+
+func (api *NodeAPI) GetCodecNode(serverHost string) (node *proto.CodecNodeInfo, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.GetCodecNode)
+	request.addParam("addr", serverHost)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	node = &proto.CodecNodeInfo{}
+	if err = json.Unmarshal(buf, &node); err != nil {
+		return
+	}
+	return
+}
