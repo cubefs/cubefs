@@ -128,6 +128,12 @@ const (
 	OpRemoveMultipart  uint8 = 0x73
 	OpListMultiparts   uint8 = 0x74
 
+	//Operations: Master -> CodecNode
+	OpCodecNodeHeartbeat uint8 = 0x80
+
+	//Operations: Master -> EcNode
+	OpEcNodeHeartbeat uint8 = 0x90
+
 	// Commons
 	OpIntraGroupNetErr uint8 = 0xF3
 	OpArgMismatchErr   uint8 = 0xF4

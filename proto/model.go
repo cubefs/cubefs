@@ -18,6 +18,20 @@ import (
 	"time"
 )
 
+type CodecNodeInfo struct {
+	ID         uint64
+	Addr       string
+	ReportTime time.Time
+	IsActive   bool
+}
+
+type EcNodeInfo struct {
+	ID         uint64
+	Addr       string
+	ReportTime time.Time
+	IsActive   bool
+}
+
 // MetaNode defines the structure of a meta node
 type MetaNodeInfo struct {
 	ID                        uint64

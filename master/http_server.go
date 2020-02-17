@@ -72,7 +72,13 @@ func (m *Server) handleFunctions() {
 	http.Handle(proto.GetTopologyView, m.handlerWithInterceptor())
 	http.Handle(proto.UpdateZone, m.handlerWithInterceptor())
 	http.Handle(proto.GetAllZones, m.handlerWithInterceptor())
-
+	http.Handle(proto.GetAllCodecNodes, m.handlerWithInterceptor())
+	http.Handle(proto.GetCodecNode, m.handlerWithInterceptor())
+	http.Handle(proto.AddCodecNode, m.handlerWithInterceptor())
+	http.Handle(proto.DecommissionCodecNode, m.handlerWithInterceptor())
+	http.Handle(proto.GetEcNode, m.handlerWithInterceptor())
+	http.Handle(proto.AddEcNode, m.handlerWithInterceptor())
+	http.Handle(proto.DecommissionEcNode, m.handlerWithInterceptor())
 	return
 }
 
@@ -185,6 +191,20 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.updateZone(w, r)
 	case proto.GetAllZones:
 		m.listZone(w, r)
+	case proto.GetAllCodecNodes:
+		m.getAllCodecNodes(w, r)
+	case proto.GetCodecNode:
+		m.getCodecNode(w, r)
+	case proto.AddCodecNode:
+		m.addCodecNode(w, r)
+	case proto.DecommissionCodecNode:
+		m.decommissionCodecNode(w, r)
+	case proto.GetEcNode:
+		m.getEcNode(w, r)
+	case proto.AddEcNode:
+		m.addEcNode(w, r)
+	case proto.DecommissionEcNode:
+		m.decommissionEcNode(w, r)
 	default:
 
 	}

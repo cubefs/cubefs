@@ -94,6 +94,14 @@ func (m *Server) loadMetadata() {
 	if err = m.cluster.loadClusterValue(); err != nil {
 		panic(err)
 	}
+
+	if err = m.cluster.loadCodecNodes(); err != nil {
+		panic(err)
+	}
+
+	if err = m.cluster.loadEcNodes(); err != nil {
+		panic(err)
+	}
 	if err = m.cluster.loadNodeSets(); err != nil {
 		panic(err)
 	}
@@ -124,6 +132,8 @@ func (m *Server) clearMetadata() {
 	m.cluster.clearTopology()
 	m.cluster.clearDataNodes()
 	m.cluster.clearMetaNodes()
+	m.cluster.clearCodecNodes()
+	m.cluster.clearEcNodes()
 	m.cluster.clearVols()
 	m.cluster.t = newTopology()
 }

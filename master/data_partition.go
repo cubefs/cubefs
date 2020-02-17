@@ -37,6 +37,7 @@ type DataPartition struct {
 	Replicas                []*DataReplica
 	Hosts                   []string // host addresses
 	Peers                   []proto.Peer
+	EcHosts                 []string
 	sync.RWMutex
 	total                   uint64
 	used                    uint64
@@ -56,6 +57,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64)
 	partition.PartitionID = ID
 	partition.Hosts = make([]string, 0)
 	partition.Peers = make([]proto.Peer, 0)
+	partition.EcHosts = make([]string, 0)
 	partition.Replicas = make([]*DataReplica, 0)
 	partition.FileInCoreMap = make(map[string]*FileInCore, 0)
 	partition.FilesWithMissingReplica = make(map[string]int64)
@@ -265,6 +267,8 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	dpr.ReplicaNum = partition.ReplicaNum
 	dpr.Hosts = make([]string, len(partition.Hosts))
 	copy(dpr.Hosts, partition.Hosts)
+	dpr.EcHosts = make([]string, len(partition.EcHosts))
+	copy(dpr.EcHosts, partition.EcHosts)
 	dpr.LeaderAddr = partition.getLeaderAddr()
 	return
 }
@@ -695,4 +699,13 @@ func (partition *DataPartition) ToProto(c *Cluster) *proto.DataPartitionInfo {
 		FileInCoreMap:           fileInCoreMap,
 		FilesWithMissingReplica: partition.FilesWithMissingReplica,
 	}
+}
+
+func (partition *DataPartition) hasEcHost(addr string) bool {
+	for _, host := range partition.EcHosts {
+		if host == addr {
+			return true
+		}
+	}
+	return false
 }
