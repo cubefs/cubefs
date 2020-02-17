@@ -71,12 +71,14 @@ func (m *Server) handleFunctions() {
 	http.Handle(proto.AdminSetMetaNodeThreshold, m.handlerWithInterceptor())
 	http.Handle(proto.GetTopologyView, m.handlerWithInterceptor())
 	http.Handle(proto.OSSCreateUser, m.handlerWithInterceptor())
+	http.Handle(proto.OSSCreateUserWithKey, m.handlerWithInterceptor())
 	http.Handle(proto.OSSDeleteUser, m.handlerWithInterceptor())
 	http.Handle(proto.OSSAddPolicy, m.handlerWithInterceptor())
 	http.Handle(proto.OSSDeletePolicy, m.handlerWithInterceptor())
 	http.Handle(proto.OSSDeleteVolPolicy, m.handlerWithInterceptor())
 	http.Handle(proto.OSSGetAKInfo, m.handlerWithInterceptor())
 	http.Handle(proto.OSSGetUserInfo, m.handlerWithInterceptor())
+	http.Handle(proto.OSSTransferVol, m.handlerWithInterceptor())
 	return
 }
 
@@ -187,6 +189,8 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.getTopology(w, r)
 	case proto.OSSCreateUser:
 		m.createOSSUser(w, r)
+	case proto.OSSCreateUserWithKey:
+		m.createOSSUserWithKey(w, r)
 	case proto.OSSDeleteUser:
 		m.deleteOSSUser(w, r)
 	case proto.OSSAddPolicy:
@@ -199,6 +203,8 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.getOSSAKInfo(w, r)
 	case proto.OSSGetUserInfo:
 		m.getOSSUserInfo(w, r)
+	case proto.OSSTransferVol:
+		m.transferOSSVol(w, r)
 	default:
 
 	}

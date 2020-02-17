@@ -39,6 +39,8 @@ const (
 	followerReadKey       = "followerRead"
 	authenticateKey       = "authenticate"
 	akKey                 = "ak"
+	skKey                 = "sk"
+	targetKey             = "targetak"
 )
 
 const (

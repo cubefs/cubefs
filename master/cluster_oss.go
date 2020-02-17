@@ -13,6 +13,8 @@ import (
 const (
 	accessKeyLength = 16
 	secretKeyLength = 32
+	separator       = "_"
+	ALL             = "all"
 )
 
 func (c *Cluster) createKey(owner string) (akPolicy *oss.AKPolicy, err error) {
@@ -28,7 +30,7 @@ func (c *Cluster) createKey(owner string) (akPolicy *oss.AKPolicy, err error) {
 	defer c.userAKMutex.Unlock()
 	//check duplicate
 	if _, exit = c.userAk.Load(owner); exit {
-		err = proto.ErrDuplicateVol
+		err = proto.ErrDuplicateUserID
 		goto errHandler
 	}
 	_, exit = c.akStore.Load(accessKey)
@@ -52,6 +54,45 @@ func (c *Cluster) createKey(owner string) (akPolicy *oss.AKPolicy, err error) {
 	return
 errHandler:
 	err = fmt.Errorf("action[createUser], clusterID[%v] user: %v err: %v ", c.Name, owner, err.Error())
+	log.LogError(errors.Stack(err))
+	Warn(c.Name, err.Error())
+	return
+}
+
+func (c *Cluster) createUserWithKey(owner, accessKey, secretKey string) (akPolicy *oss.AKPolicy, err error) {
+	var (
+		userAK *oss.UserAK
+		exit   bool
+	)
+	c.akStoreMutex.Lock()
+	defer c.akStoreMutex.Unlock()
+	c.userAKMutex.Lock()
+	defer c.userAKMutex.Unlock()
+	//check duplicate
+	if _, exit = c.userAk.Load(owner); exit {
+		err = proto.ErrDuplicateUserID
+		goto errHandler
+	}
+	if _, exit = c.akStore.Load(accessKey); exit {
+		err = proto.ErrDuplicateAccessKey
+		goto errHandler
+	}
+
+	akPolicy = &oss.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, UserID: owner}
+	userAK = &oss.UserAK{UserID: owner, AccessKey: accessKey}
+	if err = c.syncAddAKPolicy(akPolicy); err != nil {
+		goto errHandler
+	}
+	if err = c.syncAddUserAK(userAK); err != nil {
+		goto errHandler
+	}
+	c.akStore.Store(accessKey, akPolicy)
+	c.userAk.Store(owner, userAK)
+	log.LogInfof("action[createUserWithKey], clusterID[%v] user: %v, accesskey[%v], secretkey[%v]",
+		c.Name, owner, accessKey, secretKey)
+	return
+errHandler:
+	err = fmt.Errorf("action[createUserWithKey], clusterID[%v] user: %v, ak: %v, sk: %v, err: %v ", c.Name, owner, accessKey, secretKey, err.Error())
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return
@@ -184,7 +225,7 @@ func (c *Cluster) deleteVolPolicy(vol string) (err error) {
 			goto errHandler
 		}
 		var userPolicy *oss.UserPolicy
-		if action == "all" {
+		if action == ALL {
 			userPolicy = &oss.UserPolicy{OwnVol: []string{vol}}
 		} else {
 			userPolicy = &oss.UserPolicy{NoneOwnVol: map[string][]string{vol: {action}}}
@@ -209,6 +250,23 @@ errHandler:
 	return
 }
 
+func (c *Cluster) transferVol(vol, ak, targetKey string) (targetAKPolicy *oss.AKPolicy, err error) {
+	userPolicy := &oss.UserPolicy{OwnVol: []string{vol}}
+	if _, err = c.deletePolicy(ak, userPolicy); err != nil {
+		goto errHandler
+	}
+	if targetAKPolicy, err = c.addPolicy(targetKey, userPolicy); err != nil {
+		goto errHandler
+	}
+	log.LogInfof("action[transferOSSVol], clusterID[%v] volName: %v, ak: %v, targetKey: %v", c.Name, vol, ak, targetKey)
+	return
+errHandler:
+	err = fmt.Errorf("action[transferOSSVol], clusterID[%v] volName: %v, ak: %v, targetKey: %v, err: %v", c.Name, vol, ak, targetKey, err.Error())
+	log.LogError(errors.Stack(err))
+	Warn(c.Name, err.Error())
+	return
+}
+
 func (c *Cluster) getAKInfo(ak string) (akPolicy *oss.AKPolicy, err error) {
 	if value, exit := c.akStore.Load(ak); exit {
 		akPolicy = value.(*oss.AKPolicy)
@@ -222,13 +280,13 @@ func (c *Cluster) addVolAKs(ak string, policy *oss.UserPolicy) (err error) {
 	c.volAKsMutex.Lock()
 	defer c.volAKsMutex.Unlock()
 	for _, vol := range policy.OwnVol {
-		if err = c.addAKToVol(ak+"_all", vol); err != nil {
+		if err = c.addAKToVol(ak+separator+ALL, vol); err != nil {
 			return
 		}
 	}
 	for vol, apis := range policy.NoneOwnVol {
 		for _, api := range apis {
-			if err = c.addAKToVol(ak+"_"+api, vol); err != nil {
+			if err = c.addAKToVol(ak+separator+api, vol); err != nil {
 				return
 			}
 		}
@@ -258,13 +316,13 @@ func (c *Cluster) addAKToVol(akAndAction string, vol string) (err error) {
 
 func (c *Cluster) deleteVolAKs(ak string, policy *oss.UserPolicy) (err error) {
 	for _, vol := range policy.OwnVol {
-		if err = c.deleteAKFromVol(ak+"_all", vol); err != nil {
+		if err = c.deleteAKFromVol(ak+separator+ALL, vol); err != nil {
 			return
 		}
 	}
 	for vol, apis := range policy.NoneOwnVol {
 		for _, api := range apis {
-			if err = c.deleteAKFromVol(ak+"_"+api, vol); err != nil {
+			if err = c.deleteAKFromVol(ak+separator+api, vol); err != nil {
 				return
 			}
 		}
