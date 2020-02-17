@@ -171,7 +171,7 @@ func markDeleteVol(name string, t *testing.T) {
 
 func TestVolReduceReplicaNum(t *testing.T) {
 	volName := "reduce-replica-num"
-	vol, err := server.cluster.createVol(volName, volName, 3, util.DefaultDataPartitionSize, 100, false, false)
+	vol, err := server.cluster.createVol(volName, volName, 3, 3, util.DefaultDataPartitionSize, 100, false, false)
 	if err != nil {
 		t.Error(err)
 		return
