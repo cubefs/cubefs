@@ -25,6 +25,7 @@ import (
 	"time"
 )
 
+//todo uniform add task
 func (c *Cluster) addDataNodeTasks(tasks []*proto.AdminTask) {
 	for _, t := range tasks {
 		c.addDataNodeTask(t)
@@ -52,6 +53,34 @@ func (c *Cluster) addMetaNodeTasks(tasks []*proto.AdminTask) {
 			log.LogWarn(fmt.Sprintf("action[putTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
 		} else {
 			node.Sender.AddTask(t)
+		}
+	}
+}
+
+func (c *Cluster) addCodecNodeTasks(tasks []*proto.AdminTask) {
+
+	for _, t := range tasks {
+		if t == nil {
+			continue
+		}
+		if node, err := c.codecNode(t.OperatorAddr); err != nil {
+			log.LogWarn(fmt.Sprintf("action[putTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
+		} else {
+			node.TaskManager.AddTask(t)
+		}
+	}
+}
+
+func (c *Cluster) addEcNodeTasks(tasks []*proto.AdminTask) {
+
+	for _, t := range tasks {
+		if t == nil {
+			continue
+		}
+		if node, err := c.ecNode(t.OperatorAddr); err != nil {
+			log.LogWarn(fmt.Sprintf("action[putTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
+		} else {
+			node.TaskManager.AddTask(t)
 		}
 	}
 }
