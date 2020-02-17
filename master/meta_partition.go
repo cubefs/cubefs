@@ -21,9 +21,9 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"math"
 	"strings"
 	"time"
-	"math"
 )
 
 // MetaReplica defines the replica of a meta partition

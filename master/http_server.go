@@ -179,6 +179,20 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.setMetaNodeThreshold(w, r)
 	case proto.GetTopologyView:
 		m.getTopology(w, r)
+	case proto.GetAllCodecNodes:
+		m.getAllCodecNodes(w, r)
+	case proto.GetCodecNode:
+		m.getCodecNode(w, r)
+	case proto.AddCodecNode:
+		m.addCodecNode(w, r)
+	case proto.DecommissionCodecNode:
+		m.decommissionCodecNode(w, r)
+	case proto.GetEcNode:
+		m.getEcNode(w, r)
+	case proto.AddEcNode:
+		m.addEcNode(w, r)
+	case proto.DecommissionEcNode:
+		m.decommissionEcNode(w, r)
 	default:
 
 	}
