@@ -108,6 +108,8 @@ const (
 	opSyncAddNodeSet           uint32 = 0x12
 	opSyncUpdateNodeSet        uint32 = 0x13
 	opSyncBatchPut             uint32 = 0x14
+	opSyncPut                  uint32 = 0x21
+	opSyncDelete               uint32 = 0x22
 )
 
 const (
@@ -119,11 +121,15 @@ const (
 	volAcronym            = "vol"
 	clusterAcronym        = "c"
 	nodeSetAcronym        = "s"
+	codecNodeAcronym      = "ncn"
+	ecNodeAcronym         = "nec"
 	maxDataPartitionIDKey = keySeparator + "max_dp_id"
 	maxMetaPartitionIDKey = keySeparator + "max_mp_id"
 	maxCommonIDKey        = keySeparator + "max_common_id"
 	metaNodePrefix        = keySeparator + metaNodeAcronym + keySeparator
 	dataNodePrefix        = keySeparator + dataNodeAcronym + keySeparator
+	codecNodePrefix       = keySeparator + codecNodeAcronym + keySeparator
+	ecNodePrefix          = keySeparator + ecNodeAcronym + keySeparator
 	dataPartitionPrefix   = keySeparator + dataPartitionAcronym + keySeparator
 	volPrefix             = keySeparator + volAcronym + keySeparator
 	metaPartitionPrefix   = keySeparator + metaPartitionAcronym + keySeparator

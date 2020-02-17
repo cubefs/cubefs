@@ -63,6 +63,17 @@ const (
 
 	GetTopologyView = "/topo/get"
 
+	//CodecNode API
+	GetAllCodecNodes      = "/codecNode/getAllNodes"
+	GetCodecNode          = "/codecNode/get"
+	AddCodecNode          = "/codecNode/add"
+	DecommissionCodecNode = "/codecNode/decommission"
+
+	//EcNode API
+	GetEcNode          = "/ecNode/get"
+	AddEcNode          = "/ecNode/add"
+	DecommissionEcNode = "/ecNode/decommission"
+
 	// Header keys
 	SkipOwnerValidation = "Skip-Owner-Validation"
 )
@@ -325,6 +336,7 @@ type DataPartitionResponse struct {
 	Status      int8
 	ReplicaNum  uint8
 	Hosts       []string
+	EcHosts     []string
 	LeaderAddr  string
 	Epoch       uint64
 }
@@ -417,4 +429,29 @@ type SimpleVolView struct {
 type MasterAPIAccessResp struct {
 	APIResp APIAccessResp `json:"api_resp"`
 	Data    []byte        `json:"data"`
+}
+
+// EcNodeHeartbeatResponse defines the response to the ec node heartbeat.
+type EcNodeHeartbeatResponse struct {
+	Total               uint64
+	Used                uint64
+	Available           uint64
+	TotalPartitionSize  uint64 // volCnt * volsize
+	RemainingCapacity   uint64 // remaining capacity to create partition
+	CreatedPartitionCnt uint32
+	MaxCapacity         uint64 // maximum capacity of disk to create partition
+	PartitionReports    []*PartitionReport
+	Status              uint8
+	Result              string
+}
+
+// CodecNodeHeartbeatResponse defines the response to the codec node heartbeat.
+type CodecNodeHeartbeatResponse struct {
+	Status uint8
+	Result string
+}
+
+type CodecNodeClientView struct {
+	Addr     string
+	IsActive bool
 }

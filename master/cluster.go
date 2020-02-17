@@ -32,6 +32,8 @@ type Cluster struct {
 	vols                map[string]*Vol
 	dataNodes           sync.Map
 	metaNodes           sync.Map
+	codecNodes          sync.Map
+	ecNodes             sync.Map
 	dpMutex             sync.Mutex   // data partition mutex
 	volMutex            sync.RWMutex // volume mutex
 	createVolMutex      sync.RWMutex // create volume mutex
@@ -220,16 +222,10 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.checkLeaderAddr()
-				c.checkDataNodeHeartbeat()
-			}
-			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
-		}
-	}()
-
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkMetaNodeHeartbeat()
+				go c.checkDataNodeHeartbeat()
+				go c.checkMetaNodeHeartbeat()
+				go c.checkCodecNodeHeartbeat()
+				go c.checkEcNodeHeartbeat()
 			}
 			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
 		}
@@ -1397,6 +1393,24 @@ func (c *Cluster) clearMetaNodes() {
 		metaNode := value.(*MetaNode)
 		c.metaNodes.Delete(key)
 		metaNode.clean()
+		return true
+	})
+}
+
+func (c *Cluster) clearCodecNodes() {
+	c.codecNodes.Range(func(key, value interface{}) bool {
+		codecNode := value.(*CodecNode)
+		c.codecNodes.Delete(key)
+		codecNode.clean()
+		return true
+	})
+}
+
+func (c *Cluster) clearEcNodes() {
+	c.ecNodes.Range(func(key, value interface{}) bool {
+		ecNode := value.(*ECNode)
+		c.ecNodes.Delete(key)
+		ecNode.clean()
 		return true
 	})
 }

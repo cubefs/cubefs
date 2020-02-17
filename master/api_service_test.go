@@ -464,3 +464,8 @@ func TestRemoveMetaReplica(t *testing.T) {
 	}
 	partition.RUnlock()
 }
+
+func TestAddCodecNode(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.AddCodecNode, "127.0.0.1:6001")
+	process(reqURL, t)
+}
