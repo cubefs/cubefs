@@ -266,6 +266,31 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.TokenUpdateURI).
 		HandlerFunc(m.updateToken)
+
+	// APIs for CodecNodes
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetAllCodecNodes).
+		HandlerFunc(m.getAllCodecNodes)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetCodecNode).
+		HandlerFunc(m.getCodecNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AddCodecNode).
+		HandlerFunc(m.addCodecNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.DecommissionCodecNode).
+		HandlerFunc(m.decommissionCodecNode)
+
+	// APIs for EcNode
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetEcNode).
+		HandlerFunc(m.getEcNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AddEcNode).
+		HandlerFunc(m.addEcNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.DecommissionEcNode).
+		HandlerFunc(m.decommissionEcNode)
 }
 
 func (m *Server) newReverseProxy() *httputil.ReverseProxy {

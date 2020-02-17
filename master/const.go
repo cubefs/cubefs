@@ -134,6 +134,9 @@ const (
 	OpSyncAddToken    uint32 = 0x20
 	OpSyncDelToken    uint32 = 0x21
 	OpSyncUpdateToken uint32 = 0x22
+
+	opSyncPut    uint32 = 0x23
+	opSyncDelete uint32 = 0x24
 )
 
 const (
@@ -147,6 +150,8 @@ const (
 	clusterAcronym        = "c"
 	nodeSetAcronym        = "s"
 	tokenAcronym          = "t"
+	codecNodeAcronym      = "ncn"
+	ecNodeAcronym         = "nec"
 	maxDataPartitionIDKey = keySeparator + "max_dp_id"
 	maxMetaPartitionIDKey = keySeparator + "max_mp_id"
 	maxCommonIDKey        = keySeparator + "max_common_id"
@@ -157,6 +162,8 @@ const (
 	metaPartitionPrefix   = keySeparator + metaPartitionAcronym + keySeparator
 	clusterPrefix         = keySeparator + clusterAcronym + keySeparator
 	nodeSetPrefix         = keySeparator + nodeSetAcronym + keySeparator
+	codecNodePrefix       = keySeparator + codecNodeAcronym + keySeparator
+	ecNodePrefix          = keySeparator + ecNodeAcronym + keySeparator
 
 	akAcronym      = "ak"
 	userAcronym    = "user"

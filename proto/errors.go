@@ -30,6 +30,8 @@ var (
 	ErrDataPartitionNotExists = errors.New("data partition not exists")
 	ErrDataNodeNotExists      = errors.New("data node not exists")
 	ErrMetaNodeNotExists      = errors.New("meta node not exists")
+	ErrCodecNodeNotExists     = errors.New("codec node not exists")
+	ErrEcNodeNotExists        = errors.New("ec node not exists")
 	ErrDuplicateVol           = errors.New("duplicate vol")
 	ErrActiveDataNodesTooLess = errors.New("no enough active data node")
 	ErrActiveMetaNodesTooLess = errors.New("no enough active meta node")
@@ -97,6 +99,8 @@ const (
 	ErrCodeDataPartitionNotExists
 	ErrCodeDataNodeNotExists
 	ErrCodeMetaNodeNotExists
+	ErrCodeCodecNodeNotExists
+	ErrCodeEcNodeNotExists
 	ErrCodeDuplicateVol
 	ErrCodeActiveDataNodesTooLess
 	ErrCodeActiveMetaNodesTooLess
@@ -160,6 +164,8 @@ var Err2CodeMap = map[error]int32{
 	ErrDataPartitionNotExists:          ErrCodeDataPartitionNotExists,
 	ErrDataNodeNotExists:               ErrCodeDataNodeNotExists,
 	ErrMetaNodeNotExists:               ErrCodeMetaNodeNotExists,
+	ErrCodecNodeNotExists:              ErrCodeCodecNodeNotExists,
+	ErrEcNodeNotExists:                 ErrCodeEcNodeNotExists,
 	ErrDuplicateVol:                    ErrCodeDuplicateVol,
 	ErrActiveDataNodesTooLess:          ErrCodeActiveDataNodesTooLess,
 	ErrActiveMetaNodesTooLess:          ErrCodeActiveMetaNodesTooLess,

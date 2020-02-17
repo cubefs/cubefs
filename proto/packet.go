@@ -140,6 +140,12 @@ const (
 	OpMetaBatchUnlinkInode  uint8 = 0x92
 	OpMetaBatchEvictInode   uint8 = 0x93
 
+	//Operations: Master -> CodecNode
+	OpCodecNodeHeartbeat uint8 = 0xA0
+
+	//Operations: Master -> EcNode
+	OpEcNodeHeartbeat uint8 = 0xB0
+
 	// Commons
 	OpIntraGroupNetErr uint8 = 0xF3
 	OpArgMismatchErr   uint8 = 0xF4

@@ -93,6 +93,8 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 		response = &proto.UpdateMetaPartitionResponse{}
 	case proto.OpDecommissionMetaPartition:
 		response = &proto.MetaPartitionDecommissionResponse{}
+	case proto.OpCodecNodeHeartbeat:
+	case proto.OpEcNodeHeartbeat:
 	default:
 		log.LogError(fmt.Sprintf("unknown operate code(%v)", task.OpCode))
 	}
@@ -202,6 +204,14 @@ func zoneNotFound(name string) (err error) {
 	return notFoundMsg(fmt.Sprintf("zone[%v]", name))
 }
 
+func codecNodeNotFound(addr string) (err error) {
+	return notFoundMsg(fmt.Sprintf("codec node[%v]", addr))
+}
+
+func ecNodeNotFound(addr string) (err error) {
+	return notFoundMsg(fmt.Sprintf("ec node[%v]", addr))
+}
+
 func dataNodeNotFound(addr string) (err error) {
 	return notFoundMsg(fmt.Sprintf("data node[%v]", addr))
 }
@@ -223,4 +233,13 @@ func matchKey(serverKey, clientKey string) bool {
 	}
 	cipherStr := h.Sum(nil)
 	return strings.ToLower(clientKey) == strings.ToLower(hex.EncodeToString(cipherStr))
+}
+
+func createHeartbeatTask(masterAddr, targetAddr string, opType uint8) (task *proto.AdminTask) {
+	request := &proto.HeartBeatRequest{
+		CurrTime:   time.Now().Unix(),
+		MasterAddr: masterAddr,
+	}
+	task = proto.NewAdminTask(opType, targetAddr, request)
+	return
 }
