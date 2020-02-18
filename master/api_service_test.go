@@ -94,7 +94,7 @@ func createDefaultMasterServerForTest() *Server {
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
 	fmt.Printf("nodeSet len[%v]\n", len(testServer.cluster.t.nodeSetMap))
-	testServer.cluster.createVol(commonVolName, "cfs", 3, 3, 100, false, false)
+	testServer.cluster.createVol(commonVolName, "cfs", 3, 3, 3, 100, false, false)
 	vol, err := testServer.cluster.getVol(commonVolName)
 	if err != nil {
 		panic(err)
