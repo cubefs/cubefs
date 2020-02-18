@@ -229,7 +229,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		// Create bucket
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucket.html
 		r.Methods(http.MethodPut).
-			HandlerFunc(o.policyCheck(o.createBucketHandler, []Action{CreateBucketAction}))
+			HandlerFunc(o.createBucketHandler)
 	}
 
 	var registerBucketHttpDeleteRouters = func(r *mux.Router) {

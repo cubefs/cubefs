@@ -30,7 +30,12 @@ func TestObjectNode_Lifecycle(t *testing.T) {
 {
 	"listen": ":10004",
 	"logDir": "/tmp/Logs/chubaofs",
-	"module": "object"
+	"module": "object",
+	"masterAddr": [
+    	"192.168.0.11:17010",
+    	"192.168.0.12:17010",
+    	"192.168.0.13:17010"
+  	]
 }
 `
 	// test log

@@ -19,8 +19,9 @@ const (
 
 func (c *Cluster) createKey(owner string) (akPolicy *oss.AKPolicy, err error) {
 	var (
-		userAK *oss.UserAK
-		exit   bool
+		userAK     *oss.UserAK
+		userPolicy *oss.UserPolicy
+		exit       bool
 	)
 	accessKey := util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
 	secretKey := util.RandomString(secretKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
@@ -38,8 +39,8 @@ func (c *Cluster) createKey(owner string) (akPolicy *oss.AKPolicy, err error) {
 		accessKey = util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
 		_, exit = c.akStore.Load(accessKey)
 	}
-
-	akPolicy = &oss.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, UserID: owner}
+	userPolicy = &oss.UserPolicy{OwnVol: make([]string, 0), NoneOwnVol: make(map[string][]string, 0)}
+	akPolicy = &oss.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: owner}
 	userAK = &oss.UserAK{UserID: owner, AccessKey: accessKey}
 	if err = c.syncAddAKPolicy(akPolicy); err != nil {
 		goto errHandler
