@@ -472,8 +472,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if replicaNum != 0 && replicaNum < 2 {
-		err = fmt.Errorf("replicaNum can't be less than 2,replicaNum[%v]", replicaNum)
+	if replicaNum !=0 && !(replicaNum == 2 || replicaNum == 3) {
+		err = fmt.Errorf("replicaNum can only be 2 and 3,received replicaNum is[%v]", replicaNum)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -512,8 +512,8 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if dpReplicaNum != 0 && dpReplicaNum < 2 {
-		err = fmt.Errorf("replicaNum can't be less than 2,replicaNum[%v]", dpReplicaNum)
+	if !(dpReplicaNum == 2 || dpReplicaNum == 3) {
+		err = fmt.Errorf("replicaNum can only be 2 and 3,received replicaNum is[%v]", dpReplicaNum)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
