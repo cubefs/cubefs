@@ -56,7 +56,7 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 		//do not allow directories and files to overwrite each
 		// other when renaming
 		d := item.(*Dentry)
-		if dentry.Type != d.Type {
+		if proto.OsModeType(dentry.Type) != proto.OsModeType(d.Type) {
 			status = proto.OpArgMismatchErr
 			return
 		}
