@@ -50,7 +50,7 @@ func (o *ObjectNode) refresh() {
 		case <-t.C:
 			o.userStore.akMu.Lock()
 			for ak := range o.userStore.akInfoStore {
-				akPolicy, err := o.getAkInfo(ak)
+				akPolicy, err := o.mc.OSSAPI().GetAKInfo(ak)
 				if err != nil {
 					delete(o.userStore.akInfoStore, ak)
 					log.LogInfof("update user policy failed and delete: accessKey(%v), err(%v)", ak, err)

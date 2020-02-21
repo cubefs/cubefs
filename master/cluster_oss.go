@@ -39,7 +39,7 @@ func (c *Cluster) createKey(owner string) (akPolicy *oss.AKPolicy, err error) {
 		accessKey = util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
 		_, exit = c.akStore.Load(accessKey)
 	}
-	userPolicy = &oss.UserPolicy{OwnVol: make([]string, 0), NoneOwnVol: make(map[string][]string, 0)}
+	userPolicy = &oss.UserPolicy{OwnVol: make([]string, 0), NoneOwnVol: make(map[string][]string)}
 	akPolicy = &oss.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: owner}
 	userAK = &oss.UserAK{UserID: owner, AccessKey: accessKey}
 	if err = c.syncAddAKPolicy(akPolicy); err != nil {
@@ -62,8 +62,9 @@ errHandler:
 
 func (c *Cluster) createUserWithKey(owner, accessKey, secretKey string) (akPolicy *oss.AKPolicy, err error) {
 	var (
-		userAK *oss.UserAK
-		exit   bool
+		userAK     *oss.UserAK
+		userPolicy *oss.UserPolicy
+		exit       bool
 	)
 	c.akStoreMutex.Lock()
 	defer c.akStoreMutex.Unlock()
@@ -78,8 +79,8 @@ func (c *Cluster) createUserWithKey(owner, accessKey, secretKey string) (akPolic
 		err = proto.ErrDuplicateAccessKey
 		goto errHandler
 	}
-
-	akPolicy = &oss.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, UserID: owner}
+	userPolicy = &oss.UserPolicy{OwnVol: make([]string, 0), NoneOwnVol: make(map[string][]string)}
+	akPolicy = &oss.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: owner}
 	userAK = &oss.UserAK{UserID: owner, AccessKey: accessKey}
 	if err = c.syncAddAKPolicy(akPolicy); err != nil {
 		goto errHandler
@@ -147,7 +148,7 @@ func (c *Cluster) getUserInfo(owner string) (akPolicy *oss.AKPolicy, err error) 
 		ak string
 	)
 	if value, exit := c.userAk.Load(owner); exit {
-		ak = value.(string)
+		ak = value.(*oss.UserAK).AccessKey
 	} else {
 		err = proto.ErrOSSUserNotExists
 		goto errHandler
