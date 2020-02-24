@@ -1373,10 +1373,16 @@ func (v *volume) copyFile(parentID uint64, newFileName string, sourceFileInode u
 
 func newVolume(masters []string, vol string) (*volume, error) {
 	var err error
-	var masterHosts = strings.Join(masters, ",")
+	opt := &proto.MountOptions{
+		Volname:      vol,
+		Owner:        "",
+		Master:       strings.Join(masters, ","),
+		FollowerRead: true,
+		Authenticate: false,
+	}
 
 	var mw *meta.MetaWrapper
-	if mw, err = meta.NewMetaWrapper(vol, "", masterHosts, false, false, nil); err != nil {
+	if mw, err = meta.NewMetaWrapper(opt, false); err != nil {
 		return nil, err
 	}
 	defer func() {
@@ -1385,7 +1391,7 @@ func newVolume(masters []string, vol string) (*volume, error) {
 		}
 	}()
 	var ec *stream.ExtentClient
-	if ec, err = stream.NewExtentClient(vol, masterHosts, -1, -1, mw.AppendExtentKey, mw.GetExtents, mw.Truncate); err != nil {
+	if ec, err = stream.NewExtentClient(opt, mw.AppendExtentKey, mw.GetExtents, mw.Truncate); err != nil {
 		return nil, err
 	}
 

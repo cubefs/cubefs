@@ -27,11 +27,11 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
+	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/btree"
 	"github.com/chubaofs/chubaofs/util/errors"
 	cfslog "github.com/chubaofs/chubaofs/util/log"
-	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 )
 
 const (
@@ -103,25 +103,25 @@ type Ticket struct {
 	Ticket     string `json:"ticket"`
 }
 
-func NewMetaWrapper(volname, owner, masterHosts string, authenticate, validateOwner bool, ticketMess *auth.TicketMess) (*MetaWrapper, error) {
+func NewMetaWrapper(opt *proto.MountOptions, validateOwner bool) (*MetaWrapper, error) {
 	mw := new(MetaWrapper)
 	mw.closeCh = make(chan struct{}, 1)
-	if authenticate {
-		ticket, err := getTicketFromAuthnode(owner, *ticketMess)
+	if opt.Authenticate {
+		ticket, err := getTicketFromAuthnode(opt.Owner, opt.TicketMess)
 		if err != nil {
 			return nil, errors.Trace(err, "Get ticket from authnode failed!")
 		}
-		mw.authenticate = authenticate
+		mw.authenticate = opt.Authenticate
 		mw.accessToken.Ticket = ticket.Ticket
-		mw.accessToken.ClientID = owner
+		mw.accessToken.ClientID = opt.Owner
 		mw.accessToken.ServiceID = proto.MasterServiceID
 		mw.sessionKey = ticket.SessionKey
-		mw.ticketMess = *ticketMess
+		mw.ticketMess = opt.TicketMess
 	}
-	mw.volname = volname
-	mw.owner = owner
+	mw.volname = opt.Volname
+	mw.owner = opt.Owner
 	mw.ownerValidation = validateOwner
-	masters := strings.Split(masterHosts, HostsSeparator)
+	masters := strings.Split(opt.Master, HostsSeparator)
 	mw.mc = masterSDK.NewMasterClient(masters, false)
 	mw.conns = util.NewConnectPool()
 	mw.partitions = make(map[uint64]*MetaPartition)
