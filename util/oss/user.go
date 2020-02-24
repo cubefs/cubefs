@@ -16,7 +16,7 @@ type AKPolicy struct {
 
 type UserPolicy struct {
 	OwnVol     []string
-	NoneOwnVol map[string][]string
+	NoneOwnVol map[string][]string // k: vol, v: apis
 	sync.RWMutex
 }
 
@@ -39,15 +39,28 @@ func (policy *UserPolicy) Add(addPolicy *UserPolicy) {
 	}
 }
 
-func (policy *UserPolicy) Delete(addPolicy *UserPolicy) {
+func (policy *UserPolicy) Delete(deletePolicy *UserPolicy) {
 	policy.Lock()
 	defer policy.Unlock()
-	policy.OwnVol = append(policy.OwnVol, addPolicy.OwnVol...)
-	for k, v := range addPolicy.NoneOwnVol {
+	policy.OwnVol = removeSlice(policy.OwnVol, deletePolicy.OwnVol)
+	for k, v := range deletePolicy.NoneOwnVol {
 		if apis, ok := policy.NoneOwnVol[k]; ok {
-			policy.NoneOwnVol[k] = append(apis, addPolicy.NoneOwnVol[k]...)
-		} else {
-			policy.NoneOwnVol[k] = v
+			policy.NoneOwnVol[k] = removeSlice(apis, v)
 		}
 	}
+}
+
+func removeSlice(s []string, removeSlice []string) []string {
+	if len(s) == 0 {
+		return s
+	}
+	for _, elem := range removeSlice {
+		for i, v := range s {
+			if v == elem {
+				s = append(s[:i], s[i+1:]...)
+				break
+			}
+		}
+	}
+	return s
 }
