@@ -24,36 +24,12 @@ import (
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/jacobsa/fuse/fuseutil"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/stream"
 	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util/auth"
-	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 )
-
-type MountOption struct {
-	Config        *config.Config
-	MountPoint    string
-	Volname       string
-	Owner         string
-	Master        string
-	Logpath       string
-	Loglvl        string
-	Profport      string
-	IcacheTimeout int64
-	LookupValid   int64
-	AttrValid     int64
-	ReadRate      int64
-	WriteRate     int64
-	EnSyncWrite   int64
-	UmpDatadir    string
-	Rdonly        bool
-	WriteCache    bool
-	KeepCache     bool
-	Authenticate  bool
-	TicketMess    auth.TicketMess
-}
 
 type Super struct {
 	cluster     string
@@ -73,14 +49,14 @@ var (
 	_ fuseutil.FileSystem = (*Super)(nil)
 )
 
-func NewSuper(opt *MountOption) (s *Super, err error) {
+func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s = new(Super)
-	s.mw, err = meta.NewMetaWrapper(opt.Volname, opt.Owner, opt.Master, opt.Authenticate, true, &opt.TicketMess)
+	s.mw, err = meta.NewMetaWrapper(opt, true)
 	if err != nil {
 		return nil, errors.Trace(err, "NewMetaWrapper failed!")
 	}
 
-	s.ec, err = stream.NewExtentClient(opt.Volname, opt.Master, opt.ReadRate, opt.WriteRate, s.mw.AppendExtentKey, s.mw.GetExtents, s.mw.Truncate)
+	s.ec, err = stream.NewExtentClient(opt, s.mw.AppendExtentKey, s.mw.GetExtents, s.mw.Truncate)
 	if err != nil {
 		return nil, errors.Trace(err, "NewExtentClient failed!")
 	}
