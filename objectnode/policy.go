@@ -29,18 +29,11 @@ import (
 
 type ActionType string
 
-const (
-	Read      ActionType = "r"
-	Write     ActionType = "w"
-	ReadWrite ActionType = "rw"
-)
-
 // https://docs.aws.amazon.com/AmazonS3/latest/dev/example-bucket-policies.html
 const (
 	PolicyDefaultVersion  = "2012-10-17"
 	BucketPolicyLimitSize = 20 * 1024 //Bucket policies are limited to 20KB
 	ArnSplitToken         = ":"
-	S3Flag                = "s3"
 )
 
 //https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/example-bucket-policies.html
@@ -190,7 +183,7 @@ func (p *Policy) IsAllowed(params *RequestParam) bool {
 	return false
 }
 
-func (o *ObjectNode) policyCheck(f http.HandlerFunc, actions []Action) http.HandlerFunc {
+func (o *ObjectNode) policyCheck(f http.HandlerFunc, actions Action) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
 			err error

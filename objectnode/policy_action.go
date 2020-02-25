@@ -20,6 +20,14 @@ package objectnode
 // https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/amazon-s3-policy-keys.html
 type Action string
 
+func (a Action) String() string {
+	return string(a)
+}
+
+func (a Action) IsKnown() bool {
+	return len(a) != 0 && a != UnknownAction
+}
+
 const (
 	OSSActionPrefix = "oss:action:"
 
@@ -66,7 +74,68 @@ const (
 	GetBucketTaggingAction                  = OSSActionPrefix + "GetBucketTagging"
 	PutBucketTaggingAction                  = OSSActionPrefix + "PutBucketTagging"
 	DeleteBucketTaggingAction               = OSSActionPrefix + "DeleteBucketTagging"
+
+	UnknownAction = OSSActionPrefix + "Unknown"
 )
+
+var (
+	AllActions = []Action{
+		GetObjectAction,
+		PutObjectAction,
+		CopyObjectAction,
+		ListObjectsAction,
+		DeleteObjectAction,
+		HeadObjectAction,
+		CreateBucketAction,
+		DeleteBucketAction,
+		HeadBucketAction,
+		ListBucketAction,
+		ListBucketVersionsAction,
+		ListBucketMultipartUploadsAction,
+		GetBucketPolicyAction,
+		PutBucketPolicyAction,
+		GetBucketAclAction,
+		PutBucketAclAction,
+		GetObjectAclAction,
+		GetObjectVersionAction,
+		PutObjectVersionAction,
+		GetObjectTorrentAction,
+		PutObjectTorrentAction,
+		PutObjectAclAction,
+		GetObjectVersionAclAction,
+		PutObjectVersionAclAction,
+		DeleteBucketPolicyAction,
+		CreateMultipartUploadAction,
+		ListMultipartUploadsAction,
+		UploadPartAction,
+		ListPartsAction,
+		CompleteMultipartUploadAction,
+		AbortMultipartUploadAction,
+		GetBucketLocationAction,
+		GetObjectXAttrAction,
+		PutObjectXAttrAction,
+		ListObjectXAttrsAction,
+		DeleteObjectXAttrAction,
+		GetObjectTaggingAction,
+		PutObjectTaggingAction,
+		DeleteObjectTaggingAction,
+		GetBucketTaggingAction,
+		PutBucketTaggingAction,
+		DeleteBucketTaggingAction,
+	}
+)
+
+func ActionFromString(str string) Action {
+	if len(str) == 0 {
+		return UnknownAction
+	}
+	for _, act := range AllActions {
+		if act.String() == str {
+			return act
+		}
+	}
+	return UnknownAction
+}
 
 func (s Statement) checkActions(p *RequestParam) bool {
 	if s.Actions.Empty() {
@@ -95,21 +164,14 @@ func (s Statement) checkNotActions(p *RequestParam) bool {
 }
 
 //
-func IsIntersectionActions(actions1, actions2 []Action) bool {
-	if len(actions1) == 0 && len(actions2) == 0 {
+func IsIntersectionActions(actions []Action, action Action) bool {
+	if len(actions) == 0 {
 		return true
 	}
-	as1, as2 := actions1, actions2
-	if len(actions1) > len(actions2) {
-		as1, as2 = actions2, actions1
-	}
-	for _, action1 := range as1 {
-		for _, action2 := range as2 {
-			if action1 == action2 {
-				return true
-			}
+	for _, act := range actions {
+		if act == action {
+			return true
 		}
 	}
-
 	return false
 }

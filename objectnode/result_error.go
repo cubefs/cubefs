@@ -41,7 +41,7 @@ func (code ErrorCode) ServeResponse(w http.ResponseWriter, r *http.Request) erro
 		Code:      code.ErrorCode,
 		Message:   code.ErrorMessage,
 		Resource:  r.URL.String(),
-		RequestId: RequestIDFromRequest(r),
+		RequestId: GetRequestID(r),
 	}
 	if marshaled, err = xml.Marshal(&xmlError); err != nil {
 		return err
@@ -63,7 +63,7 @@ func ServeInternalStaticErrorResponse(w http.ResponseWriter, r *http.Request) {
 	sb.WriteString("<Error><Code>InternalError</Code><Message>We encountered an internal error. Please try again.</Message><Resource>")
 	sb.WriteString(r.URL.String())
 	sb.WriteString("</Resource><RequestId>")
-	sb.WriteString(RequestIDFromRequest(r))
+	sb.WriteString(GetRequestID(r))
 	sb.WriteString("</RequestId></Error>")
 	_, _ = w.Write([]byte(sb.String()))
 }

@@ -183,12 +183,12 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 	var bytes []byte
 	var marshalError error
 	if bytes, marshalError = MarshalXMLEntity(listBucketOutput); marshalError != nil {
-		log.LogErrorf("listBucketsHandler: marshal result fail, requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("listBucketsHandler: marshal result fail, requestID(%v) err(%v)", GetRequestID(r), err)
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
 	if _, err = w.Write(bytes); err != nil {
-		log.LogErrorf("listBucketsHandler: write response body fail, requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("listBucketsHandler: write response body fail, requestID(%v) err(%v)", GetRequestID(r), err)
 	}
 	return
 }
@@ -196,19 +196,19 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 // Get bucket location
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLocation.html
 func (o *ObjectNode) getBucketLocation(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("getBucketLocation: get bucket location: requestID(%v)", RequestIDFromRequest(r))
+	log.LogInfof("getBucketLocation: get bucket location: requestID(%v)", GetRequestID(r))
 	var output = &GetBucketLocationOutput{
 		LocationConstraint: o.region,
 	}
 	var marshaled []byte
 	var err error
 	if marshaled, err = MarshalXMLEntity(output); err != nil {
-		log.LogErrorf("getBucketLocation: marshal result fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("getBucketLocation: marshal result fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		ServeInternalStaticErrorResponse(w, r)
 		return
 	}
 	if _, err = w.Write(marshaled); err != nil {
-		log.LogErrorf("getBucketLocation: write response body fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("getBucketLocation: write response body fail: requestID(%v) err(%v)", GetRequestID(r), err)
 	}
 	return
 }
@@ -219,7 +219,7 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 	var err error
 	var param *RequestParam
 	if param, err = o.parseRequestParam(r); err != nil {
-		log.LogErrorf("getBucketTaggingHandler: parse request param fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("getBucketTaggingHandler: parse request param fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
@@ -230,27 +230,27 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 
 	var xattrInfo *proto.XAttrInfo
 	if xattrInfo, err = param.vol.GetXAttr("/", XAttrKeyOSSTagging); err != nil {
-		log.LogErrorf("getBucketTaggingHandler: volume get XAttr fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("getBucketTaggingHandler: volume get XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
 	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
 	var output = NewGetBucketTaggingOutput()
 	if err = json.Unmarshal(ossTaggingData, output); err != nil {
-		log.LogErrorf("getBucketTaggingHandler: decode tagging from json fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("getBucketTaggingHandler: decode tagging from json fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
 
 	var encoded []byte
 	if encoded, err = MarshalXMLEntity(output); err != nil {
-		log.LogErrorf("getBucketTaggingHandler: encode output fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("getBucketTaggingHandler: encode output fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
 
 	if _, err = w.Write(encoded); err != nil {
-		log.LogErrorf("getBucketTaggingHandler: write response fail: requestID(%v) err（%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("getBucketTaggingHandler: write response fail: requestID(%v) err（%v)", GetRequestID(r), err)
 	}
 	return
 }
@@ -261,7 +261,7 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 	var err error
 	var param *RequestParam
 	if param, err = o.parseRequestParam(r); err != nil {
-		log.LogErrorf("putBucketTaggingHandler: parse request param fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("putBucketTaggingHandler: parse request param fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
@@ -272,21 +272,21 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 
 	var requestBody []byte
 	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
-		log.LogErrorf("putBucketTaggingHandler: read request body data fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("putBucketTaggingHandler: read request body data fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
 
 	var tagging = NewTagging()
 	if err = UnmarshalXMLEntity(requestBody, tagging); err != nil {
-		log.LogWarnf("putBucketTaggingHandler: decode request body fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogWarnf("putBucketTaggingHandler: decode request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
 
 	var encoded []byte
 	if encoded, err = json.Marshal(tagging); err != nil {
-		log.LogWarnf("putBucketTaggingHandler: encode tagging data fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogWarnf("putBucketTaggingHandler: encode tagging data fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
@@ -307,7 +307,7 @@ func (o *ObjectNode) deleteBucketTaggingHandler(w http.ResponseWriter, r *http.R
 		err   error
 	)
 	if param, err = o.parseRequestParam(r); err != nil {
-		log.LogErrorf("deleteBucketTaggingHandler: parse request param fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("deleteBucketTaggingHandler: parse request param fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
@@ -318,12 +318,12 @@ func (o *ObjectNode) deleteBucketTaggingHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 	if volume, err = o.vm.Volume(param.bucket); err != nil {
-		log.LogErrorf("deleteBucketTaggingHandler: load volume fail: requestID(%v) volume(%v) err(%v)", RequestIDFromRequest(r), param.bucket, err)
+		log.LogErrorf("deleteBucketTaggingHandler: load volume fail: requestID(%v) volume(%v) err(%v)", GetRequestID(r), param.bucket, err)
 		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
 	if err = volume.DeleteXAttr("/", XAttrKeyOSSTagging); err != nil {
-		log.LogErrorf("deleteBucketTaggingHandler: volume delete tagging xattr fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("deleteBucketTaggingHandler: volume delete tagging xattr fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}

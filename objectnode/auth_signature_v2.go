@@ -273,7 +273,7 @@ func (o *ObjectNode) checkPresignedSignatureV2(r *http.Request) (bool, error) {
 	}
 
 	log.LogDebugf("checkPresignedSignatureV2: parse signature info: requestID(%v) url(%v) accessKey(%v) signature(%v) expires(%v)",
-		RequestIDFromRequest(r), r.URL.String(), accessKey, signature, expires)
+		GetRequestID(r), r.URL.String(), accessKey, signature, expires)
 
 	//check access key
 	var akPolicy *oss.AKPolicy
@@ -284,7 +284,7 @@ func (o *ObjectNode) checkPresignedSignatureV2(r *http.Request) (bool, error) {
 
 	// check expires
 	if ok, _ := checkExpires(expires); !ok {
-		log.LogDebugf("checkPresignedSignatureV2: signature expired: requestID(%v) expires(%v)", RequestIDFromRequest(r), expires)
+		log.LogDebugf("checkPresignedSignatureV2: signature expired: requestID(%v) expires(%v)", GetRequestID(r), expires)
 		return false, nil
 	}
 
@@ -295,7 +295,7 @@ func (o *ObjectNode) checkPresignedSignatureV2(r *http.Request) (bool, error) {
 	calSignature := calPresignedSignatureV2(r.Method, canonicalResourceQuery, expires, akPolicy.SecretKey, r.Header)
 	if calSignature != signature {
 		log.LogDebugf("checkPresignedSignatureV2: invalid signature: requestID(%v) client(%v) server(%v)",
-			RequestIDFromRequest(r), signature, calSignature)
+			GetRequestID(r), signature, calSignature)
 		return false, nil
 	}
 

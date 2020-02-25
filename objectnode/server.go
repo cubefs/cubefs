@@ -21,20 +21,21 @@ import (
 	"regexp"
 	"sync"
 
+	"github.com/chubaofs/chubaofs/util/config"
+
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/gorilla/mux"
 )
 
 // Configuration keys
 const (
-	configListen      = "listen"
-	configDomains     = "domains"
-	configMasters     = "masters"
-	configEnableHTTPS = "enableHTTPS"
+	configListen                  = "listen"
+	configDomains                 = "domains"
+	configEnableHTTPS             = "enableHTTPS"
+	configSignatureIgnoredActions = "signatureIgnoredActions"
 )
 
 // Default of configuration value
@@ -57,6 +58,8 @@ type ObjectNode struct {
 	state      uint32
 	wg         sync.WaitGroup
 	userStore  *UserStore
+
+	signatureIgnoredActions []Action // signature ignored actions
 
 	control common.Control
 }
@@ -100,7 +103,17 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	if len(masters) == 0 {
 		return config.NewIllegalConfigError(proto.MasterAddr)
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configMasters, masters)
+	log.LogInfof("loadConfig: setup config: %v(%v)", proto.MasterAddr, masters)
+
+	// parse signature ignored actions
+	signatureIgnoredActionNames := cfg.GetStringSlice(configSignatureIgnoredActions)
+	for _, actionName := range signatureIgnoredActionNames {
+		action := ActionFromString(actionName)
+		if action.IsKnown() {
+			o.signatureIgnoredActions = append(o.signatureIgnoredActions, action)
+			log.LogInfof("loadConfig: signature ignored action: %v", action)
+		}
+	}
 
 	o.mc = master.NewMasterClient(masters, false)
 	o.vm = NewVolumeManager(masters)

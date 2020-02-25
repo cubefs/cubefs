@@ -29,7 +29,7 @@ type RequestParam struct {
 	resource  string
 	bucket    string
 	object    string
-	actions   []Action
+	actions   Action
 	sourceIP  string
 	vol       *volume
 	condVals  map[string][]string
@@ -79,11 +79,11 @@ func (o *ObjectNode) parseRequestParams(r *http.Request) (vars map[string]string
 			vl, err = vm.loadVolume(bucket)
 			if err != nil {
 				log.LogErrorf("parseRequestParams: load volume fail, requestId(%v) bucket(%v) err(%v)",
-					RequestIDFromRequest(r), bucket, err)
+					GetRequestID(r), bucket, err)
 			}
 		} else {
 			log.LogErrorf("parseRequestParams: load volume fail, requestId(%v) bucket(%v) err(%v)",
-				RequestIDFromRequest(r), bucket, err)
+				GetRequestID(r), bucket, err)
 		}
 	}
 	return
@@ -111,7 +111,7 @@ func (o *ObjectNode) errorResponse(w http.ResponseWriter, r *http.Request, err e
 	if err != nil || ec != nil {
 		if err != nil {
 			log.LogErrorf("errorResponse: found error: requestID(%v) err(%v)",
-				RequestIDFromRequest(r), err)
+				GetRequestID(r), err)
 		}
 		if ec == nil {
 			ec = &InternalError
@@ -124,7 +124,7 @@ func (o *ObjectNode) unsupportedOperationHandler(w http.ResponseWriter, r *http.
 	var err error
 	if err = UnsupportedOperation.ServeResponse(w, r); err != nil {
 		log.LogErrorf("unsupportedOperationHandler: serve response fail: requestID(%v) err(%v)",
-			RequestIDFromRequest(r), err)
+			GetRequestID(r), err)
 		ServeInternalStaticErrorResponse(w, r)
 	}
 	return

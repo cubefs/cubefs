@@ -17,22 +17,20 @@ package objectnode
 import (
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
+
+	"github.com/gorilla/mux"
 
 	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
 )
 
-const (
-	ctxKeyRequestID = "ctx_request_id"
+var (
+	routeSNRegexp = regexp.MustCompile(":(\\w){32}$")
 )
-
-func RequestIDFromRequest(r *http.Request) (id string) {
-	return mux.Vars(r)[ctxKeyRequestID]
-}
 
 func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 	var generateRequestID = func() (string, error) {
@@ -53,7 +51,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			_ = InternalError.ServeResponse(w, r)
 			return
 		}
-		mux.Vars(r)[ctxKeyRequestID] = requestID
+		SetRequestID(r, requestID)
 		w.Header().Set(HeaderNameRequestId, requestID)
 
 		var startTime = time.Now()
@@ -82,42 +80,70 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 }
 
 func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
+
+	var parseActionName = func(r *http.Request) string {
+		routeName := mux.CurrentRoute(r).GetName()
+		routeSNLoc := routeSNRegexp.FindStringIndex(routeName)
+		if len(routeSNLoc) != 2 {
+			return routeName
+		}
+		return routeName[:len(routeName)-33]
+	}
+
+	var isSignatureIgnoredAction = func(action Action) bool {
+		if len(o.signatureIgnoredActions) == 0 {
+			return false
+		}
+		for _, signatureIgnored := range o.signatureIgnoredActions {
+			if signatureIgnored == action {
+				return true
+			}
+		}
+		return false
+	}
+
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
+			var currentAction = ActionFromString(parseActionName(r))
+			if currentAction.IsKnown() && isSignatureIgnoredAction(currentAction) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			//  1. check auth type
 			if isSignaturedV4(r) {
 				if ok, _ := o.checkSignatureV4(r); !ok {
 					if err := AccessDenied.ServeResponse(w, r); err != nil {
-						log.LogErrorf("authMiddleware: serve access denied response fail, requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+						log.LogErrorf("authMiddleware: serve access denied response fail, requestID(%v) err(%v)", GetRequestID(r), err)
 					}
 					return
 				}
 			} else if isSignaturedV2(r) {
 				if ok, _ := o.checkSignatureV2(r); !ok {
 					if err := AccessDenied.ServeResponse(w, r); err != nil {
-						log.LogErrorf("authMiddleware: serve access denied response fail, requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+						log.LogErrorf("authMiddleware: serve access denied response fail, requestID(%v) err(%v)", GetRequestID(r), err)
 					}
 					return
 				}
 			} else if isPresignedSignaturedV2(r) {
 				if ok, _ := o.checkPresignedSignatureV2(r); !ok {
-					log.LogDebugf("authMiddleware: presigned v2 denied: requestID(%v)", RequestIDFromRequest(r))
+					log.LogDebugf("authMiddleware: presigned v2 denied: requestID(%v)", GetRequestID(r))
 					if err := AccessDenied.ServeResponse(w, r); err != nil {
-						log.LogErrorf("authMiddleware: serve response fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+						log.LogErrorf("authMiddleware: serve response fail: requestID(%v) err(%v)", GetRequestID(r), err)
 					}
 					return
 				}
 			} else if isPresignedSignaturedV4(r) {
 				if ok, _ := o.checkPresignedSignatureV4(r); !ok {
-					log.LogDebugf("authMiddleware: presigned v4 denied: requestID(%v)", RequestIDFromRequest(r))
+					log.LogDebugf("authMiddleware: presigned v4 denied: requestID(%v)", GetRequestID(r))
 					if err := AccessDenied.ServeResponse(w, r); err != nil {
-						log.LogErrorf("authMiddleware: serve response fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+						log.LogErrorf("authMiddleware: serve response fail: requestID(%v) err(%v)", GetRequestID(r), err)
 					}
 					return
 				}
 			} else {
 				if err := AccessDenied.ServeResponse(w, r); err != nil {
-					log.LogErrorf("authMiddleware: serve response fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+					log.LogErrorf("authMiddleware: serve response fail: requestID(%v) err(%v)", GetRequestID(r), err)
 				}
 				return
 			}
@@ -130,7 +156,7 @@ func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
 		if len(r.Header) > 0 && len(r.Header.Get(http.CanonicalHeaderKey(HeaderNameDecodeContentLength))) > 0 {
 			r.Body = NewChunkedReader(r.Body)
-			log.LogDebugf("contentMiddleware: chunk reader inited: requestID(%v)", RequestIDFromRequest(r))
+			log.LogDebugf("contentMiddleware: chunk reader inited: requestID(%v)", GetRequestID(r))
 		}
 		next.ServeHTTP(w, r)
 	}

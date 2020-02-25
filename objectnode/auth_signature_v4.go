@@ -104,7 +104,7 @@ func (o *ObjectNode) checkSignatureV4(r *http.Request) (bool, error) {
 	newSignature := calculateSignatureV4(r, o.region, akPolicy.SecretKey, req.SignedHeaders)
 	if req.Signature != newSignature {
 		log.LogDebugf("checkSignatureV4: invalid signature: requestID(%v) client(%v) server(%v)",
-			RequestIDFromRequest(r), req.Signature, newSignature)
+			GetRequestID(r), req.Signature, newSignature)
 		return false, nil
 	}
 
@@ -124,14 +124,14 @@ func (o *ObjectNode) checkPresignedSignatureV4(r *http.Request) (pass bool, err 
 	var req *signatureRequestV4
 	req, err = parseRequestV4(r)
 	if err != nil {
-		log.LogErrorf("checkPresignedSignatureV4: parse request fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("checkPresignedSignatureV4: parse request fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		return
 	}
 
 	//check req valid
 	var ok bool
 	if ok, err = req.isValid(); !ok {
-		log.LogErrorf("checkPresignedSignatureV4: request invalid: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("checkPresignedSignatureV4: request invalid: requestID(%v) err(%v)", GetRequestID(r), err)
 		return
 	}
 
@@ -145,7 +145,7 @@ func (o *ObjectNode) checkPresignedSignatureV4(r *http.Request) (pass bool, err 
 	var canonicalHeader http.Header
 	canonicalHeader, err = req.createCanonicalHeaderV4()
 	if err != nil {
-		log.LogErrorf("checkPresignedSignatureV4: create canonical header fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("checkPresignedSignatureV4: create canonical header fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		return
 	}
 	canonicalHeaderStr := buildCanonicalHeaderString(r.Host, canonicalHeader, req.SignedHeaders)
@@ -157,7 +157,7 @@ func (o *ObjectNode) checkPresignedSignatureV4(r *http.Request) (pass bool, err 
 	log.LogDebugf("checkPresignedSignatureV4: middle data:\n"+
 		"  RequestID: %v\n"+
 		"  CanonicalRequest: %v",
-		RequestIDFromRequest(r),
+		GetRequestID(r),
 		canonicalRequestString)
 
 	// build signingKey
@@ -449,7 +449,7 @@ func calculateSignatureV4(r *http.Request, region, secretKey string, signedHeade
 	log.LogDebugf("calculateSignatureV4: middle data:\n"+
 		"  RequestID: %v\n"+
 		"  CanonicalRequest: %v",
-		RequestIDFromRequest(r),
+		GetRequestID(r),
 		canonicalRequest)
 	return hex.EncodeToString(signature)
 }
