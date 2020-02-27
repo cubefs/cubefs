@@ -276,7 +276,7 @@ func (c *Cluster) syncPutEcNodeInfo(opType uint32, ecNode *ECNode) (err error) {
 }
 
 func (c *Cluster) ecNode(addr string) (ecNode *ECNode, err error) {
-	value, ok := c.codecNodes.Load(addr)
+	value, ok := c.ecNodes.Load(addr)
 	if !ok {
 		err = errors.Trace(ecNodeNotFound(addr), "%v not found", addr)
 		return

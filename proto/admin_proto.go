@@ -60,6 +60,7 @@ const (
 	// Operation response
 	GetMetaNodeTaskResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
 	GetDataNodeTaskResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
+	GetEcNodeTaskResponse   = "/ecNode/response"   // Method: 'POST', ContentType: 'application/json'
 
 	GetTopologyView = "/topo/get"
 

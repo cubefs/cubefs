@@ -9,7 +9,7 @@ BIN_AUTHTOOL := $(BIN_PATH)/cfs-authtool
 
 COMMON_SRC := build/build.sh Makefile
 COMMON_SRC += $(wildcard storage/*.go util/*/*.go util/*.go repl/*.go raftstore/*.go proto/*.go)
-SERVER_SRC := $(wildcard cmd/*.go authnode/*.go datanode/*.go master/*.go metanode/*.go)
+SERVER_SRC := $(wildcard cmd/*.go authnode/*.go datanode/*.go master/*.go metanode/*.go ecnode/*.go)
 CLIENT_SRC := $(wildcard client/*.go client/fs/*.go sdk/*.go)
 CLIENT2_SRC := $(wildcard clientv2/*.go clientv2/fs/*.go sdk/*.go)
 AUTHTOOL_SRC := $(wildcard authtool/*.go)
