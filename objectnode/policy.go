@@ -245,7 +245,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc, action Action) http.Handler
 			return
 		}
 		if apis, exit := akPolicy.Policy.NoneOwnVol[param.bucket]; exit {
-			if !contains(apis, string(action)) {
+			if !contains(apis, action.String()) {
 				allowed = false
 				log.LogWarnf("user policy not allowed %v", param)
 				return
