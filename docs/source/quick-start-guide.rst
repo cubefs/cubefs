@@ -1,4 +1,4 @@
-Quick Start Guide
+Run Cluster Manually
 =================
 
 Building
