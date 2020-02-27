@@ -48,6 +48,17 @@ func (api *NodeAPI) AddMetaNode(serverAddr string) (id uint64, err error) {
 	return
 }
 
+func (api *NodeAPI) AddEcNode(serverAddr string) (id uint64, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AddEcNode)
+	request.addParam("addr", serverAddr)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	id, err = strconv.ParseUint(string(data), 10, 64)
+	return
+}
+
 func (api *NodeAPI) GetDataNode(serverHost string) (node *proto.DataNodeInfo, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.GetDataNode)
@@ -96,6 +107,19 @@ func (api *NodeAPI) ResponseDataNodeTask(task *proto.AdminTask) (err error) {
 		return
 	}
 	var request = newAPIRequest(http.MethodPost, proto.GetDataNodeTaskResponse)
+	request.addBody(encoded)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *NodeAPI) ResponseEcNodeTask(task *proto.AdminTask) (err error) {
+	var encoded []byte
+	if encoded, err = json.Marshal(task); err != nil {
+		return
+	}
+	var request = newAPIRequest(http.MethodPost, proto.GetEcNodeTaskResponse)
 	request.addBody(encoded)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
