@@ -34,6 +34,7 @@ import (
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/codecnode"
 	"github.com/chubaofs/chubaofs/datanode"
+	"github.com/chubaofs/chubaofs/ecnode"
 	"github.com/chubaofs/chubaofs/master"
 	"github.com/chubaofs/chubaofs/metanode"
 	"github.com/chubaofs/chubaofs/objectnode"
@@ -63,6 +64,7 @@ const (
 	RoleAuth   = "authnode"
 	RoleObject = "objectnode"
 	RoleCodec  = "codecnode"
+	RoleEc     = "ecnode"
 )
 
 const (
@@ -72,6 +74,7 @@ const (
 	ModuleAuth   = "authNode"
 	ModuleObject = "objectNode"
 	ModuleCodec  = "codecNode"
+	ModuleEc     = "ecNode"
 )
 
 const (
@@ -179,6 +182,9 @@ func main() {
 	case RoleCodec:
 		server = codecnode.NewServer()
 		module = ModuleCodec
+	case RoleEc:
+		server = ecnode.NewServer()
+		module = ModuleEc
 	default:
 		daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 		os.Exit(1)
