@@ -32,7 +32,9 @@ type volumeManager struct {
 }
 
 func (m *volumeManager) Release(volName string) {
-	panic("implement me")
+	m.volMu.Lock()
+	defer m.volMu.Unlock()
+	delete(m.volumes, volName)
 }
 
 func (m *volumeManager) ReleaseAll() {

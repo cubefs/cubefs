@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/oss"
 )
@@ -250,6 +251,9 @@ func extractAccessKey(r *http.Request) (ak string, err error) {
 		err = keyNotFound(akKey)
 		return
 	}
+	if !akRegexp.MatchString(ak) {
+		return "", errors.New("accesskey can only be number and letters")
+	}
 	return
 }
 
@@ -258,6 +262,9 @@ func extractTargetKey(r *http.Request) (targetAK string, err error) {
 		err = keyNotFound(targetKey)
 		return
 	}
+	if !akRegexp.MatchString(targetAK) {
+		return "", errors.New("accesskey can only be number and letters")
+	}
 	return
 }
 
@@ -265,6 +272,9 @@ func extractSecretKey(r *http.Request) (sk string, err error) {
 	if sk = r.FormValue(skKey); sk == "" {
 		err = keyNotFound(skKey)
 		return
+	}
+	if !skRegexp.MatchString(sk) {
+		return "", errors.New("secretkey can only be number and letters")
 	}
 	return
 }

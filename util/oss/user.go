@@ -22,7 +22,7 @@ type UserPolicy struct {
 
 type VolAK struct {
 	Vol          string   `json:"vol"`
-	AKAndActions []string `json:"user_ak_action"`
+	AKAndActions []string `json:"ak_action"`
 	sync.RWMutex
 }
 
