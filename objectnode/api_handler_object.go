@@ -18,6 +18,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -819,7 +820,7 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	var tagging = NewTagging()
-	if err = UnmarshalXMLEntity(requestBody, tagging); err != nil {
+	if err = xml.Unmarshal(requestBody, tagging); err != nil {
 		log.LogWarnf("putObjectTaggingHandler: decode request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
@@ -846,7 +847,7 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 	var err error
 	var param *RequestParam
 	if param, err = o.parseRequestParam(r); err != nil {
-		log.LogErrorf("deleteObjectTaggingHandler: parse request param fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogWarnf("deleteObjectTaggingHandler: parse request param fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
@@ -863,21 +864,154 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 }
 
 // Put object extend attribute (xattr)
-func (o *ObjectNode) putObjectXAttr(w http.ResponseWriter, r *http.Request) {
-	// TODO: implement 'putObjectXAttr'
+func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+	var param *RequestParam
+	if param, err = o.parseRequestParam(r); err != nil {
+		log.LogWarnf("putObjectXAttrHandler: parse request param fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+	if len(param.bucket) == 0 {
+		_ = NoSuchBucket.ServeResponse(w, r)
+		return
+	}
+	var vol *volume
+	if vol, err = o.getVol(param.bucket); err != nil {
+		_ = NoSuchBucket.ServeResponse(w, r)
+		return
+	}
+	if len(param.object) == 0 {
+		_ = NoSuchKey.ServeResponse(w, r)
+		return
+	}
+	var requestBody []byte
+	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
+		_ = ErrorCode{
+			ErrorCode:    "BadRequest",
+			ErrorMessage: err.Error(),
+			StatusCode:   http.StatusBadRequest,
+		}.ServeResponse(w, r)
+		return
+	}
+	var putXAttrRequest = PutXAttrRequest{}
+	if err = xml.Unmarshal(requestBody, &putXAttrRequest); err != nil {
+		_ = ErrorCode{
+			ErrorCode:    "BadRequest",
+			ErrorMessage: err.Error(),
+			StatusCode:   http.StatusBadRequest,
+		}.ServeResponse(w, r)
+		return
+	}
+	var key, value = putXAttrRequest.XAttr.Key, putXAttrRequest.XAttr.Value
+	if len(key) == 0 {
+		return
+	}
+
+	if err = vol.SetXAttr(param.object, key, []byte(value)); err != nil {
+		if err == syscall.ENOENT {
+			_ = NoSuchKey.ServeResponse(w, r)
+			return
+		}
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+	return
 }
 
 // Get object extend attribute (xattr)
 func (o *ObjectNode) getObjectXAttr(w http.ResponseWriter, r *http.Request) {
-	// TODO: implement 'getObjectXAttr'
+	var err error
+	var param *RequestParam
+	if param, err = o.parseRequestParam(r); err != nil {
+		log.LogWarnf("deleteObjectXAttrHandler: parse request param fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+	if len(param.bucket) == 0 {
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+	var vol *volume
+	if vol, err = o.getVol(param.bucket); err != nil {
+		_ = NoSuchBucket.ServeResponse(w, r)
+		return
+	}
+	if len(param.object) == 0 {
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+	var xattrKey string
+	if xattrKey = param.GetVar("key"); len(xattrKey) == 0 {
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+
+	var info *proto.XAttrInfo
+	if info, err = vol.GetXAttr(param.object, xattrKey); err != nil {
+		if err == syscall.ENOENT {
+			_ = NoSuchKey.ServeResponse(w, r)
+			return
+		}
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+	var response = GetXAttrOutput{
+		XAttr: &XAttr{
+			Key:   xattrKey,
+			Value: string(info.Get(xattrKey)),
+		},
+	}
+	var marshaled []byte
+	if marshaled, err = MarshalXMLEntity(&response); err != nil {
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+	_, _ = w.Write(marshaled)
+	return
 }
 
 // Delete object extend attribute (xattr)
-func (o *ObjectNode) deleteObjectXAttr(w http.ResponseWriter, r *http.Request) {
-	// TODO: implement 'deleteObjectXAttr'
+func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+	var param *RequestParam
+	if param, err = o.parseRequestParam(r); err != nil {
+		log.LogWarnf("deleteObjectXAttrHandler: parse request param fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+	if len(param.bucket) == 0 {
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+	var vol *volume
+	if vol, err = o.getVol(param.bucket); err != nil {
+		_ = NoSuchBucket.ServeResponse(w, r)
+		return
+	}
+	if len(param.object) == 0 {
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+	var xattrKey string
+	if xattrKey = param.GetVar("key"); len(xattrKey) == 0 {
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+
+	if err = vol.DeleteXAttr(param.object, xattrKey); err != nil {
+		if err == syscall.ENOENT {
+			_ = NoSuchKey.ServeResponse(w, r)
+			return
+		}
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+	return
 }
 
 // List object xattrs
 func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 	// TODO: implement 'listObjectXAttrs'
+
 }

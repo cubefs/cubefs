@@ -298,6 +298,11 @@ type PutXAttrRequest struct {
 	XAttr   *XAttr   `xml:"XAttr"`
 }
 
+type GetXAttrOutput struct {
+	XMLName xml.Name `xml:"GetXAttrOutput"`
+	XAttr   *XAttr   `xml:"XAttr"`
+}
+
 type ListXAttrsResult struct {
 	XMLName xml.Name `xml:"ListXAttrsResult"`
 	XAttrs  []*XAttr `xml:"XAttrs>XAttr"`

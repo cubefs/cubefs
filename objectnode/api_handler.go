@@ -38,6 +38,10 @@ type RequestParam struct {
 	accessKey string
 }
 
+func (p *RequestParam) GetVar(name string) string {
+	return p.vars[name]
+}
+
 func (o *ObjectNode) parseRequestParam(r *http.Request) (*RequestParam, error) {
 	p := new(RequestParam)
 	p.vars = mux.Vars(r)

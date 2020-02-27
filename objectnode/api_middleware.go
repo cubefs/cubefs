@@ -70,25 +70,20 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		}
 
 		log.LogDebugf("traceMiddleware: trace request:\n"+
+			"  action(%v)\n"+
 			"  requestID(%v) host(%v) method(%v) url(%v)\n"+
 			"  header(%v)\n"+
 			"  remote(%v) cost(%v)",
-			requestID, r.Host, r.Method, r.URL.String(), headerToString(r.Header), getRequestIP(r), time.Since(startTime))
+			ActionFromRouteName(mux.CurrentRoute(r).GetName()).String(),
+			requestID, r.Host, r.Method, r.URL.String(),
+			headerToString(r.Header),
+			getRequestIP(r), time.Since(startTime))
 
 	}
 	return handlerFunc
 }
 
 func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
-
-	var parseActionName = func(r *http.Request) string {
-		routeName := mux.CurrentRoute(r).GetName()
-		routeSNLoc := routeSNRegexp.FindStringIndex(routeName)
-		if len(routeSNLoc) != 2 {
-			return routeName
-		}
-		return routeName[:len(routeName)-33]
-	}
 
 	var isSignatureIgnoredAction = func(action Action) bool {
 		if len(o.signatureIgnoredActions) == 0 {
@@ -104,7 +99,7 @@ func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			var currentAction = ActionFromString(parseActionName(r))
+			var currentAction = ActionFromRouteName(mux.CurrentRoute(r).GetName())
 			if currentAction.IsKnown() && isSignatureIgnoredAction(currentAction) {
 				next.ServeHTTP(w, r)
 				return
@@ -149,6 +144,16 @@ func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 			}
 
 			next.ServeHTTP(w, r)
+		})
+}
+
+func (o *ObjectNode) policyCheckMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			action := ActionFromRouteName(mux.CurrentRoute(r).GetName())
+			wrappedNext := o.policyCheck(next.ServeHTTP, action)
+			wrappedNext.ServeHTTP(w, r)
+			return
 		})
 }
 

@@ -165,6 +165,7 @@ func (o *ObjectNode) startMuxRestAPI() (err error) {
 	router.Use(
 		o.traceMiddleware,
 		o.authMiddleware,
+		o.policyCheckMiddleware,
 		o.contentMiddleware,
 	)
 

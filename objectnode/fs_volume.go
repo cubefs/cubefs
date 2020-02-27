@@ -160,7 +160,6 @@ func (v *volume) OSSMeta() *OSSMeta {
 }
 
 func (v *volume) getInodeFromPath(path string) (inode uint64, err error) {
-	// path == "/"
 	if path == "/" {
 		return volumeRootInode, nil
 	}
@@ -193,9 +192,22 @@ func (v *volume) getInodeFromPath(path string) (inode uint64, err error) {
 }
 
 func (v *volume) SetXAttr(path string, key string, data []byte) error {
-	inode, err1 := v.getInodeFromPath(path)
-	if err1 != nil {
-		return err1
+	var err error
+	var inode uint64
+	if inode, err = v.getInodeFromPath(path); err != nil && err != syscall.ENOENT {
+		return err
+	}
+	if err == syscall.ENOENT {
+		var dirs, filename = splitPath(path)
+		var parentID uint64
+		if parentID, err = v.lookupDirectories(dirs, true); err != nil {
+			return err
+		}
+		var inodeInfo *proto.InodeInfo
+		if inodeInfo, err = v.mw.Create_ll(parentID, filename, 0600, 0, 0, nil); err != nil {
+			return err
+		}
+		inode = inodeInfo.Inode
 	}
 	return v.mw.XAttrSet_ll(inode, []byte(key), data)
 }

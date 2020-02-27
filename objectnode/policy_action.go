@@ -14,6 +14,13 @@
 
 package objectnode
 
+import (
+	"strings"
+
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/google/uuid"
+)
+
 // https://docs.aws.amazon.com/AmazonS3/latest/dev/access-policy-language-overview.html
 
 // https://docs.aws.amazon.com/AmazonS3/latest/dev/example-bucket-policies.html
@@ -28,54 +35,65 @@ func (a Action) IsKnown() bool {
 	return len(a) != 0 && a != UnknownAction
 }
 
+func (a Action) UniqueRouteName() (name string) {
+	var id uuid.UUID
+	var err error
+	if id, err = uuid.NewRandom(); err != nil {
+		name = a.String() + ":" + util.RandomString(32, util.UpperLetter|util.LowerLetter)
+		return
+	}
+	name = a.String() + ":" + strings.ReplaceAll(id.String(), "-", "")
+	return
+}
+
 const (
 	OSSActionPrefix = "oss:action:"
 
 	GetObjectAction                  Action = OSSActionPrefix + "GetObject"
-	PutObjectAction                         = OSSActionPrefix + "PutObject"
-	CopyObjectAction                        = OSSActionPrefix + "CopyObject"
-	ListObjectsAction                       = OSSActionPrefix + "ListObjects"
-	DeleteObjectAction                      = OSSActionPrefix + "DeleteObject"
-	DeleteObjectsAction                     = OSSActionPrefix + "DeleteObjects"
-	HeadObjectAction                        = OSSActionPrefix + "HeadObject"
-	CreateBucketAction                      = OSSActionPrefix + "CreateBucket"
-	DeleteBucketAction                      = OSSActionPrefix + "DeleteBucket"
-	HeadBucketAction                        = OSSActionPrefix + "HeadBucket"
-	ListBucketAction                        = OSSActionPrefix + "ListBucket"
-	ListBucketVersionsAction                = OSSActionPrefix + "ListBucketVersions"
-	ListBucketMultipartUploadsAction        = OSSActionPrefix + "ListBucketMultipartUploads"
-	GetBucketPolicyAction                   = OSSActionPrefix + "GetBucketPolicy"
-	PutBucketPolicyAction                   = OSSActionPrefix + "PutBucketPolicy"
-	GetBucketAclAction                      = OSSActionPrefix + "GetBucketAcl"
-	PutBucketAclAction                      = OSSActionPrefix + "PutBucketAcl"
-	GetObjectAclAction                      = OSSActionPrefix + "GetObjectAcl"
-	GetObjectVersionAction                  = OSSActionPrefix + "GetObjectVersion"
-	PutObjectVersionAction                  = OSSActionPrefix + "PutObjectVersion"
-	GetObjectTorrentAction                  = OSSActionPrefix + "GetObjectTorrent"
-	PutObjectTorrentAction                  = OSSActionPrefix + "PutObjectTorrent"
-	PutObjectAclAction                      = OSSActionPrefix + "PutObjectAcl"
-	GetObjectVersionAclAction               = OSSActionPrefix + "GetObjectVersionAcl"
-	PutObjectVersionAclAction               = OSSActionPrefix + "PutObjectVersionAcl"
-	DeleteBucketPolicyAction                = OSSActionPrefix + "DeleteBucketPolicy"
-	CreateMultipartUploadAction             = OSSActionPrefix + "CreateMultipartUpload"
-	ListMultipartUploadsAction              = OSSActionPrefix + "ListMultipartUploads"
-	UploadPartAction                        = OSSActionPrefix + "UploadPart"
-	ListPartsAction                         = OSSActionPrefix + "ListParts"
-	CompleteMultipartUploadAction           = OSSActionPrefix + "CompleteMultipartUpload"
-	AbortMultipartUploadAction              = OSSActionPrefix + "AbortMultipartUpload"
-	GetBucketLocationAction                 = OSSActionPrefix + "GetBucketLocation"
-	GetObjectXAttrAction                    = OSSActionPrefix + "GetObjectXAttr"
-	PutObjectXAttrAction                    = OSSActionPrefix + "PutObjectAttr"
-	ListObjectXAttrsAction                  = OSSActionPrefix + "ListObjectXAttrs"
-	DeleteObjectXAttrAction                 = OSSActionPrefix + "DeleteObjectXAttr"
-	GetObjectTaggingAction                  = OSSActionPrefix + "GetObjectTagging"
-	PutObjectTaggingAction                  = OSSActionPrefix + "PutObjectTagging"
-	DeleteObjectTaggingAction               = OSSActionPrefix + "DeleteObjectTagging"
-	GetBucketTaggingAction                  = OSSActionPrefix + "GetBucketTagging"
-	PutBucketTaggingAction                  = OSSActionPrefix + "PutBucketTagging"
-	DeleteBucketTaggingAction               = OSSActionPrefix + "DeleteBucketTagging"
+	PutObjectAction                  Action = OSSActionPrefix + "PutObject"
+	CopyObjectAction                 Action = OSSActionPrefix + "CopyObject"
+	ListObjectsAction                Action = OSSActionPrefix + "ListObjects"
+	DeleteObjectAction               Action = OSSActionPrefix + "DeleteObject"
+	DeleteObjectsAction              Action = OSSActionPrefix + "DeleteObjects"
+	HeadObjectAction                 Action = OSSActionPrefix + "HeadObject"
+	CreateBucketAction               Action = OSSActionPrefix + "CreateBucket"
+	DeleteBucketAction               Action = OSSActionPrefix + "DeleteBucket"
+	HeadBucketAction                 Action = OSSActionPrefix + "HeadBucket"
+	ListBucketAction                 Action = OSSActionPrefix + "ListBucket"
+	ListBucketVersionsAction         Action = OSSActionPrefix + "ListBucketVersions"
+	ListBucketMultipartUploadsAction Action = OSSActionPrefix + "ListBucketMultipartUploads"
+	GetBucketPolicyAction            Action = OSSActionPrefix + "GetBucketPolicy"
+	PutBucketPolicyAction            Action = OSSActionPrefix + "PutBucketPolicy"
+	GetBucketAclAction               Action = OSSActionPrefix + "GetBucketAcl"
+	PutBucketAclAction               Action = OSSActionPrefix + "PutBucketAcl"
+	GetObjectAclAction               Action = OSSActionPrefix + "GetObjectAcl"
+	GetObjectVersionAction           Action = OSSActionPrefix + "GetObjectVersion"
+	PutObjectVersionAction           Action = OSSActionPrefix + "PutObjectVersion"
+	GetObjectTorrentAction           Action = OSSActionPrefix + "GetObjectTorrent"
+	PutObjectTorrentAction           Action = OSSActionPrefix + "PutObjectTorrent"
+	PutObjectAclAction               Action = OSSActionPrefix + "PutObjectAcl"
+	GetObjectVersionAclAction        Action = OSSActionPrefix + "GetObjectVersionAcl"
+	PutObjectVersionAclAction        Action = OSSActionPrefix + "PutObjectVersionAcl"
+	DeleteBucketPolicyAction         Action = OSSActionPrefix + "DeleteBucketPolicy"
+	CreateMultipartUploadAction      Action = OSSActionPrefix + "CreateMultipartUpload"
+	ListMultipartUploadsAction       Action = OSSActionPrefix + "ListMultipartUploads"
+	UploadPartAction                 Action = OSSActionPrefix + "UploadPart"
+	ListPartsAction                  Action = OSSActionPrefix + "ListParts"
+	CompleteMultipartUploadAction    Action = OSSActionPrefix + "CompleteMultipartUpload"
+	AbortMultipartUploadAction       Action = OSSActionPrefix + "AbortMultipartUpload"
+	GetBucketLocationAction          Action = OSSActionPrefix + "GetBucketLocation"
+	GetObjectXAttrAction             Action = OSSActionPrefix + "GetObjectXAttr"
+	PutObjectXAttrAction             Action = OSSActionPrefix + "PutObjectAttr"
+	ListObjectXAttrsAction           Action = OSSActionPrefix + "ListObjectXAttrs"
+	DeleteObjectXAttrAction          Action = OSSActionPrefix + "DeleteObjectXAttr"
+	GetObjectTaggingAction           Action = OSSActionPrefix + "GetObjectTagging"
+	PutObjectTaggingAction           Action = OSSActionPrefix + "PutObjectTagging"
+	DeleteObjectTaggingAction        Action = OSSActionPrefix + "DeleteObjectTagging"
+	GetBucketTaggingAction           Action = OSSActionPrefix + "GetBucketTagging"
+	PutBucketTaggingAction           Action = OSSActionPrefix + "PutBucketTagging"
+	DeleteBucketTaggingAction        Action = OSSActionPrefix + "DeleteBucketTagging"
 
-	UnknownAction = OSSActionPrefix + "Unknown"
+	UnknownAction Action = OSSActionPrefix + "Unknown"
 )
 
 var (
@@ -135,6 +153,14 @@ func ActionFromString(str string) Action {
 		}
 	}
 	return UnknownAction
+}
+
+func ActionFromRouteName(name string) Action {
+	routeSNLoc := routeSNRegexp.FindStringIndex(name)
+	if len(routeSNLoc) != 2 {
+		return ActionFromString(name)
+	}
+	return ActionFromString(name[:len(name)-33])
 }
 
 func (s Statement) checkActions(p *RequestParam) bool {
