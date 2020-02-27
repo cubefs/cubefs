@@ -183,7 +183,7 @@ func (p *Policy) IsAllowed(params *RequestParam) bool {
 	return false
 }
 
-func (o *ObjectNode) policyCheck(f http.HandlerFunc, actions Action) http.HandlerFunc {
+func (o *ObjectNode) policyCheck(f http.HandlerFunc, action Action) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
 			err error
@@ -213,7 +213,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc, actions Action) http.Handle
 			return
 		}
 
-		param.actions = actions
+		param.actions = action
 
 		//check policy and acl
 		acl := param.vol.loadACL()
@@ -245,12 +245,10 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc, actions Action) http.Handle
 			return
 		}
 		if apis, exit := akPolicy.Policy.NoneOwnVol[param.bucket]; exit {
-			for _, action := range actions {
-				if !contains(apis, string(action)) {
-					allowed = false
-					log.LogWarnf("user policy not allowed %v", param)
-					return
-				}
+			if !contains(apis, string(action)) {
+				allowed = false
+				log.LogWarnf("user policy not allowed %v", param)
+				return
 			}
 			allowed = true
 		} else {
