@@ -16,15 +16,17 @@ import (
 type MockMetaServer struct {
 	NodeID     uint64
 	TcpAddr    string
+	CellName   string
 	mc         *master.MasterClient
 	partitions map[uint64]*MockMetaPartition // Key: metaRangeId, Val: metaPartition
 	sync.RWMutex
 }
 
-func NewMockMetaServer(addr string) *MockMetaServer {
+func NewMockMetaServer(addr string, cellName string) *MockMetaServer {
 	mms := &MockMetaServer{
-		TcpAddr: addr, partitions: make(map[uint64]*MockMetaPartition, 0),
-		mc: master.NewMasterClient([]string{hostAddr}, false),
+		TcpAddr:  addr, partitions: make(map[uint64]*MockMetaPartition, 0),
+		CellName: cellName,
+		mc:       master.NewMasterClient([]string{hostAddr}, false),
 	}
 	return mms
 }
@@ -35,12 +37,11 @@ func (mms *MockMetaServer) Start() {
 }
 
 func (mms *MockMetaServer) register() {
-	nodeID, err := mms.mc.NodeAPI().AddMetaNode(mms.TcpAddr)
+	nodeID, err := mms.mc.NodeAPI().AddMetaNode(mms.TcpAddr, mms.CellName)
 	if err != nil {
 		panic(err)
 	}
 	mms.NodeID = nodeID
-
 }
 
 func (mms *MockMetaServer) start() {
@@ -200,6 +201,7 @@ func (mms *MockMetaServer) handleHeartbeats(conn net.Conn, p *proto.Packet, admi
 		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
 	}
 	mms.RUnlock()
+	resp.CellName = mms.CellName
 	resp.Status = proto.TaskSucceeds
 end:
 	return mms.postResponseToMaster(adminTask, resp)

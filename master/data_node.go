@@ -25,14 +25,14 @@ import (
 
 // DataNode stores all the information about a data node
 type DataNode struct {
-	Total          uint64 `json:"TotalWeight"`
-	Used           uint64 `json:"UsedWeight"`
-	AvailableSpace uint64
-	ID             uint64
-	CellName       string `json:"Cell"`
-	Addr           string
-	ReportTime     time.Time
-	isActive       bool
+	Total                     uint64 `json:"TotalWeight"`
+	Used                      uint64 `json:"UsedWeight"`
+	AvailableSpace            uint64
+	ID                        uint64
+	CellName                  string `json:"Cell"`
+	Addr                      string
+	ReportTime                time.Time
+	isActive                  bool
 	sync.RWMutex
 	UsageRatio                float64 // used / total space
 	SelectedTimes             uint64  // number times that this datanode has been selected as the location for a data partition.
@@ -45,11 +45,12 @@ type DataNode struct {
 	BadDisks                  []string
 }
 
-func newDataNode(addr, clusterID string) (dataNode *DataNode) {
+func newDataNode(addr, cellName, clusterID string) (dataNode *DataNode) {
 	dataNode = new(DataNode)
 	dataNode.Carry = rand.Float64()
 	dataNode.Total = 1
 	dataNode.Addr = addr
+	dataNode.CellName = cellName
 	dataNode.TaskManager = newAdminTaskManager(dataNode.Addr, clusterID)
 	return
 }
@@ -112,6 +113,18 @@ func (dataNode *DataNode) isAvailCarryNode() (ok bool) {
 	defer dataNode.RUnlock()
 
 	return dataNode.Carry >= 1
+}
+
+func (dataNode *DataNode) GetID() uint64 {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+	return dataNode.ID
+}
+
+func (dataNode *DataNode) GetAddr() string {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+	return dataNode.Addr
 }
 
 // SetCarry implements "SetCarry" in the Node interface

@@ -23,36 +23,49 @@ import (
 
 // MetaNode defines the structure of a meta node
 type MetaNode struct {
-	ID                 uint64
-	Addr               string
-	IsActive           bool
-	Sender             *AdminTaskManager
-	CellName           string `json:"Cell"`
-	MaxMemAvailWeight  uint64 `json:"MaxMemAvailWeight"`
-	Total              uint64 `json:"TotalWeight"`
-	Used               uint64 `json:"UsedWeight"`
-	Ratio              float64
-	SelectCount        uint64
-	Carry              float64
-	Threshold          float32
-	ReportTime         time.Time
-	metaPartitionInfos []*proto.MetaPartitionReport
-	MetaPartitionCount int
-	NodeSetID          uint64
+	ID                        uint64
+	Addr                      string
+	IsActive                  bool
+	Sender                    *AdminTaskManager
+	CellName                  string `json:"Cell"`
+	MaxMemAvailWeight         uint64 `json:"MaxMemAvailWeight"`
+	Total                     uint64 `json:"TotalWeight"`
+	Used                      uint64 `json:"UsedWeight"`
+	Ratio                     float64
+	SelectCount               uint64
+	Carry                     float64
+	Threshold                 float32
+	ReportTime                time.Time
+	metaPartitionInfos        []*proto.MetaPartitionReport
+	MetaPartitionCount        int
+	NodeSetID                 uint64
 	sync.RWMutex
 	PersistenceMetaPartitions []uint64
 }
 
-func newMetaNode(addr, clusterID string) (node *MetaNode) {
+func newMetaNode(addr, cellName, clusterID string) (node *MetaNode) {
 	return &MetaNode{
-		Addr:   addr,
-		Sender: newAdminTaskManager(addr, clusterID),
-		Carry:  rand.Float64(),
+		Addr:     addr,
+		CellName: cellName,
+		Sender:   newAdminTaskManager(addr, clusterID),
+		Carry:    rand.Float64(),
 	}
 }
 
 func (metaNode *MetaNode) clean() {
 	metaNode.Sender.exitCh <- struct{}{}
+}
+
+func (metaNode *MetaNode) GetID() uint64 {
+	metaNode.RLock()
+	defer metaNode.RUnlock()
+	return metaNode.ID
+}
+
+func (metaNode *MetaNode) GetAddr() string {
+	metaNode.RLock()
+	defer metaNode.RUnlock()
+	return metaNode.Addr
 }
 
 // SetCarry implements the Node interface

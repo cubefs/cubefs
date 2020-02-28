@@ -24,42 +24,22 @@ import (
 )
 
 type topology struct {
-	setIndexForDataNode int
-	setIndexForMetaNode int
-	dataNodes           sync.Map
-	metaNodes           sync.Map
-	nodeSetMap          map[uint64]*nodeSet
-	nsLock              sync.RWMutex
+	dataNodes            *sync.Map
+	metaNodes            *sync.Map
+	cellMap              *sync.Map
+	cellIndexForDataNode int
+	cellIndexForMetaNode int
+	cells                []*Cell
+	cellLock             sync.RWMutex
 }
 
 func newTopology() (t *topology) {
 	t = new(topology)
-	t.nodeSetMap = make(map[uint64]*nodeSet)
+	t.cellMap = new(sync.Map)
+	t.dataNodes = new(sync.Map)
+	t.metaNodes = new(sync.Map)
+	t.cells = make([]*Cell, 0)
 	return
-}
-
-type topoDataNode struct {
-	*DataNode
-	setID uint64
-}
-
-func newTopoDataNode(dataNode *DataNode, setID uint64) *topoDataNode {
-	return &topoDataNode{
-		DataNode: dataNode,
-		setID:    setID,
-	}
-}
-
-type topoMetaNode struct {
-	*MetaNode
-	setID uint64
-}
-
-func newTopoMetaNode(metaNode *MetaNode, setID uint64) *topoMetaNode {
-	return &topoMetaNode{
-		MetaNode: metaNode,
-		setID:    setID,
-	}
 }
 
 func (t *topology) clear() {
@@ -73,16 +53,42 @@ func (t *topology) clear() {
 	})
 }
 
-func (t *topology) replaceDataNode(dataNode *DataNode) {
-	if oldCell, err := t.getCell(dataNode); err == nil {
-		oldCell.putDataNode(dataNode)
+func (t *topology) putCell(cell *Cell) (err error) {
+	t.cellLock.Lock()
+	defer t.cellLock.Unlock()
+	if _, ok := t.cellMap.Load(cell.name); ok {
+		return fmt.Errorf("cell[%v] has exist", cell.name)
 	}
-	topoNode, ok := t.dataNodes.Load(dataNode.Addr)
+	t.cellMap.Store(cell.name, cell)
+	t.cells = append(t.cells, cell)
+	return
+}
+
+func (t *topology) putCellIfAbsent(cell *Cell) (beStoredCell *Cell) {
+	t.cellLock.Lock()
+	defer t.cellLock.Unlock()
+	oldCell, ok := t.cellMap.Load(cell.name)
 	if ok {
-		node := topoNode.(*topoDataNode)
-		node.CellName = dataNode.CellName
-		t.putDataNodeToCache(node)
+		return oldCell.(*Cell)
 	}
+	t.cellMap.Store(cell.name, cell)
+	t.cells = append(t.cells, cell)
+	beStoredCell = cell
+	return
+}
+
+func (t *topology) getCell(name string) (cell *Cell, err error) {
+	t.cellMap.Range(func(cellName, value interface{}) bool {
+		if cellName != name {
+			return true
+		}
+		cell = value.(*Cell)
+		return true
+	})
+	if cell == nil {
+		return nil, fmt.Errorf("cell[%v] is not found", name)
+	}
+	return
 }
 
 func (t *topology) putDataNode(dataNode *DataNode) (err error) {
@@ -90,178 +96,62 @@ func (t *topology) putDataNode(dataNode *DataNode) (err error) {
 	if _, ok := t.dataNodes.Load(dataNode.Addr); ok {
 		return
 	}
-	var ns *nodeSet
-	if ns, err = t.getNodeSet(dataNode.NodeSetID); err != nil {
-		log.LogErrorf("action[putDataNode] nodeSet[%v] not found", dataNode.NodeSetID)
+	cell, err := t.getCell(dataNode.CellName)
+	if err != nil {
 		return
 	}
-	ns.putDataNode(dataNode)
-	node := newTopoDataNode(dataNode, ns.ID)
-	t.putDataNodeToCache(node)
+
+	cell.putDataNode(dataNode)
+	t.putDataNodeToCache(dataNode)
 	return
 }
 
-func (t *topology) putDataNodeToCache(dataNode *topoDataNode) {
+func (t *topology) putDataNodeToCache(dataNode *DataNode) {
 	t.dataNodes.Store(dataNode.Addr, dataNode)
 }
 
 func (t *topology) deleteDataNode(dataNode *DataNode) {
-	t.dataNodes.Delete(dataNode.Addr)
-	ns, err := t.getNodeSet(dataNode.NodeSetID)
+	cell, err := t.getCell(dataNode.CellName)
 	if err != nil {
 		return
 	}
-	ns.deleteDataNode(dataNode)
+	cell.deleteDataNode(dataNode)
+	t.dataNodes.Delete(dataNode.Addr)
 }
 
-func (t *topology) getCell(dataNode *DataNode) (cell *Cell, err error) {
-	topoNode, ok := t.dataNodes.Load(dataNode.Addr)
+func (t *topology) getCellByDataNode(dataNode *DataNode) (cell *Cell, err error) {
+	_, ok := t.dataNodes.Load(dataNode.Addr)
 	if !ok {
 		return nil, errors.Trace(dataNodeNotFound(dataNode.Addr), "%v not found", dataNode.Addr)
 	}
-	node := topoNode.(*topoDataNode)
-	ns, err := t.getNodeSet(node.setID)
-	if err != nil {
-		return
-	}
-	return ns.getCell(node.CellName)
-}
 
-func (t *topology) getAvailNodeSetForDataNode() (nset *nodeSet) {
-	allNodeSet := t.getAllNodeSet()
-	for _, ns := range allNodeSet {
-		if ns.dataNodeLen < ns.Capacity {
-			nset = ns
-			return
-		}
-	}
-	return
+	return t.getCell(dataNode.CellName)
 }
 
 func (t *topology) putMetaNode(metaNode *MetaNode) (err error) {
 	if _, ok := t.metaNodes.Load(metaNode.Addr); ok {
 		return
 	}
-	var ns *nodeSet
-	if ns, err = t.getNodeSet(metaNode.NodeSetID); err != nil {
+	cell, err := t.getCell(metaNode.CellName)
+	if err != nil {
 		return
 	}
-	ns.putMetaNode(metaNode)
-	node := newTopoMetaNode(metaNode, ns.ID)
-	t.putMetaNodeToCache(node)
+	cell.putMetaNode(metaNode)
+	t.putMetaNodeToCache(metaNode)
 	return
 }
 
 func (t *topology) deleteMetaNode(metaNode *MetaNode) {
 	t.metaNodes.Delete(metaNode.Addr)
-	ns, err := t.getNodeSet(metaNode.NodeSetID)
+	cell, err := t.getCell(metaNode.CellName)
 	if err != nil {
 		return
 	}
-	ns.deleteMetaNode(metaNode)
+	cell.deleteMetaNode(metaNode)
 }
 
-func (t *topology) putMetaNodeToCache(metaNode *topoMetaNode) {
+func (t *topology) putMetaNodeToCache(metaNode *MetaNode) {
 	t.metaNodes.Store(metaNode.Addr, metaNode)
-}
-
-func (t *topology) getAvailNodeSetForMetaNode() (nset *nodeSet) {
-	allNodeSet := t.getAllNodeSet()
-	sort.Sort(sort.Reverse(allNodeSet))
-	for _, ns := range allNodeSet {
-		if ns.metaNodeLen < ns.Capacity {
-			nset = ns
-			return
-		}
-	}
-	return
-}
-
-func (t *topology) createNodeSet(c *Cluster) (ns *nodeSet, err error) {
-	id, err := c.idAlloc.allocateCommonID()
-	if err != nil {
-		return
-	}
-	ns = newNodeSet(id, c.cfg.nodeSetCapacity)
-	if err = c.syncAddNodeSet(ns); err != nil {
-		return
-	}
-	t.putNodeSet(ns)
-	return
-}
-
-func (t *topology) putNodeSet(ns *nodeSet) {
-	t.nsLock.Lock()
-	defer t.nsLock.Unlock()
-	t.nodeSetMap[ns.ID] = ns
-}
-
-func (t *topology) getNodeSet(setID uint64) (ns *nodeSet, err error) {
-	t.nsLock.RLock()
-	defer t.nsLock.RUnlock()
-	ns, ok := t.nodeSetMap[setID]
-	if !ok {
-		return nil, errors.NewErrorf("set %v not found", setID)
-	}
-	return
-}
-
-func (t *topology) getAllNodeSet() (nsc nodeSetCollection) {
-	t.nsLock.RLock()
-	defer t.nsLock.RUnlock()
-	nsc = make(nodeSetCollection, 0)
-	for _, ns := range t.nodeSetMap {
-		nsc = append(nsc, ns)
-	}
-	return
-}
-
-func (t *topology) allocNodeSetForDataNode(excludeNodeSet *nodeSet, replicaNum uint8) (ns *nodeSet, err error) {
-	nset := t.getAllNodeSet()
-	if nset == nil {
-		return nil, proto.ErrNoNodeSetToCreateDataPartition
-	}
-	t.nsLock.Lock()
-	defer t.nsLock.Unlock()
-	for i := 0; i < len(nset); i++ {
-		if t.setIndexForDataNode >= len(nset) {
-			t.setIndexForDataNode = 0
-		}
-		ns = nset[t.setIndexForDataNode]
-		t.setIndexForDataNode++
-		if excludeNodeSet != nil && excludeNodeSet.ID == ns.ID {
-			continue
-		}
-		if ns.canWriteForDataNode(int(replicaNum)) {
-			return
-		}
-	}
-	log.LogError(fmt.Sprintf("action[allocNodeSetForDataNode],err:%v", proto.ErrNoNodeSetToCreateDataPartition))
-	return nil, proto.ErrNoNodeSetToCreateDataPartition
-}
-
-func (t *topology) allocNodeSetForMetaNode(excludeNodeSet *nodeSet, replicaNum uint8) (ns *nodeSet, err error) {
-	nset := t.getAllNodeSet()
-	if nset == nil {
-		return nil, proto.ErrNoNodeSetToCreateMetaPartition
-	}
-	t.nsLock.Lock()
-	defer t.nsLock.Unlock()
-	for i := 0; i < len(nset); i++ {
-		if t.setIndexForMetaNode >= len(nset) {
-			t.setIndexForMetaNode = 0
-		}
-		ns = nset[t.setIndexForMetaNode]
-		t.setIndexForMetaNode++
-		if excludeNodeSet != nil && ns.ID == excludeNodeSet.ID {
-			continue
-		}
-		if ns.canWriteForMetaNode(int(replicaNum)) {
-			return
-		}
-	}
-	log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],err:%v", proto.ErrNoNodeSetToCreateMetaPartition))
-	return nil, proto.ErrNoNodeSetToCreateMetaPartition
 }
 
 type nodeSetCollection []*nodeSet
@@ -281,24 +171,22 @@ func (nsc nodeSetCollection) Swap(i, j int) {
 type nodeSet struct {
 	ID          uint64
 	Capacity    int
-	cellIndex   int
-	cellMap     map[string]*Cell
-	cells       []string
-	cellLock    sync.RWMutex
 	dataNodeLen int
 	metaNodeLen int
-	metaNodes   sync.Map
-	dataNodes   sync.Map
+	cellName    string
+	metaNodes   *sync.Map
+	dataNodes   *sync.Map
 	sync.RWMutex
 }
 
-func newNodeSet(id uint64, cap int) *nodeSet {
+func newNodeSet(id uint64, cap int, cellName string) *nodeSet {
 	ns := &nodeSet{
-		ID:       id,
-		Capacity: cap,
+		ID:        id,
+		Capacity:  cap,
+		cellName:  cellName,
+		metaNodes: new(sync.Map),
+		dataNodes: new(sync.Map),
 	}
-	ns.cellMap = make(map[string]*Cell)
-	ns.cells = make([]string, 0)
 	return ns
 }
 
@@ -332,10 +220,12 @@ func (ns *nodeSet) putMetaNode(metaNode *MetaNode) {
 
 func (ns *nodeSet) deleteMetaNode(metaNode *MetaNode) {
 	ns.metaNodes.Delete(metaNode.Addr)
+	ns.decreaseMetaNodeLen()
 }
 
 func (ns *nodeSet) canWriteForDataNode(replicaNum int) bool {
-	log.LogInfof("canWriteForDataNode dataLen[%v] replicaNum[%v]", ns.dataNodeLen, replicaNum)
+	log.LogInfof("canWriteForDataNode cell[%v], ns[%v],dataLen[%v], replicaNum[%v]",
+		ns.cellName, ns.ID, ns.dataNodeLen, replicaNum)
 	if ns.dataNodeLen < int(replicaNum) {
 		return false
 	}
@@ -350,12 +240,14 @@ func (ns *nodeSet) canWriteForDataNode(replicaNum int) bool {
 		}
 		return true
 	})
-	log.LogInfof("canWriteForDataNode count[%v] replicaNum[%v]", count, replicaNum)
+	log.LogInfof("canWriteForDataNode cell[%v], ns[%v],count[%v], replicaNum[%v]",
+		ns.cellName, ns.ID, count, replicaNum)
 	return count >= replicaNum
 }
 
 func (ns *nodeSet) canWriteForMetaNode(replicaNum int) bool {
-	log.LogInfof("canWriteForMetaNode metaLen[%v] replicaNum[%v]", ns.metaNodeLen, replicaNum)
+	log.LogInfof("canWriteForMetaNode cell[%v], ns[%v],metaLen[%v] replicaNum[%v]",
+		ns.cellName, ns.ID, ns.metaNodeLen, replicaNum)
 	if ns.metaNodeLen < replicaNum {
 		return false
 	}
@@ -370,96 +262,52 @@ func (ns *nodeSet) canWriteForMetaNode(replicaNum int) bool {
 		}
 		return true
 	})
-	log.LogInfof("canWriteForMetaNode count[%v] replicaNum[%v]", count, replicaNum)
+	log.LogInfof("canWriteForMetaNode cell[%v], ns[%v],count[%v] replicaNum[%v]",
+		ns.cellName, ns.ID, count, replicaNum)
 	return count >= replicaNum
 }
 
-func (ns *nodeSet) isSingleCell() bool {
-	ns.cellLock.RLock()
-	defer ns.cellLock.RUnlock()
-	return len(ns.cellMap) == 1
-}
-
-func (ns *nodeSet) getCell(name string) (cell *Cell, err error) {
-	ns.cellLock.RLock()
-	defer ns.cellLock.RUnlock()
-	cell, ok := ns.cellMap[name]
-	if !ok {
-		return nil, errors.Trace(cellNotFound(name), "%v not found", name)
-	}
-	return
-}
-
-func (ns *nodeSet) putCell(cell *Cell) *Cell {
-	ns.cellLock.Lock()
-	defer ns.cellLock.Unlock()
-	oldCell, ok := ns.cellMap[cell.name]
-	if ok {
-		return oldCell
-	}
-	ns.cellMap[cell.name] = cell
-	if ok := ns.isExist(cell.name); !ok {
-		ns.cells = append(ns.cells, cell.name)
-	}
-	return cell
-}
-
-func (ns *nodeSet) isExist(cellName string) (ok bool) {
-	for _, name := range ns.cells {
-		if name == cellName {
-			ok = true
-			return
-		}
-	}
-	return
-}
-
-func (ns *nodeSet) removeCell(name string) {
-	ns.cellLock.Lock()
-	defer ns.cellLock.Unlock()
-	delete(ns.cellMap, name)
-}
-
 func (ns *nodeSet) putDataNode(dataNode *DataNode) {
-	cell, err := ns.getCell(dataNode.CellName)
-	if err != nil {
-		cell = newCell(dataNode.CellName)
-		cell = ns.putCell(cell)
-	}
-	cell.putDataNode(dataNode)
 	ns.dataNodes.Store(dataNode.Addr, dataNode)
 }
 
 func (ns *nodeSet) deleteDataNode(dataNode *DataNode) {
 	ns.dataNodes.Delete(dataNode.Addr)
-	cell, err := ns.getCell(dataNode.CellName)
-	if err != nil {
-		return
-	}
-	cell.dataNodes.Delete(dataNode.Addr)
+	ns.decreaseDataNodeLen()
 }
 
-func (ns *nodeSet) getAllCells() (cells []*Cell) {
-	ns.cellLock.RLock()
-	defer ns.cellLock.RUnlock()
+func (t *topology) isSingleCell() bool {
+	t.cellLock.RLock()
+	defer t.cellLock.RUnlock()
+	var cellLen int
+	t.cellMap.Range(func(cellName, value interface{}) bool {
+		cellLen++
+		return true
+	})
+	return cellLen == 1
+}
+
+func (t *topology) getAllCells() (cells []*Cell) {
+	t.cellLock.RLock()
+	defer t.cellLock.RUnlock()
 	cells = make([]*Cell, 0)
-	for _, cell := range ns.cellMap {
+	t.cellMap.Range(func(cellName, value interface{}) bool {
+		cell := value.(*Cell)
 		cells = append(cells, cell)
-	}
+		return true
+	})
 	return
 }
 
-func (ns *nodeSet) getCellNameByIndex(index int) (rName string) {
-	ns.cellLock.RLock()
-	defer ns.cellLock.RUnlock()
-	rName = ns.cells[index]
-	return
+func (t *topology) getCellByIndex(index int) (cell *Cell) {
+	t.cellLock.RLock()
+	defer t.cellLock.RUnlock()
+	return t.cells[index]
 }
 
-func (ns *nodeSet) allocCells(replicaNum int, excludeCell []string) (cells []*Cell, err error) {
-
-	cells = ns.getAllCells()
-	if ns.isSingleCell() {
+func (t *topology) allocCellsForMetaNode(cellNum, replicaNum int, excludeCell []string) (cells []*Cell, err error) {
+	cells = t.getAllCells()
+	if t.isSingleCell() {
 		return cells, nil
 	}
 	if excludeCell == nil {
@@ -467,30 +315,23 @@ func (ns *nodeSet) allocCells(replicaNum int, excludeCell []string) (cells []*Ce
 	}
 	candidateCells := make([]*Cell, 0)
 	for i := 0; i < len(cells); i++ {
-		if ns.cellIndex >= len(cells) {
-			ns.cellIndex = 0
+		if t.cellIndexForMetaNode >= len(cells) {
+			t.cellIndexForMetaNode = 0
 		}
-		rName := ns.getCellNameByIndex(ns.cellIndex)
-		if contains(excludeCell, rName) {
-			ns.cellIndex++
+		cell := t.getCellByIndex(t.cellIndexForMetaNode)
+		t.cellIndexForMetaNode++
+		if contains(excludeCell, cell.name) {
 			continue
 		}
-		var cell *Cell
-		if cell, err = ns.getCell(ns.cells[ns.cellIndex]); err != nil {
-			ns.cellIndex++
-			continue
-		}
-		ns.cellIndex++
-
-		if cell.canWrite(uint8(replicaNum)) {
+		if cell.canWriteForMetaNode(uint8(replicaNum)) {
 			candidateCells = append(candidateCells, cell)
 		}
-		if len(candidateCells) >= int(replicaNum) {
+		if len(candidateCells) >= cellNum {
 			break
 		}
 	}
-	if len(candidateCells) == 0 {
-		log.LogError(fmt.Sprintf("action[allocCells],err:%v", proto.ErrNoCellToCreateDataPartition))
+	if len(candidateCells) < cellNum {
+		log.LogError(fmt.Sprintf("action[allocCellsForMetaNode],err:%v", proto.ErrCodeNoCellToCreateDataPartition))
 		return nil, proto.ErrNoCellToCreateDataPartition
 	}
 	cells = candidateCells
@@ -498,98 +339,157 @@ func (ns *nodeSet) allocCells(replicaNum int, excludeCell []string) (cells []*Ce
 	return
 }
 
-func (ns *nodeSet) getAvailDataNodeHosts(excludeCell *Cell, excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
-	var (
-		masterAddr  []string
-		addrs       []string
-		cells       []*Cell
-		cell        *Cell
-		masterPeers []proto.Peer
-		slavePeers  []proto.Peer
-	)
-	hosts = make([]string, 0)
-	peers = make([]proto.Peer, 0)
-	if excludeHosts == nil {
-		excludeHosts = make([]string, 0)
+func (t *topology) allocCellsForDataNode(cellNum, replicaNum int, excludeCell []string) (cells []*Cell, err error) {
+	cells = t.getAllCells()
+	fmt.Printf("len(cells) = %v \n", len(cells))
+	if t.isSingleCell() {
+		return cells, nil
 	}
-	if ns.isSingleCell() {
-		if excludeCell != nil && excludeCell.name == ns.cells[0] {
-			log.LogErrorf("ns[%v] no cell to createDataPartition after exclude cell[%v]", ns.ID, excludeCell.name)
-			return nil, nil, proto.ErrNoCellToCreateDataPartition
-		}
-		if cell, err = ns.getCell(ns.cells[0]); err != nil {
-			return nil, nil, errors.NewError(err)
-		}
-		if hosts, peers, err = cell.getAvailDataNodeHosts(excludeHosts, replicaNum); err != nil {
-			return nil, nil, errors.NewError(err)
-		}
-		return
+	if excludeCell == nil {
+		excludeCell = make([]string, 0)
 	}
-	excludeCells := make([]string, 0)
-	if excludeCell != nil {
-		excludeCells = append(excludeCells, excludeCell.name)
-	}
-	if cells, err = ns.allocCells(replicaNum, excludeCells); err != nil {
-		return nil, nil, errors.NewError(err)
-	}
-	if len(cells) == replicaNum {
-		for index := 0; index < replicaNum; index++ {
-			cell := cells[index]
-			var selectPeers []proto.Peer
-			if addrs, selectPeers, err = cell.getAvailDataNodeHosts(excludeHosts, 1); err != nil {
-				return nil, nil, errors.NewError(err)
-			}
-			hosts = append(hosts, addrs...)
-			peers = append(peers, selectPeers...)
-			excludeHosts = append(excludeHosts, addrs...)
+	candidateCells := make([]*Cell, 0)
+	for i := 0; i < len(cells); i++ {
+		if t.cellIndexForDataNode >= len(cells) {
+			t.cellIndexForDataNode = 0
 		}
-		return
+		cell := t.getCellByIndex(t.cellIndexForDataNode)
+		t.cellIndexForDataNode++
+		if contains(excludeCell, cell.name) {
+			continue
+		}
+		if cell.canWriteForDataNode(uint8(replicaNum)) {
+			candidateCells = append(candidateCells, cell)
+		}
+		if len(candidateCells) >= cellNum {
+			break
+		}
 	}
-	// the number of cells less than replica number,We're only dealing with one cell and two cells
-	if len(cells) == 1 {
-		if cell, err = ns.getCell(ns.cells[0]); err != nil {
-			return nil, nil, errors.NewError(err)
-		}
-		if hosts, peers, err = cell.getAvailDataNodeHosts(excludeHosts, replicaNum); err != nil {
-			return nil, nil, errors.NewError(err)
-		}
-		return
-	} else if len(cells) >= 2 {
-		masterCell := cells[0]
-		slaveCell := cells[1]
-		masterReplicaNum := replicaNum/2 + 1
-		slaveReplicaNum := replicaNum - masterReplicaNum
-		if masterAddr, masterPeers, err = masterCell.getAvailDataNodeHosts(excludeHosts, masterReplicaNum); err != nil {
-			return nil, nil, errors.NewError(err)
-		}
-		hosts = append(hosts, masterAddr...)
-		peers = append(peers, masterPeers...)
-		excludeHosts = append(excludeHosts, masterAddr...)
-		if addrs, slavePeers, err = slaveCell.getAvailDataNodeHosts(excludeHosts, slaveReplicaNum); err != nil {
-			return nil, nil, errors.NewError(err)
-		}
-		hosts = append(hosts, addrs...)
-		peers = append(peers, slavePeers...)
+	if len(candidateCells) < cellNum {
+		log.LogError(fmt.Sprintf("action[allocCellsForDataNode],err:%v", proto.ErrNoCellToCreateDataPartition))
+		return nil, errors.NewError(proto.ErrNoCellToCreateDataPartition)
 	}
-	if len(hosts) != replicaNum {
-		return nil, nil, proto.ErrNoDataNodeToCreateDataPartition
-	}
+	cells = candidateCells
+	err = nil
 	return
+}
+
+func (ns *nodeSet) dataNodeCount() int {
+	var count int
+	ns.dataNodes.Range(func(key, value interface{}) bool {
+		count++
+		return true
+	})
+	return count
+}
+
+func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+	return getAvailHosts(ns.dataNodes, excludeHosts, replicaNum, selectDataNode)
 }
 
 // Cell stores all the cell related information
 type Cell struct {
-	name      string
-	dataNodes sync.Map
+	name                string
+	setIndexForDataNode int
+	setIndexForMetaNode int
+	dataNodes           *sync.Map
+	metaNodes           *sync.Map
+	nodeSetMap          map[uint64]*nodeSet
+	nsLock              sync.RWMutex
 	sync.RWMutex
 }
 
 func newCell(name string) (cell *Cell) {
-	return &Cell{name: name}
+	cell = &Cell{name: name}
+	cell.dataNodes = new(sync.Map)
+	cell.metaNodes = new(sync.Map)
+	cell.nodeSetMap = make(map[uint64]*nodeSet)
+	return
 }
 
-func (cell *Cell) putDataNode(dataNode *DataNode) {
+func (cell *Cell) isSingleNodeSet() bool {
+	cell.RLock()
+	defer cell.RUnlock()
+	return len(cell.nodeSetMap) == 1
+}
+
+func (cell *Cell) getNodeSet(setID uint64) (ns *nodeSet, err error) {
+	cell.nsLock.RLock()
+	defer cell.nsLock.RUnlock()
+	ns, ok := cell.nodeSetMap[setID]
+	if !ok {
+		return nil, errors.NewErrorf("set %v not found", setID)
+	}
+	return
+}
+
+func (cell *Cell) putNodeSet(ns *nodeSet) (err error) {
+	cell.nsLock.Lock()
+	defer cell.nsLock.Unlock()
+	if _, ok := cell.nodeSetMap[ns.ID]; ok {
+		return fmt.Errorf("nodeSet [%v] has exist", ns.ID)
+	}
+	cell.nodeSetMap[ns.ID] = ns
+	return
+}
+
+func (cell *Cell) createNodeSet(c *Cluster) (ns *nodeSet, err error) {
+	id, err := c.idAlloc.allocateCommonID()
+	if err != nil {
+		return
+	}
+	ns = newNodeSet(id, c.cfg.nodeSetCapacity, cell.name)
+	if err = c.syncAddNodeSet(ns); err != nil {
+		return
+	}
+	if err = cell.putNodeSet(ns); err != nil {
+		return
+	}
+	return
+}
+
+func (cell *Cell) getAllNodeSet() (nsc nodeSetCollection) {
+	cell.nsLock.RLock()
+	defer cell.nsLock.RUnlock()
+	nsc = make(nodeSetCollection, 0)
+	for _, ns := range cell.nodeSetMap {
+		nsc = append(nsc, ns)
+	}
+	return
+}
+
+func (cell *Cell) getAvailNodeSetForMetaNode() (nset *nodeSet) {
+	allNodeSet := cell.getAllNodeSet()
+	sort.Sort(sort.Reverse(allNodeSet))
+	for _, ns := range allNodeSet {
+		if ns.metaNodeLen < ns.Capacity {
+			nset = ns
+			return
+		}
+	}
+	return
+}
+
+func (cell *Cell) getAvailNodeSetForDataNode() (nset *nodeSet) {
+	allNodeSet := cell.getAllNodeSet()
+	for _, ns := range allNodeSet {
+		if ns.dataNodeLen < ns.Capacity {
+			nset = ns
+			return
+		}
+	}
+	return
+}
+
+func (cell *Cell) putDataNode(dataNode *DataNode) (err error) {
+	var ns *nodeSet
+	if ns, err = cell.getNodeSet(dataNode.NodeSetID); err != nil {
+		log.LogErrorf("action[putDataNode] nodeSet[%v] not found", dataNode.NodeSetID)
+		return
+	}
+	ns.putDataNode(dataNode)
 	cell.dataNodes.Store(dataNode.Addr, dataNode)
+	return
 }
 
 func (cell *Cell) getDataNode(addr string) (dataNode *DataNode, err error) {
@@ -600,17 +500,112 @@ func (cell *Cell) getDataNode(addr string) (dataNode *DataNode, err error) {
 	dataNode = value.(*DataNode)
 	return
 }
-func (cell *Cell) removeDataNode(addr string) {
-	cell.dataNodes.Delete(addr)
+func (cell *Cell) deleteDataNode(dataNode *DataNode) {
+	ns, err := cell.getNodeSet(dataNode.NodeSetID)
+	if err != nil {
+		log.LogErrorf("action[cellDeleteDataNode] nodeSet[%v] not found", dataNode.NodeSetID)
+		return
+	}
+	ns.deleteDataNode(dataNode)
+	cell.dataNodes.Delete(dataNode.Addr)
 }
 
-func (cell *Cell) canWrite(replicaNum uint8) (can bool) {
+func (cell *Cell) putMetaNode(metaNode *MetaNode) (err error) {
+	var ns *nodeSet
+	if ns, err = cell.getNodeSet(metaNode.NodeSetID); err != nil {
+		log.LogErrorf("action[cellPutMetaNode] nodeSet[%v] not found", metaNode.NodeSetID)
+		return
+	}
+	ns.putMetaNode(metaNode)
+	cell.metaNodes.Store(metaNode.Addr, metaNode)
+	return
+}
+
+func (cell *Cell) deleteMetaNode(metaNode *MetaNode) (err error) {
+	ns, err := cell.getNodeSet(metaNode.NodeSetID)
+	if err != nil {
+		log.LogErrorf("action[cellDeleteMetaNode] nodeSet[%v] not found", metaNode.NodeSetID)
+		return
+	}
+	ns.deleteMetaNode(metaNode)
+	cell.metaNodes.Delete(metaNode.Addr)
+	return
+}
+
+func (cell *Cell) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+	nset := cell.getAllNodeSet()
+	if nset == nil {
+		return nil, errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
+	}
+	cell.nsLock.Lock()
+	defer cell.nsLock.Unlock()
+	for i := 0; i < len(nset); i++ {
+		if cell.setIndexForDataNode >= len(nset) {
+			cell.setIndexForDataNode = 0
+		}
+		ns = nset[cell.setIndexForDataNode]
+		cell.setIndexForDataNode++
+		if containsID(excludeNodeSets, ns.ID) {
+			continue
+		}
+		if ns.canWriteForDataNode(int(replicaNum)) {
+			return
+		}
+	}
+	log.LogErrorf("action[allocNodeSetForDataNode],nset len[%v] err:%v", nset.Len(), proto.ErrNoNodeSetToCreateDataPartition)
+	return nil, errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
+}
+
+func (cell *Cell) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+	nset := cell.getAllNodeSet()
+	if nset == nil {
+		return nil, proto.ErrNoNodeSetToCreateMetaPartition
+	}
+	cell.nsLock.Lock()
+	defer cell.nsLock.Unlock()
+	for i := 0; i < len(nset); i++ {
+		if cell.setIndexForMetaNode >= len(nset) {
+			cell.setIndexForMetaNode = 0
+		}
+		ns = nset[cell.setIndexForMetaNode]
+		cell.setIndexForMetaNode++
+		if containsID(excludeNodeSets, ns.ID) {
+			continue
+		}
+		if ns.canWriteForMetaNode(int(replicaNum)) {
+			return
+		}
+	}
+	log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],err:%v", proto.ErrNoNodeSetToCreateMetaPartition))
+	return nil, proto.ErrNoNodeSetToCreateMetaPartition
+}
+
+func (cell *Cell) canWriteForDataNode(replicaNum uint8) (can bool) {
 	cell.RLock()
 	defer cell.RUnlock()
 	var leastAlive uint8
 	cell.dataNodes.Range(func(addr, value interface{}) bool {
 		dataNode := value.(*DataNode)
 		if dataNode.isActive == true && dataNode.isWriteAble() == true {
+			leastAlive++
+		}
+		if leastAlive >= replicaNum {
+			can = true
+			return false
+		}
+		return true
+	})
+	fmt.Printf("canWriteForDataNode leastAlive[%v],replicaNum[%v],count[%v]\n", leastAlive, replicaNum, cell.dataNodeCount())
+	return
+}
+
+func (cell *Cell) canWriteForMetaNode(replicaNum uint8) (can bool) {
+	cell.RLock()
+	defer cell.RUnlock()
+	var leastAlive uint8
+	cell.metaNodes.Range(func(addr, value interface{}) bool {
+		metaNode := value.(*MetaNode)
+		if metaNode.IsActive == true && metaNode.isWritable() == true {
 			leastAlive++
 		}
 		if leastAlive >= replicaNum {
@@ -633,70 +628,27 @@ func (cell *Cell) getDataNodeMaxTotal() (maxTotal uint64) {
 	return
 }
 
-func (cell *Cell) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
-	orderHosts := make([]string, 0)
-	newHosts = make([]string, 0)
-	peers = make([]proto.Peer, 0)
+func (cell *Cell) getAvailDataNodeHosts(excludeNodeSets []uint64, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
 	if replicaNum == 0 {
 		return
 	}
-
-	maxTotal := cell.getDataNodeMaxTotal()
-	nodeTabs, availCarryCount := cell.getAvailCarryDataNodeTab(maxTotal, excludeHosts, replicaNum)
-	if len(nodeTabs) < replicaNum {
-		err = proto.ErrNoDataNodeToWrite
-		err = fmt.Errorf(getAvailDataNodeHostsErr+" err:%v ,ActiveNodeCount:%v  MatchNodeCount:%v  ",
-			proto.ErrNoDataNodeToWrite, cell.dataNodeCount(), len(nodeTabs))
-		return
+	ns, err := cell.allocNodeSetForDataNode(excludeNodeSets, uint8(replicaNum))
+	if err != nil {
+		return nil, nil, errors.Trace(err, "cell[%v] alloc node set,replicaNum[%v]", cell.name, replicaNum)
 	}
-
-	nodeTabs.setNodeCarry(availCarryCount, replicaNum)
-	sort.Sort(nodeTabs)
-
-	for i := 0; i < replicaNum; i++ {
-		node := nodeTabs[i].Ptr.(*DataNode)
-		node.SelectNodeForWrite()
-		orderHosts = append(orderHosts, node.Addr)
-		peer := proto.Peer{ID: node.ID, Addr: node.Addr}
-		peers = append(peers, peer)
-	}
-
-	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
-		err = fmt.Errorf(getAvailDataNodeHostsErr+"err:%v  orderHosts is nil", err.Error())
-		return
-	}
-	return
+	return ns.getAvailDataNodeHosts(excludeHosts, replicaNum)
 }
 
-func (cell *Cell) getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, replicaNum int) (nodeTabs SortedWeightedNodes, availCount int) {
-	nodeTabs = make(SortedWeightedNodes, 0)
-	cell.dataNodes.Range(func(key, value interface{}) bool {
-		dataNode := value.(*DataNode)
-		if contains(excludeHosts, dataNode.Addr) == true {
-			log.LogDebugf("contains return")
-			return true
-		}
-		if dataNode.isWriteAble() == false {
-			log.LogDebugf("isWritable return")
-			return true
-		}
-		if dataNode.isAvailCarryNode() == true {
-			availCount++
-		}
-		nt := new(weightedNode)
-		nt.Carry = dataNode.Carry
-		if dataNode.AvailableSpace < 0 {
-			nt.Weight = 0.0
-		} else {
-			nt.Weight = float64(dataNode.AvailableSpace) / float64(maxTotal)
-		}
-		nt.Ptr = dataNode
-		nodeTabs = append(nodeTabs, nt)
+func (cell *Cell) getAvailMetaNodeHosts(excludeNodeSets []uint64, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+	if replicaNum == 0 {
+		return
+	}
+	ns, err := cell.allocNodeSetForMetaNode(excludeNodeSets, uint8(replicaNum))
+	if err != nil {
+		return
+	}
+	return ns.getAvailMetaNodeHosts(excludeHosts, replicaNum)
 
-		return true
-	})
-
-	return
 }
 
 func (cell *Cell) dataNodeCount() (len int) {

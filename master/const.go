@@ -37,14 +37,13 @@ const (
 	replicaNumKey         = "replicaNum"
 	followerReadKey       = "followerRead"
 	authenticateKey       = "authenticate"
+	cellNameKey           = "cellName"
 )
 
 const (
 	deleteIllegalReplicaErr       = "deleteIllegalReplicaErr "
 	addMissingReplicaErr          = "addMissingReplicaErr "
 	checkDataPartitionDiskErr     = "checkDataPartitionDiskErr  "
-	getAvailDataNodeHostsErr      = "getAvailDataNodeHostsErr "
-	getAvailMetaNodeHostsErr      = "getAvailMetaNodeHostsErr "
 	dataNodeOfflineErr            = "dataNodeOfflineErr "
 	diskOfflineErr                = "diskOfflineErr "
 	handleDataPartitionOfflineErr = "handleDataPartitionOffLineErr "
@@ -108,6 +107,8 @@ const (
 	opSyncAddNodeSet           uint32 = 0x12
 	opSyncUpdateNodeSet        uint32 = 0x13
 	opSyncBatchPut             uint32 = 0x14
+	opSyncUpdateDataNode       uint32 = 0x15
+	opSyncUpdateMetaNode       uint32 = 0x16
 )
 
 const (

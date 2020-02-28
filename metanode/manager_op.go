@@ -83,6 +83,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
 		return true
 	})
+	resp.CellName = m.cellName
 	resp.Status = proto.TaskSucceeds
 end:
 	adminTask.Request = nil

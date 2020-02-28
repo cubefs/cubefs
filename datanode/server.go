@@ -67,7 +67,7 @@ const (
 	ConfigKeyLocalIP       = "localIP"       // string
 	ConfigKeyPort          = "port"          // int
 	ConfigKeyMasterAddr    = "masterAddr"    // array
-	ConfigKeyCell          = "cell"          // string
+	ConfigKeyCell          = "cellName"      // string
 	ConfigKeyDisks         = "disks"         // array
 	ConfigKeyRaftDir       = "raftDir"       // string
 	ConfigKeyRaftHeartbeat = "raftHeartbeat" // string
@@ -279,7 +279,7 @@ func (s *DataNode) register(cfg *config.Config) {
 
 			// register this data node on the master
 			var nodeID uint64
-			if nodeID, err = MasterClient.NodeAPI().AddDataNode(fmt.Sprintf("%s:%v", LocalIP, s.port)); err != nil {
+			if nodeID, err = MasterClient.NodeAPI().AddDataNode(fmt.Sprintf("%s:%v", LocalIP, s.port), s.cellName); err != nil {
 				log.LogErrorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
 					masterAddr, err)
 				timer.Reset(2 * time.Second)

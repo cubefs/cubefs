@@ -42,26 +42,28 @@ type NodeView struct {
 
 // TopologyView provides the view of the topology view of the cluster
 type TopologyView struct {
-	NodeSet map[uint64]*nodeSetView
+	Cells []*CellView
 }
 
 type nodeSetView struct {
-	Cells     []*CellView
-	MetaNodes []NodeView
+	DataNodeLen int
+	MetaNodeLen int
+	MetaNodes   []NodeView
+	DataNodes   []NodeView
 }
 
-func newNodeSetView() *nodeSetView {
-	return &nodeSetView{Cells: make([]*CellView, 0), MetaNodes: make([]NodeView, 0)}
+func newNodeSetView(dataNodeLen, metaNodeLen int) *nodeSetView {
+	return &nodeSetView{DataNodes: make([]NodeView, 0), MetaNodes: make([]NodeView, 0), DataNodeLen: dataNodeLen, MetaNodeLen: metaNodeLen}
 }
 
 //CellView define the view of cell
 type CellView struct {
-	Name      string
-	DataNodes []NodeView
+	Name    string
+	NodeSet map[uint64]*nodeSetView
 }
 
-func newCellView() *CellView {
-	return &CellView{DataNodes: make([]NodeView, 0)}
+func newCellView(name string) *CellView {
+	return &CellView{NodeSet: make(map[uint64]*nodeSetView, 0), Name: name}
 }
 
 type badPartitionView = proto.BadPartitionView
@@ -111,23 +113,24 @@ func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 // View the topology of the cluster.
 func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 	tv := &TopologyView{
-		NodeSet: make(map[uint64]*nodeSetView, 0),
+		Cells: make([]*CellView, 0),
 	}
-	for _, ns := range m.cluster.t.nodeSetMap {
-		nsView := newNodeSetView()
-		tv.NodeSet[ns.ID] = nsView
-		ns.metaNodes.Range(func(key, value interface{}) bool {
-			metaNode := value.(*MetaNode)
-			nsView.MetaNodes = append(nsView.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
-			return true
-		})
-		for _, cell := range ns.cellMap {
-			rv := newCellView()
-			rv.Name = cell.name
-			nsView.Cells = append(nsView.Cells, rv)
-			cell.dataNodes.Range(func(key, value interface{}) bool {
+	cells := m.cluster.t.getAllCells()
+	for _, cell := range cells {
+		cv := newCellView(cell.name)
+		tv.Cells = append(tv.Cells, cv)
+		nsc := cell.getAllNodeSet()
+		for _, ns := range nsc {
+			nsView := newNodeSetView(ns.dataNodeLen, ns.metaNodeLen)
+			cv.NodeSet[ns.ID] = nsView
+			ns.dataNodes.Range(func(key, value interface{}) bool {
 				dataNode := value.(*DataNode)
-				rv.DataNodes = append(rv.DataNodes, NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
+				nsView.DataNodes = append(nsView.DataNodes, NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
+				return true
+			})
+			ns.metaNodes.Range(func(key, value interface{}) bool {
+				metaNode := value.(*MetaNode)
+				nsView.MetaNodes = append(nsView.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
 				return true
 			})
 		}
@@ -472,7 +475,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if replicaNum !=0 && !(replicaNum == 2 || replicaNum == 3) {
+	if replicaNum != 0 && !(replicaNum == 2 || replicaNum == 3) {
 		err = fmt.Errorf("replicaNum can only be 2 and 3,received replicaNum is[%v]", replicaNum)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -565,15 +568,15 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
+		cellName string
 		id       uint64
 		err      error
 	)
-	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
+	if nodeAddr, cellName, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
-	if id, err = m.cluster.addDataNode(nodeAddr); err != nil {
+	if id, err = m.cluster.addDataNode(nodeAddr, cellName); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -699,15 +702,15 @@ func (m *Server) handleDataNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
+		cellName string
 		id       uint64
 		err      error
 	)
-	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
+	if nodeAddr, cellName, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
-	if id, err = m.cluster.addMetaNode(nodeAddr); err != nil {
+	if id, err = m.cluster.addMetaNode(nodeAddr, cellName); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -890,6 +893,19 @@ func parseRequestForRaftNode(r *http.Request) (id uint64, host string, err error
 	if arr := strings.Split(host, colonSplit); len(arr) < 2 {
 		err = unmatchedKey(addrKey)
 		return
+	}
+	return
+}
+
+func parseRequestForAddNode(r *http.Request) (nodeAddr, cellName string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if nodeAddr, err = extractNodeAddr(r); err != nil {
+		return
+	}
+	if cellName = r.FormValue(cellNameKey); cellName == "" {
+		cellName = DefaultCellName
 	}
 	return
 }

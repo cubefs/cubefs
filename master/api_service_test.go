@@ -50,6 +50,8 @@ const (
 	mms5Addr      = "127.0.0.1:8105"
 	mms6Addr      = "127.0.0.1:8106"
 	commonVolName = "commonVol"
+	testCell1     = "cell1"
+	testCell2     = "cell2"
 )
 
 var server = createDefaultMasterServerForTest()
@@ -77,23 +79,22 @@ func createDefaultMasterServerForTest() *Server {
 		panic(err)
 	}
 	//add data node
-	addDataServer(mds1Addr, "cell1")
-	addDataServer(mds2Addr, "cell1")
-	addDataServer(mds3Addr, "cell2")
-	addDataServer(mds4Addr, "cell2")
-	addDataServer(mds5Addr, "cell2")
+	addDataServer(mds1Addr, testCell1)
+	addDataServer(mds2Addr, testCell1)
+	addDataServer(mds3Addr, testCell2)
+	addDataServer(mds4Addr, testCell2)
+	addDataServer(mds5Addr, testCell2)
 	// add meta node
-	addMetaServer(mms1Addr)
-	addMetaServer(mms2Addr)
-	addMetaServer(mms3Addr)
-	addMetaServer(mms4Addr)
-	addMetaServer(mms5Addr)
+	addMetaServer(mms1Addr, testCell1)
+	addMetaServer(mms2Addr, testCell1)
+	addMetaServer(mms3Addr, testCell2)
+	addMetaServer(mms4Addr, testCell2)
+	addMetaServer(mms5Addr, testCell2)
 	time.Sleep(5 * time.Second)
 	testServer.cluster.checkDataNodeHeartbeat()
 	testServer.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
-	fmt.Printf("nodeSet len[%v]\n", len(testServer.cluster.t.nodeSetMap))
 	testServer.cluster.createVol(commonVolName, "cfs", 3, 3, 3, 100, false, false)
 	vol, err := testServer.cluster.getVol(commonVolName)
 	if err != nil {
@@ -156,8 +157,8 @@ func addDataServer(addr, cellName string) {
 	mds.Start()
 }
 
-func addMetaServer(addr string) {
-	mms := mocktest.NewMockMetaServer(addr)
+func addMetaServer(addr, cellName string) {
+	mms := mocktest.NewMockMetaServer(addr, cellName)
 	mms.Start()
 }
 
@@ -432,7 +433,7 @@ func TestAddMetaReplica(t *testing.T) {
 		return
 	}
 	msAddr := "127.0.0.1:8009"
-	addMetaServer(msAddr)
+	addMetaServer(msAddr, testCell2)
 	server.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(2 * time.Second)
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaReplica, partition.PartitionID, msAddr)

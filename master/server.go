@@ -228,6 +228,20 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.electionTick <= 3 {
 		m.electionTick = 5
 	}
+	crossCellNum := cfg.GetString(cfgCrossCell)
+	if crossCellNum != "" {
+		if m.config.crossCellNum, err = strconv.Atoi(crossCellNum); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+
+	if m.config.crossCellNum <= 0 {
+		m.config.crossCellNum = 1
+	}
+	if m.config.crossCellNum > 2 {
+		m.config.crossCellNum = 2
+	}
+	fmt.Println("crossCellNum=", m.config.crossCellNum)
 	return
 }
 

@@ -94,10 +94,12 @@ func (c *Cluster) loadDataPartition(dp *DataPartition) {
 // 5. persistent the new host list
 func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) (err error) {
 	var (
-		newPeers []proto.Peer
-		metaNode *MetaNode
-		ns       *nodeSet
-		oldHosts []string
+		newPeers        []proto.Peer
+		metaNode        *MetaNode
+		cell            *Cell
+		ns              *nodeSet
+		excludeNodeSets []uint64
+		oldHosts        []string
 	)
 	log.LogWarnf("action[decommissionMetaPartition],volName[%v],nodeAddr[%v],partitionID[%v] begin", mp.volName, nodeAddr, mp.PartitionID)
 	mp.RLock()
@@ -113,12 +115,19 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 	if metaNode, err = c.metaNode(nodeAddr); err != nil {
 		goto errHandler
 	}
-	if ns, err = c.t.getNodeSet(metaNode.NodeSetID); err != nil {
+	if cell, err = c.t.getCell(metaNode.CellName); err != nil {
+		goto errHandler
+	}
+	if ns, err = cell.getNodeSet(metaNode.NodeSetID); err != nil {
 		goto errHandler
 	}
 	if _, newPeers, err = ns.getAvailMetaNodeHosts(oldHosts, 1); err != nil {
-		// choose a meta node in other node set
-		if _, newPeers, err = c.chooseTargetMetaHosts(ns, oldHosts, 1); err != nil {
+		// choose a meta node in other node set in the same cell
+		if _, newPeers, err = cell.getAvailMetaNodeHosts(excludeNodeSets, oldHosts, 1); err != nil {
+			goto errHandler
+		}
+		// choose a meta node in other cell
+		if _, newPeers, err = c.chooseTargetMetaHosts(cell, excludeNodeSets, oldHosts, 1); err != nil {
 			goto errHandler
 		}
 	}
@@ -545,7 +554,16 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 	if metaNode, err = c.metaNode(nodeAddr); err != nil {
 		goto errHandler
 	}
-
+	if resp.CellName == "" {
+		resp.CellName = DefaultCellName
+	}
+	if metaNode.CellName != resp.CellName {
+		c.t.deleteMetaNode(metaNode)
+		oldCellName := metaNode.CellName
+		metaNode.CellName = resp.CellName
+		c.adjustMetaNode(metaNode)
+		log.LogWarnf("metaNode cell changed from [%v] to [%v]", oldCellName, resp.CellName)
+	}
 	metaNode.updateMetric(resp, c.cfg.MetaNodeThreshold)
 	metaNode.setNodeActive()
 
@@ -554,12 +572,46 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 	}
 	c.updateMetaNode(metaNode, resp.MetaPartitionReports, metaNode.reachesThreshold())
 	metaNode.metaPartitionInfos = nil
-	logMsg = fmt.Sprintf("action[dealMetaNodeHeartbeatResp],metaNode:%v ReportTime:%v  success", metaNode.Addr, time.Now().Unix())
+	logMsg = fmt.Sprintf("action[dealMetaNodeHeartbeatResp],metaNode:%v,cell[%v], ReportTime:%v  success", metaNode.Addr, metaNode.CellName, time.Now().Unix())
 	log.LogInfof(logMsg)
 	return
 errHandler:
 	logMsg = fmt.Sprintf("nodeAddr %v heartbeat error :%v", nodeAddr, errors.Stack(err))
 	log.LogError(logMsg)
+	return
+}
+
+func (c *Cluster) adjustMetaNode(metaNode *MetaNode) {
+	c.mnMutex.Lock()
+	defer c.mnMutex.Unlock()
+	oldNodeSetID := metaNode.NodeSetID
+	cell, err := c.t.getCell(metaNode.CellName)
+	if err != nil {
+		cell = newCell(metaNode.CellName)
+		c.t.putCell(cell)
+	}
+	ns := cell.getAvailNodeSetForMetaNode()
+	if ns == nil {
+		if ns, err = cell.createNodeSet(c); err != nil {
+			goto errHandler
+		}
+	}
+
+	metaNode.NodeSetID = ns.ID
+	if err = c.syncUpdateMetaNode(metaNode); err != nil {
+		metaNode.NodeSetID = oldNodeSetID
+		goto errHandler
+	}
+	ns.increaseMetaNodeLen()
+	if err = c.syncUpdateNodeSet(ns); err != nil {
+		ns.decreaseMetaNodeLen()
+		goto errHandler
+	}
+	c.t.putMetaNode(metaNode)
+errHandler:
+	err = fmt.Errorf("action[adjustMetaNode],clusterID[%v] addr:%v,cell[%v] err:%v ", c.Name, metaNode.Addr, metaNode.CellName, err.Error())
+	log.LogError(errors.Stack(err))
+	Warn(c.Name, err.Error())
 	return
 }
 
@@ -671,24 +723,63 @@ func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataN
 	if dataNode, err = c.dataNode(nodeAddr); err != nil {
 		goto errHandler
 	}
-	resp.CellName = DefaultCellName
-	if dataNode.CellName != "" && dataNode.CellName != resp.CellName {
+	if resp.CellName == "" {
+		resp.CellName = DefaultCellName
+	}
+	if dataNode.CellName != resp.CellName {
+		c.t.deleteDataNode(dataNode)
+		oldCellName := dataNode.CellName
 		dataNode.CellName = resp.CellName
-		c.t.replaceDataNode(dataNode)
+		c.adjustDataNode(dataNode)
+		log.LogWarnf("dataNode cell changed from [%v] to [%v]", oldCellName, resp.CellName)
 	}
 
 	dataNode.updateNodeMetric(resp)
 
 	if err = c.t.putDataNode(dataNode); err != nil {
-		log.LogErrorf("action[handleDataNodeHeartbeatResp] dataNode[%v] err[%v]", dataNode.Addr, err)
+		log.LogErrorf("action[handleDataNodeHeartbeatResp] dataNode[%v],cell[%v],node set[%v], err[%v]", dataNode.Addr, dataNode.CellName, dataNode.NodeSetID, err)
 	}
 	c.updateDataNode(dataNode, resp.PartitionReports)
-	logMsg = fmt.Sprintf("action[handleDataNodeHeartbeatResp],dataNode:%v ReportTime:%v  success", dataNode.Addr, time.Now().Unix())
+	logMsg = fmt.Sprintf("action[handleDataNodeHeartbeatResp],dataNode:%v,cell[%v], ReportTime:%v  success", dataNode.Addr, dataNode.CellName, time.Now().Unix())
 	log.LogInfof(logMsg)
 	return
 errHandler:
 	logMsg = fmt.Sprintf("nodeAddr %v heartbeat error :%v", nodeAddr, err.Error())
 	log.LogError(logMsg)
+	return
+}
+
+func (c *Cluster) adjustDataNode(dataNode *DataNode) {
+	c.dnMutex.Lock()
+	defer c.dnMutex.Unlock()
+	oldNodeSetID := dataNode.NodeSetID
+	cell, err := c.t.getCell(dataNode.CellName)
+	if err != nil {
+		cell = newCell(dataNode.CellName)
+		c.t.putCell(cell)
+	}
+	ns := cell.getAvailNodeSetForDataNode()
+	if ns == nil {
+		if ns, err = cell.createNodeSet(c); err != nil {
+			goto errHandler
+		}
+	}
+
+	dataNode.NodeSetID = ns.ID
+	if err = c.syncUpdateDataNode(dataNode); err != nil {
+		dataNode.NodeSetID = oldNodeSetID
+		goto errHandler
+	}
+	ns.increaseDataNodeLen()
+	if err = c.syncUpdateNodeSet(ns); err != nil {
+		ns.decreaseDataNodeLen()
+		goto errHandler
+	}
+	c.t.putDataNode(dataNode)
+errHandler:
+	err = fmt.Errorf("action[adjustDataNode],clusterID[%v] dataNodeAddr:%v,cell[%v] err:%v ", c.Name, dataNode.Addr, dataNode.CellName, err.Error())
+	log.LogError(errors.Stack(err))
+	Warn(c.Name, err.Error())
 	return
 }
 

@@ -45,7 +45,7 @@ func (mds *MockDataServer) Start() {
 }
 
 func (mds *MockDataServer) register() {
-	nodeID, err := mds.mc.NodeAPI().AddDataNode(mds.TcpAddr)
+	nodeID, err := mds.mc.NodeAPI().AddDataNode(mds.TcpAddr,mds.cellName)
 	if err != nil {
 		panic(err)
 	}

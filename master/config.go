@@ -37,6 +37,7 @@ const (
 	cfgMetaNodeReservedMem              = "metaNodeReservedMem"
 	heartbeatPortKey                    = "heartbeatPort"
 	replicaPortKey                      = "replicaPort"
+	cfgCrossCell                        = "crossCellNum"
 )
 
 //default value
@@ -85,6 +86,7 @@ type clusterConfig struct {
 	peerAddrs                           []string
 	heartbeatPort                       int64
 	replicaPort                         int64
+	crossCellNum                        int
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

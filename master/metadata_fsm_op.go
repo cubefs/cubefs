@@ -155,6 +155,7 @@ type dataNodeValue struct {
 	ID        uint64
 	NodeSetID uint64
 	Addr      string
+	CellName  string
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
@@ -162,6 +163,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		ID:        dataNode.ID,
 		NodeSetID: dataNode.NodeSetID,
 		Addr:      dataNode.Addr,
+		CellName:  dataNode.CellName,
 	}
 }
 
@@ -169,6 +171,7 @@ type metaNodeValue struct {
 	ID        uint64
 	NodeSetID uint64
 	Addr      string
+	CellName  string
 }
 
 func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
@@ -176,6 +179,7 @@ func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
 		ID:        metaNode.ID,
 		NodeSetID: metaNode.NodeSetID,
 		Addr:      metaNode.Addr,
+		CellName:  metaNode.CellName,
 	}
 }
 
@@ -184,6 +188,7 @@ type nodeSetValue struct {
 	Capacity    int
 	MetaNodeLen int
 	DataNodeLen int
+	CellName    string
 }
 
 func newNodeSetValue(nset *nodeSet) (nsv *nodeSetValue) {
@@ -192,6 +197,7 @@ func newNodeSetValue(nset *nodeSet) (nsv *nodeSetValue) {
 		Capacity:    nset.Capacity,
 		MetaNodeLen: nset.metaNodeLen,
 		DataNodeLen: nset.dataNodeLen,
+		CellName:    nset.cellName,
 	}
 	return
 }
@@ -395,6 +401,10 @@ func (c *Cluster) syncDeleteMetaNode(metaNode *MetaNode) (err error) {
 	return c.syncPutMetaNode(opSyncDeleteMetaNode, metaNode)
 }
 
+func (c *Cluster) syncUpdateMetaNode(metaNode *MetaNode) (err error) {
+	return c.syncPutMetaNode(opSyncUpdateMetaNode, metaNode)
+}
+
 func (c *Cluster) syncPutMetaNode(opType uint32, metaNode *MetaNode) (err error) {
 	metadata := new(RaftCmd)
 	metadata.Op = opType
@@ -414,6 +424,10 @@ func (c *Cluster) syncAddDataNode(dataNode *DataNode) (err error) {
 
 func (c *Cluster) syncDeleteDataNode(dataNode *DataNode) (err error) {
 	return c.syncPutDataNodeInfo(opSyncDeleteDataNode, dataNode)
+}
+
+func (c *Cluster) syncUpdateDataNode(dataNode *DataNode) (err error) {
+	return c.syncPutDataNodeInfo(opSyncUpdateDataNode, dataNode)
 }
 
 func (c *Cluster) syncPutDataNodeInfo(opType uint32, dataNode *DataNode) (err error) {
@@ -477,11 +491,20 @@ func (c *Cluster) loadNodeSets() (err error) {
 			log.LogErrorf("action[loadNodeSets], unmarshal err:%v", err.Error())
 			return err
 		}
-		ns := newNodeSet(nsv.ID, c.cfg.nodeSetCapacity)
+		if nsv.CellName == "" {
+			nsv.CellName = DefaultCellName
+		}
+		ns := newNodeSet(nsv.ID, c.cfg.nodeSetCapacity, nsv.CellName)
 		ns.metaNodeLen = nsv.MetaNodeLen
 		ns.dataNodeLen = nsv.DataNodeLen
-		c.t.putNodeSet(ns)
-		log.LogInfof("action[loadNodeSets], nsId[%v]", ns.ID)
+		cell, err := c.t.getCell(nsv.CellName)
+		if err != nil {
+			log.LogErrorf("action[loadNodeSets], getCell err:%v", err)
+			cell = newCell(nsv.CellName)
+			c.t.putCellIfAbsent(cell)
+		}
+		cell.putNodeSet(ns)
+		log.LogInfof("action[loadNodeSets], nsId[%v],cell[%v]", ns.ID, cell.name)
 	}
 	return
 }
@@ -499,11 +522,14 @@ func (c *Cluster) loadDataNodes() (err error) {
 			err = fmt.Errorf("action[loadDataNodes],value:%v,unmarshal err:%v", string(value), err)
 			return
 		}
-		dataNode := newDataNode(dnv.Addr, c.Name)
+		if dnv.CellName == "" {
+			dnv.CellName = DefaultCellName
+		}
+		dataNode := newDataNode(dnv.Addr, dnv.CellName, c.Name)
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
 		c.dataNodes.Store(dataNode.Addr, dataNode)
-		log.LogInfof("action[loadDataNodes],dataNode[%v]", dataNode.Addr)
+		log.LogInfof("action[loadDataNodes],dataNode[%v],cell[%v],ns[%v]", dataNode.Addr, dnv.CellName, dnv.NodeSetID)
 	}
 	return
 }
@@ -520,11 +546,14 @@ func (c *Cluster) loadMetaNodes() (err error) {
 			err = fmt.Errorf("action[loadMetaNodes],unmarshal err:%v", err.Error())
 			return err
 		}
-		metaNode := newMetaNode(mnv.Addr, c.Name)
+		if mnv.CellName == "" {
+			mnv.CellName = DefaultCellName
+		}
+		metaNode := newMetaNode(mnv.Addr, mnv.CellName, c.Name)
 		metaNode.ID = mnv.ID
 		metaNode.NodeSetID = mnv.NodeSetID
 		c.metaNodes.Store(metaNode.Addr, metaNode)
-		log.LogInfof("action[loadMetaNodes],metaNode[%v]", metaNode.Addr)
+		log.LogInfof("action[loadMetaNodes],metaNode[%v],cell[%v],ns[%v]", metaNode.Addr, mnv.CellName, mnv.NodeSetID)
 	}
 	return
 }

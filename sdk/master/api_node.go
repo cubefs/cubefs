@@ -26,9 +26,10 @@ type NodeAPI struct {
 	mc *MasterClient
 }
 
-func (api *NodeAPI) AddDataNode(serverAddr string) (id uint64, err error) {
+func (api *NodeAPI) AddDataNode(serverAddr, cellName string) (id uint64, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AddDataNode)
 	request.addParam("addr", serverAddr)
+	request.addParam("cellName", cellName)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -37,9 +38,10 @@ func (api *NodeAPI) AddDataNode(serverAddr string) (id uint64, err error) {
 	return
 }
 
-func (api *NodeAPI) AddMetaNode(serverAddr string) (id uint64, err error) {
+func (api *NodeAPI) AddMetaNode(serverAddr, cellName string) (id uint64, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AddMetaNode)
 	request.addParam("addr", serverAddr)
+	request.addParam("cellName", cellName)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return

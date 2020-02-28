@@ -51,6 +51,8 @@ type Cluster struct {
 	fsm                 *MetadataFsm
 	partition           raftstore.Partition
 	MasterSecretKey     []byte
+	lastMasterCellForDataNode string
+	lastMasterCellForMetaNode string
 }
 
 func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition raftstore.Partition, cfg *clusterConfig) (c *Cluster) {
@@ -315,7 +317,7 @@ func (c *Cluster) checkVolReduceReplicaNum() {
 	}
 }
 
-func (c *Cluster) addMetaNode(nodeAddr string) (id uint64, err error) {
+func (c *Cluster) addMetaNode(nodeAddr, cellName string) (id uint64, err error) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
 	var metaNode *MetaNode
@@ -323,10 +325,14 @@ func (c *Cluster) addMetaNode(nodeAddr string) (id uint64, err error) {
 		metaNode = value.(*MetaNode)
 		return metaNode.ID, nil
 	}
-	metaNode = newMetaNode(nodeAddr, c.Name)
-	ns := c.t.getAvailNodeSetForMetaNode()
+	metaNode = newMetaNode(nodeAddr, cellName, c.Name)
+	cell, err := c.t.getCell(cellName)
+	if err != nil {
+		cell = c.t.putCellIfAbsent(newCell(cellName))
+	}
+	ns := cell.getAvailNodeSetForMetaNode()
 	if ns == nil {
-		if ns, err = c.createNodeSet(); err != nil {
+		if ns, err = cell.createNodeSet(c); err != nil {
 			goto errHandler
 		}
 	}
@@ -343,6 +349,7 @@ func (c *Cluster) addMetaNode(nodeAddr string) (id uint64, err error) {
 		ns.decreaseMetaNodeLen()
 		goto errHandler
 	}
+	c.t.putMetaNode(metaNode)
 	c.metaNodes.Store(nodeAddr, metaNode)
 	log.LogInfof("action[addMetaNode],clusterID[%v] metaNodeAddr:%v,nodeSetId[%v],dLen[%v],mLen[%v],capacity[%v]",
 		c.Name, nodeAddr, ns.ID, ns.dataNodeLen, ns.metaNodeLen, ns.Capacity)
@@ -355,20 +362,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) createNodeSet() (ns *nodeSet, err error) {
-	var id uint64
-	if id, err = c.idAlloc.allocateCommonID(); err != nil {
-		return
-	}
-	ns = newNodeSet(id, c.cfg.nodeSetCapacity)
-	if err = c.syncAddNodeSet(ns); err != nil {
-		return
-	}
-	c.t.putNodeSet(ns)
-	return
-}
-
-func (c *Cluster) addDataNode(nodeAddr string) (id uint64, err error) {
+func (c *Cluster) addDataNode(nodeAddr, cellName string) (id uint64, err error) {
 	c.dnMutex.Lock()
 	defer c.dnMutex.Unlock()
 	var dataNode *DataNode
@@ -377,10 +371,14 @@ func (c *Cluster) addDataNode(nodeAddr string) (id uint64, err error) {
 		return dataNode.ID, nil
 	}
 
-	dataNode = newDataNode(nodeAddr, c.Name)
-	ns := c.t.getAvailNodeSetForDataNode()
+	dataNode = newDataNode(nodeAddr, cellName, c.Name)
+	cell, err := c.t.getCell(cellName)
+	if err != nil {
+		cell = c.t.putCellIfAbsent(newCell(cellName))
+	}
+	ns := cell.getAvailNodeSetForDataNode()
 	if ns == nil {
-		if ns, err = c.createNodeSet(); err != nil {
+		if ns, err = cell.createNodeSet(c); err != nil {
 			goto errHandler
 		}
 	}
@@ -398,6 +396,7 @@ func (c *Cluster) addDataNode(nodeAddr string) (id uint64, err error) {
 		ns.decreaseDataNodeLen()
 		goto errHandler
 	}
+	c.t.putDataNode(dataNode)
 	c.dataNodes.Store(nodeAddr, dataNode)
 	log.LogInfof("action[addDataNode],clusterID[%v] dataNodeAddr:%v,nodeSetId[%v],dLen[%v],mLen[%v],capacity[%v]",
 		c.Name, nodeAddr, ns.ID, ns.dataNodeLen, ns.metaNodeLen, ns.Capacity)
@@ -591,12 +590,76 @@ func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartiti
 	return
 }
 
-func (c *Cluster) chooseTargetDataNodes(excludeNodeSet *nodeSet, excludeCell *Cell, excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
-	ns, err := c.t.allocNodeSetForDataNode(excludeNodeSet, uint8(replicaNum))
+func (c *Cluster) chooseTargetDataNodes(excludeCell *Cell, excludeNodeSets []uint64, excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+
+	var (
+		masterCell  *Cell
+		slaveCell   *Cell
+		masterAddr  []string
+		addrs       []string
+		cells       []*Cell
+		masterPeers []proto.Peer
+		slavePeers  []proto.Peer
+		cellNum     int
+	)
+	excludeCells := make([]string, 0)
+	if excludeCell != nil {
+		excludeCells = append(excludeCells, excludeCell.name)
+	}
+	if replicaNum <= c.cfg.crossCellNum {
+		cellNum = replicaNum
+	} else {
+		cellNum = c.cfg.crossCellNum
+	}
+	cells, err = c.t.allocCellsForDataNode(cellNum, replicaNum, excludeCells)
 	if err != nil {
+		return
+	}
+	if len(cells) < c.cfg.crossCellNum {
+		return nil, nil, fmt.Errorf("no enough cells[%v] to be selected,crossNum[%v]", len(cells), c.cfg.crossCellNum)
+	}
+	if len(cells) == 1 {
+		if hosts, peers, err = cells[0].getAvailDataNodeHosts(excludeNodeSets, excludeHosts, replicaNum); err != nil {
+			log.LogErrorf("action[chooseTargetDataNodes],err[%v]", err)
+			return
+		}
+		return
+	}
+	if len(cells) == c.cfg.crossCellNum {
+		for index, cell := range cells {
+			log.LogInfof("action[chooseTargetDataNodes] index[%v],cell[%v]\n", index, cell.name)
+			if cell.name != c.lastMasterCellForDataNode {
+				masterCell = cell
+				c.lastMasterCellForDataNode = cell.name
+				slaveCell = cells[1-index]
+				break
+			}
+		}
+		goto selectDataNodes
+	} else {
+		log.LogWarn(fmt.Sprintf("action[chooseTargetDataNodes] ,the number of cells less than [%v],no enough cells to be selected", c.cfg.crossCellNum))
+		err = fmt.Errorf("action[chooseTargetDataNodes] ,the number of cells less than [%v] no enough cells to be selected", c.cfg.crossCellNum)
+		return
+	}
+
+selectDataNodes:
+	masterReplicaNum := replicaNum/2 + 1
+	slaveReplicaNum := replicaNum - masterReplicaNum
+	if masterAddr, masterPeers, err = masterCell.getAvailDataNodeHosts(excludeNodeSets, excludeHosts, masterReplicaNum); err != nil {
 		return nil, nil, errors.NewError(err)
 	}
-	return ns.getAvailDataNodeHosts(excludeCell, excludeHosts, replicaNum)
+	hosts = append(hosts, masterAddr...)
+	peers = append(peers, masterPeers...)
+	excludeHosts = append(excludeHosts, masterAddr...)
+	if addrs, slavePeers, err = slaveCell.getAvailDataNodeHosts(excludeNodeSets, excludeHosts, slaveReplicaNum); err != nil {
+		return nil, nil, errors.NewError(err)
+	}
+	hosts = append(hosts, addrs...)
+	peers = append(peers, slavePeers...)
+	if len(hosts) != replicaNum {
+		return nil, nil, proto.ErrNoDataNodeToCreateDataPartition
+	}
+	return
 }
 
 func (c *Cluster) dataNode(addr string) (dataNode *DataNode, err error) {
@@ -695,13 +758,14 @@ func (c *Cluster) delDataNodeFromCache(dataNode *DataNode) {
 // 6. persistent the new host list
 func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartition, errMsg string) (err error) {
 	var (
-		targetHosts []string
-		newAddr     string
-		msg         string
-		dataNode    *DataNode
-		cell        *Cell
-		replica     *DataReplica
-		ns          *nodeSet
+		targetHosts      []string
+		newAddr          string
+		msg              string
+		dataNode         *DataNode
+		cell             *Cell
+		replica          *DataReplica
+		ns               *nodeSet
+		excluedeNodeSets []uint64
 	)
 	dp.RLock()
 	if ok := dp.hasHost(offlineAddr); !ok {
@@ -710,6 +774,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	}
 	replica, _ = dp.getReplica(offlineAddr)
 	dp.RUnlock()
+	excluedeNodeSets = dp.getAllNodeSets()
 	if err = c.validateDecommissionDataPartition(dp, offlineAddr); err != nil {
 		goto errHandler
 	}
@@ -722,17 +787,17 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		err = fmt.Errorf("dataNode[%v] cell is nil", dataNode.Addr)
 		goto errHandler
 	}
-	if cell, err = c.t.getCell(dataNode); err != nil {
+	if cell, err = c.t.getCell(dataNode.CellName); err != nil {
 		goto errHandler
 	}
-	if targetHosts, _, err = cell.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
-		if ns, err = c.t.getNodeSet(dataNode.NodeSetID); err != nil {
-			goto errHandler
-		}
-		// select data nodes from the other cell in same node set
-		if targetHosts, _, err = ns.getAvailDataNodeHosts(cell, dp.Hosts, 1); err != nil {
-			// select data nodes from the other node set
-			if targetHosts, _, err = c.chooseTargetDataNodes(ns, cell, dp.Hosts, 1); err != nil {
+	if ns, err = cell.getNodeSet(dataNode.NodeSetID); err != nil {
+		goto errHandler
+	}
+	if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
+		// select data nodes from the other node set in same cell
+		if targetHosts, _, err = cell.getAvailDataNodeHosts(excluedeNodeSets, dp.Hosts, 1); err != nil {
+			// select data nodes from the other cell
+			if targetHosts, _, err = c.chooseTargetDataNodes(cell, excluedeNodeSets, dp.Hosts, 1); err != nil {
 				goto errHandler
 			}
 		}
@@ -1235,38 +1300,76 @@ func (c *Cluster) updateInodeIDRange(volName string, start uint64) (err error) {
 }
 
 // Choose the target hosts from the available node sets and meta nodes.
-func (c *Cluster) chooseTargetMetaHosts(excludeNodeSet *nodeSet, excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+func (c *Cluster) chooseTargetMetaHosts(excludeCell *Cell, excludeNodeSets []uint64, excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
 	var (
 		masterAddr []string
 		slaveAddrs []string
 		masterPeer []proto.Peer
 		slavePeers []proto.Peer
-		ns         *nodeSet
+		cells      []*Cell
+		masterCell *Cell
+		slaveCell  *Cell
+		cellNum    int
 	)
-	if ns, err = c.t.allocNodeSetForMetaNode(excludeNodeSet, uint8(replicaNum)); err != nil {
-		return nil, nil, errors.NewError(err)
+	excludeCells := make([]string, 0)
+	if excludeCell != nil {
+		excludeCells = append(excludeCells, excludeCell.name)
 	}
+	if replicaNum <= c.cfg.crossCellNum {
+		cellNum = replicaNum
+	} else {
+		cellNum = c.cfg.crossCellNum
+	}
+	cells, err = c.t.allocCellsForMetaNode(cellNum, replicaNum, excludeCells)
+	if err != nil {
+		return
+	}
+	if len(cells) < c.cfg.crossCellNum {
+		return nil, nil, fmt.Errorf("no enough cells [%v] to be selected, crossCellNum[%v]", len(cells), c.cfg.crossCellNum)
+	}
+	if len(cells) == 1 {
+		return cells[0].getAvailMetaNodeHosts(excludeNodeSets, excludeHosts, replicaNum)
+	}
+	if len(cells) == c.cfg.crossCellNum {
+		for index, cell := range cells {
+			log.LogInfof("action[chooseTargetMetaHosts] index[%v],cell[%v]\n", index, cell)
+			if cell.name != c.lastMasterCellForDataNode {
+				masterCell = cell
+				c.lastMasterCellForMetaNode = cell.name
+				slaveCell = cells[1-index]
+				break
+			}
+		}
+		goto selectMetaNodes
+	} else {
+		log.LogWarn(fmt.Sprintf("action[chooseTargetDataNodes] ,the number of cells less than [%v],no enough cells to be selected", c.cfg.crossCellNum))
+		err = fmt.Errorf("action[chooseTargetDataNodes] ,the number of cells less than [%v] no enough cells to be selected", c.cfg.crossCellNum)
+		return
+	}
+
+selectMetaNodes:
+
 	hosts = make([]string, 0)
 	if excludeHosts == nil {
 		excludeHosts = make([]string, 0)
 	}
-	if masterAddr, masterPeer, err = ns.getAvailMetaNodeHosts(excludeHosts, 1); err != nil {
+	masterReplicaNum := replicaNum/2 + 1
+	slaveReplicaNum := replicaNum - masterReplicaNum
+	if masterAddr, masterPeer, err = masterCell.getAvailMetaNodeHosts(excludeNodeSets, excludeHosts, masterReplicaNum); err != nil {
 		return nil, nil, errors.NewError(err)
 	}
 	peers = append(peers, masterPeer...)
-	hosts = append(hosts, masterAddr[0])
-	otherReplica := replicaNum - 1
-	if otherReplica == 0 {
-		return
-	}
+	hosts = append(hosts, masterAddr...)
+	log.LogErrorf("selectMetaNodes masterReplicaNum[%v],hosts[%v]", masterReplicaNum, len(hosts))
 	excludeHosts = append(excludeHosts, hosts...)
-	if slaveAddrs, slavePeers, err = ns.getAvailMetaNodeHosts(excludeHosts, otherReplica); err != nil {
+	if slaveAddrs, slavePeers, err = slaveCell.getAvailMetaNodeHosts(excludeNodeSets, excludeHosts, slaveReplicaNum); err != nil {
 		return nil, nil, errors.NewError(err)
 	}
 	hosts = append(hosts, slaveAddrs...)
+	log.LogErrorf("selectMetaNodes slaveReplicaNum[%v],hosts[%v]", slaveReplicaNum, len(hosts))
 	peers = append(peers, slavePeers...)
 	if len(hosts) != replicaNum {
-		return nil, nil, proto.ErrNoMetaNodeToCreateMetaPartition
+		return nil, nil, errors.Trace(proto.ErrNoMetaNodeToCreateMetaPartition, "hosts len[%v],replicaNum[%v]", len(hosts), replicaNum)
 	}
 	return
 }

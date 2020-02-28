@@ -685,7 +685,8 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		wg          sync.WaitGroup
 	)
 	errChannel := make(chan error, vol.mpReplicaNum)
-	if hosts, peers, err = c.chooseTargetMetaHosts(nil, nil, int(vol.mpReplicaNum)); err != nil {
+	if hosts, peers, err = c.chooseTargetMetaHosts(nil, nil, nil, int(vol.mpReplicaNum)); err != nil {
+		log.LogErrorf("action[doCreateMetaPartition] chooseTargetMetaHosts err[%v]", err)
 		return nil, errors.NewError(err)
 	}
 	log.LogInfof("target meta hosts:%v,peers:%v", hosts, peers)

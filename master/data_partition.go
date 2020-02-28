@@ -29,14 +29,14 @@ import (
 
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
-	PartitionID    uint64
-	LastLoadedTime int64
-	ReplicaNum     uint8
-	Status         int8
-	isRecover      bool
-	Replicas       []*DataReplica
-	Hosts          []string // host addresses
-	Peers          []proto.Peer
+	PartitionID             uint64
+	LastLoadedTime          int64
+	ReplicaNum              uint8
+	Status                  int8
+	isRecover               bool
+	Replicas                []*DataReplica
+	Hosts                   []string // host addresses
+	Peers                   []proto.Peer
 	sync.RWMutex
 	total                   uint64
 	used                    uint64
@@ -644,6 +644,21 @@ func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) 
 	partition.ReplicaNum = partition.ReplicaNum - 1
 	if err = c.syncUpdateDataPartition(partition); err != nil {
 		partition.ReplicaNum = oldReplicaNum
+	}
+	return
+}
+
+func (partition *DataPartition) getAllNodeSets() (nodeSets []uint64) {
+	partition.RLock()
+	defer partition.RUnlock()
+	nodeSets = make([]uint64, 0)
+	for _, replica := range partition.Replicas {
+		if replica.dataNode == nil {
+			continue
+		}
+		if !containsID(nodeSets, replica.dataNode.NodeSetID) {
+			nodeSets = append(nodeSets, replica.dataNode.NodeSetID)
+		}
 	}
 	return
 }

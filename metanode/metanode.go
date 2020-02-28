@@ -54,6 +54,7 @@ type MetaNode struct {
 	raftStore         raftstore.RaftStore
 	raftHeartbeatPort string
 	raftReplicatePort string
+	cellName          string
 	httpStopC         chan uint8
 
 	control common.Control
@@ -165,6 +166,8 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftDir = cfg.GetString(cfgRaftDir)
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
+	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
+	m.cellName = cfg.GetString(cfgCellName)
 	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
 
 	if configTotalMem == 0 {
@@ -198,6 +201,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load raftDir[%v].", m.raftDir)
 	log.LogInfof("[parseConfig] load raftHeartbeatPort[%v].", m.raftHeartbeatPort)
 	log.LogInfof("[parseConfig] load raftReplicatePort[%v].", m.raftReplicatePort)
+	log.LogInfof("[parseConfig] load cellName[%v].", m.cellName)
 
 	addrs := cfg.GetArray(proto.MasterAddr)
 	masters := make([]string, 0, len(addrs))
@@ -238,6 +242,7 @@ func (m *MetaNode) startMetaManager() (err error) {
 		NodeID:    m.nodeId,
 		RootDir:   m.metadataDir,
 		RaftStore: m.raftStore,
+		CellName:  m.cellName,
 	}
 	m.metadataManager = NewMetadataManager(conf)
 	if err = m.metadataManager.Start(); err == nil {
@@ -270,7 +275,7 @@ func (m *MetaNode) register() (err error) {
 			step++
 		}
 		var nodeID uint64
-		if nodeID, err = masterClient.NodeAPI().AddMetaNode(nodeAddress); err != nil {
+		if nodeID, err = masterClient.NodeAPI().AddMetaNode(nodeAddress, m.cellName); err != nil {
 			log.LogErrorf("register: register to master fail: address(%v) err(%s)", nodeAddress, err)
 			time.Sleep(3 * time.Second)
 			continue

@@ -47,15 +47,6 @@ func newDeleteDataPartitionRequest(ID uint64) (req *proto.DeleteDataPartitionReq
 	return
 }
 
-func newOfflineDataPartitionRequest(ID uint64, removePeer, addPeer proto.Peer) (req *proto.DataPartitionDecommissionRequest) {
-	req = &proto.DataPartitionDecommissionRequest{
-		PartitionId: ID,
-		RemovePeer:  removePeer,
-		AddPeer:     addPeer,
-	}
-	return
-}
-
 func newAddDataPartitionRaftMemberRequest(ID uint64, addPeer proto.Peer) (req *proto.AddDataPartitionRaftMemberRequest) {
 	req = &proto.AddDataPartitionRaftMemberRequest{
 		PartitionId: ID,
@@ -117,6 +108,20 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 }
 
 func contains(arr []string, element string) (ok bool) {
+	if arr == nil || len(arr) == 0 {
+		return
+	}
+
+	for _, e := range arr {
+		if e == element {
+			ok = true
+			break
+		}
+	}
+	return
+}
+
+func containsID(arr []uint64, element uint64) (ok bool) {
 	if arr == nil || len(arr) == 0 {
 		return
 	}
