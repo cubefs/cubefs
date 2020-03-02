@@ -46,19 +46,19 @@ ChubaoFS use **JSON** as configuration file format.
    {
     "role": "master",
     "id":"1",
-    "ip": "192.168.31.173",
-    "listen": "80",
-    "prof":"10088",
-    "peers": "1:192.168.31.173:80,2:192.168.31.141:80,3:192.168.30.200:80",
+    "ip": "10.196.59.198",
+    "listen": "17010",
+    "prof":"17020",
+    "peers": "1:10.196.59.198:17010,2:10.196.59.199:17010,3:10.196.59.200:17010",
     "retainLogs":"20000",
-    "logDir": "/export/Logs/master",
+    "logDir": "/cfs/master/log",
     "logLevel":"info",
-    "walDir":"/export/Data/master/raft",
-    "storeDir":"/export/Data/master/rocksdbstore",
-    "exporterPort": 9510,
+    "walDir":"/cfs/master/data/wal",
+    "storeDir":"/cfs/master/data/store",
+    "exporterPort": 9500,
     "consulAddr": "http://consul.prometheus-cfs.local",
-    "clusterName":"test",
-    "metaNodeReservedMem": "134217728"
+    "clusterName":"chubaofs01",
+    "metaNodeReservedMem": "1073741824"
    }
 
 

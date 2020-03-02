@@ -6,7 +6,7 @@ Create
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/metaPartition/create?name=test&start=10000"
+   curl -v "http://10.196.59.198:17010/metaPartition/create?name=test&start=10000"
 
 
 split meta partition manually,if max meta partition of the vol which range is [0,end),end larger than start parameter,old meta partition range is[0,start], new meta partition is [start+1,end)
@@ -22,7 +22,7 @@ Get
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/client/metaPartition?id=1" | python -m json.tool
+   curl -v "http://10.196.59.198:17010/client/metaPartition?id=1" | python -m json.tool
 
 
 show base information of meta partition,such as id,start,end and so on.
@@ -55,7 +55,7 @@ Decommission
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/metaPartition/decommission?id=13&addr=127.0.0.1:9021"
+   curl -v "http://10.196.59.198:17010/metaPartition/decommission?id=13&addr=10.196.59.202:17210"
 
 
 remove the replica of meta partition,and create new replica asynchronous
@@ -71,7 +71,7 @@ Load
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/metaPartition/load?id=1"
+   curl -v "http://10.196.59.198:17010/metaPartition/load?id=1"
 
 
 send load task to the metaNode which meta partition locate on,then check the crc of each replica in the meta partition

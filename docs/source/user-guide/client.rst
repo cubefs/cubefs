@@ -19,13 +19,13 @@ fuse.json
 .. code-block:: json
 
    {
-     "mountPoint": "/mnt/fuse",
-     "volName": "test",
-     "owner": "cfs",
-     "masterAddr": "192.168.31.173:80,192.168.31.141:80,192.168.30.200:80",
-     "logDir": "/export/Logs/client",
+     "mountPoint": "/cfs/mountpoint",
+     "volName": "ltptest",
+     "owner": "ltptest",
+     "masterAddr": "10.196.59.198:17010,10.196.59.199:17010,10.196.59.200:17010",
+     "logDir": "/cfs/client/log",
      "logLevel": "info",
-     "profPort": "10094"
+     "profPort": "27510"
    }
 
 .. csv-table:: Supported Configurations

@@ -6,7 +6,7 @@ Overview
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/admin/getCluster" | python -m json.tool
+   curl -v "http://10.196.59.198:17010/admin/getCluster" | python -m json.tool
 
 
 display the base information of the cluster, such as the detail of metaNode,dataNode,vol and so on.
@@ -17,7 +17,7 @@ response
 
    {
        "Name": "test",
-       "LeaderAddr": "127.0.0.1:80",
+       "LeaderAddr": "10.196.59.198:17010",
        "DisableAutoAlloc": false,
        "Applied": 225,
        "MaxDataPartitionID": 100,
@@ -36,7 +36,7 @@ Freeze
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/cluster/freeze?enable=true"
+   curl -v "http://10.196.59.198:17010/cluster/freeze?enable=true"
 
 if cluster is freezed,the vol never allocates dataPartitions automatically
 

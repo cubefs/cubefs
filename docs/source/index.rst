@@ -7,7 +7,7 @@ Welcome to ChubaoFS(Chubao File System)
 
    overview
    user-guide/yum
-   quick-start-guide
+   manual-deploy
 
 .. toctree::
    :maxdepth: 2

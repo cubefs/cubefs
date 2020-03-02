@@ -6,7 +6,7 @@ Get Partitions
 
 .. code-block:: bash
 
-   curl -v  http://127.0.0.1:9092/getPartitions
+   curl -v  http://10.196.59.202:17210/getPartitions
 
 Get all meta-partition base information of the metanode.
 
@@ -15,7 +15,7 @@ Get Partition by ID
 
 .. code-block:: bash
 
-   curl -v http://127.0.0.1:9092/getPartitionById?pid=100
+   curl -v http://10.196.59.202:17210/getPartitionById?pid=100
 
 Get the specified partition information, this result contains: leader address, raft group peer and cursor.
     

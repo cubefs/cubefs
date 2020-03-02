@@ -32,15 +32,15 @@ Set parameters of the ChubaoFS cluster in **iplist**.
 .. code-block:: yaml
 
     [master]
-    10.196.0.1
-    10.196.0.2
-    10.196.0.3
+    10.196.59.198
+    10.196.59.199
+    10.196.59.200
     [datanode]
     ...
     [cfs:vars]
     ansible_ssh_port=22
     ansible_ssh_user=root
-    ansible_ssh_pass="uu"
+    ansible_ssh_pass="password"
     ...
     #datanode config
     ...
@@ -61,4 +61,4 @@ Start the resources of ChubaoFS cluster with script **install.sh** . (make sure 
 
 Check mount point at **/cfs/mountpoint** on **client** node defined in **iplist** .
 
-Open http://10.196.0.1:8500 in browser for monitoring system(the IP of monitoring system is defined in **iplist** ).
+Open http://consul.prometheus-cfs.local in browser for monitoring system(the IP of monitoring system is defined in **iplist** ).

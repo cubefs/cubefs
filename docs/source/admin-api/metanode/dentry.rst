@@ -6,7 +6,7 @@ Get Dentry
 
 .. code-block:: bash
 
-   curl -v 'http://127.0.0.1:9092/getDentry?pid=100&name=""&parentIno=1024'
+   curl -v 'http://10.196.59.202:17210/getDentry?pid=100&name=""&parentIno=1024'
 
 
 Get dentry information
@@ -24,7 +24,7 @@ Get Directory
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1:9092/getDirectory?pid=100&parentIno=1024"
+   curl -v "http://10.196.59.202:17210/getDirectory?pid=100&parentIno=1024"
 
 
 Get all files of the parent inode is 1024
@@ -41,7 +41,7 @@ Get All Dentry
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1:9092/getAllDentry?pid=100"
+   curl -v "http://10.196.59.202:17210/getAllDentry?pid=100"
 
 
 

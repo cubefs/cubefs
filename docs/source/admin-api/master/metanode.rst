@@ -6,7 +6,7 @@ GET
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/metaNode/get?addr=127.0.0.1:9021"  | python -m json.tool
+   curl -v "http://10.196.59.198:17010/metaNode/get?addr=10.196.59.202:17210"  | python -m json.tool
 
 
 show the base information of the metaNode,such as addr,total memory,used memory and so on.
@@ -22,7 +22,7 @@ response
 
    {
        "ID": 3,
-       "Addr": "127.0.0.1:9021",
+       "Addr": "10.196.59.202:17210",
        "IsActive": true,
        "Sender": {
            "TaskMap": {}
