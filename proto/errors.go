@@ -69,6 +69,7 @@ var (
 	ErrReadBodyError                   = errors.New("read request body failed")
 	ErrVolPolicyNotExists              = errors.New("vol policy not exists")
 	ErrDuplicateAccessKey              = errors.New("duplicate access key")
+	ErrHaveNoPolicy                    = errors.New("no vol policy")
 )
 
 // http response error code and error message definitions
@@ -120,6 +121,7 @@ const (
 	ErrCodeReadBodyError
 	ErrCodeVolPolicyNotExists
 	ErrCodeDuplicateAccessKey
+	ErrCodeHaveNoPolicy
 )
 
 // Err2CodeMap error map to code
@@ -169,4 +171,5 @@ var Err2CodeMap = map[error]int32{
 	ErrReadBodyError:                   ErrCodeReadBodyError,
 	ErrVolPolicyNotExists:              ErrCodeVolPolicyNotExists,
 	ErrDuplicateAccessKey:              ErrCodeDuplicateAccessKey,
+	ErrHaveNoPolicy:                    ErrCodeHaveNoPolicy,
 }

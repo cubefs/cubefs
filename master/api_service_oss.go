@@ -186,6 +186,10 @@ func (m *Server) transferOSSVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	if _, err = m.cluster.getVol(vol); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
 	if akPolicy, err = m.cluster.transferVol(vol, ak, targetKey); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return

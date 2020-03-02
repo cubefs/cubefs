@@ -339,6 +339,8 @@ func (c *Cluster) deleteAKFromVol(akAndAction string, vol string) (err error) {
 		volAK.Lock()
 		defer volAK.Unlock()
 		volAK.AKAndActions = removeAK(volAK.AKAndActions, akAndAction)
+	} else {
+		err = proto.ErrHaveNoPolicy
 	}
 	if err = c.syncUpdateVolAK(volAK); err != nil {
 		err = proto.ErrPersistenceByRaft
