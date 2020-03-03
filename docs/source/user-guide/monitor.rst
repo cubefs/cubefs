@@ -6,7 +6,7 @@ ChubaoFS use prometheus as metrics collector. It simply config as follow in mast
 .. code-block:: json
 
    {
-       "exporterPort": 9510,
+       "exporterPort": 9505,
        "consulAddr": "http://consul.prometheus-cfs.local"
    }
 

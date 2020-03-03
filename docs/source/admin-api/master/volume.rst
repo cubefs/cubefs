@@ -6,7 +6,7 @@ Create
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/admin/createVol?name=test&capacity=100&owner=cfs&mpCount=3"
+   curl -v "http://10.196.59.198:17010/admin/createVol?name=test&capacity=100&owner=cfs&mpCount=3"
 
 
 | Allocate a set of data partition and a meta partition to the user.
@@ -25,7 +25,7 @@ Delete
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/vol/delete?name=test&authKey=md5(owner)"
+   curl -v "http://10.196.59.198:17010/vol/delete?name=test&authKey=md5(owner)"
 
 
 Mark the vol status to MarkDelete first, then delete data partition and meta partition asynchronous,finally delete meta data from persist store
@@ -41,7 +41,7 @@ Get
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/client/vol?name=test&authKey=md5(owner)" | python -m json.tool
+   curl -v "http://10.196.59.198:17010/client/vol?name=test&authKey=md5(owner)" | python -m json.tool
 
 
 show the base information of the vol,such as name,the detail of data partitions and meta partitions and so on.
@@ -73,7 +73,7 @@ Stat
 
 .. code-block:: bash
 
-   curl -v http://127.0.0.1/client/volStat?name=test
+   curl -v http://10.196.59.198:17010/client/volStat?name=test
 
 
 show vol stat information
@@ -99,7 +99,7 @@ Update
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/vol/update?name=test&capacity=100&authKey=md5(owner)"
+   curl -v "http://10.196.59.198:17010/vol/update?name=test&capacity=100&authKey=md5(owner)"
 
 add the vol quota
 

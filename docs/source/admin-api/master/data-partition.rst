@@ -6,7 +6,7 @@ Create
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/dataPartition/create?count=400&name=test"
+   curl -v "http://10.196.59.198:17010/dataPartition/create?count=400&name=test"
 
 
 create a set of data partition
@@ -22,7 +22,7 @@ Get
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/dataPartition/get?id=100"  | python -m json.tool
+   curl -v "http://10.196.59.198:17010/dataPartition/get?id=100"  | python -m json.tool
 
 
 .. csv-table:: Parameters
@@ -54,7 +54,7 @@ Decommission
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/dataPartition/decommission?id=13&addr=127.0.0.1:5000"
+   curl -v "http://10.196.59.198:17010/dataPartition/decommission?id=13&addr=10.196.59.201:17310"
 
 
 remove the replica of data partition,and create new replica asynchronous
@@ -70,7 +70,7 @@ Load
 
 .. code-block:: bash
 
-   curl -v "http://127.0.0.1/dataPartition/load?id=1"
+   curl -v "http://10.196.59.198:17010/dataPartition/load?id=1"
 
 
 send load task to the dataNode which data partition locate on,then check the crc of each file in the data partition asynchronous

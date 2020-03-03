@@ -32,21 +32,20 @@ Example:
 
    {
         "role": "metanode",
-        "listen": "9021",
-        "prof": "9092",
-        "localIP":"192.168.31.173",
+        "listen": "17210",
+        "prof": "17220",
         "logLevel": "debug",
-        "metadataDir": "/export/Data/metanode",
-        "logDir": "/export/Logs/metanode",
-        "raftDir": "/export/Data/metanode/raft",
-        "raftHeartbeatPort": "9093",
-        "raftReplicaPort": "9094",
+        "metadataDir": "/cfs/metanode/data/meta",
+        "logDir": "/cfs/metanode/log",
+        "raftDir": "/cfs/metanode/data/raft",
+        "raftHeartbeatPort": "17230",
+        "raftReplicaPort": "17240",
         "consulAddr": "http://consul.prometheus-cfs.local",
-        "exporterPort": 9511,
-        "totalMem":  "17179869184",
+        "exporterPort": 9501,
+        "totalMem":  "8589934592",
         "masterAddr": [
-            "192.168.31.173:80",
-            "192.168.31.141:80",
-            "192.168.30.200:80"
+            "10.196.59.198:17010",
+            "10.196.59.199:17010",
+            "10.196.59.200:17010"
         ]
     }

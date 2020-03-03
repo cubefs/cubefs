@@ -40,24 +40,23 @@ Configurations
 
    {
        "role": "datanode",
-       "listen": "6000",
-       "prof": "6001",
-       "localIP":"192.168.31.174",
-       "logDir": "/export/Logs/datanode",
+       "listen": "17310",
+       "prof": "17320",
+       "logDir": "/cfs/datanode/log",
        "logLevel": "info",
-       "raftHeartbeat": "9095",
-       "raftReplica": "9096",
-       "raftDir": "/export/Data/datanode/raft",
+       "raftHeartbeat": "17330",
+       "raftReplica": "17340",
+       "raftDir": "/cfs/datanode/log",
        "consulAddr": "http://consul.prometheus-cfs.local",
-       "exporterPort": 9512,    
+       "exporterPort": 9502,
        "masterAddr": [
-            "192.168.31.173:80",
-            "192.168.31.141:80",
-            "192.168.30.200:80"
+            "10.196.59.198:17010",
+            "10.196.59.199:17010",
+            "10.196.59.200:17010"
        ],
         "disks": [
-           "/data0:21474836480",
-           "/data1:21474836480"
+           "/data0:10737418240",
+           "/data1:10737418240"
        ]
    }
 

@@ -29,20 +29,20 @@ Sample *master.json* is shown as follows,
 
    {
      "role": "master",
-     "ip": "192.168.31.173",
-     "listen": "80",
-     "prof":"10088",
+     "ip": "10.196.59.198",
+     "listen": "17010",
+     "prof":"17020",
      "id":"1",
-     "peers": "1:192.168.31.173:80,2:192.168.31.141:80,3:192.168.30.200:80",
-     "retainLogs":"20000",
-     "logDir": "/export/Logs/master",
+     "peers": "1:10.196.59.198:17010,2:10.196.59.199:17010,3:10.196.59.200:17010",
+     "retainLogs":"2000",
+     "logDir": "/cfs/master/log",
      "logLevel":"info",
-     "walDir":"/export/Data/master/raft",
-     "storeDir":"/export/Data/master/rocksdbstore",
+     "walDir":"/cfs/master/data/wal",
+     "storeDir":"/cfs/master/data/store",
      "consulAddr": "http://consul.prometheus-cfs.local",
-     "exporterPort": 9510,
-     "clusterName":"cfs",
-     "metaNodeReservedMem": "134217728"
+     "exporterPort": 9500,
+     "clusterName":"chubaofs01",
+     "metaNodeReservedMem": "1073741824"
    }
 
 
@@ -61,21 +61,21 @@ Sample *meta.json is* shown as follows,
 
    {
        "role": "metanode",
-       "listen": "9021",
-       "prof": "9092",
+       "listen": "17210",
+       "prof": "17220",
        "logLevel": "info",
-       "metadataDir": "/export/Data/metanode",
-       "logDir": "/export/Logs/metanode",
-       "raftDir": "/export/Data/metanode/raft",
-       "raftHeartbeatPort": "9093",
-       "raftReplicaPort": "9094",
-       "totalMem":  "17179869184",
+       "metadataDir": "/cfs/metanode/data/meta",
+       "logDir": "/cfs/metanode/log",
+       "raftDir": "/cfs/metanode/data/raft",
+       "raftHeartbeatPort": "17230",
+       "raftReplicaPort": "17240",
+       "totalMem":  "8589934592",
        "consulAddr": "http://consul.prometheus-cfs.local",
-       "exporterPort": 9511,
+       "exporterPort": 9501,
        "masterAddr": [
-           "192.168.31.173:80",
-           "192.168.31.141:80",
-           "192.168.30.200:80"
+           "10.196.59.198:17010",
+           "10.196.59.199:17010",
+           "10.196.59.200:17010"
        ]
    }
 
@@ -127,23 +127,23 @@ Start Datanode
 
       {
         "role": "datanode",
-        "listen": "6000",
-        "prof": "6001",
-        "logDir": "/export/Logs/datanode",
-        "raftDir": "/export/Data/datanode/raft",
+        "listen": "17310",
+        "prof": "17320",
+        "logDir": "/cfs/datanode/log",
+        "raftDir": "/cfs/datanode/log",
         "logLevel": "info",
-        "raftHeartbeat": "9095",
-        "raftReplica": "9096",
+        "raftHeartbeat": "17330",
+        "raftReplica": "17340",
         "consulAddr": "http://consul.prometheus-cfs.local",
-        "exporterPort": 9512,
+        "exporterPort": 9502,
         "masterAddr": [
-           "192.168.31.173:80",
-           "192.168.31.141:80",
-           "192.168.30.200:80"
+           "10.196.59.198:17010",
+           "10.196.59.199:17010",
+           "10.196.59.200:17010"
         ],
         "disks": [
-           "/data0:21474836480",
-           "/data1:21474836480"
+           "/data0:10737418240",
+           "/data1:10737418240"
         ]
       }
 
@@ -165,14 +165,14 @@ Sample *objectnode.json is* shown as follows,
         "domains": [
             "object.cfs.local"
         ],
-        "listen": 80,
+        "listen": 17410,
         "masterAddr": [
-            "master1.cfs.local:80",
-            "master2.cfs.local:80",
-            "master3.cfs.local:80"
+           "10.196.59.198:17010",
+           "10.196.59.199:17010",
+           "10.196.59.200:17010"
         ],
         "logLevel": "info",
-        "logDir": "/export/Logs/objectnode",
+        "logDir": "/cfs/Logs/objectnode",
         "region": "cn_bj"
     }
 
@@ -186,13 +186,13 @@ By default, there are only a few data partitions allocated upon volume creation,
 
 .. code-block:: bash
 
-   curl -v "http://192.168.31.173/admin/createVol?name=test&capacity=10000&owner=cfs"
+   curl -v "http://10.196.59.198:17010/admin/createVol?name=test&capacity=10000&owner=cfs"
 
 For performance evaluation, extra data partitions shall be pre-created according to the amount of data nodes and disks to reach maximum performance.
 
 .. code-block:: bash
 
-    curl -v "http://192.168.31.173/dataPartition/create?name=test&count=120"
+    curl -v "http://10.196.59.198:17010/dataPartition/create?name=test&count=120"
 
 Mount Client
 ------------
@@ -206,12 +206,13 @@ Mount Client
    .. code-block:: json
 
       {
-        "mountPoint": "/mnt/fuse",
-        "volName": "test",
-        "owner": "cfs",
-        "masterAddr": "192.168.31.173:80,192.168.31.141:80,192.168.30.200:80",
-        "logDir": "/export/Logs/client",
-        "profPort": "10094",
+        "mountPoint": "/cfs/mountpoint",
+        "volName": "ltptest",
+        "owner": "ltptest",
+        "masterAddr": "10.196.59.198:17010,10.196.59.199:17010,10.196.59.200:17010",
+        "logDir": "/cfs/client/log",
+        "profPort": "17510",
+        "exporterPort": "9504",
         "logLevel": "info"
       }
 
@@ -227,7 +228,7 @@ Upgrading
 
 .. code-block:: bash
 
-   curl -v "http://192.168.31.173/cluster/freeze?enable=true"
+   curl -v "http://10.196.59.198:17010/cluster/freeze?enable=true"
 
 2. upgrade each module
 
@@ -235,4 +236,4 @@ Upgrading
 
 .. code-block:: bash
 
-   curl -v "http://192.168.31.173/cluster/freeze?enable=false"
+   curl -v "http://10.196.59.198:17010/cluster/freeze?enable=false"
