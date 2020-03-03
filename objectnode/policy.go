@@ -44,6 +44,10 @@ type Policy struct {
 	Statements []Statement `json:"Statement,omitempty"`
 }
 
+func (p *Policy) IsEmpty() bool {
+	return len(p.Statements) == 0
+}
+
 //
 // arn:partition:service:region:account-id:resource-id
 // arn:partition:service:region:account-id:resource-type/resource-id
@@ -219,7 +223,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc, action Action) http.Handler
 		acl := param.vol.loadACL()
 		policy := param.vol.loadPolicy()
 		//check ip policy
-		if policy != nil {
+		if policy != nil && !policy.IsEmpty() {
 			allowed = policy.IsAllowed(param)
 			if !allowed {
 				log.LogWarnf("policy not allowed %v", param)
@@ -227,7 +231,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc, action Action) http.Handler
 			}
 		}
 
-		if acl != nil {
+		if acl != nil && !acl.IsAclEmpty() {
 			allowed = acl.IsAllowed(param)
 			if !allowed {
 				log.LogWarnf("acl not allowed %v", param)

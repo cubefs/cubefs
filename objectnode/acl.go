@@ -129,6 +129,10 @@ type AccessControlList struct {
 	Grants []Grant `xml:"Grant,omitempty"`
 }
 
+func (acl *AccessControlList) IsEmpty() bool {
+	return len(acl.Grants) == 0
+}
+
 // owner
 type Owner struct {
 	Id          string `xml:"ID"`
@@ -140,6 +144,10 @@ type AccessControlPolicy struct {
 	Xmlns string            `xml:"xmlns:xsi,attr"`
 	Owner Owner             `xml:"Owner,omitempty"`
 	Acl   AccessControlList `xml:"AccessControlList,omitempty"`
+}
+
+func (acp *AccessControlPolicy) IsAclEmpty() bool {
+	return acp.Acl.IsEmpty()
 }
 
 func (acp *AccessControlPolicy) Validate(bucket string) (bool, error) {
