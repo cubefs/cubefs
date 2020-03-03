@@ -216,7 +216,7 @@ func main() {
 	}()
 	syslog.SetOutput(outputFile)
 
-	if err = syscall.Dup2(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
+	if err = syscall.Dup3(int(outputFile.Fd()), int(os.Stderr.Fd()), 0); err != nil {
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
