@@ -35,6 +35,8 @@ import (
 	"strings"
 	"syscall"
 
+	sysutil "github.com/chubaofs/chubaofs/util/sys"
+
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 	cfs "github.com/chubaofs/chubaofs/client/fs"
@@ -139,7 +141,7 @@ func main() {
 	}()
 	syslog.SetOutput(outputFile)
 
-	if err = syscall.Dup3(int(outputFile.Fd()), int(os.Stderr.Fd()), 0); err != nil {
+	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
