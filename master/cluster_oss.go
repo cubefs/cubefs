@@ -253,7 +253,15 @@ errHandler:
 }
 
 func (c *Cluster) transferVol(vol, ak, targetKey string) (targetAKPolicy *oss.AKPolicy, err error) {
+	var akPolicy *oss.AKPolicy
 	userPolicy := &oss.UserPolicy{OwnVol: []string{vol}}
+	if akPolicy, err = c.getAKInfo(ak); err != nil {
+		goto errHandler
+	}
+	if !contains(akPolicy.Policy.OwnVol, vol) {
+		err = proto.ErrHaveNoPolicy
+		goto errHandler
+	}
 	if _, err = c.deletePolicy(ak, userPolicy); err != nil {
 		goto errHandler
 	}
