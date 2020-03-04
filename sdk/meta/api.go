@@ -95,14 +95,14 @@ func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid ui
 
 create_dentry:
 	status, err = mw.dcreate(parentMP, parentID, name, info.Inode, mode)
-	if err != nil || status != statusOK {
-		if status == statusExist {
-			return nil, syscall.EEXIST
-		} else {
+	if err != nil {
+		return nil, statusToErrno(status)
+	} else if status != statusOK {
+		if status != statusExist {
 			mw.iunlink(mp, info.Inode)
 			mw.ievict(mp, info.Inode)
-			return nil, statusToErrno(status)
 		}
+		return nil, statusToErrno(status)
 	}
 	return info, nil
 }
@@ -297,7 +297,6 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 	// create dentry in dst parent
 	status, err = mw.dcreate(dstParentMP, dstParentID, dstName, inode, mode)
 	if err != nil {
-		mw.iunlink(srcMP, inode)
 		return syscall.EAGAIN
 	}
 
@@ -305,7 +304,6 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 	if status == statusExist && proto.IsRegular(mode) {
 		status, oldInode, err = mw.dupdate(dstParentMP, dstParentID, dstName, inode)
 		if err != nil {
-			mw.iunlink(srcMP, inode)
 			return syscall.EAGAIN
 		}
 	}
@@ -317,7 +315,9 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 
 	// delete dentry from src parent
 	status, _, err = mw.ddelete(srcParentMP, srcParentID, srcName)
-	if err != nil || status != statusOK {
+	if err != nil {
+		return statusToErrno(status)
+	} else if status != statusOK {
 		var (
 			sts int
 			e   error
@@ -469,13 +469,13 @@ func (mw *MetaWrapper) Link(parentID uint64, name string, ino uint64) (*proto.In
 
 	// create new dentry and refer to the inode
 	status, err = mw.dcreate(parentMP, parentID, name, ino, info.Mode)
-	if err != nil || status != statusOK {
-		if status == statusExist {
-			return nil, syscall.EEXIST
-		} else {
+	if err != nil {
+		return nil, statusToErrno(status)
+	} else if status != statusOK {
+		if status != statusExist {
 			mw.iunlink(mp, ino)
-			return nil, syscall.EAGAIN
 		}
+		return nil, statusToErrno(status)
 	}
 	return info, nil
 }
