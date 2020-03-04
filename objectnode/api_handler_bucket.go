@@ -26,7 +26,6 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/oss"
 	"github.com/gorilla/mux"
 )
 
@@ -61,7 +60,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = DuplicatedBucket.ServeResponse(w, r)
 	}
 	auth := parseRequestAuthInfo(r)
-	var akPolicy *oss.AKPolicy
+	var akPolicy *proto.AKPolicy
 	if akPolicy, err = o.getAkInfo(auth.accessKey); err != nil {
 		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
@@ -80,7 +79,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	//todo parse body
-	policy := &oss.UserPolicy{
+	policy := &proto.UserPolicy{
 		OwnVol: []string{bucket},
 	}
 	if _, err = o.mc.OSSAPI().AddPolicy(auth.accessKey, policy); err != nil {
@@ -110,7 +109,7 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	auth := parseRequestAuthInfo(r)
-	var akPolicy *oss.AKPolicy
+	var akPolicy *proto.AKPolicy
 	if akPolicy, err = o.getAkInfo(auth.accessKey); err != nil {
 		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
@@ -160,7 +159,7 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 
 	var err error
 	auth := parseRequestAuthInfo(r)
-	var akPolicy *oss.AKPolicy
+	var akPolicy *proto.AKPolicy
 	if akPolicy, err = o.getAkInfo(auth.accessKey); err != nil {
 		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
@@ -341,7 +340,7 @@ func calculateAuthKey(key string) (authKey string, err error) {
 	return strings.ToLower(hex.EncodeToString(cipherStr)), nil
 }
 
-func (o *ObjectNode) getAkInfo(accessKey string) (*oss.AKPolicy, error) {
+func (o *ObjectNode) getAkInfo(accessKey string) (*proto.AKPolicy, error) {
 	var err error
 	akPolicy, exit := o.userStore.Get(accessKey)
 	if !exit {

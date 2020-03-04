@@ -9,12 +9,11 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/oss"
 )
 
 func (m *Server) createOSSUser(w http.ResponseWriter, r *http.Request) {
 	var (
-		akPolicy *oss.AKPolicy
+		akPolicy *proto.AKPolicy
 		owner    string
 		err      error
 	)
@@ -31,7 +30,7 @@ func (m *Server) createOSSUser(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) createOSSUserWithKey(w http.ResponseWriter, r *http.Request) {
 	var (
-		akPolicy *oss.AKPolicy
+		akPolicy *proto.AKPolicy
 		owner    string
 		ak       string
 		sk       string
@@ -69,7 +68,7 @@ func (m *Server) deleteOSSUser(w http.ResponseWriter, r *http.Request) {
 func (m *Server) getOSSAKInfo(w http.ResponseWriter, r *http.Request) {
 	var (
 		ak       string
-		akPolicy *oss.AKPolicy
+		akPolicy *proto.AKPolicy
 		err      error
 	)
 	if ak, err = parseAccessKey(r); err != nil {
@@ -86,7 +85,7 @@ func (m *Server) getOSSAKInfo(w http.ResponseWriter, r *http.Request) {
 func (m *Server) getOSSUserInfo(w http.ResponseWriter, r *http.Request) {
 	var (
 		owner    string
-		akPolicy *oss.AKPolicy
+		akPolicy *proto.AKPolicy
 		err      error
 	)
 	if owner, err = parseOwner(r); err != nil {
@@ -103,8 +102,8 @@ func (m *Server) getOSSUserInfo(w http.ResponseWriter, r *http.Request) {
 func (m *Server) addOSSPolicy(w http.ResponseWriter, r *http.Request) {
 	var (
 		ak         string
-		akPolicy   *oss.AKPolicy
-		userPolicy *oss.UserPolicy
+		akPolicy   *proto.AKPolicy
+		userPolicy *proto.UserPolicy
 		body       []byte
 		err        error
 	)
@@ -112,7 +111,7 @@ func (m *Server) addOSSPolicy(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeReadBodyError, Msg: err.Error()})
 		return
 	}
-	userPolicy = &oss.UserPolicy{}
+	userPolicy = &proto.UserPolicy{}
 	if err = json.Unmarshal(body, userPolicy); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeUnmarshalData, Msg: err.Error()})
 		return
@@ -131,8 +130,8 @@ func (m *Server) addOSSPolicy(w http.ResponseWriter, r *http.Request) {
 func (m *Server) deleteOSSPolicy(w http.ResponseWriter, r *http.Request) {
 	var (
 		ak         string
-		akPolicy   *oss.AKPolicy
-		userPolicy *oss.UserPolicy
+		akPolicy   *proto.AKPolicy
+		userPolicy *proto.UserPolicy
 		body       []byte
 		err        error
 	)
@@ -140,7 +139,7 @@ func (m *Server) deleteOSSPolicy(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeReadBodyError, Msg: err.Error()})
 		return
 	}
-	userPolicy = &oss.UserPolicy{}
+	userPolicy = &proto.UserPolicy{}
 	if err = json.Unmarshal(body, userPolicy); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeUnmarshalData, Msg: err.Error()})
 		return
@@ -179,7 +178,7 @@ func (m *Server) transferOSSVol(w http.ResponseWriter, r *http.Request) {
 		vol       string
 		ak        string
 		targetKey string
-		akPolicy  *oss.AKPolicy
+		akPolicy  *proto.AKPolicy
 		err       error
 	)
 	if vol, ak, targetKey, err = parseVolAndKey(r); err != nil {

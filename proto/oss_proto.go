@@ -1,4 +1,4 @@
-package oss
+package proto
 
 import "sync"
 

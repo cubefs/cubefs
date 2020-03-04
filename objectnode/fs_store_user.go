@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/oss"
 )
 
 const (
@@ -27,7 +27,7 @@ const (
 )
 
 type UserStore struct {
-	akInfoStore map[string]*oss.AKPolicy
+	akInfoStore map[string]*proto.AKPolicy
 	akMu        sync.RWMutex
 	closeCh     chan struct{}
 	closeOnce   sync.Once
@@ -35,7 +35,7 @@ type UserStore struct {
 
 func (o *ObjectNode) newUserStore() *UserStore {
 	us := &UserStore{
-		akInfoStore: make(map[string]*oss.AKPolicy),
+		akInfoStore: make(map[string]*proto.AKPolicy),
 		closeCh:     make(chan struct{}, 1),
 	}
 	go o.refresh()
@@ -74,14 +74,14 @@ func (us *UserStore) Close() {
 	})
 }
 
-func (us *UserStore) Get(accessKey string) (akPolicy *oss.AKPolicy, exit bool) {
+func (us *UserStore) Get(accessKey string) (akPolicy *proto.AKPolicy, exit bool) {
 	us.akMu.RLock()
 	defer us.akMu.RUnlock()
 	akPolicy, exit = us.akInfoStore[accessKey]
 	return
 }
 
-func (us *UserStore) Put(accessKey string, akPolicy *oss.AKPolicy) {
+func (us *UserStore) Put(accessKey string, akPolicy *proto.AKPolicy) {
 	us.akMu.Lock()
 	defer us.akMu.Unlock()
 	us.akInfoStore[accessKey] = akPolicy

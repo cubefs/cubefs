@@ -23,7 +23,6 @@ import (
 	bsProto "github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/oss"
 	"github.com/tiglabs/raft/proto"
 )
 
@@ -623,19 +622,19 @@ func (c *Cluster) loadDataPartitions() (err error) {
 }
 
 // key=#ak#accesskey,value = akPolicy
-func (c *Cluster) syncAddAKPolicy(akPolicy *oss.AKPolicy) (err error) {
+func (c *Cluster) syncAddAKPolicy(akPolicy *bsProto.AKPolicy) (err error) {
 	return c.syncPutAKPolicy(opSyncAddAKPolicy, akPolicy)
 }
 
-func (c *Cluster) syncDeleteAKPolicy(akPolicy *oss.AKPolicy) (err error) {
+func (c *Cluster) syncDeleteAKPolicy(akPolicy *bsProto.AKPolicy) (err error) {
 	return c.syncPutAKPolicy(opSyncDeleteAKPolicy, akPolicy)
 }
 
-func (c *Cluster) syncUpdateAKPolicy(akPolicy *oss.AKPolicy) (err error) {
+func (c *Cluster) syncUpdateAKPolicy(akPolicy *bsProto.AKPolicy) (err error) {
 	return c.syncPutAKPolicy(opSyncUpdateAKPolicy, akPolicy)
 }
 
-func (c *Cluster) syncPutAKPolicy(opType uint32, akPolicy *oss.AKPolicy) (err error) {
+func (c *Cluster) syncPutAKPolicy(opType uint32, akPolicy *bsProto.AKPolicy) (err error) {
 	metadata := new(RaftCmd)
 	metadata.Op = opType
 	metadata.K = akPrefix + akPolicy.AccessKey
@@ -647,15 +646,15 @@ func (c *Cluster) syncPutAKPolicy(opType uint32, akPolicy *oss.AKPolicy) (err er
 }
 
 // key=#user#userid,value = akPolicy
-func (c *Cluster) syncAddUserAK(userAK *oss.UserAK) (err error) {
+func (c *Cluster) syncAddUserAK(userAK *bsProto.UserAK) (err error) {
 	return c.syncPutUserAK(opSyncAddUserAK, userAK)
 }
 
-func (c *Cluster) syncDeleteUserAK(userAK *oss.UserAK) (err error) {
+func (c *Cluster) syncDeleteUserAK(userAK *bsProto.UserAK) (err error) {
 	return c.syncPutUserAK(opSyncDeleteUserAK, userAK)
 }
 
-func (c *Cluster) syncPutUserAK(opType uint32, userAK *oss.UserAK) (err error) {
+func (c *Cluster) syncPutUserAK(opType uint32, userAK *bsProto.UserAK) (err error) {
 	metadata := new(RaftCmd)
 	metadata.Op = opType
 	metadata.K = userPrefix + userAK.UserID
@@ -666,19 +665,19 @@ func (c *Cluster) syncPutUserAK(opType uint32, userAK *oss.UserAK) (err error) {
 	return c.submit(metadata)
 }
 
-func (c *Cluster) syncAddVolAK(volAK *oss.VolAK) (err error) {
+func (c *Cluster) syncAddVolAK(volAK *bsProto.VolAK) (err error) {
 	return c.syncPutVolAK(opSyncAddVolAK, volAK)
 }
 
-func (c *Cluster) syncDeleteVolAK(volAK *oss.VolAK) (err error) {
+func (c *Cluster) syncDeleteVolAK(volAK *bsProto.VolAK) (err error) {
 	return c.syncPutVolAK(opSyncDeleteVolAK, volAK)
 }
 
-func (c *Cluster) syncUpdateVolAK(volAK *oss.VolAK) (err error) {
+func (c *Cluster) syncUpdateVolAK(volAK *bsProto.VolAK) (err error) {
 	return c.syncPutVolAK(opSyncUpdateVolAK, volAK)
 }
 
-func (c *Cluster) syncPutVolAK(opType uint32, volAK *oss.VolAK) (err error) {
+func (c *Cluster) syncPutVolAK(opType uint32, volAK *bsProto.VolAK) (err error) {
 	metadata := new(RaftCmd)
 	metadata.Op = opType
 	metadata.K = volAKPrefix + volAK.Vol
@@ -696,7 +695,7 @@ func (c *Cluster) loadAKStore() (err error) {
 		return err
 	}
 	for _, value := range result {
-		aks := &oss.AKPolicy{}
+		aks := &bsProto.AKPolicy{}
 		if err = json.Unmarshal(value, aks); err != nil {
 			err = fmt.Errorf("action[loadAccessKeyInfo], unmarshal err: %v", err.Error())
 			return err
@@ -714,7 +713,7 @@ func (c *Cluster) loadUserAK() (err error) {
 		return err
 	}
 	for _, value := range result {
-		user := &oss.UserAK{}
+		user := &bsProto.UserAK{}
 		if err = json.Unmarshal(value, user); err != nil {
 			err = fmt.Errorf("action[loadUserAK], unmarshal err: %v", err.Error())
 			return err
@@ -732,7 +731,7 @@ func (c *Cluster) loadVolAKs() (err error) {
 		return err
 	}
 	for _, value := range result {
-		volAK := &oss.VolAK{}
+		volAK := &bsProto.VolAK{}
 		if err = json.Unmarshal(value, volAK); err != nil {
 			err = fmt.Errorf("action[loadVolAKs], unmarshal err: %v", err.Error())
 			return err

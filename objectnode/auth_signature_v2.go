@@ -26,9 +26,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/oss"
 	"github.com/gorilla/mux"
 )
 
@@ -174,7 +174,7 @@ func (o *ObjectNode) checkSignatureV2(r *http.Request) (bool, error) {
 		return false, err
 	}
 
-	var akPolicy *oss.AKPolicy
+	var akPolicy *proto.AKPolicy
 	if akPolicy, err = o.getAkInfo(authInfo.accessKeyId); err != nil {
 		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", authInfo.accessKeyId, err)
 		return false, err
@@ -276,7 +276,7 @@ func (o *ObjectNode) checkPresignedSignatureV2(r *http.Request) (bool, error) {
 		GetRequestID(r), r.URL.String(), accessKey, signature, expires)
 
 	//check access key
-	var akPolicy *oss.AKPolicy
+	var akPolicy *proto.AKPolicy
 	if akPolicy, err = o.getAkInfo(accessKey); err != nil {
 		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", accessKey, err)
 		return false, err

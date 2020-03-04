@@ -7,7 +7,6 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/oss"
 )
 
 const (
@@ -17,10 +16,10 @@ const (
 	ALL             = "all"
 )
 
-func (c *Cluster) createKey(owner string) (akPolicy *oss.AKPolicy, err error) {
+func (c *Cluster) createKey(owner string) (akPolicy *proto.AKPolicy, err error) {
 	var (
-		userAK     *oss.UserAK
-		userPolicy *oss.UserPolicy
+		userAK     *proto.UserAK
+		userPolicy *proto.UserPolicy
 		exit       bool
 	)
 	accessKey := util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
@@ -39,9 +38,9 @@ func (c *Cluster) createKey(owner string) (akPolicy *oss.AKPolicy, err error) {
 		accessKey = util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
 		_, exit = c.akStore.Load(accessKey)
 	}
-	userPolicy = &oss.UserPolicy{OwnVol: make([]string, 0), NoneOwnVol: make(map[string][]string)}
-	akPolicy = &oss.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: owner}
-	userAK = &oss.UserAK{UserID: owner, AccessKey: accessKey}
+	userPolicy = &proto.UserPolicy{OwnVol: make([]string, 0), NoneOwnVol: make(map[string][]string)}
+	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: owner}
+	userAK = &proto.UserAK{UserID: owner, AccessKey: accessKey}
 	if err = c.syncAddAKPolicy(akPolicy); err != nil {
 		goto errHandler
 	}
@@ -60,10 +59,10 @@ errHandler:
 	return
 }
 
-func (c *Cluster) createUserWithKey(owner, accessKey, secretKey string) (akPolicy *oss.AKPolicy, err error) {
+func (c *Cluster) createUserWithKey(owner, accessKey, secretKey string) (akPolicy *proto.AKPolicy, err error) {
 	var (
-		userAK     *oss.UserAK
-		userPolicy *oss.UserPolicy
+		userAK     *proto.UserAK
+		userPolicy *proto.UserPolicy
 		exit       bool
 	)
 	c.akStoreMutex.Lock()
@@ -79,9 +78,9 @@ func (c *Cluster) createUserWithKey(owner, accessKey, secretKey string) (akPolic
 		err = proto.ErrDuplicateAccessKey
 		goto errHandler
 	}
-	userPolicy = &oss.UserPolicy{OwnVol: make([]string, 0), NoneOwnVol: make(map[string][]string)}
-	akPolicy = &oss.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: owner}
-	userAK = &oss.UserAK{UserID: owner, AccessKey: accessKey}
+	userPolicy = &proto.UserPolicy{OwnVol: make([]string, 0), NoneOwnVol: make(map[string][]string)}
+	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: owner}
+	userAK = &proto.UserAK{UserID: owner, AccessKey: accessKey}
 	if err = c.syncAddAKPolicy(akPolicy); err != nil {
 		goto errHandler
 	}
@@ -102,17 +101,17 @@ errHandler:
 
 func (c *Cluster) deleteKey(owner string) (err error) {
 	var (
-		userAK   *oss.UserAK
-		akPolicy *oss.AKPolicy
+		userAK   *proto.UserAK
+		akPolicy *proto.AKPolicy
 	)
 	if value, exit := c.userAk.Load(owner); !exit {
 		err = proto.ErrOSSUserNotExists
 		goto errHandler
 	} else {
-		userAK = value.(*oss.UserAK)
+		userAK = value.(*proto.UserAK)
 	}
-	akPolicy = &oss.AKPolicy{AccessKey: userAK.AccessKey, UserID: owner}
-	userAK = &oss.UserAK{UserID: owner, AccessKey: userAK.AccessKey}
+	akPolicy = &proto.AKPolicy{AccessKey: userAK.AccessKey, UserID: owner}
+	userAK = &proto.UserAK{UserID: owner, AccessKey: userAK.AccessKey}
 	if err = c.syncDeleteAKPolicy(akPolicy); err != nil {
 		goto errHandler
 	}
@@ -130,7 +129,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) getKeyInfo(ak string) (akPolicy *oss.AKPolicy, err error) {
+func (c *Cluster) getKeyInfo(ak string) (akPolicy *proto.AKPolicy, err error) {
 	if akPolicy, err = c.getAKInfo(ak); err != nil {
 		goto errHandler
 	}
@@ -143,12 +142,12 @@ errHandler:
 	return
 }
 
-func (c *Cluster) getUserInfo(owner string) (akPolicy *oss.AKPolicy, err error) {
+func (c *Cluster) getUserInfo(owner string) (akPolicy *proto.AKPolicy, err error) {
 	var (
 		ak string
 	)
 	if value, exit := c.userAk.Load(owner); exit {
-		ak = value.(*oss.UserAK).AccessKey
+		ak = value.(*proto.UserAK).AccessKey
 	} else {
 		err = proto.ErrOSSUserNotExists
 		goto errHandler
@@ -165,7 +164,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) addPolicy(ak string, userPolicy *oss.UserPolicy) (akPolicy *oss.AKPolicy, err error) {
+func (c *Cluster) addPolicy(ak string, userPolicy *proto.UserPolicy) (akPolicy *proto.AKPolicy, err error) {
 	if akPolicy, err = c.getAKInfo(ak); err != nil {
 		goto errHandler
 	}
@@ -186,7 +185,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) deletePolicy(ak string, userPolicy *oss.UserPolicy) (akPolicy *oss.AKPolicy, err error) {
+func (c *Cluster) deletePolicy(ak string, userPolicy *proto.UserPolicy) (akPolicy *proto.AKPolicy, err error) {
 	if akPolicy, err = c.getAKInfo(ak); err != nil {
 		goto errHandler
 	}
@@ -209,12 +208,12 @@ errHandler:
 
 func (c *Cluster) deleteVolPolicy(vol string) (err error) {
 	var (
-		volAK    *oss.VolAK
-		akPolicy *oss.AKPolicy
+		volAK    *proto.VolAK
+		akPolicy *proto.AKPolicy
 	)
 	//get related ak
 	if value, exit := c.volAKs.Load(vol); exit {
-		volAK = value.(*oss.VolAK)
+		volAK = value.(*proto.VolAK)
 	} else {
 		err = proto.ErrVolPolicyNotExists
 		goto errHandler
@@ -226,11 +225,11 @@ func (c *Cluster) deleteVolPolicy(vol string) (err error) {
 		if akPolicy, err = c.getAKInfo(ak); err != nil {
 			goto errHandler
 		}
-		var userPolicy *oss.UserPolicy
+		var userPolicy *proto.UserPolicy
 		if action == ALL {
-			userPolicy = &oss.UserPolicy{OwnVol: []string{vol}}
+			userPolicy = &proto.UserPolicy{OwnVol: []string{vol}}
 		} else {
-			userPolicy = &oss.UserPolicy{NoneOwnVol: map[string][]string{vol: {action}}}
+			userPolicy = &proto.UserPolicy{NoneOwnVol: map[string][]string{vol: {action}}}
 		}
 		akPolicy.Policy.Delete(userPolicy)
 		if err = c.syncUpdateAKPolicy(akPolicy); err != nil {
@@ -252,9 +251,9 @@ errHandler:
 	return
 }
 
-func (c *Cluster) transferVol(vol, ak, targetKey string) (targetAKPolicy *oss.AKPolicy, err error) {
-	var akPolicy *oss.AKPolicy
-	userPolicy := &oss.UserPolicy{OwnVol: []string{vol}}
+func (c *Cluster) transferVol(vol, ak, targetKey string) (targetAKPolicy *proto.AKPolicy, err error) {
+	var akPolicy *proto.AKPolicy
+	userPolicy := &proto.UserPolicy{OwnVol: []string{vol}}
 	if akPolicy, err = c.getAKInfo(ak); err != nil {
 		goto errHandler
 	}
@@ -277,16 +276,16 @@ errHandler:
 	return
 }
 
-func (c *Cluster) getAKInfo(ak string) (akPolicy *oss.AKPolicy, err error) {
+func (c *Cluster) getAKInfo(ak string) (akPolicy *proto.AKPolicy, err error) {
 	if value, exit := c.akStore.Load(ak); exit {
-		akPolicy = value.(*oss.AKPolicy)
+		akPolicy = value.(*proto.AKPolicy)
 	} else {
 		err = proto.ErrAccessKeyNotExists
 	}
 	return
 }
 
-func (c *Cluster) addVolAKs(ak string, policy *oss.UserPolicy) (err error) {
+func (c *Cluster) addVolAKs(ak string, policy *proto.UserPolicy) (err error) {
 	c.volAKsMutex.Lock()
 	defer c.volAKsMutex.Unlock()
 	for _, vol := range policy.OwnVol {
@@ -305,16 +304,16 @@ func (c *Cluster) addVolAKs(ak string, policy *oss.UserPolicy) (err error) {
 }
 
 func (c *Cluster) addAKToVol(akAndAction string, vol string) (err error) {
-	var volAK *oss.VolAK
+	var volAK *proto.VolAK
 	if value, ok := c.volAKs.Load(vol); ok {
-		volAK = value.(*oss.VolAK)
+		volAK = value.(*proto.VolAK)
 		volAK.Lock()
 		defer volAK.Unlock()
 		volAK.AKAndActions = append(volAK.AKAndActions, akAndAction)
 	} else {
 		aks := make([]string, 0)
 		aks = append(aks, akAndAction)
-		volAK = &oss.VolAK{Vol: vol, AKAndActions: aks}
+		volAK = &proto.VolAK{Vol: vol, AKAndActions: aks}
 		c.volAKs.Store(vol, volAK)
 	}
 	if err = c.syncAddVolAK(volAK); err != nil {
@@ -324,7 +323,7 @@ func (c *Cluster) addAKToVol(akAndAction string, vol string) (err error) {
 	return
 }
 
-func (c *Cluster) deleteVolAKs(ak string, policy *oss.UserPolicy) (err error) {
+func (c *Cluster) deleteVolAKs(ak string, policy *proto.UserPolicy) (err error) {
 	for _, vol := range policy.OwnVol {
 		if err = c.deleteAKFromVol(ak+separator+ALL, vol); err != nil {
 			return
@@ -341,9 +340,9 @@ func (c *Cluster) deleteVolAKs(ak string, policy *oss.UserPolicy) (err error) {
 }
 
 func (c *Cluster) deleteAKFromVol(akAndAction string, vol string) (err error) {
-	var volAK *oss.VolAK
+	var volAK *proto.VolAK
 	if value, ok := c.volAKs.Load(vol); ok {
-		volAK = value.(*oss.VolAK)
+		volAK = value.(*proto.VolAK)
 		volAK.Lock()
 		defer volAK.Unlock()
 		volAK.AKAndActions = removeAK(volAK.AKAndActions, akAndAction)

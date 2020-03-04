@@ -23,8 +23,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/oss"
 )
 
 type ActionType string
@@ -239,7 +239,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc, action Action) http.Handler
 			}
 		}
 		//check user policy
-		var akPolicy *oss.AKPolicy
+		var akPolicy *proto.AKPolicy
 		if akPolicy, err = o.getAkInfo(param.accessKey); err != nil {
 			log.LogInfof("get user policy from master error: accessKey(%v), err(%v)", param.accessKey, err)
 			return

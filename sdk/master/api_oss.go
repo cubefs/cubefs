@@ -5,28 +5,27 @@ import (
 	"net/http"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/oss"
 )
 
 type OSSAPI struct {
 	mc *MasterClient
 }
 
-func (api *OSSAPI) CreateUser(userID string) (akPolicy *oss.AKPolicy, err error) {
+func (api *OSSAPI) CreateUser(userID string) (akPolicy *proto.AKPolicy, err error) {
 	var request = newAPIRequest(http.MethodPut, proto.OSSCreateUser)
 	request.addParam("owner", userID)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	akPolicy = &oss.AKPolicy{}
+	akPolicy = &proto.AKPolicy{}
 	if err = json.Unmarshal(data, akPolicy); err != nil {
 		return
 	}
 	return
 }
 
-func (api *OSSAPI) CreateUserWithKey(userID, ak, sk string) (akPolicy *oss.AKPolicy, err error) {
+func (api *OSSAPI) CreateUserWithKey(userID, ak, sk string) (akPolicy *proto.AKPolicy, err error) {
 	var request = newAPIRequest(http.MethodPut, proto.OSSCreateUserWithKey)
 	request.addParam("owner", userID)
 	request.addParam("ak", ak)
@@ -35,7 +34,7 @@ func (api *OSSAPI) CreateUserWithKey(userID, ak, sk string) (akPolicy *oss.AKPol
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	akPolicy = &oss.AKPolicy{}
+	akPolicy = &proto.AKPolicy{}
 	if err = json.Unmarshal(data, akPolicy); err != nil {
 		return
 	}
@@ -51,35 +50,35 @@ func (api *OSSAPI) DeleteUser(userID string) (err error) {
 	return
 }
 
-func (api *OSSAPI) GetAKInfo(accesskey string) (akPolicy *oss.AKPolicy, err error) {
+func (api *OSSAPI) GetAKInfo(accesskey string) (akPolicy *proto.AKPolicy, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.OSSGetAKInfo)
 	request.addParam("ak", accesskey)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	akPolicy = &oss.AKPolicy{}
+	akPolicy = &proto.AKPolicy{}
 	if err = json.Unmarshal(data, akPolicy); err != nil {
 		return
 	}
 	return
 }
 
-func (api *OSSAPI) GetUserInfo(userID string) (akPolicy *oss.AKPolicy, err error) {
+func (api *OSSAPI) GetUserInfo(userID string) (akPolicy *proto.AKPolicy, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.OSSGetUserInfo)
 	request.addParam("owner", userID)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	akPolicy = &oss.AKPolicy{}
+	akPolicy = &proto.AKPolicy{}
 	if err = json.Unmarshal(data, akPolicy); err != nil {
 		return
 	}
 	return
 }
 
-func (api *OSSAPI) AddPolicy(accesskey string, policy *oss.UserPolicy) (akPolicy *oss.AKPolicy, err error) {
+func (api *OSSAPI) AddPolicy(accesskey string, policy *proto.UserPolicy) (akPolicy *proto.AKPolicy, err error) {
 	var body []byte
 	if body, err = json.Marshal(policy); err != nil {
 		return
@@ -91,14 +90,14 @@ func (api *OSSAPI) AddPolicy(accesskey string, policy *oss.UserPolicy) (akPolicy
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	akPolicy = &oss.AKPolicy{}
+	akPolicy = &proto.AKPolicy{}
 	if err = json.Unmarshal(data, akPolicy); err != nil {
 		return
 	}
 	return
 }
 
-func (api *OSSAPI) DeletePolicy(accesskey string, policy *oss.UserPolicy) (akPolicy *oss.AKPolicy, err error) {
+func (api *OSSAPI) DeletePolicy(accesskey string, policy *proto.UserPolicy) (akPolicy *proto.AKPolicy, err error) {
 	var body []byte
 	if body, err = json.Marshal(policy); err != nil {
 		return
@@ -110,7 +109,7 @@ func (api *OSSAPI) DeletePolicy(accesskey string, policy *oss.UserPolicy) (akPol
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	akPolicy = &oss.AKPolicy{}
+	akPolicy = &proto.AKPolicy{}
 	if err = json.Unmarshal(data, akPolicy); err != nil {
 		return
 	}
@@ -126,7 +125,7 @@ func (api *OSSAPI) DeleteVolPolicy(vol string) (err error) {
 	return
 }
 
-func (api *OSSAPI) TransferVol(vol, ak, targetAK string) (akPolicy *oss.AKPolicy, err error) {
+func (api *OSSAPI) TransferVol(vol, ak, targetAK string) (akPolicy *proto.AKPolicy, err error) {
 	var request = newAPIRequest(http.MethodPost, proto.OSSTransferVol)
 	request.addParam("name", vol)
 	request.addParam("ak", ak)
@@ -135,7 +134,7 @@ func (api *OSSAPI) TransferVol(vol, ak, targetAK string) (akPolicy *oss.AKPolicy
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	akPolicy = &oss.AKPolicy{}
+	akPolicy = &proto.AKPolicy{}
 	if err = json.Unmarshal(data, akPolicy); err != nil {
 		return
 	}
