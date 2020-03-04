@@ -433,7 +433,7 @@ func (i *Inode) ShouldDelete() bool {
 // SetAttr sets the attributes of the inode.
 func (i *Inode) SetAttr(valid, mode, uid, gid uint32) {
 	i.Lock()
-	if mode&proto.AttrMode != 0 {
+	if valid&proto.AttrMode != 0 {
 		i.Type = mode
 	}
 	if valid&proto.AttrUid != 0 {
