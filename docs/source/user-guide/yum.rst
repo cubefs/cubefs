@@ -23,11 +23,13 @@ Yum tools to run a ChubaoFS cluster for CentOS 7+ is provided. The list of RPM p
 
 Set parameters of the ChubaoFS cluster in **iplist**.
 
-- Set IP addresses in **[master]**, **[datanode]** , **[metanode]** , **[monitor]** , **[client]** field;
+- **[master]**, **[datanode]** , **[metanode]** , **[monitor]** , **[client]** modules define IP addresses of each role.
 
-- Set **datanode_disks** in  **#datanode config** field. Make sure the path exists on each DataNode and has at least 30GB of space.
+- **#datanode config** module defines parameters of DataNodes. **datanode_disks** defines **path** and **reserved space** separated by ":". The **path** is where the data store in, so make sure it exists and has at least 30GB of space; **reserved space** is the minimum free space(Bytes) reserved for the path.
 
-- Unify the username and password of each node, and set the username and password in **[cfs:vars]** field.
+- **[cfs:vars]** module defines parameters for SSH connection. So make sure the port, username and password for SSH connection is unified before start.
+
+- **#metanode config** module defines parameters of MetaNodes. **metanode_totalMem** defines the maximum memory(Bytes) can be use by MetaNode process.
 
 .. code-block:: yaml
 
@@ -46,6 +48,12 @@ Set parameters of the ChubaoFS cluster in **iplist**.
     ...
     datanode_disks =  '"/data0:10737418240","/data1:10737418240"'
     ...
+    #metanode config
+    ...
+    metanode_totalMem = "28589934592"
+    ...
+
+For more configurations, please refer to :doc:`master`; :doc:`metanode`; :doc:`datanode`; :doc:`client`; :doc:`monitor`.
 
 Start the resources of ChubaoFS cluster with script **install.sh** . (make sure the Master is started first)
 

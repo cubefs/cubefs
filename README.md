@@ -88,11 +88,13 @@ $ tree -L 2
 
 Set parameters of the ChubaoFS cluster in `iplist`. 
 
-1. Set IP addresses in `[master]`, `[datanode]`, `[metanode]`, `[monitor]`, `[client]` field; 
+1. `[master]`, `[datanode]`, `[metanode]`, `[monitor]`, `[client]` modules define IP addresses of each role. 
 
-2. Set `datanode_disks` in  `#datanode config` field. Make sure the path exists on each DataNode and has at least 30GB of space.  
+2. `#datanode config` module defines parameters of DataNodes. `datanode_disks` defines `path` and `reserved space` separated by ":". The `path` is where the data store in, so make sure it exists and has at least 30GB of space; `reserved space` is the minimum free space(Bytes) reserved for the path.
 
-3. Unify the username and password of each node, and set the username and password in `[cfs:vars]` field.
+3. `[cfs:vars]` module defines parameters for SSH connection. So make sure the port, username and password for SSH connection is unified before start.
+
+4. `#metanode config` module defines parameters of MetaNodes. `metanode_totalMem` defines the maximum memory(Bytes) can be use by MetaNode process.
 
 ```yaml
 [master]
@@ -104,13 +106,19 @@ Set parameters of the ChubaoFS cluster in `iplist`.
 [cfs:vars]
 ansible_ssh_port=22
 ansible_ssh_user=root
-ansible_ssh_pass="uu"
+ansible_ssh_pass="password"
 ...
 #datanode config
 ...
 datanode_disks =  '"/data0:10737418240","/data1:10737418240"'
 ...
+#metanode config
+...
+metanode_totalMem = "28589934592"
+...
 ```
+
+For more configurations please refer to [documentation](https://chubaofs.readthedocs.io/en/latest/user-guide/master.html).
 
 Start the resources of ChubaoFS cluster with script `install.sh`. (make sure the Master is started first)
 
