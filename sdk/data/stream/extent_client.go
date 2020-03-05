@@ -89,7 +89,7 @@ retry:
 	client.appendExtentKey = appendExtentKey
 	client.getExtents = getExtents
 	client.truncate = truncate
-	client.followerRead = opt.FollowerRead
+	client.followerRead = opt.FollowerRead || client.dataWrapper.FollowerRead()
 
 	// Init request pools
 	openRequestPool = &sync.Pool{New: func() interface{} {

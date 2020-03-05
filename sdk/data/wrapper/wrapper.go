@@ -45,6 +45,7 @@ type Wrapper struct {
 	partitions            map[uint64]*DataPartition
 	rwPartition           []*DataPartition
 	localLeaderPartitions []*DataPartition
+	followerRead          bool
 	mc                    *masterSDK.MasterClient
 }
 
@@ -73,6 +74,10 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 	return
 }
 
+func (w *Wrapper) FollowerRead() bool {
+	return w.followerRead
+}
+
 func (w *Wrapper) updateClusterInfo() (err error) {
 	var info *proto.ClusterInfo
 	if info, err = w.mc.AdminAPI().GetClusterInfo(); err != nil {
@@ -87,10 +92,13 @@ func (w *Wrapper) updateClusterInfo() (err error) {
 
 func (w *Wrapper) getSimpleVolView() (err error) {
 	var view *proto.SimpleVolView
+
 	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
 		log.LogWarnf("getSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
+	w.followerRead = view.FollowerRead
+
 	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v)",
 		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
