@@ -442,8 +442,28 @@ type EcNodeHeartbeatResponse struct {
 	CreatedPartitionCnt uint32
 	MaxCapacity         uint64 // maximum capacity of disk to create partition
 	PartitionReports    []*PartitionReport
+	CellName            string
 	Status              uint8
 	Result              string
+}
+
+// CreateEcPartitionRequest defines the request to create a ec partition.
+type CreateEcPartitionRequest struct {
+	PartitionID   uint64
+	PartitionSize int
+	VolumeID      string
+	DataNodeNum   int
+	ParityNodeNum int
+	NodeIndex     int
+	DataNodes     []string
+	ParityNodes   []string
+}
+
+// CreateEcPartitionResponse defines the response to the request of creating a ec partition.
+type CreateEcPartitionResponse struct {
+	PartitionID uint64
+	Status      uint8
+	Result      string
 }
 
 // CodecNodeHeartbeatResponse defines the response to the codec node heartbeat.

@@ -53,6 +53,8 @@ func (e *EcNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	}()
 
 	switch p.Opcode {
+	case proto.OpCreateEcPartition:
+		e.handlePacketToCreateEcPartition(p)
 	case proto.OpEcNodeHeartbeat:
 		e.handleHeartbeatPacket(p)
 	default:
@@ -61,9 +63,52 @@ func (e *EcNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	return
 }
 
+// Handle OpCreateEcPartition to create new EcPartition
+func (e *EcNode) handlePacketToCreateEcPartition(p *repl.Packet) {
+	var (
+		err error
+		ep  *EcPartition
+	)
+
+	log.LogDebugf("ActionRecievePacketToCreateEcPartition")
+
+	task := &proto.AdminTask{}
+	err = json.Unmarshal(p.Data, task)
+	if err != nil {
+		log.LogErrorf("cannnot unmashal adminTask")
+		err = fmt.Errorf("cannnot unmashal adminTask")
+		return
+	}
+	if task.OpCode != proto.OpCreateEcPartition {
+		log.LogErrorf("error unavaliable opcode")
+		err = fmt.Errorf("from master Task(%v) failed, error unavaliable opcode(%v), expected opcode(%v)",
+			task.ToString(), task.OpCode, proto.OpCreateEcPartition)
+		return
+	}
+
+	request := &proto.CreateEcPartitionRequest{}
+	bytes, err := json.Marshal(task.Request)
+	err = json.Unmarshal(bytes, request)
+	if err != nil {
+		log.LogErrorf("cannot convert to CreateEcPartition")
+		err = fmt.Errorf("from master Task(%v) cannot convert to CreateEcPartition", task.ToString())
+		return
+	}
+
+	ep, err = e.space.CreatePartition(request)
+	if err != nil {
+		log.LogErrorf("cannot create Partition err(%v)", err)
+		err = fmt.Errorf("from master Task(%v) cannot create Partition err(%v)", task.ToString(), err)
+		return
+	}
+	p.PacketOkWithBody([]byte(ep.Disk().Path))
+
+	return
+}
+
 // Handle OpHeartbeat packet
 func (e *EcNode) handleHeartbeatPacket(p *repl.Packet) {
-	log.LogErrorf("ActionRecieveEcHeartbeat")
+	log.LogDebugf("ActionRecieveEcHeartbeat")
 
 	task := &proto.AdminTask{}
 	err := json.Unmarshal(p.Data, task)
@@ -85,7 +130,7 @@ func (e *EcNode) handleHeartbeatPacket(p *repl.Packet) {
 		response := &proto.EcNodeHeartbeatResponse{
 			Status: proto.TaskSucceeds,
 		}
-		// TODO buildHeartbeatResponse(response)
+		e.buildHeartbeatResponse(response)
 
 		if task.OpCode == proto.OpEcNodeHeartbeat {
 			response.Status = proto.TaskSucceeds
