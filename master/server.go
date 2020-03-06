@@ -71,6 +71,7 @@ type Server struct {
 	leaderInfo   *LeaderInfo
 	config       *clusterConfig
 	cluster      *Cluster
+	user         *User
 	rocksDBStore *raftstore.RocksDBStore
 	raftStore    raftstore.RaftStore
 	fsm          *MetadataFsm
@@ -122,6 +123,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		return
 	}
 	m.initCluster()
+	m.initUser()
 	exporter.Init(ModuleName, cfg)
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
@@ -282,4 +284,8 @@ func (m *Server) initFsm() {
 func (m *Server) initCluster() {
 	m.cluster = newCluster(m.clusterName, m.leaderInfo, m.fsm, m.partition, m.config)
 	m.cluster.retainLogs = m.retainLogs
+}
+
+func (m *Server) initUser() {
+	m.user = newUser(m.fsm, m.partition)
 }

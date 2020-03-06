@@ -117,17 +117,20 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 
-	if err = m.cluster.loadAKStore(); err != nil {
+	log.LogInfo("action[loadMetadata] end")
+	log.LogInfo("action[loadUserInfo] begin")
+
+	if err = m.user.loadAKStore(); err != nil {
 		panic(err)
 	}
-	if err = m.cluster.loadUserAK(); err != nil {
+	if err = m.user.loadUserAK(); err != nil {
 		panic(err)
 	}
-	if err = m.cluster.loadVolAKs(); err != nil {
+	if err = m.user.loadVolAKs(); err != nil {
 		panic(err)
 	}
 
-	log.LogInfo("action[loadMetadata] end")
+	log.LogInfo("action[loadUserInfo] end")
 
 }
 
@@ -136,8 +139,8 @@ func (m *Server) clearMetadata() {
 	m.cluster.clearDataNodes()
 	m.cluster.clearMetaNodes()
 	m.cluster.clearVols()
-	m.cluster.clearAKStore()
-	m.cluster.clearUserAK()
-	m.cluster.clearVolAKs()
+	m.user.clearAKStore()
+	m.user.clearUserAK()
+	m.user.clearVolAKs()
 	m.cluster.t = newTopology()
 }

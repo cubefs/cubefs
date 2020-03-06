@@ -21,7 +21,7 @@ func (m *Server) createOSSUser(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if akPolicy, err = m.cluster.createKey(owner); err != nil {
+	if akPolicy, err = m.user.createKey(owner); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -40,7 +40,7 @@ func (m *Server) createOSSUserWithKey(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if akPolicy, err = m.cluster.createUserWithKey(owner, ak, sk); err != nil {
+	if akPolicy, err = m.user.createUserWithKey(owner, ak, sk); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -56,7 +56,7 @@ func (m *Server) deleteOSSUser(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.deleteKey(owner); err != nil {
+	if err = m.user.deleteKey(owner); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -75,7 +75,7 @@ func (m *Server) getOSSAKInfo(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if akPolicy, err = m.cluster.getKeyInfo(ak); err != nil {
+	if akPolicy, err = m.user.getKeyInfo(ak); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -92,7 +92,7 @@ func (m *Server) getOSSUserInfo(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if akPolicy, err = m.cluster.getUserInfo(owner); err != nil {
+	if akPolicy, err = m.user.getUserInfo(owner); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -120,7 +120,7 @@ func (m *Server) addOSSPolicy(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if akPolicy, err = m.cluster.addPolicy(ak, userPolicy); err != nil {
+	if akPolicy, err = m.user.addPolicy(ak, userPolicy); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -148,7 +148,7 @@ func (m *Server) deleteOSSPolicy(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if akPolicy, err = m.cluster.deletePolicy(ak, userPolicy); err != nil {
+	if akPolicy, err = m.user.deletePolicy(ak, userPolicy); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -164,7 +164,7 @@ func (m *Server) deleteOSSVolPolicy(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.deleteVolPolicy(vol); err != nil {
+	if err = m.user.deleteVolPolicy(vol); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -189,7 +189,7 @@ func (m *Server) transferOSSVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
-	if akPolicy, err = m.cluster.transferVol(vol, ak, targetKey); err != nil {
+	if akPolicy, err = m.user.transferVol(vol, ak, targetKey); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
