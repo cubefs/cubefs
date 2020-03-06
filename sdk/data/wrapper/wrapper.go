@@ -22,11 +22,10 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
+	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 )
-
 
 var (
 	LocalIP                      string
@@ -47,7 +46,7 @@ type Wrapper struct {
 	rwPartition           []*DataPartition
 	localLeaderPartitions []*DataPartition
 	followerRead          bool
-	mc *masterSDK.MasterClient
+	mc                    *masterSDK.MasterClient
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -93,12 +92,14 @@ func (w *Wrapper) updateClusterInfo() (err error) {
 
 func (w *Wrapper) getSimpleVolView() (err error) {
 	var view *proto.SimpleVolView
+
 	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
 		log.LogWarnf("getSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
 	w.followerRead = view.FollowerRead
-	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) " +
+
+	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v)",
 		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
 		view.DpCnt, view.FollowerRead)
@@ -125,7 +126,7 @@ func (w *Wrapper) updateDataPartition() (err error) {
 	log.LogInfof("updateDataPartition: get data partitions: volume(%v) partitions(%v)", w.volName, len(dpv.DataPartitions))
 
 	var convert = func(response *proto.DataPartitionResponse) *DataPartition {
-		return &DataPartition{ DataPartitionResponse: *response }
+		return &DataPartition{DataPartitionResponse: *response}
 	}
 
 	rwPartitionGroups := make([]*DataPartition, 0)

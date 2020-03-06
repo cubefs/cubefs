@@ -28,6 +28,8 @@ import (
 	"strings"
 	"syscall"
 
+	sysutil "github.com/chubaofs/chubaofs/util/sys"
+
 	"github.com/chubaofs/chubaofs/objectnode"
 
 	"github.com/jacobsa/daemonize"
@@ -216,7 +218,7 @@ func main() {
 	}()
 	syslog.SetOutput(outputFile)
 
-	if err = syscall.Dup2(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
+	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}

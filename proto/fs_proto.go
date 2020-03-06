@@ -35,6 +35,11 @@ func OsMode(mode uint32) os.FileMode {
 	return os.FileMode(mode)
 }
 
+// Returns os.FileMode masked by os.ModeType
+func OsModeType(mode uint32) os.FileMode {
+	return os.FileMode(mode) & os.ModeType
+}
+
 // IsRegular checks if the mode is regular.
 func IsRegular(mode uint32) bool {
 	return OsMode(mode).IsRegular()

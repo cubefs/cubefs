@@ -51,18 +51,20 @@ Object Node using `JSON` format configuration file.
 
    {
         "role": "objectnode",
-        "listen": ":80",
+        "listen": "17410",
+        "region": "cn_bj",
         "domains": [
             "object.cfs.local"
         ],
-        "logDir": "/opt/cfs/objectnode/logs",
-        "logLevel": "debug",
+        "logDir": "/cfs/Logs/objectnode",
+        "logLevel": "info",
         "masterAddr": [
-	        "172.20.240.95:7002",
-	        "172.20.240.94:7002",
-	        "172.20.240.67:7002"
+            "10.196.59.198:17010",
+            "10.196.59.199:17010",
+            "10.196.59.200:17010"
+
         ],
-        "exporterPort": 9512,
+        "exporterPort": 9503,
         "prof": "7013"
    }
 

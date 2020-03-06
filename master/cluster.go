@@ -1136,7 +1136,7 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner string, mpCount, size, capacity int, followerRead, authenticate bool) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate bool) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -1146,7 +1146,7 @@ func (c *Cluster) createVol(name, owner string, mpCount, size, capacity int, fol
 	} else {
 		dataPartitionSize = uint64(size) * util.GB
 	}
-	if vol, err = c.doCreateVol(name, owner, dataPartitionSize, uint64(capacity), defaultReplicaNum, followerRead, authenticate); err != nil {
+	if vol, err = c.doCreateVol(name, owner, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {

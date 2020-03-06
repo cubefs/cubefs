@@ -20,12 +20,33 @@ services:
     servers:
         image: chubaofs/cfs-base:dev-1.0
         depends_on:
+            - masters
+            - metanodes
+            - datanodes
+        networks:
+            extnetwork:
+
+    masters:
+        image: chubaofs/cfs-base:dev-1.0
+        depends_on:
             - master1
             - master2
             - master3
+        networks:
+            extnetwork:
+
+    metanodes:
+        image: chubaofs/cfs-base:dev-1.0
+        depends_on:
             - metanode1
             - metanode2
             - metanode3
+        networks:
+            extnetwork:
+
+    datanodes:
+        image: chubaofs/cfs-base:dev-1.0
+        depends_on:
             - datanode1
             - datanode2
             - datanode3

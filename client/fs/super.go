@@ -25,36 +25,13 @@ import (
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/stream"
 	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util/auth"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/ump"
 )
-
-type MountOption struct {
-	MountPoint    string
-	Volname       string
-	Owner         string
-	Master        string
-	Logpath       string
-	Loglvl        string
-	Profport      string
-	IcacheTimeout int64
-	LookupValid   int64
-	AttrValid     int64
-	ReadRate      int64
-	WriteRate     int64
-	EnSyncWrite   int64
-	AutoInvalData int64
-	UmpDatadir    string
-	Rdonly        bool
-	WriteCache    bool
-	KeepCache     bool
-	Authenticate  bool
-	TicketMess    auth.TicketMess
-}
 
 // Super defines the struct of a super block.
 type Super struct {
@@ -79,14 +56,14 @@ var (
 )
 
 // NewSuper returns a new Super.
-func NewSuper(opt *MountOption) (s *Super, err error) {
+func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s = new(Super)
-	s.mw, err = meta.NewMetaWrapper(opt.Volname, opt.Owner, opt.Master, opt.Authenticate, true, &opt.TicketMess)
+	s.mw, err = meta.NewMetaWrapper(opt, true)
 	if err != nil {
 		return nil, errors.Trace(err, "NewMetaWrapper failed!")
 	}
 
-	s.ec, err = stream.NewExtentClient(opt.Volname, opt.Master, opt.ReadRate, opt.WriteRate, s.mw.AppendExtentKey, s.mw.GetExtents, s.mw.Truncate)
+	s.ec, err = stream.NewExtentClient(opt, s.mw.AppendExtentKey, s.mw.GetExtents, s.mw.Truncate)
 	if err != nil {
 		return nil, errors.Trace(err, "NewExtentClient failed!")
 	}

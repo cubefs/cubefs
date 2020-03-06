@@ -6,7 +6,8 @@ Welcome to ChubaoFS(Chubao File System)
    :caption: Getting Started
 
    overview
-   quick-start-guide
+   user-guide/yum
+   manual-deploy
 
 .. toctree::
    :maxdepth: 2
@@ -17,7 +18,6 @@ Welcome to ChubaoFS(Chubao File System)
    design/datanode
    design/objectnode.rst
    design/client
-   design/authnode
 
 .. toctree::
    :maxdepth: 2
@@ -28,9 +28,9 @@ Welcome to ChubaoFS(Chubao File System)
    user-guide/datanode
    user-guide/objectnode
    user-guide/client
-   user-guide/authnode
    user-guide/monitor
    user-guide/fuse
+   user-guide/yum
    user-guide/docker
 
 .. toctree::

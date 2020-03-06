@@ -90,26 +90,35 @@ type MetaWrapper struct {
 	closeOnce sync.Once
 }
 
-func NewMetaWrapper(volname, owner, masterHosts string, authenticate, validateOwner bool, ticketMess *auth.TicketMess) (*MetaWrapper, error) {
+//the ticket from authnode
+type Ticket struct {
+	ID         string `json:"client_id"`
+	SessionKey string `json:"session_key"`
+	ServiceID  string `json:"service_id"`
+	Ticket     string `json:"ticket"`
+}
+
+func NewMetaWrapper(opt *proto.MountOptions, validateOwner bool) (*MetaWrapper, error) {
 	mw := new(MetaWrapper)
 	mw.closeCh = make(chan struct{}, 1)
-	if authenticate {
+	if opt.Authenticate {
+		var ticketMess = opt.TicketMess
 		mw.ac = authSDK.NewAuthClient(ticketMess.TicketHosts, ticketMess.EnableHTTPS, ticketMess.CertFile)
-		ticket, err := mw.ac.API().GetTicket(owner, ticketMess.ClientKey, proto.MasterServiceID)
+		ticket, err := mw.ac.API().GetTicket(opt.Owner, ticketMess.ClientKey, proto.MasterServiceID)
 		if err != nil {
 			return nil, errors.Trace(err, "Get ticket from authnode failed!")
 		}
-		mw.authenticate = authenticate
+		mw.authenticate = opt.Authenticate
 		mw.accessToken.Ticket = ticket.Ticket
-		mw.accessToken.ClientID = owner
+		mw.accessToken.ClientID = opt.Owner
 		mw.accessToken.ServiceID = proto.MasterServiceID
 		mw.sessionKey = ticket.SessionKey
-		mw.ticketMess = *ticketMess
+		mw.ticketMess = ticketMess
 	}
-	mw.volname = volname
-	mw.owner = owner
+	mw.volname = opt.Volname
+	mw.owner = opt.Owner
 	mw.ownerValidation = validateOwner
-	masters := strings.Split(masterHosts, HostsSeparator)
+	masters := strings.Split(opt.Master, HostsSeparator)
 	mw.mc = masterSDK.NewMasterClient(masters, false)
 	mw.conns = util.NewConnectPool()
 	mw.partitions = make(map[uint64]*MetaPartition)

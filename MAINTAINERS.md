@@ -14,3 +14,4 @@ The ChubaoFS maintainers are:
 * Junyuan Zeng <jzeng04@gmail.com> @jzeng4: Authorization Node
 * Xihao Xu <xxscott@163.com> @xxscott: CSI Driver
 * Wenjia Wu <buaa1214wwj@126.com> @wenjia322: Authorization Node
+* Zhendong Li <lizhendong666@gmail.com> @lizhendong666: Yum Install Tools

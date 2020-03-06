@@ -36,6 +36,8 @@ import (
 	"strings"
 	"syscall"
 
+	sysutil "github.com/chubaofs/chubaofs/util/sys"
+
 	"github.com/jacobsa/daemonize"
 	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fuseutil"
@@ -140,7 +142,7 @@ func main() {
 	}()
 	syslog.SetOutput(outputFile)
 
-	if err = syscall.Dup2(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
+	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
@@ -190,7 +192,7 @@ func startDaemon() error {
 	return nil
 }
 
-func mount(opt *cfs.MountOption) (*fuse.MountedFileSystem, error) {
+func mount(opt *proto.MountOptions) (*fuse.MountedFileSystem, error) {
 	super, err := cfs.NewSuper(opt)
 	if err != nil {
 		log.LogError(errors.Stack(err))
@@ -239,9 +241,9 @@ func registerInterceptedSignal(mnt string) {
 	}()
 }
 
-func parseMountOption(cfg *config.Config) (*cfs.MountOption, error) {
+func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	var err error
-	opt := new(cfs.MountOption)
+	opt := new(proto.MountOptions)
 	opt.Config = cfg
 
 	rawmnt := cfg.GetString(proto.MountPoint)
@@ -266,6 +268,7 @@ func parseMountOption(cfg *config.Config) (*cfs.MountOption, error) {
 	opt.Rdonly = cfg.GetBool(proto.Rdonly)
 	opt.WriteCache = cfg.GetBool(proto.WriteCache)
 	opt.KeepCache = cfg.GetBool(proto.KeepCache)
+	opt.FollowerRead = cfg.GetBool(proto.FollowerRead)
 	opt.Authenticate = cfg.GetBool(proto.Authenticate)
 	if opt.Authenticate {
 		opt.TicketMess.ClientKey = cfg.GetString(proto.ClientKey)

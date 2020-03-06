@@ -472,8 +472,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if replicaNum != 0 && replicaNum < 2 {
-		err = fmt.Errorf("replicaNum can't be less than 2,replicaNum[%v]", replicaNum)
+	if replicaNum !=0 && !(replicaNum == 2 || replicaNum == 3) {
+		err = fmt.Errorf("replicaNum can only be 2 and 3,received replicaNum is[%v]", replicaNum)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -501,17 +501,23 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		msg          string
 		size         int
 		mpCount      int
+		dpReplicaNum int
 		capacity     int
 		vol          *Vol
 		followerRead bool
 		authenticate bool
 	)
 
-	if name, owner, mpCount, size, capacity, followerRead, authenticate, err = parseRequestToCreateVol(r); err != nil {
+	if name, owner, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.createVol(name, owner, mpCount, size, capacity, followerRead, authenticate); err != nil {
+	if !(dpReplicaNum == 2 || dpReplicaNum == 3) {
+		err = fmt.Errorf("replicaNum can only be 2 and 3,received replicaNum is[%v]", dpReplicaNum)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if vol, err = m.cluster.createVol(name, owner, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1028,7 +1034,7 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authent
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size, capacity int, followerRead, authenticate bool, err error) {
+func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1043,6 +1049,13 @@ func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, size
 		if mpCount, err = strconv.Atoi(mpCountStr); err != nil {
 			mpCount = defaultInitMetaPartitionCount
 		}
+	}
+
+	if replicaStr := r.FormValue(replicaNumKey); replicaStr == "" {
+		dpReplicaNum = defaultReplicaNum
+	} else if dpReplicaNum, err = strconv.Atoi(replicaStr); err != nil {
+		err = unmatchedKey(replicaNumKey)
+		return
 	}
 
 	if sizeStr := r.FormValue(dataPartitionSizeKey); sizeStr != "" {

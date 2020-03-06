@@ -1,4 +1,4 @@
-Docker
+Run Cluster on Docker
 -----------------------
 
 Under the docker directory, a helper tool called run_docker.sh is provided to run ChubaoFS with docker-compose.

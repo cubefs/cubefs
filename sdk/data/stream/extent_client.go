@@ -68,13 +68,13 @@ type ExtentClient struct {
 }
 
 // NewExtentClient returns a new extent client.
-func NewExtentClient(volname, master string, readRate, writeRate int64, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc, truncate TruncateFunc) (client *ExtentClient, err error) {
+func NewExtentClient(opt *proto.MountOptions, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc, truncate TruncateFunc) (client *ExtentClient, err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	client = new(ExtentClient)
 
 	limit := MaxMountRetryLimit
 retry:
-	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(volname, master)
+	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(opt.Volname, opt.Master)
 	if err != nil {
 		if limit <= 0 {
 			return nil, errors.Trace(err, "Init data wrapper failed!")
@@ -89,7 +89,7 @@ retry:
 	client.appendExtentKey = appendExtentKey
 	client.getExtents = getExtents
 	client.truncate = truncate
-	client.followerRead = client.dataWrapper.FollowerRead()
+	client.followerRead = opt.FollowerRead || client.dataWrapper.FollowerRead()
 
 	// Init request pools
 	openRequestPool = &sync.Pool{New: func() interface{} {
@@ -112,15 +112,15 @@ retry:
 	}}
 
 	var readLimit, writeLimit rate.Limit
-	if readRate <= 0 {
+	if opt.ReadRate <= 0 {
 		readLimit = defaultReadLimitRate
 	} else {
-		readLimit = rate.Limit(readRate)
+		readLimit = rate.Limit(opt.ReadRate)
 	}
-	if writeRate <= 0 {
+	if opt.WriteRate <= 0 {
 		writeLimit = defaultWriteLimitRate
 	} else {
-		writeLimit = rate.Limit(writeRate)
+		writeLimit = rate.Limit(opt.WriteRate)
 	}
 
 	client.readLimiter = rate.NewLimiter(readLimit, defaultReadLimitBurst)
