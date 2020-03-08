@@ -64,3 +64,26 @@ func removeSlice(s []string, removeSlice []string) []string {
 	}
 	return s
 }
+
+func CleanPolicy(policy *UserPolicy) (newUserPolicy *UserPolicy) {
+	m := make(map[string]bool)
+	newUserPolicy = &UserPolicy{OwnVol: make([]string, 0), NoneOwnVol: make(map[string][]string)}
+	for _, vol := range policy.OwnVol {
+		if _, exit := m[vol]; !exit {
+			m[vol] = true
+			newUserPolicy.OwnVol = append(newUserPolicy.OwnVol, vol)
+		}
+	}
+	for vol, apis := range policy.NoneOwnVol {
+		checkMap := make(map[string]bool)
+		newAPI := make([]string, 0)
+		for _, api := range apis {
+			if _, exit := checkMap[api]; !exit {
+				checkMap[api] = true
+				newAPI = append(newAPI, api)
+			}
+		}
+		newUserPolicy.NoneOwnVol[vol] = newAPI
+	}
+	return
+}

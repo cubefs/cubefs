@@ -182,6 +182,7 @@ func (u *User) addPolicy(ak string, userPolicy *proto.UserPolicy) (akPolicy *pro
 		goto errHandler
 	}
 	akPolicy.Policy.Add(userPolicy)
+	akPolicy.Policy = proto.CleanPolicy(akPolicy.Policy)
 	if err = u.syncUpdateAKPolicy(akPolicy); err != nil {
 		err = proto.ErrPersistenceByRaft
 		goto errHandler
