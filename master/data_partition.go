@@ -29,14 +29,14 @@ import (
 
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
-	PartitionID    uint64
-	LastLoadedTime int64
-	ReplicaNum     uint8
-	Status         int8
-	isRecover      bool
-	Replicas       []*DataReplica
-	Hosts          []string // host addresses
-	Peers          []proto.Peer
+	PartitionID             uint64
+	LastLoadedTime          int64
+	ReplicaNum              uint8
+	Status                  int8
+	isRecover               bool
+	Replicas                []*DataReplica
+	Hosts                   []string // host addresses
+	Peers                   []proto.Peer
 	sync.RWMutex
 	total                   uint64
 	used                    uint64
@@ -648,7 +648,22 @@ func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) 
 	return
 }
 
-func (partition *DataPartition) ToProto() *proto.DataPartitionInfo {
+func (partition *DataPartition) getLiveZones(offlineAddr string) (zones []string) {
+	partition.RLock()
+	defer partition.RUnlock()
+	for _, replica := range partition.Replicas {
+		if replica.dataNode == nil {
+			continue
+		}
+		if replica.dataNode.Addr == offlineAddr {
+			continue
+		}
+		zones = append(zones, replica.dataNode.ZoneName)
+	}
+	return
+}
+
+func (partition *DataPartition) ToProto(c *Cluster) *proto.DataPartitionInfo {
 	var replicas = make([]*proto.DataReplica, len(partition.Replicas))
 	for i, replica := range partition.Replicas {
 		replicas[i] = &replica.DataReplica
@@ -658,6 +673,13 @@ func (partition *DataPartition) ToProto() *proto.DataPartitionInfo {
 		var fc = v.ToProto()
 		fileInCoreMap[k] = &fc
 	}
+	zones := make([]string, len(partition.Hosts))
+	for idx, host := range partition.Hosts {
+		dataNode, err := c.dataNode(host)
+		if err == nil {
+			zones[idx] = dataNode.ZoneName
+		}
+	}
 	return &proto.DataPartitionInfo{
 		PartitionID:             partition.PartitionID,
 		LastLoadedTime:          partition.LastLoadedTime,
@@ -666,6 +688,7 @@ func (partition *DataPartition) ToProto() *proto.DataPartitionInfo {
 		Replicas:                replicas,
 		Hosts:                   partition.Hosts,
 		Peers:                   partition.Peers,
+		Zones:                   zones,
 		MissingNodes:            partition.MissingNodes,
 		VolName:                 partition.VolName,
 		VolID:                   partition.VolID,

@@ -94,10 +94,14 @@ func (c *Cluster) loadDataPartition(dp *DataPartition) {
 // 5. persistent the new host list
 func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) (err error) {
 	var (
-		newPeers []proto.Peer
-		metaNode *MetaNode
-		ns       *nodeSet
-		oldHosts []string
+		newPeers        []proto.Peer
+		metaNode        *MetaNode
+		zone            *Zone
+		ns              *nodeSet
+		excludeNodeSets []uint64
+		oldHosts        []string
+		zones           []string
+		excludeZone     string
 	)
 	log.LogWarnf("action[decommissionMetaPartition],volName[%v],nodeAddr[%v],partitionID[%v] begin", mp.volName, nodeAddr, mp.PartitionID)
 	mp.RLock()
@@ -113,13 +117,26 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 	if metaNode, err = c.metaNode(nodeAddr); err != nil {
 		goto errHandler
 	}
-	if ns, err = c.t.getNodeSet(metaNode.NodeSetID); err != nil {
+	if zone, err = c.t.getZone(metaNode.ZoneName); err != nil {
+		goto errHandler
+	}
+	if ns, err = zone.getNodeSet(metaNode.NodeSetID); err != nil {
 		goto errHandler
 	}
 	if _, newPeers, err = ns.getAvailMetaNodeHosts(oldHosts, 1); err != nil {
-		// choose a meta node in other node set
-		if _, newPeers, err = c.chooseTargetMetaHosts(ns, oldHosts, 1); err != nil {
-			goto errHandler
+		// choose a meta node in other node set in the same zone
+		excludeNodeSets = append(excludeNodeSets, ns.ID)
+		if _, newPeers, err = zone.getAvailMetaNodeHosts(excludeNodeSets, oldHosts, 1); err != nil {
+			zones = mp.getLiveZones(nodeAddr)
+			if len(zones) == 0 {
+				excludeZone = zone.name
+			} else {
+				excludeZone = zones[0]
+			}
+			// choose a meta node in other zone
+			if _, newPeers, err = c.chooseTargetMetaHosts(excludeZone, excludeNodeSets, oldHosts, 1, false); err != nil {
+				goto errHandler
+			}
 		}
 	}
 	if err = c.deleteMetaReplica(mp, nodeAddr, false); err != nil {
@@ -545,7 +562,16 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 	if metaNode, err = c.metaNode(nodeAddr); err != nil {
 		goto errHandler
 	}
-
+	if resp.ZoneName == "" {
+		resp.ZoneName = DefaultZoneName
+	}
+	if metaNode.ZoneName != resp.ZoneName {
+		c.t.deleteMetaNode(metaNode)
+		oldZoneName := metaNode.ZoneName
+		metaNode.ZoneName = resp.ZoneName
+		c.adjustMetaNode(metaNode)
+		log.LogWarnf("metaNode zone changed from [%v] to [%v]", oldZoneName, resp.ZoneName)
+	}
 	metaNode.updateMetric(resp, c.cfg.MetaNodeThreshold)
 	metaNode.setNodeActive()
 
@@ -554,12 +580,44 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 	}
 	c.updateMetaNode(metaNode, resp.MetaPartitionReports, metaNode.reachesThreshold())
 	metaNode.metaPartitionInfos = nil
-	logMsg = fmt.Sprintf("action[dealMetaNodeHeartbeatResp],metaNode:%v ReportTime:%v  success", metaNode.Addr, time.Now().Unix())
+	logMsg = fmt.Sprintf("action[dealMetaNodeHeartbeatResp],metaNode:%v,zone[%v], ReportTime:%v  success", metaNode.Addr, metaNode.ZoneName, time.Now().Unix())
 	log.LogInfof(logMsg)
 	return
 errHandler:
 	logMsg = fmt.Sprintf("nodeAddr %v heartbeat error :%v", nodeAddr, errors.Stack(err))
 	log.LogError(logMsg)
+	return
+}
+
+func (c *Cluster) adjustMetaNode(metaNode *MetaNode) {
+	c.mnMutex.Lock()
+	defer c.mnMutex.Unlock()
+	oldNodeSetID := metaNode.NodeSetID
+	zone, err := c.t.getZone(metaNode.ZoneName)
+	if err != nil {
+		zone = newZone(metaNode.ZoneName)
+		c.t.putZone(zone)
+	}
+	ns := zone.getAvailNodeSetForMetaNode()
+	if ns == nil {
+		if ns, err = zone.createNodeSet(c); err != nil {
+			goto errHandler
+		}
+	}
+
+	metaNode.NodeSetID = ns.ID
+	if err = c.syncUpdateMetaNode(metaNode); err != nil {
+		metaNode.NodeSetID = oldNodeSetID
+		goto errHandler
+	}
+	if err = c.syncUpdateNodeSet(ns); err != nil {
+		goto errHandler
+	}
+	c.t.putMetaNode(metaNode)
+errHandler:
+	err = fmt.Errorf("action[adjustMetaNode],clusterID[%v] addr:%v,zone[%v] err:%v ", c.Name, metaNode.Addr, metaNode.ZoneName, err.Error())
+	log.LogError(errors.Stack(err))
+	Warn(c.Name, err.Error())
 	return
 }
 
@@ -671,24 +729,61 @@ func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataN
 	if dataNode, err = c.dataNode(nodeAddr); err != nil {
 		goto errHandler
 	}
-	resp.CellName = DefaultCellName
-	if dataNode.CellName != "" && dataNode.CellName != resp.CellName {
-		dataNode.CellName = resp.CellName
-		c.t.replaceDataNode(dataNode)
+	if resp.ZoneName == "" {
+		resp.ZoneName = DefaultZoneName
+	}
+	if dataNode.ZoneName != resp.ZoneName {
+		c.t.deleteDataNode(dataNode)
+		oldZoneName := dataNode.ZoneName
+		dataNode.ZoneName = resp.ZoneName
+		c.adjustDataNode(dataNode)
+		log.LogWarnf("dataNode zone changed from [%v] to [%v]", oldZoneName, resp.ZoneName)
 	}
 
 	dataNode.updateNodeMetric(resp)
 
 	if err = c.t.putDataNode(dataNode); err != nil {
-		log.LogErrorf("action[handleDataNodeHeartbeatResp] dataNode[%v] err[%v]", dataNode.Addr, err)
+		log.LogErrorf("action[handleDataNodeHeartbeatResp] dataNode[%v],zone[%v],node set[%v], err[%v]", dataNode.Addr, dataNode.ZoneName, dataNode.NodeSetID, err)
 	}
 	c.updateDataNode(dataNode, resp.PartitionReports)
-	logMsg = fmt.Sprintf("action[handleDataNodeHeartbeatResp],dataNode:%v ReportTime:%v  success", dataNode.Addr, time.Now().Unix())
+	logMsg = fmt.Sprintf("action[handleDataNodeHeartbeatResp],dataNode:%v,zone[%v], ReportTime:%v  success", dataNode.Addr, dataNode.ZoneName, time.Now().Unix())
 	log.LogInfof(logMsg)
 	return
 errHandler:
 	logMsg = fmt.Sprintf("nodeAddr %v heartbeat error :%v", nodeAddr, err.Error())
 	log.LogError(logMsg)
+	return
+}
+
+func (c *Cluster) adjustDataNode(dataNode *DataNode) {
+	c.dnMutex.Lock()
+	defer c.dnMutex.Unlock()
+	oldNodeSetID := dataNode.NodeSetID
+	zone, err := c.t.getZone(dataNode.ZoneName)
+	if err != nil {
+		zone = newZone(dataNode.ZoneName)
+		c.t.putZone(zone)
+	}
+	ns := zone.getAvailNodeSetForDataNode()
+	if ns == nil {
+		if ns, err = zone.createNodeSet(c); err != nil {
+			goto errHandler
+		}
+	}
+
+	dataNode.NodeSetID = ns.ID
+	if err = c.syncUpdateDataNode(dataNode); err != nil {
+		dataNode.NodeSetID = oldNodeSetID
+		goto errHandler
+	}
+	if err = c.syncUpdateNodeSet(ns); err != nil {
+		goto errHandler
+	}
+	c.t.putDataNode(dataNode)
+errHandler:
+	err = fmt.Errorf("action[adjustDataNode],clusterID[%v] dataNodeAddr:%v,zone[%v] err:%v ", c.Name, dataNode.Addr, dataNode.ZoneName, err.Error())
+	log.LogError(errors.Stack(err))
+	Warn(c.Name, err.Error())
 	return
 }
 

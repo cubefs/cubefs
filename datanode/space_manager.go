@@ -44,13 +44,13 @@ type SpaceManager struct {
 }
 
 // NewSpaceManager creates a new space manager.
-func NewSpaceManager(cell string) *SpaceManager {
+func NewSpaceManager(zone string) *SpaceManager {
 	var space *SpaceManager
 	space = &SpaceManager{}
 	space.disks = make(map[string]*Disk)
 	space.diskList = make([]string, 0)
 	space.partitions = make(map[uint64]*DataPartition)
-	space.stats = NewStats(cell)
+	space.stats = NewStats(zone)
 	space.stopC = make(chan bool, 0)
 
 	go space.statUpdateScheduler()
@@ -309,7 +309,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	response.BadDisks = make([]string, 0)
 	stat.Unlock()
 
-	response.CellName = s.cellName
+	response.ZoneName = s.zoneName
 	response.PartitionReports = make([]*proto.PartitionReport, 0)
 	space := s.space
 	space.RangePartitions(func(partition *DataPartition) bool {

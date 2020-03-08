@@ -42,26 +42,29 @@ type NodeView struct {
 
 // TopologyView provides the view of the topology view of the cluster
 type TopologyView struct {
-	NodeSet map[uint64]*nodeSetView
+	Zones []*ZoneView
 }
 
 type nodeSetView struct {
-	Cells     []*CellView
-	MetaNodes []NodeView
+	DataNodeLen int
+	MetaNodeLen int
+	MetaNodes   []NodeView
+	DataNodes   []NodeView
 }
 
-func newNodeSetView() *nodeSetView {
-	return &nodeSetView{Cells: make([]*CellView, 0), MetaNodes: make([]NodeView, 0)}
+func newNodeSetView(dataNodeLen, metaNodeLen int) *nodeSetView {
+	return &nodeSetView{DataNodes: make([]NodeView, 0), MetaNodes: make([]NodeView, 0), DataNodeLen: dataNodeLen, MetaNodeLen: metaNodeLen}
 }
 
-//CellView define the view of cell
-type CellView struct {
-	Name      string
-	DataNodes []NodeView
+//ZoneView define the view of zone
+type ZoneView struct {
+	Name    string
+	Status  string
+	NodeSet map[uint64]*nodeSetView
 }
 
-func newCellView() *CellView {
-	return &CellView{DataNodes: make([]NodeView, 0)}
+func newZoneView(name string) *ZoneView {
+	return &ZoneView{NodeSet: make(map[uint64]*nodeSetView, 0), Name: name}
 }
 
 type badPartitionView = proto.BadPartitionView
@@ -111,28 +114,69 @@ func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 // View the topology of the cluster.
 func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 	tv := &TopologyView{
-		NodeSet: make(map[uint64]*nodeSetView, 0),
+		Zones: make([]*ZoneView, 0),
 	}
-	for _, ns := range m.cluster.t.nodeSetMap {
-		nsView := newNodeSetView()
-		tv.NodeSet[ns.ID] = nsView
-		ns.metaNodes.Range(func(key, value interface{}) bool {
-			metaNode := value.(*MetaNode)
-			nsView.MetaNodes = append(nsView.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
-			return true
-		})
-		for _, cell := range ns.cellMap {
-			rv := newCellView()
-			rv.Name = cell.name
-			nsView.Cells = append(nsView.Cells, rv)
-			cell.dataNodes.Range(func(key, value interface{}) bool {
+	zones := m.cluster.t.getAllZones()
+	for _, zone := range zones {
+		cv := newZoneView(zone.name)
+		cv.Status = zone.getStatusToString()
+		tv.Zones = append(tv.Zones, cv)
+		nsc := zone.getAllNodeSet()
+		for _, ns := range nsc {
+			nsView := newNodeSetView(ns.dataNodeLen(), ns.metaNodeLen())
+			cv.NodeSet[ns.ID] = nsView
+			ns.dataNodes.Range(func(key, value interface{}) bool {
 				dataNode := value.(*DataNode)
-				rv.DataNodes = append(rv.DataNodes, NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
+				nsView.DataNodes = append(nsView.DataNodes, NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
+				return true
+			})
+			ns.metaNodes.Range(func(key, value interface{}) bool {
+				metaNode := value.(*MetaNode)
+				nsView.MetaNodes = append(nsView.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
 				return true
 			})
 		}
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(tv))
+}
+
+func (m *Server) updateZone(w http.ResponseWriter, r *http.Request) {
+	var (
+		name string
+		err  error
+	)
+	if name = r.FormValue(nameKey); name == "" {
+		err = keyNotFound(nameKey)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	status, err := extractStatus(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	zone, err := m.cluster.t.getZone(name)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNotExists, Msg: err.Error()})
+		return
+	}
+	if status {
+		zone.setStatus(normalZone)
+	} else {
+		zone.setStatus(unavailableZone)
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("update zone status to [%v] successfully", status)))
+}
+
+func (m *Server) listZone(w http.ResponseWriter, r *http.Request) {
+	zones := m.cluster.t.getAllZones()
+	zoneViews := make([]*ZoneView, 0)
+	for _, zone := range zones {
+		cv := newZoneView(zone.name)
+		cv.Status = zone.getStatusToString()
+		zoneViews = append(zoneViews, cv)
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(zoneViews))
 }
 
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
@@ -228,12 +272,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	}
 	lastTotalDataPartitions = len(vol.dataPartitions.partitions)
 	clusterTotalDataPartitions = m.cluster.getDataPartitionCount()
-	for i := 0; i < reqCreateCount; i++ {
-		if _, err = m.cluster.createDataPartition(volName); err != nil {
-			break
-		}
-	}
-
+	err = m.cluster.batchCreateDataPartition(vol, reqCreateCount)
 	rstMsg = fmt.Sprintf(" createDataPartition succeeeds. "+
 		"clusterLastTotalDataPartitions[%v],vol[%v] has %v data partitions previously and %v data partitions now",
 		clusterTotalDataPartitions, volName, lastTotalDataPartitions, len(vol.dataPartitions.partitions))
@@ -272,7 +311,7 @@ func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	sendOkReply(w, r, newSuccessHTTPReply(dp.ToProto()))
+	sendOkReply(w, r, newSuccessHTTPReply(dp.ToProto(m.cluster)))
 }
 
 // Load the data partition.
@@ -472,7 +511,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if replicaNum !=0 && !(replicaNum == 2 || replicaNum == 3) {
+	if replicaNum != 0 && !(replicaNum == 2 || replicaNum == 3) {
 		err = fmt.Errorf("replicaNum can only be 2 and 3,received replicaNum is[%v]", replicaNum)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -506,9 +545,10 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		vol          *Vol
 		followerRead bool
 		authenticate bool
+		crossZone    bool
 	)
 
-	if name, owner, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, err = parseRequestToCreateVol(r); err != nil {
+	if name, owner, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -517,7 +557,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.createVol(name, owner, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate); err != nil {
+	if vol, err = m.cluster.createVol(name, owner, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -556,6 +596,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		FollowerRead:       vol.FollowerRead,
 		NeedToLowerReplica: vol.NeedToLowerReplica,
 		Authenticate:       vol.authenticate,
+		CrossZone:          vol.crossZone,
 		RwDpCnt:            vol.dataPartitions.readableAndWritableCnt,
 		MpCnt:              len(vol.MetaPartitions),
 		DpCnt:              len(vol.dataPartitions.partitionMap),
@@ -565,15 +606,15 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
+		zoneName string
 		id       uint64
 		err      error
 	)
-	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
+	if nodeAddr, zoneName, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
-	if id, err = m.cluster.addDataNode(nodeAddr); err != nil {
+	if id, err = m.cluster.addDataNode(nodeAddr, zoneName); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -603,7 +644,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		Used:                      dataNode.Used,
 		AvailableSpace:            dataNode.AvailableSpace,
 		ID:                        dataNode.ID,
-		CellName:                  dataNode.CellName,
+		ZoneName:                  dataNode.ZoneName,
 		Addr:                      dataNode.Addr,
 		ReportTime:                dataNode.ReportTime,
 		IsActive:                  dataNode.isActive,
@@ -699,15 +740,15 @@ func (m *Server) handleDataNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
+		zoneName string
 		id       uint64
 		err      error
 	)
-	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
+	if nodeAddr, zoneName, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
-	if id, err = m.cluster.addMetaNode(nodeAddr); err != nil {
+	if id, err = m.cluster.addMetaNode(nodeAddr, zoneName); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -735,7 +776,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		ID:                        metaNode.ID,
 		Addr:                      metaNode.Addr,
 		IsActive:                  metaNode.IsActive,
-		CellName:                  metaNode.CellName,
+		ZoneName:                  metaNode.ZoneName,
 		MaxMemAvailWeight:         metaNode.MaxMemAvailWeight,
 		Total:                     metaNode.Total,
 		Used:                      metaNode.Used,
@@ -894,6 +935,19 @@ func parseRequestForRaftNode(r *http.Request) (id uint64, host string, err error
 	return
 }
 
+func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if nodeAddr, err = extractNodeAddr(r); err != nil {
+		return
+	}
+	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
+		zoneName = DefaultZoneName
+	}
+	return
+}
+
 func parseAndExtractNodeAddr(r *http.Request) (nodeAddr string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -1034,7 +1088,7 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authent
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate bool, err error) {
+func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1078,6 +1132,10 @@ func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, dpRe
 	}
 
 	if authenticate, err = extractAuthenticate(r); err != nil {
+		return
+	}
+
+	if crossZone, err = extractCrossZone(r); err != nil {
 		return
 	}
 
@@ -1246,6 +1304,18 @@ func extractAuthenticate(r *http.Request) (authenticate bool, err error) {
 		return
 	}
 	if authenticate, err = strconv.ParseBool(value); err != nil {
+		return
+	}
+	return
+}
+
+func extractCrossZone(r *http.Request) (crossZone bool, err error) {
+	var value string
+	if value = r.FormValue(crossZoneKey); value == "" {
+		crossZone = false
+		return
+	}
+	if crossZone, err = strconv.ParseBool(value); err != nil {
 		return
 	}
 	return
@@ -1508,6 +1578,13 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 
 	var toInfo = func(mp *MetaPartition) *proto.MetaPartitionInfo {
 		var replicas = make([]*proto.MetaReplicaInfo, len(mp.Replicas))
+		zones := make([]string, len(mp.Hosts))
+		for idx, host := range mp.Hosts {
+			metaNode, err := m.cluster.metaNode(host)
+			if err == nil {
+				zones[idx] = metaNode.ZoneName
+			}
+		}
 		for i := 0; i < len(replicas); i++ {
 			replicas[i] = &proto.MetaReplicaInfo{
 				Addr:       mp.Replicas[i].Addr,
@@ -1520,6 +1597,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			PartitionID:  mp.PartitionID,
 			Start:        mp.Start,
 			End:          mp.End,
+			VolName:      mp.volName,
 			MaxInodeID:   mp.MaxInodeID,
 			Replicas:     replicas,
 			ReplicaNum:   mp.ReplicaNum,
@@ -1527,6 +1605,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			IsRecover:    mp.IsRecover,
 			Hosts:        mp.Hosts,
 			Peers:        mp.Peers,
+			Zones:        zones,
 			MissNodes:    mp.MissNodes,
 			LoadResponse: mp.LoadResponse,
 		}

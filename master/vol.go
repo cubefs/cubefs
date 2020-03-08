@@ -40,6 +40,7 @@ type Vol struct {
 	NeedToLowerReplica bool
 	FollowerRead       bool
 	authenticate       bool
+	crossZone          bool
 	MetaPartitions     map[uint64]*MetaPartition
 	mpsLock            sync.RWMutex
 	dataPartitions     *DataPartitionMap
@@ -50,7 +51,7 @@ type Vol struct {
 	sync.RWMutex
 }
 
-func newVol(id uint64, name, owner string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate bool) (vol *Vol) {
+func newVol(id uint64, name, owner string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, crossZone bool) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	if dpReplicaNum <= 1 {
@@ -73,6 +74,7 @@ func newVol(id uint64, name, owner string, dpSize, capacity uint64, dpReplicaNum
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
 	vol.authenticate = authenticate
+	vol.crossZone = crossZone
 	vol.viewCache = make([]byte, 0)
 	vol.mpsCache = make([]byte, 0)
 	return
@@ -88,7 +90,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.DpReplicaNum,
 		vv.ReplicaNum,
 		vv.FollowerRead,
-		vv.Authenticate)
+		vv.Authenticate,
+		vv.CrossZone)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status
@@ -167,23 +170,21 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 		}
 	}
 	if len(vol.MetaPartitions) != count {
-		err = fmt.Errorf("action[initMetaPartitions] vol[%v] init meta partition failed,mpCount[%v],expectCount[%v]",
-			vol.Name, len(vol.MetaPartitions), count)
+		err = fmt.Errorf("action[initMetaPartitions] vol[%v] init meta partition failed,mpCount[%v],expectCount[%v],err[%v]",
+			vol.Name, len(vol.MetaPartitions), count, err)
 	}
 	return
 }
 
 func (vol *Vol) initDataPartitions(c *Cluster) {
 	// initialize k data partitionMap at a time
-	for i := 0; i < defaultInitDataPartitionCnt; i++ {
-		c.createDataPartition(vol.Name)
-	}
+	c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt)
 	return
 }
 
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	if vol.getDataPartitionsCount() == 0 && vol.Status != markDelete {
-		c.createDataPartition(vol.Name)
+		c.batchCreateDataPartition(vol, 1)
 	}
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
@@ -364,12 +365,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 	if (vol.Capacity > 200000 && vol.dataPartitions.readableAndWritableCnt < 200) || vol.dataPartitions.readableAndWritableCnt < minNumOfRWDataPartitions {
 		count := vol.calculateExpansionNum()
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
-		for i := 0; i < count; i++ {
-			if c.DisableAutoAllocate {
-				return
-			}
-			c.createDataPartition(vol.Name)
-		}
+		c.batchCreateDataPartition(vol, count)
 	}
 }
 
@@ -685,7 +681,8 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		wg          sync.WaitGroup
 	)
 	errChannel := make(chan error, vol.mpReplicaNum)
-	if hosts, peers, err = c.chooseTargetMetaHosts(nil, nil, int(vol.mpReplicaNum)); err != nil {
+	if hosts, peers, err = c.chooseTargetMetaHosts("", nil, nil, int(vol.mpReplicaNum), vol.crossZone); err != nil {
+		log.LogErrorf("action[doCreateMetaPartition] chooseTargetMetaHosts err[%v]", err)
 		return nil, errors.NewError(err)
 	}
 	log.LogInfof("target meta hosts:%v,peers:%v", hosts, peers)

@@ -22,7 +22,7 @@ Get
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/client/metaPartition?id=1" | python -m json.tool
+   curl -v "http://10.196.59.198:17010/metaPartition/get?id=1" | python -m json.tool
 
 
 show base information of meta partition,such as id,start,end and so on.

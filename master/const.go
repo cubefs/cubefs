@@ -37,14 +37,14 @@ const (
 	replicaNumKey         = "replicaNum"
 	followerReadKey       = "followerRead"
 	authenticateKey       = "authenticate"
+	zoneNameKey           = "zoneName"
+	crossZoneKey          = "crossZone"
 )
 
 const (
 	deleteIllegalReplicaErr       = "deleteIllegalReplicaErr "
 	addMissingReplicaErr          = "addMissingReplicaErr "
 	checkDataPartitionDiskErr     = "checkDataPartitionDiskErr  "
-	getAvailDataNodeHostsErr      = "getAvailDataNodeHostsErr "
-	getAvailMetaNodeHostsErr      = "getAvailMetaNodeHostsErr "
 	dataNodeOfflineErr            = "dataNodeOfflineErr "
 	diskOfflineErr                = "diskOfflineErr "
 	handleDataPartitionOfflineErr = "handleDataPartitionOffLineErr "
@@ -76,15 +76,17 @@ const (
 	volExpansionRatio                            = 0.1
 	maxNumberOfDataPartitionsForExpansion        = 100
 	EmptyCrcValue                         uint32 = 4045511210
-	DefaultCellName                              = "default"
+	DefaultZoneName                              = "default"
 	retrySendSyncTaskInternal                    = 3 * time.Second
 	defaultRangeOfCountDifferencesAllowed        = 50
 	defaultMinusOfMaxInodeID                     = 1000
 )
 
 const (
-	normal     uint8 = 0
-	markDelete uint8 = 1
+	normal          uint8 = 0
+	markDelete      uint8 = 1
+	normalZone            = 0
+	unavailableZone       = 1
 )
 
 const (
@@ -108,6 +110,8 @@ const (
 	opSyncAddNodeSet           uint32 = 0x12
 	opSyncUpdateNodeSet        uint32 = 0x13
 	opSyncBatchPut             uint32 = 0x14
+	opSyncUpdateDataNode       uint32 = 0x15
+	opSyncUpdateMetaNode       uint32 = 0x16
 )
 
 const (
