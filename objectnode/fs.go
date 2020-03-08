@@ -107,6 +107,7 @@ type Volume interface {
 	SetXAttr(path string, key string, data []byte) error
 	GetXAttr(path string, key string) (*proto.XAttrInfo, error)
 	DeleteXAttr(path string, key string) error
+	ListXAttrs(path string) (info *proto.XAttrInfo, err error)
 
 	Close() error
 }

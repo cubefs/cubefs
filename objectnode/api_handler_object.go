@@ -1012,6 +1012,50 @@ func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Req
 
 // List object xattrs
 func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
-	// TODO: implement 'listObjectXAttrs'
+	var err error
+	var param *RequestParam
+	if param, err = o.parseRequestParam(r); err != nil {
+		log.LogWarnf("deleteObjectXAttrHandler: parse request param fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+	if len(param.bucket) == 0 {
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
+	var vol *volume
+	if vol, err = o.getVol(param.bucket); err != nil {
+		_ = NoSuchBucket.ServeResponse(w, r)
+		return
+	}
+	if len(param.object) == 0 {
+		_ = InvalidArgument.ServeResponse(w, r)
+		return
+	}
 
+	var info *proto.XAttrInfo
+	if info, err = vol.ListXAttrs(param.object); err != nil {
+		if err == syscall.ENOENT {
+			_ = NoSuchKey.ServeResponse(w, r)
+			return
+		}
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+	xattrs := make([]*XAttr, 0, len(info.XAttrs))
+	info.VisitAll(func(key string, value []byte) bool {
+		xattrs = append(xattrs, &XAttr{Key: key, Value: string(value)})
+		return true
+	})
+
+	var response = ListXAttrsOutput{
+		XAttrs: xattrs,
+	}
+	var marshaled []byte
+	if marshaled, err = MarshalXMLEntity(&response); err != nil {
+		_ = InternalError.ServeResponse(w, r)
+		return
+	}
+	_, _ = w.Write(marshaled)
+	return
 }

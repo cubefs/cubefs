@@ -238,6 +238,19 @@ func (v *volume) DeleteXAttr(path string, key string) (err error) {
 	return
 }
 
+func (v *volume) ListXAttrs(path string) (info *proto.XAttrInfo, err error) {
+	var inode uint64
+	inode, err = v.getInodeFromPath(path)
+	if err != nil {
+		return
+	}
+	if info, err = v.mw.XAttrsList_ll(inode); err != nil {
+		log.LogErrorf("GetXAttr: meta get xattr fail: path(%v) inode(%v) err(%v)", path, inode, err)
+		return
+	}
+	return
+}
+
 func (v *volume) OSSSecure() (accessKey, secretKey string) {
 	return v.mw.OSSSecure()
 }

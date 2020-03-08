@@ -303,7 +303,7 @@ type GetXAttrOutput struct {
 	XAttr   *XAttr   `xml:"XAttr"`
 }
 
-type ListXAttrsResult struct {
+type ListXAttrsOutput struct {
 	XMLName xml.Name `xml:"ListXAttrsResult"`
 	XAttrs  []*XAttr `xml:"XAttrs>XAttr"`
 }
