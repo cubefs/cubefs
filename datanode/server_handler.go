@@ -53,10 +53,10 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	diskReport := &struct {
 		Disks []interface{} `json:"disks"`
-		Cell  string        `json:"cell"`
+		Zone  string        `json:"zone"`
 	}{
 		Disks: disks,
-		Cell:  s.cellName,
+		Zone:  s.zoneName,
 	}
 	s.buildSuccessResp(w, diskReport)
 }

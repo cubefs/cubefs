@@ -24,14 +24,14 @@ type MockDataServer struct {
 	CreatedPartitionCnt             uint64
 	MaxWeightsForCreatePartition    uint64
 	partitions                      []*MockDataPartition
-	cellName                        string
+	zoneName                        string
 	mc                              *master.MasterClient
 }
 
-func NewMockDataServer(addr string, cellName string) *MockDataServer {
+func NewMockDataServer(addr string, zoneName string) *MockDataServer {
 	mds := &MockDataServer{
 		TcpAddr:    addr,
-		cellName:   cellName,
+		zoneName:   zoneName,
 		partitions: make([]*MockDataPartition, 0),
 		mc:         master.NewMasterClient([]string{hostAddr}, false),
 	}
@@ -45,7 +45,7 @@ func (mds *MockDataServer) Start() {
 }
 
 func (mds *MockDataServer) register() {
-	nodeID, err := mds.mc.NodeAPI().AddDataNode(mds.TcpAddr)
+	nodeID, err := mds.mc.NodeAPI().AddDataNode(mds.TcpAddr,mds.zoneName)
 	if err != nil {
 		panic(err)
 	}
@@ -205,7 +205,7 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 	response.MaxCapacity = 800 * util.GB
 	response.RemainingCapacity = 800 * util.GB
 
-	response.CellName = mds.cellName
+	response.ZoneName = mds.zoneName
 	response.PartitionReports = make([]*proto.PartitionReport, 0)
 
 	for _, partition := range mds.partitions {

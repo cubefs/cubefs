@@ -79,6 +79,8 @@ func (m *Server) handleFunctions() {
 	http.Handle(proto.UserGetAKInfo, m.handlerWithInterceptor())
 	http.Handle(proto.UserGetInfo, m.handlerWithInterceptor())
 	http.Handle(proto.UserTransferVol, m.handlerWithInterceptor())
+	http.Handle(proto.UpdateZone, m.handlerWithInterceptor())
+	http.Handle(proto.GetAllZones, m.handlerWithInterceptor())
 	return
 }
 
@@ -205,7 +207,10 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.getUserInfo(w, r)
 	case proto.UserTransferVol:
 		m.transferUserVol(w, r)
+	case proto.UpdateZone:
+		m.updateZone(w, r)
+	case proto.GetAllZones:
+		m.listZone(w, r)
 	default:
-
 	}
 }

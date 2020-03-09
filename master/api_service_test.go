@@ -50,6 +50,8 @@ const (
 	mms5Addr      = "127.0.0.1:8105"
 	mms6Addr      = "127.0.0.1:8106"
 	commonVolName = "commonVol"
+	testZone1     = "zone1"
+	testZone2     = "zone2"
 )
 
 var server = createDefaultMasterServerForTest()
@@ -77,25 +79,27 @@ func createDefaultMasterServerForTest() *Server {
 		panic(err)
 	}
 	//add data node
-	addDataServer(mds1Addr, "cell1")
-	addDataServer(mds2Addr, "cell1")
-	addDataServer(mds3Addr, "cell2")
-	addDataServer(mds4Addr, "cell2")
-	addDataServer(mds5Addr, "cell2")
+	addDataServer(mds1Addr, testZone1)
+	addDataServer(mds2Addr, testZone1)
+	addDataServer(mds3Addr, testZone2)
+	addDataServer(mds4Addr, testZone2)
+	addDataServer(mds5Addr, testZone2)
 	// add meta node
-	addMetaServer(mms1Addr)
-	addMetaServer(mms2Addr)
-	addMetaServer(mms3Addr)
-	addMetaServer(mms4Addr)
-	addMetaServer(mms5Addr)
+	addMetaServer(mms1Addr, testZone1)
+	addMetaServer(mms2Addr, testZone1)
+	addMetaServer(mms3Addr, testZone2)
+	addMetaServer(mms4Addr, testZone2)
+	addMetaServer(mms5Addr, testZone2)
 	time.Sleep(5 * time.Second)
 	testServer.cluster.checkDataNodeHeartbeat()
 	testServer.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
-	fmt.Printf("nodeSet len[%v]\n", len(testServer.cluster.t.nodeSetMap))
-	testServer.cluster.createVol(commonVolName, "cfs", 3, 3, 3, 100, false, false)
-	vol, err := testServer.cluster.getVol(commonVolName)
+	vol, err := testServer.cluster.createVol(commonVolName, "cfs", 3, 3, 3, 100, false, false, false)
+	if err != nil {
+		panic(err)
+	}
+	vol, err = testServer.cluster.getVol(commonVolName)
 	if err != nil {
 		panic(err)
 	}
@@ -151,13 +155,13 @@ func createMasterServer(cfgJSON string) (server *Server, err error) {
 	return server, nil
 }
 
-func addDataServer(addr, cellName string) {
-	mds := mocktest.NewMockDataServer(addr, cellName)
+func addDataServer(addr, zoneName string) {
+	mds := mocktest.NewMockDataServer(addr, zoneName)
 	mds.Start()
 }
 
-func addMetaServer(addr string) {
-	mms := mocktest.NewMockMetaServer(addr)
+func addMetaServer(addr, zoneName string) {
+	mms := mocktest.NewMockMetaServer(addr, zoneName)
 	mms.Start()
 }
 
@@ -397,7 +401,7 @@ func TestGetMetaNode(t *testing.T) {
 func TestAddDataReplica(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
 	dsAddr := "127.0.0.1:9106"
-	addDataServer(dsAddr, "cell2")
+	addDataServer(dsAddr, "zone2")
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddDataReplica, partition.PartitionID, dsAddr)
 	process(reqURL, t)
 	partition.RLock()
@@ -432,7 +436,7 @@ func TestAddMetaReplica(t *testing.T) {
 		return
 	}
 	msAddr := "127.0.0.1:8009"
-	addMetaServer(msAddr)
+	addMetaServer(msAddr, testZone2)
 	server.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(2 * time.Second)
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaReplica, partition.PartitionID, msAddr)

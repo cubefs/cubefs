@@ -51,7 +51,7 @@ var (
 )
 
 const (
-	DefaultCellName         = "cfs_cell1"
+	DefaultZoneName         = "cfs_zone1"
 	DefaultRaftDir          = "raft"
 	DefaultRaftLogsToRetain = 10 // Count of raft logs per data partition
 	DefaultDiskMaxErr       = 1
@@ -67,7 +67,7 @@ const (
 	ConfigKeyLocalIP       = "localIP"       // string
 	ConfigKeyPort          = "port"          // int
 	ConfigKeyMasterAddr    = "masterAddr"    // array
-	ConfigKeyCell          = "cell"          // string
+	ConfigKeyZone          = "zoneName"      // string
 	ConfigKeyDisks         = "disks"         // array
 	ConfigKeyRaftDir       = "raftDir"       // string
 	ConfigKeyRaftHeartbeat = "raftHeartbeat" // string
@@ -78,7 +78,7 @@ const (
 type DataNode struct {
 	space           *SpaceManager
 	port            string
-	cellName        string
+	zoneName        string
 	clusterID       string
 	localIP         string
 	localServerAddr string
@@ -187,18 +187,18 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	for _, ip := range cfg.GetSlice(proto.MasterAddr) {
 		MasterClient.AddNode(ip.(string))
 	}
-	s.cellName = cfg.GetString(ConfigKeyCell)
-	if s.cellName == "" {
-		s.cellName = DefaultCellName
+	s.zoneName = cfg.GetString(ConfigKeyZone)
+	if s.zoneName == "" {
+		s.zoneName = DefaultZoneName
 	}
 	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
-	log.LogDebugf("action[parseConfig] load cellName(%v).", s.cellName)
+	log.LogDebugf("action[parseConfig] load zoneName(%v).", s.zoneName)
 	return
 }
 
 func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
-	s.space = NewSpaceManager(s.cellName)
+	s.space = NewSpaceManager(s.zoneName)
 	if len(strings.TrimSpace(s.port)) == 0 {
 		err = ErrNewSpaceManagerFailed
 		return
@@ -279,7 +279,7 @@ func (s *DataNode) register(cfg *config.Config) {
 
 			// register this data node on the master
 			var nodeID uint64
-			if nodeID, err = MasterClient.NodeAPI().AddDataNode(fmt.Sprintf("%s:%v", LocalIP, s.port)); err != nil {
+			if nodeID, err = MasterClient.NodeAPI().AddDataNode(fmt.Sprintf("%s:%v", LocalIP, s.port), s.zoneName); err != nil {
 				log.LogErrorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
 					masterAddr, err)
 				timer.Reset(2 * time.Second)

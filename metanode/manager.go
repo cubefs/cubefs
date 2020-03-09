@@ -51,11 +51,13 @@ type MetadataManager interface {
 type MetadataManagerConfig struct {
 	NodeID    uint64
 	RootDir   string
+	ZoneName  string
 	RaftStore raftstore.RaftStore
 }
 
 type metadataManager struct {
 	nodeId     uint64
+	zoneName   string
 	rootDir    string
 	raftStore  raftstore.RaftStore
 	connPool   *util.ConnectPool
@@ -325,7 +327,7 @@ func (m *metadataManager) detachPartition(id uint64) (err error) {
 }
 
 func (m *metadataManager) createPartition(id uint64, volName string, start,
-	end uint64, peers []proto.Peer) (err error) {
+end uint64, peers []proto.Peer) (err error) {
 	// check partitions
 	if _, err = m.getPartition(id); err == nil {
 		err = errors.NewErrorf("create partition id=%d is exsited!", id)
@@ -404,6 +406,7 @@ func (m *metadataManager) MarshalJSON() (data []byte, err error) {
 func NewMetadataManager(conf MetadataManagerConfig) MetadataManager {
 	return &metadataManager{
 		nodeId:     conf.NodeID,
+		zoneName:   conf.ZoneName,
 		rootDir:    conf.RootDir,
 		raftStore:  conf.RaftStore,
 		partitions: make(map[uint64]MetaPartition),

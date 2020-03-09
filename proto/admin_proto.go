@@ -36,7 +36,7 @@ const (
 	// Client APIs
 	ClientDataPartitions = "/client/partitions"
 	ClientVol            = "/client/vol"
-	ClientMetaPartition  = "/client/metaPartition"
+	ClientMetaPartition  = "/metaPartition/get"
 	ClientVolStat        = "/client/volStat"
 	ClientMetaPartitions = "/client/metaPartitions"
 
@@ -62,6 +62,8 @@ const (
 	GetDataNodeTaskResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
 
 	GetTopologyView = "/topo/get"
+	UpdateZone      = "/zone/update"
+	GetAllZones     = "/zone/list"
 
 	// Header keys
 	SkipOwnerValidation = "Skip-Owner-Validation"
@@ -228,7 +230,7 @@ type DataNodeHeartbeatResponse struct {
 	RemainingCapacity   uint64 // remaining capacity to create partition
 	CreatedPartitionCnt uint32
 	MaxCapacity         uint64 // maximum capacity to create partition
-	CellName            string
+	ZoneName            string
 	PartitionReports    []*PartitionReport
 	Status              uint8
 	Result              string
@@ -248,7 +250,7 @@ type MetaPartitionReport struct {
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
 type MetaNodeHeartbeatResponse struct {
-	CellName             string
+	ZoneName             string
 	Total                uint64
 	Used                 uint64
 	MetaPartitionReports []*MetaPartitionReport
@@ -422,6 +424,7 @@ type SimpleVolView struct {
 	FollowerRead       bool
 	NeedToLowerReplica bool
 	Authenticate       bool
+	CrossZone          bool
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition

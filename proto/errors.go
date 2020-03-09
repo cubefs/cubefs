@@ -47,7 +47,8 @@ var (
 
 	ErrCannotBeOffLine                 = errors.New("cannot take the data replica offline")
 	ErrNoDataNodeToCreateDataPartition = errors.New("no enough data nodes for creating a data partition")
-	ErrNoCellToCreateDataPartition     = errors.New("no cell available for creating a data partition")
+	ErrNoZoneToCreateDataPartition     = errors.New("no zone available for creating a data partition")
+	ErrNoZoneToCreateMetaPartition     = errors.New("no zone available for creating a meta partition")
 	ErrNoNodeSetToCreateDataPartition  = errors.New("no node set available for creating a data partition")
 	ErrNoNodeSetToCreateMetaPartition  = errors.New("no node set available for creating a meta partition")
 	ErrNoMetaNodeToCreateMetaPartition = errors.New("no enough meta nodes for creating a meta partition")
@@ -70,6 +71,7 @@ var (
 	ErrVolPolicyNotExists              = errors.New("vol policy not exists")
 	ErrDuplicateAccessKey              = errors.New("duplicate access key")
 	ErrHaveNoPolicy                    = errors.New("no vol policy")
+	ErrZoneNotExists                   = errors.New("zone not exists")
 )
 
 // http response error code and error message definitions
@@ -99,7 +101,7 @@ const (
 	ErrCodeNoMetaNodeToWrite
 	ErrCodeCannotBeOffLine
 	ErrCodeNoDataNodeToCreateDataPartition
-	ErrCodeNoCellToCreateDataPartition
+	ErrCodeNoZoneToCreateDataPartition
 	ErrCodeNoNodeSetToCreateDataPartition
 	ErrCodeNoNodeSetToCreateMetaPartition
 	ErrCodeNoMetaNodeToCreateMetaPartition
@@ -122,6 +124,8 @@ const (
 	ErrCodeVolPolicyNotExists
 	ErrCodeDuplicateAccessKey
 	ErrCodeHaveNoPolicy
+	ErrCodeNoZoneToCreateMetaPartition
+	ErrCodeNotExists
 )
 
 // Err2CodeMap error map to code
@@ -151,7 +155,8 @@ var Err2CodeMap = map[error]int32{
 	ErrNoMetaNodeToWrite:               ErrCodeNoMetaNodeToWrite,
 	ErrCannotBeOffLine:                 ErrCodeCannotBeOffLine,
 	ErrNoDataNodeToCreateDataPartition: ErrCodeNoDataNodeToCreateDataPartition,
-	ErrNoCellToCreateDataPartition:     ErrCodeNoCellToCreateDataPartition,
+	ErrNoZoneToCreateDataPartition:     ErrCodeNoZoneToCreateDataPartition,
+	ErrNoZoneToCreateMetaPartition:     ErrCodeNoZoneToCreateMetaPartition,
 	ErrNoNodeSetToCreateDataPartition:  ErrCodeNoNodeSetToCreateDataPartition,
 	ErrNoNodeSetToCreateMetaPartition:  ErrCodeNoNodeSetToCreateMetaPartition,
 	ErrNoMetaNodeToCreateMetaPartition: ErrCodeNoMetaNodeToCreateMetaPartition,
@@ -172,4 +177,5 @@ var Err2CodeMap = map[error]int32{
 	ErrVolPolicyNotExists:              ErrCodeVolPolicyNotExists,
 	ErrDuplicateAccessKey:              ErrCodeDuplicateAccessKey,
 	ErrHaveNoPolicy:                    ErrCodeHaveNoPolicy,
+	ErrZoneNotExists:                   ErrCodeNotExists,
 }

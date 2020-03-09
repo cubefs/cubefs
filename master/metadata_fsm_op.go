@@ -117,6 +117,7 @@ type volValue struct {
 	Owner             string
 	FollowerRead      bool
 	Authenticate      bool
+	CrossZone         bool
 	OSSAccessKey      string
 	OSSSecretKey      string
 }
@@ -138,6 +139,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		Owner:             vol.Owner,
 		FollowerRead:      vol.FollowerRead,
 		Authenticate:      vol.authenticate,
+		CrossZone:         vol.crossZone,
 		OSSAccessKey:      vol.OSSAccessKey,
 		OSSSecretKey:      vol.OSSSecretKey,
 	}
@@ -156,6 +158,7 @@ type dataNodeValue struct {
 	ID        uint64
 	NodeSetID uint64
 	Addr      string
+	ZoneName  string
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
@@ -163,6 +166,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		ID:        dataNode.ID,
 		NodeSetID: dataNode.NodeSetID,
 		Addr:      dataNode.Addr,
+		ZoneName:  dataNode.ZoneName,
 	}
 }
 
@@ -170,6 +174,7 @@ type metaNodeValue struct {
 	ID        uint64
 	NodeSetID uint64
 	Addr      string
+	ZoneName  string
 }
 
 func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
@@ -177,22 +182,21 @@ func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
 		ID:        metaNode.ID,
 		NodeSetID: metaNode.NodeSetID,
 		Addr:      metaNode.Addr,
+		ZoneName:  metaNode.ZoneName,
 	}
 }
 
 type nodeSetValue struct {
 	ID          uint64
 	Capacity    int
-	MetaNodeLen int
-	DataNodeLen int
+	ZoneName    string
 }
 
 func newNodeSetValue(nset *nodeSet) (nsv *nodeSetValue) {
 	nsv = &nodeSetValue{
 		ID:          nset.ID,
 		Capacity:    nset.Capacity,
-		MetaNodeLen: nset.metaNodeLen,
-		DataNodeLen: nset.dataNodeLen,
+		ZoneName:    nset.zoneName,
 	}
 	return
 }
@@ -402,6 +406,10 @@ func (c *Cluster) syncDeleteMetaNode(metaNode *MetaNode) (err error) {
 	return c.syncPutMetaNode(opSyncDeleteMetaNode, metaNode)
 }
 
+func (c *Cluster) syncUpdateMetaNode(metaNode *MetaNode) (err error) {
+	return c.syncPutMetaNode(opSyncUpdateMetaNode, metaNode)
+}
+
 func (c *Cluster) syncPutMetaNode(opType uint32, metaNode *MetaNode) (err error) {
 	metadata := new(RaftCmd)
 	metadata.Op = opType
@@ -421,6 +429,10 @@ func (c *Cluster) syncAddDataNode(dataNode *DataNode) (err error) {
 
 func (c *Cluster) syncDeleteDataNode(dataNode *DataNode) (err error) {
 	return c.syncPutDataNodeInfo(opSyncDeleteDataNode, dataNode)
+}
+
+func (c *Cluster) syncUpdateDataNode(dataNode *DataNode) (err error) {
+	return c.syncPutDataNodeInfo(opSyncUpdateDataNode, dataNode)
 }
 
 func (c *Cluster) syncPutDataNodeInfo(opType uint32, dataNode *DataNode) (err error) {
@@ -484,11 +496,18 @@ func (c *Cluster) loadNodeSets() (err error) {
 			log.LogErrorf("action[loadNodeSets], unmarshal err:%v", err.Error())
 			return err
 		}
-		ns := newNodeSet(nsv.ID, c.cfg.nodeSetCapacity)
-		ns.metaNodeLen = nsv.MetaNodeLen
-		ns.dataNodeLen = nsv.DataNodeLen
-		c.t.putNodeSet(ns)
-		log.LogInfof("action[loadNodeSets], nsId[%v]", ns.ID)
+		if nsv.ZoneName == "" {
+			nsv.ZoneName = DefaultZoneName
+		}
+		ns := newNodeSet(nsv.ID, c.cfg.nodeSetCapacity, nsv.ZoneName)
+		zone, err := c.t.getZone(nsv.ZoneName)
+		if err != nil {
+			log.LogErrorf("action[loadNodeSets], getZone err:%v", err)
+			zone = newZone(nsv.ZoneName)
+			c.t.putZoneIfAbsent(zone)
+		}
+		zone.putNodeSet(ns)
+		log.LogInfof("action[loadNodeSets], nsId[%v],zone[%v]", ns.ID, zone.name)
 	}
 	return
 }
@@ -506,11 +525,14 @@ func (c *Cluster) loadDataNodes() (err error) {
 			err = fmt.Errorf("action[loadDataNodes],value:%v,unmarshal err:%v", string(value), err)
 			return
 		}
-		dataNode := newDataNode(dnv.Addr, c.Name)
+		if dnv.ZoneName == "" {
+			dnv.ZoneName = DefaultZoneName
+		}
+		dataNode := newDataNode(dnv.Addr, dnv.ZoneName, c.Name)
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
 		c.dataNodes.Store(dataNode.Addr, dataNode)
-		log.LogInfof("action[loadDataNodes],dataNode[%v]", dataNode.Addr)
+		log.LogInfof("action[loadDataNodes],dataNode[%v],zone[%v],ns[%v]", dataNode.Addr, dnv.ZoneName, dnv.NodeSetID)
 	}
 	return
 }
@@ -527,11 +549,14 @@ func (c *Cluster) loadMetaNodes() (err error) {
 			err = fmt.Errorf("action[loadMetaNodes],unmarshal err:%v", err.Error())
 			return err
 		}
-		metaNode := newMetaNode(mnv.Addr, c.Name)
+		if mnv.ZoneName == "" {
+			mnv.ZoneName = DefaultZoneName
+		}
+		metaNode := newMetaNode(mnv.Addr, mnv.ZoneName, c.Name)
 		metaNode.ID = mnv.ID
 		metaNode.NodeSetID = mnv.NodeSetID
 		c.metaNodes.Store(metaNode.Addr, metaNode)
-		log.LogInfof("action[loadMetaNodes],metaNode[%v]", metaNode.Addr)
+		log.LogInfof("action[loadMetaNodes],metaNode[%v],zone[%v],ns[%v]", metaNode.Addr, mnv.ZoneName, mnv.NodeSetID)
 	}
 	return
 }

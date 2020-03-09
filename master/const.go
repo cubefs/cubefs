@@ -41,14 +41,14 @@ const (
 	akKey                 = "ak"
 	skKey                 = "sk"
 	targetKey             = "targetak"
+	zoneNameKey           = "zoneName"
+	crossZoneKey          = "crossZone"
 )
 
 const (
 	deleteIllegalReplicaErr       = "deleteIllegalReplicaErr "
 	addMissingReplicaErr          = "addMissingReplicaErr "
 	checkDataPartitionDiskErr     = "checkDataPartitionDiskErr  "
-	getAvailDataNodeHostsErr      = "getAvailDataNodeHostsErr "
-	getAvailMetaNodeHostsErr      = "getAvailMetaNodeHostsErr "
 	dataNodeOfflineErr            = "dataNodeOfflineErr "
 	diskOfflineErr                = "diskOfflineErr "
 	handleDataPartitionOfflineErr = "handleDataPartitionOffLineErr "
@@ -80,15 +80,17 @@ const (
 	volExpansionRatio                            = 0.1
 	maxNumberOfDataPartitionsForExpansion        = 100
 	EmptyCrcValue                         uint32 = 4045511210
-	DefaultCellName                              = "default"
+	DefaultZoneName                              = "default"
 	retrySendSyncTaskInternal                    = 3 * time.Second
 	defaultRangeOfCountDifferencesAllowed        = 50
 	defaultMinusOfMaxInodeID                     = 1000
 )
 
 const (
-	normal     uint8 = 0
-	markDelete uint8 = 1
+	normal          uint8 = 0
+	markDelete      uint8 = 1
+	normalZone            = 0
+	unavailableZone       = 1
 )
 
 const (
@@ -112,14 +114,16 @@ const (
 	opSyncAddNodeSet           uint32 = 0x12
 	opSyncUpdateNodeSet        uint32 = 0x13
 	opSyncBatchPut             uint32 = 0x14
-	opSyncAddAKPolicy          uint32 = 0x15
-	opSyncDeleteAKPolicy       uint32 = 0x16
-	opSyncUpdateAKPolicy       uint32 = 0x17
-	opSyncAddUserAK            uint32 = 0x18
-	opSyncDeleteUserAK         uint32 = 0x19
-	opSyncAddVolAK             uint32 = 0x1A
-	opSyncDeleteVolAK          uint32 = 0x1B
-	opSyncUpdateVolAK          uint32 = 0x1C
+	opSyncUpdateDataNode       uint32 = 0x15
+	opSyncUpdateMetaNode       uint32 = 0x16
+	opSyncAddAKPolicy          uint32 = 0x17
+	opSyncDeleteAKPolicy       uint32 = 0x18
+	opSyncUpdateAKPolicy       uint32 = 0x19
+	opSyncAddUserAK            uint32 = 0x1A
+	opSyncDeleteUserAK         uint32 = 0x1B
+	opSyncAddVolAK             uint32 = 0x1C
+	opSyncDeleteVolAK          uint32 = 0x1D
+	opSyncUpdateVolAK          uint32 = 0x1E
 )
 
 const (
