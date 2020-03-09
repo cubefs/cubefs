@@ -19,7 +19,7 @@ type MetaStore interface {
 
 // MetaStore
 type Store interface {
-	Init(vm *volumeManager)
+	Init(vm *VolumeManager)
 	Put(ns, obj, key string, data []byte) error
 	Get(ns, obj, key string) (data []byte, err error)
 	List(ns, obj string) (data [][]byte, err error)

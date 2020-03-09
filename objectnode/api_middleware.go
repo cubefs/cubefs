@@ -59,6 +59,9 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		SetRequestID(r, requestID)
 		w.Header().Set(HeaderNameRequestId, requestID)
 
+		var action = ActionFromRouteName(mux.CurrentRoute(r).GetName())
+		SetRequestAction(r, action)
+
 		var startTime = time.Now()
 
 		next.ServeHTTP(w, r)
@@ -79,7 +82,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			"  requestID(%v) host(%v) method(%v) url(%v)\n"+
 			"  header(%v)\n"+
 			"  remote(%v) cost(%v)",
-			ActionFromRouteName(mux.CurrentRoute(r).GetName()).String(),
+			action,
 			requestID, r.Host, r.Method, r.URL.String(),
 			headerToString(r.Header),
 			getRequestIP(r), time.Since(startTime))
@@ -155,7 +158,7 @@ func (o *ObjectNode) policyCheckMiddleware(next http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-			wrappedNext := o.policyCheck(next.ServeHTTP, action)
+			wrappedNext := o.policyCheck(next.ServeHTTP)
 			wrappedNext.ServeHTTP(w, r)
 			return
 		})

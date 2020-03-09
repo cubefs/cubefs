@@ -107,7 +107,7 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
-	// get volume use state
+	// get Volume use state
 	if mc, err = o.vm.GetMasterClient(); err != nil {
 		log.LogErrorf("get master client error: err(%v)", err)
 		_ = InternalError.ServeResponse(w, r)
@@ -127,7 +127,7 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
-	// delete volume from master
+	// delete Volume from master
 	if authKey, err = calculateAuthKey(akPolicy.UserID); err != nil {
 		log.LogErrorf("delete bucket[%v] error: calculate authKey(%v) err(%v)", bucket, akPolicy.UserID, err)
 		_ = InternalError.ServeResponse(w, r)
@@ -139,7 +139,7 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// release volume from volume manager
+	// release Volume from Volume manager
 	o.vm.Release(bucket)
 	return
 }
@@ -158,7 +158,7 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	ownVols := akPolicy.Policy.OwnVol
+	ownVols := akPolicy.Policy.OwnVols
 	var buckets = make([]*Bucket, 0)
 	for _, ownVol := range ownVols {
 		var bucket = &Bucket{Name: ownVol, CreationDate: time.Now()} //todo time
@@ -208,20 +208,20 @@ func (o *ObjectNode) getBucketLocation(w http.ResponseWriter, r *http.Request) {
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketTagging.html
 func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
-	var param *RequestParam
-	if param, err = o.parseRequestParam(r); err != nil {
-		log.LogErrorf("getBucketTaggingHandler: parse request param fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InvalidArgument.ServeResponse(w, r)
+	var param = ParseRequestParam(r)
+	if len(param.Bucket()) == 0 {
+		_ = InvalidBucketName.ServeResponse(w, r)
 		return
 	}
-	if param.vol == nil {
+	var vol *Volume
+	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
 		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
 
 	var xattrInfo *proto.XAttrInfo
-	if xattrInfo, err = param.vol.GetXAttr("/", XAttrKeyOSSTagging); err != nil {
-		log.LogErrorf("getBucketTaggingHandler: volume get XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
+	if xattrInfo, err = vol.GetXAttr("/", XAttrKeyOSSTagging); err != nil {
+		log.LogErrorf("getBucketTaggingHandler: Volume get XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
@@ -250,14 +250,22 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketTagging.html
 func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
-	var param *RequestParam
-	if param, err = o.parseRequestParam(r); err != nil {
-		log.LogErrorf("putBucketTaggingHandler: parse request param fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InvalidArgument.ServeResponse(w, r)
+	var errorCode *ErrorCode
+
+	defer func() {
+		if errorCode != nil {
+			_ = errorCode.ServeResponse(w, r)
+		}
+	}()
+
+	var param = ParseRequestParam(r)
+	if param.Bucket() == "" {
+		errorCode = &InvalidBucketName
 		return
 	}
-	if param.vol == nil {
-		_ = NoSuchBucket.ServeResponse(w, r)
+	var vol *Volume
+	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+		errorCode = &NoSuchBucket
 		return
 	}
 
@@ -282,7 +290,7 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if err = param.vol.SetXAttr("/", XAttrKeyOSSTagging, encoded); err != nil {
+	if err = vol.SetXAttr("/", XAttrKeyOSSTagging, encoded); err != nil {
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
@@ -294,27 +302,31 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketTagging.html
 func (o *ObjectNode) deleteBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	var (
-		param *RequestParam
-		err   error
+		err       error
+		errorCode *ErrorCode
 	)
-	if param, err = o.parseRequestParam(r); err != nil {
-		log.LogErrorf("deleteBucketTaggingHandler: parse request param fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InvalidArgument.ServeResponse(w, r)
-		return
-	}
 
-	var volume Volume
-	if len(param.bucket) == 0 {
-		_ = NoSuchBucket.ServeResponse(w, r)
+	defer func() {
+		if errorCode != nil {
+			_ = errorCode.ServeResponse(w, r)
+			return
+		}
+	}()
+
+	var param = ParseRequestParam(r)
+
+	if len(param.Bucket()) == 0 {
+		errorCode = &InvalidBucketName
 		return
 	}
-	if volume, err = o.vm.Volume(param.bucket); err != nil {
-		log.LogErrorf("deleteBucketTaggingHandler: load volume fail: requestID(%v) volume(%v) err(%v)", GetRequestID(r), param.bucket, err)
-		_ = NoSuchBucket.ServeResponse(w, r)
+	var vol *Volume
+	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+		log.LogErrorf("deleteBucketTaggingHandler: load Volume fail: requestID(%v) Volume(%v) err(%v)", GetRequestID(r), param.bucket, err)
+		errorCode = &NoSuchBucket
 		return
 	}
-	if err = volume.DeleteXAttr("/", XAttrKeyOSSTagging); err != nil {
-		log.LogErrorf("deleteBucketTaggingHandler: volume delete tagging xattr fail: requestID(%v) err(%v)", GetRequestID(r), err)
+	if err = vol.DeleteXAttr("/", XAttrKeyOSSTagging); err != nil {
+		log.LogErrorf("deleteBucketTaggingHandler: Volume delete tagging xattr fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}

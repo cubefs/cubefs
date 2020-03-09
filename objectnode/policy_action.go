@@ -167,12 +167,9 @@ func (s Statement) checkActions(p *RequestParam) bool {
 	if s.Actions.Empty() {
 		return true
 	}
-	for _, pa := range p.actions {
-		if s.Actions.ContainsWithAny(string(pa)) {
-			return true
-		}
+	if s.Actions.ContainsWithAny(p.Action().String()) {
+		return true
 	}
-
 	return false
 }
 
@@ -180,12 +177,9 @@ func (s Statement) checkNotActions(p *RequestParam) bool {
 	if s.NotActions.Empty() {
 		return true
 	}
-	for _, pa := range p.actions {
-		if s.NotActions.ContainsWithAny(string(pa)) {
-			return false
-		}
+	if s.NotActions.ContainsWithAny(p.Action().String()) {
+		return false
 	}
-
 	return true
 }
 

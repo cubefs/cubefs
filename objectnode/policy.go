@@ -86,7 +86,7 @@ func parseArn(str string) (*Arn, error) {
 }
 
 // write bucket policy into store and update vol policy meta
-func storeBucketPolicy(bytes []byte, vol *volume) (*Policy, error) {
+func storeBucketPolicy(bytes []byte, vol *Volume) (*Policy, error) {
 	store, err1 := vol.vm.GetStore()
 	if err1 != nil {
 		return nil, err1
@@ -171,11 +171,6 @@ func (p *Policy) IsAllowed(params *RequestParam) bool {
 			}
 		}
 	}
-
-	if params.isOwner {
-		return true
-	}
-
 	for _, s := range p.Statements {
 		if s.Effect == Allow {
 			if s.IsAllowed(params) {
@@ -187,7 +182,7 @@ func (p *Policy) IsAllowed(params *RequestParam) bool {
 	return false
 }
 
-func (o *ObjectNode) policyCheck(f http.HandlerFunc, action Action) http.HandlerFunc {
+func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
 			err error
@@ -205,59 +200,75 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc, action Action) http.Handler
 			}
 		}()
 
-		param, err1 := o.parseRequestParam(r)
-		if err1 != nil {
-			err = err1
-			log.LogInfof("parse Request Param err %v", err)
-			return
-		}
-		if param.vol == nil {
-			log.LogInfof("vol is null")
+		param := ParseRequestParam(r)
+
+		if param.Bucket() == "" {
+			log.LogDebugf("policyCheck: no bucket specified: requestID(%v)", GetRequestID(r))
 			allowed = true
 			return
 		}
 
-		param.actions = action
-
-		//check policy and acl
-		acl := param.vol.loadACL()
-		policy := param.vol.loadPolicy()
-		//check ip policy
-		if policy != nil && !policy.IsEmpty() {
-			allowed = policy.IsAllowed(param)
-			if !allowed {
-				log.LogWarnf("policy not allowed %v", param)
+		var vol *Volume
+		var acl *AccessControlPolicy
+		var policy *Policy
+		var loadBucketMeta = func(bucket string) (err error) {
+			if vol, err = o.getVol(bucket); err != nil {
+				return
+			}
+			acl = vol.loadACL()
+			policy = vol.loadPolicy()
+			return
+		}
+		switch param.action {
+		case CreateBucketAction:
+		default:
+			if err = loadBucketMeta(param.Bucket()); err != nil {
+				log.LogErrorf("policyCheck: load bucket metadata fail: requestID(%v) err(%v)", GetRequestID(r), err)
+				allowed = false
+				ec = &NoSuchBucket
 				return
 			}
 		}
 
-		if acl != nil && !acl.IsAclEmpty() {
+		if vol != nil && policy != nil && !policy.IsEmpty() {
+			allowed = policy.IsAllowed(param)
+			if !allowed {
+				log.LogWarnf("policyCheck: bucket policy not allowed: requestID(%v) volume(%v)", GetRequestID(r), vol.Name())
+				return
+			}
+		}
+
+		if vol != nil && acl != nil && !acl.IsAclEmpty() {
 			allowed = acl.IsAllowed(param)
 			if !allowed {
-				log.LogWarnf("acl not allowed %v", param)
+				log.LogWarnf("policyCheck: bucket ACL not allowed: requestID(%v) volume(%v)", GetRequestID(r), vol.Name())
 				return
 			}
 		}
 		//check user policy
 		var akPolicy *proto.AKPolicy
 		if akPolicy, err = o.getAkInfo(param.accessKey); err != nil {
-			log.LogInfof("get user policy from master error: accessKey(%v), err(%v)", param.accessKey, err)
+			log.LogErrorf("policyCheck: load user policy from master fail: requestID(%v) accessKey(%v) err(%v)",
+				GetRequestID(r), param.AccessKey(), err)
+			allowed = false
 			return
 		}
-		if contains(akPolicy.Policy.OwnVol, param.bucket) {
+		if contains(akPolicy.Policy.OwnVols, param.bucket) {
 			allowed = true
 			return
 		}
 		if apis, exit := akPolicy.Policy.NoneOwnVol[param.bucket]; exit {
-			if !contains(apis, action.String()) {
+			if !contains(apis, param.Action().String()) {
 				allowed = false
-				log.LogWarnf("user policy not allowed %v", param)
+				log.LogWarnf("policyCheck: user policy not allowed: requestID(%v) accessKey(%v) action(%v)",
+					GetRequestID(r), param.AccessKey(), param.Action())
 				return
 			}
 			allowed = true
 		} else {
 			allowed = false
-			log.LogWarnf("user policy not allowed %v", param)
+			log.LogWarnf("policyCheck: user policy not allowed: requestID(%v) accessKey(%v) action(%v)",
+				GetRequestID(r), param.AccessKey(), param.Action())
 			return
 		}
 	}

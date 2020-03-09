@@ -1784,7 +1784,7 @@ func (m *Server) createUserWithPolicy(userID, volName string) (err error) {
 		return
 	}
 	policy := &proto.UserPolicy{
-		OwnVol: []string{volName},
+		OwnVols: []string{volName},
 	}
 	if _, err = m.user.addPolicy(akPolicy.AccessKey, policy); err != nil {
 		return

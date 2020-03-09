@@ -33,12 +33,18 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	)
 	defer o.errorResponse(w, r, err, ec)
 
-	_, bucket, _, vol, err := o.parseRequestParams(r)
-	if bucket == "" {
+	var param = ParseRequestParam(r)
+	if param.Bucket() == "" {
+		ec = &InvalidBucketName
+		return
+	}
+	var vol *Volume
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("getBucketPolicyHandler: load volume fail: requestID(%v) err(%v)",
+			GetRequestID(r), err)
 		ec = &NoSuchBucket
 		return
 	}
-
 	ossMeta := vol.OSSMeta()
 	if ossMeta == nil {
 		ec = &InternalError
@@ -52,7 +58,7 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	w.Write(policyData)
+	_, _ = w.Write(policyData)
 
 	return
 }
@@ -64,8 +70,15 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	)
 	defer o.errorResponse(w, r, err, ec)
 
-	_, bucket, _, vol, err := o.parseRequestParams(r)
-	if bucket == "" {
+	var param = ParseRequestParam(r)
+	if param.Bucket() == "" {
+		ec = &InvalidBucketName
+		return
+	}
+	var vol *Volume
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("putBucketPolicyHandler: load volume fail: requestID(%v) err(%v)",
+			GetRequestID(r), err)
 		ec = &NoSuchBucket
 		return
 	}
@@ -75,21 +88,28 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	bytes, err2 := ioutil.ReadAll(r.Body)
-	if err2 != nil && err2 != io.EOF {
-		err = err2
-		log.LogInfof("read body err, %v", err)
+	var bytes []byte
+	bytes, err = ioutil.ReadAll(r.Body)
+	if err != nil && err != io.EOF {
+		log.LogErrorf("putBucketPolicyHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		ec = &ErrorCode{
+			ErrorCode:    http.StatusText(http.StatusBadRequest),
+			ErrorMessage: err.Error(),
+			StatusCode:   http.StatusBadRequest,
+		}
 		return
 	}
 
-	policy, err3 := storeBucketPolicy(bytes, vol)
-	if err3 != nil {
-		err = err3
-		log.LogErrorf("store policy err, %v", err)
+	var policy *Policy
+	policy, err = storeBucketPolicy(bytes, vol)
+	if err != nil {
+		log.LogErrorf("putBucketPolicyHandler: store policy fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		ec = &InternalError
 		return
 	}
 
-	log.LogInfof("put bucket policy %v %v", bucket, policy)
+	log.LogInfof("putBucketPolicyHandler: put bucket policy: requestID(%v) volume(%v) policy(%v)",
+		GetRequestID(r), param.Bucket(), policy)
 
 	return
 }

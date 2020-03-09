@@ -58,7 +58,7 @@ func (u *User) createKey(owner string) (akPolicy *proto.AKPolicy, err error) {
 		accessKey = util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
 		_, exit = u.akStore.Load(accessKey)
 	}
-	userPolicy = &proto.UserPolicy{OwnVol: make([]string, 0), NoneOwnVol: make(map[string][]string)}
+	userPolicy = &proto.UserPolicy{OwnVols: make([]string, 0), NoneOwnVol: make(map[string][]string)}
 	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: owner}
 	userAK = &proto.UserAK{UserID: owner, AccessKey: accessKey}
 	if err = u.syncAddAKPolicy(akPolicy); err != nil {
@@ -96,7 +96,7 @@ func (u *User) createUserWithKey(owner, accessKey, secretKey string) (akPolicy *
 		err = proto.ErrDuplicateAccessKey
 		goto errHandler
 	}
-	userPolicy = &proto.UserPolicy{OwnVol: make([]string, 0), NoneOwnVol: make(map[string][]string)}
+	userPolicy = &proto.UserPolicy{OwnVols: make([]string, 0), NoneOwnVol: make(map[string][]string)}
 	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: owner}
 	userAK = &proto.UserAK{UserID: owner, AccessKey: accessKey}
 	if err = u.syncAddAKPolicy(akPolicy); err != nil {
@@ -129,7 +129,7 @@ func (u *User) deleteKey(owner string) (err error) {
 	if akPolicy, err = u.getAKInfo(userAK.AccessKey); err != nil {
 		goto errHandler
 	}
-	if len(akPolicy.Policy.OwnVol) > 0 {
+	if len(akPolicy.Policy.OwnVols) > 0 {
 		err = proto.ErrOwnVolExits
 		goto errHandler
 	}
@@ -244,7 +244,7 @@ func (u *User) deleteVolPolicy(vol string) (err error) {
 		}
 		var userPolicy *proto.UserPolicy
 		if action == ALL {
-			userPolicy = &proto.UserPolicy{OwnVol: []string{vol}}
+			userPolicy = &proto.UserPolicy{OwnVols: []string{vol}}
 		} else {
 			userPolicy = &proto.UserPolicy{NoneOwnVol: map[string][]string{vol: {action}}}
 		}
@@ -269,11 +269,11 @@ errHandler:
 
 func (u *User) transferVol(vol, ak, targetKey string) (targetAKPolicy *proto.AKPolicy, err error) {
 	var akPolicy *proto.AKPolicy
-	userPolicy := &proto.UserPolicy{OwnVol: []string{vol}}
+	userPolicy := &proto.UserPolicy{OwnVols: []string{vol}}
 	if akPolicy, err = u.getAKInfo(ak); err != nil {
 		goto errHandler
 	}
-	if !contains(akPolicy.Policy.OwnVol, vol) {
+	if !contains(akPolicy.Policy.OwnVols, vol) {
 		err = proto.ErrHaveNoPolicy
 		goto errHandler
 	}
@@ -303,7 +303,7 @@ func (u *User) getAKInfo(ak string) (akPolicy *proto.AKPolicy, err error) {
 func (u *User) addVolAKs(ak string, policy *proto.UserPolicy) (err error) {
 	u.volAKsMutex.Lock()
 	defer u.volAKsMutex.Unlock()
-	for _, vol := range policy.OwnVol {
+	for _, vol := range policy.OwnVols {
 		if err = u.addAKToVol(ak+separator+ALL, vol); err != nil {
 			return
 		}
@@ -339,7 +339,7 @@ func (u *User) addAKToVol(akAndAction string, vol string) (err error) {
 }
 
 func (u *User) deleteVolAKs(ak string, policy *proto.UserPolicy) (err error) {
-	for _, vol := range policy.OwnVol {
+	for _, vol := range policy.OwnVols {
 		if err = u.deleteAKFromVol(ak+separator+ALL, vol); err != nil {
 			return
 		}

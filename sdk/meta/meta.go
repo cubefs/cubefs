@@ -99,6 +99,7 @@ type Ticket struct {
 }
 
 func NewMetaWrapper(opt *proto.MountOptions, validateOwner bool) (*MetaWrapper, error) {
+	var err error
 	mw := new(MetaWrapper)
 	mw.closeCh = make(chan struct{}, 1)
 	if opt.Authenticate {
@@ -124,8 +125,12 @@ func NewMetaWrapper(opt *proto.MountOptions, validateOwner bool) (*MetaWrapper, 
 	mw.partitions = make(map[uint64]*MetaPartition)
 	mw.ranges = btree.New(32)
 	mw.rwPartitions = make([]*MetaPartition, 0)
-	_ = mw.updateClusterInfo()
-	_ = mw.updateVolStatInfo()
+	if err = mw.updateClusterInfo(); err != nil {
+		return nil, err
+	}
+	if err = mw.updateVolStatInfo(); err != nil {
+		return nil, err
+	}
 
 	limit := MaxMountRetryLimit
 retry:

@@ -15,9 +15,9 @@ type AKPolicy struct {
 }
 
 type UserPolicy struct {
-	OwnVol     []string
+	OwnVols    []string
 	NoneOwnVol map[string][]string // k: vol, v: apis
-	sync.RWMutex
+	mu         sync.RWMutex
 }
 
 type VolAK struct {
@@ -26,10 +26,36 @@ type VolAK struct {
 	sync.RWMutex
 }
 
+func (policy *UserPolicy) AddOwnVol(volume string) {
+	policy.mu.Lock()
+	defer policy.mu.Unlock()
+	for _, ownVol := range policy.OwnVols {
+		if ownVol == volume {
+			return
+		}
+	}
+	policy.OwnVols = append(policy.OwnVols, volume)
+}
+
+func (policy *UserPolicy) RemoveOwnVol(volume string) {
+	policy.mu.Lock()
+	defer policy.mu.Unlock()
+	for i, ownVol := range policy.OwnVols {
+		if ownVol == volume {
+			if i == len(policy.OwnVols)-1 {
+				policy.OwnVols = policy.OwnVols[:i]
+				return
+			}
+			policy.OwnVols = append(policy.OwnVols[:i], policy.OwnVols[i+1:]...)
+			return
+		}
+	}
+}
+
 func (policy *UserPolicy) Add(addPolicy *UserPolicy) {
-	policy.Lock()
-	defer policy.Unlock()
-	policy.OwnVol = append(policy.OwnVol, addPolicy.OwnVol...)
+	policy.mu.Lock()
+	defer policy.mu.Unlock()
+	policy.OwnVols = append(policy.OwnVols, addPolicy.OwnVols...)
 	for k, v := range addPolicy.NoneOwnVol {
 		if apis, ok := policy.NoneOwnVol[k]; ok {
 			policy.NoneOwnVol[k] = append(apis, addPolicy.NoneOwnVol[k]...)
@@ -40,9 +66,9 @@ func (policy *UserPolicy) Add(addPolicy *UserPolicy) {
 }
 
 func (policy *UserPolicy) Delete(deletePolicy *UserPolicy) {
-	policy.Lock()
-	defer policy.Unlock()
-	policy.OwnVol = removeSlice(policy.OwnVol, deletePolicy.OwnVol)
+	policy.mu.Lock()
+	defer policy.mu.Unlock()
+	policy.OwnVols = removeSlice(policy.OwnVols, deletePolicy.OwnVols)
 	for k, v := range deletePolicy.NoneOwnVol {
 		if apis, ok := policy.NoneOwnVol[k]; ok {
 			policy.NoneOwnVol[k] = removeSlice(apis, v)
@@ -67,11 +93,11 @@ func removeSlice(s []string, removeSlice []string) []string {
 
 func CleanPolicy(policy *UserPolicy) (newUserPolicy *UserPolicy) {
 	m := make(map[string]bool)
-	newUserPolicy = &UserPolicy{OwnVol: make([]string, 0), NoneOwnVol: make(map[string][]string)}
-	for _, vol := range policy.OwnVol {
+	newUserPolicy = &UserPolicy{OwnVols: make([]string, 0), NoneOwnVol: make(map[string][]string)}
+	for _, vol := range policy.OwnVols {
 		if _, exit := m[vol]; !exit {
 			m[vol] = true
-			newUserPolicy.OwnVol = append(newUserPolicy.OwnVol, vol)
+			newUserPolicy.OwnVols = append(newUserPolicy.OwnVols, vol)
 		}
 	}
 	for vol, apis := range policy.NoneOwnVol {

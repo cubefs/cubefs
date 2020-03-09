@@ -27,14 +27,14 @@ const (
 )
 
 type xattrStore struct {
-	vm *volumeManager //vol *volume
+	vm *VolumeManager //vol *Volume
 }
 
-func (s *xattrStore) Init(vm *volumeManager) {
+func (s *xattrStore) Init(vm *VolumeManager) {
 	s.vm = vm
 }
 
-func (s *xattrStore) getInode(vol, path string) (*volume, uint64, error) {
+func (s *xattrStore) getInode(vol, path string) (*Volume, uint64, error) {
 	v, err := s.vm.loadVolume(vol)
 	if err != nil {
 		return nil, 0, err
@@ -69,7 +69,7 @@ func (s *xattrStore) Put(vol, path, key string, data []byte) (err error) {
 }
 
 func (s *xattrStore) Get(vol, path, key string) (val []byte, err error) {
-	var v *volume
+	var v *Volume
 	v, err = s.vm.loadVolume(vol)
 	if err != nil {
 		return

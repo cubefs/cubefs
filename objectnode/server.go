@@ -53,7 +53,7 @@ type ObjectNode struct {
 	listen     string
 	region     string
 	httpServer *http.Server
-	vm         VolumeManager
+	vm         *VolumeManager
 	mc         *master.MasterClient
 	state      uint32
 	wg         sync.WaitGroup

@@ -226,7 +226,7 @@ func StringLikeFunc(reqParam *RequestParam, storeCondVals ConditionValues) bool 
 	for k, storeVals := range storeCondVals {
 		key := TrimAwsPrefixKey(k)
 		canonicalKey := http.CanonicalHeaderKey(key)
-		if reqVals, ok := reqParam.condVals[canonicalKey]; ok {
+		if reqVals, ok := reqParam.conditionVars[canonicalKey]; ok {
 			for _, rv := range reqVals {
 				for sv, _ := range storeVals.values {
 					if match := patternMatch(rv, sv); match {
@@ -248,13 +248,13 @@ func StringEqualsFunc(reqParam *RequestParam, storeCondVals ConditionValues) boo
 	for k, storeVals := range storeCondVals {
 		key := TrimAwsPrefixKey(k)
 		canonicalKey := http.CanonicalHeaderKey(key)
-		if reqVals, ok := reqParam.condVals[canonicalKey]; ok {
+		if reqVals, ok := reqParam.conditionVars[canonicalKey]; ok {
 			for _, rv := range reqVals {
 				if storeVals.Contains(rv) {
 					return true
 				}
 			}
-		} else if reqVals, ok := reqParam.condVals[key]; ok {
+		} else if reqVals, ok := reqParam.conditionVars[key]; ok {
 			for _, rv := range reqVals {
 				if storeVals.Contains(rv) {
 					return true
@@ -295,7 +295,7 @@ func BoolFunc(p *RequestParam, policyCondtion ConditionValues) bool {
 	for condKey, condVal := range policyCondtion {
 		for vals, _ := range condVal.values {
 			val1, _ := strconv.ParseBool(vals)
-			if cond, ok := p.condVals[condKey]; ok {
+			if cond, ok := p.conditionVars[condKey]; ok {
 				for _, c := range cond {
 					val2, _ := strconv.ParseBool(c)
 					return val1 == val2
@@ -314,7 +314,7 @@ func DateEqualsFunc(p *RequestParam, policyVals ConditionValues) bool {
 			if err != nil {
 				return false
 			}
-			if reqVals, ok := p.condVals[k]; ok {
+			if reqVals, ok := p.conditionVars[k]; ok {
 				for _, reqVal := range reqVals {
 					reqDate, err := time.Parse(AMZTimeFormat, reqVal)
 					if err != nil {
@@ -340,7 +340,7 @@ func DateLessThanFunc(p *RequestParam, value ConditionValues) bool {
 			if err != nil {
 				return false
 			}
-			if reqVals, ok := p.condVals[k]; ok {
+			if reqVals, ok := p.conditionVars[k]; ok {
 				for _, reqVal := range reqVals {
 					reqDate, err := time.Parse(AMZTimeFormat, reqVal)
 					if err != nil {
@@ -361,7 +361,7 @@ func DateLessThanEqualsFunc(p *RequestParam, value ConditionValues) bool {
 			if err != nil {
 				return false
 			}
-			if reqVals, ok := p.condVals[k]; ok {
+			if reqVals, ok := p.conditionVars[k]; ok {
 				for _, reqVal := range reqVals {
 					reqDate, err := time.Parse(AMZTimeFormat, reqVal)
 					if err != nil {

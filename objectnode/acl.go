@@ -203,8 +203,8 @@ func (acp *AccessControlPolicy) SetBucketStandardACL(param *RequestParam, acl st
 		if uri, ok := aclRoleURIMap[role]; ok {
 			grantee.URI = uri
 		} else {
-			grantee.Id = param.account
-			grantee.DisplayName = param.account
+			grantee.Id = param.accessKey
+			grantee.DisplayName = param.accessKey
 		}
 		for _, p := range permissions {
 			grant := Grant{
@@ -218,8 +218,8 @@ func (acp *AccessControlPolicy) SetBucketStandardACL(param *RequestParam, acl st
 
 func (acp *AccessControlPolicy) SetBucketGrantACL(param *RequestParam, permission Permission) {
 	grantee := Grantee{
-		Id:          param.account,
-		DisplayName: param.account,
+		Id:          param.accessKey,
+		DisplayName: param.accessKey,
 	}
 	grant := Grant{
 		Grantee:    grantee,
@@ -228,8 +228,8 @@ func (acp *AccessControlPolicy) SetBucketGrantACL(param *RequestParam, permissio
 	acp.Acl.Grants = append(acp.Acl.Grants, grant)
 }
 
-func (acl *AccessControlPolicy) Marshal() ([]byte, error) {
-	data, err := xml.Marshal(acl)
+func (acp *AccessControlPolicy) Marshal() ([]byte, error) {
+	data, err := xml.Marshal(acp)
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +254,7 @@ func ParseACL(bytes []byte, bucket string) (*AccessControlPolicy, error) {
 	return acl, nil
 }
 
-func storeBucketACL(bytes []byte, vol *volume) (*AccessControlPolicy, error) {
+func storeBucketACL(bytes []byte, vol *Volume) (*AccessControlPolicy, error) {
 	store, err1 := vol.vm.GetStore()
 	if err1 != nil {
 		return nil, err1
@@ -280,9 +280,9 @@ func (g Grant) Validate() bool {
 }
 
 func (g *Grant) IsAllowed(param *RequestParam) bool {
-	if param.account != g.Grantee.Id {
+	if param.accessKey != g.Grantee.Id {
 		return false
 	}
 	actions := aclBucketPermissionActions[g.Permission]
-	return IsIntersectionActions(actions, param.actions)
+	return IsIntersectionActions(actions, param.Action())
 }

@@ -23,10 +23,10 @@ const (
 )
 
 type objectStore struct {
-	vm *volumeManager
+	vm *VolumeManager
 }
 
-func (s *objectStore) Init(vm *volumeManager) {
+func (s *objectStore) Init(vm *VolumeManager) {
 	s.vm = vm
 	//TODO: init meta dir
 }

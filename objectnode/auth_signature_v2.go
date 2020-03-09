@@ -257,16 +257,13 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, e
 		return false, nil
 	}
 
-	params, _, _, vl, err := o.parseRequestParams(r)
-	if err != nil || vl == nil {
-		log.LogInfof("check PresignedSignatureV2 error: %v %v", err, vl)
-		return false, err
-	}
-	accessKey := params["accessKey"]
-	signature := params["signature"]
-	expires := params["expires"]
+	var param = ParseRequestParam(r)
+	accessKey := param.GetVar("accessKey")
+	signature := param.GetVar("signature")
+	expires := param.GetVar("expires")
 	if accessKey == "" || signature == "" || expires == "" {
-		log.LogInfof("validateUrlBySignatureAlgorithmV2 params not valid: %v", params)
+		log.LogInfof("validateUrlBySignatureAlgorithmV2: incomplete authentication information: requestID(%v)",
+			GetRequestID(r))
 		return false, nil
 	}
 

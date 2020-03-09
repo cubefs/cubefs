@@ -64,6 +64,7 @@ const (
 	ParamFetchOwner = "fetch-owner"
 	ParamMaxKeys    = "max-keys"
 	ParamStartAfter = "start-after"
+	ParamKey        = "key"
 
 	ParamMaxParts       = "max-parts"
 	ParamUploadIdMarker = "upload-id-​marker"
