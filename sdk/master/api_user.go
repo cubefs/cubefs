@@ -7,12 +7,12 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 )
 
-type OSSAPI struct {
+type UserAPI struct {
 	mc *MasterClient
 }
 
-func (api *OSSAPI) CreateUser(userID string) (akPolicy *proto.AKPolicy, err error) {
-	var request = newAPIRequest(http.MethodPut, proto.OSSCreateUser)
+func (api *UserAPI) CreateUser(userID string) (akPolicy *proto.AKPolicy, err error) {
+	var request = newAPIRequest(http.MethodPut, proto.UserCreate)
 	request.addParam("owner", userID)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
@@ -25,8 +25,8 @@ func (api *OSSAPI) CreateUser(userID string) (akPolicy *proto.AKPolicy, err erro
 	return
 }
 
-func (api *OSSAPI) CreateUserWithKey(userID, ak, sk string) (akPolicy *proto.AKPolicy, err error) {
-	var request = newAPIRequest(http.MethodPut, proto.OSSCreateUserWithKey)
+func (api *UserAPI) CreateUserWithKey(userID, ak, sk string) (akPolicy *proto.AKPolicy, err error) {
+	var request = newAPIRequest(http.MethodPut, proto.UserCreateWithKey)
 	request.addParam("owner", userID)
 	request.addParam("ak", ak)
 	request.addParam("sk", sk)
@@ -41,8 +41,8 @@ func (api *OSSAPI) CreateUserWithKey(userID, ak, sk string) (akPolicy *proto.AKP
 	return
 }
 
-func (api *OSSAPI) DeleteUser(userID string) (err error) {
-	var request = newAPIRequest(http.MethodDelete, proto.OSSDeleteUser)
+func (api *UserAPI) DeleteUser(userID string) (err error) {
+	var request = newAPIRequest(http.MethodDelete, proto.UserDelete)
 	request.addParam("owner", userID)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -50,8 +50,8 @@ func (api *OSSAPI) DeleteUser(userID string) (err error) {
 	return
 }
 
-func (api *OSSAPI) GetAKInfo(accesskey string) (akPolicy *proto.AKPolicy, err error) {
-	var request = newAPIRequest(http.MethodGet, proto.OSSGetAKInfo)
+func (api *UserAPI) GetAKInfo(accesskey string) (akPolicy *proto.AKPolicy, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.UserGetAKInfo)
 	request.addParam("ak", accesskey)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
@@ -64,8 +64,8 @@ func (api *OSSAPI) GetAKInfo(accesskey string) (akPolicy *proto.AKPolicy, err er
 	return
 }
 
-func (api *OSSAPI) GetUserInfo(userID string) (akPolicy *proto.AKPolicy, err error) {
-	var request = newAPIRequest(http.MethodGet, proto.OSSGetUserInfo)
+func (api *UserAPI) GetUserInfo(userID string) (akPolicy *proto.AKPolicy, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.UserGetInfo)
 	request.addParam("owner", userID)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
@@ -78,12 +78,12 @@ func (api *OSSAPI) GetUserInfo(userID string) (akPolicy *proto.AKPolicy, err err
 	return
 }
 
-func (api *OSSAPI) AddPolicy(accesskey string, policy *proto.UserPolicy) (akPolicy *proto.AKPolicy, err error) {
+func (api *UserAPI) AddPolicy(accesskey string, policy *proto.UserPolicy) (akPolicy *proto.AKPolicy, err error) {
 	var body []byte
 	if body, err = json.Marshal(policy); err != nil {
 		return
 	}
-	var request = newAPIRequest(http.MethodPost, proto.OSSAddPolicy)
+	var request = newAPIRequest(http.MethodPost, proto.UserAddPolicy)
 	request.addParam("ak", accesskey)
 	request.addBody(body)
 	var data []byte
@@ -97,12 +97,12 @@ func (api *OSSAPI) AddPolicy(accesskey string, policy *proto.UserPolicy) (akPoli
 	return
 }
 
-func (api *OSSAPI) DeletePolicy(accesskey string, policy *proto.UserPolicy) (akPolicy *proto.AKPolicy, err error) {
+func (api *UserAPI) DeletePolicy(accesskey string, policy *proto.UserPolicy) (akPolicy *proto.AKPolicy, err error) {
 	var body []byte
 	if body, err = json.Marshal(policy); err != nil {
 		return
 	}
-	var request = newAPIRequest(http.MethodPost, proto.OSSDeletePolicy)
+	var request = newAPIRequest(http.MethodPost, proto.UserDeletePolicy)
 	request.addParam("ak", accesskey)
 	request.addBody(body)
 	var data []byte
@@ -116,8 +116,8 @@ func (api *OSSAPI) DeletePolicy(accesskey string, policy *proto.UserPolicy) (akP
 	return
 }
 
-func (api *OSSAPI) DeleteVolPolicy(vol string) (err error) {
-	var request = newAPIRequest(http.MethodPost, proto.OSSDeleteVolPolicy)
+func (api *UserAPI) DeleteVolPolicy(vol string) (err error) {
+	var request = newAPIRequest(http.MethodPost, proto.UserDeleteVolPolicy)
 	request.addParam("name", vol)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -125,8 +125,8 @@ func (api *OSSAPI) DeleteVolPolicy(vol string) (err error) {
 	return
 }
 
-func (api *OSSAPI) TransferVol(vol, ak, targetAK string) (akPolicy *proto.AKPolicy, err error) {
-	var request = newAPIRequest(http.MethodPost, proto.OSSTransferVol)
+func (api *UserAPI) TransferVol(vol, ak, targetAK string) (akPolicy *proto.AKPolicy, err error) {
+	var request = newAPIRequest(http.MethodPost, proto.UserTransferVol)
 	request.addParam("name", vol)
 	request.addParam("ak", ak)
 	request.addParam("targetak", targetAK)

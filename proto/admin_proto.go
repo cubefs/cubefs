@@ -66,16 +66,16 @@ const (
 	// Header keys
 	SkipOwnerValidation = "Skip-Owner-Validation"
 
-	// Object Store APIs
-	OSSCreateUser        = "/oss/createuser"
-	OSSCreateUserWithKey = "/oss/createuserwithkey"
-	OSSDeleteUser        = "/oss/deleteuser"
-	OSSAddPolicy         = "/oss/addpolicy"
-	OSSDeletePolicy      = "/oss/deletepolicy"
-	OSSDeleteVolPolicy   = "/oss/deletevolpolicy"
-	OSSGetUserInfo       = "/oss/userinfo"
-	OSSGetAKInfo         = "/oss/akinfo"
-	OSSTransferVol       = "/oss/transfervol"
+	// APIs for user management
+	UserCreate          = "/user/create"
+	UserCreateWithKey   = "/user/createWithKey"
+	UserDelete          = "/user/delete"
+	UserAddPolicy       = "/user/addPolicy"
+	UserDeletePolicy    = "/user/deletePolicy"
+	UserDeleteVolPolicy = "/user/deleteVolPolicy"
+	UserGetInfo         = "/user/info"
+	UserGetAKInfo       = "/user/akInfo"
+	UserTransferVol     = "/user/transferVol"
 )
 
 // HTTPReply uniform response structure

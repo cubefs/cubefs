@@ -70,15 +70,15 @@ func (m *Server) handleFunctions() {
 	http.Handle(proto.RemoveRaftNode, m.handlerWithInterceptor())
 	http.Handle(proto.AdminSetMetaNodeThreshold, m.handlerWithInterceptor())
 	http.Handle(proto.GetTopologyView, m.handlerWithInterceptor())
-	http.Handle(proto.OSSCreateUser, m.handlerWithInterceptor())
-	http.Handle(proto.OSSCreateUserWithKey, m.handlerWithInterceptor())
-	http.Handle(proto.OSSDeleteUser, m.handlerWithInterceptor())
-	http.Handle(proto.OSSAddPolicy, m.handlerWithInterceptor())
-	http.Handle(proto.OSSDeletePolicy, m.handlerWithInterceptor())
-	http.Handle(proto.OSSDeleteVolPolicy, m.handlerWithInterceptor())
-	http.Handle(proto.OSSGetAKInfo, m.handlerWithInterceptor())
-	http.Handle(proto.OSSGetUserInfo, m.handlerWithInterceptor())
-	http.Handle(proto.OSSTransferVol, m.handlerWithInterceptor())
+	http.Handle(proto.UserCreate, m.handlerWithInterceptor())
+	http.Handle(proto.UserCreateWithKey, m.handlerWithInterceptor())
+	http.Handle(proto.UserDelete, m.handlerWithInterceptor())
+	http.Handle(proto.UserAddPolicy, m.handlerWithInterceptor())
+	http.Handle(proto.UserDeletePolicy, m.handlerWithInterceptor())
+	http.Handle(proto.UserDeleteVolPolicy, m.handlerWithInterceptor())
+	http.Handle(proto.UserGetAKInfo, m.handlerWithInterceptor())
+	http.Handle(proto.UserGetInfo, m.handlerWithInterceptor())
+	http.Handle(proto.UserTransferVol, m.handlerWithInterceptor())
 	return
 }
 
@@ -187,24 +187,24 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.setMetaNodeThreshold(w, r)
 	case proto.GetTopologyView:
 		m.getTopology(w, r)
-	case proto.OSSCreateUser:
-		m.createOSSUser(w, r)
-	case proto.OSSCreateUserWithKey:
-		m.createOSSUserWithKey(w, r)
-	case proto.OSSDeleteUser:
-		m.deleteOSSUser(w, r)
-	case proto.OSSAddPolicy:
-		m.addOSSPolicy(w, r)
-	case proto.OSSDeletePolicy:
-		m.deleteOSSPolicy(w, r)
-	case proto.OSSDeleteVolPolicy:
-		m.deleteOSSVolPolicy(w, r)
-	case proto.OSSGetAKInfo:
-		m.getOSSAKInfo(w, r)
-	case proto.OSSGetUserInfo:
-		m.getOSSUserInfo(w, r)
-	case proto.OSSTransferVol:
-		m.transferOSSVol(w, r)
+	case proto.UserCreate:
+		m.createUser(w, r)
+	case proto.UserCreateWithKey:
+		m.createUserWithKey(w, r)
+	case proto.UserDelete:
+		m.deleteUser(w, r)
+	case proto.UserAddPolicy:
+		m.addUserPolicy(w, r)
+	case proto.UserDeletePolicy:
+		m.deleteUserPolicy(w, r)
+	case proto.UserDeleteVolPolicy:
+		m.deleteUserVolPolicy(w, r)
+	case proto.UserGetAKInfo:
+		m.getUserAKInfo(w, r)
+	case proto.UserGetInfo:
+		m.getUserInfo(w, r)
+	case proto.UserTransferVol:
+		m.transferUserVol(w, r)
 	default:
 
 	}

@@ -77,8 +77,8 @@ func (c *MasterClient) NodeAPI() *NodeAPI {
 	}
 }
 
-func (c *MasterClient) OSSAPI() *OSSAPI {
-	return &OSSAPI{
+func (c *MasterClient) UserAPI() *UserAPI {
+	return &UserAPI{
 		mc: c,
 	}
 }

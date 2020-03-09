@@ -11,7 +11,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
-func (m *Server) createOSSUser(w http.ResponseWriter, r *http.Request) {
+func (m *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	var (
 		akPolicy *proto.AKPolicy
 		owner    string
@@ -28,7 +28,7 @@ func (m *Server) createOSSUser(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(akPolicy))
 }
 
-func (m *Server) createOSSUserWithKey(w http.ResponseWriter, r *http.Request) {
+func (m *Server) createUserWithKey(w http.ResponseWriter, r *http.Request) {
 	var (
 		akPolicy *proto.AKPolicy
 		owner    string
@@ -47,7 +47,7 @@ func (m *Server) createOSSUserWithKey(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(akPolicy))
 }
 
-func (m *Server) deleteOSSUser(w http.ResponseWriter, r *http.Request) {
+func (m *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 	var (
 		owner string
 		err   error
@@ -65,7 +65,7 @@ func (m *Server) deleteOSSUser(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
-func (m *Server) getOSSAKInfo(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getUserAKInfo(w http.ResponseWriter, r *http.Request) {
 	var (
 		ak       string
 		akPolicy *proto.AKPolicy
@@ -82,7 +82,7 @@ func (m *Server) getOSSAKInfo(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(akPolicy))
 }
 
-func (m *Server) getOSSUserInfo(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getUserInfo(w http.ResponseWriter, r *http.Request) {
 	var (
 		owner    string
 		akPolicy *proto.AKPolicy
@@ -99,7 +99,7 @@ func (m *Server) getOSSUserInfo(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(akPolicy))
 }
 
-func (m *Server) addOSSPolicy(w http.ResponseWriter, r *http.Request) {
+func (m *Server) addUserPolicy(w http.ResponseWriter, r *http.Request) {
 	var (
 		ak         string
 		akPolicy   *proto.AKPolicy
@@ -127,7 +127,7 @@ func (m *Server) addOSSPolicy(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(akPolicy))
 }
 
-func (m *Server) deleteOSSPolicy(w http.ResponseWriter, r *http.Request) {
+func (m *Server) deleteUserPolicy(w http.ResponseWriter, r *http.Request) {
 	var (
 		ak         string
 		akPolicy   *proto.AKPolicy
@@ -155,7 +155,7 @@ func (m *Server) deleteOSSPolicy(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(akPolicy))
 }
 
-func (m *Server) deleteOSSVolPolicy(w http.ResponseWriter, r *http.Request) {
+func (m *Server) deleteUserVolPolicy(w http.ResponseWriter, r *http.Request) {
 	var (
 		vol string
 		err error
@@ -173,7 +173,7 @@ func (m *Server) deleteOSSVolPolicy(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
-func (m *Server) transferOSSVol(w http.ResponseWriter, r *http.Request) {
+func (m *Server) transferUserVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		vol       string
 		ak        string

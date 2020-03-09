@@ -85,22 +85,10 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 
 func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 
-	var isSignatureIgnoredAction = func(action Action) bool {
-		if len(o.signatureIgnoredActions) == 0 {
-			return false
-		}
-		for _, signatureIgnored := range o.signatureIgnoredActions {
-			if signatureIgnored == action {
-				return true
-			}
-		}
-		return false
-	}
-
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			var currentAction = ActionFromRouteName(mux.CurrentRoute(r).GetName())
-			if currentAction.IsKnown() && isSignatureIgnoredAction(currentAction) {
+			if currentAction.IsKnown() && o.signatureIgnoredActions.Constant(currentAction) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -151,6 +139,10 @@ func (o *ObjectNode) policyCheckMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			action := ActionFromRouteName(mux.CurrentRoute(r).GetName())
+			if action.IsKnown() && o.signatureIgnoredActions.Constant(action) {
+				next.ServeHTTP(w, r)
+				return
+			}
 			wrappedNext := o.policyCheck(next.ServeHTTP, action)
 			wrappedNext.ServeHTTP(w, r)
 			return

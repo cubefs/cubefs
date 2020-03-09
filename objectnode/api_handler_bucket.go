@@ -82,7 +82,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 	policy := &proto.UserPolicy{
 		OwnVol: []string{bucket},
 	}
-	if _, err = o.mc.OSSAPI().AddPolicy(auth.accessKey, policy); err != nil {
+	if _, err = o.mc.UserAPI().AddPolicy(auth.accessKey, policy); err != nil {
 		log.LogErrorf("add bucket[%v] policy for user[%v] error: err(%v)", bucket, auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
@@ -130,7 +130,7 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = BucketNotEmpty.ServeResponse(w, r)
 		return
 	}
-	if err = mc.OSSAPI().DeleteVolPolicy(bucket); err != nil {
+	if err = mc.UserAPI().DeleteVolPolicy(bucket); err != nil {
 		log.LogErrorf("delete bucket[%v] error: delete related policy err(%v)", bucket, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
@@ -344,7 +344,7 @@ func (o *ObjectNode) getAkInfo(accessKey string) (*proto.AKPolicy, error) {
 	var err error
 	akPolicy, exit := o.userStore.Get(accessKey)
 	if !exit {
-		if akPolicy, err = o.mc.OSSAPI().GetAKInfo(accessKey); err != nil {
+		if akPolicy, err = o.mc.UserAPI().GetAKInfo(accessKey); err != nil {
 			log.LogInfof("load user policy err: %v", err)
 			return akPolicy, err
 		}

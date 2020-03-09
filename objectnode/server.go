@@ -59,7 +59,7 @@ type ObjectNode struct {
 	wg         sync.WaitGroup
 	userStore  *UserStore
 
-	signatureIgnoredActions []Action // signature ignored actions
+	signatureIgnoredActions Actions // signature ignored actions
 
 	control common.Control
 }

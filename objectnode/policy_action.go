@@ -201,3 +201,17 @@ func IsIntersectionActions(actions []Action, action Action) bool {
 	}
 	return false
 }
+
+type Actions []Action
+
+func (actions Actions) Constant(action Action) bool {
+	if len(actions) == 0 {
+		return false
+	}
+	for _, a := range actions {
+		if a == action {
+			return true
+		}
+	}
+	return false
+}
