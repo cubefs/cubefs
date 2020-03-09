@@ -153,10 +153,11 @@ func (mw *MetaWrapper) OSSSecure() (accessKey, secretKey string) {
 	return mw.ossSecure.AccessKey, mw.ossSecure.SecretKey
 }
 
-func (mw *MetaWrapper) Close() {
+func (mw *MetaWrapper) Close() error {
 	mw.closeOnce.Do(func() {
 		close(mw.closeCh)
 	})
+	return nil
 }
 
 func (mw *MetaWrapper) Cluster() string {

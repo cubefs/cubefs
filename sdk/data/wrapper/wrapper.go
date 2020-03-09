@@ -47,12 +47,15 @@ type Wrapper struct {
 	localLeaderPartitions []*DataPartition
 	followerRead          bool
 	mc                    *masterSDK.MasterClient
+	stopOnce              sync.Once
+	stopC                 chan struct{}
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
 func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error) {
 	masters := strings.Split(masterHosts, ",")
 	w = new(Wrapper)
+	w.stopC = make(chan struct{})
 	w.masters = masters
 	w.mc = masterSDK.NewMasterClient(masters, false)
 	w.volName = volName
@@ -72,6 +75,12 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 	}
 	go w.update()
 	return
+}
+
+func (w *Wrapper) Stop() {
+	w.stopOnce.Do(func() {
+		close(w.stopC)
+	})
 }
 
 func (w *Wrapper) FollowerRead() bool {
@@ -112,6 +121,8 @@ func (w *Wrapper) update() {
 		select {
 		case <-ticker.C:
 			w.updateDataPartition()
+		case <-w.stopC:
+			return
 		}
 	}
 }

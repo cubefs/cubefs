@@ -16,10 +16,11 @@ package stream
 
 import (
 	"fmt"
-	"golang.org/x/time/rate"
 	"runtime"
 	"sync"
 	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
@@ -308,5 +309,17 @@ func setRate(lim *rate.Limiter, val int) string {
 }
 
 func (client *ExtentClient) Close() error {
+	// release streamers
+	var inodes []uint64
+	client.streamerLock.Lock()
+	inodes = make([]uint64, 0, len(client.streamers))
+	for inode, _ := range client.streamers {
+		inodes = append(inodes, inode)
+	}
+	client.streamerLock.Unlock()
+	for _, inode := range inodes {
+		_ = client.EvictStream(inode)
+	}
+	client.dataWrapper.Stop()
 	return nil
 }

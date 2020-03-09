@@ -34,11 +34,12 @@ type VolumeManager struct {
 func (m *VolumeManager) Release(volName string) {
 	m.volMu.Lock()
 	defer m.volMu.Unlock()
+	if vol, has := m.volumes[volName]; has && vol != nil {
+		if closeErr := vol.Close(); closeErr != nil {
+			log.LogErrorf("Release: close volume fail: err(%v)", closeErr)
+		}
+	}
 	delete(m.volumes, volName)
-}
-
-func (m *VolumeManager) ReleaseAll() {
-	panic("implement me")
 }
 
 func (m *VolumeManager) Volume(volName string) (*Volume, error) {

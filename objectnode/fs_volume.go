@@ -994,8 +994,9 @@ func (v *Volume) FileInfo(path string) (info *FSFileInfo, err error) {
 
 func (v *Volume) Close() error {
 	v.closeOnce.Do(func() {
-		v.mw.Close()
 		v.stopOSSMetaSync()
+		_ = v.mw.Close()
+		_ = v.ec.Close()
 	})
 	return nil
 }
