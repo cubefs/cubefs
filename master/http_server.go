@@ -70,6 +70,8 @@ func (m *Server) handleFunctions() {
 	http.Handle(proto.RemoveRaftNode, m.handlerWithInterceptor())
 	http.Handle(proto.AdminSetMetaNodeThreshold, m.handlerWithInterceptor())
 	http.Handle(proto.GetTopologyView, m.handlerWithInterceptor())
+	http.Handle(proto.UpdateZone, m.handlerWithInterceptor())
+	http.Handle(proto.GetAllZones, m.handlerWithInterceptor())
 
 	return
 }
@@ -179,6 +181,10 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.setMetaNodeThreshold(w, r)
 	case proto.GetTopologyView:
 		m.getTopology(w, r)
+	case proto.UpdateZone:
+		m.updateZone(w, r)
+	case proto.GetAllZones:
+		m.listZone(w, r)
 	default:
 
 	}

@@ -47,7 +47,8 @@ var (
 
 	ErrCannotBeOffLine                 = errors.New("cannot take the data replica offline")
 	ErrNoDataNodeToCreateDataPartition = errors.New("no enough data nodes for creating a data partition")
-	ErrNoCellToCreateDataPartition     = errors.New("no cell available for creating a data partition")
+	ErrNoZoneToCreateDataPartition     = errors.New("no zone available for creating a data partition")
+	ErrNoZoneToCreateMetaPartition     = errors.New("no zone available for creating a meta partition")
 	ErrNoNodeSetToCreateDataPartition  = errors.New("no node set available for creating a data partition")
 	ErrNoNodeSetToCreateMetaPartition  = errors.New("no node set available for creating a meta partition")
 	ErrNoMetaNodeToCreateMetaPartition = errors.New("no enough meta nodes for creating a meta partition")
@@ -64,6 +65,7 @@ var (
 	ErrInvalidTicket                   = errors.New("invalid ticket")
 	ErrExpiredTicket                   = errors.New("expired ticket")
 	ErrMasterAPIGenRespError           = errors.New("master API generate response error")
+	ErrZoneNotExists                   = errors.New("zone not exists")
 )
 
 // http response error code and error message definitions
@@ -93,7 +95,7 @@ const (
 	ErrCodeNoMetaNodeToWrite
 	ErrCodeCannotBeOffLine
 	ErrCodeNoDataNodeToCreateDataPartition
-	ErrCodeNoCellToCreateDataPartition
+	ErrCodeNoZoneToCreateDataPartition
 	ErrCodeNoNodeSetToCreateDataPartition
 	ErrCodeNoNodeSetToCreateMetaPartition
 	ErrCodeNoMetaNodeToCreateMetaPartition
@@ -110,6 +112,8 @@ const (
 	ErrCodeInvalidTicket
 	ErrCodeExpiredTicket
 	ErrCodeMasterAPIGenRespError
+	ErrCodeNoZoneToCreateMetaPartition
+	ErrCodeNotExists
 )
 
 // Err2CodeMap error map to code
@@ -139,7 +143,8 @@ var Err2CodeMap = map[error]int32{
 	ErrNoMetaNodeToWrite:               ErrCodeNoMetaNodeToWrite,
 	ErrCannotBeOffLine:                 ErrCodeCannotBeOffLine,
 	ErrNoDataNodeToCreateDataPartition: ErrCodeNoDataNodeToCreateDataPartition,
-	ErrNoCellToCreateDataPartition:     ErrCodeNoCellToCreateDataPartition,
+	ErrNoZoneToCreateDataPartition:     ErrCodeNoZoneToCreateDataPartition,
+	ErrNoZoneToCreateMetaPartition:     ErrCodeNoZoneToCreateMetaPartition,
 	ErrNoNodeSetToCreateDataPartition:  ErrCodeNoNodeSetToCreateDataPartition,
 	ErrNoNodeSetToCreateMetaPartition:  ErrCodeNoNodeSetToCreateMetaPartition,
 	ErrNoMetaNodeToCreateMetaPartition: ErrCodeNoMetaNodeToCreateMetaPartition,
@@ -154,4 +159,5 @@ var Err2CodeMap = map[error]int32{
 	ErrInvalidTicket:                   ErrCodeInvalidTicket,
 	ErrExpiredTicket:                   ErrCodeExpiredTicket,
 	ErrMasterAPIGenRespError:           ErrCodeMasterAPIGenRespError,
+	ErrZoneNotExists:                   ErrCodeNotExists,
 }

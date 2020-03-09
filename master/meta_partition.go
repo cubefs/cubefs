@@ -659,3 +659,33 @@ func (mp *MetaPartition) setMaxInodeID() {
 	}
 	mp.MaxInodeID = maxUsed
 }
+
+func (mp *MetaPartition) getAllNodeSets() (nodeSets []uint64) {
+	mp.RLock()
+	defer mp.RUnlock()
+	nodeSets = make([]uint64, 0)
+	for _, mr := range mp.Replicas {
+		if mr.metaNode == nil {
+			continue
+		}
+		if !containsID(nodeSets, mr.metaNode.NodeSetID) {
+			nodeSets = append(nodeSets, mr.metaNode.NodeSetID)
+		}
+	}
+	return
+}
+
+func (mp *MetaPartition) getLiveZones(offlineAddr string) (zones []string) {
+	mp.RLock()
+	defer mp.RUnlock()
+	for _, mr := range mp.Replicas {
+		if mr.metaNode == nil {
+			continue
+		}
+		if mr.Addr == offlineAddr {
+			continue
+		}
+		zones = append(zones, mr.metaNode.ZoneName)
+	}
+	return
+}

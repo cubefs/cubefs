@@ -100,7 +100,7 @@ func (alloc *IDAllocator) restoreMaxCommonID() {
 		panic(fmt.Sprintf("Failed to restore maxCommonID,err:%v ", err.Error()))
 	}
 	alloc.commonID = maxMetaNodeID
-	log.LogInfof("action[restoreMaxCommonID] maxMnID[%v]", alloc.commonID)
+	log.LogInfof("action[restoreMaxCommonID] maxCommonID[%v]", alloc.commonID)
 }
 
 func (alloc *IDAllocator) setDataPartitionID(id uint64) {

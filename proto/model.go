@@ -23,7 +23,7 @@ type MetaNodeInfo struct {
 	ID                        uint64
 	Addr                      string
 	IsActive                  bool
-	CellName                  string `json:"Cell"`
+	ZoneName                  string `json:"Zone"`
 	MaxMemAvailWeight         uint64 `json:"MaxMemAvailWeight"`
 	Total                     uint64 `json:"TotalWeight"`
 	Used                      uint64 `json:"UsedWeight"`
@@ -43,7 +43,7 @@ type DataNodeInfo struct {
 	Used                      uint64 `json:"UsedWeight"`
 	AvailableSpace            uint64
 	ID                        uint64
-	CellName                  string `json:"Cell"`
+	ZoneName                  string `json:"Zone"`
 	Addr                      string
 	ReportTime                time.Time
 	IsActive                  bool
@@ -63,12 +63,14 @@ type MetaPartitionInfo struct {
 	Start        uint64
 	End          uint64
 	MaxInodeID   uint64
+	VolName      string
 	Replicas     []*MetaReplicaInfo
 	ReplicaNum   uint8
 	Status       int8
 	IsRecover    bool
 	Hosts        []string
 	Peers        []Peer
+	Zones        []string
 	MissNodes    map[string]int64
 	LoadResponse []*MetaPartitionLoadResponse
 }
@@ -136,6 +138,7 @@ type DataPartitionInfo struct {
 	Replicas                []*DataReplica
 	Hosts                   []string // host addresses
 	Peers                   []Peer
+	Zones                   []string
 	MissingNodes            map[string]int64 // key: address of the missing node, value: when the node is missing
 	VolName                 string
 	VolID                   uint64
