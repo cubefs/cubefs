@@ -83,7 +83,7 @@ const (
 	AbortMultipartUploadAction       Action = OSSActionPrefix + "AbortMultipartUpload"
 	GetBucketLocationAction          Action = OSSActionPrefix + "GetBucketLocation"
 	GetObjectXAttrAction             Action = OSSActionPrefix + "GetObjectXAttr"
-	PutObjectXAttrAction             Action = OSSActionPrefix + "PutObjectAttr"
+	PutObjectXAttrAction             Action = OSSActionPrefix + "PutObjectXAttr"
 	ListObjectXAttrsAction           Action = OSSActionPrefix + "ListObjectXAttrs"
 	DeleteObjectXAttrAction          Action = OSSActionPrefix + "DeleteObjectXAttr"
 	GetObjectTaggingAction           Action = OSSActionPrefix + "GetObjectTagging"

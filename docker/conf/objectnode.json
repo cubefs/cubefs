@@ -11,5 +11,11 @@
   "enableHTTPS": "false",
   "domains": [
     "object.chubao.io"
+  ],
+  "signatureIgnoredActions": [
+    "oss:action:GetObjectXAttr",
+    "oss:action:PutObjectXAttr",
+    "oss:action:DeleteObjectXAttr",
+    "oss:action:ListObjectXAttrs"
   ]
 }

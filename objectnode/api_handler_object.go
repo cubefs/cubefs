@@ -920,11 +920,11 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 }
 
 // Get object extend attribute (xattr)
-func (o *ObjectNode) getObjectXAttr(w http.ResponseWriter, r *http.Request) {
+func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var param *RequestParam
 	if param, err = o.parseRequestParam(r); err != nil {
-		log.LogWarnf("deleteObjectXAttrHandler: parse request param fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogWarnf("getObjectXAttr: parse request param fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}

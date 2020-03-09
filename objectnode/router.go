@@ -81,7 +81,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			Methods(http.MethodGet).
 			Path("/{object:.+}").
 			Queries("xattr", "", "key", "{key:.+}").
-			HandlerFunc(o.getObjectXAttr)
+			HandlerFunc(o.getObjectXAttrHandler)
 
 		// List object XAttrs
 		r.NewRoute().Name(ListObjectXAttrsAction.UniqueRouteName()).
