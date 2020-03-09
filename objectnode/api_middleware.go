@@ -135,6 +135,7 @@ func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 		})
 }
 
+// PolicyCheckMiddleware returns a pre-handle middleware handler to process policy check.
 func (o *ObjectNode) policyCheckMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
@@ -149,6 +150,8 @@ func (o *ObjectNode) policyCheckMiddleware(next http.Handler) http.Handler {
 		})
 }
 
+// ContentMiddleware returns a pre-handle middleware handler to process reader for content.
+// If the "X-amz
 func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
 		if len(r.Header) > 0 && len(r.Header.Get(http.CanonicalHeaderKey(HeaderNameDecodeContentLength))) > 0 {

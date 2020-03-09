@@ -18,7 +18,7 @@ Usage: ./run_docker.sh [ -h | --help ] [ -d | --disk </disk/path> ] [ -l | --ltp
     -m, --monitor           start monitor web ui
     -l, --ltptest           run ltp test
     -r, --run               run servers, client and monitor
-    --clear             clear old docker image
+    --clean                 cleanup old docker image
 EOF
     exit 0
 }
@@ -99,7 +99,7 @@ for opt in ${ARGS[*]} ; do
         -m|--monitor)
             cmd=run_monitor
             ;;
-        -clear|--clear)
+        -clean|--clean)
             cmd=clean
             ;;
         *)

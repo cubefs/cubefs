@@ -31,6 +31,6 @@ scrape_configs:
     metrics_path: /metrics
     scheme: http
     consul_sd_configs:
-        - server: 192.168.0.100:8500
+        - server: 192.168.0.101:8500
           services:
               - cfs

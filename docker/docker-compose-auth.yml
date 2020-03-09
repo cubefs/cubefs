@@ -287,7 +287,7 @@ services:
     privileged: true
     networks:
       authnode_extnetwork:
-        ipv4_address: 192.168.0.100
+        ipv4_address: 192.168.0.101
 
   prometheus:
     image: prom/prometheus
@@ -298,7 +298,7 @@ services:
     privileged: true
     networks:
       authnode_extnetwork:
-        ipv4_address: 192.168.0.200
+        ipv4_address: 192.168.0.102
 
   grafana:
     image: grafana/grafana:6.2.0
