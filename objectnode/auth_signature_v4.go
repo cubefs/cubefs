@@ -69,6 +69,8 @@ var AuthSignatureV4Headers = []string{
 	XAmzContentSha256,
 }
 
+// // isUrlUsingSignatureAlgorithmV4 checks if request is using signature algorithm V2 in url parameter.
+// Example:
 // https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html
 // url: "127.0.0.1:9000/umptest/b.tinyExtents
 //      ?X-Amz-Algorithm=AWS4-HMAC-SHA256_CMD
@@ -77,33 +79,32 @@ var AuthSignatureV4Headers = []string{
 //      &X-Amz-Expires=432000
 //      &X-Amz-SignedHeaders=host
 //      &X-Amz-Signature=55c588734f017b861c24cbd69c203c283aad566cfe4ee712b7a3c846e1de151a"
-//
-func isPresignedSignaturedV4(r *http.Request) bool {
+func isUrlUsingSignatureAlgorithmV4(r *http.Request) bool {
 	if u, err := url.Parse(strings.ToLower(r.URL.String())); err == nil {
 		return isRequestQueryValid(u.Query(), PresignedSignatureV4Queries)
 	}
 	return false
 }
 
-// is request signature V4
-func isSignaturedV4(r *http.Request) bool {
+// IsHeaderUsingSignatureAlgorithmV4 checks if request is using signature algorithm V4 in header.
+func isHeaderUsingSignatureAlgorithmV4(r *http.Request) bool {
 	return strings.HasPrefix(r.Header.Get(HeaderNameAuthorization), SignatureV4Algorithm)
 }
 
 // check request signature valid
-func (o *ObjectNode) checkSignatureV4(r *http.Request) (bool, error) {
+func (o *ObjectNode) validateHeaderBySignatureAlgorithmV4(r *http.Request) (bool, error) {
 	req, err := parseRequestV4(r)
 	if err != nil {
 		return false, err
 	}
 	var akPolicy *proto.AKPolicy
 	if akPolicy, err = o.getAkInfo(req.Credential.AccessKey); err != nil {
-		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", req.Credential.AccessKey, err)
+		log.LogInfof("validateHeaderBySignatureAlgorithmV4: get secretKey from master fail: err(%v)", err)
 		return false, err
 	}
 	newSignature := calculateSignatureV4(r, o.region, akPolicy.SecretKey, req.SignedHeaders)
 	if req.Signature != newSignature {
-		log.LogDebugf("checkSignatureV4: invalid signature: requestID(%v) client(%v) server(%v)",
+		log.LogDebugf("validateHeaderBySignatureAlgorithmV4: invalid signature: requestID(%v) client(%v) server(%v)",
 			GetRequestID(r), req.Signature, newSignature)
 		return false, nil
 	}
@@ -120,18 +121,18 @@ func (o *ObjectNode) checkSignatureV4(r *http.Request) (bool, error) {
 //      &X-Amz-SignedHeaders=host
 //      &X-Amz-Signature=55c588734f017b861c24cbd69c203c283aad566cfe4ee712b7a3c846e1de151a"
 //
-func (o *ObjectNode) checkPresignedSignatureV4(r *http.Request) (pass bool, err error) {
+func (o *ObjectNode) validateUrlBySignatureAlgorithmV4(r *http.Request) (pass bool, err error) {
 	var req *signatureRequestV4
 	req, err = parseRequestV4(r)
 	if err != nil {
-		log.LogErrorf("checkPresignedSignatureV4: parse request fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("validateUrlBySignatureAlgorithmV4: parse request fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		return
 	}
 
 	//check req valid
 	var ok bool
 	if ok, err = req.isValid(); !ok {
-		log.LogErrorf("checkPresignedSignatureV4: request invalid: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("validateUrlBySignatureAlgorithmV4: request invalid: requestID(%v) err(%v)", GetRequestID(r), err)
 		return
 	}
 
@@ -145,7 +146,7 @@ func (o *ObjectNode) checkPresignedSignatureV4(r *http.Request) (pass bool, err 
 	var canonicalHeader http.Header
 	canonicalHeader, err = req.createCanonicalHeaderV4()
 	if err != nil {
-		log.LogErrorf("checkPresignedSignatureV4: create canonical header fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("validateUrlBySignatureAlgorithmV4: create canonical header fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		return
 	}
 	canonicalHeaderStr := buildCanonicalHeaderString(r.Host, canonicalHeader, req.SignedHeaders)
@@ -154,7 +155,7 @@ func (o *ObjectNode) checkPresignedSignatureV4(r *http.Request) (pass bool, err 
 	canonicalQuery := createCanonicalQueryV4(req)
 	canonicalRequestString := createCanonicalRequestString(r.Method, req.URI, canonicalQuery, canonicalHeaderStr, headerNames, payload)
 
-	log.LogDebugf("checkPresignedSignatureV4: middle data:\n"+
+	log.LogDebugf("validateUrlBySignatureAlgorithmV4: middle data:\n"+
 		"  RequestID: %v\n"+
 		"  CanonicalRequest: %v",
 		GetRequestID(r),

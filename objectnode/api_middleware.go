@@ -32,6 +32,9 @@ var (
 	routeSNRegexp = regexp.MustCompile(":(\\w){32}$")
 )
 
+// TraceMiddleware returns a pre-handle middleware handler to trace request.
+// After receiving the request, the handler will assign a unique RequestID to
+// the request and record the processing time of the request.
 func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 	var generateRequestID = func() (string, error) {
 		var uUID uuid.UUID
@@ -51,6 +54,8 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			_ = InternalError.ServeResponse(w, r)
 			return
 		}
+
+		// store request ID to context and write to header
 		SetRequestID(r, requestID)
 		w.Header().Set(HeaderNameRequestId, requestID)
 
@@ -83,8 +88,8 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 	return handlerFunc
 }
 
+// AuthMiddleware returns a pre-handle middleware handler to perform user authentication.
 func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
-
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			var currentAction = ActionFromRouteName(mux.CurrentRoute(r).GetName())
@@ -93,31 +98,35 @@ func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 				return
 			}
 
-			//  1. check auth type
-			if isSignaturedV4(r) {
-				if ok, _ := o.checkSignatureV4(r); !ok {
+			//  check auth type
+			if isHeaderUsingSignatureAlgorithmV4(r) {
+				// using signature algorithm version 4 in header
+				if ok, _ := o.validateHeaderBySignatureAlgorithmV4(r); !ok {
 					if err := AccessDenied.ServeResponse(w, r); err != nil {
 						log.LogErrorf("authMiddleware: serve access denied response fail, requestID(%v) err(%v)", GetRequestID(r), err)
 					}
 					return
 				}
-			} else if isSignaturedV2(r) {
-				if ok, _ := o.checkSignatureV2(r); !ok {
+			} else if isHeaderUsingSignatureAlgorithmV2(r) {
+				// using signature algorithm version 2 in header
+				if ok, _ := o.validateHeaderBySignatureAlgorithmV2(r); !ok {
 					if err := AccessDenied.ServeResponse(w, r); err != nil {
 						log.LogErrorf("authMiddleware: serve access denied response fail, requestID(%v) err(%v)", GetRequestID(r), err)
 					}
 					return
 				}
-			} else if isPresignedSignaturedV2(r) {
-				if ok, _ := o.checkPresignedSignatureV2(r); !ok {
+			} else if isUrlUsingSignatureAlgorithmV2(r) {
+				// using signature algorithm version 2 in url parameter
+				if ok, _ := o.validateUrlBySignatureAlgorithmV2(r); !ok {
 					log.LogDebugf("authMiddleware: presigned v2 denied: requestID(%v)", GetRequestID(r))
 					if err := AccessDenied.ServeResponse(w, r); err != nil {
 						log.LogErrorf("authMiddleware: serve response fail: requestID(%v) err(%v)", GetRequestID(r), err)
 					}
 					return
 				}
-			} else if isPresignedSignaturedV4(r) {
-				if ok, _ := o.checkPresignedSignatureV4(r); !ok {
+			} else if isUrlUsingSignatureAlgorithmV4(r) {
+				// using signature algorithm version 4 in url parameter
+				if ok, _ := o.validateUrlBySignatureAlgorithmV4(r); !ok {
 					log.LogDebugf("authMiddleware: presigned v4 denied: requestID(%v)", GetRequestID(r))
 					if err := AccessDenied.ServeResponse(w, r); err != nil {
 						log.LogErrorf("authMiddleware: serve response fail: requestID(%v) err(%v)", GetRequestID(r), err)
@@ -125,6 +134,7 @@ func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 					return
 				}
 			} else {
+				// no valid signature found
 				if err := AccessDenied.ServeResponse(w, r); err != nil {
 					log.LogErrorf("authMiddleware: serve response fail: requestID(%v) err(%v)", GetRequestID(r), err)
 				}
@@ -136,6 +146,7 @@ func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 }
 
 // PolicyCheckMiddleware returns a pre-handle middleware handler to process policy check.
+// If action is configured in signatureIgnoreActions, then skip policy check.
 func (o *ObjectNode) policyCheckMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
@@ -151,7 +162,8 @@ func (o *ObjectNode) policyCheckMiddleware(next http.Handler) http.Handler {
 }
 
 // ContentMiddleware returns a pre-handle middleware handler to process reader for content.
-// If the "X-amz
+// If the request contains the "X-amz-Decoded-Content-Length" header, it means that the data
+// in the request body is chunked. Use ChunkedReader to parse the data.
 func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
 		if len(r.Header) > 0 && len(r.Header.Get(http.CanonicalHeaderKey(HeaderNameDecodeContentLength))) > 0 {
