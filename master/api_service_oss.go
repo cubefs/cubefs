@@ -60,7 +60,7 @@ func (m *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	msg := fmt.Sprintf("delete OSS user[%v] successfully", owner)
+	msg := fmt.Sprintf("delete user[%v] successfully", owner)
 	log.LogWarn(msg)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
@@ -168,28 +168,37 @@ func (m *Server) deleteUserVolPolicy(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	msg := fmt.Sprintf("delete OSS vol[%v] policy successfully", vol)
+	msg := fmt.Sprintf("delete vol[%v] policy successfully", vol)
 	log.LogWarn(msg)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
 func (m *Server) transferUserVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		vol       string
+		volName   string
 		ak        string
 		targetKey string
 		akPolicy  *proto.AKPolicy
+		vol       *Vol
 		err       error
 	)
-	if vol, ak, targetKey, err = parseVolAndKey(r); err != nil {
+	if volName, ak, targetKey, err = parseVolAndKey(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if _, err = m.cluster.getVol(vol); err != nil {
+	if vol, err = m.cluster.getVol(volName); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
-	if akPolicy, err = m.user.transferVol(vol, ak, targetKey); err != nil {
+	if akPolicy, err = m.user.transferVol(volName, ak, targetKey); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	owner := vol.Owner
+	vol.Owner = akPolicy.UserID
+	if err = m.cluster.syncUpdateVol(vol); err != nil {
+		vol.Owner = owner
+		err = proto.ErrPersistenceByRaft
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
