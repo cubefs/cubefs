@@ -79,14 +79,6 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	//todo parse body
-	policy := &proto.UserPolicy{
-		OwnVol: []string{bucket},
-	}
-	if _, err = o.mc.UserAPI().AddPolicy(auth.accessKey, policy); err != nil {
-		log.LogErrorf("add bucket[%v] policy for user[%v] error: err(%v)", bucket, auth.accessKey, err)
-		_ = InternalError.ServeResponse(w, r)
-		return
-	}
 	w.Header().Set("Location", o.region)
 	return
 }

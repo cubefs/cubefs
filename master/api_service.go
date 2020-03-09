@@ -490,6 +490,10 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	if err = m.user.deleteVolPolicy(name); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
 	msg = fmt.Sprintf("delete vol[%v] successfully,from[%v]", name, r.RemoteAddr)
 	log.LogWarn(msg)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
@@ -558,6 +562,11 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if vol, err = m.cluster.createVol(name, owner, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	// create user
+	if err = m.createUserWithPolicy(owner, name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1766,5 +1775,19 @@ func genRespMessage(data []byte, req *proto.APIAccessReq, ts int64, key []byte) 
 		return
 	}
 
+	return
+}
+
+func (m *Server) createUserWithPolicy(userID, volName string) (err error) {
+	var akPolicy *proto.AKPolicy
+	if akPolicy, err = m.user.createKey(userID); err != nil {
+		return
+	}
+	policy := &proto.UserPolicy{
+		OwnVol: []string{volName},
+	}
+	if _, err = m.user.addPolicy(akPolicy.AccessKey, policy); err != nil {
+		return
+	}
 	return
 }
