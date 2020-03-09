@@ -1,0 +1,17 @@
+{
+    "role": "ecnode",
+    "listen": "27310",
+    "prof": "27320",
+    "raftDir":   "/cfs/log",
+    "exporterPort": 9500,
+    "logDir": "/cfs/log",
+    "logLevel": "debug",
+    "disks": [
+        "/cfs/disk:10737418240"
+    ],
+    "masterAddr": [
+        "192.168.0.11:17010",
+        "192.168.0.12:17010",
+        "192.168.0.13:17010"
+    ]
+}
