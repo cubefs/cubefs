@@ -1299,7 +1299,7 @@ func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multi
 	return uploads, NextMarker, NextSessionIdMarker, IsTruncated, prefixes, nil
 }
 
-func (v *Volume) ListParts(path, sessionId string, maxParts, partNumberMarker uint64) (parts []*FSPart, nextMarker uint64, isTruncated bool, err error) {
+func (v *Volume) ListParts(path, uploadId string, maxParts, partNumberMarker uint64) (parts []*FSPart, nextMarker uint64, isTruncated bool, err error) {
 	var parentId uint64
 	dirs, _ := splitPath(path)
 	// process path
@@ -1307,9 +1307,9 @@ func (v *Volume) ListParts(path, sessionId string, maxParts, partNumberMarker ui
 		return nil, 0, false, err
 	}
 
-	multipartInfo, err := v.mw.GetMultipart_ll(sessionId, parentId)
+	multipartInfo, err := v.mw.GetMultipart_ll(uploadId, parentId)
 	if err != nil {
-		log.LogErrorf("Get session(%s) parts failed cause: %v", sessionId, err)
+		log.LogErrorf("ListPart: get multipart upload fail: uploadID(%v) err(%v)", uploadId, err)
 	}
 
 	sessionParts := multipartInfo.Parts

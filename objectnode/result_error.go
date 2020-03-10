@@ -18,8 +18,6 @@ import (
 	"encoding/xml"
 	"net/http"
 	"strings"
-
-	"github.com/chubaofs/chubaofs/util/log"
 )
 
 type ErrorCode struct {
@@ -48,7 +46,6 @@ func (code ErrorCode) ServeResponse(w http.ResponseWriter, r *http.Request) erro
 	}
 	w.Header().Set(HeaderNameContentType, HeaderValueContentTypeXML)
 	w.WriteHeader(code.StatusCode)
-	log.LogInfof("Error info : %s", string(marshaled))
 	if _, err = w.Write(marshaled); err != nil {
 		return err
 	}

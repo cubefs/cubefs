@@ -38,7 +38,7 @@ func (w *Wildcard) Parse(host string) (bucket string, is bool) {
 }
 
 func NewWildcard(domain string) (*Wildcard, error) {
-	var regexpString = "^([a-zA-Z0-9]|-|_)+." + domain + "(:(\\d)+)*$"
+	var regexpString = "^(([a-zA-Z0-9]|-|_)+.)+" + domain + "(:(\\d)+)*$"
 	r, err := regexp.Compile(regexpString)
 	if err != nil {
 		return nil, err

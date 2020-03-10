@@ -253,6 +253,10 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			allowed = false
 			return
 		}
+		if param.action == CreateBucketAction {
+			allowed = true
+			return
+		}
 		if contains(akPolicy.Policy.OwnVols, param.bucket) {
 			allowed = true
 			return

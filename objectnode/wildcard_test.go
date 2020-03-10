@@ -23,22 +23,26 @@ func TestWildcards_Parse(t *testing.T) {
 		"oss.chubao.io",
 	}
 
-	var hosts = []string{
-		"object.chubao.io",
-		"object.chubao.io:8080",
-		"a.object.chubao.io",
-		"a.object.chubao.io:8080",
-		"a_b.object.chubao.io",
-		"a-b.oss.chubao.io:1024",
-		".oss.chubao.io:a",
+	type expect struct {
+		wildcard bool
+		bucket   string
 	}
 
-	var iss = []bool{
-		false, false, true, true, true, true, false,
+	type sample struct {
+		h string
+		e expect
 	}
 
-	var buckets = []string{
-		"", "", "a", "a", "a_b", "a-b", "",
+	var samples = []sample{
+		{h: "object.chubao.io", e: expect{wildcard: false}},
+		{h: "object.chubao.io:8080", e: expect{wildcard: false}},
+		{h: "a.object.chubao.io", e: expect{wildcard: true, bucket: "a"}},
+		{h: "a.b.object.chubao.io", e: expect{wildcard: true, bucket: "a.b"}},
+		{h: "a_b.object.chubao.io", e: expect{wildcard: true, bucket: "a_b"}},
+		{h: "a-bc.object.chubao.io", e: expect{wildcard: true, bucket: "a-bc"}},
+		{h: "ab.object.chubao.io:8080", e: expect{wildcard: true, bucket: "ab"}},
+		{h: ".oss.chubao.io:a", e: expect{wildcard: false}},
+		{h: ".b-c_d.oss.chubao.io:a", e: expect{wildcard: false}},
 	}
 
 	var ws Wildcards
@@ -46,13 +50,15 @@ func TestWildcards_Parse(t *testing.T) {
 	if ws, err = NewWildcards(domains); err != nil {
 		t.Fatalf("init wildcards fail: err(%v)", err)
 	}
-	for i := 0; i < len(hosts); i++ {
-		bucket, is := ws.Parse(hosts[i])
-		if is != iss[i] {
-			t.Fatalf("result mismatch: host(%v) expect(%v) actual(%v)", hosts[i], iss[i], is)
+	for _, s := range samples {
+		h := s.h
+		e := s.e
+		bucket, is := ws.Parse(h)
+		if is != e.wildcard {
+			t.Fatalf("result mismatch: h(%v) sample(%v) actual(%v)", h, e.wildcard, is)
 		}
-		if bucket != buckets[i] {
-			t.Fatalf("result mismatch: host(%v) expect(%v) actual(%v)", hosts[i], buckets[i], bucket)
+		if is && bucket != e.bucket {
+			t.Fatalf("result mismatch: h(%v) sample(%v) actual(%v)", h, e.bucket, bucket)
 		}
 	}
 }
