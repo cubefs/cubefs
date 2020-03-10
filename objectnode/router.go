@@ -284,7 +284,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.NewRoute().Name(DeleteObjectXAttrAction.UniqueRouteName()).
 			Methods(http.MethodDelete).
 			Path("/{object:.+}").
-			Queries("xattr", "", "key", "{key:.+}}").
+			Queries("xattr", "", "key", "{key:.+}").
 			HandlerFunc(o.deleteObjectXAttrHandler)
 
 		// Delete object

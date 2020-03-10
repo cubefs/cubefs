@@ -32,9 +32,11 @@ var (
 	routeSNRegexp = regexp.MustCompile(":(\\w){32}$")
 )
 
-// TraceMiddleware returns a pre-handle middleware handler to trace request.
+// TraceMiddleware returns a middleware handler to trace request.
 // After receiving the request, the handler will assign a unique RequestID to
 // the request and record the processing time of the request.
+// Workflow:
+//   Request → Handle → Next → Handle → Response
 func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 	var generateRequestID = func() (string, error) {
 		var uUID uuid.UUID
@@ -45,8 +47,9 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		return strings.ReplaceAll(uUID.String(), "-", ""), nil
 	}
 	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
-
 		var err error
+
+		// ===== pre-handle start =====
 		var requestID string
 		if requestID, err = generateRequestID(); err != nil {
 			log.LogErrorf("traceMiddleware: generate request ID fail, remote(%v) url(%v) err(%v)",
@@ -61,11 +64,13 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 
 		var action = ActionFromRouteName(mux.CurrentRoute(r).GetName())
 		SetRequestAction(r, action)
+		// ===== pre-handle finish =====
 
 		var startTime = time.Now()
-
+		// next
 		next.ServeHTTP(w, r)
 
+		// ===== post-handle start =====
 		var headerToString = func(header http.Header) string {
 			var sb = strings.Builder{}
 			for k := range header {
@@ -86,7 +91,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			requestID, r.Host, r.Method, r.URL.String(),
 			headerToString(r.Header),
 			getRequestIP(r), time.Since(startTime))
-
+		// ==== post-handle finish =====
 	}
 	return handlerFunc
 }

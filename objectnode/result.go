@@ -289,7 +289,7 @@ type GetBucketLocationOutput struct {
 }
 
 type XAttr struct {
-	Key   string `xml:"key"`
+	Key   string `xml:"Key"`
 	Value string `xml:"Value"`
 }
 
