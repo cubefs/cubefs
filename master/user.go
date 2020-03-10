@@ -34,11 +34,11 @@ func newUser(fsm *MetadataFsm, partition raftstore.Partition) (u *User) {
 	return
 }
 
-func (u *User) createKey(owner string) (akPolicy *proto.AKPolicy, err error) {
+func (u *User) createKey(userID string) (akPolicy *proto.AKPolicy, err error) {
 	var (
 		userAK     *proto.UserAK
 		userPolicy *proto.UserPolicy
-		exit       bool
+		exist      bool
 	)
 	accessKey := util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
 	secretKey := util.RandomString(secretKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
@@ -47,18 +47,18 @@ func (u *User) createKey(owner string) (akPolicy *proto.AKPolicy, err error) {
 	u.userAKMutex.Lock()
 	defer u.userAKMutex.Unlock()
 	//check duplicate
-	if _, exit = u.userAk.Load(owner); exit {
+	if _, exist = u.userAk.Load(userID); exist {
 		err = proto.ErrDuplicateUserID
 		return
 	}
-	_, exit = u.akStore.Load(accessKey)
-	for exit {
+	_, exist = u.akStore.Load(accessKey)
+	for exist {
 		accessKey = util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
-		_, exit = u.akStore.Load(accessKey)
+		_, exist = u.akStore.Load(accessKey)
 	}
 	userPolicy = &proto.UserPolicy{OwnVols: make([]string, 0), NoneOwnVol: make(map[string][]string)}
-	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: owner}
-	userAK = &proto.UserAK{UserID: owner, AccessKey: accessKey}
+	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: userID}
+	userAK = &proto.UserAK{UserID: userID, AccessKey: accessKey}
 	if err = u.syncAddAKPolicy(akPolicy); err != nil {
 		return
 	}
@@ -66,33 +66,33 @@ func (u *User) createKey(owner string) (akPolicy *proto.AKPolicy, err error) {
 		return
 	}
 	u.akStore.Store(accessKey, akPolicy)
-	u.userAk.Store(owner, userAK)
-	log.LogInfof("action[createUser], user: %v, accesskey[%v], secretkey[%v]", owner, accessKey, secretKey)
+	u.userAk.Store(userID, userAK)
+	log.LogInfof("action[createUser], userID: %v, accesskey[%v], secretkey[%v]", userID, accessKey, secretKey)
 	return
 }
 
-func (u *User) createUserWithKey(owner, accessKey, secretKey string) (akPolicy *proto.AKPolicy, err error) {
+func (u *User) createUserWithKey(userID, accessKey, secretKey string) (akPolicy *proto.AKPolicy, err error) {
 	var (
 		userAK     *proto.UserAK
 		userPolicy *proto.UserPolicy
-		exit       bool
+		exist      bool
 	)
 	u.akStoreMutex.Lock()
 	defer u.akStoreMutex.Unlock()
 	u.userAKMutex.Lock()
 	defer u.userAKMutex.Unlock()
 	//check duplicate
-	if _, exit = u.userAk.Load(owner); exit {
+	if _, exist = u.userAk.Load(userID); exist {
 		err = proto.ErrDuplicateUserID
 		return
 	}
-	if _, exit = u.akStore.Load(accessKey); exit {
+	if _, exist = u.akStore.Load(accessKey); exist {
 		err = proto.ErrDuplicateAccessKey
 		return
 	}
 	userPolicy = &proto.UserPolicy{OwnVols: make([]string, 0), NoneOwnVol: make(map[string][]string)}
-	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: owner}
-	userAK = &proto.UserAK{UserID: owner, AccessKey: accessKey}
+	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: userID}
+	userAK = &proto.UserAK{UserID: userID, AccessKey: accessKey}
 	if err = u.syncAddAKPolicy(akPolicy); err != nil {
 		return
 	}
@@ -100,27 +100,27 @@ func (u *User) createUserWithKey(owner, accessKey, secretKey string) (akPolicy *
 		return
 	}
 	u.akStore.Store(accessKey, akPolicy)
-	u.userAk.Store(owner, userAK)
-	log.LogInfof("action[createUserWithKey], user: %v, accesskey[%v], secretkey[%v]", owner, accessKey, secretKey)
+	u.userAk.Store(userID, userAK)
+	log.LogInfof("action[createUserWithKey], userID: %v, accesskey[%v], secretkey[%v]", userID, accessKey, secretKey)
 	return
 }
 
-func (u *User) deleteKey(owner string) (err error) {
+func (u *User) deleteKey(userID string) (err error) {
 	var (
 		userAK   *proto.UserAK
 		akPolicy *proto.AKPolicy
 	)
-	if value, exit := u.userAk.Load(owner); !exit {
+	if value, exist := u.userAk.Load(userID); !exist {
 		err = proto.ErrOSSUserNotExists
 		return
 	} else {
 		userAK = value.(*proto.UserAK)
 	}
-	if akPolicy, err = u.getAKInfo(userAK.AccessKey); err != nil {
+	if akPolicy, err = u.loadAKInfo(userAK.AccessKey); err != nil {
 		return
 	}
 	if len(akPolicy.Policy.OwnVols) > 0 {
-		err = proto.ErrOwnVolExits
+		err = proto.ErrOwnVolExists
 		return
 	}
 	if err = u.syncDeleteAKPolicy(akPolicy); err != nil {
@@ -130,38 +130,38 @@ func (u *User) deleteKey(owner string) (err error) {
 		return
 	}
 	u.akStore.Delete(userAK.AccessKey)
-	u.userAk.Delete(owner)
-	log.LogInfof("action[deleteUser], user: %v, accesskey[%v]", owner, userAK.AccessKey)
+	u.userAk.Delete(userID)
+	log.LogInfof("action[deleteUser], userID: %v, accesskey[%v]", userID, userAK.AccessKey)
 	return
 }
 
 func (u *User) getKeyInfo(ak string) (akPolicy *proto.AKPolicy, err error) {
-	if akPolicy, err = u.getAKInfo(ak); err != nil {
+	if akPolicy, err = u.loadAKInfo(ak); err != nil {
 		return
 	}
 	log.LogInfof("action[getKeyInfo], accesskey[%v]", ak)
 	return
 }
 
-func (u *User) getUserInfo(owner string) (akPolicy *proto.AKPolicy, err error) {
+func (u *User) getUserInfo(userID string) (akPolicy *proto.AKPolicy, err error) {
 	var (
 		ak string
 	)
-	if value, exit := u.userAk.Load(owner); exit {
+	if value, exist := u.userAk.Load(userID); exist {
 		ak = value.(*proto.UserAK).AccessKey
 	} else {
 		err = proto.ErrOSSUserNotExists
 		return
 	}
-	if akPolicy, err = u.getAKInfo(ak); err != nil {
+	if akPolicy, err = u.loadAKInfo(ak); err != nil {
 		return
 	}
-	log.LogInfof("action[getUserInfo], user: %v", owner)
+	log.LogInfof("action[getUserInfo], userID: %v", userID)
 	return
 }
 
 func (u *User) addPolicy(ak string, userPolicy *proto.UserPolicy) (akPolicy *proto.AKPolicy, err error) {
-	if akPolicy, err = u.getAKInfo(ak); err != nil {
+	if akPolicy, err = u.loadAKInfo(ak); err != nil {
 		return
 	}
 	akPolicy.Policy.Add(userPolicy)
@@ -178,7 +178,7 @@ func (u *User) addPolicy(ak string, userPolicy *proto.UserPolicy) (akPolicy *pro
 }
 
 func (u *User) deletePolicy(ak string, userPolicy *proto.UserPolicy) (akPolicy *proto.AKPolicy, err error) {
-	if akPolicy, err = u.getAKInfo(ak); err != nil {
+	if akPolicy, err = u.loadAKInfo(ak); err != nil {
 		return
 	}
 	akPolicy.Policy.Delete(userPolicy)
@@ -193,13 +193,13 @@ func (u *User) deletePolicy(ak string, userPolicy *proto.UserPolicy) (akPolicy *
 	return
 }
 
-func (u *User) deleteVolPolicy(vol string) (err error) {
+func (u *User) deleteVolPolicy(volName string) (err error) {
 	var (
 		volAK    *proto.VolAK
 		akPolicy *proto.AKPolicy
 	)
 	//get related ak
-	if value, exit := u.volAKs.Load(vol); exit {
+	if value, exist := u.volAKs.Load(volName); exist {
 		volAK = value.(*proto.VolAK)
 	} else {
 		err = proto.ErrVolPolicyNotExists
@@ -209,14 +209,14 @@ func (u *User) deleteVolPolicy(vol string) (err error) {
 	for _, akAndAction := range volAK.AKAndActions {
 		ak := akAndAction[:accessKeyLength]
 		action := akAndAction[accessKeyLength+1:]
-		if akPolicy, err = u.getAKInfo(ak); err != nil {
+		if akPolicy, err = u.loadAKInfo(ak); err != nil {
 			return
 		}
 		var userPolicy *proto.UserPolicy
 		if action == ALL {
-			userPolicy = &proto.UserPolicy{OwnVols: []string{vol}}
+			userPolicy = &proto.UserPolicy{OwnVols: []string{volName}}
 		} else {
-			userPolicy = &proto.UserPolicy{NoneOwnVol: map[string][]string{vol: {action}}}
+			userPolicy = &proto.UserPolicy{NoneOwnVol: map[string][]string{volName: {action}}}
 		}
 		akPolicy.Policy.Delete(userPolicy)
 		if err = u.syncUpdateAKPolicy(akPolicy); err != nil {
@@ -224,22 +224,22 @@ func (u *User) deleteVolPolicy(vol string) (err error) {
 			return
 		}
 	}
-	//delete vol index
+	//delete volName index
 	if err = u.syncDeleteVolAK(volAK); err != nil {
 		return
 	}
 	u.volAKs.Delete(volAK.Vol)
-	log.LogInfof("action[deleteVolPolicy], volName: %v", vol)
+	log.LogInfof("action[deleteVolPolicy], volName: %v", volName)
 	return
 }
 
-func (u *User) transferVol(vol, ak, targetKey string) (targetAKPolicy *proto.AKPolicy, err error) {
+func (u *User) transferVol(volName, ak, targetKey string) (targetAKPolicy *proto.AKPolicy, err error) {
 	var akPolicy *proto.AKPolicy
-	userPolicy := &proto.UserPolicy{OwnVols: []string{vol}}
-	if akPolicy, err = u.getAKInfo(ak); err != nil {
+	userPolicy := &proto.UserPolicy{OwnVols: []string{volName}}
+	if akPolicy, err = u.loadAKInfo(ak); err != nil {
 		return
 	}
-	if !contains(akPolicy.Policy.OwnVols, vol) {
+	if !contains(akPolicy.Policy.OwnVols, volName) {
 		err = proto.ErrHaveNoPolicy
 		return
 	}
@@ -249,12 +249,12 @@ func (u *User) transferVol(vol, ak, targetKey string) (targetAKPolicy *proto.AKP
 	if targetAKPolicy, err = u.addPolicy(targetKey, userPolicy); err != nil {
 		return
 	}
-	log.LogInfof("action[transferVol], volName: %v, ak: %v, targetKey: %v", vol, ak, targetKey)
+	log.LogInfof("action[transferVol], volName: %v, ak: %v, targetKey: %v", volName, ak, targetKey)
 	return
 }
 
-func (u *User) getAKInfo(ak string) (akPolicy *proto.AKPolicy, err error) {
-	if value, exit := u.akStore.Load(ak); exit {
+func (u *User) loadAKInfo(ak string) (akPolicy *proto.AKPolicy, err error) {
+	if value, exist := u.akStore.Load(ak); exist {
 		akPolicy = value.(*proto.AKPolicy)
 	} else {
 		err = proto.ErrAccessKeyNotExists
@@ -280,9 +280,9 @@ func (u *User) addVolAKs(ak string, policy *proto.UserPolicy) (err error) {
 	return
 }
 
-func (u *User) addAKToVol(akAndAction string, vol string) (err error) {
+func (u *User) addAKToVol(akAndAction string, volName string) (err error) {
 	var volAK *proto.VolAK
-	if value, ok := u.volAKs.Load(vol); ok {
+	if value, ok := u.volAKs.Load(volName); ok {
 		volAK = value.(*proto.VolAK)
 		volAK.Lock()
 		defer volAK.Unlock()
@@ -290,8 +290,8 @@ func (u *User) addAKToVol(akAndAction string, vol string) (err error) {
 	} else {
 		aks := make([]string, 0)
 		aks = append(aks, akAndAction)
-		volAK = &proto.VolAK{Vol: vol, AKAndActions: aks}
-		u.volAKs.Store(vol, volAK)
+		volAK = &proto.VolAK{Vol: volName, AKAndActions: aks}
+		u.volAKs.Store(volName, volAK)
 	}
 	if err = u.syncAddVolAK(volAK); err != nil {
 		err = proto.ErrPersistenceByRaft
@@ -316,9 +316,9 @@ func (u *User) deleteVolAKs(ak string, policy *proto.UserPolicy) (err error) {
 	return
 }
 
-func (u *User) deleteAKFromVol(akAndAction string, vol string) (err error) {
+func (u *User) deleteAKFromVol(akAndAction string, volName string) (err error) {
 	var volAK *proto.VolAK
-	if value, ok := u.volAKs.Load(vol); ok {
+	if value, ok := u.volAKs.Load(volName); ok {
 		volAK = value.(*proto.VolAK)
 		volAK.Lock()
 		defer volAK.Unlock()

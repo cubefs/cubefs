@@ -566,7 +566,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// create user
-	if err = m.createUserWithPolicy(owner, name); err != nil {
+	if err = m.associateVolWithUser(owner, name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1778,14 +1778,14 @@ func genRespMessage(data []byte, req *proto.APIAccessReq, ts int64, key []byte) 
 	return
 }
 
-func (m *Server) createUserWithPolicy(userID, volName string) error {
+func (m *Server) associateVolWithUser(userID, volName string) error {
 	var err error
 	var akPolicy *proto.AKPolicy
-	if akPolicy, err = m.user.createKey(userID); err != nil && err != proto.ErrDuplicateUserID {
+	if akPolicy, err = m.user.getUserInfo(userID); err != nil && err != proto.ErrOSSUserNotExists {
 		return err
 	}
-	if err == proto.ErrDuplicateUserID || akPolicy == nil {
-		if akPolicy, err = m.user.getUserInfo(userID); err != nil {
+	if err == proto.ErrOSSUserNotExists {
+		if akPolicy, err = m.user.createKey(userID); err != nil {
 			return err
 		}
 	}

@@ -72,7 +72,7 @@ var (
 	ErrDuplicateAccessKey              = errors.New("duplicate access key")
 	ErrHaveNoPolicy                    = errors.New("no vol policy")
 	ErrZoneNotExists                   = errors.New("zone not exists")
-	ErrOwnVolExits                     = errors.New("own vol not empty")
+	ErrOwnVolExists                    = errors.New("own vol not empty")
 )
 
 // http response error code and error message definitions
@@ -127,7 +127,7 @@ const (
 	ErrCodeHaveNoPolicy
 	ErrCodeNoZoneToCreateMetaPartition
 	ErrCodeNotExists
-	ErrCodeOwnVolExits
+	ErrCodeOwnVolExists
 )
 
 // Err2CodeMap error map to code
@@ -180,5 +180,5 @@ var Err2CodeMap = map[error]int32{
 	ErrDuplicateAccessKey:              ErrCodeDuplicateAccessKey,
 	ErrHaveNoPolicy:                    ErrCodeHaveNoPolicy,
 	ErrZoneNotExists:                   ErrCodeNotExists,
-	ErrOwnVolExits:                     ErrCodeOwnVolExits,
+	ErrOwnVolExists:                    ErrCodeOwnVolExists,
 }

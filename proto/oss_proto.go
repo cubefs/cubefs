@@ -22,7 +22,7 @@ type UserPolicy struct {
 
 func NewUserPolicy() *UserPolicy {
 	return &UserPolicy{
-		OwnVols: make([]string, 0),
+		OwnVols:    make([]string, 0),
 		NoneOwnVol: make(map[string][]string),
 	}
 }
@@ -102,7 +102,7 @@ func CleanPolicy(policy *UserPolicy) (newUserPolicy *UserPolicy) {
 	m := make(map[string]bool)
 	newUserPolicy = &UserPolicy{OwnVols: make([]string, 0), NoneOwnVol: make(map[string][]string)}
 	for _, vol := range policy.OwnVols {
-		if _, exit := m[vol]; !exit {
+		if _, exist := m[vol]; !exist {
 			m[vol] = true
 			newUserPolicy.OwnVols = append(newUserPolicy.OwnVols, vol)
 		}
@@ -111,7 +111,7 @@ func CleanPolicy(policy *UserPolicy) (newUserPolicy *UserPolicy) {
 		checkMap := make(map[string]bool)
 		newAPI := make([]string, 0)
 		for _, api := range apis {
-			if _, exit := checkMap[api]; !exit {
+			if _, exist := checkMap[api]; !exist {
 				checkMap[api] = true
 				newAPI = append(newAPI, api)
 			}

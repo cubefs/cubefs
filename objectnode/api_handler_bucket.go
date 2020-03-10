@@ -346,8 +346,8 @@ func calculateAuthKey(key string) (authKey string, err error) {
 
 func (o *ObjectNode) getAkInfo(accessKey string) (*proto.AKPolicy, error) {
 	var err error
-	akPolicy, exit := o.userStore.Get(accessKey)
-	if !exit {
+	akPolicy, exist := o.userStore.Get(accessKey)
+	if !exist {
 		if akPolicy, err = o.mc.UserAPI().GetAKInfo(accessKey); err != nil {
 			log.LogInfof("load user policy err: %v", err)
 			return akPolicy, err
