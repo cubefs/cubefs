@@ -16,8 +16,15 @@ type AKPolicy struct {
 
 type UserPolicy struct {
 	OwnVols    []string
-	NoneOwnVol map[string][]string // k: vol, v: apis
+	NoneOwnVol map[string][]string // mapping: volume -> actions
 	mu         sync.RWMutex
+}
+
+func NewUserPolicy() *UserPolicy {
+	return &UserPolicy{
+		OwnVols: make([]string, 0),
+		NoneOwnVol: make(map[string][]string),
+	}
 }
 
 type VolAK struct {

@@ -1,13 +1,11 @@
 package master
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -51,7 +49,7 @@ func (u *User) createKey(owner string) (akPolicy *proto.AKPolicy, err error) {
 	//check duplicate
 	if _, exit = u.userAk.Load(owner); exit {
 		err = proto.ErrDuplicateUserID
-		goto errHandler
+		return
 	}
 	_, exit = u.akStore.Load(accessKey)
 	for exit {
@@ -62,18 +60,14 @@ func (u *User) createKey(owner string) (akPolicy *proto.AKPolicy, err error) {
 	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: owner}
 	userAK = &proto.UserAK{UserID: owner, AccessKey: accessKey}
 	if err = u.syncAddAKPolicy(akPolicy); err != nil {
-		goto errHandler
+		return
 	}
 	if err = u.syncAddUserAK(userAK); err != nil {
-		goto errHandler
+		return
 	}
 	u.akStore.Store(accessKey, akPolicy)
 	u.userAk.Store(owner, userAK)
 	log.LogInfof("action[createUser], user: %v, accesskey[%v], secretkey[%v]", owner, accessKey, secretKey)
-	return
-errHandler:
-	err = fmt.Errorf("action[createUser], user: %v err: %v ", owner, err.Error())
-	log.LogErrorf(errors.Stack(err))
 	return
 }
 
@@ -90,28 +84,24 @@ func (u *User) createUserWithKey(owner, accessKey, secretKey string) (akPolicy *
 	//check duplicate
 	if _, exit = u.userAk.Load(owner); exit {
 		err = proto.ErrDuplicateUserID
-		goto errHandler
+		return
 	}
 	if _, exit = u.akStore.Load(accessKey); exit {
 		err = proto.ErrDuplicateAccessKey
-		goto errHandler
+		return
 	}
 	userPolicy = &proto.UserPolicy{OwnVols: make([]string, 0), NoneOwnVol: make(map[string][]string)}
 	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: owner}
 	userAK = &proto.UserAK{UserID: owner, AccessKey: accessKey}
 	if err = u.syncAddAKPolicy(akPolicy); err != nil {
-		goto errHandler
+		return
 	}
 	if err = u.syncAddUserAK(userAK); err != nil {
-		goto errHandler
+		return
 	}
 	u.akStore.Store(accessKey, akPolicy)
 	u.userAk.Store(owner, userAK)
 	log.LogInfof("action[createUserWithKey], user: %v, accesskey[%v], secretkey[%v]", owner, accessKey, secretKey)
-	return
-errHandler:
-	err = fmt.Errorf("action[createUserWithKey], user: %v, ak: %v, sk: %v, err: %v ", owner, accessKey, secretKey, err.Error())
-	log.LogErrorf(errors.Stack(err))
 	return
 }
 
@@ -122,42 +112,34 @@ func (u *User) deleteKey(owner string) (err error) {
 	)
 	if value, exit := u.userAk.Load(owner); !exit {
 		err = proto.ErrOSSUserNotExists
-		goto errHandler
+		return
 	} else {
 		userAK = value.(*proto.UserAK)
 	}
 	if akPolicy, err = u.getAKInfo(userAK.AccessKey); err != nil {
-		goto errHandler
+		return
 	}
 	if len(akPolicy.Policy.OwnVols) > 0 {
 		err = proto.ErrOwnVolExits
-		goto errHandler
+		return
 	}
 	if err = u.syncDeleteAKPolicy(akPolicy); err != nil {
-		goto errHandler
+		return
 	}
 	if err = u.syncDeleteUserAK(userAK); err != nil {
-		goto errHandler
+		return
 	}
 	u.akStore.Delete(userAK.AccessKey)
 	u.userAk.Delete(owner)
 	log.LogInfof("action[deleteUser], user: %v, accesskey[%v]", owner, userAK.AccessKey)
 	return
-errHandler:
-	err = fmt.Errorf("action[deleteUser], user: %v err: %v ", owner, err.Error())
-	log.LogErrorf(errors.Stack(err))
-	return
 }
 
 func (u *User) getKeyInfo(ak string) (akPolicy *proto.AKPolicy, err error) {
 	if akPolicy, err = u.getAKInfo(ak); err != nil {
-		goto errHandler
+		return
 	}
 	log.LogInfof("action[getKeyInfo], accesskey[%v]", ak)
-	return
-errHandler:
-	err = fmt.Errorf("action[getKeyInfo], ak: %v err: %v ", ak, err.Error())
-	log.LogErrorf(errors.Stack(err))
 	return
 }
 
@@ -169,57 +151,45 @@ func (u *User) getUserInfo(owner string) (akPolicy *proto.AKPolicy, err error) {
 		ak = value.(*proto.UserAK).AccessKey
 	} else {
 		err = proto.ErrOSSUserNotExists
-		goto errHandler
+		return
 	}
 	if akPolicy, err = u.getAKInfo(ak); err != nil {
-		goto errHandler
+		return
 	}
 	log.LogInfof("action[getUserInfo], user: %v", owner)
-	return
-errHandler:
-	err = fmt.Errorf("action[getUserInfo], user: %v err: %v ", owner, err.Error())
-	log.LogErrorf(errors.Stack(err))
 	return
 }
 
 func (u *User) addPolicy(ak string, userPolicy *proto.UserPolicy) (akPolicy *proto.AKPolicy, err error) {
 	if akPolicy, err = u.getAKInfo(ak); err != nil {
-		goto errHandler
+		return
 	}
 	akPolicy.Policy.Add(userPolicy)
 	akPolicy.Policy = proto.CleanPolicy(akPolicy.Policy)
 	if err = u.syncUpdateAKPolicy(akPolicy); err != nil {
 		err = proto.ErrPersistenceByRaft
-		goto errHandler
+		return
 	}
 	if err = u.addVolAKs(ak, userPolicy); err != nil {
-		goto errHandler
+		return
 	}
 	log.LogInfof("action[addPolicy], accessKey: %v", ak)
-	return
-errHandler:
-	err = fmt.Errorf("action[addPolicy], accessKey: %v err: %v", ak, err.Error())
-	log.LogErrorf(errors.Stack(err))
 	return
 }
 
 func (u *User) deletePolicy(ak string, userPolicy *proto.UserPolicy) (akPolicy *proto.AKPolicy, err error) {
 	if akPolicy, err = u.getAKInfo(ak); err != nil {
-		goto errHandler
+		return
 	}
 	akPolicy.Policy.Delete(userPolicy)
 	if err = u.syncUpdateAKPolicy(akPolicy); err != nil {
 		err = proto.ErrPersistenceByRaft
-		goto errHandler
+		return
 	}
 	if err = u.deleteVolAKs(ak, userPolicy); err != nil {
-		goto errHandler
+		return
 	}
 	log.LogInfof("action[deletePolicy], accessKey: %v", ak)
-	return
-errHandler:
-	err = fmt.Errorf("action[deletePolicy], accessKey: %v err: %v", ak, err.Error())
-	log.LogErrorf(errors.Stack(err))
 	return
 }
 
@@ -233,14 +203,14 @@ func (u *User) deleteVolPolicy(vol string) (err error) {
 		volAK = value.(*proto.VolAK)
 	} else {
 		err = proto.ErrVolPolicyNotExists
-		goto errHandler
+		return
 	}
 	//delete policy
 	for _, akAndAction := range volAK.AKAndActions {
 		ak := akAndAction[:accessKeyLength]
 		action := akAndAction[accessKeyLength+1:]
 		if akPolicy, err = u.getAKInfo(ak); err != nil {
-			goto errHandler
+			return
 		}
 		var userPolicy *proto.UserPolicy
 		if action == ALL {
@@ -251,19 +221,15 @@ func (u *User) deleteVolPolicy(vol string) (err error) {
 		akPolicy.Policy.Delete(userPolicy)
 		if err = u.syncUpdateAKPolicy(akPolicy); err != nil {
 			err = proto.ErrPersistenceByRaft
-			goto errHandler
+			return
 		}
 	}
 	//delete vol index
 	if err = u.syncDeleteVolAK(volAK); err != nil {
-		goto errHandler
+		return
 	}
 	u.volAKs.Delete(volAK.Vol)
 	log.LogInfof("action[deleteVolPolicy], volName: %v", vol)
-	return
-errHandler:
-	err = fmt.Errorf("action[deleteVolPolicy], volName: %v err: %v", vol, err.Error())
-	log.LogErrorf(errors.Stack(err))
 	return
 }
 
@@ -271,23 +237,19 @@ func (u *User) transferVol(vol, ak, targetKey string) (targetAKPolicy *proto.AKP
 	var akPolicy *proto.AKPolicy
 	userPolicy := &proto.UserPolicy{OwnVols: []string{vol}}
 	if akPolicy, err = u.getAKInfo(ak); err != nil {
-		goto errHandler
+		return
 	}
 	if !contains(akPolicy.Policy.OwnVols, vol) {
 		err = proto.ErrHaveNoPolicy
-		goto errHandler
+		return
 	}
 	if _, err = u.deletePolicy(ak, userPolicy); err != nil {
-		goto errHandler
+		return
 	}
 	if targetAKPolicy, err = u.addPolicy(targetKey, userPolicy); err != nil {
-		goto errHandler
+		return
 	}
 	log.LogInfof("action[transferVol], volName: %v, ak: %v, targetKey: %v", vol, ak, targetKey)
-	return
-errHandler:
-	err = fmt.Errorf("action[transferVol], volName: %v, ak: %v, targetKey: %v, err: %v", vol, ak, targetKey, err.Error())
-	log.LogErrorf(errors.Stack(err))
 	return
 }
 

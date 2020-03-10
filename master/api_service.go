@@ -1778,16 +1778,22 @@ func genRespMessage(data []byte, req *proto.APIAccessReq, ts int64, key []byte) 
 	return
 }
 
-func (m *Server) createUserWithPolicy(userID, volName string) (err error) {
+func (m *Server) createUserWithPolicy(userID, volName string) error {
+	var err error
 	var akPolicy *proto.AKPolicy
-	if akPolicy, err = m.user.createKey(userID); err != nil {
-		return
+	if akPolicy, err = m.user.createKey(userID); err != nil && err != proto.ErrDuplicateUserID {
+		return err
+	}
+	if err == proto.ErrDuplicateUserID || akPolicy == nil {
+		if akPolicy, err = m.user.getUserInfo(userID); err != nil {
+			return err
+		}
 	}
 	policy := &proto.UserPolicy{
 		OwnVols: []string{volName},
 	}
 	if _, err = m.user.addPolicy(akPolicy.AccessKey, policy); err != nil {
-		return
+		return err
 	}
-	return
+	return nil
 }
