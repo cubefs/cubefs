@@ -15,7 +15,9 @@
 package master
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"net/http/httputil"
 	"regexp"
 	"strconv"
@@ -81,6 +83,7 @@ type Server struct {
 	wg           sync.WaitGroup
 	reverseProxy *httputil.ReverseProxy
 	metaReady    bool
+	apiServer    *http.Server
 }
 
 // NewServer creates a new server
@@ -130,6 +133,12 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 
 // Shutdown closes the server
 func (m *Server) Shutdown() {
+	var err error
+	if m.apiServer != nil {
+		if err = m.apiServer.Shutdown(context.Background()); err != nil {
+			log.LogErrorf("action[Shutdown] failed, err: %v", err)
+		}
+	}
 	m.wg.Done()
 }
 

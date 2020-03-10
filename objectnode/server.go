@@ -177,7 +177,7 @@ func (o *ObjectNode) startMuxRestAPI() (err error) {
 
 	go func() {
 		if err = server.ListenAndServe(); err != nil {
-			log.LogErrorf("startMuxRestAPI: start http server fail, err(%o)", err)
+			log.LogErrorf("startMuxRestAPI: start http server fail, err(%v)", err)
 			return
 		}
 	}()
