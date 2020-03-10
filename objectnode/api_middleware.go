@@ -36,7 +36,7 @@ var (
 // After receiving the request, the handler will assign a unique RequestID to
 // the request and record the processing time of the request.
 // Workflow:
-//   Request → Handle → Next → Handle → Response
+//   request → [pre-handle] → [next handler] → [post-handle] → response
 func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 	var generateRequestID = func() (string, error) {
 		var uUID uuid.UUID
@@ -61,6 +61,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		// store request ID to context and write to header
 		SetRequestID(r, requestID)
 		w.Header().Set(HeaderNameRequestId, requestID)
+		w.Header().Set(HeaderNameServer, HeaderValueServer)
 
 		var action = ActionFromRouteName(mux.CurrentRoute(r).GetName())
 		SetRequestAction(r, action)
@@ -169,9 +170,11 @@ func (o *ObjectNode) policyCheckMiddleware(next http.Handler) http.Handler {
 		})
 }
 
-// ContentMiddleware returns a pre-handle middleware handler to process reader for content.
+// ContentMiddleware returns a middleware handler to process reader for content.
 // If the request contains the "X-amz-Decoded-Content-Length" header, it means that the data
 // in the request body is chunked. Use ChunkedReader to parse the data.
+// Workflow:
+//   request → [pre-handle] → [next handler] → response
 func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
 		if len(r.Header) > 0 && len(r.Header.Get(http.CanonicalHeaderKey(HeaderNameDecodeContentLength))) > 0 {
@@ -181,4 +184,23 @@ func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	}
 	return handlerFunc
+}
+
+// CORSMiddleware returns a middleware handler to support CORS request.
+// This handler will write following header into response:
+//   Access-Control-Allow-Origin [*]
+//   Access-Control-Allow-Headers [*]
+//   Access-Control-Allow-Methods [*]
+//   Access-Control-Max-Age [0]
+// Workflow:
+//   request → [pre-handle] → [next handler] → response
+func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// write access control allow headers
+		w.Header().Set(HeaderNameAccessControlAllowOrigin, "*")
+		w.Header().Set(HeaderNameAccessControlAllowHeaders, "*")
+		w.Header().Set(HeaderNameAccessControlAllowMethods, "*")
+		w.Header().Set(HeaderNameAccessControlMaxAge, "0")
+		next.ServeHTTP(w, r)
+	})
 }

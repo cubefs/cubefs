@@ -163,6 +163,7 @@ func (o *ObjectNode) startMuxRestAPI() (err error) {
 	router := mux.NewRouter().SkipClean(true)
 	o.registerApiRouters(router)
 	router.Use(
+		o.corsMiddleware,
 		o.traceMiddleware,
 		o.authMiddleware,
 		o.policyCheckMiddleware,
