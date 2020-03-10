@@ -16,6 +16,7 @@ const (
 	secretKeyLength = 32
 	separator       = "_"
 	ALL             = "all"
+	DefaultPassword = "MxMxMxMxMxMx"
 )
 
 type User struct {
