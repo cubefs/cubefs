@@ -22,7 +22,7 @@ func (m *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if akPolicy, err = m.user.createKey(owner, password); err != nil {
+	if akPolicy, err = m.user.createKey(owner, password, proto.User); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -42,7 +42,7 @@ func (m *Server) createUserWithKey(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if akPolicy, err = m.user.createUserWithKey(owner, password, ak, sk); err != nil {
+	if akPolicy, err = m.user.createUserWithKey(owner, password, ak, sk, proto.User); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

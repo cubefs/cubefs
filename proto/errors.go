@@ -73,6 +73,8 @@ var (
 	ErrHaveNoPolicy                    = errors.New("no vol policy")
 	ErrZoneNotExists                   = errors.New("zone not exists")
 	ErrOwnVolExists                    = errors.New("own vol not empty")
+	ErrSuperAdminExists                = errors.New("super administrator exists ")
+	ErrUserType                        = errors.New("user type error")
 )
 
 // http response error code and error message definitions
@@ -128,6 +130,8 @@ const (
 	ErrCodeNoZoneToCreateMetaPartition
 	ErrCodeNotExists
 	ErrCodeOwnVolExists
+	ErrCodeSuperAdminExists
+	ErrCodeUserType
 )
 
 // Err2CodeMap error map to code
@@ -181,4 +185,6 @@ var Err2CodeMap = map[error]int32{
 	ErrHaveNoPolicy:                    ErrCodeHaveNoPolicy,
 	ErrZoneNotExists:                   ErrCodeNotExists,
 	ErrOwnVolExists:                    ErrCodeOwnVolExists,
+	ErrSuperAdminExists:                ErrCodeSuperAdminExists,
+	ErrUserType:                        ErrCodeUserType,
 }

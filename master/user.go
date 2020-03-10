@@ -20,14 +20,15 @@ const (
 )
 
 type User struct {
-	fsm          *MetadataFsm
-	partition    raftstore.Partition
-	akStore      sync.Map //K: ak, V: AKPolicy
-	userAk       sync.Map //K: user, V: ak
-	volAKs       sync.Map //K: vol, V: aks
-	akStoreMutex sync.RWMutex
-	userAKMutex  sync.RWMutex
-	volAKsMutex  sync.RWMutex
+	fsm             *MetadataFsm
+	partition       raftstore.Partition
+	akStore         sync.Map //K: ak, V: AKPolicy
+	userAk          sync.Map //K: user, V: ak
+	volAKs          sync.Map //K: vol, V: aks
+	akStoreMutex    sync.RWMutex
+	userAKMutex     sync.RWMutex
+	volAKsMutex     sync.RWMutex
+	SuperAdminExist bool
 }
 
 func newUser(fsm *MetadataFsm, partition raftstore.Partition) (u *User) {
@@ -37,12 +38,20 @@ func newUser(fsm *MetadataFsm, partition raftstore.Partition) (u *User) {
 	return
 }
 
-func (u *User) createKey(userID, password string) (akPolicy *proto.AKPolicy, err error) {
+func (u *User) createKey(userID, password string, userType proto.UserType) (akPolicy *proto.AKPolicy, err error) {
 	var (
 		userAK     *proto.UserAK
 		userPolicy *proto.UserPolicy
 		exist      bool
 	)
+	if !proto.IsUserType(userType) {
+		err = proto.ErrUserType
+		return
+	}
+	if userType == proto.SuperAdmin && u.SuperAdminExist {
+		err = proto.ErrSuperAdminExists
+		return
+	}
 	accessKey := util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
 	secretKey := util.RandomString(secretKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
 	u.akStoreMutex.Lock()
@@ -60,7 +69,8 @@ func (u *User) createKey(userID, password string) (akPolicy *proto.AKPolicy, err
 		_, exist = u.akStore.Load(accessKey)
 	}
 	userPolicy = &proto.UserPolicy{OwnVols: make([]string, 0), NoneOwnVol: make(map[string][]string)}
-	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: userID, Password: sha1String(password)}
+	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy,
+		UserID: userID, Password: sha1String(password), UserType: userType}
 	userAK = &proto.UserAK{UserID: userID, AccessKey: accessKey}
 	if err = u.syncAddAKPolicy(akPolicy); err != nil {
 		return
@@ -74,12 +84,20 @@ func (u *User) createKey(userID, password string) (akPolicy *proto.AKPolicy, err
 	return
 }
 
-func (u *User) createUserWithKey(userID, password, accessKey, secretKey string) (akPolicy *proto.AKPolicy, err error) {
+func (u *User) createUserWithKey(userID, password, accessKey, secretKey string, userType proto.UserType) (akPolicy *proto.AKPolicy, err error) {
 	var (
 		userAK     *proto.UserAK
 		userPolicy *proto.UserPolicy
 		exist      bool
 	)
+	if !proto.IsUserType(userType) {
+		err = proto.ErrUserType
+		return
+	}
+	if userType == proto.SuperAdmin && u.SuperAdminExist {
+		err = proto.ErrSuperAdminExists
+		return
+	}
 	u.akStoreMutex.Lock()
 	defer u.akStoreMutex.Unlock()
 	u.userAKMutex.Lock()
@@ -94,7 +112,8 @@ func (u *User) createUserWithKey(userID, password, accessKey, secretKey string) 
 		return
 	}
 	userPolicy = &proto.UserPolicy{OwnVols: make([]string, 0), NoneOwnVol: make(map[string][]string)}
-	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: userID, Password: sha1String(password)}
+	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy,
+		UserID: userID, Password: sha1String(password), UserType: userType}
 	userAK = &proto.UserAK{UserID: userID, AccessKey: accessKey}
 	if err = u.syncAddAKPolicy(akPolicy); err != nil {
 		return

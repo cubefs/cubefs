@@ -2,6 +2,14 @@ package proto
 
 import "sync"
 
+type UserType string
+
+const (
+	SuperAdmin UserType = "super_admin"
+	Admin      UserType = "admin"
+	User       UserType = "user"
+)
+
 type UserAK struct {
 	UserID    string `json:"user_id"`
 	AccessKey string `json:"access_key"`
@@ -13,6 +21,7 @@ type AKPolicy struct {
 	Policy    *UserPolicy `json:"policy"`
 	UserID    string      `json:"user_id"`
 	Password  string      `json:"password"`
+	UserType  UserType    `json:"user_type"`
 }
 
 type UserPolicy struct {
@@ -120,4 +129,12 @@ func CleanPolicy(policy *UserPolicy) (newUserPolicy *UserPolicy) {
 		newUserPolicy.NoneOwnVol[vol] = newAPI
 	}
 	return
+}
+
+func IsUserType(userType UserType) bool {
+	if userType == SuperAdmin || userType == Admin || userType == User {
+		return true
+	} else {
+		return false
+	}
 }

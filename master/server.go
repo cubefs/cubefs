@@ -123,7 +123,10 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		return
 	}
 	m.initCluster()
-	m.initUser()
+	if err = m.initUser(); err != nil {
+		log.LogError(errors.Stack(err))
+		return
+	}
 	exporter.Init(ModuleName, cfg)
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
@@ -159,7 +162,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	peerAddrs := cfg.GetString(cfgPeers)
 	if m.ip == "" || m.port == "" || m.walDir == "" || m.storeDir == "" || m.clusterName == "" || peerAddrs == "" {
 		return fmt.Errorf("%v,err:%v,%v,%v,%v,%v,%v,%v", proto.ErrInvalidCfg, "one of (ip,listen,walDir,storeDir,clusterName) is null",
-			m.ip,m.port,m.walDir,m.storeDir,m.clusterName,peerAddrs)
+			m.ip, m.port, m.walDir, m.storeDir, m.clusterName, peerAddrs)
 	}
 	if m.id, err = strconv.ParseUint(cfg.GetString(ID), 10, 64); err != nil {
 		return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
@@ -287,6 +290,11 @@ func (m *Server) initCluster() {
 	m.cluster.retainLogs = m.retainLogs
 }
 
-func (m *Server) initUser() {
+func (m *Server) initUser() (err error) {
 	m.user = newUser(m.fsm, m.partition)
+	if _, err = m.user.createKey("root", "superAdminOfChubaoFS", proto.SuperAdmin); err != nil {
+		return
+	}
+	m.user.SuperAdminExist = true
+	return
 }
