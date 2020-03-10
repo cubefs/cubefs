@@ -1,6 +1,8 @@
 package master
 
 import (
+	"crypto/sha1"
+	"io"
 	"sync"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -34,7 +36,7 @@ func newUser(fsm *MetadataFsm, partition raftstore.Partition) (u *User) {
 	return
 }
 
-func (u *User) createKey(userID string) (akPolicy *proto.AKPolicy, err error) {
+func (u *User) createKey(userID, password string) (akPolicy *proto.AKPolicy, err error) {
 	var (
 		userAK     *proto.UserAK
 		userPolicy *proto.UserPolicy
@@ -57,7 +59,7 @@ func (u *User) createKey(userID string) (akPolicy *proto.AKPolicy, err error) {
 		_, exist = u.akStore.Load(accessKey)
 	}
 	userPolicy = &proto.UserPolicy{OwnVols: make([]string, 0), NoneOwnVol: make(map[string][]string)}
-	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: userID}
+	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: userID, Password: sha1String(password)}
 	userAK = &proto.UserAK{UserID: userID, AccessKey: accessKey}
 	if err = u.syncAddAKPolicy(akPolicy); err != nil {
 		return
@@ -71,7 +73,7 @@ func (u *User) createKey(userID string) (akPolicy *proto.AKPolicy, err error) {
 	return
 }
 
-func (u *User) createUserWithKey(userID, accessKey, secretKey string) (akPolicy *proto.AKPolicy, err error) {
+func (u *User) createUserWithKey(userID, password, accessKey, secretKey string) (akPolicy *proto.AKPolicy, err error) {
 	var (
 		userAK     *proto.UserAK
 		userPolicy *proto.UserPolicy
@@ -91,7 +93,7 @@ func (u *User) createUserWithKey(userID, accessKey, secretKey string) (akPolicy 
 		return
 	}
 	userPolicy = &proto.UserPolicy{OwnVols: make([]string, 0), NoneOwnVol: make(map[string][]string)}
-	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: userID}
+	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: userID, Password: sha1String(password)}
 	userAK = &proto.UserAK{UserID: userID, AccessKey: accessKey}
 	if err = u.syncAddAKPolicy(akPolicy); err != nil {
 		return
@@ -341,6 +343,12 @@ func removeAK(array []string, element string) []string {
 	}
 	log.LogErrorf("Delete user policy failed: remove accesskey [%v] form vol", element)
 	return array
+}
+
+func sha1String(s string) string {
+	t := sha1.New()
+	io.WriteString(t, s)
+	return string(t.Sum(nil))
 }
 
 func (u *User) clearAKStore() {

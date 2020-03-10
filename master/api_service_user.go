@@ -15,13 +15,14 @@ func (m *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	var (
 		akPolicy *proto.AKPolicy
 		owner    string
+		password string
 		err      error
 	)
-	if owner, err = parseOwner(r); err != nil {
+	if owner, password, err = parseOwnerAndPassword(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if akPolicy, err = m.user.createKey(owner); err != nil {
+	if akPolicy, err = m.user.createKey(owner, password); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -32,15 +33,16 @@ func (m *Server) createUserWithKey(w http.ResponseWriter, r *http.Request) {
 	var (
 		akPolicy *proto.AKPolicy
 		owner    string
+		password string
 		ak       string
 		sk       string
 		err      error
 	)
-	if owner, ak, sk, err = parseOwnerAndKey(r); err != nil {
+	if owner, password, ak, sk, err = parseOwnerAndKey(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if akPolicy, err = m.user.createUserWithKey(owner, ak, sk); err != nil {
+	if akPolicy, err = m.user.createUserWithKey(owner, password, ak, sk); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -215,17 +217,33 @@ func parseOwner(r *http.Request) (owner string, err error) {
 	return
 }
 
-func parseOwnerAndKey(r *http.Request) (owner, ak, sk string, err error) {
+func parseOwnerAndKey(r *http.Request) (owner, password, ak, sk string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
 	if owner, err = extractOwner(r); err != nil {
 		return
 	}
+	if password, err = extractPassword(r); err != nil {
+		return
+	}
 	if ak, err = extractAccessKey(r); err != nil {
 		return
 	}
 	if sk, err = extractSecretKey(r); err != nil {
+		return
+	}
+	return
+}
+
+func parseOwnerAndPassword(r *http.Request) (owner, password string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if owner, err = extractOwner(r); err != nil {
+		return
+	}
+	if password, err = extractPassword(r); err != nil {
 		return
 	}
 	return
@@ -288,5 +306,14 @@ func extractSecretKey(r *http.Request) (sk string, err error) {
 	if !skRegexp.MatchString(sk) {
 		return "", errors.New("secretkey can only be number and letters")
 	}
+	return
+}
+
+func extractPassword(r *http.Request) (password string, err error) {
+	if password = r.FormValue(passwordKey); password == "" {
+		err = keyNotFound(passwordKey)
+		return
+	}
+	// todo password regex
 	return
 }

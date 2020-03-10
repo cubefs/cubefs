@@ -12,6 +12,7 @@ type AKPolicy struct {
 	SecretKey string      `json:"secret_key"`
 	Policy    *UserPolicy `json:"policy"`
 	UserID    string      `json:"user_id"`
+	Password  string      `json:"password"`
 }
 
 type UserPolicy struct {
