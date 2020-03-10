@@ -277,9 +277,9 @@ func (m *Server) initCluster() {
 
 func (m *Server) initUser() (err error) {
 	m.user = newUser(m.fsm, m.partition)
-	if _, err = m.user.createKey("root", "superAdminOfChubaoFS", proto.SuperAdmin); err != nil {
-		return
-	}
+	//if _, err = m.user.createKey("root", "superAdminOfChubaoFS", proto.SuperAdmin); err != nil {
+	//	return
+	//}
 	m.user.SuperAdminExist = true
 	return
 }
