@@ -614,8 +614,9 @@ func (c *Cluster) adjustMetaNode(metaNode *MetaNode) {
 		goto errHandler
 	}
 	c.t.putMetaNode(metaNode)
+	return
 errHandler:
-	err = fmt.Errorf("action[adjustMetaNode],clusterID[%v] addr:%v,zone[%v] err:%v ", c.Name, metaNode.Addr, metaNode.ZoneName, err.Error())
+	err = fmt.Errorf("action[adjustMetaNode],clusterID[%v] addr:%v,zone[%v] err:%v ", c.Name, metaNode.Addr, metaNode.ZoneName, err)
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return
@@ -780,8 +781,9 @@ func (c *Cluster) adjustDataNode(dataNode *DataNode) {
 		goto errHandler
 	}
 	c.t.putDataNode(dataNode)
+	return
 errHandler:
-	err = fmt.Errorf("action[adjustDataNode],clusterID[%v] dataNodeAddr:%v,zone[%v] err:%v ", c.Name, dataNode.Addr, dataNode.ZoneName, err.Error())
+	err = fmt.Errorf("action[adjustDataNode],clusterID[%v] dataNodeAddr:%v,zone[%v] err:%v ", c.Name, dataNode.Addr, dataNode.ZoneName, err)
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return

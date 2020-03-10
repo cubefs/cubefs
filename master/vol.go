@@ -252,9 +252,19 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	vol.checkSplitMetaPartition(c)
 	maxPartitionID := vol.maxPartitionID()
 	mps := vol.cloneMetaPartitionMap()
+	var (
+		doSplit bool
+		err     error
+	)
 	for _, mp := range mps {
+		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID)
+		if doSplit {
+			nextStart := mp.Start + mp.MaxInodeID + defaultMetaPartitionInodeIDStep
+			if err = vol.splitMetaPartition(c, mp, nextStart); err != nil {
+				Warn(c.Name, fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits failed,err[%v]", c.Name, vol.Name, mp.PartitionID, err))
+			}
+		}
 
-		mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID)
 		mp.checkLeader()
 		mp.checkReplicaNum(c, vol.Name, vol.mpReplicaNum)
 		mp.checkEnd(c, maxPartitionID)
