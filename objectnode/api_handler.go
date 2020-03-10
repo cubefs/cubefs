@@ -88,26 +88,6 @@ func ParseRequestParam(r *http.Request) *RequestParam {
 	return p
 }
 
-//Deprecated:
-//func (o *ObjectNode) parseRequestParams(r *http.Request) (vars map[string]string, bucket, object string, vl *Volume, err error) {
-//	vars = mux.Vars(r)
-//	bucket = vars["bucket"]
-//	object = vars["object"]
-//	if bucket != "" {
-//		if vm, ok := o.vm.(*VolumeManager); ok {
-//			vl, err = vm.loadVolume(bucket)
-//			if err != nil {
-//				log.LogErrorf("parseRequestParams: load Volume fail, requestId(%v) bucket(%v) err(%v)",
-//					GetRequestID(r), bucket, err)
-//			}
-//		} else {
-//			log.LogErrorf("parseRequestParams: load Volume fail, requestId(%v) bucket(%v) err(%v)",
-//				GetRequestID(r), bucket, err)
-//		}
-//	}
-//	return
-//}
-
 func (o *ObjectNode) getVol(bucket string) (vol *Volume, err error) {
 	if bucket == "" {
 		return nil, errors.New("bucket name is empty")
