@@ -263,6 +263,19 @@ func NewPacketToNotifyExtentRepair(partitionID uint64) (p *Packet) {
 	return
 }
 
+func NewExtentStripeRead(partitionID uint64, extentID uint64, offset int64, size uint32) (p *Packet) {
+	p = new(Packet)
+	p.ExtentID = extentID
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.ExtentOffset = offset
+	p.Size = size
+	p.Opcode = proto.OpStreamRead
+	p.ReqID = proto.GenerateRequestID()
+
+	return
+}
+
 func (p *Packet) IsErrPacket() bool {
 	return p.ResultCode != proto.OpOk && p.ResultCode != proto.OpInitResultCode
 }
