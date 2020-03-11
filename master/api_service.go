@@ -1577,6 +1577,8 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var toInfo = func(mp *MetaPartition) *proto.MetaPartitionInfo {
+		mp.RLock()
+		defer mp.RUnlock()
 		var replicas = make([]*proto.MetaReplicaInfo, len(mp.Replicas))
 		zones := make([]string, len(mp.Hosts))
 		for idx, host := range mp.Hosts {
