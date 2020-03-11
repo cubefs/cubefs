@@ -289,6 +289,6 @@ func (m *Server) initUser() (err error) {
 	//if _, err = m.user.createKey("root", "superAdminOfChubaoFS", proto.SuperAdmin); err != nil {
 	//	return
 	//}
-	m.user.SuperAdminExist = true
+	//m.user.SuperAdminExist = true
 	return
 }

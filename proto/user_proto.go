@@ -38,8 +38,8 @@ func NewUserPolicy() *UserPolicy {
 }
 
 type VolAK struct {
-	Vol          string   `json:"vol"`
-	AKAndActions []string `json:"ak_action"`
+	Vol          string              `json:"vol"`
+	AKAndActions map[string][]string // k: ak, v: actions
 	sync.RWMutex
 }
 
@@ -111,6 +111,8 @@ func removeSlice(s []string, removeSlice []string) []string {
 func CleanPolicy(policy *UserPolicy) (newUserPolicy *UserPolicy) {
 	m := make(map[string]bool)
 	newUserPolicy = &UserPolicy{OwnVols: make([]string, 0), NoneOwnVol: make(map[string][]string)}
+	policy.mu.Lock()
+	defer policy.mu.Unlock()
 	for _, vol := range policy.OwnVols {
 		if _, exist := m[vol]; !exist {
 			m[vol] = true

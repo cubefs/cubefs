@@ -153,6 +153,8 @@ func (u *User) deleteKey(userID string) (err error) {
 	}
 	u.akStore.Delete(userAK.AccessKey)
 	u.userAk.Delete(userID)
+	// delete ak from related policy in volAKStore
+	u.deleteSingleAKFromVolAKs(userAK.AccessKey)
 	log.LogInfof("action[deleteUser], userID: %v, accesskey[%v]", userID, userAK.AccessKey)
 	return
 }
@@ -228,22 +230,22 @@ func (u *User) deleteVolPolicy(volName string) (err error) {
 		return
 	}
 	//delete policy
-	for _, akAndAction := range volAK.AKAndActions {
-		ak := akAndAction[:accessKeyLength]
-		action := akAndAction[accessKeyLength+1:]
-		if akPolicy, err = u.loadAKInfo(ak); err != nil {
-			return
-		}
-		var userPolicy *proto.UserPolicy
-		if action == ALL {
-			userPolicy = &proto.UserPolicy{OwnVols: []string{volName}}
-		} else {
-			userPolicy = &proto.UserPolicy{NoneOwnVol: map[string][]string{volName: {action}}}
-		}
-		akPolicy.Policy.Delete(userPolicy)
-		if err = u.syncUpdateAKPolicy(akPolicy); err != nil {
-			err = proto.ErrPersistenceByRaft
-			return
+	for ak, akAndActions := range volAK.AKAndActions {
+		for _, action := range akAndActions {
+			if akPolicy, err = u.loadAKInfo(ak); err != nil {
+				return
+			}
+			var userPolicy *proto.UserPolicy
+			if action == ALL {
+				userPolicy = &proto.UserPolicy{OwnVols: []string{volName}}
+			} else {
+				userPolicy = &proto.UserPolicy{NoneOwnVol: map[string][]string{volName: {action}}}
+			}
+			akPolicy.Policy.Delete(userPolicy)
+			if err = u.syncUpdateAKPolicy(akPolicy); err != nil {
+				err = proto.ErrPersistenceByRaft
+				return
+			}
 		}
 	}
 	//delete volName index
@@ -288,13 +290,13 @@ func (u *User) addVolAKs(ak string, policy *proto.UserPolicy) (err error) {
 	u.volAKsMutex.Lock()
 	defer u.volAKsMutex.Unlock()
 	for _, vol := range policy.OwnVols {
-		if err = u.addAKToVol(ak+separator+ALL, vol); err != nil {
+		if err = u.addAKToVol(ak, ALL, vol); err != nil {
 			return
 		}
 	}
-	for vol, apis := range policy.NoneOwnVol {
-		for _, api := range apis {
-			if err = u.addAKToVol(ak+separator+api, vol); err != nil {
+	for vol, actions := range policy.NoneOwnVol {
+		for _, action := range actions {
+			if err = u.addAKToVol(ak, action, vol); err != nil {
 				return
 			}
 		}
@@ -302,17 +304,26 @@ func (u *User) addVolAKs(ak string, policy *proto.UserPolicy) (err error) {
 	return
 }
 
-func (u *User) addAKToVol(akAndAction string, volName string) (err error) {
-	var volAK *proto.VolAK
+func (u *User) addAKToVol(ak, action string, volName string) (err error) {
+	var (
+		volAK   *proto.VolAK
+		actions []string
+		exist   bool
+	)
 	if value, ok := u.volAKs.Load(volName); ok {
 		volAK = value.(*proto.VolAK)
 		volAK.Lock()
 		defer volAK.Unlock()
-		volAK.AKAndActions = append(volAK.AKAndActions, akAndAction)
+		if actions, exist = volAK.AKAndActions[ak]; !exist {
+			actions = make([]string, 0)
+		}
+		actions = append(actions, action)
+		volAK.AKAndActions[ak] = actions
 	} else {
-		aks := make([]string, 0)
-		aks = append(aks, akAndAction)
-		volAK = &proto.VolAK{Vol: volName, AKAndActions: aks}
+		akAndActions := make(map[string][]string)
+		actions = []string{action}
+		akAndActions[ak] = actions
+		volAK = &proto.VolAK{Vol: volName, AKAndActions: akAndActions}
 		u.volAKs.Store(volName, volAK)
 	}
 	if err = u.syncAddVolAK(volAK); err != nil {
@@ -324,13 +335,13 @@ func (u *User) addAKToVol(akAndAction string, volName string) (err error) {
 
 func (u *User) deleteVolAKs(ak string, policy *proto.UserPolicy) (err error) {
 	for _, vol := range policy.OwnVols {
-		if err = u.deleteAKFromVol(ak+separator+ALL, vol); err != nil {
+		if err = u.deleteAKFromVol(ak, ALL, vol); err != nil {
 			return
 		}
 	}
-	for vol, apis := range policy.NoneOwnVol {
-		for _, api := range apis {
-			if err = u.deleteAKFromVol(ak+separator+api, vol); err != nil {
+	for vol, actions := range policy.NoneOwnVol {
+		for _, action := range actions {
+			if err = u.deleteAKFromVol(ak, action, vol); err != nil {
 				return
 			}
 		}
@@ -338,13 +349,13 @@ func (u *User) deleteVolAKs(ak string, policy *proto.UserPolicy) (err error) {
 	return
 }
 
-func (u *User) deleteAKFromVol(akAndAction string, volName string) (err error) {
+func (u *User) deleteAKFromVol(ak, action string, volName string) (err error) {
 	var volAK *proto.VolAK
 	if value, ok := u.volAKs.Load(volName); ok {
 		volAK = value.(*proto.VolAK)
 		volAK.Lock()
 		defer volAK.Unlock()
-		volAK.AKAndActions = removeAK(volAK.AKAndActions, akAndAction)
+		volAK.AKAndActions[ak] = removeAK(volAK.AKAndActions[ak], action)
 	} else {
 		err = proto.ErrHaveNoPolicy
 	}
@@ -363,6 +374,18 @@ func removeAK(array []string, element string) []string {
 	}
 	log.LogErrorf("Delete user policy failed: remove accesskey [%v] form vol", element)
 	return array
+}
+
+func (u *User) deleteSingleAKFromVolAKs(ak string) {
+	var akAndActions map[string][]string
+	u.volAKs.Range(func(key, value interface{}) bool {
+		volAK := value.(*proto.VolAK)
+		volAK.Lock()
+		akAndActions = volAK.AKAndActions
+		delete(akAndActions, ak)
+		volAK.Unlock()
+		return true
+	})
 }
 
 func sha1String(s string) string {
