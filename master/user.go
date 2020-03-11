@@ -69,9 +69,8 @@ func (u *User) createKey(userID, password string, userType proto.UserType) (akPo
 		_, exist = u.akStore.Load(accessKey)
 	}
 	userPolicy = &proto.UserPolicy{OwnVols: make([]string, 0), NoneOwnVol: make(map[string][]string)}
-	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy,
-		UserID: userID, Password: sha1String(password), UserType: userType}
-	userAK = &proto.UserAK{UserID: userID, AccessKey: accessKey}
+	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: userID, UserType: userType}
+	userAK = &proto.UserAK{UserID: userID, AccessKey: accessKey, Password: sha1String(password)}
 	if err = u.syncAddAKPolicy(akPolicy); err != nil {
 		return
 	}
@@ -112,9 +111,8 @@ func (u *User) createUserWithKey(userID, password, accessKey, secretKey string, 
 		return
 	}
 	userPolicy = &proto.UserPolicy{OwnVols: make([]string, 0), NoneOwnVol: make(map[string][]string)}
-	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy,
-		UserID: userID, Password: sha1String(password), UserType: userType}
-	userAK = &proto.UserAK{UserID: userID, AccessKey: accessKey}
+	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: userID, UserType: userType}
+	userAK = &proto.UserAK{UserID: userID, AccessKey: accessKey, Password: sha1String(password)}
 	if err = u.syncAddAKPolicy(akPolicy); err != nil {
 		return
 	}

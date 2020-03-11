@@ -13,6 +13,7 @@ const (
 type UserAK struct {
 	UserID    string `json:"user_id"`
 	AccessKey string `json:"access_key"`
+	Password  string `json:"password"`
 }
 
 type AKPolicy struct {
@@ -20,7 +21,6 @@ type AKPolicy struct {
 	SecretKey string      `json:"secret_key"`
 	Policy    *UserPolicy `json:"policy"`
 	UserID    string      `json:"user_id"`
-	Password  string      `json:"password"`
 	UserType  UserType    `json:"user_type"`
 }
 
