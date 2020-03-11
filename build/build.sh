@@ -19,7 +19,14 @@ GCC_LIBRARY_PATH="/lib /lib64 /usr/lib /usr/lib64 /usr/local/lib /usr/local/lib6
 cgo_cflags=""
 cgo_ldflags="-lstdc++ -lm"
 
-[ $(uname -s) != "Linux" ] && { echo "ChubaoFS only support Linux os"; exit 1; }
+case $(uname -s | tr 'A-Z' 'a-z') in
+    "linux"|"darwin")
+        ;;
+    *)
+        echo "Current platform $(uname -s) not support";
+        exit1;
+        ;;
+esac
 
 build_snappy() {
     found=$(find ${GCC_LIBRARY_PATH}  -name libsnappy.a -o -name libsnappy.so 2>/dev/null | wc -l)
@@ -101,7 +108,7 @@ run_test() {
 build_server() {
     pre_build
     pushd $SrcPath >/dev/null
-    echo -n "build cfs-server "
+    echo -n "build cfs-server   "
     go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-server ${SrcPath}/cmd/*.go && echo "success" || echo "failed"
     popd >/dev/null
 }
@@ -109,7 +116,7 @@ build_server() {
 build_client() {
     pre_build
     pushd $SrcPath >/dev/null
-    echo -n "build cfs-client "
+    echo -n "build cfs-client   "
     go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-client ${SrcPath}/client/*.go  && echo "success" || echo "failed"
     popd >/dev/null
 }
@@ -117,7 +124,7 @@ build_client() {
 build_client2() {
     pre_build
     pushd $SrcPath >/dev/null
-    echo -n "build cfs-client2 "
+    echo -n "build cfs-client2  "
     go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-client2 ${SrcPath}/clientv2/*.go  && echo "success" || echo "failed"
     popd >/dev/null
 }
@@ -127,6 +134,14 @@ build_authtool() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-authtool "
     go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-authtool ${SrcPath}/authtool/*.go  && echo "success" || echo "failed"
+    popd >/dev/null
+}
+
+build_cli() {
+    pre_build
+    pushd $SrcPath >/dev/null
+    echo -n "build cfs-cli      "
+    go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-cli ${SrcPath}/cli/*.go  && echo "success" || echo "failed"
     popd >/dev/null
 }
 
@@ -160,6 +175,9 @@ case "$cmd" in
         ;;
     "authtool")
         build_authtool
+        ;;
+    "cli")
+        build_cli
         ;;
     "clean")
         clean
