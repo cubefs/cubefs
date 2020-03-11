@@ -231,7 +231,7 @@ func (mp *MetaPartition) checkLeader() {
 	return
 }
 
-func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum int, maxPartitionID uint64) {
+func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum int, maxPartitionID uint64) (doSplit bool) {
 	mp.Lock()
 	defer mp.Unlock()
 	liveReplicas := mp.getLiveReplicas()
@@ -246,7 +246,17 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 		for _, replica := range liveReplicas {
 			if replica.Status == proto.ReadOnly {
 				mp.Status = proto.ReadOnly
-				break
+			}
+			if mr.metaNode == nil {
+				continue
+			}
+			if !mr.metaNode.reachesThreshold() {
+				continue
+			}
+			if mp.PartitionID == maxPartitionID {
+				doSplit = true
+			} else {
+				mp.Status = proto.ReadOnly
 			}
 		}
 	}
@@ -260,6 +270,7 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 		log.LogInfo(msg)
 		Warn(clusterID, msg)
 	}
+	return
 }
 
 func (mp *MetaPartition) getMetaReplicaLeader() (mr *MetaReplica, err error) {
