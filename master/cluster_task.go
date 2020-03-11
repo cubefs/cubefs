@@ -17,12 +17,13 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 func (c *Cluster) addDataNodeTasks(tasks []*proto.AdminTask) {
@@ -593,7 +594,16 @@ func (c *Cluster) adjustMetaNode(metaNode *MetaNode) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
 	oldNodeSetID := metaNode.NodeSetID
-	zone, err := c.t.getZone(metaNode.ZoneName)
+	var err error
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("action[adjustMetaNode],clusterID[%v] addr:%v,zone[%v] err:%v ", c.Name, metaNode.Addr, metaNode.ZoneName, err.Error())
+			log.LogError(errors.Stack(err))
+			Warn(c.Name, err.Error())
+		}
+	}()
+	var zone *Zone
+	zone, err = c.t.getZone(metaNode.ZoneName)
 	if err != nil {
 		zone = newZone(metaNode.ZoneName)
 		c.t.putZone(zone)
@@ -601,23 +611,19 @@ func (c *Cluster) adjustMetaNode(metaNode *MetaNode) {
 	ns := zone.getAvailNodeSetForMetaNode()
 	if ns == nil {
 		if ns, err = zone.createNodeSet(c); err != nil {
-			goto errHandler
+			return
 		}
 	}
 
 	metaNode.NodeSetID = ns.ID
 	if err = c.syncUpdateMetaNode(metaNode); err != nil {
 		metaNode.NodeSetID = oldNodeSetID
-		goto errHandler
+		return
 	}
 	if err = c.syncUpdateNodeSet(ns); err != nil {
-		goto errHandler
+		return
 	}
-	c.t.putMetaNode(metaNode)
-errHandler:
-	err = fmt.Errorf("action[adjustMetaNode],clusterID[%v] addr:%v,zone[%v] err:%v ", c.Name, metaNode.Addr, metaNode.ZoneName, err.Error())
-	log.LogError(errors.Stack(err))
-	Warn(c.Name, err.Error())
+	err = c.t.putMetaNode(metaNode)
 	return
 }
 
@@ -759,7 +765,16 @@ func (c *Cluster) adjustDataNode(dataNode *DataNode) {
 	c.dnMutex.Lock()
 	defer c.dnMutex.Unlock()
 	oldNodeSetID := dataNode.NodeSetID
-	zone, err := c.t.getZone(dataNode.ZoneName)
+	var err error
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("action[adjustDataNode],clusterID[%v] dataNodeAddr:%v,zone[%v] err:%v ", c.Name, dataNode.Addr, dataNode.ZoneName, err.Error())
+			log.LogError(errors.Stack(err))
+			Warn(c.Name, err.Error())
+		}
+	}()
+	var zone *Zone
+	zone, err = c.t.getZone(dataNode.ZoneName)
 	if err != nil {
 		zone = newZone(dataNode.ZoneName)
 		c.t.putZone(zone)
@@ -767,23 +782,19 @@ func (c *Cluster) adjustDataNode(dataNode *DataNode) {
 	ns := zone.getAvailNodeSetForDataNode()
 	if ns == nil {
 		if ns, err = zone.createNodeSet(c); err != nil {
-			goto errHandler
+			return
 		}
 	}
 
 	dataNode.NodeSetID = ns.ID
 	if err = c.syncUpdateDataNode(dataNode); err != nil {
 		dataNode.NodeSetID = oldNodeSetID
-		goto errHandler
+		return
 	}
 	if err = c.syncUpdateNodeSet(ns); err != nil {
-		goto errHandler
+		return
 	}
-	c.t.putDataNode(dataNode)
-errHandler:
-	err = fmt.Errorf("action[adjustDataNode],clusterID[%v] dataNodeAddr:%v,zone[%v] err:%v ", c.Name, dataNode.Addr, dataNode.ZoneName, err.Error())
-	log.LogError(errors.Stack(err))
-	Warn(c.Name, err.Error())
+	err = c.t.putDataNode(dataNode)
 	return
 }
 

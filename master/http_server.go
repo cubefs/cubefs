@@ -47,6 +47,7 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 	var interceptor mux.MiddlewareFunc = func(next http.Handler) http.Handler {
 		return http.HandlerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
+				log.LogDebugf("action[interceptor] request, method[%v] path[%v] query[%v]", r.Method, r.URL.Path, r.URL.Query())
 				if mux.CurrentRoute(r).GetName() == proto.AdminGetIP {
 					next.ServeHTTP(w, r)
 					return
@@ -56,12 +57,12 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 						next.ServeHTTP(w, r)
 						return
 					}
-					log.LogWarnf("action[handlerWithInterceptor] leader meta has not ready")
+					log.LogWarnf("action[interceptor] leader meta has not ready")
 					http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
 					return
 				}
 				if m.leaderInfo.addr == "" {
-					log.LogErrorf("action[handlerWithInterceptor] no leader,request[%v]", r.URL)
+					log.LogErrorf("action[interceptor] no leader,request[%v]", r.URL)
 					http.Error(w, "no leader", http.StatusBadRequest)
 					return
 				}
@@ -97,7 +98,7 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		HandlerFunc(m.createVol)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminGetVol).
-		HandlerFunc(m.getVol)
+		HandlerFunc(m.getVolSimpleInfo)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminDeleteVol).
 		HandlerFunc(m.markDeleteVol)

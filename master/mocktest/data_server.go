@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
@@ -45,7 +46,17 @@ func (mds *MockDataServer) Start() {
 }
 
 func (mds *MockDataServer) register() {
-	nodeID, err := mds.mc.NodeAPI().AddDataNode(mds.TcpAddr,mds.zoneName)
+	var err error
+	var nodeID uint64
+	var retry int
+	for retry < 3 {
+		nodeID, err = mds.mc.NodeAPI().AddDataNode(mds.TcpAddr, mds.zoneName)
+		if err == nil {
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+		retry++
+	}
 	if err != nil {
 		panic(err)
 	}

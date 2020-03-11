@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
@@ -24,7 +25,7 @@ type MockMetaServer struct {
 
 func NewMockMetaServer(addr string, zoneName string) *MockMetaServer {
 	mms := &MockMetaServer{
-		TcpAddr:  addr, partitions: make(map[uint64]*MockMetaPartition, 0),
+		TcpAddr: addr, partitions: make(map[uint64]*MockMetaPartition, 0),
 		ZoneName: zoneName,
 		mc:       master.NewMasterClient([]string{hostAddr}, false),
 	}
@@ -37,7 +38,17 @@ func (mms *MockMetaServer) Start() {
 }
 
 func (mms *MockMetaServer) register() {
-	nodeID, err := mms.mc.NodeAPI().AddMetaNode(mms.TcpAddr, mms.ZoneName)
+	var err error
+	var nodeID uint64
+	var retry int
+	for retry < 3 {
+		nodeID, err = mms.mc.NodeAPI().AddMetaNode(mms.TcpAddr, mms.ZoneName)
+		if err == nil {
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+		retry++
+	}
 	if err != nil {
 		panic(err)
 	}
