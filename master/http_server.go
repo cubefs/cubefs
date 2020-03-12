@@ -198,12 +198,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		HandlerFunc(m.decommissionDisk)
 
 	// user management APIs
-	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+	router.NewRoute().Methods(http.MethodPost).
 		Path(proto.UserCreate).
 		HandlerFunc(m.createUser)
-	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.UserCreateWithKey).
-		HandlerFunc(m.createUserWithKey)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.UserDelete).
 		HandlerFunc(m.deleteUser)

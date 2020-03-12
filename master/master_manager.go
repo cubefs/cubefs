@@ -156,12 +156,24 @@ func (m *Server) refreshUser() (err error) {
 	for volName, vol := range m.cluster.allVols() {
 		if _, err = m.user.getUserInfo(vol.Owner); err == cfsProto.ErrOSSUserNotExists {
 			if len(vol.OSSAccessKey) > 0 && len(vol.OSSSecretKey) > 0 {
-				akPolicy, err = m.user.createUserWithKey(vol.Owner, DefaultPassword, vol.OSSAccessKey, vol.OSSSecretKey, cfsProto.User)
+				var param = cfsProto.UserCreateParam{
+					ID:        vol.Owner,
+					Password:  DefaultUserPassword,
+					AccessKey: vol.OSSAccessKey,
+					SecretKey: vol.OSSSecretKey,
+					Type:      cfsProto.UserTypeNormal,
+				}
+				akPolicy, err = m.user.createKey(&param)
 				if err != nil && err != cfsProto.ErrDuplicateUserID && err != cfsProto.ErrDuplicateAccessKey {
 					return err
 				}
 			} else {
-				akPolicy, err = m.user.createKey(vol.Owner, DefaultPassword, cfsProto.User)
+				var param = cfsProto.UserCreateParam{
+					ID:       vol.Owner,
+					Password: DefaultUserPassword,
+					Type:     cfsProto.UserTypeNormal,
+				}
+				akPolicy, err = m.user.createKey(&param)
 				if err != nil && err != cfsProto.ErrDuplicateUserID {
 					return err
 				}
@@ -174,11 +186,16 @@ func (m *Server) refreshUser() (err error) {
 			}
 		}
 	}
-	if !m.user.SuperAdminExist {
-		if _, err = m.user.createKey(cfsProto.Root, cfsProto.RootPassword, cfsProto.SuperAdmin); err != nil {
+	if !m.user.rootExist {
+		var param = cfsProto.UserCreateParam{
+			ID:       cfsProto.RootUserID,
+			Password: DefaultRootPasswd,
+			Type:     cfsProto.UserTypeRoot,
+		}
+		if _, err = m.user.createKey(&param); err != nil {
 			return err
 		}
-		m.user.SuperAdminExist = true
+		m.user.rootExist = true
 	}
 	return nil
 }

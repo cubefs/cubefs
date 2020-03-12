@@ -74,7 +74,8 @@ var (
 	ErrZoneNotExists                   = errors.New("zone not exists")
 	ErrOwnVolExists                    = errors.New("own vol not empty")
 	ErrSuperAdminExists                = errors.New("super administrator exists ")
-	ErrUserType                        = errors.New("user type error")
+	ErrInvalidUserID                   = errors.New("invalid user ID")
+	ErrInvalidUserType                 = errors.New("invalid user type")
 	ErrNoPermission                    = errors.New("no permission to delete super admin")
 )
 
@@ -132,7 +133,7 @@ const (
 	ErrCodeNotExists
 	ErrCodeOwnVolExists
 	ErrCodeSuperAdminExists
-	ErrCodeUserType
+	ErrCodeInvalidUserType
 	ErrCodeNoPermission
 )
 
@@ -188,6 +189,6 @@ var Err2CodeMap = map[error]int32{
 	ErrZoneNotExists:                   ErrCodeNotExists,
 	ErrOwnVolExists:                    ErrCodeOwnVolExists,
 	ErrSuperAdminExists:                ErrCodeSuperAdminExists,
-	ErrUserType:                        ErrCodeUserType,
+	ErrInvalidUserType:                 ErrCodeInvalidUserType,
 	ErrNoPermission:                    ErrCodeNoPermission,
 }

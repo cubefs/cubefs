@@ -1790,7 +1790,12 @@ func (m *Server) associateVolWithUser(userID, volName string) error {
 		return err
 	}
 	if err == proto.ErrOSSUserNotExists {
-		if akPolicy, err = m.user.createKey(userID, DefaultPassword, proto.User); err != nil {
+		var param = proto.UserCreateParam{
+			ID:       userID,
+			Password: DefaultUserPassword,
+			Type:     proto.UserTypeNormal,
+		}
+		if akPolicy, err = m.user.createKey(&param); err != nil {
 			return err
 		}
 	}

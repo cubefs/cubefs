@@ -11,25 +11,13 @@ type UserAPI struct {
 	mc *MasterClient
 }
 
-func (api *UserAPI) CreateUser(userID string) (akPolicy *proto.AKPolicy, err error) {
-	var request = newAPIRequest(http.MethodPut, proto.UserCreate)
-	request.addParam("owner", userID)
-	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
+func (api *UserAPI) Create(param *proto.UserCreateParam) (akPolicy *proto.AKPolicy, err error) {
+	var request = newAPIRequest(http.MethodPost, proto.UserCreate)
+	var reqBody []byte
+	if reqBody, err = json.Marshal(param); err != nil {
 		return
 	}
-	akPolicy = &proto.AKPolicy{}
-	if err = json.Unmarshal(data, akPolicy); err != nil {
-		return
-	}
-	return
-}
-
-func (api *UserAPI) CreateUserWithKey(userID, ak, sk string) (akPolicy *proto.AKPolicy, err error) {
-	var request = newAPIRequest(http.MethodPut, proto.UserCreateWithKey)
-	request.addParam("owner", userID)
-	request.addParam("ak", ak)
-	request.addParam("sk", sk)
+	request.addBody(reqBody)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return

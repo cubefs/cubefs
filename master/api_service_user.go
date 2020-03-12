@@ -14,39 +14,28 @@ import (
 func (m *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	var (
 		akPolicy *proto.AKPolicy
-		owner    string
-		password string
 		err      error
 	)
-	if owner, password, err = parseOwnerAndPassword(r); err != nil {
+	var bytes []byte
+	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if akPolicy, err = m.user.createKey(owner, password, proto.User); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
+	var param = proto.UserCreateParam{}
+	if err = json.Unmarshal(bytes, &param); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(akPolicy))
-}
+	if param.Type == proto.UserTypeRoot {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrInvalidUserType))
+		return
+	}
 
-func (m *Server) createUserWithKey(w http.ResponseWriter, r *http.Request) {
-	var (
-		akPolicy *proto.AKPolicy
-		owner    string
-		password string
-		ak       string
-		sk       string
-		err      error
-	)
-	if owner, password, ak, sk, err = parseOwnerAndKey(r); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	if akPolicy, err = m.user.createUserWithKey(owner, password, ak, sk, proto.User); err != nil {
+	if akPolicy, err = m.user.createKey(&param); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(akPolicy))
+	_ = sendOkReply(w, r, newSuccessHTTPReply(akPolicy))
 }
 
 func (m *Server) deleteUser(w http.ResponseWriter, r *http.Request) {

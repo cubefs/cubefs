@@ -13,22 +13,23 @@ import (
 )
 
 const (
-	accessKeyLength = 16
-	secretKeyLength = 32
-	ALL             = "all"
-	DefaultPassword = "123456"
+	accessKeyLength     = 16
+	secretKeyLength     = 32
+	ALL                 = "all"
+	DefaultRootPasswd   = "ChubaoFSRoot"
+	DefaultUserPassword = "ChubaoFSUser"
 )
 
 type User struct {
-	fsm             *MetadataFsm
-	partition       raftstore.Partition
-	akStore         sync.Map //K: ak, V: AKPolicy
-	userAk          sync.Map //K: user, V: ak
-	volAKs          sync.Map //K: vol, V: aks
-	akStoreMutex    sync.RWMutex
-	userAKMutex     sync.RWMutex
-	volAKsMutex     sync.RWMutex
-	SuperAdminExist bool
+	fsm          *MetadataFsm
+	partition    raftstore.Partition
+	akStore      sync.Map //K: ak, V: AKPolicy
+	userAk       sync.Map //K: user, V: ak
+	volAKs       sync.Map //K: vol, V: aks
+	akStoreMutex sync.RWMutex
+	userAKMutex  sync.RWMutex
+	volAKsMutex  sync.RWMutex
+	rootExist    bool
 }
 
 func newUser(fsm *MetadataFsm, partition raftstore.Partition) (u *User) {
@@ -38,27 +39,35 @@ func newUser(fsm *MetadataFsm, partition raftstore.Partition) (u *User) {
 	return
 }
 
-func (u *User) createKey(userID, password string, userType proto.UserType) (akPolicy *proto.AKPolicy, err error) {
+func (u *User) createKey(param *proto.UserCreateParam) (akPolicy *proto.AKPolicy, err error) {
 	var (
 		userAK     *proto.UserAK
 		userPolicy *proto.UserPolicy
 		exist      bool
 	)
-	if !proto.IsUserType(userType) {
-		err = proto.ErrUserType
+	if param.ID == "" {
+		err = proto.ErrInvalidUserID
 		return
 	}
-	if userType == proto.SuperAdmin {
-		if u.SuperAdminExist {
-			err = proto.ErrSuperAdminExists
-			return
-		} else if userID != proto.Root {
-			err = proto.ErrDuplicateUserID
-			return
-		}
+	if !param.Type.Valid() {
+		err = proto.ErrInvalidUserType
+		return
 	}
-	accessKey := util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
-	secretKey := util.RandomString(secretKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
+
+	var userID = param.ID
+	var password = param.Password
+	if password == "" {
+		password = DefaultUserPassword
+	}
+	var accessKey = param.AccessKey
+	if accessKey == "" {
+		accessKey = util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
+	}
+	var secretKey = param.SecretKey
+	if secretKey == "" {
+		secretKey = util.RandomString(secretKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
+	}
+	var userType = param.Type
 	u.akStoreMutex.Lock()
 	defer u.akStoreMutex.Unlock()
 	u.userAKMutex.Lock()
@@ -89,54 +98,6 @@ func (u *User) createKey(userID, password string, userType proto.UserType) (akPo
 	return
 }
 
-func (u *User) createUserWithKey(userID, password, accessKey, secretKey string, userType proto.UserType) (akPolicy *proto.AKPolicy, err error) {
-	var (
-		userAK     *proto.UserAK
-		userPolicy *proto.UserPolicy
-		exist      bool
-	)
-	if !proto.IsUserType(userType) {
-		err = proto.ErrUserType
-		return
-	}
-	if userType == proto.SuperAdmin {
-		if u.SuperAdminExist {
-			err = proto.ErrSuperAdminExists
-			return
-		} else if userID != proto.Root {
-			err = proto.ErrDuplicateUserID
-			return
-		}
-	}
-	u.akStoreMutex.Lock()
-	defer u.akStoreMutex.Unlock()
-	u.userAKMutex.Lock()
-	defer u.userAKMutex.Unlock()
-	//check duplicate
-	if _, exist = u.userAk.Load(userID); exist {
-		err = proto.ErrDuplicateUserID
-		return
-	}
-	if _, exist = u.akStore.Load(accessKey); exist {
-		err = proto.ErrDuplicateAccessKey
-		return
-	}
-	userPolicy = proto.NewUserPolicy()
-	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy,
-		UserID: userID, UserType: userType, CreateTime: time.Unix(time.Now().Unix(), 0).Format(proto.TimeFormat)}
-	userAK = &proto.UserAK{UserID: userID, AccessKey: accessKey, Password: sha1String(password)}
-	if err = u.syncAddAKPolicy(akPolicy); err != nil {
-		return
-	}
-	if err = u.syncAddUserAK(userAK); err != nil {
-		return
-	}
-	u.akStore.Store(accessKey, akPolicy)
-	u.userAk.Store(userID, userAK)
-	log.LogInfof("action[createUserWithKey], userID: %v, accesskey[%v], secretkey[%v]", userID, accessKey, secretKey)
-	return
-}
-
 func (u *User) deleteKey(userID string) (err error) {
 	var (
 		userAK   *proto.UserAK
@@ -155,7 +116,7 @@ func (u *User) deleteKey(userID string) (err error) {
 		err = proto.ErrOwnVolExists
 		return
 	}
-	if akPolicy.UserType == proto.SuperAdmin {
+	if akPolicy.UserType == proto.UserTypeRoot {
 		err = proto.ErrNoPermission
 		return
 	}
@@ -253,7 +214,7 @@ func (u *User) deleteVolPolicy(volName string) (err error) {
 			if action == ALL {
 				userPolicy = &proto.UserPolicy{OwnVols: []string{volName}}
 			} else {
-				userPolicy = &proto.UserPolicy{NoneOwnVol: map[string][]string{volName: {action}}}
+				userPolicy = &proto.UserPolicy{AuthorizedVols: map[string][]string{volName: {action}}}
 			}
 			akPolicy.Policy.Delete(userPolicy)
 			if err = u.syncUpdateAKPolicy(akPolicy); err != nil {
@@ -308,7 +269,7 @@ func (u *User) addVolAKs(ak string, policy *proto.UserPolicy) (err error) {
 			return
 		}
 	}
-	for vol, actions := range policy.NoneOwnVol {
+	for vol, actions := range policy.AuthorizedVols {
 		for _, action := range actions {
 			if err = u.addAKToVol(ak, action, vol); err != nil {
 				return
@@ -353,7 +314,7 @@ func (u *User) deleteVolAKs(ak string, policy *proto.UserPolicy) (err error) {
 			return
 		}
 	}
-	for vol, actions := range policy.NoneOwnVol {
+	for vol, actions := range policy.AuthorizedVols {
 		for _, action := range actions {
 			if err = u.deleteAKFromVol(ak, action, vol); err != nil {
 				return
