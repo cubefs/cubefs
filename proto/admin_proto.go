@@ -82,6 +82,8 @@ const (
 	UserTransferVol     = "/user/transferVol"
 )
 
+const TimeFormat = "2006-01-02 15:04:05"
+
 // HTTPReply uniform response structure
 type HTTPReply struct {
 	Code int32       `json:"code"`
@@ -393,7 +395,7 @@ func (v *VolView) SetOSSSecure(accessKey, secretKey string) {
 }
 
 func (v *VolView) SetCreateTime(createTime int64) {
-	v.CreateTime = time.Unix(createTime, 0).Format("2006-01-02 15:04:05")
+	v.CreateTime = time.Unix(createTime, 0).Format(TimeFormat)
 }
 
 func NewVolView(name string, status uint8, followerRead bool) (view *VolView) {

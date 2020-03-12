@@ -16,9 +16,11 @@ package master
 
 import (
 	"fmt"
+	"strings"
+
+	cfsProto "github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft/proto"
-	"strings"
 )
 
 // LeaderInfo represents the leader's information
@@ -116,10 +118,9 @@ func (m *Server) loadMetadata() {
 	if err = m.cluster.loadDataPartitions(); err != nil {
 		panic(err)
 	}
-
 	log.LogInfo("action[loadMetadata] end")
-	log.LogInfo("action[loadUserInfo] begin")
 
+	log.LogInfo("action[loadUserInfo] begin")
 	if err = m.user.loadAKStore(); err != nil {
 		panic(err)
 	}
@@ -129,8 +130,13 @@ func (m *Server) loadMetadata() {
 	if err = m.user.loadVolAKs(); err != nil {
 		panic(err)
 	}
-
 	log.LogInfo("action[loadUserInfo] end")
+
+	log.LogInfo("action[refreshUser] begin")
+	if err = m.refreshUser(); err != nil {
+		panic(err)
+	}
+	log.LogInfo("action[refreshUser] end")
 
 }
 
@@ -143,4 +149,30 @@ func (m *Server) clearMetadata() {
 	m.user.clearUserAK()
 	m.user.clearVolAKs()
 	m.cluster.t = newTopology()
+}
+
+func (m *Server) refreshUser() (err error) {
+	var akPolicy *cfsProto.AKPolicy
+	for volName, vol := range m.cluster.allVols() {
+		if _, err = m.user.getUserInfo(vol.Owner); err == cfsProto.ErrOSSUserNotExists {
+			if len(vol.OSSAccessKey) > 0 && len(vol.OSSSecretKey) > 0 {
+				akPolicy, err = m.user.createUserWithKey(vol.Owner, DefaultPassword, vol.OSSAccessKey, vol.OSSSecretKey, cfsProto.User)
+				if err != nil && err != cfsProto.ErrDuplicateUserID && err != cfsProto.ErrDuplicateAccessKey {
+					return err
+				}
+			} else {
+				akPolicy, err = m.user.createKey(vol.Owner, DefaultPassword, cfsProto.User)
+				if err != nil && err != cfsProto.ErrDuplicateUserID {
+					return err
+				}
+			}
+			if err == nil && akPolicy != nil {
+				userPolicy := &cfsProto.UserPolicy{OwnVols: []string{volName}}
+				if _, err = m.user.addPolicy(akPolicy.AccessKey, userPolicy); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
