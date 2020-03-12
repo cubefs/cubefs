@@ -108,7 +108,7 @@ func (o *ObjectNode) checkSignatureV4(r *http.Request) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	newSignature := calculateSignatureV4(r, o.region, secretKey, req.SignedHeaders)
+	newSignature := calculateSignatureV4(r, req.Credential.Region, secretKey, req.SignedHeaders)
 	if req.Signature != newSignature {
 		log.LogDebugf("checkSignatureV4: invalid signature: requestID(%v) client(%v) server(%v)",
 			RequestIDFromRequest(r), req.Signature, newSignature)
