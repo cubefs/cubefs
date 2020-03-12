@@ -109,9 +109,9 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.followerRead = view.FollowerRead
 
 	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
-		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v)",
+		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) createTime(%v)",
 		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
-		view.DpCnt, view.FollowerRead)
+		view.DpCnt, view.FollowerRead, view.CreateTime)
 	return nil
 }
 

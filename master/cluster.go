@@ -1307,7 +1307,7 @@ func (c *Cluster) doCreateVol(name, owner string, dpSize, capacity uint64, dpRep
 	if err != nil {
 		goto errHandler
 	}
-	vol = newVol(id, name, owner, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate, crossZone)
+	vol = newVol(id, name, owner, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate, crossZone, time.Now().Unix())
 	// refresh oss secure
 	vol.refreshOSSSecure()
 	if err = c.syncAddVol(vol); err != nil {

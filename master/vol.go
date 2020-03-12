@@ -48,10 +48,11 @@ type Vol struct {
 	viewCache          []byte
 	createDpMutex      sync.RWMutex
 	createMpMutex      sync.RWMutex
+	createTime         int64
 	sync.RWMutex
 }
 
-func newVol(id uint64, name, owner string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, crossZone bool) (vol *Vol) {
+func newVol(id uint64, name, owner string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, crossZone bool, createTime int64) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	if dpReplicaNum <= 1 {
@@ -77,6 +78,7 @@ func newVol(id uint64, name, owner string, dpSize, capacity uint64, dpReplicaNum
 	vol.crossZone = crossZone
 	vol.viewCache = make([]byte, 0)
 	vol.mpsCache = make([]byte, 0)
+	vol.createTime = createTime
 	return
 }
 
@@ -91,7 +93,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.ReplicaNum,
 		vv.FollowerRead,
 		vv.Authenticate,
-		vv.CrossZone)
+		vv.CrossZone,
+		vv.CreateTime)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status
@@ -405,6 +408,7 @@ func (vol *Vol) updateViewCache(c *Cluster) {
 	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead)
 	view.SetOwner(vol.Owner)
 	view.SetOSSSecure(vol.OSSAccessKey, vol.OSSSecretKey)
+	view.SetCreateTime(vol.createTime)
 	mpViews := vol.getMetaPartitionsView()
 	view.MetaPartitions = mpViews
 	mpViewsReply := newSuccessHTTPReply(mpViews)

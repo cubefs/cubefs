@@ -120,6 +120,7 @@ type volValue struct {
 	CrossZone         bool
 	OSSAccessKey      string
 	OSSSecretKey      string
+	CreateTime        int64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -142,6 +143,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		CrossZone:         vol.crossZone,
 		OSSAccessKey:      vol.OSSAccessKey,
 		OSSSecretKey:      vol.OSSSecretKey,
+		CreateTime:        vol.createTime,
 	}
 	return
 }
@@ -187,16 +189,16 @@ func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
 }
 
 type nodeSetValue struct {
-	ID          uint64
-	Capacity    int
-	ZoneName    string
+	ID       uint64
+	Capacity int
+	ZoneName string
 }
 
 func newNodeSetValue(nset *nodeSet) (nsv *nodeSetValue) {
 	nsv = &nodeSetValue{
-		ID:          nset.ID,
-		Capacity:    nset.Capacity,
-		ZoneName:    nset.zoneName,
+		ID:       nset.ID,
+		Capacity: nset.Capacity,
+		ZoneName: nset.zoneName,
 	}
 	return
 }

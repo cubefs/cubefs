@@ -14,6 +14,8 @@
 
 package proto
 
+import "time"
+
 // api
 const (
 	// Admin APIs
@@ -379,6 +381,7 @@ type VolView struct {
 	MetaPartitions []*MetaPartitionView
 	DataPartitions []*DataPartitionResponse
 	OSSSecure      *OSSSecure
+	CreateTime     string
 }
 
 func (v *VolView) SetOwner(owner string) {
@@ -387,6 +390,10 @@ func (v *VolView) SetOwner(owner string) {
 
 func (v *VolView) SetOSSSecure(accessKey, secretKey string) {
 	v.OSSSecure = &OSSSecure{AccessKey: accessKey, SecretKey: secretKey}
+}
+
+func (v *VolView) SetCreateTime(createTime int64) {
+	v.CreateTime = time.Unix(createTime, 0).Format("2006-01-02 15:04:05")
 }
 
 func NewVolView(name string, status uint8, followerRead bool) (view *VolView) {
@@ -425,6 +432,7 @@ type SimpleVolView struct {
 	NeedToLowerReplica bool
 	Authenticate       bool
 	CrossZone          bool
+	CreateTime         string
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
