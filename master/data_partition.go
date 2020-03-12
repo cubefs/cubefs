@@ -664,6 +664,8 @@ func (partition *DataPartition) getLiveZones(offlineAddr string) (zones []string
 }
 
 func (partition *DataPartition) ToProto(c *Cluster) *proto.DataPartitionInfo {
+	partition.RLock()
+	defer partition.RUnlock()
 	var replicas = make([]*proto.DataReplica, len(partition.Replicas))
 	for i, replica := range partition.Replicas {
 		replicas[i] = &replica.DataReplica
