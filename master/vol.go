@@ -405,10 +405,9 @@ func (vol *Vol) totalUsedSpace() uint64 {
 }
 
 func (vol *Vol) updateViewCache(c *Cluster) {
-	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead)
+	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead, vol.createTime)
 	view.SetOwner(vol.Owner)
 	view.SetOSSSecure(vol.OSSAccessKey, vol.OSSSecretKey)
-	view.SetCreateTime(vol.createTime)
 	mpViews := vol.getMetaPartitionsView()
 	view.MetaPartitions = mpViews
 	mpViewsReply := newSuccessHTTPReply(mpViews)

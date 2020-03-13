@@ -14,8 +14,6 @@
 
 package proto
 
-import "time"
-
 // api
 const (
 	// Admin APIs
@@ -383,7 +381,7 @@ type VolView struct {
 	MetaPartitions []*MetaPartitionView
 	DataPartitions []*DataPartitionResponse
 	OSSSecure      *OSSSecure
-	CreateTime     string
+	CreateTime     int64
 }
 
 func (v *VolView) SetOwner(owner string) {
@@ -394,14 +392,11 @@ func (v *VolView) SetOSSSecure(accessKey, secretKey string) {
 	v.OSSSecure = &OSSSecure{AccessKey: accessKey, SecretKey: secretKey}
 }
 
-func (v *VolView) SetCreateTime(createTime int64) {
-	v.CreateTime = time.Unix(createTime, 0).Format(TimeFormat)
-}
-
-func NewVolView(name string, status uint8, followerRead bool) (view *VolView) {
+func NewVolView(name string, status uint8, followerRead bool, createTime int64) (view *VolView) {
 	view = new(VolView)
 	view.Name = name
 	view.FollowerRead = followerRead
+	view.CreateTime = createTime
 	view.Status = status
 	view.MetaPartitions = make([]*MetaPartitionView, 0)
 	view.DataPartitions = make([]*DataPartitionResponse, 0)

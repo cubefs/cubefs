@@ -58,6 +58,7 @@ type MetaWrapper struct {
 	localIP         string
 	volname         string
 	ossSecure       *OSSSecure
+	volCreateTime   int64
 	owner           string
 	ownerValidation bool
 	mc              *masterSDK.MasterClient
@@ -151,6 +152,10 @@ retry:
 
 func (mw *MetaWrapper) OSSSecure() (accessKey, secretKey string) {
 	return mw.ossSecure.AccessKey, mw.ossSecure.SecretKey
+}
+
+func (mw *MetaWrapper) VolCreateTime() int64 {
+	return mw.volCreateTime
 }
 
 func (mw *MetaWrapper) Close() error {

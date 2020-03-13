@@ -66,13 +66,14 @@ func (v *Volume) storeACL(p *AccessControlPolicy) {
 
 // This struct is implementation of Volume interface
 type Volume struct {
-	mw     *meta.MetaWrapper
-	ec     *stream.ExtentClient
-	vm     *VolumeManager
-	name   string
-	om     *OSSMeta
-	ticker *time.Ticker
-	//ms     Store
+	mw         *meta.MetaWrapper
+	ec         *stream.ExtentClient
+	vm         *VolumeManager
+	name       string
+	om         *OSSMeta
+	ticker     *time.Ticker
+	createTime int64
+	//ms     	Store
 
 	closeOnce sync.Once
 	closingCh chan struct{}
@@ -1425,7 +1426,7 @@ func newVolume(masters []string, vol string) (*Volume, error) {
 		return nil, err
 	}
 
-	v := &Volume{mw: mw, ec: ec, name: vol, om: new(OSSMeta)}
+	v := &Volume{mw: mw, ec: ec, name: vol, om: new(OSSMeta), createTime: mw.VolCreateTime()}
 	go v.syncOSSMeta()
 	return v, nil
 }
