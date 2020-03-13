@@ -134,7 +134,7 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 				excludeZone = zones[0]
 			}
 			// choose a meta node in other zone
-			if _, newPeers, err = c.chooseTargetMetaHosts(excludeZone, excludeNodeSets, oldHosts, 1, false); err != nil {
+			if _, newPeers, err = c.chooseTargetMetaHosts(excludeZone, excludeNodeSets, oldHosts, 1, false, ""); err != nil {
 				goto errHandler
 			}
 		}
