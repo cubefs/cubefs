@@ -513,7 +513,7 @@ func (c *Cluster) createDataPartition(volName string, zoneNum int) (dp *DataPart
 	vol.createDpMutex.Lock()
 	defer vol.createDpMutex.Unlock()
 	errChannel := make(chan error, vol.dpReplicaNum)
-	if targetHosts, targetPeers, err = c.chooseTargetDataNodes("", nil, nil, int(vol.dpReplicaNum), zoneNum); err != nil {
+	if targetHosts, targetPeers, err = c.chooseTargetDataNodes("", nil, nil, int(vol.dpReplicaNum), zoneNum, vol.zoneName); err != nil {
 		goto errHandler
 	}
 	if partitionID, err = c.idAlloc.allocateDataPartitionID(); err != nil {
@@ -621,7 +621,7 @@ func (c *Cluster) decideZoneNum(crossZone bool) (zoneNum int) {
 	}
 	return zoneNum
 }
-func (c *Cluster) chooseTargetDataNodes(excludeZone string, excludeNodeSets []uint64, excludeHosts []string, replicaNum int, zoneNum int) (hosts []string, peers []proto.Peer, err error) {
+func (c *Cluster) chooseTargetDataNodes(excludeZone string, excludeNodeSets []uint64, excludeHosts []string, replicaNum int, zoneNum int, specifiedZone string) (hosts []string, peers []proto.Peer, err error) {
 
 	var (
 		masterZone *Zone
@@ -634,9 +634,22 @@ func (c *Cluster) chooseTargetDataNodes(excludeZone string, excludeNodeSets []ui
 	if replicaNum <= zoneNum {
 		zoneNum = replicaNum
 	}
-	zones, err = c.t.allocZonesForDataNode(zoneNum, replicaNum, excludeZones)
-	if err != nil {
-		return
+	// when creating vol,user specified a zone,we reset zoneNum to 1,to be created partition with specified zone,
+	//if specified zone is not writable,we choose a zone randomly
+	if specifiedZone != "" {
+		zoneNum = 1
+		zone, err := c.t.getZone(specifiedZone)
+		if err != nil {
+			Warn(c.Name, fmt.Sprintf("cluster[%v],specified zone[%v]is not writable", c.Name, specifiedZone))
+		} else {
+			zones = make([]*Zone, 0)
+			zones = append(zones, zone)
+		}
+	}
+	if zones == nil || specifiedZone == "" {
+		if zones, err = c.t.allocZonesForDataNode(zoneNum, replicaNum, excludeZones); err != nil {
+			return
+		}
 	}
 	//if vol enable cross zone,available zone less than 2,can't create partition
 	if zoneNum >= 2 && len(zones) < 2 {
@@ -849,7 +862,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 			} else {
 				excludeZone = zones[0]
 			}
-			if targetHosts, _, err = c.chooseTargetDataNodes(excludeZone, excludeNodeSets, dp.Hosts, 1, 1); err != nil {
+			if targetHosts, _, err = c.chooseTargetDataNodes(excludeZone, excludeNodeSets, dp.Hosts, 1, 1, ""); err != nil {
 				goto errHandler
 			}
 		}
@@ -1253,7 +1266,7 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone bool) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner, zoneName string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone bool) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -1267,7 +1280,15 @@ func (c *Cluster) createVol(name, owner string, mpCount, dpReplicaNum, size, cap
 	if crossZone && c.t.zoneLen() <= 1 {
 		return nil, fmt.Errorf("cluster has one zone,can't cross zone")
 	}
-	if vol, err = c.doCreateVol(name, owner, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate, crossZone); err != nil {
+	if crossZone && zoneName != "" {
+		return nil, fmt.Errorf("only the vol which don't across zones,can specified zoneName")
+	}
+	if zoneName != "" {
+		if _, err = c.t.getZone(zoneName); err != nil {
+			return
+		}
+	}
+	if vol, err = c.doCreateVol(name, owner, zoneName, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate, crossZone); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -1295,7 +1316,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) doCreateVol(name, owner string, dpSize, capacity uint64, dpReplicaNum int, followerRead, authenticate, crossZone bool) (vol *Vol, err error) {
+func (c *Cluster) doCreateVol(name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum int, followerRead, authenticate, crossZone bool) (vol *Vol, err error) {
 	var id uint64
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
@@ -1307,7 +1328,7 @@ func (c *Cluster) doCreateVol(name, owner string, dpSize, capacity uint64, dpRep
 	if err != nil {
 		goto errHandler
 	}
-	vol = newVol(id, name, owner, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate, crossZone)
+	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate, crossZone)
 	// refresh oss secure
 	vol.refreshOSSSecure()
 	if err = c.syncAddVol(vol); err != nil {
@@ -1356,7 +1377,7 @@ func (c *Cluster) updateInodeIDRange(volName string, start uint64) (err error) {
 }
 
 // Choose the target hosts from the available zones and meta nodes.
-func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []uint64, excludeHosts []string, replicaNum int, crossZone bool) (hosts []string, peers []proto.Peer, err error) {
+func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []uint64, excludeHosts []string, replicaNum int, crossZone bool, specifiedZone string) (hosts []string, peers []proto.Peer, err error) {
 	var (
 		zones      []*Zone
 		masterZone *Zone
@@ -1369,10 +1390,24 @@ func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []ui
 	if replicaNum < zoneNum {
 		zoneNum = replicaNum
 	}
-	zones, err = c.t.allocZonesForMetaNode(zoneNum, replicaNum, excludeZones)
-	if err != nil {
-		return
+	// when creating vol,user specified a zone,we reset zoneNum to 1,to be created partition with specified zone,
+	//if specified zone is not writable,we choose a zone randomly
+	if specifiedZone != "" {
+		zoneNum = 1
+		zone, err := c.t.getZone(specifiedZone)
+		if err != nil {
+			Warn(c.Name, fmt.Sprintf("cluster[%v],specified zone[%v]is not writable", c.Name, specifiedZone))
+		} else {
+			zones = make([]*Zone, 0)
+			zones = append(zones, zone)
+		}
 	}
+	if zones == nil || specifiedZone == "" {
+		if zones, err = c.t.allocZonesForMetaNode(zoneNum, replicaNum, excludeZones); err != nil {
+			return
+		}
+	}
+
 	if crossZone && len(zones) < 2 {
 		log.LogWarn(fmt.Sprintf("action[chooseTargetMetaNodes] ,no enough zones [%v] to be selected, expect select [%v] zones", len(zones), zoneNum))
 		return nil, nil, fmt.Errorf("action[chooseTargetMetaNodes] no enough zones [%v] to be selected, expect select [%v] zones", len(zones), zoneNum)

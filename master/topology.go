@@ -679,7 +679,7 @@ func (zone *Zone) getAvailMetaNodeHosts(excludeNodeSets []uint64, excludeHosts [
 	}
 	ns, err := zone.allocNodeSetForMetaNode(excludeNodeSets, uint8(replicaNum))
 	if err != nil {
-		return
+		return nil, nil, errors.NewErrorf("zone[%v],err[%v]", zone.name, err)
 	}
 	return ns.getAvailMetaNodeHosts(excludeHosts, replicaNum)
 

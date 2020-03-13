@@ -403,6 +403,7 @@ type SimpleVolView struct {
 	ID                 uint64
 	Name               string
 	Owner              string
+	ZoneName           string
 	DpReplicaNum       uint8
 	MpReplicaNum       uint8
 	Status             uint8
