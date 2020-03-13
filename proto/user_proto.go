@@ -10,6 +10,11 @@ const (
 	User       UserType = "user"
 )
 
+const (
+	Root         = "root"
+	RootPassword = "SuperAdminOfChubaoFS"
+)
+
 type UserAK struct {
 	UserID    string `json:"user_id"`
 	AccessKey string `json:"access_key"`

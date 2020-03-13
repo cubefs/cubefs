@@ -75,6 +75,7 @@ var (
 	ErrOwnVolExists                    = errors.New("own vol not empty")
 	ErrSuperAdminExists                = errors.New("super administrator exists ")
 	ErrUserType                        = errors.New("user type error")
+	ErrNoPermission                    = errors.New("no permission to delete super admin")
 )
 
 // http response error code and error message definitions
@@ -132,6 +133,7 @@ const (
 	ErrCodeOwnVolExists
 	ErrCodeSuperAdminExists
 	ErrCodeUserType
+	ErrCodeNoPermission
 )
 
 // Err2CodeMap error map to code
@@ -187,4 +189,5 @@ var Err2CodeMap = map[error]int32{
 	ErrOwnVolExists:                    ErrCodeOwnVolExists,
 	ErrSuperAdminExists:                ErrCodeSuperAdminExists,
 	ErrUserType:                        ErrCodeUserType,
+	ErrNoPermission:                    ErrCodeNoPermission,
 }

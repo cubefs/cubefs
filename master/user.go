@@ -15,9 +15,8 @@ import (
 const (
 	accessKeyLength = 16
 	secretKeyLength = 32
-	separator       = "_"
 	ALL             = "all"
-	DefaultPassword = "MxMxMxMxMxMx"
+	DefaultPassword = "123456"
 )
 
 type User struct {
@@ -49,9 +48,14 @@ func (u *User) createKey(userID, password string, userType proto.UserType) (akPo
 		err = proto.ErrUserType
 		return
 	}
-	if userType == proto.SuperAdmin && u.SuperAdminExist {
-		err = proto.ErrSuperAdminExists
-		return
+	if userType == proto.SuperAdmin {
+		if u.SuperAdminExist {
+			err = proto.ErrSuperAdminExists
+			return
+		} else if userID != proto.Root {
+			err = proto.ErrDuplicateUserID
+			return
+		}
 	}
 	accessKey := util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
 	secretKey := util.RandomString(secretKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
@@ -95,9 +99,14 @@ func (u *User) createUserWithKey(userID, password, accessKey, secretKey string, 
 		err = proto.ErrUserType
 		return
 	}
-	if userType == proto.SuperAdmin && u.SuperAdminExist {
-		err = proto.ErrSuperAdminExists
-		return
+	if userType == proto.SuperAdmin {
+		if u.SuperAdminExist {
+			err = proto.ErrSuperAdminExists
+			return
+		} else if userID != proto.Root {
+			err = proto.ErrDuplicateUserID
+			return
+		}
 	}
 	u.akStoreMutex.Lock()
 	defer u.akStoreMutex.Unlock()
@@ -144,6 +153,10 @@ func (u *User) deleteKey(userID string) (err error) {
 	}
 	if len(akPolicy.Policy.OwnVols) > 0 {
 		err = proto.ErrOwnVolExists
+		return
+	}
+	if akPolicy.UserType == proto.SuperAdmin {
+		err = proto.ErrNoPermission
 		return
 	}
 	if err = u.syncDeleteAKPolicy(akPolicy); err != nil {

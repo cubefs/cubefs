@@ -111,10 +111,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		return
 	}
 	m.initCluster()
-	if err = m.initUser(); err != nil {
-		log.LogError(errors.Stack(err))
-		return
-	}
+	m.initUser()
 	exporter.Init(ModuleName, cfg)
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
@@ -284,11 +281,6 @@ func (m *Server) initCluster() {
 	m.cluster.retainLogs = m.retainLogs
 }
 
-func (m *Server) initUser() (err error) {
+func (m *Server) initUser() {
 	m.user = newUser(m.fsm, m.partition)
-	//if _, err = m.user.createKey("root", "superAdminOfChubaoFS", proto.SuperAdmin); err != nil {
-	//	return
-	//}
-	//m.user.SuperAdminExist = true
-	return
 }

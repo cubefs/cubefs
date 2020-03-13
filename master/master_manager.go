@@ -174,5 +174,11 @@ func (m *Server) refreshUser() (err error) {
 			}
 		}
 	}
+	if !m.user.SuperAdminExist {
+		if _, err = m.user.createKey(cfsProto.Root, cfsProto.RootPassword, cfsProto.SuperAdmin); err != nil {
+			return err
+		}
+		m.user.SuperAdminExist = true
+	}
 	return nil
 }
