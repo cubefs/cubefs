@@ -17,11 +17,12 @@ type UserAK struct {
 }
 
 type AKPolicy struct {
-	AccessKey string      `json:"access_key"`
-	SecretKey string      `json:"secret_key"`
-	Policy    *UserPolicy `json:"policy"`
-	UserID    string      `json:"user_id"`
-	UserType  UserType    `json:"user_type"`
+	AccessKey  string      `json:"access_key"`
+	SecretKey  string      `json:"secret_key"`
+	Policy     *UserPolicy `json:"policy"`
+	UserID     string      `json:"user_id"`
+	UserType   UserType    `json:"user_type"`
+	CreateTime string      `json:"create_time"`
 }
 
 type UserPolicy struct {
@@ -110,7 +111,7 @@ func removeSlice(s []string, removeSlice []string) []string {
 
 func CleanPolicy(policy *UserPolicy) (newUserPolicy *UserPolicy) {
 	m := make(map[string]bool)
-	newUserPolicy = &UserPolicy{OwnVols: make([]string, 0), NoneOwnVol: make(map[string][]string)}
+	newUserPolicy = NewUserPolicy()
 	policy.mu.Lock()
 	defer policy.mu.Unlock()
 	for _, vol := range policy.OwnVols {

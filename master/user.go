@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
@@ -68,8 +69,9 @@ func (u *User) createKey(userID, password string, userType proto.UserType) (akPo
 		accessKey = util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
 		_, exist = u.akStore.Load(accessKey)
 	}
-	userPolicy = &proto.UserPolicy{OwnVols: make([]string, 0), NoneOwnVol: make(map[string][]string)}
-	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: userID, UserType: userType}
+	userPolicy = proto.NewUserPolicy()
+	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy,
+		UserID: userID, UserType: userType, CreateTime: time.Unix(time.Now().Unix(), 0).Format(proto.TimeFormat)}
 	userAK = &proto.UserAK{UserID: userID, AccessKey: accessKey, Password: sha1String(password)}
 	if err = u.syncAddAKPolicy(akPolicy); err != nil {
 		return
@@ -110,8 +112,9 @@ func (u *User) createUserWithKey(userID, password, accessKey, secretKey string, 
 		err = proto.ErrDuplicateAccessKey
 		return
 	}
-	userPolicy = &proto.UserPolicy{OwnVols: make([]string, 0), NoneOwnVol: make(map[string][]string)}
-	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy, UserID: userID, UserType: userType}
+	userPolicy = proto.NewUserPolicy()
+	akPolicy = &proto.AKPolicy{AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy,
+		UserID: userID, UserType: userType, CreateTime: time.Unix(time.Now().Unix(), 0).Format(proto.TimeFormat)}
 	userAK = &proto.UserAK{UserID: userID, AccessKey: accessKey, Password: sha1String(password)}
 	if err = u.syncAddAKPolicy(akPolicy); err != nil {
 		return
