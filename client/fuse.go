@@ -31,7 +31,6 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
 
@@ -77,6 +76,13 @@ var (
 	configForeground = flag.Bool("f", false, "run foreground")
 )
 
+var GlobalMountOptions []proto.MountOption
+
+func init() {
+	GlobalMountOptions = proto.NewMountOptions()
+	proto.InitMountOptions(GlobalMountOptions)
+}
+
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
@@ -88,16 +94,6 @@ func main() {
 		fmt.Printf("Commit: %s\n", CommitID)
 		fmt.Printf("Build: %s %s %s %s\n", runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime)
 		os.Exit(0)
-	}
-
-	/*
-	 * LoadConfigFile should be checked before start daemon, since it will
-	 * call os.Exit() w/o notifying the parent process.
-	 */
-	cfg, err := config.LoadConfigFile(*configFile)
-	if err != nil {
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
 	}
 
 	if !*configForeground {
@@ -113,6 +109,7 @@ func main() {
 	 * Must notify the parent process through SignalOutcome anyway.
 	 */
 
+	cfg, _ := config.LoadConfigFile(*configFile)
 	opt, err := parseMountOption(cfg)
 	if err != nil {
 		daemonize.SignalOutcome(err)
@@ -140,6 +137,12 @@ func main() {
 		outputFile.Close()
 	}()
 	syslog.SetOutput(outputFile)
+
+	syslog.Println("*** Final Mount Options ***")
+	for _, o := range GlobalMountOptions {
+		syslog.Println(o)
+	}
+	syslog.Println("*** End ***")
 
 	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
 		daemonize.SignalOutcome(err)
@@ -181,14 +184,26 @@ func startDaemon() error {
 		return fmt.Errorf("startDaemon failed: cannot get absolute command path, err(%v)", err)
 	}
 
-	configPath, err := filepath.Abs(*configFile)
-	if err != nil {
-		return fmt.Errorf("startDaemon failed: cannot get absolute command path of config file(%v) , err(%v)", *configFile, err)
+	if len(os.Args) <= 1 {
+		return fmt.Errorf("startDaemon failed: cannot use null arguments")
 	}
 
 	args := []string{"-f"}
-	args = append(args, "-c")
-	args = append(args, configPath)
+	args = append(args, os.Args[1:]...)
+
+	if *configFile != "" {
+		configPath, err := filepath.Abs(*configFile)
+		if err != nil {
+			return fmt.Errorf("startDaemon failed: cannot get absolute command path of config file(%v) , err(%v)", *configFile, err)
+		}
+		for i := 0; i < len(args); i++ {
+			if args[i] == "-c" {
+				// Since *configFile is not "", the (i+1)th argument must be the config file path
+				args[i+1] = configPath
+				break
+			}
+		}
+	}
 
 	env := []string{
 		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
@@ -254,39 +269,41 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	var err error
 	opt := new(proto.MountOptions)
 
-	rawmnt := cfg.GetString(proto.MountPoint)
+	proto.ParseMountOptions(GlobalMountOptions, cfg)
+
+	rawmnt := GlobalMountOptions[proto.MountPoint].GetString()
 	opt.MountPoint, err = filepath.Abs(rawmnt)
 	if err != nil {
 		return nil, errors.Trace(err, "invalide mount point (%v) ", rawmnt)
 	}
 
-	opt.Volname = cfg.GetString(proto.VolName)
-	opt.Owner = cfg.GetString(proto.Owner)
-	opt.Master = cfg.GetString(proto.MasterAddr)
-	opt.Logpath = cfg.GetString(proto.LogDir)
-	opt.Loglvl = cfg.GetString(proto.LogLevel)
-	opt.Profport = cfg.GetString(proto.ProfPort)
-	opt.IcacheTimeout = parseConfigString(cfg, proto.IcacheTimeout)
-	opt.LookupValid = parseConfigString(cfg, proto.LookupValid)
-	opt.AttrValid = parseConfigString(cfg, proto.AttrValid)
-	opt.ReadRate = parseConfigString(cfg, proto.ReadRate)
-	opt.WriteRate = parseConfigString(cfg, proto.WriteRate)
-	opt.EnSyncWrite = parseConfigString(cfg, proto.EnSyncWrite)
-	opt.AutoInvalData = parseConfigString(cfg, proto.AutoInvalData)
-	opt.UmpDatadir = cfg.GetString(proto.WarnLogDir)
-	opt.Rdonly = cfg.GetBool(proto.Rdonly)
-	opt.WriteCache = cfg.GetBool(proto.WriteCache)
-	opt.KeepCache = cfg.GetBool(proto.KeepCache)
-	opt.FollowerRead = cfg.GetBool(proto.FollowerRead)
-	opt.Authenticate = cfg.GetBool(proto.Authenticate)
+	opt.Volname = GlobalMountOptions[proto.VolName].GetString()
+	opt.Owner = GlobalMountOptions[proto.Owner].GetString()
+	opt.Master = GlobalMountOptions[proto.Master].GetString()
+	opt.Logpath = GlobalMountOptions[proto.LogDir].GetString()
+	opt.Loglvl = GlobalMountOptions[proto.LogLevel].GetString()
+	opt.Profport = GlobalMountOptions[proto.ProfPort].GetString()
+	opt.IcacheTimeout = GlobalMountOptions[proto.IcacheTimeout].GetInt64()
+	opt.LookupValid = GlobalMountOptions[proto.LookupValid].GetInt64()
+	opt.AttrValid = GlobalMountOptions[proto.AttrValid].GetInt64()
+	opt.ReadRate = GlobalMountOptions[proto.ReadRate].GetInt64()
+	opt.WriteRate = GlobalMountOptions[proto.WriteRate].GetInt64()
+	opt.EnSyncWrite = GlobalMountOptions[proto.EnSyncWrite].GetInt64()
+	opt.AutoInvalData = GlobalMountOptions[proto.AutoInvalData].GetInt64()
+	opt.UmpDatadir = GlobalMountOptions[proto.WarnLogDir].GetString()
+	opt.Rdonly = GlobalMountOptions[proto.Rdonly].GetBool()
+	opt.WriteCache = GlobalMountOptions[proto.WriteCache].GetBool()
+	opt.KeepCache = GlobalMountOptions[proto.KeepCache].GetBool()
+	opt.FollowerRead = GlobalMountOptions[proto.FollowerRead].GetBool()
+	opt.Authenticate = GlobalMountOptions[proto.Authenticate].GetBool()
 	if opt.Authenticate {
-		opt.TicketMess.ClientKey = cfg.GetString(proto.ClientKey)
-		ticketHostConfig := cfg.GetString(proto.TicketHost)
+		opt.TicketMess.ClientKey = GlobalMountOptions[proto.ClientKey].GetString()
+		ticketHostConfig := GlobalMountOptions[proto.TicketHost].GetString()
 		ticketHosts := strings.Split(ticketHostConfig, ",")
 		opt.TicketMess.TicketHosts = ticketHosts
-		opt.TicketMess.EnableHTTPS = cfg.GetBool(proto.EnableHTTPS)
+		opt.TicketMess.EnableHTTPS = GlobalMountOptions[proto.EnableHTTPS].GetBool()
 		if opt.TicketMess.EnableHTTPS {
-			opt.TicketMess.CertFile = cfg.GetString(proto.CertFile)
+			opt.TicketMess.CertFile = GlobalMountOptions[proto.CertFile].GetString()
 		}
 	}
 
@@ -295,19 +312,6 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	}
 
 	return opt, nil
-}
-
-func parseConfigString(cfg *config.Config, keyword string) int64 {
-	var ret int64 = -1
-	rawstr := cfg.GetString(keyword)
-	if rawstr != "" {
-		val, err := strconv.Atoi(rawstr)
-		if err == nil {
-			ret = int64(val)
-			fmt.Println(fmt.Sprintf("keyword[%v] value[%v]", keyword, ret))
-		}
-	}
-	return ret
 }
 
 func parseLogLevel(loglvl string) log.Level {

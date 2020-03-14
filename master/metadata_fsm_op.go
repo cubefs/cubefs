@@ -118,6 +118,7 @@ type volValue struct {
 	FollowerRead      bool
 	Authenticate      bool
 	CrossZone         bool
+	ZoneName          string
 	OSSAccessKey      string
 	OSSSecretKey      string
 	CreateTime        int64
@@ -141,6 +142,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		FollowerRead:      vol.FollowerRead,
 		Authenticate:      vol.authenticate,
 		CrossZone:         vol.crossZone,
+		ZoneName:          vol.zoneName,
 		OSSAccessKey:      vol.OSSAccessKey,
 		OSSSecretKey:      vol.OSSSecretKey,
 		CreateTime:        vol.createTime,

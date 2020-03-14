@@ -41,6 +41,7 @@ type Vol struct {
 	FollowerRead       bool
 	authenticate       bool
 	crossZone          bool
+	zoneName           string
 	MetaPartitions     map[uint64]*MetaPartition
 	mpsLock            sync.RWMutex
 	dataPartitions     *DataPartitionMap
@@ -52,7 +53,7 @@ type Vol struct {
 	sync.RWMutex
 }
 
-func newVol(id uint64, name, owner string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, crossZone bool, createTime int64) (vol *Vol) {
+func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, crossZone bool, createTime int64) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	if dpReplicaNum <= 1 {
@@ -76,6 +77,7 @@ func newVol(id uint64, name, owner string, dpSize, capacity uint64, dpReplicaNum
 	vol.FollowerRead = followerRead
 	vol.authenticate = authenticate
 	vol.crossZone = crossZone
+	vol.zoneName = zoneName
 	vol.viewCache = make([]byte, 0)
 	vol.mpsCache = make([]byte, 0)
 	vol.createTime = createTime
@@ -87,6 +89,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.ID,
 		vv.Name,
 		vv.Owner,
+		vv.ZoneName,
 		vv.DataPartitionSize,
 		vv.Capacity,
 		vv.DpReplicaNum,
@@ -694,7 +697,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		wg          sync.WaitGroup
 	)
 	errChannel := make(chan error, vol.mpReplicaNum)
-	if hosts, peers, err = c.chooseTargetMetaHosts("", nil, nil, int(vol.mpReplicaNum), vol.crossZone); err != nil {
+	if hosts, peers, err = c.chooseTargetMetaHosts("", nil, nil, int(vol.mpReplicaNum), vol.crossZone, vol.zoneName); err != nil {
 		log.LogErrorf("action[doCreateMetaPartition] chooseTargetMetaHosts err[%v]", err)
 		return nil, errors.NewError(err)
 	}

@@ -102,7 +102,7 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV4(r *http.Request) (bool
 		log.LogInfof("validateHeaderBySignatureAlgorithmV4: get secretKey from master fail: err(%v)", err)
 		return false, err
 	}
-	newSignature := calculateSignatureV4(r, o.region, akPolicy.SecretKey, req.SignedHeaders)
+	newSignature := calculateSignatureV4(r, req.Credential.Region, akPolicy.SecretKey, req.SignedHeaders)
 	if req.Signature != newSignature {
 		log.LogDebugf("validateHeaderBySignatureAlgorithmV4: invalid signature: requestID(%v) client(%v) server(%v)",
 			GetRequestID(r), req.Signature, newSignature)

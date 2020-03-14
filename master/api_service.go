@@ -550,9 +550,10 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		followerRead bool
 		authenticate bool
 		crossZone    bool
+		zoneName     string
 	)
 
-	if name, owner, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone, err = parseRequestToCreateVol(r); err != nil {
+	if name, owner, zoneName, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -561,7 +562,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.createVol(name, owner, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone); err != nil {
+	if vol, err = m.cluster.createVol(name, owner, zoneName, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -598,6 +599,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		ID:                 vol.ID,
 		Name:               vol.Name,
 		Owner:              vol.Owner,
+		ZoneName:           vol.zoneName,
 		DpReplicaNum:       vol.dpReplicaNum,
 		MpReplicaNum:       vol.mpReplicaNum,
 		Status:             vol.Status,
@@ -1098,7 +1100,7 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authent
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone bool, err error) {
+func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1148,7 +1150,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner string, mpCount, dpRe
 	if crossZone, err = extractCrossZone(r); err != nil {
 		return
 	}
-
+	zoneName = r.FormValue(zoneNameKey)
 	return
 }
 
