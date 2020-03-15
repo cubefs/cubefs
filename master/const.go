@@ -41,6 +41,7 @@ const (
 	akKey                 = "ak"
 	skKey                 = "sk"
 	targetKey             = "targetak"
+	keywordsKey           = "keywords"
 	passwordKey           = "password"
 	zoneNameKey           = "zoneName"
 	crossZoneKey          = "crossZone"

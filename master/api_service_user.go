@@ -102,7 +102,7 @@ func (m *Server) addUserPolicy(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeReadBodyError, Msg: err.Error()})
 		return
 	}
-	userPolicy = &proto.UserPolicy{}
+	userPolicy = proto.NewUserPolicy()
 	if err = json.Unmarshal(body, userPolicy); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeUnmarshalData, Msg: err.Error()})
 		return
@@ -130,7 +130,7 @@ func (m *Server) deleteUserPolicy(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeReadBodyError, Msg: err.Error()})
 		return
 	}
-	userPolicy = &proto.UserPolicy{}
+	userPolicy = proto.NewUserPolicy()
 	if err = json.Unmarshal(body, userPolicy); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeUnmarshalData, Msg: err.Error()})
 		return
@@ -194,6 +194,20 @@ func (m *Server) transferUserVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(akPolicy))
+}
+
+func (m *Server) getAllUsers(w http.ResponseWriter, r *http.Request) {
+	var (
+		keywords   string
+		akPolicies []*proto.AKPolicy
+		err        error
+	)
+	if keywords, err = parseKeywords(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	akPolicies = m.user.getAllUserInfo(keywords)
+	sendOkReply(w, r, newSuccessHTTPReply(akPolicies))
 }
 
 func parseOwner(r *http.Request) (owner string, err error) {
@@ -262,7 +276,14 @@ func parseVolAndKey(r *http.Request) (name, accessKey, targetKey string, err err
 		return
 	}
 	return
+}
 
+func parseKeywords(r *http.Request) (keywords string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	keywords = extractKeywords(r)
+	return
 }
 
 func extractAccessKey(r *http.Request) (ak string, err error) {
@@ -300,9 +321,13 @@ func extractSecretKey(r *http.Request) (sk string, err error) {
 
 func extractPassword(r *http.Request) (password string, err error) {
 	if password = r.FormValue(passwordKey); password == "" {
-		err = keyNotFound(passwordKey)
-		return
+		password = DefaultUserPassword
 	}
 	// todo password regex
+	return
+}
+
+func extractKeywords(r *http.Request) (keywords string) {
+	keywords = r.FormValue(keywordsKey)
 	return
 }

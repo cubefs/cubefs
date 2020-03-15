@@ -62,11 +62,6 @@ func UserTypeFromString(name string) UserType {
 	return UserTypeInvalid
 }
 
-const (
-	RootUserID   = "root"
-	RootPassword = "SuperAdminOfChubaoFS"
-)
-
 type UserAK struct {
 	UserID    string `json:"user_id"`
 	AccessKey string `json:"access_key"`

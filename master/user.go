@@ -3,6 +3,7 @@ package master
 import (
 	"crypto/sha1"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ const (
 	accessKeyLength     = 16
 	secretKeyLength     = 32
 	ALL                 = "all"
+	RootUserID   		= "root"
 	DefaultRootPasswd   = "ChubaoFSRoot"
 	DefaultUserPassword = "ChubaoFSUser"
 )
@@ -249,6 +251,19 @@ func (u *User) transferVol(volName, ak, targetKey string) (targetAKPolicy *proto
 		return
 	}
 	log.LogInfof("action[transferVol], volName: %v, ak: %v, targetKey: %v", volName, ak, targetKey)
+	return
+}
+
+func (u *User) getAllUserInfo(keywords string) (akPolicies []*proto.AKPolicy) {
+	akPolicies = make([]*proto.AKPolicy, 0)
+	u.akStore.Range(func(key, value interface{}) bool { //todo mutex
+		akPolicy := value.(*proto.AKPolicy)
+		if strings.Contains(akPolicy.UserID, keywords) {
+			akPolicies = append(akPolicies, akPolicy)
+		}
+		return true
+	})
+	log.LogInfof("action[getAllUserInfo], keywords: %v, total numbers: %v", keywords, len(akPolicies))
 	return
 }
 

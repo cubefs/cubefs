@@ -219,6 +219,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.UserGetInfo).
 		HandlerFunc(m.getUserInfo)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.UserList).
+		HandlerFunc(m.getAllUsers)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.UserTransferVol).
 		HandlerFunc(m.transferUserVol)
