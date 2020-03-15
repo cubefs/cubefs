@@ -236,7 +236,18 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 // Flush has not been implemented.
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
-	return fuse.ENOSYS
+	log.LogDebugf("TRACE Flush enter: ino(%v)", f.inode.ino)
+	start := time.Now()
+	err = f.super.ec.Flush(f.inode.ino)
+	if err != nil {
+		msg := fmt.Sprintf("Flush: ino(%v) err(%v)", f.inode.ino, err)
+		f.super.handleError("Flush", msg)
+		return fuse.EIO
+	}
+	f.super.ic.Delete(f.inode.ino)
+	elapsed := time.Since(start)
+	log.LogDebugf("TRACE Flush: ino(%v) (%v)ns", f.inode.ino, elapsed.Nanoseconds())
+	return nil
 }
 
 // Fsync hanldes the fsync request.
