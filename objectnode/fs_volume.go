@@ -76,8 +76,7 @@ type Volume struct {
 	//ms     	Store
 
 	closeOnce sync.Once
-	closingCh chan struct{}
-	closedCh  chan struct{}
+	closeCh   chan struct{}
 }
 
 func (v *Volume) syncOSSMeta() {
@@ -87,19 +86,9 @@ func (v *Volume) syncOSSMeta() {
 		select {
 		case <-v.ticker.C:
 			v.loadOSSMeta()
-		case <-v.closingCh:
-			v.closedCh <- struct{}{}
+		case <-v.closeCh:
 			return
 		}
-	}
-}
-
-func (v *Volume) stopOSSMetaSync() {
-	v.closingCh <- struct{}{}
-
-	select {
-	case <-v.closedCh:
-		break
 	}
 }
 
@@ -998,7 +987,7 @@ func (v *Volume) FileInfo(path string) (info *FSFileInfo, err error) {
 
 func (v *Volume) Close() error {
 	v.closeOnce.Do(func() {
-		v.stopOSSMetaSync()
+		close(v.closeCh)
 		_ = v.mw.Close()
 		_ = v.ec.Close()
 	})
@@ -1426,7 +1415,13 @@ func newVolume(masters []string, vol string) (*Volume, error) {
 		return nil, err
 	}
 
-	v := &Volume{mw: mw, ec: ec, name: vol, om: new(OSSMeta), createTime: mw.VolCreateTime()}
+	v := &Volume{
+		mw:         mw,
+		ec:         ec,
+		name:       vol,
+		om:         new(OSSMeta),
+		createTime: mw.VolCreateTime(),
+		closeCh:    make(chan struct{})}
 	go v.syncOSSMeta()
 	return v, nil
 }
