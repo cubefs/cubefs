@@ -220,7 +220,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		switch param.action {
-		case CreateBucketAction:
+		case proto.CreateBucketAction:
 		default:
 			if err = loadBucketMeta(param.Bucket()); err != nil {
 				log.LogErrorf("policyCheck: load bucket metadata fail: requestID(%v) err(%v)", GetRequestID(r), err)
@@ -253,7 +253,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			allowed = false
 			return
 		}
-		if param.action == CreateBucketAction {
+		if param.action == proto.CreateBucketAction {
 			allowed = true
 			return
 		}

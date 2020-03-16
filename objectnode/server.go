@@ -59,7 +59,7 @@ type ObjectNode struct {
 	wg         sync.WaitGroup
 	userStore  *UserStore
 
-	signatureIgnoredActions Actions // signature ignored actions
+	signatureIgnoredActions proto.Actions // signature ignored actions
 
 	control common.Control
 }
@@ -108,7 +108,7 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	// parse signature ignored actions
 	signatureIgnoredActionNames := cfg.GetStringSlice(configSignatureIgnoredActions)
 	for _, actionName := range signatureIgnoredActionNames {
-		action := ActionFromString(actionName)
+		action := proto.ParseAction(actionName)
 		if action.IsKnown() {
 			o.signatureIgnoredActions = append(o.signatureIgnoredActions, action)
 			log.LogInfof("loadConfig: signature ignored action: %v", action)

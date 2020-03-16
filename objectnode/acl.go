@@ -20,6 +20,8 @@ import (
 	"encoding/xml"
 	"errors"
 
+	"github.com/chubaofs/chubaofs/proto"
+
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -39,26 +41,25 @@ const (
 
 // https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/acl-overview.html
 var (
-	aclBucketPermissionActions = map[Permission][]Action{
-		ReadPermission:     {ListBucketAction, ListBucketVersionsAction, ListBucketMultipartUploadsAction},
-		WritePermission:    {PutObjectAction, DeleteObjectAction, DeleteBucketAction},
-		ReadACPPermission:  {GetBucketAclAction},
-		WriteACPPermission: {PutBucketAclAction},
+	aclBucketPermissionActions = map[Permission]proto.Actions{
+		ReadPermission:     {proto.ListBucketAction, proto.ListBucketVersionsAction, proto.ListBucketMultipartUploadsAction},
+		WritePermission:    {proto.PutObjectAction, proto.DeleteObjectAction, proto.DeleteBucketAction},
+		ReadACPPermission:  {proto.GetBucketAclAction},
+		WriteACPPermission: {proto.PutBucketAclAction},
 		FullControlPermission: {
-			ListBucketAction, ListBucketVersionsAction, ListBucketMultipartUploadsAction,
-			PutObjectAction, DeleteObjectAction, DeleteBucketAction,
-			GetBucketAclAction,
-			PutBucketAclAction},
+			proto.ListBucketAction, proto.ListBucketVersionsAction, proto.ListBucketMultipartUploadsAction,
+			proto.PutObjectAction, proto.DeleteObjectAction, proto.DeleteBucketAction,
+			proto.GetBucketAclAction, proto.PutBucketAclAction},
 	}
-	aclObjectPermissionActions = map[Permission][]Action{
-		ReadPermission:     {GetObjectAction, GetObjectVersionAction, GetObjectTorrentAction},
+	aclObjectPermissionActions = map[Permission]proto.Actions{
+		ReadPermission:     {proto.GetObjectAction, proto.GetObjectVersionAction, proto.GetObjectTorrentAction},
 		WritePermission:    {},
-		ReadACPPermission:  {GetObjectAclAction, GetObjectVersionAclAction},
-		WriteACPPermission: {PutObjectAclAction, PutObjectVersionAclAction},
+		ReadACPPermission:  {proto.GetObjectAclAction, proto.GetObjectVersionAclAction},
+		WriteACPPermission: {proto.PutObjectAclAction, proto.PutObjectVersionAclAction},
 		FullControlPermission: {
-			GetObjectAction, GetObjectVersionAction, GetObjectTorrentAction,
-			GetObjectAclAction, GetObjectVersionAclAction,
-			PutObjectAclAction, PutObjectVersionAclAction},
+			proto.GetObjectAction, proto.GetObjectVersionAction, proto.GetObjectTorrentAction,
+			proto.GetObjectAclAction, proto.GetObjectVersionAclAction,
+			proto.PutObjectAclAction, proto.PutObjectVersionAclAction},
 	}
 )
 

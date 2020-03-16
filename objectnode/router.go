@@ -17,6 +17,8 @@ package objectnode
 import (
 	"net/http"
 
+	"github.com/chubaofs/chubaofs/proto"
+
 	"github.com/gorilla/mux"
 )
 
@@ -34,14 +36,14 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 	var registerBucketHttpHeadRouters = func(r *mux.Router) {
 		// Head object
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html
-		r.NewRoute().Name(HeadObjectAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.HeadObjectAction)).
 			Methods(http.MethodHead).
 			Path("/{object:.+}").
 			HandlerFunc(o.headObjectHandler)
 
 		// Head bucket
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadBucket.html
-		r.NewRoute().Name(HeadBucketAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.HeadBucketAction)).
 			Methods(http.MethodHead).
 			HandlerFunc(o.headBucketHandler)
 	}
@@ -49,7 +51,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 	var registerBucketHttpGetRouters = func(r *mux.Router) {
 		// Get object with pre-signed auth signature v2
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html
-		r.NewRoute().Name(GetObjectAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.GetObjectAction)).
 			Methods(http.MethodGet).
 			Path("/{object:.+}").
 			Queries("AWSAccessKeyId", "{accessKey:.+}",
@@ -58,7 +60,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Get object with pre-signed auth signature v4
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html
-		r.NewRoute().Name(GetObjectAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.GetObjectAction)).
 			Methods(http.MethodGet).
 			Path("/{object:.+}").
 			Queries("X-Amz-Credential", "{creadential:.+}",
@@ -69,7 +71,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Get object tagging
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectTagging.html
-		r.NewRoute().Name(GetObjectTaggingAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.GetObjectTaggingAction)).
 			Methods(http.MethodGet).
 			Path("/{object:.+}").
 			Queries("tagging", "").
@@ -77,14 +79,14 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Get object XAttr
 		// Notes: ChubaoFS owned API for XAttr operation
-		r.NewRoute().Name(GetObjectXAttrAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.GetObjectXAttrAction)).
 			Methods(http.MethodGet).
 			Path("/{object:.+}").
 			Queries("xattr", "", "key", "{key:.+}").
 			HandlerFunc(o.getObjectXAttrHandler)
 
 		// List object XAttrs
-		r.NewRoute().Name(ListObjectXAttrsAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.ListObjectXAttrsAction)).
 			Methods(http.MethodGet).
 			Path("/{object:.+}").
 			Queries("xattr", "").
@@ -92,7 +94,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Get object acl
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAcl.html
-		r.NewRoute().Name(GetObjectAclAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.GetObjectAclAction)).
 			Methods(http.MethodGet).
 			Path("/{objject:.+}").
 			Queries("acl", "").
@@ -100,63 +102,63 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Get object
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html
-		r.NewRoute().Name(GetObjectAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.GetObjectAction)).
 			Methods(http.MethodGet).
 			Path("/{object:.+}").
 			HandlerFunc(o.getObjectHandler)
 
 		// List objects version 2
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html
-		r.NewRoute().Name(ListObjectsAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.ListObjectsAction)).
 			Methods(http.MethodGet).
 			Queries("list-type", "2").
 			HandlerFunc(o.getBucketV2Handler)
 
 		// List multipart uploads
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListMultipartUploads.html
-		r.NewRoute().Name(ListMultipartUploadsAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.ListMultipartUploadsAction)).
 			Methods(http.MethodGet).
 			Queries("uploads", "").
 			HandlerFunc(o.listMultipartUploadsHandler)
 
 		// List parts
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListParts.html
-		r.NewRoute().Name(ListPartsAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.ListPartsAction)).
 			Methods(http.MethodGet).
 			Queries("uploadId", "{uploadId:.*}").
 			HandlerFunc(o.listPartsHandler)
 
 		// Get bucket location
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLocation.html
-		r.NewRoute().Name(GetBucketLocationAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.GetBucketLocationAction)).
 			Methods(http.MethodGet).
 			Queries("location", "").
 			HandlerFunc(o.getBucketLocation)
 
 		// Get bucket policy
 		// https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketPolicy.html
-		r.NewRoute().Name(GetBucketPolicyAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.GetBucketPolicyAction)).
 			Methods(http.MethodGet).
 			Queries("policy", "").
 			HandlerFunc(o.getBucketPolicyHandler)
 
 		// Get bucket acl
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketAcl.html
-		r.NewRoute().Name(GetBucketAclAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.GetBucketAclAction)).
 			Methods(http.MethodGet).
 			Queries("acl", "").
 			HandlerFunc(o.getBucketACLHandler)
 
 		// Get bucket tagging
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketTagging.html
-		r.NewRoute().Name(GetBucketTaggingAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.GetBucketTaggingAction)).
 			Methods(http.MethodGet).
 			Queries("tagging", "").
 			HandlerFunc(o.getBucketTaggingHandler)
 
 		// List objects version 1
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjects.html
-		r.NewRoute().Name(ListObjectsAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.ListObjectsAction)).
 			Methods(http.MethodGet).
 			HandlerFunc(o.getBucketV1Handler)
 	}
@@ -164,7 +166,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 	var registerBucketHttpPostRouters = func(r *mux.Router) {
 		// Create multipart upload
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateMultipartUpload.html
-		r.NewRoute().Name(CreateMultipartUploadAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.CreateMultipartUploadAction)).
 			Methods(http.MethodPost).
 			Path("/{object:.+}").
 			Queries("uploads", "").
@@ -172,7 +174,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Complete multipart
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CompleteMultipartUpload.html
-		r.NewRoute().Name(CompleteMultipartUploadAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.CompleteMultipartUploadAction)).
 			Methods(http.MethodPost).
 			Path("/{object:.+}").
 			Queries("uploadId", "{uploadId:.*}").
@@ -180,7 +182,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Delete objects (multiple objects)
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjects.html
-		r.NewRoute().Name(DeleteObjectsAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.DeleteObjectsAction)).
 			Methods(http.MethodPost).
 			Queries("delete", "").
 			HandlerFunc(o.deleteObjectsHandler)
@@ -189,7 +191,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 	var registerBucketHttpPutRouters = func(r *mux.Router) {
 		// Upload part
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPart.html .
-		r.NewRoute().Name(UploadPartAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.UploadPartAction)).
 			Methods(http.MethodPut).
 			Path("/{object:.+}").
 			Queries("partNumber", "{partNumber:[0-9]+}", "uploadId", "{uploadId:.*}").
@@ -197,7 +199,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Copy object
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html .
-		r.NewRoute().Name(CopyObjectAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.CopyObjectAction)).
 			Methods(http.MethodPut).
 			Path("/{object:.+}").
 			HeadersRegexp(HeaderNameCopySource, ".*?(\\/|%2F).*?").
@@ -205,7 +207,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Put object tagging
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectTagging.html
-		r.NewRoute().Name(PutObjectTaggingAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.PutObjectTaggingAction)).
 			Methods(http.MethodPut).
 			Path("/{object:.+}").
 			Queries("tagging", "").
@@ -213,7 +215,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Put object xattrs
 		// Notes: ChubaoFS owned API for XAttr operation
-		r.NewRoute().Name(PutObjectXAttrAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.PutObjectXAttrAction)).
 			Methods(http.MethodPut).
 			Path("/{object:.+}").
 			Queries("xattr", "").
@@ -221,7 +223,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Put object acl
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketAcl.html
-		r.NewRoute().Name(PutObjectAclAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.PutObjectAclAction)).
 			Methods(http.MethodPut).
 			Path("/{object:.+}").
 			Queries("acl", "").
@@ -229,35 +231,35 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Put object
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html
-		r.NewRoute().Name(PutObjectAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.PutObjectAction)).
 			Methods(http.MethodPut).
 			Path("/{object:.+}").
 			HandlerFunc(o.putObjectHandler)
 
 		// Put bucket acl
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketAcl.html
-		r.NewRoute().Name(PutBucketAclAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.PutBucketAclAction)).
 			Methods(http.MethodPut).
 			Queries("acl", "").
 			HandlerFunc(o.putBucketACLHandler)
 
 		// Put bucket policy
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketPolicy.html
-		r.NewRoute().Name(PutBucketPolicyAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.PutBucketPolicyAction)).
 			Methods(http.MethodPut).
 			Queries("policy", "").
 			HandlerFunc(o.putBucketPolicyHandler)
 
 		// Put bucket tagging
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketTagging.html
-		r.NewRoute().Name(PutBucketTaggingAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.PutBucketTaggingAction)).
 			Methods(http.MethodPut).
 			Queries("tagging", "").
 			HandlerFunc(o.putBucketTaggingHandler)
 
 		// Create bucket
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucket.html
-		r.NewRoute().Name(CreateBucketAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.CreateBucketAction)).
 			Methods(http.MethodPut).
 			HandlerFunc(o.createBucketHandler)
 	}
@@ -265,7 +267,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 	var registerBucketHttpDeleteRouters = func(r *mux.Router) {
 		// Abort multipart upload
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_AbortMultipartUpload.html .
-		r.NewRoute().Name(AbortMultipartUploadAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.AbortMultipartUploadAction)).
 			Methods(http.MethodDelete).
 			Path("/{object:.+}").
 			Queries("uploadId", "{uploadId:.*}").
@@ -273,7 +275,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Delete object tagging
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjectTagging.html
-		r.NewRoute().Name(DeleteObjectTaggingAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.DeleteObjectTaggingAction)).
 			Methods(http.MethodDelete).
 			Path("/{object:.+").
 			Queries("tagging", "").
@@ -281,7 +283,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Delete object xattrs
 		// Notes: ChubaoFS owned API for XAttr operation
-		r.NewRoute().Name(DeleteObjectXAttrAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.DeleteObjectXAttrAction)).
 			Methods(http.MethodDelete).
 			Path("/{object:.+}").
 			Queries("xattr", "", "key", "{key:.+}").
@@ -289,28 +291,28 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Delete object
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html .
-		r.NewRoute().Name(DeleteObjectAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.DeleteObjectAction)).
 			Methods(http.MethodDelete).
 			Path("/{object:.+}").
 			HandlerFunc(o.deleteObjectHandler)
 
 		// Delete bucket policy
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketPolicy.html
-		r.NewRoute().Name(DeleteBucketPolicyAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.DeleteBucketPolicyAction)).
 			Methods(http.MethodDelete).
 			Queries("policy", "").
 			HandlerFunc(o.deleteBucketPolicyHandler)
 
 		// Delete bucket tagging
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketTagging.html
-		r.NewRoute().Name(DeleteBucketTaggingAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.DeleteBucketTaggingAction)).
 			Methods(http.MethodDelete).
 			Queries("tagging", "").
 			HandlerFunc(o.deleteBucketTaggingHandler)
 
 		// Delete bucket
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucket.html
-		r.NewRoute().Name(DeleteBucketAction.UniqueRouteName()).
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.DeleteBucketAction)).
 			Methods(http.MethodDelete).
 			HandlerFunc(o.deleteBucketHandler)
 
@@ -326,7 +328,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 	// List buckets
 	// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBuckets.html
-	router.NewRoute().Name(ListBucketAction.UniqueRouteName()).
+	router.NewRoute().Name(ActionToUniqueRouteName(proto.ListBucketAction)).
 		Methods(http.MethodGet).
 		HandlerFunc(o.listBucketsHandler)
 

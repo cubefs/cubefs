@@ -19,6 +19,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/chubaofs/chubaofs/proto"
+
 	"github.com/gorilla/mux"
 
 	"github.com/chubaofs/chubaofs/util/log"
@@ -28,7 +30,7 @@ type RequestParam struct {
 	resource      string
 	bucket        string
 	object        string
-	action        Action
+	action        proto.Action
 	sourceIP      string
 	conditionVars map[string][]string
 	vars          map[string]string
@@ -43,7 +45,7 @@ func (p *RequestParam) Object() string {
 	return p.object
 }
 
-func (p *RequestParam) Action() Action {
+func (p *RequestParam) Action() proto.Action {
 	return p.action
 }
 
