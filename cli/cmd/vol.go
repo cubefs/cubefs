@@ -18,10 +18,8 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"math"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -36,9 +34,10 @@ const (
 
 func newVolCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   cmdVolUse,
-		Short: cmdVolShort,
-		Args:  cobra.MinimumNArgs(0),
+		Use:     cmdVolUse,
+		Short:   cmdVolShort,
+		Args:    cobra.MinimumNArgs(0),
+		Aliases: []string{"vol"},
 	}
 	cmd.AddCommand(
 		newVolListCmd(client),
@@ -55,13 +54,31 @@ const (
 )
 
 func newVolListCmd(client *master.MasterClient) *cobra.Command {
+	var optKeyword string
 	var cmd = &cobra.Command{
 		Use:   cmdVolListUse,
 		Short: cmdVolListShort,
 		Run: func(cmd *cobra.Command, args []string) {
-
+			var vols []*proto.VolInfo
+			var err error
+			defer func() {
+				if err != nil {
+					errout("List cluster volume failed:\n%v\n", err)
+					os.Exit(1)
+				}
+			}()
+			if vols, err = client.AdminAPI().ListVols(optKeyword); err != nil {
+				return
+			}
+			stdout("\n[Volumes]\n")
+			stdout("\n%v\n", volumeInfoTableHeader)
+			for _, vol := range vols {
+				stdout("%v\n", formatVolInfoTableRow(vol))
+			}
+			stdout("\n")
 		},
 	}
+	cmd.Flags().StringVar(&optKeyword, "keyword", "", "Specify keyword for volume name filter")
 	return cmd
 }
 
@@ -81,6 +98,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optCapacity uint64
 	var optReplicas int
 	var optFollowerRead bool
+	var optYes bool
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
@@ -96,17 +114,19 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			stdout("  Dara partition count: %v\n", optDPCount)
 			stdout("  Capacity            : %v\n", optCapacity)
 			stdout("  Replicas            : %v\n", optReplicas)
-			stdout("  Allow follower read : %v\n", optFollowerRead)
+			stdout("  Allow follower read : %v\n", formatEnabledDisabled(optFollowerRead))
 
-			// confirm
 			// ask user for confirm
-			stdout("\nConfirm (yes/no)[yes]: ")
-			var userConfirm string
-			_, _ = fmt.Scanln(&userConfirm)
-			if userConfirm != "yes" && len(userConfirm) != 0 {
-				stdout("Abort by user.\n")
-				return
+			if !optYes {
+				stdout("\nConfirm (yes/no)[yes]: ")
+				var userConfirm string
+				_, _ = fmt.Scanln(&userConfirm)
+				if userConfirm != "yes" && len(userConfirm) != 0 {
+					stdout("Abort by user.\n")
+					return
+				}
 			}
+
 			err = client.AdminAPI().CreateVolume(
 				volumeName, userID, optMPCount, optDPCount,
 				optCapacity, optReplicas, optFollowerRead)
@@ -122,7 +142,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint64Var(&optDPCount, "dp-count", cmdVolDefaultDPSize, "Specify init data partition count")
 	cmd.Flags().Uint64Var(&optCapacity, "capacity", cmdVolDefaultCapacity, "Specify volume capacity [Unit: GB]")
 	cmd.Flags().IntVar(&optReplicas, "replicas", cmdVolDefaultReplicas, "Specify volume replicas number")
-	cmd.Flags().BoolVar(&optFollowerRead, "follower-read", cmdVolDefaultFollowerReader, "Allow read form replica follower")
+	cmd.Flags().BoolVar(&optFollowerRead, "follower-read", cmdVolDefaultFollowerReader, "Enable read form replica follower")
+	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	return cmd
 }
 
@@ -159,13 +180,12 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 					os.Exit(1)
 				}
 				stdout("\n[Metadata detail]\n")
-				stdout("  %10v\t%12v\t%12v\t%12v\t%10v\t%18v\t%18v\n",
-					"ID", "MAX INODE", "START", "END", "STATUS", "LEADER", "MEMBERS")
+				stdout("%v\n", metaPartitionTableHeader)
 				sort.SliceStable(views, func(i, j int) bool {
 					return views[i].PartitionID < views[j].PartitionID
 				})
 				for _, view := range views {
-					stdout(formatMetaPartitionView(view))
+					stdout("%v\n", formatMetaPartitionTableRow(view))
 				}
 				stdout("\n")
 			}
@@ -178,13 +198,12 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 					os.Exit(1)
 				}
 				stdout("\n[Data detail]\n")
-				stdout("  %10v\t%8v\t%10v\t%18v\t%18v\n",
-					"ID", "REPLICAS", "STATUS", "LEADER", "MEMBERS")
+				stdout("%v\n", dataPartitionTableHeader)
 				sort.SliceStable(view.DataPartitions, func(i, j int) bool {
 					return view.DataPartitions[i].PartitionID < view.DataPartitions[j].PartitionID
 				})
 				for _, dp := range view.DataPartitions {
-					stdout(formatDataPartitionView(dp))
+					stdout("%v\n", formatDataPartitionTableRow(dp))
 				}
 				stdout("\n")
 			}
@@ -202,6 +221,7 @@ const (
 )
 
 func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
+	var optYes bool
 	var cmd = &cobra.Command{
 		Use:   cmdVolDeleteUse,
 		Short: cmdVolDeleteShort,
@@ -210,13 +230,16 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			var volumeName = args[0]
 			// ask user for confirm
-			stdout("Delete volume [%v] (yes/no)[no]:", volumeName)
-			var userConfirm string
-			_, _ = fmt.Scanln(&userConfirm)
-			if userConfirm != "yes" {
-				stdout("Abort by user.\n")
-				return
+			if !optYes {
+				stdout("Delete volume [%v] (yes/no)[no]:", volumeName)
+				var userConfirm string
+				_, _ = fmt.Scanln(&userConfirm)
+				if userConfirm != "yes" {
+					stdout("Abort by user.\n")
+					return
+				}
 			}
+
 			var svv *proto.SimpleVolView
 			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
 				errout("Delete volume failed:\n%v\n", err)
@@ -230,76 +253,8 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 			stdout("Delete volume success.\n")
 		},
 	}
+	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	return cmd
-}
-
-func formatSimpleVolView(svv *proto.SimpleVolView) string {
-	var statusToString = func(status uint8) string {
-		switch status {
-		case 0:
-			return "normal"
-		case 1:
-			return "marked delete"
-		default:
-			return "Unknown"
-		}
-	}
-	var sb = strings.Builder{}
-	sb.WriteString(fmt.Sprintf("  ID                  : %v\n", svv.ID))
-	sb.WriteString(fmt.Sprintf("  Name                : %v\n", svv.Name))
-	sb.WriteString(fmt.Sprintf("  Owner               : %v\n", svv.Owner))
-	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", svv.ZoneName))
-	sb.WriteString(fmt.Sprintf("  Status              : %v\n", statusToString(svv.Status)))
-	sb.WriteString(fmt.Sprintf("  Capacity            : %v GB\n", svv.Capacity))
-	sb.WriteString(fmt.Sprintf("  Create time         : %v\n", svv.CreateTime))
-	sb.WriteString(fmt.Sprintf("  Authenticate        : %v\n", svv.Authenticate))
-	sb.WriteString(fmt.Sprintf("  Follower read       : %v\n", svv.FollowerRead))
-	sb.WriteString(fmt.Sprintf("  Cross zone          : %v\n", svv.CrossZone))
-	sb.WriteString(fmt.Sprintf("  Meta partition count: %v\n", svv.MpCnt))
-	sb.WriteString(fmt.Sprintf("  Meta replicas       : %v\n", svv.MpReplicaNum))
-	sb.WriteString(fmt.Sprintf("  Data partition count: %v\n", svv.DpCnt))
-	sb.WriteString(fmt.Sprintf("  Data replicas       : %v\n", svv.DpReplicaNum))
-	return sb.String()
-}
-
-func formatMetaPartitionView(view *proto.MetaPartitionView) string {
-	var statusToString = func(status int8) string {
-		switch status {
-		case 1:
-			return "read only"
-		case 2:
-			return "writable"
-		case -1:
-			return "unavailable"
-		default:
-			return "unknown"
-		}
-	}
-	var rangeToString = func(num uint64) string {
-		if num >= math.MaxInt64 {
-			return "unlimited"
-		}
-		return strconv.FormatUint(num, 10)
-	}
-	return fmt.Sprintf("  %10v\t%12v\t%12v\t%12v\t%10v\t%18v\t%18v\n",
-		view.PartitionID, view.MaxInodeID, view.Start, rangeToString(view.End), statusToString(view.Status), view.LeaderAddr, view.Members)
-}
-
-func formatDataPartitionView(view *proto.DataPartitionResponse) string {
-	var statusToString = func(status int8) string {
-		switch status {
-		case 1:
-			return "read only"
-		case 2:
-			return "writable"
-		case -1:
-			return "unavailable"
-		default:
-			return "unknown"
-		}
-	}
-	return fmt.Sprintf("  %10v\t%8v\t%10v\t%18v\t%18v\n",
-		view.PartitionID, view.ReplicaNum, statusToString(view.Status), view.LeaderAddr, view.Hosts)
 }
 
 func calcAuthKey(key string) (authKey string) {

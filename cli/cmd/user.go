@@ -52,6 +52,7 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optAccessKey string
 	var optSecretKey string
 	var optUserType string
+	var optYes bool
 	var cmd = &cobra.Command{
 		Use:   cmdUserCreateUse,
 		Short: cmdUserCreateShort,
@@ -89,13 +90,16 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 			stdout("  Type      : %v\n", displayUserType)
 
 			// ask user for confirm
-			stdout("\nConfirm (yes/no)[yes]: ")
-			var userConfirm string
-			_, _ = fmt.Scanln(&userConfirm)
-			if userConfirm != "yes" && len(userConfirm) != 0 {
-				stdout("Abort by user.\n")
-				return
+			if !optYes {
+				stdout("\nConfirm (yes/no)[yes]: ")
+				var userConfirm string
+				_, _ = fmt.Scanln(&userConfirm)
+				if userConfirm != "yes" && len(userConfirm) != 0 {
+					stdout("Abort by user.\n")
+					return
+				}
 			}
+
 			var param = proto.UserCreateParam{
 				ID:        userID,
 				Password:  password,
@@ -119,6 +123,7 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optAccessKey, "access-key", "", "Specify user access key for object storage interface authentication")
 	cmd.Flags().StringVar(&optSecretKey, "secret-key", "", "Specify user secret key for object storage interface authentication")
 	cmd.Flags().StringVar(&optUserType, "user-type", "normal", "Specify user type [normal | admin]")
+	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	return cmd
 }
 

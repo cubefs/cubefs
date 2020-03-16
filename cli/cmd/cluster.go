@@ -15,9 +15,7 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
-	"strings"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
@@ -62,14 +60,4 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	return cmd
-}
-
-func formatClusterView(cv *proto.ClusterView) string {
-	var sb = strings.Builder{}
-	sb.WriteString(fmt.Sprintf("  Name          : %v\n", cv.Name))
-	sb.WriteString(fmt.Sprintf("  Auto allocate : %v\n", !cv.DisableAutoAlloc))
-	sb.WriteString(fmt.Sprintf("  MetaNode count: %v\n", len(cv.MetaNodes)))
-	sb.WriteString(fmt.Sprintf("  DataNode count: %v\n", len(cv.DataNodes)))
-	sb.WriteString(fmt.Sprintf("  Volume count  : %v\n", len(cv.VolStatInfo)))
-	return sb.String()
 }
