@@ -90,6 +90,10 @@ func NewUserPolicy() *UserPolicy {
 	}
 }
 
+func NewAkPolicy() *AKPolicy {
+	return &AKPolicy{Policy: NewUserPolicy()}
+}
+
 type VolAK struct {
 	Vol          string              `json:"vol"`
 	AKAndActions map[string][]string // k: ak, v: actions

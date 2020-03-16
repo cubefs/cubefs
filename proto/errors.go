@@ -72,7 +72,7 @@ var (
 	ErrDuplicateAccessKey              = errors.New("duplicate access key")
 	ErrHaveNoPolicy                    = errors.New("no vol policy")
 	ErrZoneNotExists                   = errors.New("zone not exists")
-	ErrOwnVolExists                    = errors.New("own vol not empty")
+	ErrOwnVolExists                    = errors.New("own vols not empty")
 	ErrSuperAdminExists                = errors.New("super administrator exists ")
 	ErrInvalidUserID                   = errors.New("invalid user ID")
 	ErrInvalidUserType                 = errors.New("invalid user type")

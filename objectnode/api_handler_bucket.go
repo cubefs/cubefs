@@ -157,7 +157,6 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
-
 	ownVols := akPolicy.Policy.OwnVols
 	var buckets = make([]*Bucket, 0)
 	var vol *Volume

@@ -17,7 +17,7 @@ const (
 	accessKeyLength     = 16
 	secretKeyLength     = 32
 	ALL                 = "all"
-	RootUserID   		= "root"
+	RootUserID          = "root"
 	DefaultRootPasswd   = "ChubaoFSRoot"
 	DefaultUserPassword = "ChubaoFSUser"
 )
@@ -203,8 +203,7 @@ func (u *User) deleteVolPolicy(volName string) (err error) {
 	if value, exist := u.volAKs.Load(volName); exist {
 		volAK = value.(*proto.VolAK)
 	} else {
-		err = proto.ErrVolPolicyNotExists
-		return
+		return nil
 	}
 	//delete policy
 	for ak, akAndActions := range volAK.AKAndActions {
