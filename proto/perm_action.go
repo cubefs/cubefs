@@ -14,6 +14,10 @@
 
 package proto
 
+import (
+	"regexp"
+)
+
 type Action string
 
 func (a Action) String() string {
@@ -25,7 +29,8 @@ func (a Action) IsKnown() bool {
 }
 
 const (
-	OSSActionPrefix = "oss:action:"
+	ActionPrefix    = "action:"
+	OSSActionPrefix = ActionPrefix + "oss:"
 
 	GetObjectAction                  Action = OSSActionPrefix + "GetObject"
 	PutObjectAction                  Action = OSSActionPrefix + "PutObject"
@@ -71,7 +76,9 @@ const (
 	PutBucketTaggingAction           Action = OSSActionPrefix + "PutBucketTagging"
 	DeleteBucketTaggingAction        Action = OSSActionPrefix + "DeleteBucketTagging"
 
-	UnknownAction Action = OSSActionPrefix + "Unknown"
+	POSIXActionPrefix = ActionPrefix + "posix:"
+
+	UnknownAction Action = ""
 )
 
 var (
@@ -145,4 +152,122 @@ func (actions Actions) Constant(action Action) bool {
 		}
 	}
 	return false
+}
+
+type Permission string
+
+func (p Permission) String() string {
+	return string(p)
+}
+
+func (p Permission) IsBuiltin() bool {
+	return builtinPermRegexp.MatchString(string(p))
+}
+
+func (p Permission) IsCustom() bool {
+	return customPermRegexp.MatchString(string(p))
+}
+
+const (
+	// prefixes for value organization
+	PermissionPrefix        Permission = "perm:"
+	BuiltinPermissionPrefix Permission = PermissionPrefix + "builtin:"
+	CustomPermissionPrefix  Permission = PermissionPrefix + "custom:"
+
+	// constants for builtin permissions
+	BuiltinPermissionReadOnly Permission = BuiltinPermissionPrefix + "ReadOnly"
+	BuiltinPermissionWritable Permission = BuiltinPermissionPrefix + "Writable"
+
+	// constants for unknown permission
+	UnknownPermission Permission = ""
+)
+
+var (
+	permRegexp        = regexp.MustCompile("^perm:((builtin:(Writable|ReadOnly))|(custom:(\\w)+))$")
+	builtinPermRegexp = regexp.MustCompile("^perm:builtin:(Writable|ReadOnly)$")
+	customPermRegexp  = regexp.MustCompile("^perm:custom:(\\w)+$")
+)
+
+func ParsePermission(value string) Permission {
+	if permRegexp.MatchString(value) {
+		return Permission(value)
+	}
+	return UnknownPermission
+}
+
+func NewCustomPermission(name string) Permission {
+	return Permission(CustomPermissionPrefix + Permission(name))
+}
+
+var (
+	builtinPermissionActionsMap = map[Permission]Actions{
+		BuiltinPermissionReadOnly: {
+			GetObjectAction,
+			ListObjectsAction,
+			HeadObjectAction,
+			HeadBucketAction,
+			ListBucketAction,
+			ListBucketVersionsAction,
+			ListBucketMultipartUploadsAction,
+			GetBucketPolicyAction,
+			GetBucketAclAction,
+			PutBucketAclAction,
+			GetObjectAclAction,
+			GetObjectVersionAction,
+			PutObjectVersionAction,
+			GetObjectTorrentAction,
+			GetObjectVersionAclAction,
+			ListMultipartUploadsAction,
+			ListPartsAction,
+			GetBucketLocationAction,
+			GetObjectXAttrAction,
+			ListObjectXAttrsAction,
+			GetObjectTaggingAction,
+			GetBucketTaggingAction,
+		},
+		BuiltinPermissionWritable: {
+			GetObjectAction,
+			PutObjectAction,
+			CopyObjectAction,
+			ListObjectsAction,
+			DeleteObjectAction,
+			HeadObjectAction,
+			HeadBucketAction,
+			ListBucketAction,
+			ListBucketVersionsAction,
+			ListBucketMultipartUploadsAction,
+			GetBucketPolicyAction,
+			GetBucketAclAction,
+			GetObjectAclAction,
+			GetObjectVersionAction,
+			PutObjectVersionAction,
+			GetObjectTorrentAction,
+			PutObjectTorrentAction,
+			PutObjectAclAction,
+			GetObjectVersionAclAction,
+			PutObjectVersionAclAction,
+			CreateMultipartUploadAction,
+			ListMultipartUploadsAction,
+			UploadPartAction,
+			ListPartsAction,
+			CompleteMultipartUploadAction,
+			AbortMultipartUploadAction,
+			GetBucketLocationAction,
+			GetObjectXAttrAction,
+			PutObjectXAttrAction,
+			ListObjectXAttrsAction,
+			DeleteObjectXAttrAction,
+			GetObjectTaggingAction,
+			PutObjectTaggingAction,
+			DeleteObjectTaggingAction,
+			GetBucketTaggingAction,
+		},
+	}
+)
+
+func BuiltinPermissionActions(perm Permission) Actions {
+	if actions, exists := builtinPermissionActionsMap[perm]; exists {
+		return actions
+	}
+	return nil
 }

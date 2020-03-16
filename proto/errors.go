@@ -76,7 +76,7 @@ var (
 	ErrSuperAdminExists                = errors.New("super administrator exists ")
 	ErrInvalidUserID                   = errors.New("invalid user ID")
 	ErrInvalidUserType                 = errors.New("invalid user type")
-	ErrNoPermission                    = errors.New("no permission to delete super admin")
+	ErrNoPermission                    = errors.New("no permission")
 )
 
 // http response error code and error message definitions
