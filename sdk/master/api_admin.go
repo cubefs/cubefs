@@ -189,3 +189,17 @@ func (api *AdminAPI) CreateMetaPartition(volName string, inodeStart uint64) (err
 	}
 	return
 }
+
+func (api *AdminAPI) ListVols(keywords string) (volsInfo []*proto.VolInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminListVols)
+	request.addParam("keywords", keywords)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	volsInfo = make([]*proto.VolInfo, 0)
+	if err = json.Unmarshal(data, &volsInfo); err != nil {
+		return
+	}
+	return
+}

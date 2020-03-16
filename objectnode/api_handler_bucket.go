@@ -122,11 +122,6 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = BucketNotEmpty.ServeResponse(w, r)
 		return
 	}
-	if err = mc.UserAPI().DeleteVolPolicy(bucket); err != nil {
-		log.LogErrorf("delete bucket[%v] error: delete related policy err(%v)", bucket, err)
-		_ = InternalError.ServeResponse(w, r)
-		return
-	}
 	// delete Volume from master
 	if authKey, err = calculateAuthKey(akPolicy.UserID); err != nil {
 		log.LogErrorf("delete bucket[%v] error: calculate authKey(%v) err(%v)", bucket, akPolicy.UserID, err)

@@ -114,6 +114,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetTopologyView).
 		HandlerFunc(m.getTopology)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminListVols).
+		HandlerFunc(m.listVols)
 
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

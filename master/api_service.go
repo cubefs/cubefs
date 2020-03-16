@@ -486,11 +486,11 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.markDeleteVol(name, authKey); err != nil {
+	if err = m.user.deleteVolPolicy(name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if err = m.user.deleteVolPolicy(name); err != nil {
+	if err = m.cluster.markDeleteVol(name, authKey); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1627,6 +1627,32 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(toInfo(mp)))
+}
+
+func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
+	var (
+		err      error
+		keywords string
+		vol      *Vol
+		volsInfo []*proto.VolInfo
+	)
+	if keywords, err = parseKeywords(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	volsInfo = make([]*proto.VolInfo, 0)
+	for _, name := range m.cluster.allVolNames() {
+		if strings.Contains(name, keywords) {
+			if vol, err = m.cluster.getVol(name); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+				return
+			}
+			stat := volStat(vol)
+			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize)
+			volsInfo = append(volsInfo, volInfo)
+		}
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))
 }
 
 func parseAndExtractPartitionInfo(r *http.Request) (partitionID uint64, err error) {

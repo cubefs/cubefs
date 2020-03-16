@@ -32,6 +32,7 @@ const (
 	AdminGetIP                     = "/admin/getIp"
 	AdminCreateMetaPartition       = "/metaPartition/create"
 	AdminSetMetaNodeThreshold      = "/threshold/set"
+	AdminListVols                  = "/vol/list"
 
 	// Client APIs
 	ClientDataPartitions = "/client/partitions"
@@ -437,4 +438,24 @@ type SimpleVolView struct {
 type MasterAPIAccessResp struct {
 	APIResp APIAccessResp `json:"api_resp"`
 	Data    []byte        `json:"data"`
+}
+
+type VolInfo struct {
+	Name       string
+	Owner      string
+	CreateTime int64
+	Status     uint8
+	TotalSize  uint64
+	UsedSize   uint64
+}
+
+func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64) *VolInfo {
+	return &VolInfo{
+		Name:       name,
+		Owner:      owner,
+		CreateTime: createTime,
+		Status:     status,
+		TotalSize:  totalSize,
+		UsedSize:   usedSize,
+	}
 }
