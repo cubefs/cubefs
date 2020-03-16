@@ -24,125 +24,138 @@ func (a Action) String() string {
 	return string(a)
 }
 
-func (a Action) IsKnown() bool {
-	return len(a) != 0 && a != UnknownAction
+func (a Action) IsNone() bool {
+	return len(a) == 0 || a == NoneAction
 }
 
 const (
-	ActionPrefix    = "action:"
-	OSSActionPrefix = ActionPrefix + "oss:"
-
-	GetObjectAction                  Action = OSSActionPrefix + "GetObject"
-	PutObjectAction                  Action = OSSActionPrefix + "PutObject"
-	CopyObjectAction                 Action = OSSActionPrefix + "CopyObject"
-	ListObjectsAction                Action = OSSActionPrefix + "ListObjects"
-	DeleteObjectAction               Action = OSSActionPrefix + "DeleteObject"
-	DeleteObjectsAction              Action = OSSActionPrefix + "DeleteObjects"
-	HeadObjectAction                 Action = OSSActionPrefix + "HeadObject"
-	CreateBucketAction               Action = OSSActionPrefix + "CreateBucket"
-	DeleteBucketAction               Action = OSSActionPrefix + "DeleteBucket"
-	HeadBucketAction                 Action = OSSActionPrefix + "HeadBucket"
-	ListBucketAction                 Action = OSSActionPrefix + "ListBucket"
-	ListBucketVersionsAction         Action = OSSActionPrefix + "ListBucketVersions"
-	ListBucketMultipartUploadsAction Action = OSSActionPrefix + "ListBucketMultipartUploads"
-	GetBucketPolicyAction            Action = OSSActionPrefix + "GetBucketPolicy"
-	PutBucketPolicyAction            Action = OSSActionPrefix + "PutBucketPolicy"
-	GetBucketAclAction               Action = OSSActionPrefix + "GetBucketAcl"
-	PutBucketAclAction               Action = OSSActionPrefix + "PutBucketAcl"
-	GetObjectAclAction               Action = OSSActionPrefix + "GetObjectAcl"
-	GetObjectVersionAction           Action = OSSActionPrefix + "GetObjectVersion"
-	PutObjectVersionAction           Action = OSSActionPrefix + "PutObjectVersion"
-	GetObjectTorrentAction           Action = OSSActionPrefix + "GetObjectTorrent"
-	PutObjectTorrentAction           Action = OSSActionPrefix + "PutObjectTorrent"
-	PutObjectAclAction               Action = OSSActionPrefix + "PutObjectAcl"
-	GetObjectVersionAclAction        Action = OSSActionPrefix + "GetObjectVersionAcl"
-	PutObjectVersionAclAction        Action = OSSActionPrefix + "PutObjectVersionAcl"
-	DeleteBucketPolicyAction         Action = OSSActionPrefix + "DeleteBucketPolicy"
-	CreateMultipartUploadAction      Action = OSSActionPrefix + "CreateMultipartUpload"
-	ListMultipartUploadsAction       Action = OSSActionPrefix + "ListMultipartUploads"
-	UploadPartAction                 Action = OSSActionPrefix + "UploadPart"
-	ListPartsAction                  Action = OSSActionPrefix + "ListParts"
-	CompleteMultipartUploadAction    Action = OSSActionPrefix + "CompleteMultipartUpload"
-	AbortMultipartUploadAction       Action = OSSActionPrefix + "AbortMultipartUpload"
-	GetBucketLocationAction          Action = OSSActionPrefix + "GetBucketLocation"
-	GetObjectXAttrAction             Action = OSSActionPrefix + "GetObjectXAttr"
-	PutObjectXAttrAction             Action = OSSActionPrefix + "PutObjectXAttr"
-	ListObjectXAttrsAction           Action = OSSActionPrefix + "ListObjectXAttrs"
-	DeleteObjectXAttrAction          Action = OSSActionPrefix + "DeleteObjectXAttr"
-	GetObjectTaggingAction           Action = OSSActionPrefix + "GetObjectTagging"
-	PutObjectTaggingAction           Action = OSSActionPrefix + "PutObjectTagging"
-	DeleteObjectTaggingAction        Action = OSSActionPrefix + "DeleteObjectTagging"
-	GetBucketTaggingAction           Action = OSSActionPrefix + "GetBucketTagging"
-	PutBucketTaggingAction           Action = OSSActionPrefix + "PutBucketTagging"
-	DeleteBucketTaggingAction        Action = OSSActionPrefix + "DeleteBucketTagging"
-
+	ActionPrefix      = "action:"
+	OSSActionPrefix   = ActionPrefix + "oss:"
 	POSIXActionPrefix = ActionPrefix + "posix:"
 
-	UnknownAction Action = ""
+	// constants for object storage interfaces
+	OSSGetObjectAction                  Action = OSSActionPrefix + "GetObject"
+	OSSPutObjectAction                  Action = OSSActionPrefix + "PutObject"
+	OSSCopyObjectAction                 Action = OSSActionPrefix + "CopyObject"
+	OSSListObjectsAction                Action = OSSActionPrefix + "ListObjects"
+	OSSDeleteObjectAction               Action = OSSActionPrefix + "DeleteObject"
+	OSSDeleteObjectsAction              Action = OSSActionPrefix + "DeleteObjects"
+	OSSHeadObjectAction                 Action = OSSActionPrefix + "HeadObject"
+	OSSCreateBucketAction               Action = OSSActionPrefix + "CreateBucket"
+	OSSDeleteBucketAction               Action = OSSActionPrefix + "DeleteBucket"
+	OSSHeadBucketAction                 Action = OSSActionPrefix + "HeadBucket"
+	OSSListBucketAction                 Action = OSSActionPrefix + "ListBucket"
+	OSSListBucketVersionsAction         Action = OSSActionPrefix + "ListBucketVersions"
+	OSSListBucketMultipartUploadsAction Action = OSSActionPrefix + "ListBucketMultipartUploads"
+	OSSGetBucketPolicyAction            Action = OSSActionPrefix + "GetBucketPolicy"
+	OSSPutBucketPolicyAction            Action = OSSActionPrefix + "PutBucketPolicy"
+	OSSGetBucketAclAction               Action = OSSActionPrefix + "GetBucketAcl"
+	OSSPutBucketAclAction               Action = OSSActionPrefix + "PutBucketAcl"
+	OSSGetObjectAclAction               Action = OSSActionPrefix + "GetObjectAcl"
+	OSSGetObjectVersionAction           Action = OSSActionPrefix + "GetObjectVersion"
+	OSSPutObjectVersionAction           Action = OSSActionPrefix + "PutObjectVersion"
+	OSSGetObjectTorrentAction           Action = OSSActionPrefix + "GetObjectTorrent"
+	OSSPutObjectTorrentAction           Action = OSSActionPrefix + "PutObjectTorrent"
+	OSSPutObjectAclAction               Action = OSSActionPrefix + "PutObjectAcl"
+	OSSGetObjectVersionAclAction        Action = OSSActionPrefix + "GetObjectVersionAcl"
+	OSSPutObjectVersionAclAction        Action = OSSActionPrefix + "PutObjectVersionAcl"
+	OSSDeleteBucketPolicyAction         Action = OSSActionPrefix + "DeleteBucketPolicy"
+	OSSCreateMultipartUploadAction      Action = OSSActionPrefix + "CreateMultipartUpload"
+	OSSListMultipartUploadsAction       Action = OSSActionPrefix + "ListMultipartUploads"
+	OSSUploadPartAction                 Action = OSSActionPrefix + "UploadPart"
+	OSSListPartsAction                  Action = OSSActionPrefix + "ListParts"
+	OSSCompleteMultipartUploadAction    Action = OSSActionPrefix + "CompleteMultipartUpload"
+	OSSAbortMultipartUploadAction       Action = OSSActionPrefix + "AbortMultipartUpload"
+	OSSGetBucketLocationAction          Action = OSSActionPrefix + "GetBucketLocation"
+	OSSGetObjectXAttrAction             Action = OSSActionPrefix + "GetObjectXAttr"
+	OSSPutObjectXAttrAction             Action = OSSActionPrefix + "PutObjectXAttr"
+	OSSListObjectXAttrsAction           Action = OSSActionPrefix + "ListObjectXAttrs"
+	OSSDeleteObjectXAttrAction          Action = OSSActionPrefix + "DeleteObjectXAttr"
+	OSSGetObjectTaggingAction           Action = OSSActionPrefix + "GetObjectTagging"
+	OSSPutObjectTaggingAction           Action = OSSActionPrefix + "PutObjectTagging"
+	OSSDeleteObjectTaggingAction        Action = OSSActionPrefix + "DeleteObjectTagging"
+	OSSGetBucketTaggingAction           Action = OSSActionPrefix + "GetBucketTagging"
+	OSSPutBucketTaggingAction           Action = OSSActionPrefix + "PutBucketTagging"
+	OSSDeleteBucketTaggingAction        Action = OSSActionPrefix + "DeleteBucketTagging"
+
+	// constants for POSIX file system interface
+	POSIXReadAction  Action = POSIXActionPrefix + "Read"
+	POSIXWriteAction Action = POSIXActionPrefix + "Write"
+
+	NoneAction Action = ""
 )
 
 var (
 	AllActions = []Action{
-		GetObjectAction,
-		PutObjectAction,
-		CopyObjectAction,
-		ListObjectsAction,
-		DeleteObjectAction,
-		HeadObjectAction,
-		CreateBucketAction,
-		DeleteBucketAction,
-		HeadBucketAction,
-		ListBucketAction,
-		ListBucketVersionsAction,
-		ListBucketMultipartUploadsAction,
-		GetBucketPolicyAction,
-		PutBucketPolicyAction,
-		GetBucketAclAction,
-		PutBucketAclAction,
-		GetObjectAclAction,
-		GetObjectVersionAction,
-		PutObjectVersionAction,
-		GetObjectTorrentAction,
-		PutObjectTorrentAction,
-		PutObjectAclAction,
-		GetObjectVersionAclAction,
-		PutObjectVersionAclAction,
-		DeleteBucketPolicyAction,
-		CreateMultipartUploadAction,
-		ListMultipartUploadsAction,
-		UploadPartAction,
-		ListPartsAction,
-		CompleteMultipartUploadAction,
-		AbortMultipartUploadAction,
-		GetBucketLocationAction,
-		GetObjectXAttrAction,
-		PutObjectXAttrAction,
-		ListObjectXAttrsAction,
-		DeleteObjectXAttrAction,
-		GetObjectTaggingAction,
-		PutObjectTaggingAction,
-		DeleteObjectTaggingAction,
-		GetBucketTaggingAction,
-		PutBucketTaggingAction,
-		DeleteBucketTaggingAction,
+		// object storage interface actions
+		OSSGetObjectAction,
+		OSSPutObjectAction,
+		OSSCopyObjectAction,
+		OSSListObjectsAction,
+		OSSDeleteObjectAction,
+		OSSHeadObjectAction,
+		OSSCreateBucketAction,
+		OSSDeleteBucketAction,
+		OSSHeadBucketAction,
+		OSSListBucketAction,
+		OSSListBucketVersionsAction,
+		OSSListBucketMultipartUploadsAction,
+		OSSGetBucketPolicyAction,
+		OSSPutBucketPolicyAction,
+		OSSGetBucketAclAction,
+		OSSPutBucketAclAction,
+		OSSGetObjectAclAction,
+		OSSGetObjectVersionAction,
+		OSSPutObjectVersionAction,
+		OSSGetObjectTorrentAction,
+		OSSPutObjectTorrentAction,
+		OSSPutObjectAclAction,
+		OSSGetObjectVersionAclAction,
+		OSSPutObjectVersionAclAction,
+		OSSDeleteBucketPolicyAction,
+		OSSCreateMultipartUploadAction,
+		OSSListMultipartUploadsAction,
+		OSSUploadPartAction,
+		OSSListPartsAction,
+		OSSCompleteMultipartUploadAction,
+		OSSAbortMultipartUploadAction,
+		OSSGetBucketLocationAction,
+		OSSGetObjectXAttrAction,
+		OSSPutObjectXAttrAction,
+		OSSListObjectXAttrsAction,
+		OSSDeleteObjectXAttrAction,
+		OSSGetObjectTaggingAction,
+		OSSPutObjectTaggingAction,
+		OSSDeleteObjectTaggingAction,
+		OSSGetBucketTaggingAction,
+		OSSPutBucketTaggingAction,
+		OSSDeleteBucketTaggingAction,
+
+		// posix file system interface actions
+		POSIXReadAction,
+		POSIXWriteAction,
 	}
 )
 
+var (
+	actionRegexp = regexp.MustCompile("^perm:((oss:(\\w+))|(posix:(\\w)+))$")
+)
+
 func ParseAction(str string) Action {
-	if len(str) == 0 {
-		return UnknownAction
+	if len(str) == 0 || !actionRegexp.MatchString(str) {
+		return NoneAction
 	}
 	for _, act := range AllActions {
 		if act.String() == str {
 			return act
 		}
 	}
-	return UnknownAction
+	return NoneAction
 }
 
 type Actions []Action
 
-func (actions Actions) Constant(action Action) bool {
+func (actions Actions) Contains(action Action) bool {
 	if len(actions) == 0 {
 		return false
 	}
@@ -154,10 +167,27 @@ func (actions Actions) Constant(action Action) bool {
 	return false
 }
 
+func (actions Actions) Len() int {
+	return len(actions)
+}
+
 type Permission string
 
 func (p Permission) String() string {
 	return string(p)
+}
+
+func (p Permission) ReadableString() string {
+	if p.Valid() {
+		if p.IsBuiltin() {
+			return p.String()[len(BuiltinPermissionPrefix.String()):] + "(builtin)"
+		}
+		if p.IsCustom() {
+			return p.String()[len(CustomPermissionPrefix.String()):] + "(custom)"
+		}
+		return p.String()
+	}
+	return "None"
 }
 
 func (p Permission) IsBuiltin() bool {
@@ -166,6 +196,14 @@ func (p Permission) IsBuiltin() bool {
 
 func (p Permission) IsCustom() bool {
 	return customPermRegexp.MatchString(string(p))
+}
+
+func (p Permission) Valid() bool {
+	return permRegexp.MatchString(string(p))
+}
+
+func (p Permission) IsNone() bool {
+	return p == NonePermission
 }
 
 const (
@@ -179,7 +217,7 @@ const (
 	BuiltinPermissionWritable Permission = BuiltinPermissionPrefix + "Writable"
 
 	// constants for unknown permission
-	UnknownPermission Permission = ""
+	NonePermission Permission = ""
 )
 
 var (
@@ -192,7 +230,7 @@ func ParsePermission(value string) Permission {
 	if permRegexp.MatchString(value) {
 		return Permission(value)
 	}
-	return UnknownPermission
+	return NonePermission
 }
 
 func NewCustomPermission(name string) Permission {
@@ -202,65 +240,74 @@ func NewCustomPermission(name string) Permission {
 var (
 	builtinPermissionActionsMap = map[Permission]Actions{
 		BuiltinPermissionReadOnly: {
-			GetObjectAction,
-			ListObjectsAction,
-			HeadObjectAction,
-			HeadBucketAction,
-			ListBucketAction,
-			ListBucketVersionsAction,
-			ListBucketMultipartUploadsAction,
-			GetBucketPolicyAction,
-			GetBucketAclAction,
-			PutBucketAclAction,
-			GetObjectAclAction,
-			GetObjectVersionAction,
-			PutObjectVersionAction,
-			GetObjectTorrentAction,
-			GetObjectVersionAclAction,
-			ListMultipartUploadsAction,
-			ListPartsAction,
-			GetBucketLocationAction,
-			GetObjectXAttrAction,
-			ListObjectXAttrsAction,
-			GetObjectTaggingAction,
-			GetBucketTaggingAction,
+			// object storage interface
+			OSSGetObjectAction,
+			OSSListObjectsAction,
+			OSSHeadObjectAction,
+			OSSHeadBucketAction,
+			OSSListBucketAction,
+			OSSListBucketVersionsAction,
+			OSSListBucketMultipartUploadsAction,
+			OSSGetBucketPolicyAction,
+			OSSGetBucketAclAction,
+			OSSPutBucketAclAction,
+			OSSGetObjectAclAction,
+			OSSGetObjectVersionAction,
+			OSSPutObjectVersionAction,
+			OSSGetObjectTorrentAction,
+			OSSGetObjectVersionAclAction,
+			OSSListMultipartUploadsAction,
+			OSSListPartsAction,
+			OSSGetBucketLocationAction,
+			OSSGetObjectXAttrAction,
+			OSSListObjectXAttrsAction,
+			OSSGetObjectTaggingAction,
+			OSSGetBucketTaggingAction,
+
+			// file system interface
+			POSIXReadAction,
 		},
 		BuiltinPermissionWritable: {
-			GetObjectAction,
-			PutObjectAction,
-			CopyObjectAction,
-			ListObjectsAction,
-			DeleteObjectAction,
-			HeadObjectAction,
-			HeadBucketAction,
-			ListBucketAction,
-			ListBucketVersionsAction,
-			ListBucketMultipartUploadsAction,
-			GetBucketPolicyAction,
-			GetBucketAclAction,
-			GetObjectAclAction,
-			GetObjectVersionAction,
-			PutObjectVersionAction,
-			GetObjectTorrentAction,
-			PutObjectTorrentAction,
-			PutObjectAclAction,
-			GetObjectVersionAclAction,
-			PutObjectVersionAclAction,
-			CreateMultipartUploadAction,
-			ListMultipartUploadsAction,
-			UploadPartAction,
-			ListPartsAction,
-			CompleteMultipartUploadAction,
-			AbortMultipartUploadAction,
-			GetBucketLocationAction,
-			GetObjectXAttrAction,
-			PutObjectXAttrAction,
-			ListObjectXAttrsAction,
-			DeleteObjectXAttrAction,
-			GetObjectTaggingAction,
-			PutObjectTaggingAction,
-			DeleteObjectTaggingAction,
-			GetBucketTaggingAction,
+			// object storage interface
+			OSSGetObjectAction,
+			OSSPutObjectAction,
+			OSSCopyObjectAction,
+			OSSListObjectsAction,
+			OSSDeleteObjectAction,
+			OSSHeadObjectAction,
+			OSSHeadBucketAction,
+			OSSListBucketAction,
+			OSSListBucketVersionsAction,
+			OSSListBucketMultipartUploadsAction,
+			OSSGetBucketPolicyAction,
+			OSSGetBucketAclAction,
+			OSSGetObjectAclAction,
+			OSSGetObjectVersionAction,
+			OSSPutObjectVersionAction,
+			OSSGetObjectTorrentAction,
+			OSSPutObjectTorrentAction,
+			OSSPutObjectAclAction,
+			OSSGetObjectVersionAclAction,
+			OSSPutObjectVersionAclAction,
+			OSSCreateMultipartUploadAction,
+			OSSListMultipartUploadsAction,
+			OSSUploadPartAction,
+			OSSListPartsAction,
+			OSSCompleteMultipartUploadAction,
+			OSSAbortMultipartUploadAction,
+			OSSGetBucketLocationAction,
+			OSSGetObjectXAttrAction,
+			OSSPutObjectXAttrAction,
+			OSSListObjectXAttrsAction,
+			OSSDeleteObjectXAttrAction,
+			OSSGetObjectTaggingAction,
+			OSSPutObjectTaggingAction,
+			OSSDeleteObjectTaggingAction,
+			OSSGetBucketTaggingAction,
+
+			// file system interface
+			POSIXReadAction,
+			POSIXWriteAction,
 		},
 	}
 )

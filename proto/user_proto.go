@@ -77,6 +77,16 @@ type AKPolicy struct {
 	CreateTime string      `json:"create_time"`
 }
 
+func NewAkPolicy() *AKPolicy {
+	return &AKPolicy{Policy: NewUserPolicy()}
+}
+
+type VolAK struct {
+	Vol          string              `json:"vol"`
+	AKAndActions map[string][]string // k: ak, v: actions or permissions
+	sync.RWMutex
+}
+
 type UserPolicy struct {
 	OwnVols        []string            `json:"own_vols"`
 	AuthorizedVols map[string][]string `json:"authorized_vols"` // mapping: volume -> actions
@@ -90,14 +100,33 @@ func NewUserPolicy() *UserPolicy {
 	}
 }
 
-func NewAkPolicy() *AKPolicy {
-	return &AKPolicy{Policy: NewUserPolicy()}
+func (policy *UserPolicy) IsOwn(volume string) bool {
+	policy.mu.RLock()
+	defer policy.mu.RUnlock()
+	for _, vol := range policy.OwnVols {
+		if vol == volume {
+			return true
+		}
+	}
+	return false
 }
 
-type VolAK struct {
-	Vol          string              `json:"vol"`
-	AKAndActions map[string][]string // k: ak, v: actions
-	sync.RWMutex
+func (policy *UserPolicy) IsAuthorized(volume string, action Action) bool {
+	policy.mu.RLock()
+	defer policy.mu.RUnlock()
+	values, exist := policy.AuthorizedVols[volume]
+	if !exist {
+		return false
+	}
+	for _, value := range values {
+		if perm := ParsePermission(value); !perm.IsNone() && perm.IsBuiltin() && BuiltinPermissionActions(perm).Contains(action) {
+			return true
+		}
+		if action := ParseAction(value); action == action {
+			return true
+		}
+	}
+	return false
 }
 
 func (policy *UserPolicy) AddOwnVol(volume string) {
@@ -124,6 +153,22 @@ func (policy *UserPolicy) RemoveOwnVol(volume string) {
 			return
 		}
 	}
+}
+
+func (policy *UserPolicy) SetPerm(volume string, perm Permission) {
+	policy.mu.Lock()
+	defer policy.mu.Unlock()
+	policy.AuthorizedVols[volume] = []string{perm.String()}
+}
+
+func (policy *UserPolicy) SetActions(volume string, actions Actions) {
+	policy.mu.Lock()
+	defer policy.mu.Unlock()
+	var values = make([]string, actions.Len())
+	for i, action := range actions {
+		values[i] = action.String()
+	}
+	policy.AuthorizedVols[volume] = values
 }
 
 func (policy *UserPolicy) Add(addPolicy *UserPolicy) {
@@ -198,4 +243,13 @@ type UserCreateParam struct {
 	Type      UserType
 }
 
-type UserUpdateParam = UserCreateParam
+type UserPermUpdateParam struct {
+	UserID string     `json:"user_id"`
+	Volume string     `json:"volume"`
+	Perm   Permission `json:"perm"`
+}
+
+type UserPermRemoveParam struct {
+	UserID string `json:"user_id"`
+	Volume string `json:"volume"`
+}

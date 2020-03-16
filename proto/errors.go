@@ -66,7 +66,7 @@ var (
 	ErrExpiredTicket                   = errors.New("expired ticket")
 	ErrMasterAPIGenRespError           = errors.New("master API generate response error")
 	ErrDuplicateUserID                 = errors.New("duplicate user id")
-	ErrOSSUserNotExists                = errors.New("oss user not exists")
+	ErrUserNotExists                   = errors.New("user not exists")
 	ErrReadBodyError                   = errors.New("read request body failed")
 	ErrVolPolicyNotExists              = errors.New("vol policy not exists")
 	ErrDuplicateAccessKey              = errors.New("duplicate access key")
@@ -124,7 +124,7 @@ const (
 	ErrCodeExpiredTicket
 	ErrCodeMasterAPIGenRespError
 	ErrCodeDuplicateUserID
-	ErrCodeOSSUserNotExists
+	ErrCodeUserNotExists
 	ErrCodeReadBodyError
 	ErrCodeVolPolicyNotExists
 	ErrCodeDuplicateAccessKey
@@ -181,7 +181,7 @@ var Err2CodeMap = map[error]int32{
 	ErrExpiredTicket:                   ErrCodeExpiredTicket,
 	ErrMasterAPIGenRespError:           ErrCodeMasterAPIGenRespError,
 	ErrDuplicateUserID:                 ErrCodeDuplicateUserID,
-	ErrOSSUserNotExists:                ErrCodeOSSUserNotExists,
+	ErrUserNotExists:                   ErrCodeUserNotExists,
 	ErrReadBodyError:                   ErrCodeReadBodyError,
 	ErrVolPolicyNotExists:              ErrCodeVolPolicyNotExists,
 	ErrDuplicateAccessKey:              ErrCodeDuplicateAccessKey,

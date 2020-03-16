@@ -175,7 +175,7 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV2(r *http.Request) (bool
 	}
 
 	var akPolicy *proto.AKPolicy
-	if akPolicy, err = o.getAkInfo(authInfo.accessKeyId); err != nil {
+	if akPolicy, err = o.getUserInfoByAccessKey(authInfo.accessKeyId); err != nil {
 		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", authInfo.accessKeyId, err)
 		return false, err
 	}
@@ -272,7 +272,7 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, e
 
 	//check access key
 	var akPolicy *proto.AKPolicy
-	if akPolicy, err = o.getAkInfo(accessKey); err != nil {
+	if akPolicy, err = o.getUserInfoByAccessKey(accessKey); err != nil {
 		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", accessKey, err)
 		return false, err
 	}

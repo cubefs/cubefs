@@ -61,7 +61,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 	}
 	auth := parseRequestAuthInfo(r)
 	var akPolicy *proto.AKPolicy
-	if akPolicy, err = o.getAkInfo(auth.accessKey); err != nil {
+	if akPolicy, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
 		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
@@ -102,7 +102,7 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 	}
 	auth := parseRequestAuthInfo(r)
 	var akPolicy *proto.AKPolicy
-	if akPolicy, err = o.getAkInfo(auth.accessKey); err != nil {
+	if akPolicy, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
 		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
@@ -147,7 +147,7 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 	var err error
 	auth := parseRequestAuthInfo(r)
 	var akPolicy *proto.AKPolicy
-	if akPolicy, err = o.getAkInfo(auth.accessKey); err != nil {
+	if akPolicy, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
 		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
@@ -342,7 +342,7 @@ func calculateAuthKey(key string) (authKey string, err error) {
 	return strings.ToLower(hex.EncodeToString(cipherStr)), nil
 }
 
-func (o *ObjectNode) getAkInfo(accessKey string) (*proto.AKPolicy, error) {
+func (o *ObjectNode) getUserInfoByAccessKey(accessKey string) (*proto.AKPolicy, error) {
 	var err error
 	akPolicy, exist := o.userStore.Get(accessKey)
 	if !exist {

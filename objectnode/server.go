@@ -109,7 +109,7 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	signatureIgnoredActionNames := cfg.GetStringSlice(configSignatureIgnoredActions)
 	for _, actionName := range signatureIgnoredActionNames {
 		action := proto.ParseAction(actionName)
-		if action.IsKnown() {
+		if !action.IsNone() {
 			o.signatureIgnoredActions = append(o.signatureIgnoredActions, action)
 			log.LogInfof("loadConfig: signature ignored action: %v", action)
 		}

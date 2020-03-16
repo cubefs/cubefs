@@ -106,7 +106,7 @@ func (u *User) deleteKey(userID string) (err error) {
 		akPolicy *proto.AKPolicy
 	)
 	if value, exist := u.userAk.Load(userID); !exist {
-		err = proto.ErrOSSUserNotExists
+		err = proto.ErrUserNotExists
 		return
 	} else {
 		userAK = value.(*proto.UserAK)
@@ -151,7 +151,7 @@ func (u *User) getUserInfo(userID string) (akPolicy *proto.AKPolicy, err error) 
 	if value, exist := u.userAk.Load(userID); exist {
 		ak = value.(*proto.UserAK).AccessKey
 	} else {
-		err = proto.ErrOSSUserNotExists
+		err = proto.ErrUserNotExists
 		return
 	}
 	if akPolicy, err = u.loadAKInfo(ak); err != nil {

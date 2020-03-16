@@ -42,24 +42,24 @@ const (
 // https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/acl-overview.html
 var (
 	aclBucketPermissionActions = map[Permission]proto.Actions{
-		ReadPermission:     {proto.ListBucketAction, proto.ListBucketVersionsAction, proto.ListBucketMultipartUploadsAction},
-		WritePermission:    {proto.PutObjectAction, proto.DeleteObjectAction, proto.DeleteBucketAction},
-		ReadACPPermission:  {proto.GetBucketAclAction},
-		WriteACPPermission: {proto.PutBucketAclAction},
+		ReadPermission:     {proto.OSSListBucketAction, proto.OSSListBucketVersionsAction, proto.OSSListBucketMultipartUploadsAction},
+		WritePermission:    {proto.OSSPutObjectAction, proto.OSSDeleteObjectAction, proto.OSSDeleteBucketAction},
+		ReadACPPermission:  {proto.OSSGetBucketAclAction},
+		WriteACPPermission: {proto.OSSPutBucketAclAction},
 		FullControlPermission: {
-			proto.ListBucketAction, proto.ListBucketVersionsAction, proto.ListBucketMultipartUploadsAction,
-			proto.PutObjectAction, proto.DeleteObjectAction, proto.DeleteBucketAction,
-			proto.GetBucketAclAction, proto.PutBucketAclAction},
+			proto.OSSListBucketAction, proto.OSSListBucketVersionsAction, proto.OSSListBucketMultipartUploadsAction,
+			proto.OSSPutObjectAction, proto.OSSDeleteObjectAction, proto.OSSDeleteBucketAction,
+			proto.OSSGetBucketAclAction, proto.OSSPutBucketAclAction},
 	}
 	aclObjectPermissionActions = map[Permission]proto.Actions{
-		ReadPermission:     {proto.GetObjectAction, proto.GetObjectVersionAction, proto.GetObjectTorrentAction},
+		ReadPermission:     {proto.OSSGetObjectAction, proto.OSSGetObjectVersionAction, proto.OSSGetObjectTorrentAction},
 		WritePermission:    {},
-		ReadACPPermission:  {proto.GetObjectAclAction, proto.GetObjectVersionAclAction},
-		WriteACPPermission: {proto.PutObjectAclAction, proto.PutObjectVersionAclAction},
+		ReadACPPermission:  {proto.OSSGetObjectAclAction, proto.OSSGetObjectVersionAclAction},
+		WriteACPPermission: {proto.OSSPutObjectAclAction, proto.OSSPutObjectVersionAclAction},
 		FullControlPermission: {
-			proto.GetObjectAction, proto.GetObjectVersionAction, proto.GetObjectTorrentAction,
-			proto.GetObjectAclAction, proto.GetObjectVersionAclAction,
-			proto.PutObjectAclAction, proto.PutObjectVersionAclAction},
+			proto.OSSGetObjectAction, proto.OSSGetObjectVersionAction, proto.OSSGetObjectTorrentAction,
+			proto.OSSGetObjectAclAction, proto.OSSGetObjectVersionAclAction,
+			proto.OSSPutObjectAclAction, proto.OSSPutObjectVersionAclAction},
 	}
 )
 

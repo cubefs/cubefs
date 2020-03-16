@@ -48,7 +48,6 @@ func (p *Policy) IsEmpty() bool {
 	return len(p.Statements) == 0
 }
 
-//
 // arn:partition:service:region:account-id:resource-id
 // arn:partition:service:region:account-id:resource-type/resource-id
 // arn:partition:service:region:account-id:resource-type:resource-id
@@ -220,7 +219,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		switch param.action {
-		case proto.CreateBucketAction:
+		case proto.OSSCreateBucketAction:
 		default:
 			if err = loadBucketMeta(param.Bucket()); err != nil {
 				log.LogErrorf("policyCheck: load bucket metadata fail: requestID(%v) err(%v)", GetRequestID(r), err)
@@ -247,33 +246,27 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 		}
 		//check user policy
 		var akPolicy *proto.AKPolicy
-		if akPolicy, err = o.getAkInfo(param.accessKey); err != nil {
+		if akPolicy, err = o.getUserInfoByAccessKey(param.accessKey); err != nil {
 			log.LogErrorf("policyCheck: load user policy from master fail: requestID(%v) accessKey(%v) err(%v)",
 				GetRequestID(r), param.AccessKey(), err)
 			allowed = false
 			return
 		}
-		if param.action == proto.CreateBucketAction {
+		if param.action == proto.OSSCreateBucketAction {
 			allowed = true
 			return
 		}
-		if contains(akPolicy.Policy.OwnVols, param.bucket) {
+		var userPolicy = akPolicy.Policy
+		if userPolicy.IsOwn(param.Bucket()) {
 			allowed = true
 			return
 		}
-		if apis, exit := akPolicy.Policy.AuthorizedVols[param.bucket]; exit {
-			if !contains(apis, param.Action().String()) {
-				allowed = false
-				log.LogWarnf("policyCheck: user policy not allowed: requestID(%v) accessKey(%v) action(%v)",
-					GetRequestID(r), param.AccessKey(), param.Action())
-				return
-			}
+		if userPolicy.IsAuthorized(param.Bucket(), param.Action()) {
 			allowed = true
-		} else {
-			allowed = false
-			log.LogWarnf("policyCheck: user policy not allowed: requestID(%v) accessKey(%v) action(%v)",
-				GetRequestID(r), param.AccessKey(), param.Action())
 			return
 		}
+		allowed = false
+		log.LogWarnf("policyCheck: user policy not allowed: requestID(%v) accessKey(%v) action(%v)",
+			GetRequestID(r), param.AccessKey(), param.Action())
 	}
 }

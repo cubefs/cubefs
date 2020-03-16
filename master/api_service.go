@@ -1812,10 +1812,10 @@ func genRespMessage(data []byte, req *proto.APIAccessReq, ts int64, key []byte) 
 func (m *Server) associateVolWithUser(userID, volName string) error {
 	var err error
 	var akPolicy *proto.AKPolicy
-	if akPolicy, err = m.user.getUserInfo(userID); err != nil && err != proto.ErrOSSUserNotExists {
+	if akPolicy, err = m.user.getUserInfo(userID); err != nil && err != proto.ErrUserNotExists {
 		return err
 	}
-	if err == proto.ErrOSSUserNotExists {
+	if err == proto.ErrUserNotExists {
 		var param = proto.UserCreateParam{
 			ID:       userID,
 			Password: DefaultUserPassword,

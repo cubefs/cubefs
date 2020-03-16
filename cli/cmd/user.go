@@ -37,6 +37,7 @@ func newUserCmd(client *master.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newUserCreateCmd(client),
 		newUserInfoCmd(client),
+		newUserPermCmd(client),
 	)
 	return cmd
 }
@@ -146,6 +147,74 @@ func newUserInfoCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
+const (
+	cmdUserPermUse   = "perm [USER ID] [VOLUME] [PERM]"
+	cmdUserPermShort = "Setup volume permission for a user"
+)
+
+func newUserPermCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   cmdUserPermUse,
+		Short: cmdUserPermShort,
+		Args:  cobra.MinimumNArgs(3),
+		Run: func(cmd *cobra.Command, args []string) {
+			var userID = args[0]
+			var volume = args[1]
+			var perm proto.Permission
+			switch args[2] {
+			case "ro":
+				perm = proto.BuiltinPermissionReadOnly
+			case "rw":
+				perm = proto.BuiltinPermissionWritable
+			case "none":
+				perm = proto.NonePermission
+			default:
+				stdout("Permission must be on of ro, rw, none")
+				return
+			}
+			stdout("Setup volume permission\n")
+			stdout("  User ID   : %v\n", userID)
+			stdout("  Volume    : %v\n", volume)
+			stdout("  Permission: %v\n", perm.ReadableString())
+
+			// ask user for confirm
+			stdout("\nConfirm (yes/no)[yes]: ")
+			var userConfirm string
+			_, _ = fmt.Scanln(&userConfirm)
+			if userConfirm != "yes" && len(userConfirm) != 0 {
+				stdout("Abort by user.\n")
+				return
+			}
+			var err error
+			defer func() {
+				if err != nil {
+					errout("Setup permission failed:\n%v\n", err)
+					os.Exit(1)
+				}
+			}()
+			var akp *proto.AKPolicy
+			if akp, err = client.UserAPI().GetUserInfo(userID); err != nil {
+				return
+			}
+			if _, err = client.AdminAPI().GetVolumeSimpleInfo(volume); err != nil {
+				return
+			}
+			var newUserPolicy = proto.NewUserPolicy()
+			newUserPolicy.SetPerm(volume, perm)
+			if perm.IsNone() {
+				akp, err = client.UserAPI().DeletePolicy(akp.AccessKey, newUserPolicy)
+			} else {
+				akp, err = client.UserAPI().AddPolicy(akp.AccessKey, newUserPolicy)
+			}
+			if err != nil {
+				return
+			}
+			printUserInfo(akp)
+		},
+	}
+	return cmd
+}
+
 func printUserInfo(akp *proto.AKPolicy) {
 	stdout("\n[Summary]\n")
 	stdout("  User ID    : %v\n", akp.UserID)
@@ -165,9 +234,11 @@ func printUserInfo(akp *proto.AKPolicy) {
 		stdout("  None\n")
 	}
 	stdout("\n[Authorized volumes]\n")
+
 	if len(akp.Policy.AuthorizedVols) != 0 {
-		for vol := range akp.Policy.AuthorizedVols {
-			stdout("  %s\n", vol)
+		stdout("  %10v\t%10v\n", "VOLUME", "PERMISSION")
+		for vol, perms := range akp.Policy.AuthorizedVols {
+			stdout("  %10v\t%10v\n", vol, perms)
 		}
 	} else {
 		stdout("  None\n")

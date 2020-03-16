@@ -83,7 +83,7 @@ func ParseRequestParam(r *http.Request) *RequestParam {
 		p.accessKey = auth.accessKey
 	}
 	p.action = GetActionFromContext(r)
-	if !p.action.IsKnown() {
+	if p.action.IsNone() {
 		p.action = ActionFromRouteName(mux.CurrentRoute(r).GetName())
 	}
 
