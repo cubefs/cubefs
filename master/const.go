@@ -39,6 +39,9 @@ const (
 	authenticateKey       = "authenticate"
 	zoneNameKey           = "zoneName"
 	crossZoneKey          = "crossZone"
+	tokenKey             = "token"
+	tokenTypeKey         = "tokenType"
+	enableTokenKey          = "enableToken"
 )
 
 const (
@@ -112,6 +115,11 @@ const (
 	opSyncBatchPut             uint32 = 0x14
 	opSyncUpdateDataNode       uint32 = 0x15
 	opSyncUpdateMetaNode       uint32 = 0x16
+
+	OpSyncAddToken             uint32 = 0x20
+	OpSyncDelToken             uint32 = 0x21
+	OpSyncUpdateToken          uint32 = 0x22
+
 )
 
 const (
@@ -123,6 +131,7 @@ const (
 	volAcronym            = "vol"
 	clusterAcronym        = "c"
 	nodeSetAcronym        = "s"
+	tokenAcronym          = "t"
 	maxDataPartitionIDKey = keySeparator + "max_dp_id"
 	maxMetaPartitionIDKey = keySeparator + "max_mp_id"
 	maxCommonIDKey        = keySeparator + "max_common_id"
@@ -133,4 +142,5 @@ const (
 	metaPartitionPrefix   = keySeparator + metaPartitionAcronym + keySeparator
 	clusterPrefix         = keySeparator + clusterAcronym + keySeparator
 	nodeSetPrefix         = keySeparator + nodeSetAcronym + keySeparator
+	TokenPrefix           = keySeparator + tokenAcronym + keySeparator
 )

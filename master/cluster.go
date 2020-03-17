@@ -1208,7 +1208,7 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 	go metaNode.clean()
 }
 
-func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum uint8, followerRead, authenticate bool) (err error) {
+func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum uint8, followerRead, authenticate, enableToken bool) (err error) {
 	var (
 		vol             *Vol
 		serverAuthKey   string
@@ -1216,6 +1216,7 @@ func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum ui
 		oldCapacity     uint64
 		oldFollowerRead bool
 		oldAuthenticate bool
+		oldEnableToken  bool
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
@@ -1236,13 +1237,24 @@ func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum ui
 		err = fmt.Errorf("don't support new replicaNum[%v] larger than old dpReplicaNum[%v]", replicaNum, vol.dpReplicaNum)
 		goto errHandler
 	}
+	if enableToken == true && len(vol.tokens) == 0 {
+		if err = c.createToken(vol, proto.ReadOnlyToken); err != nil {
+			goto errHandler
+		}
+		if err = c.createToken(vol, proto.ReadWriteToken); err != nil {
+			goto errHandler
+		}
+	}
+
 	oldCapacity = vol.Capacity
 	oldDpReplicaNum = vol.dpReplicaNum
 	oldFollowerRead = vol.FollowerRead
 	oldAuthenticate = vol.authenticate
+	oldEnableToken = vol.enableToken
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
 	vol.authenticate = authenticate
+	vol.enableToken = enableToken
 	//only reduced replica num is supported
 	if replicaNum != 0 && replicaNum < vol.dpReplicaNum {
 		vol.dpReplicaNum = replicaNum
@@ -1252,6 +1264,7 @@ func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum ui
 		vol.dpReplicaNum = oldDpReplicaNum
 		vol.FollowerRead = oldFollowerRead
 		vol.authenticate = oldAuthenticate
+		vol.enableToken = oldEnableToken
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
 		goto errHandler
@@ -1266,7 +1279,7 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner, zoneName string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone bool) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner, zoneName string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone, enableToken bool) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -1288,7 +1301,7 @@ func (c *Cluster) createVol(name, owner, zoneName string, mpCount, dpReplicaNum,
 			return
 		}
 	}
-	if vol, err = c.doCreateVol(name, owner, zoneName, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate, crossZone); err != nil {
+	if vol, err = c.doCreateVol(name, owner, zoneName, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate, crossZone, enableToken); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -1316,7 +1329,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) doCreateVol(name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum int, followerRead, authenticate, crossZone bool) (vol *Vol, err error) {
+func (c *Cluster) doCreateVol(name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum int, followerRead, authenticate, crossZone, enableToken bool) (vol *Vol, err error) {
 	var id uint64
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
@@ -1328,13 +1341,22 @@ func (c *Cluster) doCreateVol(name, owner, zoneName string, dpSize, capacity uin
 	if err != nil {
 		goto errHandler
 	}
-	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate, crossZone)
+	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum,
+		followerRead, authenticate, crossZone, enableToken)
 	// refresh oss secure
 	vol.refreshOSSSecure()
 	if err = c.syncAddVol(vol); err != nil {
 		goto errHandler
 	}
 	c.putVol(vol)
+	if enableToken {
+		if err = c.createToken(vol, proto.ReadOnlyToken); err != nil {
+			goto errHandler
+		}
+		if err = c.createToken(vol, proto.ReadWriteToken); err != nil {
+			goto errHandler
+		}
+	}
 	return
 errHandler:
 	err = fmt.Errorf("action[doCreateVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())

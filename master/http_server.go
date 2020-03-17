@@ -72,6 +72,10 @@ func (m *Server) handleFunctions() {
 	http.Handle(proto.GetTopologyView, m.handlerWithInterceptor())
 	http.Handle(proto.UpdateZone, m.handlerWithInterceptor())
 	http.Handle(proto.GetAllZones, m.handlerWithInterceptor())
+	http.Handle(proto.TokenAddURI, m.handlerWithInterceptor())
+	http.Handle(proto.TokenGetURI, m.handlerWithInterceptor())
+	http.Handle(proto.TokenDelURI, m.handlerWithInterceptor())
+	http.Handle(proto.TokenUpdateURI, m.handlerWithInterceptor())
 
 	return
 }
@@ -185,6 +189,14 @@ func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.updateZone(w, r)
 	case proto.GetAllZones:
 		m.listZone(w, r)
+	case proto.TokenAddURI:
+		m.addToken(w, r)
+	case proto.TokenGetURI:
+		m.getToken(w, r)
+	case proto.TokenDelURI:
+		m.deleteToken(w, r)
+	case proto.TokenUpdateURI:
+		m.updateToken(w, r)
 	default:
 
 	}
