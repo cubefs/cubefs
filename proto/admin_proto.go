@@ -65,9 +65,26 @@ const (
 	UpdateZone      = "/zone/update"
 	GetAllZones     = "/zone/list"
 
+	//token
+	TokenGetURI    = "/token/get"
+	TokenAddURI    = "/token/add"
+	TokenDelURI    = "/token/delete"
+	TokenUpdateURI = "/token/update"
+
 	// Header keys
 	SkipOwnerValidation = "Skip-Owner-Validation"
 )
+
+const (
+	ReadOnlyToken  = 1
+	ReadWriteToken = 2
+)
+
+type Token struct {
+	TokenType int8
+	Value     string
+	VolName   string
+}
 
 // HTTPReply uniform response structure
 type HTTPReply struct {
@@ -415,6 +432,8 @@ type SimpleVolView struct {
 	NeedToLowerReplica bool
 	Authenticate       bool
 	CrossZone          bool
+	EnableToken        bool
+	Tokens             map[string]*Token
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition

@@ -27,12 +27,13 @@ type nodeStatInfo = proto.NodeStatInfo
 
 type volStatInfo = proto.VolStatInfo
 
-func newVolStatInfo(name string, total, used uint64, ratio string) *volStatInfo {
+func newVolStatInfo(name string, total, used uint64, ratio string, enableToken bool) *volStatInfo {
 	return &volStatInfo{
-		Name:      name,
-		TotalSize: total,
-		UsedSize:  used,
-		UsedRatio: ratio,
+		Name:        name,
+		TotalSize:   total,
+		UsedSize:    used,
+		UsedRatio:   ratio,
+		EnableToken: enableToken,
 	}
 }
 
@@ -110,6 +111,6 @@ func (c *Cluster) updateVolStatInfo() {
 			continue
 		}
 		useRate := float64(used) / float64(total)
-		c.volStatInfo.Store(vol.Name, newVolStatInfo(vol.Name, total, used, strconv.FormatFloat(useRate, 'f', 3, 32)))
+		c.volStatInfo.Store(vol.Name, newVolStatInfo(vol.Name, total, used, strconv.FormatFloat(useRate, 'f', 3, 32), vol.enableToken))
 	}
 }
