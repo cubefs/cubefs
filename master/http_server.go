@@ -208,11 +208,11 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.UserDelete).
 		HandlerFunc(m.deleteUser)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.UserAddPolicy).
-		HandlerFunc(m.addUserPolicy)
+		Path(proto.UserUpdatePolicy).
+		HandlerFunc(m.updateUserPolicy)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.UserDeletePolicy).
-		HandlerFunc(m.deleteUserPolicy)
+		Path(proto.UserRemovePolicy).
+		HandlerFunc(m.removeUserPolicy)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.UserDeleteVolPolicy).
 		HandlerFunc(m.deleteUserVolPolicy)

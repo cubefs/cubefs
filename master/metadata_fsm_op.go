@@ -253,8 +253,8 @@ func (m *RaftCmd) setOpType() {
 		m.Op = opSyncAddAKPolicy
 	case userAcronym:
 		m.Op = opSyncAddUserAK
-	case volAKAcronym:
-		m.Op = opSyncAddVolAK
+	case volUserAcronym:
+		m.Op = opSyncAddVolUser
 	default:
 		log.LogWarnf("action[setOpType] unknown opCode[%v]", keyArr[1])
 	}

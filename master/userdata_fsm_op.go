@@ -79,23 +79,23 @@ func (u *User) syncPutUserAK(opType uint32, userAK *proto.UserAK) (err error) {
 	return u.submit(userInfo)
 }
 
-func (u *User) syncAddVolAK(volAK *proto.VolAK) (err error) {
-	return u.syncPutVolAK(opSyncAddVolAK, volAK)
+func (u *User) syncAddVolUser(volUser *proto.VolUser) (err error) {
+	return u.syncPutVolUser(opSyncAddVolUser, volUser)
 }
 
-func (u *User) syncDeleteVolAK(volAK *proto.VolAK) (err error) {
-	return u.syncPutVolAK(opSyncDeleteVolAK, volAK)
+func (u *User) syncDeleteVolUser(volUser *proto.VolUser) (err error) {
+	return u.syncPutVolUser(opSyncDeleteVolUser, volUser)
 }
 
-func (u *User) syncUpdateVolAK(volAK *proto.VolAK) (err error) {
-	return u.syncPutVolAK(opSyncUpdateVolAK, volAK)
+func (u *User) syncUpdateVolUser(volUser *proto.VolUser) (err error) {
+	return u.syncPutVolUser(opSyncUpdateVolUser, volUser)
 }
 
-func (u *User) syncPutVolAK(opType uint32, volAK *proto.VolAK) (err error) {
+func (u *User) syncPutVolUser(opType uint32, volUser *proto.VolUser) (err error) {
 	userInfo := new(RaftCmd)
 	userInfo.Op = opType
-	userInfo.K = volAKPrefix + volAK.Vol
-	userInfo.V, err = json.Marshal(volAK)
+	userInfo.K = volUserPrefix + volUser.Vol
+	userInfo.V, err = json.Marshal(volUser)
 	if err != nil {
 		return errors.New(err.Error())
 	}
@@ -138,20 +138,20 @@ func (u *User) loadUserAK() (err error) {
 	return
 }
 
-func (u *User) loadVolAKs() (err error) {
-	result, err := u.fsm.store.SeekForPrefix([]byte(volAKPrefix))
+func (u *User) loadVolUsers() (err error) {
+	result, err := u.fsm.store.SeekForPrefix([]byte(volUserPrefix))
 	if err != nil {
-		err = fmt.Errorf("action[loadVolAKs], err: %v", err.Error())
+		err = fmt.Errorf("action[loadVolUsers], err: %v", err.Error())
 		return err
 	}
 	for _, value := range result {
-		volAK := &proto.VolAK{}
-		if err = json.Unmarshal(value, volAK); err != nil {
-			err = fmt.Errorf("action[loadVolAKs], unmarshal err: %v", err.Error())
+		volUser := &proto.VolUser{}
+		if err = json.Unmarshal(value, volUser); err != nil {
+			err = fmt.Errorf("action[loadVolUsers], unmarshal err: %v", err.Error())
 			return err
 		}
-		u.volAKs.Store(volAK.Vol, volAK)
-		log.LogInfof("action[loadVolAKs], vol[%v]", volAK.Vol)
+		u.volUser.Store(volUser.Vol, volUser)
+		log.LogInfof("action[loadVolUsers], vol[%v]", volUser.Vol)
 	}
 	return
 }

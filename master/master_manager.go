@@ -127,7 +127,7 @@ func (m *Server) loadMetadata() {
 	if err = m.user.loadUserAK(); err != nil {
 		panic(err)
 	}
-	if err = m.user.loadVolAKs(); err != nil {
+	if err = m.user.loadVolUsers(); err != nil {
 		panic(err)
 	}
 	log.LogInfo("action[loadUserInfo] end")
@@ -147,7 +147,7 @@ func (m *Server) clearMetadata() {
 	m.cluster.clearVols()
 	m.user.clearAKStore()
 	m.user.clearUserAK()
-	m.user.clearVolAKs()
+	m.user.clearVolUsers()
 	m.cluster.t = newTopology()
 }
 

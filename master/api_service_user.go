@@ -90,56 +90,52 @@ func (m *Server) getUserInfo(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(akPolicy))
 }
 
-func (m *Server) addUserPolicy(w http.ResponseWriter, r *http.Request) {
+func (m *Server) updateUserPolicy(w http.ResponseWriter, r *http.Request) {
 	var (
-		ak         string
-		akPolicy   *proto.AKPolicy
-		userPolicy *proto.UserPolicy
-		body       []byte
-		err        error
+		akPolicy *proto.AKPolicy
+		bytes    []byte
+		err      error
 	)
-	if body, err = ioutil.ReadAll(r.Body); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeReadBodyError, Msg: err.Error()})
-		return
-	}
-	userPolicy = proto.NewUserPolicy()
-	if err = json.Unmarshal(body, userPolicy); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeUnmarshalData, Msg: err.Error()})
-		return
-	}
-	if ak, err = parseAccessKey(r); err != nil {
+	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if akPolicy, err = m.user.addPolicy(ak, userPolicy); err != nil {
+	var param = proto.UserPermUpdateParam{}
+	if err = json.Unmarshal(bytes, &param); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if _, err = m.cluster.getVol(param.Volume); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	if akPolicy, err = m.user.updatePolicy(&param); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(akPolicy))
 }
 
-func (m *Server) deleteUserPolicy(w http.ResponseWriter, r *http.Request) {
+func (m *Server) removeUserPolicy(w http.ResponseWriter, r *http.Request) {
 	var (
-		ak         string
-		akPolicy   *proto.AKPolicy
-		userPolicy *proto.UserPolicy
-		body       []byte
-		err        error
+		akPolicy *proto.AKPolicy
+		bytes    []byte
+		err      error
 	)
-	if body, err = ioutil.ReadAll(r.Body); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeReadBodyError, Msg: err.Error()})
-		return
-	}
-	userPolicy = proto.NewUserPolicy()
-	if err = json.Unmarshal(body, userPolicy); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeUnmarshalData, Msg: err.Error()})
-		return
-	}
-	if ak, err = parseAccessKey(r); err != nil {
+	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if akPolicy, err = m.user.deletePolicy(ak, userPolicy); err != nil {
+	var param = proto.UserPermRemoveParam{}
+	if err = json.Unmarshal(bytes, &param); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if _, err = m.cluster.getVol(param.Volume); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	if akPolicy, err = m.user.removePolicy(&param); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -166,22 +162,25 @@ func (m *Server) deleteUserVolPolicy(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) transferUserVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		volName   string
-		ak        string
-		targetKey string
-		akPolicy  *proto.AKPolicy
-		vol       *Vol
-		err       error
+		bytes    []byte
+		vol      *Vol
+		akPolicy *proto.AKPolicy
+		err      error
 	)
-	if volName, ak, targetKey, err = parseVolAndKey(r); err != nil {
+	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.getVol(volName); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+	var param = proto.UserTransferVolParam{}
+	if err = json.Unmarshal(bytes, &param); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if akPolicy, err = m.user.transferVol(volName, ak, targetKey); err != nil {
+	if vol, err = m.cluster.getVol(param.Volume); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	if akPolicy, err = m.user.transferVol(&param); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

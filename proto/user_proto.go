@@ -77,13 +77,13 @@ type AKPolicy struct {
 	CreateTime string      `json:"create_time"`
 }
 
-func NewAkPolicy() *AKPolicy {
+func NewAKPolicy() *AKPolicy {
 	return &AKPolicy{Policy: NewUserPolicy()}
 }
 
-type VolAK struct {
-	Vol          string              `json:"vol"`
-	AKAndActions map[string][]string // k: ak, v: actions or permissions
+type VolUser struct {
+	Vol     string   `json:"vol"`
+	UserIDs []string `json:"user_id"`
 	sync.RWMutex
 }
 
@@ -153,6 +153,27 @@ func (policy *UserPolicy) RemoveOwnVol(volume string) {
 			return
 		}
 	}
+}
+
+func (policy *UserPolicy) AddAuthorizedVol(volume string, policies []string) { //todo check duplicate
+	policy.mu.Lock()
+	defer policy.mu.Unlock()
+	newPolicies := make([]string, 0)
+	for _, policy := range policies {
+		if perm := ParsePermission(policy); !perm.IsNone() {
+			newPolicies = append(newPolicies, perm.String())
+		}
+		if act := ParseAction(policy); !act.IsNone() {
+			newPolicies = append(newPolicies, act.String())
+		}
+	}
+	policy.AuthorizedVols[volume] = newPolicies
+}
+
+func (policy *UserPolicy) RemoveAuthorizedVol(volume string) {
+	policy.mu.Lock()
+	defer policy.mu.Unlock()
+	delete(policy.AuthorizedVols, volume)
 }
 
 func (policy *UserPolicy) SetPerm(volume string, perm Permission) {
@@ -243,13 +264,19 @@ type UserCreateParam struct {
 	Type      UserType
 }
 
-type UserPermUpdateParam struct {
-	UserID string     `json:"user_id"`
-	Volume string     `json:"volume"`
-	Perm   Permission `json:"perm"`
+type UserPermUpdateParam struct { //todo
+	UserID string   `json:"user_id"`
+	Volume string   `json:"volume"`
+	Policy []string `json:"policy"`
 }
 
 type UserPermRemoveParam struct {
 	UserID string `json:"user_id"`
 	Volume string `json:"volume"`
+}
+
+type UserTransferVolParam struct {
+	Volume  string `json:"volume"`
+	UserSrc string `json:"user_src"`
+	UserDst string `json:"user_dst"`
 }

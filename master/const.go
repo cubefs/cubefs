@@ -123,9 +123,9 @@ const (
 	opSyncUpdateAKPolicy       uint32 = 0x19
 	opSyncAddUserAK            uint32 = 0x1A
 	opSyncDeleteUserAK         uint32 = 0x1B
-	opSyncAddVolAK             uint32 = 0x1C
-	opSyncDeleteVolAK          uint32 = 0x1D
-	opSyncUpdateVolAK          uint32 = 0x1E
+	opSyncAddVolUser           uint32 = 0x1C
+	opSyncDeleteVolUser        uint32 = 0x1D
+	opSyncUpdateVolUser        uint32 = 0x1E
 )
 
 const (
@@ -149,10 +149,10 @@ const (
 	clusterPrefix         = keySeparator + clusterAcronym + keySeparator
 	nodeSetPrefix         = keySeparator + nodeSetAcronym + keySeparator
 
-	akAcronym    = "ak"
-	userAcronym  = "user"
-	volAKAcronym = "volak"
-	akPrefix     = keySeparator + akAcronym + keySeparator
-	userPrefix   = keySeparator + userAcronym + keySeparator
-	volAKPrefix  = keySeparator + volAKAcronym + keySeparator
+	akAcronym      = "ak"
+	userAcronym    = "user"
+	volUserAcronym = "voluser"
+	akPrefix       = keySeparator + akAcronym + keySeparator
+	userPrefix     = keySeparator + userAcronym + keySeparator
+	volUserPrefix  = keySeparator + volUserAcronym + keySeparator
 )

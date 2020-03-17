@@ -1825,10 +1825,7 @@ func (m *Server) associateVolWithUser(userID, volName string) error {
 			return err
 		}
 	}
-	policy := &proto.UserPolicy{
-		OwnVols: []string{volName},
-	}
-	if _, err = m.user.addPolicy(akPolicy.AccessKey, policy); err != nil {
+	if _, err = m.user.addOwnVol(akPolicy.UserID, volName); err != nil {
 		return err
 	}
 	return nil

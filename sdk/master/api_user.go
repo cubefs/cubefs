@@ -71,7 +71,7 @@ func (api *UserAPI) AddPolicy(accesskey string, policy *proto.UserPolicy) (akPol
 	if body, err = json.Marshal(policy); err != nil {
 		return
 	}
-	var request = newAPIRequest(http.MethodPost, proto.UserAddPolicy)
+	var request = newAPIRequest(http.MethodPost, proto.UserUpdatePolicy)
 	request.addParam("ak", accesskey)
 	request.addBody(body)
 	var data []byte
@@ -90,7 +90,7 @@ func (api *UserAPI) DeletePolicy(accesskey string, policy *proto.UserPolicy) (ak
 	if body, err = json.Marshal(policy); err != nil {
 		return
 	}
-	var request = newAPIRequest(http.MethodPost, proto.UserDeletePolicy)
+	var request = newAPIRequest(http.MethodPost, proto.UserRemovePolicy)
 	request.addParam("ak", accesskey)
 	request.addBody(body)
 	var data []byte
