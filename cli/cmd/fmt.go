@@ -109,9 +109,9 @@ var (
 		"ID", "TYPE", "ACCESS KEY", "SECRET KEY", "CREATE TIME")
 )
 
-func formatUserInfoTableRow(akp *proto.AKPolicy) string {
+func formatUserInfoTableRow(userInfo *proto.UserInfo) string {
 	return fmt.Sprintf(userInfoTablePattern,
-		akp.UserID, formatUserType(akp.UserType), akp.AccessKey, akp.SecretKey, akp.CreateTime)
+		userInfo.UserID, formatUserType(userInfo.UserType), userInfo.AccessKey, userInfo.SecretKey, userInfo.CreateTime)
 }
 
 func formatDataPartitionStatus(status int8) string {

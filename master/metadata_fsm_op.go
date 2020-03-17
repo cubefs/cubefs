@@ -249,10 +249,10 @@ func (m *RaftCmd) setOpType() {
 		m.Op = opSyncAllocMetaPartitionID
 	case maxCommonIDKey:
 		m.Op = opSyncAllocCommonID
-	case akAcronym:
-		m.Op = opSyncAddAKPolicy
 	case userAcronym:
-		m.Op = opSyncAddUserAK
+		m.Op = opSyncAddUserInfo
+	case akAcronym:
+		m.Op = opSyncAddAKUser
 	case volUserAcronym:
 		m.Op = opSyncAddVolUser
 	default:

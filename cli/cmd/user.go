@@ -108,15 +108,15 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 				SecretKey: secretKey,
 				Type:      userType,
 			}
-			var akPolicy *proto.AKPolicy
-			if akPolicy, err = client.UserAPI().Create(&param); err != nil {
+			var userInfo *proto.UserInfo
+			if userInfo, err = client.UserAPI().Create(&param); err != nil {
 				errout("Create user failed: %v\n", err)
 				os.Exit(1)
 			}
 
 			// display operation result
 			stdout("Create user success:\n")
-			printUserInfo(akPolicy)
+			printUserInfo(userInfo)
 			return
 		},
 	}
@@ -141,12 +141,12 @@ func newUserInfoCmd(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			var userID = args[0]
-			var akp *proto.AKPolicy
-			if akp, err = client.UserAPI().GetUserInfo(userID); err != nil {
+			var userInfo *proto.UserInfo
+			if userInfo, err = client.UserAPI().GetUserInfo(userID); err != nil {
 				errout("Get user info failed: %v\n", err)
 				os.Exit(1)
 			}
-			printUserInfo(akp)
+			printUserInfo(userInfo)
 		},
 	}
 
@@ -198,8 +198,8 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 					os.Exit(1)
 				}
 			}()
-			var akp *proto.AKPolicy
-			if akp, err = client.UserAPI().GetUserInfo(userID); err != nil {
+			var userInfo *proto.UserInfo
+			if userInfo, err = client.UserAPI().GetUserInfo(userID); err != nil {
 				return
 			}
 			if _, err = client.AdminAPI().GetVolumeSimpleInfo(volume); err != nil {
@@ -208,14 +208,14 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			var newUserPolicy = proto.NewUserPolicy()
 			newUserPolicy.SetPerm(volume, perm)
 			if perm.IsNone() {
-				akp, err = client.UserAPI().DeletePolicy(akp.AccessKey, newUserPolicy)
+				userInfo, err = client.UserAPI().DeletePolicy(userInfo.AccessKey, newUserPolicy)
 			} else {
-				akp, err = client.UserAPI().AddPolicy(akp.AccessKey, newUserPolicy)
+				userInfo, err = client.UserAPI().AddPolicy(userInfo.AccessKey, newUserPolicy)
 			}
 			if err != nil {
 				return
 			}
-			printUserInfo(akp)
+			printUserInfo(userInfo)
 		},
 	}
 	return cmd
@@ -232,7 +232,7 @@ func newUserListCmd(client *master.MasterClient) *cobra.Command {
 		Use:   cmdUserListUse,
 		Short: cmdUserListShort,
 		Run: func(cmd *cobra.Command, args []string) {
-			var users []*proto.AKPolicy
+			var users []*proto.UserInfo
 			var err error
 			defer func() {
 				if err != nil {
@@ -255,19 +255,19 @@ func newUserListCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func printUserInfo(akp *proto.AKPolicy) {
+func printUserInfo(userInfo *proto.UserInfo) {
 	stdout("\n[Summary]\n")
-	stdout("  User ID    : %v\n", akp.UserID)
-	stdout("  Access Key : %v\n", akp.AccessKey)
-	stdout("  Secret Key : %v\n", akp.SecretKey)
-	stdout("  Type       : %v\n", akp.UserType)
-	stdout("  Create Time: %v\n", akp.CreateTime)
-	if akp.Policy == nil {
+	stdout("  User ID    : %v\n", userInfo.UserID)
+	stdout("  Access Key : %v\n", userInfo.AccessKey)
+	stdout("  Secret Key : %v\n", userInfo.SecretKey)
+	stdout("  Type       : %v\n", userInfo.UserType)
+	stdout("  Create Time: %v\n", userInfo.CreateTime)
+	if userInfo.Policy == nil {
 		return
 	}
 	stdout("\n[Own volumes]\n")
-	if len(akp.Policy.OwnVols) != 0 {
-		for _, vol := range akp.Policy.OwnVols {
+	if len(userInfo.Policy.OwnVols) != 0 {
+		for _, vol := range userInfo.Policy.OwnVols {
 			stdout("  %s\n", vol)
 		}
 	} else {
@@ -275,9 +275,9 @@ func printUserInfo(akp *proto.AKPolicy) {
 	}
 	stdout("\n[Authorized volumes]\n")
 
-	if len(akp.Policy.AuthorizedVols) != 0 {
+	if len(userInfo.Policy.AuthorizedVols) != 0 {
 		stdout("  %10v\t%10v\n", "VOLUME", "PERMISSION")
-		for vol, perms := range akp.Policy.AuthorizedVols {
+		for vol, perms := range userInfo.Policy.AuthorizedVols {
 			stdout("  %10v\t%10v\n", vol, perms)
 		}
 	} else {

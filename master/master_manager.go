@@ -121,10 +121,10 @@ func (m *Server) loadMetadata() {
 	log.LogInfo("action[loadMetadata] end")
 
 	log.LogInfo("action[loadUserInfo] begin")
-	if err = m.user.loadAKStore(); err != nil {
+	if err = m.user.loadUserStore(); err != nil {
 		panic(err)
 	}
-	if err = m.user.loadUserAK(); err != nil {
+	if err = m.user.loadAKStore(); err != nil {
 		panic(err)
 	}
 	if err = m.user.loadVolUsers(); err != nil {
@@ -145,16 +145,16 @@ func (m *Server) clearMetadata() {
 	m.cluster.clearDataNodes()
 	m.cluster.clearMetaNodes()
 	m.cluster.clearVols()
+	m.user.clearUserStore()
 	m.user.clearAKStore()
-	m.user.clearUserAK()
 	m.user.clearVolUsers()
 	m.cluster.t = newTopology()
 }
 
 func (m *Server) refreshUser() (err error) {
-	//var akPolicy *cfsProto.AKPolicy
+	//var userInfo *cfsProto.UserInfo
 	//for volName, vol := range m.cluster.allVols() {
-	//	if _, err = m.user.getUserInfo(vol.Owner); err == cfsProto.ErrOSSUserNotExists {
+	//	if _, err = m.user.getUserInfo(vol.Owner); err == cfsProto.ErrUserNotExists {
 	//		if len(vol.OSSAccessKey) > 0 && len(vol.OSSSecretKey) > 0 {
 	//			var param = cfsProto.UserCreateParam{
 	//				ID:        vol.Owner,
@@ -163,7 +163,7 @@ func (m *Server) refreshUser() (err error) {
 	//				SecretKey: vol.OSSSecretKey,
 	//				Type:      cfsProto.UserTypeNormal,
 	//			}
-	//			akPolicy, err = m.user.createKey(&param)
+	//			userInfo, err = m.user.createKey(&param)
 	//			if err != nil && err != cfsProto.ErrDuplicateUserID && err != cfsProto.ErrDuplicateAccessKey {
 	//				return err
 	//			}
@@ -173,14 +173,13 @@ func (m *Server) refreshUser() (err error) {
 	//				Password: DefaultUserPassword,
 	//				Type:     cfsProto.UserTypeNormal,
 	//			}
-	//			akPolicy, err = m.user.createKey(&param)
+	//			userInfo, err = m.user.createKey(&param)
 	//			if err != nil && err != cfsProto.ErrDuplicateUserID {
 	//				return err
 	//			}
 	//		}
-	//		if err == nil && akPolicy != nil {
-	//			userPolicy := &cfsProto.UserPolicy{OwnVols: []string{volName}}
-	//			if _, err = m.user.addPolicy(akPolicy.AccessKey, userPolicy); err != nil {
+	//		if err == nil && userInfo != nil {
+	//			if _, err = m.user.addOwnVol(userInfo.UserID, volName); err != nil {
 	//				return err
 	//			}
 	//		}

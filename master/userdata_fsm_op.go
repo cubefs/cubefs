@@ -36,43 +36,43 @@ func (u *User) submit(metadata *RaftCmd) (err error) {
 }
 
 // key=#ak#accesskey,value = akPolicy
-func (u *User) syncAddAKPolicy(akPolicy *proto.AKPolicy) (err error) {
-	return u.syncPutAKPolicy(opSyncAddAKPolicy, akPolicy)
+func (u *User) syncAddUserInfo(userInfo *proto.UserInfo) (err error) {
+	return u.syncPutUserInfo(opSyncAddUserInfo, userInfo)
 }
 
-func (u *User) syncDeleteAKPolicy(akPolicy *proto.AKPolicy) (err error) {
-	return u.syncPutAKPolicy(opSyncDeleteAKPolicy, akPolicy)
+func (u *User) syncDeleteUserInfo(userInfo *proto.UserInfo) (err error) {
+	return u.syncPutUserInfo(opSyncDeleteUserInfo, userInfo)
 }
 
-func (u *User) syncUpdateAKPolicy(akPolicy *proto.AKPolicy) (err error) {
-	return u.syncPutAKPolicy(opSyncUpdateAKPolicy, akPolicy)
+func (u *User) syncUpdateUserInfo(userInfo *proto.UserInfo) (err error) {
+	return u.syncPutUserInfo(opSyncUpdateUserInfo, userInfo)
 }
 
-func (u *User) syncPutAKPolicy(opType uint32, akPolicy *proto.AKPolicy) (err error) {
-	userInfo := new(RaftCmd)
-	userInfo.Op = opType
-	userInfo.K = akPrefix + akPolicy.AccessKey
-	userInfo.V, err = json.Marshal(akPolicy)
+func (u *User) syncPutUserInfo(opType uint32, userInfo *proto.UserInfo) (err error) {
+	raftCmd := new(RaftCmd)
+	raftCmd.Op = opType
+	raftCmd.K = userPrefix + userInfo.UserID
+	raftCmd.V, err = json.Marshal(userInfo)
 	if err != nil {
 		return errors.New(err.Error())
 	}
-	return u.submit(userInfo)
+	return u.submit(raftCmd)
 }
 
 // key=#user#userid,value = akPolicy
-func (u *User) syncAddUserAK(userAK *proto.UserAK) (err error) {
-	return u.syncPutUserAK(opSyncAddUserAK, userAK)
+func (u *User) syncAddAKUser(akUser *proto.AKUser) (err error) {
+	return u.syncPutAKUser(opSyncAddAKUser, akUser)
 }
 
-func (u *User) syncDeleteUserAK(userAK *proto.UserAK) (err error) {
-	return u.syncPutUserAK(opSyncDeleteUserAK, userAK)
+func (u *User) syncDeleteAKUser(akUser *proto.AKUser) (err error) {
+	return u.syncPutAKUser(opSyncDeleteAKUser, akUser)
 }
 
-func (u *User) syncPutUserAK(opType uint32, userAK *proto.UserAK) (err error) {
+func (u *User) syncPutAKUser(opType uint32, akUser *proto.AKUser) (err error) {
 	userInfo := new(RaftCmd)
 	userInfo.Op = opType
-	userInfo.K = userPrefix + userAK.UserID
-	userInfo.V, err = json.Marshal(userAK)
+	userInfo.K = akPrefix + akUser.AccessKey
+	userInfo.V, err = json.Marshal(akUser)
 	if err != nil {
 		return errors.New(err.Error())
 	}
@@ -102,38 +102,38 @@ func (u *User) syncPutVolUser(opType uint32, volUser *proto.VolUser) (err error)
 	return u.submit(userInfo)
 }
 
-func (u *User) loadAKStore() (err error) {
-	result, err := u.fsm.store.SeekForPrefix([]byte(akPrefix))
+func (u *User) loadUserStore() (err error) {
+	result, err := u.fsm.store.SeekForPrefix([]byte(userPrefix))
 	if err != nil {
-		err = fmt.Errorf("action[loadAccessKeyInfo], err: %v", err.Error())
+		err = fmt.Errorf("action[loadUserKeyInfo], err: %v", err.Error())
 		return err
 	}
 	for _, value := range result {
-		aks := &proto.AKPolicy{}
-		if err = json.Unmarshal(value, aks); err != nil {
-			err = fmt.Errorf("action[loadAccessKeyInfo], unmarshal err: %v", err.Error())
+		userInfo := &proto.UserInfo{}
+		if err = json.Unmarshal(value, userInfo); err != nil {
+			err = fmt.Errorf("action[loadUserKeyInfo], unmarshal err: %v", err.Error())
 			return err
 		}
-		u.akStore.Store(aks.AccessKey, aks)
-		log.LogInfof("action[loadAccessKeyInfo], ak[%v]", aks.AccessKey)
+		u.userStore.Store(userInfo.UserID, userInfo)
+		log.LogInfof("action[loadUserKeyInfo], userID[%v]", userInfo.UserID)
 	}
 	return
 }
 
-func (u *User) loadUserAK() (err error) {
-	result, err := u.fsm.store.SeekForPrefix([]byte(userPrefix))
+func (u *User) loadAKStore() (err error) {
+	result, err := u.fsm.store.SeekForPrefix([]byte(akPrefix))
 	if err != nil {
-		err = fmt.Errorf("action[loadUserAK], err: %v", err.Error())
+		err = fmt.Errorf("action[loadAKStore], err: %v", err.Error())
 		return err
 	}
 	for _, value := range result {
-		user := &proto.UserAK{}
-		if err = json.Unmarshal(value, user); err != nil {
-			err = fmt.Errorf("action[loadUserAK], unmarshal err: %v", err.Error())
+		akUser := &proto.AKUser{}
+		if err = json.Unmarshal(value, akUser); err != nil {
+			err = fmt.Errorf("action[loadAKStore], unmarshal err: %v", err.Error())
 			return err
 		}
-		u.userAk.Store(user.UserID, user)
-		log.LogInfof("action[loadUserAK], userID[%v]", user.UserID)
+		u.AKStore.Store(akUser.AccessKey, akUser)
+		log.LogInfof("action[loadAKStore], ak[%v], userID[%v]", akUser.AccessKey, akUser.UserID)
 	}
 	return
 }

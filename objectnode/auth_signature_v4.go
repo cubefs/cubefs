@@ -97,12 +97,12 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV4(r *http.Request) (bool
 	if err != nil {
 		return false, err
 	}
-	var akPolicy *proto.AKPolicy
-	if akPolicy, err = o.getUserInfoByAccessKey(req.Credential.AccessKey); err != nil {
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKey(req.Credential.AccessKey); err != nil {
 		log.LogInfof("validateHeaderBySignatureAlgorithmV4: get secretKey from master fail: err(%v)", err)
 		return false, err
 	}
-	newSignature := calculateSignatureV4(r, req.Credential.Region, akPolicy.SecretKey, req.SignedHeaders)
+	newSignature := calculateSignatureV4(r, req.Credential.Region, userInfo.SecretKey, req.SignedHeaders)
 	if req.Signature != newSignature {
 		log.LogDebugf("validateHeaderBySignatureAlgorithmV4: invalid signature: requestID(%v) client(%v) server(%v)",
 			GetRequestID(r), req.Signature, newSignature)
@@ -137,8 +137,8 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV4(r *http.Request) (pass bo
 	}
 
 	// check accessKey valid
-	var akPolicy *proto.AKPolicy
-	if akPolicy, err = o.getUserInfoByAccessKey(req.Credential.AccessKey); err != nil {
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKey(req.Credential.AccessKey); err != nil {
 		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", req.Credential.AccessKey, err)
 		return false, err
 	}
@@ -162,7 +162,7 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV4(r *http.Request) (pass bo
 		canonicalRequestString)
 
 	// build signingKey
-	signingKey := buildSigningKey(SCHEME, akPolicy.SecretKey, req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)
+	signingKey := buildSigningKey(SCHEME, userInfo.SecretKey, req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)
 
 	// build stringToSign
 	scope := buildScope(req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)

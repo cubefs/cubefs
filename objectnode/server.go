@@ -57,7 +57,7 @@ type ObjectNode struct {
 	mc         *master.MasterClient
 	state      uint32
 	wg         sync.WaitGroup
-	userStore  *UserStore
+	userStore  *UserStore //k: ak, v: userInfo
 
 	signatureIgnoredActions proto.Actions // signature ignored actions
 

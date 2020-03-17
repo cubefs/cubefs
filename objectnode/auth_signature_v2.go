@@ -174,14 +174,14 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV2(r *http.Request) (bool
 		return false, err
 	}
 
-	var akPolicy *proto.AKPolicy
-	if akPolicy, err = o.getUserInfoByAccessKey(authInfo.accessKeyId); err != nil {
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKey(authInfo.accessKeyId); err != nil {
 		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", authInfo.accessKeyId, err)
 		return false, err
 	}
 
 	// 2. calculate new signature
-	newSignature, err1 := calculateSignatureV2(authInfo, akPolicy.SecretKey, o.wildcards)
+	newSignature, err1 := calculateSignatureV2(authInfo, userInfo.SecretKey, o.wildcards)
 	if err1 != nil {
 		log.LogInfof("calculute SignatureV2 error: %v, %v", authInfo.r, err)
 		return false, err1
@@ -271,8 +271,8 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, e
 		GetRequestID(r), r.URL.String(), accessKey, signature, expires)
 
 	//check access key
-	var akPolicy *proto.AKPolicy
-	if akPolicy, err = o.getUserInfoByAccessKey(accessKey); err != nil {
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKey(accessKey); err != nil {
 		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", accessKey, err)
 		return false, err
 	}
@@ -287,7 +287,7 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, e
 	var canonicalResource string
 	canonicalResource = getCanonicalizedResourceV2(r, o.wildcards)
 	canonicalResourceQuery := getCanonicalQueryV2(canonicalResource, r.URL.Query().Encode())
-	calSignature := calPresignedSignatureV2(r.Method, canonicalResourceQuery, expires, akPolicy.SecretKey, r.Header)
+	calSignature := calPresignedSignatureV2(r.Method, canonicalResourceQuery, expires, userInfo.SecretKey, r.Header)
 	if calSignature != signature {
 		log.LogDebugf("validateUrlBySignatureAlgorithmV2: invalid signature: requestID(%v) client(%v) server(%v)",
 			GetRequestID(r), signature, calSignature)

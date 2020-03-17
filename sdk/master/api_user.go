@@ -11,7 +11,7 @@ type UserAPI struct {
 	mc *MasterClient
 }
 
-func (api *UserAPI) Create(param *proto.UserCreateParam) (akPolicy *proto.AKPolicy, err error) {
+func (api *UserAPI) Create(param *proto.UserCreateParam) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UserCreate)
 	var reqBody []byte
 	if reqBody, err = json.Marshal(param); err != nil {
@@ -22,8 +22,8 @@ func (api *UserAPI) Create(param *proto.UserCreateParam) (akPolicy *proto.AKPoli
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	akPolicy = &proto.AKPolicy{}
-	if err = json.Unmarshal(data, akPolicy); err != nil {
+	userInfo = &proto.UserInfo{}
+	if err = json.Unmarshal(data, userInfo); err != nil {
 		return
 	}
 	return
@@ -38,35 +38,35 @@ func (api *UserAPI) DeleteUser(userID string) (err error) {
 	return
 }
 
-func (api *UserAPI) GetAKInfo(accesskey string) (akPolicy *proto.AKPolicy, err error) {
+func (api *UserAPI) GetAKInfo(accesskey string) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.UserGetAKInfo)
 	request.addParam("ak", accesskey)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	akPolicy = &proto.AKPolicy{}
-	if err = json.Unmarshal(data, akPolicy); err != nil {
+	userInfo = &proto.UserInfo{}
+	if err = json.Unmarshal(data, userInfo); err != nil {
 		return
 	}
 	return
 }
 
-func (api *UserAPI) GetUserInfo(userID string) (akPolicy *proto.AKPolicy, err error) {
+func (api *UserAPI) GetUserInfo(userID string) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.UserGetInfo)
 	request.addParam("owner", userID)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	akPolicy = &proto.AKPolicy{}
-	if err = json.Unmarshal(data, akPolicy); err != nil {
+	userInfo = &proto.UserInfo{}
+	if err = json.Unmarshal(data, userInfo); err != nil {
 		return
 	}
 	return
 }
 
-func (api *UserAPI) AddPolicy(accesskey string, policy *proto.UserPolicy) (akPolicy *proto.AKPolicy, err error) {
+func (api *UserAPI) AddPolicy(accesskey string, policy *proto.UserPolicy) (userInfo *proto.UserInfo, err error) {
 	var body []byte
 	if body, err = json.Marshal(policy); err != nil {
 		return
@@ -78,14 +78,14 @@ func (api *UserAPI) AddPolicy(accesskey string, policy *proto.UserPolicy) (akPol
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	akPolicy = &proto.AKPolicy{}
-	if err = json.Unmarshal(data, akPolicy); err != nil {
+	userInfo = &proto.UserInfo{}
+	if err = json.Unmarshal(data, userInfo); err != nil {
 		return
 	}
 	return
 }
 
-func (api *UserAPI) DeletePolicy(accesskey string, policy *proto.UserPolicy) (akPolicy *proto.AKPolicy, err error) {
+func (api *UserAPI) DeletePolicy(accesskey string, policy *proto.UserPolicy) (userInfo *proto.UserInfo, err error) {
 	var body []byte
 	if body, err = json.Marshal(policy); err != nil {
 		return
@@ -97,8 +97,8 @@ func (api *UserAPI) DeletePolicy(accesskey string, policy *proto.UserPolicy) (ak
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	akPolicy = &proto.AKPolicy{}
-	if err = json.Unmarshal(data, akPolicy); err != nil {
+	userInfo = &proto.UserInfo{}
+	if err = json.Unmarshal(data, userInfo); err != nil {
 		return
 	}
 	return
@@ -113,7 +113,7 @@ func (api *UserAPI) DeleteVolPolicy(vol string) (err error) {
 	return
 }
 
-func (api *UserAPI) TransferVol(vol, ak, targetAK string) (akPolicy *proto.AKPolicy, err error) {
+func (api *UserAPI) TransferVol(vol, ak, targetAK string) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UserTransferVol)
 	request.addParam("name", vol)
 	request.addParam("ak", ak)
@@ -122,22 +122,22 @@ func (api *UserAPI) TransferVol(vol, ak, targetAK string) (akPolicy *proto.AKPol
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	akPolicy = &proto.AKPolicy{}
-	if err = json.Unmarshal(data, akPolicy); err != nil {
+	userInfo = &proto.UserInfo{}
+	if err = json.Unmarshal(data, userInfo); err != nil {
 		return
 	}
 	return
 }
 
-func (api *UserAPI) ListUsers(keywords string) (akPolicies []*proto.AKPolicy, err error) {
+func (api *UserAPI) ListUsers(keywords string) (users []*proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.UserList)
 	request.addParam("keywords", keywords)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	akPolicies = make([]*proto.AKPolicy, 0)
-	if err = json.Unmarshal(data, &akPolicies); err != nil {
+	users = make([]*proto.UserInfo, 0)
+	if err = json.Unmarshal(data, &users); err != nil {
 		return
 	}
 	return

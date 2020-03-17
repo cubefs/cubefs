@@ -62,23 +62,23 @@ func UserTypeFromString(name string) UserType {
 	return UserTypeInvalid
 }
 
-type UserAK struct {
-	UserID    string `json:"user_id"`
+type AKUser struct {
 	AccessKey string `json:"access_key"`
+	UserID    string `json:"user_id"`
 	Password  string `json:"password"`
 }
 
-type AKPolicy struct {
+type UserInfo struct {
+	UserID     string      `json:"user_id"`
 	AccessKey  string      `json:"access_key"`
 	SecretKey  string      `json:"secret_key"`
 	Policy     *UserPolicy `json:"policy"`
-	UserID     string      `json:"user_id"`
 	UserType   UserType    `json:"user_type"`
 	CreateTime string      `json:"create_time"`
 }
 
-func NewAKPolicy() *AKPolicy {
-	return &AKPolicy{Policy: NewUserPolicy()}
+func NewUserInfo() *UserInfo {
+	return &UserInfo{Policy: NewUserPolicy()}
 }
 
 type VolUser struct {

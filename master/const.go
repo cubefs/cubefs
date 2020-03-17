@@ -39,10 +39,7 @@ const (
 	followerReadKey       = "followerRead"
 	authenticateKey       = "authenticate"
 	akKey                 = "ak"
-	skKey                 = "sk"
-	targetKey             = "targetak"
 	keywordsKey           = "keywords"
-	passwordKey           = "password"
 	zoneNameKey           = "zoneName"
 	crossZoneKey          = "crossZone"
 )
@@ -118,11 +115,11 @@ const (
 	opSyncBatchPut             uint32 = 0x14
 	opSyncUpdateDataNode       uint32 = 0x15
 	opSyncUpdateMetaNode       uint32 = 0x16
-	opSyncAddAKPolicy          uint32 = 0x17
-	opSyncDeleteAKPolicy       uint32 = 0x18
-	opSyncUpdateAKPolicy       uint32 = 0x19
-	opSyncAddUserAK            uint32 = 0x1A
-	opSyncDeleteUserAK         uint32 = 0x1B
+	opSyncAddUserInfo          uint32 = 0x17
+	opSyncDeleteUserInfo       uint32 = 0x18
+	opSyncUpdateUserInfo       uint32 = 0x19
+	opSyncAddAKUser            uint32 = 0x1A
+	opSyncDeleteAKUser         uint32 = 0x1B
 	opSyncAddVolUser           uint32 = 0x1C
 	opSyncDeleteVolUser        uint32 = 0x1D
 	opSyncUpdateVolUser        uint32 = 0x1E
