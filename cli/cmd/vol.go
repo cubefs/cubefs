@@ -78,7 +78,7 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 			stdout("\n")
 		},
 	}
-	cmd.Flags().StringVar(&optKeyword, "keyword", "", "Specify keyword for volume name filter")
+	cmd.Flags().StringVar(&optKeyword, "keyword", "", "Specify keyword of volume name to filter")
 	return cmd
 }
 
@@ -86,7 +86,7 @@ const (
 	cmdVolCreateUse             = "create [VOLUME NAME] [USER ID]"
 	cmdVolCreateShort           = "Create a new volume"
 	cmdVolDefaultMPCount        = 3
-	cmdVolDefaultDPSize         = 10
+	cmdVolDefaultDPSize         = 120
 	cmdVolDefaultCapacity       = 10 // 100GB
 	cmdVolDefaultReplicas       = 3
 	cmdVolDefaultFollowerReader = true
@@ -94,7 +94,7 @@ const (
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optMPCount int
-	var optDPCount uint64
+	var optDPSize uint64
 	var optCapacity uint64
 	var optReplicas int
 	var optFollowerRead bool
@@ -110,9 +110,9 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			stdout("Create a new volume:\n")
 			stdout("  Name                : %v\n", volumeName)
 			stdout("  Owner               : %v\n", userID)
+			stdout("  Dara partition size : %v GB\n", optDPSize)
 			stdout("  Meta partition count: %v\n", optMPCount)
-			stdout("  Dara partition count: %v\n", optDPCount)
-			stdout("  Capacity            : %v\n", optCapacity)
+			stdout("  Capacity            : %v GB\n", optCapacity)
 			stdout("  Replicas            : %v\n", optReplicas)
 			stdout("  Allow follower read : %v\n", formatEnabledDisabled(optFollowerRead))
 
@@ -128,7 +128,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			err = client.AdminAPI().CreateVolume(
-				volumeName, userID, optMPCount, optDPCount,
+				volumeName, userID, optMPCount, optDPSize,
 				optCapacity, optReplicas, optFollowerRead)
 			if err != nil {
 				errout("Create volume failed case:\n%v\n", err)
@@ -139,7 +139,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().IntVar(&optMPCount, "mp-count", cmdVolDefaultMPCount, "Specify init meta partition count")
-	cmd.Flags().Uint64Var(&optDPCount, "dp-count", cmdVolDefaultDPSize, "Specify init data partition count")
+	cmd.Flags().Uint64Var(&optDPSize, "dp-size", cmdVolDefaultDPSize, "Specify size of data partition size [Unit: GB]")
 	cmd.Flags().Uint64Var(&optCapacity, "capacity", cmdVolDefaultCapacity, "Specify volume capacity [Unit: GB]")
 	cmd.Flags().IntVar(&optReplicas, "replicas", cmdVolDefaultReplicas, "Specify volume replicas number")
 	cmd.Flags().BoolVar(&optFollowerRead, "follower-read", cmdVolDefaultFollowerReader, "Enable read form replica follower")

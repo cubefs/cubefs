@@ -129,7 +129,7 @@ func (api *UserAPI) TransferVol(vol, ak, targetAK string) (akPolicy *proto.AKPol
 	return
 }
 
-func (api *UserAPI) GetAllUsers(keywords string) (akPolicies []*proto.AKPolicy, err error) {
+func (api *UserAPI) ListUsers(keywords string) (akPolicies []*proto.AKPolicy, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.UserList)
 	request.addParam("keywords", keywords)
 	var data []byte
@@ -137,7 +137,7 @@ func (api *UserAPI) GetAllUsers(keywords string) (akPolicies []*proto.AKPolicy, 
 		return
 	}
 	akPolicies = make([]*proto.AKPolicy, 0)
-	if err = json.Unmarshal(data, akPolicies); err != nil {
+	if err = json.Unmarshal(data, &akPolicies); err != nil {
 		return
 	}
 	return

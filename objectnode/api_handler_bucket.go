@@ -154,12 +154,8 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	ownVols := akPolicy.Policy.OwnVols
 	var buckets = make([]*Bucket, 0)
-	var vol *Volume
 	for _, ownVol := range ownVols {
-		if vol, err = o.vm.Volume(ownVol); err != nil {
-			log.LogErrorf("listBucketsHandler: list buckets fail, bucket(%v) err(%v)", ownVol, err)
-		}
-		var bucket = &Bucket{Name: ownVol, CreationDate: time.Unix(vol.createTime, 0)}
+		var bucket = &Bucket{Name: ownVol, CreationDate: time.Unix(0, 0)}
 		buckets = append(buckets, bucket)
 	}
 

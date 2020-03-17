@@ -103,6 +103,17 @@ func formatMetaPartitionTableRow(view *proto.MetaPartitionView) string {
 		view.PartitionID, view.MaxInodeID, view.Start, rangeToString(view.End), formatMetaPartitionStatus(view.Status), view.LeaderAddr, view.Members)
 }
 
+var (
+	userInfoTablePattern = "  %10v    %6v    %16v    %32v    %10v"
+	userInfoTableHeader  = fmt.Sprintf(userInfoTablePattern,
+		"ID", "TYPE", "ACCESS KEY", "SECRET KEY", "CREATE TIME")
+)
+
+func formatUserInfoTableRow(akp *proto.AKPolicy) string {
+	return fmt.Sprintf(userInfoTablePattern,
+		akp.UserID, formatUserType(akp.UserType), akp.AccessKey, akp.SecretKey, akp.CreateTime)
+}
+
 func formatDataPartitionStatus(status int8) string {
 	switch status {
 	case 1:
@@ -127,6 +138,19 @@ func formatMetaPartitionStatus(status int8) string {
 	default:
 		return "Unknown"
 	}
+}
+
+func formatUserType(userType proto.UserType) string {
+	switch userType {
+	case proto.UserTypeRoot:
+		return "Root"
+	case proto.UserTypeAdmin:
+		return "Admin"
+	case proto.UserTypeNormal:
+		return "Normal"
+	default:
+	}
+	return "Unknown"
 }
 
 func formatYesNo(b bool) string {

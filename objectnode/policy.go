@@ -252,16 +252,26 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			allowed = false
 			return
 		}
+		if akPolicy.UserType == proto.UserTypeRoot || akPolicy.UserType == proto.UserTypeAdmin {
+			log.LogDebugf("policyCheck: user is admin: requestID(%v) userID(%v) accessKey(%v) volume(%v)",
+				GetRequestID(r), akPolicy.UserID, param.AccessKey(), param.Bucket())
+			allowed = true
+			return
+		}
 		if param.action == proto.OSSCreateBucketAction {
 			allowed = true
 			return
 		}
 		var userPolicy = akPolicy.Policy
 		if userPolicy.IsOwn(param.Bucket()) {
+			log.LogDebugf("policyCheck: user is owner: requestID(%v) userID(%v) accessKey(%v) volume(%v)",
+				GetRequestID(r), akPolicy.UserID, param.AccessKey(), param.Bucket())
 			allowed = true
 			return
 		}
 		if userPolicy.IsAuthorized(param.Bucket(), param.Action()) {
+			log.LogDebugf("policyCheck: action is authorized: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
+				GetRequestID(r), akPolicy.UserID, param.AccessKey(), param.Bucket(), param.Action())
 			allowed = true
 			return
 		}

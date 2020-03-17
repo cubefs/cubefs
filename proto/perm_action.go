@@ -138,7 +138,7 @@ var (
 )
 
 var (
-	actionRegexp = regexp.MustCompile("^perm:((oss:(\\w+))|(posix:(\\w)+))$")
+	actionRegexp = regexp.MustCompile("^action:((oss:(\\w+))|(posix:(\\w)+))$")
 )
 
 func ParseAction(str string) Action {

@@ -122,7 +122,7 @@ func (policy *UserPolicy) IsAuthorized(volume string, action Action) bool {
 		if perm := ParsePermission(value); !perm.IsNone() && perm.IsBuiltin() && BuiltinPermissionActions(perm).Contains(action) {
 			return true
 		}
-		if action := ParseAction(value); action == action {
+		if act := ParseAction(value); act == action {
 			return true
 		}
 	}

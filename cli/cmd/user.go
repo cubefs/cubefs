@@ -37,6 +37,7 @@ func newUserCmd(client *master.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newUserCreateCmd(client),
 		newUserInfoCmd(client),
+		newUserListCmd(client),
 		newUserPermCmd(client),
 	)
 	return cmd
@@ -217,6 +218,40 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			printUserInfo(akp)
 		},
 	}
+	return cmd
+}
+
+var (
+	cmdUserListUse   = "list"
+	cmdUserListShort = "List cluster users"
+)
+
+func newUserListCmd(client *master.MasterClient) *cobra.Command {
+	var optKeyword string
+	var cmd = &cobra.Command{
+		Use:   cmdUserListUse,
+		Short: cmdUserListShort,
+		Run: func(cmd *cobra.Command, args []string) {
+			var users []*proto.AKPolicy
+			var err error
+			defer func() {
+				if err != nil {
+					errout("List cluster user failed: %v\n", err)
+					os.Exit(1)
+				}
+			}()
+			if users, err = client.UserAPI().ListUsers(optKeyword); err != nil {
+				return
+			}
+			stdout("\n[Users]\n")
+			stdout("%v\n", userInfoTableHeader)
+			for _, user := range users {
+				stdout("%v\n", formatUserInfoTableRow(user))
+			}
+			stdout("\n")
+		},
+	}
+	cmd.Flags().StringVar(&optKeyword, "keyword", "", "Specify keyword of user name to filter")
 	return cmd
 }
 
