@@ -49,10 +49,14 @@ const (
 )
 
 var (
-	volNameRegexp *regexp.Regexp
-	ownerRegexp   *regexp.Regexp
-	useConnPool   = true //for test
-	gConfig       *clusterConfig
+	// regexps for data validation
+	volNameRegexp = regexp.MustCompile("^[a-zA-Z0-9][a-zA-Z0-9_.-]{1,61}[a-zA-Z0-9]$")
+	ownerRegexp   = regexp.MustCompile("^[A-Za-z][A-Za-z0-9_]{0,20}$")
+	akRegexp      = regexp.MustCompile("^[a-zA-Z0-9]{16}$")
+	skRegexp      = regexp.MustCompile("^[a-zA-Z0-9]{32}$")
+
+	useConnPool = true //for test
+	gConfig     *clusterConfig
 )
 
 // Server represents the server in a cluster
@@ -93,14 +97,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		log.LogError(errors.Stack(err))
 		return
 	}
-	volnamePattern := "^[a-zA-Z0-9_-]{3,256}$"
-	volNameRegexp, err = regexp.Compile(volnamePattern)
-	ownerPattern := "^[A-Za-z]{1,1}[A-Za-z0-9_]{0,20}$"
-	ownerRegexp, err = regexp.Compile(ownerPattern)
-	if err != nil {
-		log.LogError(err)
-		return
-	}
+
 	if m.rocksDBStore, err = raftstore.NewRocksDBStore(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
 		return
 	}

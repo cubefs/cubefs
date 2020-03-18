@@ -1126,15 +1126,14 @@ func (v *volume) findParentId(prefix string) (inode uint64, prefixDirs []string,
 
 	var parentId = proto.RootIno
 	for index, dir := range dirs {
-		curIno, curMode, err := v.mw.Lookup_ll(parentId, dir)
 
-		// Because lookup can only locate the dentry that exactly matches the parameters,
-		// if the last part of the path cannot be found, it does not mean that there is no
-		// matching dentry under the path prefix. In this case, the method returns success
-		// and previous match information to the caller.
-		if index+1 == len(dirs) && err == syscall.ENOENT {
-			return parentId, prefixDirs, nil
+		// Because lookup can only retrieve dentry whose name exactly matches,
+		// so do not lookup the last part.
+		if index+1 == len(dirs) {
+			break
 		}
+
+		curIno, curMode, err := v.mw.Lookup_ll(parentId, dir)
 
 		// If the part except the last part does not match exactly the same dentry, there is
 		// no path matching the path prefix. An ENOENT error is returned to the caller.
@@ -1147,8 +1146,11 @@ func (v *volume) findParentId(prefix string) (inode uint64, prefixDirs []string,
 			return 0, nil, err
 		}
 
+		// Because the file cannot have the next level members,
+		// if there is a directory in the middle of the prefix,
+		// it means that there is no file matching the prefix.
 		if !os.FileMode(curMode).IsDir() {
-			return 0, nil, err
+			return 0, nil, syscall.ENOENT
 		}
 
 		prefixDirs = append(prefixDirs, dir)
