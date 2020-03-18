@@ -83,14 +83,10 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			return "{" + sb.String() + "}"
 		}
 
-		log.LogDebugf("traceMiddleware: trace request:\n"+
-			"  action(%v)\n"+
-			"  requestID(%v) host(%v) method(%v) url(%v)\n"+
-			"  header(%v)\n"+
-			"  remote(%v) cost(%v)",
-			action,
-			requestID, r.Host, r.Method, r.URL.String(),
-			headerToString(r.Header),
+		log.LogDebugf("traceMiddleware: "+
+			"action(%v) requestID(%v) host(%v) method(%v) url(%v) header(%v) " +
+			"remote(%v) cost(%v)",
+			action, requestID, r.Host, r.Method, r.URL.String(), headerToString(r.Header),
 			getRequestIP(r), time.Since(startTime))
 		// ==== post-handle finish =====
 	}

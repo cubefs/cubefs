@@ -563,7 +563,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 
 	fsFileInfos, nextMarker, isTruncated, prefixes, err := vol.ListFilesV1(listBucketRequest)
 	if err != nil {
-		log.LogErrorf("getBucketV1Handler: list file fail, requestID(%v), err(%v)", r.URL, err)
+		log.LogErrorf("getBucketV1Handler: list file fail, requestID(%v), err(%v)", getRequestIP(r), err)
 		errorCode = &InvalidArgument
 		return
 	}
