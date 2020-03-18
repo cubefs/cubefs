@@ -270,9 +270,21 @@ type UserPermUpdateParam struct { //todo
 	Policy []string `json:"policy"`
 }
 
+func NewUserPermUpdateParam(userID, volmue string) *UserPermUpdateParam {
+	return &UserPermUpdateParam{UserID: userID, Volume: volmue, Policy: make([]string, 0)}
+}
+
+func (param *UserPermUpdateParam) SetPolicy(policy string) {
+	param.Policy = append(param.Policy, policy)
+}
+
 type UserPermRemoveParam struct {
 	UserID string `json:"user_id"`
 	Volume string `json:"volume"`
+}
+
+func NewUserPermRemoveParam(userID, volmue string) *UserPermRemoveParam {
+	return &UserPermRemoveParam{UserID: userID, Volume: volmue}
 }
 
 type UserTransferVolParam struct {

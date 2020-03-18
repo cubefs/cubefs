@@ -66,14 +66,13 @@ func (api *UserAPI) GetUserInfo(userID string) (userInfo *proto.UserInfo, err er
 	return
 }
 
-func (api *UserAPI) AddPolicy(accesskey string, policy *proto.UserPolicy) (userInfo *proto.UserInfo, err error) {
-	var body []byte
-	if body, err = json.Marshal(policy); err != nil {
+func (api *UserAPI) UpdatePolicy(param *proto.UserPermUpdateParam) (userInfo *proto.UserInfo, err error) {
+	var request = newAPIRequest(http.MethodPost, proto.UserUpdatePolicy)
+	var reqBody []byte
+	if reqBody, err = json.Marshal(param); err != nil {
 		return
 	}
-	var request = newAPIRequest(http.MethodPost, proto.UserUpdatePolicy)
-	request.addParam("ak", accesskey)
-	request.addBody(body)
+	request.addBody(reqBody)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -85,14 +84,13 @@ func (api *UserAPI) AddPolicy(accesskey string, policy *proto.UserPolicy) (userI
 	return
 }
 
-func (api *UserAPI) DeletePolicy(accesskey string, policy *proto.UserPolicy) (userInfo *proto.UserInfo, err error) {
-	var body []byte
-	if body, err = json.Marshal(policy); err != nil {
+func (api *UserAPI) RemovePolicy(param *proto.UserPermRemoveParam) (userInfo *proto.UserInfo, err error) {
+	var request = newAPIRequest(http.MethodPost, proto.UserRemovePolicy)
+	var reqBody []byte
+	if reqBody, err = json.Marshal(param); err != nil {
 		return
 	}
-	var request = newAPIRequest(http.MethodPost, proto.UserRemovePolicy)
-	request.addParam("ak", accesskey)
-	request.addBody(body)
+	request.addBody(reqBody)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -113,11 +111,13 @@ func (api *UserAPI) DeleteVolPolicy(vol string) (err error) {
 	return
 }
 
-func (api *UserAPI) TransferVol(vol, ak, targetAK string) (userInfo *proto.UserInfo, err error) {
+func (api *UserAPI) TransferVol(param *proto.UserTransferVolParam) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UserTransferVol)
-	request.addParam("name", vol)
-	request.addParam("ak", ak)
-	request.addParam("targetak", targetAK)
+	var reqBody []byte
+	if reqBody, err = json.Marshal(param); err != nil {
+		return
+	}
+	request.addBody(reqBody)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return

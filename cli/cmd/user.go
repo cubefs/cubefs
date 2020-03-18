@@ -205,12 +205,13 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			if _, err = client.AdminAPI().GetVolumeSimpleInfo(volume); err != nil {
 				return
 			}
-			var newUserPolicy = proto.NewUserPolicy()
-			newUserPolicy.SetPerm(volume, perm)
 			if perm.IsNone() {
-				userInfo, err = client.UserAPI().DeletePolicy(userInfo.AccessKey, newUserPolicy)
+				param := proto.NewUserPermRemoveParam(userID, volume)
+				userInfo, err = client.UserAPI().RemovePolicy(param)
 			} else {
-				userInfo, err = client.UserAPI().AddPolicy(userInfo.AccessKey, newUserPolicy)
+				param := proto.NewUserPermUpdateParam(userID, volume)
+				param.SetPolicy(perm.String())
+				userInfo, err = client.UserAPI().UpdatePolicy(param)
 			}
 			if err != nil {
 				return

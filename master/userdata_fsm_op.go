@@ -35,7 +35,7 @@ func (u *User) submit(metadata *RaftCmd) (err error) {
 	return
 }
 
-// key=#ak#accesskey,value = akPolicy
+// key = #ak#accesskey, value = userInfo
 func (u *User) syncAddUserInfo(userInfo *proto.UserInfo) (err error) {
 	return u.syncPutUserInfo(opSyncAddUserInfo, userInfo)
 }
@@ -59,7 +59,7 @@ func (u *User) syncPutUserInfo(opType uint32, userInfo *proto.UserInfo) (err err
 	return u.submit(raftCmd)
 }
 
-// key=#user#userid,value = akPolicy
+// key = #user#userid, value = userInfo
 func (u *User) syncAddAKUser(akUser *proto.AKUser) (err error) {
 	return u.syncPutAKUser(opSyncAddAKUser, akUser)
 }
@@ -79,6 +79,7 @@ func (u *User) syncPutAKUser(opType uint32, akUser *proto.AKUser) (err error) {
 	return u.submit(userInfo)
 }
 
+// key = #voluser#volname, value = userIDs
 func (u *User) syncAddVolUser(volUser *proto.VolUser) (err error) {
 	return u.syncPutVolUser(opSyncAddVolUser, volUser)
 }
