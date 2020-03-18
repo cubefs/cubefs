@@ -145,7 +145,7 @@ type Content struct {
 }
 
 type ListBucketResult struct {
-	XMLName        xml.Name        `xml:"ListBucketResults"`
+	XMLName        xml.Name        `xml:"ListBucketResult"`
 	Bucket         string          `xml:"Name"`
 	Prefix         string          `xml:"Prefix"`
 	Marker         string          `xml:"Marker"`
