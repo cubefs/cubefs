@@ -239,7 +239,21 @@ func (c *MasterClient) mergeRequestUrl(url string, params map[string]string) str
 	return url
 }
 
-// NewMasterHelper returns a new MasterHelper instance.
+// NewMasterHelper returns a new MasterClient instance.
 func NewMasterClient(masters []string, useSSL bool) *MasterClient {
 	return &MasterClient{masters: masters, useSSL: useSSL}
+}
+
+// NewMasterClientFromString parse raw master address configuration
+// string and returns a new MasterClient instance.
+// Notes that a valid format raw string must match: "{HOST}:{PORT},{HOST}:{PORT}"
+func NewMasterClientFromString(masterAddr string, useSSL bool) *MasterClient {
+	var masters = make([]string, 0)
+	for _, master := range strings.Split(masterAddr, ",") {
+		master = strings.TrimSpace(master)
+		if master != "" {
+			masters = append(masters, master)
+		}
+	}
+	return NewMasterClient(masters, useSSL)
 }

@@ -23,6 +23,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/chubaofs/chubaofs/sdk/master"
 	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -146,6 +147,13 @@ func main() {
 
 	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
 		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+
+	if err = checkVolAccessPerm(opt); err != nil {
+		syslog.Printf("check permission failed: %v", err)
+		log.LogFlush()
+		_ = daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
 
@@ -312,6 +320,32 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	}
 
 	return opt, nil
+}
+
+func checkVolAccessPerm(opt *proto.MountOptions) (err error) {
+	var mc = master.NewMasterClientFromString(opt.Master, false)
+	var userInfo *proto.AKPolicy
+	if userInfo, err = mc.UserAPI().GetUserInfo(opt.Owner); err != nil {
+		return
+	}
+	var policy = userInfo.Policy
+	if policy.IsOwn(opt.Volname) {
+		opt.Rdonly = false
+		return
+	}
+	if policy.IsAuthorized(opt.Volname, proto.POSIXWriteAction) &&
+		policy.IsAuthorized(opt.Volname, proto.POSIXReadAction) {
+		opt.Rdonly = false
+		return
+	}
+	if policy.IsAuthorized(opt.Volname, proto.POSIXReadAction) &&
+		!policy.IsAuthorized(opt.Volname, proto.POSIXWriteAction) {
+		opt.Rdonly = true
+		return
+	}
+	opt.Rdonly = true
+	err = proto.ErrNoPermission
+	return
 }
 
 func parseLogLevel(loglvl string) log.Level {
