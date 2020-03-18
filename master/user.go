@@ -351,7 +351,6 @@ func removeString(array []string, element string) []string {
 			return append(array[:k], array[k+1:]...)
 		}
 	}
-	log.LogErrorf("Delete user policy failed: remove userID[%v] form vol", element)
 	return array
 }
 
