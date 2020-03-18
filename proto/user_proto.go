@@ -264,7 +264,7 @@ type UserCreateParam struct {
 	Type      UserType
 }
 
-type UserPermUpdateParam struct { //todo
+type UserPermUpdateParam struct {
 	UserID string   `json:"user_id"`
 	Volume string   `json:"volume"`
 	Policy []string `json:"policy"`

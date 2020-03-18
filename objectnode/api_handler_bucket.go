@@ -72,7 +72,6 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
-	//todo what params to createVol？
 	if err = mc.AdminAPI().CreateDefaultVolume(bucket, userInfo.UserID); err != nil {
 		log.LogErrorf("create bucket[%v] failed: accessKey(%v), err(%v)", bucket, auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
