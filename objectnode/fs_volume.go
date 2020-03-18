@@ -1028,9 +1028,19 @@ func (v *volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64) (
 	var prefixMap = PrefixMap(make(map[string]struct{}))
 
 	parentId, dirs, err := v.findParentId(prefix)
+
+	// The method returns an ENOENT error, indicating that there
+	// are no files or directories matching the prefix.
+	if err == syscall.ENOENT {
+		return nil, nil, nil
+	}
+
+	// Errors other than ENOENT are unexpected errors, method stops and returns it to the caller.
 	if err != nil {
+		log.LogErrorf("listFilesV1: find parent ID fail, prefix(%v) marker(%v) err(%v)", prefix, marker, err)
 		return nil, nil, err
 	}
+
 	log.LogDebugf("listFilesV1: find parent ID, prefix(%v) marker(%v) delimiter(%v) parentId(%v) dirs(%v)", prefix, marker, delimiter, parentId, len(dirs))
 
 	// recursion call listDir method
@@ -1065,10 +1075,19 @@ func (v *volume) listFilesV2(prefix, startAfter, contToken, delimiter string, ma
 		marker = contToken
 	}
 	parentId, dirs, err := v.findParentId(prefix)
+
+	// The method returns an ENOENT error, indicating that there
+	// are no files or directories matching the prefix.
+	if err == syscall.ENOENT {
+		return nil, nil, nil
+	}
+
+	// Errors other than ENOENT are unexpected errors, method stops and returns it to the caller.
 	if err != nil {
 		log.LogErrorf("listFilesV2: find parent ID fail, prefix(%v) marker(%v) err(%v)", prefix, marker, err)
-		return
+		return nil, nil, err
 	}
+
 	log.LogDebugf("listFilesV2: find parent ID, prefix(%v) marker(%v) delimiter(%v) parentId(%v) dirs(%v)", prefix, marker, delimiter, parentId, len(dirs))
 
 	// recursion call listDir method
@@ -1108,8 +1127,19 @@ func (v *volume) findParentId(prefix string) (inode uint64, prefixDirs []string,
 	var parentId = proto.RootIno
 	for index, dir := range dirs {
 		curIno, curMode, err := v.mw.Lookup_ll(parentId, dir)
-		if index == len(dirs) && err == syscall.ENOENT {
+
+		// Because lookup can only locate the dentry that exactly matches the parameters,
+		// if the last part of the path cannot be found, it does not mean that there is no
+		// matching dentry under the path prefix. In this case, the method returns success
+		// and previous match information to the caller.
+		if index+1 == len(dirs) && err == syscall.ENOENT {
 			return parentId, prefixDirs, nil
+		}
+
+		// If the part except the last part does not match exactly the same dentry, there is
+		// no path matching the path prefix. An ENOENT error is returned to the caller.
+		if err == syscall.ENOENT {
+			return 0, nil, syscall.ENOENT
 		}
 
 		if err != nil && err != syscall.ENOENT {
