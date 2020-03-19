@@ -146,7 +146,7 @@ func (api *AdminAPI) CreateDefaultVolume(volName, owner string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
-	request.addParam("capacity", "100")
+	request.addParam("capacity", "10")
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

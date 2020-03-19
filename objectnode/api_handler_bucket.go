@@ -60,8 +60,8 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = DuplicatedBucket.ServeResponse(w, r)
 	}
 	auth := parseRequestAuthInfo(r)
-	var akPolicy *proto.AKPolicy
-	if akPolicy, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
 		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
@@ -72,8 +72,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
-	//todo what params to createVol？
-	if err = mc.AdminAPI().CreateDefaultVolume(bucket, akPolicy.UserID); err != nil {
+	if err = mc.AdminAPI().CreateDefaultVolume(bucket, userInfo.UserID); err != nil {
 		log.LogErrorf("create bucket[%v] failed: accessKey(%v), err(%v)", bucket, auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
@@ -101,8 +100,8 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	auth := parseRequestAuthInfo(r)
-	var akPolicy *proto.AKPolicy
-	if akPolicy, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
 		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
@@ -123,8 +122,8 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	// delete Volume from master
-	if authKey, err = calculateAuthKey(akPolicy.UserID); err != nil {
-		log.LogErrorf("delete bucket[%v] error: calculate authKey(%v) err(%v)", bucket, akPolicy.UserID, err)
+	if authKey, err = calculateAuthKey(userInfo.UserID); err != nil {
+		log.LogErrorf("delete bucket[%v] error: calculate authKey(%v) err(%v)", bucket, userInfo.UserID, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
@@ -146,20 +145,20 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 
 	var err error
 	auth := parseRequestAuthInfo(r)
-	var akPolicy *proto.AKPolicy
-	if akPolicy, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
 		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
 		_ = InternalError.ServeResponse(w, r)
 		return
 	}
-	ownVols := akPolicy.Policy.OwnVols
+	ownVols := userInfo.Policy.OwnVols
 	var buckets = make([]*Bucket, 0)
 	for _, ownVol := range ownVols {
 		var bucket = &Bucket{Name: ownVol, CreationDate: time.Unix(0, 0)}
 		buckets = append(buckets, bucket)
 	}
 
-	owner := &Owner{DisplayName: akPolicy.AccessKey, Id: akPolicy.AccessKey}
+	owner := &Owner{DisplayName: userInfo.AccessKey, Id: userInfo.AccessKey}
 	listBucketOutput := &ListBucketsOutput{
 		Buckets: &Buckets{Bucket: buckets},
 		Owner:   owner,
@@ -338,15 +337,15 @@ func calculateAuthKey(key string) (authKey string, err error) {
 	return strings.ToLower(hex.EncodeToString(cipherStr)), nil
 }
 
-func (o *ObjectNode) getUserInfoByAccessKey(accessKey string) (*proto.AKPolicy, error) {
+func (o *ObjectNode) getUserInfoByAccessKey(accessKey string) (*proto.UserInfo, error) {
 	var err error
-	akPolicy, exist := o.userStore.Get(accessKey)
+	userInfo, exist := o.userStore.Get(accessKey)
 	if !exist {
-		if akPolicy, err = o.mc.UserAPI().GetAKInfo(accessKey); err != nil {
+		if userInfo, err = o.mc.UserAPI().GetAKInfo(accessKey); err != nil {
 			log.LogInfof("load user policy err: %v", err)
-			return akPolicy, err
+			return userInfo, err
 		}
-		o.userStore.Put(accessKey, akPolicy)
+		o.userStore.Put(accessKey, userInfo)
 	}
-	return akPolicy, err
+	return userInfo, err
 }

@@ -324,7 +324,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 
 func checkVolAccessPerm(opt *proto.MountOptions) (err error) {
 	var mc = master.NewMasterClientFromString(opt.Master, false)
-	var userInfo *proto.AKPolicy
+	var userInfo *proto.UserInfo
 	if userInfo, err = mc.UserAPI().GetUserInfo(opt.Owner); err != nil {
 		return
 	}

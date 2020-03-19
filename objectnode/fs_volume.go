@@ -80,8 +80,8 @@ type Volume struct {
 }
 
 func (v *Volume) syncOSSMeta() {
-	defer v.ticker.Stop()
 	v.ticker = time.NewTicker(OSSMetaUpdateDuration)
+	defer v.ticker.Stop()
 	for {
 		select {
 		case <-v.ticker.C:

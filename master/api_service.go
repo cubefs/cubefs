@@ -1811,8 +1811,8 @@ func genRespMessage(data []byte, req *proto.APIAccessReq, ts int64, key []byte) 
 
 func (m *Server) associateVolWithUser(userID, volName string) error {
 	var err error
-	var akPolicy *proto.AKPolicy
-	if akPolicy, err = m.user.getUserInfo(userID); err != nil && err != proto.ErrUserNotExists {
+	var userInfo *proto.UserInfo
+	if userInfo, err = m.user.getUserInfo(userID); err != nil && err != proto.ErrUserNotExists {
 		return err
 	}
 	if err == proto.ErrUserNotExists {
@@ -1821,14 +1821,11 @@ func (m *Server) associateVolWithUser(userID, volName string) error {
 			Password: DefaultUserPassword,
 			Type:     proto.UserTypeNormal,
 		}
-		if akPolicy, err = m.user.createKey(&param); err != nil {
+		if userInfo, err = m.user.createKey(&param); err != nil {
 			return err
 		}
 	}
-	policy := &proto.UserPolicy{
-		OwnVols: []string{volName},
-	}
-	if _, err = m.user.addPolicy(akPolicy.AccessKey, policy); err != nil {
+	if _, err = m.user.addOwnVol(userInfo.UserID, volName); err != nil {
 		return err
 	}
 	return nil

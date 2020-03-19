@@ -245,16 +245,16 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			}
 		}
 		//check user policy
-		var akPolicy *proto.AKPolicy
-		if akPolicy, err = o.getUserInfoByAccessKey(param.accessKey); err != nil {
+		var userInfo *proto.UserInfo
+		if userInfo, err = o.getUserInfoByAccessKey(param.accessKey); err != nil {
 			log.LogErrorf("policyCheck: load user policy from master fail: requestID(%v) accessKey(%v) err(%v)",
 				GetRequestID(r), param.AccessKey(), err)
 			allowed = false
 			return
 		}
-		if akPolicy.UserType == proto.UserTypeRoot || akPolicy.UserType == proto.UserTypeAdmin {
+		if userInfo.UserType == proto.UserTypeRoot || userInfo.UserType == proto.UserTypeAdmin {
 			log.LogDebugf("policyCheck: user is admin: requestID(%v) userID(%v) accessKey(%v) volume(%v)",
-				GetRequestID(r), akPolicy.UserID, param.AccessKey(), param.Bucket())
+				GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket())
 			allowed = true
 			return
 		}
@@ -262,16 +262,16 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			allowed = true
 			return
 		}
-		var userPolicy = akPolicy.Policy
+		var userPolicy = userInfo.Policy
 		if userPolicy.IsOwn(param.Bucket()) {
 			log.LogDebugf("policyCheck: user is owner: requestID(%v) userID(%v) accessKey(%v) volume(%v)",
-				GetRequestID(r), akPolicy.UserID, param.AccessKey(), param.Bucket())
+				GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket())
 			allowed = true
 			return
 		}
 		if userPolicy.IsAuthorized(param.Bucket(), param.Action()) {
 			log.LogDebugf("policyCheck: action is authorized: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
-				GetRequestID(r), akPolicy.UserID, param.AccessKey(), param.Bucket(), param.Action())
+				GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
 			allowed = true
 			return
 		}

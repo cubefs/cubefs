@@ -35,123 +35,124 @@ func (u *User) submit(metadata *RaftCmd) (err error) {
 	return
 }
 
-// key=#ak#accesskey,value = akPolicy
-func (u *User) syncAddAKPolicy(akPolicy *proto.AKPolicy) (err error) {
-	return u.syncPutAKPolicy(opSyncAddAKPolicy, akPolicy)
+// key = #ak#accesskey, value = userInfo
+func (u *User) syncAddUserInfo(userInfo *proto.UserInfo) (err error) {
+	return u.syncPutUserInfo(opSyncAddUserInfo, userInfo)
 }
 
-func (u *User) syncDeleteAKPolicy(akPolicy *proto.AKPolicy) (err error) {
-	return u.syncPutAKPolicy(opSyncDeleteAKPolicy, akPolicy)
+func (u *User) syncDeleteUserInfo(userInfo *proto.UserInfo) (err error) {
+	return u.syncPutUserInfo(opSyncDeleteUserInfo, userInfo)
 }
 
-func (u *User) syncUpdateAKPolicy(akPolicy *proto.AKPolicy) (err error) {
-	return u.syncPutAKPolicy(opSyncUpdateAKPolicy, akPolicy)
+func (u *User) syncUpdateUserInfo(userInfo *proto.UserInfo) (err error) {
+	return u.syncPutUserInfo(opSyncUpdateUserInfo, userInfo)
 }
 
-func (u *User) syncPutAKPolicy(opType uint32, akPolicy *proto.AKPolicy) (err error) {
+func (u *User) syncPutUserInfo(opType uint32, userInfo *proto.UserInfo) (err error) {
+	raftCmd := new(RaftCmd)
+	raftCmd.Op = opType
+	raftCmd.K = userPrefix + userInfo.UserID
+	raftCmd.V, err = json.Marshal(userInfo)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	return u.submit(raftCmd)
+}
+
+// key = #user#userid, value = userInfo
+func (u *User) syncAddAKUser(akUser *proto.AKUser) (err error) {
+	return u.syncPutAKUser(opSyncAddAKUser, akUser)
+}
+
+func (u *User) syncDeleteAKUser(akUser *proto.AKUser) (err error) {
+	return u.syncPutAKUser(opSyncDeleteAKUser, akUser)
+}
+
+func (u *User) syncPutAKUser(opType uint32, akUser *proto.AKUser) (err error) {
 	userInfo := new(RaftCmd)
 	userInfo.Op = opType
-	userInfo.K = akPrefix + akPolicy.AccessKey
-	userInfo.V, err = json.Marshal(akPolicy)
+	userInfo.K = akPrefix + akUser.AccessKey
+	userInfo.V, err = json.Marshal(akUser)
 	if err != nil {
 		return errors.New(err.Error())
 	}
 	return u.submit(userInfo)
 }
 
-// key=#user#userid,value = akPolicy
-func (u *User) syncAddUserAK(userAK *proto.UserAK) (err error) {
-	return u.syncPutUserAK(opSyncAddUserAK, userAK)
+// key = #voluser#volname, value = userIDs
+func (u *User) syncAddVolUser(volUser *proto.VolUser) (err error) {
+	return u.syncPutVolUser(opSyncAddVolUser, volUser)
 }
 
-func (u *User) syncDeleteUserAK(userAK *proto.UserAK) (err error) {
-	return u.syncPutUserAK(opSyncDeleteUserAK, userAK)
+func (u *User) syncDeleteVolUser(volUser *proto.VolUser) (err error) {
+	return u.syncPutVolUser(opSyncDeleteVolUser, volUser)
 }
 
-func (u *User) syncPutUserAK(opType uint32, userAK *proto.UserAK) (err error) {
+func (u *User) syncUpdateVolUser(volUser *proto.VolUser) (err error) {
+	return u.syncPutVolUser(opSyncUpdateVolUser, volUser)
+}
+
+func (u *User) syncPutVolUser(opType uint32, volUser *proto.VolUser) (err error) {
 	userInfo := new(RaftCmd)
 	userInfo.Op = opType
-	userInfo.K = userPrefix + userAK.UserID
-	userInfo.V, err = json.Marshal(userAK)
+	userInfo.K = volUserPrefix + volUser.Vol
+	userInfo.V, err = json.Marshal(volUser)
 	if err != nil {
 		return errors.New(err.Error())
 	}
 	return u.submit(userInfo)
 }
 
-func (u *User) syncAddVolAK(volAK *proto.VolAK) (err error) {
-	return u.syncPutVolAK(opSyncAddVolAK, volAK)
-}
-
-func (u *User) syncDeleteVolAK(volAK *proto.VolAK) (err error) {
-	return u.syncPutVolAK(opSyncDeleteVolAK, volAK)
-}
-
-func (u *User) syncUpdateVolAK(volAK *proto.VolAK) (err error) {
-	return u.syncPutVolAK(opSyncUpdateVolAK, volAK)
-}
-
-func (u *User) syncPutVolAK(opType uint32, volAK *proto.VolAK) (err error) {
-	userInfo := new(RaftCmd)
-	userInfo.Op = opType
-	userInfo.K = volAKPrefix + volAK.Vol
-	userInfo.V, err = json.Marshal(volAK)
+func (u *User) loadUserStore() (err error) {
+	result, err := u.fsm.store.SeekForPrefix([]byte(userPrefix))
 	if err != nil {
-		return errors.New(err.Error())
+		err = fmt.Errorf("action[loadUserKeyInfo], err: %v", err.Error())
+		return err
 	}
-	return u.submit(userInfo)
+	for _, value := range result {
+		userInfo := &proto.UserInfo{}
+		if err = json.Unmarshal(value, userInfo); err != nil {
+			err = fmt.Errorf("action[loadUserKeyInfo], unmarshal err: %v", err.Error())
+			return err
+		}
+		u.userStore.Store(userInfo.UserID, userInfo)
+		log.LogInfof("action[loadUserKeyInfo], userID[%v]", userInfo.UserID)
+	}
+	return
 }
 
 func (u *User) loadAKStore() (err error) {
 	result, err := u.fsm.store.SeekForPrefix([]byte(akPrefix))
 	if err != nil {
-		err = fmt.Errorf("action[loadAccessKeyInfo], err: %v", err.Error())
+		err = fmt.Errorf("action[loadAKStore], err: %v", err.Error())
 		return err
 	}
 	for _, value := range result {
-		aks := &proto.AKPolicy{}
-		if err = json.Unmarshal(value, aks); err != nil {
-			err = fmt.Errorf("action[loadAccessKeyInfo], unmarshal err: %v", err.Error())
+		akUser := &proto.AKUser{}
+		if err = json.Unmarshal(value, akUser); err != nil {
+			err = fmt.Errorf("action[loadAKStore], unmarshal err: %v", err.Error())
 			return err
 		}
-		u.akStore.Store(aks.AccessKey, aks)
-		log.LogInfof("action[loadAccessKeyInfo], ak[%v]", aks.AccessKey)
+		u.AKStore.Store(akUser.AccessKey, akUser)
+		log.LogInfof("action[loadAKStore], ak[%v], userID[%v]", akUser.AccessKey, akUser.UserID)
 	}
 	return
 }
 
-func (u *User) loadUserAK() (err error) {
-	result, err := u.fsm.store.SeekForPrefix([]byte(userPrefix))
+func (u *User) loadVolUsers() (err error) {
+	result, err := u.fsm.store.SeekForPrefix([]byte(volUserPrefix))
 	if err != nil {
-		err = fmt.Errorf("action[loadUserAK], err: %v", err.Error())
+		err = fmt.Errorf("action[loadVolUsers], err: %v", err.Error())
 		return err
 	}
 	for _, value := range result {
-		user := &proto.UserAK{}
-		if err = json.Unmarshal(value, user); err != nil {
-			err = fmt.Errorf("action[loadUserAK], unmarshal err: %v", err.Error())
+		volUser := &proto.VolUser{}
+		if err = json.Unmarshal(value, volUser); err != nil {
+			err = fmt.Errorf("action[loadVolUsers], unmarshal err: %v", err.Error())
 			return err
 		}
-		u.userAk.Store(user.UserID, user)
-		log.LogInfof("action[loadUserAK], userID[%v]", user.UserID)
-	}
-	return
-}
-
-func (u *User) loadVolAKs() (err error) {
-	result, err := u.fsm.store.SeekForPrefix([]byte(volAKPrefix))
-	if err != nil {
-		err = fmt.Errorf("action[loadVolAKs], err: %v", err.Error())
-		return err
-	}
-	for _, value := range result {
-		volAK := &proto.VolAK{}
-		if err = json.Unmarshal(value, volAK); err != nil {
-			err = fmt.Errorf("action[loadVolAKs], unmarshal err: %v", err.Error())
-			return err
-		}
-		u.volAKs.Store(volAK.Vol, volAK)
-		log.LogInfof("action[loadVolAKs], vol[%v]", volAK.Vol)
+		u.volUser.Store(volUser.Vol, volUser)
+		log.LogInfof("action[loadVolUsers], vol[%v]", volUser.Vol)
 	}
 	return
 }

@@ -27,7 +27,7 @@ const (
 )
 
 type UserStore struct {
-	akInfoStore map[string]*proto.AKPolicy
+	akInfoStore map[string]*proto.UserInfo
 	akMu        sync.RWMutex
 	closeCh     chan struct{}
 	closeOnce   sync.Once
@@ -35,7 +35,7 @@ type UserStore struct {
 
 func (o *ObjectNode) newUserStore() *UserStore {
 	us := &UserStore{
-		akInfoStore: make(map[string]*proto.AKPolicy),
+		akInfoStore: make(map[string]*proto.UserInfo),
 		closeCh:     make(chan struct{}, 1),
 	}
 	go o.refresh()
@@ -74,17 +74,17 @@ func (us *UserStore) Close() {
 	})
 }
 
-func (us *UserStore) Get(accessKey string) (akPolicy *proto.AKPolicy, exit bool) {
+func (us *UserStore) Get(accessKey string) (userInfo *proto.UserInfo, exit bool) {
 	us.akMu.RLock()
 	defer us.akMu.RUnlock()
-	akPolicy, exit = us.akInfoStore[accessKey]
+	userInfo, exit = us.akInfoStore[accessKey]
 	return
 }
 
-func (us *UserStore) Put(accessKey string, akPolicy *proto.AKPolicy) {
+func (us *UserStore) Put(accessKey string, userInfo *proto.UserInfo) {
 	us.akMu.Lock()
 	defer us.akMu.Unlock()
-	us.akInfoStore[accessKey] = akPolicy
+	us.akInfoStore[accessKey] = userInfo
 	return
 }
 
