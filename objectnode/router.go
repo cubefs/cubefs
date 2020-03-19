@@ -63,6 +63,13 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 				"X-Amz-Date", "{date:.+}", "X-Amz-SignedHeaders", "{signedHeaders:.+}",
 				"X-Amz-Expires", "{expires:[0-9]+}")
 
+		// List parts
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListParts.html
+		r.Methods(http.MethodGet).
+			Path("/{object:.+}").
+			HandlerFunc(o.policyCheck(o.listPartsHandler, []Action{ListMultipartUploadPartsAction})).
+			Queries("uploadId", "{uploadId:.*}")
+
 		// Get object tagging
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectTagging.html
 		r.Methods(http.MethodGet).
@@ -86,7 +93,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		// Get object acl
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAcl.html
 		r.Methods(http.MethodGet).
-			Path("/{objject:.+}").
+			Path("/{object:.+}").
 			HandlerFunc(o.policyCheck(o.getObjectACLHandler, []Action{GetObjectAclAction})).
 			Queries("acl", "")
 
@@ -107,12 +114,6 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.Methods(http.MethodGet).
 			HandlerFunc(o.policyCheck(o.listMultipartUploadsHandler, []Action{ListMultipartUploadPartsAction})).
 			Queries("uploads", "")
-
-		// List parts
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListParts.html
-		r.Methods(http.MethodGet).
-			HandlerFunc(o.policyCheck(o.listPartsHandler, []Action{ListMultipartUploadPartsAction})).
-			Queries("uploadId", "{uploadId:.*}")
 
 		// Get bucket location
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLocation.html
