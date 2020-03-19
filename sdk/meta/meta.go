@@ -91,6 +91,10 @@ type MetaWrapper struct {
 	sessionKey   string
 	ticketMess   auth.TicketMess
 
+	enableToken bool
+	tokenKey    string
+	tokenType   int8
+
 	closeCh   chan struct{}
 	closeOnce sync.Once
 }
@@ -106,6 +110,7 @@ type Ticket struct {
 func NewMetaWrapper(opt *proto.MountOptions, validateOwner bool) (*MetaWrapper, error) {
 	mw := new(MetaWrapper)
 	mw.closeCh = make(chan struct{}, 1)
+
 	if opt.Authenticate {
 		ticket, err := getTicketFromAuthnode(opt.Owner, opt.TicketMess)
 		if err != nil {
@@ -118,6 +123,7 @@ func NewMetaWrapper(opt *proto.MountOptions, validateOwner bool) (*MetaWrapper, 
 		mw.sessionKey = ticket.SessionKey
 		mw.ticketMess = opt.TicketMess
 	}
+
 	mw.volname = opt.Volname
 	mw.owner = opt.Owner
 	mw.ownerValidation = validateOwner
@@ -127,12 +133,13 @@ func NewMetaWrapper(opt *proto.MountOptions, validateOwner bool) (*MetaWrapper, 
 	mw.partitions = make(map[uint64]*MetaPartition)
 	mw.ranges = btree.New(32)
 	mw.rwPartitions = make([]*MetaPartition, 0)
+	mw.tokenKey = opt.TokenKey
+
 	_ = mw.updateClusterInfo()
-	_ = mw.updateVolStatInfo()
 
 	limit := MaxMountRetryLimit
 retry:
-	if err := mw.updateMetaPartitions(); err != nil {
+	if err := mw.initMetaWrapper(); err != nil {
 		if limit <= 0 {
 			return nil, errors.Trace(err, "Init meta wrapper failed!")
 		} else {
@@ -145,6 +152,20 @@ retry:
 
 	go mw.refresh()
 	return mw, nil
+}
+
+func (mw *MetaWrapper) initMetaWrapper() error {
+	err := mw.updateVolStatInfo()
+	if err != nil {
+		return err
+	}
+	if mw.enableToken {
+		err = mw.updateTokenType()
+		if err != nil {
+			return err
+		}
+	}
+	return mw.updateMetaPartitions()
 }
 
 func (mw *MetaWrapper) OSSSecure() (accessKey, secretKey string) {
@@ -163,6 +184,10 @@ func (mw *MetaWrapper) Cluster() string {
 
 func (mw *MetaWrapper) LocalIP() string {
 	return mw.localIP
+}
+
+func (mw *MetaWrapper) TokenType() int8 {
+	return mw.tokenType
 }
 
 func (mw *MetaWrapper) exporterKey(act string) string {
