@@ -1180,7 +1180,7 @@ func (v *volume) listDir(fileInfos []*FSFileInfo, prefixMap PrefixMap, parentId,
 		if delimiter != "" {
 			var nonPrefixPart = strings.Replace(path, prefix, "", 1)
 			if idx := strings.Index(nonPrefixPart, delimiter); idx >= 0 {
-				var commonPrefix = prefix + util.SubString(nonPrefixPart, 0, idx)
+				var commonPrefix = prefix + util.SubString(nonPrefixPart, 0, idx) + delimiter
 				prefixMap.AddPrefix(commonPrefix)
 				continue
 			}
