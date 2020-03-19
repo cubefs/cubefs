@@ -185,7 +185,7 @@ func (m *Server) refreshUser() (err error) {
 	//		}
 	//	}
 	//}
-	if !m.user.rootExist {
+	if _, err = m.user.getUserInfo(RootUserID); err != nil {
 		var param = cfsProto.UserCreateParam{
 			ID:       RootUserID,
 			Password: DefaultRootPasswd,
@@ -194,7 +194,6 @@ func (m *Server) refreshUser() (err error) {
 		if _, err = m.user.createKey(&param); err != nil {
 			return err
 		}
-		m.user.rootExist = true
 	}
 	return nil
 }

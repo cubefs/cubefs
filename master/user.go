@@ -30,7 +30,6 @@ type User struct {
 	userStoreMutex sync.RWMutex
 	AKStoreMutex   sync.RWMutex
 	volUserMutex   sync.RWMutex
-	rootExist      bool
 }
 
 func newUser(fsm *MetadataFsm, partition raftstore.Partition) (u *User) {
