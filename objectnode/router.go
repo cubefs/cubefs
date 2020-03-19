@@ -69,6 +69,14 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 				"X-Amz-Expires", "{expires:[0-9]+}").
 			HandlerFunc(o.getObjectHandler)
 
+		// List parts
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListParts.html
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSListPartsAction)).
+			Methods(http.MethodGet).
+			Path("/{object:.+}").
+			Queries("uploadId", "{uploadId:.*}").
+			HandlerFunc(o.listPartsHandler)
+
 		// Get object tagging
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectTagging.html
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetObjectTaggingAction)).
@@ -96,7 +104,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAcl.html
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetObjectAclAction)).
 			Methods(http.MethodGet).
-			Path("/{objject:.+}").
+			Path("/{object:.+}").
 			Queries("acl", "").
 			HandlerFunc(o.getObjectACLHandler)
 
@@ -120,13 +128,6 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			Methods(http.MethodGet).
 			Queries("uploads", "").
 			HandlerFunc(o.listMultipartUploadsHandler)
-
-		// List parts
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListParts.html
-		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSListPartsAction)).
-			Methods(http.MethodGet).
-			Queries("uploadId", "{uploadId:.*}").
-			HandlerFunc(o.listPartsHandler)
 
 		// Get bucket location
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLocation.html

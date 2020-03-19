@@ -131,14 +131,14 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// validate and fix range
-	if isRangeRead && rangeUpper > uint64(fileInfo.Size) {
-		rangeUpper = uint64(fileInfo.Size)
+	if isRangeRead && rangeUpper > uint64(fileInfo.Size)-1 {
+		rangeUpper = uint64(fileInfo.Size) - 1
 	}
 
 	// compute content length
 	var contentLength = uint64(fileInfo.Size)
 	if isRangeRead {
-		contentLength = rangeUpper - rangeLower
+		contentLength = rangeUpper - rangeLower + 1
 	}
 
 	// set response header for GetObject
@@ -159,7 +159,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		if rangeUpper == 0 {
 			size = uint64(fileInfo.Size) - rangeLower
 		} else {
-			size = rangeUpper - rangeLower
+			size = rangeUpper - rangeLower + 1
 		}
 	}
 	if err = vol.ReadFile(param.Object(), w, offset, size); err != nil {
