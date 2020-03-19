@@ -246,9 +246,6 @@ func (v *volume) ListFilesV1(request *ListBucketRequestV1) ([]*FSFileInfo, strin
 	if err != nil {
 		return nil, "", false, nil, err
 	}
-	if len(infos) <= 0 {
-		return nil, "", false, nil, nil
-	}
 
 	var nextMarker string
 	var isTruncated bool
@@ -276,9 +273,6 @@ func (v *volume) ListFilesV2(request *ListBucketRequestV2) ([]*FSFileInfo, uint6
 
 	infos, prefixes, err = v.listFilesV2(prefix, startAfter, contToken, delimiter, maxKeys)
 	if err != nil {
-		return nil, 0, "", false, nil, err
-	}
-	if len(infos) <= 0 {
 		return nil, 0, "", false, nil, err
 	}
 
