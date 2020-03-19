@@ -1168,32 +1168,35 @@ func (v *volume) listDir(fileInfos []*FSFileInfo, prefixMap PrefixMap, parentId,
 	}
 
 	for _, child := range children {
-		log.LogDebugf("listDir: process child, inode(%v) name(%v) parentId(%v) isDir(%v) isRegular(%v)",
-			child.Inode, child.Name, parentId, os.FileMode(child.Type).IsDir(), os.FileMode(child.Type).IsRegular())
+
+		var path = strings.Join(append(dirs, child.Name), "/")
+
+		if os.FileMode(child.Type).IsDir() {
+			path += "/"
+		}
+		log.LogDebugf("listDir: process child, path(%v) prefix(%v) marker(%v) delimiter(%v)",
+			path, prefix, marker, delimiter)
+
+		if prefix != "" && !strings.HasPrefix(path, prefix) {
+			continue
+		}
+		if marker != "" && path < marker {
+			continue
+		}
+		if delimiter != "" {
+			var nonPrefixPart = strings.Replace(path, prefix, "", 1)
+			if idx := strings.Index(nonPrefixPart, delimiter); idx >= 0 {
+				var commonPrefix = prefix + util.SubString(nonPrefixPart, 0, idx)
+				prefixMap.AddPrefix(commonPrefix)
+				continue
+			}
+		}
 		if os.FileMode(child.Type).IsDir() {
 			fileInfos, prefixMap, err = v.listDir(fileInfos, prefixMap, child.Inode, maxKeys, append(dirs, child.Name), prefix, marker, delimiter)
 			if err != nil {
 				return fileInfos, prefixMap, err
 			}
 		} else {
-			path := strings.Join(dirs, "/")
-			if len(dirs) == 0 {
-				path += child.Name
-			} else {
-				path += "/" + child.Name
-			}
-			if marker != "" && path < marker {
-				continue
-			}
-			if prefix != "" && !strings.HasPrefix(path, prefix) {
-				continue
-			}
-			if delimiter != "" && strings.Contains(child.Name, delimiter) {
-				idx := strings.Index(path, delimiter)
-				prefix := util.SubString(path, 0, idx)
-				prefixMap.AddPrefix(prefix)
-				continue
-			}
 			fileInfo := &FSFileInfo{
 				Inode: child.Inode,
 				Path:  path,
