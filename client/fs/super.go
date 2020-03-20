@@ -119,6 +119,10 @@ func (s *Super) ClusterName() string {
 	return s.cluster
 }
 
+func (s *Super) TokenType() int8 {
+	return s.mw.TokenType()
+}
+
 func (s *Super) GetRate(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(s.ec.GetRate()))
 }

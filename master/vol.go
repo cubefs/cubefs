@@ -42,6 +42,9 @@ type Vol struct {
 	authenticate       bool
 	crossZone          bool
 	zoneName           string
+	enableToken        bool
+	tokens             map[string]*proto.Token
+	tokensLock         sync.RWMutex
 	MetaPartitions     map[uint64]*MetaPartition
 	mpsLock            sync.RWMutex
 	dataPartitions     *DataPartitionMap
@@ -52,7 +55,7 @@ type Vol struct {
 	sync.RWMutex
 }
 
-func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, crossZone bool) (vol *Vol) {
+func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, crossZone, enableToken bool) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	if dpReplicaNum <= 1 {
@@ -79,6 +82,8 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.zoneName = zoneName
 	vol.viewCache = make([]byte, 0)
 	vol.mpsCache = make([]byte, 0)
+	vol.enableToken = enableToken
+	vol.tokens = make(map[string]*proto.Token, 0)
 	return
 }
 
@@ -94,7 +99,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.ReplicaNum,
 		vv.FollowerRead,
 		vv.Authenticate,
-		vv.CrossZone)
+		vv.CrossZone,
+		vv.EnableToken)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status
@@ -105,6 +111,29 @@ func (vol *Vol) refreshOSSSecure() (key, secret string) {
 	vol.OSSAccessKey = util.RandomString(16, util.Numeric|util.LowerLetter|util.UpperLetter)
 	vol.OSSSecretKey = util.RandomString(32, util.Numeric|util.LowerLetter|util.UpperLetter)
 	return vol.OSSAccessKey, vol.OSSSecretKey
+}
+
+func (vol *Vol) getToken(token string) (tokenObj *proto.Token, err error) {
+	vol.tokensLock.Lock()
+	defer vol.tokensLock.Unlock()
+	tokenObj, ok := vol.tokens[token]
+	if !ok {
+		return nil, proto.ErrTokenNotFound
+	}
+	return
+}
+
+func (vol *Vol) deleteToken(token string) {
+	vol.tokensLock.RLock()
+	defer vol.tokensLock.RUnlock()
+	delete(vol.tokens, token)
+}
+
+func (vol *Vol) putToken(token *proto.Token) {
+	vol.tokensLock.Lock()
+	defer vol.tokensLock.Unlock()
+	vol.tokens[token.Value] = token
+	return
 }
 
 func (vol *Vol) addMetaPartition(mp *MetaPartition) {
@@ -546,19 +575,28 @@ func (vol *Vol) deleteDataPartitionFromDataNode(c *Cluster, task *proto.AdminTas
 	return
 }
 
-func (vol *Vol) deleteVolFromStore(c *Cluster) {
+func (vol *Vol) deleteVolFromStore(c *Cluster) (err error) {
 
-	if err := c.syncDeleteVol(vol); err != nil {
+	if err = c.syncDeleteVol(vol); err != nil {
 		return
 	}
 
 	// delete the metadata of the meta and data partitionMap first
 	vol.deleteDataPartitionsFromStore(c)
 	vol.deleteMetaPartitionsFromStore(c)
-
+	vol.deleteTokensFromStore(c)
 	// then delete the volume
 	c.deleteVol(vol.Name)
 	c.volStatInfo.Delete(vol.Name)
+	return
+}
+
+func (vol *Vol) deleteTokensFromStore(c *Cluster) {
+	vol.tokensLock.RLock()
+	defer vol.tokensLock.RUnlock()
+	for _, token := range vol.tokens {
+		c.syncDeleteToken(token)
+	}
 }
 
 func (vol *Vol) deleteMetaPartitionsFromStore(c *Cluster) {

@@ -66,6 +66,7 @@ var (
 	ErrExpiredTicket                   = errors.New("expired ticket")
 	ErrMasterAPIGenRespError           = errors.New("master API generate response error")
 	ErrZoneNotExists                   = errors.New("zone not exists")
+	ErrTokenNotFound                   = errors.New("token not found")
 )
 
 // http response error code and error message definitions
@@ -160,4 +161,5 @@ var Err2CodeMap = map[error]int32{
 	ErrExpiredTicket:                   ErrCodeExpiredTicket,
 	ErrMasterAPIGenRespError:           ErrCodeMasterAPIGenRespError,
 	ErrZoneNotExists:                   ErrCodeNotExists,
+	ErrTokenNotFound:                   ErrCodeNotExists,
 }
