@@ -17,6 +17,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
@@ -154,7 +155,7 @@ func newUserInfoCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdUserPermUse   = "perm [USER ID] [VOLUME] [PERM]"
+	cmdUserPermUse   = "perm [USER ID] [VOLUME] [PERM (READONLY,RO,READWRITE,RW,NONE)]"
 	cmdUserPermShort = "Setup volume permission for a user"
 )
 
@@ -167,10 +168,10 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			var userID = args[0]
 			var volume = args[1]
 			var perm proto.Permission
-			switch args[2] {
-			case "ro":
+			switch strings.ToLower(args[2]) {
+			case "ro", "readonly":
 				perm = proto.BuiltinPermissionReadOnly
-			case "rw":
+			case "rw", "readwrite":
 				perm = proto.BuiltinPermissionWritable
 			case "none":
 				perm = proto.NonePermission
@@ -244,12 +245,11 @@ func newUserListCmd(client *master.MasterClient) *cobra.Command {
 			if users, err = client.UserAPI().ListUsers(optKeyword); err != nil {
 				return
 			}
-			stdout("\n[Users]\n")
+			stdout("[Users]\n")
 			stdout("%v\n", userInfoTableHeader)
 			for _, user := range users {
 				stdout("%v\n", formatUserInfoTableRow(user))
 			}
-			stdout("\n")
 		},
 	}
 	cmd.Flags().StringVar(&optKeyword, "keyword", "", "Specify keyword of user name to filter")
@@ -257,7 +257,7 @@ func newUserListCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func printUserInfo(userInfo *proto.UserInfo) {
-	stdout("\n[Summary]\n")
+	stdout("[Summary]\n")
 	stdout("  User ID    : %v\n", userInfo.UserID)
 	stdout("  Access Key : %v\n", userInfo.AccessKey)
 	stdout("  Secret Key : %v\n", userInfo.SecretKey)
@@ -266,22 +266,22 @@ func printUserInfo(userInfo *proto.UserInfo) {
 	if userInfo.Policy == nil {
 		return
 	}
-	stdout("\n[Own volumes]\n")
+	stdout("[Own volumes]\n")
 	if len(userInfo.Policy.OwnVols) != 0 {
 		for _, vol := range userInfo.Policy.OwnVols {
-			stdout("  %s\n", vol)
+			stdout("%s\n", vol)
 		}
 	} else {
-		stdout("  None\n")
+		stdout("None\n")
 	}
-	stdout("\n[Authorized volumes]\n")
+	stdout("[Authorized volumes]\n")
 
 	if len(userInfo.Policy.AuthorizedVols) != 0 {
-		stdout("  %10v\t%10v\n", "VOLUME", "PERMISSION")
+		stdout("%10v    %10v\n", "VOLUME", "PERMISSION")
 		for vol, perms := range userInfo.Policy.AuthorizedVols {
-			stdout("  %10v\t%10v\n", vol, perms)
+			stdout("%10v    %10v\n", vol, perms)
 		}
 	} else {
-		stdout("  None\n")
+		stdout("None\n")
 	}
 }

@@ -66,7 +66,7 @@ func formatVolumeStatus(status uint8) string {
 }
 
 var (
-	volumeInfoTablePattern = "  %10v\t%10v\t%10v\t%10v\t%8v\t%10v"
+	volumeInfoTablePattern = "%10v    %10v    %10v    %10v    %8v    %10v"
 	volumeInfoTableHeader  = fmt.Sprintf(volumeInfoTablePattern, "VOLUME", "OWNER", "USED", "TOTAL", "STATUS", "CREATE TIME")
 )
 
@@ -76,7 +76,7 @@ func formatVolInfoTableRow(vi *proto.VolInfo) string {
 }
 
 var (
-	dataPartitionTablePattern = "  %10v\t%8v\t%10v\t%18v\t%18v"
+	dataPartitionTablePattern = "%10v    %8v    %10v    %18v    %18v"
 	dataPartitionTableHeader  = fmt.Sprintf(dataPartitionTablePattern,
 		"ID", "REPLICAS", "STATUS", "LEADER", "MEMBERS")
 )
@@ -87,7 +87,7 @@ func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 }
 
 var (
-	metaPartitionTablePattern = "  %10v\t%12v\t%12v\t%12v\t%10v\t%18v\t%18v"
+	metaPartitionTablePattern = "%10v    %12v    %12v    %12v    %10v    %18v    %18v"
 	metaPartitionTableHeader  = fmt.Sprintf(metaPartitionTablePattern,
 		"ID", "MAX INODE", "START", "END", "STATUS", "LEADER", "MEMBERS")
 )

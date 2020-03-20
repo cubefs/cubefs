@@ -44,6 +44,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolCreateCmd(client),
 		newVolInfoCmd(client),
 		newVolDeleteCmd(client),
+		newVolTransferCmd(client),
 	)
 	return cmd
 }
@@ -56,8 +57,9 @@ const (
 func newVolListCmd(client *master.MasterClient) *cobra.Command {
 	var optKeyword string
 	var cmd = &cobra.Command{
-		Use:   cmdVolListUse,
-		Short: cmdVolListShort,
+		Use:     cmdVolListUse,
+		Short:   cmdVolListShort,
+		Aliases: []string{"ls"},
 		Run: func(cmd *cobra.Command, args []string) {
 			var vols []*proto.VolInfo
 			var err error
@@ -70,12 +72,11 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 			if vols, err = client.AdminAPI().ListVols(optKeyword); err != nil {
 				return
 			}
-			stdout("\n[Volumes]\n")
-			stdout("\n%v\n", volumeInfoTableHeader)
+			stdout("[Volumes]\n")
+			stdout("%v\n", volumeInfoTableHeader)
 			for _, vol := range vols {
 				stdout("%v\n", formatVolInfoTableRow(vol))
 			}
-			stdout("\n")
 		},
 	}
 	cmd.Flags().StringVar(&optKeyword, "keyword", "", "Specify keyword of volume name to filter")
@@ -170,7 +171,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 				os.Exit(1)
 			}
 			// print summary info
-			stdout("\n[Summary]\n%s\n", formatSimpleVolView(svv))
+			stdout("[Summary]\n%s\n", formatSimpleVolView(svv))
 
 			// print metadata detail
 			if optMetaDetail {
@@ -179,7 +180,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 					errout("Get volume metadata detail information failed:\n%v\n", err)
 					os.Exit(1)
 				}
-				stdout("\n[Metadata detail]\n")
+				stdout("[Metadata detail]\n")
 				stdout("%v\n", metaPartitionTableHeader)
 				sort.SliceStable(views, func(i, j int) bool {
 					return views[i].PartitionID < views[j].PartitionID
@@ -187,7 +188,6 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 				for _, view := range views {
 					stdout("%v\n", formatMetaPartitionTableRow(view))
 				}
-				stdout("\n")
 			}
 
 			// print data detail
@@ -197,7 +197,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 					errout("Get volume data detail information failed:\n%v\n", err)
 					os.Exit(1)
 				}
-				stdout("\n[Data detail]\n")
+				stdout("[Data detail]\n")
 				stdout("%v\n", dataPartitionTableHeader)
 				sort.SliceStable(view.DataPartitions, func(i, j int) bool {
 					return view.DataPartitions[i].PartitionID < view.DataPartitions[j].PartitionID
@@ -205,7 +205,6 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 				for _, dp := range view.DataPartitions {
 					stdout("%v\n", formatDataPartitionTableRow(dp))
 				}
-				stdout("\n")
 			}
 			return
 		},
@@ -254,6 +253,55 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	return cmd
+}
+
+const (
+	cmdVolTransferUse   = "transfer [VOLUME NAME] [USER ID]"
+	cmdVolTransferShort = "Transfer volume to another user. (Change owner of volume)"
+)
+
+func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:     cmdVolTransferUse,
+		Short:   cmdVolTransferShort,
+		Aliases: []string{"trans"},
+		Args:    cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var volume = args[0]
+			var userID = args[1]
+
+			defer func() {
+				if err != nil {
+					errout("Transfer volume [%v] to user [%v] failed: %v\n", volume, userID, err)
+					os.Exit(1)
+				}
+			}()
+
+			// check target user and volume
+			var volSimpleView *proto.SimpleVolView
+			if volSimpleView, err = client.AdminAPI().GetVolumeSimpleInfo(volume); err != nil {
+				return
+			}
+			if volSimpleView.Status != 0 {
+				err = fmt.Errorf("volume status abnormal")
+				return
+			}
+			var userInfo *proto.UserInfo
+			if userInfo, err = client.UserAPI().GetUserInfo(userID); err != nil {
+				return
+			}
+			var param = proto.UserTransferVolParam{
+				Volume:  volume,
+				UserSrc: volSimpleView.Owner,
+				UserDst: userInfo.UserID,
+			}
+			if _, err = client.UserAPI().TransferVol(&param); err != nil {
+				return
+			}
+		},
+	}
 	return cmd
 }
 
