@@ -204,7 +204,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	for _, name := range vols {
 		stat, ok := m.cluster.volStatInfo.Load(name)
 		if !ok {
-			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, "0.0001"))
+			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, "0.0001", false))
 			continue
 		}
 		cv.VolStatInfo = append(cv.VolStatInfo, stat.(*volStatInfo))
@@ -509,9 +509,10 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		replicaNum   int
 		followerRead bool
 		authenticate bool
+		enableToken  bool
 		vol          *Vol
 	)
-	if name, authKey, capacity, replicaNum, err = parseRequestToUpdateVol(r); err != nil {
+	if name, authKey, capacity, replicaNum, enableToken, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -528,7 +529,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.updateVol(name, authKey, uint64(capacity), uint8(replicaNum), followerRead, authenticate); err != nil {
+	if err = m.cluster.updateVol(name, authKey, uint64(capacity), uint8(replicaNum), followerRead, authenticate, enableToken); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -550,10 +551,11 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		followerRead bool
 		authenticate bool
 		crossZone    bool
+		enableToken  bool
 		zoneName     string
 	)
 
-	if name, owner, zoneName, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone, err = parseRequestToCreateVol(r); err != nil {
+	if name, owner, zoneName, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone, enableToken, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -562,7 +564,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.createVol(name, owner, zoneName, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone); err != nil {
+	if vol, err = m.cluster.createVol(name, owner, zoneName, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone, enableToken); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -608,6 +610,8 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		NeedToLowerReplica: vol.NeedToLowerReplica,
 		Authenticate:       vol.authenticate,
 		CrossZone:          vol.crossZone,
+		EnableToken:        vol.enableToken,
+		Tokens:             vol.tokens,
 		RwDpCnt:            vol.dataPartitions.readableAndWritableCnt,
 		MpCnt:              len(vol.MetaPartitions),
 		DpCnt:              len(vol.dataPartitions.partitionMap),
@@ -1052,7 +1056,7 @@ func parseRequestToDeleteVol(r *http.Request) (name, authKey string, err error) 
 
 }
 
-func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity, replicaNum int, err error) {
+func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity, replicaNum int, enableToken bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1077,6 +1081,7 @@ func parseRequestToUpdateVol(r *http.Request) (name, authKey string, capacity, r
 			return
 		}
 	}
+	enableToken = extractEnableToken(r)
 	return
 }
 
@@ -1100,7 +1105,7 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authent
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone bool, err error) {
+func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone, enableToken bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1151,6 +1156,15 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName string, mpC
 		return
 	}
 	zoneName = r.FormValue(zoneNameKey)
+	enableToken = extractEnableToken(r)
+	return
+}
+
+func extractEnableToken(r *http.Request) (enableToken bool) {
+	enableToken, err := strconv.ParseBool(r.FormValue(enableTokenKey))
+	if err != nil {
+		enableToken = false
+	}
 	return
 }
 
@@ -1552,6 +1566,7 @@ func volStat(vol *Vol) (stat *proto.VolStatInfo) {
 	if stat.UsedSize > stat.TotalSize {
 		stat.UsedSize = stat.TotalSize
 	}
+	stat.EnableToken = vol.enableToken
 	log.LogDebugf("total[%v],usedSize[%v]", stat.TotalSize, stat.UsedSize)
 	return
 }

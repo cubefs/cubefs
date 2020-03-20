@@ -211,6 +211,8 @@ func mount(opt *proto.MountOptions) (*fuse.MountedFileSystem, error) {
 
 	exporter.RegistConsul(super.ClusterName(), ModuleName, opt.Config)
 
+	opt.Rdonly = super.TokenType() == int8(proto.ReadOnlyToken)
+
 	server := fuseutil.NewFileSystemServer(super)
 	mntcfg := &fuse.MountConfig{
 		FSName:                  "chubaofs-" + opt.Volname,
@@ -286,6 +288,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 			opt.TicketMess.CertFile = GlobalMountOptions[proto.CertFile].GetString()
 		}
 	}
+	opt.TokenKey = GlobalMountOptions[proto.TokenKey].GetString()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))

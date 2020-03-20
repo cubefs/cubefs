@@ -37,6 +37,7 @@ const (
 	TicketHost
 	EnableHTTPS
 	CertFile
+	TokenKey
 
 	MaxMountOption
 )
@@ -89,6 +90,8 @@ func InitMountOptions(opts []MountOption) {
 	opts[TicketHost] = MountOption{"ticketHost", "Ticket Host", "", ""}
 	opts[EnableHTTPS] = MountOption{"enableHTTPS", "Enable HTTPS", "", false}
 	opts[CertFile] = MountOption{"certFile", "Cert File", "", ""}
+
+	opts[TokenKey] = MountOption{"token", "Token Key", "", ""}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -197,4 +200,5 @@ type MountOptions struct {
 	FollowerRead  bool
 	Authenticate  bool
 	TicketMess    auth.TicketMess
+	TokenKey      string
 }

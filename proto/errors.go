@@ -77,6 +77,7 @@ var (
 	ErrInvalidUserID                   = errors.New("invalid user ID")
 	ErrInvalidUserType                 = errors.New("invalid user type")
 	ErrNoPermission                    = errors.New("no permission")
+	ErrTokenNotFound                   = errors.New("token not found")
 )
 
 // http response error code and error message definitions
@@ -191,4 +192,5 @@ var Err2CodeMap = map[error]int32{
 	ErrSuperAdminExists:                ErrCodeSuperAdminExists,
 	ErrInvalidUserType:                 ErrCodeInvalidUserType,
 	ErrNoPermission:                    ErrCodeNoPermission,
+	ErrTokenNotFound:                   ErrCodeNotExists,
 }

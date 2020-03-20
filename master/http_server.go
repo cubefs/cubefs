@@ -236,6 +236,20 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetAllZones).
 		HandlerFunc(m.listZone)
+
+	// APIs for token-based client permissions control
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.TokenAddURI).
+		HandlerFunc(m.addToken)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.TokenGetURI).
+		HandlerFunc(m.getToken)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.TokenDelURI).
+		HandlerFunc(m.deleteToken)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.TokenUpdateURI).
+		HandlerFunc(m.updateToken)
 }
 
 func (m *Server) newReverseProxy() *httputil.ReverseProxy {

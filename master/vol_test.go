@@ -171,7 +171,8 @@ func markDeleteVol(name string, t *testing.T) {
 
 func TestVolReduceReplicaNum(t *testing.T) {
 	volName := "reduce-replica-num"
-	vol, err := server.cluster.createVol(volName, volName, "",3, 3, util.DefaultDataPartitionSize, 100, false, false,false)
+	vol, err := server.cluster.createVol(volName, volName, "", 3, 3, util.DefaultDataPartitionSize,
+		100, false, false, false, false)
 	if err != nil {
 		t.Error(err)
 		return
@@ -211,7 +212,8 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	name := "TestConcurrentReadWriteDataPartitionMap"
 	var volID uint64 = 1
 	var createTime = time.Now().Unix()
-	vol := newVol(volID, name, name,"", util.DefaultDataPartitionSize, 100, defaultReplicaNum, defaultReplicaNum, false, false,false, createTime)
+	vol := newVol(volID, name, name,"", util.DefaultDataPartitionSize, 100, defaultReplicaNum,
+		defaultReplicaNum, false, false,false, false, createTime)
 	// unavailable mp
 	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, name, volID)
 	vol.addMetaPartition(mp1)

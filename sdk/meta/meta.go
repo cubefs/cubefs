@@ -87,6 +87,10 @@ type MetaWrapper struct {
 	sessionKey   string
 	ticketMess   auth.TicketMess
 
+	enableToken bool
+	tokenKey    string
+	tokenType   int8
+
 	closeCh   chan struct{}
 	closeOnce sync.Once
 }
@@ -103,6 +107,7 @@ func NewMetaWrapper(opt *proto.MountOptions, validateOwner bool) (*MetaWrapper, 
 	var err error
 	mw := new(MetaWrapper)
 	mw.closeCh = make(chan struct{}, 1)
+
 	if opt.Authenticate {
 		var ticketMess = opt.TicketMess
 		mw.ac = authSDK.NewAuthClient(ticketMess.TicketHosts, ticketMess.EnableHTTPS, ticketMess.CertFile)
@@ -117,6 +122,7 @@ func NewMetaWrapper(opt *proto.MountOptions, validateOwner bool) (*MetaWrapper, 
 		mw.sessionKey = ticket.SessionKey
 		mw.ticketMess = ticketMess
 	}
+
 	mw.volname = opt.Volname
 	mw.owner = opt.Owner
 	mw.ownerValidation = validateOwner
@@ -132,10 +138,11 @@ func NewMetaWrapper(opt *proto.MountOptions, validateOwner bool) (*MetaWrapper, 
 	if err = mw.updateVolStatInfo(); err != nil {
 		return nil, err
 	}
+	mw.tokenKey = opt.TokenKey
 
 	limit := MaxMountRetryLimit
 retry:
-	if err := mw.updateMetaPartitions(); err != nil {
+	if err := mw.initMetaWrapper(); err != nil {
 		if limit <= 0 {
 			return nil, errors.Trace(err, "Init meta wrapper failed!")
 		} else {
@@ -148,6 +155,20 @@ retry:
 
 	go mw.refresh()
 	return mw, nil
+}
+
+func (mw *MetaWrapper) initMetaWrapper() error {
+	err := mw.updateVolStatInfo()
+	if err != nil {
+		return err
+	}
+	if mw.enableToken {
+		err = mw.updateTokenType()
+		if err != nil {
+			return err
+		}
+	}
+	return mw.updateMetaPartitions()
 }
 
 func (mw *MetaWrapper) OSSSecure() (accessKey, secretKey string) {
@@ -171,6 +192,10 @@ func (mw *MetaWrapper) Cluster() string {
 
 func (mw *MetaWrapper) LocalIP() string {
 	return mw.localIP
+}
+
+func (mw *MetaWrapper) TokenType() int8 {
+	return mw.tokenType
 }
 
 func (mw *MetaWrapper) exporterKey(act string) string {
