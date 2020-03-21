@@ -1,78 +1,108 @@
 #!/bin/bash
 
+# Copyright 2018 The Chubao Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+# implied. See the License for the specific language governing
+# permissions and limitations under the License.
+
 MntPoint=/cfs/mnt
 mkdir -p /cfs/bin /cfs/log /cfs/mnt
 src_path=/go/src/github.com/chubaofs/cfs
+cli=/cfs/bin/cfs-cli
 
 Master1Addr="192.168.0.11:17010"
 LeaderAddr=""
 VolName=ltptest
 Owner=ltptest
+AccessKey=39bEF4RrAQgMj6RV
+SecretKey=TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd
 AuthKey="0e20229116d5a9a4a9e876806b514a85"
 
-getLeaderAddr() {
-    echo -n "check Master "
+check_cluster() {
+    echo -n "check cluster  ... "
     for i in $(seq 1 300) ; do
-        LeaderAddr=$(curl -s "http://$Master1Addr/admin/getCluster" | jq '.data.LeaderAddr' | tr -d '"' )
-        if [ "x$LeaderAddr" != "x" ] ; then
-            break
+        ${cli} cluster info &> /tmp/cli_cluster_info
+        LeaderAddr=`cat /tmp/cli_cluster_info | grep -i "master leader" | awk '{print$4}'`
+        if [[ "x$LeaderAddr" != "x" ]] ; then
+            echo -e "\033[32m[success]\033[0m"
+            return
         fi
-        echo -n "."
         sleep 1
     done
-    if [ "x$LeaderAddr" == "x" ] ; then
-        echo -n "timeout, exit\n"
-        exit 1
-    fi
-    echo "ok"
+    echo -e "\033[31m[timeout]\033[0m"
+    exit 1
 }
 
-check_status() {
-    node="$1"
-    up=0
-    echo -n "check $node "
+create_cluster_user() {
+    echo -n "create user    ... "
+    # check user exist
+    ${cli} user info ${Owner} &> /dev/null
+    if [[ $? -eq 0 ]] ; then
+        echo -e "\033[32m[exist]\033[0m"
+        return
+    fi
+    # try create user
     for i in $(seq 1 300) ; do
-        clusterInfo=$(curl -s "http://$LeaderAddr/admin/getCluster")
-        #NodeUpCount=$( echo "$clusterInfo" | jq ".data.${node}s | .[].Status" | grep "true" | wc -l)
-        NodeTotoalGB=$( echo "$clusterInfo" | jq ".data.${node}StatInfo.TotalGB" )
-        if [[ $NodeTotoalGB -gt 0 ]]  ; then
-            up=1
-            break
+        ${cli} user create ${Owner} --access-key=${AccessKey} --secret-key=${SecretKey} -y > /tmp/cli_user_create
+        if [[ $? -eq 0 ]] ; then
+            echo -e "\033[32m[success]\033[0m"
+            return
         fi
-        echo -n "."
         sleep 1
     done
-    if [ $up -eq 0 ] ; then
-        echo -n "timeout, exit"
-        curl "http://$LeaderAddr/admin/getCluster" | jq
-        exit 1
-    fi
-    echo "ok"
+    echo -e "\033[31m[timeout]\033[0m"
+    exit 1
 }
 
-
-create_vol() {
-    echo -n "create vol "
-    res=$(curl -s "http://$LeaderAddr/admin/createVol?name=$VolName&capacity=30&owner=$Owner")
-    code=$(echo "$res" | jq .code)
-    if [[ $code -ne 0 ]] ; then
-        echo " failed, exit"
-        curl -s "http://$LeaderAddr/admin/getCluster" | jq
+create_volume() {
+    echo -n "create volume  ... "
+    # check volume exist
+    ${cli} volume info ${VolName} &> /dev/null
+    if [[ $? -eq 0 ]]; then
+        echo -e "\033[32m[exist]\033[0m"
+        return
+    fi
+    ${cli} volume create ${VolName} ${Owner} --capacity=30 -y > /dev/null
+    if [[ $? -ne 0 ]]; then
+        echo -e "\033[31m[failed]\033[0m"
         exit 1
     fi
-    echo "ok"
+    echo -e "\033[32m[success]\033[0m"
 }
 
-create_dp() {
-    echo -n "create datapartition "
-    res=$(curl -s "http://$LeaderAddr/dataPartition/create?count=20&name=$VolName&type=extent" )
-    code=$(echo "$res" | jq .code)
-    if [[ $code -ne 0 ]] ; then
-        echo " failed, exit"
-        curl -s "http://$LeaderAddr/admin/getCluster" | jq
-        exit 1
+show_cluster_info() {
+    tmp_file=/tmp/collect_cluster_info
+    ${cli} cluster info &>> ${tmp_file}
+    echo &>> ${tmp_file}
+    ${cli} metanode list &>> ${tmp_file}
+    echo &>> ${tmp_file}
+    ${cli} datanode list &>> ${tmp_file}
+    echo &>> ${tmp_file}
+    ${cli} user info ${Owner} &>> ${tmp_file}
+    echo &>> ${tmp_file}
+    ${cli} volume info ${Owner} &>> ${tmp_file}
+    echo &>> ${tmp_file}
+    cat /tmp/collect_cluster_info | grep -v "Master address"
+}
+
+add_data_partitions() {
+    echo -n "add data partitions ... "
+    ${cli} vol add-dp ${VolName} 20 &> /dev/null
+    if [[ $? -eq 0 ]] ; then
+        echo -e "\033[32m[success]\033[0m"
+        return
     fi
-    echo "ok"
+    echo -e "\033[31m[failed]\033[0m"
+    exit 1
 }
 
 print_error_info() {
@@ -90,17 +120,16 @@ print_error_info() {
 }
 
 start_client() {
-    echo -n "start client "
+    echo -n "start client   ... "
     nohup /cfs/bin/cfs-client -c /cfs/conf/client.json >/cfs/log/cfs.out 2>&1 &
     sleep 10
     res=$( stat $MntPoint | grep -q "Inode: 1" ; echo $? )
     if [[ $res -ne 0 ]] ; then
-        echo "failed"
+        echo -e "\033[31m[failed]\033[0m"
         print_error_info
         exit $res
     fi
-
-    echo "ok"
+    echo -e "\033[32m[success]\033[0m"
 }
 
 wait_proc_done() {
@@ -144,6 +173,23 @@ wait_proc_done() {
     fi
 }
 
+ensure_node_writable() {
+    node=$1
+    echo -n "check $node ... "
+    for i in $(seq 1 300) ; do
+        ${cli} ${node} list &> /tmp/cli_${node}_list;
+        res=`cat /tmp/cli_${node}_list | grep "Yes" | grep "Active" | wc -l`
+        if [[ ${res} -eq 4 ]]; then
+            echo -e "\033[32m[success]\033[0m"
+            return
+        fi
+        sleep 1
+    done
+    echo -e "\033[31m[timeout]\033[0m"
+    cat /tmp/cli_${node}_list
+    exit 1
+}
+
 run_ltptest() {
     echo "run ltp test"
     LTPTestDir=$MntPoint/ltptest
@@ -154,28 +200,29 @@ run_ltptest() {
 }
 
 stop_client() {
-    echo -n "stop client "
-    umount ${MntPoint} && echo "ok" || { echo "failed"; exit 1; }
+    echo -n "stop client    ... "
+    umount ${MntPoint} && echo -e "\033[32m[success]\033[0m" || { echo -e "\033[31m[failed]\033[0m"; exit 1; }
 }
 
-del_vol() {
-    echo -n "del vol "
-    res=$(curl -s "http://$LeaderAddr/vol/delete?name=$VolName&authKey=$AuthKey")
-    code=$(echo "$res" | jq .code)
-    if [[ $code -ne 0 ]] ; then
-        echo "failed, exit"
-        echo "$res" | jq
-        exit 1
+delete_volume() {
+    echo -n "delete volume  ... "
+    ${cli} volume delete ${VolName} -y &> /dev/null
+    if [[ $? -eq 0 ]]; then
+        echo -e "\033[32m[success]\033[0m"
+        return
     fi
-    echo "ok"
+    echo -e "\033[31m[timeout]\033[0m"
+    exit 1
 }
 
-getLeaderAddr
-check_status "MetaNode"
-check_status "DataNode"
-create_vol ; sleep 2
-create_dp ; sleep 3
+check_cluster
+create_cluster_user
+ensure_node_writable "metanode"
+ensure_node_writable "datanode"
+create_volume ; sleep 2
+add_data_partitions ; sleep 3
+show_cluster_info
 start_client ; sleep 2
-run_ltptest && \
-stop_client && \
-del_vol
+run_ltptest
+stop_client
+delete_volume

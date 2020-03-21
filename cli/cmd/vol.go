@@ -20,7 +20,10 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
+
+	"github.com/chubaofs/chubaofs/util/errors"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
@@ -45,6 +48,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolInfoCmd(client),
 		newVolDeleteCmd(client),
 		newVolTransferCmd(client),
+		newVolAddDPCmd(client),
 	)
 	return cmd
 }
@@ -108,17 +112,17 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			var volumeName = args[0]
 			var userID = args[1]
-			stdout("Create a new volume:\n")
-			stdout("  Name                : %v\n", volumeName)
-			stdout("  Owner               : %v\n", userID)
-			stdout("  Dara partition size : %v GB\n", optDPSize)
-			stdout("  Meta partition count: %v\n", optMPCount)
-			stdout("  Capacity            : %v GB\n", optCapacity)
-			stdout("  Replicas            : %v\n", optReplicas)
-			stdout("  Allow follower read : %v\n", formatEnabledDisabled(optFollowerRead))
 
 			// ask user for confirm
 			if !optYes {
+				stdout("Create a new volume:\n")
+				stdout("  Name                : %v\n", volumeName)
+				stdout("  Owner               : %v\n", userID)
+				stdout("  Dara partition size : %v GB\n", optDPSize)
+				stdout("  Meta partition count: %v\n", optMPCount)
+				stdout("  Capacity            : %v GB\n", optCapacity)
+				stdout("  Replicas            : %v\n", optReplicas)
+				stdout("  Allow follower read : %v\n", formatEnabledDisabled(optFollowerRead))
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -149,10 +153,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdVolInfoUse               = "info [VOLUME NAME]"
-	cmdVolInfoShort             = "Show volume information"
-	cmdVolInfoDefaultMetaDetail = false
-	cmdVolInfoDefaultDataDetail = false
+	cmdVolInfoUse   = "info [VOLUME NAME]"
+	cmdVolInfoShort = "Show volume information"
 )
 
 func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -180,7 +182,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 					errout("Get volume metadata detail information failed:\n%v\n", err)
 					os.Exit(1)
 				}
-				stdout("[Metadata detail]\n")
+				stdout("[Meta partitions]\n")
 				stdout("%v\n", metaPartitionTableHeader)
 				sort.SliceStable(views, func(i, j int) bool {
 					return views[i].PartitionID < views[j].PartitionID
@@ -197,7 +199,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 					errout("Get volume data detail information failed:\n%v\n", err)
 					os.Exit(1)
 				}
-				stdout("[Data detail]\n")
+				stdout("[Data partitions]\n")
 				stdout("%v\n", dataPartitionTableHeader)
 				sort.SliceStable(view.DataPartitions, func(i, j int) bool {
 					return view.DataPartitions[i].PartitionID < view.DataPartitions[j].PartitionID
@@ -209,8 +211,8 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
-	cmd.Flags().BoolVarP(&optMetaDetail, "meta-detail", "m", cmdVolInfoDefaultMetaDetail, "Display metadata detail information")
-	cmd.Flags().BoolVarP(&optDataDetail, "data-detail", "d", cmdVolInfoDefaultDataDetail, "Display data detail information")
+	cmd.Flags().BoolVarP(&optMetaDetail, "meta-partition", "m", false, "Display meta partition detail information")
+	cmd.Flags().BoolVarP(&optDataDetail, "data-partition", "d", false, "Display data partition detail information")
 	return cmd
 }
 
@@ -300,6 +302,43 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 			if _, err = client.UserAPI().TransferVol(&param); err != nil {
 				return
 			}
+		},
+	}
+	return cmd
+}
+
+const (
+	cmdVolAddDPCmdUse   = "add-dp [VOLUME] [NUMBER]"
+	cmdVolAddDPCmdShort = "Create and add more data partition to a volume"
+)
+
+func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   cmdVolAddDPCmdUse,
+		Short: cmdVolAddDPCmdShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var volume = args[0]
+			var number = args[1]
+			var err error
+			defer func() {
+				if err != nil {
+					errout("Create data partition failed: %v\n", err)
+					os.Exit(1)
+				}
+			}()
+			var count int64
+			if count, err = strconv.ParseInt(number, 10, 64); err != nil {
+				return
+			}
+			if count < 1 {
+				err = errors.New("number must be larger than 0")
+				return
+			}
+			if err = client.AdminAPI().CreateDataPartition(volume, int(count)); err != nil {
+				return
+			}
+			return
 		},
 	}
 	return cmd

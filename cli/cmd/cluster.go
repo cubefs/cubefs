@@ -54,7 +54,7 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 				errout("Get cluster info fail:\n%v\n", err)
 				os.Exit(1)
 			}
-			stdout("\n[Summary]\n")
+			stdout("[Cluster]\n")
 			stdout(formatClusterView(cv))
 			stdout("\n")
 		},

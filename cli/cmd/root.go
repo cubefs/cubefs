@@ -37,6 +37,8 @@ func NewRootCmd(client *master.MasterClient) *cobra.Command {
 		newClusterCmd(client),
 		newVolCmd(client),
 		newUserCmd(client),
+		newMetaNodeCmd(client),
+		newDataNodeCmd(client),
 	)
 	return cmd
 }

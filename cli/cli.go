@@ -78,7 +78,7 @@ func loadConfig() (*config, error) {
 }
 
 func setupCommands(cfg *config) *cobra.Command {
-	fmt.Printf("Using master address: %v\n", cfg.MasterAddr)
+	fmt.Printf("Master address: %v\n", cfg.MasterAddr)
 	var mc = master.NewMasterClient(cfg.MasterAddr, false)
 	return cmd.NewRootCmd(mc)
 }

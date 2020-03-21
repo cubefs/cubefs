@@ -29,8 +29,8 @@ clean() {
 }
 
 # test
-run_test() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run test 
+run_unit_test() {
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run unit-test
 }
 
 # build
@@ -147,7 +147,7 @@ case "-$cmd" in
     -run_client) start_client ;;
     -run_monitor) start_monitor ;;
     -run_ltptest) run_ltptest ;;
-    -run_test) run_test ;;
+    -run_test) run_unit_test ;;
     -clean) clean ;;
     *) help ;;
 esac

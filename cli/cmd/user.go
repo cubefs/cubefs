@@ -72,27 +72,26 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 				os.Exit(1)
 			}
 
-			// display information before create
-			var displayPassword = "[default]"
-			if optPassword != "" {
-				displayPassword = optPassword
-			}
-			var displayAccessKey = "[auto generate]"
-			var displaySecretKey = "[auto generate]"
-			if optAccessKey != "" && optSecretKey != "" {
-				displayAccessKey = optAccessKey
-				displaySecretKey = optSecretKey
-			}
-			var displayUserType = userType.String()
-			fmt.Printf("Create a new ChubaoFS cluster user\n")
-			stdout("  User ID   : %v\n", userID)
-			stdout("  Password  : %v\n", displayPassword)
-			stdout("  Access Key: %v\n", displayAccessKey)
-			stdout("  Secret Key: %v\n", displaySecretKey)
-			stdout("  Type      : %v\n", displayUserType)
-
 			// ask user for confirm
 			if !optYes {
+				// display information before create
+				var displayPassword = "[default]"
+				if optPassword != "" {
+					displayPassword = optPassword
+				}
+				var displayAccessKey = "[auto generate]"
+				var displaySecretKey = "[auto generate]"
+				if optAccessKey != "" && optSecretKey != "" {
+					displayAccessKey = optAccessKey
+					displaySecretKey = optSecretKey
+				}
+				var displayUserType = userType.String()
+				fmt.Printf("Create a new ChubaoFS cluster user\n")
+				stdout("  User ID   : %v\n", userID)
+				stdout("  Password  : %v\n", displayPassword)
+				stdout("  Access Key: %v\n", displayAccessKey)
+				stdout("  Secret Key: %v\n", displaySecretKey)
+				stdout("  Type      : %v\n", displayUserType)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -223,7 +222,7 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-var (
+const (
 	cmdUserListUse   = "list"
 	cmdUserListShort = "List cluster users"
 )
@@ -231,8 +230,9 @@ var (
 func newUserListCmd(client *master.MasterClient) *cobra.Command {
 	var optKeyword string
 	var cmd = &cobra.Command{
-		Use:   cmdUserListUse,
-		Short: cmdUserListShort,
+		Use:     cmdUserListUse,
+		Short:   cmdUserListShort,
+		Aliases: []string{"ls"},
 		Run: func(cmd *cobra.Command, args []string) {
 			var users []*proto.UserInfo
 			var err error
@@ -266,22 +266,12 @@ func printUserInfo(userInfo *proto.UserInfo) {
 	if userInfo.Policy == nil {
 		return
 	}
-	stdout("[Own volumes]\n")
-	if len(userInfo.Policy.OwnVols) != 0 {
-		for _, vol := range userInfo.Policy.OwnVols {
-			stdout("%s\n", vol)
-		}
-	} else {
-		stdout("None\n")
+	stdout("[Volumes]\n")
+	stdout("%-20v    %-12v\n", "VOLUME", "PERMISSION")
+	for _, vol := range userInfo.Policy.OwnVols {
+		stdout("%-20v    %-12v\n", vol, "Owner")
 	}
-	stdout("[Authorized volumes]\n")
-
-	if len(userInfo.Policy.AuthorizedVols) != 0 {
-		stdout("%10v    %10v\n", "VOLUME", "PERMISSION")
-		for vol, perms := range userInfo.Policy.AuthorizedVols {
-			stdout("%10v    %10v\n", vol, perms)
-		}
-	} else {
-		stdout("None\n")
+	for vol, perms := range userInfo.Policy.AuthorizedVols {
+		stdout("%-20v    %-12v\n", vol, strings.Join(perms, ","))
 	}
 }
