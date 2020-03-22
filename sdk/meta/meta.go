@@ -16,7 +16,6 @@ package meta
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -52,6 +51,25 @@ const (
 	MountRetryInterval = time.Second * 5
 )
 
+type AsyncTaskErrorFunc func(err error)
+
+func (f AsyncTaskErrorFunc) OnError(err error) {
+	if f != nil {
+		f(err)
+	}
+}
+
+type MetaConfig struct {
+	Volume           string
+	Owner            string
+	Masters          []string
+	Authenticate     bool
+	TicketMess       auth.TicketMess
+	TokenKey         string
+	ValidateOwner    bool
+	OnAsyncTaskError AsyncTaskErrorFunc
+}
+
 type MetaWrapper struct {
 	sync.RWMutex
 	cluster         string
@@ -64,6 +82,9 @@ type MetaWrapper struct {
 	mc              *masterSDK.MasterClient
 	ac              *authSDK.AuthClient
 	conns           *util.ConnectPool
+
+	// Callback handler for handling asynchronous task errors.
+	onAsyncTaskError AsyncTaskErrorFunc
 
 	// Partitions and ranges should be modified together. So do not
 	// use partitions and ranges directly. Use the helper functions instead.
@@ -103,31 +124,31 @@ type Ticket struct {
 	Ticket     string `json:"ticket"`
 }
 
-func NewMetaWrapper(opt *proto.MountOptions, validateOwner bool) (*MetaWrapper, error) {
+func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	var err error
 	mw := new(MetaWrapper)
 	mw.closeCh = make(chan struct{}, 1)
 
-	if opt.Authenticate {
-		var ticketMess = opt.TicketMess
+	if config.Authenticate {
+		var ticketMess = config.TicketMess
 		mw.ac = authSDK.NewAuthClient(ticketMess.TicketHosts, ticketMess.EnableHTTPS, ticketMess.CertFile)
-		ticket, err := mw.ac.API().GetTicket(opt.Owner, ticketMess.ClientKey, proto.MasterServiceID)
+		ticket, err := mw.ac.API().GetTicket(config.Owner, ticketMess.ClientKey, proto.MasterServiceID)
 		if err != nil {
 			return nil, errors.Trace(err, "Get ticket from authnode failed!")
 		}
-		mw.authenticate = opt.Authenticate
+		mw.authenticate = config.Authenticate
 		mw.accessToken.Ticket = ticket.Ticket
-		mw.accessToken.ClientID = opt.Owner
+		mw.accessToken.ClientID = config.Owner
 		mw.accessToken.ServiceID = proto.MasterServiceID
 		mw.sessionKey = ticket.SessionKey
 		mw.ticketMess = ticketMess
 	}
 
-	mw.volname = opt.Volname
-	mw.owner = opt.Owner
-	mw.ownerValidation = validateOwner
-	masters := strings.Split(opt.Master, HostsSeparator)
-	mw.mc = masterSDK.NewMasterClient(masters, false)
+	mw.volname = config.Volume
+	mw.owner = config.Owner
+	mw.ownerValidation = config.ValidateOwner
+	mw.mc = masterSDK.NewMasterClient(config.Masters, false)
+	mw.onAsyncTaskError = config.OnAsyncTaskError
 	mw.conns = util.NewConnectPool()
 	mw.partitions = make(map[uint64]*MetaPartition)
 	mw.ranges = btree.New(32)
@@ -138,7 +159,7 @@ func NewMetaWrapper(opt *proto.MountOptions, validateOwner bool) (*MetaWrapper, 
 	if err = mw.updateVolStatInfo(); err != nil {
 		return nil, err
 	}
-	mw.tokenKey = opt.TokenKey
+	mw.tokenKey = config.TokenKey
 
 	limit := MaxMountRetryLimit
 retry:
@@ -182,6 +203,7 @@ func (mw *MetaWrapper) VolCreateTime() int64 {
 func (mw *MetaWrapper) Close() error {
 	mw.closeOnce.Do(func() {
 		close(mw.closeCh)
+		mw.conns.Close()
 	})
 	return nil
 }

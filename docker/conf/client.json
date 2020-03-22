@@ -10,5 +10,7 @@
   "profPort": "17410",
   "authenticate": false,
   "ticketHost": "192.168.0.14:8080,192.168.0.15:8081,192.168.0.16:8082",
-  "enableHTTPS": "false"
+  "enableHTTPS": "false",
+  "accessKey": "39bEF4RrAQgMj6RV",
+  "secretKey": "TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd"
 }

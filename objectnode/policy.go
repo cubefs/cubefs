@@ -207,44 +207,13 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		var vol *Volume
-		var acl *AccessControlPolicy
-		var policy *Policy
-		var loadBucketMeta = func(bucket string) (err error) {
-			if vol, err = o.getVol(bucket); err != nil {
-				return
-			}
-			acl = vol.loadACL()
-			policy = vol.loadPolicy()
+		// A create bucket action do not need to check any user policy and volume policy.
+		if param.action == proto.OSSCreateBucketAction {
+			allowed = true
 			return
 		}
-		switch param.action {
-		case proto.OSSCreateBucketAction:
-		default:
-			if err = loadBucketMeta(param.Bucket()); err != nil {
-				log.LogErrorf("policyCheck: load bucket metadata fail: requestID(%v) err(%v)", GetRequestID(r), err)
-				allowed = false
-				ec = &NoSuchBucket
-				return
-			}
-		}
 
-		if vol != nil && policy != nil && !policy.IsEmpty() {
-			allowed = policy.IsAllowed(param)
-			if !allowed {
-				log.LogWarnf("policyCheck: bucket policy not allowed: requestID(%v) volume(%v)", GetRequestID(r), vol.Name())
-				return
-			}
-		}
-
-		if vol != nil && acl != nil && !acl.IsAclEmpty() {
-			allowed = acl.IsAllowed(param)
-			if !allowed {
-				log.LogWarnf("policyCheck: bucket ACL not allowed: requestID(%v) volume(%v)", GetRequestID(r), vol.Name())
-				return
-			}
-		}
-		//check user policy
+		// Check user policy
 		var userInfo *proto.UserInfo
 		if userInfo, err = o.getUserInfoByAccessKey(param.accessKey); err != nil {
 			log.LogErrorf("policyCheck: load user policy from master fail: requestID(%v) accessKey(%v) err(%v)",
@@ -258,25 +227,52 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			allowed = true
 			return
 		}
-		if param.action == proto.OSSCreateBucketAction {
-			allowed = true
-			return
-		}
 		var userPolicy = userInfo.Policy
-		if userPolicy.IsOwn(param.Bucket()) {
-			log.LogDebugf("policyCheck: user is owner: requestID(%v) userID(%v) accessKey(%v) volume(%v)",
-				GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket())
-			allowed = true
-			return
-		}
-		if userPolicy.IsAuthorized(param.Bucket(), param.Action()) {
-			log.LogDebugf("policyCheck: action is authorized: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
+		if !userPolicy.IsOwn(param.Bucket()) && !userPolicy.IsAuthorized(param.Bucket(), param.Action()) {
+			log.LogDebugf("policyCheck: user no permission: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
 				GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
-			allowed = true
+			allowed = false
 			return
 		}
-		allowed = false
-		log.LogWarnf("policyCheck: user policy not allowed: requestID(%v) accessKey(%v) action(%v)",
-			GetRequestID(r), param.AccessKey(), param.Action())
+
+		var vol *Volume
+		var acl *AccessControlPolicy
+		var policy *Policy
+		var loadBucketMeta = func(bucket string) (err error) {
+			if vol, err = o.getVol(bucket); err != nil {
+				return
+			}
+			acl = vol.loadACL()
+			policy = vol.loadPolicy()
+			return
+		}
+		if err = loadBucketMeta(param.Bucket()); err != nil {
+			log.LogErrorf("policyCheck: load bucket metadata fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			allowed = false
+			ec = &NoSuchBucket
+			return
+		}
+
+		if vol != nil && policy != nil && !policy.IsEmpty() {
+			allowed = policy.IsAllowed(param)
+			if !allowed {
+				log.LogWarnf("policyCheck: bucket policy not allowed: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
+					GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
+				return
+			}
+		}
+
+		if vol != nil && acl != nil && !acl.IsAclEmpty() {
+			allowed = acl.IsAllowed(param)
+			if !allowed {
+				log.LogWarnf("policyCheck: bucket ACL not allowed: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
+					GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
+				return
+			}
+		}
+
+		allowed = true
+		log.LogDebugf("policyCheck: action allowed: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
+			GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
 	}
 }

@@ -205,9 +205,11 @@ func (mw *MetaWrapper) refresh() {
 		case <-t.C:
 			var err error
 			if err = mw.updateMetaPartitions(); err != nil {
+				mw.onAsyncTaskError.OnError(err)
 				log.LogErrorf("updateMetaPartition fail cause: %v", err)
 			}
 			if err = mw.updateVolStatInfo(); err != nil {
+				mw.onAsyncTaskError.OnError(err)
 				log.LogErrorf("updateVolStatInfo fail cause: %v", err)
 			}
 		case <-mw.closeCh:

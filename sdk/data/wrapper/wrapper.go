@@ -52,8 +52,7 @@ type Wrapper struct {
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
-func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error) {
-	masters := strings.Split(masterHosts, ",")
+func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err error) {
 	w = new(Wrapper)
 	w.stopC = make(chan struct{})
 	w.masters = masters

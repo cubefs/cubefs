@@ -53,6 +53,17 @@ var (
 	evictRequestPool   *sync.Pool
 )
 
+type ExtentConfig struct {
+	Volume            string
+	Masters           []string
+	FollowerRead      bool
+	ReadRate          int64
+	WriteRate         int64
+	OnAppendExtentKey AppendExtentKeyFunc
+	OnGetExtents      GetExtentsFunc
+	OnTruncate        TruncateFunc
+}
+
 // ExtentClient defines the struct of the extent client.
 type ExtentClient struct {
 	streamers    map[uint64]*Streamer
@@ -69,13 +80,17 @@ type ExtentClient struct {
 }
 
 // NewExtentClient returns a new extent client.
-func NewExtentClient(opt *proto.MountOptions, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc, truncate TruncateFunc) (client *ExtentClient, err error) {
+func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	client = new(ExtentClient)
 
+	defer func() {
+		_ = client.Close()
+	}()
+
 	limit := MaxMountRetryLimit
 retry:
-	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(opt.Volname, opt.Master)
+	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(config.Volume, config.Masters)
 	if err != nil {
 		if limit <= 0 {
 			return nil, errors.Trace(err, "Init data wrapper failed!")
@@ -87,10 +102,10 @@ retry:
 	}
 
 	client.streamers = make(map[uint64]*Streamer)
-	client.appendExtentKey = appendExtentKey
-	client.getExtents = getExtents
-	client.truncate = truncate
-	client.followerRead = opt.FollowerRead || client.dataWrapper.FollowerRead()
+	client.appendExtentKey = config.OnAppendExtentKey
+	client.getExtents = config.OnGetExtents
+	client.truncate = config.OnTruncate
+	client.followerRead = config.FollowerRead || client.dataWrapper.FollowerRead()
 
 	// Init request pools
 	openRequestPool = &sync.Pool{New: func() interface{} {
@@ -113,15 +128,15 @@ retry:
 	}}
 
 	var readLimit, writeLimit rate.Limit
-	if opt.ReadRate <= 0 {
+	if config.ReadRate <= 0 {
 		readLimit = defaultReadLimitRate
 	} else {
-		readLimit = rate.Limit(opt.ReadRate)
+		readLimit = rate.Limit(config.ReadRate)
 	}
-	if opt.WriteRate <= 0 {
+	if config.WriteRate <= 0 {
 		writeLimit = defaultWriteLimitRate
 	} else {
-		writeLimit = rate.Limit(opt.WriteRate)
+		writeLimit = rate.Limit(config.WriteRate)
 	}
 
 	client.readLimiter = rate.NewLimiter(readLimit, defaultReadLimitBurst)

@@ -29,6 +29,20 @@ const (
 	OSSMetaUpdateDuration = time.Duration(time.Second * 30)
 )
 
+type AsyncTaskErrorFunc func(err error)
+
+func (f AsyncTaskErrorFunc) OnError(err error) {
+	if f != nil {
+		f(err)
+	}
+}
+
+type VolumeConfig struct {
+	Volume           string
+	Masters          []string
+	OnAsyncTaskError AsyncTaskErrorFunc
+}
+
 type OSSMeta struct {
 	policy     *Policy
 	acl        *AccessControlPolicy
@@ -77,6 +91,8 @@ type Volume struct {
 
 	closeOnce sync.Once
 	closeCh   chan struct{}
+
+	onAsyncTaskError AsyncTaskErrorFunc
 }
 
 func (v *Volume) syncOSSMeta() {
@@ -94,12 +110,24 @@ func (v *Volume) syncOSSMeta() {
 
 // update Volume meta info
 func (v *Volume) loadOSSMeta() {
-	policy, _ := v.loadBucketPolicy()
+	var err error
+	defer func() {
+		if err != nil {
+			v.onAsyncTaskError.OnError(err)
+		}
+	}()
+	var policy *Policy
+	if policy, err = v.loadBucketPolicy(); err != nil {
+		return
+	}
 	if policy != nil {
 		v.storePolicy(policy)
 	}
 
-	acl, _ := v.loadBucketACL()
+	var acl *AccessControlPolicy
+	if acl, err = v.loadBucketACL(); err != nil {
+		return
+	}
 	if acl != nil {
 		v.storeACL(acl)
 	}
@@ -1059,8 +1087,11 @@ func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64) (
 
 	// recursion call listDir method
 	infos, prefixMap, err = v.listDir(infos, prefixMap, parentId, maxKeys, dirs, prefix, marker, delimiter)
+	if err == syscall.ENOENT {
+		return nil, nil, nil
+	}
 	if err != nil {
-		log.LogErrorf("listFilesV1: Volume list dir fail: Volume(%v) err(%v)", v.name, err)
+		log.LogErrorf("listFilesV1: volume list dir fail: Volume(%v) err(%v)", v.name, err)
 		return
 	}
 
@@ -1106,6 +1137,9 @@ func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, ma
 
 	// recursion call listDir method
 	infos, prefixMap, err = v.listDir(infos, prefixMap, parentId, maxKeys, dirs, prefix, marker, delimiter)
+	if err == syscall.ENOENT {
+		return nil, nil, nil
+	}
 	if err != nil {
 		log.LogErrorf("listFilesV2: Volume list dir fail, Volume(%v) err(%v)", v.name, err)
 		return
@@ -1420,37 +1454,53 @@ func (v *Volume) copyFile(parentID uint64, newFileName string, sourceFileInode u
 	return
 }
 
-func newVolume(masters []string, vol string) (*Volume, error) {
+func NewVolume(config *VolumeConfig) (*Volume, error) {
 	var err error
-	opt := &proto.MountOptions{
-		Volname:      vol,
-		Owner:        "",
-		Master:       strings.Join(masters, ","),
-		FollowerRead: true,
-		Authenticate: false,
+	var metaConfig = &meta.MetaConfig{
+		Volume:        config.Volume,
+		Masters:       config.Masters,
+		Authenticate:  false,
+		ValidateOwner: false,
+		OnAsyncTaskError: func(err error) {
+			config.OnAsyncTaskError.OnError(err)
+		},
 	}
 
-	var mw *meta.MetaWrapper
-	if mw, err = meta.NewMetaWrapper(opt, false); err != nil {
+	var metaWrapper *meta.MetaWrapper
+	if metaWrapper, err = meta.NewMetaWrapper(metaConfig); err != nil {
 		return nil, err
 	}
 	defer func() {
 		if err != nil {
-			mw.Close()
+			_ = metaWrapper.Close()
 		}
 	}()
-	var ec *stream.ExtentClient
-	if ec, err = stream.NewExtentClient(opt, mw.AppendExtentKey, mw.GetExtents, mw.Truncate); err != nil {
+	var extentConfig = &stream.ExtentConfig{
+		Volume:            config.Volume,
+		Masters:           config.Masters,
+		FollowerRead:      true,
+		OnAppendExtentKey: metaWrapper.AppendExtentKey,
+		OnGetExtents:      metaWrapper.GetExtents,
+		OnTruncate:        metaWrapper.Truncate,
+	}
+	var extentClient *stream.ExtentClient
+	if extentClient, err = stream.NewExtentClient(extentConfig); err != nil {
 		return nil, err
 	}
 
 	v := &Volume{
-		mw:         mw,
-		ec:         ec,
-		name:       vol,
+		mw:         metaWrapper,
+		ec:         extentClient,
+		name:       config.Volume,
 		om:         new(OSSMeta),
-		createTime: mw.VolCreateTime(),
-		closeCh:    make(chan struct{})}
+		createTime: metaWrapper.VolCreateTime(),
+		closeCh:    make(chan struct{}),
+		onAsyncTaskError: func(err error) {
+			if err == syscall.ENOENT {
+				config.OnAsyncTaskError.OnError(proto.ErrVolNotExists)
+			}
+		},
+	}
 	go v.syncOSSMeta()
 	return v, nil
 }

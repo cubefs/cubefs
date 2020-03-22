@@ -35,6 +35,8 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/chubaofs/chubaofs/sdk/master"
+
 	sysutil "github.com/chubaofs/chubaofs/util/sys"
 
 	"github.com/jacobsa/daemonize"
@@ -211,7 +213,15 @@ func mount(opt *proto.MountOptions) (*fuse.MountedFileSystem, error) {
 
 	exporter.RegistConsul(super.ClusterName(), ModuleName, opt.Config)
 
-	opt.Rdonly = super.TokenType() == int8(proto.ReadOnlyToken)
+	// Validate permission
+	if err = checkVolAccessPerm(opt); err != nil {
+		syslog.Printf("check permission failed: %v", err)
+		log.LogFlush()
+		_ = daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+
+	opt.Rdonly = (super.TokenType() == int8(proto.ReadOnlyToken)) && opt.Rdonly
 
 	server := fuseutil.NewFileSystemServer(super)
 	mntcfg := &fuse.MountConfig{
@@ -289,12 +299,47 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 		}
 	}
 	opt.TokenKey = GlobalMountOptions[proto.TokenKey].GetString()
+	opt.AccessKey = GlobalMountOptions[proto.AccessKey].GetString()
+	opt.SecretKey = GlobalMountOptions[proto.SecretKey].GetString()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
 	}
 
 	return opt, nil
+}
+
+func checkVolAccessPerm(opt *proto.MountOptions) (err error) {
+	if opt.AccessKey == "" {
+		return
+	}
+	var mc = master.NewMasterClientFromString(opt.Master, false)
+	var userInfo *proto.UserInfo
+	if userInfo, err = mc.UserAPI().GetAKInfo(opt.AccessKey); err != nil {
+		return
+	}
+	if userInfo.SecretKey != opt.SecretKey {
+		err = proto.ErrNoPermission
+		return
+	}
+	var policy = userInfo.Policy
+	if policy.IsOwn(opt.Volname) {
+		opt.Rdonly = false
+		return
+	}
+	if policy.IsAuthorized(opt.Volname, proto.POSIXWriteAction) &&
+		policy.IsAuthorized(opt.Volname, proto.POSIXReadAction) {
+		opt.Rdonly = false
+		return
+	}
+	if policy.IsAuthorized(opt.Volname, proto.POSIXReadAction) &&
+		!policy.IsAuthorized(opt.Volname, proto.POSIXWriteAction) {
+		opt.Rdonly = true
+		return
+	}
+	opt.Rdonly = true
+	err = proto.ErrNoPermission
+	return
 }
 
 // ParseLogLevel returns the log level based on the given string.

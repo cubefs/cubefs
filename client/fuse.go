@@ -23,7 +23,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/chubaofs/chubaofs/sdk/master"
 	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -34,6 +33,8 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+
+	"github.com/chubaofs/chubaofs/sdk/master"
 
 	sysutil "github.com/chubaofs/chubaofs/util/sys"
 
@@ -150,13 +151,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = checkVolAccessPerm(opt); err != nil {
-		syslog.Printf("check permission failed: %v", err)
-		log.LogFlush()
-		_ = daemonize.SignalOutcome(err)
-		os.Exit(1)
-	}
-
 	registerInterceptedSignal(opt.MountPoint)
 
 	fsConn, super, err := mount(opt)
@@ -243,7 +237,15 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		return
 	}
 
-	opt.Rdonly = super.TokenType() == int8(proto.ReadOnlyToken)
+	// Validate permission
+	if err = checkVolAccessPerm(opt); err != nil {
+		syslog.Printf("check permission failed: %v", err)
+		log.LogFlush()
+		_ = daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+
+	opt.Rdonly = (super.TokenType() == int8(proto.ReadOnlyToken)) && opt.Rdonly
 
 	options := []fuse.MountOption{
 		fuse.AllowOther(),
@@ -317,6 +319,8 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 		}
 	}
 	opt.TokenKey = GlobalMountOptions[proto.TokenKey].GetString()
+	opt.AccessKey = GlobalMountOptions[proto.AccessKey].GetString()
+	opt.SecretKey = GlobalMountOptions[proto.SecretKey].GetString()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
@@ -326,9 +330,16 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 }
 
 func checkVolAccessPerm(opt *proto.MountOptions) (err error) {
+	if opt.AccessKey == "" {
+		return
+	}
 	var mc = master.NewMasterClientFromString(opt.Master, false)
 	var userInfo *proto.UserInfo
-	if userInfo, err = mc.UserAPI().GetUserInfo(opt.Owner); err != nil {
+	if userInfo, err = mc.UserAPI().GetAKInfo(opt.AccessKey); err != nil {
+		return
+	}
+	if userInfo.SecretKey != opt.SecretKey {
+		err = proto.ErrNoPermission
 		return
 	}
 	var policy = userInfo.Policy

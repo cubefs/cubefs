@@ -18,32 +18,51 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/chubaofs/chubaofs/proto"
+
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
 type VolumeManager struct {
-	masters   []string
-	mc        *master.MasterClient
-	volumes   map[string]*Volume // Volume key -> vol
-	volMu     sync.RWMutex
-	store     Store
-	closeOnce sync.Once
+	masters    []string
+	mc         *master.MasterClient
+	volumes    map[string]*Volume // mapping: volume name -> *Volume
+	volMu      sync.RWMutex
+	volInitMap sync.Map // mapping: volume name -> *sync.Mutex
+	store      Store
+	closeOnce  sync.Once
 }
 
 func (m *VolumeManager) Release(volName string) {
 	m.volMu.Lock()
-	defer m.volMu.Unlock()
-	if vol, has := m.volumes[volName]; has && vol != nil {
+	vol, has := m.volumes[volName]
+	if has {
+		delete(m.volumes, volName)
+		log.LogDebugf("Release: release volume: volume(%v)", volName)
+	}
+	m.volMu.Unlock()
+	if has && vol != nil {
 		if closeErr := vol.Close(); closeErr != nil {
-			log.LogErrorf("Release: close volume fail: err(%v)", closeErr)
+			log.LogErrorf("Release: close volume fail: volume(%v) err(%v)", volName, closeErr)
 		}
 	}
-	delete(m.volumes, volName)
 }
 
 func (m *VolumeManager) Volume(volName string) (*Volume, error) {
 	return m.loadVolume(volName)
+}
+
+func (m *VolumeManager) syncVolumeInit(volume string) (releaseFunc func()) {
+	value, _ := m.volInitMap.LoadOrStore(volume, new(sync.Mutex))
+	var initMu = value.(*sync.Mutex)
+	initMu.Lock()
+	log.LogDebugf("syncVolumeInit: get volume init lock: volume(%v)", volume)
+	return func() {
+		initMu.Unlock()
+		m.volInitMap.Delete(volume)
+		log.LogDebugf("syncVolumeInit: release volume init lock: volume(%v)", volume)
+	}
 }
 
 func (m *VolumeManager) loadVolume(volName string) (*Volume, error) {
@@ -54,21 +73,40 @@ func (m *VolumeManager) loadVolume(volName string) (*Volume, error) {
 	volume, exist = m.volumes[volName]
 	m.volMu.RUnlock()
 	if !exist {
-		m.volMu.Lock()
+		var release = m.syncVolumeInit(volName)
+		m.volMu.RLock()
 		volume, exist = m.volumes[volName]
 		if exist {
-			m.volMu.Unlock()
+			m.volMu.RUnlock()
+			release()
 			return volume, nil
 		}
-		if volume, err = newVolume(m.masters, volName); err != nil {
-			m.volMu.Unlock()
+		m.volMu.RUnlock()
+
+		var onAsyncTaskError AsyncTaskErrorFunc = func(err error) {
+			switch err {
+			case proto.ErrVolNotExists:
+				m.Release(volName)
+			default:
+			}
+		}
+		var config = &VolumeConfig{
+			Volume:           volName,
+			Masters:          m.masters,
+			OnAsyncTaskError: onAsyncTaskError,
+		}
+		if volume, err = NewVolume(config); err != nil {
+			release()
 			return nil, err
 		}
 		ak, sk := volume.OSSSecure()
 		log.LogDebugf("[loadVolume] load Volume: Name[%v] AccessKey[%v] SecretKey[%v]", volName, ak, sk)
+
+		m.volMu.Lock()
 		m.volumes[volName] = volume
 		volume.vm = m
 		m.volMu.Unlock()
+		release()
 
 		volume.loadOSSMeta()
 	}

@@ -39,5 +39,7 @@ fi
 if [[ ${failed} -eq 1 ]]; then
     echo -e "\nbuild output:"
     cat /tmp/cfs_build_output;
+    exit 1
 fi
 
+exit 0

@@ -1,5 +1,5 @@
 #! /bin/bash
-
+set -e
 RootPath=$(cd $(dirname $0)/..; pwd)
 GOPATH=/go
 export DiskPath="$RootPath/docker/disk"

@@ -887,6 +887,10 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	err = vol.DeleteFile(param.Object())
+	if err == syscall.ENOENT {
+		errorCode = &NoSuchKey
+		return
+	}
 	if err != nil {
 		log.LogErrorf("deleteObjectHandler: Volume delete file fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = &InternalError
