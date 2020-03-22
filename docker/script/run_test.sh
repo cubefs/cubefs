@@ -42,6 +42,23 @@ check_cluster() {
     exit 1
 }
 
+ensure_node_writable() {
+    node=$1
+    echo -n "check $node ... "
+    for i in $(seq 1 300) ; do
+        ${cli} ${node} list &> /tmp/cli_${node}_list;
+        res=`cat /tmp/cli_${node}_list | grep "Yes" | grep "Active" | wc -l`
+        if [[ ${res} -eq 4 ]]; then
+            echo -e "\033[32m[success]\033[0m"
+            return
+        fi
+        sleep 1
+    done
+    echo -e "\033[31m[timeout]\033[0m"
+    cat /tmp/cli_${node}_list
+    exit 1
+}
+
 create_cluster_user() {
     echo -n "create user    ... "
     # check user exist
@@ -173,23 +190,6 @@ wait_proc_done() {
     fi
 }
 
-ensure_node_writable() {
-    node=$1
-    echo -n "check $node ... "
-    for i in $(seq 1 300) ; do
-        ${cli} ${node} list &> /tmp/cli_${node}_list;
-        res=`cat /tmp/cli_${node}_list | grep "Yes" | grep "Active" | wc -l`
-        if [[ ${res} -eq 4 ]]; then
-            echo -e "\033[32m[success]\033[0m"
-            return
-        fi
-        sleep 1
-    done
-    echo -e "\033[31m[timeout]\033[0m"
-    cat /tmp/cli_${node}_list
-    exit 1
-}
-
 run_ltptest() {
     echo "run ltp test"
     LTPTestDir=$MntPoint/ltptest
@@ -215,6 +215,39 @@ delete_volume() {
     exit 1
 }
 
+run_s3_test() {
+    work_path=/opt/s3tests;
+    echo "run s3 compatibility test";
+
+    # install system requirements
+    apt-get update && apt-get install -y \
+        sudo \
+        debianutils \
+        python3-pip \
+        python3-virtualenv \
+        python3-dev \
+        libevent-dev \
+        libffi-dev \
+        libxml2-dev \
+        libxslt-dev \
+        zlib1g-dev \
+        virtualenv
+
+    # download s3-tests project
+    mkdir -p ${work_path};
+    wget "https://github.com/mervinkid/s3-tests/archive/for-chubaofs-2.0.tar.gz" \
+        -O ${work_path}/s3-tests-for-chubaofs-2.0.tar.gz
+    tar zxf ${work_path}/s3-tests-for-chubaofs-2.0.tar.gz -C ${work_path}/
+
+    # init s3-tests environment
+    cd ${work_path}/s3-tests-for-chubaofs-2.0
+    /bin/bash ./bootstrap
+
+    # execute tests
+    tests=`cat ${work_path}/s3tests.txt`
+    S3TEST_CONF=${work_path}/s3tests.conf ./virtualenv/bin/nosetests ${tests} -v --collect-only
+}
+
 check_cluster
 create_cluster_user
 ensure_node_writable "metanode"
@@ -224,5 +257,6 @@ add_data_partitions ; sleep 3
 show_cluster_info
 start_client ; sleep 2
 run_ltptest
+run_s3_test
 stop_client
 delete_volume

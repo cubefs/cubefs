@@ -135,6 +135,7 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 
 	// release Volume from Volume manager
 	o.vm.Release(bucket)
+	w.WriteHeader(http.StatusNoContent)
 	return
 }
 

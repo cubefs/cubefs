@@ -35,6 +35,7 @@ type RequestParam struct {
 	conditionVars map[string][]string
 	vars          map[string]string
 	accessKey     string
+	r             *http.Request
 }
 
 func (p *RequestParam) Bucket() string {
@@ -50,7 +51,10 @@ func (p *RequestParam) Action() proto.Action {
 }
 
 func (p *RequestParam) GetVar(name string) string {
-	return p.vars[name]
+	if val, has := p.vars[name]; has {
+		return val
+	}
+	return p.r.FormValue(name)
 }
 
 func (p *RequestParam) GetConditionVar(name string) []string {
@@ -63,6 +67,7 @@ func (p *RequestParam) AccessKey() string {
 
 func ParseRequestParam(r *http.Request) *RequestParam {
 	p := new(RequestParam)
+	p.r = r
 	p.vars = mux.Vars(r)
 	p.bucket = p.vars["bucket"]
 	p.object = p.vars["object"]
@@ -96,7 +101,7 @@ func (o *ObjectNode) getVol(bucket string) (vol *Volume, err error) {
 	}
 	vol, err = o.vm.loadVolume(bucket)
 	if err != nil {
-		log.LogErrorf("parseRequestParams: load Volume fail, bucket(%v) err(%v)", bucket, err)
+		log.LogErrorf("getVol: load Volume fail, bucket(%v) err(%v)", bucket, err)
 		return nil, err
 	}
 

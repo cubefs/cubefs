@@ -157,7 +157,7 @@ func (m *Server) updateZone(w http.ResponseWriter, r *http.Request) {
 	}
 	zone, err := m.cluster.t.getZone(name)
 	if err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNotExists, Msg: err.Error()})
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeZoneNotExists, Msg: err.Error()})
 		return
 	}
 	if status {

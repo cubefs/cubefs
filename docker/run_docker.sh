@@ -30,7 +30,7 @@ clean() {
 
 # test
 run_unit_test() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run unit-test
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run unit_test
 }
 
 # build

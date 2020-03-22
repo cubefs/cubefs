@@ -149,14 +149,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			}
 			// o represent proto.ErrCodeSuccess
 			if body.Code != 0 {
-				if body.Code == proto.ErrCodeInvalidTicket {
-					log.LogWarnf("request error: %v", body.Msg)
-					return nil, proto.ErrInvalidTicket
-				} else if body.Code == proto.ErrCodeExpiredTicket {
-					return nil, proto.ErrExpiredTicket
-				} else {
-					return nil, fmt.Errorf("request error, code[%d], msg[%s]", body.Code, body.Msg)
-				}
+				return nil, proto.ParseErrorCode(body.Code)
 			}
 			return []byte(body.Data), nil
 		default:

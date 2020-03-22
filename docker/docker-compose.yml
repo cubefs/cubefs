@@ -306,6 +306,7 @@ services:
             - ./script/run_test.sh:/cfs/script/start.sh
             - ./script/start_client.sh:/cfs/script/start_client.sh
             - ./ltp/runtest/fs:/opt/ltp/runtest/fs
+            - ./s3tests:/opt/s3tests
         privileged: true
         devices:
             - /dev/fuse:/dev/fuse:rwm
@@ -375,7 +376,7 @@ services:
         networks:
             extnetwork:
 
-    uint-test:
+    unit_test:
         image: chubaofs/cfs-base:1.0
         volumes:
             - ../:/go/src/github.com/chubaofs/chubaofs

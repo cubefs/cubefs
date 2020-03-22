@@ -84,7 +84,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		}
 
 		log.LogDebugf("traceMiddleware: "+
-			"action(%v) requestID(%v) host(%v) method(%v) url(%v) header(%v) " +
+			"action(%v) requestID(%v) host(%v) method(%v) url(%v) header(%v) "+
 			"remote(%v) cost(%v)",
 			action, requestID, r.Host, r.Method, r.URL.String(), headerToString(r.Header),
 			getRequestIP(r), time.Since(startTime))

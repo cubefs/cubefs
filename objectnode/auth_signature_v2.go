@@ -258,9 +258,9 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, e
 	}
 
 	var param = ParseRequestParam(r)
-	accessKey := param.GetVar("accessKey")
-	signature := param.GetVar("signature")
-	expires := param.GetVar("expires")
+	accessKey := param.GetVar("AccessKey")
+	signature := param.GetVar("Signature")
+	expires := param.GetVar("Expires")
 	if accessKey == "" || signature == "" || expires == "" {
 		log.LogInfof("validateUrlBySignatureAlgorithmV2: incomplete authentication information: requestID(%v)",
 			GetRequestID(r))

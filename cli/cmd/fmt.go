@@ -90,7 +90,7 @@ func formatVolumeStatus(status uint8) string {
 }
 
 var (
-	volumeInfoTablePattern = "%-20v    %-10v    %-8v    %-8v    %-8v    %-10v"
+	volumeInfoTablePattern = "%-32v    %-10v    %-8v    %-8v    %-8v    %-10v"
 	volumeInfoTableHeader  = fmt.Sprintf(volumeInfoTablePattern, "VOLUME", "OWNER", "USED", "TOTAL", "STATUS", "CREATE TIME")
 )
 
