@@ -262,15 +262,13 @@ func (s *Super) ListXattr(ctx context.Context, op *fuseops.ListXattrOp) error {
 	ino := uint64(op.Inode)
 	desc := fuse.OpDescription(op)
 
-	info, err := s.mw.XAttrsList_ll(ino)
-
+	keys, err := s.mw.XAttrsList_ll(ino)
 	if err != nil {
 		log.LogErrorf("ListXattr: op(%v) err(%v)", desc, err)
 		return ParseError(err)
 	}
-
 	dst := op.Dst[:]
-	info.VisitAll(func(key string, value []byte) bool {
+	for _, key := range keys {
 		keyLen := len(key) + 1
 
 		if err == nil && len(dst) >= keyLen {
@@ -280,8 +278,7 @@ func (s *Super) ListXattr(ctx context.Context, op *fuseops.ListXattrOp) error {
 			err = syscall.ERANGE
 		}
 		op.BytesRead += keyLen
-		return true
-	})
+	}
 	log.LogDebugf("TRACE ListXattr: op(%v)", desc)
 	return nil
 }

@@ -102,13 +102,13 @@ func (mp *metaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err 
 		VolName:     req.VolName,
 		PartitionId: req.PartitionId,
 		Inode:       req.Inode,
-		XAttr:       make(map[string]string),
+		XAttrs:      make([]string, 0),
 	}
 	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
 	if treeItem != nil {
 		extend := treeItem.(*Extend)
 		extend.Range(func(key, value []byte) bool {
-			response.XAttr[string(key)] = string(value)
+			response.XAttrs = append(response.XAttrs, string(key))
 			return true
 		})
 	}

@@ -260,13 +260,13 @@ func (v *Volume) DeleteXAttr(path string, key string) (err error) {
 	return
 }
 
-func (v *Volume) ListXAttrs(path string) (info *proto.XAttrInfo, err error) {
+func (v *Volume) ListXAttrs(path string) (keys []string, err error) {
 	var inode uint64
 	inode, err = v.getInodeFromPath(path)
 	if err != nil {
 		return
 	}
-	if info, err = v.mw.XAttrsList_ll(inode); err != nil {
+	if keys, err = v.mw.XAttrsList_ll(inode); err != nil {
 		log.LogErrorf("GetXAttr: meta get xattr fail: path(%v) inode(%v) err(%v)", path, inode, err)
 		return
 	}

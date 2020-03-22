@@ -305,7 +305,7 @@ type GetXAttrOutput struct {
 
 type ListXAttrsOutput struct {
 	XMLName xml.Name `xml:"ListXAttrsResult"`
-	XAttrs  []*XAttr `xml:"XAttrs>XAttr"`
+	Keys    []string `xml:"Keys"`
 }
 
 type Buckets struct {

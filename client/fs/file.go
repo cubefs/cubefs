@@ -351,16 +351,14 @@ func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *
 	_ = req.Size     // ignore currently
 	_ = req.Position // ignore currently
 
-	info, err := f.super.mw.XAttrsList_ll(ino)
+	keys, err := f.super.mw.XAttrsList_ll(ino)
 	if err != nil {
 		log.LogErrorf("ListXattr: ino(%v) err(%v)", ino, err)
 		return ParseError(err)
 	}
-
-	info.VisitAll(func(key string, value []byte) bool {
+	for _, key := range keys {
 		resp.Append(key)
-		return true
-	})
+	}
 	log.LogDebugf("TRACE Listxattr: ino(%v)", ino)
 	return nil
 }

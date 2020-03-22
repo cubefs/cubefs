@@ -990,7 +990,7 @@ func (mw *MetaWrapper) removeXAttr(mp *MetaPartition, inode uint64, name string)
 	return
 }
 
-func (mw *MetaWrapper) listXAttr(mp *MetaPartition, inode uint64) (vals map[string]string, status int, err error) {
+func (mw *MetaWrapper) listXAttr(mp *MetaPartition, inode uint64) (keys []string, status int, err error) {
 	req := &proto.ListXAttrRequest{
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
@@ -1025,7 +1025,7 @@ func (mw *MetaWrapper) listXAttr(mp *MetaPartition, inode uint64) (vals map[stri
 		return
 	}
 
-	vals = resp.XAttr
+	keys = resp.XAttrs
 
 	log.LogErrorf("list xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	return

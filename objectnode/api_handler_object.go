@@ -1265,8 +1265,8 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var info *proto.XAttrInfo
-	if info, err = vol.ListXAttrs(param.object); err != nil {
+	var keys []string
+	if keys, err = vol.ListXAttrs(param.object); err != nil {
 		if err == syscall.ENOENT {
 			errorCode = &NoSuchKey
 			return
@@ -1276,14 +1276,9 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 		errorCode = &InternalError
 		return
 	}
-	xattrs := make([]*XAttr, 0, len(info.XAttrs))
-	info.VisitAll(func(key string, value []byte) bool {
-		xattrs = append(xattrs, &XAttr{Key: key, Value: string(value)})
-		return true
-	})
 
 	var response = ListXAttrsOutput{
-		XAttrs: xattrs,
+		Keys: keys,
 	}
 	var marshaled []byte
 	if marshaled, err = MarshalXMLEntity(&response); err != nil {

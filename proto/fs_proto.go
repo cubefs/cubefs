@@ -347,10 +347,10 @@ type ListXAttrRequest struct {
 }
 
 type ListXAttrResponse struct {
-	VolName     string            `json:"vol"`
-	PartitionId uint64            `json:"pid"`
-	Inode       uint64            `json:"ino"`
-	XAttr       map[string]string `json:"xattr"`
+	VolName     string   `json:"vol"`
+	PartitionId uint64   `json:"pid"`
+	Inode       uint64   `json:"ino"`
+	XAttrs      []string `json:"xattrs"`
 }
 
 type BatchGetXAttrRequest struct {
