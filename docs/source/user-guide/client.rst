@@ -45,6 +45,10 @@ fuse.json
    "icacheTimeout", "string", "Inode cache valid duration in client", "No"
    "enSyncWrite", "string", "Enable DirectIO sync write, i.e. make sure data is fsynced in data node", "No"
    "autoInvalData", "string", "Use AutoInvalData FUSE mount option", "No"
+   "rdonly", "bool", "Mount as read-only file system", "No"
+   "writecache", "bool", "Leverage the write cache feature of kernel FUSE. Requires the kernel FUSE module to support write cache.", "No"
+   "keepcache", "bool", "Keep kernel page cache. Requires the writecache option is enabled.", "No"
+   "token", "string", "Specify the capability of a client instance.", "No"
 
 Mount
 -----
