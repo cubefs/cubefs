@@ -45,6 +45,7 @@ const (
 )
 
 var (
+	// global object pools for memory optimization
 	openRequestPool    *sync.Pool
 	writeRequestPool   *sync.Pool
 	flushRequestPool   *sync.Pool
@@ -52,6 +53,28 @@ var (
 	truncRequestPool   *sync.Pool
 	evictRequestPool   *sync.Pool
 )
+
+func init() {
+	// init object pools
+	openRequestPool = &sync.Pool{New: func() interface{} {
+		return &OpenRequest{}
+	}}
+	writeRequestPool = &sync.Pool{New: func() interface{} {
+		return &WriteRequest{}
+	}}
+	flushRequestPool = &sync.Pool{New: func() interface{} {
+		return &FlushRequest{}
+	}}
+	releaseRequestPool = &sync.Pool{New: func() interface{} {
+		return &ReleaseRequest{}
+	}}
+	truncRequestPool = &sync.Pool{New: func() interface{} {
+		return &TruncRequest{}
+	}}
+	evictRequestPool = &sync.Pool{New: func() interface{} {
+		return &EvictRequest{}
+	}}
+}
 
 type ExtentConfig struct {
 	Volume            string
@@ -106,26 +129,6 @@ retry:
 	client.getExtents = config.OnGetExtents
 	client.truncate = config.OnTruncate
 	client.followerRead = config.FollowerRead || client.dataWrapper.FollowerRead()
-
-	// Init request pools
-	openRequestPool = &sync.Pool{New: func() interface{} {
-		return &OpenRequest{}
-	}}
-	writeRequestPool = &sync.Pool{New: func() interface{} {
-		return &WriteRequest{}
-	}}
-	flushRequestPool = &sync.Pool{New: func() interface{} {
-		return &FlushRequest{}
-	}}
-	releaseRequestPool = &sync.Pool{New: func() interface{} {
-		return &ReleaseRequest{}
-	}}
-	truncRequestPool = &sync.Pool{New: func() interface{} {
-		return &TruncRequest{}
-	}}
-	evictRequestPool = &sync.Pool{New: func() interface{} {
-		return &EvictRequest{}
-	}}
 
 	var readLimit, writeLimit rate.Limit
 	if config.ReadRate <= 0 {
