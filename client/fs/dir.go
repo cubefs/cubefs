@@ -96,6 +96,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	if d.super.keepCache {
 		resp.Flags |= fuse.OpenKeepCache
 	}
+	resp.EntryValid = LookupValidDuration
 
 	d.super.ic.Delete(d.inode.ino)
 
