@@ -22,10 +22,7 @@ Object Node using `JSON` format configuration file.
    :header: "Key", "Type", "Description", "Mandatory"
 
    "role", "string", "Role of process and must be set to ``objectnode``", "Yes"
-   "listen", "string", "
-   | Listen and accept ip address and port of this server.
-   | Format: ``IP:PORT`` or ``:PORT``
-   | Default: ``:80``", "Yes"
+   "listen", "string", "Listen and accept port of the server", "Yes"
    "domains", "string slice", "
    | Domain of S3-like interface which makes wildcard domain support
    | Format: ``DOMAIN``", "No"

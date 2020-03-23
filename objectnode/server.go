@@ -44,7 +44,7 @@ const (
 )
 
 var (
-	regexpListen = regexp.MustCompile("^(([0-9]{1,3}.){3}([0-9]{1,3}))?:(\\d)+$")
+	regexpListen = regexp.MustCompile("^(\\d)+$")
 )
 
 type ObjectNode struct {
@@ -171,7 +171,7 @@ func (o *ObjectNode) startMuxRestAPI() (err error) {
 	)
 
 	var server = &http.Server{
-		Addr:    o.listen,
+		Addr:    ":" + o.listen,
 		Handler: router,
 	}
 
