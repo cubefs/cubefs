@@ -14,7 +14,15 @@
 
 package proto
 
-import "sync"
+import (
+	"regexp"
+	"sync"
+)
+
+var (
+	AKRegexp = regexp.MustCompile("^[a-zA-Z0-9]{16}$")
+	SKRegexp = regexp.MustCompile("^[a-zA-Z0-9]{32}$")
+)
 
 type UserType uint8
 
@@ -60,6 +68,22 @@ func UserTypeFromString(name string) UserType {
 	default:
 	}
 	return UserTypeInvalid
+}
+
+func IsValidAK(ak string) bool {
+	if AKRegexp.MatchString(ak) {
+		return true
+	} else {
+		return false
+	}
+}
+
+func IsValidSK(sk string) bool {
+	if SKRegexp.MatchString(sk) {
+		return true
+	} else {
+		return false
+	}
 }
 
 type AKUser struct {
@@ -291,4 +315,11 @@ type UserTransferVolParam struct {
 	Volume  string `json:"volume"`
 	UserSrc string `json:"user_src"`
 	UserDst string `json:"user_dst"`
+}
+
+type UserUpdateParam struct {
+	UserID    string   `json:"user_id"`
+	AccessKey string   `json:"access_key"`
+	SecretKey string   `json:"secret_key"`
+	Type      UserType `json:"type"`
 }

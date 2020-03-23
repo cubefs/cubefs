@@ -40,6 +40,8 @@ func newUserCmd(client *master.MasterClient) *cobra.Command {
 		newUserInfoCmd(client),
 		newUserListCmd(client),
 		newUserPermCmd(client),
+		newUserUpdateCmd(client),
+		newUserDeleteCmd(client),
 	)
 	return cmd
 }
@@ -125,6 +127,99 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optSecretKey, "secret-key", "", "Specify user secret key for object storage interface authentication")
 	cmd.Flags().StringVar(&optUserType, "user-type", "normal", "Specify user type [normal | admin]")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	return cmd
+}
+
+const (
+	cmdUserUpdateUse   = "update [USER ID]"
+	cmdUserUpdateShort = "Update information of the specify user"
+)
+
+func newUserUpdateCmd(client *master.MasterClient) *cobra.Command {
+	var optAccessKey string
+	var optSecretKey string
+	var optUserType string
+	var optYes bool
+	var cmd = &cobra.Command{
+		Use:   cmdUserUpdateUse,
+		Short: cmdUserUpdateShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var userID = args[0]
+			var accessKey = optAccessKey
+			var secretKey = optSecretKey
+			var userType proto.UserType
+			if optUserType != "" {
+				userType = proto.UserTypeFromString(optUserType)
+				if !userType.Valid() {
+					errout("Invalid user type.")
+					os.Exit(1)
+				}
+			}
+
+			if !optYes {
+				var displayAccessKey = "[no change]"
+				if optAccessKey != "" {
+					displayAccessKey = optAccessKey
+				}
+				var displaySecretKey = "[no change]"
+				if optSecretKey != "" {
+					displaySecretKey = optSecretKey
+				}
+				var displayUserType = "[no change]"
+				if optUserType != "" {
+					displayUserType = optUserType
+				}
+				fmt.Printf("Update ChubaoFS cluster user\n")
+				stdout("  User ID   : %v\n", userID)
+				stdout("  Access Key: %v\n", displayAccessKey)
+				stdout("  Secret Key: %v\n", displaySecretKey)
+				stdout("  Type      : %v\n", displayUserType)
+				stdout("\nConfirm (yes/no)[yes]: ")
+				var userConfirm string
+				_, _ = fmt.Scanln(&userConfirm)
+				if userConfirm != "yes" && len(userConfirm) != 0 {
+					stdout("Abort by user.\n")
+					return
+				}
+			}
+			if accessKey == "" && secretKey == "" && optUserType == "" {
+				stdout("No update.\n")
+				return
+			}
+			var param = proto.UserUpdateParam{
+				UserID:    userID,
+				AccessKey: accessKey,
+				SecretKey: secretKey,
+				Type:      userType,
+			}
+			var userInfo *proto.UserInfo
+			if userInfo, err = client.UserAPI().UpdateUser(&param); err != nil {
+				errout("Update user failed: %v\n", err)
+				os.Exit(1)
+			}
+
+			stdout("Update user success:\n")
+			printUserInfo(userInfo)
+			return
+		},
+	}
+	cmd.Flags().StringVar(&optAccessKey, "access-key", "", "Specify user access key for object storage interface authentication")
+	cmd.Flags().StringVar(&optSecretKey, "secret-key", "", "Specify user secret key for object storage interface authentication")
+	cmd.Flags().StringVar(&optUserType, "user-type", "", "Specify user type [normal | admin]")
+	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	return cmd
+}
+
+const (
+	cmdUserDeleteUse   = "delete [USER ID]"
+	cmdUserDeleteShort = "Delete the specify user"
+)
+
+func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
+	//todo
+	var cmd = &cobra.Command{}
 	return cmd
 }
 

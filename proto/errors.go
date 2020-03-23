@@ -78,6 +78,8 @@ var (
 	ErrInvalidUserType                 = errors.New("invalid user type")
 	ErrNoPermission                    = errors.New("no permission")
 	ErrTokenNotFound                   = errors.New("token not found")
+	ErrInvalidAccessKey                = errors.New("invalid access key")
+	ErrInvalidSecretKey                = errors.New("invalid secret key")
 )
 
 // http response error code and error message definitions
@@ -137,6 +139,8 @@ const (
 	ErrCodeInvalidUserType
 	ErrCodeNoPermission
 	ErrCodeTokenNotExist
+	ErrCodeInvalidAccessKey
+	ErrCodeInvalidSecretKey
 )
 
 // Err2CodeMap error map to code
@@ -194,6 +198,8 @@ var Err2CodeMap = map[error]int32{
 	ErrInvalidUserType:                 ErrCodeInvalidUserType,
 	ErrNoPermission:                    ErrCodeNoPermission,
 	ErrTokenNotFound:                   ErrCodeTokenNotExist,
+	ErrInvalidAccessKey:                ErrCodeInvalidAccessKey,
+	ErrInvalidSecretKey:                ErrCodeInvalidSecretKey,
 }
 
 func ParseErrorCode(code int32) error {
@@ -258,4 +264,6 @@ var code2ErrMap = map[int32]error{
 	ErrCodeInvalidUserType:                 ErrInvalidUserType,
 	ErrCodeNoPermission:                    ErrNoPermission,
 	ErrCodeTokenNotExist:                   ErrTokenNotFound,
+	ErrCodeInvalidAccessKey:                ErrInvalidAccessKey,
+	ErrCodeInvalidSecretKey:                ErrInvalidSecretKey,
 }

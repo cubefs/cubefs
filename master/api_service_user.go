@@ -56,6 +56,33 @@ func (m *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
+func (m *Server) updateUser(w http.ResponseWriter, r *http.Request) {
+	var (
+		userInfo *proto.UserInfo
+		err      error
+	)
+	var bytes []byte
+	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	var param = proto.UserUpdateParam{}
+	if err = json.Unmarshal(bytes, &param); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if param.Type == proto.UserTypeRoot {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrInvalidUserType))
+		return
+	}
+
+	if userInfo, err = m.user.updateKey(&param); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	_ = sendOkReply(w, r, newSuccessHTTPReply(userInfo))
+}
+
 func (m *Server) getUserAKInfo(w http.ResponseWriter, r *http.Request) {
 	var (
 		ak       string
@@ -242,7 +269,7 @@ func extractAccessKey(r *http.Request) (ak string, err error) {
 		err = keyNotFound(akKey)
 		return
 	}
-	if !akRegexp.MatchString(ak) {
+	if !proto.AKRegexp.MatchString(ak) {
 		return "", errors.New("accesskey can only be number and letters")
 	}
 	return

@@ -38,6 +38,24 @@ func (api *UserAPI) DeleteUser(userID string) (err error) {
 	return
 }
 
+func (api *UserAPI) UpdateUser(param *proto.UserUpdateParam) (userInfo *proto.UserInfo, err error) {
+	var request = newAPIRequest(http.MethodPost, proto.UserUpdate)
+	var reqBody []byte
+	if reqBody, err = json.Marshal(param); err != nil {
+		return
+	}
+	request.addBody(reqBody)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	userInfo = &proto.UserInfo{}
+	if err = json.Unmarshal(data, userInfo); err != nil {
+		return
+	}
+	return
+}
+
 func (api *UserAPI) GetAKInfo(accesskey string) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.UserGetAKInfo)
 	request.addParam("ak", accesskey)

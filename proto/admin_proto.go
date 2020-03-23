@@ -78,6 +78,7 @@ const (
 	// APIs for user management
 	UserCreate          = "/user/create"
 	UserDelete          = "/user/delete"
+	UserUpdate          = "/user/update"
 	UserUpdatePolicy    = "/user/updatePolicy"
 	UserRemovePolicy    = "/user/removePolicy"
 	UserDeleteVolPolicy = "/user/deleteVolPolicy"
