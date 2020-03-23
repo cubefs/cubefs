@@ -11,7 +11,7 @@ type UserAPI struct {
 	mc *MasterClient
 }
 
-func (api *UserAPI) Create(param *proto.UserCreateParam) (userInfo *proto.UserInfo, err error) {
+func (api *UserAPI) CreateUser(param *proto.UserCreateParam) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UserCreate)
 	var reqBody []byte
 	if reqBody, err = json.Marshal(param); err != nil {
@@ -30,7 +30,7 @@ func (api *UserAPI) Create(param *proto.UserCreateParam) (userInfo *proto.UserIn
 }
 
 func (api *UserAPI) DeleteUser(userID string) (err error) {
-	var request = newAPIRequest(http.MethodDelete, proto.UserDelete)
+	var request = newAPIRequest(http.MethodPost, proto.UserDelete)
 	request.addParam("owner", userID)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return

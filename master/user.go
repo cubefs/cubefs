@@ -191,7 +191,6 @@ func (u *User) updateKey(param *proto.UserUpdateParam) (userInfo *proto.UserInfo
 	if err = u.syncUpdateUserInfo(userInfo); err != nil {
 		return
 	}
-	u.userStore.Store(param.UserID, userInfo)
 	if akChanged {
 		if err = u.syncAddAKUser(akUserAft); err != nil {
 			return
@@ -328,15 +327,14 @@ func (u *User) deleteVolPolicy(volName string) (err error) {
 
 func (u *User) transferVol(params *proto.UserTransferVolParam) (targetUserInfo *proto.UserInfo, err error) {
 	var userInfo *proto.UserInfo
-	if userInfo, err = u.getUserInfo(params.UserSrc); err != nil {
-		return
-	}
-	if !userInfo.Policy.IsOwn(params.Volume) {
-		err = proto.ErrHaveNoPolicy
-		return
-	}
-	if _, err = u.removeOwnVol(params.UserSrc, params.Volume); err != nil {
-		return
+	if userInfo, err = u.getUserInfo(params.UserSrc); err == nil {
+		if !userInfo.Policy.IsOwn(params.Volume) {
+			err = proto.ErrHaveNoPolicy
+			return
+		}
+		if _, err = u.removeOwnVol(params.UserSrc, params.Volume); err != nil {
+			return
+		}
 	}
 	if targetUserInfo, err = u.addOwnVol(params.UserDst, params.Volume); err != nil {
 		return

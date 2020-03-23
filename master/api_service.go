@@ -568,11 +568,11 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	// create user
+	/* todo create user automatically
 	if err = m.associateVolWithUser(owner, name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
-	}
+	} */
 	msg = fmt.Sprintf("create vol[%v] successfully, has allocate [%v] data partitions", name, len(vol.dataPartitions.partitions))
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }

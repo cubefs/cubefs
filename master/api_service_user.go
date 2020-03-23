@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
@@ -207,6 +208,10 @@ func (m *Server) transferUserVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
+	if vol.Owner != param.UserSrc {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeHaveNoPolicy, Msg: err.Error()})
+		return
+	}
 	if userInfo, err = m.user.transferVol(&param); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -277,5 +282,24 @@ func extractAccessKey(r *http.Request) (ak string, err error) {
 
 func extractKeywords(r *http.Request) (keywords string) {
 	keywords = r.FormValue(keywordsKey)
+	return
+}
+
+type deleteUserParam struct {
+	userID      string
+	forceDelete bool
+}
+
+func parseDeleteUserParam(r *http.Request) (p *deleteUserParam, err error) {
+	p = &deleteUserParam{}
+	forceDelete := r.Header.Get(proto.ForceDelete)
+	if len(forceDelete) > 0 {
+		if p.forceDelete, err = strconv.ParseBool(forceDelete); err != nil {
+			return
+		}
+	}
+	if p.userID, err = extractOwner(r); err != nil {
+		return
+	}
 	return
 }

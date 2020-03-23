@@ -74,6 +74,7 @@ const (
 
 	// Header keys
 	SkipOwnerValidation = "Skip-Owner-Validation"
+	ForceDelete         = "Force-Delete"
 
 	// APIs for user management
 	UserCreate          = "/user/create"
