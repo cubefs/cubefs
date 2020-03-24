@@ -568,11 +568,11 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	/* todo create user automatically
+
 	if err = m.associateVolWithUser(owner, name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
-	} */
+	}
 	msg = fmt.Sprintf("create vol[%v] successfully, has allocate [%v] data partitions", name, len(vol.dataPartitions.partitions))
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
@@ -1831,6 +1831,10 @@ func (m *Server) associateVolWithUser(userID, volName string) error {
 		return err
 	}
 	if err == proto.ErrUserNotExists {
+		return nil
+	}
+	/* todo remove create user automatically
+	if err == proto.ErrUserNotExists {
 		var param = proto.UserCreateParam{
 			ID:       userID,
 			Password: DefaultUserPassword,
@@ -1839,7 +1843,7 @@ func (m *Server) associateVolWithUser(userID, volName string) error {
 		if userInfo, err = m.user.createKey(&param); err != nil {
 			return err
 		}
-	}
+	} */
 	if _, err = m.user.addOwnVol(userInfo.UserID, volName); err != nil {
 		return err
 	}

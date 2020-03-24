@@ -151,6 +151,10 @@ func (u *User) updateKey(param *proto.UserUpdateParam) (userInfo *proto.UserInfo
 	} else {
 		userInfo = value.(*proto.UserInfo)
 	}
+	if userInfo.UserType == proto.UserTypeRoot {
+		err = proto.ErrNoPermission
+		return
+	}
 	var formerAK = userInfo.AccessKey
 	if param.AccessKey != "" {
 		if !proto.IsValidAK(param.AccessKey) {

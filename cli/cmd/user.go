@@ -245,7 +245,7 @@ func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
 				errout("Delete user failed:\n%v\n", err)
 				os.Exit(1)
 			}
-			stdout("Delete user success:\n")
+			stdout("Delete user success.\n")
 			return
 		},
 	}

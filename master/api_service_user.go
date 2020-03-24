@@ -72,10 +72,6 @@ func (m *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if param.Type == proto.UserTypeRoot {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrInvalidUserType))
-		return
-	}
 
 	if userInfo, err = m.user.updateKey(&param); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
