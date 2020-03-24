@@ -130,9 +130,31 @@ func (mw *MetaWrapper) InodeGet_ll(inode uint64) (*proto.InodeInfo, error) {
 
 	status, info, err := mw.iget(mp, inode)
 	if err != nil || status != statusOK {
+		if status == statusNoent {
+			// For NOENT error, pull the latest mp and give it another try,
+			// in case the mp view is outdated.
+			mw.triggerAndWaitForceUpdate()
+			return mw.doInodeGet(inode)
+		}
 		return nil, statusToErrno(status)
 	}
 	log.LogDebugf("InodeGet_ll: info(%v)", info)
+	return info, nil
+}
+
+// Just like InodeGet but without retry
+func (mw *MetaWrapper) doInodeGet(inode uint64) (*proto.InodeInfo, error) {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("InodeGet_ll: No such partition, ino(%v)", inode)
+		return nil, syscall.ENOENT
+	}
+
+	status, info, err := mw.iget(mp, inode)
+	if err != nil || status != statusOK {
+		return nil, statusToErrno(status)
+	}
+	log.LogDebugf("doInodeGet: info(%v)", info)
 	return info, nil
 }
 

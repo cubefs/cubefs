@@ -197,13 +197,35 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 	return nil
 }
 
+func (mw *MetaWrapper) forceUpdateMetaPartitions() error {
+	// Only one forceUpdateMetaPartition is allowed in a specific period of time.
+	if ok := mw.forceUpdateLimit.AllowN(time.Now(), MinForceUpdateMetaPartitionsInterval); !ok {
+		return errors.New("Force update meta partitions throttled!")
+	}
+
+	return mw.updateMetaPartitions()
+}
+
+// Should be protected by partMutex, otherwise the caller might not be signaled.
+func (mw *MetaWrapper) triggerAndWaitForceUpdate() {
+	mw.partMutex.Lock()
+	select {
+	case mw.forceUpdate <- struct{}{}:
+	default:
+	}
+	mw.partCond.Wait()
+	mw.partMutex.Unlock()
+}
+
 func (mw *MetaWrapper) refresh() {
-	t := time.NewTicker(RefreshMetaPartitionsInterval)
+	var err error
+
+	t := time.NewTimer(RefreshMetaPartitionsInterval)
 	defer t.Stop()
+
 	for {
 		select {
 		case <-t.C:
-			var err error
 			if err = mw.updateMetaPartitions(); err != nil {
 				mw.onAsyncTaskError.OnError(err)
 				log.LogErrorf("updateMetaPartition fail cause: %v", err)
@@ -212,6 +234,16 @@ func (mw *MetaWrapper) refresh() {
 				mw.onAsyncTaskError.OnError(err)
 				log.LogErrorf("updateVolStatInfo fail cause: %v", err)
 			}
+			t.Reset(RefreshMetaPartitionsInterval)
+		case <-mw.forceUpdate:
+			log.LogInfof("Start forceUpdateMetaPartitions")
+			mw.partMutex.Lock()
+			if err = mw.forceUpdateMetaPartitions(); err == nil {
+				t.Reset(RefreshMetaPartitionsInterval)
+			}
+			mw.partMutex.Unlock()
+			mw.partCond.Broadcast()
+			log.LogInfof("End forceUpdateMetaPartitions: err(%v)", err)
 		case <-mw.closeCh:
 			return
 		}
