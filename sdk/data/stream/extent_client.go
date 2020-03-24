@@ -107,10 +107,6 @@ func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	client = new(ExtentClient)
 
-	defer func() {
-		_ = client.Close()
-	}()
-
 	limit := MaxMountRetryLimit
 retry:
 	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(config.Volume, config.Masters)
