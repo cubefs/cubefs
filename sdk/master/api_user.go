@@ -31,7 +31,7 @@ func (api *UserAPI) CreateUser(param *proto.UserCreateParam) (userInfo *proto.Us
 
 func (api *UserAPI) DeleteUser(userID string) (err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UserDelete)
-	request.addParam("owner", userID)
+	request.addParam("user", userID)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -72,7 +72,7 @@ func (api *UserAPI) GetAKInfo(accesskey string) (userInfo *proto.UserInfo, err e
 
 func (api *UserAPI) GetUserInfo(userID string) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.UserGetInfo)
-	request.addParam("owner", userID)
+	request.addParam("user", userID)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
