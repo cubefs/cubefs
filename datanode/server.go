@@ -181,10 +181,10 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("Err:port must string")
 	}
 	s.port = port
-	if len(cfg.GetArray(proto.MasterAddr)) == 0 {
+	if len(cfg.GetSlice(proto.MasterAddr)) == 0 {
 		return fmt.Errorf("Err:masterAddr unavalid")
 	}
-	for _, ip := range cfg.GetArray(proto.MasterAddr) {
+	for _, ip := range cfg.GetSlice(proto.MasterAddr) {
 		MasterClient.AddNode(ip.(string))
 	}
 	s.zoneName = cfg.GetString(ConfigKeyZone)
@@ -199,7 +199,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 
 func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	s.space = NewSpaceManager(s.zoneName)
-	if err != nil || len(strings.TrimSpace(s.port)) == 0 {
+	if len(strings.TrimSpace(s.port)) == 0 {
 		err = ErrNewSpaceManagerFailed
 		return
 	}
@@ -209,7 +209,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	s.space.SetClusterID(s.clusterID)
 
 	var wg sync.WaitGroup
-	for _, d := range cfg.GetArray(ConfigKeyDisks) {
+	for _, d := range cfg.GetSlice(ConfigKeyDisks) {
 		log.LogDebugf("action[startSpaceManager] load disk raw config(%v).", d)
 
 		// format "PATH:RESET_SIZE

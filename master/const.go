@@ -15,8 +15,9 @@
 package master
 
 import (
-	"github.com/chubaofs/chubaofs/util"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util"
 )
 
 // Keys in the request
@@ -37,6 +38,8 @@ const (
 	replicaNumKey         = "replicaNum"
 	followerReadKey       = "followerRead"
 	authenticateKey       = "authenticate"
+	akKey                 = "ak"
+	keywordsKey           = "keywords"
 	zoneNameKey           = "zoneName"
 	crossZoneKey          = "crossZone"
 	tokenKey             = "token"
@@ -115,15 +118,23 @@ const (
 	opSyncBatchPut             uint32 = 0x14
 	opSyncUpdateDataNode       uint32 = 0x15
 	opSyncUpdateMetaNode       uint32 = 0x16
+	opSyncAddUserInfo          uint32 = 0x17
+	opSyncDeleteUserInfo       uint32 = 0x18
+	opSyncUpdateUserInfo       uint32 = 0x19
+	opSyncAddAKUser            uint32 = 0x1A
+	opSyncDeleteAKUser         uint32 = 0x1B
+	opSyncAddVolUser           uint32 = 0x1C
+	opSyncDeleteVolUser        uint32 = 0x1D
+	opSyncUpdateVolUser        uint32 = 0x1E
 
 	OpSyncAddToken             uint32 = 0x20
 	OpSyncDelToken             uint32 = 0x21
 	OpSyncUpdateToken          uint32 = 0x22
-
 )
 
 const (
 	keySeparator          = "#"
+	idSeparator           = "$" // To seperate ID of server that submits raft changes
 	metaNodeAcronym       = "mn"
 	dataNodeAcronym       = "dn"
 	dataPartitionAcronym  = "dp"
@@ -142,5 +153,12 @@ const (
 	metaPartitionPrefix   = keySeparator + metaPartitionAcronym + keySeparator
 	clusterPrefix         = keySeparator + clusterAcronym + keySeparator
 	nodeSetPrefix         = keySeparator + nodeSetAcronym + keySeparator
+
+	akAcronym      = "ak"
+	userAcronym    = "user"
+	volUserAcronym = "voluser"
+	akPrefix       = keySeparator + akAcronym + keySeparator
+	userPrefix     = keySeparator + userAcronym + keySeparator
+	volUserPrefix  = keySeparator + volUserAcronym + keySeparator
 	TokenPrefix           = keySeparator + tokenAcronym + keySeparator
 )

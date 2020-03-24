@@ -42,6 +42,7 @@ type VolumeView struct {
 	Owner          string
 	MetaPartitions []*MetaPartition
 	OSSSecure      *OSSSecure
+	CreateTime     int64
 }
 
 type OSSSecure struct {
@@ -90,6 +91,7 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 			Owner:          volView.Owner,
 			MetaPartitions: make([]*MetaPartition, len(volView.MetaPartitions)),
 			OSSSecure:      &OSSSecure{},
+			CreateTime:     volView.CreateTime,
 		}
 		if volView.OSSSecure != nil {
 			result.OSSSecure.AccessKey = volView.OSSSecure.AccessKey
@@ -182,6 +184,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 		}
 	}
 	mw.ossSecure = view.OSSSecure
+	mw.volCreateTime = view.CreateTime
 
 	if len(rwPartitions) == 0 {
 		log.LogInfof("updateMetaPartition: no valid partitions")
@@ -202,9 +205,11 @@ func (mw *MetaWrapper) refresh() {
 		case <-t.C:
 			var err error
 			if err = mw.updateMetaPartitions(); err != nil {
+				mw.onAsyncTaskError.OnError(err)
 				log.LogErrorf("updateMetaPartition fail cause: %v", err)
 			}
 			if err = mw.updateVolStatInfo(); err != nil {
+				mw.onAsyncTaskError.OnError(err)
 				log.LogErrorf("updateVolStatInfo fail cause: %v", err)
 			}
 		case <-mw.closeCh:
@@ -247,7 +252,7 @@ func genMasterToken(req proto.APIAccessReq, key string) (message string, ts int6
 }
 
 func (mw *MetaWrapper) updateTicket() error {
-	ticket, err := getTicketFromAuthnode(mw.owner, mw.ticketMess)
+	ticket, err := mw.ac.API().GetTicket(mw.owner, mw.ticketMess.ClientKey, proto.MasterServiceID)
 	if err != nil {
 		return errors.Trace(err, "Update ticket from authnode failed!")
 	}

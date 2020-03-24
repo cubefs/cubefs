@@ -16,10 +16,11 @@ package stream
 
 import (
 	"fmt"
-	"golang.org/x/time/rate"
 	"runtime"
 	"sync"
 	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
@@ -44,6 +45,7 @@ const (
 )
 
 var (
+	// global object pools for memory optimization
 	openRequestPool    *sync.Pool
 	writeRequestPool   *sync.Pool
 	flushRequestPool   *sync.Pool
@@ -52,46 +54,8 @@ var (
 	evictRequestPool   *sync.Pool
 )
 
-// ExtentClient defines the struct of the extent client.
-type ExtentClient struct {
-	streamers    map[uint64]*Streamer
-	streamerLock sync.Mutex
-
-	readLimiter  *rate.Limiter
-	writeLimiter *rate.Limiter
-
-	dataWrapper     *wrapper.Wrapper
-	appendExtentKey AppendExtentKeyFunc
-	getExtents      GetExtentsFunc
-	truncate        TruncateFunc
-	followerRead    bool
-}
-
-// NewExtentClient returns a new extent client.
-func NewExtentClient(opt *proto.MountOptions, appendExtentKey AppendExtentKeyFunc, getExtents GetExtentsFunc, truncate TruncateFunc) (client *ExtentClient, err error) {
-	runtime.GOMAXPROCS(runtime.NumCPU())
-	client = new(ExtentClient)
-
-	limit := MaxMountRetryLimit
-retry:
-	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(opt.Volname, opt.Master)
-	if err != nil {
-		if limit <= 0 {
-			return nil, errors.Trace(err, "Init data wrapper failed!")
-		} else {
-			limit--
-			time.Sleep(MountRetryInterval)
-			goto retry
-		}
-	}
-
-	client.streamers = make(map[uint64]*Streamer)
-	client.appendExtentKey = appendExtentKey
-	client.getExtents = getExtents
-	client.truncate = truncate
-	client.followerRead = opt.FollowerRead || client.dataWrapper.FollowerRead()
-
-	// Init request pools
+func init() {
+	// init object pools
 	openRequestPool = &sync.Pool{New: func() interface{} {
 		return &OpenRequest{}
 	}}
@@ -110,17 +74,72 @@ retry:
 	evictRequestPool = &sync.Pool{New: func() interface{} {
 		return &EvictRequest{}
 	}}
+}
+
+type ExtentConfig struct {
+	Volume            string
+	Masters           []string
+	FollowerRead      bool
+	ReadRate          int64
+	WriteRate         int64
+	OnAppendExtentKey AppendExtentKeyFunc
+	OnGetExtents      GetExtentsFunc
+	OnTruncate        TruncateFunc
+}
+
+// ExtentClient defines the struct of the extent client.
+type ExtentClient struct {
+	streamers    map[uint64]*Streamer
+	streamerLock sync.Mutex
+
+	readLimiter  *rate.Limiter
+	writeLimiter *rate.Limiter
+
+	dataWrapper     *wrapper.Wrapper
+	appendExtentKey AppendExtentKeyFunc
+	getExtents      GetExtentsFunc
+	truncate        TruncateFunc
+	followerRead    bool
+}
+
+// NewExtentClient returns a new extent client.
+func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	client = new(ExtentClient)
+
+	defer func() {
+		_ = client.Close()
+	}()
+
+	limit := MaxMountRetryLimit
+retry:
+	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(config.Volume, config.Masters)
+	if err != nil {
+		if limit <= 0 {
+			return nil, errors.Trace(err, "Init data wrapper failed!")
+		} else {
+			limit--
+			time.Sleep(MountRetryInterval)
+			goto retry
+		}
+	}
+
+	client.streamers = make(map[uint64]*Streamer)
+	client.appendExtentKey = config.OnAppendExtentKey
+	client.getExtents = config.OnGetExtents
+	client.truncate = config.OnTruncate
+	client.followerRead = config.FollowerRead || client.dataWrapper.FollowerRead()
 
 	var readLimit, writeLimit rate.Limit
-	if opt.ReadRate <= 0 {
+	if config.ReadRate <= 0 {
 		readLimit = defaultReadLimitRate
 	} else {
-		readLimit = rate.Limit(opt.ReadRate)
+		readLimit = rate.Limit(config.ReadRate)
 	}
-	if opt.WriteRate <= 0 {
+	if config.WriteRate <= 0 {
 		writeLimit = defaultWriteLimitRate
 	} else {
-		writeLimit = rate.Limit(opt.WriteRate)
+		writeLimit = rate.Limit(config.WriteRate)
 	}
 
 	client.readLimiter = rate.NewLimiter(readLimit, defaultReadLimitBurst)
@@ -308,5 +327,17 @@ func setRate(lim *rate.Limiter, val int) string {
 }
 
 func (client *ExtentClient) Close() error {
+	// release streamers
+	var inodes []uint64
+	client.streamerLock.Lock()
+	inodes = make([]uint64, 0, len(client.streamers))
+	for inode, _ := range client.streamers {
+		inodes = append(inodes, inode)
+	}
+	client.streamerLock.Unlock()
+	for _, inode := range inodes {
+		_ = client.EvictStream(inode)
+	}
+	client.dataWrapper.Stop()
 	return nil
 }

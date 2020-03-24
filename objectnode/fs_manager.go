@@ -18,52 +18,95 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/chubaofs/chubaofs/proto"
+
+	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
-type volumeManager struct {
-	masters   []string
-	volumes   map[string]*volume // volume key -> vol
-	volMu     sync.RWMutex
-	store     Store
-	closeOnce sync.Once
+type VolumeManager struct {
+	masters    []string
+	mc         *master.MasterClient
+	volumes    map[string]*Volume // mapping: volume name -> *Volume
+	volMu      sync.RWMutex
+	volInitMap sync.Map // mapping: volume name -> *sync.Mutex
+	store      Store
+	closeOnce  sync.Once
 }
 
-func (m *volumeManager) Release(volName string) {
-	panic("implement me")
+func (m *VolumeManager) Release(volName string) {
+	m.volMu.Lock()
+	vol, has := m.volumes[volName]
+	if has {
+		delete(m.volumes, volName)
+		log.LogDebugf("Release: release volume: volume(%v)", volName)
+	}
+	m.volMu.Unlock()
+	if has && vol != nil {
+		if closeErr := vol.Close(); closeErr != nil {
+			log.LogErrorf("Release: close volume fail: volume(%v) err(%v)", volName, closeErr)
+		}
+	}
 }
 
-func (m *volumeManager) ReleaseAll() {
-	panic("implement me")
-}
-
-func (m *volumeManager) Volume(volName string) (Volume, error) {
+func (m *VolumeManager) Volume(volName string) (*Volume, error) {
 	return m.loadVolume(volName)
 }
 
-func (m *volumeManager) loadVolume(volName string) (*volume, error) {
+func (m *VolumeManager) syncVolumeInit(volume string) (releaseFunc func()) {
+	value, _ := m.volInitMap.LoadOrStore(volume, new(sync.Mutex))
+	var initMu = value.(*sync.Mutex)
+	initMu.Lock()
+	log.LogDebugf("syncVolumeInit: get volume init lock: volume(%v)", volume)
+	return func() {
+		initMu.Unlock()
+		m.volInitMap.Delete(volume)
+		log.LogDebugf("syncVolumeInit: release volume init lock: volume(%v)", volume)
+	}
+}
+
+func (m *VolumeManager) loadVolume(volName string) (*Volume, error) {
 	var err error
-	var volume *volume
+	var volume *Volume
 	var exist bool
 	m.volMu.RLock()
 	volume, exist = m.volumes[volName]
 	m.volMu.RUnlock()
 	if !exist {
-		m.volMu.Lock()
+		var release = m.syncVolumeInit(volName)
+		m.volMu.RLock()
 		volume, exist = m.volumes[volName]
 		if exist {
-			m.volMu.Unlock()
+			m.volMu.RUnlock()
+			release()
 			return volume, nil
 		}
-		if volume, err = newVolume(m.masters, volName); err != nil {
-			m.volMu.Unlock()
+		m.volMu.RUnlock()
+
+		var onAsyncTaskError AsyncTaskErrorFunc = func(err error) {
+			switch err {
+			case proto.ErrVolNotExists:
+				m.Release(volName)
+			default:
+			}
+		}
+		var config = &VolumeConfig{
+			Volume:           volName,
+			Masters:          m.masters,
+			OnAsyncTaskError: onAsyncTaskError,
+		}
+		if volume, err = NewVolume(config); err != nil {
+			release()
 			return nil, err
 		}
 		ak, sk := volume.OSSSecure()
-		log.LogDebugf("[loadVolume] load volume: Name[%v] AccessKey[%v] SecretKey[%v]", volName, ak, sk)
+		log.LogDebugf("[loadVolume] load Volume: Name[%v] AccessKey[%v] SecretKey[%v]", volName, ak, sk)
+
+		m.volMu.Lock()
 		m.volumes[volName] = volume
 		volume.vm = m
 		m.volMu.Unlock()
+		release()
 
 		volume.loadOSSMeta()
 	}
@@ -72,31 +115,42 @@ func (m *volumeManager) loadVolume(volName string) (*volume, error) {
 }
 
 // Release all
-func (m *volumeManager) Close() {
+func (m *VolumeManager) Close() {
 	m.volMu.Lock()
 	defer m.volMu.Unlock()
 	for volKey, vol := range m.volumes {
 		_ = vol.Close()
-		log.LogDebugf("release volume %v", volKey)
+		log.LogDebugf("release Volume %v", volKey)
 	}
-	m.volumes = make(map[string]*volume)
+	m.volumes = make(map[string]*Volume)
 }
 
-func (m *volumeManager) InitStore(s Store) {
+func (m *VolumeManager) InitStore(s Store) {
 	s.Init(m)
 	m.store = s
 }
 
-func (m *volumeManager) GetStore() (Store, error) {
+func (m *VolumeManager) GetStore() (Store, error) {
 	if m.store == nil {
 		return nil, errors.New("store not init")
 	}
 	return m.store, nil
 }
 
-func NewVolumeManager(masters []string) VolumeManager {
-	vc := &volumeManager{
-		volumes: make(map[string]*volume),
+func (m *VolumeManager) InitMasterClient(masters []string, useSSL bool) {
+	m.mc = master.NewMasterClient(masters, useSSL)
+}
+
+func (m *VolumeManager) GetMasterClient() (*master.MasterClient, error) {
+	if m.mc == nil {
+		return nil, errors.New("master client not init")
+	}
+	return m.mc, nil
+}
+
+func NewVolumeManager(masters []string) *VolumeManager {
+	vc := &VolumeManager{
+		volumes: make(map[string]*Volume),
 		masters: masters,
 	}
 	return vc

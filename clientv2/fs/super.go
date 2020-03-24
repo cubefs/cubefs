@@ -16,10 +16,12 @@ package fs
 
 import (
 	"fmt"
-	"golang.org/x/net/context"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
+
+	"golang.org/x/net/context"
 
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/jacobsa/fuse/fuseutil"
@@ -51,12 +53,32 @@ var (
 
 func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s = new(Super)
-	s.mw, err = meta.NewMetaWrapper(opt, true)
+	var masters = strings.Split(opt.Master, meta.HostsSeparator)
+	var metaConfig = &meta.MetaConfig{
+		Volume:        opt.Volname,
+		Owner:         opt.Owner,
+		Masters:       masters,
+		Authenticate:  opt.Authenticate,
+		TicketMess:    opt.TicketMess,
+		TokenKey:      opt.TokenKey,
+		ValidateOwner: true,
+	}
+	s.mw, err = meta.NewMetaWrapper(metaConfig)
 	if err != nil {
 		return nil, errors.Trace(err, "NewMetaWrapper failed!")
 	}
 
-	s.ec, err = stream.NewExtentClient(opt, s.mw.AppendExtentKey, s.mw.GetExtents, s.mw.Truncate)
+	var extentConfig = &stream.ExtentConfig{
+		Volume:            opt.Volname,
+		Masters:           masters,
+		FollowerRead:      opt.FollowerRead,
+		ReadRate:          opt.ReadRate,
+		WriteRate:         opt.WriteRate,
+		OnAppendExtentKey: s.mw.AppendExtentKey,
+		OnGetExtents:      s.mw.GetExtents,
+		OnTruncate:        s.mw.Truncate,
+	}
+	s.ec, err = stream.NewExtentClient(extentConfig)
 	if err != nil {
 		return nil, errors.Trace(err, "NewExtentClient failed!")
 	}

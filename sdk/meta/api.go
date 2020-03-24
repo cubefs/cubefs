@@ -713,3 +713,18 @@ func (mw *MetaWrapper) XAttrDel_ll(inode uint64, name string) error {
 	log.LogDebugf("XAttrDel_ll: remove xattr, inode(%v) name(%v) status(%v)", inode, name, status)
 	return nil
 }
+
+func (mw *MetaWrapper) XAttrsList_ll(inode uint64) ([]string, error) {
+	var err error
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("XAttrsList_ll: no such partition, inode(%v)", inode)
+		return nil, syscall.ENOENT
+	}
+	keys, status, err := mw.listXAttr(mp, inode)
+	if err != nil || status != statusOK {
+		return nil, statusToErrno(status)
+	}
+
+	return keys, nil
+}

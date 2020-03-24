@@ -230,19 +230,72 @@ func (s *Super) ReadSymlink(ctx context.Context, op *fuseops.ReadSymlinkOp) erro
 }
 
 func (s *Super) RemoveXattr(ctx context.Context, op *fuseops.RemoveXattrOp) error {
-	return fuse.ENOSYS
+	ino := uint64(op.Inode)
+	name := op.Name
+	desc := fuse.OpDescription(op)
+
+	if err := s.mw.XAttrDel_ll(ino, name); err != nil {
+		log.LogErrorf("RemoveXattr: op(%v) err(%v)", desc, err)
+		return ParseError(err)
+	}
+	log.LogDebugf("TRACE RemoveXattr: op(%v)", desc)
+	return nil
 }
 
 func (s *Super) GetXattr(ctx context.Context, op *fuseops.GetXattrOp) error {
-	return fuse.ENOSYS
+	ino := uint64(op.Inode)
+	name := op.Name
+	desc := fuse.OpDescription(op)
+
+	info, err := s.mw.XAttrGet_ll(ino, name)
+	if err != nil {
+		log.LogErrorf("GetXattr: op(%v) err(%v)", desc, err)
+		return ParseError(err)
+	}
+	op.Dst = info.Get(name)
+	op.BytesRead = len(op.Dst)
+	log.LogDebugf("TRACE GetXattr: op(%v)", desc)
+	return nil
 }
 
 func (s *Super) ListXattr(ctx context.Context, op *fuseops.ListXattrOp) error {
-	return fuse.ENOSYS
+	ino := uint64(op.Inode)
+	desc := fuse.OpDescription(op)
+
+	keys, err := s.mw.XAttrsList_ll(ino)
+	if err != nil {
+		log.LogErrorf("ListXattr: op(%v) err(%v)", desc, err)
+		return ParseError(err)
+	}
+	dst := op.Dst[:]
+	for _, key := range keys {
+		keyLen := len(key) + 1
+
+		if err == nil && len(dst) >= keyLen {
+			copy(dst, key)
+			dst = dst[keyLen:]
+		} else {
+			err = syscall.ERANGE
+		}
+		op.BytesRead += keyLen
+	}
+	log.LogDebugf("TRACE ListXattr: op(%v)", desc)
+	return nil
 }
 
 func (s *Super) SetXattr(ctx context.Context, op *fuseops.SetXattrOp) error {
-	return fuse.ENOSYS
+	ino := uint64(op.Inode)
+	name := op.Name
+	value := op.Value
+	desc := fuse.OpDescription(op)
+
+	// TODO： implement flag to improve compatible (Mofei Zhang)
+	if err := s.mw.XAttrSet_ll(ino, []byte(name), []byte(value)); err != nil {
+		log.LogErrorf("SetXattr: op(%v err(%v)", desc, err)
+		return ParseError(err)
+	}
+	log.LogDebugf("TRACE SetXattr: op(%v)", desc)
+	return nil
 }
 
 func (s *Super) fileSize(ino uint64) (size int, gen uint64) {

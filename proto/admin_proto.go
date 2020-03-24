@@ -32,6 +32,7 @@ const (
 	AdminGetIP                     = "/admin/getIp"
 	AdminCreateMetaPartition       = "/metaPartition/create"
 	AdminSetMetaNodeThreshold      = "/threshold/set"
+	AdminListVols                  = "/vol/list"
 
 	// Client APIs
 	ClientDataPartitions = "/client/partitions"
@@ -73,7 +74,20 @@ const (
 
 	// Header keys
 	SkipOwnerValidation = "Skip-Owner-Validation"
+
+	// APIs for user management
+	UserCreate          = "/user/create"
+	UserDelete          = "/user/delete"
+	UserUpdatePolicy    = "/user/updatePolicy"
+	UserRemovePolicy    = "/user/removePolicy"
+	UserDeleteVolPolicy = "/user/deleteVolPolicy"
+	UserGetInfo         = "/user/info"
+	UserGetAKInfo       = "/user/akInfo"
+	UserTransferVol     = "/user/transferVol"
+	UserList            = "/user/list"
 )
+
+const TimeFormat = "2006-01-02 15:04:05"
 
 const (
 	ReadOnlyToken  = 1
@@ -385,6 +399,7 @@ type VolView struct {
 	MetaPartitions []*MetaPartitionView
 	DataPartitions []*DataPartitionResponse
 	OSSSecure      *OSSSecure
+	CreateTime     int64
 }
 
 func (v *VolView) SetOwner(owner string) {
@@ -395,10 +410,11 @@ func (v *VolView) SetOSSSecure(accessKey, secretKey string) {
 	v.OSSSecure = &OSSSecure{AccessKey: accessKey, SecretKey: secretKey}
 }
 
-func NewVolView(name string, status uint8, followerRead bool) (view *VolView) {
+func NewVolView(name string, status uint8, followerRead bool, createTime int64) (view *VolView) {
 	view = new(VolView)
 	view.Name = name
 	view.FollowerRead = followerRead
+	view.CreateTime = createTime
 	view.Status = status
 	view.MetaPartitions = make([]*MetaPartitionView, 0)
 	view.DataPartitions = make([]*DataPartitionResponse, 0)
@@ -432,6 +448,7 @@ type SimpleVolView struct {
 	NeedToLowerReplica bool
 	Authenticate       bool
 	CrossZone          bool
+	CreateTime         string
 	EnableToken        bool
 	Tokens             map[string]*Token
 }
@@ -440,4 +457,24 @@ type SimpleVolView struct {
 type MasterAPIAccessResp struct {
 	APIResp APIAccessResp `json:"api_resp"`
 	Data    []byte        `json:"data"`
+}
+
+type VolInfo struct {
+	Name       string
+	Owner      string
+	CreateTime int64
+	Status     uint8
+	TotalSize  uint64
+	UsedSize   uint64
+}
+
+func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64) *VolInfo {
+	return &VolInfo{
+		Name:       name,
+		Owner:      owner,
+		CreateTime: createTime,
+		Status:     status,
+		TotalSize:  totalSize,
+		UsedSize:   usedSize,
+	}
 }

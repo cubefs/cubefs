@@ -19,14 +19,15 @@ import (
 	"container/list"
 	"encoding/binary"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
 	"io"
 	"io/ioutil"
 	"os"
 	"path"
 	"strings"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
@@ -198,7 +199,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
 					status := mp.raftPartition.Status()
 					if status.State == "StateLeader" && !status.
 						RestoringSnapshot {
-						if _, err = mp.Put(opFSMInternalDelExtentFile,
+						if _, err = mp.submit(opFSMInternalDelExtentFile,
 							[]byte(fileName)); err != nil {
 							log.LogErrorf(
 								"[deleteExtentsFromList] partitionId=%d,"+
@@ -243,7 +244,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
 		}
 		buff.Reset()
 		buff.WriteString(fmt.Sprintf("%s %d", fileName, cursor))
-		if _, err = mp.Put(opFSMInternalDelExtentCursor, buff.Bytes()); err != nil {
+		if _, err = mp.submit(opFSMInternalDelExtentCursor, buff.Bytes()); err != nil {
 			log.LogWarnf("[deleteExtentsFromList] partitionId=%d, %s",
 				mp.config.PartitionId, err.Error())
 		}

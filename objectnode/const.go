@@ -17,7 +17,7 @@ package objectnode
 type OSSOperation string
 
 const (
-	HeaderNameServer        = "server"
+	HeaderNameServer        = "Server"
 	HeaderNameHost          = "Host"
 	HeaderNameLastModified  = "Last-Modified"
 	HeaderNameETag          = "ETag"
@@ -30,6 +30,12 @@ const (
 	HeaderNameAuthorization = "Authorization"
 	HeaderNameAcceptRange   = "Accept-Ranges"
 	HeaderNameRange         = "Range"
+
+	// Headers for CORS validation
+	HeaderNameAccessControlAllowOrigin  = "Access-Control-Allow-Origin"
+	HeaderNameAccessControlAllowMethods = "Access-Control-Allow-Methods"
+	HeaderNameAccessControlAllowHeaders = "Access-Control-Allow-Headers"
+	HeaderNameAccessControlMaxAge       = "Access-Control-Max-Age"
 
 	HeaderNameStartDate           = "x-amz-date"
 	HeaderNameRequestId           = "x-amz-request-id"
@@ -64,6 +70,7 @@ const (
 	ParamFetchOwner = "fetch-owner"
 	ParamMaxKeys    = "max-keys"
 	ParamStartAfter = "start-after"
+	ParamKey        = "key"
 
 	ParamMaxParts       = "max-parts"
 	ParamUploadIdMarker = "upload-id-​marker"
@@ -85,8 +92,8 @@ const (
 // XAttr keys for ObjectNode compatible feature
 const (
 	XAttrKeyOSSETag    = "oss:etag"
-	XAttrKeyOSSTagging = "oss:tg"
-	XAttrKeyOSSPolicy  = "oss:ply"
+	XAttrKeyOSSTagging = "oss:tagging"
+	XAttrKeyOSSPolicy  = "oss:policy"
 )
 
 const (

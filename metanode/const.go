@@ -124,7 +124,6 @@ const (
 	cfgMetadataDir       = "metadataDir"
 	cfgRaftDir           = "raftDir"
 	cfgMasterAddrs       = "masterAddrs" // will be deprecated
-	cfgMasterAddr        = "masterAddr"
 	cfgRaftHeartbeatPort = "raftHeartbeatPort"
 	cfgRaftReplicaPort   = "raftReplicaPort"
 	cfgTotalMem          = "totalMem"

@@ -18,8 +18,6 @@ import (
 	"encoding/xml"
 	"net/http"
 	"strings"
-
-	"github.com/chubaofs/chubaofs/util/log"
 )
 
 type ErrorCode struct {
@@ -41,14 +39,13 @@ func (code ErrorCode) ServeResponse(w http.ResponseWriter, r *http.Request) erro
 		Code:      code.ErrorCode,
 		Message:   code.ErrorMessage,
 		Resource:  r.URL.String(),
-		RequestId: RequestIDFromRequest(r),
+		RequestId: GetRequestID(r),
 	}
 	if marshaled, err = xml.Marshal(&xmlError); err != nil {
 		return err
 	}
 	w.Header().Set(HeaderNameContentType, HeaderValueContentTypeXML)
 	w.WriteHeader(code.StatusCode)
-	log.LogInfof("Error info : %s", string(marshaled))
 	if _, err = w.Write(marshaled); err != nil {
 		return err
 	}
@@ -63,7 +60,7 @@ func ServeInternalStaticErrorResponse(w http.ResponseWriter, r *http.Request) {
 	sb.WriteString("<Error><Code>InternalError</Code><Message>We encountered an internal error. Please try again.</Message><Resource>")
 	sb.WriteString(r.URL.String())
 	sb.WriteString("</Resource><RequestId>")
-	sb.WriteString(RequestIDFromRequest(r))
+	sb.WriteString(GetRequestID(r))
 	sb.WriteString("</RequestId></Error>")
 	_, _ = w.Write([]byte(sb.String()))
 }
@@ -90,4 +87,5 @@ var (
 	NoSuchKey                           = ErrorCode{ErrorCode: "NoLoggingStatusForKey", ErrorMessage: "The specified key does not exist.", StatusCode: http.StatusNotFound}
 	PreconditionFailed                  = ErrorCode{ErrorCode: "PreconditionFailed", ErrorMessage: "At least one of the preconditions you specified did not hold.", StatusCode: http.StatusPreconditionFailed}
 	MaxContentLength                    = ErrorCode{ErrorCode: "MaxContentLength", ErrorMessage: "Content-Length is bigger than 20KB.", StatusCode: http.StatusLengthRequired}
+	DuplicatedBucket                    = ErrorCode{ErrorCode: "CreateBucketFailed", ErrorMessage: "Duplicate bucket name.", StatusCode: http.StatusBadRequest}
 )

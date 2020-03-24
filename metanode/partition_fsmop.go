@@ -48,7 +48,7 @@ func (mp *metaPartition) initInode(ino *Inode) {
 				log.LogFatalf("[initInode] marshal: %s", err.Error())
 			}
 			// put first root inode
-			resp, err := mp.Put(opFSMCreateInode, data)
+			resp, err := mp.submit(opFSMCreateInode, data)
 			if err != nil {
 				log.LogFatalf("[initInode] raft sync: %s", err.Error())
 			}

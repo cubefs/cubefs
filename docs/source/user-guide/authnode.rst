@@ -291,7 +291,7 @@ Create key for ChubaoFS cluster
         "owner": "ltptest",
         "logDir": "/cfs/log",
         "logLevel": "info",
-        "consulAddr": "http://192.168.0.100:8500",
+        "consulAddr": "http://192.168.0.101:8500",
         "exporterPort": 9500,
         "profPort": "17410",
         "authenticate": true,

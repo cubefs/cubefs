@@ -17,12 +17,13 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
+
 	bsProto "github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft/proto"
-	"strconv"
-	"strings"
 )
 
 /* We defines several "values" such as clusterValue, metaPartitionValue, dataPartitionValue, volValue, dataNodeValue,
@@ -121,6 +122,7 @@ type volValue struct {
 	ZoneName          string
 	OSSAccessKey      string
 	OSSSecretKey      string
+	CreateTime        int64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -145,6 +147,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		EnableToken:       vol.enableToken,
 		OSSAccessKey:      vol.OSSAccessKey,
 		OSSSecretKey:      vol.OSSSecretKey,
+		CreateTime:        vol.createTime,
 	}
 	return
 }
@@ -248,6 +251,12 @@ func (m *RaftCmd) setOpType() {
 		m.Op = opSyncAllocMetaPartitionID
 	case maxCommonIDKey:
 		m.Op = opSyncAllocCommonID
+	case userAcronym:
+		m.Op = opSyncAddUserInfo
+	case akAcronym:
+		m.Op = opSyncAddAKUser
+	case volUserAcronym:
+		m.Op = opSyncAddVolUser
 	case tokenAcronym:
 		m.Op = OpSyncAddToken
 	default:

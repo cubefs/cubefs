@@ -38,6 +38,8 @@ const (
 	EnableHTTPS
 	CertFile
 	TokenKey
+	AccessKey
+	SecretKey
 
 	MaxMountOption
 )
@@ -55,8 +57,8 @@ type MountOption struct {
 	value        interface{}
 }
 
-func (o MountOption) String() string {
-	return fmt.Sprintf("[%v] %T: %v", o.keyword, o.value, o.value)
+func (opt MountOption) String() string {
+	return fmt.Sprintf("[%v] %T: %v", opt.keyword, opt.value, opt.value)
 }
 
 func NewMountOptions() []MountOption {
@@ -92,6 +94,8 @@ func InitMountOptions(opts []MountOption) {
 	opts[CertFile] = MountOption{"certFile", "Cert File", "", ""}
 
 	opts[TokenKey] = MountOption{"token", "Token Key", "", ""}
+	opts[AccessKey] = MountOption{"accessKey", "Access Key", "", ""}
+	opts[SecretKey] = MountOption{"secretKey", "Secret Key", "", ""}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -201,4 +205,6 @@ type MountOptions struct {
 	Authenticate  bool
 	TicketMess    auth.TicketMess
 	TokenKey      string
+	AccessKey     string
+	SecretKey     string
 }

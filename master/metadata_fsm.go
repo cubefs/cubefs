@@ -78,7 +78,7 @@ func (mf *MetadataFsm) restore() {
 
 func (mf *MetadataFsm) restoreApplied() {
 
-	value, err := mf.Get(applied)
+	value, err := mf.store.Get(applied)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to restore applied err:%v", err.Error()))
 	}
@@ -119,12 +119,13 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		cmdMap[applied] = []byte(strconv.FormatUint(uint64(index), 10))
 	}
 	switch cmd.Op {
-	case opSyncDeleteDataNode, opSyncDeleteMetaNode, opSyncDeleteVol, opSyncDeleteDataPartition, opSyncDeleteMetaPartition, OpSyncDelToken:
+	case opSyncDeleteDataNode, opSyncDeleteMetaNode, opSyncDeleteVol, opSyncDeleteDataPartition, opSyncDeleteMetaPartition,
+		OpSyncDelToken, opSyncDeleteUserInfo, opSyncDeleteAKUser, opSyncDeleteVolUser:
 		if err = mf.delKeyAndPutIndex(cmd.K, cmdMap); err != nil {
 			panic(err)
 		}
 	default:
-		if err = mf.batchPut(cmdMap); err != nil {
+		if err = mf.store.BatchPut(cmdMap, true); err != nil {
 			panic(err)
 		}
 	}
@@ -195,25 +196,6 @@ func (mf *MetadataFsm) HandleLeaderChange(leader uint64) {
 	if mf.leaderChangeHandler != nil {
 		go mf.leaderChangeHandler(leader)
 	}
-}
-
-// Put implements the interface of raft.StateMachine
-func (mf *MetadataFsm) Put(key, val interface{}) (interface{}, error) {
-	return mf.store.Put(key, val, true)
-}
-
-func (mf *MetadataFsm) batchPut(cmdMap map[string][]byte) (err error) {
-	return mf.store.BatchPut(cmdMap, true)
-}
-
-// Get implements the interface of raft.StateMachine
-func (mf *MetadataFsm) Get(key interface{}) (interface{}, error) {
-	return mf.store.Get(key)
-}
-
-// Del implements the interface of raft.StateMachine
-func (mf *MetadataFsm) Del(key interface{}) (interface{}, error) {
-	return mf.store.Del(key, true)
 }
 
 func (mf *MetadataFsm) delKeyAndPutIndex(key string, cmdMap map[string][]byte) (err error) {

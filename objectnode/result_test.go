@@ -15,6 +15,8 @@
 package objectnode
 
 import (
+	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"testing"
 	"time"
@@ -193,16 +195,40 @@ func TestUnmarshalDeleteRequest(t *testing.T) {
 }
 
 func TestMarshalTagging(t *testing.T) {
-	tagging := &Tagging{
-		TagSet: []*Tag{
-			{
-				Key:   "tag1",
-				Value: "val1",
-			},
-			{
-				Key:   "tag2",
-				Value: "val2",
-			},
+	tagging := NewTagging()
+	tagging.TagSet = []*Tag{
+		{
+			Key:   "tag1",
+			Value: "val1",
+		},
+		{
+			Key:   "tag2",
+			Value: "val2",
+		},
+	}
+	marshaled, err := MarshalXMLEntity(tagging)
+	if err != nil {
+		t.Fatalf("marshal tagging fail: err(%v)", err)
+	}
+	t.Logf("xml result:\n%v", string(marshaled))
+
+	marshaled, err = json.Marshal(tagging)
+	if err != nil {
+		t.Fatalf("marshal tagging fail: err(%v)", err)
+	}
+	t.Logf("json result:\n%v", string(marshaled))
+}
+
+func TestMarshalGetObjectTaggingOutput(t *testing.T) {
+	tagging := NewGetObjectTaggingOutput()
+	tagging.TagSet = []*Tag{
+		{
+			Key:   "tag1",
+			Value: "val1",
+		},
+		{
+			Key:   "tag2",
+			Value: "val2",
 		},
 	}
 	marshaled, err := MarshalXMLEntity(tagging)
@@ -210,4 +236,44 @@ func TestMarshalTagging(t *testing.T) {
 		t.Fatalf("marshal tagging fail: err(%v)", err)
 	}
 	t.Logf("marshal tagging:\n%v", string(marshaled))
+}
+
+func TestResult_PutXAttrRequest_Marshal(t *testing.T) {
+	var err error
+	var request = PutXAttrRequest{
+		XAttr: &XAttr{
+			Key:   "xattr-key",
+			Value: "xattr-value",
+		},
+	}
+	var raw []byte
+	if raw, err = xml.Marshal(request); err != nil {
+		t.Fatalf("marshal entity fail: err(%v)", err)
+	}
+	t.Logf("marshal result: %v", string(raw))
+}
+
+func TestResult_PutXAttrRequest_Unmarshal(t *testing.T) {
+	var raw = []byte(`
+<PutXAttrRequest>
+	<XAttr>
+		<Key>xattr-key</Key>
+		<Value>xattr-value</Value>
+	</XAttr>
+</PutXAttrRequest>
+`)
+	var err error
+	var request = PutXAttrRequest{}
+	if err = xml.Unmarshal(raw, &request); err != nil {
+		t.Fatalf("unmarshal raw fail: err(%v)", err)
+	}
+	if request.XAttr == nil {
+		t.Fatalf("result mismatch: XAttr is nil")
+	}
+	if request.XAttr.Key != "xattr-key" {
+		t.Fatalf("result mismatch: key mismatch: expect(%v) actual(%v)", "xattr-key", request.XAttr.Key)
+	}
+	if request.XAttr.Value != "xattr-value" {
+		t.Fatalf("result mismatch: key mismatch: expect(%v) actual(%v)", "xattr-value", request.XAttr.Key)
+	}
 }

@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/gorilla/mux"
@@ -68,6 +69,8 @@ var AuthSignatureV4Headers = []string{
 	XAmzContentSha256,
 }
 
+// // isUrlUsingSignatureAlgorithmV4 checks if request is using signature algorithm V2 in url parameter.
+// Example:
 // https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html
 // url: "127.0.0.1:9000/umptest/b.tinyExtents
 //      ?X-Amz-Algorithm=AWS4-HMAC-SHA256_CMD
@@ -76,42 +79,33 @@ var AuthSignatureV4Headers = []string{
 //      &X-Amz-Expires=432000
 //      &X-Amz-SignedHeaders=host
 //      &X-Amz-Signature=55c588734f017b861c24cbd69c203c283aad566cfe4ee712b7a3c846e1de151a"
-//
-func isPresignedSignaturedV4(r *http.Request) bool {
+func isUrlUsingSignatureAlgorithmV4(r *http.Request) bool {
 	if u, err := url.Parse(strings.ToLower(r.URL.String())); err == nil {
 		return isRequestQueryValid(u.Query(), PresignedSignatureV4Queries)
 	}
 	return false
 }
 
-// is request signature V4
-func isSignaturedV4(r *http.Request) bool {
-	for _, h := range AuthSignatureV4Headers {
-		_, ok := r.Header[h]
-		if !ok {
-			return false
-		}
-	}
-
-	return true
+// IsHeaderUsingSignatureAlgorithmV4 checks if request is using signature algorithm V4 in header.
+func isHeaderUsingSignatureAlgorithmV4(r *http.Request) bool {
+	return strings.HasPrefix(r.Header.Get(HeaderNameAuthorization), SignatureV4Algorithm)
 }
 
 // check request signature valid
-func (o *ObjectNode) checkSignatureV4(r *http.Request) (bool, error) {
-	_, _, _, vl, _ := o.parseRequestParams(r)
-	if vl == nil {
-		log.LogInfof("checkSignatureV4: no volume info: requestID(%v)", RequestIDFromRequest(r))
-		return false, nil
-	}
-	_, secretKey := vl.OSSSecure()
+func (o *ObjectNode) validateHeaderBySignatureAlgorithmV4(r *http.Request) (bool, error) {
 	req, err := parseRequestV4(r)
 	if err != nil {
 		return false, err
 	}
-	newSignature := calculateSignatureV4(r, req.Credential.Region, secretKey, req.SignedHeaders)
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKey(req.Credential.AccessKey); err != nil {
+		log.LogInfof("validateHeaderBySignatureAlgorithmV4: get secretKey from master fail: err(%v)", err)
+		return false, err
+	}
+	newSignature := calculateSignatureV4(r, req.Credential.Region, userInfo.SecretKey, req.SignedHeaders)
 	if req.Signature != newSignature {
-		log.LogDebugf("checkSignatureV4: invalid signature: requestID(%v) client(%v) server(%v)",
-			RequestIDFromRequest(r), req.Signature, newSignature)
+		log.LogDebugf("validateHeaderBySignatureAlgorithmV4: invalid signature: requestID(%v) client(%v) server(%v)",
+			GetRequestID(r), req.Signature, newSignature)
 		return false, nil
 	}
 
@@ -127,41 +121,32 @@ func (o *ObjectNode) checkSignatureV4(r *http.Request) (bool, error) {
 //      &X-Amz-SignedHeaders=host
 //      &X-Amz-Signature=55c588734f017b861c24cbd69c203c283aad566cfe4ee712b7a3c846e1de151a"
 //
-func (o *ObjectNode) checkPresignedSignatureV4(r *http.Request) (pass bool, err error) {
+func (o *ObjectNode) validateUrlBySignatureAlgorithmV4(r *http.Request) (pass bool, err error) {
 	var req *signatureRequestV4
 	req, err = parseRequestV4(r)
 	if err != nil {
-		log.LogErrorf("checkPresignedSignatureV4: parse request fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("validateUrlBySignatureAlgorithmV4: parse request fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		return
 	}
 
 	//check req valid
 	var ok bool
 	if ok, err = req.isValid(); !ok {
-		log.LogErrorf("checkPresignedSignatureV4: request invalid: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("validateUrlBySignatureAlgorithmV4: request invalid: requestID(%v) err(%v)", GetRequestID(r), err)
 		return
 	}
 
 	// check accessKey valid
-	var v Volume
-	v, err = o.vm.Volume(req.bucket)
-	if err != nil {
-		log.LogErrorf("checkPresignedSignatureV4: get volume fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
-		return
-	}
-	//check accesskey
-	vaKey, secretKey := v.OSSSecure()
-	if req.Credential.AccessKey != vaKey {
-		log.LogInfof("checkPresignedSignatureV4: credential accessKey invalid: requestID(%v) requestAK(%v) volAK(%v)",
-			RequestIDFromRequest(r), req.Credential.AccessKey, vaKey)
-		err = errors.New("accesskey invalid")
-		return
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKey(req.Credential.AccessKey); err != nil {
+		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", req.Credential.AccessKey, err)
+		return false, err
 	}
 	// create canonicalRequest
 	var canonicalHeader http.Header
 	canonicalHeader, err = req.createCanonicalHeaderV4()
 	if err != nil {
-		log.LogErrorf("checkPresignedSignatureV4: create canonical header fail: requestID(%v) err(%v)", RequestIDFromRequest(r), err)
+		log.LogErrorf("validateUrlBySignatureAlgorithmV4: create canonical header fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		return
 	}
 	canonicalHeaderStr := buildCanonicalHeaderString(r.Host, canonicalHeader, req.SignedHeaders)
@@ -170,14 +155,14 @@ func (o *ObjectNode) checkPresignedSignatureV4(r *http.Request) (pass bool, err 
 	canonicalQuery := createCanonicalQueryV4(req)
 	canonicalRequestString := createCanonicalRequestString(r.Method, req.URI, canonicalQuery, canonicalHeaderStr, headerNames, payload)
 
-	log.LogDebugf("checkPresignedSignatureV4: middle data:\n"+
+	log.LogDebugf("validateUrlBySignatureAlgorithmV4: middle data:\n"+
 		"  RequestID: %v\n"+
 		"  CanonicalRequest: %v",
-		RequestIDFromRequest(r),
+		GetRequestID(r),
 		canonicalRequestString)
 
 	// build signingKey
-	signingKey := buildSigningKey(SCHEME, secretKey, req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)
+	signingKey := buildSigningKey(SCHEME, userInfo.SecretKey, req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)
 
 	// build stringToSign
 	scope := buildScope(req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)
@@ -465,7 +450,7 @@ func calculateSignatureV4(r *http.Request, region, secretKey string, signedHeade
 	log.LogDebugf("calculateSignatureV4: middle data:\n"+
 		"  RequestID: %v\n"+
 		"  CanonicalRequest: %v",
-		RequestIDFromRequest(r),
+		GetRequestID(r),
 		canonicalRequest)
 	return hex.EncodeToString(signature)
 }

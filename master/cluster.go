@@ -881,7 +881,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
 errHandler:
-	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.Hosts)
 	if err != nil {
@@ -1333,6 +1333,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName string, dpSize, capacity uin
 	var id uint64
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
+	var createTime = time.Now().Unix() // record unix seconds of volume create time
 	if _, err = c.getVol(name); err == nil {
 		err = proto.ErrDuplicateVol
 		goto errHandler
@@ -1341,8 +1342,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName string, dpSize, capacity uin
 	if err != nil {
 		goto errHandler
 	}
-	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum,
-		followerRead, authenticate, crossZone, enableToken)
+	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate, crossZone, enableToken, createTime)
 	// refresh oss secure
 	vol.refreshOSSSecure()
 	if err = c.syncAddVol(vol); err != nil {

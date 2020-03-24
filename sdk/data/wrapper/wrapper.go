@@ -47,12 +47,14 @@ type Wrapper struct {
 	localLeaderPartitions []*DataPartition
 	followerRead          bool
 	mc                    *masterSDK.MasterClient
+	stopOnce              sync.Once
+	stopC                 chan struct{}
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
-func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error) {
-	masters := strings.Split(masterHosts, ",")
+func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err error) {
 	w = new(Wrapper)
+	w.stopC = make(chan struct{})
 	w.masters = masters
 	w.mc = masterSDK.NewMasterClient(masters, false)
 	w.volName = volName
@@ -72,6 +74,12 @@ func NewDataPartitionWrapper(volName, masterHosts string) (w *Wrapper, err error
 	}
 	go w.update()
 	return
+}
+
+func (w *Wrapper) Stop() {
+	w.stopOnce.Do(func() {
+		close(w.stopC)
+	})
 }
 
 func (w *Wrapper) FollowerRead() bool {
@@ -100,9 +108,9 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.followerRead = view.FollowerRead
 
 	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
-		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v)",
+		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) createTime(%v)",
 		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
-		view.DpCnt, view.FollowerRead)
+		view.DpCnt, view.FollowerRead, view.CreateTime)
 	return nil
 }
 
@@ -112,6 +120,8 @@ func (w *Wrapper) update() {
 		select {
 		case <-ticker.C:
 			w.updateDataPartition()
+		case <-w.stopC:
+			return
 		}
 	}
 }

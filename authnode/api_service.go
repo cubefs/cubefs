@@ -112,7 +112,11 @@ func (m *Server) raftNodeOp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if ticket, ts, err = proto.ExtractAPIAccessTicket(&apiReq, m.cluster.AuthSecretKey); err != nil {
-		sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		if err == proto.ErrExpiredTicket {
+			sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeExpiredTicket, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		} else {
+			sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		}
 		return
 	}
 
@@ -233,6 +237,7 @@ func (m *Server) apiAccessEntry(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 			return
 		}
+	case proto.MsgAuthGetCapsReq:
 	default:
 		sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("invalid request messge type %x", int32(apiReq.Type)).Error()})
 		return
@@ -244,7 +249,11 @@ func (m *Server) apiAccessEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if ticket, ts, err = proto.ExtractAPIAccessTicket(&apiReq, m.cluster.AuthSecretKey); err != nil {
-		sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		if err == proto.ErrExpiredTicket {
+			sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeExpiredTicket, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		} else {
+			sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		}
 		return
 	}
 
@@ -264,6 +273,8 @@ func (m *Server) apiAccessEntry(w http.ResponseWriter, r *http.Request) {
 		newKeyInfo, err = m.handleAddCaps(&keyInfo)
 	case proto.MsgAuthDeleteCapsReq:
 		newKeyInfo, err = m.handleDeleteCaps(&keyInfo)
+	case proto.MsgAuthGetCapsReq:
+		newKeyInfo, err = m.handleGetCaps(&keyInfo)
 	}
 
 	if err != nil {
@@ -307,6 +318,20 @@ func (m *Server) handleAddCaps(keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo
 
 func (m *Server) handleDeleteCaps(keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo, err error) {
 	return m.cluster.DeleteCaps(keyInfo.ID, keyInfo)
+}
+
+func (m *Server) handleGetCaps(keyInfo *keystore.KeyInfo) (res *keystore.KeyInfo, err error) {
+	var info *keystore.KeyInfo
+	if info, err = m.getSecretKeyInfo(keyInfo.ID); err != nil {
+		return
+	}
+	res = &keystore.KeyInfo{
+		ID:        info.ID,
+		AccessKey: info.AccessKey,
+		SecretKey: info.SecretKey,
+		Caps:      info.Caps,
+	}
+	return
 }
 
 func (m *Server) extractClientReqInfo(r *http.Request) (plaintext []byte, err error) {
@@ -378,7 +403,11 @@ func (m *Server) osCapsOp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if ticket, ts, err = proto.ExtractAPIAccessTicket(&apiReq, m.cluster.AuthSecretKey); err != nil {
-		sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		if err == proto.ErrExpiredTicket {
+			sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeExpiredTicket, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		} else {
+			sendErrReply(w, r, &proto.HTTPAuthReply{Code: proto.ErrCodeParamError, Msg: "ExtractAPIAccessTicket failed: " + err.Error()})
+		}
 		return
 	}
 
@@ -590,7 +619,9 @@ func (m *Server) handleOSGetCaps(akCaps *keystore.AccessKeyCaps) (newAKCaps *key
 	}
 	newAKCaps = &keystore.AccessKeyCaps{
 		AccessKey: keyInfo.AccessKey,
+		SecretKey: keyInfo.SecretKey,
 		Caps:      keyInfo.Caps,
+		ID:        keyInfo.ID,
 	}
 	return newAKCaps, err
 }

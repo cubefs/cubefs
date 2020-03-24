@@ -211,9 +211,10 @@ func TestVolReduceReplicaNum(t *testing.T) {
 func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	name := "TestConcurrentReadWriteDataPartitionMap"
 	var volID uint64 = 1
-	vol := newVol(volID, name, name, "", util.DefaultDataPartitionSize, 100, defaultReplicaNum,
-		defaultReplicaNum, false, false, false, false)
-	//unavaliable mp
+	var createTime = time.Now().Unix()
+	vol := newVol(volID, name, name,"", util.DefaultDataPartitionSize, 100, defaultReplicaNum,
+		defaultReplicaNum, false, false,false, false, createTime)
+	// unavailable mp
 	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, name, volID)
 	vol.addMetaPartition(mp1)
 	//readonly mp

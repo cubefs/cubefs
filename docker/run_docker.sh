@@ -1,5 +1,5 @@
 #! /bin/bash
-
+set -e
 RootPath=$(cd $(dirname $0)/..; pwd)
 GOPATH=/go
 export DiskPath="$RootPath/docker/disk"
@@ -18,7 +18,7 @@ Usage: ./run_docker.sh [ -h | --help ] [ -d | --disk </disk/path> ] [ -l | --ltp
     -m, --monitor           start monitor web ui
     -l, --ltptest           run ltp test
     -r, --run               run servers, client and monitor
-    --clear             clear old docker image
+    --clean                 cleanup old docker image
 EOF
     exit 0
 }
@@ -29,8 +29,8 @@ clean() {
 }
 
 # test
-run_test() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run test 
+run_unit_test() {
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run unit_test
 }
 
 # build
@@ -99,7 +99,7 @@ for opt in ${ARGS[*]} ; do
         -m|--monitor)
             cmd=run_monitor
             ;;
-        -clear|--clear)
+        -clean|--clean)
             cmd=clean
             ;;
         *)
@@ -147,7 +147,7 @@ case "-$cmd" in
     -run_client) start_client ;;
     -run_monitor) start_monitor ;;
     -run_ltptest) run_ltptest ;;
-    -run_test) run_test ;;
+    -run_test) run_unit_test ;;
     -clean) clean ;;
     *) help ;;
 esac

@@ -32,7 +32,7 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 		p.PacketErrorWithBody(proto.OpErr, nil)
 		return
 	}
-	resp, err := mp.Put(opFSMExtentsAdd, val)
+	resp, err := mp.submit(opFSMExtentsAdd, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -80,7 +80,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq,
 		p.PacketErrorWithBody(proto.OpErr, nil)
 		return
 	}
-	resp, err := mp.Put(opFSMExtentTruncate, val)
+	resp, err := mp.submit(opFSMExtentTruncate, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -108,7 +108,7 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 		p.PacketErrorWithBody(proto.OpErr, nil)
 		return
 	}
-	resp, err := mp.Put(opFSMExtentsAdd, val)
+	resp, err := mp.submit(opFSMExtentsAdd, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

@@ -29,8 +29,19 @@ const (
 	OSSMetaUpdateDuration = time.Duration(time.Second * 30)
 )
 
-// Used to validate interface implementation
-var _ Volume = &volume{}
+type AsyncTaskErrorFunc func(err error)
+
+func (f AsyncTaskErrorFunc) OnError(err error) {
+	if f != nil {
+		f(err)
+	}
+}
+
+type VolumeConfig struct {
+	Volume           string
+	Masters          []string
+	OnAsyncTaskError AsyncTaskErrorFunc
+}
 
 type OSSMeta struct {
 	policy     *Policy
@@ -39,28 +50,28 @@ type OSSMeta struct {
 	aclLock    sync.RWMutex
 }
 
-func (v *volume) loadPolicy() (p *Policy) {
+func (v *Volume) loadPolicy() (p *Policy) {
 	v.om.policyLock.RLock()
 	p = v.om.policy
 	v.om.policyLock.RUnlock()
 	return
 }
 
-func (v *volume) storePolicy(p *Policy) {
+func (v *Volume) storePolicy(p *Policy) {
 	v.om.policyLock.Lock()
 	v.om.policy = p
 	v.om.policyLock.Unlock()
 	return
 }
 
-func (v *volume) loadACL() (p *AccessControlPolicy) {
+func (v *Volume) loadACL() (p *AccessControlPolicy) {
 	v.om.aclLock.RLock()
 	p = v.om.acl
 	v.om.aclLock.RUnlock()
 	return
 }
 
-func (v *volume) storeACL(p *AccessControlPolicy) {
+func (v *Volume) storeACL(p *AccessControlPolicy) {
 	v.om.aclLock.Lock()
 	v.om.acl = p
 	v.om.aclLock.Unlock()
@@ -68,58 +79,66 @@ func (v *volume) storeACL(p *AccessControlPolicy) {
 }
 
 // This struct is implementation of Volume interface
-type volume struct {
-	mw     *meta.MetaWrapper
-	ec     *stream.ExtentClient
-	vm     *volumeManager
-	name   string
-	om     *OSSMeta
-	ticker *time.Ticker
-	//ms     Store
+type Volume struct {
+	mw         *meta.MetaWrapper
+	ec         *stream.ExtentClient
+	vm         *VolumeManager
+	name       string
+	om         *OSSMeta
+	ticker     *time.Ticker
+	createTime int64
+	//ms     	Store
 
 	closeOnce sync.Once
-	closingCh chan struct{}
-	closedCh  chan struct{}
+	closeCh   chan struct{}
+
+	onAsyncTaskError AsyncTaskErrorFunc
 }
 
-func (v *volume) syncOSSMeta() {
-	defer v.ticker.Stop()
+func (v *Volume) syncOSSMeta() {
 	v.ticker = time.NewTicker(OSSMetaUpdateDuration)
+	defer v.ticker.Stop()
 	for {
 		select {
 		case <-v.ticker.C:
 			v.loadOSSMeta()
-		case <-v.closingCh:
-			v.closedCh <- struct{}{}
+		case <-v.closeCh:
 			return
 		}
 	}
 }
 
-func (v *volume) stopOSSMetaSync() {
-	v.closingCh <- struct{}{}
-
-	select {
-	case <-v.closedCh:
-		break
+// update Volume meta info
+func (v *Volume) loadOSSMeta() {
+	var err error
+	defer func() {
+		if err != nil {
+			v.onAsyncTaskError.OnError(err)
+		}
+	}()
+	var policy *Policy
+	if policy, err = v.loadBucketPolicy(); err != nil {
+		return
 	}
-}
-
-// update volume meta info
-func (v *volume) loadOSSMeta() {
-	policy, _ := v.loadBucketPolicy()
 	if policy != nil {
 		v.storePolicy(policy)
 	}
 
-	acl, _ := v.loadBucketACL()
+	var acl *AccessControlPolicy
+	if acl, err = v.loadBucketACL(); err != nil {
+		return
+	}
 	if acl != nil {
 		v.storeACL(acl)
 	}
 }
 
+func (v *Volume) Name() string {
+	return v.name
+}
+
 // load bucket policy from vm
-func (v *volume) loadBucketPolicy() (policy *Policy, err error) {
+func (v *Volume) loadBucketPolicy() (policy *Policy, err error) {
 	var store Store
 	store, err = v.vm.GetStore()
 	if err != nil {
@@ -128,7 +147,7 @@ func (v *volume) loadBucketPolicy() (policy *Policy, err error) {
 	var data []byte
 	data, err = store.Get(v.name, bucketRootPath, XAttrKeyOSSPolicy)
 	if err != nil {
-		log.LogErrorf("loadBucketPolicy: load bucket policy fail: volume(%v) err(%v)", v.name, err)
+		log.LogErrorf("loadBucketPolicy: load bucket policy fail: Volume(%v) err(%v)", v.name, err)
 		return
 	}
 	policy = &Policy{}
@@ -138,7 +157,7 @@ func (v *volume) loadBucketPolicy() (policy *Policy, err error) {
 	return
 }
 
-func (v *volume) loadBucketACL() (*AccessControlPolicy, error) {
+func (v *Volume) loadBucketACL() (*AccessControlPolicy, error) {
 	store, err1 := v.vm.GetStore()
 	if err1 != nil {
 		return nil, err1
@@ -155,12 +174,11 @@ func (v *volume) loadBucketACL() (*AccessControlPolicy, error) {
 	return acl, nil
 }
 
-func (v *volume) OSSMeta() *OSSMeta {
+func (v *Volume) OSSMeta() *OSSMeta {
 	return v.om
 }
 
-func (v *volume) getInodeFromPath(path string) (inode uint64, err error) {
-	// path == "/"
+func (v *Volume) getInodeFromPath(path string) (inode uint64, err error) {
 	if path == "/" {
 		return volumeRootInode, nil
 	}
@@ -192,15 +210,31 @@ func (v *volume) getInodeFromPath(path string) (inode uint64, err error) {
 	return
 }
 
-func (v *volume) SetXAttr(path string, key string, data []byte) error {
-	inode, err1 := v.getInodeFromPath(path)
-	if err1 != nil {
-		return err1
+func (v *Volume) SetXAttr(path string, key string, data []byte) error {
+	var err error
+	var inode uint64
+	if inode, err = v.getInodeFromPath(path); err != nil && err != syscall.ENOENT {
+		return err
+	}
+	if err == syscall.ENOENT {
+		var dirs, filename = splitPath(path)
+		var parentID uint64
+		if parentID, err = v.lookupDirectories(dirs, true); err != nil {
+			return err
+		}
+		var inodeInfo *proto.InodeInfo
+		if inodeInfo, err = v.mw.Create_ll(parentID, filename, 0600, 0, 0, nil); err != nil {
+			return err
+		}
+		inode = inodeInfo.Inode
+		if err = v.mw.XAttrSet_ll(inode, []byte(XAttrKeyOSSETag), []byte(EmptyContentMD5String)); err != nil {
+			return err
+		}
 	}
 	return v.mw.XAttrSet_ll(inode, []byte(key), data)
 }
 
-func (v *volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err error) {
+func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err error) {
 	var inode uint64
 	inode, err = v.getInodeFromPath(path)
 	if err != nil {
@@ -213,7 +247,7 @@ func (v *volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err e
 	return
 }
 
-func (v *volume) DeleteXAttr(path string, key string) (err error) {
+func (v *Volume) DeleteXAttr(path string, key string) (err error) {
 	inode, err1 := v.getInodeFromPath(path)
 	if err1 != nil {
 		err = err1
@@ -226,11 +260,24 @@ func (v *volume) DeleteXAttr(path string, key string) (err error) {
 	return
 }
 
-func (v *volume) OSSSecure() (accessKey, secretKey string) {
+func (v *Volume) ListXAttrs(path string) (keys []string, err error) {
+	var inode uint64
+	inode, err = v.getInodeFromPath(path)
+	if err != nil {
+		return
+	}
+	if keys, err = v.mw.XAttrsList_ll(inode); err != nil {
+		log.LogErrorf("GetXAttr: meta get xattr fail: path(%v) inode(%v) err(%v)", path, inode, err)
+		return
+	}
+	return
+}
+
+func (v *Volume) OSSSecure() (accessKey, secretKey string) {
 	return v.mw.OSSSecure()
 }
 
-func (v *volume) ListFilesV1(request *ListBucketRequestV1) ([]*FSFileInfo, string, bool, []string, error) {
+func (v *Volume) ListFilesV1(request *ListBucketRequestV1) ([]*FSFileInfo, string, bool, []string, error) {
 	//prefix, delimiter, marker string, maxKeys uint64
 
 	marker := request.marker
@@ -259,7 +306,7 @@ func (v *volume) ListFilesV1(request *ListBucketRequestV1) ([]*FSFileInfo, strin
 	return infos, nextMarker, isTruncated, prefixes, nil
 }
 
-func (v *volume) ListFilesV2(request *ListBucketRequestV2) ([]*FSFileInfo, uint64, string, bool, []string, error) {
+func (v *Volume) ListFilesV2(request *ListBucketRequestV2) ([]*FSFileInfo, uint64, string, bool, []string, error) {
 
 	delimiter := request.delimiter
 	maxKeys := request.maxKeys
@@ -291,7 +338,7 @@ func (v *volume) ListFilesV2(request *ListBucketRequestV2) ([]*FSFileInfo, uint6
 	return infos, keyCount, nextToken, isTruncated, prefixes, nil
 }
 
-func (v *volume) WriteFile(path string, reader io.Reader) (*FSFileInfo, error) {
+func (v *Volume) WriteFile(path string, reader io.Reader) (*FSFileInfo, error) {
 	var err error
 	var fInfo *FSFileInfo
 
@@ -399,7 +446,7 @@ func (v *volume) WriteFile(path string, reader io.Reader) (*FSFileInfo, error) {
 	return fInfo, nil
 }
 
-func (v *volume) DeleteFile(path string) error {
+func (v *Volume) DeleteFile(path string) error {
 	var err error
 	dirs, filename := splitPath(path)
 
@@ -434,7 +481,7 @@ func (v *volume) DeleteFile(path string) error {
 	return nil
 }
 
-func (v *volume) InitMultipart(path string) (multipartID string, err error) {
+func (v *Volume) InitMultipart(path string) (multipartID string, err error) {
 	// Invoke meta service to get a session id
 	// Create parent path
 
@@ -455,7 +502,7 @@ func (v *volume) InitMultipart(path string) (multipartID string, err error) {
 	return multipartID, nil
 }
 
-func (v *volume) WritePart(path string, multipartId string, partId uint16, reader io.Reader) (*FSFileInfo, error) {
+func (v *Volume) WritePart(path string, multipartId string, partId uint16, reader io.Reader) (*FSFileInfo, error) {
 	var parentId uint64
 	var err error
 	var fInfo *FSFileInfo
@@ -553,7 +600,7 @@ func (v *volume) WritePart(path string, multipartId string, partId uint16, reade
 	return fInfo, nil
 }
 
-func (v *volume) AbortMultipart(path string, multipartID string) (err error) {
+func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 	// TODO: cleanup data while abort multipart
 	var parentId uint64
 
@@ -596,7 +643,7 @@ func (v *volume) AbortMultipart(path string, multipartID string) (err error) {
 	return nil
 }
 
-func (v *volume) CompleteMultipart(path string, multipartID string) (fsFileInfo *FSFileInfo, err error) {
+func (v *Volume) CompleteMultipart(path string, multipartID string) (fsFileInfo *FSFileInfo, err error) {
 
 	const mode = 0600
 
@@ -745,7 +792,7 @@ func (v *volume) CompleteMultipart(path string, multipartID string) (fsFileInfo 
 	return fInfo, nil
 }
 
-func (v *volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAllocatedBuf []byte) (err error) {
+func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAllocatedBuf []byte) (err error) {
 	if err = v.ec.OpenStream(inode); err != nil {
 		log.LogErrorf("appendInodeHash: data open stream fail: inode(%v) err(%v)",
 			inode, err)
@@ -794,7 +841,7 @@ func (v *volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAll
 	return
 }
 
-func (v *volume) applyInodeToNewDentry(parentID uint64, name string, inode uint64) (err error) {
+func (v *Volume) applyInodeToNewDentry(parentID uint64, name string, inode uint64) (err error) {
 	const mode = 0600
 	if err = v.mw.DentryCreate_ll(parentID, name, inode, mode); err != nil {
 		log.LogErrorf("applyInodeToNewDentry: meta dentry create fail: parentID(%v) name(%v) inode(%v) mode(%v) err(%v)",
@@ -804,7 +851,7 @@ func (v *volume) applyInodeToNewDentry(parentID uint64, name string, inode uint6
 	return
 }
 
-func (v *volume) applyInodeToExistDentry(parentID uint64, name string, inode uint64) (err error) {
+func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uint64) (err error) {
 	var oldInode uint64
 	oldInode, err = v.mw.DentryUpdate_ll(parentID, name, inode)
 	if err != nil {
@@ -848,7 +895,7 @@ func (v *volume) applyInodeToExistDentry(parentID uint64, name string, inode uin
 	return
 }
 
-func (v *volume) ReadFile(path string, writer io.Writer, offset, size uint64) error {
+func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) error {
 	var err error
 	dirs, filename := splitPath(path)
 
@@ -919,7 +966,7 @@ func (v *volume) ReadFile(path string, writer io.Writer, offset, size uint64) er
 	return nil
 }
 
-func (v *volume) FileInfo(path string) (info *FSFileInfo, err error) {
+func (v *Volume) FileInfo(path string) (info *FSFileInfo, err error) {
 	dirs, filename := splitPath(path)
 
 	// process path
@@ -947,28 +994,29 @@ func (v *volume) FileInfo(path string) (info *FSFileInfo, err error) {
 		logger.Error("FileInfo: meta get xattr fail, inode(%v) path(%v) err(%v)", fileInode, path, err)
 		return
 	}
-	md5Val := xAttrInfo.XAttrs[XAttrKeyOSSETag]
+	md5Val := xAttrInfo.Get(XAttrKeyOSSETag)
 
 	info = &FSFileInfo{
 		Path:       path,
 		Size:       int64(fileInodeInfo.Size),
 		Mode:       os.FileMode(fileInodeInfo.Mode),
 		ModifyTime: fileInodeInfo.ModifyTime,
-		ETag:       md5Val,
+		ETag:       string(md5Val),
 		Inode:      fileInodeInfo.Inode,
 	}
 	return
 }
 
-func (v *volume) Close() error {
+func (v *Volume) Close() error {
 	v.closeOnce.Do(func() {
-		v.mw.Close()
-		v.stopOSSMetaSync()
+		close(v.closeCh)
+		_ = v.mw.Close()
+		_ = v.ec.Close()
 	})
 	return nil
 }
 
-func (v *volume) lookupDirectories(dirs []string, autoCreate bool) (inode uint64, err error) {
+func (v *Volume) lookupDirectories(dirs []string, autoCreate bool) (inode uint64, err error) {
 	var parentId = rootIno
 	// check and create dirs
 	for _, dir := range dirs {
@@ -1018,7 +1066,7 @@ func (v *volume) lookupDirectories(dirs []string, autoCreate bool) (inode uint64
 	return
 }
 
-func (v *volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64) (infos []*FSFileInfo, prefixes Prefixes, err error) {
+func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64) (infos []*FSFileInfo, prefixes Prefixes, err error) {
 	var prefixMap = PrefixMap(make(map[string]struct{}))
 
 	parentId, dirs, err := v.findParentId(prefix)
@@ -1039,8 +1087,11 @@ func (v *volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64) (
 
 	// recursion call listDir method
 	infos, prefixMap, err = v.listDir(infos, prefixMap, parentId, maxKeys, dirs, prefix, marker, delimiter)
+	if err == syscall.ENOENT {
+		return nil, nil, nil
+	}
 	if err != nil {
-		log.LogErrorf("listFilesV1: volume list dir fail: volume(%v) err(%v)", v.name, err)
+		log.LogErrorf("listFilesV1: volume list dir fail: Volume(%v) err(%v)", v.name, err)
 		return
 	}
 
@@ -1052,13 +1103,13 @@ func (v *volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64) (
 
 	prefixes = prefixMap.Prefixes()
 
-	log.LogDebugf("listFilesV1: volume list dir: volume(%v) prefix(%v) marker(%v) delimiter(%v) maxKeys(%v) infos(%v) prefixes(%v)",
+	log.LogDebugf("listFilesV1: Volume list dir: Volume(%v) prefix(%v) marker(%v) delimiter(%v) maxKeys(%v) infos(%v) prefixes(%v)",
 		v.name, prefix, marker, delimiter, maxKeys, len(infos), len(prefixes))
 
 	return
 }
 
-func (v *volume) listFilesV2(prefix, startAfter, contToken, delimiter string, maxKeys uint64) (infos []*FSFileInfo, prefixes Prefixes, err error) {
+func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, maxKeys uint64) (infos []*FSFileInfo, prefixes Prefixes, err error) {
 	var prefixMap = PrefixMap(make(map[string]struct{}))
 
 	var marker string
@@ -1086,8 +1137,11 @@ func (v *volume) listFilesV2(prefix, startAfter, contToken, delimiter string, ma
 
 	// recursion call listDir method
 	infos, prefixMap, err = v.listDir(infos, prefixMap, parentId, maxKeys, dirs, prefix, marker, delimiter)
+	if err == syscall.ENOENT {
+		return nil, nil, nil
+	}
 	if err != nil {
-		log.LogErrorf("listFilesV2: volume list dir fail, volume(%v) err(%v)", v.name, err)
+		log.LogErrorf("listFilesV2: Volume list dir fail, Volume(%v) err(%v)", v.name, err)
 		return
 	}
 
@@ -1100,13 +1154,13 @@ func (v *volume) listFilesV2(prefix, startAfter, contToken, delimiter string, ma
 
 	prefixes = prefixMap.Prefixes()
 
-	log.LogDebugf("listFilesV2: volume list dir: volume(%v) prefix(%v) marker(%v) delimiter(%v) maxKeys(%v) infos(%v) prefixes(%v)",
+	log.LogDebugf("listFilesV2: Volume list dir: Volume(%v) prefix(%v) marker(%v) delimiter(%v) maxKeys(%v) infos(%v) prefixes(%v)",
 		v.name, prefix, marker, delimiter, maxKeys, len(infos), len(prefixes))
 
 	return
 }
 
-func (v *volume) findParentId(prefix string) (inode uint64, prefixDirs []string, err error) {
+func (v *Volume) findParentId(prefix string) (inode uint64, prefixDirs []string, err error) {
 	prefixDirs = make([]string, 0)
 
 	// if prefix and marker are both not empty, use marker
@@ -1154,7 +1208,7 @@ func (v *volume) findParentId(prefix string) (inode uint64, prefixDirs []string,
 	return
 }
 
-func (v *volume) listDir(fileInfos []*FSFileInfo, prefixMap PrefixMap, parentId, maxKeys uint64, dirs []string, prefix, marker, delimiter string) ([]*FSFileInfo, PrefixMap, error) {
+func (v *Volume) listDir(fileInfos []*FSFileInfo, prefixMap PrefixMap, parentId, maxKeys uint64, dirs []string, prefix, marker, delimiter string) ([]*FSFileInfo, PrefixMap, error) {
 
 	children, err := v.mw.ReadDir_ll(parentId)
 	if err != nil {
@@ -1206,7 +1260,7 @@ func (v *volume) listDir(fileInfos []*FSFileInfo, prefixMap PrefixMap, parentId,
 	return fileInfos, prefixMap, nil
 }
 
-func (v *volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
+func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 	// get all file info indoes
 	inoInfoMap := make(map[uint64]*proto.InodeInfo)
 	var inodes []uint64
@@ -1237,7 +1291,7 @@ func (v *volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 		return
 	}
 	for _, xAttrInfo := range batchXAttrInfos {
-		md5Map[xAttrInfo.Inode] = xAttrInfo.XAttrs[XAttrKeyOSSETag]
+		md5Map[xAttrInfo.Inode] = string(xAttrInfo.Get(XAttrKeyOSSETag))
 	}
 	for _, fileInfo := range fileInfos {
 		fileInfo.ETag = md5Map[fileInfo.Inode]
@@ -1245,7 +1299,7 @@ func (v *volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 	return
 }
 
-func (v *volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) ([]*FSUpload, string, string, bool, []string, error) {
+func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) ([]*FSUpload, string, string, bool, []string, error) {
 	sessions, err := v.mw.ListMultipart_ll(prefix, delimiter, keyMarker, multipartIdMarker, maxUploads)
 	if err != nil {
 		return nil, "", "", false, nil, err
@@ -1298,7 +1352,7 @@ func (v *volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multi
 	return uploads, NextMarker, NextSessionIdMarker, IsTruncated, prefixes, nil
 }
 
-func (v *volume) ListParts(path, sessionId string, maxParts, partNumberMarker uint64) (parts []*FSPart, nextMarker uint64, isTruncated bool, err error) {
+func (v *Volume) ListParts(path, uploadId string, maxParts, partNumberMarker uint64) (parts []*FSPart, nextMarker uint64, isTruncated bool, err error) {
 	var parentId uint64
 	dirs, _ := splitPath(path)
 	// process path
@@ -1306,9 +1360,9 @@ func (v *volume) ListParts(path, sessionId string, maxParts, partNumberMarker ui
 		return nil, 0, false, err
 	}
 
-	multipartInfo, err := v.mw.GetMultipart_ll(sessionId, parentId)
+	multipartInfo, err := v.mw.GetMultipart_ll(uploadId, parentId)
 	if err != nil {
-		log.LogErrorf("Get session(%s) parts failed cause: %v", sessionId, err)
+		log.LogErrorf("ListPart: get multipart upload fail: uploadID(%v) err(%v)", uploadId, err)
 	}
 
 	sessionParts := multipartInfo.Parts
@@ -1336,7 +1390,7 @@ func (v *volume) ListParts(path, sessionId string, maxParts, partNumberMarker ui
 	return parts, nextMarker, isTruncated, nil
 }
 
-func (v *volume) CopyFile(targetPath, sourcePath string) (info *FSFileInfo, err error) {
+func (v *Volume) CopyFile(targetPath, sourcePath string) (info *FSFileInfo, err error) {
 
 	sourceDirs, sourceFilename := splitPath(sourcePath)
 	// process source targetPath
@@ -1376,20 +1430,20 @@ func (v *volume) CopyFile(targetPath, sourcePath string) (info *FSFileInfo, err 
 		log.LogErrorf("CopyFile: meta set xattr fail: inode(%v) err(%v)", sourceFileInode, err)
 		return nil, err
 	}
-	md5Val := xAttrInfo.XAttrs[XAttrKeyOSSETag]
+	md5Val := xAttrInfo.Get(XAttrKeyOSSETag)
 
 	info = &FSFileInfo{
 		Path:       targetPath,
 		Size:       int64(inodeInfo.Size),
 		Mode:       os.FileMode(inodeInfo.Size),
 		ModifyTime: inodeInfo.ModifyTime,
-		ETag:       md5Val,
+		ETag:       string(md5Val),
 		Inode:      inodeInfo.Inode,
 	}
 	return
 }
 
-func (v *volume) copyFile(parentID uint64, newFileName string, sourceFileInode uint64, mode uint32) (info *proto.InodeInfo, err error) {
+func (v *Volume) copyFile(parentID uint64, newFileName string, sourceFileInode uint64, mode uint32) (info *proto.InodeInfo, err error) {
 
 	if err = v.mw.DentryCreate_ll(parentID, newFileName, sourceFileInode, mode); err != nil {
 		return
@@ -1400,31 +1454,53 @@ func (v *volume) copyFile(parentID uint64, newFileName string, sourceFileInode u
 	return
 }
 
-func newVolume(masters []string, vol string) (*volume, error) {
+func NewVolume(config *VolumeConfig) (*Volume, error) {
 	var err error
-	opt := &proto.MountOptions{
-		Volname:      vol,
-		Owner:        "",
-		Master:       strings.Join(masters, ","),
-		FollowerRead: true,
-		Authenticate: false,
+	var metaConfig = &meta.MetaConfig{
+		Volume:        config.Volume,
+		Masters:       config.Masters,
+		Authenticate:  false,
+		ValidateOwner: false,
+		OnAsyncTaskError: func(err error) {
+			config.OnAsyncTaskError.OnError(err)
+		},
 	}
 
-	var mw *meta.MetaWrapper
-	if mw, err = meta.NewMetaWrapper(opt, false); err != nil {
+	var metaWrapper *meta.MetaWrapper
+	if metaWrapper, err = meta.NewMetaWrapper(metaConfig); err != nil {
 		return nil, err
 	}
 	defer func() {
 		if err != nil {
-			mw.Close()
+			_ = metaWrapper.Close()
 		}
 	}()
-	var ec *stream.ExtentClient
-	if ec, err = stream.NewExtentClient(opt, mw.AppendExtentKey, mw.GetExtents, mw.Truncate); err != nil {
+	var extentConfig = &stream.ExtentConfig{
+		Volume:            config.Volume,
+		Masters:           config.Masters,
+		FollowerRead:      true,
+		OnAppendExtentKey: metaWrapper.AppendExtentKey,
+		OnGetExtents:      metaWrapper.GetExtents,
+		OnTruncate:        metaWrapper.Truncate,
+	}
+	var extentClient *stream.ExtentClient
+	if extentClient, err = stream.NewExtentClient(extentConfig); err != nil {
 		return nil, err
 	}
 
-	v := &volume{mw: mw, ec: ec, name: vol, om: new(OSSMeta)}
+	v := &Volume{
+		mw:         metaWrapper,
+		ec:         extentClient,
+		name:       config.Volume,
+		om:         new(OSSMeta),
+		createTime: metaWrapper.VolCreateTime(),
+		closeCh:    make(chan struct{}),
+		onAsyncTaskError: func(err error) {
+			if err == syscall.ENOENT {
+				config.OnAsyncTaskError.OnError(proto.ErrVolNotExists)
+			}
+		},
+	}
 	go v.syncOSSMeta()
 	return v, nil
 }

@@ -31,14 +31,22 @@ const (
 
 type ConnectPool struct {
 	sync.RWMutex
-	pools   map[string]*Pool
-	mincap  int
-	maxcap  int
-	timeout int64
+	pools     map[string]*Pool
+	mincap    int
+	maxcap    int
+	timeout   int64
+	closeCh   chan struct{}
+	closeOnce sync.Once
 }
 
 func NewConnectPool() (cp *ConnectPool) {
-	cp = &ConnectPool{pools: make(map[string]*Pool), mincap: 5, maxcap: 80, timeout: int64(time.Second * ConnectIdleTime)}
+	cp = &ConnectPool{
+		pools:   make(map[string]*Pool),
+		mincap:  5,
+		maxcap:  80,
+		timeout: int64(time.Second * ConnectIdleTime),
+		closeCh: make(chan struct{}),
+	}
 	go cp.autoRelease()
 
 	return cp
@@ -75,8 +83,14 @@ func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
 		return
 	}
 	if forceClose {
-		c.Close()
+		_ = c.Close()
 		return
+	}
+	select {
+	case <-cp.closeCh:
+		_ = c.Close()
+		return
+	default:
 	}
 	addr := c.RemoteAddr().String()
 	cp.RLock()
@@ -93,7 +107,14 @@ func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
 }
 
 func (cp *ConnectPool) autoRelease() {
+	var timer = time.NewTimer(time.Second)
 	for {
+		select {
+		case <-cp.closeCh:
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
 		pools := make([]*Pool, 0)
 		cp.RLock()
 		for _, pool := range cp.pools {
@@ -103,9 +124,27 @@ func (cp *ConnectPool) autoRelease() {
 		for _, pool := range pools {
 			pool.autoRelease()
 		}
-		time.Sleep(time.Second)
+		timer.Reset(time.Second)
 	}
+}
 
+func (cp *ConnectPool) releaseAll() {
+	pools := make([]*Pool, 0)
+	cp.RLock()
+	for _, pool := range cp.pools {
+		pools = append(pools, pool)
+	}
+	cp.RUnlock()
+	for _, pool := range pools {
+		pool.ReleaseAll()
+	}
+}
+
+func (cp *ConnectPool) Close() {
+	cp.closeOnce.Do(func() {
+		close(cp.closeCh)
+		cp.releaseAll()
+	})
 }
 
 type Pool struct {
@@ -162,6 +201,18 @@ func (p *Pool) autoRelease() {
 			} else {
 				p.PutConnectObjectToPool(o)
 			}
+		default:
+			return
+		}
+	}
+}
+
+func (p *Pool) ReleaseAll() {
+	connectLen := len(p.objects)
+	for i := 0; i < connectLen; i++ {
+		select {
+		case o := <-p.objects:
+			o.conn.Close()
 		default:
 			return
 		}

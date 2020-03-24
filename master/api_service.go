@@ -157,7 +157,7 @@ func (m *Server) updateZone(w http.ResponseWriter, r *http.Request) {
 	}
 	zone, err := m.cluster.t.getZone(name)
 	if err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNotExists, Msg: err.Error()})
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeZoneNotExists, Msg: err.Error()})
 		return
 	}
 	if status {
@@ -486,6 +486,10 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	if err = m.user.deleteVolPolicy(name); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
 	if err = m.cluster.markDeleteVol(name, authKey); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -564,6 +568,11 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	// create user
+	if err = m.associateVolWithUser(owner, name); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
 	msg = fmt.Sprintf("create vol[%v] successfully, has allocate [%v] data partitions", name, len(vol.dataPartitions.partitions))
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
@@ -606,6 +615,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		RwDpCnt:            vol.dataPartitions.readableAndWritableCnt,
 		MpCnt:              len(vol.MetaPartitions),
 		DpCnt:              len(vol.dataPartitions.partitionMap),
+		CreateTime:         time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
 	}
 }
 
@@ -1511,7 +1521,7 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 		vol.updateViewCache(m.cluster)
 		viewCache = vol.getViewCache()
 	}
-	if vol.authenticate {
+	if !param.skipOwnerValidation && vol.authenticate {
 		if jobj, ticket, ts, err = parseAndCheckTicket(r, m.cluster.MasterSecretKey, param.name); err != nil {
 			if err == proto.ErrExpiredTicket {
 				sendErrReply(w, r, newErrHTTPReply(err))
@@ -1632,6 +1642,32 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(toInfo(mp)))
+}
+
+func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
+	var (
+		err      error
+		keywords string
+		vol      *Vol
+		volsInfo []*proto.VolInfo
+	)
+	if keywords, err = parseKeywords(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	volsInfo = make([]*proto.VolInfo, 0)
+	for _, name := range m.cluster.allVolNames() {
+		if strings.Contains(name, keywords) {
+			if vol, err = m.cluster.getVol(name); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+				return
+			}
+			stat := volStat(vol)
+			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize)
+			volsInfo = append(volsInfo, volInfo)
+		}
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))
 }
 
 func parseAndExtractPartitionInfo(r *http.Request) (partitionID uint64, err error) {
@@ -1786,4 +1822,26 @@ func genRespMessage(data []byte, req *proto.APIAccessReq, ts int64, key []byte) 
 	}
 
 	return
+}
+
+func (m *Server) associateVolWithUser(userID, volName string) error {
+	var err error
+	var userInfo *proto.UserInfo
+	if userInfo, err = m.user.getUserInfo(userID); err != nil && err != proto.ErrUserNotExists {
+		return err
+	}
+	if err == proto.ErrUserNotExists {
+		var param = proto.UserCreateParam{
+			ID:       userID,
+			Password: DefaultUserPassword,
+			Type:     proto.UserTypeNormal,
+		}
+		if userInfo, err = m.user.createKey(&param); err != nil {
+			return err
+		}
+	}
+	if _, err = m.user.addOwnVol(userInfo.UserID, volName); err != nil {
+		return err
+	}
+	return nil
 }

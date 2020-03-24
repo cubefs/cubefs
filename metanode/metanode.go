@@ -203,7 +203,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load raftReplicatePort[%v].", m.raftReplicatePort)
 	log.LogInfof("[parseConfig] load zoneName[%v].", m.zoneName)
 
-	addrs := cfg.GetArray(proto.MasterAddr)
+	addrs := cfg.GetSlice(proto.MasterAddr)
 	masters := make([]string, 0, len(addrs))
 	for _, addr := range addrs {
 		masters = append(masters, addr.(string))

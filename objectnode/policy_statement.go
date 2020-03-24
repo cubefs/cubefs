@@ -85,7 +85,7 @@ func (s Statement) checkPrincipal(p *RequestParam) bool {
 		return true
 	}
 	for _, principal := range s.Principal {
-		if principal.ContainsWild(p.account) {
+		if principal.ContainsWild(p.AccessKey()) {
 			return true
 		}
 	}

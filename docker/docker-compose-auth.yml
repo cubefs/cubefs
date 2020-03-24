@@ -23,6 +23,7 @@ services:
       - metanode1
       - metanode2
       - metanode3
+      - metanode4
       - datanode1
       - datanode2
       - datanode3
@@ -143,6 +144,25 @@ services:
     networks:
       authnode_extnetwork:
         ipv4_address: 192.168.0.23
+
+  metanode4:
+    image: chubaofs/cfs-base:1.0
+    ports:
+      - "17210"
+      - "17220"
+      - "17230"
+      - "17240"
+      - 9500
+    volumes:
+      - ./bin:/cfs/bin
+      - ./conf/metanode.json:/cfs/conf/metanode.json
+      - ./script/start_meta.sh:/cfs/script/start.sh
+    command: /bin/bash /cfs/script/start.sh
+    restart: on-failure
+    privileged: true
+    networks:
+      authnode_extnetwork:
+        ipv4_address: 192.168.0.24
 
   datanode1:
     image: chubaofs/cfs-base:1.0
@@ -267,7 +287,7 @@ services:
     privileged: true
     networks:
       authnode_extnetwork:
-        ipv4_address: 192.168.0.100
+        ipv4_address: 192.168.0.101
 
   prometheus:
     image: prom/prometheus
@@ -278,7 +298,7 @@ services:
     privileged: true
     networks:
       authnode_extnetwork:
-        ipv4_address: 192.168.0.200
+        ipv4_address: 192.168.0.102
 
   grafana:
     image: grafana/grafana:6.2.0
@@ -309,5 +329,19 @@ services:
         cd /go/src/github.com/chubaofs/chubaofs/cmd && bash ./build.sh && mv cfs-server /go/src/github.com/chubaofs/chubaofs/docker/bin/cfs-server && echo "success" || echo "failed" ;
         echo -n 'build client ' ;
         cd /go/src/github.com/chubaofs/chubaofs/client && bash ./build.sh && mv cfs-client /go/src/github.com/chubaofs/chubaofs/docker/bin/cfs-client && echo 'success' || echo "failed" ;
+    networks:
+      authnode_extnetwork:
+
+  test:
+    image: chubaofs/cfs-base:1.0
+    volumes:
+      - ../:/go/src/github.com/chubaofs/chubaofs
+    command:
+      - bash
+      - "-c"
+      - >-
+        set -e;
+        mkdir -p /go/src/github.com/chubaofs/chubaofs/docker/bin &&
+        cd /go/src/github.com/chubaofs/chubaofs && make test
     networks:
       authnode_extnetwork:

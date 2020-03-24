@@ -111,7 +111,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					timer.Reset(intervalToPersistData)
 					continue
 				}
-				if _, err := mp.Put(opFSMStoreTick, nil); err != nil {
+				if _, err := mp.submit(opFSMStoreTick, nil); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 					if _, ok := mp.IsLeader(); ok {
 						timer.Reset(intervalToPersistData)

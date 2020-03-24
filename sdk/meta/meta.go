@@ -16,29 +16,22 @@ package meta
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/auth"
-	"github.com/chubaofs/chubaofs/util/cryptoutil"
-	"io/ioutil"
-	"log"
-	"net/http"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
+	authSDK "github.com/chubaofs/chubaofs/sdk/auth"
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/auth"
 	"github.com/chubaofs/chubaofs/util/btree"
 	"github.com/chubaofs/chubaofs/util/errors"
-	cfslog "github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
 	HostsSeparator                = ","
 	RefreshMetaPartitionsInterval = time.Minute * 5
-	GetTicketMaxRetry             = 5
-	GetTicketSleepInterval        = 100 * time.Millisecond
 )
 
 const (
@@ -58,16 +51,40 @@ const (
 	MountRetryInterval = time.Second * 5
 )
 
+type AsyncTaskErrorFunc func(err error)
+
+func (f AsyncTaskErrorFunc) OnError(err error) {
+	if f != nil {
+		f(err)
+	}
+}
+
+type MetaConfig struct {
+	Volume           string
+	Owner            string
+	Masters          []string
+	Authenticate     bool
+	TicketMess       auth.TicketMess
+	TokenKey         string
+	ValidateOwner    bool
+	OnAsyncTaskError AsyncTaskErrorFunc
+}
+
 type MetaWrapper struct {
 	sync.RWMutex
 	cluster         string
 	localIP         string
 	volname         string
 	ossSecure       *OSSSecure
+	volCreateTime   int64
 	owner           string
 	ownerValidation bool
 	mc              *masterSDK.MasterClient
+	ac              *authSDK.AuthClient
 	conns           *util.ConnectPool
+
+	// Callback handler for handling asynchronous task errors.
+	onAsyncTaskError AsyncTaskErrorFunc
 
 	// Partitions and ranges should be modified together. So do not
 	// use partitions and ranges directly. Use the helper functions instead.
@@ -86,7 +103,7 @@ type MetaWrapper struct {
 	usedSize  uint64
 
 	authenticate bool
-	Ticket       Ticket
+	Ticket       auth.Ticket
 	accessToken  proto.APIAccessReq
 	sessionKey   string
 	ticketMess   auth.TicketMess
@@ -107,35 +124,42 @@ type Ticket struct {
 	Ticket     string `json:"ticket"`
 }
 
-func NewMetaWrapper(opt *proto.MountOptions, validateOwner bool) (*MetaWrapper, error) {
+func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
+	var err error
 	mw := new(MetaWrapper)
 	mw.closeCh = make(chan struct{}, 1)
 
-	if opt.Authenticate {
-		ticket, err := getTicketFromAuthnode(opt.Owner, opt.TicketMess)
+	if config.Authenticate {
+		var ticketMess = config.TicketMess
+		mw.ac = authSDK.NewAuthClient(ticketMess.TicketHosts, ticketMess.EnableHTTPS, ticketMess.CertFile)
+		ticket, err := mw.ac.API().GetTicket(config.Owner, ticketMess.ClientKey, proto.MasterServiceID)
 		if err != nil {
 			return nil, errors.Trace(err, "Get ticket from authnode failed!")
 		}
-		mw.authenticate = opt.Authenticate
+		mw.authenticate = config.Authenticate
 		mw.accessToken.Ticket = ticket.Ticket
-		mw.accessToken.ClientID = opt.Owner
+		mw.accessToken.ClientID = config.Owner
 		mw.accessToken.ServiceID = proto.MasterServiceID
 		mw.sessionKey = ticket.SessionKey
-		mw.ticketMess = opt.TicketMess
+		mw.ticketMess = ticketMess
 	}
 
-	mw.volname = opt.Volname
-	mw.owner = opt.Owner
-	mw.ownerValidation = validateOwner
-	masters := strings.Split(opt.Master, HostsSeparator)
-	mw.mc = masterSDK.NewMasterClient(masters, false)
+	mw.volname = config.Volume
+	mw.owner = config.Owner
+	mw.ownerValidation = config.ValidateOwner
+	mw.mc = masterSDK.NewMasterClient(config.Masters, false)
+	mw.onAsyncTaskError = config.OnAsyncTaskError
 	mw.conns = util.NewConnectPool()
 	mw.partitions = make(map[uint64]*MetaPartition)
 	mw.ranges = btree.New(32)
 	mw.rwPartitions = make([]*MetaPartition, 0)
-	mw.tokenKey = opt.TokenKey
-
-	_ = mw.updateClusterInfo()
+	if err = mw.updateClusterInfo(); err != nil {
+		return nil, err
+	}
+	if err = mw.updateVolStatInfo(); err != nil {
+		return nil, err
+	}
+	mw.tokenKey = config.TokenKey
 
 	limit := MaxMountRetryLimit
 retry:
@@ -172,10 +196,16 @@ func (mw *MetaWrapper) OSSSecure() (accessKey, secretKey string) {
 	return mw.ossSecure.AccessKey, mw.ossSecure.SecretKey
 }
 
-func (mw *MetaWrapper) Close() {
+func (mw *MetaWrapper) VolCreateTime() int64 {
+	return mw.volCreateTime
+}
+
+func (mw *MetaWrapper) Close() error {
 	mw.closeOnce.Do(func() {
 		close(mw.closeCh)
+		mw.conns.Close()
 	})
+	return nil
 }
 
 func (mw *MetaWrapper) Cluster() string {
@@ -239,84 +269,4 @@ func statusToErrno(status int) error {
 	default:
 	}
 	return syscall.EIO
-}
-
-func getTicketFromAuthnode(owner string, ticketMess auth.TicketMess) (ticket Ticket, err error) {
-	var (
-		key      []byte
-		ts       int64
-		msgResp  proto.AuthGetTicketResp
-		body     []byte
-		urlProto string
-		url      string
-		client   *http.Client
-	)
-
-	key, err = cryptoutil.Base64Decode(ticketMess.ClientKey)
-	if err != nil {
-		return
-	}
-	// construct request body
-	message := proto.AuthGetTicketReq{
-		Type:      proto.MsgAuthTicketReq,
-		ClientID:  owner,
-		ServiceID: proto.MasterServiceID,
-	}
-
-	if message.Verifier, ts, err = cryptoutil.GenVerifier(key); err != nil {
-		return
-	}
-
-	if ticketMess.EnableHTTPS {
-		urlProto = "https://"
-		certFile := loadCertfile(ticketMess.CertFile)
-		client, err = cryptoutil.CreateClientX(&certFile)
-		if err != nil {
-			return
-		}
-	} else {
-		urlProto = "http://"
-		client = &http.Client{}
-	}
-
-	authnode := strings.Split(ticketMess.TicketHost, HostsSeparator)
-	//TODO don't retry if the param is wrong
-	for i := 0; i < GetTicketMaxRetry; i++ {
-		for _, ip := range authnode {
-			url = urlProto + ip + proto.ClientGetTicket
-			body, err = proto.SendData(client, url, message)
-
-			if err != nil {
-				continue
-			}
-
-			if msgResp, err = proto.ParseAuthGetTicketResp(body, key); err != nil {
-				continue
-			}
-
-			if err = proto.VerifyTicketRespComm(&msgResp, proto.MsgAuthTicketReq, owner, "MasterService", ts); err != nil {
-				continue
-			}
-
-			ticket.Ticket = msgResp.Ticket
-			ticket.ServiceID = msgResp.ServiceID
-			ticket.SessionKey = cryptoutil.Base64Encode(msgResp.SessionKey.Key)
-			ticket.ID = owner
-			cfslog.LogInfof("GetTicket: ok!")
-			return
-		}
-		cfslog.LogWarnf("GetTicket: getReply error and will RETRY, url(%v) err(%v)", url, err)
-		time.Sleep(GetTicketSleepInterval)
-	}
-	cfslog.LogWarnf("GetTicket exit: send to addr(%v) err(%v)", url, err)
-	return
-}
-
-func loadCertfile(path string) (caCert []byte) {
-	var err error
-	caCert, err = ioutil.ReadFile(path)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return
 }

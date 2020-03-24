@@ -18,7 +18,6 @@ package objectnode
 
 import (
 	"encoding/xml"
-	"errors"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -54,13 +53,18 @@ func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request)
 	)
 	defer o.errorResponse(w, r, err, ec)
 
-	_, bucket, _, vol, err := o.parseRequestParams(r)
-	if bucket == "" {
+	var param *RequestParam
+	param = ParseRequestParam(r)
+	if param.Bucket() == "" {
 		ec = &NoSuchBucket
 		return
 	}
 
-	//om := vol.OSSMeta()
+	var vol *Volume
+	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+		ec = &NoSuchBucket
+		return
+	}
 	acl := vol.loadACL()
 	var aclData []byte
 	if acl != nil {
@@ -71,7 +75,10 @@ func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request)
 		}
 
 	} else {
-		acl = &AccessControlPolicy{}
+		accessKey, _ := vol.OSSSecure()
+		acl = &AccessControlPolicy{
+			Owner: Owner{Id: accessKey, DisplayName: accessKey},
+		}
 		acl.Acl.Grants = append(acl.Acl.Grants, defaultGrant)
 		aclData, err = xml.Marshal(acl)
 		if err != nil {
@@ -95,63 +102,53 @@ func (o *ObjectNode) putBucketACLHandler(w http.ResponseWriter, r *http.Request)
 	defer o.errorResponse(w, r, err, ec)
 
 	log.LogInfof("Put bucket acl")
-	_, bucket, _, vol, err1 := o.parseRequestParams(r)
-	if err1 != nil {
-		err = err1
+
+	var param *RequestParam
+	param = ParseRequestParam(r)
+	if param.Bucket() == "" {
+		ec = &NoSuchBucket
 		return
 	}
-	if bucket == "" {
-		err = errors.New("")
+	var vol *Volume
+	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
 		ec = &NoSuchBucket
 		return
 	}
 
-	bytes, err2 := ioutil.ReadAll(r.Body)
-	if err2 != nil && err2 != io.EOF {
-		err = err2
+	var bytes []byte
+	if bytes, err = ioutil.ReadAll(r.Body); err != nil && err != io.EOF {
 		return
 	}
 
-	acl, err3 := ParseACL(bytes, vol.name)
-	if err3 != nil {
-		err = err3
+	var acp *AccessControlPolicy
+	if acp, err = ParseACL(bytes, param.Bucket()); err != nil {
 		return
 	}
-	if acl == nil {
-		err = errors.New("")
+	if acp == nil {
 		return
 	}
 
 	//add standard acl request header
 	// https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/acl-overview.html
-	p, err5 := o.parseRequestParam(r)
-	if err5 != nil {
-		err = err5
-		return
-	}
 	if standardAcls, found := r.Header["x-amz-acl"]; found {
-		acl.SetBucketStandardACL(p, standardAcls[0])
+		acp.SetBucketStandardACL(param, standardAcls[0])
 	} else {
 		for grant, permission := range aclGrantKeyPermissionMap {
 			if _, found2 := r.Header[grant]; found2 {
-				acl.SetBucketGrantACL(p, permission)
+				acp.SetBucketGrantACL(param, permission)
 			}
 		}
 	}
 
-	newBytes, err6 := acl.Marshal()
-	if err6 != nil {
-		err = err6
+	var newBytes []byte
+	if newBytes, err = acp.Marshal(); err != nil {
 		return
 	}
 
 	// store bucket acl
-	_, err4 := storeBucketACL(newBytes, vol)
-	if err4 != nil {
-		err = err4
+	if _, err = storeBucketACL(newBytes, vol); err != nil {
 		return
 	}
-
 	return
 }
 

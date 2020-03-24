@@ -16,34 +16,35 @@ package objectnode
 
 import (
 	"context"
-	"github.com/chubaofs/chubaofs/proto"
+	"errors"
 	"net/http"
 	"regexp"
+	"sync"
+
+	"github.com/chubaofs/chubaofs/util/config"
 
 	"github.com/chubaofs/chubaofs/cmd/common"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/gorilla/mux"
 )
 
 // Configuration keys
 const (
-	configListen    = "listen"
-	configDomains   = "domains"
-	configMasters   = "masters"
-	configAuthnodes = "authNodes"
-	configRegion    = "region"
+	configListen                  = "listen"
+	configDomains                 = "domains"
+	configEnableHTTPS             = "enableHTTPS"
+	configSignatureIgnoredActions = "signatureIgnoredActions"
 )
 
 // Default of configuration value
 const (
 	defaultListen = ":80"
-	defaultRegion = "cfs_default"
 )
 
 var (
-	regexpListen = regexp.MustCompile("^(([0-9]{1,3}.){3}([0-9]{1,3}))?:(\\d)+$")
+	regexpListen = regexp.MustCompile("^(\\d)+$")
 )
 
 type ObjectNode struct {
@@ -52,7 +53,13 @@ type ObjectNode struct {
 	listen     string
 	region     string
 	httpServer *http.Server
-	vm         VolumeManager
+	vm         *VolumeManager
+	mc         *master.MasterClient
+	state      uint32
+	wg         sync.WaitGroup
+	userStore  *UserStore //k: ak, v: userInfo
+
+	signatureIgnoredActions proto.Actions // signature ignored actions
 
 	control common.Control
 }
@@ -69,7 +76,7 @@ func (o *ObjectNode) Sync() {
 	o.control.Sync()
 }
 
-func (o *ObjectNode) parseConfig(cfg *config.Config) (err error) {
+func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	// parse listen
 	listen := cfg.GetString(proto.ListenPort)
 	if len(listen) == 0 {
@@ -80,33 +87,40 @@ func (o *ObjectNode) parseConfig(cfg *config.Config) (err error) {
 		return
 	}
 	o.listen = listen
+	log.LogInfof("loadConfig: setup config: %v(%v)", configListen, listen)
 
 	// parse domain
-	domainCfgs := cfg.GetArray(configDomains)
-	domains := make([]string, len(domainCfgs))
-	for i, domainCfg := range domainCfgs {
-		domains[i] = domainCfg.(string)
-	}
+	domains := cfg.GetStringSlice(configDomains)
 	o.domains = domains
 	if o.wildcards, err = NewWildcards(domains); err != nil {
 		return
 	}
+	log.LogInfof("loadConfig: setup config: %v(%v)", configDomains, domains)
 
 	// parse master config
-	masterCfgs := cfg.GetArray(proto.MasterAddr)
-	masters := make([]string, len(masterCfgs))
-	for i, masterCfg := range masterCfgs {
-		masters[i] = masterCfg.(string)
+	enableHTTPS := cfg.GetBool(configEnableHTTPS)
+	masters := cfg.GetStringSlice(proto.MasterAddr)
+	if len(masters) == 0 {
+		return config.NewIllegalConfigError(proto.MasterAddr)
 	}
+	log.LogInfof("loadConfig: setup config: %v(%v)", proto.MasterAddr, masters)
+
+	// parse signature ignored actions
+	signatureIgnoredActionNames := cfg.GetStringSlice(configSignatureIgnoredActions)
+	for _, actionName := range signatureIgnoredActionNames {
+		action := proto.ParseAction(actionName)
+		if !action.IsNone() {
+			o.signatureIgnoredActions = append(o.signatureIgnoredActions, action)
+			log.LogInfof("loadConfig: signature ignored action: %v", action)
+		}
+	}
+
+	o.mc = master.NewMasterClient(masters, false)
 	o.vm = NewVolumeManager(masters)
 	o.vm.InitStore(new(xattrStore))
+	o.vm.InitMasterClient(masters, enableHTTPS)
+	o.userStore = o.newUserStore()
 
-	// parse region
-	region := cfg.GetString(configRegion)
-	if len(region) == 0 {
-		region = defaultRegion
-	}
-	o.region = region
 	return
 }
 
@@ -116,15 +130,24 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 		return errors.New("Invalid Node Type!")
 	}
 	// parse config
-	if err = o.parseConfig(cfg); err != nil {
+	if err = o.loadConfig(cfg); err != nil {
 		return
 	}
+
+	// Get cluster info from master
+	var ci *proto.ClusterInfo
+	if ci, err = o.mc.AdminAPI().GetClusterInfo(); err != nil {
+		return
+	}
+	o.region = ci.Cluster
+	log.LogInfof("handleStart: get cluster information: region(%v)", o.region)
+
 	// start rest api
 	if err = o.startMuxRestAPI(); err != nil {
-		log.LogInfof("handleStart: start mux rest api fail, err(%v)", err)
+		log.LogInfof("handleStart: start rest api fail: err(%v)", err)
 		return
 	}
-	log.LogInfo("s3node start success")
+	log.LogInfo("object subsystem start success")
 	return
 }
 
@@ -140,19 +163,21 @@ func (o *ObjectNode) startMuxRestAPI() (err error) {
 	router := mux.NewRouter().SkipClean(true)
 	o.registerApiRouters(router)
 	router.Use(
+		o.corsMiddleware,
 		o.traceMiddleware,
 		o.authMiddleware,
+		o.policyCheckMiddleware,
 		o.contentMiddleware,
 	)
 
 	var server = &http.Server{
-		Addr:    o.listen,
+		Addr:    ":" + o.listen,
 		Handler: router,
 	}
 
 	go func() {
 		if err = server.ListenAndServe(); err != nil {
-			log.LogErrorf("startMuxRestAPI: start http server fail, err(%o)", err)
+			log.LogErrorf("startMuxRestAPI: start http server fail, err(%v)", err)
 			return
 		}
 	}()

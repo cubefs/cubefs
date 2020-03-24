@@ -16,68 +16,240 @@ package master
 
 import (
 	"net/http"
+	"net/http/httputil"
+
+	"github.com/gorilla/mux"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
-	"net/http/httputil"
 )
 
 func (m *Server) startHTTPService() {
-	go func() {
-		m.handleFunctions()
-		if err := http.ListenAndServe(colonSplit+m.port, nil); err != nil {
-			log.LogErrorf("action[startHTTPService] failed,err[%v]", err)
-			panic(err)
+	router := mux.NewRouter().SkipClean(true)
+	m.registerAPIRoutes(router)
+	m.registerAPIMiddleware(router)
+	var server = &http.Server{
+		Addr:    colonSplit + m.port,
+		Handler: router,
+	}
+	var serveAPI = func() {
+		if err := server.ListenAndServe(); err != nil {
+			log.LogErrorf("serveAPI: serve http server failed: err(%v)", err)
+			return
 		}
-	}()
+	}
+	go serveAPI()
+	m.apiServer = server
 	return
 }
 
-func (m *Server) handleFunctions() {
-	http.HandleFunc(proto.AdminGetIP, m.getIPAddr)
-	http.Handle(proto.AdminGetCluster, m.handlerWithInterceptor())
-	http.Handle(proto.AdminGetDataPartition, m.handlerWithInterceptor())
-	http.Handle(proto.AdminCreateDataPartition, m.handlerWithInterceptor())
-	http.Handle(proto.AdminLoadDataPartition, m.handlerWithInterceptor())
-	http.Handle(proto.AdminDecommissionDataPartition, m.handlerWithInterceptor())
-	http.Handle(proto.AdminAddDataReplica, m.handlerWithInterceptor())
-	http.Handle(proto.AdminDeleteDataReplica, m.handlerWithInterceptor())
-	http.Handle(proto.AdminCreateVol, m.handlerWithInterceptor())
-	http.Handle(proto.AdminGetVol, m.handlerWithInterceptor())
-	http.Handle(proto.AdminDeleteVol, m.handlerWithInterceptor())
-	http.Handle(proto.AdminUpdateVol, m.handlerWithInterceptor())
-	http.Handle(proto.AdminClusterFreeze, m.handlerWithInterceptor())
-	http.Handle(proto.AddDataNode, m.handlerWithInterceptor())
-	http.Handle(proto.AddMetaNode, m.handlerWithInterceptor())
-	http.Handle(proto.DecommissionDataNode, m.handlerWithInterceptor())
-	http.Handle(proto.DecommissionDisk, m.handlerWithInterceptor())
-	http.Handle(proto.DecommissionMetaNode, m.handlerWithInterceptor())
-	http.Handle(proto.GetDataNode, m.handlerWithInterceptor())
-	http.Handle(proto.GetMetaNode, m.handlerWithInterceptor())
-	http.Handle(proto.AdminLoadMetaPartition, m.handlerWithInterceptor())
-	http.Handle(proto.AdminDecommissionMetaPartition, m.handlerWithInterceptor())
-	http.Handle(proto.AdminAddMetaReplica, m.handlerWithInterceptor())
-	http.Handle(proto.AdminDeleteMetaReplica, m.handlerWithInterceptor())
-	http.Handle(proto.ClientDataPartitions, m.handlerWithInterceptor())
-	http.Handle(proto.ClientVol, m.handlerWithInterceptor())
-	http.Handle(proto.ClientMetaPartitions, m.handlerWithInterceptor())
-	http.Handle(proto.ClientMetaPartition, m.handlerWithInterceptor())
-	http.Handle(proto.GetDataNodeTaskResponse, m.handlerWithInterceptor())
-	http.Handle(proto.GetMetaNodeTaskResponse, m.handlerWithInterceptor())
-	http.Handle(proto.AdminCreateMetaPartition, m.handlerWithInterceptor())
-	http.Handle(proto.ClientVolStat, m.handlerWithInterceptor())
-	http.Handle(proto.AddRaftNode, m.handlerWithInterceptor())
-	http.Handle(proto.RemoveRaftNode, m.handlerWithInterceptor())
-	http.Handle(proto.AdminSetMetaNodeThreshold, m.handlerWithInterceptor())
-	http.Handle(proto.GetTopologyView, m.handlerWithInterceptor())
-	http.Handle(proto.UpdateZone, m.handlerWithInterceptor())
-	http.Handle(proto.GetAllZones, m.handlerWithInterceptor())
-	http.Handle(proto.TokenAddURI, m.handlerWithInterceptor())
-	http.Handle(proto.TokenGetURI, m.handlerWithInterceptor())
-	http.Handle(proto.TokenDelURI, m.handlerWithInterceptor())
-	http.Handle(proto.TokenUpdateURI, m.handlerWithInterceptor())
+func (m *Server) registerAPIMiddleware(route *mux.Router) {
+	var interceptor mux.MiddlewareFunc = func(next http.Handler) http.Handler {
+		return http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				log.LogDebugf("action[interceptor] request, method[%v] path[%v] query[%v]", r.Method, r.URL.Path, r.URL.Query())
+				if mux.CurrentRoute(r).GetName() == proto.AdminGetIP {
+					next.ServeHTTP(w, r)
+					return
+				}
+				if m.partition.IsRaftLeader() {
+					if m.metaReady {
+						next.ServeHTTP(w, r)
+						return
+					}
+					log.LogWarnf("action[interceptor] leader meta has not ready")
+					http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
+					return
+				}
+				if m.leaderInfo.addr == "" {
+					log.LogErrorf("action[interceptor] no leader,request[%v]", r.URL)
+					http.Error(w, "no leader", http.StatusBadRequest)
+					return
+				}
+				m.proxy(w, r)
+			})
+	}
+	route.Use(interceptor)
+}
 
-	return
+func (m *Server) registerAPIRoutes(router *mux.Router) {
+
+	// cluster management APIs
+	router.NewRoute().Name(proto.AdminGetIP).
+		Methods(http.MethodGet).
+		Path(proto.AdminGetIP).
+		HandlerFunc(m.getIPAddr)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminGetCluster).
+		HandlerFunc(m.getCluster)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminClusterFreeze).
+		HandlerFunc(m.setupAutoAllocation)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AddRaftNode).
+		HandlerFunc(m.addRaftNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.RemoveRaftNode).
+		HandlerFunc(m.removeRaftNode)
+
+	// volume management APIs
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminCreateVol).
+		HandlerFunc(m.createVol)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminGetVol).
+		HandlerFunc(m.getVolSimpleInfo)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDeleteVol).
+		HandlerFunc(m.markDeleteVol)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUpdateVol).
+		HandlerFunc(m.updateVol)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.ClientVol).
+		HandlerFunc(m.getVol)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.ClientVolStat).
+		HandlerFunc(m.getVolStatInfo)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.GetTopologyView).
+		HandlerFunc(m.getTopology)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminListVols).
+		HandlerFunc(m.listVols)
+
+	// node task response APIs
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetDataNodeTaskResponse).
+		HandlerFunc(m.handleDataNodeTaskResponse)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetMetaNodeTaskResponse).
+		HandlerFunc(m.handleMetaNodeTaskResponse)
+
+	// meta partition management APIs
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminLoadMetaPartition).
+		HandlerFunc(m.loadMetaPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDecommissionMetaPartition).
+		HandlerFunc(m.decommissionMetaPartition)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.ClientMetaPartitions).
+		HandlerFunc(m.getMetaPartitions)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.ClientMetaPartition).
+		HandlerFunc(m.getMetaPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminCreateMetaPartition).
+		HandlerFunc(m.createMetaPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminAddMetaReplica).
+		HandlerFunc(m.addMetaReplica)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDeleteMetaReplica).
+		HandlerFunc(m.deleteMetaReplica)
+
+	// data partition management APIs
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminGetDataPartition).
+		HandlerFunc(m.getDataPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminCreateDataPartition).
+		HandlerFunc(m.createDataPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminLoadDataPartition).
+		HandlerFunc(m.loadDataPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDecommissionDataPartition).
+		HandlerFunc(m.decommissionDataPartition)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.ClientDataPartitions).
+		HandlerFunc(m.getDataPartitions)
+
+	// meta node management APIs
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AddMetaNode).
+		HandlerFunc(m.addMetaNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.DecommissionMetaNode).
+		HandlerFunc(m.decommissionMetaNode)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.GetMetaNode).
+		HandlerFunc(m.getMetaNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetMetaNodeThreshold).
+		HandlerFunc(m.setMetaNodeThreshold)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminAddDataReplica).
+		HandlerFunc(m.addDataReplica)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDeleteDataReplica).
+		HandlerFunc(m.deleteDataReplica)
+
+	// data node management APIs
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AddDataNode).
+		HandlerFunc(m.addDataNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.DecommissionDataNode).
+		HandlerFunc(m.decommissionDataNode)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.GetDataNode).
+		HandlerFunc(m.getDataNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.DecommissionDisk).
+		HandlerFunc(m.decommissionDisk)
+
+	// user management APIs
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.UserCreate).
+		HandlerFunc(m.createUser)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.UserDelete).
+		HandlerFunc(m.deleteUser)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.UserUpdatePolicy).
+		HandlerFunc(m.updateUserPolicy)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.UserRemovePolicy).
+		HandlerFunc(m.removeUserPolicy)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.UserDeleteVolPolicy).
+		HandlerFunc(m.deleteUserVolPolicy)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.UserGetAKInfo).
+		HandlerFunc(m.getUserAKInfo)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.UserGetInfo).
+		HandlerFunc(m.getUserInfo)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.UserList).
+		HandlerFunc(m.getAllUsers)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.UserTransferVol).
+		HandlerFunc(m.transferUserVol)
+
+	// zone management APIs
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.UpdateZone).
+		HandlerFunc(m.updateZone)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.GetAllZones).
+		HandlerFunc(m.listZone)
+
+	// APIs for token-based client permissions control
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.TokenAddURI).
+		HandlerFunc(m.addToken)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.TokenGetURI).
+		HandlerFunc(m.getToken)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.TokenDelURI).
+		HandlerFunc(m.deleteToken)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.TokenUpdateURI).
+		HandlerFunc(m.updateToken)
 }
 
 func (m *Server) newReverseProxy() *httputil.ReverseProxy {
@@ -87,117 +259,6 @@ func (m *Server) newReverseProxy() *httputil.ReverseProxy {
 	}}
 }
 
-func (m *Server) handlerWithInterceptor() http.Handler {
-	return http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			if m.partition.IsRaftLeader() {
-				if m.metaReady {
-					m.ServeHTTP(w, r)
-					return
-				}
-				log.LogWarnf("action[handlerWithInterceptor] leader meta has not ready")
-				http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
-				return
-			}
-			if m.leaderInfo.addr == "" {
-				log.LogErrorf("action[handlerWithInterceptor] no leader,request[%v]", r.URL)
-				http.Error(w, "no leader", http.StatusBadRequest)
-				return
-			}
-			m.proxy(w, r)
-		})
-}
-
 func (m *Server) proxy(w http.ResponseWriter, r *http.Request) {
 	m.reverseProxy.ServeHTTP(w, r)
-}
-
-func (m *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("URL[%v],remoteAddr[%v]", r.URL, r.RemoteAddr)
-	switch r.URL.Path {
-	case proto.AdminGetCluster:
-		m.getCluster(w, r)
-	case proto.AdminCreateDataPartition:
-		m.createDataPartition(w, r)
-	case proto.AdminGetDataPartition:
-		m.getDataPartition(w, r)
-	case proto.AdminLoadDataPartition:
-		m.loadDataPartition(w, r)
-	case proto.AdminDecommissionDataPartition:
-		m.decommissionDataPartition(w, r)
-	case proto.AdminAddDataReplica:
-		m.addDataReplica(w, r)
-	case proto.AdminDeleteDataReplica:
-		m.deleteDataReplica(w, r)
-	case proto.AdminCreateVol:
-		m.createVol(w, r)
-	case proto.AdminGetVol:
-		m.getVolSimpleInfo(w, r)
-	case proto.AdminDeleteVol:
-		m.markDeleteVol(w, r)
-	case proto.AdminUpdateVol:
-		m.updateVol(w, r)
-	case proto.AdminClusterFreeze:
-		m.setupAutoAllocation(w, r)
-	case proto.AddDataNode:
-		m.addDataNode(w, r)
-	case proto.GetDataNode:
-		m.getDataNode(w, r)
-	case proto.DecommissionDataNode:
-		m.decommissionDataNode(w, r)
-	case proto.DecommissionDisk:
-		m.decommissionDisk(w, r)
-	case proto.GetDataNodeTaskResponse:
-		m.handleDataNodeTaskResponse(w, r)
-	case proto.AddMetaNode:
-		m.addMetaNode(w, r)
-	case proto.GetMetaNode:
-		m.getMetaNode(w, r)
-	case proto.DecommissionMetaNode:
-		m.decommissionMetaNode(w, r)
-	case proto.GetMetaNodeTaskResponse:
-		m.handleMetaNodeTaskResponse(w, r)
-	case proto.ClientDataPartitions:
-		m.getDataPartitions(w, r)
-	case proto.ClientVol:
-		m.getVol(w, r)
-	case proto.ClientMetaPartitions:
-		m.getMetaPartitions(w, r)
-	case proto.ClientMetaPartition:
-		m.getMetaPartition(w, r)
-	case proto.ClientVolStat:
-		m.getVolStatInfo(w, r)
-	case proto.AdminLoadMetaPartition:
-		m.loadMetaPartition(w, r)
-	case proto.AdminDecommissionMetaPartition:
-		m.decommissionMetaPartition(w, r)
-	case proto.AdminCreateMetaPartition:
-		m.createMetaPartition(w, r)
-	case proto.AdminAddMetaReplica:
-		m.addMetaReplica(w, r)
-	case proto.AdminDeleteMetaReplica:
-		m.deleteMetaReplica(w, r)
-	case proto.AddRaftNode:
-		m.addRaftNode(w, r)
-	case proto.RemoveRaftNode:
-		m.removeRaftNode(w, r)
-	case proto.AdminSetMetaNodeThreshold:
-		m.setMetaNodeThreshold(w, r)
-	case proto.GetTopologyView:
-		m.getTopology(w, r)
-	case proto.UpdateZone:
-		m.updateZone(w, r)
-	case proto.GetAllZones:
-		m.listZone(w, r)
-	case proto.TokenAddURI:
-		m.addToken(w, r)
-	case proto.TokenGetURI:
-		m.getToken(w, r)
-	case proto.TokenDelURI:
-		m.deleteToken(w, r)
-	case proto.TokenUpdateURI:
-		m.updateToken(w, r)
-	default:
-
-	}
 }

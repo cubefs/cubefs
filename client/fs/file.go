@@ -324,22 +324,69 @@ func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string,
 
 // Getxattr has not been implemented yet.
 func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
-	return fuse.ENOSYS
+	ino := f.inode.ino
+	name := req.Name
+	size := req.Size
+	pos := req.Position
+	info, err := f.super.mw.XAttrGet_ll(ino, name)
+	if err != nil {
+		log.LogErrorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
+		return ParseError(err)
+	}
+	value := info.Get(name)
+	if pos > 0 {
+		value = value[pos:]
+	}
+	if size > 0 && size < uint32(len(value)) {
+		value = value[:size]
+	}
+	resp.Xattr = value
+	log.LogDebugf("TRACE GetXattr: ino(%v) name(%v)", ino, name)
+	return nil
 }
 
 // Listxattr has not been implemented yet.
 func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
-	return fuse.ENOSYS
+	ino := f.inode.ino
+	_ = req.Size     // ignore currently
+	_ = req.Position // ignore currently
+
+	keys, err := f.super.mw.XAttrsList_ll(ino)
+	if err != nil {
+		log.LogErrorf("ListXattr: ino(%v) err(%v)", ino, err)
+		return ParseError(err)
+	}
+	for _, key := range keys {
+		resp.Append(key)
+	}
+	log.LogDebugf("TRACE Listxattr: ino(%v)", ino)
+	return nil
 }
 
 // Setxattr has not been implemented yet.
 func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
-	return fuse.ENOSYS
+	ino := f.inode.ino
+	name := req.Name
+	value := req.Xattr
+	// TODO： implement flag to improve compatible (Mofei Zhang)
+	if err := f.super.mw.XAttrSet_ll(ino, []byte(name), []byte(value)); err != nil {
+		log.LogErrorf("Setxattr: ino(%v) name(%v) err(%v)", ino, name, err)
+		return ParseError(err)
+	}
+	log.LogDebugf("TRACE Setxattr: ino(%v) name(%v)", ino, name)
+	return nil
 }
 
 // Removexattr has not been implemented yet.
 func (f *File) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
-	return fuse.ENOSYS
+	ino := f.inode.ino
+	name := req.Name
+	if err := f.super.mw.XAttrDel_ll(ino, name); err != nil {
+		log.LogErrorf("Removexattr: ino(%v) name(%v) err(%v)", ino, name, err)
+		return ParseError(err)
+	}
+	log.LogDebugf("TRACE RemoveXattr: ino(%v) name(%v)", ino, name)
+	return nil
 }
 
 func (f *File) fileSize(ino uint64) (size int, gen uint64) {

@@ -14,49 +14,45 @@
 
 package objectnode
 
-// https://docs.aws.amazon.com/AmazonS3/latest/dev/access-policy-language-overview.html
+import (
+	"strings"
 
+	"github.com/chubaofs/chubaofs/proto"
+
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/google/uuid"
+)
+
+// Reference:
+// https://docs.aws.amazon.com/AmazonS3/latest/dev/access-policy-language-overview.html
 // https://docs.aws.amazon.com/AmazonS3/latest/dev/example-bucket-policies.html
 // https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/amazon-s3-policy-keys.html
-type Action string
+func ActionToUniqueRouteName(action proto.Action) (name string) {
+	var id uuid.UUID
+	var err error
+	if id, err = uuid.NewRandom(); err != nil {
+		name = action.String() + ":" + util.RandomString(32, util.UpperLetter|util.LowerLetter)
+		return
+	}
+	name = action.String() + ":" + strings.ReplaceAll(id.String(), "-", "")
+	return
+}
 
-const (
-	GetObjectAction                  Action = "s3:GetObject"
-	PutObjectAction                         = "s3:PutObject"
-	DeleteObjectAction                      = "s3:DeleteObject" //
-	HeadObjectAction                        = "s3:HeadObject"
-	CreateBucketAction                      = "s3:CreateBucket" //
-	ListBucketAction                        = "s3:ListBucket"
-	ListBucketVersionsAction                = "s3:ListBucketVersions" // List
-	ListBucketMultipartUploadsAction        = "s3:ListBucketMultipartUploads"
-	GetBucketPolicyAction                   = "s3:GetBucketPolicy"
-	PutBucketPolicyAction                   = "s3:PutBucketPolicy"
-	GetBucketAclAction                      = "s3:GetBucketAcl"
-	PutBucketAclAction                      = "s3:PutBucketAcl"
-	GetObjectAclAction                      = "s3:GetObjectAcl"
-	GetObjectVersionAction                  = "s3:GetObjectVersion"
-	PutObjectVersionAction                  = "s3:PutObjectVersion"
-	GetObjectTorrentAction                  = "s3:GetObjectTorrent"
-	PutObjectTorrentAction                  = "s3:PutObjectTorrent"
-	PutObjectAclAction                      = "s3:PutObjectAcl"
-	GetObjectVersionAclAction               = "s3:GetObjectVersionAcl"
-	PutObjectVersionAclAction               = "s3:PutObjectVersionAcl"
-	DeleteBucketPolicyAction                = "s3:DeleteBucketPolicy"
-	ListMultipartUploadPartsAction          = "s3:ListMultipartUploadParts"
-	AbortMultipartUploadAction              = "s3:AbortMultipartUpload"
-	GetBucketLocationAction                 = "s3:GetBucketLocation"
-)
+func ActionFromRouteName(name string) proto.Action {
+	routeSNLoc := routeSNRegexp.FindStringIndex(name)
+	if len(routeSNLoc) != 2 {
+		return proto.ParseAction(name)
+	}
+	return proto.ParseAction(name[:len(name)-33])
+}
 
 func (s Statement) checkActions(p *RequestParam) bool {
 	if s.Actions.Empty() {
 		return true
 	}
-	for _, pa := range p.actions {
-		if s.Actions.ContainsWithAny(string(pa)) {
-			return true
-		}
+	if s.Actions.ContainsWithAny(p.Action().String()) {
+		return true
 	}
-
 	return false
 }
 
@@ -64,31 +60,21 @@ func (s Statement) checkNotActions(p *RequestParam) bool {
 	if s.NotActions.Empty() {
 		return true
 	}
-	for _, pa := range p.actions {
-		if s.NotActions.ContainsWithAny(string(pa)) {
-			return false
-		}
+	if s.NotActions.ContainsWithAny(p.Action().String()) {
+		return false
 	}
-
 	return true
 }
 
 //
-func IsIntersectionActions(actions1, actions2 []Action) bool {
-	if len(actions1) == 0 && len(actions2) == 0 {
+func IsIntersectionActions(actions proto.Actions, action proto.Action) bool {
+	if len(actions) == 0 {
 		return true
 	}
-	as1, as2 := actions1, actions2
-	if len(actions1) > len(actions2) {
-		as1, as2 = actions2, actions1
-	}
-	for _, action1 := range as1 {
-		for _, action2 := range as2 {
-			if action1 == action2 {
-				return true
-			}
+	for _, act := range actions {
+		if act == action {
+			return true
 		}
 	}
-
 	return false
 }

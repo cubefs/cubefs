@@ -19,13 +19,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
 	"io/ioutil"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -73,6 +73,12 @@ func (c *MasterClient) ClientAPI() *ClientAPI {
 
 func (c *MasterClient) NodeAPI() *NodeAPI {
 	return &NodeAPI{
+		mc: c,
+	}
+}
+
+func (c *MasterClient) UserAPI() *UserAPI {
+	return &UserAPI{
 		mc: c,
 	}
 }
@@ -143,14 +149,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			}
 			// o represent proto.ErrCodeSuccess
 			if body.Code != 0 {
-				if body.Code == proto.ErrCodeInvalidTicket {
-					log.LogWarnf("request error: %v", body.Msg)
-					return nil, proto.ErrInvalidTicket
-				} else if body.Code == proto.ErrCodeExpiredTicket {
-					return nil, proto.ErrExpiredTicket
-				} else {
-					return nil, fmt.Errorf("request error, code[%d], msg[%s]", body.Code, body.Msg)
-				}
+				return nil, proto.ParseErrorCode(body.Code)
 			}
 			return []byte(body.Data), nil
 		default:
@@ -233,7 +232,21 @@ func (c *MasterClient) mergeRequestUrl(url string, params map[string]string) str
 	return url
 }
 
-// NewMasterHelper returns a new MasterHelper instance.
+// NewMasterHelper returns a new MasterClient instance.
 func NewMasterClient(masters []string, useSSL bool) *MasterClient {
 	return &MasterClient{masters: masters, useSSL: useSSL}
+}
+
+// NewMasterClientFromString parse raw master address configuration
+// string and returns a new MasterClient instance.
+// Notes that a valid format raw string must match: "{HOST}:{PORT},{HOST}:{PORT}"
+func NewMasterClientFromString(masterAddr string, useSSL bool) *MasterClient {
+	var masters = make([]string, 0)
+	for _, master := range strings.Split(masterAddr, ",") {
+		master = strings.TrimSpace(master)
+		if master != "" {
+			masters = append(masters, master)
+		}
+	}
+	return NewMasterClient(masters, useSSL)
 }

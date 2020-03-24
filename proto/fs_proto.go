@@ -80,6 +80,18 @@ type XAttrInfo struct {
 	XAttrs map[string]string
 }
 
+func (info XAttrInfo) Get(key string) []byte {
+	return []byte(info.XAttrs[key])
+}
+
+func (info XAttrInfo) VisitAll(visitor func(key string, value []byte) bool) {
+	for k, v := range info.XAttrs {
+		if visitor == nil || !visitor(k, []byte(v)) {
+			return
+		}
+	}
+}
+
 func (info XAttrInfo) String() string {
 	builder := strings.Builder{}
 	for k, v := range info.XAttrs {
@@ -335,10 +347,10 @@ type ListXAttrRequest struct {
 }
 
 type ListXAttrResponse struct {
-	VolName     string            `json:"vol"`
-	PartitionId uint64            `json:"pid"`
-	Inode       uint64            `json:"ino"`
-	XAttr       map[string]string `json:"xattr"`
+	VolName     string   `json:"vol"`
+	PartitionId uint64   `json:"pid"`
+	Inode       uint64   `json:"ino"`
+	XAttrs      []string `json:"xattrs"`
 }
 
 type BatchGetXAttrRequest struct {

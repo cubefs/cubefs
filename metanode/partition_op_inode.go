@@ -60,7 +60,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.Put(opFSMCreateInode, val)
+	resp, err := mp.submit(opFSMCreateInode, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -94,7 +94,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpErr, nil)
 		return
 	}
-	r, err := mp.Put(opFSMUnlinkInode, val)
+	r, err := mp.submit(opFSMUnlinkInode, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -171,7 +171,7 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.Put(opFSMCreateLinkInode, val)
+	resp, err := mp.submit(opFSMCreateLinkInode, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -204,7 +204,7 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.Put(opFSMEvictInode, val)
+	resp, err := mp.submit(opFSMEvictInode, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -216,7 +216,7 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 
 // SetAttr set the inode attributes.
 func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
-	_, err = mp.Put(opFSMSetAttr, reqData)
+	_, err = mp.submit(opFSMSetAttr, reqData)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -237,7 +237,7 @@ func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (
 		p.ResultCode = proto.OpErr
 		return
 	}
-	_, err = mp.Put(opFSMInternalDeleteInode, encoded)
+	_, err = mp.submit(opFSMInternalDeleteInode, encoded)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

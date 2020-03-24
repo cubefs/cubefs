@@ -17,6 +17,7 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/chubaofs/chubaofs/proto"
 )
 
@@ -38,7 +39,7 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 	if err != nil {
 		return
 	}
-	resp, err := mp.Put(opFSMCreateDentry, val)
+	resp, err := mp.submit(opFSMCreateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -58,7 +59,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 		p.ResultCode = proto.OpErr
 		return
 	}
-	r, err := mp.Put(opFSMDeleteDentry, val)
+	r, err := mp.submit(opFSMDeleteDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -95,7 +96,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 		p.ResultCode = proto.OpErr
 		return
 	}
-	resp, err := mp.Put(opFSMUpdateDentry, val)
+	resp, err := mp.submit(opFSMUpdateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

@@ -85,6 +85,9 @@ const (
 
 	// DataServiceID defines ticket for datanode access (not supported)
 	DataServiceID = "DatanodeService"
+
+	//ObjectServiceID defines ticket for objectnode access
+	ObjectServiceID = "ObjectService"
 )
 
 const (
@@ -510,7 +513,7 @@ func ExtractAPIAccessTicket(req *APIAccessReq, key []byte) (ticket cryptoutil.Ti
 	}
 
 	if time.Now().Unix() >= ticket.Exp {
-		err = fmt.Errorf("ticket expired")
+		err = ErrExpiredTicket
 		return
 	}
 

@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/gorilla/mux"
@@ -88,7 +89,7 @@ func parsePresignedV2AuthInfo(r *http.Request) (*requestAuthInfoV2, error) {
 	ai := new(requestAuthInfoV2)
 	uris := strings.SplitN(r.RequestURI, "?", 2)
 	if len(uris) < 2 {
-		log.LogInfof("checkPresignedSignatureV2 error, request url invalid %v ", r.RequestURI)
+		log.LogInfof("validateUrlBySignatureAlgorithmV2 error, request url invalid %v ", r.RequestURI)
 		return nil, errors.New("uri is invalid")
 	}
 
@@ -131,11 +132,11 @@ func parseRequestAuthInfoV2(r *http.Request) (ra *requestAuthInfoV2, err error) 
 	return
 }
 
-func isSignaturedV2(r *http.Request) bool {
+// IsHeaderUsingSignatureAlgorithmV2 checks if request is using signature algorithm V2 in header.
+func isHeaderUsingSignatureAlgorithmV2(r *http.Request) bool {
 	hasV2 := strings.HasPrefix(r.Header.Get(HeaderNameAuthorization), RequestHeaderV2AuthorizationScheme)
 	hasV4 := strings.HasPrefix(r.Header.Get(HeaderNameAuthorization), SignatureV4Algorithm)
 	if hasV2 && !hasV4 {
-		log.LogDebugf("[handleHttpRestAPI] invalid request, has no authorization info, request id [%s]", r.URL.EscapedPath())
 		return true
 	}
 
@@ -152,20 +153,20 @@ func isRequestQueryValid(queries url.Values, neededQueries []string) bool {
 	return true
 }
 
+// IsUrlUsingSignatureAlgorithmV2 checks if request is using signature algorithm V2 in url parameter.
+// Example:
 // http://127.0.0.1:33032/ltptest/b.txt
 //  ?AWSAccessKeyId=Yqnqp4v6q1fzNM2e
 //  &Expires=1573369185
 //  &Signature=GJCqOY0ahf1BdzJDjNnFWB7vfSc%3D
-//
-func isPresignedSignaturedV2(r *http.Request) bool {
+func isUrlUsingSignatureAlgorithmV2(r *http.Request) bool {
 	if u, err := url.Parse(strings.ToLower(r.URL.String())); err == nil {
 		return isRequestQueryValid(u.Query(), PresignedSignatureV2Queries)
 	}
 	return false
 }
 
-//
-func (o *ObjectNode) checkSignatureV2(r *http.Request) (bool, error) {
+func (o *ObjectNode) validateHeaderBySignatureAlgorithmV2(r *http.Request) (bool, error) {
 	// parse v2 request header and query, and get reqSignature
 	authInfo, err := parseRequestAuthInfoV2(r)
 	if err != nil {
@@ -173,20 +174,14 @@ func (o *ObjectNode) checkSignatureV2(r *http.Request) (bool, error) {
 		return false, err
 	}
 
-	v, err := o.vm.Volume(authInfo.bucket)
-	if err != nil {
-		log.LogInfof("load Volume error: %v, %v", authInfo.r, err)
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKey(authInfo.accessKeyId); err != nil {
+		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", authInfo.accessKeyId, err)
 		return false, err
-	}
-	volAccessKey, volSecret := v.OSSSecure()
-
-	if authInfo.accessKeyId != volAccessKey {
-		log.LogInfof("load Volume error: %v, %v", authInfo.accessKeyId, volAccessKey)
-		return false, errors.New("")
 	}
 
 	// 2. calculate new signature
-	newSignature, err1 := calculateSignatureV2(authInfo, volSecret, o.wildcards)
+	newSignature, err1 := calculateSignatureV2(authInfo, userInfo.SecretKey, o.wildcards)
 	if err1 != nil {
 		log.LogInfof("calculute SignatureV2 error: %v, %v", authInfo.r, err)
 		return false, err1
@@ -201,6 +196,24 @@ func (o *ObjectNode) checkSignatureV2(r *http.Request) (bool, error) {
 	return false, nil
 }
 
+/*
+Authorization = "AWS" + " " + AWSAccessKeyId + ":" + Signature;
+
+Signature = Base64( HMAC-SHA1( YourSecretAccessKey, UTF-8-Encoding-Of( StringToSign ) ) );
+
+StringToSign = HTTP-Verb + "\n" +
+	Content-MD5 + "\n" +
+	Content-Type + "\n" +
+	Date + "\n" +
+	CanonicalizedAmzHeaders +
+	CanonicalizedResource;
+
+CanonicalizedResource = [ "/" + Bucket ] +
+	<HTTP-Request-URI, from the protocol name up to the query string> +
+	[ subresource, if present. For example "?acl", "?location", "?logging", or "?torrent"];
+
+CanonicalizedAmzHeaders = <described below>
+*/
 func calculateSignatureV2(authInfo *requestAuthInfoV2, secretKey string, wildcards Wildcards) (signature string, err error) {
 
 	//encodedResource := strings.Split(authInfo.r.RequestURI, "?")[0]
@@ -234,43 +247,39 @@ func calculateSignatureV2(authInfo *requestAuthInfoV2, secretKey string, wildcar
 	return
 }
 
-//
-//
-func (o *ObjectNode) checkPresignedSignatureV2(r *http.Request) (bool, error) {
+func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, error) {
 
 	var err error
 
 	uris := strings.SplitN(r.RequestURI, "?", 2)
 	if len(uris) < 2 {
-		log.LogInfof("checkPresignedSignatureV2 error, request url invalid %v ", r.RequestURI)
+		log.LogInfof("validateUrlBySignatureAlgorithmV2 error, request url invalid %v ", r.RequestURI)
 		return false, nil
 	}
 
-	params, _, _, vl, err := o.parseRequestParams(r)
-	if err != nil || vl == nil {
-		log.LogInfof("check PresignedSignatureV2 error: %v %v", err, vl)
-		return false, err
-	}
-	accessKey := params["accessKey"]
-	signature := params["signature"]
-	expires := params["expires"]
+	var param = ParseRequestParam(r)
+	var accessKey = param.GetVar("AWSAccessKeyId")
+	var signature = param.GetVar("Signature")
+	var expires = param.GetVar("Expires")
 	if accessKey == "" || signature == "" || expires == "" {
-		log.LogInfof("checkPresignedSignatureV2 params not valid: %v", params)
+		log.LogInfof("validateUrlBySignatureAlgorithmV2: incomplete authentication information: requestID(%v)",
+			GetRequestID(r))
 		return false, nil
 	}
 
-	log.LogDebugf("checkPresignedSignatureV2: parse signature info: requestID(%v) url(%v) accessKey(%v) signature(%v) expires(%v)",
-		RequestIDFromRequest(r), r.URL.String(), accessKey, signature, expires)
+	log.LogDebugf("validateUrlBySignatureAlgorithmV2: parse signature info: requestID(%v) url(%v) accessKey(%v) signature(%v) expires(%v)",
+		GetRequestID(r), r.URL.String(), accessKey, signature, expires)
 
 	//check access key
-	vlKey, secretKey := vl.OSSSecure()
-	if vlKey == "" || accessKey != vlKey {
-		return false, nil
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKey(accessKey); err != nil {
+		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", accessKey, err)
+		return false, err
 	}
 
 	// check expires
 	if ok, _ := checkExpires(expires); !ok {
-		log.LogDebugf("checkPresignedSignatureV2: signature expired: requestID(%v) expires(%v)", RequestIDFromRequest(r), expires)
+		log.LogDebugf("validateUrlBySignatureAlgorithmV2: signature expired: requestID(%v) expires(%v)", GetRequestID(r), expires)
 		return false, nil
 	}
 
@@ -278,10 +287,10 @@ func (o *ObjectNode) checkPresignedSignatureV2(r *http.Request) (bool, error) {
 	var canonicalResource string
 	canonicalResource = getCanonicalizedResourceV2(r, o.wildcards)
 	canonicalResourceQuery := getCanonicalQueryV2(canonicalResource, r.URL.Query().Encode())
-	calSignature := calPresignedSignatureV2(r.Method, canonicalResourceQuery, expires, secretKey, r.Header)
+	calSignature := calPresignedSignatureV2(r.Method, canonicalResourceQuery, expires, userInfo.SecretKey, r.Header)
 	if calSignature != signature {
-		log.LogDebugf("checkPresignedSignatureV2: invalid signature: requestID(%v) client(%v) server(%v)",
-			RequestIDFromRequest(r), signature, calSignature)
+		log.LogDebugf("validateUrlBySignatureAlgorithmV2: invalid signature: requestID(%v) client(%v) server(%v)",
+			GetRequestID(r), signature, calSignature)
 		return false, nil
 	}
 
@@ -295,7 +304,7 @@ func checkExpires(expires string) (ok bool, err error) {
 	}
 	now := time.Now().UTC().Unix()
 	if now < expiresInt {
-		log.LogInfof("checkPresignedSignatureV2 expired is out time %v, now: %v", expires, now)
+		log.LogInfof("validateUrlBySignatureAlgorithmV2 expired is out time %v, now: %v", expires, now)
 		return true, nil
 	}
 
@@ -335,11 +344,6 @@ func getCanonicalQueryV2(encodeResource string, encodeQuery string) string {
 	if canonicalQuery != "" {
 		return encodeResource + "?" + canonicalQuery
 	}
-
-	if encodeResource == "/" {
-		return ""
-	}
-
 	return encodeResource
 }
 

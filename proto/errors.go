@@ -65,13 +65,24 @@ var (
 	ErrInvalidTicket                   = errors.New("invalid ticket")
 	ErrExpiredTicket                   = errors.New("expired ticket")
 	ErrMasterAPIGenRespError           = errors.New("master API generate response error")
+	ErrDuplicateUserID                 = errors.New("duplicate user id")
+	ErrUserNotExists                   = errors.New("user not exists")
+	ErrReadBodyError                   = errors.New("read request body failed")
+	ErrVolPolicyNotExists              = errors.New("vol policy not exists")
+	ErrDuplicateAccessKey              = errors.New("duplicate access key")
+	ErrHaveNoPolicy                    = errors.New("no vol policy")
 	ErrZoneNotExists                   = errors.New("zone not exists")
+	ErrOwnVolExists                    = errors.New("own vols not empty")
+	ErrSuperAdminExists                = errors.New("super administrator exists ")
+	ErrInvalidUserID                   = errors.New("invalid user ID")
+	ErrInvalidUserType                 = errors.New("invalid user type")
+	ErrNoPermission                    = errors.New("no permission")
 	ErrTokenNotFound                   = errors.New("token not found")
 )
 
 // http response error code and error message definitions
 const (
-	ErrCodeSuccess                         = iota
+	ErrCodeSuccess = iota
 	ErrCodeInternalError
 	ErrCodeParamError
 	ErrCodeInvalidCfg
@@ -113,8 +124,19 @@ const (
 	ErrCodeInvalidTicket
 	ErrCodeExpiredTicket
 	ErrCodeMasterAPIGenRespError
+	ErrCodeDuplicateUserID
+	ErrCodeUserNotExists
+	ErrCodeReadBodyError
+	ErrCodeVolPolicyNotExists
+	ErrCodeDuplicateAccessKey
+	ErrCodeHaveNoPolicy
 	ErrCodeNoZoneToCreateMetaPartition
-	ErrCodeNotExists
+	ErrCodeZoneNotExists
+	ErrCodeOwnVolExists
+	ErrCodeSuperAdminExists
+	ErrCodeInvalidUserType
+	ErrCodeNoPermission
+	ErrCodeTokenNotExist
 )
 
 // Err2CodeMap error map to code
@@ -160,6 +182,80 @@ var Err2CodeMap = map[error]int32{
 	ErrInvalidTicket:                   ErrCodeInvalidTicket,
 	ErrExpiredTicket:                   ErrCodeExpiredTicket,
 	ErrMasterAPIGenRespError:           ErrCodeMasterAPIGenRespError,
-	ErrZoneNotExists:                   ErrCodeNotExists,
-	ErrTokenNotFound:                   ErrCodeNotExists,
+	ErrDuplicateUserID:                 ErrCodeDuplicateUserID,
+	ErrUserNotExists:                   ErrCodeUserNotExists,
+	ErrReadBodyError:                   ErrCodeReadBodyError,
+	ErrVolPolicyNotExists:              ErrCodeVolPolicyNotExists,
+	ErrDuplicateAccessKey:              ErrCodeDuplicateAccessKey,
+	ErrHaveNoPolicy:                    ErrCodeHaveNoPolicy,
+	ErrZoneNotExists:                   ErrCodeZoneNotExists,
+	ErrOwnVolExists:                    ErrCodeOwnVolExists,
+	ErrSuperAdminExists:                ErrCodeSuperAdminExists,
+	ErrInvalidUserType:                 ErrCodeInvalidUserType,
+	ErrNoPermission:                    ErrCodeNoPermission,
+	ErrTokenNotFound:                   ErrCodeTokenNotExist,
+}
+
+func ParseErrorCode(code int32) error {
+	if err, exist := code2ErrMap[code]; exist {
+		return err
+	}
+	return ErrInternalError
+}
+
+// Code2ErrMap error map to code
+var code2ErrMap = map[int32]error{
+	ErrCodeSuccess:                         ErrSuc,
+	ErrCodeInternalError:                   ErrInternalError,
+	ErrCodeParamError:                      ErrParamError,
+	ErrCodeInvalidCfg:                      ErrInvalidCfg,
+	ErrCodePersistenceByRaft:               ErrPersistenceByRaft,
+	ErrCodeMarshalData:                     ErrMarshalData,
+	ErrCodeUnmarshalData:                   ErrUnmarshalData,
+	ErrCodeVolNotExists:                    ErrVolNotExists,
+	ErrCodeMetaPartitionNotExists:          ErrMetaPartitionNotExists,
+	ErrCodeDataPartitionNotExists:          ErrDataPartitionNotExists,
+	ErrCodeDataNodeNotExists:               ErrDataNodeNotExists,
+	ErrCodeMetaNodeNotExists:               ErrMetaNodeNotExists,
+	ErrCodeDuplicateVol:                    ErrDuplicateVol,
+	ErrCodeActiveDataNodesTooLess:          ErrActiveDataNodesTooLess,
+	ErrCodeActiveMetaNodesTooLess:          ErrActiveMetaNodesTooLess,
+	ErrCodeInvalidMpStart:                  ErrInvalidMpStart,
+	ErrCodeNoAvailDataPartition:            ErrNoAvailDataPartition,
+	ErrCodeReshuffleArray:                  ErrReshuffleArray,
+	ErrCodeIllegalDataReplica:              ErrIllegalDataReplica,
+	ErrCodeMissingReplica:                  ErrMissingReplica,
+	ErrCodeHasOneMissingReplica:            ErrHasOneMissingReplica,
+	ErrCodeNoDataNodeToWrite:               ErrNoDataNodeToWrite,
+	ErrCodeNoMetaNodeToWrite:               ErrNoMetaNodeToWrite,
+	ErrCodeCannotBeOffLine:                 ErrCannotBeOffLine,
+	ErrCodeNoDataNodeToCreateDataPartition: ErrNoDataNodeToCreateDataPartition,
+	ErrCodeNoZoneToCreateDataPartition:     ErrNoZoneToCreateDataPartition,
+	ErrCodeNoZoneToCreateMetaPartition:     ErrNoZoneToCreateMetaPartition,
+	ErrCodeNoNodeSetToCreateDataPartition:  ErrNoNodeSetToCreateDataPartition,
+	ErrCodeNoNodeSetToCreateMetaPartition:  ErrNoNodeSetToCreateMetaPartition,
+	ErrCodeNoMetaNodeToCreateMetaPartition: ErrNoMetaNodeToCreateMetaPartition,
+	ErrCodeIllegalMetaReplica:              ErrIllegalMetaReplica,
+	ErrCodeNoEnoughReplica:                 ErrNoEnoughReplica,
+	ErrCodeNoLeader:                        ErrNoLeader,
+	ErrCodeVolAuthKeyNotMatch:              ErrVolAuthKeyNotMatch,
+	ErrCodeAuthKeyStoreError:               ErrAuthKeyStoreError,
+	ErrCodeAuthAPIAccessGenRespError:       ErrAuthAPIAccessGenRespError,
+	ErrCodeAuthOSCapsOpGenRespError:        ErrAuthOSCapsOpGenRespError,
+	ErrCodeAccessKeyNotExists:              ErrAccessKeyNotExists,
+	ErrCodeInvalidTicket:                   ErrInvalidTicket,
+	ErrCodeExpiredTicket:                   ErrExpiredTicket,
+	ErrCodeMasterAPIGenRespError:           ErrMasterAPIGenRespError,
+	ErrCodeDuplicateUserID:                 ErrDuplicateUserID,
+	ErrCodeUserNotExists:                   ErrUserNotExists,
+	ErrCodeReadBodyError:                   ErrReadBodyError,
+	ErrCodeVolPolicyNotExists:              ErrVolPolicyNotExists,
+	ErrCodeDuplicateAccessKey:              ErrDuplicateAccessKey,
+	ErrCodeHaveNoPolicy:                    ErrHaveNoPolicy,
+	ErrCodeZoneNotExists:                   ErrZoneNotExists,
+	ErrCodeOwnVolExists:                    ErrOwnVolExists,
+	ErrCodeSuperAdminExists:                ErrSuperAdminExists,
+	ErrCodeInvalidUserType:                 ErrInvalidUserType,
+	ErrCodeNoPermission:                    ErrNoPermission,
+	ErrCodeTokenNotExist:                   ErrTokenNotFound,
 }

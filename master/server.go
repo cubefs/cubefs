@@ -15,7 +15,9 @@
 package master
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"net/http/httputil"
 	"regexp"
 	"strconv"
@@ -73,6 +75,7 @@ type Server struct {
 	leaderInfo   *LeaderInfo
 	config       *clusterConfig
 	cluster      *Cluster
+	user         *User
 	rocksDBStore *raftstore.RocksDBStore
 	raftStore    raftstore.RaftStore
 	fsm          *MetadataFsm
@@ -80,6 +83,7 @@ type Server struct {
 	wg           sync.WaitGroup
 	reverseProxy *httputil.ReverseProxy
 	metaReady    bool
+	apiServer    *http.Server
 }
 
 // NewServer creates a new server
@@ -107,6 +111,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		return
 	}
 	m.initCluster()
+	m.initUser()
 	exporter.Init(ModuleName, cfg)
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
@@ -125,6 +130,12 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 
 // Shutdown closes the server
 func (m *Server) Shutdown() {
+	var err error
+	if m.apiServer != nil {
+		if err = m.apiServer.Shutdown(context.Background()); err != nil {
+			log.LogErrorf("action[Shutdown] failed, err: %v", err)
+		}
+	}
 	m.wg.Done()
 }
 
@@ -142,7 +153,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	peerAddrs := cfg.GetString(cfgPeers)
 	if m.ip == "" || m.port == "" || m.walDir == "" || m.storeDir == "" || m.clusterName == "" || peerAddrs == "" {
 		return fmt.Errorf("%v,err:%v,%v,%v,%v,%v,%v,%v", proto.ErrInvalidCfg, "one of (ip,listen,walDir,storeDir,clusterName) is null",
-			m.ip,m.port,m.walDir,m.storeDir,m.clusterName,peerAddrs)
+			m.ip, m.port, m.walDir, m.storeDir, m.clusterName, peerAddrs)
 	}
 	if m.id, err = strconv.ParseUint(cfg.GetString(ID), 10, 64); err != nil {
 		return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
@@ -268,4 +279,8 @@ func (m *Server) initFsm() {
 func (m *Server) initCluster() {
 	m.cluster = newCluster(m.clusterName, m.leaderInfo, m.fsm, m.partition, m.config)
 	m.cluster.retainLogs = m.retainLogs
+}
+
+func (m *Server) initUser() {
+	m.user = newUser(m.fsm, m.partition)
 }

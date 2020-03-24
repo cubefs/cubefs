@@ -2,13 +2,20 @@
   "role": "objectnode",
   "logDir": "/cfs/log/",
   "logLevel": "debug",
-  "listen": 80,
+  "listen": "80",
   "masterAddr": [
     "192.168.0.11:17010",
     "192.168.0.12:17010",
     "192.168.0.13:17010"
   ],
+  "enableHTTPS": "false",
   "domains": [
     "object.chubao.io"
+  ],
+  "signatureIgnoredActions": [
+    "oss:action:GetObjectXAttr",
+    "oss:action:PutObjectXAttr",
+    "oss:action:DeleteObjectXAttr",
+    "oss:action:ListObjectXAttrs"
   ]
 }

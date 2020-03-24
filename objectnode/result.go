@@ -16,6 +16,7 @@ package objectnode
 
 import (
 	"encoding/xml"
+	"time"
 )
 
 func MarshalXMLEntity(entity interface{}) ([]byte, error) {
@@ -250,13 +251,36 @@ type ListBucketResultV2 struct {
 }
 
 type Tag struct {
-	Key   string `xml:"Key"`
-	Value string `xml:"Value"`
+	Key   string `xml:"Key",json:"k"`
+	Value string `xml:"Value",json:"v"`
 }
 
 type Tagging struct {
-	XMLName xml.Name `xml:"Tagging"`
-	TagSet  []*Tag   `xml:"TagSet>Tag"`
+	XMLName xml.Name `json:"-"`
+	TagSet  []*Tag   `xml:"TagSet>Tag",json:"ts"`
+}
+
+func NewTagging() *Tagging {
+	return &Tagging{
+		XMLName: xml.Name{Local: "Tagging"},
+	}
+}
+
+func NewGetObjectTaggingOutput() *Tagging {
+	return &Tagging{
+		XMLName: xml.Name{Local: "GetObjectTaggingOutput"},
+	}
+}
+
+func NewGetBucketTaggingOutput() *Tagging {
+	return &Tagging{
+		XMLName: xml.Name{Local: "GetBucketTaggingOutput"},
+	}
+}
+
+type GetObjectTaggingOutput struct {
+	XMLName xml.Name `xml:"GetObjectTaggingOutput"`
+	Tagging
 }
 
 type GetBucketLocationOutput struct {
@@ -265,7 +289,7 @@ type GetBucketLocationOutput struct {
 }
 
 type XAttr struct {
-	Key   string `xml:"key"`
+	Key   string `xml:"Key"`
 	Value string `xml:"Value"`
 }
 
@@ -274,7 +298,27 @@ type PutXAttrRequest struct {
 	XAttr   *XAttr   `xml:"XAttr"`
 }
 
-type ListXAttrsResult struct {
+type GetXAttrOutput struct {
+	XMLName xml.Name `xml:"GetXAttrOutput"`
+	XAttr   *XAttr   `xml:"XAttr"`
+}
+
+type ListXAttrsOutput struct {
 	XMLName xml.Name `xml:"ListXAttrsResult"`
-	XAttrs  []*XAttr `xml:"XAttrs>XAttr"`
+	Keys    []string `xml:"Keys"`
+}
+
+type Buckets struct {
+	Bucket []*Bucket `xml:"Bucket"`
+}
+
+type Bucket struct {
+	CreationDate time.Time `xml:"CreationDate"`
+	Name         string    `xml:"Name"`
+}
+
+type ListBucketsOutput struct {
+	XMLName xml.Name `xml:"ListBucketsOutput"`
+	Buckets *Buckets `xml:"Buckets"`
+	Owner   *Owner   `xml:"Owner"`
 }

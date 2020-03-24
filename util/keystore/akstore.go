@@ -14,7 +14,9 @@ type AccessKeyInfo struct {
 
 type AccessKeyCaps struct {
 	AccessKey string `json:"access_key"`
+	SecretKey string `json:"secret_key"`
 	Caps      []byte `json:"caps"`
+	ID        string `json:"user_id"`
 }
 
 func (u *AccessKeyCaps) IsValidCaps() (err error) {
@@ -37,10 +39,14 @@ func (u *AccessKeyCaps) IsValidAK() (err error) {
 func (u *AccessKeyCaps) DumpJSONStr() (r string, err error) {
 	dumpInfo := struct {
 		AccessKey string `json:"access_key"`
+		SecretKey string `json:"secret_key"`
 		Caps      string `json:"caps"`
+		ID        string `json:"id"`
 	}{
 		u.AccessKey,
+		u.SecretKey,
 		string(u.Caps),
+		u.ID,
 	}
 	data, err := json.MarshalIndent(dumpInfo, "", "  ")
 	if err != nil {

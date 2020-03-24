@@ -31,6 +31,7 @@ Based on our POSIX-compatible design. Every file operate request comes from obje
 .. csv-table::
     :header: "POSIX", "Object Storage"
 
+    "``Cluster``", "``Region``"
     "``Volume``", "``Bucket``"
     "``Path``", "``Key``"
 

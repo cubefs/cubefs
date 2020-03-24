@@ -20,6 +20,8 @@ import (
 	"encoding/xml"
 	"errors"
 
+	"github.com/chubaofs/chubaofs/proto"
+
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -39,26 +41,25 @@ const (
 
 // https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/acl-overview.html
 var (
-	aclBucketPermissionActions = map[Permission][]Action{
-		ReadPermission:     {ListBucketAction, ListBucketVersionsAction, ListBucketMultipartUploadsAction},
-		WritePermission:    {PutObjectAction, DeleteObjectAction},
-		ReadACPPermission:  {GetBucketAclAction},
-		WriteACPPermission: {PutBucketAclAction},
+	aclBucketPermissionActions = map[Permission]proto.Actions{
+		ReadPermission:     {proto.OSSListBucketAction, proto.OSSListBucketVersionsAction, proto.OSSListBucketMultipartUploadsAction},
+		WritePermission:    {proto.OSSPutObjectAction, proto.OSSDeleteObjectAction, proto.OSSDeleteBucketAction},
+		ReadACPPermission:  {proto.OSSGetBucketAclAction},
+		WriteACPPermission: {proto.OSSPutBucketAclAction},
 		FullControlPermission: {
-			ListBucketAction, ListBucketVersionsAction, ListBucketMultipartUploadsAction,
-			PutObjectAction, DeleteObjectAction,
-			GetBucketAclAction,
-			PutBucketAclAction},
+			proto.OSSListBucketAction, proto.OSSListBucketVersionsAction, proto.OSSListBucketMultipartUploadsAction,
+			proto.OSSPutObjectAction, proto.OSSDeleteObjectAction, proto.OSSDeleteBucketAction,
+			proto.OSSGetBucketAclAction, proto.OSSPutBucketAclAction},
 	}
-	aclObjectPermissionActions = map[Permission][]Action{
-		ReadPermission:     {GetObjectAction, GetObjectVersionAction, GetObjectTorrentAction},
+	aclObjectPermissionActions = map[Permission]proto.Actions{
+		ReadPermission:     {proto.OSSGetObjectAction, proto.OSSGetObjectVersionAction, proto.OSSGetObjectTorrentAction},
 		WritePermission:    {},
-		ReadACPPermission:  {GetObjectAclAction, GetObjectVersionAclAction},
-		WriteACPPermission: {PutObjectAclAction, PutObjectVersionAclAction},
+		ReadACPPermission:  {proto.OSSGetObjectAclAction, proto.OSSGetObjectVersionAclAction},
+		WriteACPPermission: {proto.OSSPutObjectAclAction, proto.OSSPutObjectVersionAclAction},
 		FullControlPermission: {
-			GetObjectAction, GetObjectVersionAction, GetObjectTorrentAction,
-			GetObjectAclAction, GetObjectVersionAclAction,
-			PutObjectAclAction, PutObjectVersionAclAction},
+			proto.OSSGetObjectAction, proto.OSSGetObjectVersionAction, proto.OSSGetObjectTorrentAction,
+			proto.OSSGetObjectAclAction, proto.OSSGetObjectVersionAclAction,
+			proto.OSSPutObjectAclAction, proto.OSSPutObjectVersionAclAction},
 	}
 )
 
@@ -109,8 +110,8 @@ type Permission string
 
 // grantee
 type Grantee struct {
-	Xmlns        string `xmlns:si,attr,omitempty`
-	Xmlsi        string `xsi:type,attr,omitempty`
+	Xmlns        string `xml:"xmlns:xsi,attr,omitempty"`
+	Xmlsi        string `xml:"xsi:type,attr,omitempty"`
 	Id           string `xml:"ID,omitempty"`
 	URI          string `xml:"URI,omitempty"`
 	Type         string `xml:"Type,omitempty"`
@@ -129,10 +130,14 @@ type AccessControlList struct {
 	Grants []Grant `xml:"Grant,omitempty"`
 }
 
+func (acl *AccessControlList) IsEmpty() bool {
+	return len(acl.Grants) == 0
+}
+
 // owner
 type Owner struct {
 	Id          string `xml:"ID"`
-	DispalyName string `xml:"DisplayName"`
+	DisplayName string `xml:"DisplayName"`
 }
 
 // access control policy
@@ -140,6 +145,10 @@ type AccessControlPolicy struct {
 	Xmlns string            `xml:"xmlns:xsi,attr"`
 	Owner Owner             `xml:"Owner,omitempty"`
 	Acl   AccessControlList `xml:"AccessControlList,omitempty"`
+}
+
+func (acp *AccessControlPolicy) IsAclEmpty() bool {
+	return acp.Acl.IsEmpty()
 }
 
 func (acp *AccessControlPolicy) Validate(bucket string) (bool, error) {
@@ -195,8 +204,8 @@ func (acp *AccessControlPolicy) SetBucketStandardACL(param *RequestParam, acl st
 		if uri, ok := aclRoleURIMap[role]; ok {
 			grantee.URI = uri
 		} else {
-			grantee.Id = param.account
-			grantee.DisplayName = param.account
+			grantee.Id = param.accessKey
+			grantee.DisplayName = param.accessKey
 		}
 		for _, p := range permissions {
 			grant := Grant{
@@ -210,8 +219,8 @@ func (acp *AccessControlPolicy) SetBucketStandardACL(param *RequestParam, acl st
 
 func (acp *AccessControlPolicy) SetBucketGrantACL(param *RequestParam, permission Permission) {
 	grantee := Grantee{
-		Id:          param.account,
-		DisplayName: param.account,
+		Id:          param.accessKey,
+		DisplayName: param.accessKey,
 	}
 	grant := Grant{
 		Grantee:    grantee,
@@ -220,8 +229,8 @@ func (acp *AccessControlPolicy) SetBucketGrantACL(param *RequestParam, permissio
 	acp.Acl.Grants = append(acp.Acl.Grants, grant)
 }
 
-func (acl *AccessControlPolicy) Marshal() ([]byte, error) {
-	data, err := xml.Marshal(acl)
+func (acp *AccessControlPolicy) Marshal() ([]byte, error) {
+	data, err := xml.Marshal(acp)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +255,7 @@ func ParseACL(bytes []byte, bucket string) (*AccessControlPolicy, error) {
 	return acl, nil
 }
 
-func storeBucketACL(bytes []byte, vol *volume) (*AccessControlPolicy, error) {
+func storeBucketACL(bytes []byte, vol *Volume) (*AccessControlPolicy, error) {
 	store, err1 := vol.vm.GetStore()
 	if err1 != nil {
 		return nil, err1
@@ -272,9 +281,9 @@ func (g Grant) Validate() bool {
 }
 
 func (g *Grant) IsAllowed(param *RequestParam) bool {
-	if param.account != g.Grantee.Id {
+	if param.accessKey != g.Grantee.Id {
 		return false
 	}
 	actions := aclBucketPermissionActions[g.Permission]
-	return IsIntersectionActions(actions, param.actions)
+	return IsIntersectionActions(actions, param.Action())
 }

@@ -23,8 +23,11 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 )
+
+type ActionType string
 
 // https://docs.aws.amazon.com/AmazonS3/latest/dev/example-bucket-policies.html
 const (
@@ -41,7 +44,10 @@ type Policy struct {
 	Statements []Statement `json:"Statement,omitempty"`
 }
 
-//
+func (p *Policy) IsEmpty() bool {
+	return len(p.Statements) == 0
+}
+
 // arn:partition:service:region:account-id:resource-id
 // arn:partition:service:region:account-id:resource-type/resource-id
 // arn:partition:service:region:account-id:resource-type:resource-id
@@ -79,7 +85,7 @@ func parseArn(str string) (*Arn, error) {
 }
 
 // write bucket policy into store and update vol policy meta
-func storeBucketPolicy(bytes []byte, vol *volume) (*Policy, error) {
+func storeBucketPolicy(bytes []byte, vol *Volume) (*Policy, error) {
 	store, err1 := vol.vm.GetStore()
 	if err1 != nil {
 		return nil, err1
@@ -164,11 +170,6 @@ func (p *Policy) IsAllowed(params *RequestParam) bool {
 			}
 		}
 	}
-
-	if params.isOwner {
-		return true
-	}
-
 	for _, s := range p.Statements {
 		if s.Effect == Allow {
 			if s.IsAllowed(params) {
@@ -180,7 +181,7 @@ func (p *Policy) IsAllowed(params *RequestParam) bool {
 	return false
 }
 
-func (o *ObjectNode) policyCheck(f http.HandlerFunc, actions []Action) http.HandlerFunc {
+func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
 			err error
@@ -198,39 +199,80 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc, actions []Action) http.Hand
 			}
 		}()
 
-		param, err1 := o.parseRequestParam(r)
-		if err1 != nil {
-			err = err1
-			log.LogInfof("parse Request Param err %v", err)
-			return
-		}
-		if param.vol == nil {
-			log.LogInfof("vol is null")
+		param := ParseRequestParam(r)
+
+		if param.Bucket() == "" {
+			log.LogDebugf("policyCheck: no bucket specified: requestID(%v)", GetRequestID(r))
 			allowed = true
 			return
 		}
 
-		param.actions = actions
+		// A create bucket action do not need to check any user policy and volume policy.
+		if param.action == proto.OSSCreateBucketAction {
+			allowed = true
+			return
+		}
 
-		//check policy and acl
-		acl := param.vol.loadACL()
-		policy := param.vol.loadPolicy()
-		//check ip policy
-		if policy != nil {
+		// Check user policy
+		var userInfo *proto.UserInfo
+		if userInfo, err = o.getUserInfoByAccessKey(param.accessKey); err != nil {
+			log.LogErrorf("policyCheck: load user policy from master fail: requestID(%v) accessKey(%v) err(%v)",
+				GetRequestID(r), param.AccessKey(), err)
+			allowed = false
+			return
+		}
+		if userInfo.UserType == proto.UserTypeRoot || userInfo.UserType == proto.UserTypeAdmin {
+			log.LogDebugf("policyCheck: user is admin: requestID(%v) userID(%v) accessKey(%v) volume(%v)",
+				GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket())
+			allowed = true
+			return
+		}
+		var userPolicy = userInfo.Policy
+		if !userPolicy.IsOwn(param.Bucket()) && !userPolicy.IsAuthorized(param.Bucket(), param.Action()) {
+			log.LogDebugf("policyCheck: user no permission: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
+				GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
+			allowed = false
+			return
+		}
+
+		var vol *Volume
+		var acl *AccessControlPolicy
+		var policy *Policy
+		var loadBucketMeta = func(bucket string) (err error) {
+			if vol, err = o.getVol(bucket); err != nil {
+				return
+			}
+			acl = vol.loadACL()
+			policy = vol.loadPolicy()
+			return
+		}
+		if err = loadBucketMeta(param.Bucket()); err != nil {
+			log.LogErrorf("policyCheck: load bucket metadata fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			allowed = false
+			ec = &NoSuchBucket
+			return
+		}
+
+		if vol != nil && policy != nil && !policy.IsEmpty() {
 			allowed = policy.IsAllowed(param)
 			if !allowed {
-				log.LogWarnf("policy not allowed %v", param)
+				log.LogWarnf("policyCheck: bucket policy not allowed: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
+					GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
 				return
 			}
 		}
 
-		if acl != nil {
+		if vol != nil && acl != nil && !acl.IsAclEmpty() {
 			allowed = acl.IsAllowed(param)
 			if !allowed {
-				log.LogWarnf("acl not allowed %v", param)
+				log.LogWarnf("policyCheck: bucket ACL not allowed: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
+					GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
 				return
 			}
 		}
 
+		allowed = true
+		log.LogDebugf("policyCheck: action allowed: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
+			GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
 	}
 }

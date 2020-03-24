@@ -33,6 +33,7 @@ services:
             - datanode4
             - objectnode1
             - objectnode2
+            - objectnode3
             - nginx
         networks:
             extnetwork:
@@ -46,7 +47,7 @@ services:
             - "17020"
             - 9500
         volumes:
-            - ./bin:/cfs/bin
+            - ./bin:/cfs/bin:ro
             - ./conf/master1.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -65,7 +66,7 @@ services:
             - "17020"
             - 9500
         volumes:
-            - ./bin:/cfs/bin
+            - ./bin:/cfs/bin:ro
             - ./conf/master2.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -83,7 +84,7 @@ services:
             - "17020"
             - 9500
         volumes:
-            - ./bin:/cfs/bin
+            - ./bin:/cfs/bin:ro
             - ./conf/master3.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -102,7 +103,7 @@ services:
             - "17240"
             - 9500
         volumes:
-            - ./bin:/cfs/bin
+            - ./bin:/cfs/bin:ro
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
@@ -121,7 +122,7 @@ services:
             - "17240"
             - 9500
         volumes:
-            - ./bin:/cfs/bin
+            - ./bin:/cfs/bin:ro
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
@@ -140,7 +141,7 @@ services:
             - "17240"
             - 9500
         volumes:
-            - ./bin:/cfs/bin
+            - ./bin:/cfs/bin:ro
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
@@ -159,7 +160,7 @@ services:
                 - "17240"
                 - 9500
             volumes:
-                - ./bin:/cfs/bin
+                - ./bin:/cfs/bin:ro
                 - ./conf/metanode.json:/cfs/conf/metanode.json
                 - ./script/start_meta.sh:/cfs/script/start.sh
             command: /bin/bash /cfs/script/start.sh
@@ -179,7 +180,7 @@ services:
             - 9500
         volumes:
             - ${DiskPath:-./disk}/1:/cfs/disk
-            - ./bin:/cfs/bin
+            - ./bin:/cfs/bin:ro
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
@@ -199,7 +200,7 @@ services:
             - 9500
         volumes:
             - ${DiskPath:-./disk}/2:/cfs/disk
-            - ./bin:/cfs/bin
+            - ./bin:/cfs/bin:ro
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -219,7 +220,7 @@ services:
             - 9500
         volumes:
             - ${DiskPath:-./disk}/3:/cfs/disk
-            - ./bin:/cfs/bin
+            - ./bin:/cfs/bin:ro
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -239,7 +240,7 @@ services:
             - 9500
         volumes:
             - ${DiskPath:-./disk}/4:/cfs/disk
-            - ./bin:/cfs/bin
+            - ./bin:/cfs/bin:ro
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -254,7 +255,7 @@ services:
         ports:
             - "80"
         volumes:
-            - ./bin:/cfs/bin
+            - ./bin:/cfs/bin:ro
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -269,7 +270,7 @@ services:
         ports:
             - "80"
         volumes:
-            - ./bin:/cfs/bin
+            - ./bin:/cfs/bin:ro
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -279,17 +280,33 @@ services:
             extnetwork:
                 ipv4_address: 192.168.0.42
 
+    objectnode3:
+        image: chubaofs/cfs-base:1.0
+        ports:
+            - "80"
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ./conf/objectnode.json:/cfs/conf/objectnode.json
+            - ./script/start_objectnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.43
 
     client:
         image: chubaofs/cfs-base:1.0
         ports:
             - 9500
         volumes:
-            - ./bin:/cfs/bin
+            - ./bin:/cfs/bin:ro
+            - ./conf/hosts:/etc/hosts:ro
             - ./conf/client.json:/cfs/conf/client.json
             - ./script/run_test.sh:/cfs/script/start.sh
             - ./script/start_client.sh:/cfs/script/start_client.sh
             - ./ltp/runtest/fs:/opt/ltp/runtest/fs
+            - ./s3tests:/opt/s3tests
         privileged: true
         devices:
             - /dev/fuse:/dev/fuse:rwm
@@ -308,7 +325,7 @@ services:
         privileged: true
         networks:
             extnetwork:
-                ipv4_address: 192.168.0.100
+                ipv4_address: 192.168.0.101
 
     prometheus:
         image: prom/prometheus
@@ -319,7 +336,7 @@ services:
         privileged: true
         networks:
             extnetwork:
-                ipv4_address: 192.168.0.200
+                ipv4_address: 192.168.0.102
 
     grafana:
         image: grafana/grafana:6.2.0
@@ -335,6 +352,7 @@ services:
         #command: /bin/bash
         networks:
             extnetwork:
+                ipv4_address: 192.168.0.103
 
     nginx:
         image: nginx:1.17.8
@@ -347,26 +365,18 @@ services:
         privileged: true
         networks:
             extnetwork:
-                ipv4_address: 192.168.0.100
+                ipv4_address: 192.168.0.104
 
     build:
         image: chubaofs/cfs-base:1.0
         volumes:
             - ../:/go/src/github.com/chubaofs/chubaofs
         command:
-            - bash
-            - "-c"
-            - >-
-              set -e;
-              mkdir -p /go/src/github.com/chubaofs/chubaofs/docker/bin &&
-              echo -n 'build server ' ;
-              cd /go/src/github.com/chubaofs/chubaofs/cmd && bash ./build.sh && mv cfs-server /go/src/github.com/chubaofs/chubaofs/docker/bin/cfs-server && echo "success" || echo "failed" ;
-              echo -n 'build client ' ;
-              cd /go/src/github.com/chubaofs/chubaofs/client && bash ./build.sh && mv cfs-client /go/src/github.com/chubaofs/chubaofs/docker/bin/cfs-client && echo 'success' || echo "failed" ;
+            /bin/bash /go/src/github.com/chubaofs/chubaofs/docker/script/build.sh
         networks:
             extnetwork:
 
-    test:
+    unit_test:
         image: chubaofs/cfs-base:1.0
         volumes:
             - ../:/go/src/github.com/chubaofs/chubaofs

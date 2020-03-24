@@ -142,6 +142,17 @@ func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int,
 	return
 }
 
+func (api *AdminAPI) CreateDefaultVolume(volName, owner string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
+	request.addParam("name", volName)
+	request.addParam("owner", owner)
+	request.addParam("capacity", "10")
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) GetVolumeSimpleInfo(volName string) (vv *proto.SimpleVolView, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetVol)
 	request.addParam("name", volName)
@@ -174,6 +185,20 @@ func (api *AdminAPI) CreateMetaPartition(volName string, inodeStart uint64) (err
 	request.addParam("name", volName)
 	request.addParam("start", strconv.FormatUint(inodeStart, 10))
 	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) ListVols(keywords string) (volsInfo []*proto.VolInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminListVols)
+	request.addParam("keywords", keywords)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	volsInfo = make([]*proto.VolInfo, 0)
+	if err = json.Unmarshal(data, &volsInfo); err != nil {
 		return
 	}
 	return
