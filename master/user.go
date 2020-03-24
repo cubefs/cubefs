@@ -134,6 +134,82 @@ func (u *User) deleteKey(userID string) (err error) {
 	return
 }
 
+func (u *User) updateKey(param *proto.UserUpdateParam) (userInfo *proto.UserInfo, err error) {
+	if param.UserID == "" {
+		err = proto.ErrInvalidUserID
+		return
+	}
+
+	u.userStoreMutex.Lock()
+	defer u.userStoreMutex.Unlock()
+	u.AKStoreMutex.Lock()
+	defer u.AKStoreMutex.Unlock()
+
+	if value, exist := u.userStore.Load(param.UserID); !exist {
+		err = proto.ErrUserNotExists
+		return
+	} else {
+		userInfo = value.(*proto.UserInfo)
+	}
+	if userInfo.UserType == proto.UserTypeRoot {
+		err = proto.ErrNoPermission
+		return
+	}
+	var formerAK = userInfo.AccessKey
+	if param.AccessKey != "" {
+		if !proto.IsValidAK(param.AccessKey) {
+			err = proto.ErrInvalidAccessKey
+			return
+		}
+		if _, exist := u.AKStore.Load(param.AccessKey); exist {
+			err = proto.ErrDuplicateAccessKey
+			return
+		}
+		userInfo.AccessKey = param.AccessKey
+	}
+	if param.SecretKey != "" {
+		if !proto.IsValidSK(param.SecretKey) {
+			err = proto.ErrInvalidSecretKey
+			return
+		}
+		userInfo.SecretKey = param.SecretKey
+	}
+	if param.Type.Valid() {
+		userInfo.UserType = param.Type
+	}
+
+	var akChanged = false
+	var akUserBef *proto.AKUser
+	var akUserAft *proto.AKUser
+	if formerAK != userInfo.AccessKey {
+		if value, exist := u.AKStore.Load(formerAK); exist {
+			akUserBef = value.(*proto.AKUser)
+		} else {
+			err = proto.ErrAccessKeyNotExists
+			return
+		}
+		akUserAft = &proto.AKUser{AccessKey: userInfo.AccessKey, UserID: param.UserID, Password: akUserBef.Password}
+		akChanged = true
+	}
+
+	if err = u.syncUpdateUserInfo(userInfo); err != nil {
+		return
+	}
+	if akChanged {
+		if err = u.syncAddAKUser(akUserAft); err != nil {
+			return
+		}
+		if err = u.syncDeleteAKUser(akUserBef); err != nil {
+			return
+		}
+		u.AKStore.Store(akUserAft.AccessKey, akUserAft)
+		u.AKStore.Delete(akUserBef.AccessKey)
+	}
+
+	log.LogInfof("action[updateUser], userID: %v, accesskey[%v], secretkey[%v]", userInfo.UserID, userInfo.AccessKey, userInfo.SecretKey)
+	return
+}
+
 func (u *User) getKeyInfo(ak string) (userInfo *proto.UserInfo, err error) {
 	var akUser *proto.AKUser
 	if akUser, err = u.getAKUser(ak); err != nil {
@@ -255,15 +331,14 @@ func (u *User) deleteVolPolicy(volName string) (err error) {
 
 func (u *User) transferVol(params *proto.UserTransferVolParam) (targetUserInfo *proto.UserInfo, err error) {
 	var userInfo *proto.UserInfo
-	if userInfo, err = u.getUserInfo(params.UserSrc); err != nil {
-		return
-	}
-	if !userInfo.Policy.IsOwn(params.Volume) {
-		err = proto.ErrHaveNoPolicy
-		return
-	}
-	if _, err = u.removeOwnVol(params.UserSrc, params.Volume); err != nil {
-		return
+	if userInfo, err = u.getUserInfo(params.UserSrc); err == nil {
+		if !userInfo.Policy.IsOwn(params.Volume) {
+			err = proto.ErrHaveNoPolicy
+			return
+		}
+		if _, err = u.removeOwnVol(params.UserSrc, params.Volume); err != nil {
+			return
+		}
 	}
 	if targetUserInfo, err = u.addOwnVol(params.UserDst, params.Volume); err != nil {
 		return

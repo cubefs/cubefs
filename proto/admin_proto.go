@@ -74,10 +74,12 @@ const (
 
 	// Header keys
 	SkipOwnerValidation = "Skip-Owner-Validation"
+	ForceDelete         = "Force-Delete"
 
 	// APIs for user management
 	UserCreate          = "/user/create"
 	UserDelete          = "/user/delete"
+	UserUpdate          = "/user/update"
 	UserUpdatePolicy    = "/user/updatePolicy"
 	UserRemovePolicy    = "/user/removePolicy"
 	UserDeleteVolPolicy = "/user/deleteVolPolicy"

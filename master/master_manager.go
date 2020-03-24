@@ -156,39 +156,40 @@ func (m *Server) clearMetadata() {
 }
 
 func (m *Server) refreshUser() (err error) {
-	//var userInfo *cfsProto.UserInfo
-	//for volName, vol := range m.cluster.allVols() {
-	//	if _, err = m.user.getUserInfo(vol.Owner); err == cfsProto.ErrUserNotExists {
-	//		if len(vol.OSSAccessKey) > 0 && len(vol.OSSSecretKey) > 0 {
-	//			var param = cfsProto.UserCreateParam{
-	//				ID:        vol.Owner,
-	//				Password:  DefaultUserPassword,
-	//				AccessKey: vol.OSSAccessKey,
-	//				SecretKey: vol.OSSSecretKey,
-	//				Type:      cfsProto.UserTypeNormal,
-	//			}
-	//			userInfo, err = m.user.createKey(&param)
-	//			if err != nil && err != cfsProto.ErrDuplicateUserID && err != cfsProto.ErrDuplicateAccessKey {
-	//				return err
-	//			}
-	//		} else {
-	//			var param = cfsProto.UserCreateParam{
-	//				ID:       vol.Owner,
-	//				Password: DefaultUserPassword,
-	//				Type:     cfsProto.UserTypeNormal,
-	//			}
-	//			userInfo, err = m.user.createKey(&param)
-	//			if err != nil && err != cfsProto.ErrDuplicateUserID {
-	//				return err
-	//			}
-	//		}
-	//		if err == nil && userInfo != nil {
-	//			if _, err = m.user.addOwnVol(userInfo.UserID, volName); err != nil {
-	//				return err
-	//			}
-	//		}
-	//	}
-	//}
+	/* todo create user automatically
+	var userInfo *cfsProto.UserInfo
+	for volName, vol := range m.cluster.allVols() {
+		if _, err = m.user.getUserInfo(vol.Owner); err == cfsProto.ErrUserNotExists {
+			if len(vol.OSSAccessKey) > 0 && len(vol.OSSSecretKey) > 0 {
+				var param = cfsProto.UserCreateParam{
+					ID:        vol.Owner,
+					Password:  DefaultUserPassword,
+					AccessKey: vol.OSSAccessKey,
+					SecretKey: vol.OSSSecretKey,
+					Type:      cfsProto.UserTypeNormal,
+				}
+				userInfo, err = m.user.createKey(&param)
+				if err != nil && err != cfsProto.ErrDuplicateUserID && err != cfsProto.ErrDuplicateAccessKey {
+					return err
+				}
+			} else {
+				var param = cfsProto.UserCreateParam{
+					ID:       vol.Owner,
+					Password: DefaultUserPassword,
+					Type:     cfsProto.UserTypeNormal,
+				}
+				userInfo, err = m.user.createKey(&param)
+				if err != nil && err != cfsProto.ErrDuplicateUserID {
+					return err
+				}
+			}
+			if err == nil && userInfo != nil {
+				if _, err = m.user.addOwnVol(userInfo.UserID, volName); err != nil {
+					return err
+				}
+			}
+		}
+	}*/
 	if _, err = m.user.getUserInfo(RootUserID); err != nil {
 		var param = cfsProto.UserCreateParam{
 			ID:       RootUserID,

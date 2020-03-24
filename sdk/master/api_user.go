@@ -11,7 +11,7 @@ type UserAPI struct {
 	mc *MasterClient
 }
 
-func (api *UserAPI) Create(param *proto.UserCreateParam) (userInfo *proto.UserInfo, err error) {
+func (api *UserAPI) CreateUser(param *proto.UserCreateParam) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UserCreate)
 	var reqBody []byte
 	if reqBody, err = json.Marshal(param); err != nil {
@@ -30,9 +30,27 @@ func (api *UserAPI) Create(param *proto.UserCreateParam) (userInfo *proto.UserIn
 }
 
 func (api *UserAPI) DeleteUser(userID string) (err error) {
-	var request = newAPIRequest(http.MethodDelete, proto.UserDelete)
-	request.addParam("owner", userID)
+	var request = newAPIRequest(http.MethodPost, proto.UserDelete)
+	request.addParam("user", userID)
 	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *UserAPI) UpdateUser(param *proto.UserUpdateParam) (userInfo *proto.UserInfo, err error) {
+	var request = newAPIRequest(http.MethodPost, proto.UserUpdate)
+	var reqBody []byte
+	if reqBody, err = json.Marshal(param); err != nil {
+		return
+	}
+	request.addBody(reqBody)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	userInfo = &proto.UserInfo{}
+	if err = json.Unmarshal(data, userInfo); err != nil {
 		return
 	}
 	return
@@ -54,7 +72,7 @@ func (api *UserAPI) GetAKInfo(accesskey string) (userInfo *proto.UserInfo, err e
 
 func (api *UserAPI) GetUserInfo(userID string) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.UserGetInfo)
-	request.addParam("owner", userID)
+	request.addParam("user", userID)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return

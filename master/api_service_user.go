@@ -40,20 +40,46 @@ func (m *Server) createUser(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 	var (
-		owner string
-		err   error
+		userID string
+		err    error
 	)
-	if owner, err = parseOwner(r); err != nil {
+	if userID, err = parseUser(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.user.deleteKey(owner); err != nil {
+	if err = m.user.deleteKey(userID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	msg := fmt.Sprintf("delete user[%v] successfully", owner)
+	msg := fmt.Sprintf("delete user[%v] successfully", userID)
 	log.LogWarn(msg)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) updateUser(w http.ResponseWriter, r *http.Request) {
+	var (
+		userInfo *proto.UserInfo
+		err      error
+	)
+	var bytes []byte
+	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	var param = proto.UserUpdateParam{}
+	if err = json.Unmarshal(bytes, &param); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if param.Type == proto.UserTypeRoot {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrInvalidUserType))
+		return
+	}
+	if userInfo, err = m.user.updateKey(&param); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	_ = sendOkReply(w, r, newSuccessHTTPReply(userInfo))
 }
 
 func (m *Server) getUserAKInfo(w http.ResponseWriter, r *http.Request) {
@@ -75,15 +101,15 @@ func (m *Server) getUserAKInfo(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getUserInfo(w http.ResponseWriter, r *http.Request) {
 	var (
-		owner    string
+		userID   string
 		userInfo *proto.UserInfo
 		err      error
 	)
-	if owner, err = parseOwner(r); err != nil {
+	if userID, err = parseUser(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if userInfo, err = m.user.getUserInfo(owner); err != nil {
+	if userInfo, err = m.user.getUserInfo(userID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -180,6 +206,10 @@ func (m *Server) transferUserVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
+	if vol.Owner != param.UserSrc {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrHaveNoPolicy))
+		return
+	}
 	if userInfo, err = m.user.transferVol(&param); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -209,13 +239,25 @@ func (m *Server) getAllUsers(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(users))
 }
 
-func parseOwner(r *http.Request) (owner string, err error) {
+func parseUser(r *http.Request) (userID string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-	if owner, err = extractOwner(r); err != nil {
+	if userID, err = extractUser(r); err != nil {
 		return
 	}
+	return
+}
+
+func extractUser(r *http.Request) (user string, err error) {
+	if user = r.FormValue(userKey); user == "" {
+		err = keyNotFound(userKey)
+		return
+	}
+	if !ownerRegexp.MatchString(user) {
+		return "", errors.New("user id can only be number and letters")
+	}
+
 	return
 }
 
@@ -242,7 +284,7 @@ func extractAccessKey(r *http.Request) (ak string, err error) {
 		err = keyNotFound(akKey)
 		return
 	}
-	if !akRegexp.MatchString(ak) {
+	if !proto.AKRegexp.MatchString(ak) {
 		return "", errors.New("accesskey can only be number and letters")
 	}
 	return
