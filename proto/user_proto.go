@@ -315,6 +315,7 @@ type UserTransferVolParam struct {
 	Volume  string `json:"volume"`
 	UserSrc string `json:"user_src"`
 	UserDst string `json:"user_dst"`
+	Force   bool   `json:"force"`
 }
 
 type UserUpdateParam struct {

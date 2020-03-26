@@ -264,6 +264,8 @@ const (
 )
 
 func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
+	var optYes bool
+	var optForce bool
 	var cmd = &cobra.Command{
 		Use:     cmdVolTransferUse,
 		Short:   cmdVolTransferShort,
@@ -280,6 +282,17 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 					os.Exit(1)
 				}
 			}()
+
+			// ask user for confirm
+			if !optYes {
+				stdout("Transfer volume [%v] to user [%v] (yes/no)[no]:", volume, userID)
+				var confirm string
+				_, _ = fmt.Scanln(&confirm)
+				if confirm != "yes" {
+					stdout("Abort by user.\n")
+					return
+				}
+			}
 
 			// check target user and volume
 			var volSimpleView *proto.SimpleVolView
@@ -298,12 +311,15 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 				Volume:  volume,
 				UserSrc: volSimpleView.Owner,
 				UserDst: userInfo.UserID,
+				Force:   optForce,
 			}
 			if _, err = client.UserAPI().TransferVol(&param); err != nil {
 				return
 			}
 		},
 	}
+	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	cmd.Flags().BoolVarP(&optForce, "force", "f", false, "Force transfer without current owner check")
 	return cmd
 }
 
