@@ -142,7 +142,9 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// set response header for GetObject
-	w.Header().Set(HeaderNameETag, fileInfo.ETag)
+	if len(fileInfo.ETag) > 0 {
+		w.Header().Set(HeaderNameETag, fileInfo.ETag)
+	}
 	w.Header().Set(HeaderNameAcceptRange, HeaderValueAcceptRange)
 	w.Header().Set(HeaderNameLastModified, formatTimeRFC1123(fileInfo.ModifyTime))
 	w.Header().Set(HeaderNameContentType, HeaderValueTypeStream)
@@ -223,7 +225,9 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// set response header
-	w.Header().Set(HeaderNameETag, fileInfo.ETag)
+	if len(fileInfo.ETag) > 0 {
+		w.Header().Set(HeaderNameETag, fileInfo.ETag)
+	}
 	w.Header().Set(HeaderNameAcceptRange, HeaderValueAcceptRange)
 	w.Header().Set(HeaderNameContentType, HeaderValueTypeStream)
 	w.Header().Set(HeaderNameLastModified, formatTimeRFC1123(fileInfo.ModifyTime))

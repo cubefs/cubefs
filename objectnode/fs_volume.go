@@ -227,9 +227,6 @@ func (v *Volume) SetXAttr(path string, key string, data []byte) error {
 			return err
 		}
 		inode = inodeInfo.Inode
-		if err = v.mw.XAttrSet_ll(inode, []byte(XAttrKeyOSSETag), []byte(EmptyContentMD5String)); err != nil {
-			return err
-		}
 	}
 	return v.mw.XAttrSet_ll(inode, []byte(key), data)
 }
