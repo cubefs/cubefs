@@ -40,7 +40,7 @@ const (
 
 // Default of configuration value
 const (
-	defaultListen = ":80"
+	defaultListen = "80"
 )
 
 var (
