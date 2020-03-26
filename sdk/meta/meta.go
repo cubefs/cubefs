@@ -20,6 +20,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/chubaofs/chubaofs/proto"
 	authSDK "github.com/chubaofs/chubaofs/sdk/auth"
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
@@ -49,6 +51,12 @@ const (
 const (
 	MaxMountRetryLimit = 5
 	MountRetryInterval = time.Second * 5
+
+	/*
+	 * Minimum interval of forceUpdateMetaPartitions in seconds,
+	 * i.e. only one force update request is allowed every 5 sec.
+	 */
+	MinForceUpdateMetaPartitionsInterval = 5
 )
 
 type AsyncTaskErrorFunc func(err error)
@@ -114,6 +122,14 @@ type MetaWrapper struct {
 
 	closeCh   chan struct{}
 	closeOnce sync.Once
+
+	// Used to signal the go routines which are waiting for partition view update
+	partMutex sync.Mutex
+	partCond  *sync.Cond
+
+	// Used to trigger and throttle instant partition updates
+	forceUpdate      chan struct{}
+	forceUpdateLimit *rate.Limiter
 }
 
 //the ticket from authnode
@@ -153,6 +169,10 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.partitions = make(map[uint64]*MetaPartition)
 	mw.ranges = btree.New(32)
 	mw.rwPartitions = make([]*MetaPartition, 0)
+	mw.partCond = sync.NewCond(&mw.partMutex)
+	mw.forceUpdate = make(chan struct{}, 1)
+	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
+
 	if err = mw.updateClusterInfo(); err != nil {
 		return nil, err
 	}
