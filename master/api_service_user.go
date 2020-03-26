@@ -206,7 +206,7 @@ func (m *Server) transferUserVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	if vol.Owner != param.UserSrc {
+	if !param.Force && vol.Owner != param.UserSrc {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrHaveNoPolicy))
 		return
 	}

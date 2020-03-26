@@ -331,15 +331,23 @@ func (u *User) deleteVolPolicy(volName string) (err error) {
 
 func (u *User) transferVol(params *proto.UserTransferVolParam) (targetUserInfo *proto.UserInfo, err error) {
 	var userInfo *proto.UserInfo
-	if userInfo, err = u.getUserInfo(params.UserSrc); err == nil {
-		if !userInfo.Policy.IsOwn(params.Volume) {
+	userInfo, err = u.getUserInfo(params.UserSrc)
+	if (err != nil && err != proto.ErrUserNotExists) || (!params.Force && err == proto.ErrUserNotExists) {
+		return
+	}
+	if err == nil {
+		var isOwned = userInfo.Policy.IsOwn(params.Volume)
+		if !isOwned && !params.Force {
 			err = proto.ErrHaveNoPolicy
 			return
 		}
-		if _, err = u.removeOwnVol(params.UserSrc, params.Volume); err != nil {
-			return
+		if isOwned {
+			if _, err = u.removeOwnVol(params.UserSrc, params.Volume); err != nil {
+				return
+			}
 		}
 	}
+
 	if targetUserInfo, err = u.addOwnVol(params.UserDst, params.Volume); err != nil {
 		return
 	}
@@ -401,6 +409,7 @@ func (u *User) removeUserFromVol(userID, volName string) (err error) {
 		volUser.UserIDs = removeString(volUser.UserIDs, userID)
 	} else {
 		err = proto.ErrHaveNoPolicy
+		return
 	}
 	if err = u.syncUpdateVolUser(volUser); err != nil {
 		err = proto.ErrPersistenceByRaft
