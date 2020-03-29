@@ -56,13 +56,13 @@ func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request)
 	var param *RequestParam
 	param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		ec = &NoSuchBucket
+		ec = NoSuchBucket
 		return
 	}
 
 	var vol *Volume
 	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		ec = &NoSuchBucket
+		ec = NoSuchBucket
 		return
 	}
 	acl := vol.loadACL()
@@ -70,7 +70,7 @@ func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request)
 	if acl != nil {
 		aclData, err = xml.Marshal(acl)
 		if err != nil {
-			ec = &InternalError
+			ec = InternalErrorCode(err)
 			return
 		}
 
@@ -82,7 +82,7 @@ func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request)
 		acl.Acl.Grants = append(acl.Acl.Grants, defaultGrant)
 		aclData, err = xml.Marshal(acl)
 		if err != nil {
-			ec = &InternalError
+			ec = InternalErrorCode(err)
 			return
 		}
 	}
@@ -106,12 +106,12 @@ func (o *ObjectNode) putBucketACLHandler(w http.ResponseWriter, r *http.Request)
 	var param *RequestParam
 	param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		ec = &NoSuchBucket
+		ec = NoSuchBucket
 		return
 	}
 	var vol *Volume
 	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		ec = &NoSuchBucket
+		ec = NoSuchBucket
 		return
 	}
 

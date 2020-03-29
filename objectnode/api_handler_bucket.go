@@ -63,18 +63,18 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 	var userInfo *proto.UserInfo
 	if userInfo, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
 		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
-		_ = InternalError.ServeResponse(w, r)
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 	//todo required error code？
 	if mc, err = o.vm.GetMasterClient(); err != nil {
 		log.LogErrorf("get master client error: err(%v)", err)
-		_ = InternalError.ServeResponse(w, r)
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 	if err = mc.AdminAPI().CreateDefaultVolume(bucket, userInfo.UserID); err != nil {
 		log.LogErrorf("create bucket[%v] failed: accessKey(%v), err(%v)", bucket, auth.accessKey, err)
-		_ = InternalError.ServeResponse(w, r)
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 	//todo parse body
@@ -103,18 +103,18 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 	var userInfo *proto.UserInfo
 	if userInfo, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
 		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
-		_ = InternalError.ServeResponse(w, r)
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 	// get Volume use state
 	if mc, err = o.vm.GetMasterClient(); err != nil {
 		log.LogErrorf("get master client error: err(%v)", err)
-		_ = InternalError.ServeResponse(w, r)
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 	if volState, err = mc.ClientAPI().GetVolumeStat(bucket); err != nil {
 		log.LogErrorf("get bucket state from master error: err(%v)", err)
-		_ = InternalError.ServeResponse(w, r)
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 	if volState.UsedSize != 0 {
@@ -124,12 +124,12 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 	// delete Volume from master
 	if authKey, err = calculateAuthKey(userInfo.UserID); err != nil {
 		log.LogErrorf("delete bucket[%v] error: calculate authKey(%v) err(%v)", bucket, userInfo.UserID, err)
-		_ = InternalError.ServeResponse(w, r)
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 	if err = mc.AdminAPI().DeleteVolume(bucket, authKey); err != nil {
 		log.LogErrorf("delete bucket[%v] error: accessKey(%v), err(%v)", bucket, auth.accessKey, err)
-		_ = InternalError.ServeResponse(w, r)
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 
@@ -149,7 +149,7 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 	var userInfo *proto.UserInfo
 	if userInfo, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
 		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
-		_ = InternalError.ServeResponse(w, r)
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 	ownVols := userInfo.Policy.OwnVols
@@ -216,21 +216,21 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 	var xattrInfo *proto.XAttrInfo
 	if xattrInfo, err = vol.GetXAttr("/", XAttrKeyOSSTagging); err != nil {
 		log.LogErrorf("getBucketTaggingHandler: Volume get XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InternalError.ServeResponse(w, r)
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
 	var output = NewGetBucketTaggingOutput()
 	if err = json.Unmarshal(ossTaggingData, output); err != nil {
 		log.LogErrorf("getBucketTaggingHandler: decode tagging from json fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InternalError.ServeResponse(w, r)
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 
 	var encoded []byte
 	if encoded, err = MarshalXMLEntity(output); err != nil {
 		log.LogErrorf("getBucketTaggingHandler: encode output fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InternalError.ServeResponse(w, r)
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 
@@ -254,12 +254,12 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		errorCode = &InvalidBucketName
+		errorCode = InvalidBucketName
 		return
 	}
 	var vol *Volume
 	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		errorCode = &NoSuchBucket
+		errorCode = NoSuchBucket
 		return
 	}
 
@@ -280,12 +280,12 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 	var encoded []byte
 	if encoded, err = json.Marshal(tagging); err != nil {
 		log.LogWarnf("putBucketTaggingHandler: encode tagging data fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InternalError.ServeResponse(w, r)
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 
 	if err = vol.SetXAttr("/", XAttrKeyOSSTagging, encoded); err != nil {
-		_ = InternalError.ServeResponse(w, r)
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 
@@ -310,18 +310,18 @@ func (o *ObjectNode) deleteBucketTaggingHandler(w http.ResponseWriter, r *http.R
 	var param = ParseRequestParam(r)
 
 	if len(param.Bucket()) == 0 {
-		errorCode = &InvalidBucketName
+		errorCode = InvalidBucketName
 		return
 	}
 	var vol *Volume
 	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
 		log.LogErrorf("deleteBucketTaggingHandler: load Volume fail: requestID(%v) Volume(%v) err(%v)", GetRequestID(r), param.bucket, err)
-		errorCode = &NoSuchBucket
+		errorCode = NoSuchBucket
 		return
 	}
 	if err = vol.DeleteXAttr("/", XAttrKeyOSSTagging); err != nil {
 		log.LogErrorf("deleteBucketTaggingHandler: Volume delete tagging xattr fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InternalError.ServeResponse(w, r)
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 	return

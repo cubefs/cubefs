@@ -27,6 +27,7 @@ type FSFileInfo struct {
 	ModifyTime time.Time
 	ETag       string
 	Inode      uint64
+	MIMEType   string
 }
 
 type Prefixes []string

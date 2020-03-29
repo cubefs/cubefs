@@ -193,7 +193,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 				f(w, r)
 			} else {
 				if ec == nil {
-					ec = &AccessDenied
+					ec = AccessDenied
 				}
 				o.errorResponse(w, r, err, ec)
 			}
@@ -249,7 +249,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 		if err = loadBucketMeta(param.Bucket()); err != nil {
 			log.LogErrorf("policyCheck: load bucket metadata fail: requestID(%v) err(%v)", GetRequestID(r), err)
 			allowed = false
-			ec = &NoSuchBucket
+			ec = NoSuchBucket
 			return
 		}
 

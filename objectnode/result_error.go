@@ -65,27 +65,52 @@ func ServeInternalStaticErrorResponse(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(sb.String()))
 }
 
+// Presets
 var (
-	UnsupportedOperation                = ErrorCode{ErrorCode: "UnsupportedOperation", ErrorMessage: "Operation is not supported", StatusCode: http.StatusBadRequest}
-	AccessDenied                        = ErrorCode{ErrorCode: "AccessDenied", ErrorMessage: "Access Denied", StatusCode: http.StatusForbidden}
-	BadDigest                           = ErrorCode{ErrorCode: "BadDigest", ErrorMessage: "The Content-MD5 you specified did not match what we received.", StatusCode: http.StatusBadRequest}
-	BucketNotExisted                    = ErrorCode{ErrorCode: "BucketNotExisted", ErrorMessage: "The requested bucket name is not existed.", StatusCode: http.StatusNotFound}
-	BucketNotExistedForHead             = ErrorCode{ErrorCode: "BucketNotExisted", ErrorMessage: "The requested bucket name is not existed.", StatusCode: http.StatusConflict}
-	BucketNotEmpty                      = ErrorCode{ErrorCode: "BucketNotEmpty", ErrorMessage: "The bucket you tried to delete is not empty.", StatusCode: http.StatusConflict}
-	BucketNotOwnedByYou                 = ErrorCode{ErrorCode: "BucketNotOwnedByYou", ErrorMessage: "The bucket is not owned by you.", StatusCode: http.StatusConflict}
-	KeyTooLongError                     = ErrorCode{ErrorCode: "KeyTooLongError", ErrorMessage: "", StatusCode: http.StatusBadRequest}
-	InvalidKey                          = ErrorCode{ErrorCode: "InvalidKey", ErrorMessage: "Object key is Illegal", StatusCode: http.StatusBadRequest}
-	EntityTooSmall                      = ErrorCode{ErrorCode: "EntityTooSmall", ErrorMessage: "Your proposed upload is smaller than the minimum allowed object size.", StatusCode: http.StatusBadRequest}
-	EntityTooLarge                      = ErrorCode{ErrorCode: "EntityTooLarge", ErrorMessage: "Your proposed upload exceeds the maximum allowed object size.", StatusCode: http.StatusBadRequest}
-	IncorrectNumberOfFilesInPostRequest = ErrorCode{ErrorCode: "IncorrectNumberOfFilesInPostRequest", ErrorMessage: "POST requires exactly one file upload per request.", StatusCode: http.StatusBadRequest}
-	InternalError                       = ErrorCode{ErrorCode: "InternalError", ErrorMessage: "We encountered an internal error. Please try again.", StatusCode: http.StatusInternalServerError}
-	InvalidArgument                     = ErrorCode{ErrorCode: "InvalidArgument", ErrorMessage: "Invalid Argument", StatusCode: http.StatusBadRequest}
-	InvalidBucketName                   = ErrorCode{ErrorCode: "InvalidBucketName", ErrorMessage: "The specified bucket is not valid.", StatusCode: http.StatusBadRequest}
-	InvalidRange                        = ErrorCode{ErrorCode: "InvalidRange", ErrorMessage: "The requested range cannot be satisfied.", StatusCode: http.StatusRequestedRangeNotSatisfiable}
-	MissingContentLength                = ErrorCode{ErrorCode: "MissingContentLength", ErrorMessage: "You must provide the Content-Length HTTP header.", StatusCode: http.StatusLengthRequired}
-	NoSuchBucket                        = ErrorCode{ErrorCode: "NoSuchBucket", ErrorMessage: "The specified bucket does not exist.", StatusCode: http.StatusNotFound}
-	NoSuchKey                           = ErrorCode{ErrorCode: "NoLoggingStatusForKey", ErrorMessage: "The specified key does not exist.", StatusCode: http.StatusNotFound}
-	PreconditionFailed                  = ErrorCode{ErrorCode: "PreconditionFailed", ErrorMessage: "At least one of the preconditions you specified did not hold.", StatusCode: http.StatusPreconditionFailed}
-	MaxContentLength                    = ErrorCode{ErrorCode: "MaxContentLength", ErrorMessage: "Content-Length is bigger than 20KB.", StatusCode: http.StatusLengthRequired}
-	DuplicatedBucket                    = ErrorCode{ErrorCode: "CreateBucketFailed", ErrorMessage: "Duplicate bucket name.", StatusCode: http.StatusBadRequest}
+	UnsupportedOperation                = &ErrorCode{ErrorCode: "UnsupportedOperation", ErrorMessage: "Operation is not supported", StatusCode: http.StatusBadRequest}
+	AccessDenied                        = &ErrorCode{ErrorCode: "AccessDenied", ErrorMessage: "Access Denied", StatusCode: http.StatusForbidden}
+	BadDigest                           = &ErrorCode{ErrorCode: "BadDigest", ErrorMessage: "The Content-MD5 you specified did not match what we received.", StatusCode: http.StatusBadRequest}
+	BucketNotExisted                    = &ErrorCode{ErrorCode: "BucketNotExisted", ErrorMessage: "The requested bucket name is not existed.", StatusCode: http.StatusNotFound}
+	BucketNotExistedForHead             = &ErrorCode{ErrorCode: "BucketNotExisted", ErrorMessage: "The requested bucket name is not existed.", StatusCode: http.StatusConflict}
+	BucketNotEmpty                      = &ErrorCode{ErrorCode: "BucketNotEmpty", ErrorMessage: "The bucket you tried to delete is not empty.", StatusCode: http.StatusConflict}
+	BucketNotOwnedByYou                 = &ErrorCode{ErrorCode: "BucketNotOwnedByYou", ErrorMessage: "The bucket is not owned by you.", StatusCode: http.StatusConflict}
+	KeyTooLongError                     = &ErrorCode{ErrorCode: "KeyTooLongError", ErrorMessage: "", StatusCode: http.StatusBadRequest}
+	InvalidKey                          = &ErrorCode{ErrorCode: "InvalidKey", ErrorMessage: "Object key is Illegal", StatusCode: http.StatusBadRequest}
+	EntityTooSmall                      = &ErrorCode{ErrorCode: "EntityTooSmall", ErrorMessage: "Your proposed upload is smaller than the minimum allowed object size.", StatusCode: http.StatusBadRequest}
+	EntityTooLarge                      = &ErrorCode{ErrorCode: "EntityTooLarge", ErrorMessage: "Your proposed upload exceeds the maximum allowed object size.", StatusCode: http.StatusBadRequest}
+	IncorrectNumberOfFilesInPostRequest = &ErrorCode{ErrorCode: "IncorrectNumberOfFilesInPostRequest", ErrorMessage: "POST requires exactly one file upload per request.", StatusCode: http.StatusBadRequest}
+	InvalidArgument                     = &ErrorCode{ErrorCode: "InvalidArgument", ErrorMessage: "Invalid Argument", StatusCode: http.StatusBadRequest}
+	InvalidBucketName                   = &ErrorCode{ErrorCode: "InvalidBucketName", ErrorMessage: "The specified bucket is not valid.", StatusCode: http.StatusBadRequest}
+	InvalidRange                        = &ErrorCode{ErrorCode: "InvalidRange", ErrorMessage: "The requested range cannot be satisfied.", StatusCode: http.StatusRequestedRangeNotSatisfiable}
+	MissingContentLength                = &ErrorCode{ErrorCode: "MissingContentLength", ErrorMessage: "You must provide the Content-Length HTTP header.", StatusCode: http.StatusLengthRequired}
+	NoSuchBucket                        = &ErrorCode{ErrorCode: "NoSuchBucket", ErrorMessage: "The specified bucket does not exist.", StatusCode: http.StatusNotFound}
+	NoSuchKey                           = &ErrorCode{ErrorCode: "NoLoggingStatusForKey", ErrorMessage: "The specified key does not exist.", StatusCode: http.StatusNotFound}
+	PreconditionFailed                  = &ErrorCode{ErrorCode: "PreconditionFailed", ErrorMessage: "At least one of the preconditions you specified did not hold.", StatusCode: http.StatusPreconditionFailed}
+	MaxContentLength                    = &ErrorCode{ErrorCode: "MaxContentLength", ErrorMessage: "Content-Length is bigger than 20KB.", StatusCode: http.StatusLengthRequired}
+	DuplicatedBucket                    = &ErrorCode{ErrorCode: "CreateBucketFailed", ErrorMessage: "Duplicate bucket name.", StatusCode: http.StatusBadRequest}
+	Conflict                            = &ErrorCode{ErrorCode: "Conflict", ErrorMessage: "Object already exists and type conflicts", StatusCode: http.StatusConflict}
 )
+
+func HttpStatusErrorCode(code int) *ErrorCode {
+	statusText := http.StatusText(code)
+	statusTextWithoutSpace := strings.ReplaceAll(statusText, " ", "")
+	return &ErrorCode{
+		ErrorCode:    statusTextWithoutSpace,
+		ErrorMessage: statusText,
+		StatusCode:   code,
+	}
+}
+
+func InternalErrorCode(err error) *ErrorCode {
+	var errorMessage string
+	if err != nil {
+		errorMessage = err.Error()
+	} else {
+		errorMessage = "Internal Server Error"
+	}
+	return &ErrorCode{
+		ErrorCode:    "InternalError",
+		ErrorMessage: errorMessage,
+		StatusCode:   http.StatusInternalServerError,
+	}
+}

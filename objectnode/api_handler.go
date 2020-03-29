@@ -115,7 +115,7 @@ func (o *ObjectNode) errorResponse(w http.ResponseWriter, r *http.Request, err e
 				GetRequestID(r), err)
 		}
 		if ec == nil {
-			ec = &InternalError
+			ec = InternalErrorCode(err)
 		}
 		_ = ec.ServeResponse(w, r)
 	}
