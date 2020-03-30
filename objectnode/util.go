@@ -31,6 +31,90 @@ const (
 	tempFileNameSep = "_"
 )
 
+var (
+	emptyPathItem   = PathItem{}
+
+	// Regular expression used to match one or more path separators.
+	regexpSepPrefix = regexp.MustCompile("^/+")
+
+	// Regular expression to match more than two consecutive path separators.
+	regexpDupSep    = regexp.MustCompile("/{2,}")
+)
+
+// PathItem defines path node attribute information,
+// including node name and whether it is a directory.
+type PathItem struct {
+	Name        string
+	IsDirectory bool
+}
+
+// PathIterator is a path iterator. Used to sequentially iterate each path node from a complete path.
+type PathIterator struct {
+	cursor int
+	path   string
+	inited bool
+}
+
+func (p *PathIterator) init() {
+	if !p.inited {
+		p.path = strings.TrimSpace(p.path)
+		loc := regexpSepPrefix.FindStringIndex(p.path)
+		if len(loc) == 2 {
+			p.path = p.path[loc[1]:]
+		}
+		p.path = regexpDupSep.ReplaceAllString(p.path, pathSep)
+		p.inited = true
+	}
+
+}
+
+func (p *PathIterator) HasNext() bool {
+	p.init()
+	return p.cursor < len(p.path)
+}
+
+func (p *PathIterator) Reset() {
+	p.cursor = 0
+}
+
+func (p PathIterator) ToSlice() []PathItem {
+	newIterator := NewPathIterator(p.path)
+	result := make([]PathItem, 0)
+	for newIterator.HasNext() {
+		result = append(result, newIterator.Next())
+	}
+	return result
+}
+
+func (p *PathIterator) Next() PathItem {
+	p.init()
+	if p.cursor >= len(p.path) {
+		return emptyPathItem
+	}
+	var item PathItem
+	index := strings.Index(p.path[p.cursor:], pathSep)
+	if index >= 0 {
+		item = PathItem{
+			Name:        p.path[p.cursor : p.cursor+index],
+			IsDirectory: true,
+		}
+		p.cursor = p.cursor + index + 1
+	} else {
+		item = PathItem{
+			Name:        p.path[p.cursor:],
+			IsDirectory: false,
+		}
+		p.cursor = len(p.path)
+	}
+	return item
+}
+
+func NewPathIterator(path string) PathIterator {
+	return PathIterator{
+		path: path,
+	}
+}
+
 func splitPath(path string) (dirs []string, filename string) {
 	pathParts := strings.Split(path, pathSep)
 	if len(pathParts) > 1 {
@@ -128,4 +212,8 @@ func patternMatch(pattern, key string) bool {
 	}
 
 	return matched
+}
+
+func wrapUnescapedQuot(src string) string {
+	return "\"" + src + "\""
 }

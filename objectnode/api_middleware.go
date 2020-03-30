@@ -54,7 +54,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		if requestID, err = generateRequestID(); err != nil {
 			log.LogErrorf("traceMiddleware: generate request ID fail, remote(%v) url(%v) err(%v)",
 				r.RemoteAddr, r.URL.String(), err)
-			_ = InternalError.ServeResponse(w, r)
+			_ = InternalErrorCode(err).ServeResponse(w, r)
 			return
 		}
 

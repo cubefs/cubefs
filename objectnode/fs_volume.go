@@ -1,3 +1,17 @@
+// Copyright 2018 The ChubaoFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package objectnode
 
 import (
@@ -29,20 +43,35 @@ const (
 	OSSMetaUpdateDuration = time.Duration(time.Second * 30)
 )
 
+// AsyncTaskErrorFunc is a callback method definition for asynchronous tasks when an error occurs.
+// It is mainly used to notify other objects when an error occurs during asynchronous task execution.
+// These asynchronous tasks include periodic volume topology and metadata update tasks.
 type AsyncTaskErrorFunc func(err error)
 
+// OnError protects the call of AsyncTaskErrorFunc with null pointer access. Used to simplify caller code.
 func (f AsyncTaskErrorFunc) OnError(err error) {
 	if f != nil {
 		f(err)
 	}
 }
 
+// VolumeConfig is the configuration used to initialize the Volume instance.
 type VolumeConfig struct {
-	Volume           string
-	Masters          []string
+	// Name of volume.
+	// This is a required configuration item.
+	Volume string
+
+	// Master addresses or host names.
+	// This is a required configuration item.
+	Masters []string
+
+	// Callback method for notifying when an error occurs in an asynchronous task.
+	// Such as Volume topology and metadata update tasks.
+	// This is a optional configuration item.
 	OnAsyncTaskError AsyncTaskErrorFunc
 }
 
+// OSSMeta is bucket policy and ACL metadata.
 type OSSMeta struct {
 	policy     *Policy
 	acl        *AccessControlPolicy
@@ -78,7 +107,9 @@ func (v *Volume) storeACL(p *AccessControlPolicy) {
 	return
 }
 
-// This struct is implementation of Volume interface
+// Volume is a high-level encapsulation of meta sdk and data sdk methods.
+// A high-level approach that exposes the semantics of object storage to the outside world.
+// Volume escapes high-level object storage semantics to low-level POSIX semantics.
 type Volume struct {
 	mw         *meta.MetaWrapper
 	ec         *stream.ExtentClient
@@ -87,7 +118,6 @@ type Volume struct {
 	om         *OSSMeta
 	ticker     *time.Ticker
 	createTime int64
-	//ms     	Store
 
 	closeOnce sync.Once
 	closeCh   chan struct{}
@@ -223,7 +253,7 @@ func (v *Volume) SetXAttr(path string, key string, data []byte) error {
 			return err
 		}
 		var inodeInfo *proto.InodeInfo
-		if inodeInfo, err = v.mw.Create_ll(parentID, filename, 0600, 0, 0, nil); err != nil {
+		if inodeInfo, err = v.mw.Create_ll(parentID, filename, DefaultFileMode, 0, 0, nil); err != nil {
 			return err
 		}
 		inode = inodeInfo.Inode
@@ -274,6 +304,9 @@ func (v *Volume) OSSSecure() (accessKey, secretKey string) {
 	return v.mw.OSSSecure()
 }
 
+// ListFilesV1 returns file and directory entry list information that meets the parameters.
+// It supports parameters such as prefix, delimiter, and paging.
+// It is a data plane logical encapsulation of the object storage interface ListObjectsV1.
 func (v *Volume) ListFilesV1(request *ListBucketRequestV1) ([]*FSFileInfo, string, bool, []string, error) {
 	//prefix, delimiter, marker string, maxKeys uint64
 
@@ -303,6 +336,9 @@ func (v *Volume) ListFilesV1(request *ListBucketRequestV1) ([]*FSFileInfo, strin
 	return infos, nextMarker, isTruncated, prefixes, nil
 }
 
+// ListFilesV2 returns file and directory entry list information that meets the parameters.
+// It supports parameters such as prefix, delimiter, and paging.
+// It is a data plane logical encapsulation of the object storage interface ListObjectsV2.
 func (v *Volume) ListFilesV2(request *ListBucketRequestV2) ([]*FSFileInfo, uint64, string, bool, []string, error) {
 
 	delimiter := request.delimiter
@@ -335,147 +371,218 @@ func (v *Volume) ListFilesV2(request *ListBucketRequestV2) ([]*FSFileInfo, uint6
 	return infos, keyCount, nextToken, isTruncated, prefixes, nil
 }
 
-func (v *Volume) WriteFile(path string, reader io.Reader) (*FSFileInfo, error) {
-	var err error
-	var fInfo *FSFileInfo
+// WriteObject creates or updates target path objects and data.
+// Differentiate whether a target is a file or a directory by identifying its MIME type.
+// When the MIME type is "application/directory", the target object is a directory.
+// During processing, conflicts may occur because the actual type of the target object is
+// different from the expected type.
+//
+// For example, create a directory called "backup", but a file called "backup" already exists.
+// When a conflict occurs, the method returns an EISDIR or ENOTDIR error.
+//
+// An EISDIR error is returned indicating that a part of the target path expected to be a file
+// but actual is a directory.
+// An ENOTDIR error is returned indicating that a part of the target path expected to be a directory
+// but actual is a file.
+func (v *Volume) WriteObject(path string, reader io.Reader, mimeType string) (fsInfo *FSFileInfo, err error) {
 
-	dirs, filename := splitPath(path)
-
-	// process path
-	var parentId uint64
-	if parentId, err = v.lookupDirectories(dirs, true); err != nil {
-		return nil, err
+	// The path is processed according to the content-type. If it is a directory type,
+	// a path separator is appended at the end of the path, so the recursiveMakeDirectory
+	// method can be processed directly in recursion.
+	var fixedPath = path
+	if mimeType == HeaderValueContentTypeDirectory && !strings.HasSuffix(path, pathSep) {
+		fixedPath = path + pathSep
 	}
-	log.LogDebugf("WriteFile: lookup directories, path(%v) parentId(%v)", path, parentId)
+
+	var pathItems = NewPathIterator(fixedPath).ToSlice()
+	if len(pathItems) == 0 {
+		// A blank directory entry indicates that the path after the validation is the volume
+		// root directory itself.
+		fsInfo = &FSFileInfo{
+			Path:       path,
+			Size:       0,
+			Mode:       DefaultDirMode,
+			ModifyTime: time.Now(),
+			ETag:       EmptyContentMD5String,
+			Inode:      rootIno,
+			MIMEType:   HeaderValueContentTypeDirectory,
+		}
+		return fsInfo, nil
+	}
+	var parentId uint64
+	if parentId, err = v.recursiveMakeDirectory(fixedPath); err != nil {
+		return
+	}
+	var lastPathItem = pathItems[len(pathItems)-1]
+	if lastPathItem.IsDirectory {
+		// If the last path node is a directory, then it has been processed by the previous logic.
+		// Just get the information of this node and return.
+		var info *proto.InodeInfo
+		if info, err = v.mw.InodeGet_ll(parentId); err != nil {
+			return
+		}
+		fsInfo = &FSFileInfo{
+			Path:       path,
+			Size:       0,
+			Mode:       DefaultDirMode,
+			ModifyTime: info.ModifyTime,
+			ETag:       EmptyContentMD5String,
+			Inode:      info.Inode,
+			MIMEType:   HeaderValueContentTypeDirectory,
+		}
+		return
+	}
+
 	// check file
 	var lookupMode uint32
-	_, lookupMode, err = v.mw.Lookup_ll(parentId, filename)
+	_, lookupMode, err = v.mw.Lookup_ll(parentId, lastPathItem.Name)
 	if err != nil && err != syscall.ENOENT {
-		return nil, err
+		return
 	}
 	if err == nil && os.FileMode(lookupMode).IsDir() {
-		return nil, syscall.EEXIST
+		err = syscall.EISDIR
+		return
 	}
-	// create  temp file
-	var tempFilename = tempFileName(filename)
-	var tempInodeInfo *proto.InodeInfo
-	if tempInodeInfo, err = v.mw.Create_ll(parentId, tempFilename, 0600, 0, 0, nil); err != nil {
-		log.LogErrorf("WriteFile: create temp file fail, parent(%v) name(%v) err(%v)", parentId, tempFilename, err)
-		return nil, err
-	}
-	log.LogDebugf("WriteFile: create temp file, parent(%v) name(%v) inode(%v)", parentId, tempFilename, tempInodeInfo.Inode)
 
-	// write data
-	var buf = make([]byte, 128*1024)
-	var readN, writeN, offset int
-
-	var fileMd5 string
-	var md5Buf = make([]byte, 128*1024)
-	var md5Hash = md5.New()
-
-	if err = v.ec.OpenStream(tempInodeInfo.Inode); err != nil {
-		log.LogErrorf("WriteFile: open stream fail, inode(%v) err(%v)", tempInodeInfo.Inode, err)
-		return nil, err
+	// Intermediate data during the writing of new versions is managed through invisible files.
+	// This file has only inode but no dentry. In this way, this temporary file can be made invisible
+	// in the true sense. In order to avoid the adverse impact of other user operations on temporary data.
+	var invisibleTempDataInode *proto.InodeInfo
+	if invisibleTempDataInode, err = v.mw.InodeCreate_ll(DefaultFileMode, 0, 0, nil); err != nil {
+		return
 	}
 	defer func() {
-		if closeErr := v.ec.CloseStream(tempInodeInfo.Inode); closeErr != nil {
-			log.LogErrorf("WriteFile: close stream fail, inode(%v) err(%v)", tempInodeInfo.Inode, closeErr)
+		// An error has caused the entire process to fail. Delete the inode and release the written data.
+		if err != nil {
+			_, _ = v.mw.InodeUnlink_ll(invisibleTempDataInode.Inode)
+			_ = v.mw.Evict(invisibleTempDataInode.Inode)
 		}
-		if evictErr := v.ec.EvictStream(tempInodeInfo.Inode); evictErr != nil {
-			log.LogErrorf("WriteFile: evict stream fail, inode(%v) err(%v)", tempInodeInfo.Inode, evictErr)
+	}()
+	if err = v.ec.OpenStream(invisibleTempDataInode.Inode); err != nil {
+		return
+	}
+	defer func() {
+		if closeErr := v.ec.CloseStream(invisibleTempDataInode.Inode); closeErr != nil {
+			log.LogErrorf("WriteObject: close stream fail: inode(%v) err(%v)",
+				invisibleTempDataInode.Inode, closeErr)
 		}
 	}()
 
-	for {
-		readN, err = reader.Read(buf)
-		if err != nil && err != io.EOF {
-			return nil, err
-		}
-		if readN > 0 {
-			if writeN, err = v.ec.Write(tempInodeInfo.Inode, offset, buf[:readN], false); err != nil {
-				log.LogErrorf("WriteFile: write data fail, inode(%v) offset(%v) err(%v)", tempInodeInfo.Inode, offset, err)
-				return nil, err
-			}
-			log.LogDebugf("WriteFile: write data, inode(%v) offset(%v) bytes(%v)", tempInodeInfo.Inode, offset, readN)
-			offset += writeN
-			// copy to md5 buffer, and then write to md5
-			copy(md5Buf, buf[:readN])
-			md5Hash.Write(md5Buf[:readN])
-		}
-		if err == io.EOF {
-			break
-		}
+	var (
+		md5Hash = md5.New()
+		size    uint64
+		etag    string
+	)
+	if size, err = v.streamWrite(invisibleTempDataInode.Inode, reader, md5Hash); err != nil {
+		return
 	}
-
 	// compute file md5
-	fileMd5 = hex.EncodeToString(md5Hash.Sum(nil))
+	etag = hex.EncodeToString(md5Hash.Sum(nil))
 
 	// flush
-	if err = v.ec.Flush(tempInodeInfo.Inode); err != nil {
-		log.LogErrorf("WriteFile: flush data fail, inode(%v) err(%v)", tempInodeInfo.Inode, err)
+	if err = v.ec.Flush(invisibleTempDataInode.Inode); err != nil {
+		log.LogErrorf("WriteObject: data flush inode fail, inode(%v) err(%v)", invisibleTempDataInode.Inode, err)
 		return nil, err
 	}
 
-	// rename temp file to origin
-	if err = v.mw.Rename_ll(parentId, tempFilename, parentId, filename); err != nil {
-		log.LogErrorf("WriteFile: rename temp file fail, (%v_%v) to (%v_%v) err(%v)", parentId, tempFilename, parentId, filename, err)
+	var (
+		existMode uint32
+	)
+	_, existMode, err = v.mw.Lookup_ll(parentId, lastPathItem.Name)
+	if err != nil && err != syscall.ENOENT {
+		log.LogErrorf("WriteObject: meta lookup fail: parentID(%v) name(%v) err(%v)", parentId, lastPathItem.Name, err)
+		return
+	}
+
+	if err == syscall.ENOENT {
+		if err = v.applyInodeToNewDentry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode); err != nil {
+			log.LogErrorf("WriteObject: apply inode to new dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
+				parentId, lastPathItem.Name, invisibleTempDataInode.Inode, err)
+			return
+		}
+		log.LogDebugf("WriteObject: apply inode to new dentry: parentID(%v) name(%v) inode(%v)",
+			parentId, lastPathItem.Name, invisibleTempDataInode.Inode)
+	} else {
+		if os.FileMode(existMode).IsDir() {
+			log.LogErrorf("WriteObject: target mode conflict: parentID(%v) name(%v) mode(%v)",
+				parentId, lastPathItem.Name, os.FileMode(existMode).String())
+			err = syscall.EEXIST
+			return
+		}
+		if err = v.applyInodeToExistDentry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode); err != nil {
+			log.LogErrorf("WriteObject: apply inode to exist dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
+				parentId, lastPathItem.Name, invisibleTempDataInode.Inode, err)
+			return
+		}
+	}
+
+	// Save ETag
+	if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(XAttrKeyOSSETag), []byte(etag)); err != nil {
+		log.LogErrorf("WriteObject: meta set xattr fail, inode(%v) key(%v) val(%v) err(%v)",
+			invisibleTempDataInode, XAttrKeyOSSETag, etag, err)
 		return nil, err
 	}
-	log.LogDebugf("WriteFile: rename temp file, (%v_%v) to (%v_%v)",
-		parentId, tempFilename, parentId, filename)
-
-	// set file md5 to meta data
-	if err = v.mw.XAttrSet_ll(tempInodeInfo.Inode, []byte(XAttrKeyOSSETag), []byte(fileMd5)); err != nil {
-		log.LogErrorf("WriteFile: set xattr fail, inode(%v) key(%v) val(%v) err(%v)", tempInodeInfo.Inode, XAttrKeyOSSETag, fileMd5, err)
-		return nil, err
+	// If MIME information is valid, use extended attributes for storage.
+	if mimeType != "" {
+		if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(XAttrKeyOSSMIME), []byte(mimeType)); err != nil {
+			log.LogErrorf("WriteObject: meta set xattr fail, inode(%v) key(%v) val(%v) err(%v)",
+				invisibleTempDataInode, XAttrKeyOSSMIME, mimeType, err)
+			return nil, err
+		}
 	}
 
 	// create file info
-	fInfo = &FSFileInfo{
+	fsInfo = &FSFileInfo{
 		Path:       path,
-		Size:       int64(writeN),
+		Size:       int64(size),
 		Mode:       os.FileMode(lookupMode),
 		ModifyTime: time.Now(),
-		ETag:       fileMd5,
-		Inode:      tempInodeInfo.Inode,
+		ETag:       etag,
+		Inode:      invisibleTempDataInode.Inode,
 	}
 
-	return fInfo, nil
+	return fsInfo, nil
 }
 
-func (v *Volume) DeleteFile(path string) error {
-	var err error
-	dirs, filename := splitPath(path)
+func (v *Volume) DeletePath(path string) (err error) {
+	defer func() {
+		// In the operation of deleting a path, if no path matching the given path is found,
+		// that is, the given path does not exist, the return is successful.
+		if err == syscall.ENOENT {
+			err = nil
+		}
+	}()
+	var parent uint64
+	var ino uint64
+	var name string
+	var mode os.FileMode
+	parent, ino, name, mode, err = v.recursiveLookupTarget(path)
+	if err != nil {
+		// An unexpected error occurred
+		return
+	}
+	log.LogDebugf("DeletePath: lookup target: path(%v) parentID(%v) inode(%v) name(%v) mode(%v)",
+		path, parent, ino, name, mode)
+	if mode.IsDir() {
+		// Check if the directory is empty and cannot delete non-empty directories.
+		var dentries []proto.Dentry
+		dentries, err = v.mw.ReadDir_ll(ino)
+		if err != nil || len(dentries) > 0 {
+			return
+		}
+	}
+	if _, err = v.mw.Delete_ll(parent, name, mode.IsDir()); err != nil {
+		return
+	}
 
-	// process path
-	var parentId uint64
-	if parentId, err = v.lookupDirectories(dirs, false); err != nil {
-		return err
+	// Evict inode
+	if err = v.ec.EvictStream(ino); err != nil {
+		return
 	}
-	// lookup target inode
-	var inode uint64
-	var mode uint32
-	if inode, mode, err = v.mw.Lookup_ll(parentId, filename); err != nil {
-		return err
+	if err = v.mw.Evict(ino); err != nil {
+		return
 	}
-	if os.FileMode(mode).IsDir() {
-		return syscall.ENOENT
-	}
-
-	// remove file
-	if _, err = v.mw.Delete_ll(parentId, filename, false); err != nil {
-		return err
-	}
-
-	// evict inode
-	if err = v.ec.EvictStream(inode); err != nil {
-		return err
-	}
-	if err = v.mw.Evict(inode); err != nil {
-		return err
-	}
-
-	return nil
+	return
 }
 
 func (v *Volume) InitMultipart(path string) (multipartID string, err error) {
@@ -513,22 +620,13 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 
 	// create temp file (inode only, invisible for user)
 	var tempInodeInfo *proto.InodeInfo
-	if tempInodeInfo, err = v.mw.InodeCreate_ll(0600, 0, 0, nil); err != nil {
+	if tempInodeInfo, err = v.mw.InodeCreate_ll(DefaultFileMode, 0, 0, nil); err != nil {
 		log.LogErrorf("WritePart: meta create inode fail: multipartID(%v) partID(%v) err(%v)",
 			multipartId, parentId, err)
 		return nil, err
 	}
 	log.LogDebugf("WritePart: meta create temp file inode: multipartID(%v) partID(%v) inode(%v)",
 		multipartId, parentId, tempInodeInfo.Inode)
-
-	// write data
-	var buf = make([]byte, 128*1024)
-	var readN, writeN, offset int
-
-	var fileMd5 string
-	var md5Buf = make([]byte, 128*1024)
-	var md5Hash = md5.New()
-	var size uint64
 
 	if err = v.ec.OpenStream(tempInodeInfo.Inode); err != nil {
 		log.LogErrorf("WritePart: data open stream fail, inode(%v) err(%v)", tempInodeInfo.Inode, err)
@@ -540,29 +638,18 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 		}
 	}()
 
-	for {
-		readN, err = reader.Read(buf)
-		if err != nil && err != io.EOF {
-			return nil, err
-		}
-		if readN > 0 {
-			if writeN, err = v.ec.Write(tempInodeInfo.Inode, offset, buf[:readN], false); err != nil {
-				log.LogErrorf("WritePart: data write tmp file fail, inode(%v) offset(%v) err(%v)", tempInodeInfo.Inode, offset, err)
-				return nil, err
-			}
-			offset += writeN
-			// copy to md5 buffer, and then write to md5
-			size += uint64(readN)
-			copy(md5Buf, buf[:readN])
-			md5Hash.Write(md5Buf[:readN])
-		}
-		if err == io.EOF {
-			break
-		}
+	// Write data to data node
+	var (
+		size    uint64
+		etag    string
+		md5Hash = md5.New()
+	)
+	if size, err = v.streamWrite(tempInodeInfo.Inode, reader, md5Hash); err != nil {
+		return nil, err
 	}
 
 	// compute file md5
-	fileMd5 = hex.EncodeToString(md5Hash.Sum(nil))
+	etag = hex.EncodeToString(md5Hash.Sum(nil))
 
 	// flush
 	if err = v.ec.Flush(tempInodeInfo.Inode); err != nil {
@@ -571,34 +658,33 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 	}
 
 	// save temp file MD5
-	if err = v.mw.XAttrSet_ll(tempInodeInfo.Inode, []byte(XAttrKeyOSSETag), []byte(fileMd5)); err != nil {
+	if err = v.mw.XAttrSet_ll(tempInodeInfo.Inode, []byte(XAttrKeyOSSETag), []byte(etag)); err != nil {
 		log.LogErrorf("WritePart: meta set xattr fail, inode(%v) key(%v) val(%v) err(%v)",
-			tempInodeInfo, XAttrKeyOSSETag, fileMd5, err)
+			tempInodeInfo, XAttrKeyOSSETag, etag, err)
 		return nil, err
 	}
 
 	// update temp file inode to meta with session
-	if err = v.mw.AddMultipartPart_ll(multipartId, parentId, partId, size, fileMd5, tempInodeInfo.Inode); err != nil {
+	if err = v.mw.AddMultipartPart_ll(multipartId, parentId, partId, size, etag, tempInodeInfo.Inode); err != nil {
 		log.LogErrorf("WritePart: meta add multipart part fail: multipartID(%v) parentID(%v) partID(%v) inode(%v) size(%v) MD5(%v) err(%v)",
-			multipartId, parentId, parentId, tempInodeInfo.Inode, size, fileMd5, err)
+			multipartId, parentId, parentId, tempInodeInfo.Inode, size, etag, err)
 	}
 	log.LogDebugf("WritePart: meta add multipart part: multipartID(%v) parentID(%v) partID(%v) inode(%v) size(%v) MD5(%v)",
-		multipartId, parentId, parentId, tempInodeInfo.Inode, size, fileMd5)
+		multipartId, parentId, parentId, tempInodeInfo.Inode, size, etag)
 
 	// create file info
 	fInfo = &FSFileInfo{
 		Path:       fileName,
-		Size:       int64(writeN),
-		Mode:       os.FileMode(0600),
+		Size:       int64(size),
+		Mode:       os.FileMode(DefaultFileMode),
 		ModifyTime: time.Now(),
-		ETag:       fileMd5,
+		ETag:       etag,
 		Inode:      tempInodeInfo.Inode,
 	}
 	return fInfo, nil
 }
 
 func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
-	// TODO: cleanup data while abort multipart
 	var parentId uint64
 
 	dirs, _ := splitPath(path)
@@ -642,8 +728,6 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 
 func (v *Volume) CompleteMultipart(path string, multipartID string) (fsFileInfo *FSFileInfo, err error) {
 
-	const mode = 0600
-
 	var parentId uint64
 
 	dirs, filename := splitPath(path)
@@ -668,7 +752,7 @@ func (v *Volume) CompleteMultipart(path string, multipartID string) (fsFileInfo 
 
 	// create inode for complete data
 	var completeInodeInfo *proto.InodeInfo
-	if completeInodeInfo, err = v.mw.InodeCreate_ll(mode, 0, 0, nil); err != nil {
+	if completeInodeInfo, err = v.mw.InodeCreate_ll(DefaultFileMode, 0, 0, nil); err != nil {
 		log.LogErrorf("CompleteMultipart: meta inode create fail: err(%v)", err)
 		return
 	}
@@ -781,12 +865,44 @@ func (v *Volume) CompleteMultipart(path string, multipartID string) (fsFileInfo 
 	fInfo := &FSFileInfo{
 		Path:       path,
 		Size:       int64(size),
-		Mode:       os.FileMode(0600),
+		Mode:       os.FileMode(DefaultFileMode),
 		ModifyTime: time.Now(),
 		ETag:       md5Val,
 		Inode:      completeInodeInfo.Inode,
 	}
 	return fInfo, nil
+}
+
+func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash) (size uint64, err error) {
+	var (
+		buf                   = make([]byte, 128*1024)
+		readN, writeN, offset int
+		hashBuf               = make([]byte, 128*1024)
+	)
+	for {
+		readN, err = reader.Read(buf)
+		if err != nil && err != io.EOF {
+			return
+		}
+		if readN > 0 {
+			if writeN, err = v.ec.Write(inode, offset, buf[:readN], false); err != nil {
+				log.LogErrorf("streamWrite: data write tmp file fail, inode(%v) offset(%v) err(%v)", inode, offset, err)
+				return
+			}
+			offset += writeN
+			// copy to md5 buffer, and then write to md5
+			size += uint64(writeN)
+			copy(hashBuf, buf[:readN])
+			if h != nil {
+				h.Write(hashBuf[:readN])
+			}
+		}
+		if err == io.EOF {
+			err = nil
+			break
+		}
+	}
+	return
 }
 
 func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAllocatedBuf []byte) (err error) {
@@ -839,10 +955,9 @@ func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAll
 }
 
 func (v *Volume) applyInodeToNewDentry(parentID uint64, name string, inode uint64) (err error) {
-	const mode = 0600
-	if err = v.mw.DentryCreate_ll(parentID, name, inode, mode); err != nil {
+	if err = v.mw.DentryCreate_ll(parentID, name, inode, DefaultFileMode); err != nil {
 		log.LogErrorf("applyInodeToNewDentry: meta dentry create fail: parentID(%v) name(%v) inode(%v) mode(%v) err(%v)",
-			parentID, name, inode, mode, err)
+			parentID, name, inode, DefaultFileMode, err)
 		return err
 	}
 	return
@@ -894,44 +1009,35 @@ func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uin
 
 func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) error {
 	var err error
-	dirs, filename := splitPath(path)
 
-	// process path
-	var parentId uint64
-	if parentId, err = v.lookupDirectories(dirs, false); err != nil {
+	var ino uint64
+	var mode os.FileMode
+	if _, ino, _, mode, err = v.recursiveLookupTarget(path); err != nil {
 		return err
 	}
-	log.LogDebugf("ReadFile: lookup directories, path(%v) parentId(%v)", path, parentId)
-	// check file
-	var fileInode uint64
-	var lookupMode uint32
-	fileInode, lookupMode, err = v.mw.Lookup_ll(parentId, filename)
-	if err != nil {
-		return err
+	if mode.IsDir() {
+		return nil
 	}
-	if os.FileMode(lookupMode).IsDir() {
-		return syscall.ENOENT
-	}
+
 	// read file data
-	var fileInodeInfo *proto.InodeInfo
-	fileInodeInfo, err = v.mw.InodeGet_ll(fileInode)
-	if err != nil {
+	var inoInfo *proto.InodeInfo
+	if inoInfo, err = v.mw.InodeGet_ll(ino); err != nil {
 		return err
 	}
 
-	if err = v.ec.OpenStream(fileInode); err != nil {
-		log.LogErrorf("ReadFile: data open stream fail, Inode(%v) err(%v)", fileInode, err)
+	if err = v.ec.OpenStream(ino); err != nil {
+		log.LogErrorf("ReadFile: data open stream fail, Inode(%v) err(%v)", ino, err)
 		return err
 	}
 	defer func() {
-		if closeErr := v.ec.CloseStream(fileInode); closeErr != nil {
-			log.LogErrorf("ReadFile: data close stream fail: inode(%v) err(%v)", fileInode, closeErr)
+		if closeErr := v.ec.CloseStream(ino); closeErr != nil {
+			log.LogErrorf("ReadFile: data close stream fail: inode(%v) err(%v)", ino, closeErr)
 		}
 	}()
 
 	var upper = size + offset
-	if upper > fileInodeInfo.Size {
-		upper = fileInodeInfo.Size - offset
+	if upper > inoInfo.Size {
+		upper = inoInfo.Size - offset
 	}
 
 	var n int
@@ -945,9 +1051,9 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) er
 		if uint64(readSize) > rest {
 			readSize = int(rest)
 		}
-		n, err = v.ec.Read(fileInode, tmp, int(offset), readSize)
+		n, err = v.ec.Read(ino, tmp, int(offset), readSize)
 		if err != nil && err != io.EOF {
-			log.LogErrorf("ReadFile: data read fail, inode(%v) offset(%v) size(%v) err(%v)", fileInode, offset, size, err)
+			log.LogErrorf("ReadFile: data read fail, inode(%v) offset(%v) size(%v) err(%v)", ino, offset, size, err)
 			return err
 		}
 		if n > 0 {
@@ -963,43 +1069,50 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) er
 	return nil
 }
 
-func (v *Volume) FileInfo(path string) (info *FSFileInfo, err error) {
-	dirs, filename := splitPath(path)
+func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 
 	// process path
-	var parentId uint64
-	if parentId, err = v.lookupDirectories(dirs, false); err != nil {
-		return
-	}
-	// check file
-	var fileInode uint64
-	var lookupMode uint32
-	if fileInode, lookupMode, err = v.mw.Lookup_ll(parentId, filename); err != nil {
-		return
-	}
-	if os.FileMode(lookupMode).IsDir() {
-		return nil, syscall.ENOENT
-	}
-	// read file data
-	var fileInodeInfo *proto.InodeInfo
-	if fileInodeInfo, err = v.mw.InodeGet_ll(fileInode); err != nil {
+	var inode uint64
+	var mode os.FileMode
+	if _, inode, _, mode, err = v.recursiveLookupTarget(path); err != nil {
 		return
 	}
 
-	var xAttrInfo *proto.XAttrInfo
-	if xAttrInfo, err = v.mw.XAttrGet_ll(fileInode, XAttrKeyOSSETag); err != nil {
-		logger.Error("FileInfo: meta get xattr fail, inode(%v) path(%v) err(%v)", fileInode, path, err)
+	// read file data
+	var inoInfo *proto.InodeInfo
+	if inoInfo, err = v.mw.InodeGet_ll(inode); err != nil {
 		return
 	}
-	md5Val := xAttrInfo.Get(XAttrKeyOSSETag)
+
+	var etag string
+	var contentType string
+
+	if mode.IsDir() {
+		etag = EmptyContentMD5String
+		contentType = HeaderValueContentTypeDirectory
+	} else {
+		var xAttrInfo *proto.XAttrInfo
+		if xAttrInfo, err = v.mw.XAttrGet_ll(inode, XAttrKeyOSSETag); err != nil {
+			logger.Error("ObjectMeta: meta get xattr fail, inode(%v) path(%v) err(%v)", inode, path, err)
+			return
+		}
+		etag = string(xAttrInfo.Get(XAttrKeyOSSETag))
+
+		if xAttrInfo, err = v.mw.XAttrGet_ll(inode, XAttrKeyOSSMIME); err != nil {
+			logger.Error("ObjectMeta: meta get xattr fail, inode(%v) path(%v) err(%v)", inode, path, err)
+			return
+		}
+		contentType = string(xAttrInfo.Get(XAttrKeyOSSMIME))
+	}
 
 	info = &FSFileInfo{
 		Path:       path,
-		Size:       int64(fileInodeInfo.Size),
-		Mode:       os.FileMode(fileInodeInfo.Mode),
-		ModifyTime: fileInodeInfo.ModifyTime,
-		ETag:       string(md5Val),
-		Inode:      fileInodeInfo.Inode,
+		Size:       int64(inoInfo.Size),
+		Mode:       os.FileMode(inoInfo.Mode),
+		ModifyTime: inoInfo.ModifyTime,
+		ETag:       etag,
+		Inode:      inoInfo.Inode,
+		MIMEType:   contentType,
 	}
 	return
 }
@@ -1013,6 +1126,93 @@ func (v *Volume) Close() error {
 	return nil
 }
 
+// Find the path recursively and return the exact inode information.
+// When a path conflict is found, for example, a given path is a directory,
+// and the actual search result is a non-directory, an ENOENT error is returned.
+//
+// ENOENT:
+// 		0x2 ENOENT No such file or directory. A component of a specified
+// 		pathname did not exist, or the pathname was an empty string.
+func (v *Volume) recursiveLookupTarget(path string) (parent uint64, ino uint64, name string, mode os.FileMode, err error) {
+	parent = rootIno
+	var pathIterator = NewPathIterator(path)
+	if !pathIterator.HasNext() {
+		err = syscall.ENOENT
+		return
+	}
+	for pathIterator.HasNext() {
+		var pathItem = pathIterator.Next()
+		var curIno uint64
+		var curMode uint32
+		curIno, curMode, err = v.mw.Lookup_ll(parent, pathItem.Name)
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("recursiveLookupPath: lookup fail, parentID(%v) name(%v) fail err(%v)",
+				parent, pathItem.Name, err)
+			return
+		}
+		if err == syscall.ENOENT {
+			return
+		}
+		log.LogDebugf("recursiveLookupPath: lookup item: parentID(%v) inode(%v) name(%v) mode(%v)",
+			parent, curIno, pathItem.Name, os.FileMode(curMode))
+		// Check file mode
+		if os.FileMode(curMode).IsDir() != pathItem.IsDirectory {
+			err = syscall.ENOENT
+			return
+		}
+		if pathIterator.HasNext() {
+			parent = curIno
+			continue
+		}
+		ino = curIno
+		name = pathItem.Name
+		mode = os.FileMode(curMode)
+		break
+	}
+	return
+}
+
+func (v *Volume) recursiveMakeDirectory(path string) (ino uint64, err error) {
+	ino = rootIno
+	var pathIterator = NewPathIterator(path)
+	if !pathIterator.HasNext() {
+		err = syscall.ENOENT
+		return
+	}
+	for pathIterator.HasNext() {
+		var pathItem = pathIterator.Next()
+		if !pathItem.IsDirectory {
+			break
+		}
+		var curIno uint64
+		var curMode uint32
+		curIno, curMode, err = v.mw.Lookup_ll(ino, pathItem.Name)
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("recursiveMakeDirectory: lookup fail, parentID(%v) name(%v) fail err(%v)",
+				ino, pathItem.Name, err)
+			return
+		}
+		if err == syscall.ENOENT {
+			var info *proto.InodeInfo
+			info, err = v.mw.Create_ll(ino, pathItem.Name, uint32(DefaultDirMode), 0, 0, nil)
+			if err != nil {
+				return
+			}
+			curIno, curMode = info.Inode, info.Mode
+		}
+		log.LogDebugf("recursiveMakeDirectory: lookup item: parentID(%v) inode(%v) name(%v) mode(%v)",
+			ino, curIno, pathItem.Name, os.FileMode(curMode))
+		// Check file mode
+		if os.FileMode(curMode).IsDir() != pathItem.IsDirectory {
+			err = syscall.ENOTDIR
+			return
+		}
+		ino = curIno
+	}
+	return
+}
+
+// Deprecated
 func (v *Volume) lookupDirectories(dirs []string, autoCreate bool) (inode uint64, err error) {
 	var parentId = rootIno
 	// check and create dirs
@@ -1029,7 +1229,7 @@ func (v *Volume) lookupDirectories(dirs []string, autoCreate bool) (inode uint64
 		if lookupErr == syscall.ENOENT {
 			var inodeInfo *proto.InodeInfo
 			var createErr error
-			inodeInfo, createErr = v.mw.Create_ll(parentId, dir, uint32(os.ModeDir), 0, 0, nil)
+			inodeInfo, createErr = v.mw.Create_ll(parentId, dir, uint32(DefaultDirMode), 0, 0, nil)
 			if createErr != nil && createErr != syscall.EEXIST {
 				log.LogErrorf("lookupDirectories: meta create fail, parentID(%v) name(%v) mode(%v) err(%v)", parentId, dir, os.ModeDir, createErr)
 				return 0, createErr
@@ -1082,8 +1282,8 @@ func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64) (
 
 	log.LogDebugf("listFilesV1: find parent ID, prefix(%v) marker(%v) delimiter(%v) parentId(%v) dirs(%v)", prefix, marker, delimiter, parentId, len(dirs))
 
-	// recursion call listDir method
-	infos, prefixMap, err = v.listDir(infos, prefixMap, parentId, maxKeys, dirs, prefix, marker, delimiter)
+	// recursion scan
+	infos, prefixMap, err = v.recursiveScan(infos, prefixMap, parentId, maxKeys, dirs, prefix, marker, delimiter)
 	if err == syscall.ENOENT {
 		return nil, nil, nil
 	}
@@ -1092,7 +1292,7 @@ func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64) (
 		return
 	}
 
-	// supply size and MD5
+	// Supplementary file information, such as file modification time, MIME type, Etag information, etc.
 	if err = v.supplyListFileInfo(infos); err != nil {
 		log.LogDebugf("listFilesV1: supply list file info fail, err(%v)", err)
 		return
@@ -1132,8 +1332,8 @@ func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, ma
 
 	log.LogDebugf("listFilesV2: find parent ID, prefix(%v) marker(%v) delimiter(%v) parentId(%v) dirs(%v)", prefix, marker, delimiter, parentId, len(dirs))
 
-	// recursion call listDir method
-	infos, prefixMap, err = v.listDir(infos, prefixMap, parentId, maxKeys, dirs, prefix, marker, delimiter)
+	// recursion scan
+	infos, prefixMap, err = v.recursiveScan(infos, prefixMap, parentId, maxKeys, dirs, prefix, marker, delimiter)
 	if err == syscall.ENOENT {
 		return nil, nil, nil
 	}
@@ -1142,7 +1342,7 @@ func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, ma
 		return
 	}
 
-	// supply size and MD5
+	// Supplementary file information, such as file modification time, MIME type, Etag information, etc.
 	err = v.supplyListFileInfo(infos)
 	if err != nil {
 		log.LogDebugf("listFilesV2: supply list file info fail, err(%v)", err)
@@ -1205,21 +1405,55 @@ func (v *Volume) findParentId(prefix string) (inode uint64, prefixDirs []string,
 	return
 }
 
-func (v *Volume) listDir(fileInfos []*FSFileInfo, prefixMap PrefixMap, parentId, maxKeys uint64, dirs []string, prefix, marker, delimiter string) ([]*FSFileInfo, PrefixMap, error) {
+// Recursive scan of the directory starting from the given parentID. Match files and directories
+// that match the prefix and delimiter criteria. Stop when the number of matches reaches a threshold
+// or all files and directories are scanned.
+func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, parentId, maxKeys uint64,
+	dirs []string, prefix, marker, delimiter string) ([]*FSFileInfo, PrefixMap, error) {
+	var err error
 
-	children, err := v.mw.ReadDir_ll(parentId)
+	if len(dirs) > 0 {
+		// When the current scanning position is not the root directory, a prefix matching
+		// check is performed on the current directory first.
+		//
+		// The reason for this is that according to the definition of Amazon S3's ListObjects
+		// interface, directory entries that meet the exact prefix match will be returned as
+		// a Content result, not as a CommonPrefix.
+		var basePath = strings.Join(dirs, pathSep) + pathSep
+		if strings.HasSuffix(basePath, prefix) {
+			var baseInfo *proto.InodeInfo
+			if baseInfo, err = v.mw.InodeGet_ll(parentId); err != nil {
+				return fileInfos, prefixMap, err
+			}
+			fileInfo := &FSFileInfo{
+				Inode: baseInfo.Inode,
+				Path:  basePath,
+				Mode:  os.FileMode(baseInfo.Mode),
+			}
+			fileInfos = append(fileInfos, fileInfo)
+
+			// If the number of matches reaches the threshold given by maxKey,
+			// stop scanning and return results.
+			if len(fileInfos) >= int(maxKeys+1) {
+				return fileInfos, prefixMap, nil
+			}
+		}
+	}
+
+	var children []proto.Dentry
+	children, err = v.mw.ReadDir_ll(parentId)
 	if err != nil {
 		return fileInfos, prefixMap, err
 	}
 
 	for _, child := range children {
 
-		var path = strings.Join(append(dirs, child.Name), "/")
+		var path = strings.Join(append(dirs, child.Name), pathSep)
 
 		if os.FileMode(child.Type).IsDir() {
-			path += "/"
+			path += pathSep
 		}
-		log.LogDebugf("listDir: process child, path(%v) prefix(%v) marker(%v) delimiter(%v)",
+		log.LogDebugf("recursiveScan: process child, path(%v) prefix(%v) marker(%v) delimiter(%v)",
 			path, prefix, marker, delimiter)
 
 		if prefix != "" && !strings.HasPrefix(path, prefix) {
@@ -1237,7 +1471,7 @@ func (v *Volume) listDir(fileInfos []*FSFileInfo, prefixMap PrefixMap, parentId,
 			}
 		}
 		if os.FileMode(child.Type).IsDir() {
-			fileInfos, prefixMap, err = v.listDir(fileInfos, prefixMap, child.Inode, maxKeys, append(dirs, child.Name), prefix, marker, delimiter)
+			fileInfos, prefixMap, err = v.recursiveScan(fileInfos, prefixMap, child.Inode, maxKeys, append(dirs, child.Name), prefix, marker, delimiter)
 			if err != nil {
 				return fileInfos, prefixMap, err
 			}
@@ -1257,8 +1491,9 @@ func (v *Volume) listDir(fileInfos []*FSFileInfo, prefixMap PrefixMap, parentId,
 	return fileInfos, prefixMap, nil
 }
 
+// This method is used to supplement file metadata. Supplement the specified file
+// information with Size, ModifyTIme, Mode, Etag, and MIME type information.
 func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
-	// get all file info indoes
 	inoInfoMap := make(map[uint64]*proto.InodeInfo)
 	var inodes []uint64
 	for _, fileInfo := range fileInfos {
@@ -1288,15 +1523,23 @@ func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 		return
 	}
 	for _, xAttrInfo := range batchXAttrInfos {
-		md5Map[xAttrInfo.Inode] = string(xAttrInfo.Get(XAttrKeyOSSETag))
+		etagVal := xAttrInfo.Get(XAttrKeyOSSETag)
+		if len(etagVal) > 0 {
+			md5Map[xAttrInfo.Inode] = string(xAttrInfo.Get(XAttrKeyOSSETag))
+		}
 	}
 	for _, fileInfo := range fileInfos {
+		if fileInfo.Mode.IsDir() {
+			fileInfo.ETag = EmptyContentMD5String
+			continue
+		}
 		fileInfo.ETag = md5Map[fileInfo.Inode]
 	}
 	return
 }
 
-func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) ([]*FSUpload, string, string, bool, []string, error) {
+func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multipartIdMarker string,
+	maxUploads uint64) ([]*FSUpload, string, string, bool, []string, error) {
 	sessions, err := v.mw.ListMultipart_ll(prefix, delimiter, keyMarker, multipartIdMarker, maxUploads)
 	if err != nil {
 		return nil, "", "", false, nil, err
@@ -1310,7 +1553,6 @@ func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multi
 	var NextMarker string
 	var NextSessionIdMarker string
 	var IsTruncated bool
-	//var sessionResult []*proto.MultipartInfo
 
 	if len(sessions) == 0 {
 		return nil, "", "", false, nil, nil
@@ -1415,7 +1657,7 @@ func (v *Volume) CopyFile(targetPath, sourcePath string) (info *FSFileInfo, err 
 		return nil, err
 	}
 
-	inodeInfo, err := v.copyFile(newParentId, newFilename, sourceFileInode, 0600)
+	inodeInfo, err := v.copyFile(newParentId, newFilename, sourceFileInode, DefaultFileMode)
 	if err != nil {
 		log.LogErrorf("CopyFile: meta copy file fail: newParentID(%v) newName(%v) sourceIno(%v) err(%v)",
 			newParentId, newFilename, sourceFileInode, err)

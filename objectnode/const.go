@@ -14,6 +14,8 @@
 
 package objectnode
 
+import "os"
+
 type OSSOperation string
 
 const (
@@ -49,10 +51,11 @@ const (
 )
 
 const (
-	HeaderValueServer         = "ChubaoFS"
-	HeaderValueAcceptRange    = "bytes"
-	HeaderValueTypeStream     = "application/octet-stream"
-	HeaderValueContentTypeXML = "application/xml"
+	HeaderValueServer               = "ChubaoFS"
+	HeaderValueAcceptRange          = "bytes"
+	HeaderValueTypeStream           = "application/octet-stream"
+	HeaderValueContentTypeXML       = "application/xml"
+	HeaderValueContentTypeDirectory = "application/directory"
 )
 
 const (
@@ -91,9 +94,10 @@ const (
 
 // XAttr keys for ObjectNode compatible feature
 const (
-	XAttrKeyOSSETag    = "oss:etag"
+	XAttrKeyOSSETag    = "oss:tag"
 	XAttrKeyOSSTagging = "oss:tagging"
 	XAttrKeyOSSPolicy  = "oss:policy"
+	XAttrKeyOSSMIME    = "oss:mime"
 )
 
 const (
@@ -102,4 +106,9 @@ const (
 
 const (
 	EmptyContentMD5String = "d41d8cd98f00b204e9800998ecf8427e"
+)
+
+const (
+	DefaultFileMode = 0644
+	DefaultDirMode  = DefaultFileMode | os.ModeDir
 )
