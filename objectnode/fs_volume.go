@@ -65,6 +65,9 @@ type VolumeConfig struct {
 	// This is a required configuration item.
 	Masters []string
 
+	// Storage fro ACP management
+	Store Store
+
 	// Callback method for notifying when an error occurs in an asynchronous task.
 	// Such as Volume topology and metadata update tasks.
 	// This is a optional configuration item.
@@ -113,7 +116,7 @@ func (v *Volume) storeACL(p *AccessControlPolicy) {
 type Volume struct {
 	mw         *meta.MetaWrapper
 	ec         *stream.ExtentClient
-	vm         *VolumeManager
+	store      Store // Storage for ACP management
 	name       string
 	om         *OSSMeta
 	ticker     *time.Ticker
@@ -169,13 +172,8 @@ func (v *Volume) Name() string {
 
 // load bucket policy from vm
 func (v *Volume) loadBucketPolicy() (policy *Policy, err error) {
-	var store Store
-	store, err = v.vm.GetStore()
-	if err != nil {
-		return
-	}
 	var data []byte
-	data, err = store.Get(v.name, bucketRootPath, XAttrKeyOSSPolicy)
+	data, err = v.store.Get(v.name, bucketRootPath, XAttrKeyOSSPolicy)
 	if err != nil {
 		log.LogErrorf("loadBucketPolicy: load bucket policy fail: Volume(%v) err(%v)", v.name, err)
 		return
@@ -188,11 +186,7 @@ func (v *Volume) loadBucketPolicy() (policy *Policy, err error) {
 }
 
 func (v *Volume) loadBucketACL() (*AccessControlPolicy, error) {
-	store, err1 := v.vm.GetStore()
-	if err1 != nil {
-		return nil, err1
-	}
-	data, err2 := store.Get(v.name, bucketRootPath, OSS_ACL_KEY)
+	data, err2 := v.store.Get(v.name, bucketRootPath, OSS_ACL_KEY)
 	if err2 != nil {
 		return nil, err2
 	}
@@ -1731,6 +1725,7 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		mw:         metaWrapper,
 		ec:         extentClient,
 		name:       config.Volume,
+		store:      config.Store,
 		om:         new(OSSMeta),
 		createTime: metaWrapper.VolCreateTime(),
 		closeCh:    make(chan struct{}),

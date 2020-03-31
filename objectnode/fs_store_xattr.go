@@ -35,7 +35,7 @@ func (s *xattrStore) Init(vm *VolumeManager) {
 }
 
 func (s *xattrStore) getInode(vol, path string) (*Volume, uint64, error) {
-	v, err := s.vm.loadVolume(vol)
+	v, err := s.vm.Volume(vol)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -56,7 +56,7 @@ func (s *xattrStore) getInode(vol, path string) (*Volume, uint64, error) {
 }
 
 func (s *xattrStore) Put(vol, path, key string, data []byte) (err error) {
-	v, err1 := s.vm.loadVolume(vol)
+	v, err1 := s.vm.Volume(vol)
 	if err1 != nil {
 		err = err1
 		return
@@ -70,7 +70,7 @@ func (s *xattrStore) Put(vol, path, key string, data []byte) (err error) {
 
 func (s *xattrStore) Get(vol, path, key string) (val []byte, err error) {
 	var v *Volume
-	v, err = s.vm.loadVolume(vol)
+	v, err = s.vm.Volume(vol)
 	if err != nil {
 		return
 	}

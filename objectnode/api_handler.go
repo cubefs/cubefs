@@ -99,7 +99,7 @@ func (o *ObjectNode) getVol(bucket string) (vol *Volume, err error) {
 	if bucket == "" {
 		return nil, errors.New("bucket name is empty")
 	}
-	vol, err = o.vm.loadVolume(bucket)
+	vol, err = o.vm.Volume(bucket)
 	if err != nil {
 		log.LogErrorf("getVol: load Volume fail, bucket(%v) err(%v)", bucket, err)
 		return nil, err

@@ -19,6 +19,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/chubaofs/chubaofs/util/config"
@@ -30,11 +31,50 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Configuration keys
+// Configuration items that act on the ObjectNode.
 const (
-	configListen                  = "listen"
-	configDomains                 = "domains"
-	configEnableHTTPS             = "enableHTTPS"
+	// String type configuration type, used to configure the listening port number of the service.
+	// Example:
+	//		{
+	//			"listen": "80"
+	//		}
+	configListen = proto.ListenPort
+
+	// String array configuration item, used to configure the hostname or IP address of the cluster master node.
+	// The ObjectNode needs to communicate with the Master during the startup and running process to update the
+	// cluster, user and volume information.
+	// Example:
+	//		{
+	//			"masterAddr":[
+	//				"master1.chubao.io",
+	//				"master2.chubao.io",
+	//				"master3.chubao.io"
+	//			]
+	//		}
+	configMasterAddr = proto.MasterAddr
+
+	// A bool type configuration is used to ensure that the topology information is consistent with the cluster
+	// in real time during the compatibility test. If true, the object node will not cache user information and
+	// volume topology. This configuration will cause a drastic decrease in performance after being turned on,
+	// and can only be turned on for protocol compatibility testing.
+	// Example:
+	//		{
+	//			"strict": true
+	//		}
+	configStrict = "strict"
+
+	// The character creation array configuration item is used to configure the domain name bound to the object
+	// storage interface. You can bind multiple. ObjectNode uses this configuration to implement automatic
+	// resolution of pan-domain names.
+	// Example:
+	//		{
+	//			"domains": [
+	//				"object.chubao.io"
+	//			]
+	//		}
+	// The configuration in the example will allow ObjectNode to automatically resolve "* .object.chubao.io".
+	configDomains = "domains"
+
 	configSignatureIgnoredActions = "signatureIgnoredActions"
 )
 
@@ -44,6 +84,8 @@ const (
 )
 
 var (
+	// Regular expression used to verify the configuration of the service listening port.
+	// A valid service listening port configuration is a string containing only numbers.
 	regexpListen = regexp.MustCompile("^(\\d)+$")
 )
 
@@ -57,7 +99,7 @@ type ObjectNode struct {
 	mc         *master.MasterClient
 	state      uint32
 	wg         sync.WaitGroup
-	userStore  *UserStore //k: ak, v: userInfo
+	userStore  UserInfoStore
 
 	signatureIgnoredActions proto.Actions // signature ignored actions
 
@@ -78,7 +120,7 @@ func (o *ObjectNode) Sync() {
 
 func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	// parse listen
-	listen := cfg.GetString(proto.ListenPort)
+	listen := cfg.GetString(configListen)
 	if len(listen) == 0 {
 		listen = defaultListen
 	}
@@ -98,12 +140,11 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	log.LogInfof("loadConfig: setup config: %v(%v)", configDomains, domains)
 
 	// parse master config
-	enableHTTPS := cfg.GetBool(configEnableHTTPS)
-	masters := cfg.GetStringSlice(proto.MasterAddr)
+	masters := cfg.GetStringSlice(configMasterAddr)
 	if len(masters) == 0 {
-		return config.NewIllegalConfigError(proto.MasterAddr)
+		return config.NewIllegalConfigError(configMasterAddr)
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", proto.MasterAddr, masters)
+	log.LogInfof("loadConfig: setup config: %v(%v)", configMasterAddr, strings.Join(masters, ","))
 
 	// parse signature ignored actions
 	signatureIgnoredActionNames := cfg.GetStringSlice(configSignatureIgnoredActions)
@@ -115,11 +156,13 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 		}
 	}
 
+	// parse strict config
+	strict := cfg.GetBool(configStrict)
+	log.LogInfof("loadConfig: strict: %v", strict)
+
 	o.mc = master.NewMasterClient(masters, false)
 	o.vm = NewVolumeManager(masters)
-	o.vm.InitStore(new(xattrStore))
-	o.vm.InitMasterClient(masters, enableHTTPS)
-	o.userStore = o.newUserStore()
+	o.userStore = NewUserInfoStore(masters, strict)
 
 	return
 }

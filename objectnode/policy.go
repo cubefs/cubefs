@@ -86,11 +86,6 @@ func parseArn(str string) (*Arn, error) {
 
 // write bucket policy into store and update vol policy meta
 func storeBucketPolicy(bytes []byte, vol *Volume) (*Policy, error) {
-	store, err1 := vol.vm.GetStore()
-	if err1 != nil {
-		return nil, err1
-	}
-
 	policy := &Policy{}
 	err2 := json.Unmarshal(bytes, policy)
 	if err2 != nil {
@@ -109,7 +104,7 @@ func storeBucketPolicy(bytes []byte, vol *Volume) (*Policy, error) {
 	}
 
 	// put policy bytes into store
-	err4 := store.Put(vol.name, bucketRootPath, XAttrKeyOSSPolicy, bytes)
+	err4 := vol.store.Put(vol.name, bucketRootPath, XAttrKeyOSSPolicy, bytes)
 	if err4 != nil {
 		return nil, err4
 	}

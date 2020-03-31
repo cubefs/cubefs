@@ -256,17 +256,12 @@ func ParseACL(bytes []byte, bucket string) (*AccessControlPolicy, error) {
 }
 
 func storeBucketACL(bytes []byte, vol *Volume) (*AccessControlPolicy, error) {
-	store, err1 := vol.vm.GetStore()
-	if err1 != nil {
-		return nil, err1
-	}
-
 	acl, err3 := ParseACL(bytes, vol.name)
 	if err3 != nil {
 		return nil, err3
 	}
 
-	err4 := store.Put(vol.name, bucketRootPath, OSS_ACL_KEY, bytes)
+	err4 := vol.store.Put(vol.name, bucketRootPath, OSS_ACL_KEY, bytes)
 	if err4 != nil {
 		return nil, err4
 	}
