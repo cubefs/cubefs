@@ -221,7 +221,7 @@ func mount(opt *proto.MountOptions) (*fuse.MountedFileSystem, error) {
 		os.Exit(1)
 	}
 
-	opt.Rdonly = (super.TokenType() == int8(proto.ReadOnlyToken)) && opt.Rdonly
+	opt.Rdonly = (super.TokenType() == int8(proto.ReadOnlyToken)) || opt.Rdonly
 
 	server := fuseutil.NewFileSystemServer(super)
 	mntcfg := &fuse.MountConfig{

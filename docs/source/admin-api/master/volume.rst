@@ -19,6 +19,7 @@ Create
    "capacity", "int", "the quota of vol,unit is GB"
    "owner", "string", "the owner of vol"
    "mpCount", "int", "the amount of initial meta partitions"
+   "enableToken","bool","whether to enable the token mechanism to control client permissions"
 
 Delete
 -------------
@@ -90,7 +91,8 @@ response
    {
        "Name": "test",
        "TotalSize": 322122547200000000,
-       "UsedSize": 15551511283278
+       "UsedSize": 15551511283278,
+       "EnableToken": false
    }
 
 
@@ -109,3 +111,68 @@ add the vol quota
    "name", "string", ""
    "capacity", "int", "the quota of vol, unit is GB"
    "authKey", "string", "calculates the MD5 value of the owner field  as authentication information"
+   "enableToken","bool","whether to enable the token mechanism to control client permissions"
+
+Add Token
+------------
+
+.. code-block:: bash
+
+   curl -v "http://10.196.59.198:17010/token/add?name=test&tokenType=1&authKey=md5(owner)"
+
+add the token
+
+.. csv-table:: Parameters
+   :header: "Parameter", "Type", "Description"
+
+   "name", "string", "the name of vol"
+   "tokenType", "int", "1 is readonly token, 2 is readWrite token"
+   "authKey", "string", "calculates the MD5 value of the owner field  as authentication information"
+
+Update Token
+---------------
+
+.. code-block:: bash
+
+   curl -v "http://10.196.59.198:17010/token/update?name=test&token=xx&tokenType=1&authKey=md5(owner)"
+
+update token type
+
+.. csv-table:: Parameters
+   :header: "Parameter", "Type", "Description"
+
+   "name", "string", "the name of vol"
+   "token", "string","the token value"
+   "tokenType", "int", "1 is readonly token, 2 is readWrite token"
+   "authKey", "string", "calculates the MD5 value of the owner field  as authentication information"
+
+Delete Token
+---------------
+
+.. code-block:: bash
+
+   curl -v "http://10.196.59.198:17010/token/delete?name=test&token=xx&authKey=md5(owner)"
+
+delete token
+
+.. csv-table:: Parameters
+   :header: "Parameter", "Type", "Description"
+
+   "name", "string", "the name of vol"
+   "token", "string","the token value"
+   "authKey", "string", "calculates the MD5 value of the owner field  as authentication information"
+
+Get Token
+------------
+
+.. code-block:: bash
+
+   curl -v "http://10.196.59.198:17010/token/get?name=test&token=xx"
+
+show token information
+
+.. csv-table:: Parameters
+   :header: "Parameter", "Type", "Description"
+
+   "name", "string", "the name of vol"
+   "token", "string","the token value"

@@ -68,7 +68,7 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
 	}
-	if err = w.updateDataPartition(); err != nil {
+	if err = w.updateDataPartition(true); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
 	}
@@ -119,14 +119,14 @@ func (w *Wrapper) update() {
 	for {
 		select {
 		case <-ticker.C:
-			w.updateDataPartition()
+			w.updateDataPartition(false)
 		case <-w.stopC:
 			return
 		}
 	}
 }
 
-func (w *Wrapper) updateDataPartition() (err error) {
+func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 
 	var dpv *proto.DataPartitionsView
 	if dpv, err = w.mc.ClientAPI().GetDataPartitions(w.volName); err != nil {
@@ -153,7 +153,8 @@ func (w *Wrapper) updateDataPartition() (err error) {
 		}
 	}
 
-	if len(rwPartitionGroups) >= MinWriteAbleDataPartitionCnt {
+	// isInit used to identify whether this call is caused by mount action
+	if isInit || (len(rwPartitionGroups) >= MinWriteAbleDataPartitionCnt) {
 		w.rwPartition = rwPartitionGroups
 		w.localLeaderPartitions = localLeaderPartitionGroups
 	} else {

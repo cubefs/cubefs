@@ -337,7 +337,7 @@ func (u *User) transferVol(params *proto.UserTransferVolParam) (targetUserInfo *
 	}
 	if err == nil {
 		var isOwned = userInfo.Policy.IsOwn(params.Volume)
-		if !isOwned && !params.Force {
+		if !isOwned && !params.Force && params.UserSrc != params.UserDst {
 			err = proto.ErrHaveNoPolicy
 			return
 		}

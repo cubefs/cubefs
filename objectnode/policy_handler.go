@@ -35,26 +35,25 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		ec = &InvalidBucketName
+		ec = InvalidBucketName
 		return
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("getBucketPolicyHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		ec = &NoSuchBucket
+		ec = NoSuchBucket
 		return
 	}
 	ossMeta := vol.OSSMeta()
 	if ossMeta == nil {
-		ec = &InternalError
-		return
+		ossMeta = &OSSMeta{}
 	}
 
-	policyData, err2 := json.Marshal(ossMeta.policy)
-	if err2 != nil {
-		err = err2
-		ec = &InternalError
+	var policyData []byte
+	policyData, err = json.Marshal(ossMeta.policy)
+	if err != nil {
+		ec = InternalErrorCode(err)
 		return
 	}
 
@@ -72,19 +71,19 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		ec = &InvalidBucketName
+		ec = InvalidBucketName
 		return
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("putBucketPolicyHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		ec = &NoSuchBucket
+		ec = NoSuchBucket
 		return
 	}
 
 	if r.ContentLength > BucketPolicyLimitSize {
-		ec = &MaxContentLength
+		ec = MaxContentLength
 		return
 	}
 
@@ -104,7 +103,7 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	policy, err = storeBucketPolicy(bytes, vol)
 	if err != nil {
 		log.LogErrorf("putBucketPolicyHandler: store policy fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		ec = &InternalError
+		ec = InternalErrorCode(err)
 		return
 	}
 
@@ -126,7 +125,7 @@ func (o *ObjectNode) deleteBucketPolicyHandler(w http.ResponseWriter, r *http.Re
 	bucket := vars["bucket"]
 	if bucket == "" {
 		err = errors.New("")
-		ec = &NoSuchBucket
+		ec = NoSuchBucket
 		return
 	}
 

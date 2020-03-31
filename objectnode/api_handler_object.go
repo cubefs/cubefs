@@ -24,12 +24,12 @@ import (
 	"io/ioutil"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/chubaofs/chubaofs/proto"
 
-	"sync"
 	"syscall"
 
 	"github.com/chubaofs/chubaofs/util/log"
@@ -59,18 +59,18 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var param = ParseRequestParam(r)
 
 	if param.Bucket() == "" {
-		errorCode = &InvalidBucketName
+		errorCode = InvalidBucketName
 		return
 	}
 	if param.Object() == "" {
-		errorCode = &InvalidKey
+		errorCode = InvalidKey
 		return
 	}
 	var vol *Volume
 	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
 		log.LogErrorf("getObjectHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = &NoSuchBucket
+		errorCode = NoSuchBucket
 		return
 	}
 	// parse http range option
@@ -124,9 +124,9 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get object meta
 	var fileInfo *FSFileInfo
-	if fileInfo, err = vol.FileInfo(param.Object()); err != nil {
+	if fileInfo, err = vol.ObjectMeta(param.Object()); err != nil {
 		log.LogErrorf("getObjectHandler: Volume get file info fail, requestId(%v) err(%v)", GetRequestID(r), err)
-		errorCode = &NoSuchKey
+		errorCode = NoSuchKey
 		return
 	}
 
@@ -147,11 +147,19 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set(HeaderNameAcceptRange, HeaderValueAcceptRange)
 	w.Header().Set(HeaderNameLastModified, formatTimeRFC1123(fileInfo.ModifyTime))
-	w.Header().Set(HeaderNameContentType, HeaderValueTypeStream)
+	if len(fileInfo.MIMEType) > 0 {
+		w.Header().Set(HeaderNameContentType, fileInfo.MIMEType)
+	} else {
+		w.Header().Set(HeaderNameContentType, HeaderValueTypeStream)
+	}
 	w.Header().Set(HeaderNameContentLength, strconv.FormatUint(contentLength, 10))
 
 	if isRangeRead {
 		w.Header().Set(HeaderNameContentRange, fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size))
+	}
+
+	if fileInfo.Mode.IsDir() {
+		return
 	}
 
 	// get object content
@@ -167,7 +175,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if err = vol.ReadFile(param.Object(), w, offset, size); err != nil {
 		log.LogErrorf("getObjectHandler: read from Volume fail: requestId(%v) Volume(%v) path(%v) offset(%v) size(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), offset, size, err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 	log.LogDebugf("getObjectHandler: Volume read file: requestID(%v) Volume(%v) path(%v) offset(%v) size(%v)",
@@ -194,11 +202,11 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// check args
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		errorCode = &InvalidBucketName
+		errorCode = InvalidBucketName
 		return
 	}
 	if param.Object() == "" {
-		errorCode = &InvalidKey
+		errorCode = InvalidKey
 		return
 	}
 
@@ -206,21 +214,21 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
 		log.LogErrorf("headObjectHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = &NoSuchBucket
+		errorCode = NoSuchBucket
 		return
 	}
 
 	// get object meta
 	var fileInfo *FSFileInfo
-	fileInfo, err = vol.FileInfo(param.Object())
+	fileInfo, err = vol.ObjectMeta(param.Object())
 	if err != nil && err == syscall.ENOENT {
 		log.LogErrorf("headObjectHandler: get file meta fail, requestId(%v), err(%v)", GetRequestID(r), err)
-		errorCode = &NoSuchKey
+		errorCode = NoSuchKey
 		return
 	}
 	if err != nil {
 		log.LogErrorf("headObjectHandler: get file meta fail, requestId(%v), err(%v)", GetRequestID(r), err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -229,7 +237,11 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(HeaderNameETag, fileInfo.ETag)
 	}
 	w.Header().Set(HeaderNameAcceptRange, HeaderValueAcceptRange)
-	w.Header().Set(HeaderNameContentType, HeaderValueTypeStream)
+	if len(fileInfo.MIMEType) > 0 {
+		w.Header().Set(HeaderNameContentType, fileInfo.MIMEType)
+	} else {
+		w.Header().Set(HeaderNameContentType, HeaderValueTypeStream)
+	}
 	w.Header().Set(HeaderNameLastModified, formatTimeRFC1123(fileInfo.ModifyTime))
 	w.Header().Set(HeaderNameContentLength, strconv.Itoa(int(fileInfo.Size)))
 	w.Header().Set(HeaderNameContentMD5, EmptyContentMD5String)
@@ -256,14 +268,14 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		errorCode = &InvalidBucketName
+		errorCode = InvalidBucketName
 		return
 	}
 
 	var vol *Volume
 	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
 		log.LogErrorf("deleteObjectsHandler: load volume fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = &NoSuchBucket
+		errorCode = NoSuchBucket
 		return
 	}
 
@@ -271,7 +283,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	bytes, err = ioutil.ReadAll(r.Body)
 	if err != nil && err != io.EOF {
 		log.LogErrorf("deleteObjectsHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -280,77 +292,59 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		log.LogErrorf("deleteObjectsHandler: unmarshal xml fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = &InvalidArgument
+		errorCode = InvalidArgument
 		return
 	}
 
 	if len(deleteReq.Objects) <= 0 {
 		log.LogDebugf("deleteObjectsHandler: non objects found in request: requestID(%v)", GetRequestID(r))
-		errorCode = &InvalidArgument
+		errorCode = InvalidArgument
 		return
 	}
 
-	var wg sync.WaitGroup
 	deletesResult := DeletesResult{
 		DeletedObjects: make([]Deleted, 0),
 		DeletedErrors:  make([]Error, 0),
 	}
-	deletedObjectsCh := make(chan *Deleted, len(deleteReq.Objects))
-	deletedErrorsCh := make(chan *Error, len(deleteReq.Objects))
+	deletedObjects := make([]Deleted, 0, len(deleteReq.Objects))
+	deletedErrors := make([]Error, 0)
+
+	// Sort the key values in reverse order.
+	// The purpose of this is to delete the child leaf first and then the parent node.
+	// Source:
+	//  0. backup/
+	//  1. backup/20200101.bak
+	//  2. backup/20200102.bak
+	// Result:
+	//  0. backup/20200102.bak
+	//  1. backup/20200101.bak
+	//  2. backup/
+	sort.SliceStable(deleteReq.Objects, func(i, j int) bool {
+		return deleteReq.Objects[i].Key > deleteReq.Objects[j].Key
+	})
 
 	for _, object := range deleteReq.Objects {
-		wg.Add(1)
-		go func(obj Object) {
-			defer func() {
-				wg.Done()
-				if errDelete := recover(); errDelete != nil {
-					deletedError := Error{
-						Key:     obj.Key,
-						Code:    strconv.Itoa(InternalError.StatusCode),
-						Message: InternalError.ErrorMessage,
-					}
-					deletedErrorsCh <- &deletedError
-				}
-			}()
-
-			err = vol.DeleteFile(obj.Key)
-			if err != nil {
-				ossError := transferError(obj.Key, err)
-				deletedErrorsCh <- &ossError
-			} else {
-				deleted := Deleted{Key: obj.Key}
-				deletedObjectsCh <- &deleted
-				log.LogDebugf("deleteObjectsHandler: delete object: requestID(%v) key(%v)", GetRequestID(r),
-					deleted.Key)
-			}
-		}(object)
-	}
-
-	wg.Wait()
-	close(deletedObjectsCh)
-	close(deletedErrorsCh)
-
-	for {
-		deletedObject := <-deletedObjectsCh
-		if deletedObject == nil {
-			break
+		err = vol.DeletePath(object.Key)
+		if err != nil {
+			ossError := transferError(object.Key, err)
+			deletedErrors = append(deletedErrors, ossError)
+		} else {
+			deleted := Deleted{Key: object.Key}
+			deletedObjects = append(deletedObjects, deleted)
+			log.LogDebugf("deleteObjectsHandler: delete object: requestID(%v) key(%v)", GetRequestID(r),
+				deleted.Key)
 		}
-		deletesResult.DeletedObjects = append(deletesResult.DeletedObjects, *deletedObject)
 	}
-	for {
-		deletedError := <-deletedErrorsCh
-		if deletedError == nil {
-			break
-		}
-		deletesResult.DeletedErrors = append(deletesResult.DeletedErrors, *deletedError)
-	}
+
+	deletesResult.DeletedObjects = deletedObjects
+	deletesResult.DeletedErrors = deletedErrors
 
 	log.LogDebugf("deleteObjectsHandler: delete objects: deletes(%v) errors(%v)", len(deletesResult.DeletedObjects), len(deletesResult.DeletedErrors))
 	var bytesRes []byte
 	var marshalError error
 	if bytesRes, marshalError = MarshalXMLEntity(deletesResult); marshalError != nil {
 		log.LogErrorf("deleteObjectsHandler: marshal xml entity fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -397,18 +391,18 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		errorCode = &InvalidBucketName
+		errorCode = InvalidBucketName
 		return
 	}
 	if param.Object() == "" {
-		errorCode = &InvalidKey
+		errorCode = InvalidKey
 		return
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("copyObjectHandler: load volume fail: requestID(%v) err(%v)",
 			getRequestIP(r), err)
-		errorCode = &NoSuchBucket
+		errorCode = NoSuchBucket
 		return
 	}
 
@@ -416,27 +410,27 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if param.Bucket() != sourceBucket {
 		log.LogDebugf("copyObjectHandler: source bucket is not same with bucket: requestID(%v) target(%v) source(%v)",
 			GetRequestID(r), param.Bucket(), sourceBucket)
-		errorCode = &UnsupportedOperation
+		errorCode = UnsupportedOperation
 		return
 	}
 
 	if sourceObject == param.Object() {
 		log.LogErrorf("copyObjectHandler: source object same with target object: requestID(%v) target(%v) source(%v)",
 			GetRequestID(r), param.Object(), sourceObject)
-		errorCode = &InvalidArgument
+		errorCode = InvalidArgument
 		return
 	}
 
 	// get object meta
 	var fileInfo *FSFileInfo
-	fileInfo, err = vol.FileInfo(sourceObject)
+	fileInfo, err = vol.ObjectMeta(sourceObject)
 	if err != nil {
 		if err == syscall.ENOENT {
-			errorCode = &NoSuchKey
+			errorCode = NoSuchKey
 			return
 		}
 		log.LogErrorf("copyObjectHandler: volume get file info fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -452,12 +446,12 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		modifiedTime, err := parseTimeRFC1123(modified)
 		if err != nil {
 			log.LogErrorf("copyObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
-			errorCode = &InvalidArgument
+			errorCode = InvalidArgument
 			return
 		}
 		if fileModTime.Before(modifiedTime) {
 			log.LogInfof("copyObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
-			errorCode = &PreconditionFailed
+			errorCode = PreconditionFailed
 			return
 		}
 	}
@@ -466,23 +460,23 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		unmodifiedTime, err := parseTimeRFC1123(unModified)
 		if err != nil {
 			log.LogErrorf("copyObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
-			errorCode = &InvalidArgument
+			errorCode = InvalidArgument
 			return
 		}
 		if fileModTime.After(unmodifiedTime) {
 			log.LogInfof("copyObjectHandler: file modified time not before than specified time: requestID(%v)", GetRequestID(r))
-			errorCode = &PreconditionFailed
+			errorCode = PreconditionFailed
 			return
 		}
 	}
 	if copyMatch != "" && fileInfo.ETag != copyMatch {
 		log.LogInfof("copyObjectHandler: eTag mismatched with specified: requestID(%v)", GetRequestID(r))
-		errorCode = &PreconditionFailed
+		errorCode = PreconditionFailed
 		return
 	}
 	if noneMatch != "" && fileInfo.ETag == noneMatch {
 		log.LogInfof("copyObjectHandler: eTag same with specified: requestID(%v)", GetRequestID(r))
-		errorCode = &PreconditionFailed
+		errorCode = PreconditionFailed
 		return
 	}
 
@@ -490,7 +484,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.LogErrorf("copyObjectHandler: Volume copy file fail: requestID(%v) Volume(%v) source(%v) target(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), sourceObject, param.Object(), err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -502,7 +496,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var bytes []byte
 	if bytes, err = MarshalXMLEntity(copyResult); err != nil {
 		log.LogErrorf("copyObjectHandler: marshal xml entity fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -527,14 +521,14 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		errorCode = &InvalidBucketName
+		errorCode = InvalidBucketName
 		return
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("getBucketV1Handler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = &NoSuchBucket
+		errorCode = NoSuchBucket
 		return
 	}
 	// get options
@@ -568,7 +562,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	fsFileInfos, nextMarker, isTruncated, prefixes, err := vol.ListFilesV1(listBucketRequest)
 	if err != nil {
 		log.LogErrorf("getBucketV1Handler: list file fail, requestID(%v), err(%v)", getRequestIP(r), err)
-		errorCode = &InvalidArgument
+		errorCode = InvalidArgument
 		return
 	}
 
@@ -580,7 +574,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 			content := &Content{
 				Key:          fsFileInfo.Path,
 				LastModified: formatTimeISO(fsFileInfo.ModifyTime),
-				ETag:         fsFileInfo.ETag,
+				ETag:         wrapUnescapedQuot(fsFileInfo.ETag),
 				Size:         int(fsFileInfo.Size),
 				StorageClass: StorageClassStandard,
 				Owner:        bucketOwner,
@@ -613,7 +607,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	var marshalError error
 	if bytes, marshalError = MarshalXMLEntity(listBucketResult); marshalError != nil {
 		log.LogErrorf("getBucketV1Handler: marshal result fail, requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = &InvalidArgument
+		errorCode = InvalidArgument
 		return
 	}
 
@@ -639,14 +633,14 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		errorCode = &InvalidBucketName
+		errorCode = InvalidBucketName
 		return
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("getBucketV2Handler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = &NoSuchBucket
+		errorCode = NoSuchBucket
 		return
 	}
 
@@ -664,7 +658,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		if err != nil {
 			log.LogErrorf("getBucketV2Handler: parse max keys fail, requestID(%v) err(%v)",
 				GetRequestID(r), err)
-			errorCode = &InvalidArgument
+			errorCode = InvalidArgument
 			return
 		}
 		if maxKeysInt > MaxKeys {
@@ -679,7 +673,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		fetchOwnerBool, err = strconv.ParseBool(fetchOwner)
 		if err != nil {
 			log.LogErrorf("getBucketV2Handler: requestID(%v) err(%v)", GetRequestID(r), err)
-			errorCode = &InvalidArgument
+			errorCode = InvalidArgument
 			return
 		}
 	} else {
@@ -698,7 +692,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	fsFileInfos, keyCount, nextToken, isTruncated, prefixes, err := vol.ListFilesV2(request)
 	if err != nil {
 		log.LogErrorf("getBucketV2Handler: request id [%v], Get files list failed cause : %v", r.URL, err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 	// get owner
@@ -713,7 +707,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 			content := &Content{
 				Key:          fsFileInfo.Path,
 				LastModified: formatTimeISO(fsFileInfo.ModifyTime),
-				ETag:         fsFileInfo.ETag,
+				ETag:         wrapUnescapedQuot(fsFileInfo.ETag),
 				Size:         int(fsFileInfo.Size),
 				StorageClass: StorageClassStandard,
 				Owner:        bucketOwner,
@@ -747,7 +741,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	var marshalError error
 	if bytes, marshalError = MarshalXMLEntity(listBucketResult); marshalError != nil {
 		log.LogErrorf("getBucketV2Handler: marshal result fail, requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = &InvalidArgument
+		errorCode = InvalidArgument
 		return
 	}
 
@@ -775,18 +769,18 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		errorCode = &InvalidBucketName
+		errorCode = InvalidBucketName
 		return
 	}
 	if param.Object() == "" {
-		errorCode = &InvalidKey
+		errorCode = InvalidKey
 		return
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("putObjectHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = &NoSuchBucket
+		errorCode = NoSuchBucket
 		return
 	}
 
@@ -798,34 +792,19 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		checkMD5 = true
 	}
 
-	var multipartID string
-	if multipartID, err = vol.InitMultipart(param.Object()); err != nil {
-		log.LogErrorf("putObjectHandler: Volume init multipart fail: requestID(%v) path(%v) err(%v)",
-			GetRequestID(r), param.Object(), err)
-		errorCode = &InternalError
-		return
-	}
-	defer func() {
-		// rollback policy
-		if err != nil {
-			if abortErr := vol.AbortMultipart(param.Object(), multipartID); abortErr != nil {
-				log.LogErrorf("putObjectHandler: Volume abort multipart fail: requestID(%v) path(%v) multipartID(%v) err(%v)",
-					GetRequestID(r), param.Object(), multipartID, err)
-			}
-		}
-	}()
-	const partID uint16 = 1
-	if _, err = vol.WritePart(param.Object(), multipartID, partID, r.Body); err != nil {
-		log.LogErrorf("putObjectHandler: Volume write part fail: requestID(%v) path(%v) multipartID(%v) err(%v)",
-			GetRequestID(r), param.Object(), multipartID, err)
-		errorCode = &InternalError
-		return
-	}
+	// Get the requested content-type.
+	// In addition to being used to manage data types, it is used to distinguish
+	// whether the request is to create a directory.
+	contentType := r.Header.Get(HeaderNameContentType)
+
 	var fsFileInfo *FSFileInfo
-	if fsFileInfo, err = vol.CompleteMultipart(param.Object(), multipartID); err != nil {
-		log.LogErrorf("putObjectHandler: Volume complete multipart fail: requestID(%v) path(%v) multipartID(%v) err(%v)",
-			GetRequestID(r), param.Object(), multipartID, err)
-		errorCode = &InternalError
+	fsFileInfo, err = vol.WriteObject(param.Object(), r.Body, contentType)
+	if err == syscall.EISDIR || err == syscall.ENOTDIR {
+		errorCode = Conflict
+		return
+	}
+	if err != nil {
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -835,7 +814,7 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		if decoded, err = base64.StdEncoding.DecodeString(requestMD5); err != nil {
 			log.LogErrorf("putObjectHandler: decode request MD5 value fail: requestID(%v) raw(%v) err(%v)",
 				GetRequestID(r), requestMD5, err)
-			errorCode = &InternalError
+			errorCode = InternalErrorCode(err)
 			return
 		}
 		requestMD5 = hex.EncodeToString(decoded)
@@ -844,7 +823,7 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if checkMD5 && requestMD5 != fsFileInfo.ETag {
 		log.LogErrorf("putObjectHandler: MD5 validate fail: requestID(%v) requestMD5(%v) serverMD5(%v)",
 			r.URL.EscapedPath(), requestMD5, fsFileInfo.ETag)
-		errorCode = &BadDigest
+		errorCode = BadDigest
 		return
 	}
 
@@ -874,11 +853,11 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 	var param = ParseRequestParam(r)
 
 	if param.Bucket() == "" {
-		errorCode = &InvalidBucketName
+		errorCode = InvalidBucketName
 		return
 	}
 	if param.Object() == "" {
-		errorCode = &InvalidKey
+		errorCode = InvalidKey
 		return
 	}
 
@@ -886,18 +865,18 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
 		log.LogErrorf("deleteObjectHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = &NoSuchBucket
+		errorCode = NoSuchBucket
 		return
 	}
 
-	err = vol.DeleteFile(param.Object())
+	err = vol.DeletePath(param.Object())
 	if err == syscall.ENOENT {
-		errorCode = &NoSuchKey
+		errorCode = NoSuchKey
 		return
 	}
 	if err != nil {
 		log.LogErrorf("deleteObjectHandler: Volume delete file fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -919,29 +898,29 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		errorCode = &InvalidBucketName
+		errorCode = InvalidBucketName
 		return
 	}
 	if param.Object() == "" {
-		errorCode = &InvalidKey
+		errorCode = InvalidKey
 		return
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("getObjectTaggingHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = &NoSuchBucket
+		errorCode = NoSuchBucket
 		return
 	}
 
 	var xattrInfo *proto.XAttrInfo
 	if xattrInfo, err = vol.GetXAttr(param.object, XAttrKeyOSSTagging); err != nil {
 		if err == syscall.ENOENT {
-			errorCode = &NoSuchKey
+			errorCode = NoSuchKey
 			return
 		}
 		log.LogErrorf("getObjectTaggingHandler: Volume get XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -950,14 +929,14 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	var output = NewGetObjectTaggingOutput()
 	if err = json.Unmarshal(ossTaggingData, output); err != nil {
 		log.LogErrorf("getObjectTaggingHandler: decode tagging from json fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
 	var encoded []byte
 	if encoded, err = MarshalXMLEntity(output); err != nil {
 		log.LogErrorf("getObjectTaggingHandler: encode output fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -984,11 +963,11 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	var param = ParseRequestParam(r)
 
 	if param.Bucket() == "" {
-		errorCode = &InvalidBucketName
+		errorCode = InvalidBucketName
 		return
 	}
 	if param.Object() == "" {
-		errorCode = &InvalidKey
+		errorCode = InvalidKey
 		return
 	}
 
@@ -996,35 +975,35 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
 		log.LogErrorf("putObjectTaggingHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = &NoSuchBucket
+		errorCode = NoSuchBucket
 		return
 	}
 
 	var requestBody []byte
 	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
 		log.LogErrorf("putObjectTaggingHandler: read request body data fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = &InvalidArgument
+		errorCode = InvalidArgument
 		return
 	}
 
 	var tagging = NewTagging()
 	if err = xml.Unmarshal(requestBody, tagging); err != nil {
 		log.LogWarnf("putObjectTaggingHandler: decode request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = &InvalidArgument
+		errorCode = InvalidArgument
 		return
 	}
 
 	var encoded []byte
 	if encoded, err = json.Marshal(tagging); err != nil {
 		log.LogWarnf("putObjectTaggingHandler: encode tagging data fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
 	if err = vol.SetXAttr(param.object, XAttrKeyOSSTagging, encoded); err != nil {
 		log.LogErrorf("pubObjectTaggingHandler: volume set tagging fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -1046,24 +1025,24 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		errorCode = &InvalidBucketName
+		errorCode = InvalidBucketName
 		return
 	}
 	if param.Object() == "" {
-		errorCode = &InvalidKey
+		errorCode = InvalidKey
 		return
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("deleteObjectTaggingHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = &NoSuchBucket
+		errorCode = NoSuchBucket
 		return
 	}
 	if err = vol.DeleteXAttr(param.object, XAttrKeyOSSTagging); err != nil {
 		log.LogErrorf("deleteObjectTaggingHandler: volume delete tagging fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 	return
@@ -1083,18 +1062,18 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 
 	var param = ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
-		errorCode = &InvalidBucketName
+		errorCode = InvalidBucketName
 		return
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.bucket); err != nil {
 		log.LogErrorf("pubObjectXAttrHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = &NoSuchBucket
+		errorCode = NoSuchBucket
 		return
 	}
 	if len(param.Object()) == 0 {
-		errorCode = &InvalidKey
+		errorCode = InvalidKey
 		return
 	}
 	var requestBody []byte
@@ -1122,12 +1101,12 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 
 	if err = vol.SetXAttr(param.object, key, []byte(value)); err != nil {
 		if err == syscall.ENOENT {
-			errorCode = &NoSuchKey
+			errorCode = NoSuchKey
 			return
 		}
 		log.LogErrorf("pubObjectXAttrHandler: volume set extend attribute fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 	return
@@ -1147,35 +1126,35 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 
 	var param = ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
-		errorCode = &InvalidBucketName
+		errorCode = InvalidBucketName
 		return
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("getObjectXAttrHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = &NoSuchBucket
+		errorCode = NoSuchBucket
 		return
 	}
 	if len(param.Object()) == 0 {
-		errorCode = &InvalidKey
+		errorCode = InvalidKey
 		return
 	}
 	var xattrKey string
 	if xattrKey = param.GetVar(ParamKey); len(xattrKey) == 0 {
-		errorCode = &InvalidArgument
+		errorCode = InvalidArgument
 		return
 	}
 
 	var info *proto.XAttrInfo
 	if info, err = vol.GetXAttr(param.object, xattrKey); err != nil {
 		if err == syscall.ENOENT {
-			errorCode = &NoSuchKey
+			errorCode = NoSuchKey
 			return
 		}
 		log.LogErrorf("getObjectXAttrHandler: get extend attribute fail: requestID(%v) volume(%v) object(%v) key(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), xattrKey, err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 	var response = GetXAttrOutput{
@@ -1188,7 +1167,7 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 	if marshaled, err = MarshalXMLEntity(&response); err != nil {
 		log.LogErrorf("getObjectXAttrHandler: marshal response body fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 	_, _ = w.Write(marshaled)
@@ -1208,34 +1187,34 @@ func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Req
 	}()
 	var param = ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
-		errorCode = &InvalidBucketName
+		errorCode = InvalidBucketName
 		return
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("deleteObjectXAttrHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = &NoSuchBucket
+		errorCode = NoSuchBucket
 		return
 	}
 	if len(param.Object()) == 0 {
-		errorCode = &InvalidKey
+		errorCode = InvalidKey
 		return
 	}
 	var xattrKey string
 	if xattrKey = param.GetVar(ParamKey); len(xattrKey) == 0 {
-		errorCode = &InvalidArgument
+		errorCode = InvalidArgument
 		return
 	}
 
 	if err = vol.DeleteXAttr(param.object, xattrKey); err != nil {
 		if err == syscall.ENOENT {
-			errorCode = &NoSuchKey
+			errorCode = NoSuchKey
 			return
 		}
 		log.LogErrorf("deleteObjectXAttrHandler: delete extend attribute fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 	return
@@ -1254,14 +1233,14 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 	}()
 	var param = ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
-		errorCode = &InvalidBucketName
+		errorCode = InvalidBucketName
 		return
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.bucket); err != nil {
 		log.LogErrorf("listObjectXAttrs: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = &NoSuchBucket
+		errorCode = NoSuchBucket
 		return
 	}
 	if len(param.Object()) == 0 {
@@ -1272,12 +1251,12 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 	var keys []string
 	if keys, err = vol.ListXAttrs(param.object); err != nil {
 		if err == syscall.ENOENT {
-			errorCode = &NoSuchKey
+			errorCode = NoSuchKey
 			return
 		}
 		log.LogErrorf("listObjectXAttrs: volume list extend attributes fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -1288,7 +1267,7 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 	if marshaled, err = MarshalXMLEntity(&response); err != nil {
 		log.LogErrorf("listObjectXAttrs: marshal response body fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
-		errorCode = &InternalError
+		errorCode = InternalErrorCode(err)
 		return
 	}
 	if _, err = w.Write(marshaled); err != nil {
