@@ -33,6 +33,19 @@ import (
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 )
 
+var (
+	ErrIncorrectStoreType       = errors.New("Incorrect store type")
+	ErrNoSpaceToCreatePartition = errors.New("No disk space to create a data partition")
+	ErrNewSpaceManagerFailed    = errors.New("Creater new space manager failed")
+)
+
+const (
+	DefaultCellName      = "cfs_cell1"
+	DefaultDiskMaxErr    = 1
+	DefaultDiskRetainMin = 5 * util.GB  // GB
+	DefaultDiskRetainMax = 30 * util.GB // GB
+)
+
 const (
 	ModuleName = "ecnode"
 )
@@ -45,6 +58,7 @@ const (
 var (
 	localIP, serverPort string
 
+	gConnPool    = util.NewConnectPool()
 	MasterClient = masterSDK.NewMasterClient(nil, false)
 )
 
@@ -52,12 +66,15 @@ const (
 	ConfigKeyLocalIP    = "localIP"    // string
 	ConfigKeyPort       = "port"       // int
 	ConfigKeyMasterAddr = "masterAddr" // array
+	ConfigKeyDisks      = "disks"      // array
+	ConfigKeyCell       = "cell"       // string
 )
 
 type EcNode struct {
-	//space   *SpaceManager
+	space           *SpaceManager
 	clusterID       string
 	port            string
+	cellName        string
 	localIP         string
 	localServerAddr string
 	nodeID          uint64
@@ -101,14 +118,11 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	//exporter.Init(ModuleName, cfg)
-
 	// register to master
 	e.register(cfg)
 
-	// TODO start raft server
-
 	// TODO create space manager
+	e.startSpaceManager(cfg)
 
 	// TODO check local partition compare with master, if lack, then not start
 
@@ -200,6 +214,10 @@ func (e *EcNode) serverConn(conn net.Conn) {
 }
 
 func (e *EcNode) registerHandler() {
+	server := http.Server{
+		Addr: ":8080",
+	}
+
 	http.HandleFunc("/disks", e.getDiskAPI)
 	http.HandleFunc("/partitions", e.getPartitionsAPI)
 	http.HandleFunc("/partition", e.getPartitionAPI)
@@ -207,6 +225,8 @@ func (e *EcNode) registerHandler() {
 	http.HandleFunc("/block", e.getBlockCrcAPI)
 	http.HandleFunc("/stats", e.getStatAPI)
 	http.HandleFunc("/raftStatus", e.getRaftStatusAPI)
+
+	server.ListenAndServe()
 }
 
 func (e *EcNode) register(cfg *config.Config) {
@@ -243,7 +263,7 @@ func (e *EcNode) register(cfg *config.Config) {
 				timer.Reset(2 * time.Second)
 				continue
 			}
-			//exporter.RegistConsul(e.clusterID, ModuleName, cfg)
+
 			e.nodeID = nodeID
 			log.LogDebugf("register: register EcNode: nodeID(%v)", e.nodeID)
 			return
@@ -252,5 +272,4 @@ func (e *EcNode) register(cfg *config.Config) {
 			return
 		}
 	}
-
 }
