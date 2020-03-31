@@ -15,7 +15,7 @@ Authentication (done)
 
 Cross-zone replication (done)
 
-Reed-Solomon coding (April 2020)
+Reed-Solomon coding (May 2020)
 
 Volume/file Lease (May 2020)
 
