@@ -524,3 +524,9 @@ func TestGetToken(t *testing.T) {
 		process(reqUrl, t)
 	}
 }
+
+func TestClusterStat(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminClusterStat)
+	fmt.Println(reqUrl)
+	process(reqUrl, t)
+}

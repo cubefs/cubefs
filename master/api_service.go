@@ -179,6 +179,18 @@ func (m *Server) listZone(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(zoneViews))
 }
 
+func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
+	cs := &proto.ClusterStatInfo{
+		DataNodeStatInfo: m.cluster.dataNodeStatInfo,
+		MetaNodeStatInfo: m.cluster.metaNodeStatInfo,
+		ZoneStatInfo:     make(map[string]*proto.ZoneStat, 0),
+	}
+	for zoneName, zoneStat := range m.cluster.zoneStatInfos {
+		cs.ZoneStatInfo[zoneName] = zoneStat
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(cs))
+}
+
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	cv := &proto.ClusterView{
 		Name:                m.cluster.Name,

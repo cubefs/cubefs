@@ -44,3 +44,14 @@ if cluster is freezed,the vol never allocates dataPartitions automatically
    :header: "Parameter", "Type", "Description"
 
    "enable", "bool", "if enable is true,the cluster is freezed"
+
+
+Statistics
+-----------
+
+.. code-block:: bash
+
+   curl -v "http://10.196.59.198:17010/cluster/stat"
+
+show cluster space information by zone
+

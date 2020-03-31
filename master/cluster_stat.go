@@ -21,6 +21,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"math"
 )
 
 type nodeStatInfo = proto.NodeStatInfo
@@ -37,6 +38,10 @@ func newVolStatInfo(name string, total, used uint64, ratio string, enableToken b
 	}
 }
 
+func newZoneStatInfo() *proto.ZoneStat {
+	return &proto.ZoneStat{DataNodeStat: new(proto.ZoneNodesStat), MetaNodeStat: new(proto.ZoneNodesStat)}
+}
+
 // Check the total space, available space, and daily-used space in data nodes,  meta nodes, and volumes
 func (c *Cluster) updateStatInfo() {
 	defer func() {
@@ -49,6 +54,45 @@ func (c *Cluster) updateStatInfo() {
 	c.updateDataNodeStatInfo()
 	c.updateMetaNodeStatInfo()
 	c.updateVolStatInfo()
+	c.updateZoneStatInfo()
+}
+
+func (c *Cluster) updateZoneStatInfo() {
+	for _, zone := range c.t.zones {
+		zs := newZoneStatInfo()
+		c.zoneStatInfos[zone.name] = zs
+		zone.dataNodes.Range(func(key, value interface{}) bool {
+			zs.DataNodeStat.TotalNodes++
+			node := value.(*DataNode)
+			if node.isActive && node.isWriteAble() {
+				zs.DataNodeStat.WritableNodes++
+			}
+			zs.DataNodeStat.Total += float64(node.Total) / float64(util.GB)
+			zs.DataNodeStat.Used += float64(node.Used) / float64(util.GB)
+			return true
+		})
+		zs.DataNodeStat.Total = fixedPoint(zs.DataNodeStat.Total, 2)
+		zs.DataNodeStat.Used = fixedPoint(zs.DataNodeStat.Used, 2)
+		zs.DataNodeStat.Avail = fixedPoint(zs.DataNodeStat.Total-zs.DataNodeStat.Used, 2)
+		zone.metaNodes.Range(func(key, value interface{}) bool {
+			zs.MetaNodeStat.TotalNodes++
+			node := value.(*MetaNode)
+			if node.IsActive && node.isWritable() {
+				zs.MetaNodeStat.WritableNodes++
+			}
+			zs.MetaNodeStat.Total += float64(node.Total) / float64(util.GB)
+			zs.MetaNodeStat.Used += float64(node.Used) / float64(util.GB)
+			return true
+		})
+		zs.MetaNodeStat.Total = fixedPoint(zs.MetaNodeStat.Total, 2)
+		zs.MetaNodeStat.Used = fixedPoint(zs.MetaNodeStat.Used, 2)
+		zs.MetaNodeStat.Avail = fixedPoint(zs.MetaNodeStat.Total-zs.MetaNodeStat.Used, 2)
+	}
+}
+
+func fixedPoint(x float64, scale int) float64 {
+	decimal := math.Pow10(scale)
+	return float64(int(math.Round(x*decimal))) / decimal
 }
 
 func (c *Cluster) updateDataNodeStatInfo() {
