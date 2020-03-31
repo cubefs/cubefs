@@ -15,8 +15,9 @@
 package objectnode
 
 import (
-	"errors"
+	"hash/crc32"
 	"sync"
+	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 
@@ -24,24 +25,51 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
-type VolumeManager struct {
+const (
+	volumeBlacklistCleanupInterval = time.Minute * 1
+	volumeBlacklistTTL             = time.Second * 10
+	volumeLoaderNum                = 4
+)
+
+type VolumeLoader struct {
 	masters    []string
-	mc         *master.MasterClient
+	store      Store              // Storage for ACP management
 	volumes    map[string]*Volume // mapping: volume name -> *Volume
 	volMu      sync.RWMutex
 	volInitMap sync.Map // mapping: volume name -> *sync.Mutex
-	store      Store
+	blacklist  sync.Map // mapping: volume name -> timestamp (time.Time)
 	closeOnce  sync.Once
+	closeCh    chan struct{}
 }
 
-func (m *VolumeManager) Release(volName string) {
-	m.volMu.Lock()
-	vol, has := m.volumes[volName]
+func (loader *VolumeLoader) blacklistCleanup() {
+	t := time.NewTimer(volumeBlacklistCleanupInterval)
+	for {
+		select {
+		case <-t.C:
+		case <-loader.closeCh:
+			t.Stop()
+			return
+		}
+		loader.blacklist.Range(func(key, value interface{}) bool {
+			ts, is := value.(time.Time)
+			if !is || time.Since(ts) > volumeBlacklistTTL {
+				loader.blacklist.Delete(key)
+			}
+			return true
+		})
+		t.Reset(volumeBlacklistCleanupInterval)
+	}
+}
+
+func (loader *VolumeLoader) Release(volName string) {
+	loader.volMu.Lock()
+	vol, has := loader.volumes[volName]
 	if has {
-		delete(m.volumes, volName)
+		delete(loader.volumes, volName)
 		log.LogDebugf("Release: release volume: volume(%v)", volName)
 	}
-	m.volMu.Unlock()
+	loader.volMu.Unlock()
 	if has && vol != nil {
 		if closeErr := vol.Close(); closeErr != nil {
 			log.LogErrorf("Release: close volume fail: volume(%v) err(%v)", volName, closeErr)
@@ -49,63 +77,79 @@ func (m *VolumeManager) Release(volName string) {
 	}
 }
 
-func (m *VolumeManager) Volume(volName string) (*Volume, error) {
-	return m.loadVolume(volName)
+func (loader *VolumeLoader) Volume(volName string) (*Volume, error) {
+	return loader.loadVolume(volName)
 }
 
-func (m *VolumeManager) syncVolumeInit(volume string) (releaseFunc func()) {
-	value, _ := m.volInitMap.LoadOrStore(volume, new(sync.Mutex))
+func (loader *VolumeLoader) syncVolumeInit(volume string) (releaseFunc func()) {
+	value, _ := loader.volInitMap.LoadOrStore(volume, new(sync.Mutex))
 	var initMu = value.(*sync.Mutex)
 	initMu.Lock()
 	log.LogDebugf("syncVolumeInit: get volume init lock: volume(%v)", volume)
 	return func() {
 		initMu.Unlock()
-		m.volInitMap.Delete(volume)
+		loader.volInitMap.Delete(volume)
 		log.LogDebugf("syncVolumeInit: release volume init lock: volume(%v)", volume)
 	}
 }
 
-func (m *VolumeManager) loadVolume(volName string) (*Volume, error) {
+func (loader *VolumeLoader) loadVolume(volName string) (*Volume, error) {
 	var err error
+	// Check if the volume is on the blacklist.
+	if val, exist := loader.blacklist.Load(volName); exist {
+		if ts, is := val.(time.Time); is {
+			if time.Since(ts) <= volumeBlacklistTTL {
+				return nil, proto.ErrVolNotExists
+			}
+		}
+	}
+
 	var volume *Volume
 	var exist bool
-	m.volMu.RLock()
-	volume, exist = m.volumes[volName]
-	m.volMu.RUnlock()
+	loader.volMu.RLock()
+	volume, exist = loader.volumes[volName]
+	loader.volMu.RUnlock()
 	if !exist {
-		var release = m.syncVolumeInit(volName)
-		m.volMu.RLock()
-		volume, exist = m.volumes[volName]
+		var release = loader.syncVolumeInit(volName)
+		loader.volMu.RLock()
+		volume, exist = loader.volumes[volName]
 		if exist {
-			m.volMu.RUnlock()
+			loader.volMu.RUnlock()
 			release()
 			return volume, nil
 		}
-		m.volMu.RUnlock()
+		loader.volMu.RUnlock()
 
 		var onAsyncTaskError AsyncTaskErrorFunc = func(err error) {
 			switch err {
 			case proto.ErrVolNotExists:
-				m.Release(volName)
+				loader.Release(volName)
+				// Add to blacklist
+				loader.blacklist.Store(volName, time.Now())
 			default:
 			}
 		}
 		var config = &VolumeConfig{
 			Volume:           volName,
-			Masters:          m.masters,
+			Masters:          loader.masters,
+			Store:            loader.store,
 			OnAsyncTaskError: onAsyncTaskError,
 		}
 		if volume, err = NewVolume(config); err != nil {
+			if err != proto.ErrVolNotExists {
+				log.LogErrorf("loadVolume: init volume fail: volume(%v) err(%v)", volume, err)
+			}
 			release()
+			// Add to blacklist
+			loader.blacklist.Store(volName, time.Now())
 			return nil, err
 		}
 		ak, sk := volume.OSSSecure()
 		log.LogDebugf("[loadVolume] load Volume: Name[%v] AccessKey[%v] SecretKey[%v]", volName, ak, sk)
 
-		m.volMu.Lock()
-		m.volumes[volName] = volume
-		volume.vm = m
-		m.volMu.Unlock()
+		loader.volMu.Lock()
+		loader.volumes[volName] = volume
+		loader.volMu.Unlock()
 		release()
 
 		volume.loadOSSMeta()
@@ -115,43 +159,75 @@ func (m *VolumeManager) loadVolume(volName string) (*Volume, error) {
 }
 
 // Release all
+func (loader *VolumeLoader) Close() {
+	loader.closeOnce.Do(func() {
+		loader.volMu.Lock()
+		defer loader.volMu.Unlock()
+		for volKey, vol := range loader.volumes {
+			_ = vol.Close()
+			log.LogDebugf("release Volume %v", volKey)
+		}
+		loader.volumes = make(map[string]*Volume)
+		close(loader.closeCh)
+	})
+}
+
+func NewVolumeLoader(masters []string, store Store) *VolumeLoader {
+	loader := &VolumeLoader{
+		masters: masters,
+		store:   store,
+		volumes: make(map[string]*Volume),
+		closeCh: make(chan struct{}),
+	}
+	go loader.blacklistCleanup()
+	return loader
+}
+
+type VolumeManager struct {
+	masters   []string
+	mc        *master.MasterClient
+	loaders   [volumeLoaderNum]*VolumeLoader
+	store     Store
+	closeOnce sync.Once
+	closeCh   chan struct{}
+}
+
+func (m *VolumeManager) selectLoader(name string) *VolumeLoader {
+	i := crc32.ChecksumIEEE([]byte(name)) % volumeLoaderNum
+	return m.loaders[i]
+}
+
+func (m *VolumeManager) Volume(volName string) (*Volume, error) {
+	return m.selectLoader(volName).Volume(volName)
+}
+
+// Release all
 func (m *VolumeManager) Close() {
-	m.volMu.Lock()
-	defer m.volMu.Unlock()
-	for volKey, vol := range m.volumes {
-		_ = vol.Close()
-		log.LogDebugf("release Volume %v", volKey)
+	m.closeOnce.Do(func() {
+		for _, loader := range m.loaders {
+			loader.Close()
+		}
+	})
+}
+
+func (m *VolumeManager) Release(volName string) {
+	m.selectLoader(volName).Release(volName)
+}
+
+func (m *VolumeManager) init() {
+	m.store = &xattrStore{
+		vm: m,
 	}
-	m.volumes = make(map[string]*Volume)
-}
-
-func (m *VolumeManager) InitStore(s Store) {
-	s.Init(m)
-	m.store = s
-}
-
-func (m *VolumeManager) GetStore() (Store, error) {
-	if m.store == nil {
-		return nil, errors.New("store not init")
+	for i := 0; i < len(m.loaders); i++ {
+		m.loaders[i] = NewVolumeLoader(m.masters, m.store)
 	}
-	return m.store, nil
-}
-
-func (m *VolumeManager) InitMasterClient(masters []string, useSSL bool) {
-	m.mc = master.NewMasterClient(masters, useSSL)
-}
-
-func (m *VolumeManager) GetMasterClient() (*master.MasterClient, error) {
-	if m.mc == nil {
-		return nil, errors.New("master client not init")
-	}
-	return m.mc, nil
 }
 
 func NewVolumeManager(masters []string) *VolumeManager {
-	vc := &VolumeManager{
-		volumes: make(map[string]*Volume),
+	manager := &VolumeManager{
 		masters: masters,
+		closeCh: make(chan struct{}),
 	}
-	return vc
+	manager.init()
+	return manager
 }
