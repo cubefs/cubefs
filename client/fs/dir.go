@@ -224,7 +224,11 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 
 	inodes := make([]uint64, 0, len(children))
 	dirents := make([]fuse.Dirent, 0, len(children))
-	dcache := NewDentryCache()
+
+	var dcache *DentryCache
+	if !d.super.disableDcache {
+		dcache = NewDentryCache()
+	}
 
 	for _, child := range children {
 		dentry := fuse.Dirent{
