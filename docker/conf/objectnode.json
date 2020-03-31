@@ -17,5 +17,6 @@
     "oss:action:PutObjectXAttr",
     "oss:action:DeleteObjectXAttr",
     "oss:action:ListObjectXAttrs"
-  ]
+  ],
+  "strict": true
 }

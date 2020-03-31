@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/gorilla/mux"
 )
@@ -44,7 +43,6 @@ func (o *ObjectNode) headBucketHandler(w http.ResponseWriter, r *http.Request) {
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucket.html
 func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request) {
 	var (
-		mc  *master.MasterClient
 		err error
 	)
 
@@ -66,13 +64,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
-	//todo required error code？
-	if mc, err = o.vm.GetMasterClient(); err != nil {
-		log.LogErrorf("get master client error: err(%v)", err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
-		return
-	}
-	if err = mc.AdminAPI().CreateDefaultVolume(bucket, userInfo.UserID); err != nil {
+	if err = o.mc.AdminAPI().CreateDefaultVolume(bucket, userInfo.UserID); err != nil {
 		log.LogErrorf("create bucket[%v] failed: accessKey(%v), err(%v)", bucket, auth.accessKey, err)
 		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
@@ -89,7 +81,6 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 
 	var (
 		volState *proto.VolStatInfo
-		mc       *master.MasterClient
 		authKey  string
 		err      error
 	)
@@ -106,13 +97,7 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
-	// get Volume use state
-	if mc, err = o.vm.GetMasterClient(); err != nil {
-		log.LogErrorf("get master client error: err(%v)", err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
-		return
-	}
-	if volState, err = mc.ClientAPI().GetVolumeStat(bucket); err != nil {
+	if volState, err = o.mc.ClientAPI().GetVolumeStat(bucket); err != nil {
 		log.LogErrorf("get bucket state from master error: err(%v)", err)
 		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
@@ -127,7 +112,7 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
-	if err = mc.AdminAPI().DeleteVolume(bucket, authKey); err != nil {
+	if err = o.mc.AdminAPI().DeleteVolume(bucket, authKey); err != nil {
 		log.LogErrorf("delete bucket[%v] error: accessKey(%v), err(%v)", bucket, auth.accessKey, err)
 		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
@@ -156,6 +141,11 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 	var buckets = make([]*Bucket, 0)
 	for _, ownVol := range ownVols {
 		var bucket = &Bucket{Name: ownVol, CreationDate: time.Unix(0, 0)}
+		buckets = append(buckets, bucket)
+	}
+	authorizedVols := userInfo.Policy.AuthorizedVols
+	for authorizedVol := range authorizedVols {
+		var bucket = &Bucket{Name: authorizedVol, CreationDate: time.Unix(0, 0)}
 		buckets = append(buckets, bucket)
 	}
 
@@ -338,15 +328,7 @@ func calculateAuthKey(key string) (authKey string, err error) {
 	return strings.ToLower(hex.EncodeToString(cipherStr)), nil
 }
 
-func (o *ObjectNode) getUserInfoByAccessKey(accessKey string) (*proto.UserInfo, error) {
-	var err error
-	userInfo, exist := o.userStore.Get(accessKey)
-	if !exist {
-		if userInfo, err = o.mc.UserAPI().GetAKInfo(accessKey); err != nil {
-			log.LogInfof("load user policy err: %v", err)
-			return userInfo, err
-		}
-		o.userStore.Put(accessKey, userInfo)
-	}
-	return userInfo, err
+func (o *ObjectNode) getUserInfoByAccessKey(accessKey string) (userInfo *proto.UserInfo, err error) {
+	userInfo, err = o.userStore.LoadUser(accessKey)
+	return
 }
