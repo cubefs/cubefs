@@ -144,7 +144,8 @@ const (
 	OpCodecNodeHeartbeat uint8 = 0xA0
 
 	//Operations: Master -> EcNode
-	OpEcNodeHeartbeat uint8 = 0xB0
+	OpEcNodeHeartbeat   uint8 = 0xB0
+	OpCreateEcPartition uint8 = 0xB1
 
 	// Commons
 	OpIntraGroupNetErr uint8 = 0xF3

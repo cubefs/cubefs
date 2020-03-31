@@ -254,7 +254,6 @@ func NewStreamReadResponsePacket(requestID int64, partitionID uint64, extentID u
 	p.ExtentID = extentID
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
-	p.Opcode = proto.OpOk
 	p.ReqID = requestID
 	p.ExtentType = proto.NormalExtentType
 
@@ -268,6 +267,20 @@ func NewPacketToNotifyExtentRepair(partitionID uint64) (p *Packet) {
 	p.Magic = proto.ProtoMagic
 	p.ExtentType = proto.NormalExtentType
 	p.ReqID = proto.GenerateRequestID()
+
+	return
+}
+
+func NewExtentStripeRead(partitionID uint64, extentID uint64, offset int64, size uint32) (p *Packet) {
+	p = new(Packet)
+	p.ExtentID = extentID
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.ExtentOffset = offset
+	p.Size = size
+	p.Opcode = proto.OpStreamRead
+	p.ReqID = proto.GenerateRequestID()
+	p.StartT = time.Now().UnixNano()
 
 	return
 }
@@ -368,7 +381,8 @@ func (p *Packet) IsMasterCommand() bool {
 		proto.OpDecommissionDataPartition,
 		proto.OpAddDataPartitionRaftMember,
 		proto.OpRemoveDataPartitionRaftMember,
-		proto.OpDataPartitionTryToLeader:
+		proto.OpDataPartitionTryToLeader,
+		proto.OpCreateEcPartition:
 		return true
 	}
 	return false

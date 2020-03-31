@@ -18,6 +18,37 @@ import (
 	"github.com/chubaofs/chubaofs/repl"
 )
 
-func (e *EcNode) Post(p *repl.Packet) (err error) {
+func (e *EcNode) Post(p *repl.Packet) error {
+	if p.IsMasterCommand() {
+		p.NeedReply = true
+	}
+	if p.IsReadOperation() {
+		p.NeedReply = false
+	}
+	e.cleanupPkt(p)
+	e.addMetrics(p)
 	return nil
+}
+
+func (e *EcNode) cleanupPkt(p *repl.Packet) {
+	if p.IsMasterCommand() {
+		return
+	}
+	if !p.IsLeaderPacket() {
+		return
+	}
+}
+
+func (e *EcNode) addMetrics(p *repl.Packet) {
+	if p.IsMasterCommand() {
+		return
+	}
+	p.AfterTp()
+	if p.Object == nil {
+		return
+	}
+	partition := p.Object.(*EcPartition)
+	if partition == nil {
+		return
+	}
 }
