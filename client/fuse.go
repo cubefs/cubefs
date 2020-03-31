@@ -245,7 +245,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		os.Exit(1)
 	}
 
-	opt.Rdonly = (super.TokenType() == int8(proto.ReadOnlyToken)) && opt.Rdonly
+	opt.Rdonly = (super.TokenType() == int8(proto.ReadOnlyToken)) || opt.Rdonly
 
 	options := []fuse.MountOption{
 		fuse.AllowOther(),
