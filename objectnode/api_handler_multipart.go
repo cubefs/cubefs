@@ -206,9 +206,9 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if partNoMarker != "" {
-		res, err := strconv.ParseUint(uploadId, 10, 64)
+		res, err := strconv.ParseUint(partNoMarker, 10, 64)
 		if err != nil {
-			log.LogErrorf("listPatsHandler: parse update ID fail, requestID(%v) raw(%v) err(%v)", GetRequestID(r), uploadId, err)
+			log.LogErrorf("listPatsHandler: parse part number marker fail, requestID(%v) raw(%v) err(%v)", GetRequestID(r), partNoMarker, err)
 			_ = InvalidArgument.ServeResponse(w, r)
 			return
 		}
