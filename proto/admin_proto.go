@@ -29,6 +29,7 @@ const (
 	AdminCreateVol                 = "/admin/createVol"
 	AdminGetVol                    = "/admin/getVol"
 	AdminClusterFreeze             = "/cluster/freeze"
+	AdminClusterStat               = "/cluster/stat"
 	AdminGetIP                     = "/admin/getIp"
 	AdminCreateMetaPartition       = "/metaPartition/create"
 	AdminSetMetaNodeThreshold      = "/threshold/set"
