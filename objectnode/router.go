@@ -187,7 +187,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetBucketCorsAction)).
 			Methods(http.MethodGet).
 			Queries("cors", "").
-			HandlerFunc(o.unsupportedOperationHandler)
+			HandlerFunc(o.getBucketCorsHandler)
 
 		// Get bucket website
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketWebsite.html
@@ -398,7 +398,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSPutBucketCorsAction)).
 			Methods(http.MethodPut).
 			Queries("cors", "").
-			HandlerFunc(o.unsupportedOperationHandler)
+			HandlerFunc(o.putBucketCorsHandler)
 
 		// Put bucket website
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketWebsite.html
@@ -515,7 +515,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSDeleteBucketCorsAction)).
 			Methods(http.MethodDelete).
 			Queries("cors", "").
-			HandlerFunc(o.unsupportedOperationHandler)
+			HandlerFunc(o.deleteBucketCorsHandler)
 
 		// Delete bucket website
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketWebsite.html

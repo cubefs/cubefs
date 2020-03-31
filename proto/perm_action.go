@@ -71,6 +71,11 @@ const (
 	OSSGetBucketAclAction Action = OSSActionPrefix + "GetBucketAcl"
 	OSSPutBucketAclAction Action = OSSActionPrefix + "PutBucketAcl"
 
+	// Bucket CORS actions
+	OSSGetBucketCorsAction    Action = OSSActionPrefix + "GetBucketCors"
+	OSSPutBucketCorsAction    Action = OSSActionPrefix + "PutBucketCors"
+	OSSDeleteBucketCorsAction Action = OSSActionPrefix + "DeleteBucketCors"
+
 	// Object torrent actions
 	OSSGetObjectTorrentAction Action = OSSActionPrefix + "GetObjectTorrent" // unsupported
 
@@ -128,11 +133,6 @@ const (
 	OSSGetBucketEncryptionAction    Action = OSSActionPrefix + "GetBucketEncryption"    // unsupported
 	OSSPutBucketEncryptionAction    Action = OSSActionPrefix + "PutBucketEncryption"    // unsupported
 	OSSDeleteBucketEncryptionAction Action = OSSActionPrefix + "DeleteBucketEncryption" // unsupported
-
-	// Bucket CORS actions
-	OSSGetBucketCorsAction    Action = OSSActionPrefix + "GetBucketCors"    // unsupported
-	OSSPutBucketCorsAction    Action = OSSActionPrefix + "PutBucketCors"    // unsupported
-	OSSDeleteBucketCorsAction Action = OSSActionPrefix + "DeleteBucketCors" // unsupported
 
 	// Bucket website actions
 	OSSGetBucketWebsiteAction    Action = OSSActionPrefix + "GetBucketWebsite"    // unsupported
