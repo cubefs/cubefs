@@ -40,6 +40,7 @@ const (
 	TokenKey
 	AccessKey
 	SecretKey
+	DisableDcache
 
 	MaxMountOption
 )
@@ -96,6 +97,8 @@ func InitMountOptions(opts []MountOption) {
 	opts[TokenKey] = MountOption{"token", "Token Key", "", ""}
 	opts[AccessKey] = MountOption{"accessKey", "Access Key", "", ""}
 	opts[SecretKey] = MountOption{"secretKey", "Secret Key", "", ""}
+
+	opts[DisableDcache] = MountOption{"disableDcache", "Disable Dentry Cache", "", false}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -207,4 +210,5 @@ type MountOptions struct {
 	TokenKey      string
 	AccessKey     string
 	SecretKey     string
+	DisableDcache bool
 }

@@ -49,6 +49,8 @@ type Super struct {
 
 	nodeCache map[uint64]fs.Node
 	fslock    sync.Mutex
+
+	disableDcache bool
 }
 
 // Functions that Super needs to implement
@@ -110,6 +112,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.ic = NewInodeCache(inodeExpiration, MaxInodeCache)
 	s.orphan = NewOrphanInodeList()
 	s.nodeCache = make(map[uint64]fs.Node)
+	s.disableDcache = opt.DisableDcache
 	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v)", s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration)
 	return s, nil
 }
