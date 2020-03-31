@@ -115,6 +115,24 @@ type BadPartitionView struct {
 	PartitionIDs []uint64
 }
 
+type ClusterStatInfo struct {
+	DataNodeStatInfo *NodeStatInfo
+	MetaNodeStatInfo *NodeStatInfo
+	ZoneStatInfo     map[string]*ZoneStat
+}
+
+type ZoneStat struct {
+	DataNodeStat *ZoneNodesStat
+	MetaNodeStat *ZoneNodesStat
+}
+type ZoneNodesStat struct {
+	Total         float64 `json:"TotalGB"`
+	Used          float64 `json:"UsedGB"`
+	Avail         float64 `json:"AvailGB"`
+	TotalNodes    int
+	WritableNodes int
+}
+
 type NodeStatInfo struct {
 	TotalGB     uint64
 	UsedGB      uint64
@@ -167,7 +185,7 @@ type DataReplica struct {
 	ReportTime      int64
 	FileCount       uint32
 	Status          int8
-	HasLoadResponse bool   // if there is any response when loading
+	HasLoadResponse bool // if there is any response when loading
 	Total           uint64 `json:"TotalSize"`
 	Used            uint64 `json:"UsedSize"`
 	IsLeader        bool

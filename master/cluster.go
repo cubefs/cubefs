@@ -44,6 +44,7 @@ type Cluster struct {
 	t                         *topology
 	dataNodeStatInfo          *nodeStatInfo
 	metaNodeStatInfo          *nodeStatInfo
+	zoneStatInfos             map[string]*proto.ZoneStat
 	volStatInfo               sync.Map
 	BadDataPartitionIds       *sync.Map
 	BadMetaPartitionIds       *sync.Map
@@ -66,6 +67,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.BadMetaPartitionIds = new(sync.Map)
 	c.dataNodeStatInfo = new(nodeStatInfo)
 	c.metaNodeStatInfo = new(nodeStatInfo)
+	c.zoneStatInfos = make(map[string]*proto.ZoneStat)
 	c.fsm = fsm
 	c.partition = partition
 	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
@@ -97,7 +99,7 @@ func (c *Cluster) scheduleToUpdateStatInfo() {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.updateStatInfo()
 			}
-			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
+			time.Sleep(2 * time.Minute)
 		}
 	}()
 
@@ -881,7 +883,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
 errHandler:
-	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.Hosts)
 	if err != nil {
