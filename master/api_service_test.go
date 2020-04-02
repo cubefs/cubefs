@@ -296,6 +296,15 @@ func TestMarkDeleteVol(t *testing.T) {
 	createVol(name, t)
 	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey("cfs"))
 	process(reqURL, t)
+	userInfo, err := server.user.getUserInfo("cfs")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if contains(userInfo.Policy.OwnVols, name) {
+		t.Errorf("expect no vol %v in own vols, but is exist", name)
+		return
+	}
 }
 
 func TestUpdateVol(t *testing.T) {
@@ -336,9 +345,18 @@ func TestGetVolSimpleInfo(t *testing.T) {
 
 func TestCreateVol(t *testing.T) {
 	name := "test_create_vol"
-	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs", hostAddr, proto.AdminCreateVol, name)
+	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest", hostAddr, proto.AdminCreateVol, name)
 	fmt.Println(reqURL)
 	process(reqURL, t)
+	userInfo, err := server.user.getUserInfo("cfstest")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if !contains(userInfo.Policy.OwnVols, name) {
+		t.Errorf("expect vol %v in own vols, but is not", name)
+		return
+	}
 }
 
 func TestCreateMetaPartition(t *testing.T) {
