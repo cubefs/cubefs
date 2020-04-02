@@ -15,6 +15,7 @@
 package master
 
 import (
+	"bytes"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -52,10 +53,15 @@ const (
 	commonVolName = "commonVol"
 	testZone1     = "zone1"
 	testZone2     = "zone2"
+
+	testUserID = "testUser"
+	ak         = "0123456789123456"
+	sk         = "01234567891234560123456789123456"
 )
 
 var server = createDefaultMasterServerForTest()
 var commonVol *Vol
+var cfsUser *proto.UserInfo
 
 func createDefaultMasterServerForTest() *Server {
 	cfgJSON := `{
@@ -105,7 +111,25 @@ func createDefaultMasterServerForTest() *Server {
 	}
 	commonVol = vol
 	fmt.Printf("vol[%v] has created\n", commonVol.Name)
+
+	if err = createUserWithPolicy(testServer); err != nil {
+		panic(err)
+	}
+
 	return testServer
+}
+
+func createUserWithPolicy(testServer *Server) (err error) {
+	param := &proto.UserCreateParam{ID: "cfs", Type: proto.UserTypeNormal}
+	if cfsUser, err = testServer.user.createKey(param); err != nil {
+		return
+	}
+	fmt.Printf("user[%v] has created\n", cfsUser.UserID)
+	paramTransfer := &proto.UserTransferVolParam{Volume: commonVolName, UserSrc: "cfs", UserDst: "cfs", Force: false}
+	if cfsUser, err = testServer.user.transferVol(paramTransfer); err != nil {
+		return
+	}
+	return nil
 }
 
 func createMasterServer(cfgJSON string) (server *Server, err error) {
@@ -272,6 +296,15 @@ func TestMarkDeleteVol(t *testing.T) {
 	createVol(name, t)
 	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey("cfs"))
 	process(reqURL, t)
+	userInfo, err := server.user.getUserInfo("cfs")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if contains(userInfo.Policy.OwnVols, name) {
+		t.Errorf("expect no vol %v in own vols, but is exist", name)
+		return
+	}
 }
 
 func TestUpdateVol(t *testing.T) {
@@ -312,9 +345,18 @@ func TestGetVolSimpleInfo(t *testing.T) {
 
 func TestCreateVol(t *testing.T) {
 	name := "test_create_vol"
-	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs", hostAddr, proto.AdminCreateVol, name)
+	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest", hostAddr, proto.AdminCreateVol, name)
 	fmt.Println(reqURL)
 	process(reqURL, t)
+	userInfo, err := server.user.getUserInfo("cfstest")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if !contains(userInfo.Policy.OwnVols, name) {
+		t.Errorf("expect vol %v in own vols, but is not", name)
+		return
+	}
 }
 
 func TestCreateMetaPartition(t *testing.T) {
@@ -529,4 +571,225 @@ func TestClusterStat(t *testing.T) {
 	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminClusterStat)
 	fmt.Println(reqUrl)
 	process(reqUrl, t)
+}
+
+func TestListVols(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?keywords=%v", hostAddr, proto.AdminListVols, commonVolName)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+}
+
+func post(reqURL string, data []byte, t *testing.T) (reply *proto.HTTPReply) {
+	reader := bytes.NewReader(data)
+	req, err := http.NewRequest(http.MethodPost, reqURL, reader)
+	if err != nil {
+		t.Errorf("generate request err: %v", err)
+		return
+	}
+	var resp *http.Response
+	if resp, err = http.DefaultClient.Do(req); err != nil {
+		t.Errorf("post err: %v", err)
+		return
+	}
+	fmt.Println(resp.StatusCode)
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Errorf("err is %v", err)
+		return
+	}
+	fmt.Println(string(body))
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status code[%v]", resp.StatusCode)
+		return
+	}
+	reply = &proto.HTTPReply{}
+	if err = json.Unmarshal(body, reply); err != nil {
+		t.Error(err)
+		return
+	}
+	if reply.Code != 0 {
+		t.Errorf("failed,msg[%v],data[%v]", reply.Msg, reply.Data)
+		return
+	}
+	return
+}
+
+func TestCreateUser(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.UserCreate)
+	param := &proto.UserCreateParam{ID: testUserID, Type: proto.UserTypeNormal}
+	data, err := json.Marshal(param)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	fmt.Println(reqURL)
+	post(reqURL, data, t)
+}
+
+func TestGetUser(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?user=%v", hostAddr, proto.UserGetInfo, testUserID)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+}
+
+func TestUpdateUser(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.UserUpdate)
+	param := &proto.UserUpdateParam{UserID: testUserID, AccessKey: ak, SecretKey: sk, Type: proto.UserTypeAdmin}
+	data, err := json.Marshal(param)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	fmt.Println(reqURL)
+	post(reqURL, data, t)
+	userInfo, err := server.user.getUserInfo(testUserID)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if userInfo.AccessKey != ak {
+		t.Errorf("expect ak[%v], real ak[%v]\n", ak, userInfo.AccessKey)
+		return
+	}
+	if userInfo.SecretKey != sk {
+		t.Errorf("expect sk[%v], real sk[%v]\n", sk, userInfo.SecretKey)
+		return
+	}
+	if userInfo.UserType != proto.UserTypeAdmin {
+		t.Errorf("expect ak[%v], real ak[%v]\n", proto.UserTypeAdmin, userInfo.UserType)
+		return
+	}
+}
+
+func TestGetAKInfo(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?ak=%v", hostAddr, proto.UserGetAKInfo, ak)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+}
+
+func TestUpdatePolicy(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.UserUpdatePolicy)
+	param := &proto.UserPermUpdateParam{UserID: testUserID, Volume: commonVolName, Policy: []string{proto.BuiltinPermissionWritable.String()}}
+	data, err := json.Marshal(param)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	fmt.Println(reqURL)
+	post(reqURL, data, t)
+	userInfo, err := server.user.getUserInfo(testUserID)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if _, exist := userInfo.Policy.AuthorizedVols[commonVolName]; !exist {
+		t.Errorf("expect vol %v in authorized vols, but is not", commonVolName)
+		return
+	}
+}
+
+func TestRemovePolicy(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.UserRemovePolicy)
+	param := &proto.UserPermRemoveParam{UserID: testUserID, Volume: commonVolName}
+	data, err := json.Marshal(param)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	fmt.Println(reqURL)
+	post(reqURL, data, t)
+	userInfo, err := server.user.getUserInfo(testUserID)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if _, exist := userInfo.Policy.AuthorizedVols[commonVolName]; exist {
+		t.Errorf("expect no vol %v in authorized vols, but is exist", commonVolName)
+		return
+	}
+}
+
+func TestTransferVol(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.UserTransferVol)
+	param := &proto.UserTransferVolParam{Volume: commonVolName, UserSrc: "cfs", UserDst: testUserID, Force: false}
+	data, err := json.Marshal(param)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	fmt.Println(reqURL)
+	post(reqURL, data, t)
+	userInfo1, err := server.user.getUserInfo(testUserID)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if !contains(userInfo1.Policy.OwnVols, commonVolName) {
+		t.Errorf("expect vol %v in own vols, but is not", commonVolName)
+		return
+	}
+	userInfo2, err := server.user.getUserInfo("cfs")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if contains(userInfo2.Policy.OwnVols, commonVolName) {
+		t.Errorf("expect no vol %v in own vols, but is exist", commonVolName)
+		return
+	}
+	vol, err := server.cluster.getVol(commonVolName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if vol.Owner != testUserID {
+		t.Errorf("expect owner is %v, but is %v", testUserID, vol.Owner)
+		return
+	}
+}
+
+func TestDeleteVolPolicy(t *testing.T) {
+	param := &proto.UserPermUpdateParam{UserID: "cfs", Volume: commonVolName, Policy: []string{proto.BuiltinPermissionWritable.String()}}
+	if _, err := server.user.updatePolicy(param); err != nil {
+		t.Error(err)
+		return
+	}
+	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.UserDeleteVolPolicy, commonVolName)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	userInfo1, err := server.user.getUserInfo(testUserID)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if contains(userInfo1.Policy.OwnVols, commonVolName) {
+		t.Errorf("expect no vol %v in own vols, but is not", commonVolName)
+		return
+	}
+	userInfo2, err := server.user.getUserInfo("cfs")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if _, exist := userInfo2.Policy.AuthorizedVols[commonVolName]; exist {
+		t.Errorf("expect no vols %v in authorized vol is 0, but is exist", commonVolName)
+		return
+	}
+}
+
+func TestListUser(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?keywords=%v", hostAddr, proto.UserList, "test")
+	fmt.Println(reqURL)
+	process(reqURL, t)
+}
+
+func TestDeleteUser(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?user=%v", hostAddr, proto.UserDelete, testUserID)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	if _, err := server.user.getUserInfo(testUserID); err != proto.ErrUserNotExists {
+		t.Errorf("expect err ErrUserNotExists, but err is %v", err)
+		return
+	}
 }
