@@ -26,11 +26,14 @@ func (m *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	if !ownerRegexp.MatchString(param.ID) {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrInvalidUserID))
+		return
+	}
 	if param.Type == proto.UserTypeRoot {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrInvalidUserType))
 		return
 	}
-
 	if userInfo, err = m.user.createKey(&param); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -254,10 +257,6 @@ func extractUser(r *http.Request) (user string, err error) {
 		err = keyNotFound(userKey)
 		return
 	}
-	if !ownerRegexp.MatchString(user) {
-		return "", errors.New("user id can only be number and letters")
-	}
-
 	return
 }
 

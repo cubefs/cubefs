@@ -136,6 +136,7 @@ const (
 	ErrCodeZoneNotExists
 	ErrCodeOwnVolExists
 	ErrCodeSuperAdminExists
+	ErrCodeInvalidUserID
 	ErrCodeInvalidUserType
 	ErrCodeNoPermission
 	ErrCodeTokenNotExist
@@ -195,6 +196,7 @@ var Err2CodeMap = map[error]int32{
 	ErrZoneNotExists:                   ErrCodeZoneNotExists,
 	ErrOwnVolExists:                    ErrCodeOwnVolExists,
 	ErrSuperAdminExists:                ErrCodeSuperAdminExists,
+	ErrInvalidUserID:                   ErrCodeInvalidUserID,
 	ErrInvalidUserType:                 ErrCodeInvalidUserType,
 	ErrNoPermission:                    ErrCodeNoPermission,
 	ErrTokenNotFound:                   ErrCodeTokenNotExist,
@@ -262,6 +264,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeOwnVolExists:                    ErrOwnVolExists,
 	ErrCodeSuperAdminExists:                ErrSuperAdminExists,
 	ErrCodeInvalidUserType:                 ErrInvalidUserType,
+	ErrCodeInvalidUserID:                   ErrInvalidUserID,
 	ErrCodeNoPermission:                    ErrNoPermission,
 	ErrCodeTokenNotExist:                   ErrTokenNotFound,
 	ErrCodeInvalidAccessKey:                ErrInvalidAccessKey,
