@@ -75,6 +75,7 @@ const (
 	OSSGetBucketCorsAction    Action = OSSActionPrefix + "GetBucketCors"
 	OSSPutBucketCorsAction    Action = OSSActionPrefix + "PutBucketCors"
 	OSSDeleteBucketCorsAction Action = OSSActionPrefix + "DeleteBucketCors"
+	OSSOptionsObjectAction    Action = OSSActionPrefix + "OptionsObject"
 
 	// Object torrent actions
 	OSSGetObjectTorrentAction Action = OSSActionPrefix + "GetObjectTorrent" // unsupported
@@ -232,6 +233,7 @@ var (
 		OSSGetBucketReplicationAction,
 		OSSPutBucketReplicationAction,
 		OSSDeleteBucketReplicationAction,
+		OSSOptionsObjectAction,
 
 		// POSIX file system interface actions
 		POSIXReadAction,

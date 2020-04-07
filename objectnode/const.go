@@ -40,10 +40,14 @@ const (
 	HeaderNameLocation           = "Location"
 
 	// Headers for CORS validation
-	HeaderNameAccessControlAllowOrigin  = "Access-Control-Allow-Origin"
-	HeaderNameAccessControlAllowMethods = "Access-Control-Allow-Methods"
-	HeaderNameAccessControlAllowHeaders = "Access-Control-Allow-Headers"
-	HeaderNameAccessControlMaxAge       = "Access-Control-Max-Age"
+	Origin                                = "Origin"
+	HeaderNameAccessControlRequestMethod  = "Access-Control-Request-Method"
+	HeaderNameAccessControlRequestHeaders = "Access-Control-Request-Headers"
+	HeaderNameAccessControlAllowOrigin    = "Access-Control-Allow-Origin"
+	HeaderNameAccessControlMaxAge         = "Access-Control-Max-Age"
+	HeaderNameAccessControlAllowMethods   = "Access-Control-Allow-Methods"
+	HeaderNameAccessControlAllowHeaders   = "Access-Control-Allow-Headers"
+	HeaderNamrAccessControlExposeHeaders  = "Access-Control-Expose-Headers"
 
 	HeaderNameXAmzStartDate           = "x-amz-date"
 	HeaderNameXAmzRequestId           = "x-amz-request-id"
@@ -112,11 +116,13 @@ const (
 	XAttrKeyOSSETag        = "oss:etag"
 	XAttrKeyOSSTagging     = "oss:tagging"
 	XAttrKeyOSSPolicy      = "oss:policy"
+	XAttrKeyOSSACL         = "oss:acl"
 	XAttrKeyOSSMIME        = "oss:mime"
 	XAttrKeyOSSDISPOSITION = "oss:disposition"
+	XAttrKeyOSSCORS        = "oss:cors"
 
-	// Departure
-	XAttrKeyOSSETagInvalid = "oss:tag"
+	// Deprecated
+	XAttrKeyOSSETagDeprecated = "oss:tag"
 )
 
 const (

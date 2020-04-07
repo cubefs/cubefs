@@ -26,7 +26,6 @@ import (
 )
 
 const (
-	OSS_ACL_KEY      = "oss:acl"
 	XMLNS            = "http://www.w3.org/2001/XMLSchema-instance"
 	XMLXSI           = "CanonicalUser"
 	DEF_GRANTEE_TYPE = "CanonicalUser" //

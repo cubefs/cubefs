@@ -557,12 +557,22 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 	}
 
+	var registerBucketHttpOptionsRouters = func(r *mux.Router) {
+		// OPTIONS object
+		// https://docs.aws.amazon.com/AmazonS3/latest/API/RESTOPTIONSobject.html
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSOptionsObjectAction)).
+			Methods(http.MethodOptions).
+			Path("/{object:.+}").
+			HandlerFunc(o.optionsObjectHandler)
+	}
+
 	for _, r := range bucketRouters {
 		registerBucketHttpHeadRouters(r)
 		registerBucketHttpGetRouters(r)
 		registerBucketHttpPostRouters(r)
 		registerBucketHttpPutRouters(r)
 		registerBucketHttpDeleteRouters(r)
+		registerBucketHttpOptionsRouters(r)
 	}
 
 	// List buckets

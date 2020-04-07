@@ -14,23 +14,17 @@ import (
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketCors.html
 func (o *ObjectNode) getBucketCorsHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("Get bucket cors")
-	var (
-		err error
-		ec  *ErrorCode
-	)
-	defer o.errorResponse(w, r, err, ec)
 
-	var param *RequestParam
-	param = ParseRequestParam(r)
+	var err error
+	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		ec = NoSuchBucket
+		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
 
 	var vol *Volume
 	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		ec = NoSuchBucket
+		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
 
@@ -42,7 +36,7 @@ func (o *ObjectNode) getBucketCorsHandler(w http.ResponseWriter, r *http.Request
 	}
 	var corsData []byte
 	if corsData, err = xml.Marshal(output); err != nil {
-		ec = InternalErrorCode(err)
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 
@@ -54,42 +48,41 @@ func (o *ObjectNode) getBucketCorsHandler(w http.ResponseWriter, r *http.Request
 func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request) {
 	log.LogInfof("Put bucket cors")
 
-	var (
-		err error
-		ec  *ErrorCode
-	)
-	defer o.errorResponse(w, r, err, ec)
-
-	var param *RequestParam
-	param = ParseRequestParam(r)
+	var err error
+	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		ec = NoSuchBucket
+		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
 	var vol *Volume
 	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		ec = NoSuchBucket
+		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
 
 	var bytes []byte
 	if bytes, err = ioutil.ReadAll(r.Body); err != nil && err != io.EOF {
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 
 	var corsConfig *CORSConfiguration
-	if corsConfig, err = ParseCorsConfig(bytes); err != nil {
+	if corsConfig, err = parseCorsConfig(bytes); err != nil {
+		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
 	if corsConfig == nil {
+		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
 
 	var newBytes []byte
 	if newBytes, err = json.Marshal(corsConfig); err != nil {
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 	if err = storeBucketCors(newBytes, vol); err != nil {
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 	vol.storeCors(corsConfig)
@@ -101,29 +94,32 @@ func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request
 func (o *ObjectNode) deleteBucketCorsHandler(w http.ResponseWriter, r *http.Request) {
 	log.LogInfof("Delete bucket cors")
 
-	var (
-		err error
-		ec  *ErrorCode
-	)
-	defer o.errorResponse(w, r, err, ec)
-
-	var param *RequestParam
-	param = ParseRequestParam(r)
+	var err error
+	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		ec = NoSuchBucket
+		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
 	var vol *Volume
 	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		ec = NoSuchBucket
+		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
 
 	if err = deleteBucketCors(vol); err != nil {
+		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 	vol.storeCors(nil)
 
 	w.WriteHeader(http.StatusNoContent)
+	return
+}
+
+// Option object
+// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/RESTOPTIONSobject.html
+func (o *ObjectNode) optionsObjectHandler(w http.ResponseWriter, r *http.Request) {
+	log.LogInfof("optionsObjectHandler: OPTIONS object, requestID(%v) remote(%v)", GetRequestID(r), r.RemoteAddr)
+	// Already done in methods 'corsMiddleware'.
 	return
 }

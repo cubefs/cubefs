@@ -254,30 +254,28 @@ func (v *Volume) loadBucketPolicy() (policy *Policy, err error) {
 	return
 }
 
-func (v *Volume) loadBucketACL() (*AccessControlPolicy, error) {
-	data, err1 := v.store.Get(v.name, bucketRootPath, OSS_ACL_KEY)
-	if err1 != nil {
-		return nil, err1
+func (v *Volume) loadBucketACL() (acp *AccessControlPolicy, err error) {
+	var raw []byte
+	if raw, err = v.store.Get(v.name, bucketRootPath, XAttrKeyOSSACL); err != nil {
+		return
 	}
-	acl := &AccessControlPolicy{}
-	err2 := xml.Unmarshal(data, acl)
-	if err2 != nil {
-		return nil, err2
+	acp = &AccessControlPolicy{}
+	if err = xml.Unmarshal(raw, acp); err != nil {
+		return
 	}
-	return acl, nil
+	return
 }
 
-func (v *Volume) loadBucketCors() (*CORSConfiguration, error) {
-	data, err1 := v.store.Get(v.name, bucketRootPath, OSS_CORS_KEY)
-	if err1 != nil {
-		return nil, err1
+func (v *Volume) loadBucketCors() (configuration *CORSConfiguration, err error) {
+	var raw []byte
+	if raw, err = v.store.Get(v.name, bucketRootPath, XAttrKeyOSSCORS); err != nil {
+		return
 	}
-	cors := &CORSConfiguration{}
-	err2 := json.Unmarshal(data, cors)
-	if err2 != nil {
-		return nil, err2
+	configuration = &CORSConfiguration{}
+	if err = json.Unmarshal(raw, configuration); err != nil {
+		return
 	}
-	return cors, nil
+	return configuration, nil
 }
 
 func (v *Volume) OSSMeta() *OSSMeta {
@@ -1323,7 +1321,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 		// 1. Etag (MD5)
 		// 2. MIME type
 		var xattrs []*proto.XAttrInfo
-		var xattrKeys = []string{XAttrKeyOSSETag, XAttrKeyOSSETagInvalid, XAttrKeyOSSMIME, XAttrKeyOSSDISPOSITION}
+		var xattrKeys = []string{XAttrKeyOSSETag, XAttrKeyOSSETagDeprecated, XAttrKeyOSSMIME, XAttrKeyOSSDISPOSITION}
 		if xattrs, err = v.mw.BatchGetXAttr([]uint64{inode}, xattrKeys); err != nil {
 			log.LogErrorf("ObjectMeta: meta get xattr fail, volume(%v) inode(%v) path(%v) keys(%v) err(%v)",
 				v.name, inode, path, strings.Join(xattrKeys, ","), err)
@@ -1333,7 +1331,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 			var xattr = xattrs[0]
 			var rawETag = string(xattr.Get(XAttrKeyOSSETag))
 			if len(rawETag) == 0 {
-				rawETag = string(xattr.Get(XAttrKeyOSSETagInvalid))
+				rawETag = string(xattr.Get(XAttrKeyOSSETagDeprecated))
 			}
 			if len(rawETag) > 0 {
 				etagValue = ParseETagValue(rawETag)
@@ -1770,7 +1768,7 @@ func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 	}
 
 	// Get MD5 information in batches, then update to fileInfos
-	keys := []string{XAttrKeyOSSETag, XAttrKeyOSSETagInvalid}
+	keys := []string{XAttrKeyOSSETag, XAttrKeyOSSETagDeprecated}
 	xattrs, err := v.mw.BatchGetXAttr(inodes, keys)
 	if err != nil {
 		log.LogErrorf("supplyListFileInfo: batch get xattr fail, inodes(%v), err(%v)", inodes, err)
@@ -1789,7 +1787,7 @@ func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 		})
 		var etagValue ETagValue
 		if i >= 0 && i < len(xattrs) && xattrs[i].Inode == fileInfo.Inode {
-			etagRaw, etagInvalidRaw := xattrs[i].Get(XAttrKeyOSSETag), xattrs[i].Get(XAttrKeyOSSETagInvalid)
+			etagRaw, etagInvalidRaw := xattrs[i].Get(XAttrKeyOSSETag), xattrs[i].Get(XAttrKeyOSSETagDeprecated)
 			if len(etagRaw) != 0 {
 				etagValue = ParseETagValue(string(etagRaw))
 			}

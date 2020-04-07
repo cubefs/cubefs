@@ -291,7 +291,7 @@ func storeBucketACL(bytes []byte, vol *Volume) (*AccessControlPolicy, error) {
 		return nil, err3
 	}
 
-	err4 := vol.store.Put(vol.name, bucketRootPath, OSS_ACL_KEY, bytes)
+	err4 := vol.store.Put(vol.name, bucketRootPath, XAttrKeyOSSACL, bytes)
 	if err4 != nil {
 		return nil, err4
 	}
