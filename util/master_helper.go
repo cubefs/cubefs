@@ -19,12 +19,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (

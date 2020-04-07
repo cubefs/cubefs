@@ -16,9 +16,10 @@ package exporter
 
 import (
 	"fmt"
+	"sync"
+
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/ump"
-	"sync"
 )
 
 var (

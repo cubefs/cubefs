@@ -28,11 +28,6 @@ import (
 	"github.com/gorilla/mux"
 )
 
-type CreateBucketConfiguration struct {
-	xmlns              string `xml:"xmlns"`
-	locationConstraint string `xml:"locationConstraint"`
-}
-
 // Head bucket
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadBucket.html
 func (o *ObjectNode) headBucketHandler(w http.ResponseWriter, r *http.Request) {

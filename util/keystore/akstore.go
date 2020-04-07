@@ -3,8 +3,9 @@ package keystore
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/caps"
 	"regexp"
+
+	"github.com/chubaofs/chubaofs/util/caps"
 )
 
 type AccessKeyInfo struct {

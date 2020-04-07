@@ -39,27 +39,54 @@ const (
 	FullControlPermission            = "FULL_CONTROL"
 )
 
-// https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/acl-overview.html
+// Mapping of ACL Permissions and Access Policy Permissions
+// Reference: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/acl-overview.html
 var (
 	aclBucketPermissionActions = map[Permission]proto.Actions{
-		ReadPermission:     {proto.OSSListBucketAction, proto.OSSListBucketVersionsAction, proto.OSSListBucketMultipartUploadsAction},
-		WritePermission:    {proto.OSSPutObjectAction, proto.OSSDeleteObjectAction, proto.OSSDeleteBucketAction},
-		ReadACPPermission:  {proto.OSSGetBucketAclAction},
-		WriteACPPermission: {proto.OSSPutBucketAclAction},
+		ReadPermission: {
+			proto.OSSListObjectsAction,
+			proto.OSSListObjectVersionsAction,
+			proto.OSSListMultipartUploadsAction,
+		},
+		WritePermission: {
+			proto.OSSPutObjectAction,
+			proto.OSSDeleteObjectAction,
+			proto.OSSDeleteObjectsAction,
+		},
+		ReadACPPermission: {
+			proto.OSSGetBucketAclAction,
+		},
+		WriteACPPermission: {
+			proto.OSSPutBucketAclAction,
+		},
 		FullControlPermission: {
-			proto.OSSListBucketAction, proto.OSSListBucketVersionsAction, proto.OSSListBucketMultipartUploadsAction,
-			proto.OSSPutObjectAction, proto.OSSDeleteObjectAction, proto.OSSDeleteBucketAction,
-			proto.OSSGetBucketAclAction, proto.OSSPutBucketAclAction},
+			proto.OSSListObjectsAction,
+			proto.OSSListObjectVersionsAction,
+			proto.OSSListMultipartUploadsAction,
+			proto.OSSPutObjectAction,
+			proto.OSSDeleteObjectAction,
+			proto.OSSDeleteObjectsAction,
+			proto.OSSGetBucketAclAction,
+			proto.OSSPutBucketAclAction,
+		},
 	}
 	aclObjectPermissionActions = map[Permission]proto.Actions{
-		ReadPermission:     {proto.OSSGetObjectAction, proto.OSSGetObjectVersionAction, proto.OSSGetObjectTorrentAction},
-		WritePermission:    {},
-		ReadACPPermission:  {proto.OSSGetObjectAclAction, proto.OSSGetObjectVersionAclAction},
-		WriteACPPermission: {proto.OSSPutObjectAclAction, proto.OSSPutObjectVersionAclAction},
+		ReadPermission: {
+			proto.OSSGetObjectAction,
+			proto.OSSGetObjectTorrentAction,
+		},
+		WritePermission: {},
+		ReadACPPermission: {
+			proto.OSSGetObjectAclAction,
+		},
+		WriteACPPermission: {
+			proto.OSSPutObjectAclAction},
 		FullControlPermission: {
-			proto.OSSGetObjectAction, proto.OSSGetObjectVersionAction, proto.OSSGetObjectTorrentAction,
-			proto.OSSGetObjectAclAction, proto.OSSGetObjectVersionAclAction,
-			proto.OSSPutObjectAclAction, proto.OSSPutObjectVersionAclAction},
+			proto.OSSGetObjectAction,
+			proto.OSSGetObjectTorrentAction,
+			proto.OSSGetObjectAclAction,
+			proto.OSSPutObjectAclAction,
+		},
 	}
 )
 

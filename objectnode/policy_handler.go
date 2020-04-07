@@ -26,7 +26,6 @@ import (
 )
 
 func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("Get bucket acl")
 	var (
 		err error
 		ec  *ErrorCode
