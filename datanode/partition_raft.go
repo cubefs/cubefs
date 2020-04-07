@@ -126,7 +126,7 @@ func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer) error {
 		}
 	}
 	if !hasExsit {
-		return fmt.Errorf("peer(%v) not exsit hasDownReplicasExcludePeer(%v)", peer, downReplicas)
+		return nil
 	}
 
 	hasDownReplicasExcludePeer := make([]uint64, 0)

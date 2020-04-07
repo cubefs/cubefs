@@ -203,7 +203,7 @@ func (mp *metaPartition) CanRemoveRaftMember(peer proto.Peer) error {
 		}
 	}
 	if !hasExsit {
-		return fmt.Errorf("peer(%v) not exsit downReplicas(%v)", peer, downReplicas)
+		return nil
 	}
 
 	hasDownReplicasExcludePeer := make([]uint64, 0)
