@@ -82,7 +82,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 		var hyphenIndex = strings.Index(rangeOpt, "-")
 		if hyphenIndex < 0 {
-			_ = InvalidArgument.ServeResponse(w, r)
+			errorCode = InvalidArgument
 			return
 		}
 
@@ -128,6 +128,52 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		log.LogErrorf("getObjectHandler: Volume get file info fail, requestId(%v) err(%v)", GetRequestID(r), err)
 		errorCode = NoSuchKey
 		return
+	}
+
+	// parse request header
+	match := r.Header.Get(HeaderNameIfMatch)
+	noneMatch := r.Header.Get(HeaderNameIfNoneMatch)
+	modified := r.Header.Get(HeaderNameIfModifiedSince)
+	unmodified := r.Header.Get(HeaderNameIfUnmodifiedSince)
+
+	if match != "" && match != fileInfo.ETag {
+		log.LogErrorf("getObjectHandler: object eTag(%s) not match If-Match header value(%s), requestId(%v)", fileInfo.ETag, match, GetRequestID(r))
+		errorCode = PreconditionFailed
+		return
+	}
+	if modified != "" {
+		fileModTime := fileInfo.ModifyTime
+		modifiedTime, err := parseTimeRFC1123(modified)
+		if err != nil {
+			log.LogErrorf("getObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			errorCode = InvalidArgument
+			return
+		}
+		if !fileModTime.After(modifiedTime) {
+			log.LogInfof("getObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
+			errorCode = NotModified
+			return
+		}
+	}
+	// if none match
+	if noneMatch != "" && noneMatch == fileInfo.ETag {
+		log.LogErrorf("getObjectHandler: object eTag(%s) match If-None-Match header value(%s), requestId(%v)", fileInfo.ETag, match, GetRequestID(r))
+		errorCode = NotModified
+		return
+	}
+	if unmodified != "" && match == "" {
+		fileModTime := fileInfo.ModifyTime
+		modifiedTime, err := parseTimeRFC1123(unmodified)
+		if err != nil {
+			log.LogErrorf("getObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			errorCode = InvalidArgument
+			return
+		}
+		if fileModTime.After(modifiedTime) {
+			log.LogInfof("getObjectHandler: file modified time after than specified time: requestID(%v)", GetRequestID(r))
+			errorCode = PreconditionFailed
+			return
+		}
 	}
 
 	// validate and fix range
@@ -230,6 +276,52 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 		log.LogErrorf("headObjectHandler: get file meta fail, requestId(%v), err(%v)", GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
 		return
+	}
+
+	// parse request header
+	match := r.Header.Get(HeaderNameIfMatch)
+	noneMatch := r.Header.Get(HeaderNameIfNoneMatch)
+	modified := r.Header.Get(HeaderNameIfModifiedSince)
+	unmodified := r.Header.Get(HeaderNameIfUnmodifiedSince)
+
+	if match != "" && match != fileInfo.ETag {
+		log.LogErrorf("headObjectHandler: object eTag(%s) not match If-Match header value(%s), requestId(%v)", fileInfo.ETag, match, GetRequestID(r))
+		errorCode = PreconditionFailed
+		return
+	}
+	if modified != "" {
+		fileModTime := fileInfo.ModifyTime
+		modifiedTime, err := parseTimeRFC1123(modified)
+		if err != nil {
+			log.LogErrorf("headObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			errorCode = InvalidArgument
+			return
+		}
+		if !fileModTime.After(modifiedTime) {
+			log.LogInfof("headObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
+			errorCode = NotModified
+			return
+		}
+	}
+	// if none match
+	if noneMatch != "" && noneMatch == fileInfo.ETag {
+		log.LogErrorf("headObjectHandler: object eTag(%s) match If-None-Match header value(%s), requestId(%v)", fileInfo.ETag, match, GetRequestID(r))
+		errorCode = NotModified
+		return
+	}
+	if unmodified != "" && match == "" {
+		fileModTime := fileInfo.ModifyTime
+		modifiedTime, err := parseTimeRFC1123(unmodified)
+		if err != nil {
+			log.LogErrorf("headObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			errorCode = InvalidArgument
+			return
+		}
+		if fileModTime.After(modifiedTime) {
+			log.LogInfof("headObjectHandler: file modified time after than specified time: requestID(%v)", GetRequestID(r))
+			errorCode = PreconditionFailed
+			return
+		}
 	}
 
 	// set response header
