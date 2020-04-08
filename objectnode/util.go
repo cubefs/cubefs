@@ -32,13 +32,13 @@ const (
 )
 
 var (
-	emptyPathItem   = PathItem{}
+	emptyPathItem = PathItem{}
 
 	// Regular expression used to match one or more path separators.
 	regexpSepPrefix = regexp.MustCompile("^/+")
 
 	// Regular expression to match more than two consecutive path separators.
-	regexpDupSep    = regexp.MustCompile("/{2,}")
+	regexpDupSep = regexp.MustCompile("/{2,}")
 )
 
 // PathItem defines path node attribute information,

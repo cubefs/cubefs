@@ -126,7 +126,6 @@ func (o *ObjectNode) unsupportedOperationHandler(w http.ResponseWriter, r *http.
 	if err = UnsupportedOperation.ServeResponse(w, r); err != nil {
 		log.LogErrorf("unsupportedOperationHandler: serve response fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		ServeInternalStaticErrorResponse(w, r)
 	}
 	return
 }

@@ -251,13 +251,13 @@ type ListBucketResultV2 struct {
 }
 
 type Tag struct {
-	Key   string `xml:"Key",json:"k"`
-	Value string `xml:"Value",json:"v"`
+	Key   string `xml:"Key" json:"k"`
+	Value string `xml:"Value" json:"v"`
 }
 
 type Tagging struct {
 	XMLName xml.Name `json:"-"`
-	TagSet  []*Tag   `xml:"TagSet>Tag",json:"ts"`
+	TagSet  []*Tag   `xml:"TagSet>Tag" json:"ts"`
 }
 
 func NewTagging() *Tagging {
