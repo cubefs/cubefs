@@ -23,6 +23,7 @@ import (
 	"sync"
 
 	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/exporter"
 
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
@@ -190,6 +191,10 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 		log.LogInfof("handleStart: start rest api fail: err(%v)", err)
 		return
 	}
+
+	exporter.Init(cfg.GetString("role"), cfg)
+	exporter.RegistConsul(ci.Cluster, cfg.GetString("role"), cfg)
+
 	log.LogInfo("object subsystem start success")
 	return
 }
