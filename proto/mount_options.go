@@ -41,6 +41,7 @@ const (
 	AccessKey
 	SecretKey
 	DisableDcache
+	SubDir
 
 	MaxMountOption
 )
@@ -99,6 +100,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[SecretKey] = MountOption{"secretKey", "Secret Key", "", ""}
 
 	opts[DisableDcache] = MountOption{"disableDcache", "Disable Dentry Cache", "", false}
+	opts[SubDir] = MountOption{"subdir", "Mount sub directory", "", ""}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -211,4 +213,5 @@ type MountOptions struct {
 	AccessKey     string
 	SecretKey     string
 	DisableDcache bool
+	SubDir        string
 }
