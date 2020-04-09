@@ -5,19 +5,14 @@
 * Support token authentication for readwrite-mount & readonly-mount of fuse client. [#435](https://github.com/chubaofs/chubaofs/pull/435)
 * A command line tool for cluster operations. [#441](https://github.com/chubaofs/chubaofs/pull/441) 
 * Implemented user security and authorization system to improve resource access control. [#441](https://github.com/chubaofs/chubaofs/pull/441) 
+* Implemented extend attributes (xattr) for metadata and posix-compatible file system interface (mountable client). [#441](https://github.com/chubaofs/chubaofs/pull/441)
 
 ### Enhancement
 
 #### Object storage related
 * Support folder operations in S3 APIs. [#450](https://github.com/chubaofs/chubaofs/pull/450)
-* Reduce blocking under concurrency. [#458](https://github.com/chubaofs/chubaofs/pull/458) 
-* Add routing for unimplemented APIs. [#470](https://github.com/chubaofs/chubaofs/pull/470)
+* Reduce blocking under concurrency. [#458](https://github.com/chubaofs/chubaofs/pull/458)
 * Implemented more Amazon S3-compatible object storage interfaces to improve compatibility. [#441](https://github.com/chubaofs/chubaofs/pull/441)
-* Implemented extend attributes (xattr) for metadata and posix-compatible file system interface (mountable client). [#441](https://github.com/chubaofs/chubaofs/pull/441)
-
-#### Authentication related
-* Add `cli`(command line interface) api for authentication policy. [#445](https://github.com/chubaofs/chubaofs/pull/445)
-* Auto create user while create volume. [#447](https://github.com/chubaofs/chubaofs/pull/447)
 
 #### Master related
 * Make replicas of the data partition a specific option when creating volume. [#377](https://github.com/chubaofs/chubaofs/pull/377)
@@ -28,31 +23,24 @@
 * Checks only file type instead of the whole mode. [#381](https://github.com/chubaofs/chubaofs/pull/381)
 
 #### Fuse related
-* Make followerRead a client specific option. [#382](https://github.com/chubaofs/chubaofs/pull/382)
+* Make `followerRead` a client specific option. [#382](https://github.com/chubaofs/chubaofs/pull/382)
 * Support command line argument for fuse client. [#418](https://github.com/chubaofs/chubaofs/pull/418)
 * Introduce disable `dentry-cache` to client option. [#453](https://github.com/chubaofs/chubaofs/pull/453)
 * Filter target meta partitions in batch iget. [#472](https://github.com/chubaofs/chubaofs/pull/472)
 
 #### Others
 * Yum tool for deploying ChubaoFS cluster. [#385](https://github.com/chubaofs/chubaofs/pull/385)
-* Wrap syscal.Dup3 to support build on darwin and windows. [#399](https://github.com/chubaofs/chubaofs/pull/399)
-* Add nginx and upstream for objectnode in docker compose. [#400](https://github.com/chubaofs/chubaofs/pull/400)
 
 ### Bug fix
-* Fix the signature algorithm v2 for `ObjectNode`. [#369](https://github.com/chubaofs/chubaofs/pull/369)
+* Fix the signature algorithm issues. [#369](https://github.com/chubaofs/chubaofs/pull/369) [#476](https://github.com/chubaofs/chubaofs/pull/476)
 * Avoid inode unlink due to net error. [#402](https://github.com/chubaofs/chubaofs/pull/402)
 * A map structure locked during serialization. [#413](https://github.com/chubaofs/chubaofs/pull/413)
 * Wait for data sync in close syscall. [#419](https://github.com/chubaofs/chubaofs/pull/419)
 * Fix empty result on list objects. [#433](https://github.com/chubaofs/chubaofs/pull/433)
 * Set lookup valid duration for newly created file. [#437](https://github.com/chubaofs/chubaofs/pull/437)
-* `iget` error due to metapartition split. [#446](https://github.com/chubaofs/chubaofs/pull/446)
-* If `rdonly`=`true` or `token`=`{readonly token}`, the client will be mounted readonly. [#454](https://github.com/chubaofs/chubaofs/pull/454)
-* Mount fail when volume is full. [#453](https://github.com/chubaofs/chubaofs/pull/453)
+* Fix `iget` error due to metapartition split. [#446](https://github.com/chubaofs/chubaofs/pull/446)
+* Fix mount fail when volume is full. [#453](https://github.com/chubaofs/chubaofs/pull/453)
 * Fix offline strategy for raft peers of `data partition` and `meta partition`. [#467](https://github.com/chubaofs/chubaofs/pull/467)
-
-### Refactoring
-* Clean up duplicate server code. [#375](https://github.com/chubaofs/chubaofs/pull/375)
-* Unbinding regions in signature algorithm v4. [#414](https://github.com/chubaofs/chubaofs/pull/414)
 
 ### Document
 * Add guide for running ChubaoFS by yum tools. [#386](https://github.com/chubaofs/chubaofs/pull/386)
