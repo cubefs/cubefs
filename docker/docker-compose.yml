@@ -254,6 +254,7 @@ services:
         image: chubaofs/cfs-base:1.0
         ports:
             - "80"
+            - 9500
         volumes:
             - ./bin:/cfs/bin:ro
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
@@ -269,6 +270,7 @@ services:
         image: chubaofs/cfs-base:1.0
         ports:
             - "80"
+            - 9500
         volumes:
             - ./bin:/cfs/bin:ro
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
@@ -284,6 +286,7 @@ services:
         image: chubaofs/cfs-base:1.0
         ports:
             - "80"
+            - 9500
         volumes:
             - ./bin:/cfs/bin:ro
             - ./conf/objectnode.json:/cfs/conf/objectnode.json

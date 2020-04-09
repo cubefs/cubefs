@@ -18,6 +18,11 @@ import (
 	"regexp"
 )
 
+var (
+	actionRegexp       = regexp.MustCompile("^action:((oss:(\\w+))|(posix:(\\w)+))$")
+	actionPrefixRegexp = regexp.MustCompile("^action:((oss)|(posix)):")
+)
+
 type Action string
 
 func (a Action) String() string {
@@ -26,6 +31,14 @@ func (a Action) String() string {
 
 func (a Action) IsNone() bool {
 	return len(a) == 0 || a == NoneAction
+}
+
+func (a Action) Name() string {
+	var loc = actionPrefixRegexp.FindStringIndex(a.String())
+	if len(loc) != 2 {
+		return "Unknown"
+	}
+	return a.String()[loc[1]:]
 }
 
 const (
@@ -224,10 +237,6 @@ var (
 		POSIXReadAction,
 		POSIXWriteAction,
 	}
-)
-
-var (
-	actionRegexp = regexp.MustCompile("^action:((oss:(\\w+))|(posix:(\\w)+))$")
 )
 
 func ParseAction(str string) Action {

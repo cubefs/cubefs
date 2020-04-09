@@ -39,7 +39,7 @@ var (
 	clustername       string
 	modulename        string
 	enabledPrometheus = false
-	replacer          = strings.NewReplacer("-", "_", ".", "_", " ", "_", ",", "_")
+	replacer          = strings.NewReplacer("-", "_", ".", "_", " ", "_", ",", "_", ":", "_")
 )
 
 func metricsName(name string) string {

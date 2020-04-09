@@ -23,6 +23,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/google/uuid"
@@ -70,6 +71,8 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		var startTime = time.Now()
 		// next
 		next.ServeHTTP(w, r)
+		metric := exporter.NewTPCnt(fmt.Sprintf("action_%v", action.Name()))
+		defer metric.Set(err)
 
 		// ===== post-handle start =====
 		var headerToString = func(header http.Header) string {
@@ -86,7 +89,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		log.LogDebugf("traceMiddleware: "+
 			"action(%v) requestID(%v) host(%v) method(%v) url(%v) header(%v) "+
 			"remote(%v) cost(%v)",
-			action, requestID, r.Host, r.Method, r.URL.String(), headerToString(r.Header),
+			action.Name(), requestID, r.Host, r.Method, r.URL.String(), headerToString(r.Header),
 			getRequestIP(r), time.Since(startTime))
 		// ==== post-handle finish =====
 	}
