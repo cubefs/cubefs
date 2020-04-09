@@ -322,6 +322,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.AccessKey = GlobalMountOptions[proto.AccessKey].GetString()
 	opt.SecretKey = GlobalMountOptions[proto.SecretKey].GetString()
 	opt.DisableDcache = GlobalMountOptions[proto.DisableDcache].GetBool()
+	opt.SubDir = GlobalMountOptions[proto.SubDir].GetString()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))

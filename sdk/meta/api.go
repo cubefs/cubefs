@@ -15,12 +15,14 @@
 package meta
 
 import (
+	"fmt"
+	syslog "log"
+	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
-
-	"sort"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -36,6 +38,30 @@ const (
 	OpenRetryInterval = 5 * time.Millisecond
 	OpenRetryLimit    = 1000
 )
+
+func (mw *MetaWrapper) GetRootIno(subdir string) (uint64, error) {
+	rootIno := proto.RootIno
+	if subdir == "" || subdir == "/" {
+		return rootIno, nil
+	}
+
+	dirs := strings.Split(subdir, "/")
+	for idx, dir := range dirs {
+		if dir == "/" || dir == "" {
+			continue
+		}
+		child, mode, err := mw.Lookup_ll(rootIno, dir)
+		if err != nil {
+			return 0, fmt.Errorf("GetRootIno: Lookup failed, subdir(%v) idx(%v) dir(%v) err(%v)", subdir, idx, dir, err)
+		}
+		if !proto.IsDir(mode) {
+			return 0, fmt.Errorf("GetRootIno: not directory, subdir(%v) idx(%v) dir(%v) child(%v) mode(%v) err(%v)", subdir, idx, dir, child, mode, err)
+		}
+		rootIno = child
+	}
+	syslog.Printf("GetRootIno: %v\n", rootIno)
+	return rootIno, nil
+}
 
 func (mw *MetaWrapper) Statfs() (total, used uint64) {
 	total = atomic.LoadUint64(&mw.totalSize)
