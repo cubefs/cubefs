@@ -181,7 +181,6 @@ services:
         volumes:
             - ${DiskPath:-./disk}/1:/cfs/disk
             - ./bin:/cfs/bin:ro
-            - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
