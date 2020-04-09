@@ -153,7 +153,7 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV4(r *http.Request) (pass bo
 	headerNames := getCanonicalHeaderNames(req.SignedHeaders)
 	payload := UnsignedPayload
 	canonicalQuery := createCanonicalQueryV4(req)
-	canonicalRequestString := createCanonicalRequestString(r.Method, req.URI, canonicalQuery, canonicalHeaderStr, headerNames, payload)
+	canonicalRequestString := createCanonicalRequestString(r.Method, r.URL.Path, canonicalQuery, canonicalHeaderStr, headerNames, payload)
 
 	log.LogDebugf("validateUrlBySignatureAlgorithmV4: middle data:\n"+
 		"  RequestID: %v\n"+
@@ -456,7 +456,7 @@ func calculateSignatureV4(r *http.Request, region, secretKey string, signedHeade
 }
 
 func getCanonicalURI(r *http.Request) string {
-	return strings.Split(r.URL.RequestURI(), "?")[0]
+	return r.URL.Path
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
