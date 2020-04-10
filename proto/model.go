@@ -129,6 +129,7 @@ type ZoneNodesStat struct {
 	Total         float64 `json:"TotalGB"`
 	Used          float64 `json:"UsedGB"`
 	Avail         float64 `json:"AvailGB"`
+	UsedRatio     float64
 	TotalNodes    int
 	WritableNodes int
 }

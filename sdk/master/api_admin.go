@@ -114,13 +114,14 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	return
 }
 
-func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas int, followerRead bool, authKey string) (err error) {
+func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas int, followerRead bool, authKey, zoneName string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
 	request.addParam("capacity", strconv.FormatUint(capacity, 10))
 	request.addParam("replicaNum", strconv.Itoa(replicas))
 	request.addParam("followerRead", strconv.FormatBool(followerRead))
+	request.addParam("zoneName", zoneName)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

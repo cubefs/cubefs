@@ -74,6 +74,10 @@ func (c *Cluster) updateZoneStatInfo() {
 		zs.DataNodeStat.Total = fixedPoint(zs.DataNodeStat.Total, 2)
 		zs.DataNodeStat.Used = fixedPoint(zs.DataNodeStat.Used, 2)
 		zs.DataNodeStat.Avail = fixedPoint(zs.DataNodeStat.Total-zs.DataNodeStat.Used, 2)
+		if zs.DataNodeStat.Total == 0 {
+			zs.DataNodeStat.Total = 1
+		}
+		zs.DataNodeStat.UsedRatio = fixedPoint(float64(zs.DataNodeStat.Used)/float64(zs.DataNodeStat.Total), 2)
 		zone.metaNodes.Range(func(key, value interface{}) bool {
 			zs.MetaNodeStat.TotalNodes++
 			node := value.(*MetaNode)
@@ -87,6 +91,10 @@ func (c *Cluster) updateZoneStatInfo() {
 		zs.MetaNodeStat.Total = fixedPoint(zs.MetaNodeStat.Total, 2)
 		zs.MetaNodeStat.Used = fixedPoint(zs.MetaNodeStat.Used, 2)
 		zs.MetaNodeStat.Avail = fixedPoint(zs.MetaNodeStat.Total-zs.MetaNodeStat.Used, 2)
+		if zs.MetaNodeStat.Total == 0 {
+			zs.MetaNodeStat.Total = 1
+		}
+		zs.MetaNodeStat.UsedRatio = fixedPoint(float64(zs.MetaNodeStat.Used)/float64(zs.MetaNodeStat.Total), 2)
 	}
 }
 
