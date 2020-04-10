@@ -9,3 +9,4 @@ docker/bin
 docker/disk
 docs/build
 tmp/
+docker/log
