@@ -18,6 +18,10 @@ import (
 	"time"
 )
 
+const (
+	DefaultZoneName = "default"
+)
+
 // MetaNode defines the structure of a meta node
 type MetaNodeInfo struct {
 	ID                        uint64
@@ -186,7 +190,7 @@ type DataReplica struct {
 	ReportTime      int64
 	FileCount       uint32
 	Status          int8
-	HasLoadResponse bool   // if there is any response when loading
+	HasLoadResponse bool // if there is any response when loading
 	Total           uint64 `json:"TotalSize"`
 	Used            uint64 `json:"UsedSize"`
 	IsLeader        bool
