@@ -48,6 +48,11 @@ const (
 	HeaderNameCopyModified        = "x-amz-copy-source-if-modified-since"
 	HeaderNameCopyUnModified      = "x-amz-copy-source-if-unmodified-since"
 	HeaderNameDecodeContentLength = "X-Amz-Decoded-Content-Length"
+
+	HeaderNameIfMatch           = "If-Match"
+	HeaderNameIfNoneMatch       = "If-None-Match"
+	HeaderNameIfModifiedSince   = "If-Modified-Since"
+	HeaderNameIfUnmodifiedSince = "If-Unmodified-Since"
 )
 
 const (

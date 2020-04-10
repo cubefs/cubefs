@@ -89,6 +89,7 @@ var (
 	MaxContentLength                    = &ErrorCode{ErrorCode: "MaxContentLength", ErrorMessage: "Content-Length is bigger than 20KB.", StatusCode: http.StatusLengthRequired}
 	DuplicatedBucket                    = &ErrorCode{ErrorCode: "CreateBucketFailed", ErrorMessage: "Duplicate bucket name.", StatusCode: http.StatusBadRequest}
 	Conflict                            = &ErrorCode{ErrorCode: "Conflict", ErrorMessage: "Object already exists and type conflicts", StatusCode: http.StatusConflict}
+	NotModified                         = &ErrorCode{ErrorCode: "MaxContentLength", ErrorMessage: "Not modified.", StatusCode: http.StatusNotModified}
 )
 
 func HttpStatusErrorCode(code int) *ErrorCode {

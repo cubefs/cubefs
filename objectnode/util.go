@@ -141,7 +141,7 @@ func formatTimeRFC1123(time time.Time) string {
 }
 
 func parseTimeRFC1123(timeStr string) (time.Time, error) {
-	t, err := time.Parse(http.TimeFormat, timeStr)
+	t, err := time.Parse("Mon, 2 Jan 2006 15:04:05 GMT", timeStr)
 	if err != nil {
 		return t, err
 	}
