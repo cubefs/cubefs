@@ -51,7 +51,7 @@ var (
 )
 
 const (
-	DefaultZoneName         = "cfs_zone1"
+	DefaultZoneName         = proto.DefaultZoneName
 	DefaultRaftDir          = "raft"
 	DefaultRaftLogsToRetain = 10 // Count of raft logs per data partition
 	DefaultDiskMaxErr       = 1

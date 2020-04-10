@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 // Keys in the request
@@ -83,7 +84,7 @@ const (
 	volExpansionRatio                            = 0.1
 	maxNumberOfDataPartitionsForExpansion        = 100
 	EmptyCrcValue                         uint32 = 4045511210
-	DefaultZoneName                              = "default"
+	DefaultZoneName                              = proto.DefaultZoneName
 	retrySendSyncTaskInternal                    = 3 * time.Second
 	defaultRangeOfCountDifferencesAllowed        = 50
 	defaultMinusOfMaxInodeID                     = 1000

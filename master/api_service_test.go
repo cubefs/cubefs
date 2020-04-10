@@ -101,7 +101,7 @@ func createDefaultMasterServerForTest() *Server {
 	testServer.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
-	vol, err := testServer.cluster.createVol(commonVolName, "cfs", "", 3, 3, 3, 100, false, false, false, false)
+	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, 3, 3, 3, 100, false, false, false, false)
 	if err != nil {
 		panic(err)
 	}
@@ -345,7 +345,7 @@ func TestGetVolSimpleInfo(t *testing.T) {
 
 func TestCreateVol(t *testing.T) {
 	name := "test_create_vol"
-	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest", hostAddr, proto.AdminCreateVol, name)
+	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest&zoneName=%v", hostAddr, proto.AdminCreateVol, name,testZone2)
 	fmt.Println(reqURL)
 	process(reqURL, t)
 	userInfo, err := server.user.getUserInfo("cfstest")
