@@ -1210,7 +1210,7 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 	go metaNode.clean()
 }
 
-func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum uint8, followerRead, authenticate, enableToken bool) (err error) {
+func (c *Cluster) updateVol(name, authKey, zoneName string, capacity uint64, replicaNum uint8, followerRead, authenticate, enableToken bool) (err error) {
 	var (
 		vol             *Vol
 		serverAuthKey   string
@@ -1219,6 +1219,7 @@ func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum ui
 		oldFollowerRead bool
 		oldAuthenticate bool
 		oldEnableToken  bool
+		oldZoneName     string
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
@@ -1248,6 +1249,14 @@ func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum ui
 		}
 	}
 
+	oldZoneName = vol.zoneName
+	if zoneName != "" {
+		_, err = c.t.getZone(zoneName)
+		if err != nil {
+			goto errHandler
+		}
+		vol.zoneName = zoneName
+	}
 	oldCapacity = vol.Capacity
 	oldDpReplicaNum = vol.dpReplicaNum
 	oldFollowerRead = vol.FollowerRead
@@ -1267,6 +1276,7 @@ func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum ui
 		vol.FollowerRead = oldFollowerRead
 		vol.authenticate = oldAuthenticate
 		vol.enableToken = oldEnableToken
+		vol.zoneName = oldZoneName
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
 		goto errHandler
@@ -1302,6 +1312,8 @@ func (c *Cluster) createVol(name, owner, zoneName string, mpCount, dpReplicaNum,
 		if _, err = c.t.getZone(zoneName); err != nil {
 			return
 		}
+	} else {
+		zoneName = DefaultZoneName
 	}
 	if vol, err = c.doCreateVol(name, owner, zoneName, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate, crossZone, enableToken); err != nil {
 		goto errHandler
