@@ -48,6 +48,7 @@ services:
             - 9500
         volumes:
             - ./bin:/cfs/bin:ro
+            - ./log/master1:/cfs/log
             - ./conf/master1.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -67,6 +68,7 @@ services:
             - 9500
         volumes:
             - ./bin:/cfs/bin:ro
+            - ./log/master2:/cfs/log
             - ./conf/master2.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -85,6 +87,7 @@ services:
             - 9500
         volumes:
             - ./bin:/cfs/bin:ro
+            - ./log/master3:/cfs/log
             - ./conf/master3.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -104,6 +107,7 @@ services:
             - 9500
         volumes:
             - ./bin:/cfs/bin:ro
+            - ./log/metanode1:/cfs/log
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
@@ -123,6 +127,7 @@ services:
             - 9500
         volumes:
             - ./bin:/cfs/bin:ro
+            - ./log/metanode2:/cfs/log
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
@@ -142,6 +147,7 @@ services:
             - 9500
         volumes:
             - ./bin:/cfs/bin:ro
+            - ./log/metanode3:/cfs/log
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
@@ -152,23 +158,24 @@ services:
                 ipv4_address: 192.168.0.23
 
     metanode4:
-            image: chubaofs/cfs-base:1.0
-            ports:
-                - "17210"
-                - "17220"
-                - "17230"
-                - "17240"
-                - 9500
-            volumes:
-                - ./bin:/cfs/bin:ro
-                - ./conf/metanode.json:/cfs/conf/metanode.json
-                - ./script/start_meta.sh:/cfs/script/start.sh
-            command: /bin/bash /cfs/script/start.sh
-            restart: on-failure
-            privileged: true
-            networks:
-                extnetwork:
-                    ipv4_address: 192.168.0.24
+        image: chubaofs/cfs-base:1.0
+        ports:
+            - "17210"
+            - "17220"
+            - "17230"
+            - "17240"
+            - 9500
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ./log/metanode4:/cfs/log
+            - ./conf/metanode.json:/cfs/conf/metanode.json
+            - ./script/start_meta.sh:/cfs/script/start.sh
+        command: /bin/bash /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.24
 
     datanode1:
         image: chubaofs/cfs-base:1.0
@@ -181,6 +188,7 @@ services:
         volumes:
             - ${DiskPath:-./disk}/1:/cfs/disk
             - ./bin:/cfs/bin:ro
+            - ./log/datanode1:/cfs/log
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
@@ -201,6 +209,7 @@ services:
         volumes:
             - ${DiskPath:-./disk}/2:/cfs/disk
             - ./bin:/cfs/bin:ro
+            - ./log/datanode2:/cfs/log
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -221,6 +230,7 @@ services:
         volumes:
             - ${DiskPath:-./disk}/3:/cfs/disk
             - ./bin:/cfs/bin:ro
+            - ./log/datanode3:/cfs/log
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -241,6 +251,7 @@ services:
         volumes:
             - ${DiskPath:-./disk}/4:/cfs/disk
             - ./bin:/cfs/bin:ro
+            - ./log/datanode4:/cfs/log
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -257,6 +268,7 @@ services:
             - 9500
         volumes:
             - ./bin:/cfs/bin:ro
+            - ./log/objectnode1:/cfs/log
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -273,6 +285,7 @@ services:
             - 9500
         volumes:
             - ./bin:/cfs/bin:ro
+            - ./log/objectnode2:/cfs/log
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -289,6 +302,7 @@ services:
             - 9500
         volumes:
             - ./bin:/cfs/bin:ro
+            - ./log/objectnode3:/cfs/log
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -306,6 +320,7 @@ services:
             - ./bin:/cfs/bin:ro
             - ./conf/hosts:/etc/hosts:ro
             - ./conf/client.json:/cfs/conf/client.json
+            - ./log/client:/cfs/log
             - ./script/run_test.sh:/cfs/script/start.sh
             - ./script/start_client.sh:/cfs/script/start_client.sh
             - ./ltp/runtest/fs:/opt/ltp/runtest/fs
