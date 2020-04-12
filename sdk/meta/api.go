@@ -189,8 +189,7 @@ func (mw *MetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
 
 	batchInfos := make([]*proto.InodeInfo, 0)
 	resp := make(chan []*proto.InodeInfo, BatchIgetRespBuf)
-	partitions := make([]*MetaPartition, 0, 64)
-	set := make(map[uint64]struct{})
+	candidates := make(map[uint64][]uint64)
 
 	// Target partition does not have to be very accurate.
 	for _, ino := range inodes {
@@ -198,16 +197,19 @@ func (mw *MetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
 		if mp == nil {
 			continue
 		}
-		if _, ok := set[mp.PartitionID]; ok == true {
-			continue
+		if _, ok := candidates[mp.PartitionID]; !ok {
+			candidates[mp.PartitionID] = make([]uint64, 0, 256)
 		}
-		partitions = append(partitions, mp)
-		set[mp.PartitionID] = struct{}{}
+		candidates[mp.PartitionID] = append(candidates[mp.PartitionID], ino)
 	}
 
-	for _, mp := range partitions {
+	for id, inos := range candidates {
+		mp := mw.getPartitionByID(id)
+		if mp == nil {
+			continue
+		}
 		wg.Add(1)
-		go mw.batchIget(&wg, mp, inodes, resp)
+		go mw.batchIget(&wg, mp, inos, resp)
 	}
 
 	go func() {
