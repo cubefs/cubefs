@@ -65,7 +65,7 @@ func TestVol(t *testing.T) {
 }
 
 func createVol(name string, t *testing.T) {
-	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs&mpCount=2", hostAddr, proto.AdminCreateVol, name)
+	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs&mpCount=2&zoneName=%v", hostAddr, proto.AdminCreateVol, name,testZone2)
 	fmt.Println(reqURL)
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(name)
@@ -171,7 +171,7 @@ func markDeleteVol(name string, t *testing.T) {
 
 func TestVolReduceReplicaNum(t *testing.T) {
 	volName := "reduce-replica-num"
-	vol, err := server.cluster.createVol(volName, volName, "", 3, 3, util.DefaultDataPartitionSize,
+	vol, err := server.cluster.createVol(volName, volName, testZone2, 3, 3, util.DefaultDataPartitionSize,
 		100, false, false, false, false)
 	if err != nil {
 		t.Error(err)

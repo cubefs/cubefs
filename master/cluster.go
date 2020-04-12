@@ -1250,13 +1250,17 @@ func (c *Cluster) updateVol(name, authKey, zoneName string, capacity uint64, rep
 	}
 
 	oldZoneName = vol.zoneName
+	if vol.crossZone && zoneName != "" {
+		err = fmt.Errorf("only the vol which don't across zones,can specified zoneName")
+		goto errHandler
+	}
 	if zoneName != "" {
 		_, err = c.t.getZone(zoneName)
 		if err != nil {
 			goto errHandler
 		}
-		vol.zoneName = zoneName
 	}
+	vol.zoneName = zoneName
 	oldCapacity = vol.Capacity
 	oldDpReplicaNum = vol.dpReplicaNum
 	oldFollowerRead = vol.FollowerRead
@@ -1312,7 +1316,7 @@ func (c *Cluster) createVol(name, owner, zoneName string, mpCount, dpReplicaNum,
 		if _, err = c.t.getZone(zoneName); err != nil {
 			return
 		}
-	} else {
+	} else if !crossZone {
 		zoneName = DefaultZoneName
 	}
 	if vol, err = c.doCreateVol(name, owner, zoneName, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate, crossZone, enableToken); err != nil {
