@@ -51,6 +51,7 @@ type Super struct {
 	fslock    sync.Mutex
 
 	disableDcache bool
+	fsyncOnClose  bool
 	rootIno       uint64
 }
 
@@ -114,6 +115,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.orphan = NewOrphanInodeList()
 	s.nodeCache = make(map[uint64]fs.Node)
 	s.disableDcache = opt.DisableDcache
+	s.fsyncOnClose = opt.FsyncOnClose
 	if s.rootIno, err = s.mw.GetRootIno(opt.SubDir); err != nil {
 		return nil, err
 	}
