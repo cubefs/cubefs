@@ -15,27 +15,16 @@
 package exporter
 
 import (
-	"fmt"
-
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/ump"
+	"strings"
 )
 
-type Alarm struct {
-	Counter
-}
+var (
+	replacer = strings.NewReplacer("-", "_", ".", "_", " ", "_", ",", "_", ":", "_")
+)
 
-func Warning(detail string) (a *Alarm) {
-	key := fmt.Sprintf("%v_%v_warning", ClusterName(), Role())
-	name := fmt.Sprintf("warning")
-	ump.Alarm(key, detail)
-	log.LogCritical(key, detail)
-	if !IsEnabled() {
-		return
-	}
-	a = new(Alarm)
-	a.name = name
-	a.Add(1)
-	CollectorInstance().Collect(a)
-	return
+type Metric interface {
+	Name() string
+	Val() float64
+	Labels() map[string]string
+	Key() string
 }

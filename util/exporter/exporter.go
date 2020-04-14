@@ -15,121 +15,125 @@
 package exporter
 
 import (
-	"fmt"
-	"net/http"
-	"strconv"
-	"strings"
-	"time"
-
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/gorilla/mux"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
-	PromHandlerPattern      = "/metrics"       // prometheus handler
 	AppName                 = "cfs"            //app name
+	ConfigKeyAppName        = "appName"        //exporter enable
 	ConfigKeyExporterEnable = "exporterEnable" //exporter enable
-	ConfigKeyExporterPort   = "exporterPort"   //exporter port
-	ConfigKeyConsulAddr     = "consulAddr"     //consul addr
-	ChSize                  = 1024 * 10        //collect chan size
 )
 
 var (
-	namespace         string
-	clustername       string
-	modulename        string
-	exporterPort      int64
-	enabledPrometheus = false
-	replacer          = strings.NewReplacer("-", "_", ".", "_", " ", "_", ",", "_", ":", "_")
+	namespace        string //namespace for metric
+	clustername      string //metric cluster name
+	role             string
+	hostIP           string
+	exporterDisabled = true
+	appName          = AppName
 )
 
-func metricsName(name string) string {
-	return replacer.Replace(fmt.Sprintf("%s_%s", namespace, name))
+func init() {
+	hostIP, _ = GetLocalIpAddr()
 }
 
 // Init initializes the exporter.
 func Init(role string, cfg *config.Config) {
-	modulename = role
+	if appName = cfg.GetString(ConfigKeyAppName); appName == "" {
+		appName = AppName
+	}
+
+	SetRole(role)
+
 	if !cfg.GetBoolWithDefault(ConfigKeyExporterEnable, true) {
-		log.LogInfof("%v exporter disabled", role)
+		log.LogInfof("%v metrics exporter disabled", cfg)
+		exporterDisabled = true
 		return
 	}
-	port := cfg.GetInt64(ConfigKeyExporterPort)
-	if port == 0 {
-		log.LogInfof("%v exporter port not set", port)
-		return
+
+	//register backend by config
+	if promCfg := ParsePromConfig(cfg); promCfg != nil && promCfg.enabled {
+		exporterDisabled = false
+		b := NewPromBackend(promCfg)
+		CollectorInstance().RegisterBackend(PromBackendName, b)
 	}
-	exporterPort = port
-	enabledPrometheus = true
-	http.Handle(PromHandlerPattern, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
-		Timeout: 5 * time.Second,
-	}))
-	namespace = AppName + "_" + role
-	addr := fmt.Sprintf(":%d", port)
-	go func() {
-		err := http.ListenAndServe(addr, nil)
-		if err != nil {
-			log.LogError("exporter http serve error: ", err)
-		}
-	}()
 
-	collect()
+	if conf := ParseTSDBConfig(cfg); conf != nil {
+		exporterDisabled = false
+		b := NewTSDBBackend(conf)
+		CollectorInstance().RegisterBackend(TSDBConfigKey, b)
+	}
 
-	m := NewGauge("start_time")
-	m.Set(time.Now().Unix() * 1000)
-
-	log.LogInfof("exporter Start: %v", addr)
+	// start collector
+	CollectorInstance().Start()
 }
 
 // Init initializes the exporter.
 func InitWithRouter(role string, cfg *config.Config, router *mux.Router, exPort string) {
-	modulename = role
+	if appName = cfg.GetString(ConfigKeyAppName); appName == "" {
+		appName = AppName
+	}
+
+	SetRole(role)
+
 	if !cfg.GetBoolWithDefault(ConfigKeyExporterEnable, true) {
-		log.LogInfof("%v metrics exporter disabled", role)
+		log.LogInfof("exporter: %v metrics exporter disabled", cfg)
+		exporterDisabled = true
 		return
 	}
-	exporterPort, _ = strconv.ParseInt(exPort, 10, 64)
-	enabledPrometheus = true
-	router.NewRoute().Name("metrics").
-		Methods(http.MethodGet).
-		Path(PromHandlerPattern).
-		Handler(promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
-			Timeout: 5 * time.Second,
-		}))
-	namespace = AppName + "_" + role
 
-	collect()
+	if promCfg := ParsePromConfigWithRouter(cfg, router, exPort); promCfg != nil && promCfg.enabled {
+		exporterDisabled = false
+		b := NewPromBackend(promCfg)
+		CollectorInstance().RegisterBackend(PromBackendName, b)
+	}
 
-	m := NewGauge("start_time")
-	m.Set(time.Now().Unix() * 1000)
+	if conf := ParseTSDBConfig(cfg); conf != nil {
+		exporterDisabled = false
+		b := NewTSDBBackend(conf)
+		CollectorInstance().RegisterBackend(TSDBConfigKey, b)
+	}
 
-	log.LogInfof("exporter Start: %v %v", exporterPort, m)
+	CollectorInstance().Start()
 }
 
-func RegistConsul(cluster string, role string, cfg *config.Config) {
+// stop exporter
+func Stop() {
+	CollectorInstance().Stop()
+	log.LogInfo("exporter stopped")
+}
+
+func IsEnabled() bool {
+	return !exporterDisabled
+}
+
+func SetNamespace(role string) {
+	namespace = appName + "_" + role
+}
+
+func Namespace() string {
+	return namespace
+}
+
+func SetClusterName(cluster string) {
 	clustername = replacer.Replace(cluster)
-	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
-
-	if exporterPort == int64(0) {
-		exporterPort = cfg.GetInt64(ConfigKeyExporterPort)
-	}
-	if exporterPort != int64(0) && len(consulAddr) > 0 {
-		if ok := strings.HasPrefix(consulAddr, "http"); !ok {
-			consulAddr = "http://" + consulAddr
-		}
-		DoConsulRegisterProc(consulAddr, AppName, role, cluster, exporterPort)
-	}
 }
 
-func collect() {
-	if !enabledPrometheus {
-		return
-	}
-	go collectCounter()
-	go collectGauge()
-	go collectTP()
-	go collectAlarm()
+func ClusterName() string {
+	return clustername
+}
+
+func SetRole(r string) {
+	role = r
+	SetNamespace(role)
+}
+
+func Role() string {
+	return role
+}
+
+func HostIP() string {
+	return hostIP
 }

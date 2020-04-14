@@ -69,6 +69,24 @@ func (c *Config) parse(fileName string) error {
 	return err
 }
 
+func (c *Config) Data() map[string]interface{} {
+	return c.data
+}
+
+func (c *Config) ByKey(key string) interface{} {
+	return c.data[key]
+}
+
+func (c *Config) GetKeyRaw(key string) []byte {
+	if c.data[key] != nil {
+		if data, err := json.Marshal(c.data[key]); err == nil {
+			return data
+		}
+	}
+
+	return nil
+}
+
 // GetString returns a string for the config key.
 func (c *Config) GetString(key string) string {
 	x, present := c.data[key]

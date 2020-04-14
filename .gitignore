@@ -10,3 +10,5 @@ docker/docker_data
 docs/build
 tmp/
 docker/log
+go.sum
+go.mod

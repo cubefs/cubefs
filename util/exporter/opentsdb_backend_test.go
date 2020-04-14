@@ -11,31 +11,17 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
-
 package exporter
 
 import (
-	"fmt"
+	"testing"
 
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/ump"
+	"github.com/chubaofs/chubaofs/util/config"
 )
 
-type Alarm struct {
-	Counter
-}
-
-func Warning(detail string) (a *Alarm) {
-	key := fmt.Sprintf("%v_%v_warning", ClusterName(), Role())
-	name := fmt.Sprintf("warning")
-	ump.Alarm(key, detail)
-	log.LogCritical(key, detail)
-	if !IsEnabled() {
-		return
+func TestParseTSDBConfig(t *testing.T) {
+	if cfg, err := config.LoadConfigFile("./config.json"); err == nil {
+		tsdbCfg := ParseTSDBConfig(cfg)
+		t.Logf("tsdbCfg: %v", tsdbCfg)
 	}
-	a = new(Alarm)
-	a.name = name
-	a.Add(1)
-	CollectorInstance().Collect(a)
-	return
 }
