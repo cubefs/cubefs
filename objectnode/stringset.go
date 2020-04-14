@@ -1,6 +1,5 @@
 /*
  * MinIO Cloud Storage, (C) 2018 MinIO, Inc.
- * Modifications copyright 2019 The ChubaoFS Authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
