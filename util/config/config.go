@@ -155,6 +155,39 @@ func (c *Config) GetStringSlice(key string) []string {
 	return result
 }
 
+// Check and get a string for the config key.
+func (c *Config) CheckAndGetString(key string) (string, bool) {
+	x, present := c.data[key]
+	if !present {
+		return "", false
+	}
+	if result, isString := x.(string); isString {
+		return result, true
+	}
+	return "", false
+}
+
+// GetBool returns a bool value for the config key.
+func (c *Config) CheckAndGetBool(key string) (bool, bool) {
+	x, present := c.data[key]
+	if !present {
+		return false, false
+	}
+	if result, isBool := x.(bool); isBool {
+		return result, true
+	}
+	// Take string value "true" and "false" as well.
+	if result, isString := x.(string); isString {
+		if result == "true" {
+			return true, true
+		}
+		if result == "false" {
+			return false, true
+		}
+	}
+	return false, false
+}
+
 func NewIllegalConfigError(configKey string) error {
 	return fmt.Errorf("illegal config %s", configKey)
 }

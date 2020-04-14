@@ -239,8 +239,11 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	return nil
 }
 
-// Flush has not been implemented.
+// Flush only when fsyncOnClose is enabled.
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
+	if !f.super.fsyncOnClose {
+		return fuse.ENOSYS
+	}
 	log.LogDebugf("TRACE Flush enter: ino(%v)", f.info.Inode)
 	start := time.Now()
 	err = f.super.ec.Flush(f.info.Inode)
