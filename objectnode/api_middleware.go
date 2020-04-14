@@ -68,9 +68,17 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		SetRequestAction(r, action)
 		// ===== pre-handle finish =====
 
+		// check action is whether enable
+		var disableFlag bool
+		if !action.IsNone() && !o.disableActions.Contains(action) {
+			// next
+			next.ServeHTTP(w, r)
+		} else {
+			log.LogErrorf("traceMiddleware: action %s is disable: requestID(%v) ", requestID)
+			disableFlag = true
+		}
+
 		var startTime = time.Now()
-		// next
-		next.ServeHTTP(w, r)
 		metric := exporter.NewTPCnt(fmt.Sprintf("action_%v", action.Name()))
 		defer metric.Set(err)
 
@@ -92,6 +100,11 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			action.Name(), requestID, r.Host, r.Method, r.URL.String(), headerToString(r.Header),
 			getRequestIP(r), time.Since(startTime))
 		// ==== post-handle finish =====
+
+		// if action is disable, return access denied in response
+		if disableFlag {
+			_ = AccessDenied.ServeResponse(w, r)
+		}
 	}
 	return handlerFunc
 }
