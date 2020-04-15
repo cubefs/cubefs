@@ -154,7 +154,7 @@ var ConditionFuncMap = map[ConditionType]ConditionFunc{
 type ConditionFunc func(p *RequestParam, values ConditionValues) bool
 
 var (
-	awsTrimedPrefix = []string{"aws:", "jwt:", "s3:"}
+	awsTrimedPrefix = []string{"aws:", "s3:"}
 )
 
 func TrimAwsPrefixKey(key string) string {
@@ -167,7 +167,8 @@ func TrimAwsPrefixKey(key string) string {
 	return key
 }
 
-func getCondtionValues(r *http.Request) map[string][]string {
+//
+func getRequestConditions(r *http.Request) map[string][]string {
 	currentTime := time.Now().UTC()
 	authInfo := parseRequestAuthInfo(r)
 	accessKey := authInfo.accessKey

@@ -162,17 +162,13 @@ func (p Policy) Validate(bucket string) (bool, error) {
 // 当没有适用的 Deny 语句但也没有适用的 Allow 语句时，会发生隐式拒绝。
 func (p *Policy) IsAllowed(params *RequestParam) bool {
 	for _, s := range p.Statements {
-		if s.Effect == Deny {
-			if !s.IsAllowed(params) {
-				return false
-			}
+		if s.Effect == Deny && !s.IsAllowed(params) {
+			return false
 		}
 	}
 	for _, s := range p.Statements {
-		if s.Effect == Allow {
-			if s.IsAllowed(params) {
-				return true
-			}
+		if s.Effect == Allow && s.IsAllowed(params) {
+			return true
 		}
 	}
 

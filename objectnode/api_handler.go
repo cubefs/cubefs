@@ -72,7 +72,7 @@ func ParseRequestParam(r *http.Request) *RequestParam {
 	p.bucket = p.vars["bucket"]
 	p.object = p.vars["object"]
 	p.sourceIP = getRequestIP(r)
-	p.conditionVars = getCondtionValues(r)
+	p.conditionVars = getRequestConditions(r)
 	if len(p.bucket) > 0 {
 		p.resource = p.bucket
 		if len(p.object) > 0 {

@@ -41,6 +41,8 @@ const (
 	RequestHeaderV2Authorization       = "Authorization"
 	RequestHeaderV2AuthorizationScheme = "AWS"
 	RequestHeaderV2XAmzDate            = "X-Amz-Date"
+
+	CanonicalAmzHeaderPrefix = "x-amz-"
 )
 
 var PresignedSignatureV2Queries = []string{
@@ -226,7 +228,7 @@ func calculateSignatureV2(authInfo *requestAuthInfoV2, secretKey string, wildcar
 
 	date := authInfo.r.Header.Get("Date")
 	method := authInfo.r.Method
-	canonicalHeaders := canonicalizedAmzHeadersV2(authInfo.r.Header)
+	canonicalHeaders := getCanonicalizedAmzHeadersV2(authInfo.r.Header)
 	if len(canonicalHeaders) > 0 {
 		canonicalHeaders += "\n"
 	}
@@ -350,24 +352,24 @@ func getCanonicalQueryV2(encodeResource string, encodeQuery string) string {
 	return encodeResource
 }
 
-//
-func canonicalizedAmzHeadersV2(headers http.Header) string {
-	var keys []string
-	keyval := make(map[string]string)
-	for key := range headers {
-		lkey := strings.ToLower(key)
-		if !strings.HasPrefix(lkey, "x-amz-") {
-			continue
+// https://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html#RESTAuthenticationConstructingCanonicalizedAmzHeaders
+func getCanonicalizedAmzHeadersV2(header http.Header) string {
+	var lks []string
+	var canonicalizedHeaders []string
+	vals := make(map[string]string)
+	for k, v := range header {
+		lk := strings.ToLower(k)
+		if strings.HasPrefix(lk, CanonicalAmzHeaderPrefix) {
+			lks = append(lks, lk)
+			vals[lk] = strings.Join(v, ",")
 		}
-		keys = append(keys, lkey)
-		keyval[lkey] = strings.Join(headers[key], ",")
 	}
-	sort.Strings(keys)
-	var canonicalHeaders []string
-	for _, key := range keys {
-		canonicalHeaders = append(canonicalHeaders, key+":"+keyval[key])
+	sort.Strings(lks)
+	for _, lk := range lks {
+		canonicalizedHeader := lk + ":" + vals[lk]
+		canonicalizedHeaders = append(canonicalizedHeaders, canonicalizedHeader)
 	}
-	return strings.Join(canonicalHeaders, "\n")
+	return strings.Join(canonicalizedHeaders, "\n")
 }
 
 //
@@ -376,7 +378,7 @@ func calPresignedSignatureV2(method, canonicalQuery, expires, secretKey string, 
 	if date == "" {
 		date = header.Get(HeaderNameDate)
 	}
-	canonicalHeaders := canonicalizedAmzHeadersV2(header)
+	canonicalHeaders := getCanonicalizedAmzHeadersV2(header)
 	contentHash := header.Get(HeaderNameContentMD5)
 	contentEnc := header.Get(HeaderNameContentEnc)
 	stringToSign := strings.Join([]string{
