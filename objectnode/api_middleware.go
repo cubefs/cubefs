@@ -68,9 +68,17 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		SetRequestAction(r, action)
 		// ===== pre-handle finish =====
 
+		// Check action is whether enabled.
+		if !action.IsNone() && !o.disabledActions.Contains(action) {
+			// next
+			next.ServeHTTP(w, r)
+		} else {
+			// If current action is disabled, return access denied in response.
+			log.LogDebugf("traceMiddleware: disabled action: requestID(%v) action(%v)", requestID, action.Name())
+			_ = AccessDenied.ServeResponse(w, r)
+		}
+
 		var startTime = time.Now()
-		// next
-		next.ServeHTTP(w, r)
 		metric := exporter.NewTPCnt(fmt.Sprintf("action_%v", action.Name()))
 		defer metric.Set(err)
 

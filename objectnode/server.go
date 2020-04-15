@@ -76,6 +76,7 @@ const (
 	// The configuration in the example will allow ObjectNode to automatically resolve "* .object.chubao.io".
 	configDomains = "domains"
 
+	disabledActions               = "disabledActions"
 	configSignatureIgnoredActions = "signatureIgnoredActions"
 )
 
@@ -103,6 +104,7 @@ type ObjectNode struct {
 	userStore  UserInfoStore
 
 	signatureIgnoredActions proto.Actions // signature ignored actions
+	disabledActions         proto.Actions // disabled actions
 
 	control common.Control
 }
@@ -154,6 +156,16 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 		if !action.IsNone() {
 			o.signatureIgnoredActions = append(o.signatureIgnoredActions, action)
 			log.LogInfof("loadConfig: signature ignored action: %v", action)
+		}
+	}
+
+	// parse disabled actions
+	disabledActions := cfg.GetStringSlice(disabledActions)
+	for _, actionName := range disabledActions {
+		action := proto.ParseAction(actionName)
+		if !action.IsNone() {
+			o.disabledActions = append(o.disabledActions, action)
+			log.LogInfof("loadConfig: disabled action: %v", action)
 		}
 	}
 
