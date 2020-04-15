@@ -136,20 +136,7 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	}
 	atomic.StoreUint64(&mw.totalSize, info.TotalSize)
 	atomic.StoreUint64(&mw.usedSize, info.UsedSize)
-	mw.enableToken = info.EnableToken
 	log.LogInfof("VolStatInfo: info(%v)", info)
-	return
-}
-
-func (mw *MetaWrapper) updateTokenType() (err error) {
-
-	var token *proto.Token
-	if token, err = mw.mc.ClientAPI().GetToken(mw.volname, mw.tokenKey); err != nil {
-		log.LogWarnf("updateTokenType: get token type failed: volume(%v) tokenKey(%v) err(%v)", mw.volname, mw.tokenKey, err)
-		return
-	}
-	mw.tokenType = token.TokenType
-	log.LogInfof("GetToken: token(%v)", token)
 	return
 }
 
@@ -159,6 +146,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 		log.LogInfof("error: %v", err.Error())
 		switch err {
 		case proto.ErrExpiredTicket:
+			// TODO: bad logic, remove later (Mofei Zhang)
 			if e := mw.updateTicket(); e != nil {
 				log.LogFlush()
 				daemonize.SignalOutcome(err)
@@ -167,6 +155,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 			log.LogInfof("updateTicket: ok!")
 			return err
 		case proto.ErrInvalidTicket:
+			// TODO: bad logic, remove later (Mofei Zhang)
 			log.LogFlush()
 			daemonize.SignalOutcome(err)
 			os.Exit(1)

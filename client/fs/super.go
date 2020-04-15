@@ -71,7 +71,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		Masters:       masters,
 		Authenticate:  opt.Authenticate,
 		TicketMess:    opt.TicketMess,
-		TokenKey:      opt.TokenKey,
 		ValidateOwner: true,
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)
@@ -149,10 +148,6 @@ func (s *Super) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.
 // ClusterName returns the cluster name.
 func (s *Super) ClusterName() string {
 	return s.cluster
-}
-
-func (s *Super) TokenType() int8 {
-	return s.mw.TokenType()
 }
 
 func (s *Super) GetRate(w http.ResponseWriter, r *http.Request) {
