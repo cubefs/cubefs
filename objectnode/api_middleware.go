@@ -68,14 +68,14 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		SetRequestAction(r, action)
 		// ===== pre-handle finish =====
 
-		// check action is whether enable
-		var disableFlag bool
-		if !action.IsNone() && !o.disableActions.Contains(action) {
+		// Check action is whether enabled.
+		if !action.IsNone() && !o.disabledActions.Contains(action) {
 			// next
 			next.ServeHTTP(w, r)
 		} else {
-			log.LogErrorf("traceMiddleware: action %s is disable: requestID(%v) ", requestID)
-			disableFlag = true
+			// If current action is disabled, return access denied in response.
+			log.LogDebugf("traceMiddleware: disabled action: requestID(%v) action(%v)", requestID, action.Name())
+			_ = AccessDenied.ServeResponse(w, r)
 		}
 
 		var startTime = time.Now()
@@ -100,11 +100,6 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			action.Name(), requestID, r.Host, r.Method, r.URL.String(), headerToString(r.Header),
 			getRequestIP(r), time.Since(startTime))
 		// ==== post-handle finish =====
-
-		// if action is disable, return access denied in response
-		if disableFlag {
-			_ = AccessDenied.ServeResponse(w, r)
-		}
 	}
 	return handlerFunc
 }

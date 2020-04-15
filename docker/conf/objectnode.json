@@ -20,7 +20,7 @@
     "action:oss:DeleteObjectXAttr",
     "action:oss:ListObjectXAttrs"
   ],
-  "disableActions": [
+  "disabledActions": [
     "action:oss:CreateBucket",
     "action:oss:DeleteBucket"
   ],
