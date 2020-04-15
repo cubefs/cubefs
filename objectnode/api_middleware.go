@@ -185,7 +185,7 @@ func (o *ObjectNode) policyCheckMiddleware(next http.Handler) http.Handler {
 func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
 		if len(r.Header) > 0 && len(r.Header.Get(http.CanonicalHeaderKey(HeaderNameDecodeContentLength))) > 0 {
-			r.Body = NewChunkedReader(r.Body)
+			r.Body = NewClosableChunkedReader(r.Body)
 			log.LogDebugf("contentMiddleware: chunk reader inited: requestID(%v)", GetRequestID(r))
 		}
 		next.ServeHTTP(w, r)
