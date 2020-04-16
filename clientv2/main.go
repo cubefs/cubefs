@@ -154,6 +154,13 @@ func main() {
 
 	registerInterceptedSignal(opt.MountPoint)
 
+	if err = checkPermission(opt); err != nil {
+		syslog.Println("check permission failed: ", err)
+		log.LogFlush()
+		_ = daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+
 	mfs, err := mount(opt)
 	if err != nil {
 		log.LogFlush()
@@ -212,16 +219,6 @@ func mount(opt *proto.MountOptions) (*fuse.MountedFileSystem, error) {
 	}()
 
 	exporter.RegistConsul(super.ClusterName(), ModuleName, opt.Config)
-
-	// Validate permission
-	if err = checkVolAccessPerm(opt); err != nil {
-		syslog.Printf("check permission failed: %v", err)
-		log.LogFlush()
-		_ = daemonize.SignalOutcome(err)
-		os.Exit(1)
-	}
-
-	opt.Rdonly = (super.TokenType() == int8(proto.ReadOnlyToken)) || opt.Rdonly
 
 	server := fuseutil.NewFileSystemServer(super)
 	mntcfg := &fuse.MountConfig{
@@ -309,36 +306,51 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	return opt, nil
 }
 
-func checkVolAccessPerm(opt *proto.MountOptions) (err error) {
-	if opt.AccessKey == "" {
-		return
-	}
+func checkPermission(opt *proto.MountOptions) (err error) {
 	var mc = master.NewMasterClientFromString(opt.Master, false)
-	var userInfo *proto.UserInfo
-	if userInfo, err = mc.UserAPI().GetAKInfo(opt.AccessKey); err != nil {
+
+	// Check token permission
+	var info *proto.VolStatInfo
+	if info, err = mc.ClientAPI().GetVolumeStat(opt.Volname); err != nil {
 		return
 	}
-	if userInfo.SecretKey != opt.SecretKey {
+	if info.EnableToken {
+		var token *proto.Token
+		if token, err = mc.ClientAPI().GetToken(opt.Volname, opt.TokenKey); err != nil {
+			log.LogWarnf("checkPermission: get token type failed: volume(%v) tokenKey(%v) err(%v)",
+				opt.Volname, opt.TokenKey, err)
+			return
+		}
+		log.LogInfof("checkPermission: get token: token(%v)", token)
+		opt.Rdonly = token.TokenType == int8(proto.ReadOnlyToken) || opt.Rdonly
+	}
+
+	// Check user access policy is enabled
+	if opt.AccessKey != "" {
+		var userInfo *proto.UserInfo
+		if userInfo, err = mc.UserAPI().GetAKInfo(opt.AccessKey); err != nil {
+			return
+		}
+		if userInfo.SecretKey != opt.SecretKey {
+			err = proto.ErrNoPermission
+			return
+		}
+		var policy = userInfo.Policy
+		if policy.IsOwn(opt.Volname) {
+			return
+		}
+		if policy.IsAuthorized(opt.Volname, proto.POSIXWriteAction) &&
+			policy.IsAuthorized(opt.Volname, proto.POSIXReadAction) {
+			return
+		}
+		if policy.IsAuthorized(opt.Volname, proto.POSIXReadAction) &&
+			!policy.IsAuthorized(opt.Volname, proto.POSIXWriteAction) {
+			opt.Rdonly = true
+			return
+		}
 		err = proto.ErrNoPermission
 		return
 	}
-	var policy = userInfo.Policy
-	if policy.IsOwn(opt.Volname) {
-		opt.Rdonly = false
-		return
-	}
-	if policy.IsAuthorized(opt.Volname, proto.POSIXWriteAction) &&
-		policy.IsAuthorized(opt.Volname, proto.POSIXReadAction) {
-		opt.Rdonly = false
-		return
-	}
-	if policy.IsAuthorized(opt.Volname, proto.POSIXReadAction) &&
-		!policy.IsAuthorized(opt.Volname, proto.POSIXWriteAction) {
-		opt.Rdonly = true
-		return
-	}
-	opt.Rdonly = true
-	err = proto.ErrNoPermission
 	return
 }
 

@@ -73,7 +73,6 @@ type MetaConfig struct {
 	Masters          []string
 	Authenticate     bool
 	TicketMess       auth.TicketMess
-	TokenKey         string
 	ValidateOwner    bool
 	OnAsyncTaskError AsyncTaskErrorFunc
 }
@@ -115,10 +114,6 @@ type MetaWrapper struct {
 	accessToken  proto.APIAccessReq
 	sessionKey   string
 	ticketMess   auth.TicketMess
-
-	enableToken bool
-	tokenKey    string
-	tokenType   int8
 
 	closeCh   chan struct{}
 	closeOnce sync.Once
@@ -179,7 +174,6 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	if err = mw.updateVolStatInfo(); err != nil {
 		return nil, err
 	}
-	mw.tokenKey = config.TokenKey
 
 	limit := MaxMountRetryLimit
 retry:
@@ -202,12 +196,6 @@ func (mw *MetaWrapper) initMetaWrapper() error {
 	err := mw.updateVolStatInfo()
 	if err != nil {
 		return err
-	}
-	if mw.enableToken {
-		err = mw.updateTokenType()
-		if err != nil {
-			return err
-		}
 	}
 	return mw.updateMetaPartitions()
 }
@@ -234,10 +222,6 @@ func (mw *MetaWrapper) Cluster() string {
 
 func (mw *MetaWrapper) LocalIP() string {
 	return mw.localIP
-}
-
-func (mw *MetaWrapper) TokenType() int8 {
-	return mw.tokenType
 }
 
 func (mw *MetaWrapper) exporterKey(act string) string {
