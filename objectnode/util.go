@@ -135,6 +135,9 @@ func formatSimpleTime(time time.Time) string {
 func formatTimeISO(time time.Time) string {
 	return time.UTC().Format("2006-01-02T15:04:05.000Z")
 }
+func formatTimeISOLocal(time time.Time) string {
+	return time.Local().Format("2006-01-02T15:04:05.000Z")
+}
 
 func formatTimeRFC1123(time time.Time) string {
 	return time.UTC().Format(http.TimeFormat)
