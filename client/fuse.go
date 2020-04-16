@@ -271,6 +271,7 @@ func registerInterceptedSignal(mnt string) {
 	go func() {
 		sig := <-sigC
 		syslog.Printf("Killed due to a received signal (%v)\n", sig)
+		os.Exit(1)
 	}()
 }
 
