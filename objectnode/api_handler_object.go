@@ -665,7 +665,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		for _, fsFileInfo := range fsFileInfos {
 			content := &Content{
 				Key:          fsFileInfo.Path,
-				LastModified: formatTimeISO(fsFileInfo.ModifyTime),
+				LastModified: formatTimeISOLocal(fsFileInfo.ModifyTime),
 				ETag:         wrapUnescapedQuot(fsFileInfo.ETag),
 				Size:         int(fsFileInfo.Size),
 				StorageClass: StorageClassStandard,
@@ -798,7 +798,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		for _, fsFileInfo := range fsFileInfos {
 			content := &Content{
 				Key:          fsFileInfo.Path,
-				LastModified: formatTimeISO(fsFileInfo.ModifyTime),
+				LastModified: formatTimeISOLocal(fsFileInfo.ModifyTime),
 				ETag:         wrapUnescapedQuot(fsFileInfo.ETag),
 				Size:         int(fsFileInfo.Size),
 				StorageClass: StorageClassStandard,

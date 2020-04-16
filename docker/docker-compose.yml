@@ -274,6 +274,8 @@ services:
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+          - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.41
@@ -291,6 +293,8 @@ services:
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+          - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.42
@@ -308,6 +312,8 @@ services:
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+          - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.43
