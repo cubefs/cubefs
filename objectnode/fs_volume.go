@@ -571,11 +571,13 @@ func (v *Volume) DeletePath(path string) (err error) {
 
 	// Evict inode
 	if err = v.ec.EvictStream(ino); err != nil {
-		return
+		log.LogWarnf("DeletePath EvictStream: path(%v) inode(%v)", path, ino)
 	}
+
 	if err = v.mw.Evict(ino); err != nil {
-		return
+		log.LogWarnf("DeletePath Evict: path(%v) inode(%v)", path, ino)
 	}
+	err = nil
 	return
 }
 
@@ -700,7 +702,6 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 		if _, err = v.mw.InodeUnlink_ll(part.Inode); err != nil {
 			log.LogErrorf("AbortMultipart: meta inode unlink fail: multipartID(%v) partID(%v) inode(%v) err(%v)",
 				multipartID, part.ID, part.Inode, err)
-			return
 		}
 		if err = v.mw.Evict(part.Inode); err != nil {
 			log.LogErrorf("AbortMultipart: meta inode evict fail: multipartID(%v) partID(%v) inode(%v) err(%v)",
@@ -966,38 +967,17 @@ func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uin
 		return
 	}
 
-	defer func() {
-		if err != nil {
-			// rollback dentry update
-			if _, updateErr := v.mw.DentryUpdate_ll(parentID, name, oldInode); updateErr != nil {
-				log.LogErrorf("CompleteMultipart: meta rollback dentry update fail: parentID(%v) name(%v) inode(%v) err(%v)",
-					parentID, name, oldInode, updateErr)
-			}
-		}
-	}()
-
 	// unlink and evict old inode
 	if _, err = v.mw.InodeUnlink_ll(oldInode); err != nil {
-		log.LogErrorf("CompleteMultipart: meta unlink old inode fail: inode(%v) err(%v)",
+		log.LogWarnf("CompleteMultipart: meta unlink old inode fail: inode(%v) err(%v)",
 			oldInode, err)
-		return
 	}
-
-	defer func() {
-		if err != nil {
-			// rollback unlink
-			if _, linkErr := v.mw.InodeLink_ll(oldInode); linkErr != nil {
-				log.LogErrorf("CompleteMultipart: meta rollback inode unlink fail: inode(%v) err(%v)",
-					oldInode, linkErr)
-			}
-		}
-	}()
 
 	if err = v.mw.Evict(oldInode); err != nil {
-		log.LogErrorf("CompleteMultipart: meta evict old inode fail: inode(%v) err(%v)",
+		log.LogWarnf("CompleteMultipart: meta evict old inode fail: inode(%v) err(%v)",
 			oldInode, err)
-		return
 	}
+	err = nil
 	return
 }
 
