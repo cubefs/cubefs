@@ -538,6 +538,13 @@ func (v *Volume) WriteObject(path string, reader io.Reader, mimeType string) (fs
 	return fsInfo, nil
 }
 
+// DeletePath deletes the specified path.
+// If the target is a non-empty directory, it will return success without any operation.
+// If the target does not exist, it returns success.
+//
+// Notes:
+// This method will only returns internal system errors.
+// This method will not return syscall.ENOENT error
 func (v *Volume) DeletePath(path string) (err error) {
 	defer func() {
 		// In the operation of deleting a path, if no path matching the given path is found,
@@ -704,7 +711,7 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 				multipartID, part.ID, part.Inode, err)
 		}
 		if err = v.mw.Evict(part.Inode); err != nil {
-			log.LogErrorf("AbortMultipart: meta inode evict fail: multipartID(%v) partID(%v) inode(%v) err(%v)",
+			log.LogWarnf("AbortMultipart: meta inode evict fail: multipartID(%v) partID(%v) inode(%v) err(%v)",
 				multipartID, part.ID, part.Inode, err)
 		}
 		log.LogDebugf("AbortMultipart: multipart part data released: multipartID(%v) partID(%v) inode(%v)",
@@ -849,7 +856,7 @@ func (v *Volume) CompleteMultipart(path string, multipartID string) (fsFileInfo 
 	// delete part inodes
 	for _, part := range parts {
 		if err = v.mw.InodeDelete_ll(part.Inode); err != nil {
-			log.LogErrorf("CompleteMultipart: ")
+			log.LogErrorf("CompleteMultipart: destroy part inode fail: inode(%v) err(%v)", part.Inode, err)
 		}
 	}
 
@@ -908,11 +915,11 @@ func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAll
 	}
 	defer func() {
 		if closeErr := v.ec.CloseStream(inode); closeErr != nil {
-			log.LogErrorf("appendInodeHash: data close stream fail: inode(%v) err(%v)",
+			log.LogWarnf("appendInodeHash: data close stream fail: inode(%v) err(%v)",
 				inode, err)
 		}
 		if evictErr := v.ec.EvictStream(inode); evictErr != nil {
-			log.LogErrorf("appendInodeHash: data evict stream: inode(%v) err(%v)",
+			log.LogWarnf("appendInodeHash: data evict stream: inode(%v) err(%v)",
 				inode, err)
 		}
 	}()
@@ -1062,21 +1069,36 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 	var contentType string
 
 	if mode.IsDir() {
+		// Folder has specific ETag and MIME type.
 		etag = EmptyContentMD5String
 		contentType = HeaderValueContentTypeDirectory
 	} else {
+		// Try to get the advanced attributes stored in the extended attributes.
+		// The following advanced attributes apply to the object storage:
+		// 1. Etag (MD5)
+		// 2. MIME type
 		var xAttrInfo *proto.XAttrInfo
-		if xAttrInfo, err = v.mw.XAttrGet_ll(inode, XAttrKeyOSSETag); err != nil {
-			logger.Error("ObjectMeta: meta get xattr fail, inode(%v) path(%v) err(%v)", inode, path, err)
+		if xAttrInfo, err = v.mw.XAttrGet_ll(inode, XAttrKeyOSSETag); err != nil && err != syscall.ENOENT {
+			log.LogErrorf("ObjectMeta: meta get xattr fail, inode(%v) path(%v) err(%v)", inode, path, err)
 			return
 		}
-		etag = string(xAttrInfo.Get(XAttrKeyOSSETag))
+		if xAttrInfo != nil {
+			etag = string(xAttrInfo.Get(XAttrKeyOSSETag))
+		}
+		if err == syscall.ENOENT {
+			err = nil
+		}
 
-		if xAttrInfo, err = v.mw.XAttrGet_ll(inode, XAttrKeyOSSMIME); err != nil {
-			logger.Error("ObjectMeta: meta get xattr fail, inode(%v) path(%v) err(%v)", inode, path, err)
+		if xAttrInfo, err = v.mw.XAttrGet_ll(inode, XAttrKeyOSSMIME); err != nil && err != syscall.ENOENT {
+			log.LogErrorf("ObjectMeta: meta get xattr fail, inode(%v) path(%v) err(%v)", inode, path, err)
 			return
 		}
-		contentType = string(xAttrInfo.Get(XAttrKeyOSSMIME))
+		if xAttrInfo != nil {
+			contentType = string(xAttrInfo.Get(XAttrKeyOSSMIME))
+		}
+		if err == syscall.ENOENT {
+			err = nil
+		}
 	}
 
 	info = &FSFileInfo{
@@ -1258,9 +1280,6 @@ func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64) (
 
 	// recursion scan
 	infos, prefixMap, err = v.recursiveScan(infos, prefixMap, parentId, maxKeys, dirs, prefix, marker, delimiter)
-	if err == syscall.ENOENT {
-		return nil, nil, nil
-	}
 	if err != nil {
 		log.LogErrorf("listFilesV1: volume list dir fail: Volume(%v) err(%v)", v.name, err)
 		return
@@ -1308,9 +1327,6 @@ func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, ma
 
 	// recursion scan
 	infos, prefixMap, err = v.recursiveScan(infos, prefixMap, parentId, maxKeys, dirs, prefix, marker, delimiter)
-	if err == syscall.ENOENT {
-		return nil, nil, nil
-	}
 	if err != nil {
 		log.LogErrorf("listFilesV2: Volume list dir fail, Volume(%v) err(%v)", v.name, err)
 		return
@@ -1386,38 +1402,38 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 	dirs []string, prefix, marker, delimiter string) ([]*FSFileInfo, PrefixMap, error) {
 	var err error
 
-	if len(dirs) > 0 {
+	var currentPath = strings.Join(dirs, pathSep) + pathSep
+	if len(dirs) > 0 && prefix != "" && strings.HasSuffix(currentPath, prefix) {
 		// When the current scanning position is not the root directory, a prefix matching
 		// check is performed on the current directory first.
 		//
 		// The reason for this is that according to the definition of Amazon S3's ListObjects
 		// interface, directory entries that meet the exact prefix match will be returned as
 		// a Content result, not as a CommonPrefix.
-		var basePath = strings.Join(dirs, pathSep) + pathSep
-		if strings.HasSuffix(basePath, prefix) {
-			var baseInfo *proto.InodeInfo
-			if baseInfo, err = v.mw.InodeGet_ll(parentId); err != nil {
-				return fileInfos, prefixMap, err
-			}
-			fileInfo := &FSFileInfo{
-				Inode: baseInfo.Inode,
-				Path:  basePath,
-				Mode:  os.FileMode(baseInfo.Mode),
-			}
-			fileInfos = append(fileInfos, fileInfo)
+		fileInfo := &FSFileInfo{
+			Inode: parentId,
+			Path:  currentPath,
+		}
+		fileInfos = append(fileInfos, fileInfo)
 
-			// If the number of matches reaches the threshold given by maxKey,
-			// stop scanning and return results.
-			if len(fileInfos) >= int(maxKeys+1) {
-				return fileInfos, prefixMap, nil
-			}
+		// If the number of matches reaches the threshold given by maxKey,
+		// stop scanning and return results.
+		if len(fileInfos) >= int(maxKeys+1) {
+			return fileInfos, prefixMap, nil
 		}
 	}
 
+	// During the process of scanning the child nodes of the current directory, there may be other
+	// parallel operations that may delete the current directory.
+	// If got the syscall.ENOENT error when invoke readdir, it means that the above situation has occurred.
+	// At this time, stops process and returns success.
 	var children []proto.Dentry
 	children, err = v.mw.ReadDir_ll(parentId)
-	if err != nil {
+	if err != nil && err != syscall.ENOENT {
 		return fileInfos, prefixMap, err
+	}
+	if err == syscall.ENOENT {
+		return fileInfos, prefixMap, nil
 	}
 
 	for _, child := range children {
