@@ -15,6 +15,7 @@
 package proto
 
 import (
+	"fmt"
 	"regexp"
 	"sync"
 )
@@ -99,6 +100,14 @@ type UserInfo struct {
 	Policy     *UserPolicy `json:"policy"`
 	UserType   UserType    `json:"user_type"`
 	CreateTime string      `json:"create_time"`
+}
+
+func (i *UserInfo) String() string {
+	if i == nil {
+		return "nil"
+	}
+	return fmt.Sprintf("%v_%v_%v_%v",
+		i.UserID, i.AccessKey, i.SecretKey, i.UserType)
 }
 
 func NewUserInfo() *UserInfo {

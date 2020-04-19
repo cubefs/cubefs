@@ -26,6 +26,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/gorilla/mux"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 )
@@ -212,23 +214,34 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 		}
 
 		// Check user policy
+		var volume *Volume
+		if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
+			volume, _ = o.getVol(bucket)
+		}
 		var userInfo *proto.UserInfo
-		if userInfo, err = o.getUserInfoByAccessKey(param.accessKey); err != nil {
+		if userInfo, err = o.getUserInfoByAccessKey(param.AccessKey()); err == nil {
+			// White list for admin and root user.
+			if userInfo.UserType == proto.UserTypeRoot || userInfo.UserType == proto.UserTypeAdmin {
+				log.LogDebugf("policyCheck: user is admin: requestID(%v) userID(%v) accessKey(%v) volume(%v)",
+					GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket())
+				allowed = true
+				return
+			}
+			var userPolicy = userInfo.Policy
+			if !userPolicy.IsOwn(param.Bucket()) && !userPolicy.IsAuthorized(param.Bucket(), param.Action()) {
+				log.LogDebugf("policyCheck: user no permission: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
+					GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
+				allowed = false
+				return
+			}
+		} else if (err == proto.ErrAccessKeyNotExists || err == proto.ErrUserNotExists) && volume != nil {
+			if ak, _ := volume.OSSSecure(); ak != param.AccessKey() {
+				allowed = false
+				return
+			}
+		} else {
 			log.LogErrorf("policyCheck: load user policy from master fail: requestID(%v) accessKey(%v) err(%v)",
 				GetRequestID(r), param.AccessKey(), err)
-			allowed = false
-			return
-		}
-		if userInfo.UserType == proto.UserTypeRoot || userInfo.UserType == proto.UserTypeAdmin {
-			log.LogDebugf("policyCheck: user is admin: requestID(%v) userID(%v) accessKey(%v) volume(%v)",
-				GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket())
-			allowed = true
-			return
-		}
-		var userPolicy = userInfo.Policy
-		if !userPolicy.IsOwn(param.Bucket()) && !userPolicy.IsAuthorized(param.Bucket(), param.Action()) {
-			log.LogDebugf("policyCheck: user no permission: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
-				GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
 			allowed = false
 			return
 		}
@@ -255,7 +268,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			allowed = policy.IsAllowed(param)
 			if !allowed {
 				log.LogWarnf("policyCheck: bucket policy not allowed: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
-					GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
+					GetRequestID(r), userInfo, param.AccessKey(), param.Bucket(), param.Action())
 				return
 			}
 		}
@@ -264,13 +277,13 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			allowed = acl.IsAllowed(param)
 			if !allowed {
 				log.LogWarnf("policyCheck: bucket ACL not allowed: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
-					GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
+					GetRequestID(r), userInfo, param.AccessKey(), param.Bucket(), param.Action())
 				return
 			}
 		}
 
 		allowed = true
 		log.LogDebugf("policyCheck: action allowed: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
-			GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
+			GetRequestID(r), userInfo, param.AccessKey(), param.Bucket(), param.Action())
 	}
 }

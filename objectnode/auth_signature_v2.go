@@ -177,17 +177,35 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV2(r *http.Request) (bool
 		return false, err
 	}
 
-	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKey(authInfo.accessKeyId); err != nil {
-		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", authInfo.accessKeyId, err)
+	var accessKey = authInfo.accessKeyId
+	var volume *Volume
+	if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
+		volume, _ = o.getVol(bucket)
+	}
+	var secretKey string
+	if userInfo, err := o.getUserInfoByAccessKey(accessKey); err == nil {
+		secretKey = userInfo.SecretKey
+	} else if (err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists) && volume != nil {
+		// In order to be directly compatible with the signature verification of version 1.5
+		// (each volume has its own access key and secret key), if the user does not exist and
+		// the request specifies a volume, try to use the access key and secret key bound in the
+		// volume information for verification.
+		if ak, sk := volume.OSSSecure(); ak == accessKey {
+			secretKey = sk
+		} else {
+			return false, nil
+		}
+	} else {
+		log.LogErrorf("validateHeaderBySignatureAlgorithmV4: get secretKey from master fail: accessKey(%v) err(%v)",
+			accessKey, err)
 		return false, err
 	}
 
 	// 2. calculate new signature
-	newSignature, err1 := calculateSignatureV2(authInfo, userInfo.SecretKey, o.wildcards)
-	if err1 != nil {
+	newSignature, err := calculateSignatureV2(authInfo, secretKey, o.wildcards)
+	if err != nil {
 		log.LogInfof("calculute SignatureV2 error: %v, %v", authInfo.r, err)
-		return false, err1
+		return false, err
 	}
 
 	// 3. compare newSignatrue and reqSignature
@@ -252,8 +270,6 @@ func calculateSignatureV2(authInfo *requestAuthInfoV2, secretKey string, wildcar
 
 func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, error) {
 
-	var err error
-
 	uris := strings.SplitN(r.RequestURI, "?", 2)
 	if len(uris) < 2 {
 		log.LogInfof("validateUrlBySignatureAlgorithmV2 error, request url invalid %v ", r.RequestURI)
@@ -273,10 +289,27 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, e
 	log.LogDebugf("validateUrlBySignatureAlgorithmV2: parse signature info: requestID(%v) url(%v) accessKey(%v) signature(%v) expires(%v)",
 		GetRequestID(r), r.URL.String(), accessKey, signature, expires)
 
-	//check access key
-	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKey(accessKey); err != nil {
-		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", accessKey, err)
+	// Checking access key
+	var volume *Volume
+	if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
+		volume, _ = o.getVol(bucket)
+	}
+	var secretKey string
+	if userInfo, err := o.getUserInfoByAccessKey(accessKey); err == nil {
+		secretKey = userInfo.SecretKey
+	} else if (err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists) && volume != nil {
+		// In order to be directly compatible with the signature verification of version 1.5
+		// (each volume has its own access key and secret key), if the user does not exist and
+		// the request specifies a volume, try to use the access key and secret key bound in the
+		// volume information for verification.
+		if ak, sk := volume.OSSSecure(); ak == accessKey {
+			secretKey = sk
+		} else {
+			return false, nil
+		}
+	} else {
+		log.LogErrorf("validateHeaderBySignatureAlgorithmV4: get secretKey from master fail: accessKey(%v) err(%v)",
+			accessKey, err)
 		return false, err
 	}
 
@@ -290,7 +323,7 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, e
 	var canonicalResource string
 	canonicalResource = getCanonicalizedResourceV2(r, o.wildcards)
 	canonicalResourceQuery := getCanonicalQueryV2(canonicalResource, r.URL.Query().Encode())
-	calSignature := calPresignedSignatureV2(r.Method, canonicalResourceQuery, expires, userInfo.SecretKey, r.Header)
+	calSignature := calPresignedSignatureV2(r.Method, canonicalResourceQuery, expires, secretKey, r.Header)
 	if calSignature != signature {
 		log.LogDebugf("validateUrlBySignatureAlgorithmV2: invalid signature: requestID(%v) client(%v) server(%v)",
 			GetRequestID(r), signature, calSignature)

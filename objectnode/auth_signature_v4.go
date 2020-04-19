@@ -100,12 +100,32 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV4(r *http.Request) (bool
 	if err != nil {
 		return false, err
 	}
-	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKey(req.Credential.AccessKey); err != nil {
-		log.LogInfof("validateHeaderBySignatureAlgorithmV4: get secretKey from master fail: err(%v)", err)
+
+	var accessKey = req.Credential.AccessKey
+	var volume *Volume
+	if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
+		volume, _ = o.getVol(bucket)
+	}
+	var secretKey string
+	if userInfo, err := o.getUserInfoByAccessKey(accessKey); err == nil {
+		secretKey = userInfo.SecretKey
+	} else if (err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists) && volume != nil {
+		// In order to be directly compatible with the signature verification of version 1.5
+		// (each volume has its own access key and secret key), if the user does not exist and
+		// the request specifies a volume, try to use the accesskey and secret key bound in the
+		// volume information for verification.
+		if ak, sk := volume.OSSSecure(); ak == accessKey {
+			secretKey = sk
+		} else {
+			return false, nil
+		}
+	} else {
+		log.LogErrorf("validateHeaderBySignatureAlgorithmV4: get secretKey from master fail: accessKey(%v) err(%v)",
+			accessKey, err)
 		return false, err
 	}
-	newSignature := calculateSignatureV4(r, req.Credential.Region, userInfo.SecretKey, req.SignedHeaders)
+
+	newSignature := calculateSignatureV4(r, req.Credential.Region, secretKey, req.SignedHeaders)
 	if req.Signature != newSignature {
 		log.LogDebugf("validateHeaderBySignatureAlgorithmV4: invalid signature: requestID(%v) client(%v) server(%v)",
 			GetRequestID(r), req.Signature, newSignature)
@@ -139,12 +159,30 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV4(r *http.Request) (pass bo
 		return
 	}
 
-	// check accessKey valid
-	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKey(req.Credential.AccessKey); err != nil {
-		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", req.Credential.AccessKey, err)
+	var accessKey = req.Credential.AccessKey
+	var volume *Volume
+	if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
+		volume, _ = o.getVol(bucket)
+	}
+	var secretKey string
+	if userInfo, err := o.getUserInfoByAccessKey(accessKey); err == nil {
+		secretKey = userInfo.SecretKey
+	} else if (err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists) && volume != nil {
+		// In order to be directly compatible with the signature verification of version 1.5
+		// (each volume has its own access key and secret key), if the user does not exist and
+		// the request specifies a volume, try to use the accesskey and secret key bound in the
+		// volume information for verification.
+		if ak, sk := volume.OSSSecure(); ak == accessKey {
+			secretKey = sk
+		} else {
+			return false, nil
+		}
+	} else {
+		log.LogErrorf("validateHeaderBySignatureAlgorithmV4: get secretKey from master fail: accessKey(%v) err(%v)",
+			accessKey, err)
 		return false, err
 	}
+
 	// create canonicalRequest
 	var canonicalHeader http.Header
 	canonicalHeader, err = req.createCanonicalHeaderV4()
@@ -165,7 +203,7 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV4(r *http.Request) (pass bo
 		canonicalRequestString)
 
 	// build signingKey
-	signingKey := buildSigningKey(SCHEME, userInfo.SecretKey, req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)
+	signingKey := buildSigningKey(SCHEME, secretKey, req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)
 
 	// build stringToSign
 	scope := buildScope(req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)
