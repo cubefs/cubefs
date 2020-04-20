@@ -27,72 +27,72 @@ SecretKey=TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd
 TryTimes=5
 
 check_cluster() {
-    echo -n "check cluster  ... "
+    echo -n "Checking cluster  ... "
     for i in $(seq 1 300) ; do
         ${cli} cluster info &> /tmp/cli_cluster_info
         LeaderAddr=`cat /tmp/cli_cluster_info | grep -i "master leader" | awk '{print$4}'`
         if [[ "x$LeaderAddr" != "x" ]] ; then
-            echo -e "\033[32m[success]\033[0m"
+            echo -e "\033[32mdone\033[0m"
             return
         fi
         sleep 1
     done
-    echo -e "\033[31m[timeout]\033[0m"
+    echo -e "\033[31mfail\033[0m"
     exit 1
 }
 
 create_cluster_user() {
-    echo -n "create user    ... "
+    echo -n "Creating user     ... "
     # check user exist
     ${cli} user info ${Owner} &> /dev/null
     if [[ $? -eq 0 ]] ; then
-        echo -e "\033[32m[exist]\033[0m"
+        echo -e "\033[32mdone\033[0m"
         return
     fi
     # try create user
     for i in $(seq 1 300) ; do
         ${cli} user create ${Owner} --access-key=${AccessKey} --secret-key=${SecretKey} -y > /tmp/cli_user_create
         if [[ $? -eq 0 ]] ; then
-            echo -e "\033[32m[success]\033[0m"
+            echo -e "\033[32mdone\033[0m"
             return
         fi
         sleep 1
     done
-    echo -e "\033[31m[timeout]\033[0m"
+    echo -e "\033[31mfail\033[0m"
     exit 1
 }
 
 ensure_node_writable() {
     node=$1
-    echo -n "check $node ... "
+    echo -n "Checking $node ... "
     for i in $(seq 1 300) ; do
         ${cli} ${node} list &> /tmp/cli_${node}_list;
         res=`cat /tmp/cli_${node}_list | grep "Yes" | grep "Active" | wc -l`
         if [[ ${res} -eq 4 ]]; then
-            echo -e "\033[32m[success]\033[0m"
+            echo -e "\033[32mdone\033[0m"
             return
         fi
         sleep 1
     done
-    echo -e "\033[31m[timeout]\033[0m"
+    echo -e "\033[31mfail\033[0m"
     cat /tmp/cli_${node}_list
     exit 1
 }
 
 create_volume() {
-    echo -n "create volume  ... "
+    echo -n "Creating volume   ... "
     # check volume exist
     ${cli} volume info ${VolName} &> /dev/null
     if [[ $? -eq 0 ]]; then
-        echo -e "\033[32m[exist]\033[0m"
+        echo -e "\033[32mdone\033[0m"
         return
     fi
     ${cli} volume create ${VolName} ${Owner} --capacity=30 -y > /dev/null
     if [[ $? -ne 0 ]]; then
-        echo -e "\033[31m[failed]\033[0m"
+        echo -e "\033[31mfail\033[0m"
         exit 1
     fi
-    echo -e "\033[32m[success]\033[0m"
+    echo -e "\033[32mdone\033[0m"
 }
 
 show_cluster_info() {
@@ -111,18 +111,18 @@ show_cluster_info() {
 }
 
 start_client() {
-    echo -n "start client   ... "
+    echo -n "Starting client   ... "
     /cfs/bin/cfs-client -c  /cfs/conf/client.json
     for((i=0; i<$TryTimes; i++)) ; do
         sleep 2
         sta=$(stat $MntPoint 2>/dev/null | tr ":：" " "  | awk '/Inode/{print $4}')
         if [[ "x$sta" == "x1" ]] ; then
             ok=1
-	        echo -e "\033[32m[success]\033[0m"
+	        echo -e "\033[32mdone\033[0m"
             exit 0
         fi
     done
-    echo -e "\033[31m[failed]\033[0m"
+    echo -e "\033[31mfail\033[0m"
     exit 1
 }
 

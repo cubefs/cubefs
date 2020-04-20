@@ -330,8 +330,7 @@ services:
             - ./script/run_test.sh:/cfs/script/start.sh
             - ./script/start_client.sh:/cfs/script/start_client.sh
             - ./ltp/runtest/fs:/opt/ltp/runtest/fs
-            - ./s3tests/s3tests.txt:/opt/s3tests/s3tests.txt:ro
-            - ./s3tests/s3tests.conf:/opt/s3tests/s3tests.conf:ro
+            - ./s3tests:/opt/s3tests:ro
         privileged: true
         devices:
             - /dev/fuse:/dev/fuse:rwm
