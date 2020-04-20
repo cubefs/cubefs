@@ -663,6 +663,13 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	var contents = make([]*Content, 0)
 	if len(fsFileInfos) > 0 {
 		for _, fsFileInfo := range fsFileInfos {
+			if fsFileInfo.Mode == 0 {
+				// Invalid file mode, which means that the inode of the file may not exist.
+				// Record and filter out the file.
+				log.LogWarnf("getBucketV2Handler: invalid file found: path(%v) inode(%v)",
+					fsFileInfo.Path, fsFileInfo.Inode)
+				continue
+			}
 			content := &Content{
 				Key:          fsFileInfo.Path,
 				LastModified: formatTimeISOLocal(fsFileInfo.ModifyTime),
@@ -783,7 +790,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 
 	fsFileInfos, keyCount, nextToken, isTruncated, prefixes, err := vol.ListFilesV2(request)
 	if err != nil {
-		log.LogErrorf("getBucketV2Handler: request id [%v], Get files list failed cause : %v", r.URL, err)
+		log.LogErrorf("getBucketV2Handler: list files fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
 		return
 	}
@@ -796,6 +803,13 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	var contents = make([]*Content, 0)
 	if len(fsFileInfos) > 0 {
 		for _, fsFileInfo := range fsFileInfos {
+			if fsFileInfo.Mode == 0 {
+				// Invalid file mode, which means that the inode of the file may not exist.
+				// Record and filter out the file.
+				log.LogWarnf("getBucketV2Handler: invalid file found: path(%v) inode(%v)",
+					fsFileInfo.Path, fsFileInfo.Inode)
+				continue
+			}
 			content := &Content{
 				Key:          fsFileInfo.Path,
 				LastModified: formatTimeISOLocal(fsFileInfo.ModifyTime),
@@ -962,10 +976,6 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	err = vol.DeletePath(param.Object())
-	if err == syscall.ENOENT {
-		errorCode = NoSuchKey
-		return
-	}
 	if err != nil {
 		log.LogErrorf("deleteObjectHandler: Volume delete file fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
