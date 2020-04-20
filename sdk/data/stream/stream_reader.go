@@ -56,7 +56,7 @@ func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
 	s.client = client
 	s.inode = inode
 	s.extents = NewExtentCache(inode)
-	s.request = make(chan interface{}, 1000)
+	s.request = make(chan interface{}, 64)
 	s.done = make(chan struct{})
 	s.dirtylist = NewDirtyExtentList()
 	go s.server()
