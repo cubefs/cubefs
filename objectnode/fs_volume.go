@@ -262,7 +262,7 @@ func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err e
 		return
 	}
 	if info, err = v.mw.XAttrGet_ll(inode, key); err != nil {
-		log.LogErrorf("GetXAttr: meta get xattr fail: path(%v) inode(%v) err(%v)", path, inode, err)
+		log.LogErrorf("GetXAttr: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
 		return
 	}
 	return
@@ -275,7 +275,7 @@ func (v *Volume) DeleteXAttr(path string, key string) (err error) {
 		return
 	}
 	if err = v.mw.XAttrDel_ll(inode, key); err != nil {
-		log.LogErrorf("SetXAttr: meta set xattr fail: path(%v) inode(%v) err(%v)", path, inode, err)
+		log.LogErrorf("SetXAttr: meta set xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
 		return
 	}
 	return
@@ -288,7 +288,7 @@ func (v *Volume) ListXAttrs(path string) (keys []string, err error) {
 		return
 	}
 	if keys, err = v.mw.XAttrsList_ll(inode); err != nil {
-		log.LogErrorf("GetXAttr: meta get xattr fail: path(%v) inode(%v) err(%v)", path, inode, err)
+		log.LogErrorf("GetXAttr: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
 		return
 	}
 	return
@@ -315,6 +315,8 @@ func (v *Volume) ListFilesV1(request *ListBucketRequestV1) ([]*FSFileInfo, strin
 
 	infos, prefixes, err = v.listFilesV1(prefix, marker, delimiter, maxKeys)
 	if err != nil {
+		log.LogErrorf("ListFilesV1: list fail: volume(%v) prefix(%v) marker(%v) delimiter(%v) maxKeys(%v) err(%v)",
+			v.name, prefix, marker, delimiter, maxKeys, err)
 		return nil, "", false, nil, err
 	}
 
@@ -334,7 +336,6 @@ func (v *Volume) ListFilesV1(request *ListBucketRequestV1) ([]*FSFileInfo, strin
 // It supports parameters such as prefix, delimiter, and paging.
 // It is a data plane logical encapsulation of the object storage interface ListObjectsV2.
 func (v *Volume) ListFilesV2(request *ListBucketRequestV2) ([]*FSFileInfo, uint64, string, bool, []string, error) {
-
 	delimiter := request.delimiter
 	maxKeys := request.maxKeys
 	prefix := request.prefix
@@ -347,6 +348,8 @@ func (v *Volume) ListFilesV2(request *ListBucketRequestV2) ([]*FSFileInfo, uint6
 
 	infos, prefixes, err = v.listFilesV2(prefix, startAfter, contToken, delimiter, maxKeys)
 	if err != nil {
+		log.LogErrorf("ListFilesV2: list fail: volume(%v) prefix(%v) startAfter(%v) contToken(%v) delimiter(%v) maxKeys(%v) err(%v)",
+			v.name, prefix, startAfter, contToken, delimiter, maxKeys, err)
 		return nil, 0, "", false, nil, err
 	}
 
@@ -379,7 +382,10 @@ func (v *Volume) ListFilesV2(request *ListBucketRequestV2) ([]*FSFileInfo, uint6
 // An ENOTDIR error is returned indicating that a part of the target path expected to be a directory
 // but actual is a file.
 func (v *Volume) WriteObject(path string, reader io.Reader, mimeType string) (fsInfo *FSFileInfo, err error) {
-
+	defer func() {
+		// Audit behavior
+		log.LogInfof("Audit: WriteObject: volume(%v) path(%v) err(%v)", v.name, path, err)
+	}()
 	// The path is processed according to the content-type. If it is a directory type,
 	// a path separator is appended at the end of the path, so the recursiveMakeDirectory
 	// method can be processed directly in recursion.
@@ -405,6 +411,8 @@ func (v *Volume) WriteObject(path string, reader io.Reader, mimeType string) (fs
 	}
 	var parentId uint64
 	if parentId, err = v.recursiveMakeDirectory(fixedPath); err != nil {
+		log.LogErrorf("WriteObject: recursive make directory fail: volume(%v) path(%v) err(%v)",
+			v.name, path, err)
 		return
 	}
 	var lastPathItem = pathItems[len(pathItems)-1]
@@ -448,7 +456,11 @@ func (v *Volume) WriteObject(path string, reader io.Reader, mimeType string) (fs
 	defer func() {
 		// An error has caused the entire process to fail. Delete the inode and release the written data.
 		if err != nil {
+			log.LogWarnf("WriteObject: unlink temp inode: volume(%v) path(%v) inode(%v)",
+				v.name, path, invisibleTempDataInode.Inode)
 			_, _ = v.mw.InodeUnlink_ll(invisibleTempDataInode.Inode)
+			log.LogWarnf("WriteObject: evict temp inode: volume(%v) path(%v) inode(%v)",
+				v.name, path, invisibleTempDataInode.Inode)
 			_ = v.mw.Evict(invisibleTempDataInode.Inode)
 		}
 	}()
@@ -457,8 +469,8 @@ func (v *Volume) WriteObject(path string, reader io.Reader, mimeType string) (fs
 	}
 	defer func() {
 		if closeErr := v.ec.CloseStream(invisibleTempDataInode.Inode); closeErr != nil {
-			log.LogErrorf("WriteObject: close stream fail: inode(%v) err(%v)",
-				invisibleTempDataInode.Inode, closeErr)
+			log.LogErrorf("WriteObject: close stream fail: volume(%v) inode(%v) err(%v)",
+				v.name, invisibleTempDataInode.Inode, closeErr)
 		}
 	}()
 
@@ -547,6 +559,10 @@ func (v *Volume) WriteObject(path string, reader io.Reader, mimeType string) (fs
 // This method will not return syscall.ENOENT error
 func (v *Volume) DeletePath(path string) (err error) {
 	defer func() {
+		// Audit behavior
+		log.LogInfof("Audit: DeletePath: volume(%v) path(%v), err(%v)", v.name, path, err)
+	}()
+	defer func() {
 		// In the operation of deleting a path, if no path matching the given path is found,
 		// that is, the given path does not exist, the return is successful.
 		if err == syscall.ENOENT {
@@ -572,6 +588,7 @@ func (v *Volume) DeletePath(path string) (err error) {
 			return
 		}
 	}
+	log.LogWarnf("DeletePath: delete: volume(%v) path(%v) inode(%v)", v.name, path, ino)
 	if _, err = v.mw.Delete_ll(parent, name, mode.IsDir()); err != nil {
 		return
 	}
@@ -580,7 +597,7 @@ func (v *Volume) DeletePath(path string) (err error) {
 	if err = v.ec.EvictStream(ino); err != nil {
 		log.LogWarnf("DeletePath EvictStream: path(%v) inode(%v)", path, ino)
 	}
-
+	log.LogWarnf("DeletePath: evict: volume(%v) path(%v) inode(%v)", v.name, path, ino)
 	if err = v.mw.Evict(ino); err != nil {
 		log.LogWarnf("DeletePath Evict: path(%v) inode(%v)", path, ino)
 	}
@@ -589,6 +606,9 @@ func (v *Volume) DeletePath(path string) (err error) {
 }
 
 func (v *Volume) InitMultipart(path string) (multipartID string, err error) {
+	defer func() {
+		log.LogInfof("Audit: InitMultipart: volume(%v) path(%v) multipartID(%v) err(%v)", v.name, path, multipartID, err)
+	}()
 	// Invoke meta service to get a session id
 	// Create parent path
 
@@ -610,10 +630,14 @@ func (v *Volume) InitMultipart(path string) (multipartID string, err error) {
 }
 
 func (v *Volume) WritePart(path string, multipartId string, partId uint16, reader io.Reader) (*FSFileInfo, error) {
-	var parentId uint64
 	var err error
+	defer func() {
+		// Audit behavior
+		log.LogInfof("Audit: WritePart: volume(%v) path(%v) multipartID(%v) partID(%v) err(%v)",
+			v.name, path, multipartId, partId, err)
+	}()
+	var parentId uint64
 	var fInfo *FSFileInfo
-
 	dirs, fileName := splitPath(path)
 	// process path
 	if parentId, err = v.lookupDirectories(dirs, true); err != nil {
@@ -688,48 +712,57 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 }
 
 func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
+	defer func() {
+		log.LogInfof("Audit: AbortMultipart: volume(%v) path(%v) multipartID(%v) err(%v)",
+			v.name, path, multipartID, err)
+	}()
 	var parentId uint64
 
 	dirs, _ := splitPath(path)
 	// process path
 	if parentId, err = v.lookupDirectories(dirs, true); err != nil {
-		log.LogErrorf("AbortMultipart: lookup directories fail, multipartID(%v) path(%v) dirs(%v) err(%v)",
-			multipartID, path, dirs, err)
+		log.LogErrorf("AbortMultipart: lookup directories fail: volume(%v) multipartID(%v) path(%v) dirs(%v) err(%v)",
+			v.name, multipartID, path, dirs, err)
 		return err
 	}
 	// get multipart info
 	var multipartInfo *proto.MultipartInfo
 	if multipartInfo, err = v.mw.GetMultipart_ll(multipartID, parentId); err != nil {
-		log.LogErrorf("AbortMultipart: meta get multipart fail, multipartID(%v) parentID(%v) path(%v) err(%v)",
-			multipartID, parentId, path, err)
+		log.LogErrorf("AbortMultipart: meta get multipart fail: volume(%v) multipartID(%v) parentID(%v) path(%v) err(%v)",
+			v.name, multipartID, parentId, path, err)
 		return
 	}
 	// release part data
 	for _, part := range multipartInfo.Parts {
+		log.LogWarnf("AbortMultipart: unlink part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
+			v.name, path, multipartID, part.ID, part.Inode)
 		if _, err = v.mw.InodeUnlink_ll(part.Inode); err != nil {
-			log.LogErrorf("AbortMultipart: meta inode unlink fail: multipartID(%v) partID(%v) inode(%v) err(%v)",
-				multipartID, part.ID, part.Inode, err)
+			log.LogErrorf("AbortMultipart: meta inode unlink fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
+				v.name, path, multipartID, part.ID, part.Inode, err)
 		}
+		log.LogWarnf("AbortMultipart: evict part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
+			v.name, path, multipartID, part.ID, part.Inode)
 		if err = v.mw.Evict(part.Inode); err != nil {
-			log.LogWarnf("AbortMultipart: meta inode evict fail: multipartID(%v) partID(%v) inode(%v) err(%v)",
-				multipartID, part.ID, part.Inode, err)
+			log.LogErrorf("AbortMultipart: meta inode evict fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
+				v.name, path, multipartID, part.ID, part.Inode, err)
 		}
-		log.LogDebugf("AbortMultipart: multipart part data released: multipartID(%v) partID(%v) inode(%v)",
-			multipartID, part.ID, part.Inode)
+		log.LogDebugf("AbortMultipart: multipart part data released: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
+			v.name, path, multipartID, part.ID, part.Inode)
 	}
 
 	if err = v.mw.RemoveMultipart_ll(multipartID, parentId); err != nil {
-		log.LogErrorf("AbortMultipart: meta abort multipart fail, multipartID(%v) parentID(%v) err(%v)",
-			multipartID, parentId, err)
+		log.LogErrorf("AbortMultipart: meta abort multipart fail: volume(%v) path(%v) multipartID(%v) parentID(%v) err(%v)",
+			v.name, path, multipartID, parentId, err)
 		return err
 	}
-	log.LogDebugf("AbortMultipart: meta abort multipart, multipartID(%v) path(%v)",
-		multipartID, path)
+	log.LogDebugf("AbortMultipart: meta abort multipart: volume(%v) path(%v) multipartID(%v) path(%v)",
+		v.name, path, multipartID, path)
 	return nil
 }
 
 func (v *Volume) CompleteMultipart(path string, multipartID string) (fsFileInfo *FSFileInfo, err error) {
-
+	log.LogInfof("CompleteMultipart: volume(%v) path(%v) multipartID(%v)",
+		v.name, path, multipartID)
 	var parentId uint64
 
 	dirs, filename := splitPath(path)
@@ -743,8 +776,8 @@ func (v *Volume) CompleteMultipart(path string, multipartID string) (fsFileInfo 
 	// get multipart info
 	var multipartInfo *proto.MultipartInfo
 	if multipartInfo, err = v.mw.GetMultipart_ll(multipartID, parentId); err != nil {
-		log.LogErrorf("CompleteMultipart: meta get multipart fail, multipartID(%v) parentID(%v) path(%v) err(%v)",
-			multipartID, parentId, path, err)
+		log.LogErrorf("CompleteMultipart: meta get multipart fail: volume(%v) multipartID(%v) parentID(%v) path(%v) err(%v)",
+			v.name, multipartID, parentId, path, err)
 		return
 	}
 
@@ -755,15 +788,17 @@ func (v *Volume) CompleteMultipart(path string, multipartID string) (fsFileInfo 
 	// create inode for complete data
 	var completeInodeInfo *proto.InodeInfo
 	if completeInodeInfo, err = v.mw.InodeCreate_ll(DefaultFileMode, 0, 0, nil); err != nil {
-		log.LogErrorf("CompleteMultipart: meta inode create fail: err(%v)", err)
+		log.LogErrorf("CompleteMultipart: meta inode create fail: volume(%v) err(%v)", v.name, err)
 		return
 	}
 	log.LogDebugf("CompleteMultipart: meta inode create: inode(%v)", completeInodeInfo.Inode)
 	defer func() {
 		if err != nil {
+			log.LogWarnf("CompleteMultipart: destroy inode: volume(%v) inode(%v)",
+				v.name, completeInodeInfo.Inode)
 			if deleteErr := v.mw.InodeDelete_ll(completeInodeInfo.Inode); deleteErr != nil {
-				log.LogErrorf("CompleteMultipart: meta delete complete inode fail: inode(%v) err(%v)",
-					completeInodeInfo.Inode, err)
+				log.LogErrorf("CompleteMultipart: meta delete complete inode fail: volume(%v) inode(%v) err(%v)",
+					v.name, completeInodeInfo.Inode, err)
 			}
 		}
 	}()
@@ -775,7 +810,8 @@ func (v *Volume) CompleteMultipart(path string, multipartID string) (fsFileInfo 
 	for _, part := range parts {
 		var eks []proto.ExtentKey
 		if _, _, eks, err = v.mw.GetExtents(part.Inode); err != nil {
-			log.LogErrorf("CompleteMultipart: meta get extents fail: inode(%v) err(%v)", part.Inode, err)
+			log.LogErrorf("CompleteMultipart: meta get extents fail: volume(%v) inode(%v) err(%v)",
+				v.name, part.Inode, err)
 			return
 		}
 		// recompute offsets of extent keys
@@ -855,13 +891,16 @@ func (v *Volume) CompleteMultipart(path string, multipartID string) (fsFileInfo 
 	}
 	// delete part inodes
 	for _, part := range parts {
+		log.LogWarnf("CompleteMultipart: destroy part inode: volume(%v) multipartID(%v) partID(%v) inode(%v)",
+			v.name, multipartID, part.ID, part.Inode)
 		if err = v.mw.InodeDelete_ll(part.Inode); err != nil {
-			log.LogErrorf("CompleteMultipart: destroy part inode fail: inode(%v) err(%v)", part.Inode, err)
+			log.LogErrorf("CompleteMultipart: destroy part inode fail: volume(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
+				v.name, multipartID, part.ID, part.Inode, err)
 		}
 	}
 
-	log.LogDebugf("CompleteMultipart: meta complete multipart, multipartID(%v) path(%v) parentID(%v) inode(%v) md5(%v)",
-		multipartID, path, parentId, completeInodeInfo.Inode, md5Val)
+	log.LogDebugf("CompleteMultipart: meta complete multipart: volume(%v) multipartID(%v) path(%v) parentID(%v) inode(%v) md5(%v)",
+		v.name, multipartID, path, parentId, completeInodeInfo.Inode, md5Val)
 
 	// create file info
 	fInfo := &FSFileInfo{
@@ -975,14 +1014,16 @@ func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uin
 	}
 
 	// unlink and evict old inode
+	log.LogWarnf("applyInodeToExistDentry: unlink inode: volume(%v) inode(%v)", v.name, oldInode)
 	if _, err = v.mw.InodeUnlink_ll(oldInode); err != nil {
-		log.LogWarnf("CompleteMultipart: meta unlink old inode fail: inode(%v) err(%v)",
-			oldInode, err)
+		log.LogWarnf("applyInodeToExistDentry: unlink inode fail: volume(%v) inode(%v) err(%v)",
+			v.name, oldInode, err)
 	}
 
+	log.LogWarnf("applyInodeToExistDentry: evict inode: volume(%v) inode(%v)", v.name, oldInode)
 	if err = v.mw.Evict(oldInode); err != nil {
-		log.LogWarnf("CompleteMultipart: meta evict old inode fail: inode(%v) err(%v)",
-			oldInode, err)
+		log.LogWarnf("applyInodeToExistDentry: evict inode fail: volume(%v) inode(%v) err(%v)",
+			v.name, oldInode, err)
 	}
 	err = nil
 	return
@@ -1034,7 +1075,8 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) er
 		}
 		n, err = v.ec.Read(ino, tmp, int(offset), readSize)
 		if err != nil && err != io.EOF {
-			log.LogErrorf("ReadFile: data read fail, inode(%v) offset(%v) size(%v) err(%v)", ino, offset, size, err)
+			log.LogErrorf("ReadFile: data read fail: volume(%v) path(%v) inode(%v) offset(%v) size(%v) err(%v)",
+				v.name, path, ino, offset, size, err)
 			return err
 		}
 		if n > 0 {
@@ -1062,6 +1104,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 	// read file data
 	var inoInfo *proto.InodeInfo
 	if inoInfo, err = v.mw.InodeGet_ll(inode); err != nil {
+		log.LogWarnf("ObjectMeta: get inode fail: volume(%v) path(%v) inode(%v)", v.name, path, inode)
 		return
 	}
 
@@ -1591,7 +1634,7 @@ func (v *Volume) ListParts(path, uploadId string, maxParts, partNumberMarker uin
 
 	multipartInfo, err := v.mw.GetMultipart_ll(uploadId, parentId)
 	if err != nil {
-		log.LogErrorf("ListPart: get multipart upload fail: uploadID(%v) err(%v)", uploadId, err)
+		log.LogErrorf("ListPart: get multipart upload fail: volume(%v) uploadID(%v) err(%v)", v.name, uploadId, err)
 	}
 
 	sessionParts := multipartInfo.Parts

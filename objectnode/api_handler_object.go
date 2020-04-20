@@ -42,8 +42,6 @@ var (
 // Get object
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html
 func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("getObjectHandler: get object, requestID(%v) remote(%v)", GetRequestID(r), r.RemoteAddr)
-
 	var (
 		err       error
 		errorCode *ErrorCode
@@ -232,8 +230,6 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 // Head object
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html
 func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("headObjectHandler: get object meta, requestID(%v) remote(%v)", GetRequestID(r), r.RemoteAddr)
-
 	var (
 		err       error
 		errorCode *ErrorCode
@@ -343,8 +339,6 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 // Delete objects (multiple objects)
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjects.html
 func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("deleteObjectsHandler: delete multiple objects, requestID(%v) remote(%v)",
-		GetRequestID(r), r.RemoteAddr)
 
 	var (
 		err       error
@@ -415,18 +409,28 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		return deleteReq.Objects[i].Key > deleteReq.Objects[j].Key
 	})
 
+	var objectKeys = make([]string, 0, len(deleteReq.Objects))
 	for _, object := range deleteReq.Objects {
+		objectKeys = append(objectKeys, object.Key)
 		err = vol.DeletePath(object.Key)
+		log.LogWarnf("deleteObjectsHandler: delete: requestID(%v) volume(%v) path(%v)",
+			GetRequestID(r), vol.Name(), object.Key)
 		if err != nil {
 			ossError := transferError(object.Key, err)
 			deletedErrors = append(deletedErrors, ossError)
+			log.LogErrorf("deleteObjectsHandler: delete object failed: requestID(%v) volume(%v) path(%v) err(%v)",
+				GetRequestID(r), vol.Name(), object.Key, err)
 		} else {
 			deleted := Deleted{Key: object.Key}
 			deletedObjects = append(deletedObjects, deleted)
-			log.LogDebugf("deleteObjectsHandler: delete object: requestID(%v) key(%v)", GetRequestID(r),
-				deleted.Key)
+			log.LogDebugf("deleteObjectsHandler: delete object success: requestID(%v) volume(%v) path(%v)", GetRequestID(r),
+				vol.Name(), object.Key)
 		}
 	}
+
+	// Audit bulk delete behavior
+	log.LogInfof("Audit: delete multiple objects: requestID(%v) remote(%v) volume(%v) objects(%v)",
+		GetRequestID(r), getRequestIP(r), vol.Name(), strings.Join(objectKeys, ","))
 
 	deletesResult.DeletedObjects = deletedObjects
 	deletesResult.DeletedErrors = deletedErrors
@@ -618,8 +622,8 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("getBucketV1Handler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+		log.LogErrorf("getBucketV1Handler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
 		errorCode = NoSuchBucket
 		return
 	}
@@ -653,7 +657,8 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 
 	fsFileInfos, nextMarker, isTruncated, prefixes, err := vol.ListFilesV1(listBucketRequest)
 	if err != nil {
-		log.LogErrorf("getBucketV1Handler: list file fail, requestID(%v), err(%v)", getRequestIP(r), err)
+		log.LogErrorf("getBucketV1Handler: list file fail: requestID(%v) volume(%v) err(%v)",
+			getRequestIP(r), vol.name, err)
 		errorCode = InvalidArgument
 		return
 	}
@@ -666,8 +671,8 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 			if fsFileInfo.Mode == 0 {
 				// Invalid file mode, which means that the inode of the file may not exist.
 				// Record and filter out the file.
-				log.LogWarnf("getBucketV2Handler: invalid file found: path(%v) inode(%v)",
-					fsFileInfo.Path, fsFileInfo.Inode)
+				log.LogWarnf("getBucketV2Handler: invalid file found: volume(%v) path(%v) inode(%v)",
+					vol.Name(), fsFileInfo.Path, fsFileInfo.Inode)
 				continue
 			}
 			content := &Content{
@@ -737,8 +742,8 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("getBucketV2Handler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+		log.LogErrorf("getBucketV2Handler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
 		errorCode = NoSuchBucket
 		return
 	}
@@ -806,8 +811,8 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 			if fsFileInfo.Mode == 0 {
 				// Invalid file mode, which means that the inode of the file may not exist.
 				// Record and filter out the file.
-				log.LogWarnf("getBucketV2Handler: invalid file found: path(%v) inode(%v)",
-					fsFileInfo.Path, fsFileInfo.Inode)
+				log.LogWarnf("getBucketV2Handler: invalid file found: volume(%v) path(%v) inode(%v)",
+					vol.Name(), fsFileInfo.Path, fsFileInfo.Inode)
 				continue
 			}
 			content := &Content{
@@ -863,7 +868,6 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 // Put object
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html
 func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("putObjectHandler: put object, requestID(%v) remote(%v)", GetRequestID(r), r.RemoteAddr)
 
 	var err error
 	var errorCode *ErrorCode
@@ -884,8 +888,8 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("putObjectHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+		log.LogErrorf("putObjectHandler: load volume fail: requestID(%v)  volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
 		errorCode = NoSuchBucket
 		return
 	}
@@ -902,6 +906,10 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// In addition to being used to manage data types, it is used to distinguish
 	// whether the request is to create a directory.
 	contentType := r.Header.Get(HeaderNameContentType)
+
+	// Audit file write
+	log.LogInfof("Audit: put object: requestID(%v) remote(%v) volume(%v) path(%v) type(%v)",
+		GetRequestID(r), getRequestIP(r), vol.Name(), param.Object(), contentType)
 
 	var fsFileInfo *FSFileInfo
 	fsFileInfo, err = vol.WriteObject(param.Object(), r.Body, contentType)
@@ -942,7 +950,6 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 // Delete object
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html .
 func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("Delete object...")
 
 	var (
 		err       error
@@ -969,15 +976,20 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 
 	var vol *Volume
 	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		log.LogErrorf("deleteObjectHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+		log.LogErrorf("deleteObjectHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
 		errorCode = NoSuchBucket
 		return
 	}
 
+	// Audit deletion
+	log.LogInfof("Audit: delete object: requestID(%v) remote(%v) volume(%v) path(%v)",
+		GetRequestID(r), getRequestIP(r), vol.Name(), param.Object())
+
 	err = vol.DeletePath(param.Object())
 	if err != nil {
-		log.LogErrorf("deleteObjectHandler: Volume delete file fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("deleteObjectHandler: Volume delete file fail: "+
+			"requestID(%v) volume(%v) path(%v) err(%v)", GetRequestID(r), vol.Name(), param.Object(), err)
 		errorCode = InternalErrorCode(err)
 		return
 	}
@@ -1009,8 +1021,8 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("getObjectTaggingHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+		log.LogErrorf("getObjectTaggingHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
 		errorCode = NoSuchBucket
 		return
 	}
