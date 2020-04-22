@@ -208,7 +208,6 @@ func (v *Volume) getInodeFromPath(path string) (inode uint64, err error) {
 	}
 
 	dirs, filename := splitPath(path)
-	log.LogInfof("dirs %v %v %v", path, len(dirs), filename)
 
 	if len(dirs) == 0 && filename == "" {
 		return volumeRootInode, nil
