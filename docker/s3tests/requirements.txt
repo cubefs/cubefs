@@ -1,0 +1,3 @@
+boto3 >=1.0.0
+unittest2
+requests

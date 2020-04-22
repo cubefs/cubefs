@@ -18,6 +18,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/xml"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -40,8 +41,6 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 	var (
 		err error
 	)
-
-	log.LogInfof("Create bucket...")
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 	if bucket == "" {
@@ -72,7 +71,6 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 // Delete bucket
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucket.html
 func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("Delete bucket...")
 
 	var (
 		volState *proto.VolStatInfo
@@ -122,7 +120,6 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 // List buckets
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBuckets.html
 func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("List buckets...")
 
 	var err error
 	auth := parseRequestAuthInfo(r)
@@ -166,13 +163,15 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 // Get bucket location
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLocation.html
 func (o *ObjectNode) getBucketLocation(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("getBucketLocation: get bucket location: requestID(%v)", GetRequestID(r))
-	var output = &GetBucketLocationOutput{
+	var output = struct {
+		XMLName            xml.Name `xml:"GetBucketLocationOutput"`
+		LocationConstraint string   `xml:"LocationConstraint"`
+	}{
 		LocationConstraint: o.region,
 	}
 	var marshaled []byte
 	var err error
-	if marshaled, err = MarshalXMLEntity(output); err != nil {
+	if marshaled, err = MarshalXMLEntity(&output); err != nil {
 		log.LogErrorf("getBucketLocation: marshal result fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		ServeInternalStaticErrorResponse(w, r)
 		return

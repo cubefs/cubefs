@@ -283,11 +283,6 @@ type GetObjectTaggingOutput struct {
 	Tagging
 }
 
-type GetBucketLocationOutput struct {
-	XMLName            xml.Name `xml:"GetBucketLocationOutput"`
-	LocationConstraint string   `xml:"LocationConstraint"`
-}
-
 type XAttr struct {
 	Key   string `xml:"Key"`
 	Value string `xml:"Value"`
