@@ -219,25 +219,6 @@ func TestMarshalTagging(t *testing.T) {
 	t.Logf("json result:\n%v", string(marshaled))
 }
 
-func TestMarshalGetObjectTaggingOutput(t *testing.T) {
-	tagging := NewGetObjectTaggingOutput()
-	tagging.TagSet = []*Tag{
-		{
-			Key:   "tag1",
-			Value: "val1",
-		},
-		{
-			Key:   "tag2",
-			Value: "val2",
-		},
-	}
-	marshaled, err := MarshalXMLEntity(tagging)
-	if err != nil {
-		t.Fatalf("marshal tagging fail: err(%v)", err)
-	}
-	t.Logf("marshal tagging:\n%v", string(marshaled))
-}
-
 func TestResult_PutXAttrRequest_Marshal(t *testing.T) {
 	var err error
 	var request = PutXAttrRequest{

@@ -135,12 +135,6 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 		var bucket = &Bucket{Name: ownVol, CreationDate: time.Unix(0, 0)}
 		buckets = append(buckets, bucket)
 	}
-	authorizedVols := userInfo.Policy.AuthorizedVols
-	for authorizedVol := range authorizedVols {
-		var bucket = &Bucket{Name: authorizedVol, CreationDate: time.Unix(0, 0)}
-		buckets = append(buckets, bucket)
-	}
-
 	owner := &Owner{DisplayName: userInfo.AccessKey, Id: userInfo.AccessKey}
 	listBucketOutput := &ListBucketsOutput{
 		Buckets: &Buckets{Bucket: buckets},
@@ -204,11 +198,12 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
-	var output = NewGetBucketTaggingOutput()
-	if err = json.Unmarshal(ossTaggingData, output); err != nil {
-		log.LogErrorf("getBucketTaggingHandler: decode tagging from json fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
-		return
+	var output = NewTagging()
+	if len(ossTaggingData) > 0 {
+		if err = json.Unmarshal(ossTaggingData, output); err != nil {
+			log.LogErrorf("getBucketTaggingHandler: decode tagging from json fail: requestID(%v) raw(%v) err(%v)",
+				GetRequestID(r), string(ossTaggingData), err)
+		}
 	}
 
 	var encoded []byte

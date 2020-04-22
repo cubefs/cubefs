@@ -122,10 +122,11 @@ func (o *ObjectNode) errorResponse(w http.ResponseWriter, r *http.Request, err e
 }
 
 func (o *ObjectNode) unsupportedOperationHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	if err = UnsupportedOperation.ServeResponse(w, r); err != nil {
-		log.LogErrorf("unsupportedOperationHandler: serve response fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
-	}
+	log.LogInfof("Audit: unsupported operation: requestID(%v) remote(%v) action(%v) userAgent(%v)",
+		GetRequestID(r),
+		getRequestIP(r),
+		ActionFromRouteName(mux.CurrentRoute(r).GetName()),
+		r.UserAgent())
+	_ = UnsupportedOperation.ServeResponse(w, r)
 	return
 }

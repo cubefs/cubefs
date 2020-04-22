@@ -134,11 +134,18 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	modified := r.Header.Get(HeaderNameIfModifiedSince)
 	unmodified := r.Header.Get(HeaderNameIfUnmodifiedSince)
 
-	if match != "" && match != fileInfo.ETag {
-		log.LogErrorf("getObjectHandler: object eTag(%s) not match If-Match header value(%s), requestId(%v)", fileInfo.ETag, match, GetRequestID(r))
-		errorCode = PreconditionFailed
-		return
+	// Checking precondition: If-Match
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
+	if match != "" {
+		if matchEag := strings.Trim(match, "\""); matchEag != fileInfo.ETag {
+			log.LogDebugf("getObjectHandler: object eTag(%s) not match If-Match header value(%s), requestId(%v)",
+				fileInfo.ETag, matchEag, GetRequestID(r))
+			errorCode = PreconditionFailed
+			return
+		}
 	}
+	// Checking precondition: If-Modified-Since
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
 	if modified != "" {
 		fileModTime := fileInfo.ModifyTime
 		modifiedTime, err := parseTimeRFC1123(modified)
@@ -153,12 +160,18 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// if none match
-	if noneMatch != "" && noneMatch == fileInfo.ETag {
-		log.LogErrorf("getObjectHandler: object eTag(%s) match If-None-Match header value(%s), requestId(%v)", fileInfo.ETag, match, GetRequestID(r))
-		errorCode = NotModified
-		return
+	// Checking precondition: If-None-Match
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
+	if noneMatch != "" {
+		if noneMatchEtag := strings.Trim(noneMatch, "\""); noneMatchEtag == fileInfo.ETag {
+			log.LogErrorf("getObjectHandler: object eTag(%s) match If-None-Match header value(%s), requestId(%v)",
+				fileInfo.ETag, noneMatchEtag, GetRequestID(r))
+			errorCode = NotModified
+			return
+		}
 	}
+	// Checking precondition: If-Unmodified-Since
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
 	if unmodified != "" && match == "" {
 		fileModTime := fileInfo.ModifyTime
 		modifiedTime, err := parseTimeRFC1123(unmodified)
@@ -280,11 +293,18 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	modified := r.Header.Get(HeaderNameIfModifiedSince)
 	unmodified := r.Header.Get(HeaderNameIfUnmodifiedSince)
 
-	if match != "" && match != fileInfo.ETag {
-		log.LogErrorf("headObjectHandler: object eTag(%s) not match If-Match header value(%s), requestId(%v)", fileInfo.ETag, match, GetRequestID(r))
-		errorCode = PreconditionFailed
-		return
+	// Checking precondition: If-Match
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html#API_HeadObject_RequestSyntax
+	if match != "" {
+		if matchEag := strings.Trim(match, "\""); matchEag != fileInfo.ETag {
+			log.LogDebugf("headObjectHandler: object eTag(%s) not match If-Match header value(%s), requestId(%v)",
+				fileInfo.ETag, matchEag, GetRequestID(r))
+			errorCode = PreconditionFailed
+			return
+		}
 	}
+	// Checking precondition: If-Modified-Since
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html#API_HeadObject_RequestSyntax
 	if modified != "" {
 		fileModTime := fileInfo.ModifyTime
 		modifiedTime, err := parseTimeRFC1123(modified)
@@ -299,12 +319,18 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// if none match
-	if noneMatch != "" && noneMatch == fileInfo.ETag {
-		log.LogErrorf("headObjectHandler: object eTag(%s) match If-None-Match header value(%s), requestId(%v)", fileInfo.ETag, match, GetRequestID(r))
-		errorCode = NotModified
-		return
+	// Checking precondition: If-None-Match
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html#API_HeadObject_RequestSyntax
+	if noneMatch != "" {
+		if noneMatchEtag := strings.Trim(noneMatch, "\""); noneMatchEtag == fileInfo.ETag {
+			log.LogErrorf("headObjectHandler: object eTag(%s) match If-None-Match header value(%s), requestId(%v)",
+				fileInfo.ETag, noneMatchEtag, GetRequestID(r))
+			errorCode = NotModified
+			return
+		}
 	}
+	// Checking precondition: If-Unmodified-Since
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html#API_HeadObject_RequestSyntax
 	if unmodified != "" && match == "" {
 		fileModTime := fileInfo.ModifyTime
 		modifiedTime, err := parseTimeRFC1123(unmodified)
@@ -1040,11 +1066,12 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 
 	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
 
-	var output = NewGetObjectTaggingOutput()
-	if err = json.Unmarshal(ossTaggingData, output); err != nil {
-		log.LogErrorf("getObjectTaggingHandler: decode tagging from json fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
-		return
+	var output = NewTagging()
+	if len(ossTaggingData) > 0 {
+		if err = json.Unmarshal(ossTaggingData, output); err != nil {
+			log.LogErrorf("getObjectTaggingHandler: decode tagging from json fail: requestID(%v) raw(%v) err(%v)",
+				GetRequestID(r), string(ossTaggingData), err)
+		}
 	}
 
 	var encoded []byte
