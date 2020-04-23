@@ -42,6 +42,11 @@ type MasterClient struct {
 	masters    []string
 	useSSL     bool
 	leaderAddr string
+
+	adminAPI  *AdminAPI
+	clientAPI *ClientAPI
+	nodeAPI   *NodeAPI
+	userAPI   *UserAPI
 }
 
 // AddNode add the given address as the master address.
@@ -60,27 +65,19 @@ func (c *MasterClient) Leader() (addr string) {
 }
 
 func (c *MasterClient) AdminAPI() *AdminAPI {
-	return &AdminAPI{
-		mc: c,
-	}
+	return c.adminAPI
 }
 
 func (c *MasterClient) ClientAPI() *ClientAPI {
-	return &ClientAPI{
-		mc: c,
-	}
+	return c.clientAPI
 }
 
 func (c *MasterClient) NodeAPI() *NodeAPI {
-	return &NodeAPI{
-		mc: c,
-	}
+	return c.nodeAPI
 }
 
 func (c *MasterClient) UserAPI() *UserAPI {
-	return &UserAPI{
-		mc: c,
-	}
+	return c.userAPI
 }
 
 // Change the leader address.
@@ -180,7 +177,7 @@ func (c *MasterClient) prepareRequest() (addr string, nodes []string) {
 }
 
 func (c *MasterClient) httpRequest(method, url string, param, header map[string]string, reqData []byte) (resp *http.Response, err error) {
-	client := &http.Client{}
+	client := http.DefaultClient
 	reader := bytes.NewReader(reqData)
 	client.Timeout = requestTimeout
 	var req *http.Request
@@ -234,7 +231,12 @@ func (c *MasterClient) mergeRequestUrl(url string, params map[string]string) str
 
 // NewMasterHelper returns a new MasterClient instance.
 func NewMasterClient(masters []string, useSSL bool) *MasterClient {
-	return &MasterClient{masters: masters, useSSL: useSSL}
+	var mc = &MasterClient{masters: masters, useSSL: useSSL}
+	mc.adminAPI = &AdminAPI{mc: mc}
+	mc.clientAPI = &ClientAPI{mc: mc}
+	mc.nodeAPI = &NodeAPI{mc: mc}
+	mc.userAPI = &UserAPI{mc: mc}
+	return mc
 }
 
 // NewMasterClientFromString parse raw master address configuration
