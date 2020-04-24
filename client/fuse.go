@@ -52,6 +52,8 @@ import (
 
 const (
 	MaxReadAhead = 512 * 1024
+
+	defaultRlimit uint64 = 1024000
 )
 
 const (
@@ -143,6 +145,8 @@ func main() {
 		syslog.Println(o)
 	}
 	syslog.Println("*** End ***")
+
+	changeRlimit(defaultRlimit)
 
 	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
 		daemonize.SignalOutcome(err)
@@ -395,4 +399,14 @@ func parseLogLevel(loglvl string) log.Level {
 		level = log.ErrorLevel
 	}
 	return level
+}
+
+func changeRlimit(val uint64) {
+	rlimit := &syscall.Rlimit{Max: val, Cur: val}
+	err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, rlimit)
+	if err != nil {
+		syslog.Printf("Failed to set rlimit to %v \n", val)
+	} else {
+		syslog.Printf("Successfully set rlimit to %v \n", val)
+	}
 }
