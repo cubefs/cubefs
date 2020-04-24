@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/log"
@@ -75,8 +74,8 @@ func RegisterConsul(addr, app, role, cluster string, port int64) {
 func GetLocalIpAddr() (ipaddr string, err error) {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
+		log.LogError("consul register get local ip failed, ", err)
+		return
 	}
 	for _, addr := range addrs {
 		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
