@@ -363,7 +363,7 @@ services:
                 ipv4_address: 192.168.0.102
 
     grafana:
-        image: grafana/grafana:6.2.0
+        image: grafana/grafana:6.4.4
         environment:
             - GF_SECURITY_ADMIN_PASSWORD=123456
         ports:
