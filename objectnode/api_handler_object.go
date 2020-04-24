@@ -122,9 +122,15 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get object meta
 	var fileInfo *FSFileInfo
-	if fileInfo, err = vol.ObjectMeta(param.Object()); err != nil {
-		log.LogErrorf("getObjectHandler: Volume get file info fail, requestId(%v) err(%v)", GetRequestID(r), err)
+	fileInfo, err = vol.ObjectMeta(param.Object())
+	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
+		return
+	}
+	if err != nil {
+		log.LogErrorf("getObjectHandler: get file meta fail: requestId(%v) volume(%v) path(%v) err(%v)",
+			GetRequestID(r), vol.Name(), param.Object(), err)
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -230,7 +236,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err = vol.ReadFile(param.Object(), w, offset, size); err != nil {
-		log.LogErrorf("getObjectHandler: read from Volume fail: requestId(%v) Volume(%v) path(%v) offset(%v) size(%v) err(%v)",
+		log.LogErrorf("getObjectHandler: read from Volume fail: requestId(%v) volume(%v) path(%v) offset(%v) size(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), offset, size, err)
 		errorCode = InternalErrorCode(err)
 		return
@@ -276,13 +282,13 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// get object meta
 	var fileInfo *FSFileInfo
 	fileInfo, err = vol.ObjectMeta(param.Object())
-	if err != nil && err == syscall.ENOENT {
-		log.LogErrorf("headObjectHandler: get file meta fail, requestId(%v), err(%v)", GetRequestID(r), err)
+	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
 		return
 	}
 	if err != nil {
-		log.LogErrorf("headObjectHandler: get file meta fail, requestId(%v), err(%v)", GetRequestID(r), err)
+		log.LogErrorf("headObjectHandler: get file meta fail: requestId(%v) volume(%v) path(%v)err(%v)",
+			GetRequestID(r), vol.Name(), param.Object(), err)
 		errorCode = InternalErrorCode(err)
 		return
 	}
