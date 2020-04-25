@@ -21,9 +21,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chubaofs/chubaofs/util/exporter"
+
 	"github.com/gorilla/mux"
 
-	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/google/uuid"
@@ -68,6 +69,10 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		SetRequestAction(r, action)
 		// ===== pre-handle finish =====
 
+		var startTime = time.Now()
+		metric := exporter.NewTPCnt(fmt.Sprintf("action_%v", action.Name()))
+		defer metric.Set(err)
+
 		// Check action is whether enabled.
 		if !action.IsNone() && !o.disabledActions.Contains(action) {
 			// next
@@ -77,10 +82,6 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			log.LogDebugf("traceMiddleware: disabled action: requestID(%v) action(%v)", requestID, action.Name())
 			_ = AccessDenied.ServeResponse(w, r)
 		}
-
-		var startTime = time.Now()
-		metric := exporter.NewTPCnt(fmt.Sprintf("action_%v", action.Name()))
-		defer metric.Set(err)
 
 		// ===== post-handle start =====
 		var headerToString = func(header http.Header) string {

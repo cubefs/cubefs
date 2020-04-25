@@ -16,7 +16,6 @@ package objectnode
 
 import (
 	"encoding/xml"
-	"time"
 )
 
 func MarshalXMLEntity(entity interface{}) ([]byte, error) {
@@ -284,19 +283,4 @@ type GetXAttrOutput struct {
 type ListXAttrsOutput struct {
 	XMLName xml.Name `xml:"ListXAttrsResult"`
 	Keys    []string `xml:"Keys"`
-}
-
-type Buckets struct {
-	Bucket []*Bucket `xml:"Bucket"`
-}
-
-type Bucket struct {
-	CreationDate time.Time `xml:"CreationDate"`
-	Name         string    `xml:"Name"`
-}
-
-type ListBucketsOutput struct {
-	XMLName xml.Name `xml:"ListBucketsOutput"`
-	Buckets *Buckets `xml:"Buckets"`
-	Owner   *Owner   `xml:"Owner"`
 }
