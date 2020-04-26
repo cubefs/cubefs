@@ -22,7 +22,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -129,21 +128,39 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
+
+	type bucket struct {
+		XMLName      xml.Name `xml:"Bucket"`
+		CreationDate string   `xml:"CreationDate"`
+		Name         string   `xml:"Name"`
+	}
+
+	type listBucketsOutput struct {
+		XMLName xml.Name `xml:"ListBucketsOutput"`
+		Buckets []bucket `xml:"Buckets>Bucket"`
+		Owner   Owner    `xml:"Owner"`
+	}
+
+	var output = listBucketsOutput{}
+
 	ownVols := userInfo.Policy.OwnVols
-	var buckets = make([]*Bucket, 0)
 	for _, ownVol := range ownVols {
-		var bucket = &Bucket{Name: ownVol, CreationDate: time.Unix(0, 0)}
-		buckets = append(buckets, bucket)
+		var vol *Volume
+		if vol, err = o.getVol(ownVol); err != nil {
+			log.LogErrorf("listBucketsHandler: load volume fail: volume(%v) err(%v)",
+				ownVol, err)
+			continue
+		}
+		output.Buckets = append(output.Buckets, bucket{
+			Name:         ownVol,
+			CreationDate: formatTimeISO(vol.CreateTime()),
+		})
 	}
-	owner := &Owner{DisplayName: userInfo.AccessKey, Id: userInfo.AccessKey}
-	listBucketOutput := &ListBucketsOutput{
-		Buckets: &Buckets{Bucket: buckets},
-		Owner:   owner,
-	}
+	output.Owner = Owner{DisplayName: userInfo.UserID, Id: userInfo.UserID}
 
 	var bytes []byte
 	var marshalError error
-	if bytes, marshalError = MarshalXMLEntity(listBucketOutput); marshalError != nil {
+	if bytes, marshalError = MarshalXMLEntity(&output); marshalError != nil {
 		log.LogErrorf("listBucketsHandler: marshal result fail, requestID(%v) err(%v)", GetRequestID(r), err)
 		_ = InvalidArgument.ServeResponse(w, r)
 		return

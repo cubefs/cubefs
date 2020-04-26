@@ -170,6 +170,10 @@ func (v *Volume) Name() string {
 	return v.name
 }
 
+func (v *Volume) CreateTime() time.Time {
+	return time.Unix(v.createTime, 0)
+}
+
 // load bucket policy from vm
 func (v *Volume) loadBucketPolicy() (policy *Policy, err error) {
 	var data []byte
