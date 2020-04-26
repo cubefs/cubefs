@@ -24,6 +24,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -78,6 +79,11 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 // Create handles the create request.
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 	start := time.Now()
+
+	var err error
+	metric := exporter.NewTPCnt("filecreate")
+	defer metric.Set(err)
+
 	info, err := d.super.mw.Create_ll(d.inode.ino, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
 		log.LogErrorf("Create: parent(%v) req(%v) err(%v)", d.inode.ino, req, err)
@@ -122,6 +128,11 @@ func (d *Dir) Forget() {
 // Mkdir handles the mkdir request.
 func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
 	start := time.Now()
+
+	var err error
+	metric := exporter.NewTPCnt("mkdir")
+	defer metric.Set(err)
+
 	info, err := d.super.mw.Create_ll(d.inode.ino, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
 		log.LogErrorf("Mkdir: parent(%v) req(%v) err(%v)", d.inode.ino, req, err)
@@ -147,6 +158,10 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	start := time.Now()
 	d.dcache.Delete(req.Name)
+
+	var err error
+	metric := exporter.NewTPCnt("remove")
+	defer metric.Set(err)
 
 	info, err := d.super.mw.Delete_ll(d.inode.ino, req.Name, req.Dir)
 	if err != nil {
@@ -218,6 +233,11 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 // ReadDirAll gets all the dentries in a directory and puts them into the cache.
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	start := time.Now()
+
+	var err error
+	metric := exporter.NewTPCnt("readdir")
+	defer metric.Set(err)
+
 	children, err := d.super.mw.ReadDir_ll(d.inode.ino)
 	if err != nil {
 		log.LogErrorf("Readdir: ino(%v) err(%v)", d.inode.ino, err)
@@ -263,7 +283,12 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	}
 	start := time.Now()
 	d.dcache.Delete(req.OldName)
-	err := d.super.mw.Rename_ll(d.inode.ino, req.OldName, dstDir.inode.ino, req.NewName)
+
+	var err error
+	metric := exporter.NewTPCnt("rename")
+	defer metric.Set(err)
+
+	err = d.super.mw.Rename_ll(d.inode.ino, req.OldName, dstDir.inode.ino, req.NewName)
 	if err != nil {
 		log.LogErrorf("Rename: parent(%v) req(%v) err(%v)", d.inode.ino, req, err)
 		return ParseError(err)
@@ -308,6 +333,11 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 	}
 
 	start := time.Now()
+
+	var err error
+	metric := exporter.NewTPCnt("mknod")
+	defer metric.Set(err)
+
 	info, err := d.super.mw.Create_ll(d.inode.ino, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil)
 	if err != nil {
 		log.LogErrorf("Mknod: parent(%v) req(%v) err(%v)", d.inode.ino, req, err)
@@ -331,6 +361,11 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, error) {
 	parentIno := d.inode.ino
 	start := time.Now()
+
+	var err error
+	metric := exporter.NewTPCnt("symlink")
+	defer metric.Set(err)
+
 	info, err := d.super.mw.Create_ll(parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target))
 	if err != nil {
 		log.LogErrorf("Symlink: parent(%v) NewName(%v) err(%v)", parentIno, req.NewName, err)
@@ -366,6 +401,10 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 	}
 
 	start := time.Now()
+
+	var err error
+	metric := exporter.NewTPCnt("link")
+	defer metric.Set(err)
 
 	info, err := d.super.mw.Link(d.inode.ino, req.NewName, oldInode.ino)
 	if err != nil {
