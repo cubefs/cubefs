@@ -178,10 +178,6 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 	e.Lock()
 	defer e.Unlock()
 	index := offset + size
-	if index >= math.MaxUint32 {
-		return ExtentIsFullError
-	}
-
 	if IsAppendWrite(writeType) && offset != e.dataSize {
 		return ParameterMismatchError
 	}
