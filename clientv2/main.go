@@ -185,10 +185,7 @@ func startDaemon() error {
 	args = append(args, "-c")
 	args = append(args, configPath)
 
-	env := []string{
-		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
-	}
-
+	env := os.Environ()
 	err = daemonize.Run(cmdPath, args, env, os.Stdout)
 	if err != nil {
 		return fmt.Errorf("startDaemon failed: daemon start failed, cmd(%v) args(%v) env(%v) err(%v)\n", cmdPath, args, env, err)
