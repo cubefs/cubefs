@@ -427,8 +427,7 @@ func calPresignedSignatureV2(method, canonicalQuery, expires, secretKey string, 
 }
 
 func getCanonicalizedResourceV2(r *http.Request, ws Wildcards) (resource string) {
-	// TODO: fix this
-	path := r.URL.Path
+	path := r.URL.EscapedPath()
 	if bucket, wildcard := ws.Parse(r.Host); wildcard {
 		resource = "/" + bucket + path
 	} else {
