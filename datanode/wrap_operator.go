@@ -335,6 +335,30 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	return
 }
 
+// Handle OpMarkDelete packet.
+func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
+	var (
+		err error
+	)
+	partition := p.Object.(*DataPartition)
+	exts:=make([]*proto.ExtentKey,0)
+	err = json.Unmarshal(p.Data, exts)
+	store:=partition.ExtentStore()
+	if err == nil {
+		for _,ext:=range exts{
+			store.MarkDelete(ext.ExtentId,ext.ExtentOffset,ext.Size)
+		}
+	}
+
+	if err != nil {
+		p.PackErrorBody(ActionMarkDelete, err.Error())
+	} else {
+		p.PacketOkReply()
+	}
+
+	return
+}
+
 // Handle OpWrite packet.
 func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	var err error

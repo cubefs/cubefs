@@ -128,6 +128,9 @@ const (
 	OpRemoveMultipart  uint8 = 0x73
 	OpListMultiparts   uint8 = 0x74
 
+	OpBatchDeleteExtent         uint8 = 0x75
+
+
 	// Commons
 	OpIntraGroupNetErr uint8 = 0xF3
 	OpArgMismatchErr   uint8 = 0xF4
