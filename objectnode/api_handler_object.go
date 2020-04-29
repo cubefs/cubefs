@@ -420,12 +420,10 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	deletesResult := DeletesResult{
-		DeletedObjects: make([]Deleted, 0),
-		DeletedErrors:  make([]Error, 0),
-	}
-	deletedObjects := make([]Deleted, 0, len(deleteReq.Objects))
-	deletedErrors := make([]Error, 0)
+	var (
+		deletedObjects = make([]Deleted, 0, len(deleteReq.Objects))
+		deletedErrors  = make([]Error, 0)
+	)
 
 	// Sort the key values in reverse order.
 	// The purpose of this is to delete the child leaf first and then the parent node.
@@ -448,13 +446,11 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		log.LogWarnf("deleteObjectsHandler: delete: requestID(%v) volume(%v) path(%v)",
 			GetRequestID(r), vol.Name(), object.Key)
 		if err != nil {
-			ossError := transferError(object.Key, err)
-			deletedErrors = append(deletedErrors, ossError)
+			deletedErrors = append(deletedErrors, Error{Key: object.Key, Message: err.Error()})
 			log.LogErrorf("deleteObjectsHandler: delete object failed: requestID(%v) volume(%v) path(%v) err(%v)",
 				GetRequestID(r), vol.Name(), object.Key, err)
 		} else {
-			deleted := Deleted{Key: object.Key}
-			deletedObjects = append(deletedObjects, deleted)
+			deletedObjects = append(deletedObjects, Deleted{Key: object.Key})
 			log.LogDebugf("deleteObjectsHandler: delete object success: requestID(%v) volume(%v) path(%v)", GetRequestID(r),
 				vol.Name(), object.Key)
 		}
@@ -464,13 +460,17 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	log.LogInfof("Audit: delete multiple objects: requestID(%v) remote(%v) volume(%v) objects(%v)",
 		GetRequestID(r), getRequestIP(r), vol.Name(), strings.Join(objectKeys, ","))
 
-	deletesResult.DeletedObjects = deletedObjects
-	deletesResult.DeletedErrors = deletedErrors
+	deleteResult := DeleteResult{
+		Deleted: deletedObjects,
+		Error:   deletedErrors,
+	}
 
-	log.LogDebugf("deleteObjectsHandler: delete objects: deletes(%v) errors(%v)", len(deletesResult.DeletedObjects), len(deletesResult.DeletedErrors))
+	log.LogDebugf("deleteObjectsHandler: delete objects: deletes(%v) errors(%v)",
+		len(deleteResult.Deleted), len(deleteResult.Error))
+
 	var bytesRes []byte
 	var marshalError error
-	if bytesRes, marshalError = MarshalXMLEntity(deletesResult); marshalError != nil {
+	if bytesRes, marshalError = MarshalXMLEntity(deleteResult); marshalError != nil {
 		log.LogErrorf("deleteObjectsHandler: marshal xml entity fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
 		return
@@ -696,7 +696,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// get owner
-	bucketOwner := NewBucketOwner(param.AccessKey())
+	bucketOwner := NewBucketOwner(vol)
 	var contents = make([]*Content, 0)
 	if len(fsFileInfos) > 0 {
 		for _, fsFileInfo := range fsFileInfos {
@@ -834,7 +834,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	// get owner
 	var bucketOwner *BucketOwner
 	if fetchOwnerBool {
-		bucketOwner = NewBucketOwner(param.AccessKey())
+		bucketOwner = NewBucketOwner(vol)
 	}
 
 	var contents = make([]*Content, 0)

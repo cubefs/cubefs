@@ -190,10 +190,10 @@ func NewUploads(fsUploads []*FSUpload, accessKey string) []*Upload {
 	return uploads
 }
 
-func NewBucketOwner(accessKey string) *BucketOwner {
+func NewBucketOwner(volume *Volume) *BucketOwner {
 	return &BucketOwner{
-		ID:          accessKey,
-		DisplayName: accessKey,
+		ID:          volume.Owner(),
+		DisplayName: volume.Owner(),
 	}
 }
 
@@ -205,12 +205,6 @@ type Object struct {
 type DeleteRequest struct {
 	XMLName xml.Name `xml:"Delete"`
 	Objects []Object `xml:"Object"`
-}
-
-type DeletesResult struct {
-	XMLName        xml.Name  `xml:"DeleteObjectsOutput"`
-	DeletedObjects []Deleted `xml:"Deleted,omitempty"`
-	DeletedErrors  []Error   `xml:"Error,omitempty"`
 }
 
 type CopyResult struct {

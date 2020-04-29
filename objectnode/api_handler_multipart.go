@@ -244,7 +244,7 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 		GetRequestID(r), uploadId, maxPartsInt, partNoMarkerInt, len(fsParts), nextMarker, isTruncated)
 
 	// get owner
-	bucketOwner := NewBucketOwner(param.accessKey)
+	bucketOwner := NewBucketOwner(vol)
 
 	// get parts
 	parts := NewParts(fsParts)
