@@ -153,50 +153,87 @@ func (mp *metaPartition) deleteWorker() {
 	}
 }
 
+// delete Extents by Partition,and find all successDelete inode
+func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents map[uint64][]*proto.ExtentKey,allInodes []*Inode)(shouldCommit []*Inode){
+	occurErrors:=make(map[uint64]error)
+	shouldCommit = make([]*Inode, 0, BatchCounts)
+	var (
+		wg sync.WaitGroup
+		lock sync.Mutex
+	)
+
+	//wait all Partition do BatchDeleteExtents fininsh
+	for partitionID,extents:=range partitionDeleteExtents {
+		wg.Add(1)
+		go func(partitionID uint64,extents []*proto.ExtentKey) {
+			perr:=mp.doBatchDeleteExtents(partitionID,extents)
+			lock.Lock()
+			occurErrors[partitionID]=perr
+			lock.Unlock()
+			log.LogWarnf("deleteExtents on Partition(%v) error(%v)",partitionID,perr)
+			wg.Done()
+		}(partitionID,extents)
+	}
+	wg.Wait()
+
+	//range AllNode,find all Extents delete success on inode,it must to be append shouldCommit
+	for i:=0;i<len(allInodes);i++{
+		successDeleteExtentCnt:=0
+		inode:=allInodes[i]
+		var deleteInodeErr error
+		inode.Extents.Range(func(item BtreeItem) bool {
+			ext := item.(*proto.ExtentKey)
+			if occurErrors[ext.PartitionId]==nil {
+				successDeleteExtentCnt++
+				return true
+			}else {
+				log.LogWarnf("deleteInode Inode(%v) error(%v)",inode.Inode,deleteInodeErr)
+				return false
+			}
+		})
+		if successDeleteExtentCnt==inode.Extents.Len(){
+			shouldCommit=append(shouldCommit,inode)
+		}
+	}
+
+	return
+}
+
+
 // Delete the marked inodes.
 func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
-	var wg sync.WaitGroup
-	var mu sync.Mutex
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogErrorf(fmt.Sprintf("metaPartition(%v) deleteMarkedInodes panic (%v)", mp.config.PartitionId, r))
 		}
 	}()
 	shouldCommit := make([]*Inode, 0, BatchCounts)
-
+	allDeleteExtents := make(map[string]uint64)
+	deleteExtentsByPartition := make(map[uint64][]*proto.ExtentKey)
+	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
-		wg.Add(1)
-
 		ref := &Inode{Inode: ino}
 		inode, ok := mp.inodeTree.CopyGet(ref).(*Inode)
 		if !ok {
 			continue
 		}
-		go func(i *Inode) {
-			defer wg.Done()
-
-			var dirtyExt []*proto.ExtentKey
-
-			i.Extents.Range(func(item BtreeItem) bool {
-				ext := item.(*proto.ExtentKey)
-				if err := mp.doDeleteMarkedInodes(ext); err != nil {
-					dirtyExt = append(dirtyExt, ext)
-					log.LogWarnf("[deleteMarkedInodes] delete failed extents: ino(%v) ext(%s), err(%s)", i.Inode, ext.String(), err.Error())
-				}
-				return true
-			})
-			if len(dirtyExt) == 0 {
-				mu.Lock()
-				shouldCommit = append(shouldCommit, i)
-				mu.Unlock()
-			} else {
-				mp.freeList.Push(i.Inode)
+		inode.Extents.Range(func(item BtreeItem) bool {
+			ext := item.(*proto.ExtentKey)
+			_, ok := allDeleteExtents[ext.GetExtentKey()]
+			if !ok {
+				allDeleteExtents[ext.GetExtentKey()] = inode.Inode
 			}
-		}(inode)
+			exts, ok := deleteExtentsByPartition[ext.PartitionId]
+			if !ok {
+				exts = make([]*proto.ExtentKey, 0)
+			}
+			exts = append(exts, ext)
+			deleteExtentsByPartition[ext.PartitionId] = exts
+			return true
+		})
+		allInodes = append(allInodes, inode)
 	}
-
-	wg.Wait()
-
+	shouldCommit = mp.batchDeleteExtentsByPartition(deleteExtentsByPartition, allInodes)
 	if len(shouldCommit) > 0 {
 		bufSlice := make([]byte, 0, 8*len(shouldCommit))
 		for _, inode := range shouldCommit {
@@ -287,6 +324,58 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 		return
 	}
 	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+		err = errors.NewErrorf("read response from dataNode %s, %s",
+			p.GetUniqueLogId(), err.Error())
+		return
+	}
+	if p.ResultCode != proto.OpOk {
+		err = errors.NewErrorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(),
+			p.GetResultMsg())
+	}
+	return
+}
+
+
+
+func (mp *metaPartition) doBatchDeleteExtents(partitionID uint64,exts []*proto.ExtentKey) (err error) {
+	// get the data node view
+	dp := mp.vol.GetPartition(partitionID)
+	if dp == nil {
+		err = errors.NewErrorf("unknown dataPartitionID=%d in vol",
+			partitionID)
+		return
+	}
+	for _,ext:=range exts{
+		if ext.PartitionId!=partitionID{
+			err = errors.NewErrorf("BatchDeleteExtent do batchDelete on PartitionID(%v) but unexpect Extent(%v)",partitionID,ext)
+			return
+		}
+	}
+
+	// delete the data node
+	conn, err := mp.config.ConnPool.GetConnect(dp.Hosts[0])
+
+	defer func() {
+		if err != nil {
+			mp.config.ConnPool.PutConnect(conn, ForceClosedConnect)
+		} else {
+			mp.config.ConnPool.PutConnect(conn, NoClosedConnect)
+		}
+	}()
+
+	if err != nil {
+		err = errors.NewErrorf("get conn from pool %s, "+
+			"extents partitionId=%d",
+			err.Error(), partitionID)
+		return
+	}
+	p := NewPacketToBatchDeleteExtent(dp, exts)
+	if err = p.WriteToConn(conn); err != nil {
+		err = errors.NewErrorf("write to dataNode %s, %s", p.GetUniqueLogId(),
+			err.Error())
+		return
+	}
+	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime*10); err != nil {
 		err = errors.NewErrorf("read response from dataNode %s, %s",
 			p.GetUniqueLogId(), err.Error())
 		return

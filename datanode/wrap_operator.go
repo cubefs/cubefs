@@ -335,6 +335,32 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	return
 }
 
+// Handle OpMarkDelete packet.
+func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
+	var (
+		err error
+	)
+	partition := p.Object.(*DataPartition)
+	var exts []*proto.ExtentKey
+	err = json.Unmarshal(p.Data, &exts)
+	store:=partition.ExtentStore()
+	if err == nil {
+		for _,ext:=range exts{
+			log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)",ext,c.RemoteAddr().String()))
+			store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
+		}
+	}
+
+	if err != nil {
+		log.LogErrorf(fmt.Sprintf("(%v) error(%v) data (%v)",p.GetUniqueLogId(),err,string(p.Data)))
+		p.PackErrorBody(ActionMarkDelete, err.Error())
+	} else {
+		p.PacketOkReply()
+	}
+
+	return
+}
+
 // Handle OpWrite packet.
 func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	var err error
