@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"golang.org/x/net/context"
+	"golang.org/x/time/rate"
 )
 
 import (
@@ -28,6 +29,13 @@ const (
 	attrValidTime  = 1 * time.Minute
 	entryValidTime = 1 * time.Minute
 )
+
+const (
+	defaultForgetServeLimit = rate.Limit(1 << 16)
+	defaultForgetServeBurst = 128
+)
+
+var ForgetServeLimit *rate.Limiter = rate.NewLimiter(defaultForgetServeLimit, defaultForgetServeBurst)
 
 // TODO: FINISH DOCS
 
@@ -417,6 +425,13 @@ func (s *Server) Serve(fs FS) error {
 				break
 			}
 			return err
+		}
+
+		switch req.(type) {
+		case *fuse.ForgetRequest:
+			ctx := context.Background()
+			ForgetServeLimit.Wait(ctx)
+		default:
 		}
 
 		s.wg.Add(1)
