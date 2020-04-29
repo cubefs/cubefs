@@ -159,24 +159,31 @@ func (p Policy) Validate(bucket string) (bool, error) {
 
 // check policy is allowed for request
 // https://docs.aws.amazon.com/zh_cn/IAM/latest/UserGuide/reference_policies_evaluation-logic.html
-// 如果适用策略包含 Deny 语句，则请求会导致显式拒绝。
-// 如果应用于请求的策略包含一个 Allow 语句和一个 Deny 语句，Deny 语句优先于 Allow 语句。将显式拒绝请求。
-// 当没有适用的 Deny 语句但也没有适用的 Allow 语句时，会发生隐式拒绝。
-func (p *Policy) IsAllowed(params *RequestParam) bool {
+func (p *Policy) IsAllowed(params *RequestParam, isOwner bool) bool {
 	for _, s := range p.Statements {
 		if s.Effect == Deny {
 			if !s.IsAllowed(params) {
+				log.LogDebugf("policy deny cause of %v, %v", s, params)
 				return false
 			}
 		}
 	}
+
+	//is owner
+	if isOwner {
+		return true
+	}
+
 	for _, s := range p.Statements {
 		if s.Effect == Allow {
 			if s.IsAllowed(params) {
+				log.LogDebugf("policy allow cause of %v, %v", s, params)
 				return true
 			}
 		}
 	}
+
+	log.LogDebugf("policy deny cause of %v, request: %v", p, params)
 
 	return false
 }
@@ -219,6 +226,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			volume, _ = o.getVol(bucket)
 		}
 		var userInfo *proto.UserInfo
+		isOwner := false
 		if userInfo, err = o.getUserInfoByAccessKey(param.AccessKey()); err == nil {
 			// White list for admin and root user.
 			if userInfo.UserType == proto.UserTypeRoot || userInfo.UserType == proto.UserTypeAdmin {
@@ -228,7 +236,8 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 			var userPolicy = userInfo.Policy
-			if !userPolicy.IsOwn(param.Bucket()) && !userPolicy.IsAuthorized(param.Bucket(), param.Action()) {
+			isOwner = userPolicy.IsOwn(param.Bucket())
+			if !isOwner && !userPolicy.IsAuthorized(param.Bucket(), param.Action()) {
 				log.LogDebugf("policyCheck: user no permission: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
 					GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
 				allowed = false
@@ -265,7 +274,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 		}
 
 		if vol != nil && policy != nil && !policy.IsEmpty() {
-			allowed = policy.IsAllowed(param)
+			allowed = policy.IsAllowed(param, isOwner)
 			if !allowed {
 				log.LogWarnf("policyCheck: bucket policy not allowed: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
 					GetRequestID(r), userInfo, param.AccessKey(), param.Bucket(), param.Action())
