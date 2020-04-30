@@ -1112,38 +1112,31 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 	}
 
 	var etag string
-	var contentType string
+	var mimeType string
 
 	if mode.IsDir() {
 		// Folder has specific ETag and MIME type.
 		etag = EmptyContentMD5String
-		contentType = HeaderValueContentTypeDirectory
+		mimeType = HeaderValueContentTypeDirectory
 	} else {
 		// Try to get the advanced attributes stored in the extended attributes.
 		// The following advanced attributes apply to the object storage:
 		// 1. Etag (MD5)
 		// 2. MIME type
-		var xAttrInfo *proto.XAttrInfo
-		if xAttrInfo, err = v.mw.XAttrGet_ll(inode, XAttrKeyOSSETag); err != nil && err != syscall.ENOENT {
-			log.LogErrorf("ObjectMeta: meta get xattr fail, inode(%v) path(%v) err(%v)", inode, path, err)
+		var xattrs []*proto.XAttrInfo
+		var xattrKeys = []string{XAttrKeyOSSETag, XAttrKeyOSSETagInvalid, XAttrKeyOSSMIME}
+		if xattrs, err = v.mw.BatchGetXAttr([]uint64{inode}, xattrKeys); err != nil {
+			log.LogErrorf("ObjectMeta: meta get xattr fail, volume(%v) inode(%v) path(%v) keys(%v) err(%v)",
+				v.name, inode, path, strings.Join(xattrKeys, ","), err)
 			return
 		}
-		if xAttrInfo != nil {
-			etag = string(xAttrInfo.Get(XAttrKeyOSSETag))
-		}
-		if err == syscall.ENOENT {
-			err = nil
-		}
-
-		if xAttrInfo, err = v.mw.XAttrGet_ll(inode, XAttrKeyOSSMIME); err != nil && err != syscall.ENOENT {
-			log.LogErrorf("ObjectMeta: meta get xattr fail, inode(%v) path(%v) err(%v)", inode, path, err)
-			return
-		}
-		if xAttrInfo != nil {
-			contentType = string(xAttrInfo.Get(XAttrKeyOSSMIME))
-		}
-		if err == syscall.ENOENT {
-			err = nil
+		if len(xattrs) > 0 && xattrs[0].Inode == inode {
+			var xattr = xattrs[0]
+			etag = string(xattr.Get(XAttrKeyOSSETag))
+			if len(etag) == 0 {
+				etag = string(xattr.Get(XAttrKeyOSSETagInvalid))
+			}
+			mimeType = string(xattr.Get(XAttrKeyOSSMIME))
 		}
 	}
 
@@ -1154,7 +1147,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 		ModifyTime: inoInfo.ModifyTime,
 		ETag:       etag,
 		Inode:      inoInfo.Inode,
-		MIMEType:   contentType,
+		MIMEType:   mimeType,
 	}
 	return
 }
@@ -1552,7 +1545,7 @@ func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 
 	// Get MD5 information in batches, then update to fileInfos
 	md5Map := make(map[uint64]string)
-	keys := []string{XAttrKeyOSSETag}
+	keys := []string{XAttrKeyOSSETag, XAttrKeyOSSETagInvalid}
 	batchXAttrInfos, err := v.mw.BatchGetXAttr(inodes, keys)
 	if err != nil {
 		logger.Error("supplyListFileInfo: batch get xattr fail, inodes(%v), err(%v)", inodes, err)
@@ -1560,8 +1553,11 @@ func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 	}
 	for _, xAttrInfo := range batchXAttrInfos {
 		etagVal := xAttrInfo.Get(XAttrKeyOSSETag)
+		if len(etagVal) == 0 {
+			etagVal = xAttrInfo.Get(XAttrKeyOSSETagInvalid)
+		}
 		if len(etagVal) > 0 {
-			md5Map[xAttrInfo.Inode] = string(xAttrInfo.Get(XAttrKeyOSSETag))
+			md5Map[xAttrInfo.Inode] = string(etagVal)
 		}
 	}
 	for _, fileInfo := range fileInfos {
@@ -1700,20 +1696,32 @@ func (v *Volume) CopyFile(targetPath, sourcePath string) (info *FSFileInfo, err 
 		return nil, err
 	}
 
-	xAttrInfo, err := v.mw.XAttrGet_ll(sourceFileInode, XAttrKeyOSSETag)
-	if err != nil {
-		log.LogErrorf("CopyFile: meta set xattr fail: inode(%v) err(%v)", sourceFileInode, err)
-		return nil, err
+	var xattrs []*proto.XAttrInfo
+	var xattrKeys = []string{XAttrKeyOSSETag, XAttrKeyOSSETagInvalid}
+	if xattrs, err = v.mw.BatchGetXAttr([]uint64{sourceFileInode}, xattrKeys); err != nil {
+		log.LogErrorf("CopyFile: meta get xattr fail, volume(%v) inode(%v) path(%v) keys(%v) err(%v)",
+			v.name, sourceFileInode, targetPath, strings.Join(xattrKeys, ","), err)
+		return
 	}
-	md5Val := xAttrInfo.Get(XAttrKeyOSSETag)
+	var etag string
+	var mimeType string
+	if len(xattrs) > 0 && xattrs[0].Inode == sourceFileInode {
+		var xattr = xattrs[0]
+		etag = string(xattr.Get(XAttrKeyOSSETag))
+		if len(etag) == 0 {
+			etag = string(xattr.Get(XAttrKeyOSSETagInvalid))
+		}
+		mimeType = string(xattr.Get(XAttrKeyOSSMIME))
+	}
 
 	info = &FSFileInfo{
 		Path:       targetPath,
 		Size:       int64(inodeInfo.Size),
 		Mode:       os.FileMode(inodeInfo.Size),
 		ModifyTime: inodeInfo.ModifyTime,
-		ETag:       string(md5Val),
+		ETag:       etag,
 		Inode:      inodeInfo.Inode,
+		MIMEType:   mimeType,
 	}
 	return
 }

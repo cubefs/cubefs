@@ -167,92 +167,92 @@ class TestPutObject(unittest2.TestCase):
         self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 200)
         self.assertFalse('Contents' in response)
 
-    def test_put_objects_override_1024_1kb(self):
+    def test_put_objects_override_256_1kb(self):
         """
-        This test uploads 1024 file objects with a size of 1KB (override same file)
+        This test uploads 256 file objects with a size of 1KB (override same file)
         :return:
         """
         self.__do_test_put_objects_override(
             file_size=1024,
-            file_num=1024)
+            file_num=256)
 
-    def test_put_objects_override_512_10kb(self):
+    def test_put_objects_override_128_10kb(self):
         """
-        This test uploads 512 file objects with a size of 10KB (override same file)
+        This test uploads 128 file objects with a size of 10KB (override same file)
         :return:
         """
         self.__do_test_put_objects_override(
             file_size=1024 * 10,
-            file_num=512)
+            file_num=128)
 
-    def test_put_objects_override_128_100kb(self):
+    def test_put_objects_override_64_100kb(self):
         """
-        This test uploads 128 file objects with a size of 100KB (override same file)
+        This test uploads 64 file objects with a size of 100KB (override same file)
         :return:
         """
         self.__do_test_put_objects_override(
             file_size=1024 * 100,
-            file_num=128)
+            file_num=64)
 
-    def test_put_objects_override_32_1mb(self):
+    def test_put_objects_override_8_1mb(self):
         """
-        This test uploads 32 file objects with a size of 1MB (override same file)
+        This test uploads 8 file objects with a size of 1MB (override same file)
         :return:
         """
         self.__do_test_put_objects_override(
             file_size=1024 * 1024,
-            file_num=32)
+            file_num=8)
 
-    def test_put_objects_override_16_10mb(self):
+    def test_put_objects_override_4_10mb(self):
         """
-        This test uploads 16 file objects with a size of 10MB (override same file)
+        This test uploads 4 file objects with a size of 10MB (override same file)
         :return:
         """
         self.__do_test_put_objects_override(
             file_size=1024 * 1024 * 10,
-            file_num=16)
+            file_num=4)
 
-    def test_put_objects_independent_1024_1kb(self):
+    def test_put_objects_independent_256_1kb(self):
         """
-        This test uploads 1024 file objects with a size of 1KB (difference file)
+        This test uploads 256 file objects with a size of 1KB (difference file)
         :return:
         """
         self.__do_test_put_objects_independent(
             file_size=1024,
-            file_num=1024)
+            file_num=256)
 
-    def test_put_objects_independent_512_10kb(self):
+    def test_put_objects_independent_128_10kb(self):
         """
-        This test uploads 512 file objects with a size of 10KB (difference file)
+        This test uploads 128 file objects with a size of 10KB (difference file)
         :return:
         """
         self.__do_test_put_objects_independent(
             file_size=1024 * 10,
-            file_num=512)
+            file_num=128)
 
-    def test_put_objects_independent_128_100kb(self):
+    def test_put_objects_independent_64_100kb(self):
         """
-        This test uploads 128 file objects with a size of 100KB (difference file)
+        This test uploads 64 file objects with a size of 100KB (difference file)
         :return:
         """
         self.__do_test_put_objects_independent(
             file_size=1024 * 100,
-            file_num=128)
+            file_num=64)
 
-    def test_put_objects_independent_32_1mb(self):
+    def test_put_objects_independent_8_1mb(self):
         """
-        This test uploads 32 file objects with a size of 1MB (difference file)
+        This test uploads 8 file objects with a size of 1MB (difference file)
         :return:
         """
         self.__do_test_put_objects_independent(
             file_size=1024 * 1024,
-            file_num=32)
+            file_num=8)
 
-    def test_put_objects_independent_16_10mb(self):
+    def test_put_objects_independent_4_10mb(self):
         """
-        This test uploads 16 file objects with a size of 10MB (difference file)
+        This test uploads 4 file objects with a size of 10MB (difference file)
         :return:
         """
         self.__do_test_put_objects_independent(
             file_size=1024 * 1024 * 10,
-            file_num=16)
+            file_num=4)
