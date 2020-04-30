@@ -32,6 +32,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"syscall"
 
@@ -65,8 +66,9 @@ const (
 	ModuleName            = "fuseclient"
 	ConfigKeyExporterPort = "exporterKey"
 
-	ControlCommandSetRate = "/rate/set"
-	ControlCommandGetRate = "/rate/get"
+	ControlCommandSetRate      = "/rate/set"
+	ControlCommandGetRate      = "/rate/get"
+	ControlCommandFreeOSMemory = "/debug/freeosmemory"
 )
 
 var (
@@ -240,6 +242,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(ControlCommandSetRate, super.SetRate)
 	http.HandleFunc(ControlCommandGetRate, super.GetRate)
 	http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
+	http.HandleFunc(ControlCommandFreeOSMemory, freeOSMemory)
 	go func() {
 		if opt.Profport != "" {
 			syslog.Println("Start pprof with port:", opt.Profport)
@@ -419,4 +422,8 @@ func changeRlimit(val uint64) {
 	} else {
 		syslog.Printf("Successfully set rlimit to %v \n", val)
 	}
+}
+
+func freeOSMemory(w http.ResponseWriter, r *http.Request) {
+	debug.FreeOSMemory()
 }
