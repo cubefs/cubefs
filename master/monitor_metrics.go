@@ -18,7 +18,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 )
@@ -143,9 +142,8 @@ func (mm *monitorMetrics) setVolMetrics() {
 			return true
 		}
 		labels := map[string]string{"volName": volName}
-		mm.volTotalGauge.SetWithLabels(int64(volStatInfo.TotalSize/util.GB), labels)
-		mm.volUsedGauge.SetWithLabels(int64(volStatInfo.UsedSize/util.GB), labels)
-
+		mm.volTotalGauge.SetWithLabels(int64(volStatInfo.TotalSize), labels)
+		mm.volUsedGauge.SetWithLabels(int64(volStatInfo.UsedSize), labels)
 		usedRatio, e := strconv.ParseFloat(volStatInfo.UsedRatio, 64)
 		if e == nil {
 			mm.volUsageRatioGauge.SetWithLabels(int64(usedRatio), labels)

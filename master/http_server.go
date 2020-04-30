@@ -21,13 +21,16 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
-func (m *Server) startHTTPService() {
+func (m *Server) startHTTPService(modulename string, cfg *config.Config) {
 	router := mux.NewRouter().SkipClean(true)
 	m.registerAPIRoutes(router)
 	m.registerAPIMiddleware(router)
+	exporter.InitWithRouter(modulename, cfg, router, m.port)
 	var server = &http.Server{
 		Addr:    colonSplit + m.port,
 		Handler: router,
