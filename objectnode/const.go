@@ -33,6 +33,9 @@ const (
 	HeaderNameAcceptRange   = "Accept-Ranges"
 	HeaderNameRange         = "Range"
 
+	HeaderNameExpect           = "Expect"
+	HeaderNameXForwardedExpect = "X-Forwarded-Expect"
+
 	// Headers for CORS validation
 	HeaderNameAccessControlAllowOrigin  = "Access-Control-Allow-Origin"
 	HeaderNameAccessControlAllowMethods = "Access-Control-Allow-Methods"

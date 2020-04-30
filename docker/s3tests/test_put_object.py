@@ -32,6 +32,18 @@ def random_str(length):
     return result
 
 
+def random_bytes(length):
+    """
+    Generate random content with specified length
+    :param length:
+    :return: bytes content
+    """
+    f = open('/dev/random', 'rb')
+    data = f.read(length)
+    f.close()
+    return data
+
+
 class TestPutObject(unittest2.TestCase):
 
     def __init__(self, case):
@@ -75,7 +87,7 @@ class TestPutObject(unittest2.TestCase):
 
     def __do_test_put_object(self, file_name, file_size):
         key = file_name
-        body = bytes(random_str(file_size), 'utf-8')
+        body = random_bytes(file_size)
         md5 = hashlib.md5()
         md5.update(body)
         expect_etag = md5.hexdigest()
@@ -90,7 +102,8 @@ class TestPutObject(unittest2.TestCase):
         # get object
         response = self.s3.get_object(Bucket=bucket, Key=key)
         self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 200)
-        self.assertEqual(response['ETag'], expect_etag)
+        actual_etag = response['ETag']
+        self.assertEqual(actual_etag, expect_etag)
         response_body = response['Body']
         response_data = response_body.read()
         md5 = hashlib.md5()

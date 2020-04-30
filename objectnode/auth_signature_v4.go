@@ -34,6 +34,7 @@ import (
 )
 
 const (
+	SignatureExpires    = time.Hour * 24 * 7     // Signature is valid for seven days after the specified date.
 	MaxPresignedExpires = 3 * 365 * 24 * 60 * 60 //10years
 	DateFormatISO8601   = "20060102T150405Z"     //"yyyyMMddTHHmmssZ"
 	MaxSkewTime         = 15 * time.Minute
@@ -91,9 +92,23 @@ func isHeaderUsingSignatureAlgorithmV4(r *http.Request) bool {
 
 // check request signature valid
 func (o *ObjectNode) validateHeaderBySignatureAlgorithmV4(r *http.Request) (bool, error) {
-	req, err := parseRequestV4(r)
-	if err != nil {
+	var err error
+
+	var req *signatureRequestV4
+	if req, err = parseRequestV4(r); err != nil {
 		return false, err
+	}
+
+	// The signature is valid for seven days after the specified date.
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
+	var signatureTime time.Time
+	if signatureTime, err = time.Parse("20060102", req.Credential.Date); err != nil {
+		return false, err
+	}
+	if time.Since(signatureTime) > SignatureExpires {
+		log.LogDebugf("expired signature: requestID(%v) remote(%v) scope(%v)",
+			GetRequestID(r), getRequestIP(r), req.Credential.GetScopeString())
+		return false, nil
 	}
 
 	var accessKey = req.Credential.AccessKey
@@ -120,7 +135,7 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV4(r *http.Request) (bool
 		return false, err
 	}
 
-	newSignature := calculateSignatureV4(r, req.Credential.Region, secretKey, req.SignedHeaders)
+	newSignature := calculateSignatureV4(r, req.Credential, secretKey, req.SignedHeaders)
 	if req.Signature != newSignature {
 		log.LogDebugf("validateHeaderBySignatureAlgorithmV4: invalid signature: requestID(%v) client(%v) server(%v)",
 			GetRequestID(r), req.Signature, newSignature)
@@ -191,9 +206,9 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV4(r *http.Request) (pass bo
 	canonicalQuery := createCanonicalQueryV4(req)
 	canonicalRequestString := createCanonicalRequestString(r.Method, getCanonicalURI(r), canonicalQuery, canonicalHeaderStr, headerNames, payload)
 
-	log.LogDebugf("validateUrlBySignatureAlgorithmV4: middle data:\n"+
-		"  RequestID: %v\n"+
-		"  CanonicalRequest: %v",
+	log.LogDebugf("validateUrlBySignatureAlgorithmV4: canonical request:\n"+
+		"RequestID: %v\n"+
+		"CanonicalRequest:\n%v",
 		GetRequestID(r),
 		canonicalRequestString)
 
@@ -465,7 +480,7 @@ func getEncodeQuery(r *http.Request) string {
 }
 
 // calculete signature v4
-func calculateSignatureV4(r *http.Request, region, secretKey string, signedHeaders []string) string {
+func calculateSignatureV4(r *http.Request, cred credential, secretKey string, signedHeaders []string) string {
 	headers := r.Header
 
 	// get request start time in ISO8601 type
@@ -474,18 +489,19 @@ func calculateSignatureV4(r *http.Request, region, secretKey string, signedHeade
 	contentHash := getContentHash(headers)
 	encodeQuery := getEncodeQuery(r)
 	canonicalURI := getCanonicalURI(r)
-	canonicalRequest := createCanonicalRequestString(r.Method, canonicalURI, encodeQuery, canonicalHeaderString, headerNames, contentHash)
+	canonicalRequest := createCanonicalRequestString(
+		r.Method, canonicalURI, encodeQuery, canonicalHeaderString, headerNames, contentHash)
 
-	dateStamp := getCurrentDateStamp()
-	timestamp := getStartTime(headers)
-	signingKey := buildSigningKey(SCHEME, secretKey, dateStamp, region, SERVICE, TERMINATOR)
-	scope := buildScope(dateStamp, region, SERVICE, TERMINATOR)
+	signingKey := buildSigningKey(SCHEME, secretKey, cred.Date, cred.Region, SERVICE, TERMINATOR)
+	scope := buildScope(cred.Date, cred.Region, SERVICE, TERMINATOR)
+
+	var timestamp = getStartTime(headers)
 	stringToSign := buildStringToSign(SignatureV4Algorithm, timestamp, scope, canonicalRequest)
 	signature := sign(stringToSign, signingKey)
 
-	log.LogDebugf("calculateSignatureV4: middle data:\n"+
-		"  RequestID: %v\n"+
-		"  CanonicalRequest: %v",
+	log.LogDebugf("calculateSignatureV4: canonical request:\n"+
+		"RequestID: %v\n"+
+		"CanonicalRequest:\n%v",
 		GetRequestID(r),
 		canonicalRequest)
 	return hex.EncodeToString(signature)
