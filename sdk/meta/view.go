@@ -228,7 +228,9 @@ func (mw *MetaWrapper) refresh() {
 			log.LogInfof("Start forceUpdateMetaPartitions")
 			mw.partMutex.Lock()
 			if err = mw.forceUpdateMetaPartitions(); err == nil {
-				t.Reset(RefreshMetaPartitionsInterval)
+				if err = mw.updateVolStatInfo(); err == nil {
+					t.Reset(RefreshMetaPartitionsInterval)
+				}
 			}
 			mw.partMutex.Unlock()
 			mw.partCond.Broadcast()
