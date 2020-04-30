@@ -64,7 +64,7 @@ create_cluster_user() {
     # check user exist
     ${cli} user info ${Owner} &> /dev/null
     if [[ $? -eq 0 ]] ; then
-        echo -e "\033[32m[exist]\033[0m"
+        echo -e "\033[32mdone\033[0m"
         return
     fi
     # try create user
