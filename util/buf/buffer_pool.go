@@ -12,8 +12,7 @@ var (
 
 const (
 	HeaderBufferPoolSize = 8192
-	BlockBufferPoolSize  = 1024
-	TinyBufferPoolSize   = 100
+	TinyBufferPoolSize   = 256
 )
 
 // BufferPool defines the struct of a buffered pool with 4 objects.
@@ -26,7 +25,7 @@ func NewBufferPool() (bufferP *BufferPool) {
 	bufferP = &BufferPool{}
 	bufferP.pools[0] = make(chan []byte, HeaderBufferPoolSize)
 	bufferP.pools[1] = make(chan []byte, HeaderBufferPoolSize)
-	bufferP.pools[2] = make(chan []byte, HeaderBufferPoolSize)
+	bufferP.pools[2] = make(chan []byte, TinyBufferPoolSize)
 
 	return bufferP
 }
