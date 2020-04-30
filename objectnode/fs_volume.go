@@ -170,6 +170,10 @@ func (v *Volume) Name() string {
 	return v.name
 }
 
+func (v *Volume) Owner() string {
+	return v.mw.Owner()
+}
+
 func (v *Volume) CreateTime() time.Time {
 	return time.Unix(v.createTime, 0)
 }

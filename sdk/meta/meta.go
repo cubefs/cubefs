@@ -200,6 +200,10 @@ func (mw *MetaWrapper) initMetaWrapper() error {
 	return mw.updateMetaPartitions()
 }
 
+func (mw *MetaWrapper) Owner() string {
+	return mw.owner
+}
+
 func (mw *MetaWrapper) OSSSecure() (accessKey, secretKey string) {
 	return mw.ossSecure.AccessKey, mw.ossSecure.SecretKey
 }
