@@ -206,7 +206,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// set response header for GetObject
 	if len(fileInfo.ETag) > 0 {
-		w.Header().Set(HeaderNameETag, fileInfo.ETag)
+		w.Header().Set(HeaderNameETag, wrapUnescapedQuot(fileInfo.ETag))
 	}
 	w.Header().Set(HeaderNameAcceptRange, HeaderValueAcceptRange)
 	w.Header().Set(HeaderNameLastModified, formatTimeRFC1123(fileInfo.ModifyTime))
@@ -315,12 +315,12 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 		fileModTime := fileInfo.ModifyTime
 		modifiedTime, err := parseTimeRFC1123(modified)
 		if err != nil {
-			log.LogErrorf("headObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			log.LogDebugf("headObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
 			errorCode = InvalidArgument
 			return
 		}
 		if !fileModTime.After(modifiedTime) {
-			log.LogInfof("headObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
+			log.LogDebugf("headObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
 			errorCode = NotModified
 			return
 		}
@@ -329,7 +329,7 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html#API_HeadObject_RequestSyntax
 	if noneMatch != "" {
 		if noneMatchEtag := strings.Trim(noneMatch, "\""); noneMatchEtag == fileInfo.ETag {
-			log.LogErrorf("headObjectHandler: object eTag(%s) match If-None-Match header value(%s), requestId(%v)",
+			log.LogDebugf("headObjectHandler: object eTag(%s) match If-None-Match header value(%s), requestId(%v)",
 				fileInfo.ETag, noneMatchEtag, GetRequestID(r))
 			errorCode = NotModified
 			return
@@ -341,12 +341,12 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 		fileModTime := fileInfo.ModifyTime
 		modifiedTime, err := parseTimeRFC1123(unmodified)
 		if err != nil {
-			log.LogErrorf("headObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			log.LogDebugf("headObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
 			errorCode = InvalidArgument
 			return
 		}
 		if fileModTime.After(modifiedTime) {
-			log.LogInfof("headObjectHandler: file modified time after than specified time: requestID(%v)", GetRequestID(r))
+			log.LogDebugf("headObjectHandler: file modified time after than specified time: requestID(%v)", GetRequestID(r))
 			errorCode = PreconditionFailed
 			return
 		}
@@ -354,7 +354,7 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// set response header
 	if len(fileInfo.ETag) > 0 {
-		w.Header().Set(HeaderNameETag, fileInfo.ETag)
+		w.Header().Set(HeaderNameETag, wrapUnescapedQuot(fileInfo.ETag))
 	}
 	w.Header().Set(HeaderNameAcceptRange, HeaderValueAcceptRange)
 	if len(fileInfo.MIMEType) > 0 {
@@ -974,7 +974,7 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// set response header
-	w.Header().Set(HeaderNameETag, fsFileInfo.ETag)
+	w.Header().Set(HeaderNameETag, wrapUnescapedQuot(fsFileInfo.ETag))
 	w.Header().Set(HeaderNameContentLength, "0")
 	return
 }

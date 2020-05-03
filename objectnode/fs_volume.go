@@ -35,7 +35,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/chubaofs/chubaofs/util"
-	"github.com/tiglabs/raft/logger"
 )
 
 const (
@@ -1527,49 +1526,54 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 // This method is used to supplement file metadata. Supplement the specified file
 // information with Size, ModifyTIme, Mode, Etag, and MIME type information.
 func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
-	inoInfoMap := make(map[uint64]*proto.InodeInfo)
 	var inodes []uint64
 	for _, fileInfo := range fileInfos {
 		inodes = append(inodes, fileInfo.Inode)
 	}
 
 	// Get size information in batches, then update to fileInfos
-	batchInodeInfos := v.mw.BatchInodeGet(inodes)
-	for _, inodeInfo := range batchInodeInfos {
-		inoInfoMap[inodeInfo.Inode] = inodeInfo
-	}
+	inodeInfos := v.mw.BatchInodeGet(inodes)
+	sort.SliceStable(inodeInfos, func(i, j int) bool {
+		return inodeInfos[i].Inode < inodeInfos[j].Inode
+	})
 	for _, fileInfo := range fileInfos {
-		inoInfo := inoInfoMap[fileInfo.Inode]
-		if inoInfo != nil {
-			fileInfo.Size = int64(inoInfo.Size)
-			fileInfo.ModifyTime = inoInfo.ModifyTime
-			fileInfo.Mode = os.FileMode(inoInfo.Mode)
+		i := sort.Search(len(inodeInfos), func(i int) bool {
+			return inodeInfos[i].Inode >= fileInfo.Inode
+		})
+		if i >= 0 && i < len(inodeInfos) && inodeInfos[i].Inode == fileInfo.Inode {
+			fileInfo.Size = int64(inodeInfos[i].Size)
+			fileInfo.ModifyTime = inodeInfos[i].ModifyTime
+			fileInfo.Mode = os.FileMode(inodeInfos[i].Mode)
 		}
 	}
 
 	// Get MD5 information in batches, then update to fileInfos
-	md5Map := make(map[uint64]string)
 	keys := []string{XAttrKeyOSSETag, XAttrKeyOSSETagInvalid}
-	batchXAttrInfos, err := v.mw.BatchGetXAttr(inodes, keys)
+	xattrs, err := v.mw.BatchGetXAttr(inodes, keys)
 	if err != nil {
-		logger.Error("supplyListFileInfo: batch get xattr fail, inodes(%v), err(%v)", inodes, err)
+		log.LogErrorf("supplyListFileInfo: batch get xattr fail, inodes(%v), err(%v)", inodes, err)
 		return
 	}
-	for _, xAttrInfo := range batchXAttrInfos {
-		etagVal := xAttrInfo.Get(XAttrKeyOSSETag)
-		if len(etagVal) == 0 {
-			etagVal = xAttrInfo.Get(XAttrKeyOSSETagInvalid)
-		}
-		if len(etagVal) > 0 {
-			md5Map[xAttrInfo.Inode] = string(etagVal)
-		}
-	}
+	sort.SliceStable(xattrs, func(i, j int) bool {
+		return xattrs[i].Inode < xattrs[j].Inode
+	})
 	for _, fileInfo := range fileInfos {
 		if fileInfo.Mode.IsDir() {
 			fileInfo.ETag = EmptyContentMD5String
 			continue
 		}
-		fileInfo.ETag = md5Map[fileInfo.Inode]
+		i := sort.Search(len(xattrs), func(i int) bool {
+			return xattrs[i].Inode >= fileInfo.Inode
+		})
+		if i >= 0 && i < len(xattrs) && xattrs[i].Inode == fileInfo.Inode {
+			etag, etagInvalid := xattrs[i].Get(XAttrKeyOSSETag), xattrs[i].Get(XAttrKeyOSSETagInvalid)
+			if len(etag) != 0 {
+				fileInfo.ETag = string(etag)
+			}
+			if len(etagInvalid) != 0 {
+				fileInfo.ETag = string(etagInvalid)
+			}
+		}
 	}
 	return
 }
