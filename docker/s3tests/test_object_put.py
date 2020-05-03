@@ -13,103 +13,68 @@
 # permissions and limitations under the License.
 
 # -*- coding: utf-8 -*-
-import boto3
-import hashlib
-import random
-import unittest2
 
-endpoint = 'http://object.chubao.io'
-access_key = '39bEF4RrAQgMj6RV'
-secret_key = 'TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd'
-bucket = 'ltptest'
+from base import S3TestCase
+from base import random_string, random_bytes, compute_md5, get_env_s3_client
+from env import BUCKET
+
+KEY_PREFIX = 'test-object-put/'
 
 
-def random_str(length):
-    seed = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-    result = ''
-    for i in range(length):
-        result += random.choice(seed)
-    return result
-
-
-def random_bytes(length):
-    """
-    Generate random content with specified length
-    :param length:
-    :return: bytes content
-    """
-    f = open('/dev/random', 'rb')
-    data = f.read(length)
-    f.close()
-    return data
-
-
-class TestPutObject(unittest2.TestCase):
+class ObjectPutTest(S3TestCase):
 
     def __init__(self, case):
-        super(TestPutObject, self).__init__(case)
-        self.s3 = boto3.client('s3',
-                               aws_access_key_id=access_key,
-                               aws_secret_access_key=secret_key,
-                               endpoint_url=endpoint)
-
-    def test_head_bucket(self):
-        response = self.s3.head_bucket(Bucket=bucket)
-        self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 200)
-
-    def test_get_bucket_location(self):
-        response = self.s3.get_bucket_location(Bucket=bucket)
-        self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 200)
-
-    def test_list_buckets(self):
-        response = self.s3.list_buckets()
-        buckets = response['Buckets']
-        self.assertTrue(len(buckets) > 0)
+        super(ObjectPutTest, self).__init__(case)
+        self.s3 = get_env_s3_client()
 
     def test_put_directory(self):
-        key = random_str(16)
+        key = random_string(16)
         content_type = 'application/directory'
-        # put directory
-        response = self.s3.put_object(Bucket=bucket, Key=key, ContentType=content_type)
-        self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 200)
-        # head directory
-        response = self.s3.head_object(Bucket=bucket, Key=key + '/')
-        self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 200)
-        self.assertEqual(response['ResponseMetadata']['HTTPHeaders']['content-type'], content_type)
-        self.assertEqual(response['ResponseMetadata']['HTTPHeaders']['content-length'], '0')
-        # delete directory
-        response = self.s3.delete_object(Bucket=bucket, Key=key + '/')
-        self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 204)
+        md5 = compute_md5(bytes())
+        # Put a directory object
+        self.assert_put_object_result(
+            result=self.s3.put_object(Bucket=BUCKET, Key=key, ContentType=content_type),
+            etag=md5)
+        # Get the directory info
+        self.assert_head_object_result(
+            result=self.s3.head_object(Bucket=BUCKET, Key=key + '/'),
+            etag=md5,
+            content_type=content_type,
+            content_length=0)
+        # Get directory object
+        self.assert_get_object_result(
+            result=self.s3.get_object(Bucket=BUCKET, Key=key + '/'),
+            etag=md5,
+            content_type=content_type,
+            content_length=0,
+            body_md5=md5)
+        # Delete the directory
+        self.assert_delete_object_result(
+            result=self.s3.delete_object(Bucket=BUCKET, Key=key + '/'))
 
     def __do_test_put_objects(self, file_name, file_size, file_num):
-        for i in range(file_num):
+        for _ in range(file_num):
             self.__do_test_put_object(file_name, file_size)
 
     def __do_test_put_object(self, file_name, file_size):
         key = file_name
         body = random_bytes(file_size)
-        md5 = hashlib.md5()
-        md5.update(body)
-        expect_etag = md5.hexdigest()
+        expect_etag = compute_md5(body)
         # put object
-        response = self.s3.put_object(Bucket=bucket, Key=key, Body=body)
-        self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 200)
-        self.assertEqual(response['ETag'], expect_etag)
+        self.assert_put_object_result(
+            result=self.s3.put_object(Bucket=BUCKET, Key=key, Body=body),
+            etag=expect_etag)
         # head object
-        response = self.s3.head_object(Bucket=bucket, Key=key)
-        self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 200)
-        self.assertEqual(response['ETag'], expect_etag)
+        self.assert_head_object_result(
+            result=self.s3.head_object(Bucket=BUCKET, Key=key),
+            etag=expect_etag,
+            content_length=file_size)
         # get object
-        response = self.s3.get_object(Bucket=bucket, Key=key)
-        self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 200)
-        actual_etag = response['ETag']
-        self.assertEqual(actual_etag, expect_etag)
-        response_body = response['Body']
-        response_data = response_body.read()
-        md5 = hashlib.md5()
-        md5.update(response_data)
-        actual_etag = md5.hexdigest()
-        self.assertEqual(actual_etag, expect_etag)
+        self.assert_get_object_result(
+            result=self.s3.get_object(Bucket=BUCKET, Key=key),
+            etag=expect_etag,
+            content_length=file_size,
+            body_md5=expect_etag)
 
     def __do_test_put_objects_override(self, file_size, file_num):
         """
@@ -117,31 +82,33 @@ class TestPutObject(unittest2.TestCase):
         Process:
         1. Put and override file.
         2. Delete file created by this process.
+        :type file_size: int
+        :type file_num: int
         :param file_size: numeric value, size of file (unit: byte)
         :param file_num: numeric value, number of file to put
-        :return:
+        :return: None
         """
-        file_name = random_str(16)
+        file_name = random_string(16)
         self.__do_test_put_objects(
             file_name=file_name,
             file_size=file_size,
             file_num=file_num)
         # delete object
-        response = self.s3.delete_object(
-            Bucket=bucket,
-            Key=file_name)
-        self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 204)
+        self.assert_delete_object_result(
+            result=self.s3.delete_object(Bucket=BUCKET, Key=file_name))
 
     def __do_test_put_objects_independent(self, file_size, file_num):
         """
         Put multiple objects with different object keys.
         Process:
+        :type file_size: int
+        :type file_num: int
         :param file_size: numeric value, size of file (unit: byte)
         :param file_num: numeric value, number of file to put
         :return:
         """
         file_names = []
-        file_name_prefix = random_str(16)
+        file_name_prefix = random_string(16)
         for i in range(file_num):
             file_name = "%s_%d" % (file_name_prefix, i)
             self.__do_test_put_objects(
@@ -154,10 +121,11 @@ class TestPutObject(unittest2.TestCase):
         marker = ''
         truncated = True
         while truncated:
-            response = self.s3.list_objects(Bucket=bucket, Prefix=file_name_prefix, Marker=marker, MaxKeys=100)
+            response = self.s3.list_objects(Bucket=BUCKET, Prefix=file_name_prefix, Marker=marker, MaxKeys=100)
             self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 200)
             if 'Contents' in response:
                 contents = response['Contents']
+                self.assertTrue(type(contents), list)
                 matches = matches + len(contents)
             if 'NextMarker' in response:
                 next_marker = response['NextMarker']
@@ -165,22 +133,20 @@ class TestPutObject(unittest2.TestCase):
                     marker = next_marker
             if 'IsTruncated' in response:
                 truncated = bool(response['IsTruncated'])
-        self.assertEqual(matches, file_num)
+        assert matches == file_num
         # batch delete objects
         objects = []
         for file_name in file_names:
             objects.append({"Key": file_name})
         delete = {"Objects": objects}
-        response = self.s3.delete_objects(
-            Bucket=bucket,
-            Delete=delete)
-        self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 200)
+        self.assert_delete_objects_result(
+            result=self.s3.delete_objects(Bucket=BUCKET, Delete=delete))
         # check deletion result
-        response = self.s3.list_objects(Bucket=bucket, Prefix=file_name_prefix)
+        response = self.s3.list_objects(Bucket=BUCKET, Prefix=file_name_prefix)
         self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 200)
-        self.assertFalse('Contents' in response)
+        assert 'Contents' not in response
 
-    def test_put_objects_override_256_1kb(self):
+    def test_put_objects_override_no1_256___1kb(self):
         """
         This test uploads 256 file objects with a size of 1KB (override same file)
         :return:
@@ -189,7 +155,7 @@ class TestPutObject(unittest2.TestCase):
             file_size=1024,
             file_num=256)
 
-    def test_put_objects_override_128_10kb(self):
+    def test_put_objects_override_no2_128__10kb(self):
         """
         This test uploads 128 file objects with a size of 10KB (override same file)
         :return:
@@ -198,7 +164,7 @@ class TestPutObject(unittest2.TestCase):
             file_size=1024 * 10,
             file_num=128)
 
-    def test_put_objects_override_64_100kb(self):
+    def test_put_objects_override_no3__64_100kb(self):
         """
         This test uploads 64 file objects with a size of 100KB (override same file)
         :return:
@@ -207,7 +173,7 @@ class TestPutObject(unittest2.TestCase):
             file_size=1024 * 100,
             file_num=64)
 
-    def test_put_objects_override_8_1mb(self):
+    def test_put_objects_override_no4___8___1mb(self):
         """
         This test uploads 8 file objects with a size of 1MB (override same file)
         :return:
@@ -216,7 +182,7 @@ class TestPutObject(unittest2.TestCase):
             file_size=1024 * 1024,
             file_num=8)
 
-    def test_put_objects_override_4_10mb(self):
+    def test_put_objects_override_no5___4__10mb(self):
         """
         This test uploads 4 file objects with a size of 10MB (override same file)
         :return:
@@ -225,7 +191,7 @@ class TestPutObject(unittest2.TestCase):
             file_size=1024 * 1024 * 10,
             file_num=4)
 
-    def test_put_objects_independent_256_1kb(self):
+    def test_put_objects_independent_no1_256___1kb(self):
         """
         This test uploads 256 file objects with a size of 1KB (difference file)
         :return:
@@ -234,7 +200,7 @@ class TestPutObject(unittest2.TestCase):
             file_size=1024,
             file_num=256)
 
-    def test_put_objects_independent_128_10kb(self):
+    def test_put_objects_independent_no2_128__10kb(self):
         """
         This test uploads 128 file objects with a size of 10KB (difference file)
         :return:
@@ -243,7 +209,7 @@ class TestPutObject(unittest2.TestCase):
             file_size=1024 * 10,
             file_num=128)
 
-    def test_put_objects_independent_64_100kb(self):
+    def test_put_objects_independent_no3__64_100kb(self):
         """
         This test uploads 64 file objects with a size of 100KB (difference file)
         :return:
@@ -252,7 +218,7 @@ class TestPutObject(unittest2.TestCase):
             file_size=1024 * 100,
             file_num=64)
 
-    def test_put_objects_independent_8_1mb(self):
+    def test_put_objects_independent_no4___8___1mb(self):
         """
         This test uploads 8 file objects with a size of 1MB (difference file)
         :return:
@@ -261,7 +227,7 @@ class TestPutObject(unittest2.TestCase):
             file_size=1024 * 1024,
             file_num=8)
 
-    def test_put_objects_independent_4_10mb(self):
+    def test_put_objects_independent_no5___4__10mb(self):
         """
         This test uploads 4 file objects with a size of 10MB (difference file)
         :return:
