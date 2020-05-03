@@ -174,22 +174,7 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 // Get bucket location
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLocation.html
 func (o *ObjectNode) getBucketLocation(w http.ResponseWriter, r *http.Request) {
-	var output = struct {
-		XMLName            xml.Name `xml:"GetBucketLocationOutput"`
-		LocationConstraint string   `xml:"LocationConstraint"`
-	}{
-		LocationConstraint: o.region,
-	}
-	var marshaled []byte
-	var err error
-	if marshaled, err = MarshalXMLEntity(&output); err != nil {
-		log.LogErrorf("getBucketLocation: marshal result fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		ServeInternalStaticErrorResponse(w, r)
-		return
-	}
-	if _, err = w.Write(marshaled); err != nil {
-		log.LogErrorf("getBucketLocation: write response body fail: requestID(%v) err(%v)", GetRequestID(r), err)
-	}
+	_, _ = w.Write(o.encodedRegion)
 	return
 }
 
