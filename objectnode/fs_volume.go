@@ -923,9 +923,9 @@ func (v *Volume) CompleteMultipart(path string, multipartID string) (fsFileInfo 
 
 func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash) (size uint64, err error) {
 	var (
-		buf                   = make([]byte, 128*1024)
+		buf                   = make([]byte, 2*util.BlockSize)
 		readN, writeN, offset int
-		hashBuf               = make([]byte, 128*1024)
+		hashBuf               = make([]byte, 2*util.BlockSize)
 	)
 	for {
 		readN, err = reader.Read(buf)
@@ -1070,7 +1070,7 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) er
 	}
 
 	var n int
-	var tmp = make([]byte, util.BlockSize)
+	var tmp = make([]byte, 2*util.BlockSize)
 	for {
 		var rest = upper - uint64(offset)
 		if rest == 0 {
