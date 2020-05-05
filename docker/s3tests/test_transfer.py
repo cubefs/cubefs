@@ -55,7 +55,6 @@ class TransferTest(S3TestCase):
         # Checking remote file stat
         self.assert_head_object_result(
             result=self.s3.head_object(Bucket=BUCKET, Key=key),
-            etag=expect_md5,
             content_length=size)
 
         # Download parallel

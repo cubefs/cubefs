@@ -50,7 +50,7 @@ class ObjectHeadTest(S3TestCase):
             self.fail()  # Non exception occurred is illegal.
         except Exception as e:
             # Error code 404 is legal.
-            self.assert_client_error(e, 404)
+            self.assert_client_error(e, expect_status_code=404)
 
     def test_head_object_if_match(self):
         size = 1024 * 256
@@ -72,9 +72,7 @@ class ObjectHeadTest(S3TestCase):
             self.fail()  # Non exception occurred is illegal.
         except Exception as e:
             # Error code 412 is legal.
-            self.assert_client_error(
-                error=e,
-                expect_code=412)
+            self.assert_client_error(error=e, expect_status_code=412)
         self.assert_delete_object_result(
             result=self.s3.delete_object(Bucket=env.BUCKET, Key=key))
         self.assert_delete_object_result(
@@ -105,9 +103,7 @@ class ObjectHeadTest(S3TestCase):
             self.fail()  # Non exception occurred is illegal.
         except Exception as e:
             # Error code 304 is legal.
-            self.assert_client_error(
-                error=e,
-                expect_code=304)
+            self.assert_client_error(error=e, expect_status_code=304)
         self.assert_delete_object_result(
             result=self.s3.delete_object(Bucket=env.BUCKET, Key=key))
         self.assert_delete_object_result(
@@ -136,7 +132,7 @@ class ObjectHeadTest(S3TestCase):
             self.fail()  # Non exception occurred is illegal.
         except Exception as e:
             # Error code 304 is legal.
-            self.assert_client_error(error=e, expect_code=304)
+            self.assert_client_error(error=e, expect_status_code=304)
         self.assert_delete_object_result(
             result=self.s3.delete_object(Bucket=env.BUCKET, Key=key))
         self.assert_delete_object_result(
@@ -165,7 +161,7 @@ class ObjectHeadTest(S3TestCase):
         except Exception as e:
             # Error code 412 is legal.
             self.assert_client_error(
-                error=e, expect_code=412)
+                error=e, expect_status_code=412)
         self.assert_delete_object_result(
             result=self.s3.delete_object(Bucket=env.BUCKET, Key=key))
         self.assert_delete_object_result(

@@ -123,3 +123,7 @@ const (
 	DefaultFileMode = 0644
 	DefaultDirMode  = DefaultFileMode | os.ModeDir
 )
+
+const (
+	SplitFileRangeBlockSize = 10 * 1024 * 1024 // 10MB
+)

@@ -210,12 +210,18 @@ class S3TestCase(TestCase):
         self.assertTrue('HTTPStatusCode' in result['ResponseMetadata'])
         self.assertEqual(result['ResponseMetadata']['HTTPStatusCode'], 200)
 
-    def assert_client_error(self, error, expect_code):
+    def assert_client_error(self, error, expect_status_code=None, expect_code=None):
         self.assertNotEqual(error, None)
         self.assertEqual(type(error), ClientError)
         self.assertTrue(hasattr(error, 'response'))
         self.assertEqual(type(error.response), dict)
-        self.assertTrue('Error' in error.response)
-        self.assertTrue(type(error.response['Error']), dict)
-        self.assertTrue('Code' in error.response['Error'])
-        self.assertEqual(error.response['Error']['Code'], str(expect_code))
+        if expect_status_code is not None:
+            response = error.response
+            self.assertTrue('ResponseMetadata' in response)
+            self.assertTrue('HTTPStatusCode' in response['ResponseMetadata'])
+            self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], expect_status_code)
+        if expect_code is not None:
+            self.assertTrue('Error' in error.response)
+            self.assertTrue(type(error.response['Error']), dict)
+            self.assertTrue('Code' in error.response['Error'])
+            self.assertEqual(error.response['Error']['Code'], str(expect_code))

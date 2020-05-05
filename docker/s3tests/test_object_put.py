@@ -235,3 +235,70 @@ class ObjectPutTest(S3TestCase):
         self.__do_test_put_objects_independent(
             file_size=1024 * 1024 * 10,
             file_num=4)
+
+    def test_put_object_conflict_scene1(self):
+        """
+        This test tests response when target key exists but file mode conflict with expect.
+        :return:
+        """
+        key = KEY_PREFIX + random_string(16)
+        directory_mime = 'application/directory'
+        directory_etag = 'd41d8cd98f00b204e9800998ecf8427e'
+        self.assert_put_object_result(
+            result=self.s3.put_object(Bucket=BUCKET, Key=key, ContentType=directory_mime),
+            etag=directory_etag)
+        self.assert_head_object_result(
+            result=self.s3.head_object(Bucket=BUCKET, Key=key + '/'),
+            etag=directory_etag,
+            content_type=directory_mime)
+        try:
+            self.s3.put_object(Bucket=BUCKET, Key=key)
+            self.fail()
+        except Exception as e:
+            self.assert_client_error(error=e, expect_status_code=409)
+            pass
+        finally:
+            self.assert_delete_objects_result(
+                result=self.s3.delete_objects(
+                    Bucket=BUCKET,
+                    Delete={
+                        'Objects': [
+                            {'Key': key + '/'},
+                            {'Key': KEY_PREFIX}
+                        ]
+                    }
+                )
+            )
+
+    def test_put_object_conflict_scene2(self):
+        """
+        This test tests response when target key exists but file mode conflict with expect.
+        :return:
+        """
+        key = KEY_PREFIX + random_string(16)
+        empty_content_etag = 'd41d8cd98f00b204e9800998ecf8427e'
+        self.assert_put_object_result(
+            result=self.s3.put_object(Bucket=BUCKET, Key=key),
+            etag=empty_content_etag)
+        self.assert_head_object_result(
+            result=self.s3.head_object(Bucket=BUCKET, Key=key),
+            etag=empty_content_etag)
+        try:
+            directory_mime = 'application/directory'
+            self.s3.put_object(Bucket=BUCKET, Key=key, ContentType=directory_mime)
+            self.fail()
+        except Exception as e:
+            self.assert_client_error(error=e, expect_status_code=409)
+            pass
+        finally:
+            self.assert_delete_objects_result(
+                result=self.s3.delete_objects(
+                    Bucket=BUCKET,
+                    Delete={
+                        'Objects': [
+                            {'Key': key},
+                            {'Key': KEY_PREFIX}
+                        ]
+                    }
+                )
+            )

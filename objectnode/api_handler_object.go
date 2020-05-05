@@ -945,8 +945,8 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	var fsFileInfo *FSFileInfo
 	fsFileInfo, err = vol.WriteObject(param.Object(), r.Body, contentType)
-	if err == syscall.EISDIR || err == syscall.ENOTDIR {
-		errorCode = Conflict
+	if err == syscall.EINVAL {
+		errorCode = ObjectModeConflict
 		return
 	}
 	if err != nil {

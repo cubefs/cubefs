@@ -220,3 +220,26 @@ func patternMatch(pattern, key string) bool {
 func wrapUnescapedQuot(src string) string {
 	return "\"" + src + "\""
 }
+
+func SplitFileRange(size, blockSize int64) (ranges [][2]int64) {
+	blocks := size / blockSize
+	if size%blockSize != 0 {
+		blocks += 1
+	}
+	ranges = make([][2]int64, 0, blocks)
+	remain := size
+	aboveRage := [2]int64{0, 0}
+	for remain > 0 {
+		curRange := [2]int64{aboveRage[1], 0}
+		if remain < blockSize {
+			curRange[1] = size
+			remain = 0
+		} else {
+			curRange[1] = blockSize
+			remain -= blockSize
+		}
+		ranges = append(ranges, curRange)
+		aboveRage[0], aboveRage[1] = curRange[0], curRange[1]
+	}
+	return ranges
+}
