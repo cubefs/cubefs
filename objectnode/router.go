@@ -468,7 +468,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjectTagging.html
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSDeleteObjectTaggingAction)).
 			Methods(http.MethodDelete).
-			Path("/{object:.+").
+			Path("/{object:.+}").
 			Queries("tagging", "").
 			HandlerFunc(o.deleteObjectTaggingHandler)
 

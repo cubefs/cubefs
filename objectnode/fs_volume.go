@@ -109,6 +109,11 @@ func (v *Volume) storeACL(p *AccessControlPolicy) {
 	return
 }
 
+type PutObjectOption struct {
+	MIMEType string
+	Tagging  *Tagging
+}
+
 // Volume is a high-level encapsulation of meta sdk and data sdk methods.
 // A high-level approach that exposes the semantics of object storage to the outside world.
 // Volume escapes high-level object storage semantics to low-level POSIX semantics.
@@ -387,7 +392,7 @@ func (v *Volume) ListFilesV2(request *ListBucketRequestV2) ([]*FSFileInfo, uint6
 // but actual is a directory.
 // An syscall.EINVAL error is returned indicating that a part of the target path expected to be a directory
 // but actual is a file.
-func (v *Volume) WriteObject(path string, reader io.Reader, mimeType string) (fsInfo *FSFileInfo, err error) {
+func (v *Volume) PutObject(path string, reader io.Reader, opt *PutObjectOption) (fsInfo *FSFileInfo, err error) {
 	defer func() {
 		// Audit behavior
 		log.LogInfof("Audit: WriteObject: volume(%v) path(%v) err(%v)", v.name, path, err)
@@ -396,7 +401,7 @@ func (v *Volume) WriteObject(path string, reader io.Reader, mimeType string) (fs
 	// a path separator is appended at the end of the path, so the recursiveMakeDirectory
 	// method can be processed directly in recursion.
 	var fixedPath = path
-	if mimeType == HeaderValueContentTypeDirectory && !strings.HasSuffix(path, pathSep) {
+	if opt != nil && opt.MIMEType == HeaderValueContentTypeDirectory && !strings.HasSuffix(path, pathSep) {
 		fixedPath = path + pathSep
 	}
 
@@ -542,15 +547,24 @@ func (v *Volume) WriteObject(path string, reader io.Reader, mimeType string) (fs
 
 	// Save ETag
 	if err = v.mw.XAttrSet_ll(finalInode.Inode, []byte(XAttrKeyOSSETag), []byte(etagValue.Encode())); err != nil {
-		log.LogErrorf("WriteObject: meta set xattr fail, inode(%v) key(%v) val(%v) err(%v)",
-			invisibleTempDataInode, XAttrKeyOSSETag, md5Value, err)
+		log.LogErrorf("WriteObject: store ETag fail: volume(%v) path(%v) inode(%v) key(%v) val(%v) err(%v)",
+			v.name, path, invisibleTempDataInode, XAttrKeyOSSETag, md5Value, err)
 		return nil, err
 	}
 	// If MIME information is valid, use extended attributes for storage.
-	if mimeType != "" {
-		if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(XAttrKeyOSSMIME), []byte(mimeType)); err != nil {
-			log.LogErrorf("WriteObject: meta set xattr fail, inode(%v) key(%v) val(%v) err(%v)",
-				invisibleTempDataInode, XAttrKeyOSSMIME, mimeType, err)
+	if opt != nil && opt.MIMEType != "" {
+		if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(XAttrKeyOSSMIME), []byte(opt.MIMEType)); err != nil {
+			log.LogErrorf("WriteObject: store MIME fail: volume(%v) path(%v) inode(%v) mime(%v) err(%v)",
+				v.name, path, invisibleTempDataInode, opt.MIMEType, err)
+			return nil, err
+		}
+	}
+	// If tagging hav been specified, use extend attributes for storage
+	if opt != nil && opt.Tagging != nil {
+		var encoded = opt.Tagging.Encode()
+		if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(XAttrKeyOSSTagging), []byte(encoded)); err != nil {
+			log.LogErrorf("WriteObject: store Tagging fail: volume(%v) path(%v) inode(%v) value(%v) err(%v)",
+				v.name, path, invisibleTempDataInode, encoded, err)
 			return nil, err
 		}
 	}

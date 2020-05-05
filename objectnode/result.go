@@ -16,6 +16,7 @@ package objectnode
 
 import (
 	"encoding/xml"
+	"net/url"
 )
 
 func MarshalXMLEntity(entity interface{}) ([]byte, error) {
@@ -250,13 +251,36 @@ type Tag struct {
 
 type Tagging struct {
 	XMLName xml.Name `json:"-"`
-	TagSet  []*Tag   `xml:"TagSet>Tag" json:"ts"`
+	TagSet  []Tag    `xml:"TagSet>Tag" json:"ts"`
+}
+
+func (t Tagging) Encode() string {
+	values := url.Values{}
+	for _, tag := range t.TagSet {
+		values[tag.Key] = []string{tag.Value}
+	}
+	return values.Encode()
 }
 
 func NewTagging() *Tagging {
 	return &Tagging{
 		XMLName: xml.Name{Local: "Tagging"},
 	}
+}
+
+func ParseTagging(src string) (*Tagging, error) {
+	values, err := url.ParseQuery(src)
+	if err != nil {
+		return nil, err
+	}
+	tagSet := make([]Tag, 0, len(values))
+	for key, value := range values {
+		tagSet = append(tagSet, Tag{Key: key, Value: value[0]})
+	}
+	return &Tagging{
+		XMLName: xml.Name{Local: "Tagging"},
+		TagSet:  tagSet,
+	}, nil
 }
 
 type XAttr struct {

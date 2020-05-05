@@ -17,7 +17,6 @@ package objectnode
 import (
 	"crypto/md5"
 	"encoding/hex"
-	"encoding/json"
 	"encoding/xml"
 	"io/ioutil"
 	"net/http"
@@ -200,13 +199,7 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
-	var output = NewTagging()
-	if len(ossTaggingData) > 0 {
-		if err = json.Unmarshal(ossTaggingData, output); err != nil {
-			log.LogErrorf("getBucketTaggingHandler: decode tagging from json fail: requestID(%v) raw(%v) err(%v)",
-				GetRequestID(r), string(ossTaggingData), err)
-		}
-	}
+	var output, _ = ParseTagging(string(ossTaggingData))
 
 	var encoded []byte
 	if encoded, err = MarshalXMLEntity(output); err != nil {
@@ -258,14 +251,7 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	var encoded []byte
-	if encoded, err = json.Marshal(tagging); err != nil {
-		log.LogWarnf("putBucketTaggingHandler: encode tagging data fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
-		return
-	}
-
-	if err = vol.SetXAttr("/", XAttrKeyOSSTagging, encoded); err != nil {
+	if err = vol.SetXAttr("/", XAttrKeyOSSTagging, []byte(tagging.Encode())); err != nil {
 		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
@@ -305,6 +291,7 @@ func (o *ObjectNode) deleteBucketTaggingHandler(w http.ResponseWriter, r *http.R
 		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
+	w.WriteHeader(http.StatusNoContent)
 	return
 }
 

@@ -197,18 +197,35 @@ class S3TestCase(TestCase):
             self.assertEqual(result['ResponseMetadata']['HTTPHeaders']['content-length'], str(content_length))
 
     def assert_delete_object_result(self, result):
-        self.assertNotEqual(result, None)
-        self.assertEqual(type(result), dict)
-        self.assertTrue('ResponseMetadata' in result)
-        self.assertTrue('HTTPStatusCode' in result['ResponseMetadata'])
-        self.assertEqual(result['ResponseMetadata']['HTTPStatusCode'], 204)
+        self.assert_result_status_code(result=result, status_code=204)
 
     def assert_delete_objects_result(self, result):
+        self.assert_result_status_code(result, status_code=200)
+
+    def assert_put_tagging_result(self, result):
+        self.assert_result_status_code(result=result, status_code=200)
+
+    def assert_get_tagging_result(self, result, expect_tag_set=None):
+        self.assert_result_status_code(result=result, status_code=200)
+        if expect_tag_set is not None:
+            if len(expect_tag_set) > 0:
+                self.assertTrue('TagSet' in result)
+                self.assertEqual(type(result['TagSet']), list)
+                self.assertEqual(len(result['TagSet']), len(expect_tag_set))
+                for expect_tag in expect_tag_set:
+                    self.assertTrue(expect_tag in result['TagSet'])
+            else:
+                self.assertTrue(len(result['TagSet']) == 0 if 'TagSet' in result else True)
+
+    def assert_delete_tagging_result(self, result):
+        self.assert_result_status_code(result=result, status_code=204)
+
+    def assert_result_status_code(self, result, status_code=200):
         self.assertNotEqual(result, None)
         self.assertEqual(type(result), dict)
         self.assertTrue('ResponseMetadata' in result)
         self.assertTrue('HTTPStatusCode' in result['ResponseMetadata'])
-        self.assertEqual(result['ResponseMetadata']['HTTPStatusCode'], 200)
+        self.assertEqual(result['ResponseMetadata']['HTTPStatusCode'], status_code)
 
     def assert_client_error(self, error, expect_status_code=None, expect_code=None):
         self.assertNotEqual(error, None)

@@ -17,7 +17,6 @@ package objectnode
 import (
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -926,6 +925,16 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check 'x-amz-tagging' header
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html#API_PutObject_RequestSyntax
+	var tagging *Tagging
+	if xAmxTagging := r.Header.Get(HeaderNameXAmzTagging); xAmxTagging != "" {
+		if tagging, err = ParseTagging(xAmxTagging); err != nil {
+			errorCode = InvalidArgument
+			return
+		}
+	}
+
 	// Get request MD5, if request MD5 is not empty, compute and verify it.
 	requestMD5 := r.Header.Get(HeaderNameContentMD5)
 
@@ -944,7 +953,11 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		GetRequestID(r), getRequestIP(r), vol.Name(), param.Object(), contentType)
 
 	var fsFileInfo *FSFileInfo
-	fsFileInfo, err = vol.WriteObject(param.Object(), r.Body, contentType)
+	var opt = &PutObjectOption{
+		MIMEType: contentType,
+		Tagging:  tagging,
+	}
+	fsFileInfo, err = vol.PutObject(param.Object(), r.Body, opt)
 	if err == syscall.EINVAL {
 		errorCode = ObjectModeConflict
 		return
@@ -1072,13 +1085,7 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 
 	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
 
-	var output = NewTagging()
-	if len(ossTaggingData) > 0 {
-		if err = json.Unmarshal(ossTaggingData, output); err != nil {
-			log.LogErrorf("getObjectTaggingHandler: decode tagging from json fail: requestID(%v) raw(%v) err(%v)",
-				GetRequestID(r), string(ossTaggingData), err)
-		}
-	}
+	var output, _ = ParseTagging(string(ossTaggingData))
 
 	var encoded []byte
 	if encoded, err = MarshalXMLEntity(output); err != nil {
@@ -1090,7 +1097,6 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	if _, err = w.Write(encoded); err != nil {
 		log.LogErrorf("getObjectTaggingHandler: write response fail: requestID(%v) err（%v)", GetRequestID(r), err)
 	}
-
 	return
 }
 
@@ -1140,14 +1146,7 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	var encoded []byte
-	if encoded, err = json.Marshal(tagging); err != nil {
-		log.LogWarnf("putObjectTaggingHandler: encode tagging data fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
-		return
-	}
-
-	if err = vol.SetXAttr(param.object, XAttrKeyOSSTagging, encoded); err != nil {
+	if err = vol.SetXAttr(param.object, XAttrKeyOSSTagging, []byte(tagging.Encode())); err != nil {
 		log.LogErrorf("pubObjectTaggingHandler: volume set tagging fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
 		errorCode = InternalErrorCode(err)
@@ -1192,6 +1191,8 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 		errorCode = InternalErrorCode(err)
 		return
 	}
+
+	w.WriteHeader(http.StatusNoContent)
 	return
 }
 
