@@ -216,6 +216,11 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set(HeaderNameContentLength, strconv.FormatUint(contentLength, 10))
 
+	// User-defined metadata
+	for name, value := range fileInfo.Metadata {
+		w.Header().Set(HeaderNameXAmzMetaPrefix+name, value)
+	}
+
 	if isRangeRead {
 		w.Header().Set(HeaderNameContentRange, fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size))
 	}
@@ -364,6 +369,10 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set(HeaderNameLastModified, formatTimeRFC1123(fileInfo.ModifyTime))
 	w.Header().Set(HeaderNameContentLength, strconv.Itoa(int(fileInfo.Size)))
 	w.Header().Set(HeaderNameContentMD5, EmptyContentMD5String)
+	// User-defined metadata
+	for name, value := range fileInfo.Metadata {
+		w.Header().Set(HeaderNameXAmzMetaPrefix+name, value)
+	}
 	return
 }
 
@@ -935,6 +944,9 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Checking user-defined metadata
+	var metadata = ParseUserDefinedMetadata(r.Header)
+
 	// Get request MD5, if request MD5 is not empty, compute and verify it.
 	requestMD5 := r.Header.Get(HeaderNameContentMD5)
 
@@ -956,6 +968,7 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var opt = &PutObjectOption{
 		MIMEType: contentType,
 		Tagging:  tagging,
+		Metadata: metadata,
 	}
 	fsFileInfo, err = vol.PutObject(param.Object(), r.Body, opt)
 	if err == syscall.EINVAL {

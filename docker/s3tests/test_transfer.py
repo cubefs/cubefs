@@ -79,21 +79,21 @@ class TransferTest(S3TestCase):
         self.assert_delete_object_result(
             result=self.s3.delete_object(Bucket=BUCKET, Key=KEY_PREFIX))
 
-    def test_transfer_no1__50mb(self):
+    def test_transfer_scene1__50mb(self):
         """
         This test tests transfer (upload and download) a 50MB size file by using multipart feature.
         :return: None
         """
         self.__test_transfer(size=50 * 1024 * 1024)
 
-    def test_transfer_no2_100mb(self):
+    def test_transfer_scene2_100mb(self):
         """
         This test tests transfer (upload and download) a 100MB size file by using multipart feature.
         :return: None
         """
         self.__test_transfer(size=100 * 1024 * 1024)
 
-    def test_transfer_no3_200mb(self):
+    def test_transfer_scene3_200mb(self):
         """
         This test tests transfer (upload and download) a 200MB size file by using multipart feature.
         :return: None

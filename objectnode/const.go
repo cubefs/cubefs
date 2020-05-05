@@ -52,6 +52,7 @@ const (
 	HeaderNameCopyUnModified      = "x-amz-copy-source-if-unmodified-since"
 	HeaderNameDecodeContentLength = "X-Amz-Decoded-Content-Length"
 	HeaderNameXAmzTagging         = "x-amz-tagging"
+	HeaderNameXAmzMetaPrefix      = "x-amz-meta-"
 
 	HeaderNameIfMatch           = "If-Match"
 	HeaderNameIfNoneMatch       = "If-None-Match"

@@ -146,95 +146,95 @@ class ObjectPutTest(S3TestCase):
         self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 200)
         assert 'Contents' not in response
 
-    def test_put_objects_override_no1_256___1kb(self):
+    def test_put_objects_override_scene1___1kb(self):
         """
-        This test uploads 256 file objects with a size of 1KB (override same file)
+        This test uploads 200 file objects with a size of 1KB (override same file)
         :return:
         """
         self.__do_test_put_objects_override(
             file_size=1024,
-            file_num=256)
+            file_num=200)
 
-    def test_put_objects_override_no2_128__10kb(self):
+    def test_put_objects_override_scene2__10kb(self):
         """
-        This test uploads 128 file objects with a size of 10KB (override same file)
+        This test uploads 100 file objects with a size of 10KB (override same file)
         :return:
         """
         self.__do_test_put_objects_override(
             file_size=1024 * 10,
-            file_num=128)
+            file_num=100)
 
-    def test_put_objects_override_no3__64_100kb(self):
+    def test_put_objects_override_scene3_100kb(self):
         """
-        This test uploads 64 file objects with a size of 100KB (override same file)
+        This test uploads 50 file objects with a size of 100KB (override same file)
         :return:
         """
         self.__do_test_put_objects_override(
             file_size=1024 * 100,
-            file_num=64)
+            file_num=50)
 
-    def test_put_objects_override_no4___8___1mb(self):
+    def test_put_objects_override_scene4___1mb(self):
         """
-        This test uploads 8 file objects with a size of 1MB (override same file)
+        This test uploads 10 file objects with a size of 1MB (override same file)
         :return:
         """
         self.__do_test_put_objects_override(
             file_size=1024 * 1024,
-            file_num=8)
+            file_num=10)
 
-    def test_put_objects_override_no5___4__10mb(self):
+    def test_put_objects_override_scene5__10mb(self):
         """
-        This test uploads 4 file objects with a size of 10MB (override same file)
+        This test uploads 5 file objects with a size of 10MB (override same file)
         :return:
         """
         self.__do_test_put_objects_override(
             file_size=1024 * 1024 * 10,
-            file_num=4)
+            file_num=5)
 
-    def test_put_objects_independent_no1_256___1kb(self):
+    def test_put_objects_independent_scene1___1kb(self):
         """
-        This test uploads 256 file objects with a size of 1KB (difference file)
+        This test uploads 200 file objects with a size of 1KB (difference file)
         :return:
         """
         self.__do_test_put_objects_independent(
             file_size=1024,
-            file_num=256)
+            file_num=200)
 
-    def test_put_objects_independent_no2_128__10kb(self):
+    def test_put_objects_independent_scene2__10kb(self):
         """
-        This test uploads 128 file objects with a size of 10KB (difference file)
+        This test uploads 100 file objects with a size of 10KB (difference file)
         :return:
         """
         self.__do_test_put_objects_independent(
             file_size=1024 * 10,
-            file_num=128)
+            file_num=100)
 
-    def test_put_objects_independent_no3__64_100kb(self):
+    def test_put_objects_independent_scene3_100kb(self):
         """
-        This test uploads 64 file objects with a size of 100KB (difference file)
+        This test uploads 50 file objects with a size of 100KB (difference file)
         :return:
         """
         self.__do_test_put_objects_independent(
             file_size=1024 * 100,
-            file_num=64)
+            file_num=50)
 
-    def test_put_objects_independent_no4___8___1mb(self):
+    def test_put_objects_independent_scene4___1mb(self):
         """
-        This test uploads 8 file objects with a size of 1MB (difference file)
+        This test uploads 10 file objects with a size of 1MB (difference file)
         :return:
         """
         self.__do_test_put_objects_independent(
             file_size=1024 * 1024,
-            file_num=8)
+            file_num=10)
 
-    def test_put_objects_independent_no5___4__10mb(self):
+    def test_put_objects_independent_scene5__10mb(self):
         """
-        This test uploads 4 file objects with a size of 10MB (difference file)
+        This test uploads 5 file objects with a size of 10MB (difference file)
         :return:
         """
         self.__do_test_put_objects_independent(
             file_size=1024 * 1024 * 10,
-            file_num=4)
+            file_num=5)
 
     def test_put_object_conflict_scene1(self):
         """
@@ -302,3 +302,33 @@ class ObjectPutTest(S3TestCase):
                     }
                 )
             )
+
+    def test_put_object_with_metadata(self):
+        """
+        This test tests put an object with user-defined metadata.
+        Test count: 10
+        :return:
+        """
+
+        def run():
+            key = KEY_PREFIX + random_string(16)
+            metadata = {
+                random_string(8).lower().capitalize(): random_string(16),
+                random_string(8).lower().capitalize(): random_string(16)
+            }
+            self.assert_put_object_result(
+                result=self.s3.put_object(
+                    Bucket=BUCKET,
+                    Key=key,
+                    Metadata=metadata))
+            self.assert_head_object_result(
+                result=self.s3.head_object(Bucket=BUCKET, Key=key),
+                metadata=metadata
+            )
+            self.assert_delete_objects_result(
+                result=self.s3.delete_objects(
+                    Bucket=BUCKET, Delete={'Objects': [{'Key': key}, {'Key': KEY_PREFIX}]}))
+
+        test_count = 10
+        for _ in range(test_count):
+            run()

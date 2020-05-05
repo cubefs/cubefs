@@ -153,18 +153,21 @@ class S3TestCase(TestCase):
             self.assertTrue('LocationConstraint' in result)
             self.assertEqual(result['LocationConstraint'], location)
 
-    def assert_head_object_result(self, result, etag=None, content_type=None, content_length=None):
-        self.assertNotEqual(result, None)
-        self.assertEqual(type(result), dict)
-        self.assertTrue('ResponseMetadata' in result)
-        self.assertTrue('HTTPStatusCode' in result['ResponseMetadata'])
-        self.assertEqual(result['ResponseMetadata']['HTTPStatusCode'], 200)
+    def assert_head_object_result(self, result, etag=None, content_type=None, content_length=None, metadata=None):
+        self.assert_result_status_code(result=result, status_code=200)
         if etag is not None:
             self.assertEqual(result['ETag'].strip('"'), etag.strip('"'))
         if content_type is not None:
             self.assertEqual(result['ResponseMetadata']['HTTPHeaders']['content-type'], content_type)
         if content_length is not None:
             self.assertEqual(result['ResponseMetadata']['HTTPHeaders']['content-length'], str(content_length))
+        if metadata is not None:
+            if len(metadata) > 0:
+                self.assertTrue('Metadata' in result)
+                self.assertEqual(type(result['Metadata']), dict)
+                self.assertEqual(result['Metadata'], metadata)
+            else:
+                self.assertTrue(len(result['Metadata']) == 0 if 'Metadata' in result else True)
 
     def assert_get_object_result(self, result, etag=None, content_type=None, content_length=None, body_md5=None):
         self.assertNotEqual(result, None)

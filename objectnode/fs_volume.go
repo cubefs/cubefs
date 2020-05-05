@@ -112,6 +112,7 @@ func (v *Volume) storeACL(p *AccessControlPolicy) {
 type PutObjectOption struct {
 	MIMEType string
 	Tagging  *Tagging
+	Metadata map[string]string
 }
 
 // Volume is a high-level encapsulation of meta sdk and data sdk methods.
@@ -395,7 +396,7 @@ func (v *Volume) ListFilesV2(request *ListBucketRequestV2) ([]*FSFileInfo, uint6
 func (v *Volume) PutObject(path string, reader io.Reader, opt *PutObjectOption) (fsInfo *FSFileInfo, err error) {
 	defer func() {
 		// Audit behavior
-		log.LogInfof("Audit: WriteObject: volume(%v) path(%v) err(%v)", v.name, path, err)
+		log.LogInfof("Audit: PutObject: volume(%v) path(%v) err(%v)", v.name, path, err)
 	}()
 	// The path is processed according to the content-type. If it is a directory type,
 	// a path separator is appended at the end of the path, so the recursiveMakeDirectory
@@ -422,7 +423,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutObjectOption) 
 	}
 	var parentId uint64
 	if parentId, err = v.recursiveMakeDirectory(fixedPath); err != nil {
-		log.LogErrorf("WriteObject: recursive make directory fail: volume(%v) path(%v) err(%v)",
+		log.LogErrorf("PutObject: recursive make directory fail: volume(%v) path(%v) err(%v)",
 			v.name, path, err)
 		return
 	}
@@ -467,10 +468,10 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutObjectOption) 
 	defer func() {
 		// An error has caused the entire process to fail. Delete the inode and release the written data.
 		if err != nil {
-			log.LogWarnf("WriteObject: unlink temp inode: volume(%v) path(%v) inode(%v)",
+			log.LogWarnf("PutObject: unlink temp inode: volume(%v) path(%v) inode(%v)",
 				v.name, path, invisibleTempDataInode.Inode)
 			_, _ = v.mw.InodeUnlink_ll(invisibleTempDataInode.Inode)
-			log.LogWarnf("WriteObject: evict temp inode: volume(%v) path(%v) inode(%v)",
+			log.LogWarnf("PutObject: evict temp inode: volume(%v) path(%v) inode(%v)",
 				v.name, path, invisibleTempDataInode.Inode)
 			_ = v.mw.Evict(invisibleTempDataInode.Inode)
 		}
@@ -497,7 +498,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutObjectOption) 
 
 	// flush
 	if err = v.ec.Flush(invisibleTempDataInode.Inode); err != nil {
-		log.LogErrorf("WriteObject: data flush inode fail, inode(%v) err(%v)", invisibleTempDataInode.Inode, err)
+		log.LogErrorf("PutObject: data flush inode fail, inode(%v) err(%v)", invisibleTempDataInode.Inode, err)
 		return nil, err
 	}
 
@@ -506,27 +507,27 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutObjectOption) 
 	)
 	_, existMode, err = v.mw.Lookup_ll(parentId, lastPathItem.Name)
 	if err != nil && err != syscall.ENOENT {
-		log.LogErrorf("WriteObject: meta lookup fail: parentID(%v) name(%v) err(%v)", parentId, lastPathItem.Name, err)
+		log.LogErrorf("PutObject: meta lookup fail: parentID(%v) name(%v) err(%v)", parentId, lastPathItem.Name, err)
 		return
 	}
 
 	if err == syscall.ENOENT {
 		if err = v.applyInodeToNewDentry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode); err != nil {
-			log.LogErrorf("WriteObject: apply inode to new dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
+			log.LogErrorf("PutObject: apply inode to new dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
 				parentId, lastPathItem.Name, invisibleTempDataInode.Inode, err)
 			return
 		}
-		log.LogDebugf("WriteObject: apply inode to new dentry: parentID(%v) name(%v) inode(%v)",
+		log.LogDebugf("PutObject: apply inode to new dentry: parentID(%v) name(%v) inode(%v)",
 			parentId, lastPathItem.Name, invisibleTempDataInode.Inode)
 	} else {
 		if os.FileMode(existMode).IsDir() {
-			log.LogErrorf("WriteObject: target mode conflict: parentID(%v) name(%v) mode(%v)",
+			log.LogErrorf("PutObject: target mode conflict: parentID(%v) name(%v) mode(%v)",
 				parentId, lastPathItem.Name, os.FileMode(existMode).String())
 			err = syscall.EINVAL
 			return
 		}
 		if err = v.applyInodeToExistDentry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode); err != nil {
-			log.LogErrorf("WriteObject: apply inode to exist dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
+			log.LogErrorf("PutObject: apply inode to exist dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
 				parentId, lastPathItem.Name, invisibleTempDataInode.Inode, err)
 			return
 		}
@@ -534,7 +535,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutObjectOption) 
 
 	var finalInode *proto.InodeInfo
 	if finalInode, err = v.mw.InodeGet_ll(invisibleTempDataInode.Inode); err != nil {
-		log.LogErrorf("WriteOject: get final inode fail: volume(%v) path(%v) inode(%v) err(%v)",
+		log.LogErrorf("PutObject: get final inode fail: volume(%v) path(%v) inode(%v) err(%v)",
 			v.name, path, invisibleTempDataInode.Inode, err)
 		return
 	}
@@ -547,25 +548,39 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutObjectOption) 
 
 	// Save ETag
 	if err = v.mw.XAttrSet_ll(finalInode.Inode, []byte(XAttrKeyOSSETag), []byte(etagValue.Encode())); err != nil {
-		log.LogErrorf("WriteObject: store ETag fail: volume(%v) path(%v) inode(%v) key(%v) val(%v) err(%v)",
-			v.name, path, invisibleTempDataInode, XAttrKeyOSSETag, md5Value, err)
+		log.LogErrorf("PutObject: store ETag fail: volume(%v) path(%v) inode(%v) key(%v) val(%v) err(%v)",
+			v.name, path, invisibleTempDataInode.Inode, XAttrKeyOSSETag, md5Value, err)
 		return nil, err
 	}
 	// If MIME information is valid, use extended attributes for storage.
 	if opt != nil && opt.MIMEType != "" {
 		if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(XAttrKeyOSSMIME), []byte(opt.MIMEType)); err != nil {
-			log.LogErrorf("WriteObject: store MIME fail: volume(%v) path(%v) inode(%v) mime(%v) err(%v)",
-				v.name, path, invisibleTempDataInode, opt.MIMEType, err)
+			log.LogErrorf("PutObject: store MIME fail: volume(%v) path(%v) inode(%v) mime(%v) err(%v)",
+				v.name, path, invisibleTempDataInode.Inode, opt.MIMEType, err)
 			return nil, err
 		}
 	}
-	// If tagging hav been specified, use extend attributes for storage
+	// If tagging have been specified, use extend attributes for storage.
 	if opt != nil && opt.Tagging != nil {
 		var encoded = opt.Tagging.Encode()
 		if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(XAttrKeyOSSTagging), []byte(encoded)); err != nil {
-			log.LogErrorf("WriteObject: store Tagging fail: volume(%v) path(%v) inode(%v) value(%v) err(%v)",
-				v.name, path, invisibleTempDataInode, encoded, err)
+			log.LogErrorf("PutObject: store Tagging fail: volume(%v) path(%v) inode(%v) value(%v) err(%v)",
+				v.name, path, invisibleTempDataInode.Inode, encoded, err)
 			return nil, err
+		}
+	}
+	// If user-defined metadata have been specified, use extend attributes for storage.
+	if opt != nil && len(opt.Metadata) > 0 {
+		for name, value := range opt.Metadata {
+			if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(name), []byte(value)); err != nil {
+				log.LogErrorf("PutObject: store user-defined metadata fail: "+
+					"volume(%v) path(%v) inode(%v) key(%v) value(%v) err(%v)",
+					v.name, path, invisibleTempDataInode.Inode, name, value, err)
+				return nil, err
+			}
+			log.LogErrorf("PutObject: store user-defined metadata: "+
+				"volume(%v) path(%v) inode(%v) key(%v) value(%v) err(%v)",
+				v, name, path, invisibleTempDataInode.Inode, name, value)
 		}
 	}
 
@@ -1073,6 +1088,35 @@ func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uin
 	return
 }
 
+func (v *Volume) loadUserDefinedMetadata(inode uint64) (metadata map[string]string, err error) {
+	var storedXAttrKeys []string
+	if storedXAttrKeys, err = v.mw.XAttrsList_ll(inode); err != nil {
+		log.LogErrorf("loadUserDefinedMetadata: meta list xattr fail: volume(%v) inode(%v) err(%v)",
+			v.name, inode, err)
+		return
+	}
+	var xattrKeys = make([]string, 0)
+	for _, storedXAttrKey := range storedXAttrKeys {
+		if !strings.HasPrefix(storedXAttrKey, "oss:") {
+			xattrKeys = append(xattrKeys, storedXAttrKey)
+		}
+	}
+	var xattrs []*proto.XAttrInfo
+	if xattrs, err = v.mw.BatchGetXAttr([]uint64{inode}, xattrKeys); err != nil {
+		log.LogErrorf("loadUserDefinedMetadata: meta get xattr fail, volume(%v) inode(%v) keys(%v) err(%v)",
+			v.name, inode, strings.Join(xattrKeys, ","), err)
+		return
+	}
+	metadata = make(map[string]string)
+	if len(xattrs) > 0 && xattrs[0].Inode == inode {
+		xattrs[0].VisitAll(func(key string, value []byte) bool {
+			metadata[key] = string(value)
+			return true
+		})
+	}
+	return
+}
+
 func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) error {
 	var err error
 
@@ -1185,6 +1229,15 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 		}
 	}
 
+	// Load user-defined metadata
+	var metadata map[string]string
+	if metadata, err = v.loadUserDefinedMetadata(inode); err != nil {
+		log.LogErrorf("ObjectMeta: load user-defined metadata fail: volume(%v) inode(%v) path(%v) err(%v)",
+			v.name, inode, path, err)
+		return
+	}
+
+	// Validating ETag value.
 	if !mode.IsDir() && (!etagValue.Valid() || etagValue.TS.Before(inoInfo.ModifyTime)) {
 		// The ETag is invalid or outdated then generate a new ETag and make update.
 		if etagValue, err = v.updateETag(inoInfo.Inode, int64(inoInfo.Size), inoInfo.ModifyTime); err != nil {
@@ -1203,6 +1256,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 		ETag:       etagValue.ETag(),
 		Inode:      inoInfo.Inode,
 		MIMEType:   mimeType,
+		Metadata:   metadata,
 	}
 	return
 }
