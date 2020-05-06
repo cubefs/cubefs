@@ -742,6 +742,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 	if err = v.mw.AddMultipartPart_ll(multipartId, parentId, partId, size, etag, tempInodeInfo.Inode); err != nil {
 		log.LogErrorf("WritePart: meta add multipart part fail: multipartID(%v) parentID(%v) partID(%v) inode(%v) size(%v) MD5(%v) err(%v)",
 			multipartId, parentId, parentId, tempInodeInfo.Inode, size, etag, err)
+		return nil, err
 	}
 	log.LogDebugf("WritePart: meta add multipart part: multipartID(%v) parentID(%v) partID(%v) inode(%v) size(%v) MD5(%v)",
 		multipartId, parentId, parentId, tempInodeInfo.Inode, size, etag)
