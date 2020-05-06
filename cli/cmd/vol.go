@@ -76,7 +76,6 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 			if vols, err = client.AdminAPI().ListVols(optKeyword); err != nil {
 				return
 			}
-			stdout("[Volumes]\n")
 			stdout("%v\n", volumeInfoTableHeader)
 			for _, vol := range vols {
 				stdout("%v\n", formatVolInfoTableRow(vol))
@@ -173,7 +172,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 				os.Exit(1)
 			}
 			// print summary info
-			stdout("[Summary]\n%s\n", formatSimpleVolView(svv))
+			stdout("Summary:\n%s\n", formatSimpleVolView(svv))
 
 			// print metadata detail
 			if optMetaDetail {
@@ -182,7 +181,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 					errout("Get volume metadata detail information failed:\n%v\n", err)
 					os.Exit(1)
 				}
-				stdout("[Meta partitions]\n")
+				stdout("Meta partitions:\n")
 				stdout("%v\n", metaPartitionTableHeader)
 				sort.SliceStable(views, func(i, j int) bool {
 					return views[i].PartitionID < views[j].PartitionID
@@ -199,7 +198,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 					errout("Get volume data detail information failed:\n%v\n", err)
 					os.Exit(1)
 				}
-				stdout("[Data partitions]\n")
+				stdout("Data partitions:\n")
 				stdout("%v\n", dataPartitionTableHeader)
 				sort.SliceStable(view.DataPartitions, func(i, j int) bool {
 					return view.DataPartitions[i].PartitionID < view.DataPartitions[j].PartitionID

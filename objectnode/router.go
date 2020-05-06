@@ -49,25 +49,6 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 	}
 
 	var registerBucketHttpGetRouters = func(r *mux.Router) {
-		// Get object with pre-signed auth signature v2
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html
-		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetObjectAction)).
-			Methods(http.MethodGet).
-			Path("/{object:.+}").
-			Queries("AWSAccessKeyId", "{accessKey:.+}",
-				"Expires", "{expires:[0-9]+}", "Signature", "{signature:.+}").
-			HandlerFunc(o.getObjectHandler)
-
-		// Get object with pre-signed auth signature v4
-		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html
-		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetObjectAction)).
-			Methods(http.MethodGet).
-			Path("/{object:.+}").
-			Queries("X-Amz-Credential", "{credential:.+}",
-				"X-Amz-Algorithm", "{algorithm:.+}", "X-Amz-Signature", "{signature:.+}",
-				"X-Amz-Date", "{date:.+}", "X-Amz-SignedHeaders", "{signedHeaders:.+}",
-				"X-Amz-Expires", "{expires:[0-9]+}").
-			HandlerFunc(o.getObjectHandler)
 
 		// List parts
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListParts.html
@@ -487,7 +468,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjectTagging.html
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSDeleteObjectTaggingAction)).
 			Methods(http.MethodDelete).
-			Path("/{object:.+").
+			Path("/{object:.+}").
 			Queries("tagging", "").
 			HandlerFunc(o.deleteObjectTaggingHandler)
 

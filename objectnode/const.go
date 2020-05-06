@@ -51,6 +51,8 @@ const (
 	HeaderNameCopyModified        = "x-amz-copy-source-if-modified-since"
 	HeaderNameCopyUnModified      = "x-amz-copy-source-if-unmodified-since"
 	HeaderNameDecodeContentLength = "X-Amz-Decoded-Content-Length"
+	HeaderNameXAmzTagging         = "x-amz-tagging"
+	HeaderNameXAmzMetaPrefix      = "x-amz-meta-"
 
 	HeaderNameIfMatch           = "If-Match"
 	HeaderNameIfNoneMatch       = "If-None-Match"
@@ -122,4 +124,8 @@ const (
 const (
 	DefaultFileMode = 0644
 	DefaultDirMode  = DefaultFileMode | os.ModeDir
+)
+
+const (
+	SplitFileRangeBlockSize = 10 * 1024 * 1024 // 10MB
 )

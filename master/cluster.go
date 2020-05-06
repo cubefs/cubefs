@@ -883,7 +883,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
 errHandler:
-	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.Hosts)
 	if err != nil {
@@ -1332,8 +1332,13 @@ func (c *Cluster) createVol(name, owner, zoneName string, mpCount, dpReplicaNum,
 		goto errHandler
 	}
 	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
-		vol.initDataPartitions(c)
-		readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
+		if err = vol.initDataPartitions(c); err == nil {
+			readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
+			break
+		}
+	}
+	if err != nil {
+		goto errHandler
 	}
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
 	vol.updateViewCache(c)

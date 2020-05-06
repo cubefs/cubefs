@@ -17,11 +17,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"sync"
 )
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -211,9 +212,9 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 	return
 }
 
-func (vol *Vol) initDataPartitions(c *Cluster) {
+func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
 	// initialize k data partitionMap at a time
-	c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt)
+	err = c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt)
 	return
 }
 

@@ -206,11 +206,8 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV4(r *http.Request) (pass bo
 	canonicalQuery := createCanonicalQueryV4(req)
 	canonicalRequestString := createCanonicalRequestString(r.Method, getCanonicalURI(r), canonicalQuery, canonicalHeaderStr, headerNames, payload)
 
-	log.LogDebugf("validateUrlBySignatureAlgorithmV4: canonical request:\n"+
-		"RequestID: %v\n"+
-		"CanonicalRequest:\n%v",
-		GetRequestID(r),
-		canonicalRequestString)
+	log.LogDebugf("canonical request %v: %v",
+		GetRequestID(r), strings.ReplaceAll(canonicalHeaderStr, "\n", "\\n"))
 
 	// build signingKey
 	signingKey := buildSigningKey(SCHEME, secretKey, req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)
@@ -499,11 +496,8 @@ func calculateSignatureV4(r *http.Request, cred credential, secretKey string, si
 	stringToSign := buildStringToSign(SignatureV4Algorithm, timestamp, scope, canonicalRequest)
 	signature := sign(stringToSign, signingKey)
 
-	log.LogDebugf("calculateSignatureV4: canonical request:\n"+
-		"RequestID: %v\n"+
-		"CanonicalRequest:\n%v",
-		GetRequestID(r),
-		canonicalRequest)
+	log.LogDebugf("canonical request %v: %v",
+		GetRequestID(r), strings.ReplaceAll(canonicalRequest, "\n", "\\n"))
 	return hex.EncodeToString(signature)
 }
 

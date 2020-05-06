@@ -17,6 +17,7 @@ package objectnode
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -106,6 +107,8 @@ type ObjectNode struct {
 	signatureIgnoredActions proto.Actions // signature ignored actions
 	disabledActions         proto.Actions // disabled actions
 
+	encodedRegion []byte
+
 	control common.Control
 }
 
@@ -180,6 +183,12 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	return
 }
 
+func (o *ObjectNode) updateRegion(region string) {
+	o.region = region
+	o.encodedRegion =
+		[]byte(fmt.Sprintf(fmt.Sprintf("<LocationConstraint>%s</LocationConstraint>", o.region)))
+}
+
 func handleStart(s common.Server, cfg *config.Config) (err error) {
 	o, ok := s.(*ObjectNode)
 	if !ok {
@@ -195,7 +204,7 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 	if ci, err = o.mc.AdminAPI().GetClusterInfo(); err != nil {
 		return
 	}
-	o.region = ci.Cluster
+	o.updateRegion(ci.Cluster)
 	log.LogInfof("handleStart: get cluster information: region(%v)", o.region)
 
 	// start rest api

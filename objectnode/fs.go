@@ -28,6 +28,7 @@ type FSFileInfo struct {
 	ETag       string
 	Inode      uint64
 	MIMEType   string
+	Metadata   map[string]string // User-defined metadata
 }
 
 type Prefixes []string

@@ -106,7 +106,7 @@ show_cluster_info() {
     echo &>> ${tmp_file}
     ${cli} user info ${Owner} &>> ${tmp_file}
     echo &>> ${tmp_file}
-    ${cli} volume info ${Owner} &>> ${tmp_file}
+    ${cli} volume info ${VolName} &>> ${tmp_file}
     echo &>> ${tmp_file}
     cat /tmp/collect_cluster_info | grep -v "Master address"
 }

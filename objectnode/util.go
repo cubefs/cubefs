@@ -220,3 +220,49 @@ func patternMatch(pattern, key string) bool {
 func wrapUnescapedQuot(src string) string {
 	return "\"" + src + "\""
 }
+
+func SplitFileRange(size, blockSize int64) (ranges [][2]int64) {
+	blocks := size / blockSize
+	if size%blockSize != 0 {
+		blocks += 1
+	}
+	ranges = make([][2]int64, 0, blocks)
+	remain := size
+	aboveRage := [2]int64{0, 0}
+	for remain > 0 {
+		curRange := [2]int64{aboveRage[1], 0}
+		if remain < blockSize {
+			curRange[1] = size
+			remain = 0
+		} else {
+			curRange[1] = blockSize
+			remain -= blockSize
+		}
+		ranges = append(ranges, curRange)
+		aboveRage[0], aboveRage[1] = curRange[0], curRange[1]
+	}
+	return ranges
+}
+
+// Checking and parsing user-defined metadata from request header.
+// The optional user-defined metadata names must begin with "x-amz-meta-" to
+// distinguish them from other HTTP headers.
+// Notes:
+// The PUT request header is limited to 8 KB in size. Within the PUT request header,
+// the user-defined metadata is limited to 2 KB in size. The size of user-defined
+// metadata is measured by taking the sum of the number of bytes in the UTF-8 encoding
+// of each key and value.
+// Reference: https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingMetadata.html
+func ParseUserDefinedMetadata(header http.Header) map[string]string {
+	metadata := make(map[string]string)
+	for name, values := range header {
+		if strings.HasPrefix(name, http.CanonicalHeaderKey(HeaderNameXAmzMetaPrefix)) {
+			metaName := strings.ToLower(name[len(HeaderNameXAmzMetaPrefix):])
+			metaValue := strings.Join(values, ",")
+			if !strings.HasPrefix(metaName, "oss:") {
+				metadata[metaName] = metaValue
+			}
+		}
+	}
+	return metadata
+}

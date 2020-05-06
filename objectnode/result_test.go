@@ -196,7 +196,7 @@ func TestUnmarshalDeleteRequest(t *testing.T) {
 
 func TestMarshalTagging(t *testing.T) {
 	tagging := NewTagging()
-	tagging.TagSet = []*Tag{
+	tagging.TagSet = []Tag{
 		{
 			Key:   "tag1",
 			Value: "val1",

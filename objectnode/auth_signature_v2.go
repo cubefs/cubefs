@@ -88,7 +88,6 @@ type requestAuthInfoV2 struct {
 //  &Signature=GJCqOY0ahf1BdzJDjNnFWB7vfSc%3D
 //
 func parsePresignedV2AuthInfo(r *http.Request) (*requestAuthInfoV2, error) {
-	//
 	ai := new(requestAuthInfoV2)
 	uris := strings.SplitN(r.RequestURI, "?", 2)
 	if len(uris) < 2 {
@@ -96,10 +95,12 @@ func parsePresignedV2AuthInfo(r *http.Request) (*requestAuthInfoV2, error) {
 		return nil, errors.New("uri is invalid")
 	}
 
-	vars := mux.Vars(r)
-	ai.accessKeyId = vars["accessKey"]
-	ai.signature = vars["signature"]
-	ai.expires = vars["expires"]
+	if err := r.ParseForm(); err != nil {
+		return nil, err
+	}
+	ai.accessKeyId = r.FormValue("AWSAccessKeyId")
+	ai.signature = r.FormValue("Signature")
+	ai.expires = r.FormValue("Expires")
 
 	return ai, nil
 }
