@@ -436,6 +436,17 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 
 	s.parseRaftConfig(cfg)
 
+	constCfg := config.ConstConfig{
+		Listen:           s.port,
+		RaftHeartbetPort: s.raftHeartbeat,
+		RaftReplicaPort:  s.raftReplica,
+	}
+	var ok = false
+	if ok, err = config.CheckOrStoreConstCfg(s.raftDir, config.DefaultConstConfigFile, &constCfg); !ok {
+		log.LogErrorf("constCfg check failed %v %v %v %v", s.raftDir, config.DefaultConstConfigFile, constCfg, err)
+		return fmt.Errorf("constCfg check failed %v %v %v %v", s.raftDir, config.DefaultConstConfigFile, constCfg, err)
+	}
+
 	if _, err = os.Stat(s.raftDir); err != nil {
 		if err = os.MkdirAll(s.raftDir, 0755); err != nil {
 			err = errors.NewErrorf("create raft server dir: %s", err.Error())

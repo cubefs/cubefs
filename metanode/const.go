@@ -15,9 +15,10 @@
 package metanode
 
 import (
+	"time"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
-	"time"
 )
 
 // Type alias.
