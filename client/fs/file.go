@@ -32,7 +32,7 @@ import (
 // File defines the structure of a file.
 type File struct {
 	super *Super
-	inode *Inode
+	info  *proto.InodeInfo
 	sync.RWMutex
 }
 
@@ -56,14 +56,14 @@ var (
 )
 
 // NewFile returns a new file.
-func NewFile(s *Super, i *Inode) fs.Node {
-	return &File{super: s, inode: i}
+func NewFile(s *Super, i *proto.InodeInfo) fs.Node {
+	return &File{super: s, info: i}
 }
 
 // Attr sets the attributes of a file.
 func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
-	ino := f.inode.ino
-	inode, err := f.super.InodeGet(ino)
+	ino := f.info.Inode
+	info, err := f.super.InodeGet(ino)
 	if err != nil {
 		log.LogErrorf("Attr: ino(%v) err(%v)", ino, err)
 		if err == fuse.ENOENT {
@@ -73,20 +73,20 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 		return ParseError(err)
 	}
 
-	inode.fillAttr(a)
+	fillAttr(info, a)
 	fileSize, gen := f.fileSize(ino)
-	log.LogDebugf("Attr: ino(%v) fileSize(%v) gen(%v) inode.gen(%v)", ino, fileSize, gen, inode.gen)
-	if gen >= inode.gen {
+	log.LogDebugf("Attr: ino(%v) fileSize(%v) gen(%v) inode.gen(%v)", ino, fileSize, gen, info.Generation)
+	if gen >= info.Generation {
 		a.Size = uint64(fileSize)
 	}
 
-	log.LogDebugf("TRACE Attr: inode(%v) attr(%v)", inode, a)
+	log.LogDebugf("TRACE Attr: inode(%v) attr(%v)", info, a)
 	return nil
 }
 
 // Forget evicts the inode of the current file. This can only happen when the inode is on the orphan list.
 func (f *File) Forget() {
-	ino := f.inode.ino
+	ino := f.info.Inode
 	defer func() {
 		log.LogDebugf("TRACE Forget: ino(%v)", ino)
 	}()
@@ -113,7 +113,7 @@ func (f *File) Forget() {
 
 // Open handles the open request.
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
-	ino := f.inode.ino
+	ino := f.info.Inode
 	start := time.Now()
 
 	f.super.ec.OpenStream(ino)
@@ -129,7 +129,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 // Release handles the release request.
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
-	ino := f.inode.ino
+	ino := f.info.Inode
 	log.LogDebugf("TRACE Release enter: ino(%v) req(%v)", ino, req)
 
 	start := time.Now()
@@ -150,19 +150,19 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 
 // Read handles the read request.
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
-	log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) reqsize(%v) req(%v)", f.inode.ino, req.Offset, req.Size, req)
+	log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) reqsize(%v) req(%v)", f.info.Inode, req.Offset, req.Size, req)
 
 	start := time.Now()
 
-	size, err := f.super.ec.Read(f.inode.ino, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
+	size, err := f.super.ec.Read(f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	if err != nil && err != io.EOF {
-		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.inode.ino, req, err, size)
+		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
 		f.super.handleError("Read", msg)
 		return fuse.EIO
 	}
 
 	if size > req.Size {
-		msg := fmt.Sprintf("Read: read size larger than request size, ino(%v) req(%v) size(%v)", f.inode.ino, req, size)
+		msg := fmt.Sprintf("Read: read size larger than request size, ino(%v) req(%v) size(%v)", f.info.Inode, req, size)
 		f.super.handleError("Read", msg)
 		return fuse.ERANGE
 	}
@@ -171,17 +171,17 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		resp.Data = resp.Data[:size+fuse.OutHeaderSize]
 	} else if size <= 0 {
 		resp.Data = resp.Data[:fuse.OutHeaderSize]
-		log.LogWarnf("Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v)", f.inode.ino, req.Offset, req.Size, req, size)
+		log.LogWarnf("Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v)", f.info.Inode, req.Offset, req.Size, req, size)
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v) (%v)ns", f.inode.ino, req.Offset, req.Size, req, size, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v) (%v)ns", f.info.Inode, req.Offset, req.Size, req, size, elapsed.Nanoseconds())
 	return nil
 }
 
 // Write handles the write request.
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) (err error) {
-	ino := f.inode.ino
+	ino := f.info.Inode
 	reqlen := len(req.Data)
 	filesize, _ := f.fileSize(ino)
 
@@ -194,7 +194,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 			resp.Size = reqlen
 		}
 
-		log.LogDebugf("fallocate: ino(%v) origFilesize(%v) req(%v) err(%v)", f.inode.ino, filesize, req, err)
+		log.LogDebugf("fallocate: ino(%v) origFilesize(%v) req(%v) err(%v)", f.info.Inode, filesize, req, err)
 		return
 	}
 
@@ -238,39 +238,39 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 // Flush has not been implemented.
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
-	log.LogDebugf("TRACE Flush enter: ino(%v)", f.inode.ino)
+	log.LogDebugf("TRACE Flush enter: ino(%v)", f.info.Inode)
 	start := time.Now()
-	err = f.super.ec.Flush(f.inode.ino)
+	err = f.super.ec.Flush(f.info.Inode)
 	if err != nil {
-		msg := fmt.Sprintf("Flush: ino(%v) err(%v)", f.inode.ino, err)
+		msg := fmt.Sprintf("Flush: ino(%v) err(%v)", f.info.Inode, err)
 		f.super.handleError("Flush", msg)
 		return fuse.EIO
 	}
-	f.super.ic.Delete(f.inode.ino)
+	f.super.ic.Delete(f.info.Inode)
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Flush: ino(%v) (%v)ns", f.inode.ino, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Flush: ino(%v) (%v)ns", f.info.Inode, elapsed.Nanoseconds())
 	return nil
 }
 
 // Fsync hanldes the fsync request.
 func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
-	log.LogDebugf("TRACE Fsync enter: ino(%v)", f.inode.ino)
+	log.LogDebugf("TRACE Fsync enter: ino(%v)", f.info.Inode)
 	start := time.Now()
-	err = f.super.ec.Flush(f.inode.ino)
+	err = f.super.ec.Flush(f.info.Inode)
 	if err != nil {
-		msg := fmt.Sprintf("Fsync: ino(%v) err(%v)", f.inode.ino, err)
+		msg := fmt.Sprintf("Fsync: ino(%v) err(%v)", f.info.Inode, err)
 		f.super.handleError("Fsync", msg)
 		return fuse.EIO
 	}
-	f.super.ic.Delete(f.inode.ino)
+	f.super.ic.Delete(f.info.Inode)
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Fsync: ino(%v) (%v)ns", f.inode.ino, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Fsync: ino(%v) (%v)ns", f.info.Inode, elapsed.Nanoseconds())
 	return nil
 }
 
 // Setattr handles the setattr request.
 func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
-	ino := f.inode.ino
+	ino := f.info.Inode
 	start := time.Now()
 	if req.Valid.Size() {
 		if err := f.super.ec.Flush(ino); err != nil {
@@ -285,27 +285,27 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 		f.super.ec.RefreshExtentsCache(ino)
 	}
 
-	inode, err := f.super.InodeGet(ino)
+	info, err := f.super.InodeGet(ino)
 	if err != nil {
 		log.LogErrorf("Setattr: InodeGet failed, ino(%v) err(%v)", ino, err)
 		return ParseError(err)
 	}
 
 	if req.Valid.Size() {
-		if req.Size != inode.size {
-			log.LogWarnf("Setattr: truncate ino(%v) reqSize(%v) inodeSize(%v)", ino, req.Size, inode.size)
+		if req.Size != info.Size {
+			log.LogWarnf("Setattr: truncate ino(%v) reqSize(%v) inodeSize(%v)", ino, req.Size, info.Size)
 		}
 	}
 
-	if valid := inode.setattr(req); valid != 0 {
-		err = f.super.mw.Setattr(ino, valid, proto.Mode(inode.mode), inode.uid, inode.gid)
+	if valid := setattr(info, req); valid != 0 {
+		err = f.super.mw.Setattr(ino, valid, info.Mode, info.Uid, info.Gid)
 		if err != nil {
 			f.super.ic.Delete(ino)
 			return ParseError(err)
 		}
 	}
 
-	inode.fillAttr(&resp.Attr)
+	fillAttr(info, &resp.Attr)
 
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Setattr: ino(%v) req(%v) (%v)ns", ino, req, elapsed.Nanoseconds())
@@ -314,19 +314,19 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 
 // Readlink handles the readlink request.
 func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string, error) {
-	ino := f.inode.ino
-	inode, err := f.super.InodeGet(ino)
+	ino := f.info.Inode
+	info, err := f.super.InodeGet(ino)
 	if err != nil {
 		log.LogErrorf("Readlink: ino(%v) err(%v)", ino, err)
 		return "", ParseError(err)
 	}
-	log.LogDebugf("TRACE Readlink: ino(%v) target(%v)", ino, string(inode.target))
-	return string(inode.target), nil
+	log.LogDebugf("TRACE Readlink: ino(%v) target(%v)", ino, string(info.Target))
+	return string(info.Target), nil
 }
 
 // Getxattr has not been implemented yet.
 func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
-	ino := f.inode.ino
+	ino := f.info.Inode
 	name := req.Name
 	size := req.Size
 	pos := req.Position
@@ -349,7 +349,7 @@ func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fu
 
 // Listxattr has not been implemented yet.
 func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
-	ino := f.inode.ino
+	ino := f.info.Inode
 	_ = req.Size     // ignore currently
 	_ = req.Position // ignore currently
 
@@ -367,7 +367,7 @@ func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *
 
 // Setxattr has not been implemented yet.
 func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
-	ino := f.inode.ino
+	ino := f.info.Inode
 	name := req.Name
 	value := req.Xattr
 	// TODO： implement flag to improve compatible (Mofei Zhang)
@@ -381,7 +381,7 @@ func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 
 // Removexattr has not been implemented yet.
 func (f *File) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
-	ino := f.inode.ino
+	ino := f.info.Inode
 	name := req.Name
 	if err := f.super.mw.XAttrDel_ll(ino, name); err != nil {
 		log.LogErrorf("Removexattr: ino(%v) name(%v) err(%v)", ino, name, err)
@@ -397,9 +397,9 @@ func (f *File) fileSize(ino uint64) (size int, gen uint64) {
 
 	if !valid {
 		f.super.ic.Delete(ino)
-		if inode, err := f.super.InodeGet(ino); err == nil {
-			size = int(inode.size)
-			gen = inode.gen
+		if info, err := f.super.InodeGet(ino); err == nil {
+			size = int(info.Size)
+			gen = info.Generation
 		}
 	}
 	return
