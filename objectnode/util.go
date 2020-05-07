@@ -257,7 +257,7 @@ func ParseUserDefinedMetadata(header http.Header) map[string]string {
 	metadata := make(map[string]string)
 	for name, values := range header {
 		if strings.HasPrefix(name, http.CanonicalHeaderKey(HeaderNameXAmzMetaPrefix)) &&
-			name != http.CanonicalHeaderKey(HeaderNameMetadataDirective) {
+			name != http.CanonicalHeaderKey(HeaderNameXAmzMetadataDirective) {
 			metaName := strings.ToLower(name[len(HeaderNameXAmzMetaPrefix):])
 			metaValue := strings.Join(values, ",")
 			if !strings.HasPrefix(metaName, "oss:") {

@@ -62,8 +62,8 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 
 		// store request ID to context and write to header
 		SetRequestID(r, requestID)
-		w.Header().Set(HeaderNameRequestId, requestID)
-		w.Header().Set(HeaderNameServer, HeaderValueServer)
+		w.Header()[HeaderNameXAmzRequestId] = []string{requestID}
+		w.Header()[HeaderNameServer] = []string{HeaderValueServer}
 
 		var action = ActionFromRouteName(mux.CurrentRoute(r).GetName())
 		SetRequestAction(r, action)
@@ -185,7 +185,7 @@ func (o *ObjectNode) policyCheckMiddleware(next http.Handler) http.Handler {
 //   request → [pre-handle] → [next handler] → response
 func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
-		if len(r.Header) > 0 && len(r.Header.Get(http.CanonicalHeaderKey(HeaderNameDecodeContentLength))) > 0 {
+		if len(r.Header) > 0 && len(r.Header.Get(http.CanonicalHeaderKey(HeaderNameXAmzDecodeContentLength))) > 0 {
 			r.Body = NewClosableChunkedReader(r.Body)
 			log.LogDebugf("contentMiddleware: chunk reader inited: requestID(%v)", GetRequestID(r))
 		}
@@ -225,10 +225,10 @@ func (o *ObjectNode) expectMiddleware(next http.Handler) http.Handler {
 func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// write access control allow headers
-		w.Header().Set(HeaderNameAccessControlAllowOrigin, "*")
-		w.Header().Set(HeaderNameAccessControlAllowHeaders, "*")
-		w.Header().Set(HeaderNameAccessControlAllowMethods, "*")
-		w.Header().Set(HeaderNameAccessControlMaxAge, "0")
+		w.Header()[HeaderNameAccessControlAllowOrigin] = []string{"*"}
+		w.Header()[HeaderNameAccessControlAllowHeaders] = []string{"*"}
+		w.Header()[HeaderNameAccessControlAllowMethods] = []string{"*"}
+		w.Header()[HeaderNameAccessControlMaxAge] = []string{"0"}
 		next.ServeHTTP(w, r)
 	})
 }

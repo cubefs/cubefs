@@ -464,7 +464,7 @@ func buildSigningKey(scheme, secret, date, region, service, terminator string) [
 
 func getContentHash(headers http.Header) (contentHash string) {
 	for headerName := range headers {
-		if strings.ToLower(headerName) == strings.ToLower(HeaderNameContentHash) {
+		if strings.ToLower(headerName) == strings.ToLower(HeaderNameXAmzContentHash) {
 			contentHash = headers.Get(headerName)
 			break
 		}

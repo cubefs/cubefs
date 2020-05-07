@@ -17,6 +17,7 @@ package meta
 import (
 	"fmt"
 	"net"
+	"syscall"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/errors"
@@ -55,11 +56,7 @@ func (mw *MetaWrapper) getConn(partitionID uint64, addr string) (*MetaConn, erro
 }
 
 func (mw *MetaWrapper) putConn(mc *MetaConn, err error) {
-	if err != nil {
-		mw.conns.PutConnect(mc.conn, true)
-	} else {
-		mw.conns.PutConnect(mc.conn, false)
-	}
+	mw.conns.PutConnect(mc.conn, err != nil)
 }
 
 func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet) (*proto.Packet, error) {
@@ -127,6 +124,12 @@ func (mc *MetaConn) send(req *proto.Packet) (resp *proto.Packet, err error) {
 	err = resp.ReadFromConn(mc.conn, proto.ReadDeadlineTime)
 	if err != nil {
 		return nil, errors.Trace(err, "Failed to read from conn, req(%v)", req)
+	}
+	// Check if the ID and OpCode of the response are consistent with the request.
+	if resp.ReqID != req.ReqID || resp.Opcode != req.Opcode {
+		log.LogErrorf("send: the response packet mismatch with request: conn(%v to %v) req(%v) resp(%v)",
+			mc.conn.LocalAddr(), mc.conn.RemoteAddr(), req, resp)
+		return nil, syscall.EBADMSG
 	}
 	return resp, nil
 }

@@ -16,7 +16,9 @@ package objectnode
 
 import "os"
 
-type OSSOperation string
+const (
+	MaxRetry = 3
+)
 
 const (
 	HeaderNameServer             = "Server"
@@ -24,8 +26,8 @@ const (
 	HeaderNameLastModified       = "Last-Modified"
 	HeaderNameETag               = "ETag"
 	HeaderNameDate               = "Date"
-	HeaderNameContentMD5         = "content-md5"
-	HeaderNameContentEnc         = "content-encoding"
+	HeaderNameContentMD5         = "Content-MD5"
+	HeaderNameContentEnc         = "Content-Encoding"
 	HeaderNameContentType        = "Content-Type"
 	HeaderNameContentLength      = "Content-Length"
 	HeaderNameContentRange       = "Content-Range"
@@ -35,6 +37,7 @@ const (
 	HeaderNameRange              = "Range"
 	HeaderNameExpect             = "Expect"
 	HeaderNameXForwardedExpect   = "X-Forwarded-Expect"
+	HeaderNameLocation           = "Location"
 
 	// Headers for CORS validation
 	HeaderNameAccessControlAllowOrigin  = "Access-Control-Allow-Origin"
@@ -42,19 +45,19 @@ const (
 	HeaderNameAccessControlAllowHeaders = "Access-Control-Allow-Headers"
 	HeaderNameAccessControlMaxAge       = "Access-Control-Max-Age"
 
-	HeaderNameStartDate           = "x-amz-date"
-	HeaderNameRequestId           = "x-amz-request-id"
-	HeaderNameContentHash         = "X-Amz-Content-SHA256"
-	HeaderNameCopySource          = "X-Amz-Copy-Source"
-	HeaderNameCopyMatch           = "x-amz-copy-source-if-match"
-	HeaderNameCopyNoneMatch       = "x-amz-copy-source-if-none-match"
-	HeaderNameCopyModified        = "x-amz-copy-source-if-modified-since"
-	HeaderNameCopyUnModified      = "x-amz-copy-source-if-unmodified-since"
-	HeaderNameDecodeContentLength = "X-Amz-Decoded-Content-Length"
-	HeaderNameXAmzTagging         = "x-amz-tagging"
-	HeaderNameXAmzMetaPrefix      = "x-amz-meta-"
-	HeaderNameDownloadPartCount   = "x-amz-mp-parts-count"
-	HeaderNameMetadataDirective   = "x-amz-metadata-directive"
+	HeaderNameXAmzStartDate           = "x-amz-date"
+	HeaderNameXAmzRequestId           = "x-amz-request-id"
+	HeaderNameXAmzContentHash         = "x-amz-content-sha256"
+	HeaderNameXAmzCopySource          = "x-amz-copy-source"
+	HeaderNameXAmzCopyMatch           = "x-amz-copy-source-if-match"
+	HeaderNameXAmzCopyNoneMatch       = "x-amz-copy-source-if-none-match"
+	HeaderNameXAmzCopyModified        = "x-amz-copy-source-if-modified-since"
+	HeaderNameXAmzCopyUnModified      = "x-amz-copy-source-if-unmodified-since"
+	HeaderNameXAmzDecodeContentLength = "x-amz-decoded-content-length"
+	HeaderNameXAmzTagging             = "x-amz-tagging"
+	HeaderNameXAmzMetaPrefix          = "x-amz-meta-"
+	HeaderNameXAmzDownloadPartCount   = "x-amz-mp-parts-count"
+	HeaderNameXAmzMetadataDirective   = "x-amz-metadata-directive"
 
 	HeaderNameIfMatch           = "If-Match"
 	HeaderNameIfNoneMatch       = "If-None-Match"

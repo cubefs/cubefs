@@ -133,7 +133,7 @@ class ObjectPutTest(S3TestCase):
                     marker = next_marker
             if 'IsTruncated' in response:
                 truncated = bool(response['IsTruncated'])
-        assert matches == file_num
+        self.assertEqual(matches, file_num)
         # batch delete objects
         objects = []
         for file_name in file_names:
@@ -144,7 +144,7 @@ class ObjectPutTest(S3TestCase):
         # check deletion result
         response = self.s3.list_objects(Bucket=BUCKET, Prefix=file_name_prefix)
         self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 200)
-        assert 'Contents' not in response
+        self.assertFalse('Contents' in response)
 
     def test_put_objects_override_scene1___1kb(self):
         """
@@ -313,8 +313,8 @@ class ObjectPutTest(S3TestCase):
         def run():
             key = KEY_PREFIX + random_string(16)
             metadata = {
-                random_string(8).lower().capitalize(): random_string(16),
-                random_string(8).lower().capitalize(): random_string(16)
+                random_string(8).lower(): random_string(16),
+                random_string(8).lower(): random_string(16)
             }
             self.assert_put_object_result(
                 result=self.s3.put_object(

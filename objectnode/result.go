@@ -214,22 +214,6 @@ type CopyResult struct {
 	ETag         string   `xml:"ETag,omitempty"`
 }
 
-type ListBucketRequestV1 struct {
-	prefix    string
-	delimiter string
-	marker    string
-	maxKeys   uint64
-}
-
-type ListBucketRequestV2 struct {
-	delimiter  string
-	maxKeys    uint64
-	prefix     string
-	contToken  string
-	fetchOwner bool
-	startAfter string
-}
-
 type ListBucketResultV2 struct {
 	XMLName        xml.Name        `xml:"ListBucketResult"`
 	Name           string          `xml:"Name"`

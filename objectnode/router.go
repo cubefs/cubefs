@@ -294,7 +294,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSUploadPartCopyAction)).
 			Methods(http.MethodPut).
 			Path("/{object:.+}").
-			HeadersRegexp(HeaderNameCopySource, ".*?(\\/|%2F).*?").
+			HeadersRegexp(HeaderNameXAmzCopySource, ".*?(\\/|%2F).*?").
 			Queries("partNumber", "{partNumber:[0-9]+}", "uploadId", "{uploadId:.*}").
 			HandlerFunc(o.unsupportedOperationHandler)
 
@@ -311,7 +311,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSCopyObjectAction)).
 			Methods(http.MethodPut).
 			Path("/{object:.+}").
-			HeadersRegexp(HeaderNameCopySource, ".*?(\\/|%2F).*?").
+			HeadersRegexp(HeaderNameXAmzCopySource, ".*?(\\/|%2F).*?").
 			HandlerFunc(o.copyObjectHandler)
 
 		// Put object tagging

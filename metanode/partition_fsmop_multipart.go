@@ -37,9 +37,13 @@ func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (status uint8)
 	if storedItem == nil {
 		return proto.OpNotExistErr
 	}
-	storedMultipart := storedItem.(*Multipart)
+	storedMultipart, is := storedItem.(*Multipart)
+	if !is {
+		return proto.OpNotExistErr
+	}
 	for _, part := range multipart.Parts() {
-		if !storedMultipart.InsertPart(part, false) {
+		actual, stored := storedMultipart.LoadOrStorePart(part)
+		if !stored && !actual.Equal(part) {
 			return proto.OpExistErr
 		}
 	}
