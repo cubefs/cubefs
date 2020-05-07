@@ -154,45 +154,45 @@ func (mp *metaPartition) deleteWorker() {
 }
 
 // delete Extents by Partition,and find all successDelete inode
-func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents map[uint64][]*proto.ExtentKey,allInodes []*Inode)(shouldCommit []*Inode){
-	occurErrors:=make(map[uint64]error)
+func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents map[uint64][]*proto.ExtentKey, allInodes []*Inode) (shouldCommit []*Inode) {
+	occurErrors := make(map[uint64]error)
 	shouldCommit = make([]*Inode, 0, BatchCounts)
 	var (
-		wg sync.WaitGroup
+		wg   sync.WaitGroup
 		lock sync.Mutex
 	)
 
 	//wait all Partition do BatchDeleteExtents fininsh
-	for partitionID,extents:=range partitionDeleteExtents {
+	for partitionID, extents := range partitionDeleteExtents {
 		wg.Add(1)
-		go func(partitionID uint64,extents []*proto.ExtentKey) {
-			perr:=mp.doBatchDeleteExtents(partitionID,extents)
+		go func(partitionID uint64, extents []*proto.ExtentKey) {
+			perr := mp.doBatchDeleteExtentsByPartition(partitionID, extents)
 			lock.Lock()
-			occurErrors[partitionID]=perr
+			occurErrors[partitionID] = perr
 			lock.Unlock()
-			log.LogWarnf("deleteExtents on Partition(%v) error(%v)",partitionID,perr)
+			log.LogWarnf("deleteExtents on Partition(%v) error(%v)", partitionID, perr)
 			wg.Done()
-		}(partitionID,extents)
+		}(partitionID, extents)
 	}
 	wg.Wait()
 
 	//range AllNode,find all Extents delete success on inode,it must to be append shouldCommit
-	for i:=0;i<len(allInodes);i++{
-		successDeleteExtentCnt:=0
-		inode:=allInodes[i]
+	for i := 0; i < len(allInodes); i++ {
+		successDeleteExtentCnt := 0
+		inode := allInodes[i]
 		var deleteInodeErr error
 		inode.Extents.Range(func(item BtreeItem) bool {
 			ext := item.(*proto.ExtentKey)
-			if occurErrors[ext.PartitionId]==nil {
+			if occurErrors[ext.PartitionId] == nil {
 				successDeleteExtentCnt++
 				return true
-			}else {
-				log.LogWarnf("deleteInode Inode(%v) error(%v)",inode.Inode,deleteInodeErr)
+			} else {
+				log.LogWarnf("deleteInode Inode(%v) error(%v)", inode.Inode, deleteInodeErr)
 				return false
 			}
 		})
-		if successDeleteExtentCnt==inode.Extents.Len(){
-			shouldCommit=append(shouldCommit,inode)
+		if successDeleteExtentCnt == inode.Extents.Len() {
+			shouldCommit = append(shouldCommit, inode)
 		}
 	}
 
@@ -335,9 +335,7 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 	return
 }
 
-
-
-func (mp *metaPartition) doBatchDeleteExtents(partitionID uint64,exts []*proto.ExtentKey) (err error) {
+func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, exts []*proto.ExtentKey) (err error) {
 	// get the data node view
 	dp := mp.vol.GetPartition(partitionID)
 	if dp == nil {
@@ -345,9 +343,9 @@ func (mp *metaPartition) doBatchDeleteExtents(partitionID uint64,exts []*proto.E
 			partitionID)
 		return
 	}
-	for _,ext:=range exts{
-		if ext.PartitionId!=partitionID{
-			err = errors.NewErrorf("BatchDeleteExtent do batchDelete on PartitionID(%v) but unexpect Extent(%v)",partitionID,ext)
+	for _, ext := range exts {
+		if ext.PartitionId != partitionID {
+			err = errors.NewErrorf("BatchDeleteExtent do batchDelete on PartitionID(%v) but unexpect Extent(%v)", partitionID, ext)
 			return
 		}
 	}

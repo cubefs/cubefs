@@ -45,7 +45,6 @@ func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) *Packet {
 	return p
 }
 
-
 // NewPacketToBatchDeleteExtent returns a new packet to batch delete the extent.
 func NewPacketToBatchDeleteExtent(dp *DataPartition, exts []*proto.ExtentKey) *Packet {
 	p := new(Packet)
@@ -53,8 +52,8 @@ func NewPacketToBatchDeleteExtent(dp *DataPartition, exts []*proto.ExtentKey) *P
 	p.Opcode = proto.OpBatchDeleteExtent
 	p.ExtentType = proto.NormalExtentType
 	p.PartitionID = uint64(dp.PartitionID)
-	p.Data,_=json.Marshal(exts)
-	p.Size=uint32(len(p.Data))
+	p.Data, _ = json.Marshal(exts)
+	p.Size = uint32(len(p.Data))
 	p.ReqID = proto.GenerateRequestID()
 	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
 	p.Arg = ([]byte)(dp.GetAllAddrs())
@@ -62,7 +61,6 @@ func NewPacketToBatchDeleteExtent(dp *DataPartition, exts []*proto.ExtentKey) *P
 
 	return p
 }
-
 
 // NewPacketToDeleteExtent returns a new packet to delete the extent.
 func NewPacketToFreeInodeOnRaftFollower(partitionID uint64, freeInodes []byte) *Packet {

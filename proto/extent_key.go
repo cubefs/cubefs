@@ -117,11 +117,10 @@ func (k *ExtentKey) GetExtentKey() (m string) {
 }
 
 type TinyExtentDeleteRecord struct {
-	FileOffset           uint64
-	PartitionId          uint64
-	ExtentId             uint64
-	ExtentOffset         uint64
-	Size                 uint32
-	CRC                  uint32
-	TinyDeleteFileOffset int64
+	FileOffset   uint64
+	PartitionId  uint64
+	ExtentId     uint64
+	ExtentOffset uint64
+	Size         uint32
+	CRC          uint32
 }

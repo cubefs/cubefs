@@ -41,7 +41,7 @@ import (
 const (
 	ExtCrcHeaderFileName     = "EXTENT_CRC"
 	ExtBaseExtentIDFileName  = "EXTENT_META"
-	TinyDeleteFileOpt        = os.O_CREATE | os.O_RDWR
+	TinyDeleteFileOpt        = os.O_CREATE | os.O_RDWR | os.O_APPEND
 	TinyExtDeletedFileName   = "TINYEXTENT_DELETE"
 	NormalExtDeletedFileName = "NORMALEXTENT_DELETE"
 	MaxExtentCount           = 20000
@@ -114,7 +114,6 @@ type ExtentStore struct {
 	metadataFp                        *os.File // metadata file pointer?
 	tinyExtentDeleteFp                *os.File
 	normalExtentDeleteFp              *os.File
-	baseTinyDeleteOffset              int64
 	closeC                            chan bool
 	closed                            bool
 	availableTinyExtentC              chan uint64 // available tinyExtent channel
@@ -139,11 +138,15 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 	if s.tinyExtentDeleteFp, err = os.OpenFile(path.Join(s.dataPath, TinyExtDeletedFileName), TinyDeleteFileOpt, 0666); err != nil {
 		return
 	}
-	finfo, err := s.tinyExtentDeleteFp.Stat()
+	stat, err := s.tinyExtentDeleteFp.Stat()
 	if err != nil {
 		return
 	}
-	s.baseTinyDeleteOffset = finfo.Size()
+	if stat.Size()%DeleteTinyRecordSize != 0 {
+		needWriteEmpty := DeleteTinyRecordSize - (stat.Size() % DeleteTinyRecordSize)
+		data := make([]byte, needWriteEmpty)
+		s.tinyExtentDeleteFp.Write(data)
+	}
 	if s.verifyExtentFp, err = os.OpenFile(path.Join(s.dataPath, ExtCrcHeaderFileName), os.O_CREATE|os.O_RDWR, 0666); err != nil {
 		return
 	}
@@ -350,7 +353,7 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	return
 }
 
-func (s *ExtentStore) tinyDelete(e *Extent, offset, size, tinyDeleteFileOffset int64) (err error) {
+func (s *ExtentStore) tinyDelete(e *Extent, offset, size int64) (err error) {
 	if offset+size > e.dataSize {
 		return
 	}
@@ -363,14 +366,14 @@ func (s *ExtentStore) tinyDelete(e *Extent, offset, size, tinyDeleteFileOffset i
 	if hasDelete {
 		return
 	}
-	if err = s.RecordTinyDelete(e.extentID, offset, size, tinyDeleteFileOffset); err != nil {
+	if err = s.RecordTinyDelete(e.extentID, offset, size); err != nil {
 		return
 	}
 	return
 }
 
 // MarkDelete marks the given extent as deleted.
-func (s *ExtentStore) MarkDelete(extentID uint64, offset, size, tinyDeleteFileOffset int64) (err error) {
+func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error) {
 	var (
 		e  *Extent
 		ei *ExtentInfo
@@ -384,7 +387,7 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size, tinyDeleteFileOf
 	}
 
 	if IsTinyExtent(extentID) {
-		return s.tinyDelete(e, offset, size, tinyDeleteFileOffset)
+		return s.tinyDelete(e, offset, size)
 	}
 	e.Close()
 	s.cache.Del(extentID)
@@ -469,7 +472,7 @@ func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentIn
 		}
 		extents = append(extents, extentInfo)
 	}
-	tinyDeleteFileSize = s.LoadTinyDeleteFileOffset()
+	tinyDeleteFileSize, err = s.LoadTinyDeleteFileOffset()
 
 	return
 }
@@ -637,14 +640,20 @@ func UnMarshalTinyExtent(data []byte) (extentID, offset, size uint64) {
 	return
 }
 
-func (s *ExtentStore) RecordTinyDelete(extentID uint64, offset, size, tinyDeleteFileOffset int64) (err error) {
+func (s *ExtentStore) RecordTinyDelete(extentID uint64, offset, size int64) (err error) {
 	record := MarshalTinyExtent(extentID, offset, size)
-	_, err = s.tinyExtentDeleteFp.WriteAt(record, tinyDeleteFileOffset)
+	stat, err := s.tinyExtentDeleteFp.Stat()
 	if err != nil {
 		return
 	}
-	if atomic.LoadInt64(&s.baseTinyDeleteOffset) < tinyDeleteFileOffset {
-		atomic.StoreInt64(&s.baseTinyDeleteOffset, tinyDeleteFileOffset)
+	if stat.Size()%DeleteTinyRecordSize != 0 {
+		needWriteEmpty := DeleteTinyRecordSize - (stat.Size() % DeleteTinyRecordSize)
+		data := make([]byte, needWriteEmpty)
+		s.tinyExtentDeleteFp.Write(data)
+	}
+	_, err = s.tinyExtentDeleteFp.Write(record)
+	if err != nil {
+		return
 	}
 
 	return
@@ -668,13 +677,12 @@ func (s *ExtentStore) NextExtentID() (extentID uint64, err error) {
 	return
 }
 
-func (s *ExtentStore) NextTinyDeleteFileOffset() (offset int64) {
-	return atomic.AddInt64(&s.baseTinyDeleteOffset, DeleteTinyRecordSize)
-}
-
-func (s *ExtentStore) LoadTinyDeleteFileOffset() (offset int64) {
-	return atomic.LoadInt64(&s.baseTinyDeleteOffset)
-
+func (s *ExtentStore) LoadTinyDeleteFileOffset() (offset int64, err error) {
+	stat, err := s.tinyExtentDeleteFp.Stat()
+	if err == nil {
+		offset = stat.Size()
+	}
+	return
 }
 
 func (s *ExtentStore) getExtentKey(extent uint64) string {

@@ -675,7 +675,10 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 		conn                    *net.TCPConn
 	)
 	if !isFullSync {
-		localTinyDeleteFileSize = dp.extentStore.LoadTinyDeleteFileOffset()
+		if localTinyDeleteFileSize,err = dp.extentStore.LoadTinyDeleteFileOffset();err!=nil {
+			return
+		}
+
 	} else {
 		dp.FullSyncTinyDeleteTime = time.Now().Unix()
 	}
@@ -730,7 +733,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 			if !storage.IsTinyExtent(extentID) {
 				continue
 			}
-			store.MarkDelete(extentID, int64(offset), int64(size), localTinyDeleteFileSize)
+			store.MarkDelete(extentID, int64(offset), int64(size))
 			if !isFullSync {
 				log.LogWarnf(fmt.Sprintf(ActionSyncTinyDeleteRecord+" extentID_(%v)_extentOffset(%v)_size(%v)", extentID, offset, size))
 			}

@@ -321,10 +321,10 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		ext := new(proto.TinyExtentDeleteRecord)
 		err = json.Unmarshal(p.Data, ext)
 		if err == nil {
-			err = partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size), ext.TinyDeleteFileOffset)
+			err = partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
 		}
 	} else {
-		err = partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0, 0)
+		err = partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
 	}
 	if err != nil {
 		p.PackErrorBody(ActionMarkDelete, err.Error())
@@ -669,7 +669,10 @@ func (s *DataNode) handlePacketToReadTinyDeleteRecordFile(p *repl.Packet, connec
 	}()
 	partition := p.Object.(*DataPartition)
 	store := partition.ExtentStore()
-	localTinyDeleteFileSize := store.LoadTinyDeleteFileOffset()
+	localTinyDeleteFileSize, err := store.LoadTinyDeleteFileOffset()
+	if err != nil {
+		return
+	}
 	needReplySize := localTinyDeleteFileSize - p.ExtentOffset
 	offset := p.ExtentOffset
 	reply := repl.NewReadTinyDeleteRecordResponsePacket(p.ReqID, p.PartitionID)
