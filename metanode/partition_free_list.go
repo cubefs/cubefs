@@ -29,7 +29,7 @@ import (
 const (
 	AsyncDeleteInterval      = 10 * time.Second
 	UpdateVolTicket          = 5 * time.Minute
-	BatchCounts              = 100
+	BatchCounts              = 500
 	OpenRWAppendOpt          = os.O_CREATE | os.O_RDWR | os.O_APPEND
 	TempFileValidTime        = 86400 //units: sec
 	DeleteInodeFileExtension = "INODE_DEL"
@@ -65,6 +65,11 @@ func (mp *metaPartition) updateVolWorker() {
 		}
 		return newView
 	}
+	dataView, err := masterClient.ClientAPI().GetDataPartitions(mp.config.VolName)
+	if err == nil {
+		mp.vol.UpdatePartitions(convert(dataView))
+	}
+
 	for {
 		select {
 		case <-mp.stopC:
@@ -144,14 +149,13 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 	for i := 0; i < len(allInodes); i++ {
 		successDeleteExtentCnt := 0
 		inode := allInodes[i]
-		var deleteInodeErr error
 		inode.Extents.Range(func(item BtreeItem) bool {
 			ext := item.(*proto.ExtentKey)
 			if occurErrors[ext.PartitionId] == nil {
 				successDeleteExtentCnt++
 				return true
 			} else {
-				log.LogWarnf("deleteInode Inode(%v) error(%v)", inode.Inode, deleteInodeErr)
+				log.LogWarnf("deleteInode Inode(%v) error(%v)", inode.Inode, occurErrors[ext.PartitionId])
 				return false
 			}
 		})

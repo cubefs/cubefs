@@ -372,7 +372,7 @@ func (p *Packet) IsForwardPacket() bool {
 
 // A leader packet is the packet send to the leader and does not require packet forwarding.
 func (p *Packet) IsLeaderPacket() (ok bool) {
-	if p.IsForwardPkt() && (p.IsWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation()) {
+	if p.IsForwardPkt() && (p.IsWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation() || p.IsBatchMarkDeleteExtentOperation()) {
 		ok = true
 	}
 
@@ -393,6 +393,10 @@ func (p *Packet) IsCreateExtentOperation() bool {
 
 func (p *Packet) IsMarkDeleteExtentOperation() bool {
 	return p.Opcode == proto.OpMarkDelete
+}
+
+func (p *Packet)IsBatchMarkDeleteExtentOperation() bool {
+	return p.Opcode == proto.OpBatchDeleteExtent
 }
 
 func (p *Packet) IsBroadcastMinAppliedID() bool {
