@@ -327,7 +327,7 @@ func (m *metadataManager) detachPartition(id uint64) (err error) {
 }
 
 func (m *metadataManager) createPartition(id uint64, volName string, start,
-end uint64, peers []proto.Peer) (err error) {
+	end uint64, peers []proto.Peer) (err error) {
 	// check partitions
 	if _, err = m.getPartition(id); err == nil {
 		err = errors.NewErrorf("create partition id=%d is exsited!", id)

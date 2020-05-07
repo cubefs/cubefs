@@ -187,7 +187,7 @@ func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 
 // Handle OpHeartbeat packet.
 func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
-	var err  error
+	var err error
 	task := &proto.AdminTask{}
 	err = json.Unmarshal(p.Data, task)
 	defer func() {
@@ -321,10 +321,10 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		ext := new(proto.TinyExtentDeleteRecord)
 		err = json.Unmarshal(p.Data, ext)
 		if err == nil {
-			err = partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size), ext.TinyDeleteFileOffset)
+			err = partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
 		}
 	} else {
-		err = partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0, 0)
+		err = partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
 	}
 	if err != nil {
 		p.PackErrorBody(ActionMarkDelete, err.Error())
@@ -341,12 +341,12 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		err error
 	)
 	partition := p.Object.(*DataPartition)
-	exts:=make([]*proto.ExtentKey,0)
+	exts := make([]*proto.ExtentKey, 0)
 	err = json.Unmarshal(p.Data, exts)
-	store:=partition.ExtentStore()
+	store := partition.ExtentStore()
 	if err == nil {
-		for _,ext:=range exts{
-			store.MarkDelete(ext.ExtentId,ext.ExtentOffset,ext.Size)
+		for _, ext := range exts {
+			store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
 		}
 	}
 
@@ -667,7 +667,10 @@ func (s *DataNode) handlePacketToReadTinyDeleteRecordFile(p *repl.Packet, connec
 	}()
 	partition := p.Object.(*DataPartition)
 	store := partition.ExtentStore()
-	localTinyDeleteFileSize := store.LoadTinyDeleteFileOffset()
+	localTinyDeleteFileSize, err := store.LoadTinyDeleteFileOffset()
+	if err != nil {
+		return
+	}
 	needReplySize := localTinyDeleteFileSize - p.ExtentOffset
 	offset := p.ExtentOffset
 	reply := repl.NewReadTinyDeleteRecordResponsePacket(p.ReqID, p.PartitionID)

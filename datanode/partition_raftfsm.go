@@ -99,7 +99,7 @@ func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
 func (dp *DataPartition) HandleLeaderChange(leader uint64) {
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", serverPort), time.Second)
 	if err != nil {
-		log.LogErrorf(fmt.Sprintf("HandleLeaderChange serverPort not exsit ,error %v",err))
+		log.LogErrorf(fmt.Sprintf("HandleLeaderChange serverPort not exsit ,error %v", err))
 		dp.raftPartition.TryToLeader(dp.partitionID)
 		return
 	}

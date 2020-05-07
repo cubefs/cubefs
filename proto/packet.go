@@ -128,8 +128,7 @@ const (
 	OpRemoveMultipart  uint8 = 0x73
 	OpListMultiparts   uint8 = 0x74
 
-	OpBatchDeleteExtent         uint8 = 0x75
-
+	OpBatchDeleteExtent uint8 = 0x75
 
 	// Commons
 	OpIntraGroupNetErr uint8 = 0xF3
@@ -605,8 +604,8 @@ func (p *Packet) GetUniqueLogId() (m string) {
 		ext := new(TinyExtentDeleteRecord)
 		err := json.Unmarshal(p.Data, ext)
 		if err == nil {
-			m += fmt.Sprintf("Extent(%v)_ExtentOffset(%v)_TinyDeleteFileOffset(%v)_Size(%v)_Opcode(%v)",
-				ext.ExtentId, ext.ExtentOffset, ext.TinyDeleteFileOffset, ext.Size, p.Opcode)
+			m += fmt.Sprintf("Extent(%v)_ExtentOffset(%v)_Size(%v)_Opcode(%v)",
+				ext.ExtentId, ext.ExtentOffset, ext.Size, p.Opcode)
 			return m
 		}
 	} else if p.Opcode == OpReadTinyDeleteRecord || p.Opcode == OpNotifyReplicasToRepair || p.Opcode == OpDataNodeHeartbeat {
@@ -635,8 +634,8 @@ func (p *Packet) setPacketPrefix() {
 		ext := new(TinyExtentDeleteRecord)
 		err := json.Unmarshal(p.Data, ext)
 		if err == nil {
-			p.mesg += fmt.Sprintf("Extent(%v)_ExtentOffset(%v)_TinyDeleteFileOffset(%v)_Size(%v)_Opcode(%v)",
-				ext.ExtentId, ext.ExtentOffset, ext.TinyDeleteFileOffset, ext.Size, p.Opcode)
+			p.mesg += fmt.Sprintf("Extent(%v)_ExtentOffset(%v)_Size(%v)_Opcode(%v)",
+				ext.ExtentId, ext.ExtentOffset, ext.Size, p.Opcode)
 			return
 		}
 	} else if p.Opcode == OpReadTinyDeleteRecord || p.Opcode == OpNotifyReplicasToRepair || p.Opcode == OpDataNodeHeartbeat {
