@@ -240,30 +240,59 @@ func (mw *MetaWrapper) InodeDelete_ll(inode uint64) error {
 }
 
 func (mw *MetaWrapper) BatchGetXAttr(inodes []uint64, keys []string) ([]*proto.XAttrInfo, error) {
-	batchInfos := make([]*proto.XAttrInfo, 0)
-	var wg sync.WaitGroup
-	var errGlobal error
+	// Collect meta partitions
+	var (
+		mps      = make(map[uint64]*MetaPartition) // Mapping: partition ID -> partition
+		mpInodes = make(map[uint64][]uint64)       // Mapping: partition ID -> inodes
+	)
+	for _, ino := range inodes {
+		var mp = mw.getPartitionByInode(ino)
+		if mp != nil {
+			mps[mp.PartitionID] = mp
+			mpInodes[mp.PartitionID] = append(mpInodes[mp.PartitionID], ino)
+		}
+	}
 
-	for _, mp := range mw.partitions {
+	var (
+		xattrsCh = make(chan *proto.XAttrInfo, len(inodes))
+		errorsCh = make(chan error, len(inodes))
+	)
+
+	var wg sync.WaitGroup
+	for pID := range mps {
 		wg.Add(1)
-		go func(mp *MetaPartition) {
+		go func(mp *MetaPartition, inodes []uint64, keys []string) {
 			defer wg.Done()
-			xAttrInfos, err := mw.batchGetXAttr(mp, inodes, keys)
+			xattrs, err := mw.batchGetXAttr(mp, inodes, keys)
 			if err != nil {
-				errGlobal = err
-				log.LogErrorf("BatchGetXAttr: get xattr from partition fail: partitionID(%v) err(%s)", mp.PartitionID, err)
+				errorsCh <- err
+				log.LogErrorf("BatchGetXAttr: get xattr fail: volume(%v) partitionID(%v) inodes(%v) keys(%v) err(%s)",
+					mw.volname, mp.PartitionID, inodes, keys, err)
 				return
 			}
-			batchInfos = append(batchInfos, xAttrInfos...)
-		}(mp)
+			for _, info := range xattrs {
+				xattrsCh <- info
+			}
+		}(mps[pID], mpInodes[pID], keys)
+	}
+	wg.Wait()
+
+	close(xattrsCh)
+	close(errorsCh)
+
+	if len(errorsCh) > 0 {
+		return nil, <-errorsCh
 	}
 
-	wg.Wait()
-	if errGlobal != nil {
-		return nil, errGlobal
+	var xattrs = make([]*proto.XAttrInfo, 0, len(inodes))
+	for {
+		info := <-xattrsCh
+		if info == nil {
+			break
+		}
+		xattrs = append(xattrs, info)
 	}
-	log.LogDebugf("BatchGetXAttr: inodes(%v) xattrInfos(%v)", len(inodes), len(batchInfos))
-	return batchInfos, nil
+	return xattrs, nil
 }
 
 /*
@@ -680,8 +709,9 @@ func (mw *MetaWrapper) RemoveMultipart_ll(multipartID string, parentId uint64) e
 
 	status, err := mw.removeMultipart(mp, multipartID)
 	if err != nil || status != statusOK {
-		log.LogErrorf("RemoveMultipart_ll: partition get multipart fail, partitionID(%v) multipartID(%v) err(%v) status(%v)",
-			mp.PartitionID, multipartID, err, status)
+		log.LogErrorf("RemoveMultipart_ll: partition remove multipart fail: "+
+			"volume(%v) partitionID(%v) multipartID(%v) err(%v) status(%v)",
+			mw.volname, mp.PartitionID, multipartID, err, status)
 		return statusToErrno(status)
 	}
 	return nil
@@ -732,7 +762,8 @@ func (mw *MetaWrapper) XAttrSet_ll(inode uint64, name, value []byte) error {
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
-	log.LogDebugf("XAttrSet_ll: set xattr, inode(%v) name(%v) value(%v) status(%v)", inode, name, value, status)
+	log.LogDebugf("XAttrSet_ll: set xattr: volume(%v) inode(%v) name(%v) value(%v) status(%v)",
+		mw.volname, inode, name, value, status)
 	return nil
 }
 
@@ -756,7 +787,8 @@ func (mw *MetaWrapper) XAttrGet_ll(inode uint64, name string) (*proto.XAttrInfo,
 		XAttrs: xAttrValues,
 	}
 
-	log.LogDebugf("XAttrGet_ll: get xattr, inode(%v) name(%v) value(%v)", inode, string(name), string(value))
+	log.LogDebugf("XAttrGet_ll: get xattr: volume(%v) inode(%v) name(%v) value(%v)",
+		mw.volname, inode, string(name), string(value))
 	return xAttr, nil
 }
 

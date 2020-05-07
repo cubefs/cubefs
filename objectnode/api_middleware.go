@@ -194,6 +194,26 @@ func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 	return handlerFunc
 }
 
+// Http's Expect header is a special header. When nginx is used as the reverse proxy in the front
+// end of ObjectNode, nginx will process the Expect header information in advance, send the http
+// status code 100 to the client, and will not forward this header information to ObjectNode.
+// At this time, if the client request uses the Expect header when signing, it will cause the
+// ObjectNode to verify the signature.
+// A workaround is used here to solve this problem. Add the following configuration in nginx:
+//   proxy_set_header X-Forwarded-Expect $ http_Expect
+// In this way, nginx will not only automatically handle the Expect handshake, but also send
+// the original value of Expect to the ObjectNode through X-Forwarded-Expect. ObjectNode only
+// needs to use the value of X-Forwarded-Expect.
+func (o *ObjectNode) expectMiddleware(next http.Handler) http.Handler {
+	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
+		if forwardedExpect, originExpect := r.Header.Get(HeaderNameXForwardedExpect), r.Header.Get(HeaderNameExpect); forwardedExpect != "" && originExpect == "" {
+			r.Header.Set(HeaderNameExpect, forwardedExpect)
+		}
+		next.ServeHTTP(w, r)
+	}
+	return handlerFunc
+}
+
 // CORSMiddleware returns a middleware handler to support CORS request.
 // This handler will write following header into response:
 //   Access-Control-Allow-Origin [*]

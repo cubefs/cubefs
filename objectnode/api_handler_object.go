@@ -17,7 +17,6 @@ package objectnode
 import (
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -206,7 +205,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// set response header for GetObject
 	if len(fileInfo.ETag) > 0 {
-		w.Header().Set(HeaderNameETag, fileInfo.ETag)
+		w.Header().Set(HeaderNameETag, wrapUnescapedQuot(fileInfo.ETag))
 	}
 	w.Header().Set(HeaderNameAcceptRange, HeaderValueAcceptRange)
 	w.Header().Set(HeaderNameLastModified, formatTimeRFC1123(fileInfo.ModifyTime))
@@ -216,6 +215,11 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(HeaderNameContentType, HeaderValueTypeStream)
 	}
 	w.Header().Set(HeaderNameContentLength, strconv.FormatUint(contentLength, 10))
+
+	// User-defined metadata
+	for name, value := range fileInfo.Metadata {
+		w.Header().Set(HeaderNameXAmzMetaPrefix+name, value)
+	}
 
 	if isRangeRead {
 		w.Header().Set(HeaderNameContentRange, fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size))
@@ -315,12 +319,12 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 		fileModTime := fileInfo.ModifyTime
 		modifiedTime, err := parseTimeRFC1123(modified)
 		if err != nil {
-			log.LogErrorf("headObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			log.LogDebugf("headObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
 			errorCode = InvalidArgument
 			return
 		}
 		if !fileModTime.After(modifiedTime) {
-			log.LogInfof("headObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
+			log.LogDebugf("headObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
 			errorCode = NotModified
 			return
 		}
@@ -329,7 +333,7 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html#API_HeadObject_RequestSyntax
 	if noneMatch != "" {
 		if noneMatchEtag := strings.Trim(noneMatch, "\""); noneMatchEtag == fileInfo.ETag {
-			log.LogErrorf("headObjectHandler: object eTag(%s) match If-None-Match header value(%s), requestId(%v)",
+			log.LogDebugf("headObjectHandler: object eTag(%s) match If-None-Match header value(%s), requestId(%v)",
 				fileInfo.ETag, noneMatchEtag, GetRequestID(r))
 			errorCode = NotModified
 			return
@@ -341,12 +345,12 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 		fileModTime := fileInfo.ModifyTime
 		modifiedTime, err := parseTimeRFC1123(unmodified)
 		if err != nil {
-			log.LogErrorf("headObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			log.LogDebugf("headObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
 			errorCode = InvalidArgument
 			return
 		}
 		if fileModTime.After(modifiedTime) {
-			log.LogInfof("headObjectHandler: file modified time after than specified time: requestID(%v)", GetRequestID(r))
+			log.LogDebugf("headObjectHandler: file modified time after than specified time: requestID(%v)", GetRequestID(r))
 			errorCode = PreconditionFailed
 			return
 		}
@@ -354,7 +358,7 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// set response header
 	if len(fileInfo.ETag) > 0 {
-		w.Header().Set(HeaderNameETag, fileInfo.ETag)
+		w.Header().Set(HeaderNameETag, wrapUnescapedQuot(fileInfo.ETag))
 	}
 	w.Header().Set(HeaderNameAcceptRange, HeaderValueAcceptRange)
 	if len(fileInfo.MIMEType) > 0 {
@@ -365,6 +369,10 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set(HeaderNameLastModified, formatTimeRFC1123(fileInfo.ModifyTime))
 	w.Header().Set(HeaderNameContentLength, strconv.Itoa(int(fileInfo.Size)))
 	w.Header().Set(HeaderNameContentMD5, EmptyContentMD5String)
+	// User-defined metadata
+	for name, value := range fileInfo.Metadata {
+		w.Header().Set(HeaderNameXAmzMetaPrefix+name, value)
+	}
 	return
 }
 
@@ -420,12 +428,10 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	deletesResult := DeletesResult{
-		DeletedObjects: make([]Deleted, 0),
-		DeletedErrors:  make([]Error, 0),
-	}
-	deletedObjects := make([]Deleted, 0, len(deleteReq.Objects))
-	deletedErrors := make([]Error, 0)
+	var (
+		deletedObjects = make([]Deleted, 0, len(deleteReq.Objects))
+		deletedErrors  = make([]Error, 0)
+	)
 
 	// Sort the key values in reverse order.
 	// The purpose of this is to delete the child leaf first and then the parent node.
@@ -448,13 +454,11 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		log.LogWarnf("deleteObjectsHandler: delete: requestID(%v) volume(%v) path(%v)",
 			GetRequestID(r), vol.Name(), object.Key)
 		if err != nil {
-			ossError := transferError(object.Key, err)
-			deletedErrors = append(deletedErrors, ossError)
+			deletedErrors = append(deletedErrors, Error{Key: object.Key, Message: err.Error()})
 			log.LogErrorf("deleteObjectsHandler: delete object failed: requestID(%v) volume(%v) path(%v) err(%v)",
 				GetRequestID(r), vol.Name(), object.Key, err)
 		} else {
-			deleted := Deleted{Key: object.Key}
-			deletedObjects = append(deletedObjects, deleted)
+			deletedObjects = append(deletedObjects, Deleted{Key: object.Key})
 			log.LogDebugf("deleteObjectsHandler: delete object success: requestID(%v) volume(%v) path(%v)", GetRequestID(r),
 				vol.Name(), object.Key)
 		}
@@ -464,13 +468,17 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	log.LogInfof("Audit: delete multiple objects: requestID(%v) remote(%v) volume(%v) objects(%v)",
 		GetRequestID(r), getRequestIP(r), vol.Name(), strings.Join(objectKeys, ","))
 
-	deletesResult.DeletedObjects = deletedObjects
-	deletesResult.DeletedErrors = deletedErrors
+	deleteResult := DeleteResult{
+		Deleted: deletedObjects,
+		Error:   deletedErrors,
+	}
 
-	log.LogDebugf("deleteObjectsHandler: delete objects: deletes(%v) errors(%v)", len(deletesResult.DeletedObjects), len(deletesResult.DeletedErrors))
+	log.LogDebugf("deleteObjectsHandler: delete objects: deletes(%v) errors(%v)",
+		len(deleteResult.Deleted), len(deleteResult.Error))
+
 	var bytesRes []byte
 	var marshalError error
-	if bytesRes, marshalError = MarshalXMLEntity(deletesResult); marshalError != nil {
+	if bytesRes, marshalError = MarshalXMLEntity(deleteResult); marshalError != nil {
 		log.LogErrorf("deleteObjectsHandler: marshal xml entity fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
 		return
@@ -696,7 +704,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// get owner
-	bucketOwner := NewBucketOwner(param.AccessKey())
+	bucketOwner := NewBucketOwner(vol)
 	var contents = make([]*Content, 0)
 	if len(fsFileInfos) > 0 {
 		for _, fsFileInfo := range fsFileInfos {
@@ -834,7 +842,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	// get owner
 	var bucketOwner *BucketOwner
 	if fetchOwnerBool {
-		bucketOwner = NewBucketOwner(param.AccessKey())
+		bucketOwner = NewBucketOwner(vol)
 	}
 
 	var contents = make([]*Content, 0)
@@ -926,6 +934,19 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check 'x-amz-tagging' header
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html#API_PutObject_RequestSyntax
+	var tagging *Tagging
+	if xAmxTagging := r.Header.Get(HeaderNameXAmzTagging); xAmxTagging != "" {
+		if tagging, err = ParseTagging(xAmxTagging); err != nil {
+			errorCode = InvalidArgument
+			return
+		}
+	}
+
+	// Checking user-defined metadata
+	var metadata = ParseUserDefinedMetadata(r.Header)
+
 	// Get request MD5, if request MD5 is not empty, compute and verify it.
 	requestMD5 := r.Header.Get(HeaderNameContentMD5)
 
@@ -944,9 +965,14 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		GetRequestID(r), getRequestIP(r), vol.Name(), param.Object(), contentType)
 
 	var fsFileInfo *FSFileInfo
-	fsFileInfo, err = vol.WriteObject(param.Object(), r.Body, contentType)
-	if err == syscall.EISDIR || err == syscall.ENOTDIR {
-		errorCode = Conflict
+	var opt = &PutObjectOption{
+		MIMEType: contentType,
+		Tagging:  tagging,
+		Metadata: metadata,
+	}
+	fsFileInfo, err = vol.PutObject(param.Object(), r.Body, opt)
+	if err == syscall.EINVAL {
+		errorCode = ObjectModeConflict
 		return
 	}
 	if err != nil {
@@ -974,7 +1000,7 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// set response header
-	w.Header().Set(HeaderNameETag, fsFileInfo.ETag)
+	w.Header().Set(HeaderNameETag, wrapUnescapedQuot(fsFileInfo.ETag))
 	w.Header().Set(HeaderNameContentLength, "0")
 	return
 }
@@ -1072,13 +1098,7 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 
 	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
 
-	var output = NewTagging()
-	if len(ossTaggingData) > 0 {
-		if err = json.Unmarshal(ossTaggingData, output); err != nil {
-			log.LogErrorf("getObjectTaggingHandler: decode tagging from json fail: requestID(%v) raw(%v) err(%v)",
-				GetRequestID(r), string(ossTaggingData), err)
-		}
-	}
+	var output, _ = ParseTagging(string(ossTaggingData))
 
 	var encoded []byte
 	if encoded, err = MarshalXMLEntity(output); err != nil {
@@ -1090,7 +1110,6 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	if _, err = w.Write(encoded); err != nil {
 		log.LogErrorf("getObjectTaggingHandler: write response fail: requestID(%v) err（%v)", GetRequestID(r), err)
 	}
-
 	return
 }
 
@@ -1140,14 +1159,7 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	var encoded []byte
-	if encoded, err = json.Marshal(tagging); err != nil {
-		log.LogWarnf("putObjectTaggingHandler: encode tagging data fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
-		return
-	}
-
-	if err = vol.SetXAttr(param.object, XAttrKeyOSSTagging, encoded); err != nil {
+	if err = vol.SetXAttr(param.object, XAttrKeyOSSTagging, []byte(tagging.Encode())); err != nil {
 		log.LogErrorf("pubObjectTaggingHandler: volume set tagging fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
 		errorCode = InternalErrorCode(err)
@@ -1192,6 +1204,8 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 		errorCode = InternalErrorCode(err)
 		return
 	}
+
+	w.WriteHeader(http.StatusNoContent)
 	return
 }
 

@@ -371,7 +371,6 @@ func newUserListCmd(client *master.MasterClient) *cobra.Command {
 			if users, err = client.UserAPI().ListUsers(optKeyword); err != nil {
 				return
 			}
-			stdout("[Users]\n")
 			stdout("%v\n", userInfoTableHeader)
 			for _, user := range users {
 				stdout("%v\n", formatUserInfoTableRow(user))

@@ -64,7 +64,7 @@ create_cluster_user() {
     # check user exist
     ${cli} user info ${Owner} &> /dev/null
     if [[ $? -eq 0 ]] ; then
-        echo -e "\033[32m[exist]\033[0m"
+        echo -e "\033[32mdone\033[0m"
         return
     fi
     # try create user
@@ -106,7 +106,7 @@ show_cluster_info() {
     echo &>> ${tmp_file}
     ${cli} user info ${Owner} &>> ${tmp_file}
     echo &>> ${tmp_file}
-    ${cli} volume info ${Owner} &>> ${tmp_file}
+    ${cli} volume info ${VolName} &>> ${tmp_file}
     echo &>> ${tmp_file}
     cat /tmp/collect_cluster_info | grep -v "Master address"
 }

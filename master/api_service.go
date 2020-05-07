@@ -289,9 +289,11 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		"clusterLastTotalDataPartitions[%v],vol[%v] has %v data partitions previously and %v data partitions now",
 		clusterTotalDataPartitions, volName, lastTotalDataPartitions, len(vol.dataPartitions.partitions))
 	if err != nil {
-		rstMsg = fmt.Sprintf("%v \n err[%v]", rstMsg, err.Error())
+		log.LogErrorf("create data partition fail: volume(%v) err(%v)", volName, err)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
 func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {

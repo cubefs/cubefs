@@ -1332,8 +1332,13 @@ func (c *Cluster) createVol(name, owner, zoneName string, mpCount, dpReplicaNum,
 		goto errHandler
 	}
 	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
-		vol.initDataPartitions(c)
-		readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
+		if err = vol.initDataPartitions(c); err == nil {
+			readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
+			break
+		}
+	}
+	if err != nil {
+		goto errHandler
 	}
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
 	vol.updateViewCache(c)

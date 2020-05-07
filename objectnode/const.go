@@ -33,6 +33,9 @@ const (
 	HeaderNameAcceptRange   = "Accept-Ranges"
 	HeaderNameRange         = "Range"
 
+	HeaderNameExpect           = "Expect"
+	HeaderNameXForwardedExpect = "X-Forwarded-Expect"
+
 	// Headers for CORS validation
 	HeaderNameAccessControlAllowOrigin  = "Access-Control-Allow-Origin"
 	HeaderNameAccessControlAllowMethods = "Access-Control-Allow-Methods"
@@ -48,6 +51,8 @@ const (
 	HeaderNameCopyModified        = "x-amz-copy-source-if-modified-since"
 	HeaderNameCopyUnModified      = "x-amz-copy-source-if-unmodified-since"
 	HeaderNameDecodeContentLength = "X-Amz-Decoded-Content-Length"
+	HeaderNameXAmzTagging         = "x-amz-tagging"
+	HeaderNameXAmzMetaPrefix      = "x-amz-meta-"
 
 	HeaderNameIfMatch           = "If-Match"
 	HeaderNameIfNoneMatch       = "If-None-Match"
@@ -99,10 +104,13 @@ const (
 
 // XAttr keys for ObjectNode compatible feature
 const (
-	XAttrKeyOSSETag    = "oss:tag"
+	XAttrKeyOSSETag    = "oss:etag"
 	XAttrKeyOSSTagging = "oss:tagging"
 	XAttrKeyOSSPolicy  = "oss:policy"
 	XAttrKeyOSSMIME    = "oss:mime"
+
+	// Departure
+	XAttrKeyOSSETagInvalid = "oss:tag"
 )
 
 const (
@@ -116,4 +124,8 @@ const (
 const (
 	DefaultFileMode = 0644
 	DefaultDirMode  = DefaultFileMode | os.ModeDir
+)
+
+const (
+	SplitFileRangeBlockSize = 10 * 1024 * 1024 // 10MB
 )

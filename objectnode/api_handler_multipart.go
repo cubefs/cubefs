@@ -17,6 +17,7 @@ package objectnode
 import (
 	"net/http"
 	"strconv"
+	"syscall"
 
 	"github.com/chubaofs/chubaofs/util/log"
 )
@@ -146,7 +147,12 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 
 	// handle exception
 	var fsFileInfo *FSFileInfo
-	if fsFileInfo, err = vol.WritePart(param.Object(), uploadId, uint16(partNumberInt), r.Body); err != nil {
+	fsFileInfo, err = vol.WritePart(param.Object(), uploadId, uint16(partNumberInt), r.Body)
+	if err == syscall.ENOENT {
+		errorCode = NoSuchUpload
+		return
+	}
+	if err != nil {
 		log.LogErrorf("uploadPartHandler: write part fail, requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
 		return
@@ -233,6 +239,10 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fsParts, nextMarker, isTruncated, err := vol.ListParts(param.Object(), uploadId, maxPartsInt, partNoMarkerInt)
+	if err == syscall.ENOENT {
+		errorCode = NoSuchUpload
+		return
+	}
 	if err != nil {
 		log.LogErrorf("listPartsHandler: Volume list parts fail, requestID(%v) uploadID(%v) maxParts(%v) partNoMarker(%v) err(%v)",
 			GetRequestID(r), uploadId, maxPartsInt, partNoMarkerInt, err)
@@ -244,7 +254,7 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 		GetRequestID(r), uploadId, maxPartsInt, partNoMarkerInt, len(fsParts), nextMarker, isTruncated)
 
 	// get owner
-	bucketOwner := NewBucketOwner(param.accessKey)
+	bucketOwner := NewBucketOwner(vol)
 
 	// get parts
 	parts := NewParts(fsParts)
@@ -325,6 +335,10 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	}
 
 	fsFileInfo, err := vol.CompleteMultipart(param.Object(), uploadId)
+	if err == syscall.ENOENT {
+		errorCode = NoSuchUpload
+		return
+	}
 	if err != nil {
 		log.LogErrorf("completeMultipartUploadHandler: complete multipart fail, requestID(%v) uploadID(%v) err(%v)",
 			GetRequestID(r), uploadId, err)
@@ -338,7 +352,7 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	completeResult := CompleteMultipartResult{
 		Bucket: param.Bucket(),
 		Key:    param.Object(),
-		ETag:   fsFileInfo.ETag,
+		ETag:   wrapUnescapedQuot(fsFileInfo.ETag),
 	}
 
 	var bytes []byte
@@ -402,7 +416,8 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 	}
 
 	// Abort multipart upload
-	if err = vol.AbortMultipart(param.Object(), uploadId); err != nil {
+	err = vol.AbortMultipart(param.Object(), uploadId)
+	if err != nil && err != syscall.ENOENT {
 		log.LogErrorf("abortMultipartUploadHandler: Volume abort multipart fail, requestID(%v) uploadID(%v) err(%v)", GetRequestID(r), uploadId, err)
 		errorCode = InternalErrorCode(err)
 		return
