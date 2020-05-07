@@ -18,6 +18,8 @@ import (
 	"container/list"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 const (
@@ -51,29 +53,27 @@ func NewInodeCache(exp time.Duration, maxElements int) *InodeCache {
 	return ic
 }
 
-// Put puts the given inode into the inode cache.
-func (ic *InodeCache) Put(inode *Inode) {
+// Put puts the given inode info into the inode cache.
+func (ic *InodeCache) Put(info *proto.InodeInfo) {
 	ic.Lock()
-	old, ok := ic.cache[inode.ino]
+	old, ok := ic.cache[info.Inode]
 	if ok {
 		ic.lruList.Remove(old)
-		delete(ic.cache, inode.ino)
+		delete(ic.cache, info.Inode)
 	}
 
 	if ic.lruList.Len() >= ic.maxElements {
 		ic.evict(true)
 	}
 
-	inode.setExpiration(ic.expiration)
-	element := ic.lruList.PushFront(inode)
-	ic.cache[inode.ino] = element
+	inodeSetExpiration(info, ic.expiration)
+	element := ic.lruList.PushFront(info)
+	ic.cache[info.Inode] = element
 	ic.Unlock()
-
-	//log.LogDebugf("InodeCache PutConnect: inode(%v)", inode)
 }
 
-// Get returns the inode based on the given inode ID.
-func (ic *InodeCache) Get(ino uint64) *Inode {
+// Get returns the inode info based on the given inode number.
+func (ic *InodeCache) Get(ino uint64) *proto.InodeInfo {
 	ic.RLock()
 	element, ok := ic.cache[ino]
 	if !ok {
@@ -81,17 +81,17 @@ func (ic *InodeCache) Get(ino uint64) *Inode {
 		return nil
 	}
 
-	inode := element.Value.(*Inode)
-	if inode.expired() {
+	info := element.Value.(*proto.InodeInfo)
+	if inodeExpired(info) {
 		ic.RUnlock()
 		//log.LogDebugf("InodeCache GetConnect expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), inode)
 		return nil
 	}
 	ic.RUnlock()
-	return inode
+	return info
 }
 
-// Delete deletes the inode based on the given inode ID.
+// Delete deletes the inode info based on the given inode number.
 func (ic *InodeCache) Delete(ino uint64) {
 	//log.LogDebugf("InodeCache Delete: ino(%v)", ino)
 	ic.Lock()
@@ -108,9 +108,7 @@ func (ic *InodeCache) Delete(ino uint64) {
 // The caller should grab the WRITE lock of the inode cache.
 func (ic *InodeCache) evict(foreground bool) {
 	var count int
-	//defer func() {
-	//	log.LogInfof("InodeCache: evict count(%v)", count)
-	//}()
+
 	for i := 0; i < MinInodeCacheEvictNum; i++ {
 		element := ic.lruList.Back()
 		if element == nil {
@@ -120,14 +118,13 @@ func (ic *InodeCache) evict(foreground bool) {
 		// For background eviction, if all expired items have been evicted, just return
 		// But for foreground eviction, we need to evict at least MinInodeCacheEvictNum inodes.
 		// The foreground eviction, does not need to care if the inode has expired or not.
-		inode := element.Value.(*Inode)
-		if !foreground && !inode.expired() {
+		info := element.Value.(*proto.InodeInfo)
+		if !foreground && !inodeExpired(info) {
 			return
 		}
 
 		ic.lruList.Remove(element)
-		delete(ic.cache, inode.ino)
-		//log.LogInfof("InodeCache: evict inode(%v)", inode)
+		delete(ic.cache, info.Inode)
 		count++
 	}
 
@@ -141,13 +138,12 @@ func (ic *InodeCache) evict(foreground bool) {
 		if element == nil {
 			break
 		}
-		inode := element.Value.(*Inode)
-		if !inode.expired() {
+		info := element.Value.(*proto.InodeInfo)
+		if !inodeExpired(info) {
 			break
 		}
 		ic.lruList.Remove(element)
-		delete(ic.cache, inode.ino)
-		//log.LogInfof("InodeCache: evict inode(%v)", inode)
+		delete(ic.cache, info.Inode)
 		count++
 	}
 }
