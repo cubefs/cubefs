@@ -43,6 +43,7 @@ const (
 	DisableDcache
 	SubDir
 	FsyncOnClose
+	MaxCPUs
 
 	MaxMountOption
 )
@@ -103,6 +104,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[DisableDcache] = MountOption{"disableDcache", "Disable Dentry Cache", "", false}
 	opts[SubDir] = MountOption{"subdir", "Mount sub directory", "", ""}
 	opts[FsyncOnClose] = MountOption{"fsyncOnClose", "Perform fsync upon file close", "", true}
+	opts[MaxCPUs] = MountOption{"maxcpus", "The maximum number of CPUs that can be executing", "", int64(-1)}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -228,4 +230,5 @@ type MountOptions struct {
 	DisableDcache bool
 	SubDir        string
 	FsyncOnClose  bool
+	MaxCPUs       int64
 }
