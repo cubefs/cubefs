@@ -17,27 +17,31 @@ package exporter
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
-	PromHandlerPattern    = "/metrics"     // prometheus handler
-	AppName               = "cfs"          //app name
-	ConfigKeyExporterPort = "exporterPort" //exporter port
-	ConfigKeyConsulAddr   = "consulAddr"   //consul addr
-	ChSize                = 1024 * 10      //collect chan size
+	PromHandlerPattern      = "/metrics"       // prometheus handler
+	AppName                 = "cfs"            //app name
+	ConfigKeyExporterEnable = "exporterEnable" //exporter enable
+	ConfigKeyExporterPort   = "exporterPort"   //exporter port
+	ConfigKeyConsulAddr     = "consulAddr"     //consul addr
+	ChSize                  = 1024 * 10        //collect chan size
 )
 
 var (
 	namespace         string
 	clustername       string
 	modulename        string
+	exporterPort      int64
 	enabledPrometheus = false
 	replacer          = strings.NewReplacer("-", "_", ".", "_", " ", "_", ",", "_", ":", "_")
 )
@@ -49,11 +53,16 @@ func metricsName(name string) string {
 // Init initializes the exporter.
 func Init(role string, cfg *config.Config) {
 	modulename = role
-	port := cfg.GetInt64(ConfigKeyExporterPort)
-	if port == 0 {
-		log.LogInfof("exporter port not set")
+	if !cfg.GetBoolWithDefault(ConfigKeyExporterEnable, true) {
+		log.LogInfof("%v exporter disabled", role)
 		return
 	}
+	port := cfg.GetInt64(ConfigKeyExporterPort)
+	if port == 0 {
+		log.LogInfof("%v exporter port not set", port)
+		return
+	}
+	exporterPort = port
 	enabledPrometheus = true
 	http.Handle(PromHandlerPattern, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
 		Timeout: 5 * time.Second,
@@ -75,12 +84,39 @@ func Init(role string, cfg *config.Config) {
 	log.LogInfof("exporter Start: %v", addr)
 }
 
+// Init initializes the exporter.
+func InitWithRouter(role string, cfg *config.Config, router *mux.Router, exPort string) {
+	modulename = role
+	if !cfg.GetBoolWithDefault(ConfigKeyExporterEnable, true) {
+		log.LogInfof("%v metrics exporter disabled", role)
+		return
+	}
+	exporterPort, _ = strconv.ParseInt(exPort, 10, 64)
+	enabledPrometheus = true
+	router.NewRoute().Name("metrics").
+		Methods(http.MethodGet).
+		Path(PromHandlerPattern).
+		Handler(promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
+			Timeout: 5 * time.Second,
+		}))
+	namespace = AppName + "_" + role
+
+	collect()
+
+	m := NewGauge("start_time")
+	m.Set(time.Now().Unix() * 1000)
+
+	log.LogInfof("exporter Start: %v %v", exporterPort, m)
+}
+
 func RegistConsul(cluster string, role string, cfg *config.Config) {
 	clustername = replacer.Replace(cluster)
 	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
-	port := cfg.GetInt64(ConfigKeyExporterPort)
-	if len(consulAddr) > 0 {
-		RegisterConsul(consulAddr, AppName, role, cluster, port)
+	if exporterPort == int64(0) {
+		exporterPort = cfg.GetInt64(ConfigKeyExporterPort)
+	}
+	if exporterPort != int64(0) && len(consulAddr) > 0 {
+		DoConsulRegisterProc(consulAddr, AppName, role, cluster, exporterPort)
 	}
 }
 

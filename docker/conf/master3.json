@@ -9,7 +9,7 @@
   "retainLogs": "2",
   "consulAddr": "http://192.168.0.101:8500",
   "exporterPort": 9500,
-  "logLevel": "info",
+  "logLevel": "debug",
   "logDir": "/cfs/log",
   "walDir": "/cfs/data/wal",
   "storeDir": "/cfs/data/store",

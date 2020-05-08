@@ -47,11 +47,11 @@ func GetConsulId(app string, role string, host string, port int64) string {
 	return fmt.Sprintf("%s_%s_%s_%d", app, role, host, port)
 }
 
-func RegisterConsul(addr, app, role, cluster string, port int64) {
+func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
 	if len(addr) <= 0 {
 		return
 	}
-	log.LogDebugf("consul register enable %v", addr)
+	log.LogInfof("metrics consul register %v %v %v", addr, cluster, port)
 	ticker := time.NewTicker(RegisterPeriod)
 	defer func() {
 		if err := recover(); err != nil {
