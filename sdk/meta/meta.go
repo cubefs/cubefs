@@ -168,16 +168,9 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.forceUpdate = make(chan struct{}, 1)
 	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
 
-	if err = mw.updateClusterInfo(); err != nil {
-		return nil, err
-	}
-	if err = mw.updateVolStatInfo(); err != nil {
-		return nil, err
-	}
-
 	limit := MaxMountRetryLimit
 retry:
-	if err := mw.initMetaWrapper(); err != nil {
+	if err = mw.initMetaWrapper(); err != nil {
 		if limit <= 0 {
 			return nil, errors.Trace(err, "Init meta wrapper failed!")
 		} else {
@@ -192,12 +185,20 @@ retry:
 	return mw, nil
 }
 
-func (mw *MetaWrapper) initMetaWrapper() error {
-	err := mw.updateVolStatInfo()
-	if err != nil {
+func (mw *MetaWrapper) initMetaWrapper() (err error) {
+	if err = mw.updateClusterInfo(); err != nil {
 		return err
 	}
-	return mw.updateMetaPartitions()
+
+	if err = mw.updateVolStatInfo(); err != nil {
+		return err
+	}
+
+	if err = mw.updateMetaPartitions(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (mw *MetaWrapper) Owner() string {
