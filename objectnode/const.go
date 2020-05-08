@@ -19,20 +19,19 @@ import "os"
 type OSSOperation string
 
 const (
-	HeaderNameServer        = "Server"
-	HeaderNameHost          = "Host"
-	HeaderNameLastModified  = "Last-Modified"
-	HeaderNameETag          = "ETag"
-	HeaderNameDate          = "Date"
-	HeaderNameContentMD5    = "content-md5"
-	HeaderNameContentEnc    = "content-encoding"
-	HeaderNameContentType   = "Content-Type"
-	HeaderNameContentLength = "Content-Length"
-	HeaderNameContentRange  = "Content-Range"
-	HeaderNameAuthorization = "Authorization"
-	HeaderNameAcceptRange   = "Accept-Ranges"
-	HeaderNameRange         = "Range"
-
+	HeaderNameServer           = "Server"
+	HeaderNameHost             = "Host"
+	HeaderNameLastModified     = "Last-Modified"
+	HeaderNameETag             = "ETag"
+	HeaderNameDate             = "Date"
+	HeaderNameContentMD5       = "content-md5"
+	HeaderNameContentEnc       = "content-encoding"
+	HeaderNameContentType      = "Content-Type"
+	HeaderNameContentLength    = "Content-Length"
+	HeaderNameContentRange     = "Content-Range"
+	HeaderNameAuthorization    = "Authorization"
+	HeaderNameAcceptRange      = "Accept-Ranges"
+	HeaderNameRange            = "Range"
 	HeaderNameExpect           = "Expect"
 	HeaderNameXForwardedExpect = "X-Forwarded-Expect"
 
@@ -53,6 +52,7 @@ const (
 	HeaderNameDecodeContentLength = "X-Amz-Decoded-Content-Length"
 	HeaderNameXAmzTagging         = "x-amz-tagging"
 	HeaderNameXAmzMetaPrefix      = "x-amz-meta-"
+	HeaderNameDownloadPartCount   = "x-amz-mp-parts-count"
 
 	HeaderNameIfMatch           = "If-Match"
 	HeaderNameIfNoneMatch       = "If-None-Match"
@@ -127,5 +127,7 @@ const (
 )
 
 const (
-	SplitFileRangeBlockSize = 10 * 1024 * 1024 // 10MB
+	SplitFileRangeBlockSize     = 10 * 1024 * 1024 // 10MB
+	ParallelDownloadPartSize    = 10 * 1024 * 1024
+	MinParallelDownloadFileSize = 2 * ParallelDownloadPartSize
 )
