@@ -49,3 +49,11 @@ Example:
             "10.196.59.200:17010"
         ]
     }
+
+
+Notice
+-------------
+
+  * `listen`, `raftHeartbeatPort`, `raftReplicaPort` can't be modified after boot startup first time;
+  * Above config would be stored under directory `raftDir` in `constcfg` file. If need modified forcely，you must delete this file manually;
+  * These configuration items associated with master's metanode infomation . If they have been modified, master would't be found old metanode;
