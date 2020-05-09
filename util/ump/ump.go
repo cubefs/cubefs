@@ -16,7 +16,6 @@ package ump
 
 import (
 	"os"
-	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -59,7 +58,6 @@ var (
 )
 
 func InitUmp(module, dataDir string) (err error) {
-	runtime.GOMAXPROCS(runtime.NumCPU())
 	if _, err = os.Stat(dataDir); err != nil {
 		enableUmp = false
 		err = nil

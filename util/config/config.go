@@ -87,6 +87,15 @@ func (c *Config) GetFloat(key string) float64 {
 	return 0
 }
 
+// returns a bool value for the config key with default val when not present
+func (c *Config) GetBoolWithDefault(key string, defval bool) bool {
+	_, present := c.data[key]
+	if !present {
+		return defval
+	}
+	return c.GetBool(key)
+}
+
 // GetBool returns a bool value for the config key.
 func (c *Config) GetBool(key string) bool {
 	x, present := c.data[key]

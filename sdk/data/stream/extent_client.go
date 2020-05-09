@@ -16,7 +16,6 @@ package stream
 
 import (
 	"fmt"
-	"runtime"
 	"sync"
 	"time"
 
@@ -104,7 +103,6 @@ type ExtentClient struct {
 
 // NewExtentClient returns a new extent client.
 func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
-	runtime.GOMAXPROCS(runtime.NumCPU())
 	client = new(ExtentClient)
 
 	limit := MaxMountRetryLimit

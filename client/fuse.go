@@ -91,8 +91,6 @@ func init() {
 }
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
-
 	flag.Parse()
 
 	if *configVersion {
@@ -118,6 +116,12 @@ func main() {
 	if err != nil {
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
+	}
+
+	if opt.MaxCPUs > 0 {
+		runtime.GOMAXPROCS(int(opt.MaxCPUs))
+	} else {
+		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
 
 	exporter.Init(ModuleName, cfg)
@@ -341,6 +345,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.DisableDcache = GlobalMountOptions[proto.DisableDcache].GetBool()
 	opt.SubDir = GlobalMountOptions[proto.SubDir].GetString()
 	opt.FsyncOnClose = GlobalMountOptions[proto.FsyncOnClose].GetBool()
+	opt.MaxCPUs = GlobalMountOptions[proto.MaxCPUs].GetInt64()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
