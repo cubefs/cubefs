@@ -80,13 +80,9 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 			}
 			return
 		}
-		// Start a goroutine for packet handling. Do not block connection read goroutine.
-		go func() {
-			if err := m.handlePacket(conn, p, remoteAddr); err != nil {
-				log.LogError("serve operatorPkg: ", err.Error())
-				return
-			}
-		}()
+		if err := m.handlePacket(conn, p, remoteAddr); err != nil {
+			log.LogError("serve operatorPkg: ", err.Error())
+		}
 	}
 }
 
