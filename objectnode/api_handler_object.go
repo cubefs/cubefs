@@ -75,6 +75,8 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var rangeLower uint64
 	var rangeUpper uint64
 	var isRangeRead bool
+	var partSize uint64
+	var partCount uint64
 	if len(rangeOpt) > 0 && rangeRegexp.MatchString(rangeOpt) {
 
 		var hyphenIndex = strings.Index(rangeOpt, "-")
@@ -204,9 +206,6 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// set response header for GetObject
-	if len(fileInfo.ETag) > 0 {
-		w.Header().Set(HeaderNameETag, wrapUnescapedQuot(fileInfo.ETag))
-	}
 	w.Header().Set(HeaderNameAcceptRange, HeaderValueAcceptRange)
 	w.Header().Set(HeaderNameLastModified, formatTimeRFC1123(fileInfo.ModifyTime))
 	if len(fileInfo.MIMEType) > 0 {
@@ -214,15 +213,48 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.Header().Set(HeaderNameContentType, HeaderValueTypeStream)
 	}
-	w.Header().Set(HeaderNameContentLength, strconv.FormatUint(contentLength, 10))
+
+	//check request is whether contain param : partNumber
+	partNumber := r.URL.Query().Get(ParamPartNumber)
+	if len(partNumber) > 0 && fileInfo.Size >= MinParallelDownloadFileSize {
+		partNumberInt, err := strconv.ParseUint(partNumber, 10, 64)
+		if err != nil {
+			log.LogErrorf("getObjectHandler: parse param partNumber(%s) fail: requestID(%v) err(%v)", partNumber, GetRequestID(r), err)
+			errorCode = InvalidArgument
+			return
+		}
+		partSize, partCount, rangeLower, rangeUpper, err = parsePartInfo(partNumberInt, uint64(fileInfo.Size))
+		log.LogDebugf("getObjectHandler: parsed partSize(%d), partCount(%d), rangeLower(%d), rangeUpper(%d)", partSize, partCount, rangeLower, rangeUpper)
+		if err != nil {
+			errorCode = InternalErrorCode(err)
+			return
+		}
+
+		if partNumberInt > partCount{
+			log.LogErrorf("getObjectHandler: param partNumber(%d) is more then partCount{%d}: requestID(%v)", partNumberInt, partCount, GetRequestID(r))
+			errorCode = NoSuchKey
+			return
+		}
+		// Header : Accept-Range, Content-Length, Content-Range, ETag, x-amz-mp-parts-count
+		w.Header().Set(HeaderNameContentLength, strconv.Itoa(int(partSize)))
+		w.Header().Set(HeaderNameContentRange, fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size))
+		w.Header().Set(HeaderNameDownloadPartCount, strconv.Itoa(int(partCount)))
+		if len(fileInfo.ETag) > 0 && !strings.Contains(fileInfo.ETag, "-") {
+			w.Header().Set(HeaderNameETag, fmt.Sprintf("%s-%d", fileInfo.ETag, partCount))
+		}
+	} else {
+		w.Header().Set(HeaderNameContentLength, strconv.FormatUint(contentLength, 10))
+		if len(fileInfo.ETag) > 0 {
+			w.Header().Set(HeaderNameETag, wrapUnescapedQuot(fileInfo.ETag))
+		}
+		if isRangeRead {
+			w.Header().Set(HeaderNameContentRange, fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size))
+		}
+	}
 
 	// User-defined metadata
 	for name, value := range fileInfo.Metadata {
 		w.Header().Set(HeaderNameXAmzMetaPrefix+name, value)
-	}
-
-	if isRangeRead {
-		w.Header().Set(HeaderNameContentRange, fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size))
 	}
 
 	if fileInfo.Mode.IsDir() {
@@ -232,7 +264,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// get object content
 	var offset = rangeLower
 	var size = uint64(fileInfo.Size)
-	if isRangeRead {
+	if isRangeRead || len(partNumber) > 0{
 		if rangeUpper == 0 {
 			size = uint64(fileInfo.Size) - rangeLower
 		} else {
@@ -357,18 +389,48 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// set response header
-	if len(fileInfo.ETag) > 0 {
-		w.Header().Set(HeaderNameETag, wrapUnescapedQuot(fileInfo.ETag))
-	}
 	w.Header().Set(HeaderNameAcceptRange, HeaderValueAcceptRange)
+	w.Header().Set(HeaderNameLastModified, formatTimeRFC1123(fileInfo.ModifyTime))
+	w.Header().Set(HeaderNameContentMD5, EmptyContentMD5String)
 	if len(fileInfo.MIMEType) > 0 {
 		w.Header().Set(HeaderNameContentType, fileInfo.MIMEType)
 	} else {
 		w.Header().Set(HeaderNameContentType, HeaderValueTypeStream)
 	}
-	w.Header().Set(HeaderNameLastModified, formatTimeRFC1123(fileInfo.ModifyTime))
-	w.Header().Set(HeaderNameContentLength, strconv.Itoa(int(fileInfo.Size)))
-	w.Header().Set(HeaderNameContentMD5, EmptyContentMD5String)
+
+	// check request is whether contain param : partNumber
+	partNumber := r.URL.Query().Get(ParamPartNumber)
+	if len(partNumber) > 0 && fileInfo.Size >= MinParallelDownloadFileSize {
+		partNumberInt, err := strconv.ParseUint(partNumber, 10, 64)
+		if err != nil {
+			log.LogErrorf("getObjectHandler: parse param partNumber(%s) fail: requestID(%v) err(%v)", partNumber, GetRequestID(r), err)
+			errorCode = InvalidArgument
+			return
+		}
+		partSize, partCount, rangeLower, rangeUpper, err := parsePartInfo(partNumberInt, uint64(fileInfo.Size))
+		log.LogDebugf("headObjectHandler: parsed partSize(%d), partCount(%d), rangeLower(%d), rangeUpper(%d)", partSize, partCount, rangeLower, rangeUpper)
+		if err != nil {
+			errorCode = InternalErrorCode(err)
+			return
+		}
+		if partNumberInt > partCount{
+			log.LogErrorf("getObjectHandler: param partNumber(%d) is more then partCount(%d): requestID(%v)", partNumberInt, partCount, GetRequestID(r))
+			errorCode = NoSuchKey
+			return
+		}
+		w.Header().Set(HeaderNameContentLength, strconv.Itoa(int(partSize)))
+		w.Header().Set(HeaderNameContentRange, fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size))
+		w.Header().Set(HeaderNameDownloadPartCount, strconv.Itoa(int(partCount)))
+		if len(fileInfo.ETag) > 0 && !strings.Contains(fileInfo.ETag, "-") {
+			w.Header().Set(HeaderNameETag, fmt.Sprintf("%s-%d", fileInfo.ETag, partCount))
+		}
+	} else {
+		w.Header().Set(HeaderNameContentLength, strconv.Itoa(int(fileInfo.Size)))
+		if len(fileInfo.ETag) > 0 {
+			w.Header().Set(HeaderNameETag, wrapUnescapedQuot(fileInfo.ETag))
+		}
+	}
+
 	// User-defined metadata
 	for name, value := range fileInfo.Metadata {
 		w.Header().Set(HeaderNameXAmzMetaPrefix+name, value)
@@ -1435,4 +1497,31 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 		log.LogErrorf("listObjectXAttrs: write response fail: requestID(%v) err(%v)", GetRequestID(r), err)
 	}
 	return
+}
+
+func parsePartInfo(partNumber uint64, fileSize uint64) (uint64, uint64, uint64, uint64, error) {
+	var partSize uint64
+	var partCount uint64
+	var rangeLower uint64
+	var rangeUpper uint64
+	//partSize, partCount, rangeLower, rangeUpper
+	partSizeConst := ParallelDownloadPartSize
+	partCount = fileSize / uint64(partSizeConst)
+	lastSize := fileSize % uint64(partSizeConst)
+	if lastSize > 0 {
+		partCount += 1
+	}
+
+	rangeLower = uint64(partSizeConst) * (partNumber - 1)
+	if lastSize > 0 && partNumber == partCount {
+		partSize = lastSize
+		rangeUpper = fileSize - 1
+	} else {
+		partSize = uint64(partSizeConst)
+		rangeUpper = (partSize * partNumber) - 1
+	}
+	if partNumber > partCount {
+		return 0, 0, 0, 0, nil
+	}
+	return partSize, partCount, rangeLower, rangeUpper, nil
 }
