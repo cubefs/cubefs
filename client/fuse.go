@@ -228,6 +228,10 @@ func startDaemon() error {
 	}
 
 	env := os.Environ()
+
+	// add GODEBUG=madvdontneed=1 environ, to make sysUnused uses madvise(MADV_DONTNEED) to signal the kernel that a
+	// range of allocated memory contains unneeded data.
+	env = append(env, "GODEBUG=madvdontneed=1")
 	err = daemonize.Run(cmdPath, args, env, os.Stdout)
 	if err != nil {
 		return fmt.Errorf("startDaemon failed: daemon start failed, cmd(%v) args(%v) env(%v) err(%v)\n", cmdPath, args, env, err)
