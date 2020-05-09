@@ -562,26 +562,6 @@ func (partition *DataPartition) afterCreation(nodeAddr, diskPath string, c *Clus
 	return
 }
 
-// Check if the replica's size is aligned or not.
-func (partition *DataPartition) isReplicaSizeAligned() bool {
-	if len(partition.Replicas) == 0 {
-		return true
-	}
-	used := partition.Replicas[0].Used
-
-	var diff float64
-	for _, replica := range partition.Replicas {
-		tempDiff := math.Abs(float64(replica.Used) - float64(used))
-		if tempDiff > diff {
-			diff = tempDiff
-		}
-	}
-	if diff < float64(util.GB) {
-		return true
-	}
-	return false
-}
-
 // Check if it makes sense to compare the CRC.
 // Note that if loading the data into a data node is not finished, then there is no need to check the CRC.
 func (partition *DataPartition) needsToCompareCRC() (needCompare bool) {
