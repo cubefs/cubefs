@@ -248,6 +248,12 @@ func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
 			stdout("Delete user success.\n")
 			return
 		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validUsers(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	//cmd.Flags().BoolVarP(&optForce, "force", "f", false, "Force to delete user")
@@ -273,6 +279,12 @@ func newUserInfoCmd(client *master.MasterClient) *cobra.Command {
 				os.Exit(1)
 			}
 			printUserInfo(userInfo)
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validUsers(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 
@@ -344,19 +356,24 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			}
 			printUserInfo(userInfo)
 		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validUsers(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
 	}
 	return cmd
 }
 
 const (
-	cmdUserListUse   = "list"
 	cmdUserListShort = "List cluster users"
 )
 
 func newUserListCmd(client *master.MasterClient) *cobra.Command {
 	var optKeyword string
 	var cmd = &cobra.Command{
-		Use:     cmdUserListUse,
+		Use:     CliOpList,
 		Short:   cmdUserListShort,
 		Aliases: []string{"ls"},
 		Run: func(cmd *cobra.Command, args []string) {
@@ -399,4 +416,18 @@ func printUserInfo(userInfo *proto.UserInfo) {
 	for vol, perms := range userInfo.Policy.AuthorizedVols {
 		stdout("%-20v    %-12v\n", vol, strings.Join(perms, ","))
 	}
+}
+func validUsers(client *master.MasterClient, toComplete string) []string {
+	var (
+		validUsers []string
+		users      []*proto.UserInfo
+		err        error
+	)
+	if users, err = client.UserAPI().ListUsers(toComplete); err != nil {
+		errout("Get user list failed:\n%v\n", err)
+	}
+	for _, user := range users {
+		validUsers = append(validUsers, user.UserID)
+	}
+	return validUsers
 }

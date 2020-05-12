@@ -25,13 +25,12 @@ import (
 )
 
 const (
-	cmdDataNodeUse   = "datanode [COMMAND]"
-	cmdDataNodeShort = "Manage meta nodes"
+	cmdDataNodeShort = "Manage data nodes"
 )
 
 func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   cmdDataNodeUse,
+		Use:   CliResourceDataNode,
 		Short: cmdDataNodeShort,
 	}
 	cmd.AddCommand(
@@ -41,7 +40,6 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdDataNodeListUse   = "list"
 	cmdDataNodeListShort = "List information of meta nodes"
 )
 
@@ -49,7 +47,7 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 	var optFilterStatus string
 	var optFilterWritable string
 	var cmd = &cobra.Command{
-		Use:     cmdDataNodeListUse,
+		Use:     CliOpList,
 		Short:   cmdDataNodeListShort,
 		Aliases: []string{"ls"},
 		Run: func(cmd *cobra.Command, args []string) {

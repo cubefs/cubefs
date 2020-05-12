@@ -41,7 +41,6 @@ func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdMetaNodeListUse   = "list"
 	cmdMetaNodeListShort = "List information of meta nodes"
 )
 
@@ -49,7 +48,7 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 	var optFilterStatus string
 	var optFilterWritable string
 	var cmd = &cobra.Command{
-		Use:     cmdMetaNodeListUse,
+		Use:     CliOpList,
 		Short:   cmdMetaNodeListShort,
 		Aliases: []string{"ls"},
 		Run: func(cmd *cobra.Command, args []string) {
