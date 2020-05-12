@@ -251,6 +251,8 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(ControlCommandGetRate, super.GetRate)
 	http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
 	http.HandleFunc(ControlCommandFreeOSMemory, freeOSMemory)
+	http.HandleFunc(log.GetLogPath, log.GetLog)
+
 	go func() {
 		if opt.Profport != "" {
 			syslog.Println("Start pprof with port:", opt.Profport)
