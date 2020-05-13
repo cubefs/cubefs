@@ -679,6 +679,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 		if err != nil {
 			return
 		}
+	}else  {
 		dp.FullSyncTinyDeleteTime = time.Now().Unix()
 	}
 
