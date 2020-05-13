@@ -27,18 +27,27 @@ const (
 	cmdRootShort = "ChubaoFS Command Line Interface (CLI)"
 )
 
-func NewRootCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
-		Use:   path.Base(os.Args[0]),
-		Short: cmdRootShort,
-		Args:  cobra.MinimumNArgs(0),
+type ChubaoFSCmd struct {
+	CFSCmd *cobra.Command
+}
+
+func NewRootCmd(client *master.MasterClient) *ChubaoFSCmd {
+	var cmd = &ChubaoFSCmd{
+		CFSCmd: &cobra.Command{
+			Use:   path.Base(os.Args[0]),
+			Short: cmdRootShort,
+			Args:  cobra.MinimumNArgs(0),
+		},
 	}
-	cmd.AddCommand(
-		newClusterCmd(client),
+
+	cmd.CFSCmd.AddCommand(
+		cmd.newClusterCmd(client),
 		newVolCmd(client),
 		newUserCmd(client),
 		newMetaNodeCmd(client),
 		newDataNodeCmd(client),
+		newDataPartitionCmd(client),
+		newConfigCmd(),
 	)
 	return cmd
 }

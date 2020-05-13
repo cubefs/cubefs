@@ -39,6 +39,35 @@ func formatClusterView(cv *proto.ClusterView) string {
 	return sb.String()
 }
 
+var (
+	statInfoTablePattern = "    %-15v    %-15v    %-15v    %-15v\n"
+	statInfoTableHeader  = fmt.Sprintf(statInfoTablePattern,
+		"TOTAL/GB", "USED/GB", "INCREASED/GB", "USED RATIO")
+	zoneStatInfoTablePattern = "    %-10v   %-10v  %-15v    %-15v    %-15v    %-15v    %-10v    %-10v\n"
+	zoneStatInfoTableHeader  = fmt.Sprintf(zoneStatInfoTablePattern,
+		"ZONE NAME", "ROLE", "TOTAL/GB", "USED/GB", "AVAILABLE/GB ", "USED RATIO", "TOTAL NODES", "WRITEBLE NODES")
+)
+
+func formatClusterStat(cs *proto.ClusterStatInfo) string {
+	var sb = strings.Builder{}
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("DataNode Status:\n"))
+	sb.WriteString(statInfoTableHeader)
+	sb.WriteString(fmt.Sprintf(statInfoTablePattern, cs.DataNodeStatInfo.TotalGB, cs.DataNodeStatInfo.UsedGB, cs.DataNodeStatInfo.IncreasedGB, cs.DataNodeStatInfo.UsedRatio))
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("MetaNode Status:\n"))
+	sb.WriteString(statInfoTableHeader)
+	sb.WriteString(fmt.Sprintf(statInfoTablePattern, cs.MetaNodeStatInfo.TotalGB, cs.MetaNodeStatInfo.UsedGB, cs.MetaNodeStatInfo.IncreasedGB, cs.MetaNodeStatInfo.UsedRatio))
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("Zone List:\n"))
+	sb.WriteString(zoneStatInfoTableHeader)
+	for zoneName, zoneStat := range cs.ZoneStatInfo {
+		sb.WriteString(fmt.Sprintf(zoneStatInfoTablePattern, zoneName, "DATANODE", zoneStat.DataNodeStat.Total, zoneStat.DataNodeStat.Used, zoneStat.DataNodeStat.Avail, zoneStat.DataNodeStat.UsedRatio, zoneStat.DataNodeStat.TotalNodes, zoneStat.DataNodeStat.WritableNodes))
+		sb.WriteString(fmt.Sprintf(zoneStatInfoTablePattern, "", "METANODE", zoneStat.MetaNodeStat.Total, zoneStat.MetaNodeStat.Used, zoneStat.MetaNodeStat.Avail, zoneStat.MetaNodeStat.UsedRatio, zoneStat.MetaNodeStat.TotalNodes, zoneStat.MetaNodeStat.WritableNodes))
+	}
+	return sb.String()
+}
+
 var nodeViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v"
 
 func formatNodeViewTableHeader() string {
@@ -214,4 +243,25 @@ func fixUnit(curSize uint64, curUnitIndex int) (newSize uint64, newUnitIndex int
 func formatSize(size uint64) string {
 	fixedSize, fixedUnitIndex := fixUnit(size, 0)
 	return fmt.Sprintf("%v %v", fixedSize, units[fixedUnitIndex])
+}
+
+func formatReplica(indentation string, replica *proto.DataReplica) string {
+	var sb = strings.Builder{}
+	sb.WriteString(fmt.Sprintf("%vStatus:          %v\n", indentation, replica.Status))
+	sb.WriteString(fmt.Sprintf("%vTotal:           %v GB\n", indentation, replica.Total/(1024*1024*1024)))
+	sb.WriteString(fmt.Sprintf("%vDiskPath:        %v\n", indentation, replica.DiskPath))
+	sb.WriteString(fmt.Sprintf("%vAddr:            %v\n", indentation, replica.Addr))
+	sb.WriteString(fmt.Sprintf("%vUsed:            %v GB\n", indentation, replica.Used))
+	sb.WriteString(fmt.Sprintf("%vIsLeader:        %v\n", indentation, replica.IsLeader))
+	sb.WriteString(fmt.Sprintf("%vFileCount:       %v\n", indentation, replica.FileCount))
+	sb.WriteString(fmt.Sprintf("%vHasLoadResponse: %v\n", indentation, replica.HasLoadResponse))
+	sb.WriteString(fmt.Sprintf("%vNeedsToCompare:  %v\n", indentation, replica.NeedsToCompare))
+	sb.WriteString(fmt.Sprintf("%vReportTime:      %v\n", indentation, time.Unix(replica.ReportTime, 0).Format("2006-01-02 15:04:05")))
+	return sb.String()
+}
+func formatPeer(indentation string, peer proto.Peer) string {
+	var sb = strings.Builder{}
+	sb.WriteString(fmt.Sprintf("%vID:   %v\n", indentation, peer.ID))
+	sb.WriteString(fmt.Sprintf("%vPeer: %v\n", indentation, peer.Addr))
+	return sb.String()
 }

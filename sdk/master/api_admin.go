@@ -38,7 +38,18 @@ func (api *AdminAPI) GetCluster() (cv *proto.ClusterView, err error) {
 	}
 	return
 }
-
+func (api *AdminAPI) GetClusterStat() (cs *proto.ClusterStatInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminClusterStat)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	cs = &proto.ClusterStatInfo{}
+	if err = json.Unmarshal(data, &cs); err != nil {
+		return
+	}
+	return
+}
 func (api *AdminAPI) GetDataPartition(volName string, partitionID uint64) (partition *proto.DataPartitionInfo, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetDataPartition)

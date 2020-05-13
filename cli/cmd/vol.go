@@ -54,14 +54,13 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdVolListUse   = "list"
 	cmdVolListShort = "List cluster volumes"
 )
 
 func newVolListCmd(client *master.MasterClient) *cobra.Command {
 	var optKeyword string
 	var cmd = &cobra.Command{
-		Use:     cmdVolListUse,
+		Use:     CliOpList,
 		Short:   cmdVolListShort,
 		Aliases: []string{"ls"},
 		Run: func(cmd *cobra.Command, args []string) {
@@ -142,11 +141,11 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
-	cmd.Flags().IntVar(&optMPCount, "mp-count", cmdVolDefaultMPCount, "Specify init meta partition count")
-	cmd.Flags().Uint64Var(&optDPSize, "dp-size", cmdVolDefaultDPSize, "Specify size of data partition size [Unit: GB]")
-	cmd.Flags().Uint64Var(&optCapacity, "capacity", cmdVolDefaultCapacity, "Specify volume capacity [Unit: GB]")
-	cmd.Flags().IntVar(&optReplicas, "replicas", cmdVolDefaultReplicas, "Specify volume replicas number")
-	cmd.Flags().BoolVar(&optFollowerRead, "follower-read", cmdVolDefaultFollowerReader, "Enable read form replica follower")
+	cmd.Flags().IntVar(&optMPCount, CliFlagMetaPartitionCount, cmdVolDefaultMPCount, "Specify init meta partition count")
+	cmd.Flags().Uint64Var(&optDPSize, CliFlagDataPartitionSize, cmdVolDefaultDPSize, "Specify size of data partition size [Unit: GB]")
+	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, cmdVolDefaultCapacity, "Specify volume capacity [Unit: GB]")
+	cmd.Flags().IntVar(&optReplicas, CliFlagReplicas, cmdVolDefaultReplicas, "Specify volume replicas number")
+	cmd.Flags().BoolVar(&optFollowerRead, CliFlagEnableFollowerRead, cmdVolDefaultFollowerReader, "Enable read form replica follower")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	return cmd
 }
@@ -157,8 +156,11 @@ const (
 )
 
 func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
-	var optMetaDetail bool
-	var optDataDetail bool
+	var (
+		optMetaDetail bool
+		optDataDetail bool
+	)
+
 	var cmd = &cobra.Command{
 		Use:   cmdVolInfoUse,
 		Short: cmdVolInfoShort,
@@ -167,6 +169,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			var volumeName = args[0]
 			var svv *proto.SimpleVolView
+
 			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
 				errout("Get volume info failed:\n%v\n", err)
 				os.Exit(1)
@@ -209,6 +212,12 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 			}
 			return
 		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
 	}
 	cmd.Flags().BoolVarP(&optMetaDetail, "meta-partition", "m", false, "Display meta partition detail information")
 	cmd.Flags().BoolVarP(&optDataDetail, "data-partition", "d", false, "Display data partition detail information")
@@ -221,7 +230,9 @@ const (
 )
 
 func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
-	var optYes bool
+	var (
+		optYes bool
+	)
 	var cmd = &cobra.Command{
 		Use:   cmdVolDeleteUse,
 		Short: cmdVolDeleteShort,
@@ -251,6 +262,12 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 				os.Exit(1)
 			}
 			stdout("Delete volume success.\n")
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
@@ -328,6 +345,17 @@ const (
 )
 
 func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
+	var (
+		vols      []*proto.VolInfo
+		err       error
+		validVols []string
+	)
+	if vols, err = client.AdminAPI().ListVols(""); err != nil {
+		errout("Get volume list failed:\n%v\n", err)
+	}
+	for _, vol := range vols {
+		validVols = append(validVols, vol.Name)
+	}
 	var cmd = &cobra.Command{
 		Use:   cmdVolAddDPCmdUse,
 		Short: cmdVolAddDPCmdShort,
@@ -355,6 +383,7 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 			}
 			return
 		},
+		ValidArgs: validVols,
 	}
 	return cmd
 }
@@ -364,4 +393,19 @@ func calcAuthKey(key string) (authKey string) {
 	_, _ = h.Write([]byte(key))
 	cipherStr := h.Sum(nil)
 	return strings.ToLower(hex.EncodeToString(cipherStr))
+}
+
+func validVols(client *master.MasterClient, toComplete string) []string {
+	var (
+		validVols []string
+		vols      []*proto.VolInfo
+		err       error
+	)
+	if vols, err = client.AdminAPI().ListVols(toComplete); err != nil {
+		errout("Get volume list failed:\n%v\n", err)
+	}
+	for _, vol := range vols {
+		validVols = append(validVols, vol.Name)
+	}
+	return validVols
 }

@@ -27,25 +27,26 @@ const (
 	cmdClusterShort = "Manage cluster components"
 )
 
-func newClusterCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+func (cmd *ChubaoFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Command {
+	var clusterCmd = &cobra.Command{
 		Use:   cmdClusterUse,
 		Short: cmdClusterShort,
 	}
-	cmd.AddCommand(
+	clusterCmd.AddCommand(
 		newClusterInfoCmd(client),
+		newClusterStatCmd(client),
 	)
-	return cmd
+	return clusterCmd
 }
 
 const (
-	cmdClusterInfoUse   = "info"
 	cmdClusterInfoShort = "Show cluster summary information"
+	cmdClusterStatShort = "Show cluster status information"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   cmdClusterInfoUse,
+		Use:   CliOpInfo,
 		Short: cmdClusterInfoShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
@@ -56,6 +57,25 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 			}
 			stdout("[Cluster]\n")
 			stdout(formatClusterView(cv))
+			stdout("\n")
+		},
+	}
+	return cmd
+}
+
+func newClusterStatCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpStatus,
+		Short: cmdClusterStatShort,
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var cs *proto.ClusterStatInfo
+			if cs, err = client.AdminAPI().GetClusterStat(); err != nil {
+				errout("Get cluster info fail:\n%v\n", err)
+				os.Exit(1)
+			}
+			stdout("[Cluster Status]\n")
+			stdout(formatClusterStat(cs))
 			stdout("\n")
 		},
 	}
