@@ -28,7 +28,7 @@ clean() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml down
 }
 
-# test
+# unit test
 run_unit_test() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml run unit_test
 }
@@ -46,7 +46,7 @@ start_servers() {
 }
 
 start_client() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run client bash -c "/cfs/script/start_client.sh ; /bin/bash"
+    docker-compose -f ${RootPath}/docker/docker-compose.yml up -d clients
 }
 
 start_monitor() {
@@ -54,7 +54,7 @@ start_monitor() {
 }
 
 start_ltptest() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run client
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run ltptest
 }
 
 run_ltptest() {

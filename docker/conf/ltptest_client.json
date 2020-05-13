@@ -1,8 +1,8 @@
 {
   "masterAddr": "192.168.0.11:17010,192.168.0.12:17010,192.168.0.13:17010",
   "mountPoint": "/cfs/mnt",
-  "volName": "chubaofs01",
-  "owner": "chubaofs01",
+  "volName": "ltptest",
+  "owner": "ltptest",
   "logDir": "/cfs/log",
   "logLevel": "info",
   "consulAddr": "http://192.168.0.101:8500",
