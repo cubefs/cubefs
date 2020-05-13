@@ -1,8 +1,8 @@
 {
   "masterAddr": "192.168.0.11:17010,192.168.0.12:17010,192.168.0.13:17010",
   "mountPoint": "/cfs/mnt",
-  "volName": "chubaofs01",
-  "owner": "chubaofs01",
+  "volName": "ltptest",
+  "owner": "ltptest",
   "logDir": "/cfs/log",
   "logLevel": "info",
   "consulAddr": "http://192.168.0.101:8500",
@@ -11,6 +11,6 @@
   "authenticate": false,
   "ticketHost": "192.168.0.14:8080,192.168.0.15:8081,192.168.0.16:8082",
   "enableHTTPS": "false",
-  "accessKey": "HI1Y2U6Hn4yVFydt",
-  "secretKey": "tzY9H0PTYkxXMzCoHWldMPbcdGmHMX0s"
+  "accessKey": "39bEF4RrAQgMj6RV",
+  "secretKey": "TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd"
 }
