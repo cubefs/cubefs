@@ -122,6 +122,7 @@ type ExtentStore struct {
 	partitionID                       uint64
 	verifyExtentFp                    *os.File
 	hasAllocSpaceExtentIDOnVerfiyFile uint64
+	avaliExtentCount                  int
 }
 
 func MkdirAll(name string) (err error) {
@@ -171,7 +172,12 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 	if err != nil {
 		return
 	}
+	s.RecomputeAvaliExtentCount()
 	return
+}
+
+func (s *ExtentStore) GetAvaliExtentCount() int {
+	return s.avaliExtentCount
 }
 
 func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
@@ -475,6 +481,26 @@ func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentIn
 	tinyDeleteFileSize, err = s.LoadTinyDeleteFileOffset()
 
 	return
+}
+
+func (s *ExtentStore) RecomputeAvaliExtentCount() {
+	extents := make([]*ExtentInfo, 0)
+	extentInfoSlice := make([]*ExtentInfo, 0, len(s.extentInfoMap))
+	s.eiMutex.RLock()
+	for _, extentID := range s.extentInfoMap {
+		extentInfoSlice = append(extentInfoSlice, extentID)
+	}
+	s.eiMutex.RUnlock()
+	var (
+		normalFilter ExtentFilter
+	)
+	normalFilter = NormalExtentFilter()
+	for _, extentInfo := range extentInfoSlice {
+		if normalFilter(extentInfo) || IsTinyExtent(extentInfo.FileID) {
+			extents = append(extents, extentInfo)
+		}
+	}
+	s.avaliExtentCount = len(extents)
 }
 
 func (s *ExtentStore) getTinyExtentInfo() (extents []*ExtentInfo) {

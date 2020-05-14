@@ -56,7 +56,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead, proto.OpStreamFollowerRead:
 			case proto.OpReadTinyDeleteRecord:
 				log.LogRead(logContent)
-			case proto.OpWrite, proto.OpRandomWrite, proto.OpSyncRandomWrite, proto.OpSyncWrite, proto.OpMarkDelete,proto.OpBatchDeleteExtent:
+			case proto.OpWrite, proto.OpRandomWrite, proto.OpSyncRandomWrite, proto.OpSyncWrite, proto.OpMarkDelete, proto.OpBatchDeleteExtent:
 				log.LogWrite(logContent)
 			default:
 				log.LogInfo(logContent)
@@ -113,7 +113,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	case proto.OpBroadcastMinAppliedID:
 		s.handleBroadcastMinAppliedID(p)
 	case proto.OpBatchDeleteExtent:
-		s.handleBatchMarkDeletePacket(p,c)
+		s.handleBatchMarkDeletePacket(p, c)
 	default:
 		p.PackErrorBody(repl.ErrorUnknownOp.Error(), repl.ErrorUnknownOp.Error()+strconv.Itoa(int(p.Opcode)))
 	}
@@ -348,13 +348,13 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	store := partition.ExtentStore()
 	if err == nil {
 		for _, ext := range exts {
-			log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)",ext,c.RemoteAddr().String()))
+			log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
 			store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
 		}
 	}
 
 	if err != nil {
-		log.LogErrorf(fmt.Sprintf("(%v) error(%v) data (%v)",p.GetUniqueLogId(),err,string(p.Data)))
+		log.LogErrorf(fmt.Sprintf("(%v) error(%v) data (%v)", p.GetUniqueLogId(), err, string(p.Data)))
 		p.PackErrorBody(ActionMarkDelete, err.Error())
 	} else {
 		p.PacketOkReply()

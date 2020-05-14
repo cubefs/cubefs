@@ -247,6 +247,10 @@ func (dp *DataPartition) GetExtentCount() int {
 	return dp.extentStore.GetExtentCount()
 }
 
+func (dp *DataPartition) GetAvaliExtentCount() int {
+	return dp.extentStore.GetAvaliExtentCount()
+}
+
 func (dp *DataPartition) Path() string {
 	return dp.path
 }
@@ -411,6 +415,7 @@ func (dp *DataPartition) statusUpdateScheduler() {
 		case <-ticker.C:
 			index++
 			dp.statusUpdate()
+			dp.extentStore.RecomputeAvaliExtentCount()
 			if index >= math.MaxUint32 {
 				index = 0
 			}
@@ -679,7 +684,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 		if err != nil {
 			return
 		}
-	}else  {
+	} else {
 		dp.FullSyncTinyDeleteTime = time.Now().Unix()
 	}
 
@@ -735,7 +740,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 			}
 			store.MarkDelete(extentID, int64(offset), int64(size))
 			if !isFullSync {
-				log.LogWarnf(fmt.Sprintf(ActionSyncTinyDeleteRecord+" extentID_(%v)_extentOffset(%v)_size(%v)", extentID, offset, size))
+				log.LogWarnf(fmt.Sprintf(ActionSyncTinyDeleteRecord+"partitionID(%v)_extentID_(%v)_extentOffset(%v)_size(%v)", dp.partitionID, extentID, offset, size))
 			}
 
 		}
