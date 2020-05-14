@@ -40,13 +40,14 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdDataPartitionGetShort = "List information of meta nodes"
+	cmdDataPartitionGetShort = "List information of data partitions"
 )
 
 func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   CliOpInfo + " [VOLUME] [PARTITION ID]",
 		Short: cmdDataPartitionGetShort,
+		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				partition *proto.DataPartitionInfo

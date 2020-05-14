@@ -26,6 +26,7 @@ import (
 type storeMsg struct {
 	command       uint32
 	applyIndex    uint64
+	cursor        uint64
 	inodeTree     *BTree
 	dentryTree    *BTree
 	extendTree    *BTree

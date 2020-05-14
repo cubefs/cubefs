@@ -328,8 +328,8 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 	if cursor > atomic.LoadUint64(&mp.config.Cursor) {
 		atomic.StoreUint64(&mp.config.Cursor, cursor)
 	}
-	log.LogInfof("loadApplyID: load complete: partitionID(%v) volume(%v) applyID(%v) filename(%v)",
-		mp.config.PartitionId, mp.config.VolName, mp.applyID, filename)
+	log.LogInfof("loadApplyID: load complete: partitionID(%v) volume(%v) applyID(%v) cursor(%v) filename(%v)",
+		mp.config.PartitionId, mp.config.VolName, mp.applyID, mp.config.Cursor, filename)
 	return
 }
 
@@ -379,11 +379,11 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 		err = fp.Sync()
 		fp.Close()
 	}()
-	if _, err = fp.WriteString(fmt.Sprintf("%d|%d", sm.applyIndex, atomic.LoadUint64(&mp.config.Cursor))); err != nil {
+	if _, err = fp.WriteString(fmt.Sprintf("%d|%d", sm.applyIndex, sm.cursor)); err != nil {
 		return
 	}
-	log.LogInfof("storeApplyID: store complete: partitionID(%v) volume(%v) applyID(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.applyIndex)
+	log.LogInfof("storeApplyID: store complete: partitionID(%v) volume(%v) applyID(%v) cursor(%v)",
+		mp.config.PartitionId, mp.config.VolName, sm.applyIndex, sm.cursor)
 	return
 }
 

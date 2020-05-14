@@ -124,6 +124,7 @@ type fileData struct {
 // MetaItemIterator defines the iterator of the MetaItem.
 type MetaItemIterator struct {
 	fileRootDir   string
+	cursor        uint64
 	applyID       uint64
 	inodeTree     *BTree
 	dentryTree    *BTree
@@ -143,6 +144,7 @@ type MetaItemIterator struct {
 func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si = new(MetaItemIterator)
 	si.fileRootDir = mp.config.RootDir
+	si.cursor = mp.config.Cursor
 	si.applyID = mp.applyID
 	si.inodeTree = mp.inodeTree.GetTree()
 	si.dentryTree = mp.dentryTree.GetTree()
@@ -196,6 +198,9 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		}
 		// process index ID
 		produceItem(si.applyID)
+
+		// process cursor
+		produceItem(si.cursor)
 
 		// process inodes
 		iter.inodeTree.Ascend(func(i BtreeItem) bool {
