@@ -117,9 +117,8 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 
 // InodeGet executes the inodeGet command from the client.
 func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
-	ino := NewInode(req.Inode, 0)
-	retMsg := mp.getInode(ino)
-	ino = retMsg.Msg
+	si := newStubInode(req.Inode)
+	retMsg := mp.getInode(si)
 	var (
 		reply  []byte
 		status = proto.OpNotExistErr
@@ -143,10 +142,10 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 // InodeGetBatch executes the inodeBatchGet command from the client.
 func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error) {
 	resp := &proto.BatchInodeGetResponse{}
-	ino := NewInode(0, 0)
+	si := newStubInode(0)
 	for _, inoId := range req.Inodes {
-		ino.Inode = inoId
-		retMsg := mp.getInode(ino)
+		si.inode = inoId
+		retMsg := mp.getInode(si)
 		if retMsg.Status == proto.OpOk {
 			inoInfo := &proto.InodeInfo{}
 			if replyInfo(inoInfo, retMsg.Msg) {

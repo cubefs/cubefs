@@ -59,10 +59,10 @@ func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
 	return
 }
 
-func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse) {
+func (mp *metaPartition) getInode(si *stubInode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
-	item := mp.inodeTree.Get(ino)
+	item := mp.inodeTree.Get(si)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
 		return

@@ -43,9 +43,9 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 
 // ExtentsList returns the list of extents.
 func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error) {
-	ino := NewInode(req.Inode, 0)
-	retMsg := mp.getInode(ino)
-	ino = retMsg.Msg
+	si := newStubInode(req.Inode)
+	retMsg := mp.getInode(si)
+	ino := retMsg.Msg
 	var (
 		reply  []byte
 		status = retMsg.Status
