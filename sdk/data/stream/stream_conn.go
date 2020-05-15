@@ -97,11 +97,13 @@ func (sc *StreamConn) sendToPartition(req *Packet, getReply GetReplyFunc) (err e
 			StreamConnPool.PutConnect(conn, false)
 			return
 		}
-		log.LogWarnf("sendToPartition: curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
+		log.LogWarnf("sendToPartition: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		StreamConnPool.PutConnect(conn, true)
 		if err != TryOtherAddrError {
 			return
 		}
+	} else {
+		log.LogWarnf("sendToPartition: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 	}
 
 	for _, addr := range sc.dp.Hosts {
@@ -122,6 +124,7 @@ func (sc *StreamConn) sendToPartition(req *Packet, getReply GetReplyFunc) (err e
 		if err != TryOtherAddrError {
 			return
 		}
+		log.LogWarnf("sendToPartition: try addr(%v) failed! reqPacket(%v) err(%v)", addr, req, err)
 	}
 	return errors.New(fmt.Sprintf("sendToPatition Failed: sc(%v) reqPacket(%v)", sc, req))
 }
