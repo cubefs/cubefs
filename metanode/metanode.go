@@ -32,6 +32,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	"runtime"
 )
 
 var (
@@ -101,6 +102,38 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 	return
 }
 
+func (m *MetaNode) startGcScheduler() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer func() {
+		ticker.Stop()
+	}()
+	var (
+		pUsed    uint64
+		err      error
+		pMemStat runtime.MemStats
+	)
+
+	for {
+		select {
+		case <-m.httpStopC:
+			return
+		case <-ticker.C:
+
+			pUsed, err = util.GetProcessMemory(os.Getpid())
+			if err != nil {
+				continue
+			}
+			if pUsed > configTotalMem*0.6 {
+				runtime.ReadMemStats(&pMemStat)
+				log.LogWarnf("process used memory[%v],heapInuse[%v],totalAlloc[%v],objects[%v]", pUsed, pMemStat.HeapInuse, pMemStat.TotalAlloc, pMemStat.HeapObjects)
+				if pUsed >= 1.5*pMemStat.HeapInuse {
+					runtime.GC()
+				}
+			}
+		}
+	}
+}
+
 func doStart(s common.Server, cfg *config.Config) (err error) {
 	m, ok := s.(*MetaNode)
 	if !ok {
@@ -135,6 +168,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 	exporter.RegistConsul(m.clusterId, cfg.GetString("role"), cfg)
+	m.startGcScheduler()
 	return
 }
 
