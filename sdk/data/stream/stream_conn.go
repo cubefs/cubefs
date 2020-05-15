@@ -57,11 +57,12 @@ func NewStreamConn(dp *wrapper.DataPartition, follower bool) *StreamConn {
 	}
 
 	epoch := atomic.AddUint64(&dp.Epoch, 1)
-	choice := len(dp.Hosts)
+	hosts := sortByStatus(dp, false)
+	choice := len(hosts)
 	currAddr := dp.LeaderAddr
 	if choice > 0 {
 		index := int(epoch) % choice
-		currAddr = dp.Hosts[index]
+		currAddr = hosts[index]
 	}
 
 	return &StreamConn{
@@ -104,7 +105,9 @@ func (sc *StreamConn) sendToPartition(req *Packet, getReply GetReplyFunc) (err e
 		}
 	}
 
-	for _, addr := range sc.dp.Hosts {
+	hosts := sortByStatus(sc.dp, true)
+
+	for _, addr := range hosts {
 		log.LogWarnf("sendToPartition: try addr(%v) reqPacket(%v)", addr, req)
 		conn, err = StreamConnPool.GetConnect(addr)
 		if err != nil {
@@ -150,5 +153,32 @@ func (sc *StreamConn) sendToConn(conn *net.TCPConn, req *Packet, getReply GetRep
 	}
 
 	log.LogDebugf("sendToConn exit: send to addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
+	return
+}
+
+// sortByStatus will return hosts list sort by host status for DataPartition.
+// If param selectAll is true, hosts with status(true) is in front and hosts with status(false) is in behind.
+// If param selectAll is false, only return hosts with status(true).
+func sortByStatus(dp *wrapper.DataPartition, selectAll bool) (hosts []string) {
+	var failedHosts []string
+	hostsStatus := dp.ClientWrapper.HostsStatus
+	for _, addr := range dp.Hosts {
+		status, ok := hostsStatus[addr]
+		if ok {
+			if status {
+				hosts = append(hosts, addr)
+			} else {
+				failedHosts = append(failedHosts, addr)
+			}
+		} else {
+			failedHosts = append(failedHosts, addr)
+			log.LogWarnf("sortByStatus: can not find host[%v] in HostsStatus, dp[%d]", addr, dp.PartitionID)
+		}
+	}
+
+	if selectAll {
+		hosts = append(hosts, failedHosts...)
+	}
+
 	return
 }

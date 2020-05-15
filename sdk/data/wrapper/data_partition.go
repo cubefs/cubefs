@@ -31,6 +31,7 @@ type DataPartition struct {
 	proto.DataPartitionResponse
 	RandomWrite   bool
 	PartitionType string
+	ClientWrapper *Wrapper
 	Metrics       *DataPartitionMetrics
 }
 

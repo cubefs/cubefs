@@ -49,6 +49,8 @@ type Wrapper struct {
 	mc                    *masterSDK.MasterClient
 	stopOnce              sync.Once
 	stopC                 chan struct{}
+
+	HostsStatus map[string]bool
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -60,6 +62,7 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	w.volName = volName
 	w.rwPartition = make([]*DataPartition, 0)
 	w.partitions = make(map[uint64]*DataPartition)
+	w.HostsStatus = make(map[string]bool)
 	if err = w.updateClusterInfo(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
@@ -71,6 +74,9 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	if err = w.updateDataPartition(true); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
+	}
+	if err = w.updateDataNodeStatus(); err != nil {
+		log.LogErrorf("NewDataPartitionWrapper: init DataNodeStatus failed, [%v]", err)
 	}
 	go w.update()
 	return
@@ -120,6 +126,7 @@ func (w *Wrapper) update() {
 		select {
 		case <-ticker.C:
 			w.updateDataPartition(false)
+			w.updateDataNodeStatus()
 		case <-w.stopC:
 			return
 		}
@@ -136,7 +143,10 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 	log.LogInfof("updateDataPartition: get data partitions: volume(%v) partitions(%v)", w.volName, len(dpv.DataPartitions))
 
 	var convert = func(response *proto.DataPartitionResponse) *DataPartition {
-		return &DataPartition{DataPartitionResponse: *response}
+		return &DataPartition{
+			DataPartitionResponse: *response,
+			ClientWrapper:         w,
+		}
 	}
 
 	rwPartitionGroups := make([]*DataPartition, 0)
@@ -250,4 +260,23 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 // WarningMsg returns the warning message that contains the cluster name.
 func (w *Wrapper) WarningMsg() string {
 	return fmt.Sprintf("%s_client_warning", w.clusterName)
+}
+
+func (w *Wrapper) updateDataNodeStatus() (err error) {
+	var cv *proto.ClusterView
+	cv, err = w.mc.AdminAPI().GetCluster()
+	if err != nil {
+		log.LogErrorf("updateDataNodeStatus: get cluster fail: err(%v)", err)
+		return
+	}
+
+	newHostsStatus := make(map[string]bool)
+	for _, node := range cv.DataNodes {
+		newHostsStatus[node.Addr] = node.Status
+	}
+	log.LogInfof("updateDataNodeStatus: update %d hosts status", len(newHostsStatus))
+
+	w.HostsStatus = newHostsStatus
+
+	return
 }
