@@ -110,9 +110,10 @@ func (v *Volume) storeACL(p *AccessControlPolicy) {
 }
 
 type PutObjectOption struct {
-	MIMEType string
-	Tagging  *Tagging
-	Metadata map[string]string
+	MIMEType    string
+	Disposition string
+	Tagging     *Tagging
+	Metadata    map[string]string
 }
 
 // Volume is a high-level encapsulation of meta sdk and data sdk methods.
@@ -1797,67 +1798,337 @@ func (v *Volume) ListParts(path, uploadId string, maxParts, partNumberMarker uin
 	return parts, nextMarker, isTruncated, nil
 }
 
-func (v *Volume) CopyFile(targetPath, sourcePath string) (info *FSFileInfo, err error) {
+func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective string, opt *PutObjectOption) (info *FSFileInfo, err error) {
+	defer func() {
+		log.LogInfof("Audit: copy file: source path(%v) target path(%v) err(%v)",
+			sourcePath, targetPath, err)
+	}()
 
-	sourceDirs, sourceFilename := splitPath(sourcePath)
-	// process source targetPath
-	var sourceParentId uint64
-	if sourceParentId, err = v.lookupDirectories(sourceDirs, false); err != nil {
-		return nil, err
-	}
-
-	// find source file inode
-	var sourceFileInode uint64
-	var lookupMode uint32
-	sourceFileInode, lookupMode, err = v.mw.Lookup_ll(sourceParentId, sourceFilename)
-	if err != nil {
-		return nil, err
-	}
-	if os.FileMode(lookupMode).IsDir() {
-		return nil, syscall.ENOENT
-	}
-
-	// get new file parent id
-	newDirs, newFilename := splitPath(targetPath)
-	// process source targetPath
-	var newParentId uint64
-	if newParentId, err = v.lookupDirectories(newDirs, true); err != nil {
-		return nil, err
-	}
-
-	inodeInfo, err := v.copyFile(newParentId, newFilename, sourceFileInode, DefaultFileMode)
-	if err != nil {
-		log.LogErrorf("CopyFile: meta copy file fail: newParentID(%v) newName(%v) sourceIno(%v) err(%v)",
-			newParentId, newFilename, sourceFileInode, err)
-		return nil, err
-	}
-
-	var xattrs []*proto.XAttrInfo
-	var xattrKeys = []string{XAttrKeyOSSETag, XAttrKeyOSSETagInvalid}
-	if xattrs, err = v.mw.BatchGetXAttr([]uint64{sourceFileInode}, xattrKeys); err != nil {
-		log.LogErrorf("CopyFile: meta get xattr fail, volume(%v) inode(%v) path(%v) keys(%v) err(%v)",
-			v.name, sourceFileInode, targetPath, strings.Join(xattrKeys, ","), err)
+	// operation at source object
+	var (
+		sInode     uint64
+		sMode      os.FileMode
+		sInodeInfo *proto.InodeInfo
+	)
+	if _, sInode, _, sMode, err = sv.recursiveLookupTarget(sourcePath); err != nil {
+		log.LogErrorf("CopyFile: look up source path fail, source path(%v) err(%v)", sourcePath, err)
 		return
 	}
-	var etag string
-	var mimeType string
-	if len(xattrs) > 0 && xattrs[0].Inode == sourceFileInode {
-		var xattr = xattrs[0]
-		etag = string(xattr.Get(XAttrKeyOSSETag))
-		if len(etag) == 0 {
-			etag = string(xattr.Get(XAttrKeyOSSETagInvalid))
+	if sInodeInfo, err = sv.mw.InodeGet_ll(sInode); err != nil {
+		log.LogErrorf("CopyFile: get source path inode info fail, source path(%v) err(%v)", sourcePath, err)
+		return
+	}
+	if sInodeInfo.Size > MaxCopyObjectSize {
+		log.LogErrorf("CopyFile: copy source path file size greater than 5GB, source path(%v), target path(%v)", sourcePath, targetPath)
+		return nil, syscall.EFBIG
+	}
+	if err = sv.ec.OpenStream(sInode); err != nil {
+		log.LogErrorf("CopyFile: open source path stream fail, source path(%v) source path inode(%v) err(%v)",
+			sourcePath, sInode, err)
+		return
+	}
+	defer func() {
+		if closeErr := sv.ec.CloseStream(sInode); closeErr != nil {
+			log.LogErrorf("CopyFile: close source path stream fail: source path(%v) source path inode(%v) err(%v)",
+				sourcePath, sInode, closeErr)
 		}
-		mimeType = string(xattr.Get(XAttrKeyOSSMIME))
+	}()
+
+	// if source path is same with target path, just reset file metadata
+	// source path is same with target path, and metadata directive is not 'REPLACE', object node do nothing
+	if targetPath == sourcePath {
+		if metaDirective != MetadataDirectiveReplace {
+			log.LogInfof("CopyFile: target path is equal with source path, object node do nothing, source path(%v) target path(%v) err(%v)",
+				sourcePath, targetPath, err)
+		} else {
+			// replace system metadata : 'Content-Type' and 'Content-Disposition', if user specified,
+			// replace user defined metadata
+			// If MIME information is valid, use extended attributes for storage.
+			if opt != nil && opt.MIMEType != "" {
+				if err = v.mw.XAttrSet_ll(sInode, []byte(XAttrKeyOSSMIME), []byte(opt.MIMEType)); err != nil {
+					log.LogErrorf("CopyFile: store MIME fail: volume(%v) source path(%v) inode(%v) mime(%v) err(%v)",
+						sv.name, sourcePath, sInode, opt.MIMEType, err)
+					return nil, err
+				}
+			}
+			if opt != nil && opt.Disposition != "" {
+				if err = v.mw.XAttrSet_ll(sInode, []byte(XAttrKeyOSSDISPOSITION), []byte(opt.Disposition)); err != nil {
+					log.LogErrorf("CopyFile: store content disposition fail: volume(%v) source path(%v) inode(%v) mime(%v) err(%v)",
+						sv.name, sourcePath, sInode, opt.Disposition, err)
+					return nil, err
+				}
+			}
+			// If user-defined metadata have been specified, use extend attributes for storage.
+			if opt != nil && len(opt.Metadata) > 0 {
+				for name, value := range opt.Metadata {
+					if err = v.mw.XAttrSet_ll(sInode, []byte(name), []byte(value)); err != nil {
+						log.LogErrorf("CopyFile: store user-defined metadata fail: "+
+							"volume(%v) source path(%v) inode(%v) key(%v) value(%v) err(%v)",
+							sv.name, sourcePath, sInode, name, value, err)
+						return nil, err
+					}
+				}
+			}
+			log.LogInfof("CopyFile: target path is equal with source path, replace metadata, source path(%v) target path(%v) opt(%v)",
+				sourcePath, targetPath, opt)
+		}
+		return sv.ObjectMeta(sourcePath)
 	}
 
+	// operation at target object
+	var (
+		tMode      os.FileMode
+		tInode     uint64
+		tInodeInfo *proto.InodeInfo
+		tParentId  uint64
+		pathItems  []PathItem
+		tLastName  string
+	)
+	if _, _, _, tMode, err = v.recursiveLookupTarget(targetPath); err != nil && err != syscall.ENOENT {
+		log.LogErrorf("CopyFile: look up target path failed, target path(%v), err(%v)", targetPath, err)
+		return
+	}
+	// if target file existed, check target file node is whether same with source file
+	if err != syscall.ENOENT && tMode.IsDir() != sMode.IsDir() {
+		log.LogErrorf("CopyFile: target path existed and target path mode not same with source path, "+
+			"target path(%v), target inode(%v), source path(%v), source inode(%v)", targetPath, tInode, sourcePath, sInode)
+		return nil, syscall.EINVAL
+	}
+	// if source file mode is directory, return OK, and need't create target directory
+	if sMode == DefaultDirMode {
+		// create target directory
+		if !strings.HasSuffix(targetPath, pathSep) {
+			targetPath += pathSep
+		}
+		if tParentId, err = v.recursiveMakeDirectory(targetPath); err != nil {
+			log.LogErrorf("CopyFile: recursive make directory of target path fail: volume(%v) target path(%v) err(%v)",
+				v.name, targetPath, err)
+			return
+		}
+		if tInodeInfo, err = v.mw.InodeGet_ll(tParentId); err != nil {
+			log.LogErrorf("CopyFile: get create directory of target path inode info fail: volume(%v) target path(%v) err(%v)",
+				v.name, targetPath, err)
+			return
+		}
+
+		info = &FSFileInfo{
+			Path:       targetPath,
+			Size:       0,
+			Mode:       DefaultDirMode,
+			ModifyTime: tInodeInfo.ModifyTime,
+			ETag:       EmptyContentMD5String,
+			Inode:      tInodeInfo.Inode,
+			MIMEType:   HeaderValueContentTypeDirectory,
+		}
+		return info, nil
+	}
+	// recursive create target directory, and get parent id and last name
+	if tParentId, err = v.recursiveMakeDirectory(targetPath); err != nil {
+		log.LogErrorf("CopyFile: recursive make target path directory fail: volume(%v) path(%v) err(%v)",
+			v.name, targetPath, err)
+		return
+	}
+	pathItems = NewPathIterator(targetPath).ToSlice()
+	if len(pathItems) <= 0 {
+		log.LogErrorf("CopyFile: get target path pathItems is empty: volume(%v) path(%v) err(%v)",
+			v.name, targetPath, err)
+		return nil, syscall.EINVAL
+	}
+	tLastName = pathItems[len(pathItems)-1].Name
+
+	// create target file inode and set target inode to be source file inode
+	if tInodeInfo, err = v.mw.InodeCreate_ll(uint32(sMode), 0, 0, nil); err != nil {
+		return
+	}
+	defer func() {
+		// An error has caused the entire process to fail. Delete the inode and release the written data.
+		if err != nil {
+			log.LogWarnf("CopyFile: unlink target temp inode: volume(%v) path(%v) inode(%v) ",
+				v.name, targetPath, tInodeInfo.Inode)
+			_, _ = v.mw.InodeUnlink_ll(tInodeInfo.Inode)
+			log.LogWarnf("CopyFile: evict target temp inode: volume(%v) path(%v) inode(%v)",
+				v.name, targetPath, tInodeInfo.Inode)
+			_ = v.mw.Evict(tInodeInfo.Inode)
+		}
+	}()
+	if err = v.ec.OpenStream(tInodeInfo.Inode); err != nil {
+		return
+	}
+	defer func() {
+		if closeErr := v.ec.CloseStream(tInodeInfo.Inode); closeErr != nil {
+			log.LogErrorf("CopyFile: close target path stream fail: volume(%v) path(%v) inode(%v) err(%v)",
+				v.name, targetPath, tInodeInfo.Inode, closeErr)
+		}
+	}()
+
+	// write data to invisibleTempDataInode from source object
+	var (
+		fileSize    = sInodeInfo.Size
+		md5Hash     = md5.New()
+		md5Value    string
+		readN       int
+		writeN      int
+		readOffset  int
+		writeOffset int
+		readSize    int
+		buf         = make([]byte, 2*util.BlockSize)
+		hashBuf     = make([]byte, 2*util.BlockSize)
+	)
+	for {
+		readSize = len(buf)
+		if (int(fileSize) - readOffset) <= 0 {
+			break
+		}
+		if (int(fileSize) - readOffset) < len(buf) {
+			readSize = int(fileSize) - readOffset
+		}
+		readN, err = sv.ec.Read(sInode, buf, readOffset, readSize)
+		if err != nil && err != io.EOF {
+			return
+		}
+		if readN > 0 {
+			if writeN, err = v.ec.Write(tInodeInfo.Inode, writeOffset, buf[:readN], false); err != nil {
+				log.LogErrorf("CopyFile: write target path from source fail, volume(%v) path(%v) inode(%v) target offset(%v) err(%v)",
+					v.name, targetPath, tInodeInfo.Inode, writeOffset, err)
+				return
+			}
+			readOffset += readN
+			writeOffset += writeN
+			// copy to md5 buffer, and then write to md5
+			copy(hashBuf, buf[:readN])
+			md5Hash.Write(hashBuf[:readN])
+		}
+		if err == io.EOF {
+			err = nil
+			break
+		}
+	}
+	// flush
+	if err = v.ec.Flush(tInodeInfo.Inode); err != nil {
+		log.LogErrorf("CopyFile: data flush inode fail, volume(%v) inode(%v), path (%v) err(%v)", v.name, tInodeInfo.Inode, targetPath, err)
+		return
+	}
+	md5Value = hex.EncodeToString(md5Hash.Sum(nil))
+	log.LogDebugf("Audit: copy file: write file finished, volume(%v), path(%v), etag(%v)", v.name, targetPath, md5Value)
+
+	var finalInode *proto.InodeInfo
+	if finalInode, err = v.mw.InodeGet_ll(tInodeInfo.Inode); err != nil {
+		log.LogErrorf("CopyFile: get finished target path final inode fail: volume(%v) path(%v) inode(%v) err(%v)",
+			v.name, targetPath, tInodeInfo.Inode, err)
+		return
+	}
+	var etagValue = ETagValue{
+		Value:   md5Value,
+		PartNum: 0,
+		TS:      finalInode.ModifyTime,
+	}
+
+	var teMode os.FileMode
+	_, _, _, teMode, err = v.recursiveLookupTarget(targetPath)
+	if err != nil && err != syscall.ENOENT {
+		log.LogErrorf("CopyFile: meta lookup fail: volume(%v) target path(%v) err(%v)", v.name, targetPath, err)
+		return
+	}
+
+	if err == syscall.ENOENT {
+		if err = v.applyInodeToNewDentry(tParentId, tLastName, tInodeInfo.Inode); err != nil {
+			log.LogErrorf("CopyFile: apply inode to new dentry fail: path(%v) parentID(%v) name(%v) inode(%v) err(%v)",
+				targetPath, tParentId, tLastName, tInodeInfo.Inode, err)
+			return
+		}
+		log.LogDebugf("CopyFile: apply inode to new dentry: path(%v) parentID(%v) name(%v) inode(%v)",
+			targetPath, tParentId, tLastName, tInodeInfo.Inode)
+	} else {
+		if teMode.IsDir() {
+			log.LogErrorf("CopyFile: target mode conflict: path(%v) parentID(%v) name(%v) mode(%v)",
+				targetPath, tParentId, tLastName, teMode.String())
+			err = syscall.EINVAL
+			return
+		}
+		if err = v.applyInodeToExistDentry(tParentId, tLastName, tInodeInfo.Inode); err != nil {
+			log.LogErrorf("CopyFile: apply inode to exist dentry fail: path(%v) parentID(%v) name(%v) inode(%v) err(%v)",
+				targetPath, tParentId, tLastName, tInodeInfo.Inode, err)
+			return
+		}
+	}
+
+	// Save target file ETag
+	if err = v.mw.XAttrSet_ll(finalInode.Inode, []byte(XAttrKeyOSSETag), []byte(etagValue.Encode())); err != nil {
+		log.LogErrorf("CopyFile: store target file ETag fail: volume(%v) path(%v) inode(%v) key(%v) val(%v) err(%v)",
+			v.name, targetPath, tInodeInfo.Inode, XAttrKeyOSSETag, md5Value, err)
+		return
+	}
+
+	// copy source file metadata to write target file metadata
+	if metaDirective != MetadataDirectiveReplace {
+		// get source file xattr keys
+		var keys []string
+		if keys, err = sv.mw.XAttrsList_ll(sInode); err != nil {
+			if err == syscall.ENOENT {
+				log.LogErrorf("CopyFile: volume list extend attributes fail: volume(%v) source path(%v) err(%v)",
+					sv.name, sourcePath, err)
+				return
+			}
+			log.LogErrorf("CopyFile: volume list extend attributes fail: volume(%v) source path(%v) err(%v)",
+				sv.name, sourcePath, err)
+			return
+		}
+		// batch get source file xattr values
+		var xattrs []*proto.XAttrInfo
+		if xattrs, err = sv.mw.BatchGetXAttr([]uint64{sInode}, keys); err != nil {
+			log.LogErrorf("CopyFile: meta get xattr fail, volume(%v) source path(%v) inode(%v) keys(%v) err(%v)",
+				sv.name, sourcePath, sInode, strings.Join(keys, ","), err)
+			return
+		}
+		// set tar xattr
+		if len(xattrs) > 0 {
+			for xk, xv := range xattrs[0].XAttrs {
+				if xk == XAttrKeyOSSETag {
+					continue
+				}
+				if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(xk), []byte(xv)); err != nil {
+					log.LogErrorf("CopyFile: set target xattr fail: volume(%v) target path(%v) inode(%v) xattr key(%v) xattr value(%v) err(%v)",
+						v.name, targetPath, tInodeInfo.Inode, xk, xv, err)
+					return
+				}
+			}
+		}
+	} else {
+		if opt != nil && opt.MIMEType != "" {
+			if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(XAttrKeyOSSMIME), []byte(opt.MIMEType)); err != nil {
+				log.LogErrorf("CopyFile: store MIME fail: volume(%v) target path(%v) inode(%v) mime(%v) err(%v)",
+					v.name, targetPath, tInodeInfo.Inode, opt.MIMEType, err)
+				return nil, err
+			}
+		}
+		if opt != nil && opt.Disposition != "" {
+			if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(XAttrKeyOSSDISPOSITION), []byte(opt.Disposition)); err != nil {
+				log.LogErrorf("CopyFile: store content disposition fail: volume(%v) target path(%v) inode(%v) mime(%v) err(%v)",
+					v.name, targetPath, tInodeInfo.Inode, opt.Disposition, err)
+				return nil, err
+			}
+		}
+		// If user-defined metadata have been specified, use extend attributes for storage.
+		if opt != nil && len(opt.Metadata) > 0 {
+			for name, value := range opt.Metadata {
+				if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(name), []byte(value)); err != nil {
+					log.LogErrorf("CopyFile: store user-defined metadata fail: "+
+						"volume(%v) target path(%v) inode(%v) key(%v) value(%v) err(%v)",
+						v.name, targetPath, tInodeInfo.Inode, name, value, err)
+					return nil, err
+				}
+			}
+		}
+	}
+
+	// create file info
 	info = &FSFileInfo{
 		Path:       targetPath,
-		Size:       int64(inodeInfo.Size),
-		Mode:       os.FileMode(inodeInfo.Size),
-		ModifyTime: inodeInfo.ModifyTime,
-		ETag:       etag,
-		Inode:      inodeInfo.Inode,
-		MIMEType:   mimeType,
+		Size:       int64(fileSize),
+		Mode:       sMode,
+		ModifyTime: tInodeInfo.ModifyTime,
+		ETag:       md5Value,
+		Inode:      tInodeInfo.Inode,
 	}
 	return
 }

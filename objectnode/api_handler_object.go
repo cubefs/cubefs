@@ -230,7 +230,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if partNumberInt > partCount{
+		if partNumberInt > partCount {
 			log.LogErrorf("getObjectHandler: param partNumber(%d) is more then partCount{%d}: requestID(%v)", partNumberInt, partCount, GetRequestID(r))
 			errorCode = NoSuchKey
 			return
@@ -264,7 +264,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// get object content
 	var offset = rangeLower
 	var size = uint64(fileInfo.Size)
-	if isRangeRead || len(partNumber) > 0{
+	if isRangeRead || len(partNumber) > 0 {
 		if rangeUpper == 0 {
 			size = uint64(fileInfo.Size) - rangeLower
 		} else {
@@ -413,7 +413,7 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = InternalErrorCode(err)
 			return
 		}
-		if partNumberInt > partCount{
+		if partNumberInt > partCount {
 			log.LogErrorf("getObjectHandler: param partNumber(%d) is more then partCount(%d): requestID(%v)", partNumberInt, partCount, GetRequestID(r))
 			errorCode = NoSuchKey
 			return
@@ -576,7 +576,6 @@ func parseCopySourceInfo(r *http.Request) (sourceBucket, sourceObject string) {
 // Copy object
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html .
 func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
-
 	var err error
 	var errorCode *ErrorCode
 
@@ -604,18 +603,40 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Checking user-defined metadata
+	var metadata = ParseUserDefinedMetadata(r.Header)
+
+	// client can reset these system metadata: Content-Type, Content-Disposition
+	contentType := r.Header.Get(HeaderNameContentType)
+	contentDisposition := r.Header.Get(HeaderNameContentDisposition)
+
+	// metadata directive, direct object node use source file metadata or recreate metadata for target file
+	metadataDirective := r.Header.Get(HeaderNameMetadataDirective)
+	// metadata directive default value is COPY
+	if len(metadataDirective) == 0 {
+		metadataDirective = MetadataDirectiveCopy
+	}
+	var opt = &PutObjectOption{
+		MIMEType: contentType,
+		Disposition:contentDisposition,
+		Metadata: metadata,
+	}
+
 	sourceBucket, sourceObject := parseCopySourceInfo(r)
-	if param.Bucket() != sourceBucket {
-		log.LogDebugf("copyObjectHandler: source bucket is not same with bucket: requestID(%v) target(%v) source(%v)",
-			GetRequestID(r), param.Bucket(), sourceBucket)
-		errorCode = UnsupportedOperation
+
+	// check permission, must have read permission to source bucket
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKey(param.AccessKey()); err != nil {
+		log.LogErrorf("copyObjectHandler: get user info from master error: requestID(%v), accessKey(%v), err(%v)",
+			GetRequestID(r), param.AccessKey(), err)
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
-	if sourceObject == param.Object() {
-		log.LogErrorf("copyObjectHandler: source object same with target object: requestID(%v) target(%v) source(%v)",
-			GetRequestID(r), param.Object(), sourceObject)
-		errorCode = InvalidArgument
+	if !userInfo.Policy.IsAuthorized(sourceBucket, proto.OSSCopyObjectAction) {
+		log.LogErrorf("copyObjectHandler: no permission to copy from source bucket, requestID(%v), source bucket(%v), source file(%v), target bucket(%v), target file(%v)",
+			GetRequestID(r), sourceBucket, sourceObject, param.bucket, param.object)
+		errorCode = AccessDenied
 		return
 	}
 
@@ -678,11 +699,33 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fsFileInfo, err := vol.CopyFile(param.Object(), sourceObject)
-	if err != nil {
+	// open source object stream
+	var sourceVol *Volume
+	if sourceVol, err = o.getVol(sourceBucket); err != nil {
+		log.LogErrorf("copyObjectHandler: load source volume fail: vol(%v) requestID(%v) err(%v)",
+			sourceBucket, getRequestIP(r), err)
+		errorCode = NoSuchBucket
+		return
+	}
+
+	fsFileInfo, err := vol.CopyFile(sourceVol, sourceObject, param.Object(), metadataDirective, opt)
+	log.LogErrorf("fsFileInfo(%v), err(%v)", fsFileInfo, err)
+	if err != nil && err != syscall.EINVAL && err != syscall.EFBIG {
 		log.LogErrorf("copyObjectHandler: Volume copy file fail: requestID(%v) Volume(%v) source(%v) target(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), sourceObject, param.Object(), err)
 		errorCode = InternalErrorCode(err)
+		return
+	}
+	if err == syscall.EINVAL {
+		log.LogErrorf("copyObjectHandler: target file existed, and mode conflict: requestID(%v) Volume(%v) source(%v) target(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), sourceObject, param.Object(), err)
+		errorCode = ObjectModeConflict
+		return
+	}
+	if err == syscall.EFBIG {
+		log.LogErrorf("copyObjectHandler: source file size greater than 5GB: requestID(%v) Volume(%v) source(%v) target(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), sourceObject, param.Object(), err)
+		errorCode = CopySourceSizeTooLarge
 		return
 	}
 
