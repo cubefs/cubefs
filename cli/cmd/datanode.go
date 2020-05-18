@@ -40,7 +40,7 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdDataNodeListShort = "List information of meta nodes"
+	cmdDataNodeListShort = "List information of data nodes"
 )
 
 func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
