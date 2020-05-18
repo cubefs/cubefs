@@ -9,7 +9,7 @@ Add
    curl -v "http://10.196.59.198:17010/raftNode/add?addr=10.196.59.197:17010&id=3"
 
 
-add new master  node to master raft group
+Add a new master node to master raft group.
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
@@ -25,7 +25,7 @@ Remove
    curl -v "http://10.196.59.198:17010/raftNode/remove?addr=10.196.59.197:17010&id=3"
 
 
-remove the master node from master raft group
+Remove the master node from master raft group.
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"

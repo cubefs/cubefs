@@ -9,7 +9,7 @@ Overview
    curl -v "http://10.196.59.198:17010/admin/getCluster" | python -m json.tool
 
 
-display the base information of the cluster, such as the detail of metaNode,dataNode,vol and so on.
+Display the base information of the cluster, such as the detail of metaNode, dataNode, vol and so on.
 
 response
 
@@ -23,9 +23,11 @@ response
        "MaxDataPartitionID": 100,
        "MaxMetaNodeID": 3,
        "MaxMetaPartitionID": 1,
-       "DataNodeStat": {},
-       "MetaNodeStat": {},
-       "VolStat": {},
+       "DataNodeStatInfo": {},
+       "MetaNodeStatInfo": {},
+       "VolStatInfo": {},
+       "BadPartitionIDs": {},
+       "BadMetaPartitionIDs": {},
        "MetaNodes": {},
        "DataNodes": {}
    }
@@ -38,12 +40,12 @@ Freeze
 
    curl -v "http://10.196.59.198:17010/cluster/freeze?enable=true"
 
-if cluster is freezed,the vol never allocates dataPartitions automatically
+If cluster is freezed, the vol never allocates dataPartitions automatically.
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
 
-   "enable", "bool", "if enable is true,the cluster is freezed"
+   "enable", "bool", "if enable is true, the cluster is freezed"
 
 
 Statistics
@@ -53,5 +55,123 @@ Statistics
 
    curl -v "http://10.196.59.198:17010/cluster/stat"
 
-show cluster space information by zone
+Show cluster space information by zone.
 
+response
+
+.. code-block:: json
+    {
+        "DataNodeStatInfo": {
+            "TotalGB": 1,
+            "UsedGB": 0,
+            "IncreasedGB": -2,
+            "UsedRatio": "0.0"
+        },
+        "MetaNodeStatInfo": {
+            "TotalGB": 1,
+            "UsedGB": 0,
+            "IncreasedGB": -8,
+            "UsedRatio": "0.0"
+        },
+        "ZoneStatInfo": {
+            "zone1": {
+                "DataNodeStat": {
+                    "TotalGB": 1,
+                    "UsedGB": 0,
+                    "AvailGB": 0,
+                    "UsedRatio": 0,
+                    "TotalNodes": 0,
+                    "WritableNodes": 0
+                },
+                "MetaNodeStat": {
+                    "TotalGB": 1,
+                    "UsedGB": 0,
+                    "AvailGB": 0,
+                    "UsedRatio": 0,
+                    "TotalNodes": 0,
+                    "WritableNodes": 0
+                }
+            }
+        }
+    }
+
+Topology
+-----------
+
+.. code-block:: bash
+
+   curl -v "http://10.196.59.198:17010/topo/get"
+
+Show cluster topology information by zone.
+
+response
+
+.. code-block:: json
+
+    [
+        {
+            "Name": "zone1",
+            "Status": "available",
+            "NodeSet": {
+                "700": {
+                    "DataNodeLen": 0,
+                    "MetaNodeLen": 0,
+                    "MetaNodes": [],
+                    "DataNodes": []
+                }
+            }
+        },
+        {
+            "Name": "zone2",
+            "Status": "available",
+            "NodeSet": {
+                "800": {
+                    "DataNodeLen": 0,
+                    "MetaNodeLen": 0,
+                    "MetaNodes": [],
+                    "DataNodes": []
+                }
+            }
+        }
+    ]
+
+Update Zone
+------------
+
+.. code-block:: bash
+
+   curl -v "http://10.196.59.198:17010/zone/update?name=zone1&enable=false"
+
+Set the status of the zone to available or unavailable.
+
+.. csv-table:: Parameters
+   :header: "Parameter", "Type", "Description"
+
+   "name", "string", "zone name"
+   "enable", "bool", "if enable is true, the cluster is available"
+
+Get Zone
+-----------
+
+.. code-block:: bash
+
+   curl -v "http://10.196.59.198:17010/zone/list"
+
+Get name and status of all zones.
+
+response
+
+.. code-block:: json
+
+    [
+        {
+            "Name": "zone1",
+            "Status": "available",
+            "NodeSet": {}
+        },
+        {
+            "Name": "zone2",
+            "Status": "available",
+            "NodeSet": {}
+        }
+    ]
