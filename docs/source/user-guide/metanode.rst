@@ -11,17 +11,17 @@ At lease 3 meta nodes are required in respect to high availability.
    "role", "string", "Role of process and must be set to *metanode*", "Yes"
    "listen", "string", "Listen and accept port of the server", "Yes"
    "prof", "string", "Pprof port", "Yes"
-   "localIP", "string", "IP of network to be choose", "No,If not specified, the ip address used to communicate with the master is used."
+   "localIP", "string", "IP of network to be choose", "No. If not specified, the ip address used to communicate with the master is used."
    "logLevel", "string", "Level operation for logging. Default is *error*", "No"
-   "metadataDir", "string", MetaNode store snapshot directory", "Yes"
+   "metadataDir", "string", "MetaNode store snapshot directory", "Yes"
    "logDir", "string", "Log directory", "Yes",
-   "raftDir", "string", "Raft wal directory",  "Yes",
+   "raftDir", "string", "Raft wal directory", "Yes",
    "raftHeartbeatPort", "string", "Raft heartbeat port", "Yes"
    "raftReplicaPort", "string", "Raft replicate port", "Yes"
    "consulAddr", "string", "Addresses of monitor system", "No" 
    "exporterPort", "string", "Port for monitor system", "No" 
    "masterAddr", "string", "Addresses of master server", "Yes"
-   "totalMem","string","Max memory metadata used","No"
+   "totalMem","string", "Max memory metadata used. The value needs to be higher than the value of *metaNodeReservedMem* in the master configuration. Unit: byte", "Yes"
 
 
 

@@ -10,6 +10,7 @@ Start a ObjectNode process by execute the server binary of ChubaoFS you built wi
 
    nohup cfs-server -c objectnode.json &
 
+*Note: If you do not intend to use the object storage service, you do not need to start the ObjectNode.*
 
 Configurations
 -----------------------
@@ -49,7 +50,6 @@ Object Node using `JSON` format configuration file.
    {
         "role": "objectnode",
         "listen": "17410",
-        "region": "cn_bj",
         "domains": [
             "object.cfs.local"
         ],
@@ -68,11 +68,14 @@ Object Node using `JSON` format configuration file.
 Fetch Authentication Keys
 ----------------------------
 
-Use Command Line Interface (CLI) tool to get user's AccessKey and SecretKey:
+First, you need create a user through **User API**, and then get keys information. Refer to :doc:`/admin-api/master/user`.
+
+You can also use Command Line Interface (CLI) tool to create and get user's AccessKey and SecretKey:
 
 .. code-block:: bash
 
-    $ cli user info USER_ID
+    $ cli user create [USER_ID]
+    $ cli user info [USER_ID]
 
 
 Using Object Storage Interface
@@ -82,6 +85,7 @@ Object Subsystem (ObjectNode) provides S3-compatible object storage interface, s
 For detail about list of supported APIs, see **Supported S3-compatible APIs** at :doc:`/design/objectnode`
 
 For detail about list of supported SDKs, see **Supported SDKs** at :doc:`/design/objectnode`
+
 
 Using S3cmd
 ***********
@@ -165,7 +169,7 @@ Use AWS Java SDK to access the ObjectNode deployed locally.
 
 .. code-block:: java
 
-    Regions clientRegion = Region.of("*** Region name ***"); // Setup region
+    Regions clientRegion = Region.of("*** Region name ***"); // Setup region (the cluster name)
     String endpoint = "http://127.0.0.1"; // Setup endpoint
     String accessKey = "*** Access Key ***"; // Setup AccessKey
     String secretKey = "*** Secret Key ***"; // Setup SecretKey

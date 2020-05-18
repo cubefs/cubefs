@@ -9,7 +9,7 @@ Create
    curl -v "http://10.196.59.198:17010/dataPartition/create?count=400&name=test"
 
 
-create a set of data partition
+Create a set of data partition.
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
@@ -24,6 +24,7 @@ Get
 
    curl -v "http://10.196.59.198:17010/dataPartition/get?id=100"  | python -m json.tool
 
+Get information of the specified data partition.
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
@@ -36,17 +37,18 @@ response
 
    {
        "PartitionID": 100,
-       "LastLoadTime": 1544082851,
+       "LastLoadedTime": 1544082851,
        "ReplicaNum": 3,
        "Status": 2,
        "Replicas": {},
-       "PartitionType": "extent",
-       "PersistenceHosts": {},
+       "Hosts": {},
        "Peers": {},
-       "MissNodes": {},
+       "Zones": {},
+       "MissingNodes": {},
        "VolName": "test",
-       "RandomWrite": true,
-       "FileInCoreMap": {}
+       "VolID": 2,
+       "FileInCoreMap": {},
+       "FilesWithMissingReplica": {}
    }
 
 Decommission
@@ -57,7 +59,7 @@ Decommission
    curl -v "http://10.196.59.198:17010/dataPartition/decommission?id=13&addr=10.196.59.201:17310"
 
 
-remove the replica of data partition,and create new replica asynchronous
+Remove the replica of data partition, and create new replica asynchronous.
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
@@ -73,9 +75,24 @@ Load
    curl -v "http://10.196.59.198:17010/dataPartition/load?id=1"
 
 
-send load task to the dataNode which data partition locate on,then check the crc of each file in the data partition asynchronous
+Send load task to the dataNode which data partition locate on, then check the crc of each file in the data partition asynchronous.
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
    
    "id", "uint64", "the  id of data partition"
+
+Offline Disk
+-------------
+
+.. code-block:: bash
+
+   curl -v "http://10.196.59.198:17010/disk/decommission?addr=10.196.59.201:17310&disk=/cfs1"
+
+Synchronously offline all the data partitions on the disk, and create a new replica for each data partition in the cluster.
+
+.. csv-table:: Parameters
+   :header: "Parameter", "Type", "Description"
+
+   "addr", "string", "replica address"
+   "disk", "string", "disk path"
