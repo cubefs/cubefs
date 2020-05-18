@@ -49,6 +49,15 @@ fuse.json
    "writecache", "bool", "Leverage the write cache feature of kernel FUSE. Requires the kernel FUSE module to support write cache.", "No"
    "keepcache", "bool", "Keep kernel page cache. Requires the writecache option is enabled.", "No"
    "token", "string", "Specify the capability of a client instance.", "No"
+   "readRate", "int", "Read Rate Limit. Unlimited by default.", "No"
+   "writeRate", "int", "Write Rate Limit. Unlimited by default.", "No"
+   "followerRead", "bool", "Enable read from follower. False by default.", "No"
+   "accessKey", "string", "Access key of user who owns the volume.", "No"
+   "secretKey", "string", "Secret key of user who owns the volume.", "No"
+   "disableDcache", "bool", "Disable Dentry Cache. False by default.", "No"
+   "subdir", "string", "Mount sub directory.", "No"
+   "fsyncOnClose", "bool", "Perform fsync upon file close. True by default.", "No"
+   "maxcpus", "int", "The maximum number of available CPU cores. Limit the CPU usage of the client process.", "No"
 
 Mount
 -----
@@ -58,3 +67,8 @@ Use the example *fuse.json*, and client is mounted on the directory */mnt/fuse*.
 .. code-block:: bash
 
    ./cfs-client -c fuse.json
+
+Unmount
+--------
+
+It is recommended to use standard Linux ``umount`` command to terminate the mount.

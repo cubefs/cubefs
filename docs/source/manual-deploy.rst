@@ -172,8 +172,7 @@ Sample *objectnode.json is* shown as follows,
            "10.196.59.200:17010"
         ],
         "logLevel": "info",
-        "logDir": "/cfs/Logs/objectnode",
-        "region": "cn_bj"
+        "logDir": "/cfs/Logs/objectnode"
     }
 
 
