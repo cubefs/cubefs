@@ -124,7 +124,7 @@ type fileData struct {
 // MetaItemIterator defines the iterator of the MetaItem.
 type MetaItemIterator struct {
 	fileRootDir   string
-	applyID       uint64
+	applyID       *ApplyID
 	inodeTree     *BTree
 	dentryTree    *BTree
 	extendTree    *BTree
@@ -138,12 +138,19 @@ type MetaItemIterator struct {
 	closeCh   chan struct{}
 	closeOnce sync.Once
 }
+type ApplyID struct {
+	cursor  uint64
+	applyID uint64
+}
 
 // newMetaItemIterator returns a new MetaItemIterator.
 func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si = new(MetaItemIterator)
 	si.fileRootDir = mp.config.RootDir
-	si.applyID = mp.applyID
+	si.applyID = &ApplyID{
+		applyID: mp.applyID,
+		cursor:  mp.config.Cursor,
+	}
 	si.inodeTree = mp.inodeTree.GetTree()
 	si.dentryTree = mp.dentryTree.GetTree()
 	si.extendTree = mp.extendTree.GetTree()
@@ -194,7 +201,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 				return false
 			}
 		}
-		// process index ID
+		// process applyID
 		produceItem(si.applyID)
 
 		// process inodes
@@ -244,7 +251,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 
 // ApplyIndex returns the applyID of the iterator.
 func (si *MetaItemIterator) ApplyIndex() uint64 {
-	return si.applyID
+	return si.applyID.applyID
 }
 
 // Close closes the iterator.
@@ -281,9 +288,11 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 
 	var snap *MetaItem
 	switch typedItem := item.(type) {
-	case uint64:
-		applyIDBuf := make([]byte, 8)
-		binary.BigEndian.PutUint64(applyIDBuf, si.applyID)
+	case *ApplyID:
+		var applyIDBuf []byte
+		if applyIDBuf, err = json.Marshal(si.applyID); err != nil {
+			panic(fmt.Sprintf("Marshal applyID failed: %v", reflect.TypeOf(item).Name()))
+		}
 		data = applyIDBuf
 		return
 	case *Inode:

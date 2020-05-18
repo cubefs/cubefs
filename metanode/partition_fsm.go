@@ -15,7 +15,6 @@
 package metanode
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -118,6 +117,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp = mp.fsmAppendExtents(ino)
 	case opFSMStoreTick:
+		cursor := mp.config.Cursor
 		inodeTree := mp.getInodeTree()
 		dentryTree := mp.getDentryTree()
 		extendTree := mp.extendTree.GetTree()
@@ -125,6 +125,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		msg := &storeMsg{
 			command:       opFSMStoreTick,
 			applyIndex:    index,
+			cursor:        cursor,
 			inodeTree:     inodeTree,
 			dentryTree:    dentryTree,
 			extendTree:    extendTree,
@@ -230,6 +231,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			mp.storeChan <- &storeMsg{
 				command:       opFSMStoreTick,
 				applyIndex:    mp.applyID,
+				cursor:        mp.config.Cursor,
 				inodeTree:     mp.inodeTree,
 				dentryTree:    mp.dentryTree,
 				extendTree:    mp.extendTree,
@@ -247,7 +249,12 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			return
 		}
 		if index == 0 {
-			appIndexID = binary.BigEndian.Uint64(data)
+			var applyID *ApplyID
+			if err = json.Unmarshal(data, &applyID); err != nil {
+				return
+			}
+			appIndexID = applyID.applyID
+			cursor = applyID.cursor
 			index++
 			continue
 		}
@@ -263,9 +270,6 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			// TODO Unhandled errors
 			ino.UnmarshalKey(snap.K)
 			ino.UnmarshalValue(snap.V)
-			if cursor < ino.Inode {
-				cursor = ino.Inode
-			}
 			inodeTree.ReplaceOrInsert(ino, true)
 			log.LogDebugf("ApplySnapshot: create inode: partitonID(%v) inode(%v).", mp.config.PartitionId, ino)
 		case opFSMCreateDentry:
