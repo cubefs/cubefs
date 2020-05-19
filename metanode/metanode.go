@@ -195,6 +195,17 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("bad cfgRaftReplicaPort config")
 	}
 
+	constCfg := config.ConstConfig{
+		Listen:           m.listen,
+		RaftHeartbetPort: m.raftHeartbeatPort,
+		RaftReplicaPort:  m.raftReplicatePort,
+	}
+	var ok = false
+	if ok, err = config.CheckOrStoreConstCfg(m.metadataDir, config.DefaultConstConfigFile, &constCfg); !ok {
+		log.LogErrorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
+		return fmt.Errorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
+	}
+
 	log.LogInfof("[parseConfig] load localAddr[%v].", m.localAddr)
 	log.LogInfof("[parseConfig] load listen[%v].", m.listen)
 	log.LogInfof("[parseConfig] load metadataDir[%v].", m.metadataDir)
