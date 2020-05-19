@@ -309,8 +309,14 @@ func (u *User) deleteVolPolicy(volName string) (err error) {
 		return nil
 	}
 	//delete policy
+	var deletedUsers = make([]string, 0)
 	for _, userID := range volUser.UserIDs {
 		if userInfo, err = u.getUserInfo(userID); err != nil {
+			if err == proto.ErrUserNotExists {
+				deletedUsers = append(deletedUsers, userID)
+				log.LogWarnf("action[deleteVolPolicy], userID: %v does not exist", userID)
+				continue
+			}
 			return
 		}
 		userInfo.Policy.RemoveOwnVol(volName)
@@ -325,6 +331,9 @@ func (u *User) deleteVolPolicy(volName string) (err error) {
 		return
 	}
 	u.volUser.Delete(volUser.Vol)
+	for _, deletedUser := range deletedUsers {
+		u.removeUserFromAllVol(deletedUser)
+	}
 	log.LogInfof("action[deleteVolPolicy], volName: %v", volName)
 	return
 }
@@ -406,7 +415,7 @@ func (u *User) removeUserFromVol(userID, volName string) (err error) {
 		volUser = value.(*proto.VolUser)
 		volUser.Lock()
 		defer volUser.Unlock()
-		volUser.UserIDs = removeString(volUser.UserIDs, userID)
+		volUser.UserIDs, _ = removeString(volUser.UserIDs, userID)
 	} else {
 		err = proto.ErrHaveNoPolicy
 		return
@@ -422,19 +431,26 @@ func (u *User) removeUserFromAllVol(userID string) {
 	u.volUser.Range(func(key, value interface{}) bool {
 		volUser := value.(*proto.VolUser)
 		volUser.Lock()
-		volUser.UserIDs = removeString(volUser.UserIDs, userID)
+		var exist bool
+		volUser.UserIDs, exist = removeString(volUser.UserIDs, userID)
+		if exist {
+			if err := u.syncUpdateVolUser(volUser); err != nil {
+				err = proto.ErrPersistenceByRaft
+				log.LogErrorf("action[deleteUser], userID: %v, volUser: %v, err: %v", userID, volUser, err)
+			}
+		}
 		volUser.Unlock()
 		return true
 	})
 }
 
-func removeString(array []string, element string) []string {
+func removeString(array []string, element string) ([]string, bool) {
 	for k, v := range array {
 		if v == element {
-			return append(array[:k], array[k+1:]...)
+			return append(array[:k], array[k+1:]...), true
 		}
 	}
-	return array
+	return array, false
 }
 
 func sha1String(s string) string {
