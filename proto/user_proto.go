@@ -147,6 +147,13 @@ func (policy *UserPolicy) IsOwn(volume string) bool {
 func (policy *UserPolicy) IsAuthorized(volume string, action Action) bool {
 	policy.mu.RLock()
 	defer policy.mu.RUnlock()
+	if len(policy.OwnVols) > 0 {
+		for _, v := range policy.OwnVols {
+			if v == volume {
+				return true
+			}
+		}
+	}
 	values, exist := policy.AuthorizedVols[volume]
 	if !exist {
 		return false
