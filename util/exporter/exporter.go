@@ -112,10 +112,14 @@ func InitWithRouter(role string, cfg *config.Config, router *mux.Router, exPort 
 func RegistConsul(cluster string, role string, cfg *config.Config) {
 	clustername = replacer.Replace(cluster)
 	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
+
 	if exporterPort == int64(0) {
 		exporterPort = cfg.GetInt64(ConfigKeyExporterPort)
 	}
 	if exporterPort != int64(0) && len(consulAddr) > 0 {
+		if ok := strings.HasPrefix(consulAddr, "http"); !ok {
+			consulAddr = "http://" + consulAddr
+		}
 		DoConsulRegisterProc(consulAddr, AppName, role, cluster, exporterPort)
 	}
 }
