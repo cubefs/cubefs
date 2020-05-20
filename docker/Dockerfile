@@ -1,10 +1,9 @@
 FROM golang:1.12
 
 # intall rocksdb
-RUN echo "deb http://deb.debian.org/debian stretch-backports main" >> /etc/apt/sources.list && \
-        apt-get update && \
+RUN     apt-get update && \
         apt-get -y install libz-dev libbz2-dev libsnappy-dev && \
-        apt-get -y -t stretch-backports install librocksdb-dev
+        apt-get -y install librocksdb-dev
 
 ENV LTP_VERSION=20180926
 ENV LTP_SOURCE=https://github.com/linux-test-project/ltp/archive/${LTP_VERSION}.tar.gz

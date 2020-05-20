@@ -18,6 +18,7 @@ MntPoint=/cfs/mnt
 mkdir -p /cfs/bin /cfs/log /cfs/mnt
 src_path=/go/src/github.com/chubaofs/cfs
 cli=/cfs/bin/cfs-cli
+conf_path=/cfs/conf
 
 LeaderAddr=""
 VolName=ltptest
@@ -26,6 +27,13 @@ AccessKey=39bEF4RrAQgMj6RV
 SecretKey=TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd
 TryTimes=5
 
+init_cli() {
+    cp ${cli} /usr/bin/
+    echo -n "Init cfs-cli ... "
+    cd ${conf_path}
+    ${cli} completion
+    echo 'source '${conf_path}'/cfs-cli.sh' >> ~/.bashrc
+}
 check_cluster() {
     echo -n "Checking cluster  ... "
     for i in $(seq 1 300) ; do
@@ -126,6 +134,7 @@ start_client() {
     exit 1
 }
 
+init_cli
 check_cluster
 create_cluster_user
 ensure_node_writable "metanode"

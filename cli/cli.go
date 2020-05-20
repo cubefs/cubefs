@@ -45,11 +45,11 @@ func setupCommands(cfg *cmd.Config) *cobra.Command {
 	var completionCmd = &cobra.Command{
 		Use:   "completion",
 		Short: "Generate completion bash file",
-		Long: `To apply completion scripts:
-	#!/bin/bash 
-	echo 'source {path of cfs-cli.sh}' >>~/.bashrc
-	source ~/.bashrc
-`,
+		Long: `To use the completion, tool "bash-completion" is demanded, 
+			1. $ ./cfs-cli completion   # file named "cfs-cli.sh" will be generated
+			2. $ echo 'source /usr/share/bash-completion/bash_completion' >> ~/.bashrc
+			3. $ echo 'source {path of cfs-cli.sh}' >>~/.bashrc
+			4. $ source ~/.bashrc`,
 		Example: "cfs-cli completion",
 		Run: func(cmd *cobra.Command, args []string) {
 			cfsRootCmd.CFSCmd.GenBashCompletionFile("cfs-cli.sh")
