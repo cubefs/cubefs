@@ -111,6 +111,8 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/chubaofs/chubaofs/util/exporter"
 )
 
 // A Conn represents a connection to a mounted FUSE file system.
@@ -603,12 +605,17 @@ loop:
 	case opLookup:
 		buf := m.bytes()
 		n := len(buf)
-		if n == 0 || buf[n-1] != '\x00' {
+		if n == 0 {
 			goto corrupt
 		}
 		req = &LookupRequest{
 			Header: m.Header(),
 			Name:   string(buf[:n-1]),
+		}
+		if buf[n-1] != '\x00' {
+			umpMsg := fmt.Sprintf("op[lookup] m.hdr[%v], m.len[%v], m.off[%v] name[%v] last char[%v]", m.hdr, m.len(),
+				m.off, string(buf[:n-1]), buf[n-1])
+			exporter.Warning(umpMsg)
 		}
 
 	case opForget:
