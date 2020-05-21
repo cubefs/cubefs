@@ -247,6 +247,9 @@ run_s3_test() {
     echo -e "\033[32mdone\033[0m"
 
     python3 -m unittest2 discover ${work_path} "*.py" -v
+    if [[ $? -ne 0 ]]; then
+        exit 1
+    fi
 }
 
 check_cluster

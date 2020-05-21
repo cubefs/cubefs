@@ -62,7 +62,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	//todo parse body
-	w.Header().Set("Location", o.region)
+	w.Header()[HeaderNameLocation] = []string{o.region}
 	return
 }
 
