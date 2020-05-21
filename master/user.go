@@ -237,6 +237,10 @@ func (u *User) updatePolicy(params *proto.UserPermUpdateParam) (userInfo *proto.
 	if userInfo, err = u.getUserInfo(params.UserID); err != nil {
 		return
 	}
+	if userInfo.Policy.IsOwn(params.Volume) {
+		err = proto.ErrIsOwner
+		return
+	}
 	userInfo.Policy.AddAuthorizedVol(params.Volume, params.Policy)
 	if err = u.syncUpdateUserInfo(userInfo); err != nil {
 		err = proto.ErrPersistenceByRaft
@@ -251,6 +255,10 @@ func (u *User) updatePolicy(params *proto.UserPermUpdateParam) (userInfo *proto.
 
 func (u *User) removePolicy(params *proto.UserPermRemoveParam) (userInfo *proto.UserInfo, err error) {
 	if userInfo, err = u.getUserInfo(params.UserID); err != nil {
+		return
+	}
+	if userInfo.Policy.IsOwn(params.Volume) {
+		err = proto.ErrIsOwner
 		return
 	}
 	userInfo.Policy.RemoveAuthorizedVol(params.Volume)
@@ -270,6 +278,7 @@ func (u *User) addOwnVol(userID, volName string) (userInfo *proto.UserInfo, err 
 		return
 	}
 	userInfo.Policy.AddOwnVol(volName)
+	userInfo.Policy.RemoveAuthorizedVol(volName)
 	if err = u.syncUpdateUserInfo(userInfo); err != nil {
 		err = proto.ErrPersistenceByRaft
 		return
@@ -310,6 +319,7 @@ func (u *User) deleteVolPolicy(volName string) (err error) {
 	}
 	//delete policy
 	var deletedUsers = make([]string, 0)
+	volUser.Mu.Lock()
 	for _, userID := range volUser.UserIDs {
 		if userInfo, err = u.getUserInfo(userID); err != nil {
 			if err == proto.ErrUserNotExists {
@@ -317,19 +327,23 @@ func (u *User) deleteVolPolicy(volName string) (err error) {
 				log.LogWarnf("action[deleteVolPolicy], userID: %v does not exist", userID)
 				continue
 			}
+			volUser.Mu.Unlock()
 			return
 		}
 		userInfo.Policy.RemoveOwnVol(volName)
 		userInfo.Policy.RemoveAuthorizedVol(volName)
 		if err = u.syncUpdateUserInfo(userInfo); err != nil {
 			err = proto.ErrPersistenceByRaft
+			volUser.Mu.Unlock()
 			return
 		}
 	}
 	//delete volName index
 	if err = u.syncDeleteVolUser(volUser); err != nil {
+		volUser.Mu.Unlock()
 		return
 	}
+	volUser.Mu.Unlock()
 	u.volUser.Delete(volUser.Vol)
 	for _, deletedUser := range deletedUsers {
 		u.removeUserFromAllVol(deletedUser)
@@ -377,6 +391,24 @@ func (u *User) getAllUserInfo(keywords string) (users []*proto.UserInfo) {
 	return
 }
 
+func (u *User) getUsersOfVol(volName string) (userIDs []string, err error) {
+	var volUser *proto.VolUser
+	userIDs = make([]string, 0)
+	if value, exist := u.volUser.Load(volName); exist {
+		volUser = value.(*proto.VolUser)
+	} else {
+		err = proto.ErrHaveNoPolicy
+		return
+	}
+	volUser.Mu.Lock()
+	defer volUser.Mu.Unlock()
+	for _, userID := range volUser.UserIDs {
+		userIDs = append(userIDs, userID)
+	}
+	log.LogInfof("action[getUsersOfVol], vol: %v, user numbers: %v", volName, len(userIDs))
+	return
+}
+
 func (u *User) getAKUser(ak string) (akUser *proto.AKUser, err error) {
 	if value, exist := u.AKStore.Load(ak); exist {
 		akUser = value.(*proto.AKUser)
@@ -394,8 +426,11 @@ func (u *User) addUserToVol(userID, volName string) (err error) {
 	)
 	if value, ok := u.volUser.Load(volName); ok {
 		volUser = value.(*proto.VolUser)
-		volUser.Lock()
-		defer volUser.Unlock()
+		volUser.Mu.Lock()
+		defer volUser.Mu.Unlock()
+		if contains(volUser.UserIDs, userID) {
+			return
+		}
 		volUser.UserIDs = append(volUser.UserIDs, userID)
 	} else {
 		volUser = &proto.VolUser{Vol: volName, UserIDs: []string{userID}}
@@ -413,8 +448,8 @@ func (u *User) removeUserFromVol(userID, volName string) (err error) {
 	)
 	if value, ok := u.volUser.Load(volName); ok {
 		volUser = value.(*proto.VolUser)
-		volUser.Lock()
-		defer volUser.Unlock()
+		volUser.Mu.Lock()
+		defer volUser.Mu.Unlock()
 		volUser.UserIDs, _ = removeString(volUser.UserIDs, userID)
 	} else {
 		err = proto.ErrHaveNoPolicy
@@ -430,7 +465,7 @@ func (u *User) removeUserFromVol(userID, volName string) (err error) {
 func (u *User) removeUserFromAllVol(userID string) {
 	u.volUser.Range(func(key, value interface{}) bool {
 		volUser := value.(*proto.VolUser)
-		volUser.Lock()
+		volUser.Mu.Lock()
 		var exist bool
 		volUser.UserIDs, exist = removeString(volUser.UserIDs, userID)
 		if exist {
@@ -439,7 +474,7 @@ func (u *User) removeUserFromAllVol(userID string) {
 				log.LogErrorf("action[deleteUser], userID: %v, volUser: %v, err: %v", userID, volUser, err)
 			}
 		}
-		volUser.Unlock()
+		volUser.Mu.Unlock()
 		return true
 	})
 }

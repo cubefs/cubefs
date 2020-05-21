@@ -235,6 +235,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.UserTransferVol).
 		HandlerFunc(m.transferUserVol)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.UsersOfVol).
+		HandlerFunc(m.getUsersOfVol)
 
 	// zone management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

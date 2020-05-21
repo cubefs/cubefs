@@ -117,7 +117,7 @@ func NewUserInfo() *UserInfo {
 type VolUser struct {
 	Vol     string   `json:"vol"`
 	UserIDs []string `json:"user_id"`
-	sync.RWMutex
+	Mu      sync.RWMutex
 }
 
 type UserPolicy struct {
