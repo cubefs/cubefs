@@ -62,3 +62,4 @@ Welcome to ChubaoFS(Chubao File System)
    :caption: FAQ
 
    faq
+   operations
