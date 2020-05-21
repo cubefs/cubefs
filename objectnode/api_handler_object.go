@@ -206,12 +206,12 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// set response header for GetObject
-	w.Header().Set(HeaderNameAcceptRange, HeaderValueAcceptRange)
-	w.Header().Set(HeaderNameLastModified, formatTimeRFC1123(fileInfo.ModifyTime))
+	w.Header()[HeaderNameAcceptRange] = []string{HeaderValueAcceptRange}
+	w.Header()[HeaderNameLastModified] = []string{formatTimeRFC1123(fileInfo.ModifyTime)}
 	if len(fileInfo.MIMEType) > 0 {
-		w.Header().Set(HeaderNameContentType, fileInfo.MIMEType)
+		w.Header()[HeaderNameContentType] = []string{fileInfo.MIMEType}
 	} else {
-		w.Header().Set(HeaderNameContentType, HeaderValueTypeStream)
+		w.Header()[HeaderNameContentType] = []string{HeaderValueTypeStream}
 	}
 	if len(fileInfo.Disposition) > 0 {
 		w.Header().Set(HeaderNameContentDisposition, fileInfo.Disposition)
@@ -239,25 +239,25 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Header : Accept-Range, Content-Length, Content-Range, ETag, x-amz-mp-parts-count
-		w.Header().Set(HeaderNameContentLength, strconv.Itoa(int(partSize)))
-		w.Header().Set(HeaderNameContentRange, fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size))
-		w.Header().Set(HeaderNameDownloadPartCount, strconv.Itoa(int(partCount)))
+		w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(int(partSize))}
+		w.Header()[HeaderNameContentRange] = []string{fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size)}
+		w.Header()[HeaderNameXAmzDownloadPartCount] = []string{strconv.Itoa(int(partCount))}
 		if len(fileInfo.ETag) > 0 && !strings.Contains(fileInfo.ETag, "-") {
-			w.Header().Set(HeaderNameETag, fmt.Sprintf("%s-%d", fileInfo.ETag, partCount))
+			w.Header()[HeaderNameETag] = []string{fmt.Sprintf("%s-%d", fileInfo.ETag, partCount)}
 		}
 	} else {
-		w.Header().Set(HeaderNameContentLength, strconv.FormatUint(contentLength, 10))
+		w.Header()[HeaderNameContentLength] = []string{strconv.FormatUint(contentLength, 10)}
 		if len(fileInfo.ETag) > 0 {
-			w.Header().Set(HeaderNameETag, wrapUnescapedQuot(fileInfo.ETag))
+			w.Header()[HeaderNameETag] = []string{wrapUnescapedQuot(fileInfo.ETag)}
 		}
 		if isRangeRead {
-			w.Header().Set(HeaderNameContentRange, fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size))
+			w.Header()[HeaderNameContentRange] = []string{fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size)}
 		}
 	}
 
 	// User-defined metadata
 	for name, value := range fileInfo.Metadata {
-		w.Header().Set(HeaderNameXAmzMetaPrefix+name, value)
+		w.Header()[HeaderNameXAmzMetaPrefix+name] = []string{value}
 	}
 
 	if fileInfo.Mode.IsDir() {
@@ -392,13 +392,13 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// set response header
-	w.Header().Set(HeaderNameAcceptRange, HeaderValueAcceptRange)
-	w.Header().Set(HeaderNameLastModified, formatTimeRFC1123(fileInfo.ModifyTime))
-	w.Header().Set(HeaderNameContentMD5, EmptyContentMD5String)
+	w.Header()[HeaderNameAcceptRange] = []string{HeaderValueAcceptRange}
+	w.Header()[HeaderNameLastModified] = []string{formatTimeRFC1123(fileInfo.ModifyTime)}
+	w.Header()[HeaderNameContentMD5] = []string{EmptyContentMD5String}
 	if len(fileInfo.MIMEType) > 0 {
-		w.Header().Set(HeaderNameContentType, fileInfo.MIMEType)
+		w.Header()[HeaderNameContentType] = []string{fileInfo.MIMEType}
 	} else {
-		w.Header().Set(HeaderNameContentType, HeaderValueTypeStream)
+		w.Header()[HeaderNameContentType] = []string{HeaderValueTypeStream}
 	}
 	if len(fileInfo.Disposition) > 0 {
 		w.Header().Set(HeaderNameContentDisposition, fileInfo.Disposition)
@@ -424,22 +424,22 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = NoSuchKey
 			return
 		}
-		w.Header().Set(HeaderNameContentLength, strconv.Itoa(int(partSize)))
-		w.Header().Set(HeaderNameContentRange, fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size))
-		w.Header().Set(HeaderNameDownloadPartCount, strconv.Itoa(int(partCount)))
+		w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(int(partSize))}
+		w.Header()[HeaderNameContentRange] = []string{fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size)}
+		w.Header()[HeaderNameXAmzDownloadPartCount] = []string{strconv.Itoa(int(partCount))}
 		if len(fileInfo.ETag) > 0 && !strings.Contains(fileInfo.ETag, "-") {
-			w.Header().Set(HeaderNameETag, fmt.Sprintf("%s-%d", fileInfo.ETag, partCount))
+			w.Header()[HeaderNameETag] = []string{fmt.Sprintf("%s-%d", fileInfo.ETag, partCount)}
 		}
 	} else {
-		w.Header().Set(HeaderNameContentLength, strconv.Itoa(int(fileInfo.Size)))
+		w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(int(fileInfo.Size))}
 		if len(fileInfo.ETag) > 0 {
-			w.Header().Set(HeaderNameETag, wrapUnescapedQuot(fileInfo.ETag))
+			w.Header()[HeaderNameETag] = []string{wrapUnescapedQuot(fileInfo.ETag)}
 		}
 	}
 
 	// User-defined metadata
 	for name, value := range fileInfo.Metadata {
-		w.Header().Set(HeaderNameXAmzMetaPrefix+name, value)
+		w.Header()[HeaderNameXAmzMetaPrefix+name] = []string{value}
 	}
 	return
 }
@@ -553,8 +553,8 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	// set response header
-	w.Header().Set(HeaderNameContentType, HeaderValueContentTypeXML)
-	w.Header().Set(HeaderNameContentLength, strconv.Itoa(len(bytesRes)))
+	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
+	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytesRes))}
 	if _, err = w.Write(bytesRes); err != nil {
 		log.LogErrorf("deleteObjectsHandler: write response body fail: requestID(%v) err(%v)", GetRequestID(r), err)
 	}
@@ -562,7 +562,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 }
 
 func parseCopySourceInfo(r *http.Request) (sourceBucket, sourceObject string) {
-	var copySource = r.Header.Get(HeaderNameCopySource)
+	var copySource = r.Header.Get(HeaderNameXAmzCopySource)
 	if strings.HasPrefix(copySource, "/") {
 		copySource = copySource[1:]
 	}
@@ -617,12 +617,12 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	contentDisposition := r.Header.Get(HeaderNameContentDisposition)
 
 	// metadata directive, direct object node use source file metadata or recreate metadata for target file
-	metadataDirective := r.Header.Get(HeaderNameMetadataDirective)
+	metadataDirective := r.Header.Get(HeaderNameXAmzMetadataDirective)
 	// metadata directive default value is COPY
 	if len(metadataDirective) == 0 {
 		metadataDirective = MetadataDirectiveCopy
 	}
-	var opt = &PutObjectOption{
+	var opt = &PutFileOption{
 		MIMEType:    contentType,
 		Disposition: contentDisposition,
 		Metadata:    metadata,
@@ -660,10 +660,10 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// get header
-	copyMatch := r.Header.Get(HeaderNameCopyMatch)
-	noneMatch := r.Header.Get(HeaderNameCopyNoneMatch)
-	modified := r.Header.Get(HeaderNameCopyModified)
-	unModified := r.Header.Get(HeaderNameCopyUnModified)
+	copyMatch := r.Header.Get(HeaderNameXAmzCopyMatch)
+	noneMatch := r.Header.Get(HeaderNameXAmzCopyNoneMatch)
+	modified := r.Header.Get(HeaderNameXAmzCopyModified)
+	unModified := r.Header.Get(HeaderNameXAmzCopyUnModified)
 
 	// response 412
 	if modified != "" {
@@ -748,8 +748,8 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// set response header
-	w.Header().Set(HeaderNameContentType, HeaderValueContentTypeXML)
-	w.Header().Set(HeaderNameContentLength, strconv.Itoa(len(bytes)))
+	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
+	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
 	_, _ = w.Write(bytes)
 	return
 }
@@ -799,14 +799,15 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		maxKeysInt = uint64(MaxKeys)
 	}
 
-	listBucketRequest := &ListBucketRequestV1{
-		prefix:    prefix,
-		delimiter: delimiter,
-		marker:    marker,
-		maxKeys:   maxKeysInt,
+	var option = &ListFilesV1Option{
+		Prefix:    prefix,
+		Delimiter: delimiter,
+		Marker:    marker,
+		MaxKeys:   maxKeysInt,
 	}
 
-	fsFileInfos, nextMarker, isTruncated, prefixes, err := vol.ListFilesV1(listBucketRequest)
+	var result *ListFilesV1Result
+	result, err = vol.ListFilesV1(option)
 	if err != nil {
 		log.LogErrorf("getBucketV1Handler: list file fail: requestID(%v) volume(%v) err(%v)",
 			getRequestIP(r), vol.name, err)
@@ -815,31 +816,29 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// get owner
-	bucketOwner := NewBucketOwner(vol)
-	var contents = make([]*Content, 0)
-	if len(fsFileInfos) > 0 {
-		for _, fsFileInfo := range fsFileInfos {
-			if fsFileInfo.Mode == 0 {
-				// Invalid file mode, which means that the inode of the file may not exist.
-				// Record and filter out the file.
-				log.LogWarnf("getBucketV2Handler: invalid file found: volume(%v) path(%v) inode(%v)",
-					vol.Name(), fsFileInfo.Path, fsFileInfo.Inode)
-				continue
-			}
-			content := &Content{
-				Key:          fsFileInfo.Path,
-				LastModified: formatTimeISO(fsFileInfo.ModifyTime),
-				ETag:         wrapUnescapedQuot(fsFileInfo.ETag),
-				Size:         int(fsFileInfo.Size),
-				StorageClass: StorageClassStandard,
-				Owner:        bucketOwner,
-			}
-			contents = append(contents, content)
+	var bucketOwner = NewBucketOwner(vol)
+	var contents = make([]*Content, 0, len(result.Files))
+	for _, file := range result.Files {
+		if file.Mode == 0 {
+			// Invalid file mode, which means that the inode of the file may not exist.
+			// Record and filter out the file.
+			log.LogWarnf("getBucketV2Handler: invalid file found: volume(%v) path(%v) inode(%v)",
+				vol.Name(), file.Path, file.Inode)
+			continue
 		}
+		content := &Content{
+			Key:          file.Path,
+			LastModified: formatTimeISO(file.ModifyTime),
+			ETag:         wrapUnescapedQuot(file.ETag),
+			Size:         int(file.Size),
+			StorageClass: StorageClassStandard,
+			Owner:        bucketOwner,
+		}
+		contents = append(contents, content)
 	}
 
 	var commonPrefixes = make([]*CommonPrefix, 0)
-	for _, prefix := range prefixes {
+	for _, prefix := range result.CommonPrefixes {
 		commonPrefix := &CommonPrefix{
 			Prefix: prefix,
 		}
@@ -852,8 +851,8 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		Marker:         marker,
 		MaxKeys:        int(maxKeysInt),
 		Delimiter:      delimiter,
-		IsTruncated:    isTruncated,
-		NextMarker:     nextMarker,
+		IsTruncated:    result.Truncated,
+		NextMarker:     result.NextMarker,
 		Contents:       contents,
 		CommonPrefixes: commonPrefixes,
 	}
@@ -867,8 +866,8 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// set response header
-	w.Header().Set(HeaderNameContentType, HeaderValueContentTypeXML)
-	w.Header().Set(HeaderNameContentLength, strconv.Itoa(len(bytes)))
+	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
+	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
 	_, _ = w.Write(bytes)
 
 	return
@@ -935,16 +934,17 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		fetchOwnerBool = false
 	}
 
-	request := &ListBucketRequestV2{
-		delimiter:  delimiter,
-		maxKeys:    maxKeysInt,
-		prefix:     prefix,
-		contToken:  contToken,
-		fetchOwner: fetchOwnerBool,
-		startAfter: startAfter,
+	var option = &ListFilesV2Option{
+		Delimiter:  delimiter,
+		MaxKeys:    maxKeysInt,
+		Prefix:     prefix,
+		ContToken:  contToken,
+		FetchOwner: fetchOwnerBool,
+		StartAfter: startAfter,
 	}
 
-	fsFileInfos, keyCount, nextToken, isTruncated, prefixes, err := vol.ListFilesV2(request)
+	var result *ListFilesV2Result
+	result, err = vol.ListFilesV2(option)
 	if err != nil {
 		log.LogErrorf("getBucketV2Handler: list files fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
@@ -957,20 +957,20 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var contents = make([]*Content, 0)
-	if len(fsFileInfos) > 0 {
-		for _, fsFileInfo := range fsFileInfos {
-			if fsFileInfo.Mode == 0 {
+	if len(result.Files) > 0 {
+		for _, file := range result.Files {
+			if file.Mode == 0 {
 				// Invalid file mode, which means that the inode of the file may not exist.
 				// Record and filter out the file.
 				log.LogWarnf("getBucketV2Handler: invalid file found: volume(%v) path(%v) inode(%v)",
-					vol.Name(), fsFileInfo.Path, fsFileInfo.Inode)
+					vol.Name(), file.Path, file.Inode)
 				continue
 			}
 			content := &Content{
-				Key:          fsFileInfo.Path,
-				LastModified: formatTimeISO(fsFileInfo.ModifyTime),
-				ETag:         wrapUnescapedQuot(fsFileInfo.ETag),
-				Size:         int(fsFileInfo.Size),
+				Key:          file.Path,
+				LastModified: formatTimeISO(file.ModifyTime),
+				ETag:         wrapUnescapedQuot(file.ETag),
+				Size:         int(file.Size),
 				StorageClass: StorageClassStandard,
 				Owner:        bucketOwner,
 			}
@@ -979,7 +979,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var commonPrefixes = make([]*CommonPrefix, 0)
-	for _, prefix := range prefixes {
+	for _, prefix := range result.CommonPrefixes {
 		commonPrefix := &CommonPrefix{
 			Prefix: prefix,
 		}
@@ -990,11 +990,11 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		Name:           param.Bucket(),
 		Prefix:         prefix,
 		Token:          contToken,
-		NextToken:      nextToken,
-		KeyCount:       keyCount,
+		NextToken:      result.NextToken,
+		KeyCount:       result.KeyCount,
 		MaxKeys:        maxKeysInt,
 		Delimiter:      delimiter,
-		IsTruncated:    isTruncated,
+		IsTruncated:    result.Truncated,
 		Contents:       contents,
 		CommonPrefixes: commonPrefixes,
 	}
@@ -1008,8 +1008,8 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// set response header
-	w.Header().Set(HeaderNameContentType, HeaderValueContentTypeXML)
-	w.Header().Set(HeaderNameContentLength, strconv.Itoa(len(bytes)))
+	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
+	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
 	if _, err = w.Write(bytes); err != nil {
 		log.LogErrorf("getBucketVeHandler: write response body fail, requestID(%v) err(%v)", GetRequestID(r), err)
 	}
@@ -1078,7 +1078,7 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		GetRequestID(r), getRequestIP(r), vol.Name(), param.Object(), contentType)
 
 	var fsFileInfo *FSFileInfo
-	var opt = &PutObjectOption{
+	var opt = &PutFileOption{
 		MIMEType:    contentType,
 		Disposition: contentDisposition,
 		Tagging:     tagging,
@@ -1114,8 +1114,8 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// set response header
-	w.Header().Set(HeaderNameETag, wrapUnescapedQuot(fsFileInfo.ETag))
-	w.Header().Set(HeaderNameContentLength, "0")
+	w.Header()[HeaderNameETag] = []string{wrapUnescapedQuot(fsFileInfo.ETag)}
+	w.Header()[HeaderNameContentLength] = []string{"0"}
 	return
 }
 

@@ -34,6 +34,8 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 		mConn      *net.TCPConn
 		leaderAddr string
 		err        error
+		reqID      = p.ReqID
+		reqOp      = p.Opcode
 	)
 	if leaderAddr, ok = mp.IsLeader(); ok {
 		return
@@ -63,6 +65,10 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.connPool.PutConnect(mConn, ForceClosedConnect)
 		goto end
+	}
+	if reqID != p.ReqID || reqOp != p.Opcode {
+		log.LogErrorf("serveProxy: send and received packet mismatch: req(%v_%v) resp(%v_%v)",
+			reqID, reqOp, p.ReqID, p.Opcode)
 	}
 	m.connPool.PutConnect(mConn, NoClosedConnect)
 end:

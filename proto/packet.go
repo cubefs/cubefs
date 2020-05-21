@@ -23,6 +23,7 @@ import (
 	"net"
 	"strconv"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util"
@@ -378,7 +379,7 @@ func (p *Packet) GetResultMsg() (m string) {
 	case OpDiskErr:
 		m = "DiskErr"
 	case OpErr:
-		m = "Err"
+		m = "Err: " + string(p.Data)
 	case OpAgain:
 		m = "Again"
 	case OpOk:
@@ -523,8 +524,12 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 		header = make([]byte, util.PacketHeaderSize)
 	}
 	defer Buffers.Put(header)
-	if _, err = io.ReadFull(c, header); err != nil {
+	var n int
+	if n, err = io.ReadFull(c, header); err != nil {
 		return
+	}
+	if n != util.PacketHeaderSize {
+		return syscall.EBADMSG
 	}
 	if err = p.UnmarshalHeader(header); err != nil {
 		return
@@ -538,15 +543,20 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 	}
 
 	if p.Size < 0 {
-		return
+		return syscall.EBADMSG
 	}
 	size := p.Size
 	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
 		size = 0
 	}
 	p.Data = make([]byte, size)
-	_, err = io.ReadFull(c, p.Data[:size])
-	return err
+	if n, err = io.ReadFull(c, p.Data[:size]); err != nil {
+		return err
+	}
+	if n != int(size) {
+		return syscall.EBADMSG
+	}
+	return nil
 }
 
 // PacketOkReply sets the result code as OpOk, and sets the body as empty.

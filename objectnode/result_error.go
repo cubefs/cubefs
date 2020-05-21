@@ -44,7 +44,7 @@ func (code ErrorCode) ServeResponse(w http.ResponseWriter, r *http.Request) erro
 	if marshaled, err = xml.Marshal(&xmlError); err != nil {
 		return err
 	}
-	w.Header().Set(HeaderNameContentType, HeaderValueContentTypeXML)
+	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
 	w.WriteHeader(code.StatusCode)
 	if _, err = w.Write(marshaled); err != nil {
 		return err
@@ -53,7 +53,7 @@ func (code ErrorCode) ServeResponse(w http.ResponseWriter, r *http.Request) erro
 }
 
 func ServeInternalStaticErrorResponse(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set(HeaderNameContentType, HeaderValueContentTypeXML)
+	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
 	w.WriteHeader(http.StatusInternalServerError)
 	sb := strings.Builder{}
 	sb.WriteString(xml.Header)
@@ -91,8 +91,8 @@ var (
 	ObjectModeConflict                  = &ErrorCode{ErrorCode: "ObjectModeConflict", ErrorMessage: "Object already exists but file mode conflicts", StatusCode: http.StatusConflict}
 	NotModified                         = &ErrorCode{ErrorCode: "MaxContentLength", ErrorMessage: "Not modified.", StatusCode: http.StatusNotModified}
 	NoSuchUpload                        = &ErrorCode{ErrorCode: "NoSuchUpload", ErrorMessage: "The specified upload does not exist.", StatusCode: http.StatusNotFound}
-	OverMaxRecordSize					= &ErrorCode{ErrorCode: "OverMaxRecordSize", ErrorMessage: "The length of a record in the input or result is greater than maxCharsPerRecord of 1 MB.", StatusCode: http.StatusBadRequest}
-	CopySourceSizeTooLarge				= &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "The specified copy source is larger than the maximum allowable size for a copy source: 5368709120", StatusCode: http.StatusBadRequest}
+	OverMaxRecordSize                   = &ErrorCode{ErrorCode: "OverMaxRecordSize", ErrorMessage: "The length of a record in the input or result is greater than maxCharsPerRecord of 1 MB.", StatusCode: http.StatusBadRequest}
+	CopySourceSizeTooLarge              = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "The specified copy source is larger than the maximum allowable size for a copy source: 5368709120", StatusCode: http.StatusBadRequest}
 )
 
 func HttpStatusErrorCode(code int) *ErrorCode {

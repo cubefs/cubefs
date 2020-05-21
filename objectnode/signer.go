@@ -31,7 +31,7 @@ var TERMINATOR = "aws4_request"
 
 func getStartTime(headers http.Header) string {
 	for headerName := range headers {
-		if strings.ToLower(headerName) == strings.ToLower(HeaderNameStartDate) {
+		if strings.ToLower(headerName) == strings.ToLower(HeaderNameXAmzStartDate) {
 			return headers.Get(headerName)
 		}
 	}

@@ -17,10 +17,11 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/chubaofs/chubaofs/util/btree"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/btree"
 )
 
 // Part defined necessary fields for multipart part management.
@@ -30,6 +31,13 @@ type Part struct {
 	MD5        string
 	Size       uint64
 	Inode      uint64
+}
+
+func (m *Part) Equal(o *Part) bool {
+	return m.ID == o.ID &&
+		m.Inode == o.Inode &&
+		m.Size == o.Size &&
+		m.MD5 == o.MD5
 }
 
 func (m Part) Bytes() ([]byte, error) {
@@ -108,16 +116,10 @@ func (m Parts) Len() int {
 	return len(m)
 }
 
-func (m Parts) Less(i, j int) bool {
-	return m[i].ID < m[j].ID
-}
-
-func (m Parts) Swap(i, j int) {
-	m[i], m[j] = m[j], m[i]
-}
-
-func (m Parts) Sort() {
-	sort.Sort(m)
+func (m Parts) sort() {
+	sort.SliceStable(m, func(i, j int) bool {
+		return m[i].ID < m[j].ID
+	})
 }
 
 func (m *Parts) Hash(part *Part) (has bool) {
@@ -128,6 +130,23 @@ func (m *Parts) Hash(part *Part) (has bool) {
 	return
 }
 
+func (m *Parts) LoadOrStore(part *Part) (actual *Part, stored bool) {
+	i := sort.Search(len(*m), func(i int) bool {
+		return (*m)[i].ID >= part.ID
+	})
+	if i >= 0 && i < len(*m) && (*m)[i].ID == part.ID {
+		actual = (*m)[i]
+		stored = false
+		return
+	}
+	*m = append(*m, part)
+	actual = part
+	stored = true
+	m.sort()
+	return
+}
+
+// Deprecated
 func (m *Parts) Insert(part *Part, replace bool) (success bool) {
 	i := sort.Search(len(*m), func(i int) bool {
 		return (*m)[i].ID >= part.ID
@@ -140,7 +159,7 @@ func (m *Parts) Insert(part *Part, replace bool) (success bool) {
 		return false
 	}
 	*m = append(*m, part)
-	m.Sort()
+	m.sort()
 	return true
 }
 
@@ -241,6 +260,17 @@ func (m *Multipart) ID() string {
 	return m.id
 }
 
+func (m *Multipart) LoadOrStorePart(part *Part) (actual *Part, stored bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.parts == nil {
+		m.parts = PartsFromBytes(nil)
+	}
+	actual, stored = m.parts.LoadOrStore(part)
+	return
+}
+
+// Deprecated
 func (m *Multipart) InsertPart(part *Part, replace bool) (success bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
