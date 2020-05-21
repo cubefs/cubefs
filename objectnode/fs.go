@@ -21,14 +21,15 @@ import (
 )
 
 type FSFileInfo struct {
-	Path       string
-	Size       int64
-	Mode       os.FileMode
-	ModifyTime time.Time
-	ETag       string
-	Inode      uint64
-	MIMEType   string
-	Metadata   map[string]string // User-defined metadata
+	Path        string
+	Size        int64
+	Mode        os.FileMode
+	ModifyTime  time.Time
+	ETag        string
+	Inode       uint64
+	MIMEType    string
+	Disposition string
+	Metadata    map[string]string // User-defined metadata
 }
 
 type Prefixes []string
