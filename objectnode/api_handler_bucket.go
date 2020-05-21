@@ -48,6 +48,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 	if vol, _ := o.getVol(bucket); vol != nil {
 		log.LogInfof("create bucket failed: duplicated bucket name[%v]", bucket)
 		_ = DuplicatedBucket.ServeResponse(w, r)
+		return
 	}
 	auth := parseRequestAuthInfo(r)
 	var userInfo *proto.UserInfo
