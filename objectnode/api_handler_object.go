@@ -214,7 +214,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header()[HeaderNameContentType] = []string{HeaderValueTypeStream}
 	}
 	if len(fileInfo.Disposition) > 0 {
-		w.Header().Set(HeaderNameContentDisposition, fileInfo.Disposition)
+		w.Header()[HeaderNameContentDisposition] = []string{fileInfo.Disposition}
 	}
 
 	//check request is whether contain param : partNumber
@@ -401,7 +401,7 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header()[HeaderNameContentType] = []string{HeaderValueTypeStream}
 	}
 	if len(fileInfo.Disposition) > 0 {
-		w.Header().Set(HeaderNameContentDisposition, fileInfo.Disposition)
+		w.Header()[HeaderNameContentDisposition] = []string{fileInfo.Disposition}
 	}
 
 	// check request is whether contain param : partNumber
