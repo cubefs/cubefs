@@ -120,9 +120,9 @@ Increase the quota of volume, or adjust other parameters.
    "name", "string", "volume name", "Yes"
    "authKey", "string", "calculates the MD5 value of the owner field as authentication information", "Yes"
    "capacity", "int", "the quota of vol, unit is GB", "Yes"
-   "enableToken","bool","whether to enable the token mechanism to control client permissions", "No"
+   "zoneName", "string", "update zone name", "Yes"
+   "enableToken","bool","whether to enable the token mechanism to control client permissions. ``False`` by default.", "No"
    "replicaNum", "int", "number of replicas, the value is 2 or 3", "No"
-   "zoneName", "string", "update zone name", "No"
    "followerRead", "bool", "enable read from follower", "No"
 
 List
