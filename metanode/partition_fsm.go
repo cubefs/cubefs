@@ -161,7 +161,14 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		var multipart *Multipart
 		multipart = MultipartFromBytes(msg.V)
 		resp = mp.fsmAppendMultipart(multipart)
+	case opFSMSyncCursor:
+		var cursor uint64
+		cursor = binary.BigEndian.Uint64(msg.V)
+		if cursor > mp.config.Cursor {
+			mp.config.Cursor = cursor
+		}
 	}
+
 	return
 }
 

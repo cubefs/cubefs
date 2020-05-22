@@ -100,6 +100,7 @@ const (
 	opFSMCreateMultipart
 	opFSMRemoveMultipart
 	opFSMAppendMultipart
+	opFSMSyncCursor
 )
 
 var (
@@ -134,6 +135,7 @@ const (
 const (
 	// interval of persisting in-memory data
 	intervalToPersistData = time.Minute * 5
+	intervalToSyncCursor  = time.Minute * 1
 )
 
 const (

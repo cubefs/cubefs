@@ -28,7 +28,7 @@ clean() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml down
 }
 
-# test
+# unit test
 run_unit_test() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml run unit_test
 }

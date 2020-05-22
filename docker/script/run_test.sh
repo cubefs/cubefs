@@ -18,6 +18,7 @@ MntPoint=/cfs/mnt
 mkdir -p /cfs/bin /cfs/log /cfs/mnt
 src_path=/go/src/github.com/chubaofs/cfs
 cli=/cfs/bin/cfs-cli
+conf_path=/cfs/conf
 
 Master1Addr="192.168.0.11:17010"
 LeaderAddr=""
@@ -27,6 +28,13 @@ AccessKey=39bEF4RrAQgMj6RV
 SecretKey=TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd
 AuthKey="0e20229116d5a9a4a9e876806b514a85"
 
+init_cli() {
+    cp ${cli} /usr/bin/
+    echo -n "Init cfs-cli ... "
+    cd ${conf_path}
+    ${cli} completion
+    echo 'source '${conf_path}'/cfs-cli.sh' >> ~/.bashrc
+}
 check_cluster() {
     echo -n "Checking cluster  ... "
     for i in $(seq 1 300) ; do
@@ -252,6 +260,7 @@ run_s3_test() {
     fi
 }
 
+init_cli
 check_cluster
 create_cluster_user
 ensure_node_writable "metanode"
