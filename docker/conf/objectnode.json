@@ -18,7 +18,8 @@
     "action:oss:GetObjectXAttr",
     "action:oss:PutObjectXAttr",
     "action:oss:DeleteObjectXAttr",
-    "action:oss:ListObjectXAttrs"
+    "action:oss:ListObjectXAttrs",
+    "action:oss:OptionsObject"
   ],
   "disabledActions": [
     "action:oss:CreateBucket",

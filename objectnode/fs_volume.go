@@ -77,8 +77,10 @@ type VolumeConfig struct {
 type OSSMeta struct {
 	policy     *Policy
 	acl        *AccessControlPolicy
+	corsConfig *CORSConfiguration
 	policyLock sync.RWMutex
 	aclLock    sync.RWMutex
+	corsLock   sync.RWMutex
 }
 
 func (v *Volume) loadPolicy() (p *Policy) {
@@ -147,6 +149,20 @@ type ListFilesV2Result struct {
 	CommonPrefixes []string
 }
 
+func (v *Volume) loadCors() (cors *CORSConfiguration) {
+	v.om.corsLock.RLock()
+	cors = v.om.corsConfig
+	v.om.corsLock.RUnlock()
+	return
+}
+
+func (v *Volume) storeCors(cors *CORSConfiguration) {
+	v.om.corsLock.Lock()
+	v.om.corsConfig = cors
+	v.om.corsLock.Unlock()
+	return
+}
+
 // Volume is a high-level encapsulation of meta sdk and data sdk methods.
 // A high-level approach that exposes the semantics of object storage to the outside world.
 // Volume escapes high-level object storage semantics to low-level POSIX semantics.
@@ -201,6 +217,14 @@ func (v *Volume) loadOSSMeta() {
 	if acl != nil {
 		v.storeACL(acl)
 	}
+
+	var cors *CORSConfiguration
+	if cors, err = v.loadBucketCors(); err != nil { // if cors isn't exist, it may return nil. So it needs to be cleared manually when deleting cors.
+		return
+	}
+	if cors != nil {
+		v.storeCors(cors)
+	}
 }
 
 func (v *Volume) Name() string {
@@ -230,17 +254,28 @@ func (v *Volume) loadBucketPolicy() (policy *Policy, err error) {
 	return
 }
 
-func (v *Volume) loadBucketACL() (*AccessControlPolicy, error) {
-	data, err2 := v.store.Get(v.name, bucketRootPath, OSS_ACL_KEY)
-	if err2 != nil {
-		return nil, err2
+func (v *Volume) loadBucketACL() (acp *AccessControlPolicy, err error) {
+	var raw []byte
+	if raw, err = v.store.Get(v.name, bucketRootPath, XAttrKeyOSSACL); err != nil {
+		return
 	}
-	acl := &AccessControlPolicy{}
-	err3 := xml.Unmarshal(data, acl)
-	if err3 != nil {
-		return nil, err3
+	acp = &AccessControlPolicy{}
+	if err = xml.Unmarshal(raw, acp); err != nil {
+		return
 	}
-	return acl, nil
+	return
+}
+
+func (v *Volume) loadBucketCors() (configuration *CORSConfiguration, err error) {
+	var raw []byte
+	if raw, err = v.store.Get(v.name, bucketRootPath, XAttrKeyOSSCORS); err != nil {
+		return
+	}
+	configuration = &CORSConfiguration{}
+	if err = json.Unmarshal(raw, configuration); err != nil {
+		return
+	}
+	return configuration, nil
 }
 
 func (v *Volume) OSSMeta() *OSSMeta {
@@ -1286,7 +1321,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 		// 1. Etag (MD5)
 		// 2. MIME type
 		var xattrs []*proto.XAttrInfo
-		var xattrKeys = []string{XAttrKeyOSSETag, XAttrKeyOSSETagInvalid, XAttrKeyOSSMIME, XAttrKeyOSSDISPOSITION}
+		var xattrKeys = []string{XAttrKeyOSSETag, XAttrKeyOSSETagDeprecated, XAttrKeyOSSMIME, XAttrKeyOSSDISPOSITION}
 		if xattrs, err = v.mw.BatchGetXAttr([]uint64{inode}, xattrKeys); err != nil {
 			log.LogErrorf("ObjectMeta: meta get xattr fail, volume(%v) inode(%v) path(%v) keys(%v) err(%v)",
 				v.name, inode, path, strings.Join(xattrKeys, ","), err)
@@ -1296,7 +1331,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 			var xattr = xattrs[0]
 			var rawETag = string(xattr.Get(XAttrKeyOSSETag))
 			if len(rawETag) == 0 {
-				rawETag = string(xattr.Get(XAttrKeyOSSETagInvalid))
+				rawETag = string(xattr.Get(XAttrKeyOSSETagDeprecated))
 			}
 			if len(rawETag) > 0 {
 				etagValue = ParseETagValue(rawETag)
@@ -1733,7 +1768,7 @@ func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 	}
 
 	// Get MD5 information in batches, then update to fileInfos
-	keys := []string{XAttrKeyOSSETag, XAttrKeyOSSETagInvalid}
+	keys := []string{XAttrKeyOSSETag, XAttrKeyOSSETagDeprecated}
 	xattrs, err := v.mw.BatchGetXAttr(inodes, keys)
 	if err != nil {
 		log.LogErrorf("supplyListFileInfo: batch get xattr fail, inodes(%v), err(%v)", inodes, err)
@@ -1752,7 +1787,7 @@ func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 		})
 		var etagValue ETagValue
 		if i >= 0 && i < len(xattrs) && xattrs[i].Inode == fileInfo.Inode {
-			etagRaw, etagInvalidRaw := xattrs[i].Get(XAttrKeyOSSETag), xattrs[i].Get(XAttrKeyOSSETagInvalid)
+			etagRaw, etagInvalidRaw := xattrs[i].Get(XAttrKeyOSSETag), xattrs[i].Get(XAttrKeyOSSETagDeprecated)
 			if len(etagRaw) != 0 {
 				etagValue = ParseETagValue(string(etagRaw))
 			}

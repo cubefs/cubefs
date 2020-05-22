@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -224,11 +225,44 @@ func (o *ObjectNode) expectMiddleware(next http.Handler) http.Handler {
 //   request → [pre-handle] → [next handler] → response
 func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// write access control allow headers
-		w.Header()[HeaderNameAccessControlAllowOrigin] = []string{"*"}
-		w.Header()[HeaderNameAccessControlAllowHeaders] = []string{"*"}
-		w.Header()[HeaderNameAccessControlAllowMethods] = []string{"*"}
-		w.Header()[HeaderNameAccessControlMaxAge] = []string{"0"}
+
+		var err error
+		var param = ParseRequestParam(r)
+		if param.Bucket() == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		var vol *Volume
+		if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		var setupCORSHeader = func(volume *Volume, writer http.ResponseWriter, request *http.Request) {
+			origin := request.Header.Get(Origin)
+			method := request.Header.Get(HeaderNameAccessControlRequestMethod)
+			headerStr := request.Header.Get(HeaderNameAccessControlRequestHeaders)
+			if origin == "" || method == "" {
+				return
+			}
+			cors := volume.loadCors()
+			if cors != nil {
+				headers := strings.Split(headerStr, ",")
+				for _, corsRule := range cors.CORSRule {
+					if corsRule.match(origin, method, headers) {
+						// write access control allow headers
+						writer.Header()[HeaderNameAccessControlAllowOrigin] = []string{origin}
+						writer.Header()[HeaderNameAccessControlMaxAge] = []string{strconv.Itoa(int(corsRule.MaxAgeSeconds))}
+						writer.Header()[HeaderNameAccessControlAllowMethods] = []string{strings.Join(corsRule.AllowedMethod, ",")}
+						writer.Header()[HeaderNameAccessControlAllowHeaders] = []string{strings.Join(corsRule.AllowedHeader, ",")}
+						writer.Header()[HeaderNamrAccessControlExposeHeaders] = []string{strings.Join(corsRule.ExposeHeader, ",")}
+						return
+					}
+				}
+			}
+		}
+		setupCORSHeader(vol, w, r)
 		next.ServeHTTP(w, r)
+		return
 	})
 }
