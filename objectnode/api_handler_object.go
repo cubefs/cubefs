@@ -213,6 +213,9 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.Header()[HeaderNameContentType] = []string{HeaderValueTypeStream}
 	}
+	if len(fileInfo.Disposition) > 0 {
+		w.Header()[HeaderNameContentDisposition] = []string{fileInfo.Disposition}
+	}
 
 	//check request is whether contain param : partNumber
 	partNumber := r.URL.Query().Get(ParamPartNumber)
@@ -396,6 +399,9 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header()[HeaderNameContentType] = []string{fileInfo.MIMEType}
 	} else {
 		w.Header()[HeaderNameContentType] = []string{HeaderValueTypeStream}
+	}
+	if len(fileInfo.Disposition) > 0 {
+		w.Header()[HeaderNameContentDisposition] = []string{fileInfo.Disposition}
 	}
 
 	// check request is whether contain param : partNumber
@@ -1064,6 +1070,8 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// In addition to being used to manage data types, it is used to distinguish
 	// whether the request is to create a directory.
 	contentType := r.Header.Get(HeaderNameContentType)
+	// Get request header : content-disposition
+	contentDisposition := r.Header.Get(HeaderNameContentDisposition)
 
 	// Audit file write
 	log.LogInfof("Audit: put object: requestID(%v) remote(%v) volume(%v) path(%v) type(%v)",
@@ -1071,9 +1079,10 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	var fsFileInfo *FSFileInfo
 	var opt = &PutFileOption{
-		MIMEType: contentType,
-		Tagging:  tagging,
-		Metadata: metadata,
+		MIMEType:    contentType,
+		Disposition: contentDisposition,
+		Tagging:     tagging,
+		Metadata:    metadata,
 	}
 	fsFileInfo, err = vol.PutObject(param.Object(), r.Body, opt)
 	if err == syscall.EINVAL {

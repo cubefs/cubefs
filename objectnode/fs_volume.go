@@ -597,6 +597,13 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 			return nil, err
 		}
 	}
+	// If request contain content-disposition header, store it to xaatr
+	if opt != nil && len(opt.Disposition) > 0 {
+		if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(XAttrKeyOSSDISPOSITION), []byte(opt.Disposition)); err != nil {
+			log.LogErrorf("PutObject: store disposition fail: volume(%v) path(%v) inode(%v) disposition value(%v) err(%v)",
+				v.name, path, invisibleTempDataInode.Inode, opt.Disposition, err)
+		}
+	}
 	// If tagging have been specified, use extend attributes for storage.
 	if opt != nil && opt.Tagging != nil {
 		var encoded = opt.Tagging.Encode()
@@ -1263,8 +1270,11 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 		break
 	}
 
-	var etagValue ETagValue
-	var mimeType string
+	var (
+		etagValue   ETagValue
+		mimeType    string
+		disposition string
+	)
 
 	if mode.IsDir() {
 		// Folder has specific ETag and MIME type.
@@ -1276,7 +1286,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 		// 1. Etag (MD5)
 		// 2. MIME type
 		var xattrs []*proto.XAttrInfo
-		var xattrKeys = []string{XAttrKeyOSSETag, XAttrKeyOSSETagInvalid, XAttrKeyOSSMIME}
+		var xattrKeys = []string{XAttrKeyOSSETag, XAttrKeyOSSETagInvalid, XAttrKeyOSSMIME, XAttrKeyOSSDISPOSITION}
 		if xattrs, err = v.mw.BatchGetXAttr([]uint64{inode}, xattrKeys); err != nil {
 			log.LogErrorf("ObjectMeta: meta get xattr fail, volume(%v) inode(%v) path(%v) keys(%v) err(%v)",
 				v.name, inode, path, strings.Join(xattrKeys, ","), err)
@@ -1293,6 +1303,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 			}
 
 			mimeType = string(xattr.Get(XAttrKeyOSSMIME))
+			disposition = string(xattr.Get(XAttrKeyOSSDISPOSITION))
 		}
 	}
 
@@ -1316,14 +1327,15 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 	}
 
 	info = &FSFileInfo{
-		Path:       path,
-		Size:       int64(inoInfo.Size),
-		Mode:       os.FileMode(inoInfo.Mode),
-		ModifyTime: inoInfo.ModifyTime,
-		ETag:       etagValue.ETag(),
-		Inode:      inoInfo.Inode,
-		MIMEType:   mimeType,
-		Metadata:   metadata,
+		Path:        path,
+		Size:        int64(inoInfo.Size),
+		Mode:        os.FileMode(inoInfo.Mode),
+		ModifyTime:  inoInfo.ModifyTime,
+		ETag:        etagValue.ETag(),
+		Inode:       inoInfo.Inode,
+		MIMEType:    mimeType,
+		Disposition: disposition,
+		Metadata:    metadata,
 	}
 	return
 }
