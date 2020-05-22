@@ -283,7 +283,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 		}
 
 		if vol != nil && acl != nil && !acl.IsAclEmpty() {
-			allowed = acl.IsAllowed(param)
+			allowed = acl.IsAllowed(param, isOwner)
 			if !allowed {
 				log.LogWarnf("policyCheck: bucket ACL not allowed: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
 					GetRequestID(r), userInfo, param.AccessKey(), param.Bucket(), param.Action())
