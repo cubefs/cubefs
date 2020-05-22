@@ -188,9 +188,12 @@ func (acp *AccessControlPolicy) Validate(bucket string) (bool, error) {
 	return true, nil
 }
 
-func (acp *AccessControlPolicy) IsAllowed(param *RequestParam) bool {
+func (acp *AccessControlPolicy) IsAllowed(param *RequestParam, isOwner bool) bool {
 	log.LogDebugf("acl is allowed: %v param: %v", acp, param)
 	if len(acp.Acl.Grants) == 0 {
+		return true
+	}
+	if isOwner {
 		return true
 	}
 	for _, grant := range acp.Acl.Grants {

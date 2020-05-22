@@ -304,14 +304,13 @@ func (m *metadataManager) loadPartitions() (err error) {
 func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (err error) {
 	fmt.Println(fmt.Sprintf("start load metaPartition %v", id))
 	if err = partition.Start(); err != nil {
-		fmt.Println(fmt.Sprintf("fininsh load metaPartition %v error %v", id, err))
+		log.LogErrorf("load meta partition %v fail: %v", id, err)
 		return
 	}
-	fmt.Println(fmt.Sprintf("fininsh load metaPartition %v", id))
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.partitions[id] = partition
-	log.LogInfof("[attachPartition] load partition: %v success", m.partitions)
+	log.LogInfof("load meta partition %v success", id)
 	return
 }
 
@@ -327,7 +326,7 @@ func (m *metadataManager) detachPartition(id uint64) (err error) {
 }
 
 func (m *metadataManager) createPartition(id uint64, volName string, start,
-end uint64, peers []proto.Peer) (err error) {
+	end uint64, peers []proto.Peer) (err error) {
 	// check partitions
 	if _, err = m.getPartition(id); err == nil {
 		err = errors.NewErrorf("create partition id=%d is exsited!", id)

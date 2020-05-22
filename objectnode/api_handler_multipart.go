@@ -25,8 +25,6 @@ import (
 // Create multipart upload
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateMultipartUpload.html
 func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("createMultipleUploadHandler: init multiple upload, requestID(%v) remote(%v)",
-		GetRequestID(r), r.RemoteAddr)
 
 	var err error
 	var errorCode *ErrorCode
@@ -80,8 +78,8 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 	}
 
 	// set response header
-	w.Header().Set(HeaderNameContentType, HeaderValueContentTypeXML)
-	w.Header().Set(HeaderNameContentLength, strconv.Itoa(len(bytes)))
+	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
+	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
 	if _, err = w.Write(bytes); err != nil {
 		log.LogErrorf("createMultipleUploadHandler: write response body fail, requestID(%v) err(%v)",
 			GetRequestID(r), err)
@@ -93,8 +91,6 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 // Uploads a part in a multipart upload.
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPart.html .
 func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("uploadPartHandler: upload part, requestID(%v) remote(%v)",
-		GetRequestID(r), r.RemoteAddr)
 
 	var (
 		err       error
@@ -160,8 +156,8 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 	log.LogDebugf("uploadPartHandler: write part, requestID(%v) fsFileInfo(%v)", GetRequestID(r), fsFileInfo)
 
 	// write header to response
-	w.Header().Set(HeaderNameContentLength, "0")
-	w.Header().Set(HeaderNameETag, fsFileInfo.ETag)
+	w.Header()[HeaderNameContentLength] = []string{"0"}
+	w.Header()[HeaderNameETag] = []string{fsFileInfo.ETag}
 	return
 }
 
@@ -281,8 +277,8 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// set response header
-	w.Header().Set(HeaderNameContentType, HeaderValueContentTypeXML)
-	w.Header().Set(HeaderNameContentLength, strconv.Itoa(len(bytes)))
+	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
+	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
 	if _, err = w.Write(bytes); err != nil {
 		log.LogErrorf("listPartsHandler: write response body fail, requestID(%v) err(%v)",
 			GetRequestID(r), err)
@@ -339,6 +335,10 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		errorCode = NoSuchUpload
 		return
 	}
+	if err == syscall.EINVAL {
+		errorCode = ObjectModeConflict
+		return
+	}
 	if err != nil {
 		log.LogErrorf("completeMultipartUploadHandler: complete multipart fail, requestID(%v) uploadID(%v) err(%v)",
 			GetRequestID(r), uploadId, err)
@@ -364,8 +364,8 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	}
 
 	// set response header
-	w.Header().Set(HeaderNameContentType, HeaderValueContentTypeXML)
-	w.Header().Set(HeaderNameContentLength, strconv.Itoa(len(bytes)))
+	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
+	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
 	if _, err = w.Write(bytes); err != nil {
 		log.LogErrorf("completeMultipartUploadHandler: write response body fail, requestID(%v) err(%v)", GetRequestID(r), err)
 		return
@@ -520,8 +520,8 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 	}
 
 	// set response header
-	w.Header().Set(HeaderNameContentType, HeaderValueContentTypeXML)
-	w.Header().Set(HeaderNameContentLength, strconv.Itoa(len(bytes)))
+	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
+	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
 	_, _ = w.Write(bytes)
 	return
 }

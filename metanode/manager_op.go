@@ -15,12 +15,12 @@
 package metanode
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"runtime"
-	"bytes"
-	"fmt"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
