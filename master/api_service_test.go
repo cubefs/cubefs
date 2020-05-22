@@ -795,7 +795,7 @@ func TestDeleteUser(t *testing.T) {
 }
 
 func TestListUsersOfVol(t *testing.T) {
-	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.UsersOfVol, commonVolName)
+	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.UsersOfVol, "test_create_vol")
 	fmt.Println(reqURL)
 	process(reqURL, t)
 }

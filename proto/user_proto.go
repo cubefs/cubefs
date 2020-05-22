@@ -100,6 +100,7 @@ type UserInfo struct {
 	Policy     *UserPolicy `json:"policy"`
 	UserType   UserType    `json:"user_type"`
 	CreateTime string      `json:"create_time"`
+	Mu         sync.RWMutex
 }
 
 func (i *UserInfo) String() string {

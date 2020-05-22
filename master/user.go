@@ -103,12 +103,20 @@ func (u *User) deleteKey(userID string) (err error) {
 		akUser   *proto.AKUser
 		userInfo *proto.UserInfo
 	)
+
+	u.userStoreMutex.Lock()
+	defer u.userStoreMutex.Unlock()
+	u.AKStoreMutex.Lock()
+	defer u.AKStoreMutex.Unlock()
+
 	if value, exist := u.userStore.Load(userID); !exist {
 		err = proto.ErrUserNotExists
 		return
 	} else {
 		userInfo = value.(*proto.UserInfo)
 	}
+	userInfo.Mu.Lock()
+	defer userInfo.Mu.Unlock()
 	if len(userInfo.Policy.OwnVols) > 0 {
 		err = proto.ErrOwnVolExists
 		return
@@ -151,6 +159,8 @@ func (u *User) updateKey(param *proto.UserUpdateParam) (userInfo *proto.UserInfo
 	} else {
 		userInfo = value.(*proto.UserInfo)
 	}
+	userInfo.Mu.Lock()
+	defer userInfo.Mu.Unlock()
 	if userInfo.UserType == proto.UserTypeRoot {
 		err = proto.ErrNoPermission
 		return
@@ -237,6 +247,8 @@ func (u *User) updatePolicy(params *proto.UserPermUpdateParam) (userInfo *proto.
 	if userInfo, err = u.getUserInfo(params.UserID); err != nil {
 		return
 	}
+	userInfo.Mu.Lock()
+	defer userInfo.Mu.Unlock()
 	if userInfo.Policy.IsOwn(params.Volume) {
 		err = proto.ErrIsOwner
 		return
@@ -257,6 +269,8 @@ func (u *User) removePolicy(params *proto.UserPermRemoveParam) (userInfo *proto.
 	if userInfo, err = u.getUserInfo(params.UserID); err != nil {
 		return
 	}
+	userInfo.Mu.Lock()
+	defer userInfo.Mu.Unlock()
 	if userInfo.Policy.IsOwn(params.Volume) {
 		err = proto.ErrIsOwner
 		return
@@ -277,6 +291,8 @@ func (u *User) addOwnVol(userID, volName string) (userInfo *proto.UserInfo, err 
 	if userInfo, err = u.getUserInfo(userID); err != nil {
 		return
 	}
+	userInfo.Mu.Lock()
+	defer userInfo.Mu.Unlock()
 	userInfo.Policy.AddOwnVol(volName)
 	userInfo.Policy.RemoveAuthorizedVol(volName)
 	if err = u.syncUpdateUserInfo(userInfo); err != nil {
@@ -294,6 +310,8 @@ func (u *User) removeOwnVol(userID, volName string) (userInfo *proto.UserInfo, e
 	if userInfo, err = u.getUserInfo(userID); err != nil {
 		return
 	}
+	userInfo.Mu.Lock()
+	defer userInfo.Mu.Unlock()
 	userInfo.Policy.RemoveOwnVol(volName)
 	if err = u.syncUpdateUserInfo(userInfo); err != nil {
 		err = proto.ErrPersistenceByRaft
@@ -311,40 +329,44 @@ func (u *User) deleteVolPolicy(volName string) (err error) {
 		volUser  *proto.VolUser
 		userInfo *proto.UserInfo
 	)
-	//get related userIDs
-	if value, exist := u.volUser.Load(volName); exist {
-		volUser = value.(*proto.VolUser)
-	} else {
-		return nil
-	}
 	//delete policy
 	var deletedUsers = make([]string, 0)
-	volUser.Mu.Lock()
-	for _, userID := range volUser.UserIDs {
+	var userIDs []string
+	if userIDs, err = u.getUsersOfVol(volName); err != nil {
+		return
+	}
+	for _, userID := range userIDs {
 		if userInfo, err = u.getUserInfo(userID); err != nil {
 			if err == proto.ErrUserNotExists {
 				deletedUsers = append(deletedUsers, userID)
 				log.LogWarnf("action[deleteVolPolicy], userID: %v does not exist", userID)
 				continue
 			}
-			volUser.Mu.Unlock()
 			return
 		}
+		userInfo.Mu.Lock()
 		userInfo.Policy.RemoveOwnVol(volName)
 		userInfo.Policy.RemoveAuthorizedVol(volName)
 		if err = u.syncUpdateUserInfo(userInfo); err != nil {
 			err = proto.ErrPersistenceByRaft
-			volUser.Mu.Unlock()
+			userInfo.Mu.Unlock()
 			return
 		}
+		userInfo.Mu.Unlock()
 	}
 	//delete volName index
+	if value, exist := u.volUser.Load(volName); exist {
+		volUser = value.(*proto.VolUser)
+	} else {
+		return nil
+	}
+	volUser.Mu.Lock()
 	if err = u.syncDeleteVolUser(volUser); err != nil {
 		volUser.Mu.Unlock()
 		return
 	}
-	volUser.Mu.Unlock()
 	u.volUser.Delete(volUser.Vol)
+	volUser.Mu.Unlock()
 	for _, deletedUser := range deletedUsers {
 		u.removeUserFromAllVol(deletedUser)
 	}
@@ -400,8 +422,8 @@ func (u *User) getUsersOfVol(volName string) (userIDs []string, err error) {
 		err = proto.ErrHaveNoPolicy
 		return
 	}
-	volUser.Mu.Lock()
-	defer volUser.Mu.Unlock()
+	volUser.Mu.RLock()
+	defer volUser.Mu.RUnlock()
 	for _, userID := range volUser.UserIDs {
 		userIDs = append(userIDs, userID)
 	}
