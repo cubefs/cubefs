@@ -239,14 +239,14 @@ func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 		}
 
 		var setupCORSHeader = func(volume *Volume, writer http.ResponseWriter, request *http.Request) {
+			origin := request.Header.Get(Origin)
+			method := request.Header.Get(HeaderNameAccessControlRequestMethod)
+			headerStr := request.Header.Get(HeaderNameAccessControlRequestHeaders)
+			if origin == "" || method == "" {
+				return
+			}
 			cors := volume.loadCors()
 			if cors != nil {
-				origin := request.Header.Get(Origin)
-				method := request.Header.Get(HeaderNameAccessControlRequestMethod)
-				headerStr := request.Header.Get(HeaderNameAccessControlRequestHeaders)
-				if origin == "" || method == "" {
-					return
-				}
 				headers := strings.Split(headerStr, ",")
 				for _, corsRule := range cors.CORSRule {
 					if corsRule.match(origin, method, headers) {
