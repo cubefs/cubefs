@@ -431,6 +431,8 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 		inodeMP := mw.getPartitionByInode(oldInode)
 		if inodeMP != nil {
 			mw.iunlink(inodeMP, oldInode)
+			// evict oldInode to avoid oldInode becomes orphan inode
+			mw.ievict(inodeMP, oldInode)
 		}
 	}
 
