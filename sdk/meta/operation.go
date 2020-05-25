@@ -649,7 +649,7 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) createSession(mp *MetaPartition, path string) (status int, multipartId string, err error) {
+func (mw *MetaWrapper) createMultipart(mp *MetaPartition, path string) (status int, multipartId string, err error) {
 	req := &proto.CreateMultipartRequest{
 		PartitionId: mp.PartitionID,
 		VolName:     mw.volname,
@@ -660,31 +660,31 @@ func (mw *MetaWrapper) createSession(mp *MetaPartition, path string) (status int
 	packet.Opcode = proto.OpCreateMultipart
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("create session: err(%v)", err)
+		log.LogErrorf("createMultipart: err(%v)", err)
 		return
 	}
 
-	log.LogDebugf("createSession enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
+	log.LogDebugf("createMultipart enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
 	defer metric.Set(err)
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("createSession: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		log.LogErrorf("createMultipart: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("createSession: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		log.LogErrorf("createMultipart: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
 	resp := new(proto.CreateMultipartResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil {
-		log.LogErrorf("createSession: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
+		log.LogErrorf("createMultipart: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
 		return
 	}
 	return statusOK, resp.Info.ID, nil
@@ -746,7 +746,7 @@ func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, multipartId string, p
 		MultipartId: multipartId,
 		Part:        part,
 	}
-
+	log.LogDebugf("addMultipartPart: part(%v), req(%v)", part, req)
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpAddMultipartPart
 	err = packet.MarshalData(req)

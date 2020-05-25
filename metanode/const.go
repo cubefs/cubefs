@@ -144,3 +144,9 @@ const (
 	MB
 	GB
 )
+
+const (
+	AppendMultipartLength     = 25
+	AppendMultipartFlagLength = 2
+	AppendMultipartDelimiter  = "x"
+)

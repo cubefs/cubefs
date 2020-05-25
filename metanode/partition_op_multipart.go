@@ -16,6 +16,8 @@ package metanode
 
 import (
 	"encoding/json"
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -112,9 +114,45 @@ func (mp *metaPartition) RemoveMultipart(req *proto.RemoveMultipartRequest, p *P
 }
 
 func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *Packet) (err error) {
-	nextId := strings.ReplaceAll(uuid.New().String(), "-", "")
+	var (
+		mpId        = req.PartitionId
+		retry       int
+		mpIdLength  string
+		multipartId string
+	)
+
+	// Append special char 'x' and meta partition id after generated multipart id.
+	// If appended string length is less then 25, completion using random string
+	tempLength := len(strconv.FormatUint(mpId, 10))
+
+	// Meta partition id's length is fixed, if current length is not enough,
+	// append '0' in the beginning of current meta partition id
+	if len(strconv.Itoa(tempLength)) < AppendMultipartFlagLength {
+		for i := 0; i < AppendMultipartFlagLength-len(strconv.Itoa(tempLength)); i++ {
+			mpIdLength += "0"
+		}
+		mpIdLength += strconv.Itoa(tempLength)
+	}
+	appendMultipart := fmt.Sprintf("%s%d", mpIdLength, mpId)
+	for retry < 3  {
+		nextId := strings.ReplaceAll(uuid.New().String(), "-", "")
+		if len(appendMultipart) < AppendMultipartLength-1 {
+			l := AppendMultipartLength - 1 - len(appendMultipart)
+			t := strings.ReplaceAll(uuid.New().String(), "-", "")
+			r := string([]rune(t)[:l])
+			multipartId = fmt.Sprintf("%s%s%s%s", nextId, AppendMultipartDelimiter, appendMultipart, r)
+		} else {
+			multipartId = fmt.Sprintf("%s%s%s", nextId, AppendMultipartDelimiter, appendMultipart)
+		}
+		storedItem := mp.multipartTree.Get(&Multipart{id: multipartId})
+		if storedItem == nil {
+			break
+		}
+		retry ++
+	}
+
 	multipart := &Multipart{
-		id:       nextId,
+		id:       multipartId,
 		key:      req.Path,
 		initTime: time.Now().Local(),
 	}
@@ -124,7 +162,7 @@ func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *P
 	}
 	resp := &proto.CreateMultipartResponse{
 		Info: &proto.MultipartInfo{
-			ID:   nextId,
+			ID:   multipartId,
 			Path: req.Path,
 		},
 	}
