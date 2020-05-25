@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"time"
 
@@ -231,13 +232,9 @@ func (mp *metaPartition) GetInodeTree() *BTree {
 }
 
 func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error) {
-	ino := NewInode(req.Inode, 0)
-	encoded, err := ino.Marshal()
-	if err != nil {
-		p.ResultCode = proto.OpErr
-		return
-	}
-	_, err = mp.submit(opFSMInternalDeleteInode, encoded)
+	var bytes = make([]byte, 8)
+	binary.BigEndian.PutUint64(bytes, req.Inode)
+	_, err = mp.submit(opFSMInternalDeleteInode, bytes)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
