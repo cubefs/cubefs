@@ -33,6 +33,7 @@ const (
 	OpenRWAppendOpt          = os.O_CREATE | os.O_RDWR | os.O_APPEND
 	TempFileValidTime        = 86400 //units: sec
 	DeleteInodeFileExtension = "INODE_DEL"
+	DeleteWorkerCnt         = 10
 )
 
 func (mp *metaPartition) startFreeList() (err error) {
@@ -43,8 +44,9 @@ func (mp *metaPartition) startFreeList() (err error) {
 
 	// start vol update ticket
 	go mp.updateVolWorker()
-
-	go mp.deleteWorker()
+	for i:=0;i<DeleteWorkerCnt;i++{
+		go mp.deleteWorker()
+	}
 	mp.startToDeleteExtents()
 	return
 }
@@ -89,9 +91,7 @@ func (mp *metaPartition) deleteWorker() {
 		isLeader bool
 	)
 	buffSlice := make([]uint64, 0, BatchCounts)
-Begin:
 	for {
-		time.Sleep(AsyncDeleteInterval)
 		log.LogInfof("Start deleteWorker: partition(%v)", mp.config.PartitionId)
 		buffSlice = buffSlice[:0]
 		select {
@@ -100,7 +100,12 @@ Begin:
 		default:
 		}
 		if _, isLeader = mp.IsLeader(); !isLeader {
-			goto Begin
+			time.Sleep(AsyncDeleteInterval)
+			continue
+		}
+		if mp.freeList.Len()==0{
+			time.Sleep(AsyncDeleteInterval)
+			continue
 		}
 		for idx = 0; idx < BatchCounts; idx++ {
 			// batch get free inoded from the freeList
