@@ -187,20 +187,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 }
 
 func (mp *metaPartition) syncToRaftFollowersFreeInode(hasDeleteInodes []byte) (err error) {
-	raftPeers := mp.GetPeers()
-	raftPeersError := make([]error, len(raftPeers))
-	wg := new(sync.WaitGroup)
-	for index, target := range raftPeers {
-		wg.Add(1)
-		raftPeersError[index] = mp.notifyRaftFollowerToFreeInodes(wg, target, hasDeleteInodes)
-	}
-	wg.Wait()
-	for index := 0; index < len(raftPeersError); index++ {
-		if raftPeersError[index] != nil {
-			err = raftPeersError[index]
-			return
-		}
-	}
+	_,err=mp.submit(opFSMInternalDeleteInode,hasDeleteInodes)
 
 	return
 }
