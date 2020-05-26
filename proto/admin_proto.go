@@ -354,6 +354,7 @@ type MetaPartitionLoadResponse struct {
 	ApplyID     uint64
 	MaxInode    uint64
 	DentryCount uint64
+	InodeCount  uint64
 	Addr        string
 }
 
