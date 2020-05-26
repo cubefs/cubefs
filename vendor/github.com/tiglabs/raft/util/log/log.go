@@ -144,7 +144,6 @@ func (lw *logWriter) rotateFile(logDir, logFile, module string, rotate bool) {
 	lw.out = file
 
 	if err == nil && logFile == errLogFileName {
-		os.Stderr = file
 		if f, e := file.Stat(); e == nil && f.Size() == 0 {
 			// Write header.
 			var buf bytes.Buffer
