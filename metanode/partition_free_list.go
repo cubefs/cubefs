@@ -33,6 +33,7 @@ const (
 	OpenRWAppendOpt          = os.O_CREATE | os.O_RDWR | os.O_APPEND
 	TempFileValidTime        = 86400 //units: sec
 	DeleteInodeFileExtension = "INODE_DEL"
+	DeleteWorkerCnt         = 10
 )
 
 func (mp *metaPartition) startFreeList() (err error) {
@@ -43,8 +44,9 @@ func (mp *metaPartition) startFreeList() (err error) {
 
 	// start vol update ticket
 	go mp.updateVolWorker()
-
-	go mp.deleteWorker()
+	for i:=0;i<DeleteWorkerCnt;i++{
+		go mp.deleteWorker()
+	}
 	mp.startToDeleteExtents()
 	return
 }
@@ -89,10 +91,7 @@ func (mp *metaPartition) deleteWorker() {
 		isLeader bool
 	)
 	buffSlice := make([]uint64, 0, BatchCounts)
-Begin:
 	for {
-		time.Sleep(AsyncDeleteInterval)
-		log.LogInfof("Start deleteWorker: partition(%v)", mp.config.PartitionId)
 		buffSlice = buffSlice[:0]
 		select {
 		case <-mp.stopC:
@@ -100,7 +99,12 @@ Begin:
 		default:
 		}
 		if _, isLeader = mp.IsLeader(); !isLeader {
-			goto Begin
+			time.Sleep(AsyncDeleteInterval)
+			continue
+		}
+		if mp.freeList.Len()==0{
+			time.Sleep(AsyncDeleteInterval)
+			continue
 		}
 		for idx = 0; idx < BatchCounts; idx++ {
 			// batch get free inoded from the freeList
@@ -109,11 +113,9 @@ Begin:
 				break
 			}
 			buffSlice = append(buffSlice, ino)
-			log.LogInfof("deleteWorker: found an orphan inode: ino(%v)", ino)
 		}
 		mp.persistDeletedInodes(buffSlice)
 		mp.deleteMarkedInodes(buffSlice)
-		log.LogInfof("Finish deleteWorker: partition(%v)", mp.config.PartitionId)
 	}
 }
 
@@ -141,7 +143,6 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 					dirtyExt = append(dirtyExt, ext)
 					log.LogWarnf("[deleteMarkedInodes] delete failed extents: ino(%v) ext(%s), err(%s)", i.Inode, ext.String(), err.Error())
 				}
-				log.LogInfof("[deleteMarkedInodes] inode(%v) extent(%v)", i.Inode, ext.String())
 				return true
 			})
 			if len(dirtyExt) == 0 {
@@ -173,8 +174,8 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 				mp.freeList.Push(inode.Inode)
 			}
 		}
-		log.LogDebugf("[deleteInodeTree] inode list: %v , err(%v)", shouldCommit, err)
 	}
+	log.LogInfof("metaPartition(%v) deleteInodeCnt(%v) inodeCnt(%v)", mp.config.PartitionId,len(shouldCommit),mp.inodeTree.Len())
 }
 
 func (mp *metaPartition) syncToRaftFollowersFreeInode(hasDeleteInodes []byte) (err error) {
