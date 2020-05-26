@@ -378,7 +378,7 @@ func (p *Packet) GetResultMsg() (m string) {
 	case OpDiskErr:
 		m = "DiskErr"
 	case OpErr:
-		m = "Err"
+		m = "Err: " + string(p.Data)
 	case OpAgain:
 		m = "Again"
 	case OpOk:
