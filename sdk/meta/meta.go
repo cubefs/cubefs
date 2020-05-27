@@ -274,7 +274,7 @@ func statusToErrno(status int) error {
 	case statusNotPerm:
 		return syscall.EPERM
 	case statusError:
-		return syscall.EPERM
+		return syscall.EAGAIN
 	default:
 	}
 	return syscall.EIO
