@@ -72,7 +72,6 @@ Volume Management
         --dp-size  uint                                     #Specify size of data partition size [Unit: GB] (default 120)
         --follower-read                                     #Enable read form replica follower (default true)
         --mp-count int                                      #Specify init meta partition count (default 3)
-        --replicas int                                      #Specify volume replicas number (default 3)
         -y, --yes                                           #Answer yes for all questions
 
 .. code-block:: bash
