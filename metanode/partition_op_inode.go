@@ -246,17 +246,15 @@ func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (
 	return
 }
 
-func (mp *metaPartition) DeleteInodeBatch(reqs []*proto.DeleteInodeRequest, p *Packet) (err error) {
-	if len(reqs) == 0 {
+func (mp *metaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error) {
+	if len(req.Inodes) == 0 {
 		return nil
-	} else if len(reqs) == 1 {
-		return mp.DeleteInode(reqs[0], p)
 	}
 
 	var inodes InodeBatch
 
-	for _, req := range reqs {
-		inodes = append(inodes, NewInode(req.Inode, 0))
+	for _, id := range req.Inodes {
+		inodes = append(inodes, NewInode(id, 0))
 	}
 
 	encoded, err := inodes.Marshal()

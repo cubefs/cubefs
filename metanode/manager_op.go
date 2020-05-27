@@ -867,39 +867,25 @@ func (m *metadataManager) opMetaDeleteInode(conn net.Conn, p *Packet,
 
 func (m *metadataManager) opMetaDeleteInodeBatch(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
-	var reqs []*proto.DeleteInodeRequest
-	if err = json.Unmarshal(p.Data, &reqs); err != nil {
+	var req *proto.DeleteInodeBatchRequest
+	if err = json.Unmarshal(p.Data, &req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		_ = m.respondToClient(conn, p)
 		return
 	}
 
-	group := make(map[uint64][]*proto.DeleteInodeRequest)
-
-	for _, req := range reqs {
-		group[req.PartitionId] = append(group[req.PartitionId], req)
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
 	}
-
-	mpGroup := make(map[uint64]MetaPartition)
-	for pid, _ := range group {
-		mp, err := m.getPartition(pid)
-		if err != nil {
-			p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
-			_ = m.respondToClient(conn, p)
-			return
-		}
-		mpGroup[pid] = mp
+	if !m.serveProxy(conn, mp, p) {
+		return
 	}
-
-	for pid, reqs := range group {
-		mp := mpGroup[pid]
-		if !m.serveProxy(conn, mp, p) {
-			return
-		}
-		err = mp.DeleteInodeBatch(reqs, p)
-		log.LogDebugf("%s [opMetaDeleteInode] req: %d - %v, resp: %v, body: %s",
-			remoteAddr, p.GetReqID(), reqs, p.GetResultMsg(), p.Data)
-	}
+	err = mp.DeleteInodeBatch(req, p)
+	log.LogDebugf("%s [opMetaDeleteInode] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 
 	_ = m.respondToClient(conn, p)
 

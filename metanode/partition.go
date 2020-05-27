@@ -116,7 +116,7 @@ type OpInode interface {
 	SetAttr(reqData []byte, p *Packet) (err error)
 	GetInodeTree() *BTree
 	DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error)
-	DeleteInodeBatch(req []*proto.DeleteInodeRequest, p *Packet) (err error)
+	DeleteInodeBatch(req *proto.DeleteInodeRequest, p *Packet) (err error)
 }
 
 type OpExtend interface {

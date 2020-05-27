@@ -302,7 +302,12 @@ type DeleteInodeRequest struct {
 	Inode       uint64 `json:"ino"`
 }
 
-type DeleteInodeBatchRequest []*DeleteInodeRequest
+// DeleteInodeRequest defines the request to delete an inode.
+type DeleteInodeBatchRequest struct {
+	VolName     string   `json:"vol"`
+	PartitionId uint64   `json:"pid"`
+	Inodes      []uint64 `json:"ino"`
+}
 
 // AppendExtentKeysRequest defines the request to append an extent key.
 type AppendExtentKeysRequest struct {
