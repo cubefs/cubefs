@@ -591,6 +591,7 @@ func (mp *metaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 		DoCompare:   true,
 	}
 	resp.MaxInode = mp.GetCursor()
+	resp.InodeCount=uint64(mp.getInodeTree().Len())
 	resp.DentryCount = uint64(mp.dentryTree.Len())
 	resp.ApplyID = mp.applyID
 	if err != nil {
