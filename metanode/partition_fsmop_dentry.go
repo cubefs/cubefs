@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"github.com/chubaofs/chubaofs/util/btree"
 	"strings"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -88,11 +89,27 @@ func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8) {
 }
 
 // Delete dentry from the dentry tree.
-func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry) (
+func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (
 	resp *DentryResponse) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
-	item := mp.dentryTree.Delete(dentry)
+
+	var item interface{}
+	if checkInode {
+		item = mp.dentryTree.Execute(func(tree *btree.BTree) interface{} {
+			d := tree.CopyGet(dentry)
+			if d == nil {
+				return nil
+			}
+			if d.(*Dentry).Inode != dentry.Inode {
+				return nil
+			}
+			return mp.dentryTree.Delete(dentry)
+		})
+	} else {
+		item = mp.dentryTree.Delete(dentry)
+	}
+
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
 		return
@@ -109,6 +126,15 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry) (
 	}
 	resp.Msg = item.(*Dentry)
 	return
+}
+
+// batch Delete dentry from the dentry tree.
+func (mp *metaPartition) fsmBatchDeleteDentry(db DentryBatch) []*DentryResponse {
+	result := make([]*DentryResponse, 0, len(db))
+	for _, dentry := range db {
+		result = append(result, mp.fsmDeleteDentry(dentry, true))
+	}
+	return result
 }
 
 func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (

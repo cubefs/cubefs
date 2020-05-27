@@ -109,13 +109,16 @@ func (c *MetaPartitionConfig) sortPeers() {
 type OpInode interface {
 	CreateInode(req *CreateInoReq, p *Packet) (err error)
 	UnlinkInode(req *UnlinkInoReq, p *Packet) (err error)
+	UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (err error)
 	InodeGet(req *InodeGetReq, p *Packet) (err error)
 	InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error)
 	CreateInodeLink(req *LinkInodeReq, p *Packet) (err error)
 	EvictInode(req *EvictInodeReq, p *Packet) (err error)
+	EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error)
 	SetAttr(reqData []byte, p *Packet) (err error)
 	GetInodeTree() *BTree
 	DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error)
+	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error)
 }
 
 type OpExtend interface {
@@ -130,6 +133,7 @@ type OpExtend interface {
 type OpDentry interface {
 	CreateDentry(req *CreateDentryReq, p *Packet) (err error)
 	DeleteDentry(req *DeleteDentryReq, p *Packet) (err error)
+	DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet) (err error)
 	UpdateDentry(req *UpdateDentryReq, p *Packet) (err error)
 	ReadDir(req *ReadDirReq, p *Packet) (err error)
 	Lookup(req *LookupReq, p *Packet) (err error)
@@ -592,7 +596,7 @@ func (mp *metaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 		DoCompare:   true,
 	}
 	resp.MaxInode = mp.GetCursor()
-	resp.InodeCount=uint64(mp.getInodeTree().Len())
+	resp.InodeCount = uint64(mp.getInodeTree().Len())
 	resp.DentryCount = uint64(mp.dentryTree.Len())
 	resp.ApplyID = mp.applyID
 	if err != nil {

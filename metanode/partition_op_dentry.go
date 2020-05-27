@@ -78,6 +78,70 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 	return
 }
 
+// DeleteDentry deletes a dentry.
+func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet) (err error) {
+
+	db := make(DentryBatch, 0, len(req.Dens))
+
+	for _, d := range req.Dens {
+		db = append(db, &Dentry{
+			ParentId: req.ParentID,
+			Name:     d.Name,
+			Inode:    d.Inode,
+			Type:     d.Type,
+		})
+	}
+
+	val, err := db.Marshal()
+	if err != nil {
+		p.ResultCode = proto.OpErr
+		return
+	}
+	r, err := mp.submit(opFSMDeleteDentryBatch, val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return err
+	}
+
+	retMsg := r.([]*DentryResponse)
+	p.ResultCode = proto.OpOk
+
+	bddr := &BatchDeleteDentryResp{}
+
+	for _, m := range retMsg {
+		if m.Status != proto.OpOk {
+			p.ResultCode = proto.OpErr
+		}
+
+		if dentry := m.Msg; dentry != nil {
+			bddr.Items = append(bddr.Items, &struct {
+				Inode  uint64 `json:"ino"`
+				Status uint8  `json:"status"`
+			}{
+				Inode:  dentry.Inode,
+				Status: m.Status,
+			})
+		} else {
+			bddr.Items = append(bddr.Items, &struct {
+				Inode  uint64 `json:"ino"`
+				Status uint8  `json:"status"`
+			}{
+				Status: m.Status,
+			})
+		}
+
+	}
+
+	reply, err := json.Marshal(bddr)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return err
+	}
+	p.PacketOkWithBody(reply)
+
+	return
+}
+
 // UpdateDentry updates a dentry.
 func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err error) {
 	if req.ParentID == req.Inode {

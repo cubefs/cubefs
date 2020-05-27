@@ -132,6 +132,14 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 	return
 }
 
+// fsmUnlinkInode delete the specified inode from inode tree.
+func (mp *metaPartition) fsmUnlinkInodeBatch(ib InodeBatch) (resp []*InodeResponse) {
+	for _, ino := range ib {
+		resp = append(resp, mp.fsmUnlinkInode(ino))
+	}
+	return
+}
+
 func (mp *metaPartition) internalHasInode(ino *Inode) bool {
 	return mp.inodeTree.Has(ino)
 }
@@ -155,6 +163,24 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 			mp.config.PartitionId, ino.Inode)
 		mp.internalDeleteInode(ino)
 	}
+}
+
+func (mp *metaPartition) internalDeleteBatch(val []byte) error {
+	if len(val) == 0 {
+		return nil
+	}
+	inodes, err := InodeBatchUnmarshal(val)
+	if err != nil {
+		return nil
+	}
+
+	for _, ino := range inodes {
+		log.LogDebugf("internalDelete: received internal delete: partitionID(%v) inode(%v)",
+			mp.config.PartitionId, ino.Inode)
+		mp.internalDeleteInode(ino)
+	}
+
+	return nil
 }
 
 func (mp *metaPartition) internalDeleteInode(ino *Inode) {
@@ -245,6 +271,13 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 	if i.IsTempFile() {
 		i.SetDeleteMark()
 		mp.freeList.Push(i.Inode)
+	}
+	return
+}
+
+func (mp *metaPartition) fsmBatchEvictInode(ib InodeBatch) (resp []*InodeResponse) {
+	for _, ino := range ib {
+		resp = append(resp, mp.fsmEvictInode(ino))
 	}
 	return
 }

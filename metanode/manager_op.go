@@ -285,6 +285,31 @@ func (m *metadataManager) opDeleteDentry(conn net.Conn, p *Packet,
 	return
 }
 
+// Handle Op batch Delete Dentry
+func (m *metadataManager) opBatchDeleteDentry(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	req := &BatchDeleteDentryReq{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, nil)
+		m.respondToClient(conn, p)
+		return
+	}
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
+		m.respondToClient(conn, p)
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.DeleteDentryBatch(req, p)
+	m.respondToClient(conn, p)
+	log.LogDebugf("%s [opDeleteDentry] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
 func (m *metadataManager) opUpdateDentry(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
 	req := &UpdateDentryReq{}
@@ -327,6 +352,30 @@ func (m *metadataManager) opMetaUnlinkInode(conn net.Conn, p *Packet,
 		return
 	}
 	err = mp.UnlinkInode(req, p)
+	m.respondToClient(conn, p)
+	log.LogDebugf("%s [opDeleteInode] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opMetaBatchUnlinkInode(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	req := &BatchUnlinkInoReq{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, nil)
+		m.respondToClient(conn, p)
+		return
+	}
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
+		m.respondToClient(conn, p)
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.UnlinkInodeBatch(req, p)
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opDeleteInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -384,6 +433,35 @@ func (m *metadataManager) opMetaInodeGet(conn net.Conn, p *Packet,
 	}
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaInodeGet] req: %d - %v; resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opBatchMetaEvictInode(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	req := &proto.BatchEvictInodeRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[opMetaEvictInode] request unmarshal: %v", err.Error())
+		return
+	}
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[opMetaEvictInode] req: %v, resp: %v", req, err.Error())
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+
+	if err = mp.EvictInodeBatch(req, p); err != nil {
+		err = errors.NewErrorf("[opMetaEvictInode] req: %v, resp: %v", req, err.Error())
+	}
+	m.respondToClient(conn, p)
+	log.LogDebugf("%s [opMetaEvictInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
@@ -899,6 +977,33 @@ func (m *metadataManager) opMetaDeleteInode(conn net.Conn, p *Packet,
 	_ = m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaDeleteInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opMetaBatchDeleteInode(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	var req *proto.DeleteInodeBatchRequest
+	if err = json.Unmarshal(p.Data, &req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		_ = m.respondToClient(conn, p)
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.DeleteInodeBatch(req, p)
+	log.LogDebugf("%s [opMetaDeleteInode] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+
+	_ = m.respondToClient(conn, p)
+
 	return
 }
 

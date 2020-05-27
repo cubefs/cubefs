@@ -131,7 +131,13 @@ const (
 	OpRemoveMultipart  uint8 = 0x73
 	OpListMultiparts   uint8 = 0x74
 
-	OpBatchDeleteExtent uint8 = 0x75
+	OpBatchDeleteExtent uint8 = 0x75 // SDK to MetaNode
+
+	//Operations: MetaNode Leader -> MetaNode Follower
+	OpMetaBatchDeleteInode  uint8 = 0x90
+	OpMetaBatchDeleteDentry uint8 = 0x91
+	OpMetaBatchUnlinkInode  uint8 = 0x92
+	OpMetaBatchEvictInode   uint8 = 0x93
 
 	// Commons
 	OpIntraGroupNetErr uint8 = 0xF3
@@ -253,6 +259,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaCreateInode"
 	case OpMetaUnlinkInode:
 		m = "OpMetaUnlinkInode"
+	case OpMetaBatchUnlinkInode:
+		m = "OpMetaBatchUnlinkInode"
 	case OpMetaCreateDentry:
 		m = "OpMetaCreateDentry"
 	case OpMetaDeleteDentry:
@@ -283,6 +291,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaLinkInode"
 	case OpMetaEvictInode:
 		m = "OpMetaEvictInode"
+	case OpMetaBatchEvictInode:
+		m = "OpMetaBatchEvictInode"
 	case OpMetaSetattr:
 		m = "OpMetaSetattr"
 	case OpCreateMetaPartition:
@@ -343,6 +353,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpDataPartitionTryToLeader"
 	case OpMetaDeleteInode:
 		m = "OpMetaDeleteInode"
+	case OpMetaBatchDeleteInode:
+		m = "OpMetaBatchDeleteInode"
 	case OpMetaBatchExtentsAdd:
 		m = "OpMetaBatchExtentsAdd"
 	case OpMetaSetXAttr:
