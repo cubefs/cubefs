@@ -245,3 +245,30 @@ func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (
 	p.PacketOkReply()
 	return
 }
+
+func (mp *metaPartition) DeleteInodeBatch(reqs []*proto.DeleteInodeRequest, p *Packet) (err error) {
+	if len(reqs) == 0 {
+		return nil
+	} else if len(reqs) == 1 {
+		return mp.DeleteInode(reqs[0], p)
+	}
+
+	var inodes InodeBatch
+
+	for _, req := range reqs {
+		inodes = append(inodes, NewInode(req.Inode, 0))
+	}
+
+	encoded, err := inodes.Marshal()
+	if err != nil {
+		p.ResultCode = proto.OpErr
+		return
+	}
+	_, err = mp.submit(opFSMInternalDeleteInodeBatch, encoded)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	p.PacketOkReply()
+	return
+}

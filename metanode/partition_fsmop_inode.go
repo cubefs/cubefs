@@ -157,6 +157,22 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 	}
 }
 
+func (mp *metaPartition) internalDeleteBatch(val []byte) error {
+	if len(val) == 0 {
+		return nil
+	}
+	inodes, err := InodeBatchUnmarshal(val)
+	if err != nil {
+		return nil
+	}
+
+	for _, ino := range inodes {
+		log.LogDebugf("internalDelete: received internal delete: partitionID(%v) inode(%v)",
+			mp.config.PartitionId, ino.Inode)
+		mp.internalDeleteInode(ino)
+	}
+}
+
 func (mp *metaPartition) internalDeleteInode(ino *Inode) {
 	mp.inodeTree.Delete(ino)
 	mp.freeList.Remove(ino.Inode)

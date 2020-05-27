@@ -133,6 +133,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		mp.storeChan <- msg
 	case opFSMInternalDeleteInode:
 		err = mp.internalDelete(msg.V)
+	case opFSMInternalDeleteInodeBatch:
+		err = mp.internalDeleteBatch(msg.V)
 	case opFSMInternalDelExtentFile:
 		err = mp.delOldExtentFile(msg.V)
 	case opFSMInternalDelExtentCursor:

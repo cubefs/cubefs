@@ -99,6 +99,9 @@ const (
 	opFSMCreateMultipart
 	opFSMRemoveMultipart
 	opFSMAppendMultipart
+
+	//supplement action
+	opFSMInternalDeleteInodeBatch
 )
 
 var (

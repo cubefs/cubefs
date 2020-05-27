@@ -302,6 +302,8 @@ type DeleteInodeRequest struct {
 	Inode       uint64 `json:"ino"`
 }
 
+type DeleteInodeBatchRequest []*DeleteInodeRequest
+
 // AppendExtentKeysRequest defines the request to append an extent key.
 type AppendExtentKeysRequest struct {
 	VolName     string      `json:"vol"`
