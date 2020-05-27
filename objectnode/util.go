@@ -267,3 +267,34 @@ func ParseUserDefinedMetadata(header http.Header) map[string]string {
 	}
 	return metadata
 }
+
+// validate Cache-Control
+var cacheControlDir = []string{"public", "private", "no-cache", "no-store", "no-transform", "must-revalidate", "proxy-revalidate"}
+var maxAgeRegexp = regexp.MustCompile("^((max-age)|(s-maxage))=[1-9][0-9]*$")
+
+func ValidateCacheControl(cacheControl string) bool {
+	var cacheDirs = strings.Split(cacheControl, ",")
+	for _, dir := range cacheDirs {
+		if !contains(cacheControlDir, dir) && !maxAgeRegexp.MatchString(dir) {
+			log.LogErrorf("invalid cache-control directive: %v", dir)
+			return false
+		}
+	}
+	return true
+}
+
+func ValidateCacheExpires(expires string) bool {
+	var err error
+	var stamp time.Time
+	if stamp, err = time.Parse(RFC1123Format, expires); err != nil {
+		log.LogErrorf("invalid expires: %v", expires)
+		return false
+	}
+	expiresInt := stamp.Unix()
+	now := time.Now().UTC().Unix()
+	if now < expiresInt {
+		return true
+	}
+	log.LogErrorf("Expires less than now: %v, now: %v", expires, now)
+	return false
+}
