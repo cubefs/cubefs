@@ -21,7 +21,7 @@ Create
    "owner", "string", "the owner of vol, and user ID of a user", "Yes", "None"
    "mpCount", "int", "the amount of initial meta partitions", "No", "3"
    "enableToken","bool","whether to enable the token mechanism to control client permissions", "No", "false"
-   "replicaNum", "int", "the number of replicas, the value is 2 or 3", "No", "3"
+   "replicaNum", "int", "the number of replicas, the value is 3 at least", "No", "3"
    "size", "int", "the size of data partitions, unit is GB", "No", "120"
    "followerRead", "bool", "enable read from follower", "No", "false"
    "crossZone", "bool", "cross zone or not. If it is true, parameter *zoneName* must be empty", "No", "false"
@@ -122,7 +122,6 @@ Increase the quota of volume, or adjust other parameters.
    "capacity", "int", "the quota of vol, unit is GB", "Yes"
    "zoneName", "string", "update zone name", "Yes"
    "enableToken","bool","whether to enable the token mechanism to control client permissions. ``False`` by default.", "No"
-   "replicaNum", "int", "number of replicas, the value is 2 or 3", "No"
    "followerRead", "bool", "enable read from follower", "No"
 
 List

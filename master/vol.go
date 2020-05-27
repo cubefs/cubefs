@@ -60,7 +60,7 @@ type Vol struct {
 func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, crossZone bool, enableToken bool, createTime int64) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
-	if dpReplicaNum <= 1 {
+	if dpReplicaNum < defaultReplicaNum {
 		dpReplicaNum = defaultReplicaNum
 	}
 	vol.dpReplicaNum = dpReplicaNum
