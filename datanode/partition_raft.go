@@ -76,6 +76,12 @@ func (dp *DataPartition) StartRaft() (err error) {
 		replicaPort   int
 		peers         []raftstore.PeerAddress
 	)
+	defer func() {
+		if r:=recover();r!=nil {
+			mesg:=fmt.Sprintf("StartRaft(%v)  Raft Panic (%v)",dp.partitionID,r)
+			panic(mesg)
+		}
+	}()
 
 	if heartbeatPort, replicaPort, err = dp.raftPort(); err != nil {
 		return

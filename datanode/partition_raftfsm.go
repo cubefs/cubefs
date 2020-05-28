@@ -97,9 +97,15 @@ func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
 
 // HandleLeaderChange notifies the application when the raft leader has changed.
 func (dp *DataPartition) HandleLeaderChange(leader uint64) {
+	defer func() {
+		if r:=recover();r!=nil {
+			mesg:=fmt.Sprintf("HandleLeaderChange(%v)  Raft Panic (%v)",dp.partitionID,r)
+			panic(mesg)
+		}
+	}()
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", serverPort), time.Second)
 	if err != nil {
-		log.LogErrorf(fmt.Sprintf("HandleLeaderChange serverPort not exsit ,error %v",err))
+		log.LogErrorf(fmt.Sprintf("HandleLeaderChange PartitionID(%v) serverPort not exsit ,error %v",dp.partitionID,err))
 		dp.raftPartition.TryToLeader(dp.partitionID)
 		return
 	}
