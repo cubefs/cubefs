@@ -90,7 +90,7 @@ First please make sure to use the ``PORTABLE=1 make static_lib`` command to comp
 5. How to change the parameters specified during volume creation?
 ---------------------------------------------------------------------
 
-Use Mater API ``updateVol`` to change the parameters ``capacity``, ``replicaNum``, ``zoneName``, ``enableToken`` and ``followerRead``.
+Use Mater API ``updateVol`` to change the parameters ``capacity``, ``zoneName``, ``enableToken`` and ``followerRead``.
 
 
 6. How to launch a new disk?
