@@ -101,7 +101,7 @@ func (d *Dentry) Unmarshal(raw []byte) (err error) {
 
 // Marshal marshals the dentryBatch into a byte array.
 func (d DentryBatch) Marshal() ([]byte, error) {
-	buff := bytes.NewBuffer(make([]byte, 0, 68*len(d)))
+	buff := bytes.NewBuffer(make([]byte, 0))
 	if err := binary.Write(buff, binary.BigEndian, uint32(len(d))); err != nil {
 		return nil, err
 	}

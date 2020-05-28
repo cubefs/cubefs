@@ -156,7 +156,6 @@ func (i *Inode) Marshal() (result []byte, err error) {
 	keyLen := uint32(len(keyBytes))
 	valLen := uint32(len(valBytes))
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
-	buff.Grow(128)
 	if err = binary.Write(buff, binary.BigEndian, keyLen); err != nil {
 		return
 	}
@@ -203,7 +202,7 @@ func (i *Inode) Unmarshal(raw []byte) (err error) {
 
 // Marshal marshals the inodeBatch into a byte array.
 func (i InodeBatch) Marshal() ([]byte, error) {
-	buff := bytes.NewBuffer(make([]byte, 0, 132*len(i)))
+	buff := bytes.NewBuffer(make([]byte, 0))
 	if err := binary.Write(buff, binary.BigEndian, uint32(len(i))); err != nil {
 		return nil, err
 	}
