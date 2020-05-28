@@ -345,7 +345,7 @@ func TestGetVolSimpleInfo(t *testing.T) {
 
 func TestCreateVol(t *testing.T) {
 	name := "test_create_vol"
-	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest&zoneName=%v", hostAddr, proto.AdminCreateVol, name,testZone2)
+	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest&zoneName=%v", hostAddr, proto.AdminCreateVol, name, testZone2)
 	fmt.Println(reqURL)
 	process(reqURL, t)
 	userInfo, err := server.user.getUserInfo("cfstest")
@@ -792,4 +792,10 @@ func TestDeleteUser(t *testing.T) {
 		t.Errorf("expect err ErrUserNotExists, but err is %v", err)
 		return
 	}
+}
+
+func TestListUsersOfVol(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.UsersOfVol, "test_create_vol")
+	fmt.Println(reqURL)
+	process(reqURL, t)
 }

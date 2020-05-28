@@ -242,6 +242,23 @@ func (m *Server) getAllUsers(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(users))
 }
 
+func (m *Server) getUsersOfVol(w http.ResponseWriter, r *http.Request) {
+	var (
+		volName string
+		users   []string
+		err     error
+	)
+	if volName, err = parseVolName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if users, err = m.user.getUsersOfVol(volName); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(users))
+}
+
 func parseUser(r *http.Request) (userID string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
