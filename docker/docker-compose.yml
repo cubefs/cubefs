@@ -47,8 +47,9 @@ services:
             - "17020"
             - 9500
         volumes:
+            - ${DiskPath:-./docker_data}/master1/data:/cfs/data
             - ./bin:/cfs/bin:ro
-            - ./log/master1:/cfs/log
+            - ${DiskPath:-./docker_data}/master1/log:/cfs/log
             - ./conf/master1.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -67,8 +68,9 @@ services:
             - "17020"
             - 9500
         volumes:
+            - ${DiskPath:-./docker_data}/master2/data:/cfs/data
             - ./bin:/cfs/bin:ro
-            - ./log/master2:/cfs/log
+            - ${DiskPath:-./docker_data}/master2/log:/cfs/log
             - ./conf/master2.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -86,8 +88,9 @@ services:
             - "17020"
             - 9500
         volumes:
+            - ${DiskPath:-./docker_data}/master3/data:/cfs/data
             - ./bin:/cfs/bin:ro
-            - ./log/master3:/cfs/log
+            - ${DiskPath:-./docker_data}/master3/log:/cfs/log
             - ./conf/master3.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -106,9 +109,9 @@ services:
             - "17240"
             - 9500
         volumes:
-            - ./metadata/1:/cfs/data
+            - ${DiskPath:-./docker_data}/metanode1/data:/cfs/data
             - ./bin:/cfs/bin:ro
-            - ./log/metanode1:/cfs/log
+            - ${DiskPath:-./docker_data}/metanode1/log:/cfs/log
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
@@ -127,9 +130,9 @@ services:
             - "17240"
             - 9500
         volumes:
-            - ./metadata/2:/cfs/data
+            - ${DiskPath:-./docker_data}/metanode2/data:/cfs/data
             - ./bin:/cfs/bin:ro
-            - ./log/metanode2:/cfs/log
+            - ${DiskPath:-./docker_data}/metanode2/log:/cfs/log
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
@@ -148,9 +151,9 @@ services:
             - "17240"
             - 9500
         volumes:
-            - ./metadata/3:/cfs/data
+            - ${DiskPath:-./docker_data}/metanode3/data:/cfs/data
             - ./bin:/cfs/bin:ro
-            - ./log/metanode3:/cfs/log
+            - ${DiskPath:-./docker_data}/metanode3/log:/cfs/log
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
@@ -169,9 +172,9 @@ services:
             - "17240"
             - 9500
         volumes:
-            - ./metadata/4:/cfs/data
+            - ${DiskPath:-./docker_data}/metanode4/data:/cfs/data
             - ./bin:/cfs/bin:ro
-            - ./log/metanode4:/cfs/log
+            - ${DiskPath:-./docker_data}/metanode4/log:/cfs/log
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
@@ -190,9 +193,9 @@ services:
             - "17340"
             - 9500
         volumes:
-            - ${DiskPath:-./disk}/1:/cfs/disk
+            - ${DiskPath:-./docker_data}/datanode1/disk:/cfs/disk
             - ./bin:/cfs/bin:ro
-            - ./log/datanode1:/cfs/log
+            - ${DiskPath:-./docker_data}/datanode1/log:/cfs/log
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
@@ -211,9 +214,9 @@ services:
             - "17340"
             - 9500
         volumes:
-            - ${DiskPath:-./disk}/2:/cfs/disk
+            - ${DiskPath:-./docker_data}/datanode2/disk:/cfs/disk
             - ./bin:/cfs/bin:ro
-            - ./log/datanode2:/cfs/log
+            - ${DiskPath:-./docker_data}/datanode2/log:/cfs/log
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -232,9 +235,9 @@ services:
             - "17340"
             - 9500
         volumes:
-            - ${DiskPath:-./disk}/3:/cfs/disk
+            - ${DiskPath:-./docker_data}/datanode3/disk:/cfs/disk
             - ./bin:/cfs/bin:ro
-            - ./log/datanode3:/cfs/log
+            - ${DiskPath:-./docker_data}/datanode3/log:/cfs/log
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -253,9 +256,9 @@ services:
             - "17340"
             - 9500
         volumes:
-            - ${DiskPath:-./disk}/4:/cfs/disk
+            - ${DiskPath:-./docker_data}/datanode4/disk:/cfs/disk
             - ./bin:/cfs/bin:ro
-            - ./log/datanode4:/cfs/log
+            - ${DiskPath:-./docker_data}/datanode4/log:/cfs/log
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -272,7 +275,7 @@ services:
             - 9500
         volumes:
             - ./bin:/cfs/bin:ro
-            - ./log/objectnode1:/cfs/log
+            - ${DiskPath:-./docker_data}/objectnode1/log:/cfs/log
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -291,7 +294,7 @@ services:
             - 9500
         volumes:
             - ./bin:/cfs/bin:ro
-            - ./log/objectnode2:/cfs/log
+            - ${DiskPath:-./docker_data}/objectnode2/log:/cfs/log
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -310,7 +313,7 @@ services:
             - 9500
         volumes:
             - ./bin:/cfs/bin:ro
-            - ./log/objectnode3:/cfs/log
+            - ${DiskPath:-./docker_data}/objectnode3/log:/cfs/log
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -330,7 +333,7 @@ services:
             - ./bin:/cfs/bin:ro
             - ./conf/hosts:/etc/hosts:ro
             - ./conf/client.json:/cfs/conf/client.json
-            - ./log/client:/cfs/log
+            - ${DiskPath:-./docker_data}/client/log:/cfs/log
             - ./script/run_test.sh:/cfs/script/start.sh
             - ./script/start_client.sh:/cfs/script/start_client.sh
             - ./ltp/runtest/fs:/opt/ltp/runtest/fs
