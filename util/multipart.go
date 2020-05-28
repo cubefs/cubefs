@@ -90,7 +90,7 @@ func CreateMultipartID(mpId uint64) MultipartID {
 	}
 	appendMultipart := fmt.Sprintf("%s%d", mpIdLength, mpId)
 	nextId := strings.ReplaceAll(uuid.New().String(), "-", "")
-	if len(appendMultipart) < -1 {
+	if len(appendMultipart) < multipartIDMetaLength-1 {
 		l := multipartIDMetaLength - 1 - len(appendMultipart)
 		t := strings.ReplaceAll(uuid.New().String(), "-", "")
 		r := string([]rune(t)[:l])

@@ -25,7 +25,7 @@ import (
 )
 
 func (mp *metaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet) (err error) {
-	item := mp.multipartTree.Get(&Multipart{id: req.MultipartId})
+	item := mp.multipartTree.Get(&Multipart{key: req.Path, id: req.MultipartId})
 	if item == nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		return
@@ -62,13 +62,14 @@ func (mp *metaPartition) AppendMultipart(req *proto.AddMultipartPartRequest, p *
 		p.PacketOkReply()
 		return
 	}
-	item := mp.multipartTree.Get(&Multipart{id: req.MultipartId})
+	item := mp.multipartTree.Get(&Multipart{key:req.Path, id: req.MultipartId})
 	if item == nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		return
 	}
 	multipart := &Multipart{
-		id: req.MultipartId,
+		id:  req.MultipartId,
+		key: req.Path,
 		parts: Parts{
 			&Part{
 				ID:         req.Part.ID,
@@ -95,7 +96,8 @@ func (mp *metaPartition) AppendMultipart(req *proto.AddMultipartPartRequest, p *
 
 func (mp *metaPartition) RemoveMultipart(req *proto.RemoveMultipartRequest, p *Packet) (err error) {
 	multipart := &Multipart{
-		id: req.MultipartId,
+		id:  req.MultipartId,
+		key: req.Path,
 	}
 	var resp interface{}
 	if resp, err = mp.putMultipart(opFSMRemoveMultipart, multipart); err != nil {
@@ -150,17 +152,12 @@ func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *P
 func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packet) (err error) {
 
 	max := int(req.Max)
-	marker := req.Marker
+	keyMarker := req.Marker
 	multipartIdMarker := req.MultipartIdMarker
 	prefix := req.Prefix
 	var matches = make([]*Multipart, 0, max)
 	var walkTreeFunc = func(i BtreeItem) bool {
 		multipart := i.(*Multipart)
-		// key marker is enabled
-		if len(marker) > 0 && marker < multipart.key {
-			// skip and continue
-			return true
-		}
 		// prefix is enabled
 		if len(prefix) > 0 && !strings.HasPrefix(multipart.key, prefix) {
 			// skip and continue
@@ -169,8 +166,8 @@ func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packe
 		matches = append(matches, multipart)
 		return !(len(matches) >= max)
 	}
-	if len(multipartIdMarker) > 0 {
-		mp.multipartTree.AscendGreaterOrEqual(&Multipart{id: multipartIdMarker}, walkTreeFunc)
+	if len(keyMarker) > 0 || len(multipartIdMarker) > 0 {
+		mp.multipartTree.AscendGreaterOrEqual(&Multipart{key: keyMarker, id: multipartIdMarker}, walkTreeFunc)
 	} else {
 		mp.multipartTree.Ascend(walkTreeFunc)
 	}
