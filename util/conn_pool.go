@@ -224,7 +224,7 @@ func (p *Pool) ReleaseAll() {
 
 func (p *Pool) NewConnect(target string) (c *net.TCPConn, err error) {
 	var connect net.Conn
-	connect, err = net.Dial("tcp", p.target)
+	connect, err = net.DialTimeout("tcp", p.target,time.Second)
 	if err == nil {
 		conn := connect.(*net.TCPConn)
 		conn.SetKeepAlive(true)
