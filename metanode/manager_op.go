@@ -68,6 +68,8 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			Status:      proto.ReadWrite,
 			MaxInodeID:  mConf.Cursor,
 			VolName:     mConf.VolName,
+			InodeCnt:    uint64(partition.GetInodeTree().Len()),
+			DentryCnt:   uint64(partition.GetDentryTree().Len()),
 		}
 		addr, isLeader := partition.IsLeader()
 		if addr == "" {
