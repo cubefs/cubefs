@@ -676,6 +676,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 	)
 	if !isFullSync {
 		localTinyDeleteFileSize = dp.extentStore.LoadTinyDeleteFileOffset()
+	} else {
 		dp.FullSyncTinyDeleteTime = time.Now().Unix()
 	}
 
