@@ -30,7 +30,6 @@ AuthKey="0e20229116d5a9a4a9e876806b514a85"
 
 init_cli() {
     cp ${cli} /usr/bin/
-    echo -n "Init cfs-cli ... "
     cd ${conf_path}
     ${cli} completion
     echo 'source '${conf_path}'/cfs-cli.sh' >> ~/.bashrc

@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/chubaofs/chubaofs/util"
 
 	"github.com/chubaofs/chubaofs/proto"
 )
@@ -112,9 +112,19 @@ func (mp *metaPartition) RemoveMultipart(req *proto.RemoveMultipartRequest, p *P
 }
 
 func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *Packet) (err error) {
-	nextId := strings.ReplaceAll(uuid.New().String(), "-", "")
+	var (
+		multipartId string
+	)
+	for {
+		multipartId = util.CreateMultipartID(mp.config.PartitionId).String()
+		storedItem := mp.multipartTree.Get(&Multipart{id: multipartId})
+		if storedItem == nil {
+			break
+		}
+	}
+
 	multipart := &Multipart{
-		id:       nextId,
+		id:       multipartId,
 		key:      req.Path,
 		initTime: time.Now().Local(),
 	}
@@ -124,7 +134,7 @@ func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *P
 	}
 	resp := &proto.CreateMultipartResponse{
 		Info: &proto.MultipartInfo{
-			ID:   nextId,
+			ID:   multipartId,
 			Path: req.Path,
 		},
 	}

@@ -2,7 +2,7 @@
 set -e
 RootPath=$(cd $(dirname $0)/..; pwd)
 GOPATH=/go
-export DiskPath="$RootPath/docker/disk"
+export DiskPath="$RootPath/docker/docker_data"
 
 MIN_DNDISK_AVAIL_SIZE_GB=10
 
@@ -41,7 +41,7 @@ build() {
 # start server
 start_servers() {
     isDiskAvailable $DiskPath
-    mkdir -p ${DiskPath}/{1..4}
+    mkdir -p ${DiskPath}/disk/{1..4}
     docker-compose -f ${RootPath}/docker/docker-compose.yml up -d servers
 }
 

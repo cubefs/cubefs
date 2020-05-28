@@ -735,19 +735,9 @@ func (v *Volume) InitMultipart(path string) (multipartID string, err error) {
 	defer func() {
 		log.LogInfof("Audit: InitMultipart: volume(%v) path(%v) multipartID(%v) err(%v)", v.name, path, multipartID, err)
 	}()
-	// Invoke meta service to get a session id
-	// Create parent path
 
-	dirs, _ := splitPath(path)
-	// process path
-	var parentId uint64
-	if parentId, err = v.lookupDirectories(dirs, true); err != nil {
-		log.LogErrorf("InitMultipart: lookup directories fail: path(%v) err(%v)", path, err)
-		return "", err
-	}
-
-	// save parent id to meta
-	multipartID, err = v.mw.InitMultipart_ll(path, parentId)
+	// Iterate all the meta partition to create multipart id
+	multipartID, err = v.mw.InitMultipart_ll(path)
 	if err != nil {
 		log.LogErrorf("InitMultipart: meta init multipart fail: path(%v) err(%v)", path, err)
 		return "", err
@@ -763,20 +753,15 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 		log.LogInfof("Audit: WritePart: volume(%v) path(%v) multipartID(%v) partID(%v) exist(%v) err(%v)",
 			v.name, path, multipartId, partId, exist, err)
 	}()
-	var parentId uint64
+
 	var fInfo *FSFileInfo
-	dirs, fileName := splitPath(path)
-	// process path
-	if parentId, err = v.lookupDirectories(dirs, true); err != nil {
-		log.LogErrorf("WritePart: lookup directories fail, path(%v) err(%v)", path, err)
-		return nil, err
-	}
+	_, fileName := splitPath(path)
 
 	// create temp file (inode only, invisible for user)
 	var tempInodeInfo *proto.InodeInfo
 	if tempInodeInfo, err = v.mw.InodeCreate_ll(DefaultFileMode, 0, 0, nil); err != nil {
 		log.LogErrorf("WritePart: meta create inode fail: multipartID(%v) partID(%v) err(%v)",
-			multipartId, parentId, err)
+			multipartId, partId, err)
 		return nil, err
 	}
 	log.LogDebugf("WritePart: meta create temp file inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
@@ -785,10 +770,10 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 	defer func() {
 		// An error has caused the entire process to fail. Delete the inode and release the written data.
 		if err != nil || exist {
-			log.LogWarnf("PutObject: unlink part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
+			log.LogWarnf("WritePart: unlink part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, path, multipartId, partId, tempInodeInfo.Inode)
 			_, _ = v.mw.InodeUnlink_ll(tempInodeInfo.Inode)
-			log.LogWarnf("PutObject: evict part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
+			log.LogWarnf("WritePart: evict part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, path, multipartId, partId, tempInodeInfo.Inode)
 			_ = v.mw.Evict(tempInodeInfo.Inode)
 		}
@@ -805,7 +790,6 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 				v.name, path, multipartId, partId, tempInodeInfo.Inode, closeErr)
 		}
 	}()
-
 	// Write data to data node
 	var (
 		size    uint64
@@ -815,7 +799,6 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 	if size, err = v.streamWrite(tempInodeInfo.Inode, reader, md5Hash); err != nil {
 		return nil, err
 	}
-
 	// compute file md5
 	etag = hex.EncodeToString(md5Hash.Sum(nil))
 
@@ -824,22 +807,20 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 		log.LogErrorf("WritePart: data flush inode fail: volume(%v) inode(%v) err(%v)", v.name, tempInodeInfo.Inode, err)
 		return nil, err
 	}
-
 	// update temp file inode to meta with session
-	err = v.mw.AddMultipartPart_ll(multipartId, parentId, partId, size, etag, tempInodeInfo.Inode)
+	err = v.mw.AddMultipartPart_ll(multipartId, partId, size, etag, tempInodeInfo.Inode)
 	if err == syscall.EEXIST {
 		// Result success but cleanup data.
 		err = nil
 		exist = true
 	}
 	if err != nil {
-		log.LogErrorf("WritePart: meta add multipart part fail: volume(%v) path(%v) multipartID(%v) partID(%v) parentID(%v) inode(%v) size(%v) MD5(%v) err(%v)",
-			v.name, path, multipartId, partId, parentId, tempInodeInfo.Inode, size, etag, err)
+		log.LogErrorf("WritePart: meta add multipart part fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) size(%v) MD5(%v) err(%v)",
+			v.name, path, multipartId, partId, tempInodeInfo.Inode, size, etag, err)
 		return nil, err
 	}
-	log.LogDebugf("WritePart: meta add multipart part: volume(%v) path(%v) multipartID(%v) partID(%v) parentID(%v) inode(%v) size(%v) MD5(%v)",
-		v.name, path, multipartId, partId, parentId, tempInodeInfo.Inode, size, etag)
-
+	log.LogDebugf("WritePart: meta add multipart part: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) size(%v) MD5(%v)",
+		v.name, path, multipartId, partId, tempInodeInfo.Inode, size, etag)
 	// create file info
 	fInfo = &FSFileInfo{
 		Path:       fileName,
@@ -857,20 +838,12 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 		log.LogInfof("Audit: AbortMultipart: volume(%v) path(%v) multipartID(%v) err(%v)",
 			v.name, path, multipartID, err)
 	}()
-	var parentId uint64
 
-	dirs, _ := splitPath(path)
-	// process path
-	if parentId, err = v.lookupDirectories(dirs, true); err != nil {
-		log.LogErrorf("AbortMultipart: lookup directories fail: volume(%v) multipartID(%v) path(%v) dirs(%v) err(%v)",
-			v.name, multipartID, path, dirs, err)
-		return err
-	}
 	// get multipart info
 	var multipartInfo *proto.MultipartInfo
-	if multipartInfo, err = v.mw.GetMultipart_ll(multipartID, parentId); err != nil {
-		log.LogErrorf("AbortMultipart: meta get multipart fail: volume(%v) multipartID(%v) parentID(%v) path(%v) err(%v)",
-			v.name, multipartID, parentId, path, err)
+	if multipartInfo, err = v.mw.GetMultipart_ll(multipartID); err != nil {
+		log.LogErrorf("AbortMultipart: meta get multipart fail: volume(%v) multipartID(%v) path(%v) err(%v)",
+			v.name, multipartID, path, err)
 		return
 	}
 	// release part data
@@ -891,9 +864,9 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 			v.name, path, multipartID, part.ID, part.Inode)
 	}
 
-	if err = v.mw.RemoveMultipart_ll(multipartID, parentId); err != nil {
-		log.LogErrorf("AbortMultipart: meta abort multipart fail: volume(%v) path(%v) multipartID(%v) parentID(%v) err(%v)",
-			v.name, path, multipartID, parentId, err)
+	if err = v.mw.RemoveMultipart_ll(multipartID); err != nil {
+		log.LogErrorf("AbortMultipart: meta abort multipart fail: volume(%v) path(%v) multipartID(%v) err(%v)",
+			v.name, path, multipartID, err)
 		return err
 	}
 	log.LogDebugf("AbortMultipart: meta abort multipart: volume(%v) path(%v) multipartID(%v) path(%v)",
@@ -907,18 +880,11 @@ func (v *Volume) CompleteMultipart(path string, multipartID string) (fsFileInfo 
 			v.name, path, multipartID, err)
 	}()
 
-	var parentId uint64
-	if parentId, err = v.recursiveMakeDirectory(path); err != nil {
-		log.LogErrorf("PutObject: recursive make directory fail: volume(%v) path(%v) err(%v)",
-			v.name, path, err)
-		return
-	}
-
 	// get multipart info
 	var multipartInfo *proto.MultipartInfo
-	if multipartInfo, err = v.mw.GetMultipart_ll(multipartID, parentId); err != nil {
-		log.LogErrorf("CompleteMultipart: meta get multipart fail: volume(%v) multipartID(%v) parentID(%v) path(%v) err(%v)",
-			v.name, multipartID, parentId, path, err)
+	if multipartInfo, err = v.mw.GetMultipart_ll(multipartID); err != nil {
+		log.LogErrorf("CompleteMultipart: meta get multipart fail: volume(%v) multipartID(%v) path(%v) err(%v)",
+			v.name, multipartID, path, err)
 		return
 	}
 
@@ -990,7 +956,14 @@ func (v *Volume) CompleteMultipart(path string, multipartID string) (fsFileInfo 
 		pathItems = NewPathIterator(path).ToSlice()
 		filename  = pathItems[len(pathItems)-1].Name
 		existMode uint32
+		parentId  uint64
 	)
+	if parentId, err = v.recursiveMakeDirectory(path); err != nil {
+		log.LogErrorf("PutObject: recursive make directory fail: volume(%v) path(%v) err(%v)",
+			v.name, path, err)
+		return
+	}
+
 	_, existMode, err = v.mw.Lookup_ll(parentId, filename)
 	if err != nil && err != syscall.ENOENT {
 		log.LogErrorf("CompleteMultipart: meta lookup fail: parentID(%v) name(%v) err(%v)", parentId, filename, err)
@@ -1038,14 +1011,14 @@ func (v *Volume) CompleteMultipart(path string, multipartID string) (fsFileInfo 
 	}
 
 	// remove multipart
-	err = v.mw.RemoveMultipart_ll(multipartID, parentId)
+	err = v.mw.RemoveMultipart_ll(multipartID)
 	if err == syscall.ENOENT {
-		log.LogWarnf("CompleteMultipart: removing not exist multipart: volume(%v) multipartID(%v) path(%v) parentID(%v)",
-			v.name, multipartID, path, parentId)
+		log.LogWarnf("CompleteMultipart: removing not exist multipart: volume(%v) multipartID(%v) path(%v)",
+			v.name, multipartID, path)
 	}
 	if err != nil {
-		log.LogErrorf("CompleteMultipart: meta complete multipart fail: volume(%v) multipartID(%v) path(%v) parentID(%v) err(%v)",
-			v.name, multipartID, path, parentId, err)
+		log.LogErrorf("CompleteMultipart: meta complete multipart fail: volume(%v) multipartID(%v) path(%v) err(%v)",
+			v.name, multipartID, path, err)
 		return nil, err
 	}
 	// delete part inodes
@@ -1873,16 +1846,9 @@ func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multi
 }
 
 func (v *Volume) ListParts(path, uploadId string, maxParts, partNumberMarker uint64) (parts []*FSPart, nextMarker uint64, isTruncated bool, err error) {
-	var parentId uint64
-	dirs, _ := splitPath(path)
-	// process path
-	if parentId, err = v.lookupDirectories(dirs, true); err != nil {
-		return nil, 0, false, err
-	}
-
-	multipartInfo, err := v.mw.GetMultipart_ll(uploadId, parentId)
+	multipartInfo, err := v.mw.GetMultipart_ll(uploadId)
 	if err != nil {
-		log.LogErrorf("ListPart: get multipart upload fail: volume(%v) uploadID(%v) err(%v)", v.name, uploadId, err)
+		log.LogErrorf("ListPart: get multipart upload fail: path(%v) volume(%v) uploadID(%v) err(%v)", path, v.name, uploadId, err)
 		return
 	}
 

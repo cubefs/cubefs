@@ -6,7 +6,7 @@ build/out/
 .idea
 .vscode
 docker/bin
-docker/disk
+docker/docker_data
 docs/build
 tmp/
 docker/log
