@@ -29,7 +29,6 @@ TryTimes=5
 
 init_cli() {
     cp ${cli} /usr/bin/
-    echo -n "Init cfs-cli ... "
     cd ${conf_path}
     ${cli} completion
     echo 'source '${conf_path}'/cfs-cli.sh' >> ~/.bashrc

@@ -173,22 +173,25 @@ $ docker/run_docker.sh -h
 ## Helm chart to Run a ChubaoFS Cluster in Kubernetes 
 
 The [chubaofs-helm](https://github.com/chubaofs/chubaofs-helm) repository can help you deploy ChubaoFS cluster quickly in containers orchestrated by kubernetes.
-Kubernetes 1.16+ and Helm 3 are required.
+Kubernetes 1.12+ and Helm 3 are required. chubaofs-helm has already integrated ChubaoFS CSI plugin
 
-Initialize Helm:
+### Download chubaofs-helm
 
-``` 
-$ helm init
+```
+$ git clone https://github.com/chubaofs/chubaofs-helm
+$ cd chubaofs-helm
 ```
 
-Add repository to download Helm chart of ChubaoFS:
+### Copy kubeconfig file
+ChubaoFS CSI driver will use client-go to connect the Kubernetes API Server. First you need to copy the kubeconfig file to `chubaofs-helm/chubaofs/config/` directory, and rename to kubeconfig
 
-``` 
-$ helm repo add chubaofs https://chubaofs.github.io/chubaofs-charts
-$ helm repo update
+```
+$ cp ~/.kube/config chubaofs/config/kubeconfig
 ```
 
-Create the configuration file `chubaofs.yaml` and put it in a user-defined path.
+### Create configuration yaml file
+
+Create a `chubaofs.yaml` file, and put it in a user-defined path. Suppose this is where we put it.
 
 ```
 $ cat ~/chubaofs.yaml 
@@ -201,36 +204,34 @@ path:
 
 datanode:
   disks:
-    - disk: "/data0:21474836480"
-    - disk: "/data1:21474836480"
-      
+    - /data0:21474836480
+    - /data1:21474836480 
+
 metanode:
-  total_mem: "2147483648"
+  total_mem: "26843545600"
+
+provisioner:
+  kubelet_path: /var/lib/kubelet
 ```
 
-> Note that `chubaofs-helm/chubaofs/values.yaml` includes all the parameters of ChubaoFS.
-> Parameters `path.data` and `path.log` define paths to store the data and logs of ChubaoFS server, respectively.
+> Note that `chubaofs-helm/chubaofs/values.yaml` shows all the config parameters of ChubaoFS.
+> The parameters `path.data` and `path.log` are used to store server data and logs, respectively.
 
-Label the nodes in Kubernetes according to different roles(master/metanode/datanode):
+### Add labels to Kubernetes node
 
-```
-$ kubectl label node <nodename> chuabaofs-master=enabled
-$ kubectl label node <nodename> chuabaofs-metanode=enabled
-$ kubectl label node <nodename> chuabaofs-datanode=enabled
-```
-
-Install ChubaoFS cluster with Helm:
-```
-$ helm install chubaofs chubaofs/chubaofs --version 1.5.0 -f ~/chubaofs.yaml
-```
-
-Delete ChubaoFS cluster:
+You should tag each Kubernetes node with the appropriate labels accorindly for server node and CSI node of ChubaoFS.
 
 ```
-$ helm delete chubaofs
+kubectl label node <nodename> chuabaofs-master=enabled
+kubectl label node <nodename> chuabaofs-metanode=enabled
+kubectl label node <nodename> chuabaofs-datanode=enabled
+kubectl label node <nodename> chubaofs-csi-node=enabled
 ```
 
-Refer to [chubaofs-helm](https://github.com/chubaofs/chubaofs-helm/blob/master/README.md) for deployment with Helm 2 and deployment of monitoring system.
+### Deploy ChubaoFS cluster
+```
+$ helm install chubaofs ./chubaofs -f ~/chubaofs.yaml
+```
 
 ## License
 

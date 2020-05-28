@@ -270,6 +270,8 @@ type MetaPartitionReport struct {
 	MaxInodeID  uint64
 	IsLeader    bool
 	VolName     string
+	InodeCnt    uint64
+	DentryCnt   uint64
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
@@ -353,6 +355,7 @@ type MetaPartitionLoadResponse struct {
 	ApplyID     uint64
 	MaxInode    uint64
 	DentryCount uint64
+	InodeCount  uint64
 	Addr        string
 }
 
