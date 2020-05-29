@@ -112,10 +112,12 @@ func (v *Volume) storeACL(p *AccessControlPolicy) {
 }
 
 type PutFileOption struct {
-	MIMEType    string
-	Disposition string
-	Tagging     *Tagging
-	Metadata    map[string]string
+	MIMEType     string
+	Disposition  string
+	Tagging      *Tagging
+	Metadata     map[string]string
+	CacheControl string
+	Expires      string
 }
 
 type ListFilesV1Option struct {
@@ -632,7 +634,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 			return nil, err
 		}
 	}
-	// If request contain content-disposition header, store it to xaatr
+	// If request contain content-disposition header, store it to xattr
 	if opt != nil && len(opt.Disposition) > 0 {
 		if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(XAttrKeyOSSDISPOSITION), []byte(opt.Disposition)); err != nil {
 			log.LogErrorf("PutObject: store disposition fail: volume(%v) path(%v) inode(%v) disposition value(%v) err(%v)",
@@ -645,6 +647,22 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 		if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(XAttrKeyOSSTagging), []byte(encoded)); err != nil {
 			log.LogErrorf("PutObject: store Tagging fail: volume(%v) path(%v) inode(%v) value(%v) err(%v)",
 				v.name, path, invisibleTempDataInode.Inode, encoded, err)
+			return nil, err
+		}
+	}
+	// If request contain cache-control header, store it to xattr
+	if opt != nil && len(opt.CacheControl) > 0 {
+		if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(XAttrKeyOSSCacheControl), []byte(opt.CacheControl)); err != nil {
+			log.LogErrorf("PutObject: store cache-control fail: volume(%v) path(%v) inode(%v) cache-control value(%v) err(%v)",
+				v.name, path, invisibleTempDataInode.Inode, opt.CacheControl, err)
+			return nil, err
+		}
+	}
+	// If request contain expires header, store it to xattr
+	if opt != nil && len(opt.Expires) > 0 {
+		if err = v.mw.XAttrSet_ll(invisibleTempDataInode.Inode, []byte(XAttrKeyOSSExpires), []byte(opt.Expires)); err != nil {
+			log.LogErrorf("PutObject: store expires fail: volume(%v) path(%v) inode(%v) expires value(%v) err(%v)",
+				v.name, path, invisibleTempDataInode.Inode, opt.Expires, err)
 			return nil, err
 		}
 	}
@@ -1279,9 +1297,11 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 	}
 
 	var (
-		etagValue   ETagValue
-		mimeType    string
-		disposition string
+		etagValue    ETagValue
+		mimeType     string
+		disposition  string
+		cacheControl string
+		expires      string
 	)
 
 	if mode.IsDir() {
@@ -1294,7 +1314,8 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 		// 1. Etag (MD5)
 		// 2. MIME type
 		var xattrs []*proto.XAttrInfo
-		var xattrKeys = []string{XAttrKeyOSSETag, XAttrKeyOSSETagDeprecated, XAttrKeyOSSMIME, XAttrKeyOSSDISPOSITION}
+		var xattrKeys = []string{XAttrKeyOSSETag, XAttrKeyOSSETagDeprecated, XAttrKeyOSSMIME, XAttrKeyOSSDISPOSITION,
+			XAttrKeyOSSCacheControl, XAttrKeyOSSExpires}
 		if xattrs, err = v.mw.BatchGetXAttr([]uint64{inode}, xattrKeys); err != nil {
 			log.LogErrorf("ObjectMeta: meta get xattr fail, volume(%v) inode(%v) path(%v) keys(%v) err(%v)",
 				v.name, inode, path, strings.Join(xattrKeys, ","), err)
@@ -1312,6 +1333,8 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 
 			mimeType = string(xattr.Get(XAttrKeyOSSMIME))
 			disposition = string(xattr.Get(XAttrKeyOSSDISPOSITION))
+			cacheControl = string(xattr.Get(XAttrKeyOSSCacheControl))
+			expires = string(xattr.Get(XAttrKeyOSSExpires))
 		}
 	}
 
@@ -1335,15 +1358,17 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 	}
 
 	info = &FSFileInfo{
-		Path:        path,
-		Size:        int64(inoInfo.Size),
-		Mode:        os.FileMode(inoInfo.Mode),
-		ModifyTime:  inoInfo.ModifyTime,
-		ETag:        etagValue.ETag(),
-		Inode:       inoInfo.Inode,
-		MIMEType:    mimeType,
-		Disposition: disposition,
-		Metadata:    metadata,
+		Path:         path,
+		Size:         int64(inoInfo.Size),
+		Mode:         os.FileMode(inoInfo.Mode),
+		ModifyTime:   inoInfo.ModifyTime,
+		ETag:         etagValue.ETag(),
+		Inode:        inoInfo.Inode,
+		MIMEType:     mimeType,
+		Disposition:  disposition,
+		CacheControl: cacheControl,
+		Expires:      expires,
+		Metadata:     metadata,
 	}
 	return
 }
@@ -1932,8 +1957,22 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			}
 			if opt != nil && opt.Disposition != "" {
 				if err = v.mw.XAttrSet_ll(sInode, []byte(XAttrKeyOSSDISPOSITION), []byte(opt.Disposition)); err != nil {
-					log.LogErrorf("CopyFile: store content disposition fail: volume(%v) source path(%v) inode(%v) mime(%v) err(%v)",
+					log.LogErrorf("CopyFile: store content disposition fail: volume(%v) source path(%v) inode(%v) disposition(%v) err(%v)",
 						sv.name, sourcePath, sInode, opt.Disposition, err)
+					return nil, err
+				}
+			}
+			if opt != nil && opt.CacheControl != "" {
+				if err = v.mw.XAttrSet_ll(sInode, []byte(XAttrKeyOSSCacheControl), []byte(opt.CacheControl)); err != nil {
+					log.LogErrorf("CopyFile: store content cache-control fail: volume(%v) source path(%v) inode(%v) cache-control(%v) err(%v)",
+						sv.name, sourcePath, sInode, opt.CacheControl, err)
+					return nil, err
+				}
+			}
+			if opt != nil && opt.Expires != "" {
+				if err = v.mw.XAttrSet_ll(sInode, []byte(XAttrKeyOSSExpires), []byte(opt.Expires)); err != nil {
+					log.LogErrorf("CopyFile: store content expires fail: volume(%v) source path(%v) inode(%v) expires(%v) err(%v)",
+						sv.name, sourcePath, sInode, opt.Expires, err)
 					return nil, err
 				}
 			}
@@ -2184,6 +2223,20 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(XAttrKeyOSSDISPOSITION), []byte(opt.Disposition)); err != nil {
 				log.LogErrorf("CopyFile: store content disposition fail: volume(%v) target path(%v) inode(%v) mime(%v) err(%v)",
 					v.name, targetPath, tInodeInfo.Inode, opt.Disposition, err)
+				return nil, err
+			}
+		}
+		if opt != nil && opt.CacheControl != "" {
+			if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(XAttrKeyOSSCacheControl), []byte(opt.CacheControl)); err != nil {
+				log.LogErrorf("CopyFile: store content cache-control fail: volume(%v) target path(%v) inode(%v) cache-control(%v) err(%v)",
+					v.name, targetPath, tInodeInfo.Inode, opt.CacheControl, err)
+				return nil, err
+			}
+		}
+		if opt != nil && opt.Expires != "" {
+			if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(XAttrKeyOSSExpires), []byte(opt.Expires)); err != nil {
+				log.LogErrorf("CopyFile: store content expires fail: volume(%v) target path(%v) inode(%v) expires(%v) err(%v)",
+					v.name, targetPath, tInodeInfo.Inode, opt.Expires, err)
 				return nil, err
 			}
 		}

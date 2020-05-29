@@ -121,6 +121,19 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 			GetRequestID(r), rangeOpt, rangeLower, rangeUpper)
 	}
 
+	responseCacheControl := r.URL.Query().Get(ParamResponseCacheControl)
+	if len(responseCacheControl) > 0 && !ValidateCacheControl(responseCacheControl) {
+		errorCode = InvalidCacheArgument
+		return
+	}
+	responseExpires := r.URL.Query().Get(ParamResponseExpires)
+	if len(responseExpires) > 0 && !ValidateCacheExpires(responseExpires) {
+		errorCode = InvalidCacheArgument
+		return
+	}
+	responseContentType := r.URL.Query().Get(ParamResponseContentType)
+	responseContentDisposition := r.URL.Query().Get(ParamResponseContentDisposition)
+
 	// get object meta
 	var fileInfo *FSFileInfo
 	fileInfo, err = vol.ObjectMeta(param.Object())
@@ -208,13 +221,27 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// set response header for GetObject
 	w.Header()[HeaderNameAcceptRange] = []string{HeaderValueAcceptRange}
 	w.Header()[HeaderNameLastModified] = []string{formatTimeRFC1123(fileInfo.ModifyTime)}
-	if len(fileInfo.MIMEType) > 0 {
+	if len(responseContentType) > 0 {
+		w.Header()[HeaderNameContentType] = []string{responseContentType}
+	} else if len(fileInfo.MIMEType) > 0 {
 		w.Header()[HeaderNameContentType] = []string{fileInfo.MIMEType}
 	} else {
 		w.Header()[HeaderNameContentType] = []string{HeaderValueTypeStream}
 	}
-	if len(fileInfo.Disposition) > 0 {
+	if len(responseContentDisposition) > 0 {
+		w.Header()[HeaderNameContentDisposition] = []string{responseContentDisposition}
+	} else if len(fileInfo.Disposition) > 0 {
 		w.Header()[HeaderNameContentDisposition] = []string{fileInfo.Disposition}
+	}
+	if len(responseCacheControl) > 0 {
+		w.Header()[HeaderNameCacheControl] = []string{responseCacheControl}
+	} else if len(fileInfo.CacheControl) > 0 {
+		w.Header()[HeaderNameCacheControl] = []string{fileInfo.CacheControl}
+	}
+	if len(responseExpires) > 0 {
+		w.Header()[HeaderNameExpires] = []string{responseExpires}
+	} else if len(fileInfo.Expires) > 0 {
+		w.Header()[HeaderNameExpires] = []string{fileInfo.Expires}
 	}
 
 	//check request is whether contain param : partNumber
@@ -403,13 +430,19 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if len(fileInfo.Disposition) > 0 {
 		w.Header()[HeaderNameContentDisposition] = []string{fileInfo.Disposition}
 	}
+	if len(fileInfo.CacheControl) > 0 {
+		w.Header()[HeaderNameCacheControl] = []string{fileInfo.CacheControl}
+	}
+	if len(fileInfo.Expires) > 0 {
+		w.Header()[HeaderNameExpires] = []string{fileInfo.Expires}
+	}
 
 	// check request is whether contain param : partNumber
 	partNumber := r.URL.Query().Get(ParamPartNumber)
 	if len(partNumber) > 0 && fileInfo.Size >= MinParallelDownloadFileSize {
 		partNumberInt, err := strconv.ParseUint(partNumber, 10, 64)
 		if err != nil {
-			log.LogErrorf("getObjectHandler: parse param partNumber(%s) fail: requestID(%v) err(%v)", partNumber, GetRequestID(r), err)
+			log.LogErrorf("headObjectHandler: parse param partNumber(%s) fail: requestID(%v) err(%v)", partNumber, GetRequestID(r), err)
 			errorCode = InvalidArgument
 			return
 		}
@@ -420,7 +453,7 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if partNumberInt > partCount {
-			log.LogErrorf("getObjectHandler: param partNumber(%d) is more then partCount(%d): requestID(%v)", partNumberInt, partCount, GetRequestID(r))
+			log.LogErrorf("headObjectHandler: param partNumber(%d) is more then partCount(%d): requestID(%v)", partNumberInt, partCount, GetRequestID(r))
 			errorCode = NoSuchKey
 			return
 		}
@@ -615,6 +648,16 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// client can reset these system metadata: Content-Type, Content-Disposition
 	contentType := r.Header.Get(HeaderNameContentType)
 	contentDisposition := r.Header.Get(HeaderNameContentDisposition)
+	cacheControl := r.Header.Get(HeaderNameCacheControl)
+	if len(cacheControl) > 0 && !ValidateCacheControl(cacheControl) {
+		errorCode = InvalidCacheArgument
+		return
+	}
+	expires := r.Header.Get(HeaderNameExpires)
+	if len(expires) > 0 && !ValidateCacheExpires(expires) {
+		errorCode = InvalidCacheArgument
+		return
+	}
 
 	// metadata directive, direct object node use source file metadata or recreate metadata for target file
 	metadataDirective := r.Header.Get(HeaderNameXAmzMetadataDirective)
@@ -623,9 +666,11 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		metadataDirective = MetadataDirectiveCopy
 	}
 	var opt = &PutFileOption{
-		MIMEType:    contentType,
-		Disposition: contentDisposition,
-		Metadata:    metadata,
+		MIMEType:     contentType,
+		Disposition:  contentDisposition,
+		Metadata:     metadata,
+		CacheControl: cacheControl,
+		Expires:      expires,
 	}
 
 	sourceBucket, sourceObject := parseCopySourceInfo(r)
@@ -1072,6 +1117,18 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	contentType := r.Header.Get(HeaderNameContentType)
 	// Get request header : content-disposition
 	contentDisposition := r.Header.Get(HeaderNameContentDisposition)
+	// Get request header : Cache-Control
+	cacheControl := r.Header.Get(HeaderNameCacheControl)
+	if len(cacheControl) > 0 && !ValidateCacheControl(cacheControl) {
+		errorCode = InvalidCacheArgument
+		return
+	}
+	// Get request header : Expires
+	expires := r.Header.Get(HeaderNameExpires)
+	if len(expires) > 0 && !ValidateCacheExpires(expires) {
+		errorCode = InvalidCacheArgument
+		return
+	}
 
 	// Audit file write
 	log.LogInfof("Audit: put object: requestID(%v) remote(%v) volume(%v) path(%v) type(%v)",
@@ -1079,10 +1136,12 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	var fsFileInfo *FSFileInfo
 	var opt = &PutFileOption{
-		MIMEType:    contentType,
-		Disposition: contentDisposition,
-		Tagging:     tagging,
-		Metadata:    metadata,
+		MIMEType:     contentType,
+		Disposition:  contentDisposition,
+		Tagging:      tagging,
+		Metadata:     metadata,
+		CacheControl: cacheControl,
+		Expires:      expires,
 	}
 	fsFileInfo, err = vol.PutObject(param.Object(), r.Body, opt)
 	if err == syscall.EINVAL {
