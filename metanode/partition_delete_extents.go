@@ -44,6 +44,11 @@ func (mp *metaPartition) startToDeleteExtents() {
 }
 
 func (mp *metaPartition) appendDelExtentsToFile(fileList *list.List) {
+	defer func() {
+		if r:=recover();r!=nil {
+			log.LogErrorf(fmt.Sprintf("appendDelExtentsToFile(%v) appendDelExtentsToFile panic (%v)",mp.config.PartitionId,r))
+		}
+	}()
 	var (
 		fileName string
 		fileSize int64
@@ -133,6 +138,12 @@ LOOP:
 
 // Delete all the extents of a file.
 func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
+	defer func() {
+		if r:=recover();r!=nil {
+			log.LogErrorf(fmt.Sprintf("deleteExtentsFromList(%v) deleteExtentsFromList panic (%v)",mp.config.PartitionId,r))
+		}
+	}()
+	
 	var (
 		element  *list.Element
 		fileName string
