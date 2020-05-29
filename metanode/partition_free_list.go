@@ -131,15 +131,21 @@ func (mp *metaPartition) deleteWorker() {
 func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-
+	defer func() {
+		if r:=recover();r!=nil {
+			log.LogErrorf(fmt.Sprintf("metaPartition(%v) deleteMarkedInodes panic (%v)",mp.config.PartitionId,r))
+		}
+	}()
 	shouldCommit := make([]*Inode, 0, BatchCounts)
 
 	for _, ino := range inoSlice {
 		wg.Add(1)
 
 		ref := &Inode{Inode: ino}
-		inode := mp.inodeTree.CopyGet(ref).(*Inode)
-
+		inode,ok := mp.inodeTree.CopyGet(ref).(*Inode)
+		if !ok {
+			continue
+		}
 		go func(i *Inode) {
 			defer wg.Done()
 
