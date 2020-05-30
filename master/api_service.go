@@ -375,6 +375,9 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	dp.Status = proto.ReadOnly
+	dp.isRecover = true
+	m.cluster.putBadDataPartitionIDs(nil, addr, dp.PartitionID)
 	msg = fmt.Sprintf("data partitionID :%v  add replica [%v] successfully", partitionID, addr)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
@@ -429,6 +432,8 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	mp.IsRecover = true
+	m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
 	msg = fmt.Sprintf("meta partitionID :%v  add replica [%v] successfully", partitionID, addr)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
