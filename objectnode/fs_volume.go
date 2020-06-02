@@ -826,7 +826,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 		return nil, err
 	}
 	// update temp file inode to meta with session
-	err = v.mw.AddMultipartPart_ll(multipartId, partId, size, etag, tempInodeInfo.Inode)
+	err = v.mw.AddMultipartPart_ll(path, multipartId, partId, size, etag, tempInodeInfo.Inode)
 	if err == syscall.EEXIST {
 		// Result success but cleanup data.
 		err = nil
@@ -859,7 +859,7 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 
 	// get multipart info
 	var multipartInfo *proto.MultipartInfo
-	if multipartInfo, err = v.mw.GetMultipart_ll(multipartID); err != nil {
+	if multipartInfo, err = v.mw.GetMultipart_ll(path, multipartID); err != nil {
 		log.LogErrorf("AbortMultipart: meta get multipart fail: volume(%v) multipartID(%v) path(%v) err(%v)",
 			v.name, multipartID, path, err)
 		return
@@ -882,7 +882,7 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 			v.name, path, multipartID, part.ID, part.Inode)
 	}
 
-	if err = v.mw.RemoveMultipart_ll(multipartID); err != nil {
+	if err = v.mw.RemoveMultipart_ll(path, multipartID); err != nil {
 		log.LogErrorf("AbortMultipart: meta abort multipart fail: volume(%v) path(%v) multipartID(%v) err(%v)",
 			v.name, path, multipartID, err)
 		return err
@@ -892,22 +892,12 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 	return nil
 }
 
-func (v *Volume) CompleteMultipart(path string, multipartID string) (fsFileInfo *FSFileInfo, err error) {
+func (v *Volume) CompleteMultipart(path, multipartID string, parts []*proto.MultipartPartInfo) (fsFileInfo *FSFileInfo, err error) {
 	defer func() {
 		log.LogInfof("Audit: CompleteMultipart: volume(%v) path(%v) multipartID(%v) err(%v)",
 			v.name, path, multipartID, err)
 	}()
 
-	// get multipart info
-	var multipartInfo *proto.MultipartInfo
-	if multipartInfo, err = v.mw.GetMultipart_ll(multipartID); err != nil {
-		log.LogErrorf("CompleteMultipart: meta get multipart fail: volume(%v) multipartID(%v) path(%v) err(%v)",
-			v.name, multipartID, path, err)
-		return
-	}
-
-	// sort multipart parts
-	parts := multipartInfo.Parts
 	sort.SliceStable(parts, func(i, j int) bool { return parts[i].ID < parts[j].ID })
 
 	// create inode for complete data
@@ -1029,7 +1019,7 @@ func (v *Volume) CompleteMultipart(path string, multipartID string) (fsFileInfo 
 	}
 
 	// remove multipart
-	err = v.mw.RemoveMultipart_ll(multipartID)
+	err = v.mw.RemoveMultipart_ll(path, multipartID)
 	if err == syscall.ENOENT {
 		log.LogWarnf("CompleteMultipart: removing not exist multipart: volume(%v) multipartID(%v) path(%v)",
 			v.name, multipartID, path)
@@ -1826,7 +1816,7 @@ func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multi
 
 	uploads := make([]*FSUpload, 0)
 	prefixes := make([]string, 0)
-	prefixMap := make(map[string]string)
+	prefixMap := make(map[string]interface{})
 
 	var nextUpload *proto.MultipartInfo
 	var NextMarker string
@@ -1847,31 +1837,43 @@ func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multi
 	}
 
 	for _, session := range sessions {
-		if delimiter != "" && strings.Contains(session.Path, delimiter) {
-			idx := strings.Index(session.Path, delimiter)
-			prefix := util.SubString(session.Path, 0, idx)
-			prefixes = append(prefixes, prefix)
-			continue
+		var tempKey = session.Path
+		if len(prefix) > 0 {
+			pIndex := strings.Index(tempKey, prefix)
+			tempKeyRunes := []rune(tempKey)
+			tempKey = string(tempKeyRunes[pIndex+len(prefix):])
 		}
-		fsUpload := &FSUpload{
-			Key:          session.Path,
-			UploadId:     session.ID,
-			Initiated:    formatTimeISO(session.InitTime),
-			StorageClass: StorageClassStandard,
+
+		if len(delimiter) > 0 && strings.Contains(tempKey, delimiter) {
+			dIndex := strings.Index(tempKey, delimiter)
+			tempKeyRunes := []rune(tempKey)
+			commonPrefix := string(tempKeyRunes[:dIndex+len(delimiter)])
+			if len(prefix) > 0 {
+				commonPrefix = prefix + commonPrefix
+			}
+			if _, ok := prefixMap[commonPrefix]; !ok {
+				prefixMap[commonPrefix] = nil
+			}
+		} else {
+			fsUpload := &FSUpload{
+				Key:          session.Path,
+				UploadId:     session.ID,
+				Initiated:    formatTimeISO(session.InitTime),
+				StorageClass: StorageClassStandard,
+			}
+			uploads = append(uploads, fsUpload)
 		}
-		uploads = append(uploads, fsUpload)
 	}
 	if len(prefixMap) > 0 {
 		for prefix := range prefixMap {
 			prefixes = append(prefixes, prefix)
 		}
 	}
-
 	return uploads, NextMarker, NextSessionIdMarker, IsTruncated, prefixes, nil
 }
 
 func (v *Volume) ListParts(path, uploadId string, maxParts, partNumberMarker uint64) (parts []*FSPart, nextMarker uint64, isTruncated bool, err error) {
-	multipartInfo, err := v.mw.GetMultipart_ll(uploadId)
+	multipartInfo, err := v.mw.GetMultipart_ll(path, uploadId)
 	if err != nil {
 		log.LogErrorf("ListPart: get multipart upload fail: path(%v) volume(%v) uploadID(%v) err(%v)", path, v.name, uploadId, err)
 		return

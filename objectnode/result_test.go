@@ -258,3 +258,46 @@ func TestResult_PutXAttrRequest_Unmarshal(t *testing.T) {
 		t.Fatalf("result mismatch: key mismatch: expect(%v) actual(%v)", "xattr-value", request.XAttr.Key)
 	}
 }
+
+func TestRequest_CompleteMultipartUploadRequest_Marshall(t *testing.T)  {
+	part1 := &PartRequest{
+		PartNumber:1,
+		ETag:"atsiagsaivxbiz",
+
+	}
+	part2 := &PartRequest{
+		PartNumber:2,
+		ETag:"sadasdas69asdg",
+	}
+	parts := []*PartRequest{part1, part2}
+	request := CompleteMultipartUploadRequest{Parts:parts}
+	bytes, err := xml.Marshal(request)
+	if err != nil {
+		t.Fatalf("marshal tagging fail: err(%v)", err)
+	}
+	fmt.Println(string(bytes))
+}
+
+func TestRequest_CompleteMultipartUploadRequest_Unmarshal(t *testing.T)  {
+	data := []byte(`<CompleteMultipartUpload>
+		<Part>
+		<PartNumber>1</PartNumber>
+		<ETag>"a54357aff0632cce46d942af68356b38"</ETag>
+		</Part>
+		<Part>
+		<PartNumber>2</PartNumber>
+		<ETag>"0c78aef83f66abc1fa1e8477f296d394"</ETag>
+		</Part>
+		<Part>
+		<PartNumber>3</PartNumber>
+		<ETag>"acbd18db4cc2f85cedef654fccc4a4d8"</ETag>
+		</Part>
+	</CompleteMultipartUpload>`)
+	request := CompleteMultipartUploadRequest{}
+	err := xml.Unmarshal(data, &request)
+	if err != nil {
+		t.Fatalf("marshal tagging fail: err(%v)", err)
+	}
+	bytes, _ := json.Marshal(request)
+	fmt.Printf("request : %s\n", string(bytes))
+}

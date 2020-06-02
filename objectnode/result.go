@@ -286,3 +286,14 @@ type ListXAttrsOutput struct {
 	XMLName xml.Name `xml:"ListXAttrsResult"`
 	Keys    []string `xml:"Keys"`
 }
+
+type PartRequest struct {
+	XMLName    xml.Name `xml:"Part"`
+	PartNumber int      `xml:"PartNumber"`
+	ETag       string   `xml:"ETag"`
+}
+
+type CompleteMultipartUploadRequest struct {
+	XMLName xml.Name       `xml:"CompleteMultipartUpload"`
+	Parts   []*PartRequest `xml:"Part"`
+}

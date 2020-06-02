@@ -243,8 +243,8 @@ type Multipart struct {
 }
 
 func (m *Multipart) Less(than btree.Item) bool {
-	thanMultipart, is := than.(*Multipart)
-	return is && m.id < thanMultipart.id
+	tm, is := than.(*Multipart)
+	return is && ((m.key < tm.key) || ((m.key == tm.key) && (m.id < tm.id)))
 }
 
 func (m *Multipart) Copy() btree.Item {

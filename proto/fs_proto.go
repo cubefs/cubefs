@@ -403,6 +403,7 @@ type CreateMultipartResponse struct {
 
 type GetMultipartRequest struct {
 	VolName     string `json:"vol"`
+	Path        string `json:"path"`
 	PartitionId uint64 `json:"pid"`
 	MultipartId string `json:"mid"`
 }
@@ -414,6 +415,7 @@ type GetMultipartResponse struct {
 type AddMultipartPartRequest struct {
 	VolName     string             `json:"vol"`
 	PartitionId uint64             `json:"pid"`
+	Path		string			   `json:"path"`
 	MultipartId string             `json:"mid"`
 	Part        *MultipartPartInfo `json:"part"`
 }
@@ -421,6 +423,7 @@ type AddMultipartPartRequest struct {
 type RemoveMultipartRequest struct {
 	VolName     string `json:"vol"`
 	PartitionId uint64 `json:"pid"`
+	Path        string `json:"path"`
 	MultipartId string `json:"mid"`
 }
 

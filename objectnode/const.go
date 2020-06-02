@@ -97,7 +97,7 @@ const (
 	ParamKey        = "key"
 
 	ParamMaxParts       = "max-parts"
-	ParamUploadIdMarker = "upload-id-​marker"
+	ParamUploadIdMarker = "upload-id-marker"
 	ParamPartNoMarker   = "part-number-marker"
 	ParamPartMaxUploads = "max-uploads"
 	ParamPartDelimiter  = "delimiter"

@@ -690,10 +690,11 @@ func (mw *MetaWrapper) createMultipart(mp *MetaPartition, path string) (status i
 	return statusOK, resp.Info.ID, nil
 }
 
-func (mw *MetaWrapper) getMultipart(mp *MetaPartition, multipartId string) (status int, info *proto.MultipartInfo, err error) {
+func (mw *MetaWrapper) getMultipart(mp *MetaPartition, path, multipartId string) (status int, info *proto.MultipartInfo, err error) {
 	req := &proto.GetMultipartRequest{
 		PartitionId: mp.PartitionID,
 		VolName:     mw.volname,
+		Path:        path,
 		MultipartId: multipartId,
 	}
 
@@ -732,7 +733,7 @@ func (mw *MetaWrapper) getMultipart(mp *MetaPartition, multipartId string) (stat
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, multipartId string, partId uint16, size uint64, md5 string, indoe uint64) (status int, err error) {
+func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, path, multipartId string, partId uint16, size uint64, md5 string, indoe uint64) (status int, err error) {
 	part := &proto.MultipartPartInfo{
 		ID:    partId,
 		Inode: indoe,
@@ -743,6 +744,7 @@ func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, multipartId string, p
 	req := &proto.AddMultipartPartRequest{
 		PartitionId: mp.PartitionID,
 		VolName:     mw.volname,
+		Path:        path,
 		MultipartId: multipartId,
 		Part:        part,
 	}
@@ -761,13 +763,13 @@ func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, multipartId string, p
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("addMultipartPart: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		log.LogErrorf("addMultipartPart: packet(%v) mp(%v) req(%v) part(%v) err(%v)", packet, mp, req, part, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("addMultipartPart: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		log.LogErrorf("addMultipartPart: packet(%v) mp(%v) req(%v) part(%v) result(%v)", packet, mp, *req, part, packet.GetResultMsg())
 		return
 	}
 
@@ -806,10 +808,11 @@ func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, err
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) removeMultipart(mp *MetaPartition, multipartId string) (status int, err error) {
+func (mw *MetaWrapper) removeMultipart(mp *MetaPartition, path, multipartId string) (status int, err error) {
 	req := &proto.RemoveMultipartRequest{
 		PartitionId: mp.PartitionID,
 		VolName:     mw.volname,
+		Path:        path,
 		MultipartId: multipartId,
 	}
 

@@ -693,7 +693,7 @@ func (mw *MetaWrapper) InitMultipart_ll(path string) (multipartId string, err er
 	}
 }
 
-func (mw *MetaWrapper) GetMultipart_ll(multipartId string) (info *proto.MultipartInfo, err error) {
+func (mw *MetaWrapper) GetMultipart_ll(path, multipartId string) (info *proto.MultipartInfo, err error) {
 	var (
 		mpId  uint64
 		found bool
@@ -702,11 +702,11 @@ func (mw *MetaWrapper) GetMultipart_ll(multipartId string) (info *proto.Multipar
 	if !found {
 		log.LogDebugf("AddMultipartPart_ll: meta partition not found by multipart id, multipartId(%v), err(%v)", multipartId, err)
 		// If meta partition not found by multipart id, broadcast to all meta partitions to find it
-		info, _, err = mw.broadcastGetMultipart(multipartId)
+		info, _, err = mw.broadcastGetMultipart(path, multipartId)
 		return
 	}
 	var mp = mw.getPartitionByID(mpId)
-	status, multipartInfo, err := mw.getMultipart(mp, multipartId)
+	status, multipartInfo, err := mw.getMultipart(mp, path, multipartId)
 	if err != nil || status != statusOK {
 		log.LogErrorf("GetMultipartRequest: err(%v) status(%v)", err, status)
 		return nil, statusToErrno(status)
@@ -714,7 +714,7 @@ func (mw *MetaWrapper) GetMultipart_ll(multipartId string) (info *proto.Multipar
 	return multipartInfo, nil
 }
 
-func (mw *MetaWrapper) AddMultipartPart_ll(multipartId string, partId uint16, size uint64, md5 string, inode uint64) (err error) {
+func (mw *MetaWrapper) AddMultipartPart_ll(path, multipartId string, partId uint16, size uint64, md5 string, inode uint64) (err error) {
 	var (
 		mpId  uint64
 		found bool
@@ -723,12 +723,12 @@ func (mw *MetaWrapper) AddMultipartPart_ll(multipartId string, partId uint16, si
 	if !found {
 		log.LogDebugf("AddMultipartPart_ll: meta partition not found by multipart id, multipartId(%v), err(%v)", multipartId, err)
 		// If meta partition not found by multipart id, broadcast to all meta partitions to find it
-		if _, mpId, err = mw.broadcastGetMultipart(multipartId); err != nil {
+		if _, mpId, err = mw.broadcastGetMultipart(path, multipartId); err != nil {
 			return
 		}
 	}
 	var mp = mw.getPartitionByID(mpId)
-	status, err := mw.addMultipartPart(mp, multipartId, partId, size, md5, inode)
+	status, err := mw.addMultipartPart(mp, path, multipartId, partId, size, md5, inode)
 	if err != nil || status != statusOK {
 		log.LogErrorf("AddMultipartPart_ll: err(%v) status(%v)", err, status)
 		return statusToErrno(status)
@@ -736,7 +736,7 @@ func (mw *MetaWrapper) AddMultipartPart_ll(multipartId string, partId uint16, si
 	return nil
 }
 
-func (mw *MetaWrapper) RemoveMultipart_ll(multipartID string) (err error) {
+func (mw *MetaWrapper) RemoveMultipart_ll(path, multipartID string) (err error) {
 	var (
 		mpId  uint64
 		found bool
@@ -745,12 +745,12 @@ func (mw *MetaWrapper) RemoveMultipart_ll(multipartID string) (err error) {
 	if !found {
 		log.LogDebugf("AddMultipartPart_ll: meta partition not found by multipart id, multipartId(%v), err(%v)", multipartID, err)
 		// If meta partition not found by multipart id, broadcast to all meta partitions to find it
-		if _, mpId, err = mw.broadcastGetMultipart(multipartID); err != nil {
+		if _, mpId, err = mw.broadcastGetMultipart(path, multipartID); err != nil {
 			return
 		}
 	}
 	var mp = mw.getPartitionByID(mpId)
-	status, err := mw.removeMultipart(mp, multipartID)
+	status, err := mw.removeMultipart(mp, path, multipartID)
 	if err != nil || status != statusOK {
 		log.LogErrorf(" RemoveMultipart_ll: partition remove multipart fail: "+
 			"volume(%v) partitionID(%v) multipartID(%v) err(%v) status(%v)",
@@ -760,7 +760,7 @@ func (mw *MetaWrapper) RemoveMultipart_ll(multipartID string) (err error) {
 	return
 }
 
-func (mw *MetaWrapper) broadcastGetMultipart(multipartId string) (info *proto.MultipartInfo, mpID uint64, err error) {
+func (mw *MetaWrapper) broadcastGetMultipart(path, multipartId string) (info *proto.MultipartInfo, mpID uint64, err error) {
 	log.LogInfof("broadcastGetMultipart: find meta partition broadcast multipartId(%v)", multipartId)
 	partitions := mw.partitions
 	var (
@@ -772,7 +772,7 @@ func (mw *MetaWrapper) broadcastGetMultipart(multipartId string) (info *proto.Mu
 		wg.Add(1)
 		go func(mp *MetaPartition) {
 			defer wg.Done()
-			status, multipartInfo, err := mw.getMultipart(mp, multipartId)
+			status, multipartInfo, err := mw.getMultipart(mp, path, multipartId)
 			if err == nil && status == statusOK && multipartInfo != nil && multipartInfo.ID == multipartId {
 				resultMu.Lock()
 				mpID = mp.PartitionID
@@ -799,9 +799,8 @@ func (mw *MetaWrapper) broadcastGetMultipart(multipartId string) (info *proto.Mu
 func (mw *MetaWrapper) ListMultipart_ll(prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) (sessionResponse []*proto.MultipartInfo, err error) {
 	partitions := mw.partitions
 	var wg = sync.WaitGroup{}
-	//var prefixes = make([]string, 0)
+	var wl = sync.Mutex{}
 	var sessions = make([]*proto.MultipartInfo, 0)
-	//var allSessions = make([]*proto.ListMultipartResponse, 0)
 
 	for _, mp := range partitions {
 		wg.Add(1)
@@ -814,7 +813,8 @@ func (mw *MetaWrapper) ListMultipart_ll(prefix, delimiter, keyMarker string, mul
 				err = statusToErrno(status)
 				return
 			}
-			//allSessions = append(allSessions, response)
+			wl.Lock()
+			defer wl.Unlock()
 			sessions = append(sessions, response.Multiparts...)
 		}(mp)
 	}
@@ -824,7 +824,7 @@ func (mw *MetaWrapper) ListMultipart_ll(prefix, delimiter, keyMarker string, mul
 
 	// reorder sessions by path
 	sort.SliceStable(sessions, func(i, j int) bool {
-		return sessions[i].Path < sessions[j].Path
+		return sessions[i].Path+sessions[i].ID < sessions[j].Path+sessions[j].ID
 	})
 	return sessions, nil
 }
