@@ -38,6 +38,8 @@ const (
 	HeaderNameExpect             = "Expect"
 	HeaderNameXForwardedExpect   = "X-Forwarded-Expect"
 	HeaderNameLocation           = "Location"
+	HeaderNameCacheControl       = "Cache-Control"
+	HeaderNameExpires            = "Expires"
 
 	// Headers for CORS validation
 	Origin                                = "Origin"
@@ -99,6 +101,11 @@ const (
 	ParamPartNoMarker   = "part-number-marker"
 	ParamPartMaxUploads = "max-uploads"
 	ParamPartDelimiter  = "delimiter"
+
+	ParamResponseCacheControl       = "response-cache-control"
+	ParamResponseContentType        = "response-content-type"
+	ParamResponseContentDisposition = "response-content-disposition"
+	ParamResponseExpires            = "response-expires"
 )
 
 const (
@@ -113,13 +120,15 @@ const (
 
 // XAttr keys for ObjectNode compatible feature
 const (
-	XAttrKeyOSSETag        = "oss:etag"
-	XAttrKeyOSSTagging     = "oss:tagging"
-	XAttrKeyOSSPolicy      = "oss:policy"
-	XAttrKeyOSSACL         = "oss:acl"
-	XAttrKeyOSSMIME        = "oss:mime"
-	XAttrKeyOSSDISPOSITION = "oss:disposition"
-	XAttrKeyOSSCORS        = "oss:cors"
+	XAttrKeyOSSETag         = "oss:etag"
+	XAttrKeyOSSTagging      = "oss:tagging"
+	XAttrKeyOSSPolicy       = "oss:policy"
+	XAttrKeyOSSACL          = "oss:acl"
+	XAttrKeyOSSMIME         = "oss:mime"
+	XAttrKeyOSSDISPOSITION  = "oss:disposition"
+	XAttrKeyOSSCORS         = "oss:cors"
+	XAttrKeyOSSCacheControl = "oss:cache"
+	XAttrKeyOSSExpires      = "oss:expires"
 
 	// Deprecated
 	XAttrKeyOSSETagDeprecated = "oss:tag"
@@ -127,6 +136,9 @@ const (
 
 const (
 	AMZTimeFormat = "2006-01-02T15:04:05.000Z"
+	RFC1123Format = "Mon, 02 Jan 2006 15:04:05 GMT"
+	RFC850Format  = "Monday, 02-Jan-06 15:04:05 GMT"
+	ANSICFormat   = "Mon Jan  2 15:04:05 2006"
 )
 
 const (

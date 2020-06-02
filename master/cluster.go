@@ -1053,7 +1053,7 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate boo
 	}
 	ok := c.isRecovering(dp, addr)
 	if ok {
-		err = fmt.Errorf("vol[%v],data partition[%v] can't decommision util it has recovered", dp.VolName, dp.PartitionID)
+		err = fmt.Errorf("vol[%v],data partition[%v] can't decommision until it has recovered", dp.VolName, dp.PartitionID)
 		return
 	}
 	dataNode, err := c.dataNode(addr)
@@ -1154,23 +1154,23 @@ func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode) (err 
 	return nil
 }
 
-func (c *Cluster) putBadMetaPartitions(offlineAddr string, partitionID uint64) {
+func (c *Cluster) putBadMetaPartitions(addr string, partitionID uint64) {
 	newBadPartitionIDs := make([]uint64, 0)
-	badPartitionIDs, ok := c.BadMetaPartitionIds.Load(offlineAddr)
+	badPartitionIDs, ok := c.BadMetaPartitionIds.Load(addr)
 	if ok {
 		newBadPartitionIDs = badPartitionIDs.([]uint64)
 	}
 	newBadPartitionIDs = append(newBadPartitionIDs, partitionID)
-	c.BadMetaPartitionIds.Store(offlineAddr, newBadPartitionIDs)
+	c.BadMetaPartitionIds.Store(addr, newBadPartitionIDs)
 }
 
-func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, offlineAddr string, partitionID uint64) {
+func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, partitionID uint64) {
 	var key string
 	newBadPartitionIDs := make([]uint64, 0)
 	if replica != nil {
-		key = fmt.Sprintf("%s:%s", offlineAddr, replica.DiskPath)
+		key = fmt.Sprintf("%s:%s", addr, replica.DiskPath)
 	} else {
-		key = fmt.Sprintf("%s:%s", offlineAddr, "")
+		key = fmt.Sprintf("%s:%s", addr, "")
 	}
 	badPartitionIDs, ok := c.BadDataPartitionIds.Load(key)
 	if ok {

@@ -345,7 +345,7 @@ func TestGetVolSimpleInfo(t *testing.T) {
 
 func TestCreateVol(t *testing.T) {
 	name := "test_create_vol"
-	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest&zoneName=%v", hostAddr, proto.AdminCreateVol, name,testZone2)
+	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest&zoneName=%v", hostAddr, proto.AdminCreateVol, name, testZone2)
 	fmt.Println(reqURL)
 	process(reqURL, t)
 	userInfo, err := server.user.getUserInfo("cfstest")
@@ -453,16 +453,28 @@ func TestAddDataReplica(t *testing.T) {
 		return
 	}
 	partition.RUnlock()
+	server.cluster.BadDataPartitionIds.Range(
+		func(key, value interface{}) bool {
+			addr, ok := key.(string)
+			if !ok {
+				return true
+			}
+			if strings.HasPrefix(addr, dsAddr) {
+				server.cluster.BadDataPartitionIds.Delete(key)
+			}
+			return true
+		})
 }
 
 func TestRemoveDataReplica(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
+	partition.isRecover = false
 	dsAddr := "127.0.0.1:9106"
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteDataReplica, partition.PartitionID, dsAddr)
 	process(reqURL, t)
 	partition.RLock()
 	if contains(partition.Hosts, dsAddr) {
-		t.Errorf("hosts[%v] should contains dsAddr[%v]", partition.Hosts, dsAddr)
+		t.Errorf("hosts[%v] should not contains dsAddr[%v]", partition.Hosts, dsAddr)
 		partition.RUnlock()
 		return
 	}
@@ -499,6 +511,7 @@ func TestRemoveMetaReplica(t *testing.T) {
 		t.Error("no meta partition")
 		return
 	}
+	partition.IsRecover = false
 	msAddr := "127.0.0.1:8009"
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteMetaReplica, partition.PartitionID, msAddr)
 	process(reqURL, t)
@@ -792,4 +805,10 @@ func TestDeleteUser(t *testing.T) {
 		t.Errorf("expect err ErrUserNotExists, but err is %v", err)
 		return
 	}
+}
+
+func TestListUsersOfVol(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.UsersOfVol, "test_create_vol")
+	fmt.Println(reqURL)
+	process(reqURL, t)
 }
