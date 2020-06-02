@@ -1869,6 +1869,9 @@ func (v *Volume) ListMultipartUploads(prefix, delimiter, keyMarker string, multi
 			prefixes = append(prefixes, prefix)
 		}
 	}
+	sort.SliceStable(prefixes, func(i, j int) bool {
+		return prefixes[i] < prefixes[j]
+	})
 	return uploads, NextMarker, NextSessionIdMarker, IsTruncated, prefixes, nil
 }
 
