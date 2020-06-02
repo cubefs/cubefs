@@ -44,6 +44,7 @@ const (
 	SubDir
 	FsyncOnClose
 	MaxCPUs
+	EnableXattr
 
 	MaxMountOption
 )
@@ -105,6 +106,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[SubDir] = MountOption{"subdir", "Mount sub directory", "", ""}
 	opts[FsyncOnClose] = MountOption{"fsyncOnClose", "Perform fsync upon file close", "", true}
 	opts[MaxCPUs] = MountOption{"maxcpus", "The maximum number of CPUs that can be executing", "", int64(-1)}
+	opts[EnableXattr] = MountOption{"enableXattr", "Enable xattr support", "", false}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -142,7 +144,7 @@ func ParseMountOptions(opts []MountOption, cfg *config.Config) {
 			if opts[i].cmdlineValue != "" {
 				opts[i].value = parseBool(opts[i].cmdlineValue)
 			} else {
-				if value, present := cfg.CheckAndGetString(opts[i].keyword); present {
+				if value, present := cfg.CheckAndGetBool(opts[i].keyword); present {
 					opts[i].value = value
 				} else {
 					opts[i].value = v
@@ -231,4 +233,5 @@ type MountOptions struct {
 	SubDir        string
 	FsyncOnClose  bool
 	MaxCPUs       int64
+	EnableXattr   bool
 }

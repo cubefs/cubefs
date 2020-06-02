@@ -52,6 +52,7 @@ type Super struct {
 
 	disableDcache bool
 	fsyncOnClose  bool
+	enableXattr   bool
 	rootIno       uint64
 }
 
@@ -115,6 +116,8 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.nodeCache = make(map[uint64]fs.Node)
 	s.disableDcache = opt.DisableDcache
 	s.fsyncOnClose = opt.FsyncOnClose
+	s.enableXattr = opt.EnableXattr
+
 	if s.rootIno, err = s.mw.GetRootIno(opt.SubDir); err != nil {
 		return nil, err
 	}

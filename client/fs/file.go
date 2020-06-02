@@ -343,6 +343,9 @@ func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string,
 
 // Getxattr has not been implemented yet.
 func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
+	if !f.super.enableXattr {
+		return fuse.ENOSYS
+	}
 	ino := f.info.Inode
 	name := req.Name
 	size := req.Size
@@ -366,6 +369,9 @@ func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fu
 
 // Listxattr has not been implemented yet.
 func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
+	if !f.super.enableXattr {
+		return fuse.ENOSYS
+	}
 	ino := f.info.Inode
 	_ = req.Size     // ignore currently
 	_ = req.Position // ignore currently
@@ -384,6 +390,9 @@ func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *
 
 // Setxattr has not been implemented yet.
 func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
+	if !f.super.enableXattr {
+		return fuse.ENOSYS
+	}
 	ino := f.info.Inode
 	name := req.Name
 	value := req.Xattr
@@ -398,6 +407,9 @@ func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 
 // Removexattr has not been implemented yet.
 func (f *File) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
+	if !f.super.enableXattr {
+		return fuse.ENOSYS
+	}
 	ino := f.info.Inode
 	name := req.Name
 	if err := f.super.mw.XAttrDel_ll(ino, name); err != nil {
