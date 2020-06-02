@@ -28,7 +28,7 @@ import (
 
 const (
 	AsyncDeleteInterval      = 10 * time.Second
-	UpdateVolTicket          = 5 * time.Minute
+	UpdateVolTicket          = 2 * time.Minute
 	BatchCounts              = 500
 	OpenRWAppendOpt          = os.O_CREATE | os.O_RDWR | os.O_APPEND
 	TempFileValidTime        = 86400 //units: sec
@@ -49,6 +49,19 @@ func (mp *metaPartition) startFreeList() (err error) {
 	return
 }
 
+func (mp *metaPartition)updateVolView(convert func(view *proto.DataPartitionsView) *DataPartitionsView)(err error) {
+	volName := mp.config.VolName
+	dataView, err := masterClient.ClientAPI().GetDataPartitions(volName)
+	if err != nil {
+		err=fmt.Errorf("updateVolWorker: get data partitions view fail: volume(%v) err(%v)",
+			volName, err)
+		log.LogErrorf(err.Error())
+		return
+	}
+	mp.vol.UpdatePartitions(convert(dataView))
+	return nil
+}
+
 func (mp *metaPartition) updateVolWorker() {
 	t := time.NewTicker(UpdateVolTicket)
 	var convert = func(view *proto.DataPartitionsView) *DataPartitionsView {
@@ -65,20 +78,14 @@ func (mp *metaPartition) updateVolWorker() {
 		}
 		return newView
 	}
+	mp.updateVolView(convert)
 	for {
 		select {
 		case <-mp.stopC:
 			t.Stop()
 			return
 		case <-t.C:
-			volName := mp.config.VolName
-			dataView, err := masterClient.ClientAPI().GetDataPartitions(volName)
-			if err != nil {
-				log.LogErrorf("updateVolWorker: get data partitions view fail: volume(%v) err(%v)",
-					volName, err)
-				break
-			}
-			mp.vol.UpdatePartitions(convert(dataView))
+			mp.updateVolView(convert)
 		}
 	}
 }
