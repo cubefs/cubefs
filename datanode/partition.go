@@ -140,6 +140,29 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	return
 }
 
+func (dp *DataPartition)IsEquareCreateDataPartitionRequst(request *proto.CreateDataPartitionRequest) (err error){
+	if len(dp.config.Peers)!=len(request.Members){
+		return fmt.Errorf("Exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", dp.partitionID, dp.config.Peers,request.Members)
+	}
+	for index,host:=range dp.config.Hosts{
+		requestHost:=request.Hosts[index]
+		if host!=requestHost {
+			return fmt.Errorf("Exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)",dp.partitionID,dp.config.Hosts,request.Hosts)
+		}
+	}
+	for index,peer:=range dp.config.Peers {
+		requestPeer:=request.Members[index]
+		if requestPeer.ID!=peer.ID || requestPeer.Addr!=peer.Addr{
+			return fmt.Errorf("Exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)",dp.partitionID,dp.config.Peers,request.Members)
+		}
+	}
+	if dp.config.VolName!=request.VolumeId {
+		return fmt.Errorf("Exsit unavali Partition(%v) VolName(%v) requestVolName(%v)",dp.partitionID,dp.config.VolName,request.VolumeId)
+	}
+
+	return
+}
+
 // LoadDataPartition loads and returns a partition instance based on the specified directory.
 // It reads the partition metadata file stored under the specified directory
 // and creates the partition instance.

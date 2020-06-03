@@ -330,39 +330,46 @@ func (m *metadataManager) detachPartition(id uint64) (err error) {
 	return
 }
 
-func (m *metadataManager) createPartition(id uint64, volName string, start,
-	end uint64, peers []proto.Peer) (err error) {
+func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequest) (err error) {
 	// check partitions
-	if _, err = m.getPartition(id); err == nil {
-		err = errors.NewErrorf("create partition id=%d is exsited!", id)
+	if _, err = m.getPartition(request.PartitionID); err == nil {
+		err = errors.NewErrorf("create partition id=%d is exsited!", request.PartitionID)
 		return
 	}
 	err = nil
-	partitionId := fmt.Sprintf("%d", id)
+	partitionId := fmt.Sprintf("%d", request.PartitionID)
 
 	mpc := &MetaPartitionConfig{
-		PartitionId: id,
-		VolName:     volName,
-		Start:       start,
-		End:         end,
-		Cursor:      start,
-		Peers:       peers,
+		PartitionId: request.PartitionID,
+		VolName:     request.VolName,
+		Start:       request.Start,
+		End:         request.End,
+		Cursor:      request.Start,
+		Peers:       request.Members,
 		RaftStore:   m.raftStore,
 		NodeId:      m.nodeId,
 		RootDir:     path.Join(m.rootDir, partitionPrefix+partitionId),
 		ConnPool:    m.connPool,
 	}
 	mpc.AfterStop = func() {
-		// TODO Unhandled errors
-		m.detachPartition(id)
+		m.detachPartition(request.PartitionID)
 	}
+
+	oldMp,err:=m.getPartition(request.PartitionID)
+	if err==nil {
+		if err=oldMp.IsEquareCreateMetaPartitionRequst(request);err!=nil {
+			err = errors.NewErrorf("[createPartition]->%s", err.Error())
+			return
+		}
+		return nil
+	}
+
 	partition := NewMetaPartition(mpc, m)
 	if err = partition.PersistMetadata(); err != nil {
 		err = errors.NewErrorf("[createPartition]->%s", err.Error())
 		return
 	}
-	if err = m.attachPartition(id, partition); err != nil {
-		// TODO Unhandled errors
+	if err = m.attachPartition(request.PartitionID, partition); err != nil {
 		os.RemoveAll(mpc.RootDir)
 		err = errors.NewErrorf("[createPartition]->%s", err.Error())
 		return

@@ -176,6 +176,7 @@ type OpPartition interface {
 	IsExsitPeer(peer proto.Peer) bool
 	TryToLeader(groupID uint64) error
 	CanRemoveRaftMember(peer proto.Peer) error
+	IsEquareCreateMetaPartitionRequst(request *proto.CreateMetaPartitionRequest) (err error)
 }
 
 // MetaPartition defines the interface for the meta partition operations.
