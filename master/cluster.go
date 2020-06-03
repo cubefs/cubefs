@@ -27,6 +27,10 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
+const (
+	BatchGoroutineSize = 128 //batch sync send goroutine
+)
+
 // Cluster stores all the cluster-level information.
 type Cluster struct {
 	Name                      string
@@ -884,7 +888,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
 errHandler:
-	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.Hosts)
 	if err != nil {
@@ -1644,12 +1648,32 @@ func (c *Cluster) setMetaNodeParams(hosts []string, batchCount uint64) (err erro
 }
 
 func (c *Cluster) getMetaNodeParams(hosts []string) (batchCounts map[string]uint64, err error) {
-	var (
-		wg sync.WaitGroup
-	)
 	metaNodes := c.getMetaNodesByHosts(hosts)
 
 	batchCounts = make(map[string]uint64)
+	totalSize := len(metaNodes)
+	if totalSize > BatchGoroutineSize {
+		for i := 0; i < totalSize; {
+			leftSize := totalSize - i
+			size := BatchGoroutineSize
+			if leftSize < BatchGoroutineSize {
+				size = leftSize
+			}
+			c.batchSyncSendAdminTask(metaNodes[i:i+size], batchCounts)
+			i += size
+		}
+	} else {
+		c.batchSyncSendAdminTask(metaNodes, batchCounts)
+	}
+
+	return
+}
+
+func (c *Cluster) batchSyncSendAdminTask(metaNodes []*MetaNode, resp map[string]uint64) {
+	var (
+		mu sync.Mutex
+		wg sync.WaitGroup
+	)
 	for _, m := range metaNodes {
 		wg.Add(1)
 		go func(m *MetaNode) {
@@ -1664,12 +1688,12 @@ func (c *Cluster) getMetaNodeParams(hosts []string) (batchCounts map[string]uint
 				return
 			}
 			bc := binary.BigEndian.Uint64(packet.Data)
-			batchCounts[m.Addr] = bc
+			mu.Lock()
+			resp[m.Addr] = bc
+			mu.Unlock()
 		}(m)
 	}
 	wg.Wait()
-
-	return
 }
 
 func (c *Cluster) setDisableAutoAllocate(disableAutoAllocate bool) (err error) {
