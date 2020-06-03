@@ -9,7 +9,7 @@
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs?ref=badge_shield)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/2761/badge)](https://bestpractices.coreinfrastructure.org/projects/2761)
 
-<img src="https://user-images.githubusercontent.com/47099843/55525970-bf53d880-56c5-11e9-8c28-55d208859824.png" width="400" height="293" />
+<div width="100%" style="text-align:center;"><img alt="ChubaoFS" src="https://user-images.githubusercontent.com/5708406/83598049-556de200-a59b-11ea-9a31-6daa1439f81a.png" height="200"/></div>
 
 ## Overview
 
@@ -17,7 +17,6 @@ ChubaoFS (储宝文件系统 in Chinese) is a cloud-native storage platform that
 
 ChubaoFS has been commonly used as the underlying storage infrastructure for online applications, database or data processing services and machine learning jobs orchestrated by Kubernetes. 
 An advantage of doing so is to separate storage from compute - one can scale up or down based on the workload and independent of the other, providing total flexibility in matching resources to the actual storage and compute capacity required at any given time.
-
 
 Some key features of ChubaoFS include:
 
@@ -38,9 +37,9 @@ We are committed to making ChubaoFS better and more mature. Please stay tuned.
 
 ## Document
 
-https://chubaofs.readthedocs.io/en/latest/
+English version: https://chubaofs.readthedocs.io/en/latest/
 
-https://chubaofs.readthedocs.io/zh_CN/latest/
+Chinese version: https://chubaofs.readthedocs.io/zh_CN/latest/
 
 ## Benchmark
 
@@ -233,13 +232,6 @@ kubectl label node <nodename> chubaofs-csi-node=enabled
 $ helm install chubaofs ./chubaofs -f ~/chubaofs.yaml
 ```
 
-## License
-
-ChubaoFS is licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
-For detail see [LICENSE](LICENSE) and [NOTICE](NOTICE).
-
-[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs?ref=badge_large)
-
 ## Reference
 
 Haifeng Liu, et al., CFS: A Distributed File System for Large Scale Container Platforms. SIGMOD‘19, June 30-July 5, 2019, Amsterdam, Netherlands. 
@@ -251,3 +243,15 @@ For more information, please refer to https://dl.acm.org/citation.cfm?doid=32998
 - Twitter: [@ChubaoFS](https://twitter.com/ChubaoFS)
 - Mailing list: chubaofs-users@groups.io
 - Slack: [chubaofs.slack.com](https://chubaofs.slack.com/)
+- WeChat: QR code of the ChubaoFS community WeChat group see [here](https://github.com/chubaofs/chubaofs/issues/604).
+
+## Partners and Users
+
+For a list of users and success stories see [ADOPTERS.md](ADOPTERS.md).
+
+## License
+
+ChubaoFS is licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
+For detail see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs?ref=badge_large)
