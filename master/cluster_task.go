@@ -157,6 +157,9 @@ errHandler:
 		mp.volName, mp.PartitionID, errors.Stack(err)))
 	Warn(c.Name, fmt.Sprintf("clusterID[%v] meta partition[%v] offline addr[%v] failed,err:%v",
 		c.Name, mp.PartitionID, nodeAddr, err))
+	if err != nil {
+		err = fmt.Errorf("vol[%v],partition[%v],err[%v]", mp.volName, mp.PartitionID, err)
+	}
 	return
 }
 
