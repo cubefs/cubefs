@@ -20,6 +20,7 @@ At lease 3 meta nodes are required in respect to high availability.
    "raftReplicaPort", "string", "Raft replicate port", "Yes"
    "consulAddr", "string", "Addresses of monitor system", "No" 
    "exporterPort", "string", "Port for monitor system", "No" 
+   "batchCount", "uint64", "Batch count for metanode batch delete, default: 128", "No" 
    "masterAddr", "string", "Addresses of master server", "Yes"
    "totalMem","string", "Max memory metadata used. The value needs to be higher than the value of *metaNodeReservedMem* in the master configuration. Unit: byte", "Yes"
 

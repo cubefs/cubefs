@@ -14,6 +14,8 @@
 
 package proto
 
+import "fmt"
+
 // api
 const (
 	// Admin APIs
@@ -36,6 +38,8 @@ const (
 	AdminListVols                  = "/vol/list"
 	AdminSetMetaNodeParams         = "/metaNode/setParams"
 	AdminGetMetaNodeParams         = "/metaNode/getParams"
+	AdminSetDataNodeParams         = "/dataNode/setParams"
+	AdminGetDataNodeParams         = "/dataNode/getParams"
 
 	// Client APIs
 	ClientDataPartitions = "/client/partitions"
@@ -234,6 +238,7 @@ type HeartBeatRequest struct {
 	MasterAddr string
 }
 
+// metanode
 type SetMetaNodeParamsRequest struct {
 	BatchCount uint64
 }
@@ -246,6 +251,28 @@ type GetMetaNodeParamsRequest struct {
 
 type GetMetaNodeParamsResponse struct {
 	BatchCount uint64
+}
+
+type SetDataNodeParamsRequest struct {
+	MarkDeleteRate uint64
+}
+
+type SetDataNodeParamsResponse struct {
+}
+
+type GetDataNodeParamsRequest struct {
+}
+
+type GetDataNodeParamsResponse struct {
+	MarkDeleteRate uint64
+}
+
+func (r *GetMetaNodeParamsResponse) String() string {
+	return fmt.Sprintf("{BatchCount: %v}", r.BatchCount)
+}
+
+func (r *GetDataNodeParamsResponse) String() string {
+	return fmt.Sprintf("{markDeleteRate: %v}", r.MarkDeleteRate)
 }
 
 // PartitionReport defines the partition report.

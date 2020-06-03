@@ -81,7 +81,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	case proto.OpMarkDelete:
 		s.handleMarkDeletePacket(p, c)
 	case proto.OpBatchDeleteExtent:
-		s.handleBatchMarkDeletePacket(p,c)
+		s.handleBatchMarkDeletePacket(p, c)
 	case proto.OpRandomWrite, proto.OpSyncRandomWrite:
 		s.handleRandomWritePacket(p)
 	case proto.OpNotifyReplicasToRepair:
@@ -114,6 +114,10 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handlePacketToReadTinyDeleteRecordFile(p, c)
 	case proto.OpBroadcastMinAppliedID:
 		s.handleBroadcastMinAppliedID(p)
+	case proto.OpSetDataNodeParams:
+		s.handlePacketToSetParams(p)
+	case proto.OpGetDataNodeParams:
+		s.handlePacketToGetParams(p)
 	default:
 		p.PackErrorBody(repl.ErrorUnknownOp.Error(), repl.ErrorUnknownOp.Error()+strconv.Itoa(int(p.Opcode)))
 	}
@@ -318,6 +322,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	var (
 		err error
 	)
+	s.markDeleteLimit.Wait(s.ctx)
 	partition := p.Object.(*DataPartition)
 	if p.ExtentType == proto.TinyExtentType {
 		ext := new(proto.TinyExtentDeleteRecord)
@@ -342,19 +347,20 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	var (
 		err error
 	)
+	s.markDeleteLimit.Wait(s.ctx)
 	partition := p.Object.(*DataPartition)
 	var exts []*proto.ExtentKey
 	err = json.Unmarshal(p.Data, &exts)
-	store:=partition.ExtentStore()
+	store := partition.ExtentStore()
 	if err == nil {
-		for _,ext:=range exts{
-			log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)",ext,c.RemoteAddr().String()))
+		for _, ext := range exts {
+			log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
 			store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
 		}
 	}
 
 	if err != nil {
-		log.LogErrorf(fmt.Sprintf("(%v) error(%v) data (%v)",p.GetUniqueLogId(),err,string(p.Data)))
+		log.LogErrorf(fmt.Sprintf("(%v) error(%v) data (%v)", p.GetUniqueLogId(), err, string(p.Data)))
 		p.PackErrorBody(ActionMarkDelete, err.Error())
 	} else {
 		p.PacketOkReply()
@@ -944,6 +950,42 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 		}
 	}
 	return
+}
+
+func (s *DataNode) handlePacketToSetParams(p *repl.Packet) {
+	var (
+		err error
+	)
+
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionDataPartitionTryToLeader, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
+	var (
+		req       = &proto.SetDataNodeParamsRequest{}
+		adminTask = &proto.AdminTask{
+			Request: req,
+		}
+	)
+	if err = json.Unmarshal(p.Data, adminTask); err != nil {
+		return
+	}
+
+	s.SetMarkDeleteRate(req.MarkDeleteRate)
+}
+
+func (s *DataNode) handlePacketToGetParams(p *repl.Packet) {
+	val := s.GetMarkDeleteRate()
+	resp := proto.GetDataNodeParamsResponse{
+		MarkDeleteRate: val,
+	}
+
+	if data, err := json.Marshal(resp); err == nil {
+		p.PacketOkWithBody(data)
+	}
 }
 
 func (s *DataNode) handlePacketToDataPartitionTryToLeaderrr(p *repl.Packet) {

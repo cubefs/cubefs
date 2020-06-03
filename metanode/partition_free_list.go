@@ -30,7 +30,7 @@ import (
 const (
 	AsyncDeleteInterval      = 10 * time.Second
 	UpdateVolTicket          = 2 * time.Minute
-	BatchCounts              = 500
+	BatchCounts              = 128
 	OpenRWAppendOpt          = os.O_CREATE | os.O_RDWR | os.O_APPEND
 	TempFileValidTime        = 86400 //units: sec
 	DeleteInodeFileExtension = "INODE_DEL"
@@ -67,11 +67,11 @@ func (mp *metaPartition) startFreeList() (err error) {
 	return
 }
 
-func (mp *metaPartition)updateVolView(convert func(view *proto.DataPartitionsView) *DataPartitionsView)(err error) {
+func (mp *metaPartition) updateVolView(convert func(view *proto.DataPartitionsView) *DataPartitionsView) (err error) {
 	volName := mp.config.VolName
 	dataView, err := masterClient.ClientAPI().GetDataPartitions(volName)
 	if err != nil {
-		err=fmt.Errorf("updateVolWorker: get data partitions view fail: volume(%v) err(%v)",
+		err = fmt.Errorf("updateVolWorker: get data partitions view fail: volume(%v) err(%v)",
 			volName, err)
 		log.LogErrorf(err.Error())
 		return
@@ -198,7 +198,6 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 
 	return
 }
-
 
 // Delete the marked inodes.
 func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {

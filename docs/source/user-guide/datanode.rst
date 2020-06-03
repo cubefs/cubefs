@@ -28,6 +28,7 @@ Configurations
    "raftDir", "string", "Path for raft log file storage", "No"
    "consulAddr", "string", "Addresses of monitor system", "No"
    "exporterPort", "string", "Port for monitor system", "No"
+   "markDeleteRate", "uint64", "Rate for datanode MarkDelete/BatchMarkDelete op, default: int.Inf", "No"
    "masterAddr", "string slice", "Addresses of master server", "Yes"
    "disks", "string slice", "
    | Format: *PATH:RETAIN*.

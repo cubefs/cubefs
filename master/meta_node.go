@@ -149,16 +149,14 @@ func (metaNode *MetaNode) checkHeartbeat() {
 	}
 }
 
-func (metaNode *MetaNode) buildSetParamsTask(batchCount uint64) (task *proto.AdminTask) {
-	request := &proto.SetMetaNodeParamsRequest{
-		BatchCount: batchCount,
-	}
-	task = proto.NewAdminTask(proto.OpSetMetaNodeParams, metaNode.Addr, request)
-	return
+func (metaNode *MetaNode) Address() string {
+	return metaNode.Addr
 }
 
-func (metaNode *MetaNode) buildGetParamsTask() (task *proto.AdminTask) {
-	request := &proto.GetMetaNodeParamsRequest{}
-	task = proto.NewAdminTask(proto.OpGetMetaNodeParams, metaNode.Addr, request)
-	return
+func (metaNode *MetaNode) RunSyncAdminTask(task *proto.AdminTask) (packet *proto.Packet, err error) {
+	return metaNode.Sender.syncSendAdminTask(task)
+}
+
+func (node *MetaNode) AddAsyncAdminTask(t *proto.AdminTask) {
+	node.Sender.AddTask(t)
 }

@@ -724,7 +724,7 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 }
 
 // set metanode some interval params
-func (m *Server) setMetaNodeParams(w http.ResponseWriter, r *http.Request) {
+func (m *Server) setMetaNodeParamsHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		hosts  []string
 		params map[string]interface{}
@@ -736,13 +736,15 @@ func (m *Server) setMetaNodeParams(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := make(map[string]interface{})
-	if batchCount, ok := params[metaNodeDeleteBatchCountKey]; ok {
+	if batchCount, ok := params[nodeDeleteBatchCountKey]; ok {
 		if bc, ok := batchCount.(uint64); ok {
-			if err = m.cluster.setMetaNodeParams(hosts, bc); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
+			nodes := getTaskNodesByHosts(&m.cluster.metaNodes, hosts)
+			req := &proto.SetMetaNodeParamsRequest{
+				BatchCount: bc,
 			}
-			resp[metaNodeDeleteBatchCountKey] = bc
+
+			m.RunAsyncAdminTasks(nodes, proto.OpSetMetaNodeParams, req)
+			resp[nodeDeleteBatchCountKey] = bc
 		}
 	}
 
@@ -750,24 +752,85 @@ func (m *Server) setMetaNodeParams(w http.ResponseWriter, r *http.Request) {
 }
 
 // get metanode some interval params
-func (m *Server) getMetaNodeParams(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getMetaNodeParamsHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		hosts []string
 		err   error
 	)
-	if hosts, err = parseAndExtractGetMetaNodeParams(r); err != nil {
+	if hosts, err = parseAndExtractGetNodeParams(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	var resp []TaskNodeResponse
+	nodes := getTaskNodesByHosts(&m.cluster.metaNodes, hosts)
+	req := &proto.GetMetaNodeParamsRequest{}
+	if resp, err = m.RunSyncAdminTasks(nodes, proto.OpGetMetaNodeParams, req); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	//resp[nodeDeleteBatchCountKey] = vals
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", resp)))
+}
+
+// set datanode some interval params
+func (m *Server) setDataNodeParamsHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		hosts  []string
+		params map[string]interface{}
+		err    error
+	)
+	if hosts, params, err = parseAndExtractSetDataNodeParams(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
 	resp := make(map[string]interface{})
-	batchCounts := make(map[string]uint64)
-	if batchCounts, err = m.cluster.getMetaNodeParams(hosts); err != nil {
+	if val, ok := params[nodeMarkDeleteRateKey]; ok {
+		if v, ok := val.(uint64); ok {
+			nodes := getTaskNodesByHosts(&m.cluster.dataNodes, hosts)
+			req := &proto.SetDataNodeParamsRequest{
+				MarkDeleteRate: v,
+			}
+			m.RunAsyncAdminTasks(nodes, proto.OpSetDataNodeParams, req)
+			resp[nodeMarkDeleteRateKey] = v
+		}
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set metanode params %v successfully", resp)))
+}
+
+// get metanode some interval params
+func (m *Server) getDataNodeParamsHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		hosts []string
+		err   error
+	)
+	if hosts, err = parseAndExtractGetNodeParams(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	var resp []TaskNodeResponse
+	nodes := getTaskNodesByHosts(&m.cluster.dataNodes, hosts)
+	req := &proto.GetDataNodeParamsRequest{}
+	if resp, err = m.RunSyncAdminTasks(nodes, proto.OpGetDataNodeParams, req); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	resp[metaNodeDeleteBatchCountKey] = batchCounts
+	//resp := make(map[string]interface{})
+	//vals := make(map[string]interface{})
+	//nodes := getTaskNodesByHosts(&m.cluster.dataNodes, hosts)
+	//req := &proto.GetDataNodeParamsRequest{}
+	//if vals, err = m.RunSyncAdminTasks(nodes, proto.OpGetDataNodeParams, req); err != nil {
+	//    sendErrReply(w, r, newErrHTTPReply(err))
+	//    return
+	//}
+
+	//resp[nodeMarkDeleteRateKey] = vals
 
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", resp)))
 }
@@ -1432,12 +1495,12 @@ func parseAndExtractThreshold(r *http.Request) (threshold float64, err error) {
 	return
 }
 
-func parseAndExtractGetMetaNodeParams(r *http.Request) (hosts []string, err error) {
+func parseAndExtractGetNodeParams(r *http.Request) (hosts []string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
 	var value string
-	if value = r.FormValue(metaNodeHostsKey); value != "" {
+	if value = r.FormValue(nodeHostsKey); value != "" {
 		hosts = strings.Split(value, ",")
 	}
 	return
@@ -1448,24 +1511,52 @@ func parseAndExtractSetMetaNodeParams(r *http.Request) (hosts []string, params m
 		return
 	}
 	var value string
-	if value = r.FormValue(metaNodeHostsKey); value != "" {
+	if value = r.FormValue(nodeHostsKey); value != "" {
 		hosts = strings.Split(value, ",")
 	}
 	noParams := true
 	params = make(map[string]interface{})
-	if value = r.FormValue(metaNodeDeleteBatchCountKey); value != "" {
+	if value = r.FormValue(nodeDeleteBatchCountKey); value != "" {
 		noParams = false
 		var batchCount = uint64(0)
 		batchCount, err = strconv.ParseUint(value, 10, 64)
 		if err != nil {
-			err = unmatchedKey(metaNodeDeleteBatchCountKey)
+			err = unmatchedKey(nodeDeleteBatchCountKey)
 			return
 		}
-		params[metaNodeDeleteBatchCountKey] = batchCount
+		params[nodeDeleteBatchCountKey] = batchCount
 
 	}
 	if noParams {
-		err = keyNotFound(metaNodeDeleteBatchCountKey)
+		err = keyNotFound(nodeDeleteBatchCountKey)
+		return
+	}
+	return
+}
+
+func parseAndExtractSetDataNodeParams(r *http.Request) (hosts []string, params map[string]interface{}, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var value string
+	if value = r.FormValue(nodeHostsKey); value != "" {
+		hosts = strings.Split(value, ",")
+	}
+	noParams := true
+	params = make(map[string]interface{})
+	if value = r.FormValue(nodeMarkDeleteRateKey); value != "" {
+		noParams = false
+		var val = uint64(0)
+		val, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(nodeMarkDeleteRateKey)
+			return
+		}
+		params[nodeMarkDeleteRateKey] = val
+
+	}
+	if noParams {
+		err = keyNotFound(nodeMarkDeleteRateKey)
 		return
 	}
 	return

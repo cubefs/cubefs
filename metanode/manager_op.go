@@ -16,7 +16,6 @@ package metanode
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -125,8 +124,17 @@ func (m *metadataManager) opSetMetaNodeParams(conn net.Conn, p *Packet, remoteAd
 
 func (m *metadataManager) opGetMetaNodeParams(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	bc := DeleteBatchCount()
-	data := make([]byte, 8)
-	binary.BigEndian.PutUint64(data, bc)
+	resp := &proto.GetMetaNodeParamsResponse{
+		BatchCount: bc,
+	}
+	var data []byte
+	if data, err = json.Marshal(resp); err != nil {
+		log.LogErrorf("opGetMetaNodeParams error :%v", err)
+		buf := []byte(err.Error())
+		p.PacketErrorWithBody(proto.OpErr, buf)
+		m.respondToClient(conn, p)
+		return
+	}
 	p.PacketOkWithBody(data)
 	m.respondToClient(conn, p)
 
