@@ -187,7 +187,7 @@ func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 
 // Handle OpHeartbeat packet.
 func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
-	var err  error
+	var err error
 	task := &proto.AdminTask{}
 	err = json.Unmarshal(p.Data, task)
 	defer func() {

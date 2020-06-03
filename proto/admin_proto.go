@@ -34,6 +34,8 @@ const (
 	AdminCreateMetaPartition       = "/metaPartition/create"
 	AdminSetMetaNodeThreshold      = "/threshold/set"
 	AdminListVols                  = "/vol/list"
+	AdminSetMetaNodeParams         = "/metaNode/setParams"
+	AdminGetMetaNodeParams         = "/metaNode/getParams"
 
 	// Client APIs
 	ClientDataPartitions = "/client/partitions"
@@ -230,6 +232,20 @@ type LoadMetaPartitionMetricResponse struct {
 type HeartBeatRequest struct {
 	CurrTime   int64
 	MasterAddr string
+}
+
+type SetMetaNodeParamsRequest struct {
+	BatchCount uint64
+}
+
+type SetMetaNodeParamsResponse struct {
+}
+
+type GetMetaNodeParamsRequest struct {
+}
+
+type GetMetaNodeParamsResponse struct {
+	BatchCount uint64
 }
 
 // PartitionReport defines the partition report.

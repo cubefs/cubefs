@@ -15,30 +15,31 @@
 package master
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
 	"math/rand"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 // MetaNode defines the structure of a meta node
 type MetaNode struct {
-	ID                        uint64
-	Addr                      string
-	IsActive                  bool
-	Sender                    *AdminTaskManager
-	ZoneName                  string `json:"Zone"`
-	MaxMemAvailWeight         uint64 `json:"MaxMemAvailWeight"`
-	Total                     uint64 `json:"TotalWeight"`
-	Used                      uint64 `json:"UsedWeight"`
-	Ratio                     float64
-	SelectCount               uint64
-	Carry                     float64
-	Threshold                 float32
-	ReportTime                time.Time
-	metaPartitionInfos        []*proto.MetaPartitionReport
-	MetaPartitionCount        int
-	NodeSetID                 uint64
+	ID                 uint64
+	Addr               string
+	IsActive           bool
+	Sender             *AdminTaskManager
+	ZoneName           string `json:"Zone"`
+	MaxMemAvailWeight  uint64 `json:"MaxMemAvailWeight"`
+	Total              uint64 `json:"TotalWeight"`
+	Used               uint64 `json:"UsedWeight"`
+	Ratio              float64
+	SelectCount        uint64
+	Carry              float64
+	Threshold          float32
+	ReportTime         time.Time
+	metaPartitionInfos []*proto.MetaPartitionReport
+	MetaPartitionCount int
+	NodeSetID          uint64
 	sync.RWMutex
 	PersistenceMetaPartitions []uint64
 }
@@ -146,4 +147,18 @@ func (metaNode *MetaNode) checkHeartbeat() {
 	if time.Since(metaNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
 		metaNode.IsActive = false
 	}
+}
+
+func (metaNode *MetaNode) buildSetParamsTask(batchCount uint64) (task *proto.AdminTask) {
+	request := &proto.SetMetaNodeParamsRequest{
+		BatchCount: batchCount,
+	}
+	task = proto.NewAdminTask(proto.OpSetMetaNodeParams, metaNode.Addr, request)
+	return
+}
+
+func (metaNode *MetaNode) buildGetParamsTask() (task *proto.AdminTask) {
+	request := &proto.GetMetaNodeParamsRequest{}
+	task = proto.NewAdminTask(proto.OpGetMetaNodeParams, metaNode.Addr, request)
+	return
 }

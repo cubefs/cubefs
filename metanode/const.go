@@ -128,8 +128,11 @@ const (
 	cfgMasterAddrs       = "masterAddrs" // will be deprecated
 	cfgRaftHeartbeatPort = "raftHeartbeatPort"
 	cfgRaftReplicaPort   = "raftReplicaPort"
+	cfgDeleteBatchCount  = "deleteBatchCount"
 	cfgTotalMem          = "totalMem"
 	cfgZoneName          = "zoneName"
+
+	metaNodeDeleteBatchCountKey = "batchCount"
 )
 
 const (

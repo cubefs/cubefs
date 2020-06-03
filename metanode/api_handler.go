@@ -21,6 +21,7 @@ import (
 	"strconv"
 
 	"bytes"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 )
@@ -57,7 +58,20 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getDentry", m.getDentryHandler)
 	http.HandleFunc("/getDirectory", m.getDirectoryHandler)
 	http.HandleFunc("/getAllDentry", m.getAllDentriesHandler)
+	http.HandleFunc("/getParams", m.getParamsHandler)
 	return
+}
+
+func (m *MetaNode) getParamsHandler(w http.ResponseWriter,
+	r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	params := make(map[string]interface{})
+	params[metaNodeDeleteBatchCountKey] = DeleteBatchCount()
+	resp.Data = params
+	data, _ := resp.Marshal()
+	if _, err := w.Write(data); err != nil {
+		log.LogErrorf("[getPartitionsHandler] response %s", err)
+	}
 }
 
 func (m *MetaNode) getPartitionsHandler(w http.ResponseWriter,

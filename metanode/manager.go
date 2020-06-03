@@ -56,14 +56,15 @@ type MetadataManagerConfig struct {
 }
 
 type metadataManager struct {
-	nodeId     uint64
-	zoneName   string
-	rootDir    string
-	raftStore  raftstore.RaftStore
-	connPool   *util.ConnectPool
-	state      uint32
-	mu         sync.RWMutex
-	partitions map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
+	nodeId             uint64
+	zoneName           string
+	rootDir            string
+	raftStore          raftstore.RaftStore
+	connPool           *util.ConnectPool
+	state              uint32
+	mu                 sync.RWMutex
+	partitions         map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
+	flDeleteBatchCount atomic.Value
 }
 
 // HandleMetadataOperation handles the metadata operations.
@@ -151,6 +152,10 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 		err = m.opAppendMultipart(conn, p, remoteAddr)
 	case proto.OpGetMultipart:
 		err = m.opGetMultipart(conn, p, remoteAddr)
+	case proto.OpSetMetaNodeParams:
+		err = m.opSetMetaNodeParams(conn, p, remoteAddr)
+	case proto.OpGetMetaNodeParams:
+		err = m.opGetMetaNodeParams(conn, p, remoteAddr)
 	default:
 		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
 			p.Opcode, p.GetReqID())
