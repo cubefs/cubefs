@@ -156,7 +156,7 @@ func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 
 	otherLiveReplicas := make([]*DataReplica, 0)
 	for i := 0; i < len(liveReplicas); i++ {
-		replica := partition.Replicas[i]
+		replica := liveReplicas[i]
 		if replica.Addr != offlineAddr {
 			otherLiveReplicas = append(otherLiveReplicas, replica)
 		}
