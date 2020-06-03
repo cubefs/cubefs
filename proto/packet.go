@@ -613,7 +613,7 @@ func (p *Packet) GetUniqueLogId() (m string) {
 		err := json.Unmarshal(p.Data, ext)
 		if err == nil {
 			m += fmt.Sprintf("Extent(%v)_ExtentOffset(%v)_TinyDeleteFileOffset(%v)_Size(%v)_Opcode(%v)",
-				ext.ExtentId, ext.ExtentOffset, ext.TinyDeleteFileOffset, ext.Size, p.Opcode)
+				ext.ExtentId, ext.ExtentOffset, ext.TinyDeleteFileOffset, ext.Size, p.GetOpMsg())
 			return m
 		}
 	} else if p.Opcode == OpReadTinyDeleteRecord || p.Opcode == OpNotifyReplicasToRepair || p.Opcode == OpDataNodeHeartbeat {
