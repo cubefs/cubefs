@@ -723,6 +723,55 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
+// set metanode some interval params
+func (m *Server) setMetaNodeParams(w http.ResponseWriter, r *http.Request) {
+	var (
+		hosts  []string
+		params map[string]interface{}
+		err    error
+	)
+	if hosts, params, err = parseAndExtractSetMetaNodeParams(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	resp := make(map[string]interface{})
+	if batchCount, ok := params[metaNodeDeleteBatchCountKey]; ok {
+		if bc, ok := batchCount.(uint64); ok {
+			if err = m.cluster.setMetaNodeParams(hosts, bc); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+			resp[metaNodeDeleteBatchCountKey] = bc
+		}
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set metanode params %v successfully", resp)))
+}
+
+// get metanode some interval params
+func (m *Server) getMetaNodeParams(w http.ResponseWriter, r *http.Request) {
+	var (
+		hosts []string
+		err   error
+	)
+	if hosts, err = parseAndExtractGetMetaNodeParams(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	resp := make(map[string]interface{})
+	batchCounts := make(map[string]uint64)
+	if batchCounts, err = m.cluster.getMetaNodeParams(hosts); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	resp[metaNodeDeleteBatchCountKey] = batchCounts
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", resp)))
+}
+
 // Decommission a disk. This will decommission all the data partitions on this disk.
 func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	var (
@@ -1378,6 +1427,45 @@ func parseAndExtractThreshold(r *http.Request) (threshold float64, err error) {
 		return
 	}
 	if threshold, err = strconv.ParseFloat(value, 64); err != nil {
+		return
+	}
+	return
+}
+
+func parseAndExtractGetMetaNodeParams(r *http.Request) (hosts []string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var value string
+	if value = r.FormValue(metaNodeHostsKey); value != "" {
+		hosts = strings.Split(value, ",")
+	}
+	return
+}
+
+func parseAndExtractSetMetaNodeParams(r *http.Request) (hosts []string, params map[string]interface{}, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var value string
+	if value = r.FormValue(metaNodeHostsKey); value != "" {
+		hosts = strings.Split(value, ",")
+	}
+	noParams := true
+	params = make(map[string]interface{})
+	if value = r.FormValue(metaNodeDeleteBatchCountKey); value != "" {
+		noParams = false
+		var batchCount = uint64(0)
+		batchCount, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(metaNodeDeleteBatchCountKey)
+			return
+		}
+		params[metaNodeDeleteBatchCountKey] = batchCount
+
+	}
+	if noParams {
+		err = keyNotFound(metaNodeDeleteBatchCountKey)
 		return
 	}
 	return

@@ -16,14 +16,15 @@ package metanode
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
 	"net"
 	"os"
 	"path"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
@@ -33,8 +34,25 @@ const (
 	OpenRWAppendOpt          = os.O_CREATE | os.O_RDWR | os.O_APPEND
 	TempFileValidTime        = 86400 //units: sec
 	DeleteInodeFileExtension = "INODE_DEL"
-	DeleteWorkerCnt         = 10
+	DeleteWorkerCnt          = 10
 )
+
+var (
+	flMu             sync.RWMutex
+	deleteBatchCount = uint64(BatchCounts)
+)
+
+func DeleteBatchCount() (batchCount uint64) {
+	flMu.RLock()
+	flMu.RUnlock()
+	return deleteBatchCount
+}
+
+func SetDeleteBatchCount(batchCount uint64) {
+	flMu.Lock()
+	deleteBatchCount = batchCount
+	flMu.Unlock()
+}
 
 func (mp *metaPartition) startFreeList() (err error) {
 	if mp.delInodeFp, err = os.OpenFile(path.Join(mp.config.RootDir,
@@ -91,8 +109,8 @@ func (mp *metaPartition) updateVolWorker() {
 }
 
 const (
-	MinDeleteBatchCounts=100
-	MaxSleepCnt = 10
+	MinDeleteBatchCounts = 100
+	MaxSleepCnt          = 10
 )
 
 func (mp *metaPartition) deleteWorker() {
@@ -100,7 +118,7 @@ func (mp *metaPartition) deleteWorker() {
 		idx      int
 		isLeader bool
 	)
-	buffSlice := make([]uint64, 0, BatchCounts)
+	buffSlice := make([]uint64, 0, DeleteBatchCount())
 	var sleepCnt uint64
 	for {
 		buffSlice = buffSlice[:0]
@@ -113,14 +131,15 @@ func (mp *metaPartition) deleteWorker() {
 			time.Sleep(AsyncDeleteInterval)
 			continue
 		}
-		isForceDeleted:=sleepCnt%MaxSleepCnt==0
-		if !isForceDeleted &&  mp.freeList.Len()<MinDeleteBatchCounts {
+		isForceDeleted := sleepCnt%MaxSleepCnt == 0
+		if !isForceDeleted && mp.freeList.Len() < MinDeleteBatchCounts {
 			time.Sleep(AsyncDeleteInterval)
 			sleepCnt++
 			continue
 		}
 
-		for idx = 0; idx < BatchCounts; idx++ {
+		batchCount := DeleteBatchCount()
+		for idx = 0; idx < int(batchCount); idx++ {
 			// batch get free inoded from the freeList
 			ino := mp.freeList.Pop()
 			if ino == 0 {
@@ -139,8 +158,8 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	defer func() {
-		if r:=recover();r!=nil {
-			log.LogErrorf(fmt.Sprintf("metaPartition(%v) deleteMarkedInodes panic (%v)",mp.config.PartitionId,r))
+		if r := recover(); r != nil {
+			log.LogErrorf(fmt.Sprintf("metaPartition(%v) deleteMarkedInodes panic (%v)", mp.config.PartitionId, r))
 		}
 	}()
 	shouldCommit := make([]*Inode, 0, BatchCounts)
@@ -149,7 +168,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		wg.Add(1)
 
 		ref := &Inode{Inode: ino}
-		inode,ok := mp.inodeTree.CopyGet(ref).(*Inode)
+		inode, ok := mp.inodeTree.CopyGet(ref).(*Inode)
 		if !ok {
 			continue
 		}
@@ -195,12 +214,12 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 				mp.freeList.Push(inode.Inode)
 			}
 		}
-		log.LogInfof("metaPartition(%v) deleteInodeCnt(%v) inodeCnt(%v)", mp.config.PartitionId,len(shouldCommit),mp.inodeTree.Len())
+		log.LogInfof("metaPartition(%v) deleteInodeCnt(%v) inodeCnt(%v)", mp.config.PartitionId, len(shouldCommit), mp.inodeTree.Len())
 	}
 }
 
 func (mp *metaPartition) syncToRaftFollowersFreeInode(hasDeleteInodes []byte) (err error) {
-	_,err=mp.submit(opFSMInternalDeleteInode,hasDeleteInodes)
+	_, err = mp.submit(opFSMInternalDeleteInode, hasDeleteInodes)
 
 	return
 }

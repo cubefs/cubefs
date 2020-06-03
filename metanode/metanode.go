@@ -174,6 +174,11 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("bad totalMem config,Recommended to be configured as 80 percent of physical machine memory")
 	}
 
+	deleteBatchCount := cfg.GetInt64(cfgDeleteBatchCount)
+	if deleteBatchCount > 1 {
+		SetDeleteBatchCount(uint64(deleteBatchCount))
+	}
+
 	total, _, err := util.GetMemInfo()
 	if err == nil && configTotalMem > total-util.GB {
 		return fmt.Errorf("bad totalMem config,Recommended to be configured as 80 percent of physical machine memory")

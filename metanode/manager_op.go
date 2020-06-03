@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -94,6 +95,41 @@ end:
 	data, _ := json.Marshal(resp)
 	log.LogInfof("%s [opMasterHeartbeat] req:%v; respAdminTask: %v, "+
 		"resp: %v", remoteAddr, req, adminTask, string(data))
+	return
+}
+
+func (m *metadataManager) opSetMetaNodeParams(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	var (
+		req       = &proto.SetMetaNodeParamsRequest{}
+		adminTask = &proto.AdminTask{
+			Request: req,
+		}
+	)
+	if err = json.Unmarshal(p.Data, adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+
+	if req.BatchCount <= 0 {
+		req.BatchCount = uint64(BatchCounts)
+	}
+	if req.BatchCount > 4096 {
+		req.BatchCount = uint64(4096)
+	}
+
+	SetDeleteBatchCount(req.BatchCount)
+
+	return
+}
+
+func (m *metadataManager) opGetMetaNodeParams(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	bc := DeleteBatchCount()
+	data := make([]byte, 8)
+	binary.BigEndian.PutUint64(data, bc)
+	p.PacketOkWithBody(data)
+	m.respondToClient(conn, p)
+
 	return
 }
 

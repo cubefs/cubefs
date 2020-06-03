@@ -17,10 +17,11 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
-	"hash/crc32"
 )
 
 func (s *DataNode) Prepare(p *repl.Packet) (err error) {
