@@ -267,6 +267,9 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 	}
 	dp = manager.partitions[dpCfg.PartitionID]
 	if dp != nil {
+		if err=dp.IsEquareCreateDataPartitionRequst(request);err!=nil {
+			return nil,err
+		}
 		return
 	}
 	disk := manager.minPartitionCnt()
