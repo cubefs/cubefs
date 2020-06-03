@@ -15,6 +15,7 @@
 package datanode
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -38,6 +39,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	"golang.org/x/time/rate"
 )
 
 var (
@@ -48,6 +50,11 @@ var (
 	LocalIP, serverPort string
 	gConnPool           = util.NewConnectPool()
 	MasterClient        = masterSDK.NewMasterClient(nil, false)
+)
+
+const (
+	defaultMarkDeleteLimitRate  = rate.Inf
+	defaultMarkDeleteLimitBurst = 128
 )
 
 const (
@@ -92,6 +99,9 @@ type DataNode struct {
 	stopC       chan bool
 
 	control common.Control
+
+	markDeleteLimit *rate.Limiter
+	ctx             context.Context
 }
 
 func NewServer() *DataNode {
@@ -153,6 +163,8 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	}
 	go s.registerHandler()
 
+	go s.startUpdateNodeInfo()
+
 	return
 }
 
@@ -162,6 +174,8 @@ func doShutdown(server common.Server) {
 		return
 	}
 	close(s.stopC)
+
+	s.stopUpdateNodeInfo()
 	s.stopTCPService()
 	s.stopRaftServer()
 }
@@ -191,6 +205,12 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	if s.zoneName == "" {
 		s.zoneName = DefaultZoneName
 	}
+
+	markDeleteLimit := rate.Limit(defaultMarkDeleteLimitRate)
+
+	s.ctx = context.Background()
+	s.markDeleteLimit = rate.NewLimiter(markDeleteLimit, defaultMarkDeleteLimitBurst)
+
 	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
 	log.LogDebugf("action[parseConfig] load zoneName(%v).", s.zoneName)
@@ -409,6 +429,19 @@ func (s *DataNode) incDiskErrCnt(partitionID uint64, err error, flag uint8) {
 	} else if flag == ReadFlag {
 		d.incReadErrCnt()
 	}
+}
+
+func (s *DataNode) SetMarkDeleteRate(v uint64) {
+	if v > 0 {
+		s.markDeleteLimit.SetLimit(rate.Limit(v))
+	} else {
+		s.markDeleteLimit.SetLimit(rate.Inf)
+	}
+}
+
+func (s *DataNode) GetMarkDeleteRate() uint64 {
+	v := s.markDeleteLimit.Limit()
+	return uint64(v)
 }
 
 func IsDiskErr(errMsg string) bool {
