@@ -195,6 +195,7 @@ response
         "msg": "success",
         "data": {
             "batchCount": 0,
+            "deleteWorkerSleepMs": 0,
             "markDeleteRate": 0
         }
     }
@@ -204,7 +205,7 @@ Set Node Info
 
 .. code-block:: bash
 
-   curl -v "http://192.168.0.11:17010/admin/setNodeInfo?batchCount=100&markDeleteRate=100"
+   curl -v "http://192.168.0.11:17010/admin/setNodeInfo?batchCount=100&markDeleteRate=100&deleteWorkerSleepMs=1000"
 
 Set node info of cluster.
 
@@ -212,5 +213,6 @@ Set node info of cluster.
    :header: "Parameter", "Type", "Description"
 
    "batchCount", "uint64", "metanode delete batch count"
+   "deleteWorkerSleepMs", "uint64", "metanode delete worker sleep time with millisecond. if 0 for no sleep"
    "markDeleteRate", "uint64", "datanode batch markdelete limit rate. if 0 for no infinity limit"
 

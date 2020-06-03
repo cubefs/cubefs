@@ -15,9 +15,9 @@
 package master
 
 import (
-	"encoding/binary"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -25,10 +25,6 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-)
-
-const (
-	BatchGoroutineSize = 128 //batch sync send goroutine
 )
 
 // Cluster stores all the cluster-level information.
@@ -1668,85 +1664,40 @@ func (c *Cluster) setMetaNodeThreshold(threshold float32) (err error) {
 	return
 }
 
-func (c *Cluster) getMetaNodesByHosts(hosts []string) []*MetaNode {
-	metaNodes := make([]*MetaNode, 0)
-	if hosts != nil && len(hosts) > 0 {
-		for _, h := range hosts {
-			if m, ok := c.metaNodes.Load(h); ok {
-				if meta, ok := m.(*MetaNode); ok {
-					metaNodes = append(metaNodes, meta)
-				}
-			}
-		}
-	} else {
-		c.metaNodes.Range(func(key interface{}, v interface{}) bool {
-			metaNodes = append(metaNodes, v.(*MetaNode))
-			return true
-		})
+func (c *Cluster) setMetaNodeDeleteBatchCount(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeDeleteBatchCount)
+	atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMetaNodeDeleteBatchCount] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
 	}
-	return metaNodes
-}
-
-//
-func (c *Cluster) setMetaNodeParams(hosts []string, batchCount uint64) (err error) {
-	metaNodes := c.getMetaNodesByHosts(hosts)
-	tasks := make([]*proto.AdminTask, 0)
-	for _, m := range metaNodes {
-		task := m.buildSetParamsTask(batchCount)
-		tasks = append(tasks, task)
-	}
-	c.addMetaNodeTasks(tasks)
-
 	return
 }
 
-func (c *Cluster) getMetaNodeParams(hosts []string) (batchCounts map[string]uint64, err error) {
-	metaNodes := c.getMetaNodesByHosts(hosts)
-
-	batchCounts = make(map[string]uint64)
-	totalSize := len(metaNodes)
-	if totalSize > BatchGoroutineSize {
-		for i := 0; i < totalSize; {
-			leftSize := totalSize - i
-			size := BatchGoroutineSize
-			if leftSize < BatchGoroutineSize {
-				size = leftSize
-			}
-			c.batchSyncSendAdminTask(metaNodes[i:i+size], batchCounts)
-			i += size
-		}
-	} else {
-		c.batchSyncSendAdminTask(metaNodes, batchCounts)
+func (c *Cluster) setDataNodeDeleteLimitRate(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.DataNodeDeleteLimitRate)
+	atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setDataNodeDeleteLimitRate] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
 	}
-
 	return
 }
 
-func (c *Cluster) batchSyncSendAdminTask(metaNodes []*MetaNode, resp map[string]uint64) {
-	var (
-		mu sync.Mutex
-		wg sync.WaitGroup
-	)
-	for _, m := range metaNodes {
-		wg.Add(1)
-		go func(m *MetaNode) {
-			defer func() {
-				wg.Done()
-			}()
-			task := m.buildGetParamsTask()
-			var packet *proto.Packet
-			var e error
-			if packet, e = m.Sender.syncSendAdminTask(task); e != nil {
-				log.LogErrorf("getMetaNodeParams error: %v", e)
-				return
-			}
-			bc := binary.BigEndian.Uint64(packet.Data)
-			mu.Lock()
-			resp[m.Addr] = bc
-			mu.Unlock()
-		}(m)
+func (c *Cluster) setMetaNodeDeleteWorkerSleepMs(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs)
+	atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMetaNodeDeleteWorkerSleepMs] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
 	}
-	wg.Wait()
+	return
 }
 
 func (c *Cluster) setDisableAutoAllocate(disableAutoAllocate bool) (err error) {
