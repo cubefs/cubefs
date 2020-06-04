@@ -65,6 +65,8 @@ type Inode struct {
 	Extents    *ExtentsTree
 }
 
+type InodeBatch []*Inode
+
 // String returns the string format of the inode.
 func (i *Inode) String() string {
 	i.RLock()
@@ -154,7 +156,6 @@ func (i *Inode) Marshal() (result []byte, err error) {
 	keyLen := uint32(len(keyBytes))
 	valLen := uint32(len(valBytes))
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
-	buff.Grow(128)
 	if err = binary.Write(buff, binary.BigEndian, keyLen); err != nil {
 		return
 	}
@@ -162,7 +163,7 @@ func (i *Inode) Marshal() (result []byte, err error) {
 		return
 	}
 	if err = binary.Write(buff, binary.BigEndian, valLen); err != nil {
-
+		return
 	}
 	if _, err = buff.Write(valBytes); err != nil {
 		return
@@ -197,6 +198,56 @@ func (i *Inode) Unmarshal(raw []byte) (err error) {
 	}
 	err = i.UnmarshalValue(valBytes)
 	return
+}
+
+// Marshal marshals the inodeBatch into a byte array.
+func (i InodeBatch) Marshal() ([]byte, error) {
+	buff := bytes.NewBuffer(make([]byte, 0))
+	if err := binary.Write(buff, binary.BigEndian, uint32(len(i))); err != nil {
+		return nil, err
+	}
+	for _, inode := range i {
+		bs, err := inode.Marshal()
+		if err != nil {
+			return nil, err
+		}
+		if err = binary.Write(buff, binary.BigEndian, uint32(len(bs))); err != nil {
+			return nil, err
+		}
+		if _, err := buff.Write(bs); err != nil {
+			return nil, err
+		}
+	}
+	return buff.Bytes(), nil
+}
+
+// Unmarshal unmarshals the inodeBatch.
+func InodeBatchUnmarshal(raw []byte) (InodeBatch, error) {
+	buff := bytes.NewBuffer(raw)
+	var batchLen uint32
+	if err := binary.Read(buff, binary.BigEndian, &batchLen); err != nil {
+		return nil, err
+	}
+
+	result := make(InodeBatch, 0, int(batchLen))
+
+	var dataLen uint32
+	for j := 0; j < int(batchLen); j++ {
+		if err := binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
+			return nil, err
+		}
+		data := make([]byte, int(dataLen))
+		if _, err := buff.Read(data); err != nil {
+			return nil, err
+		}
+		ino := NewInode(0, 0)
+		if err := ino.Unmarshal(data); err != nil {
+			return nil, err
+		}
+		result = append(result, ino)
+	}
+
+	return result, nil
 }
 
 // MarshalKey marshals the exporterKey to bytes.

@@ -62,6 +62,12 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp = mp.fsmUnlinkInode(ino)
+	case opFSMUnlinkInodeBatch:
+		inodes, err := InodeBatchUnmarshal(msg.V)
+		if err != nil {
+			return nil, err
+		}
+		resp = mp.fsmUnlinkInodeBatch(inodes)
 	case opFSMExtentTruncate:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
@@ -80,6 +86,12 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp = mp.fsmEvictInode(ino)
+	case opFSMEvictInodeBatch:
+		inodes, err := InodeBatchUnmarshal(msg.V)
+		if err != nil {
+			return nil, err
+		}
+		resp = mp.fsmBatchEvictInode(inodes)
 	case opFSMSetAttr:
 		req := &SetattrRequest{}
 		err = json.Unmarshal(msg.V, req)
@@ -98,7 +110,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmDeleteDentry(den)
+		resp = mp.fsmDeleteDentry(den, false)
+	case opFSMDeleteDentryBatch:
+		db, err := DentryBatchUnmarshal(msg.V)
+		if err != nil {
+			return nil, err
+		}
+		resp = mp.fsmBatchDeleteDentry(db)
 	case opFSMUpdateDentry:
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
@@ -133,6 +151,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		mp.storeChan <- msg
 	case opFSMInternalDeleteInode:
 		err = mp.internalDelete(msg.V)
+	case opFSMInternalDeleteInodeBatch:
+		err = mp.internalDeleteBatch(msg.V)
 	case opFSMInternalDelExtentFile:
 		err = mp.delOldExtentFile(msg.V)
 	case opFSMInternalDelExtentCursor:

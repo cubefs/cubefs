@@ -116,6 +116,56 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 	return
 }
 
+// DeleteInode deletes an inode.
+func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (err error) {
+
+	if len(req.Inodes) == 0 {
+		return nil
+	}
+
+	var inodes InodeBatch
+
+	for _, id := range req.Inodes {
+		inodes = append(inodes, NewInode(id, 0))
+	}
+
+	val, err := inodes.Marshal()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, nil)
+		return
+	}
+	r, err := mp.submit(opFSMUnlinkInodeBatch, val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+
+	result := &BatchUnlinkInoResp{}
+	status := proto.OpOk
+	for _, ir := range r.([]*InodeResponse) {
+		if ir.Status != proto.OpOk {
+			status = ir.Status
+		}
+
+		info := &proto.InodeInfo{}
+		replyInfo(info, ir.Msg)
+		result.Items = append(result.Items, &struct {
+			Info   *proto.InodeInfo `json:"info"`
+			Status uint8            `json:"status"`
+		}{
+			Info:   info,
+			Status: ir.Status,
+		})
+	}
+
+	reply, err := json.Marshal(result)
+	if err != nil {
+		status = proto.OpErr
+	}
+	p.PacketErrorWithBody(status, reply)
+	return
+}
+
 // InodeGet executes the inodeGet command from the client.
 func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
@@ -215,6 +265,41 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 	return
 }
 
+// EvictInode evicts an inode.
+func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error) {
+
+	if len(req.Inodes) == 0 {
+		return nil
+	}
+
+	var inodes InodeBatch
+
+	for _, id := range req.Inodes {
+		inodes = append(inodes, NewInode(id, 0))
+	}
+
+	val, err := inodes.Marshal()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	resp, err := mp.submit(opFSMEvictInodeBatch, val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+
+	status := proto.OpOk
+	for _, m := range resp.([]*InodeResponse) {
+		if m.Status != proto.OpOk {
+			status = m.Status
+		}
+	}
+
+	p.PacketErrorWithBody(status, nil)
+	return
+}
+
 // SetAttr set the inode attributes.
 func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
 	_, err = mp.submit(opFSMSetAttr, reqData)
@@ -235,6 +320,31 @@ func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (
 	var bytes = make([]byte, 8)
 	binary.BigEndian.PutUint64(bytes, req.Inode)
 	_, err = mp.submit(opFSMInternalDeleteInode, bytes)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	p.PacketOkReply()
+	return
+}
+
+func (mp *metaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error) {
+	if len(req.Inodes) == 0 {
+		return nil
+	}
+
+	var inodes InodeBatch
+
+	for _, id := range req.Inodes {
+		inodes = append(inodes, NewInode(id, 0))
+	}
+
+	encoded, err := inodes.Marshal()
+	if err != nil {
+		p.ResultCode = proto.OpErr
+		return
+	}
+	_, err = mp.submit(opFSMInternalDeleteInodeBatch, encoded)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

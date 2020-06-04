@@ -82,16 +82,22 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 		err = m.opFreeInodeOnRaftFollower(conn, p, remoteAddr)
 	case proto.OpMetaUnlinkInode:
 		err = m.opMetaUnlinkInode(conn, p, remoteAddr)
+	case proto.OpMetaBatchUnlinkInode:
+		err = m.opMetaBatchUnlinkInode(conn, p, remoteAddr)
 	case proto.OpMetaInodeGet:
 		err = m.opMetaInodeGet(conn, p, remoteAddr)
 	case proto.OpMetaEvictInode:
 		err = m.opMetaEvictInode(conn, p, remoteAddr)
+	case proto.OpMetaBatchEvictInode:
+		err = m.opBatchMetaEvictInode(conn, p, remoteAddr)
 	case proto.OpMetaSetattr:
 		err = m.opSetAttr(conn, p, remoteAddr)
 	case proto.OpMetaCreateDentry:
 		err = m.opCreateDentry(conn, p, remoteAddr)
 	case proto.OpMetaDeleteDentry:
 		err = m.opDeleteDentry(conn, p, remoteAddr)
+	case proto.OpMetaBatchDeleteDentry:
+		err = m.opBatchDeleteDentry(conn, p, remoteAddr)
 	case proto.OpMetaUpdateDentry:
 		err = m.opUpdateDentry(conn, p, remoteAddr)
 	case proto.OpMetaReadDir:
@@ -128,6 +134,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 		err = m.opMetaBatchInodeGet(conn, p, remoteAddr)
 	case proto.OpMetaDeleteInode:
 		err = m.opMetaDeleteInode(conn, p, remoteAddr)
+	case proto.OpMetaBatchDeleteInode:
+		err = m.opMetaBatchDeleteInode(conn, p, remoteAddr)
 	case proto.OpMetaBatchExtentsAdd:
 		err = m.opMetaBatchExtentsAdd(conn, p, remoteAddr)
 	// operations for extend attributes
