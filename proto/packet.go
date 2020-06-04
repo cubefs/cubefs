@@ -638,7 +638,8 @@ func (p *Packet) GetUniqueLogId() (m string) {
 				ext.ExtentId, ext.ExtentOffset, ext.Size, p.GetOpMsg())
 			return m
 		}
-	} else if p.Opcode == OpReadTinyDeleteRecord || p.Opcode == OpNotifyReplicasToRepair || p.Opcode == OpDataNodeHeartbeat {
+	} else if p.Opcode == OpReadTinyDeleteRecord || p.Opcode == OpNotifyReplicasToRepair || p.Opcode == OpDataNodeHeartbeat ||
+		p.Opcode==OpLoadDataPartition || p.Opcode==OpBatchDeleteExtent {
 		p.mesg += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
 		return
 	} else if p.Opcode == OpBroadcastMinAppliedID || p.Opcode == OpGetAppliedId {
@@ -668,7 +669,8 @@ func (p *Packet) setPacketPrefix() {
 				ext.ExtentId, ext.ExtentOffset, ext.Size, p.GetOpMsg())
 			return
 		}
-	} else if p.Opcode == OpReadTinyDeleteRecord || p.Opcode == OpNotifyReplicasToRepair || p.Opcode == OpDataNodeHeartbeat {
+	} else if p.Opcode == OpReadTinyDeleteRecord || p.Opcode == OpNotifyReplicasToRepair || p.Opcode == OpDataNodeHeartbeat ||
+		p.Opcode==OpLoadDataPartition || p.Opcode==OpBatchDeleteExtent {
 		p.mesg += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
 		return
 	} else if p.Opcode == OpBroadcastMinAppliedID || p.Opcode == OpGetAppliedId {
@@ -695,15 +697,12 @@ func (p *Packet) IsForwardPkt() bool {
 // LogMessage logs the given message.
 func (p *Packet) LogMessage(action, remote string, start int64, err error) (m string) {
 	if err == nil {
-		m = fmt.Sprintf("id[%v] remote[%v] "+
-			" cost[%v] transite[%v] nodes[%v]",
-			p.GetUniqueLogId(), remote,
-			(time.Now().UnixNano()-start)/1e6, p.IsForwardPkt(), p.RemainingFollowers)
+		m = fmt.Sprintf("id[%v] isPrimaryBackReplLeader[%v] remote[%v] "+
+			" cost[%v] ",p.GetUniqueLogId(),p.IsForwardPkt(), remote,(time.Now().UnixNano()-start)/1e6 )
 
 	} else {
-		m = fmt.Sprintf("id[%v]  remote[%v]"+
-			", err[%v] transite[%v] nodes[%v]", p.GetUniqueLogId(),
-			remote, err.Error(), p.IsForwardPkt(), p.RemainingFollowers)
+		m = fmt.Sprintf("id[%v] isPrimaryBackReplLeader[%v] remote[%v]"+
+			", err[%v]", p.GetUniqueLogId(), p.IsForwardPkt(),remote, err.Error())
 	}
 
 	return

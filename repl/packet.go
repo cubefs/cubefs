@@ -53,6 +53,7 @@ type FollowerPacket struct {
 func NewFollowerPacket() (fp *FollowerPacket) {
 	fp = new(FollowerPacket)
 	fp.respCh = make(chan error, 1)
+	fp.StartT=time.Now().UnixNano()
 	return fp
 }
 
