@@ -369,6 +369,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpSetMetaNodeParams"
 	case OpGetMetaNodeParams:
 		m = "OpGetMetaNodeParams"
+	case OpBatchDeleteExtent:
+		m="OpBatchDeleteExtent"
 	}
 	return
 }
