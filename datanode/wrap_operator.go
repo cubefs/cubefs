@@ -80,6 +80,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handleTinyExtentRepairRead(p, c)
 	case proto.OpMarkDelete:
 		s.handleMarkDeletePacket(p, c)
+	case proto.OpBatchDeleteExtent:
+		s.handleBatchMarkDeletePacket(p,c)
 	case proto.OpRandomWrite, proto.OpSyncRandomWrite:
 		s.handleRandomWritePacket(p)
 	case proto.OpNotifyReplicasToRepair:
