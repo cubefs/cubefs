@@ -91,7 +91,9 @@ func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg str
 }
 
 func (p *Packet) AfterTp() (ok bool) {
-	p.TpObject.Set(nil)
+	if p.TpObject!=nil{
+		p.TpObject.Set(nil)
+	}
 
 	return
 }
@@ -126,8 +128,14 @@ func copyPacket(src *Packet, dst *FollowerPacket) {
 
 }
 
+
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
-	p.TpObject = exporter.NewTPCnt(p.GetOpMsg())
+	if p.IsForwardPkt() && !p.IsRandomWrite() {
+		p.TpObject = exporter.NewTPCnt(fmt.Sprintf("PrimaryBackUp_%v",p.GetOpMsg()))
+	}else if p.IsRandomWrite(){
+		p.TpObject = exporter.NewTPCnt(fmt.Sprintf("Raft_%v",p.GetOpMsg()))
+	}
+
 	return
 }
 
