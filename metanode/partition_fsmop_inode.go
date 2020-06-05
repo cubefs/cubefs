@@ -59,10 +59,10 @@ func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
 	return
 }
 
-func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse) {
+func (mp *metaPartition) getInode(query *InodeQuery) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
-	item := mp.inodeTree.Get(ino)
+	item := mp.inodeTree.Get(query)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
 		return
@@ -98,11 +98,6 @@ func (mp *metaPartition) hasInode(ino *Inode) (ok bool) {
 
 func (mp *metaPartition) getInodeTree() *BTree {
 	return mp.inodeTree.GetTree()
-}
-
-// Ascend is the wrapper of inodeTree.Ascend
-func (mp *metaPartition) Ascend(f func(i BtreeItem) bool) {
-	mp.inodeTree.Ascend(f)
 }
 
 // fsmUnlinkInode delete the specified inode from inode tree.
@@ -292,12 +287,11 @@ func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 }
 
 func (mp *metaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
-	ino := NewInode(req.Inode, req.Mode)
-	item := mp.inodeTree.CopyGet(ino)
+	item := mp.inodeTree.CopyGet(NewInodeQuery(req.Inode))
 	if item == nil {
 		return
 	}
-	ino = item.(*Inode)
+	var ino = item.(*Inode)
 	if ino.ShouldDelete() {
 		return
 	}

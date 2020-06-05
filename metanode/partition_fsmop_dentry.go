@@ -15,8 +15,9 @@
 package metanode
 
 import (
-	"github.com/chubaofs/chubaofs/util/btree"
 	"strings"
+
+	"github.com/chubaofs/chubaofs/util/btree"
 
 	"github.com/chubaofs/chubaofs/proto"
 )
@@ -36,7 +37,7 @@ func NewDentryResponse() *DentryResponse {
 func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 	forceUpdate bool) (status uint8) {
 	status = proto.OpOk
-	item := mp.inodeTree.CopyGet(NewInode(dentry.ParentId, 0))
+	item := mp.inodeTree.CopyGet(NewInodeQuery(dentry.ParentId))
 	var parIno *Inode
 	if !forceUpdate {
 		if item == nil {
@@ -114,7 +115,7 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (
 		resp.Status = proto.OpNotExistErr
 		return
 	} else {
-		mp.inodeTree.CopyFind(NewInode(dentry.ParentId, 0),
+		mp.inodeTree.CopyFind(NewInodeQuery(dentry.ParentId),
 			func(item BtreeItem) {
 				if item != nil {
 					ino := item.(*Inode)

@@ -19,14 +19,64 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
 	"io"
 	"sync"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 const (
 	DeleteMarkFlag = 1 << 0
 )
+
+type InodeQuery struct {
+	Inode uint64
+}
+
+func (q *InodeQuery) Marshal() []byte {
+	var b = make([]byte, 8)
+	binary.BigEndian.PutUint64(b, q.Inode)
+	return b
+}
+
+func (q *InodeQuery) Less(than BtreeItem) bool {
+	return InodeLess(q, than)
+}
+
+func (q *InodeQuery) Copy() BtreeItem {
+	return &InodeQuery{Inode: q.Inode}
+}
+
+func NewInodeQuery(inode uint64) *InodeQuery {
+	return &InodeQuery{Inode: inode}
+}
+
+func InodeQueryFromBytes(b []byte) *InodeQuery {
+	return NewInodeQuery(binary.BigEndian.Uint64(b))
+}
+
+func InodeLess(base, than interface{}) bool {
+	var getInode = func(item interface{}) (uint64, bool) {
+		switch typed := item.(type) {
+		case *InodeQuery:
+			return typed.Inode, true
+		case *Inode:
+			return typed.Inode, true
+		default:
+		}
+		return 0, false
+	}
+	var baseInode uint64
+	var thanInode uint64
+	var foundInode bool
+	if baseInode, foundInode = getInode(base); !foundInode {
+		return false
+	}
+	if thanInode, foundInode = getInode(than); !foundInode {
+		return false
+	}
+	return baseInode < thanInode
+}
 
 // Inode wraps necessary properties of `Inode` information in the file system.
 // Marshal exporterKey:
@@ -115,8 +165,7 @@ func NewInode(ino uint64, t uint32) *Inode {
 // Less tests whether the current Inode item is less than the given one.
 // This method is necessary fot B-Tree item implementation.
 func (i *Inode) Less(than BtreeItem) bool {
-	ino, ok := than.(*Inode)
-	return ok && i.Inode < ino.Inode
+	return InodeLess(i, than)
 }
 
 // Copy returns a copy of the inode.
