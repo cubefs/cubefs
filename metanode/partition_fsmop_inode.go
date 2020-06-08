@@ -192,7 +192,6 @@ func (mp *metaPartition) internalDeleteInode(ino *Inode) {
 
 func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	status = proto.OpOk
-	var items []BtreeItem
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		status = proto.OpNotExistErr
@@ -203,14 +202,11 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 		status = proto.OpNotExistErr
 		return
 	}
-	ino.Extents.Range(func(item BtreeItem) bool {
-		items = append(items, item)
-		return true
-	})
-	items = ino2.AppendExtents(items, ino.ModifyTime)
-	for _, item := range items {
-		log.LogInfof("fsmAppendExtents inode(%v) ext(%v)", ino2.Inode, item.(*proto.ExtentKey))
-		mp.extDelCh <- item
+	eks := ino.Extents.CopyExtents()
+	delExtents := ino2.AppendExtents(eks, ino.ModifyTime)
+	for _, ek := range delExtents {
+		log.LogInfof("fsmAppendExtents inode(%v) ext(%v)", ino2.Inode, ek)
+		mp.extDelCh <- &ek
 	}
 	return
 }
@@ -219,7 +215,6 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 
 	resp.Status = proto.OpOk
-	var delExtents []BtreeItem
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
@@ -234,16 +229,13 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 		resp.Status = proto.OpArgMismatchErr
 		return
 	}
-	i.Extents.AscendGreaterOrEqual(&proto.ExtentKey{FileOffset: ino.Size},
-		func(item BtreeItem) bool {
-			delExtents = append(delExtents, item)
-			return true
-		})
-	i.ExtentsTruncate(delExtents, ino.Size, ino.ModifyTime)
+
+	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime)
+
 	// now we should delete the extent
-	for _, ext := range delExtents {
-		log.LogInfof("fsmExtentsTruncate inode(%v) ext(%v)", i.Inode, ext.(*proto.ExtentKey))
-		mp.extDelCh <- ext
+	for _, ek := range delExtents {
+		log.LogInfof("fsmExtentsTruncate inode(%v) ext(%v)", i.Inode, ek)
+		mp.extDelCh <- &ek
 	}
 	return
 }

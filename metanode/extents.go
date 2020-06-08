@@ -108,7 +108,7 @@ func (e *ExtentsTree) Append(key BtreeItem) (items []BtreeItem) {
 	return
 }
 
-// Size returns the size of the btree.
+// Size returns the file size this extents tree shows.
 func (e *ExtentsTree) Size() (size uint64) {
 	item := e.MaxItem()
 	if item == nil {
