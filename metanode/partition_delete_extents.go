@@ -177,7 +177,9 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
 		buf := make([]byte, MB)
 		fp, err := os.OpenFile(file, os.O_RDWR, 0644)
 		if err != nil {
-			panic(err)
+			log.LogErrorf("[deleteExtentsFromList] openFile %v error: %v", file, err)
+			fileList.Remove(element)
+			goto LOOP
 		}
 
 		if _, err = fp.ReadAt(buf[:8], 0); err != nil {
