@@ -260,7 +260,7 @@ func (m *MetaNode) startMetaManager() (err error) {
 		RaftStore: m.raftStore,
 		ZoneName:  m.zoneName,
 	}
-	m.metadataManager = NewMetadataManager(conf)
+	m.metadataManager = NewMetadataManager(conf, m)
 	if err = m.metadataManager.Start(); err == nil {
 		log.LogInfof("[startMetaManager] manager start finish.")
 	}
