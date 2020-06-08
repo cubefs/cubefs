@@ -45,8 +45,8 @@ func (mp *metaPartition) startToDeleteExtents() {
 
 func (mp *metaPartition) appendDelExtentsToFile(fileList *list.List) {
 	defer func() {
-		if r:=recover();r!=nil {
-			log.LogErrorf(fmt.Sprintf("appendDelExtentsToFile(%v) appendDelExtentsToFile panic (%v)",mp.config.PartitionId,r))
+		if r := recover(); r != nil {
+			log.LogErrorf(fmt.Sprintf("appendDelExtentsToFile(%v) appendDelExtentsToFile panic (%v)", mp.config.PartitionId, r))
 		}
 	}()
 	var (
@@ -139,11 +139,11 @@ LOOP:
 // Delete all the extents of a file.
 func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
 	defer func() {
-		if r:=recover();r!=nil {
-			log.LogErrorf(fmt.Sprintf("deleteExtentsFromList(%v) deleteExtentsFromList panic (%v)",mp.config.PartitionId,r))
+		if r := recover(); r != nil {
+			log.LogErrorf(fmt.Sprintf("deleteExtentsFromList(%v) deleteExtentsFromList panic (%v)", mp.config.PartitionId, r))
 		}
 	}()
-	
+
 	var (
 		element  *list.Element
 		fileName string
@@ -187,7 +187,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
 			fp.Close()
 			continue
 		}
-		cursor := binary.BigEndian.Uint64(buf)
+		cursor := binary.BigEndian.Uint64(buf[:8])
 		if size := uint64(fileInfo.Size()) - cursor; size < MB {
 			if size <= 0 {
 				size = uint64(proto.ExtentLength)
@@ -196,6 +196,8 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
 					"[deleteExtentsFromList] partitionId=%d, %s file corrupted!",
 					mp.config.PartitionId, fileName)
 				log.LogErrorf(errStr) // FIXME
+				fileList.Remove(element)
+				fp.Close()
 				goto LOOP
 			}
 			buf = buf[:size]
