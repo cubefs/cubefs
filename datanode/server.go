@@ -198,7 +198,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 }
 
 func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
-	s.space = NewSpaceManager(s.zoneName)
+	s.space = NewSpaceManager(s)
 	if len(strings.TrimSpace(s.port)) == 0 {
 		err = ErrNewSpaceManagerFailed
 		return

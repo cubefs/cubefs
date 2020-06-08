@@ -40,18 +40,20 @@ type SpaceManager struct {
 	stopC                chan bool
 	selectedIndex        int // TODO what is selected index
 	diskList             []string
+	dataNode             *DataNode
 	createPartitionMutex sync.RWMutex
 }
 
 // NewSpaceManager creates a new space manager.
-func NewSpaceManager(zone string) *SpaceManager {
+func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 	var space *SpaceManager
 	space = &SpaceManager{}
 	space.disks = make(map[string]*Disk)
 	space.diskList = make([]string, 0)
 	space.partitions = make(map[uint64]*DataPartition)
-	space.stats = NewStats(zone)
+	space.stats = NewStats(dataNode.zoneName)
 	space.stopC = make(chan bool, 0)
+	space.dataNode = dataNode
 
 	go space.statUpdateScheduler()
 
@@ -267,8 +269,8 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 	}
 	dp = manager.partitions[dpCfg.PartitionID]
 	if dp != nil {
-		if err=dp.IsEquareCreateDataPartitionRequst(request);err!=nil {
-			return nil,err
+		if err = dp.IsEquareCreateDataPartitionRequst(request); err != nil {
+			return nil, err
 		}
 		return
 	}
