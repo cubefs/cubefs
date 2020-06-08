@@ -101,8 +101,7 @@ LOOP:
 			// reset fileList
 			fileList.Init()
 			goto LOOP
-		case item := <-mp.extDelCh:
-			ek := item.(*proto.ExtentKey)
+		case ek := <-mp.extDelCh:
 			buf, err = ek.MarshalBinary()
 			if err != nil {
 				log.LogWarnf("[appendDelExtentsToFile] partitionId=%d,"+
