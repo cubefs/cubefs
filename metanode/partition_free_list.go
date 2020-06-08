@@ -170,7 +170,6 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 			lock.Lock()
 			occurErrors[partitionID] = perr
 			lock.Unlock()
-			log.LogWarnf("deleteExtents on Partition(%v) error(%v)", partitionID, perr)
 			wg.Done()
 		}(partitionID, extents)
 	}
@@ -180,14 +179,13 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 	for i := 0; i < len(allInodes); i++ {
 		successDeleteExtentCnt := 0
 		inode := allInodes[i]
-		var deleteInodeErr error
 		inode.Extents.Range(func(item BtreeItem) bool {
 			ext := item.(*proto.ExtentKey)
 			if occurErrors[ext.PartitionId] == nil {
 				successDeleteExtentCnt++
 				return true
 			} else {
-				log.LogWarnf("deleteInode Inode(%v) error(%v)", inode.Inode, deleteInodeErr)
+				log.LogWarnf("deleteInode Inode(%v) error(%v)", inode.Inode,  occurErrors[ext.PartitionId] )
 				return false
 			}
 		})
