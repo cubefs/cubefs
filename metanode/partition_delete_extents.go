@@ -28,6 +28,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/synclist"
 )
 
 const (
@@ -38,12 +39,12 @@ const (
 var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
 
 func (mp *metaPartition) startToDeleteExtents() {
-	fileList := list.New()
+	fileList := synclist.New()
 	go mp.appendDelExtentsToFile(fileList)
 	go mp.deleteExtentsFromList(fileList)
 }
 
-func (mp *metaPartition) appendDelExtentsToFile(fileList *list.List) {
+func (mp *metaPartition) appendDelExtentsToFile(fileList *synclist.SyncList) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogErrorf(fmt.Sprintf("appendDelExtentsToFile(%v) appendDelExtentsToFile panic (%v)", mp.config.PartitionId, r))
@@ -137,7 +138,7 @@ LOOP:
 }
 
 // Delete all the extents of a file.
-func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
+func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogErrorf(fmt.Sprintf("deleteExtentsFromList(%v) deleteExtentsFromList panic (%v)", mp.config.PartitionId, r))
