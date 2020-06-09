@@ -45,13 +45,9 @@ type Gauge struct {
 	name   string
 	labels map[string]string
 	val    int64
-	ch     chan interface{}
 }
 
 func NewGauge(name string) (g *Gauge) {
-	if !enabledPrometheus {
-		return
-	}
 	g = new(Gauge)
 	g.name = metricsName(name)
 	return

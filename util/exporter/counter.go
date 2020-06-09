@@ -43,9 +43,6 @@ type Counter struct {
 }
 
 func NewCounter(name string) (c *Counter) {
-	if !enabledPrometheus {
-		return
-	}
 	c = new(Counter)
 	c.name = metricsName(name)
 	return
