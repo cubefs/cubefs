@@ -150,8 +150,8 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			}
 			return []byte(body.Data), nil
 		default:
-			log.LogErrorf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%v).",
-				resp.Request.URL.String(), host, stateCode, string(repsData))
+			log.LogErrorf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
+				resp.Request.URL.String(), host, stateCode, strings.Replace(string(repsData), "\n", "", -1))
 			continue
 		}
 	}

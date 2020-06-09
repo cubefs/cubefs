@@ -156,7 +156,7 @@ func (m *metadataManager) opCreateMetaPartition(conn net.Conn, p *Packet,
 			" struct: %s", err.Error())
 		return
 	}
-	log.LogDebugf("[opCreateMetaPartition] [remoteAddr=%s]accept a from"+
+	log.LogInfof("[opCreateMetaPartition] [remoteAddr=%s]accept a from"+
 		" master message: %v", remoteAddr, adminTask)
 	// create a new meta partition.
 	if err = m.createPartition(req); err != nil {
