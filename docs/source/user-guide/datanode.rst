@@ -29,6 +29,7 @@ Configurations
    "consulAddr", "string", "Addresses of monitor system", "No"
    "exporterPort", "string", "Port for monitor system", "No"
    "masterAddr", "string slice", "Addresses of master server", "Yes"
+   "zoneName", "string", "Specified zone. ``default`` by default.", "No"
    "disks", "string slice", "
    | Format: *PATH:RETAIN*.
    | PATH: Disk mount point. RETAIN: Retain space. (Ranges: 20G-50G.)", "Yes"
