@@ -323,9 +323,13 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		ext := new(proto.TinyExtentDeleteRecord)
 		err = json.Unmarshal(p.Data, ext)
 		if err == nil {
+			log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)",
+				p.PartitionID,p.ExtentID,ext.ExtentOffset,ext.Size)
 			err = partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
 		}
 	} else {
+		log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)",
+			p.PartitionID,p.ExtentID)
 		err = partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
 	}
 	if err != nil {
