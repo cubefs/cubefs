@@ -25,6 +25,12 @@ const (
 	RootIno = uint64(1)
 )
 
+// Inode Flags
+const (
+	IF_DeleteMark   int32 = 1 << 0
+	IF_Intermediate int32 = 1 << 1
+)
+
 // Mode returns the fileMode.
 func Mode(osMode os.FileMode) uint32 {
 	return uint32(osMode)
@@ -133,6 +139,7 @@ type CreateInodeRequest struct {
 	Uid         uint32 `json:"uid"`
 	Gid         uint32 `json:"gid"`
 	Target      []byte `json:"tgt"`
+	Flag        int32  `json:"flag"`
 }
 
 // CreateInodeResponse defines the response to the request of creating an inode.
@@ -461,7 +468,7 @@ type GetMultipartResponse struct {
 type AddMultipartPartRequest struct {
 	VolName     string             `json:"vol"`
 	PartitionId uint64             `json:"pid"`
-	Path		string			   `json:"path"`
+	Path        string             `json:"path"`
 	MultipartId string             `json:"mid"`
 	Part        *MultipartPartInfo `json:"part"`
 }

@@ -114,7 +114,7 @@ func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid ui
 	for i := 0; i < length; i++ {
 		index := (int(epoch) + i) % length
 		mp = rwPartitions[index]
-		status, info, err = mw.icreate(mp, mode, uid, gid, target)
+		status, info, err = mw.icreate(mp, mode, uid, gid, 0, target)
 		if err == nil && status == statusOK {
 			goto create_dentry
 		}
@@ -607,7 +607,7 @@ func (mw *MetaWrapper) Setattr(inode uint64, valid, mode, uid, gid uint32) error
 	return nil
 }
 
-func (mw *MetaWrapper) InodeCreate_ll(mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) InodeCreate_ll(mode, uid, gid uint32, flag int32, target []byte) (*proto.InodeInfo, error) {
 	var (
 		status       int
 		err          error
@@ -622,7 +622,7 @@ func (mw *MetaWrapper) InodeCreate_ll(mode, uid, gid uint32, target []byte) (*pr
 	for i := 0; i < length; i++ {
 		index := (int(epoch) + i) % length
 		mp = rwPartitions[index]
-		status, info, err = mw.icreate(mp, mode, uid, gid, target)
+		status, info, err = mw.icreate(mp, mode, uid, gid, flag, target)
 		if err == nil && status == statusOK {
 			return info, nil
 		}

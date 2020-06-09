@@ -28,14 +28,14 @@ import (
 // API implementations
 //
 
-func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target []byte) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, flag int32, target []byte) (status int, info *proto.InodeInfo, err error) {
 	req := &proto.CreateInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Mode:        mode,
 		Uid:         uid,
 		Gid:         gid,
-		Target:      target,
+		Flag:        flag,
 	}
 
 	packet := proto.NewPacketReqID()

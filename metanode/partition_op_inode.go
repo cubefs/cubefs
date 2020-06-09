@@ -24,7 +24,7 @@ import (
 
 func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
 	ino.RLock()
-	if ino.Flag&DeleteMarkFlag > 0 {
+	if ino.Flag&proto.IF_DeleteMark > 0 {
 		return false
 	}
 	info.Inode = ino.Inode
@@ -56,6 +56,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 	ino.Uid = req.Uid
 	ino.Gid = req.Gid
 	ino.LinkTarget = req.Target
+	ino.Flag = req.Flag &^ proto.IF_DeleteMark
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))

@@ -19,13 +19,10 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
 	"io"
 	"sync"
-)
 
-const (
-	DeleteMarkFlag = 1 << 0
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 // Inode wraps necessary properties of `Inode` information in the file system.
@@ -461,7 +458,7 @@ func (i *Inode) IsEmptyDir() bool {
 // SetDeleteMark set the deleteMark flag. TODO markDelete or deleteMark? markDelete has been used in datanode.
 func (i *Inode) SetDeleteMark() {
 	i.Lock()
-	i.Flag |= DeleteMarkFlag
+	i.Flag |= proto.IF_DeleteMark
 	i.Unlock()
 }
 
@@ -469,7 +466,7 @@ func (i *Inode) SetDeleteMark() {
 func (i *Inode) ShouldDelete() bool {
 	i.RLock()
 	defer i.RUnlock()
-	return i.Flag&DeleteMarkFlag == DeleteMarkFlag
+	return i.Flag&proto.IF_DeleteMark != 0
 }
 
 // SetAttr sets the attributes of the inode.
