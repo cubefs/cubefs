@@ -92,7 +92,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	val, err := ino.Marshal()
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
 	r, err := mp.submit(opFSMUnlinkInode, val)
@@ -110,6 +110,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		replyInfo(resp.Info, msg.Msg)
 		if reply, err = json.Marshal(resp); err != nil {
 			status = proto.OpErr
+			reply = []byte(err.Error())
 		}
 	}
 	p.PacketErrorWithBody(status, reply)
@@ -131,7 +132,7 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 
 	val, err := inodes.Marshal()
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
 	r, err := mp.submit(opFSMUnlinkInodeBatch, val)
@@ -161,6 +162,7 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 	reply, err := json.Marshal(result)
 	if err != nil {
 		status = proto.OpErr
+		reply = []byte(err.Error())
 	}
 	p.PacketErrorWithBody(status, reply)
 	return
@@ -184,6 +186,7 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 			reply, err = json.Marshal(resp)
 			if err != nil {
 				status = proto.OpErr
+				reply = []byte(err.Error())
 			}
 		}
 	}
@@ -207,7 +210,7 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 	}
 	data, err := json.Marshal(resp)
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
 	p.PacketOkWithBody(data)
@@ -239,6 +242,7 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 			reply, err = json.Marshal(resp)
 			if err != nil {
 				status = proto.OpErr
+				reply = []byte(err.Error())
 			}
 		}
 
@@ -341,7 +345,7 @@ func (mp *metaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p 
 
 	encoded, err := inodes.Marshal()
 	if err != nil {
-		p.ResultCode = proto.OpErr
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
 	_, err = mp.submit(opFSMInternalDeleteInodeBatch, encoded)

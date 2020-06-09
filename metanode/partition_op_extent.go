@@ -29,7 +29,7 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 	ino.Extents.Append(&ext)
 	val, err := ino.Marshal()
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
 	resp, err := mp.submit(opFSMExtentsAdd, val)
@@ -64,6 +64,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 		reply, err = json.Marshal(resp)
 		if err != nil {
 			status = proto.OpErr
+			reply = []byte(err.Error())
 		}
 	}
 	p.PacketErrorWithBody(status, reply)
@@ -77,7 +78,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq,
 	ino.Size = req.Size
 	val, err := ino.Marshal()
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
 	resp, err := mp.submit(opFSMExtentTruncate, val)
@@ -105,7 +106,7 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 	}
 	val, err := ino.Marshal()
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
 	resp, err := mp.submit(opFSMExtentsAdd, val)
