@@ -214,6 +214,8 @@ type metaPartition struct {
 	extReset      chan struct{}
 	vol           *Vol
 	manager       *metadataManager
+
+	persistedApplyID uint64
 }
 
 // Start starts a meta partition.
@@ -504,7 +506,10 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		_ = os.Rename(backupDir, snapshotDir)
 		return
 	}
-	err = os.RemoveAll(backupDir)
+	if err = os.RemoveAll(backupDir); err != nil {
+		return
+	}
+	mp.updatePersistedApplyID(sm.applyIndex)
 	return
 }
 

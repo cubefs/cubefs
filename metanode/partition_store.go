@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -328,6 +329,7 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 	if cursor > atomic.LoadUint64(&mp.config.Cursor) {
 		atomic.StoreUint64(&mp.config.Cursor, cursor)
 	}
+	mp.updatePersistedApplyID(cursor)
 	log.LogInfof("loadApplyID: load complete: partitionID(%v) volume(%v) applyID(%v) filename(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.applyID, filename)
 	return
@@ -395,29 +397,35 @@ func (mp *metaPartition) storeInode(rootDir string,
 	if err != nil {
 		return
 	}
+	writer := bufio.NewWriter(fp)
 	defer func() {
+		if err = writer.Flush(); err != nil {
+			return
+		}
 		err = fp.Sync()
 		// TODO Unhandled errors
 		fp.Close()
 	}()
-	var data []byte
-	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
+	var (
+		buff  = bytes.NewBuffer(nil)
+		reuse = bytes.NewBuffer(nil)
+	)
 	sm.inodeTree.Ascend(func(i BtreeItem) bool {
 		ino := i.(*Inode)
-		if data, err = ino.Marshal(); err != nil {
+		buff.Reset()
+		if err = ino.WriteTo(buff, reuse); err != nil {
 			return false
 		}
-		// set length
-		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
-		if _, err = fp.Write(lenBuf); err != nil {
+		var data = buff.Bytes()
+		// write length
+		if err = binary.Write(writer, binary.BigEndian, uint32(len(data))); err != nil {
 			return false
 		}
-		if _, err = sign.Write(lenBuf); err != nil {
+		if err = binary.Write(sign, binary.BigEndian, uint32(len(data))); err != nil {
 			return false
 		}
-		// set body
-		if _, err = fp.Write(data); err != nil {
+		if _, err = writer.Write(data); err != nil {
 			return false
 		}
 		if _, err = sign.Write(data); err != nil {
@@ -439,29 +447,35 @@ func (mp *metaPartition) storeDentry(rootDir string,
 	if err != nil {
 		return
 	}
+	var writer = bufio.NewWriter(fp)
 	defer func() {
+		if err = writer.Flush(); err != nil {
+			return
+		}
 		err = fp.Sync()
 		// TODO Unhandled errors
 		fp.Close()
 	}()
-	var data []byte
-	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
+	var (
+		buff  = bytes.NewBuffer(nil)
+		reuse = bytes.NewBuffer(nil)
+	)
 	sm.dentryTree.Ascend(func(i BtreeItem) bool {
 		dentry := i.(*Dentry)
-		data, err = dentry.Marshal()
-		if err != nil {
+		buff.Reset()
+		if err = dentry.WriteTo(buff, reuse); err != nil {
 			return false
 		}
-		// set length
-		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
-		if _, err = fp.Write(lenBuf); err != nil {
+		var data = buff.Bytes()
+		// write length
+		if err = binary.Write(writer, binary.BigEndian, uint32(len(data))); err != nil {
 			return false
 		}
-		if _, err = sign.Write(lenBuf); err != nil {
+		if err = binary.Write(sign, binary.BigEndian, uint32(len(data))); err != nil {
 			return false
 		}
-		if _, err = fp.Write(data); err != nil {
+		if _, err = writer.Write(data); err != nil {
 			return false
 		}
 		if _, err = sign.Write(data); err != nil {
@@ -490,7 +504,7 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 		}
 	}()
 	var writer = bufio.NewWriterSize(f, 4*1024*1024)
-	var crc32 = crc32.NewIEEE()
+	var sign = crc32.NewIEEE()
 	var varintTmp = make([]byte, binary.MaxVarintLen64)
 	var n int
 	// write number of extends
@@ -498,28 +512,30 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	if _, err = writer.Write(varintTmp[:n]); err != nil {
 		return
 	}
-	if _, err = crc32.Write(varintTmp[:n]); err != nil {
+	if _, err = sign.Write(varintTmp[:n]); err != nil {
 		return
 	}
+	var (
+		buff = bytes.NewBuffer(nil)
+	)
 	extendTree.Ascend(func(i BtreeItem) bool {
 		e := i.(*Extend)
-		var raw []byte
-		if raw, err = e.Bytes(); err != nil {
+		buff.Reset()
+		if err = e.WriteTo(buff); err != nil {
 			return false
 		}
-		// write length
-		n = binary.PutUvarint(varintTmp, uint64(len(raw)))
+		var data = buff.Bytes()
+		n = binary.PutUvarint(varintTmp, uint64(len(data)))
 		if _, err = writer.Write(varintTmp[:n]); err != nil {
 			return false
 		}
-		if _, err = crc32.Write(varintTmp[:n]); err != nil {
+		if _, err = sign.Write(varintTmp[:n]); err != nil {
 			return false
 		}
-		// write raw
-		if _, err = writer.Write(raw); err != nil {
+		if _, err = writer.Write(data); err != nil {
 			return false
 		}
-		if _, err = crc32.Write(raw); err != nil {
+		if _, err = sign.Write(data); err != nil {
 			return false
 		}
 		return true
@@ -534,7 +550,7 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	if err = f.Sync(); err != nil {
 		return
 	}
-	crc = crc32.Sum32()
+	crc = sign.Sum32()
 	log.LogInfof("storeExtend: store complete: partitoinID(%v) volume(%v) numExtends(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, extendTree.Len(), crc)
 	return
