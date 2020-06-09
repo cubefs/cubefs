@@ -49,9 +49,6 @@ type Gauge struct {
 }
 
 func NewGauge(name string) (g *Gauge) {
-	if !enabledPrometheus {
-		return
-	}
 	g = new(Gauge)
 	g.name = metricsName(name)
 	return
