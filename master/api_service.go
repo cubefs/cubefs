@@ -505,6 +505,12 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	if _, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+
 	if err = m.user.deleteVolPolicy(name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
