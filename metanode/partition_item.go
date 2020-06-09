@@ -26,6 +26,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 )
 
 // MetaItem defines the structure of the metadata operations.
@@ -33,6 +34,7 @@ type MetaItem struct {
 	Op uint32 `json:"op"`
 	K  []byte `json:"k"`
 	V  []byte `json:"v"`
+	Time int64 `json:"time"`
 }
 
 // MarshalJson
@@ -113,6 +115,7 @@ func NewMetaItem(op uint32, key, value []byte) *MetaItem {
 		Op: op,
 		K:  key,
 		V:  value,
+		Time:time.Now().Unix(),
 	}
 }
 
