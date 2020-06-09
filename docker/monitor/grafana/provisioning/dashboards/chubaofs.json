@@ -15,7 +15,7 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 0,
-  "iteration": 1588223537374,
+  "iteration": 1591615008572,
   "links": [],
   "panels": [
     {
@@ -821,7 +821,7 @@
       "pluginVersion": "6.4.4",
       "targets": [
         {
-          "expr": "sum(cfs_master_dataNodes_used_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"}) / sum(cfs_master_dataNodes_total_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"})",
+          "expr": "cfs_master_dataNodes_used_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"}/ cfs_master_dataNodes_total_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"}",
           "format": "time_series",
           "instant": true,
           "intervalFactor": 1,
@@ -876,7 +876,7 @@
       "pluginVersion": "6.4.4",
       "targets": [
         {
-          "expr": "sum(cfs_master_metaNodes_used_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"}) / sum(cfs_master_metaNodes_total_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"})",
+          "expr": "cfs_master_metaNodes_used_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"} / cfs_master_metaNodes_total_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"}",
           "format": "time_series",
           "instant": true,
           "intervalFactor": 1,
@@ -899,7 +899,7 @@
       "options": {
         "fieldOptions": {
           "calcs": [
-            "mean"
+            "lastNotNull"
           ],
           "defaults": {
             "mappings": [],
@@ -926,7 +926,7 @@
       "pluginVersion": "6.4.4",
       "targets": [
         {
-          "expr": "sum(cfs_master_dataNodes_inactive{app=\"$app\", cluster=\"$cluster\"})",
+          "expr": "cfs_master_dataNodes_inactive{app=\"$app\", cluster=\"$cluster\", instance=\"$master_instance\"}",
           "format": "time_series",
           "instant": true,
           "intervalFactor": 1,
@@ -949,7 +949,7 @@
       "options": {
         "fieldOptions": {
           "calcs": [
-            "mean"
+            "lastNotNull"
           ],
           "defaults": {
             "mappings": [],
@@ -976,7 +976,7 @@
       "pluginVersion": "6.4.4",
       "targets": [
         {
-          "expr": "sum(cfs_master_metaNodes_inactive{app=\"$app\", cluster=\"$cluster\"})",
+          "expr": "cfs_master_metaNodes_inactive{app=\"$app\", cluster=\"$cluster\", instance=\"$master_instance\"}",
           "format": "time_series",
           "instant": true,
           "intervalFactor": 1,
@@ -1026,7 +1026,7 @@
       "pluginVersion": "6.4.4",
       "targets": [
         {
-          "expr": "sum(cfs_master_disk_error{app=\"$app\", cluster=\"$cluster\", instance=\"$master_instance\"})",
+          "expr": "cfs_master_disk_error{app=\"$app\", cluster=\"$cluster\", instance=\"$master_instance\"}",
           "format": "time_series",
           "intervalFactor": 1,
           "refId": "A"
@@ -8682,6 +8682,7 @@
       {
         "allValue": null,
         "current": {
+          "tags": [],
           "text": "chubaofs01",
           "value": "chubaofs01"
         },
@@ -8990,9 +8991,9 @@
         "allValue": null,
         "current": {
           "tags": [],
-          "text": "All",
+          "text": "OpCreateExtent",
           "value": [
-            "$__all"
+            "OpCreateExtent"
           ]
         },
         "hide": 0,
@@ -9002,12 +9003,12 @@
         "name": "dnOp",
         "options": [
           {
-            "selected": true,
+            "selected": false,
             "text": "All",
             "value": "$__all"
           },
           {
-            "selected": false,
+            "selected": true,
             "text": "OpCreateExtent",
             "value": "OpCreateExtent"
           },
@@ -9201,6 +9202,7 @@
       {
         "allValue": null,
         "current": {
+          "tags": [],
           "text": "ListObjects",
           "value": [
             "ListObjects"
@@ -9373,8 +9375,10 @@
       {
         "allValue": null,
         "current": {
-          "text": "ltptest",
-          "value": "ltptest"
+          "isNone": true,
+          "tags": [],
+          "text": "None",
+          "value": ""
         },
         "datasource": "Prometheus",
         "definition": "label_values(cfs_master_vol_total_GB{app=\"$app\",cluster=\"$cluster\"}, volName)",
@@ -9504,5 +9508,5 @@
   "timezone": "",
   "title": "ChubaoFS",
   "uid": "J8XJyOmZk1",
-  "version": 6
+  "version": 1
 }
