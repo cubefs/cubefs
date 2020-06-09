@@ -749,13 +749,42 @@ func (v *Volume) DeletePath(path string) (err error) {
 	return
 }
 
-func (v *Volume) InitMultipart(path string) (multipartID string, err error) {
+func (v *Volume) InitMultipart(path string, opt *PutFileOption) (multipartID string, err error) {
 	defer func() {
 		log.LogInfof("Audit: InitMultipart: volume(%v) path(%v) multipartID(%v) err(%v)", v.name, path, multipartID, err)
 	}()
 
+	extend := make(map[string]string)
+	// handle object system metadata, self-defined metadata, tagging
+	if opt != nil && opt.MIMEType != "" {
+		extend[XAttrKeyOSSMIME] = opt.MIMEType
+	}
+	// If request contain content-disposition header, store it to xattr
+	if opt != nil && len(opt.Disposition) > 0 {
+		extend[XAttrKeyOSSDISPOSITION] = opt.Disposition
+	}
+	// If request contain cache-control header, store it to xattr
+	if opt != nil && len(opt.CacheControl) > 0 {
+		extend[XAttrKeyOSSCacheControl] = opt.CacheControl
+	}
+	// If request contain expires header, store it to xattr
+	if opt != nil && len(opt.Expires) > 0 {
+		extend[XAttrKeyOSSExpires] = opt.Expires
+	}
+	// If user-defined metadata have been specified, use extend attributes for storage.
+	if opt != nil && len(opt.Metadata) > 0 {
+		for name, value := range opt.Metadata {
+			extend[name] = value
+		}
+	}
+	// If tagging have been specified, use extend attributes for storage.
+	if opt != nil && opt.Tagging != nil {
+		var encoded = opt.Tagging.Encode()
+		extend[XAttrKeyOSSTagging] = encoded
+	}
+
 	// Iterate all the meta partition to create multipart id
-	multipartID, err = v.mw.InitMultipart_ll(path)
+	multipartID, err = v.mw.InitMultipart_ll(path, extend)
 	if err != nil {
 		log.LogErrorf("InitMultipart: meta init multipart fail: path(%v) err(%v)", path, err)
 		return "", err
@@ -892,12 +921,13 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 	return nil
 }
 
-func (v *Volume) CompleteMultipart(path, multipartID string, parts []*proto.MultipartPartInfo) (fsFileInfo *FSFileInfo, err error) {
+func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *proto.MultipartInfo) (fsFileInfo *FSFileInfo, err error) {
 	defer func() {
 		log.LogInfof("Audit: CompleteMultipart: volume(%v) path(%v) multipartID(%v) err(%v)",
 			v.name, path, multipartID, err)
 	}()
 
+	parts := multipartInfo.Parts
 	sort.SliceStable(parts, func(i, j int) bool { return parts[i].ID < parts[j].ID })
 
 	// create inode for complete data
@@ -1016,6 +1046,17 @@ func (v *Volume) CompleteMultipart(path, multipartID string, parts []*proto.Mult
 		log.LogErrorf("CompleteMultipart: save ETag fail: volume(%v) inode(%v) err(%v)",
 			v.name, completeInodeInfo, err)
 		return
+	}
+	// set user modified system metadata, self defined metadata and tag
+	extend := multipartInfo.Extend
+	if len(extend) > 0 {
+		for key, value := range extend {
+			if err = v.mw.XAttrSet_ll(completeInodeInfo.Inode, []byte(key), []byte(value)); err != nil {
+				log.LogErrorf("CompleteMultipart: store multipart extend fail: volume(%v) path(%v) inode(%v) key(%v) value(%v) err(%v)",
+					v.name, path, completeInodeInfo.Inode, key, value, err)
+				return nil, err
+			}
+		}
 	}
 
 	// remove multipart

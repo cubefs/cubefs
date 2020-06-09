@@ -660,7 +660,7 @@ func (mw *MetaWrapper) InodeUnlink_ll(inode uint64) (*proto.InodeInfo, error) {
 	return info, nil
 }
 
-func (mw *MetaWrapper) InitMultipart_ll(path string) (multipartId string, err error) {
+func (mw *MetaWrapper) InitMultipart_ll(path string, extend map[string]string) (multipartId string, err error) {
 	var (
 		status       int
 		mp           *MetaPartition
@@ -677,7 +677,7 @@ func (mw *MetaWrapper) InitMultipart_ll(path string) (multipartId string, err er
 		index := (int(epoch) + i) % length
 		mp = rwPartitions[index]
 		log.LogDebugf("InitMultipart_ll: mp(%v), index(%v)", mp, index)
-		status, sessionId, err := mw.createMultipart(mp, path)
+		status, sessionId, err := mw.createMultipart(mp, path, extend)
 		if err == nil && status == statusOK && len(sessionId) > 0 {
 			return sessionId, nil
 		} else {
