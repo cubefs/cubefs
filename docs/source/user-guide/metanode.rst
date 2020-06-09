@@ -23,7 +23,7 @@ At lease 3 meta nodes are required in respect to high availability.
    "masterAddr", "string", "Addresses of master server", "Yes"
    "zoneName", "string", "Specified zone. ``default`` by default.", "No"
    "totalMem","string", "Max memory metadata used. The value needs to be higher than the value of *metaNodeReservedMem* in the master configuration. Unit: byte", "Yes"
-
+   "deleteBatchCount","int64","when deleting inodes, how many are deleted at a time ,500 by default","No"
 
 
 

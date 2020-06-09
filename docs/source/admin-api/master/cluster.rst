@@ -60,6 +60,7 @@ Show cluster space information by zone.
 response
 
 .. code-block:: json
+
     {
         "DataNodeStatInfo": {
             "TotalGB": 1,
