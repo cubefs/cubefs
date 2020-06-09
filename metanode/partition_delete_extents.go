@@ -90,7 +90,7 @@ LOOP:
 
 	// TODO Unhandled errors
 	defer fp.Close()
-	var buf []byte
+	buf := make([]byte, 0)
 	for {
 		select {
 		case <-mp.stopC:
@@ -101,12 +101,20 @@ LOOP:
 			// reset fileList
 			fileList.Init()
 			goto LOOP
-		case ek := <-mp.extDelCh:
-			buf, err = ek.MarshalBinary()
+		case eks := <-mp.extDelCh:
+			var data []byte
+			buf = buf[:0]
+			for _, ek := range eks {
+				data, err = ek.MarshalBinary()
+				if err != nil {
+					log.LogWarnf("[appendDelExtentsToFile] partitionId=%d,"+
+						" extentKey marshal: %s", mp.config.PartitionId, err.Error())
+					break
+				}
+				buf = append(buf, data...)
+			}
 			if err != nil {
-				log.LogWarnf("[appendDelExtentsToFile] partitionId=%d,"+
-					" extentKey marshal: %s", mp.config.PartitionId, err.Error())
-				mp.extDelCh <- ek
+				mp.extDelCh <- eks
 				continue
 			}
 			if fileSize >= maxDeleteExtentSize {
@@ -246,13 +254,15 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 				cursor -= uint64(buff.Len())
 				break
 			}
-			ek := &proto.ExtentKey{}
+			ek := proto.ExtentKey{}
 			if err = ek.UnmarshalBinary(buff); err != nil {
 				panic(err)
 			}
 			// delete dataPartition
-			if err = mp.doDeleteMarkedInodes(ek); err != nil {
-				mp.extDelCh <- ek
+			if err = mp.doDeleteMarkedInodes(&ek); err != nil {
+				eks := make([]proto.ExtentKey, 0)
+				eks = append(eks, ek)
+				mp.extDelCh <- eks
 				log.LogWarnf("[deleteExtentsFromList] partitionId=%d, %s",
 					mp.config.PartitionId, err.Error())
 			}
