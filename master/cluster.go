@@ -898,6 +898,41 @@ errHandler:
 	return
 }
 
+func (c *Cluster) resetDataPartition(dp *DataPartition) (err error) {
+	var (
+		badAddresses []string
+		msg          string
+	)
+	dp.RLock()
+	defer dp.RUnlock()
+	c.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode := node.(*DataNode)
+		if !dataNode.isActive {
+			for _, host := range dp.Hosts {
+				if host == dataNode.Addr {
+					badAddresses = append(badAddresses, host)
+				}
+			}
+		}
+		return true
+	})
+	if err = c.forceRemoveDataReplica(dp, badAddresses); err != nil {
+		goto errHandler
+	}
+	log.LogWarnf("clusterID[%v] partitionID:%v  badAddresses:%v reset success,PersistenceHosts:[%v]",
+		c.Name, dp.PartitionID, badAddresses, dp.Hosts)
+	return
+
+errHandler:
+	msg = fmt.Sprintf(" clusterID[%v] partitionID:%v  badHosts:%v  "+
+		"Err:%v , PersistenceHosts:%v  ",
+		c.Name, dp.PartitionID, badAddresses, err, dp.Hosts)
+	if err != nil {
+		Warn(c.Name, msg)
+	}
+	return
+}
+
 func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAddr string) (err error) {
 	dp.RLock()
 	defer dp.RUnlock()
@@ -1081,6 +1116,83 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate boo
 		return
 	}
 	if err = dp.tryToChangeLeader(c, dataNode); err != nil {
+		return
+	}
+	return
+}
+func (c *Cluster) forceRemoveDataReplica(dp *DataPartition, addrs []string) (err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[forceRemoveDataReplica],vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
+		}
+	}()
+	// Only after reset peers succeed in remote datanode, the meta data can be updated
+	newHosts := make([]string, 0, len(dp.Hosts)-len(addrs))
+	newPeers := make([]proto.Peer, 0, len(dp.Peers)-len(addrs))
+	for _, host := range dp.Hosts {
+		flag := false
+		for _, addr := range addrs {
+			if host == addr {
+				flag = true
+			}
+		}
+		if flag {
+			continue
+		}
+		newHosts = append(newHosts, host)
+	}
+	for _, host := range newHosts {
+		var dataNode *DataNode
+		dataNode, err = c.dataNode(host)
+		if err != nil {
+			return
+		}
+		for _, peer := range dp.Peers {
+			if peer.ID == dataNode.ID && peer.Addr == host {
+				newPeers = append(newPeers, peer)
+			}
+		}
+	}
+	log.LogInfof("action[forceRemoveDataReplica],new peers[%v], old peers[%v], err[%v]", newPeers, dp.Peers, err)
+	for _, host := range newHosts {
+		var dataNode *DataNode
+		if dataNode, err = c.dataNode(host); err != nil {
+			return
+		}
+		if err = c.resetDataPartitionRaftMember(dp, newPeers, dataNode); err != nil {
+			return
+		}
+	}
+	for _, addr := range addrs {
+		dp.removeReplicaByAddr(addr)
+		dp.checkAndRemoveMissReplica(addr)
+		var dataNode *DataNode
+		if dataNode, err = c.dataNode(addr); err != nil {
+			return
+		}
+
+		for _, pid := range dataNode.PersistenceDataPartitions {
+			if pid == dp.PartitionID {
+				continue
+			}
+		}
+
+	}
+	if err = dp.update("forceRemoveDataReplica", dp.VolName, newPeers, newHosts, c); err != nil {
+		return
+	}
+	return
+}
+
+func (c *Cluster) resetDataPartitionRaftMember(dp *DataPartition, newPeers []proto.Peer, dataNode *DataNode) (err error) {
+	dataNode.Lock()
+	defer dataNode.Unlock()
+	task, err := dp.createTaskToResetRaftMembers(newPeers, dataNode.Addr)
+	if err != nil {
+		return
+	}
+	if _, err = dataNode.TaskManager.syncSendAdminTask(task); err != nil {
+		log.LogErrorf("action[resetDataPartitionRaftMember] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
 		return
 	}
 	return

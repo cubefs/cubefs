@@ -21,9 +21,9 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"math"
 	"strings"
 	"time"
-	"math"
 )
 
 // MetaReplica defines the replica of a meta partition
@@ -550,6 +550,13 @@ func (mp *MetaPartition) createTaskToRemoveRaftMember(removePeer proto.Peer) (t 
 	}
 	req := &proto.RemoveMetaPartitionRaftMemberRequest{PartitionId: mp.PartitionID, RemovePeer: removePeer}
 	t = proto.NewAdminTask(proto.OpRemoveMetaPartitionRaftMember, mr.Addr, req)
+	resetMetaPartitionTaskID(t, mp.PartitionID)
+	return
+}
+
+func (mp *MetaPartition) createTaskToResetRaftMembers(newPeers []proto.Peer, address string) (t *proto.AdminTask, err error) {
+	req := &proto.ResetMetaPartitionRaftMemberRequest{PartitionId: mp.PartitionID, NewPeers: newPeers}
+	t = proto.NewAdminTask(proto.OpResetMetaPartitionRaftMember, address, req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)
 	return
 }

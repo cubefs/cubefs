@@ -185,6 +185,121 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 	return
 }
 
+func (c *Cluster) resetMetaPartition(mp *MetaPartition) (err error) {
+	var (
+		badAddresses []string
+		msg          string
+	)
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[resetMetaPartition],vol[%v],data partition[%v],err[%v]", mp.volName, mp.PartitionID, err)
+		}
+	}()
+	mp.RLock()
+	defer mp.RUnlock()
+	c.metaNodes.Range(func(addr, node interface{}) bool {
+		metaNode := node.(*MetaNode)
+		if !metaNode.IsActive {
+			for _, host := range mp.Hosts {
+				if host == metaNode.Addr {
+					badAddresses = append(badAddresses, host)
+				}
+			}
+		}
+		return true
+	})
+	if err = c.forceRemoveMetaReplica(mp, badAddresses); err != nil {
+		goto errHandler
+	}
+	log.LogWarnf("clusterID[%v] partitionID:%v  badAddresses:%v reset success,PersistenceHosts:[%v]",
+		c.Name, mp.PartitionID, badAddresses, mp.Hosts)
+	return
+
+errHandler:
+	msg = fmt.Sprintf(" clusterID[%v] partitionID:%v  badHosts:%v  "+
+		"Err:%v , PersistenceHosts:%v  ",
+		c.Name, mp.PartitionID, badAddresses, err, mp.Hosts)
+	if err != nil {
+		Warn(c.Name, msg)
+	}
+	return
+}
+func (c *Cluster) forceRemoveMetaReplica(mp *MetaPartition, addrs []string) (err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[forceRemoveMetaReplica],vol[%v],meta partition[%v],err[%v]", mp.volName, mp.PartitionID, err)
+		}
+	}()
+	// Only after reset peers succeed in remote metanode, the meta data can be updated
+	newHosts := make([]string, 0, len(mp.Hosts)-len(addrs))
+	newPeers := make([]proto.Peer, 0, len(mp.Peers)-len(addrs))
+	for _, host := range mp.Hosts {
+		flag := false
+		for _, addr := range addrs {
+			if host == addr {
+				flag = true
+			}
+		}
+		if flag {
+			continue
+		}
+		newHosts = append(newHosts, host)
+	}
+	for _, host := range newHosts {
+		var metaNode *MetaNode
+		metaNode, err = c.metaNode(host)
+		if err != nil {
+			return
+		}
+		for _, peer := range mp.Peers {
+			if peer.ID == metaNode.ID && peer.Addr == host {
+				newPeers = append(newPeers, peer)
+			}
+		}
+	}
+	log.LogInfof("action[forceRemoveMetaReplica],new peers[%v], old peers[%v], err[%v]", newPeers, mp.Peers, err)
+	for _, host := range newHosts {
+		var metaNode *MetaNode
+		if metaNode, err = c.metaNode(host); err != nil {
+			return
+		}
+		if err = c.resetMetaPartitionRaftMember(mp, newPeers, metaNode); err != nil {
+			return
+		}
+	}
+	for _, addr := range addrs {
+		mp.removeReplicaByAddr(addr)
+		mp.removeMissingReplica(addr)
+		var metaNode *MetaNode
+		if metaNode, err = c.metaNode(addr); err != nil {
+			return
+		}
+		for _, pid := range metaNode.PersistenceMetaPartitions {
+			if pid == mp.PartitionID {
+				continue
+			}
+		}
+	}
+	if err = mp.persistToRocksDB("forceRemoveMetaReplica", mp.volName, newHosts, newPeers, c); err != nil {
+		return
+	}
+	return
+}
+
+func (c *Cluster) resetMetaPartitionRaftMember(mp *MetaPartition, newPeers []proto.Peer, metaNode *MetaNode) (err error) {
+	metaNode.Lock()
+	defer metaNode.Unlock()
+	task, err := mp.createTaskToResetRaftMembers(newPeers, metaNode.Addr)
+	if err != nil {
+		return
+	}
+	if _, err = metaNode.Sender.syncSendAdminTask(task); err != nil {
+		log.LogErrorf("action[resetMetaPartitionRaftMember] vol[%v],meta partition[%v],err[%v]", mp.volName, mp.PartitionID, err)
+		return
+	}
+	return
+}
+
 func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, validate bool) (err error) {
 	defer func() {
 		if err != nil {

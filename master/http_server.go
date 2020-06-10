@@ -152,6 +152,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminDeleteMetaReplica).
 		HandlerFunc(m.deleteMetaReplica)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminResetMetaPartition).
+		HandlerFunc(m.resetMetaPartition)
 
 	// data partition management APIs
 	router.NewRoute().Methods(http.MethodGet).
@@ -166,6 +169,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminDecommissionDataPartition).
 		HandlerFunc(m.decommissionDataPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminResetDataPartition).
+		HandlerFunc(m.resetDataPartition)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.ClientDataPartitions).
 		HandlerFunc(m.getDataPartitions)

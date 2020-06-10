@@ -394,18 +394,3 @@ func calcAuthKey(key string) (authKey string) {
 	cipherStr := h.Sum(nil)
 	return strings.ToLower(hex.EncodeToString(cipherStr))
 }
-
-func validVols(client *master.MasterClient, toComplete string) []string {
-	var (
-		validVols []string
-		vols      []*proto.VolInfo
-		err       error
-	)
-	if vols, err = client.AdminAPI().ListVols(toComplete); err != nil {
-		errout("Get volume list failed:\n%v\n", err)
-	}
-	for _, vol := range vols {
-		validVols = append(validVols, vol.Name)
-	}
-	return validVols
-}

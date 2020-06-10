@@ -104,6 +104,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handlePacketToAddDataPartitionRaftMember(p)
 	case proto.OpRemoveDataPartitionRaftMember:
 		s.handlePacketToRemoveDataPartitionRaftMember(p)
+	case proto.OpResetDataPartitionRaftMember:
+		s.handlePacketToResetDataPartitionRaftMember(p)
 	case proto.OpDataPartitionTryToLeader:
 		s.handlePacketToDataPartitionTryToLeaderrr(p)
 	case proto.OpGetPartitionSize:
@@ -947,6 +949,63 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 			return
 		}
 	}
+	return
+}
+
+func (s *DataNode) handlePacketToResetDataPartitionRaftMember(p *repl.Packet) {
+	var (
+		err     error
+		reqData []byte
+		req     = &proto.ResetDataPartitionRaftMemberRequest{}
+	)
+
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionResetDataPartitionRaftMember, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
+
+	adminTask := &proto.AdminTask{}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		return
+	}
+
+	reqData, err = json.Marshal(adminTask.Request)
+	p.AddMesgLog(string(reqData))
+	if err != nil {
+		return
+	}
+	if err = json.Unmarshal(reqData, req); err != nil {
+		return
+	}
+
+	dp := s.space.Partition(req.PartitionId)
+	if dp == nil {
+		err = fmt.Errorf("partition %v not exsit", req.PartitionId)
+		return
+	}
+	p.PartitionID = req.PartitionId
+	for _, peer := range req.NewPeers {
+		if !dp.IsExsitReplica(peer.Addr) {
+			log.LogInfof("handlePacketToResetDataPartitionRaftMember recive MasterCommand: %v "+
+				"ResetRaftPeer(%v) has not exsit", string(reqData), peer.Addr)
+			return
+		}
+		if peer.ID == 0 {
+			log.LogInfof("handlePacketToResetDataPartitionRaftMember recive MasterCommand: %v "+
+				"Peer ID(%v) not valid", string(reqData), peer.ID)
+			return
+		}
+	}
+	var peers []raftProto.Peer
+	for _, peer := range req.NewPeers {
+		peers = append(peers, raftProto.Peer{ID: peer.ID})
+	}
+	err = dp.ResetRaftMember(peers, reqData)
 	return
 }
 

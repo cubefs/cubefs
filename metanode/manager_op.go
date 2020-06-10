@@ -919,6 +919,61 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 	return
 }
 
+func (m *metadataManager) opResetMetaPartitionMember(conn net.Conn,
+	p *Packet, remoteAddr string) (err error) {
+	var reqData []byte
+	req := &proto.ResetMetaPartitionRaftMemberRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+	for _, peer := range req.NewPeers {
+		if !mp.IsExsitPeer(peer) {
+			err = errors.NewErrorf("[opResetMetaPartitionMember]: partitionID= %d, "+
+				"Marshal %s", req.PartitionId)
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+			m.respondToClient(conn, p)
+			return err
+		}
+	}
+
+	reqData, err = json.Marshal(req)
+	if err != nil {
+		err = errors.NewErrorf("[opResetMetaPartitionMember]: partitionID= %d, "+
+			"Marshal %s", req.PartitionId, err)
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	var peers []raftProto.Peer
+	for _, peer := range req.NewPeers {
+		peers = append(peers, raftProto.Peer{ID: peer.ID})
+	}
+	err = mp.ResetMember(peers, reqData)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+	p.PacketOkReply()
+	m.respondToClient(conn, p)
+
+	return
+
+}
+
 func (m *metadataManager) opMetaBatchInodeGet(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
 	req := &proto.BatchInodeGetRequest{}

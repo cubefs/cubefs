@@ -35,12 +35,16 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newDataNodeListCmd(client),
+		newDataNodeInfoCmd(client),
+		newDataNodeDecommissionCmd(client),
 	)
 	return cmd
 }
 
 const (
-	cmdDataNodeListShort = "List information of data nodes"
+	cmdDataNodeListShort             = "List information of data nodes"
+	cmdDataNodeInfoShort             = "Show information of a data node"
+	cmdDataNodeDecommissionInfoShort = "decommission partitions in a data node to others"
 )
 
 func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
@@ -54,7 +58,7 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("List cluster meta nodes failed: %v\n", err)
+					errout("List cluster data nodes failed: %v\n", err)
 					os.Exit(1)
 				}
 			}()
@@ -82,5 +86,69 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&optFilterWritable, "filter-writable", "", "Filter node writable status")
 	cmd.Flags().StringVar(&optFilterStatus, "filter-status", "", "Filter node status [Active, Inactive")
+	return cmd
+}
+
+func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpInfo + " [NODE ADDRESS]",
+		Short: cmdDataNodeInfoShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var nodeAddr string
+			var datanodeInfo *proto.DataNodeInfo
+			defer func() {
+				if err != nil {
+					errout("Show data node info failed: %v\n", err)
+					os.Exit(1)
+				}
+			}()
+			nodeAddr = args[0]
+			if datanodeInfo, err = client.NodeAPI().GetDataNode(nodeAddr); err != nil {
+				return
+			}
+			stdout("[Data node info]\n")
+			stdout(formatDataNodeDetail(datanodeInfo))
+
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
+func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpDecommission + " [NODE ADDRESS]",
+		Short: cmdDataNodeDecommissionInfoShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var nodeAddr string
+			defer func() {
+				if err != nil {
+					errout("decommission data node failed: %v\n", err)
+					os.Exit(1)
+				}
+			}()
+			nodeAddr = args[0]
+			if err = client.NodeAPI().DataNodeDecommission(nodeAddr); err != nil {
+				return
+			}
+			stdout("Decommission data node successfully\n")
+
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
 	return cmd
 }

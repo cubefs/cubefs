@@ -119,6 +119,12 @@ func (partition *DataPartition) createTaskToRemoveRaftMember(removePeer proto.Pe
 	return
 }
 
+func (partition *DataPartition) createTaskToResetRaftMembers(newPeers []proto.Peer, address string) (task *proto.AdminTask, err error) {
+	task = proto.NewAdminTask(proto.OpResetDataPartitionRaftMember, address, newResetDataPartitionRaftMemberRequest(partition.PartitionID, newPeers))
+	partition.resetTaskID(task)
+	return
+}
+
 func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64, peers []proto.Peer, hosts []string, createType int) (task *proto.AdminTask) {
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
@@ -266,6 +272,7 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	dpr.Hosts = make([]string, len(partition.Hosts))
 	copy(dpr.Hosts, partition.Hosts)
 	dpr.LeaderAddr = partition.getLeaderAddr()
+	dpr.IsRecover = partition.isRecover
 	return
 }
 

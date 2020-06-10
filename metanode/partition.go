@@ -174,6 +174,7 @@ type OpPartition interface {
 	ResponseLoadMetaPartition(p *Packet) (err error)
 	PersistMetadata() (err error)
 	ChangeMember(changeType raftproto.ConfChangeType, peer raftproto.Peer, context []byte) (resp interface{}, err error)
+	ResetMember(peers []raftproto.Peer, context []byte) (err error)
 	Reset() (err error)
 	UpdatePartition(req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error)
 	DeleteRaft() error
@@ -537,6 +538,12 @@ func (mp *metaPartition) nextInodeID() (inodeId uint64, err error) {
 // ChangeMember changes the raft member with the specified one.
 func (mp *metaPartition) ChangeMember(changeType raftproto.ConfChangeType, peer raftproto.Peer, context []byte) (resp interface{}, err error) {
 	resp, err = mp.raftPartition.ChangeMember(changeType, peer, context)
+	return
+}
+
+// ResetMebmer reset the raft members with new peers, be carefull !
+func (mp *metaPartition) ResetMember(peers []raftproto.Peer, context []byte) (err error) {
+	err = mp.raftPartition.ResetMember(peers, context)
 	return
 }
 
