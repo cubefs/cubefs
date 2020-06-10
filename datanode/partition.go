@@ -756,6 +756,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 			if !storage.IsTinyExtent(extentID) {
 				continue
 			}
+			log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)",dp.partitionID,extentID,offset,size)
 			store.MarkDelete(extentID, int64(offset), int64(size))
 			if !isFullSync {
 				log.LogWarnf(fmt.Sprintf(ActionSyncTinyDeleteRecord+" extentID_(%v)_extentOffset(%v)_size(%v)", extentID, offset, size))
