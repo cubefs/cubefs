@@ -62,7 +62,6 @@ func (se *SortedExtents) UnmarshalBinary(data []byte) error {
 }
 
 func (se *SortedExtents) Append(ek proto.ExtentKey) (deleteExtents []proto.ExtentKey) {
-	deleteExtents = make([]proto.ExtentKey, 0)
 	endOffset := ek.FileOffset + uint64(ek.Size)
 
 	se.Lock()
@@ -88,24 +87,32 @@ func (se *SortedExtents) Append(ek proto.ExtentKey) (deleteExtents []proto.Exten
 
 	var startIndex, endIndex int
 
+	invalidExtents := make([]proto.ExtentKey, 0)
 	for idx, key := range se.eks {
-		if ek.FileOffset >= key.FileOffset+uint64(key.Size) {
+		if ek.FileOffset > key.FileOffset {
 			startIndex = idx + 1
 			continue
 		}
 		if endOffset >= key.FileOffset+uint64(key.Size) {
-			deleteExtents = append(deleteExtents, key)
+			invalidExtents = append(invalidExtents, key)
 			continue
 		}
 		break
 	}
 
-	endIndex = startIndex + len(deleteExtents)
+	endIndex = startIndex + len(invalidExtents)
 	upperExtents := make([]proto.ExtentKey, len(se.eks)-endIndex)
 	copy(upperExtents, se.eks[endIndex:])
 	se.eks = se.eks[:startIndex]
 	se.eks = append(se.eks, ek)
 	se.eks = append(se.eks, upperExtents...)
+	// check if ek and key are the same extent file with size extented
+	deleteExtents = make([]proto.ExtentKey, 0, len(invalidExtents))
+	for _, key := range invalidExtents {
+		if key.PartitionId != ek.PartitionId || key.ExtentId != ek.ExtentId {
+			deleteExtents = append(deleteExtents, key)
+		}
+	}
 	return
 }
 
