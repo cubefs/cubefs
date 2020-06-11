@@ -84,6 +84,23 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			_ = AccessDenied.ServeResponse(w, r)
 		}
 
+		// failed request monitor
+		statusCode := GetStatusCodeFromContext(r)
+		var metricName string
+		var failed bool
+		var monitorStatusCodes = []string{"400", "403", "500"}
+		for _, monitorStatusCode := range monitorStatusCodes {
+			if monitorStatusCode == statusCode {
+				metricName = fmt.Sprintf("failed_%v", statusCode)
+				failed = true
+				break
+			}
+		}
+		if failed {
+			failedMetric := exporter.NewTPCnt(metricName)
+			defer failedMetric.Set(err)
+		}
+
 		// ===== post-handle start =====
 		var headerToString = func(header http.Header) string {
 			var sb = strings.Builder{}
