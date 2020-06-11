@@ -649,11 +649,12 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) createMultipart(mp *MetaPartition, path string) (status int, multipartId string, err error) {
+func (mw *MetaWrapper) createMultipart(mp *MetaPartition, path string, extend map[string]string) (status int, multipartId string, err error) {
 	req := &proto.CreateMultipartRequest{
 		PartitionId: mp.PartitionID,
 		VolName:     mw.volname,
 		Path:        path,
+		Extend:      extend,
 	}
 
 	packet := proto.NewPacketReqID()

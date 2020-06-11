@@ -58,8 +58,48 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// system metadata
+	// Get the requested content-type.
+	// In addition to being used to manage data types, it is used to distinguish
+	// whether the request is to create a directory.
+	contentType := r.Header.Get(HeaderNameContentType)
+	// Get request header : content-disposition
+	contentDisposition := r.Header.Get(HeaderNameContentDisposition)
+	// Get request header : Cache-Control
+	cacheControl := r.Header.Get(HeaderNameCacheControl)
+	if len(cacheControl) > 0 && !ValidateCacheControl(cacheControl) {
+		errorCode = InvalidCacheArgument
+		return
+	}
+	// Get request header : Expires
+	expires := r.Header.Get(HeaderNameExpires)
+	if len(expires) > 0 && !ValidateCacheExpires(expires) {
+		errorCode = InvalidCacheArgument
+		return
+	}
+
+	// Checking user-defined metadata
+	var metadata = ParseUserDefinedMetadata(r.Header)
+
+	// Check 'x-amz-tagging' header
+	var tagging *Tagging
+	if xAmxTagging := r.Header.Get(HeaderNameXAmzTagging); xAmxTagging != "" {
+		if tagging, err = ParseTagging(xAmxTagging); err != nil {
+			errorCode = InvalidArgument
+			return
+		}
+	}
+	var opt = &PutFileOption{
+		MIMEType:     contentType,
+		Disposition:  contentDisposition,
+		Tagging:      tagging,
+		Metadata:     metadata,
+		CacheControl: cacheControl,
+		Expires:      expires,
+	}
+
 	var uploadID string
-	if uploadID, err = vol.InitMultipart(param.Object()); err != nil {
+	if uploadID, err = vol.InitMultipart(param.Object(), opt); err != nil {
 		log.LogErrorf("createMultipleUploadHandler:  init multipart fail, requestID(%v) err(%v)",
 			GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
@@ -407,7 +447,7 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		}
 	}
 
-	fsFileInfo, err := vol.CompleteMultipart(param.Object(), uploadId, multipartInfo.Parts)
+	fsFileInfo, err := vol.CompleteMultipart(param.Object(), uploadId, multipartInfo)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchUpload
 		return

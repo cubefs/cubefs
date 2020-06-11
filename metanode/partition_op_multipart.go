@@ -37,6 +37,7 @@ func (mp *metaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet)
 			Path:     multipart.key,
 			InitTime: multipart.initTime,
 			Parts:    make([]*proto.MultipartPartInfo, 0, len(multipart.parts)),
+			Extend:   multipart.extend,
 		},
 	}
 	for _, part := range multipart.Parts() {
@@ -129,11 +130,13 @@ func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *P
 		id:       multipartId,
 		key:      req.Path,
 		initTime: time.Now().Local(),
+		extend:   req.Extend,
 	}
 	if _, err = mp.putMultipart(opFSMCreateMultipart, multipart); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
+
 	resp := &proto.CreateMultipartResponse{
 		Info: &proto.MultipartInfo{
 			ID:   multipartId,
