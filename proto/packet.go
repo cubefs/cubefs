@@ -31,9 +31,8 @@ import (
 )
 
 var (
-	GRequestID  = int64(1)
-	Buffers     = buf.NewBufferPool()
-	TinyBuffers = buf.NewTinyBufferPool()
+	GRequestID = int64(1)
+	Buffers    = buf.NewBufferPool()
 )
 
 // GenerateRequestID generates the request ID.

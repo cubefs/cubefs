@@ -31,7 +31,8 @@ func NewTinyBufferPool() *sync.Pool {
 
 // BufferPool defines the struct of a buffered pool with 4 objects.
 type BufferPool struct {
-	pools [2]chan []byte
+	pools    [2]chan []byte
+	tinyPool *sync.Pool
 }
 
 // NewBufferPool returns a new buffered pool.
@@ -39,6 +40,7 @@ func NewBufferPool() (bufferP *BufferPool) {
 	bufferP = &BufferPool{}
 	bufferP.pools[0] = make(chan []byte, HeaderBufferPoolSize)
 	bufferP.pools[1] = make(chan []byte, HeaderBufferPoolSize)
+	bufferP.tinyPool = NewTinyBufferPool()
 	return bufferP
 }
 
@@ -57,6 +59,8 @@ func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
 		return bufferP.get(0, size), nil
 	} else if size == util.BlockSize {
 		return bufferP.get(1, size), nil
+	} else if size == util.DefaultTinySizeLimit {
+		return bufferP.tinyPool.Get().([]byte), nil
 	}
 	return nil, fmt.Errorf("can only support 45 or 65536 bytes")
 }
@@ -80,6 +84,8 @@ func (bufferP *BufferPool) Put(data []byte) {
 		bufferP.put(0, data)
 	} else if size == util.BlockSize {
 		bufferP.put(1, data)
+	} else if size == util.DefaultTinySizeLimit {
+		bufferP.tinyPool.Put(data)
 	}
 	return
 }
