@@ -48,7 +48,7 @@ func NewWritePacket(inode uint64, fileOffset, storeMode int) *Packet {
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
 	if storeMode == proto.TinyExtentType {
-		p.Data = proto.TinyBuffers.Get().([]byte)
+		p.Data, _ = proto.Buffers.Get(util.DefaultTinySizeLimit)
 	} else {
 		p.Data, _ = proto.Buffers.Get(util.BlockSize)
 	}

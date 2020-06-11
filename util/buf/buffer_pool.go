@@ -5,25 +5,26 @@ import (
 	"golang.org/x/net/context"
 	"golang.org/x/time/rate"
 	"sync"
+	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/util"
-)
-
-var (
-	Buffers = NewBufferPool()
 )
 
 const (
 	HeaderBufferPoolSize = 8192
 )
 
-var BuffersRateLimit = rate.NewLimiter(rate.Limit(4096), 16)
+var tinyBuffersTotalLimit int64 = 4096
+var tinyBuffersCount int64
+var buffersRateLimit = rate.NewLimiter(rate.Limit(16), 16)
 
 func NewTinyBufferPool() *sync.Pool {
 	return &sync.Pool{
 		New: func() interface{} {
-			ctx := context.Background()
-			BuffersRateLimit.Wait(ctx)
+			if atomic.LoadInt64(&tinyBuffersCount) >= tinyBuffersTotalLimit {
+				ctx := context.Background()
+				buffersRateLimit.Wait(ctx)
+			}
 			return make([]byte, util.DefaultTinySizeLimit)
 		},
 	}
@@ -31,7 +32,8 @@ func NewTinyBufferPool() *sync.Pool {
 
 // BufferPool defines the struct of a buffered pool with 4 objects.
 type BufferPool struct {
-	pools [2]chan []byte
+	pools    [2]chan []byte
+	tinyPool *sync.Pool
 }
 
 // NewBufferPool returns a new buffered pool.
@@ -39,6 +41,7 @@ func NewBufferPool() (bufferP *BufferPool) {
 	bufferP = &BufferPool{}
 	bufferP.pools[0] = make(chan []byte, HeaderBufferPoolSize)
 	bufferP.pools[1] = make(chan []byte, HeaderBufferPoolSize)
+	bufferP.tinyPool = NewTinyBufferPool()
 	return bufferP
 }
 
@@ -57,6 +60,9 @@ func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
 		return bufferP.get(0, size), nil
 	} else if size == util.BlockSize {
 		return bufferP.get(1, size), nil
+	} else if size == util.DefaultTinySizeLimit {
+		atomic.AddInt64(&tinyBuffersCount, 1)
+		return bufferP.tinyPool.Get().([]byte), nil
 	}
 	return nil, fmt.Errorf("can only support 45 or 65536 bytes")
 }
@@ -80,6 +86,9 @@ func (bufferP *BufferPool) Put(data []byte) {
 		bufferP.put(0, data)
 	} else if size == util.BlockSize {
 		bufferP.put(1, data)
+	} else if size == util.DefaultTinySizeLimit {
+		bufferP.tinyPool.Put(data)
+		atomic.AddInt64(&tinyBuffersCount, -1)
 	}
 	return
 }
