@@ -16,96 +16,56 @@ package exporter
 
 import (
 	"fmt"
-	"sync"
-
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
-var (
-	GaugePool = &sync.Pool{New: func() interface{} {
-		return new(Gauge)
-	}}
-
-	GaugeGroup sync.Map
-	GaugeCh    chan *Gauge
-)
-
-func collectGauge() {
-	GaugeCh = make(chan *Gauge, ChSize)
-	for {
-		m := <-GaugeCh
-		metric := m.Metric()
-		metric.Set(float64(m.val))
-		log.LogDebugf("collect metric %v", m)
-	}
-}
-
+// gauge metric
 type Gauge struct {
 	name   string
 	labels map[string]string
-	val    int64
-	ch     chan interface{}
+	val    float64
 }
 
 func NewGauge(name string) (g *Gauge) {
-	if !enabledPrometheus {
+	if !IsEnabled() {
 		return
 	}
 	g = new(Gauge)
-	g.name = metricsName(name)
+	g.name = name
 	return
 }
 
-func (c *Gauge) Key() (key string) {
-	return stringMD5(c.Name())
+func (g *Gauge) Key() string {
+	return stringMD5(fmt.Sprintf("{%s: %s}", g.name, stringMapToString(g.labels)))
 }
 
 func (g *Gauge) Name() string {
-	return fmt.Sprintf("{%s: %s}", g.name, stringMapToString(g.labels))
+	return g.name
+}
+
+func (g *Gauge) Labels() map[string]string {
+	return g.labels
+}
+
+func (g *Gauge) Val() float64 {
+	return g.val
 }
 
 func (g *Gauge) String() string {
 	return fmt.Sprintf("{name: %s, labels: %s, val: %v}", g.name, stringMapToString(g.labels), g.val)
 }
 
-func (c *Gauge) Metric() prometheus.Gauge {
-	metric := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name:        c.name,
-			ConstLabels: c.labels,
-		})
-	key := c.Key()
-	actualMetric, load := GaugeGroup.LoadOrStore(key, metric)
-	if !load {
-		err := prometheus.Register(actualMetric.(prometheus.Collector))
-		if err == nil {
-			log.LogInfof("register metric %v", c.Name())
-		} else {
-			log.LogErrorf("register metric %v, %v", c.Name(), err)
-		}
-	}
-
-	return actualMetric.(prometheus.Gauge)
-}
-
+// set gauge val
 func (g *Gauge) Set(val int64) {
-	if !enabledPrometheus {
+	if !IsEnabled() {
 		return
 	}
-	g.val = val
-	g.publish()
+	g.val = float64(val)
+	CollectorInstance().Collect(g)
 }
 
-func (c *Gauge) publish() {
-	select {
-	case GaugeCh <- c:
-	default:
-	}
-}
-
+// set gauge val with labels
 func (g *Gauge) SetWithLabels(val int64, labels map[string]string) {
-	if !enabledPrometheus {
+	if !IsEnabled() {
 		return
 	}
 	g.labels = labels

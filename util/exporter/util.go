@@ -19,6 +19,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
+
+	"github.com/chubaofs/chubaofs/util/log"
+)
+
+type NULL struct{}
+
+var (
+	null = NULL{}
 )
 
 func stringMD5(str string) string {
@@ -36,4 +45,21 @@ func stringMapToString(m map[string]string) string {
 	}
 
 	return string(mjson)
+}
+
+// GetLocalIpAddr returns the local IP address.
+func GetLocalIpAddr() (ipaddr string, err error) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		log.LogError("consul register get local ip failed, ", err)
+		return
+	}
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String(), nil
+			}
+		}
+	}
+	return "", fmt.Errorf("cannot get local ip")
 }

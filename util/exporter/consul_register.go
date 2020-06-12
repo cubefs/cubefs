@@ -18,16 +18,18 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
-	RegisterPeriod = time.Duration(10) * time.Minute
-	RegisterPath   = "/v1/agent/service/register"
+	RegisterPeriod      = time.Duration(10) * time.Minute
+	RegisterPath        = "/v1/agent/service/register"
+	ConfigKeyConsulAddr = "consulAddr" //consul addr
 )
 
 /**
@@ -43,12 +45,35 @@ type ConsulRegisterInfo struct {
 }
 
 // get consul id
-func GetConsulId(app string, role string, host string, port int64) string {
+func getConsulId(app string, role string, host string, port int64) string {
 	return fmt.Sprintf("%s_%s_%s_%d", app, role, host, port)
 }
 
+// register consul about node
+func RegistConsul(cluster string, role string, cfg *config.Config) {
+	SetClusterName(cluster)
+
+	m := NewGauge("start_time")
+	m.Set(time.Now().Unix() * 1000)
+
+	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
+
+	if exporterPort == int64(0) {
+		exporterPort = cfg.GetInt64(ConfigKeyExporterPort)
+	}
+	if exporterPort == int64(0) || len(consulAddr) <= 0 {
+		log.LogErrorf("exporter: register consul failed %v", exporterPort)
+		return
+	}
+
+	if ok := strings.HasPrefix(consulAddr, "http"); !ok {
+		consulAddr = "http://" + consulAddr
+	}
+	runConsulRegisterProc(consulAddr, appName, role, cluster, exporterPort)
+}
+
 // do consul register process
-func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
+func runConsulRegisterProc(addr, app, role, cluster string, port int64) {
 	if len(addr) <= 0 {
 		return
 	}
@@ -74,41 +99,30 @@ func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
 		return
 	}
 
-	client.Do(req)
+	resp, e := client.Do(req)
+	if resp != nil {
+		resp.Body.Close()
+	}
 
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
-				_, err = client.Do(req)
-				if err != nil {
-					log.LogErrorf("send consul register req error: %v", err.Error())
+				resp, e = client.Do(req)
+				if e != nil {
+					log.LogErrorf("exporter: send consul register req error: %v, %v", e.Error(), req)
+				}
+				if resp != nil {
+					resp.Body.Close()
 				}
 			}
 		}
 	}()
 }
 
-// GetLocalIpAddr returns the local IP address.
-func GetLocalIpAddr() (ipaddr string, err error) {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		log.LogError("consul register get local ip failed, ", err)
-		return
-	}
-	for _, addr := range addrs {
-		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipnet.IP.To4() != nil {
-				return ipnet.IP.String(), nil
-			}
-		}
-	}
-	return "", fmt.Errorf("cannot get local ip")
-}
-
 // make a consul rest request
 func makeRegisterReq(host, addr, app, role, cluster string, port int64) (req *http.Request) {
-	id := GetConsulId(app, role, host, port)
+	id := getConsulId(app, role, host, port)
 	url := addr + RegisterPath
 	cInfo := &ConsulRegisterInfo{
 		Name:    app,
@@ -123,14 +137,15 @@ func makeRegisterReq(host, addr, app, role, cluster string, port int64) (req *ht
 	}
 	cInfoBytes, err := json.Marshal(cInfo)
 	if err != nil {
-		log.LogErrorf("marshal error, %v", err.Error())
+		log.LogErrorf("exporter: marshal error, %v", err.Error())
 		return nil
 	}
 	req, err = http.NewRequest(http.MethodPut, url, bytes.NewBuffer(cInfoBytes))
 	if err != nil {
-		log.LogErrorf("new request error, %v", err.Error())
+		log.LogErrorf("exporter: new request error, %v", err.Error())
 		return nil
 	}
+	req.Close = true
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 
 	return

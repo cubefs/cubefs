@@ -14,80 +14,94 @@
 
 package exporter
 
-import (
-	"sync"
+import "sync"
 
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/prometheus/client_golang/prometheus"
+const (
+	CounterValChSize = 32 * 1024
 )
 
 var (
-	CounterGroup sync.Map
-	CounterPool  = &sync.Pool{New: func() interface{} {
-		return new(Counter)
-	}}
-	CounterCh chan *Counter
+	counterValMap map[string]float64
+	counterMu     sync.RWMutex
+	counterValCh  chan *Counter
+	counterStopCh chan NULL
 )
 
-func collectCounter() {
-	CounterCh = make(chan *Counter, ChSize)
+func startCounter() {
+	counterValCh = make(chan *Counter, CounterValChSize)
+	counterValMap = make(map[string]float64)
+	counterStopCh = make(chan NULL, 1)
+	go runCountValRoutine()
+}
+
+func stopCounter() {
+	counterStopCh <- null
+}
+
+func runCountValRoutine() {
 	for {
-		m := <-CounterCh
-		metric := m.Metric()
-		metric.Add(float64(m.val))
+		select {
+		case <-counterStopCh:
+			return
+		case c := <-counterValCh:
+			key := c.Key()
+			val := c.val
+			counterMu.Lock()
+			if v, ok := counterValMap[key]; ok {
+				v += val
+				counterValMap[key] = v
+			} else {
+				counterValMap[key] = val
+			}
+			counterMu.Unlock()
+		}
 	}
 }
 
+//
 type Counter struct {
 	Gauge
 }
 
-func NewCounter(name string) (c *Counter) {
-	if !enabledPrometheus {
-		return
-	}
-	c = new(Counter)
-	c.name = metricsName(name)
-	return
-}
-
-func (c *Counter) Add(val int64) {
-	if !enabledPrometheus {
-		return
-	}
-	c.val = val
-	c.publish()
-}
-
-func (c *Counter) publish() {
+func addVal(c *Counter) {
 	select {
-	case CounterCh <- c:
+	case counterValCh <- c:
 	default:
 	}
 }
 
+func NewCounter(name string) (c *Counter) {
+	if !IsEnabled() {
+		return
+	}
+	c = new(Counter)
+	c.name = name
+	return
+}
+
+func (c *Counter) Val() (val float64) {
+	counterMu.RLock()
+	if v, ok := counterValMap[c.Key()]; ok {
+		val = v
+	}
+	counterMu.RUnlock()
+
+	return
+}
+
+func (c *Counter) Add(val int64) {
+	if !IsEnabled() {
+		return
+	}
+	c.val = float64(val)
+	addVal(c)
+	CollectorInstance().Collect(c)
+}
+
 func (c *Counter) AddWithLabels(val int64, labels map[string]string) {
-	if !enabledPrometheus {
+	if !IsEnabled() {
 		return
 	}
 	c.labels = labels
 	c.Add(val)
-}
-
-func (c *Counter) Metric() prometheus.Counter {
-	metric := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name:        c.name,
-			ConstLabels: c.labels,
-		})
-	key := c.Key()
-	actualMetric, load := CounterGroup.LoadOrStore(key, metric)
-	if !load {
-		err := prometheus.Register(actualMetric.(prometheus.Collector))
-		if err == nil {
-			log.LogInfo("register metric ", c.name)
-		}
-	}
-
-	return actualMetric.(prometheus.Counter)
 }
