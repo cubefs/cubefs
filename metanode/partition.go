@@ -210,7 +210,7 @@ type metaPartition struct {
 	state         uint32
 	delInodeFp    *os.File
 	freeList      *freeList // free inode list
-	extDelCh      chan BtreeItem
+	extDelCh      chan []proto.ExtentKey
 	extReset      chan struct{}
 	vol           *Vol
 	manager       *metadataManager
@@ -370,7 +370,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		stopC:         make(chan bool),
 		storeChan:     make(chan *storeMsg, 5),
 		freeList:      newFreeList(),
-		extDelCh:      make(chan BtreeItem, 10000),
+		extDelCh:      make(chan []proto.ExtentKey, 10000),
 		extReset:      make(chan struct{}),
 		vol:           NewVol(),
 		manager:       manager,
