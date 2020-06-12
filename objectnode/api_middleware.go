@@ -35,6 +35,23 @@ var (
 	routeSNRegexp = regexp.MustCompile(":(\\w){32}$")
 )
 
+var (
+	monitoredStatusCode = []string{
+		strconv.Itoa(http.StatusBadRequest),
+		strconv.Itoa(http.StatusForbidden),
+		strconv.Itoa(http.StatusInternalServerError),
+	}
+)
+
+func IsMonitoredStatusCode(code string) bool {
+	for _, statusCode := range monitoredStatusCode {
+		if statusCode == code {
+			return true
+		}
+	}
+	return false
+}
+
 // TraceMiddleware returns a middleware handler to trace request.
 // After receiving the request, the handler will assign a unique RequestID to
 // the request and record the processing time of the request.
@@ -82,6 +99,12 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			// If current action is disabled, return access denied in response.
 			log.LogDebugf("traceMiddleware: disabled action: requestID(%v) action(%v)", requestID, action.Name())
 			_ = AccessDenied.ServeResponse(w, r)
+		}
+
+		// failed request monitor
+		var statusCode = GetStatusCodeFromContext(r)
+		if IsMonitoredStatusCode(statusCode) {
+			exporter.NewTPCnt(fmt.Sprintf("failed_%v", statusCode)).Set(nil)
 		}
 
 		// ===== post-handle start =====
