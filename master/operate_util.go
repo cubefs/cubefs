@@ -22,7 +22,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/ump"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"math/rand"
 	"strings"
 	"time"
@@ -167,7 +167,7 @@ func Warn(clusterID, msg string) {
 // WarnBySpecialKey provides warnings when exits
 func WarnBySpecialKey(key, msg string) {
 	log.LogWarn(msg)
-	ump.Alarm(key, msg)
+	exporter.Warning(msg)
 }
 
 func keyNotFound(name string) (err error) {
