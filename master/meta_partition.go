@@ -45,6 +45,8 @@ type MetaPartition struct {
 	Start        uint64
 	End          uint64
 	MaxInodeID   uint64
+	InodeCount   uint64
+	DentryCount  uint64
 	Replicas     []*MetaReplica
 	ReplicaNum   uint8
 	Status       int8
@@ -336,6 +338,8 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 	}
 	mr.updateMetric(mgr)
 	mp.setMaxInodeID()
+	mp.setInodeCount()
+	mp.setDentryCount()
 	mp.removeMissingReplica(metaNode.Addr)
 }
 
@@ -660,6 +664,27 @@ func (mp *MetaPartition) getMinusOfMaxInodeID() (minus float64) {
 	}
 	return
 }
+
+func (mp *MetaPartition) setInodeCount() {
+	var inodeCount uint64
+	for _, lr := range mp.LoadResponse {
+		if lr.InodeCount > inodeCount {
+			inodeCount = lr.InodeCount
+		}
+	}
+	mp.InodeCount = inodeCount
+}
+
+func (mp *MetaPartition) setDentryCount() {
+	var dentryCount uint64
+	for _, lr := range mp.LoadResponse {
+		if lr.DentryCount > dentryCount {
+			dentryCount = lr.DentryCount
+		}
+	}
+	mp.DentryCount = dentryCount
+}
+
 
 func (mp *MetaPartition) setMaxInodeID() {
 	var maxUsed uint64

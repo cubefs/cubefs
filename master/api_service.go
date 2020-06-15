@@ -617,6 +617,15 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func newSimpleView(vol *Vol) *proto.SimpleVolView {
+	var (
+		volInodeCount   uint64
+		volDentryCount  uint64
+	)
+	for _, mp := range vol.MetaPartitions {
+		volDentryCount = volDentryCount + mp.DentryCount
+		volInodeCount = volInodeCount + mp.InodeCount
+	}
+	maxPartitionID := vol.maxPartitionID()
 	return &proto.SimpleVolView{
 		ID:                 vol.ID,
 		Name:               vol.Name,
@@ -624,6 +633,9 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		ZoneName:           vol.zoneName,
 		DpReplicaNum:       vol.dpReplicaNum,
 		MpReplicaNum:       vol.mpReplicaNum,
+		InodeCount:         volInodeCount,
+		DentryCount:        volDentryCount,
+		MaxMetaPartitionID: maxPartitionID,
 		Status:             vol.Status,
 		Capacity:           vol.Capacity,
 		FollowerRead:       vol.FollowerRead,
@@ -1737,6 +1749,8 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			End:          mp.End,
 			VolName:      mp.volName,
 			MaxInodeID:   mp.MaxInodeID,
+			InodeCount:   mp.InodeCount,
+			DentryCount:  mp.DentryCount,
 			Replicas:     replicas,
 			ReplicaNum:   mp.ReplicaNum,
 			Status:       mp.Status,
