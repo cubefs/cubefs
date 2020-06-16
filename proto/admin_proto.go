@@ -462,6 +462,9 @@ type SimpleVolView struct {
 	ZoneName           string
 	DpReplicaNum       uint8
 	MpReplicaNum       uint8
+	InodeCount         uint64
+	DentryCount        uint64
+	MaxMetaPartitionID uint64
 	Status             uint8
 	Capacity           uint64 // GB
 	RwDpCnt            int
