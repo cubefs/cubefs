@@ -39,13 +39,12 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	msg := &MetaItem{}
 	defer func() {
 		if err == nil {
-			mp.uploadApplyID(index)
+			mp.updateApplyID(index)
 		}
 	}()
 	if err = msg.UnmarshalJson(command); err != nil {
 		return
 	}
-
 	switch msg.Op {
 	case opFSMCreateInode:
 		ino := NewInode(0, 0)
@@ -196,7 +195,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
 	defer func() {
 		if err == nil {
-			mp.uploadApplyID(index)
+			mp.updateApplyID(index)
 		}
 	}()
 	req := &proto.MetaPartitionDecommissionRequest{}
@@ -390,6 +389,10 @@ func (mp *metaPartition) submit(op uint32, data []byte) (resp interface{}, err e
 	return
 }
 
-func (mp *metaPartition) uploadApplyID(applyId uint64) {
+func (mp *metaPartition) updateApplyID(applyId uint64) {
 	atomic.StoreUint64(&mp.applyID, applyId)
+}
+
+func (mp *metaPartition) updatePersistedApplyID(applyId uint64) {
+	atomic.StoreUint64(&mp.persistedApplyID, applyId)
 }

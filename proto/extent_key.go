@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/chubaofs/chubaofs/util/btree"
 )
@@ -82,6 +83,28 @@ func (k *ExtentKey) MarshalBinary() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func (k *ExtentKey) WriteTo(writer io.Writer) (err error) {
+	if err = binary.Write(writer, binary.BigEndian, k.FileOffset); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, k.PartitionId); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, k.ExtentId); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, k.ExtentOffset); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, k.Size); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, k.CRC); err != nil {
+		return
+	}
+	return
+}
+
 // UnmarshalBinary unmarshals the binary format of the extent key.
 func (k *ExtentKey) UnmarshalBinary(buf *bytes.Buffer) (err error) {
 	if err = binary.Read(buf, binary.BigEndian, &k.FileOffset); err != nil {
@@ -113,7 +136,7 @@ func (k *ExtentKey) UnMarshal(m string) (err error) {
 
 // TODO remove
 func (k *ExtentKey) GetExtentKey() (m string) {
-	return fmt.Sprintf("%v_%v_%v_%v_%v", k.PartitionId,k.FileOffset, k.ExtentId, k.ExtentOffset,k.Size)
+	return fmt.Sprintf("%v_%v_%v_%v_%v", k.PartitionId, k.FileOffset, k.ExtentId, k.ExtentOffset, k.Size)
 }
 
 type TinyExtentDeleteRecord struct {
