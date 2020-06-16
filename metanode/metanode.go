@@ -122,6 +122,8 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
+	go m.startUpdateNodeInfo()
+
 	exporter.Init(cfg.GetString("role"), cfg)
 
 	// check local partition compare with master ,if lack,then not start
@@ -143,6 +145,7 @@ func doShutdown(s common.Server) {
 	if !ok {
 		return
 	}
+	m.stopUpdateNodeInfo()
 	// shutdown node and release the resource
 	m.stopServer()
 	m.stopMetaManager()
@@ -277,7 +280,7 @@ func (m *MetaNode) register() (err error) {
 	var nodeAddress string
 	for {
 		if step < 1 {
-			clusterInfo, err = getClientIP()
+			clusterInfo, err = getClusterInfo()
 			if err != nil {
 				log.LogErrorf("[register] %s", err.Error())
 				continue
@@ -305,7 +308,7 @@ func NewServer() *MetaNode {
 	return &MetaNode{}
 }
 
-func getClientIP() (ci *proto.ClusterInfo, err error) {
+func getClusterInfo() (ci *proto.ClusterInfo, err error) {
 	ci, err = masterClient.AdminAPI().GetClusterInfo()
 	return
 }
