@@ -347,7 +347,7 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", serverPort), time.Second)
 		if err != nil {
 			log.LogErrorf(fmt.Sprintf("HandleLeaderChange serverPort not exsit ,error %v", err))
-			mp.raftPartition.TryToLeader(mp.config.PartitionId)
+			go mp.raftPartition.TryToLeader(mp.config.PartitionId)
 			return
 		}
 		conn.(*net.TCPConn).SetLinger(0)
