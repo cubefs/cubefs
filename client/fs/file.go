@@ -205,10 +205,6 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		return
 	}
 
-	defer func() {
-		f.super.ic.Delete(ino)
-	}()
-
 	var waitForFlush, enSyncWrite bool
 	if isDirectIOEnabled(req.FileFlags) || (req.FileFlags&fuse.OpenSync != 0) {
 		waitForFlush = true
@@ -230,6 +226,10 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	resp.Size = size
 	if size != reqlen {
 		log.LogErrorf("Write: ino(%v) offset(%v) len(%v) size(%v)", ino, req.Offset, reqlen, size)
+	}
+
+	if req.Offset+int64(size) > int64(f.info.Size) {
+		f.info.Size = uint64(req.Offset) + uint64(size)
 	}
 
 	if waitForFlush {
@@ -298,7 +298,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 			log.LogErrorf("Setattr: truncate ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
-		f.super.ic.Delete(ino)
+		f.info.Size = req.Size
 		f.super.ec.RefreshExtentsCache(ino)
 	}
 
@@ -425,7 +425,6 @@ func (f *File) fileSize(ino uint64) (size int, gen uint64) {
 	log.LogDebugf("fileSize: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
 
 	if !valid {
-		f.super.ic.Delete(ino)
 		if info, err := f.super.InodeGet(ino); err == nil {
 			size = int(info.Size)
 			gen = info.Generation
