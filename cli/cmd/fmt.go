@@ -90,20 +90,23 @@ func formatNodeView(view *proto.NodeView, tableRow bool) string {
 func formatSimpleVolView(svv *proto.SimpleVolView) string {
 
 	var sb = strings.Builder{}
-	sb.WriteString(fmt.Sprintf("  ID                  : %v\n", svv.ID))
-	sb.WriteString(fmt.Sprintf("  Name                : %v\n", svv.Name))
-	sb.WriteString(fmt.Sprintf("  Owner               : %v\n", svv.Owner))
-	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", svv.ZoneName))
-	sb.WriteString(fmt.Sprintf("  Status              : %v\n", formatVolumeStatus(svv.Status)))
-	sb.WriteString(fmt.Sprintf("  Capacity            : %v GB\n", svv.Capacity))
-	sb.WriteString(fmt.Sprintf("  Create time         : %v\n", svv.CreateTime))
-	sb.WriteString(fmt.Sprintf("  Authenticate        : %v\n", formatEnabledDisabled(svv.Authenticate)))
-	sb.WriteString(fmt.Sprintf("  Follower read       : %v\n", formatEnabledDisabled(svv.FollowerRead)))
-	sb.WriteString(fmt.Sprintf("  Cross zone          : %v\n", formatEnabledDisabled(svv.CrossZone)))
-	sb.WriteString(fmt.Sprintf("  Meta partition count: %v\n", svv.MpCnt))
-	sb.WriteString(fmt.Sprintf("  Meta replicas       : %v\n", svv.MpReplicaNum))
-	sb.WriteString(fmt.Sprintf("  Data partition count: %v\n", svv.DpCnt))
-	sb.WriteString(fmt.Sprintf("  Data replicas       : %v", svv.DpReplicaNum))
+	sb.WriteString(fmt.Sprintf("  ID                   : %v\n", svv.ID))
+	sb.WriteString(fmt.Sprintf("  Name                 : %v\n", svv.Name))
+	sb.WriteString(fmt.Sprintf("  Owner                : %v\n", svv.Owner))
+	sb.WriteString(fmt.Sprintf("  Zone                 : %v\n", svv.ZoneName))
+	sb.WriteString(fmt.Sprintf("  Status               : %v\n", formatVolumeStatus(svv.Status)))
+	sb.WriteString(fmt.Sprintf("  Capacity             : %v GB\n", svv.Capacity))
+	sb.WriteString(fmt.Sprintf("  Create time          : %v\n", svv.CreateTime))
+	sb.WriteString(fmt.Sprintf("  Authenticate         : %v\n", formatEnabledDisabled(svv.Authenticate)))
+	sb.WriteString(fmt.Sprintf("  Follower read        : %v\n", formatEnabledDisabled(svv.FollowerRead)))
+	sb.WriteString(fmt.Sprintf("  Cross zone           : %v\n", formatEnabledDisabled(svv.CrossZone)))
+	sb.WriteString(fmt.Sprintf("  Inode count          : %v\n", svv.InodeCount))
+	sb.WriteString(fmt.Sprintf("  Dentry count         : %v\n", svv.DentryCount))
+	sb.WriteString(fmt.Sprintf("  Max metaPartition ID : %v\n", svv.MaxMetaPartitionID))
+	sb.WriteString(fmt.Sprintf("  Meta partition count : %v\n", svv.MpCnt))
+	sb.WriteString(fmt.Sprintf("  Meta replicas        : %v\n", svv.MpReplicaNum))
+	sb.WriteString(fmt.Sprintf("  Data partition count : %v\n", svv.DpCnt))
+	sb.WriteString(fmt.Sprintf("  Data replicas        : %v", svv.DpReplicaNum))
 	return sb.String()
 }
 
@@ -142,9 +145,9 @@ func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 }
 
 var (
-	metaPartitionTablePattern = "%-8v    %-12v    %-12v    %-12v    %-10v    %-18v    %-18v"
+	metaPartitionTablePattern = "%-8v    %-12v    %-10v    %-12v    %-12v    %-12v    %-8v    %-12v    %-18v"
 	metaPartitionTableHeader  = fmt.Sprintf(metaPartitionTablePattern,
-		"ID", "MAX INODE", "START", "END", "STATUS", "LEADER", "MEMBERS")
+		"ID", "MAX INODE", "DENTRY COUNT", "INODE COUNT", "START", "END", "STATUS", "LEADER", "MEMBERS")
 )
 
 func formatMetaPartitionTableRow(view *proto.MetaPartitionView) string {
@@ -155,7 +158,7 @@ func formatMetaPartitionTableRow(view *proto.MetaPartitionView) string {
 		return strconv.FormatUint(num, 10)
 	}
 	return fmt.Sprintf(metaPartitionTablePattern,
-		view.PartitionID, view.MaxInodeID, view.Start, rangeToString(view.End), formatMetaPartitionStatus(view.Status),
+		view.PartitionID, view.MaxInodeID, view.DentryCount, view.InodeCount, view.Start, rangeToString(view.End), formatMetaPartitionStatus(view.Status),
 		view.LeaderAddr, strings.Join(view.Members, ","))
 }
 

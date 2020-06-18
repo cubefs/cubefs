@@ -390,6 +390,8 @@ type MetaPartitionView struct {
 	Start       uint64
 	End         uint64
 	MaxInodeID  uint64
+	InodeCount  uint64
+	DentryCount uint64
 	IsRecover   bool
 	Members     []string
 	LeaderAddr  string
