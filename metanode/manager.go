@@ -162,6 +162,10 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 		err = m.opAppendMultipart(conn, p, remoteAddr)
 	case proto.OpGetMultipart:
 		err = m.opGetMultipart(conn, p, remoteAddr)
+	case proto.OpSetMetaNodeParams:
+		err = m.opSetMetaNodeParams(conn, p, remoteAddr)
+	case proto.OpGetMetaNodeParams:
+		err = m.opGetMetaNodeParams(conn, p, remoteAddr)
 	default:
 		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
 			p.Opcode, p.GetReqID())

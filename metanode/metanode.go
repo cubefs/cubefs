@@ -121,9 +121,6 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.registerAPIHandler(); err != nil {
 		return
 	}
-
-	go m.startUpdateNodeInfo()
-
 	exporter.Init(cfg.GetString("role"), cfg)
 
 	// check local partition compare with master ,if lack,then not start
@@ -145,7 +142,6 @@ func doShutdown(s common.Server) {
 	if !ok {
 		return
 	}
-	m.stopUpdateNodeInfo()
 	// shutdown node and release the resource
 	m.stopServer()
 	m.stopMetaManager()
@@ -174,11 +170,6 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 
 	if configTotalMem == 0 {
 		return fmt.Errorf("bad totalMem config,Recommended to be configured as 80 percent of physical machine memory")
-	}
-
-	deleteBatchCount := cfg.GetInt64(cfgDeleteBatchCount)
-	if deleteBatchCount > 1 {
-		SetDeleteBatchCount(uint64(deleteBatchCount))
 	}
 
 	total, _, err := util.GetMemInfo()

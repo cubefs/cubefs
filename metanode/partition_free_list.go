@@ -37,6 +37,7 @@ const (
 	DeleteWorkerCnt          = 10
 )
 
+
 func (mp *metaPartition) startFreeList() (err error) {
 	if mp.delInodeFp, err = os.OpenFile(path.Join(mp.config.RootDir,
 		DeleteInodeFileExtension), OpenRWAppendOpt, 0644); err != nil {
