@@ -250,6 +250,8 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			mp.applyID = appIndexID
 			mp.inodeTree = inodeTree
 			mp.dentryTree = dentryTree
+			mp.extendTree = extendTree
+			mp.multipartTree = multipartTree
 			mp.config.Cursor = cursor
 			err = nil
 			// store message
