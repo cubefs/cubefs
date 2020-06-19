@@ -137,27 +137,9 @@ func (mp *metaPartition) deleteWorker() {
 }
 
 // delete Extents by Partition,and find all successDelete inode
-func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents map[uint64][]*proto.ExtentKey, allInodes []*Inode) (shouldCommit []*Inode) {
-	occurErrors := make(map[uint64]error)
+func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents map[uint64][]proto.ExtentKey, allInodes []*Inode) (shouldCommit []*Inode) {
 	shouldCommit = make([]*Inode, 0, DeleteBatchCount())
-	var (
-		wg   sync.WaitGroup
-		lock sync.Mutex
-	)
-
-	//wait all Partition do BatchDeleteExtents fininsh
-	for partitionID, extents := range partitionDeleteExtents {
-		wg.Add(1)
-		go func(partitionID uint64, extents []*proto.ExtentKey) {
-			perr := mp.doBatchDeleteExtentsByPartition(partitionID, extents)
-			lock.Lock()
-			occurErrors[partitionID] = perr
-			lock.Unlock()
-			wg.Done()
-		}(partitionID, extents)
-	}
-	wg.Wait()
-
+	occurErrors:=mp.deleteExtentsByPartition(partitionDeleteExtents)
 	//range AllNode,find all Extents delete success on inode,it must to be append shouldCommit
 	for i := 0; i < len(allInodes); i++ {
 		successDeleteExtentCnt := 0
@@ -188,7 +170,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	}()
 	shouldCommit := make([]*Inode, 0, DeleteBatchCount())
 	allDeleteExtents := make(map[string]uint64)
-	deleteExtentsByPartition := make(map[uint64][]*proto.ExtentKey)
+	deleteExtentsByPartition := make(map[uint64][]proto.ExtentKey)
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
 		ref := &Inode{Inode: ino}
@@ -197,17 +179,16 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 			continue
 		}
 		inode.Extents.Range(func(ek proto.ExtentKey) bool {
-			ext := &ek
-			_, ok := allDeleteExtents[ext.GetExtentKey()]
+			_, ok := allDeleteExtents[ek.GetExtentKey()]
 			if !ok {
-				allDeleteExtents[ext.GetExtentKey()] = inode.Inode
+				allDeleteExtents[ek.GetExtentKey()] = inode.Inode
 			}
-			exts, ok := deleteExtentsByPartition[ext.PartitionId]
+			exts, ok := deleteExtentsByPartition[ek.PartitionId]
 			if !ok {
-				exts = make([]*proto.ExtentKey, 0)
+				exts = make([]proto.ExtentKey, 0)
 			}
-			exts = append(exts, ext)
-			deleteExtentsByPartition[ext.PartitionId] = exts
+			exts = append(exts, ek)
+			deleteExtentsByPartition[ek.PartitionId] = exts
 			return true
 		})
 		allInodes = append(allInodes, inode)
@@ -314,7 +295,7 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 	return
 }
 
-func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, exts []*proto.ExtentKey) (err error) {
+func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, exts []proto.ExtentKey) (err error) {
 	// get the data node view
 	dp := mp.vol.GetPartition(partitionID)
 	if dp == nil {

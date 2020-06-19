@@ -29,14 +29,16 @@ import (
 // MetaReplica defines the replica of a meta partition
 type MetaReplica struct {
 	Addr       string
-	start      uint64 // lower bound of the inode id
-	end        uint64 // upper bound of the inode id
-	nodeID     uint64
-	MaxInodeID uint64
-	ReportTime int64
-	Status     int8 // unavailable, readOnly, readWrite
-	IsLeader   bool
-	metaNode   *MetaNode
+	start       uint64 // lower bound of the inode id
+	end         uint64 // upper bound of the inode id
+	nodeID      uint64
+	MaxInodeID  uint64
+	InodeCount  uint64
+	DentryCount uint64
+	ReportTime  int64
+	Status      int8 // unavailable, readOnly, readWrite
+	IsLeader    bool
+	metaNode    *MetaNode
 }
 
 // MetaPartition defines the structure of a meta partition
@@ -618,6 +620,8 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	mr.Status = (int8)(mgr.Status)
 	mr.IsLeader = mgr.IsLeader
 	mr.MaxInodeID = mgr.MaxInodeID
+	mr.InodeCount = mgr.InodeCnt
+	mr.DentryCount = mgr.DentryCnt
 	mr.setLastReportTime()
 }
 
@@ -665,27 +669,6 @@ func (mp *MetaPartition) getMinusOfMaxInodeID() (minus float64) {
 	return
 }
 
-func (mp *MetaPartition) setInodeCount() {
-	var inodeCount uint64
-	for _, lr := range mp.LoadResponse {
-		if lr.InodeCount > inodeCount {
-			inodeCount = lr.InodeCount
-		}
-	}
-	mp.InodeCount = inodeCount
-}
-
-func (mp *MetaPartition) setDentryCount() {
-	var dentryCount uint64
-	for _, lr := range mp.LoadResponse {
-		if lr.DentryCount > dentryCount {
-			dentryCount = lr.DentryCount
-		}
-	}
-	mp.DentryCount = dentryCount
-}
-
-
 func (mp *MetaPartition) setMaxInodeID() {
 	var maxUsed uint64
 	for _, r := range mp.Replicas {
@@ -694,6 +677,26 @@ func (mp *MetaPartition) setMaxInodeID() {
 		}
 	}
 	mp.MaxInodeID = maxUsed
+}
+
+func (mp *MetaPartition) setInodeCount() {
+	var inodeCount uint64
+	for _, r := range mp.Replicas {
+		if r.InodeCount > inodeCount {
+			inodeCount = r.InodeCount
+		}
+	}
+	mp.InodeCount = inodeCount
+}
+
+func (mp *MetaPartition) setDentryCount() {
+	var dentryCount uint64
+	for _, r := range mp.Replicas {
+		if r.DentryCount > dentryCount {
+			dentryCount = r.DentryCount
+		}
+	}
+	mp.DentryCount = dentryCount
 }
 
 func (mp *MetaPartition) getAllNodeSets() (nodeSets []uint64) {

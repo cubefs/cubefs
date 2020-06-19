@@ -73,11 +73,24 @@ func (partition *DataPartition) checkReplicaStatusOnLiveNode(liveReplicas []*Dat
 }
 
 func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
-	partition.RLock()
-	defer partition.RUnlock()
+	partition.Lock()
+	defer partition.Unlock()
 	for _, replica := range partition.Replicas {
-		replica.isLive(timeOutSec)
+		if !replica.isLive(timeOutSec) {
+			replica.Status = proto.Unavailable
+		}
 	}
+}
+
+func (partition *DataPartition) checkLeader(timeOut int64) {
+	partition.Lock()
+	defer partition.Unlock()
+	for _, dr := range partition.Replicas {
+		if !dr.isLive(timeOut) {
+			dr.IsLeader = false
+		}
+	}
+	return
 }
 
 // Check if there is any missing replica for a data partition.
