@@ -37,6 +37,23 @@ const (
 	DeleteWorkerCnt          = 10
 )
 
+var (
+	flMu             sync.RWMutex
+	deleteBatchCount = uint64(BatchCounts)
+)
+
+func DeleteBatchCount() (batchCount uint64) {
+	flMu.RLock()
+	flMu.RUnlock()
+	return deleteBatchCount
+}
+
+func SetDeleteBatchCount(batchCount uint64) {
+	flMu.Lock()
+	deleteBatchCount = batchCount
+	flMu.Unlock()
+}
+
 func (mp *metaPartition) startFreeList() (err error) {
 	if mp.delInodeFp, err = os.OpenFile(path.Join(mp.config.RootDir,
 		DeleteInodeFileExtension), OpenRWAppendOpt, 0644); err != nil {

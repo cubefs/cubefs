@@ -114,10 +114,6 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					timer.Reset(intervalToPersistData)
 					continue
 				}
-				if atomic.LoadUint64(&mp.persistedApplyID)-curIndex < gapToPersistData {
-					timer.Reset(intervalToPersistData)
-					continue
-				}
 				if _, err := mp.submit(opFSMStoreTick, nil); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 					if _, ok := mp.IsLeader(); ok {
