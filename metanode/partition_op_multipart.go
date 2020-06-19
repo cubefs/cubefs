@@ -120,7 +120,7 @@ func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *P
 	)
 	for {
 		multipartId = util.CreateMultipartID(mp.config.PartitionId).String()
-		storedItem := mp.multipartTree.Get(&Multipart{id: multipartId})
+		storedItem := mp.multipartTree.Get(&Multipart{key: req.Path, id: multipartId})
 		if storedItem == nil {
 			break
 		}
@@ -169,7 +169,7 @@ func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packe
 		matches = append(matches, multipart)
 		return !(len(matches) >= max)
 	}
-	if len(keyMarker) > 0 || len(multipartIdMarker) > 0 {
+	if len(keyMarker) > 0 {
 		mp.multipartTree.AscendGreaterOrEqual(&Multipart{key: keyMarker, id: multipartIdMarker}, walkTreeFunc)
 	} else {
 		mp.multipartTree.Ascend(walkTreeFunc)
