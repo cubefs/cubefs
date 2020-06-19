@@ -87,12 +87,8 @@ func (mp *metaPartition)forceDeleteExtents(needDeleteExtents []proto.ExtentKey){
 	for partitionID,extents:=range extentsByPartition {
 		if occurErrors[partitionID]!=nil {
 			mp.extDelCh<-extents
-			log.LogErrorf("forceDeleteExtents on dataPartition(%v) error(%v) cnt(%v)",partitionID,occurErrors[partitionID],len(extents))
-		}else {
-			log.LogInfof("forceDeleteExtents on dataPartition(%v) successDelete cnt(%v)",partitionID,len(extents))
 		}
 	}
-	log.LogInfof("forceDeleteExtents success Delete Extent Cnt(%v)",len(needDeleteExtents))
 }
 
 
