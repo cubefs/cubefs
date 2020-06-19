@@ -660,6 +660,10 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 			repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, info)
 			continue
 		}
+		if !AutoRepairStatus {
+			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)",extentInfo.String())
+			continue
+		}
 		err := store.Create(uint64(extentInfo.FileID))
 		if err != nil {
 			continue

@@ -224,6 +224,10 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 func (dp *DataPartition) DoRepair(repairTasks []*DataPartitionRepairTask) {
 	store := dp.extentStore
 	for _, extentInfo := range repairTasks[0].ExtentsToBeCreated {
+		if !AutoRepairStatus {
+			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)",extentInfo.String())
+			continue
+		}
 		store.Create(extentInfo.FileID)
 	}
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
@@ -436,6 +440,10 @@ func (dp *DataPartition) applyRepairKey(extentID int) (m string) {
 func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo) (err error) {
 	store := dp.ExtentStore()
 	if !store.HasExtent(remoteExtentInfo.FileID) {
+		return
+	}
+	if !AutoRepairStatus && !storage.IsTinyExtent(remoteExtentInfo.FileID) {
+		log.LogWarnf("AutoRepairStatus is False,so cannot AutoRepair extent(%v)",remoteExtentInfo.String())
 		return
 	}
 	localExtentInfo, err := store.Watermark(remoteExtentInfo.FileID)
