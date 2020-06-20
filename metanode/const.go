@@ -157,7 +157,7 @@ const (
 	intervalToSyncCursor  = time.Minute * 1
 
 	// The minimum gap of the last ApplyID that triggered the current ApplyID of the persistent data.
-	gapToPersistData = 100
+	gapToPersistData = 1000
 )
 
 const (
