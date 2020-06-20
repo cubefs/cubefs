@@ -204,11 +204,11 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.DecommissionDisk).
 		HandlerFunc(m.decommissionDisk)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminSetNodeInfo).
-		HandlerFunc(m.setNodeInfoHandler)
+		Path(proto.AdminSetMetaNodeParams).
+		HandlerFunc(m.setMetaNodeParams)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminGetNodeInfo).
-		HandlerFunc(m.getNodeInfoHandler)
+		Path(proto.AdminGetMetaNodeParams).
+		HandlerFunc(m.getMetaNodeParams)
 
 	// user management APIs
 	router.NewRoute().Methods(http.MethodPost).

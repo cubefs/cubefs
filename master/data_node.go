@@ -25,14 +25,14 @@ import (
 
 // DataNode stores all the information about a data node
 type DataNode struct {
-	Total          uint64 `json:"TotalWeight"`
-	Used           uint64 `json:"UsedWeight"`
-	AvailableSpace uint64
-	ID             uint64
-	ZoneName       string `json:"Zone"`
-	Addr           string
-	ReportTime     time.Time
-	isActive       bool
+	Total                     uint64 `json:"TotalWeight"`
+	Used                      uint64 `json:"UsedWeight"`
+	AvailableSpace            uint64
+	ID                        uint64
+	ZoneName                  string `json:"Zone"`
+	Addr                      string
+	ReportTime                time.Time
+	isActive                  bool
 	sync.RWMutex
 	UsageRatio                float64 // used / total space
 	SelectedTimes             uint64  // number times that this datanode has been selected as the location for a data partition.
