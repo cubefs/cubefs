@@ -34,8 +34,8 @@ const (
 	AdminCreateMetaPartition       = "/metaPartition/create"
 	AdminSetMetaNodeThreshold      = "/threshold/set"
 	AdminListVols                  = "/vol/list"
-	AdminSetNodeInfo               = "/admin/setNodeInfo"
-	AdminGetNodeInfo               = "/admin/getNodeInfo"
+	AdminSetMetaNodeParams         = "/metaNode/setParams"
+	AdminGetMetaNodeParams         = "/metaNode/getParams"
 
 	// Client APIs
 	ClientDataPartitions = "/client/partitions"
@@ -120,10 +120,8 @@ type RegisterMetaNodeResp struct {
 
 // ClusterInfo defines the cluster infomation.
 type ClusterInfo struct {
-	Cluster                  string
-	Ip                       string
-	MetaNodeDeleteBatchCount uint64
-	DataNodeDeleteLimitRate  uint64
+	Cluster string
+	Ip      string
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -234,6 +232,20 @@ type LoadMetaPartitionMetricResponse struct {
 type HeartBeatRequest struct {
 	CurrTime   int64
 	MasterAddr string
+}
+
+type SetMetaNodeParamsRequest struct {
+	BatchCount uint64
+}
+
+type SetMetaNodeParamsResponse struct {
+}
+
+type GetMetaNodeParamsRequest struct {
+}
+
+type GetMetaNodeParamsResponse struct {
+	BatchCount uint64
 }
 
 // PartitionReport defines the partition report.

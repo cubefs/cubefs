@@ -239,12 +239,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
-	cInfo := &proto.ClusterInfo{
-		Cluster:                  m.cluster.Name,
-		MetaNodeDeleteBatchCount: m.cluster.cfg.MetaNodeDeleteBatchCount,
-		DataNodeDeleteLimitRate:  m.cluster.cfg.DataNodeDeleteLimitRate,
-		Ip:                       strings.Split(r.RemoteAddr, ":")[0],
-	}
+	cInfo := &proto.ClusterInfo{Cluster: m.cluster.Name, Ip: strings.Split(r.RemoteAddr, ":")[0]}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
 
@@ -740,41 +735,51 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
-func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
+// set metanode some interval params
+func (m *Server) setMetaNodeParams(w http.ResponseWriter, r *http.Request) {
 	var (
+		hosts  []string
 		params map[string]interface{}
 		err    error
 	)
-	if params, err = parseAndExtractSetNodeInfoParams(r); err != nil {
+	if hosts, params, err = parseAndExtractSetMetaNodeParams(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	if batchCount, ok := params[nodeDeleteBatchCountKey]; ok {
+	resp := make(map[string]interface{})
+	if batchCount, ok := params[metaNodeDeleteBatchCountKey]; ok {
 		if bc, ok := batchCount.(uint64); ok {
-			if err = m.cluster.setMetaNodeDeleteBatchCount(bc); err != nil {
+			if err = m.cluster.setMetaNodeParams(hosts, bc); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
+			resp[metaNodeDeleteBatchCountKey] = bc
 		}
 	}
-	if val, ok := params[nodeMarkDeleteRateKey]; ok {
-		if v, ok := val.(uint64); ok {
-			if err = m.cluster.setDataNodeDeleteLimitRate(v); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-		}
-	}
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodeinfo params %v successfully", params)))
 
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set metanode params %v successfully", resp)))
 }
 
 // get metanode some interval params
-func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
-	resp := make(map[string]string)
-	resp[nodeDeleteBatchCountKey] = fmt.Sprintf("%v", m.cluster.cfg.MetaNodeDeleteBatchCount)
-	resp[nodeMarkDeleteRateKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeDeleteLimitRate)
+func (m *Server) getMetaNodeParams(w http.ResponseWriter, r *http.Request) {
+	var (
+		hosts []string
+		err   error
+	)
+	if hosts, err = parseAndExtractGetMetaNodeParams(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	resp := make(map[string]interface{})
+	batchCounts := make(map[string]uint64)
+	if batchCounts, err = m.cluster.getMetaNodeParams(hosts); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	resp[metaNodeDeleteBatchCountKey] = batchCounts
 
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", resp)))
 }
@@ -1439,37 +1444,40 @@ func parseAndExtractThreshold(r *http.Request) (threshold float64, err error) {
 	return
 }
 
-func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interface{}, err error) {
+func parseAndExtractGetMetaNodeParams(r *http.Request) (hosts []string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
 	var value string
+	if value = r.FormValue(metaNodeHostsKey); value != "" {
+		hosts = strings.Split(value, ",")
+	}
+	return
+}
+
+func parseAndExtractSetMetaNodeParams(r *http.Request) (hosts []string, params map[string]interface{}, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var value string
+	if value = r.FormValue(metaNodeHostsKey); value != "" {
+		hosts = strings.Split(value, ",")
+	}
 	noParams := true
 	params = make(map[string]interface{})
-	if value = r.FormValue(nodeDeleteBatchCountKey); value != "" {
+	if value = r.FormValue(metaNodeDeleteBatchCountKey); value != "" {
 		noParams = false
 		var batchCount = uint64(0)
 		batchCount, err = strconv.ParseUint(value, 10, 64)
 		if err != nil {
-			err = unmatchedKey(nodeDeleteBatchCountKey)
+			err = unmatchedKey(metaNodeDeleteBatchCountKey)
 			return
 		}
-		params[nodeDeleteBatchCountKey] = batchCount
-
-	}
-	if value = r.FormValue(nodeMarkDeleteRateKey); value != "" {
-		noParams = false
-		var val = uint64(0)
-		val, err = strconv.ParseUint(value, 10, 64)
-		if err != nil {
-			err = unmatchedKey(nodeMarkDeleteRateKey)
-			return
-		}
-		params[nodeMarkDeleteRateKey] = val
+		params[metaNodeDeleteBatchCountKey] = batchCount
 
 	}
 	if noParams {
-		err = keyNotFound(nodeDeleteBatchCountKey)
+		err = keyNotFound(metaNodeDeleteBatchCountKey)
 		return
 	}
 	return
