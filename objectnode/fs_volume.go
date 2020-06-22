@@ -576,37 +576,6 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 		return nil, err
 	}
 
-	var (
-		existMode uint32
-	)
-	_, existMode, err = v.mw.Lookup_ll(parentId, lastPathItem.Name)
-	if err != nil && err != syscall.ENOENT {
-		log.LogErrorf("PutObject: meta lookup fail: parentID(%v) name(%v) err(%v)", parentId, lastPathItem.Name, err)
-		return
-	}
-
-	if err == syscall.ENOENT {
-		if err = v.applyInodeToNewDentry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode); err != nil {
-			log.LogErrorf("PutObject: apply inode to new dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
-				parentId, lastPathItem.Name, invisibleTempDataInode.Inode, err)
-			return
-		}
-		log.LogDebugf("PutObject: apply inode to new dentry: parentID(%v) name(%v) inode(%v)",
-			parentId, lastPathItem.Name, invisibleTempDataInode.Inode)
-	} else {
-		if os.FileMode(existMode).IsDir() {
-			log.LogErrorf("PutObject: target mode conflict: parentID(%v) name(%v) mode(%v)",
-				parentId, lastPathItem.Name, os.FileMode(existMode).String())
-			err = syscall.EINVAL
-			return
-		}
-		if err = v.applyInodeToExistDentry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode); err != nil {
-			log.LogErrorf("PutObject: apply inode to exist dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
-				parentId, lastPathItem.Name, invisibleTempDataInode.Inode, err)
-			return
-		}
-	}
-
 	var finalInode *proto.InodeInfo
 	if finalInode, err = v.mw.InodeGet_ll(invisibleTempDataInode.Inode); err != nil {
 		log.LogErrorf("PutObject: get final inode fail: volume(%v) path(%v) inode(%v) err(%v)",
@@ -691,7 +660,46 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 		Inode:      finalInode.Inode,
 	}
 
+	// apply new inode to dentry
+	err = v.applyInodeToDEntry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode)
+	if err != nil {
+		log.LogErrorf("PutObject: apply new inode to dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
+			parentId, lastPathItem.Name, invisibleTempDataInode.Inode, err)
+		return
+	}
 	return fsInfo, nil
+}
+
+func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64) (err error) {
+	var existMode uint32
+	_, existMode, err = v.mw.Lookup_ll(parentId, name)
+	if err != nil && err != syscall.ENOENT {
+		log.LogErrorf("applyInodeToDEntry: meta lookup fail: parentID(%v) name(%v) err(%v)", parentId, name, err)
+		return
+	}
+
+	if err == syscall.ENOENT {
+		if err = v.applyInodeToNewDentry(parentId, name, inode); err != nil {
+			log.LogErrorf("applyInodeToDEntry: apply inode to new dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
+				parentId, name, inode, err)
+			return
+		}
+		log.LogDebugf("applyInodeToDEntry: apply inode to new dentry: parentID(%v) name(%v) inode(%v)",
+			parentId, name, inode)
+	} else {
+		if os.FileMode(existMode).IsDir() {
+			log.LogErrorf("applyInodeToDEntry: target mode conflict: parentID(%v) name(%v) mode(%v)",
+				parentId, name, os.FileMode(existMode).String())
+			err = syscall.EINVAL
+			return
+		}
+		if err = v.applyInodeToExistDentry(parentId, name, inode); err != nil {
+			log.LogErrorf("applyInodeToDEntry: apply inode to exist dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
+				parentId, name, inode, err)
+			return
+		}
+	}
+	return
 }
 
 // DeletePath deletes the specified path.
@@ -993,41 +1001,12 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 	var (
 		pathItems = NewPathIterator(path).ToSlice()
 		filename  = pathItems[len(pathItems)-1].Name
-		existMode uint32
 		parentId  uint64
 	)
 	if parentId, err = v.recursiveMakeDirectory(path); err != nil {
 		log.LogErrorf("PutObject: recursive make directory fail: volume(%v) path(%v) err(%v)",
 			v.name, path, err)
 		return
-	}
-
-	_, existMode, err = v.mw.Lookup_ll(parentId, filename)
-	if err != nil && err != syscall.ENOENT {
-		log.LogErrorf("CompleteMultipart: meta lookup fail: parentID(%v) name(%v) err(%v)", parentId, filename, err)
-		return
-	}
-
-	if err == syscall.ENOENT {
-		if err = v.applyInodeToNewDentry(parentId, filename, completeInodeInfo.Inode); err != nil {
-			log.LogErrorf("CompleteMultipart: apply inode to new dentry fail: volume(%v) path(%v) multipartID(%v) parentID(%v) name(%v) inode(%v) err(%v)",
-				v.name, path, multipartID, parentId, filename, completeInodeInfo.Inode, err)
-			return
-		}
-		log.LogDebugf("CompleteMultipart: apply inode to new dentry: volume(%v) path(%v) multipartID(%v) parentID(%v) name(%v) inode(%v)",
-			v.name, path, multipartID, parentId, filename, completeInodeInfo.Inode)
-	} else {
-		if os.FileMode(existMode).IsDir() {
-			log.LogErrorf("CompleteMultipart: target mode conflict: volume(%v) path(%v) multipartID(%v) parentID(%v) name(%v) mode(%v)",
-				v.name, path, multipartID, parentId, filename, os.FileMode(existMode).String())
-			err = syscall.EINVAL
-			return
-		}
-		if err = v.applyInodeToExistDentry(parentId, filename, completeInodeInfo.Inode); err != nil {
-			log.LogErrorf("CompleteMultipart: apply inode to exist dentry fail: volume(%v) path(%v) multipartID(%v) parentID(%v) name(%v) inode(%v) err(%v)",
-				v.name, path, multipartID, parentId, filename, completeInodeInfo.Inode, err)
-			return
-		}
 	}
 
 	var finalInode *proto.InodeInfo
@@ -1091,6 +1070,13 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		ModifyTime: time.Now(),
 		ETag:       etagValue.ETag(),
 		Inode:      finalInode.Inode,
+	}
+
+	// apply new inode to dentry
+	err = v.applyInodeToDEntry(parentId, filename, completeInodeInfo.Inode)
+	if err != nil {
+		log.LogErrorf("CompleteMultipart: apply new inode to dentry fail, parent id (%v), file name(%v), inode(%v)",
+			parentId, filename, completeInodeInfo.Inode)
 	}
 	return fInfo, nil
 }
@@ -2187,35 +2173,6 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		TS:      finalInode.ModifyTime,
 	}
 
-	var teMode os.FileMode
-	_, _, _, teMode, err = v.recursiveLookupTarget(targetPath)
-	if err != nil && err != syscall.ENOENT {
-		log.LogErrorf("CopyFile: meta lookup fail: volume(%v) target path(%v) err(%v)", v.name, targetPath, err)
-		return
-	}
-
-	if err == syscall.ENOENT {
-		if err = v.applyInodeToNewDentry(tParentId, tLastName, tInodeInfo.Inode); err != nil {
-			log.LogErrorf("CopyFile: apply inode to new dentry fail: path(%v) parentID(%v) name(%v) inode(%v) err(%v)",
-				targetPath, tParentId, tLastName, tInodeInfo.Inode, err)
-			return
-		}
-		log.LogDebugf("CopyFile: apply inode to new dentry: path(%v) parentID(%v) name(%v) inode(%v)",
-			targetPath, tParentId, tLastName, tInodeInfo.Inode)
-	} else {
-		if teMode.IsDir() {
-			log.LogErrorf("CopyFile: target mode conflict: path(%v) parentID(%v) name(%v) mode(%v)",
-				targetPath, tParentId, tLastName, teMode.String())
-			err = syscall.EINVAL
-			return
-		}
-		if err = v.applyInodeToExistDentry(tParentId, tLastName, tInodeInfo.Inode); err != nil {
-			log.LogErrorf("CopyFile: apply inode to exist dentry fail: path(%v) parentID(%v) name(%v) inode(%v) err(%v)",
-				targetPath, tParentId, tLastName, tInodeInfo.Inode, err)
-			return
-		}
-	}
-
 	// Save target file ETag
 	if err = v.mw.XAttrSet_ll(finalInode.Inode, []byte(XAttrKeyOSSETag), []byte(etagValue.Encode())); err != nil {
 		log.LogErrorf("CopyFile: store target file ETag fail: volume(%v) path(%v) inode(%v) key(%v) val(%v) err(%v)",
@@ -2307,6 +2264,13 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		ModifyTime: tInodeInfo.ModifyTime,
 		ETag:       md5Value,
 		Inode:      tInodeInfo.Inode,
+	}
+
+	// apply new inode to dentry
+	err = v.applyInodeToDEntry(tParentId, tLastName, tInodeInfo.Inode)
+	if err != nil {
+		log.LogErrorf("CopyFile: apply inode to new dentry fail: path(%v) parentID(%v) name(%v) inode(%v) err(%v)",
+			targetPath, tParentId, tLastName, tInodeInfo.Inode, err)
 	}
 	return
 }
