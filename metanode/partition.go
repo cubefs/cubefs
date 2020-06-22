@@ -188,6 +188,7 @@ type MetaPartition interface {
 	Start() error
 	Stop()
 	OpMeta
+	LoadSnapshot(path string) error
 }
 
 // metaPartition manages the range of the inode IDs.
@@ -417,6 +418,23 @@ func (mp *metaPartition) GetCursor() uint64 {
 func (mp *metaPartition) PersistMetadata() (err error) {
 	mp.config.sortPeers()
 	err = mp.persistMetadata()
+	return
+}
+
+func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
+	if err = mp.loadInode(snapshotPath); err != nil {
+		return
+	}
+	if err = mp.loadDentry(snapshotPath); err != nil {
+		return
+	}
+	if err = mp.loadExtend(snapshotPath); err != nil {
+		return
+	}
+	if err = mp.loadMultipart(snapshotPath); err != nil {
+		return
+	}
+	err = mp.loadApplyID(snapshotPath)
 	return
 }
 

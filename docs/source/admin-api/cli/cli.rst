@@ -17,7 +17,7 @@ Usage
 
 In the directory ``chubaofs/cli``, execute the command ``./cli --help`` or ``./cli -h`` to get the CLI help document.
 
-CLI is mainly divided into six types of management commands.
+CLI is mainly divided into seven types of management commands.
 
 .. csv-table:: Commands List
    :header: "Command", "description"
@@ -28,6 +28,7 @@ CLI is mainly divided into six types of management commands.
    "cli datapartition", "Manage data partitions"
    "cli volume, vol", "Manage cluster volumes"
    "cli user", "Manage cluster users"
+   "cli compatibility", "Compatibility test"
 
 Cluster Management
 >>>>>>>>>>>>>>>>>>>>>>>
@@ -144,3 +145,24 @@ User Management
         --user-type string                      #Update user type [normal | admin]
         -y, --yes                               #Answer yes for all questions
 
+
+Compatibility Test
+>>>>>>>>>>>>>>>>>>>>>>>>
+
+.. code-block:: bash
+
+    ./cli cptest meta [Snapshot Path] [Host] [Partition ID]         #Metadata compatibility test
+    Parameters：
+            [Snapshot Path] string                     #The path which snapshot file located
+            [Host] string                              #The metanode host which generated the snapshot file
+            [Partition ID] string                      #The meta partition ID which to be compared
+Example:
+    1. Use the old version to prepare metadata, stop writing metadata,after waiting for the latest snapshot to be generated(about 5 minutes), copy the snapshot file to the local machine
+    2. Execute the metadata comparison command on local machine
+
+    .. code-block:: bash
+
+        [Verify result]
+        All dentry are consistent
+        All inodes are consistent
+        All meta has checked

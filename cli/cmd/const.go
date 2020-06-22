@@ -26,6 +26,7 @@ const (
 	CliOpSet          = "set"
 	CliOpDecommission = "decommission"
 	CliOpDownloadZip  = "load"
+	CliOpMetaCompatibility = "meta"
 
 	//Shorthand format of operation name
 	CliOpDecommissionShortHand = "dec"
