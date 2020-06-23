@@ -69,10 +69,10 @@ func (mp *metaPartition) startDeleteExtentsByPartition(deleteExtentsByPartition 
 	occurErrors = make(map[uint64]error)
 	for partitionID, extents := range deleteExtentsByPartition {
 		wg.Add(1)
-		go func(partitionID uint64, needDelExtents []proto.ExtentKey) {
-			perr := mp.doBatchDeleteExtentsByPartition(partitionID, needDelExtents)
+		go func(delPartitionID uint64, delExtents []proto.ExtentKey) {
+			delErr := mp.doBatchDeleteExtentsByPartition(delPartitionID, delExtents)
 			lock.Lock()
-			occurErrors[partitionID] = perr
+			occurErrors[delPartitionID] = delErr
 			lock.Unlock()
 			wg.Done()
 		}(partitionID, extents)
@@ -84,15 +84,19 @@ func (mp *metaPartition) startDeleteExtentsByPartition(deleteExtentsByPartition 
 func (mp *metaPartition)forceDeleteExtents(needDeleteExtents []proto.ExtentKey){
 	extentsByPartition :=mp.divideExtentsByPartition(needDeleteExtents)
 	occurErrors:=mp.startDeleteExtentsByPartition(extentsByPartition)
+	successDelExtents:=0
 	for partitionID,extents:=range extentsByPartition {
 		if occurErrors[partitionID]!=nil {
-			mp.extDelCh<-extents
+			failedExtents:=make([]proto.ExtentKey,0,len(extents))
+			copy(failedExtents,extents)
+			mp.extDelCh<-failedExtents
 			log.LogErrorf("forceDeleteExtents on dataPartition(%v) error(%v) cnt(%v)",partitionID,occurErrors[partitionID],len(extents))
 		}else {
+			successDelExtents+=len(extents)
 			log.LogInfof("forceDeleteExtents on dataPartition(%v) successDelete cnt(%v)",partitionID,len(extents))
 		}
 	}
-	log.LogInfof("forceDeleteExtents success Delete Extent Cnt(%v)",len(needDeleteExtents))
+	log.LogInfof("forceDeleteExtents success Delete Extent Cnt(%v)",successDelExtents)
 }
 
 
