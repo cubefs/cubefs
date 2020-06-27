@@ -824,7 +824,7 @@ func (mw *MetaWrapper) ListMultipart_ll(prefix, delimiter, keyMarker string, mul
 
 	// reorder sessions by path
 	sort.SliceStable(sessions, func(i, j int) bool {
-		return sessions[i].Path+sessions[i].ID < sessions[j].Path+sessions[j].ID
+		return (sessions[i].Path < sessions[j].Path) || ((sessions[i].Path == sessions[j].Path) && (sessions[i].ID < sessions[j].ID))
 	})
 	return sessions, nil
 }
