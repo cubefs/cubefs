@@ -566,6 +566,10 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 	if metaNode, err = c.metaNode(nodeAddr); err != nil {
 		goto errHandler
 	}
+
+	if metaNode.ToBeOffline {
+		return
+	}
 	if resp.ZoneName == "" {
 		resp.ZoneName = DefaultZoneName
 	}
@@ -737,6 +741,9 @@ func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataN
 
 	if dataNode, err = c.dataNode(nodeAddr); err != nil {
 		goto errHandler
+	}
+	if dataNode.ToBeOffline {
+		return
 	}
 	if resp.ZoneName == "" {
 		resp.ZoneName = DefaultZoneName
