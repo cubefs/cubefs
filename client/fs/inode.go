@@ -42,7 +42,6 @@ func (s *Super) InodeGet(ino uint64) (*proto.InodeInfo, error) {
 			return nil, fuse.ENOENT
 		}
 	}
-	s.ic.Put(info)
 	s.ec.RefreshExtentsCache(ino)
 	return info, nil
 }

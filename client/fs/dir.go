@@ -138,14 +138,11 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 		return nil, ParseError(err)
 	}
 
-	d.super.ic.Put(info)
 	child := NewDir(d.super, info)
 
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
 	d.super.fslock.Unlock()
-
-	d.super.ic.Delete(d.info.Inode)
 
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Mkdir: parent(%v) req(%v) ino(%v) (%v)ns", d.info.Inode, req, info.Inode, elapsed.Nanoseconds())
@@ -342,7 +339,6 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 		return nil, ParseError(err)
 	}
 
-	d.super.ic.Put(info)
 	child := NewFile(d.super, info)
 
 	d.super.fslock.Lock()
@@ -369,7 +365,6 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 		return nil, ParseError(err)
 	}
 
-	d.super.ic.Put(info)
 	child := NewFile(d.super, info)
 
 	d.super.fslock.Lock()
@@ -407,8 +402,6 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 		log.LogErrorf("Link: parent(%v) name(%v) ino(%v) err(%v)", d.info.Inode, req.NewName, oldInode.Inode, err)
 		return nil, ParseError(err)
 	}
-
-	d.super.ic.Put(info)
 
 	d.super.fslock.Lock()
 	newFile, ok := d.super.nodeCache[info.Inode]
