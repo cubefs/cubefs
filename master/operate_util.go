@@ -28,6 +28,16 @@ import (
 	"time"
 )
 
+func newCreateEcDataPartitionRequest(volName string, ID uint64, partitionSize int, hosts []string) (req *proto.CreateEcDataPartitionRequest) {
+	req = &proto.CreateEcDataPartitionRequest{
+		PartitionId:   ID,
+		PartitionSize: partitionSize,
+		VolumeId:      volName,
+		Hosts:         hosts,
+	}
+	return
+}
+
 func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize int, hosts []string, createType int) (req *proto.CreateDataPartitionRequest) {
 	req = &proto.CreateDataPartitionRequest{
 		PartitionId:   ID,
@@ -95,6 +105,7 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 		response = &proto.MetaPartitionDecommissionResponse{}
 	case proto.OpCodecNodeHeartbeat:
 	case proto.OpEcNodeHeartbeat:
+		response = &proto.EcNodeHeartbeatResponse{}
 	default:
 		log.LogError(fmt.Sprintf("unknown operate code(%v)", task.OpCode))
 	}

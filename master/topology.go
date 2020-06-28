@@ -19,6 +19,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"math"
 	"sort"
 	"sync"
 )
@@ -26,9 +27,11 @@ import (
 type topology struct {
 	dataNodes            *sync.Map
 	metaNodes            *sync.Map
+	ecNodes              *sync.Map
 	zoneMap              *sync.Map
 	zoneIndexForDataNode int
 	zoneIndexForMetaNode int
+	zoneIndexForEcNode   int
 	zones                []*Zone
 	zoneLock             sync.RWMutex
 }
@@ -38,6 +41,7 @@ func newTopology() (t *topology) {
 	t.zoneMap = new(sync.Map)
 	t.dataNodes = new(sync.Map)
 	t.metaNodes = new(sync.Map)
+	t.ecNodes = new(sync.Map)
 	t.zones = make([]*Zone, 0)
 	return
 }
@@ -109,6 +113,19 @@ func (t *topology) putDataNode(dataNode *DataNode) (err error) {
 
 	zone.putDataNode(dataNode)
 	t.putDataNodeToCache(dataNode)
+	return
+}
+
+func (t *topology) putEcNode(ecNode *ECNode) (err error) {
+	if _, ok := t.ecNodes.Load(ecNode.Addr); ok {
+		return
+	}
+	t.ecNodes.Store(ecNode.Addr, ecNode)
+	zone, err := t.getZone(ecNode.ZoneName)
+	if err != nil {
+		return
+	}
+	zone.putEcNode(ecNode)
 	return
 }
 
@@ -349,7 +366,6 @@ func (t *topology) allocZonesForMetaNode(zoneNum, replicaNum int, excludeZone []
 
 func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []string) (zones []*Zone, err error) {
 	zones = t.getAllZones()
-	fmt.Printf("len(zones) = %v \n", len(zones))
 	if t.isSingleZone() {
 		return zones, nil
 	}
@@ -388,6 +404,45 @@ func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []
 	return
 }
 
+func (t *topology) allocZonesForEcNode(zoneNum, replicaNum int, excludeZones []string) (zones []*Zone, err error) {
+	zones = t.getAllZones()
+	if t.isSingleZone() {
+		return zones, nil
+	}
+	if excludeZones == nil {
+		excludeZones = make([]string, 0)
+	}
+	demandWriteNodes := math.Ceil(float64(replicaNum) / float64(zoneNum))
+	candidateZones := make([]*Zone, 0)
+	for i := 0; i < len(zones); i++ {
+		if t.zoneIndexForEcNode >= len(zones) {
+			t.zoneIndexForEcNode = 0
+		}
+		zone := t.getZoneByIndex(t.zoneIndexForEcNode)
+		t.zoneIndexForEcNode++
+		if zone.status == unavailableZone {
+			continue
+		}
+		if contains(excludeZones, zone.name) {
+			continue
+		}
+		if zone.canWriteForEcNode(uint8(demandWriteNodes)) {
+			candidateZones = append(candidateZones, zone)
+		}
+		if len(candidateZones) >= zoneNum {
+			break
+		}
+	}
+	if len(candidateZones) < zoneNum {
+		log.LogError(fmt.Sprintf("action[allocZonesForEcNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
+			zoneNum, len(candidateZones), demandWriteNodes, proto.ErrNoZoneToCreateDataPartition))
+		return nil, errors.NewError(proto.ErrNoZoneToCreateDataPartition)
+	}
+	zones = candidateZones
+	err = nil
+	return
+}
+
 func (ns *nodeSet) dataNodeCount() int {
 	var count int
 	ns.dataNodes.Range(func(key, value interface{}) bool {
@@ -409,6 +464,7 @@ type Zone struct {
 	status              int
 	dataNodes           *sync.Map
 	metaNodes           *sync.Map
+	ecNodes             *sync.Map
 	nodeSetMap          map[uint64]*nodeSet
 	nsLock              sync.RWMutex
 	sync.RWMutex
@@ -419,6 +475,7 @@ func newZone(name string) (zone *Zone) {
 	zone.status = normalZone
 	zone.dataNodes = new(sync.Map)
 	zone.metaNodes = new(sync.Map)
+	zone.ecNodes = new(sync.Map)
 	zone.nodeSetMap = make(map[uint64]*nodeSet)
 	return
 }
@@ -524,6 +581,11 @@ func (zone *Zone) putDataNode(dataNode *DataNode) (err error) {
 	return
 }
 
+func (zone *Zone) putEcNode(ecNode *ECNode) (err error) {
+	zone.ecNodes.Store(ecNode.Addr, ecNode)
+	return
+}
+
 func (zone *Zone) getDataNode(addr string) (dataNode *DataNode, err error) {
 	value, ok := zone.dataNodes.Load(addr)
 	if !ok {
@@ -614,6 +676,25 @@ func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum u
 	return nil, proto.ErrNoNodeSetToCreateMetaPartition
 }
 
+func (zone *Zone) canWriteForEcNode(replicaNum uint8) (can bool) {
+	zone.RLock()
+	defer zone.RUnlock()
+	var leastAlive uint8
+	zone.ecNodes.Range(func(addr, value interface{}) bool {
+		ecNode := value.(*ECNode)
+		if ecNode.isActive == true && ecNode.isWriteAble() == true {
+			leastAlive++
+		}
+		if leastAlive >= replicaNum {
+			can = true
+			return false
+		}
+		return true
+	})
+	fmt.Printf("canWriteForEcNode leastAlive[%v],replicaNum[%v],count[%v]\n", leastAlive, replicaNum, zone.ecNodeCount())
+	return
+}
+
 func (zone *Zone) canWriteForDataNode(replicaNum uint8) (can bool) {
 	zone.RLock()
 	defer zone.RUnlock()
@@ -662,6 +743,13 @@ func (zone *Zone) getDataNodeMaxTotal() (maxTotal uint64) {
 	return
 }
 
+func (zone *Zone) getAvailEcNodeHosts(excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+	if replicaNum == 0 {
+		return
+	}
+	return getAvailHosts(zone.ecNodes, excludeHosts, replicaNum, selectEcNode)
+}
+
 func (zone *Zone) getAvailDataNodeHosts(excludeNodeSets []uint64, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
 	if replicaNum == 0 {
 		return
@@ -688,6 +776,15 @@ func (zone *Zone) getAvailMetaNodeHosts(excludeNodeSets []uint64, excludeHosts [
 func (zone *Zone) dataNodeCount() (len int) {
 
 	zone.dataNodes.Range(func(key, value interface{}) bool {
+		len++
+		return true
+	})
+	return
+}
+
+func (zone *Zone) ecNodeCount() (len int) {
+
+	zone.ecNodes.Range(func(key, value interface{}) bool {
 		len++
 		return true
 	})

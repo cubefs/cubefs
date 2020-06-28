@@ -101,11 +101,13 @@ func createDefaultMasterServerForTest() *Server {
 	testServer.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
-	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, 3, 3, 3, 100, false, false, false, false)
+	createVolPara := &CreateVolPara{name: commonVolName, owner: "cfs", dpSize: defaultReplicaNum, mpCount: 3, capacity: 100,
+		followerRead: false, authenticate: false, ecDataBlockNum: 6, ecParityBlockNum: 3}
+	testServer.cluster.createVol(createVolPara)
 	if err != nil {
 		panic(err)
 	}
-	vol, err = testServer.cluster.getVol(commonVolName)
+	vol, err := testServer.cluster.getVol(commonVolName)
 	if err != nil {
 		panic(err)
 	}

@@ -280,6 +280,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.DecommissionCodecNode).
 		HandlerFunc(m.decommissionCodecNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetCodecNodeTaskResponse).
+		HandlerFunc(m.handleCodecNodeTaskResponse)
 
 	// APIs for EcNode
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -291,6 +294,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.DecommissionEcNode).
 		HandlerFunc(m.decommissionEcNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetEcNodeTaskResponse).
+		HandlerFunc(m.handleEcNodeTaskResponse)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.CreateEcDataPartition).
+		HandlerFunc(m.createEcDataPartition)
 }
 
 func (m *Server) newReverseProxy() *httputil.ReverseProxy {

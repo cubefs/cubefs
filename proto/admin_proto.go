@@ -62,9 +62,10 @@ const (
 	AdminDeleteMetaReplica         = "/metaReplica/delete"
 
 	// Operation response
-	GetMetaNodeTaskResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
-	GetDataNodeTaskResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
-	GetEcNodeTaskResponse   = "/ecNode/response"   // Method: 'POST', ContentType: 'application/json'
+	GetMetaNodeTaskResponse  = "/metaNode/response"  // Method: 'POST', ContentType: 'application/json'
+	GetDataNodeTaskResponse  = "/dataNode/response"  // Method: 'POST', ContentType: 'application/json'
+	GetEcNodeTaskResponse    = "/ecNode/response"    // Method: 'POST', ContentType: 'application/json'
+	GetCodecNodeTaskResponse = "/codecNode/response" // Method: 'POST', ContentType: 'application/json'
 
 	GetTopologyView = "/topo/get"
 	UpdateZone      = "/zone/update"
@@ -103,6 +104,9 @@ const (
 	GetEcNode          = "/ecNode/get"
 	AddEcNode          = "/ecNode/add"
 	DecommissionEcNode = "/ecNode/decommission"
+
+	//EcDataPartition API
+	CreateEcDataPartition = "/ecDataPartition/create"
 )
 
 const TimeFormat = "2006-01-02 15:04:05"
@@ -540,6 +544,53 @@ type CodecNodeClientView struct {
 	Addr     string
 	IsActive bool
 }
+
+// ----------- define ec partition proto----------------
+// CreateEcDataPartitionRequest defines the request to create a data partition.
+type CreateEcDataPartitionRequest struct {
+	PartitionType string
+	PartitionId   uint64
+	PartitionSize int
+	VolumeId      string
+	IsRandomWrite bool
+	Members       []Peer
+	Hosts         []string
+	CreateType    int
+}
+
+// CreateEcDataPartitionResponse defines the response to the request of creating a data partition.
+type CreateEcDataPartitionResponse struct {
+	PartitionId uint64
+	Status      uint8
+	Result      string
+}
+
+// DeleteEcDataPartitionRequest defines the request to delete a data partition.
+type DeleteEcDataPartitionRequest struct {
+	DataPartitionType string
+	PartitionId       uint64
+	PartitionSize     int
+}
+
+// DeleteEcDataPartitionResponse defines the response to the request of deleting a data partition.
+type DeleteEcDataPartitionResponse struct {
+	Status      uint8
+	Result      string
+	PartitionId uint64
+}
+
+type ParityEcDataPartitionRequest struct {
+	PartitionId uint64
+	Hosts       []string
+}
+
+type ParityEcDataPartitionResponse struct {
+	Status      uint8
+	Result      string
+	PartitionId uint64
+}
+
+// ----------- define ec partition proto end----------------
 
 type VolInfo struct {
 	Name       string

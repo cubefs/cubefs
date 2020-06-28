@@ -56,7 +56,7 @@ func (e *EcNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	}()
 
 	switch p.Opcode {
-	case proto.OpCreateEcPartition:
+	case proto.OpCreateEcDataPartition:
 		e.handlePacketToCreateEcPartition(p)
 	case proto.OpEcNodeHeartbeat:
 		e.handleHeartbeatPacket(p)
@@ -72,7 +72,7 @@ func (e *EcNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	return
 }
 
-// Handle OpCreateEcPartition to create new EcPartition
+// Handle OpCreateEcDataPartition to create new EcPartition
 func (e *EcNode) handlePacketToCreateEcPartition(p *repl.Packet) {
 	var (
 		err error
@@ -88,10 +88,10 @@ func (e *EcNode) handlePacketToCreateEcPartition(p *repl.Packet) {
 		err = fmt.Errorf("cannnot unmashal adminTask")
 		return
 	}
-	if task.OpCode != proto.OpCreateEcPartition {
+	if task.OpCode != proto.OpCreateEcDataPartition {
 		log.LogErrorf("error unavaliable opcode")
 		err = fmt.Errorf("from master Task(%v) failed, error unavaliable opcode(%v), expected opcode(%v)",
-			task.ToString(), task.OpCode, proto.OpCreateEcPartition)
+			task.ToString(), task.OpCode, proto.OpCreateEcDataPartition)
 		return
 	}
 
@@ -135,7 +135,6 @@ func (e *EcNode) handleHeartbeatPacket(p *repl.Packet) {
 	}
 
 	go func() {
-		request := &proto.HeartBeatRequest{}
 		response := &proto.EcNodeHeartbeatResponse{
 			Status: proto.TaskSucceeds,
 		}
@@ -148,10 +147,12 @@ func (e *EcNode) handleHeartbeatPacket(p *repl.Packet) {
 			err = fmt.Errorf("illegal opcode")
 			response.Result = err.Error()
 		}
-		task.Response = response
+		task.Response = *response
+
+		log.LogDebugf(fmt.Sprintf("%v", task))
+
 		err = MasterClient.NodeAPI().ResponseEcNodeTask(task)
 		if err != nil {
-			err = errors.Trace(err, "heartbeat to master(%v) failed.", request.MasterAddr)
 			log.LogErrorf(err.Error())
 			return
 		}

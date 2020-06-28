@@ -17,14 +17,16 @@ package master
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 	"sort"
 	"sync"
-	"github.com/chubaofs/chubaofs/util/log"
+	"time"
 )
 
 const (
 	selectDataNode = 0
 	selectMetaNode = 1
+	selectEcNode   = 2
 )
 
 type weightedNode struct {
@@ -36,10 +38,18 @@ type weightedNode struct {
 
 // Node defines an interface that needs to be implemented by weightedNode
 type Node interface {
+	isWriteAble() bool
+	isAvailCarryNode() bool
 	SetCarry(carry float64)
 	SelectNodeForWrite()
 	GetID() uint64
 	GetAddr() string
+	IsOnline() bool
+	GetTotal() uint64
+	GetUsed() uint64
+	GetAvail() uint64
+	GetCarry() float64
+	GetReportTime() time.Time
 }
 
 // SortedWeightedNodes defines an array sorted by carry
@@ -77,35 +87,16 @@ func (nodes SortedWeightedNodes) setNodeCarry(availCarryCount, replicaNum int) {
 	}
 }
 
-func (ns *nodeSet) getMetaNodeMaxTotal() (maxTotal uint64) {
-	ns.metaNodes.Range(func(key, value interface{}) bool {
-		metaNode := value.(*MetaNode)
-		if metaNode.Total > maxTotal {
-			maxTotal = metaNode.Total
-		}
-		return true
-	})
-	return
-}
-
 type GetMaxTotal func(nodes *sync.Map) (maxTotal uint64)
 
-func getMetaNodeMaxTotal(metaNodes *sync.Map) (maxTotal uint64) {
-	metaNodes.Range(func(key, value interface{}) bool {
-		metaNode := value.(*MetaNode)
-		if metaNode.Total > maxTotal {
-			maxTotal = metaNode.Total
+func getNodeMaxTotal(nodes *sync.Map) (maxTotal uint64) {
+	nodes.Range(func(key, value interface{}) bool {
+		node, ok := value.(Node)
+		if !ok {
+			return true
 		}
-		return true
-	})
-	return
-}
-
-func getDataNodeMaxTotal(dataNodes *sync.Map) (maxTotal uint64) {
-	dataNodes.Range(func(key, value interface{}) bool {
-		dataNode := value.(*DataNode)
-		if dataNode.Total > maxTotal {
-			maxTotal = dataNode.Total
+		if node.GetTotal() > maxTotal {
+			maxTotal = node.GetTotal()
 		}
 		return true
 	})
@@ -114,58 +105,29 @@ func getDataNodeMaxTotal(dataNodes *sync.Map) (maxTotal uint64) {
 
 type GetCarryNodes func(maxTotal uint64, excludeHosts []string, nodes *sync.Map) (weightedNodes SortedWeightedNodes, availCount int)
 
-func getAllCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *sync.Map) (nodes SortedWeightedNodes, availCount int) {
-	nodes = make(SortedWeightedNodes, 0)
-	metaNodes.Range(func(key, value interface{}) bool {
-		metaNode := value.(*MetaNode)
-		if contains(excludeHosts, metaNode.Addr) == true {
-			return true
-		}
-		if metaNode.isWritable() == false {
-			return true
-		}
-		if metaNode.isCarryNode() == true {
-			availCount++
-		}
-		nt := new(weightedNode)
-		nt.Carry = metaNode.Carry
-		if metaNode.Used < 0 {
-			nt.Weight = 1.0
-		} else {
-			nt.Weight = (float64)(maxTotal-metaNode.Used) / (float64)(maxTotal)
-		}
-		nt.Ptr = metaNode
-		nodes = append(nodes, nt)
-
-		return true
-	})
-
-	return
-}
-
-func getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, dataNodes *sync.Map) (nodeTabs SortedWeightedNodes, availCount int) {
+func getAvailCarryNodeTab(maxTotal uint64, excludeHosts []string, nodes *sync.Map) (nodeTabs SortedWeightedNodes, availCount int) {
 	nodeTabs = make(SortedWeightedNodes, 0)
-	dataNodes.Range(func(key, value interface{}) bool {
-		dataNode := value.(*DataNode)
-		if contains(excludeHosts, dataNode.Addr) == true {
+	nodes.Range(func(key, value interface{}) bool {
+		node := value.(Node)
+		if contains(excludeHosts, node.GetAddr()) == true {
 			log.LogDebugf("contains return")
 			return true
 		}
-		if dataNode.isWriteAble() == false {
+		if node.isWriteAble() == false {
 			log.LogDebugf("isWritable return")
 			return true
 		}
-		if dataNode.isAvailCarryNode() == true {
+		if node.isAvailCarryNode() == true {
 			availCount++
 		}
 		nt := new(weightedNode)
-		nt.Carry = dataNode.Carry
-		if dataNode.AvailableSpace < 0 {
+		nt.Carry = node.GetCarry()
+		if node.GetAvail() < 0 {
 			nt.Weight = 0.0
 		} else {
-			nt.Weight = float64(dataNode.AvailableSpace) / float64(maxTotal)
+			nt.Weight = float64(node.GetAvail()) / float64(maxTotal)
 		}
-		nt.Ptr = dataNode
+		nt.Ptr = node
 		nodeTabs = append(nodeTabs, nt)
 
 		return true
@@ -185,24 +147,23 @@ func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selec
 	if replicaNum == 0 {
 		return
 	}
+	maxTotalFunc = getNodeMaxTotal
 	switch selectType {
-	case selectDataNode:
-		maxTotalFunc = getDataNodeMaxTotal
-		getCarryNodesFunc = getAvailCarryDataNodeTab
-	case selectMetaNode:
-		maxTotalFunc = getMetaNodeMaxTotal
-		getCarryNodesFunc = getAllCarryMetaNodes
+	case selectDataNode, selectMetaNode:
+		getCarryNodesFunc = getAvailCarryNodeTab
+	case selectEcNode:
+		getCarryNodesFunc = getAvailCarryEcNodeTab
 	default:
 		return nil, nil, fmt.Errorf("invalid selectType[%v]", selectType)
 	}
 	maxTotal := maxTotalFunc(nodes)
-	weightedNodes, count := getCarryNodesFunc(maxTotal, excludeHosts, nodes)
+	weightedNodes, availCarryCnt := getCarryNodesFunc(maxTotal, excludeHosts, nodes)
 	if len(weightedNodes) < replicaNum {
 		err = fmt.Errorf("action[getAvailHosts] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
 			replicaNum, len(weightedNodes))
 		return
 	}
-	weightedNodes.setNodeCarry(count, replicaNum)
+	weightedNodes.setNodeCarry(availCarryCnt, replicaNum)
 	sort.Sort(weightedNodes)
 
 	for i := 0; i < replicaNum; i++ {

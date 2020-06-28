@@ -34,14 +34,16 @@ type DataPartitionMap struct {
 	partitions             []*DataPartition
 	responseCache          []byte
 	volName                string
+	vol                    *Vol
 }
 
-func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
+func newDataPartitionMap(vol *Vol) (dpMap *DataPartitionMap) {
 	dpMap = new(DataPartitionMap)
 	dpMap.partitionMap = make(map[uint64]*DataPartition, 0)
 	dpMap.partitions = make([]*DataPartition, 0)
 	dpMap.responseCache = make([]byte, 0)
-	dpMap.volName = volName
+	dpMap.volName = vol.Name
+	dpMap.vol = vol
 	return
 }
 
@@ -135,6 +137,12 @@ func (dpMap *DataPartitionMap) getDataPartitionsView(minPartitionID uint64) (dpR
 			continue
 		}
 		dpResp := dp.convertToDataPartitionResponse()
+
+		if ecdp, err := dpMap.vol.ecDataPartitions.get(dp.PartitionID); err == nil {
+			log.LogErrorf("merge ec hosts[%v] to partition view", ecdp.EcHosts)
+			dpResp.EcHosts = make([]string, len(ecdp.EcHosts))
+			copy(dpResp.EcHosts, ecdp.EcHosts)
+		}
 		dpResps = append(dpResps, dpResp)
 	}
 

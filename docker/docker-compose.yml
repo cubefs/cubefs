@@ -34,6 +34,13 @@ services:
             - objectnode1
             - objectnode2
             - objectnode3
+            - ecnode1
+            - ecnode2
+            - ecnode3
+            - ecnode4
+            - ecnode5
+            - ecnode6
+            - ecnode7
             - nginx
         networks:
             extnetwork:
@@ -267,6 +274,153 @@ services:
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.34
+
+    ecnode1:
+        image: chubaofs/cfs-base:1.1
+        ports:
+            - "17310"
+            - "17320"
+            - "17330"
+            - "17340"
+            - 9500
+        volumes:
+            - ${DiskPath:-./docker_data}/ecnode1/disk:/cfs/disk
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/ecnode1/log:/cfs/log
+            - ./conf/ecnode.json:/cfs/conf/ecnode.json
+            - ./script/start_ecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.51
+
+    ecnode2:
+        image: chubaofs/cfs-base:1.1
+        ports:
+            - "17310"
+            - "17320"
+            - "17330"
+            - "17340"
+            - 9500
+        volumes:
+            - ${DiskPath:-./docker_data}/ecnode2/disk:/cfs/disk
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/ecnode2/log:/cfs/log
+            - ./conf/ecnode.json:/cfs/conf/ecnode.json
+            - ./script/start_ecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.52
+
+    ecnode3:
+        image: chubaofs/cfs-base:1.1
+        ports:
+            - "17310"
+            - "17320"
+            - "17330"
+            - "17340"
+            - 9500
+        volumes:
+            - ${DiskPath:-./docker_data}/ecnode3/disk:/cfs/disk
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/ecnode3/log:/cfs/log
+            - ./conf/ecnode.json:/cfs/conf/ecnode.json
+            - ./script/start_ecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.53
+
+    ecnode4:
+        image: chubaofs/cfs-base:1.1
+        ports:
+            - "17310"
+            - "17320"
+            - "17330"
+            - "17340"
+            - 9500
+        volumes:
+            - ${DiskPath:-./docker_data}/ecnode4/disk:/cfs/disk
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/ecnode4/log:/cfs/log
+            - ./conf/ecnode.json:/cfs/conf/ecnode.json
+            - ./script/start_ecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.54
+
+    ecnode5:
+        image: chubaofs/cfs-base:1.1
+        ports:
+            - "17310"
+            - "17320"
+            - "17330"
+            - "17340"
+            - 9500
+        volumes:
+            - ${DiskPath:-./docker_data}/ecnode5/disk:/cfs/disk
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/ecnode5/log:/cfs/log
+            - ./conf/ecnode.json:/cfs/conf/ecnode.json
+            - ./script/start_ecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.55
+
+    ecnode6:
+        image: chubaofs/cfs-base:1.1
+        ports:
+            - "17310"
+            - "17320"
+            - "17330"
+            - "17340"
+            - 9500
+        volumes:
+            - ${DiskPath:-./docker_data}/ecnode6/disk:/cfs/disk
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/ecnode6/log:/cfs/log
+            - ./conf/ecnode.json:/cfs/conf/ecnode.json
+            - ./script/start_ecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.56
+
+    ecnode7:
+        image: chubaofs/cfs-base:1.1
+        ports:
+            - "17310"
+            - "17320"
+            - "17330"
+            - "17340"
+            - 9500
+        volumes:
+            - ${DiskPath:-./docker_data}/ecnode7/disk:/cfs/disk
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/ecnode7/log:/cfs/log
+            - ./conf/ecnode.json:/cfs/conf/ecnode.json
+            - ./script/start_ecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.57
 
     objectnode1:
         image: chubaofs/cfs-base:1.1

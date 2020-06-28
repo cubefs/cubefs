@@ -161,6 +161,15 @@ func (c *Config) GetSlice(key string) []interface{} {
 	return result.([]interface{})
 }
 
+// GetArray returns an array for the config key.
+func (c *Config) GetArray(key string) []interface{} {
+	result, present := c.data[key]
+	if !present {
+		return []interface{}(nil)
+	}
+	return result.([]interface{})
+}
+
 func (c *Config) GetStringSlice(key string) []string {
 	s := c.GetSlice(key)
 	result := make([]string, 0, len(s))

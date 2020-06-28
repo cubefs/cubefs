@@ -123,6 +123,9 @@ type volValue struct {
 	OSSAccessKey      string
 	OSSSecretKey      string
 	CreateTime        int64
+	VolType           uint8
+	EcDataBlockNum    uint8
+	EcParityBlockNum  uint8
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -148,6 +151,9 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		OSSAccessKey:      vol.OSSAccessKey,
 		OSSSecretKey:      vol.OSSSecretKey,
 		CreateTime:        vol.createTime,
+		VolType:           vol.volType,
+		EcDataBlockNum:    vol.EcDataBlockNum,
+		EcParityBlockNum:  vol.EcParityBlockNum,
 	}
 	return
 }

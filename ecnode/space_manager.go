@@ -250,8 +250,6 @@ func (e *EcNode) buildHeartbeatResponse(response *proto.EcNodeHeartbeatResponse)
 			ExtentCount:     partition.GetExtentCount(),
 			NeedCompare:     true,
 		}
-		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v).", vr.PartitionID, vr.PartitionStatus,
-			vr.Total, vr.Used)
 		response.PartitionReports = append(response.PartitionReports, vr)
 		return true
 	})

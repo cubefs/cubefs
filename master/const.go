@@ -49,6 +49,9 @@ const (
 	userKey                     = "user"
 	metaNodeDeleteBatchCountKey = "batchCount"
 	metaNodeHostsKey            = "hosts"
+	volTypeKey                  = "type"
+	volEcDataBlockNumKey        = "ecDataNum"
+	volEcParityBlockNumKey      = "ecParityNum"
 )
 
 const (
@@ -93,10 +96,15 @@ const (
 )
 
 const (
-	normal          uint8 = 0
-	markDelete      uint8 = 1
-	normalZone            = 0
-	unavailableZone       = 1
+	normal                          uint8 = 0
+	markDelete                      uint8 = 1
+	normalZone                            = 0
+	unavailableZone                       = 1
+	overwriteVol                    uint8 = 0
+	appendOnlyVol                   uint8 = 1
+	defaultEcDataBlockNum                 = 4
+	defaultEcParityBlockNum               = 2
+	defaultEcPartitionAcrossZoneNun       = 3
 )
 
 const (
@@ -140,30 +148,31 @@ const (
 )
 
 const (
-	keySeparator          = "#"
-	idSeparator           = "$" // To seperate ID of server that submits raft changes
-	metaNodeAcronym       = "mn"
-	dataNodeAcronym       = "dn"
-	dataPartitionAcronym  = "dp"
-	metaPartitionAcronym  = "mp"
-	volAcronym            = "vol"
-	clusterAcronym        = "c"
-	nodeSetAcronym        = "s"
-	tokenAcronym          = "t"
-	codecNodeAcronym      = "ncn"
-	ecNodeAcronym         = "nec"
-	maxDataPartitionIDKey = keySeparator + "max_dp_id"
-	maxMetaPartitionIDKey = keySeparator + "max_mp_id"
-	maxCommonIDKey        = keySeparator + "max_common_id"
-	metaNodePrefix        = keySeparator + metaNodeAcronym + keySeparator
-	dataNodePrefix        = keySeparator + dataNodeAcronym + keySeparator
-	dataPartitionPrefix   = keySeparator + dataPartitionAcronym + keySeparator
-	volPrefix             = keySeparator + volAcronym + keySeparator
-	metaPartitionPrefix   = keySeparator + metaPartitionAcronym + keySeparator
-	clusterPrefix         = keySeparator + clusterAcronym + keySeparator
-	nodeSetPrefix         = keySeparator + nodeSetAcronym + keySeparator
-	codecNodePrefix       = keySeparator + codecNodeAcronym + keySeparator
-	ecNodePrefix          = keySeparator + ecNodeAcronym + keySeparator
+	keySeparator           = "#"
+	idSeparator            = "$" // To seperate ID of server that submits raft changes
+	metaNodeAcronym        = "mn"
+	dataNodeAcronym        = "dn"
+	dataPartitionAcronym   = "dp"
+	ecDataPartitionAcronym = "ecdp"
+	metaPartitionAcronym   = "mp"
+	volAcronym             = "vol"
+	clusterAcronym         = "c"
+	nodeSetAcronym         = "s"
+	tokenAcronym           = "t"
+	codecNodeAcronym       = "ncn"
+	ecNodeAcronym          = "nec"
+	maxDataPartitionIDKey  = keySeparator + "max_dp_id"
+	maxMetaPartitionIDKey  = keySeparator + "max_mp_id"
+	maxCommonIDKey         = keySeparator + "max_common_id"
+	metaNodePrefix         = keySeparator + metaNodeAcronym + keySeparator
+	dataNodePrefix         = keySeparator + dataNodeAcronym + keySeparator
+	dataPartitionPrefix    = keySeparator + dataPartitionAcronym + keySeparator
+	volPrefix              = keySeparator + volAcronym + keySeparator
+	metaPartitionPrefix    = keySeparator + metaPartitionAcronym + keySeparator
+	clusterPrefix          = keySeparator + clusterAcronym + keySeparator
+	nodeSetPrefix          = keySeparator + nodeSetAcronym + keySeparator
+	codecNodePrefix        = keySeparator + codecNodeAcronym + keySeparator
+	ecNodePrefix           = keySeparator + ecNodeAcronym + keySeparator
 
 	akAcronym      = "ak"
 	userAcronym    = "user"

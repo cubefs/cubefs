@@ -23,6 +23,7 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 )
 
+var _ Node = (*DataNode)(nil)
 // DataNode stores all the information about a data node
 type DataNode struct {
 	Total                     uint64 `json:"TotalWeight"`
@@ -104,7 +105,6 @@ func (dataNode *DataNode) isWriteAble() (ok bool) {
 	if dataNode.isActive == true && dataNode.AvailableSpace > 10*util.GB {
 		ok = true
 	}
-
 	return
 }
 
@@ -113,18 +113,6 @@ func (dataNode *DataNode) isAvailCarryNode() (ok bool) {
 	defer dataNode.RUnlock()
 
 	return dataNode.Carry >= 1
-}
-
-func (dataNode *DataNode) GetID() uint64 {
-	dataNode.RLock()
-	defer dataNode.RUnlock()
-	return dataNode.ID
-}
-
-func (dataNode *DataNode) GetAddr() string {
-	dataNode.RLock()
-	defer dataNode.RUnlock()
-	return dataNode.Addr
 }
 
 // SetCarry implements "SetCarry" in the Node interface
@@ -141,6 +129,38 @@ func (dataNode *DataNode) SelectNodeForWrite() {
 	dataNode.UsageRatio = float64(dataNode.Used) / float64(dataNode.Total)
 	dataNode.SelectedTimes++
 	dataNode.Carry = dataNode.Carry - 1.0
+}
+
+func (dataNode *DataNode) GetID() uint64 {
+	return dataNode.ID
+}
+
+func (dataNode *DataNode) GetAddr() string {
+	return dataNode.Addr
+}
+
+func (dataNode *DataNode) IsOnline() bool {
+	return dataNode.isActive
+}
+
+func (dataNode *DataNode) GetTotal() uint64 {
+	return dataNode.Total
+}
+
+func (dataNode *DataNode) GetUsed() uint64 {
+	return dataNode.Used
+}
+
+func (dataNode *DataNode) GetAvail() uint64 {
+	return dataNode.AvailableSpace
+}
+
+func (dataNode *DataNode) GetCarry() float64 {
+	return dataNode.Carry
+}
+
+func (dataNode *DataNode) GetReportTime() time.Time {
+	return dataNode.ReportTime
 }
 
 func (dataNode *DataNode) clean() {

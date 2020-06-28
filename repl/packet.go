@@ -53,7 +53,7 @@ type FollowerPacket struct {
 func NewFollowerPacket() (fp *FollowerPacket) {
 	fp = new(FollowerPacket)
 	fp.respCh = make(chan error, 1)
-	fp.StartT=time.Now().UnixNano()
+	fp.StartT = time.Now().UnixNano()
 	return fp
 }
 
@@ -92,7 +92,7 @@ func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg str
 }
 
 func (p *Packet) AfterTp() (ok bool) {
-	if p.TpObject!=nil{
+	if p.TpObject != nil {
 		p.TpObject.Set(nil)
 	}
 
@@ -129,12 +129,11 @@ func copyPacket(src *Packet, dst *FollowerPacket) {
 
 }
 
-
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
 	if p.IsForwardPkt() && !p.IsRandomWrite() {
-		p.TpObject = exporter.NewTPCnt(fmt.Sprintf("PrimaryBackUp_%v",p.GetOpMsg()))
-	}else if p.IsRandomWrite(){
-		p.TpObject = exporter.NewTPCnt(fmt.Sprintf("Raft_%v",p.GetOpMsg()))
+		p.TpObject = exporter.NewTPCnt(fmt.Sprintf("PrimaryBackUp_%v", p.GetOpMsg()))
+	} else if p.IsRandomWrite() {
+		p.TpObject = exporter.NewTPCnt(fmt.Sprintf("Raft_%v", p.GetOpMsg()))
 	}
 
 	return
@@ -382,7 +381,9 @@ func (p *Packet) IsMasterCommand() bool {
 		proto.OpAddDataPartitionRaftMember,
 		proto.OpRemoveDataPartitionRaftMember,
 		proto.OpDataPartitionTryToLeader,
-		proto.OpCreateEcPartition:
+		proto.OpEcNodeHeartbeat,
+		proto.OpCreateEcDataPartition,
+		proto.OpDeleteEcDataPartition:
 		return true
 	}
 	return false

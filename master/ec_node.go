@@ -18,22 +18,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
 )
 
 type ECNode struct {
-	ID          uint64
-	Addr        string
-	ReportTime  time.Time
-	isActive    bool
-	TaskManager *AdminTaskManager
-	sync.RWMutex
-	//todo add field
+	DataNode
 }
 
 type EcNodeValue struct {
@@ -60,10 +54,70 @@ func (ecNode *ECNode) updateMetric(resp *proto.EcNodeHeartbeatResponse) {
 	defer ecNode.Unlock()
 	ecNode.ReportTime = time.Now()
 	ecNode.isActive = true
+	ecNode.Total = resp.Total
+	ecNode.Used = resp.Used
+	ecNode.AvailableSpace = resp.Available
+	ecNode.DataPartitionCount = resp.CreatedPartitionCnt
+	ecNode.DataPartitionReports = resp.PartitionReports
+	ecNode.ZoneName = DefaultZoneName
+	//ecNode.BadDisks = resp.BadDisks
+	if ecNode.Total == 0 {
+		ecNode.UsageRatio = 0.0
+	} else {
+		ecNode.UsageRatio = (float64)(ecNode.Used) / (float64)(ecNode.Total)
+	}
+	ecNode.ReportTime = time.Now()
+	ecNode.isActive = true
 }
 
 func (ecNode *ECNode) clean() {
 	ecNode.TaskManager.exitCh <- struct{}{}
+}
+
+func (ecNode *ECNode) isWriteAble() (ok bool) {
+	ecNode.RLock()
+	defer ecNode.RUnlock()
+
+	if ecNode.isActive == true && ecNode.AvailableSpace > 10*util.GB {
+		ok = true
+	}
+
+	return
+}
+
+func (ecNode *ECNode) isAvailCarryNode() (ok bool) {
+	ecNode.RLock()
+	defer ecNode.RUnlock()
+
+	return ecNode.Carry >= 1
+}
+
+// SetCarry implements "SetCarry" in the Node interface
+func (ecNode *ECNode) SetCarry(carry float64) {
+	ecNode.Lock()
+	defer ecNode.Unlock()
+	ecNode.Carry = carry
+}
+
+// SelectNodeForWrite implements "SelectNodeForWrite" in the Node interface
+func (ecNode *ECNode) SelectNodeForWrite() {
+	ecNode.Lock()
+	defer ecNode.Unlock()
+	ecNode.UsageRatio = float64(ecNode.Used) / float64(ecNode.Total)
+	ecNode.SelectedTimes++
+	ecNode.Carry = ecNode.Carry - 1.0
+}
+
+func (ecNode *ECNode) GetID() uint64 {
+	ecNode.RLock()
+	defer ecNode.RUnlock()
+	return ecNode.ID
+}
+
+func (ecNode *ECNode) GetAddr() string {
+	ecNode.RLock()
+	defer ecNode.RUnlock()
+	return ecNode.Addr
 }
 
 func (c *Cluster) checkEcNodeHeartbeat() {
@@ -214,14 +268,36 @@ func (c *Cluster) dealEcNodeHeartbeatResp(nodeAddr string, resp *proto.EcNodeHea
 	}
 
 	ecNode.updateMetric(resp)
-	//c.updateEcNode(ecNode, resp.MetaPartitionReports)
+	if err = c.t.putEcNode(ecNode); err != nil {
+		log.LogErrorf("action[dealEcNodeHeartbeatResp] ecNode[%v],zone[%v], err[%v]", ecNode.Addr, ecNode.ZoneName, err)
+	}
+	c.updateEcNode(ecNode, resp.PartitionReports)
 	//ecNode.metaPartitionInfos = nil
-	logMsg = fmt.Sprintf("action[dealEcNodeHeartbeatResp],metaNode:%v ReportTime:%v  success", ecNode.Addr, time.Now().Unix())
+	logMsg = fmt.Sprintf("action[dealEcNodeHeartbeatResp],ecNode:%v ReportTime:%v  success", ecNode.Addr, time.Now().Unix())
 	log.LogInfof(logMsg)
 	return
 errHandler:
 	logMsg = fmt.Sprintf("nodeAddr %v heartbeat error :%v", nodeAddr, errors.Stack(err))
 	log.LogError(logMsg)
+	return
+}
+
+func (c *Cluster) updateEcNode(ecNode *ECNode, partitions []*proto.PartitionReport) {
+	for _, vr := range partitions {
+		if vr == nil {
+			continue
+		}
+		vol, err := c.getVol(vr.VolName)
+		if err != nil {
+			continue
+		}
+		if vol.Status == markDelete {
+			continue
+		}
+		if ecdp, err := vol.ecDataPartitions.get(vr.PartitionID); err == nil {
+			ecdp.updateMetric(vr, ecNode, c)
+		}
+	}
 	return
 }
 
@@ -332,5 +408,18 @@ func (c *Cluster) loadEcNodes() (err error) {
 		c.ecNodes.Store(ecNode.Addr, ecNode)
 		log.LogInfof("action[loadEcNodes],EcNode[%v]", ecNode.Addr)
 	}
+	return
+}
+
+func (c *Cluster) allEcNodes() (ecNodes []proto.NodeView) {
+	ecNodes = make([]proto.NodeView, 0)
+	c.ecNodes.Range(func(key, value interface{}) bool {
+		ecNode, ok := value.(*ECNode)
+		if !ok {
+			return true
+		}
+		ecNodes = append(ecNodes, proto.NodeView{Addr: ecNode.Addr, Status: ecNode.isActive, ID: ecNode.ID, IsWritable: ecNode.isWriteAble()})
+		return true
+	})
 	return
 }

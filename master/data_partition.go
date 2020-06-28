@@ -27,30 +27,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
-// DataPartition represents the structure of storing the file contents.
-type DataPartition struct {
-	PartitionID             uint64
-	LastLoadedTime          int64
-	ReplicaNum              uint8
-	Status                  int8
-	isRecover               bool
-	Replicas                []*DataReplica
-	Hosts                   []string // host addresses
-	Peers                   []proto.Peer
-	EcHosts                 []string
-	sync.RWMutex
-	total                   uint64
-	used                    uint64
-	MissingNodes            map[string]int64 // key: address of the missing node, value: when the node is missing
-	VolName                 string
-	VolID                   uint64
-	modifyTime              int64
-	createTime              int64
-	lastWarnTime            int64
-	FileInCoreMap           map[string]*FileInCore
-	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
-}
-
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64) (partition *DataPartition) {
 	partition = new(DataPartition)
 	partition.ReplicaNum = replicaNum
@@ -70,6 +46,30 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64)
 	partition.createTime = time.Now().Unix()
 	partition.lastWarnTime = time.Now().Unix()
 	return
+}
+
+// DataPartition represents the structure of storing the file contents.
+type DataPartition struct {
+	PartitionID    uint64
+	LastLoadedTime int64
+	ReplicaNum     uint8
+	Status         int8
+	isRecover      bool
+	Replicas       []*DataReplica
+	Hosts          []string // host addresses
+	Peers          []proto.Peer
+	EcHosts        []string
+	sync.RWMutex
+	total                   uint64
+	used                    uint64
+	MissingNodes            map[string]int64 // key: address of the missing node, value: when the node is missing
+	VolName                 string
+	VolID                   uint64
+	modifyTime              int64
+	createTime              int64
+	lastWarnTime            int64
+	FileInCoreMap           map[string]*FileInCore
+	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
 }
 
 func (partition *DataPartition) resetFilesWithMissingReplica() {

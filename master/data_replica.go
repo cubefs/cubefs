@@ -59,16 +59,14 @@ func (replica *DataReplica) isActive(timeOutSec int64) bool {
 	return time.Now().Unix()-replica.ReportTime <= timeOutSec
 }
 
-func (replica *DataReplica) getReplicaNode() (node *DataNode) {
+func (replica *DataReplica) getReplicaNode() (node Node) {
 	return replica.dataNode
 }
 
 // check if the replica's location is available
 func (replica *DataReplica) isLocationAvailable() (isAvailable bool) {
 	dataNode := replica.getReplicaNode()
-	dataNode.Lock()
-	defer dataNode.Unlock()
-	if dataNode.isActive == true && replica.isActive(defaultDataPartitionTimeOutSec) == true {
+	if dataNode.IsOnline() == true && replica.isActive(defaultDataPartitionTimeOutSec) == true {
 		isAvailable = true
 	}
 

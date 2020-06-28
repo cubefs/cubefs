@@ -1,17 +1,21 @@
 {
-    "role": "ecnode",
-    "listen": "27310",
-    "prof": "27320",
-    "raftDir":   "/cfs/log",
-    "exporterPort": 9500,
-    "logDir": "/cfs/log",
-    "logLevel": "debug",
-    "disks": [
-        "/cfs/disk:10737418240"
-    ],
-    "masterAddr": [
-        "192.168.0.11:17010",
-        "192.168.0.12:17010",
-        "192.168.0.13:17010"
-    ]
+  "role": "ecnode",
+  "listen": "17310",
+  "prof": "17320",
+  "raftHeartbeat": "17330",
+  "raftReplica": "17340",
+  "raftDir": "/cfs/log",
+  "consulAddr": "http://192.168.0.101:8500",
+  "exporterPort": 9500,
+  "cell": "cell-01",
+  "logDir": "/cfs/log",
+  "logLevel": "debug",
+  "disks": [
+    "/cfs/disk:10737418240"
+  ],
+  "masterAddr": [
+    "192.168.0.11:17010",
+    "192.168.0.12:17010",
+    "192.168.0.13:17010"
+  ]
 }

@@ -332,3 +332,16 @@ func (c *Cluster) loadCodecNodes() (err error) {
 	}
 	return
 }
+
+func (c *Cluster) allCodecNodes() (codecNodes []proto.NodeView) {
+	codecNodes = make([]proto.NodeView, 0)
+	c.codecNodes.Range(func(key, value interface{}) bool {
+		cNode, ok := value.(*CodecNode)
+		if !ok {
+			return true
+		}
+		codecNodes = append(codecNodes, proto.NodeView{Addr: cNode.Addr, Status: cNode.isActive, ID: cNode.ID, IsWritable: true})
+		return true
+	})
+	return
+}

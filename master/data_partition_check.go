@@ -92,8 +92,8 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 			)
 			isActive := true
 			if dataNode != nil {
-				lastReportTime = dataNode.ReportTime
-				isActive = dataNode.isActive
+				lastReportTime = dataNode.GetReportTime()
+				isActive = dataNode.IsOnline()
 			}
 			msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] paritionID:%v  on Node:%v  "+
 				"miss time > %v  lastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v So Migrate by manual",

@@ -57,16 +57,31 @@ func (metaNode *MetaNode) clean() {
 	metaNode.Sender.exitCh <- struct{}{}
 }
 
-func (metaNode *MetaNode) GetID() uint64 {
+func (metaNode *MetaNode) isWritable() (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
-	return metaNode.ID
+	if metaNode.IsActive && metaNode.MaxMemAvailWeight > gConfig.metaNodeReservedMem &&
+		!metaNode.reachesThreshold() && metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode {
+		ok = true
+	}
+	return
 }
 
-func (metaNode *MetaNode) GetAddr() string {
+func (metaNode *MetaNode) isWriteAble() (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
-	return metaNode.Addr
+	if metaNode.IsActive && metaNode.MaxMemAvailWeight > gConfig.metaNodeReservedMem &&
+		!metaNode.reachesThreshold() && metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode {
+		ok = true
+	}
+	return
+}
+
+// A carry node is the meta node whose carry is greater than one.
+func (metaNode *MetaNode) isAvailCarryNode() (ok bool) {
+	metaNode.RLock()
+	defer metaNode.RUnlock()
+	return metaNode.Carry >= 1
 }
 
 // SetCarry implements the Node interface
@@ -84,21 +99,37 @@ func (metaNode *MetaNode) SelectNodeForWrite() {
 	metaNode.Carry = metaNode.Carry - 1.0
 }
 
-func (metaNode *MetaNode) isWritable() (ok bool) {
-	metaNode.RLock()
-	defer metaNode.RUnlock()
-	if metaNode.IsActive && metaNode.MaxMemAvailWeight > gConfig.metaNodeReservedMem &&
-		!metaNode.reachesThreshold() && metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode {
-		ok = true
-	}
-	return
+func (metaNode *MetaNode) GetID() uint64 {
+	return metaNode.ID
 }
 
-// A carry node is the meta node whose carry is greater than one.
-func (metaNode *MetaNode) isCarryNode() (ok bool) {
-	metaNode.RLock()
-	defer metaNode.RUnlock()
-	return metaNode.Carry >= 1
+func (metaNode *MetaNode) GetAddr() string {
+	return metaNode.Addr
+}
+
+func (metaNode *MetaNode) IsOnline() bool {
+	return metaNode.IsActive
+}
+
+func (metaNode *MetaNode) GetTotal() uint64 {
+	return metaNode.Total
+}
+
+func (metaNode *MetaNode) GetUsed() uint64 {
+	return metaNode.Used
+}
+
+//GetAvail fake implement
+func (metaNode *MetaNode) GetAvail() uint64 {
+	return metaNode.MaxMemAvailWeight
+}
+
+func (metaNode *MetaNode) GetCarry() float64 {
+	return metaNode.Carry
+}
+
+func (metaNode *MetaNode) GetReportTime() time.Time {
+	return metaNode.ReportTime
 }
 
 func (metaNode *MetaNode) setNodeActive() {
