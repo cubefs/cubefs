@@ -185,6 +185,85 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 	return
 }
 
+func (c *Cluster) checkCorruptMetaPartitions() (inactiveMetaNodes []string, corruptPartitions []*MetaPartition, err error) {
+	partitionMap := make(map[uint64]uint8)
+	c.metaNodes.Range(func(addr, node interface{}) bool {
+		metaNode := node.(*MetaNode)
+		if !metaNode.IsActive {
+			inactiveMetaNodes = append(inactiveMetaNodes, metaNode.Addr)
+		}
+		return true
+	})
+	for _, addr := range inactiveMetaNodes {
+		var metaNode *MetaNode
+		if metaNode, err = c.metaNode(addr); err != nil {
+			return
+		}
+		for _, partition := range metaNode.PersistenceMetaPartitions {
+			partitionMap[partition] = partitionMap[partition] + 1
+		}
+	}
+
+	for partitionID, badNum := range partitionMap {
+		var partition *MetaPartition
+		if partition, err = c.getMetaPartitionByID(partitionID); err != nil {
+			return
+		}
+		if badNum > partition.ReplicaNum/2 {
+			corruptPartitions = append(corruptPartitions, partition)
+		}
+	}
+	log.LogInfof("clusterID[%v] inactiveMetaNodes:%v  corruptPartitions count:[%v]",
+		c.Name, inactiveMetaNodes, len(corruptPartitions))
+	return
+}
+
+// check corrupt partitions related to this meta node
+func (c *Cluster) checkCorruptMetaNode(metaNode *MetaNode) (corruptPartitions []*MetaPartition, err error) {
+	var (
+		partition            *MetaPartition
+		mn                   *MetaNode
+		corruptPids          []uint64
+		corruptReplicaNum    uint8
+	)
+	metaNode.RLock()
+	defer metaNode.RUnlock()
+	for _, pid := range metaNode.PersistenceMetaPartitions {
+		corruptReplicaNum = 0
+		if partition, err = c.getMetaPartitionByID(pid); err != nil {
+			return
+		}
+		for _, host := range partition.Hosts {
+			if mn, err = c.metaNode(host); err != nil {
+				return
+			}
+			if !mn.IsActive {
+				corruptReplicaNum = corruptReplicaNum + 1
+			}
+		}
+		if corruptReplicaNum > partition.ReplicaNum / 2 {
+			corruptPartitions = append(corruptPartitions, partition)
+			corruptPids = append(corruptPids, pid)
+		}
+	}
+	log.LogInfof("action[checkCorruptMetaNode],clusterID[%v] metaNodeAddr:[%v], corrupt partitions%v",
+		c.Name, metaNode.Addr, corruptPids)
+	return
+}
+
+func (c *Cluster) checkLackReplicaMetaPartitions() (lackReplicaMetaPartitions []*MetaPartition, err error) {
+	vols := c.copyVols()
+	for _, vol := range vols {
+		for _, mp := range vol.MetaPartitions {
+			if mp.ReplicaNum > uint8(len(mp.Hosts)) {
+				lackReplicaMetaPartitions = append(lackReplicaMetaPartitions, mp)
+			}
+		}
+	}
+	log.LogInfof("clusterID[%v] lackReplicaMetaPartitions count:[%v]", c.Name, len(lackReplicaMetaPartitions))
+	return
+}
+
 func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, validate bool) (err error) {
 	defer func() {
 		if err != nil {

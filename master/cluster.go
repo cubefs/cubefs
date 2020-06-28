@@ -411,6 +411,55 @@ errHandler:
 	return
 }
 
+
+func (c *Cluster) checkCorruptDataPartitions() (inactiveDataNodes []string, corruptPartitions []*DataPartition, err error) {
+	partitionMap := make(map[uint64]uint8)
+	c.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode := node.(*DataNode)
+		if !dataNode.isActive {
+			inactiveDataNodes = append(inactiveDataNodes, dataNode.Addr)
+		}
+		return true
+	})
+	for _, addr := range inactiveDataNodes {
+		var dataNode *DataNode
+		if dataNode, err = c.dataNode(addr); err != nil {
+			return
+		}
+		for _, partition := range dataNode.PersistenceDataPartitions {
+			partitionMap[partition] = partitionMap[partition] + 1
+		}
+	}
+
+	for partitionID, badNum := range partitionMap {
+		var partition *DataPartition
+		if partition, err = c.getDataPartitionByID(partitionID); err != nil {
+			return
+		}
+		if badNum > partition.ReplicaNum/2 {
+			corruptPartitions = append(corruptPartitions, partition)
+		}
+	}
+	log.LogInfof("clusterID[%v] inactiveDataNodes:%v  corruptPartitions count:[%v]",
+		c.Name, inactiveDataNodes, len(corruptPartitions))
+	return
+}
+
+func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []*DataPartition, err error) {
+	vols := c.copyVols()
+	for _, vol := range vols {
+		var dps *DataPartitionMap
+		dps = vol.dataPartitions
+		for _, dp := range dps.partitions {
+			if dp.ReplicaNum > uint8(len(dp.Hosts)) {
+				lackReplicaDataPartitions = append(lackReplicaDataPartitions, dp)
+			}
+		}
+	}
+	log.LogInfof("clusterID[%v] lackReplicaDataPartitions count:[%v]", c.Name, len(lackReplicaDataPartitions))
+	return
+}
+
 func (c *Cluster) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err error) {
 	vols := c.copyVols()
 	for _, vol := range vols {

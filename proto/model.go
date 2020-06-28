@@ -199,3 +199,17 @@ type DataReplica struct {
 	NeedsToCompare  bool
 	DiskPath        string
 }
+
+// data partition diagnosis represents the inactive data nodes, corrupt data partitions, and data partitions lack of replicas
+type DataPartitionDiagnosis struct {
+	InactiveDataNodes            []string
+	CorruptDataPartitionIDs      []uint64
+	LackReplicaDataPartitionIDs  []uint64
+}
+
+// meta partition diagnosis represents the inactive meta nodes, corrupt meta partitions, and meta partitions lack of replicas
+type MetaPartitionDiagnosis struct {
+	InactiveMetaNodes            []string
+	CorruptMetaPartitionIDs      []uint64
+	LackReplicaMetaPartitionIDs  []uint64
+}

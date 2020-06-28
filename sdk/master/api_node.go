@@ -104,3 +104,21 @@ func (api *NodeAPI) ResponseDataNodeTask(task *proto.AdminTask) (err error) {
 	}
 	return
 }
+
+func (api *NodeAPI) DataNodeDecommission(nodeAddr string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.DecommissionDataNode)
+	request.addParam("addr", nodeAddr)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *NodeAPI) MetaNodeDecommission(nodeAddr string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.DecommissionMetaNode)
+	request.addParam("addr", nodeAddr)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
