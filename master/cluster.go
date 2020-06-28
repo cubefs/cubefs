@@ -783,6 +783,11 @@ func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []u
 func (c *Cluster) decommissionDataNode(dataNode *DataNode) (err error) {
 	msg := fmt.Sprintf("action[decommissionDataNode], Node[%v] OffLine", dataNode.Addr)
 	log.LogWarn(msg)
+	dataNode.ToBeOffline = true
+	defer func() {
+		dataNode.ToBeOffline = false
+	}()
+	dataNode.AvailableSpace = 1
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
 		for _, dp := range vol.dataPartitions.partitions {
@@ -888,7 +893,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
 errHandler:
-	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.Hosts)
 	if err != nil {
@@ -1189,6 +1194,11 @@ func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, part
 func (c *Cluster) decommissionMetaNode(metaNode *MetaNode) (err error) {
 	msg := fmt.Sprintf("action[decommissionMetaNode],clusterID[%v] Node[%v] begin", c.Name, metaNode.Addr)
 	log.LogWarn(msg)
+	metaNode.ToBeOffline = true
+	defer func() {
+		metaNode.ToBeOffline = false
+	}()
+	metaNode.MaxMemAvailWeight = 1
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
 		for _, mp := range vol.MetaPartitions {
