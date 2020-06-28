@@ -45,7 +45,7 @@ func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
 const (
 	cmdMetaNodeListShort             = "List information of meta nodes"
 	cmdMetaNodeInfoShort             = "Show information of meta nodes"
-	cmdMetaNodeDecommissionInfoShort = "decommission partitions in a meta node to others"
+	cmdMetaNodeDecommissionInfoShort = "Decommission partitions in a meta node to other nodes"
 )
 
 func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {

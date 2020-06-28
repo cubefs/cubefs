@@ -45,7 +45,6 @@ const (
 	cmdDataNodeListShort             = "List information of data nodes"
 	cmdDataNodeInfoShort             = "Show information of a data node"
 	cmdDataNodeDecommissionInfoShort = "decommission partitions in a data node to others"
-	cmdResetDataNodeShort            = "Reset corrupt data partitions related to this node"
 )
 
 func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
