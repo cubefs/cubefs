@@ -98,8 +98,8 @@ func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
 // HandleLeaderChange notifies the application when the raft leader has changed.
 func (dp *DataPartition) HandleLeaderChange(leader uint64) {
 	defer func() {
-		if r:=recover();r!=nil {
-			mesg:=fmt.Sprintf("HandleLeaderChange(%v)  Raft Panic (%v)",dp.partitionID,r)
+		if r := recover(); r != nil {
+			mesg := fmt.Sprintf("HandleLeaderChange(%v)  Raft Panic (%v)", dp.partitionID, r)
 			panic(mesg)
 		}
 	}()
