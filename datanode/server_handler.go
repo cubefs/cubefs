@@ -26,7 +26,7 @@ import (
 )
 
 var (
-	AutoRepairStatus =true
+	AutoRepairStatus = true
 )
 
 func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +72,7 @@ func (s *DataNode) getStatAPI(w http.ResponseWriter, r *http.Request) {
 	s.buildSuccessResp(w, response)
 }
 
-func (s *DataNode) setAutoRepairStatus(w http.ResponseWriter,r *http.Request) {
+func (s *DataNode) setAutoRepairStatus(w http.ResponseWriter, r *http.Request) {
 	const (
 		paramAutoRepair = "autoRepair"
 	)
@@ -81,13 +81,13 @@ func (s *DataNode) setAutoRepairStatus(w http.ResponseWriter,r *http.Request) {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	autoRepair,err:=strconv.ParseBool(r.FormValue(paramAutoRepair))
-	if err!=nil {
+	autoRepair, err := strconv.ParseBool(r.FormValue(paramAutoRepair))
+	if err != nil {
 		err = fmt.Errorf("parse param %v fail: %v", paramAutoRepair, err)
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	AutoRepairStatus =autoRepair
+	AutoRepairStatus = autoRepair
 	s.buildSuccessResp(w, autoRepair)
 }
 
