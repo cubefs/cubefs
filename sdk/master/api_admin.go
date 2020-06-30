@@ -40,6 +40,7 @@ func (api *AdminAPI) GetCluster() (cv *proto.ClusterView, err error) {
 }
 func (api *AdminAPI) GetClusterStat() (cs *proto.ClusterStatInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminClusterStat)
+	request.addHeader("isTimeOut", "false")
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
