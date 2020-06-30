@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -179,7 +180,17 @@ func (c *MasterClient) prepareRequest() (addr string, nodes []string) {
 func (c *MasterClient) httpRequest(method, url string, param, header map[string]string, reqData []byte) (resp *http.Response, err error) {
 	client := http.DefaultClient
 	reader := bytes.NewReader(reqData)
-	client.Timeout = requestTimeout
+	if header["isTimeOut"] != "" {
+		var isTimeOut bool
+		if isTimeOut, err = strconv.ParseBool(header["isTimeOut"]); err != nil {
+			return
+		}
+		if isTimeOut {
+			client.Timeout = requestTimeout
+		}
+	}else {
+		client.Timeout = requestTimeout
+	}
 	var req *http.Request
 	fullUrl := c.mergeRequestUrl(url, param)
 	log.LogDebugf("httpRequest: merge request url: method(%v) url(%v) bodyLength[%v].", method, fullUrl, len(reqData))

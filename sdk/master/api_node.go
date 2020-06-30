@@ -108,6 +108,7 @@ func (api *NodeAPI) ResponseDataNodeTask(task *proto.AdminTask) (err error) {
 func (api *NodeAPI) DataNodeDecommission(nodeAddr string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.DecommissionDataNode)
 	request.addParam("addr", nodeAddr)
+	request.addHeader("isTimeOut", "false")
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -117,6 +118,7 @@ func (api *NodeAPI) DataNodeDecommission(nodeAddr string) (err error) {
 func (api *NodeAPI) MetaNodeDecommission(nodeAddr string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.DecommissionMetaNode)
 	request.addParam("addr", nodeAddr)
+	request.addHeader("isTimeOut", "false")
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

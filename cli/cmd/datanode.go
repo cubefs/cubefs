@@ -132,7 +132,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			var nodeAddr string
 			defer func() {
 				if err != nil {
-					errout("decommission data node failed: %v\n", err)
+					errout("decommission data node failed, err[%v]\n", err)
 					os.Exit(1)
 				}
 			}()
