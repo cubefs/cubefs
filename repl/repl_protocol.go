@@ -81,8 +81,8 @@ func NewFollowersTransport(addr string) (ft *FollowerTransport, err error) {
 	ft = new(FollowerTransport)
 	ft.addr = addr
 	ft.conn = conn
-	ft.sendCh = make(chan *FollowerPacket, 200)
-	ft.recvCh = make(chan *FollowerPacket, 200)
+	ft.sendCh = make(chan *FollowerPacket, RequestChanSize)
+	ft.recvCh = make(chan *FollowerPacket, RequestChanSize)
 	ft.exitCh = make(chan struct{})
 	go ft.serverWriteToFollower()
 	go ft.serverReadFromFollower()
