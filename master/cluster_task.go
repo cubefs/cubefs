@@ -221,10 +221,10 @@ func (c *Cluster) checkCorruptMetaPartitions() (inactiveMetaNodes []string, corr
 // check corrupt partitions related to this meta node
 func (c *Cluster) checkCorruptMetaNode(metaNode *MetaNode) (corruptPartitions []*MetaPartition, err error) {
 	var (
-		partition            *MetaPartition
-		mn                   *MetaNode
-		corruptPids          []uint64
-		corruptReplicaNum    uint8
+		partition         *MetaPartition
+		mn                *MetaNode
+		corruptPids       []uint64
+		corruptReplicaNum uint8
 	)
 	metaNode.RLock()
 	defer metaNode.RUnlock()
@@ -241,7 +241,7 @@ func (c *Cluster) checkCorruptMetaNode(metaNode *MetaNode) (corruptPartitions []
 				corruptReplicaNum = corruptReplicaNum + 1
 			}
 		}
-		if corruptReplicaNum > partition.ReplicaNum / 2 {
+		if corruptReplicaNum > partition.ReplicaNum/2 {
 			corruptPartitions = append(corruptPartitions, partition)
 			corruptPids = append(corruptPids, pid)
 		}
@@ -957,6 +957,10 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 	var vol *Vol
 	if vol, err = c.getVol(mp.volName); err != nil {
 		log.LogWarnf("action[updateInodeIDRange] vol[%v] not found", mp.volName)
+		return
+	}
+	maxPartitionID := vol.maxPartitionID()
+	if mr.PartitionID < maxPartitionID {
 		return
 	}
 	var end uint64
