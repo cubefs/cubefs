@@ -411,7 +411,6 @@ errHandler:
 	return
 }
 
-
 func (c *Cluster) checkCorruptDataPartitions() (inactiveDataNodes []string, corruptPartitions []*DataPartition, err error) {
 	partitionMap := make(map[uint64]uint8)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
@@ -942,7 +941,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
 errHandler:
-	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.Hosts)
 	if err != nil {
@@ -1397,13 +1396,8 @@ func (c *Cluster) createVol(name, owner, zoneName string, mpCount, dpReplicaNum,
 		goto errHandler
 	}
 	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
-		if err = vol.initDataPartitions(c); err == nil {
-			readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
-			break
-		}
-	}
-	if err != nil {
-		goto errHandler
+		_ = vol.initDataPartitions(c)
+		readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
 	}
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
 	vol.updateViewCache(c)
