@@ -75,7 +75,7 @@ ensure_node_writable() {
     for i in $(seq 1 300) ; do
         ${cli} ${node} list &> /tmp/cli_${node}_list;
         res=`cat /tmp/cli_${node}_list | grep "Yes" | grep "Active" | wc -l`
-        if [[ ${res} -eq 4 ]]; then
+        if [[ ${res} -ge 3 ]]; then
             echo -e "\033[32mdone\033[0m"
             return
         fi

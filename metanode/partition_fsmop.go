@@ -17,6 +17,7 @@ package metanode
 import (
 	"encoding/json"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -136,6 +137,52 @@ func (mp *metaPartition) confRemoveNode(req *proto.MetaPartitionDecommissionRequ
 	}
 	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionID, mp.config.NodeId, string(data))
+	return
+}
+
+func (mp *metaPartition) ApplyResetMember(req *proto.ResetMetaPartitionRaftMemberRequest) (updated bool, err error) {
+	var (
+		newPeerIndexes []int
+		newPeers       []proto.Peer
+	)
+	data, _ := json.Marshal(req)
+	updated = true
+	log.LogInfof("Start ResetRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+		req.PartitionId, mp.config.NodeId, string(data))
+	if len(req.NewPeers) >= len(mp.config.Peers) {
+		log.LogErrorf("NoUpdate ResetRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+			req.PartitionId, mp.config.NodeId, string(data))
+		return
+	}
+	for _, peer := range req.NewPeers {
+		flag := false
+		for index, p := range mp.config.Peers {
+			if peer.ID == p.ID {
+				flag = true
+				newPeerIndexes = append(newPeerIndexes, index)
+				break
+			}
+		}
+		if !flag {
+			updated = false
+			log.LogErrorf("ResetRaftNode must be old node, PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+				req.PartitionId, mp.config.NodeId, string(data))
+			return
+		}
+	}
+	if !updated {
+		log.LogInfof("NoUpdate ResetRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+			req.PartitionId, mp.config.NodeId, string(data))
+		return
+	}
+	newPeers = make([]proto.Peer, len(newPeerIndexes))
+	sort.Ints(newPeerIndexes)
+	for i, index := range newPeerIndexes {
+		newPeers[i] = mp.config.Peers[index]
+	}
+	mp.config.Peers = newPeers
+	log.LogInfof("Finish ResetRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+		req.PartitionId, mp.config.NodeId, string(data))
 	return
 }
 

@@ -191,6 +191,24 @@ func (rs *RaftServer) ChangeMember(id uint64, changeType proto.ConfChangeType, p
 	return
 }
 
+func (rs *RaftServer) ResetMember(id uint64, peers []proto.Peer, context []byte) (err error) {
+	rs.mu.RLock()
+	raft, ok := rs.rafts[id]
+	rs.mu.RUnlock()
+	if !ok {
+		err = ErrRaftNotExists
+		return
+	}
+	if peers == nil || len(peers) == 0 {
+		err = ErrPeersEmpty
+		return
+	}
+
+	raft.raftFsm.applyResetPeer(&proto.ResetPeers{NewPeers: peers, Context: context})
+	raft.peerState.replace(peers)
+	return nil
+}
+
 func (rs *RaftServer) Status(id uint64) (status *Status) {
 	rs.mu.RLock()
 	raft, ok := rs.rafts[id]

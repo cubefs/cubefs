@@ -79,6 +79,25 @@ func (api *AdminAPI) DiagnoseDataPartition() (diagnosis *proto.DataPartitionDiag
 	return
 }
 
+func (api *AdminAPI) ResetDataPartition(partitionID uint64) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminResetDataPartition)
+	request.addParam("id", strconv.Itoa(int(partitionID)))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) ResetCorruptDataNode(nodeAddr string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminResetCorruptDataNode)
+	request.addParam("addr", nodeAddr)
+	request.addHeader("isTimeOut", "false")
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) DiagnoseMetaPartition() (diagnosis *proto.MetaPartitionDiagnosis, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.AdminDiagnoseMetaPartition)
@@ -87,6 +106,24 @@ func (api *AdminAPI) DiagnoseMetaPartition() (diagnosis *proto.MetaPartitionDiag
 	}
 	diagnosis = &proto.MetaPartitionDiagnosis{}
 	if err = json.Unmarshal(buf, &diagnosis); err != nil {
+		return
+	}
+	return
+}
+func (api *AdminAPI) ResetMetaPartition( partitionID uint64) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminResetMetaPartition)
+	request.addParam("id", strconv.Itoa(int(partitionID)))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) ResetCorruptMetaNode(nodeAddr string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminResetCorruptMetaNode)
+	request.addParam("addr", nodeAddr)
+	request.addHeader("isTimeOut", "false")
+	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return

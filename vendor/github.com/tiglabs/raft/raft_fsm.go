@@ -280,6 +280,44 @@ func (r *raftFsm) applyConfChange(cc *proto.ConfChange) {
 	}
 }
 
+func (r *raftFsm) applyResetPeer(rp *proto.ResetPeers) {
+	if r.state == stateLeader {
+		logger.Warn("raft[%v] ignore reset peers in case of leader exists", r.id)
+		return
+	}
+	if len(rp.NewPeers) > len(r.replicas)/2 {
+		logger.Warn("raft[%v] ignore reset more than half of old peers", r.id)
+		return
+	}
+
+	for _, peer := range rp.NewPeers {
+		replica, ok := r.replicas[peer.ID]
+		if !ok {
+			logger.Info("raft[%v] ignore reset peer[%v], current[%v]", r.id, peer.String(), replica.peer.String())
+			return
+		} else if replica.peer.PeerID != peer.PeerID {
+			if logger.IsEnableInfo() {
+				logger.Info("raft[%v] ignore reset peer[%v], current[%v]", r.id, peer.String(), replica.peer.String())
+			}
+			return
+		}
+	}
+	r.reset(r.term+1, 0, false)
+	r.acks = nil
+	for _, replica := range r.replicas {
+		flag := false
+		for _, peer := range rp.NewPeers {
+			if replica.peer.ID == peer.ID {
+				flag = true
+			}
+		}
+		if !flag {
+			delete(r.replicas, replica.peer.ID)
+		}
+	}
+
+}
+
 func (r *raftFsm) addPeer(peer proto.Peer) {
 	r.pendingConf = false
 	if _, ok := r.replicas[peer.ID]; !ok {
