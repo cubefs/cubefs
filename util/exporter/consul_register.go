@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"time"
@@ -56,9 +57,9 @@ func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
 	ticker := time.NewTicker(RegisterPeriod)
 	defer func() {
 		if err := recover(); err != nil {
-			ticker.Stop()
 			log.LogErrorf("RegisterConsul panic,err[%v]", err)
 		}
+		ticker.Stop()
 	}()
 
 	host, err := GetLocalIpAddr()
@@ -74,19 +75,25 @@ func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
 		return
 	}
 
-	client.Do(req)
+	if resp, _ := client.Do(req); resp != nil {
+		ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+	}
 
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				_, err = client.Do(req)
-				if err != nil {
-					log.LogErrorf("send consul register req error: %v", err.Error())
-				}
+	for {
+		select {
+		case <-ticker.C:
+			req := makeRegisterReq(host, addr, app, role, cluster, port)
+			if req == nil {
+				log.LogErrorf("make register req error")
+				return
+			}
+			if resp, _ := client.Do(req); resp != nil {
+				ioutil.ReadAll(resp.Body)
+				resp.Body.Close()
 			}
 		}
-	}()
+	}
 }
 
 // GetLocalIpAddr returns the local IP address.
@@ -132,6 +139,7 @@ func makeRegisterReq(host, addr, app, role, cluster string, port int64) (req *ht
 		return nil
 	}
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Close = true
 
 	return
 }

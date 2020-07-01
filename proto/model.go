@@ -67,6 +67,8 @@ type MetaPartitionInfo struct {
 	Start        uint64
 	End          uint64
 	MaxInodeID   uint64
+	InodeCount   uint64
+	DentryCount  uint64
 	VolName      string
 	Replicas     []*MetaReplicaInfo
 	ReplicaNum   uint8
@@ -196,4 +198,18 @@ type DataReplica struct {
 	IsLeader        bool
 	NeedsToCompare  bool
 	DiskPath        string
+}
+
+// data partition diagnosis represents the inactive data nodes, corrupt data partitions, and data partitions lack of replicas
+type DataPartitionDiagnosis struct {
+	InactiveDataNodes            []string
+	CorruptDataPartitionIDs      []uint64
+	LackReplicaDataPartitionIDs  []uint64
+}
+
+// meta partition diagnosis represents the inactive meta nodes, corrupt meta partitions, and meta partitions lack of replicas
+type MetaPartitionDiagnosis struct {
+	InactiveMetaNodes            []string
+	CorruptMetaPartitionIDs      []uint64
+	LackReplicaMetaPartitionIDs  []uint64
 }

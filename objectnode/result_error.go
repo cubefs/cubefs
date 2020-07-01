@@ -27,6 +27,10 @@ type ErrorCode struct {
 }
 
 func (code ErrorCode) ServeResponse(w http.ResponseWriter, r *http.Request) error {
+	// write status code to request context,
+	// traceMiddleWare send exception request to prometheus via status code
+	SetResponseStatusCode(r, code)
+
 	var err error
 	var marshaled []byte
 	var xmlError = struct {

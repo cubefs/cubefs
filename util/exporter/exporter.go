@@ -120,7 +120,7 @@ func RegistConsul(cluster string, role string, cfg *config.Config) {
 		if ok := strings.HasPrefix(consulAddr, "http"); !ok {
 			consulAddr = "http://" + consulAddr
 		}
-		DoConsulRegisterProc(consulAddr, AppName, role, cluster, exporterPort)
+		go DoConsulRegisterProc(consulAddr, AppName, role, cluster, exporterPort)
 	}
 }
 

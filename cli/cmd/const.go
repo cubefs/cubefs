@@ -16,16 +16,23 @@ package cmd
 
 const (
 	//List of operation name for cli
-	CliOpGet          = "get"
-	CliOpList         = "list"
-	CliOpStatus       = "stat"
-	CliOpCreate       = "create"
-	CliOpDelete       = "delete"
-	CliOpInfo         = "info"
-	CliOpAdd          = "add"
-	CliOpSet          = "set"
-	CliOpDecommission = "decommission"
-	CliOpDownloadZip  = "load"
+	CliOpGet               = "get"
+	CliOpList              = "list"
+	CliOpStatus            = "stat"
+	CliOpCreate            = "create"
+	CliOpDelete            = "delete"
+	CliOpInfo              = "info"
+	CliOpAdd               = "add"
+	CliOpSet               = "set"
+	CliOpDecommission      = "decommission"
+	CliOpDownloadZip       = "load"
+	CliOpMetaCompatibility = "meta"
+	CliOpFreeze            = "freeze"
+	CliOpSetThreshold      = "threshold"
+	CliOpCheck             = "check"
+	CliOpReset             = "reset"
+	CliOpReplicate         = "add-replica"
+	CliOpDelReplica        = "del-replica"
 
 	//Shorthand format of operation name
 	CliOpDecommissionShortHand = "dec"

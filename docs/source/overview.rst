@@ -1,7 +1,7 @@
 Introduction
 =============
 
-ChubaoFS(Chubao File System) is a distributed fle system that is designed to natively support large scale container platforms.
+ChubaoFS(Chubao File System) is a distributed file system that is designed to natively support large scale container platforms.
 
 High Level Architecture
 -----------------------

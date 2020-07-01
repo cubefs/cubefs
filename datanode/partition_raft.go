@@ -77,8 +77,8 @@ func (dp *DataPartition) StartRaft() (err error) {
 		peers         []raftstore.PeerAddress
 	)
 	defer func() {
-		if r:=recover();r!=nil {
-			mesg:=fmt.Sprintf("StartRaft(%v)  Raft Panic (%v)",dp.partitionID,r)
+		if r := recover(); r != nil {
+			mesg := fmt.Sprintf("StartRaft(%v)  Raft Panic (%v)", dp.partitionID, r)
 			panic(mesg)
 		}
 	}()

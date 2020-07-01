@@ -42,7 +42,7 @@ While deleting the volume, the policy information related to the volume will be 
    :header: "Parameter", "Type", "Description"
    
    "name", "string", "volume name"
-   "authKey", "string", "calculates the MD5 value of the owner field as authentication information"
+   "authKey", "string", "calculates the 32-bit MD5 value of the owner field as authentication information"
 
 Get
 ---------
@@ -58,7 +58,7 @@ Show the base information of the vol, such as name, the detail of data partition
    :header: "Parameter", "Type", "Description"
    
    "name", "string", "volume name"
-   "authKey", "string", "calculates the MD5 value of the owner field as authentication information"
+   "authKey", "string", "calculates the 32-bit MD5 value of the owner field as authentication information"
 
 response
 
@@ -117,7 +117,7 @@ Increase the quota of volume, or adjust other parameters.
    :header: "Parameter", "Type", "Description", "Mandatory"
 
    "name", "string", "volume name", "Yes"
-   "authKey", "string", "calculates the MD5 value of the owner field as authentication information", "Yes"
+   "authKey", "string", "calculates the 32-bit MD5 value of the owner field as authentication information", "Yes"
    "capacity", "int", "the quota of vol, unit is GB", "Yes"
    "zoneName", "string", "update zone name", "Yes"
    "enableToken","bool","whether to enable the token mechanism to control client permissions. ``False`` by default.", "No"
@@ -174,7 +174,7 @@ Add the token that controls read and write permissions.
 
    "name", "string", "the name of vol"
    "tokenType", "int", "1 is readonly token, 2 is readWrite token"
-   "authKey", "string", "calculates the MD5 value of the owner field as authentication information"
+   "authKey", "string", "calculates the 32-bit MD5 value of the owner field as authentication information"
 
 Update Token
 ---------------
@@ -191,7 +191,7 @@ Update token type.
    "name", "string", "the name of vol"
    "token", "string","the token value"
    "tokenType", "int", "1 is readonly token, 2 is readWrite token"
-   "authKey", "string", "calculates the MD5 value of the owner field as authentication information"
+   "authKey", "string", "calculates the 32-bit MD5 value of the owner field as authentication information"
 
 Delete Token
 ---------------
@@ -207,7 +207,7 @@ Delete specified token.
 
    "name", "string", "the name of vol"
    "token", "string","the token value"
-   "authKey", "string", "calculates the MD5 value of the owner field as authentication information"
+   "authKey", "string", "calculates the 32-bit MD5 value of the owner field as authentication information"
 
 Get Token
 ------------
