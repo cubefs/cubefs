@@ -125,6 +125,11 @@ func TestMUSession_Bytes(t *testing.T) {
 	var err error
 	var random = rand.New(rand.NewSource(time.Now().UnixNano()))
 	var session1 = MultipartFromBytes(nil)
+
+	me := NewMultipartExtend()
+	me["oss::tag"] = "name=123&age456"
+	me["oss::disposition"] = "attachment=file.txt"
+	session1.extend = me
 	for i := 0; i < 100; i++ {
 		id := uint16(i)
 		md5 := util.RandomString(16, util.UpperLetter|util.Numeric)
@@ -148,4 +153,18 @@ func TestMUSession_Bytes(t *testing.T) {
 		t.Fatalf("result mismatch:\n\tsession1:%v\n\tsession2:%v", session1, session2)
 	}
 	t.Logf("encoded session length: %v", len(sessionBytes))
+}
+
+func TestMultipartExtend_Bytes(t *testing.T) {
+	me := NewMultipartExtend()
+	me["oss::tag"] = "name=123&age456"
+	me["oss::disposition"] = "attachment=file.txt"
+	bytes, err := me.Bytes()
+	if err != nil {
+		t.Errorf("Encode multipart extend fail cause : %v", err)
+	}
+	me2 := MultipartExtendFromBytes(bytes)
+	if !reflect.DeepEqual(me, me2) {
+		t.Fatalf("result mismatch:\n\tme1:%v\n\tme2:%v", me, me2)
+	}
 }

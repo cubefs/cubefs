@@ -16,7 +16,6 @@ package metanode
 
 import (
 	"encoding/json"
-
 	"os"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -26,10 +25,10 @@ import (
 func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	ext := req.Extent
-	ino.Extents.Append(&ext)
+	ino.Extents.Append(ext)
 	val, err := ino.Marshal()
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
 	resp, err := mp.submit(opFSMExtentsAdd, val)
@@ -55,15 +54,15 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 		ino.DoReadFunc(func() {
 			resp.Generation = ino.Generation
 			resp.Size = ino.Size
-			ino.Extents.Range(func(item BtreeItem) bool {
-				ext := item.(*proto.ExtentKey)
-				resp.Extents = append(resp.Extents, *ext)
+			ino.Extents.Range(func(ek proto.ExtentKey) bool {
+				resp.Extents = append(resp.Extents, ek)
 				return true
 			})
 		})
 		reply, err = json.Marshal(resp)
 		if err != nil {
 			status = proto.OpErr
+			reply = []byte(err.Error())
 		}
 	}
 	p.PacketErrorWithBody(status, reply)
@@ -71,13 +70,12 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 }
 
 // ExtentsTruncate truncates an extent.
-func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq,
-	p *Packet) (err error) {
+func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, proto.Mode(os.ModePerm))
 	ino.Size = req.Size
 	val, err := ino.Marshal()
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
 	resp, err := mp.submit(opFSMExtentTruncate, val)
@@ -94,18 +92,11 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 	ino := NewInode(req.Inode, 0)
 	extents := req.Extents
 	for _, extent := range extents {
-		ino.Extents.Append(&proto.ExtentKey{
-			FileOffset:   extent.FileOffset,
-			PartitionId:  extent.PartitionId,
-			ExtentId:     extent.ExtentId,
-			ExtentOffset: extent.ExtentOffset,
-			Size:         extent.Size,
-			CRC:          extent.CRC,
-		})
+		ino.Extents.Append(extent)
 	}
 	val, err := ino.Marshal()
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
 	resp, err := mp.submit(opFSMExtentsAdd, val)

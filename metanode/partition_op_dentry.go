@@ -56,7 +56,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 	}
 	val, err := dentry.Marshal()
 	if err != nil {
-		p.ResultCode = proto.OpErr
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
 	r, err := mp.submit(opFSMDeleteDentry, val)
@@ -94,7 +94,7 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet)
 
 	val, err := db.Marshal()
 	if err != nil {
-		p.ResultCode = proto.OpErr
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
 	r, err := mp.submit(opFSMDeleteDentryBatch, val)
@@ -157,7 +157,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 	}
 	val, err := dentry.Marshal()
 	if err != nil {
-		p.ResultCode = proto.OpErr
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
 	resp, err := mp.submit(opFSMUpdateDentry, val)
@@ -183,7 +183,7 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 	resp := mp.readDir(req)
 	reply, err := json.Marshal(resp)
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, nil)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
 	p.PacketOkWithBody(reply)
@@ -206,6 +206,7 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 		reply, err = json.Marshal(resp)
 		if err != nil {
 			status = proto.OpErr
+			reply = []byte(err.Error())
 		}
 	}
 	p.PacketErrorWithBody(status, reply)

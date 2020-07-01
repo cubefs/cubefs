@@ -16,6 +16,7 @@ package objectnode
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/chubaofs/chubaofs/proto"
 
@@ -25,6 +26,7 @@ import (
 const (
 	ContextKeyRequestID     = "ctx_request_id"
 	ContextKeyRequestAction = "ctx_request_action"
+	ContextKeyStatusCode    = "status_code"
 )
 
 func SetRequestID(r *http.Request, requestID string) {
@@ -41,4 +43,12 @@ func SetRequestAction(r *http.Request, action proto.Action) {
 
 func GetActionFromContext(r *http.Request) (action proto.Action) {
 	return proto.ParseAction(mux.Vars(r)[ContextKeyRequestAction])
+}
+
+func SetResponseStatusCode(r *http.Request, code ErrorCode) {
+	mux.Vars(r)[ContextKeyStatusCode] = strconv.Itoa(code.StatusCode)
+}
+
+func GetStatusCodeFromContext(r *http.Request) string {
+	return mux.Vars(r)[ContextKeyStatusCode]
 }

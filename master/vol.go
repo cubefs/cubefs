@@ -227,7 +227,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	for _, dp := range vol.dataPartitions.partitionMap {
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
 		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec)
-
+		dp.checkLeader(c.cfg.DataPartitionTimeOutSec)
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNum(c, vol)
 		if dp.Status == proto.ReadWrite {

@@ -37,6 +37,7 @@ func (mp *metaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet)
 			Path:     multipart.key,
 			InitTime: multipart.initTime,
 			Parts:    make([]*proto.MultipartPartInfo, 0, len(multipart.parts)),
+			Extend:   multipart.extend,
 		},
 	}
 	for _, part := range multipart.Parts() {
@@ -119,7 +120,7 @@ func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *P
 	)
 	for {
 		multipartId = util.CreateMultipartID(mp.config.PartitionId).String()
-		storedItem := mp.multipartTree.Get(&Multipart{id: multipartId})
+		storedItem := mp.multipartTree.Get(&Multipart{key: req.Path, id: multipartId})
 		if storedItem == nil {
 			break
 		}
@@ -129,11 +130,13 @@ func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *P
 		id:       multipartId,
 		key:      req.Path,
 		initTime: time.Now().Local(),
+		extend:   req.Extend,
 	}
 	if _, err = mp.putMultipart(opFSMCreateMultipart, multipart); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
+
 	resp := &proto.CreateMultipartResponse{
 		Info: &proto.MultipartInfo{
 			ID:   multipartId,
@@ -166,7 +169,7 @@ func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packe
 		matches = append(matches, multipart)
 		return !(len(matches) >= max)
 	}
-	if len(keyMarker) > 0 || len(multipartIdMarker) > 0 {
+	if len(keyMarker) > 0 {
 		mp.multipartTree.AscendGreaterOrEqual(&Multipart{key: keyMarker, id: multipartIdMarker}, walkTreeFunc)
 	} else {
 		mp.multipartTree.Ascend(walkTreeFunc)

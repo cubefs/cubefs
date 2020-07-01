@@ -13,6 +13,7 @@
 # permissions and limitations under the License.
 
 # -*- coding: utf-8 -*-
+import uuid
 from env import BUCKET
 from base import S3TestCase, get_env_s3_client
 
@@ -48,22 +49,31 @@ class ListMultipartTest(S3TestCase):
         cls.abort_previous_upload()
         # create new test multipart uploads
         for i in range(INIT_NUMBERS):
-            key = str(i) + ".txt"
-            res = cls.s3.create_multipart_upload(Bucket=BUCKET, Key=key)
-            upload = UploadInfo(upload_id=res["UploadId"], key=key)
+            prefix_key = KEY_PREFIX + str(i)
+            res = cls.s3.create_multipart_upload(Bucket=BUCKET, Key=prefix_key)
+            upload = UploadInfo(upload_id=res["UploadId"], key=prefix_key)
             ListMultipartTest.uploadInfos.append(upload)
-            ListMultipartTest.commonUploadInfos.append(upload)
+
         for i in range(INIT_NUMBERS):
-            key = KEY_PREFIX_ONE + str(i) + ".txt"
-            res = cls.s3.create_multipart_upload(Bucket=BUCKET, Key=key)
-            upload = UploadInfo(upload_id=res["UploadId"], key=key)
+            prefix_one_key = KEY_PREFIX_ONE + str(i)
+            res = cls.s3.create_multipart_upload(Bucket=BUCKET, Key=prefix_one_key)
+            upload = UploadInfo(upload_id=res["UploadId"], key=prefix_one_key)
             ListMultipartTest.uploadInfos.append(upload)
             ListMultipartTest.prefixUploadInfos.append(upload)
+
         for i in range(INIT_NUMBERS):
-            key = KEY_PREFIX_TWO + str(i) + ".txt"
-            res = cls.s3.create_multipart_upload(Bucket=BUCKET, Key=key)
-            upload = UploadInfo(upload_id=res["UploadId"], key=key)
+            prefix_two_key = KEY_PREFIX_TWO + str(i)
+            res = cls.s3.create_multipart_upload(Bucket=BUCKET, Key=prefix_two_key)
+            upload = UploadInfo(upload_id=res["UploadId"], key=prefix_two_key)
             ListMultipartTest.uploadInfos.append(upload)
+
+        for i in range(INIT_NUMBERS):
+            random_key = str(uuid.uuid4())
+            res = cls.s3.create_multipart_upload(Bucket=BUCKET, Key=random_key)
+            upload = UploadInfo(upload_id=res["UploadId"], key=random_key)
+            ListMultipartTest.uploadInfos.append(upload)
+            ListMultipartTest.commonUploadInfos.append(upload)
+
         ListMultipartTest.uploadInfos = sorted(ListMultipartTest.uploadInfos,
                                                key=lambda upload_info: upload_info.key, )
         ListMultipartTest.prefixUploadInfos = sorted(ListMultipartTest.prefixUploadInfos,
@@ -146,7 +156,7 @@ class ListMultipartTest(S3TestCase):
             if not is_truncated:
                 break
         # check the key list size
-        self.assertEqual(INIT_NUMBERS * 3, response_list_size)
+        self.assertEqual(INIT_NUMBERS * 4, response_list_size)
 
     def test_prefix(self):
         """
@@ -195,6 +205,7 @@ class ListMultipartTest(S3TestCase):
                                                   Prefix=KEY_PREFIX,
                                                   Delimiter=delimiter)
         # prefix
+        self.assertEqual(len(response["Uploads"]), len(self.commonUploadInfos))
         self.assertEqual(len(response["CommonPrefixes"]), 2)
         self.assertEqual(response["CommonPrefixes"][0]["Prefix"], "list/test/one/")
         self.assertEqual(response["CommonPrefixes"][1]["Prefix"], "list/test/two/")

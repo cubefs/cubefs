@@ -166,7 +166,6 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftDir = cfg.GetString(cfgRaftDir)
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
-	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
 	m.zoneName = cfg.GetString(cfgZoneName)
 	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
 

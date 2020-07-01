@@ -64,40 +64,26 @@ func newConfigSetCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   CliOpSet,
 		Short: cmdConfigSetShort,
-		Long: `Set the config file using command line:
-	config --set-host 192.168.0.11:17010`,
+		Long: `Set the config file`,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				count       int8
-				isMasterEnd bool
 				masterHosts []string
 			)
-			for !isMasterEnd {
-				var masterHost string
-				var isEnd string
-				stdout(fmt.Sprintf("Please input master host %v:\n", count+1))
-				_, _ = fmt.Scanln(&masterHost)
-				if len(masterHost) == 0 {
-					if count == 0 {
-						stdout("Abort by user.\n")
-						return
-					}
-					continue
-				}
-				masterHosts = append(masterHosts, masterHost)
-
-				stdout(fmt.Sprintf("Input another master host?(y/n)[y]:\n"))
-				_, _ = fmt.Scanln(&isEnd)
-				if isEnd == "y" || len(isEnd) == 0 {
-					count += 1
-				} else {
-					isMasterEnd = true
-				}
+			var masterHost string
+			stdout(fmt.Sprintf("Please input master host:\n"))
+			_, _ = fmt.Scanln(&masterHost)
+			if len(masterHost) == 0 {
+				stdout("Abort by user.\n")
+				return
 			}
+			masterHosts = append(masterHosts, masterHost)
 			config := &Config{
 				MasterAddr: masterHosts,
 			}
-			setConfig(config)
+			if _, err := setConfig(config); err != nil {
+				stdout("error: %v\n", err)
+				return
+			}
 			stdout(fmt.Sprintf("Config has been set successfully!\n"))
 		},
 	}
@@ -115,7 +101,7 @@ func newConfigInfoCmd() *cobra.Command {
 				_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
-			stdout(fmt.Sprintf("Config info:\n	%v", config.MasterAddr))
+			stdout(fmt.Sprintf("Config info:\n  %v\n", config.MasterAddr))
 
 		},
 	}
