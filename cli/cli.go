@@ -45,14 +45,26 @@ func setupCommands(cfg *cmd.Config) *cobra.Command {
 	var completionCmd = &cobra.Command{
 		Use:   "completion",
 		Short: "Generate completion bash file",
-		Long: `To use the completion, tool "bash-completion" is demanded, 
-			1. $ ./cfs-cli completion   # file named "cfs-cli.sh" will be generated
-			2. $ echo 'source /usr/share/bash-completion/bash_completion' >> ~/.bashrc
-			3. $ echo 'source {path of cfs-cli.sh}' >>~/.bashrc
-			4. $ source ~/.bashrc`,
+		Long: `To use the completion, tool "bash-completion" is demanded,
+then execute the following command:
+   $ ./cfs-cli completion   
+   # Bash completion file "cfs-cli.sh" will be generated under the present working directory
+   $ echo 'source /usr/share/bash-completion/bash_completion' >> ~/.bashrc
+   $ echo 'source {path of cfs-cli.sh}' >>~/.bashrc
+   $ source ~/.bashrc
+`,
 		Example: "cfs-cli completion",
 		Run: func(cmd *cobra.Command, args []string) {
-			cfsRootCmd.CFSCmd.GenBashCompletionFile("cfs-cli.sh")
+			if err := cfsRootCmd.CFSCmd.GenBashCompletionFile("cfs-cli.sh"); err != nil {
+				_, _ = fmt.Fprintf(os.Stdout,"generate bash file failed")
+			}
+			_, _ = fmt.Fprintf(os.Stdout, `File "cfs-cli.sh" has been generated successfully under the present working directory,
+following command to execute:
+   $ # install bash-completion 
+   $ echo 'source /usr/share/bash-completion/bash_completion' >> ~/.bashrc
+   $ echo 'source {path of cfs-cli.sh}' >>~/.bashrc
+   $ source ~/.bashrc
+`)
 		},
 	}
 	cfsRootCmd.CFSCmd.AddCommand(completionCmd)

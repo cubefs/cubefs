@@ -188,6 +188,7 @@ type MetaPartition interface {
 	Start() error
 	Stop()
 	OpMeta
+	LoadSnapshot(path string) error
 }
 
 // metaPartition manages the range of the inode IDs.
@@ -210,7 +211,7 @@ type metaPartition struct {
 	state         uint32
 	delInodeFp    *os.File
 	freeList      *freeList // free inode list
-	extDelCh      chan BtreeItem
+	extDelCh      chan []proto.ExtentKey
 	extReset      chan struct{}
 	vol           *Vol
 	manager       *metadataManager
@@ -370,7 +371,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		stopC:         make(chan bool),
 		storeChan:     make(chan *storeMsg, 5),
 		freeList:      newFreeList(),
-		extDelCh:      make(chan BtreeItem, 10000),
+		extDelCh:      make(chan []proto.ExtentKey, 10000),
 		extReset:      make(chan struct{}),
 		vol:           NewVol(),
 		manager:       manager,
@@ -417,6 +418,23 @@ func (mp *metaPartition) GetCursor() uint64 {
 func (mp *metaPartition) PersistMetadata() (err error) {
 	mp.config.sortPeers()
 	err = mp.persistMetadata()
+	return
+}
+
+func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
+	if err = mp.loadInode(snapshotPath); err != nil {
+		return
+	}
+	if err = mp.loadDentry(snapshotPath); err != nil {
+		return
+	}
+	if err = mp.loadExtend(snapshotPath); err != nil {
+		return
+	}
+	if err = mp.loadMultipart(snapshotPath); err != nil {
+		return
+	}
+	err = mp.loadApplyID(snapshotPath)
 	return
 }
 

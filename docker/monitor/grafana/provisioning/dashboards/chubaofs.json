@@ -15,7 +15,8 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 0,
-  "iteration": 1588223537374,
+  "id": 1,
+  "iteration": 1593328519495,
   "links": [],
   "panels": [
     {
@@ -507,6 +508,7 @@
         "#d44a3a"
       ],
       "datasource": null,
+      "description": "Chubaofs process start time of selected instance",
       "format": "dateTimeFromNow",
       "gauge": {
         "maxValue": 100,
@@ -646,6 +648,7 @@
     },
     {
       "datasource": null,
+      "description": "metanode size of total, used and increased.",
       "gridPos": {
         "h": 6,
         "w": 6,
@@ -716,6 +719,7 @@
     },
     {
       "datasource": null,
+      "description": "Top K total size of all volume",
       "gridPos": {
         "h": 6,
         "w": 9,
@@ -821,7 +825,7 @@
       "pluginVersion": "6.4.4",
       "targets": [
         {
-          "expr": "sum(cfs_master_dataNodes_used_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"}) / sum(cfs_master_dataNodes_total_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"})",
+          "expr": "cfs_master_dataNodes_used_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"}/ cfs_master_dataNodes_total_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"}",
           "format": "time_series",
           "instant": true,
           "intervalFactor": 1,
@@ -834,6 +838,7 @@
     },
     {
       "datasource": null,
+      "description": "Metanode used size ratio with total size",
       "gridPos": {
         "h": 6,
         "w": 3,
@@ -876,7 +881,7 @@
       "pluginVersion": "6.4.4",
       "targets": [
         {
-          "expr": "sum(cfs_master_metaNodes_used_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"}) / sum(cfs_master_metaNodes_total_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"})",
+          "expr": "cfs_master_metaNodes_used_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"} / cfs_master_metaNodes_total_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"}",
           "format": "time_series",
           "instant": true,
           "intervalFactor": 1,
@@ -889,6 +894,7 @@
     },
     {
       "datasource": null,
+      "description": "Datanode inactive count",
       "gridPos": {
         "h": 6,
         "w": 3,
@@ -899,7 +905,7 @@
       "options": {
         "fieldOptions": {
           "calcs": [
-            "mean"
+            "lastNotNull"
           ],
           "defaults": {
             "mappings": [],
@@ -926,7 +932,7 @@
       "pluginVersion": "6.4.4",
       "targets": [
         {
-          "expr": "sum(cfs_master_dataNodes_inactive{app=\"$app\", cluster=\"$cluster\"})",
+          "expr": "cfs_master_dataNodes_inactive{app=\"$app\", cluster=\"$cluster\", instance=\"$master_instance\"}",
           "format": "time_series",
           "instant": true,
           "intervalFactor": 1,
@@ -939,6 +945,7 @@
     },
     {
       "datasource": null,
+      "description": "Metanode inactive count",
       "gridPos": {
         "h": 6,
         "w": 3,
@@ -949,7 +956,7 @@
       "options": {
         "fieldOptions": {
           "calcs": [
-            "mean"
+            "lastNotNull"
           ],
           "defaults": {
             "mappings": [],
@@ -976,7 +983,7 @@
       "pluginVersion": "6.4.4",
       "targets": [
         {
-          "expr": "sum(cfs_master_metaNodes_inactive{app=\"$app\", cluster=\"$cluster\"})",
+          "expr": "cfs_master_metaNodes_inactive{app=\"$app\", cluster=\"$cluster\", instance=\"$master_instance\"}",
           "format": "time_series",
           "instant": true,
           "intervalFactor": 1,
@@ -988,7 +995,24 @@
       "type": "gauge"
     },
     {
+      "cacheTimeout": null,
+      "colorBackground": false,
+      "colorValue": false,
+      "colors": [
+        "#299c46",
+        "rgba(237, 129, 40, 0.89)",
+        "#d44a3a"
+      ],
       "datasource": null,
+      "description": "Disk Error count",
+      "format": "none",
+      "gauge": {
+        "maxValue": 100,
+        "minValue": 0,
+        "show": false,
+        "thresholdLabels": false,
+        "thresholdMarkers": true
+      },
       "gridPos": {
         "h": 6,
         "w": 3,
@@ -996,47 +1020,68 @@
         "y": 11
       },
       "id": 179,
-      "options": {
-        "fieldOptions": {
-          "calcs": [
-            "last"
-          ],
-          "defaults": {
-            "mappings": [],
-            "max": 100,
-            "min": 0,
-            "thresholds": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "override": {},
-          "values": false
+      "interval": null,
+      "links": [],
+      "mappingType": 1,
+      "mappingTypes": [
+        {
+          "name": "value to text",
+          "value": 1
         },
-        "orientation": "auto",
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true
-      },
+        {
+          "name": "range to text",
+          "value": 2
+        }
+      ],
+      "maxDataPoints": 100,
+      "nullPointMode": "connected",
+      "nullText": null,
+      "options": {},
       "pluginVersion": "6.4.4",
+      "postfix": "",
+      "postfixFontSize": "50%",
+      "prefix": "",
+      "prefixFontSize": "50%",
+      "rangeMaps": [
+        {
+          "from": "null",
+          "text": "N/A",
+          "to": "null"
+        }
+      ],
+      "sparkline": {
+        "fillColor": "rgba(31, 118, 189, 0.18)",
+        "full": false,
+        "lineColor": "rgb(31, 120, 193)",
+        "show": true,
+        "ymax": null,
+        "ymin": null
+      },
+      "tableColumn": "",
       "targets": [
         {
-          "expr": "sum(cfs_master_disk_error{app=\"$app\", cluster=\"$cluster\", instance=\"$master_instance\"})",
+          "expr": "delta(cfs_master_disk_error{app=\"$app\", cluster=\"$cluster\", instance=\"$master_instance\"}[1m])",
           "format": "time_series",
           "intervalFactor": 1,
           "refId": "A"
         }
       ],
+      "thresholds": "",
       "title": "DiskError",
-      "type": "gauge"
+      "type": "singlestat",
+      "valueFontSize": "80%",
+      "valueMaps": [
+        {
+          "op": "=",
+          "text": "0",
+          "value": "null"
+        }
+      ],
+      "valueName": "current"
     },
     {
       "datasource": null,
+      "description": "top k volume used ratio ",
       "gridPos": {
         "h": 6,
         "w": 6,
@@ -1117,6 +1162,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": null,
+      "description": "top k volume used size",
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -1205,6 +1251,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": null,
+      "description": "top k volume used ratio",
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -1293,6 +1340,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": null,
+      "description": "top k volume size rate",
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -1380,6 +1428,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": null,
+      "description": "Selected volume used/total size and used ratio",
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -1485,6 +1534,7 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": null,
+          "description": "invalide master nodes",
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -1572,6 +1622,7 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": null,
+          "description": "invalide meta nodes",
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -1654,6 +1705,7 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": null,
+          "description": "invalide data nodes",
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -1736,6 +1788,7 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": null,
+          "description": "invalide fuse clients",
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -1833,13 +1886,14 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": null,
+          "description": "metanode op time",
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
             "h": 8,
             "w": 24,
             "x": 0,
-            "y": 26
+            "y": 40
           },
           "id": 117,
           "legend": {
@@ -1937,13 +1991,14 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": null,
+          "description": "metanode op count per second",
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
             "h": 8,
             "w": 24,
             "x": 0,
-            "y": 34
+            "y": 48
           },
           "id": 205,
           "legend": {
@@ -2056,13 +2111,14 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": null,
+          "description": "Datanode op time",
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
             "h": 7,
-            "w": 6,
+            "w": 24,
             "x": 0,
-            "y": 27
+            "y": 57
           },
           "id": 146,
           "legend": {
@@ -2089,7 +2145,7 @@
           "repeatDirection": "h",
           "scopedVars": {
             "dnOp": {
-              "selected": false,
+              "selected": true,
               "text": "OpCreateExtent",
               "value": "OpCreateExtent"
             }
@@ -2160,2451 +2216,14 @@
           "dashLength": 10,
           "dashes": false,
           "datasource": null,
+          "description": "Datanode op count per second",
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
             "h": 7,
-            "w": 6,
-            "x": 6,
-            "y": 27
-          },
-          "id": 288,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpWrite",
-              "value": "OpWrite"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 12,
-            "y": 27
-          },
-          "id": 289,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpSyncWrite",
-              "value": "OpSyncWrite"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 18,
-            "y": 27
-          },
-          "id": 290,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpStreamRead",
-              "value": "OpStreamRead"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
+            "w": 24,
             "x": 0,
-            "y": 34
-          },
-          "id": 291,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpStreamFollowerRead",
-              "value": "OpStreamFollowerRead"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 6,
-            "y": 34
-          },
-          "id": 292,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpExtentRepairRead",
-              "value": "OpExtentRepairRead"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 12,
-            "y": 34
-          },
-          "id": 293,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpMarkDelete",
-              "value": "OpMarkDelete"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 18,
-            "y": 34
-          },
-          "id": 294,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpRandowWrite",
-              "value": "OpRandowWrite"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 0,
-            "y": 41
-          },
-          "id": 295,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpSyncRandomWrite",
-              "value": "OpSyncRandomWrite"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 6,
-            "y": 41
-          },
-          "id": 296,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpNotifyReplicasToRepair",
-              "value": "OpNotifyReplicasToRepair"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 12,
-            "y": 41
-          },
-          "id": 297,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpGetAllWatermarks",
-              "value": "OpGetAllWatermarks"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 18,
-            "y": 41
-          },
-          "id": 298,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpCreateDataPartition",
-              "value": "OpCreateDataPartition"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 0,
-            "y": 48
-          },
-          "id": 299,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpLoadDataPratition",
-              "value": "OpLoadDataPratition"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 6,
-            "y": 48
-          },
-          "id": 300,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpDeleteDataPartition",
-              "value": "OpDeleteDataPartition"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 12,
-            "y": 48
-          },
-          "id": 301,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpDataNodeHeartbeat",
-              "value": "OpDataNodeHeartbeat"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 18,
-            "y": 48
-          },
-          "id": 302,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpGetAppliedId",
-              "value": "OpGetAppliedId"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 0,
-            "y": 55
-          },
-          "id": 303,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpDecommissionDataPartition",
-              "value": "OpDecommissionDataPartition"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 6,
-            "y": 55
-          },
-          "id": 304,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpAddDataPartitionRaftMember",
-              "value": "OpAddDataPartitionRaftMember"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 12,
-            "y": 55
-          },
-          "id": 305,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpDataPartitionTryToLeader",
-              "value": "OpDataPartitionTryToLeader"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 18,
-            "y": 55
-          },
-          "id": 306,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpGetPartitionSize",
-              "value": "OpGetPartitionSize"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 0,
-            "y": 62
-          },
-          "id": 307,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpGetMaxExtentIDAndPartitionSize",
-              "value": "OpGetMaxExtentIDAndPartitionSize"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 6,
-            "y": 62
-          },
-          "id": 308,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpReadTinyDeleteRecord",
-              "value": "OpReadTinyDeleteRecord"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 12,
-            "y": 62
-          },
-          "id": 309,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 146,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpBroadcastMinAppliedID",
-              "value": "OpBroadcastMinAppliedID"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "sum",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(cfs_dataNode_[[dnOp]]{app=~\"$app\", cluster=\"$cluster\"})",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Time",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ns",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 18,
-            "y": 62
-          },
-          "id": 312,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpStreamRead",
-              "value": "OpStreamRead"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 0,
-            "y": 69
+            "y": 64
           },
           "id": 200,
           "legend": {
@@ -4631,2235 +2250,9 @@
           "repeatDirection": "h",
           "scopedVars": {
             "dnOp": {
-              "selected": false,
+              "selected": true,
               "text": "OpCreateExtent",
               "value": "OpCreateExtent"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 6,
-            "y": 69
-          },
-          "id": 310,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpWrite",
-              "value": "OpWrite"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 12,
-            "y": 69
-          },
-          "id": 311,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpSyncWrite",
-              "value": "OpSyncWrite"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 18,
-            "y": 69
-          },
-          "id": 316,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpRandowWrite",
-              "value": "OpRandowWrite"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 0,
-            "y": 76
-          },
-          "id": 313,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpStreamFollowerRead",
-              "value": "OpStreamFollowerRead"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 6,
-            "y": 76
-          },
-          "id": 314,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpExtentRepairRead",
-              "value": "OpExtentRepairRead"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 12,
-            "y": 76
-          },
-          "id": 315,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpMarkDelete",
-              "value": "OpMarkDelete"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 18,
-            "y": 76
-          },
-          "id": 320,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpCreateDataPartition",
-              "value": "OpCreateDataPartition"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 0,
-            "y": 83
-          },
-          "id": 317,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpSyncRandomWrite",
-              "value": "OpSyncRandomWrite"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 6,
-            "y": 83
-          },
-          "id": 318,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpNotifyReplicasToRepair",
-              "value": "OpNotifyReplicasToRepair"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 12,
-            "y": 83
-          },
-          "id": 319,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpGetAllWatermarks",
-              "value": "OpGetAllWatermarks"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 18,
-            "y": 83
-          },
-          "id": 324,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpGetAppliedId",
-              "value": "OpGetAppliedId"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 0,
-            "y": 90
-          },
-          "id": 321,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpLoadDataPratition",
-              "value": "OpLoadDataPratition"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 6,
-            "y": 90
-          },
-          "id": 322,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpDeleteDataPartition",
-              "value": "OpDeleteDataPartition"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 12,
-            "y": 90
-          },
-          "id": 323,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpDataNodeHeartbeat",
-              "value": "OpDataNodeHeartbeat"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 18,
-            "y": 90
-          },
-          "id": 328,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpGetPartitionSize",
-              "value": "OpGetPartitionSize"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 0,
-            "y": 97
-          },
-          "id": 325,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpDecommissionDataPartition",
-              "value": "OpDecommissionDataPartition"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 6,
-            "y": 97
-          },
-          "id": 326,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpAddDataPartitionRaftMember",
-              "value": "OpAddDataPartitionRaftMember"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 12,
-            "y": 97
-          },
-          "id": 327,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpDataPartitionTryToLeader",
-              "value": "OpDataPartitionTryToLeader"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 0,
-            "y": 104
-          },
-          "id": 329,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpGetMaxExtentIDAndPartitionSize",
-              "value": "OpGetMaxExtentIDAndPartitionSize"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 6,
-            "y": 104
-          },
-          "id": 330,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpReadTinyDeleteRecord",
-              "value": "OpReadTinyDeleteRecord"
-            }
-          },
-          "seriesOverrides": [
-            {
-              "alias": "/sum/",
-              "yaxis": 2
-            }
-          ],
-          "spaceLength": 10,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "expr": "topk($topk, rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
-              "refId": "P"
-            },
-            {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
-              "format": "time_series",
-              "intervalFactor": 1,
-              "legendFormat": "sum",
-              "refId": "A"
-            }
-          ],
-          "thresholds": [],
-          "timeFrom": null,
-          "timeRegions": [],
-          "timeShift": null,
-          "title": "[[dnOp]]:Ops",
-          "tooltip": {
-            "shared": true,
-            "sort": 2,
-            "value_type": "individual"
-          },
-          "type": "graph",
-          "xaxis": {
-            "buckets": null,
-            "mode": "time",
-            "name": null,
-            "show": true,
-            "values": []
-          },
-          "yaxes": [
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            },
-            {
-              "format": "ops",
-              "logBase": 1,
-              "show": true
-            }
-          ],
-          "yaxis": {
-            "align": false,
-            "alignLevel": null
-          }
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "dashLength": 10,
-          "dashes": false,
-          "datasource": null,
-          "fill": 1,
-          "fillGradient": 0,
-          "gridPos": {
-            "h": 7,
-            "w": 6,
-            "x": 12,
-            "y": 104
-          },
-          "id": 331,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
-          },
-          "lines": true,
-          "linewidth": 1,
-          "maxPerRow": 4,
-          "nullPointMode": "null",
-          "options": {
-            "dataLinks": []
-          },
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "repeat": null,
-          "repeatDirection": "h",
-          "repeatIteration": 1588223537374,
-          "repeatPanelId": 200,
-          "scopedVars": {
-            "dnOp": {
-              "selected": false,
-              "text": "OpBroadcastMinAppliedID",
-              "value": "OpBroadcastMinAppliedID"
             }
           },
           "seriesOverrides": [
@@ -6938,19 +2331,40 @@
       "id": 284,
       "panels": [
         {
+          "aliasColors": {},
+          "bars": false,
           "dashLength": 10,
+          "dashes": false,
+          "datasource": null,
+          "description": "Object node op time",
           "fill": 1,
+          "fillGradient": 0,
           "gridPos": {
             "h": 7,
             "w": 24,
-            "y": 6
+            "x": 0,
+            "y": 42
           },
           "id": 285,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
           "lines": true,
           "linewidth": 1,
           "maxPerRow": 4,
           "nullPointMode": "null",
+          "options": {
+            "dataLinks": []
+          },
+          "percentage": false,
           "pointradius": 5,
+          "points": false,
           "renderer": "flot",
           "repeat": "obOp",
           "repeatDirection": "h",
@@ -6968,6 +2382,8 @@
             }
           ],
           "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
           "targets": [
             {
               "expr": "topk($topk, cfs_objectnode_action_[[obOp]]{app=\"$app\", cluster=\"$cluster\"})",
@@ -6984,6 +2400,10 @@
               "refId": "A"
             }
           ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
           "title": "[[obOp]]:Time",
           "tooltip": {
             "shared": true,
@@ -6992,8 +2412,11 @@
           },
           "type": "graph",
           "xaxis": {
+            "buckets": null,
             "mode": "time",
-            "show": true
+            "name": null,
+            "show": true,
+            "values": []
           },
           "yaxes": [
             {
@@ -7006,22 +2429,47 @@
               "logBase": 1,
               "show": true
             }
-          ]
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
         },
         {
+          "aliasColors": {},
+          "bars": false,
           "dashLength": 10,
+          "dashes": false,
+          "datasource": null,
+          "description": "Object node op count per second",
           "fill": 1,
+          "fillGradient": 0,
           "gridPos": {
             "h": 7,
             "w": 24,
-            "y": 13
+            "x": 0,
+            "y": 49
           },
           "id": 286,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
           "lines": true,
           "linewidth": 1,
           "maxPerRow": 4,
           "nullPointMode": "null",
+          "options": {
+            "dataLinks": []
+          },
+          "percentage": false,
           "pointradius": 5,
+          "points": false,
           "renderer": "flot",
           "repeat": "obOp",
           "repeatDirection": "h",
@@ -7039,6 +2487,8 @@
             }
           ],
           "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
           "targets": [
             {
               "expr": "topk($topk, rate(cfs_objectnode_action_[[obOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
@@ -7055,6 +2505,10 @@
               "refId": "A"
             }
           ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
           "title": "[[obOp]]:Ops",
           "tooltip": {
             "shared": true,
@@ -7063,8 +2517,11 @@
           },
           "type": "graph",
           "xaxis": {
+            "buckets": null,
             "mode": "time",
-            "show": true
+            "name": null,
+            "show": true,
+            "values": []
           },
           "yaxes": [
             {
@@ -7077,7 +2534,11 @@
               "logBase": 1,
               "show": true
             }
-          ]
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
         }
       ],
       "title": "ObjectNode",
@@ -7095,27 +2556,48 @@
       "id": 66,
       "panels": [
         {
+          "aliasColors": {},
+          "bars": false,
           "dashLength": 10,
+          "dashes": false,
+          "datasource": null,
+          "description": "fuse client use meta sdk op time",
           "fill": 1,
+          "fillGradient": 0,
           "gridPos": {
             "h": 7,
             "w": 24,
-            "y": 7
+            "x": 0,
+            "y": 43
           },
           "id": 64,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
           "lines": true,
           "linewidth": 1,
           "maxPerRow": 4,
           "nullPointMode": "null",
+          "options": {
+            "dataLinks": []
+          },
+          "percentage": false,
           "pointradius": 5,
+          "points": false,
           "renderer": "flot",
           "repeat": "mnOp",
           "repeatDirection": "h",
           "scopedVars": {
             "mnOp": {
               "selected": true,
-              "text": "OpMetaCreateInode",
-              "value": "OpMetaCreateInode"
+              "text": "OpMetaInodeGet",
+              "value": "OpMetaInodeGet"
             }
           },
           "seriesOverrides": [
@@ -7125,6 +2607,8 @@
             }
           ],
           "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
           "targets": [
             {
               "expr": "topk($topk, cfs_rolefuseclient_[[mnOp]]{app=\"$app\", cluster=\"$cluster\"})",
@@ -7141,6 +2625,10 @@
               "refId": "A"
             }
           ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
           "title": "[[mnOp]]:Time",
           "tooltip": {
             "shared": true,
@@ -7149,8 +2637,11 @@
           },
           "type": "graph",
           "xaxis": {
+            "buckets": null,
             "mode": "time",
-            "show": true
+            "name": null,
+            "show": true,
+            "values": []
           },
           "yaxes": [
             {
@@ -7163,30 +2654,55 @@
               "logBase": 1,
               "show": true
             }
-          ]
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
         },
         {
+          "aliasColors": {},
+          "bars": false,
           "dashLength": 10,
+          "dashes": false,
+          "datasource": null,
+          "description": "fuse client use meta sdk op count per second",
           "fill": 1,
+          "fillGradient": 0,
           "gridPos": {
             "h": 7,
             "w": 24,
-            "y": 14
+            "x": 0,
+            "y": 50
           },
           "id": 212,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
           "lines": true,
           "linewidth": 1,
           "maxPerRow": 4,
           "nullPointMode": "null",
+          "options": {
+            "dataLinks": []
+          },
+          "percentage": false,
           "pointradius": 5,
+          "points": false,
           "renderer": "flot",
           "repeat": "mnOp",
           "repeatDirection": "h",
           "scopedVars": {
             "mnOp": {
               "selected": true,
-              "text": "OpMetaCreateInode",
-              "value": "OpMetaCreateInode"
+              "text": "OpMetaInodeGet",
+              "value": "OpMetaInodeGet"
             }
           },
           "seriesOverrides": [
@@ -7196,6 +2712,8 @@
             }
           ],
           "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
           "targets": [
             {
               "expr": "topk($topk, rate(cfs_fuseclient_[[mnOp]]{app=\"$app\", cluster=\"$cluster\"}[1m]))",
@@ -7212,6 +2730,10 @@
               "refId": "A"
             }
           ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
           "title": "[[mnOp]]:Ops",
           "tooltip": {
             "shared": true,
@@ -7220,8 +2742,11 @@
           },
           "type": "graph",
           "xaxis": {
+            "buckets": null,
             "mode": "time",
-            "show": true
+            "name": null,
+            "show": true,
+            "values": []
           },
           "yaxes": [
             {
@@ -7234,27 +2759,57 @@
               "logBase": 1,
               "show": true
             }
-          ]
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
         },
         {
+          "aliasColors": {},
+          "bars": false,
           "dashLength": 10,
+          "dashes": false,
+          "datasource": null,
+          "description": "fuse client op time",
           "fill": 1,
+          "fillGradient": 0,
           "gridPos": {
             "h": 7,
             "w": 24,
-            "y": 21
+            "x": 0,
+            "y": 57
           },
           "id": 215,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
           "lines": true,
           "linewidth": 1,
           "maxPerRow": 4,
           "nullPointMode": "null",
+          "options": {
+            "dataLinks": []
+          },
+          "percentage": false,
           "pointradius": 5,
+          "points": false,
           "renderer": "flot",
           "repeat": "fuseOp",
           "repeatDirection": "h",
           "scopedVars": {
             "fuse2Op": {
+              "selected": true,
+              "text": "mkdir",
+              "value": "mkdir"
+            },
+            "fuseOp": {
               "selected": true,
               "text": "mkdir",
               "value": "mkdir"
@@ -7267,6 +2822,8 @@
             }
           ],
           "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
           "targets": [
             {
               "expr": "topk($topk, cfs_fuseclient_[[fuseOp]]{app=\"$app\", cluster=\"$cluster\"})",
@@ -7283,6 +2840,10 @@
               "refId": "A"
             }
           ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
           "title": "[[fuseOp]]:Time",
           "tooltip": {
             "shared": true,
@@ -7291,8 +2852,11 @@
           },
           "type": "graph",
           "xaxis": {
+            "buckets": null,
             "mode": "time",
-            "show": true
+            "name": null,
+            "show": true,
+            "values": []
           },
           "yaxes": [
             {
@@ -7305,31 +2869,65 @@
               "logBase": 1,
               "show": true
             }
-          ]
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
         },
         {
+          "aliasColors": {},
+          "bars": false,
           "dashLength": 10,
+          "dashes": false,
+          "datasource": null,
+          "description": "fuse op count per second",
           "fill": 1,
+          "fillGradient": 0,
           "gridPos": {
             "h": 7,
             "w": 24,
-            "y": 28
+            "x": 0,
+            "y": 64
           },
           "id": 216,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
           "lines": true,
           "linewidth": 1,
           "maxPerRow": 4,
           "nullPointMode": "null",
+          "options": {
+            "dataLinks": []
+          },
+          "percentage": false,
           "pointradius": 5,
+          "points": false,
           "renderer": "flot",
           "repeat": "fuseOp",
           "repeatDirection": "h",
+          "scopedVars": {
+            "fuseOp": {
+              "selected": true,
+              "text": "mkdir",
+              "value": "mkdir"
+            }
+          },
           "seriesOverrides": [
             {
               "yaxis": 2
             }
           ],
           "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
           "targets": [
             {
               "expr": "topk($topk, cfs_fuseclient_[[fuseOp]]_count{app=\"$app\", cluster=\"$cluster\"})",
@@ -7346,6 +2944,10 @@
               "refId": "A"
             }
           ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
           "title": "[[fuseOp]]:Ops",
           "tooltip": {
             "shared": true,
@@ -7354,8 +2956,11 @@
           },
           "type": "graph",
           "xaxis": {
+            "buckets": null,
             "mode": "time",
-            "show": true
+            "name": null,
+            "show": true,
+            "values": []
           },
           "yaxes": [
             {
@@ -7368,7 +2973,11 @@
               "logBase": 1,
               "show": true
             }
-          ]
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
         }
       ],
       "title": "FuseClient",
@@ -8990,9 +4599,9 @@
         "allValue": null,
         "current": {
           "tags": [],
-          "text": "All",
+          "text": "OpCreateExtent",
           "value": [
-            "$__all"
+            "OpCreateExtent"
           ]
         },
         "hide": 0,
@@ -9002,12 +4611,12 @@
         "name": "dnOp",
         "options": [
           {
-            "selected": true,
+            "selected": false,
             "text": "All",
             "value": "$__all"
           },
           {
-            "selected": false,
+            "selected": true,
             "text": "OpCreateExtent",
             "value": "OpCreateExtent"
           },
@@ -9201,6 +4810,7 @@
       {
         "allValue": null,
         "current": {
+          "tags": [],
           "text": "ListObjects",
           "value": [
             "ListObjects"
@@ -9504,5 +5114,5 @@
   "timezone": "",
   "title": "ChubaoFS",
   "uid": "J8XJyOmZk1",
-  "version": 6
+  "version": 1
 }

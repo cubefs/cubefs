@@ -411,6 +411,54 @@ errHandler:
 	return
 }
 
+func (c *Cluster) checkCorruptDataPartitions() (inactiveDataNodes []string, corruptPartitions []*DataPartition, err error) {
+	partitionMap := make(map[uint64]uint8)
+	c.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode := node.(*DataNode)
+		if !dataNode.isActive {
+			inactiveDataNodes = append(inactiveDataNodes, dataNode.Addr)
+		}
+		return true
+	})
+	for _, addr := range inactiveDataNodes {
+		var dataNode *DataNode
+		if dataNode, err = c.dataNode(addr); err != nil {
+			return
+		}
+		for _, partition := range dataNode.PersistenceDataPartitions {
+			partitionMap[partition] = partitionMap[partition] + 1
+		}
+	}
+
+	for partitionID, badNum := range partitionMap {
+		var partition *DataPartition
+		if partition, err = c.getDataPartitionByID(partitionID); err != nil {
+			return
+		}
+		if badNum > partition.ReplicaNum/2 {
+			corruptPartitions = append(corruptPartitions, partition)
+		}
+	}
+	log.LogInfof("clusterID[%v] inactiveDataNodes:%v  corruptPartitions count:[%v]",
+		c.Name, inactiveDataNodes, len(corruptPartitions))
+	return
+}
+
+func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []*DataPartition, err error) {
+	vols := c.copyVols()
+	for _, vol := range vols {
+		var dps *DataPartitionMap
+		dps = vol.dataPartitions
+		for _, dp := range dps.partitions {
+			if dp.ReplicaNum > uint8(len(dp.Hosts)) {
+				lackReplicaDataPartitions = append(lackReplicaDataPartitions, dp)
+			}
+		}
+	}
+	log.LogInfof("clusterID[%v] lackReplicaDataPartitions count:[%v]", c.Name, len(lackReplicaDataPartitions))
+	return
+}
+
 func (c *Cluster) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err error) {
 	vols := c.copyVols()
 	for _, vol := range vols {
@@ -783,6 +831,11 @@ func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []u
 func (c *Cluster) decommissionDataNode(dataNode *DataNode) (err error) {
 	msg := fmt.Sprintf("action[decommissionDataNode], Node[%v] OffLine", dataNode.Addr)
 	log.LogWarn(msg)
+	dataNode.ToBeOffline = true
+	defer func() {
+		dataNode.ToBeOffline = false
+	}()
+	dataNode.AvailableSpace = 1
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
 		for _, dp := range vol.dataPartitions.partitions {
@@ -1189,6 +1242,11 @@ func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, part
 func (c *Cluster) decommissionMetaNode(metaNode *MetaNode) (err error) {
 	msg := fmt.Sprintf("action[decommissionMetaNode],clusterID[%v] Node[%v] begin", c.Name, metaNode.Addr)
 	log.LogWarn(msg)
+	metaNode.ToBeOffline = true
+	defer func() {
+		metaNode.ToBeOffline = false
+	}()
+	metaNode.MaxMemAvailWeight = 1
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
 		for _, mp := range vol.MetaPartitions {
@@ -1338,13 +1396,8 @@ func (c *Cluster) createVol(name, owner, zoneName string, mpCount, dpReplicaNum,
 		goto errHandler
 	}
 	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
-		if err = vol.initDataPartitions(c); err == nil {
-			readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
-			break
-		}
-	}
-	if err != nil {
-		goto errHandler
+		_ = vol.initDataPartitions(c)
+		readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
 	}
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
 	vol.updateViewCache(c)

@@ -22,6 +22,7 @@ const (
 	AdminLoadDataPartition         = "/dataPartition/load"
 	AdminCreateDataPartition       = "/dataPartition/create"
 	AdminDecommissionDataPartition = "/dataPartition/decommission"
+	AdminDiagnoseDataPartition     = "/dataPartition/diagnose"
 	AdminDeleteDataReplica         = "/dataReplica/delete"
 	AdminAddDataReplica            = "/dataReplica/add"
 	AdminDeleteVol                 = "/vol/delete"
@@ -57,6 +58,7 @@ const (
 	DecommissionMetaNode           = "/metaNode/decommission"
 	GetMetaNode                    = "/metaNode/get"
 	AdminLoadMetaPartition         = "/metaPartition/load"
+	AdminDiagnoseMetaPartition     = "/metaPartition/diagnose"
 	AdminDecommissionMetaPartition = "/metaPartition/decommission"
 	AdminAddMetaReplica            = "/metaReplica/add"
 	AdminDeleteMetaReplica         = "/metaReplica/delete"
@@ -383,6 +385,7 @@ type DataPartitionResponse struct {
 	Hosts       []string
 	LeaderAddr  string
 	Epoch       uint64
+	IsRecover   bool
 }
 
 // DataPartitionsView defines the view of a data partition
@@ -402,6 +405,8 @@ type MetaPartitionView struct {
 	Start       uint64
 	End         uint64
 	MaxInodeID  uint64
+	InodeCount  uint64
+	DentryCount uint64
 	IsRecover   bool
 	Members     []string
 	LeaderAddr  string
@@ -462,6 +467,9 @@ type SimpleVolView struct {
 	ZoneName           string
 	DpReplicaNum       uint8
 	MpReplicaNum       uint8
+	InodeCount         uint64
+	DentryCount        uint64
+	MaxMetaPartitionID uint64
 	Status             uint8
 	Capacity           uint64 // GB
 	RwDpCnt            int

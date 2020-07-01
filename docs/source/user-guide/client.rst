@@ -58,6 +58,7 @@ fuse.json
    "subdir", "string", "Mount sub directory.", "No"
    "fsyncOnClose", "bool", "Perform fsync upon file close. True by default.", "No"
    "maxcpus", "int", "The maximum number of available CPU cores. Limit the CPU usage of the client process.", "No"
+   "enableXattr", "bool", "Enable xattr support. False by default.", "No"
 
 Mount
 -----

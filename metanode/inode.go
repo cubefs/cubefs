@@ -62,7 +62,8 @@ type Inode struct {
 	NLink      uint32 // NodeLink counts
 	Flag       int32
 	Reserved   uint64 // reserved space
-	Extents    *ExtentsTree
+	//Extents    *ExtentsTree
+	Extents *SortedExtents
 }
 
 type InodeBatch []*Inode
@@ -104,7 +105,7 @@ func NewInode(ino uint64, t uint32) *Inode {
 		AccessTime: ts,
 		ModifyTime: ts,
 		NLink:      1,
-		Extents:    NewExtentsTree(),
+		Extents:    NewSortedExtents(),
 	}
 	if proto.IsDir(t) {
 		i.NLink = 2
@@ -378,7 +379,7 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	}
 	// unmarshal ExtentsKey
 	if i.Extents == nil {
-		i.Extents = NewExtentsTree()
+		i.Extents = NewSortedExtents()
 	}
 	if err = i.Extents.UnmarshalBinary(buff.Bytes()); err != nil {
 		return
@@ -387,15 +388,15 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 }
 
 // AppendExtents append the extent to the btree.
-func (i *Inode) AppendExtents(exts []BtreeItem, ct int64) (items []BtreeItem) {
+func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64) (delExtents []proto.ExtentKey) {
 	i.Lock()
-	for _, ext := range exts {
-		delItems := i.Extents.Append(ext)
+	for _, ek := range eks {
+		delItems := i.Extents.Append(ek)
 		size := i.Extents.Size()
 		if i.Size < size {
 			i.Size = size
 		}
-		items = append(items, delItems...)
+		delExtents = append(delExtents, delItems...)
 	}
 	i.Generation++
 	i.ModifyTime = ct
@@ -403,24 +404,14 @@ func (i *Inode) AppendExtents(exts []BtreeItem, ct int64) (items []BtreeItem) {
 	return
 }
 
-// ExtentsTruncate truncates the extents.
-func (i *Inode) ExtentsTruncate(exts []BtreeItem, length uint64, ct int64) {
+func (i *Inode) ExtentsTruncate(length uint64, ct int64) (delExtents []proto.ExtentKey) {
 	i.Lock()
-	for _, ext := range exts {
-		i.Extents.Delete(ext)
-	}
-	// check the max item size
-	item := i.Extents.MaxItem()
-	if item != nil {
-		ext := item.(*proto.ExtentKey)
-		if (ext.FileOffset + uint64(ext.Size)) > length {
-			ext.Size = uint32(length - ext.FileOffset)
-		}
-	}
+	delExtents = i.Extents.Truncate(length)
 	i.Size = length
 	i.ModifyTime = ct
 	i.Generation++
 	i.Unlock()
+	return
 }
 
 // IncNLink increases the nLink value by one.

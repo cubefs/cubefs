@@ -31,7 +31,7 @@ const (
 	// if the data partition has not been reported within this interval  (in terms of seconds), it will be considered as missing.
 	missingDataPartitionInterval        = "missingDataPartitionInterval"
 	dataPartitionTimeOutSec             = "dataPartitionTimeOutSec"
-	NumberOfDataPartitionsToLoad        = "NumberOfDataPartitionsToLoad"
+	NumberOfDataPartitionsToLoad        = "numberOfDataPartitionsToLoad"
 	secondsToFreeDataPartitionAfterLoad = "secondsToFreeDataPartitionAfterLoad"
 	nodeSetCapacity                     = "nodeSetCap"
 	cfgMetaNodeReservedMem              = "metaNodeReservedMem"
