@@ -11,7 +11,7 @@ go get -u github.com/tiglabs/raft
 
 ## Features
 
-The CoreOS etc/raft implementation has been modified to add the following features.
+The CoreOS etcd/raft implementation has been modified to add the following features.
 
 - multi-raft support    
 - snapshot manager   

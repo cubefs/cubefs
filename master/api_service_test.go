@@ -482,6 +482,43 @@ func TestRemoveDataReplica(t *testing.T) {
 	partition.RUnlock()
 }
 
+func TestResetDataReplica(t *testing.T) {
+	newAddr := "127.0.0.1:9107"
+	addDataServer(newAddr, "zone2")
+	newAddr2 := "127.0.0.1:9108"
+	addDataServer(newAddr2, "zone2")
+	partition := commonVol.dataPartitions.partitions[1]
+	var inActiveDataNode []*DataNode
+	var newHosts         []string
+	for i, host := range partition.Hosts {
+		if i < 2 {
+			dataNode, _ := server.cluster.dataNode(host)
+			dataNode.isActive = false
+			inActiveDataNode = append(inActiveDataNode, dataNode)
+			continue
+		}
+		newHosts = append(newHosts, host)
+	}
+	t.Logf("partition hosts[%v], new hosts[%v]", partition.Hosts, newHosts)
+	partition.isRecover = false
+	reqURL := fmt.Sprintf("%v%v?id=%v", hostAddr, proto.AdminResetDataPartition, partition.PartitionID)
+	process(reqURL, t)
+	partition.Lock()
+	for _, dataNode := range inActiveDataNode {
+		if contains(partition.Hosts, dataNode.Addr) {
+			t.Errorf("hosts[%v] should not contains inactiveAddr[%v]", partition.Hosts, dataNode.Addr)
+			partition.Unlock()
+			return
+		}
+		dataNode.isActive = true
+	}
+	if len(partition.Hosts) != 3 {
+		t.Errorf("hosts[%v] Add new replica failed", partition.Hosts)
+		return
+	}
+	partition.Unlock()
+}
+
 func TestAddMetaReplica(t *testing.T) {
 	maxPartitionID := commonVol.maxPartitionID()
 	partition := commonVol.MetaPartitions[maxPartitionID]
@@ -522,6 +559,44 @@ func TestRemoveMetaReplica(t *testing.T) {
 		return
 	}
 	partition.RUnlock()
+}
+
+func TestResetMetaReplica(t *testing.T) {
+	newAddr := "127.0.0.1:8010"
+	addMetaServer(newAddr, "zone2")
+	newAddr2 := "127.0.0.1:8011"
+	addMetaServer(newAddr2, "zone2")
+	maxPartitionID := commonVol.maxPartitionID()
+	partition := commonVol.MetaPartitions[maxPartitionID]
+	if partition == nil {
+		t.Error("no meta partition")
+		return
+	}
+	var inActiveMetaNode []*MetaNode
+	for i, host := range partition.Hosts {
+		if i < 2 {
+			metaNode, _ := server.cluster.metaNode(host)
+			metaNode.IsActive = false
+			inActiveMetaNode = append(inActiveMetaNode, metaNode)
+		}
+	}
+	partition.IsRecover = false
+	reqURL := fmt.Sprintf("%v%v?id=%v", hostAddr, proto.AdminResetMetaPartition, partition.PartitionID)
+	process(reqURL, t)
+	partition.Lock()
+	for _, metaNode := range inActiveMetaNode {
+		if contains(partition.Hosts, metaNode.Addr) {
+			t.Errorf("hosts[%v] should not contains inactiveAddr[%v]", partition.Hosts, metaNode.Addr)
+			partition.Unlock()
+			return
+		}
+		metaNode.IsActive = true
+	}
+	if len(partition.Hosts) != 3 {
+		t.Errorf("hosts[%v] Add new replica failed", partition.Hosts)
+		return
+	}
+	partition.Unlock()
 }
 
 func TestAddToken(t *testing.T) {

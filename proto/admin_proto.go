@@ -23,6 +23,8 @@ const (
 	AdminCreateDataPartition       = "/dataPartition/create"
 	AdminDecommissionDataPartition = "/dataPartition/decommission"
 	AdminDiagnoseDataPartition     = "/dataPartition/diagnose"
+	AdminResetDataPartition        = "/dataPartition/reset"
+	AdminResetCorruptDataNode      = "/dataNode/reset"
 	AdminDeleteDataReplica         = "/dataReplica/delete"
 	AdminAddDataReplica            = "/dataReplica/add"
 	AdminDeleteVol                 = "/vol/delete"
@@ -50,18 +52,20 @@ const (
 	RemoveRaftNode = "/raftNode/remove"
 
 	// Node APIs
-	AddDataNode                    = "/dataNode/add"
-	DecommissionDataNode           = "/dataNode/decommission"
-	DecommissionDisk               = "/disk/decommission"
-	GetDataNode                    = "/dataNode/get"
-	AddMetaNode                    = "/metaNode/add"
-	DecommissionMetaNode           = "/metaNode/decommission"
-	GetMetaNode                    = "/metaNode/get"
-	AdminLoadMetaPartition         = "/metaPartition/load"
-	AdminDiagnoseMetaPartition     = "/metaPartition/diagnose"
-	AdminDecommissionMetaPartition = "/metaPartition/decommission"
-	AdminAddMetaReplica            = "/metaReplica/add"
-	AdminDeleteMetaReplica         = "/metaReplica/delete"
+	AddDataNode                         = "/dataNode/add"
+	DecommissionDataNode                = "/dataNode/decommission"
+	DecommissionDisk                    = "/disk/decommission"
+	GetDataNode                         = "/dataNode/get"
+	AddMetaNode                         = "/metaNode/add"
+	DecommissionMetaNode                = "/metaNode/decommission"
+	GetMetaNode                         = "/metaNode/get"
+	AdminLoadMetaPartition              = "/metaPartition/load"
+	AdminDiagnoseMetaPartition          = "/metaPartition/diagnose"
+	AdminResetMetaPartition             = "/metaPartition/reset"
+	AdminResetCorruptMetaNode           = "/metaNode/reset"
+	AdminDecommissionMetaPartition      = "/metaPartition/decommission"
+	AdminAddMetaReplica                 = "/metaReplica/add"
+	AdminDeleteMetaReplica              = "/metaReplica/delete"
 
 	// Operation response
 	GetMetaNodeTaskResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
@@ -178,6 +182,12 @@ type RemoveDataPartitionRaftMemberRequest struct {
 	RemovePeer  Peer
 }
 
+// ResetDataPartitionRaftMemberRequest defines the request of reset raftMembers of a data partition.
+type ResetDataPartitionRaftMemberRequest struct {
+	PartitionId uint64
+	NewPeers    []Peer
+}
+
 // AddMetaPartitionRaftMemberRequest defines the request of add raftMember a meta partition.
 type AddMetaPartitionRaftMemberRequest struct {
 	PartitionId uint64
@@ -188,6 +198,12 @@ type AddMetaPartitionRaftMemberRequest struct {
 type RemoveMetaPartitionRaftMemberRequest struct {
 	PartitionId uint64
 	RemovePeer  Peer
+}
+
+// ResetMetaPartitionRaftMemberRequest defines the request of reset raftMembers of a meta partition.
+type ResetMetaPartitionRaftMemberRequest struct {
+	PartitionId uint64
+	NewPeers    []Peer
 }
 
 // LoadDataPartitionRequest defines the request of loading a data partition.

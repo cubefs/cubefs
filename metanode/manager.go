@@ -130,6 +130,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 		err = m.opAddMetaPartitionRaftMember(conn, p, remoteAddr)
 	case proto.OpRemoveMetaPartitionRaftMember:
 		err = m.opRemoveMetaPartitionRaftMember(conn, p, remoteAddr)
+	case proto.OpResetMetaPartitionRaftMember:
+		err = m.opResetMetaPartitionMember(conn, p, remoteAddr)
 	case proto.OpMetaPartitionTryToLeader:
 		err = m.opMetaPartitionTryToLeader(conn, p, remoteAddr)
 	case proto.OpMetaBatchInodeGet:
