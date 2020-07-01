@@ -17,7 +17,7 @@ Usage
 
 In the directory ``chubaofs/cli``, execute the command ``./cli --help`` or ``./cli -h`` to get the CLI help document.
 
-CLI is mainly divided into six types of management commands.
+CLI is mainly divided into seven types of management commands.
 
 .. csv-table:: Commands List
    :header: "Command", "description"
@@ -26,8 +26,12 @@ CLI is mainly divided into six types of management commands.
    "cli metanode", "Manage meta nodes"
    "cli datanode", "Manage data nodes"
    "cli datapartition", "Manage data partitions"
+   "cli metapartition", "Manage meta partitions"
+   "cli config", "Manage configuration for cli tool"
+   "cli completion", "Generating bash completions "
    "cli volume, vol", "Manage cluster volumes"
    "cli user", "Manage cluster users"
+   "cli compatibility", "Compatibility test"
 
 Cluster Management
 >>>>>>>>>>>>>>>>>>>>>>>
@@ -40,26 +44,108 @@ Cluster Management
 
     ./cli cluster stat          #Show cluster status information
 
+.. code-block:: bash
+
+    ./cli cluster freeze [true/false]        #Turn on or turn off the automatic allocation of the data partitions.
+
+.. code-block:: bash
+
+    ./cli cluster threshold [float]     #Set the threshold of memory on each meta node.
+
 MetaNode Management
 >>>>>>>>>>>>>>>>>>>>>
 
 .. code-block:: bash
 
-    ./cli metanode list         #List information of meta nodes
+    ./cli metanode list          #List information of meta nodes
+
+.. code-block:: bash
+
+    ./cli metanode info [Address]     #Show detail information of a meta node
+
+ .. code-block:: bash
+
+    ./cli metanode decommission [Address] #Decommission partitions in a meta node to other nodes
+
 
 DataNode Management
 >>>>>>>>>>>>>>>>>>>>>>
 
 .. code-block:: bash
 
-    ./cli datanode list         #List information of meta nodes
+    ./cli datanode list          #List information of data nodes
+
+.. code-block:: bash
+
+    ./cli datanode info [Address]         #Show detail information of a data node
+
+.. code-block:: bash
+
+   ./cli datanode decommission [Address]   #Decommission partitions in a data node to other nodes
 
 DataPartition Management
 >>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 .. code-block:: bash
 
-    ./cli datapartition info [VOLUME] [Partition ID]        #Get information of data partition
+    ./cli datapartition info [Partition ID]        #Display detail information of a data partition
+
+.. code-block:: bash
+
+    ./cli datapartition decommission [Address] [Partition ID]   #Decommission a replication of the data partition to a new address
+
+.. code-block:: bash
+
+    ./cli datapartition add-replica [Address] [Partition ID]    #Add a replication of the data partition on a new address
+
+.. code-block:: bash
+
+    ./cli datapartition del-replica [Address] [Partition ID]    #Delete a replication of the data partition from a fixed address
+
+.. code-block:: bash
+
+    ./cli datapartition check    #Diagnose partitions, display the partitions those are corrupt or lack of replicas
+
+MetaPartition Management
+>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+.. code-block:: bash
+
+    ./cli metapartition info [Partition ID]        #Display detail information of a meta partition
+
+.. code-block:: bash
+
+    ./cli metapartition decommission [Address] [Partition ID]   #Decommission a replication of the meta partition to a new address
+
+.. code-block:: bash
+
+    ./cli metapartition add-replica [Address] [Partition ID]    #Add a replication of the meta partition on a new address
+
+.. code-block:: bash
+
+    ./cli metapartition del-replica [Address] [Partition ID]    #Delete a replication of the meta partition from a fixed address
+
+.. code-block:: bash
+
+    ./cli metapartition check    #Diagnose partitions, display the partitions those are corrupt or lack of replicas
+
+Config Management
+>>>>>>>>>>>>>>>>>>>
+
+.. code-block:: bash
+
+    ./cli config info     #Show configurations of cli
+
+.. code-block:: bash
+
+    ./cli config set     #Set configurations of cli
+
+Completion Management
+>>>>>>>>>>>>>>>>>>>
+
+.. code-block:: bash
+
+    ./cli completion      #Generate bash completions
 
 Volume Management
 >>>>>>>>>>>>>>>>>>>
@@ -144,3 +230,24 @@ User Management
         --user-type string                      #Update user type [normal | admin]
         -y, --yes                               #Answer yes for all questions
 
+
+Compatibility Test
+>>>>>>>>>>>>>>>>>>>>>>>>
+
+.. code-block:: bash
+
+    ./cli cptest meta [Snapshot Path] [Host] [Partition ID]         #Metadata compatibility test
+    Parameters：
+            [Snapshot Path] string                     #The path which snapshot file located
+            [Host] string                              #The metanode host which generated the snapshot file
+            [Partition ID] string                      #The meta partition ID which to be compared
+Example:
+    1. Use the old version to prepare metadata, stop writing metadata,after waiting for the latest snapshot to be generated(about 5 minutes), copy the snapshot file to the local machine
+    2. Execute the metadata comparison command on local machine
+
+    .. code-block:: bash
+
+        [Verify result]
+        All dentry are consistent
+        All inodes are consistent
+        All meta has checked

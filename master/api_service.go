@@ -492,6 +492,38 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
+func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
+	var (
+		err              error
+		rstMsg           *proto.DataPartitionDiagnosis
+		inactiveNodes    []string
+		corruptDps       []*DataPartition
+		lackReplicaDps   []*DataPartition
+		corruptDpIDs     []uint64
+		lackReplicaDpIDs []uint64
+	)
+	if inactiveNodes, corruptDps, err = m.cluster.checkCorruptDataPartitions(); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+	}
+
+	if lackReplicaDps, err = m.cluster.checkLackReplicaDataPartitions(); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+	}
+	for _, dp := range corruptDps {
+		corruptDpIDs = append(corruptDpIDs, dp.PartitionID)
+	}
+	for _, dp := range lackReplicaDps {
+		lackReplicaDpIDs = append(lackReplicaDpIDs, dp.PartitionID)
+	}
+	rstMsg = &proto.DataPartitionDiagnosis{
+		InactiveDataNodes:           inactiveNodes,
+		CorruptDataPartitionIDs:     corruptDpIDs,
+		LackReplicaDataPartitionIDs: lackReplicaDpIDs,
+	}
+	log.LogInfof("diagnose dataPartition[%v] inactiveNodes:[%v], corruptDpIDs:[%v], lackReplicaDpIDs:[%v]", m.cluster.Name, inactiveNodes, corruptDpIDs, lackReplicaDpIDs)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
 // Mark the volume as deleted, which will then be deleted later.
 func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	var (
@@ -505,11 +537,11 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.user.deleteVolPolicy(name); err != nil {
+	if err = m.cluster.markDeleteVol(name, authKey); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if err = m.cluster.markDeleteVol(name, authKey); err != nil {
+	if err = m.user.deleteVolPolicy(name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -617,6 +649,15 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func newSimpleView(vol *Vol) *proto.SimpleVolView {
+	var (
+		volInodeCount   uint64
+		volDentryCount  uint64
+	)
+	for _, mp := range vol.MetaPartitions {
+		volDentryCount = volDentryCount + mp.DentryCount
+		volInodeCount = volInodeCount + mp.InodeCount
+	}
+	maxPartitionID := vol.maxPartitionID()
 	return &proto.SimpleVolView{
 		ID:                 vol.ID,
 		Name:               vol.Name,
@@ -624,6 +665,9 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		ZoneName:           vol.zoneName,
 		DpReplicaNum:       vol.dpReplicaNum,
 		MpReplicaNum:       vol.mpReplicaNum,
+		InodeCount:         volInodeCount,
+		DentryCount:        volDentryCount,
+		MaxMetaPartitionID: maxPartitionID,
 		Status:             vol.Status,
 		Capacity:           vol.Capacity,
 		FollowerRead:       vol.FollowerRead,
@@ -770,6 +814,38 @@ func (m *Server) getMetaNodeParams(w http.ResponseWriter, r *http.Request) {
 	resp[metaNodeDeleteBatchCountKey] = batchCounts
 
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", resp)))
+}
+
+func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
+	var (
+		err              error
+		rstMsg           *proto.MetaPartitionDiagnosis
+		inactiveNodes    []string
+		corruptMps       []*MetaPartition
+		lackReplicaMps   []*MetaPartition
+		corruptMpIDs     []uint64
+		lackReplicaMpIDs []uint64
+	)
+	if inactiveNodes, corruptMps, err = m.cluster.checkCorruptMetaPartitions(); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+	}
+
+	if lackReplicaMps, err = m.cluster.checkLackReplicaMetaPartitions(); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+	}
+	for _, mp := range corruptMps {
+		corruptMpIDs = append(corruptMpIDs, mp.PartitionID)
+	}
+	for _, mp := range lackReplicaMps {
+		lackReplicaMpIDs = append(lackReplicaMpIDs, mp.PartitionID)
+	}
+	rstMsg = &proto.MetaPartitionDiagnosis{
+		InactiveMetaNodes:           inactiveNodes,
+		CorruptMetaPartitionIDs:     corruptMpIDs,
+		LackReplicaMetaPartitionIDs: lackReplicaMpIDs,
+	}
+	log.LogInfof("diagnose metaPartition[%v] inactiveNodes:[%v], corruptMpIDs:[%v], lackReplicaMpIDs:[%v]", m.cluster.Name, inactiveNodes, corruptMpIDs, lackReplicaMpIDs)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
 // Decommission a disk. This will decommission all the data partitions on this disk.
@@ -1693,6 +1769,8 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	}
 	mpView.LeaderAddr = mr.Addr
 	mpView.MaxInodeID = mp.MaxInodeID
+	mpView.InodeCount = mp.InodeCount
+	mpView.DentryCount = mp.DentryCount
 	mpView.IsRecover = mp.IsRecover
 	return
 }
@@ -1737,6 +1815,8 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			End:          mp.End,
 			VolName:      mp.volName,
 			MaxInodeID:   mp.MaxInodeID,
+			InodeCount:   mp.InodeCount,
+			DentryCount:  mp.DentryCount,
 			Replicas:     replicas,
 			ReplicaNum:   mp.ReplicaNum,
 			Status:       mp.Status,

@@ -67,11 +67,11 @@ func (mp *metaPartition) startFreeList() (err error) {
 	return
 }
 
-func (mp *metaPartition)updateVolView(convert func(view *proto.DataPartitionsView) *DataPartitionsView)(err error) {
+func (mp *metaPartition) updateVolView(convert func(view *proto.DataPartitionsView) *DataPartitionsView) (err error) {
 	volName := mp.config.VolName
 	dataView, err := masterClient.ClientAPI().GetDataPartitions(volName)
 	if err != nil {
-		err=fmt.Errorf("updateVolWorker: get data partitions view fail: volume(%v) err(%v)",
+		err = fmt.Errorf("updateVolWorker: get data partitions view fail: volume(%v) err(%v)",
 			volName, err)
 		log.LogErrorf(err.Error())
 		return
@@ -179,13 +179,12 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 	for i := 0; i < len(allInodes); i++ {
 		successDeleteExtentCnt := 0
 		inode := allInodes[i]
-		inode.Extents.Range(func(item BtreeItem) bool {
-			ext := item.(*proto.ExtentKey)
-			if occurErrors[ext.PartitionId] == nil {
+		inode.Extents.Range(func(ek proto.ExtentKey) bool {
+			if occurErrors[ek.PartitionId] == nil {
 				successDeleteExtentCnt++
 				return true
 			} else {
-				log.LogWarnf("deleteInode Inode(%v) error(%v)", inode.Inode,  occurErrors[ext.PartitionId] )
+				log.LogWarnf("deleteInode Inode(%v) error(%v)", inode.Inode, occurErrors[ek.PartitionId])
 				return false
 			}
 		})
@@ -196,7 +195,6 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 
 	return
 }
-
 
 // Delete the marked inodes.
 func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
@@ -215,8 +213,8 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		if !ok {
 			continue
 		}
-		inode.Extents.Range(func(item BtreeItem) bool {
-			ext := item.(*proto.ExtentKey)
+		inode.Extents.Range(func(ek proto.ExtentKey) bool {
+			ext := &ek
 			_, ok := allDeleteExtents[ext.GetExtentKey()]
 			if !ok {
 				allDeleteExtents[ext.GetExtentKey()] = inode.Inode

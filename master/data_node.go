@@ -43,6 +43,7 @@ type DataNode struct {
 	NodeSetID                 uint64
 	PersistenceDataPartitions []uint64
 	BadDisks                  []string
+	ToBeOffline               bool
 }
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
