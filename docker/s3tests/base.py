@@ -153,12 +153,9 @@ class S3TestCase(TestCase):
             self.assertTrue('LocationConstraint' in result)
             self.assertEqual(result['LocationConstraint'], location)
 
-    def assert_get_bucket_cors_result(self, result, cors_config=None):
+    def assert_get_bucket_cors_result(self, result, cors_rules=None):
         self.assert_result_status_code(result=result, status_code=200)
-        if cors_config is not None:
-            self.assertEqual(result['CORSRules'], cors_config['CORSRules'])
-        else:
-            self.assertFalse('CORSRules' in result)
+        self.assertEqual(result['CORSRules'], cors_rules)
 
     def assert_cors_request_result(self, result, response_code=200, response_origin=None, response_method=None):
         self.assertEqual(result.status_code, response_code)

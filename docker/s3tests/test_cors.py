@@ -18,8 +18,8 @@ import env
 import requests
 from base import S3TestCase, get_env_s3_client, random_string, random_bytes, compute_md5
 
-PUT_ORIGIN = "www.chubaofs.com"
-OTHER_ORIGIN = "chubaofs.com"
+PUT_ORIGIN = "www.*.com"
+OTHER_ORIGIN = "*.com"
 
 ALLOWED_HEADERS = ["*"]
 ALLOWED_METHODS = ['PUT', 'POST', 'GET']
@@ -57,7 +57,7 @@ class CorsTest(S3TestCase):
             result=self.s3.put_bucket_cors(Bucket=env.BUCKET, CORSConfiguration=CORS_CONFIG))
         # Get bucket CORS configuration
         self.assert_get_bucket_cors_result(
-            result=self.s3.get_bucket_cors(Bucket=env.BUCKET), cors_config=CORS_CONFIG)
+            result=self.s3.get_bucket_cors(Bucket=env.BUCKET), cors_rules=CORS_CONFIG['CORSRules'])
         # Delete bucket CORS configuration
         self.assert_result_status_code(
             result=self.s3.delete_bucket_cors(Bucket=env.BUCKET), status_code=204)
@@ -100,8 +100,7 @@ class CorsTest(S3TestCase):
 
     def test_cors_options(self):
         # Put object
-        key_prefix = 'test-options-object/'
-        key = key_prefix + random_string(16)
+        key = 'test-options-object'
         size = 1024 * 256
         body = random_bytes(size)
         expect_md5 = compute_md5(body)
@@ -113,8 +112,9 @@ class CorsTest(S3TestCase):
         self.assert_result_status_code(
             result=self.s3.put_bucket_cors(Bucket=env.BUCKET, CORSConfiguration=CORS_CONFIG))
 
+        options_url = '{bucket_url}/{key}'.format(bucket_url=BUCKET_URL, key=key)
+
         # Send options requests
-        options_url = '{bucket}/{object}'.format(bucket=BUCKET_URL, object=key)
         self.assert_cors_request_result(
             result=requests.options(url=options_url,
                                     headers={'Origin': PUT_ORIGIN, 'Access-Control-Request-Method': 'GET'}),
@@ -126,7 +126,6 @@ class CorsTest(S3TestCase):
         self.assert_result_status_code(
             result=self.s3.delete_bucket_cors(Bucket=env.BUCKET), status_code=204)
         # Send options requests
-        options_url = '{bucket}/{object}'.format(bucket=BUCKET_URL, object=key)
         self.assert_cors_request_result(
             result=requests.options(url=options_url,
                                     headers={'Origin': PUT_ORIGIN, 'Access-Control-Request-Method': 'GET'}),
