@@ -41,6 +41,7 @@ CORS_CONFIG = {
 
 BUCKET_URL = '{endpoint}/{bucket_name}'.format(endpoint=env.ENDPOINT, bucket_name=env.BUCKET)
 
+
 class CorsTest(S3TestCase):
     s3 = None
 
