@@ -794,6 +794,40 @@ func (c *Cluster) metaNode(addr string) (metaNode *MetaNode, err error) {
 	return
 }
 
+func (c *Cluster) getAllDataPartitionByDataNode(addr string) (partitions []*DataPartition) {
+	partitions = make([]*DataPartition, 0)
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		for _, dp := range vol.dataPartitions.partitions {
+			for _, host := range dp.Hosts {
+				if host == addr {
+					partitions = append(partitions, dp)
+					break
+				}
+			}
+		}
+	}
+
+	return
+}
+
+func (c *Cluster) getAllMetaPartitionByMetaNode(addr string) (partitions []*MetaPartition) {
+	partitions = make([]*MetaPartition, 0)
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		for _, mp := range vol.MetaPartitions {
+			for _, host := range mp.Hosts {
+				if host == addr {
+					partitions = append(partitions, mp)
+					break
+				}
+			}
+		}
+	}
+
+	return
+}
+
 func (c *Cluster) getAllDataPartitionIDByDatanode(addr string) (partitionIDs []uint64) {
 	partitionIDs = make([]uint64, 0)
 	safeVols := c.allVols()
@@ -831,18 +865,29 @@ func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []u
 func (c *Cluster) decommissionDataNode(dataNode *DataNode) (err error) {
 	msg := fmt.Sprintf("action[decommissionDataNode], Node[%v] OffLine", dataNode.Addr)
 	log.LogWarn(msg)
+	var wg sync.WaitGroup
 	dataNode.ToBeOffline = true
+	dataNode.AvailableSpace = 1
+	partitions := c.getAllDataPartitionByDataNode(dataNode.Addr)
+	errChannel := make(chan error, len(partitions))
 	defer func() {
 		dataNode.ToBeOffline = false
+		close(errChannel)
 	}()
-	dataNode.AvailableSpace = 1
-	safeVols := c.allVols()
-	for _, vol := range safeVols {
-		for _, dp := range vol.dataPartitions.partitions {
-			if err = c.decommissionDataPartition(dataNode.Addr, dp, dataNodeOfflineErr); err != nil {
-				return
+	for _, dp := range partitions {
+		wg.Add(1)
+		go func(dp *DataPartition) {
+			defer wg.Done()
+			if err1 := c.decommissionDataPartition(dataNode.Addr, dp, dataNodeOfflineErr); err1 != nil {
+				errChannel <- err1
 			}
-		}
+		}(dp)
+	}
+	wg.Wait()
+	select {
+	case err = <-errChannel:
+		return
+	default:
 	}
 	if err = c.syncDeleteDataNode(dataNode); err != nil {
 		msg = fmt.Sprintf("action[decommissionDataNode],clusterID[%v] Node[%v] OffLine failed,err[%v]",
@@ -941,7 +986,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
 errHandler:
-	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.Hosts)
 	if err != nil {
@@ -1242,19 +1287,29 @@ func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, part
 func (c *Cluster) decommissionMetaNode(metaNode *MetaNode) (err error) {
 	msg := fmt.Sprintf("action[decommissionMetaNode],clusterID[%v] Node[%v] begin", c.Name, metaNode.Addr)
 	log.LogWarn(msg)
+	var wg sync.WaitGroup
 	metaNode.ToBeOffline = true
+	metaNode.MaxMemAvailWeight = 1
+	partitions := c.getAllMetaPartitionByMetaNode(metaNode.Addr)
+	errChannel := make(chan error, len(partitions))
 	defer func() {
 		metaNode.ToBeOffline = false
+		close(errChannel)
 	}()
-	metaNode.MaxMemAvailWeight = 1
-	safeVols := c.allVols()
-	for _, vol := range safeVols {
-		for _, mp := range vol.MetaPartitions {
-			// err is not handled here.
-			if err = c.decommissionMetaPartition(metaNode.Addr, mp); err != nil {
-				return
+	for _, mp := range partitions {
+		wg.Add(1)
+		go func(mp *MetaPartition) {
+			defer wg.Done()
+			if err1 := c.decommissionMetaPartition(metaNode.Addr, mp); err1 != nil {
+				errChannel <- err1
 			}
-		}
+		}(mp)
+	}
+	wg.Wait()
+	select {
+	case err = <-errChannel:
+		return
+	default:
 	}
 	if err = c.syncDeleteMetaNode(metaNode); err != nil {
 		msg = fmt.Sprintf("action[decommissionMetaNode],clusterID[%v] Node[%v] OffLine failed,err[%v]",

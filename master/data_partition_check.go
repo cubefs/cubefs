@@ -20,6 +20,7 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
 	"time"
+	"math"
 )
 
 func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64) {
@@ -243,4 +244,27 @@ func (partition *DataPartition) missingReplicaAddress(dataPartitionSize uint64) 
 	}
 
 	return
+}
+
+func (partition *DataPartition) checkReplicaSize(clusterID string, diffSpaceUsage uint64) {
+	partition.RLock()
+	defer partition.RUnlock()
+	if len(partition.Replicas) == 0 {
+		return
+	}
+	diff := 0.0
+	sentry := float64(partition.Replicas[0].Used)
+	for _, dr := range partition.Replicas {
+		temp := math.Abs(float64(dr.Used) - sentry)
+		if temp > diff {
+			diff = temp
+		}
+	}
+	if diff > float64(diffSpaceUsage) {
+		msg := fmt.Sprintf("difference space usage [%v] larger than %v, ", diff, diffSpaceUsage)
+		for _, dr := range partition.Replicas {
+			msg = msg + fmt.Sprintf("replica[%v],used[%v];", dr.Addr, dr.Used)
+		}
+		Warn(clusterID, msg)
+	}
 }

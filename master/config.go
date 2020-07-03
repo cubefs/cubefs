@@ -63,6 +63,7 @@ const (
 	defaultMetaPartitionMemUsageThreshold      float32 = 0.75    // memory usage threshold on a meta partition
 	defaultMaxMetaPartitionCountOnEachNode             = 10000
 	defaultReplicaNum                                  = 3
+	defaultDiffSpaceUsage                              = 1024 * 1024 * 1024
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -85,6 +86,7 @@ type clusterConfig struct {
 	peerAddrs                           []string
 	heartbeatPort                       int64
 	replicaPort                         int64
+	diffSpaceUsage                      uint64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -100,6 +102,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.PeriodToLoadALLDataPartitions = defaultPeriodToLoadAllDataPartitions
 	cfg.MetaNodeThreshold = defaultMetaPartitionMemUsageThreshold
 	cfg.metaNodeReservedMem = defaultMetaNodeReservedMem
+	cfg.diffSpaceUsage = defaultDiffSpaceUsage
 	return
 }
 
