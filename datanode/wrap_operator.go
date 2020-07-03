@@ -318,7 +318,6 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	var (
 		err error
 	)
-	s.markDeleteLimit.Wait(s.ctx)
 	partition := p.Object.(*DataPartition)
 	if p.ExtentType == proto.TinyExtentType {
 		ext := new(proto.TinyExtentDeleteRecord)
@@ -347,14 +346,13 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	var (
 		err error
 	)
-	s.markDeleteLimit.Wait(s.ctx)
 	partition := p.Object.(*DataPartition)
 	var exts []*proto.ExtentKey
 	err = json.Unmarshal(p.Data, &exts)
 	store := partition.ExtentStore()
 	if err == nil {
 		for _, ext := range exts {
-			s.markDeleteLimit.Wait(s.ctx)
+			DeleteLimiterWait()
 			log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
 			store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
 		}
