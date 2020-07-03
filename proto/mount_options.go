@@ -51,9 +51,9 @@ const (
 
 // For server
 const (
-	MasterAddr = "masterAddr"
-	ListenPort = "listen"
-	ConsoleNodeDomain = "consoleNodeDomain"
+	MasterAddr       = "masterAddr"
+	ListenPort       = "listen"
+	ObjectNodeDomain = "objectNodeDomain"
 )
 
 type MountOption struct {

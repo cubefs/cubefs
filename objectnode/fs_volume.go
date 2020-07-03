@@ -885,6 +885,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 		Size:       int64(size),
 		Mode:       os.FileMode(DefaultFileMode),
 		ModifyTime: time.Now(),
+		CreateTime: tempInodeInfo.CreateTime,
 		ETag:       etag,
 		Inode:      tempInodeInfo.Inode,
 	}
@@ -1382,7 +1383,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 		Path:         path,
 		Size:         int64(inoInfo.Size),
 		Mode:         os.FileMode(inoInfo.Mode),
-		CreateTime: inoInfo.CreateTime,
+		CreateTime:   inoInfo.CreateTime,
 		ModifyTime:   inoInfo.ModifyTime,
 		ETag:         etagValue.ETag(),
 		Inode:        inoInfo.Inode,
@@ -1783,6 +1784,7 @@ func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 		if i >= 0 && i < len(inodeInfos) && inodeInfos[i].Inode == fileInfo.Inode {
 			fileInfo.Size = int64(inodeInfos[i].Size)
 			fileInfo.ModifyTime = inodeInfos[i].ModifyTime
+			fileInfo.CreateTime = inodeInfos[i].CreateTime
 			fileInfo.Mode = os.FileMode(inodeInfos[i].Mode)
 		}
 	}
@@ -2071,6 +2073,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			Size:       0,
 			Mode:       DefaultDirMode,
 			ModifyTime: tInodeInfo.ModifyTime,
+			CreateTime: tInodeInfo.CreateTime,
 			ETag:       EmptyContentMD5String,
 			Inode:      tInodeInfo.Inode,
 			MIMEType:   HeaderValueContentTypeDirectory,
@@ -2267,6 +2270,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		Size:       int64(fileSize),
 		Mode:       sMode,
 		ModifyTime: tInodeInfo.ModifyTime,
+		CreateTime: tInodeInfo.CreateTime,
 		ETag:       md5Value,
 		Inode:      tInodeInfo.Inode,
 	}

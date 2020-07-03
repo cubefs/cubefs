@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/ump"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/schemabuilder"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -513,40 +513,37 @@ func (m *ClusterService) alarmList(ctx context.Context, args struct {
 		return nil, err
 	}
 
-	size := int64(args.Size * 5000)
+	size := int64(args.Size * 1000)
 
 	list := make([]*WarnMessage, 0, 100)
 
-	path := filepath.Join(ump.UmpDataDir, "ump_master_business.log")
+	path := filepath.Join(log.LogDir, "master"+log.CriticalLogFileName)
 
 	stat, err := os.Stat(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			list = append(list, &WarnMessage{
-				Time:     time.Now().Format("2006-01-02 15:04:05"),
-				Key:      "not found",
-				Hostname: m.leaderInfo.addr,
-				Type:     "not found",
-				Value:    "not found",
-				Detail:   path + " not exist",
-			})
-			return list, nil
-		} else {
-			return nil, err
-		}
+		list = append(list, &WarnMessage{
+			Time:     time.Now().Format("2006-01-02 15:04:05"),
+			Key:      "not found",
+			Hostname: m.leaderInfo.addr,
+			Type:     "not found",
+			Value:    "not found",
+			Detail:   path + " read has err:" + err.Error(),
+		})
+		return list, nil
 	}
 
 	f, err := os.Open(path)
 
+	if err != nil {
+		return nil, fmt.Errorf("open file has err:[%s]", err.Error())
+	}
+
 	if stat.Size() > size {
 		if _, err := f.Seek(stat.Size()-size, 0); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("seek file has err:[%s]", err.Error())
 		}
 	}
 
-	if err != nil {
-		return nil, err
-	}
 	defer func() {
 		if err := f.Close(); err != nil {
 			log.LogErrorf("close alarm file has err:[%s]", err.Error())
@@ -555,18 +552,41 @@ func (m *ClusterService) alarmList(ctx context.Context, args struct {
 
 	buf := bufio.NewReader(f)
 
-	for {
-		line, _, err := buf.ReadLine()
-		if err != nil {
-			return nil, err
-		}
-		msg := &WarnMessage{}
-		if err := json.Unmarshal(line, msg); err != nil {
-			log.LogWarnf("unmarshal line has err:[%s]", err.Error())
-			continue
-		}
-		if line == nil || len(line) == 0 {
+	all, err := ioutil.ReadAll(buf)
+	if err != nil {
+		return nil, fmt.Errorf("read file:[%s] size:[%d] has err:[%s]", path, stat.Size(), err.Error())
+	}
+
+	for _, line := range strings.Split(string(all), "\n") {
+
+		if len(line) == 0 {
 			break
+		}
+
+		split := strings.Split(string(line), " ")
+
+		var msg *WarnMessage
+
+		if len(split) < 7 {
+			value := string(line)
+			msg = &WarnMessage{
+				Time:     "unknow",
+				Key:      "parse msg has err",
+				Hostname: "parse msg has err",
+				Type:     "parse msg has err",
+				Value:    value,
+				Detail:   value,
+			}
+		} else {
+			value := strings.Join(split[6:], " ")
+			msg = &WarnMessage{
+				Time:     split[0] + " " + split[1],
+				Key:      split[4],
+				Hostname: split[5],
+				Type:     split[2],
+				Value:    value,
+				Detail:   value,
+			}
 		}
 
 		list = append(list, msg)
@@ -575,7 +595,7 @@ func (m *ClusterService) alarmList(ctx context.Context, args struct {
 	//reverse slice
 	l := len(list)
 	for i := 0; i < l/2; i++ {
-		list[i], list[l-i] = list[l-i], list[i]
+		list[i], list[l-i-1] = list[l-i-1], list[i]
 	}
 
 	if len(list) > int(args.Size) {

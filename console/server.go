@@ -128,7 +128,7 @@ func (c *ConsoleNode) loadConfig(cfg *config.Config) (err error) {
 	}
 	log.LogInfof("loadConfig: setup config: %v(%v)", proto.MasterAddr, strings.Join(c.masters, ","))
 
-	c.objectNodeDomain = cfg.GetString(proto.ConsoleNodeDomain)
+	c.objectNodeDomain = cfg.GetString(proto.ObjectNodeDomain)
 
 	c.server = mux.NewRouter()
 

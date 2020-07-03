@@ -254,11 +254,14 @@ var (
 
 var gLog *Log = nil
 
+var LogDir string
+
 // InitLog initializes the log.
 func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 	l := new(Log)
 	dir = path.Join(dir, module)
 	l.dir = dir
+	LogDir = dir
 	fi, err := os.Stat(dir)
 	if err != nil {
 		os.MkdirAll(dir, 0755)
@@ -274,7 +277,7 @@ func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 			return nil, fmt.Errorf("[InitLog] stats disk space: %s",
 				err.Error())
 		}
-		minRatio := float64(fs.Blocks * uint64(fs.
+		minRatio := float64(fs.Blocks*uint64(fs.
 			Bsize)) * DefaultHeadRatio / 1024 / 1024
 		rotate.SetHeadRoomMb(int64(math.Min(minRatio, DefaultHeadRoom)))
 		minRollingSize := int64(fs.Bavail * uint64(fs.Bsize) / uint64(len(levelPrefixes)))

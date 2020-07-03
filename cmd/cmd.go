@@ -181,7 +181,7 @@ func main() {
 		module = ModuleObject
 	case RoleConsole:
 		server = console.NewServer()
-		module = ModuleObject
+		module = ModuleConsole
 	default:
 		daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 		os.Exit(1)
