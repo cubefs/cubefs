@@ -181,7 +181,9 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV2(r *http.Request) (bool
 	var accessKey = authInfo.accessKeyId
 	var volume *Volume
 	if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
-		volume, _ = o.getVol(bucket)
+		if volume, err = o.getVol(bucket); err != nil {
+			return false, err
+		}
 	}
 	var secretKey string
 	if userInfo, err := o.getUserInfoByAccessKey(accessKey); err == nil {
@@ -270,7 +272,7 @@ func calculateSignatureV2(authInfo *requestAuthInfoV2, secretKey string, wildcar
 }
 
 func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, error) {
-
+	var err error
 	uris := strings.SplitN(r.RequestURI, "?", 2)
 	if len(uris) < 2 {
 		log.LogInfof("validateUrlBySignatureAlgorithmV2 error, request url invalid %v ", r.RequestURI)
@@ -293,7 +295,9 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, e
 	// Checking access key
 	var volume *Volume
 	if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
-		volume, _ = o.getVol(bucket)
+		if volume, err = o.getVol(bucket); err != nil {
+			return false, err
+		}
 	}
 	var secretKey string
 	if userInfo, err := o.getUserInfoByAccessKey(accessKey); err == nil {
