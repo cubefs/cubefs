@@ -34,6 +34,7 @@ services:
             - objectnode1
             - objectnode2
             - objectnode3
+            - console1
             - nginx
         networks:
             extnetwork:
@@ -325,6 +326,23 @@ services:
             extnetwork:
                 ipv4_address: 192.168.0.43
 
+
+    console1:
+        image: chubaofs/cfs-base:1.1
+        ports:
+          - "80"
+        volumes:
+          - ./bin:/cfs/bin:ro
+          - ${DiskPath:-./docker_data}/console/log:/cfs/log
+          - ./conf/console.json:/cfs/conf/console.json
+          - ./script/start_console.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        networks:
+          extnetwork:
+            ipv4_address: 192.168.0.50
+
     client:
         image: chubaofs/cfs-base:1.1
         ports:
@@ -415,8 +433,8 @@ services:
             - bash
             - "-c"
             - >-
-              set -e;
-              mkdir -p /go/src/github.com/chubaofs/chubaofs/docker/bin &&
-              cd /go/src/github.com/chubaofs/chubaofs && make test
+                set -e;
+                mkdir -p /go/src/github.com/chubaofs/chubaofs/docker/bin &&
+                cd /go/src/github.com/chubaofs/chubaofs && make test
         networks:
             extnetwork:

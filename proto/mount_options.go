@@ -53,6 +53,7 @@ const (
 const (
 	MasterAddr = "masterAddr"
 	ListenPort = "listen"
+	ConsoleNodeDomain = "consoleNodeDomain"
 )
 
 type MountOption struct {

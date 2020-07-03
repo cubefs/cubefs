@@ -48,6 +48,7 @@ const (
 	enableTokenKey              = "enableToken"
 	userKey                     = "user"
 	metaNodeDeleteBatchCountKey = "batchCount"
+	descriptionKey              = "description"
 	metaNodeHostsKey            = "hosts"
 )
 

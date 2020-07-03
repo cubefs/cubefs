@@ -46,7 +46,7 @@ type Vol struct {
 	enableToken        bool
 	tokens             map[string]*proto.Token
 	tokensLock         sync.RWMutex
-	MetaPartitions     map[uint64]*MetaPartition
+	MetaPartitions     map[uint64]*MetaPartition `graphql:"-"`
 	mpsLock            sync.RWMutex
 	dataPartitions     *DataPartitionMap
 	mpsCache           []byte
@@ -54,10 +54,11 @@ type Vol struct {
 	createDpMutex      sync.RWMutex
 	createMpMutex      sync.RWMutex
 	createTime         int64
+	description        string
 	sync.RWMutex
 }
 
-func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, crossZone bool, enableToken bool, createTime int64) (vol *Vol) {
+func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, crossZone bool, enableToken bool, createTime int64, description string) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	if dpReplicaNum < defaultReplicaNum {
@@ -87,6 +88,7 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.createTime = createTime
 	vol.enableToken = enableToken
 	vol.tokens = make(map[string]*proto.Token, 0)
+	vol.description = description
 	return
 }
 
@@ -104,7 +106,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.Authenticate,
 		vv.CrossZone,
 		vv.EnableToken,
-		vv.CreateTime)
+		vv.CreateTime,
+		vv.Description)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status
