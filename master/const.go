@@ -50,6 +50,7 @@ const (
 	nodeHostsKey            = "hosts"
 	nodeDeleteBatchCountKey = "batchCount"
 	nodeMarkDeleteRateKey   = "markDeleteRate"
+	nodeDeleteWorkerSleepMs = "deleteWorkerSleepMs"
 )
 
 const (

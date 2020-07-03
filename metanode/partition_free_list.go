@@ -115,6 +115,9 @@ func (mp *metaPartition) deleteWorker() {
 			time.Sleep(AsyncDeleteInterval)
 			continue
 		}
+
+		DeleteWorkerSleepMs()
+
 		//TODO: add sleep time value
 		isForceDeleted := sleepCnt%MaxSleepCnt == 0
 		if !isForceDeleted && mp.freeList.Len() < MinDeleteBatchCounts {

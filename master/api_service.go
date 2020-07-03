@@ -243,11 +243,13 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 	m.cluster.loadClusterValue()
 	batchCount := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteBatchCount)
 	limitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
+	deleteSleepMs := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
 	cInfo := &proto.ClusterInfo{
-		Cluster:                  m.cluster.Name,
-		MetaNodeDeleteBatchCount: batchCount,
-		DataNodeDeleteLimitRate:  limitRate,
-		Ip:                       strings.Split(r.RemoteAddr, ":")[0],
+		Cluster:                     m.cluster.Name,
+		MetaNodeDeleteBatchCount:    batchCount,
+		MetaNodeDeleteWorkerSleepMs: deleteSleepMs,
+		DataNodeDeleteLimitRate:     limitRate,
+		Ip:                          strings.Split(r.RemoteAddr, ":")[0],
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -802,6 +804,14 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if val, ok := params[nodeDeleteWorkerSleepMs]; ok {
+		if v, ok := val.(uint64); ok {
+			if err = m.cluster.setMetaNodeDeleteWorkerSleepMs(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodeinfo params %v successfully", params)))
 
 }
@@ -811,6 +821,7 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	resp := make(map[string]string)
 	resp[nodeDeleteBatchCountKey] = fmt.Sprintf("%v", m.cluster.cfg.MetaNodeDeleteBatchCount)
 	resp[nodeMarkDeleteRateKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeDeleteLimitRate)
+	resp[nodeDeleteWorkerSleepMs] = fmt.Sprintf("%v", m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
 
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", resp)))
 }
@@ -1523,7 +1534,6 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 			return
 		}
 		params[nodeDeleteBatchCountKey] = batchCount
-
 	}
 	if value = r.FormValue(nodeMarkDeleteRateKey); value != "" {
 		noParams = false
@@ -1534,7 +1544,16 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 			return
 		}
 		params[nodeMarkDeleteRateKey] = val
-
+	}
+	if value = r.FormValue(nodeDeleteWorkerSleepMs); value != "" {
+		noParams = false
+		var val = uint64(0)
+		val, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(nodeMarkDeleteRateKey)
+			return
+		}
+		params[nodeDeleteWorkerSleepMs] = val
 	}
 	if noParams {
 		err = keyNotFound(nodeDeleteBatchCountKey)

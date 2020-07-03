@@ -1688,6 +1688,18 @@ func (c *Cluster) setDataNodeDeleteLimitRate(val uint64) (err error) {
 	return
 }
 
+func (c *Cluster) setMetaNodeDeleteWorkerSleepMs(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs)
+	atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMetaNodeDeleteWorkerSleepMs] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
 func (c *Cluster) setDisableAutoAllocate(disableAutoAllocate bool) (err error) {
 	oldFlag := c.DisableAutoAllocate
 	c.DisableAutoAllocate = disableAutoAllocate

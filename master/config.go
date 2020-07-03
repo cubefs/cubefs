@@ -83,6 +83,7 @@ type clusterConfig struct {
 	MetaNodeThreshold                   float32
 	MetaNodeDeleteBatchCount            uint64 //metanode delete batch count
 	DataNodeDeleteLimitRate             uint64 //datanode delete limit rate
+	MetaNodeDeleteWorkerSleepMs         uint64 //datanode delete limit rate
 	peers                               []raftstore.PeerAddress
 	peerAddrs                           []string
 	heartbeatPort                       int64

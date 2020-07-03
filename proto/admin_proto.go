@@ -122,10 +122,11 @@ type RegisterMetaNodeResp struct {
 
 // ClusterInfo defines the cluster infomation.
 type ClusterInfo struct {
-	Cluster                  string
-	Ip                       string
-	MetaNodeDeleteBatchCount uint64
-	DataNodeDeleteLimitRate  uint64
+	Cluster                     string
+	Ip                          string
+	MetaNodeDeleteBatchCount    uint64
+	MetaNodeDeleteWorkerSleepMs uint64
+	DataNodeDeleteLimitRate     uint64
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
