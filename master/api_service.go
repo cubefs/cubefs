@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"bytes"
@@ -239,10 +240,13 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
+	m.cluster.loadClusterValue()
+	batchCount := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteBatchCount)
+	limitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
 	cInfo := &proto.ClusterInfo{
 		Cluster:                  m.cluster.Name,
-		MetaNodeDeleteBatchCount: m.cluster.cfg.MetaNodeDeleteBatchCount,
-		DataNodeDeleteLimitRate:  m.cluster.cfg.DataNodeDeleteLimitRate,
+		MetaNodeDeleteBatchCount: batchCount,
+		DataNodeDeleteLimitRate:  limitRate,
 		Ip:                       strings.Split(r.RemoteAddr, ":")[0],
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
@@ -655,8 +659,8 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 
 func newSimpleView(vol *Vol) *proto.SimpleVolView {
 	var (
-		volInodeCount   uint64
-		volDentryCount  uint64
+		volInodeCount  uint64
+		volDentryCount uint64
 	)
 	for _, mp := range vol.MetaPartitions {
 		volDentryCount = volDentryCount + mp.DentryCount

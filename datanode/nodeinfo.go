@@ -1,17 +1,22 @@
 package datanode
 
 import (
+	"context"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/log"
+	"golang.org/x/time/rate"
 )
 
 const (
-	UpdateNodeInfoTicket = 1 * time.Minute
+	defaultMarkDeleteLimitRate  = rate.Inf
+	defaultMarkDeleteLimitBurst = 512
+	UpdateNodeInfoTicket        = 1 * time.Minute
 )
 
 var (
-	nodeInfoStopC = make(chan struct{}, 0)
+	nodeInfoStopC     = make(chan struct{}, 0)
+	deleteLimiteRater = rate.NewLimiter(rate.Inf, defaultMarkDeleteLimitBurst)
 )
 
 func (m *DataNode) startUpdateNodeInfo() {
@@ -35,8 +40,17 @@ func (m *DataNode) stopUpdateNodeInfo() {
 func (m *DataNode) updateNodeInfo() {
 	clusterInfo, err := MasterClient.AdminAPI().GetClusterInfo()
 	if err != nil {
-		log.LogErrorf("[register] %s", err.Error())
+		log.LogErrorf("[updateDataNodeInfo] %s", err.Error())
 		return
 	}
-	m.SetMarkDeleteRate(clusterInfo.DataNodeDeleteLimitRate)
+	r := clusterInfo.DataNodeDeleteLimitRate
+	l := rate.Limit(r)
+	if r == 0 {
+		l = rate.Inf
+	}
+	deleteLimiteRater.SetLimit(l)
+}
+
+func DeleteLimiterWait() {
+	deleteLimiteRater.Wait(context.Background())
 }

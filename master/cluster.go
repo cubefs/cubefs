@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -1664,11 +1665,11 @@ func (c *Cluster) setMetaNodeThreshold(threshold float32) (err error) {
 }
 
 func (c *Cluster) setMetaNodeDeleteBatchCount(val uint64) (err error) {
-	oldVal := c.cfg.MetaNodeDeleteBatchCount
-	c.cfg.MetaNodeDeleteBatchCount = val
+	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeDeleteBatchCount)
+	atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, val)
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setMetaNodeDeleteBatchCount] err[%v]", err)
-		c.cfg.MetaNodeDeleteBatchCount = oldVal
+		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldVal)
 		err = proto.ErrPersistenceByRaft
 		return
 	}
@@ -1676,11 +1677,11 @@ func (c *Cluster) setMetaNodeDeleteBatchCount(val uint64) (err error) {
 }
 
 func (c *Cluster) setDataNodeDeleteLimitRate(val uint64) (err error) {
-	oldVal := c.cfg.DataNodeDeleteLimitRate
-	c.cfg.DataNodeDeleteLimitRate = val
+	oldVal := atomic.LoadUint64(&c.cfg.DataNodeDeleteLimitRate)
+	atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, val)
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setDataNodeDeleteLimitRate] err[%v]", err)
-		c.cfg.DataNodeDeleteLimitRate = oldVal
+		atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, oldVal)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

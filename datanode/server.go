@@ -15,7 +15,6 @@
 package datanode
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -39,7 +38,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
-	"golang.org/x/time/rate"
 )
 
 var (
@@ -50,11 +48,6 @@ var (
 	LocalIP, serverPort string
 	gConnPool           = util.NewConnectPool()
 	MasterClient        = masterSDK.NewMasterClient(nil, false)
-)
-
-const (
-	defaultMarkDeleteLimitRate  = rate.Inf
-	defaultMarkDeleteLimitBurst = 128
 )
 
 const (
@@ -99,9 +92,6 @@ type DataNode struct {
 	stopC       chan bool
 
 	control common.Control
-
-	markDeleteLimit *rate.Limiter
-	ctx             context.Context
 }
 
 func NewServer() *DataNode {
@@ -205,11 +195,6 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	if s.zoneName == "" {
 		s.zoneName = DefaultZoneName
 	}
-
-	markDeleteLimit := rate.Limit(defaultMarkDeleteLimitRate)
-
-	s.ctx = context.Background()
-	s.markDeleteLimit = rate.NewLimiter(markDeleteLimit, defaultMarkDeleteLimitBurst)
 
 	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
@@ -430,19 +415,6 @@ func (s *DataNode) incDiskErrCnt(partitionID uint64, err error, flag uint8) {
 	} else if flag == ReadFlag {
 		d.incReadErrCnt()
 	}
-}
-
-func (s *DataNode) SetMarkDeleteRate(v uint64) {
-	if v > 0 {
-		s.markDeleteLimit.SetLimit(rate.Limit(v))
-	} else {
-		s.markDeleteLimit.SetLimit(rate.Inf)
-	}
-}
-
-func (s *DataNode) GetMarkDeleteRate() uint64 {
-	v := s.markDeleteLimit.Limit()
-	return uint64(v)
 }
 
 func IsDiskErr(errMsg string) bool {

@@ -52,7 +52,8 @@ func (m *MetaNode) stopUpdateNodeInfo() {
 }
 
 func (m *MetaNode) updateNodeInfo() {
-	clusterInfo, err := getClusterInfo()
+	//clusterInfo, err := getClusterInfo()
+	clusterInfo, err := masterClient.AdminAPI().GetClusterInfo()
 	if err != nil {
 		log.LogErrorf("[updateNodeInfo] %s", err.Error())
 		return
