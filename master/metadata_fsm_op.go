@@ -670,6 +670,9 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 		dp.Peers = dpv.Peers
 		for _, rv := range dpv.Replicas {
+			if !contains(dp.Hosts, rv.Addr) {
+				continue
+			}
 			dp.afterCreation(rv.Addr, rv.DiskPath, c)
 		}
 		vol.dataPartitions.put(dp)

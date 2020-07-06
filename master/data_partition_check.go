@@ -183,13 +183,14 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) (di
 func (partition *DataPartition) checkReplicationTask(clusterID string, dataPartitionSize uint64) (tasks []*proto.AdminTask) {
 	var msg string
 	tasks = make([]*proto.AdminTask, 0)
-	if excessAddr, task, excessErr := partition.deleteIllegalReplica(); excessErr != nil {
-		tasks = append(tasks, task)
+	if excessAddr, excessErr := partition.deleteIllegalReplica(); excessErr != nil {
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Excess Replication"+
 			" On :%v  Err:%v  rocksDBRecords:%v",
 			deleteIllegalReplicaErr, partition.PartitionID, excessAddr, excessErr.Error(), partition.Hosts)
 		Warn(clusterID, msg)
-
+		partition.Lock()
+		partition.removeReplicaByAddr(excessAddr)
+		partition.Unlock()
 	}
 	if partition.Status == proto.ReadWrite {
 		return
@@ -206,21 +207,17 @@ func (partition *DataPartition) checkReplicationTask(clusterID string, dataParti
 	return
 }
 
-func (partition *DataPartition) deleteIllegalReplica() (excessAddr string, task *proto.AdminTask, err error) {
+func (partition *DataPartition) deleteIllegalReplica() (excessAddr string, err error) {
 	partition.Lock()
 	defer partition.Unlock()
 	for i := 0; i < len(partition.Replicas); i++ {
 		replica := partition.Replicas[i]
 		if ok := partition.hasHost(replica.Addr); !ok {
 			excessAddr = replica.Addr
-			log.LogError(fmt.Sprintf("action[removeIllegalReplica],partitionID:%v,has excess replication:%v",
-				partition.PartitionID, excessAddr))
 			err = proto.ErrIllegalDataReplica
-			task = partition.createTaskToDeleteDataPartition(excessAddr)
 			break
 		}
 	}
-
 	return
 }
 
