@@ -30,7 +30,7 @@ type FileService struct {
 
 func NewFileService(objectNode string, masters []string, mc *client.MasterGClient) *FileService {
 	return &FileService{
-		manager:    NewVolumeManager(masters),
+		manager:    NewVolumeManager(masters, true),
 		userClient: &user.UserClient{mc},
 		objectNode: objectNode,
 	}
@@ -94,10 +94,10 @@ func (fs *FileService) listFile(ctx context.Context, args struct {
 	}
 
 	return &ListFileInfo{
-		Infos : result.Files,
-		NextMarker : result.NextMarker,
-		IsTruncated :result.Truncated,
-		Prefixes    :result.CommonPrefixes,
+		Infos:       result.Files,
+		NextMarker:  result.NextMarker,
+		IsTruncated: result.Truncated,
+		Prefixes:    result.CommonPrefixes,
 	}, err
 }
 
