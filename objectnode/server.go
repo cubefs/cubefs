@@ -177,7 +177,7 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	log.LogInfof("loadConfig: strict: %v", strict)
 
 	o.mc = master.NewMasterClient(masters, false)
-	o.vm = NewVolumeManager(masters)
+	o.vm = NewVolumeManager(masters, strict)
 	o.userStore = NewUserInfoStore(masters, strict)
 
 	return

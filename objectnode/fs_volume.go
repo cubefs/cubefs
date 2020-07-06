@@ -71,44 +71,9 @@ type VolumeConfig struct {
 	// Such as Volume topology and metadata update tasks.
 	// This is a optional configuration item.
 	OnAsyncTaskError AsyncTaskErrorFunc
-}
 
-// OSSMeta is bucket policy and ACL metadata.
-type OSSMeta struct {
-	policy     *Policy
-	acl        *AccessControlPolicy
-	corsConfig *CORSConfiguration
-	policyLock sync.RWMutex
-	aclLock    sync.RWMutex
-	corsLock   sync.RWMutex
-}
-
-func (v *Volume) loadPolicy() (p *Policy) {
-	v.om.policyLock.RLock()
-	p = v.om.policy
-	v.om.policyLock.RUnlock()
-	return
-}
-
-func (v *Volume) storePolicy(p *Policy) {
-	v.om.policyLock.Lock()
-	v.om.policy = p
-	v.om.policyLock.Unlock()
-	return
-}
-
-func (v *Volume) loadACL() (p *AccessControlPolicy) {
-	v.om.aclLock.RLock()
-	p = v.om.acl
-	v.om.aclLock.RUnlock()
-	return
-}
-
-func (v *Volume) storeACL(p *AccessControlPolicy) {
-	v.om.aclLock.Lock()
-	v.om.acl = p
-	v.om.aclLock.Unlock()
-	return
+	// Get OSSMeta from the MetaNode every time if it is set true.
+	MetaStrict bool
 }
 
 type PutFileOption struct {
@@ -151,20 +116,6 @@ type ListFilesV2Result struct {
 	CommonPrefixes []string
 }
 
-func (v *Volume) loadCors() (cors *CORSConfiguration) {
-	v.om.corsLock.RLock()
-	cors = v.om.corsConfig
-	v.om.corsLock.RUnlock()
-	return
-}
-
-func (v *Volume) storeCors(cors *CORSConfiguration) {
-	v.om.corsLock.Lock()
-	v.om.corsConfig = cors
-	v.om.corsLock.Unlock()
-	return
-}
-
 // Volume is a high-level encapsulation of meta sdk and data sdk methods.
 // A high-level approach that exposes the semantics of object storage to the outside world.
 // Volume escapes high-level object storage semantics to low-level POSIX semantics.
@@ -173,7 +124,7 @@ type Volume struct {
 	ec         *stream.ExtentClient
 	store      Store // Storage for ACP management
 	name       string
-	om         *OSSMeta
+	metaLoader ossMetaLoader
 	ticker     *time.Ticker
 	createTime int64
 
@@ -208,25 +159,19 @@ func (v *Volume) loadOSSMeta() {
 	if policy, err = v.loadBucketPolicy(); err != nil {
 		return
 	}
-	if policy != nil {
-		v.storePolicy(policy)
-	}
+	v.metaLoader.storePolicy(policy)
 
 	var acl *AccessControlPolicy
 	if acl, err = v.loadBucketACL(); err != nil {
 		return
 	}
-	if acl != nil {
-		v.storeACL(acl)
-	}
+	v.metaLoader.storeACL(acl)
 
 	var cors *CORSConfiguration
 	if cors, err = v.loadBucketCors(); err != nil { // if cors isn't exist, it may return nil. So it needs to be cleared manually when deleting cors.
 		return
 	}
-	if cors != nil {
-		v.storeCors(cors)
-	}
+	v.metaLoader.storeCors(cors)
 }
 
 func (v *Volume) Name() string {
@@ -249,6 +194,9 @@ func (v *Volume) loadBucketPolicy() (policy *Policy, err error) {
 		log.LogErrorf("loadBucketPolicy: load bucket policy fail: Volume(%v) err(%v)", v.name, err)
 		return
 	}
+	if len(data) == 0 {
+		return
+	}
 	policy = &Policy{}
 	if err = json.Unmarshal(data, policy); err != nil {
 		return
@@ -259,6 +207,9 @@ func (v *Volume) loadBucketPolicy() (policy *Policy, err error) {
 func (v *Volume) loadBucketACL() (acp *AccessControlPolicy, err error) {
 	var raw []byte
 	if raw, err = v.store.Get(v.name, bucketRootPath, XAttrKeyOSSACL); err != nil {
+		return
+	}
+	if len(raw) == 0 {
 		return
 	}
 	acp = &AccessControlPolicy{}
@@ -273,15 +224,14 @@ func (v *Volume) loadBucketCors() (configuration *CORSConfiguration, err error) 
 	if raw, err = v.store.Get(v.name, bucketRootPath, XAttrKeyOSSCORS); err != nil {
 		return
 	}
+	if len(raw) == 0 {
+		return
+	}
 	configuration = &CORSConfiguration{}
 	if err = json.Unmarshal(raw, configuration); err != nil {
 		return
 	}
 	return configuration, nil
-}
-
-func (v *Volume) OSSMeta() *OSSMeta {
-	return v.om
 }
 
 func (v *Volume) getInodeFromPath(path string) (inode uint64, err error) {
@@ -2325,7 +2275,6 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		ec:         extentClient,
 		name:       config.Volume,
 		store:      config.Store,
-		om:         new(OSSMeta),
 		createTime: metaWrapper.VolCreateTime(),
 		closeCh:    make(chan struct{}),
 		onAsyncTaskError: func(err error) {
@@ -2334,6 +2283,12 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 			}
 		},
 	}
-	go v.syncOSSMeta()
+	if config.MetaStrict {
+		v.metaLoader = &strictMetaLoader{v: v}
+	} else {
+		v.metaLoader = &cacheMetaLoader{om: new(OSSMeta)}
+		go v.syncOSSMeta()
+	}
+
 	return v, nil
 }

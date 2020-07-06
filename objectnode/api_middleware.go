@@ -260,7 +260,7 @@ func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 			if origin == "" || method == "" {
 				return
 			}
-			cors := volume.loadCors()
+			cors, _ := volume.metaLoader.loadCors()
 			if cors != nil {
 				headers := strings.Split(headerStr, ",")
 				for _, corsRule := range cors.CORSRule {
