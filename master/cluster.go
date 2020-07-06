@@ -15,9 +15,9 @@
 package master
 
 import (
-	"encoding/binary"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -25,10 +25,6 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-)
-
-const (
-	BatchGoroutineSize = 128 //batch sync send goroutine
 )
 
 // Cluster stores all the cluster-level information.
@@ -794,6 +790,40 @@ func (c *Cluster) metaNode(addr string) (metaNode *MetaNode, err error) {
 	return
 }
 
+func (c *Cluster) getAllDataPartitionByDataNode(addr string) (partitions []*DataPartition) {
+	partitions = make([]*DataPartition, 0)
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		for _, dp := range vol.dataPartitions.partitions {
+			for _, host := range dp.Hosts {
+				if host == addr {
+					partitions = append(partitions, dp)
+					break
+				}
+			}
+		}
+	}
+
+	return
+}
+
+func (c *Cluster) getAllMetaPartitionByMetaNode(addr string) (partitions []*MetaPartition) {
+	partitions = make([]*MetaPartition, 0)
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		for _, mp := range vol.MetaPartitions {
+			for _, host := range mp.Hosts {
+				if host == addr {
+					partitions = append(partitions, mp)
+					break
+				}
+			}
+		}
+	}
+
+	return
+}
+
 func (c *Cluster) getAllDataPartitionIDByDatanode(addr string) (partitionIDs []uint64) {
 	partitionIDs = make([]uint64, 0)
 	safeVols := c.allVols()
@@ -831,18 +861,29 @@ func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []u
 func (c *Cluster) decommissionDataNode(dataNode *DataNode) (err error) {
 	msg := fmt.Sprintf("action[decommissionDataNode], Node[%v] OffLine", dataNode.Addr)
 	log.LogWarn(msg)
+	var wg sync.WaitGroup
 	dataNode.ToBeOffline = true
+	dataNode.AvailableSpace = 1
+	partitions := c.getAllDataPartitionByDataNode(dataNode.Addr)
+	errChannel := make(chan error, len(partitions))
 	defer func() {
 		dataNode.ToBeOffline = false
+		close(errChannel)
 	}()
-	dataNode.AvailableSpace = 1
-	safeVols := c.allVols()
-	for _, vol := range safeVols {
-		for _, dp := range vol.dataPartitions.partitions {
-			if err = c.decommissionDataPartition(dataNode.Addr, dp, dataNodeOfflineErr); err != nil {
-				return
+	for _, dp := range partitions {
+		wg.Add(1)
+		go func(dp *DataPartition) {
+			defer wg.Done()
+			if err1 := c.decommissionDataPartition(dataNode.Addr, dp, dataNodeOfflineErr); err1 != nil {
+				errChannel <- err1
 			}
-		}
+		}(dp)
+	}
+	wg.Wait()
+	select {
+	case err = <-errChannel:
+		return
+	default:
 	}
 	if err = c.syncDeleteDataNode(dataNode); err != nil {
 		msg = fmt.Sprintf("action[decommissionDataNode],clusterID[%v] Node[%v] OffLine failed,err[%v]",
@@ -941,7 +982,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
 errHandler:
-	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.Hosts)
 	if err != nil {
@@ -1242,19 +1283,29 @@ func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, part
 func (c *Cluster) decommissionMetaNode(metaNode *MetaNode) (err error) {
 	msg := fmt.Sprintf("action[decommissionMetaNode],clusterID[%v] Node[%v] begin", c.Name, metaNode.Addr)
 	log.LogWarn(msg)
+	var wg sync.WaitGroup
 	metaNode.ToBeOffline = true
+	metaNode.MaxMemAvailWeight = 1
+	partitions := c.getAllMetaPartitionByMetaNode(metaNode.Addr)
+	errChannel := make(chan error, len(partitions))
 	defer func() {
 		metaNode.ToBeOffline = false
+		close(errChannel)
 	}()
-	metaNode.MaxMemAvailWeight = 1
-	safeVols := c.allVols()
-	for _, vol := range safeVols {
-		for _, mp := range vol.MetaPartitions {
-			// err is not handled here.
-			if err = c.decommissionMetaPartition(metaNode.Addr, mp); err != nil {
-				return
+	for _, mp := range partitions {
+		wg.Add(1)
+		go func(mp *MetaPartition) {
+			defer wg.Done()
+			if err1 := c.decommissionMetaPartition(metaNode.Addr, mp); err1 != nil {
+				errChannel <- err1
 			}
-		}
+		}(mp)
+	}
+	wg.Wait()
+	select {
+	case err = <-errChannel:
+		return
+	default:
 	}
 	if err = c.syncDeleteMetaNode(metaNode); err != nil {
 		msg = fmt.Sprintf("action[decommissionMetaNode],clusterID[%v] Node[%v] OffLine failed,err[%v]",
@@ -1682,85 +1733,40 @@ func (c *Cluster) setMetaNodeThreshold(threshold float32) (err error) {
 	return
 }
 
-func (c *Cluster) getMetaNodesByHosts(hosts []string) []*MetaNode {
-	metaNodes := make([]*MetaNode, 0)
-	if hosts != nil && len(hosts) > 0 {
-		for _, h := range hosts {
-			if m, ok := c.metaNodes.Load(h); ok {
-				if meta, ok := m.(*MetaNode); ok {
-					metaNodes = append(metaNodes, meta)
-				}
-			}
-		}
-	} else {
-		c.metaNodes.Range(func(key interface{}, v interface{}) bool {
-			metaNodes = append(metaNodes, v.(*MetaNode))
-			return true
-		})
+func (c *Cluster) setMetaNodeDeleteBatchCount(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeDeleteBatchCount)
+	atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMetaNodeDeleteBatchCount] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
 	}
-	return metaNodes
-}
-
-//
-func (c *Cluster) setMetaNodeParams(hosts []string, batchCount uint64) (err error) {
-	metaNodes := c.getMetaNodesByHosts(hosts)
-	tasks := make([]*proto.AdminTask, 0)
-	for _, m := range metaNodes {
-		task := m.buildSetParamsTask(batchCount)
-		tasks = append(tasks, task)
-	}
-	c.addMetaNodeTasks(tasks)
-
 	return
 }
 
-func (c *Cluster) getMetaNodeParams(hosts []string) (batchCounts map[string]uint64, err error) {
-	metaNodes := c.getMetaNodesByHosts(hosts)
-
-	batchCounts = make(map[string]uint64)
-	totalSize := len(metaNodes)
-	if totalSize > BatchGoroutineSize {
-		for i := 0; i < totalSize; {
-			leftSize := totalSize - i
-			size := BatchGoroutineSize
-			if leftSize < BatchGoroutineSize {
-				size = leftSize
-			}
-			c.batchSyncSendAdminTask(metaNodes[i:i+size], batchCounts)
-			i += size
-		}
-	} else {
-		c.batchSyncSendAdminTask(metaNodes, batchCounts)
+func (c *Cluster) setDataNodeDeleteLimitRate(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.DataNodeDeleteLimitRate)
+	atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setDataNodeDeleteLimitRate] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
 	}
-
 	return
 }
 
-func (c *Cluster) batchSyncSendAdminTask(metaNodes []*MetaNode, resp map[string]uint64) {
-	var (
-		mu sync.Mutex
-		wg sync.WaitGroup
-	)
-	for _, m := range metaNodes {
-		wg.Add(1)
-		go func(m *MetaNode) {
-			defer func() {
-				wg.Done()
-			}()
-			task := m.buildGetParamsTask()
-			var packet *proto.Packet
-			var e error
-			if packet, e = m.Sender.syncSendAdminTask(task); e != nil {
-				log.LogErrorf("getMetaNodeParams error: %v", e)
-				return
-			}
-			bc := binary.BigEndian.Uint64(packet.Data)
-			mu.Lock()
-			resp[m.Addr] = bc
-			mu.Unlock()
-		}(m)
+func (c *Cluster) setMetaNodeDeleteWorkerSleepMs(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs)
+	atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMetaNodeDeleteWorkerSleepMs] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
 	}
-	wg.Wait()
+	return
 }
 
 func (c *Cluster) setDisableAutoAllocate(disableAutoAllocate bool) (err error) {

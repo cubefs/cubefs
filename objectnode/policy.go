@@ -223,7 +223,15 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 		// Check user policy
 		var volume *Volume
 		if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
-			volume, _ = o.getVol(bucket)
+			if volume, err = o.getVol(bucket); err != nil {
+				allowed = false
+				if err == proto.ErrVolNotExists {
+					ec = NoSuchBucket
+					return
+				}
+				ec = InternalErrorCode(err)
+				return
+			}
 		}
 		var userInfo *proto.UserInfo
 		isOwner := false

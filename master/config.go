@@ -63,6 +63,7 @@ const (
 	defaultMetaPartitionMemUsageThreshold      float32 = 0.75    // memory usage threshold on a meta partition
 	defaultMaxMetaPartitionCountOnEachNode             = 10000
 	defaultReplicaNum                                  = 3
+	defaultDiffSpaceUsage                              = 1024 * 1024 * 1024
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -81,10 +82,14 @@ type clusterConfig struct {
 	numberOfDataPartitionsToLoad        int
 	nodeSetCapacity                     int
 	MetaNodeThreshold                   float32
+	MetaNodeDeleteBatchCount            uint64 //metanode delete batch count
+	DataNodeDeleteLimitRate             uint64 //datanode delete limit rate
+	MetaNodeDeleteWorkerSleepMs         uint64 //datanode delete limit rate
 	peers                               []raftstore.PeerAddress
 	peerAddrs                           []string
 	heartbeatPort                       int64
 	replicaPort                         int64
+	diffSpaceUsage                      uint64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -100,6 +105,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.PeriodToLoadALLDataPartitions = defaultPeriodToLoadAllDataPartitions
 	cfg.MetaNodeThreshold = defaultMetaPartitionMemUsageThreshold
 	cfg.metaNodeReservedMem = defaultMetaNodeReservedMem
+	cfg.diffSpaceUsage = defaultDiffSpaceUsage
 	return
 }
 

@@ -11,6 +11,9 @@ import (
 
 func TestMakeHtml2GoBin(t *testing.T) {
 
+	//when you need rebuild html . please open it
+	return
+
 	assets := getAssets()
 
 	err := vfsgen.Generate(assets, vfsgen.Options{

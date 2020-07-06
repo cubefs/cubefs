@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
+
 	"github.com/chubaofs/chubaofs/util/exporter"
 
 	"github.com/gorilla/mux"
@@ -139,46 +141,36 @@ func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 				return
 			}
 
+			var (
+				pass bool
+				err  error
+			)
 			//  check auth type
 			if isHeaderUsingSignatureAlgorithmV4(r) {
 				// using signature algorithm version 4 in header
-				if ok, _ := o.validateHeaderBySignatureAlgorithmV4(r); !ok {
-					if err := AccessDenied.ServeResponse(w, r); err != nil {
-						log.LogErrorf("authMiddleware: serve access denied response fail, requestID(%v) err(%v)", GetRequestID(r), err)
-					}
-					return
-				}
+				pass, err = o.validateHeaderBySignatureAlgorithmV4(r)
 			} else if isHeaderUsingSignatureAlgorithmV2(r) {
 				// using signature algorithm version 2 in header
-				if ok, _ := o.validateHeaderBySignatureAlgorithmV2(r); !ok {
-					if err := AccessDenied.ServeResponse(w, r); err != nil {
-						log.LogErrorf("authMiddleware: serve access denied response fail, requestID(%v) err(%v)", GetRequestID(r), err)
-					}
-					return
-				}
+				pass, err = o.validateHeaderBySignatureAlgorithmV2(r)
 			} else if isUrlUsingSignatureAlgorithmV2(r) {
 				// using signature algorithm version 2 in url parameter
-				if ok, _ := o.validateUrlBySignatureAlgorithmV2(r); !ok {
-					log.LogDebugf("authMiddleware: presigned v2 denied: requestID(%v)", GetRequestID(r))
-					if err := AccessDenied.ServeResponse(w, r); err != nil {
-						log.LogErrorf("authMiddleware: serve response fail: requestID(%v) err(%v)", GetRequestID(r), err)
-					}
-					return
-				}
+				pass, err = o.validateUrlBySignatureAlgorithmV2(r)
 			} else if isUrlUsingSignatureAlgorithmV4(r) {
 				// using signature algorithm version 4 in url parameter
-				if ok, _ := o.validateUrlBySignatureAlgorithmV4(r); !ok {
-					log.LogDebugf("authMiddleware: presigned v4 denied: requestID(%v)", GetRequestID(r))
-					if err := AccessDenied.ServeResponse(w, r); err != nil {
-						log.LogErrorf("authMiddleware: serve response fail: requestID(%v) err(%v)", GetRequestID(r), err)
-					}
+				pass, err = o.validateUrlBySignatureAlgorithmV4(r)
+			}
+
+			if err != nil {
+				if err == proto.ErrVolNotExists {
+					_ = NoSuchBucket.ServeResponse(w, r)
 					return
 				}
-			} else {
-				// no valid signature found
-				if err := AccessDenied.ServeResponse(w, r); err != nil {
-					log.LogErrorf("authMiddleware: serve response fail: requestID(%v) err(%v)", GetRequestID(r), err)
-				}
+				_ = InternalErrorCode(err).ServeResponse(w, r)
+				return
+			}
+
+			if !pass {
+				_ = AccessDenied.ServeResponse(w, r)
 				return
 			}
 
