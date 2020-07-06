@@ -611,7 +611,7 @@ func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info 
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid, gid uint32) (status int, err error) {
+func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) (status int, err error) {
 	req := &proto.SetAttrRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -620,6 +620,8 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 		Mode:        mode,
 		Uid:         uid,
 		Gid:         gid,
+		AccessTime:  atime,
+		ModifyTime:  mtime,
 	}
 
 	packet := proto.NewPacketReqID()

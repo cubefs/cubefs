@@ -416,16 +416,13 @@ func (i *Inode) ExtentsTruncate(length uint64, ct int64) (delExtents []proto.Ext
 
 // IncNLink increases the nLink value by one.
 func (i *Inode) IncNLink() {
-	mtime := Now.GetCurrentTime().Unix()
 	i.Lock()
 	i.NLink++
-	i.ModifyTime = mtime
 	i.Unlock()
 }
 
 // DecNLink decreases the nLink value by one.
 func (i *Inode) DecNLink() {
-	mtime := Now.GetCurrentTime().Unix()
 	i.Lock()
 	if proto.IsDir(i.Type) && i.NLink == 2 {
 		i.NLink--
@@ -433,7 +430,6 @@ func (i *Inode) DecNLink() {
 	if i.NLink > 0 {
 		i.NLink--
 	}
-	i.ModifyTime = mtime
 	i.Unlock()
 }
 
@@ -473,16 +469,22 @@ func (i *Inode) ShouldDelete() bool {
 }
 
 // SetAttr sets the attributes of the inode.
-func (i *Inode) SetAttr(valid, mode, uid, gid uint32) {
+func (i *Inode) SetAttr(req *SetattrRequest) {
 	i.Lock()
-	if valid&proto.AttrMode != 0 {
-		i.Type = mode
+	if req.Valid&proto.AttrMode != 0 {
+		i.Type = req.Mode
 	}
-	if valid&proto.AttrUid != 0 {
-		i.Uid = uid
+	if req.Valid&proto.AttrUid != 0 {
+		i.Uid = req.Uid
 	}
-	if valid&proto.AttrGid != 0 {
-		i.Gid = gid
+	if req.Valid&proto.AttrGid != 0 {
+		i.Gid = req.Gid
+	}
+	if req.Valid&proto.AttrAccessTime != 0 {
+		i.AccessTime = req.AccessTime
+	}
+	if req.Valid&proto.AttrModifyTime != 0 {
+		i.ModifyTime = req.ModifyTime
 	}
 	i.Unlock()
 }

@@ -119,10 +119,8 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
+
 	resp.Msg = inode
-	inode.DoWriteFunc(func() {
-		inode.ModifyTime = ino.ModifyTime
-	})
 
 	if inode.IsEmptyDir() {
 		mp.inodeTree.Delete(inode)
@@ -289,6 +287,6 @@ func (mp *metaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
 	if ino.ShouldDelete() {
 		return
 	}
-	ino.SetAttr(req.Valid, req.Mode, req.Uid, req.Gid)
+	ino.SetAttr(req)
 	return
 }

@@ -591,14 +591,14 @@ func (mw *MetaWrapper) Evict(inode uint64) error {
 	return nil
 }
 
-func (mw *MetaWrapper) Setattr(inode uint64, valid, mode, uid, gid uint32) error {
+func (mw *MetaWrapper) Setattr(inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		log.LogErrorf("Setattr: No such partition, ino(%v)", inode)
 		return syscall.EINVAL
 	}
 
-	status, err := mw.setattr(mp, inode, valid, mode, uid, gid)
+	status, err := mw.setattr(mp, inode, valid, mode, uid, gid, atime, mtime)
 	if err != nil || status != statusOK {
 		log.LogErrorf("Setattr: ino(%v) err(%v) status(%v)", inode, err, status)
 		return statusToErrno(status)
