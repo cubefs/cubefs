@@ -114,7 +114,9 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV4(r *http.Request) (bool
 	var accessKey = req.Credential.AccessKey
 	var volume *Volume
 	if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
-		volume, _ = o.getVol(bucket)
+		if volume, err = o.getVol(bucket); err != nil {
+			return false, err
+		}
 	}
 	var secretKey string
 	if userInfo, err := o.getUserInfoByAccessKey(accessKey); err == nil {
@@ -166,13 +168,15 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV4(r *http.Request) (pass bo
 	var ok bool
 	if ok, err = req.isValid(); !ok {
 		log.LogErrorf("validateUrlBySignatureAlgorithmV4: request invalid: requestID(%v) err(%v)", GetRequestID(r), err)
-		return
+		return false, nil
 	}
 
 	var accessKey = req.Credential.AccessKey
 	var volume *Volume
 	if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
-		volume, _ = o.getVol(bucket)
+		if volume, err = o.getVol(bucket); err != nil {
+			return false, err
+		}
 	}
 	var secretKey string
 	if userInfo, err := o.getUserInfoByAccessKey(accessKey); err == nil {

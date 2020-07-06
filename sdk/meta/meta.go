@@ -169,16 +169,20 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
 
 	limit := MaxMountRetryLimit
-retry:
-	if err = mw.initMetaWrapper(); err != nil {
-		if limit <= 0 {
-			return nil, errors.Trace(err, "Init meta wrapper failed!")
-		} else {
+
+	for limit > 0 {
+		err = mw.initMetaWrapper()
+		// When initializing the volume, if the master explicitly responds that the specified
+		// volume does not exist, it will not retry.
+		if err == proto.ErrVolNotExists {
+			return nil, err
+		}
+		if err != nil {
 			limit--
 			time.Sleep(MountRetryInterval)
-			goto retry
+			continue
 		}
-
+		break
 	}
 
 	go mw.refresh()
