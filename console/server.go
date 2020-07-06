@@ -3,6 +3,11 @@ package console
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"regexp"
+	"strings"
+
 	"github.com/chubaofs/chubaofs/console/cutil"
 	"github.com/chubaofs/chubaofs/console/service"
 	"github.com/chubaofs/chubaofs/proto"
@@ -12,10 +17,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/introspection"
-	"io"
-	"net/http"
-	"regexp"
-	"strings"
 )
 
 type ConsoleNode struct {
@@ -35,33 +36,33 @@ func (c *ConsoleNode) Start(cfg *config.Config) error {
 	c.addProxy(proto.AdminClusterAPI, cli)
 	c.addProxy(proto.AdminVolumeAPI, cli)
 
-	c.server.HandleFunc("/iql", cutil.IQLFun)
+	c.server.HandleFunc(proto.ConsoleIQL, cutil.IQLFun)
 
 	loginService := service.NewLoginService(cli)
-	c.addHandle("/login", loginService.Schema(), loginService)
+	c.addHandle(proto.ConsoleLoginAPI, loginService.Schema(), loginService)
 
 	monitorService := service.NewMonitorService(cfg.GetString("monitor_addr"), cfg.GetString("monitor_app"), cfg.GetString("monitor_cluster"), cfg.GetString("master_instance"), cfg.GetString("dashboard_addr"))
-	c.addHandle("/cfs_monitor", monitorService.Schema(), monitorService)
+	c.addHandle(proto.ConsoleMonitorAPI, monitorService.Schema(), monitorService)
 	c.addHandle("/jiankong", monitorService.Schema(), monitorService)
 
 	fileService := service.NewFileService(c.objectNodeDomain, c.masters, cli)
-	c.server.HandleFunc("/file/down", func(writer http.ResponseWriter, request *http.Request) {
+	c.server.HandleFunc(proto.ConsoleFileDown, func(writer http.ResponseWriter, request *http.Request) {
 		if err := fileService.DownFile(writer, request); err != nil {
 			c.writeError(err, writer)
 		}
 	})
 
-	c.server.HandleFunc("/file/upload", func(writer http.ResponseWriter, request *http.Request) {
+	c.server.HandleFunc(proto.ConsoleFileUpload, func(writer http.ResponseWriter, request *http.Request) {
 		if err := fileService.UpLoadFile(writer, request); err != nil {
 			c.writeError(err, writer)
 		}
 	})
 
-	c.addHandle("/file", fileService.Schema(), fileService)
+	c.addHandle(proto.ConsoleFile, fileService.Schema(), fileService)
 
 	indexPaths := []string{"overview", "login", "overview", "userDetails", "servers",
 		"serverList", "dashboard", "volumeList", "volumeDetail", "fileList", "operations",
-		"alarm", "authorization",}
+		"alarm", "authorization"}
 
 	for _, path := range indexPaths {
 		c.server.HandleFunc("/"+path, c.indexer).Methods("GET")

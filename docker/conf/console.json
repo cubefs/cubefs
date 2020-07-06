@@ -3,15 +3,14 @@
   "logDir": "/cfs/log/",
   "logLevel": "debug",
   "listen": "80",
-  "master_instance": "11.5.115.39:9066",
   "masterAddr": [
     "192.168.0.11:17010",
     "192.168.0.12:17010",
     "192.168.0.13:17010"
   ],
-  "monitor_addr": "http://cfsthanos-yf01.cfsmon.svc.zyx02.n.jd.local",
-  "dashboard_addr": "http://monitor.chubao.jd.com/d/J8XJyOmZk/chubaofs?orgId=1&from=now-1h&to=now&var-app=cfs&var-cluster=spark&var-role=master&var-topk=5&var-mnOp=OpMetaCreateInode&var-dnOp=OpCreateExtent&var-fuseOp=fileread&var-fuseOp=filesync&var-obOp=GetObject&var-obOp=PutObject&var-obOp=CopyObject&var-obOp=ListObjects&var-vol=test&var-instance=11.5.115.37:9066&var-hostip=11.5.115.37&var-master_instance=11.5.115.39:9066",
+  "master_instance": "192.168.0.11:9066",
+  "monitor_addr": "http://192.168.0.102:9090",
+  "dashboard_addr": "http://192.168.0.103:3000",
   "monitor_app": "cfs",
-  "monitor_cluster": "spark",
-  "enableHTTPS": "false"
+  "monitor_cluster": "spark"
 }

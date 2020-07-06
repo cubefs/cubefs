@@ -37,12 +37,19 @@ const (
 	AdminListVols                  = "/vol/list"
 	AdminSetNodeInfo               = "/admin/setNodeInfo"
 	AdminGetNodeInfo               = "/admin/getNodeInfo"
+
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
 	AdminVolumeAPI  = "/api/volume"
+
 	//graphql coonsole api
-	ConsoleLoginAPI = "/login"
+	ConsoleIQL        = "/iql"
+	ConsoleLoginAPI   = "/login"
+	ConsoleMonitorAPI = "/cfs_monitor"
+	ConsoleFile       = "/file"
+	ConsoleFileDown   = "/file/down"
+	ConsoleFileUpload = "/file/upload"
 
 	// Client APIs
 	ClientDataPartitions = "/client/partitions"
