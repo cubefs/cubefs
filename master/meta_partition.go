@@ -28,7 +28,7 @@ import (
 
 // MetaReplica defines the replica of a meta partition
 type MetaReplica struct {
-	Addr       string
+	Addr        string
 	start       uint64 // lower bound of the inode id
 	end         uint64 // upper bound of the inode id
 	nodeID      uint64
@@ -471,12 +471,11 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 func (mp *MetaPartition) replicaCreationTasks(clusterID, volName string) (tasks []*proto.AdminTask) {
 	var msg string
 	tasks = make([]*proto.AdminTask, 0)
-	if addr, task, err := mp.removeIllegalReplica(); err != nil {
+	if addr, _, err := mp.removeIllegalReplica(); err != nil {
 		msg = fmt.Sprintf("action[%v],clusterID[%v] metaPartition:%v  excess replication"+
 			" on :%v  err:%v  persistenceHosts:%v",
 			deleteIllegalReplicaErr, clusterID, mp.PartitionID, addr, err.Error(), mp.Hosts)
 		log.LogWarn(msg)
-		tasks = append(tasks, task)
 	}
 	if addrs := mp.missingReplicaAddrs(); addrs != nil {
 		msg = fmt.Sprintf("action[missingReplicaAddrs],clusterID[%v] metaPartition:%v  lack replication"+

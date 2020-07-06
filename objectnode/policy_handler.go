@@ -44,13 +44,14 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 		ec = NoSuchBucket
 		return
 	}
-	ossMeta := vol.OSSMeta()
-	if ossMeta == nil {
-		ossMeta = &OSSMeta{}
+	var policy *Policy
+	if policy, err = vol.metaLoader.loadPolicy(); err != nil {
+		ec = InternalErrorCode(err)
+		return
 	}
 
 	var policyData []byte
-	policyData, err = json.Marshal(ossMeta.policy)
+	policyData, err = json.Marshal(policy)
 	if err != nil {
 		ec = InternalErrorCode(err)
 		return
