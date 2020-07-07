@@ -883,8 +883,9 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	}
 	badPartitions = node.badPartitions(diskPath, m.cluster)
 	if len(badPartitions) == 0 {
-		err = fmt.Errorf("node[%v] disk[%v] does not have any data partition", node.Addr, diskPath)
-		sendErrReply(w, r, newErrHTTPReply(err))
+		rstMsg = fmt.Sprintf("receive decommissionDisk node[%v] no any partitions on disk[%v],offline successfully",
+			node.Addr, diskPath)
+		sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 		return
 	}
 	for _, bdp := range badPartitions {
