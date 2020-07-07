@@ -22,6 +22,7 @@ Configurations
    "logLevel", "string", "Level operation for logging. Default is *error*", "No"
    "listen", "string", "Port of TCP network to be listen, default is 80", "Yes"
    "masterAddr", "string slice", "Addresses of master server", "Yes"
+   "objectNodeDomain", "string", "object domain for sign url for down", "Yes"
    "master_instance", "string", "the tag for monitor", "Yes"
    "monitor_addr", "string", "Prometheus the address", "Yes"
    "dashboard_addr", "string", "console menu forward to Grafana", "Yes"
