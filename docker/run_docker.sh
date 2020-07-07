@@ -114,8 +114,8 @@ function isDiskAvailable() {
         echo "error: $DiskPath must be exist and at least 10GB free size"
         exit 1
     fi
-    avail_sectors=$(df  $Disk | tail -1 | awk '{print $4}')
-    avail_GB=$(( $avail_sectors / 1024 / 1024 / 2  ))
+    avail_kb=$(df -k $Disk | tail -1 | awk '{print $4}')
+    avail_GB=$(( $avail_kb / 1000 / 1000 ))
     if (( $avail_GB < $MIN_DNDISK_AVAIL_SIZE_GB )) ; then
         echo "$Disk: avaible size $avail_GB GB < Min Disk avaible size $MIN_DNDISK_AVAIL_SIZE_GB GB" ;
         exit 1
