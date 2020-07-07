@@ -50,3 +50,9 @@ Configurations
       "monitor_cluster": "spark"
     }
 
+Notice
+-------------
+
+  * you can visit it by `http://127.0.0.1:80`
+  * in console default user is `root` default password is `ChubaoFSRoot`
+
