@@ -12,5 +12,5 @@
   "monitor_addr": "http://192.168.0.102:9090",
   "dashboard_addr": "http://192.168.0.103:3000",
   "monitor_app": "cfs",
-  "monitor_cluster": "spark"
+  "monitor_cluster": "cfs"
 }
