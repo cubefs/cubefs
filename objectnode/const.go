@@ -64,6 +64,7 @@ const (
 	HeaderNameXAmzMetaPrefix          = "x-amz-meta-"
 	HeaderNameXAmzDownloadPartCount   = "x-amz-mp-parts-count"
 	HeaderNameXAmzMetadataDirective   = "x-amz-metadata-directive"
+	HeaderNameXAmzBucketRegion        = "x-amz-bucket-region"
 
 	HeaderNameIfMatch           = "If-Match"
 	HeaderNameIfNoneMatch       = "If-None-Match"
