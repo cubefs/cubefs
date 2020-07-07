@@ -130,6 +130,7 @@ type volValue struct {
 	OSSAccessKey      string
 	OSSSecretKey      string
 	CreateTime        int64
+	Description       string
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -155,6 +156,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		OSSAccessKey:      vol.OSSAccessKey,
 		OSSSecretKey:      vol.OSSSecretKey,
 		CreateTime:        vol.createTime,
+		Description:       vol.description,
 	}
 	return
 }

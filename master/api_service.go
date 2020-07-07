@@ -573,9 +573,10 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		authenticate bool
 		enableToken  bool
 		zoneName     string
+		description  string
 		vol          *Vol
 	)
-	if name, authKey, zoneName, capacity, replicaNum, enableToken, err = parseRequestToUpdateVol(r); err != nil {
+	if name, authKey, zoneName, capacity, replicaNum, enableToken, description, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -592,7 +593,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.updateVol(name, authKey, zoneName, uint64(capacity), vol.dpReplicaNum, followerRead, authenticate, enableToken); err != nil {
+	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), followerRead, authenticate, enableToken); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -616,9 +617,10 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		crossZone    bool
 		enableToken  bool
 		zoneName     string
+		description  string
 	)
 
-	if name, owner, zoneName, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone, enableToken, err = parseRequestToCreateVol(r); err != nil {
+	if name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone, enableToken, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -627,7 +629,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.createVol(name, owner, zoneName, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone, enableToken); err != nil {
+	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone, enableToken); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -691,6 +693,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		MpCnt:              len(vol.MetaPartitions),
 		DpCnt:              len(vol.dataPartitions.partitionMap),
 		CreateTime:         time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
+		Description:        vol.description,
 	}
 }
 
@@ -1211,7 +1214,7 @@ func parseRequestToDeleteVol(r *http.Request) (name, authKey string, err error) 
 
 }
 
-func parseRequestToUpdateVol(r *http.Request) (name, authKey, zoneName string, capacity, replicaNum int, enableToken bool, err error) {
+func parseRequestToUpdateVol(r *http.Request) (name, authKey, zoneName string, capacity, replicaNum int, enableToken bool, description string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1238,6 +1241,7 @@ func parseRequestToUpdateVol(r *http.Request) (name, authKey, zoneName string, c
 		}
 	}
 	enableToken = extractEnableToken(r)
+	description = r.FormValue(descriptionKey)
 	return
 }
 
@@ -1261,7 +1265,7 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authent
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone, enableToken bool, err error) {
+func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone, enableToken bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1313,6 +1317,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName string, mpC
 	}
 	zoneName = r.FormValue(zoneNameKey)
 	enableToken = extractEnableToken(r)
+	description = r.FormValue(descriptionKey)
 	return
 }
 

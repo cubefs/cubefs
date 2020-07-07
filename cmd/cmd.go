@@ -17,6 +17,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/chubaofs/chubaofs/console"
 	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -59,19 +60,21 @@ const (
 )
 
 const (
-	RoleMaster = "master"
-	RoleMeta   = "metanode"
-	RoleData   = "datanode"
-	RoleAuth   = "authnode"
-	RoleObject = "objectnode"
+	RoleMaster  = "master"
+	RoleMeta    = "metanode"
+	RoleData    = "datanode"
+	RoleAuth    = "authnode"
+	RoleObject  = "objectnode"
+	RoleConsole = "console"
 )
 
 const (
-	ModuleMaster = "master"
-	ModuleMeta   = "metaNode"
-	ModuleData   = "dataNode"
-	ModuleAuth   = "authNode"
-	ModuleObject = "objectNode"
+	ModuleMaster  = "master"
+	ModuleMeta    = "metaNode"
+	ModuleData    = "dataNode"
+	ModuleAuth    = "authNode"
+	ModuleObject  = "objectNode"
+	ModuleConsole = "console"
 )
 
 const (
@@ -176,6 +179,9 @@ func main() {
 	case RoleObject:
 		server = objectnode.NewServer()
 		module = ModuleObject
+	case RoleConsole:
+		server = console.NewServer()
+		module = ModuleConsole
 	default:
 		daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 		os.Exit(1)

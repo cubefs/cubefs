@@ -27,11 +27,11 @@ type MetaNode struct {
 	ID                        uint64
 	Addr                      string
 	IsActive                  bool
-	Sender                    *AdminTaskManager
-	ZoneName                  string `json:"Zone"`
-	MaxMemAvailWeight         uint64 `json:"MaxMemAvailWeight"`
-	Total                     uint64 `json:"TotalWeight"`
-	Used                      uint64 `json:"UsedWeight"`
+	Sender                    *AdminTaskManager `graphql:"-"`
+	ZoneName                  string            `json:"Zone"`
+	MaxMemAvailWeight         uint64            `json:"MaxMemAvailWeight"`
+	Total                     uint64            `json:"TotalWeight"`
+	Used                      uint64            `json:"UsedWeight"`
 	Ratio                     float64
 	SelectCount               uint64
 	Carry                     float64
@@ -40,8 +40,8 @@ type MetaNode struct {
 	metaPartitionInfos        []*proto.MetaPartitionReport
 	MetaPartitionCount        int
 	NodeSetID                 uint64
-	sync.RWMutex
-	ToBeOffline               bool
+	sync.RWMutex              `graphql:"-"`
+	ToBeOffline               bool	
 	PersistenceMetaPartitions []uint64
 }
 

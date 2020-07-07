@@ -38,6 +38,19 @@ const (
 	AdminSetNodeInfo               = "/admin/setNodeInfo"
 	AdminGetNodeInfo               = "/admin/getNodeInfo"
 
+	//graphql master api
+	AdminClusterAPI = "/api/cluster"
+	AdminUserAPI    = "/api/user"
+	AdminVolumeAPI  = "/api/volume"
+
+	//graphql coonsole api
+	ConsoleIQL        = "/iql"
+	ConsoleLoginAPI   = "/login"
+	ConsoleMonitorAPI = "/cfs_monitor"
+	ConsoleFile       = "/file"
+	ConsoleFileDown   = "/file/down"
+	ConsoleFileUpload = "/file/upload"
+
 	// Client APIs
 	ClientDataPartitions = "/client/partitions"
 	ClientVol            = "/client/vol"
@@ -93,6 +106,11 @@ const (
 	UserTransferVol     = "/user/transferVol"
 	UserList            = "/user/list"
 	UsersOfVol          = "/vol/users"
+	//graphql api for header
+	HeadAuthorized  = "Authorization"
+	ParamAuthorized = "_authorization"
+	UserKey         = "_user_key"
+	UserInfoKey     = "_user_info_key"
 )
 
 const TimeFormat = "2006-01-02 15:04:05"
@@ -470,7 +488,8 @@ type SimpleVolView struct {
 	CrossZone          bool
 	CreateTime         string
 	EnableToken        bool
-	Tokens             map[string]*Token
+	Tokens             map[string]*Token `graphql:"-"`
+	Description        string
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition

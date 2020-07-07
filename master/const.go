@@ -51,6 +51,7 @@ const (
 	nodeDeleteBatchCountKey = "batchCount"
 	nodeMarkDeleteRateKey   = "markDeleteRate"
 	nodeDeleteWorkerSleepMs = "deleteWorkerSleepMs"
+	descriptionKey          = "description"
 )
 
 const (

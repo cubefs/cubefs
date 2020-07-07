@@ -1325,7 +1325,7 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 	go metaNode.clean()
 }
 
-func (c *Cluster) updateVol(name, authKey, zoneName string, capacity uint64, replicaNum uint8, followerRead, authenticate, enableToken bool) (err error) {
+func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum uint8, followerRead, authenticate, enableToken bool) (err error) {
 	var (
 		vol             *Vol
 		serverAuthKey   string
@@ -1335,6 +1335,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName string, capacity uint64, rep
 		oldAuthenticate bool
 		oldEnableToken  bool
 		oldZoneName     string
+		oldDescription  string
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
@@ -1381,10 +1382,14 @@ func (c *Cluster) updateVol(name, authKey, zoneName string, capacity uint64, rep
 	oldFollowerRead = vol.FollowerRead
 	oldAuthenticate = vol.authenticate
 	oldEnableToken = vol.enableToken
+	oldDescription = vol.description
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
 	vol.authenticate = authenticate
 	vol.enableToken = enableToken
+	if description != "" {
+		vol.description = description
+	}
 	//only reduced replica num is supported
 	if replicaNum != 0 && replicaNum < vol.dpReplicaNum {
 		vol.dpReplicaNum = replicaNum
@@ -1396,6 +1401,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName string, capacity uint64, rep
 		vol.authenticate = oldAuthenticate
 		vol.enableToken = oldEnableToken
 		vol.zoneName = oldZoneName
+		vol.description = oldDescription
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
 		goto errHandler
@@ -1410,7 +1416,7 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner, zoneName string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone, enableToken bool) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone, enableToken bool) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -1434,7 +1440,7 @@ func (c *Cluster) createVol(name, owner, zoneName string, mpCount, dpReplicaNum,
 	} else if !crossZone {
 		zoneName = DefaultZoneName
 	}
-	if vol, err = c.doCreateVol(name, owner, zoneName, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate, crossZone, enableToken); err != nil {
+	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate, crossZone, enableToken); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -1462,7 +1468,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) doCreateVol(name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum int, followerRead, authenticate, crossZone, enableToken bool) (vol *Vol, err error) {
+func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum int, followerRead, authenticate, crossZone, enableToken bool) (vol *Vol, err error) {
 	var id uint64
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
@@ -1475,7 +1481,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName string, dpSize, capacity uin
 	if err != nil {
 		goto errHandler
 	}
-	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate, crossZone, enableToken, createTime)
+	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate, crossZone, enableToken, createTime, description)
 	// refresh oss secure
 	vol.refreshOSSSecure()
 	if err = c.syncAddVol(vol); err != nil {
@@ -1705,6 +1711,14 @@ func (c *Cluster) getDataPartitionCount() (count int) {
 		count = count + len(vol.dataPartitions.partitions)
 	}
 	return
+}
+
+func (c *Cluster) getMetaPartitionCount() (count int) {
+	vols := c.copyVols()
+	for _, vol := range vols {
+		count = count + len(vol.MetaPartitions)
+	}
+	return count
 }
 
 func (c *Cluster) setMetaNodeThreshold(threshold float32) (err error) {
