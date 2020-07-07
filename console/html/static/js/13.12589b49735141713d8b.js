@@ -1,2 +1,0 @@
-webpackJsonp([13],{"+H76":function(r,e,t){"use strict";Object.defineProperty(e,"__esModule",{value:!0});var n={render:function(){var r=this.$createElement;return(this._self._c||r)("div",{staticClass:"error"},[this._v("\n  "+this._s(this.msg)+"\n")])},staticRenderFns:[]},s=t("C7Lr")({name:"Error",data:function(){return{msg:"Sorry Error"}}},n,!1,null,null,null);e.default=s.exports}});
-//# sourceMappingURL=13.12589b49735141713d8b.js.map
