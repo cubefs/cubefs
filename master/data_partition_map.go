@@ -137,15 +137,8 @@ func (dpMap *DataPartitionMap) getDataPartitionsView(minPartitionID uint64) (dpR
 			continue
 		}
 		dpResp := dp.convertToDataPartitionResponse()
-
-		if ecdp, err := dpMap.vol.ecDataPartitions.get(dp.PartitionID); err == nil {
-			log.LogErrorf("merge ec hosts[%v] to partition view", ecdp.EcHosts)
-			dpResp.EcHosts = make([]string, len(ecdp.EcHosts))
-			copy(dpResp.EcHosts, ecdp.EcHosts)
-		}
 		dpResps = append(dpResps, dpResp)
 	}
-
 	return
 }
 

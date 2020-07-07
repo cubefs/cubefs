@@ -300,6 +300,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.CreateEcDataPartition).
 		HandlerFunc(m.createEcDataPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetEcPartition).
+		HandlerFunc(m.getEcPartition)
 }
 
 func (m *Server) newReverseProxy() *httputil.ReverseProxy {

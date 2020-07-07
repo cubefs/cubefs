@@ -106,7 +106,9 @@ const (
 	DecommissionEcNode = "/ecNode/decommission"
 
 	//EcDataPartition API
-	CreateEcDataPartition = "/ecDataPartition/create"
+	AdminGetEcPartition          = "/ecPartition/get"
+	CreateEcDataPartition        = "/ecDataPartition/create"
+	AdminDecommissionEcPartition = "/ecPartition/decommission"
 )
 
 const TimeFormat = "2006-01-02 15:04:05"
@@ -397,7 +399,6 @@ type DataPartitionResponse struct {
 	Status      int8
 	ReplicaNum  uint8
 	Hosts       []string
-	EcHosts     []string
 	LeaderAddr  string
 	Epoch       uint64
 }
@@ -410,6 +411,28 @@ type DataPartitionsView struct {
 func NewDataPartitionsView() (dataPartitionsView *DataPartitionsView) {
 	dataPartitionsView = new(DataPartitionsView)
 	dataPartitionsView.DataPartitions = make([]*DataPartitionResponse, 0)
+	return
+}
+
+// EcPartitionResponse defines the response from a ec node to the master that is related to a ec partition.
+type EcPartitionResponse struct {
+	PartitionID    uint64
+	Status         int8
+	ReplicaNum     uint8
+	Hosts          []string
+	LeaderAddr     string
+	DataUnitsNum   uint8
+	ParityUnitsNum uint8
+}
+
+// EcPartitionsView defines the view of a ec partition
+type EcPartitionsView struct {
+	EcPartitions []*EcPartitionResponse
+}
+
+func NewEcPartitionsView() (ecPartitionsView *EcPartitionsView) {
+	ecPartitionsView = new(EcPartitionsView)
+	ecPartitionsView.EcPartitions = make([]*EcPartitionResponse, 0)
 	return
 }
 
@@ -438,6 +461,7 @@ type VolView struct {
 	FollowerRead   bool
 	MetaPartitions []*MetaPartitionView
 	DataPartitions []*DataPartitionResponse
+	EcPartitions   []*EcPartitionResponse
 	OSSSecure      *OSSSecure
 	CreateTime     int64
 }
@@ -458,6 +482,7 @@ func NewVolView(name string, status uint8, followerRead bool, createTime int64) 
 	view.Status = status
 	view.MetaPartitions = make([]*MetaPartitionView, 0)
 	view.DataPartitions = make([]*DataPartitionResponse, 0)
+	view.EcPartitions   = make([]*EcPartitionResponse, 0)
 	return
 }
 

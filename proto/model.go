@@ -213,3 +213,25 @@ type DataReplica struct {
 	NeedsToCompare  bool
 	DiskPath        string
 }
+
+// EcPartition represents the structure of storing the file contents by erasure code.
+type EcPartitionInfo struct {
+	*DataPartitionInfo
+	EcReplicas          []*EcReplica
+	DataUnitsNum        uint8
+	ParityUnitsNum      uint8
+}
+
+// EcReplica represents the replica of a ec partition
+type EcReplica struct {
+	Addr            string
+	ReportTime      int64
+	FileCount       uint32
+	Status          int8
+	HasLoadResponse bool // if there is any response when loading
+	Total           uint64 `json:"TotalSize"`
+	Used            uint64 `json:"UsedSize"`
+	IsLeader        bool
+	NeedsToCompare  bool
+	DiskPath        string
+}

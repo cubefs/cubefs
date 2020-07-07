@@ -135,6 +135,69 @@ var (
 		"ID", "REPLICAS", "STATUS", "LEADER", "MEMBERS")
 )
 
+func formatEcPartitionInfo(partition *proto.EcPartitionInfo) string {
+	var sb = strings.Builder{}
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("volume name   : %v\n", partition.VolName))
+	sb.WriteString(fmt.Sprintf("volume ID     : %v\n", partition.VolID))
+	sb.WriteString(fmt.Sprintf("PartitionID   : %v\n", partition.PartitionID))
+	sb.WriteString(fmt.Sprintf("Status        : %v\n", formatDataPartitionStatus(partition.Status)))
+	sb.WriteString(fmt.Sprintf("LastLoadedTime: %v\n", formatTime(partition.LastLoadedTime)))
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("Replicas : \n"))
+	sb.WriteString(fmt.Sprintf("%v\n", formatEcReplicaTableHeader()))
+	for _, replica := range partition.EcReplicas {
+		sb.WriteString(fmt.Sprintf("%v\n", formatEcReplica("", replica, true)))
+	}
+
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("Hosts :\n"))
+	for _, host := range partition.Hosts {
+		sb.WriteString(fmt.Sprintf("  [%v]", host))
+	}
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("Zones :\n"))
+	for _, zone := range partition.Zones {
+		sb.WriteString(fmt.Sprintf("  [%v]", zone))
+	}
+	sb.WriteString("\n")
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("MissingNodes :\n"))
+	for partitionHost, id := range partition.MissingNodes {
+		sb.WriteString(fmt.Sprintf("  [%v, %v]\n", partitionHost, id))
+	}
+	sb.WriteString(fmt.Sprintf("FilesWithMissingReplica : \n"))
+	for file, id := range partition.FilesWithMissingReplica {
+		sb.WriteString(fmt.Sprintf("  [%v, %v]\n", file, id))
+	}
+	return sb.String()
+}
+
+var ecReplicaTableRowPattern = "%-18v    %-6v    %-6v    %-6v    %-6v    %-6v    %-10v"
+
+func formatEcReplicaTableHeader() string {
+	return fmt.Sprintf(ecReplicaTableRowPattern, "ADDRESS", "USED", "TOTAL", "ISLEADER", "FILECOUNT", "STATUS", "REPORT TIME")
+}
+
+func formatEcReplica(indentation string, replica *proto.EcReplica, rowTable bool) string {
+	if rowTable {
+		return fmt.Sprintf(ecReplicaTableRowPattern, replica.Addr, formatSize(replica.Used), formatSize(replica.Total),
+			replica.IsLeader, replica.FileCount, formatDataPartitionStatus(replica.Status), formatTime(replica.ReportTime))
+	}
+	var sb = strings.Builder{}
+	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, replica.Addr))
+	sb.WriteString(fmt.Sprintf("%v  Used           : %v\n", indentation, formatSize(replica.Used)))
+	sb.WriteString(fmt.Sprintf("%v  Total          : %v\n", indentation, formatSize(replica.Total)))
+	sb.WriteString(fmt.Sprintf("%v  IsLeader       : %v\n", indentation, replica.IsLeader))
+	sb.WriteString(fmt.Sprintf("%v  FileCount      : %v\n", indentation, replica.FileCount))
+	sb.WriteString(fmt.Sprintf("%v  HasLoadResponse: %v\n", indentation, replica.HasLoadResponse))
+	sb.WriteString(fmt.Sprintf("%v  NeedsToCompare : %v\n", indentation, replica.NeedsToCompare))
+	sb.WriteString(fmt.Sprintf("%v  Status         : %v\n", indentation, formatDataPartitionStatus(replica.Status)))
+	sb.WriteString(fmt.Sprintf("%v  DiskPath       : %v\n", indentation, replica.DiskPath))
+	sb.WriteString(fmt.Sprintf("%v  ReportTime     : %v\n", indentation, formatTime(replica.ReportTime)))
+	return sb.String()
+}
+
 func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 	return fmt.Sprintf(dataPartitionTablePattern,
 		view.PartitionID, view.ReplicaNum, formatDataPartitionStatus(view.Status), view.LeaderAddr,
@@ -181,6 +244,10 @@ func formatDataPartitionStatus(status int8) string {
 	default:
 		return "Unknown"
 	}
+}
+
+func formatTime(timeUnix int64) string {
+	return time.Unix(timeUnix, 0).Format("2006-01-02 15:04:05")
 }
 
 func formatMetaPartitionStatus(status int8) string {

@@ -65,7 +65,7 @@ type Vol struct {
 func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, crossZone bool, enableToken bool, createTime int64, volType, ecDataBlockNum, ecParityBlockNum uint8) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(vol)
-	vol.ecDataPartitions = newEcDataPartitionCache()
+	vol.ecDataPartitions = newEcDataPartitionCache(vol)
 	if dpReplicaNum < defaultReplicaNum {
 		dpReplicaNum = defaultReplicaNum
 	}
@@ -227,6 +227,12 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
 	// initialize k data partitionMap at a time
 	err = c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt)
+	return
+}
+
+func (vol *Vol) initEcDataPartitions(c *Cluster) (err error) {
+	// initialize k ec partitionMap at a time
+	err = c.batchCreateEcDataPartition(vol, defaultInitEcPartitionCnt)
 	return
 }
 
@@ -464,6 +470,8 @@ func (vol *Vol) updateViewCache(c *Cluster) {
 	vol.setMpsCache(mpsBody)
 	dpResps := vol.dataPartitions.getDataPartitionsView(0)
 	view.DataPartitions = dpResps
+	epResps := vol.ecDataPartitions.getEcPartitionsView(0)
+	view.EcPartitions = epResps
 	viewReply := newSuccessHTTPReply(view)
 	body, err := json.Marshal(viewReply)
 	if err != nil {
@@ -471,6 +479,7 @@ func (vol *Vol) updateViewCache(c *Cluster) {
 		return
 	}
 	vol.setViewCache(body)
+	log.LogInfof("updateViewCache successful.")
 }
 
 func (vol *Vol) getMetaPartitionsView() (mpViews []*proto.MetaPartitionView) {
@@ -802,4 +811,8 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	}
 	log.LogInfof("action[doCreateMetaPartition] success,volName[%v],partition[%v]", vol.Name, partitionID)
 	return
+}
+
+func (vol *Vol) getEcPartitionByID(partitionID uint64) (ep *EcDataPartition, err error) {
+	return vol.ecDataPartitions.get(partitionID)
 }

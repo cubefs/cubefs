@@ -211,6 +211,14 @@ func dataReplicaNotFound(addr string) (err error) {
 	return notFoundMsg(fmt.Sprintf("data replica[%v]", addr))
 }
 
+func ecPartitionNotFound(id uint64) (err error) {
+	return notFoundMsg(fmt.Sprintf("ec partition[%v]", id))
+}
+
+func ecReplicaNotFound(addr string) (err error) {
+	return notFoundMsg(fmt.Sprintf("ec replica[%v]", addr))
+}
+
 func zoneNotFound(name string) (err error) {
 	return notFoundMsg(fmt.Sprintf("zone[%v]", name))
 }

@@ -28,6 +28,7 @@ var (
 	ErrVolNotExists           = errors.New("vol not exists")
 	ErrMetaPartitionNotExists = errors.New("meta partition not exists")
 	ErrDataPartitionNotExists = errors.New("data partition not exists")
+	ErrEcPartitionNotExists   = errors.New("ec partition not exists")
 	ErrDataNodeNotExists      = errors.New("data node not exists")
 	ErrMetaNodeNotExists      = errors.New("meta node not exists")
 	ErrCodecNodeNotExists     = errors.New("codec node not exists")
@@ -148,6 +149,7 @@ const (
 	ErrCodeInvalidAccessKey
 	ErrCodeInvalidSecretKey
 	ErrCodeIsOwner
+	ErrCodeEcPartitionNotExists
 )
 
 // Err2CodeMap error map to code
@@ -162,6 +164,7 @@ var Err2CodeMap = map[error]int32{
 	ErrVolNotExists:                    ErrCodeVolNotExists,
 	ErrMetaPartitionNotExists:          ErrCodeMetaPartitionNotExists,
 	ErrDataPartitionNotExists:          ErrCodeDataPartitionNotExists,
+	ErrEcPartitionNotExists:            ErrCodeEcPartitionNotExists,
 	ErrDataNodeNotExists:               ErrCodeDataNodeNotExists,
 	ErrMetaNodeNotExists:               ErrCodeMetaNodeNotExists,
 	ErrCodecNodeNotExists:              ErrCodeCodecNodeNotExists,
@@ -232,6 +235,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeVolNotExists:                    ErrVolNotExists,
 	ErrCodeMetaPartitionNotExists:          ErrMetaPartitionNotExists,
 	ErrCodeDataPartitionNotExists:          ErrDataPartitionNotExists,
+	ErrCodeEcPartitionNotExists:            ErrEcPartitionNotExists,
 	ErrCodeDataNodeNotExists:               ErrDataNodeNotExists,
 	ErrCodeMetaNodeNotExists:               ErrMetaNodeNotExists,
 	ErrCodeDuplicateVol:                    ErrDuplicateVol,

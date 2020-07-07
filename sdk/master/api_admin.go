@@ -115,6 +115,31 @@ func (api *AdminAPI) AddDataReplica(dataPartitionID uint64, nodeAddr string) (er
 	return
 }
 
+func (api *AdminAPI) GetEcPartition(volName string, partitionID uint64) (partition *proto.EcPartitionInfo, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetEcPartition)
+	request.addParam("id", strconv.Itoa(int(partitionID)))
+	request.addParam("name", volName)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	partition = &proto.EcPartitionInfo{}
+	if err = json.Unmarshal(buf, &partition); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) DecommissionEcPartition(partitionID uint64, nodeAddr string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminDecommissionEcPartition)
+	request.addParam("id", strconv.FormatUint(partitionID, 10))
+	request.addParam("addr", nodeAddr)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminDeleteVol)
 	request.addParam("name", volName)

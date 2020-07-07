@@ -1316,6 +1316,17 @@ func parseRequestToGetDataPartition(r *http.Request) (ID uint64, volName string,
 	return
 }
 
+func parseRequestToGetEcPartition(r *http.Request) (ID uint64, volName string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if ID, err = extractPartitionID(r); err != nil {
+		return
+	}
+	volName = r.FormValue(nameKey)
+	return
+}
+
 func parseRequestToLoadDataPartition(r *http.Request) (ID uint64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -2005,16 +2016,47 @@ func (m *Server) associateVolWithUser(userID, volName string) error {
 	return nil
 }
 
+func (m *Server) getEcPartition(w http.ResponseWriter, r *http.Request) {
+	var (
+		ep          *EcDataPartition
+		partitionID uint64
+		volName     string
+		vol         *Vol
+		err         error
+	)
+	if partitionID, volName, err = parseRequestToGetEcPartition(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if volName != "" {
+		if vol, err = m.cluster.getVol(volName); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrEcPartitionNotExists))
+			return
+		}
+		if ep, err = vol.getEcPartitionByID(partitionID); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrEcPartitionNotExists))
+			return
+		}
+	} else {
+		if ep, err = m.cluster.getEcPartitionByID(partitionID); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrEcPartitionNotExists))
+			return
+		}
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(ep.ToProto(m.cluster)))
+}
+
 func (m *Server) createEcDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		rstMsg  string
 		volName string
 		vol     *Vol
-		pid     uint64
 		err     error
 	)
 
-	if pid, volName, err = parseRequestToCreateEcDataPartition(r); err != nil {
+	if volName, err = parseRequestToCreateEcDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2023,7 +2065,7 @@ func (m *Server) createEcDataPartition(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
-	if _, err = m.cluster.createEcDataPartition(pid, vol); err != nil {
+	if _, err = m.cluster.createEcDataPartition(vol); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2031,11 +2073,8 @@ func (m *Server) createEcDataPartition(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
-func parseRequestToCreateEcDataPartition(r *http.Request) (pid uint64, name string, err error) {
+func parseRequestToCreateEcDataPartition(r *http.Request) (name string, err error) {
 	if err = r.ParseForm(); err != nil {
-		return
-	}
-	if pid, err = extractPartitionID(r); err != nil {
 		return
 	}
 	if name, err = extractName(r); err != nil {

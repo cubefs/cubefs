@@ -1297,10 +1297,11 @@ errHandler:
 }
 
 // Create a new volume.
-// By default we create 3 meta partitions and 10 data partitions during initialization.
+// By default we create 3 meta partitions and 10 data partitions and 1 ec partition during initialization.
 func (c *Cluster) createVol(volPara *CreateVolPara) (vol *Vol, err error) {
 	var (
 		readWriteDataPartitions int
+		readWriteEcPartitions   int
 	)
 
 	if volPara.dpSize == 0 {
@@ -1344,12 +1345,19 @@ func (c *Cluster) createVol(volPara *CreateVolPara) (vol *Vol, err error) {
 			break
 		}
 	}
+	for retryCount := 0; readWriteEcPartitions < defaultInitEcPartitionCnt && retryCount < 3; retryCount++ {
+		if err = vol.initEcDataPartitions(c); err == nil {
+			readWriteEcPartitions = len(vol.ecDataPartitions.partitions)
+			break
+		}
+	}
 	if err != nil {
 		goto errHandler
 	}
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
+	vol.ecDataPartitions.readableAndWritableCnt = readWriteEcPartitions
 	vol.updateViewCache(c)
-	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", volPara.name, readWriteDataPartitions)
+	log.LogInfof("action[createVol] vol[%v], readableAndWritableDpCnt[%v], readableAndWritableEcCnt[%v]", volPara.name, readWriteDataPartitions, readWriteEcPartitions)
 	return
 
 errHandler:

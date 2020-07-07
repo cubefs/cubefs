@@ -86,6 +86,7 @@ const (
 	intervalToWarnDataPartition                  = 600
 	intervalToLoadDataPartition                  = 12 * 60 * 60
 	defaultInitDataPartitionCnt                  = 10
+	defaultInitEcPartitionCnt                    = 3
 	volExpansionRatio                            = 0.1
 	maxNumberOfDataPartitionsForExpansion        = 100
 	EmptyCrcValue                         uint32 = 4045511210
