@@ -30,7 +30,7 @@ import (
 // Head bucket
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadBucket.html
 func (o *ObjectNode) headBucketHandler(w http.ResponseWriter, r *http.Request) {
-	// do nothing
+	w.Header()[HeaderNameXAmzBucketRegion] = []string{o.region}
 }
 
 // Create bucket
@@ -136,9 +136,9 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	type listBucketsOutput struct {
-		XMLName xml.Name `xml:"ListBucketsOutput"`
-		Buckets []bucket `xml:"Buckets>Bucket"`
+		XMLName xml.Name `xml:"ListAllMyBucketsResult"`
 		Owner   Owner    `xml:"Owner"`
+		Buckets []bucket `xml:"Buckets>Bucket"`
 	}
 
 	var output = listBucketsOutput{}
