@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/tecbot/gorocksdb"
 	"os"
 	"sync"
 	"sync/atomic"
+
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/tecbot/gorocksdb"
 )
 
 var readOption = gorocksdb.NewDefaultReadOptions()
@@ -32,6 +34,7 @@ func DefaultRocksTree(dir string) (*RocksTree, error) {
 
 func NewRocksTree(dir string, lruCacheSize int, writeBufferSize int) (*RocksTree, error) {
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		log.LogErrorf("NewRocksTree mkidr error: dir: %v, err: %v", dir, err)
 		return nil, err
 	}
 	tree := &RocksTree{dir: dir}
@@ -51,6 +54,7 @@ func NewRocksTree(dir string, lruCacheSize int, writeBufferSize int) (*RocksTree
 	tree.db = db
 	return tree, nil
 }
+
 func (r *RocksTree) SetApplyID(id uint64) {
 	atomic.StoreUint64(&r.currentApplyID, id)
 }
@@ -117,15 +121,16 @@ func (r *RocksTree) RangeWithSnap(snapshot *gorocksdb.Snapshot, start, end []byt
 
 func (r *RocksTree) RangeWithIter(it *gorocksdb.Iterator, start []byte, end []byte, cb func(v []byte) (bool, error)) error {
 	it.Seek(start)
-	for ; it.ValidForPrefix(start); it.Next() {
+	for ; ; it.Next() {
 		key := it.Key().Data()
 		value := it.Value().Data()
 		if bytes.Compare(end, key) < 0 {
 			break
 		}
-		if next, err := cb(value); err != nil {
+		if hasNext, err := cb(value); err != nil {
+			log.LogErrorf("[RocksTree] RangeWithIter key: %v value: %v err: %v", key, value, err)
 			return err
-		} else if !next {
+		} else if !hasNext {
 			return nil
 		}
 	}
@@ -201,14 +206,14 @@ type MultipartRocks struct {
 }
 
 func inodeEncodingKey(ino uint64) []byte {
-	buff := bytes.NewBuffer(make([]byte, 9))
+	buff := new(bytes.Buffer)
 	buff.WriteByte(byte(InodeType))
 	_ = binary.Write(buff, binary.BigEndian, ino)
 	return buff.Bytes()
 }
 
 func dentryEncodingKey(parentId uint64, name string) []byte {
-	buff := bytes.NewBuffer(make([]byte, 9+len(name)))
+	buff := new(bytes.Buffer)
 	buff.WriteByte(byte(DentryType))
 	_ = binary.Write(buff, binary.BigEndian, parentId)
 	buff.WriteString(name)
@@ -216,14 +221,14 @@ func dentryEncodingKey(parentId uint64, name string) []byte {
 }
 
 func extendEncodingKey(ino uint64) []byte {
-	buff := bytes.NewBuffer(make([]byte, 9))
+	buff := new(bytes.Buffer)
 	buff.WriteByte(byte(ExtendType))
 	_ = binary.Write(buff, binary.BigEndian, ino)
 	return buff.Bytes()
 }
 
 func multipartEncodingKey(key string, id string) []byte {
-	buff := bytes.NewBuffer(make([]byte, len(key)+len(id)))
+	buff := new(bytes.Buffer)
 	buff.WriteByte(byte(MultipartType))
 	_ = binary.Write(buff, binary.BigEndian, int(len(key)))
 	buff.WriteString(key)
@@ -235,6 +240,7 @@ func multipartEncodingKey(key string, id string) []byte {
 func (b *InodeRocks) Count() uint64 {
 	return b.RocksTree.Count(InodeType)
 }
+
 func (b *DentryRocks) Count() uint64 {
 	return b.RocksTree.Count(DentryType)
 }
@@ -245,23 +251,31 @@ func (b *InodeRocks) Get(ino uint64) (*Inode, error) {
 	if err != nil {
 		return nil, err
 	}
+	if bs == nil {
+		return nil, nil
+	}
 	inode := &Inode{}
 	if err := inode.Unmarshal(bs); err != nil {
 		return nil, err
 	}
 	return inode, nil
 }
+
 func (b *DentryRocks) Get(ino uint64, name string) (*Dentry, error) {
-	bs, err := b.RocksTree.GetBytes(dentryEncodingKey(ino, name))
+	key := dentryEncodingKey(ino, name)
+	bs, err := b.RocksTree.GetBytes(key)
 	if err != nil {
+		log.LogErrorf("[DentryRocks] Get parentId: %v, name: %v, error: %v", ino, name, err)
 		return nil, err
 	}
 	dentry := &Dentry{}
 	if err := dentry.Unmarshal(bs); err != nil {
+		log.LogErrorf("[DentryRocks] Get unmarshal error parentId: %v, name: %v, error: %v", ino, name, err)
 		return nil, err
 	}
 	return dentry, nil
 }
+
 func (b *ExtendRocks) Get(ino uint64) (*Extend, error) {
 	bs, err := b.RocksTree.GetBytes(extendEncodingKey(ino))
 	if err != nil {
@@ -269,6 +283,7 @@ func (b *ExtendRocks) Get(ino uint64) (*Extend, error) {
 	}
 	return NewExtendFromBytes(bs)
 }
+
 func (b *MultipartRocks) Get(key, id string) (*Multipart, error) {
 	bs, err := b.RocksTree.GetBytes(multipartEncodingKey(key, id))
 	if err != nil {
@@ -277,7 +292,7 @@ func (b *MultipartRocks) Get(key, id string) (*Multipart, error) {
 	return MultipartFromBytes(bs), nil
 }
 
-//PUT
+//put inode into rocksdb
 func (b *InodeRocks) Put(inode *Inode) error {
 	bs, err := inode.Marshal()
 	if err != nil {
@@ -289,6 +304,7 @@ func (b *InodeRocks) Put(inode *Inode) error {
 func (b *DentryRocks) Put(dentry *Dentry) error {
 	bs, err := dentry.Marshal()
 	if err != nil {
+		log.LogErrorf("[DentryRocks] Put dentry %v error %v", dentry, err)
 		return err
 	}
 	return b.RocksTree.Put(dentryEncodingKey(dentry.ParentId, dentry.Name), bs)
@@ -311,9 +327,9 @@ func (b *MultipartRocks) Put(mutipart *Multipart) error {
 
 //Create if exists , return old, false,   if not  return nil , true
 func (b *InodeRocks) Create(inode *Inode) error {
-
 	key := inodeEncodingKey(inode.Inode)
 	if has, err := b.HasKey(key); err != nil {
+		log.LogErrorf("[InodeRocksCreate] haskey error %v, %v", key, err)
 		return err
 	} else if has {
 		return existsError
@@ -321,10 +337,12 @@ func (b *InodeRocks) Create(inode *Inode) error {
 
 	bs, err := inode.Marshal()
 	if err != nil {
+		log.LogErrorf("[InodeRocksCreate] haskey error %v, %v", key, err)
 		return err
 	}
 
 	if err = b.RocksTree.Put(key, bs); err != nil {
+		log.LogErrorf("[InodeRocksCreate] inodeRocks error %v, %v", key, err)
 		return err
 	}
 	return nil
@@ -334,21 +352,27 @@ func (b *DentryRocks) Create(dentry *Dentry) error {
 	key := dentryEncodingKey(dentry.ParentId, dentry.Name)
 
 	if has, err := b.HasKey(key); err != nil {
+		log.LogErrorf("[DentryRocks] Failed to has Key: %v, err: %v", key, err)
 		return err
 	} else if has {
+		log.LogErrorf("[DentryRocks] has Key: %v, err: %v", key, err)
 		return existsError
 	}
 
 	bs, err := dentry.Marshal()
 	if err != nil {
+		log.LogErrorf("[DentryRocks] marshal: %v, err: %v", dentry, err)
 		return err
 	}
 
 	if err = b.RocksTree.Put(key, bs); err != nil {
+		log.LogErrorf("[DentryRocks] Put dentry: %v key: %v, err: %v", dentry, key, err)
 		return err
 	}
+
 	return nil
 }
+
 func (b *ExtendRocks) Create(ext *Extend) error {
 	key := extendEncodingKey(ext.inode)
 
@@ -427,7 +451,7 @@ func (b *DentryRocks) Range(start, end *Dentry, cb func(v []byte) (bool, error))
 	)
 	startByte = dentryEncodingKey(start.ParentId, start.Name)
 	if end == nil {
-		endByte = []byte{byte(ExtendType) + 1}
+		endByte = []byte{byte(DentryType) + 1}
 	} else {
 		endByte = dentryEncodingKey(end.ParentId, end.Name)
 	}

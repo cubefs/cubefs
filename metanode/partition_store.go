@@ -26,7 +26,6 @@ import (
 	"os"
 	"path"
 	"strings"
-	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/util/log"
 
@@ -78,10 +77,11 @@ func (mp *MetaPartition) loadMetadata() (err error) {
 	mp.config.Start = mConf.Start
 	mp.config.End = mConf.End
 	mp.config.Peers = mConf.Peers
-	mp.config.Cursor = mp.config.Start
+	mp.config.Store = mConf.Store
+	mp.SetCursor(mp.config.Start)
 
 	log.LogInfof("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
-		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
+		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.GetCursor())
 	return
 }
 
@@ -138,8 +138,8 @@ func (mp *MetaPartition) loadInode(rootDir string) (err error) {
 		}
 		mp.fsmCreateInode(ino)
 		mp.checkAndInsertFreeList(ino)
-		if mp.config.Cursor < ino.Inode {
-			mp.config.Cursor = ino.Inode
+		if mp.GetCursor() < ino.Inode {
+			mp.SetCursor(ino.Inode)
 		}
 		numInodes += 1
 	}
@@ -326,8 +326,8 @@ func (mp *MetaPartition) loadApplyID(rootDir string) (err error) {
 		return
 	}
 
-	if cursor > atomic.LoadUint64(&mp.config.Cursor) {
-		atomic.StoreUint64(&mp.config.Cursor, cursor)
+	if cursor > mp.GetCursor() {
+		mp.SetCursor(cursor)
 	}
 	mp.updatePersistedApplyID(cursor)
 	log.LogInfof("loadApplyID: load complete: partitionID(%v) volume(%v) applyID(%v) filename(%v)",
@@ -366,7 +366,7 @@ func (mp *MetaPartition) persistMetadata() (err error) {
 		return
 	}
 	log.LogInfof("persistMetata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
-		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
+		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.GetCursor())
 	return
 }
 
@@ -381,7 +381,7 @@ func (mp *MetaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 		err = fp.Sync()
 		fp.Close()
 	}()
-	if _, err = fp.WriteString(fmt.Sprintf("%d|%d", sm.applyIndex, atomic.LoadUint64(&mp.config.Cursor))); err != nil {
+	if _, err = fp.WriteString(fmt.Sprintf("%d|%d", sm.applyIndex, mp.GetCursor())); err != nil {
 		return
 	}
 	log.LogInfof("storeApplyID: store complete: partitionID(%v) volume(%v) applyID(%v)",

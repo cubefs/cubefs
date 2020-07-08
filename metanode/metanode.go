@@ -50,6 +50,7 @@ type MetaNode struct {
 	raftDir           string // root dir of the raftStore log
 	metadataManager   MetadataManager
 	localAddr         string
+	storeType         uint64
 	clusterId         string
 	raftStore         raftstore.RaftStore
 	raftHeartbeatPort string
@@ -170,6 +171,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
 	m.zoneName = cfg.GetString(cfgZoneName)
+	m.storeType, _ = strconv.ParseUint(cfg.GetString(cfgStoreType), 10, 64)
 	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
 
 	if configTotalMem == 0 {
@@ -259,6 +261,7 @@ func (m *MetaNode) startMetaManager() (err error) {
 	conf := MetadataManagerConfig{
 		NodeID:    m.nodeId,
 		RootDir:   m.metadataDir,
+		StoreType: m.storeType,
 		RaftStore: m.raftStore,
 		ZoneName:  m.zoneName,
 	}

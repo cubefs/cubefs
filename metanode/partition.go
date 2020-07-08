@@ -294,6 +294,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (*Met
 	} else {
 		tree, err := DefaultRocksTree(path.Join(conf.RootDir, strconv.Itoa(int(conf.PartitionId))))
 		if err != nil {
+			log.LogErrorf("[NewMetaPartition] default rocks tree dir: %v, id: %v error %v ", conf.RootDir, conf.PartitionId, err)
 			return nil, err
 		}
 		inodeTree = &InodeRocks{tree}
@@ -352,6 +353,11 @@ func (mp *MetaPartition) GetPeers() (peers []string) {
 // GetCursor returns the cursor stored in the config.
 func (mp *MetaPartition) GetCursor() uint64 {
 	return atomic.LoadUint64(&mp.config.Cursor)
+}
+
+// GetCursor returns the cursor stored in the config.
+func (mp *MetaPartition) SetCursor(val uint64) {
+	atomic.StoreUint64(&mp.config.Cursor, val)
 }
 
 // PersistMetadata is the wrapper of persistMetadata.
@@ -472,7 +478,7 @@ func (mp *MetaPartition) DeleteRaft() (err error) {
 // Return a new inode ID and update the offset.
 func (mp *MetaPartition) nextInodeID() (inodeId uint64, err error) {
 	for {
-		cur := atomic.LoadUint64(&mp.config.Cursor)
+		cur := mp.GetCursor()
 		end := mp.config.End
 		if cur >= end {
 			return 0, ErrInodeIDOutOfRange
@@ -577,7 +583,7 @@ func (mp *MetaPartition) Reset() (err error) {
 	mp.extendTree.Release()
 	mp.multipartTree.Release()
 
-	mp.config.Cursor = 0
+	mp.SetCursor(0)
 	mp.applyID = 0
 
 	// remove files

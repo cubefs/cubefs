@@ -15,9 +15,9 @@
 package metanode
 
 import (
-	"github.com/chubaofs/chubaofs/util/log"
-	"math"
 	"strings"
+
+	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/chubaofs/chubaofs/proto"
 )
@@ -38,6 +38,7 @@ func (mp *MetaPartition) fsmCreateDentry(dentry *Dentry, forceUpdate bool) (stat
 	status = proto.OpOk
 	item, err := mp.inodeTree.Get(dentry.ParentId)
 	if err != nil {
+		log.LogErrorf("[fsmCreateDentry] get dentry error: pid: %v, dentry: %v, error: %v", mp.config.PartitionId, dentry, err.Error())
 		status = proto.OpNotExistErr
 		return
 	}
@@ -92,6 +93,11 @@ func (mp *MetaPartition) fsmCreateDentry(dentry *Dentry, forceUpdate bool) (stat
 func (mp *MetaPartition) getDentry(pid uint64, name string) (*Dentry, uint8) {
 	status := proto.OpOk
 	dentry, err := mp.dentryTree.Get(pid, name)
+	if dentry == nil {
+		log.LogErrorf("get nil dentry: [%v]: %v", pid, name)
+		status = proto.OpNotExistErr
+		return nil, status
+	}
 	if err != nil {
 		log.LogErrorf("get dentry has err:[%s]", err.Error())
 		status = proto.OpNotExistErr
@@ -108,7 +114,8 @@ func (mp *MetaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (resp 
 	var item *Dentry
 	old, _ := mp.dentryTree.Get(dentry.ParentId, dentry.Name)
 	if old != nil {
-		if old.Inode != dentry.Inode {
+		if dentry.Inode > 0 && old.Inode != dentry.Inode {
+			log.LogDebugf("[MetaPartition] fsmDeleteDentry inode not equal old: %v, dentry: %v ", old, dentry)
 			return nil
 		}
 		if err := mp.dentryTree.Delete(dentry.ParentId, dentry.Name); err != nil {
@@ -161,7 +168,7 @@ func (mp *MetaPartition) fsmUpdateDentry(dentry *Dentry) (
 
 func (mp *MetaPartition) readDir(req *ReadDirReq) (resp *ReadDirResp) {
 	resp = &ReadDirResp{}
-	err := mp.dentryTree.Range(&Dentry{ParentId: req.ParentID}, &Dentry{ParentId: req.ParentID, Inode: math.MaxUint64}, func(v []byte) (bool, error) {
+	err := mp.dentryTree.Range(&Dentry{ParentId: req.ParentID}, &Dentry{ParentId: req.ParentID + 1}, func(v []byte) (bool, error) {
 		d := &Dentry{}
 		if err := d.Unmarshal(v); err != nil {
 			log.LogErrorf("dentry unmarshal has err:[%s]", err.Error())

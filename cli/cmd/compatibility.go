@@ -15,8 +15,12 @@
 package cmd
 
 import (
+	"os"
+	"strconv"
+
 	"github.com/chubaofs/chubaofs/cli/api"
 	"github.com/chubaofs/chubaofs/metanode"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/spf13/cobra"
 )
 
@@ -43,70 +47,70 @@ const (
 )
 
 func newMetaCompatibilityCmd() *cobra.Command {
-	panic("Imple me")
-	//var cmd = &cobra.Command{
-	//	Use:     CliOpMetaCompatibility,
-	//	Short:   cmdMetaCompatibilityShort,
-	//	Aliases: []string{"meta"},
-	//	Args:    cobra.MinimumNArgs(3),
-	//	Run: func(cmd *cobra.Command, args []string) {
-	//		var err error
-	//		var (
-	//			snapshotPath = args[0]
-	//			host         = args[1]
-	//			pid          = args[2]
-	//		)
-	//		client := api.NewMetaHttpClient(host, false)
-	//		defer func() {
-	//			if err != nil {
-	//				errout("Verify metadata consistency failed: %v\n", err)
-	//				log.LogError(err)
-	//				log.LogFlush()
-	//				os.Exit(1)
-	//			}
-	//		}()
-	//		id, err := strconv.ParseUint(pid, 10, 64)
-	//		if err != nil {
-	//			errout("parse pid[%v] failed: %v\n", pid, err)
-	//			return
-	//		}
-	//		cursor, err := client.GetMetaPartition(id)
-	//		if err != nil {
-	//			return
-	//		}
-	//		mpcfg := &metanode.MetaPartitionConfig{
-	//			Cursor:      cursor,
-	//			PartitionId: id,
-	//		}
-	//		mp, err := metanode.NewMetaPartition(mpcfg, nil)
-	//		if err != nil {
-	//			stdout("%v\n", err)
-	//			return
-	//		}
-	//
-	//		//TODO: FIXME
-	//		panic("impl me")
-	//		err = mp.LoadSnapshot(snapshotPath)
-	//		if err != nil {
-	//			return
-	//		}
-	//		stdout("[Meta partition is %v, verify result]\n", id)
-	//		if err = verifyDentry(client, mp); err != nil {
-	//			stdout("%v\n", err)
-	//			return
-	//		}
-	//		if err = verifyInode(client, mp); err != nil {
-	//			stdout("%v\n", err)
-	//			return
-	//		}
-	//		stdout("All meta has checked\n")
-	//	},
-	//}
-	//return cmd
+	//panic("Imple me")
+	var cmd = &cobra.Command{
+		Use:     CliOpMetaCompatibility,
+		Short:   cmdMetaCompatibilityShort,
+		Aliases: []string{"meta"},
+		Args:    cobra.MinimumNArgs(3),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var (
+				//snapshotPath = args[0]
+				host = args[1]
+				pid  = args[2]
+			)
+			client := api.NewMetaHttpClient(host, false)
+			defer func() {
+				if err != nil {
+					errout("Verify metadata consistency failed: %v\n", err)
+					log.LogError(err)
+					log.LogFlush()
+					os.Exit(1)
+				}
+			}()
+			id, err := strconv.ParseUint(pid, 10, 64)
+			if err != nil {
+				errout("parse pid[%v] failed: %v\n", pid, err)
+				return
+			}
+			cursor, err := client.GetMetaPartition(id)
+			if err != nil {
+				return
+			}
+			mpcfg := &metanode.MetaPartitionConfig{
+				Cursor:      cursor,
+				PartitionId: id,
+			}
+			mp, err := metanode.NewMetaPartition(mpcfg, nil)
+			if err != nil {
+				stdout("%v\n", err)
+				return
+			}
+
+			//TODO: FIXME
+			//panic("impl me")
+			//err = mp.LoadSnapshot(snapshotPath)
+			//if err != nil {
+			//    return
+			//}
+			stdout("[Meta partition is %v, verify result]\n", id)
+			if err = verifyDentry(client, mp); err != nil {
+				stdout("%v\n", err)
+				return
+			}
+			if err = verifyInode(client, mp); err != nil {
+				stdout("%v\n", err)
+				return
+			}
+			stdout("All meta has checked\n")
+		},
+	}
+	return cmd
 }
 
-func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err error) {
-	panic("IMPLE ME")
+func verifyDentry(client *api.MetaHttpClient, mp *metanode.MetaPartition) (err error) {
+	//panic("IMPLE ME")
 	//dentryMap, err := client.GetAllDentry(mp.GetBaseConfig().PartitionId)
 	//if err != nil {
 	//	return
@@ -133,11 +137,11 @@ func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err er
 	//	return true
 	//})
 	//stdout("The number of dentry is %v, all dentry are consistent \n", mp.GetDentryTree().Len())
-	//return
+	return
 }
 
-func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err error) {
-	panic("IMPLE ME")
+func verifyInode(client *api.MetaHttpClient, mp *metanode.MetaPartition) (err error) {
+	//panic("IMPLE ME")
 	//inodesMap, err := client.GetAllInodes(mp.GetBaseConfig().PartitionId)
 	//if err != nil {
 	//	return
@@ -179,5 +183,5 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 	//	return true
 	//})
 	//stdout("The number of inodes is %v, all inodes are consistent \n", mp.GetInodeTree().Len())
-	//return
+	return
 }

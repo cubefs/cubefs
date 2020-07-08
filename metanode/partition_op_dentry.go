@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // CreateDentry returns a new dentry.
@@ -28,7 +29,6 @@ func (mp *MetaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
 		return
 	}
-
 	dentry := &Dentry{
 		ParentId: req.ParentID,
 		Name:     req.Name,
@@ -37,6 +37,7 @@ func (mp *MetaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 	}
 	val, err := dentry.Marshal()
 	if err != nil {
+		log.LogErrorf("[CreateDentry] req: %v, p %v, error: %v", req, p, err.Error())
 		return
 	}
 	resp, err := mp.submit(opFSMCreateDentry, val)
@@ -62,9 +63,18 @@ func (mp *MetaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 	r, err := mp.submit(opFSMDeleteDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		log.LogErrorf("[MetaPartition] DeleteDentry error for sumbit opFSMDeleteDentry req: %v error: %v", req, err)
+		return
+	}
+	if r == nil {
+		log.LogErrorf("[MetaPartition] DeleteDentry nil for sumbit opFSMDeleteDentry req: %v", req)
 		return
 	}
 	retMsg := r.(*DentryResponse)
+	if retMsg == nil {
+		log.LogErrorf("[MetaPartition] DeleteDentry nil for sumbit opFSMDeleteDentry req: %v, r: %v", req, r)
+		return
+	}
 	p.ResultCode = retMsg.Status
 	dentry = retMsg.Msg
 	if p.ResultCode == proto.OpOk {
@@ -194,7 +204,7 @@ func (mp *MetaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 func (mp *MetaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 	dentry, status := mp.getDentry(req.ParentID, req.Name)
 	var reply []byte
-	if status == proto.OpOk {
+	if status == proto.OpOk && dentry != nil {
 		resp := &LookupResp{
 			Inode: dentry.Inode,
 			Mode:  dentry.Type,
