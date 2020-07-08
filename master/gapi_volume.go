@@ -3,13 +3,14 @@ package master
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
+	"time"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/schemabuilder"
-	"sort"
-	"strings"
-	"time"
 )
 
 type VolumeService struct {
@@ -31,14 +32,14 @@ func (s *VolumeService) registerObject(schema *schemabuilder.Schema) {
 	object := schema.Object("Vol", Vol{})
 
 	object.FieldFunc("dpReplicaNum", func(ctx context.Context, v *Vol) (int32, error) {
-		if _, _, err := permissions(ctx, ADMIN); err != nil {
+		if _, _, err := permissions(ctx, USER|ADMIN); err != nil {
 			return 0, err
 		}
 		return int32(v.dpReplicaNum), nil
 	})
 
 	object.FieldFunc("occupied", func(ctx context.Context, v *Vol) (int64, error) {
-		if _, _, err := permissions(ctx, ADMIN); err != nil {
+		if _, _, err := permissions(ctx, USER|ADMIN); err != nil {
 			return 0, err
 		}
 		var used int64
@@ -49,7 +50,7 @@ func (s *VolumeService) registerObject(schema *schemabuilder.Schema) {
 	})
 
 	object.FieldFunc("toSimpleVolView", func(ctx context.Context, vol *Vol) (*proto.SimpleVolView, error) {
-		if _, _, err := permissions(ctx, ADMIN); err != nil {
+		if _, _, err := permissions(ctx, USER|ADMIN); err != nil {
 			return nil, err
 		}
 		return &proto.SimpleVolView{
@@ -76,7 +77,7 @@ func (s *VolumeService) registerObject(schema *schemabuilder.Schema) {
 	})
 
 	object.FieldFunc("tokens", func(ctx context.Context, vol *Vol) ([]*proto.Token, error) {
-		if _, _, err := permissions(ctx, ADMIN); err != nil {
+		if _, _, err := permissions(ctx, USER|ADMIN); err != nil {
 			return nil, err
 		}
 
@@ -89,7 +90,7 @@ func (s *VolumeService) registerObject(schema *schemabuilder.Schema) {
 	})
 
 	object.FieldFunc("createTime", func(ctx context.Context, v *Vol) (int64, error) {
-		if _, _, err := permissions(ctx, ADMIN); err != nil {
+		if _, _, err := permissions(ctx, USER|ADMIN); err != nil {
 			return 0, err
 		}
 		return v.createTime, nil
