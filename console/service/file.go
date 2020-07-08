@@ -4,6 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -16,10 +21,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/schemabuilder"
-	"net/http"
-	"strconv"
-	"strings"
-	"time"
 )
 
 type FileService struct {
@@ -271,6 +272,7 @@ func (fs *FileService) signURL(ctx context.Context, args struct {
 	ac.DisableSSL = aws.Bool(true)
 	ac.Region = aws.String("default")
 	ac.Credentials = credentials.NewStaticCredentials(userInfo.Access_key, userInfo.Secret_key, "")
+	ac.S3ForcePathStyle = aws.Bool(true)
 	s3Svc := s3.New(sess, ac)
 	request, _ := s3Svc.GetObjectRequest(&s3.GetObjectInput{
 		Bucket: aws.String(args.VolName),
