@@ -26,9 +26,8 @@ import (
 )
 
 const (
-	XMLNS            = "http://www.w3.org/2001/XMLSchema-instance"
-	XMLXSI           = "CanonicalUser"
-	DEF_GRANTEE_TYPE = "CanonicalUser" //
+	XMLNS    = "http://www.w3.org/2001/XMLSchema-instance"
+	XSI_TYPE = "CanonicalUser" //
 
 )
 
@@ -36,8 +35,7 @@ var (
 	defaultGrant = Grant{
 		Grantee: Grantee{
 			Xmlns: XMLNS,
-			Xmlsi: XMLXSI,
-			Type:  DEF_GRANTEE_TYPE,
+			Type:  XSI_TYPE,
 		},
 		Permission: FullControlPermission,
 	}
@@ -70,24 +68,21 @@ func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var aclData []byte
-	if acl != nil {
-		aclData, err = xml.Marshal(acl)
-		if err != nil {
-			ec = InternalErrorCode(err)
-			return
-		}
-
-	} else {
+	if acl == nil {
 		accessKey, _ := vol.OSSSecure()
 		acl = &AccessControlPolicy{
 			Owner: Owner{Id: accessKey, DisplayName: accessKey},
 		}
 		acl.Acl.Grants = append(acl.Acl.Grants, defaultGrant)
-		aclData, err = xml.Marshal(acl)
-		if err != nil {
-			ec = InternalErrorCode(err)
-			return
-		}
+	}
+
+	acl.Acl.Grants[0].Grantee.Xmlxsi = acl.Acl.Grants[0].Grantee.Xmlns
+	acl.Acl.Grants[0].Grantee.XsiType = acl.Acl.Grants[0].Grantee.Type
+
+	aclData, err = xml.Marshal(acl)
+	if err != nil {
+		ec = InternalErrorCode(err)
+		return
 	}
 
 	w.Write(aclData)

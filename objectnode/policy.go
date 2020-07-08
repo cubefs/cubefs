@@ -119,7 +119,13 @@ func storeBucketPolicy(bytes []byte, vol *Volume) (*Policy, error) {
 	return policy, nil
 }
 
-//
+func deleteBucketPolicy(vol *Volume) (err error) {
+	if err = vol.store.Delete(vol.name, bucketRootPath, XAttrKeyOSSPolicy); err != nil {
+		return err
+	}
+	return nil
+}
+
 func ParsePolicy(r io.Reader, bucket string) (*Policy, error) {
 	var policy Policy
 	d := json.NewDecoder(r)
