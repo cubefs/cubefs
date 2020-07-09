@@ -45,7 +45,7 @@ Configurations
       ],
       "master_instance": "192.168.0.11:9066",
       "monitor_addr": "http://192.168.0.102:9090",
-      "dashboard_addr": "http://192.168.0.103",
+      "dashboard_addr": "http://grafana.chubao.io",
       "monitor_app": "cfs",
       "monitor_cluster": "spark"
     }
@@ -53,6 +53,7 @@ Configurations
 Notice
 -------------
 
+  * add `127.0.0.1 console.chubao.io grafana.chubao.io` in `/etc/hosts`
   * you can visit it by `http://127.0.0.1:80`
   * in console default user is `root` default password is `ChubaoFSRoot`
 
