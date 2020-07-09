@@ -243,7 +243,7 @@ For more information, please refer to https://dl.acm.org/citation.cfm?doid=32998
 - Twitter: [@ChubaoFS](https://twitter.com/ChubaoFS)
 - Mailing list: chubaofs-users@groups.io
 - Slack: [chubaofs.slack.com](https://chubaofs.slack.com/)
-- WeChat: QR code of the ChubaoFS community WeChat group see [here](https://github.com/chubaofs/chubaofs/issues/604).
+- WeChat: detail see [here](https://github.com/chubaofs/chubaofs/issues/604).
 
 ## Partners and Users
 
