@@ -65,6 +65,7 @@ const (
 	HeaderNameXAmzDownloadPartCount   = "x-amz-mp-parts-count"
 	HeaderNameXAmzMetadataDirective   = "x-amz-metadata-directive"
 	HeaderNameXAmzBucketRegion        = "x-amz-bucket-region"
+	HeaderNameXAmzTaggingCount   	  = "x-amz-tagging-count"
 
 	HeaderNameIfMatch           = "If-Match"
 	HeaderNameIfNoneMatch       = "If-None-Match"
@@ -164,4 +165,10 @@ const (
 const (
 	MetadataDirectiveCopy    = "COPY"
 	MetadataDirectiveReplace = "REPLACE"
+)
+
+const (
+	TaggingCounts         = 10
+	TaggingKeyMaxLength   = 128
+	TaggingValueMaxLength = 256
 )
