@@ -1,7 +1,7 @@
 /*
  * MIT License
  * Copyright (c) 2016 Samsara Networks Inc.
- * Modifications copyright 2019 The ChubaoFS Authors.
+ * Modifications copyright 2020 The ChubaoFS Authors.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -18,14 +18,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"sync"
+
 	"github.com/chubaofs/chubaofs/proto"
 	client2 "github.com/chubaofs/chubaofs/sdk/graphql/client"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/samsarahq/thunder/batch"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/reactive"
-	"net/http"
-	"sync"
 )
 
 type graphqlProxyHandler struct {

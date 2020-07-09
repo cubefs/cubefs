@@ -311,7 +311,8 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 	}
 
 	if valid := setattr(info, req); valid != 0 {
-		err = d.super.mw.Setattr(ino, valid, info.Mode, info.Uid, info.Gid)
+		err = d.super.mw.Setattr(ino, valid, info.Mode, info.Uid, info.Gid, info.AccessTime.Unix(),
+			info.ModifyTime.Unix())
 		if err != nil {
 			d.super.ic.Delete(ino)
 			return ParseError(err)
