@@ -265,10 +265,13 @@ func (v *Volume) getInodeFromPath(path string) (inode uint64, err error) {
 	return
 }
 
-func (v *Volume) SetXAttr(path string, key string, data []byte) error {
+func (v *Volume) SetXAttr(path string, key string, data []byte, autoCreate bool) error {
 	var err error
 	var inode uint64
 	if inode, err = v.getInodeFromPath(path); err != nil && err != syscall.ENOENT {
+		return err
+	}
+	if err == syscall.ENOENT && !autoCreate {
 		return err
 	}
 	if err == syscall.ENOENT {
