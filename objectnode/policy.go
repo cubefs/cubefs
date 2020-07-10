@@ -45,7 +45,7 @@ const (
 
 type Policy struct {
 	Version    string      `json:"Version"`
-	Id         string      `json:"Id,omnistring"`
+	Id         string      `json:"Id,omitempty"`
 	Statements []Statement `json:"Statement,omitempty"`
 }
 
