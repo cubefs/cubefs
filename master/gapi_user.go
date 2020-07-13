@@ -145,8 +145,22 @@ func (m *UserService) transferUserVol(ctx context.Context, args proto.UserTransf
 }
 
 func (s *UserService) updateUserPolicy(ctx context.Context, args proto.UserPermUpdateParam) (*proto.UserInfo, error) {
-	if _, _, err := permissions(ctx, ADMIN); err != nil {
+	uid, perm, err := permissions(ctx, ADMIN|USER)
+	if err != nil {
 		return nil, err
+	}
+
+	if perm == USER {
+		if args.Volume == "" {
+			return nil, fmt.Errorf("user:[%s] need set userID", uid)
+		}
+		if v, e := s.cluster.getVol(args.Volume); e != nil {
+			return nil, e
+		} else {
+			if v.Owner != uid {
+				return nil, fmt.Errorf("user:[%s] is not volume:[%d] onwer", uid, args.UserID)
+			}
+		}
 	}
 	if _, err := s.cluster.getVol(args.Volume); err != nil {
 		return nil, err
