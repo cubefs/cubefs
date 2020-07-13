@@ -19,13 +19,15 @@ import (
 	"github.com/chubaofs/chubaofs/sdk/master"
 )
 
-func validVols(client *master.MasterClient, toComplete string) []string {
+func validVols(client, complete interface{}) []string {
 	var (
 		validVols []string
 		vols      []*proto.VolInfo
 		err       error
 	)
-	if vols, err = client.AdminAPI().ListVols(toComplete); err != nil {
+	clientSdk := client.(*master.MasterClient)
+	completeStr := complete.(string)
+	if vols, err = clientSdk.AdminAPI().ListVols(completeStr); err != nil {
 		errout("Get volume list failed:\n%v\n", err)
 	}
 	for _, vol := range vols {

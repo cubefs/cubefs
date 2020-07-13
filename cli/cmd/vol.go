@@ -45,6 +45,8 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newVolListCmd(client),
 		newVolCreateCmd(client),
+		newVolExpandCmd(client),
+		newVolShrinkCmd(client),
 		newVolInfoCmd(client),
 		newVolDeleteCmd(client),
 		newVolTransferCmd(client),
@@ -305,7 +307,7 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 				var confirm string
 				_, _ = fmt.Scanln(&confirm)
 				if confirm != "yes" {
-					stdout("Abort by user.\n")
+					err = fmt.Errorf("Abort by user.\n")
 					return
 				}
 			}
@@ -377,6 +379,57 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
 			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
+const (
+	cmdExpandVolCmdShort = "Expand capacity of a volume"
+	cmdShrinkVolCmdShort = "Shrink capacity of a volume"
+)
+
+func newVolExpandCmd(client *master.MasterClient) *cobra.Command {
+	volClient := NewVolumeClient(OpExpandVol, client)
+	return newVolSetCapacityCmd(CliOpExpand, cmdExpandVolCmdShort, volClient)
+}
+
+func newVolShrinkCmd(client *master.MasterClient) *cobra.Command {
+	volClient := NewVolumeClient(OpShrinkVol, client)
+	return newVolSetCapacityCmd(CliOpShrink, cmdShrinkVolCmdShort, volClient)
+}
+
+func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   use + " [VOLUME] [CAPACITY]",
+		Short: short,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var name = args[0]
+			var capacityStr = args[1]
+			var err error
+			defer func() {
+				if err != nil {
+					errout("%v failed: %v\n", use, err)
+					os.Exit(1)
+				}
+			}()
+			volume := r.(*volumeClient)
+			if volume.capacity, err = strconv.ParseUint(capacityStr, 10, 64); err != nil {
+				return
+			}
+			volume.name = name
+			if err = volume.excuteHttp(); err != nil {
+				return
+			}
+			return
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			volume := r.(*volumeClient)
+			return validVols(volume.client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	return cmd
