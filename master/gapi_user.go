@@ -158,7 +158,7 @@ func (s *UserService) updateUserPolicy(ctx context.Context, args proto.UserPermU
 			return nil, e
 		} else {
 			if v.Owner != uid {
-				return nil, fmt.Errorf("user:[%s] is not volume:[%d] onwer", uid, args.UserID)
+				return nil, fmt.Errorf("user:[%s] is not volume:[%s] onwer", uid, args.UserID)
 			}
 		}
 	}
