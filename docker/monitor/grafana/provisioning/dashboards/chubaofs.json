@@ -15,8 +15,7 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 0,
-  "id": 1,
-  "iteration": 1593328519495,
+  "iteration": 1594609997387,
   "links": [],
   "panels": [
     {
@@ -479,7 +478,7 @@
       "tableColumn": "",
       "targets": [
         {
-          "expr": "sum(cfs_master_vol_count{cluster=~\"$cluster\", instance=\"$master_instance\"})",
+          "expr": "avg(cfs_master_vol_count{app=\"$app\", cluster=\"$cluster\"})",
           "format": "time_series",
           "intervalFactor": 1,
           "refId": "A"
@@ -609,7 +608,7 @@
                 "value": 300000
               }
             ],
-            "unit": "gbytes"
+            "unit": "decgbytes"
           },
           "override": {},
           "values": false
@@ -680,7 +679,7 @@
                 "value": 5
               }
             ],
-            "unit": "gbytes"
+            "unit": "decgbytes"
           },
           "override": {},
           "values": false
@@ -759,7 +758,7 @@
                 "value": 100
               }
             ],
-            "unit": "bytes"
+            "unit": "decbytes"
           },
           "override": {},
           "values": true
