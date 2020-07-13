@@ -218,6 +218,21 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		contentLength = rangeUpper - rangeLower + 1
 	}
 
+	// get object tagging size
+	var xattrInfo *proto.XAttrInfo
+	if xattrInfo, err = vol.GetXAttr(param.object, XAttrKeyOSSTagging); err != nil && err != syscall.ENOENT {
+		log.LogErrorf("getObjectHandler: Volume get XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		errorCode = InternalErrorCode(err)
+		return
+	}
+	if xattrInfo != nil {
+		ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
+		output, _ := ParseTagging(string(ossTaggingData))
+		if output != nil && len(output.TagSet) > 0 {
+			w.Header()[HeaderNameXAmzTaggingCount] = []string{strconv.Itoa(len(output.TagSet))}
+		}
+	}
+
 	// set response header for GetObject
 	w.Header()[HeaderNameAcceptRange] = []string{HeaderValueAcceptRange}
 	w.Header()[HeaderNameLastModified] = []string{formatTimeRFC1123(fileInfo.ModifyTime)}
@@ -1097,6 +1112,11 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = InvalidArgument
 			return
 		}
+		var validateRes bool
+		if validateRes, errorCode =  tagging.Validate(); !validateRes {
+			log.LogErrorf("putObjectHandler: tagging validate fail: requestID(%v) tagging(%v) err(%v)", GetRequestID(r), tagging, err)
+			return
+		}
 	}
 
 	// Checking user-defined metadata
@@ -1330,14 +1350,24 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 		errorCode = InvalidArgument
 		return
 	}
-
-	if err = vol.SetXAttr(param.object, XAttrKeyOSSTagging, []byte(tagging.Encode())); err != nil {
-		log.LogErrorf("pubObjectTaggingHandler: volume set tagging fail: requestID(%v) volume(%v) object(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), param.Object(), err)
-		errorCode = InternalErrorCode(err)
+	validateRes, errorCode :=  tagging.Validate()
+	if !validateRes {
+		log.LogErrorf("putObjectTaggingHandler: tagging validate fail: requestID(%v) tagging(%v) err(%v)", GetRequestID(r), tagging, err)
 		return
 	}
 
+	err = vol.SetXAttr(param.object, XAttrKeyOSSTagging, []byte(tagging.Encode()), false);
+
+	if err != nil {
+		log.LogErrorf("pubObjectTaggingHandler: volume set tagging fail: requestID(%v) volume(%v) object(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), param.Object(), err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchKey
+		} else {
+			errorCode = InternalErrorCode(err)
+		}
+		return
+	}
 	return
 }
 
@@ -1432,7 +1462,7 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err = vol.SetXAttr(param.object, key, []byte(value)); err != nil {
+	if err = vol.SetXAttr(param.object, key, []byte(value), true); err != nil {
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
 			return

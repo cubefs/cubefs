@@ -1,3 +1,81 @@
+## Release v2.1.0 - 2020/07/09
+
+### Feature
+* `console`: ChubaoFS **Console** is a web application, which provides management for volume, file, s3, user, node, monitoring, and alarm. 
+The ChubaoFS **Console** makes it much easier to access services provided by ChubaoFS. [#728](https://github.com/chubaofs/chubaofs/pull/728)  
+Please refer to [https://chubaofs.readthedocs.io/en/latest/user-guide/console.html](https://chubaofs.readthedocs.io/en/latest/user-guide/console.html) to start the **Console**.
+* `metanode`: Provide compatibility verification tool for meta partition. [#684](https://github.com/chubaofs/chubaofs/pull/684)
+* `object`: CORS access control. [#507](https://github.com/chubaofs/chubaofs/pull/507)
+* `fuse`: Introduce **fsyncOnClose** mount option. Choose if closing system call shall trigger fsync. [#494](https://github.com/chubaofs/chubaofs/pull/494)
+
+### Optimize Memory Usage
+Release2.1.0 did a lot of work to optimize memory usage.
+* Modify the max write size to 128k; limit the rate of Forget requests. [#533](https://github.com/chubaofs/chubaofs/pull/533)
+* If concurrent write operations are more than 256, bufferPool is no longer used. [#538](https://github.com/chubaofs/chubaofs/pull/538)
+* Eliminates the unnecessary memory allocations for Inode struct by using proto InodeInfo struct directly. [#545](https://github.com/chubaofs/chubaofs/pull/545)
+* Use sync Pool and rate limiter to limit the memory usage. [#639](https://github.com/chubaofs/chubaofs/pull/639)
+* Use total count instead of rate. [#642](https://github.com/chubaofs/chubaofs/pull/642)
+* Uses sorted extents instead of BTree. [#646](https://github.com/chubaofs/chubaofs/pull/646)
+
+### Enhancement
+* `master`: Add set/get deleteBatchCount interfaces. [#608](https://github.com/chubaofs/chubaofs/pull/608)
+* `master`: Delete partitions on DataNode/MetaNode concurrently in decommission action. [#724](https://github.com/chubaofs/chubaofs/pull/724)
+* `master`: Added api for getting & setting parameters for batch deleting extents. [#726](https://github.com/chubaofs/chubaofs/pull/726)
+* `metanode`: Filter inode candidates that will be sent to a partition in **batch-inode-get** to save memory. [#481](https://github.com/chubaofs/chubaofs/pull/481)
+* `metanode`: Batch delete inode, unlink&evict dentry. [#586](https://github.com/chubaofs/chubaofs/pull/586)
+* `datanode`: Prioritize healthy data node when sending message to data partition. [#562](https://github.com/chubaofs/chubaofs/pull/562)
+* `metanode` `datanode`: Check expired partition before loading. [#624](https://github.com/chubaofs/chubaofs/pull/624)
+* `object`: Implemented several conditional parameters in **GetObject** action. [#471](https://github.com/chubaofs/chubaofs/pull/471)
+* `object`: Making S3 credential compatible with earlier version of ChubaoFS. [#508](https://github.com/chubaofs/chubaofs/pull/508)
+* `object`: Totally support presigned url; Partial support user-defined metadata; Making ETag versioned. [#540](https://github.com/chubaofs/chubaofs/pull/540)   
+* `object`: **CopyObject** across volumes; Support coping directory; Support coping **xattr**. [#563](https://github.com/chubaofs/chubaofs/pull/563)
+* `object`: Parallel downloading. [#548](https://github.com/chubaofs/chubaofs/pull/548)
+* `object`: Add 'Expires' and 'Cache-Control' in **putObject/copyObject/getObject/headObject**. [#589](https://github.com/chubaofs/chubaofs/pull/589)
+* `object`: Modify part system metadata. [#636](https://github.com/chubaofs/chubaofs/pull/636)
+* `fuse`: Decrease request channel size to save memory. [#512](https://github.com/chubaofs/chubaofs/pull/512)
+* `fuse`: Let the client daemon inherit all the environment variables but not just *PATH*. [#529](https://github.com/chubaofs/chubaofs/pull/529)
+* `fuse`: Introduces a debug interface **/debug/freeosmemory** to trigger garbage collection manually. [#539](https://github.com/chubaofs/chubaofs/pull/539)
+* `fuse`: Add configuration **MaxCPUs**. [#546](https://github.com/chubaofs/chubaofs/pull/546)
+* `fuse`: View client log through http proto. [#552](https://github.com/chubaofs/chubaofs/pull/552)
+* `fuse`: Support modifying **ModifyTime** of inode by setAttr. [#733](https://github.com/chubaofs/chubaofs/pull/733)
+* `deployment`: Add log map in **docker-compose.yaml**. [#478](https://github.com/chubaofs/chubaofs/pull/478)
+* `deployment`: Introduce nginx to improve compatibility. [#534](https://github.com/chubaofs/chubaofs/pull/534)
+* `test`: Add testing script for S3 APIs in python. [#514](https://github.com/chubaofs/chubaofs/pull/514) [#595](https://github.com/chubaofs/chubaofs/pull/595)
+* `monitor`: Add detailed vol info in grafana dashboard. [#522](https://github.com/chubaofs/chubaofs/pull/522)
+* `cli`: Some new features for CLI tool: bash completions, configuration setting, decommission, diagnose etc. [#555](https://github.com/chubaofs/chubaofs/pull/555) [#695](https://github.com/chubaofs/chubaofs/pull/695)
+
+### Refactor
+* `metanode`: Accelerate deletion. [#582](https://github.com/chubaofs/chubaofs/pull/582) [#600](https://github.com/chubaofs/chubaofs/pull/600)
+* `datanode`: Limit replica number of data partition to at least 3. [#587](https://github.com/chubaofs/chubaofs/pull/587)
+* `datanode`: Set if auto-repair by http interface. [#672](https://github.com/chubaofs/chubaofs/pull/672)
+* `metanode` `datanode` `fuse`: Optimizations on port checking. [#543](https://github.com/chubaofs/chubaofs/pull/543) [#531](https://github.com/chubaofs/chubaofs/pull/531)
+* `metanode` `datanode`: Validate creating partition request from master. [#611](https://github.com/chubaofs/chubaofs/pull/611)
+* `object`: Refactor copy object function. [#563](https://github.com/chubaofs/chubaofs/pull/563)
+* `fuse`: Replace process of token validation from meta wrapper to client. [#498](https://github.com/chubaofs/chubaofs/pull/498)
+* `fuse`: Adjust rlimit config for client. [#521](https://github.com/chubaofs/chubaofs/pull/521)
+
+### Bug fix
+* `metanode`: When overwriting a file, if the inode in a dentry is updated successfully, ignore unlink and evict inode errors. [#500](https://github.com/chubaofs/chubaofs/pull/500)
+* `metanode`: Fix incorrect metrics collection for volume usedGB in monitor system. [#503](https://github.com/chubaofs/chubaofs/pull/503)
+* `metanode`: **VolStat** can correctly update when force update metaPartitions frequently. [#537](https://github.com/chubaofs/chubaofs/pull/537)
+* `metanode`: The **MaxInodeID** of meta partition is not synchronized when recovered from snapshot. [#571](https://github.com/chubaofs/chubaofs/pull/571)
+* `metanode`: Free Inodes by raft protocol. [#582](https://github.com/chubaofs/chubaofs/pull/582)
+* `metanode`: Painc with **deleteMarkedInodes**. [#597](https://github.com/chubaofs/chubaofs/pull/597)
+* `object`: Fix the parsing issue of the two preconditions of **If-Match** and **If-None-Match**. [#516](https://github.com/chubaofs/chubaofs/pull/516)
+* `object`: Change the time format in list buckets API to UTC time. [#525](https://github.com/chubaofs/chubaofs/pull/525)
+* `object`: Fix xml element of **DeleteResult**. [#532](https://github.com/chubaofs/chubaofs/pull/532)
+* `object`: Empty result in **list** operation when run in parallel with delete. [#509](https://github.com/chubaofs/chubaofs/pull/509)
+* `object`: Change from hard link to soft link in **CopyObject** action. [#563](https://github.com/chubaofs/chubaofs/pull/563)
+* `object`: Solved **parallel-safety** issue; Clean up useless data on failure in **upload** part. [#553](https://github.com/chubaofs/chubaofs/pull/553)
+* `object`: Fixed a problem in listing multipart uploads. [#595](https://github.com/chubaofs/chubaofs/pull/595) 
+* `object`: Solve the problem that back-end report “NotExistErr” error when uploading files with the same key in parallel. [#685](https://github.com/chubaofs/chubaofs/pull/685)
+* `fuse`: Evict inode cache when dealing with forget. [#523](https://github.com/chubaofs/chubaofs/pull/523)
+
+### Document
+* Update related documents of ObjectNode. [#554](https://github.com/chubaofs/chubaofs/pull/554)
+* Added user and CLI introduction, synchronize documentation according to the latest code. [#564](https://github.com/chubaofs/chubaofs/pull/564)
+* Added F&Q section. [#573](https://github.com/chubaofs/chubaofs/pull/573)
+
 ## Release v2.0.0 - 2020/04/10
 
 ### Feature

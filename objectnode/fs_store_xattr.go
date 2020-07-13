@@ -61,7 +61,7 @@ func (s *xattrStore) Put(vol, path, key string, data []byte) (err error) {
 		err = err1
 		return
 	}
-	err = v.SetXAttr(path, key, data)
+	err = v.SetXAttr(path, key, data, false)
 	if err != nil {
 		log.LogErrorf("put xattr failed: vol[%v], key[%v], data[%v]", vol, key, data)
 	}
