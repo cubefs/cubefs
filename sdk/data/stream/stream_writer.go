@@ -265,6 +265,7 @@ func (s *Streamer) write(data []byte, offset, size int, direct bool) (total int,
 	requests := s.extents.PrepareWriteRequests(offset, size, data)
 	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
 
+	// Must flush before doing overwrite
 	for _, req := range requests {
 		if req.ExtentKey == nil {
 			continue
@@ -275,6 +276,7 @@ func (s *Streamer) write(data []byte, offset, size int, direct bool) (total int,
 		}
 		requests = s.extents.PrepareWriteRequests(offset, size, data)
 		log.LogDebugf("Streamer write: ino(%v) prepared requests after flush(%v)", s.inode, requests)
+		break
 	}
 
 	for _, req := range requests {
