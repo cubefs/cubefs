@@ -104,6 +104,7 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 	case proto.OpDecommissionMetaPartition:
 		response = &proto.MetaPartitionDecommissionResponse{}
 	case proto.OpCodecNodeHeartbeat:
+		response = &proto.CodecNodeHeartbeatResponse{}
 	case proto.OpEcNodeHeartbeat:
 		response = &proto.EcNodeHeartbeatResponse{}
 	default:

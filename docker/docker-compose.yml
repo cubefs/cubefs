@@ -41,6 +41,9 @@ services:
             - ecnode5
             - ecnode6
             - ecnode7
+            - codecnode1
+            - codecnode2
+            - codecnode3
             - nginx
         networks:
             extnetwork:
@@ -421,6 +424,63 @@ services:
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.57
+
+    codecnode1:
+        image: chubaofs/cfs-base:1.1
+        ports:
+            - "80"
+            - 9500
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/codecnode1/log:/cfs/log
+            - ./conf/codecnode.json:/cfs/conf/codecnode.json
+            - ./script/start_codecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        environment:
+          - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.61
+
+    codecnode2:
+        image: chubaofs/cfs-base:1.1
+        ports:
+            - "80"
+            - 9500
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/codecnode2/log:/cfs/log
+            - ./conf/codecnode.json:/cfs/conf/codecnode.json
+            - ./script/start_codecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        environment:
+          - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.62
+
+    codecnode3:
+        image: chubaofs/cfs-base:1.1
+        ports:
+            - "80"
+            - 9500
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/codecnode3/log:/cfs/log
+            - ./conf/codecnode.json:/cfs/conf/codecnode.json
+            - ./script/start_codecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        environment:
+          - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.63
 
     objectnode1:
         image: chubaofs/cfs-base:1.1

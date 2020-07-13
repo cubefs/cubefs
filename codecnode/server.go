@@ -19,8 +19,10 @@ import (
 	"regexp"
 	"sync"
 	"time"
+	"net"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/repl"
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/config"
@@ -37,15 +39,21 @@ const (
 	ModuleName = "codecNode"
 )
 
+// Network protocol
+const (
+	NetworkProtocol = "tcp"
+)
+
 type CodecServer struct {
 	clusterID       string
 	port            string
 	nodeID          uint64
 	localServerAddr string
 
-	stopC chan bool
+	tcpListener     net.Listener
+	stopC           chan bool
 
-	wg sync.WaitGroup
+	wg              sync.WaitGroup
 }
 
 func NewServer() *CodecServer {
@@ -61,6 +69,13 @@ func (s *CodecServer) Start(cfg *config.Config) (err error) {
 	s.register(cfg)
 
 	s.wg.Add(1)
+
+	// start tcp listening
+	err = s.startTCPService()
+	if err != nil {
+		return
+	}
+
 	return
 }
 
@@ -92,6 +107,48 @@ func (s *CodecServer) parseConfig(cfg *config.Config) error {
 	}
 
 	return nil
+}
+
+func (s *CodecServer) startTCPService() (err error) {
+	log.LogInfo("Start: startTCPService")
+	addr := fmt.Sprintf(":%v", s.port)
+	l, err := net.Listen(NetworkProtocol, addr)
+	log.LogDebugf("action[startTCPService] listen %v address(%v).", NetworkProtocol, addr)
+	if err != nil {
+		log.LogError("failed to listen, err:", err)
+		return
+	}
+	s.tcpListener = l
+	go func(ln net.Listener) {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				log.LogErrorf("action[startTCPService] failed to accept, err:%s", err.Error())
+				break
+			}
+			log.LogDebugf("action[startTCPService] accept connection from %s.", conn.RemoteAddr().String())
+			go s.serverConn(conn)
+		}
+	}(l)
+	return
+}
+
+
+func (s *CodecServer) stopTCPService() (err error) {
+	if s.tcpListener != nil {
+
+		s.tcpListener.Close()
+		log.LogDebugf("action[stopTCPService] stop tcp service.")
+	}
+	return
+}
+
+func (s *CodecServer) serverConn(conn net.Conn) {
+	c, _ := conn.(*net.TCPConn)
+	c.SetKeepAlive(true)
+	c.SetNoDelay(true)
+	packetProcessor := repl.NewReplProtocol(c, func(p *repl.Packet)(err error){ return }, s.OperatePacket, func(p *repl.Packet)error{ return nil })
+	packetProcessor.ServerConn()
 }
 
 func (s *CodecServer) register(cfg *config.Config) {

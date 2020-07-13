@@ -74,7 +74,7 @@ func (c *Cluster) checkCodecNodeHeartbeat() {
 		tasks = append(tasks, task)
 		return true
 	})
-	c.addDataNodeTasks(tasks)
+	c.addCodecNodeTasks(tasks)
 }
 
 func (m *Server) getAllCodecNodes(w http.ResponseWriter, r *http.Request) {

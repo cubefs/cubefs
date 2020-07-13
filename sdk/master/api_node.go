@@ -153,3 +153,16 @@ func (api *NodeAPI) ResponseEcNodeTask(task *proto.AdminTask) (err error) {
 	}
 	return
 }
+
+func (api *NodeAPI) ResponseCodecNodeTask(task *proto.AdminTask) (err error) {
+	var encoded []byte
+	if encoded, err = json.Marshal(task); err != nil {
+		return
+	}
+	var request = newAPIRequest(http.MethodPost, proto.GetCodecNodeTaskResponse)
+	request.addBody(encoded)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
