@@ -238,6 +238,24 @@ class S3TestCase(TestCase):
     def assert_delete_tagging_result(self, result):
         self.assert_result_status_code(result=result, status_code=204)
 
+    def assert_get_bucket_acl_result(self, result, acl):
+        self.assert_result_status_code(result=result, status_code=200)
+        self.assertEqual(result['Owner'], acl['Owner'])
+        self.assertEqual(result['Grants'], acl['Grants'])
+
+    def assert_get_bucket_policy_result(self, result, policy=None):
+        self.assert_result_status_code(result=result, status_code=200)
+        if policy is None:
+            self.assertEqual(result['Policy'], 'null')
+        else:
+            policy_result = json.loads(result['Policy'])
+            self.assertEqual(policy_result['Version'], policy['Version'])
+            self.assertEqual(policy_result['Statement'][0]['Sid'], policy['Statement'][0]['Sid'])
+            self.assertEqual(policy_result['Statement'][0]['Effect'], policy['Statement'][0]['Effect'])
+            self.assertEqual(policy_result['Statement'][0]['Principal'], policy['Statement'][0]['Principal'])
+            self.assertEqual(policy_result['Statement'][0]['Action'], policy['Statement'][0]['Action'])
+            self.assertEqual(policy_result['Statement'][0]['Resource'], policy['Statement'][0]['Resource'])
+
     def assert_result_status_code(self, result, status_code=200):
         self.assertNotEqual(result, None)
         self.assertEqual(type(result), dict)

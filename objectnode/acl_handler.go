@@ -69,9 +69,8 @@ func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request)
 	}
 	var aclData []byte
 	if acl == nil {
-		accessKey, _ := vol.OSSSecure()
 		acl = &AccessControlPolicy{
-			Owner: Owner{Id: accessKey, DisplayName: accessKey},
+			Owner: Owner{Id: param.AccessKey(), DisplayName: param.AccessKey()},
 		}
 		acl.Acl.Grants = append(acl.Acl.Grants, defaultGrant)
 	}

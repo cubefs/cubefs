@@ -262,6 +262,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 				allowed = false
 				return
 			}
+			isOwner = true
 		} else {
 			log.LogErrorf("policyCheck: load user policy from master fail: requestID(%v) accessKey(%v) err(%v)",
 				GetRequestID(r), param.AccessKey(), err)
