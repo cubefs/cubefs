@@ -104,11 +104,10 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 	}
 	defer fp.Close()
 	reader := bufio.NewReaderSize(fp, 4*1024*1024)
-	inoBuf := make([]byte, 4)
 	for {
-		inoBuf = inoBuf[:4]
+		inodeLengthData := GetStoreUnmarshalLengthData()
 		// first read length
-		_, err = io.ReadFull(reader, inoBuf)
+		_, err = io.ReadFull(reader, inodeLengthData)
 		if err != nil {
 			if err == io.EOF {
 				err = nil
@@ -117,24 +116,27 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 			err = errors.NewErrorf("[loadInode] ReadHeader: %s", err.Error())
 			return
 		}
-		length := binary.BigEndian.Uint32(inoBuf)
+		length := binary.BigEndian.Uint32(inodeLengthData)
+		PutStoreUnmarshalLengthData(inodeLengthData)
 
 		// next read body
-		if uint32(cap(inoBuf)) >= length {
-			inoBuf = inoBuf[:length]
-		} else {
-			inoBuf = make([]byte, length)
-		}
-		_, err = io.ReadFull(reader, inoBuf)
+		originData := GetCommonUnmarshalData(int(length))
+		inodeData := originData[0:length]
+		_, err = io.ReadFull(reader, inodeData)
 		if err != nil {
 			err = errors.NewErrorf("[loadInode] ReadBody: %s", err.Error())
 			return
 		}
+
+		// next unmarshal inodeBuff
 		ino := NewInode(0, 0)
-		if err = ino.Unmarshal(inoBuf); err != nil {
+		if err = ino.Unmarshal(inodeData); err != nil {
 			err = errors.NewErrorf("[loadInode] Unmarshal: %s", err.Error())
 			return
 		}
+
+		PutCommonUnmarshalData(originData)
+
 		mp.fsmCreateInode(ino)
 		mp.checkAndInsertFreeList(ino)
 		if mp.config.Cursor < ino.Inode {
@@ -170,11 +172,10 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 
 	defer fp.Close()
 	reader := bufio.NewReaderSize(fp, 4*1024*1024)
-	dentryBuf := make([]byte, 4)
 	for {
-		dentryBuf = dentryBuf[:4]
+		dentryLengthBuf := GetStoreUnmarshalLengthData()
 		// First Read 4byte header length
-		_, err = io.ReadFull(reader, dentryBuf)
+		_, err = io.ReadFull(reader, dentryLengthBuf)
 		if err != nil {
 			if err == io.EOF {
 				err = nil
@@ -184,14 +185,12 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 			return
 		}
 
-		length := binary.BigEndian.Uint32(dentryBuf)
+		length := binary.BigEndian.Uint32(dentryLengthBuf)
+		PutStoreUnmarshalLengthData(dentryLengthBuf)
 
 		// next read body
-		if uint32(cap(dentryBuf)) >= length {
-			dentryBuf = dentryBuf[:length]
-		} else {
-			dentryBuf = make([]byte, length)
-		}
+		orgData := GetCommonUnmarshalData(int(length))
+		dentryBuf := orgData[0:length]
 		_, err = io.ReadFull(reader, dentryBuf)
 		if err != nil {
 			err = errors.NewErrorf("[loadDentry]: ReadBody: %s", err.Error())
@@ -202,6 +201,8 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 			err = errors.NewErrorf("[loadDentry] Unmarshal: %s", err.Error())
 			return
 		}
+		PutCommonUnmarshalData(orgData)
+
 		if status := mp.fsmCreateDentry(dentry, true); status != proto.OpOk {
 			err = errors.NewErrorf("[loadDentry] createDentry dentry: %v, resp code: %d", dentry, status)
 			return

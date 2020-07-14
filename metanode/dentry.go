@@ -81,21 +81,28 @@ func (d *Dentry) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &keyLen); err != nil {
 		return
 	}
-	keyBytes := make([]byte, keyLen)
+	orgData := GetCommonUnmarshalData(int(keyLen))
+	keyBytes := orgData[0:keyLen]
 	if _, err = buff.Read(keyBytes); err != nil {
 		return
 	}
 	if err = d.UnmarshalKey(keyBytes); err != nil {
 		return
 	}
+	PutCommonUnmarshalData(orgData)
+
 	if err = binary.Read(buff, binary.BigEndian, &valLen); err != nil {
 		return
 	}
-	valBytes := make([]byte, valLen)
+
+	orgData = GetCommonUnmarshalData(int(valLen))
+	valBytes := orgData[0:valLen]
 	if _, err = buff.Read(valBytes); err != nil {
 		return
 	}
 	err = d.UnmarshalValue(valBytes)
+	PutCommonUnmarshalData(orgData)
+
 	return
 }
 
