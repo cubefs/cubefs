@@ -17,6 +17,7 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+	"io"
 )
 
 // Dentry wraps necessary properties of the `dentry` information in file system.
@@ -68,6 +69,35 @@ func (d *Dentry) Marshal() (result []byte, err error) {
 		return
 	}
 	result = buff.Bytes()
+	return
+}
+
+func (d *Dentry) WriteTo(writer io.Writer, reuse *bytes.Buffer) (err error) {
+	var buff = reuse
+	if buff == nil {
+		buff = bytes.NewBuffer(nil)
+	} else {
+		buff.Reset()
+	}
+	if err = d.WriteKeyTo(buff); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, uint32(buff.Len())); err != nil {
+		return
+	}
+	if _, err = buff.WriteTo(writer); err != nil {
+		return
+	}
+	buff.Reset()
+	if err = d.WriteValueTo(buff); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, uint32(buff.Len())); err != nil {
+		return
+	}
+	if _, err = buff.WriteTo(writer); err != nil {
+		return
+	}
 	return
 }
 
@@ -184,6 +214,15 @@ func (d *Dentry) UnmarshalKey(k []byte) (err error) {
 	return
 }
 
+func (d *Dentry) WriteKeyTo(writer io.Writer) (err error) {
+	if err = binary.Write(writer, binary.BigEndian, &d.ParentId); err != nil {
+	}
+	if _, err = writer.Write([]byte(d.Name)); err != nil {
+		return
+	}
+	return
+}
+
 // MarshalValue marshals the exporterKey to bytes.
 func (d *Dentry) MarshalValue() (k []byte) {
 	buff := bytes.NewBuffer(make([]byte, 0))
@@ -205,5 +244,15 @@ func (d *Dentry) UnmarshalValue(val []byte) (err error) {
 		return
 	}
 	err = binary.Read(buff, binary.BigEndian, &d.Type)
+	return
+}
+
+func (d *Dentry) WriteValueTo(writer io.Writer) (err error) {
+	if err = binary.Write(writer, binary.BigEndian, &d.Inode); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, &d.Type); err != nil {
+		return
+	}
 	return
 }

@@ -25,12 +25,11 @@ import (
 )
 
 func (mp *metaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet) (err error) {
-	item := mp.multipartTree.Get(&Multipart{key: req.Path, id: req.MultipartId})
-	if item == nil {
+	multipart, err := mp.multipartTree.Get(req.Path, req.MultipartId)
+	if err != nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		return
 	}
-	multipart := item.(*Multipart)
 	resp := &proto.GetMultipartResponse{
 		Info: &proto.MultipartInfo{
 			ID:       multipart.id,
@@ -63,8 +62,8 @@ func (mp *metaPartition) AppendMultipart(req *proto.AddMultipartPartRequest, p *
 		p.PacketOkReply()
 		return
 	}
-	item := mp.multipartTree.Get(&Multipart{key:req.Path, id: req.MultipartId})
-	if item == nil {
+	_, err = mp.multipartTree.Get(req.Path, req.MultipartId)
+	if err != nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		return
 	}
@@ -120,10 +119,11 @@ func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *P
 	)
 	for {
 		multipartId = util.CreateMultipartID(mp.config.PartitionId).String()
-		storedItem := mp.multipartTree.Get(&Multipart{key: req.Path, id: multipartId})
-		if storedItem == nil {
-			break
-		}
+		//mu := mp.multipartTree.Get(&Multipart{id: multipartId})
+		//if storedItem == nil {
+		//	break
+		//}TODO FIX ME
+		break
 	}
 
 	multipart := &Multipart{
@@ -153,27 +153,28 @@ func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *P
 }
 
 func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packet) (err error) {
-
 	max := int(req.Max)
-	keyMarker := req.Marker
-	multipartIdMarker := req.MultipartIdMarker
 	prefix := req.Prefix
 	var matches = make([]*Multipart, 0, max)
-	var walkTreeFunc = func(i BtreeItem) bool {
-		multipart := i.(*Multipart)
+
+	var walkTreeFunc = func(v []byte) (bool, error) {
+		multipart := MultipartFromBytes(v)
 		// prefix is enabled
 		if len(prefix) > 0 && !strings.HasPrefix(multipart.key, prefix) {
 			// skip and continue
-			return true
+			return true, nil
 		}
 		matches = append(matches, multipart)
-		return !(len(matches) >= max)
+		return !(len(matches) >= max), nil
 	}
-	if len(keyMarker) > 0 {
-		mp.multipartTree.AscendGreaterOrEqual(&Multipart{key: keyMarker, id: multipartIdMarker}, walkTreeFunc)
-	} else {
-		mp.multipartTree.Ascend(walkTreeFunc)
+
+	err = mp.multipartTree.Range(&Multipart{key: req.Marker, id: req.MultipartIdMarker}, nil, walkTreeFunc)
+
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
 	}
+
 	multipartInfos := make([]*proto.MultipartInfo, len(matches))
 
 	var convertPartFunc = func(part *Part) *proto.MultipartPartInfo {

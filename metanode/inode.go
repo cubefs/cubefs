@@ -19,9 +19,10 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
 	"io"
 	"sync"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 const (
@@ -173,6 +174,35 @@ func (i *Inode) Marshal() (result []byte, err error) {
 	return
 }
 
+func (i *Inode) WriteTo(writer io.Writer, reuse *bytes.Buffer) (err error) {
+	var buff = reuse
+	if buff == nil {
+		buff = bytes.NewBuffer(nil)
+	} else {
+		buff.Reset()
+	}
+	if err = i.WriteKeyTo(buff); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, uint32(buff.Len())); err != nil {
+		return
+	}
+	if _, err = buff.WriteTo(writer); err != nil {
+		return
+	}
+	buff.Reset()
+	if err = i.WriteValueTo(buff); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, uint32(buff.Len())); err != nil {
+		return
+	}
+	if _, err = buff.WriteTo(writer); err != nil {
+		return
+	}
+	return
+}
+
 // Unmarshal unmarshals the inode.
 func (i *Inode) Unmarshal(raw []byte) (err error) {
 	var (
@@ -258,6 +288,11 @@ func (i *Inode) MarshalKey() (k []byte) {
 	return
 }
 
+func (i *Inode) WriteKeyTo(writer io.Writer) (err error) {
+	err = binary.Write(writer, binary.BigEndian, &i.Inode)
+	return
+}
+
 // UnmarshalKey unmarshals the exporterKey from bytes.
 func (i *Inode) UnmarshalKey(k []byte) (err error) {
 	i.Inode = binary.BigEndian.Uint64(k)
@@ -323,6 +358,58 @@ func (i *Inode) MarshalValue() (val []byte) {
 
 	val = buff.Bytes()
 	i.RUnlock()
+	return
+}
+
+func (i *Inode) WriteValueTo(writer io.Writer) (err error) {
+	i.RLock()
+	defer i.RUnlock()
+	if err = binary.Write(writer, binary.BigEndian, &i.Type); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, &i.Uid); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, &i.Gid); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, &i.Size); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, &i.Generation); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, &i.CreateTime); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, &i.AccessTime); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, &i.ModifyTime); err != nil {
+		return
+	}
+	// write SymLink
+	symSize := uint32(len(i.LinkTarget))
+	if err = binary.Write(writer, binary.BigEndian, &symSize); err != nil {
+		return
+	}
+	if _, err = writer.Write(i.LinkTarget); err != nil {
+		return
+	}
+
+	if err = binary.Write(writer, binary.BigEndian, &i.NLink); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, &i.Flag); err != nil {
+		return
+	}
+	if err = binary.Write(writer, binary.BigEndian, &i.Reserved); err != nil {
+		return
+	}
+	// marshal ExtentsKey
+	if err = i.Extents.WriteTo(writer); err != nil {
+		return
+	}
 	return
 }
 
@@ -416,13 +503,16 @@ func (i *Inode) ExtentsTruncate(length uint64, ct int64) (delExtents []proto.Ext
 
 // IncNLink increases the nLink value by one.
 func (i *Inode) IncNLink() {
+	mtime := Now.GetCurrentTime().Unix()
 	i.Lock()
 	i.NLink++
+	i.ModifyTime = mtime
 	i.Unlock()
 }
 
 // DecNLink decreases the nLink value by one.
 func (i *Inode) DecNLink() {
+	mtime := Now.GetCurrentTime().Unix()
 	i.Lock()
 	if proto.IsDir(i.Type) && i.NLink == 2 {
 		i.NLink--
@@ -430,6 +520,7 @@ func (i *Inode) DecNLink() {
 	if i.NLink > 0 {
 		i.NLink--
 	}
+	i.ModifyTime = mtime
 	i.Unlock()
 }
 
@@ -469,22 +560,16 @@ func (i *Inode) ShouldDelete() bool {
 }
 
 // SetAttr sets the attributes of the inode.
-func (i *Inode) SetAttr(req *SetattrRequest) {
+func (i *Inode) SetAttr(valid, mode, uid, gid uint32) {
 	i.Lock()
-	if req.Valid&proto.AttrMode != 0 {
-		i.Type = req.Mode
+	if valid&proto.AttrMode != 0 {
+		i.Type = mode
 	}
-	if req.Valid&proto.AttrUid != 0 {
-		i.Uid = req.Uid
+	if valid&proto.AttrUid != 0 {
+		i.Uid = uid
 	}
-	if req.Valid&proto.AttrGid != 0 {
-		i.Gid = req.Gid
-	}
-	if req.Valid&proto.AttrAccessTime != 0 {
-		i.AccessTime = req.AccessTime
-	}
-	if req.Valid&proto.AttrModifyTime != 0 {
-		i.ModifyTime = req.ModifyTime
+	if valid&proto.AttrGid != 0 {
+		i.Gid = gid
 	}
 	i.Unlock()
 }

@@ -140,40 +140,22 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var inode *Inode
-
-	f := func(i BtreeItem) bool {
-		var (
-			data []byte
-			e    error
-		)
-
-		if inode != nil {
-			if _, e = w.Write([]byte("\n")); e != nil {
-				log.LogErrorf("[getAllInodesHandler] failed to write response: %v", e)
-				return false
-			}
-		}
-
-		inode = i.(*Inode)
-		if data, e = inode.MarshalToJSON(); e != nil {
-			log.LogErrorf("[getAllInodesHandler] failed to marshal to json: %v", e)
-			return false
-		}
-
-		if _, e = w.Write(data); e != nil {
+	f := func(v []byte) (bool, error) {
+		if _, e := w.Write(v); e != nil {
 			log.LogErrorf("[getAllInodesHandler] failed to write response: %v", e)
-			return false
+			return false, e
 		}
-
-		return true
+		return true, nil
 	}
 
-	mp.GetInodeTree().Ascend(f)
+	if err := mp.inodeTree.Range(&Inode{}, nil, f); err != nil {
+		log.LogErrorf("iter inode has err:[%s]", err.Error())
+	}
+
 }
 
 func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
+	log.LogIfNotNil(r.ParseForm())
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
@@ -344,25 +326,27 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 		delimiter = []byte{',', '\n'}
 		isFirst   = true
 	)
-	mp.GetDentryTree().Ascend(func(i BtreeItem) bool {
+
+	err = mp.dentryTree.Range(&Dentry{}, nil, func(v []byte) (bool, error) {
 		if !isFirst {
 			if _, err = w.Write(delimiter); err != nil {
-				return false
+				return false, err
 			}
 		} else {
 			isFirst = false
 		}
-		val, err = json.Marshal(i)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
-			return false
-		}
 		if _, err = w.Write(val); err != nil {
-			return false
+			return false, err
 		}
-		return true
+		return true, err
 	})
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(err.Error()))
+		return
+	}
+
 	shouldSkip = true
 	buff.WriteString(`]}`)
 	if _, err = w.Write(buff.Bytes()); err != nil {

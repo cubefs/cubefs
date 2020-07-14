@@ -315,11 +315,6 @@ func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
 	return
 }
 
-// GetInodeTree returns the inode tree.
-func (mp *metaPartition) GetInodeTree() *BTree {
-	return mp.inodeTree.GetTree()
-}
-
 func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error) {
 	var bytes = make([]byte, 8)
 	binary.BigEndian.PutUint64(bytes, req.Inode)

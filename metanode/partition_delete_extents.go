@@ -24,6 +24,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -43,6 +44,58 @@ func (mp *metaPartition) startToDeleteExtents() {
 	go mp.appendDelExtentsToFile(fileList)
 	go mp.deleteExtentsFromList(fileList)
 }
+
+
+func (mp *metaPartition)divideExtentsByPartition(deleteExtents []proto.ExtentKey)(deleteExtentsByPartition map[uint64][]proto.ExtentKey){
+	deleteExtentsByPartition=make(map[uint64][]proto.ExtentKey)
+	for _,ext:=range deleteExtents{
+		exts, ok := deleteExtentsByPartition[ext.PartitionId]
+		if !ok {
+			exts = make([]proto.ExtentKey, 0)
+		}
+		exts = append(exts, ext)
+		deleteExtentsByPartition[ext.PartitionId] = exts
+	}
+
+	return
+}
+
+func (mp *metaPartition)deleteExtentsByPartition(deleteExtentsByPartition map[uint64][]proto.ExtentKey)(occurErrors map[uint64]error) {
+	//wait all Partition do BatchDeleteExtents fininsh
+	var (
+		wg sync.WaitGroup
+		lock sync.Mutex
+	)
+	occurErrors = make(map[uint64]error)
+	for partitionID, extents := range deleteExtentsByPartition {
+		wg.Add(1)
+		go func(partitionID uint64, extents []proto.ExtentKey) {
+			perr := mp.doBatchDeleteExtentsByPartition(partitionID, extents)
+			lock.Lock()
+			occurErrors[partitionID] = perr
+			lock.Unlock()
+			wg.Done()
+		}(partitionID, extents)
+	}
+	wg.Wait()
+	return
+}
+
+func (mp *metaPartition)forceDeleteExtents(needDeleteExtents []proto.ExtentKey){
+	extentsByPartition :=mp.divideExtentsByPartition(needDeleteExtents)
+	occurErrors:=mp.deleteExtentsByPartition(extentsByPartition)
+	for partitionID,extents:=range extentsByPartition {
+		if occurErrors[partitionID]!=nil {
+			mp.extDelCh<-extents
+			log.LogErrorf("forceDeleteExtents on dataPartition(%v) error(%v) cnt(%v)",partitionID,occurErrors[partitionID],len(extents))
+		}else {
+			log.LogInfof("forceDeleteExtents on dataPartition(%v) successDelete cnt(%v)",partitionID,len(extents))
+		}
+	}
+	log.LogInfof("forceDeleteExtents success Delete Extent Cnt(%v)",len(needDeleteExtents))
+}
+
+
 
 func (mp *metaPartition) appendDelExtentsToFile(fileList *synclist.SyncList) {
 	defer func() {
@@ -246,6 +299,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		}
 		buff := bytes.NewBuffer(buf)
 		cursor += uint64(n)
+		needDeleteExtents:=make([]proto.ExtentKey,0)
 		for {
 			if buff.Len() == 0 {
 				break
@@ -258,15 +312,13 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			if err = ek.UnmarshalBinary(buff); err != nil {
 				panic(err)
 			}
-			// delete dataPartition
-			if err = mp.doDeleteMarkedInodes(&ek); err != nil {
-				eks := make([]proto.ExtentKey, 0)
-				eks = append(eks, ek)
-				mp.extDelCh <- eks
-				log.LogWarnf("[deleteExtentsFromList] partitionId=%d, %s",
-					mp.config.PartitionId, err.Error())
+			needDeleteExtents=append(needDeleteExtents,ek)
+			if len(needDeleteExtents)>BatchCounts{
+				mp.forceDeleteExtents(needDeleteExtents)
+				needDeleteExtents=make([]proto.ExtentKey,0)
 			}
 		}
+		mp.forceDeleteExtents(needDeleteExtents)
 		buff.Reset()
 		buff.WriteString(fmt.Sprintf("%s %d", fileName, cursor))
 		if _, err = mp.submit(opFSMInternalDelExtentCursor, buff.Bytes()); err != nil {

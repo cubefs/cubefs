@@ -3,6 +3,7 @@ package metanode
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"sync"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -43,6 +44,18 @@ func (se *SortedExtents) MarshalBinary() ([]byte, error) {
 		data = append(data, ekdata...)
 	}
 	return data, nil
+}
+
+func (se *SortedExtents) WriteTo(writer io.Writer) (err error) {
+	se.RLock()
+	defer se.RUnlock()
+
+	for _, ek := range se.eks {
+		if err = ek.WriteTo(writer); err != nil {
+			return
+		}
+	}
+	return
 }
 
 func (se *SortedExtents) UnmarshalBinary(data []byte) error {

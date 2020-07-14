@@ -67,6 +67,7 @@ type MetaPartitionConfig struct {
 	Start       uint64              `json:"start"` // Minimal Inode ID of this range. (Required during initialization)
 	End         uint64              `json:"end"`   // Maximal Inode ID of this range. (Required during initialization)
 	Peers       []proto.Peer        `json:"peers"` // Peers information of the raftStore
+	Store       uint64              `json:"store"` // 0:memory , 1:rocksdb  default memory
 	Cursor      uint64              `json:"-"`     // Cursor ID of the inode that have been assigned
 	NodeId      uint64              `json:"-"`
 	RootDir     string              `json:"-"`
@@ -105,92 +106,6 @@ func (c *MetaPartitionConfig) sortPeers() {
 	sort.Sort(sp)
 }
 
-// OpInode defines the interface for the inode operations.
-type OpInode interface {
-	CreateInode(req *CreateInoReq, p *Packet) (err error)
-	UnlinkInode(req *UnlinkInoReq, p *Packet) (err error)
-	UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (err error)
-	InodeGet(req *InodeGetReq, p *Packet) (err error)
-	InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error)
-	CreateInodeLink(req *LinkInodeReq, p *Packet) (err error)
-	EvictInode(req *EvictInodeReq, p *Packet) (err error)
-	EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error)
-	SetAttr(reqData []byte, p *Packet) (err error)
-	GetInodeTree() *BTree
-	DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error)
-	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error)
-}
-
-type OpExtend interface {
-	SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err error)
-	GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err error)
-	BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packet) (err error)
-	RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error)
-	ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err error)
-}
-
-// OpDentry defines the interface for the dentry operations.
-type OpDentry interface {
-	CreateDentry(req *CreateDentryReq, p *Packet) (err error)
-	DeleteDentry(req *DeleteDentryReq, p *Packet) (err error)
-	DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet) (err error)
-	UpdateDentry(req *UpdateDentryReq, p *Packet) (err error)
-	ReadDir(req *ReadDirReq, p *Packet) (err error)
-	Lookup(req *LookupReq, p *Packet) (err error)
-	GetDentryTree() *BTree
-}
-
-// OpExtent defines the interface for the extent operations.
-type OpExtent interface {
-	ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error)
-	ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error)
-	ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (err error)
-	BatchExtentAppend(req *proto.AppendExtentKeysRequest, p *Packet) (err error)
-}
-
-type OpMultipart interface {
-	GetMultipart(req *proto.GetMultipartRequest, p *Packet) (err error)
-	CreateMultipart(req *proto.CreateMultipartRequest, p *Packet) (err error)
-	AppendMultipart(req *proto.AddMultipartPartRequest, p *Packet) (err error)
-	RemoveMultipart(req *proto.RemoveMultipartRequest, p *Packet) (err error)
-	ListMultipart(req *proto.ListMultipartRequest, p *Packet) (err error)
-}
-
-// OpMeta defines the interface for the metadata operations.
-type OpMeta interface {
-	OpInode
-	OpDentry
-	OpExtent
-	OpPartition
-	OpExtend
-	OpMultipart
-}
-
-// OpPartition defines the interface for the partition operations.
-type OpPartition interface {
-	IsLeader() (leaderAddr string, isLeader bool)
-	GetCursor() uint64
-	GetBaseConfig() MetaPartitionConfig
-	ResponseLoadMetaPartition(p *Packet) (err error)
-	PersistMetadata() (err error)
-	ChangeMember(changeType raftproto.ConfChangeType, peer raftproto.Peer, context []byte) (resp interface{}, err error)
-	Reset() (err error)
-	UpdatePartition(req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error)
-	DeleteRaft() error
-	IsExsitPeer(peer proto.Peer) bool
-	TryToLeader(groupID uint64) error
-	CanRemoveRaftMember(peer proto.Peer) error
-	IsEquareCreateMetaPartitionRequst(request *proto.CreateMetaPartitionRequest) (err error)
-}
-
-// MetaPartition defines the interface for the meta partition operations.
-type MetaPartition interface {
-	Start() error
-	Stop()
-	OpMeta
-	LoadSnapshot(path string) error
-}
-
 // metaPartition manages the range of the inode IDs.
 // When a new inode is requested, it allocates a new inode id for this inode if possible.
 // States:
@@ -201,10 +116,10 @@ type metaPartition struct {
 	config        *MetaPartitionConfig
 	size          uint64 // For partition all file size
 	applyID       uint64 // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
-	dentryTree    *BTree
-	inodeTree     *BTree // btree for inodes
-	extendTree    *BTree // btree for inode extend (XAttr) management
-	multipartTree *BTree // collection for multipart management
+	dentryTree    DentryTree
+	inodeTree     InodeTree     // btree for inodes
+	extendTree    ExtendTree    // btree for inode extend (XAttr) management
+	multipartTree MultipartTree // collection for multipart management
 	raftPartition raftstore.Partition
 	stopC         chan bool
 	storeChan     chan *storeMsg
@@ -215,6 +130,8 @@ type metaPartition struct {
 	extReset      chan struct{}
 	vol           *Vol
 	manager       *metadataManager
+
+	persistedApplyID uint64
 }
 
 // Start starts a meta partition.
@@ -361,13 +278,36 @@ func (mp *metaPartition) getRaftPort() (heartbeat, replica int, err error) {
 }
 
 // NewMetaPartition creates a new meta partition with the specified configuration.
-func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaPartition {
+func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (*metaPartition, error) {
+	var (
+		inodeTree     InodeTree
+		dentryTree    DentryTree
+		extendTree    ExtendTree
+		multipartTree MultipartTree
+	)
+
+	if conf.Store == 0 {
+		inodeTree = &InodeBTree{NewBtree()}
+		dentryTree = &DentryBTree{NewBtree()}
+		extendTree = &ExtendBTree{NewBtree()}
+		multipartTree = &MultipartBTree{NewBtree()}
+	} else {
+		tree, err := DefaultRocksTree(path.Join(conf.RootDir, strconv.Itoa(int(conf.PartitionId))))
+		if err != nil {
+			return nil, err
+		}
+		inodeTree = &InodeRocks{tree}
+		dentryTree = &DentryRocks{tree}
+		extendTree = &ExtendRocks{tree}
+		multipartTree = &MultipartRocks{tree}
+	}
+
 	mp := &metaPartition{
 		config:        conf,
-		dentryTree:    NewBtree(),
-		inodeTree:     NewBtree(),
-		extendTree:    NewBtree(),
-		multipartTree: NewBtree(),
+		inodeTree:     inodeTree,
+		dentryTree:    dentryTree,
+		extendTree:    extendTree,
+		multipartTree: multipartTree,
 		stopC:         make(chan bool),
 		storeChan:     make(chan *storeMsg, 5),
 		freeList:      newFreeList(),
@@ -376,7 +316,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		vol:           NewVol(),
 		manager:       manager,
 	}
-	return mp
+	return mp, nil
 }
 
 // IsLeader returns the raft leader address and if the current meta partition is the leader.
@@ -421,23 +361,6 @@ func (mp *metaPartition) PersistMetadata() (err error) {
 	return
 }
 
-func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
-	if err = mp.loadInode(snapshotPath); err != nil {
-		return
-	}
-	if err = mp.loadDentry(snapshotPath); err != nil {
-		return
-	}
-	if err = mp.loadExtend(snapshotPath); err != nil {
-		return
-	}
-	if err = mp.loadMultipart(snapshotPath); err != nil {
-		return
-	}
-	err = mp.loadApplyID(snapshotPath)
-	return
-}
-
 func (mp *metaPartition) load() (err error) {
 	if err = mp.loadMetadata(); err != nil {
 		return
@@ -460,10 +383,16 @@ func (mp *metaPartition) load() (err error) {
 }
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
+
+	if mp.config.Store != 0 {
+		defer sm.snapshot.Close()
+		return mp.inodeTree.Flush()
+	}
+
 	tmpDir := path.Join(mp.config.RootDir, snapshotDirTmp)
 	if _, err = os.Stat(tmpDir); err == nil {
 		// TODO Unhandled errors
-		os.RemoveAll(tmpDir)
+		log.LogIfNotNil(os.RemoveAll(tmpDir))
 	}
 	err = nil
 	if err = os.MkdirAll(tmpDir, 0775); err != nil {
@@ -473,7 +402,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 	defer func() {
 		if err != nil {
 			// TODO Unhandled errors
-			os.RemoveAll(tmpDir)
+			log.LogIfNotNil(os.RemoveAll(tmpDir))
 		}
 	}()
 	var crcBuffer = bytes.NewBuffer(make([]byte, 0, 16))
@@ -522,7 +451,10 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		_ = os.Rename(backupDir, snapshotDir)
 		return
 	}
-	err = os.RemoveAll(backupDir)
+	if err = os.RemoveAll(backupDir); err != nil {
+		return
+	}
+	mp.updatePersistedApplyID(sm.applyIndex)
 	return
 }
 
@@ -614,8 +546,8 @@ func (mp *metaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 		DoCompare:   true,
 	}
 	resp.MaxInode = mp.GetCursor()
-	resp.InodeCount = uint64(mp.getInodeTree().Len())
-	resp.DentryCount = uint64(mp.dentryTree.Len())
+	resp.InodeCount = uint64(mp.inodeTree.Count())
+	resp.DentryCount = uint64(mp.dentryTree.Count())
 	resp.ApplyID = mp.applyID
 	if err != nil {
 		err = errors.Trace(err,
@@ -640,8 +572,11 @@ func (mp *metaPartition) MarshalJSON() ([]byte, error) {
 // TODO remove? no usage?
 // Reset resets the meta partition.
 func (mp *metaPartition) Reset() (err error) {
-	mp.inodeTree.Reset()
-	mp.dentryTree.Reset()
+	mp.inodeTree.Release()
+	mp.dentryTree.Release()
+	mp.extendTree.Release()
+	mp.multipartTree.Release()
+
 	mp.config.Cursor = 0
 	mp.applyID = 0
 
@@ -652,6 +587,11 @@ func (mp *metaPartition) Reset() (err error) {
 		if err = os.Remove(filepath); err != nil {
 			return
 		}
+	}
+
+	dir := path.Join(mp.config.RootDir, strconv.Itoa(int(mp.config.PartitionId)))
+	if err := os.RemoveAll(dir); err != nil {
+		log.LogErrorf("drop btree:[%s] has err:[%s]", dir, err.Error())
 	}
 
 	return

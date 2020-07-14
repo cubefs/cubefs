@@ -17,6 +17,7 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+	"io"
 	"sync"
 
 	"github.com/chubaofs/chubaofs/util/btree"
@@ -166,4 +167,43 @@ func (e *Extend) Bytes() ([]byte, error) {
 		}
 	}
 	return buffer.Bytes(), nil
+}
+
+func (e *Extend) WriteTo(writer io.Writer) (err error) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	var n int
+	var tmp = make([]byte, binary.MaxVarintLen64)
+	// write inode with varint codec
+	n = binary.PutUvarint(tmp, e.inode)
+	if _, err = writer.Write(tmp[:n]); err != nil {
+		return
+	}
+	// write number of key-value pairs
+	n = binary.PutUvarint(tmp, uint64(len(e.dataMap)))
+	if _, err = writer.Write(tmp[:n]); err != nil {
+		return
+	}
+	// write key-value paris
+	var writeBytes = func(val []byte) error {
+		n = binary.PutUvarint(tmp, uint64(len(val)))
+		if _, err = writer.Write(tmp[:n]); err != nil {
+			return err
+		}
+		if _, err = writer.Write(val); err != nil {
+			return err
+		}
+		return nil
+	}
+	for k, v := range e.dataMap {
+		// key
+		if err = writeBytes([]byte(k)); err != nil {
+			return
+		}
+		// value
+		if err = writeBytes(v); err != nil {
+			return
+		}
+	}
+	return
 }

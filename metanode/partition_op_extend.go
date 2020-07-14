@@ -38,12 +38,13 @@ func (mp *metaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err er
 		Inode:       req.Inode,
 		Key:         req.Key,
 	}
-	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
-	if treeItem != nil {
-		extend := treeItem.(*Extend)
-		if value, exist := extend.Get([]byte(req.Key)); exist {
-			response.Value = string(value)
-		}
+	extend, err := mp.extendTree.Get(req.Inode)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return err
+	}
+	if value, exist := extend.Get([]byte(req.Key)); exist {
+		response.Value = string(value)
 	}
 	var encoded []byte
 	encoded, err = json.Marshal(response)
@@ -62,20 +63,21 @@ func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 		XAttrs:      make([]*proto.XAttrInfo, 0, len(req.Inodes)),
 	}
 	for _, inode := range req.Inodes {
-		treeItem := mp.extendTree.Get(NewExtend(inode))
-		if treeItem != nil {
-			extend := treeItem.(*Extend)
-			info := &proto.XAttrInfo{
-				Inode:  inode,
-				XAttrs: make(map[string]string),
-			}
-			for _, key := range req.Keys {
-				if val, exist := extend.Get([]byte(key)); exist {
-					info.XAttrs[key] = string(val)
-				}
-			}
-			response.XAttrs = append(response.XAttrs, info)
+		extend, err := mp.extendTree.Get(inode)
+		if err != nil {
+			continue
 		}
+
+		info := &proto.XAttrInfo{
+			Inode:  inode,
+			XAttrs: make(map[string]string),
+		}
+		for _, key := range req.Keys {
+			if val, exist := extend.Get([]byte(key)); exist {
+				info.XAttrs[key] = string(val)
+			}
+		}
+		response.XAttrs = append(response.XAttrs, info)
 	}
 	var encoded []byte
 	if encoded, err = json.Marshal(response); err != nil {
@@ -104,14 +106,16 @@ func (mp *metaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err 
 		Inode:       req.Inode,
 		XAttrs:      make([]string, 0),
 	}
-	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
-	if treeItem != nil {
-		extend := treeItem.(*Extend)
-		extend.Range(func(key, value []byte) bool {
-			response.XAttrs = append(response.XAttrs, string(key))
-			return true
-		})
+	extend, err := mp.extendTree.Get(req.Inode)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return err
 	}
+
+	extend.Range(func(key, value []byte) bool {
+		response.XAttrs = append(response.XAttrs, string(key))
+		return true
+	})
 	var encoded []byte
 	encoded, err = json.Marshal(response)
 	if err != nil {

@@ -123,12 +123,9 @@ type fileData struct {
 
 // MetaItemIterator defines the iterator of the MetaItem.
 type MetaItemIterator struct {
-	fileRootDir   string
-	applyID       uint64
-	inodeTree     *BTree
-	dentryTree    *BTree
-	extendTree    *BTree
-	multipartTree *BTree
+	fileRootDir string
+	applyID     uint64
+	snap        Snapshot
 
 	filenames []string
 
@@ -144,10 +141,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si = new(MetaItemIterator)
 	si.fileRootDir = mp.config.RootDir
 	si.applyID = mp.applyID
-	si.inodeTree = mp.inodeTree.GetTree()
-	si.dentryTree = mp.dentryTree.GetTree()
-	si.extendTree = mp.extendTree.GetTree()
-	si.multipartTree = mp.multipartTree.GetTree()
+	si.snap = NewSnapshot(mp)
 	si.dataCh = make(chan interface{})
 	si.errorCh = make(chan error, 1)
 	si.closeCh = make(chan struct{})
@@ -169,6 +163,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	// start data producer
 	go func(iter *MetaItemIterator) {
 		defer func() {
+			iter.snap.Close()
 			close(iter.dataCh)
 			close(iter.errorCh)
 		}()
@@ -198,33 +193,67 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		produceItem(si.applyID)
 
 		// process inodes
-		iter.inodeTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+		if err = iter.snap.Range(InodeType, func(v []byte) (bool, error) {
+			item := &Inode{}
+			if err := item.Unmarshal(v); err != nil {
+				return false, err
+			}
+			produceItem(item)
+			return true, nil
+		}); err != nil {
+			produceError(err)
+			return
+		}
+
 		if checkClose() {
 			return
 		}
-		// process dentries
-		iter.dentryTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+
+		//process dentry
+		if err = iter.snap.Range(DentryType, func(v []byte) (bool, error) {
+			item := &Dentry{}
+			if err := item.Unmarshal(v); err != nil {
+				return false, err
+			}
+			produceItem(item)
+			return true, nil
+		}); err != nil {
+			produceError(err)
+			return
+		}
+
 		if checkClose() {
 			return
 		}
+
 		// process extends
-		iter.extendTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+		if err = iter.snap.Range(ExtendType, func(v []byte) (bool, error) {
+			if item, err := NewExtendFromBytes(v); err != nil {
+				return false, err
+			} else {
+				produceItem(item)
+			}
+			return true, nil
+		}); err != nil {
+			produceError(err)
+			return
+		}
 		if checkClose() {
 			return
 		}
+
 		// process multiparts
-		iter.multipartTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+		if err = iter.snap.Range(MultipartType, func(v []byte) (bool, error) {
+			produceItem(MultipartFromBytes(v))
+			return true, nil
+		}); err != nil {
+			produceError(err)
+			return
+		}
 		if checkClose() {
 			return
 		}
+
 		// process extent del files
 		var err error
 		var raw []byte

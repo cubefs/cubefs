@@ -19,28 +19,27 @@ type ExtendOpResult struct {
 	Extend *Extend
 }
 
-func (mp *metaPartition) fsmSetXAttr(extend *Extend) (err error) {
-	treeItem := mp.extendTree.CopyGet(extend)
-	var e *Extend
-	if treeItem == nil {
+func (mp *metaPartition) fsmSetXAttr(extend *Extend) error {
+	e, err := mp.extendTree.Get(extend.inode)
+	if err != nil {
+		return err
+	}
+	if e == nil {
 		e = NewExtend(extend.inode)
-		mp.extendTree.ReplaceOrInsert(e, true)
-	} else {
-		e = treeItem.(*Extend)
 	}
 	e.Merge(extend, true)
-	return
+
+	return mp.extendTree.Put(e)
 }
 
-func (mp *metaPartition) fsmRemoveXAttr(extend *Extend) (err error) {
-	treeItem := mp.extendTree.CopyGet(extend)
-	if treeItem == nil {
-		return
+func (mp *metaPartition) fsmRemoveXAttr(extend *Extend) error {
+	e, err := mp.extendTree.Get(extend.inode)
+	if err == nil {
+		return err
 	}
-	e := treeItem.(*Extend)
 	extend.Range(func(key, value []byte) bool {
 		e.Remove(key)
 		return true
 	})
-	return
+	return mp.extendTree.Put(e)
 }

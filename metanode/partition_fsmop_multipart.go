@@ -14,18 +14,25 @@
 
 package metanode
 
-import "github.com/chubaofs/chubaofs/proto"
+import (
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
+)
 
 func (mp *metaPartition) fsmCreateMultipart(multipart *Multipart) (status uint8) {
-	_, ok := mp.multipartTree.ReplaceOrInsert(multipart, false)
-	if !ok {
-		return proto.OpExistErr
+	if err := mp.multipartTree.Create(multipart); err != nil {
+		if err == existsError {
+			return proto.OpExistErr
+		} else {
+			log.LogErrorf("create multipart has err:[%s]", err.Error())
+			return proto.OpErr
+		}
 	}
 	return proto.OpOk
 }
 
 func (mp *metaPartition) fsmRemoveMultipart(multipart *Multipart) (status uint8) {
-	deletedItem := mp.multipartTree.Delete(multipart)
+	deletedItem := mp.multipartTree.Delete(multipart.key, multipart.id)
 	if deletedItem == nil {
 		return proto.OpNotExistErr
 	}
@@ -33,13 +40,13 @@ func (mp *metaPartition) fsmRemoveMultipart(multipart *Multipart) (status uint8)
 }
 
 func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (status uint8) {
-	storedItem := mp.multipartTree.CopyGet(multipart)
-	if storedItem == nil {
-		return proto.OpNotExistErr
-	}
-	storedMultipart, is := storedItem.(*Multipart)
-	if !is {
-		return proto.OpNotExistErr
+	storedMultipart, err := mp.multipartTree.Get(multipart.key, multipart.id)
+	if err != nil {
+		if err == existsError {
+			return proto.OpNotExistErr
+		}
+		log.LogError(err)
+		return proto.OpErr
 	}
 	for _, part := range multipart.Parts() {
 		actual, stored := storedMultipart.LoadOrStorePart(part)

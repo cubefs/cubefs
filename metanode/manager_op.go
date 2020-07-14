@@ -59,7 +59,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		adminTask.Status = proto.TaskFailed
 		goto end
 	}
-	m.Range(func(id uint64, partition MetaPartition) bool {
+	m.Range(func(id uint64, partition *metaPartition) bool {
 		mConf := partition.GetBaseConfig()
 		mpr := &proto.MetaPartitionReport{
 			PartitionID: mConf.PartitionId,
@@ -68,8 +68,8 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			Status:      proto.ReadWrite,
 			MaxInodeID:  mConf.Cursor,
 			VolName:     mConf.VolName,
-			InodeCnt:    uint64(partition.GetInodeTree().Len()),
-			DentryCnt:   uint64(partition.GetDentryTree().Len()),
+			InodeCnt:    uint64(partition.inodeTree.Count()),
+			DentryCnt:   uint64(partition.inodeTree.Count()),
 		}
 		addr, isLeader := partition.IsLeader()
 		if addr == "" {
@@ -192,7 +192,7 @@ func (m *metadataManager) opFreeInodeOnRaftFollower(conn net.Conn, p *Packet,
 		m.respondToClient(conn, p)
 		return
 	}
-	mp.(*metaPartition).internalDelete(p.Data[:p.Size])
+	mp.internalDelete(p.Data[:p.Size])
 	p.PacketOkReply()
 	m.respondToClient(conn, p)
 

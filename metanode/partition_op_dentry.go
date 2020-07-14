@@ -192,11 +192,7 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 
 // Lookup looks up the given dentry from the request.
 func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
-	dentry := &Dentry{
-		ParentId: req.ParentID,
-		Name:     req.Name,
-	}
-	dentry, status := mp.getDentry(dentry)
+	dentry, status := mp.getDentry(req.ParentID, req.Name)
 	var reply []byte
 	if status == proto.OpOk {
 		resp := &LookupResp{
@@ -211,9 +207,4 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 	}
 	p.PacketErrorWithBody(status, reply)
 	return
-}
-
-// GetDentryTree returns the dentry tree stored in the meta partition.
-func (mp *metaPartition) GetDentryTree() *BTree {
-	return mp.dentryTree.GetTree()
 }

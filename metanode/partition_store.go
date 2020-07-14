@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -328,6 +329,7 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 	if cursor > atomic.LoadUint64(&mp.config.Cursor) {
 		atomic.StoreUint64(&mp.config.Cursor, cursor)
 	}
+	mp.updatePersistedApplyID(cursor)
 	log.LogInfof("loadApplyID: load complete: partitionID(%v) volume(%v) applyID(%v) filename(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.applyID, filename)
 	return
@@ -387,96 +389,113 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 	return
 }
 
-func (mp *metaPartition) storeInode(rootDir string,
-	sm *storeMsg) (crc uint32, err error) {
+func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, inodeFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
 		O_CREATE, 0755)
 	if err != nil {
 		return
 	}
+	writer := bufio.NewWriter(fp)
 	defer func() {
+		if err = writer.Flush(); err != nil {
+			return
+		}
 		err = fp.Sync()
 		// TODO Unhandled errors
 		fp.Close()
 	}()
-	var data []byte
-	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-	sm.inodeTree.Ascend(func(i BtreeItem) bool {
-		ino := i.(*Inode)
-		if data, err = ino.Marshal(); err != nil {
-			return false
+	var (
+		buff  = bytes.NewBuffer(nil)
+		reuse = bytes.NewBuffer(nil)
+	)
+
+	err = sm.snapshot.Range(InodeType, func(v []byte) (b bool, err error) {
+		ino := &Inode{}
+		if err := ino.Unmarshal(v); err != nil {
+			return false, err
 		}
-		// set length
-		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
-		if _, err = fp.Write(lenBuf); err != nil {
-			return false
+
+		buff.Reset()
+		if err = ino.WriteTo(buff, reuse); err != nil {
+			return false, err
 		}
-		if _, err = sign.Write(lenBuf); err != nil {
-			return false
+		var data = buff.Bytes()
+		// write length
+		if err = binary.Write(writer, binary.BigEndian, uint32(len(data))); err != nil {
+			return false, err
 		}
-		// set body
-		if _, err = fp.Write(data); err != nil {
-			return false
+		if err = binary.Write(sign, binary.BigEndian, uint32(len(data))); err != nil {
+			return false, err
+		}
+		if _, err = writer.Write(data); err != nil {
+			return false, err
+
 		}
 		if _, err = sign.Write(data); err != nil {
-			return false
+			return false, err
 		}
-		return true
+		return true, nil
 	})
+
+	if err != nil {
+		log.LogErrorf("range inode has err:[%s]", err.Error())
+		return
+	}
+
 	crc = sign.Sum32()
-	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), crc)
+	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%v) crc(%v)",
+		mp.config.PartitionId, mp.config.VolName, crc)
 	return
 }
 
-func (mp *metaPartition) storeDentry(rootDir string,
-	sm *storeMsg) (crc uint32, err error) {
+func (mp *metaPartition) storeDentry(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, dentryFile)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
-		O_CREATE, 0755)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
 	if err != nil {
 		return
 	}
+	var writer = bufio.NewWriter(fp)
 	defer func() {
+		if err = writer.Flush(); err != nil {
+			return
+		}
 		err = fp.Sync()
 		// TODO Unhandled errors
 		fp.Close()
 	}()
-	var data []byte
-	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-	sm.dentryTree.Ascend(func(i BtreeItem) bool {
-		dentry := i.(*Dentry)
-		data, err = dentry.Marshal()
-		if err != nil {
-			return false
+
+	err = sm.snapshot.Range(DentryType, func(data []byte) (b bool, err error) {
+		// write length
+		if err = binary.Write(writer, binary.BigEndian, uint32(len(data))); err != nil {
+			return false, err
 		}
-		// set length
-		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
-		if _, err = fp.Write(lenBuf); err != nil {
-			return false
+		if err = binary.Write(sign, binary.BigEndian, uint32(len(data))); err != nil {
+			return false, err
 		}
-		if _, err = sign.Write(lenBuf); err != nil {
-			return false
-		}
-		if _, err = fp.Write(data); err != nil {
-			return false
+		if _, err = writer.Write(data); err != nil {
+			return false, err
 		}
 		if _, err = sign.Write(data); err != nil {
-			return false
+			return false, err
 		}
-		return true
+		return true, nil
 	})
+
+	if err != nil {
+		log.LogErrorf("range dentry has err:[%s]", err.Error())
+		return
+	}
+
 	crc = sign.Sum32()
-	log.LogInfof("storeDentry: store complete: partitoinID(%v) volume(%v) numDentries(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.dentryTree.Len(), crc)
+	log.LogInfof("storeDentry: store complete: partitoinID(%v) volume(%v) crc(%v)",
+		mp.config.PartitionId, mp.config.VolName, crc)
 	return
 }
 
 func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, err error) {
-	var extendTree = sm.extendTree
 	var fp = path.Join(rootDir, extendFile)
 	var f *os.File
 	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
@@ -490,40 +509,39 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 		}
 	}()
 	var writer = bufio.NewWriterSize(f, 4*1024*1024)
-	var crc32 = crc32.NewIEEE()
+	var sign = crc32.NewIEEE()
 	var varintTmp = make([]byte, binary.MaxVarintLen64)
 	var n int
 	// write number of extends
-	n = binary.PutUvarint(varintTmp, uint64(extendTree.Len()))
+	count, err := sm.snapshot.Count(ExtendType)
+	if err != nil {
+		return 0, err
+	}
+	n = binary.PutUvarint(varintTmp, count)
 	if _, err = writer.Write(varintTmp[:n]); err != nil {
 		return
 	}
-	if _, err = crc32.Write(varintTmp[:n]); err != nil {
+	if _, err = sign.Write(varintTmp[:n]); err != nil {
 		return
 	}
-	extendTree.Ascend(func(i BtreeItem) bool {
-		e := i.(*Extend)
-		var raw []byte
-		if raw, err = e.Bytes(); err != nil {
-			return false
-		}
-		// write length
-		n = binary.PutUvarint(varintTmp, uint64(len(raw)))
+
+	err = sm.snapshot.Range(ExtendType, func(data []byte) (b bool, err error) {
+		n = binary.PutUvarint(varintTmp, uint64(len(data)))
 		if _, err = writer.Write(varintTmp[:n]); err != nil {
-			return false
+			return false, err
 		}
-		if _, err = crc32.Write(varintTmp[:n]); err != nil {
-			return false
+		if _, err = sign.Write(varintTmp[:n]); err != nil {
+			return false, err
 		}
-		// write raw
-		if _, err = writer.Write(raw); err != nil {
-			return false
+		if _, err = writer.Write(data); err != nil {
+			return false, err
 		}
-		if _, err = crc32.Write(raw); err != nil {
-			return false
+		if _, err = sign.Write(data); err != nil {
+			return false, err
 		}
-		return true
+		return true, nil
 	})
+
 	if err != nil {
 		return
 	}
@@ -534,14 +552,12 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	if err = f.Sync(); err != nil {
 		return
 	}
-	crc = crc32.Sum32()
-	log.LogInfof("storeExtend: store complete: partitoinID(%v) volume(%v) numExtends(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, extendTree.Len(), crc)
+	crc = sign.Sum32()
+	log.LogInfof("storeExtend: store complete: partitoinID(%v) volume(%v) crc(%v)", mp.config.PartitionId, mp.config.VolName, crc)
 	return
 }
 
 func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint32, err error) {
-	var multipartTree = sm.multipartTree
 	var fp = path.Join(rootDir, multipartFile)
 	var f *os.File
 	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
@@ -559,36 +575,36 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 	var varintTmp = make([]byte, binary.MaxVarintLen64)
 	var n int
 	// write number of extends
-	n = binary.PutUvarint(varintTmp, uint64(multipartTree.Len()))
+	count, err := sm.snapshot.Count(ExtendType)
+	if err != nil {
+		return 0, err
+	}
+	n = binary.PutUvarint(varintTmp, count)
 	if _, err = writer.Write(varintTmp[:n]); err != nil {
 		return
 	}
 	if _, err = crc32.Write(varintTmp[:n]); err != nil {
 		return
 	}
-	multipartTree.Ascend(func(i BtreeItem) bool {
-		m := i.(*Multipart)
-		var raw []byte
-		if raw, err = m.Bytes(); err != nil {
-			return false
-		}
-		// write length
+
+	err = sm.snapshot.Range(MultipartType, func(raw []byte) (b bool, err error) {
 		n = binary.PutUvarint(varintTmp, uint64(len(raw)))
 		if _, err = writer.Write(varintTmp[:n]); err != nil {
-			return false
+			return false, err
 		}
 		if _, err = crc32.Write(varintTmp[:n]); err != nil {
-			return false
+			return false, err
 		}
 		// write raw
 		if _, err = writer.Write(raw); err != nil {
-			return false
+			return false, err
 		}
 		if _, err = crc32.Write(raw); err != nil {
-			return false
+			return false, err
 		}
-		return true
+		return true, nil
 	})
+
 	if err != nil {
 		return
 	}
@@ -600,7 +616,6 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 		return
 	}
 	crc = crc32.Sum32()
-	log.LogInfof("storeMultipart: store complete: partitoinID(%v) volume(%v) numMultiparts(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, multipartTree.Len(), crc)
+	log.LogInfof("storeMultipart: store complete: partitoinID(%v) volume(%v)  crc(%v)", mp.config.PartitionId, mp.config.VolName, crc)
 	return
 }

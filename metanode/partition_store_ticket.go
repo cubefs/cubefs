@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"encoding/binary"
+	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/cmd/common"
@@ -25,12 +26,9 @@ import (
 )
 
 type storeMsg struct {
-	command       uint32
-	applyIndex    uint64
-	inodeTree     *BTree
-	dentryTree    *BTree
-	extendTree    *BTree
-	multipartTree *BTree
+	command    uint32
+	applyIndex uint64
+	snapshot   Snapshot
 }
 
 func (mp *metaPartition) startSchedule(curIndex uint64) {
@@ -110,6 +108,10 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 			case <-timer.C:
 				if mp.applyID <= curIndex {
+					timer.Reset(intervalToPersistData)
+					continue
+				}
+				if atomic.LoadUint64(&mp.persistedApplyID)-curIndex < gapToPersistData {
 					timer.Reset(intervalToPersistData)
 					continue
 				}
