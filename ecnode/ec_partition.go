@@ -15,9 +15,15 @@
 package ecnode
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chubaofs/chubaofs/codecnode"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/repl"
+	"github.com/chubaofs/chubaofs/storage"
+	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
 	"math"
 	"net"
@@ -26,10 +32,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/storage"
-	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
@@ -48,13 +50,13 @@ type EcPartition struct {
 	partitionSize int
 	volumeID      string
 
-	dataNodeNum     uint32
-	parityNodeNum   uint32
-	nodeIndex       uint32
-	dataNodes       []string
-	parityNodes     []string
-	stripeSize      uint32
-	stripeBlockSize uint32
+	dataNodeNum    uint32
+	parityNodeNum  uint32
+	nodeIndex      uint32
+	dataNodes      []string
+	parityNodes    []string
+	stripeSize     uint32
+	stripeUnitSize uint32
 
 	partitionStatus int
 
@@ -72,11 +74,11 @@ type EcPartition struct {
 }
 
 type EcPartitionCfg struct {
-	VolName         string `json:"vol_name"`
-	ClusterID       string `json:"cluster_id"`
-	PartitionID     uint64 `json:"partition_id"`
-	PartitionSize   int    `json:"partition_size"`
-	StripeBlockSize int    `json:"stripe_block_size"`
+	VolName        string `json:"vol_name"`
+	ClusterID      string `json:"cluster_id"`
+	PartitionID    uint64 `json:"partition_id"`
+	PartitionSize  int    `json:"partition_size"`
+	StripeUnitSize int    `json:"stripe_unit_size"`
 
 	DataNodeNum   uint32   `json:"data_node_num"`
 	ParityNodeNum uint32   `json:"parity_node_num"`
@@ -86,15 +88,15 @@ type EcPartitionCfg struct {
 }
 
 type EcPartitionMetaData struct {
-	PartitionID     uint64
-	PartitionSize   int
-	VolumeID        string
-	StripeBlockSize int
-	DataNodeNum     uint32
-	ParityNodeNum   uint32
-	NodeIndex       uint32
-	DataNodes       []string
-	ParityNodes     []string
+	PartitionID    uint64
+	PartitionSize  int
+	VolumeID       string
+	StripeUnitSize int
+	DataNodeNum    uint32
+	ParityNodeNum  uint32
+	NodeIndex      uint32
+	DataNodes      []string
+	ParityNodes    []string
 
 	CreateTime string
 }
@@ -160,8 +162,8 @@ func (ep *EcPartition) StripeSize() uint32 {
 	return ep.stripeSize
 }
 
-func (ep *EcPartition) StripeBlockSize() uint32 {
-	return ep.stripeBlockSize
+func (ep *EcPartition) StripeUnitSize() uint32 {
+	return ep.stripeUnitSize
 }
 
 func (ep *EcPartition) ExtentStore() *storage.ExtentStore {
@@ -252,15 +254,15 @@ func (ep EcPartition) PersistMetaData() (err error) {
 	}()
 
 	md := &EcPartitionMetaData{
-		PartitionID:     ep.config.PartitionID,
-		PartitionSize:   ep.config.PartitionSize,
-		VolumeID:        ep.config.VolName,
-		StripeBlockSize: ep.config.StripeBlockSize,
-		DataNodeNum:     ep.config.DataNodeNum,
-		ParityNodeNum:   ep.config.ParityNodeNum,
-		NodeIndex:       ep.config.NodeIndex,
-		DataNodes:       ep.config.DataNodes,
-		ParityNodes:     ep.config.ParityNodes,
+		PartitionID:    ep.config.PartitionID,
+		PartitionSize:  ep.config.PartitionSize,
+		VolumeID:       ep.config.VolName,
+		StripeUnitSize: ep.config.StripeUnitSize,
+		DataNodeNum:    ep.config.DataNodeNum,
+		ParityNodeNum:  ep.config.ParityNodeNum,
+		NodeIndex:      ep.config.NodeIndex,
+		DataNodes:      ep.config.DataNodes,
+		ParityNodes:    ep.config.ParityNodes,
 
 		CreateTime: time.Now().Format(TimeLayout),
 	}
@@ -285,15 +287,15 @@ func newEcPartition(epCfg *EcPartitionCfg, disk *Disk) (ep *EcPartition, err err
 	partition := &EcPartition{
 		clusterID: epCfg.ClusterID,
 
-		partitionID:     epCfg.PartitionID,
-		partitionSize:   epCfg.PartitionSize,
-		volumeID:        epCfg.VolName,
-		stripeBlockSize: uint32(epCfg.StripeBlockSize),
-		dataNodeNum:     epCfg.DataNodeNum,
-		parityNodeNum:   epCfg.ParityNodeNum,
-		nodeIndex:       epCfg.NodeIndex,
-		dataNodes:       epCfg.DataNodes,
-		parityNodes:     epCfg.ParityNodes,
+		partitionID:    epCfg.PartitionID,
+		partitionSize:  epCfg.PartitionSize,
+		volumeID:       epCfg.VolName,
+		stripeUnitSize: uint32(epCfg.StripeUnitSize),
+		dataNodeNum:    epCfg.DataNodeNum,
+		parityNodeNum:  epCfg.ParityNodeNum,
+		nodeIndex:      epCfg.NodeIndex,
+		dataNodes:      epCfg.DataNodes,
+		parityNodes:    epCfg.ParityNodes,
 
 		disk:            disk,
 		path:            dataPath,
@@ -303,7 +305,7 @@ func newEcPartition(epCfg *EcPartitionCfg, disk *Disk) (ep *EcPartition, err err
 		config:          epCfg,
 	}
 
-	partition.stripeSize = partition.stripeBlockSize * partition.dataNodeNum
+	partition.stripeSize = partition.stripeUnitSize * partition.dataNodeNum
 
 	partition.extentStore, err = storage.NewExtentStore(partition.path, epCfg.PartitionID, epCfg.PartitionSize)
 	if err != nil {
@@ -335,11 +337,11 @@ func LoadEcPartition(partitionDir string, disk *Disk) (ep *EcPartition, err erro
 	}
 
 	epCfg := &EcPartitionCfg{
-		VolName:         metaData.VolumeID,
-		ClusterID:       disk.space.GetClusterID(),
-		PartitionID:     metaData.PartitionID,
-		PartitionSize:   metaData.PartitionSize,
-		StripeBlockSize: metaData.StripeBlockSize,
+		VolName:        metaData.VolumeID,
+		ClusterID:      disk.space.GetClusterID(),
+		PartitionID:    metaData.PartitionID,
+		PartitionSize:  metaData.PartitionSize,
+		StripeUnitSize: metaData.StripeUnitSize,
 
 		DataNodeNum:   metaData.DataNodeNum,
 		ParityNodeNum: metaData.ParityNodeNum,
@@ -376,12 +378,12 @@ func CreateEcPartition(epCfg *EcPartitionCfg, disk *Disk, request *proto.CreateE
 
 // IsStripeRead return whether nead read from other node in one stripe
 func (ep *EcPartition) IsStripeRead(offset int64, size uint32) (isStripeRead bool) {
-	if size > ep.stripeBlockSize {
+	if size > ep.stripeUnitSize {
 		return true
 	}
 
-	firstOffsetIndex := uint32(offset) % ep.stripeSize / ep.stripeBlockSize
-	lastOffsetIndex := (uint32(offset) + size - 1) % ep.stripeSize / ep.stripeBlockSize
+	firstOffsetIndex := uint32(offset) % ep.stripeSize / ep.stripeUnitSize
+	lastOffsetIndex := (uint32(offset) + size - 1) % ep.stripeSize / ep.stripeUnitSize
 
 	if firstOffsetIndex != ep.nodeIndex || lastOffsetIndex != ep.nodeIndex {
 		return true
@@ -440,76 +442,127 @@ func (ep *EcPartition) remoteRead(nodeIndex uint32, extentID uint64, offset int6
 	return
 }
 
-// StripeRead get the data from different node in one stripe
-func (ep *EcPartition) StripeRead(extentID uint64, offset int64, size uint32) (data []byte, err error) {
-	var wg sync.WaitGroup
-	var nodeDatasLock sync.RWMutex
+func (ep *EcPartition) readFromEcNode(partitionID uint64, extentID uint64, offset int64, size uint32, stripeIndex int64) ([]byte, error) {
+	dataMap := &sync.Map{}
+	parityMap := &sync.Map{}
+	dataNodeWaitGroup := sync.WaitGroup{}
+	dataNodeWaitGroup.Add(int(ep.dataNodeNum))
+	parityNodeWaitGroup := sync.WaitGroup{}
+	parityNodeWaitGroup.Add(int(ep.parityNodeNum))
 
-	nodeDatas := make(map[int][]byte)
-	errs := make(map[int]error)
+	for i := 0; i < int(ep.dataNodeNum); i++ {
+		nodeAddr := ep.dataNodes[i]
+		go func(nodeIndex int, nodeAddr string, partitionID uint64, extentID uint64, offset int64, size uint32) {
+			request := repl.NewExtentStripeRead(partitionID, extentID, offset, size)
+			defer func() {
+				dataNodeWaitGroup.Done()
+			}()
 
-	i := int(0)
+			ep.doRead(request, nodeIndex, nodeAddr, dataMap)
+		}(i, nodeAddr, partitionID, extentID, offset, size)
+	}
 
-	for {
-		if size == 0 {
-			break
-		}
+	for i := 0; i < int(ep.parityNodeNum); i++ {
+		nodeAddr := ep.parityNodes[i]
+		go func(nodeIndex int, nodeAddr string, partitionID uint64, extentID uint64, offset int64, size uint32) {
+			request := repl.NewExtentStripeRead(partitionID, extentID, offset, size)
+			defer func() {
+				parityNodeWaitGroup.Done()
+			}()
 
-		wg.Add(1)
-		nodeIndex := uint32(offset) % ep.stripeSize / ep.stripeBlockSize
-		currSize := size
-		if currSize > ep.stripeBlockSize {
-			currSize = ep.stripeBlockSize
-		}
+			ep.doRead(request, nodeIndex, nodeAddr, dataMap)
+		}(i, nodeAddr, partitionID, extentID, offset, size)
+	}
 
-		// if offset don't start with a stripeBlock, we need to address read op to stripeBlockSize
-		currSize -= uint32(offset) % ep.stripeBlockSize
+	dataNodeWaitGroup.Wait()
 
-		if nodeIndex == ep.nodeIndex {
-			go func(num int, readOffset int64, readSize uint32) {
-				defer wg.Done()
-
-				nodeData, nodeErr := ep.localRead(extentID, readOffset, readSize)
-
-				nodeDatasLock.Lock()
-				defer nodeDatasLock.Unlock()
-				nodeDatas[num] = nodeData
-				errs[num] = nodeErr
-				if errs[num] != nil {
-					return
-				}
-			}(i, offset, currSize)
+	validDataCount := 0
+	fullDataBytes := make([][]byte, 0)
+	for i := 0; i < int(ep.dataNodeNum); i++ {
+		value, ok := dataMap.Load(i)
+		if !ok {
+			fullDataBytes[i] = nil
 		} else {
-			go func(num int, node uint32, readOffset int64, readSize uint32) {
-				defer wg.Done()
-
-				nodeData, nodeErr := ep.remoteRead(node, extentID, readOffset, readSize)
-
-				nodeDatasLock.Lock()
-				defer nodeDatasLock.Unlock()
-				nodeDatas[num] = nodeData
-				errs[num] = nodeErr
-				if errs[num] != nil {
-					return
-				}
-
-			}(i, nodeIndex, offset, currSize)
+			packet := value.(repl.Packet)
+			fullDataBytes[i] = packet.Data
+			validDataCount += 1
 		}
-
-		offset = offset + int64(currSize)
-		size = size - currSize
-		i++
-	}
-	wg.Wait()
-	var resData []byte
-
-	for j := 0; j < i; j++ {
-		if errs[i] != nil {
-			err = errs[i]
-			return
-		}
-		resData = append(resData, nodeDatas[j]...)
 	}
 
-	return resData, nil
+	if validDataCount == int(ep.dataNodeNum) {
+		return joinBytes(fullDataBytes), nil
+	}
+
+	parityNodeWaitGroup.Wait()
+	nextIndex := len(fullDataBytes)
+	for i := 0; i < int(ep.parityNodeNum); i++ {
+		value, ok := parityMap.Load(i)
+		if !ok {
+			fullDataBytes[nextIndex+i] = nil
+		} else {
+			packet := value.(repl.Packet)
+			fullDataBytes[nextIndex+i] = packet.Data
+			validDataCount += 1
+		}
+	}
+
+	if validDataCount >= int(ep.dataNodeNum) {
+		return ep.reconstructData(fullDataBytes, ep.dataNodeNum)
+	} else {
+		return []byte{}, errors.New("no enough data for reconstruct")
+	}
+}
+
+func joinBytes(pBytes [][]byte) []byte {
+	sep := []byte("")
+	return bytes.Join(pBytes, sep)
+}
+
+func (ep *EcPartition) reconstructData(pBytes [][]byte, len uint32) ([]byte, error) {
+	coder, err := codecnode.NewEcCoder(int(ep.stripeUnitSize), int(ep.dataNodeNum), int(ep.parityNodeNum))
+	if err != nil {
+		return []byte{}, errors.New(fmt.Sprintf("NewEcCoder error:%s", err))
+	}
+
+	err = coder.Reconstruct(pBytes)
+	if err != nil {
+		return []byte{}, errors.New(fmt.Sprintf("reconstruct data error:%s", err))
+	}
+
+	// TODO liuchengyu write back data
+	return joinBytes(pBytes[0:len]), nil
+}
+
+func (ep *EcPartition) doRead(request *repl.Packet, nodeIndex int, nodeAddr string, dataMap *sync.Map) {
+	conn, err := net.Dial("tcp", nodeAddr)
+	if err != nil {
+		return
+	}
+	defer func() {
+		err = conn.Close()
+		if err != nil {
+			log.LogErrorf("close tcp connection fail, host(%v) error(%v)", nodeAddr, err)
+		}
+	}()
+
+	err = request.WriteToConn(conn)
+	if err != nil {
+		err = errors.New(fmt.Sprintf("ExtentStripeRead to host(%v) error(%v)", nodeAddr, err))
+		log.LogWarnf("action[streamRepairExtent] err(%v).", err)
+		return
+	}
+
+	err = request.ReadFromConn(conn, proto.ReadDeadlineTime) // read the response
+	if err != nil {
+		err = errors.New(fmt.Sprintf("Stripe RemoteRead EcPartition(%v) from host(%v) error(%v)", request.PartitionID,
+			nodeAddr, err))
+		return
+	}
+	if request.ResultCode != proto.OpOk {
+		err = errors.New(fmt.Sprintf("Stripe RemoteRead EcPartition(%v) from host(%v) error(%v) resultCode(%v)",
+			request.PartitionID, nodeAddr, err, request.ResultCode))
+		return
+	}
+
+	dataMap.Store(nodeIndex, request)
 }

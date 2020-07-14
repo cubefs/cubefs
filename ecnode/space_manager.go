@@ -332,10 +332,10 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateEcPartitionReq
 	epCfg := &EcPartitionCfg{
 		ClusterID: manager.clusterID,
 
-		VolName:         request.VolumeID,
-		PartitionID:     request.PartitionID,
-		PartitionSize:   request.PartitionSize,
-		StripeBlockSize: request.StripeBlockSize,
+		VolName:        request.VolumeID,
+		PartitionID:    request.PartitionID,
+		PartitionSize:  request.PartitionSize,
+		StripeUnitSize: request.StripeBlockSize,
 
 		DataNodeNum:   request.DataNodeNum,
 		ParityNodeNum: request.ParityNodeNum,

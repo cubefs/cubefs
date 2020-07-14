@@ -44,7 +44,7 @@ func (e *EcNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 			DataNodes       []string `json:"data_nodes"`
 			ParityNodes     []string `json:"parity_nodes"`
 			StripeSize      uint32   `json:"stripe_size"`
-			StripeBlockSize uint32   `json:"stripe_block_size"`
+			StripeUnitSize uint32   `json:"stripe_unit_size"`
 		}{
 			ID:              ep.partitionID,
 			Size:            ep.Size(),
@@ -57,7 +57,7 @@ func (e *EcNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 			DataNodes:       ep.DataNodes(),
 			ParityNodes:     ep.ParityNodes(),
 			StripeSize:      ep.StripeSize(),
-			StripeBlockSize: ep.StripeBlockSize(),
+			StripeUnitSize: ep.StripeUnitSize(),
 		}
 		partitions = append(partitions, partition)
 		return true

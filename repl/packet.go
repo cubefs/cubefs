@@ -277,7 +277,7 @@ func NewExtentStripeRead(partitionID uint64, extentID uint64, offset int64, size
 	p.Magic = proto.ProtoMagic
 	p.ExtentOffset = offset
 	p.Size = size
-	p.Opcode = proto.OpStreamRead
+	p.Opcode = proto.OpRead
 	p.ReqID = proto.GenerateRequestID()
 	p.StartT = time.Now().UnixNano()
 
