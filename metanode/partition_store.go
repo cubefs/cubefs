@@ -406,7 +406,8 @@ func (mp *metaPartition) storeInode(rootDir string,
 	sign := crc32.NewIEEE()
 	sm.inodeTree.Ascend(func(i BtreeItem) bool {
 		ino := i.(*Inode)
-		if data, err = ino.Marshal(); err != nil {
+		orgData := GetCommonUnmarshalData(3)
+		if data, err = ino.MarshalWithBuffer(orgData); err != nil {
 			return false
 		}
 		// set length
@@ -424,6 +425,8 @@ func (mp *metaPartition) storeInode(rootDir string,
 		if _, err = sign.Write(data); err != nil {
 			return false
 		}
+		PutCommonUnmarshalData(orgData)
+
 		return true
 	})
 	crc = sign.Sum32()
@@ -450,7 +453,8 @@ func (mp *metaPartition) storeDentry(rootDir string,
 	sign := crc32.NewIEEE()
 	sm.dentryTree.Ascend(func(i BtreeItem) bool {
 		dentry := i.(*Dentry)
-		data, err = dentry.Marshal()
+		orgData := GetCommonUnmarshalData(3)
+		data, err = dentry.MarshalWithBuff(orgData)
 		if err != nil {
 			return false
 		}
@@ -468,6 +472,7 @@ func (mp *metaPartition) storeDentry(rootDir string,
 		if _, err = sign.Write(data); err != nil {
 			return false
 		}
+		PutCommonUnmarshalData(orgData)
 		return true
 	})
 	crc = sign.Sum32()
