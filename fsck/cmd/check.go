@@ -178,28 +178,28 @@ func importRawDataFromRemote(ifile, dfile *os.File, opt int) error {
 	 */
 	if opt&InodeCheckOpt != 0 {
 		for _, mp := range mps {
-			cmdline := fmt.Sprintf("http://%s:9092/getAllInodes?pid=%d", strings.Split(mp.LeaderAddr, ":")[0], mp.PartitionID)
+			cmdline := fmt.Sprintf("http://%s:%s/getAllInodes?pid=%d", strings.Split(mp.LeaderAddr, ":")[0], MetaPort, mp.PartitionID)
 			if err := exportToFile(ifile, cmdline); err != nil {
 				return err
 			}
 		}
 
 		for _, mp := range mps {
-			cmdline := fmt.Sprintf("http://%s:9092/getAllDentry?pid=%d", strings.Split(mp.LeaderAddr, ":")[0], mp.PartitionID)
+			cmdline := fmt.Sprintf("http://%s:%s/getAllDentry?pid=%d", strings.Split(mp.LeaderAddr, ":")[0], MetaPort, mp.PartitionID)
 			if err = exportToFile(dfile, cmdline); err != nil {
 				return err
 			}
 		}
 	} else if opt&DentryCheckOpt != 0 {
 		for _, mp := range mps {
-			cmdline := fmt.Sprintf("http://%s:9092/getAllDentry?pid=%d", strings.Split(mp.LeaderAddr, ":")[0], mp.PartitionID)
+			cmdline := fmt.Sprintf("http://%s:%s/getAllDentry?pid=%d", strings.Split(mp.LeaderAddr, ":")[0], MetaPort, mp.PartitionID)
 			if err = exportToFile(dfile, cmdline); err != nil {
 				return err
 			}
 		}
 
 		for _, mp := range mps {
-			cmdline := fmt.Sprintf("http://%s:9092/getAllInodes?pid=%d", strings.Split(mp.LeaderAddr, ":")[0], mp.PartitionID)
+			cmdline := fmt.Sprintf("http://%s:%s/getAllInodes?pid=%d", strings.Split(mp.LeaderAddr, ":")[0], MetaPort, mp.PartitionID)
 			if err := exportToFile(ifile, cmdline); err != nil {
 				return err
 			}

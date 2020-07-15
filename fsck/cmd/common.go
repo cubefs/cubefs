@@ -23,6 +23,7 @@ var (
 	VolName    string
 	InodesFile string
 	DensFile   string
+	MetaPort   string
 )
 
 var (
