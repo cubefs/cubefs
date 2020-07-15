@@ -33,9 +33,9 @@ func NewRootCmd() *cobra.Command {
 		newCleanCmd(),
 	)
 
-	c.Flags().StringVarP(&MasterAddr, "master", "m", "", "master addresses")
-	c.Flags().StringVarP(&VolName, "vol", "v", "", "volume name")
-	c.Flags().StringVarP(&InodesFile, "inode-list", "i", "", "inode list file")
-	c.Flags().StringVarP(&DensFile, "dentry-list", "d", "", "dentry list file")
+	c.PersistentFlags().StringVarP(&MasterAddr, "master", "m", "", "master addresses")
+	c.PersistentFlags().StringVarP(&VolName, "vol", "v", "", "volume name")
+	c.PersistentFlags().StringVarP(&InodesFile, "inode-list", "i", "", "inode list file")
+	c.PersistentFlags().StringVarP(&DensFile, "dentry-list", "d", "", "dentry list file")
 	return c
 }
