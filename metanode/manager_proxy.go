@@ -28,7 +28,7 @@ const (
 
 // The proxy is used during the leader change. When a leader of a partition changes, the proxy forwards the request to
 // the new leader.
-func (m *metadataManager) serveProxy(conn net.Conn, mp *metaPartition, p *Packet) (ok bool) {
+func (m *metadataManager) serveProxy(conn net.Conn, mp *MetaPartition, p *Packet) (ok bool) {
 	var (
 		mConn      *net.TCPConn
 		leaderAddr string

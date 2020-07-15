@@ -19,7 +19,7 @@ type ExtendOpResult struct {
 	Extend *Extend
 }
 
-func (mp *metaPartition) fsmSetXAttr(extend *Extend) error {
+func (mp *MetaPartition) fsmSetXAttr(extend *Extend) error {
 	e, err := mp.extendTree.Get(extend.inode)
 	if err != nil {
 		return err
@@ -32,7 +32,7 @@ func (mp *metaPartition) fsmSetXAttr(extend *Extend) error {
 	return mp.extendTree.Put(e)
 }
 
-func (mp *metaPartition) fsmRemoveXAttr(extend *Extend) error {
+func (mp *MetaPartition) fsmRemoveXAttr(extend *Extend) error {
 	e, err := mp.extendTree.Get(extend.inode)
 	if err == nil {
 		return err

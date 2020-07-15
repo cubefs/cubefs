@@ -59,7 +59,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		adminTask.Status = proto.TaskFailed
 		goto end
 	}
-	m.Range(func(id uint64, partition *metaPartition) bool {
+	m.Range(func(id uint64, partition *MetaPartition) bool {
 		mConf := partition.GetBaseConfig()
 		mpr := &proto.MetaPartitionReport{
 			PartitionID: mConf.PartitionId,

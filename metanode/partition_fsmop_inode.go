@@ -33,7 +33,7 @@ func NewInodeResponse() *InodeResponse {
 }
 
 // Create and inode and attach it to the inode tree.
-func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
+func (mp *MetaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 	status = proto.OpOk
 	if err := mp.inodeTree.Create(ino); err != nil {
 		if err == existsError {
@@ -46,7 +46,7 @@ func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 	return
 }
 
-func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
+func (mp *MetaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
 	item, err := mp.inodeTree.Get(ino.Inode)
@@ -65,7 +65,7 @@ func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
 	return
 }
 
-func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse) {
+func (mp *MetaPartition) getInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
 	item, err := mp.inodeTree.Get(ino.Inode)
@@ -88,7 +88,7 @@ func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse) {
 	return
 }
 
-func (mp *metaPartition) hasInode(ino *Inode) (ok bool) {
+func (mp *MetaPartition) hasInode(ino *Inode) (ok bool) {
 	item, err := mp.inodeTree.Get(ino.Inode)
 	if err != nil {
 		log.LogIfNotNil(err)
@@ -104,7 +104,7 @@ func (mp *metaPartition) hasInode(ino *Inode) (ok bool) {
 }
 
 // fsmUnlinkInode delete the specified inode from inode tree.
-func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
+func (mp *MetaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
 	inode, err := mp.inodeTree.Get(ino.Inode)
@@ -132,14 +132,14 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 }
 
 // fsmUnlinkInode delete the specified inode from inode tree.
-func (mp *metaPartition) fsmUnlinkInodeBatch(ib InodeBatch) (resp []*InodeResponse) {
+func (mp *MetaPartition) fsmUnlinkInodeBatch(ib InodeBatch) (resp []*InodeResponse) {
 	for _, ino := range ib {
 		resp = append(resp, mp.fsmUnlinkInode(ino))
 	}
 	return
 }
 
-func (mp *metaPartition) internalDelete(val []byte) (err error) {
+func (mp *MetaPartition) internalDelete(val []byte) (err error) {
 	if len(val) == 0 {
 		return
 	}
@@ -160,7 +160,7 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 	}
 }
 
-func (mp *metaPartition) internalDeleteBatch(val []byte) error {
+func (mp *MetaPartition) internalDeleteBatch(val []byte) error {
 	if len(val) == 0 {
 		return nil
 	}
@@ -178,14 +178,14 @@ func (mp *metaPartition) internalDeleteBatch(val []byte) error {
 	return nil
 }
 
-func (mp *metaPartition) internalDeleteInode(ino *Inode) {
+func (mp *MetaPartition) internalDeleteInode(ino *Inode) {
 	log.LogIfNotNil(mp.inodeTree.Delete(ino.Inode))
 	mp.freeList.Remove(ino.Inode)
 	log.LogIfNotNil(mp.extendTree.Delete(ino.Inode)) // Also delete extend attribute.
 	return
 }
 
-func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
+func (mp *MetaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	status = proto.OpOk
 	ino2, err := mp.inodeTree.Get(ino.Inode)
 	if err != nil {
@@ -205,7 +205,7 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	return
 }
 
-func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
+func (mp *MetaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 
 	resp.Status = proto.OpOk
@@ -232,7 +232,7 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	return
 }
 
-func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
+func (mp *MetaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 
 	resp.Status = proto.OpOk
@@ -261,14 +261,14 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 	return
 }
 
-func (mp *metaPartition) fsmBatchEvictInode(ib InodeBatch) (resp []*InodeResponse) {
+func (mp *MetaPartition) fsmBatchEvictInode(ib InodeBatch) (resp []*InodeResponse) {
 	for _, ino := range ib {
 		resp = append(resp, mp.fsmEvictInode(ino))
 	}
 	return
 }
 
-func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
+func (mp *MetaPartition) checkAndInsertFreeList(ino *Inode) {
 	if proto.IsDir(ino.Type) {
 		return
 	}
@@ -277,7 +277,7 @@ func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 	}
 }
 
-func (mp *metaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
+func (mp *MetaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
 	item, err := mp.inodeTree.Get(req.Inode)
 	if err != nil {
 		log.LogErrorf("get inode has err:[%s]", err.Error())

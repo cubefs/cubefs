@@ -31,7 +31,7 @@ type storeMsg struct {
 	snapshot   Snapshot
 }
 
-func (mp *metaPartition) startSchedule(curIndex uint64) {
+func (mp *MetaPartition) startSchedule(curIndex uint64) {
 	timer := time.NewTimer(time.Hour * 24 * 365)
 	timer.Stop()
 	timerCursor := time.NewTimer(intervalToSyncCursor)
@@ -137,7 +137,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	}(mp.stopC)
 }
 
-func (mp *metaPartition) stop() {
+func (mp *MetaPartition) stop() {
 	if mp.stopC != nil {
 		close(mp.stopC)
 	}

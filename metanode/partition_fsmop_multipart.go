@@ -19,7 +19,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
-func (mp *metaPartition) fsmCreateMultipart(multipart *Multipart) (status uint8) {
+func (mp *MetaPartition) fsmCreateMultipart(multipart *Multipart) (status uint8) {
 	if err := mp.multipartTree.Create(multipart); err != nil {
 		if err == existsError {
 			return proto.OpExistErr
@@ -31,7 +31,7 @@ func (mp *metaPartition) fsmCreateMultipart(multipart *Multipart) (status uint8)
 	return proto.OpOk
 }
 
-func (mp *metaPartition) fsmRemoveMultipart(multipart *Multipart) (status uint8) {
+func (mp *MetaPartition) fsmRemoveMultipart(multipart *Multipart) (status uint8) {
 	deletedItem := mp.multipartTree.Delete(multipart.key, multipart.id)
 	if deletedItem == nil {
 		return proto.OpNotExistErr
@@ -39,7 +39,7 @@ func (mp *metaPartition) fsmRemoveMultipart(multipart *Multipart) (status uint8)
 	return proto.OpOk
 }
 
-func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (status uint8) {
+func (mp *MetaPartition) fsmAppendMultipart(multipart *Multipart) (status uint8) {
 	storedMultipart, err := mp.multipartTree.Get(multipart.key, multipart.id)
 	if err != nil {
 		if err == existsError {

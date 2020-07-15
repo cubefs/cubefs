@@ -20,7 +20,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 )
 
-func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err error) {
+func (mp *MetaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err error) {
 	var extend = NewExtend(req.Inode)
 	extend.Put([]byte(req.Key), []byte(req.Value))
 	if _, err = mp.putExtend(opFSMSetXAttr, extend); err != nil {
@@ -31,7 +31,7 @@ func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err er
 	return
 }
 
-func (mp *metaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err error) {
+func (mp *MetaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err error) {
 	var response = &proto.GetXAttrResponse{
 		VolName:     req.VolName,
 		PartitionId: req.PartitionId,
@@ -56,7 +56,7 @@ func (mp *metaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err er
 	return
 }
 
-func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packet) (err error) {
+func (mp *MetaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packet) (err error) {
 	var response = &proto.BatchGetXAttrResponse{
 		VolName:     req.VolName,
 		PartitionId: req.PartitionId,
@@ -88,7 +88,7 @@ func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 	return
 }
 
-func (mp *metaPartition) RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error) {
+func (mp *MetaPartition) RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error) {
 	var extend = NewExtend(req.Inode)
 	extend.Put([]byte(req.Key), nil)
 	if _, err = mp.putExtend(opFSMRemoveXAttr, extend); err != nil {
@@ -99,7 +99,7 @@ func (mp *metaPartition) RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (
 	return
 }
 
-func (mp *metaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err error) {
+func (mp *MetaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err error) {
 	var response = &proto.ListXAttrResponse{
 		VolName:     req.VolName,
 		PartitionId: req.PartitionId,
@@ -126,7 +126,7 @@ func (mp *metaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err 
 	return
 }
 
-func (mp *metaPartition) putExtend(op uint32, extend *Extend) (resp interface{}, err error) {
+func (mp *MetaPartition) putExtend(op uint32, extend *Extend) (resp interface{}, err error) {
 	var marshaled []byte
 	if marshaled, err = extend.Bytes(); err != nil {
 		return

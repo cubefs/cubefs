@@ -34,7 +34,7 @@ func NewDentryResponse() *DentryResponse {
 }
 
 // Insert a dentry into the dentry tree.
-func (mp *metaPartition) fsmCreateDentry(dentry *Dentry, forceUpdate bool) (status uint8) {
+func (mp *MetaPartition) fsmCreateDentry(dentry *Dentry, forceUpdate bool) (status uint8) {
 	status = proto.OpOk
 	item, err := mp.inodeTree.Get(dentry.ParentId)
 	if err != nil {
@@ -89,7 +89,7 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry, forceUpdate bool) (stat
 }
 
 // Query a dentry from the dentry tree with specified dentry info.
-func (mp *metaPartition) getDentry(pid uint64, name string) (*Dentry, uint8) {
+func (mp *MetaPartition) getDentry(pid uint64, name string) (*Dentry, uint8) {
 	status := proto.OpOk
 	dentry, err := mp.dentryTree.Get(pid, name)
 	if err != nil {
@@ -101,7 +101,7 @@ func (mp *metaPartition) getDentry(pid uint64, name string) (*Dentry, uint8) {
 }
 
 // Delete dentry from the dentry tree.
-func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (resp *DentryResponse) {
+func (mp *MetaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (resp *DentryResponse) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
 
@@ -135,7 +135,7 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (resp 
 }
 
 // batch Delete dentry from the dentry tree.
-func (mp *metaPartition) fsmBatchDeleteDentry(db DentryBatch) []*DentryResponse {
+func (mp *MetaPartition) fsmBatchDeleteDentry(db DentryBatch) []*DentryResponse {
 	result := make([]*DentryResponse, 0, len(db))
 	for _, dentry := range db {
 		result = append(result, mp.fsmDeleteDentry(dentry, true))
@@ -143,7 +143,7 @@ func (mp *metaPartition) fsmBatchDeleteDentry(db DentryBatch) []*DentryResponse 
 	return result
 }
 
-func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
+func (mp *MetaPartition) fsmUpdateDentry(dentry *Dentry) (
 	resp *DentryResponse) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
@@ -159,7 +159,7 @@ func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
 
 }
 
-func (mp *metaPartition) readDir(req *ReadDirReq) (resp *ReadDirResp) {
+func (mp *MetaPartition) readDir(req *ReadDirReq) (resp *ReadDirResp) {
 	resp = &ReadDirResp{}
 	err := mp.dentryTree.Range(&Dentry{ParentId: req.ParentID}, &Dentry{ParentId: req.ParentID, Inode: math.MaxUint64}, func(v []byte) (bool, error) {
 		d := &Dentry{}

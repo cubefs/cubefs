@@ -22,7 +22,7 @@ import (
 )
 
 // CreateDentry returns a new dentry.
-func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err error) {
+func (mp *MetaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err error) {
 	if req.ParentID == req.Inode {
 		err = fmt.Errorf("parentId is equal inodeId")
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
@@ -49,7 +49,7 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 }
 
 // DeleteDentry deletes a dentry.
-func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err error) {
+func (mp *MetaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err error) {
 	dentry := &Dentry{
 		ParentId: req.ParentID,
 		Name:     req.Name,
@@ -79,7 +79,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 }
 
 // DeleteDentry deletes a dentry.
-func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet) (err error) {
+func (mp *MetaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet) (err error) {
 
 	db := make(DentryBatch, 0, len(req.Dens))
 
@@ -143,7 +143,7 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet)
 }
 
 // UpdateDentry updates a dentry.
-func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err error) {
+func (mp *MetaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err error) {
 	if req.ParentID == req.Inode {
 		err = fmt.Errorf("parentId is equal inodeId")
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
@@ -179,7 +179,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 }
 
 // ReadDir reads the directory based on the given request.
-func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
+func (mp *MetaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 	resp := mp.readDir(req)
 	reply, err := json.Marshal(resp)
 	if err != nil {
@@ -191,7 +191,7 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 }
 
 // Lookup looks up the given dentry from the request.
-func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
+func (mp *MetaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 	dentry, status := mp.getDentry(req.ParentID, req.Name)
 	var reply []byte
 	if status == proto.OpOk {

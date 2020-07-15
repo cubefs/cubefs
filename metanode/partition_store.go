@@ -49,7 +49,7 @@ const (
 	metadataFileTmp = ".meta"
 )
 
-func (mp *metaPartition) loadMetadata() (err error) {
+func (mp *MetaPartition) loadMetadata() (err error) {
 	metaFile := path.Join(mp.config.RootDir, metadataFile)
 	fp, err := os.OpenFile(metaFile, os.O_RDONLY, 0644)
 	if err != nil {
@@ -85,7 +85,7 @@ func (mp *metaPartition) loadMetadata() (err error) {
 	return
 }
 
-func (mp *metaPartition) loadInode(rootDir string) (err error) {
+func (mp *MetaPartition) loadInode(rootDir string) (err error) {
 	var numInodes uint64
 	defer func() {
 		if err == nil {
@@ -146,7 +146,7 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 }
 
 // Load dentry from the dentry snapshot.
-func (mp *metaPartition) loadDentry(rootDir string) (err error) {
+func (mp *MetaPartition) loadDentry(rootDir string) (err error) {
 	var numDentries uint64
 	defer func() {
 		if err == nil {
@@ -211,7 +211,7 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 	}
 }
 
-func (mp *metaPartition) loadExtend(rootDir string) error {
+func (mp *MetaPartition) loadExtend(rootDir string) error {
 	var err error
 	filename := path.Join(rootDir, extendFile)
 	if _, err = os.Stat(filename); err != nil {
@@ -255,7 +255,7 @@ func (mp *metaPartition) loadExtend(rootDir string) error {
 	return nil
 }
 
-func (mp *metaPartition) loadMultipart(rootDir string) error {
+func (mp *MetaPartition) loadMultipart(rootDir string) error {
 	var err error
 	filename := path.Join(rootDir, multipartFile)
 	if _, err = os.Stat(filename); err != nil {
@@ -296,7 +296,7 @@ func (mp *metaPartition) loadMultipart(rootDir string) error {
 	return nil
 }
 
-func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
+func (mp *MetaPartition) loadApplyID(rootDir string) (err error) {
 	filename := path.Join(rootDir, applyIDFile)
 	if _, err = os.Stat(filename); err != nil {
 		err = nil
@@ -335,7 +335,7 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 	return
 }
 
-func (mp *metaPartition) persistMetadata() (err error) {
+func (mp *MetaPartition) persistMetadata() (err error) {
 	if err = mp.config.checkMeta(); err != nil {
 		err = errors.NewErrorf("[persistMetadata]->%s", err.Error())
 		return
@@ -370,7 +370,7 @@ func (mp *metaPartition) persistMetadata() (err error) {
 	return
 }
 
-func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) {
+func (mp *MetaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) {
 	filename := path.Join(rootDir, applyIDFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.
 		O_CREATE, 0755)
@@ -389,7 +389,7 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 	return
 }
 
-func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (crc uint32, err error) {
+func (mp *MetaPartition) storeInode(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, inodeFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
 		O_CREATE, 0755)
@@ -450,7 +450,7 @@ func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (crc uint32, e
 	return
 }
 
-func (mp *metaPartition) storeDentry(rootDir string, sm *storeMsg) (crc uint32, err error) {
+func (mp *MetaPartition) storeDentry(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, dentryFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
 	if err != nil {
@@ -495,7 +495,7 @@ func (mp *metaPartition) storeDentry(rootDir string, sm *storeMsg) (crc uint32, 
 	return
 }
 
-func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, err error) {
+func (mp *MetaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	var fp = path.Join(rootDir, extendFile)
 	var f *os.File
 	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
@@ -557,7 +557,7 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	return
 }
 
-func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint32, err error) {
+func (mp *MetaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	var fp = path.Join(rootDir, multipartFile)
 	var f *os.File
 	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)

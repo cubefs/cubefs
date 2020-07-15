@@ -34,7 +34,7 @@ var (
 	applyIDKey  = []byte{byte(ApplyIDType)}
 )
 
-func NewSnapshot(mp *metaPartition) Snapshot {
+func NewSnapshot(mp *MetaPartition) Snapshot {
 	if mp.config.Store == 0 {
 		return &BTreeSnapShot{
 			inode:     &InodeBTree{mp.inodeTree.(*InodeBTree).GetTree()},

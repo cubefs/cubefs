@@ -22,7 +22,7 @@ import (
 )
 
 // ExtentAppend appends an extent.
-func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error) {
+func (mp *MetaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	ext := req.Extent
 	ino.Extents.Append(ext)
@@ -41,7 +41,7 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 }
 
 // ExtentsList returns the list of extents.
-func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error) {
+func (mp *MetaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	retMsg := mp.getInode(ino)
 	ino = retMsg.Msg
@@ -70,7 +70,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 }
 
 // ExtentsTruncate truncates an extent.
-func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (err error) {
+func (mp *MetaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, proto.Mode(os.ModePerm))
 	ino.Size = req.Size
 	val, err := ino.Marshal()
@@ -88,7 +88,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (er
 	return
 }
 
-func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p *Packet) (err error) {
+func (mp *MetaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	extents := req.Extents
 	for _, extent := range extents {

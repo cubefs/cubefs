@@ -46,7 +46,7 @@ func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
 }
 
 // CreateInode returns a new inode.
-func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
+func (mp *MetaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 	inoID, err := mp.nextInodeID()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
@@ -88,7 +88,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 }
 
 // DeleteInode deletes an inode.
-func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
+func (mp *MetaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	val, err := ino.Marshal()
 	if err != nil {
@@ -118,7 +118,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 }
 
 // DeleteInode deletes an inode.
-func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (err error) {
+func (mp *MetaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (err error) {
 
 	if len(req.Inodes) == 0 {
 		return nil
@@ -169,7 +169,7 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 }
 
 // InodeGet executes the inodeGet command from the client.
-func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
+func (mp *MetaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	retMsg := mp.getInode(ino)
 	ino = retMsg.Msg
@@ -195,7 +195,7 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 }
 
 // InodeGetBatch executes the inodeBatchGet command from the client.
-func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error) {
+func (mp *MetaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error) {
 	resp := &proto.BatchInodeGetResponse{}
 	ino := NewInode(0, 0)
 	for _, inoId := range req.Inodes {
@@ -218,7 +218,7 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 }
 
 // CreateInodeLink creates an inode link (e.g., soft link).
-func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err error) {
+func (mp *MetaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	val, err := ino.Marshal()
 	if err != nil {
@@ -252,7 +252,7 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 }
 
 // EvictInode evicts an inode.
-func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
+func (mp *MetaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	val, err := ino.Marshal()
 	if err != nil {
@@ -270,7 +270,7 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 }
 
 // EvictInode evicts an inode.
-func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error) {
+func (mp *MetaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error) {
 
 	if len(req.Inodes) == 0 {
 		return nil
@@ -305,7 +305,7 @@ func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (er
 }
 
 // SetAttr set the inode attributes.
-func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
+func (mp *MetaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
 	_, err = mp.submit(opFSMSetAttr, reqData)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
@@ -315,7 +315,7 @@ func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
 	return
 }
 
-func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error) {
+func (mp *MetaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error) {
 	var bytes = make([]byte, 8)
 	binary.BigEndian.PutUint64(bytes, req.Inode)
 	_, err = mp.submit(opFSMInternalDeleteInode, bytes)
@@ -327,7 +327,7 @@ func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (
 	return
 }
 
-func (mp *metaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error) {
+func (mp *MetaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error) {
 	if len(req.Inodes) == 0 {
 		return nil
 	}

@@ -45,7 +45,7 @@ type MetadataManager interface {
 	Stop()
 	//CreatePartition(id string, start, end uint64, peers []proto.Peer) error
 	HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) error
-	GetPartition(id uint64) (*metaPartition, error)
+	GetPartition(id uint64) (*MetaPartition, error)
 }
 
 // MetadataManagerConfig defines the configures in the metadata manager.
@@ -64,7 +64,7 @@ type metadataManager struct {
 	connPool           *util.ConnectPool
 	state              uint32
 	mu                 sync.RWMutex
-	partitions         map[uint64]*metaPartition // Key: metaRangeId, Val: metaPartition
+	partitions         map[uint64]*MetaPartition // Key: metaRangeId, Val: metaPartition
 	metaNode           *MetaNode
 	flDeleteBatchCount atomic.Value
 }
@@ -216,7 +216,7 @@ func (m *metadataManager) onStop() {
 }
 
 // LoadMetaPartition returns the meta partition with the specified volName.
-func (m *metadataManager) getPartition(id uint64) (mp *metaPartition, err error) {
+func (m *metadataManager) getPartition(id uint64) (mp *MetaPartition, err error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	mp, ok := m.partitions[id]
@@ -341,7 +341,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 	return
 }
 
-func (m *metadataManager) attachPartition(id uint64, partition *metaPartition) (err error) {
+func (m *metadataManager) attachPartition(id uint64, partition *MetaPartition) (err error) {
 	fmt.Println(fmt.Sprintf("start load metaPartition %v", id))
 	if err = partition.Start(); err != nil {
 		log.LogErrorf("load meta partition %v fail: %v", id, err)
@@ -429,7 +429,7 @@ func (m *metadataManager) deletePartition(id uint64) (err error) {
 }
 
 // Range scans all the meta partitions.
-func (m *metadataManager) Range(f func(i uint64, p *metaPartition) bool) {
+func (m *metadataManager) Range(f func(i uint64, p *MetaPartition) bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for k, v := range m.partitions {
@@ -440,7 +440,7 @@ func (m *metadataManager) Range(f func(i uint64, p *metaPartition) bool) {
 }
 
 // GetPartition returns the meta partition with the given ID.
-func (m *metadataManager) GetPartition(id uint64) (mp *metaPartition, err error) {
+func (m *metadataManager) GetPartition(id uint64) (mp *MetaPartition, err error) {
 	mp, err = m.getPartition(id)
 	return
 }
@@ -459,7 +459,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) Metadata
 		zoneName:   conf.ZoneName,
 		rootDir:    conf.RootDir,
 		raftStore:  conf.RaftStore,
-		partitions: make(map[uint64]*metaPartition),
+		partitions: make(map[uint64]*MetaPartition),
 		metaNode:   metaNode,
 	}
 }

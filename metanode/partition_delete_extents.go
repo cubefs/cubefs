@@ -39,16 +39,15 @@ const (
 
 var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
 
-func (mp *metaPartition) startToDeleteExtents() {
+func (mp *MetaPartition) startToDeleteExtents() {
 	fileList := synclist.New()
 	go mp.appendDelExtentsToFile(fileList)
 	go mp.deleteExtentsFromList(fileList)
 }
 
-
-func (mp *metaPartition)divideExtentsByPartition(deleteExtents []proto.ExtentKey)(deleteExtentsByPartition map[uint64][]proto.ExtentKey){
-	deleteExtentsByPartition=make(map[uint64][]proto.ExtentKey)
-	for _,ext:=range deleteExtents{
+func (mp *MetaPartition) divideExtentsByPartition(deleteExtents []proto.ExtentKey) (deleteExtentsByPartition map[uint64][]proto.ExtentKey) {
+	deleteExtentsByPartition = make(map[uint64][]proto.ExtentKey)
+	for _, ext := range deleteExtents {
 		exts, ok := deleteExtentsByPartition[ext.PartitionId]
 		if !ok {
 			exts = make([]proto.ExtentKey, 0)
@@ -60,10 +59,10 @@ func (mp *metaPartition)divideExtentsByPartition(deleteExtents []proto.ExtentKey
 	return
 }
 
-func (mp *metaPartition)deleteExtentsByPartition(deleteExtentsByPartition map[uint64][]proto.ExtentKey)(occurErrors map[uint64]error) {
+func (mp *MetaPartition) deleteExtentsByPartition(deleteExtentsByPartition map[uint64][]proto.ExtentKey) (occurErrors map[uint64]error) {
 	//wait all Partition do BatchDeleteExtents fininsh
 	var (
-		wg sync.WaitGroup
+		wg   sync.WaitGroup
 		lock sync.Mutex
 	)
 	occurErrors = make(map[uint64]error)
@@ -81,23 +80,21 @@ func (mp *metaPartition)deleteExtentsByPartition(deleteExtentsByPartition map[ui
 	return
 }
 
-func (mp *metaPartition)forceDeleteExtents(needDeleteExtents []proto.ExtentKey){
-	extentsByPartition :=mp.divideExtentsByPartition(needDeleteExtents)
-	occurErrors:=mp.deleteExtentsByPartition(extentsByPartition)
-	for partitionID,extents:=range extentsByPartition {
-		if occurErrors[partitionID]!=nil {
-			mp.extDelCh<-extents
-			log.LogErrorf("forceDeleteExtents on dataPartition(%v) error(%v) cnt(%v)",partitionID,occurErrors[partitionID],len(extents))
-		}else {
-			log.LogInfof("forceDeleteExtents on dataPartition(%v) successDelete cnt(%v)",partitionID,len(extents))
+func (mp *MetaPartition) forceDeleteExtents(needDeleteExtents []proto.ExtentKey) {
+	extentsByPartition := mp.divideExtentsByPartition(needDeleteExtents)
+	occurErrors := mp.deleteExtentsByPartition(extentsByPartition)
+	for partitionID, extents := range extentsByPartition {
+		if occurErrors[partitionID] != nil {
+			mp.extDelCh <- extents
+			log.LogErrorf("forceDeleteExtents on dataPartition(%v) error(%v) cnt(%v)", partitionID, occurErrors[partitionID], len(extents))
+		} else {
+			log.LogInfof("forceDeleteExtents on dataPartition(%v) successDelete cnt(%v)", partitionID, len(extents))
 		}
 	}
-	log.LogInfof("forceDeleteExtents success Delete Extent Cnt(%v)",len(needDeleteExtents))
+	log.LogInfof("forceDeleteExtents success Delete Extent Cnt(%v)", len(needDeleteExtents))
 }
 
-
-
-func (mp *metaPartition) appendDelExtentsToFile(fileList *synclist.SyncList) {
+func (mp *MetaPartition) appendDelExtentsToFile(fileList *synclist.SyncList) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogErrorf(fmt.Sprintf("appendDelExtentsToFile(%v) appendDelExtentsToFile panic (%v)", mp.config.PartitionId, r))
@@ -198,7 +195,7 @@ LOOP:
 }
 
 // Delete all the extents of a file.
-func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
+func (mp *MetaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogErrorf(fmt.Sprintf("deleteExtentsFromList(%v) deleteExtentsFromList panic (%v)", mp.config.PartitionId, r))
@@ -299,7 +296,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		}
 		buff := bytes.NewBuffer(buf)
 		cursor += uint64(n)
-		needDeleteExtents:=make([]proto.ExtentKey,0)
+		needDeleteExtents := make([]proto.ExtentKey, 0)
 		for {
 			if buff.Len() == 0 {
 				break
@@ -312,10 +309,10 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			if err = ek.UnmarshalBinary(buff); err != nil {
 				panic(err)
 			}
-			needDeleteExtents=append(needDeleteExtents,ek)
-			if len(needDeleteExtents)>BatchCounts{
+			needDeleteExtents = append(needDeleteExtents, ek)
+			if len(needDeleteExtents) > BatchCounts {
 				mp.forceDeleteExtents(needDeleteExtents)
-				needDeleteExtents=make([]proto.ExtentKey,0)
+				needDeleteExtents = make([]proto.ExtentKey, 0)
 			}
 		}
 		mp.forceDeleteExtents(needDeleteExtents)

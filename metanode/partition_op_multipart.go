@@ -24,7 +24,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 )
 
-func (mp *metaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet) (err error) {
+func (mp *MetaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet) (err error) {
 	multipart, err := mp.multipartTree.Get(req.Path, req.MultipartId)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
@@ -57,7 +57,7 @@ func (mp *metaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet)
 	return
 }
 
-func (mp *metaPartition) AppendMultipart(req *proto.AddMultipartPartRequest, p *Packet) (err error) {
+func (mp *MetaPartition) AppendMultipart(req *proto.AddMultipartPartRequest, p *Packet) (err error) {
 	if req.Part == nil {
 		p.PacketOkReply()
 		return
@@ -94,7 +94,7 @@ func (mp *metaPartition) AppendMultipart(req *proto.AddMultipartPartRequest, p *
 	return
 }
 
-func (mp *metaPartition) RemoveMultipart(req *proto.RemoveMultipartRequest, p *Packet) (err error) {
+func (mp *MetaPartition) RemoveMultipart(req *proto.RemoveMultipartRequest, p *Packet) (err error) {
 	multipart := &Multipart{
 		id:  req.MultipartId,
 		key: req.Path,
@@ -113,7 +113,7 @@ func (mp *metaPartition) RemoveMultipart(req *proto.RemoveMultipartRequest, p *P
 	return
 }
 
-func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *Packet) (err error) {
+func (mp *MetaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *Packet) (err error) {
 	var (
 		multipartId string
 	)
@@ -152,7 +152,7 @@ func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *P
 	return
 }
 
-func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packet) (err error) {
+func (mp *MetaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packet) (err error) {
 	max := int(req.Max)
 	prefix := req.Prefix
 	var matches = make([]*Multipart, 0, max)
@@ -218,7 +218,7 @@ func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packe
 }
 
 // SendMultipart replicate specified multipart operation to raft.
-func (mp *metaPartition) putMultipart(op uint32, multipart *Multipart) (resp interface{}, err error) {
+func (mp *MetaPartition) putMultipart(op uint32, multipart *Multipart) (resp interface{}, err error) {
 	var encoded []byte
 	if encoded, err = multipart.Bytes(); err != nil {
 		return
