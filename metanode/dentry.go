@@ -17,6 +17,7 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 // Dentry wraps necessary properties of the `dentry` information in file system.
@@ -53,8 +54,7 @@ func (d *Dentry) Marshal() (result []byte, err error) {
 	valBytes := d.MarshalValue()
 	keyLen := uint32(len(keyBytes))
 	valLen := uint32(len(valBytes))
-	buff := bytes.NewBuffer(make([]byte, 0))
-	buff.Grow(64)
+	buff := proto.GetBytesBufferFromPool()
 	if err = binary.Write(buff, binary.BigEndian, keyLen); err != nil {
 		return
 	}
@@ -67,7 +67,10 @@ func (d *Dentry) Marshal() (result []byte, err error) {
 	if _, err = buff.Write(valBytes); err != nil {
 		return
 	}
-	result = buff.Bytes()
+	result = make([]byte,buff.Len())
+	copy(result,buff.Bytes())
+	proto.PutBytesBufferToPool(buff)
+
 	return
 }
 
@@ -101,7 +104,7 @@ func (d *Dentry) Unmarshal(raw []byte) (err error) {
 
 // Marshal marshals the dentryBatch into a byte array.
 func (d DentryBatch) Marshal() ([]byte, error) {
-	buff := bytes.NewBuffer(make([]byte, 0))
+	buff := proto.GetBytesBufferFromPool()
 	if err := binary.Write(buff, binary.BigEndian, uint32(len(d))); err != nil {
 		return nil, err
 	}
@@ -117,7 +120,10 @@ func (d DentryBatch) Marshal() ([]byte, error) {
 			return nil, err
 		}
 	}
-	return buff.Bytes(), nil
+	data:=make([]byte,buff.Len())
+	copy(data,buff.Bytes())
+	proto.PutBytesBufferToPool(buff)
+	return data, nil
 }
 
 // Unmarshal unmarshals the dentryBatch.
@@ -164,13 +170,14 @@ func (d *Dentry) Copy() BtreeItem {
 
 // MarshalKey is the bytes version of the MarshalKey method which returns the byte slice result.
 func (d *Dentry) MarshalKey() (k []byte) {
-	buff := bytes.NewBuffer(make([]byte, 0))
-	buff.Grow(32)
+	buff := proto.GetBytesBufferFromPool()
 	if err := binary.Write(buff, binary.BigEndian, &d.ParentId); err != nil {
 		panic(err)
 	}
 	buff.Write([]byte(d.Name))
-	k = buff.Bytes()
+	k = make([]byte,buff.Len())
+	copy(k,buff.Bytes())
+	proto.PutBytesBufferToPool(buff)
 	return
 }
 
@@ -186,15 +193,16 @@ func (d *Dentry) UnmarshalKey(k []byte) (err error) {
 
 // MarshalValue marshals the exporterKey to bytes.
 func (d *Dentry) MarshalValue() (k []byte) {
-	buff := bytes.NewBuffer(make([]byte, 0))
-	buff.Grow(12)
+	buff := proto.GetBytesBufferFromPool()
 	if err := binary.Write(buff, binary.BigEndian, &d.Inode); err != nil {
 		panic(err)
 	}
 	if err := binary.Write(buff, binary.BigEndian, &d.Type); err != nil {
 		panic(err)
 	}
-	k = buff.Bytes()
+	k = make([]byte,buff.Len())
+	copy(k,buff.Bytes())
+	proto.PutBytesBufferToPool(buff)
 	return
 }
 

@@ -60,7 +60,7 @@ func (k *ExtentKey) Marshal() (m string) {
 
 // MarshalBinary marshals the binary format of the extent key.
 func (k *ExtentKey) MarshalBinary() ([]byte, error) {
-	buf := bytes.NewBuffer(make([]byte, 0, ExtentLength))
+	buf := GetBytesBufferFromPool()
 	if err := binary.Write(buf, binary.BigEndian, k.FileOffset); err != nil {
 		return nil, err
 	}
@@ -79,7 +79,10 @@ func (k *ExtentKey) MarshalBinary() ([]byte, error) {
 	if err := binary.Write(buf, binary.BigEndian, k.CRC); err != nil {
 		return nil, err
 	}
-	return buf.Bytes(), nil
+	data:=make([]byte,buf.Len())
+	copy(data,buf.Bytes())
+	PutBytesBufferToPool(buf)
+	return data, nil
 }
 
 // UnmarshalBinary unmarshals the binary format of the extent key.
