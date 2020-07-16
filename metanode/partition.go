@@ -367,6 +367,14 @@ func (mp *MetaPartition) PersistMetadata() (err error) {
 	return
 }
 
+func (mp *MetaPartition) GetDentryTree() DentryTree {
+	return mp.dentryTree
+}
+
+func (mp *MetaPartition) GetInodeTree() InodeTree {
+	return mp.inodeTree
+}
+
 func (mp *MetaPartition) load() (err error) {
 	if err = mp.loadMetadata(); err != nil {
 		return
