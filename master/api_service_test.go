@@ -308,6 +308,11 @@ func TestMarkDeleteVol(t *testing.T) {
 	}
 }
 
+func TestSetVolCapacity(t *testing.T) {
+	setVolCapacity(600, proto.AdminVolExpand, t)
+	setVolCapacity(300, proto.AdminVolShrink, t)
+}
+
 func TestUpdateVol(t *testing.T) {
 	capacity := 2000
 	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
@@ -341,10 +346,6 @@ func TestUpdateVol(t *testing.T) {
 
 }
 
-func TestSetVolCapacity(t *testing.T) {
-	setVolCapacity(200, proto.AdminVolExpand, t)
-	setVolCapacity(100, proto.AdminVolShrink, t)
-}
 
 func setVolCapacity(capacity uint64, url string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",

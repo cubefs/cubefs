@@ -67,3 +67,18 @@ func validMetaNodes(client *master.MasterClient, toComplete string) []string {
 	}
 	return validMetaNodes
 }
+
+func validUsers(client *master.MasterClient, toComplete string) []string {
+	var (
+		validUsers []string
+		users      []*proto.UserInfo
+		err        error
+	)
+	if users, err = client.UserAPI().ListUsers(toComplete); err != nil {
+		errout("Get user list failed:\n%v\n", err)
+	}
+	for _, user := range users {
+		validUsers = append(validUsers, user.UserID)
+	}
+	return validUsers
+}

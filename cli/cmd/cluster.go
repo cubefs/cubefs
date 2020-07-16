@@ -15,7 +15,7 @@
 package cmd
 
 import (
-	"os"
+	"fmt"
 	"strconv"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -58,7 +58,7 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 			var cv *proto.ClusterView
 			if cv, err = client.AdminAPI().GetCluster(); err != nil {
 				errout("Get cluster info fail:\n%v\n", err)
-				os.Exit(1)
+				OsExitWithLogFlush()
 			}
 			stdout("[Cluster]\n")
 			stdout(formatClusterView(cv))
@@ -73,11 +73,19 @@ func newClusterStatCmd(client *master.MasterClient) *cobra.Command {
 		Use:   CliOpStatus,
 		Short: cmdClusterStatShort,
 		Run: func(cmd *cobra.Command, args []string) {
-			var err error
-			var cs *proto.ClusterStatInfo
+			var (
+				err error
+			    cs  *proto.ClusterStatInfo
+			)
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
 			if cs, err = client.AdminAPI().GetClusterStat(); err != nil {
-				errout("Get cluster info fail:\n%v\n", err)
-				os.Exit(1)
+				err = fmt.Errorf("Get cluster info fail:\n%v\n", err)
+				return
 			}
 			stdout("[Cluster Status]\n")
 			stdout(formatClusterStat(cs))
@@ -100,15 +108,22 @@ If 'freeze=false', ChubaoFS WILL automatically allocate new data partitions for 
 		
 If 'freeze=true', ChubaoFS WILL NOT automatically allocate new data partitions `,
 		Run: func(cmd *cobra.Command, args []string) {
-			var err error
-			var enable bool
+			var (
+				err error
+			    enable bool
+			)
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
 			if enable, err = strconv.ParseBool(args[0]); err != nil {
-				errout("Parse bool fail: %v\n", err)
-				os.Exit(1)
+				err = fmt.Errorf("Parse bool fail: %v\n", err)
+				return
 			}
 			if err = client.AdminAPI().IsFreezeCluster(enable); err != nil {
-				errout("Failed: %v\n", err)
-				os.Exit(1)
+				return
 			}
 			if enable {
 				stdout("Freeze cluster successful!\n")
@@ -128,19 +143,26 @@ func newClusterSetThresholdCmd(client *master.MasterClient) *cobra.Command {
 		Long: `Set the threshold of memory on each meta node.
 If the memory usage reaches this threshold, all the mata partition will be readOnly.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			var err error
-			var threshold float64
+			var (
+				err error
+			    threshold float64
+			)
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
 			if threshold, err = strconv.ParseFloat(args[0], 64); err != nil {
-				errout("Parse Float fail: %v\n", err)
-				os.Exit(1)
+				err = fmt.Errorf("Parse Float fail: %v\n", err)
+				return
 			}
 			if threshold > 1.0 {
-				errout("Threshold too big\n")
-				os.Exit(1)
+				err = fmt.Errorf("Threshold too big\n")
+				return
 			}
 			if err = client.AdminAPI().SetMetaNodeThreshold(threshold); err != nil {
-				errout("Failed: %v\n", err)
-				os.Exit(1)
+				return
 			}
 			stdout("MetaNode threshold is set to %v!\n", threshold)
 		},

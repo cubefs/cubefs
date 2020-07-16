@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/spf13/cobra"
@@ -57,10 +58,17 @@ func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
+				err          error
+				partitionID  uint64
 				partition *proto.MetaPartitionInfo
 			)
-			partitionID, err := strconv.ParseUint(args[0], 10, 64)
-			if err != nil {
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
+			if partitionID, err = strconv.ParseUint(args[0], 10, 64); err != nil {
 				return
 			}
 			if partition, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
@@ -88,8 +96,14 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 				metaNodes     []*proto.MetaNodeInfo
 				err           error
 			)
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
 			if diagnosis, err = client.AdminAPI().DiagnoseMetaPartition(); err != nil {
-				stdout("%v\n", err)
+				return
 			}
 			stdout("[Inactive Meta nodes]:\n")
 			stdout("%v\n", formatMetaNodeDetailTableHeader())
@@ -117,7 +131,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			for _, pid := range diagnosis.CorruptMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-					stdout("Partition not found, err:[%v]", err)
+					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
 				stdout("%v\n", formatMetaPartitionInfoRow(partition))
@@ -131,7 +145,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			for _, pid := range diagnosis.LackReplicaMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition( pid); err != nil {
-					stdout("Partition not found, err:[%v]", err)
+					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
 				if partition != nil {
@@ -150,14 +164,19 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 		Short: cmdMetaPartitionDecommissionShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err         error
+				partitionID uint64
+			)
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
 			address := args[0]
-			partitionID, err := strconv.ParseUint(args[1], 10, 64)
-			if err != nil {
-				stdout("%v\n", err)
-				return
-			}
+			partitionID, err = strconv.ParseUint(args[1], 10, 64)
 			if err = client.AdminAPI().DecommissionMetaPartition(partitionID, address); err != nil {
-				stdout("%v\n", err)
 				return
 			}
 		},
@@ -177,14 +196,19 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 		Short: cmdMetaPartitionReplicateShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err         error
+				partitionID uint64
+			)
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
 			address := args[0]
-			partitionID, err := strconv.ParseUint(args[1], 10, 64)
-			if err != nil {
-				stdout("%v\n", err)
-				return
-			}
+			partitionID, err = strconv.ParseUint(args[1], 10, 64)
 			if err = client.AdminAPI().AddMetaReplica(partitionID, address); err != nil {
-				stdout("%v\n", err)
 				return
 			}
 		},
@@ -204,14 +228,22 @@ func newMetaPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 		Short: cmdMetaPartitionDeleteReplicaShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err         error
+				partitionID uint64
+			)
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
 			address := args[0]
-			partitionID, err := strconv.ParseUint(args[1], 10, 64)
+			partitionID, err = strconv.ParseUint(args[1], 10, 64)
 			if err != nil {
-				stdout("%v\n", err)
 				return
 			}
 			if err = client.AdminAPI().DeleteMetaReplica(partitionID, address); err != nil {
-				stdout("%v\n", err)
 				return
 			}
 		},

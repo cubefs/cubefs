@@ -30,8 +30,10 @@ TryTimes=5
 init_cli() {
     cp ${cli} /usr/bin/
     cd ${conf_path}
-    ${cli} completion
+    ${cli} completion &> /dev/null
     echo 'source '${conf_path}'/cfs-cli.sh' >> ~/.bashrc
+    echo -n "ChubaoFS Command Line Interface  ... "
+    echo -e "\033[32mdone\033[0m"
 }
 check_cluster() {
     echo -n "Checking cluster  ... "
