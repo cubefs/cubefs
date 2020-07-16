@@ -28,13 +28,14 @@ import (
 )
 
 const (
-	AsyncDeleteInterval      = 10 * time.Second
-	UpdateVolTicket          = 2 * time.Minute
-	BatchCounts              = 128
-	OpenRWAppendOpt          = os.O_CREATE | os.O_RDWR | os.O_APPEND
-	TempFileValidTime        = 86400 //units: sec
-	DeleteInodeFileExtension = "INODE_DEL"
-	DeleteWorkerCnt          = 10
+	AsyncDeleteInterval           = 10 * time.Second
+	UpdateVolTicket               = 2 * time.Minute
+	BatchCounts                   = 128
+	OpenRWAppendOpt               = os.O_CREATE | os.O_RDWR | os.O_APPEND
+	TempFileValidTime             = 86400 //units: sec
+	DeleteInodeFileExtension      = "INODE_DEL"
+	DeleteWorkerCnt               = 10
+	InodeNLink0DelayDeleteSeconds = 7 * 24 * 3600
 )
 
 func (mp *metaPartition) startFreeList() (err error) {
@@ -107,6 +108,7 @@ func (mp *metaPartition) deleteWorker() {
 		buffSlice = buffSlice[:0]
 		select {
 		case <-mp.stopC:
+			log.LogDebugf("[metaPartition] deleteWorker stop partition: %v", mp.config)
 			return
 		default:
 		}
@@ -116,9 +118,9 @@ func (mp *metaPartition) deleteWorker() {
 			continue
 		}
 
+		//add sleep time value
 		DeleteWorkerSleepMs()
 
-		//TODO: add sleep time value
 		isForceDeleted := sleepCnt%MaxSleepCnt == 0
 		if !isForceDeleted && mp.freeList.Len() < MinDeleteBatchCounts {
 			time.Sleep(AsyncDeleteInterval)
@@ -127,14 +129,31 @@ func (mp *metaPartition) deleteWorker() {
 		}
 
 		batchCount := DeleteBatchCount()
+		delayDeleteInos := make([]uint64, 0)
 		for idx = 0; idx < int(batchCount); idx++ {
 			// batch get free inoded from the freeList
 			ino := mp.freeList.Pop()
 			if ino == 0 {
 				break
 			}
+
+			//check inode nlink == 0 and deletMarkFlag unset
+			if inode, ok := mp.inodeTree.CopyGet(&Inode{Inode: ino}).(*Inode); ok {
+				if inode.ShouldDelayDelete() {
+					log.LogDebugf("[metaPartition] deleteWorker delay to remove inode: %v as NLink is 0", inode)
+					delayDeleteInos = append(delayDeleteInos, ino)
+					continue
+				}
+			}
+
 			buffSlice = append(buffSlice, ino)
 		}
+
+		//delay
+		for _, delayDeleteIno := range delayDeleteInos {
+			mp.freeList.Push(delayDeleteIno)
+		}
+
 		mp.persistDeletedInodes(buffSlice)
 		mp.deleteMarkedInodes(buffSlice)
 		sleepCnt++
