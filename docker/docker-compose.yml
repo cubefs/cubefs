@@ -41,6 +41,8 @@ services:
 
     master1:
         image: chubaofs/cfs-base:1.1
+        environment:
+          - TZ=Asia/Shanghai
         ports:
             - "5901"
             - "5902"
@@ -62,6 +64,8 @@ services:
 
     master2:
         image: chubaofs/cfs-base:1.1
+        environment:
+          - TZ=Asia/Shanghai
         ports:
             - "5901"
             - "5902"
@@ -82,6 +86,8 @@ services:
                 ipv4_address: 192.168.0.12
     master3:
         image: chubaofs/cfs-base:1.1
+        environment:
+          - TZ=Asia/Shanghai
         ports:
             - "5901"
             - "5902"
@@ -103,6 +109,8 @@ services:
 
     metanode1:
         image: chubaofs/cfs-base:1.1
+        environment:
+          - TZ=Asia/Shanghai
         ports:
             - "17210"
             - "17220"
@@ -124,6 +132,8 @@ services:
 
     metanode2:
         image: chubaofs/cfs-base:1.1
+        environment:
+          - TZ=Asia/Shanghai
         ports:
             - "17210"
             - "17220"
@@ -145,6 +155,8 @@ services:
 
     metanode3:
         image: chubaofs/cfs-base:1.1
+        environment:
+          - TZ=Asia/Shanghai
         ports:
             - "17210"
             - "17220"
@@ -166,6 +178,8 @@ services:
 
     metanode4:
         image: chubaofs/cfs-base:1.1
+        environment:
+          - TZ=Asia/Shanghai
         ports:
             - "17210"
             - "17220"
@@ -187,6 +201,8 @@ services:
 
     datanode1:
         image: chubaofs/cfs-base:1.1
+        environment:
+          - TZ=Asia/Shanghai
         ports:
             - "17310"
             - "17320"
@@ -208,6 +224,8 @@ services:
 
     datanode2:
         image: chubaofs/cfs-base:1.1
+        environment:
+          - TZ=Asia/Shanghai
         ports:
             - "17310"
             - "17320"
@@ -229,6 +247,8 @@ services:
 
     datanode3:
         image: chubaofs/cfs-base:1.1
+        environment:
+          - TZ=Asia/Shanghai
         ports:
             - "17310"
             - "17320"
@@ -250,6 +270,8 @@ services:
 
     datanode4:
         image: chubaofs/cfs-base:1.1
+        environment:
+          - TZ=Asia/Shanghai
         ports:
             - "17310"
             - "17320"
@@ -345,6 +367,8 @@ services:
 
     client:
         image: chubaofs/cfs-base:1.1
+        environment:
+          - TZ=Asia/Shanghai
         ports:
             - 9500
         volumes:
@@ -367,6 +391,8 @@ services:
 
     consul:
         image: consul:1.5
+        environment:
+          - TZ=Asia/Shanghai
         ports:
             - 8500:8500
         volumes:
@@ -378,6 +404,8 @@ services:
 
     prometheus:
         image: prom/prometheus
+        environment:
+          - TZ=Asia/Shanghai
         ports:
             - 9090:9090
         volumes:
@@ -391,6 +419,7 @@ services:
         image: grafana/grafana:6.4.4
         environment:
             - GF_SECURITY_ADMIN_PASSWORD=123456
+            - TZ=Asia/Shanghai
         ports:
             - 3000:3000
         volumes:
@@ -405,6 +434,8 @@ services:
 
     nginx:
         image: nginx:1.17.8
+        environment:
+          - TZ=Asia/Shanghai
         ports:
             - "80:80"
         volumes:

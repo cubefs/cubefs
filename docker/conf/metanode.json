@@ -10,6 +10,7 @@
   "logDir": "/cfs/log",
   "warnLogDir": "/cfs/log",
   "totalMem": "536870912",
+  "storeType": "1",
   "metadataDir": "/cfs/data/meta",
   "raftDir": "/cfs/data/raft",
   "masterAddr": [

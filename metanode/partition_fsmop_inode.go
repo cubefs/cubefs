@@ -35,6 +35,7 @@ func NewInodeResponse() *InodeResponse {
 // Create and inode and attach it to the inode tree.
 func (mp *MetaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 	status = proto.OpOk
+	log.LogDebugf("[fsmCreateInode] add inode into inode table: %v", ino)
 	if err := mp.inodeTree.Create(ino); err != nil {
 		if err == existsError {
 			status = proto.OpExistErr
@@ -90,6 +91,10 @@ func (mp *MetaPartition) getInode(ino *Inode) (resp *InodeResponse) {
 
 func (mp *MetaPartition) hasInode(ino *Inode) (ok bool) {
 	item, err := mp.inodeTree.Get(ino.Inode)
+	if item == nil {
+		ok = false
+		return
+	}
 	if err != nil {
 		log.LogIfNotNil(err)
 		ok = false
@@ -199,9 +204,10 @@ func (mp *MetaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	}
 	eks := ino.Extents.CopyExtents()
 	delExtents := ino2.AppendExtents(eks, ino.ModifyTime)
-	log.LogIfNotNil(mp.inodeTree.Put(ino2))
-	log.LogInfof("fsmAppendExtents inode(%v) exts(%v)", ino2.Inode, delExtents)
+	log.LogDebugf("[fsmAppendExtents] inode input: %v newInode: %v, eks: %v", ino, ino2, eks)
 	mp.extDelCh <- delExtents
+	log.LogInfof("[fsmAppendExtents] inode(%v) exts(%v)", ino2, delExtents)
+	log.LogIfNotNil(mp.inodeTree.Put(ino2))
 	return
 }
 

@@ -40,6 +40,7 @@ func (mp *MetaPartition) initInode(ino *Inode) {
 			if mp.hasInode(ino) {
 				return
 			}
+			// must leader raft partition
 			if !mp.raftPartition.IsRaftLeader() {
 				continue
 			}
@@ -82,7 +83,7 @@ func (mp *MetaPartition) fsmUpdatePartition(end uint64) (status uint8,
 }
 
 func (mp *MetaPartition) confAddNode(req *proto.
-MetaPartitionDecommissionRequest, index uint64) (updated bool, err error) {
+	MetaPartitionDecommissionRequest, index uint64) (updated bool, err error) {
 	var (
 		heartbeatPort int
 		replicaPort   int

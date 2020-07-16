@@ -15,8 +15,9 @@
 package metanode
 
 import (
-	"github.com/chubaofs/chubaofs/util/btree"
 	"sync"
+
+	"github.com/chubaofs/chubaofs/util/btree"
 )
 
 const defaultBTreeDegree = 32
@@ -86,16 +87,34 @@ type MultipartBTree struct {
 
 //get
 func (i *InodeBTree) Get(ino uint64) (*Inode, error) {
-	return i.BTree.CopyGet(&Inode{Inode: ino}).(*Inode), nil
+	item := i.BTree.CopyGet(&Inode{Inode: ino})
+	if item != nil {
+		return item.(*Inode), nil
+	}
+	return nil, nil
 }
 func (i *DentryBTree) Get(pid uint64, name string) (*Dentry, error) {
-	return i.BTree.CopyGet(&Dentry{ParentId: pid, Name: name}).(*Dentry), nil
+	item := i.BTree.CopyGet(&Dentry{ParentId: pid, Name: name})
+	if item != nil {
+		return item.(*Dentry), nil
+	}
+	return nil, nil
 }
+
 func (i *ExtendBTree) Get(ino uint64) (*Extend, error) {
-	return i.BTree.CopyGet(&Extend{inode: ino}).(*Extend), nil
+	item := i.BTree.CopyGet(&Extend{inode: ino})
+	if item != nil {
+		return item.(*Extend), nil
+	}
+	return nil, nil
 }
+
 func (i *MultipartBTree) Get(key, id string) (*Multipart, error) {
-	return i.BTree.CopyGet(&Multipart{key: key, id: id}).(*Multipart), nil
+	item := i.BTree.CopyGet(&Multipart{key: key, id: id})
+	if item != nil {
+		return item.(*Multipart), nil
+	}
+	return nil, nil
 }
 
 //put
@@ -217,6 +236,8 @@ func (i *DentryBTree) Range(start, end *Dentry, cb func(v []byte) (bool, error))
 	}
 	return err
 }
+
+//
 func (i *ExtendBTree) Range(start, end *Extend, cb func(v []byte) (bool, error)) error {
 	var (
 		err  error

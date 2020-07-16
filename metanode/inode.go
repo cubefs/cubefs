@@ -174,6 +174,7 @@ func (i *Inode) Marshal() (result []byte, err error) {
 	return
 }
 
+// write inode into writer
 func (i *Inode) WriteTo(writer io.Writer, reuse *bytes.Buffer) (err error) {
 	var buff = reuse
 	if buff == nil {
@@ -284,17 +285,24 @@ func InodeBatchUnmarshal(raw []byte) (InodeBatch, error) {
 // MarshalKey marshals the exporterKey to bytes.
 func (i *Inode) MarshalKey() (k []byte) {
 	k = make([]byte, 8)
+	i.RLock()
+	defer i.RUnlock()
 	binary.BigEndian.PutUint64(k, i.Inode)
 	return
 }
 
+// write inode id to writer
 func (i *Inode) WriteKeyTo(writer io.Writer) (err error) {
+	i.RLock()
+	defer i.RUnlock()
 	err = binary.Write(writer, binary.BigEndian, &i.Inode)
 	return
 }
 
 // UnmarshalKey unmarshals the exporterKey from bytes.
 func (i *Inode) UnmarshalKey(k []byte) (err error) {
+	i.Lock()
+	defer i.Unlock()
 	i.Inode = binary.BigEndian.Uint64(k)
 	return
 }
@@ -305,6 +313,7 @@ func (i *Inode) MarshalValue() (val []byte) {
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
 	buff.Grow(64)
 	i.RLock()
+	defer i.RUnlock()
 	if err = binary.Write(buff, binary.BigEndian, &i.Type); err != nil {
 		panic(err)
 	}
@@ -347,17 +356,19 @@ func (i *Inode) MarshalValue() (val []byte) {
 	if err = binary.Write(buff, binary.BigEndian, &i.Reserved); err != nil {
 		panic(err)
 	}
-	// marshal ExtentsKey
-	extData, err := i.Extents.MarshalBinary()
-	if err != nil {
-		panic(err)
-	}
-	if _, err = buff.Write(extData); err != nil {
-		panic(err)
+	if i.Extents != nil {
+		// marshal ExtentsKey
+		extData, err := i.Extents.MarshalBinary()
+		if err != nil {
+			panic(err)
+		}
+		if _, err = buff.Write(extData); err != nil {
+			panic(err)
+		}
 	}
 
 	val = buff.Bytes()
-	i.RUnlock()
+	//i.RUnlock()
 	return
 }
 
@@ -406,15 +417,19 @@ func (i *Inode) WriteValueTo(writer io.Writer) (err error) {
 	if err = binary.Write(writer, binary.BigEndian, &i.Reserved); err != nil {
 		return
 	}
-	// marshal ExtentsKey
-	if err = i.Extents.WriteTo(writer); err != nil {
-		return
+	if i.Extents != nil {
+		// marshal ExtentsKey
+		if err = i.Extents.WriteTo(writer); err != nil {
+			return
+		}
 	}
 	return
 }
 
 // UnmarshalValue unmarshals the value from bytes.
 func (i *Inode) UnmarshalValue(val []byte) (err error) {
+	i.RLock()
+	defer i.RUnlock()
 	buff := bytes.NewBuffer(val)
 	if err = binary.Read(buff, binary.BigEndian, &i.Type); err != nil {
 		return
@@ -477,6 +492,10 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 // AppendExtents append the extent to the btree.
 func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64) (delExtents []proto.ExtentKey) {
 	i.Lock()
+	defer i.Unlock()
+	if i.Extents == nil {
+		i.Extents = NewSortedExtents()
+	}
 	for _, ek := range eks {
 		delItems := i.Extents.Append(ek)
 		size := i.Extents.Size()
@@ -487,7 +506,6 @@ func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64) (delExtents []pro
 	}
 	i.Generation++
 	i.ModifyTime = ct
-	i.Unlock()
 	return
 }
 

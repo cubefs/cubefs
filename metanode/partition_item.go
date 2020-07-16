@@ -26,6 +26,8 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // MetaItem defines the structure of the metadata operations.
@@ -150,6 +152,7 @@ func newMetaItemIterator(mp *MetaPartition) (si *MetaItemIterator, err error) {
 	var filenames = make([]string, 0)
 	var fileInfos []os.FileInfo
 	if fileInfos, err = ioutil.ReadDir(mp.config.RootDir); err != nil {
+		log.LogErrorf("newMetaItemIterator: read dir %v err: %v", mp.config.RootDir, err)
 		return
 	}
 
@@ -178,6 +181,7 @@ func newMetaItemIterator(mp *MetaPartition) (si *MetaItemIterator, err error) {
 		var produceError = func(err error) {
 			select {
 			case iter.errorCh <- err:
+				log.LogErrorf("[newMetaItemIterator] produce error: %v %v", iter, err)
 			default:
 			}
 		}

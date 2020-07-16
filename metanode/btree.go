@@ -71,6 +71,7 @@ type InodeTree interface {
 	Range(start, end *Inode, cb func(v []byte) (bool, error)) error
 	Count() uint64
 }
+
 type DentryTree interface {
 	Tree
 	Get(ino uint64, name string) (*Dentry, error)
@@ -80,6 +81,7 @@ type DentryTree interface {
 	Range(start, end *Dentry, cb func(v []byte) (bool, error)) error
 	Count() uint64
 }
+
 type ExtendTree interface {
 	Tree
 	Get(ino uint64) (*Extend, error)

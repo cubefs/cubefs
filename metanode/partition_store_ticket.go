@@ -127,7 +127,7 @@ func (mp *MetaPartition) startSchedule(curIndex uint64) {
 					continue
 				}
 				cursorBuf := make([]byte, 8)
-				binary.BigEndian.PutUint64(cursorBuf, mp.config.Cursor)
+				binary.BigEndian.PutUint64(cursorBuf, mp.GetCursor())
 				if _, err := mp.submit(opFSMSyncCursor, cursorBuf); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}

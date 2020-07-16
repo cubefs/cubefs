@@ -51,6 +51,7 @@ type MetadataManager interface {
 // MetadataManagerConfig defines the configures in the metadata manager.
 type MetadataManagerConfig struct {
 	NodeID    uint64
+	StoreType uint64
 	RootDir   string
 	ZoneName  string
 	RaftStore raftstore.RaftStore
@@ -61,6 +62,7 @@ type metadataManager struct {
 	zoneName           string
 	rootDir            string
 	raftStore          raftstore.RaftStore
+	storeType          uint64 // 0:memory , 1:rocksdb  default memory
 	connPool           *util.ConnectPool
 	state              uint32
 	mu                 sync.RWMutex
@@ -304,6 +306,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 				partitionConfig := &MetaPartitionConfig{
 					NodeId:    m.nodeId,
 					RaftStore: m.raftStore,
+					Store:     m.storeType,
 					RootDir:   path.Join(m.rootDir, fileName),
 					ConnPool:  m.connPool,
 				}
@@ -381,6 +384,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		End:         request.End,
 		Cursor:      request.Start,
 		Peers:       request.Members,
+		Store:       m.storeType,
 		RaftStore:   m.raftStore,
 		NodeId:      m.nodeId,
 		RootDir:     path.Join(m.rootDir, partitionPrefix+partitionId),
@@ -458,6 +462,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) Metadata
 		nodeId:     conf.NodeID,
 		zoneName:   conf.ZoneName,
 		rootDir:    conf.RootDir,
+		storeType:  conf.StoreType,
 		raftStore:  conf.RaftStore,
 		partitions: make(map[uint64]*MetaPartition),
 		metaNode:   metaNode,

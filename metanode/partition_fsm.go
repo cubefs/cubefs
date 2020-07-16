@@ -55,8 +55,8 @@ func (mp *MetaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		if mp.config.Cursor < ino.Inode {
-			mp.config.Cursor = ino.Inode
+		if mp.GetCursor() < ino.Inode {
+			mp.SetCursor(ino.Inode)
 		}
 		resp = mp.fsmCreateInode(ino)
 	case opFSMUnlinkInode:
@@ -180,8 +180,8 @@ func (mp *MetaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	case opFSMSyncCursor:
 		var cursor uint64
 		cursor = binary.BigEndian.Uint64(msg.V)
-		if cursor > mp.config.Cursor {
-			mp.config.Cursor = cursor
+		if cursor > mp.GetCursor() {
+			mp.SetCursor(cursor)
 		}
 	}
 
@@ -266,7 +266,7 @@ func (mp *MetaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			mp.applyID = appIndexID
 			mp.inodeTree = inodeTree
 			mp.dentryTree = dentryTree
-			mp.config.Cursor = cursor
+			mp.SetCursor(cursor)
 			err = nil
 			// store message
 			mp.storeChan <- &storeMsg{
@@ -310,9 +310,11 @@ func (mp *MetaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		case opFSMCreateDentry:
 			dentry := &Dentry{}
 			if err = dentry.UnmarshalKey(snap.K); err != nil {
+				log.LogErrorf("[ApplySnapshot] opFSMCreateDentry UnmarshalKey key: %v, err: %v", snap.K, err)
 				return
 			}
 			if err = dentry.UnmarshalValue(snap.V); err != nil {
+				log.LogErrorf("[ApplySnapshot] opFSMCreateDentry UnmarshalValue val: %v, err: %v", snap.V, err)
 				return
 			}
 			log.LogIfNotNil(dentryTree.Put(dentry))
@@ -363,18 +365,25 @@ func (mp *MetaPartition) HandleLeaderChange(leader uint64) {
 			return
 		}
 		conn.(*net.TCPConn).SetLinger(0)
+		log.LogDebugf("[HandleLeaderChange] connect close port: %v parititon: %v nodeid: %v, leader: %v", serverPort, mp.config.PartitionId, mp.config.NodeId, leader)
 		conn.Close()
 	}
+	// not leader
 	if mp.config.NodeId != leader {
 		mp.storeChan <- &storeMsg{
 			command: stopStoreTick,
 		}
+		log.LogDebugf("[HandleLeaderChange]  become to follower {pid: %v, leader: %v, nodeid: %v}", mp.config.PartitionId, leader, mp.config.NodeId)
 		return
 	}
+	log.LogDebugf("[HandleLeaderChange]  become to leader {pid: %v, leader: %v, nodeid: %v}", mp.config.PartitionId, leader, mp.config.NodeId)
+	// become to leader
+	// start store tick
 	mp.storeChan <- &storeMsg{
 		command: startStoreTick,
 	}
-	if mp.config.Start == 0 && mp.config.Cursor == 0 {
+	//init inode
+	if mp.config.Start == 0 && mp.GetCursor() == 0 {
 		id, err := mp.nextInodeID()
 		if err != nil {
 			log.LogFatalf("[HandleLeaderChange] init root inode id: %s.", err.Error())
@@ -393,6 +402,7 @@ func (mp *MetaPartition) submit(op uint32, data []byte) (resp interface{}, err e
 	}
 	cmd, err := snap.MarshalJson()
 	if err != nil {
+		log.LogErrorf("[MetaPartition] submit op: %v, data: %v MarshalJson error: %v", op, data, err)
 		return
 	}
 
