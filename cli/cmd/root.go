@@ -19,6 +19,8 @@ import (
 	"os"
 	"path"
 
+	"github.com/chubaofs/chubaofs/proto"
+
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/spf13/cobra"
 )
@@ -32,13 +34,22 @@ type ChubaoFSCmd struct {
 }
 
 func NewRootCmd(client *master.MasterClient) *ChubaoFSCmd {
+	var optShowVersion bool
 	var cmd = &ChubaoFSCmd{
 		CFSCmd: &cobra.Command{
 			Use:   path.Base(os.Args[0]),
 			Short: cmdRootShort,
 			Args:  cobra.MinimumNArgs(0),
+			Run: func(cmd *cobra.Command, args []string) {
+				if optShowVersion {
+					stdout(proto.DumpVersion("CLI"))
+					return
+				}
+			},
 		},
 	}
+
+	cmd.CFSCmd.Flags().BoolVarP(&optShowVersion, "version", "v", false, "Show version information")
 
 	cmd.CFSCmd.AddCommand(
 		cmd.newClusterCmd(client),
