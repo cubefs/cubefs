@@ -15,6 +15,11 @@
 package master
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"github.com/samsarahq/thunder/graphql"
+	"github.com/samsarahq/thunder/graphql/introspection"
 	"net/http"
 	"net/http/httputil"
 
@@ -76,6 +81,15 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 }
 
 func (m *Server) registerAPIRoutes(router *mux.Router) {
+	//graphql api for cluster
+	cs := &ClusterService{user: m.user, cluster: m.cluster, conf: m.config, leaderInfo: m.leaderInfo}
+	m.registerHandler(router, proto.AdminClusterAPI, cs.Schema())
+
+	us := &UserService{user: m.user, cluster: m.cluster}
+	m.registerHandler(router, proto.AdminUserAPI, us.Schema())
+
+	vs := &VolumeService{user: m.user, cluster: m.cluster}
+	m.registerHandler(router, proto.AdminVolumeAPI, vs.Schema())
 
 	// cluster management APIs
 	router.NewRoute().Name(proto.AdminGetIP).
@@ -152,6 +166,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminDeleteMetaReplica).
 		HandlerFunc(m.deleteMetaReplica)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDiagnoseMetaPartition).
+		HandlerFunc(m.diagnoseMetaPartition)
 
 	// data partition management APIs
 	router.NewRoute().Methods(http.MethodGet).
@@ -166,6 +183,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminDecommissionDataPartition).
 		HandlerFunc(m.decommissionDataPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDiagnoseDataPartition).
+		HandlerFunc(m.diagnoseDataPartition)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.ClientDataPartitions).
 		HandlerFunc(m.getDataPartitions)
@@ -204,11 +224,11 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.DecommissionDisk).
 		HandlerFunc(m.decommissionDisk)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminSetMetaNodeParams).
-		HandlerFunc(m.setMetaNodeParams)
+		Path(proto.AdminSetNodeInfo).
+		HandlerFunc(m.setNodeInfoHandler)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminGetMetaNodeParams).
-		HandlerFunc(m.getMetaNodeParams)
+		Path(proto.AdminGetNodeInfo).
+		HandlerFunc(m.getNodeInfoHandler)
 
 	// user management APIs
 	router.NewRoute().Methods(http.MethodPost).
@@ -266,6 +286,47 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.TokenUpdateURI).
 		HandlerFunc(m.updateToken)
+}
+
+func (m *Server) registerHandler(router *mux.Router, model string, schema *graphql.Schema) {
+	introspection.AddIntrospectionToSchema(schema)
+
+	gHandler := graphql.HTTPHandler(schema)
+	router.NewRoute().Name(model).Methods(http.MethodGet, http.MethodPost).Path(model).HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		userID := request.Header.Get(proto.UserKey)
+		if userID == "" {
+			ErrResponse(writer, fmt.Errorf("not found [%s] in header", proto.UserKey))
+			return
+		}
+
+		if ui, err := m.user.getUserInfo(userID); err != nil {
+			ErrResponse(writer, fmt.Errorf("user:[%s] not found ", userID))
+			return
+		} else {
+			request = request.WithContext(context.WithValue(request.Context(), proto.UserInfoKey, ui))
+		}
+
+		gHandler.ServeHTTP(writer, request)
+	})
+}
+func ErrResponse(w http.ResponseWriter, err error) {
+	response := struct {
+		Errors []string `json:"errors"`
+	}{
+		Errors: []string{err.Error()},
+	}
+
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/json")
+	}
+	if _, e := w.Write(responseJSON); e != nil {
+		log.LogErrorf("send response has err:[%s]", e)
+	}
 }
 
 func (m *Server) newReverseProxy() *httputil.ReverseProxy {

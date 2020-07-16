@@ -266,6 +266,7 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	dpr.Hosts = make([]string, len(partition.Hosts))
 	copy(dpr.Hosts, partition.Hosts)
 	dpr.LeaderAddr = partition.getLeaderAddr()
+	dpr.IsRecover = partition.isRecover
 	return
 }
 

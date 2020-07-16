@@ -62,7 +62,8 @@ type Inode struct {
 	NLink      uint32 // NodeLink counts
 	Flag       int32
 	Reserved   uint64 // reserved space
-	Extents    *ExtentsTree
+	//Extents    *ExtentsTree
+	Extents *SortedExtents
 }
 
 type InodeBatch []*Inode
@@ -104,7 +105,7 @@ func NewInode(ino uint64, t uint32) *Inode {
 		AccessTime: ts,
 		ModifyTime: ts,
 		NLink:      1,
-		Extents:    NewExtentsTree(),
+		Extents:    NewSortedExtents(),
 	}
 	if proto.IsDir(t) {
 		i.NLink = 2
@@ -378,7 +379,7 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	}
 	// unmarshal ExtentsKey
 	if i.Extents == nil {
-		i.Extents = NewExtentsTree()
+		i.Extents = NewSortedExtents()
 	}
 	if err = i.Extents.UnmarshalBinary(buff.Bytes()); err != nil {
 		return
@@ -387,15 +388,15 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 }
 
 // AppendExtents append the extent to the btree.
-func (i *Inode) AppendExtents(exts []BtreeItem, ct int64) (items []BtreeItem) {
+func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64) (delExtents []proto.ExtentKey) {
 	i.Lock()
-	for _, ext := range exts {
-		delItems := i.Extents.Append(ext)
+	for _, ek := range eks {
+		delItems := i.Extents.Append(ek)
 		size := i.Extents.Size()
 		if i.Size < size {
 			i.Size = size
 		}
-		items = append(items, delItems...)
+		delExtents = append(delExtents, delItems...)
 	}
 	i.Generation++
 	i.ModifyTime = ct
@@ -403,38 +404,25 @@ func (i *Inode) AppendExtents(exts []BtreeItem, ct int64) (items []BtreeItem) {
 	return
 }
 
-// ExtentsTruncate truncates the extents.
-func (i *Inode) ExtentsTruncate(exts []BtreeItem, length uint64, ct int64) {
+func (i *Inode) ExtentsTruncate(length uint64, ct int64) (delExtents []proto.ExtentKey) {
 	i.Lock()
-	for _, ext := range exts {
-		i.Extents.Delete(ext)
-	}
-	// check the max item size
-	item := i.Extents.MaxItem()
-	if item != nil {
-		ext := item.(*proto.ExtentKey)
-		if (ext.FileOffset + uint64(ext.Size)) > length {
-			ext.Size = uint32(length - ext.FileOffset)
-		}
-	}
+	delExtents = i.Extents.Truncate(length)
 	i.Size = length
 	i.ModifyTime = ct
 	i.Generation++
 	i.Unlock()
+	return
 }
 
 // IncNLink increases the nLink value by one.
 func (i *Inode) IncNLink() {
-	mtime := Now.GetCurrentTime().Unix()
 	i.Lock()
 	i.NLink++
-	i.ModifyTime = mtime
 	i.Unlock()
 }
 
 // DecNLink decreases the nLink value by one.
 func (i *Inode) DecNLink() {
-	mtime := Now.GetCurrentTime().Unix()
 	i.Lock()
 	if proto.IsDir(i.Type) && i.NLink == 2 {
 		i.NLink--
@@ -442,7 +430,6 @@ func (i *Inode) DecNLink() {
 	if i.NLink > 0 {
 		i.NLink--
 	}
-	i.ModifyTime = mtime
 	i.Unlock()
 }
 
@@ -482,16 +469,22 @@ func (i *Inode) ShouldDelete() bool {
 }
 
 // SetAttr sets the attributes of the inode.
-func (i *Inode) SetAttr(valid, mode, uid, gid uint32) {
+func (i *Inode) SetAttr(req *SetattrRequest) {
 	i.Lock()
-	if valid&proto.AttrMode != 0 {
-		i.Type = mode
+	if req.Valid&proto.AttrMode != 0 {
+		i.Type = req.Mode
 	}
-	if valid&proto.AttrUid != 0 {
-		i.Uid = uid
+	if req.Valid&proto.AttrUid != 0 {
+		i.Uid = req.Uid
 	}
-	if valid&proto.AttrGid != 0 {
-		i.Gid = gid
+	if req.Valid&proto.AttrGid != 0 {
+		i.Gid = req.Gid
+	}
+	if req.Valid&proto.AttrAccessTime != 0 {
+		i.AccessTime = req.AccessTime
+	}
+	if req.Valid&proto.AttrModifyTime != 0 {
+		i.ModifyTime = req.ModifyTime
 	}
 	i.Unlock()
 }

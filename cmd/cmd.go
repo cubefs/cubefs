@@ -17,6 +17,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/chubaofs/chubaofs/console"
+	"github.com/chubaofs/chubaofs/proto"
 	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -44,11 +46,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/ump"
 )
 
-var (
-	CommitID   string
-	BranchName string
-	BuildTime  string
-)
 
 const (
 	ConfigKeyRole       = "role"
@@ -59,23 +56,31 @@ const (
 )
 
 const (
-	RoleMaster = "master"
-	RoleMeta   = "metanode"
-	RoleData   = "datanode"
-	RoleAuth   = "authnode"
-	RoleObject = "objectnode"
+	RoleMaster  = "master"
+	RoleMeta    = "metanode"
+	RoleData    = "datanode"
+	RoleAuth    = "authnode"
+	RoleObject  = "objectnode"
+	RoleConsole = "console"
 )
 
 const (
-	ModuleMaster = "master"
-	ModuleMeta   = "metaNode"
-	ModuleData   = "dataNode"
-	ModuleAuth   = "authNode"
-	ModuleObject = "objectNode"
+	ModuleMaster  = "master"
+	ModuleMeta    = "metaNode"
+	ModuleData    = "dataNode"
+	ModuleAuth    = "authNode"
+	ModuleObject  = "objectNode"
+	ModuleConsole = "console"
 )
 
 const (
 	LoggerOutput = "output.log"
+)
+
+var (
+	CommitID   string
+	BranchName string
+	BuildTime  string
 )
 
 var (
@@ -119,8 +124,7 @@ func modifyOpenFiles() (err error) {
 func main() {
 	flag.Parse()
 
-	Version := fmt.Sprintf("ChubaoFS Server\nBranch: %s\nCommit: %s\nBuild: %s %s %s %s\n", BranchName, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime)
-
+	Version := proto.DumpVersion("Server",BranchName,CommitID,BuildTime)
 	if *configVersion {
 		fmt.Printf("%v", Version)
 		os.Exit(0)
@@ -176,6 +180,9 @@ func main() {
 	case RoleObject:
 		server = objectnode.NewServer()
 		module = ModuleObject
+	case RoleConsole:
+		server = console.NewServer()
+		module = ModuleConsole
 	default:
 		daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 		os.Exit(1)

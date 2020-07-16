@@ -54,9 +54,10 @@ const (
 	testZone1     = "zone1"
 	testZone2     = "zone2"
 
-	testUserID = "testUser"
-	ak         = "0123456789123456"
-	sk         = "01234567891234560123456789123456"
+	testUserID  = "testUser"
+	ak          = "0123456789123456"
+	sk          = "01234567891234560123456789123456"
+	description = "testUser"
 )
 
 var server = createDefaultMasterServerForTest()
@@ -101,7 +102,7 @@ func createDefaultMasterServerForTest() *Server {
 	testServer.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
-	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, 3, 3, 3, 100, false, false, false, false)
+	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 100, false, false, false, false)
 	if err != nil {
 		panic(err)
 	}
@@ -648,7 +649,7 @@ func TestGetUser(t *testing.T) {
 
 func TestUpdateUser(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.UserUpdate)
-	param := &proto.UserUpdateParam{UserID: testUserID, AccessKey: ak, SecretKey: sk, Type: proto.UserTypeAdmin}
+	param := &proto.UserUpdateParam{UserID: testUserID, AccessKey: ak, SecretKey: sk, Type: proto.UserTypeAdmin, Description: description}
 	data, err := json.Marshal(param)
 	if err != nil {
 		t.Error(err)
@@ -671,6 +672,10 @@ func TestUpdateUser(t *testing.T) {
 	}
 	if userInfo.UserType != proto.UserTypeAdmin {
 		t.Errorf("expect ak[%v], real ak[%v]\n", proto.UserTypeAdmin, userInfo.UserType)
+		return
+	}
+	if userInfo.Description != description {
+		t.Errorf("expect description[%v], real description[%v]\n", description, userInfo.Description)
 		return
 	}
 }

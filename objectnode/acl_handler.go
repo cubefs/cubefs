@@ -64,7 +64,11 @@ func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request)
 		ec = NoSuchBucket
 		return
 	}
-	acl := vol.loadACL()
+	var acl *AccessControlPolicy
+	if acl, err = vol.metaLoader.loadACL(); err != nil {
+		ec = InternalErrorCode(err)
+		return
+	}
 	var aclData []byte
 	if acl != nil {
 		aclData, err = xml.Marshal(acl)

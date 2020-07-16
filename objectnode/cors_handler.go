@@ -30,7 +30,11 @@ func (o *ObjectNode) getBucketCorsHandler(w http.ResponseWriter, r *http.Request
 
 	var output = CORSConfiguration{}
 
-	cors := vol.loadCors()
+	var cors *CORSConfiguration
+	if cors, err = vol.metaLoader.loadCors(); err != nil {
+		_ = InternalErrorCode(err).ServeResponse(w, r)
+		return
+	}
 	if cors != nil {
 		output.CORSRule = cors.CORSRule
 	}
@@ -85,7 +89,7 @@ func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request
 		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
-	vol.storeCors(corsConfig)
+	vol.metaLoader.storeCors(corsConfig)
 
 	return
 }
@@ -110,7 +114,7 @@ func (o *ObjectNode) deleteBucketCorsHandler(w http.ResponseWriter, r *http.Requ
 		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
-	vol.storeCors(nil)
+	vol.metaLoader.storeCors(nil)
 
 	w.WriteHeader(http.StatusNoContent)
 	return

@@ -176,7 +176,40 @@ Sample *objectnode.json is* shown as follows,
     }
 
 
-For detailed explanations of *meta.json*, please refer to :doc:`user-guide/objectnode`.
+For detailed explanations of *objectnode.json*, please refer to :doc:`user-guide/objectnode`.
+
+
+Start Console
+^^^^^^^^^^^^^^^^
+
+.. code-block:: bash
+
+   nohup ./cfs-server -c console.json &
+
+Sample *console.json is* shown as follows,
+
+.. code-block:: json
+
+    {
+        "role": "console",
+        "logDir": "/cfs/log/",
+        "logLevel": "debug",
+        "listen": "80",
+        "masterAddr": [
+            "192.168.0.11:17010",
+            "192.168.0.12:17010",
+            "192.168.0.13:17010"
+        ],
+        "objectNodeDomain": "object.chubao.io",
+        "master_instance": "192.168.0.11:9066",
+        "monitor_addr": "http://192.168.0.102:9090",
+        "dashboard_addr": "http://192.168.0.103",
+        "monitor_app": "cfs",
+        "monitor_cluster": "cfs"
+    }
+
+
+For detailed explanations of *console.json*, please refer to :doc:`user-guide/console`.
 
 Create Volume
 ^^^^^^^^^^^^^

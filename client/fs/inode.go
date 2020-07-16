@@ -62,6 +62,17 @@ func setattr(info *proto.InodeInfo, req *fuse.SetattrRequest) (valid uint32) {
 		info.Gid = req.Gid
 		valid |= proto.AttrGid
 	}
+
+	if req.Valid.Atime() {
+		info.AccessTime = req.Atime
+		valid |= proto.AttrAccessTime
+	}
+
+	if req.Valid.Mtime() {
+		info.ModifyTime = req.Mtime
+		valid |= proto.AttrModifyTime
+	}
+
 	return
 }
 

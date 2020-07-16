@@ -345,17 +345,6 @@ const (
 )
 
 func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
-	var (
-		vols      []*proto.VolInfo
-		err       error
-		validVols []string
-	)
-	if vols, err = client.AdminAPI().ListVols(""); err != nil {
-		errout("Get volume list failed:\n%v\n", err)
-	}
-	for _, vol := range vols {
-		validVols = append(validVols, vol.Name)
-	}
 	var cmd = &cobra.Command{
 		Use:   cmdVolAddDPCmdUse,
 		Short: cmdVolAddDPCmdShort,
@@ -383,7 +372,12 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 			}
 			return
 		},
-		ValidArgs: validVols,
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
 	}
 	return cmd
 }
@@ -393,19 +387,4 @@ func calcAuthKey(key string) (authKey string) {
 	_, _ = h.Write([]byte(key))
 	cipherStr := h.Sum(nil)
 	return strings.ToLower(hex.EncodeToString(cipherStr))
-}
-
-func validVols(client *master.MasterClient, toComplete string) []string {
-	var (
-		validVols []string
-		vols      []*proto.VolInfo
-		err       error
-	)
-	if vols, err = client.AdminAPI().ListVols(toComplete); err != nil {
-		errout("Get volume list failed:\n%v\n", err)
-	}
-	for _, vol := range vols {
-		validVols = append(validVols, vol.Name)
-	}
-	return validVols
 }

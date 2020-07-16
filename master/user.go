@@ -2,6 +2,7 @@ package master
 
 import (
 	"crypto/sha1"
+	"encoding/hex"
 	"io"
 	"strings"
 	"sync"
@@ -68,6 +69,7 @@ func (u *User) createKey(param *proto.UserCreateParam) (userInfo *proto.UserInfo
 		secretKey = util.RandomString(secretKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
 	}
 	var userType = param.Type
+	var description = param.Description
 	u.userStoreMutex.Lock()
 	defer u.userStoreMutex.Unlock()
 	u.AKStoreMutex.Lock()
@@ -84,8 +86,8 @@ func (u *User) createKey(param *proto.UserCreateParam) (userInfo *proto.UserInfo
 	}
 	userPolicy = proto.NewUserPolicy()
 	userInfo = &proto.UserInfo{UserID: userID, AccessKey: accessKey, SecretKey: secretKey, Policy: userPolicy,
-		UserType: userType, CreateTime: time.Unix(time.Now().Unix(), 0).Format(proto.TimeFormat)}
-	AKUser = &proto.AKUser{AccessKey: accessKey, UserID: userID, Password: sha1String(password)}
+		UserType: userType, CreateTime: time.Unix(time.Now().Unix(), 0).Format(proto.TimeFormat), Description: description}
+	AKUser = &proto.AKUser{AccessKey: accessKey, UserID: userID, Password: encodingPassword(password)}
 	if err = u.syncAddUserInfo(userInfo); err != nil {
 		return
 	}
@@ -187,34 +189,37 @@ func (u *User) updateKey(param *proto.UserUpdateParam) (userInfo *proto.UserInfo
 	if param.Type.Valid() {
 		userInfo.UserType = param.Type
 	}
+	if param.Description != "" {
+		userInfo.Description = param.Description
+	}
 
-	var akChanged = false
 	var akUserBef *proto.AKUser
 	var akUserAft *proto.AKUser
-	if formerAK != userInfo.AccessKey {
-		if value, exist := u.AKStore.Load(formerAK); exist {
-			akUserBef = value.(*proto.AKUser)
-		} else {
-			err = proto.ErrAccessKeyNotExists
-			return
-		}
-		akUserAft = &proto.AKUser{AccessKey: userInfo.AccessKey, UserID: param.UserID, Password: akUserBef.Password}
-		akChanged = true
+
+	if value, exist := u.AKStore.Load(formerAK); exist {
+		akUserBef = value.(*proto.AKUser)
+	} else {
+		err = proto.ErrAccessKeyNotExists
+		return
 	}
+
+	if len(strings.TrimSpace(param.Password)) != 0 {
+		akUserBef.Password = encodingPassword(param.Password)
+	}
+
+	akUserAft = &proto.AKUser{AccessKey: userInfo.AccessKey, UserID: param.UserID, Password: akUserBef.Password}
 
 	if err = u.syncUpdateUserInfo(userInfo); err != nil {
 		return
 	}
-	if akChanged {
-		if err = u.syncAddAKUser(akUserAft); err != nil {
-			return
-		}
-		if err = u.syncDeleteAKUser(akUserBef); err != nil {
-			return
-		}
-		u.AKStore.Store(akUserAft.AccessKey, akUserAft)
-		u.AKStore.Delete(akUserBef.AccessKey)
+	if err = u.syncDeleteAKUser(akUserBef); err != nil {
+		return
 	}
+	if err = u.syncAddAKUser(akUserAft); err != nil {
+		return
+	}
+	u.AKStore.Delete(formerAK)
+	u.AKStore.Store(akUserAft.AccessKey, akUserAft)
 
 	log.LogInfof("action[updateUser], userID: %v, accesskey[%v], secretkey[%v]", userInfo.UserID, userInfo.AccessKey, userInfo.SecretKey)
 	return
@@ -510,10 +515,10 @@ func removeString(array []string, element string) ([]string, bool) {
 	return array, false
 }
 
-func sha1String(s string) string {
+func encodingPassword(s string) string {
 	t := sha1.New()
 	io.WriteString(t, s)
-	return string(t.Sum(nil))
+	return hex.EncodeToString(t.Sum(nil))
 }
 
 func (u *User) clearUserStore() {

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	bsProto "github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
@@ -31,16 +32,22 @@ import (
    transferred over the network. */
 
 type clusterValue struct {
-	Name                string
-	Threshold           float32
-	DisableAutoAllocate bool
+	Name                        string
+	Threshold                   float32
+	DisableAutoAllocate         bool
+	DataNodeDeleteLimitRate     uint64
+	MetaNodeDeleteBatchCount    uint64
+	MetaNodeDeleteWorkerSleepMs uint64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
 	cv = &clusterValue{
-		Name:                c.Name,
-		Threshold:           c.cfg.MetaNodeThreshold,
-		DisableAutoAllocate: c.DisableAutoAllocate,
+		Name:                        c.Name,
+		Threshold:                   c.cfg.MetaNodeThreshold,
+		DataNodeDeleteLimitRate:     c.cfg.DataNodeDeleteLimitRate,
+		MetaNodeDeleteBatchCount:    c.cfg.MetaNodeDeleteBatchCount,
+		MetaNodeDeleteWorkerSleepMs: c.cfg.MetaNodeDeleteWorkerSleepMs,
+		DisableAutoAllocate:         c.DisableAutoAllocate,
 	}
 	return cv
 }
@@ -123,6 +130,7 @@ type volValue struct {
 	OSSAccessKey      string
 	OSSSecretKey      string
 	CreateTime        int64
+	Description       string
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -148,6 +156,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		OSSAccessKey:      vol.OSSAccessKey,
 		OSSSecretKey:      vol.OSSSecretKey,
 		CreateTime:        vol.createTime,
+		Description:       vol.description,
 	}
 	return
 }
@@ -497,6 +506,18 @@ func (c *Cluster) removeRaftNode(nodeID uint64, addr string) (err error) {
 	return nil
 }
 
+func (c *Cluster) updateMetaNodeDeleteBatchCount(val uint64) {
+	atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, val)
+}
+
+func (c *Cluster) updateMetaNodeDeleteWorkerSleepMs(val uint64) {
+	atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val)
+}
+
+func (c *Cluster) updateDataNodeDeleteLimitRate(val uint64) {
+	atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, val)
+}
+
 func (c *Cluster) loadClusterValue() (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
 	if err != nil {
@@ -511,6 +532,9 @@ func (c *Cluster) loadClusterValue() (err error) {
 		}
 		c.cfg.MetaNodeThreshold = cv.Threshold
 		c.DisableAutoAllocate = cv.DisableAutoAllocate
+		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
+		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
+		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}
 	return
@@ -670,6 +694,9 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 		dp.Peers = dpv.Peers
 		for _, rv := range dpv.Replicas {
+			if !contains(dp.Hosts, rv.Addr) {
+				continue
+			}
 			dp.afterCreation(rv.Addr, rv.DiskPath, c)
 		}
 		vol.dataPartitions.put(dp)

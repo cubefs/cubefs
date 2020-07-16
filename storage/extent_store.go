@@ -27,15 +27,16 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/log"
 	"hash/crc32"
 	"io"
 	"runtime"
 	"sort"
 	"strings"
 	"syscall"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (

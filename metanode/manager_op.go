@@ -16,7 +16,6 @@ package metanode
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -98,41 +97,6 @@ end:
 	return
 }
 
-func (m *metadataManager) opSetMetaNodeParams(conn net.Conn, p *Packet, remoteAddr string) (err error) {
-	var (
-		req       = &proto.SetMetaNodeParamsRequest{}
-		adminTask = &proto.AdminTask{
-			Request: req,
-		}
-	)
-	if err = json.Unmarshal(p.Data, adminTask); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		m.respondToClient(conn, p)
-		return
-	}
-
-	if req.BatchCount <= 0 {
-		req.BatchCount = uint64(BatchCounts)
-	}
-	if req.BatchCount > 4096 {
-		req.BatchCount = uint64(4096)
-	}
-
-	SetDeleteBatchCount(req.BatchCount)
-
-	return
-}
-
-func (m *metadataManager) opGetMetaNodeParams(conn net.Conn, p *Packet, remoteAddr string) (err error) {
-	bc := DeleteBatchCount()
-	data := make([]byte, 8)
-	binary.BigEndian.PutUint64(data, bc)
-	p.PacketOkWithBody(data)
-	m.respondToClient(conn, p)
-
-	return
-}
-
 func (m *metadataManager) opCreateMetaPartition(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
 	defer func() {
@@ -156,7 +120,7 @@ func (m *metadataManager) opCreateMetaPartition(conn net.Conn, p *Packet,
 			" struct: %s", err.Error())
 		return
 	}
-	log.LogDebugf("[opCreateMetaPartition] [remoteAddr=%s]accept a from"+
+	log.LogInfof("[opCreateMetaPartition] [remoteAddr=%s]accept a from"+
 		" master message: %v", remoteAddr, adminTask)
 	// create a new meta partition.
 	if err = m.createPartition(req); err != nil {

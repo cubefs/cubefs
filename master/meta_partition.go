@@ -28,15 +28,17 @@ import (
 
 // MetaReplica defines the replica of a meta partition
 type MetaReplica struct {
-	Addr       string
-	start      uint64 // lower bound of the inode id
-	end        uint64 // upper bound of the inode id
-	nodeID     uint64
-	MaxInodeID uint64
-	ReportTime int64
-	Status     int8 // unavailable, readOnly, readWrite
-	IsLeader   bool
-	metaNode   *MetaNode
+	Addr        string
+	start       uint64 // lower bound of the inode id
+	end         uint64 // upper bound of the inode id
+	nodeID      uint64
+	MaxInodeID  uint64
+	InodeCount  uint64
+	DentryCount uint64
+	ReportTime  int64
+	Status      int8 // unavailable, readOnly, readWrite
+	IsLeader    bool
+	metaNode    *MetaNode
 }
 
 // MetaPartition defines the structure of a meta partition
@@ -45,6 +47,8 @@ type MetaPartition struct {
 	Start        uint64
 	End          uint64
 	MaxInodeID   uint64
+	InodeCount   uint64
+	DentryCount  uint64
 	Replicas     []*MetaReplica
 	ReplicaNum   uint8
 	Status       int8
@@ -202,7 +206,7 @@ func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
 			mp.End = oldEnd
 		}
 	}
-	log.LogWarnf("action[checkEnd] partitionID[%v] end[%v]", mp.PartitionID, mp.End)
+	log.LogDebugf("action[checkEnd] partitionID[%v] end[%v]", mp.PartitionID, mp.End)
 }
 
 func (mp *MetaPartition) getMetaReplica(addr string) (mr *MetaReplica, err error) {
@@ -336,6 +340,8 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 	}
 	mr.updateMetric(mgr)
 	mp.setMaxInodeID()
+	mp.setInodeCount()
+	mp.setDentryCount()
 	mp.removeMissingReplica(metaNode.Addr)
 }
 
@@ -465,12 +471,11 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 func (mp *MetaPartition) replicaCreationTasks(clusterID, volName string) (tasks []*proto.AdminTask) {
 	var msg string
 	tasks = make([]*proto.AdminTask, 0)
-	if addr, task, err := mp.removeIllegalReplica(); err != nil {
+	if addr, _, err := mp.removeIllegalReplica(); err != nil {
 		msg = fmt.Sprintf("action[%v],clusterID[%v] metaPartition:%v  excess replication"+
 			" on :%v  err:%v  persistenceHosts:%v",
 			deleteIllegalReplicaErr, clusterID, mp.PartitionID, addr, err.Error(), mp.Hosts)
 		log.LogWarn(msg)
-		tasks = append(tasks, task)
 	}
 	if addrs := mp.missingReplicaAddrs(); addrs != nil {
 		msg = fmt.Sprintf("action[missingReplicaAddrs],clusterID[%v] metaPartition:%v  lack replication"+
@@ -614,6 +619,8 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	mr.Status = (int8)(mgr.Status)
 	mr.IsLeader = mgr.IsLeader
 	mr.MaxInodeID = mgr.MaxInodeID
+	mr.InodeCount = mgr.InodeCnt
+	mr.DentryCount = mgr.DentryCnt
 	mr.setLastReportTime()
 }
 
@@ -669,6 +676,26 @@ func (mp *MetaPartition) setMaxInodeID() {
 		}
 	}
 	mp.MaxInodeID = maxUsed
+}
+
+func (mp *MetaPartition) setInodeCount() {
+	var inodeCount uint64
+	for _, r := range mp.Replicas {
+		if r.InodeCount > inodeCount {
+			inodeCount = r.InodeCount
+		}
+	}
+	mp.InodeCount = inodeCount
+}
+
+func (mp *MetaPartition) setDentryCount() {
+	var dentryCount uint64
+	for _, r := range mp.Replicas {
+		if r.DentryCount > dentryCount {
+			dentryCount = r.DentryCount
+		}
+	}
+	mp.DentryCount = dentryCount
 }
 
 func (mp *MetaPartition) getAllNodeSets() (nodeSets []uint64) {

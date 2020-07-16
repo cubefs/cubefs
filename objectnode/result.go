@@ -16,6 +16,7 @@ package objectnode
 
 import (
 	"encoding/xml"
+	"github.com/chubaofs/chubaofs/util/log"
 	"net/url"
 )
 
@@ -235,7 +236,7 @@ type Tag struct {
 
 type Tagging struct {
 	XMLName xml.Name `json:"-"`
-	TagSet  []Tag    `xml:"TagSet>Tag" json:"ts"`
+	TagSet  []Tag   `xml:"TagSet>Tag,omitempty" json:"ts"`
 }
 
 func (t Tagging) Encode() string {
@@ -244,6 +245,23 @@ func (t Tagging) Encode() string {
 		values[tag.Key] = []string{tag.Value}
 	}
 	return values.Encode()
+}
+
+func (t Tagging) Validate() (bool, *ErrorCode) {
+	var errorCode *ErrorCode
+	if len(t.TagSet) > TaggingCounts {
+		return false, TagsGreaterThen10
+	}
+	for _, tag := range t.TagSet {
+		log.LogDebugf("Validate: key : (%v), value : (%v)", tag.Key, tag.Value)
+		if len(tag.Key) > TaggingKeyMaxLength {
+			return false, InvalidTagKey
+		}
+		if len(tag.Value) > TaggingValueMaxLength {
+			return false, InvalidTagValue
+		}
+	}
+	return true, errorCode
 }
 
 func NewTagging() *Tagging {
@@ -260,6 +278,9 @@ func ParseTagging(src string) (*Tagging, error) {
 	tagSet := make([]Tag, 0, len(values))
 	for key, value := range values {
 		tagSet = append(tagSet, Tag{Key: key, Value: value[0]})
+	}
+	if len(tagSet) == 0 {
+		return NewTagging(), nil
 	}
 	return &Tagging{
 		XMLName: xml.Name{Local: "Tagging"},
