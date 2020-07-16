@@ -45,7 +45,7 @@ const (
 
 type Policy struct {
 	Version    string      `json:"Version"`
-	Id         string      `json:"Id,omnistring"`
+	Id         string      `json:"Id,omitempty"`
 	Statements []Statement `json:"Statement,omitempty"`
 }
 
@@ -119,7 +119,13 @@ func storeBucketPolicy(bytes []byte, vol *Volume) (*Policy, error) {
 	return policy, nil
 }
 
-//
+func deleteBucketPolicy(vol *Volume) (err error) {
+	if err = vol.store.Delete(vol.name, bucketRootPath, XAttrKeyOSSPolicy); err != nil {
+		return err
+	}
+	return nil
+}
+
 func ParsePolicy(r io.Reader, bucket string) (*Policy, error) {
 	var policy Policy
 	d := json.NewDecoder(r)
@@ -256,6 +262,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 				allowed = false
 				return
 			}
+			isOwner = true
 		} else {
 			log.LogErrorf("policyCheck: load user policy from master fail: requestID(%v) accessKey(%v) err(%v)",
 				GetRequestID(r), param.AccessKey(), err)
