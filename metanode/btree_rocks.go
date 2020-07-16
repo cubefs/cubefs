@@ -246,6 +246,9 @@ func (b *DentryRocks) Count() uint64 {
 }
 
 //Get
+func (b *InodeRocks) RefGet(ino uint64) (*Inode, error) {
+	return b.Get(ino)
+}
 func (b *InodeRocks) Get(ino uint64) (*Inode, error) {
 	bs, err := b.RocksTree.GetBytes(inodeEncodingKey(ino))
 	if err != nil {
@@ -261,6 +264,9 @@ func (b *InodeRocks) Get(ino uint64) (*Inode, error) {
 	return inode, nil
 }
 
+func (b *DentryRocks) RefGet(ino uint64, name string) (*Dentry, error) {
+	return b.Get(ino, name)
+}
 func (b *DentryRocks) Get(ino uint64, name string) (*Dentry, error) {
 	key := dentryEncodingKey(ino, name)
 	bs, err := b.RocksTree.GetBytes(key)
@@ -276,6 +282,9 @@ func (b *DentryRocks) Get(ino uint64, name string) (*Dentry, error) {
 	return dentry, nil
 }
 
+func (b *ExtendRocks) RefGet(ino uint64) (*Extend, error) {
+	return b.Get(ino)
+}
 func (b *ExtendRocks) Get(ino uint64) (*Extend, error) {
 	bs, err := b.RocksTree.GetBytes(extendEncodingKey(ino))
 	if err != nil {
@@ -284,12 +293,19 @@ func (b *ExtendRocks) Get(ino uint64) (*Extend, error) {
 	return NewExtendFromBytes(bs)
 }
 
+func (b *MultipartRocks) RefGet(key, id string) (*Multipart, error) {
+	return b.Get(key, id)
+}
 func (b *MultipartRocks) Get(key, id string) (*Multipart, error) {
 	bs, err := b.RocksTree.GetBytes(multipartEncodingKey(key, id))
 	if err != nil {
 		return nil, err
 	}
 	return MultipartFromBytes(bs), nil
+}
+
+func (b *InodeRocks) Update(inode *Inode) error {
+	return b.Put(inode)
 }
 
 //put inode into rocksdb
@@ -310,6 +326,10 @@ func (b *DentryRocks) Put(dentry *Dentry) error {
 	return b.RocksTree.Put(dentryEncodingKey(dentry.ParentId, dentry.Name), bs)
 }
 
+func (b *ExtendRocks) Update(extend *Extend) error {
+	return b.Put(extend)
+}
+
 func (b *ExtendRocks) Put(extend *Extend) error {
 	bs, err := extend.Bytes()
 	if err != nil {
@@ -317,6 +337,11 @@ func (b *ExtendRocks) Put(extend *Extend) error {
 	}
 	return b.RocksTree.Put(extendEncodingKey(extend.inode), bs)
 }
+
+func (b *MultipartRocks) Update(mutipart *Multipart) error {
+	return b.Put(mutipart)
+}
+
 func (b *MultipartRocks) Put(mutipart *Multipart) error {
 	bs, err := mutipart.Bytes()
 	if err != nil {

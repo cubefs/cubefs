@@ -29,7 +29,7 @@ func (mp *MetaPartition) fsmSetXAttr(extend *Extend) error {
 	}
 	e.Merge(extend, true)
 
-	return mp.extendTree.Put(e)
+	return mp.extendTree.Update(e)
 }
 
 func (mp *MetaPartition) fsmRemoveXAttr(extend *Extend) error {
@@ -41,5 +41,5 @@ func (mp *MetaPartition) fsmRemoveXAttr(extend *Extend) error {
 		e.Remove(key)
 		return true
 	})
-	return mp.extendTree.Put(e)
+	return mp.extendTree.Update(e)
 }

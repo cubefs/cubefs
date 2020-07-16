@@ -25,7 +25,7 @@ import (
 )
 
 func (mp *MetaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet) (err error) {
-	multipart, err := mp.multipartTree.Get(req.Path, req.MultipartId)
+	multipart, err := mp.multipartTree.RefGet(req.Path, req.MultipartId)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		return
@@ -62,7 +62,7 @@ func (mp *MetaPartition) AppendMultipart(req *proto.AddMultipartPartRequest, p *
 		p.PacketOkReply()
 		return
 	}
-	_, err = mp.multipartTree.Get(req.Path, req.MultipartId)
+	_, err = mp.multipartTree.RefGet(req.Path, req.MultipartId)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		return

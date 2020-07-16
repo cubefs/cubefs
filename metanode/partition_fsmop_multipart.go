@@ -54,5 +54,6 @@ func (mp *MetaPartition) fsmAppendMultipart(multipart *Multipart) (status uint8)
 			return proto.OpExistErr
 		}
 	}
+	log.LogIfNotNil(mp.multipartTree.Update(storedMultipart))
 	return proto.OpOk
 }

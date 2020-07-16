@@ -61,7 +61,7 @@ func (mp *MetaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
 		return
 	}
 	item.IncNLink()
-	log.LogIfNotNil(mp.inodeTree.Put(item))
+	log.LogIfNotNil(mp.inodeTree.Update(item))
 	resp.Msg = item
 	return
 }
@@ -69,7 +69,7 @@ func (mp *MetaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
 func (mp *MetaPartition) getInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
-	item, err := mp.inodeTree.Get(ino.Inode)
+	item, err := mp.inodeTree.RefGet(ino.Inode)
 	if item == nil {
 		log.LogIfNotNil(err)
 		resp.Status = proto.OpNotExistErr
@@ -85,12 +85,12 @@ func (mp *MetaPartition) getInode(ino *Inode) (resp *InodeResponse) {
 	 */
 	item.AccessTime = Now.GetCurrentTime().Unix()
 	resp.Msg = item
-	log.LogIfNotNil(mp.inodeTree.Put(item))
+	log.LogIfNotNil(mp.inodeTree.Update(item))
 	return
 }
 
 func (mp *MetaPartition) hasInode(ino *Inode) (ok bool) {
-	item, err := mp.inodeTree.Get(ino.Inode)
+	item, err := mp.inodeTree.RefGet(ino.Inode)
 	if item == nil {
 		ok = false
 		return
@@ -206,8 +206,6 @@ func (mp *MetaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	delExtents := ino2.AppendExtents(eks, ino.ModifyTime)
 	log.LogDebugf("[fsmAppendExtents] inode input: %v newInode: %v, eks: %v", ino, ino2, eks)
 	mp.extDelCh <- delExtents
-	log.LogInfof("[fsmAppendExtents] inode(%v) exts(%v)", ino2, delExtents)
-	log.LogIfNotNil(mp.inodeTree.Put(ino2))
 	return
 }
 
@@ -231,7 +229,7 @@ func (mp *MetaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	}
 
 	delExtents := item.ExtentsTruncate(ino.Size, ino.ModifyTime)
-	log.LogIfNotNil(mp.inodeTree.Put(item))
+	log.LogIfNotNil(mp.inodeTree.Update(item))
 	// now we should delete the extent
 	log.LogInfof("fsmExtentsTruncate inode(%v) exts(%v)", item.Inode, delExtents)
 	mp.extDelCh <- delExtents
@@ -254,15 +252,15 @@ func (mp *MetaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 	if proto.IsDir(item.Type) {
 		if item.IsEmptyDir() {
 			item.SetDeleteMark()
+			log.LogIfNotNil(mp.inodeTree.Update(item))
 		}
-		log.LogIfNotNil(mp.inodeTree.Put(item))
 		return
 	}
 
 	if item.IsTempFile() {
 		item.SetDeleteMark()
 		mp.freeList.Push(item.Inode)
-		log.LogIfNotNil(mp.inodeTree.Put(item))
+		log.LogIfNotNil(mp.inodeTree.Update(item))
 	}
 	return
 }
@@ -293,6 +291,6 @@ func (mp *MetaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
 		return
 	}
 	item.SetAttr(req.Valid, req.Mode, req.Uid, req.Gid)
-	log.LogIfNotNil(mp.inodeTree.Put(item))
+	log.LogIfNotNil(mp.inodeTree.Update(item))
 	return
 }

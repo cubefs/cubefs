@@ -113,7 +113,7 @@ func (mp *MetaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmDeleteDentry(den, false)
+		resp = mp.fsmDeleteDentry(den)
 	case opFSMDeleteDentryBatch:
 		db, err := DentryBatchUnmarshal(msg.V)
 		if err != nil {

@@ -38,7 +38,7 @@ func (mp *MetaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err er
 		Inode:       req.Inode,
 		Key:         req.Key,
 	}
-	extend, err := mp.extendTree.Get(req.Inode)
+	extend, err := mp.extendTree.RefGet(req.Inode)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return err
@@ -63,7 +63,7 @@ func (mp *MetaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 		XAttrs:      make([]*proto.XAttrInfo, 0, len(req.Inodes)),
 	}
 	for _, inode := range req.Inodes {
-		extend, err := mp.extendTree.Get(inode)
+		extend, err := mp.extendTree.RefGet(inode)
 		if err != nil {
 			continue
 		}
@@ -106,7 +106,7 @@ func (mp *MetaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err 
 		Inode:       req.Inode,
 		XAttrs:      make([]string, 0),
 	}
-	extend, err := mp.extendTree.Get(req.Inode)
+	extend, err := mp.extendTree.RefGet(req.Inode)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return err

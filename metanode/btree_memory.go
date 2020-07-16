@@ -86,6 +86,14 @@ type MultipartBTree struct {
 }
 
 //get
+func (i *InodeBTree) RefGet(ino uint64) (*Inode, error) {
+	item := i.BTree.Get(&Inode{Inode: ino})
+	if item != nil {
+		return item.(*Inode), nil
+	}
+	return nil, nil
+}
+
 func (i *InodeBTree) Get(ino uint64) (*Inode, error) {
 	item := i.BTree.CopyGet(&Inode{Inode: ino})
 	if item != nil {
@@ -93,10 +101,27 @@ func (i *InodeBTree) Get(ino uint64) (*Inode, error) {
 	}
 	return nil, nil
 }
+
+func (i *DentryBTree) RefGet(pid uint64, name string) (*Dentry, error) {
+	item := i.BTree.Get(&Dentry{ParentId: pid, Name: name})
+	if item != nil {
+		return item.(*Dentry), nil
+	}
+	return nil, nil
+}
+
 func (i *DentryBTree) Get(pid uint64, name string) (*Dentry, error) {
 	item := i.BTree.CopyGet(&Dentry{ParentId: pid, Name: name})
 	if item != nil {
 		return item.(*Dentry), nil
+	}
+	return nil, nil
+}
+
+func (i *ExtendBTree) RefGet(ino uint64) (*Extend, error) {
+	item := i.BTree.Get(&Extend{inode: ino})
+	if item != nil {
+		return item.(*Extend), nil
 	}
 	return nil, nil
 }
@@ -109,12 +134,25 @@ func (i *ExtendBTree) Get(ino uint64) (*Extend, error) {
 	return nil, nil
 }
 
+func (i *MultipartBTree) RefGet(key, id string) (*Multipart, error) {
+	item := i.BTree.Get(&Multipart{key: key, id: id})
+	if item != nil {
+		return item.(*Multipart), nil
+	}
+	return nil, nil
+}
+
 func (i *MultipartBTree) Get(key, id string) (*Multipart, error) {
 	item := i.BTree.CopyGet(&Multipart{key: key, id: id})
 	if item != nil {
 		return item.(*Multipart), nil
 	}
 	return nil, nil
+}
+
+func (i *InodeBTree) Update(inode *Inode) error {
+	//in memory not need update .so empty it
+	return nil
 }
 
 //put
@@ -126,8 +164,14 @@ func (i *DentryBTree) Put(dentry *Dentry) error {
 	i.BTree.ReplaceOrInsert(dentry, true)
 	return nil
 }
+func (i *ExtendBTree) Update(extend *Extend) error {
+	return nil
+}
 func (i *ExtendBTree) Put(extend *Extend) error {
 	i.BTree.ReplaceOrInsert(extend, true)
+	return nil
+}
+func (i *MultipartBTree) Update(multipart *Multipart) error {
 	return nil
 }
 func (i *MultipartBTree) Put(multipart *Multipart) error {

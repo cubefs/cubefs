@@ -83,6 +83,7 @@ func (mp *MetaPartition) fsmCreateDentry(dentry *Dentry, forceUpdate bool) (stat
 	} else {
 		if !forceUpdate {
 			parIno.IncNLink()
+			log.LogIfNotNil(mp.inodeTree.Update(parIno))
 		}
 	}
 
@@ -92,7 +93,7 @@ func (mp *MetaPartition) fsmCreateDentry(dentry *Dentry, forceUpdate bool) (stat
 // Query a dentry from the dentry tree with specified dentry info.
 func (mp *MetaPartition) getDentry(pid uint64, name string) (*Dentry, uint8) {
 	status := proto.OpOk
-	dentry, err := mp.dentryTree.Get(pid, name)
+	dentry, err := mp.dentryTree.RefGet(pid, name)
 	if dentry == nil {
 		log.LogErrorf("get nil dentry: [%v]: %v", pid, name)
 		status = proto.OpNotExistErr
@@ -107,7 +108,7 @@ func (mp *MetaPartition) getDentry(pid uint64, name string) (*Dentry, uint8) {
 }
 
 // Delete dentry from the dentry tree.
-func (mp *MetaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (resp *DentryResponse) {
+func (mp *MetaPartition) fsmDeleteDentry(dentry *Dentry) (resp *DentryResponse) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
 
@@ -133,7 +134,7 @@ func (mp *MetaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (resp 
 		if inode != nil {
 			if !inode.ShouldDelete() {
 				inode.DecNLink()
-				log.LogIfNotNil(mp.inodeTree.Put(inode))
+				log.LogIfNotNil(mp.inodeTree.Update(inode))
 			}
 		}
 	}
@@ -145,7 +146,7 @@ func (mp *MetaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (resp 
 func (mp *MetaPartition) fsmBatchDeleteDentry(db DentryBatch) []*DentryResponse {
 	result := make([]*DentryResponse, 0, len(db))
 	for _, dentry := range db {
-		result = append(result, mp.fsmDeleteDentry(dentry, true))
+		result = append(result, mp.fsmDeleteDentry(dentry))
 	}
 	return result
 }
