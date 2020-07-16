@@ -122,6 +122,8 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
+	go m.startUpdateNodeInfo()
+
 	exporter.Init(cfg.GetString("role"), cfg)
 
 	// check local partition compare with master ,if lack,then not start
@@ -143,6 +145,7 @@ func doShutdown(s common.Server) {
 	if !ok {
 		return
 	}
+	m.stopUpdateNodeInfo()
 	// shutdown node and release the resource
 	m.stopServer()
 	m.stopMetaManager()
@@ -166,7 +169,6 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftDir = cfg.GetString(cfgRaftDir)
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
-	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
 	m.zoneName = cfg.GetString(cfgZoneName)
 	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
 
@@ -176,7 +178,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 
 	deleteBatchCount := cfg.GetInt64(cfgDeleteBatchCount)
 	if deleteBatchCount > 1 {
-		SetDeleteBatchCount(uint64(deleteBatchCount))
+		updateDeleteBatchCount(uint64(deleteBatchCount))
 	}
 
 	total, _, err := util.GetMemInfo()
@@ -278,7 +280,7 @@ func (m *MetaNode) register() (err error) {
 	var nodeAddress string
 	for {
 		if step < 1 {
-			clusterInfo, err = getClientIP()
+			clusterInfo, err = getClusterInfo()
 			if err != nil {
 				log.LogErrorf("[register] %s", err.Error())
 				continue
@@ -306,7 +308,7 @@ func NewServer() *MetaNode {
 	return &MetaNode{}
 }
 
-func getClientIP() (ci *proto.ClusterInfo, err error) {
+func getClusterInfo() (ci *proto.ClusterInfo, err error) {
 	ci, err = masterClient.AdminAPI().GetClusterInfo()
 	return
 }

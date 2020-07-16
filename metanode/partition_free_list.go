@@ -30,29 +30,12 @@ import (
 const (
 	AsyncDeleteInterval      = 10 * time.Second
 	UpdateVolTicket          = 2 * time.Minute
-	BatchCounts              = 500
+	BatchCounts              = 128
 	OpenRWAppendOpt          = os.O_CREATE | os.O_RDWR | os.O_APPEND
 	TempFileValidTime        = 86400 //units: sec
 	DeleteInodeFileExtension = "INODE_DEL"
 	DeleteWorkerCnt          = 10
 )
-
-var (
-	flMu             sync.RWMutex
-	deleteBatchCount = uint64(BatchCounts)
-)
-
-func DeleteBatchCount() (batchCount uint64) {
-	flMu.RLock()
-	flMu.RUnlock()
-	return deleteBatchCount
-}
-
-func SetDeleteBatchCount(batchCount uint64) {
-	flMu.Lock()
-	deleteBatchCount = batchCount
-	flMu.Unlock()
-}
 
 func (mp *metaPartition) startFreeList() (err error) {
 	if mp.delInodeFp, err = os.OpenFile(path.Join(mp.config.RootDir,
@@ -67,11 +50,11 @@ func (mp *metaPartition) startFreeList() (err error) {
 	return
 }
 
-func (mp *metaPartition)updateVolView(convert func(view *proto.DataPartitionsView) *DataPartitionsView)(err error) {
+func (mp *metaPartition) updateVolView(convert func(view *proto.DataPartitionsView) *DataPartitionsView) (err error) {
 	volName := mp.config.VolName
 	dataView, err := masterClient.ClientAPI().GetDataPartitions(volName)
 	if err != nil {
-		err=fmt.Errorf("updateVolWorker: get data partitions view fail: volume(%v) err(%v)",
+		err = fmt.Errorf("updateVolWorker: get data partitions view fail: volume(%v) err(%v)",
 			volName, err)
 		log.LogErrorf(err.Error())
 		return
@@ -127,10 +110,15 @@ func (mp *metaPartition) deleteWorker() {
 			return
 		default:
 		}
+
 		if _, isLeader = mp.IsLeader(); !isLeader {
 			time.Sleep(AsyncDeleteInterval)
 			continue
 		}
+
+		DeleteWorkerSleepMs()
+
+		//TODO: add sleep time value
 		isForceDeleted := sleepCnt%MaxSleepCnt == 0
 		if !isForceDeleted && mp.freeList.Len() < MinDeleteBatchCounts {
 			time.Sleep(AsyncDeleteInterval)
@@ -156,7 +144,7 @@ func (mp *metaPartition) deleteWorker() {
 // delete Extents by Partition,and find all successDelete inode
 func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents map[uint64][]*proto.ExtentKey, allInodes []*Inode) (shouldCommit []*Inode) {
 	occurErrors := make(map[uint64]error)
-	shouldCommit = make([]*Inode, 0, BatchCounts)
+	shouldCommit = make([]*Inode, 0, DeleteBatchCount())
 	var (
 		wg   sync.WaitGroup
 		lock sync.Mutex
@@ -179,13 +167,12 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 	for i := 0; i < len(allInodes); i++ {
 		successDeleteExtentCnt := 0
 		inode := allInodes[i]
-		inode.Extents.Range(func(item BtreeItem) bool {
-			ext := item.(*proto.ExtentKey)
-			if occurErrors[ext.PartitionId] == nil {
+		inode.Extents.Range(func(ek proto.ExtentKey) bool {
+			if occurErrors[ek.PartitionId] == nil {
 				successDeleteExtentCnt++
 				return true
 			} else {
-				log.LogWarnf("deleteInode Inode(%v) error(%v)", inode.Inode,  occurErrors[ext.PartitionId] )
+				log.LogWarnf("deleteInode Inode(%v) error(%v)", inode.Inode, occurErrors[ek.PartitionId])
 				return false
 			}
 		})
@@ -197,7 +184,6 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 	return
 }
 
-
 // Delete the marked inodes.
 func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	defer func() {
@@ -205,7 +191,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 			log.LogErrorf(fmt.Sprintf("metaPartition(%v) deleteMarkedInodes panic (%v)", mp.config.PartitionId, r))
 		}
 	}()
-	shouldCommit := make([]*Inode, 0, BatchCounts)
+	shouldCommit := make([]*Inode, 0, DeleteBatchCount())
 	allDeleteExtents := make(map[string]uint64)
 	deleteExtentsByPartition := make(map[uint64][]*proto.ExtentKey)
 	allInodes := make([]*Inode, 0)
@@ -215,8 +201,8 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		if !ok {
 			continue
 		}
-		inode.Extents.Range(func(item BtreeItem) bool {
-			ext := item.(*proto.ExtentKey)
+		inode.Extents.Range(func(ek proto.ExtentKey) bool {
+			ext := &ek
 			_, ok := allDeleteExtents[ext.GetExtentKey()]
 			if !ok {
 				allDeleteExtents[ext.GetExtentKey()] = inode.Inode

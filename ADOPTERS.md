@@ -2,7 +2,7 @@
 
 This page contains a list of organizations who are using ChubaoFS in production or at stages of testing.
 
-If you'd like to be included here, please send a pull request which modifies this file.
+>If you'd like to be included here, please send a pull request which modifies this file.
 
 ## Success Stories
 
@@ -22,6 +22,6 @@ If you'd like to be included here, please send a pull request which modifies thi
 | [NetEase](https://www.163.com) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
 | [Meizu](https://www.meizu.com) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
 | [Reconova](http://www.reconova.com) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
+| [LinkSure](https://cn.wifi.com) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
 | [360Search](https://www.so.com) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
-| [LinkSure](https://cn.wifi.com) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
-| [Sinosoft](http://www.sinosoft.com.cn) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) | 
+| [Sinosoft](http://www.sinosoft.com.cn) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |

@@ -315,6 +315,11 @@ func (cache *ExtentCache) PrepareWriteRequests(offset, size int, data []byte) []
 				start = end
 				return false
 			} else {
+				req:=NewExtentRequest(start,ekStart-start,data[start-offset:ekStart-offset],nil)
+				requests=append(requests,req)
+
+				req=NewExtentRequest(ekStart,ekEnd-ekStart,data[ekStart-offset:ekEnd-offset],ek)
+				start=ekEnd
 				return true
 			}
 		} else if start < ekEnd {

@@ -29,6 +29,7 @@ Configurations
    "consulAddr", "string", "Addresses of monitor system", "No"
    "exporterPort", "string", "Port for monitor system", "No"
    "masterAddr", "string slice", "Addresses of master server", "Yes"
+   "zoneName", "string", "Specified zone. ``default`` by default.", "No"
    "disks", "string slice", "
    | Format: *PATH:RETAIN*.
    | PATH: Disk mount point. RETAIN: Retain space. (Ranges: 20G-50G.)", "Yes"
@@ -64,6 +65,7 @@ Configurations
 Notice
 -------------
 
+  * Since datanode uses **SEEK_HOLE** and **SEEK_DATA** operations which is supported by XFS (since Linux 3.5) and ext4 (since Linux 3.8), users should pay attention to the Linux kernel version on which datanodes are deployed.
   * `listen`, `raftHeartbeat`, `raftReplica` can't be modified after boot startup first time.
   * Above config would be stored under directory `raftDir` in `constcfg` file. If need modified forcely, you must delete this file manually.
   * These configuration items associated with master's datanode infomation. If they have been modified, master would't be found old datanode.

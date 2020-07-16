@@ -183,8 +183,10 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 	}
 
 	status = parseStatus(packet.ResultCode)
-	if status != statusOK {
+	if (status != statusOK) && (status != statusExist) {
 		log.LogErrorf("dcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	} else if status == statusExist {
+		log.LogWarnf("dcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	}
 	log.LogDebugf("dcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	return
@@ -609,7 +611,7 @@ func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info 
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid, gid uint32) (status int, err error) {
+func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) (status int, err error) {
 	req := &proto.SetAttrRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -618,6 +620,8 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 		Mode:        mode,
 		Uid:         uid,
 		Gid:         gid,
+		AccessTime:  atime,
+		ModifyTime:  mtime,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -649,11 +653,12 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) createMultipart(mp *MetaPartition, path string) (status int, multipartId string, err error) {
+func (mw *MetaWrapper) createMultipart(mp *MetaPartition, path string, extend map[string]string) (status int, multipartId string, err error) {
 	req := &proto.CreateMultipartRequest{
 		PartitionId: mp.PartitionID,
 		VolName:     mw.volname,
 		Path:        path,
+		Extend:      extend,
 	}
 
 	packet := proto.NewPacketReqID()

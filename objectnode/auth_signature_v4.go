@@ -114,7 +114,9 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV4(r *http.Request) (bool
 	var accessKey = req.Credential.AccessKey
 	var volume *Volume
 	if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
-		volume, _ = o.getVol(bucket)
+		if volume, err = o.getVol(bucket); err != nil {
+			return false, err
+		}
 	}
 	var secretKey string
 	if userInfo, err := o.getUserInfoByAccessKey(accessKey); err == nil {
@@ -166,13 +168,15 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV4(r *http.Request) (pass bo
 	var ok bool
 	if ok, err = req.isValid(); !ok {
 		log.LogErrorf("validateUrlBySignatureAlgorithmV4: request invalid: requestID(%v) err(%v)", GetRequestID(r), err)
-		return
+		return false, nil
 	}
 
 	var accessKey = req.Credential.AccessKey
 	var volume *Volume
 	if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
-		volume, _ = o.getVol(bucket)
+		if volume, err = o.getVol(bucket); err != nil {
+			return false, err
+		}
 	}
 	var secretKey string
 	if userInfo, err := o.getUserInfoByAccessKey(accessKey); err == nil {
@@ -502,7 +506,9 @@ func calculateSignatureV4(r *http.Request, cred credential, secretKey string, si
 }
 
 func getCanonicalURI(r *http.Request) string {
-	return r.URL.EscapedPath()
+	// If request path contain double slash, the java sdk of aws escape the second slash into '%2F' after computing signature,
+	// so we received path is '/%2F', we have to unescape it to double slash again before computing signature.
+	return strings.ReplaceAll(r.URL.EscapedPath(), "/%2F", "//")
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html

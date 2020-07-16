@@ -71,44 +71,9 @@ type VolumeConfig struct {
 	// Such as Volume topology and metadata update tasks.
 	// This is a optional configuration item.
 	OnAsyncTaskError AsyncTaskErrorFunc
-}
 
-// OSSMeta is bucket policy and ACL metadata.
-type OSSMeta struct {
-	policy     *Policy
-	acl        *AccessControlPolicy
-	corsConfig *CORSConfiguration
-	policyLock sync.RWMutex
-	aclLock    sync.RWMutex
-	corsLock   sync.RWMutex
-}
-
-func (v *Volume) loadPolicy() (p *Policy) {
-	v.om.policyLock.RLock()
-	p = v.om.policy
-	v.om.policyLock.RUnlock()
-	return
-}
-
-func (v *Volume) storePolicy(p *Policy) {
-	v.om.policyLock.Lock()
-	v.om.policy = p
-	v.om.policyLock.Unlock()
-	return
-}
-
-func (v *Volume) loadACL() (p *AccessControlPolicy) {
-	v.om.aclLock.RLock()
-	p = v.om.acl
-	v.om.aclLock.RUnlock()
-	return
-}
-
-func (v *Volume) storeACL(p *AccessControlPolicy) {
-	v.om.aclLock.Lock()
-	v.om.acl = p
-	v.om.aclLock.Unlock()
-	return
+	// Get OSSMeta from the MetaNode every time if it is set true.
+	MetaStrict bool
 }
 
 type PutFileOption struct {
@@ -151,20 +116,6 @@ type ListFilesV2Result struct {
 	CommonPrefixes []string
 }
 
-func (v *Volume) loadCors() (cors *CORSConfiguration) {
-	v.om.corsLock.RLock()
-	cors = v.om.corsConfig
-	v.om.corsLock.RUnlock()
-	return
-}
-
-func (v *Volume) storeCors(cors *CORSConfiguration) {
-	v.om.corsLock.Lock()
-	v.om.corsConfig = cors
-	v.om.corsLock.Unlock()
-	return
-}
-
 // Volume is a high-level encapsulation of meta sdk and data sdk methods.
 // A high-level approach that exposes the semantics of object storage to the outside world.
 // Volume escapes high-level object storage semantics to low-level POSIX semantics.
@@ -173,7 +124,7 @@ type Volume struct {
 	ec         *stream.ExtentClient
 	store      Store // Storage for ACP management
 	name       string
-	om         *OSSMeta
+	metaLoader ossMetaLoader
 	ticker     *time.Ticker
 	createTime int64
 
@@ -208,25 +159,19 @@ func (v *Volume) loadOSSMeta() {
 	if policy, err = v.loadBucketPolicy(); err != nil {
 		return
 	}
-	if policy != nil {
-		v.storePolicy(policy)
-	}
+	v.metaLoader.storePolicy(policy)
 
 	var acl *AccessControlPolicy
 	if acl, err = v.loadBucketACL(); err != nil {
 		return
 	}
-	if acl != nil {
-		v.storeACL(acl)
-	}
+	v.metaLoader.storeACL(acl)
 
 	var cors *CORSConfiguration
 	if cors, err = v.loadBucketCors(); err != nil { // if cors isn't exist, it may return nil. So it needs to be cleared manually when deleting cors.
 		return
 	}
-	if cors != nil {
-		v.storeCors(cors)
-	}
+	v.metaLoader.storeCors(cors)
 }
 
 func (v *Volume) Name() string {
@@ -249,6 +194,9 @@ func (v *Volume) loadBucketPolicy() (policy *Policy, err error) {
 		log.LogErrorf("loadBucketPolicy: load bucket policy fail: Volume(%v) err(%v)", v.name, err)
 		return
 	}
+	if len(data) == 0 {
+		return
+	}
 	policy = &Policy{}
 	if err = json.Unmarshal(data, policy); err != nil {
 		return
@@ -259,6 +207,9 @@ func (v *Volume) loadBucketPolicy() (policy *Policy, err error) {
 func (v *Volume) loadBucketACL() (acp *AccessControlPolicy, err error) {
 	var raw []byte
 	if raw, err = v.store.Get(v.name, bucketRootPath, XAttrKeyOSSACL); err != nil {
+		return
+	}
+	if len(raw) == 0 {
 		return
 	}
 	acp = &AccessControlPolicy{}
@@ -273,15 +224,14 @@ func (v *Volume) loadBucketCors() (configuration *CORSConfiguration, err error) 
 	if raw, err = v.store.Get(v.name, bucketRootPath, XAttrKeyOSSCORS); err != nil {
 		return
 	}
+	if len(raw) == 0 {
+		return
+	}
 	configuration = &CORSConfiguration{}
 	if err = json.Unmarshal(raw, configuration); err != nil {
 		return
 	}
 	return configuration, nil
-}
-
-func (v *Volume) OSSMeta() *OSSMeta {
-	return v.om
 }
 
 func (v *Volume) getInodeFromPath(path string) (inode uint64, err error) {
@@ -315,10 +265,13 @@ func (v *Volume) getInodeFromPath(path string) (inode uint64, err error) {
 	return
 }
 
-func (v *Volume) SetXAttr(path string, key string, data []byte) error {
+func (v *Volume) SetXAttr(path string, key string, data []byte, autoCreate bool) error {
 	var err error
 	var inode uint64
 	if inode, err = v.getInodeFromPath(path); err != nil && err != syscall.ENOENT {
+		return err
+	}
+	if err == syscall.ENOENT && !autoCreate {
 		return err
 	}
 	if err == syscall.ENOENT {
@@ -488,6 +441,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 			Path:       path,
 			Size:       0,
 			Mode:       DefaultDirMode,
+			CreateTime: time.Now(),
 			ModifyTime: time.Now(),
 			ETag:       EmptyContentMD5String,
 			Inode:      rootIno,
@@ -513,6 +467,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 			Path:       path,
 			Size:       0,
 			Mode:       DefaultDirMode,
+			CreateTime: info.CreateTime,
 			ModifyTime: info.ModifyTime,
 			ETag:       EmptyContentMD5String,
 			Inode:      info.Inode,
@@ -574,37 +529,6 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	if err = v.ec.Flush(invisibleTempDataInode.Inode); err != nil {
 		log.LogErrorf("PutObject: data flush inode fail, inode(%v) err(%v)", invisibleTempDataInode.Inode, err)
 		return nil, err
-	}
-
-	var (
-		existMode uint32
-	)
-	_, existMode, err = v.mw.Lookup_ll(parentId, lastPathItem.Name)
-	if err != nil && err != syscall.ENOENT {
-		log.LogErrorf("PutObject: meta lookup fail: parentID(%v) name(%v) err(%v)", parentId, lastPathItem.Name, err)
-		return
-	}
-
-	if err == syscall.ENOENT {
-		if err = v.applyInodeToNewDentry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode); err != nil {
-			log.LogErrorf("PutObject: apply inode to new dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
-				parentId, lastPathItem.Name, invisibleTempDataInode.Inode, err)
-			return
-		}
-		log.LogDebugf("PutObject: apply inode to new dentry: parentID(%v) name(%v) inode(%v)",
-			parentId, lastPathItem.Name, invisibleTempDataInode.Inode)
-	} else {
-		if os.FileMode(existMode).IsDir() {
-			log.LogErrorf("PutObject: target mode conflict: parentID(%v) name(%v) mode(%v)",
-				parentId, lastPathItem.Name, os.FileMode(existMode).String())
-			err = syscall.EINVAL
-			return
-		}
-		if err = v.applyInodeToExistDentry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode); err != nil {
-			log.LogErrorf("PutObject: apply inode to exist dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
-				parentId, lastPathItem.Name, invisibleTempDataInode.Inode, err)
-			return
-		}
 	}
 
 	var finalInode *proto.InodeInfo
@@ -686,12 +610,52 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 		Path:       path,
 		Size:       int64(finalInode.Size),
 		Mode:       os.FileMode(finalInode.Mode),
+		CreateTime: finalInode.CreateTime,
 		ModifyTime: finalInode.ModifyTime,
 		ETag:       etagValue.ETag(),
 		Inode:      finalInode.Inode,
 	}
 
+	// apply new inode to dentry
+	err = v.applyInodeToDEntry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode)
+	if err != nil {
+		log.LogErrorf("PutObject: apply new inode to dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
+			parentId, lastPathItem.Name, invisibleTempDataInode.Inode, err)
+		return
+	}
 	return fsInfo, nil
+}
+
+func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64) (err error) {
+	var existMode uint32
+	_, existMode, err = v.mw.Lookup_ll(parentId, name)
+	if err != nil && err != syscall.ENOENT {
+		log.LogErrorf("applyInodeToDEntry: meta lookup fail: parentID(%v) name(%v) err(%v)", parentId, name, err)
+		return
+	}
+
+	if err == syscall.ENOENT {
+		if err = v.applyInodeToNewDentry(parentId, name, inode); err != nil {
+			log.LogErrorf("applyInodeToDEntry: apply inode to new dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
+				parentId, name, inode, err)
+			return
+		}
+		log.LogDebugf("applyInodeToDEntry: apply inode to new dentry: parentID(%v) name(%v) inode(%v)",
+			parentId, name, inode)
+	} else {
+		if os.FileMode(existMode).IsDir() {
+			log.LogErrorf("applyInodeToDEntry: target mode conflict: parentID(%v) name(%v) mode(%v)",
+				parentId, name, os.FileMode(existMode).String())
+			err = syscall.EINVAL
+			return
+		}
+		if err = v.applyInodeToExistDentry(parentId, name, inode); err != nil {
+			log.LogErrorf("applyInodeToDEntry: apply inode to exist dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
+				parentId, name, inode, err)
+			return
+		}
+	}
+	return
 }
 
 // DeletePath deletes the specified path.
@@ -749,13 +713,42 @@ func (v *Volume) DeletePath(path string) (err error) {
 	return
 }
 
-func (v *Volume) InitMultipart(path string) (multipartID string, err error) {
+func (v *Volume) InitMultipart(path string, opt *PutFileOption) (multipartID string, err error) {
 	defer func() {
 		log.LogInfof("Audit: InitMultipart: volume(%v) path(%v) multipartID(%v) err(%v)", v.name, path, multipartID, err)
 	}()
 
+	extend := make(map[string]string)
+	// handle object system metadata, self-defined metadata, tagging
+	if opt != nil && opt.MIMEType != "" {
+		extend[XAttrKeyOSSMIME] = opt.MIMEType
+	}
+	// If request contain content-disposition header, store it to xattr
+	if opt != nil && len(opt.Disposition) > 0 {
+		extend[XAttrKeyOSSDISPOSITION] = opt.Disposition
+	}
+	// If request contain cache-control header, store it to xattr
+	if opt != nil && len(opt.CacheControl) > 0 {
+		extend[XAttrKeyOSSCacheControl] = opt.CacheControl
+	}
+	// If request contain expires header, store it to xattr
+	if opt != nil && len(opt.Expires) > 0 {
+		extend[XAttrKeyOSSExpires] = opt.Expires
+	}
+	// If user-defined metadata have been specified, use extend attributes for storage.
+	if opt != nil && len(opt.Metadata) > 0 {
+		for name, value := range opt.Metadata {
+			extend[name] = value
+		}
+	}
+	// If tagging have been specified, use extend attributes for storage.
+	if opt != nil && opt.Tagging != nil {
+		var encoded = opt.Tagging.Encode()
+		extend[XAttrKeyOSSTagging] = encoded
+	}
+
 	// Iterate all the meta partition to create multipart id
-	multipartID, err = v.mw.InitMultipart_ll(path)
+	multipartID, err = v.mw.InitMultipart_ll(path, extend)
 	if err != nil {
 		log.LogErrorf("InitMultipart: meta init multipart fail: path(%v) err(%v)", path, err)
 		return "", err
@@ -845,6 +838,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 		Size:       int64(size),
 		Mode:       os.FileMode(DefaultFileMode),
 		ModifyTime: time.Now(),
+		CreateTime: tempInodeInfo.CreateTime,
 		ETag:       etag,
 		Inode:      tempInodeInfo.Inode,
 	}
@@ -892,12 +886,13 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 	return nil
 }
 
-func (v *Volume) CompleteMultipart(path, multipartID string, parts []*proto.MultipartPartInfo) (fsFileInfo *FSFileInfo, err error) {
+func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *proto.MultipartInfo) (fsFileInfo *FSFileInfo, err error) {
 	defer func() {
 		log.LogInfof("Audit: CompleteMultipart: volume(%v) path(%v) multipartID(%v) err(%v)",
 			v.name, path, multipartID, err)
 	}()
 
+	parts := multipartInfo.Parts
 	sort.SliceStable(parts, func(i, j int) bool { return parts[i].ID < parts[j].ID })
 
 	// create inode for complete data
@@ -963,41 +958,12 @@ func (v *Volume) CompleteMultipart(path, multipartID string, parts []*proto.Mult
 	var (
 		pathItems = NewPathIterator(path).ToSlice()
 		filename  = pathItems[len(pathItems)-1].Name
-		existMode uint32
 		parentId  uint64
 	)
 	if parentId, err = v.recursiveMakeDirectory(path); err != nil {
 		log.LogErrorf("PutObject: recursive make directory fail: volume(%v) path(%v) err(%v)",
 			v.name, path, err)
 		return
-	}
-
-	_, existMode, err = v.mw.Lookup_ll(parentId, filename)
-	if err != nil && err != syscall.ENOENT {
-		log.LogErrorf("CompleteMultipart: meta lookup fail: parentID(%v) name(%v) err(%v)", parentId, filename, err)
-		return
-	}
-
-	if err == syscall.ENOENT {
-		if err = v.applyInodeToNewDentry(parentId, filename, completeInodeInfo.Inode); err != nil {
-			log.LogErrorf("CompleteMultipart: apply inode to new dentry fail: volume(%v) path(%v) multipartID(%v) parentID(%v) name(%v) inode(%v) err(%v)",
-				v.name, path, multipartID, parentId, filename, completeInodeInfo.Inode, err)
-			return
-		}
-		log.LogDebugf("CompleteMultipart: apply inode to new dentry: volume(%v) path(%v) multipartID(%v) parentID(%v) name(%v) inode(%v)",
-			v.name, path, multipartID, parentId, filename, completeInodeInfo.Inode)
-	} else {
-		if os.FileMode(existMode).IsDir() {
-			log.LogErrorf("CompleteMultipart: target mode conflict: volume(%v) path(%v) multipartID(%v) parentID(%v) name(%v) mode(%v)",
-				v.name, path, multipartID, parentId, filename, os.FileMode(existMode).String())
-			err = syscall.EINVAL
-			return
-		}
-		if err = v.applyInodeToExistDentry(parentId, filename, completeInodeInfo.Inode); err != nil {
-			log.LogErrorf("CompleteMultipart: apply inode to exist dentry fail: volume(%v) path(%v) multipartID(%v) parentID(%v) name(%v) inode(%v) err(%v)",
-				v.name, path, multipartID, parentId, filename, completeInodeInfo.Inode, err)
-			return
-		}
 	}
 
 	var finalInode *proto.InodeInfo
@@ -1016,6 +982,17 @@ func (v *Volume) CompleteMultipart(path, multipartID string, parts []*proto.Mult
 		log.LogErrorf("CompleteMultipart: save ETag fail: volume(%v) inode(%v) err(%v)",
 			v.name, completeInodeInfo, err)
 		return
+	}
+	// set user modified system metadata, self defined metadata and tag
+	extend := multipartInfo.Extend
+	if len(extend) > 0 {
+		for key, value := range extend {
+			if err = v.mw.XAttrSet_ll(completeInodeInfo.Inode, []byte(key), []byte(value)); err != nil {
+				log.LogErrorf("CompleteMultipart: store multipart extend fail: volume(%v) path(%v) inode(%v) key(%v) value(%v) err(%v)",
+					v.name, path, completeInodeInfo.Inode, key, value, err)
+				return nil, err
+			}
+		}
 	}
 
 	// remove multipart
@@ -1047,9 +1024,17 @@ func (v *Volume) CompleteMultipart(path, multipartID string, parts []*proto.Mult
 		Path:       path,
 		Size:       int64(size),
 		Mode:       os.FileMode(DefaultFileMode),
+		CreateTime: time.Now(),
 		ModifyTime: time.Now(),
 		ETag:       etagValue.ETag(),
 		Inode:      finalInode.Inode,
+	}
+
+	// apply new inode to dentry
+	err = v.applyInodeToDEntry(parentId, filename, completeInodeInfo.Inode)
+	if err != nil {
+		log.LogErrorf("CompleteMultipart: apply new inode to dentry fail, parent id (%v), file name(%v), inode(%v)",
+			parentId, filename, completeInodeInfo.Inode)
 	}
 	return fInfo, nil
 }
@@ -1351,6 +1336,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {
 		Path:         path,
 		Size:         int64(inoInfo.Size),
 		Mode:         os.FileMode(inoInfo.Mode),
+		CreateTime:   inoInfo.CreateTime,
 		ModifyTime:   inoInfo.ModifyTime,
 		ETag:         etagValue.ETag(),
 		Inode:        inoInfo.Inode,
@@ -1751,6 +1737,7 @@ func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 		if i >= 0 && i < len(inodeInfos) && inodeInfos[i].Inode == fileInfo.Inode {
 			fileInfo.Size = int64(inodeInfos[i].Size)
 			fileInfo.ModifyTime = inodeInfos[i].ModifyTime
+			fileInfo.CreateTime = inodeInfos[i].CreateTime
 			fileInfo.Mode = os.FileMode(inodeInfos[i].Mode)
 		}
 	}
@@ -2039,6 +2026,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			Size:       0,
 			Mode:       DefaultDirMode,
 			ModifyTime: tInodeInfo.ModifyTime,
+			CreateTime: tInodeInfo.CreateTime,
 			ETag:       EmptyContentMD5String,
 			Inode:      tInodeInfo.Inode,
 			MIMEType:   HeaderValueContentTypeDirectory,
@@ -2146,35 +2134,6 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		TS:      finalInode.ModifyTime,
 	}
 
-	var teMode os.FileMode
-	_, _, _, teMode, err = v.recursiveLookupTarget(targetPath)
-	if err != nil && err != syscall.ENOENT {
-		log.LogErrorf("CopyFile: meta lookup fail: volume(%v) target path(%v) err(%v)", v.name, targetPath, err)
-		return
-	}
-
-	if err == syscall.ENOENT {
-		if err = v.applyInodeToNewDentry(tParentId, tLastName, tInodeInfo.Inode); err != nil {
-			log.LogErrorf("CopyFile: apply inode to new dentry fail: path(%v) parentID(%v) name(%v) inode(%v) err(%v)",
-				targetPath, tParentId, tLastName, tInodeInfo.Inode, err)
-			return
-		}
-		log.LogDebugf("CopyFile: apply inode to new dentry: path(%v) parentID(%v) name(%v) inode(%v)",
-			targetPath, tParentId, tLastName, tInodeInfo.Inode)
-	} else {
-		if teMode.IsDir() {
-			log.LogErrorf("CopyFile: target mode conflict: path(%v) parentID(%v) name(%v) mode(%v)",
-				targetPath, tParentId, tLastName, teMode.String())
-			err = syscall.EINVAL
-			return
-		}
-		if err = v.applyInodeToExistDentry(tParentId, tLastName, tInodeInfo.Inode); err != nil {
-			log.LogErrorf("CopyFile: apply inode to exist dentry fail: path(%v) parentID(%v) name(%v) inode(%v) err(%v)",
-				targetPath, tParentId, tLastName, tInodeInfo.Inode, err)
-			return
-		}
-	}
-
 	// Save target file ETag
 	if err = v.mw.XAttrSet_ll(finalInode.Inode, []byte(XAttrKeyOSSETag), []byte(etagValue.Encode())); err != nil {
 		log.LogErrorf("CopyFile: store target file ETag fail: volume(%v) path(%v) inode(%v) key(%v) val(%v) err(%v)",
@@ -2264,8 +2223,16 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		Size:       int64(fileSize),
 		Mode:       sMode,
 		ModifyTime: tInodeInfo.ModifyTime,
+		CreateTime: tInodeInfo.CreateTime,
 		ETag:       md5Value,
 		Inode:      tInodeInfo.Inode,
+	}
+
+	// apply new inode to dentry
+	err = v.applyInodeToDEntry(tParentId, tLastName, tInodeInfo.Inode)
+	if err != nil {
+		log.LogErrorf("CopyFile: apply inode to new dentry fail: path(%v) parentID(%v) name(%v) inode(%v) err(%v)",
+			targetPath, tParentId, tLastName, tInodeInfo.Inode, err)
 	}
 	return
 }
@@ -2320,7 +2287,6 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		ec:         extentClient,
 		name:       config.Volume,
 		store:      config.Store,
-		om:         new(OSSMeta),
 		createTime: metaWrapper.VolCreateTime(),
 		closeCh:    make(chan struct{}),
 		onAsyncTaskError: func(err error) {
@@ -2329,6 +2295,12 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 			}
 		},
 	}
-	go v.syncOSSMeta()
+	if config.MetaStrict {
+		v.metaLoader = &strictMetaLoader{v: v}
+	} else {
+		v.metaLoader = &cacheMetaLoader{om: new(OSSMeta)}
+		go v.syncOSSMeta()
+	}
+
 	return v, nil
 }

@@ -333,6 +333,8 @@ type SetAttrRequest struct {
 	Mode        uint32 `json:"mode"`
 	Uid         uint32 `json:"uid"`
 	Gid         uint32 `json:"gid"`
+	ModifyTime  int64  `json:"mt"`
+	AccessTime  int64  `json:"at"`
 	Valid       uint32 `json:"valid"`
 }
 
@@ -340,6 +342,8 @@ const (
 	AttrMode uint32 = 1 << iota
 	AttrUid
 	AttrGid
+	AttrModifyTime
+	AttrAccessTime
 )
 
 // DeleteInodeRequest defines the request to delete an inode.
@@ -425,6 +429,7 @@ type MultipartInfo struct {
 	Path     string               `json:"path"`
 	InitTime time.Time            `json:"itime"`
 	Parts    []*MultipartPartInfo `json:"parts"`
+	Extend   map[string]string    `json:"extend"`
 }
 
 type MultipartPartInfo struct {
@@ -436,9 +441,10 @@ type MultipartPartInfo struct {
 }
 
 type CreateMultipartRequest struct {
-	VolName     string `json:"vol"`
-	PartitionId uint64 `json:"pid"`
-	Path        string `json:"path"`
+	VolName     string            `json:"vol"`
+	PartitionId uint64            `json:"pid"`
+	Path        string            `json:"path"`
+	Extend      map[string]string `json:"extend"`
 }
 
 type CreateMultipartResponse struct {
@@ -459,7 +465,7 @@ type GetMultipartResponse struct {
 type AddMultipartPartRequest struct {
 	VolName     string             `json:"vol"`
 	PartitionId uint64             `json:"pid"`
-	Path		string			   `json:"path"`
+	Path        string             `json:"path"`
 	MultipartId string             `json:"mid"`
 	Part        *MultipartPartInfo `json:"part"`
 }

@@ -40,6 +40,7 @@ func (api *AdminAPI) GetCluster() (cv *proto.ClusterView, err error) {
 }
 func (api *AdminAPI) GetClusterStat() (cs *proto.ClusterStatInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminClusterStat)
+	request.addHeader("isTimeOut", "false")
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -60,6 +61,32 @@ func (api *AdminAPI) GetDataPartition(volName string, partitionID uint64) (parti
 	}
 	partition = &proto.DataPartitionInfo{}
 	if err = json.Unmarshal(buf, &partition); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) DiagnoseDataPartition() (diagnosis *proto.DataPartitionDiagnosis, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminDiagnoseDataPartition)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	diagnosis = &proto.DataPartitionDiagnosis{}
+	if err = json.Unmarshal(buf, &diagnosis); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) DiagnoseMetaPartition() (diagnosis *proto.MetaPartitionDiagnosis, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminDiagnoseMetaPartition)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	diagnosis = &proto.MetaPartitionDiagnosis{}
+	if err = json.Unmarshal(buf, &diagnosis); err != nil {
 		return
 	}
 	return
@@ -95,6 +122,16 @@ func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr 
 	return
 }
 
+func (api *AdminAPI) DecommissionMetaPartition(metaPartitionID uint64, nodeAddr string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminDecommissionMetaPartition)
+	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
+	request.addParam("addr", nodeAddr)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) DeleteDataReplica(dataPartitionID uint64, nodeAddr string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminDeleteDataReplica)
 	request.addParam("id", strconv.FormatUint(dataPartitionID, 10))
@@ -108,6 +145,26 @@ func (api *AdminAPI) DeleteDataReplica(dataPartitionID uint64, nodeAddr string) 
 func (api *AdminAPI) AddDataReplica(dataPartitionID uint64, nodeAddr string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminAddDataReplica)
 	request.addParam("id", strconv.FormatUint(dataPartitionID, 10))
+	request.addParam("addr", nodeAddr)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) DeleteMetaReplica(metaPartitionID uint64, nodeAddr string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminDeleteMetaReplica)
+	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
+	request.addParam("addr", nodeAddr)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminAddMetaReplica)
+	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -211,6 +268,24 @@ func (api *AdminAPI) ListVols(keywords string) (volsInfo []*proto.VolInfo, err e
 	}
 	volsInfo = make([]*proto.VolInfo, 0)
 	if err = json.Unmarshal(data, &volsInfo); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) IsFreezeCluster(isFreeze bool) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminClusterFreeze)
+	request.addParam("enable", strconv.FormatBool(isFreeze))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) SetMetaNodeThreshold(threshold float64) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminSetMetaNodeThreshold)
+	request.addParam("threshold", strconv.FormatFloat(threshold, 'f', 6, 64))
+	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return

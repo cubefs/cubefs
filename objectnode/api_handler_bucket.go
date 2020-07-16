@@ -30,7 +30,7 @@ import (
 // Head bucket
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadBucket.html
 func (o *ObjectNode) headBucketHandler(w http.ResponseWriter, r *http.Request) {
-	// do nothing
+	w.Header()[HeaderNameXAmzBucketRegion] = []string{o.region}
 }
 
 // Create bucket
@@ -136,9 +136,9 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	type listBucketsOutput struct {
-		XMLName xml.Name `xml:"ListBucketsOutput"`
-		Buckets []bucket `xml:"Buckets>Bucket"`
+		XMLName xml.Name `xml:"ListAllMyBucketsResult"`
 		Owner   Owner    `xml:"Owner"`
+		Buckets []bucket `xml:"Buckets>Bucket"`
 	}
 
 	var output = listBucketsOutput{}
@@ -203,12 +203,19 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 	var output, _ = ParseTagging(string(ossTaggingData))
 
 	var encoded []byte
-	if encoded, err = MarshalXMLEntity(output); err != nil {
-		log.LogErrorf("getBucketTaggingHandler: encode output fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
-		return
+	if nil == output || len(output.TagSet) == 0 {
+		sb := strings.Builder{}
+		sb.WriteString(xml.Header)
+		sb.WriteString("<Tagging></Tagging>")
+		encoded = []byte(sb.String())
+	} else {
+		if encoded, err = MarshalXMLEntity(output); err != nil {
+			log.LogErrorf("getBucketTaggingHandler: encode output fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			_ = InternalErrorCode(err).ServeResponse(w, r)
+			return
+		}
 	}
-
+	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
 	if _, err = w.Write(encoded); err != nil {
 		log.LogErrorf("getBucketTaggingHandler: write response fail: requestID(%v) err（%v)", GetRequestID(r), err)
 	}
@@ -251,8 +258,13 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
+	validateRes, errorCode := tagging.Validate()
+	if !validateRes {
+		log.LogErrorf("putBucketTaggingHandler: tagging validate fail: requestID(%v) tagging(%v) err(%v)", GetRequestID(r), tagging, err)
+		return
+	}
 
-	if err = vol.SetXAttr("/", XAttrKeyOSSTagging, []byte(tagging.Encode())); err != nil {
+	if err = vol.SetXAttr("/", XAttrKeyOSSTagging, []byte(tagging.Encode()), false); err != nil {
 		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}

@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
+
 	"github.com/chubaofs/chubaofs/util/exporter"
 
 	"github.com/gorilla/mux"
@@ -34,6 +36,23 @@ import (
 var (
 	routeSNRegexp = regexp.MustCompile(":(\\w){32}$")
 )
+
+var (
+	monitoredStatusCode = []string{
+		strconv.Itoa(http.StatusBadRequest),
+		strconv.Itoa(http.StatusForbidden),
+		strconv.Itoa(http.StatusInternalServerError),
+	}
+)
+
+func IsMonitoredStatusCode(code string) bool {
+	for _, statusCode := range monitoredStatusCode {
+		if statusCode == code {
+			return true
+		}
+	}
+	return false
+}
 
 // TraceMiddleware returns a middleware handler to trace request.
 // After receiving the request, the handler will assign a unique RequestID to
@@ -84,6 +103,12 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			_ = AccessDenied.ServeResponse(w, r)
 		}
 
+		// failed request monitor
+		var statusCode = GetStatusCodeFromContext(r)
+		if IsMonitoredStatusCode(statusCode) {
+			exporter.NewTPCnt(fmt.Sprintf("failed_%v", statusCode)).Set(nil)
+		}
+
 		// ===== post-handle start =====
 		var headerToString = func(header http.Header) string {
 			var sb = strings.Builder{}
@@ -116,46 +141,36 @@ func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 				return
 			}
 
+			var (
+				pass bool
+				err  error
+			)
 			//  check auth type
 			if isHeaderUsingSignatureAlgorithmV4(r) {
 				// using signature algorithm version 4 in header
-				if ok, _ := o.validateHeaderBySignatureAlgorithmV4(r); !ok {
-					if err := AccessDenied.ServeResponse(w, r); err != nil {
-						log.LogErrorf("authMiddleware: serve access denied response fail, requestID(%v) err(%v)", GetRequestID(r), err)
-					}
-					return
-				}
+				pass, err = o.validateHeaderBySignatureAlgorithmV4(r)
 			} else if isHeaderUsingSignatureAlgorithmV2(r) {
 				// using signature algorithm version 2 in header
-				if ok, _ := o.validateHeaderBySignatureAlgorithmV2(r); !ok {
-					if err := AccessDenied.ServeResponse(w, r); err != nil {
-						log.LogErrorf("authMiddleware: serve access denied response fail, requestID(%v) err(%v)", GetRequestID(r), err)
-					}
-					return
-				}
+				pass, err = o.validateHeaderBySignatureAlgorithmV2(r)
 			} else if isUrlUsingSignatureAlgorithmV2(r) {
 				// using signature algorithm version 2 in url parameter
-				if ok, _ := o.validateUrlBySignatureAlgorithmV2(r); !ok {
-					log.LogDebugf("authMiddleware: presigned v2 denied: requestID(%v)", GetRequestID(r))
-					if err := AccessDenied.ServeResponse(w, r); err != nil {
-						log.LogErrorf("authMiddleware: serve response fail: requestID(%v) err(%v)", GetRequestID(r), err)
-					}
-					return
-				}
+				pass, err = o.validateUrlBySignatureAlgorithmV2(r)
 			} else if isUrlUsingSignatureAlgorithmV4(r) {
 				// using signature algorithm version 4 in url parameter
-				if ok, _ := o.validateUrlBySignatureAlgorithmV4(r); !ok {
-					log.LogDebugf("authMiddleware: presigned v4 denied: requestID(%v)", GetRequestID(r))
-					if err := AccessDenied.ServeResponse(w, r); err != nil {
-						log.LogErrorf("authMiddleware: serve response fail: requestID(%v) err(%v)", GetRequestID(r), err)
-					}
+				pass, err = o.validateUrlBySignatureAlgorithmV4(r)
+			}
+
+			if err != nil {
+				if err == proto.ErrVolNotExists {
+					_ = NoSuchBucket.ServeResponse(w, r)
 					return
 				}
-			} else {
-				// no valid signature found
-				if err := AccessDenied.ServeResponse(w, r); err != nil {
-					log.LogErrorf("authMiddleware: serve response fail: requestID(%v) err(%v)", GetRequestID(r), err)
-				}
+				_ = InternalErrorCode(err).ServeResponse(w, r)
+				return
+			}
+
+			if !pass {
+				_ = AccessDenied.ServeResponse(w, r)
 				return
 			}
 
@@ -245,7 +260,7 @@ func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 			if origin == "" || method == "" {
 				return
 			}
-			cors := volume.loadCors()
+			cors, _ := volume.metaLoader.loadCors()
 			if cors != nil {
 				headers := strings.Split(headerStr, ",")
 				for _, corsRule := range cors.CORSRule {

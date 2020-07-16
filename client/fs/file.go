@@ -315,7 +315,8 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	}
 
 	if valid := setattr(info, req); valid != 0 {
-		err = f.super.mw.Setattr(ino, valid, info.Mode, info.Uid, info.Gid)
+		err = f.super.mw.Setattr(ino, valid, info.Mode, info.Uid, info.Gid, info.AccessTime.Unix(),
+			info.ModifyTime.Unix())
 		if err != nil {
 			f.super.ic.Delete(ino)
 			return ParseError(err)

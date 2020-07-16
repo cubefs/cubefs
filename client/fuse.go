@@ -69,13 +69,16 @@ const (
 	ControlCommandSetRate      = "/rate/set"
 	ControlCommandGetRate      = "/rate/get"
 	ControlCommandFreeOSMemory = "/debug/freeosmemory"
+	Role="Client"
 )
+
 
 var (
 	CommitID   string
 	BranchName string
 	BuildTime  string
 )
+
 
 var (
 	configFile       = flag.String("c", "", "FUSE client config file")
@@ -94,7 +97,7 @@ func main() {
 	flag.Parse()
 
 	if *configVersion {
-		fmt.Print(dumpVersion())
+		fmt.Print(proto.DumpVersion(Role,BranchName,CommitID,BuildTime))
 		os.Exit(0)
 	}
 

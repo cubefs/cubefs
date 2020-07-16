@@ -296,7 +296,7 @@ func storeBucketACL(bytes []byte, vol *Volume) (*AccessControlPolicy, error) {
 		return nil, err4
 	}
 
-	vol.storeACL(acl)
+	vol.metaLoader.storeACL(acl)
 
 	return acl, nil
 }

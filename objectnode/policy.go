@@ -114,7 +114,7 @@ func storeBucketPolicy(bytes []byte, vol *Volume) (*Policy, error) {
 		return nil, err4
 	}
 
-	vol.storePolicy(policy)
+	vol.metaLoader.storePolicy(policy)
 
 	return policy, nil
 }
@@ -223,7 +223,15 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 		// Check user policy
 		var volume *Volume
 		if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
-			volume, _ = o.getVol(bucket)
+			if volume, err = o.getVol(bucket); err != nil {
+				allowed = false
+				if err == proto.ErrVolNotExists {
+					ec = NoSuchBucket
+					return
+				}
+				ec = InternalErrorCode(err)
+				return
+			}
 		}
 		var userInfo *proto.UserInfo
 		isOwner := false
@@ -262,8 +270,12 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			if vol, err = o.getVol(bucket); err != nil {
 				return
 			}
-			acl = vol.loadACL()
-			policy = vol.loadPolicy()
+			if acl, err = vol.metaLoader.loadACL(); err != nil {
+				return
+			}
+			if policy, err = vol.metaLoader.loadPolicy(); err != nil {
+				return
+			}
 			return
 		}
 		if err = loadBucketMeta(param.Bucket()); err != nil {

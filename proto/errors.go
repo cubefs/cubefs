@@ -274,3 +274,12 @@ var code2ErrMap = map[int32]error{
 	ErrCodeInvalidSecretKey:                ErrInvalidSecretKey,
 	ErrCodeIsOwner:                         ErrIsOwner,
 }
+
+type GeneralResp struct {
+	Message string
+	Code    int32
+}
+
+func Success(msg string) *GeneralResp {
+	return &GeneralResp{Message: msg, Code: ErrCodeSuccess}
+}

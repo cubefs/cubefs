@@ -88,19 +88,21 @@ func IsValidSK(sk string) bool {
 }
 
 type AKUser struct {
-	AccessKey string `json:"access_key"`
-	UserID    string `json:"user_id"`
-	Password  string `json:"password"`
+	AccessKey string `json:"access_key" graphql:"access_key"`
+	UserID    string `json:"user_id" graphql:"user_id"`
+	Password  string `json:"password" graphql:"password"`
 }
 
 type UserInfo struct {
-	UserID     string      `json:"user_id"`
-	AccessKey  string      `json:"access_key"`
-	SecretKey  string      `json:"secret_key"`
-	Policy     *UserPolicy `json:"policy"`
-	UserType   UserType    `json:"user_type"`
-	CreateTime string      `json:"create_time"`
-	Mu         sync.RWMutex
+	UserID      string       `json:"user_id" graphql:"user_id"`
+	AccessKey   string       `json:"access_key" graphql:"access_key"`
+	SecretKey   string       `json:"secret_key" graphql:"secret_key"`
+	Policy      *UserPolicy  `json:"policy" graphql:"policy"`
+	UserType    UserType     `json:"user_type" graphql:"user_type"`
+	CreateTime  string       `json:"create_time" graphql:"create_time"`
+	Description string       `json:"description" graphql:"description"`
+	Mu          sync.RWMutex `json:"-" graphql:"-"`
+	EMPTY       bool         //graphql need ???
 }
 
 func (i *UserInfo) String() string {
@@ -116,14 +118,14 @@ func NewUserInfo() *UserInfo {
 }
 
 type VolUser struct {
-	Vol     string   `json:"vol"`
-	UserIDs []string `json:"user_id"`
-	Mu      sync.RWMutex
+	Vol     string       `json:"vol"`
+	UserIDs []string     `json:"user_id"`
+	Mu      sync.RWMutex `json:"-" graphql:"-"`
 }
 
 type UserPolicy struct {
-	OwnVols        []string            `json:"own_vols"`
-	AuthorizedVols map[string][]string `json:"authorized_vols"` // mapping: volume -> actions
+	OwnVols        []string            `json:"own_vols" graphql:"own_vols"`
+	AuthorizedVols map[string][]string `json:"authorized_vols" graphql:"-"` // mapping: volume -> actions
 	mu             sync.RWMutex
 }
 
@@ -298,11 +300,12 @@ func CleanPolicy(policy *UserPolicy) (newUserPolicy *UserPolicy) {
 }
 
 type UserCreateParam struct {
-	ID        string `json:"id"`
-	Password  string `json:"pwd"`
-	AccessKey string `json:"ak"`
-	SecretKey string `json:"sk"`
-	Type      UserType
+	ID          string   `json:"id"`
+	Password    string   `json:"pwd"`
+	AccessKey   string   `json:"ak"`
+	SecretKey   string   `json:"sk"`
+	Type        UserType `json:"type"`
+	Description string   `json:"description"`
 }
 
 type UserPermUpdateParam struct {
@@ -336,8 +339,10 @@ type UserTransferVolParam struct {
 }
 
 type UserUpdateParam struct {
-	UserID    string   `json:"user_id"`
-	AccessKey string   `json:"access_key"`
-	SecretKey string   `json:"secret_key"`
-	Type      UserType `json:"type"`
+	UserID      string   `json:"user_id"`
+	AccessKey   string   `json:"access_key"`
+	SecretKey   string   `json:"secret_key"`
+	Type        UserType `json:"type"`
+	Password    string   `json:"password"`
+	Description string   `json:"description"`
 }
