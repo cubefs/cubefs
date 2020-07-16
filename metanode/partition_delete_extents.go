@@ -15,10 +15,10 @@
 package metanode
 
 import (
-	"bytes"
 	"container/list"
 	"encoding/binary"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/bytes"
 	"io"
 	"io/ioutil"
 	"os"

@@ -15,9 +15,8 @@
 package metanode
 
 import (
-	"bytes"
-	"encoding/binary"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/encoding/binary"
 )
 
 // Dentry wraps necessary properties of the `dentry` information in file system.
@@ -54,7 +53,7 @@ func (d *Dentry) Marshal() (result []byte, err error) {
 	valBytes := d.MarshalValue()
 	keyLen := uint32(len(keyBytes))
 	valLen := uint32(len(valBytes))
-	buff := proto.GetBytesBufferFromPool()
+	buff := proto.GetCommonBytesBufferFromPool()
 	if err = binary.Write(buff, binary.BigEndian, keyLen); err != nil {
 		return
 	}
@@ -69,7 +68,7 @@ func (d *Dentry) Marshal() (result []byte, err error) {
 	}
 	result = make([]byte,buff.Len())
 	copy(result,buff.Bytes())
-	proto.PutBytesBufferToPool(buff)
+	proto.PutCommonBytesBufferToPool(buff)
 
 	return
 }
@@ -80,7 +79,8 @@ func (d *Dentry) Unmarshal(raw []byte) (err error) {
 		keyLen uint32
 		valLen uint32
 	)
-	buff := bytes.NewBuffer(raw)
+	buff := proto.GetEmptyBytesBufferFromPool()
+	buff.SetBufferWithBytes(raw)
 	if err = binary.Read(buff, binary.BigEndian, &keyLen); err != nil {
 		return
 	}
@@ -99,12 +99,13 @@ func (d *Dentry) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	err = d.UnmarshalValue(valBytes)
+	proto.PutEmptyBytesBufferToPool(buff)
 	return
 }
 
 // Marshal marshals the dentryBatch into a byte array.
 func (d DentryBatch) Marshal() ([]byte, error) {
-	buff := proto.GetBytesBufferFromPool()
+	buff := proto.GetCommonBytesBufferFromPool()
 	if err := binary.Write(buff, binary.BigEndian, uint32(len(d))); err != nil {
 		return nil, err
 	}
@@ -122,13 +123,14 @@ func (d DentryBatch) Marshal() ([]byte, error) {
 	}
 	data:=make([]byte,buff.Len())
 	copy(data,buff.Bytes())
-	proto.PutBytesBufferToPool(buff)
+	proto.PutCommonBytesBufferToPool(buff)
 	return data, nil
 }
 
 // Unmarshal unmarshals the dentryBatch.
 func DentryBatchUnmarshal(raw []byte) (DentryBatch, error) {
-	buff := bytes.NewBuffer(raw)
+	buff:=proto.GetEmptyBytesBufferFromPool()
+	buff.SetBufferWithBytes(raw)
 	var batchLen uint32
 	if err := binary.Read(buff, binary.BigEndian, &batchLen); err != nil {
 		return nil, err
@@ -151,7 +153,7 @@ func DentryBatchUnmarshal(raw []byte) (DentryBatch, error) {
 		}
 		result = append(result, den)
 	}
-
+	proto.PutEmptyBytesBufferToPool(buff)
 	return result, nil
 }
 
@@ -170,30 +172,32 @@ func (d *Dentry) Copy() BtreeItem {
 
 // MarshalKey is the bytes version of the MarshalKey method which returns the byte slice result.
 func (d *Dentry) MarshalKey() (k []byte) {
-	buff := proto.GetBytesBufferFromPool()
+	buff := proto.GetCommonBytesBufferFromPool()
 	if err := binary.Write(buff, binary.BigEndian, &d.ParentId); err != nil {
 		panic(err)
 	}
 	buff.Write([]byte(d.Name))
 	k = make([]byte,buff.Len())
 	copy(k,buff.Bytes())
-	proto.PutBytesBufferToPool(buff)
+	proto.PutCommonBytesBufferToPool(buff)
 	return
 }
 
 // UnmarshalKey unmarshals the exporterKey from bytes.
 func (d *Dentry) UnmarshalKey(k []byte) (err error) {
-	buff := bytes.NewBuffer(k)
+	buff:=proto.GetEmptyBytesBufferFromPool()
+	buff.SetBufferWithBytes(k)
 	if err = binary.Read(buff, binary.BigEndian, &d.ParentId); err != nil {
 		return
 	}
 	d.Name = string(buff.Bytes())
+	proto.PutEmptyBytesBufferToPool(buff)
 	return
 }
 
 // MarshalValue marshals the exporterKey to bytes.
 func (d *Dentry) MarshalValue() (k []byte) {
-	buff := proto.GetBytesBufferFromPool()
+	buff := proto.GetCommonBytesBufferFromPool()
 	if err := binary.Write(buff, binary.BigEndian, &d.Inode); err != nil {
 		panic(err)
 	}
@@ -202,16 +206,17 @@ func (d *Dentry) MarshalValue() (k []byte) {
 	}
 	k = make([]byte,buff.Len())
 	copy(k,buff.Bytes())
-	proto.PutBytesBufferToPool(buff)
+	proto.PutCommonBytesBufferToPool(buff)
 	return
 }
 
 // UnmarshalValue unmarshals the value from bytes.
 func (d *Dentry) UnmarshalValue(val []byte) (err error) {
-	buff := bytes.NewBuffer(val)
+	buff := proto.GetEmptyBytesBufferFromPool()
 	if err = binary.Read(buff, binary.BigEndian, &d.Inode); err != nil {
 		return
 	}
 	err = binary.Read(buff, binary.BigEndian, &d.Type)
+	proto.PutEmptyBytesBufferToPool(buff)
 	return
 }

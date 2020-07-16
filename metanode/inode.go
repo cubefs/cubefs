@@ -16,10 +16,10 @@ package metanode
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/encoding/binary"
 	"io"
 	"sync"
 )
@@ -156,7 +156,7 @@ func (i *Inode) Marshal() (result []byte, err error) {
 	valBytes := i.MarshalValue()
 	keyLen := uint32(len(keyBytes))
 	valLen := uint32(len(valBytes))
-	buff := proto.GetBytesBufferFromPool()
+	buff := proto.GetCommonBytesBufferFromPool()
 	if err = binary.Write(buff, binary.BigEndian, keyLen); err != nil {
 		return
 	}
@@ -171,7 +171,7 @@ func (i *Inode) Marshal() (result []byte, err error) {
 	}
 	result = make([]byte,buff.Len())
 	copy(result,buff.Bytes())
-	proto.PutBytesBufferToPool(buff)
+	proto.PutCommonBytesBufferToPool(buff)
 	return
 }
 
@@ -181,7 +181,8 @@ func (i *Inode) Unmarshal(raw []byte) (err error) {
 		keyLen uint32
 		valLen uint32
 	)
-	buff := bytes.NewBuffer(raw)
+	buff:=proto.GetEmptyBytesBufferFromPool()
+	buff.SetBufferWithBytes(raw)
 	if err = binary.Read(buff, binary.BigEndian, &keyLen); err != nil {
 		return
 	}
@@ -200,12 +201,13 @@ func (i *Inode) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	err = i.UnmarshalValue(valBytes)
+	proto.PutEmptyBytesBufferToPool(buff)
 	return
 }
 
 // Marshal marshals the inodeBatch into a byte array.
 func (i InodeBatch) Marshal() ([]byte, error) {
-	buff := proto.GetBytesBufferFromPool()
+	buff := proto.GetCommonBytesBufferFromPool()
 	if err := binary.Write(buff, binary.BigEndian, uint32(len(i))); err != nil {
 		return nil, err
 	}
@@ -223,13 +225,14 @@ func (i InodeBatch) Marshal() ([]byte, error) {
 	}
 	data:=make([]byte,buff.Len())
 	copy(data,buff.Bytes())
-	proto.PutBytesBufferToPool(buff)
+	proto.PutCommonBytesBufferToPool(buff)
 	return data, nil
 }
 
 // Unmarshal unmarshals the inodeBatch.
 func InodeBatchUnmarshal(raw []byte) (InodeBatch, error) {
-	buff := bytes.NewBuffer(raw)
+	buff:=proto.GetEmptyBytesBufferFromPool()
+	buff.SetBufferWithBytes(raw)
 	var batchLen uint32
 	if err := binary.Read(buff, binary.BigEndian, &batchLen); err != nil {
 		return nil, err
@@ -252,6 +255,7 @@ func InodeBatchUnmarshal(raw []byte) (InodeBatch, error) {
 		}
 		result = append(result, ino)
 	}
+	proto.PutEmptyBytesBufferToPool(buff)
 
 	return result, nil
 }
@@ -272,7 +276,7 @@ func (i *Inode) UnmarshalKey(k []byte) (err error) {
 // MarshalValue marshals the value to bytes.
 func (i *Inode) MarshalValue() (val []byte) {
 	var err error
-	buff := proto.GetBytesBufferFromPool()
+	buff := proto.GetCommonBytesBufferFromPool()
 	i.RLock()
 	if err = binary.Write(buff, binary.BigEndian, &i.Type); err != nil {
 		panic(err)
@@ -328,13 +332,14 @@ func (i *Inode) MarshalValue() (val []byte) {
 	i.RUnlock()
 	val=make([]byte,buff.Len())
 	copy(val,buff.Bytes())
-	proto.PutBytesBufferToPool(buff)
+	proto.PutCommonBytesBufferToPool(buff)
 	return
 }
 
 // UnmarshalValue unmarshals the value from bytes.
 func (i *Inode) UnmarshalValue(val []byte) (err error) {
-	buff := bytes.NewBuffer(val)
+	buff:=proto.GetEmptyBytesBufferFromPool()
+	buff.SetBufferWithBytes(val)
 	if err = binary.Read(buff, binary.BigEndian, &i.Type); err != nil {
 		return
 	}
@@ -390,6 +395,7 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	if err = i.Extents.UnmarshalBinary(buff.Bytes()); err != nil {
 		return
 	}
+	proto.PutEmptyBytesBufferToPool(buff)
 	return
 }
 

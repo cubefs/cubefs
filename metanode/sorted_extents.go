@@ -1,7 +1,6 @@
 package metanode
 
 import (
-	"bytes"
 	"encoding/json"
 	"sync"
 
@@ -47,8 +46,8 @@ func (se *SortedExtents) MarshalBinary() ([]byte, error) {
 
 func (se *SortedExtents) UnmarshalBinary(data []byte) error {
 	var ek proto.ExtentKey
-
-	buf := bytes.NewBuffer(data)
+	buf:=proto.GetEmptyBytesBufferFromPool()
+	buf.SetBufferWithBytes(data)
 	for {
 		if buf.Len() == 0 {
 			break
@@ -58,6 +57,7 @@ func (se *SortedExtents) UnmarshalBinary(data []byte) error {
 		}
 		se.Append(ek)
 	}
+	proto.PutEmptyBytesBufferToPool(buf)
 	return nil
 }
 

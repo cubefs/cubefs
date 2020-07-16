@@ -15,10 +15,10 @@
 package proto
 
 import (
-	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/bytes"
+	"github.com/chubaofs/chubaofs/util/encoding/binary"
 
 	"github.com/chubaofs/chubaofs/util/btree"
 )
@@ -60,7 +60,7 @@ func (k *ExtentKey) Marshal() (m string) {
 
 // MarshalBinary marshals the binary format of the extent key.
 func (k *ExtentKey) MarshalBinary() ([]byte, error) {
-	buf := GetBytesBufferFromPool()
+	buf := GetCommonBytesBufferFromPool()
 	if err := binary.Write(buf, binary.BigEndian, k.FileOffset); err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (k *ExtentKey) MarshalBinary() ([]byte, error) {
 	}
 	data:=make([]byte,buf.Len())
 	copy(data,buf.Bytes())
-	PutBytesBufferToPool(buf)
+	PutCommonBytesBufferToPool(buf)
 	return data, nil
 }
 
