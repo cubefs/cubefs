@@ -62,8 +62,8 @@ func (mp *MetaPartition) fsmCreateDentry(dentry *Dentry, forceUpdate bool) (stat
 	if err == existsError {
 		//do not allow directories and files to overwrite each
 		// other when renaming
-		d, err := mp.dentryTree.Get(dentry.Inode, dentry.Name)
-		if err != nil {
+		d, err := mp.dentryTree.Get(dentry.ParentId, dentry.Name)
+		if err != nil || d == nil {
 			status = proto.OpErr
 			return
 		}
