@@ -142,11 +142,13 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 				Data json.RawMessage `json:"data"`
 			}{}
 			if err := json.Unmarshal(repsData, body); err != nil {
+				log.LogErrorf("unmarshal response body err:%v", err)
 				return nil, fmt.Errorf("unmarshal response body err:%v", err)
 
 			}
 			// o represent proto.ErrCodeSuccess
 			if body.Code != 0 {
+				log.LogErrorf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, body.Data)
 				return nil, proto.ParseErrorCode(body.Code)
 			}
 			return []byte(body.Data), nil

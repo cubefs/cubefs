@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/log"
 	"os"
 	"path"
 
@@ -70,5 +71,11 @@ func stdout(format string, a ...interface{}) {
 }
 
 func errout(format string, a ...interface{}) {
+	log.LogErrorf(format, a...)
 	_, _ = fmt.Fprintf(os.Stderr, format, a...)
+}
+
+func OsExitWithLogFlush() {
+	log.LogFlush()
+	os.Exit(1)
 }

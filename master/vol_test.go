@@ -37,7 +37,7 @@ func TestCheckVol(t *testing.T) {
 }
 
 func TestVol(t *testing.T) {
-	capacity := 200
+	capacity := 300
 	name := "test1"
 	createVol(name, t)
 	//report mp/dp info to master

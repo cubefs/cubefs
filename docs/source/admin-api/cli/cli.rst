@@ -12,6 +12,11 @@ After downloading the ChubaoFS source code, execute the command ``go build`` in 
 
 At the same time, a configuration file named ``.cfs-cli.json`` will be generated in the directory ``root``, and the master address can be changed to the current cluster master address. You can also get or set the master address by executing the command ``./cli config info`` or ``./cli config set``.
 
+Bug Shooting
+-----------------------
+
+The logs of ``cfs-cli`` tool are in the directory ``/tmp/cfs/cli``, which offer detail running information for bug shooting.
+
 Usage
 ---------
 

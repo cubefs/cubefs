@@ -67,21 +67,29 @@ func newConfigSetCmd() *cobra.Command {
 		Long: `Set the config file`,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
+				err         error
 				masterHosts []string
 			)
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
 			var masterHost string
 			stdout(fmt.Sprintf("Please input master host:\n"))
-			_, _ = fmt.Scanln(&masterHost)
+			if _, err = fmt.Scanln(&masterHost); err != nil {
+				return
+			}
 			if len(masterHost) == 0 {
-				stdout("Abort by user.\n")
+				err = fmt.Errorf("Abort by user.\n")
 				return
 			}
 			masterHosts = append(masterHosts, masterHost)
 			config := &Config{
 				MasterAddr: masterHosts,
 			}
-			if _, err := setConfig(config); err != nil {
-				stdout("error: %v\n", err)
+			if _, err = setConfig(config); err != nil {
 				return
 			}
 			stdout(fmt.Sprintf("Config has been set successfully!\n"))
@@ -99,7 +107,7 @@ func newConfigInfoCmd() *cobra.Command {
 			config, err := LoadConfig()
 			if err != nil {
 				_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
+				OsExitWithLogFlush()
 			}
 			stdout(fmt.Sprintf("Config info:\n  %v\n", config.MasterAddr))
 

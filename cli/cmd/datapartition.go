@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/spf13/cobra"
@@ -57,10 +58,17 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				partition *proto.DataPartitionInfo
+				err         error
+				partitionID uint64
+				partition   *proto.DataPartitionInfo
 			)
-			partitionID, err := strconv.ParseUint(args[0], 10, 64)
-			if err != nil {
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
+			if partitionID, err = strconv.ParseUint(args[0], 10, 64); err != nil {
 				return
 			}
 			if partition, err = client.AdminAPI().GetDataPartition("", partitionID); err != nil {
@@ -88,15 +96,22 @@ The "reset" command will be released in next version`,
 				dataNodes     []*proto.DataNodeInfo
 				err           error
 			)
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
 			if diagnosis, err = client.AdminAPI().DiagnoseDataPartition(); err != nil {
-				stdout("%v\n", err)
 				return
 			}
 			stdout("[Inactive Data nodes]:\n")
 			stdout("%v\n", formatDataNodeDetailTableHeader())
 			for _, addr := range diagnosis.InactiveDataNodes {
 				var node *proto.DataNodeInfo
-				node, err = client.NodeAPI().GetDataNode(addr)
+				if node, err = client.NodeAPI().GetDataNode(addr); err != nil {
+					return
+				}
 				dataNodes = append(dataNodes, node)
 			}
 			sort.SliceStable(dataNodes, func(i, j int) bool {
@@ -114,7 +129,7 @@ The "reset" command will be released in next version`,
 			for _, pid := range diagnosis.CorruptDataPartitionIDs {
 				var partition *proto.DataPartitionInfo
 				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
-					stdout("Partition not found, err:[%v]", err)
+					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
 				stdout("%v\n", formatDataPartitionInfoRow(partition))
@@ -128,7 +143,7 @@ The "reset" command will be released in next version`,
 			for _, pid := range diagnosis.LackReplicaDataPartitionIDs {
 				var partition *proto.DataPartitionInfo
 				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
-					stdout("Partition not found, err:[%v]", err)
+					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
 				if partition != nil {
@@ -147,14 +162,22 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 		Short: cmdDataPartitionDecommissionShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err         error
+				partitionID uint64
+			)
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
 			address := args[0]
-			partitionID, err := strconv.ParseUint(args[1], 10, 64)
+			partitionID, err = strconv.ParseUint(args[1], 10, 64)
 			if err != nil {
-				stdout("%v\n", err)
 				return
 			}
 			if err = client.AdminAPI().DecommissionDataPartition(partitionID, address); err != nil {
-				stdout("%v\n", err)
 				return
 			}
 		},
@@ -174,14 +197,21 @@ func newDataPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 		Short: cmdDataPartitionReplicateShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err         error
+				partitionID uint64
+			)
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
 			address := args[0]
-			partitionID, err := strconv.ParseUint(args[1], 10, 64)
-			if err != nil {
-				stdout("%v\n", err)
+			if partitionID, err = strconv.ParseUint(args[1], 10, 64); err != nil {
 				return
 			}
 			if err = client.AdminAPI().AddDataReplica(partitionID, address); err != nil {
-				stdout("%v\n", err)
 				return
 			}
 		},
@@ -201,14 +231,21 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 		Short: cmdDataPartitionDeleteReplicaShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err         error
+				partitionID uint64
+			)
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
 			address := args[0]
-			partitionID, err := strconv.ParseUint(args[1], 10, 64)
-			if err != nil {
-				stdout("%v\n", err)
+			if partitionID, err = strconv.ParseUint(args[1], 10, 64); err != nil {
 				return
 			}
 			if err = client.AdminAPI().DeleteDataReplica(partitionID, address); err != nil {
-				stdout("%v\n", err)
 				return
 			}
 		},

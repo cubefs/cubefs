@@ -19,13 +19,15 @@ import (
 	"github.com/chubaofs/chubaofs/sdk/master"
 )
 
-func validVols(client *master.MasterClient, toComplete string) []string {
+func validVols(client, complete interface{}) []string {
 	var (
 		validVols []string
 		vols      []*proto.VolInfo
 		err       error
 	)
-	if vols, err = client.AdminAPI().ListVols(toComplete); err != nil {
+	clientSdk := client.(*master.MasterClient)
+	completeStr := complete.(string)
+	if vols, err = clientSdk.AdminAPI().ListVols(completeStr); err != nil {
 		errout("Get volume list failed:\n%v\n", err)
 	}
 	for _, vol := range vols {
@@ -64,4 +66,19 @@ func validMetaNodes(client *master.MasterClient, toComplete string) []string {
 		validMetaNodes = append(validMetaNodes, mn.Addr)
 	}
 	return validMetaNodes
+}
+
+func validUsers(client *master.MasterClient, toComplete string) []string {
+	var (
+		validUsers []string
+		users      []*proto.UserInfo
+		err        error
+	)
+	if users, err = client.UserAPI().ListUsers(toComplete); err != nil {
+		errout("Get user list failed:\n%v\n", err)
+	}
+	for _, user := range users {
+		validUsers = append(validUsers, user.UserID)
+	}
+	return validUsers
 }

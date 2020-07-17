@@ -87,11 +87,6 @@ type MetaHttpClient struct {
 // NewMasterHelper returns a new MasterClient instance.
 func NewMetaHttpClient(host string, useSSL bool) *MetaHttpClient {
 	mc := &MetaHttpClient{host: host, useSSL: useSSL}
-	var err error
-	_, err = log.InitLog("/tmp/cfs", "cli", log.DebugLevel, nil)
-	if err != nil {
-		fmt.Printf("init cli log err[%v]", err)
-	}
 	return mc
 }
 
@@ -218,7 +213,6 @@ func (mc *MetaHttpClient) GetMetaPartition(pid uint64) (cursor uint64, err error
 		if err != nil {
 			log.LogErrorf("action[GetMetaPartition],pid:%v,err:%v", pid, err)
 		}
-		log.LogFlush()
 	}()
 	request := newAPIRequest(http.MethodGet, "/getPartitionById")
 	request.params["pid"] = fmt.Sprintf("%v", pid)
@@ -242,7 +236,6 @@ func (mc *MetaHttpClient) GetAllDentry(pid uint64) (dentryMap map[string]*metano
 		if err != nil {
 			log.LogErrorf("action[GetAllDentry],pid:%v,err:%v", pid, err)
 		}
-		log.LogFlush()
 	}()
 	dentryMap = make(map[string]*metanode.Dentry, 0)
 	request := newAPIRequest(http.MethodGet, "/getAllDentry")
@@ -293,7 +286,6 @@ func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*Inode, er
 		if err != nil {
 			log.LogErrorf("action[GetAllInodes],pid:%v,err:%v", pid, err)
 		}
-		log.LogFlush()
 	}()
 	reqURL := fmt.Sprintf("http://%v%v?pid=%v", mc.host, "/getAllInodes", pid)
 	log.LogDebugf("reqURL=%v", reqURL)
