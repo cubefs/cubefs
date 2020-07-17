@@ -85,7 +85,6 @@ func (mp *MetaPartition) getInode(ino *Inode) (resp *InodeResponse) {
 	 */
 	item.AccessTime = Now.GetCurrentTime().Unix()
 	resp.Msg = item
-	log.LogIfNotNil(mp.inodeTree.Update(item))
 	return
 }
 
