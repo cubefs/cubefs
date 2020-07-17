@@ -65,6 +65,7 @@ const (
 	CliFlagAuthKey            = "authkey"
 	CliFlagINodeStartID       = "inode-start"
 	CliFlagId                 = "id"
+	CliFlagZoneName           = "zonename"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
