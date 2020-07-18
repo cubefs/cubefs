@@ -19,7 +19,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
+	"path"
 	"strconv"
+)
+
+const (
+	DefaultConstConfigFile = "constcfg"
 )
 
 // Config defines the struct of a configuration in general.
@@ -85,6 +91,15 @@ func (c *Config) GetFloat(key string) float64 {
 		return result
 	}
 	return 0
+}
+
+// returns a bool value for the config key with default val when not present
+func (c *Config) GetBoolWithDefault(key string, defval bool) bool {
+	_, present := c.data[key]
+	if !present {
+		return defval
+	}
+	return c.GetBool(key)
 }
 
 // GetBool returns a bool value for the config key.
@@ -155,6 +170,111 @@ func (c *Config) GetStringSlice(key string) []string {
 	return result
 }
 
+// Check and get a string for the config key.
+func (c *Config) CheckAndGetString(key string) (string, bool) {
+	x, present := c.data[key]
+	if !present {
+		return "", false
+	}
+	if result, isString := x.(string); isString {
+		return result, true
+	}
+	return "", false
+}
+
+// GetBool returns a bool value for the config key.
+func (c *Config) CheckAndGetBool(key string) (bool, bool) {
+	x, present := c.data[key]
+	if !present {
+		return false, false
+	}
+	if result, isBool := x.(bool); isBool {
+		return result, true
+	}
+	// Take string value "true" and "false" as well.
+	if result, isString := x.(string); isString {
+		if result == "true" {
+			return true, true
+		}
+		if result == "false" {
+			return false, true
+		}
+	}
+	return false, false
+}
+
 func NewIllegalConfigError(configKey string) error {
 	return fmt.Errorf("illegal config %s", configKey)
+}
+
+type ConstConfig struct {
+	Listen           string `json:"listen"`
+	RaftReplicaPort  string `json:"raftReplicaPort"`
+	RaftHeartbetPort string `json:"raftHeartbetPort"`
+}
+
+func (ccfg *ConstConfig) Equals(cfg *ConstConfig) bool {
+	return (ccfg.Listen == cfg.Listen &&
+		ccfg.RaftHeartbetPort == cfg.RaftHeartbetPort &&
+		ccfg.RaftReplicaPort == cfg.RaftReplicaPort)
+}
+
+// check listen port, raft replica port and raft heartbeat port
+func CheckOrStoreConstCfg(fileDir, fileName string, cfg *ConstConfig) (ok bool, err error) {
+	var (
+		f *os.File
+		l int
+	)
+	buf := make([]byte, 4096)
+	store := false
+
+	filePath := path.Join(fileDir, fileName)
+	f, err = os.Open(filePath)
+	if err != nil {
+		if _, err = os.Stat(fileDir); err != nil {
+			if err = os.MkdirAll(fileDir, 0755); err != nil {
+				return false, err
+			}
+		}
+
+		f, err = os.Create(filePath)
+		if err != nil {
+			return false, fmt.Errorf("create file %v failed: %v", filePath, err)
+		}
+		store = true
+	}
+	defer f.Close()
+
+	// store
+	if store {
+		buf, err = json.Marshal(cfg)
+		if err != nil {
+			return false, fmt.Errorf("marshal cfg %v failed: %v", filePath, err)
+		}
+
+		_, err = f.Write(buf)
+		if err != nil {
+			return false, fmt.Errorf("write file %v failed: %v", filePath, err)
+		}
+
+		return true, nil
+	}
+
+	// load stored cfg
+	storedConstCfg := new(ConstConfig)
+	l, err = f.Read(buf)
+	if err != nil {
+		return false, fmt.Errorf("read const cfg file %v failed: %v", filePath, err)
+	}
+	err = json.Unmarshal(buf[:l], storedConstCfg)
+	if err != nil {
+		return false, fmt.Errorf("unmarshal const cfg %v failed: %v", filePath, err)
+	}
+
+	//compare
+	if ok := storedConstCfg.Equals(cfg); !ok {
+		return false, fmt.Errorf("store file %v %v failed: %v", storedConstCfg, cfg, err)
+	}
+
+	return true, nil
 }

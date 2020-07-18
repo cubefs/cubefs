@@ -11,7 +11,7 @@ To reduce the communication with the resource manager,  the client caches the ad
 
 To reduce the communication with the meta nodes, the client also  caches the returned inodes and dentries  when creating new files, as well as the data partition id, the extent id and the offset, after the file has been written to the data node successfully.  When a file is opened for read/write, the client will force  the cache metadata to be synchronous with the meta node.
 
-To reduce the communication with the data nodes,  the client caches the most recently identified leader. Our observation is that, when reading a file, the client may not know which data node is the current leader because the leader could change after a failure recovery. As a result, the client may try to send the read request to each replica one by one until a leader is identified.  However, since  the leader does not change  frequently,   by caching the last identified leader, the client can have minimized  number of retries in most cases.
+To reduce the communication with the data nodes,  the client caches the most recently identified leader. Our observation is that, when reading a file, the client may not know which data node is the current leader because the leader could change after a failure recovery. As a result, the client may try to send the read request to each replica one by one until a leader is identified.  However, since the leader does not change  frequently, by caching the last identified leader, the client can have minimized  number of retries in most cases.
 
 Integration with FUSE
 -----------------------

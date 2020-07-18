@@ -140,6 +140,29 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	return
 }
 
+func (dp *DataPartition) IsEquareCreateDataPartitionRequst(request *proto.CreateDataPartitionRequest) (err error) {
+	if len(dp.config.Peers) != len(request.Members) {
+		return fmt.Errorf("Exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", dp.partitionID, dp.config.Peers, request.Members)
+	}
+	for index, host := range dp.config.Hosts {
+		requestHost := request.Hosts[index]
+		if host != requestHost {
+			return fmt.Errorf("Exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", dp.partitionID, dp.config.Hosts, request.Hosts)
+		}
+	}
+	for index, peer := range dp.config.Peers {
+		requestPeer := request.Members[index]
+		if requestPeer.ID != peer.ID || requestPeer.Addr != peer.Addr {
+			return fmt.Errorf("Exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", dp.partitionID, dp.config.Peers, request.Members)
+		}
+	}
+	if dp.config.VolName != request.VolumeId {
+		return fmt.Errorf("Exsit unavali Partition(%v) VolName(%v) requestVolName(%v)", dp.partitionID, dp.config.VolName, request.VolumeId)
+	}
+
+	return
+}
+
 // LoadDataPartition loads and returns a partition instance based on the specified directory.
 // It reads the partition metadata file stored under the specified directory
 // and creates the partition instance.
@@ -637,6 +660,10 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 			repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, info)
 			continue
 		}
+		if !AutoRepairStatus {
+			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
+			continue
+		}
 		err := store.Create(uint64(extentInfo.FileID))
 		if err != nil {
 			continue
@@ -674,16 +701,27 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 		err                     error
 		conn                    *net.TCPConn
 	)
+
 	if !isFullSync {
-		localTinyDeleteFileSize = dp.extentStore.LoadTinyDeleteFileOffset()
+		if localTinyDeleteFileSize, err = dp.extentStore.LoadTinyDeleteFileOffset(); err != nil {
+			return
+		}
+
+	} else {
 		dp.FullSyncTinyDeleteTime = time.Now().Unix()
 	}
 
 	log.LogInfof(ActionSyncTinyDeleteRecord+" start PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v)",
 		dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr)
+
 	if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteRecordFileSize {
 		return
 	}
+
+	if !isFullSync && repairTask.LeaderTinyDeleteRecordFileSize-localTinyDeleteFileSize < MinTinyExtentDeleteRecordSyncSize {
+		return
+	}
+
 	defer func() {
 		log.LogInfof(ActionSyncTinyDeleteRecord+" end PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v) err(%v)",
 			dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr, err)
@@ -729,11 +767,9 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 			if !storage.IsTinyExtent(extentID) {
 				continue
 			}
-			store.MarkDelete(extentID, int64(offset), int64(size), localTinyDeleteFileSize)
-			if !isFullSync {
-				log.LogWarnf(fmt.Sprintf(ActionSyncTinyDeleteRecord+" extentID_(%v)_extentOffset(%v)_size(%v)", extentID, offset, size))
-			}
-
+			DeleteLimiterWait()
+			log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, extentID, offset, size)
+			store.MarkDelete(extentID, int64(offset), int64(size))
 		}
 	}
 }

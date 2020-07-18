@@ -36,7 +36,17 @@ ChubaoFS use **JSON** as configuration file format.
    "clusterName", "string", "The cluster identifier", "Yes"
    "exporterPort", "int", "The prometheus exporter port", "No"
    "consulAddr", "string", "The consul register addr for prometheus exporter", "No"
-   "metaNodeReservedMem","string","If the metanode memory is below this value, it will be marked as read-only."
+   "metaNodeReservedMem","string","If the metanode memory is below this value, it will be marked as read-only. Unit: byte. 1073741824 by default.", "No"
+   "heartbeatPort","string","Raft heartbeat port,5901 by default","No"
+   "replicaPort","string","Raft replica Port,5902 by default","No"
+   "nodeSetCap","string","the capacity of node set,18 by default","No"
+   "missingDataPartitionInterval","string","how much time it has not received the heartbeat of replica,the replica is considered  missing ,24 hours by default","No"
+   "dataPartitionTimeOutSec","string","how much time it has not received the heartbeat of replica, the replica is considered not alive ,10 minutes by default","No"
+   "numberOfDataPartitionsToLoad","string","the maximum number of partitions to check at a time,40  by default","No"
+   "secondsToFreeDataPartitionAfterLoad","string","the task that release the memory occupied by loading data partition task can be start, only after secondsToFreeDataPartitionAfterLoad seconds
+  ,300 by default","No"
+    "tickInterval","string","the interval of timer which check heartbeat and election timeout,500 ms by default","No"
+    "electionTick","string","how many times the tick timer has reset,the election is timeout,5 by default","No"
 
 
 **Example:**

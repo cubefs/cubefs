@@ -17,11 +17,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"sync"
 )
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -45,7 +46,7 @@ type Vol struct {
 	enableToken        bool
 	tokens             map[string]*proto.Token
 	tokensLock         sync.RWMutex
-	MetaPartitions     map[uint64]*MetaPartition
+	MetaPartitions     map[uint64]*MetaPartition `graphql:"-"`
 	mpsLock            sync.RWMutex
 	dataPartitions     *DataPartitionMap
 	mpsCache           []byte
@@ -53,13 +54,14 @@ type Vol struct {
 	createDpMutex      sync.RWMutex
 	createMpMutex      sync.RWMutex
 	createTime         int64
+	description        string
 	sync.RWMutex
 }
 
-func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, crossZone bool, enableToken bool, createTime int64) (vol *Vol) {
+func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, crossZone bool, enableToken bool, createTime int64, description string) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
-	if dpReplicaNum <= 1 {
+	if dpReplicaNum < defaultReplicaNum {
 		dpReplicaNum = defaultReplicaNum
 	}
 	vol.dpReplicaNum = dpReplicaNum
@@ -86,6 +88,7 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.createTime = createTime
 	vol.enableToken = enableToken
 	vol.tokens = make(map[string]*proto.Token, 0)
+	vol.description = description
 	return
 }
 
@@ -103,7 +106,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.Authenticate,
 		vv.CrossZone,
 		vv.EnableToken,
-		vv.CreateTime)
+		vv.CreateTime,
+		vv.Description)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status
@@ -211,9 +215,9 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 	return
 }
 
-func (vol *Vol) initDataPartitions(c *Cluster) {
+func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
 	// initialize k data partitionMap at a time
-	c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt)
+	err = c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt)
 	return
 }
 
@@ -226,7 +230,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	for _, dp := range vol.dataPartitions.partitionMap {
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
 		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec)
-
+		dp.checkLeader(c.cfg.DataPartitionTimeOutSec)
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNum(c, vol)
 		if dp.Status == proto.ReadWrite {
@@ -237,6 +241,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		if len(tasks) != 0 {
 			c.addDataNodeTasks(tasks)
 		}
+		dp.checkReplicaSize(c.Name, c.cfg.diffSpaceUsage)
 	}
 	return
 }

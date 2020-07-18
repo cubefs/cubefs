@@ -119,16 +119,22 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
+
 	resp.Msg = inode
-	inode.DoWriteFunc(func() {
-		inode.ModifyTime = ino.ModifyTime
-	})
 
 	if inode.IsEmptyDir() {
 		mp.inodeTree.Delete(inode)
 	}
 
 	inode.DecNLink()
+	return
+}
+
+// fsmUnlinkInode delete the specified inode from inode tree.
+func (mp *metaPartition) fsmUnlinkInodeBatch(ib InodeBatch) (resp []*InodeResponse) {
+	for _, ino := range ib {
+		resp = append(resp, mp.fsmUnlinkInode(ino))
+	}
 	return
 }
 
@@ -157,6 +163,24 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 	}
 }
 
+func (mp *metaPartition) internalDeleteBatch(val []byte) error {
+	if len(val) == 0 {
+		return nil
+	}
+	inodes, err := InodeBatchUnmarshal(val)
+	if err != nil {
+		return nil
+	}
+
+	for _, ino := range inodes {
+		log.LogDebugf("internalDelete: received internal delete: partitionID(%v) inode(%v)",
+			mp.config.PartitionId, ino.Inode)
+		mp.internalDeleteInode(ino)
+	}
+
+	return nil
+}
+
 func (mp *metaPartition) internalDeleteInode(ino *Inode) {
 	mp.inodeTree.Delete(ino)
 	mp.freeList.Remove(ino.Inode)
@@ -166,7 +190,6 @@ func (mp *metaPartition) internalDeleteInode(ino *Inode) {
 
 func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	status = proto.OpOk
-	var items []BtreeItem
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		status = proto.OpNotExistErr
@@ -177,15 +200,10 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 		status = proto.OpNotExistErr
 		return
 	}
-	ino.Extents.Range(func(item BtreeItem) bool {
-		items = append(items, item)
-		return true
-	})
-	items = ino2.AppendExtents(items, ino.ModifyTime)
-	for _, item := range items {
-		log.LogInfof("fsmAppendExtents inode(%v) ext(%v)", ino2.Inode, item.(*proto.ExtentKey))
-		mp.extDelCh <- item
-	}
+	eks := ino.Extents.CopyExtents()
+	delExtents := ino2.AppendExtents(eks, ino.ModifyTime)
+	log.LogInfof("fsmAppendExtents inode(%v) exts(%v)", ino2.Inode, delExtents)
+	mp.extDelCh <- delExtents
 	return
 }
 
@@ -193,7 +211,6 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 
 	resp.Status = proto.OpOk
-	var delExtents []BtreeItem
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
@@ -208,17 +225,12 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 		resp.Status = proto.OpArgMismatchErr
 		return
 	}
-	i.Extents.AscendGreaterOrEqual(&proto.ExtentKey{FileOffset: ino.Size},
-		func(item BtreeItem) bool {
-			delExtents = append(delExtents, item)
-			return true
-		})
-	i.ExtentsTruncate(delExtents, ino.Size, ino.ModifyTime)
+
+	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime)
+
 	// now we should delete the extent
-	for _, ext := range delExtents {
-		log.LogInfof("fsmExtentsTruncate inode(%v) ext(%v)", i.Inode, ext.(*proto.ExtentKey))
-		mp.extDelCh <- ext
-	}
+	log.LogInfof("fsmExtentsTruncate inode(%v) exts(%v)", i.Inode, delExtents)
+	mp.extDelCh <- delExtents
 	return
 }
 
@@ -249,6 +261,13 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 	return
 }
 
+func (mp *metaPartition) fsmBatchEvictInode(ib InodeBatch) (resp []*InodeResponse) {
+	for _, ino := range ib {
+		resp = append(resp, mp.fsmEvictInode(ino))
+	}
+	return
+}
+
 func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 	if proto.IsDir(ino.Type) {
 		return
@@ -268,6 +287,6 @@ func (mp *metaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
 	if ino.ShouldDelete() {
 		return
 	}
-	ino.SetAttr(req.Valid, req.Mode, req.Uid, req.Gid)
+	ino.SetAttr(req)
 	return
 }

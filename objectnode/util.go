@@ -1,4 +1,4 @@
-// Copyright 2018 The ChubaoFS Authors.
+// Copyright 2019 The ChubaoFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,13 +32,13 @@ const (
 )
 
 var (
-	emptyPathItem   = PathItem{}
+	emptyPathItem = PathItem{}
 
 	// Regular expression used to match one or more path separators.
 	regexpSepPrefix = regexp.MustCompile("^/+")
 
 	// Regular expression to match more than two consecutive path separators.
-	regexpDupSep    = regexp.MustCompile("/{2,}")
+	regexpDupSep = regexp.MustCompile("/{2,}")
 )
 
 // PathItem defines path node attribute information,
@@ -135,13 +135,16 @@ func formatSimpleTime(time time.Time) string {
 func formatTimeISO(time time.Time) string {
 	return time.UTC().Format("2006-01-02T15:04:05.000Z")
 }
+func formatTimeISOLocal(time time.Time) string {
+	return time.Local().Format("2006-01-02T15:04:05.000Z")
+}
 
 func formatTimeRFC1123(time time.Time) string {
 	return time.UTC().Format(http.TimeFormat)
 }
 
 func parseTimeRFC1123(timeStr string) (time.Time, error) {
-	t, err := time.Parse(http.TimeFormat, timeStr)
+	t, err := time.Parse("Mon, 2 Jan 2006 15:04:05 GMT", timeStr)
 	if err != nil {
 		return t, err
 	}
@@ -216,4 +219,82 @@ func patternMatch(pattern, key string) bool {
 
 func wrapUnescapedQuot(src string) string {
 	return "\"" + src + "\""
+}
+
+func SplitFileRange(size, blockSize int64) (ranges [][2]int64) {
+	blocks := size / blockSize
+	if size%blockSize != 0 {
+		blocks += 1
+	}
+	ranges = make([][2]int64, 0, blocks)
+	remain := size
+	aboveRage := [2]int64{0, 0}
+	for remain > 0 {
+		curRange := [2]int64{aboveRage[1], 0}
+		if remain < blockSize {
+			curRange[1] = size
+			remain = 0
+		} else {
+			curRange[1] = blockSize
+			remain -= blockSize
+		}
+		ranges = append(ranges, curRange)
+		aboveRage[0], aboveRage[1] = curRange[0], curRange[1]
+	}
+	return ranges
+}
+
+// Checking and parsing user-defined metadata from request header.
+// The optional user-defined metadata names must begin with "x-amz-meta-" to
+// distinguish them from other HTTP headers.
+// Notes:
+// The PUT request header is limited to 8 KB in size. Within the PUT request header,
+// the user-defined metadata is limited to 2 KB in size. The size of user-defined
+// metadata is measured by taking the sum of the number of bytes in the UTF-8 encoding
+// of each key and value.
+// Reference: https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingMetadata.html
+func ParseUserDefinedMetadata(header http.Header) map[string]string {
+	metadata := make(map[string]string)
+	for name, values := range header {
+		if strings.HasPrefix(name, http.CanonicalHeaderKey(HeaderNameXAmzMetaPrefix)) &&
+			name != http.CanonicalHeaderKey(HeaderNameXAmzMetadataDirective) {
+			metaName := strings.ToLower(name[len(HeaderNameXAmzMetaPrefix):])
+			metaValue := strings.Join(values, ",")
+			if !strings.HasPrefix(metaName, "oss:") {
+				metadata[metaName] = metaValue
+			}
+		}
+	}
+	return metadata
+}
+
+// validate Cache-Control
+var cacheControlDir = []string{"public", "private", "no-cache", "no-store", "no-transform", "must-revalidate", "proxy-revalidate"}
+var maxAgeRegexp = regexp.MustCompile("^((max-age)|(s-maxage))=[1-9][0-9]*$")
+
+func ValidateCacheControl(cacheControl string) bool {
+	var cacheDirs = strings.Split(cacheControl, ",")
+	for _, dir := range cacheDirs {
+		if !contains(cacheControlDir, dir) && !maxAgeRegexp.MatchString(dir) {
+			log.LogErrorf("invalid cache-control directive: %v", dir)
+			return false
+		}
+	}
+	return true
+}
+
+func ValidateCacheExpires(expires string) bool {
+	var err error
+	var stamp time.Time
+	if stamp, err = time.Parse(RFC1123Format, expires); err != nil {
+		log.LogErrorf("invalid expires: %v", expires)
+		return false
+	}
+	expiresInt := stamp.Unix()
+	now := time.Now().UTC().Unix()
+	if now < expiresInt {
+		return true
+	}
+	log.LogErrorf("Expires less than now: %v, now: %v", expires, now)
+	return false
 }

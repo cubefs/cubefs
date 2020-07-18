@@ -80,6 +80,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handleTinyExtentRepairRead(p, c)
 	case proto.OpMarkDelete:
 		s.handleMarkDeletePacket(p, c)
+	case proto.OpBatchDeleteExtent:
+		s.handleBatchMarkDeletePacket(p, c)
 	case proto.OpRandomWrite, proto.OpSyncRandomWrite:
 		s.handleRandomWritePacket(p)
 	case proto.OpNotifyReplicasToRepair:
@@ -187,7 +189,7 @@ func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 
 // Handle OpHeartbeat packet.
 func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
-	var err  error
+	var err error
 	task := &proto.AdminTask{}
 	err = json.Unmarshal(p.Data, task)
 	defer func() {
@@ -321,12 +323,43 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		ext := new(proto.TinyExtentDeleteRecord)
 		err = json.Unmarshal(p.Data, ext)
 		if err == nil {
-			err = partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size), ext.TinyDeleteFileOffset)
+			log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)",
+				p.PartitionID, p.ExtentID, ext.ExtentOffset, ext.Size)
+			err = partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
 		}
 	} else {
-		err = partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0, 0)
+		log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)",
+			p.PartitionID, p.ExtentID)
+		err = partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
 	}
 	if err != nil {
+		p.PackErrorBody(ActionMarkDelete, err.Error())
+	} else {
+		p.PacketOkReply()
+	}
+
+	return
+}
+
+// Handle OpMarkDelete packet.
+func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
+	var (
+		err error
+	)
+	partition := p.Object.(*DataPartition)
+	var exts []*proto.ExtentKey
+	err = json.Unmarshal(p.Data, &exts)
+	store := partition.ExtentStore()
+	if err == nil {
+		for _, ext := range exts {
+			DeleteLimiterWait()
+			log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
+			store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
+		}
+	}
+
+	if err != nil {
+		log.LogErrorf(fmt.Sprintf("(%v) error(%v) data (%v)", p.GetUniqueLogId(), err, string(p.Data)))
 		p.PackErrorBody(ActionMarkDelete, err.Error())
 	} else {
 		p.PacketOkReply()
@@ -643,7 +676,10 @@ func (s *DataNode) handlePacketToReadTinyDeleteRecordFile(p *repl.Packet, connec
 	}()
 	partition := p.Object.(*DataPartition)
 	store := partition.ExtentStore()
-	localTinyDeleteFileSize := store.LoadTinyDeleteFileOffset()
+	localTinyDeleteFileSize, err := store.LoadTinyDeleteFileOffset()
+	if err != nil {
+		return
+	}
 	needReplySize := localTinyDeleteFileSize - p.ExtentOffset
 	offset := p.ExtentOffset
 	reply := repl.NewReadTinyDeleteRecordResponsePacket(p.ReqID, p.PartitionID)

@@ -1,4 +1,4 @@
-// Copyright 2018 The ChubaoFS Authors.
+// Copyright 2019 The ChubaoFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -61,9 +61,9 @@ func (s *xattrStore) Put(vol, path, key string, data []byte) (err error) {
 		err = err1
 		return
 	}
-	err = v.SetXAttr(path, key, data)
+	err = v.SetXAttr(path, key, data, false)
 	if err != nil {
-		log.LogErrorf("policy: %v, %v", key, data)
+		log.LogErrorf("put xattr failed: vol[%v], key[%v], data[%v]", vol, key, data)
 	}
 	return
 }
@@ -92,9 +92,16 @@ func (s *xattrStore) Get(vol, path, key string) (val []byte, err error) {
 	return
 }
 
-func (s *xattrStore) Delete(vol, obj, key string) (err error) {
-
-	return
+func (s *xattrStore) Delete(vol, path, key string) (err error) {
+	var v *Volume
+	if v, err = s.vm.Volume(vol); err != nil {
+		return
+	}
+	if err = v.DeleteXAttr(path, key); err != nil {
+		log.LogErrorf("delete xattr failed: vol[%v], key[%v]", vol, key)
+		return
+	}
+	return nil
 }
 
 func (s *xattrStore) List(vol, obj string) (data [][]byte, err error) {

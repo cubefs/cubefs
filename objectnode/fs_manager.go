@@ -1,4 +1,4 @@
-// Copyright 2018 The ChubaoFS Authors.
+// Copyright 2019 The ChubaoFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@ type VolumeLoader struct {
 	blacklist  sync.Map // mapping: volume name -> timestamp (time.Time)
 	closeOnce  sync.Once
 	closeCh    chan struct{}
+	metaStrict bool
 }
 
 func (loader *VolumeLoader) blacklistCleanup() {
@@ -134,6 +135,7 @@ func (loader *VolumeLoader) loadVolume(volName string) (*Volume, error) {
 			Masters:          loader.masters,
 			Store:            loader.store,
 			OnAsyncTaskError: onAsyncTaskError,
+			MetaStrict:       loader.metaStrict,
 		}
 		if volume, err = NewVolume(config); err != nil {
 			if err != proto.ErrVolNotExists {
@@ -152,7 +154,6 @@ func (loader *VolumeLoader) loadVolume(volName string) (*Volume, error) {
 		loader.volMu.Unlock()
 		release()
 
-		volume.loadOSSMeta()
 	}
 
 	return volume, nil
@@ -172,24 +173,26 @@ func (loader *VolumeLoader) Close() {
 	})
 }
 
-func NewVolumeLoader(masters []string, store Store) *VolumeLoader {
+func NewVolumeLoader(masters []string, store Store, strict bool) *VolumeLoader {
 	loader := &VolumeLoader{
-		masters: masters,
-		store:   store,
-		volumes: make(map[string]*Volume),
-		closeCh: make(chan struct{}),
+		masters:    masters,
+		store:      store,
+		volumes:    make(map[string]*Volume),
+		closeCh:    make(chan struct{}),
+		metaStrict: strict,
 	}
 	go loader.blacklistCleanup()
 	return loader
 }
 
 type VolumeManager struct {
-	masters   []string
-	mc        *master.MasterClient
-	loaders   [volumeLoaderNum]*VolumeLoader
-	store     Store
-	closeOnce sync.Once
-	closeCh   chan struct{}
+	masters    []string
+	mc         *master.MasterClient
+	loaders    [volumeLoaderNum]*VolumeLoader
+	store      Store
+	metaStrict bool
+	closeOnce  sync.Once
+	closeCh    chan struct{}
 }
 
 func (m *VolumeManager) selectLoader(name string) *VolumeLoader {
@@ -219,14 +222,15 @@ func (m *VolumeManager) init() {
 		vm: m,
 	}
 	for i := 0; i < len(m.loaders); i++ {
-		m.loaders[i] = NewVolumeLoader(m.masters, m.store)
+		m.loaders[i] = NewVolumeLoader(m.masters, m.store, m.metaStrict)
 	}
 }
 
-func NewVolumeManager(masters []string) *VolumeManager {
+func NewVolumeManager(masters []string, strict bool) *VolumeManager {
 	manager := &VolumeManager{
-		masters: masters,
-		closeCh: make(chan struct{}),
+		masters:    masters,
+		closeCh:    make(chan struct{}),
+		metaStrict: strict,
 	}
 	manager.init()
 	return manager

@@ -18,6 +18,7 @@ MntPoint=/cfs/mnt
 mkdir -p /cfs/bin /cfs/log /cfs/mnt
 src_path=/go/src/github.com/chubaofs/cfs
 cli=/cfs/bin/cfs-cli
+conf_path=/cfs/conf
 
 Master1Addr="192.168.0.11:17010"
 LeaderAddr=""
@@ -27,73 +28,79 @@ AccessKey=39bEF4RrAQgMj6RV
 SecretKey=TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd
 AuthKey="0e20229116d5a9a4a9e876806b514a85"
 
+init_cli() {
+    cp ${cli} /usr/bin/
+    cd ${conf_path}
+    ${cli} completion
+    echo 'source '${conf_path}'/cfs-cli.sh' >> ~/.bashrc
+}
 check_cluster() {
-    echo -n "check cluster  ... "
+    echo -n "Checking cluster  ... "
     for i in $(seq 1 300) ; do
         ${cli} cluster info &> /tmp/cli_cluster_info
         LeaderAddr=`cat /tmp/cli_cluster_info | grep -i "master leader" | awk '{print$4}'`
         if [[ "x$LeaderAddr" != "x" ]] ; then
-            echo -e "\033[32m[success]\033[0m"
+            echo -e "\033[32mdone\033[0m"
             return
         fi
         sleep 1
     done
-    echo -e "\033[31m[timeout]\033[0m"
+    echo -e "\033[31mfail\033[0m"
     exit 1
 }
 
 ensure_node_writable() {
     node=$1
-    echo -n "check $node ... "
+    echo -n "Checking $node ... "
     for i in $(seq 1 300) ; do
         ${cli} ${node} list &> /tmp/cli_${node}_list;
         res=`cat /tmp/cli_${node}_list | grep "Yes" | grep "Active" | wc -l`
         if [[ ${res} -eq 4 ]]; then
-            echo -e "\033[32m[success]\033[0m"
+            echo -e "\033[32mdone\033[0m"
             return
         fi
         sleep 1
     done
-    echo -e "\033[31m[timeout]\033[0m"
+    echo -e "\033[31mfail\033[0m"
     cat /tmp/cli_${node}_list
     exit 1
 }
 
 create_cluster_user() {
-    echo -n "create user    ... "
+    echo -n "Creating user     ... "
     # check user exist
     ${cli} user info ${Owner} &> /dev/null
     if [[ $? -eq 0 ]] ; then
-        echo -e "\033[32m[exist]\033[0m"
+        echo -e "\033[32mdone\033[0m"
         return
     fi
     # try create user
     for i in $(seq 1 300) ; do
         ${cli} user create ${Owner} --access-key=${AccessKey} --secret-key=${SecretKey} -y > /tmp/cli_user_create
         if [[ $? -eq 0 ]] ; then
-            echo -e "\033[32m[success]\033[0m"
+            echo -e "\033[32mdone\033[0m"
             return
         fi
         sleep 1
     done
-    echo -e "\033[31m[timeout]\033[0m"
+    echo -e "\033[31mfail\033[0m"
     exit 1
 }
 
 create_volume() {
-    echo -n "create volume  ... "
+    echo -n "Creating volume   ... "
     # check volume exist
     ${cli} volume info ${VolName} &> /dev/null
     if [[ $? -eq 0 ]]; then
-        echo -e "\033[32m[exist]\033[0m"
+        echo -e "\033[32mdone\033[0m"
         return
     fi
     ${cli} volume create ${VolName} ${Owner} --capacity=30 -y > /dev/null
     if [[ $? -ne 0 ]]; then
-        echo -e "\033[31m[failed]\033[0m"
+        echo -e "\033[31mfail\033[0m"
         exit 1
     fi
-    echo -e "\033[32m[success]\033[0m"
+    echo -e "\033[32mdone\033[0m"
 }
 
 show_cluster_info() {
@@ -106,19 +113,19 @@ show_cluster_info() {
     echo &>> ${tmp_file}
     ${cli} user info ${Owner} &>> ${tmp_file}
     echo &>> ${tmp_file}
-    ${cli} volume info ${Owner} &>> ${tmp_file}
+    ${cli} volume info ${VolName} &>> ${tmp_file}
     echo &>> ${tmp_file}
     cat /tmp/collect_cluster_info | grep -v "Master address"
 }
 
 add_data_partitions() {
-    echo -n "add data partitions ... "
+    echo -n "Increasing DPs    ... "
     ${cli} vol add-dp ${VolName} 20 &> /dev/null
     if [[ $? -eq 0 ]] ; then
-        echo -e "\033[32m[success]\033[0m"
+        echo -e "\033[32mdone\033[0m"
         return
     fi
-    echo -e "\033[31m[failed]\033[0m"
+    echo -e "\033[31mfail\033[0m"
     exit 1
 }
 
@@ -137,16 +144,16 @@ print_error_info() {
 }
 
 start_client() {
-    echo -n "start client   ... "
+    echo -n "Starting client   ... "
     nohup /cfs/bin/cfs-client -c /cfs/conf/client.json >/cfs/log/cfs.out 2>&1 &
     sleep 10
     res=$( stat $MntPoint | grep -q "Inode: 1" ; echo $? )
     if [[ $res -ne 0 ]] ; then
-        echo -e "\033[31m[failed]\033[0m"
+        echo -e "\033[31mfail\033[0m"
         print_error_info
         exit $res
     fi
-    echo -e "\033[32m[success]\033[0m"
+    echo -e "\033[32mdone\033[0m"
 }
 
 wait_proc_done() {
@@ -191,7 +198,10 @@ wait_proc_done() {
 }
 
 run_ltptest() {
-    echo "run ltp test"
+    echo "Running LTP test"
+    echo "************************";
+    echo "        LTP test        ";
+    echo "************************";
     LTPTestDir=$MntPoint/ltptest
     LtpLog=/tmp/ltp.log
     mkdir -p $LTPTestDir
@@ -200,54 +210,56 @@ run_ltptest() {
 }
 
 stop_client() {
-    echo -n "stop client    ... "
-    umount ${MntPoint} && echo -e "\033[32m[success]\033[0m" || { echo -e "\033[31m[failed]\033[0m"; exit 1; }
+    echo -n "Stopping client   ... "
+    umount ${MntPoint} && echo -e "\033[32mdone\033[0m" || { echo -e "\033[31mfail\033[0m"; exit 1; }
 }
 
 delete_volume() {
-    echo -n "delete volume  ... "
+    echo -n "Deleting volume   ... "
     ${cli} volume delete ${VolName} -y &> /dev/null
     if [[ $? -eq 0 ]]; then
-        echo -e "\033[32m[success]\033[0m"
+        echo -e "\033[32mdone\033[0m"
         return
     fi
-    echo -e "\033[31m[timeout]\033[0m"
+    echo -e "\033[31mfail\033[0m"
     exit 1
 }
 
 run_s3_test() {
     work_path=/opt/s3tests;
-    echo "run s3 compatibility test";
+    echo "Running S3 compatibility tests"
+    echo "******************************";
+    echo "    S3 compatibility tests    ";
+    echo "******************************";
 
     # install system requirements
-    apt-get update && apt-get install -y \
+    echo -n "Installing system requirements  ... "
+    apt-get update &>> /dev/null && apt-get install -y \
         sudo \
-        debianutils \
-        python3-pip \
-        python3-virtualenv \
-        python3-dev \
-        libevent-dev \
-        libffi-dev \
-        libxml2-dev \
-        libxslt-dev \
-        zlib1g-dev \
-        virtualenv
+        python3 \
+        python3-pip &>> /dev/null
+    if [[ $? -ne 0 ]] ; then
+        echo -e "\033[31mfail\033[0m"
+        exit 1
+    fi
+    echo -e "\033[32mdone\033[0m"
 
-    # download s3-tests project
-    mkdir -p ${work_path};
-    wget "https://github.com/mervinkid/s3-tests/archive/for-chubaofs-2.0.tar.gz" \
-        -O ${work_path}/s3-tests-for-chubaofs-2.0.tar.gz
-    tar zxf ${work_path}/s3-tests-for-chubaofs-2.0.tar.gz -C ${work_path}/
+    # install python requirements
+    echo -n "Installing python requirements  ... "
+    pip3 install -r  ${work_path}/requirements.txt &>> /dev/null
+    if [[ $? -ne 0 ]] ; then
+        echo -e "\033[31mfail\033[0m"
+        exit 1
+    fi
+    echo -e "\033[32mdone\033[0m"
 
-    # init s3-tests environment
-    cd ${work_path}/s3-tests-for-chubaofs-2.0
-    /bin/bash ./bootstrap
-
-    # execute tests
-    tests=`cat ${work_path}/s3tests.txt`
-    S3TEST_CONF=${work_path}/s3tests.conf ./virtualenv/bin/nosetests ${tests} -v --collect-only
+    python3 -m unittest2 discover ${work_path} "*.py" -v
+    if [[ $? -ne 0 ]]; then
+        exit 1
+    fi
 }
 
+init_cli
 check_cluster
 create_cluster_user
 ensure_node_writable "metanode"

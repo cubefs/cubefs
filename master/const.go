@@ -17,35 +17,41 @@ package master
 import (
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 )
 
 // Keys in the request
 const (
-	addrKey               = "addr"
-	diskPathKey           = "disk"
-	nameKey               = "name"
-	idKey                 = "id"
-	countKey              = "count"
-	startKey              = "start"
-	enableKey             = "enable"
-	thresholdKey          = "threshold"
-	dataPartitionSizeKey  = "size"
-	metaPartitionCountKey = "mpCount"
-	volCapacityKey        = "capacity"
-	volOwnerKey           = "owner"
-	volAuthKey            = "authKey"
-	replicaNumKey         = "replicaNum"
-	followerReadKey       = "followerRead"
-	authenticateKey       = "authenticate"
-	akKey                 = "ak"
-	keywordsKey           = "keywords"
-	zoneNameKey           = "zoneName"
-	crossZoneKey          = "crossZone"
-	tokenKey              = "token"
-	tokenTypeKey          = "tokenType"
-	enableTokenKey        = "enableToken"
-	userKey               = "user"
+	addrKey                 = "addr"
+	diskPathKey             = "disk"
+	nameKey                 = "name"
+	idKey                   = "id"
+	countKey                = "count"
+	startKey                = "start"
+	enableKey               = "enable"
+	thresholdKey            = "threshold"
+	dataPartitionSizeKey    = "size"
+	metaPartitionCountKey   = "mpCount"
+	volCapacityKey          = "capacity"
+	volOwnerKey             = "owner"
+	volAuthKey              = "authKey"
+	replicaNumKey           = "replicaNum"
+	followerReadKey         = "followerRead"
+	authenticateKey         = "authenticate"
+	akKey                   = "ak"
+	keywordsKey             = "keywords"
+	zoneNameKey             = "zoneName"
+	crossZoneKey            = "crossZone"
+	tokenKey                = "token"
+	tokenTypeKey            = "tokenType"
+	enableTokenKey          = "enableToken"
+	userKey                 = "user"
+	nodeHostsKey            = "hosts"
+	nodeDeleteBatchCountKey = "batchCount"
+	nodeMarkDeleteRateKey   = "markDeleteRate"
+	nodeDeleteWorkerSleepMs = "deleteWorkerSleepMs"
+	descriptionKey          = "description"
 )
 
 const (
@@ -83,7 +89,7 @@ const (
 	volExpansionRatio                            = 0.1
 	maxNumberOfDataPartitionsForExpansion        = 100
 	EmptyCrcValue                         uint32 = 4045511210
-	DefaultZoneName                              = "default"
+	DefaultZoneName                              = proto.DefaultZoneName
 	retrySendSyncTaskInternal                    = 3 * time.Second
 	defaultRangeOfCountDifferencesAllowed        = 50
 	defaultMinusOfMaxInodeID                     = 1000

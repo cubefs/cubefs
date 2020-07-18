@@ -122,6 +122,8 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
+	go m.startUpdateNodeInfo()
+
 	exporter.Init(cfg.GetString("role"), cfg)
 
 	// check local partition compare with master ,if lack,then not start
@@ -143,6 +145,7 @@ func doShutdown(s common.Server) {
 	if !ok {
 		return
 	}
+	m.stopUpdateNodeInfo()
 	// shutdown node and release the resource
 	m.stopServer()
 	m.stopMetaManager()
@@ -166,12 +169,16 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftDir = cfg.GetString(cfgRaftDir)
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
-	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
 	m.zoneName = cfg.GetString(cfgZoneName)
 	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
 
 	if configTotalMem == 0 {
 		return fmt.Errorf("bad totalMem config,Recommended to be configured as 80 percent of physical machine memory")
+	}
+
+	deleteBatchCount := cfg.GetInt64(cfgDeleteBatchCount)
+	if deleteBatchCount > 1 {
+		updateDeleteBatchCount(uint64(deleteBatchCount))
 	}
 
 	total, _, err := util.GetMemInfo()
@@ -193,6 +200,17 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	if m.raftReplicatePort == "" {
 		return fmt.Errorf("bad cfgRaftReplicaPort config")
+	}
+
+	constCfg := config.ConstConfig{
+		Listen:           m.listen,
+		RaftHeartbetPort: m.raftHeartbeatPort,
+		RaftReplicaPort:  m.raftReplicatePort,
+	}
+	var ok = false
+	if ok, err = config.CheckOrStoreConstCfg(m.metadataDir, config.DefaultConstConfigFile, &constCfg); !ok {
+		log.LogErrorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
+		return fmt.Errorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
 	}
 
 	log.LogInfof("[parseConfig] load localAddr[%v].", m.localAddr)
@@ -244,7 +262,7 @@ func (m *MetaNode) startMetaManager() (err error) {
 		RaftStore: m.raftStore,
 		ZoneName:  m.zoneName,
 	}
-	m.metadataManager = NewMetadataManager(conf)
+	m.metadataManager = NewMetadataManager(conf, m)
 	if err = m.metadataManager.Start(); err == nil {
 		log.LogInfof("[startMetaManager] manager start finish.")
 	}
@@ -262,7 +280,7 @@ func (m *MetaNode) register() (err error) {
 	var nodeAddress string
 	for {
 		if step < 1 {
-			clusterInfo, err = getClientIP()
+			clusterInfo, err = getClusterInfo()
 			if err != nil {
 				log.LogErrorf("[register] %s", err.Error())
 				continue
@@ -290,7 +308,7 @@ func NewServer() *MetaNode {
 	return &MetaNode{}
 }
 
-func getClientIP() (ci *proto.ClusterInfo, err error) {
+func getClusterInfo() (ci *proto.ClusterInfo, err error) {
 	ci, err = masterClient.AdminAPI().GetClusterInfo()
 	return
 }

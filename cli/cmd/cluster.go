@@ -15,7 +15,8 @@
 package cmd
 
 import (
-	"os"
+	"fmt"
+	"strconv"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
@@ -27,36 +28,143 @@ const (
 	cmdClusterShort = "Manage cluster components"
 )
 
-func newClusterCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+func (cmd *ChubaoFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Command {
+	var clusterCmd = &cobra.Command{
 		Use:   cmdClusterUse,
 		Short: cmdClusterShort,
 	}
-	cmd.AddCommand(
+	clusterCmd.AddCommand(
 		newClusterInfoCmd(client),
+		newClusterStatCmd(client),
+		newClusterFreezeCmd(client),
+		newClusterSetThresholdCmd(client),
 	)
-	return cmd
+	return clusterCmd
 }
 
 const (
-	cmdClusterInfoUse   = "info"
-	cmdClusterInfoShort = "Show cluster summary information"
+	cmdClusterInfoShort      = "Show cluster summary information"
+	cmdClusterStatShort      = "Show cluster status information"
+	cmdClusterFreezeShort    = "Freeze cluster"
+	cmdClusterThresholdShort = "Set memory threshold of metanodes"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   cmdClusterInfoUse,
+		Use:   CliOpInfo,
 		Short: cmdClusterInfoShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			var cv *proto.ClusterView
 			if cv, err = client.AdminAPI().GetCluster(); err != nil {
 				errout("Get cluster info fail:\n%v\n", err)
-				os.Exit(1)
+				OsExitWithLogFlush()
 			}
 			stdout("[Cluster]\n")
 			stdout(formatClusterView(cv))
 			stdout("\n")
+		},
+	}
+	return cmd
+}
+
+func newClusterStatCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpStatus,
+		Short: cmdClusterStatShort,
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err error
+			    cs  *proto.ClusterStatInfo
+			)
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
+			if cs, err = client.AdminAPI().GetClusterStat(); err != nil {
+				err = fmt.Errorf("Get cluster info fail:\n%v\n", err)
+				return
+			}
+			stdout("[Cluster Status]\n")
+			stdout(formatClusterStat(cs))
+			stdout("\n")
+		},
+	}
+	return cmd
+}
+
+func newClusterFreezeCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpFreeze + " [ENABLE]",
+		ValidArgs: []string{"true", "false"},
+		Short: cmdClusterFreezeShort,
+		Args:  cobra.MinimumNArgs(1),
+		Long: `Turn on or off the automatic allocation of the data partitions. 
+If 'freeze=false', ChubaoFS WILL automatically allocate new data partitions for the volume when:
+  1. the used space is below the max capacity,
+  2. and the number of r&w data partition is less than 20.
+		
+If 'freeze=true', ChubaoFS WILL NOT automatically allocate new data partitions `,
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err error
+			    enable bool
+			)
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
+			if enable, err = strconv.ParseBool(args[0]); err != nil {
+				err = fmt.Errorf("Parse bool fail: %v\n", err)
+				return
+			}
+			if err = client.AdminAPI().IsFreezeCluster(enable); err != nil {
+				return
+			}
+			if enable {
+				stdout("Freeze cluster successful!\n")
+			} else {
+				stdout("Unfreeze cluster successful!\n")
+			}
+		},
+	}
+	return cmd
+}
+
+func newClusterSetThresholdCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpSetThreshold + " [THRESHOLD]",
+		Short: cmdClusterThresholdShort,
+		Args:  cobra.MinimumNArgs(1),
+		Long: `Set the threshold of memory on each meta node.
+If the memory usage reaches this threshold, all the mata partition will be readOnly.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err error
+			    threshold float64
+			)
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
+			if threshold, err = strconv.ParseFloat(args[0], 64); err != nil {
+				err = fmt.Errorf("Parse Float fail: %v\n", err)
+				return
+			}
+			if threshold > 1.0 {
+				err = fmt.Errorf("Threshold too big\n")
+				return
+			}
+			if err = client.AdminAPI().SetMetaNodeThreshold(threshold); err != nil {
+				return
+			}
+			stdout("MetaNode threshold is set to %v!\n", threshold)
 		},
 	}
 	return cmd

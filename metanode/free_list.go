@@ -64,3 +64,10 @@ func (fl *freeList) Remove(ino uint64) {
 		delete(fl.index, ino)
 	}
 }
+
+
+func (fl *freeList)Len() int {
+	fl.Lock()
+	defer fl.Unlock()
+	return len(fl.index)
+}

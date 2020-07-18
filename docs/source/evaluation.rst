@@ -59,6 +59,8 @@ IO Performance and Scalability
 
 IO Performance and benchmark scalability test by fio_.
 
+*Note: Multiple clients mount the same volume. And the process refers to the fio process.*
+
 .. _fio: https://github.com/axboe/fio
 
 1. Sequential Read

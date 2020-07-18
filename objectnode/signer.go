@@ -1,4 +1,4 @@
-// Copyright 2018 The ChubaoFS Authors.
+// Copyright 2019 The ChubaoFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ var TERMINATOR = "aws4_request"
 
 func getStartTime(headers http.Header) string {
 	for headerName := range headers {
-		if strings.ToLower(headerName) == strings.ToLower(HeaderNameStartDate) {
+		if strings.ToLower(headerName) == strings.ToLower(HeaderNameXAmzStartDate) {
 			return headers.Get(headerName)
 		}
 	}

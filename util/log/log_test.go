@@ -29,7 +29,10 @@ func TestLog(t *testing.T) {
 	}()
 	InitLog("/tmp/cfs", "cfs", DebugLevel, nil)
 	for i := 0; i < 10; i++ {
-		LogDebugf("current time %v.", time.Now())
-		time.Sleep(200 * time.Millisecond)
+		LogDebugf("[debug] current time %v.", time.Now())
+		LogWarnf("[warn] current time %v.", time.Now())
+		LogErrorf("[error] current time %v.", time.Now())
+		LogInfof("[info] current time %v.", time.Now())
+		time.Sleep(2 * time.Millisecond)
 	}
 }

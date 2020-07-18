@@ -1,16 +1,19 @@
-// Copyright 2018 The ChubaoFS Authors.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-// implied. See the License for the specific language governing
-// permissions and limitations under the License.
+/*
+ * MinIO Cloud Storage, (C) 2018 MinIO, Inc.
+ * Modifications copyright 2019 The ChubaoFS Authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package objectnode
 
@@ -31,6 +34,7 @@ import (
 )
 
 const (
+	SignatureExpires    = time.Hour * 24 * 7     // Signature is valid for seven days after the specified date.
 	MaxPresignedExpires = 3 * 365 * 24 * 60 * 60 //10years
 	DateFormatISO8601   = "20060102T150405Z"     //"yyyyMMddTHHmmssZ"
 	MaxSkewTime         = 15 * time.Minute
@@ -52,11 +56,6 @@ const (
 	credentialFlag    = "Credential="
 	signatureFlag     = "Signature="
 	signedHeadersFlag = "SignedHeaders="
-)
-
-var (
-	InvalidParamError = errors.New("invalid param")
-	MaxExpiresError   = errors.New("max expires value")
 )
 
 var PresignedSignatureV4Queries = []string{
@@ -93,16 +92,52 @@ func isHeaderUsingSignatureAlgorithmV4(r *http.Request) bool {
 
 // check request signature valid
 func (o *ObjectNode) validateHeaderBySignatureAlgorithmV4(r *http.Request) (bool, error) {
-	req, err := parseRequestV4(r)
-	if err != nil {
+	var err error
+
+	var req *signatureRequestV4
+	if req, err = parseRequestV4(r); err != nil {
 		return false, err
 	}
-	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKey(req.Credential.AccessKey); err != nil {
-		log.LogInfof("validateHeaderBySignatureAlgorithmV4: get secretKey from master fail: err(%v)", err)
+
+	// The signature is valid for seven days after the specified date.
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
+	var signatureTime time.Time
+	if signatureTime, err = time.Parse("20060102", req.Credential.Date); err != nil {
 		return false, err
 	}
-	newSignature := calculateSignatureV4(r, req.Credential.Region, userInfo.SecretKey, req.SignedHeaders)
+	if time.Since(signatureTime) > SignatureExpires {
+		log.LogDebugf("expired signature: requestID(%v) remote(%v) scope(%v)",
+			GetRequestID(r), getRequestIP(r), req.Credential.GetScopeString())
+		return false, nil
+	}
+
+	var accessKey = req.Credential.AccessKey
+	var volume *Volume
+	if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
+		if volume, err = o.getVol(bucket); err != nil {
+			return false, err
+		}
+	}
+	var secretKey string
+	if userInfo, err := o.getUserInfoByAccessKey(accessKey); err == nil {
+		secretKey = userInfo.SecretKey
+	} else if (err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists) && volume != nil {
+		// In order to be directly compatible with the signature verification of version 1.5
+		// (each volume has its own access key and secret key), if the user does not exist and
+		// the request specifies a volume, try to use the accesskey and secret key bound in the
+		// volume information for verification.
+		if ak, sk := volume.OSSSecure(); ak == accessKey {
+			secretKey = sk
+		} else {
+			return false, nil
+		}
+	} else {
+		log.LogErrorf("validateHeaderBySignatureAlgorithmV4: get secretKey from master fail: accessKey(%v) err(%v)",
+			accessKey, err)
+		return false, err
+	}
+
+	newSignature := calculateSignatureV4(r, req.Credential, secretKey, req.SignedHeaders)
 	if req.Signature != newSignature {
 		log.LogDebugf("validateHeaderBySignatureAlgorithmV4: invalid signature: requestID(%v) client(%v) server(%v)",
 			GetRequestID(r), req.Signature, newSignature)
@@ -133,15 +168,35 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV4(r *http.Request) (pass bo
 	var ok bool
 	if ok, err = req.isValid(); !ok {
 		log.LogErrorf("validateUrlBySignatureAlgorithmV4: request invalid: requestID(%v) err(%v)", GetRequestID(r), err)
-		return
+		return false, nil
 	}
 
-	// check accessKey valid
-	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKey(req.Credential.AccessKey); err != nil {
-		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", req.Credential.AccessKey, err)
+	var accessKey = req.Credential.AccessKey
+	var volume *Volume
+	if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
+		if volume, err = o.getVol(bucket); err != nil {
+			return false, err
+		}
+	}
+	var secretKey string
+	if userInfo, err := o.getUserInfoByAccessKey(accessKey); err == nil {
+		secretKey = userInfo.SecretKey
+	} else if (err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists) && volume != nil {
+		// In order to be directly compatible with the signature verification of version 1.5
+		// (each volume has its own access key and secret key), if the user does not exist and
+		// the request specifies a volume, try to use the accesskey and secret key bound in the
+		// volume information for verification.
+		if ak, sk := volume.OSSSecure(); ak == accessKey {
+			secretKey = sk
+		} else {
+			return false, nil
+		}
+	} else {
+		log.LogErrorf("validateHeaderBySignatureAlgorithmV4: get secretKey from master fail: accessKey(%v) err(%v)",
+			accessKey, err)
 		return false, err
 	}
+
 	// create canonicalRequest
 	var canonicalHeader http.Header
 	canonicalHeader, err = req.createCanonicalHeaderV4()
@@ -153,16 +208,13 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV4(r *http.Request) (pass bo
 	headerNames := getCanonicalHeaderNames(req.SignedHeaders)
 	payload := UnsignedPayload
 	canonicalQuery := createCanonicalQueryV4(req)
-	canonicalRequestString := createCanonicalRequestString(r.Method, req.URI, canonicalQuery, canonicalHeaderStr, headerNames, payload)
+	canonicalRequestString := createCanonicalRequestString(r.Method, getCanonicalURI(r), canonicalQuery, canonicalHeaderStr, headerNames, payload)
 
-	log.LogDebugf("validateUrlBySignatureAlgorithmV4: middle data:\n"+
-		"  RequestID: %v\n"+
-		"  CanonicalRequest: %v",
-		GetRequestID(r),
-		canonicalRequestString)
+	log.LogDebugf("canonical request %v: %v",
+		GetRequestID(r), strings.ReplaceAll(canonicalHeaderStr, "\n", "\\n"))
 
 	// build signingKey
-	signingKey := buildSigningKey(SCHEME, userInfo.SecretKey, req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)
+	signingKey := buildSigningKey(SCHEME, secretKey, req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)
 
 	// build stringToSign
 	scope := buildScope(req.Credential.Date, req.Credential.Region, req.Credential.Service, req.Credential.Request)
@@ -416,7 +468,7 @@ func buildSigningKey(scheme, secret, date, region, service, terminator string) [
 
 func getContentHash(headers http.Header) (contentHash string) {
 	for headerName := range headers {
-		if strings.ToLower(headerName) == strings.ToLower(HeaderNameContentHash) {
+		if strings.ToLower(headerName) == strings.ToLower(HeaderNameXAmzContentHash) {
 			contentHash = headers.Get(headerName)
 			break
 		}
@@ -429,7 +481,7 @@ func getEncodeQuery(r *http.Request) string {
 }
 
 // calculete signature v4
-func calculateSignatureV4(r *http.Request, region, secretKey string, signedHeaders []string) string {
+func calculateSignatureV4(r *http.Request, cred credential, secretKey string, signedHeaders []string) string {
 	headers := r.Header
 
 	// get request start time in ISO8601 type
@@ -438,25 +490,25 @@ func calculateSignatureV4(r *http.Request, region, secretKey string, signedHeade
 	contentHash := getContentHash(headers)
 	encodeQuery := getEncodeQuery(r)
 	canonicalURI := getCanonicalURI(r)
-	canonicalRequest := createCanonicalRequestString(r.Method, canonicalURI, encodeQuery, canonicalHeaderString, headerNames, contentHash)
+	canonicalRequest := createCanonicalRequestString(
+		r.Method, canonicalURI, encodeQuery, canonicalHeaderString, headerNames, contentHash)
 
-	dateStamp := getCurrentDateStamp()
-	timestamp := getStartTime(headers)
-	signingKey := buildSigningKey(SCHEME, secretKey, dateStamp, region, SERVICE, TERMINATOR)
-	scope := buildScope(dateStamp, region, SERVICE, TERMINATOR)
+	signingKey := buildSigningKey(SCHEME, secretKey, cred.Date, cred.Region, SERVICE, TERMINATOR)
+	scope := buildScope(cred.Date, cred.Region, SERVICE, TERMINATOR)
+
+	var timestamp = getStartTime(headers)
 	stringToSign := buildStringToSign(SignatureV4Algorithm, timestamp, scope, canonicalRequest)
 	signature := sign(stringToSign, signingKey)
 
-	log.LogDebugf("calculateSignatureV4: middle data:\n"+
-		"  RequestID: %v\n"+
-		"  CanonicalRequest: %v",
-		GetRequestID(r),
-		canonicalRequest)
+	log.LogDebugf("canonical request %v: %v",
+		GetRequestID(r), strings.ReplaceAll(canonicalRequest, "\n", "\\n"))
 	return hex.EncodeToString(signature)
 }
 
 func getCanonicalURI(r *http.Request) string {
-	return strings.Split(r.URL.RequestURI(), "?")[0]
+	// If request path contain double slash, the java sdk of aws escape the second slash into '%2F' after computing signature,
+	// so we received path is '/%2F', we have to unescape it to double slash again before computing signature.
+	return strings.ReplaceAll(r.URL.EscapedPath(), "/%2F", "//")
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html

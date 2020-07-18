@@ -1,8 +1,8 @@
 FAQ
 ===
 
-How does ChubaoFS compare with its alternatives ?
----------------------------------------------------
+1. How does ChubaoFS compare with its alternatives ?
+------------------------------------------------------
 
 Ceph
 ^^^^^
@@ -38,3 +38,62 @@ Depending on the use cases, there could be a considerable amount of cost associa
 Others
 ^^^^^^^
 GlusterFS (https://www.gluster.org/) is a scalable distributed file system that aggregates disk storage resources from multiple servers into a single global namespace.  MooseFS (https://moosefs.com/) is a fault- tolerant, highly available, POSIX-compliant, and scalable distributed file system. However, similar to HDFS, it employs a single master to manage the file metadata.
+
+
+2. A problem similar to undefined reference to 'ZSTD_versionNumber'.
+---------------------------------------------------------------------
+
+There are two solutions.
+
+- It can be compiled by adding the specified library to CGO_LDFLAGS.
+
+For example: ``CGO_LDFLAGS="-L/usr/local/lib -lrocksdb -lzstd"``. This requires that the ``zstd`` library is also installed on other deployment machines.
+
+- Remove the script that automatically detects whether the 'zstd' library is installed.
+
+Example of file location: rockdb-5.9.2/build_tools/build_detect_platform
+
+The deleted content is as follows.
+
+.. code-block:: bash
+
+    # Test whether zstd library is installed
+        $CXX $CFLAGS $COMMON_FLAGS -x c++ - -o /dev/null 2>/dev/null  <<EOF
+        #include <zstd.h>
+        int main() {}
+    EOF
+        if [ "$?" = 0 ]; then
+            COMMON_FLAGS="$COMMON_FLAGS -DZSTD"
+            PLATFORM_LDFLAGS="$PLATFORM_LDFLAGS -lzstd"
+            JAVA_LDFLAGS="$JAVA_LDFLAGS -lzstd"
+        fi
+
+
+3. Compile ChubaoFS on one machine, but it cannot be started when deployed to other machines.
+-------------------------------------------------------------------------------------------------
+
+First please make sure to use the ``PORTABLE=1 make static_lib`` command to compile RocksDB, then use the ``ldd`` command to check whether the dependent libraries are installed on the machine. After installing the missing libraries, execute the ``ldconfig`` command.
+
+
+4. Why is the status of MetaNode "ReadOnly"?
+----------------------------------------------
+
+- Reason 1: The MetaNode heartbeat has not been received for a long time.
+
+- Reason 2: The used ratio of MetaNode has reached the set threshold.
+
+- Reason 3: The remaining available memory of MetaNode (``TotalWeight`` minus ``UsedWeight``) is not greater than the value of Master's configuration ``metaNodeReservedMem``. You can appropriately increase the MetaNode's ``TotalWeight`` configuration parameter.
+
+- Reason 4: The number of MetaNode meta partitions reaches the default maximum number of partitions (10000).
+
+
+5. How to change the parameters specified during volume creation?
+---------------------------------------------------------------------
+
+Use Mater API ``updateVol`` to change the parameters ``capacity``, ``zoneName``, ``enableToken`` and ``followerRead``.
+
+
+6. How to launch a new disk?
+------------------------------
+
+Add the path of the new disk to the configuration parameter ``disks`` of ``DataNode``, and restart the node.

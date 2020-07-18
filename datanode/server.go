@@ -51,7 +51,7 @@ var (
 )
 
 const (
-	DefaultZoneName         = "cfs_zone1"
+	DefaultZoneName         = proto.DefaultZoneName
 	DefaultRaftDir          = "raft"
 	DefaultRaftLogsToRetain = 10 // Count of raft logs per data partition
 	DefaultDiskMaxErr       = 1
@@ -153,6 +153,8 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	}
 	go s.registerHandler()
 
+	go s.startUpdateNodeInfo()
+
 	return
 }
 
@@ -162,6 +164,8 @@ func doShutdown(server common.Server) {
 		return
 	}
 	close(s.stopC)
+
+	s.stopUpdateNodeInfo()
 	s.stopTCPService()
 	s.stopRaftServer()
 }
@@ -191,6 +195,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	if s.zoneName == "" {
 		s.zoneName = DefaultZoneName
 	}
+
 	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
 	log.LogDebugf("action[parseConfig] load zoneName(%v).", s.zoneName)
@@ -198,7 +203,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 }
 
 func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
-	s.space = NewSpaceManager(s.zoneName)
+	s.space = NewSpaceManager(s)
 	if len(strings.TrimSpace(s.port)) == 0 {
 		err = ErrNewSpaceManagerFailed
 		return
@@ -343,6 +348,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/block", s.getBlockCrcAPI)
 	http.HandleFunc("/stats", s.getStatAPI)
 	http.HandleFunc("/raftStatus", s.getRaftStatus)
+	http.HandleFunc("/setAutoRepairStatus", s.setAutoRepairStatus)
 }
 
 func (s *DataNode) startTCPService() (err error) {

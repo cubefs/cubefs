@@ -1,4 +1,4 @@
-// Copyright 2018 The ChubaoFS Authors.
+// Copyright 2019 The ChubaoFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,27 +39,54 @@ const (
 	FullControlPermission            = "FULL_CONTROL"
 )
 
-// https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/acl-overview.html
+// Mapping of ACL Permissions and Access Policy Permissions
+// Reference: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/acl-overview.html
 var (
 	aclBucketPermissionActions = map[Permission]proto.Actions{
-		ReadPermission:     {proto.OSSListBucketAction, proto.OSSListBucketVersionsAction, proto.OSSListBucketMultipartUploadsAction},
-		WritePermission:    {proto.OSSPutObjectAction, proto.OSSDeleteObjectAction, proto.OSSDeleteBucketAction},
-		ReadACPPermission:  {proto.OSSGetBucketAclAction},
-		WriteACPPermission: {proto.OSSPutBucketAclAction},
+		ReadPermission: {
+			proto.OSSListObjectsAction,
+			proto.OSSListObjectVersionsAction,
+			proto.OSSListMultipartUploadsAction,
+		},
+		WritePermission: {
+			proto.OSSPutObjectAction,
+			proto.OSSDeleteObjectAction,
+			proto.OSSDeleteObjectsAction,
+		},
+		ReadACPPermission: {
+			proto.OSSGetBucketAclAction,
+		},
+		WriteACPPermission: {
+			proto.OSSPutBucketAclAction,
+		},
 		FullControlPermission: {
-			proto.OSSListBucketAction, proto.OSSListBucketVersionsAction, proto.OSSListBucketMultipartUploadsAction,
-			proto.OSSPutObjectAction, proto.OSSDeleteObjectAction, proto.OSSDeleteBucketAction,
-			proto.OSSGetBucketAclAction, proto.OSSPutBucketAclAction},
+			proto.OSSListObjectsAction,
+			proto.OSSListObjectVersionsAction,
+			proto.OSSListMultipartUploadsAction,
+			proto.OSSPutObjectAction,
+			proto.OSSDeleteObjectAction,
+			proto.OSSDeleteObjectsAction,
+			proto.OSSGetBucketAclAction,
+			proto.OSSPutBucketAclAction,
+		},
 	}
 	aclObjectPermissionActions = map[Permission]proto.Actions{
-		ReadPermission:     {proto.OSSGetObjectAction, proto.OSSGetObjectVersionAction, proto.OSSGetObjectTorrentAction},
-		WritePermission:    {},
-		ReadACPPermission:  {proto.OSSGetObjectAclAction, proto.OSSGetObjectVersionAclAction},
-		WriteACPPermission: {proto.OSSPutObjectAclAction, proto.OSSPutObjectVersionAclAction},
+		ReadPermission: {
+			proto.OSSGetObjectAction,
+			proto.OSSGetObjectTorrentAction,
+		},
+		WritePermission: {},
+		ReadACPPermission: {
+			proto.OSSGetObjectAclAction,
+		},
+		WriteACPPermission: {
+			proto.OSSPutObjectAclAction},
 		FullControlPermission: {
-			proto.OSSGetObjectAction, proto.OSSGetObjectVersionAction, proto.OSSGetObjectTorrentAction,
-			proto.OSSGetObjectAclAction, proto.OSSGetObjectVersionAclAction,
-			proto.OSSPutObjectAclAction, proto.OSSPutObjectVersionAclAction},
+			proto.OSSGetObjectAction,
+			proto.OSSGetObjectTorrentAction,
+			proto.OSSGetObjectAclAction,
+			proto.OSSPutObjectAclAction,
+		},
 	}
 )
 
@@ -110,11 +137,12 @@ type Permission string
 
 // grantee
 type Grantee struct {
-	Xmlns        string `xml:"xmlns:xsi,attr,omitempty"`
-	Xmlsi        string `xml:"xsi:type,attr,omitempty"`
+	Xmlxsi       string `xml:"xmlns:xsi,attr"`
+	Xmlns        string `xml:"xsi,attr"`
+	XsiType      string `xml:"xsi:type,attr"`
+	Type         string `xml:"type,attr"`
 	Id           string `xml:"ID,omitempty"`
 	URI          string `xml:"URI,omitempty"`
-	Type         string `xml:"Type,omitempty"`
 	DisplayName  string `xml:"DisplayName,omitempty"`
 	EmailAddress string `xml:"EmailAddress,omitempty"`
 }
@@ -142,7 +170,7 @@ type Owner struct {
 
 // access control policy
 type AccessControlPolicy struct {
-	Xmlns string            `xml:"xmlns:xsi,attr"`
+	Xmlns string            `xml:"xmlns,attr"`
 	Owner Owner             `xml:"Owner,omitempty"`
 	Acl   AccessControlList `xml:"AccessControlList,omitempty"`
 }
@@ -161,9 +189,12 @@ func (acp *AccessControlPolicy) Validate(bucket string) (bool, error) {
 	return true, nil
 }
 
-func (acp *AccessControlPolicy) IsAllowed(param *RequestParam) bool {
-	log.LogInfof("acl is allowed ?")
+func (acp *AccessControlPolicy) IsAllowed(param *RequestParam, isOwner bool) bool {
+	log.LogDebugf("acl is allowed: %v param: %v", acp, param)
 	if len(acp.Acl.Grants) == 0 {
+		return true
+	}
+	if isOwner {
 		return true
 	}
 	for _, grant := range acp.Acl.Grants {
@@ -261,12 +292,12 @@ func storeBucketACL(bytes []byte, vol *Volume) (*AccessControlPolicy, error) {
 		return nil, err3
 	}
 
-	err4 := vol.store.Put(vol.name, bucketRootPath, OSS_ACL_KEY, bytes)
+	err4 := vol.store.Put(vol.name, bucketRootPath, XAttrKeyOSSACL, bytes)
 	if err4 != nil {
 		return nil, err4
 	}
 
-	vol.storeACL(acl)
+	vol.metaLoader.storeACL(acl)
 
 	return acl, nil
 }

@@ -139,7 +139,7 @@ func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 		logger.Debug("newRaft[%v] [peers: [%s], term: %d, commit: %d, applied: %d, lastindex: %d, lastterm: %d]",
 			r.id, strings.Join(peerStrs, ","), r.term, r.raftLog.committed, r.raftLog.applied, r.raftLog.lastIndex(), r.raftLog.lastTerm())
 	}
-	r.stopCh=make(chan struct{},1)
+	r.stopCh = make(chan struct{}, 1)
 	go r.doRandomSeed()
 	return r, nil
 }
@@ -156,7 +156,7 @@ func (r *raftFsm) doRandomSeed() {
 	}
 }
 
-func (r *raftFsm)StopFsm() {
+func (r *raftFsm) StopFsm() {
 	close(r.stopCh)
 }
 

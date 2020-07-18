@@ -1,4 +1,4 @@
-// Copyright 2018 The ChubaoFS Authors.
+// Copyright 2019 The ChubaoFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,26 +17,20 @@ package objectnode
 import (
 	"crypto/md5"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/xml"
 	"io/ioutil"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/gorilla/mux"
 )
 
-type CreateBucketConfiguration struct {
-	xmlns              string `xml:"xmlns"`
-	locationConstraint string `xml:"locationConstraint"`
-}
-
 // Head bucket
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadBucket.html
 func (o *ObjectNode) headBucketHandler(w http.ResponseWriter, r *http.Request) {
-	// do nothing
+	w.Header()[HeaderNameXAmzBucketRegion] = []string{o.region}
 }
 
 // Create bucket
@@ -45,8 +39,6 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 	var (
 		err error
 	)
-
-	log.LogInfof("Create bucket...")
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 	if bucket == "" {
@@ -56,6 +48,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 	if vol, _ := o.getVol(bucket); vol != nil {
 		log.LogInfof("create bucket failed: duplicated bucket name[%v]", bucket)
 		_ = DuplicatedBucket.ServeResponse(w, r)
+		return
 	}
 	auth := parseRequestAuthInfo(r)
 	var userInfo *proto.UserInfo
@@ -70,14 +63,13 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	//todo parse body
-	w.Header().Set("Location", o.region)
+	w.Header()[HeaderNameLocation] = []string{o.region}
 	return
 }
 
 // Delete bucket
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucket.html
 func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("Delete bucket...")
 
 	var (
 		volState *proto.VolStatInfo
@@ -127,7 +119,6 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 // List buckets
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBuckets.html
 func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("List buckets...")
 
 	var err error
 	auth := parseRequestAuthInfo(r)
@@ -137,27 +128,39 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
-	ownVols := userInfo.Policy.OwnVols
-	var buckets = make([]*Bucket, 0)
-	for _, ownVol := range ownVols {
-		var bucket = &Bucket{Name: ownVol, CreationDate: time.Unix(0, 0)}
-		buckets = append(buckets, bucket)
-	}
-	authorizedVols := userInfo.Policy.AuthorizedVols
-	for authorizedVol := range authorizedVols {
-		var bucket = &Bucket{Name: authorizedVol, CreationDate: time.Unix(0, 0)}
-		buckets = append(buckets, bucket)
+
+	type bucket struct {
+		XMLName      xml.Name `xml:"Bucket"`
+		CreationDate string   `xml:"CreationDate"`
+		Name         string   `xml:"Name"`
 	}
 
-	owner := &Owner{DisplayName: userInfo.AccessKey, Id: userInfo.AccessKey}
-	listBucketOutput := &ListBucketsOutput{
-		Buckets: &Buckets{Bucket: buckets},
-		Owner:   owner,
+	type listBucketsOutput struct {
+		XMLName xml.Name `xml:"ListAllMyBucketsResult"`
+		Owner   Owner    `xml:"Owner"`
+		Buckets []bucket `xml:"Buckets>Bucket"`
 	}
+
+	var output = listBucketsOutput{}
+
+	ownVols := userInfo.Policy.OwnVols
+	for _, ownVol := range ownVols {
+		var vol *Volume
+		if vol, err = o.getVol(ownVol); err != nil {
+			log.LogErrorf("listBucketsHandler: load volume fail: volume(%v) err(%v)",
+				ownVol, err)
+			continue
+		}
+		output.Buckets = append(output.Buckets, bucket{
+			Name:         ownVol,
+			CreationDate: formatTimeISO(vol.CreateTime()),
+		})
+	}
+	output.Owner = Owner{DisplayName: userInfo.UserID, Id: userInfo.UserID}
 
 	var bytes []byte
 	var marshalError error
-	if bytes, marshalError = MarshalXMLEntity(listBucketOutput); marshalError != nil {
+	if bytes, marshalError = MarshalXMLEntity(&output); marshalError != nil {
 		log.LogErrorf("listBucketsHandler: marshal result fail, requestID(%v) err(%v)", GetRequestID(r), err)
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
@@ -171,20 +174,7 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 // Get bucket location
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLocation.html
 func (o *ObjectNode) getBucketLocation(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("getBucketLocation: get bucket location: requestID(%v)", GetRequestID(r))
-	var output = &GetBucketLocationOutput{
-		LocationConstraint: o.region,
-	}
-	var marshaled []byte
-	var err error
-	if marshaled, err = MarshalXMLEntity(output); err != nil {
-		log.LogErrorf("getBucketLocation: marshal result fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		ServeInternalStaticErrorResponse(w, r)
-		return
-	}
-	if _, err = w.Write(marshaled); err != nil {
-		log.LogErrorf("getBucketLocation: write response body fail: requestID(%v) err(%v)", GetRequestID(r), err)
-	}
+	_, _ = w.Write(o.encodedRegion)
 	return
 }
 
@@ -210,20 +200,22 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
-	var output = NewGetBucketTaggingOutput()
-	if err = json.Unmarshal(ossTaggingData, output); err != nil {
-		log.LogErrorf("getBucketTaggingHandler: decode tagging from json fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
-		return
-	}
+	var output, _ = ParseTagging(string(ossTaggingData))
 
 	var encoded []byte
-	if encoded, err = MarshalXMLEntity(output); err != nil {
-		log.LogErrorf("getBucketTaggingHandler: encode output fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
-		return
+	if nil == output || len(output.TagSet) == 0 {
+		sb := strings.Builder{}
+		sb.WriteString(xml.Header)
+		sb.WriteString("<Tagging></Tagging>")
+		encoded = []byte(sb.String())
+	} else {
+		if encoded, err = MarshalXMLEntity(output); err != nil {
+			log.LogErrorf("getBucketTaggingHandler: encode output fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			_ = InternalErrorCode(err).ServeResponse(w, r)
+			return
+		}
 	}
-
+	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
 	if _, err = w.Write(encoded); err != nil {
 		log.LogErrorf("getBucketTaggingHandler: write response fail: requestID(%v) err（%v)", GetRequestID(r), err)
 	}
@@ -266,15 +258,13 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 		_ = InvalidArgument.ServeResponse(w, r)
 		return
 	}
-
-	var encoded []byte
-	if encoded, err = json.Marshal(tagging); err != nil {
-		log.LogWarnf("putBucketTaggingHandler: encode tagging data fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
+	validateRes, errorCode := tagging.Validate()
+	if !validateRes {
+		log.LogErrorf("putBucketTaggingHandler: tagging validate fail: requestID(%v) tagging(%v) err(%v)", GetRequestID(r), tagging, err)
 		return
 	}
 
-	if err = vol.SetXAttr("/", XAttrKeyOSSTagging, encoded); err != nil {
+	if err = vol.SetXAttr("/", XAttrKeyOSSTagging, []byte(tagging.Encode()), false); err != nil {
 		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
@@ -314,6 +304,7 @@ func (o *ObjectNode) deleteBucketTaggingHandler(w http.ResponseWriter, r *http.R
 		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
+	w.WriteHeader(http.StatusNoContent)
 	return
 }
 

@@ -17,10 +17,11 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/chubaofs/chubaofs/util/btree"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/btree"
 )
 
 // Part defined necessary fields for multipart part management.
@@ -30,6 +31,13 @@ type Part struct {
 	MD5        string
 	Size       uint64
 	Inode      uint64
+}
+
+func (m *Part) Equal(o *Part) bool {
+	return m.ID == o.ID &&
+		m.Inode == o.Inode &&
+		m.Size == o.Size &&
+		m.MD5 == o.MD5
 }
 
 func (m Part) Bytes() ([]byte, error) {
@@ -108,16 +116,10 @@ func (m Parts) Len() int {
 	return len(m)
 }
 
-func (m Parts) Less(i, j int) bool {
-	return m[i].ID < m[j].ID
-}
-
-func (m Parts) Swap(i, j int) {
-	m[i], m[j] = m[j], m[i]
-}
-
-func (m Parts) Sort() {
-	sort.Sort(m)
+func (m Parts) sort() {
+	sort.SliceStable(m, func(i, j int) bool {
+		return m[i].ID < m[j].ID
+	})
 }
 
 func (m *Parts) Hash(part *Part) (has bool) {
@@ -128,6 +130,23 @@ func (m *Parts) Hash(part *Part) (has bool) {
 	return
 }
 
+func (m *Parts) LoadOrStore(part *Part) (actual *Part, stored bool) {
+	i := sort.Search(len(*m), func(i int) bool {
+		return (*m)[i].ID >= part.ID
+	})
+	if i >= 0 && i < len(*m) && (*m)[i].ID == part.ID {
+		actual = (*m)[i]
+		stored = false
+		return
+	}
+	*m = append(*m, part)
+	actual = part
+	stored = true
+	m.sort()
+	return
+}
+
+// Deprecated
 func (m *Parts) Insert(part *Part, replace bool) (success bool) {
 	i := sort.Search(len(*m), func(i int) bool {
 		return (*m)[i].ID >= part.ID
@@ -140,7 +159,7 @@ func (m *Parts) Insert(part *Part, replace bool) (success bool) {
 		return false
 	}
 	*m = append(*m, part)
-	m.Sort()
+	m.sort()
 	return true
 }
 
@@ -212,6 +231,68 @@ func PartsFromBytes(raw []byte) Parts {
 	return muParts
 }
 
+type MultipartExtend map[string]string
+
+func NewMultipartExtend() MultipartExtend {
+	return make(map[string]string)
+}
+
+func (me MultipartExtend) Bytes() ([]byte, error) {
+	var n int
+	var err error
+	var buffer = bytes.NewBuffer(nil)
+	var tmp = make([]byte, binary.MaxVarintLen64)
+	n = binary.PutUvarint(tmp, uint64(len(me)))
+	if _, err = buffer.Write(tmp[:n]); err != nil {
+		return nil, err
+	}
+	var marshalStr = func(src string) error {
+		n = binary.PutUvarint(tmp, uint64(len(src)))
+		if _, err = buffer.Write(tmp[:n]); err != nil {
+			return err
+		}
+		if _, err = buffer.WriteString(src); err != nil {
+			return err
+		}
+		return nil
+	}
+	for key, val := range me {
+		if err = marshalStr(key); err != nil {
+			return nil, err
+		}
+		if err = marshalStr(val); err != nil {
+			return nil, err
+		}
+	}
+	return buffer.Bytes(), nil
+}
+
+func MultipartExtendFromBytes(raw []byte) MultipartExtend {
+	var offset, n int
+	var el uint64
+	me := NewMultipartExtend()
+	var unmarshalStr = func(data []byte) (string, int) {
+		var n int
+		var lengthU64 uint64
+		lengthU64, n = binary.Uvarint(data)
+		return string(data[n : n+int(lengthU64)]), n + int(lengthU64)
+	}
+	el, n = binary.Uvarint(raw)
+	if el <= 0 {
+		return nil
+	}
+	offset += n
+	for i := 0; i < int(el); i++ {
+		var key, val string
+		key, n = unmarshalStr(raw[offset:])
+		offset += n
+		val, n = unmarshalStr(raw[offset:])
+		offset += n
+		me[key] = val
+	}
+	return me
+}
+
 // Multipart defined necessary fields for multipart session management.
 type Multipart struct {
 	// session fields
@@ -219,13 +300,14 @@ type Multipart struct {
 	key      string
 	initTime time.Time
 	parts    Parts
+	extend   MultipartExtend
 
 	mu sync.RWMutex
 }
 
 func (m *Multipart) Less(than btree.Item) bool {
-	thanMultipart, is := than.(*Multipart)
-	return is && m.id < thanMultipart.id
+	tm, is := than.(*Multipart)
+	return is && ((m.key < tm.key) || ((m.key == tm.key) && (m.id < tm.id)))
 }
 
 func (m *Multipart) Copy() btree.Item {
@@ -234,6 +316,7 @@ func (m *Multipart) Copy() btree.Item {
 		key:      m.key,
 		initTime: m.initTime,
 		parts:    append(Parts{}, m.parts...),
+		extend:   m.extend,
 	}
 }
 
@@ -241,6 +324,17 @@ func (m *Multipart) ID() string {
 	return m.id
 }
 
+func (m *Multipart) LoadOrStorePart(part *Part) (actual *Part, stored bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.parts == nil {
+		m.parts = PartsFromBytes(nil)
+	}
+	actual, stored = m.parts.LoadOrStore(part)
+	return
+}
+
+// Deprecated
 func (m *Multipart) InsertPart(part *Part, replace bool) (success bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -298,6 +392,18 @@ func (m *Multipart) Bytes() ([]byte, error) {
 	if _, err = buffer.Write(marshaledParts); err != nil {
 		return nil, err
 	}
+	// marshall extend
+	var extendBytes []byte
+	if extendBytes, err = m.extend.Bytes(); err != nil {
+		return nil, err
+	}
+	n = binary.PutUvarint(tmp, uint64(len(extendBytes)))
+	if _, err = buffer.Write(tmp[:n]); err != nil {
+		return nil, err
+	}
+	if _, err = buffer.Write(extendBytes); err != nil {
+		return nil, err
+	}
 	return buffer.Bytes(), nil
 }
 
@@ -326,12 +432,19 @@ func MultipartFromBytes(raw []byte) *Multipart {
 	partsLengthU64, n = binary.Uvarint(raw[offset:])
 	offset += n
 	var parts = PartsFromBytes(raw[offset : offset+int(partsLengthU64)])
+	offset += int(partsLengthU64)
+	// decode multipart extend
+	var extendLengthU64 uint64
+	extendLengthU64, n = binary.Uvarint(raw[offset:])
+	offset += n
+	var me = MultipartExtendFromBytes(raw[offset : offset+int(extendLengthU64)])
 
 	var muSession = &Multipart{
 		id:       id,
 		key:      key,
 		initTime: time.Unix(0, initTimeI64),
 		parts:    parts,
+		extend:   me,
 	}
 	return muSession
 }

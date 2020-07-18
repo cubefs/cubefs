@@ -41,14 +41,19 @@ const (
 	AccessKey
 	SecretKey
 	DisableDcache
+	SubDir
+	FsyncOnClose
+	MaxCPUs
+	EnableXattr
 
 	MaxMountOption
 )
 
 // For server
 const (
-	MasterAddr = "masterAddr"
-	ListenPort = "listen"
+	MasterAddr       = "masterAddr"
+	ListenPort       = "listen"
+	ObjectNodeDomain = "objectNodeDomain"
 )
 
 type MountOption struct {
@@ -99,6 +104,10 @@ func InitMountOptions(opts []MountOption) {
 	opts[SecretKey] = MountOption{"secretKey", "Secret Key", "", ""}
 
 	opts[DisableDcache] = MountOption{"disableDcache", "Disable Dentry Cache", "", false}
+	opts[SubDir] = MountOption{"subdir", "Mount sub directory", "", ""}
+	opts[FsyncOnClose] = MountOption{"fsyncOnClose", "Perform fsync upon file close", "", true}
+	opts[MaxCPUs] = MountOption{"maxcpus", "The maximum number of CPUs that can be executing", "", int64(-1)}
+	opts[EnableXattr] = MountOption{"enableXattr", "Enable xattr support", "", false}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -112,7 +121,11 @@ func ParseMountOptions(opts []MountOption, cfg *config.Config) {
 			if opts[i].cmdlineValue != "" {
 				opts[i].value = opts[i].cmdlineValue
 			} else {
-				opts[i].value = cfg.GetString(opts[i].keyword)
+				if value, present := cfg.CheckAndGetString(opts[i].keyword); present {
+					opts[i].value = value
+				} else {
+					opts[i].value = v
+				}
 			}
 			fmt.Println(fmt.Sprintf("keyword[%v] value[%v] type[%T]", opts[i].keyword, opts[i].value, v))
 
@@ -120,8 +133,11 @@ func ParseMountOptions(opts []MountOption, cfg *config.Config) {
 			if opts[i].cmdlineValue != "" {
 				opts[i].value = parseInt64(opts[i].cmdlineValue)
 			} else {
-				rawstr := cfg.GetString(opts[i].keyword)
-				opts[i].value = parseInt64(rawstr)
+				if value, present := cfg.CheckAndGetString(opts[i].keyword); present {
+					opts[i].value = parseInt64(value)
+				} else {
+					opts[i].value = v
+				}
 			}
 			fmt.Println(fmt.Sprintf("keyword[%v] value[%v] type[%T]", opts[i].keyword, opts[i].value, v))
 
@@ -129,7 +145,11 @@ func ParseMountOptions(opts []MountOption, cfg *config.Config) {
 			if opts[i].cmdlineValue != "" {
 				opts[i].value = parseBool(opts[i].cmdlineValue)
 			} else {
-				opts[i].value = cfg.GetBool(opts[i].keyword)
+				if value, present := cfg.CheckAndGetBool(opts[i].keyword); present {
+					opts[i].value = value
+				} else {
+					opts[i].value = v
+				}
 			}
 			fmt.Println(fmt.Sprintf("keyword[%v] value[%v] type[%T]", opts[i].keyword, opts[i].value, v))
 
@@ -211,4 +231,8 @@ type MountOptions struct {
 	AccessKey     string
 	SecretKey     string
 	DisableDcache bool
+	SubDir        string
+	FsyncOnClose  bool
+	MaxCPUs       int64
+	EnableXattr   bool
 }

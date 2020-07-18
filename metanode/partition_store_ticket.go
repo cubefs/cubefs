@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"encoding/binary"
 	"time"
 
 	"github.com/chubaofs/chubaofs/cmd/common"
@@ -35,6 +36,7 @@ type storeMsg struct {
 func (mp *metaPartition) startSchedule(curIndex uint64) {
 	timer := time.NewTimer(time.Hour * 24 * 365)
 	timer.Stop()
+	timerCursor := time.NewTimer(intervalToSyncCursor)
 	scheduleState := common.StateStopped
 	dumpFunc := func(msg *storeMsg) {
 		log.LogDebugf("[startSchedule] partitionId=%d: nowAppID"+
@@ -117,6 +119,17 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 						timer.Reset(intervalToPersistData)
 					}
 				}
+			case <-timerCursor.C:
+				if _, ok := mp.IsLeader(); !ok {
+					timerCursor.Reset(intervalToSyncCursor)
+					continue
+				}
+				cursorBuf := make([]byte, 8)
+				binary.BigEndian.PutUint64(cursorBuf, mp.config.Cursor)
+				if _, err := mp.submit(opFSMSyncCursor, cursorBuf); err != nil {
+					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
+				}
+				timerCursor.Reset(intervalToSyncCursor)
 			}
 		}
 	}(mp.stopC)

@@ -23,6 +23,7 @@ import (
 	"net"
 	"strconv"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util"
@@ -127,6 +128,14 @@ const (
 	OpAddMultipartPart uint8 = 0x72
 	OpRemoveMultipart  uint8 = 0x73
 	OpListMultiparts   uint8 = 0x74
+
+	OpBatchDeleteExtent uint8 = 0x75 // SDK to MetaNode
+
+	//Operations: MetaNode Leader -> MetaNode Follower
+	OpMetaBatchDeleteInode  uint8 = 0x90
+	OpMetaBatchDeleteDentry uint8 = 0x91
+	OpMetaBatchUnlinkInode  uint8 = 0x92
+	OpMetaBatchEvictInode   uint8 = 0x93
 
 	// Commons
 	OpIntraGroupNetErr uint8 = 0xF3
@@ -248,6 +257,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaCreateInode"
 	case OpMetaUnlinkInode:
 		m = "OpMetaUnlinkInode"
+	case OpMetaBatchUnlinkInode:
+		m = "OpMetaBatchUnlinkInode"
 	case OpMetaCreateDentry:
 		m = "OpMetaCreateDentry"
 	case OpMetaDeleteDentry:
@@ -278,6 +289,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaLinkInode"
 	case OpMetaEvictInode:
 		m = "OpMetaEvictInode"
+	case OpMetaBatchEvictInode:
+		m = "OpMetaBatchEvictInode"
 	case OpMetaSetattr:
 		m = "OpMetaSetattr"
 	case OpCreateMetaPartition:
@@ -338,6 +351,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpDataPartitionTryToLeader"
 	case OpMetaDeleteInode:
 		m = "OpMetaDeleteInode"
+	case OpMetaBatchDeleteInode:
+		m = "OpMetaBatchDeleteInode"
 	case OpMetaBatchExtentsAdd:
 		m = "OpMetaBatchExtentsAdd"
 	case OpMetaSetXAttr:
@@ -360,6 +375,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpRemoveMultipart"
 	case OpListMultiparts:
 		m = "OpListMultiparts"
+	case OpBatchDeleteExtent:
+		m = "OpBatchDeleteExtent"
 	}
 	return
 }
@@ -378,7 +395,7 @@ func (p *Packet) GetResultMsg() (m string) {
 	case OpDiskErr:
 		m = "DiskErr"
 	case OpErr:
-		m = "Err"
+		m = "Err: " + string(p.Data)
 	case OpAgain:
 		m = "Again"
 	case OpOk:
@@ -523,8 +540,12 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 		header = make([]byte, util.PacketHeaderSize)
 	}
 	defer Buffers.Put(header)
-	if _, err = io.ReadFull(c, header); err != nil {
+	var n int
+	if n, err = io.ReadFull(c, header); err != nil {
 		return
+	}
+	if n != util.PacketHeaderSize {
+		return syscall.EBADMSG
 	}
 	if err = p.UnmarshalHeader(header); err != nil {
 		return
@@ -538,15 +559,20 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 	}
 
 	if p.Size < 0 {
-		return
+		return syscall.EBADMSG
 	}
 	size := p.Size
 	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
 		size = 0
 	}
 	p.Data = make([]byte, size)
-	_, err = io.ReadFull(c, p.Data[:size])
-	return err
+	if n, err = io.ReadFull(c, p.Data[:size]); err != nil {
+		return err
+	}
+	if n != int(size) {
+		return syscall.EBADMSG
+	}
+	return nil
 }
 
 // PacketOkReply sets the result code as OpOk, and sets the body as empty.
@@ -602,11 +628,12 @@ func (p *Packet) GetUniqueLogId() (m string) {
 		ext := new(TinyExtentDeleteRecord)
 		err := json.Unmarshal(p.Data, ext)
 		if err == nil {
-			m += fmt.Sprintf("Extent(%v)_ExtentOffset(%v)_TinyDeleteFileOffset(%v)_Size(%v)_Opcode(%v)",
-				ext.ExtentId, ext.ExtentOffset, ext.TinyDeleteFileOffset, ext.Size, p.Opcode)
+			m += fmt.Sprintf("Extent(%v)_ExtentOffset(%v)_Size(%v)_Opcode(%v)",
+				ext.ExtentId, ext.ExtentOffset, ext.Size, p.GetOpMsg())
 			return m
 		}
-	} else if p.Opcode == OpReadTinyDeleteRecord || p.Opcode == OpNotifyReplicasToRepair || p.Opcode == OpDataNodeHeartbeat {
+	} else if p.Opcode == OpReadTinyDeleteRecord || p.Opcode == OpNotifyReplicasToRepair || p.Opcode == OpDataNodeHeartbeat ||
+		p.Opcode == OpLoadDataPartition || p.Opcode == OpBatchDeleteExtent {
 		p.mesg += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
 		return
 	} else if p.Opcode == OpBroadcastMinAppliedID || p.Opcode == OpGetAppliedId {
@@ -632,11 +659,12 @@ func (p *Packet) setPacketPrefix() {
 		ext := new(TinyExtentDeleteRecord)
 		err := json.Unmarshal(p.Data, ext)
 		if err == nil {
-			p.mesg += fmt.Sprintf("Extent(%v)_ExtentOffset(%v)_TinyDeleteFileOffset(%v)_Size(%v)_Opcode(%v)",
-				ext.ExtentId, ext.ExtentOffset, ext.TinyDeleteFileOffset, ext.Size, p.Opcode)
+			p.mesg += fmt.Sprintf("Extent(%v)_ExtentOffset(%v)_Size(%v)_Opcode(%v)",
+				ext.ExtentId, ext.ExtentOffset, ext.Size, p.GetOpMsg())
 			return
 		}
-	} else if p.Opcode == OpReadTinyDeleteRecord || p.Opcode == OpNotifyReplicasToRepair || p.Opcode == OpDataNodeHeartbeat {
+	} else if p.Opcode == OpReadTinyDeleteRecord || p.Opcode == OpNotifyReplicasToRepair || p.Opcode == OpDataNodeHeartbeat ||
+		p.Opcode == OpLoadDataPartition || p.Opcode == OpBatchDeleteExtent {
 		p.mesg += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
 		return
 	} else if p.Opcode == OpBroadcastMinAppliedID || p.Opcode == OpGetAppliedId {
@@ -663,15 +691,12 @@ func (p *Packet) IsForwardPkt() bool {
 // LogMessage logs the given message.
 func (p *Packet) LogMessage(action, remote string, start int64, err error) (m string) {
 	if err == nil {
-		m = fmt.Sprintf("id[%v] remote[%v] "+
-			" cost[%v] transite[%v] nodes[%v]",
-			p.GetUniqueLogId(), remote,
-			(time.Now().UnixNano()-start)/1e6, p.IsForwardPkt(), p.RemainingFollowers)
+		m = fmt.Sprintf("id[%v] isPrimaryBackReplLeader[%v] remote[%v] "+
+			" cost[%v] ", p.GetUniqueLogId(), p.IsForwardPkt(), remote, (time.Now().UnixNano()-start)/1e6)
 
 	} else {
-		m = fmt.Sprintf("id[%v]  remote[%v]"+
-			", err[%v] transite[%v] nodes[%v]", p.GetUniqueLogId(),
-			remote, err.Error(), p.IsForwardPkt(), p.RemainingFollowers)
+		m = fmt.Sprintf("id[%v] isPrimaryBackReplLeader[%v] remote[%v]"+
+			", err[%v]", p.GetUniqueLogId(), p.IsForwardPkt(), remote, err.Error())
 	}
 
 	return

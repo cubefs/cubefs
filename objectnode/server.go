@@ -1,4 +1,4 @@
-// Copyright 2018 The ChubaoFS Authors.
+// Copyright 2019 The ChubaoFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,12 +17,14 @@ package objectnode
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
 	"sync"
 
 	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/exporter"
 
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
@@ -75,6 +77,7 @@ const (
 	// The configuration in the example will allow ObjectNode to automatically resolve "* .object.chubao.io".
 	configDomains = "domains"
 
+	disabledActions               = "disabledActions"
 	configSignatureIgnoredActions = "signatureIgnoredActions"
 )
 
@@ -102,6 +105,9 @@ type ObjectNode struct {
 	userStore  UserInfoStore
 
 	signatureIgnoredActions proto.Actions // signature ignored actions
+	disabledActions         proto.Actions // disabled actions
+
+	encodedRegion []byte
 
 	control common.Control
 }
@@ -156,15 +162,31 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 		}
 	}
 
+	// parse disabled actions
+	disabledActions := cfg.GetStringSlice(disabledActions)
+	for _, actionName := range disabledActions {
+		action := proto.ParseAction(actionName)
+		if !action.IsNone() {
+			o.disabledActions = append(o.disabledActions, action)
+			log.LogInfof("loadConfig: disabled action: %v", action)
+		}
+	}
+
 	// parse strict config
 	strict := cfg.GetBool(configStrict)
 	log.LogInfof("loadConfig: strict: %v", strict)
 
 	o.mc = master.NewMasterClient(masters, false)
-	o.vm = NewVolumeManager(masters)
+	o.vm = NewVolumeManager(masters, strict)
 	o.userStore = NewUserInfoStore(masters, strict)
 
 	return
+}
+
+func (o *ObjectNode) updateRegion(region string) {
+	o.region = region
+	o.encodedRegion =
+		[]byte(fmt.Sprintf(fmt.Sprintf("<LocationConstraint>%s</LocationConstraint>", o.region)))
 }
 
 func handleStart(s common.Server, cfg *config.Config) (err error) {
@@ -182,7 +204,7 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 	if ci, err = o.mc.AdminAPI().GetClusterInfo(); err != nil {
 		return
 	}
-	o.region = ci.Cluster
+	o.updateRegion(ci.Cluster)
 	log.LogInfof("handleStart: get cluster information: region(%v)", o.region)
 
 	// start rest api
@@ -190,6 +212,10 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 		log.LogInfof("handleStart: start rest api fail: err(%v)", err)
 		return
 	}
+
+	exporter.Init(cfg.GetString("role"), cfg)
+	exporter.RegistConsul(ci.Cluster, cfg.GetString("role"), cfg)
+
 	log.LogInfo("object subsystem start success")
 	return
 }
@@ -206,6 +232,7 @@ func (o *ObjectNode) startMuxRestAPI() (err error) {
 	router := mux.NewRouter().SkipClean(true)
 	o.registerApiRouters(router)
 	router.Use(
+		o.expectMiddleware,
 		o.corsMiddleware,
 		o.traceMiddleware,
 		o.authMiddleware,

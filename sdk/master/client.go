@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -42,6 +43,11 @@ type MasterClient struct {
 	masters    []string
 	useSSL     bool
 	leaderAddr string
+
+	adminAPI  *AdminAPI
+	clientAPI *ClientAPI
+	nodeAPI   *NodeAPI
+	userAPI   *UserAPI
 }
 
 // AddNode add the given address as the master address.
@@ -60,27 +66,19 @@ func (c *MasterClient) Leader() (addr string) {
 }
 
 func (c *MasterClient) AdminAPI() *AdminAPI {
-	return &AdminAPI{
-		mc: c,
-	}
+	return c.adminAPI
 }
 
 func (c *MasterClient) ClientAPI() *ClientAPI {
-	return &ClientAPI{
-		mc: c,
-	}
+	return c.clientAPI
 }
 
 func (c *MasterClient) NodeAPI() *NodeAPI {
-	return &NodeAPI{
-		mc: c,
-	}
+	return c.nodeAPI
 }
 
 func (c *MasterClient) UserAPI() *UserAPI {
-	return &UserAPI{
-		mc: c,
-	}
+	return c.userAPI
 }
 
 // Change the leader address.
@@ -144,17 +142,19 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 				Data json.RawMessage `json:"data"`
 			}{}
 			if err := json.Unmarshal(repsData, body); err != nil {
+				log.LogErrorf("unmarshal response body err:%v", err)
 				return nil, fmt.Errorf("unmarshal response body err:%v", err)
 
 			}
 			// o represent proto.ErrCodeSuccess
 			if body.Code != 0 {
+				log.LogErrorf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, body.Data)
 				return nil, proto.ParseErrorCode(body.Code)
 			}
 			return []byte(body.Data), nil
 		default:
-			log.LogErrorf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%v).",
-				resp.Request.URL.String(), host, stateCode, string(repsData))
+			log.LogErrorf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
+				resp.Request.URL.String(), host, stateCode, strings.Replace(string(repsData), "\n", "", -1))
 			continue
 		}
 	}
@@ -180,9 +180,19 @@ func (c *MasterClient) prepareRequest() (addr string, nodes []string) {
 }
 
 func (c *MasterClient) httpRequest(method, url string, param, header map[string]string, reqData []byte) (resp *http.Response, err error) {
-	client := &http.Client{}
+	client := http.DefaultClient
 	reader := bytes.NewReader(reqData)
-	client.Timeout = requestTimeout
+	if header["isTimeOut"] != "" {
+		var isTimeOut bool
+		if isTimeOut, err = strconv.ParseBool(header["isTimeOut"]); err != nil {
+			return
+		}
+		if isTimeOut {
+			client.Timeout = requestTimeout
+		}
+	}else {
+		client.Timeout = requestTimeout
+	}
 	var req *http.Request
 	fullUrl := c.mergeRequestUrl(url, param)
 	log.LogDebugf("httpRequest: merge request url: method(%v) url(%v) bodyLength[%v].", method, fullUrl, len(reqData))
@@ -234,7 +244,12 @@ func (c *MasterClient) mergeRequestUrl(url string, params map[string]string) str
 
 // NewMasterHelper returns a new MasterClient instance.
 func NewMasterClient(masters []string, useSSL bool) *MasterClient {
-	return &MasterClient{masters: masters, useSSL: useSSL}
+	var mc = &MasterClient{masters: masters, useSSL: useSSL}
+	mc.adminAPI = &AdminAPI{mc: mc}
+	mc.clientAPI = &ClientAPI{mc: mc}
+	mc.nodeAPI = &NodeAPI{mc: mc}
+	mc.userAPI = &UserAPI{mc: mc}
+	return mc
 }
 
 // NewMasterClientFromString parse raw master address configuration

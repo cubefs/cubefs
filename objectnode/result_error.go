@@ -1,4 +1,4 @@
-// Copyright 2018 The ChubaoFS Authors.
+// Copyright 2019 The ChubaoFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,6 +27,10 @@ type ErrorCode struct {
 }
 
 func (code ErrorCode) ServeResponse(w http.ResponseWriter, r *http.Request) error {
+	// write status code to request context,
+	// traceMiddleWare send exception request to prometheus via status code
+	SetResponseStatusCode(r, code)
+
 	var err error
 	var marshaled []byte
 	var xmlError = struct {
@@ -44,7 +48,7 @@ func (code ErrorCode) ServeResponse(w http.ResponseWriter, r *http.Request) erro
 	if marshaled, err = xml.Marshal(&xmlError); err != nil {
 		return err
 	}
-	w.Header().Set(HeaderNameContentType, HeaderValueContentTypeXML)
+	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
 	w.WriteHeader(code.StatusCode)
 	if _, err = w.Write(marshaled); err != nil {
 		return err
@@ -53,7 +57,7 @@ func (code ErrorCode) ServeResponse(w http.ResponseWriter, r *http.Request) erro
 }
 
 func ServeInternalStaticErrorResponse(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set(HeaderNameContentType, HeaderValueContentTypeXML)
+	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
 	w.WriteHeader(http.StatusInternalServerError)
 	sb := strings.Builder{}
 	sb.WriteString(xml.Header)
@@ -84,11 +88,21 @@ var (
 	InvalidRange                        = &ErrorCode{ErrorCode: "InvalidRange", ErrorMessage: "The requested range cannot be satisfied.", StatusCode: http.StatusRequestedRangeNotSatisfiable}
 	MissingContentLength                = &ErrorCode{ErrorCode: "MissingContentLength", ErrorMessage: "You must provide the Content-Length HTTP header.", StatusCode: http.StatusLengthRequired}
 	NoSuchBucket                        = &ErrorCode{ErrorCode: "NoSuchBucket", ErrorMessage: "The specified bucket does not exist.", StatusCode: http.StatusNotFound}
-	NoSuchKey                           = &ErrorCode{ErrorCode: "NoLoggingStatusForKey", ErrorMessage: "The specified key does not exist.", StatusCode: http.StatusNotFound}
+	NoSuchKey                           = &ErrorCode{ErrorCode: "NoSuchKey", ErrorMessage: "The specified key does not exist.", StatusCode: http.StatusNotFound}
 	PreconditionFailed                  = &ErrorCode{ErrorCode: "PreconditionFailed", ErrorMessage: "At least one of the preconditions you specified did not hold.", StatusCode: http.StatusPreconditionFailed}
 	MaxContentLength                    = &ErrorCode{ErrorCode: "MaxContentLength", ErrorMessage: "Content-Length is bigger than 20KB.", StatusCode: http.StatusLengthRequired}
 	DuplicatedBucket                    = &ErrorCode{ErrorCode: "CreateBucketFailed", ErrorMessage: "Duplicate bucket name.", StatusCode: http.StatusBadRequest}
-	Conflict                            = &ErrorCode{ErrorCode: "Conflict", ErrorMessage: "Object already exists and type conflicts", StatusCode: http.StatusConflict}
+	ObjectModeConflict                  = &ErrorCode{ErrorCode: "ObjectModeConflict", ErrorMessage: "Object already exists but file mode conflicts", StatusCode: http.StatusConflict}
+	NotModified                         = &ErrorCode{ErrorCode: "MaxContentLength", ErrorMessage: "Not modified.", StatusCode: http.StatusNotModified}
+	NoSuchUpload                        = &ErrorCode{ErrorCode: "NoSuchUpload", ErrorMessage: "The specified upload does not exist.", StatusCode: http.StatusNotFound}
+	OverMaxRecordSize                   = &ErrorCode{ErrorCode: "OverMaxRecordSize", ErrorMessage: "The length of a record in the input or result is greater than maxCharsPerRecord of 1 MB.", StatusCode: http.StatusBadRequest}
+	CopySourceSizeTooLarge              = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "The specified copy source is larger than the maximum allowable size for a copy source: 5368709120", StatusCode: http.StatusBadRequest}
+	InvalidPartOrder                    = &ErrorCode{ErrorCode: "InvalidPartOrder", ErrorMessage: "The list of parts was not in ascending order. Parts list must be specified in order by part number.", StatusCode: http.StatusBadRequest}
+	InvalidPart                         = &ErrorCode{ErrorCode: "InvalidPart", ErrorMessage: "One or more of the specified parts could not be found. The part might not have been uploaded, or the specified entity tag might not have matched the part's entity tag.", StatusCode: http.StatusBadRequest}
+	InvalidCacheArgument                = &ErrorCode{ErrorCode: "InvalidCacheArgument", ErrorMessage: "Invalid Cache-Control or Expires Argument", StatusCode: http.StatusBadRequest}
+	TagsGreaterThen10                   = &ErrorCode{ErrorCode: "BadRequest", ErrorMessage: "Object tags cannot be greater than 10", StatusCode: http.StatusBadRequest}
+	InvalidTagKey                       = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagKey you have provided is invalid", StatusCode: http.StatusBadRequest}
+	InvalidTagValue                     = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagValue you have provided is invalid", StatusCode: http.StatusBadRequest}
 )
 
 func HttpStatusErrorCode(code int) *ErrorCode {

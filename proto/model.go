@@ -18,6 +18,10 @@ import (
 	"time"
 )
 
+const (
+	DefaultZoneName = "default"
+)
+
 // MetaNode defines the structure of a meta node
 type MetaNodeInfo struct {
 	ID                        uint64
@@ -63,6 +67,8 @@ type MetaPartitionInfo struct {
 	Start        uint64
 	End          uint64
 	MaxInodeID   uint64
+	InodeCount   uint64
+	DentryCount  uint64
 	VolName      string
 	Replicas     []*MetaReplicaInfo
 	ReplicaNum   uint8
@@ -129,6 +135,7 @@ type ZoneNodesStat struct {
 	Total         float64 `json:"TotalGB"`
 	Used          float64 `json:"UsedGB"`
 	Avail         float64 `json:"AvailGB"`
+	UsedRatio     float64
 	TotalNodes    int
 	WritableNodes int
 }
@@ -185,10 +192,24 @@ type DataReplica struct {
 	ReportTime      int64
 	FileCount       uint32
 	Status          int8
-	HasLoadResponse bool // if there is any response when loading
+	HasLoadResponse bool   // if there is any response when loading
 	Total           uint64 `json:"TotalSize"`
 	Used            uint64 `json:"UsedSize"`
 	IsLeader        bool
 	NeedsToCompare  bool
 	DiskPath        string
+}
+
+// data partition diagnosis represents the inactive data nodes, corrupt data partitions, and data partitions lack of replicas
+type DataPartitionDiagnosis struct {
+	InactiveDataNodes            []string
+	CorruptDataPartitionIDs      []uint64
+	LackReplicaDataPartitionIDs  []uint64
+}
+
+// meta partition diagnosis represents the inactive meta nodes, corrupt meta partitions, and meta partitions lack of replicas
+type MetaPartitionDiagnosis struct {
+	InactiveMetaNodes            []string
+	CorruptMetaPartitionIDs      []uint64
+	LackReplicaMetaPartitionIDs  []uint64
 }

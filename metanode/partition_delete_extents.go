@@ -28,6 +28,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/synclist"
 )
 
 const (
@@ -38,12 +39,17 @@ const (
 var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
 
 func (mp *metaPartition) startToDeleteExtents() {
-	fileList := list.New()
+	fileList := synclist.New()
 	go mp.appendDelExtentsToFile(fileList)
 	go mp.deleteExtentsFromList(fileList)
 }
 
-func (mp *metaPartition) appendDelExtentsToFile(fileList *list.List) {
+func (mp *metaPartition) appendDelExtentsToFile(fileList *synclist.SyncList) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf(fmt.Sprintf("appendDelExtentsToFile(%v) appendDelExtentsToFile panic (%v)", mp.config.PartitionId, r))
+		}
+	}()
 	var (
 		fileName string
 		fileSize int64
@@ -84,7 +90,7 @@ LOOP:
 
 	// TODO Unhandled errors
 	defer fp.Close()
-	var buf []byte
+	buf := make([]byte, 0)
 	for {
 		select {
 		case <-mp.stopC:
@@ -95,13 +101,20 @@ LOOP:
 			// reset fileList
 			fileList.Init()
 			goto LOOP
-		case item := <-mp.extDelCh:
-			ek := item.(*proto.ExtentKey)
-			buf, err = ek.MarshalBinary()
+		case eks := <-mp.extDelCh:
+			var data []byte
+			buf = buf[:0]
+			for _, ek := range eks {
+				data, err = ek.MarshalBinary()
+				if err != nil {
+					log.LogWarnf("[appendDelExtentsToFile] partitionId=%d,"+
+						" extentKey marshal: %s", mp.config.PartitionId, err.Error())
+					break
+				}
+				buf = append(buf, data...)
+			}
 			if err != nil {
-				log.LogWarnf("[appendDelExtentsToFile] partitionId=%d,"+
-					" extentKey marshal: %s", mp.config.PartitionId, err.Error())
-				mp.extDelCh <- ek
+				mp.extDelCh <- eks
 				continue
 			}
 			if fileSize >= maxDeleteExtentSize {
@@ -132,7 +145,13 @@ LOOP:
 }
 
 // Delete all the extents of a file.
-func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
+func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf(fmt.Sprintf("deleteExtentsFromList(%v) deleteExtentsFromList panic (%v)", mp.config.PartitionId, r))
+		}
+	}()
+
 	var (
 		element  *list.Element
 		fileName string
@@ -166,7 +185,9 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
 		buf := make([]byte, MB)
 		fp, err := os.OpenFile(file, os.O_RDWR, 0644)
 		if err != nil {
-			panic(err)
+			log.LogErrorf("[deleteExtentsFromList] openFile %v error: %v", file, err)
+			fileList.Remove(element)
+			goto LOOP
 		}
 
 		if _, err = fp.ReadAt(buf[:8], 0); err != nil {
@@ -176,7 +197,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
 			fp.Close()
 			continue
 		}
-		cursor := binary.BigEndian.Uint64(buf)
+		cursor := binary.BigEndian.Uint64(buf[:8])
 		if size := uint64(fileInfo.Size()) - cursor; size < MB {
 			if size <= 0 {
 				size = uint64(proto.ExtentLength)
@@ -185,6 +206,8 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
 					"[deleteExtentsFromList] partitionId=%d, %s file corrupted!",
 					mp.config.PartitionId, fileName)
 				log.LogErrorf(errStr) // FIXME
+				fileList.Remove(element)
+				fp.Close()
 				goto LOOP
 			}
 			buf = buf[:size]
@@ -231,13 +254,15 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *list.List) {
 				cursor -= uint64(buff.Len())
 				break
 			}
-			ek := &proto.ExtentKey{}
+			ek := proto.ExtentKey{}
 			if err = ek.UnmarshalBinary(buff); err != nil {
 				panic(err)
 			}
 			// delete dataPartition
-			if err = mp.doDeleteMarkedInodes(ek); err != nil {
-				mp.extDelCh <- ek
+			if err = mp.doDeleteMarkedInodes(&ek); err != nil {
+				eks := make([]proto.ExtentKey, 0)
+				eks = append(eks, ek)
+				mp.extDelCh <- eks
 				log.LogWarnf("[deleteExtentsFromList] partitionId=%d, %s",
 					mp.config.PartitionId, err.Error())
 			}

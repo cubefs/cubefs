@@ -73,7 +73,6 @@ type MetaConfig struct {
 	Masters          []string
 	Authenticate     bool
 	TicketMess       auth.TicketMess
-	TokenKey         string
 	ValidateOwner    bool
 	OnAsyncTaskError AsyncTaskErrorFunc
 }
@@ -115,10 +114,6 @@ type MetaWrapper struct {
 	accessToken  proto.APIAccessReq
 	sessionKey   string
 	ticketMess   auth.TicketMess
-
-	enableToken bool
-	tokenKey    string
-	tokenType   int8
 
 	closeCh   chan struct{}
 	closeOnce sync.Once
@@ -173,43 +168,45 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.forceUpdate = make(chan struct{}, 1)
 	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
 
-	if err = mw.updateClusterInfo(); err != nil {
-		return nil, err
-	}
-	if err = mw.updateVolStatInfo(); err != nil {
-		return nil, err
-	}
-	mw.tokenKey = config.TokenKey
-
 	limit := MaxMountRetryLimit
-retry:
-	if err := mw.initMetaWrapper(); err != nil {
-		if limit <= 0 {
-			return nil, errors.Trace(err, "Init meta wrapper failed!")
-		} else {
+
+	for limit > 0 {
+		err = mw.initMetaWrapper()
+		// When initializing the volume, if the master explicitly responds that the specified
+		// volume does not exist, it will not retry.
+		if err == proto.ErrVolNotExists {
+			return nil, err
+		}
+		if err != nil {
 			limit--
 			time.Sleep(MountRetryInterval)
-			goto retry
+			continue
 		}
-
+		break
 	}
 
 	go mw.refresh()
 	return mw, nil
 }
 
-func (mw *MetaWrapper) initMetaWrapper() error {
-	err := mw.updateVolStatInfo()
-	if err != nil {
+func (mw *MetaWrapper) initMetaWrapper() (err error) {
+	if err = mw.updateClusterInfo(); err != nil {
 		return err
 	}
-	if mw.enableToken {
-		err = mw.updateTokenType()
-		if err != nil {
-			return err
-		}
+
+	if err = mw.updateVolStatInfo(); err != nil {
+		return err
 	}
-	return mw.updateMetaPartitions()
+
+	if err = mw.updateMetaPartitions(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (mw *MetaWrapper) Owner() string {
+	return mw.owner
 }
 
 func (mw *MetaWrapper) OSSSecure() (accessKey, secretKey string) {
@@ -234,10 +231,6 @@ func (mw *MetaWrapper) Cluster() string {
 
 func (mw *MetaWrapper) LocalIP() string {
 	return mw.localIP
-}
-
-func (mw *MetaWrapper) TokenType() int8 {
-	return mw.tokenType
 }
 
 func (mw *MetaWrapper) exporterKey(act string) string {
@@ -285,7 +278,7 @@ func statusToErrno(status int) error {
 	case statusNotPerm:
 		return syscall.EPERM
 	case statusError:
-		return syscall.EPERM
+		return syscall.EAGAIN
 	default:
 	}
 	return syscall.EIO

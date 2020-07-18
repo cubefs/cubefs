@@ -6,10 +6,14 @@ BuildOutPath=${BuildPath}/out
 BuildBinPath=${BuildPath}/bin
 VendorPath=${RootPath}/vendor
 
+Version=$(git describe --abbrev=0)
 BranchName=$(git rev-parse --abbrev-ref HEAD)
 CommitID=$(git rev-parse HEAD)
 BuildTime=$(date +%Y-%m-%d\ %H:%M)
-LDFlags="-X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'"
+LDFlags="-X github.com/chubaofs/chubaofs/proto.Version=${Version} \
+-X github.com/chubaofs/chubaofs/proto.CommitID=${CommitID} \
+-X github.com/chubaofs/chubaofs/proto.BranchName=${BranchName} \
+-X 'github.com/chubaofs/chubaofs/proto.BuildTime=${BuildTime}'"
 MODFLAGS=""
 
 NPROC=$(nproc 2>/dev/null)

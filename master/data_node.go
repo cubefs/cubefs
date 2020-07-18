@@ -33,16 +33,17 @@ type DataNode struct {
 	Addr                      string
 	ReportTime                time.Time
 	isActive                  bool
-	sync.RWMutex
+	sync.RWMutex              `graphql:"-"`
 	UsageRatio                float64 // used / total space
 	SelectedTimes             uint64  // number times that this datanode has been selected as the location for a data partition.
 	Carry                     float64 // carry is a factor used in cacluate the node's weight
-	TaskManager               *AdminTaskManager
+	TaskManager               *AdminTaskManager `graphql:"-"`
 	DataPartitionReports      []*proto.PartitionReport
 	DataPartitionCount        uint32
 	NodeSetID                 uint64
 	PersistenceDataPartitions []uint64
 	BadDisks                  []string
+	ToBeOffline               bool
 }
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {

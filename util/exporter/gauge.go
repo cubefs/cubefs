@@ -37,7 +37,7 @@ func collectGauge() {
 		m := <-GaugeCh
 		metric := m.Metric()
 		metric.Set(float64(m.val))
-		GaugePool.Put(m)
+		log.LogDebugf("collect metric %v", m)
 	}
 }
 
@@ -52,18 +52,21 @@ func NewGauge(name string) (g *Gauge) {
 	if !enabledPrometheus {
 		return
 	}
-	g = GaugePool.Get().(*Gauge)
+	g = new(Gauge)
 	g.name = metricsName(name)
 	return
 }
 
 func (c *Gauge) Key() (key string) {
-	str := c.name
-	if len(c.labels) > 0 {
-		str = fmt.Sprintf("%s-%s", c.name, stringMapToString(c.labels))
-	}
+	return stringMD5(c.Name())
+}
 
-	return stringMD5(str)
+func (g *Gauge) Name() string {
+	return fmt.Sprintf("{%s: %s}", g.name, stringMapToString(g.labels))
+}
+
+func (g *Gauge) String() string {
+	return fmt.Sprintf("{name: %s, labels: %s, val: %v}", g.name, stringMapToString(g.labels), g.val)
 }
 
 func (c *Gauge) Metric() prometheus.Gauge {
@@ -77,7 +80,9 @@ func (c *Gauge) Metric() prometheus.Gauge {
 	if !load {
 		err := prometheus.Register(actualMetric.(prometheus.Collector))
 		if err == nil {
-			log.LogInfo("register metric ", c.name)
+			log.LogInfof("register metric %v", c.Name())
+		} else {
+			log.LogErrorf("register metric %v, %v", c.Name(), err)
 		}
 	}
 

@@ -51,6 +51,9 @@ type Super struct {
 	fslock    sync.Mutex
 
 	disableDcache bool
+	fsyncOnClose  bool
+	enableXattr   bool
+	rootIno       uint64
 }
 
 // Functions that Super needs to implement
@@ -69,7 +72,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		Masters:       masters,
 		Authenticate:  opt.Authenticate,
 		TicketMess:    opt.TicketMess,
-		TokenKey:      opt.TokenKey,
 		ValidateOwner: true,
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)
@@ -113,13 +115,20 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.orphan = NewOrphanInodeList()
 	s.nodeCache = make(map[uint64]fs.Node)
 	s.disableDcache = opt.DisableDcache
+	s.fsyncOnClose = opt.FsyncOnClose
+	s.enableXattr = opt.EnableXattr
+
+	if s.rootIno, err = s.mw.GetRootIno(opt.SubDir); err != nil {
+		return nil, err
+	}
+
 	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v)", s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration)
 	return s, nil
 }
 
 // Root returns the root directory where it resides.
 func (s *Super) Root() (fs.Node, error) {
-	inode, err := s.InodeGet(RootInode)
+	inode, err := s.InodeGet(s.rootIno)
 	if err != nil {
 		return nil, err
 	}
@@ -142,10 +151,6 @@ func (s *Super) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.
 // ClusterName returns the cluster name.
 func (s *Super) ClusterName() string {
 	return s.cluster
-}
-
-func (s *Super) TokenType() int8 {
-	return s.mw.TokenType()
 }
 
 func (s *Super) GetRate(w http.ResponseWriter, r *http.Request) {

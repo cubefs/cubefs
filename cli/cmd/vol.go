@@ -18,12 +18,9 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/chubaofs/chubaofs/util/errors"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
@@ -45,6 +42,8 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newVolListCmd(client),
 		newVolCreateCmd(client),
+		newVolExpandCmd(client),
+		newVolShrinkCmd(client),
 		newVolInfoCmd(client),
 		newVolDeleteCmd(client),
 		newVolTransferCmd(client),
@@ -54,14 +53,13 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdVolListUse   = "list"
 	cmdVolListShort = "List cluster volumes"
 )
 
 func newVolListCmd(client *master.MasterClient) *cobra.Command {
 	var optKeyword string
 	var cmd = &cobra.Command{
-		Use:     cmdVolListUse,
+		Use:     CliOpList,
 		Short:   cmdVolListShort,
 		Aliases: []string{"ls"},
 		Run: func(cmd *cobra.Command, args []string) {
@@ -69,14 +67,13 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("List cluster volume failed:\n%v\n", err)
-					os.Exit(1)
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
 				}
 			}()
 			if vols, err = client.AdminAPI().ListVols(optKeyword); err != nil {
 				return
 			}
-			stdout("[Volumes]\n")
 			stdout("%v\n", volumeInfoTableHeader)
 			for _, vol := range vols {
 				stdout("%v\n", formatVolInfoTableRow(vol))
@@ -95,6 +92,7 @@ const (
 	cmdVolDefaultCapacity       = 10 // 100GB
 	cmdVolDefaultReplicas       = 3
 	cmdVolDefaultFollowerReader = true
+	cmdVolDefaultZoneName = "default"
 )
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
@@ -104,6 +102,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optReplicas int
 	var optFollowerRead bool
 	var optYes bool
+	var optZoneName string
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
@@ -112,7 +111,12 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			var volumeName = args[0]
 			var userID = args[1]
-
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
 			// ask user for confirm
 			if !optYes {
 				stdout("Create a new volume:\n")
@@ -123,31 +127,33 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Capacity            : %v GB\n", optCapacity)
 				stdout("  Replicas            : %v\n", optReplicas)
 				stdout("  Allow follower read : %v\n", formatEnabledDisabled(optFollowerRead))
+				stdout("  ZoneName            : %v\n", optZoneName)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
 				if userConfirm != "yes" && len(userConfirm) != 0 {
-					stdout("Abort by user.\n")
+					err = fmt.Errorf("Abort by user.\n")
 					return
 				}
 			}
 
 			err = client.AdminAPI().CreateVolume(
 				volumeName, userID, optMPCount, optDPSize,
-				optCapacity, optReplicas, optFollowerRead)
+				optCapacity, optReplicas, optFollowerRead, optZoneName)
 			if err != nil {
-				errout("Create volume failed case:\n%v\n", err)
-				os.Exit(1)
+				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
+				return
 			}
 			stdout("Create volume success.\n")
 			return
 		},
 	}
-	cmd.Flags().IntVar(&optMPCount, "mp-count", cmdVolDefaultMPCount, "Specify init meta partition count")
-	cmd.Flags().Uint64Var(&optDPSize, "dp-size", cmdVolDefaultDPSize, "Specify size of data partition size [Unit: GB]")
-	cmd.Flags().Uint64Var(&optCapacity, "capacity", cmdVolDefaultCapacity, "Specify volume capacity [Unit: GB]")
-	cmd.Flags().IntVar(&optReplicas, "replicas", cmdVolDefaultReplicas, "Specify volume replicas number")
-	cmd.Flags().BoolVar(&optFollowerRead, "follower-read", cmdVolDefaultFollowerReader, "Enable read form replica follower")
+	cmd.Flags().IntVar(&optMPCount, CliFlagMetaPartitionCount, cmdVolDefaultMPCount, "Specify init meta partition count")
+	cmd.Flags().Uint64Var(&optDPSize, CliFlagDataPartitionSize, cmdVolDefaultDPSize, "Specify size of data partition size [Unit: GB]")
+	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, cmdVolDefaultCapacity, "Specify volume capacity [Unit: GB]")
+	cmd.Flags().IntVar(&optReplicas, CliFlagReplicas, cmdVolDefaultReplicas, "Specify volume replicas number")
+	cmd.Flags().BoolVar(&optFollowerRead, CliFlagEnableFollowerRead, cmdVolDefaultFollowerReader, "Enable read form replica follower")
+	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	return cmd
 }
@@ -158,8 +164,11 @@ const (
 )
 
 func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
-	var optMetaDetail bool
-	var optDataDetail bool
+	var (
+		optMetaDetail bool
+		optDataDetail bool
+	)
+
 	var cmd = &cobra.Command{
 		Use:   cmdVolInfoUse,
 		Short: cmdVolInfoShort,
@@ -168,21 +177,27 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			var volumeName = args[0]
 			var svv *proto.SimpleVolView
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
 			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
-				errout("Get volume info failed:\n%v\n", err)
-				os.Exit(1)
+				err = fmt.Errorf("Get volume info failed:\n%v\n", err)
+				return
 			}
 			// print summary info
-			stdout("[Summary]\n%s\n", formatSimpleVolView(svv))
+			stdout("Summary:\n%s\n", formatSimpleVolView(svv))
 
 			// print metadata detail
 			if optMetaDetail {
 				var views []*proto.MetaPartitionView
 				if views, err = client.ClientAPI().GetMetaPartitions(volumeName); err != nil {
-					errout("Get volume metadata detail information failed:\n%v\n", err)
-					os.Exit(1)
+					err = fmt.Errorf("Get volume metadata detail information failed:\n%v\n", err)
+					return
 				}
-				stdout("[Meta partitions]\n")
+				stdout("Meta partitions:\n")
 				stdout("%v\n", metaPartitionTableHeader)
 				sort.SliceStable(views, func(i, j int) bool {
 					return views[i].PartitionID < views[j].PartitionID
@@ -196,10 +211,10 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 			if optDataDetail {
 				var view *proto.DataPartitionsView
 				if view, err = client.ClientAPI().GetDataPartitions(volumeName); err != nil {
-					errout("Get volume data detail information failed:\n%v\n", err)
-					os.Exit(1)
+					err = fmt.Errorf("Get volume data detail information failed:\n%v\n", err)
+					return
 				}
-				stdout("[Data partitions]\n")
+				stdout("Data partitions:\n")
 				stdout("%v\n", dataPartitionTableHeader)
 				sort.SliceStable(view.DataPartitions, func(i, j int) bool {
 					return view.DataPartitions[i].PartitionID < view.DataPartitions[j].PartitionID
@@ -209,6 +224,12 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 			return
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().BoolVarP(&optMetaDetail, "meta-partition", "m", false, "Display meta partition detail information")
@@ -222,7 +243,9 @@ const (
 )
 
 func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
-	var optYes bool
+	var (
+		optYes bool
+	)
 	var cmd = &cobra.Command{
 		Use:   cmdVolDeleteUse,
 		Short: cmdVolDeleteShort,
@@ -230,28 +253,40 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			var volumeName = args[0]
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
 			// ask user for confirm
 			if !optYes {
 				stdout("Delete volume [%v] (yes/no)[no]:", volumeName)
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
 				if userConfirm != "yes" {
-					stdout("Abort by user.\n")
+					err = fmt.Errorf("Abort by user.\n")
 					return
 				}
 			}
 
 			var svv *proto.SimpleVolView
 			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
-				errout("Delete volume failed:\n%v\n", err)
-				os.Exit(1)
+				err = fmt.Errorf("Delete volume failed:\n%v\n", err)
+				return
 			}
 
 			if err = client.AdminAPI().DeleteVolume(volumeName, calcAuthKey(svv.Owner)); err != nil {
-				errout("Delete volume failed:\n%v\n", err)
-				os.Exit(1)
+				err = fmt.Errorf("Delete volume failed:\n%v\n", err)
+				return
 			}
 			stdout("Delete volume success.\n")
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
@@ -278,8 +313,8 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 
 			defer func() {
 				if err != nil {
-					errout("Transfer volume [%v] to user [%v] failed: %v\n", volume, userID, err)
-					os.Exit(1)
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
 				}
 			}()
 
@@ -289,7 +324,7 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 				var confirm string
 				_, _ = fmt.Scanln(&confirm)
 				if confirm != "yes" {
-					stdout("Abort by user.\n")
+					err = fmt.Errorf("Abort by user.\n")
 					return
 				}
 			}
@@ -339,8 +374,8 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Create data partition failed: %v\n", err)
-					os.Exit(1)
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
 				}
 			}()
 			var count int64
@@ -348,13 +383,70 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			if count < 1 {
-				err = errors.New("number must be larger than 0")
+				err = fmt.Errorf("number must be larger than 0")
 				return
 			}
 			if err = client.AdminAPI().CreateDataPartition(volume, int(count)); err != nil {
 				return
 			}
 			return
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
+const (
+	cmdExpandVolCmdShort = "Expand capacity of a volume"
+	cmdShrinkVolCmdShort = "Shrink capacity of a volume"
+)
+
+func newVolExpandCmd(client *master.MasterClient) *cobra.Command {
+	volClient := NewVolumeClient(OpExpandVol, client)
+	return newVolSetCapacityCmd(CliOpExpand, cmdExpandVolCmdShort, volClient)
+}
+
+func newVolShrinkCmd(client *master.MasterClient) *cobra.Command {
+	volClient := NewVolumeClient(OpShrinkVol, client)
+	return newVolSetCapacityCmd(CliOpShrink, cmdShrinkVolCmdShort, volClient)
+}
+
+func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   use + " [VOLUME] [CAPACITY]",
+		Short: short,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var name = args[0]
+			var capacityStr = args[1]
+			var err error
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
+			volume := r.(*volumeClient)
+			if volume.capacity, err = strconv.ParseUint(capacityStr, 10, 64); err != nil {
+				return
+			}
+			volume.name = name
+			if err = volume.excuteHttp(); err != nil {
+				return
+			}
+			return
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			volume := r.(*volumeClient)
+			return validVols(volume.client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	return cmd

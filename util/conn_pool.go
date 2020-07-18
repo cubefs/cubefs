@@ -70,8 +70,11 @@ func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error)
 	cp.RUnlock()
 	if !ok {
 		cp.Lock()
-		pool = NewPool(cp.mincap, cp.maxcap, cp.timeout, targetAddr)
-		cp.pools[targetAddr] = pool
+		pool, ok = cp.pools[targetAddr]
+		if !ok {
+			pool = NewPool(cp.mincap, cp.maxcap, cp.timeout, targetAddr)
+			cp.pools[targetAddr] = pool
+		}
 		cp.Unlock()
 	}
 
@@ -221,7 +224,7 @@ func (p *Pool) ReleaseAll() {
 
 func (p *Pool) NewConnect(target string) (c *net.TCPConn, err error) {
 	var connect net.Conn
-	connect, err = net.Dial("tcp", p.target)
+	connect, err = net.DialTimeout("tcp", p.target,time.Second)
 	if err == nil {
 		conn := connect.(*net.TCPConn)
 		conn.SetKeepAlive(true)
@@ -235,19 +238,17 @@ func (p *Pool) GetConnectFromPool() (c *net.TCPConn, err error) {
 	var (
 		o *Object
 	)
-	for i := 0; i < len(p.objects); i++ {
+	for {
 		select {
 		case o = <-p.objects:
-			if time.Now().UnixNano()-int64(o.idle) > p.timeout {
-				o.conn.Close()
-				o = nil
-				break
-			}
-			return o.conn, nil
 		default:
 			return p.NewConnect(p.target)
 		}
+		if time.Now().UnixNano()-int64(o.idle) > p.timeout {
+			_ = o.conn.Close()
+			o = nil
+			continue
+		}
+		return o.conn, nil
 	}
-
-	return p.NewConnect(p.target)
 }

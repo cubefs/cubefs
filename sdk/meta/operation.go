@@ -183,8 +183,10 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 	}
 
 	status = parseStatus(packet.ResultCode)
-	if status != statusOK {
+	if (status != statusOK) && (status != statusExist) {
 		log.LogErrorf("dcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	} else if status == statusExist {
+		log.LogWarnf("dcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	}
 	log.LogDebugf("dcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	return
@@ -609,7 +611,7 @@ func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info 
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid, gid uint32) (status int, err error) {
+func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) (status int, err error) {
 	req := &proto.SetAttrRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -618,6 +620,8 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 		Mode:        mode,
 		Uid:         uid,
 		Gid:         gid,
+		AccessTime:  atime,
+		ModifyTime:  mtime,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -649,51 +653,53 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) createSession(mp *MetaPartition, path string) (status int, multipartId string, err error) {
+func (mw *MetaWrapper) createMultipart(mp *MetaPartition, path string, extend map[string]string) (status int, multipartId string, err error) {
 	req := &proto.CreateMultipartRequest{
 		PartitionId: mp.PartitionID,
 		VolName:     mw.volname,
 		Path:        path,
+		Extend:      extend,
 	}
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpCreateMultipart
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("create session: err(%v)", err)
+		log.LogErrorf("createMultipart: err(%v)", err)
 		return
 	}
 
-	log.LogDebugf("createSession enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
+	log.LogDebugf("createMultipart enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
 	defer metric.Set(err)
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("createSession: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		log.LogErrorf("createMultipart: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("createSession: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		log.LogErrorf("createMultipart: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
 	resp := new(proto.CreateMultipartResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil {
-		log.LogErrorf("createSession: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
+		log.LogErrorf("createMultipart: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
 		return
 	}
 	return statusOK, resp.Info.ID, nil
 }
 
-func (mw *MetaWrapper) getMultipart(mp *MetaPartition, multipartId string) (status int, info *proto.MultipartInfo, err error) {
+func (mw *MetaWrapper) getMultipart(mp *MetaPartition, path, multipartId string) (status int, info *proto.MultipartInfo, err error) {
 	req := &proto.GetMultipartRequest{
 		PartitionId: mp.PartitionID,
 		VolName:     mw.volname,
+		Path:        path,
 		MultipartId: multipartId,
 	}
 
@@ -732,7 +738,7 @@ func (mw *MetaWrapper) getMultipart(mp *MetaPartition, multipartId string) (stat
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, multipartId string, partId uint16, size uint64, md5 string, indoe uint64) (status int, err error) {
+func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, path, multipartId string, partId uint16, size uint64, md5 string, indoe uint64) (status int, err error) {
 	part := &proto.MultipartPartInfo{
 		ID:    partId,
 		Inode: indoe,
@@ -743,10 +749,11 @@ func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, multipartId string, p
 	req := &proto.AddMultipartPartRequest{
 		PartitionId: mp.PartitionID,
 		VolName:     mw.volname,
+		Path:        path,
 		MultipartId: multipartId,
 		Part:        part,
 	}
-
+	log.LogDebugf("addMultipartPart: part(%v), req(%v)", part, req)
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpAddMultipartPart
 	err = packet.MarshalData(req)
@@ -761,13 +768,13 @@ func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, multipartId string, p
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("addMultipartPart: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		log.LogErrorf("addMultipartPart: packet(%v) mp(%v) req(%v) part(%v) err(%v)", packet, mp, req, part, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("addMultipartPart: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		log.LogErrorf("addMultipartPart: packet(%v) mp(%v) req(%v) part(%v) result(%v)", packet, mp, *req, part, packet.GetResultMsg())
 		return
 	}
 
@@ -806,10 +813,11 @@ func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, err
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) removeMultipart(mp *MetaPartition, multipartId string) (status int, err error) {
+func (mw *MetaWrapper) removeMultipart(mp *MetaPartition, path, multipartId string) (status int, err error) {
 	req := &proto.RemoveMultipartRequest{
 		PartitionId: mp.PartitionID,
 		VolName:     mw.volname,
+		Path:        path,
 		MultipartId: multipartId,
 	}
 
@@ -970,7 +978,7 @@ func (mw *MetaWrapper) removeXAttr(mp *MetaPartition, inode uint64, name string)
 		log.LogErrorf("remove xattr: req(%v) err(%v)", *req, err)
 		return
 	}
-	log.LogErrorf("remove xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+	log.LogDebugf("remove xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
 	defer metric.Set(err)
@@ -986,7 +994,7 @@ func (mw *MetaWrapper) removeXAttr(mp *MetaPartition, inode uint64, name string)
 		return
 	}
 
-	log.LogErrorf("remove xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	log.LogDebugf("remove xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	return
 }
 
@@ -1003,7 +1011,7 @@ func (mw *MetaWrapper) listXAttr(mp *MetaPartition, inode uint64) (keys []string
 		log.LogErrorf("list xattr: req(%v) err(%v)", *req, err)
 		return
 	}
-	log.LogErrorf("list xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+	log.LogDebugf("list xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
 	defer metric.Set(err)
@@ -1027,7 +1035,7 @@ func (mw *MetaWrapper) listXAttr(mp *MetaPartition, inode uint64) (keys []string
 
 	keys = resp.XAttrs
 
-	log.LogErrorf("list xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	log.LogDebugf("list xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	return
 }
 

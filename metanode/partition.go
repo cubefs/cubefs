@@ -109,13 +109,16 @@ func (c *MetaPartitionConfig) sortPeers() {
 type OpInode interface {
 	CreateInode(req *CreateInoReq, p *Packet) (err error)
 	UnlinkInode(req *UnlinkInoReq, p *Packet) (err error)
+	UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (err error)
 	InodeGet(req *InodeGetReq, p *Packet) (err error)
 	InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error)
 	CreateInodeLink(req *LinkInodeReq, p *Packet) (err error)
 	EvictInode(req *EvictInodeReq, p *Packet) (err error)
+	EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error)
 	SetAttr(reqData []byte, p *Packet) (err error)
 	GetInodeTree() *BTree
 	DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error)
+	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error)
 }
 
 type OpExtend interface {
@@ -130,6 +133,7 @@ type OpExtend interface {
 type OpDentry interface {
 	CreateDentry(req *CreateDentryReq, p *Packet) (err error)
 	DeleteDentry(req *DeleteDentryReq, p *Packet) (err error)
+	DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet) (err error)
 	UpdateDentry(req *UpdateDentryReq, p *Packet) (err error)
 	ReadDir(req *ReadDirReq, p *Packet) (err error)
 	Lookup(req *LookupReq, p *Packet) (err error)
@@ -176,6 +180,7 @@ type OpPartition interface {
 	IsExsitPeer(peer proto.Peer) bool
 	TryToLeader(groupID uint64) error
 	CanRemoveRaftMember(peer proto.Peer) error
+	IsEquareCreateMetaPartitionRequst(request *proto.CreateMetaPartitionRequest) (err error)
 }
 
 // MetaPartition defines the interface for the meta partition operations.
@@ -183,6 +188,7 @@ type MetaPartition interface {
 	Start() error
 	Stop()
 	OpMeta
+	LoadSnapshot(path string) error
 }
 
 // metaPartition manages the range of the inode IDs.
@@ -205,7 +211,7 @@ type metaPartition struct {
 	state         uint32
 	delInodeFp    *os.File
 	freeList      *freeList // free inode list
-	extDelCh      chan BtreeItem
+	extDelCh      chan []proto.ExtentKey
 	extReset      chan struct{}
 	vol           *Vol
 	manager       *metadataManager
@@ -365,7 +371,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		stopC:         make(chan bool),
 		storeChan:     make(chan *storeMsg, 5),
 		freeList:      newFreeList(),
-		extDelCh:      make(chan BtreeItem, 10000),
+		extDelCh:      make(chan []proto.ExtentKey, 10000),
 		extReset:      make(chan struct{}),
 		vol:           NewVol(),
 		manager:       manager,
@@ -412,6 +418,23 @@ func (mp *metaPartition) GetCursor() uint64 {
 func (mp *metaPartition) PersistMetadata() (err error) {
 	mp.config.sortPeers()
 	err = mp.persistMetadata()
+	return
+}
+
+func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
+	if err = mp.loadInode(snapshotPath); err != nil {
+		return
+	}
+	if err = mp.loadDentry(snapshotPath); err != nil {
+		return
+	}
+	if err = mp.loadExtend(snapshotPath); err != nil {
+		return
+	}
+	if err = mp.loadMultipart(snapshotPath); err != nil {
+		return
+	}
+	err = mp.loadApplyID(snapshotPath)
 	return
 }
 
@@ -591,6 +614,7 @@ func (mp *metaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 		DoCompare:   true,
 	}
 	resp.MaxInode = mp.GetCursor()
+	resp.InodeCount = uint64(mp.getInodeTree().Len())
 	resp.DentryCount = uint64(mp.dentryTree.Len())
 	resp.ApplyID = mp.applyID
 	if err != nil {

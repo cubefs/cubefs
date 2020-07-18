@@ -24,6 +24,7 @@ import (
 	"flag"
 	"fmt"
 	syslog "log"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -31,6 +32,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"syscall"
 
@@ -52,6 +54,8 @@ import (
 
 const (
 	MaxReadAhead = 512 * 1024
+
+	defaultRlimit uint64 = 1024000
 )
 
 const (
@@ -62,14 +66,10 @@ const (
 	ModuleName            = "fuseclient"
 	ConfigKeyExporterPort = "exporterKey"
 
-	ControlCommandSetRate = "/rate/set"
-	ControlCommandGetRate = "/rate/get"
-)
-
-var (
-	CommitID   string
-	BranchName string
-	BuildTime  string
+	ControlCommandSetRate      = "/rate/set"
+	ControlCommandGetRate      = "/rate/get"
+	ControlCommandFreeOSMemory = "/debug/freeosmemory"
+	Role                       = "Client"
 )
 
 var (
@@ -86,15 +86,10 @@ func init() {
 }
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
-
 	flag.Parse()
 
 	if *configVersion {
-		fmt.Printf("ChubaoFS Client\n")
-		fmt.Printf("Branch: %s\n", BranchName)
-		fmt.Printf("Commit: %s\n", CommitID)
-		fmt.Printf("Build: %s %s %s %s\n", runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime)
+		fmt.Print(proto.DumpVersion(Role))
 		os.Exit(0)
 	}
 
@@ -116,6 +111,12 @@ func main() {
 	if err != nil {
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
+	}
+
+	if opt.MaxCPUs > 0 {
+		runtime.GOMAXPROCS(int(opt.MaxCPUs))
+	} else {
+		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
 
 	exporter.Init(ModuleName, cfg)
@@ -140,11 +141,14 @@ func main() {
 	}()
 	syslog.SetOutput(outputFile)
 
+	syslog.Println(proto.DumpVersion(Role))
 	syslog.Println("*** Final Mount Options ***")
 	for _, o := range GlobalMountOptions {
 		syslog.Println(o)
 	}
 	syslog.Println("*** End ***")
+
+	changeRlimit(defaultRlimit)
 
 	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
 		daemonize.SignalOutcome(err)
@@ -153,14 +157,21 @@ func main() {
 
 	registerInterceptedSignal(opt.MountPoint)
 
+	if err = checkPermission(opt); err != nil {
+		syslog.Println("check permission failed: ", err)
+		log.LogFlush()
+		_ = daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+
 	fsConn, super, err := mount(opt)
 	if err != nil {
-		syslog.Println("mount err", err)
+		syslog.Println("mount failed: ", err)
 		log.LogFlush()
-		daemonize.SignalOutcome(err)
+		_ = daemonize.SignalOutcome(err)
 		os.Exit(1)
 	} else {
-		daemonize.SignalOutcome(nil)
+		_ = daemonize.SignalOutcome(nil)
 	}
 	defer fsConn.Close()
 
@@ -207,10 +218,11 @@ func startDaemon() error {
 		}
 	}
 
-	env := []string{
-		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
-	}
+	env := os.Environ()
 
+	// add GODEBUG=madvdontneed=1 environ, to make sysUnused uses madvise(MADV_DONTNEED) to signal the kernel that a
+	// range of allocated memory contains unneeded data.
+	env = append(env, "GODEBUG=madvdontneed=1")
 	err = daemonize.Run(cmdPath, args, env, os.Stdout)
 	if err != nil {
 		return fmt.Errorf("startDaemon failed: daemon start failed, cmd(%v) args(%v) env(%v) err(%v)\n", cmdPath, args, env, err)
@@ -229,23 +241,28 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(ControlCommandSetRate, super.SetRate)
 	http.HandleFunc(ControlCommandGetRate, super.GetRate)
 	http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
+	http.HandleFunc(ControlCommandFreeOSMemory, freeOSMemory)
+	http.HandleFunc(log.GetLogPath, log.GetLog)
+
 	go func() {
-		fmt.Println(http.ListenAndServe(":"+opt.Profport, nil))
+		if opt.Profport != "" {
+			syslog.Println("Start pprof with port:", opt.Profport)
+			http.ListenAndServe(":"+opt.Profport, nil)
+		} else {
+			pprofListener, err := net.Listen("tcp", ":0")
+			if err != nil {
+				daemonize.SignalOutcome(err)
+				os.Exit(1)
+			}
+
+			syslog.Println("Start pprof with port:", pprofListener.Addr().(*net.TCPAddr).Port)
+			http.Serve(pprofListener, nil)
+		}
 	}()
 
 	if err = ump.InitUmp(fmt.Sprintf("%v_%v", super.ClusterName(), ModuleName), opt.UmpDatadir); err != nil {
 		return
 	}
-
-	// Validate permission
-	if err = checkVolAccessPerm(opt); err != nil {
-		syslog.Printf("check permission failed: %v", err)
-		log.LogFlush()
-		_ = daemonize.SignalOutcome(err)
-		os.Exit(1)
-	}
-
-	opt.Rdonly = (super.TokenType() == int8(proto.ReadOnlyToken)) || opt.Rdonly
 
 	options := []fuse.MountOption{
 		fuse.AllowOther(),
@@ -274,6 +291,7 @@ func registerInterceptedSignal(mnt string) {
 	go func() {
 		sig := <-sigC
 		syslog.Printf("Killed due to a received signal (%v)\n", sig)
+		os.Exit(1)
 	}()
 }
 
@@ -322,6 +340,10 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.AccessKey = GlobalMountOptions[proto.AccessKey].GetString()
 	opt.SecretKey = GlobalMountOptions[proto.SecretKey].GetString()
 	opt.DisableDcache = GlobalMountOptions[proto.DisableDcache].GetBool()
+	opt.SubDir = GlobalMountOptions[proto.SubDir].GetString()
+	opt.FsyncOnClose = GlobalMountOptions[proto.FsyncOnClose].GetBool()
+	opt.MaxCPUs = GlobalMountOptions[proto.MaxCPUs].GetInt64()
+	opt.EnableXattr = GlobalMountOptions[proto.EnableXattr].GetBool()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
@@ -330,36 +352,51 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	return opt, nil
 }
 
-func checkVolAccessPerm(opt *proto.MountOptions) (err error) {
-	if opt.AccessKey == "" {
-		return
-	}
+func checkPermission(opt *proto.MountOptions) (err error) {
 	var mc = master.NewMasterClientFromString(opt.Master, false)
-	var userInfo *proto.UserInfo
-	if userInfo, err = mc.UserAPI().GetAKInfo(opt.AccessKey); err != nil {
+
+	// Check token permission
+	var info *proto.VolStatInfo
+	if info, err = mc.ClientAPI().GetVolumeStat(opt.Volname); err != nil {
 		return
 	}
-	if userInfo.SecretKey != opt.SecretKey {
+	if info.EnableToken {
+		var token *proto.Token
+		if token, err = mc.ClientAPI().GetToken(opt.Volname, opt.TokenKey); err != nil {
+			log.LogWarnf("checkPermission: get token type failed: volume(%v) tokenKey(%v) err(%v)",
+				opt.Volname, opt.TokenKey, err)
+			return
+		}
+		log.LogInfof("checkPermission: get token: token(%v)", token)
+		opt.Rdonly = token.TokenType == int8(proto.ReadOnlyToken) || opt.Rdonly
+	}
+
+	// Check user access policy is enabled
+	if opt.AccessKey != "" {
+		var userInfo *proto.UserInfo
+		if userInfo, err = mc.UserAPI().GetAKInfo(opt.AccessKey); err != nil {
+			return
+		}
+		if userInfo.SecretKey != opt.SecretKey {
+			err = proto.ErrNoPermission
+			return
+		}
+		var policy = userInfo.Policy
+		if policy.IsOwn(opt.Volname) {
+			return
+		}
+		if policy.IsAuthorized(opt.Volname, proto.POSIXWriteAction) &&
+			policy.IsAuthorized(opt.Volname, proto.POSIXReadAction) {
+			return
+		}
+		if policy.IsAuthorized(opt.Volname, proto.POSIXReadAction) &&
+			!policy.IsAuthorized(opt.Volname, proto.POSIXWriteAction) {
+			opt.Rdonly = true
+			return
+		}
 		err = proto.ErrNoPermission
 		return
 	}
-	var policy = userInfo.Policy
-	if policy.IsOwn(opt.Volname) {
-		opt.Rdonly = false
-		return
-	}
-	if policy.IsAuthorized(opt.Volname, proto.POSIXWriteAction) &&
-		policy.IsAuthorized(opt.Volname, proto.POSIXReadAction) {
-		opt.Rdonly = false
-		return
-	}
-	if policy.IsAuthorized(opt.Volname, proto.POSIXReadAction) &&
-		!policy.IsAuthorized(opt.Volname, proto.POSIXWriteAction) {
-		opt.Rdonly = true
-		return
-	}
-	opt.Rdonly = true
-	err = proto.ErrNoPermission
 	return
 }
 
@@ -378,4 +415,18 @@ func parseLogLevel(loglvl string) log.Level {
 		level = log.ErrorLevel
 	}
 	return level
+}
+
+func changeRlimit(val uint64) {
+	rlimit := &syscall.Rlimit{Max: val, Cur: val}
+	err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, rlimit)
+	if err != nil {
+		syslog.Printf("Failed to set rlimit to %v \n", val)
+	} else {
+		syslog.Printf("Successfully set rlimit to %v \n", val)
+	}
+}
+
+func freeOSMemory(w http.ResponseWriter, r *http.Request) {
+	debug.FreeOSMemory()
 }

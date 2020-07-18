@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -406,6 +407,54 @@ errHandler:
 	return
 }
 
+func (c *Cluster) checkCorruptDataPartitions() (inactiveDataNodes []string, corruptPartitions []*DataPartition, err error) {
+	partitionMap := make(map[uint64]uint8)
+	c.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode := node.(*DataNode)
+		if !dataNode.isActive {
+			inactiveDataNodes = append(inactiveDataNodes, dataNode.Addr)
+		}
+		return true
+	})
+	for _, addr := range inactiveDataNodes {
+		var dataNode *DataNode
+		if dataNode, err = c.dataNode(addr); err != nil {
+			return
+		}
+		for _, partition := range dataNode.PersistenceDataPartitions {
+			partitionMap[partition] = partitionMap[partition] + 1
+		}
+	}
+
+	for partitionID, badNum := range partitionMap {
+		var partition *DataPartition
+		if partition, err = c.getDataPartitionByID(partitionID); err != nil {
+			return
+		}
+		if badNum > partition.ReplicaNum/2 {
+			corruptPartitions = append(corruptPartitions, partition)
+		}
+	}
+	log.LogInfof("clusterID[%v] inactiveDataNodes:%v  corruptPartitions count:[%v]",
+		c.Name, inactiveDataNodes, len(corruptPartitions))
+	return
+}
+
+func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []*DataPartition, err error) {
+	vols := c.copyVols()
+	for _, vol := range vols {
+		var dps *DataPartitionMap
+		dps = vol.dataPartitions
+		for _, dp := range dps.partitions {
+			if dp.ReplicaNum > uint8(len(dp.Hosts)) {
+				lackReplicaDataPartitions = append(lackReplicaDataPartitions, dp)
+			}
+		}
+	}
+	log.LogInfof("clusterID[%v] lackReplicaDataPartitions count:[%v]", c.Name, len(lackReplicaDataPartitions))
+	return
+}
+
 func (c *Cluster) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err error) {
 	vols := c.copyVols()
 	for _, vol := range vols {
@@ -741,6 +790,40 @@ func (c *Cluster) metaNode(addr string) (metaNode *MetaNode, err error) {
 	return
 }
 
+func (c *Cluster) getAllDataPartitionByDataNode(addr string) (partitions []*DataPartition) {
+	partitions = make([]*DataPartition, 0)
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		for _, dp := range vol.dataPartitions.partitions {
+			for _, host := range dp.Hosts {
+				if host == addr {
+					partitions = append(partitions, dp)
+					break
+				}
+			}
+		}
+	}
+
+	return
+}
+
+func (c *Cluster) getAllMetaPartitionByMetaNode(addr string) (partitions []*MetaPartition) {
+	partitions = make([]*MetaPartition, 0)
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		for _, mp := range vol.MetaPartitions {
+			for _, host := range mp.Hosts {
+				if host == addr {
+					partitions = append(partitions, mp)
+					break
+				}
+			}
+		}
+	}
+
+	return
+}
+
 func (c *Cluster) getAllDataPartitionIDByDatanode(addr string) (partitionIDs []uint64) {
 	partitionIDs = make([]uint64, 0)
 	safeVols := c.allVols()
@@ -778,13 +861,29 @@ func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []u
 func (c *Cluster) decommissionDataNode(dataNode *DataNode) (err error) {
 	msg := fmt.Sprintf("action[decommissionDataNode], Node[%v] OffLine", dataNode.Addr)
 	log.LogWarn(msg)
-	safeVols := c.allVols()
-	for _, vol := range safeVols {
-		for _, dp := range vol.dataPartitions.partitions {
-			if err = c.decommissionDataPartition(dataNode.Addr, dp, dataNodeOfflineErr); err != nil {
-				return
+	var wg sync.WaitGroup
+	dataNode.ToBeOffline = true
+	dataNode.AvailableSpace = 1
+	partitions := c.getAllDataPartitionByDataNode(dataNode.Addr)
+	errChannel := make(chan error, len(partitions))
+	defer func() {
+		dataNode.ToBeOffline = false
+		close(errChannel)
+	}()
+	for _, dp := range partitions {
+		wg.Add(1)
+		go func(dp *DataPartition) {
+			defer wg.Done()
+			if err1 := c.decommissionDataPartition(dataNode.Addr, dp, dataNodeOfflineErr); err1 != nil {
+				errChannel <- err1
 			}
-		}
+		}(dp)
+	}
+	wg.Wait()
+	select {
+	case err = <-errChannel:
+		return
+	default:
 	}
 	if err = c.syncDeleteDataNode(dataNode); err != nil {
 		msg = fmt.Sprintf("action[decommissionDataNode],clusterID[%v] Node[%v] OffLine failed,err[%v]",
@@ -888,6 +987,7 @@ errHandler:
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.Hosts)
 	if err != nil {
 		Warn(c.Name, msg)
+		err = fmt.Errorf("vol[%v],partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
 	}
 	return
 }
@@ -1053,7 +1153,7 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate boo
 	}
 	ok := c.isRecovering(dp, addr)
 	if ok {
-		err = fmt.Errorf("vol[%v],data partition[%v] can't decommision util it has recovered", dp.VolName, dp.PartitionID)
+		err = fmt.Errorf("vol[%v],data partition[%v] can't decommision until it has recovered", dp.VolName, dp.PartitionID)
 		return
 	}
 	dataNode, err := c.dataNode(addr)
@@ -1154,23 +1254,23 @@ func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode) (err 
 	return nil
 }
 
-func (c *Cluster) putBadMetaPartitions(offlineAddr string, partitionID uint64) {
+func (c *Cluster) putBadMetaPartitions(addr string, partitionID uint64) {
 	newBadPartitionIDs := make([]uint64, 0)
-	badPartitionIDs, ok := c.BadMetaPartitionIds.Load(offlineAddr)
+	badPartitionIDs, ok := c.BadMetaPartitionIds.Load(addr)
 	if ok {
 		newBadPartitionIDs = badPartitionIDs.([]uint64)
 	}
 	newBadPartitionIDs = append(newBadPartitionIDs, partitionID)
-	c.BadMetaPartitionIds.Store(offlineAddr, newBadPartitionIDs)
+	c.BadMetaPartitionIds.Store(addr, newBadPartitionIDs)
 }
 
-func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, offlineAddr string, partitionID uint64) {
+func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, partitionID uint64) {
 	var key string
 	newBadPartitionIDs := make([]uint64, 0)
 	if replica != nil {
-		key = fmt.Sprintf("%s:%s", offlineAddr, replica.DiskPath)
+		key = fmt.Sprintf("%s:%s", addr, replica.DiskPath)
 	} else {
-		key = fmt.Sprintf("%s:%s", offlineAddr, "")
+		key = fmt.Sprintf("%s:%s", addr, "")
 	}
 	badPartitionIDs, ok := c.BadDataPartitionIds.Load(key)
 	if ok {
@@ -1183,14 +1283,29 @@ func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, offlineAddr strin
 func (c *Cluster) decommissionMetaNode(metaNode *MetaNode) (err error) {
 	msg := fmt.Sprintf("action[decommissionMetaNode],clusterID[%v] Node[%v] begin", c.Name, metaNode.Addr)
 	log.LogWarn(msg)
-	safeVols := c.allVols()
-	for _, vol := range safeVols {
-		for _, mp := range vol.MetaPartitions {
-			// err is not handled here.
-			if err = c.decommissionMetaPartition(metaNode.Addr, mp); err != nil {
-				return
+	var wg sync.WaitGroup
+	metaNode.ToBeOffline = true
+	metaNode.MaxMemAvailWeight = 1
+	partitions := c.getAllMetaPartitionByMetaNode(metaNode.Addr)
+	errChannel := make(chan error, len(partitions))
+	defer func() {
+		metaNode.ToBeOffline = false
+		close(errChannel)
+	}()
+	for _, mp := range partitions {
+		wg.Add(1)
+		go func(mp *MetaPartition) {
+			defer wg.Done()
+			if err1 := c.decommissionMetaPartition(metaNode.Addr, mp); err1 != nil {
+				errChannel <- err1
 			}
-		}
+		}(mp)
+	}
+	wg.Wait()
+	select {
+	case err = <-errChannel:
+		return
+	default:
 	}
 	if err = c.syncDeleteMetaNode(metaNode); err != nil {
 		msg = fmt.Sprintf("action[decommissionMetaNode],clusterID[%v] Node[%v] OffLine failed,err[%v]",
@@ -1210,7 +1325,7 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 	go metaNode.clean()
 }
 
-func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum uint8, followerRead, authenticate, enableToken bool) (err error) {
+func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum uint8, followerRead, authenticate, enableToken bool) (err error) {
 	var (
 		vol             *Vol
 		serverAuthKey   string
@@ -1219,6 +1334,9 @@ func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum ui
 		oldFollowerRead bool
 		oldAuthenticate bool
 		oldEnableToken  bool
+		volUsedSpace    uint64
+		oldZoneName     string
+		oldDescription  string
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
@@ -1231,8 +1349,9 @@ func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum ui
 	if !matchKey(serverAuthKey, authKey) {
 		return proto.ErrVolAuthKeyNotMatch
 	}
-	if capacity < vol.Capacity {
-		err = fmt.Errorf("capacity[%v] less than old capacity[%v]", capacity, vol.Capacity)
+	volUsedSpace = vol.totalUsedSpace()
+	if float64(capacity * util.GB) < float64(volUsedSpace) * 1.2 {
+		err = fmt.Errorf("capacity[%v] has to be 20 percent larger than the used space[%v]", capacity, volUsedSpace / util.GB)
 		goto errHandler
 	}
 	if replicaNum > vol.dpReplicaNum {
@@ -1248,15 +1367,31 @@ func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum ui
 		}
 	}
 
+	oldZoneName = vol.zoneName
+	if vol.crossZone && zoneName != "" {
+		err = fmt.Errorf("only the vol which don't across zones,can specified zoneName")
+		goto errHandler
+	}
+	if zoneName != "" {
+		_, err = c.t.getZone(zoneName)
+		if err != nil {
+			goto errHandler
+		}
+	}
+	vol.zoneName = zoneName
 	oldCapacity = vol.Capacity
 	oldDpReplicaNum = vol.dpReplicaNum
 	oldFollowerRead = vol.FollowerRead
 	oldAuthenticate = vol.authenticate
 	oldEnableToken = vol.enableToken
+	oldDescription = vol.description
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
 	vol.authenticate = authenticate
 	vol.enableToken = enableToken
+	if description != "" {
+		vol.description = description
+	}
 	//only reduced replica num is supported
 	if replicaNum != 0 && replicaNum < vol.dpReplicaNum {
 		vol.dpReplicaNum = replicaNum
@@ -1267,6 +1402,8 @@ func (c *Cluster) updateVol(name, authKey string, capacity uint64, replicaNum ui
 		vol.FollowerRead = oldFollowerRead
 		vol.authenticate = oldAuthenticate
 		vol.enableToken = oldEnableToken
+		vol.zoneName = oldZoneName
+		vol.description = oldDescription
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
 		goto errHandler
@@ -1281,7 +1418,7 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner, zoneName string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone, enableToken bool) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone, enableToken bool) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -1302,8 +1439,10 @@ func (c *Cluster) createVol(name, owner, zoneName string, mpCount, dpReplicaNum,
 		if _, err = c.t.getZone(zoneName); err != nil {
 			return
 		}
+	} else if !crossZone {
+		zoneName = DefaultZoneName
 	}
-	if vol, err = c.doCreateVol(name, owner, zoneName, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate, crossZone, enableToken); err != nil {
+	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate, crossZone, enableToken); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -1316,7 +1455,7 @@ func (c *Cluster) createVol(name, owner, zoneName string, mpCount, dpReplicaNum,
 		goto errHandler
 	}
 	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
-		vol.initDataPartitions(c)
+		_ = vol.initDataPartitions(c)
 		readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
 	}
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
@@ -1331,7 +1470,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) doCreateVol(name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum int, followerRead, authenticate, crossZone, enableToken bool) (vol *Vol, err error) {
+func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum int, followerRead, authenticate, crossZone, enableToken bool) (vol *Vol, err error) {
 	var id uint64
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
@@ -1344,7 +1483,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName string, dpSize, capacity uin
 	if err != nil {
 		goto errHandler
 	}
-	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate, crossZone, enableToken, createTime)
+	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate, crossZone, enableToken, createTime, description)
 	// refresh oss secure
 	vol.refreshOSSSecure()
 	if err = c.syncAddVol(vol); err != nil {
@@ -1576,12 +1715,56 @@ func (c *Cluster) getDataPartitionCount() (count int) {
 	return
 }
 
+func (c *Cluster) getMetaPartitionCount() (count int) {
+	vols := c.copyVols()
+	for _, vol := range vols {
+		count = count + len(vol.MetaPartitions)
+	}
+	return count
+}
+
 func (c *Cluster) setMetaNodeThreshold(threshold float32) (err error) {
 	oldThreshold := c.cfg.MetaNodeThreshold
 	c.cfg.MetaNodeThreshold = threshold
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setMetaNodeThreshold] err[%v]", err)
 		c.cfg.MetaNodeThreshold = oldThreshold
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setMetaNodeDeleteBatchCount(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeDeleteBatchCount)
+	atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMetaNodeDeleteBatchCount] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setDataNodeDeleteLimitRate(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.DataNodeDeleteLimitRate)
+	atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setDataNodeDeleteLimitRate] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setMetaNodeDeleteWorkerSleepMs(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs)
+	atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMetaNodeDeleteWorkerSleepMs] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, oldVal)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

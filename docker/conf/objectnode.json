@@ -3,6 +3,8 @@
   "logDir": "/cfs/log/",
   "logLevel": "debug",
   "listen": "80",
+  "consulAddr": "http://192.168.0.101:8500",
+  "exporterPort": 9500,
   "masterAddr": [
     "192.168.0.11:17010",
     "192.168.0.12:17010",
@@ -13,10 +15,15 @@
     "object.chubao.io"
   ],
   "signatureIgnoredActions": [
-    "oss:action:GetObjectXAttr",
-    "oss:action:PutObjectXAttr",
-    "oss:action:DeleteObjectXAttr",
-    "oss:action:ListObjectXAttrs"
+    "action:oss:GetObjectXAttr",
+    "action:oss:PutObjectXAttr",
+    "action:oss:DeleteObjectXAttr",
+    "action:oss:ListObjectXAttrs",
+    "action:oss:OptionsObject"
+  ],
+  "disabledActions": [
+    "action:oss:CreateBucket",
+    "action:oss:DeleteBucket"
   ],
   "strict": true
 }

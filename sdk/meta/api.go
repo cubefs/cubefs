@@ -15,12 +15,16 @@
 package meta
 
 import (
+	"fmt"
+	syslog "log"
+	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
-	"sort"
+	"github.com/chubaofs/chubaofs/util"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -36,6 +40,30 @@ const (
 	OpenRetryInterval = 5 * time.Millisecond
 	OpenRetryLimit    = 1000
 )
+
+func (mw *MetaWrapper) GetRootIno(subdir string) (uint64, error) {
+	rootIno := proto.RootIno
+	if subdir == "" || subdir == "/" {
+		return rootIno, nil
+	}
+
+	dirs := strings.Split(subdir, "/")
+	for idx, dir := range dirs {
+		if dir == "/" || dir == "" {
+			continue
+		}
+		child, mode, err := mw.Lookup_ll(rootIno, dir)
+		if err != nil {
+			return 0, fmt.Errorf("GetRootIno: Lookup failed, subdir(%v) idx(%v) dir(%v) err(%v)", subdir, idx, dir, err)
+		}
+		if !proto.IsDir(mode) {
+			return 0, fmt.Errorf("GetRootIno: not directory, subdir(%v) idx(%v) dir(%v) child(%v) mode(%v) err(%v)", subdir, idx, dir, child, mode, err)
+		}
+		rootIno = child
+	}
+	syslog.Printf("GetRootIno: %v\n", rootIno)
+	return rootIno, nil
+}
 
 func (mw *MetaWrapper) Statfs() (total, used uint64) {
 	total = atomic.LoadUint64(&mw.totalSize)
@@ -163,13 +191,28 @@ func (mw *MetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
 
 	batchInfos := make([]*proto.InodeInfo, 0)
 	resp := make(chan []*proto.InodeInfo, BatchIgetRespBuf)
+	candidates := make(map[uint64][]uint64)
 
-	mw.RLock()
-	for _, mp := range mw.partitions {
-		wg.Add(1)
-		go mw.batchIget(&wg, mp, inodes, resp)
+	// Target partition does not have to be very accurate.
+	for _, ino := range inodes {
+		mp := mw.getPartitionByInode(ino)
+		if mp == nil {
+			continue
+		}
+		if _, ok := candidates[mp.PartitionID]; !ok {
+			candidates[mp.PartitionID] = make([]uint64, 0, 256)
+		}
+		candidates[mp.PartitionID] = append(candidates[mp.PartitionID], ino)
 	}
-	mw.RUnlock()
+
+	for id, inos := range candidates {
+		mp := mw.getPartitionByID(id)
+		if mp == nil {
+			continue
+		}
+		wg.Add(1)
+		go mw.batchIget(&wg, mp, inos, resp)
+	}
 
 	go func() {
 		wg.Wait()
@@ -199,30 +242,59 @@ func (mw *MetaWrapper) InodeDelete_ll(inode uint64) error {
 }
 
 func (mw *MetaWrapper) BatchGetXAttr(inodes []uint64, keys []string) ([]*proto.XAttrInfo, error) {
-	batchInfos := make([]*proto.XAttrInfo, 0)
-	var wg sync.WaitGroup
-	var errGlobal error
+	// Collect meta partitions
+	var (
+		mps      = make(map[uint64]*MetaPartition) // Mapping: partition ID -> partition
+		mpInodes = make(map[uint64][]uint64)       // Mapping: partition ID -> inodes
+	)
+	for _, ino := range inodes {
+		var mp = mw.getPartitionByInode(ino)
+		if mp != nil {
+			mps[mp.PartitionID] = mp
+			mpInodes[mp.PartitionID] = append(mpInodes[mp.PartitionID], ino)
+		}
+	}
 
-	for _, mp := range mw.partitions {
+	var (
+		xattrsCh = make(chan *proto.XAttrInfo, len(inodes))
+		errorsCh = make(chan error, len(inodes))
+	)
+
+	var wg sync.WaitGroup
+	for pID := range mps {
 		wg.Add(1)
-		go func(mp *MetaPartition) {
+		go func(mp *MetaPartition, inodes []uint64, keys []string) {
 			defer wg.Done()
-			xAttrInfos, err := mw.batchGetXAttr(mp, inodes, keys)
+			xattrs, err := mw.batchGetXAttr(mp, inodes, keys)
 			if err != nil {
-				errGlobal = err
-				log.LogErrorf("BatchGetXAttr: get xattr from partition fail: partitionID(%v) err(%s)", mp.PartitionID, err)
+				errorsCh <- err
+				log.LogErrorf("BatchGetXAttr: get xattr fail: volume(%v) partitionID(%v) inodes(%v) keys(%v) err(%s)",
+					mw.volname, mp.PartitionID, inodes, keys, err)
 				return
 			}
-			batchInfos = append(batchInfos, xAttrInfos...)
-		}(mp)
+			for _, info := range xattrs {
+				xattrsCh <- info
+			}
+		}(mps[pID], mpInodes[pID], keys)
+	}
+	wg.Wait()
+
+	close(xattrsCh)
+	close(errorsCh)
+
+	if len(errorsCh) > 0 {
+		return nil, <-errorsCh
 	}
 
-	wg.Wait()
-	if errGlobal != nil {
-		return nil, errGlobal
+	var xattrs = make([]*proto.XAttrInfo, 0, len(inodes))
+	for {
+		info := <-xattrsCh
+		if info == nil {
+			break
+		}
+		xattrs = append(xattrs, info)
 	}
-	log.LogDebugf("BatchGetXAttr: inodes(%v) xattrInfos(%v)", len(inodes), len(batchInfos))
-	return batchInfos, nil
+	return xattrs, nil
 }
 
 /*
@@ -361,6 +433,8 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 		inodeMP := mw.getPartitionByInode(oldInode)
 		if inodeMP != nil {
 			mw.iunlink(inodeMP, oldInode)
+			// evict oldInode to avoid oldInode becomes orphan inode
+			mw.ievict(inodeMP, oldInode)
 		}
 	}
 
@@ -517,14 +591,14 @@ func (mw *MetaWrapper) Evict(inode uint64) error {
 	return nil
 }
 
-func (mw *MetaWrapper) Setattr(inode uint64, valid, mode, uid, gid uint32) error {
+func (mw *MetaWrapper) Setattr(inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		log.LogErrorf("Setattr: No such partition, ino(%v)", inode)
 		return syscall.EINVAL
 	}
 
-	status, err := mw.setattr(mp, inode, valid, mode, uid, gid)
+	status, err := mw.setattr(mp, inode, valid, mode, uid, gid, atime, mtime)
 	if err != nil || status != statusOK {
 		log.LogErrorf("Setattr: ino(%v) err(%v) status(%v)", inode, err, status)
 		return statusToErrno(status)
@@ -586,29 +660,53 @@ func (mw *MetaWrapper) InodeUnlink_ll(inode uint64) (*proto.InodeInfo, error) {
 	return info, nil
 }
 
-func (mw *MetaWrapper) InitMultipart_ll(path string, parentId uint64) (multipartId string, err error) {
-	mp := mw.getPartitionByInode(parentId)
-	if mp == nil {
-		log.LogErrorf("InitMultipart: No such partition, ino(%v)", parentId)
-		return "", syscall.EINVAL
+func (mw *MetaWrapper) InitMultipart_ll(path string, extend map[string]string) (multipartId string, err error) {
+	var (
+		status       int
+		mp           *MetaPartition
+		rwPartitions = mw.getRWPartitions()
+		length       = len(rwPartitions)
+	)
+	if length <= 0 {
+		log.LogErrorf("InitMultipart: no writable partitions, path(%v)", path)
+		return "", syscall.ENOENT
 	}
 
-	status, sessionId, err := mw.createSession(mp, path)
-	if err != nil || status != statusOK {
-		log.LogErrorf("InitMultipart: err(%v) status(%v)", err, status)
+	epoch := atomic.AddUint64(&mw.epoch, 1)
+	for i := 0; i < length; i++ {
+		index := (int(epoch) + i) % length
+		mp = rwPartitions[index]
+		log.LogDebugf("InitMultipart_ll: mp(%v), index(%v)", mp, index)
+		status, sessionId, err := mw.createMultipart(mp, path, extend)
+		if err == nil && status == statusOK && len(sessionId) > 0 {
+			return sessionId, nil
+		} else {
+			log.LogErrorf("InitMultipart: create multipart id fail, path(%v), mp(%v), status(%v), err(%v)",
+				path, mp, status, err)
+		}
+	}
+	log.LogErrorf("InitMultipart: create multipart id fail, path(%v), status(%v), err(%v)", path, status, err)
+	if err != nil {
+		return "", err
+	} else {
 		return "", statusToErrno(status)
 	}
-	return sessionId, nil
 }
 
-func (mw *MetaWrapper) GetMultipart_ll(multipartId string, parentId uint64) (info *proto.MultipartInfo, err error) {
-	mp := mw.getPartitionByInode(parentId)
-	if mp == nil {
-		log.LogErrorf("GetMultipartRequest: No such partition, ino(%v)", parentId)
-		return nil, syscall.EINVAL
+func (mw *MetaWrapper) GetMultipart_ll(path, multipartId string) (info *proto.MultipartInfo, err error) {
+	var (
+		mpId  uint64
+		found bool
+	)
+	mpId, found = util.MultipartIDFromString(multipartId).PartitionID()
+	if !found {
+		log.LogDebugf("AddMultipartPart_ll: meta partition not found by multipart id, multipartId(%v), err(%v)", multipartId, err)
+		// If meta partition not found by multipart id, broadcast to all meta partitions to find it
+		info, _, err = mw.broadcastGetMultipart(path, multipartId)
+		return
 	}
-
-	status, multipartInfo, err := mw.getMultipart(mp, multipartId)
+	var mp = mw.getPartitionByID(mpId)
+	status, multipartInfo, err := mw.getMultipart(mp, path, multipartId)
 	if err != nil || status != statusOK {
 		log.LogErrorf("GetMultipartRequest: err(%v) status(%v)", err, status)
 		return nil, statusToErrno(status)
@@ -616,42 +714,93 @@ func (mw *MetaWrapper) GetMultipart_ll(multipartId string, parentId uint64) (inf
 	return multipartInfo, nil
 }
 
-func (mw *MetaWrapper) AddMultipartPart_ll(multipartId string, parentId uint64, partId uint16, size uint64, md5 string, inode uint64) error {
-	mp := mw.getPartitionByInode(parentId)
-	if mp == nil {
-		log.LogErrorf("AddMultipartPart: No such partition, ino(%v)", parentId)
-		return syscall.EINVAL
+func (mw *MetaWrapper) AddMultipartPart_ll(path, multipartId string, partId uint16, size uint64, md5 string, inode uint64) (err error) {
+	var (
+		mpId  uint64
+		found bool
+	)
+	mpId, found = util.MultipartIDFromString(multipartId).PartitionID()
+	if !found {
+		log.LogDebugf("AddMultipartPart_ll: meta partition not found by multipart id, multipartId(%v), err(%v)", multipartId, err)
+		// If meta partition not found by multipart id, broadcast to all meta partitions to find it
+		if _, mpId, err = mw.broadcastGetMultipart(path, multipartId); err != nil {
+			return
+		}
 	}
-	status, err := mw.addMultipartPart(mp, multipartId, partId, size, md5, inode)
+	var mp = mw.getPartitionByID(mpId)
+	status, err := mw.addMultipartPart(mp, path, multipartId, partId, size, md5, inode)
 	if err != nil || status != statusOK {
-		log.LogErrorf("AddMultipartPart: err(%v) status(%v)", err, status)
+		log.LogErrorf("AddMultipartPart_ll: err(%v) status(%v)", err, status)
 		return statusToErrno(status)
 	}
 	return nil
 }
 
-func (mw *MetaWrapper) RemoveMultipart_ll(multipartID string, parentId uint64) error {
-	mp := mw.getPartitionByInode(parentId)
-	if mp == nil {
-		log.LogErrorf("RemoveMultipart_ll: no such partition, ino(%v)", parentId)
-		return syscall.EINVAL
+func (mw *MetaWrapper) RemoveMultipart_ll(path, multipartID string) (err error) {
+	var (
+		mpId  uint64
+		found bool
+	)
+	mpId, found = util.MultipartIDFromString(multipartID).PartitionID()
+	if !found {
+		log.LogDebugf("AddMultipartPart_ll: meta partition not found by multipart id, multipartId(%v), err(%v)", multipartID, err)
+		// If meta partition not found by multipart id, broadcast to all meta partitions to find it
+		if _, mpId, err = mw.broadcastGetMultipart(path, multipartID); err != nil {
+			return
+		}
 	}
-
-	status, err := mw.removeMultipart(mp, multipartID)
+	var mp = mw.getPartitionByID(mpId)
+	status, err := mw.removeMultipart(mp, path, multipartID)
 	if err != nil || status != statusOK {
-		log.LogErrorf("RemoveMultipart_ll: partition get multipart fail, partitionID(%v) multipartID(%v) err(%v) status(%v)",
-			mp.PartitionID, multipartID, err, status)
+		log.LogErrorf(" RemoveMultipart_ll: partition remove multipart fail: "+
+			"volume(%v) partitionID(%v) multipartID(%v) err(%v) status(%v)",
+			mw.volname, mp.PartitionID, multipartID, err, status)
 		return statusToErrno(status)
 	}
-	return nil
+	return
+}
+
+func (mw *MetaWrapper) broadcastGetMultipart(path, multipartId string) (info *proto.MultipartInfo, mpID uint64, err error) {
+	log.LogInfof("broadcastGetMultipart: find meta partition broadcast multipartId(%v)", multipartId)
+	partitions := mw.partitions
+	var (
+		mp *MetaPartition
+	)
+	var wg = new(sync.WaitGroup)
+	var resultMu sync.Mutex
+	for _, mp = range partitions {
+		wg.Add(1)
+		go func(mp *MetaPartition) {
+			defer wg.Done()
+			status, multipartInfo, err := mw.getMultipart(mp, path, multipartId)
+			if err == nil && status == statusOK && multipartInfo != nil && multipartInfo.ID == multipartId {
+				resultMu.Lock()
+				mpID = mp.PartitionID
+				info = multipartInfo
+				resultMu.Unlock()
+			}
+			if err != nil && err != syscall.ENOENT {
+				log.LogErrorf("broadcastGetMultipart: get multipart fail: partitionId(%v) multipartId(%v)",
+					mp.PartitionID, multipartId)
+			}
+		}(mp)
+	}
+	wg.Wait()
+
+	resultMu.Lock()
+	defer resultMu.Unlock()
+	if info == nil {
+		err = syscall.ENOENT
+		return
+	}
+	return
 }
 
 func (mw *MetaWrapper) ListMultipart_ll(prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) (sessionResponse []*proto.MultipartInfo, err error) {
 	partitions := mw.partitions
 	var wg = sync.WaitGroup{}
-	//var prefixes = make([]string, 0)
+	var wl = sync.Mutex{}
 	var sessions = make([]*proto.MultipartInfo, 0)
-	//var allSessions = make([]*proto.ListMultipartResponse, 0)
 
 	for _, mp := range partitions {
 		wg.Add(1)
@@ -664,7 +813,8 @@ func (mw *MetaWrapper) ListMultipart_ll(prefix, delimiter, keyMarker string, mul
 				err = statusToErrno(status)
 				return
 			}
-			//allSessions = append(allSessions, response)
+			wl.Lock()
+			defer wl.Unlock()
 			sessions = append(sessions, response.Multiparts...)
 		}(mp)
 	}
@@ -674,7 +824,7 @@ func (mw *MetaWrapper) ListMultipart_ll(prefix, delimiter, keyMarker string, mul
 
 	// reorder sessions by path
 	sort.SliceStable(sessions, func(i, j int) bool {
-		return sessions[i].Path < sessions[j].Path
+		return (sessions[i].Path < sessions[j].Path) || ((sessions[i].Path == sessions[j].Path) && (sessions[i].ID < sessions[j].ID))
 	})
 	return sessions, nil
 }
@@ -691,7 +841,8 @@ func (mw *MetaWrapper) XAttrSet_ll(inode uint64, name, value []byte) error {
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
-	log.LogDebugf("XAttrSet_ll: set xattr, inode(%v) name(%v) value(%v) status(%v)", inode, name, value, status)
+	log.LogDebugf("XAttrSet_ll: set xattr: volume(%v) inode(%v) name(%v) value(%v) status(%v)",
+		mw.volname, inode, name, value, status)
 	return nil
 }
 
@@ -715,7 +866,8 @@ func (mw *MetaWrapper) XAttrGet_ll(inode uint64, name string) (*proto.XAttrInfo,
 		XAttrs: xAttrValues,
 	}
 
-	log.LogDebugf("XAttrGet_ll: get xattr, inode(%v) name(%v) value(%v)", inode, string(name), string(value))
+	log.LogDebugf("XAttrGet_ll: get xattr: volume(%v) inode(%v) name(%v) value(%v)",
+		mw.volname, inode, string(name), string(value))
 	return xAttr, nil
 }
 

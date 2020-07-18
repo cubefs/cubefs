@@ -1,4 +1,4 @@
-// Copyright 2018 The ChubaoFS Authors.
+// Copyright 2019 The ChubaoFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,8 +18,13 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+
+	"github.com/chubaofs/chubaofs/util/exporter"
 
 	"github.com/gorilla/mux"
 
@@ -31,6 +36,23 @@ import (
 var (
 	routeSNRegexp = regexp.MustCompile(":(\\w){32}$")
 )
+
+var (
+	monitoredStatusCode = []string{
+		strconv.Itoa(http.StatusBadRequest),
+		strconv.Itoa(http.StatusForbidden),
+		strconv.Itoa(http.StatusInternalServerError),
+	}
+)
+
+func IsMonitoredStatusCode(code string) bool {
+	for _, statusCode := range monitoredStatusCode {
+		if statusCode == code {
+			return true
+		}
+	}
+	return false
+}
 
 // TraceMiddleware returns a middleware handler to trace request.
 // After receiving the request, the handler will assign a unique RequestID to
@@ -60,16 +82,32 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 
 		// store request ID to context and write to header
 		SetRequestID(r, requestID)
-		w.Header().Set(HeaderNameRequestId, requestID)
-		w.Header().Set(HeaderNameServer, HeaderValueServer)
+		w.Header()[HeaderNameXAmzRequestId] = []string{requestID}
+		w.Header()[HeaderNameServer] = []string{HeaderValueServer}
 
 		var action = ActionFromRouteName(mux.CurrentRoute(r).GetName())
 		SetRequestAction(r, action)
 		// ===== pre-handle finish =====
 
 		var startTime = time.Now()
-		// next
-		next.ServeHTTP(w, r)
+		metric := exporter.NewTPCnt(fmt.Sprintf("action_%v", action.Name()))
+		defer metric.Set(err)
+
+		// Check action is whether enabled.
+		if !action.IsNone() && !o.disabledActions.Contains(action) {
+			// next
+			next.ServeHTTP(w, r)
+		} else {
+			// If current action is disabled, return access denied in response.
+			log.LogDebugf("traceMiddleware: disabled action: requestID(%v) action(%v)", requestID, action.Name())
+			_ = AccessDenied.ServeResponse(w, r)
+		}
+
+		// failed request monitor
+		var statusCode = GetStatusCodeFromContext(r)
+		if IsMonitoredStatusCode(statusCode) {
+			exporter.NewTPCnt(fmt.Sprintf("failed_%v", statusCode)).Set(nil)
+		}
 
 		// ===== post-handle start =====
 		var headerToString = func(header http.Header) string {
@@ -86,7 +124,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		log.LogDebugf("traceMiddleware: "+
 			"action(%v) requestID(%v) host(%v) method(%v) url(%v) header(%v) "+
 			"remote(%v) cost(%v)",
-			action, requestID, r.Host, r.Method, r.URL.String(), headerToString(r.Header),
+			action.Name(), requestID, r.Host, r.Method, r.URL.String(), headerToString(r.Header),
 			getRequestIP(r), time.Since(startTime))
 		// ==== post-handle finish =====
 	}
@@ -103,46 +141,36 @@ func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 				return
 			}
 
+			var (
+				pass bool
+				err  error
+			)
 			//  check auth type
 			if isHeaderUsingSignatureAlgorithmV4(r) {
 				// using signature algorithm version 4 in header
-				if ok, _ := o.validateHeaderBySignatureAlgorithmV4(r); !ok {
-					if err := AccessDenied.ServeResponse(w, r); err != nil {
-						log.LogErrorf("authMiddleware: serve access denied response fail, requestID(%v) err(%v)", GetRequestID(r), err)
-					}
-					return
-				}
+				pass, err = o.validateHeaderBySignatureAlgorithmV4(r)
 			} else if isHeaderUsingSignatureAlgorithmV2(r) {
 				// using signature algorithm version 2 in header
-				if ok, _ := o.validateHeaderBySignatureAlgorithmV2(r); !ok {
-					if err := AccessDenied.ServeResponse(w, r); err != nil {
-						log.LogErrorf("authMiddleware: serve access denied response fail, requestID(%v) err(%v)", GetRequestID(r), err)
-					}
-					return
-				}
+				pass, err = o.validateHeaderBySignatureAlgorithmV2(r)
 			} else if isUrlUsingSignatureAlgorithmV2(r) {
 				// using signature algorithm version 2 in url parameter
-				if ok, _ := o.validateUrlBySignatureAlgorithmV2(r); !ok {
-					log.LogDebugf("authMiddleware: presigned v2 denied: requestID(%v)", GetRequestID(r))
-					if err := AccessDenied.ServeResponse(w, r); err != nil {
-						log.LogErrorf("authMiddleware: serve response fail: requestID(%v) err(%v)", GetRequestID(r), err)
-					}
-					return
-				}
+				pass, err = o.validateUrlBySignatureAlgorithmV2(r)
 			} else if isUrlUsingSignatureAlgorithmV4(r) {
 				// using signature algorithm version 4 in url parameter
-				if ok, _ := o.validateUrlBySignatureAlgorithmV4(r); !ok {
-					log.LogDebugf("authMiddleware: presigned v4 denied: requestID(%v)", GetRequestID(r))
-					if err := AccessDenied.ServeResponse(w, r); err != nil {
-						log.LogErrorf("authMiddleware: serve response fail: requestID(%v) err(%v)", GetRequestID(r), err)
-					}
+				pass, err = o.validateUrlBySignatureAlgorithmV4(r)
+			}
+
+			if err != nil {
+				if err == proto.ErrVolNotExists {
+					_ = NoSuchBucket.ServeResponse(w, r)
 					return
 				}
-			} else {
-				// no valid signature found
-				if err := AccessDenied.ServeResponse(w, r); err != nil {
-					log.LogErrorf("authMiddleware: serve response fail: requestID(%v) err(%v)", GetRequestID(r), err)
-				}
+				_ = InternalErrorCode(err).ServeResponse(w, r)
+				return
+			}
+
+			if !pass {
+				_ = AccessDenied.ServeResponse(w, r)
 				return
 			}
 
@@ -173,9 +201,29 @@ func (o *ObjectNode) policyCheckMiddleware(next http.Handler) http.Handler {
 //   request → [pre-handle] → [next handler] → response
 func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
-		if len(r.Header) > 0 && len(r.Header.Get(http.CanonicalHeaderKey(HeaderNameDecodeContentLength))) > 0 {
-			r.Body = NewChunkedReader(r.Body)
+		if len(r.Header) > 0 && len(r.Header.Get(http.CanonicalHeaderKey(HeaderNameXAmzDecodeContentLength))) > 0 {
+			r.Body = NewClosableChunkedReader(r.Body)
 			log.LogDebugf("contentMiddleware: chunk reader inited: requestID(%v)", GetRequestID(r))
+		}
+		next.ServeHTTP(w, r)
+	}
+	return handlerFunc
+}
+
+// Http's Expect header is a special header. When nginx is used as the reverse proxy in the front
+// end of ObjectNode, nginx will process the Expect header information in advance, send the http
+// status code 100 to the client, and will not forward this header information to ObjectNode.
+// At this time, if the client request uses the Expect header when signing, it will cause the
+// ObjectNode to verify the signature.
+// A workaround is used here to solve this problem. Add the following configuration in nginx:
+//   proxy_set_header X-Forwarded-Expect $ http_Expect
+// In this way, nginx will not only automatically handle the Expect handshake, but also send
+// the original value of Expect to the ObjectNode through X-Forwarded-Expect. ObjectNode only
+// needs to use the value of X-Forwarded-Expect.
+func (o *ObjectNode) expectMiddleware(next http.Handler) http.Handler {
+	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
+		if forwardedExpect, originExpect := r.Header.Get(HeaderNameXForwardedExpect), r.Header.Get(HeaderNameExpect); forwardedExpect != "" && originExpect == "" {
+			r.Header.Set(HeaderNameExpect, forwardedExpect)
 		}
 		next.ServeHTTP(w, r)
 	}
@@ -192,11 +240,44 @@ func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 //   request → [pre-handle] → [next handler] → response
 func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// write access control allow headers
-		w.Header().Set(HeaderNameAccessControlAllowOrigin, "*")
-		w.Header().Set(HeaderNameAccessControlAllowHeaders, "*")
-		w.Header().Set(HeaderNameAccessControlAllowMethods, "*")
-		w.Header().Set(HeaderNameAccessControlMaxAge, "0")
+
+		var err error
+		var param = ParseRequestParam(r)
+		if param.Bucket() == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		var vol *Volume
+		if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		var setupCORSHeader = func(volume *Volume, writer http.ResponseWriter, request *http.Request) {
+			origin := request.Header.Get(Origin)
+			method := request.Header.Get(HeaderNameAccessControlRequestMethod)
+			headerStr := request.Header.Get(HeaderNameAccessControlRequestHeaders)
+			if origin == "" || method == "" {
+				return
+			}
+			cors, _ := volume.metaLoader.loadCors()
+			if cors != nil {
+				headers := strings.Split(headerStr, ",")
+				for _, corsRule := range cors.CORSRule {
+					if corsRule.match(origin, method, headers) {
+						// write access control allow headers
+						writer.Header()[HeaderNameAccessControlAllowOrigin] = []string{origin}
+						writer.Header()[HeaderNameAccessControlMaxAge] = []string{strconv.Itoa(int(corsRule.MaxAgeSeconds))}
+						writer.Header()[HeaderNameAccessControlAllowMethods] = []string{strings.Join(corsRule.AllowedMethod, ",")}
+						writer.Header()[HeaderNameAccessControlAllowHeaders] = []string{strings.Join(corsRule.AllowedHeader, ",")}
+						writer.Header()[HeaderNamrAccessControlExposeHeaders] = []string{strings.Join(corsRule.ExposeHeader, ",")}
+						return
+					}
+				}
+			}
+		}
+		setupCORSHeader(vol, w, r)
 		next.ServeHTTP(w, r)
+		return
 	})
 }

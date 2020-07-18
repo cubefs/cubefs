@@ -62,8 +62,11 @@ type Inode struct {
 	NLink      uint32 // NodeLink counts
 	Flag       int32
 	Reserved   uint64 // reserved space
-	Extents    *ExtentsTree
+	//Extents    *ExtentsTree
+	Extents *SortedExtents
 }
+
+type InodeBatch []*Inode
 
 // String returns the string format of the inode.
 func (i *Inode) String() string {
@@ -102,7 +105,7 @@ func NewInode(ino uint64, t uint32) *Inode {
 		AccessTime: ts,
 		ModifyTime: ts,
 		NLink:      1,
-		Extents:    NewExtentsTree(),
+		Extents:    NewSortedExtents(),
 	}
 	if proto.IsDir(t) {
 		i.NLink = 2
@@ -154,7 +157,6 @@ func (i *Inode) Marshal() (result []byte, err error) {
 	keyLen := uint32(len(keyBytes))
 	valLen := uint32(len(valBytes))
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
-	buff.Grow(128)
 	if err = binary.Write(buff, binary.BigEndian, keyLen); err != nil {
 		return
 	}
@@ -162,7 +164,7 @@ func (i *Inode) Marshal() (result []byte, err error) {
 		return
 	}
 	if err = binary.Write(buff, binary.BigEndian, valLen); err != nil {
-
+		return
 	}
 	if _, err = buff.Write(valBytes); err != nil {
 		return
@@ -197,6 +199,56 @@ func (i *Inode) Unmarshal(raw []byte) (err error) {
 	}
 	err = i.UnmarshalValue(valBytes)
 	return
+}
+
+// Marshal marshals the inodeBatch into a byte array.
+func (i InodeBatch) Marshal() ([]byte, error) {
+	buff := bytes.NewBuffer(make([]byte, 0))
+	if err := binary.Write(buff, binary.BigEndian, uint32(len(i))); err != nil {
+		return nil, err
+	}
+	for _, inode := range i {
+		bs, err := inode.Marshal()
+		if err != nil {
+			return nil, err
+		}
+		if err = binary.Write(buff, binary.BigEndian, uint32(len(bs))); err != nil {
+			return nil, err
+		}
+		if _, err := buff.Write(bs); err != nil {
+			return nil, err
+		}
+	}
+	return buff.Bytes(), nil
+}
+
+// Unmarshal unmarshals the inodeBatch.
+func InodeBatchUnmarshal(raw []byte) (InodeBatch, error) {
+	buff := bytes.NewBuffer(raw)
+	var batchLen uint32
+	if err := binary.Read(buff, binary.BigEndian, &batchLen); err != nil {
+		return nil, err
+	}
+
+	result := make(InodeBatch, 0, int(batchLen))
+
+	var dataLen uint32
+	for j := 0; j < int(batchLen); j++ {
+		if err := binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
+			return nil, err
+		}
+		data := make([]byte, int(dataLen))
+		if _, err := buff.Read(data); err != nil {
+			return nil, err
+		}
+		ino := NewInode(0, 0)
+		if err := ino.Unmarshal(data); err != nil {
+			return nil, err
+		}
+		result = append(result, ino)
+	}
+
+	return result, nil
 }
 
 // MarshalKey marshals the exporterKey to bytes.
@@ -327,7 +379,7 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	}
 	// unmarshal ExtentsKey
 	if i.Extents == nil {
-		i.Extents = NewExtentsTree()
+		i.Extents = NewSortedExtents()
 	}
 	if err = i.Extents.UnmarshalBinary(buff.Bytes()); err != nil {
 		return
@@ -336,15 +388,15 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 }
 
 // AppendExtents append the extent to the btree.
-func (i *Inode) AppendExtents(exts []BtreeItem, ct int64) (items []BtreeItem) {
+func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64) (delExtents []proto.ExtentKey) {
 	i.Lock()
-	for _, ext := range exts {
-		delItems := i.Extents.Append(ext)
+	for _, ek := range eks {
+		delItems := i.Extents.Append(ek)
 		size := i.Extents.Size()
 		if i.Size < size {
 			i.Size = size
 		}
-		items = append(items, delItems...)
+		delExtents = append(delExtents, delItems...)
 	}
 	i.Generation++
 	i.ModifyTime = ct
@@ -352,38 +404,25 @@ func (i *Inode) AppendExtents(exts []BtreeItem, ct int64) (items []BtreeItem) {
 	return
 }
 
-// ExtentsTruncate truncates the extents.
-func (i *Inode) ExtentsTruncate(exts []BtreeItem, length uint64, ct int64) {
+func (i *Inode) ExtentsTruncate(length uint64, ct int64) (delExtents []proto.ExtentKey) {
 	i.Lock()
-	for _, ext := range exts {
-		i.Extents.Delete(ext)
-	}
-	// check the max item size
-	item := i.Extents.MaxItem()
-	if item != nil {
-		ext := item.(*proto.ExtentKey)
-		if (ext.FileOffset + uint64(ext.Size)) > length {
-			ext.Size = uint32(length - ext.FileOffset)
-		}
-	}
+	delExtents = i.Extents.Truncate(length)
 	i.Size = length
 	i.ModifyTime = ct
 	i.Generation++
 	i.Unlock()
+	return
 }
 
 // IncNLink increases the nLink value by one.
 func (i *Inode) IncNLink() {
-	mtime := Now.GetCurrentTime().Unix()
 	i.Lock()
 	i.NLink++
-	i.ModifyTime = mtime
 	i.Unlock()
 }
 
 // DecNLink decreases the nLink value by one.
 func (i *Inode) DecNLink() {
-	mtime := Now.GetCurrentTime().Unix()
 	i.Lock()
 	if proto.IsDir(i.Type) && i.NLink == 2 {
 		i.NLink--
@@ -391,7 +430,6 @@ func (i *Inode) DecNLink() {
 	if i.NLink > 0 {
 		i.NLink--
 	}
-	i.ModifyTime = mtime
 	i.Unlock()
 }
 
@@ -431,16 +469,22 @@ func (i *Inode) ShouldDelete() bool {
 }
 
 // SetAttr sets the attributes of the inode.
-func (i *Inode) SetAttr(valid, mode, uid, gid uint32) {
+func (i *Inode) SetAttr(req *SetattrRequest) {
 	i.Lock()
-	if valid&proto.AttrMode != 0 {
-		i.Type = mode
+	if req.Valid&proto.AttrMode != 0 {
+		i.Type = req.Mode
 	}
-	if valid&proto.AttrUid != 0 {
-		i.Uid = uid
+	if req.Valid&proto.AttrUid != 0 {
+		i.Uid = req.Uid
 	}
-	if valid&proto.AttrGid != 0 {
-		i.Gid = gid
+	if req.Valid&proto.AttrGid != 0 {
+		i.Gid = req.Gid
+	}
+	if req.Valid&proto.AttrAccessTime != 0 {
+		i.AccessTime = req.AccessTime
+	}
+	if req.Valid&proto.AttrModifyTime != 0 {
+		i.ModifyTime = req.ModifyTime
 	}
 	i.Unlock()
 }

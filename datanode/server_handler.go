@@ -25,6 +25,10 @@ import (
 	"github.com/tiglabs/raft"
 )
 
+var (
+	AutoRepairStatus = true
+)
+
 func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 	disks := make([]interface{}, 0)
 	for _, diskItem := range s.space.GetDisks() {
@@ -66,6 +70,25 @@ func (s *DataNode) getStatAPI(w http.ResponseWriter, r *http.Request) {
 	s.buildHeartBeatResponse(response)
 
 	s.buildSuccessResp(w, response)
+}
+
+func (s *DataNode) setAutoRepairStatus(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramAutoRepair = "autoRepair"
+	)
+	if err := r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	autoRepair, err := strconv.ParseBool(r.FormValue(paramAutoRepair))
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramAutoRepair, err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	AutoRepairStatus = autoRepair
+	s.buildSuccessResp(w, autoRepair)
 }
 
 func (s *DataNode) getRaftStatus(w http.ResponseWriter, r *http.Request) {

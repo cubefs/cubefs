@@ -15,9 +15,10 @@
 package metanode
 
 import (
+	"time"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
-	"time"
 )
 
 // Type alias.
@@ -36,14 +37,22 @@ type (
 	LinkInodeResp = proto.LinkInodeResponse
 	// Client -> MetaNode delete Inode request struct
 	UnlinkInoReq = proto.UnlinkInodeRequest
+	// Client -> MetaNode delete Inode request struct
+	BatchUnlinkInoReq = proto.BatchUnlinkInodeRequest
 	// MetaNode -> Client delete Inode response
 	UnlinkInoResp = proto.UnlinkInodeResponse
+	// MetaNode -> Client delete batch Inode response
+	BatchUnlinkInoResp = proto.BatchUnlinkInodeResponse
 	// Client -> MetaNode create Dentry request struct
 	CreateDentryReq = proto.CreateDentryRequest
 	// Client -> MetaNode delete Dentry request
 	DeleteDentryReq = proto.DeleteDentryRequest
+	// Client -> MetaNode delete Dentry request
+	BatchDeleteDentryReq = proto.BatchDeleteDentryRequest
 	// MetaNode -> Client delete Dentry response
 	DeleteDentryResp = proto.DeleteDentryResponse
+	// MetaNode -> Client batch delete Dentry response
+	BatchDeleteDentryResp = proto.BatchDeleteDentryResponse
 	// Client -> MetaNode updateDentry request
 	UpdateDentryReq = proto.UpdateDentryRequest
 	// MetaNode -> Client updateDentry response
@@ -69,6 +78,8 @@ type (
 
 	// Client -> MetaNode
 	EvictInodeReq = proto.EvictInodeRequest
+	// Client -> MetaNode
+	BatchEvictInodeReq = proto.BatchEvictInodeRequest
 	// Client -> MetaNode
 	SetattrRequest = proto.SetAttrRequest
 )
@@ -99,6 +110,13 @@ const (
 	opFSMCreateMultipart
 	opFSMRemoveMultipart
 	opFSMAppendMultipart
+	opFSMSyncCursor
+
+	//supplement action
+	opFSMInternalDeleteInodeBatch
+	opFSMDeleteDentryBatch
+	opFSMUnlinkInodeBatch
+	opFSMEvictInodeBatch
 )
 
 var (
@@ -126,13 +144,17 @@ const (
 	cfgMasterAddrs       = "masterAddrs" // will be deprecated
 	cfgRaftHeartbeatPort = "raftHeartbeatPort"
 	cfgRaftReplicaPort   = "raftReplicaPort"
+	cfgDeleteBatchCount  = "deleteBatchCount"
 	cfgTotalMem          = "totalMem"
 	cfgZoneName          = "zoneName"
+
+	metaNodeDeleteBatchCountKey = "batchCount"
 )
 
 const (
 	// interval of persisting in-memory data
 	intervalToPersistData = time.Minute * 5
+	intervalToSyncCursor  = time.Minute * 1
 )
 
 const (

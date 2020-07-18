@@ -15,15 +15,12 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"os"
-	"path"
-
 	"github.com/chubaofs/chubaofs/cli/cmd"
 	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/spf13/cobra"
+	"os"
 )
 
 var (
@@ -32,60 +29,57 @@ var (
 	BuildTime  string
 )
 
-var (
-	defaultHomeDir, _ = os.UserHomeDir()
-	defaultConfigName = ".cfs-cli.json"
-	defaultConfigPath = path.Join(defaultHomeDir, defaultConfigName)
-	defaultConfigData = []byte(`
-{
-  "masterAddr": [
-    "master.chubao.io"
-  ]
-}
-`)
-)
-
-type config struct {
-	MasterAddr []string `json:"masterAddr"`
-}
-
 func runCLI() (err error) {
-	var cfg *config
-	if cfg, err = loadConfig(); err != nil {
+	var cfg *cmd.Config
+	if cfg, err = cmd.LoadConfig(); err != nil {
+		fmt.Printf("init cli log err[%v]", err)
 		return
 	}
-	err = setupCommands(cfg).Execute()
+	cfsCli := setupCommands(cfg)
+	if err = cfsCli.Execute(); err != nil {
+		log.LogErrorf("Command fail, err:%v", err)
+	}
 	return
 }
 
-func loadConfig() (*config, error) {
-	var err error
-	var configData []byte
-	if configData, err = ioutil.ReadFile(defaultConfigPath); err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-	if os.IsNotExist(err) {
-		if err = ioutil.WriteFile(defaultConfigPath, defaultConfigData, 0600); err != nil {
-			return nil, err
-		}
-		configData = defaultConfigData
-	}
-	var config = &config{}
-	if err = json.Unmarshal(configData, config); err != nil {
-		return nil, err
-	}
-	return config, nil
-}
-
-func setupCommands(cfg *config) *cobra.Command {
-	fmt.Printf("Master address: %v\n", cfg.MasterAddr)
+func setupCommands(cfg *cmd.Config) *cobra.Command {
 	var mc = master.NewMasterClient(cfg.MasterAddr, false)
-	return cmd.NewRootCmd(mc)
+	cfsRootCmd := cmd.NewRootCmd(mc)
+	var completionCmd = &cobra.Command{
+		Use:   "completion",
+		Short: "Generate completion bash file",
+		Long: `To use the completion, tool "bash-completion" is demanded,
+then execute the following command:
+   $ ./cfs-cli completion   
+   # Bash completion file "cfs-cli.sh" will be generated under the present working directory
+   $ echo 'source /usr/share/bash-completion/bash_completion' >> ~/.bashrc
+   $ echo 'source {path of cfs-cli.sh}' >>~/.bashrc
+   $ source ~/.bashrc
+`,
+		Example: "cfs-cli completion",
+		Run: func(cmd *cobra.Command, args []string) {
+			if err := cfsRootCmd.CFSCmd.GenBashCompletionFile("cfs-cli.sh"); err != nil {
+				_, _ = fmt.Fprintf(os.Stdout,"generate bash file failed")
+			}
+			_, _ = fmt.Fprintf(os.Stdout, `File "cfs-cli.sh" has been generated successfully under the present working directory,
+following command to execute:
+   $ # install bash-completion 
+   $ echo 'source /usr/share/bash-completion/bash_completion' >> ~/.bashrc
+   $ echo 'source {path of cfs-cli.sh}' >>~/.bashrc
+   $ source ~/.bashrc
+`)
+		},
+	}
+	cfsRootCmd.CFSCmd.AddCommand(completionCmd)
+	return cfsRootCmd.CFSCmd
 }
 
 func main() {
 	var err error
+	_, err = log.InitLog("/tmp/cfs", "cli", log.DebugLevel, nil)
+	defer log.LogFlush()
 	if err = runCLI(); err != nil {
+		log.LogFlush()
 		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}

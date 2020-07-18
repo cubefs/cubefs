@@ -1,4 +1,4 @@
-// Copyright 2018 The ChubaoFS Authors.
+// Copyright 2019 The ChubaoFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,10 +26,8 @@ import (
 )
 
 const (
-	OSS_ACL_KEY      = "oss:acl"
-	XMLNS            = "http://www.w3.org/2001/XMLSchema-instance"
-	XMLXSI           = "CanonicalUser"
-	DEF_GRANTEE_TYPE = "CanonicalUser" //
+	XMLNS    = "http://www.w3.org/2001/XMLSchema-instance"
+	XSI_TYPE = "CanonicalUser" //
 
 )
 
@@ -37,8 +35,7 @@ var (
 	defaultGrant = Grant{
 		Grantee: Grantee{
 			Xmlns: XMLNS,
-			Xmlsi: XMLXSI,
-			Type:  DEF_GRANTEE_TYPE,
+			Type:  XSI_TYPE,
 		},
 		Permission: FullControlPermission,
 	}
@@ -65,26 +62,26 @@ func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request)
 		ec = NoSuchBucket
 		return
 	}
-	acl := vol.loadACL()
+	var acl *AccessControlPolicy
+	if acl, err = vol.metaLoader.loadACL(); err != nil {
+		ec = InternalErrorCode(err)
+		return
+	}
 	var aclData []byte
-	if acl != nil {
-		aclData, err = xml.Marshal(acl)
-		if err != nil {
-			ec = InternalErrorCode(err)
-			return
-		}
-
-	} else {
-		accessKey, _ := vol.OSSSecure()
+	if acl == nil {
 		acl = &AccessControlPolicy{
-			Owner: Owner{Id: accessKey, DisplayName: accessKey},
+			Owner: Owner{Id: param.AccessKey(), DisplayName: param.AccessKey()},
 		}
 		acl.Acl.Grants = append(acl.Acl.Grants, defaultGrant)
-		aclData, err = xml.Marshal(acl)
-		if err != nil {
-			ec = InternalErrorCode(err)
-			return
-		}
+	}
+
+	acl.Acl.Grants[0].Grantee.Xmlxsi = acl.Acl.Grants[0].Grantee.Xmlns
+	acl.Acl.Grants[0].Grantee.XsiType = acl.Acl.Grants[0].Grantee.Type
+
+	aclData, err = xml.Marshal(acl)
+	if err != nil {
+		ec = InternalErrorCode(err)
+		return
 	}
 
 	w.Write(aclData)

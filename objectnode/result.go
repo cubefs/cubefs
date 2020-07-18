@@ -1,4 +1,4 @@
-// Copyright 2018 The ChubaoFS Authors.
+// Copyright 2019 The ChubaoFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,7 +16,8 @@ package objectnode
 
 import (
 	"encoding/xml"
-	"time"
+	"github.com/chubaofs/chubaofs/util/log"
+	"net/url"
 )
 
 func MarshalXMLEntity(entity interface{}) ([]byte, error) {
@@ -191,10 +192,10 @@ func NewUploads(fsUploads []*FSUpload, accessKey string) []*Upload {
 	return uploads
 }
 
-func NewBucketOwner(accessKey string) *BucketOwner {
+func NewBucketOwner(volume *Volume) *BucketOwner {
 	return &BucketOwner{
-		ID:          accessKey,
-		DisplayName: accessKey,
+		ID:          volume.Owner(),
+		DisplayName: volume.Owner(),
 	}
 }
 
@@ -208,32 +209,10 @@ type DeleteRequest struct {
 	Objects []Object `xml:"Object"`
 }
 
-type DeletesResult struct {
-	XMLName        xml.Name  `xml:"DeleteObjectsOutput"`
-	DeletedObjects []Deleted `xml:"Deleted,omitempty"`
-	DeletedErrors  []Error   `xml:"Error,omitempty"`
-}
-
 type CopyResult struct {
 	XMLName      xml.Name `xml:"CopyObjectResult"`
 	LastModified string   `xml:"LastModified,omitempty"`
 	ETag         string   `xml:"ETag,omitempty"`
-}
-
-type ListBucketRequestV1 struct {
-	prefix    string
-	delimiter string
-	marker    string
-	maxKeys   uint64
-}
-
-type ListBucketRequestV2 struct {
-	delimiter  string
-	maxKeys    uint64
-	prefix     string
-	contToken  string
-	fetchOwner bool
-	startAfter string
 }
 
 type ListBucketResultV2 struct {
@@ -251,13 +230,38 @@ type ListBucketResultV2 struct {
 }
 
 type Tag struct {
-	Key   string `xml:"Key",json:"k"`
-	Value string `xml:"Value",json:"v"`
+	Key   string `xml:"Key" json:"k"`
+	Value string `xml:"Value" json:"v"`
 }
 
 type Tagging struct {
 	XMLName xml.Name `json:"-"`
-	TagSet  []*Tag   `xml:"TagSet>Tag",json:"ts"`
+	TagSet  []Tag   `xml:"TagSet>Tag,omitempty" json:"ts"`
+}
+
+func (t Tagging) Encode() string {
+	values := url.Values{}
+	for _, tag := range t.TagSet {
+		values[tag.Key] = []string{tag.Value}
+	}
+	return values.Encode()
+}
+
+func (t Tagging) Validate() (bool, *ErrorCode) {
+	var errorCode *ErrorCode
+	if len(t.TagSet) > TaggingCounts {
+		return false, TagsGreaterThen10
+	}
+	for _, tag := range t.TagSet {
+		log.LogDebugf("Validate: key : (%v), value : (%v)", tag.Key, tag.Value)
+		if len(tag.Key) > TaggingKeyMaxLength {
+			return false, InvalidTagKey
+		}
+		if len(tag.Value) > TaggingValueMaxLength {
+			return false, InvalidTagValue
+		}
+	}
+	return true, errorCode
 }
 
 func NewTagging() *Tagging {
@@ -266,26 +270,22 @@ func NewTagging() *Tagging {
 	}
 }
 
-func NewGetObjectTaggingOutput() *Tagging {
-	return &Tagging{
-		XMLName: xml.Name{Local: "GetObjectTaggingOutput"},
+func ParseTagging(src string) (*Tagging, error) {
+	values, err := url.ParseQuery(src)
+	if err != nil {
+		return nil, err
 	}
-}
-
-func NewGetBucketTaggingOutput() *Tagging {
-	return &Tagging{
-		XMLName: xml.Name{Local: "GetBucketTaggingOutput"},
+	tagSet := make([]Tag, 0, len(values))
+	for key, value := range values {
+		tagSet = append(tagSet, Tag{Key: key, Value: value[0]})
 	}
-}
-
-type GetObjectTaggingOutput struct {
-	XMLName xml.Name `xml:"GetObjectTaggingOutput"`
-	Tagging
-}
-
-type GetBucketLocationOutput struct {
-	XMLName            xml.Name `xml:"GetBucketLocationOutput"`
-	LocationConstraint string   `xml:"LocationConstraint"`
+	if len(tagSet) == 0 {
+		return NewTagging(), nil
+	}
+	return &Tagging{
+		XMLName: xml.Name{Local: "Tagging"},
+		TagSet:  tagSet,
+	}, nil
 }
 
 type XAttr struct {
@@ -308,17 +308,13 @@ type ListXAttrsOutput struct {
 	Keys    []string `xml:"Keys"`
 }
 
-type Buckets struct {
-	Bucket []*Bucket `xml:"Bucket"`
+type PartRequest struct {
+	XMLName    xml.Name `xml:"Part"`
+	PartNumber int      `xml:"PartNumber"`
+	ETag       string   `xml:"ETag"`
 }
 
-type Bucket struct {
-	CreationDate time.Time `xml:"CreationDate"`
-	Name         string    `xml:"Name"`
-}
-
-type ListBucketsOutput struct {
-	XMLName xml.Name `xml:"ListBucketsOutput"`
-	Buckets *Buckets `xml:"Buckets"`
-	Owner   *Owner   `xml:"Owner"`
+type CompleteMultipartUploadRequest struct {
+	XMLName xml.Name       `xml:"CompleteMultipartUpload"`
+	Parts   []*PartRequest `xml:"Part"`
 }

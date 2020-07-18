@@ -17,10 +17,11 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
-	"hash/crc32"
 )
 
 func (s *DataNode) Prepare(p *repl.Packet) (err error) {
@@ -118,7 +119,6 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 		if err := json.Unmarshal(p.Data[:p.Size], record); err != nil {
 			return fmt.Errorf("addExtentInfo failed %v", err.Error())
 		}
-		record.TinyDeleteFileOffset = store.NextTinyDeleteFileOffset()
 		p.Data, _ = json.Marshal(record)
 		p.Size = uint32(len(p.Data))
 	}

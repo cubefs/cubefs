@@ -1,16 +1,19 @@
-// Copyright 2018 The ChubaoFS Authors.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-// implied. See the License for the specific language governing
-// permissions and limitations under the License.
+/*
+ * MinIO Cloud Storage, (C) 2018 MinIO, Inc.
+ * Modifications copyright 2019 The ChubaoFS Authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package objectnode
 
@@ -22,6 +25,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/gorilla/mux"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -40,7 +45,7 @@ const (
 
 type Policy struct {
 	Version    string      `json:"Version"`
-	Id         string      `json:"Id,omnistring"`
+	Id         string      `json:"Id,omitempty"`
 	Statements []Statement `json:"Statement,omitempty"`
 }
 
@@ -109,12 +114,18 @@ func storeBucketPolicy(bytes []byte, vol *Volume) (*Policy, error) {
 		return nil, err4
 	}
 
-	vol.storePolicy(policy)
+	vol.metaLoader.storePolicy(policy)
 
 	return policy, nil
 }
 
-//
+func deleteBucketPolicy(vol *Volume) (err error) {
+	if err = vol.store.Delete(vol.name, bucketRootPath, XAttrKeyOSSPolicy); err != nil {
+		return err
+	}
+	return nil
+}
+
 func ParsePolicy(r io.Reader, bucket string) (*Policy, error) {
 	var policy Policy
 	d := json.NewDecoder(r)
@@ -154,24 +165,31 @@ func (p Policy) Validate(bucket string) (bool, error) {
 
 // check policy is allowed for request
 // https://docs.aws.amazon.com/zh_cn/IAM/latest/UserGuide/reference_policies_evaluation-logic.html
-// 如果适用策略包含 Deny 语句，则请求会导致显式拒绝。
-// 如果应用于请求的策略包含一个 Allow 语句和一个 Deny 语句，Deny 语句优先于 Allow 语句。将显式拒绝请求。
-// 当没有适用的 Deny 语句但也没有适用的 Allow 语句时，会发生隐式拒绝。
-func (p *Policy) IsAllowed(params *RequestParam) bool {
+func (p *Policy) IsAllowed(params *RequestParam, isOwner bool) bool {
 	for _, s := range p.Statements {
 		if s.Effect == Deny {
 			if !s.IsAllowed(params) {
+				log.LogDebugf("policy deny cause of %v, %v", s, params)
 				return false
 			}
 		}
 	}
+
+	//is owner
+	if isOwner {
+		return true
+	}
+
 	for _, s := range p.Statements {
 		if s.Effect == Allow {
 			if s.IsAllowed(params) {
+				log.LogDebugf("policy allow cause of %v, %v", s, params)
 				return true
 			}
 		}
 	}
+
+	log.LogDebugf("policy deny cause of %v, request: %v", p, params)
 
 	return false
 }
@@ -209,23 +227,45 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 		}
 
 		// Check user policy
+		var volume *Volume
+		if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
+			if volume, err = o.getVol(bucket); err != nil {
+				allowed = false
+				if err == proto.ErrVolNotExists {
+					ec = NoSuchBucket
+					return
+				}
+				ec = InternalErrorCode(err)
+				return
+			}
+		}
 		var userInfo *proto.UserInfo
-		if userInfo, err = o.getUserInfoByAccessKey(param.accessKey); err != nil {
+		isOwner := false
+		if userInfo, err = o.getUserInfoByAccessKey(param.AccessKey()); err == nil {
+			// White list for admin and root user.
+			if userInfo.UserType == proto.UserTypeRoot || userInfo.UserType == proto.UserTypeAdmin {
+				log.LogDebugf("policyCheck: user is admin: requestID(%v) userID(%v) accessKey(%v) volume(%v)",
+					GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket())
+				allowed = true
+				return
+			}
+			var userPolicy = userInfo.Policy
+			isOwner = userPolicy.IsOwn(param.Bucket())
+			if !isOwner && !userPolicy.IsAuthorized(param.Bucket(), param.Action()) {
+				log.LogDebugf("policyCheck: user no permission: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
+					GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
+				allowed = false
+				return
+			}
+		} else if (err == proto.ErrAccessKeyNotExists || err == proto.ErrUserNotExists) && volume != nil {
+			if ak, _ := volume.OSSSecure(); ak != param.AccessKey() {
+				allowed = false
+				return
+			}
+			isOwner = true
+		} else {
 			log.LogErrorf("policyCheck: load user policy from master fail: requestID(%v) accessKey(%v) err(%v)",
 				GetRequestID(r), param.AccessKey(), err)
-			allowed = false
-			return
-		}
-		if userInfo.UserType == proto.UserTypeRoot || userInfo.UserType == proto.UserTypeAdmin {
-			log.LogDebugf("policyCheck: user is admin: requestID(%v) userID(%v) accessKey(%v) volume(%v)",
-				GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket())
-			allowed = true
-			return
-		}
-		var userPolicy = userInfo.Policy
-		if !userPolicy.IsOwn(param.Bucket()) && !userPolicy.IsAuthorized(param.Bucket(), param.Action()) {
-			log.LogDebugf("policyCheck: user no permission: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
-				GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
 			allowed = false
 			return
 		}
@@ -237,8 +277,12 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			if vol, err = o.getVol(bucket); err != nil {
 				return
 			}
-			acl = vol.loadACL()
-			policy = vol.loadPolicy()
+			if acl, err = vol.metaLoader.loadACL(); err != nil {
+				return
+			}
+			if policy, err = vol.metaLoader.loadPolicy(); err != nil {
+				return
+			}
 			return
 		}
 		if err = loadBucketMeta(param.Bucket()); err != nil {
@@ -249,25 +293,25 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 		}
 
 		if vol != nil && policy != nil && !policy.IsEmpty() {
-			allowed = policy.IsAllowed(param)
+			allowed = policy.IsAllowed(param, isOwner)
 			if !allowed {
 				log.LogWarnf("policyCheck: bucket policy not allowed: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
-					GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
+					GetRequestID(r), userInfo, param.AccessKey(), param.Bucket(), param.Action())
 				return
 			}
 		}
 
 		if vol != nil && acl != nil && !acl.IsAclEmpty() {
-			allowed = acl.IsAllowed(param)
+			allowed = acl.IsAllowed(param, isOwner)
 			if !allowed {
 				log.LogWarnf("policyCheck: bucket ACL not allowed: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
-					GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
+					GetRequestID(r), userInfo, param.AccessKey(), param.Bucket(), param.Action())
 				return
 			}
 		}
 
 		allowed = true
 		log.LogDebugf("policyCheck: action allowed: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
-			GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
+			GetRequestID(r), userInfo, param.AccessKey(), param.Bucket(), param.Action())
 	}
 }

@@ -68,6 +68,16 @@ type InodeInfo struct {
 	CreateTime time.Time `json:"ct"`
 	AccessTime time.Time `json:"at"`
 	Target     []byte    `json:"tgt"`
+
+	expiration int64
+}
+
+func (info *InodeInfo) Expiration() int64 {
+	return info.expiration
+}
+
+func (info *InodeInfo) SetExpiration(e int64) {
+	info.expiration = e
 }
 
 // String returns the string format of the inode.
@@ -149,9 +159,24 @@ type UnlinkInodeRequest struct {
 	Inode       uint64 `json:"ino"`
 }
 
+// UnlinkInodeRequest defines the request to unlink an inode.
+type BatchUnlinkInodeRequest struct {
+	VolName     string   `json:"vol"`
+	PartitionID uint64   `json:"pid"`
+	Inodes      []uint64 `json:"inos"`
+}
+
 // UnlinkInodeResponse defines the response to the request of unlinking an inode.
 type UnlinkInodeResponse struct {
 	Info *InodeInfo `json:"info"`
+}
+
+// batch UnlinkInodeResponse defines the response to the request of unlinking an inode.
+type BatchUnlinkInodeResponse struct {
+	Items []*struct {
+		Info   *InodeInfo `json:"info"`
+		Status uint8      `json:"status"`
+	} `json:"items"`
 }
 
 // EvictInodeRequest defines the request to evict an inode.
@@ -159,6 +184,13 @@ type EvictInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+}
+
+// EvictInodeRequest defines the request to evict some inode.
+type BatchEvictInodeRequest struct {
+	VolName     string   `json:"vol"`
+	PartitionID uint64   `json:"pid"`
+	Inodes      []uint64 `json:"inos"`
 }
 
 // CreateDentryRequest defines the request to create a dentry.
@@ -193,9 +225,24 @@ type DeleteDentryRequest struct {
 	Name        string `json:"name"`
 }
 
+type BatchDeleteDentryRequest struct {
+	VolName     string   `json:"vol"`
+	PartitionID uint64   `json:"pid"`
+	ParentID    uint64   `json:"pino"`
+	Dens        []Dentry `json:"dens"`
+}
+
 // DeleteDentryResponse defines the response to the request of deleting a dentry.
 type DeleteDentryResponse struct {
 	Inode uint64 `json:"ino"`
+}
+
+// BatchDeleteDentryResponse defines the response to the request of deleting a dentry.
+type BatchDeleteDentryResponse struct {
+	Items []*struct {
+		Inode  uint64 `json:"ino"`
+		Status uint8  `json:"status"`
+	} `json:"items"`
 }
 
 // LookupRequest defines the request for lookup.
@@ -286,6 +333,8 @@ type SetAttrRequest struct {
 	Mode        uint32 `json:"mode"`
 	Uid         uint32 `json:"uid"`
 	Gid         uint32 `json:"gid"`
+	ModifyTime  int64  `json:"mt"`
+	AccessTime  int64  `json:"at"`
 	Valid       uint32 `json:"valid"`
 }
 
@@ -293,6 +342,8 @@ const (
 	AttrMode uint32 = 1 << iota
 	AttrUid
 	AttrGid
+	AttrModifyTime
+	AttrAccessTime
 )
 
 // DeleteInodeRequest defines the request to delete an inode.
@@ -300,6 +351,13 @@ type DeleteInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionId uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+}
+
+// DeleteInodeRequest defines the request to delete an inode.
+type DeleteInodeBatchRequest struct {
+	VolName     string   `json:"vol"`
+	PartitionId uint64   `json:"pid"`
+	Inodes      []uint64 `json:"ino"`
 }
 
 // AppendExtentKeysRequest defines the request to append an extent key.
@@ -371,6 +429,7 @@ type MultipartInfo struct {
 	Path     string               `json:"path"`
 	InitTime time.Time            `json:"itime"`
 	Parts    []*MultipartPartInfo `json:"parts"`
+	Extend   map[string]string    `json:"extend"`
 }
 
 type MultipartPartInfo struct {
@@ -382,9 +441,10 @@ type MultipartPartInfo struct {
 }
 
 type CreateMultipartRequest struct {
-	VolName     string `json:"vol"`
-	PartitionId uint64 `json:"pid"`
-	Path        string `json:"path"`
+	VolName     string            `json:"vol"`
+	PartitionId uint64            `json:"pid"`
+	Path        string            `json:"path"`
+	Extend      map[string]string `json:"extend"`
 }
 
 type CreateMultipartResponse struct {
@@ -393,6 +453,7 @@ type CreateMultipartResponse struct {
 
 type GetMultipartRequest struct {
 	VolName     string `json:"vol"`
+	Path        string `json:"path"`
 	PartitionId uint64 `json:"pid"`
 	MultipartId string `json:"mid"`
 }
@@ -404,6 +465,7 @@ type GetMultipartResponse struct {
 type AddMultipartPartRequest struct {
 	VolName     string             `json:"vol"`
 	PartitionId uint64             `json:"pid"`
+	Path        string             `json:"path"`
 	MultipartId string             `json:"mid"`
 	Part        *MultipartPartInfo `json:"part"`
 }
@@ -411,6 +473,7 @@ type AddMultipartPartRequest struct {
 type RemoveMultipartRequest struct {
 	VolName     string `json:"vol"`
 	PartitionId uint64 `json:"pid"`
+	Path        string `json:"path"`
 	MultipartId string `json:"mid"`
 }
 

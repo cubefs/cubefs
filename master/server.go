@@ -110,7 +110,6 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	}
 	m.initCluster()
 	m.initUser()
-	exporter.Init(ModuleName, cfg)
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
 	MasterSecretKey := cfg.GetString(SecretKey)
@@ -118,7 +117,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		return fmt.Errorf("action[Start] failed %v, err: master service Key invalid = %s", proto.ErrInvalidCfg, MasterSecretKey)
 	}
 	m.cluster.scheduleTask()
-	m.startHTTPService()
+	m.startHTTPService(ModuleName, cfg)
 	exporter.RegistConsul(m.clusterName, ModuleName, cfg)
 	metricsService := newMonitorMetrics(m.cluster)
 	metricsService.start()

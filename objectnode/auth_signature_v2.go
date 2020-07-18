@@ -1,16 +1,19 @@
-// Copyright 2018 The ChubaoFS Authors.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-// implied. See the License for the specific language governing
-// permissions and limitations under the License.
+/*
+ * MinIO Cloud Storage, (C) 2018 MinIO, Inc.
+ * Modifications copyright 2019 The ChubaoFS Authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package objectnode
 
@@ -85,7 +88,6 @@ type requestAuthInfoV2 struct {
 //  &Signature=GJCqOY0ahf1BdzJDjNnFWB7vfSc%3D
 //
 func parsePresignedV2AuthInfo(r *http.Request) (*requestAuthInfoV2, error) {
-	//
 	ai := new(requestAuthInfoV2)
 	uris := strings.SplitN(r.RequestURI, "?", 2)
 	if len(uris) < 2 {
@@ -93,10 +95,12 @@ func parsePresignedV2AuthInfo(r *http.Request) (*requestAuthInfoV2, error) {
 		return nil, errors.New("uri is invalid")
 	}
 
-	vars := mux.Vars(r)
-	ai.accessKeyId = vars["accessKey"]
-	ai.signature = vars["signature"]
-	ai.expires = vars["expires"]
+	if err := r.ParseForm(); err != nil {
+		return nil, err
+	}
+	ai.accessKeyId = r.FormValue("AWSAccessKeyId")
+	ai.signature = r.FormValue("Signature")
+	ai.expires = r.FormValue("Expires")
 
 	return ai, nil
 }
@@ -174,17 +178,37 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV2(r *http.Request) (bool
 		return false, err
 	}
 
-	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKey(authInfo.accessKeyId); err != nil {
-		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", authInfo.accessKeyId, err)
+	var accessKey = authInfo.accessKeyId
+	var volume *Volume
+	if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
+		if volume, err = o.getVol(bucket); err != nil {
+			return false, err
+		}
+	}
+	var secretKey string
+	if userInfo, err := o.getUserInfoByAccessKey(accessKey); err == nil {
+		secretKey = userInfo.SecretKey
+	} else if (err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists) && volume != nil {
+		// In order to be directly compatible with the signature verification of version 1.5
+		// (each volume has its own access key and secret key), if the user does not exist and
+		// the request specifies a volume, try to use the access key and secret key bound in the
+		// volume information for verification.
+		if ak, sk := volume.OSSSecure(); ak == accessKey {
+			secretKey = sk
+		} else {
+			return false, nil
+		}
+	} else {
+		log.LogErrorf("validateHeaderBySignatureAlgorithmV4: get secretKey from master fail: accessKey(%v) err(%v)",
+			accessKey, err)
 		return false, err
 	}
 
 	// 2. calculate new signature
-	newSignature, err1 := calculateSignatureV2(authInfo, userInfo.SecretKey, o.wildcards)
-	if err1 != nil {
+	newSignature, err := calculateSignatureV2(authInfo, secretKey, o.wildcards)
+	if err != nil {
 		log.LogInfof("calculute SignatureV2 error: %v, %v", authInfo.r, err)
-		return false, err1
+		return false, err
 	}
 
 	// 3. compare newSignatrue and reqSignature
@@ -248,9 +272,7 @@ func calculateSignatureV2(authInfo *requestAuthInfoV2, secretKey string, wildcar
 }
 
 func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, error) {
-
 	var err error
-
 	uris := strings.SplitN(r.RequestURI, "?", 2)
 	if len(uris) < 2 {
 		log.LogInfof("validateUrlBySignatureAlgorithmV2 error, request url invalid %v ", r.RequestURI)
@@ -270,10 +292,29 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, e
 	log.LogDebugf("validateUrlBySignatureAlgorithmV2: parse signature info: requestID(%v) url(%v) accessKey(%v) signature(%v) expires(%v)",
 		GetRequestID(r), r.URL.String(), accessKey, signature, expires)
 
-	//check access key
-	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKey(accessKey); err != nil {
-		log.LogInfof("get secretKey from master error: accessKey(%v), err(%v)", accessKey, err)
+	// Checking access key
+	var volume *Volume
+	if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
+		if volume, err = o.getVol(bucket); err != nil {
+			return false, err
+		}
+	}
+	var secretKey string
+	if userInfo, err := o.getUserInfoByAccessKey(accessKey); err == nil {
+		secretKey = userInfo.SecretKey
+	} else if (err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists) && volume != nil {
+		// In order to be directly compatible with the signature verification of version 1.5
+		// (each volume has its own access key and secret key), if the user does not exist and
+		// the request specifies a volume, try to use the access key and secret key bound in the
+		// volume information for verification.
+		if ak, sk := volume.OSSSecure(); ak == accessKey {
+			secretKey = sk
+		} else {
+			return false, nil
+		}
+	} else {
+		log.LogErrorf("validateHeaderBySignatureAlgorithmV4: get secretKey from master fail: accessKey(%v) err(%v)",
+			accessKey, err)
 		return false, err
 	}
 
@@ -287,7 +328,7 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, e
 	var canonicalResource string
 	canonicalResource = getCanonicalizedResourceV2(r, o.wildcards)
 	canonicalResourceQuery := getCanonicalQueryV2(canonicalResource, r.URL.Query().Encode())
-	calSignature := calPresignedSignatureV2(r.Method, canonicalResourceQuery, expires, userInfo.SecretKey, r.Header)
+	calSignature := calPresignedSignatureV2(r.Method, canonicalResourceQuery, expires, secretKey, r.Header)
 	if calSignature != signature {
 		log.LogDebugf("validateUrlBySignatureAlgorithmV2: invalid signature: requestID(%v) client(%v) server(%v)",
 			GetRequestID(r), signature, calSignature)
@@ -391,8 +432,7 @@ func calPresignedSignatureV2(method, canonicalQuery, expires, secretKey string, 
 }
 
 func getCanonicalizedResourceV2(r *http.Request, ws Wildcards) (resource string) {
-	// TODO: fix this
-	path := r.URL.Path
+	path := r.URL.EscapedPath()
 	if bucket, wildcard := ws.Parse(r.Host); wildcard {
 		resource = "/" + bucket + path
 	} else {

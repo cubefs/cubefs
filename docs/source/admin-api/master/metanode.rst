@@ -9,7 +9,7 @@ GET
    curl -v "http://10.196.59.198:17010/metaNode/get?addr=10.196.59.202:17210"  | python -m json.tool
 
 
-show the base information of the metaNode,such as addr,total memory,used memory and so on.
+Show the base information of the metaNode, such as addr, total memory, used memory and so on.
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
@@ -24,10 +24,7 @@ response
        "ID": 3,
        "Addr": "10.196.59.202:17210",
        "IsActive": true,
-       "Sender": {
-           "TaskMap": {}
-       },
-       "Cell": "",
+       "Zone": "zone1",
        "MaxMemAvailWeight": 66556215048,
        "TotalWeight": 67132641280,
        "UsedWeight": 576426232,
@@ -36,7 +33,9 @@ response
        "Carry": 0.6645600532184904,
        "Threshold": 0.75,
        "ReportTime": "2018-12-05T17:26:28.29309577+08:00",
-       "MetaPartitionCount": 1
+       "MetaPartitionCount": 1,
+       "NodeSetID": 2,
+       "PersistenceMetaPartitions": {}
    }
 
 
@@ -48,7 +47,7 @@ Decommission
    curl -v "http://127.0.0.1/metaNode/decommission?addr=127.0.0.1:9021"
 
 
-remove the metaNode from cluster, meta partitions which locate the metaNode will be migrate other available metaNode asynchronous
+Remove the metaNode from cluster, meta partitions which locate the metaNode will be migrate other available metaNode asynchronous.
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
@@ -63,7 +62,7 @@ Threshold
    curl -v "http://127.0.0.1/threshold/set?threshold=0.75"
 
 
-the used memory percent arrives the threshold,the status of the meta partitions which locate the metaNode will be read only
+If the used memory percent arrives the threshold, the status of the meta partitions which locate the metaNode will be read only.
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"

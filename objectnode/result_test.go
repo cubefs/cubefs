@@ -1,4 +1,4 @@
-// Copyright 2018 The ChubaoFS Authors.
+// Copyright 2019 The ChubaoFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -196,7 +196,7 @@ func TestUnmarshalDeleteRequest(t *testing.T) {
 
 func TestMarshalTagging(t *testing.T) {
 	tagging := NewTagging()
-	tagging.TagSet = []*Tag{
+	tagging.TagSet = []Tag{
 		{
 			Key:   "tag1",
 			Value: "val1",
@@ -217,25 +217,6 @@ func TestMarshalTagging(t *testing.T) {
 		t.Fatalf("marshal tagging fail: err(%v)", err)
 	}
 	t.Logf("json result:\n%v", string(marshaled))
-}
-
-func TestMarshalGetObjectTaggingOutput(t *testing.T) {
-	tagging := NewGetObjectTaggingOutput()
-	tagging.TagSet = []*Tag{
-		{
-			Key:   "tag1",
-			Value: "val1",
-		},
-		{
-			Key:   "tag2",
-			Value: "val2",
-		},
-	}
-	marshaled, err := MarshalXMLEntity(tagging)
-	if err != nil {
-		t.Fatalf("marshal tagging fail: err(%v)", err)
-	}
-	t.Logf("marshal tagging:\n%v", string(marshaled))
 }
 
 func TestResult_PutXAttrRequest_Marshal(t *testing.T) {
@@ -276,4 +257,47 @@ func TestResult_PutXAttrRequest_Unmarshal(t *testing.T) {
 	if request.XAttr.Value != "xattr-value" {
 		t.Fatalf("result mismatch: key mismatch: expect(%v) actual(%v)", "xattr-value", request.XAttr.Key)
 	}
+}
+
+func TestRequest_CompleteMultipartUploadRequest_Marshall(t *testing.T)  {
+	part1 := &PartRequest{
+		PartNumber:1,
+		ETag:"atsiagsaivxbiz",
+
+	}
+	part2 := &PartRequest{
+		PartNumber:2,
+		ETag:"sadasdas69asdg",
+	}
+	parts := []*PartRequest{part1, part2}
+	request := CompleteMultipartUploadRequest{Parts:parts}
+	bytes, err := xml.Marshal(request)
+	if err != nil {
+		t.Fatalf("marshal tagging fail: err(%v)", err)
+	}
+	fmt.Println(string(bytes))
+}
+
+func TestRequest_CompleteMultipartUploadRequest_Unmarshal(t *testing.T)  {
+	data := []byte(`<CompleteMultipartUpload>
+		<Part>
+		<PartNumber>1</PartNumber>
+		<ETag>"a54357aff0632cce46d942af68356b38"</ETag>
+		</Part>
+		<Part>
+		<PartNumber>2</PartNumber>
+		<ETag>"0c78aef83f66abc1fa1e8477f296d394"</ETag>
+		</Part>
+		<Part>
+		<PartNumber>3</PartNumber>
+		<ETag>"acbd18db4cc2f85cedef654fccc4a4d8"</ETag>
+		</Part>
+	</CompleteMultipartUpload>`)
+	request := CompleteMultipartUploadRequest{}
+	err := xml.Unmarshal(data, &request)
+	if err != nil {
+		t.Fatalf("marshal tagging fail: err(%v)", err)
+	}
+	bytes, _ := json.Marshal(request)
+	fmt.Printf("request : %s\n", string(bytes))
 }

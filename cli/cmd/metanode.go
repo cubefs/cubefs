@@ -15,7 +15,6 @@
 package cmd
 
 import (
-	"os"
 	"sort"
 	"strings"
 
@@ -36,28 +35,31 @@ func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newMetaNodeListCmd(client),
+		newMetaNodeInfoCmd(client),
+		newMetaNodeDecommissionCmd(client),
 	)
 	return cmd
 }
 
 const (
-	cmdMetaNodeListUse   = "list"
-	cmdMetaNodeListShort = "List information of meta nodes"
+	cmdMetaNodeListShort             = "List information of meta nodes"
+	cmdMetaNodeInfoShort             = "Show information of meta nodes"
+	cmdMetaNodeDecommissionInfoShort = "Decommission partitions in a meta node to other nodes"
 )
 
 func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 	var optFilterStatus string
 	var optFilterWritable string
 	var cmd = &cobra.Command{
-		Use:     cmdMetaNodeListUse,
+		Use:     CliOpList,
 		Short:   cmdMetaNodeListShort,
 		Aliases: []string{"ls"},
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("List cluster meta nodes failed: %v\n", err)
-					os.Exit(1)
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
 				}
 			}()
 			var view *proto.ClusterView
@@ -84,5 +86,68 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&optFilterWritable, "filter-writable", "", "Filter node writable status")
 	cmd.Flags().StringVar(&optFilterStatus, "filter-status", "", "Filter status [Active, Inactive")
+	return cmd
+}
+
+func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpInfo + " [NODE ADDRESS]",
+		Short: cmdMetaNodeInfoShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var nodeAddr string
+			var metanodeInfo *proto.MetaNodeInfo
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
+			nodeAddr = args[0]
+			if metanodeInfo, err = client.NodeAPI().GetMetaNode(nodeAddr); err != nil {
+				return
+			}
+			stdout("[Meta node info]\n")
+			stdout(formatMetaNodeDetail(metanodeInfo, false))
+
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpDecommission + " [NODE ADDRESS]",
+		Short: cmdMetaNodeDecommissionInfoShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var nodeAddr string
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
+			nodeAddr = args[0]
+			if err = client.NodeAPI().MetaNodeDecommission(nodeAddr); err != nil {
+				return
+			}
+			stdout("Decommission meta node successfully\n")
+
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
 	return cmd
 }

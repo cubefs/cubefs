@@ -22,10 +22,13 @@ const (
 	AdminLoadDataPartition         = "/dataPartition/load"
 	AdminCreateDataPartition       = "/dataPartition/create"
 	AdminDecommissionDataPartition = "/dataPartition/decommission"
+	AdminDiagnoseDataPartition     = "/dataPartition/diagnose"
 	AdminDeleteDataReplica         = "/dataReplica/delete"
 	AdminAddDataReplica            = "/dataReplica/add"
 	AdminDeleteVol                 = "/vol/delete"
 	AdminUpdateVol                 = "/vol/update"
+	AdminVolShrink                 = "/vol/shrink"
+	AdminVolExpand                 = "/vol/expand"
 	AdminCreateVol                 = "/admin/createVol"
 	AdminGetVol                    = "/admin/getVol"
 	AdminClusterFreeze             = "/cluster/freeze"
@@ -34,6 +37,21 @@ const (
 	AdminCreateMetaPartition       = "/metaPartition/create"
 	AdminSetMetaNodeThreshold      = "/threshold/set"
 	AdminListVols                  = "/vol/list"
+	AdminSetNodeInfo               = "/admin/setNodeInfo"
+	AdminGetNodeInfo               = "/admin/getNodeInfo"
+
+	//graphql master api
+	AdminClusterAPI = "/api/cluster"
+	AdminUserAPI    = "/api/user"
+	AdminVolumeAPI  = "/api/volume"
+
+	//graphql coonsole api
+	ConsoleIQL        = "/iql"
+	ConsoleLoginAPI   = "/login"
+	ConsoleMonitorAPI = "/cfs_monitor"
+	ConsoleFile       = "/file"
+	ConsoleFileDown   = "/file/down"
+	ConsoleFileUpload = "/file/upload"
 
 	// Client APIs
 	ClientDataPartitions = "/client/partitions"
@@ -55,6 +73,7 @@ const (
 	DecommissionMetaNode           = "/metaNode/decommission"
 	GetMetaNode                    = "/metaNode/get"
 	AdminLoadMetaPartition         = "/metaPartition/load"
+	AdminDiagnoseMetaPartition     = "/metaPartition/diagnose"
 	AdminDecommissionMetaPartition = "/metaPartition/decommission"
 	AdminAddMetaReplica            = "/metaReplica/add"
 	AdminDeleteMetaReplica         = "/metaReplica/delete"
@@ -88,6 +107,12 @@ const (
 	UserGetAKInfo       = "/user/akInfo"
 	UserTransferVol     = "/user/transferVol"
 	UserList            = "/user/list"
+	UsersOfVol          = "/vol/users"
+	//graphql api for header
+	HeadAuthorized  = "Authorization"
+	ParamAuthorized = "_authorization"
+	UserKey         = "_user_key"
+	UserInfoKey     = "_user_info_key"
 )
 
 const TimeFormat = "2006-01-02 15:04:05"
@@ -117,8 +142,11 @@ type RegisterMetaNodeResp struct {
 
 // ClusterInfo defines the cluster infomation.
 type ClusterInfo struct {
-	Cluster string
-	Ip      string
+	Cluster                     string
+	Ip                          string
+	MetaNodeDeleteBatchCount    uint64
+	MetaNodeDeleteWorkerSleepMs uint64
+	DataNodeDeleteLimitRate     uint64
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -269,6 +297,8 @@ type MetaPartitionReport struct {
 	MaxInodeID  uint64
 	IsLeader    bool
 	VolName     string
+	InodeCnt    uint64
+	DentryCnt   uint64
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
@@ -352,6 +382,7 @@ type MetaPartitionLoadResponse struct {
 	ApplyID     uint64
 	MaxInode    uint64
 	DentryCount uint64
+	InodeCount  uint64
 	Addr        string
 }
 
@@ -363,6 +394,7 @@ type DataPartitionResponse struct {
 	Hosts       []string
 	LeaderAddr  string
 	Epoch       uint64
+	IsRecover   bool
 }
 
 // DataPartitionsView defines the view of a data partition
@@ -382,6 +414,8 @@ type MetaPartitionView struct {
 	Start       uint64
 	End         uint64
 	MaxInodeID  uint64
+	InodeCount  uint64
+	DentryCount uint64
 	IsRecover   bool
 	Members     []string
 	LeaderAddr  string
@@ -442,6 +476,9 @@ type SimpleVolView struct {
 	ZoneName           string
 	DpReplicaNum       uint8
 	MpReplicaNum       uint8
+	InodeCount         uint64
+	DentryCount        uint64
+	MaxMetaPartitionID uint64
 	Status             uint8
 	Capacity           uint64 // GB
 	RwDpCnt            int
@@ -453,7 +490,8 @@ type SimpleVolView struct {
 	CrossZone          bool
 	CreateTime         string
 	EnableToken        bool
-	Tokens             map[string]*Token
+	Tokens             map[string]*Token `graphql:"-"`
+	Description        string
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition

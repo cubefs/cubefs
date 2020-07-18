@@ -1,7 +1,7 @@
 Resource Manager (Master)
 =========================
 
-The resource manager  manages the file system by  processing  different types of tasks, such as creating/deleting/updating/loading partitions and keeping track of the resource status (such as the memory/disk utilization). The resource manager is also responsible for creating new volumes and adding new meta/data nodes to the ChubaoFS cluster. It has multiple replicas, among which the consistency is maintained by a consensus algorithm such as Raft, and persisted to a key value store such as RocksDB for backup and recovery.
+The resource manager  manages the file system by processing different types of tasks, such as creating/deleting/updating/loading partitions and keeping track of the resource status (such as the memory/disk utilization). The resource manager is also responsible for creating new volumes and adding new meta/data nodes to the ChubaoFS cluster. It has multiple replicas, among which the consistency is maintained by a consensus algorithm such as Raft, and persisted to a key value store such as RocksDB for backup and recovery.
 
 Utilization-Based Distribution/Placement
 -----------------------------------------
@@ -10,7 +10,7 @@ The resource manager is a utilization-based distribution strategy to places the 
 Because each  node can have multiple  partitions, and  the  partitions in a volume do not need to reside on the same node, this distribution can be controlled at a finer  granularity, resulting a more efficient resource management.
 Specifically, the distribution of file metadata and contents works follows:
 
-First, when mounting a volume, the client  asks the resource manager for a set of available meta and data partitions. These partitions are usually the ones  on the nodes with the lowest memory/disk utilizations. Later on, when writing a file,  the client can only choose the meta and data partitions  in a random fashion  from the ones allocated by the resource manager.
+First, when mounting a volume, the client  asks the resource manager for a set of available meta and data partitions. These partitions are usually the ones  on the nodes with the lowest memory/disk utilizations. Later on, when writing a file,  the client can only choose the meta and data partitions in a random fashion  from the ones allocated by the resource manager.
 
 Second,  when the resource manager  finds that all the partitions in a volume is about to be full,  it  automatically adds a set of new  partitions to this volume.  These partitions are usually the ones on the nodes with the lowest memory/disk utilizations.  Note that, when a  partition is full, or a threshold (i.e.,  the number of files on a meta partition or the number of extents on a data partition) is reached, no new data can be stored on this partition, although it can still be modified or deleted.
 
@@ -18,7 +18,7 @@ Second,  when the resource manager  finds that all the partitions in a volume is
 Replica Placement
 -----------------------
 
-When choosing partitions for the replicas, the resource manager ensures that  two replicas of the same partition never reside on the same node.
+When choosing partitions for the replicas, the resource manager ensures that two replicas of the same partition never reside on the same node.
 
 Meta Partition Splitting
 -------------------------

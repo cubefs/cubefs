@@ -20,6 +20,7 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
 	"time"
+	"math"
 )
 
 func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64) {
@@ -37,7 +38,7 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 	switch len(liveReplicas) {
 	case (int)(partition.ReplicaNum):
 		partition.Status = proto.ReadOnly
-		if partition.checkReplicaStatusOnLiveNode(liveReplicas) == true && partition.isReplicaSizeAligned() && partition.canWrite() {
+		if partition.checkReplicaStatusOnLiveNode(liveReplicas) == true && partition.canWrite() {
 			partition.Status = proto.ReadWrite
 		}
 	default:
@@ -73,11 +74,24 @@ func (partition *DataPartition) checkReplicaStatusOnLiveNode(liveReplicas []*Dat
 }
 
 func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
-	partition.RLock()
-	defer partition.RUnlock()
+	partition.Lock()
+	defer partition.Unlock()
 	for _, replica := range partition.Replicas {
-		replica.isLive(timeOutSec)
+		if !replica.isLive(timeOutSec) {
+			replica.Status = proto.Unavailable
+		}
 	}
+}
+
+func (partition *DataPartition) checkLeader(timeOut int64) {
+	partition.Lock()
+	defer partition.Unlock()
+	for _, dr := range partition.Replicas {
+		if !dr.isLive(timeOut) {
+			dr.IsLeader = false
+		}
+	}
+	return
 }
 
 // Check if there is any missing replica for a data partition.
@@ -169,13 +183,14 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) (di
 func (partition *DataPartition) checkReplicationTask(clusterID string, dataPartitionSize uint64) (tasks []*proto.AdminTask) {
 	var msg string
 	tasks = make([]*proto.AdminTask, 0)
-	if excessAddr, task, excessErr := partition.deleteIllegalReplica(); excessErr != nil {
-		tasks = append(tasks, task)
+	if excessAddr, excessErr := partition.deleteIllegalReplica(); excessErr != nil {
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Excess Replication"+
 			" On :%v  Err:%v  rocksDBRecords:%v",
 			deleteIllegalReplicaErr, partition.PartitionID, excessAddr, excessErr.Error(), partition.Hosts)
 		Warn(clusterID, msg)
-
+		partition.Lock()
+		partition.removeReplicaByAddr(excessAddr)
+		partition.Unlock()
 	}
 	if partition.Status == proto.ReadWrite {
 		return
@@ -192,21 +207,17 @@ func (partition *DataPartition) checkReplicationTask(clusterID string, dataParti
 	return
 }
 
-func (partition *DataPartition) deleteIllegalReplica() (excessAddr string, task *proto.AdminTask, err error) {
+func (partition *DataPartition) deleteIllegalReplica() (excessAddr string, err error) {
 	partition.Lock()
 	defer partition.Unlock()
 	for i := 0; i < len(partition.Replicas); i++ {
 		replica := partition.Replicas[i]
 		if ok := partition.hasHost(replica.Addr); !ok {
 			excessAddr = replica.Addr
-			log.LogError(fmt.Sprintf("action[removeIllegalReplica],partitionID:%v,has excess replication:%v",
-				partition.PartitionID, excessAddr))
 			err = proto.ErrIllegalDataReplica
-			task = partition.createTaskToDeleteDataPartition(excessAddr)
 			break
 		}
 	}
-
 	return
 }
 
@@ -230,4 +241,27 @@ func (partition *DataPartition) missingReplicaAddress(dataPartitionSize uint64) 
 	}
 
 	return
+}
+
+func (partition *DataPartition) checkReplicaSize(clusterID string, diffSpaceUsage uint64) {
+	partition.RLock()
+	defer partition.RUnlock()
+	if len(partition.Replicas) == 0 {
+		return
+	}
+	diff := 0.0
+	sentry := float64(partition.Replicas[0].Used)
+	for _, dr := range partition.Replicas {
+		temp := math.Abs(float64(dr.Used) - sentry)
+		if temp > diff {
+			diff = temp
+		}
+	}
+	if diff > float64(diffSpaceUsage) {
+		msg := fmt.Sprintf("difference space usage [%v] larger than %v, ", diff, diffSpaceUsage)
+		for _, dr := range partition.Replicas {
+			msg = msg + fmt.Sprintf("replica[%v],used[%v];", dr.Addr, dr.Used)
+		}
+		Warn(clusterID, msg)
+	}
 }

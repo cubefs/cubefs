@@ -1,4 +1,4 @@
-// Copyright 2018 The ChubaoFS Authors.
+// Copyright 2019 The ChubaoFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,17 +16,15 @@ package objectnode
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"io/ioutil"
 	"net/http"
 
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/gorilla/mux"
 )
 
+// https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketPolicy.html
 func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("Get bucket acl")
 	var (
 		err error
 		ec  *ErrorCode
@@ -45,13 +43,14 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 		ec = NoSuchBucket
 		return
 	}
-	ossMeta := vol.OSSMeta()
-	if ossMeta == nil {
-		ossMeta = &OSSMeta{}
+	var policy *Policy
+	if policy, err = vol.metaLoader.loadPolicy(); err != nil {
+		ec = InternalErrorCode(err)
+		return
 	}
 
 	var policyData []byte
-	policyData, err = json.Marshal(ossMeta.policy)
+	policyData, err = json.Marshal(policy)
 	if err != nil {
 		ec = InternalErrorCode(err)
 		return
@@ -62,6 +61,7 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	return
 }
 
+// https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketPolicy.html
 func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
@@ -113,21 +113,28 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	return
 }
 
+// https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketPolicy.html
 func (o *ObjectNode) deleteBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("delete bucket policy...")
-	var (
-		err error
-		ec  *ErrorCode
-	)
-	defer o.errorResponse(w, r, err, ec)
+	log.LogInfof("Delete bucket policy...")
 
-	vars := mux.Vars(r)
-	bucket := vars["bucket"]
-	if bucket == "" {
-		err = errors.New("")
-		ec = NoSuchBucket
+	var err error
+	var param = ParseRequestParam(r)
+	if param.Bucket() == "" {
+		_ = NoSuchBucket.ServeResponse(w, r)
+		return
+	}
+	var vol *Volume
+	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
 
+	if err = deleteBucketPolicy(vol); err != nil {
+		_ = InternalErrorCode(err).ServeResponse(w, r)
+		return
+	}
+	vol.metaLoader.storePolicy(nil)
+
+	w.WriteHeader(http.StatusNoContent)
 	return
 }

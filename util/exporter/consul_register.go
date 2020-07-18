@@ -18,16 +18,16 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
-	RegisterPeriod = time.Duration(1) * time.Minute
+	RegisterPeriod = time.Duration(10) * time.Minute
 	RegisterPath   = "/v1/agent/service/register"
 )
 
@@ -48,35 +48,60 @@ func GetConsulId(app string, role string, host string, port int64) string {
 	return fmt.Sprintf("%s_%s_%s_%d", app, role, host, port)
 }
 
-func RegisterConsul(addr, app, role, cluster string, port int64) {
+// do consul register process
+func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
 	if len(addr) <= 0 {
 		return
 	}
-	log.LogDebugf("consul register enable %v", addr)
+	log.LogInfof("metrics consul register %v %v %v", addr, cluster, port)
 	ticker := time.NewTicker(RegisterPeriod)
 	defer func() {
 		if err := recover(); err != nil {
-			ticker.Stop()
 			log.LogErrorf("RegisterConsul panic,err[%v]", err)
 		}
+		ticker.Stop()
 	}()
 
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				SendRegisterReq(addr, app, role, cluster, port)
+	host, err := GetLocalIpAddr()
+	if err != nil {
+		log.LogErrorf("get local ip error, %v", err.Error())
+		return
+	}
+
+	client := &http.Client{}
+	req := makeRegisterReq(host, addr, app, role, cluster, port)
+	if req == nil {
+		log.LogErrorf("make register req error")
+		return
+	}
+
+	if resp, _ := client.Do(req); resp != nil {
+		ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+	}
+
+	for {
+		select {
+		case <-ticker.C:
+			req := makeRegisterReq(host, addr, app, role, cluster, port)
+			if req == nil {
+				log.LogErrorf("make register req error")
+				return
+			}
+			if resp, _ := client.Do(req); resp != nil {
+				ioutil.ReadAll(resp.Body)
+				resp.Body.Close()
 			}
 		}
-	}()
+	}
 }
 
 // GetLocalIpAddr returns the local IP address.
 func GetLocalIpAddr() (ipaddr string, err error) {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
+		log.LogError("consul register get local ip failed, ", err)
+		return
 	}
 	for _, addr := range addrs {
 		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
@@ -88,13 +113,8 @@ func GetLocalIpAddr() (ipaddr string, err error) {
 	return "", fmt.Errorf("cannot get local ip")
 }
 
-// SendRegisterReq sends the register request.
-func SendRegisterReq(addr string, app string, role string, cluster string, port int64) {
-	host, err := GetLocalIpAddr()
-	if err != nil {
-		log.LogErrorf("get local ip error, %v", err.Error())
-		return
-	}
+// make a consul rest request
+func makeRegisterReq(host, addr, app, role, cluster string, port int64) (req *http.Request) {
 	id := GetConsulId(app, role, host, port)
 	url := addr + RegisterPath
 	cInfo := &ConsulRegisterInfo{
@@ -108,20 +128,18 @@ func SendRegisterReq(addr string, app string, role string, cluster string, port 
 			"cluster=" + cluster,
 		},
 	}
-	client := &http.Client{}
-	cInfoBytes, err1 := json.Marshal(cInfo)
-	if err1 != nil {
-		log.LogErrorf("marshal error, %v", err1.Error())
-		return
+	cInfoBytes, err := json.Marshal(cInfo)
+	if err != nil {
+		log.LogErrorf("marshal error, %v", err.Error())
+		return nil
 	}
-	req, err2 := http.NewRequest(http.MethodPut, url, bytes.NewBuffer(cInfoBytes))
-	if err2 != nil {
-		log.LogErrorf("new request error, %v", err2.Error())
-		return
+	req, err = http.NewRequest(http.MethodPut, url, bytes.NewBuffer(cInfoBytes))
+	if err != nil {
+		log.LogErrorf("new request error, %v", err.Error())
+		return nil
 	}
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	_, err3 := client.Do(req)
-	if err3 != nil {
-		log.LogErrorf("Error on register consul resp: %v, ", err3.Error())
-	}
+	req.Close = true
+
+	return
 }

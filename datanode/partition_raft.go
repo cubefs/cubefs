@@ -76,6 +76,12 @@ func (dp *DataPartition) StartRaft() (err error) {
 		replicaPort   int
 		peers         []raftstore.PeerAddress
 	)
+	defer func() {
+		if r := recover(); r != nil {
+			mesg := fmt.Sprintf("StartRaft(%v)  Raft Panic (%v)", dp.partitionID, r)
+			panic(mesg)
+		}
+	}()
 
 	if heartbeatPort, replicaPort, err = dp.raftPort(); err != nil {
 		return
@@ -435,6 +441,17 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 	log.LogInfo("Start: startRaftServer")
 
 	s.parseRaftConfig(cfg)
+
+	constCfg := config.ConstConfig{
+		Listen:           s.port,
+		RaftHeartbetPort: s.raftHeartbeat,
+		RaftReplicaPort:  s.raftReplica,
+	}
+	var ok = false
+	if ok, err = config.CheckOrStoreConstCfg(s.raftDir, config.DefaultConstConfigFile, &constCfg); !ok {
+		log.LogErrorf("constCfg check failed %v %v %v %v", s.raftDir, config.DefaultConstConfigFile, constCfg, err)
+		return fmt.Errorf("constCfg check failed %v %v %v %v", s.raftDir, config.DefaultConstConfigFile, constCfg, err)
+	}
 
 	if _, err = os.Stat(s.raftDir); err != nil {
 		if err = os.MkdirAll(s.raftDir, 0755); err != nil {

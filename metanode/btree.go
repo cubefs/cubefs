@@ -88,6 +88,12 @@ func (b *BTree) Delete(key BtreeItem) (item BtreeItem) {
 	return
 }
 
+func (b *BTree) Execute(fn func(tree *btree.BTree) interface{}) interface{} {
+	b.Lock()
+	defer b.Unlock()
+	return fn(b.tree)
+}
+
 // ReplaceOrInsert is the wrapper of google's btree ReplaceOrInsert.
 func (b *BTree) ReplaceOrInsert(key BtreeItem, replace bool) (item BtreeItem, ok bool) {
 	b.Lock()

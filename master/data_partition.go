@@ -156,7 +156,7 @@ func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 
 	otherLiveReplicas := make([]*DataReplica, 0)
 	for i := 0; i < len(liveReplicas); i++ {
-		replica := partition.Replicas[i]
+		replica := liveReplicas[i]
 		if replica.Addr != offlineAddr {
 			otherLiveReplicas = append(otherLiveReplicas, replica)
 		}
@@ -266,6 +266,7 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	dpr.Hosts = make([]string, len(partition.Hosts))
 	copy(dpr.Hosts, partition.Hosts)
 	dpr.LeaderAddr = partition.getLeaderAddr()
+	dpr.IsRecover = partition.isRecover
 	return
 }
 
@@ -560,26 +561,6 @@ func (partition *DataPartition) afterCreation(nodeAddr, diskPath string, c *Clus
 	partition.addReplica(replica)
 	partition.checkAndRemoveMissReplica(replica.Addr)
 	return
-}
-
-// Check if the replica's size is aligned or not.
-func (partition *DataPartition) isReplicaSizeAligned() bool {
-	if len(partition.Replicas) == 0 {
-		return true
-	}
-	used := partition.Replicas[0].Used
-
-	var diff float64
-	for _, replica := range partition.Replicas {
-		tempDiff := math.Abs(float64(replica.Used) - float64(used))
-		if tempDiff > diff {
-			diff = tempDiff
-		}
-	}
-	if diff < float64(util.GB) {
-		return true
-	}
-	return false
 }
 
 // Check if it makes sense to compare the CRC.

@@ -18,7 +18,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 )
@@ -60,6 +59,9 @@ type monitorMetrics struct {
 	diskError          *exporter.Gauge
 	dataNodesInactive  *exporter.Gauge
 	metaNodesInactive  *exporter.Gauge
+	volTotalGauge      *exporter.Gauge
+	volUsedGauge       *exporter.Gauge
+	volUsageRatioGauge *exporter.Gauge
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
@@ -82,6 +84,9 @@ func (mm *monitorMetrics) start() {
 	mm.diskError = exporter.NewGauge(MetricDiskError)
 	mm.dataNodesInactive = exporter.NewGauge(MetricDataNodesInactive)
 	mm.metaNodesInactive = exporter.NewGauge(MetricMetaNodesInactive)
+	mm.volTotalGauge = exporter.NewGauge(MetricVolTotalGB)
+	mm.volUsedGauge = exporter.NewGauge(MetricVolUsedGB)
+	mm.volUsageRatioGauge = exporter.NewGauge(MetricVolUsageGB)
 	go mm.statMetrics()
 }
 
@@ -137,16 +142,11 @@ func (mm *monitorMetrics) setVolMetrics() {
 			return true
 		}
 		labels := map[string]string{"volName": volName}
-		volTotalGauge := exporter.NewGauge(MetricVolTotalGB)
-		volTotalGauge.SetWithLabels(int64(volStatInfo.TotalSize/util.GB), labels)
-
-		volUsedGauge := exporter.NewGauge(MetricVolUsedGB)
-		volUsedGauge.SetWithLabels(int64(volStatInfo.UsedSize/util.GB), labels)
-
-		volUsageRatioGauge := exporter.NewGauge(MetricVolUsageGB)
+		mm.volTotalGauge.SetWithLabels(int64(volStatInfo.TotalSize), labels)
+		mm.volUsedGauge.SetWithLabels(int64(volStatInfo.UsedSize), labels)
 		usedRatio, e := strconv.ParseFloat(volStatInfo.UsedRatio, 64)
 		if e == nil {
-			volUsageRatioGauge.SetWithLabels(int64(usedRatio), labels)
+			mm.volUsageRatioGauge.SetWithLabels(int64(usedRatio), labels)
 		}
 
 		return true
@@ -165,8 +165,7 @@ func (mm *monitorMetrics) setDiskErrorMetric() {
 					labels := make(map[string]string, 0)
 					labels["addr"] = dataNode.Addr
 					labels["path"] = badDisk
-					volTotalGauge := exporter.NewGauge(MetricDiskError)
-					volTotalGauge.SetWithLabels(1, labels)
+					mm.diskError.SetWithLabels(1, labels)
 					break
 				}
 			}

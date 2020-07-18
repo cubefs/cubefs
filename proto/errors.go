@@ -80,6 +80,7 @@ var (
 	ErrTokenNotFound                   = errors.New("token not found")
 	ErrInvalidAccessKey                = errors.New("invalid access key")
 	ErrInvalidSecretKey                = errors.New("invalid secret key")
+	ErrIsOwner                         = errors.New("user owns the volume")
 )
 
 // http response error code and error message definitions
@@ -142,6 +143,7 @@ const (
 	ErrCodeTokenNotExist
 	ErrCodeInvalidAccessKey
 	ErrCodeInvalidSecretKey
+	ErrCodeIsOwner
 )
 
 // Err2CodeMap error map to code
@@ -202,6 +204,7 @@ var Err2CodeMap = map[error]int32{
 	ErrTokenNotFound:                   ErrCodeTokenNotExist,
 	ErrInvalidAccessKey:                ErrCodeInvalidAccessKey,
 	ErrInvalidSecretKey:                ErrCodeInvalidSecretKey,
+	ErrIsOwner:                         ErrCodeIsOwner,
 }
 
 func ParseErrorCode(code int32) error {
@@ -269,4 +272,14 @@ var code2ErrMap = map[int32]error{
 	ErrCodeTokenNotExist:                   ErrTokenNotFound,
 	ErrCodeInvalidAccessKey:                ErrInvalidAccessKey,
 	ErrCodeInvalidSecretKey:                ErrInvalidSecretKey,
+	ErrCodeIsOwner:                         ErrIsOwner,
+}
+
+type GeneralResp struct {
+	Message string
+	Code    int32
+}
+
+func Success(msg string) *GeneralResp {
+	return &GeneralResp{Message: msg, Code: ErrCodeSuccess}
 }

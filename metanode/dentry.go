@@ -45,6 +45,8 @@ type Dentry struct {
 	Type     uint32
 }
 
+type DentryBatch []*Dentry
+
 // Marshal marshals a dentry into a byte array.
 func (d *Dentry) Marshal() (result []byte, err error) {
 	keyBytes := d.MarshalKey()
@@ -95,6 +97,56 @@ func (d *Dentry) Unmarshal(raw []byte) (err error) {
 	}
 	err = d.UnmarshalValue(valBytes)
 	return
+}
+
+// Marshal marshals the dentryBatch into a byte array.
+func (d DentryBatch) Marshal() ([]byte, error) {
+	buff := bytes.NewBuffer(make([]byte, 0))
+	if err := binary.Write(buff, binary.BigEndian, uint32(len(d))); err != nil {
+		return nil, err
+	}
+	for _, dentry := range d {
+		bs, err := dentry.Marshal()
+		if err != nil {
+			return nil, err
+		}
+		if err = binary.Write(buff, binary.BigEndian, uint32(len(bs))); err != nil {
+			return nil, err
+		}
+		if _, err := buff.Write(bs); err != nil {
+			return nil, err
+		}
+	}
+	return buff.Bytes(), nil
+}
+
+// Unmarshal unmarshals the dentryBatch.
+func DentryBatchUnmarshal(raw []byte) (DentryBatch, error) {
+	buff := bytes.NewBuffer(raw)
+	var batchLen uint32
+	if err := binary.Read(buff, binary.BigEndian, &batchLen); err != nil {
+		return nil, err
+	}
+
+	result := make(DentryBatch, 0, int(batchLen))
+
+	var dataLen uint32
+	for j := 0; j < int(batchLen); j++ {
+		if err := binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
+			return nil, err
+		}
+		data := make([]byte, int(dataLen))
+		if _, err := buff.Read(data); err != nil {
+			return nil, err
+		}
+		den := &Dentry{}
+		if err := den.Unmarshal(data); err != nil {
+			return nil, err
+		}
+		result = append(result, den)
+	}
+
+	return result, nil
 }
 
 // Less tests whether the current dentry is less than the given one.

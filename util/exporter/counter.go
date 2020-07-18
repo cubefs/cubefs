@@ -35,7 +35,6 @@ func collectCounter() {
 		m := <-CounterCh
 		metric := m.Metric()
 		metric.Add(float64(m.val))
-		CounterPool.Put(m)
 	}
 }
 
@@ -47,7 +46,7 @@ func NewCounter(name string) (c *Counter) {
 	if !enabledPrometheus {
 		return
 	}
-	c = CounterPool.Get().(*Counter)
+	c = new(Counter)
 	c.name = metricsName(name)
 	return
 }

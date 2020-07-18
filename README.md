@@ -1,5 +1,6 @@
 # ChubaoFS
 
+[![CNCF Status](https://img.shields.io/badge/cncf%20status-sandbox-blue.svg)](https://www.cncf.io/sandbox-projects)
 [![Build Status](https://travis-ci.org/chubaofs/chubaofs.svg?branch=master)](https://travis-ci.org/chubaofs/chubaofs)
 [![LICENSE](https://img.shields.io/github/license/chubaofs/chubaofs.svg)](https://github.com/chubaofs/chubaofs/blob/master/LICENSE)
 [![Language](https://img.shields.io/badge/Language-Go-blue.svg)](https://golang.org/)
@@ -8,15 +9,14 @@
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs?ref=badge_shield)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/2761/badge)](https://bestpractices.coreinfrastructure.org/projects/2761)
 
-<img src="https://user-images.githubusercontent.com/47099843/55525970-bf53d880-56c5-11e9-8c28-55d208859824.png" width="400" height="293" />
+<div width="100%" style="text-align:center;"><img alt="ChubaoFS" src="https://user-images.githubusercontent.com/5708406/83598049-556de200-a59b-11ea-9a31-6daa1439f81a.png" height="200"/></div>
 
 ## Overview
 
-ChubaoFS (储宝文件系统 in Chinese) is a distributed file system and object storage service for cloud native applications. It is hosted by the [Cloud Native Computing Foundation](https://cncf.io) (CNCF) as a [sandbox](https://www.cncf.io/sandbox-projects/) project.
+ChubaoFS (储宝文件系统 in Chinese) is a cloud-native storage platform that provides both POSIX-compliant and S3-compatible interfaces. It is hosted by the [Cloud Native Computing Foundation](https://cncf.io) (CNCF) as a [sandbox](https://www.cncf.io/sandbox-projects/) project.
 
 ChubaoFS has been commonly used as the underlying storage infrastructure for online applications, database or data processing services and machine learning jobs orchestrated by Kubernetes. 
 An advantage of doing so is to separate storage from compute - one can scale up or down based on the workload and independent of the other, providing total flexibility in matching resources to the actual storage and compute capacity required at any given time.
-
 
 Some key features of ChubaoFS include:
 
@@ -37,9 +37,9 @@ We are committed to making ChubaoFS better and more mature. Please stay tuned.
 
 ## Document
 
-https://chubaofs.readthedocs.io/en/latest/
+English version: https://chubaofs.readthedocs.io/en/latest/
 
-https://chubaofs.readthedocs.io/zh_CN/latest/
+Chinese version: https://chubaofs.readthedocs.io/zh_CN/latest/
 
 ## Benchmark
 
@@ -172,22 +172,25 @@ $ docker/run_docker.sh -h
 ## Helm chart to Run a ChubaoFS Cluster in Kubernetes 
 
 The [chubaofs-helm](https://github.com/chubaofs/chubaofs-helm) repository can help you deploy ChubaoFS cluster quickly in containers orchestrated by kubernetes.
-Kubernetes 1.16+ and Helm 3 are required.
+Kubernetes 1.12+ and Helm 3 are required. chubaofs-helm has already integrated ChubaoFS CSI plugin
 
-Initialize Helm:
+### Download chubaofs-helm
 
-``` 
-$ helm init
+```
+$ git clone https://github.com/chubaofs/chubaofs-helm
+$ cd chubaofs-helm
 ```
 
-Add repository to download Helm chart of ChubaoFS:
+### Copy kubeconfig file
+ChubaoFS CSI driver will use client-go to connect the Kubernetes API Server. First you need to copy the kubeconfig file to `chubaofs-helm/chubaofs/config/` directory, and rename to kubeconfig
 
-``` 
-$ helm repo add chubaofs https://chubaofs.github.io/chubaofs-charts
-$ helm repo update
+```
+$ cp ~/.kube/config chubaofs/config/kubeconfig
 ```
 
-Create the configuration file `chubaofs.yaml` and put it in a user-defined path.
+### Create configuration yaml file
+
+Create a `chubaofs.yaml` file, and put it in a user-defined path. Suppose this is where we put it.
 
 ```
 $ cat ~/chubaofs.yaml 
@@ -200,43 +203,34 @@ path:
 
 datanode:
   disks:
-    - disk: "/data0:21474836480"
-    - disk: "/data1:21474836480"
-      
+    - /data0:21474836480
+    - /data1:21474836480 
+
 metanode:
-  total_mem: "2147483648"
+  total_mem: "26843545600"
+
+provisioner:
+  kubelet_path: /var/lib/kubelet
 ```
 
-> Note that `chubaofs-helm/chubaofs/values.yaml` includes all the parameters of ChubaoFS.
-> Parameters `path.data` and `path.log` define paths to store the data and logs of ChubaoFS server, respectively.
+> Note that `chubaofs-helm/chubaofs/values.yaml` shows all the config parameters of ChubaoFS.
+> The parameters `path.data` and `path.log` are used to store server data and logs, respectively.
 
-Label the nodes in Kubernetes according to different roles(master/metanode/datanode):
+### Add labels to Kubernetes node
 
-```
-$ kubectl label node <nodename> chuabaofs-master=enabled
-$ kubectl label node <nodename> chuabaofs-metanode=enabled
-$ kubectl label node <nodename> chuabaofs-datanode=enabled
-```
-
-Install ChubaoFS cluster with Helm:
-```
-$ helm install chubaofs chubaofs/chubaofs --version 1.5.0 -f ~/chubaofs.yaml
-```
-
-Delete ChubaoFS cluster:
+You should tag each Kubernetes node with the appropriate labels accorindly for server node and CSI node of ChubaoFS.
 
 ```
-$ helm delete chubaofs
+kubectl label node <nodename> chuabaofs-master=enabled
+kubectl label node <nodename> chuabaofs-metanode=enabled
+kubectl label node <nodename> chuabaofs-datanode=enabled
+kubectl label node <nodename> chubaofs-csi-node=enabled
 ```
 
-Refer to [chubaofs-helm](https://github.com/chubaofs/chubaofs-helm/blob/master/README.md) for deployment with Helm 2 and deployment of monitoring system.
-
-## License
-
-ChubaoFS is licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
-For detail see [LICENSE](LICENSE) and [NOTICE](NOTICE).
-
-[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs?ref=badge_large)
+### Deploy ChubaoFS cluster
+```
+$ helm install chubaofs ./chubaofs -f ~/chubaofs.yaml
+```
 
 ## Reference
 
@@ -249,3 +243,15 @@ For more information, please refer to https://dl.acm.org/citation.cfm?doid=32998
 - Twitter: [@ChubaoFS](https://twitter.com/ChubaoFS)
 - Mailing list: chubaofs-users@groups.io
 - Slack: [chubaofs.slack.com](https://chubaofs.slack.com/)
+- WeChat: detail see [here](https://github.com/chubaofs/chubaofs/issues/604).
+
+## Partners and Users
+
+For a list of users and success stories see [ADOPTERS.md](ADOPTERS.md).
+
+## License
+
+ChubaoFS is licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
+For detail see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs?ref=badge_large)

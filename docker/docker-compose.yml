@@ -9,7 +9,7 @@ networks:
 
 services:
     monitor:
-        image: chubaofs/cfs-base:1.0
+        image: chubaofs/cfs-base:1.1
         depends_on:
             - consul
             - prometheus
@@ -18,7 +18,7 @@ services:
             extnetwork:
 
     servers:
-        image: chubaofs/cfs-base:1.0
+        image: chubaofs/cfs-base:1.1
         depends_on:
             - master1
             - master2
@@ -34,12 +34,13 @@ services:
             - objectnode1
             - objectnode2
             - objectnode3
+            - console1
             - nginx
         networks:
             extnetwork:
 
     master1:
-        image: chubaofs/cfs-base:1.0
+        image: chubaofs/cfs-base:1.1
         ports:
             - "5901"
             - "5902"
@@ -47,7 +48,9 @@ services:
             - "17020"
             - 9500
         volumes:
+            - ${DiskPath:-./docker_data}/master1/data:/cfs/data
             - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/master1/log:/cfs/log
             - ./conf/master1.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -58,7 +61,7 @@ services:
                 ipv4_address: 192.168.0.11
 
     master2:
-        image: chubaofs/cfs-base:1.0
+        image: chubaofs/cfs-base:1.1
         ports:
             - "5901"
             - "5902"
@@ -66,7 +69,9 @@ services:
             - "17020"
             - 9500
         volumes:
+            - ${DiskPath:-./docker_data}/master2/data:/cfs/data
             - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/master2/log:/cfs/log
             - ./conf/master2.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -76,7 +81,7 @@ services:
             extnetwork:
                 ipv4_address: 192.168.0.12
     master3:
-        image: chubaofs/cfs-base:1.0
+        image: chubaofs/cfs-base:1.1
         ports:
             - "5901"
             - "5902"
@@ -84,7 +89,9 @@ services:
             - "17020"
             - 9500
         volumes:
+            - ${DiskPath:-./docker_data}/master3/data:/cfs/data
             - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/master3/log:/cfs/log
             - ./conf/master3.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -95,7 +102,7 @@ services:
                 ipv4_address: 192.168.0.13
 
     metanode1:
-        image: chubaofs/cfs-base:1.0
+        image: chubaofs/cfs-base:1.1
         ports:
             - "17210"
             - "17220"
@@ -103,7 +110,9 @@ services:
             - "17240"
             - 9500
         volumes:
+            - ${DiskPath:-./docker_data}/metanode1/data:/cfs/data
             - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/metanode1/log:/cfs/log
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
@@ -114,7 +123,7 @@ services:
                 ipv4_address: 192.168.0.21
 
     metanode2:
-        image: chubaofs/cfs-base:1.0
+        image: chubaofs/cfs-base:1.1
         ports:
             - "17210"
             - "17220"
@@ -122,7 +131,9 @@ services:
             - "17240"
             - 9500
         volumes:
+            - ${DiskPath:-./docker_data}/metanode2/data:/cfs/data
             - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/metanode2/log:/cfs/log
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
@@ -133,7 +144,7 @@ services:
                 ipv4_address: 192.168.0.22
 
     metanode3:
-        image: chubaofs/cfs-base:1.0
+        image: chubaofs/cfs-base:1.1
         ports:
             - "17210"
             - "17220"
@@ -141,7 +152,9 @@ services:
             - "17240"
             - 9500
         volumes:
+            - ${DiskPath:-./docker_data}/metanode3/data:/cfs/data
             - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/metanode3/log:/cfs/log
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
@@ -152,26 +165,28 @@ services:
                 ipv4_address: 192.168.0.23
 
     metanode4:
-            image: chubaofs/cfs-base:1.0
-            ports:
-                - "17210"
-                - "17220"
-                - "17230"
-                - "17240"
-                - 9500
-            volumes:
-                - ./bin:/cfs/bin:ro
-                - ./conf/metanode.json:/cfs/conf/metanode.json
-                - ./script/start_meta.sh:/cfs/script/start.sh
-            command: /bin/bash /cfs/script/start.sh
-            restart: on-failure
-            privileged: true
-            networks:
-                extnetwork:
-                    ipv4_address: 192.168.0.24
+        image: chubaofs/cfs-base:1.1
+        ports:
+            - "17210"
+            - "17220"
+            - "17230"
+            - "17240"
+            - 9500
+        volumes:
+            - ${DiskPath:-./docker_data}/metanode4/data:/cfs/data
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/metanode4/log:/cfs/log
+            - ./conf/metanode.json:/cfs/conf/metanode.json
+            - ./script/start_meta.sh:/cfs/script/start.sh
+        command: /bin/bash /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.24
 
     datanode1:
-        image: chubaofs/cfs-base:1.0
+        image: chubaofs/cfs-base:1.1
         ports:
             - "17310"
             - "17320"
@@ -179,8 +194,9 @@ services:
             - "17340"
             - 9500
         volumes:
-            - ${DiskPath:-./disk}/1:/cfs/disk
+            - ${DiskPath:-./docker_data}/datanode1/disk:/cfs/disk
             - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/datanode1/log:/cfs/log
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/bash /cfs/script/start.sh
@@ -191,7 +207,7 @@ services:
                 ipv4_address: 192.168.0.31
 
     datanode2:
-        image: chubaofs/cfs-base:1.0
+        image: chubaofs/cfs-base:1.1
         ports:
             - "17310"
             - "17320"
@@ -199,8 +215,9 @@ services:
             - "17340"
             - 9500
         volumes:
-            - ${DiskPath:-./disk}/2:/cfs/disk
+            - ${DiskPath:-./docker_data}/datanode2/disk:/cfs/disk
             - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/datanode2/log:/cfs/log
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -211,7 +228,7 @@ services:
                 ipv4_address: 192.168.0.32
 
     datanode3:
-        image: chubaofs/cfs-base:1.0
+        image: chubaofs/cfs-base:1.1
         ports:
             - "17310"
             - "17320"
@@ -219,8 +236,9 @@ services:
             - "17340"
             - 9500
         volumes:
-            - ${DiskPath:-./disk}/3:/cfs/disk
+            - ${DiskPath:-./docker_data}/datanode3/disk:/cfs/disk
             - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/datanode3/log:/cfs/log
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -231,7 +249,7 @@ services:
                 ipv4_address: 192.168.0.33
 
     datanode4:
-        image: chubaofs/cfs-base:1.0
+        image: chubaofs/cfs-base:1.1
         ports:
             - "17310"
             - "17320"
@@ -239,8 +257,9 @@ services:
             - "17340"
             - 9500
         volumes:
-            - ${DiskPath:-./disk}/4:/cfs/disk
+            - ${DiskPath:-./docker_data}/datanode4/disk:/cfs/disk
             - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/datanode4/log:/cfs/log
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
@@ -251,63 +270,92 @@ services:
                 ipv4_address: 192.168.0.34
 
     objectnode1:
-        image: chubaofs/cfs-base:1.0
+        image: chubaofs/cfs-base:1.1
         ports:
             - "80"
+            - 9500
         volumes:
             - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/objectnode1/log:/cfs/log
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+          - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.41
 
     objectnode2:
-        image: chubaofs/cfs-base:1.0
+        image: chubaofs/cfs-base:1.1
         ports:
             - "80"
+            - 9500
         volumes:
             - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/objectnode2/log:/cfs/log
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+          - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.42
 
     objectnode3:
-        image: chubaofs/cfs-base:1.0
+        image: chubaofs/cfs-base:1.1
         ports:
             - "80"
+            - 9500
         volumes:
             - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/objectnode3/log:/cfs/log
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+          - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.43
 
+
+    console1:
+        image: chubaofs/cfs-base:1.1
+        ports:
+          - "80"
+        volumes:
+          - ./bin:/cfs/bin:ro
+          - ${DiskPath:-./docker_data}/console/log:/cfs/log
+          - ./conf/console.json:/cfs/conf/console.json
+          - ./script/start_console.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        networks:
+          extnetwork:
+            ipv4_address: 192.168.0.50
+
     client:
-        image: chubaofs/cfs-base:1.0
+        image: chubaofs/cfs-base:1.1
         ports:
             - 9500
         volumes:
             - ./bin:/cfs/bin:ro
             - ./conf/hosts:/etc/hosts:ro
             - ./conf/client.json:/cfs/conf/client.json
+            - ${DiskPath:-./docker_data}/client/log:/cfs/log
             - ./script/run_test.sh:/cfs/script/start.sh
             - ./script/start_client.sh:/cfs/script/start_client.sh
             - ./ltp/runtest/fs:/opt/ltp/runtest/fs
-            - ./s3tests/s3tests.txt:/opt/s3tests/s3tests.txt:ro
-            - ./s3tests/s3tests.conf:/opt/s3tests/s3tests.conf:ro
+            - ./s3tests:/opt/s3tests:ro
         privileged: true
         devices:
             - /dev/fuse:/dev/fuse:rwm
@@ -340,7 +388,7 @@ services:
                 ipv4_address: 192.168.0.102
 
     grafana:
-        image: grafana/grafana:6.2.0
+        image: grafana/grafana:6.4.4
         environment:
             - GF_SECURITY_ADMIN_PASSWORD=123456
         ports:
@@ -369,7 +417,7 @@ services:
                 ipv4_address: 192.168.0.104
 
     build:
-        image: chubaofs/cfs-base:1.0
+        image: chubaofs/cfs-base:1.1
         volumes:
             - ../:/go/src/github.com/chubaofs/chubaofs
         command:
@@ -378,15 +426,15 @@ services:
             extnetwork:
 
     unit_test:
-        image: chubaofs/cfs-base:1.0
+        image: chubaofs/cfs-base:1.1
         volumes:
             - ../:/go/src/github.com/chubaofs/chubaofs
         command:
             - bash
             - "-c"
             - >-
-              set -e;
-              mkdir -p /go/src/github.com/chubaofs/chubaofs/docker/bin &&
-              cd /go/src/github.com/chubaofs/chubaofs && make test
+                set -e;
+                mkdir -p /go/src/github.com/chubaofs/chubaofs/docker/bin &&
+                cd /go/src/github.com/chubaofs/chubaofs && make test
         networks:
             extnetwork:
