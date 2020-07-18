@@ -246,6 +246,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		}
 		buff := bytes.NewBuffer(buf)
 		cursor += uint64(n)
+		var deleteCnt uint64
 		for {
 			if buff.Len() == 0 {
 				break
@@ -253,6 +254,10 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			if buff.Len() < proto.ExtentLength {
 				cursor -= uint64(buff.Len())
 				break
+			}
+			batchCount := DeleteBatchCount()
+			if deleteCnt%batchCount==0 {
+				DeleteWorkerSleepMs()
 			}
 			ek := proto.ExtentKey{}
 			if err = ek.UnmarshalBinary(buff); err != nil {
@@ -266,6 +271,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 				log.LogWarnf("[deleteExtentsFromList] partitionId=%d, %s",
 					mp.config.PartitionId, err.Error())
 			}
+			deleteCnt++
 		}
 		buff.Reset()
 		buff.WriteString(fmt.Sprintf("%s %d", fileName, cursor))
