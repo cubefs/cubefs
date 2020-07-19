@@ -63,6 +63,33 @@ $ git clone http://github.com/chubaofs/chubaofs.git
 $ cd chubaofs
 $ make
 ```
+### Build for arm64 
+
+For example,the current chubaofs directory is /root/arm64/chubaofs
+```
+cd /root/arm64/chubaofs
+CPUTYPE=arm64 && bash ./build.sh
+```
+#### Also support cross compiler with docker:
+Make sure vendor/dep directory has follow source code:
+bzip2-1.0.6  lz4-1.9.2  zlib-1.2.11  zstd-1.4.5
+
+```
+docker build --rm --tag arm64_gcc_golang_chubaofs ./build/compile/arm64
+
+
+make dist-clean
+docker run  -v /root/arm64/chubaofs:/root/chubaofs arm64_gcc_golang_chubaofs /root/buildcfs.sh
+```
+ 
+Remove image:
+```
+docker image remove -f  arm64_gcc_golang_chubaofs
+```
+
+
+
+
 
 ## Yum Tools to Run a ChubaoFS Cluster for CentOS 7+
 
@@ -134,7 +161,7 @@ $ bash install.sh -r client
 
 Check mount point at `/cfs/mountpoint` on `client` node defined in `iplist`. 
 
-Open [http://10.196.0.1:8500](https:/github.com/chubaofs/chubaofs) through a browser for monitoring system(the IP of monitoring system is defined in `iplist`). 
+Open [http://10.196.0.1](https:/github.com/chubaofs/chubaofs) through a browser for monitoring system(the IP of monitoring system is defined in `iplist`). 
 
 ## Run a ChubaoFS Cluster within Docker
 
