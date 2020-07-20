@@ -201,7 +201,6 @@ Sample *console.json is* shown as follows,
             "192.168.0.13:17010"
         ],
         "objectNodeDomain": "object.chubao.io",
-        "master_instance": "192.168.0.11:9066",
         "monitor_addr": "http://192.168.0.102:9090",
         "dashboard_addr": "http://192.168.0.103",
         "monitor_app": "cfs",
