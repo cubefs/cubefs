@@ -254,7 +254,7 @@ func (b *InodeRocks) Get(ino uint64) (*Inode, error) {
 	if err != nil {
 		return nil, err
 	}
-	if bs == nil {
+	if len(bs) == 0 {
 		return nil, nil
 	}
 	inode := &Inode{}
@@ -274,6 +274,9 @@ func (b *DentryRocks) Get(ino uint64, name string) (*Dentry, error) {
 		log.LogErrorf("[DentryRocks] Get parentId: %v, name: %v, error: %v", ino, name, err)
 		return nil, err
 	}
+	if len(bs) == 0 {
+		return nil, nil
+	}
 	dentry := &Dentry{}
 	if err := dentry.Unmarshal(bs); err != nil {
 		log.LogErrorf("[DentryRocks] Get unmarshal error parentId: %v, name: %v, error: %v", ino, name, err)
@@ -290,6 +293,9 @@ func (b *ExtendRocks) Get(ino uint64) (*Extend, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(bs) == 0 {
+		return nil, nil
+	}
 	return NewExtendFromBytes(bs)
 }
 
@@ -300,6 +306,9 @@ func (b *MultipartRocks) Get(key, id string) (*Multipart, error) {
 	bs, err := b.RocksTree.GetBytes(multipartEncodingKey(key, id))
 	if err != nil {
 		return nil, err
+	}
+	if len(bs) == 0 {
+		return nil, nil
 	}
 	return MultipartFromBytes(bs), nil
 }

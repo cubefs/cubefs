@@ -94,16 +94,17 @@ func (mp *MetaPartition) fsmCreateDentry(dentry *Dentry, forceUpdate bool) (stat
 func (mp *MetaPartition) getDentry(pid uint64, name string) (*Dentry, uint8) {
 	status := proto.OpOk
 	dentry, err := mp.dentryTree.RefGet(pid, name)
-	if dentry == nil {
-		log.LogErrorf("get nil dentry: [%v]: %v", pid, name)
-		status = proto.OpNotExistErr
-		return nil, status
-	}
 	if err != nil {
 		log.LogErrorf("get dentry has err:[%s]", err.Error())
 		status = proto.OpNotExistErr
 		return nil, status
 	}
+	if dentry == nil {
+		log.LogErrorf("get nil dentry: [%v]: %v", pid, name)
+		status = proto.OpNotExistErr
+		return nil, status
+	}
+
 	return dentry, status
 }
 

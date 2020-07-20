@@ -203,6 +203,8 @@ func (mp *MetaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	}
 	eks := ino.Extents.CopyExtents()
 	delExtents := ino2.AppendExtents(eks, ino.ModifyTime)
+
+	log.LogIfNotNil(mp.inodeTree.Put(ino2))
 	log.LogDebugf("[fsmAppendExtents] inode input: %v newInode: %v, eks: %v", ino, ino2, eks)
 	mp.extDelCh <- delExtents
 	return
