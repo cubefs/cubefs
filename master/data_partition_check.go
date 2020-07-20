@@ -152,8 +152,8 @@ func (partition *DataPartition) hasMissingDataPartition(addr string) (isMissing 
 	return
 }
 
-func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) (diskErrorAddrs []string) {
-	diskErrorAddrs = make([]string, 0)
+func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
+	diskErrorAddrs := make(map[string]string, 0)
 	partition.Lock()
 	defer partition.Unlock()
 	for _, addr := range partition.Hosts {
@@ -162,7 +162,7 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) (di
 			continue
 		}
 		if replica.Status == proto.Unavailable {
-			diskErrorAddrs = append(diskErrorAddrs, addr)
+			diskErrorAddrs[replica.Addr] = replica.DiskPath
 		}
 	}
 
@@ -170,10 +170,10 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) (di
 		partition.Status = proto.ReadOnly
 	}
 
-	for _, diskAddr := range diskErrorAddrs {
+	for addr, diskPath := range diskErrorAddrs {
 		msg := fmt.Sprintf("action[%v],clusterID[%v],partitionID:%v  On :%v  Disk Error,So Remove it From RocksDBHost",
-			checkDataPartitionDiskErr, clusterID, partition.PartitionID, diskAddr)
-		msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, diskAddr)
+			checkDataPartitionDiskErr, clusterID, partition.PartitionID, addr)
+		msg = msg + fmt.Sprintf(" decommissionDiskURL is http://%v/disk/decommission?addr=%v&disk=%v", leaderAddr, addr, diskPath)
 		Warn(clusterID, msg)
 	}
 
@@ -258,7 +258,8 @@ func (partition *DataPartition) checkReplicaSize(clusterID string, diffSpaceUsag
 		}
 	}
 	if diff > float64(diffSpaceUsage) {
-		msg := fmt.Sprintf("difference space usage [%v] larger than %v, ", diff, diffSpaceUsage)
+		msg := fmt.Sprintf("action[checkReplicaSize] vol[%v],partition[%v] difference space usage [%v] larger than %v, ",
+			partition.VolName, partition.PartitionID, diff, diffSpaceUsage)
 		for _, dr := range partition.Replicas {
 			msg = msg + fmt.Sprintf("replica[%v],used[%v];", dr.Addr, dr.Used)
 		}
