@@ -17,7 +17,7 @@ RUN add-apt-repository ppa:ubuntu-toolchain-r/aarch64
 RUN  apt-get -y  update
 # ubuntu16.04 using gcc-9-aarch64-linux-gnu，under Centos7.6 will fail：
 #RUN apt-get -y install gcc-4.9-aarch64-linux-gnu gcc-aarch64-linux-gnu g++-4.9-aarch64-linux-gnu g++-aarch64-linux-gnu
-RUN apt-get -y install  gcc-aarch64-linux-gnu  g++-aarch64-linux-gnu
+RUN apt-get -y install  gcc-aarch64-linux-gnu  g++-aarch64-linux-gnu unzip
 #go version 1.6,too low
 RUN wget https://golang.google.cn/dl/go1.13.11.linux-amd64.tar.gz
 RUN tar -C /usr/local -xzf go1.13.11.linux-amd64.tar.gz
