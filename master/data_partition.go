@@ -469,6 +469,7 @@ func (partition *DataPartition) loadFile(dataNode *DataNode, resp *proto.LoadDat
 		fc.updateFileInCore(partition.PartitionID, dpf, replica, index)
 	}
 	replica.HasLoadResponse = true
+	replica.Used = resp.Used
 }
 
 func (partition *DataPartition) getReplicaIndex(addr string) (index int, err error) {
