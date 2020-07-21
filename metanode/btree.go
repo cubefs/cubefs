@@ -59,6 +59,7 @@ type Snapshot interface {
 type Tree interface {
 	Release()
 	SetApplyID(index uint64)
+	GetApplyID() (uint64, error)
 	Flush() error
 }
 

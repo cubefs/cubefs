@@ -59,6 +59,19 @@ func (r *RocksTree) SetApplyID(id uint64) {
 	atomic.StoreUint64(&r.currentApplyID, id)
 }
 
+func (r *RocksTree) GetApplyID() (uint64, error) {
+	apply, err := r.GetBytes(applyIDKey)
+	if err != nil {
+		return 0, err
+	}
+	if len(apply) == 0 {
+		return 0, nil
+	}
+
+	return binary.BigEndian.Uint64(apply), nil
+
+}
+
 func (r *RocksTree) Flush() error {
 	return r.db.Flush(gorocksdb.NewDefaultFlushOptions())
 }

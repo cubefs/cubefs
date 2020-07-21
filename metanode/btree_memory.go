@@ -471,6 +471,10 @@ func (i *BTree) Release() {
 func (i *BTree) SetApplyID(index uint64) {
 }
 
+func (i *BTree) GetApplyID() (uint64, error) {
+	return 0, nil
+}
+
 func (i *BTree) Flush() error {
 	panic("implement me")
 }
