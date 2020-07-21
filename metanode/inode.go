@@ -476,13 +476,16 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &i.Reserved); err != nil {
 		return
 	}
-	if buff.Len() == 0 {
-		return
-	}
+
 	// unmarshal ExtentsKey
 	if i.Extents == nil {
 		i.Extents = NewSortedExtents()
 	}
+	
+	if buff.Len() == 0 {
+		return
+	}
+
 	if err = i.Extents.UnmarshalBinary(buff.Bytes()); err != nil {
 		return
 	}
