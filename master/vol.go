@@ -241,7 +241,6 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		if len(tasks) != 0 {
 			c.addDataNodeTasks(tasks)
 		}
-		dp.checkReplicaSize(c.Name, c.cfg.diffSpaceUsage)
 	}
 	return
 }

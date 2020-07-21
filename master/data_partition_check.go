@@ -78,7 +78,7 @@ func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
 	defer partition.Unlock()
 	for _, replica := range partition.Replicas {
 		if !replica.isLive(timeOutSec) {
-			replica.Status = proto.Unavailable
+			replica.Status = proto.ReadOnly
 		}
 	}
 }

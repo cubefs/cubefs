@@ -26,6 +26,10 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 )
 
+const (
+	defaultUsedSize = 20 * util.GB
+)
+
 type MockDataServer struct {
 	nodeID                          uint64
 	TcpAddr                         string
@@ -206,12 +210,12 @@ func (mds *MockDataServer) handleCreateDataPartition(conn net.Conn, p *proto.Pac
 	if err = json.Unmarshal(requestJson, req); err != nil {
 		return
 	}
-	// Create new  metaPartition.
+	// Create new  partition.
 	partition := &MockDataPartition{
 		PartitionID: req.PartitionId,
 		VolName:     req.VolumeId,
 		total:       req.PartitionSize,
-		used:        10 * util.GB,
+		used:        defaultUsedSize,
 	}
 	mds.partitions = append(mds.partitions, partition)
 	return
@@ -238,7 +242,7 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 			PartitionID:     partition.PartitionID,
 			PartitionStatus: proto.ReadWrite,
 			Total:           120 * util.GB,
-			Used:            20 * util.GB,
+			Used:            defaultUsedSize,
 			DiskPath:        "/cfs",
 			ExtentCount:     10,
 			NeedCompare:     true,
@@ -277,7 +281,7 @@ func (mds *MockDataServer) handleLoadDataPartition(conn net.Conn, pkg *proto.Pac
 	partitionID := uint64(req.PartitionId)
 	response := &proto.LoadDataPartitionResponse{}
 	response.PartitionId = partitionID
-	response.Used = 10 * util.GB
+	response.Used = defaultUsedSize
 	response.PartitionSnapshot = buildSnapshot()
 	response.Status = proto.TaskSucceeds
 	var partition *MockDataPartition
