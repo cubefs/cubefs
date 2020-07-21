@@ -1,6 +1,6 @@
 #!/bin/bash
 
-
+RootPath=$(cd $(dirname $0); pwd)
 
 
 build_linux_x86_64() {
@@ -44,9 +44,9 @@ build_linux_arm64_gcc4() {
 # wget compress dep 
 get_rocksdb_compress_dep() {
 
-    if [ ! -d "vendor/dep" ]; then
-        mkdir vendor/dep
-        cd vendor/dep
+    if [ ! -d "{RootPath}/vendor/dep" ]; then
+        mkdir -p {RootPath}/vendor/dep
+        cd {RootPath}/vendor/dep
         wget http://www.zlib.net/zlib-1.2.11.tar.gz
         wget https://astuteinternet.dl.sourceforge.net/project/bzip2/bzip2-1.0.6.tar.gz
         wget https://codeload.github.com/facebook/zstd/zip/v1.4.5
@@ -57,8 +57,11 @@ get_rocksdb_compress_dep() {
         unzip v1.4.5
         tar zxf v1.9.2
 
-        rm -rf zlib-1.2.11.tar.gz bzip2-1.0.6.tar.gz v1.4.5 v1.9.2
+        #rm -rf zlib-1.2.11.tar.gz bzip2-1.0.6.tar.gz v1.4.5 v1.9.2
+        cd ${RootPath}
+        
     fi
+    cd ${RootPath}
 
 }
 

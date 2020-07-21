@@ -208,7 +208,7 @@ pre_build() {
         build_zlib
         build_bzip2
         build_lz4
-        build_zstd
+     #   build_zstd
       
     else
         for p in ${rocksdb_libs[*]} ; do

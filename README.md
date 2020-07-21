@@ -65,26 +65,38 @@ $ make
 ```
 ### Build for arm64 
 
-For example,the current chubaofs directory is /root/arm64/chubaofs
+For example,the current chubaofs directory is /root/arm64/chubaofs,build.sh will auto download  follow source codes to vendor/dep directory :
+bzip2-1.0.6  lz4-1.9.2  zlib-1.2.11  zstd-1.4.5
+  gcc version as  v4 or v5:
+    ```
+    cd /root/arm64/chubaofs
+    export CPUTYPE=arm64_gcc4 && bash ./build.sh
+    ```
+
+  gcc version as  v9 :
+      ```
+    export CPUTYPE=arm64_gcc9 && bash ./build.sh
+      ```
+#### Also support cross compiler with docker:
+
+gcc version as  v4, support Ububtu 14.04 and up version,CentOS7.6 and up version.if fail please update libstdc++. 
+
 ```
 cd /root/arm64/chubaofs
-CPUTYPE=arm64 && bash ./build.sh
-```
-#### Also support cross compiler with docker:
-Make sure vendor/dep directory has follow source code:
-bzip2-1.0.6  lz4-1.9.2  zlib-1.2.11  zstd-1.4.5
-
-```
-docker build --rm --tag arm64_gcc4_golang1_14_ubuntu16_chubaofs ./build/compile/arm64/gcc4
-
+docker build --rm --tag arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs ./build/compile/arm64/gcc4
 
 make dist-clean
-docker run  -v /root/arm64/chubaofs:/root/chubaofs arm64_gcc4_golang1_14_ubuntu16_chubaofs /root/buildcfs.sh
+docker run  -v /root/arm64/chubaofs:/root/chubaofs arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs /root/buildcfs.sh
+make dist-clean
+
+
+
+
 ```
  
 Remove image:
 ```
-docker image remove -f  arm64_gcc4_golang1_14_ubuntu16_chubaofs
+docker image remove -f  arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs
 ```
 
 
