@@ -201,7 +201,9 @@ build_rocksdb() {
 pre_build() {
   
     rocksdb_libs=( z bz2 lz4 zstd )
-    if [ "$CPUTYPE" == 'arm64' ]       
+    #   if [ "$CPUTYPE" == 'arm64' ]; 
+    # startsWith arm64      
+    if [[ "$CPUTYPE" == arm64* ]];
     then 
         build_zlib
         build_bzip2

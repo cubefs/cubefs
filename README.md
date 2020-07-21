@@ -75,16 +75,16 @@ Make sure vendor/dep directory has follow source code:
 bzip2-1.0.6  lz4-1.9.2  zlib-1.2.11  zstd-1.4.5
 
 ```
-docker build --rm --tag arm64_gcc_golang_chubaofs ./build/compile/arm64
+docker build --rm --tag arm64_gcc4_golang1_14_ubuntu16_chubaofs ./build/compile/arm64/gcc4
 
 
 make dist-clean
-docker run  -v /root/arm64/chubaofs:/root/chubaofs arm64_gcc_golang_chubaofs /root/buildcfs.sh
+docker run  -v /root/arm64/chubaofs:/root/chubaofs arm64_gcc4_golang1_14_ubuntu16_chubaofs /root/buildcfs.sh
 ```
  
 Remove image:
 ```
-docker image remove -f  arm64_gcc_golang_chubaofs
+docker image remove -f  arm64_gcc4_golang1_14_ubuntu16_chubaofs
 ```
 
 
