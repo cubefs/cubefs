@@ -406,7 +406,14 @@ func (mp *MetaPartition) load() (err error) {
 	if err = mp.loadMultipart(snapshotPath); err != nil {
 		return
 	}
-	err = mp.loadApplyID(snapshotPath)
+	if err = mp.loadApplyID(snapshotPath); err != nil {
+		return
+	}
+
+	if mp.applyID == 0 {
+		mp.applyID = mp.persistedApplyID
+	}
+
 	return
 }
 
