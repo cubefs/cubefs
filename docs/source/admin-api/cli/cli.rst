@@ -68,7 +68,7 @@ MetaNode Management
 
     ./cli metanode info [Address]     #Show detail information of a meta node
 
- .. code-block:: bash
+.. code-block:: bash
 
     ./cli metanode decommission [Address] #Decommission partitions in a meta node to other nodes
 
@@ -143,7 +143,10 @@ Config Management
 
 .. code-block:: bash
 
-    ./cli config set     #Set configurations of cli
+    ./cli config set [flags]    #Set configurations of cli
+    Flags:
+        --addr      string      #Specify master address [{HOST}:{PORT}]
+        --timeout   uint16      #Specify timeout for requests [Unit: s] (default 60)
 
 Completion Management
 >>>>>>>>>>>>>>>>>>>
