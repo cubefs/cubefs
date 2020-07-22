@@ -63,6 +63,38 @@ $ git clone http://github.com/chubaofs/chubaofs.git
 $ cd chubaofs
 $ make
 ```
+### Build for arm64 
+
+For example,the current chubaofs directory is /root/arm64/chubaofs,build.sh will auto download  follow source codes to vendor/dep directory :
+bzip2-1.0.6  lz4-1.9.2  zlib-1.2.11  zstd-1.4.5
+  gcc version as  v4 or v5:
+    ```
+    cd /root/arm64/chubaofs
+    export CPUTYPE=arm64_gcc4 && bash ./build.sh
+    ```
+
+  gcc version as  v9 :
+      ```
+    export CPUTYPE=arm64_gcc9 && bash ./build.sh
+      ```
+#### Also support cross compiler with docker:
+
+gcc version as  v4, support Ububtu 14.04 and up version,CentOS7.6 and up version. Check libstdc++.so.6 version must more than `GLIBCXX_3.4.19',if fail please update libstdc++. 
+
+```
+cd /root/arm64/chubaofs
+docker build --rm --tag arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs ./build/compile/arm64/gcc4
+
+make dist-clean
+docker run  -v /root/arm64/chubaofs:/root/chubaofs arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs /root/buildcfs.sh
+
+```
+ 
+Remove image:
+```
+docker image remove -f  arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs
+```
+
 
 ## Yum Tools to Run a ChubaoFS Cluster for CentOS 7+
 
@@ -124,17 +156,18 @@ Start the resources of ChubaoFS cluster with script `install.sh`. (make sure the
 
 ```
 $ bash install.sh -h
-Usage: install.sh [-r --role datanode or metanode or master or monitor or client or all ] [-v --version 1.5.1 or latest]
+Usage: install.sh -r | --role [datanode | metanode | master | objectnode | console | monitor | client | all | createvol ] [2.1.0 or latest]
 $ bash install.sh -r master
 $ bash install.sh -r metanode
 $ bash install.sh -r datanode
 $ bash install.sh -r monitor
 $ bash install.sh -r client
+$ bash install.sh -r console
 ```
 
 Check mount point at `/cfs/mountpoint` on `client` node defined in `iplist`. 
 
-Open [http://10.196.0.1:8500](https:/github.com/chubaofs/chubaofs) through a browser for monitoring system(the IP of monitoring system is defined in `iplist`). 
+Open [http://[the IP of console system]](https:/github.com/chubaofs/chubaofs) through a browser for web console system(the IP of console system is defined in `iplist`).  In console default user is `root`, password is `ChubaoFSRoot`. In  monitor default user is `admin`,password is `123456`.
 
 ## Run a ChubaoFS Cluster within Docker
 
