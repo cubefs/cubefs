@@ -79,7 +79,7 @@ bzip2-1.0.6  lz4-1.9.2  zlib-1.2.11  zstd-1.4.5
       ```
 #### Also support cross compiler with docker:
 
-gcc version as  v4, support Ububtu 14.04 and up version,CentOS7.6 and up version.if fail please update libstdc++. 
+gcc version as  v4, support Ububtu 14.04 and up version,CentOS7.6 and up version. Check libstdc++.so.6 version must more than `GLIBCXX_3.4.19',if fail please update libstdc++. 
 
 ```
 cd /root/arm64/chubaofs
@@ -87,10 +87,6 @@ docker build --rm --tag arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs ./build/comp
 
 make dist-clean
 docker run  -v /root/arm64/chubaofs:/root/chubaofs arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs /root/buildcfs.sh
-make dist-clean
-
-
-
 
 ```
  
@@ -98,9 +94,6 @@ Remove image:
 ```
 docker image remove -f  arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs
 ```
-
-
-
 
 
 ## Yum Tools to Run a ChubaoFS Cluster for CentOS 7+
