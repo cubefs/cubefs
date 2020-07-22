@@ -30,6 +30,7 @@ func (code ErrorCode) ServeResponse(w http.ResponseWriter, r *http.Request) erro
 	// write status code to request context,
 	// traceMiddleWare send exception request to prometheus via status code
 	SetResponseStatusCode(r, code)
+	SetResponseErrorMessage(r, code.ErrorMessage)
 
 	var err error
 	var marshaled []byte
