@@ -27,6 +27,7 @@ const (
 	ContextKeyRequestID     = "ctx_request_id"
 	ContextKeyRequestAction = "ctx_request_action"
 	ContextKeyStatusCode    = "status_code"
+	ContextKeyErrorMessage  = "error_message"
 )
 
 func SetRequestID(r *http.Request, requestID string) {
@@ -49,6 +50,18 @@ func SetResponseStatusCode(r *http.Request, code ErrorCode) {
 	mux.Vars(r)[ContextKeyStatusCode] = strconv.Itoa(code.StatusCode)
 }
 
-func GetStatusCodeFromContext(r *http.Request) string {
-	return mux.Vars(r)[ContextKeyStatusCode]
+func GetStatusCodeFromContext(r *http.Request) int {
+	code, err := strconv.Atoi(mux.Vars(r)[ContextKeyStatusCode])
+	if err == nil {
+		return code
+	}
+	return 0
+}
+
+func SetResponseErrorMessage(r *http.Request, message string) {
+	mux.Vars(r)[ContextKeyErrorMessage] = message
+}
+
+func getResponseErrorMessage(r *http.Request) string {
+	return mux.Vars(r)[ContextKeyErrorMessage]
 }
