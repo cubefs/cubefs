@@ -981,6 +981,9 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	dp.Status = proto.ReadOnly
 	dp.isRecover = true
 	c.putBadDataPartitionIDs(replica, offlineAddr, dp.PartitionID)
+	dp.RLock()
+	c.syncUpdateDataPartition(dp)
+	dp.RUnlock()
 	log.LogWarnf("clusterID[%v] partitionID:%v  on Node:%v offline success,newHost[%v],PersistenceHosts:[%v]",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
