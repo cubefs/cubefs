@@ -156,12 +156,12 @@ const (
 )
 
 const (
-	WriteDeadlineTime        = 5
-	ReadDeadlineTime         = 5
-	SyncSendTaskDeadlineTime = 20
-	NoReadDeadlineTime       = -1
+	WriteDeadlineTime                 = 5
+	ReadDeadlineTime                  = 5
+	SyncSendTaskDeadlineTime          = 20
+	NoReadDeadlineTime                = -1
 	BatchDeleteExtentReadDeadLineTime = 120
-	GetAllWatermarksDeadLineTime = 60
+	GetAllWatermarksDeadLineTime      = 60
 )
 
 const (
@@ -707,8 +707,6 @@ func (p *Packet) ShouldRetry() bool {
 	return p.ResultCode == OpAgain || p.ResultCode == OpErr
 }
 
-
-func (p *Packet)IsBatchDeleteExtents() bool {
-	return p.Opcode==OpBatchDeleteExtent
+func (p *Packet) IsBatchDeleteExtents() bool {
+	return p.Opcode == OpBatchDeleteExtent
 }
-

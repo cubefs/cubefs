@@ -526,6 +526,8 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			return errors.Trace(err, "streamRepairExtent receive data error")
 		}
 
+		AutoRepairLimiterWait()
+
 		isEmptyResponse := false
 		// Write it to local extent file
 		if storage.IsTinyExtent(uint64(localExtentInfo.FileID)) {
