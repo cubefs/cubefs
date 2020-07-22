@@ -156,17 +156,18 @@ Start the resources of ChubaoFS cluster with script `install.sh`. (make sure the
 
 ```
 $ bash install.sh -h
-Usage: install.sh [-r --role datanode or metanode or master or monitor or client or all ] [-v --version 1.5.1 or latest]
+Usage: install.sh -r | --role [datanode | metanode | master | objectnode | console | monitor | client | all | createvol ] [2.1.0 or latest]
 $ bash install.sh -r master
 $ bash install.sh -r metanode
 $ bash install.sh -r datanode
 $ bash install.sh -r monitor
 $ bash install.sh -r client
+$ bash install.sh -r console
 ```
 
 Check mount point at `/cfs/mountpoint` on `client` node defined in `iplist`. 
 
-Open [http://10.196.0.1](https:/github.com/chubaofs/chubaofs) through a browser for monitoring system(the IP of monitoring system is defined in `iplist`). 
+Open [http://[the IP of console system]](https:/github.com/chubaofs/chubaofs) through a browser for web console system(the IP of console system is defined in `iplist`).  In console default user is `root`, password is `ChubaoFSRoot`. In  monitor default user is `admin`,password is `123456`.
 
 ## Run a ChubaoFS Cluster within Docker
 
