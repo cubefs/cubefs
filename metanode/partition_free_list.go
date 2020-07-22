@@ -357,7 +357,7 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, ext
 			err.Error())
 		return
 	}
-	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime*10); err != nil {
+	if err = p.ReadFromConn(conn, proto.BatchDeleteExtentReadDeadLineTime); err != nil {
 		err = errors.NewErrorf("read response from dataNode %s, %s",
 			p.GetUniqueLogId(), err.Error())
 		return

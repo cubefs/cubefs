@@ -160,7 +160,7 @@ const (
 	ReadDeadlineTime         = 5
 	SyncSendTaskDeadlineTime = 20
 	NoReadDeadlineTime       = -1
-
+	BatchDeleteExtentReadDeadLineTime = 120
 	GetAllWatermarksDeadLineTime = 60
 )
 
@@ -706,3 +706,9 @@ func (p *Packet) LogMessage(action, remote string, start int64, err error) (m st
 func (p *Packet) ShouldRetry() bool {
 	return p.ResultCode == OpAgain || p.ResultCode == OpErr
 }
+
+
+func (p *Packet)IsBatchDeleteExtents() bool {
+	return p.Opcode==OpBatchDeleteExtent
+}
+

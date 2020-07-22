@@ -286,6 +286,7 @@ func (dp *DataPartition) brokenTinyExtents() (brokenTinyExtents []uint64) {
 
 func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTask) (availableTinyExtents []uint64, brokenTinyExtents []uint64) {
 	extentInfoMap := make(map[uint64]*storage.ExtentInfo)
+	deleteExtents := make(map[uint64]bool)
 	for index := 0; index < len(repairTasks); index++ {
 		repairTask := repairTasks[index]
 		if repairTask == nil {
@@ -293,6 +294,7 @@ func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTa
 		}
 		for extentID, extentInfo := range repairTask.extents {
 			if extentInfo.IsDeleted {
+				deleteExtents[extentID] = true
 				continue
 			}
 			extentWithMaxSize, ok := extentInfoMap[extentID]
@@ -305,7 +307,13 @@ func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTa
 			}
 		}
 	}
-
+	for extentID, _ := range deleteExtents {
+		extentInfo := extentInfoMap[extentID]
+		if extentInfo != nil {
+			extentInfo.IsDeleted = true
+			extentInfoMap[extentID] = extentInfo
+		}
+	}
 	dp.buildExtentCreationTasks(repairTasks, extentInfoMap)
 	availableTinyExtents, brokenTinyExtents = dp.buildExtentRepairTasks(repairTasks, extentInfoMap)
 	return
