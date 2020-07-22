@@ -64,6 +64,7 @@ type metaPartitionValue struct {
 	VolName     string
 	Hosts       string
 	Peers       []bsProto.Peer
+	IsRecover   bool
 }
 
 func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
@@ -77,6 +78,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		VolName:     mp.volName,
 		Hosts:       mp.hostsToString(),
 		Peers:       mp.Peers,
+		IsRecover:   mp.IsRecover,
 	}
 	return
 }
@@ -90,6 +92,7 @@ type dataPartitionValue struct {
 	VolID       uint64
 	VolName     string
 	Replicas    []*replicaValue
+	IsRecover   bool
 }
 
 type replicaValue struct {
@@ -107,6 +110,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		VolID:       dp.VolID,
 		VolName:     dp.VolName,
 		Replicas:    make([]*replicaValue, 0),
+		IsRecover:   dp.isRecover,
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
@@ -669,6 +673,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, vol.Name, mpv.VolID)
 		mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
 		mp.setPeers(mpv.Peers)
+		mp.IsRecover = mpv.IsRecover
 		vol.addMetaPartition(mp)
 		log.LogInfof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
 	}
@@ -700,6 +705,7 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID)
 		dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 		dp.Peers = dpv.Peers
+		dp.isRecover = dpv.IsRecover
 		for _, rv := range dpv.Replicas {
 			if !contains(dp.Hosts, rv.Addr) {
 				continue
