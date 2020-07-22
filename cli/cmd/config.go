@@ -36,13 +36,16 @@ var (
 {
   "masterAddr": [
     "master.chubao.io"
-  ]
+  ],
+  "timeout": 60
 }
 `)
+	defaultConfigTimeout uint16 = 60
 )
 
 type Config struct {
 	MasterAddr []string `json:"masterAddr"`
+	Timeout    uint16   `json:"timeout"`
 }
 
 func newConfigCmd() *cobra.Command {
@@ -61,10 +64,12 @@ const (
 )
 
 func newConfigSetCmd() *cobra.Command {
+	var optMasterHost string
+	var optTimeout uint16
 	var cmd = &cobra.Command{
 		Use:   CliOpSet,
 		Short: cmdConfigSetShort,
-		Long: `Set the config file`,
+		Long:  `Set the config file`,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				err         error
@@ -76,25 +81,21 @@ func newConfigSetCmd() *cobra.Command {
 					OsExitWithLogFlush()
 				}
 			}()
-			var masterHost string
-			stdout(fmt.Sprintf("Please input master host:\n"))
-			if _, err = fmt.Scanln(&masterHost); err != nil {
+			if optMasterHost == "" && optTimeout == 0 {
+				stdout(fmt.Sprintf("No change. Input 'cfs-cli config set -h' for help.\n"))
 				return
 			}
-			if len(masterHost) == 0 {
-				err = fmt.Errorf("Abort by user.\n")
-				return
+			if len(optMasterHost) != 0 {
+				masterHosts = append(masterHosts, optMasterHost)
 			}
-			masterHosts = append(masterHosts, masterHost)
-			config := &Config{
-				MasterAddr: masterHosts,
-			}
-			if _, err = setConfig(config); err != nil {
+			if err = setConfig(masterHosts, optTimeout); err != nil {
 				return
 			}
 			stdout(fmt.Sprintf("Config has been set successfully!\n"))
 		},
 	}
+	cmd.Flags().StringVar(&optMasterHost, "addr", "", "Specify master address [{HOST}:{PORT}]")
+	cmd.Flags().Uint16Var(&optTimeout, "timeout", 0, "Specify timeout for requests [Unit: s]")
 	return cmd
 }
 func newConfigInfoCmd() *cobra.Command {
@@ -109,8 +110,7 @@ func newConfigInfoCmd() *cobra.Command {
 				_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				OsExitWithLogFlush()
 			}
-			stdout(fmt.Sprintf("Config info:\n  %v\n", config.MasterAddr))
-
+			printConfigInfo(config)
 		},
 	}
 	cmd.Flags().StringVar(&optFilterWritable, "filter-writable", "", "Filter node writable status")
@@ -118,17 +118,33 @@ func newConfigInfoCmd() *cobra.Command {
 	return cmd
 }
 
-func setConfig(config *Config) (*Config, error) {
-	var err error
+func printConfigInfo(config *Config) {
+	stdout("Config info:\n")
+	stdout("  Master  Address    : %v\n", config.MasterAddr)
+	stdout("  Request Timeout [s]: %v\n", config.Timeout)
+}
+
+func setConfig(masterHosts []string, timeout uint16) (err error) {
+	var config *Config
+	if config, err = LoadConfig(); err != nil {
+		return
+	}
+	if len(masterHosts) > 0 {
+		config.MasterAddr = masterHosts
+	}
+	if timeout != 0 {
+		config.Timeout = timeout
+	}
 	var configData []byte
 	if configData, err = json.Marshal(config); err != nil {
-		return nil, err
+		return
 	}
 	if err = ioutil.WriteFile(defaultConfigPath, configData, 0600); err != nil {
-		return nil, err
+		return
 	}
-	return config, nil
+	return nil
 }
+
 func LoadConfig() (*Config, error) {
 	var err error
 	var configData []byte
@@ -144,6 +160,9 @@ func LoadConfig() (*Config, error) {
 	var config = &Config{}
 	if err = json.Unmarshal(configData, config); err != nil {
 		return nil, err
+	}
+	if config.Timeout == 0 {
+		config.Timeout = defaultConfigTimeout
 	}
 	return config, nil
 }

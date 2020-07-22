@@ -6,11 +6,7 @@ BuildOutPath=${BuildPath}/out
 BuildBinPath=${BuildPath}/bin
 VendorPath=${RootPath}/vendor
 
-
-# fork without tag will print 
-# fatal: No annotated tags can describe 'e34bf196134c2eef31a8de5eb244d73ec890c083'.
-# However, there were unannotated tags: try --tags.
-Version=$(git describe --abbrev=0)
+Version=$(git describe --abbrev=0 --tags)
 BranchName=$(git rev-parse --abbrev-ref HEAD)
 CommitID=$(git rev-parse HEAD)
 BuildTime=$(date +%Y-%m-%d\ %H:%M)
