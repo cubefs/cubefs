@@ -281,23 +281,23 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 
 func (mp *metaPartition) checkBatchDeleteExtents(allExtents map[uint64][]*proto.ExtentKey) {
 	for partitionID, deleteExtents := range allExtents {
+		needDeleteExtents:=make([]proto.ExtentKey,len(deleteExtents))
+		for index, ek := range deleteExtents {
+			newEx := proto.ExtentKey{
+				FileOffset:   ek.FileOffset,
+				PartitionId:  ek.PartitionId,
+				ExtentId:     ek.ExtentId,
+				ExtentOffset: ek.ExtentOffset,
+				Size:         ek.Size,
+				CRC:          ek.CRC,
+			}
+			needDeleteExtents[index] = newEx
+		}
 		err := mp.doBatchDeleteExtentsByPartition(partitionID, deleteExtents)
 		if err != nil {
 			log.LogWarnf(fmt.Sprintf("metaPartition(%v) dataPartitionID(%v)"+
 				" batchDeleteExtentsByPartition failed(%v)", mp.config.PartitionId, partitionID, err))
-			newExtents := make([]proto.ExtentKey, len(deleteExtents))
-			for index, ek := range deleteExtents {
-				newEx := proto.ExtentKey{
-					FileOffset:   ek.FileOffset,
-					PartitionId:  ek.PartitionId,
-					ExtentId:     ek.ExtentId,
-					ExtentOffset: ek.ExtentOffset,
-					Size:         ek.Size,
-					CRC:          ek.CRC,
-				}
-				newExtents[index] = newEx
-			}
-			mp.extDelCh <- newExtents
+			mp.extDelCh <- needDeleteExtents
 		}
 		DeleteWorkerSleepMs()
 	}

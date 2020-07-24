@@ -769,7 +769,12 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 			}
 			DeleteLimiterWait()
 			log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, extentID, offset, size)
-			store.MarkDelete(extentID, int64(offset), int64(size))
+			if err=store.MarkDelete(extentID, int64(offset), int64(size));err!=nil {
+				log.LogErrorf("doStreamFixTinyDeleteRecord Delete " +
+					"PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) err(%v)", dp.partitionID,
+					extentID, offset, size,err)
+				continue
+			}
 		}
 	}
 }
