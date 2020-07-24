@@ -38,6 +38,7 @@ type clusterValue struct {
 	DataNodeDeleteLimitRate     uint64
 	MetaNodeDeleteBatchCount    uint64
 	MetaNodeDeleteWorkerSleepMs uint64
+	DataNodeAutoRepairLimitRate uint64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -47,6 +48,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DataNodeDeleteLimitRate:     c.cfg.DataNodeDeleteLimitRate,
 		MetaNodeDeleteBatchCount:    c.cfg.MetaNodeDeleteBatchCount,
 		MetaNodeDeleteWorkerSleepMs: c.cfg.MetaNodeDeleteWorkerSleepMs,
+		DataNodeAutoRepairLimitRate: c.cfg.DataNodeAutoRepairLimitRate,
 		DisableAutoAllocate:         c.DisableAutoAllocate,
 	}
 	return cv
@@ -514,6 +516,10 @@ func (c *Cluster) updateMetaNodeDeleteWorkerSleepMs(val uint64) {
 	atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val)
 }
 
+func (c *Cluster) updateDataNodeAutoRepairLimit(val uint64) {
+	atomic.StoreUint64(&c.cfg.DataNodeAutoRepairLimitRate, val)
+}
+
 func (c *Cluster) updateDataNodeDeleteLimitRate(val uint64) {
 	atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, val)
 }
@@ -535,6 +541,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
+		c.updateDataNodeAutoRepairLimit(cv.DataNodeAutoRepairLimitRate)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}
 	return

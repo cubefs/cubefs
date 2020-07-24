@@ -41,7 +41,7 @@ type MetaNode struct {
 	MetaPartitionCount        int
 	NodeSetID                 uint64
 	sync.RWMutex              `graphql:"-"`
-	ToBeOffline               bool	
+	ToBeOffline               bool
 	PersistenceMetaPartitions []uint64
 }
 

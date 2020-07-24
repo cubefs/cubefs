@@ -982,7 +982,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
 errHandler:
-	msg = fmt.Sprintf(errMsg + " clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, err, dp.Hosts)
 	if err != nil {
@@ -1350,8 +1350,8 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		return proto.ErrVolAuthKeyNotMatch
 	}
 	volUsedSpace = vol.totalUsedSpace()
-	if float64(capacity * util.GB) < float64(volUsedSpace) * 1.2 {
-		err = fmt.Errorf("capacity[%v] has to be 20 percent larger than the used space[%v]", capacity, volUsedSpace / util.GB)
+	if float64(capacity*util.GB) < float64(volUsedSpace)*1.2 {
+		err = fmt.Errorf("capacity[%v] has to be 20 percent larger than the used space[%v]", capacity, volUsedSpace/util.GB)
 		goto errHandler
 	}
 	if replicaNum > vol.dpReplicaNum {
@@ -1753,6 +1753,18 @@ func (c *Cluster) setDataNodeDeleteLimitRate(val uint64) (err error) {
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setDataNodeDeleteLimitRate] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setDataNodeAutoRepairLimitRate(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.DataNodeAutoRepairLimitRate)
+	atomic.StoreUint64(&c.cfg.DataNodeAutoRepairLimitRate, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setDataNodeAutoRepairLimitRate] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.DataNodeAutoRepairLimitRate, oldVal)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

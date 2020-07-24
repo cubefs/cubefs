@@ -160,7 +160,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		err      error
 	)
 	for {
-		time.Sleep(10 * time.Minute)
+		time.Sleep(time.Minute)
 		select {
 		case <-mp.stopC:
 			return
@@ -246,6 +246,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		}
 		buff := bytes.NewBuffer(buf)
 		cursor += uint64(n)
+		allExtents := make(map[uint64][]*proto.ExtentKey)
 		for {
 			if buff.Len() == 0 {
 				break
@@ -254,19 +255,18 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 				cursor -= uint64(buff.Len())
 				break
 			}
-			ek := proto.ExtentKey{}
+			ek := new(proto.ExtentKey)
 			if err = ek.UnmarshalBinary(buff); err != nil {
 				panic(err)
 			}
-			// delete dataPartition
-			if err = mp.doDeleteMarkedInodes(&ek); err != nil {
-				eks := make([]proto.ExtentKey, 0)
-				eks = append(eks, ek)
-				mp.extDelCh <- eks
-				log.LogWarnf("[deleteExtentsFromList] partitionId=%d, %s",
-					mp.config.PartitionId, err.Error())
+			extents, ok := allExtents[ek.PartitionId]
+			if !ok {
+				extents = make([]*proto.ExtentKey, 0)
 			}
+			extents = append(extents, ek)
+			allExtents[ek.PartitionId] = extents
 		}
+		mp.checkBatchDeleteExtents(allExtents)
 		buff.Reset()
 		buff.WriteString(fmt.Sprintf("%s %d", fileName, cursor))
 		if _, err = mp.submit(opFSMInternalDelExtentCursor, buff.Bytes()); err != nil {
@@ -277,4 +277,29 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			mp.config.PartitionId, fileName, cursor)
 		goto LOOP
 	}
+}
+
+func (mp *metaPartition) checkBatchDeleteExtents(allExtents map[uint64][]*proto.ExtentKey) {
+	for partitionID, deleteExtents := range allExtents {
+		err := mp.doBatchDeleteExtentsByPartition(partitionID, deleteExtents)
+		if err != nil {
+			log.LogWarnf(fmt.Sprintf("metaPartition(%v) dataPartitionID(%v)"+
+				" batchDeleteExtentsByPartition failed(%v)", mp.config.PartitionId, partitionID, err))
+			newExtents := make([]proto.ExtentKey, len(deleteExtents))
+			for index, ek := range deleteExtents {
+				newEx := proto.ExtentKey{
+					FileOffset:   ek.FileOffset,
+					PartitionId:  ek.PartitionId,
+					ExtentId:     ek.ExtentId,
+					ExtentOffset: ek.ExtentOffset,
+					Size:         ek.Size,
+					CRC:          ek.CRC,
+				}
+				newExtents[index] = newEx
+			}
+			mp.extDelCh <- newExtents
+		}
+		DeleteWorkerSleepMs()
+	}
+	return
 }
