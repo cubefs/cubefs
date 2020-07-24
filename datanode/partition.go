@@ -113,7 +113,6 @@ type DataPartition struct {
 	snapshotMutex                 sync.RWMutex
 	intervalToUpdatePartitionSize int64
 	loadExtentHeaderStatus        int
-	FullSyncTinyDeleteTime        int64
 	DataPartitionCreateType       int
 }
 
@@ -692,23 +691,18 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		}
 	}
 	wg.Wait()
-	dp.doStreamFixTinyDeleteRecord(repairTask, time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
+	dp.doStreamFixTinyDeleteRecord(repairTask)
 }
 
-func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRepairTask, isFullSync bool) {
+func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRepairTask) {
 	var (
 		localTinyDeleteFileSize int64
 		err                     error
 		conn                    *net.TCPConn
 	)
 
-	if !isFullSync {
-		if localTinyDeleteFileSize, err = dp.extentStore.LoadTinyDeleteFileOffset(); err != nil {
-			return
-		}
-
-	} else {
-		dp.FullSyncTinyDeleteTime = time.Now().Unix()
+	if localTinyDeleteFileSize, err = dp.extentStore.LoadTinyDeleteFileOffset(); err != nil {
+		return
 	}
 
 	log.LogInfof(ActionSyncTinyDeleteRecord+" start PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v)",
@@ -718,7 +712,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 		return
 	}
 
-	if !isFullSync && repairTask.LeaderTinyDeleteRecordFileSize-localTinyDeleteFileSize < MinTinyExtentDeleteRecordSyncSize {
+	if repairTask.LeaderTinyDeleteRecordFileSize-localTinyDeleteFileSize < MinTinyExtentDeleteRecordSyncSize {
 		return
 	}
 

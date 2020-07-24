@@ -43,7 +43,7 @@ func (m *DataNode) updateNodeInfo() {
 	}
 	setLimiter(deleteLimiteRater, clusterInfo.DataNodeDeleteLimitRate)
 	setLimiter(autoRepairLimiteRater, clusterInfo.DataNodeAutoRepairLimitRate)
-	log.LogInfof("updateNodeInfo from master:" +
-		"deleteLimite(%v),autoRepairLimit(%v)",clusterInfo.DataNodeDeleteLimitRate,
+	log.LogInfof("updateNodeInfo from master:"+
+		"deleteLimite(%v),autoRepairLimit(%v)", clusterInfo.DataNodeDeleteLimitRate,
 		clusterInfo.DataNodeAutoRepairLimitRate)
 }
