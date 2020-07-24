@@ -281,7 +281,8 @@ build_cli() {
     pre_build
     pushd $SrcPath >/dev/null
     echo -n "build cfs-cli      "
-    go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-cli ${SrcPath}/cli/*.go  && echo "success" || echo "failed"
+    #go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-cli ${SrcPath}/cli/*.go  && echo "success" || echo "failed"
+    sh cli/build.sh ${BuildBinPath}/cfs-cli && echo "success" || echo "failed"
     popd >/dev/null
 }
 
