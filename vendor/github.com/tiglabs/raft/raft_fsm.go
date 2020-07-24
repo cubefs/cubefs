@@ -57,6 +57,13 @@ type raftFsm struct {
 	stopCh      chan struct{}
 }
 
+func (fsm *raftFsm)getReplicas()(m string) {
+	for id,_:=range fsm.replicas{
+		m+=fmt.Sprintf(" [%v] ,",id)
+	}
+	return  m
+}
+
 func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 	raftlog, err := newRaftLog(raftConfig.Storage)
 	if err != nil {

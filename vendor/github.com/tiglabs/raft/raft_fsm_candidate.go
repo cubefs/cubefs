@@ -114,7 +114,8 @@ func (r *raftFsm) campaign(force bool) {
 		}
 		li, lt := r.raftLog.lastIndexAndTerm()
 		if logger.IsEnableDebug() {
-			logger.Debug("[raft->campaign][%v logterm: %d, index: %d] sent vote request to %v at term %d.", r.id, lt, li, id, r.term)
+			logger.Debug("[raft->campaign][%v logterm: %d, index: %d] sent " +
+				"vote request to %v at term %d.   raftFSM[%p]", r.id, lt, li, id, r.term,r)
 		}
 
 		m := proto.GetMessage()
