@@ -73,6 +73,8 @@ const (
 	DecommissionMetaNode           = "/metaNode/decommission"
 	GetMetaNode                    = "/metaNode/get"
 	AdminUpdateMetaNode            = "/metaNode/update"
+	AdminUpdateDataNode            = "/dataNode/update"
+	AdminGetInvalidNodes           = "/invalid/nodes"
 	AdminLoadMetaPartition         = "/metaPartition/load"
 	AdminDiagnoseMetaPartition     = "/metaPartition/diagnose"
 	AdminDecommissionMetaPartition = "/metaPartition/decommission"
