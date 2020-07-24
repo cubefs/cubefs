@@ -11,7 +11,7 @@ if [[ "-x$RM" == "-x" ]] ; then
     RM=rm
 fi
 
-Version=$(git describe --abbrev=0 2>/dev/null)
+Version=$(git describe --abbrev=0 --tags 2>/dev/null)
 BranchName=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 CommitID=$(git rev-parse HEAD 2>/dev/null)
 BuildTime=$(date +%Y-%m-%d\ %H:%M)
