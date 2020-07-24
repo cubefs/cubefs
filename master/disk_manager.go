@@ -61,6 +61,9 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			diff = partition.getMinus()
 			if diff < util.GB {
 				partition.isRecover = false
+				partition.RLock()
+				c.syncUpdateDataPartition(partition)
+				partition.RUnlock()
 				Warn(c.Name, fmt.Sprintf("clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))
 			} else {
 				newBadDpIds = append(newBadDpIds, partitionID)
