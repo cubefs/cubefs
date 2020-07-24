@@ -320,12 +320,102 @@ func (c *Cluster) checkVolReduceReplicaNum() {
 	}
 }
 
+func (c *Cluster) getInvalidIDNodes() (nodes []*InvalidNodeView) {
+	metaNodes := c.getNotConsistentIDMetaNodes()
+	nodes = append(nodes, metaNodes...)
+	dataNodes := c.getNotConsistentIDDataNodes()
+	nodes = append(nodes, dataNodes...)
+	return
+}
+
+func (c *Cluster) getNotConsistentIDMetaNodes() (metaNodes []*InvalidNodeView) {
+	metaNodes = make([]*InvalidNodeView, 0)
+	c.metaNodes.Range(func(key, value interface{}) bool {
+		metanode, ok := value.(*MetaNode)
+		if !ok {
+			return true
+		}
+		notConsistent, oldID := c.hasNotConsistentIDMetaPartitions(metanode)
+		if notConsistent {
+			metaNodes = append(metaNodes, &InvalidNodeView{Addr: metanode.Addr, ID: metanode.ID, OldID: oldID, NodeType: "meta"})
+		}
+		return true
+	})
+	return
+}
+
+func (c *Cluster) hasNotConsistentIDMetaPartitions(metanode *MetaNode) (notConsistent bool, oldID uint64) {
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		for _, mp := range vol.MetaPartitions {
+			for _, peer := range mp.Peers {
+				if peer.Addr == metanode.Addr && peer.ID != metanode.ID {
+					return true, peer.ID
+				}
+			}
+		}
+	}
+	return
+}
+
+func (c *Cluster) getNotConsistentIDDataNodes() (dataNodes []*InvalidNodeView) {
+	dataNodes = make([]*InvalidNodeView, 0)
+	c.dataNodes.Range(func(key, value interface{}) bool {
+		datanode, ok := value.(*DataNode)
+		if !ok {
+			return true
+		}
+		notConsistent, oldID := c.hasNotConsistentIDDataPartitions(datanode)
+		if notConsistent {
+			dataNodes = append(dataNodes, &InvalidNodeView{Addr: datanode.Addr, ID: datanode.ID, OldID: oldID, NodeType: "data"})
+		}
+		return true
+	})
+	return
+}
+
+func (c *Cluster) hasNotConsistentIDDataPartitions(datanode *DataNode) (notConsistent bool, oldID uint64) {
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		for _, mp := range vol.dataPartitions.partitions {
+			for _, peer := range mp.Peers {
+				if peer.Addr == datanode.Addr && peer.ID != datanode.ID {
+					return true, peer.ID
+				}
+			}
+		}
+	}
+	return
+}
+
+func (c *Cluster) updateDataNodeBaseInfo(nodeAddr string, id uint64) (err error) {
+	c.dnMutex.Lock()
+	defer c.dnMutex.Unlock()
+	value, ok := c.dataNodes.Load(nodeAddr)
+	if !ok {
+		err = fmt.Errorf("node %v is not exist", nodeAddr)
+		return
+	}
+	dataNode := value.(*DataNode)
+	if dataNode.ID == id {
+		return
+	}
+
+	dataNode.ID = id
+	if err = c.syncUpdateDataNode(dataNode); err != nil {
+		return
+	}
+	//partitions := c.getAllMetaPartitionsByMetaNode(nodeAddr)
+	return
+}
+
 func (c *Cluster) updateMetaNodeBaseInfo(nodeAddr string, id uint64) (err error) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
 	value, ok := c.metaNodes.Load(nodeAddr)
 	if !ok {
 		err = fmt.Errorf("node %v is not exist", nodeAddr)
+		return
 	}
 	metaNode := value.(*MetaNode)
 	if metaNode.ID == id {
