@@ -320,6 +320,26 @@ func (c *Cluster) checkVolReduceReplicaNum() {
 	}
 }
 
+func (c *Cluster) updateMetaNodeBaseInfo(nodeAddr string, id uint64) (err error) {
+	c.mnMutex.Lock()
+	defer c.mnMutex.Unlock()
+	value, ok := c.metaNodes.Load(nodeAddr)
+	if !ok {
+		err = fmt.Errorf("node %v is not exist", nodeAddr)
+	}
+	metaNode := value.(*MetaNode)
+	if metaNode.ID == id {
+		return
+	}
+
+	metaNode.ID = id
+	if err = c.syncUpdateMetaNode(metaNode); err != nil {
+		return
+	}
+	//partitions := c.getAllMetaPartitionsByMetaNode(nodeAddr)
+	return
+}
+
 func (c *Cluster) addMetaNode(nodeAddr, zoneName string) (id uint64, err error) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
@@ -855,6 +875,22 @@ func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []u
 		}
 	}
 
+	return
+}
+
+func (c *Cluster) getAllMetaPartitionsByMetaNode(addr string) (partitions []*MetaPartition) {
+	partitions = make([]*MetaPartition, 0)
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		for _, mp := range vol.MetaPartitions {
+			for _, host := range mp.Hosts {
+				if host == addr {
+					partitions = append(partitions, mp)
+					break
+				}
+			}
+		}
+	}
 	return
 }
 

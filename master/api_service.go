@@ -930,6 +930,23 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(id))
 }
 
+func (m *Server) updateMetaNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		nodeAddr string
+		id       uint64
+		err      error
+	)
+	if nodeAddr, id, err = parseRequestForUpdateMetaNode(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.updateMetaNodeBaseInfo(nodeAddr, id); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(id))
+}
+
 func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr     string
@@ -1105,6 +1122,20 @@ func parseRequestForRaftNode(r *http.Request) (id uint64, host string, err error
 
 	if arr := strings.Split(host, colonSplit); len(arr) < 2 {
 		err = unmatchedKey(addrKey)
+		return
+	}
+	return
+}
+
+
+func parseRequestForUpdateMetaNode(r *http.Request) (nodeAddr string,id uint64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if nodeAddr, err = extractNodeAddr(r); err != nil {
+		return
+	}
+	if id,err = extractNodeID(r); err != nil {
 		return
 	}
 	return
@@ -1429,6 +1460,15 @@ func extractNodeAddr(r *http.Request) (nodeAddr string, err error) {
 		return
 	}
 	return
+}
+
+func extractNodeID(r *http.Request) (ID uint64,err error) {
+	var value string
+	if value = r.FormValue(idKey); value == "" {
+		err = keyNotFound(idKey)
+		return
+	}
+	return strconv.ParseUint(value, 10, 64)
 }
 
 func extractDiskPath(r *http.Request) (diskPath string, err error) {
