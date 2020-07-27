@@ -670,6 +670,57 @@ func (mp *MetaPartition) getMinusOfMaxInodeID() (minus float64) {
 	return
 }
 
+func (mp *MetaPartition) getMinusOfInodeCount() (minus float64) {
+	mp.RLock()
+	defer mp.RUnlock()
+	var sentry float64
+	for index, replica := range mp.Replicas {
+		if index == 0 {
+			sentry = float64(replica.InodeCount)
+			continue
+		}
+		diff := math.Abs(float64(replica.InodeCount) - sentry)
+		if diff > minus {
+			minus = diff
+		}
+	}
+	return
+}
+
+func (mp *MetaPartition) getMinusOfDentryCount() (minus float64) {
+	mp.RLock()
+	defer mp.RUnlock()
+	var sentry float64
+	for index, replica := range mp.Replicas {
+		if index == 0 {
+			sentry = float64(replica.DentryCount)
+			continue
+		}
+		diff := math.Abs(float64(replica.DentryCount) - sentry)
+		if diff > minus {
+			minus = diff
+		}
+	}
+	return
+}
+
+func (mp *MetaPartition) getMinusOfApplyID() (minus float64) {
+	mp.RLock()
+	defer mp.RUnlock()
+	var sentry float64
+	for index, replica := range mp.Replicas {
+		if index == 0 {
+			sentry = float64(replica.DentryCount)
+			continue
+		}
+		diff := math.Abs(float64(replica.DentryCount) - sentry)
+		if diff > minus {
+			minus = diff
+		}
+	}
+	return
+}
+
 func (mp *MetaPartition) setMaxInodeID() {
 	var maxUsed uint64
 	for _, r := range mp.Replicas {

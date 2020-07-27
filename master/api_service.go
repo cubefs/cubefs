@@ -202,19 +202,21 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	cv := &proto.ClusterView{
-		Name:                m.cluster.Name,
-		LeaderAddr:          m.leaderInfo.addr,
-		DisableAutoAlloc:    m.cluster.DisableAutoAllocate,
-		MetaNodeThreshold:   m.cluster.cfg.MetaNodeThreshold,
-		Applied:             m.fsm.applied,
-		MaxDataPartitionID:  m.cluster.idAlloc.dataPartitionID,
-		MaxMetaNodeID:       m.cluster.idAlloc.commonID,
-		MaxMetaPartitionID:  m.cluster.idAlloc.metaPartitionID,
-		MetaNodes:           make([]proto.NodeView, 0),
-		DataNodes:           make([]proto.NodeView, 0),
-		VolStatInfo:         make([]*proto.VolStatInfo, 0),
-		BadPartitionIDs:     make([]proto.BadPartitionView, 0),
-		BadMetaPartitionIDs: make([]proto.BadPartitionView, 0),
+		Name:                   m.cluster.Name,
+		LeaderAddr:             m.leaderInfo.addr,
+		DisableAutoAlloc:       m.cluster.DisableAutoAllocate,
+		MetaNodeThreshold:      m.cluster.cfg.MetaNodeThreshold,
+		Applied:                m.fsm.applied,
+		MaxDataPartitionID:     m.cluster.idAlloc.dataPartitionID,
+		MaxMetaNodeID:          m.cluster.idAlloc.commonID,
+		MaxMetaPartitionID:     m.cluster.idAlloc.metaPartitionID,
+		MetaNodes:              make([]proto.NodeView, 0),
+		DataNodes:              make([]proto.NodeView, 0),
+		VolStatInfo:            make([]*proto.VolStatInfo, 0),
+		BadPartitionIDs:        make([]proto.BadPartitionView, 0),
+		BadMetaPartitionIDs:    make([]proto.BadPartitionView, 0),
+		MigratedDataPartitions: make([]proto.BadPartitionView, 0),
+		MigratedMetaPartitions: make([]proto.BadPartitionView, 0),
 	}
 
 	vols := m.cluster.allVolNames()
@@ -232,6 +234,21 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	}
 	cv.BadPartitionIDs = m.cluster.getBadDataPartitionsView()
 	cv.BadMetaPartitionIDs = m.cluster.getBadMetaPartitionsView()
+
+	m.cluster.MigratedDataPartitionIds.Range(func(key, value interface{}) bool {
+		badPartitionIds := value.([]uint64)
+		path := key.(string)
+		bpv := badPartitionView{Path: path, PartitionIDs: badPartitionIds}
+		cv.MigratedDataPartitions = append(cv.MigratedDataPartitions, bpv)
+		return true
+	})
+	m.cluster.MigratedMetaPartitionIds.Range(func(key, value interface{}) bool {
+		badPartitionIds := value.([]uint64)
+		path := key.(string)
+		bpv := badPartitionView{Path: path, PartitionIDs: badPartitionIds}
+		cv.MigratedMetaPartitions = append(cv.MigratedMetaPartitions, bpv)
+		return true
+	})
 
 	sendOkReply(w, r, newSuccessHTTPReply(cv))
 }
@@ -494,7 +511,7 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
 		return
 	}
-	if err = m.cluster.decommissionDataPartition(addr, dp, handleDataPartitionOfflineErr); err != nil {
+	if err = m.cluster.decommissionDataPartition(addr, dp, handleDataPartitionOfflineErr, "", false); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -855,13 +872,15 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 // Decommission a data node. This will decommission all the data partition on that node.
 func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		node        *DataNode
-		rstMsg      string
-		offLineAddr string
-		err         error
+		node         *DataNode
+		rstMsg       string
+		offLineAddr  string
+		destZoneName string
+		strictFlag   bool
+		err          error
 	)
 
-	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
+	if offLineAddr, destZoneName, err = parseRequestForDecommissionDataNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -870,7 +889,13 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
 	}
-	if err = m.cluster.decommissionDataNode(node); err != nil {
+
+	if strictFlag, err = extractStrictFlag(r); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if err = m.cluster.decommissionDataNode(node, destZoneName, strictFlag); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1135,7 +1160,7 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
-	if err = m.cluster.decommissionMetaPartition(nodeAddr, mp); err != nil {
+	if err = m.cluster.decommissionMetaPartition(nodeAddr, mp, false); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1171,6 +1196,7 @@ func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {
 		metaNode    *MetaNode
 		rstMsg      string
 		offLineAddr string
+		strictFlag  bool
 		err         error
 	)
 
@@ -1183,7 +1209,13 @@ func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
 		return
 	}
-	if err = m.cluster.decommissionMetaNode(metaNode); err != nil {
+
+	if strictFlag, err = extractStrictFlag(r); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if err = m.cluster.decommissionMetaNode(metaNode, strictFlag); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1288,11 +1320,31 @@ func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName string, err err
 	return
 }
 
+func parseRequestForDecommissionDataNode(r *http.Request) (nodeAddr, zoneName string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if nodeAddr, err = extractNodeAddr(r); err != nil {
+		return
+	}
+	zoneName = r.FormValue(zoneNameKey)
+	return
+}
+
 func parseAndExtractNodeAddr(r *http.Request) (nodeAddr string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
 	return extractNodeAddr(r)
+}
+
+func extractStrictFlag(r *http.Request) (strict bool, err error) {
+	var strictStr string
+	if strictStr = r.FormValue(addrKey); strictStr == "" {
+		err = keyNotFound(addrKey)
+		return
+	}
+	return strconv.ParseBool(strictStr)
 }
 
 func parseRequestToDecommissionNode(r *http.Request) (nodeAddr, diskPath string, err error) {

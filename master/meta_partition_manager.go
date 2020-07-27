@@ -134,6 +134,7 @@ func (c *Cluster) scheduleToCheckMetaPartitionRecoveryProgress() {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				if c.vols != nil {
 					c.checkMetaPartitionRecoveryProgress()
+					c.checkMigratedMetaPartitionRecoveryProgress()
 				}
 			}
 			time.Sleep(time.Second * defaultIntervalToCheckDataPartition)

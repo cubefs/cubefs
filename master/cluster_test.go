@@ -116,6 +116,39 @@ func TestPanicCheckBadDiskRecovery(t *testing.T) {
 	c.scheduleToCheckDiskRecoveryProgress()
 }
 
+func TestPanicCheckMigratedDataPartitionsRecovery(t *testing.T) {
+	c := buildPanicCluster()
+	vol, err := c.getVol(commonVolName)
+	if err != nil {
+		t.Error(err)
+	}
+	partitionID, err := server.cluster.idAlloc.allocateDataPartitionID()
+	if err != nil {
+		t.Error(err)
+	}
+	dp := newDataPartition(partitionID, vol.dpReplicaNum, vol.Name, vol.ID)
+	c.MigratedDataPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
+	c.checkMigratedDataPartitionsRecoveryProgress()
+}
+
+func TestPanicCheckMigratedMetaPartitionsRecovery(t *testing.T) {
+	c := buildPanicCluster()
+	vol, err := c.getVol(commonVolName)
+	if err != nil {
+		t.Error(err)
+	}
+	partitionID, err := server.cluster.idAlloc.allocateMetaPartitionID()
+	if err != nil {
+		t.Error(err)
+	}
+	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID)
+	vol.addMetaPartition(mp)
+	mp = nil
+	c.MigratedMetaPartitionIds.Store(fmt.Sprintf("%v", mp.PartitionID), mp)
+	c.checkMigratedMetaPartitionRecoveryProgress()
+	t.Logf("catched panic")
+}
+
 func TestCheckBadDiskRecovery(t *testing.T) {
 	server.cluster.checkDataNodeHeartbeat()
 	time.Sleep(5 * time.Second)

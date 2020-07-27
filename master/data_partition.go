@@ -598,6 +598,9 @@ func (partition *DataPartition) containsBadDisk(diskPath string, nodeAddr string
 func (partition *DataPartition) getMinus() (minus float64) {
 	partition.RLock()
 	defer partition.RUnlock()
+	if len(partition.Replicas) == 0 {
+		return
+	}
 	used := partition.Replicas[0].Used
 	for _, replica := range partition.Replicas {
 		if math.Abs(float64(replica.Used)-float64(used)) > minus {
@@ -605,6 +608,23 @@ func (partition *DataPartition) getMinus() (minus float64) {
 		}
 	}
 	return minus
+}
+
+func (partition *DataPartition) getMinusOfFileCount() (minus float64) {
+	partition.RLock()
+	defer partition.RUnlock()
+	var sentry float64
+	for index, replica := range partition.Replicas {
+		if index == 0 {
+			sentry = float64(replica.FileCount)
+			continue
+		}
+		diff := math.Abs(float64(replica.FileCount) - sentry)
+		if diff > minus {
+			minus = diff
+		}
+	}
+	return
 }
 
 func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host string) {

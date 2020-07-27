@@ -84,7 +84,9 @@ func (c *Cluster) loadDataPartition(dp *DataPartition) {
 	}()
 }
 
-// taking the given mata partition offline.
+// taking the given mata partition offline. In strict mode, only if the size of the replica is equal,
+// or the number of files is equal, the recovery is considered complete. when it is triggered by migrated metaNode,
+// the strict mode is true,otherwise is false.
 // 1. checking if the meta partition can be offline.
 // There are two cases where the partition is not allowed to be offline:
 // (1) the replica is not in the latest host list
@@ -93,7 +95,7 @@ func (c *Cluster) loadDataPartition(dp *DataPartition) {
 // 3. synchronized decommission meta partition
 // 4. synchronized create a new meta partition
 // 5. persistent the new host list
-func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) (err error) {
+func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, strictMode bool) (err error) {
 	var (
 		newPeers        []proto.Peer
 		metaNode        *MetaNode
@@ -147,7 +149,11 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 		goto errHandler
 	}
 	mp.IsRecover = true
-	c.putBadMetaPartitions(nodeAddr, mp.PartitionID)
+	if strictMode {
+		c.putMigratedMetaPartitions(nodeAddr, mp.PartitionID)
+	} else {
+		c.putBadMetaPartitions(nodeAddr, mp.PartitionID)
+	}
 	mp.RLock()
 	c.syncUpdateMetaPartition(mp)
 	mp.RUnlock()
@@ -569,7 +575,7 @@ func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
 
 	dp.getFileCount()
 	dp.validateCRC(c.Name)
-	dp.checkReplicaSize(c.Name,c.cfg.diffSpaceUsage)
+	dp.checkReplicaSize(c.Name, c.cfg.diffSpaceUsage)
 	dp.setToNormal()
 }
 

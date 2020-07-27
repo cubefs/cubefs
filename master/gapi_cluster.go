@@ -218,7 +218,7 @@ func (m *ClusterService) decommissionDataNode(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	if err := m.cluster.decommissionDataNode(node); err != nil {
+	if err := m.cluster.decommissionDataNode(node, "", false); err != nil {
 		return nil, err
 	}
 	rstMsg := fmt.Sprintf("decommission data node [%v] successfully", args.OffLineAddr)
@@ -236,7 +236,7 @@ func (m *ClusterService) decommissionMetaNode(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	if err = m.cluster.decommissionMetaNode(metaNode); err != nil {
+	if err = m.cluster.decommissionMetaNode(metaNode, false); err != nil {
 		return nil, err
 	}
 	log.LogInfof("decommissionMetaNode metaNode [%v] has offline successfully", args.OffLineAddr)
@@ -270,7 +270,7 @@ func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args str
 	if err != nil {
 		return nil, err
 	}
-	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp); err != nil {
+	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp, false); err != nil {
 		return nil, err
 	}
 	log.LogInfof(proto.AdminDecommissionMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", args.PartitionID)
