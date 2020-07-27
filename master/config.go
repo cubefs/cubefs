@@ -63,7 +63,7 @@ const (
 	defaultMetaPartitionMemUsageThreshold      float32 = 0.75    // memory usage threshold on a meta partition
 	defaultMaxMetaPartitionCountOnEachNode             = 10000
 	defaultReplicaNum                                  = 3
-	defaultDiffSpaceUsage                              = 1024 * 1024 * 1024
+	defaultDiffSpaceUsage                              = 10 * 1024 * 1024 * 1024
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)

@@ -592,7 +592,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
 		c.dataNodes.Store(dataNode.Addr, dataNode)
-		log.LogInfof("action[loadDataNodes],dataNode[%v],zone[%v],ns[%v]", dataNode.Addr, dnv.ZoneName, dnv.NodeSetID)
+		log.LogInfof("action[loadDataNodes],dataNode[%v],id[%v],zone[%v],ns[%v]", dataNode.Addr, dnv.ID, dnv.ZoneName, dnv.NodeSetID)
 	}
 	return
 }
@@ -616,7 +616,7 @@ func (c *Cluster) loadMetaNodes() (err error) {
 		metaNode.ID = mnv.ID
 		metaNode.NodeSetID = mnv.NodeSetID
 		c.metaNodes.Store(metaNode.Addr, metaNode)
-		log.LogInfof("action[loadMetaNodes],metaNode[%v],zone[%v],ns[%v]", metaNode.Addr, mnv.ZoneName, mnv.NodeSetID)
+		log.LogInfof("action[loadMetaNodes],metaNode[%v],id[%v],zone[%v],ns[%v]", metaNode.Addr, mnv.ID, mnv.ZoneName, mnv.NodeSetID)
 	}
 	return
 }
@@ -636,7 +636,7 @@ func (c *Cluster) loadVols() (err error) {
 		vol := newVolFromVolValue(vv)
 		vol.Status = vv.Status
 		c.putVol(vol)
-		log.LogInfof("action[loadVols],vol[%v]", vol.Name)
+		log.LogInfof("action[loadVols],vol[%v],id[%v],status[%v]", vol.Name, vv.ID, vv.Status)
 	}
 	return
 }
