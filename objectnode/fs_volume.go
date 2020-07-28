@@ -1791,7 +1791,7 @@ func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 		})
 		var etagValue ETagValue
 		if i >= 0 && i < len(xattrs) && xattrs[i].Inode == fileInfo.Inode {
-			var xattr = xattrs[0]
+			var xattr = xattrs[i]
 			var rawETag = string(xattr.Get(XAttrKeyOSSETag))
 			if len(rawETag) == 0 {
 				rawETag = string(xattr.Get(XAttrKeyOSSETagDeprecated))
