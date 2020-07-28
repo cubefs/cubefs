@@ -292,6 +292,7 @@ func (mp *metaPartition) checkBatchDeleteExtents(allExtents map[uint64][]*proto.
 				CRC:          ek.CRC,
 			}
 			needDeleteExtents[index] = newEx
+			log.LogWritef("mp(%v) deleteExtents(%v)",mp.config.PartitionId,newEx.String())
 		}
 		err := mp.doBatchDeleteExtentsByPartition(partitionID, deleteExtents)
 		if err != nil {
