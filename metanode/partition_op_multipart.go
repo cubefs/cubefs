@@ -63,7 +63,7 @@ func (mp *metaPartition) AppendMultipart(req *proto.AddMultipartPartRequest, p *
 		p.PacketOkReply()
 		return
 	}
-	item := mp.multipartTree.Get(&Multipart{key:req.Path, id: req.MultipartId})
+	item := mp.multipartTree.Get(&Multipart{key: req.Path, id: req.MultipartId})
 	if item == nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		return

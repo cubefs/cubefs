@@ -122,6 +122,8 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 	f.super.ec.OpenStream(ino)
 
+	f.super.ec.RefreshExtentsCache(ino)
+
 	if f.super.keepCache {
 		resp.Flags |= fuse.OpenKeepCache
 	}

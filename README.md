@@ -11,6 +11,22 @@
 
 <div width="100%" style="text-align:center;"><img alt="ChubaoFS" src="https://user-images.githubusercontent.com/5708406/83598049-556de200-a59b-11ea-9a31-6daa1439f81a.png" height="200"/></div>
 
+## Contents
+
+- [Overview](#overview)
+- [Documents](#documents)
+- [Benchmark](#benchmark)
+- [Build ChubaoFS](#build-chubaofs)
+- [Yum Tools to Run a ChubaoFS Cluster for CentOS 7+](#yum-tools-to-run-a-chubaofs-cluster-for-centos-7)
+- [Run a ChubaoFS Cluster within Docker](#run-a-chubaofs-cluster-within-docker)
+- [Helm chart to Run a ChubaoFS Cluster in Kubernetes](#helm-chart-to-run-a-chubaofs-cluster-in-kubernetes)
+- [Reference](#reference)
+- [Contributing](#contributing)
+- [Reporting a security vulnerability](#reporting-a-security-vulnerability)
+- [Community](#community)
+- [Partners and Users](#partners-and-users)
+- [License](#license)
+
 ## Overview
 
 ChubaoFS (储宝文件系统 in Chinese) is a cloud-native storage platform that provides both POSIX-compliant and S3-compatible interfaces. It is hosted by the [Cloud Native Computing Foundation](https://cncf.io) (CNCF) as a [sandbox](https://www.cncf.io/sandbox-projects/) project.
@@ -35,7 +51,7 @@ Some key features of ChubaoFS include:
 
 We are committed to making ChubaoFS better and more mature. Please stay tuned. 
 
-## Document
+## Documents
 
 English version: https://chubaofs.readthedocs.io/en/latest/
 
@@ -58,6 +74,7 @@ Refer to [chubaofs.readthedocs.io](https://chubaofs.readthedocs.io/en/latest/eva
 
 ## Build ChubaoFS
 
+### Build for x86
 ```
 $ git clone http://github.com/chubaofs/chubaofs.git
 $ cd chubaofs
@@ -270,6 +287,15 @@ $ helm install chubaofs ./chubaofs -f ~/chubaofs.yaml
 Haifeng Liu, et al., CFS: A Distributed File System for Large Scale Container Platforms. SIGMOD‘19, June 30-July 5, 2019, Amsterdam, Netherlands. 
 
 For more information, please refer to https://dl.acm.org/citation.cfm?doid=3299869.3314046 and https://arxiv.org/abs/1911.03001
+
+## Contributing
+
+Recommend the standard GitHub flow based on forking and pull requests.<br>
+See [CONTRIBUTING.md](CONTRIBUTING.md#workflow) for detail.
+
+## Reporting a security vulnerability
+
+See [security disclosure process](security/README.md) for detail.
 
 ## Community
 
