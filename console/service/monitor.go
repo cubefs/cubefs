@@ -14,20 +14,18 @@ import (
 )
 
 type MonitorService struct {
-	Address        string
-	App            string
-	Cluster        string
-	MasterInstance string
-	DashboardAddr  string
+	Address       string
+	App           string
+	Cluster       string
+	DashboardAddr string
 }
 
-func NewMonitorService(addr, app, cluster, masterInstance string, dashboardAddr string) *MonitorService {
+func NewMonitorService(addr, app, cluster, dashboardAddr string) *MonitorService {
 	return &MonitorService{
-		Address:        addr,
-		App:            app,
-		Cluster:        cluster,
-		MasterInstance: masterInstance,
-		DashboardAddr:  dashboardAddr,
+		Address:       addr,
+		App:           app,
+		Cluster:       cluster,
+		DashboardAddr: dashboardAddr,
 	}
 }
 
@@ -50,8 +48,6 @@ func (ms *MonitorService) RangeQuery(ctx context.Context, args struct {
 
 	args.Query = strings.ReplaceAll(args.Query, "$app", ms.App)
 	args.Query = strings.ReplaceAll(args.Query, "$cluster", ms.Cluster)
-	args.Query = strings.ReplaceAll(args.Query, "$master_instance", ms.MasterInstance)
-	args.Query = strings.ReplaceAll(args.Query, "$instance", ms.MasterInstance)
 
 	param := url.Values{}
 	param.Set("query", args.Query)
@@ -84,8 +80,6 @@ func (ms *MonitorService) RangeQueryURL(ctx context.Context, args struct {
 
 	args.Query = strings.ReplaceAll(args.Query, "$app", ms.App)
 	args.Query = strings.ReplaceAll(args.Query, "$cluster", ms.Cluster)
-	args.Query = strings.ReplaceAll(args.Query, "$instance", ms.MasterInstance)
-	args.Query = strings.ReplaceAll(args.Query, "$master_instance", ms.MasterInstance)
 
 	param := url.Values{}
 	param.Set("query", args.Query)
@@ -107,8 +101,6 @@ func (ms *MonitorService) Query(ctx context.Context, args struct {
 
 	args.Query = strings.ReplaceAll(args.Query, "$app", ms.App)
 	args.Query = strings.ReplaceAll(args.Query, "$cluster", ms.Cluster)
-	args.Query = strings.ReplaceAll(args.Query, "$instance", ms.MasterInstance)
-	args.Query = strings.ReplaceAll(args.Query, "$master_instance", ms.MasterInstance)
 
 	param := url.Values{}
 	param.Set("query", args.Query)
