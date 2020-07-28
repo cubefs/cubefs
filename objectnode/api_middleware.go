@@ -38,20 +38,43 @@ var (
 )
 
 var (
-	monitoredStatusCode = []string{
-		strconv.Itoa(http.StatusBadRequest),
-		strconv.Itoa(http.StatusForbidden),
-		strconv.Itoa(http.StatusInternalServerError),
+	monitoredStatusCode = []int{
+		http.StatusBadRequest,
+		http.StatusForbidden,
+		http.StatusInternalServerError,
 	}
 )
 
-func IsMonitoredStatusCode(code string) bool {
+func IsMonitoredStatusCode(code int) bool {
 	for _, statusCode := range monitoredStatusCode {
-		if statusCode == code {
+		if statusCode == code || code > http.StatusInternalServerError {
 			return true
 		}
 	}
 	return false
+}
+
+func generateWarnDetail(r *http.Request, errorInfo string) string {
+	var (
+		action    string
+		bucket    string
+		object    string
+		requestID string
+	)
+
+	var param = ParseRequestParam(r)
+	bucket = param.Bucket()
+	object = param.Object()
+	action = mux.Vars(r)[ContextKeyRequestAction]
+	requestID = mux.Vars(r)[ContextKeyRequestID]
+
+	if requestID == "" {
+		return fmt.Sprintf("object node generate request id failed, bucket(%v) object(%v) errorInfo(%v)",
+			bucket, object, errorInfo)
+	}
+
+	return fmt.Sprintf("object node request failed, rerquestId(%v) action(%v) bucket(%v), object(%v), errorInfo(%v)",
+		requestID, action, bucket, object, errorInfo)
 }
 
 // TraceMiddleware returns a middleware handler to trace request.
@@ -77,6 +100,8 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			log.LogErrorf("traceMiddleware: generate request ID fail, remote(%v) url(%v) err(%v)",
 				r.RemoteAddr, r.URL.String(), err)
 			_ = InternalErrorCode(err).ServeResponse(w, r)
+			// export ump warn info
+			exporter.Warning(generateWarnDetail(r, err.Error()))
 			return
 		}
 
@@ -107,6 +132,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		var statusCode = GetStatusCodeFromContext(r)
 		if IsMonitoredStatusCode(statusCode) {
 			exporter.NewTPCnt(fmt.Sprintf("failed_%v", statusCode)).Set(nil)
+			exporter.Warning(generateWarnDetail(r, getResponseErrorMessage(r)))
 		}
 
 		// ===== post-handle start =====

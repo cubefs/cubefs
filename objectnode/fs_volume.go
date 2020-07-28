@@ -1791,12 +1791,13 @@ func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 		})
 		var etagValue ETagValue
 		if i >= 0 && i < len(xattrs) && xattrs[i].Inode == fileInfo.Inode {
-			etagRaw, etagInvalidRaw := xattrs[i].Get(XAttrKeyOSSETag), xattrs[i].Get(XAttrKeyOSSETagDeprecated)
-			if len(etagRaw) != 0 {
-				etagValue = ParseETagValue(string(etagRaw))
+			var xattr = xattrs[0]
+			var rawETag = string(xattr.Get(XAttrKeyOSSETag))
+			if len(rawETag) == 0 {
+				rawETag = string(xattr.Get(XAttrKeyOSSETagDeprecated))
 			}
-			if len(etagInvalidRaw) != 0 {
-				etagValue = ParseETagValue(string(etagInvalidRaw))
+			if len(rawETag) > 0 {
+				etagValue = ParseETagValue(rawETag)
 			}
 		}
 		if !etagValue.Valid() || etagValue.TS.Before(fileInfo.ModifyTime) {

@@ -16,7 +16,7 @@ CLIENT2_SRC := $(wildcard clientv2/*.go clientv2/fs/*.go sdk/*.go)
 AUTHTOOL_SRC := $(wildcard authtool/*.go)
 CLI_SRC := $(wildcard cli/*.go)
 
-RM := $(shell [ -x /bin/rm ] && echo "/bin/rm -rf" || echo "/usr/bin/rm -rf" )
+RM := $(shell [ -x /bin/rm ] && echo "/bin/rm" || echo "/usr/bin/rm" )
 
 default: all
 
@@ -31,7 +31,7 @@ server: $(BIN_SERVER)
 client: $(BIN_CLIENT)
 
 client2: $(BIN_CLIENT2)
-	
+
 authtool: $(BIN_AUTHTOOL)
 
 cli: $(BIN_CLI)
@@ -44,7 +44,7 @@ $(BIN_CLIENT): $(COMMON_SRC) $(CLIENT_SRC)
 
 $(BIN_CLIENT2): $(COMMON_SRC) $(CLIENT2_SRC)
 	@build/build.sh client2
-	
+
 $(BIN_AUTHTOOL): $(COMMON_SRC) $(AUTHTOOL_SRC)
 	@build/build.sh authtool
 
@@ -53,12 +53,12 @@ $(BIN_CLI): $(COMMON_SRC) $(CLI_SRC)
 
 phony += clean
 clean:
-	@$(RM) build/bin
+	@$(RM) -rf build/bin
 
-phony += dist_clean
+phony += dist-clean
 dist-clean:
-	@$(RM) build/bin
-	@$(RM) build/out
+	@$(RM) -rf build/bin
+	@$(RM) -rf build/out
 
 phony += test
 test:

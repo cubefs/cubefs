@@ -15,14 +15,14 @@
 package master
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
-	"fmt"
-	"time"
 	"encoding/base64"
-	"strconv"
-	"net/url"
-	"net/http"
+	"fmt"
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
+	"net/http"
+	"net/url"
+	"strconv"
+	"time"
 )
 
 type TokenValue struct {

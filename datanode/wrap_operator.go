@@ -318,6 +318,13 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	var (
 		err error
 	)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionBatchMarkDelete, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
 	partition := p.Object.(*DataPartition)
 	if p.ExtentType == proto.TinyExtentType {
 		ext := new(proto.TinyExtentDeleteRecord)
@@ -332,11 +339,6 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			p.PartitionID, p.ExtentID)
 		err = partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
 	}
-	if err != nil {
-		p.PackErrorBody(ActionMarkDelete, err.Error())
-	} else {
-		p.PacketOkReply()
-	}
 
 	return
 }
@@ -346,6 +348,14 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	var (
 		err error
 	)
+	defer func() {
+		if err != nil {
+			log.LogErrorf(fmt.Sprintf("(%v) error(%v) data (%v)", p.GetUniqueLogId(), err, string(p.Data)))
+			p.PackErrorBody(ActionBatchMarkDelete, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
 	partition := p.Object.(*DataPartition)
 	var exts []*proto.ExtentKey
 	err = json.Unmarshal(p.Data, &exts)
@@ -354,16 +364,13 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		for _, ext := range exts {
 			DeleteLimiterWait()
 			log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
-			store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
+			err=store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
+			if err!=nil {
+				return
+			}
 		}
 	}
 
-	if err != nil {
-		log.LogErrorf(fmt.Sprintf("(%v) error(%v) data (%v)", p.GetUniqueLogId(), err, string(p.Data)))
-		p.PackErrorBody(ActionMarkDelete, err.Error())
-	} else {
-		p.PacketOkReply()
-	}
 
 	return
 }

@@ -244,11 +244,13 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 	batchCount := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteBatchCount)
 	limitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
 	deleteSleepMs := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
+	autoRepairRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeAutoRepairLimitRate)
 	cInfo := &proto.ClusterInfo{
 		Cluster:                     m.cluster.Name,
 		MetaNodeDeleteBatchCount:    batchCount,
 		MetaNodeDeleteWorkerSleepMs: deleteSleepMs,
 		DataNodeDeleteLimitRate:     limitRate,
+		DataNodeAutoRepairLimitRate: autoRepairRate,
 		Ip:                          strings.Split(r.RemoteAddr, ":")[0],
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
@@ -610,12 +612,12 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) volExpand(w http.ResponseWriter, r *http.Request) {
 	var (
-		name         string
-		authKey      string
-		err          error
-		msg          string
-		capacity     int
-		vol          *Vol
+		name     string
+		authKey  string
+		err      error
+		msg      string
+		capacity int
+		vol      *Vol
 	)
 	if name, authKey, capacity, err = parseRequestToSetVolCapacity(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -641,12 +643,12 @@ func (m *Server) volExpand(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) volShrink(w http.ResponseWriter, r *http.Request) {
 	var (
-		name         string
-		authKey      string
-		err          error
-		msg          string
-		capacity     int
-		vol          *Vol
+		name     string
+		authKey  string
+		err      error
+		msg      string
+		capacity int
+		vol      *Vol
 	)
 	if name, authKey, capacity, err = parseRequestToSetVolCapacity(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -876,6 +878,16 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+
+	if val, ok := params[nodeAutoRepairRateKey]; ok {
+		if v, ok := val.(uint64); ok {
+			if err = m.cluster.setDataNodeAutoRepairLimitRate(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
 	if val, ok := params[nodeDeleteWorkerSleepMs]; ok {
 		if v, ok := val.(uint64); ok {
 			if err = m.cluster.setMetaNodeDeleteWorkerSleepMs(v); err != nil {
@@ -894,6 +906,7 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	resp[nodeDeleteBatchCountKey] = fmt.Sprintf("%v", m.cluster.cfg.MetaNodeDeleteBatchCount)
 	resp[nodeMarkDeleteRateKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeDeleteLimitRate)
 	resp[nodeDeleteWorkerSleepMs] = fmt.Sprintf("%v", m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
+	resp[nodeAutoRepairRateKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeAutoRepairLimitRate)
 
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", resp)))
 }
@@ -1328,7 +1341,7 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 			err = unmatchedKey(enableTokenKey)
 			return
 		}
-	}else {
+	} else {
 		enableToken = vol.enableToken
 	}
 	return
@@ -1651,6 +1664,18 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		}
 		params[nodeMarkDeleteRateKey] = val
 	}
+
+	if value = r.FormValue(nodeAutoRepairRateKey); value != "" {
+		noParams = false
+		var val = uint64(0)
+		val, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(nodeAutoRepairRateKey)
+			return
+		}
+		params[nodeAutoRepairRateKey] = val
+	}
+
 	if value = r.FormValue(nodeDeleteWorkerSleepMs); value != "" {
 		noParams = false
 		var val = uint64(0)
@@ -1999,7 +2024,7 @@ func extractMetaPartitionID(r *http.Request) (partitionID uint64, err error) {
 	return strconv.ParseUint(value, 10, 64)
 }
 
-func extractCapacity(r *http.Request) (capacity int, err error){
+func extractCapacity(r *http.Request) (capacity int, err error) {
 	var capacityStr string
 	if capacityStr = r.FormValue(volCapacityKey); capacityStr == "" {
 		err = keyNotFound(volCapacityKey)

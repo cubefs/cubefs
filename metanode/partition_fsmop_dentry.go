@@ -15,8 +15,9 @@
 package metanode
 
 import (
-	"github.com/chubaofs/chubaofs/util/btree"
 	"strings"
+
+	"github.com/chubaofs/chubaofs/util/btree"
 
 	"github.com/chubaofs/chubaofs/proto"
 )
@@ -104,7 +105,7 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (
 			if d.(*Dentry).Inode != dentry.Inode {
 				return nil
 			}
-			return mp.dentryTree.Delete(dentry)
+			return mp.dentryTree.tree.Delete(dentry)
 		})
 	} else {
 		item = mp.dentryTree.Delete(dentry)

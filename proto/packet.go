@@ -156,12 +156,12 @@ const (
 )
 
 const (
-	WriteDeadlineTime        = 5
-	ReadDeadlineTime         = 5
-	SyncSendTaskDeadlineTime = 20
-	NoReadDeadlineTime       = -1
-
-	GetAllWatermarksDeadLineTime = 60
+	WriteDeadlineTime                 = 5
+	ReadDeadlineTime                  = 5
+	SyncSendTaskDeadlineTime          = 20
+	NoReadDeadlineTime                = -1
+	BatchDeleteExtentReadDeadLineTime = 120
+	GetAllWatermarksDeadLineTime      = 60
 )
 
 const (
@@ -705,4 +705,8 @@ func (p *Packet) LogMessage(action, remote string, start int64, err error) (m st
 // ShallRetry returns if we should retry the packet.
 func (p *Packet) ShouldRetry() bool {
 	return p.ResultCode == OpAgain || p.ResultCode == OpErr
+}
+
+func (p *Packet) IsBatchDeleteExtents() bool {
+	return p.Opcode == OpBatchDeleteExtent
 }
