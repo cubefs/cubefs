@@ -62,8 +62,7 @@ func newMetaCompatibilityCmd() *cobra.Command {
 			client := api.NewMetaHttpClient(host, false)
 			defer func() {
 				if err != nil {
-					errout("Verify metadata consistency failed: %v\n", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			id, err := strconv.ParseUint(pid, 10, 64)

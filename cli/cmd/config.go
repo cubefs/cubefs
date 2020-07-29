@@ -77,8 +77,7 @@ func newConfigSetCmd() *cobra.Command {
 			)
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			if optMasterHost == "" && optTimeout == 0 {

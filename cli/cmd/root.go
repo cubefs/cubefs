@@ -62,6 +62,7 @@ func NewRootCmd(client *master.MasterClient) *ChubaoFSCmd {
 		newMetaPartitionCmd(client),
 		newConfigCmd(),
 		newCompatibilityCmd(),
+		newZoneCmd(client),
 	)
 	return cmd
 }
@@ -71,8 +72,9 @@ func stdout(format string, a ...interface{}) {
 }
 
 func errout(format string, a ...interface{}) {
-	log.LogErrorf(format, a...)
+	log.LogErrorf(format + "\n", a...)
 	_, _ = fmt.Fprintf(os.Stderr, format, a...)
+	OsExitWithLogFlush()
 }
 
 func OsExitWithLogFlush() {
