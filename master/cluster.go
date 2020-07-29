@@ -409,6 +409,8 @@ errHandler:
 
 func (c *Cluster) checkCorruptDataPartitions() (inactiveDataNodes []string, corruptPartitions []*DataPartition, err error) {
 	partitionMap := make(map[uint64]uint8)
+	inactiveDataNodes = make([]string, 0)
+	corruptPartitions = make([]*DataPartition, 0)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
 		if !dataNode.isActive {
@@ -441,6 +443,7 @@ func (c *Cluster) checkCorruptDataPartitions() (inactiveDataNodes []string, corr
 }
 
 func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []*DataPartition, err error) {
+	lackReplicaDataPartitions = make([]*DataPartition, 0)
 	vols := c.copyVols()
 	for _, vol := range vols {
 		var dps *DataPartitionMap
@@ -1264,6 +1267,18 @@ func (c *Cluster) putBadMetaPartitions(addr string, partitionID uint64) {
 	c.BadMetaPartitionIds.Store(addr, newBadPartitionIDs)
 }
 
+func (c *Cluster) getBadMetaPartitionsView() (bmpvs []badPartitionView){
+	bmpvs = make([]badPartitionView, 0)
+	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
+		badPartitionIds := value.([]uint64)
+		path := key.(string)
+		bpv := badPartitionView{Path: path, PartitionIDs: badPartitionIds}
+		bmpvs = append(bmpvs, bpv)
+		return true
+	})
+	return
+}
+
 func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, partitionID uint64) {
 	var key string
 	newBadPartitionIDs := make([]uint64, 0)
@@ -1278,6 +1293,18 @@ func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, part
 	}
 	newBadPartitionIDs = append(newBadPartitionIDs, partitionID)
 	c.BadDataPartitionIds.Store(key, newBadPartitionIDs)
+}
+
+func (c *Cluster) getBadDataPartitionsView() (bpvs []badPartitionView){
+	bpvs = make([]badPartitionView, 0)
+	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
+		badDataPartitionIds := value.([]uint64)
+		path := key.(string)
+		bpv := badPartitionView{Path: path, PartitionIDs: badDataPartitionIds}
+		bpvs = append(bpvs, bpv)
+		return true
+	})
+	return
 }
 
 func (c *Cluster) decommissionMetaNode(metaNode *MetaNode) (err error) {

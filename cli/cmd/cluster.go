@@ -38,6 +38,7 @@ func (cmd *ChubaoFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Comman
 		newClusterStatCmd(client),
 		newClusterFreezeCmd(client),
 		newClusterSetThresholdCmd(client),
+		newClusterDeleteParasCmd(client),
 	)
 	return clusterCmd
 }
@@ -47,6 +48,11 @@ const (
 	cmdClusterStatShort      = "Show cluster status information"
 	cmdClusterFreezeShort    = "Freeze cluster"
 	cmdClusterThresholdShort = "Set memory threshold of metanodes"
+	cmdClusterDelParaShort   = "Set delete parameters"
+	nodeDeleteBatchCountKey  = "batchCount"
+	nodeMarkDeleteRateKey    = "markDeleteRate"
+	nodeDeleteWorkerSleepMs  = "deleteWorkerSleepMs"
+	nodeAutoRepairRateKey    = "autoRepairRate"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -56,12 +62,19 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			var cv *proto.ClusterView
+			var delPara map[string]string
 			if cv, err = client.AdminAPI().GetCluster(); err != nil {
-				errout("Get cluster info fail:\n%v\n", err)
-				OsExitWithLogFlush()
+				errout("Error: %v", err)
 			}
 			stdout("[Cluster]\n")
 			stdout(formatClusterView(cv))
+			if delPara, err = client.AdminAPI().GetDeleteParas(); err != nil {
+				errout("Error: %v", err)
+			}
+			stdout(fmt.Sprintf("  BatchCount         : %v\n", delPara[nodeDeleteBatchCountKey]))
+			stdout(fmt.Sprintf("  MarkDeleteRate     : %v\n", delPara[nodeMarkDeleteRateKey]))
+			stdout(fmt.Sprintf("  DeleteWorkerSleepMs: %v\n", delPara[nodeDeleteWorkerSleepMs]))
+			stdout(fmt.Sprintf("  AutoRepairRate     : %v\n", delPara[nodeAutoRepairRateKey]))
 			stdout("\n")
 		},
 	}
@@ -79,8 +92,7 @@ func newClusterStatCmd(client *master.MasterClient) *cobra.Command {
 			)
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			if cs, err = client.AdminAPI().GetClusterStat(); err != nil {
@@ -114,8 +126,7 @@ If 'freeze=true', ChubaoFS WILL NOT automatically allocate new data partitions `
 			)
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			if enable, err = strconv.ParseBool(args[0]); err != nil {
@@ -149,8 +160,7 @@ If the memory usage reaches this threshold, all the mata partition will be readO
 			)
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			if threshold, err = strconv.ParseFloat(args[0], 64); err != nil {
@@ -167,5 +177,34 @@ If the memory usage reaches this threshold, all the mata partition will be readO
 			stdout("MetaNode threshold is set to %v!\n", threshold)
 		},
 	}
+	return cmd
+}
+
+func newClusterDeleteParasCmd(client *master.MasterClient) *cobra.Command {
+	var optAutoRepairRate, optMarkDeleteRate, optDelBatchCount, optDelWorkerSleepMs string
+	var cmd = &cobra.Command{
+		Use:   CliOpSetDelRate,
+		Short: cmdClusterDelParaShort,
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err error
+			)
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+
+			if err = client.AdminAPI().SetDeleteParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs, optAutoRepairRate); err != nil {
+				return
+			}
+			stdout("Delete parameters has been set successfully. \n")
+		},
+	}
+	cmd.Flags().StringVar(&optAutoRepairRate, CliFlagAutoRepairRate, "", "DataNode auto repair rate")
+	cmd.Flags().StringVar(&optDelBatchCount, CliFlagDelBatchCount, "", "MetaNode delete batch count")
+	cmd.Flags().StringVar(&optDelWorkerSleepMs, CliFlagDelWorkerSleepMs, "", "MetaNode delete worker sleep time with millisecond. if 0 for no sleep")
+	cmd.Flags().StringVar(&optMarkDeleteRate, CliFlagMarkDelRate, "", "DataNode batch mark delete limit rate. if 0 for no infinity limit")
+
 	return cmd
 }

@@ -520,3 +520,22 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 		UsedSize:   usedSize,
 	}
 }
+
+//ZoneView define the view of zone
+type ZoneView struct {
+	Name    string
+	Status  string
+	NodeSet map[uint64]*NodeSetView
+}
+
+type NodeSetView struct {
+	DataNodeLen int
+	MetaNodeLen int
+	MetaNodes   []NodeView
+	DataNodes   []NodeView
+}
+
+// TopologyView provides the view of the topology view of the cluster
+type TopologyView struct {
+	Zones []*ZoneView
+}
