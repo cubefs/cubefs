@@ -278,7 +278,8 @@ build_authtool() {
 }
 
 build_cli() {
-    pre_build
+    #cli need gorocksdb too
+    pre_build_server
     pushd $SrcPath >/dev/null
     echo -n "build cfs-cli      "
     #go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-cli ${SrcPath}/cli/*.go  && echo "success" || echo "failed"
