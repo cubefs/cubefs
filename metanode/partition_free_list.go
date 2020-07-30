@@ -212,7 +212,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 				exts = make([]*proto.ExtentKey, 0)
 			}
 			exts = append(exts, ext)
-			log.LogWritef("mp(%v) ino(%v) deleteExtent(%v)",mp.config.PartitionId,inode.Inode,ext.String())
+			log.LogWritef("mp(%v) ino(%v) deleteExtent(%v)", mp.config.PartitionId, inode.Inode, ext.String())
 			deleteExtentsByPartition[ext.PartitionId] = exts
 			return true
 		})
