@@ -167,6 +167,7 @@ func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
 	return
 }
 
+//
 func (mp *metaPartition) setExtentDeleteFileCursor(buf []byte) (err error) {
 	str := string(buf)
 	var (
