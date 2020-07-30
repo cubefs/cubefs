@@ -149,7 +149,7 @@ Config Management
         --timeout   uint16      #Specify timeout for requests [Unit: s] (default 60)
 
 Completion Management
->>>>>>>>>>>>>>>>>>>
+>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 .. code-block:: bash
 
@@ -249,7 +249,9 @@ Compatibility Test
             [Snapshot Path] string                     #The path which snapshot file located
             [Host] string                              #The metanode host which generated the snapshot file
             [Partition ID] string                      #The meta partition ID which to be compared
+
 Example:
+
     1. Use the old version to prepare metadata, stop writing metadata,after waiting for the latest snapshot to be generated(about 5 minutes), copy the snapshot file to the local machine
     2. Execute the metadata comparison command on local machine
 
