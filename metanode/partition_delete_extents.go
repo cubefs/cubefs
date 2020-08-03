@@ -289,9 +289,11 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			ek := new(proto.ExtentKey)
 			if extentV2 {
 				if err = ek.UnmarshalBinaryWithCheckSum(buff); err != nil {
-					if err == proto.InvalidKeyHeader {
+					if err == proto.InvalidKeyHeader || err == proto.InvalidKeyCheckSum {
 						log.LogErrorf("[deleteExtentsFromList] invalid extent key header %v, %v, %v", fileName, mp.config.PartitionId, err)
+						continue
 					}
+					log.LogErrorf("[deleteExtentsFromList] mp: %v Unmarshal extentkey from %v unresolved error: %v", mp.config.PartitionId, fileName, err)
 					panic(err)
 				}
 			} else {
