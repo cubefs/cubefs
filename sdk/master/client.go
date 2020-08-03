@@ -156,7 +156,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			}
 			// o represent proto.ErrCodeSuccess
 			if body.Code != 0 {
-				log.LogErrorf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, body.Data)
+				log.LogWarnf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, body.Data)
 				return nil, proto.ParseErrorCode(body.Code)
 			}
 			return []byte(body.Data), nil
