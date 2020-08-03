@@ -141,9 +141,14 @@ func (partition *DataPartition) resetTaskID(t *proto.AdminTask) {
 }
 
 // Check if there is a replica missing or not.
-func (partition *DataPartition) hasMissingOneReplica(replicaNum int) (err error) {
-	hostNum := len(partition.Replicas)
-	if hostNum <= replicaNum-1 {
+func (partition *DataPartition) hasMissingOneReplica(offlineAddr string, replicaNum int) (err error) {
+	curReplicaCount := len(partition.Replicas)
+	for _, r := range partition.Replicas {
+		if r.Addr == offlineAddr {
+			curReplicaCount = curReplicaCount - 1
+		}
+	}
+	if curReplicaCount < replicaNum-1 {
 		log.LogError(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
 			"hasMissingOneReplica", partition.PartitionID, proto.ErrHasOneMissingReplica))
 		err = proto.ErrHasOneMissingReplica
