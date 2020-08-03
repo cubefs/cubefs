@@ -192,6 +192,11 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = NoSuchUpload
 		return
 	}
+	if err == io.ErrUnexpectedEOF {
+		log.LogWarnf("uploadPartHandler: write part fail cause unexpected EOF, requestID(%v) err(%v)", GetRequestID(r), err)
+		errorCode = EntityTooSmall
+		return
+	}
 	if err != nil {
 		log.LogErrorf("uploadPartHandler: write part fail, requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
