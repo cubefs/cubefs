@@ -29,6 +29,10 @@ const (
 	idKey                   = "id"
 	countKey                = "count"
 	startKey                = "start"
+	endKey                  = "end"
+	nodeTypeKey             = "nodeType"
+	strictFlagKey             = "strict"
+	stateKey                = "state"
 	enableKey               = "enable"
 	thresholdKey            = "threshold"
 	dataPartitionSizeKey    = "size"
@@ -52,6 +56,12 @@ const (
 	nodeMarkDeleteRateKey   = "markDeleteRate"
 	nodeDeleteWorkerSleepMs = "deleteWorkerSleepMs"
 	descriptionKey          = "description"
+)
+
+const (
+	nodeTypeDataNode = "dataNode"
+	nodeTypeMetaNode = "metaNode"
+	nodeTypeAll      = "all"
 )
 
 const (

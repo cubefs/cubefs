@@ -1082,7 +1082,7 @@ func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAd
 		return
 	}
 
-	if err = dp.hasMissingOneReplica(int(vol.dpReplicaNum)); err != nil {
+	if err = dp.hasMissingOneReplica(offlineAddr, int(vol.dpReplicaNum)); err != nil {
 		return
 	}
 
@@ -1887,6 +1887,38 @@ func (c *Cluster) clearMetaNodes() {
 		metaNode := value.(*MetaNode)
 		c.metaNodes.Delete(key)
 		metaNode.clean()
+		return true
+	})
+}
+
+func (c *Cluster) setDataNodeToOfflineState(startID, endID uint64, state bool) {
+	c.dataNodes.Range(func(key, value interface{}) bool {
+		node, ok := value.(*DataNode)
+		if !ok {
+			return true
+		}
+		if node.ID < startID || node.ID > endID {
+			return true
+		}
+		node.Lock()
+		node.ToBeOffline = state
+		node.Unlock()
+		return true
+	})
+}
+
+func (c *Cluster) setMetaNodeToOfflineState(startID, endID uint64, state bool) {
+	c.metaNodes.Range(func(key, value interface{}) bool {
+		node, ok := value.(*MetaNode)
+		if !ok {
+			return true
+		}
+		if node.ID < startID || node.ID > endID {
+			return true
+		}
+		node.Lock()
+		node.ToBeOffline = state
+		node.Unlock()
 		return true
 	})
 }
