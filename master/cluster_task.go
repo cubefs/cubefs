@@ -183,7 +183,7 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 		return
 	}
 
-	if err = mp.hasMissingOneReplica(int(vol.mpReplicaNum)); err != nil {
+	if err = mp.hasMissingOneReplica(nodeAddr,int(vol.mpReplicaNum)); err != nil {
 		return
 	}
 
