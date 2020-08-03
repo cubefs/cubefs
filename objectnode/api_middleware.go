@@ -37,19 +37,9 @@ var (
 	routeSNRegexp = regexp.MustCompile(":(\\w){32}$")
 )
 
-var (
-	monitoredStatusCode = []int{
-		http.StatusBadRequest,
-		http.StatusForbidden,
-		http.StatusInternalServerError,
-	}
-)
-
 func IsMonitoredStatusCode(code int) bool {
-	for _, statusCode := range monitoredStatusCode {
-		if statusCode == code || code > http.StatusInternalServerError {
-			return true
-		}
+	if code > http.StatusInternalServerError {
+		return true
 	}
 	return false
 }
