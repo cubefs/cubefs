@@ -143,8 +143,8 @@ func TestPanicCheckMigratedMetaPartitionsRecovery(t *testing.T) {
 	}
 	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID)
 	vol.addMetaPartition(mp)
-	mp = nil
 	c.MigratedMetaPartitionIds.Store(fmt.Sprintf("%v", mp.PartitionID), mp)
+	mp = nil
 	c.checkMigratedMetaPartitionRecoveryProgress()
 	t.Logf("catched panic")
 }

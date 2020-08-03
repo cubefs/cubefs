@@ -519,6 +519,59 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
+func (m *Server) setNodeToOfflineState(w http.ResponseWriter, r *http.Request) {
+	var (
+		err      error
+		startID  uint64
+		endID    uint64
+		nodeType string
+		state    bool
+	)
+	if startID, endID, nodeType, state, err = parseRequestToSetNodeToOfflineState(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if nodeType == nodeTypeAll {
+		m.cluster.setDataNodeToOfflineState(startID, endID, state)
+		m.cluster.setMetaNodeToOfflineState(startID, endID, state)
+	} else {
+		if nodeType == nodeTypeDataNode {
+			m.cluster.setDataNodeToOfflineState(startID, endID, state)
+		} else {
+			m.cluster.setMetaNodeToOfflineState(startID, endID, state)
+		}
+	}
+	sendOkReply(w, r, newSuccessHTTPReply("success"))
+}
+
+func parseRequestToSetNodeToOfflineState(r *http.Request) (startID, endID uint64, nodeType string, state bool, err error) {
+	var value string
+	if value = r.FormValue(startKey); value == "" {
+		err = keyNotFound(startKey)
+		return
+	}
+	startID, err = strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return
+	}
+	if value = r.FormValue(endKey); value == "" {
+		err = keyNotFound(endKey)
+		return
+	}
+	endID, err = strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return
+	}
+	nodeType = r.FormValue(nodeTypeKey)
+	if !(nodeType == nodeTypeDataNode || nodeType == nodeTypeMetaNode || nodeType == nodeTypeAll) {
+		err = fmt.Errorf("nodeType must be dataNode or metaNode")
+		return
+	}
+	state, err = strconv.ParseBool(r.FormValue(stateKey))
+	return
+}
+
 func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		err               error
@@ -1340,8 +1393,8 @@ func parseAndExtractNodeAddr(r *http.Request) (nodeAddr string, err error) {
 
 func extractStrictFlag(r *http.Request) (strict bool, err error) {
 	var strictStr string
-	if strictStr = r.FormValue(addrKey); strictStr == "" {
-		err = keyNotFound(addrKey)
+	if strictStr = r.FormValue(strictFlagKey); strictStr == "" {
+		strictStr = "false"
 		return
 	}
 	return strconv.ParseBool(strictStr)

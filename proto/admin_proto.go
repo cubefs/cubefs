@@ -39,6 +39,7 @@ const (
 	AdminListVols                  = "/vol/list"
 	AdminSetNodeInfo               = "/admin/setNodeInfo"
 	AdminGetNodeInfo               = "/admin/getNodeInfo"
+	AdminSetNodeState              = "/admin/setNodeState"
 
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"

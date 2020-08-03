@@ -29,6 +29,10 @@ const (
 	idKey                   = "id"
 	countKey                = "count"
 	startKey                = "start"
+	endKey                  = "end"
+	nodeTypeKey             = "nodeType"
+	strictFlagKey           = "strict"
+	stateKey                = "state"
 	enableKey               = "enable"
 	thresholdKey            = "threshold"
 	dataPartitionSizeKey    = "size"
@@ -55,6 +59,12 @@ const (
 	descriptionKey          = "description"
 	dpSelectorNameKey       = "dpSelectorName"
 	dpSelectorParmKey       = "dpSelectorParm"
+)
+
+const (
+	nodeTypeDataNode = "dataNode"
+	nodeTypeMetaNode = "metaNode"
+	nodeTypeAll      = "all"
 )
 
 const (
