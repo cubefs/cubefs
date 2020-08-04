@@ -20,6 +20,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 const (
@@ -94,5 +95,15 @@ func GetProcessMemory(pid int) (used uint64, err error) {
 		used = used * KB
 		break
 	}
+	return
+}
+
+func GetDiskInfo(path string) (all uint64, used uint64, err error) {
+	fs := syscall.Statfs_t{}
+	if err = syscall.Statfs(path, &fs); err != nil {
+		return
+	}
+	all = fs.Blocks * uint64(fs.Bsize)
+	used = all - fs.Bfree*uint64(fs.Bsize)
 	return
 }

@@ -306,7 +306,11 @@ type MetaNodeHeartbeatResponse struct {
 	Used                 uint64
 	MetaPartitionReports []*MetaPartitionReport
 	Status               uint8
-	Result               string
+	//the param used for disk
+	DiskTotal uint64
+	DiskUsed  uint64
+	StoreType uint8
+	Result    string
 }
 
 // DeleteFileRequest defines the request to delete a file.

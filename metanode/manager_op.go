@@ -55,6 +55,17 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	// collect memory info
 	resp.Total = configTotalMem
 	resp.Used, err = util.GetProcessMemory(os.Getpid())
+
+	resp.StoreType = m.storeType
+	if m.storeType == 1 {
+		if total, used, err := util.GetDiskInfo(m.rootDir); err != nil {
+			log.LogErrorf("get disk info by path:[%s] has err:[%s]", m.rootDir, err.Error())
+		} else {
+			resp.DiskTotal = total
+			resp.DiskUsed = used
+		}
+	}
+
 	if err != nil {
 		adminTask.Status = proto.TaskFailed
 		goto end

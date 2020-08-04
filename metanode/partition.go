@@ -64,11 +64,11 @@ type MetaPartitionConfig struct {
 	// Identity for raftStore group. RaftStore nodes in the same raftStore group must have the same groupID.
 	PartitionId uint64              `json:"partition_id"`
 	VolName     string              `json:"vol_name"`
-	Start       uint64              `json:"start"` // Minimal Inode ID of this range. (Required during initialization)
-	End         uint64              `json:"end"`   // Maximal Inode ID of this range. (Required during initialization)
-	Peers       []proto.Peer        `json:"peers"` // Peers information of the raftStore
-	Store       uint64              `json:"store"` // 0:memory , 1:rocksdb  default memory
-	Cursor      uint64              `json:"-"`     // Cursor ID of the inode that have been assigned
+	Start       uint64              `json:"start"`      // Minimal Inode ID of this range. (Required during initialization)
+	End         uint64              `json:"end"`        // Maximal Inode ID of this range. (Required during initialization)
+	Peers       []proto.Peer        `json:"peers"`      // Peers information of the raftStore
+	StoreType   uint8               `json:"store_type"` // 0:memory , 1:rocksdb  default memory
+	Cursor      uint64              `json:"-"`          // Cursor ID of the inode that have been assigned
 	NodeId      uint64              `json:"-"`
 	RootDir     string              `json:"-"`
 	BeforeStart func()              `json:"-"`
@@ -286,7 +286,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (*Met
 		multipartTree MultipartTree
 	)
 
-	if conf.Store == 0 {
+	if conf.StoreType == 0 {
 		inodeTree = &InodeBTree{NewBtree()}
 		dentryTree = &DentryBTree{NewBtree()}
 		extendTree = &ExtendBTree{NewBtree()}
@@ -389,7 +389,7 @@ func (mp *MetaPartition) load() (err error) {
 	}
 
 	//it means rocksdb and not init so skip load snapshot
-	if mp.config.Store == 1 && mp.inodeTree.Count() > 0 {
+	if mp.config.StoreType == 1 && mp.inodeTree.Count() > 0 {
 		return nil
 	}
 
@@ -419,7 +419,7 @@ func (mp *MetaPartition) load() (err error) {
 
 func (mp *MetaPartition) store(sm *storeMsg) (err error) {
 
-	if mp.config.Store != 0 {
+	if mp.config.StoreType != 0 {
 		defer sm.snapshot.Close()
 		return mp.inodeTree.Flush()
 	}

@@ -245,7 +245,7 @@ func (mp *MetaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		multipartTree MultipartTree
 	)
 
-	if mp.config.Store == 0 {
+	if mp.config.StoreType == 0 {
 		inodeTree = &InodeBTree{NewBtree()}
 		dentryTree = &DentryBTree{NewBtree()}
 		extendTree = &ExtendBTree{NewBtree()}
