@@ -354,6 +354,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.FsyncOnClose = GlobalMountOptions[proto.FsyncOnClose].GetBool()
 	opt.MaxCPUs = GlobalMountOptions[proto.MaxCPUs].GetInt64()
 	opt.EnableXattr = GlobalMountOptions[proto.EnableXattr].GetBool()
+	opt.NearRead = GlobalMountOptions[proto.NearRead].GetBool()
 	opt.AlignSize = GlobalMountOptions[proto.AlignSize].GetInt64()
 	opt.MaxExtentNumPerAlignArea = GlobalMountOptions[proto.MaxExtentNumPerAlignArea].GetInt64()
 	opt.ForceAlignMerge = GlobalMountOptions[proto.ForceAlignMerge].GetBool()

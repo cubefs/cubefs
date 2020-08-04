@@ -101,3 +101,10 @@ func FromRequest(r *http.Request) string {
 func RealIP(r *http.Request) string {
 	return FromRequest(r)
 }
+
+// set default max distance from two ips to length of ipv6
+const DEFAULT_MAX_DISTANCE = 128
+
+func GetDistance(a, b net.IP) int {
+	return DEFAULT_MAX_DISTANCE - commonPrefixLen(a, b)
+}
