@@ -83,6 +83,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		Volume:            opt.Volname,
 		Masters:           masters,
 		FollowerRead:      opt.FollowerRead,
+		NearRead:          opt.NearRead,
 		ReadRate:          opt.ReadRate,
 		WriteRate:         opt.WriteRate,
 		OnAppendExtentKey: s.mw.AppendExtentKey,
