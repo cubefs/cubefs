@@ -32,7 +32,7 @@ init_cli() {
     cd ${conf_path}
     ${cli} completion &> /dev/null
     echo 'source '${conf_path}'/cfs-cli.sh' >> ~/.bashrc
-    echo -n "ChubaoFS Command Line Interface  ... "
+    echo -n "Installing ChubaoFS cli tool  ... "
     echo -e "\033[32mdone\033[0m"
 }
 check_cluster() {

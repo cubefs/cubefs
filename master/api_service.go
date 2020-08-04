@@ -33,39 +33,31 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
-// NodeView provides the view of the data or meta node.
-type NodeView struct {
-	Addr       string
-	Status     bool
-	ID         uint64
-	IsWritable bool
-}
-
 // TopologyView provides the view of the topology view of the cluster
 type TopologyView struct {
 	Zones []*ZoneView
 }
 
-type nodeSetView struct {
+type NodeSetView struct {
 	DataNodeLen int
 	MetaNodeLen int
-	MetaNodes   []NodeView
-	DataNodes   []NodeView
+	MetaNodes   []proto.NodeView
+	DataNodes   []proto.NodeView
 }
 
-func newNodeSetView(dataNodeLen, metaNodeLen int) *nodeSetView {
-	return &nodeSetView{DataNodes: make([]NodeView, 0), MetaNodes: make([]NodeView, 0), DataNodeLen: dataNodeLen, MetaNodeLen: metaNodeLen}
+func newNodeSetView(dataNodeLen, metaNodeLen int) *NodeSetView {
+	return &NodeSetView{DataNodes: make([]proto.NodeView, 0), MetaNodes: make([]proto.NodeView, 0), DataNodeLen: dataNodeLen, MetaNodeLen: metaNodeLen}
 }
 
 //ZoneView define the view of zone
 type ZoneView struct {
 	Name    string
 	Status  string
-	NodeSet map[uint64]*nodeSetView
+	NodeSet map[uint64]*NodeSetView
 }
 
 func newZoneView(name string) *ZoneView {
-	return &ZoneView{NodeSet: make(map[uint64]*nodeSetView, 0), Name: name}
+	return &ZoneView{NodeSet: make(map[uint64]*NodeSetView, 0), Name: name}
 }
 
 type badPartitionView = proto.BadPartitionView
@@ -128,12 +120,12 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 			cv.NodeSet[ns.ID] = nsView
 			ns.dataNodes.Range(func(key, value interface{}) bool {
 				dataNode := value.(*DataNode)
-				nsView.DataNodes = append(nsView.DataNodes, NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
+				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
 				return true
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				nsView.MetaNodes = append(nsView.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
+				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
 				return true
 			})
 		}
@@ -222,20 +214,9 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		}
 		cv.VolStatInfo = append(cv.VolStatInfo, stat.(*volStatInfo))
 	}
-	m.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
-		badDataPartitionIds := value.([]uint64)
-		path := key.(string)
-		bpv := badPartitionView{Path: path, PartitionIDs: badDataPartitionIds}
-		cv.BadPartitionIDs = append(cv.BadPartitionIDs, bpv)
-		return true
-	})
-	m.cluster.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
-		badPartitionIds := value.([]uint64)
-		path := key.(string)
-		bpv := badPartitionView{Path: path, PartitionIDs: badPartitionIds}
-		cv.BadMetaPartitionIDs = append(cv.BadMetaPartitionIDs, bpv)
-		return true
-	})
+	cv.BadPartitionIDs = m.cluster.getBadDataPartitionsView()
+	cv.BadMetaPartitionIDs = m.cluster.getBadMetaPartitionsView()
+
 	sendOkReply(w, r, newSuccessHTTPReply(cv))
 }
 
@@ -507,14 +488,17 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 
 func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
-		err              error
-		rstMsg           *proto.DataPartitionDiagnosis
-		inactiveNodes    []string
-		corruptDps       []*DataPartition
-		lackReplicaDps   []*DataPartition
-		corruptDpIDs     []uint64
-		lackReplicaDpIDs []uint64
+		err               error
+		rstMsg            *proto.DataPartitionDiagnosis
+		inactiveNodes     []string
+		corruptDps        []*DataPartition
+		lackReplicaDps    []*DataPartition
+		corruptDpIDs      []uint64
+		lackReplicaDpIDs  []uint64
+		badDataPartitions []badPartitionView
 	)
+	corruptDpIDs = make([]uint64, 0)
+	lackReplicaDpIDs = make([]uint64, 0)
 	if inactiveNodes, corruptDps, err = m.cluster.checkCorruptDataPartitions(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -530,10 +514,12 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 	for _, dp := range lackReplicaDps {
 		lackReplicaDpIDs = append(lackReplicaDpIDs, dp.PartitionID)
 	}
+	badDataPartitions = m.cluster.getBadDataPartitionsView()
 	rstMsg = &proto.DataPartitionDiagnosis{
 		InactiveDataNodes:           inactiveNodes,
 		CorruptDataPartitionIDs:     corruptDpIDs,
 		LackReplicaDataPartitionIDs: lackReplicaDpIDs,
+		BadDataPartitionIDs:         badDataPartitions,
 	}
 	log.LogInfof("diagnose dataPartition[%v] inactiveNodes:[%v], corruptDpIDs:[%v], lackReplicaDpIDs:[%v]", m.cluster.Name, inactiveNodes, corruptDpIDs, lackReplicaDpIDs)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
@@ -908,19 +894,22 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	resp[nodeDeleteWorkerSleepMs] = fmt.Sprintf("%v", m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
 	resp[nodeAutoRepairRateKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeAutoRepairLimitRate)
 
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", resp)))
+	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }
 
 func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
-		err              error
-		rstMsg           *proto.MetaPartitionDiagnosis
-		inactiveNodes    []string
-		corruptMps       []*MetaPartition
-		lackReplicaMps   []*MetaPartition
-		corruptMpIDs     []uint64
-		lackReplicaMpIDs []uint64
+		err               error
+		rstMsg            *proto.MetaPartitionDiagnosis
+		inactiveNodes     []string
+		corruptMps        []*MetaPartition
+		lackReplicaMps    []*MetaPartition
+		corruptMpIDs      []uint64
+		lackReplicaMpIDs  []uint64
+		badMetaPartitions []badPartitionView
 	)
+	corruptMpIDs = make([]uint64, 0)
+	lackReplicaMpIDs = make([]uint64, 0)
 	if inactiveNodes, corruptMps, err = m.cluster.checkCorruptMetaPartitions(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 	}
@@ -934,10 +923,12 @@ func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 	for _, mp := range lackReplicaMps {
 		lackReplicaMpIDs = append(lackReplicaMpIDs, mp.PartitionID)
 	}
+	badMetaPartitions = m.cluster.getBadMetaPartitionsView()
 	rstMsg = &proto.MetaPartitionDiagnosis{
 		InactiveMetaNodes:           inactiveNodes,
 		CorruptMetaPartitionIDs:     corruptMpIDs,
 		LackReplicaMetaPartitionIDs: lackReplicaMpIDs,
+		BadMetaPartitionIDs:         badMetaPartitions,
 	}
 	log.LogInfof("diagnose metaPartition[%v] inactiveNodes:[%v], corruptMpIDs:[%v], lackReplicaMpIDs:[%v]", m.cluster.Name, inactiveNodes, corruptMpIDs, lackReplicaMpIDs)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))

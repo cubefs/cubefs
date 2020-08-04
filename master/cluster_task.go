@@ -187,6 +187,8 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 
 func (c *Cluster) checkCorruptMetaPartitions() (inactiveMetaNodes []string, corruptPartitions []*MetaPartition, err error) {
 	partitionMap := make(map[uint64]uint8)
+	inactiveMetaNodes = make([]string, 0)
+	corruptPartitions = make([]*MetaPartition, 0)
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
 		if !metaNode.IsActive {
@@ -252,6 +254,7 @@ func (c *Cluster) checkCorruptMetaNode(metaNode *MetaNode) (corruptPartitions []
 }
 
 func (c *Cluster) checkLackReplicaMetaPartitions() (lackReplicaMetaPartitions []*MetaPartition, err error) {
+	lackReplicaMetaPartitions = make([]*MetaPartition, 0)
 	vols := c.copyVols()
 	for _, vol := range vols {
 		for _, mp := range vol.MetaPartitions {
