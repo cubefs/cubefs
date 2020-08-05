@@ -277,7 +277,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		}
 		buff := bytes.NewBuffer(buf)
 		cursor += uint64(n)
-		allExtents := make(map[uint64][]*proto.ExtentKey)
+		var deleteCnt uint64
 		for {
 			if buff.Len() == 0 {
 				break
@@ -286,7 +286,11 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 				cursor -= uint64(buff.Len())
 				break
 			}
-			ek := new(proto.ExtentKey)
+			batchCount := DeleteBatchCount()*5
+			if deleteCnt%batchCount==0 {
+				DeleteWorkerSleepMs()
+			}
+			ek := proto.ExtentKey{}
 			if extentV2 {
 				if err = ek.UnmarshalBinaryWithCheckSum(buff); err != nil {
 					if err == proto.InvalidKeyHeader || err == proto.InvalidKeyCheckSum {
@@ -301,14 +305,16 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 					panic(err)
 				}
 			}
-			extents, ok := allExtents[ek.PartitionId]
-			if !ok {
-				extents = make([]*proto.ExtentKey, 0)
+			// delete dataPartition
+			if err = mp.doDeleteMarkedInodes(&ek); err != nil {
+				eks := make([]proto.ExtentKey, 0)
+				eks = append(eks, ek)
+				mp.extDelCh <- eks
+				log.LogWarnf("[deleteExtentsFromList] mp: %v, extent: %v, %s",
+					ek, err.Error())
 			}
-			extents = append(extents, ek)
-			allExtents[ek.PartitionId] = extents
+			deleteCnt++
 		}
-		mp.checkBatchDeleteExtents(allExtents)
 		buff.Reset()
 		buff.WriteString(fmt.Sprintf("%s %d", fileName, cursor))
 		if _, err = mp.submit(opFSMInternalDelExtentCursor, buff.Bytes()); err != nil {
