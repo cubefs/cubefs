@@ -194,7 +194,7 @@ func (m *metadataManager) opFreeInodeOnRaftFollower(conn net.Conn, p *Packet,
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), string(p.Data))
+		err = errors.NewErrorf("[%v],err[%v]", p.GetOpMsgWithReqAndResult(), string(p.Data))
 		return
 	}
 	mp.(*metaPartition).internalDelete(p.Data[:p.Size])
@@ -385,7 +385,7 @@ func (m *metadataManager) opReadDir(conn net.Conn, p *Packet,
 	}
 	err = mp.ReadDir(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("%s [%v]req: %d - %v, resp: %v, body: %s", remoteAddr,
+	log.LogDebugf("%s [%v]req: %v , resp: %v, body: %s", remoteAddr,
 		p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
@@ -396,21 +396,21 @@ func (m *metadataManager) opMetaInodeGet(conn net.Conn, p *Packet,
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[opMetaInodeGet] %s, req: %s", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[opMetaInodeGet] %s, req: %s", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
 	if err = mp.InodeGet(req, p); err != nil {
-		err = errors.NewErrorf("[opMetaInodeGet] %s, req: %s", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 	}
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaInodeGet] req: %d - %v; resp: %v, body: %s",
@@ -424,7 +424,7 @@ func (m *metadataManager) opBatchMetaEvictInode(conn net.Conn, p *Packet,
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[%v] request unmarshal: %v", err.Error())
+		err = errors.NewErrorf("[%v] request unmarshal: %v", p.GetOpMsgWithReqAndResult(),err.Error())
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)
@@ -442,7 +442,7 @@ func (m *metadataManager) opBatchMetaEvictInode(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 	}
 	m.respondToClient(conn, p)
-	log.LogDebugf("%s [%v] req: %d - %v, resp: %v, body: %s",
+	log.LogDebugf("%s [opBatchMetaEvictInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
@@ -471,7 +471,7 @@ func (m *metadataManager) opMetaEvictInode(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 	}
 	m.respondToClient(conn, p)
-	log.LogDebugf("%s [%v] req: %d - %v, resp: %v, body: %s",
+	log.LogDebugf("%s [opMetaEvictInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
