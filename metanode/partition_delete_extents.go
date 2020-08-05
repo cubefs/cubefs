@@ -311,7 +311,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 				eks = append(eks, ek)
 				mp.extDelCh <- eks
 				log.LogWarnf("[deleteExtentsFromList] mp: %v, extent: %v, %s",
-					ek, err.Error())
+					mp.config.PartitionId,ek, err.Error())
 			}
 			deleteCnt++
 		}
