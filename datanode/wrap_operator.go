@@ -368,7 +368,6 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		}
 	}
 
-
 	return
 }
 
