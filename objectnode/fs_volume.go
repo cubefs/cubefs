@@ -18,6 +18,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"hash"
 	"io"
 	"os"
@@ -32,6 +33,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/stream"
 	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/chubaofs/chubaofs/util"
@@ -1046,6 +1048,8 @@ func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash) (size 
 		if readN > 0 {
 			if writeN, err = v.ec.Write(inode, offset, buf[:readN], false); err != nil {
 				log.LogErrorf("streamWrite: data write tmp file fail, inode(%v) offset(%v) err(%v)", inode, offset, err)
+				exporter.Warning(fmt.Sprintf("write data fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
+					v.name, inode, offset, readN, err))
 				return
 			}
 			offset += writeN
@@ -1224,6 +1228,8 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) er
 		if err != nil && err != io.EOF {
 			log.LogErrorf("ReadFile: data read fail: volume(%v) path(%v) inode(%v) offset(%v) size(%v) err(%v)",
 				v.name, path, ino, offset, size, err)
+			exporter.Warning(fmt.Sprintf("read data fail: volume(%v) path(%v) inode(%v) offset(%v) size(%v) err(%v)",
+				v.name, path, ino, offset, readSize, err))
 			return err
 		}
 		if n > 0 {
