@@ -65,14 +65,14 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				partition.RLock()
 				c.syncUpdateDataPartition(partition)
 				partition.RUnlock()
-				Warn(c.Name, fmt.Sprintf("clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))
+				Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress] clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))
 			} else {
 				newBadDpIds = append(newBadDpIds, partitionID)
 			}
 		}
 
 		if len(newBadDpIds) == 0 {
-			Warn(c.Name, fmt.Sprintf("clusterID[%v],node:disk[%v] has recovered success", c.Name, key))
+			Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress] clusterID[%v],node:disk[%v] has recovered success", c.Name, key))
 			c.BadDataPartitionIds.Delete(key)
 		} else {
 			c.BadDataPartitionIds.Store(key, newBadDpIds)

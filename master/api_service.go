@@ -525,27 +525,28 @@ func (m *Server) setNodeToOfflineState(w http.ResponseWriter, r *http.Request) {
 		startID  uint64
 		endID    uint64
 		nodeType string
+		zoneName string
 		state    bool
 	)
-	if startID, endID, nodeType, state, err = parseRequestToSetNodeToOfflineState(r); err != nil {
+	if startID, endID, nodeType, zoneName, state, err = parseRequestToSetNodeToOfflineState(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
 	if nodeType == nodeTypeAll {
-		m.cluster.setDataNodeToOfflineState(startID, endID, state)
-		m.cluster.setMetaNodeToOfflineState(startID, endID, state)
+		m.cluster.setDataNodeToOfflineState(startID, endID, state, zoneName)
+		m.cluster.setMetaNodeToOfflineState(startID, endID, state, zoneName)
 	} else {
 		if nodeType == nodeTypeDataNode {
-			m.cluster.setDataNodeToOfflineState(startID, endID, state)
+			m.cluster.setDataNodeToOfflineState(startID, endID, state, zoneName)
 		} else {
-			m.cluster.setMetaNodeToOfflineState(startID, endID, state)
+			m.cluster.setMetaNodeToOfflineState(startID, endID, state, zoneName)
 		}
 	}
 	sendOkReply(w, r, newSuccessHTTPReply("success"))
 }
 
-func parseRequestToSetNodeToOfflineState(r *http.Request) (startID, endID uint64, nodeType string, state bool, err error) {
+func parseRequestToSetNodeToOfflineState(r *http.Request) (startID, endID uint64, nodeType, zoneName string, state bool, err error) {
 	var value string
 	if value = r.FormValue(startKey); value == "" {
 		err = keyNotFound(startKey)
@@ -565,7 +566,10 @@ func parseRequestToSetNodeToOfflineState(r *http.Request) (startID, endID uint64
 	}
 	nodeType = r.FormValue(nodeTypeKey)
 	if !(nodeType == nodeTypeDataNode || nodeType == nodeTypeMetaNode || nodeType == nodeTypeAll) {
-		err = fmt.Errorf("nodeType must be dataNode or metaNode")
+		err = fmt.Errorf("nodeType must be dataNode or metaNode or all")
+		return
+	}
+	if zoneName, err = extractZoneName(r); err != nil {
 		return
 	}
 	state, err = strconv.ParseBool(r.FormValue(stateKey))
@@ -917,6 +921,8 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		NodeSetID:                 dataNode.NodeSetID,
 		PersistenceDataPartitions: dataNode.PersistenceDataPartitions,
 		BadDisks:                  dataNode.BadDisks,
+		ToBeOffline:               dataNode.ToBeOffline,
+		ToBeMigrated:              dataNode.ToBeMigrated,
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))
@@ -1193,6 +1199,8 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		MetaPartitionCount:        metaNode.MetaPartitionCount,
 		NodeSetID:                 metaNode.NodeSetID,
 		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
+		ToBeOffline:               metaNode.ToBeOffline,
+		ToBeMigrated:              metaNode.ToBeMigrated,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }
@@ -2258,6 +2266,14 @@ func parseAndExtractName(r *http.Request) (name string, err error) {
 		return
 	}
 	return extractName(r)
+}
+
+func extractZoneName(r *http.Request) (name string, err error) {
+	if name = r.FormValue(zoneNameKey); name == "" {
+		err = keyNotFound(zoneNameKey)
+		return
+	}
+	return
 }
 
 func extractName(r *http.Request) (name string, err error) {

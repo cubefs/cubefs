@@ -25,7 +25,6 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"strings"
 )
 
 // Cluster stores all the cluster-level information.
@@ -1122,18 +1121,9 @@ func (c *Cluster) chooseTargetHostsForOfflineDataPartition(dataNode *DataNode, d
 		excludeNodeSets []uint64
 		zones           []string
 		excludeZone     string
-		vol             *Vol
 	)
 
 	if destZoneName != "" {
-		if vol, err = c.getVol(dp.VolName); err != nil {
-			return
-		}
-		if vol.zoneName != "" && !strings.Contains(vol.zoneName, destZoneName) {
-			err = fmt.Errorf("action[chooseTargetHostsForOfflineDataPartition] vol.zoneName[%v] doesn't contains destZoneName[%v] ",
-				vol.zoneName, destZoneName)
-			return
-		}
 		if zone, err = c.t.getZone(destZoneName); err != nil {
 			return
 		}
@@ -2054,7 +2044,7 @@ func (c *Cluster) clearMetaNodes() {
 	})
 }
 
-func (c *Cluster) setDataNodeToOfflineState(startID, endID uint64, state bool) {
+func (c *Cluster) setDataNodeToOfflineState(startID, endID uint64, state bool, zoneName string) {
 	c.dataNodes.Range(func(key, value interface{}) bool {
 		node, ok := value.(*DataNode)
 		if !ok {
@@ -2063,14 +2053,17 @@ func (c *Cluster) setDataNodeToOfflineState(startID, endID uint64, state bool) {
 		if node.ID < startID || node.ID > endID {
 			return true
 		}
+		if node.ZoneName != zoneName {
+			return true
+		}
 		node.Lock()
-		node.ToBeOffline = state
+		node.ToBeMigrated = state
 		node.Unlock()
 		return true
 	})
 }
 
-func (c *Cluster) setMetaNodeToOfflineState(startID, endID uint64, state bool) {
+func (c *Cluster) setMetaNodeToOfflineState(startID, endID uint64, state bool, zoneName string) {
 	c.metaNodes.Range(func(key, value interface{}) bool {
 		node, ok := value.(*MetaNode)
 		if !ok {
@@ -2079,8 +2072,11 @@ func (c *Cluster) setMetaNodeToOfflineState(startID, endID uint64, state bool) {
 		if node.ID < startID || node.ID > endID {
 			return true
 		}
+		if node.ZoneName != zoneName {
+			return true
+		}
 		node.Lock()
-		node.ToBeOffline = state
+		node.ToBeMigrated = state
 		node.Unlock()
 		return true
 	})

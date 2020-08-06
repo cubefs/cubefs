@@ -173,14 +173,14 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 				partition.RLock()
 				c.syncUpdateMetaPartition(partition)
 				partition.RUnlock()
-				Warn(c.Name, fmt.Sprintf("clusterID[%v],vol[%v] partitionID[%v] has recovered success", c.Name, partition.volName, partitionID))
+				Warn(c.Name, fmt.Sprintf("action[checkMetaPartitionRecoveryProgress] clusterID[%v],vol[%v] partitionID[%v] has recovered success", c.Name, partition.volName, partitionID))
 			} else {
 				newBadMpIds = append(newBadMpIds, partitionID)
 			}
 		}
 
 		if len(newBadMpIds) == 0 {
-			Warn(c.Name, fmt.Sprintf("clusterID[%v],node[%v] has recovered success", c.Name, key))
+			Warn(c.Name, fmt.Sprintf("action[checkMetaPartitionRecoveryProgress] clusterID[%v],node[%v] has recovered success", c.Name, key))
 			c.BadMetaPartitionIds.Delete(key)
 		} else {
 			c.BadMetaPartitionIds.Store(key, newBadMpIds)
