@@ -424,7 +424,7 @@ func (m *metadataManager) opBatchMetaEvictInode(conn net.Conn, p *Packet,
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[%v] request unmarshal: %v", p.GetOpMsgWithReqAndResult(),err.Error())
+		err = errors.NewErrorf("[%v] request unmarshal: %v", p.GetOpMsgWithReqAndResult(), err.Error())
 		return
 	}
 	mp, err := m.getPartition(req.PartitionID)

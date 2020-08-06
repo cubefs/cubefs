@@ -114,6 +114,7 @@ type DataPartition struct {
 	intervalToUpdatePartitionSize int64
 	loadExtentHeaderStatus        int
 	DataPartitionCreateType       int
+	isLoadingDataPartition        bool
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -162,6 +163,14 @@ func (dp *DataPartition) IsEquareCreateDataPartitionRequst(request *proto.Create
 	return
 }
 
+func (dp *DataPartition) ForceSetDataPartitionToLoadding() {
+	dp.isLoadingDataPartition = true
+}
+
+func (dp *DataPartition) ForceSetDataPartitionToFininshLoad() {
+	dp.isLoadingDataPartition = false
+}
+
 // LoadDataPartition loads and returns a partition instance based on the specified directory.
 // It reads the partition metadata file stored under the specified directory
 // and creates the partition instance.
@@ -193,6 +202,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
 	}
+	dp.ForceSetDataPartitionToLoadding()
 	disk.space.AttachPartition(dp)
 	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)

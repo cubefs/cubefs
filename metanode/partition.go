@@ -189,6 +189,8 @@ type MetaPartition interface {
 	Stop()
 	OpMeta
 	LoadSnapshot(path string) error
+	ForceSetMetaPartitionToLoadding()
+	ForceSetMetaPartitionToFininshLoad()
 }
 
 // metaPartition manages the range of the inode IDs.
@@ -198,23 +200,32 @@ type MetaPartition interface {
 //  | New | → Restore → | Ready |
 //  +-----+             +-------+
 type metaPartition struct {
-	config        *MetaPartitionConfig
-	size          uint64 // For partition all file size
-	applyID       uint64 // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
-	dentryTree    *BTree
-	inodeTree     *BTree // btree for inodes
-	extendTree    *BTree // btree for inode extend (XAttr) management
-	multipartTree *BTree // collection for multipart management
-	raftPartition raftstore.Partition
-	stopC         chan bool
-	storeChan     chan *storeMsg
-	state         uint32
-	delInodeFp    *os.File
-	freeList      *freeList // free inode list
-	extDelCh      chan []proto.ExtentKey
-	extReset      chan struct{}
-	vol           *Vol
-	manager       *metadataManager
+	config                 *MetaPartitionConfig
+	size                   uint64 // For partition all file size
+	applyID                uint64 // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
+	dentryTree             *BTree
+	inodeTree              *BTree // btree for inodes
+	extendTree             *BTree // btree for inode extend (XAttr) management
+	multipartTree          *BTree // collection for multipart management
+	raftPartition          raftstore.Partition
+	stopC                  chan bool
+	storeChan              chan *storeMsg
+	state                  uint32
+	delInodeFp             *os.File
+	freeList               *freeList // free inode list
+	extDelCh               chan []proto.ExtentKey
+	extReset               chan struct{}
+	vol                    *Vol
+	manager                *metadataManager
+	isLoadingMetaPartition bool
+}
+
+func (mp *metaPartition) ForceSetMetaPartitionToLoadding() {
+	mp.isLoadingMetaPartition = true
+}
+
+func (mp *metaPartition) ForceSetMetaPartitionToFininshLoad() {
+	mp.isLoadingMetaPartition = false
 }
 
 // Start starts a meta partition.
@@ -282,7 +293,6 @@ func (mp *metaPartition) onStart() (err error) {
 			mp.config.PartitionId, err.Error())
 		return
 	}
-
 	return
 }
 
@@ -290,7 +300,6 @@ func (mp *metaPartition) onStop() {
 	mp.stopRaft()
 	mp.stop()
 	if mp.delInodeFp != nil {
-		// TODO Unhandled errors
 		mp.delInodeFp.Sync()
 		mp.delInodeFp.Close()
 	}
@@ -326,6 +335,9 @@ func (mp *metaPartition) startRaft() (err error) {
 		SM:      mp,
 	}
 	mp.raftPartition, err = mp.config.RaftStore.CreatePartition(pc)
+	if err == nil {
+		mp.ForceSetMetaPartitionToFininshLoad()
+	}
 	return
 }
 
