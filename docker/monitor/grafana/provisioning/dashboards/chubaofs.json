@@ -15,7 +15,8 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 0,
-  "iteration": 1594609997387,
+  "id": 1,
+  "iteration": 1596694182271,
   "links": [],
   "panels": [
     {
@@ -104,7 +105,7 @@
       "valueMaps": [
         {
           "op": "=",
-          "text": "N/A",
+          "text": "0",
           "value": "null"
         }
       ],
@@ -182,7 +183,7 @@
       "valueMaps": [
         {
           "op": "=",
-          "text": "N/A",
+          "text": "0",
           "value": "null"
         }
       ],
@@ -259,7 +260,7 @@
       "valueMaps": [
         {
           "op": "=",
-          "text": "N/A",
+          "text": "0",
           "value": "null"
         }
       ],
@@ -336,7 +337,7 @@
       "valueMaps": [
         {
           "op": "=",
-          "text": "N/A",
+          "text": "0",
           "value": "null"
         }
       ],
@@ -413,7 +414,7 @@
       "valueMaps": [
         {
           "op": "=",
-          "text": "N/A",
+          "text": "0",
           "value": "null"
         }
       ],
@@ -491,7 +492,7 @@
       "valueMaps": [
         {
           "op": "=",
-          "text": "N/A",
+          "text": "0",
           "value": "null"
         }
       ],
@@ -608,7 +609,7 @@
                 "value": 300000
               }
             ],
-            "unit": "decgbytes"
+            "unit": "gbytes"
           },
           "override": {},
           "values": false
@@ -679,7 +680,7 @@
                 "value": 5
               }
             ],
-            "unit": "decgbytes"
+            "unit": "gbytes"
           },
           "override": {},
           "values": false
@@ -758,7 +759,7 @@
                 "value": 100
               }
             ],
-            "unit": "decbytes"
+            "unit": "bytes"
           },
           "override": {},
           "values": true
@@ -1130,7 +1131,7 @@
       "pluginVersion": "6.4.4",
       "targets": [
         {
-          "expr": "topk($topk, cfs_master_vol_used_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"}/cfs_master_vol_total_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"})",
+          "expr": "topk($topk, cfs_master_vol_usage_ratio{app=\"$app\",cluster=\"$cluster\",instance=\"$master_instance\"})",
           "format": "time_series",
           "instant": true,
           "intervalFactor": 1,
@@ -1176,7 +1177,7 @@
         "current": false,
         "max": false,
         "min": false,
-        "show": true,
+        "show": false,
         "total": false,
         "values": false
       },
@@ -1216,7 +1217,7 @@
       "title": "VolumeUsedSize",
       "tooltip": {
         "shared": true,
-        "sort": 0,
+        "sort": 2,
         "value_type": "individual"
       },
       "type": "graph",
@@ -1265,7 +1266,7 @@
         "current": false,
         "max": false,
         "min": false,
-        "show": true,
+        "show": false,
         "total": false,
         "values": false
       },
@@ -1291,7 +1292,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "topk($topk, cfs_master_vol_used_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"}/cfs_master_vol_total_GB{app=\"$app\",cluster=\"$cluster\", instance=\"$master_instance\"})",
+          "expr": "topk($topk, cfs_master_vol_usage_ratio{app=\"$app\",cluster=\"$cluster\",instance=\"$master_instance\"})",
           "format": "time_series",
           "intervalFactor": 1,
           "legendFormat": "{{volName}}",
@@ -1354,7 +1355,7 @@
         "current": false,
         "max": false,
         "min": false,
-        "show": true,
+        "show": false,
         "total": false,
         "values": false
       },
@@ -1474,7 +1475,7 @@
           "refId": "C"
         },
         {
-          "expr": "cfs_master_vol_used_GB{app=\"$app\",cluster=\"$cluster\", volName=\"$vol\", instance=\"$master_instance\"}/cfs_master_vol_total_GB{app=\"$app\",cluster=\"$cluster\", volName=\"$vol\", instance=\"$master_instance\"}",
+          "expr": "cfs_master_vol_usage_ratio{app=\"$app\",cluster=\"$cluster\", volName=\"$vol\", instance=\"$master_instance\"}",
           "format": "time_series",
           "intervalFactor": 1,
           "legendFormat": "UsedRatio",
@@ -4994,7 +4995,7 @@
         "name": "vol",
         "options": [],
         "query": "label_values(cfs_master_vol_total_GB{app=\"$app\",cluster=\"$cluster\"}, volName)",
-        "refresh": 1,
+        "refresh": 2,
         "regex": "",
         "skipUrlSync": false,
         "sort": 0,
@@ -5007,8 +5008,8 @@
       {
         "allValue": null,
         "current": {
-          "text": "192.168.0.11:17010",
-          "value": "192.168.0.11:17010"
+          "text": "192.168.0.13:17010",
+          "value": "192.168.0.13:17010"
         },
         "datasource": "Prometheus",
         "definition": "label_values(up{app=\"$app\", role=\"$role\", cluster=\"$cluster\"}, instance)",
@@ -5032,8 +5033,8 @@
       {
         "allValue": null,
         "current": {
-          "text": "192.168.0.11",
-          "value": "192.168.0.11"
+          "text": "192.168.0.13",
+          "value": "192.168.0.13"
         },
         "datasource": "Prometheus",
         "definition": "label_values(go_info{instance=\"$instance\", cluster=\"$cluster\"}, instance)",
@@ -5057,8 +5058,8 @@
       {
         "allValue": null,
         "current": {
-          "text": "192.168.0.11:17010",
-          "value": "192.168.0.11:17010"
+          "text": "192.168.0.13:17010",
+          "value": "192.168.0.13:17010"
         },
         "datasource": "Prometheus",
         "definition": "label_values(up{app=\"$app\", role=\"master\", cluster=\"$cluster\"}, instance)",
