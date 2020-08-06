@@ -79,7 +79,7 @@ func Init(role string, cfg *config.Config) {
 	collect()
 
 	m := NewGauge("start_time")
-	m.Set(time.Now().Unix() * 1000)
+	m.Set(float64(time.Now().Unix() * 1000))
 
 	log.LogInfof("exporter Start: %v", addr)
 }
@@ -104,7 +104,7 @@ func InitWithRouter(role string, cfg *config.Config, router *mux.Router, exPort 
 	collect()
 
 	m := NewGauge("start_time")
-	m.Set(time.Now().Unix() * 1000)
+	m.Set(float64(time.Now().Unix() * 1000))
 
 	log.LogInfof("exporter Start: %v %v", exporterPort, m)
 }

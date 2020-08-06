@@ -36,7 +36,7 @@ func collectGauge() {
 	for {
 		m := <-GaugeCh
 		metric := m.Metric()
-		metric.Set(float64(m.val))
+		metric.Set(m.val)
 		log.LogDebugf("collect metric %v", m)
 	}
 }
@@ -44,7 +44,7 @@ func collectGauge() {
 type Gauge struct {
 	name   string
 	labels map[string]string
-	val    int64
+	val    float64
 	ch     chan interface{}
 }
 
@@ -89,7 +89,7 @@ func (c *Gauge) Metric() prometheus.Gauge {
 	return actualMetric.(prometheus.Gauge)
 }
 
-func (g *Gauge) Set(val int64) {
+func (g *Gauge) Set(val float64) {
 	if !enabledPrometheus {
 		return
 	}
@@ -104,7 +104,7 @@ func (c *Gauge) publish() {
 	}
 }
 
-func (g *Gauge) SetWithLabels(val int64, labels map[string]string) {
+func (g *Gauge) SetWithLabels(val float64, labels map[string]string) {
 	if !enabledPrometheus {
 		return
 	}
