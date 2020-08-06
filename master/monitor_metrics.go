@@ -61,7 +61,6 @@ type monitorMetrics struct {
 	metaNodesInactive  *exporter.Gauge
 	volTotalGauge      *exporter.Gauge
 	volUsedGauge       *exporter.Gauge
-	volUsageRatioGauge *exporter.Gauge
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
@@ -86,7 +85,6 @@ func (mm *monitorMetrics) start() {
 	mm.metaNodesInactive = exporter.NewGauge(MetricMetaNodesInactive)
 	mm.volTotalGauge = exporter.NewGauge(MetricVolTotalGB)
 	mm.volUsedGauge = exporter.NewGauge(MetricVolUsedGB)
-	mm.volUsageRatioGauge = exporter.NewGauge(MetricVolUsageGB)
 	go mm.statMetrics()
 }
 
@@ -114,17 +112,17 @@ func (mm *monitorMetrics) statMetrics() {
 
 func (mm *monitorMetrics) doStat() {
 	dataNodeCount := mm.cluster.dataNodeCount()
-	mm.dataNodesCount.Set(int64(dataNodeCount))
+	mm.dataNodesCount.Set(float64(dataNodeCount))
 	metaNodeCount := mm.cluster.metaNodeCount()
-	mm.metaNodesCount.Set(int64(metaNodeCount))
+	mm.metaNodesCount.Set(float64(metaNodeCount))
 	volCount := len(mm.cluster.vols)
-	mm.volCount.Set(int64(volCount))
-	mm.dataNodesTotal.Set(int64(mm.cluster.dataNodeStatInfo.TotalGB))
-	mm.dataNodesUsed.Set(int64(mm.cluster.dataNodeStatInfo.UsedGB))
-	mm.dataNodeIncreased.Set(int64(mm.cluster.dataNodeStatInfo.IncreasedGB))
-	mm.metaNodesTotal.Set(int64(mm.cluster.metaNodeStatInfo.TotalGB))
-	mm.metaNodesUsed.Set(int64(mm.cluster.metaNodeStatInfo.UsedGB))
-	mm.metaNodesIncreased.Set(int64(mm.cluster.metaNodeStatInfo.IncreasedGB))
+	mm.volCount.Set(float64(volCount))
+	mm.dataNodesTotal.Set(float64(mm.cluster.dataNodeStatInfo.TotalGB))
+	mm.dataNodesUsed.Set(float64(mm.cluster.dataNodeStatInfo.UsedGB))
+	mm.dataNodeIncreased.Set(float64(mm.cluster.dataNodeStatInfo.IncreasedGB))
+	mm.metaNodesTotal.Set(float64(mm.cluster.metaNodeStatInfo.TotalGB))
+	mm.metaNodesUsed.Set(float64(mm.cluster.metaNodeStatInfo.UsedGB))
+	mm.metaNodesIncreased.Set(float64(mm.cluster.metaNodeStatInfo.IncreasedGB))
 	mm.setVolMetrics()
 	mm.setDiskErrorMetric()
 	mm.setInactiveDataNodesCount()
@@ -142,11 +140,11 @@ func (mm *monitorMetrics) setVolMetrics() {
 			return true
 		}
 		labels := map[string]string{"volName": volName}
-		mm.volTotalGauge.SetWithLabels(int64(volStatInfo.TotalSize), labels)
-		mm.volUsedGauge.SetWithLabels(int64(volStatInfo.UsedSize), labels)
+		mm.volTotalGauge.SetWithLabels(float64(volStatInfo.TotalSize), labels)
+		mm.volUsedGauge.SetWithLabels(float64(volStatInfo.UsedSize), labels)
 		usedRatio, e := strconv.ParseFloat(volStatInfo.UsedRatio, 64)
 		if e == nil {
-			mm.volUsageRatioGauge.SetWithLabels(int64(usedRatio), labels)
+			mm.volUsage.SetWithLabels(usedRatio, labels)
 		}
 
 		return true
@@ -186,7 +184,7 @@ func (mm *monitorMetrics) setInactiveMetaNodesCount() {
 		}
 		return true
 	})
-	mm.metaNodesInactive.Set(inactiveMetaNodesCount)
+	mm.metaNodesInactive.Set(float64(inactiveMetaNodesCount))
 }
 
 func (mm *monitorMetrics) setInactiveDataNodesCount() {
@@ -201,7 +199,7 @@ func (mm *monitorMetrics) setInactiveDataNodesCount() {
 		}
 		return true
 	})
-	mm.dataNodesInactive.Set(inactiveDataNodesCount)
+	mm.dataNodesInactive.Set(float64(inactiveDataNodesCount))
 }
 
 func (mm *monitorMetrics) resetAllMetrics() {

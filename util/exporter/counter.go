@@ -55,7 +55,7 @@ func (c *Counter) Add(val int64) {
 	if !enabledPrometheus {
 		return
 	}
-	c.val = val
+	c.val = float64(val)
 	c.publish()
 }
 
