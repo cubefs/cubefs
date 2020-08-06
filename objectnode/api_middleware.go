@@ -23,14 +23,10 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-
 	"github.com/chubaofs/chubaofs/util/exporter"
-
-	"github.com/gorilla/mux"
-
 	"github.com/chubaofs/chubaofs/util/log"
-
 	"github.com/google/uuid"
+	"github.com/gorilla/mux"
 )
 
 var (
@@ -46,25 +42,22 @@ func IsMonitoredStatusCode(code int) bool {
 
 func generateWarnDetail(r *http.Request, errorInfo string) string {
 	var (
-		action    string
-		bucket    string
-		object    string
-		requestID string
+		action     proto.Action
+		bucket     string
+		object     string
+		requestID  string
+		statusCode int
 	)
 
 	var param = ParseRequestParam(r)
 	bucket = param.Bucket()
 	object = param.Object()
-	action = mux.Vars(r)[ContextKeyRequestAction]
-	requestID = mux.Vars(r)[ContextKeyRequestID]
+	action = GetActionFromContext(r)
+	requestID = GetRequestID(r)
+	statusCode = GetStatusCodeFromContext(r)
 
-	if requestID == "" {
-		return fmt.Sprintf("object node generate request id failed, bucket(%v) object(%v) errorInfo(%v)",
-			bucket, object, errorInfo)
-	}
-
-	return fmt.Sprintf("object node request failed, rerquestId(%v) action(%v) bucket(%v), object(%v), errorInfo(%v)",
-		requestID, action, bucket, object, errorInfo)
+	return fmt.Sprintf("intenal error: status(%v) rerquestId(%v) action(%v) bucket(%v) object(%v) errorInfo(%v)",
+		statusCode, requestID, action.Name(), bucket, object, errorInfo)
 }
 
 // TraceMiddleware returns a middleware handler to trace request.
