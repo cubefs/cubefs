@@ -148,6 +148,9 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 	}
 	mp.IsRecover = true
 	c.putBadMetaPartitions(nodeAddr, mp.PartitionID)
+	mp.RLock()
+	c.syncUpdateMetaPartition(mp)
+	mp.RUnlock()
 	Warn(c.Name, fmt.Sprintf("action[decommissionMetaPartition] clusterID[%v] vol[%v] meta partition[%v] "+
 		"offline addr[%v] success,new addr[%v]", c.Name, mp.volName, mp.PartitionID, nodeAddr, newPeers[0].Addr))
 	return
@@ -548,6 +551,7 @@ func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
 
 	dp.getFileCount()
 	dp.validateCRC(c.Name)
+	dp.checkReplicaSize(c.Name,c.cfg.diffSpaceUsage)
 	dp.setToNormal()
 }
 
