@@ -47,7 +47,7 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 		}
 
 		if len(newBadDpIds) == 0 {
-			Warn(c.Name, fmt.Sprintf("clusterID[%v],node:disk[%v] has recovered success", c.Name, key))
+			Warn(c.Name, fmt.Sprintf("action[checkMigratedDpRecoveryProgress] clusterID[%v],node:disk[%v] has recovered success", c.Name, key))
 			c.MigratedDataPartitionIds.Delete(key)
 		} else {
 			c.MigratedDataPartitionIds.Store(key, newBadDpIds)
@@ -124,7 +124,7 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 		}
 
 		if len(newBadMpIds) == 0 {
-			Warn(c.Name, fmt.Sprintf("clusterID[%v],node[%v] has recovered success", c.Name, key))
+			Warn(c.Name, fmt.Sprintf("action[checkMigratedMpRecoveryProgress] clusterID[%v],node[%v] has recovered success", c.Name, key))
 			c.MigratedMetaPartitionIds.Delete(key)
 		} else {
 			c.MigratedMetaPartitionIds.Store(key, newBadMpIds)
