@@ -56,10 +56,15 @@ type Disk struct {
 	Status        int // disk status such as READONLY
 	ReservedSpace uint64
 
-	RejectWrite  bool
-	partitionMap map[uint64]*DataPartition
-	space        *SpaceManager
+	RejectWrite                               bool
+	partitionMap                              map[uint64]*DataPartition
+	syncTinyDeleteRecordFromLeaderOnEveryDisk chan bool
+	space                                     *SpaceManager
 }
+
+const (
+	SyncTinyDeleteRecordFromLeaderOnEveryDisk = 5
+)
 
 type PartitionVisitor func(dp *DataPartition)
 
@@ -71,6 +76,7 @@ func NewDisk(path string, reservedSpace uint64, maxErrCnt int, space *SpaceManag
 	d.RejectWrite = false
 	d.space = space
 	d.partitionMap = make(map[uint64]*DataPartition)
+	d.syncTinyDeleteRecordFromLeaderOnEveryDisk = make(chan bool, SyncTinyDeleteRecordFromLeaderOnEveryDisk)
 	d.computeUsage()
 	d.updateSpaceInfo()
 	d.startScheduleToUpdateSpaceInfo()
