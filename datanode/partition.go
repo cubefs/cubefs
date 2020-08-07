@@ -704,13 +704,39 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 	dp.doStreamFixTinyDeleteRecord(repairTask)
 }
 
+func (dp *DataPartition) pushSyncDeleteRecordFromLeaderMesg() bool {
+	select {
+	case dp.Disk().syncTinyDeleteRecordFromLeaderOnEveryDisk <- true:
+		return true
+	default:
+		return false
+	}
+	return false
+}
+
+
+func (dp *DataPartition)consumeTinyDeleteRecordFromLeaderMesg() {
+	select {
+	case <-dp.Disk().syncTinyDeleteRecordFromLeaderOnEveryDisk:
+		return
+	default:
+		return
+	}
+}
+
 func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRepairTask) {
 	var (
 		localTinyDeleteFileSize int64
 		err                     error
 		conn                    *net.TCPConn
 	)
+	if !dp.pushSyncDeleteRecordFromLeaderMesg(){
+		return
+	}
 
+	defer func() {
+		dp.consumeTinyDeleteRecordFromLeaderMesg()
+	}()
 	if localTinyDeleteFileSize, err = dp.extentStore.LoadTinyDeleteFileOffset(); err != nil {
 		return
 	}
