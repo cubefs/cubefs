@@ -114,18 +114,12 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet)
 		}
 
 		if dentry := m.Msg; dentry != nil {
-			bddr.Items = append(bddr.Items, &struct {
-				Inode  uint64 `json:"ino"`
-				Status uint8  `json:"status"`
-			}{
+			bddr.Items = append(bddr.Items, &proto.InodeStatus {
 				Inode:  dentry.Inode,
 				Status: m.Status,
 			})
 		} else {
-			bddr.Items = append(bddr.Items, &struct {
-				Inode  uint64 `json:"ino"`
-				Status uint8  `json:"status"`
-			}{
+			bddr.Items = append(bddr.Items, &proto.InodeStatus {
 				Status: m.Status,
 			})
 		}

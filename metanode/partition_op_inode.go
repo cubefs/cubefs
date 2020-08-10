@@ -150,10 +150,7 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 
 		info := &proto.InodeInfo{}
 		replyInfo(info, ir.Msg)
-		result.Items = append(result.Items, &struct {
-			Info   *proto.InodeInfo `json:"info"`
-			Status uint8            `json:"status"`
-		}{
+		result.Items = append(result.Items, &proto.InodeInfoStatus {
 			Info:   info,
 			Status: ir.Status,
 		})

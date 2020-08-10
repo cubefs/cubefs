@@ -159,7 +159,7 @@ type UnlinkInodeRequest struct {
 	Inode       uint64 `json:"ino"`
 }
 
-// UnlinkInodeRequest defines the request to unlink an inode.
+// UnlinkInodeRequest defines the request to unlink many inodes.
 type BatchUnlinkInodeRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionID uint64   `json:"pid"`
@@ -171,12 +171,14 @@ type UnlinkInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
+type InodeInfoStatus struct {
+	Info   *InodeInfo `json:"info"`
+	Status uint8      `json:"status"`
+}
+
 // batch UnlinkInodeResponse defines the response to the request of unlinking an inode.
 type BatchUnlinkInodeResponse struct {
-	Items []*struct {
-		Info   *InodeInfo `json:"info"`
-		Status uint8      `json:"status"`
-	} `json:"items"`
+	Items []*InodeInfoStatus `json:"items"`
 }
 
 // EvictInodeRequest defines the request to evict an inode.
@@ -237,12 +239,14 @@ type DeleteDentryResponse struct {
 	Inode uint64 `json:"ino"`
 }
 
+type InodeStatus struct {
+	Inode  uint64 `json:"ino"`
+	Status uint8  `json:"status"`
+}
+
 // BatchDeleteDentryResponse defines the response to the request of deleting a dentry.
 type BatchDeleteDentryResponse struct {
-	Items []*struct {
-		Inode  uint64 `json:"ino"`
-		Status uint8  `json:"status"`
-	} `json:"items"`
+	Items []*InodeStatus `json:"items"`
 }
 
 // LookupRequest defines the request for lookup.
