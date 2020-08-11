@@ -604,7 +604,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.updateVol(name, authKey, zoneName, description, capacity, vol.dpReplicaNum, followerRead, authenticate, enableToken); err != nil {
+	if err = m.cluster.updateVol(name, authKey, zoneName, description, capacity, vol.dpReplicaNum, followerRead,
+		authenticate, enableToken, vol.createRate, vol.deleteRate, vol.readRate, vol.writeRate); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -635,7 +636,8 @@ func (m *Server) volExpand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.updateVol(name, authKey, vol.zoneName, vol.description, uint64(capacity), vol.dpReplicaNum, vol.FollowerRead, vol.authenticate, vol.enableToken); err != nil {
+	if err = m.cluster.updateVol(name, authKey, vol.zoneName, vol.description, uint64(capacity), vol.dpReplicaNum,
+		vol.FollowerRead, vol.authenticate, vol.enableToken, vol.createRate, vol.deleteRate, vol.readRate, vol.writeRate); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -666,7 +668,38 @@ func (m *Server) volShrink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.updateVol(name, authKey, vol.zoneName, vol.description, uint64(capacity), vol.dpReplicaNum, vol.FollowerRead, vol.authenticate, vol.enableToken); err != nil {
+	if err = m.cluster.updateVol(name, authKey, vol.zoneName, vol.description, uint64(capacity), vol.dpReplicaNum,
+		vol.FollowerRead, vol.authenticate, vol.enableToken, vol.createRate, vol.deleteRate, vol.readRate, vol.writeRate); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	msg = fmt.Sprintf("update vol[%v] successfully\n", name)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) volRate(w http.ResponseWriter, r *http.Request) {
+	var (
+		name       string
+		authKey    string
+		err        error
+		msg        string
+		createRate float64
+		deleteRate float64
+		readRate   float64
+		writeRate  float64
+		vol        *Vol
+	)
+	if name, authKey, createRate, deleteRate, readRate, writeRate, err = parseRequestToSetVolRate(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if vol, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.updateVol(name, authKey, vol.zoneName, vol.description, vol.Capacity, vol.dpReplicaNum,
+		vol.FollowerRead, vol.authenticate, vol.enableToken, createRate, deleteRate, readRate, writeRate); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -691,9 +724,14 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		enableToken  bool
 		zoneName     string
 		description  string
+		createRate   float64
+		deleteRate   float64
+		readRate     float64
+		writeRate    float64
 	)
 
-	if name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone, enableToken, err = parseRequestToCreateVol(r); err != nil {
+	if name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone,
+		enableToken, createRate, deleteRate, readRate, writeRate, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -702,7 +740,8 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone, enableToken); err != nil {
+	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity,
+		followerRead, authenticate, crossZone, enableToken, createRate, deleteRate, readRate, writeRate); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -767,6 +806,10 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		DpCnt:              len(vol.dataPartitions.partitionMap),
 		CreateTime:         time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
 		Description:        vol.description,
+		CreateRate:         vol.createRate,
+		DeleteRate:         vol.deleteRate,
+		ReadRate:           vol.readRate,
+		WriteRate:          vol.writeRate,
 	}
 }
 
@@ -1426,6 +1469,31 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authent
 	return
 }
 
+func parseRequestToSetVolRate(r *http.Request) (name, authKey string, createRate, deleteRate, readRate, writeRate float64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if name, err = extractName(r); err != nil {
+		return
+	}
+	if authKey, err = extractAuthKey(r); err != nil {
+		return
+	}
+	if createRate, err = extractRate(r, createRateKey); err != nil {
+		return
+	}
+	if deleteRate, err = extractRate(r, deleteRateKey); err != nil {
+		return
+	}
+	if readRate, err = extractRate(r, readRateKey); err != nil {
+		return
+	}
+	if writeRate, err = extractRate(r, writeRateKey); err != nil {
+		return
+	}
+	return
+}
+
 func parseRequestToSetVolCapacity(r *http.Request) (name, authKey string, capacity int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -1442,7 +1510,8 @@ func parseRequestToSetVolCapacity(r *http.Request) (name, authKey string, capaci
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone, enableToken bool, err error) {
+func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string, mpCount, dpReplicaNum, size,
+	capacity int, followerRead, authenticate, crossZone, enableToken bool, createRate, deleteRate, readRate, writeRate float64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1491,6 +1560,43 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	zoneName = r.FormValue(zoneNameKey)
 	enableToken = extractEnableToken(r)
 	description = r.FormValue(descriptionKey)
+
+	if createRateStr := r.FormValue(createRateKey); createRateStr != "" {
+		if createRate, err = strconv.ParseFloat(createRateStr, 64); err != nil {
+			err = unmatchedKey(createRateKey)
+			return
+		}
+	} else {
+		createRate = -1
+	}
+
+	if deleteRateStr := r.FormValue(deleteRateKey); deleteRateStr != "" {
+		if deleteRate, err = strconv.ParseFloat(deleteRateStr, 64); err != nil {
+			err = unmatchedKey(deleteRateKey)
+			return
+		}
+	} else {
+		deleteRate = -1
+	}
+
+	if readRateStr := r.FormValue(readRateKey); readRateStr != "" {
+		if readRate, err = strconv.ParseFloat(readRateStr, 64); err != nil {
+			err = unmatchedKey(readRateKey)
+			return
+		}
+	} else {
+		readRate = -1
+	}
+
+	if writeRateStr := r.FormValue(writeRateKey); writeRateStr != "" {
+		if writeRate, err = strconv.ParseFloat(writeRateStr, 64); err != nil {
+			err = unmatchedKey(writeRateKey)
+			return
+		}
+	} else {
+		writeRate = -1
+	}
+
 	return
 }
 
@@ -2090,6 +2196,19 @@ func extractMetaPartitionID(r *http.Request) (partitionID uint64, err error) {
 		return
 	}
 	return strconv.ParseUint(value, 10, 64)
+}
+
+func extractRate(r *http.Request, key string) (rate float64, err error) {
+	var str string
+	if str = r.FormValue(key); str == "" {
+		log.LogErrorf("%v", keyNotFound(key))
+		rate = notExistIntParam
+		return
+	}
+	if rate, err = strconv.ParseFloat(str, 64); err != nil {
+		err = unmatchedKey(key)
+	}
+	return
 }
 
 func extractCapacity(r *http.Request) (capacity int, err error) {

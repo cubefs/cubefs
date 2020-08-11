@@ -191,6 +191,7 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 	Name, Owner, ZoneName, Description                 string
 	Capacity, DataPartitionSize, MpCount, DpReplicaNum uint64
 	FollowerRead, Authenticate, CrossZone, EnableToken bool
+	createRate, deleteRate, readRate, writeRate        float64
 }) (*Vol, error) {
 	uid, per, err := permissions(ctx, ADMIN|USER)
 	if err != nil {
@@ -205,7 +206,9 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 		return nil, fmt.Errorf("[%s] not has permission to create volume for [%s]", uid, args.Owner)
 	}
 
-	vol, err := s.cluster.createVol(args.Name, args.Owner, args.ZoneName, args.Description, int(args.MpCount), int(args.DpReplicaNum), int(args.DataPartitionSize), int(args.Capacity), args.FollowerRead, args.Authenticate, args.CrossZone, args.EnableToken)
+	vol, err := s.cluster.createVol(args.Name, args.Owner, args.ZoneName, args.Description, int(args.MpCount),
+		int(args.DpReplicaNum), int(args.DataPartitionSize), int(args.Capacity), args.FollowerRead, args.Authenticate,
+		args.CrossZone, args.EnableToken, args.createRate, args.deleteRate, args.readRate, args.writeRate)
 	if err != nil {
 		return nil, err
 	}
@@ -271,6 +274,7 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 	Capacity, ReplicaNum       *uint64
 	EnableToken                *bool
 	FollowerRead, Authenticate *bool
+	CreateRate, DeleteRate, ReadRate, WriteRate float64
 }) (*Vol, error) {
 	uid, perm, err := permissions(ctx, ADMIN|USER)
 	if err != nil {
@@ -325,7 +329,9 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 		args.Description = &vol.description
 	}
 
-	if err = s.cluster.updateVol(args.Name, args.AuthKey, *args.ZoneName, *args.Description, *args.Capacity, uint8(*args.ReplicaNum), *args.FollowerRead, *args.Authenticate, *args.EnableToken); err != nil {
+	if err = s.cluster.updateVol(args.Name, args.AuthKey, *args.ZoneName, *args.Description, *args.Capacity,
+		uint8(*args.ReplicaNum), *args.FollowerRead, *args.Authenticate, *args.EnableToken,
+		args.CreateRate, args.DeleteRate, args.ReadRate, args.WriteRate); err != nil {
 		return nil, err
 	}
 

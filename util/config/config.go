@@ -182,6 +182,19 @@ func (c *Config) CheckAndGetString(key string) (string, bool) {
 	return "", false
 }
 
+// Check and get a float64 for the config key.
+func (c *Config) CheckAndGetFloat64(key string) (float64, bool) {
+	x, present := c.data[key]
+	if !present {
+		return -1, false
+	}
+
+	if result, flag := x.(float64); flag {
+		return result, true
+	}
+	return -1, false
+}
+
 // GetBool returns a bool value for the config key.
 func (c *Config) CheckAndGetBool(key string) (bool, bool) {
 	x, present := c.data[key]

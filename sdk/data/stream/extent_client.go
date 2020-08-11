@@ -16,6 +16,7 @@ package stream
 
 import (
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -37,10 +38,10 @@ const (
 	MountRetryInterval = time.Second * 5
 
 	defaultReadLimitRate  = rate.Inf
-	defaultReadLimitBurst = 128
+	defaultReadLimitBurst = 131072 //128k
 
 	defaultWriteLimitRate  = rate.Inf
-	defaultWriteLimitBurst = 128
+	defaultWriteLimitBurst = 131072 //128k
 )
 
 var (
@@ -80,8 +81,8 @@ type ExtentConfig struct {
 	Masters           []string
 	FollowerRead      bool
 	NearRead          bool
-	ReadRate          int64
-	WriteRate         int64
+	ReadRate          float64
+	WriteRate         float64
 	OnAppendExtentKey AppendExtentKeyFunc
 	OnGetExtents      GetExtentsFunc
 	OnTruncate        TruncateFunc
@@ -292,33 +293,36 @@ func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 	return s
 }
 
-func (client *ExtentClient) GetRate() string {
-	return fmt.Sprintf("read: %v\nwrite: %v\n", getRate(client.readLimiter), getRate(client.writeLimiter))
-}
-
-func getRate(lim *rate.Limiter) string {
-	val := int(lim.Limit())
-	if val > 0 {
-		return fmt.Sprintf("%v", val)
+func (client *ExtentClient) SetReadRate(clientRate, serverRate float64) {
+	if clientRate <= 0 && serverRate > 0 {
+		client.readLimiter.SetLimit(rate.Limit(serverRate))
+	} else if clientRate > 0 && serverRate <= 0 {
+		client.readLimiter.SetLimit(rate.Limit(clientRate))
+	} else if clientRate > 0 && serverRate > 0 {
+		client.readLimiter.SetLimit(rate.Limit(math.Min(clientRate, serverRate)))
+	} else {
+		client.readLimiter.SetLimit(rate.Inf)
 	}
-	return "unlimited"
 }
 
-func (client *ExtentClient) SetReadRate(val int) string {
-	return setRate(client.readLimiter, val)
-}
-
-func (client *ExtentClient) SetWriteRate(val int) string {
-	return setRate(client.writeLimiter, val)
-}
-
-func setRate(lim *rate.Limiter, val int) string {
-	if val > 0 {
-		lim.SetLimit(rate.Limit(val))
-		return fmt.Sprintf("%v", val)
+func (client *ExtentClient) SetWriteRate(clientRate, serverRate float64) {
+	if clientRate <= 0 && serverRate > 0 {
+		client.writeLimiter.SetLimit(rate.Limit(serverRate))
+	} else if clientRate > 0 && serverRate <= 0 {
+		client.writeLimiter.SetLimit(rate.Limit(clientRate))
+	} else if clientRate > 0 && serverRate > 0 {
+		client.writeLimiter.SetLimit(rate.Limit(math.Min(clientRate, serverRate)))
+	} else {
+		client.writeLimiter.SetLimit(rate.Inf)
 	}
-	lim.SetLimit(rate.Inf)
-	return "unlimited"
+}
+
+func (client *ExtentClient) ReadLimiter() *rate.Limiter {
+	return client.readLimiter
+}
+
+func (client *ExtentClient) WriteLimiter() *rate.Limiter {
+	return client.writeLimiter
 }
 
 func (client *ExtentClient) Close() error {
