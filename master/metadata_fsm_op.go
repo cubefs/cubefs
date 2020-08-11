@@ -682,6 +682,12 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 			Warn(c.Name, fmt.Sprintf("action[loadMetaPartitions] has duplicate vol[%v],vol.ID[%v],mpv.VolID[%v]", mpv.VolName, vol.ID, mpv.VolID))
 			continue
 		}
+		for i:=0;i<len(mpv.Peers);i++{
+			mn,ok:=c.metaNodes.Load(mpv.Peers[i].Addr)
+			if ok && mn.(*MetaNode).ID!=mpv.Peers[i].ID {
+				mpv.Peers[i].ID=mn.(*MetaNode).ID
+			}
+		}
 		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, vol.Name, mpv.VolID)
 		mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
 		mp.setPeers(mpv.Peers)
@@ -713,6 +719,12 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		if vol.ID != dpv.VolID {
 			Warn(c.Name, fmt.Sprintf("action[loadDataPartitions] has duplicate vol[%v],vol.ID[%v],mpv.VolID[%v]", dpv.VolName, vol.ID, dpv.VolID))
 			continue
+		}
+		for i:=0;i<len(dpv.Peers);i++{
+			dn,ok:=c.dataNodes.Load(dpv.Peers[i].Addr)
+			if ok && dn.(*DataNode).ID!=dpv.Peers[i].ID {
+				dpv.Peers[i].ID=dn.(*DataNode).ID
+			}
 		}
 		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID)
 		dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
