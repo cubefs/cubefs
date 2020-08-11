@@ -37,9 +37,22 @@ import (
 	raftProto "github.com/tiglabs/raft/proto"
 )
 
+func (s *DataNode) getPacketTpLabels(p *repl.Packet) map[string]string {
+	labels := make(map[string]string)
+	if part, ok := p.Object.(*DataPartition); ok {
+		labels["partid"] = fmt.Sprintf("%d", part.partitionID)
+		labels["vol"] = part.volumeID
+		labels["op"] = p.GetOpMsg()
+		labels["disk"] = part.path
+	}
+
+	return labels
+}
+
 func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	sz := p.Size
 	tpObject := exporter.NewTPCnt(p.GetOpMsg())
+	tpLabels := s.getPacketTpLabels(p)
 	start := time.Now().UnixNano()
 	defer func() {
 		resultSize := p.Size
@@ -63,7 +76,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 			}
 		}
 		p.Size = resultSize
-		tpObject.Set(err)
+		tpObject.SetWithLabels(err, tpLabels)
 	}()
 	switch p.Opcode {
 	case proto.OpCreateExtent:
