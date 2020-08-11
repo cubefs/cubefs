@@ -37,7 +37,7 @@ func collectGauge() {
 		m := <-GaugeCh
 		metric := m.Metric()
 		metric.Set(m.val)
-		log.LogDebugf("collect metric %v", m)
+		//log.LogDebugf("collect metric %v", m)
 	}
 }
 

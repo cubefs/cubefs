@@ -69,6 +69,14 @@ func (tp *TimePoint) Set() {
 	tp.publish()
 }
 
+func (tp *TimePoint) SetWithLabels(labels map[string]string) {
+	if !enabledPrometheus {
+		return
+	}
+	tp.labels = labels
+	tp.Set()
+}
+
 func NewTPCnt(name string) (tpc *TimePointCount) {
 	tpc = new(TimePointCount)
 	tpc.to = ump.BeforeTP(fmt.Sprintf("%v_%v_%v", clustername, modulename, name))
@@ -83,9 +91,18 @@ func (tpc *TimePointCount) Set(err error) {
 	tpc.cnt.Add(1)
 }
 
-func (tp *TimePoint) publish() {
-	select {
-	case TPCh <- tp:
-	default:
+func (tpc *TimePointCount) SetWithLabels(err error, labels map[string]string) {
+	ump.AfterTP(tpc.to, err)
+	if !enabledPrometheus {
+		return
 	}
+	tpc.tp.SetWithLabels(labels)
+	tpc.cnt.AddWithLabels(1, labels)
 }
+
+//func (tp *TimePoint) publish() {
+//    select {
+//    case TPCh <- tp:
+//    default:
+//    }
+//}
