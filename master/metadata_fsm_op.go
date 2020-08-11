@@ -598,8 +598,14 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode := newDataNode(dnv.Addr, dnv.ZoneName, c.Name)
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
+		olddn,ok:=c.dataNodes.Load(dataNode.Addr)
+		if ok {
+			if olddn.(*DataNode).ID<=dataNode.ID {
+				continue
+			}
+		}
 		c.dataNodes.Store(dataNode.Addr, dataNode)
-		log.LogInfof("action[loadDataNodes],dataNode[%v],zone[%v],ns[%v]", dataNode.Addr, dnv.ZoneName, dnv.NodeSetID)
+		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v]", dataNode.Addr, dataNode.ID,dnv.ZoneName, dnv.NodeSetID)
 	}
 	return
 }
@@ -622,8 +628,14 @@ func (c *Cluster) loadMetaNodes() (err error) {
 		metaNode := newMetaNode(mnv.Addr, mnv.ZoneName, c.Name)
 		metaNode.ID = mnv.ID
 		metaNode.NodeSetID = mnv.NodeSetID
+		oldmn,ok:=c.metaNodes.Load(metaNode.Addr)
+		if ok {
+			if oldmn.(*MetaNode).ID<=metaNode.ID {
+				continue
+			}
+		}
 		c.metaNodes.Store(metaNode.Addr, metaNode)
-		log.LogInfof("action[loadMetaNodes],metaNode[%v],zone[%v],ns[%v]", metaNode.Addr, mnv.ZoneName, mnv.NodeSetID)
+		log.LogInfof("action[loadMetaNodes],metaNode[%v], metaNodeID[%v],zone[%v],ns[%v]", metaNode.Addr,metaNode.ID, mnv.ZoneName, mnv.NodeSetID)
 	}
 	return
 }
