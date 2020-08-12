@@ -6,7 +6,7 @@ Environment Requirements
 --------------------------
 
 The following table lists the system and hardware requirements of the performance test environment and production environment. You can also refer to the capacity planning chapter to accurately customize the deployment plan based on your cluster's actual capacity planning.
-Note that since the DataNode used some features of CentOS7, the kernel version of the DataNode must be not lower than CentOS7.
+Note that since the DataNode used some features of linux kernal, so that the kernel version of servers which used for deploy DataNode must be later than 3.10.
 
 In order to speed up read and write of meta data, the meta data is stored in memory, while the DataNode mainly occupies disk resources. To maximize the use of node resources, you can mix-deploy DataNode and MetaNode on the same node.
 
@@ -23,7 +23,7 @@ If you have been clear about those statistics, you can use the empirical referen
 .. csv-table::
    :header: "Total File Count", "Total File Size", "Total memory", "Total Disk Space"
 
-   "10亿", "10PB", "2048 GB", "10PB"
+   "1,000,000,000", "10PB", "2048 GB", "10PB"
 
 The higher the proportion of large files, the greater the MetaNode pressure.
 
