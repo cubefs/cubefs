@@ -401,7 +401,7 @@ func (p *Packet) GetResultMsg() (m string) {
 	case OpErr:
 		m = "Err: " + string(p.Data)
 	case OpAgain:
-		m = "Again"
+		m = "Again: " + string(p.Data)
 	case OpOk:
 		m = "Ok"
 	case OpExistErr:
