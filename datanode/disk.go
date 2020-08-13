@@ -409,7 +409,7 @@ func (d *Disk) getSelectWeight() float64 {
 // if one partition does not exist in master, we decided that it is one expired partition
 func isExpiredPartition(id uint64, partitions []uint64) bool {
 	if len(partitions) == 0 {
-		return false
+		return true
 	}
 
 	for _, existId := range partitions {
