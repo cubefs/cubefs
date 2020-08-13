@@ -17,6 +17,7 @@ package wrapper
 import (
 	"fmt"
 	"math/rand"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/iputil"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -46,6 +48,7 @@ type Wrapper struct {
 	rwPartition           []*DataPartition
 	localLeaderPartitions []*DataPartition
 	followerRead          bool
+	nearRead              bool
 	mc                    *masterSDK.MasterClient
 	stopOnce              sync.Once
 	stopC                 chan struct{}
@@ -153,6 +156,9 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 	localLeaderPartitionGroups := make([]*DataPartition, 0)
 	for _, partition := range dpv.DataPartitions {
 		dp := convert(partition)
+		if w.followerRead && w.nearRead {
+			dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
+		}
 		log.LogInfof("updateDataPartition: dp(%v)", dp)
 		w.replaceOrInsertPartition(dp)
 		if dp.Status == proto.ReadWrite {
@@ -186,6 +192,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 		old.Status = dp.Status
 		old.ReplicaNum = dp.ReplicaNum
 		old.Hosts = dp.Hosts
+		old.NearHosts = dp.Hosts
 	} else {
 		dp.Metrics = NewDataPartitionMetrics()
 		w.partitions[dp.PartitionID] = dp
@@ -279,4 +286,31 @@ func (w *Wrapper) updateDataNodeStatus() (err error) {
 	w.HostsStatus = newHostsStatus
 
 	return
+}
+
+func (w *Wrapper) SetNearRead(nearRead bool) {
+	w.nearRead = nearRead
+	log.LogInfof("SetNearRead: set nearRead to %v", w.nearRead)
+}
+
+func (w *Wrapper) NearRead() bool {
+	return w.nearRead
+}
+
+// Sort hosts by distance form local
+func (w *Wrapper) sortHostsByDistance(hosts []string) []string {
+	for i := 0; i < len(hosts); i++ {
+		for j := i + 1; j < len(hosts); j++ {
+			if distanceFromLocal(hosts[i]) > distanceFromLocal(hosts[j]) {
+				hosts[i], hosts[j] = hosts[j], hosts[i]
+			}
+		}
+	}
+	return hosts
+}
+
+func distanceFromLocal(b string) int {
+	remote := strings.Split(b, ":")[0]
+
+	return iputil.GetDistance(net.ParseIP(LocalIP), net.ParseIP(remote))
 }
