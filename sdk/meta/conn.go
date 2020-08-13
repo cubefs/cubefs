@@ -96,10 +96,14 @@ retry:
 				continue
 			}
 			resp, err = mc.send(req)
-			errs[j] = err
 			mw.putConn(mc, err)
 			if err == nil && !resp.ShouldRetry() {
 				goto out
+			}
+			if err == nil {
+				errs[j] = errors.New(fmt.Sprintf("request should retry[%v]", resp.GetResultMsg()))
+			} else {
+				errs[j] = err
 			}
 			log.LogWarnf("sendToMetaPartition: retry failed req(%v) mp(%v) mc(%v) errs(%v) resp(%v)", req, mp, mc, errs, resp)
 		}
