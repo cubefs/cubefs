@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 )
@@ -481,7 +482,7 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	if i.Extents == nil {
 		i.Extents = NewSortedExtents()
 	}
-	
+
 	if buff.Len() == 0 {
 		return
 	}
@@ -574,10 +575,24 @@ func (i *Inode) SetDeleteMark() {
 }
 
 // ShouldDelete returns if the inode has been marked as deleted.
-func (i *Inode) ShouldDelete() bool {
+func (i *Inode) ShouldDelete() (ok bool) {
 	i.RLock()
-	defer i.RUnlock()
-	return i.Flag&DeleteMarkFlag == DeleteMarkFlag
+	ok = i.Flag&DeleteMarkFlag == DeleteMarkFlag
+	i.RUnlock()
+	return
+}
+
+// inode should delay remove if as 3 conditions:
+// 1. DeleteMarkFlag is unset
+// 2. NLink == 0
+// 3. AccessTime is 7 days ago
+func (i *Inode) ShouldDelayDelete() (ok bool) {
+	i.RLock()
+	ok = (i.Flag&DeleteMarkFlag != DeleteMarkFlag) &&
+		(i.NLink == 0) &&
+		time.Now().Unix()-i.AccessTime < InodeNLink0DelayDeleteSeconds
+	i.RUnlock()
+	return
 }
 
 // SetAttr sets the attributes of the inode.

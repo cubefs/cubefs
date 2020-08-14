@@ -41,7 +41,7 @@ func (c *ConsoleNode) Start(cfg *config.Config) error {
 	loginService := service.NewLoginService(cli)
 	c.addHandle(proto.ConsoleLoginAPI, loginService.Schema(), loginService)
 
-	monitorService := service.NewMonitorService(cfg.GetString("monitor_addr"), cfg.GetString("monitor_app"), cfg.GetString("monitor_cluster"), cfg.GetString("master_instance"), cfg.GetString("dashboard_addr"))
+	monitorService := service.NewMonitorService(cfg.GetString("monitor_addr"), cfg.GetString("monitor_app"), cfg.GetString("monitor_cluster"), cfg.GetString("dashboard_addr"))
 	c.addHandle(proto.ConsoleMonitorAPI, monitorService.Schema(), monitorService)
 	c.addHandle("/jiankong", monitorService.Schema(), monitorService)
 

@@ -69,16 +69,8 @@ const (
 	ControlCommandSetRate      = "/rate/set"
 	ControlCommandGetRate      = "/rate/get"
 	ControlCommandFreeOSMemory = "/debug/freeosmemory"
-	Role="Client"
+	Role                       = "Client"
 )
-
-
-var (
-	CommitID   string
-	BranchName string
-	BuildTime  string
-)
-
 
 var (
 	configFile       = flag.String("c", "", "FUSE client config file")
@@ -97,7 +89,7 @@ func main() {
 	flag.Parse()
 
 	if *configVersion {
-		fmt.Print(proto.DumpVersion(Role,BranchName,CommitID,BuildTime))
+		fmt.Print(proto.DumpVersion(Role))
 		os.Exit(0)
 	}
 
@@ -149,7 +141,7 @@ func main() {
 	}()
 	syslog.SetOutput(outputFile)
 
-	syslog.Println(dumpVersion())
+	syslog.Println(proto.DumpVersion(Role))
 	syslog.Println("*** Final Mount Options ***")
 	for _, o := range GlobalMountOptions {
 		syslog.Println(o)
@@ -197,10 +189,6 @@ func main() {
 		syslog.Printf("fs Serve returns err(%v)\n", err)
 		os.Exit(1)
 	}
-}
-
-func dumpVersion() string {
-	return fmt.Sprintf("ChubaoFS Client\nBranch: %s\nCommit: %s\nBuild: %s %s %s %s\n", BranchName, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime)
 }
 
 func startDaemon() error {
@@ -356,6 +344,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.FsyncOnClose = GlobalMountOptions[proto.FsyncOnClose].GetBool()
 	opt.MaxCPUs = GlobalMountOptions[proto.MaxCPUs].GetInt64()
 	opt.EnableXattr = GlobalMountOptions[proto.EnableXattr].GetBool()
+	opt.NearRead = GlobalMountOptions[proto.NearRead].GetBool()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))

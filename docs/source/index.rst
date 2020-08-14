@@ -62,5 +62,5 @@ Welcome to ChubaoFS(Chubao File System)
    :maxdepth: 2
    :caption: FAQ
 
+   env
    faq
-   operations

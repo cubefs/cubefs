@@ -41,16 +41,41 @@ func (api *AdminAPI) GetCluster() (cv *proto.ClusterView, err error) {
 func (api *AdminAPI) GetClusterStat() (cs *proto.ClusterStatInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminClusterStat)
 	request.addHeader("isTimeOut", "false")
-	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
+	var buf []byte
+	if buf, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	cs = &proto.ClusterStatInfo{}
-	if err = json.Unmarshal(data, &cs); err != nil {
+	if err = json.Unmarshal(buf, &cs); err != nil {
 		return
 	}
 	return
 }
+func (api *AdminAPI) ListZones() (zoneViews []*proto.ZoneView, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.GetAllZones)
+	var buf []byte
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	zoneViews = make([]*proto.ZoneView, 0)
+	if err = json.Unmarshal(buf, &zoneViews); err != nil {
+		return
+	}
+	return
+}
+func (api *AdminAPI) Topo() (topo *proto.TopologyView, err error ){
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.GetTopologyView)
+	if buf, err = api.mc.serveRequest(request); err != nil{
+		return
+	}
+	topo = &proto.TopologyView{}
+	if err = json.Unmarshal(buf, &topo); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) GetDataPartition(volName string, partitionID uint64) (partition *proto.DataPartitionInfo, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetDataPartition)
@@ -182,13 +207,15 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	return
 }
 
-func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas int, followerRead bool, authKey, zoneName string) (err error) {
+func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas int, followerRead, authenticate, enableToken bool, authKey, zoneName string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
 	request.addParam("capacity", strconv.FormatUint(capacity, 10))
 	request.addParam("replicaNum", strconv.Itoa(replicas))
 	request.addParam("followerRead", strconv.FormatBool(followerRead))
+	request.addParam("enableToken", strconv.FormatBool(enableToken))
+	request.addParam("authenticate", strconv.FormatBool(authenticate))
 	request.addParam("zoneName", zoneName)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -196,8 +223,30 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas int,
 	return
 }
 
+func (api *AdminAPI) VolShrink(volName string, capacity uint64, authKey string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminVolShrink)
+	request.addParam("name", volName)
+	request.addParam("authKey", authKey)
+	request.addParam("capacity", strconv.FormatUint(capacity, 10))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) VolExpand(volName string, capacity uint64, authKey string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminVolExpand)
+	request.addParam("name", volName)
+	request.addParam("authKey", authKey)
+	request.addParam("capacity", strconv.FormatUint(capacity, 10))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int,
-	dpSize uint64, capacity uint64, replicas int, followerRead bool) (err error) {
+	dpSize uint64, capacity uint64, replicas int, followerRead bool, zoneName string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
@@ -205,6 +254,7 @@ func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int,
 	request.addParam("size", strconv.FormatUint(dpSize, 10))
 	request.addParam("capacity", strconv.FormatUint(capacity, 10))
 	request.addParam("followerRead", strconv.FormatBool(followerRead))
+	request.addParam("zoneName", zoneName)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -225,12 +275,12 @@ func (api *AdminAPI) CreateDefaultVolume(volName, owner string) (err error) {
 func (api *AdminAPI) GetVolumeSimpleInfo(volName string) (vv *proto.SimpleVolView, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetVol)
 	request.addParam("name", volName)
-	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
+	var buf []byte
+	if buf, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	vv = &proto.SimpleVolView{}
-	if err = json.Unmarshal(data, &vv); err != nil {
+	if err = json.Unmarshal(buf, &vv); err != nil {
 		return
 	}
 	return
@@ -238,12 +288,12 @@ func (api *AdminAPI) GetVolumeSimpleInfo(volName string) (vv *proto.SimpleVolVie
 
 func (api *AdminAPI) GetClusterInfo() (ci *proto.ClusterInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetIP)
-	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
+	var buf []byte
+	if buf, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	ci = &proto.ClusterInfo{}
-	if err = json.Unmarshal(data, &ci); err != nil {
+	if err = json.Unmarshal(buf, &ci); err != nil {
 		return
 	}
 	return
@@ -262,12 +312,12 @@ func (api *AdminAPI) CreateMetaPartition(volName string, inodeStart uint64) (err
 func (api *AdminAPI) ListVols(keywords string) (volsInfo []*proto.VolInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminListVols)
 	request.addParam("keywords", keywords)
-	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
+	var buf []byte
+	if buf, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	volsInfo = make([]*proto.VolInfo, 0)
-	if err = json.Unmarshal(data, &volsInfo); err != nil {
+	if err = json.Unmarshal(buf, &volsInfo); err != nil {
 		return
 	}
 	return
@@ -286,6 +336,35 @@ func (api *AdminAPI) SetMetaNodeThreshold(threshold float64) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminSetMetaNodeThreshold)
 	request.addParam("threshold", strconv.FormatFloat(threshold, 'f', 6, 64))
 	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) SetDeleteParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminSetNodeInfo)
+	request.addParam("batchCount", batchCount)
+	request.addParam("markDeleteRate", markDeleteRate)
+	request.addParam("deleteWorkerSleepMs", deleteWorkerSleepMs)
+	request.addParam("autoRepairRate", autoRepairRate)
+
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) GetDeleteParas() (delParas map[string]string, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetNodeInfo)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	var buf []byte
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	delParas = make(map[string]string)
+	if err = json.Unmarshal(buf, &delParas); err != nil {
 		return
 	}
 	return

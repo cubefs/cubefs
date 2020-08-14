@@ -37,7 +37,7 @@ func TestCheckVol(t *testing.T) {
 }
 
 func TestVol(t *testing.T) {
-	capacity := 200
+	capacity := 300
 	name := "test1"
 	createVol(name, t)
 	//report mp/dp info to master
@@ -65,7 +65,7 @@ func TestVol(t *testing.T) {
 }
 
 func createVol(name string, t *testing.T) {
-	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs&mpCount=2&zoneName=%v", hostAddr, proto.AdminCreateVol, name,testZone2)
+	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs&mpCount=2&zoneName=%v", hostAddr, proto.AdminCreateVol, name, testZone2)
 	fmt.Println(reqURL)
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(name)

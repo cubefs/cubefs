@@ -29,14 +29,14 @@ import (
 
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
-	PartitionID             uint64
-	LastLoadedTime          int64
-	ReplicaNum              uint8
-	Status                  int8
-	isRecover               bool
-	Replicas                []*DataReplica
-	Hosts                   []string // host addresses
-	Peers                   []proto.Peer
+	PartitionID    uint64
+	LastLoadedTime int64
+	ReplicaNum     uint8
+	Status         int8
+	isRecover      bool
+	Replicas       []*DataReplica
+	Hosts          []string // host addresses
+	Peers          []proto.Peer
 	sync.RWMutex
 	total                   uint64
 	used                    uint64
@@ -469,6 +469,7 @@ func (partition *DataPartition) loadFile(dataNode *DataNode, resp *proto.LoadDat
 		fc.updateFileInCore(partition.PartitionID, dpf, replica, index)
 	}
 	replica.HasLoadResponse = true
+	replica.Used = resp.Used
 }
 
 func (partition *DataPartition) getReplicaIndex(addr string) (index int, err error) {

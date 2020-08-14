@@ -17,8 +17,9 @@ type NodeInfo struct {
 }
 
 var (
-	nodeInfo      = &NodeInfo{}
-	nodeInfoStopC = make(chan struct{}, 0)
+	nodeInfo                   = &NodeInfo{}
+	nodeInfoStopC              = make(chan struct{}, 0)
+	deleteWorkerSleepMs uint64 = 0
 )
 
 func DeleteBatchCount() uint64 {
@@ -29,8 +30,19 @@ func DeleteBatchCount() uint64 {
 	return val
 }
 
-func SetDeleteBatchCount(val uint64) {
+func updateDeleteBatchCount(val uint64) {
 	atomic.StoreUint64(&nodeInfo.deleteBatchCount, val)
+}
+
+func updateDeleteWorkerSleepMs(val uint64) {
+	atomic.StoreUint64(&deleteWorkerSleepMs, val)
+}
+
+func DeleteWorkerSleepMs() {
+	val := atomic.LoadUint64(&deleteWorkerSleepMs)
+	if val > 0 {
+		time.Sleep(time.Duration(val) * time.Millisecond)
+	}
 }
 
 func (m *MetaNode) startUpdateNodeInfo() {
@@ -52,10 +64,12 @@ func (m *MetaNode) stopUpdateNodeInfo() {
 }
 
 func (m *MetaNode) updateNodeInfo() {
-	clusterInfo, err := getClusterInfo()
+	//clusterInfo, err := getClusterInfo()
+	clusterInfo, err := masterClient.AdminAPI().GetClusterInfo()
 	if err != nil {
 		log.LogErrorf("[updateNodeInfo] %s", err.Error())
 		return
 	}
-	SetDeleteBatchCount(clusterInfo.MetaNodeDeleteBatchCount)
+	updateDeleteBatchCount(clusterInfo.MetaNodeDeleteBatchCount)
+	updateDeleteWorkerSleepMs(clusterInfo.MetaNodeDeleteWorkerSleepMs)
 }

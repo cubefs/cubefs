@@ -38,6 +38,7 @@ type clusterValue struct {
 	DataNodeDeleteLimitRate     uint64
 	MetaNodeDeleteBatchCount    uint64
 	MetaNodeDeleteWorkerSleepMs uint64
+	DataNodeAutoRepairLimitRate uint64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -47,6 +48,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DataNodeDeleteLimitRate:     c.cfg.DataNodeDeleteLimitRate,
 		MetaNodeDeleteBatchCount:    c.cfg.MetaNodeDeleteBatchCount,
 		MetaNodeDeleteWorkerSleepMs: c.cfg.MetaNodeDeleteWorkerSleepMs,
+		DataNodeAutoRepairLimitRate: c.cfg.DataNodeAutoRepairLimitRate,
 		DisableAutoAllocate:         c.DisableAutoAllocate,
 	}
 	return cv
@@ -62,6 +64,7 @@ type metaPartitionValue struct {
 	VolName     string
 	Hosts       string
 	Peers       []bsProto.Peer
+	IsRecover   bool
 }
 
 func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
@@ -75,6 +78,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		VolName:     mp.volName,
 		Hosts:       mp.hostsToString(),
 		Peers:       mp.Peers,
+		IsRecover:   mp.IsRecover,
 	}
 	return
 }
@@ -88,6 +92,7 @@ type dataPartitionValue struct {
 	VolID       uint64
 	VolName     string
 	Replicas    []*replicaValue
+	IsRecover   bool
 }
 
 type replicaValue struct {
@@ -105,6 +110,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		VolID:       dp.VolID,
 		VolName:     dp.VolName,
 		Replicas:    make([]*replicaValue, 0),
+		IsRecover:   dp.isRecover,
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
@@ -514,6 +520,10 @@ func (c *Cluster) updateMetaNodeDeleteWorkerSleepMs(val uint64) {
 	atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val)
 }
 
+func (c *Cluster) updateDataNodeAutoRepairLimit(val uint64) {
+	atomic.StoreUint64(&c.cfg.DataNodeAutoRepairLimitRate, val)
+}
+
 func (c *Cluster) updateDataNodeDeleteLimitRate(val uint64) {
 	atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, val)
 }
@@ -535,6 +545,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
+		c.updateDataNodeAutoRepairLimit(cv.DataNodeAutoRepairLimitRate)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}
 	return
@@ -587,8 +598,14 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode := newDataNode(dnv.Addr, dnv.ZoneName, c.Name)
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
+		olddn,ok:=c.dataNodes.Load(dataNode.Addr)
+		if ok {
+			if olddn.(*DataNode).ID<=dataNode.ID {
+				continue
+			}
+		}
 		c.dataNodes.Store(dataNode.Addr, dataNode)
-		log.LogInfof("action[loadDataNodes],dataNode[%v],zone[%v],ns[%v]", dataNode.Addr, dnv.ZoneName, dnv.NodeSetID)
+		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v]", dataNode.Addr, dataNode.ID,dnv.ZoneName, dnv.NodeSetID)
 	}
 	return
 }
@@ -611,8 +628,14 @@ func (c *Cluster) loadMetaNodes() (err error) {
 		metaNode := newMetaNode(mnv.Addr, mnv.ZoneName, c.Name)
 		metaNode.ID = mnv.ID
 		metaNode.NodeSetID = mnv.NodeSetID
+		oldmn,ok:=c.metaNodes.Load(metaNode.Addr)
+		if ok {
+			if oldmn.(*MetaNode).ID<=metaNode.ID {
+				continue
+			}
+		}
 		c.metaNodes.Store(metaNode.Addr, metaNode)
-		log.LogInfof("action[loadMetaNodes],metaNode[%v],zone[%v],ns[%v]", metaNode.Addr, mnv.ZoneName, mnv.NodeSetID)
+		log.LogInfof("action[loadMetaNodes],metaNode[%v], metaNodeID[%v],zone[%v],ns[%v]", metaNode.Addr,metaNode.ID, mnv.ZoneName, mnv.NodeSetID)
 	}
 	return
 }
@@ -659,9 +682,16 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 			Warn(c.Name, fmt.Sprintf("action[loadMetaPartitions] has duplicate vol[%v],vol.ID[%v],mpv.VolID[%v]", mpv.VolName, vol.ID, mpv.VolID))
 			continue
 		}
+		for i:=0;i<len(mpv.Peers);i++{
+			mn,ok:=c.metaNodes.Load(mpv.Peers[i].Addr)
+			if ok && mn.(*MetaNode).ID!=mpv.Peers[i].ID {
+				mpv.Peers[i].ID=mn.(*MetaNode).ID
+			}
+		}
 		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, vol.Name, mpv.VolID)
 		mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
 		mp.setPeers(mpv.Peers)
+		mp.IsRecover = mpv.IsRecover
 		vol.addMetaPartition(mp)
 		log.LogInfof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
 	}
@@ -690,9 +720,16 @@ func (c *Cluster) loadDataPartitions() (err error) {
 			Warn(c.Name, fmt.Sprintf("action[loadDataPartitions] has duplicate vol[%v],vol.ID[%v],mpv.VolID[%v]", dpv.VolName, vol.ID, dpv.VolID))
 			continue
 		}
+		for i:=0;i<len(dpv.Peers);i++{
+			dn,ok:=c.dataNodes.Load(dpv.Peers[i].Addr)
+			if ok && dn.(*DataNode).ID!=dpv.Peers[i].ID {
+				dpv.Peers[i].ID=dn.(*DataNode).ID
+			}
+		}
 		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID)
 		dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 		dp.Peers = dpv.Peers
+		dp.isRecover = dpv.IsRecover
 		for _, rv := range dpv.Replicas {
 			if !contains(dp.Hosts, rv.Addr) {
 				continue

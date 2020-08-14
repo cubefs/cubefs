@@ -331,7 +331,9 @@ func (s *raft) run() {
 				}
 				s.maybeChange(respErr)
 			} else if logger.IsEnableWarn() && m.Type != proto.RespMsgHeartBeat {
-				logger.Warn("[raft][%v term: %d] ignored a %s message without the replica from [%v term: %d].", s.raftFsm.id, s.raftFsm.term, m.Type, m.From, m.Term)
+				logger.Warn(" [raft] [%v term: %d] raftFm[%p] raftReplicas[%v] ignored a %s message " +
+					"without the replica from [%v term: %d].",
+					s.raftFsm.id, s.raftFsm.term,s.raftFsm,s.raftFsm.getReplicas(), m.Type, m.From, m.Term)
 			}
 
 		case snapReq := <-s.snapRecvc:

@@ -68,6 +68,8 @@ func (p *FollowerPacket) IsErrPacket() bool {
 	return p.ResultCode != proto.OpOk && p.ResultCode != proto.OpInitResultCode
 }
 
+
+
 func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg string) {
 	if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
 		strings.Contains(errLog, ConnIsNullErr) {
@@ -402,6 +404,10 @@ func (p *Packet) IsCreateExtentOperation() bool {
 
 func (p *Packet) IsMarkDeleteExtentOperation() bool {
 	return p.Opcode == proto.OpMarkDelete
+}
+
+func (p *Packet) IsBatchDeleteExtents() bool {
+	return  p.Opcode==proto.OpBatchDeleteExtent
 }
 
 func (p *Packet) IsBroadcastMinAppliedID() bool {

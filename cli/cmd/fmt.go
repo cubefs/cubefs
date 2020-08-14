@@ -26,16 +26,16 @@ import (
 
 func formatClusterView(cv *proto.ClusterView) string {
 	var sb = strings.Builder{}
-	sb.WriteString(fmt.Sprintf("  Cluster name  : %v\n", cv.Name))
-	sb.WriteString(fmt.Sprintf("  Master leader : %v\n", cv.LeaderAddr))
-	sb.WriteString(fmt.Sprintf("  Auto allocate : %v\n", formatEnabledDisabled(!cv.DisableAutoAlloc)))
-	sb.WriteString(fmt.Sprintf("  MetaNode count: %v\n", len(cv.MetaNodes)))
-	sb.WriteString(fmt.Sprintf("  MetaNode used : %v GB\n", cv.MetaNodeStatInfo.UsedGB))
-	sb.WriteString(fmt.Sprintf("  MetaNode total: %v GB\n", cv.MetaNodeStatInfo.TotalGB))
-	sb.WriteString(fmt.Sprintf("  DataNode count: %v\n", len(cv.DataNodes)))
-	sb.WriteString(fmt.Sprintf("  DataNode used : %v GB\n", cv.DataNodeStatInfo.UsedGB))
-	sb.WriteString(fmt.Sprintf("  DataNode total: %v GB\n", cv.DataNodeStatInfo.TotalGB))
-	sb.WriteString(fmt.Sprintf("  Volume count  : %v", len(cv.VolStatInfo)))
+	sb.WriteString(fmt.Sprintf("  Cluster name       : %v\n", cv.Name))
+	sb.WriteString(fmt.Sprintf("  Master leader      : %v\n", cv.LeaderAddr))
+	sb.WriteString(fmt.Sprintf("  Auto allocate      : %v\n", formatEnabledDisabled(!cv.DisableAutoAlloc)))
+	sb.WriteString(fmt.Sprintf("  MetaNode count     : %v\n", len(cv.MetaNodes)))
+	sb.WriteString(fmt.Sprintf("  MetaNode used      : %v GB\n", cv.MetaNodeStatInfo.UsedGB))
+	sb.WriteString(fmt.Sprintf("  MetaNode total     : %v GB\n", cv.MetaNodeStatInfo.TotalGB))
+	sb.WriteString(fmt.Sprintf("  DataNode count     : %v\n", len(cv.DataNodes)))
+	sb.WriteString(fmt.Sprintf("  DataNode used      : %v GB\n", cv.DataNodeStatInfo.UsedGB))
+	sb.WriteString(fmt.Sprintf("  DataNode total     : %v GB\n", cv.DataNodeStatInfo.TotalGB))
+	sb.WriteString(fmt.Sprintf("  Volume count       : %v\n", len(cv.VolStatInfo)))
 	return sb.String()
 }
 
@@ -99,6 +99,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Create time          : %v\n", svv.CreateTime))
 	sb.WriteString(fmt.Sprintf("  Authenticate         : %v\n", formatEnabledDisabled(svv.Authenticate)))
 	sb.WriteString(fmt.Sprintf("  Follower read        : %v\n", formatEnabledDisabled(svv.FollowerRead)))
+	sb.WriteString(fmt.Sprintf("  Enable token         : %v\n", formatEnabledDisabled(svv.EnableToken)))
 	sb.WriteString(fmt.Sprintf("  Cross zone           : %v\n", formatEnabledDisabled(svv.CrossZone)))
 	sb.WriteString(fmt.Sprintf("  Inode count          : %v\n", svv.InodeCount))
 	sb.WriteString(fmt.Sprintf("  Dentry count         : %v\n", svv.DentryCount))
@@ -471,5 +472,27 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(mn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", mn.MetaPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", mn.PersistenceMetaPartitions))
+	return sb.String()
+}
+
+func formatZoneView(zv *proto.ZoneView) string {
+	var sb = strings.Builder{}
+	sb.WriteString(fmt.Sprintf("Zone Name:   %v\n", zv.Name))
+	sb.WriteString(fmt.Sprintf("Status:      %v\n", zv.Status))
+	sb.WriteString(fmt.Sprintf("\n"))
+	for index, ns := range zv.NodeSet {
+		sb.WriteString(fmt.Sprintf("NodeSet-%v:\n", index))
+		sb.WriteString(fmt.Sprintf("  DataNodes[%v]:\n", ns.DataNodeLen))
+		sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewTableHeader()))
+		for _, nv := range ns.DataNodes{
+			sb.WriteString(fmt.Sprintf("    %v\n", formatNodeView(&nv, true)))
+		}
+		sb.WriteString(fmt.Sprintf("\n"))
+		sb.WriteString(fmt.Sprintf("  MetaNodes[%v]:\n", ns.MetaNodeLen))
+		sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewTableHeader()))
+		for _, nv := range ns.MetaNodes{
+			sb.WriteString(fmt.Sprintf("    %v\n", formatNodeView(&nv, true)))
+		}
+	}
 	return sb.String()
 }

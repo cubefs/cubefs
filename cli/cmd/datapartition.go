@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/spf13/cobra"
@@ -44,7 +45,7 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 
 const (
 	cmdDataPartitionGetShort              = "Display detail information of a data partition"
-	cmdCheckCorruptDataPartitionShort     = "Check out corrupt data partitions"
+	cmdCheckCorruptDataPartitionShort     = "Check and list unhealthy data partitions"
 	cmdDataPartitionDecommissionShort     = "Decommission a replication of the data partition to a new address"
 	cmdDataPartitionReplicateShort        = "Add a replication of the data partition on a new address"
 	cmdDataPartitionDeleteReplicaShort    = "Delete a replication of the data partition on a fixed address"
@@ -57,10 +58,16 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				partition *proto.DataPartitionInfo
+				err         error
+				partitionID uint64
+				partition   *proto.DataPartitionInfo
 			)
-			partitionID, err := strconv.ParseUint(args[0], 10, 64)
-			if err != nil {
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			if partitionID, err = strconv.ParseUint(args[0], 10, 64); err != nil {
 				return
 			}
 			if partition, err = client.AdminAPI().GetDataPartition("", partitionID); err != nil {
@@ -88,15 +95,21 @@ The "reset" command will be released in next version`,
 				dataNodes     []*proto.DataNodeInfo
 				err           error
 			)
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
 			if diagnosis, err = client.AdminAPI().DiagnoseDataPartition(); err != nil {
-				stdout("%v\n", err)
 				return
 			}
 			stdout("[Inactive Data nodes]:\n")
 			stdout("%v\n", formatDataNodeDetailTableHeader())
 			for _, addr := range diagnosis.InactiveDataNodes {
 				var node *proto.DataNodeInfo
-				node, err = client.NodeAPI().GetDataNode(addr)
+				if node, err = client.NodeAPI().GetDataNode(addr); err != nil {
+					return
+				}
 				dataNodes = append(dataNodes, node)
 			}
 			sort.SliceStable(dataNodes, func(i, j int) bool {
@@ -114,7 +127,7 @@ The "reset" command will be released in next version`,
 			for _, pid := range diagnosis.CorruptDataPartitionIDs {
 				var partition *proto.DataPartitionInfo
 				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
-					stdout("Partition not found, err:[%v]", err)
+					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
 				stdout("%v\n", formatDataPartitionInfoRow(partition))
@@ -122,17 +135,32 @@ The "reset" command will be released in next version`,
 
 			stdout("\n")
 			stdout("%v\n", "[Partition lack replicas]:")
+			stdout("%v\n", partitionInfoTableHeader)
 			sort.SliceStable(diagnosis.LackReplicaDataPartitionIDs, func(i, j int) bool {
 				return diagnosis.LackReplicaDataPartitionIDs[i] < diagnosis.LackReplicaDataPartitionIDs[j]
 			})
 			for _, pid := range diagnosis.LackReplicaDataPartitionIDs {
 				var partition *proto.DataPartitionInfo
 				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
-					stdout("Partition not found, err:[%v]", err)
+					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
 				if partition != nil {
 					stdout("%v\n", formatDataPartitionInfoRow(partition))
+				}
+			}
+
+
+			stdout("\n")
+			stdout("%v\n", "[Bad data partitions(decommission not completed)]:")
+			badPartitionTablePattern := "%-8v    %-10v\n"
+			stdout(badPartitionTablePattern, "PATH", "PARTITION ID")
+			for _, bdpv := range diagnosis.BadDataPartitionIDs {
+				sort.SliceStable(bdpv.PartitionIDs, func(i, j int) bool {
+					return bdpv.PartitionIDs[i] < bdpv.PartitionIDs[j]
+				})
+				for _, pid := range bdpv.PartitionIDs {
+					stdout(badPartitionTablePattern, bdpv.Path, pid)
 				}
 			}
 			return
@@ -147,14 +175,21 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 		Short: cmdDataPartitionDecommissionShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err         error
+				partitionID uint64
+			)
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
 			address := args[0]
-			partitionID, err := strconv.ParseUint(args[1], 10, 64)
+			partitionID, err = strconv.ParseUint(args[1], 10, 64)
 			if err != nil {
-				stdout("%v\n", err)
 				return
 			}
 			if err = client.AdminAPI().DecommissionDataPartition(partitionID, address); err != nil {
-				stdout("%v\n", err)
 				return
 			}
 		},
@@ -174,14 +209,20 @@ func newDataPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 		Short: cmdDataPartitionReplicateShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err         error
+				partitionID uint64
+			)
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
 			address := args[0]
-			partitionID, err := strconv.ParseUint(args[1], 10, 64)
-			if err != nil {
-				stdout("%v\n", err)
+			if partitionID, err = strconv.ParseUint(args[1], 10, 64); err != nil {
 				return
 			}
 			if err = client.AdminAPI().AddDataReplica(partitionID, address); err != nil {
-				stdout("%v\n", err)
 				return
 			}
 		},
@@ -201,14 +242,20 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 		Short: cmdDataPartitionDeleteReplicaShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err         error
+				partitionID uint64
+			)
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
 			address := args[0]
-			partitionID, err := strconv.ParseUint(args[1], 10, 64)
-			if err != nil {
-				stdout("%v\n", err)
+			if partitionID, err = strconv.ParseUint(args[1], 10, 64); err != nil {
 				return
 			}
 			if err = client.AdminAPI().DeleteDataReplica(partitionID, address); err != nil {
-				stdout("%v\n", err)
 				return
 			}
 		},

@@ -186,7 +186,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 
 	deleteBatchCount := cfg.GetInt64(cfgDeleteBatchCount)
 	if deleteBatchCount > 1 {
-		SetDeleteBatchCount(uint64(deleteBatchCount))
+		updateDeleteBatchCount(uint64(deleteBatchCount))
 	}
 
 	total, _, err := util.GetMemInfo()

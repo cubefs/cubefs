@@ -6,13 +6,25 @@ BuildOutPath=${BuildPath}/out
 BuildBinPath=${BuildPath}/bin
 VendorPath=${RootPath}/vendor
 
-BranchName=$(git rev-parse --abbrev-ref HEAD)
-CommitID=$(git rev-parse HEAD)
+RM=$(find /bin /sbin /usr/bin /usr/local -name "rm" | head -1)
+if [[ "-x$RM" == "-x" ]] ; then
+    RM=rm
+fi
+
+Version=$(git describe --abbrev=0 --tags 2>/dev/null)
+BranchName=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+CommitID=$(git rev-parse HEAD 2>/dev/null)
 BuildTime=$(date +%Y-%m-%d\ %H:%M)
-LDFlags="-X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'"
+LDFlags="-X github.com/chubaofs/chubaofs/proto.Version=${Version} \
+    -X github.com/chubaofs/chubaofs/proto.CommitID=${CommitID} \
+    -X github.com/chubaofs/chubaofs/proto.BranchName=${BranchName} \
+    -X 'github.com/chubaofs/chubaofs/proto.BuildTime=${BuildTime}'"
 MODFLAGS=""
 
 NPROC=$(nproc 2>/dev/null)
+if [ -e /sys/fs/cgroup/cpu ] ; then
+    NPROC=4
+fi
 NPROC=${NPROC:-"1"}
 
 GCC_LIBRARY_PATH="/lib /lib64 /usr/lib /usr/lib64 /usr/local/lib /usr/local/lib64"
@@ -27,6 +39,103 @@ case $(uname -s | tr 'A-Z' 'a-z') in
         exit1;
         ;;
 esac
+
+CPUTYPE=${CPUTYPE} | tr 'A-Z' 'a-z'
+
+build_zlib() {
+    ZlibSrcPath=${VendorPath}/dep/zlib-1.2.11
+    ZlibBuildPath=${BuildOutPath}/zlib
+    found=$(find ${ZlibBuildPath} -name libz.a 2>/dev/null | wc -l)
+    if [ ${found} -eq 0 ] ; then
+        if [ ! -d ${ZlibBuildPath} ] ; then
+            mkdir -p ${ZlibBuildPath}
+            cp -rf ${ZlibSrcPath}/* ${ZlibBuildPath}
+        fi
+        echo "build Zlib..."
+        pushd ${ZlibBuildPath} >/dev/null
+        [ "-$LUA_PATH" != "-" ]  && unset LUA_PATH
+		./configure
+        make -j ${NPROC}   && echo "build Zlib success" || {  echo "build Zlib failed" ; exit 1; }
+        popd >/dev/null
+    fi
+    cgo_cflags="${cgo_cflags} -I${ZlibSrcPath}"
+    cgo_ldflags="${cgo_ldflags} -L${ZlibBuildPath} -lz"
+    LD_LIBRARY_PATH="${ZlibBuildPath}:${LD_LIBRARY_PATH}"
+    C_INCLUDE_PATH="${cgo_cflags}:$C_INCLUDE_PATH"
+    CPLUS_INCLUDE_PATH="${cgo_cflags}:$CPLUS_INCLUDE_PATH"
+}
+
+build_bzip2() {
+    Bzip2SrcPath=${VendorPath}/dep/bzip2-1.0.6
+    Bzip2BuildPath=${BuildOutPath}/bzip2
+    found=$(find ${Bzip2BuildPath} -name libz2.a 2>/dev/null | wc -l)
+    if [ ${found} -eq 0 ] ; then
+        if [ ! -d ${Bzip2BuildPath} ] ; then
+            mkdir -p ${Bzip2BuildPath}
+            cp -rf ${Bzip2SrcPath}/* ${Bzip2BuildPath}
+        fi
+        echo "build Bzip2..."
+        pushd ${Bzip2BuildPath} >/dev/null
+        [ "-$LUA_PATH" != "-" ]  && unset LUA_PATH
+
+        make -j ${NPROC} bzip2  && echo "build Bzip2 success" || {  echo "build Bzip2 failed" ; exit 1; }
+        popd >/dev/null
+    fi
+    cgo_cflags="${cgo_cflags} -I${Bzip2SrcPath}"
+    cgo_ldflags="${cgo_ldflags} -L${Bzip2BuildPath} -lbz2"
+    LD_LIBRARY_PATH="${Bzip2BuildPath}:${LD_LIBRARY_PATH}"
+    C_INCLUDE_PATH="${cgo_cflags}:$C_INCLUDE_PATH"
+    CPLUS_INCLUDE_PATH="${cgo_cflags}:$CPLUS_INCLUDE_PATH"
+}
+
+build_lz4() {
+    ZstdSrcPath=${VendorPath}/dep/lz4-1.9.2
+    ZstdBuildPath=${BuildOutPath}/lz4
+    found=$(find ${ZstdBuildPath}/lib -name liblz4.a 2>/dev/null | wc -l)
+    if [ ${found} -eq 0 ] ; then
+        if [ ! -d ${ZstdBuildPath} ] ; then
+            mkdir -p ${ZstdBuildPath}
+            cp -rf ${ZstdSrcPath}/* ${ZstdBuildPath}
+        fi
+        echo "build Zstd..."
+        pushd ${ZstdBuildPath} >/dev/null
+        [ "-$LUA_PATH" != "-" ]  && unset LUA_PATH
+
+        make -j ${NPROC}   && echo "build lz4 success" || {  echo "build Zstd failed" ; exit 1; }
+        popd >/dev/null
+    fi
+    cgo_cflags="${cgo_cflags} -I${ZstdSrcPath}/programs"
+    cgo_ldflags="${cgo_ldflags} -L${ZstdBuildPath}/lib -llz4"
+    LD_LIBRARY_PATH="${ZstdBuildPath}/lib:${LD_LIBRARY_PATH}"
+    C_INCLUDE_PATH="${cgo_cflags}:$C_INCLUDE_PATH"
+    CPLUS_INCLUDE_PATH="${cgo_cflags}:$CPLUS_INCLUDE_PATH"
+}
+
+ # dep zlib,bz2,lz4
+ build_zstd() {
+    ZstdSrcPath=${VendorPath}/dep/zstd-1.4.5
+    ZstdBuildPath=${BuildOutPath}/zstd
+    found=$(find ${ZstdBuildPath}/lib -name libzstd.a 2>/dev/null | wc -l)
+    if [ ${found} -eq 0 ] ; then
+        if [ ! -d ${ZstdBuildPath} ] ; then
+            mkdir -p ${ZstdBuildPath}
+            cp -rf ${ZstdSrcPath}/* ${ZstdBuildPath}
+        fi
+        echo "build Zstd..."
+        pushd ${ZstdBuildPath} >/dev/null
+        [ "-$LUA_PATH" != "-" ]  && unset LUA_PATH
+
+        make -j ${NPROC}  allzstd && echo "build Zstd success" || {  echo "build Zstd failed" ; exit 1; }
+        popd >/dev/null
+    fi
+    cgo_cflags="${cgo_cflags} -I${ZstdSrcPath}/programs"
+    cgo_ldflags="${cgo_ldflags} -L${ZstdBuildPath}/lib -lzstd"
+
+    LD_LIBRARY_PATH="${ZstdBuildPath}/lib:${LD_LIBRARY_PATH}"
+    C_INCLUDE_PATH="${cgo_cflags}:$C_INCLUDE_PATH"
+    CPLUS_INCLUDE_PATH="${cgo_cflags}:$CPLUS_INCLUDE_PATH"
+}
+
 
 build_snappy() {
     found=$(find ${GCC_LIBRARY_PATH}  -name libsnappy.a -o -name libsnappy.so 2>/dev/null | wc -l)
@@ -46,6 +155,10 @@ build_snappy() {
     fi
     cgo_cflags="${cgo_cflags} -I${SnappySrcPath}"
     cgo_ldflags="${cgo_ldflags} -L${SnappyBuildPath} -lsnappy"
+
+    LD_LIBRARY_PATH="${SnappyBuildPath}:${LD_LIBRARY_PATH}"
+    C_INCLUDE_PATH="${cgo_cflags}:$C_INCLUDE_PATH"
+    CPLUS_INCLUDE_PATH="${cgo_cflags}:$CPLUS_INCLUDE_PATH"
 }
 
 build_rocksdb() {
@@ -70,30 +183,57 @@ build_rocksdb() {
     fi
     cgo_cflags="${cgo_cflags} -I${RocksdbSrcPath}/include"
     cgo_ldflags="${cgo_ldflags} -L${RocksdbBuildPath} -lrocksdb"
+
+    LD_LIBRARY_PATH="${RocksdbBuildPath}:${LD_LIBRARY_PATH}"
+    C_INCLUDE_PATH="${cgo_cflags}:$C_INCLUDE_PATH"
+    CPLUS_INCLUDE_PATH="${cgo_cflags}:$CPLUS_INCLUDE_PATH"
 }
 
-pre_build() {
-    build_snappy
-    build_rocksdb
-
-    rocksdb_libs=( z bz2 lz4 zstd )
-    for p in ${rocksdb_libs[*]} ; do
-        found=$(find /usr -name lib${p}.so 2>/dev/null | wc -l)
-        if [ ${found} -gt 0 ] ; then
-            cgo_ldflags="${cgo_ldflags} -l${p}"
-        fi
-    done
-
-    export CGO_CFLAGS=${cgo_cflags}
-    export CGO_LDFLAGS="${cgo_ldflags}"
+init_gopath() {
     export GO111MODULE=off
-    export GOPATH=/tmp/cfs/go
+    export GOPATH=$HOME/tmp/cfs/go
 
     mkdir -p $GOPATH/src/github.com/chubaofs
     SrcPath=$GOPATH/src/github.com/chubaofs/chubaofs
+    if [ -L "$SrcPath" ]; then
+        $RM -f $SrcPath
+    fi
     if [  ! -e "$SrcPath" ] ; then
         ln -s $RootPath $SrcPath 2>/dev/null
     fi
+}
+
+pre_build_server() {
+    rocksdb_libs=( z bz2 lz4 zstd )
+    if [[ "$CPUTYPE" == arm64* ]];
+    then
+        build_zlib
+        build_bzip2
+        build_lz4
+     #   build_zstd
+    else
+        for p in ${rocksdb_libs[*]} ; do
+            found=$(find /usr -name lib${p}.so 2>/dev/null | wc -l)
+            if [ ${found} -gt 0 ] ; then
+                cgo_ldflags="${cgo_ldflags} -l${p}"
+            fi
+        done
+    fi
+
+    build_snappy
+    build_rocksdb
+
+    export CGO_CFLAGS=${cgo_cflags}
+    export CGO_LDFLAGS="${cgo_ldflags}"
+
+    init_gopath
+}
+
+pre_build() {
+    export CGO_CFLAGS=""
+    export CGO_LDFLAGS=""
+
+    init_gopath
 }
 
 run_test() {
@@ -106,7 +246,7 @@ run_test() {
 }
 
 build_server() {
-    pre_build
+    pre_build_server
     pushd $SrcPath >/dev/null
     echo -n "build cfs-server   "
     go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-server ${SrcPath}/cmd/*.go && echo "success" || echo "failed"
@@ -138,20 +278,22 @@ build_authtool() {
 }
 
 build_cli() {
-    pre_build
+    #cli need gorocksdb too
+    pre_build_server
     pushd $SrcPath >/dev/null
     echo -n "build cfs-cli      "
     go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-cli ${SrcPath}/cli/*.go  && echo "success" || echo "failed"
+    #sh cli/build.sh ${BuildBinPath}/cfs-cli && echo "success" || echo "failed"
     popd >/dev/null
 }
 
 clean() {
-    rm -rf ${BuildBinPath}
+    $RM -rf ${BuildBinPath}
 }
 
 dist_clean() {
-    rm -rf ${BuildBinPath}
-    rm -rf ${BuildOutPath}
+    $RM -rf ${BuildBinPath}
+    $RM -rf ${BuildOutPath}
 }
 
 cmd=${1:-"all"}

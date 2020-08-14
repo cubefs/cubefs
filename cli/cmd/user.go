@@ -16,7 +16,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -68,10 +67,14 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 			var accessKey = optAccessKey
 			var secretKey = optSecretKey
 			var userType = proto.UserTypeFromString(optUserType)
-
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
 			if !userType.Valid() {
-				errout("Invalid user type.")
-				os.Exit(1)
+				err = fmt.Errorf("Invalid user type. ")
+				return
 			}
 
 			// ask user for confirm
@@ -98,7 +101,7 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
 				if userConfirm != "yes" && len(userConfirm) != 0 {
-					stdout("Abort by user.\n")
+					err = fmt.Errorf("Abort by user.\n")
 					return
 				}
 			}
@@ -112,8 +115,8 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 			}
 			var userInfo *proto.UserInfo
 			if userInfo, err = client.UserAPI().CreateUser(&param); err != nil {
-				errout("Create user failed: %v\n", err)
-				os.Exit(1)
+				err = fmt.Errorf("Create user failed: %v\n", err)
+				return
 			}
 
 			// display operation result
@@ -150,11 +153,16 @@ func newUserUpdateCmd(client *master.MasterClient) *cobra.Command {
 			var accessKey = optAccessKey
 			var secretKey = optSecretKey
 			var userType proto.UserType
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
 			if optUserType != "" {
 				userType = proto.UserTypeFromString(optUserType)
 				if !userType.Valid() {
-					errout("Invalid user type.\n")
-					os.Exit(1)
+					err = fmt.Errorf("Invalid user type ")
+					return
 				}
 			}
 
@@ -180,14 +188,12 @@ func newUserUpdateCmd(client *master.MasterClient) *cobra.Command {
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
 				if userConfirm != "yes" && len(userConfirm) != 0 {
-					stdout("Abort by user.\n")
-					os.Exit(1)
+					err = fmt.Errorf("Abort by user.\n")
 					return
 				}
 			}
 			if accessKey == "" && secretKey == "" && optUserType == "" {
-				stdout("No update.\n")
-				os.Exit(1)
+				err = fmt.Errorf("no update")
 				return
 			}
 			var param = proto.UserUpdateParam{
@@ -198,8 +204,7 @@ func newUserUpdateCmd(client *master.MasterClient) *cobra.Command {
 			}
 			var userInfo *proto.UserInfo
 			if userInfo, err = client.UserAPI().UpdateUser(&param); err != nil {
-				errout("Update user failed: %v\n", err)
-				os.Exit(1)
+				return
 			}
 
 			stdout("Update user success:\n")
@@ -229,21 +234,24 @@ func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			var userID = args[0]
-
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
 			if !optYes {
 				stdout("Delete user [%v] (yes/no)[no]:", userID)
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
 				if userConfirm != "yes" {
-					stdout("Abort by user.\n")
-					os.Exit(1)
+					err = fmt.Errorf("Abort by user.\n")
 					return
 				}
 			}
 
 			if err = client.UserAPI().DeleteUser(userID); err != nil {
-				errout("Delete user failed:\n%v\n", err)
-				os.Exit(1)
+				err = fmt.Errorf("Delete user failed:\n%v\n", err)
+				return
 			}
 			stdout("Delete user success.\n")
 			return
@@ -274,9 +282,14 @@ func newUserInfoCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			var userID = args[0]
 			var userInfo *proto.UserInfo
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
 			if userInfo, err = client.UserAPI().GetUserInfo(userID); err != nil {
-				errout("Get user info failed: %v\n", err)
-				os.Exit(1)
+				err = fmt.Errorf("Get user info failed: %v\n", err)
+				return
 			}
 			printUserInfo(userInfo)
 		},
@@ -302,9 +315,15 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 		Short: cmdUserPermShort,
 		Args:  cobra.MinimumNArgs(3),
 		Run: func(cmd *cobra.Command, args []string) {
+			var err error
 			var userID = args[0]
 			var volume = args[1]
 			var perm proto.Permission
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
 			switch strings.ToLower(args[2]) {
 			case "ro", "readonly":
 				perm = proto.BuiltinPermissionReadOnly
@@ -313,7 +332,7 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			case "none":
 				perm = proto.NonePermission
 			default:
-				stdout("Permission must be on of ro, rw, none")
+				err = fmt.Errorf("Permission must be on of ro, rw, none ")
 				return
 			}
 			stdout("Setup volume permission\n")
@@ -326,16 +345,9 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			var userConfirm string
 			_, _ = fmt.Scanln(&userConfirm)
 			if userConfirm != "yes" && len(userConfirm) != 0 {
-				stdout("Abort by user.\n")
+				err = fmt.Errorf("Abort by user.\n")
 				return
 			}
-			var err error
-			defer func() {
-				if err != nil {
-					errout("Setup permission failed:\n%v\n", err)
-					os.Exit(1)
-				}
-			}()
 			var userInfo *proto.UserInfo
 			if userInfo, err = client.UserAPI().GetUserInfo(userID); err != nil {
 				return
@@ -381,8 +393,7 @@ func newUserListCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("List cluster user failed: %v\n", err)
-					os.Exit(1)
+					errout("Error: %v", err)
 				}
 			}()
 			if users, err = client.UserAPI().ListUsers(optKeyword); err != nil {
@@ -417,17 +428,4 @@ func printUserInfo(userInfo *proto.UserInfo) {
 		stdout("%-20v    %-12v\n", vol, strings.Join(perms, ","))
 	}
 }
-func validUsers(client *master.MasterClient, toComplete string) []string {
-	var (
-		validUsers []string
-		users      []*proto.UserInfo
-		err        error
-	)
-	if users, err = client.UserAPI().ListUsers(toComplete); err != nil {
-		errout("Get user list failed:\n%v\n", err)
-	}
-	for _, user := range users {
-		validUsers = append(validUsers, user.UserID)
-	}
-	return validUsers
-}
+

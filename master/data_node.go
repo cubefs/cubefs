@@ -34,9 +34,9 @@ type DataNode struct {
 	ReportTime                time.Time
 	isActive                  bool
 	sync.RWMutex              `graphql:"-"`
-	UsageRatio                float64 // used / total space
-	SelectedTimes             uint64  // number times that this datanode has been selected as the location for a data partition.
-	Carry                     float64 // carry is a factor used in cacluate the node's weight
+	UsageRatio                float64           // used / total space
+	SelectedTimes             uint64            // number times that this datanode has been selected as the location for a data partition.
+	Carry                     float64           // carry is a factor used in cacluate the node's weight
 	TaskManager               *AdminTaskManager `graphql:"-"`
 	DataPartitionReports      []*proto.PartitionReport
 	DataPartitionCount        uint32

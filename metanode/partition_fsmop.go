@@ -15,15 +15,14 @@
 package metanode
 
 import (
-	"encoding/json"
-	"os"
-	"strings"
-	"time"
-
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path"
+	"strings"
+	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -82,8 +81,7 @@ func (mp *MetaPartition) fsmUpdatePartition(end uint64) (status uint8,
 	return
 }
 
-func (mp *MetaPartition) confAddNode(req *proto.
-	MetaPartitionDecommissionRequest, index uint64) (updated bool, err error) {
+func (mp *MetaPartition) confAddNode(req *proto.AddMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
 	var (
 		heartbeatPort int
 		replicaPort   int
@@ -109,12 +107,12 @@ func (mp *MetaPartition) confAddNode(req *proto.
 	return
 }
 
-func (mp *MetaPartition) confRemoveNode(req *proto.MetaPartitionDecommissionRequest,
-	index uint64) (updated bool, err error) {
+func (mp *MetaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
+
 	peerIndex := -1
 	data, _ := json.Marshal(req)
 	log.LogInfof("Start RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
-		req.PartitionID, mp.config.NodeId, string(data))
+		req.PartitionId, mp.config.NodeId, string(data))
 	for i, peer := range mp.config.Peers {
 		if peer.ID == req.RemovePeer.ID {
 			updated = true
@@ -124,24 +122,18 @@ func (mp *MetaPartition) confRemoveNode(req *proto.MetaPartitionDecommissionRequ
 	}
 	if !updated {
 		log.LogInfof("NoUpdate RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
-			req.PartitionID, mp.config.NodeId, string(data))
+			req.PartitionId, mp.config.NodeId, string(data))
 		return
 	}
 	mp.config.Peers = append(mp.config.Peers[:peerIndex], mp.config.Peers[peerIndex+1:]...)
-	if mp.config.NodeId == req.RemovePeer.ID {
+	if mp.config.NodeId == req.RemovePeer.ID && !mp.isLoadingMetaPartition {
 		mp.Stop()
 		mp.DeleteRaft()
 		mp.manager.deletePartition(mp.GetBaseConfig().PartitionId)
 		os.RemoveAll(mp.config.RootDir)
 		updated = false
 	}
-	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
-		req.PartitionID, mp.config.NodeId, string(data))
-	return
-}
-
-func (mp *MetaPartition) confUpdateNode(req *proto.MetaPartitionDecommissionRequest,
-	index uint64) (updated bool, err error) {
+	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ", req.PartitionId, mp.config.NodeId, string(data))
 	return
 }
 
@@ -168,6 +160,7 @@ func (mp *MetaPartition) delOldExtentFile(buf []byte) (err error) {
 	return
 }
 
+//
 func (mp *MetaPartition) setExtentDeleteFileCursor(buf []byte) (err error) {
 	str := string(buf)
 	var (
@@ -230,6 +223,7 @@ func (mp *MetaPartition) CanRemoveRaftMember(peer proto.Peer) error {
 }
 
 func (mp *MetaPartition) IsEquareCreateMetaPartitionRequst(request *proto.CreateMetaPartitionRequest) (err error) {
+
 	if len(mp.config.Peers) != len(request.Members) {
 		return fmt.Errorf("Exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", mp.config.PartitionId, mp.config.Peers, request.Members)
 	}

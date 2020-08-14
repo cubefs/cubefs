@@ -148,6 +148,9 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 	}
 	mp.IsRecover = true
 	c.putBadMetaPartitions(nodeAddr, mp.PartitionID)
+	mp.RLock()
+	c.syncUpdateMetaPartition(mp)
+	mp.RUnlock()
 	Warn(c.Name, fmt.Sprintf("action[decommissionMetaPartition] clusterID[%v] vol[%v] meta partition[%v] "+
 		"offline addr[%v] success,new addr[%v]", c.Name, mp.volName, mp.PartitionID, nodeAddr, newPeers[0].Addr))
 	return
@@ -187,6 +190,8 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 
 func (c *Cluster) checkCorruptMetaPartitions() (inactiveMetaNodes []string, corruptPartitions []*MetaPartition, err error) {
 	partitionMap := make(map[uint64]uint8)
+	inactiveMetaNodes = make([]string, 0)
+	corruptPartitions = make([]*MetaPartition, 0)
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
 		if !metaNode.IsActive {
@@ -252,6 +257,7 @@ func (c *Cluster) checkCorruptMetaNode(metaNode *MetaNode) (corruptPartitions []
 }
 
 func (c *Cluster) checkLackReplicaMetaPartitions() (lackReplicaMetaPartitions []*MetaPartition, err error) {
+	lackReplicaMetaPartitions = make([]*MetaPartition, 0)
 	vols := c.copyVols()
 	for _, vol := range vols {
 		for _, mp := range vol.MetaPartitions {
@@ -545,6 +551,7 @@ func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
 
 	dp.getFileCount()
 	dp.validateCRC(c.Name)
+	dp.checkReplicaSize(c.Name,c.cfg.diffSpaceUsage)
 	dp.setToNormal()
 }
 

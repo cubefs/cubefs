@@ -17,13 +17,11 @@ package cmd
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
-	"os"
 	"reflect"
 	"strconv"
 
 	"github.com/chubaofs/chubaofs/cli/api"
 	"github.com/chubaofs/chubaofs/metanode"
-	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/spf13/cobra"
 )
 
@@ -56,24 +54,21 @@ func newMetaCompatibilityCmd() *cobra.Command {
 		Aliases: []string{"meta"},
 		Args:    cobra.MinimumNArgs(3),
 		Run: func(cmd *cobra.Command, args []string) {
-			var err error
 			var (
-				//snapshotPath = args[0]
-				host = args[1]
-				pid  = args[2]
+				err          error
+				snapshotPath = args[0]
+				host         = args[1]
+				pid          = args[2]
 			)
 			client := api.NewMetaHttpClient(host, false)
 			defer func() {
 				if err != nil {
-					errout("Verify metadata consistency failed: %v\n", err)
-					log.LogError(err)
-					log.LogFlush()
-					os.Exit(1)
+					errout("Error: %v", err)
 				}
 			}()
 			id, err := strconv.ParseUint(pid, 10, 64)
 			if err != nil {
-				errout("parse pid[%v] failed: %v\n", pid, err)
+				err = fmt.Errorf("parse pid[%v] failed: %v\n", pid, err)
 				return
 			}
 			cursor, err := client.GetMetaPartition(id)
@@ -89,6 +84,10 @@ func newMetaCompatibilityCmd() *cobra.Command {
 				stdout("%v\n", err)
 				return
 			}
+			err = mp.Load(snapshotPath)
+			if err != nil {
+				return
+			}
 
 			if _, err := mp.Snapshot(); err != nil {
 				stdout("%v\n", err)
@@ -97,11 +96,9 @@ func newMetaCompatibilityCmd() *cobra.Command {
 
 			stdout("[Meta partition is %v, verify result]\n", id)
 			if err = verifyDentry(client, mp); err != nil {
-				stdout("%v\n", err)
 				return
 			}
 			if err = verifyInode(client, mp); err != nil {
-				stdout("%v\n", err)
 				return
 			}
 			stdout("All meta has checked\n")
@@ -128,19 +125,22 @@ func verifyDentry(client *api.MetaHttpClient, mp *metanode.MetaPartition) (err e
 
 		oldDentry, ok := dentryMap[key]
 		if !ok {
-			stdout("dentry %v is not in old version", key)
+			stdout("dentry %v is not in old version \n", key)
 			err = fmt.Errorf("dentry %v is not in old version", key)
 			return false, err
 		}
 		if !reflect.DeepEqual(dentry, oldDentry) {
-			stdout("dentry %v is not equal with old version", key)
+			stdout("dentry %v is not equal with old version \n", key)
 			err = fmt.Errorf("dentry %v is not equal with old version,dentry[%v],oldDentry[%v]", key, dentry, oldDentry)
 			return false, err
 		}
 		return true, nil
 
 	})
-	stdout("The number of dentry is %v, all dentry are consistent \n", mp.GetDentryTree().Count())
+
+	if err == nil {
+		stdout("The number of dentry is %v, all dentry are consistent \n", mp.GetDentryTree().Count())
+	}
 	return
 }
 
@@ -155,6 +155,7 @@ func verifyInode(client *api.MetaHttpClient, mp *metanode.MetaPartition) (err er
 		if err := inode.Unmarshal(v); err != nil {
 			stdout("unmarshal inode has err:[%s] \n", err.Error())
 			return false, err
+
 		}
 
 		oldInode, ok := inodesMap[inode.Inode]
@@ -184,10 +185,14 @@ func verifyInode(client *api.MetaHttpClient, mp *metanode.MetaPartition) (err er
 		})
 		if !reflect.DeepEqual(oldInode, localInode) {
 			stdout("inode %v is not equal with old version,inode[%v],oldInode[%v]\n", inode.Inode, inode, oldInode)
+			err = fmt.Errorf("inode %v is not equal with old version,inode[%v],oldInode[%v]\n", inode.Inode, inode, oldInode)
+			return false, err
 		}
 		return true, nil
 	})
 
-	stdout("The number of inodes is %v, all inodes are consistent \n", mp.GetInodeTree().Count())
+	if err == nil {
+		stdout("The number of inodes is %v, all inodes are consistent \n", mp.GetInodeTree().Count())
+	}
 	return
 }

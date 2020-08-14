@@ -27,6 +27,8 @@ const (
 	AdminAddDataReplica            = "/dataReplica/add"
 	AdminDeleteVol                 = "/vol/delete"
 	AdminUpdateVol                 = "/vol/update"
+	AdminVolShrink                 = "/vol/shrink"
+	AdminVolExpand                 = "/vol/expand"
 	AdminCreateVol                 = "/admin/createVol"
 	AdminGetVol                    = "/admin/getVol"
 	AdminClusterFreeze             = "/cluster/freeze"
@@ -70,6 +72,9 @@ const (
 	AddMetaNode                    = "/metaNode/add"
 	DecommissionMetaNode           = "/metaNode/decommission"
 	GetMetaNode                    = "/metaNode/get"
+	AdminUpdateMetaNode            = "/metaNode/update"
+	AdminUpdateDataNode            = "/dataNode/update"
+	AdminGetInvalidNodes           = "/invalid/nodes"
 	AdminLoadMetaPartition         = "/metaPartition/load"
 	AdminDiagnoseMetaPartition     = "/metaPartition/diagnose"
 	AdminDecommissionMetaPartition = "/metaPartition/decommission"
@@ -145,6 +150,7 @@ type ClusterInfo struct {
 	MetaNodeDeleteBatchCount    uint64
 	MetaNodeDeleteWorkerSleepMs uint64
 	DataNodeDeleteLimitRate     uint64
+	DataNodeAutoRepairLimitRate uint64
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -520,4 +526,23 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 		TotalSize:  totalSize,
 		UsedSize:   usedSize,
 	}
+}
+
+//ZoneView define the view of zone
+type ZoneView struct {
+	Name    string
+	Status  string
+	NodeSet map[uint64]*NodeSetView
+}
+
+type NodeSetView struct {
+	DataNodeLen int
+	MetaNodeLen int
+	MetaNodes   []NodeView
+	DataNodes   []NodeView
+}
+
+// TopologyView provides the view of the topology view of the cluster
+type TopologyView struct {
+	Zones []*ZoneView
 }

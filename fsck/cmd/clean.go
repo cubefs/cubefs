@@ -148,7 +148,7 @@ func evictInodes() error {
 	wg := sync.WaitGroup{}
 
 	for _, mp := range mps {
-		cmdline := fmt.Sprintf("http://%s:9092/getAllInodes?pid=%d", strings.Split(mp.LeaderAddr, ":")[0], mp.PartitionID)
+		cmdline := fmt.Sprintf("http://%s:%s/getAllInodes?pid=%d", strings.Split(mp.LeaderAddr, ":")[0], MetaPort, mp.PartitionID)
 		wg.Add(1)
 		go evictOnTime(&wg, cmdline)
 	}

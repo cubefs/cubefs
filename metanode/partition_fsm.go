@@ -200,17 +200,26 @@ func (mp *MetaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	if err = json.Unmarshal(confChange.Context, req); err != nil {
 		return
 	}
+
 	// change memory status
 	var (
 		updated bool
 	)
 	switch confChange.Type {
 	case raftproto.ConfAddNode:
+		req := &proto.AddMetaPartitionRaftMemberRequest{}
+		if err = json.Unmarshal(confChange.Context, req); err != nil {
+			return
+		}
 		updated, err = mp.confAddNode(req, index)
 	case raftproto.ConfRemoveNode:
+		req := &proto.RemoveMetaPartitionRaftMemberRequest{}
+		if err = json.Unmarshal(confChange.Context, req); err != nil {
+			return
+		}
 		updated, err = mp.confRemoveNode(req, index)
 	case raftproto.ConfUpdateNode:
-		updated, err = mp.confUpdateNode(req, index)
+		//updated, err = mp.confUpdateNode(req, index)
 	}
 	if err != nil {
 		return
@@ -364,12 +373,14 @@ func (mp *MetaPartition) HandleLeaderChange(leader uint64) {
 			go mp.raftPartition.TryToLeader(mp.config.PartitionId)
 			return
 		}
+		log.LogDebugf("[metaPartition] HandleLeaderChange close conn %v, nodeId: %v, leader: %v", serverPort, mp.config.NodeId, leader)
 		conn.(*net.TCPConn).SetLinger(0)
 		log.LogDebugf("[HandleLeaderChange] connect close port: %v parititon: %v nodeid: %v, leader: %v", serverPort, mp.config.PartitionId, mp.config.NodeId, leader)
 		conn.Close()
 	}
 	// not leader
 	if mp.config.NodeId != leader {
+		log.LogDebugf("[metaPartition] pid: %v HandleLeaderChange become unleader nodeId: %v, leader: %v", mp.config.PartitionId, mp.config.NodeId, leader)
 		mp.storeChan <- &storeMsg{
 			command: stopStoreTick,
 		}
@@ -384,6 +395,8 @@ func (mp *MetaPartition) HandleLeaderChange(leader uint64) {
 	}
 	//init inode
 	if mp.config.Start == 0 && mp.GetCursor() == 0 {
+		log.LogDebugf("[metaPartition] pid: %v HandleLeaderChange become leader conn %v, nodeId: %v, leader: %v", mp.config.PartitionId, serverPort, mp.config.NodeId, leader)
+
 		id, err := mp.nextInodeID()
 		if err != nil {
 			log.LogFatalf("[HandleLeaderChange] init root inode id: %s.", err.Error())

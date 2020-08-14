@@ -17,16 +17,7 @@ package metanode
 import (
 	"bytes"
 	"encoding/json"
-	"sort"
-	"strconv"
-	"strings"
-	"sync/atomic"
-
 	"fmt"
-	"io/ioutil"
-	"os"
-	"path"
-
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
@@ -34,6 +25,13 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
+	"io/ioutil"
+	"os"
+	"path"
+	"sort"
+	"strconv"
+	"strings"
+	"sync/atomic"
 )
 
 var (
@@ -113,25 +111,33 @@ func (c *MetaPartitionConfig) sortPeers() {
 //  | New | → Restore → | Ready |
 //  +-----+             +-------+
 type MetaPartition struct {
-	config        *MetaPartitionConfig
-	size          uint64 // For partition all file size
-	applyID       uint64 // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
-	dentryTree    DentryTree
-	inodeTree     InodeTree     // btree for inodes
-	extendTree    ExtendTree    // btree for inode extend (XAttr) management
-	multipartTree MultipartTree // collection for multipart management
-	raftPartition raftstore.Partition
-	stopC         chan bool
-	storeChan     chan *storeMsg
-	state         uint32
-	delInodeFp    *os.File
-	freeList      *freeList // free inode list
-	extDelCh      chan []proto.ExtentKey
-	extReset      chan struct{}
-	vol           *Vol
-	manager       *metadataManager
+	config                 *MetaPartitionConfig
+	size                   uint64 // For partition all file size
+	applyID                uint64 // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
+	dentryTree             DentryTree
+	inodeTree              InodeTree     // btree for inodes
+	extendTree             ExtendTree    // btree for inode extend (XAttr) management
+	multipartTree          MultipartTree // collection for multipart management
+	raftPartition          raftstore.Partition
+	stopC                  chan bool
+	storeChan              chan *storeMsg
+	state                  uint32
+	delInodeFp             *os.File
+	freeList               *freeList // free inode list
+	extDelCh               chan []proto.ExtentKey
+	extReset               chan struct{}
+	vol                    *Vol
+	manager                *metadataManager
+	persistedApplyID       uint64
+	isLoadingMetaPartition bool
+}
 
-	persistedApplyID uint64
+func (mp *MetaPartition) ForceSetMetaPartitionToLoadding() {
+	mp.isLoadingMetaPartition = true
+}
+
+func (mp *MetaPartition) ForceSetMetaPartitionToFininshLoad() {
+	mp.isLoadingMetaPartition = false
 }
 
 // Start starts a meta partition.
@@ -183,7 +189,8 @@ func (mp *MetaPartition) onStart() (err error) {
 		}
 		mp.onStop()
 	}()
-	if err = mp.load(); err != nil {
+
+	if err = mp.Load(path.Join(mp.config.RootDir, snapshotDir)); err != nil {
 		err = errors.NewErrorf("[onStart]:load partition id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
@@ -199,7 +206,6 @@ func (mp *MetaPartition) onStart() (err error) {
 			mp.config.PartitionId, err.Error())
 		return
 	}
-
 	return
 }
 
@@ -207,7 +213,6 @@ func (mp *MetaPartition) onStop() {
 	mp.stopRaft()
 	mp.stop()
 	if mp.delInodeFp != nil {
-		// TODO Unhandled errors
 		mp.delInodeFp.Sync()
 		mp.delInodeFp.Close()
 	}
@@ -243,6 +248,9 @@ func (mp *MetaPartition) startRaft() (err error) {
 		SM:      mp,
 	}
 	mp.raftPartition, err = mp.config.RaftStore.CreatePartition(pc)
+	if err == nil {
+		mp.ForceSetMetaPartitionToFininshLoad()
+	}
 	return
 }
 
@@ -383,7 +391,7 @@ func (mp *MetaPartition) GetInodeTree() InodeTree {
 	return mp.inodeTree
 }
 
-func (mp *MetaPartition) load() (err error) {
+func (mp *MetaPartition) Load(snapshotPath string) (err error) {
 	if err = mp.loadMetadata(); err != nil {
 		return
 	}
@@ -393,7 +401,6 @@ func (mp *MetaPartition) load() (err error) {
 		return nil
 	}
 
-	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
 	if err = mp.loadInode(snapshotPath); err != nil {
 		return
 	}

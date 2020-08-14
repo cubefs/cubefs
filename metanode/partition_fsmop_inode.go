@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -132,6 +133,17 @@ func (mp *MetaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 	}
 
 	inode.DecNLink()
+
+	//Fix#760: when nlink == 0, push into freeList and delay delete inode after 7 days
+	if inode.IsTempFile() {
+		inode.DoWriteFunc(func() {
+			if inode.NLink == 0 {
+				inode.AccessTime = time.Now().Unix()
+				mp.freeList.Push(inode.Inode)
+			}
+		})
+	}
+
 	return
 }
 

@@ -17,9 +17,9 @@ package master
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/log"
+	"math"
 	"strconv"
 	"time"
-	"math"
 )
 
 func (c *Cluster) scheduleToLoadMetaPartitions() {
@@ -169,6 +169,9 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 			diff = partition.getMinusOfMaxInodeID()
 			if diff < defaultMinusOfMaxInodeID {
 				partition.IsRecover = false
+				partition.RLock()
+				c.syncUpdateMetaPartition(partition)
+				partition.RUnlock()
 				Warn(c.Name, fmt.Sprintf("clusterID[%v],vol[%v] partitionID[%v] has recovered success", c.Name, partition.volName, partitionID))
 			} else {
 				newBadMpIds = append(newBadMpIds, partitionID)
