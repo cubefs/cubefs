@@ -310,6 +310,7 @@ const (
 )
 
 func newUserPermCmd(client *master.MasterClient) *cobra.Command {
+	var subdir string
 	var cmd = &cobra.Command{
 		Use:   cmdUserPermUse,
 		Short: cmdUserPermShort,
@@ -324,11 +325,17 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 					errout("Error: %v", err)
 				}
 			}()
+
+			perm = proto.BuiltinPermissionPrefix
+			if subdir != "" && subdir != "/" {
+				perm = proto.Permission(string(perm) + subdir + ":")
+			}
+
 			switch strings.ToLower(args[2]) {
 			case "ro", "readonly":
-				perm = proto.BuiltinPermissionReadOnly
+				perm = perm + "ReadOnly"
 			case "rw", "readwrite":
-				perm = proto.BuiltinPermissionWritable
+				perm = perm + "Writable"
 			case "none":
 				perm = proto.NonePermission
 			default:
@@ -338,6 +345,7 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			stdout("Setup volume permission\n")
 			stdout("  User ID   : %v\n", userID)
 			stdout("  Volume    : %v\n", volume)
+			stdout("  Subdir    : %v\n", subdir)
 			stdout("  Permission: %v\n", perm.ReadableString())
 
 			// ask user for confirm
@@ -375,6 +383,7 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			return validUsers(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().StringVar(&subdir, "subdir", "", "Subdir")
 	return cmd
 }
 
@@ -428,4 +437,3 @@ func printUserInfo(userInfo *proto.UserInfo) {
 		stdout("%-20v    %-12v\n", vol, strings.Join(perms, ","))
 	}
 }
-
