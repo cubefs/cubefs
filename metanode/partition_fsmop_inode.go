@@ -119,6 +119,11 @@ func (mp *MetaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 		return
 	}
 
+	if inode == nil {
+		resp.Status = proto.OpNotExistErr
+		return
+	}
+
 	if inode.ShouldDelete() {
 		resp.Status = proto.OpNotExistErr
 		return

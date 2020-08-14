@@ -138,11 +138,11 @@ func (mp *MetaPartition) deleteWorker() {
 
 			//check inode nlink == 0 and deletMarkFlag unset
 			inode, err := mp.inodeTree.RefGet(ino)
-			if err != nil && err != existsError {
+			if err != nil {
 				log.LogErrorf("get inode:[%d] has err:[%s]", ino, err.Error())
 				break
 			}
-			if err == nil {
+			if inode != nil {
 				if inode.ShouldDelayDelete() {
 					log.LogDebugf("[metaPartition] deleteWorker delay to remove inode: %v as NLink is 0", inode)
 					delayDeleteInos = append(delayDeleteInos, ino)
