@@ -72,7 +72,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		Masters:       masters,
 		Authenticate:  opt.Authenticate,
 		TicketMess:    opt.TicketMess,
-		ValidateOwner: true,
+		ValidateOwner: opt.Authenticate || opt.AccessKey == "",
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)
 	if err != nil {
