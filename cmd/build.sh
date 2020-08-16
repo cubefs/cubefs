@@ -10,5 +10,6 @@ go build -ldflags "\
 -X github.com/chubaofs/chubaofs/proto.Version=${Version} \
 -X github.com/chubaofs/chubaofs/proto.CommitID=${CommitID} \
 -X github.com/chubaofs/chubaofs/proto.BranchName=${BranchName} \
--X 'github.com/chubaofs/chubaofs/proto.BuildTime=${BuildTime}'" \
+-X 'github.com/chubaofs/chubaofs/proto.BuildTime=${BuildTime}' \
+-extldflags '-static'" \
 -o cfs-server
