@@ -258,6 +258,14 @@ func (b *DentryRocks) Count() uint64 {
 	return b.RocksTree.Count(DentryType)
 }
 
+func (b *ExtendRocks) Count() uint64 {
+	return b.RocksTree.Count(DentryType)
+}
+
+func (b *MultipartRocks) Count() uint64 {
+	return b.RocksTree.Count(DentryType)
+}
+
 //Get
 func (b *InodeRocks) RefGet(ino uint64) (*Inode, error) {
 	return b.Get(ino)

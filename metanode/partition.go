@@ -306,9 +306,13 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (*Met
 			return nil, err
 		}
 		inodeTree = &InodeRocks{tree}
+		log.LogInfof("inode tree count:", inodeTree.Count())
 		dentryTree = &DentryRocks{tree}
+		log.LogInfof("dentry tree count:", dentryTree.Count())
 		extendTree = &ExtendRocks{tree}
+		log.LogInfof("extend tree count:", extendTree.Count())
 		multipartTree = &MultipartRocks{tree}
+		log.LogInfof("multipart tree count:", multipartTree.Count())
 	}
 
 	applyID, err := inodeTree.GetApplyID()

@@ -95,6 +95,7 @@ type ExtendTree interface {
 	Create(ext *Extend) error
 	Delete(ino uint64) error
 	Range(start, end *Extend, cb func(v []byte) (bool, error)) error
+	Count() uint64
 }
 
 type MultipartTree interface {
@@ -106,4 +107,5 @@ type MultipartTree interface {
 	Create(mul *Multipart) error
 	Delete(key, id string) error
 	Range(start, end *Multipart, cb func(v []byte) (bool, error)) error
+	Count() uint64
 }
