@@ -132,7 +132,7 @@ retry:
 	client.appendExtentKey = config.OnAppendExtentKey
 	client.getExtents = config.OnGetExtents
 	client.truncate = config.OnTruncate
-	client.followerRead = config.FollowerRead || client.dataWrapper.FollowerRead()
+	client.dataWrapper.InitFollowerRead(config.FollowerRead)
 	client.dataWrapper.SetNearRead(config.NearRead)
 
 	var readLimit, writeLimit rate.Limit
