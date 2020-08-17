@@ -280,7 +280,7 @@ func formatDataPartitionStatus(status int8) string {
 	case 2:
 		return "Writable"
 	case -1:
-		return "Unavailable"
+		return "UnavailableDisk"
 	default:
 		return "Unknown"
 	}
@@ -302,7 +302,7 @@ func formatMetaPartitionStatus(status int8) string {
 	case 2:
 		return "Writable"
 	case -1:
-		return "Unavailable"
+		return "UnavailableDisk"
 	default:
 		return "Unknown"
 	}

@@ -73,7 +73,7 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	mp = &MetaPartition{PartitionID: partitionID, Start: start, End: end, volName: volName, volID: volID}
 	mp.ReplicaNum = replicaNum
 	mp.Replicas = make([]*MetaReplica, 0)
-	mp.Status = proto.Unavailable
+	mp.Status = proto.NoLeader
 	mp.MissNodes = make(map[string]int64, 0)
 	mp.Peers = make([]proto.Peer, 0)
 	mp.Hosts = make([]string, 0)
@@ -240,11 +240,11 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 	defer mp.Unlock()
 	liveReplicas := mp.getLiveReplicas()
 	if len(liveReplicas) <= replicaNum/2 {
-		mp.Status = proto.Unavailable
+		mp.Status = proto.ReadOnly
 	} else {
 		mr, err := mp.getMetaReplicaLeader()
 		if err != nil {
-			mp.Status = proto.Unavailable
+			mp.Status = proto.NoLeader
 		}
 		mp.Status = mr.Status
 		for _, replica := range liveReplicas {
@@ -607,7 +607,7 @@ func (mr *MetaReplica) isMissing() (miss bool) {
 }
 
 func (mr *MetaReplica) isActive() (active bool) {
-	return mr.metaNode.IsActive && mr.Status != proto.Unavailable &&
+	return mr.metaNode.IsActive && mr.Status != proto.UnavailableDisk &&
 		time.Now().Unix()-mr.ReportTime < defaultMetaPartitionTimeOutSec
 }
 

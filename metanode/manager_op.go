@@ -73,7 +73,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		}
 		addr, isLeader := partition.IsLeader()
 		if addr == "" {
-			mpr.Status = proto.Unavailable
+			mpr.Status = proto.NoLeader
 		}
 		mpr.IsLeader = isLeader
 		if mConf.Cursor >= mConf.End {

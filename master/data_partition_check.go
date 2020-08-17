@@ -161,7 +161,7 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 		if !ok {
 			continue
 		}
-		if replica.Status == proto.Unavailable {
+		if replica.Status == proto.UnavailableDisk {
 			diskErrorAddrs[replica.Addr] = replica.DiskPath
 		}
 	}

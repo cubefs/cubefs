@@ -223,7 +223,7 @@ func (d *Disk) triggerDiskError(err error) {
 		exporter.Warning(mesg)
 		log.LogErrorf(mesg)
 		d.ForceExitRaftStore()
-		d.Status = proto.Unavailable
+		d.Status = proto.UnavailableDisk
 	}
 	return
 }
@@ -233,7 +233,7 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	if err = syscall.Statfs(d.Path, &statsInfo); err != nil {
 		d.incReadErrCnt()
 	}
-	if d.Status == proto.Unavailable {
+	if d.Status == proto.UnavailableDisk {
 		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
 		log.LogErrorf(mesg)
 		exporter.Warning(mesg)
@@ -278,7 +278,7 @@ func (d *Disk) ForceExitRaftStore() {
 	partitionList := d.DataPartitionList()
 	for _, partitionID := range partitionList {
 		partition := d.GetDataPartition(partitionID)
-		partition.partitionStatus = proto.Unavailable
+		partition.partitionStatus = proto.UnavailableDisk
 		partition.stopRaft()
 	}
 }

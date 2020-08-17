@@ -471,8 +471,8 @@ func (dp *DataPartition) statusUpdate() {
 	if dp.extentStore.GetExtentCount() >= storage.MaxExtentCount {
 		status = proto.ReadOnly
 	}
-	if dp.Status() == proto.Unavailable {
-		status = proto.Unavailable
+	if dp.Status() == proto.UnavailableDisk {
+		status = proto.UnavailableDisk
 	}
 
 	dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
@@ -545,7 +545,7 @@ func (dp *DataPartition) checkIsDiskError(err error) (diskError bool) {
 		dp.stopRaft()
 		dp.disk.incReadErrCnt()
 		dp.disk.incWriteErrCnt()
-		dp.disk.Status = proto.Unavailable
+		dp.disk.Status = proto.UnavailableDisk
 		dp.statusUpdate()
 		dp.disk.ForceExitRaftStore()
 		diskError = true
@@ -560,7 +560,7 @@ func (dp *DataPartition) String() (m string) {
 
 // LaunchRepair launches the repair of extents.
 func (dp *DataPartition) LaunchRepair(extentType uint8) {
-	if dp.partitionStatus == proto.Unavailable {
+	if dp.partitionStatus == proto.UnavailableDisk {
 		return
 	}
 	if err := dp.updateReplicas(); err != nil {

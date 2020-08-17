@@ -337,7 +337,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 
 	disks := space.GetDisks()
 	for _, d := range disks {
-		if d.Status == proto.Unavailable {
+		if d.Status == proto.UnavailableDisk {
 			response.BadDisks = append(response.BadDisks, d.Path)
 		}
 	}
