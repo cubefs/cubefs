@@ -381,7 +381,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		extendTree:    NewBtree(),
 		multipartTree: NewBtree(),
 		stopC:         make(chan bool),
-		storeChan:     make(chan *storeMsg, 5),
+		storeChan:     make(chan *storeMsg, 100),
 		freeList:      newFreeList(),
 		extDelCh:      make(chan []proto.ExtentKey, 10000),
 		extReset:      make(chan struct{}),
