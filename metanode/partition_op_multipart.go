@@ -17,7 +17,7 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/prometheus/common/log"
+	"github.com/chubaofs/chubaofs/util/log"
 	"strings"
 	"time"
 
@@ -29,13 +29,13 @@ import (
 func (mp *MetaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet) (err error) {
 	multipart, err := mp.multipartTree.RefGet(req.Path, req.MultipartId)
 	if err != nil {
-		log.Errorf(err.Error())
+		log.LogErrorf(err.Error())
 		p.PacketErrorWithBody(proto.OpErr, nil)
 		return
 	}
 	if multipart == nil {
 		err = fmt.Errorf("not found mutipart by key:[%s] id:[%s]", req.Path, req.MultipartId)
-		log.Errorf(err.Error())
+		log.LogErrorf(err.Error())
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		return
 	}
@@ -71,14 +71,17 @@ func (mp *MetaPartition) AppendMultipart(req *proto.AddMultipartPartRequest, p *
 		p.PacketOkReply()
 		return
 	}
-	if multipart, err := mp.multipartTree.RefGet(req.Path, req.MultipartId); err != nil {
-		log.Error(err.Error())
+	temp, err := mp.multipartTree.RefGet(req.Path, req.MultipartId)
+	if err != nil {
+		log.LogErrorf(err.Error())
 		p.PacketErrorWithBody(proto.OpErr, nil)
-		return
-	} else if multipart == nil {
-		log.Error("not found multipart by key:[%s] id:[%s]", req.Path, req.MultipartId)
+		return err
+	}
+	
+	if temp == nil {
+		err = fmt.Errorf("not found multipart by key:[%s] id:[%s]", req.Path, req.MultipartId)
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
-		return
+		return err
 	}
 
 	multipart := &Multipart{

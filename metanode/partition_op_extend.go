@@ -17,9 +17,8 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/prometheus/common/log"
-
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 func (mp *MetaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err error) {
@@ -70,7 +69,7 @@ func (mp *MetaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 	for _, inode := range req.Inodes {
 		extend, err := mp.extendTree.RefGet(inode)
 		if err != nil {
-			log.Errorf("get extend tree has err:[%s]", err.Error())
+			log.LogErrorf("get extend tree has err:[%s]", err.Error())
 			continue
 		}
 		if extend == nil {
