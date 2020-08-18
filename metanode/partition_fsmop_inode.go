@@ -264,7 +264,7 @@ func (mp *MetaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
-	if item == nil && item.ShouldDelete() {
+	if item == nil || item.ShouldDelete() {
 		return
 	}
 	if proto.IsDir(item.Type) {
@@ -305,7 +305,7 @@ func (mp *MetaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
 		log.LogErrorf("get inode has err:[%s]", err.Error())
 		return
 	}
-	if item.ShouldDelete() {
+	if item != nil || item.ShouldDelete() {
 		return
 	}
 	item.SetAttr(req.Valid, req.Mode, req.Uid, req.Gid)
