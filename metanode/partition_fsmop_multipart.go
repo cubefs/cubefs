@@ -42,12 +42,15 @@ func (mp *MetaPartition) fsmRemoveMultipart(multipart *Multipart) (status uint8)
 func (mp *MetaPartition) fsmAppendMultipart(multipart *Multipart) (status uint8) {
 	storedMultipart, err := mp.multipartTree.Get(multipart.key, multipart.id)
 	if err != nil {
-		if err == existsError {
-			return proto.OpNotExistErr
-		}
 		log.LogError(err)
 		return proto.OpErr
 	}
+
+	if storedMultipart == nil {
+		log.LogErrorf("not found multipart by key:[%s] id:[%s]", multipart.key, multipart.id)
+		return proto.OpNotExistErr
+	}
+
 	for _, part := range multipart.Parts() {
 		actual, stored := storedMultipart.LoadOrStorePart(part)
 		if !stored && !actual.Equal(part) {

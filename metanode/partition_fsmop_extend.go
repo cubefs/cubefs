@@ -14,6 +14,8 @@
 
 package metanode
 
+import "fmt"
+
 type ExtendOpResult struct {
 	Status uint8
 	Extend *Extend
@@ -36,6 +38,9 @@ func (mp *MetaPartition) fsmRemoveXAttr(extend *Extend) error {
 	e, err := mp.extendTree.Get(extend.inode)
 	if err == nil {
 		return err
+	}
+	if e == nil {
+		return fmt.Errorf("not found extend by inode:[%d]", extend.inode)
 	}
 	extend.Range(func(key, value []byte) bool {
 		e.Remove(key)

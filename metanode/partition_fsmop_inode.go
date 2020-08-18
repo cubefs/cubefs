@@ -214,7 +214,7 @@ func (mp *MetaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 		status = proto.OpNotExistErr
 		return
 	}
-	if ino2.ShouldDelete() {
+	if ino2 == nil || ino2.ShouldDelete() {
 		status = proto.OpNotExistErr
 		return
 	}
@@ -237,7 +237,7 @@ func (mp *MetaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
-	if item.ShouldDelete() {
+	if item == nil || item.ShouldDelete() {
 		resp.Status = proto.OpNotExistErr
 		return
 	}

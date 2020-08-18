@@ -224,6 +224,9 @@ func (mp *MetaPartition) deleteMarkedInodes(inoSlice []uint64) {
 			log.LogErrorf("get inode by:[%d] has err:[%s]", ino, err.Error())
 			continue
 		}
+		if inode == nil {
+			continue
+		}
 		inode.Extents.Range(func(ek proto.ExtentKey) bool {
 			ext := &ek
 			_, ok := allDeleteExtents[ek.GetExtentKey()]

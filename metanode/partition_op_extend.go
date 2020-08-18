@@ -16,6 +16,8 @@ package metanode
 
 import (
 	"encoding/json"
+	"fmt"
+	"github.com/prometheus/common/log"
 
 	"github.com/chubaofs/chubaofs/proto"
 )
@@ -43,6 +45,9 @@ func (mp *MetaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err er
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return err
 	}
+	if extend == nil {
+		return fmt.Errorf("not found extend by inode:[%d]", req.Inode)
+	}
 	if value, exist := extend.Get([]byte(req.Key)); exist {
 		response.Value = string(value)
 	}
@@ -65,6 +70,10 @@ func (mp *MetaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 	for _, inode := range req.Inodes {
 		extend, err := mp.extendTree.RefGet(inode)
 		if err != nil {
+			log.Errorf("get extend tree has err:[%s]", err.Error())
+			continue
+		}
+		if extend == nil {
 			continue
 		}
 
@@ -110,6 +119,10 @@ func (mp *MetaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err 
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return err
+	}
+
+	if extend == nil {
+		return fmt.Errorf("not found extend by inode:[%d]", req.Inode)
 	}
 
 	extend.Range(func(key, value []byte) bool {
