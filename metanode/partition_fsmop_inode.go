@@ -264,7 +264,7 @@ func (mp *MetaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
-	if item.ShouldDelete() {
+	if item == nil && item.ShouldDelete() {
 		return
 	}
 	if proto.IsDir(item.Type) {
