@@ -846,3 +846,8 @@ func TestListUsersOfVol(t *testing.T) {
 	fmt.Println(reqURL)
 	process(reqURL, t)
 }
+func TestDataPartitionCheckOffline(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminCheckDecommissionDataPartition)
+	fmt.Println(reqUrl)
+	process(reqUrl, t)
+}

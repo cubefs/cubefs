@@ -288,3 +288,17 @@ func TestUpdateInodeIDUpperBound(t *testing.T) {
 	}
 
 }
+func TestCheckDecommissionDataPartitions(t *testing.T) {
+	server.cluster.DisableAutoAllocate = true
+	server.cluster.checkDecommissionDataPartitions()
+	server.cluster.DisableAutoAllocate = false
+}
+
+func TestPanicCheckDecommissionDataPartitions(t *testing.T) {
+	c := buildPanicCluster()
+	partition := &BadDiskDataPartition{}
+	c.toBeDecommissionDpChan <- partition
+	partition = nil
+	err := c.checkDecommissionDataPartitions()
+	t.Log(err)
+}

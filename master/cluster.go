@@ -55,6 +55,7 @@ type Cluster struct {
 	MasterSecretKey           []byte
 	lastMasterZoneForDataNode string
 	lastMasterZoneForMetaNode string
+	toBeDecommissionDpChan    chan *BadDiskDataPartition
 }
 
 func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition raftstore.Partition, cfg *clusterConfig) (c *Cluster) {
@@ -72,6 +73,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.fsm = fsm
 	c.partition = partition
 	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
+	c.toBeDecommissionDpChan = make(chan *BadDiskDataPartition, defaultDecommissionChannelBufferCapacity)
 	return
 }
 
@@ -166,6 +168,29 @@ func (c *Cluster) checkDataPartitions() {
 		vol.dataPartitions.updateResponseCache(true, 0)
 		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite partitions:%v  ", vol.Name, vol.dataPartitions.readableAndWritableCnt)
 		log.LogInfo(msg)
+	}
+}
+
+func (c *Cluster) checkDecommissionDataPartitions() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("checkDecommissionDataPartitions occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"checkDecommissionDataPartitions occurred panic")
+			err = errors.NewErrorf("checkDecommissionDataPartitions occurred panic,err[%v]", r)
+		}
+	}()
+	var badDp *BadDiskDataPartition
+	for {
+		if c.DisableAutoAllocate {
+			return
+		}
+		select {
+		case badDp = <-c.toBeDecommissionDpChan:
+			c.decommissionDataPartition(badDp.diskErrAddr, badDp.dp, checkDataPartitionsOfflineErr)
+		default:
+			return
+		}
 	}
 }
 

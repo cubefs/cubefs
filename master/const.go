@@ -62,6 +62,7 @@ const (
 	dataNodeOfflineErr            = "dataNodeOfflineErr "
 	diskOfflineErr                = "diskOfflineErr "
 	handleDataPartitionOfflineErr = "handleDataPartitionOffLineErr "
+	checkDataPartitionsOfflineErr = "checkDataPartitionsOfflineErr "
 )
 
 const (
@@ -94,6 +95,7 @@ const (
 	retrySendSyncTaskInternal                    = 3 * time.Second
 	defaultRangeOfCountDifferencesAllowed        = 50
 	defaultMinusOfMaxInodeID                     = 1000
+	defaultDecommissionChannelBufferCapacity     = 1000
 )
 
 const (

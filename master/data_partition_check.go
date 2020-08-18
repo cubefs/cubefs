@@ -152,8 +152,8 @@ func (partition *DataPartition) hasMissingDataPartition(addr string) (isMissing 
 	return
 }
 
-func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
-	diskErrorAddrs := make(map[string]string, 0)
+func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) (diskErrorAddrs map[string]string) {
+	diskErrorAddrs = make(map[string]string, 0)
 	partition.Lock()
 	defer partition.Unlock()
 	for _, addr := range partition.Hosts {
@@ -175,6 +175,7 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 			checkDataPartitionDiskErr, clusterID, partition.PartitionID, addr)
 		msg = msg + fmt.Sprintf(" decommissionDiskURL is http://%v/disk/decommission?addr=%v&disk=%v", leaderAddr, addr, diskPath)
 		Warn(clusterID, msg)
+		log.LogWarnf(msg)
 	}
 
 	return

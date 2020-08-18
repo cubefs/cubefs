@@ -50,6 +50,11 @@ type DataPartition struct {
 	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
 }
 
+type BadDiskDataPartition struct {
+	dp          *DataPartition
+	diskErrAddr string
+}
+
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64) (partition *DataPartition) {
 	partition = new(DataPartition)
 	partition.ReplicaNum = replicaNum
