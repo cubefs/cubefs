@@ -316,6 +316,8 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (*Met
 	if err != nil {
 		log.LogErrorf("[NewMetaPartition] read applyID has err:[%s] ", err.Error())
 		return nil, err
+	} else {
+		log.LogInfof("load partition tree has ok : appply id is:[%d]", applyID)
 	}
 
 	mp := &MetaPartition{

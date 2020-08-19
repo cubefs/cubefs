@@ -33,10 +33,22 @@ func DefaultRocksTree(dir string) (*RocksTree, error) {
 }
 
 func NewRocksTree(dir string, lruCacheSize int, writeBufferSize int) (*RocksTree, error) {
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		log.LogErrorf("NewRocksTree mkidr error: dir: %v, err: %v", dir, err)
-		return nil, err
+	if stat, err := os.Stat(dir); err != nil {
+		if err == os.ErrNotExist {
+			if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+				log.LogInfof("NewRocksTree mkidr error: dir: %v, err: %v", dir, err)
+				return nil, err
+			}
+			log.LogInfof("create dir:[%s] for rocks tree", dir)
+		} else {
+			return nil, err
+		}
+	} else if !stat.IsDir() {
+		return nil, fmt.Errorf("path:[%s] is not dir", dir)
+	} else {
+		log.LogInfof("load dir:[%s] for rocks tree", dir)
 	}
+
 	tree := &RocksTree{dir: dir}
 	basedTableOptions := gorocksdb.NewDefaultBlockBasedTableOptions()
 	basedTableOptions.SetBlockCache(gorocksdb.NewLRUCache(lruCacheSize))
