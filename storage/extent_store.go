@@ -40,20 +40,21 @@ import (
 )
 
 const (
-	ExtCrcHeaderFileName     = "EXTENT_CRC"
-	ExtBaseExtentIDFileName  = "EXTENT_META"
-	TinyDeleteFileOpt        = os.O_CREATE | os.O_RDWR | os.O_APPEND
-	TinyExtDeletedFileName   = "TINYEXTENT_DELETE"
-	NormalExtDeletedFileName = "NORMALEXTENT_DELETE"
-	MaxExtentCount           = 20000
-	TinyExtentCount          = 64
-	TinyExtentStartID        = 1
-	MinExtentID              = 1024
-	DeleteTinyRecordSize     = 24
-	UpdateCrcInterval        = 600
-	RepairInterval           = 60
-	RandomWriteType          = 2
-	AppendWriteType          = 1
+	ExtCrcHeaderFileName         = "EXTENT_CRC"
+	ExtBaseExtentIDFileName      = "EXTENT_META"
+	TinyDeleteFileOpt            = os.O_CREATE | os.O_RDWR | os.O_APPEND
+	TinyExtDeletedFileName       = "TINYEXTENT_DELETE"
+	NormalExtDeletedFileName     = "NORMALEXTENT_DELETE"
+	MaxExtentCount               = 20000
+	TinyExtentCount              = 64
+	TinyExtentStartID            = 1
+	MinExtentID                  = 1024
+	DeleteTinyRecordSize         = 24
+	UpdateCrcInterval            = 600
+	RepairInterval               = 60
+	RandomWriteType              = 2
+	AppendWriteType              = 1
+	NormalExtentDeleteRetainTime = 3600 * 4
 )
 
 var (
@@ -123,6 +124,7 @@ type ExtentStore struct {
 	partitionID                       uint64
 	verifyExtentFp                    *os.File
 	hasAllocSpaceExtentIDOnVerfiyFile uint64
+	hasDeleteNormalExtentsCache       sync.Map
 }
 
 func MkdirAll(name string) (err error) {
@@ -401,7 +403,17 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	ei.ModifyTime = time.Now().Unix()
 	s.cache.Del(e.extentID)
 	s.DeleteBlockCrc(extentID)
+	s.PutNormalExtentToDeleteCache(extentID)
 
+	return
+}
+
+func (s *ExtentStore) PutNormalExtentToDeleteCache(extentID uint64) {
+	s.hasDeleteNormalExtentsCache.Store(extentID, time.Now().Unix())
+}
+
+func (s *ExtentStore) IsDeletedNormalExtent(extentID uint64) (ok bool) {
+	_, ok = s.hasDeleteNormalExtentsCache.Load(extentID)
 	return
 }
 
@@ -802,7 +814,23 @@ func (arr ExtentInfoArr) Len() int           { return len(arr) }
 func (arr ExtentInfoArr) Less(i, j int) bool { return arr[i].FileID < arr[j].FileID }
 func (arr ExtentInfoArr) Swap(i, j int)      { arr[i], arr[j] = arr[j], arr[i] }
 
-func (s *ExtentStore) AutoComputeExtentCrc() {
+func (s *ExtentStore) BackendTask() {
+	s.autoComputeExtentCrc()
+	s.cleanExpiredNormalExtentDeleteCache()
+}
+
+func (s *ExtentStore) cleanExpiredNormalExtentDeleteCache() {
+	s.hasDeleteNormalExtentsCache.Range(func(key, value interface{}) bool {
+		deleteTime := value.(int64)
+		extentID := key.(uint64)
+		if time.Now().Unix()-deleteTime > NormalExtentDeleteRetainTime {
+			s.hasDeleteNormalExtentsCache.Delete(extentID)
+		}
+		return true
+	})
+}
+
+func (s *ExtentStore) autoComputeExtentCrc() {
 	defer func() {
 		if r := recover(); r != nil {
 			return
