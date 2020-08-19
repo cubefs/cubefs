@@ -228,6 +228,9 @@ func (dp *DataPartition) DoRepair(repairTasks []*DataPartitionRepairTask) {
 			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
 			continue
 		}
+		if dp.ExtentStore().IsDeletedNormalExtent(extentInfo.FileID) {
+			continue
+		}
 		store.Create(extentInfo.FileID)
 	}
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
@@ -337,6 +340,9 @@ func (dp *DataPartition) buildExtentCreationTasks(repairTasks []*DataPartitionRe
 				if extentInfo.IsDeleted {
 					continue
 				}
+				if dp.ExtentStore().IsDeletedNormalExtent(extentID){
+					continue
+				}
 				ei := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentID, Size: extentInfo.Size}
 				repairTask.ExtentsToBeCreated = append(repairTask.ExtentsToBeCreated, ei)
 				repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, ei)
@@ -362,6 +368,9 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 				continue
 			}
 			if extentInfo.IsDeleted {
+				continue
+			}
+			if dp.ExtentStore().IsDeletedNormalExtent(extentID){
 				continue
 			}
 			if extentInfo.Size < maxFileInfo.Size {
@@ -457,6 +466,10 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	localExtentInfo, err := store.Watermark(remoteExtentInfo.FileID)
 	if err != nil {
 		return errors.Trace(err, "streamRepairExtent Watermark error")
+	}
+
+	if dp.ExtentStore().IsDeletedNormalExtent(remoteExtentInfo.FileID) {
+		return nil
 	}
 
 	if localExtentInfo.Size >= remoteExtentInfo.Size {

@@ -171,7 +171,7 @@ func (d *Disk) startScheduleToUpdateSpaceInfo() {
 	}()
 }
 
-func (d *Disk) autoComputeExtentCrc() {
+func (d *Disk) doBackendTask() {
 	for {
 		partitions := make([]*DataPartition, 0)
 		d.RLock()
@@ -180,7 +180,7 @@ func (d *Disk) autoComputeExtentCrc() {
 		}
 		d.RUnlock()
 		for _, dp := range partitions {
-			dp.extentStore.AutoComputeExtentCrc()
+			dp.extentStore.BackendTask()
 		}
 		time.Sleep(time.Minute)
 	}
