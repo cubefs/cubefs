@@ -929,6 +929,9 @@ func (m *metadataManager) opMetaBatchInodeGet(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
 	err = mp.InodeGetBatch(req, p)
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaBatchInodeGet] req: %d - %v, resp: %v, "+
