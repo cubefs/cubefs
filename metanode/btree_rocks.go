@@ -34,7 +34,7 @@ func DefaultRocksTree(dir string) (*RocksTree, error) {
 
 func NewRocksTree(dir string, lruCacheSize int, writeBufferSize int) (*RocksTree, error) {
 	if stat, err := os.Stat(dir); err != nil {
-		if err == os.ErrNotExist {
+		if os.IsNotExist(err) {
 			if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 				log.LogInfof("NewRocksTree mkidr error: dir: %v, err: %v", dir, err)
 				return nil, err

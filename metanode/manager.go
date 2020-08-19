@@ -302,7 +302,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 					log.LogWarnf("ignore path: %s,not partition", partitionId)
 					return
 				}
-
+				log.LogInfof("=======================================%d-==============================%v", id, m.nodeId)
 				partitionConfig := &MetaPartitionConfig{
 					NodeId:    id,
 					RaftStore: m.raftStore,
