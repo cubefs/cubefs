@@ -73,11 +73,11 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	case proto.OpStreamRead:
 		s.handleStreamReadPacket(p, c, StreamRead)
 	case proto.OpStreamFollowerRead:
-		s.handleExtentRepaiReadPacket(p, c, StreamRead)
+		s.extentRepairReadPacket(p, c, StreamRead)
 	case proto.OpExtentRepairRead:
-		s.handleExtentRepaiReadPacket(p, c, RepairRead)
+		s.handleExtentRepairReadPacket(p, c, RepairRead)
 	case proto.OpTinyExtentRepairRead:
-		s.handleTinyExtentRepairRead(p, c)
+		s.handleTinyExtentRepairReadPacket(p, c)
 	case proto.OpMarkDelete:
 		s.handleMarkDeletePacket(p, c)
 	case proto.OpBatchDeleteExtent:
@@ -464,12 +464,52 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 	if err = partition.CheckLeader(p, connect); err != nil {
 		return
 	}
-	s.handleExtentRepaiReadPacket(p, connect, isRepairRead)
+	s.extentRepairReadPacket(p, connect, isRepairRead)
 
 	return
 }
 
-func (s *DataNode) handleExtentRepaiReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
+func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
+	var (
+		err error
+	)
+
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionStreamRead, err.Error())
+			p.WriteToConn(connect)
+		}
+		fininshDoExtentRepair()
+	}()
+
+	err = requestDoExtentRepair()
+	if err != nil {
+		return
+	}
+	s.extentRepairReadPacket(p, connect, isRepairRead)
+}
+
+func (s *DataNode) handleTinyExtentRepairReadPacket(p *repl.Packet, connect net.Conn) {
+	var (
+		err error
+	)
+
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionStreamRead, err.Error())
+			p.WriteToConn(connect)
+		}
+		fininshDoExtentRepair()
+	}()
+
+	err = requestDoExtentRepair()
+	if err != nil {
+		return
+	}
+	s.tinyExtentRepairRead(p, connect)
+}
+
+func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
 	var (
 		err error
 	)
@@ -577,8 +617,8 @@ func (s *DataNode) attachAvaliSizeOnTinyExtentRepairRead(reply *repl.Packet, ava
 	binary.BigEndian.PutUint64(reply.Arg[9:17], avaliSize)
 }
 
-// Handle handleTinyExtentRepairRead packet.
-func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.Conn) {
+// Handle tinyExtentRepairRead packet.
+func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) {
 	var (
 		err                 error
 		needReplySize       int64

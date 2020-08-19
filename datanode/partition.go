@@ -714,8 +714,7 @@ func (dp *DataPartition) pushSyncDeleteRecordFromLeaderMesg() bool {
 	return false
 }
 
-
-func (dp *DataPartition)consumeTinyDeleteRecordFromLeaderMesg() {
+func (dp *DataPartition) consumeTinyDeleteRecordFromLeaderMesg() {
 	select {
 	case <-dp.Disk().syncTinyDeleteRecordFromLeaderOnEveryDisk:
 		return
@@ -730,7 +729,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 		err                     error
 		conn                    *net.TCPConn
 	)
-	if !dp.pushSyncDeleteRecordFromLeaderMesg(){
+	if !dp.pushSyncDeleteRecordFromLeaderMesg() {
 		return
 	}
 
