@@ -302,13 +302,13 @@ func (m *metadataManager) loadPartitions() (err error) {
 					log.LogWarnf("ignore path: %s,not partition", partitionId)
 					return
 				}
-				log.LogInfof("=======================================%d-==============================%v", id, m.nodeId)
 				partitionConfig := &MetaPartitionConfig{
-					NodeId:    id,
-					RaftStore: m.raftStore,
-					StoreType: m.storeType,
-					RootDir:   path.Join(m.rootDir, fileName),
-					ConnPool:  m.connPool,
+					PartitionId: id,
+					NodeId:      m.nodeId,
+					RaftStore:   m.raftStore,
+					StoreType:   m.storeType,
+					RootDir:     path.Join(m.rootDir, fileName),
+					ConnPool:    m.connPool,
 				}
 				partitionConfig.AfterStop = func() {
 					m.detachPartition(id)
