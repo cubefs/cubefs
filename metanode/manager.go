@@ -304,7 +304,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 				}
 
 				partitionConfig := &MetaPartitionConfig{
-					NodeId:    m.nodeId,
+					NodeId:    id,
 					RaftStore: m.raftStore,
 					StoreType: m.storeType,
 					RootDir:   path.Join(m.rootDir, fileName),
