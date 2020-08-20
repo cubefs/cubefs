@@ -92,6 +92,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		OnAppendExtentKey:        s.mw.AppendExtentKey,
 		OnGetExtents:             s.mw.GetExtents,
 		OnTruncate:               s.mw.Truncate,
+		OnEvictIcache:            s.ic.Delete,
 	}
 	s.ec, err = stream.NewExtentClient(extentConfig)
 	if err != nil {

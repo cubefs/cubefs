@@ -185,6 +185,9 @@ func (s *Streamer) server() {
 				s.client.streamerLock.Lock()
 				if s.idle >= streamWriterIdleTimeoutPeriod && len(s.request) == 0 {
 					delete(s.client.streamers, s.inode)
+					if s.client.evictIcache != nil {
+						s.client.evictIcache(s.inode)
+					}
 					s.client.streamerLock.Unlock()
 
 					// fail the remaining requests in such case
