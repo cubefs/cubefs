@@ -87,10 +87,12 @@ type MetaPartitionInfo struct {
 
 // MetaReplica defines the replica of a meta partition
 type MetaReplicaInfo struct {
-	Addr       string
-	ReportTime int64
-	Status     int8 // unavailable, readOnly, readWrite
-	IsLeader   bool
+	Addr        string
+	ReportTime  int64
+	Status      int8 // unavailable, readOnly, readWrite
+	IsLeader    bool
+	InodeCount  uint64
+	DentryCount uint64
 }
 
 // ClusterView provides the view of a cluster.

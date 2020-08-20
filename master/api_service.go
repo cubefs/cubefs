@@ -1976,10 +1976,12 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		}
 		for i := 0; i < len(replicas); i++ {
 			replicas[i] = &proto.MetaReplicaInfo{
-				Addr:       mp.Replicas[i].Addr,
-				ReportTime: mp.Replicas[i].ReportTime,
-				Status:     mp.Replicas[i].Status,
-				IsLeader:   mp.Replicas[i].IsLeader,
+				Addr:        mp.Replicas[i].Addr,
+				ReportTime:  mp.Replicas[i].ReportTime,
+				Status:      mp.Replicas[i].Status,
+				IsLeader:    mp.Replicas[i].IsLeader,
+				DentryCount: mp.Replicas[i].DentryCount,
+				InodeCount:  mp.Replicas[i].InodeCount,
 			}
 		}
 		var mpInfo = &proto.MetaPartitionInfo{
