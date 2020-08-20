@@ -428,7 +428,6 @@ func (f *File) fileSize(ino uint64) (size int, gen uint64) {
 	log.LogDebugf("fileSize: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
 
 	if !valid {
-		f.super.ic.Delete(ino)
 		if info, err := f.super.InodeGet(ino); err == nil {
 			size = int(info.Size)
 			gen = info.Generation
