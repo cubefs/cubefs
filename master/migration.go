@@ -3,7 +3,6 @@ package master
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util"
 )
 
 func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
@@ -16,7 +15,6 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 	}()
 
 	var (
-		fileCountDiff float64
 		usedSizeDiff  float64
 	)
 	c.MigratedDataPartitionIds.Range(func(key, value interface{}) bool {
@@ -35,8 +33,7 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 				continue
 			}
 			usedSizeDiff = partition.getMinus()
-			fileCountDiff = partition.getMinusOfFileCount()
-			if usedSizeDiff < util.GB && fileCountDiff == 0 {
+			if usedSizeDiff == 0 {
 				partition.isRecover = false
 				partition.RLock()
 				c.syncUpdateDataPartition(partition)
