@@ -667,6 +667,9 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
 		mp.setPeers(mpv.Peers)
 		mp.IsRecover = mpv.IsRecover
+		if mp.IsRecover {
+			c.putMigratedDataPartitionIDs(nil, "history", mp.PartitionID)
+		}
 		vol.addMetaPartition(mp)
 		log.LogInfof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
 	}

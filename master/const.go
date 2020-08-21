@@ -31,7 +31,7 @@ const (
 	startKey                = "start"
 	endKey                  = "end"
 	nodeTypeKey             = "nodeType"
-	strictFlagKey             = "strict"
+	strictFlagKey           = "strict"
 	stateKey                = "state"
 	enableKey               = "enable"
 	thresholdKey            = "threshold"
@@ -103,6 +103,7 @@ const (
 	retrySendSyncTaskInternal                    = 3 * time.Second
 	defaultRangeOfCountDifferencesAllowed        = 50
 	defaultMinusOfMaxInodeID                     = 1000
+	defaultPercentMinusOfInodeCount              = 0.20
 )
 
 const (

@@ -675,6 +675,24 @@ func (mp *MetaPartition) getMinusOfMaxInodeID() (minus float64) {
 	return
 }
 
+func (mp *MetaPartition) getPercentMinusOfInodeCount() (minus float64) {
+	mp.RLock()
+	defer mp.RUnlock()
+	var sentry float64
+	for index, replica := range mp.Replicas {
+		if index == 0 {
+			sentry = float64(replica.InodeCount)
+			continue
+		}
+		diff := math.Abs(float64(replica.InodeCount) - sentry)
+		if diff > minus {
+			minus = diff
+		}
+	}
+	minus = minus / sentry
+	return
+}
+
 func (mp *MetaPartition) getMinusOfInodeCount() (minus float64) {
 	mp.RLock()
 	defer mp.RUnlock()
@@ -695,6 +713,9 @@ func (mp *MetaPartition) getMinusOfInodeCount() (minus float64) {
 func (mp *MetaPartition) getMinusOfDentryCount() (minus float64) {
 	mp.RLock()
 	defer mp.RUnlock()
+	if len(mp.Replicas) == 0 {
+		return 1
+	}
 	var sentry float64
 	for index, replica := range mp.Replicas {
 		if index == 0 {
@@ -712,13 +733,16 @@ func (mp *MetaPartition) getMinusOfDentryCount() (minus float64) {
 func (mp *MetaPartition) getMinusOfApplyID() (minus float64) {
 	mp.RLock()
 	defer mp.RUnlock()
+	if len(mp.LoadResponse) == 0 {
+		return 1
+	}
 	var sentry float64
-	for index, replica := range mp.Replicas {
+	for index, resp := range mp.LoadResponse {
 		if index == 0 {
-			sentry = float64(replica.DentryCount)
+			sentry = float64(resp.ApplyID)
 			continue
 		}
-		diff := math.Abs(float64(replica.DentryCount) - sentry)
+		diff := math.Abs(float64(resp.ApplyID) - sentry)
 		if diff > minus {
 			minus = diff
 		}

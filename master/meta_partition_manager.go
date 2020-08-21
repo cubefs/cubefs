@@ -137,7 +137,7 @@ func (c *Cluster) scheduleToCheckMetaPartitionRecoveryProgress() {
 					c.checkMigratedMetaPartitionRecoveryProgress()
 				}
 			}
-			time.Sleep(time.Second * defaultIntervalToCheckDataPartition)
+			time.Sleep(3 * time.Second * defaultIntervalToCheckDataPartition)
 		}
 	}()
 }
