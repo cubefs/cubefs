@@ -701,6 +701,9 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.setPeers(mpv.Peers)
 		mp.OfflinePeerID = mpv.OfflinePeerID
 		mp.IsRecover = mpv.IsRecover
+		if mp.IsRecover {
+			c.putMigratedDataPartitionIDs(nil, "history", mp.PartitionID)
+		}
 		vol.addMetaPartition(mp)
 		log.LogInfof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
 	}

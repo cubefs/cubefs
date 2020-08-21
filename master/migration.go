@@ -92,9 +92,21 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 		}
 	}()
 
+	c.MigratedMetaPartitionIds.Range(func(key, value interface{}) bool {
+		badMetaPartitionIds := value.([]uint64)
+		for _, partitionID := range badMetaPartitionIds {
+			partition, err := c.getMetaPartitionByID(partitionID)
+			if err != nil {
+				continue
+			}
+			c.doLoadMetaPartition(partition)
+		}
+		return true
+	})
+
 	var (
-		dentryDiff float64
-		inodeDiff  float64
+		dentryDiff  float64
+		applyIDDiff float64
 	)
 	c.MigratedMetaPartitionIds.Range(func(key, value interface{}) bool {
 		badMetaPartitionIds := value.([]uint64)
@@ -112,8 +124,10 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 				continue
 			}
 			dentryDiff = partition.getMinusOfDentryCount()
-			inodeDiff = partition.getMinusOfInodeCount()
-			if dentryDiff == 0 && inodeDiff == 0 {
+			//inodeDiff = partition.getMinusOfInodeCount()
+			//inodeDiff = partition.getPercentMinusOfInodeCount()
+			applyIDDiff = partition.getMinusOfApplyID()
+			if dentryDiff == 0 && applyIDDiff == 0 {
 				partition.IsRecover = false
 				partition.RLock()
 				c.syncUpdateMetaPartition(partition)

@@ -106,6 +106,7 @@ const (
 	retrySendSyncTaskInternal                    = 3 * time.Second
 	defaultRangeOfCountDifferencesAllowed        = 50
 	defaultMinusOfMaxInodeID                     = 1000
+	defaultPercentMinusOfInodeCount              = 0.20
 )
 
 const (
