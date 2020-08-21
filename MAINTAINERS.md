@@ -2,7 +2,7 @@ The ChubaoFS maintainers are:
 
 * Haifeng Liu <bladehliu@qq.com> @bladehliu (sponsor, software architect)
 * Weilong Guo <guowl18702995996@gmail.com> @awzhgw (project lead, super-maintainer)
-* Shuoran Liu <sjzlsr@126.com> @sjzlsr: Client and SDK
+* Shuoran Liu <shuoranliu@gmail.com> @shuoranliu: Client and SDK
 * Hongyin Zhu <zzhniy.163.niy@163.com> @zhuhyc: Master
 * Jianxing Zhao <znlstar@163.com> @znlstar: MetaNode
 * Mofei Zhang <mofei2816@gmail.com> @mervinkid: MetaNode and ObjectNode
