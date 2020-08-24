@@ -490,22 +490,6 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 }
 
 func (s *DataNode) handleTinyExtentRepairReadPacket(p *repl.Packet, connect net.Conn) {
-	var (
-		err error
-	)
-
-	defer func() {
-		if err != nil {
-			p.PackErrorBody(ActionStreamRead, err.Error())
-			p.WriteToConn(connect)
-		}
-		fininshDoExtentRepair()
-	}()
-
-	err = requestDoExtentRepair()
-	if err != nil {
-		return
-	}
 	s.tinyExtentRepairRead(p, connect)
 }
 
