@@ -34,20 +34,29 @@ type storeMsg struct {
 //rocksdb schedule for index
 func (mp *MetaPartition) startScheduleByRocksDB() {
 	var keepLogNum uint64 = 10000
-	for {
-		time.Sleep(1 * time.Minute)
-		if mp.raftPartition == nil {
-			log.LogWarnf("raft not start wait it to start ok")
-			continue
-		}
-		if id, err := mp.inodeTree.GetApplyID();
-			err != nil {
-			log.LogErrorf("get apply id by rocksdb has err:[%s]", err.Error())
-		} else {
-			if id < keepLogNum {
+
+	for mp.state != common.StateShutdown && mp.state != common.StateStopped {
+		defer func() {
+			if e := recover(); e != nil {
+				log.LogErrorf("has panic in trance log [%v]", e)
+			}
+		}()
+		for mp.state != common.StateShutdown && mp.state != common.StateStopped {
+
+			time.Sleep(1 * time.Minute)
+			if mp.raftPartition == nil {
+				log.LogWarnf("raft not start wait it to start ok")
 				continue
 			}
-			mp.raftPartition.Truncate(id - keepLogNum)
+			if id, err := mp.inodeTree.GetApplyID();
+				err != nil {
+				log.LogErrorf("get apply id by rocksdb has err:[%s]", err.Error())
+			} else {
+				if id < keepLogNum {
+					continue
+				}
+				mp.raftPartition.Truncate(id - keepLogNum)
+			}
 		}
 	}
 }
