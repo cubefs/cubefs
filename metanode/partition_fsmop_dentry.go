@@ -98,7 +98,7 @@ func (mp *MetaPartition) getDentry(pid uint64, name string) (*Dentry, uint8) {
 		return nil, status
 	}
 	if dentry == nil {
-		log.LogErrorf("get nil dentry: [%v]: %v", pid, name)
+		log.LogDebugf("get nil dentry: [%v]: %v", pid, name)
 		status = proto.OpNotExistErr
 		return nil, status
 	}
