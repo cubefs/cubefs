@@ -356,7 +356,11 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	return
 }
 
-func (s *ExtentStore) tinyDelete(e *Extent, offset, size int64) (err error) {
+func (s *ExtentStore) tinyDelete(extentID uint64, offset, size int64) (err error) {
+	e,err:=s.extentWithHeaderByExtentID(extentID)
+	if err!=nil {
+		return nil
+	}
 	if offset+size > e.dataSize {
 		return
 	}
@@ -378,22 +382,19 @@ func (s *ExtentStore) tinyDelete(e *Extent, offset, size int64) (err error) {
 // MarkDelete marks the given extent as deleted.
 func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error) {
 	var (
-		e  *Extent
 		ei *ExtentInfo
 	)
+
+	if IsTinyExtent(extentID) {
+		return s.tinyDelete(extentID, offset, size)
+	}
 
 	s.eiMutex.RLock()
 	ei = s.extentInfoMap[extentID]
 	s.eiMutex.RUnlock()
-	if e, err = s.extentWithHeader(ei); err != nil {
-		return nil
+	if ei == nil || ei.IsDeleted {
+		return
 	}
-
-	if IsTinyExtent(extentID) {
-		return s.tinyDelete(e, offset, size)
-	}
-	e.Close()
-	s.cache.Del(extentID)
 	extentFilePath := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
 	if err = os.Remove(extentFilePath); err != nil {
 		return
@@ -401,7 +402,7 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	s.PersistenceHasDeleteExtent(extentID)
 	ei.IsDeleted = true
 	ei.ModifyTime = time.Now().Unix()
-	s.cache.Del(e.extentID)
+	s.cache.Del(extentID)
 	s.DeleteBlockCrc(extentID)
 	s.PutNormalExtentToDeleteCache(extentID)
 
@@ -463,6 +464,36 @@ func (s *ExtentStore) GetTinyExtentOffset(extentID uint64) (watermark int64, err
 		watermark = watermark + (PageSize - watermark%PageSize)
 	}
 
+	return
+}
+
+// Sector size
+const (
+	DiskSectorSize = 512
+)
+
+func (s *ExtentStore)GetStoreUsedSize()(used int64){
+	extentInfoSlice := make([]*ExtentInfo, 0, len(s.extentInfoMap))
+	s.eiMutex.RLock()
+	for _, extentID := range s.extentInfoMap {
+		extentInfoSlice = append(extentInfoSlice, extentID)
+	}
+	s.eiMutex.RUnlock()
+	for _,einfo:=range extentInfoSlice{
+		if einfo.IsDeleted {
+			continue
+		}
+		if IsTinyExtent(einfo.FileID){
+			stat := new(syscall.Stat_t)
+			err := syscall.Stat(fmt.Sprintf("%v/%v", s.dataPath, einfo.FileID), stat)
+			if err != nil {
+				continue
+			}
+			used +=(stat.Blocks * DiskSectorSize)
+		}else {
+			used +=int64(einfo.Size)
+		}
+	}
 	return
 }
 
