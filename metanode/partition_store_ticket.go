@@ -38,7 +38,7 @@ func (mp *MetaPartition) startScheduleByRocksDB() {
 	for mp.state != common.StateShutdown && mp.state != common.StateStopped {
 		defer func() {
 			if e := recover(); e != nil {
-				log.LogErrorf("has panic in trance log [%v]", e)
+				log.LogErrorf("has stoped in startScheduleByRocksDB log:[%v]", e)
 			}
 		}()
 		for mp.state != common.StateShutdown && mp.state != common.StateStopped {
