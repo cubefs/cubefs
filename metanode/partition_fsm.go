@@ -253,7 +253,9 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			mp.dentryTree = dentryTree
 			mp.extendTree = extendTree
 			mp.multipartTree = multipartTree
-			mp.config.Cursor = cursor
+			if cursor != 0 {
+				mp.config.Cursor = cursor
+			}
 			err = nil
 			// store message
 			mp.storeChan <- &storeMsg{
@@ -265,7 +267,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				multipartTree: mp.multipartTree,
 			}
 			mp.extReset <- struct{}{}
-			log.LogDebugf("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v)", mp.config.PartitionId, mp.applyID)
+			log.LogDebugf("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v),cursor(%v)", mp.config.PartitionId, mp.applyID, mp.config.Cursor)
 			return
 		}
 		log.LogErrorf("ApplySnapshot: stop with error: partitionID(%v) err(%v)", mp.config.PartitionId, err)
