@@ -36,6 +36,10 @@ func (mp *MetaPartition) startScheduleByRocksDB() {
 	var keepLogNum uint64 = 10000
 	for {
 		time.Sleep(1 * time.Minute)
+		if mp.raftPartition == nil {
+			log.LogWarnf("raft not start wait it to start ok")
+			continue
+		}
 		if id, err := mp.inodeTree.GetApplyID();
 			err != nil {
 			log.LogErrorf("get apply id by rocksdb has err:[%s]", err.Error())
