@@ -467,6 +467,36 @@ func (s *ExtentStore) GetTinyExtentOffset(extentID uint64) (watermark int64, err
 	return
 }
 
+// Sector size
+const (
+	DiskSectorSize = 512
+)
+
+func (s *ExtentStore)GetStoreUsedSize()(used int64){
+	extentInfoSlice := make([]*ExtentInfo, 0, len(s.extentInfoMap))
+	s.eiMutex.RLock()
+	for _, extentID := range s.extentInfoMap {
+		extentInfoSlice = append(extentInfoSlice, extentID)
+	}
+	s.eiMutex.RUnlock()
+	for _,einfo:=range extentInfoSlice{
+		if einfo.IsDeleted {
+			continue
+		}
+		if IsTinyExtent(einfo.FileID){
+			stat := new(syscall.Stat_t)
+			err := syscall.Stat(fmt.Sprintf("%v/%v", s.dataPath, einfo.FileID), stat)
+			if err != nil {
+				continue
+			}
+			used +=(stat.Blocks * DiskSectorSize)
+		}else {
+			used +=int64(einfo.Size)
+		}
+	}
+	return
+}
+
 // GetAllWatermarks returns all the watermarks.
 func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentInfo, tinyDeleteFileSize int64, err error) {
 	extents = make([]*ExtentInfo, 0)
