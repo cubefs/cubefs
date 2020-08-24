@@ -31,6 +31,23 @@ type storeMsg struct {
 	snapshot   Snapshot
 }
 
+//rocksdb schedule for index
+func (mp *MetaPartition) startScheduleByRocksDB() {
+	var keepLogNum uint64 = 10000
+	for {
+		time.Sleep(1 * time.Minute)
+		if id, err := mp.inodeTree.GetApplyID();
+			err != nil {
+			log.LogErrorf("get apply id by rocksdb has err:[%s]", err.Error())
+		} else {
+			if id < keepLogNum {
+				continue
+			}
+			mp.raftPartition.Truncate(id - keepLogNum)
+		}
+	}
+}
+
 func (mp *MetaPartition) startSchedule(curIndex uint64) {
 	timer := time.NewTimer(time.Hour * 24 * 365)
 	timer.Stop()

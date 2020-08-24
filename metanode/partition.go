@@ -195,7 +195,12 @@ func (mp *MetaPartition) onStart() (err error) {
 			mp.config.PartitionId, err.Error())
 		return
 	}
-	mp.startSchedule(mp.applyID)
+	if mp.config.StoreType == 1 {
+		go mp.startScheduleByRocksDB()
+	} else {
+		mp.startSchedule(mp.applyID)
+	}
+
 	if err = mp.startFreeList(); err != nil {
 		err = errors.NewErrorf("[onStart] start free list id=%d: %s",
 			mp.config.PartitionId, err.Error())
