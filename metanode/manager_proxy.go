@@ -71,7 +71,7 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp *MetaPartition, p *Packet
 end:
 	m.respondToClient(conn, p)
 	if err != nil {
-		log.LogErrorf("[serveProxy]: partitionID:%d req: %d - %v, %s", mp.config.PartitionId, p.GetReqID(),
+		log.LogErrorf("[serveProxy]: partitionID:%d req: %d [%s] - %v, %s", mp.config.PartitionId, p.GetReqID(), conn.LocalAddr().String()+"->"+conn.RemoteAddr().String(),
 			p.GetOpMsg(), err.Error())
 	}
 	log.LogDebugf("[serveProxy] req: %d - %v, resp: %v", p.GetReqID(), p.GetOpMsg(),
