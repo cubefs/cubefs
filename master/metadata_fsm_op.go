@@ -702,7 +702,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.OfflinePeerID = mpv.OfflinePeerID
 		mp.IsRecover = mpv.IsRecover
 		if mp.IsRecover {
-			c.putMigratedDataPartitionIDs(nil, "history", mp.PartitionID)
+			c.putMigratedMetaPartitions("history", mp.PartitionID)
 		}
 		vol.addMetaPartition(mp)
 		log.LogInfof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
@@ -748,6 +748,9 @@ func (c *Cluster) loadDataPartitions() (err error) {
 				continue
 			}
 			dp.afterCreation(rv.Addr, rv.DiskPath, c)
+		}
+		if dp.isRecover {
+			c.putMigratedDataPartitionIDs(nil, "history", dp.PartitionID)
 		}
 		vol.dataPartitions.put(dp)
 		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v]", vol.Name, dp.PartitionID)

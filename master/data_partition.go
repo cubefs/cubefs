@@ -708,3 +708,12 @@ func (partition *DataPartition) ToProto(c *Cluster) *proto.DataPartitionInfo {
 		FilesWithMissingReplica: partition.FilesWithMissingReplica,
 	}
 }
+
+func (partition *DataPartition) isLatestReplica(addr string) (ok bool) {
+	hostsLen := len(partition.Hosts)
+	if hostsLen <= 1 {
+		return
+	}
+	latestAddr := partition.Hosts[hostsLen-1]
+	return latestAddr == addr
+}
