@@ -809,3 +809,12 @@ func (mp *MetaPartition) getLiveZones(offlineAddr string) (zones []string) {
 	}
 	return
 }
+
+func (mp *MetaPartition) isLatestReplica(addr string) (ok bool) {
+	hostsLen := len(mp.Hosts)
+	if hostsLen <= 1 {
+		return
+	}
+	latestAddr := mp.Hosts[hostsLen-1]
+	return latestAddr == addr
+}
